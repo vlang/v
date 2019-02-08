@@ -2,4 +2,4 @@
 
 V is going to be open-sourced in mid 2019.
 
-https://vlang.io
+http://vlang.io
