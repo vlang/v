@@ -3,7 +3,7 @@ module main
 import json // V will automatically insert missing imports (like the goimports tool)
 import http
 
-// Right now V requires all consts to be upper case.
+// Right now V requires all consts to be uppercase.
 // I'm still not certain about this.
 const API_URL = 'https://vlang.io/users.json'
 
@@ -27,7 +27,6 @@ fn main() {
 		eprintln('Failed to fetch "users.json": $err')
 		// `or` blocks must end with `return`, `break`, or `continue`
 		return
-
 	}
 	// Types can be passed as arguments
 	users := json.decode([]User, s)
@@ -43,7 +42,7 @@ fn main() {
 	for i, user in users {
 		println('$i) $user')
 		if !user.can_register() {
-			// V allows both ' and " to denote strings
+			// V allows both ' and " to denote strings.
 			// However, for consistency V will replace " with '
 			// unless the string contains an apostrophe.
 			println("Can't register")
@@ -56,7 +55,7 @@ fn main() {
 // or by reference (&User). The compiler will make the right decision
 // depending on the size of the User struct. You no longer have to rember
 // which one to use. It works here because `u` can't be modified (it's not
-// marked as `mut`)
+// marked as `mut`).
 fn (u User) can_register() bool {
 	return u.age >= 16
 }
@@ -66,7 +65,3 @@ fn (u User) can_register() bool {
 fn (u mut User) register() {
 	u.is_registered = true
 }
-
-
-
-
