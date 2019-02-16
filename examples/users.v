@@ -50,10 +50,10 @@ fn main() {
 	}
 }
 
-// The method declration is the same as in Go.
+// The method declaration is the same as in Go.
 // There is one big difference. Here `u` can be either passed by value (User)
 // or by reference (&User). The compiler will make the right decision
-// depending on the size of the User struct. You no longer have to rember
+// depending on the size of the User struct. You no longer have to remember
 // which one to use. It works here because `u` can't be modified (it's not
 // marked as `mut`).
 fn (u User) can_register() bool {
