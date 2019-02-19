@@ -31,7 +31,7 @@ fn main() {
 	// Types can be passed as arguments
 	users := json.decode([]User, s)
 	// Encoding JSON doesn't require a type, since V knows what type
-	// `user` has
+	// the variable `users` has
 	println(json.encode(users))
 	// Please note the difference between V and Go:
 	// when there's only one variable, it's a value, not an index.
@@ -59,7 +59,6 @@ fn main() {
 fn (u User) can_register() bool {
 	return u.age >= 16
 }
-
 
 // Here `u` can be modified and it will always be a reference.
 fn (u mut User) register() {
