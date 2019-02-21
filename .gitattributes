@@ -1,1 +1,1 @@
-examples/*.v linguist-language=Go
+examples/* linguist-language=Go
