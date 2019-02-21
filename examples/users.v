@@ -1,3 +1,7 @@
+// Please share your thoughts, suggestions, questions, etc here:
+// https://github.com/vlang-io/V/issues/3
+
+// I'm very interested in your feedback.
 module main
 
 import json // V will automatically insert missing imports (like the goimports tool)
