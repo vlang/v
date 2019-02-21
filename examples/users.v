@@ -7,10 +7,9 @@ import http
 // I'm still not certain about this.
 const API_URL = 'https://vlang.io/users.json'
 
-// [json] attribute makes the compiler generate json.encode and json.decode
-// functions for this type. This results in better performance, since no
-// reflection is needed.
-[json] 
+// V will generate json.encode and json.decode functions for this type since
+// `json.decode([]User, ...)` is called later. This results in better
+// performance, since reflection is not used.
 struct User {
 	name          string // V will automatically format and align your code.
 	age           int    // No need to use an additional tool.
@@ -29,7 +28,10 @@ fn main() {
 		return
 	}
 	// Types can be passed as arguments
-	users := json.decode([]User, s)
+	users := json.decode([]User, s) or {
+		eprintln('Failed to parse users.json')
+		return
+	}
 	// Encoding JSON doesn't require a type, since V knows what type
 	// the variable `users` has
 	println(json.encode(users))
