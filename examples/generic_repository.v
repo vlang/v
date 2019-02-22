@@ -6,7 +6,7 @@
 module main
 
 struct User { /* ... */ }
-struct User { /* ... */ }
+struct Post { /* ... */ }
 struct DB   { /* ... */ }
 
 struct Repo <T> {
