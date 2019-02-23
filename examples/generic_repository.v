@@ -31,11 +31,11 @@ fn main() {
 	// I'm also considering passing the type as an argument
 	// users_repo := new_repo(User, db)
 	posts_repo := new_repo<Post>(db)
-	user := users_repo.retrieve(1) or {
+	user := users_repo.find_by_id(1) or {
 		eprintln('User not found')
 		return
 	}
-	post := posts_repo.retrieve(1) or {
+	post := posts_repo.find_by_id(1) or {
 		eprintln('Post not found')
 		return
 	}
