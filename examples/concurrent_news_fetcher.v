@@ -14,7 +14,7 @@ struct Story {
 }
 
 // Fetches top HN stories in 8 coroutines
-func main() {
+fn main() {
         resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json') or {
                 panic(err)
         }
