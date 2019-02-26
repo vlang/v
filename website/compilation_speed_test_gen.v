@@ -1,3 +1,5 @@
+// https://vlang.io/compilation_speed
+
 // v gen.v && ./gen > out.c && gcc out.c && time ./a.out
 
 const (
