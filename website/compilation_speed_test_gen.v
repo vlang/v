@@ -34,7 +34,7 @@ fn gen_swift() {
 fn gen_v() {
 	println('fn main() { mut a := 0 ')
 	for i := 0; i < N * 1000; i++ {
-		println('a = $i')
+		println('a = $i; println(a);')
 	}
 	println('}')
 }
