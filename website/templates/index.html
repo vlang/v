@@ -1,0 +1,386 @@
+@t header
+
+
+<script>
+
+function isMob() {
+	return typeof( window.orientation ) !== "undefined" || 
+	navigator.userAgent.indexOf('IEMobile') !== -1;
+
+}
+
+function isMac() {
+return false;
+return window.navigator.platform.toLowerCase().indexOf('mac') > -1 ; 
+}
+
+
+document.addEventListener("DOMContentLoaded", function(event) { 
+
+if (isMac()) {
+document.getElementById('macos').style.display = 'block'; 
+}
+
+
+})
+
+function soon() {
+alert('Coming in early March') 
+return false 
+} 
+ 
+ 
+</script>
+</head>
+
+<body>
+
+<div class='right'>
+<a target=_blank href='https://github.com/vlang-io/V'><img width=30 src='img/github.png'>GitHub repo</a>
+
+<a target=_blank href='https://join.slack.com/t/vlang-io/shared_invite/enQtNTQ4NDk4OTE1NTM2LWQ4YmU2YjgzYWIxMzg5NzVjY2RiNGZiNTY2YmU2MjE4MGM1NzhhZTY4MmNkYTRhYmUxY2Q4OTM0OTdiOTY5Yzc'><img width=30 src='img/slack.png'>Discuss on Slack</a>
+
+<a target=_blank href='https://twitter.com/vlang_io'><img width=30 src='img/twitter.png'>&#64;vlang_io</a>
+
+<a target=_blank href='https://old.reddit.com/r/vlang'><img width=30 src='img/reddit.png'>/r/vlang</a>
+
+<a target=_blank href='https://groups.google.com/forum/#!forum/vlang'><img width=30 src='img/gmail.png'>V mailing list</a>
+
+
+
+
+
+</div>
+
+<div style='float:right; margin-right: 5px; margin-top: 5px;'>
+<a target=_blank href='https://www.patreon.com/vlang'><img height=35 src='/img/patreon.png'></a> 
+<a style='text-align:center; display:block; position:relative; top:-4px;' target=_blank href='https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=HRGVJ2LA2LKJ8&item_name=Support+V+development&currency_code=USD&source=url&lc=US '> Donate via PayPal </a>
+</div> 
+
+<div class='menu'>
+
+
+<div class='center'> 
+<a target=_blank href='https://github.com/vlang-io/V/tree/master/examples'>Examples</a>
+<a href='/docs' >Documentation</a>
+<a href='/play' onclick='return soon()'>Playground</a>
+<a href='/blog' onclick='return soon()'>Blog</a> 
+<a href='/#faq'>FAQ</a>
+<a href='/#software'>Software built in V</a>
+</div> 
+
+</div> 
+
+<div class='center'>
+	<h1>
+	V programming language
+	</h1>
+	<div style='font-size:12px; text-align:center; position: relative; top:-10px;'>
+
+	Fast, safe, compiled language created for developing <a target=_blank href='https://volt.ws'>Volt</a>,
+	soon available for everyone.
+	<br><br>
+	Open source release in mid 2019.</div>
+
+<div id='install'>
+    Install V from source in 0.5 seconds
+	<pre>wget vlang.io/v.c && gcc -o v v.c</pre>
+	<!--
+	or if you already have V
+	<pre>wget https://vlang.io/v.v && v v.v</pre>
+	-->
+	</div>
+
+</div> 
+
+	<pre class='hello_devs'>
+fn main() {
+	types := [ 'game', 'web', 'tools', 'GUI' ]
+	for typ in types {
+		println('Hello, $typ developers!')
+	}
+}	</pre>
+
+
+
+<div class='menu' ></div> 
+<div class='center'>
+	<div class='row'>
+<div class='feature first'>
+	<h2>Fast compilation</h2>
+	V compiles 1.5 million lines of code per second per CPU core
+	<pre>
+cd doom3/
+wc -l doom3.v     # 458 713
+time v doom3.v    # 0.5s</pre> 
+       <a href='/compilation_speed'>Compilation speed benchmark 
+and comparison with other languages</a>. 
+</div>
+
+
+<div class='feature'>
+	<h2>Safety</h2>
+	<li>No globals
+	<li>No null
+	<li>No undefined values 
+	<li><a target=_blank href='/docs#option'>Option types</a> 
+	<li>Immutability by default
+	<li>Partially pure functions
+</div>
+
+</div>
+
+	<div class='row'>
+<div class='feature first'> 
+
+	<h2>C/C++ translation</h2>
+	V can translate your entire C/C++ project and offer you the safety, simplicity, and up to 200x compilation speed up.
+	<br>
+	<pre style='float:left; font-size:80%;'>
+std::vector&lt;std::string> s;
+s.push_back("V is ");
+s.push_back("awesome");
+std::cout << s.size(); </pre>
+	<pre style= 'font-size:80%;'>
+	s := []string 
+	s << 'V is '
+	s << 'awesome'
+	println(s.len)</pre>
+<!-- 
+	Read about translating <a href='/doom' onclick='return soon()'>Doom & Doom 3</a>, 
+<a href='#'>LevelDB</a>, <a href='#'>SQLite</a>.
+--> 
+
+	Read about translating <u>Doom & Doom 3</u>, <u>LevelDB</u>, <u>SQLite</u> (coming in March). 
+</div>
+
+<div class='feature'> 
+<h2>400 KB compiler with zero dependencies<!-- <a href='/size-note.html'>*</a>--></h2>
+<p>
+The entire V language and its standard library is less than 400 KB. 
+You can build V in 0.3 seconds. 
+</p>
+<p>
+For comparison:
+</p>
+<table>
+<tr><td></td><td>Space required</td><td>Build time</td></tr>
+<tr><td>Go</td><td>525 MB</td><td>1m 33s</td></tr>
+<tr><td>Rust</td><td>30 GB</td><td>45m</td></tr>
+<tr><td>gcc</td><td>8 GB</td><td>50m</td></tr>
+<tr><td>Clang</td><td>15-20 GB</td><td>25m</td></tr>
+<tr><td>Swift</td><td>70 GB <a target=_blank href='https://github.com/apple/swift#getting-started'>*</a></td><td>90m</td></tr>
+<tr><td>V</td><td>0.4 MB</td><td>0.3s</td></tr>
+</table>
+</div>
+</div>
+
+<!--
+row {
+	feature height:360px {
+		h2 { 200 KB }
+		p { The entire V 
+		-->
+
+	<div class='row'>
+<div class='feature first'>
+	<h2>Performance</h2>
+	<li>As fast as C
+	<li>Minimal amount of allocations <br>
+	<li>Built-in serialization without reflection <br>
+
+
+
+
+</div>
+
+<div class='feature'>
+<h2>Hot code reloading</h2>
+<p>
+Get your changes instantly without recompiling!
+<p>
+ Since you also don't have to
+waste time to get to the state you are working on after every compilation, this can save a lot of 
+precious minutes of your development time.
+</p>
+<p> 
+<a target=_blank href='https://volt.ws/img/lang.webm'>Demonstration of hot code reloading.</a> 
+</p> 
+ 
+</div>
+
+</div>
+
+	<div class='row'>
+<div class='feature first'>
+<h2>Simple language for building  maintainable programs</h2> 
+<p> 
+You can learn the entire language by going through the 
+<a target=_blank href='/docs'>documentation</a> in half an hour. 
+<p> 
+Despite being simple, it gives a lot of power to the developer. Anything you can do in other languages, you can do in V. 
+
+
+
+</div>
+
+<div class='feature'>
+<h2>REPL</h2>
+<pre>
+ v
+ >> data := http.get('https://vlang.io/utc_now') or { return } 
+ >> data 
+ '1551205308' 
+</pre> 
+  
+
+</div>
+
+</div>
+
+	<div class='row'>
+<div class='feature first'>
+<h2>Native cross platform UI library</h2>
+Build native apps that look native. You no longer need to embed a browser to
+develop cross platform apps quickly.
+</div>
+
+<div class='feature'>
+<h2>Run everywhere</h2>
+V can compile to (human readable) C, so you get the great platform support and 
+optimization of gcc and Clang.
+</div>
+
+</div>
+
+</div> 
+
+
+<div class='menu' ></div> 
+
+<div class='center'> 
+
+<h1 id='faq'>FAQ</h1>
+<p>
+<b>Why create V when there are already so many languages? Why not use Go, Rust, C++, Python etc?</b> 
+<p>
+<a href='/compare'>Detailed comparison of V and other languages.</a>
+</p>
+
+<br> 
+<p>
+<b>What language is V written in? </b> 
+<p>
+V. The compiler can compile itself. The original version was written in Go. 
+</p>
+
+<br> 
+<p>
+<b>Does V use LLVM? </b> 
+<p>
+No. V compiles directly to machine code. It's one of the main reasons it's so light and fast.  Right now only x64 architecture is supported. 
+</p>
+<p>
+V can also emit human readable C, which can then be compiled to run on any platform. 
+</p>
+
+<br> 
+<p>
+<b> What about optimization?  </b> 
+<p>
+V emits C and uses GCC/Clang for optimized production builds. This way you get access to sophisticated optimization. 
+
+<p>
+Such builds are compiled ≈150 times slower than V development builds (but are still 
+<!--an order of magnitude --> 
+faster than C++ builds). 
+<p> 
+This can be a problem for industries where optimization is required during development (for example AAA 
+games). In this case hot code reloading can be used, and no recompilation will be required. 
+</p> 
+
+<br> 
+<p> 
+<b> Is there garbage collection?  </b> 
+<p> 
+No. V's memory management is similar to Rust but much easier to use. More information about it
+
+will be posted in the near future.  
+</p> 
+
+<br> 
+<p> 
+<b> Is there going to be a package manager?  </b> 
+<p> 
+Yes! V is a very modular language and encourages creation of modules that are easy to reuse.
+There will be a central package manager, and installing modules will be as easy as 
+<pre>v install sqlite</pre> 
+ 
+<p> 
+
+</p>
+
+
+</div> 
+
+<div class='menu' ></div> 
+
+
+<div class='center'> 
+
+<h1 id='software'>Software built in V</h1>
+
+<div class='row'>
+	<div class='feature first'>
+		<h2>V language</h2>
+		V itself is written in V.
+	</div>
+	<div class='feature'>
+		<h2><a target=_blank href='https://volt.ws'>Volt</a></h2>
+		Native desktop client for Slack, Skype, Matrix, Telegram, Twitch and many more 
+		services.
+		<!--<img src='https://volt.ws/img/screen2.png'>-->
+	</div>
+</div>
+
+<div class='row'>
+	<div class='feature first'>
+		<h2>Filey</h2>
+		Cross platform file manager with Miller Columns and built-in selective sync
+		with major cloud platforms.
+		<!--<img src='/img/filey.png'>-->
+	</div>
+	<div class='feature'>
+		<h2><a target=_blank href='https://github.com/medvednikov/vid'>Vid</a></h2> 
+		Open source 200 KB editor with the performance of Sublime Text.
+	</div>
+
+</div>
+
+<div class='row'>
+	<div class='feature first'>
+	<h2>C/C++ to V translator</h2>
+	This tool supports the latest standard of notoriously complex C++
+	and allows full automatic conversion to human readable code. 
+	</div>
+	<div class='feature'>
+	<h2> V ui</h2>
+	Cross platform widget toolkit using native APIs.
+	</div>
+</div>
+
+<br><br>
+Are you using V to build your product or library? <a href='mailto:alex&#64;medvednikov.com'>
+Have it added to this list</a>.
+
+<br><br>
+<br><br>
+<br><br>
+<br><br>
+<br><br>
+
+
+	</body>
+
+</html>
+@t footer
