@@ -15,14 +15,10 @@ struct Story {
 
 // Fetches top HN stories in 8 coroutines
 fn main() {
-        resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json') or {
-                panic(err)
-        }
-        ids := json.decode([]int, resp.body) or {
-                panic(err)
-        }
+        resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json')?
+        ids := json.decode([]int, resp.body)?
         mut cursor := 0
-        for i := 0; i < 8; i++ {
+        for _ in 0..8 {
                 go fn() {
                         for cursor < ids.len {
                                 lock { // Without this lock block the program will not compile
@@ -30,12 +26,8 @@ fn main() {
                                         cursor++
                                 }
                                 url := 'https://hacker-news.firebaseio.com/v0/item/$id.json'
-                                resp := http.get(url) or {
-                                        panic(err)
-                                }
-                                story := json.decode(Story, resp.body) or {
-                                        panic(err)
-                                }
+                                resp := http.get(url)?
+                                story := json.decode(Story, resp.body)?
                                 println(story.title)
                         }
                 }()
