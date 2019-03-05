@@ -319,7 +319,7 @@ fn main() {
         resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json')? 
         ids := json.decode([]int, resp.body)?  // ? propagates the error 
         mut cursor := 0
-        for i in 0..8 { 
+        for _ in 0..8 { 
                 go fn() {
                         for cursor < ids.len {
                                 lock { // Without this lock block the program will not compile

@@ -124,6 +124,7 @@ and comparison with other languages</a>.
 	<li>No null
 	<li>No undefined values 
 	<li><a target=_blank href='/docs#option'>Option types</a> 
+	<li><a target=_blank href='/docs#generics'>Generics</a> 
 	<li>Immutability by default
 	<li>Partially pure functions
 </div>
@@ -228,7 +229,7 @@ Despite being simple, it gives a lot of power to the developer. Anything you can
 <h2>REPL</h2>
 <pre>
  v
- >> data := http.get('https://vlang.io/utc_now') or { return } 
+ >> data := http.get('https://vlang.io/utc_now')? 
  >> data 
  '1551205308' 
 </pre> 
@@ -288,7 +289,7 @@ V can also emit human readable C, which can then be compiled to run on any platf
 <p>
 <b> What about optimization?  </b> 
 <p>
-V emits C and uses GCC/Clang for optimized production builds. This way you get access to sophisticated optimization. 
+For now V emits C and uses GCC/Clang for optimized production builds. This way you get access to sophisticated optimization. 
 
 <p>
 Such builds are compiled ≈150 times slower than V development builds (but are still 
@@ -297,6 +298,9 @@ faster than C++ builds).
 <p> 
 This can be a problem for industries where optimization is required during development (for example AAA 
 games). In this case hot code reloading can be used, and no recompilation will be required. 
+</p> 
+<p>
+In the future V will have its own optimizer.
 </p> 
 
 <br> 

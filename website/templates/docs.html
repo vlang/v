@@ -11,6 +11,11 @@ comment {
 font-family: 'Roboto Mono'; 
 color: #777;
 }
+code {
+	font-family: 'Roboto Mono';
+	background-color: #fafafa;
+	padding: 1px 3px 1px 3px;
+}
 </style>
 
 <div class='menu'>
@@ -276,11 +281,11 @@ no copying is performed, no extra allocations required.
 <h2 id=arrays>Arrays</h2>
 <pre>
 fn main() {
-	nums := [ 1, 2, 3 ]
+	nums := [1, 2, 3]
 	println(nums)
 	println(nums[1]) <comment>// ==> "2"</comment> 
 
-	mut names := [ 'John' ]
+	mut names := ['John']
 	names << 'Peter'
 	names << 'Sam'
 	<comment>// names << 10  <-- This will not compile. `names` is an array of strings.</comment> 
@@ -289,7 +294,7 @@ fn main() {
 
 	<comment>// We can also preallocate a certain amount of elements.</comment> 
 	nr_ids := 50
-	mut ids := [ 0 ; nr_ids ] <comment>// This creates an array with 50 zeroes</comment> 
+	mut ids := [0 ; nr_ids] <comment>// This creates an array with 50 zeroes</comment> 
 	for i := 0; i < nr_ids; i++ {
 		ids[i] = i <comment>// This is more efficient than </comment> 
 		           <comment>// ids << i</comment> 
@@ -297,12 +302,12 @@ fn main() {
 }
 </pre>
 
-Array type is determined by the first element: <code>[ 1, 2, 3 ]</code> is an array of ints <br> 
+Array type is determined by the first element: <code>[1, 2, 3]</code> is an array of ints <br> 
 (<code>[]int</code>). <br> 
-<code>[ 'a', 'b' ]</code> is an array of strings (<code>[]string</code>). 
+<code>['a', 'b']</code> is an array of strings (<code>[]string</code>). 
 
 <p>
-All elements in an array must have the same type. <code>[ 1, 'a' ]</code> will not compile.
+All elements in an array must have the same type. <code>[1, 'a']</code> will not compile.
 
 <p>
 <code>&lt;&lt;</code> is an operator that appends a value to the end of the array. 
@@ -494,7 +499,34 @@ named <code>a</code>.
 <h2 id=recvs>Mutable receivers</h2> 
 TODO 
 <h2 id=interfaces>Interfaces</h2> 
-TODO 
+<pre>
+struct Dog {}
+struct Cat {}
+
+fn (d Dog) speak() string { return 'woof' } 
+fn (c Cat) speak() string { return 'meow' } 
+
+interface Speaker {
+	speak() string
+}
+
+fn perform(s Speaker) { println(s.speak()) } 
+
+fn main() {
+	dog := Dog{} 
+	cat := Cat{} 
+	perform(dog) // ==> "woof" 
+	perform(cat) // ==> "meow" 
+} 
+</pre> 
+<p> 
+A type implements an interface by implementing its methods. There is no explicit declaration of intent, no "implements" keyword.
+</p> 
+<p>
+V interfaces are very efficient. There's no dynamic dispatch.
+</p> 
+
+ 
 <h2 id=option>Option types</h2> 
 
 <pre>struct User {
