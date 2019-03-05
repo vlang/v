@@ -18,7 +18,7 @@ color: #777;
 
 <div class='center'> 
 <a target=_blank href='https://github.com/vlang-io/V/tree/master/examples'>Examples</a>
-<a href='/docs' onclick='return soon()' >Documentation</a>
+<a href='/docs' onclick='return soon()'>Documentation</a>
 <a href='/play' onclick='return soon()'>Playground</a>
 <a href='/blog' onclick='return soon()'>Blog</a> 
 <a href='/#faq'>FAQ</a>
@@ -252,6 +252,7 @@ Constant values can never be changed.
 <h2 id=strings>Strings</h2>
 <pre>fn main() { 
 	name := 'Bob' 
+	<comment>// Interpolated variable in string</comment>
 	println('Hello, $name!') 
 
 	println(name.len) 
@@ -266,7 +267,7 @@ Constant values can never be changed.
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8. 
 
 <p> 
-Strings are immutable. This means that the substring function is very efficient: 
+String contents are immutable. This means that the substring function is very efficient: 
 no copying is performed, no extra allocations required. 
 
 
@@ -409,7 +410,7 @@ Finally, there's the traditional C style <code>for</code> loop. It's safer than 
 because with the latter it's easy to forget to update the counter and get
 stuck in an infinite loop.
 
-
+TODO: Break and continue.
 
 
 <h2 id=switch>Switch</h2>
@@ -517,11 +518,14 @@ fn (r Repo) find_user_by_id(id int) User? {
 
 fn main() {
 	repo := <comment>// ... initialize the repository here and load users data </comment> 
+	// either get the user or handle an error and leave the current scope
 	user := repo.find_user_by_id(10) or {
 		eprintln(err) 
 		return 
 	} 
 	println(user.id) // 10 
+	user = repo.find_user_by_id(11)? <comment>// ? propagates an error </comment>
+	println(user.id) // 11
 } 
 </pre> 
 
@@ -535,12 +539,19 @@ you have to add a <code>?</code> to the return type and return an error when som
 }
 
 <comment>// Generic code is notoriously verbose. To reduce clutter, V doesn't require you 
-// to add `&lt;T&gt;` every time, since it already knows that Repo is a generic type.</comment> 
+// to add `&lt;T&gt;` every time, since it already knows that Repo is a generic type.
+// Here the function return type is an unspecified instance of Repo.</comment> 
 fn new_repo&lt;T>(db DB) Repo {
 	return Repo&lt;T>{db: db}
 }
 
-<comment>// This is a generic function. V will generate it for every type it's used with.</comment> 
+fn (db DB) query_one&lt;T>(query string, id int) T? {
+	<comment>// Return a value of type T from the database, or an error.
+	// Implementation omitted...</comment>
+}
+
+<comment>// This is a generic receiver function. V will generate it for every Repo instance it's used with.
+// T is a member type of Repo, so it is in scope for this receiver function.</comment> 
 fn (r Repo) find_by_id(id int) T? {  
 	table_name := T.name <comment>// in this example getting the name of the type gives us the table name</comment> 
 	return db.query_one&lt;T>('select * from $table_name where id = ?', id)
