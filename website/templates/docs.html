@@ -582,7 +582,7 @@ fn (db DB) query_one&lt;T>(query string, id int) T? {
 }
 
 <comment>// This is a generic receiver function. V will generate it for every Repo instance it's used with.
-// T is inferred by the receiver argument. Again &lt;T> is implied by just writing Repo:
+// T is inferred from the receiver argument. Again &lt;T> is implied by just writing Repo:
 // fn (r Repo&lt;T>) find_by_id&lt;T>(id int) T?</comment> 
 fn (r Repo) find_by_id(id int) T? {  
 	table_name := T.name <comment>// in this example getting the name of the type gives us the table name</comment> 
