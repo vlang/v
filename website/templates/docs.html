@@ -415,7 +415,6 @@ Finally, there's the traditional C style <code>for</code> loop. It's safer than 
 because with the latter it's easy to forget to update the counter and get
 stuck in an infinite loop.
 
-TODO: Break and continue.
 
 
 <h2 id=switch>Switch</h2>
@@ -583,7 +582,8 @@ fn (db DB) query_one&lt;T>(query string, id int) T? {
 }
 
 <comment>// This is a generic receiver function. V will generate it for every Repo instance it's used with.
-// T is a member type of Repo, so it is in scope for this receiver function.</comment> 
+// T is inferred by the receiver argument. Again &lt;T> is implied by just writing Repo:
+// fn (r Repo&lt;T>) find_by_id&lt;T>(id int) T?</comment> 
 fn (r Repo) find_by_id(id int) T? {  
 	table_name := T.name <comment>// in this example getting the name of the type gives us the table name</comment> 
 	return db.query_one&lt;T>('select * from $table_name where id = ?', id)
