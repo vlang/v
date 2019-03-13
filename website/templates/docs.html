@@ -493,7 +493,7 @@ The receiver appears in its own argument list between the <code>fn</code> keywor
 <p> 
 
 In this example, the <code>distance_to</code> method has a receiver of type <code>Point</code> 
-named <code>a</code>. 
+named <code>a</code>. If no name is given, the receiver argument's fields and methods are in scope for this method.
 
 
 
@@ -584,7 +584,7 @@ fn (db DB) query_one&lt;T>(query string, id int) T? {
 
 <comment>// This is a generic receiver function. V will generate it for every Repo instance it's used with.
 // T is a member type of Repo, so it is in scope for this receiver function.</comment> 
-fn (r Repo) find_by_id(id int) T? {  
+fn (Repo) find_by_id(id int) T? {  
 	table_name := T.name <comment>// in this example getting the name of the type gives us the table name</comment> 
 	return db.query_one&lt;T>('select * from $table_name where id = ?', id)
 }
