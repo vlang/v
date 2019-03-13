@@ -565,7 +565,9 @@ you have to add a <code>?</code> to the return type and return an error when som
  
 
 <h2 id=generics>Generics</h2> 
-<pre>struct Repo &lt;T> {
+<pre>import database
+
+struct Repo &lt;T> {
 	db DB
 }
 
@@ -576,25 +578,28 @@ fn new_repo&lt;T>(db DB) Repo {
 	return Repo&lt;T>{db: db}
 }
 
-fn (db DB) query_one&lt;T>(query string, id int) T? {
-	<comment>// Return a value of type T from the database, or an error.
-	// Implementation omitted...</comment>
-}
-
-<comment>// This is a generic receiver function. V will generate it for every Repo instance it's used with.
-// T is inferred from the receiver argument. Again &lt;T> is implied by just writing Repo:
+<comment>// This is a generic method. V will generate it for every Repo instance it's used with.
+// Again &lt;T> is implied by just writing Repo for the receiver type, so V makes the method take &lt;T> too:
 // fn (r Repo&lt;T>) find_by_id&lt;T>(id int) T?</comment> 
 fn (r Repo) find_by_id(id int) T? {  
 	table_name := T.name <comment>// in this example getting the name of the type gives us the table name</comment> 
+	<comment>//lookup a value of type T from the database, or return an error</comment>
 	return db.query_one&lt;T>('select * from $table_name where id = ?', id)
 }
+
+struct User { name string }
+struct Post { text string }
 
 fn main() {
 	db := new_db()
 	users_repo := new_repo&lt;User>(db)
 	posts_repo := new_repo&lt;Post>(db)
+	<comment>// find_by_id<User> is inferred from users_repo:</comment>
 	user := users_repo.find_by_id(1)? 
+	<comment>// find_by_id<Post> is inferred from posts_repo:</comment>
 	post := posts_repo.find_by_id(1)? 
+	println(user.name)
+	println(post.text)
 } 
 </pre> 
 
