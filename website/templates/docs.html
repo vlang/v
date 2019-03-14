@@ -584,7 +584,7 @@ fn new_repo&lt;T>(db DB) Repo {
 fn (r Repo) find_by_id(id int) T? {  
 	table_name := T.name <comment>// in this example getting the name of the type gives us the table name</comment> 
 	<comment>//lookup a value of type T from the database, or return an error</comment>
-	return db.query_one&lt;T>('select * from $table_name where id = ?', id)
+	return r.db.query_one&lt;T>('select * from $table_name where id = ?', id)
 }
 
 struct User { name string }
