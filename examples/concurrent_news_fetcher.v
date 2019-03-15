@@ -1,10 +1,6 @@
 // Please share your thoughts, suggestions, questions, etc here:
 // https://github.com/vlang-io/V/issues/3
-
 // I'm very interested in your feedback.
-
-module main
-
 import http
 import json
 import runtime
@@ -20,8 +16,11 @@ fn main() {
         mut cursor := 0
         for _ in 0..8 {
                 go fn() {
-                        for cursor < ids.len {
-                                lock { // Without this lock block the program will not compile
+                        for  {
+                                lock { // Without this lock the program will not compile
+                                        if cursor >= ids.len {
+                                                break
+                                        }
                                         id := ids[cursor]
                                         cursor++
                                 }
