@@ -22,7 +22,7 @@ fn new_repo<T>(db DB) Repo {
 // This is a generic function. V will generate it for every type it's used with.
 fn (r Repo) find_by_id(id int) T? { // `?` means the function returns an optional
 	table_name := T.name // in this example getting the name of the type gives us the table name
-	return db.query_one<T>('select * from $table_name where id = ?', id)
+	return r.db.query_one<T>('select * from $table_name where id = ?', id)
 }
 
 fn main() {
