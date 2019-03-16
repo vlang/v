@@ -1,6 +1,6 @@
 # Official V repository
 
-V is going to be open-sourced in mid 2019.
+V is going to be open-sourced in June 2019. Early acccess in May.
 
 https://vlang.io
 
