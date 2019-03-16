@@ -7,13 +7,6 @@ https://vlang.io
 Documentation:
 https://vlang.io/docs
 
-
-Mailing list:
-https://groups.google.com/forum/#!forum/vlang
-
-Subreddit:
-https://old.reddit.com/r/vlang
-
 Twitter:
 https://twitter.com/vlang_io
 
