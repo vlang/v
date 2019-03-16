@@ -1,1 +1,2 @@
 *.v linguist-language=Go
+website/* linguist-vendored
