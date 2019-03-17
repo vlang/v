@@ -1,16 +1,13 @@
-# Official V repository
+# The V Programming Language
 
-V is going to be open-sourced in June 2019. Early acccess in May.
+V is going to be open-sourced in June 2019. Early acccess on May 1.
 
 https://vlang.io
 
-Documentation:
-https://vlang.io/docs
+Documentation: https://vlang.io/docs
 
-Twitter:
-https://twitter.com/vlang_io
+Twitter: https://twitter.com/vlang_io
 
-&nbsp;
 
 &nbsp;
 
