@@ -1,6 +1,6 @@
 # The V Programming Language
 
-V is going to be open-sourced in June 2019. Early access on May 1.
+V is going to be open-sourced in June 2019. Early access on April 15.
 
 https://vlang.io
 
