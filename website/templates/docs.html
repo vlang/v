@@ -594,9 +594,9 @@ fn main() {
 	db := new_db()
 	users_repo := new_repo&lt;User>(db)
 	posts_repo := new_repo&lt;Post>(db)
-	<comment>// find_by_id<User> is inferred from users_repo:</comment>
+	<comment>// find_by_id&lt;User> is inferred from users_repo:</comment>
 	user := users_repo.find_by_id(1)? 
-	<comment>// find_by_id<Post> is inferred from posts_repo:</comment>
+	<comment>// find_by_id&lt;Post> is inferred from posts_repo:</comment>
 	post := posts_repo.find_by_id(1)? 
 	println(user.name)
 	println(post.text)
