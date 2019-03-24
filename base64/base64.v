@@ -31,7 +31,7 @@ fn decode(data string) string {
 		str[j] = n & 0xff
 		j++
 	}
-	if pad {
+	if pad > 0 {
 		mut nn := (INDEX[p[L]] << 18) | (INDEX[p[L + 1]] << 12)
 		str[str_len - 1] = nn >> 16
 		if len > L + 2 && p[L + 2] != `=` {
