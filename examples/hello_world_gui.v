@@ -9,7 +9,7 @@ import ui  // Native cross platform ui toolkit (uses Cocoa, win32, GTK+)
 
 // There are no globals, so we have to use a context struct 
 struct Context {
-    input ui.TextBox // this uses native conrols (NSTextView on macOS, edit HWND on Windows)  
+    input ui.TextBox // this uses native controls (NSTextView on macOS, edit HWND on Windows)  
     names []string   // let's log the names to demonstrate how arrays work  
 }
 
