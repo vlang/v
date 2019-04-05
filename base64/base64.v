@@ -11,7 +11,7 @@ const (
 )
 
 fn decode(data string) string {
-	p := data.str
+	p := data.cstr()
 	len := data.len
 	mut pad := 0
 	if len > 0 && (len % 4 != 0 || p[len - 1] == `=`) {
