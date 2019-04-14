@@ -2,13 +2,14 @@ import ui
 import gx
 
 const (
-	WIN_SIZE  = 540
-	MIN       = 1
-	MAX       = 9
-	FONT_SIZE = 30
-	N         = MAX - MIN + 1
-	CELL_SIZE = WIN_SIZE / N
-	TEXT_CFG  = gx.TextCfg { color: gx.BLACK, size: FONT_SIZE }
+	WIN_SIZE     = 540
+	MIN          = 1
+	MAX          = 9
+	FONT_SIZE    = 30
+	N            = MAX - MIN + 1
+	CELL_SIZE    = WIN_SIZE / N
+	TEXT_CFG     = gx.TextCfg { color: gx.BLACK, size: FONT_SIZE }
+	HEADER_COLOR = gx.rgb(240, 240, 240)
 )
 
 fn main() {
@@ -32,11 +33,11 @@ fn draw() {
 			x := CELL_SIZE * (j - MIN)
 			// Horizontal header
 			if i == MIN {
-				gx.draw_rect(x, y, CELL_SIZE, CELL_SIZE, gx.rgb(240, 240, 240))
+				gx.draw_rect(x, y, CELL_SIZE, CELL_SIZE, HEADER_COLOR)
 			}
 			// Vertical header
 			if j == MIN {
-				gx.draw_rect(x, y, CELL_SIZE, CELL_SIZE, gx.rgb(240, 240, 240))
+				gx.draw_rect(x, y, CELL_SIZE, CELL_SIZE, HEADER_COLOR)
 			}
 			// Draw the result
 			if !(i == MIN && j == MIN) {
