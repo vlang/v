@@ -27,20 +27,16 @@ fn main() {
 
 // ui.Window uses native drawing API (Core Graphics, GDI+)
 fn draw() {
+	// Horizontal header
+	gx.draw_rect(0, 0, WIN_SIZE, CELL_SIZE, HEADER_COLOR)
+	// Vertical header
+	gx.draw_rect(0, 0, CELL_SIZE, WIN_SIZE, HEADER_COLOR)
 	for i := MIN; i <= MAX; i++ {
 		y := CELL_SIZE * (i - MIN)
 		for j := MIN; j <= MAX; j++ {
 			x := CELL_SIZE * (j - MIN)
-			// Horizontal header
-			if i == MIN {
-				gx.draw_rect(x, y, CELL_SIZE, CELL_SIZE, HEADER_COLOR)
-			}
-			// Vertical header
-			if j == MIN {
-				gx.draw_rect(x, y, CELL_SIZE, CELL_SIZE, HEADER_COLOR)
-			}
 			// Draw the result
-			if !(i == MIN && j == MIN) {
+			if ! (i == MIN && j == MIN) {
 				res := i * j
 				mut text_padding_x := (CELL_SIZE - FONT_SIZE) / 2 - 1
 				text_padding_y := text_padding_x - 3
@@ -49,13 +45,11 @@ fn draw() {
 				}
 				gx.draw_text(x + text_padding_x, y + text_padding_y, res.str(), TEXT_CFG)
 			}
-			// Vertical lines
-			if i == MIN {
-				gx.draw_line(x, 0, x, WIN_SIZE)
-			}
 		}
 		// Horizontal lines
 		gx.draw_line(0, y, WIN_SIZE, y)
+		// Vertical lines
+		gx.draw_line(y, 0, y, WIN_SIZE)
 	}
 }
 
