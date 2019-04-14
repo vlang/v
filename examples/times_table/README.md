@@ -1,1 +1,1 @@
-<img src='https://raw.githubusercontent.com/vlang/v/master/times_table/screenshot.png' width=540>
+<img src='https://raw.githubusercontent.com/vlang/v/master/examples/times_table/screenshot.png' width=540>
