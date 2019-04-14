@@ -18,7 +18,7 @@ fn main() {
 			if key == '' {
 				continue
 			}
-			m[key] = m[key] + 1
+			m[key] = m[key] + 1 // TODO m[key]++
 		}
 	}
 	// Sort the keys
@@ -51,6 +51,7 @@ fn filter_word(word string) string {
 	return word.substr(start, end)
 }
 
+// TODO remove once it's possible to call word[i].is_letter()
 fn is_letter(c byte) bool {
 	return c.is_letter()
 }
