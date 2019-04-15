@@ -236,19 +236,19 @@ fn (g mut Game) drop_tetro() {
 	}
 }
 
-fn (g mut Game) draw_tetro() {
+fn (g &Game) draw_tetro() {
 	for i := 0; i < TETRO_SIZE; i++ {
 		tetro := g.tetro[i]
 		g.draw_block(g.posY + tetro.y, g.posX + tetro.x, g.tetroIdx + 1)
 	}
 }
 
-fn (g mut Game) draw_block(i, j int, color_idx int) {
+fn (g &Game) draw_block(i, j int, color_idx int) {
 	g.gg.draw_rect((j - 1) * BLOCK_SIZE, (i - 1) * BLOCK_SIZE, 
 		BLOCK_SIZE - 1, BLOCK_SIZE - 1, COLORS[color_idx])
 }
 
-fn (g mut Game) draw_field() {
+fn (g &Game) draw_field() {
 	for i := 1; i < FIELD_HEIGHT + 1; i++ {
 		for j := 1; j < FIELD_WIDTH + 1; j++ {
 			f := g.field[i]
@@ -259,14 +259,13 @@ fn (g mut Game) draw_field() {
 	}
 }
 
-fn (g mut Game) draw_scene() {
+fn (g &Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
 }
 
 fn parse_binary_tetro(t int) []Block {
-	res := [Block{}
-	; 4]
+	res := [Block{} ; 4]
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
 	for i := 0; i <= 3; i++ {
