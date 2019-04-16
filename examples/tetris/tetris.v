@@ -74,8 +74,8 @@ const (
 
 struct Game {
 	// Position of the dropping tetromino
-	posX        int
-	posY        int
+	pos_x        int
+	pos_y        int
 	// field[y][x] contains the color of the block with (x,y) coordinates
 	// "-1" border is to avoid bounds checking.
 	// -1 -1 -1 -1
@@ -87,9 +87,9 @@ struct Game {
 	// TODO: tetro Tetro
 	tetro       []Block
 	// Index of the dropping tetromino. Refers to its color.
-	tetroIdx    int
+	tetro_idx    int
 	// Index of the rotation (0-3)
-	rotationIdx int
+	rotation_idx int
 	// gg context for drawing
 	gg          *gg.GG
 }
@@ -156,14 +156,14 @@ fn (g mut Game) move_tetro() {
 	// Check each block in the dropping tetro
 	for i := 0; i < TETRO_SIZE; i++ {
 		tetro := g.tetro[i]
-		y := tetro.y + g.posY + 1
-		x := tetro.x + g.posX
+		y := tetro.y + g.pos_y + 1
+		x := tetro.x + g.pos_x
 		// Reached the bottom of the screen or another block?
 		// TODO: if g.field[y][x] != 0
 		row := g.field[y]
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game
-			if g.posY < 2 {
+			if g.pos_y < 2 {
 				g.init_game()
 				return
 			}
@@ -173,22 +173,22 @@ fn (g mut Game) move_tetro() {
 			return
 		}
 	}
-	g.posY++
+	g.pos_y++
 }
 
 fn (g mut Game) move_right(dx int) {
 	for i := 0; i < TETRO_SIZE; i++ {
 		// Reached left/right edges?
 		tetro := g.tetro[i]
-		y := tetro.y + g.posY
-		x := tetro.x + g.posX + dx
+		y := tetro.y + g.pos_y
+		x := tetro.x + g.pos_x + dx
 		row := g.field[y]
 		if row[x] != 0 {
 			// Do not move
 			return
 		}
 	}
-	g.posX += dx
+	g.pos_x += dx
 }
 
 fn (g mut Game) delete_completed_lines() {
@@ -216,30 +216,30 @@ fn (g mut Game) delete_completed_line(y int) {
 
 // Place a new tetro on top
 fn (g mut Game) generate_tetro() {
-	g.posY = 0
-	g.posX = FIELD_WIDTH / 2 - TETRO_SIZE / 2
-	g.tetroIdx = rand.next(B_TETROS.len)
-	g.rotationIdx = 0
-	b := B_TETROS[g.tetroIdx]
+	g.pos_y = 0
+	g.pos_x = FIELD_WIDTH / 2 - TETRO_SIZE / 2
+	g.tetro_idx = rand.next(B_TETROS.len)
+	g.rotation_idx = 0
+	b := B_TETROS[g.tetro_idx]
 	g.tetro = parse_binary_tetro(b[0])
 }
 
 fn (g mut Game) drop_tetro() {
 	for i := 0; i < TETRO_SIZE; i++ {
 		tetro := g.tetro[i]
-		x := tetro.x + g.posX
-		y := tetro.y + g.posY
+		x := tetro.x + g.pos_x
+		y := tetro.y + g.pos_y
 		// Remember the color of each block
-		// TODO: g.field[y][x] = g.tetroIdx + 1
+		// TODO: g.field[y][x] = g.tetro_idx + 1
 		mut row := g.field[y]
-		row[x] = g.tetroIdx + 1
+		row[x] = g.tetro_idx + 1
 	}
 }
 
 fn (g &Game) draw_tetro() {
 	for i := 0; i < TETRO_SIZE; i++ {
 		tetro := g.tetro[i]
-		g.draw_block(g.posY + tetro.y, g.posX + tetro.x, g.tetroIdx + 1)
+		g.draw_block(g.pos_y + tetro.y, g.pos_x + tetro.x, g.tetro_idx + 1)
 	}
 }
 
@@ -291,7 +291,7 @@ fn parse_binary_tetro(t int) []Block {
 }
 
 // TODO: this exposes the unsafe C interface, clean up
-fn key_down(wnd *glfw.Window, key int, code int, action, mods int) {
+fn key_down(wnd voidptr, key int, code int, action, mods int) {
 	if action != 2 && action != 1 {
 		return
 	}
@@ -300,15 +300,15 @@ fn key_down(wnd *glfw.Window, key int, code int, action, mods int) {
 	switch key {
 	case GLFW_KEY_UP:
 		// Rotate the tetro
-		game.rotationIdx++
-		if game.rotationIdx == TETRO_SIZE {
-			game.rotationIdx = 0
+		game.rotation_idx++
+		if game.rotation_idx == TETRO_SIZE {
+			game.rotation_idx = 0
 		}
-		t := B_TETROS[game.tetroIdx]
-		// game.tetro = parse_binary_tetro(B_TETROS[game.tetroIdx][game.rotationIdx])
-		game.tetro = parse_binary_tetro(t[game.rotationIdx])
-		if game.posX < 0 {
-			game.posX = 1
+		t := B_TETROS[game.tetro_idx]
+		// game.tetro = parse_binary_tetro(B_TETROS[game.tetro_idx][game.rotation_idx])
+		game.tetro = parse_binary_tetro(t[game.rotation_idx])
+		if game.pos_x < 0 {
+			game.pos_x = 1
 		}
 	case GLFW_KEY_LEFT:
 		game.move_right(-1)
