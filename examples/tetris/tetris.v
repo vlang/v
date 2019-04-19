@@ -86,6 +86,8 @@ struct Game {
 	field       array_array_int
 	// TODO: tetro Tetro
 	tetro       []Block
+	// TODO: tetros_cache []Tetro 
+	tetros_cache []Block 
 	// Index of the dropping tetromino. Refers to its color.
 	tetro_idx    int
 	// Index of the rotation (0-3)
@@ -96,6 +98,7 @@ struct Game {
 
 fn main() {
 	mut game := &Game{}
+	game.parse_tetros() 
 	game.init_game()
 	glfw.init()
 	mut window := glfw.create_window(glfw.WinCfg {
@@ -143,6 +146,16 @@ fn (g mut Game) init_game() {
 	}
 }
 
+fn (g mut Game) parse_tetros() {
+	for i, b_tetros in B_TETROS {
+		for b_tetro in b_tetros { 
+			for t in parse_binary_tetro(b_tetro) { 
+				g.tetros_cache << t
+			} 
+		} 
+	} 
+} 
+
 fn (g mut Game) run() {
 	for {
 		g.move_tetro()
@@ -177,8 +190,8 @@ fn (g mut Game) move_tetro() {
 }
 
 fn (g mut Game) move_right(dx int) {
+	// Reached left/right edge or another tetro? 
 	for i := 0; i < TETRO_SIZE; i++ {
-		// Reached left/right edges?
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
 		x := tetro.x + g.pos_x + dx
@@ -219,10 +232,15 @@ fn (g mut Game) generate_tetro() {
 	g.pos_y = 0
 	g.pos_x = FIELD_WIDTH / 2 - TETRO_SIZE / 2
 	g.tetro_idx = rand.next(B_TETROS.len)
-	g.rotation_idx = 0
-	b := B_TETROS[g.tetro_idx]
-	g.tetro = parse_binary_tetro(b[0])
+	g.rotation_idx = 0 
+	g.get_tetro() 
 }
+
+// Get the right tetro from cache 
+fn (g mut Game) get_tetro() {
+	idx := g.tetro_idx * TETRO_SIZE * TETRO_SIZE + g.rotation_idx * TETRO_SIZE 
+	g.tetro = g.tetros_cache.slice(idx, idx + TETRO_SIZE) 
+} 
 
 fn (g mut Game) drop_tetro() {
 	for i := 0; i < TETRO_SIZE; i++ {
@@ -304,9 +322,7 @@ fn key_down(wnd voidptr, key int, code int, action, mods int) {
 		if game.rotation_idx == TETRO_SIZE {
 			game.rotation_idx = 0
 		}
-		t := B_TETROS[game.tetro_idx]
-		// game.tetro = parse_binary_tetro(B_TETROS[game.tetro_idx][game.rotation_idx])
-		game.tetro = parse_binary_tetro(t[game.rotation_idx])
+		game.get_tetro() 
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
