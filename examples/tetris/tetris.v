@@ -4,6 +4,7 @@ import gx
 import gl
 import gg
 import glfw
+import math
 
 const (
 	BLOCK_SIZE = 20 // pixels
@@ -14,12 +15,6 @@ const (
 	WIN_HEIGHT = BLOCK_SIZE * FIELD_HEIGHT
 	TIMER_PERIOD = 250 // ms
 )
-
-// TODO: type Tetro [TETRO_SIZE]struct{ x, y int }
-struct Block {
-	x int
-	y int
-}
 
 const (
 	// Tetros and their 4 possible states are encoded in binaries
@@ -72,8 +67,14 @@ const (
 	]
 )
 
+// TODO: type Tetro [TETRO_SIZE]struct{ x, y int }
+struct Block {
+	x int
+	y int
+}
+
 struct Game {
-	// Position of the dropping tetromino
+	// Position of the current tetro
 	pos_x        int
 	pos_y        int
 	// field[y][x] contains the color of the block with (x,y) coordinates
@@ -88,7 +89,7 @@ struct Game {
 	tetro       []Block
 	// TODO: tetros_cache []Tetro 
 	tetros_cache []Block 
-	// Index of the dropping tetromino. Refers to its color.
+	// Index of the current tetro. Refers to its color.
 	tetro_idx    int
 	// Index of the rotation (0-3)
 	rotation_idx int
@@ -166,11 +167,12 @@ fn (g mut Game) run() {
 }
 
 fn (g mut Game) move_tetro() {
-	// Check each block in the dropping tetro
-	for i := 0; i < TETRO_SIZE; i++ {
-		tetro := g.tetro[i]
-		y := tetro.y + g.pos_y + 1
-		x := tetro.x + g.pos_x
+	// Check each block in current tetro
+	//for i := 0; i < TETRO_SIZE; i++ {
+		//tetro := g.tetro[i]
+	for block in g.tetro {
+		y := block.y + g.pos_y + 1
+		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
 		// TODO: if g.field[y][x] != 0
 		row := g.field[y]
@@ -331,7 +333,7 @@ fn key_down(wnd voidptr, key int, code int, action, mods int) {
 	case GLFW_KEY_RIGHT:
 		game.move_right(1)
 	case GLFW_KEY_DOWN:
-		game.move_tetro() // drop faster when the player preses <down>
+		game.move_tetro() // drop faster when the player presses <down>
 	}
 }
 
