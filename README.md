@@ -6,15 +6,17 @@ https://vlang.io
 
 Documentation: https://vlang.io/docs
 
-Twitter: https://twitter.com/vlang_io
+Twitter: https://twitter.com/v_language
 
 
 &nbsp;
 
 ## Fast compilation
-V compiles 1.5 million lines of code per second per CPU core
+V compiles 1.5 million lines of code per second per CPU core.
+
+Such speed is achieved by direct machine code generation.
+
 ```
-cd doom3/
 wc -l doom3.v     # 458 713
 time v doom3.v    # 0.5s
 ```
@@ -43,7 +45,7 @@ s << 'V is '
 s << 'awesome'
 println(s.len)
 ```
-Read about translating Doom & Doom 3, LevelDB, SQLite (coming in March).	
+Read about translating Doom & Doom 3, LevelDB, SQLite (coming in April).	
 
 ## 400 KB compiler with zero dependencies
 The entire V language and its standard library is less than 400 KB. You can build V in 0.3 seconds.
