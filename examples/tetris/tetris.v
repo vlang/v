@@ -7,18 +7,18 @@ import glfw
 import math
 
 const (
-	BLOCK_SIZE = 20 // pixels
-	FIELD_HEIGHT = 20 // # of blocks
-	FIELD_WIDTH = 10
-	TETRO_SIZE = 4
-	WIN_WIDTH = BLOCK_SIZE * FIELD_WIDTH
-	WIN_HEIGHT = BLOCK_SIZE * FIELD_HEIGHT
-	TIMER_PERIOD = 250 // ms
+	BlockSize = 20 // pixels
+	FieldHeight = 20 // # of blocks
+	FieldWidth = 10
+	TetroSize = 4
+	WinWidth = BlockSize * FieldWidth
+	WinHeight = BlockSize * FieldHeight
+	TimerPeriod = 250 // ms
 )
 
 const (
 	// Tetros and their 4 possible states are encoded in binaries
-	B_TETROS = [
+	BTetros = [
 		// 0000 0
 		// 0000 0
 		// 0110 6
@@ -54,7 +54,7 @@ const (
 		[1111, 9, 1111, 9],
 	]
 	// Each tetro has its unique color
-	COLORS = [
+	Colors = [
 		gx.rgb(0, 0, 0),
 		gx.rgb(253, 32, 47),
 		gx.rgb(0, 110, 194),
@@ -67,7 +67,7 @@ const (
 	]
 )
 
-// TODO: type Tetro [TETRO_SIZE]struct{ x, y int }
+// TODO: type Tetro [TetroSize]struct{ x, y int }
 struct Block {
 	x int
 	y int
@@ -103,8 +103,8 @@ fn main() {
 	game.init_game()
 	glfw.init()
 	mut window := glfw.create_window(glfw.WinCfg {
-		width: WIN_WIDTH
-		height: WIN_HEIGHT
+		width: WinWidth
+		height: WinHeight
 		title: 'V Tetris'
 		ptr: game // glfw user pointer
 	})
@@ -112,8 +112,8 @@ fn main() {
 	window.onkeydown(key_down)
 	gg.init()
 	game.gg = gg.new_context(gg.Cfg {
-		width: WIN_WIDTH
-		height: WIN_HEIGHT
+		width: WinWidth
+		height: WinHeight
 		use_ortho: true // This is needed for 2D drawing
 	})
 	go game.run() // Run the game loop in a new thread
@@ -133,22 +133,22 @@ fn (g mut Game) init_game() {
 	g.generate_tetro()
 	g.field = []array_int // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
-	for i := 0; i < FIELD_HEIGHT + 2; i++ {
-		mut row := [0; FIELD_WIDTH + 2]
+	for i := 0; i < FieldHeight + 2; i++ {
+		mut row := [0; FieldWidth + 2]
 		row[0] = - 1
-		row[FIELD_WIDTH + 1] = - 1
+		row[FieldWidth + 1] = - 1
 		g.field << row
 	}
 	mut first_row := g.field[0]
-	mut last_row := g.field[FIELD_HEIGHT + 1]
-	for j := 0; j < FIELD_WIDTH + 2; j++ {
+	mut last_row := g.field[FieldHeight + 1]
+	for j := 0; j < FieldWidth + 2; j++ {
 		first_row[j] = - 1
 		last_row[j] = - 1
 	}
 }
 
 fn (g mut Game) parse_tetros() {
-	for i, b_tetros in B_TETROS {
+	for b_tetros in BTetros {
 		for b_tetro in b_tetros { 
 			for t in parse_binary_tetro(b_tetro) { 
 				g.tetros_cache << t
@@ -162,14 +162,12 @@ fn (g mut Game) run() {
 		g.move_tetro()
 		g.delete_completed_lines()
 		glfw.post_empty_event() // force window redraw
-		time.sleep_ms(TIMER_PERIOD)
+		time.sleep_ms(TimerPeriod)
 	}
 }
 
 fn (g mut Game) move_tetro() {
 	// Check each block in current tetro
-	//for i := 0; i < TETRO_SIZE; i++ {
-		//tetro := g.tetro[i]
 	for block in g.tetro {
 		y := block.y + g.pos_y + 1
 		x := block.x + g.pos_x
@@ -193,7 +191,7 @@ fn (g mut Game) move_tetro() {
 
 fn (g mut Game) move_right(dx int) {
 	// Reached left/right edge or another tetro? 
-	for i := 0; i < TETRO_SIZE; i++ {
+	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
 		x := tetro.x + g.pos_x + dx
@@ -207,13 +205,13 @@ fn (g mut Game) move_right(dx int) {
 }
 
 fn (g mut Game) delete_completed_lines() {
-	for y := FIELD_HEIGHT; y >= 1; y-- {
+	for y := FieldHeight; y >= 1; y-- {
 		g.delete_completed_line(y)
 	}
 }
 
 fn (g mut Game) delete_completed_line(y int) {
-	for x := 1; x <= FIELD_WIDTH; x++ {
+	for x := 1; x <= FieldWidth; x++ {
 		f := g.field[y]
 		if f[x] == 0 {
 			return
@@ -221,7 +219,7 @@ fn (g mut Game) delete_completed_line(y int) {
 	}
 	// Move everything down by 1 position
 	for yy := y - 1; yy >= 1; yy-- {
-		for x := 1; x <= FIELD_WIDTH; x++ {
+		for x := 1; x <= FieldWidth; x++ {
 			mut a := g.field[yy + 1]
 			mut b := g.field[yy]
 			a[x] = b[x]
@@ -232,20 +230,20 @@ fn (g mut Game) delete_completed_line(y int) {
 // Place a new tetro on top
 fn (g mut Game) generate_tetro() {
 	g.pos_y = 0
-	g.pos_x = FIELD_WIDTH / 2 - TETRO_SIZE / 2
-	g.tetro_idx = rand.next(B_TETROS.len)
+	g.pos_x = FieldWidth / 2 - TetroSize / 2
+	g.tetro_idx = rand.next(BTetros.len)
 	g.rotation_idx = 0 
 	g.get_tetro() 
 }
 
 // Get the right tetro from cache 
 fn (g mut Game) get_tetro() {
-	idx := g.tetro_idx * TETRO_SIZE * TETRO_SIZE + g.rotation_idx * TETRO_SIZE 
-	g.tetro = g.tetros_cache.slice(idx, idx + TETRO_SIZE) 
+	idx := g.tetro_idx * TetroSize * TetroSize + g.rotation_idx * TetroSize 
+	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize) 
 } 
 
 fn (g mut Game) drop_tetro() {
-	for i := 0; i < TETRO_SIZE; i++ {
+	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
 		y := tetro.y + g.pos_y
@@ -257,20 +255,20 @@ fn (g mut Game) drop_tetro() {
 }
 
 fn (g &Game) draw_tetro() {
-	for i := 0; i < TETRO_SIZE; i++ {
+	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		g.draw_block(g.pos_y + tetro.y, g.pos_x + tetro.x, g.tetro_idx + 1)
 	}
 }
 
 fn (g &Game) draw_block(i, j int, color_idx int) {
-	g.gg.draw_rect((j - 1) * BLOCK_SIZE, (i - 1) * BLOCK_SIZE, 
-		BLOCK_SIZE - 1, BLOCK_SIZE - 1, COLORS[color_idx])
+	g.gg.draw_rect((j - 1) * BlockSize, (i - 1) * BlockSize, 
+		BlockSize - 1, BlockSize - 1, Colors[color_idx])
 }
 
 fn (g &Game) draw_field() {
-	for i := 1; i < FIELD_HEIGHT + 1; i++ {
-		for j := 1; j < FIELD_WIDTH + 1; j++ {
+	for i := 1; i < FieldHeight + 1; i++ {
+		for j := 1; j < FieldWidth + 1; j++ {
 			f := g.field[i]
 			if f[j] > 0 {
 				g.draw_block(i, j, f[j])
@@ -297,7 +295,7 @@ fn parse_binary_tetro(t int) []Block {
 		for j := 3; j >= 0; j-- {
 			bin := digit % 2
 			digit /= 2
-			if bin == 1 || (horizontal && i == TETRO_SIZE - 1) {
+			if bin == 1 || (horizontal && i == TetroSize - 1) {
 				// TODO: res[cnt].x = j
 				// res[cnt].y = i
 				mut point := &res[cnt]
@@ -321,7 +319,7 @@ fn key_down(wnd voidptr, key int, code int, action, mods int) {
 	case GLFW_KEY_UP:
 		// Rotate the tetro
 		game.rotation_idx++
-		if game.rotation_idx == TETRO_SIZE {
+		if game.rotation_idx == TetroSize {
 			game.rotation_idx = 0
 		}
 		game.get_tetro() 
