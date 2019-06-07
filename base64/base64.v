@@ -5,7 +5,7 @@
 module base64
 
 const (
-	INDEX = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	Index = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0,
 	0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
@@ -26,8 +26,8 @@ fn decode(data string) string {
 	mut str := malloc(str_len + 2)
 	mut j := 0
 	for i := 0; i < L; i += 4 {
-		n := (INDEX[p[i]] << 18) | (INDEX[p[i + 1]] << 12) |
-			(INDEX[p[i + 2]] << 6) | (INDEX[p[i + 3]])
+		n := (Index[p[i]] << 18) | (Index[p[i + 1]] << 12) |
+			(Index[p[i + 2]] << 6) | (Index[p[i + 3]])
 		str[j] = n >> 16
 		j++
 		str[j] = n >> 8 & 0xff
@@ -36,10 +36,10 @@ fn decode(data string) string {
 		j++
 	}
 	if pad > 0 {
-		mut nn := (INDEX[p[L]] << 18) | (INDEX[p[L + 1]] << 12)
+		mut nn := (Index[p[L]] << 18) | (Index[p[L + 1]] << 12)
 		str[str_len - 1] = nn >> 16
 		if len > L + 2 && p[L + 2] != `=` {
-			nn = nn | (INDEX[p[L + 2]] << 6)
+			nn = nn | (Index[p[L + 2]] << 6)
 			str[str_len] = nn >> 8 & 0xff
 		}
 	}
