@@ -17,7 +17,7 @@ const (
 )
 
 const (
-	// Tetros and their 4 possible states are encoded in binaries
+	// Tetros' 4 possible states are encoded in binaries
 	BTetros = [
 		// 0000 0
 		// 0000 0
@@ -69,11 +69,13 @@ const (
 
 // TODO: type Tetro [TetroSize]struct{ x, y int }
 struct Block {
+	mut:
 	x int
 	y int
 }
 
 struct Game {
+	mut:
 	// Position of the current tetro
 	pos_x        int
 	pos_y        int
@@ -98,10 +100,10 @@ struct Game {
 }
 
 fn main() {
-	mut game := &Game{}
+	glfw.init()
+	mut game := &Game{gg: 0} // TODO
 	game.parse_tetros() 
 	game.init_game()
-	glfw.init()
 	mut window := glfw.create_window(glfw.WinCfg {
 		width: WinWidth
 		height: WinHeight
@@ -316,7 +318,7 @@ fn key_down(wnd voidptr, key int, code int, action, mods int) {
 	// Fetch the game object stored in the user pointer
 	mut game := &Game(glfw.get_window_user_pointer(wnd))
 	switch key {
-	case GLFW_KEY_UP:
+	case glfw.KeyUp:
 		// Rotate the tetro
 		game.rotation_idx++
 		if game.rotation_idx == TetroSize {
@@ -326,11 +328,11 @@ fn key_down(wnd voidptr, key int, code int, action, mods int) {
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
-	case GLFW_KEY_LEFT:
+	case glfw.KeyLeft:
 		game.move_right(-1)
-	case GLFW_KEY_RIGHT:
+	case glfw.KeyRight:
 		game.move_right(1)
-	case GLFW_KEY_DOWN:
+	case glfw.KeyDown:
 		game.move_tetro() // drop faster when the player presses <down>
 	}
 }
