@@ -9,12 +9,14 @@ const (
 )
 
 struct User {
+mut:
 	first_name string
 	last_name  string
 	age        int
 }
 
 struct Context {
+mut:
 	first_name ui.TextBox
 	last_name  ui.TextBox
 	age        ui.TextBox
@@ -26,6 +28,7 @@ struct Context {
 fn main() {
 	mut ctx := &Context {
 		txt_pos: 10
+		window: 0// TODO
 	}
 	ctx.window = ui.new_window(ui.WinCfg {
 		width: 500
