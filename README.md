@@ -50,7 +50,7 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 
 ## Installing V from source
 
-For Linux/macOS:
+### Linux and macOS
 
 ```bash
 cd ~                      # You can use any directory
@@ -69,7 +69,17 @@ You can create a symlink so that it's globally available:
 sudo ln -s /home/alex/v/compiler/v /usr/local/bin/v
 ```
 
-Make sure it works:
+### Windows
+
+Unfortunately, Microsoft doesn't make it easy for developers. You will need Visual Studio. Mingw-w64 could suffice, but if you plan to develop UI and graphical apps, VS is your only option.
+
+If you don't have it installed, download Build Tools for Visual Studio: https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019
+
+
+
+
+
+### Testing
 
 ```
 v version
