@@ -47,3 +47,30 @@ It has only 8 files (soon to be 7):
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 
+
+## Installing V from source
+
+```
+cd ~
+git clone https://github.com/vlang/v
+cd v/compiler
+wget https://vlang.io/v.c # Download the V compiler translated to C
+clang -w -o vc v.c        # Build it with Clang
+./vc -o v .               # Use the resulting V binary to build V from V source
+```
+
+That's it! Now you have a V executable at `~/v/compiler/v`.
+
+You can create a symlink so that it's globally available:
+
+```
+sudo ln -s ~/v/compiler/v /usr/local/bin/v
+```
+
+Make sure it works:
+
+```
+v version
+>> 0.0.12
+```
+
