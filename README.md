@@ -88,8 +88,14 @@ v.exe -o v.exe .
 ### Testing
 
 ```
-v version
->> 0.0.12
+$ v
+
+V 0.0.12
+Use Ctrl-D to exit
+
+>>> println('hello world')
+hello world
+>>>
 ```
 
 Now if you want, you can start tinkering with the compiler. If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
