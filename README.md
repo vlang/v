@@ -1,6 +1,6 @@
 # The V Programming Language
 
-V is going to be released on June 22, 2019. 
+V is going to be released on June 22, 2019 at 18:00 UTC. 
 
 https://vlang.io
 
@@ -50,8 +50,8 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 
 ## Installing V from source
 
-```
-cd ~
+```bash
+cd ~                      # You can use any directory
 git clone https://github.com/vlang/v
 cd v/compiler
 wget https://vlang.io/v.c # Download the V compiler translated to C
