@@ -76,7 +76,13 @@ Unfortunately, Microsoft doesn't make it easy for developers. You will need Visu
 If you don't have it installed, download Build Tools for Visual Studio: https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019
 
 
-
+```
+git clone https://github.com/vlang/v
+cd v/compiler
+wget https://vlang.io/v.c 
+cl v.c /out:v.exe
+v.exe -o v.exe .
+```
 
 
 ### Testing
