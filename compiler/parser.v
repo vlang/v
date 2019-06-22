@@ -844,8 +844,6 @@ fn (p mut Parser) statements() string {
 
 fn (p mut Parser) statements_no_curly_end() string {
 	p.cur_fn.open_scope()
-	// p.genln('/*sts()*/')
-	// p.gen('/* 999 */')
 	if !p.inside_if_expr {
 		p.genln('')
 	}
@@ -1046,7 +1044,6 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	if !v.is_used {
 		p.cur_fn.mark_var_used(v)
 	}
-	// p.cgen.set_placeholder(ph, '/* KEK */')
 }
 
 fn (p mut Parser) var_decl() {
@@ -1162,7 +1159,7 @@ fn (p mut Parser) bterm() string {
 		p.check_types(p.expression(), typ)
 		typ = 'bool'
 		if is_str {
-			p.gen(')/*8*/')
+			p.gen(')')
 			switch tok {
 			case EQ: p.cgen.set_placeholder(ph, 'string_eq(')
 			case NE: p.cgen.set_placeholder(ph, 'string_ne(')
@@ -1926,16 +1923,10 @@ fn (p mut Parser) unary() string {
 }
 
 fn (p mut Parser) factor() string {
-	// p.cgen('/* fact start */')
 	mut typ := ''
-	// if p.file.contains('test') {
-	// print('factor() line=$p.scanner.line_nr tok= ')
-	// p.print_tok()
-	// }
 	tok := p.tok
 	switch tok {
 	case INT:
-		// p.g.Gen(q.Str(q.Int(p.lit)))
 		p.gen(p.lit)
 		p.fgen(p.lit)
 		typ = 'int'
@@ -1948,6 +1939,7 @@ fn (p mut Parser) factor() string {
 			typ = 'float'
 		}
 	case FLOAT:
+		// TODO remove float 
 		typ = 'float'
 		// typ = 'f64'
 		// p.gen('(f64)$p.lit')
@@ -1988,18 +1980,7 @@ fn (p mut Parser) factor() string {
 			return p.js_decode()
 		}
 		typ = p.name_expr()
-		// debug("TOK AFTER NAME E", p.strtok())
 		return typ
-		// case TYPEOF:
-		// p.next()
-		// p.next()
-		// name := p.checkName()
-		// if name != "T" {
-		// p.Error("type of needs T")
-		// }
-		// p.g.Gen("typeof(T)")
-		// p.next()
-		// return "string"
 	case DEFAULT:
 		p.next()
 		p.next()
@@ -2171,16 +2152,6 @@ fn (p mut Parser) string_expr() {
 		typ := p.bool_expression()
 		mut val := p.cgen.end_tmp()
 		val = val.trim_space()
-		// array_string_str(val)
-		/* 
-		T := p.table.find_type(typ)
-		if T.has_method('str') && !typ.ends_with('*') {
-			args += ', ${typ}_str($val).str'
-		}
-		else {
-			args += ', $val'
-		}
-*/
 		args += ', $val'
 		if typ == 'string' {
 			// args += '.str'
@@ -2213,10 +2184,10 @@ fn (p mut Parser) string_expr() {
 	if p.cgen.nogen {
 		return
 	}
-	// Don't allocate a new string, just print	 it	. TODO HACK PRINT OPT
+	// Don't allocate a new string, just print	it. TODO HACK PRINT OPT
 	cur_line := p.cgen.cur_line.trim_space()
 	if cur_line.contains('println(') && p.tok != PLUS && !p.is_prod && !cur_line.contains('string_add') {
-		p.cgen.cur_line = cur_line.replace('println(', '/*opt hack*/printf(')
+		p.cgen.cur_line = cur_line.replace('println(', 'printf(')
 		p.gen('$format\\n$args')
 		return
 	}
@@ -2306,7 +2277,7 @@ fn (p mut Parser) array_init() string {
 			}
 			else {
 				tmp := p.get_tmp()
-				p.cgen.insert_before('/* arr init tmp*/ $typ $tmp = $val;')
+				p.cgen.insert_before('$typ $tmp = $val;')
 				p.gen('array_repeat(&$tmp, ')
 			}
 			p.check_types(p.bool_expression(), 'int')
@@ -2350,7 +2321,7 @@ fn (p mut Parser) array_init() string {
 	// if ptr {
 	// typ += '_ptr"
 	// }
-	mut new_arr := '/*$new_arr_ph*/ new_array_from_c_array'
+	mut new_arr := 'new_array_from_c_array'
 	if no_copy {
 		new_arr += '_no_copy'
 	}
@@ -2379,13 +2350,9 @@ fn (p mut Parser) register_array(typ string) {
 // name == 'User'
 fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	p.is_struct_init = true
-	// print('0struct init() tok=')
-	// p.print_tok()
 	mut typ := p.get_type()
 	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
-	// println('struct init() $typ')
-	p.gen('/* S INIT */')
 	p.check(LCBR)
 	// tmp := p.get_tmp()
 	if !ptr {
