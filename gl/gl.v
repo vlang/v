@@ -9,8 +9,6 @@ import const (
 	GL_DEPTH_TEST
 )
 
-#include <Cocoa/Cocoa.h>
-#include <CoreGraphics/CoreGraphics.h>
 #include "glad.h"
 #include "glad.c"
 fn init_glad() {
