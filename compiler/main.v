@@ -21,10 +21,7 @@ enum BuildMode {
 }
 
 fn vtmp_path() string {
-	$if windows {
-		return os.home_dir() + '/.vlang$Version/'
-	}
-	return '/var/tmp/vlang$Version/'
+	return os.home_dir() + '/.vlang$Version/'
 }
 
 const (
@@ -98,16 +95,19 @@ fn main() {
 	if '-h' in args || '--help' in args || 'help' in args {
 		println(HelpText)
 	}
+	// TODO quit if the compiler is too old 
 	// u := os.file_last_mod_unix('/var/tmp/alex')
-	// t := time.unixn(u)
-	// println(t.clean())
-	// If there's not tmp path with current version yet, the user must be using a pre-built package
-	// Copy the `vlib` directory to the tmp path.
-	if !os.file_exists(TmpPath) && os.file_exists('vlib') {
+	// Create a temp directory if it's not there. 
+	if !os.file_exists(TmpPath)  { 
 		os.mkdir(TmpPath)
-		os.system2('cp -rf vlib $TmpPath/')
-		// os.system2('cp -rf json $TmpPath/')
+	} 
+	// If there's no tmp path with current version yet, the user must be using a pre-built package
+	// Copy the `vlib` directory to the tmp path.
+/* 
+	// TODO 
+	if !os.file_exists(TmpPath) && os.file_exists('vlib') {
 	}
+*/ 
 	// Just fmt and exit
 	if args.contains('fmt') {
 		file := args.last()

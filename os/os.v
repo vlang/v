@@ -369,9 +369,7 @@ pub fn mkdir(path string) {
 		C.CreateDirectory(path.cstr(), 0)
 	}
 	$else {
-		println('AAAAAAAA $$ "$path"')
 		C.mkdir(path.cstr(), 511)// S_IRWXU | S_IRWXG | S_IRWXO
-		// os.system2('mkdir -p $path')
 	}
 }
 
