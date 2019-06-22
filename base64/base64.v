@@ -44,6 +44,6 @@ fn decode(data string) string {
 		}
 	}
 	str[str_len + 1] = `\0`
-	return string(str)
+	return tos(str, str_len+2)
 }
 
