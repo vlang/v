@@ -61,7 +61,7 @@ cc -w -o vc v.c               # Build it with Clang or GCC
 ./vc -o v .                   # Use the resulting V binary to build V from V source
 ```
 
-That's it! Now you have a V executable at `~/v/compiler/v`.
+That's it! Now you have a V executable at `~/code/v/compiler/v`.
 
 You can create a symlink so that it's globally available:
 
