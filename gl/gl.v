@@ -1,8 +1,5 @@
 module gl
 
-// #define STB_IMAGE_IMPLEMENTATION
-// #include <stb_image.h>
-// ///////
 import const (
 	GL_TEXTURE_2D
 	GL_TEXTURE0
@@ -12,27 +9,23 @@ import const (
 	GL_DEPTH_TEST
 )
 
-/* 
-type Vec3 {
-	x float
-	y float
-	z float
+#include <Cocoa/Cocoa.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include "glad.h"
+#include "glad.c"
+fn init_glad() {
+	ok := C.gladLoadGL()
+	if !ok {
+		os.exit('Failed to initialize glad OpenGL context')
+	}
 }
 
-type Vec2 {
-	x int
-	y int
-}
-*/
 pub fn viewport(a int, b int, c int, d int) {
 	C.glViewport(a, b, c, d)
 }
 
 pub fn clear_color(r, g, b, a int) {
 	# glClearColor(((float)r)/255.0,((float)g)/255.0,b/255.0, a/255.0);
-	// println('CLEAR COLOR')
-	// #glClearColor(0.3f, 0.9f, 0.32f, 1.0f);
-	// C.glClearColor(r, g, b, a)
 }
 
 pub fn clear() {

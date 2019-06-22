@@ -1,7 +1,5 @@
 module gl
 
-// #include <OpenGL/gl.h>
-// #flag -framework OpenGL
 #include "glad.h"
 #include "glad.c"
 fn init_glad() {
