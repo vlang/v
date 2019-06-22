@@ -1,7 +1,5 @@
 # The V Programming Language
 
-V is going to be released on June 22, 2019 at 18:00 UTC. 
-
 https://vlang.io
 
 Documentation: https://vlang.io/docs
