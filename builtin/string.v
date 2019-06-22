@@ -2,8 +2,8 @@ module builtin
 
 // V strings are not null-terminated.
 struct string {
-	str byteptr
 pub:
+	str byteptr
 	len int
 }
 

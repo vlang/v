@@ -3,8 +3,8 @@ module builtin
 struct array {
 	// Using a void pointer allows to implement arrays without generics and without generating
 	// extra code for every type.
-	data         voidptr
 pub:
+	data         voidptr
 	len          int
 	cap          int
 	element_size int
