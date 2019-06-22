@@ -472,7 +472,7 @@ mut args := ''
 		'$fast_clang -I. $args'
 	}
 	else {
-		'clang -I. $args'
+		'cc -I. $args'
 	}
 	// Print the C command
 	if c.show_c_cmd || c.is_verbose {
