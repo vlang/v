@@ -64,7 +64,7 @@ Option $dec_fn.name(cJSON* root, $t* res) {
     if (error_ptr != NULL)	{
       fprintf(stderr, "Error in decode() for $t error_ptr=: %%s\\n", error_ptr);
 //      printf("\\nbad js=%%s\\n", js.str); 
-      return b_error(tos2(error_ptr));
+      return v_error(tos2(error_ptr));
     }
   }
 '
