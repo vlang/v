@@ -66,7 +66,7 @@ That's it! Now you have a V executable at `~/v/compiler/v`.
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s /$HOME/v/compiler/v /usr/local/bin/v
+sudo ln -s $HOME/code/v/compiler/v /usr/local/bin/v
 ```
 
 ### Windows
