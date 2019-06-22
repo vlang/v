@@ -71,10 +71,11 @@ sudo ln -s /home/alex/v/compiler/v /usr/local/bin/v
 
 ### Windows
 
-Unfortunately, Microsoft doesn't make it easy for developers. You will need Visual Studio. Mingw-w64 could suffice, but if you plan to develop UI and graphical apps, VS is your only option.
+V works great on Windows Subsystem for Linux. The instructions are the same as above.
+
+If you want to build v.exe on Windows without WSL, you will need Visual Studio. Microsoft doesn't make it easy for developers.  Mingw-w64 could suffice, but if you plan to develop UI and graphical apps, VS is your only option.
 
 If you don't have it installed, download Build Tools for Visual Studio: https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019
-
 
 ```
 git clone https://github.com/vlang/v
@@ -100,3 +101,28 @@ hello world
 
 Now if you want, you can start tinkering with the compiler. If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
 
+
+### Running the examples
+
+```
+v hello_world.v && ./hello_world # or simply
+v run hello_world.v              # This runs the program, but doesn't create the executable
+
+v word_counter.v && ./word_counter cinderella.txt
+v news_fetcher.v && ./news_fetcher
+./v tetris.v && ./tetris
+```
+
+In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
+
+If you plan to use the http package, you also need to install libcurl.
+
+glfw and libcurl dependencies will be removed soon.
+
+```
+Ubuntu:
+sudo apt install glfw libglfw3-dev libfreetype6-dev libcurl3-dev
+
+macOS:
+brew install glfw freetype curl
+```
