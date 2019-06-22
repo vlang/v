@@ -53,7 +53,7 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 ### Linux and macOS
 
 ```bash
-cd ~                      # You can use any directory
+mkdir -p ~/code && cd ~/code                      # You can use any directory
 git clone https://github.com/vlang/v
 cd v/compiler
 wget https://vlang.io/v.c # Download the V compiler's source translated to C
@@ -66,7 +66,7 @@ That's it! Now you have a V executable at `~/v/compiler/v`.
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s /home/alex/v/compiler/v /usr/local/bin/v
+sudo ln -s /$HOME/v/compiler/v /usr/local/bin/v
 ```
 
 ### Windows
@@ -75,16 +75,7 @@ V works great on Windows Subsystem for Linux. The instructions are the same as a
 
 If you want to build v.exe on Windows without WSL, you will need Visual Studio. Microsoft doesn't make it easy for developers.  Mingw-w64 could suffice, but if you plan to develop UI and graphical apps, VS is your only option.
 
-If you don't have it installed, download Build Tools for Visual Studio: https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019
-
-```
-git clone https://github.com/vlang/v
-cd v/compiler
-wget https://vlang.io/v.c 
-cl v.c /out:v.exe
-v.exe -o v.exe .
-```
-
+V temporarily can't be compiled with Visual Studio. This will be fixed asap.
 
 ### Testing
 
