@@ -386,18 +386,19 @@ pub fn rm(path string) {
 	// C.unlink(path.cstr())
 }
 
+/* 
+// TODO 
 fn rmdir(path string, guard string) {
 	if !path.contains(guard) {
 		println('rmdir canceled because the path doesnt contain $guard')
 		return
 	}
-	println2('rmdir "$path"')
-#ifndef windows
-	os.system('rm -rf "$path"')
-#else
-	os.system('rmdir /s /q "$path"')
-#endif
+	$if !windows { 
+	} 
+	$else { 
+	} 
 }
+*/ 
 
 pub fn unzip(path, out string) {
 	$if windows {
