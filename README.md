@@ -110,7 +110,7 @@ v run hello_world.v              # This runs the program, but doesn't create the
 
 v word_counter.v && ./word_counter cinderella.txt
 v news_fetcher.v && ./news_fetcher
-./v tetris.v && ./tetris
+v tetris.v && ./tetris
 ```
 
 In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
