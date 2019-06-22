@@ -293,19 +293,11 @@ pub fn system(cmd string) string {
 	if isnil(f) {
 		println('popen $cmd failed')
 	}
-	#define MAX 1000
-	# char buf[MAX];
-	// # char* buf = malloc(MAX);
-	// j# sleep(1);
-	// # if (!fgets(buf, MAX, f)) {
-	// jprintln('first get failed')
-	// jos.print_c_errno()
-	// j# }
-	# while (fgets(buf, MAX, f) != NULL)  {
-	// # printf("popen buf=%s\n", buf);
+	max := 1000 
+	# char buf[max];
+	# while (fgets(buf, max, f) != NULL)  {
 	# res = string_add(res, tos(buf, strlen(buf)));
 	# }
-	// println(res)
 	return res.trim_space()
 }
 
