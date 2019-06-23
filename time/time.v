@@ -133,6 +133,7 @@ pub fn (t Time) format() string {
 
 const (
 	Months = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	Days = 'MonTueWedThuFriSatSun'
 )
 
 pub fn (t Time) smonth() string {
@@ -332,3 +333,7 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
+pub fn (t Time) weekday_str() string {
+	i := t.day_of_week() - 1
+	return Days.substr(i * 3, (i + 1) * 3)
+}
