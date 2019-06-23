@@ -812,6 +812,8 @@ fn run_repl() []string {
 		// so that it doesn't get called during the next print.
 		if line.starts_with('print') {
 			// TODO remove this once files without main compile correctly
+			void_line := line.substr(line.index('(') + 1, line.len - 1)
+			lines << void_line
 			source_code := 'fn main(){' + lines.join('\n') + '\n' + line + '}'
 			os.write_file(file, source_code)
 			mut v := new_v( ['v', '-repl', file])
