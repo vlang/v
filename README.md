@@ -57,7 +57,7 @@ cd v/compiler
 wget https://vlang.io/v.c # Download the V compiler's source translated to C
 cc -w -o vc v.c           # Build it with Clang or GCC
 ./vc -o v .               # Use the resulting V binary to build V from V source
-./v -o v .                # Bootstrap
+./v -o v .                # Bootstrap the compiler to make sure it works
 ```
 
 That's it! Now you have a V executable at `~/code/v/compiler/v`.
