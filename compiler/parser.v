@@ -41,7 +41,7 @@ mut:
 	cgen           *CGen
 	table          *Table
 	run            Pass // TODO rename `run` to `pass`
-	os             int
+	os             Os
 	pkg            string
 	inside_const   bool
 	expr_var       Var
