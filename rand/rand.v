@@ -13,6 +13,6 @@ fn seed() {
 
 fn next(max int) int {
 	# return  rand() % max;
-	return 0
+	return 4
 }
 
