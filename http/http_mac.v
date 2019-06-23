@@ -5,12 +5,14 @@
 module http
 
 #include <curl/curl.h>
-#flag windows -I/usr/local/opt/curl/include
 #flag darwin -lcurl
 #flag windows -lcurl
 #flag linux -lcurl
-@size_t kek
-@CURL* curl_easy_init
+
+fn C.curl_easy_init() *C.CURL 
+
+fn foo() {} 
+
 type wsfn fn (s string, ptr voidptr)
 
 struct MemoryStruct {
@@ -38,8 +40,6 @@ import const (
 	CURLE_OK
 )
 
-// type C.CURLcode {
-// }
 fn C.curl_easy_strerror(curl voidptr) byteptr
 
 fn C.curl_easy_perform(curl voidptr) C.CURLcode

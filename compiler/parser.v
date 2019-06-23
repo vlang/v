@@ -157,8 +157,6 @@ fn (p mut Parser) parse() {
 				// TODO remove imported consts from the language
 				p.import_statement()
 			}
-		case AT:
-			p.at()
 		case ENUM:
 			p.next()
 			if p.tok == NAME {
@@ -2998,34 +2996,6 @@ fn (p mut Parser) return_st() {
 		}
 	}
 	p.returns = true
-}
-
-fn (p mut Parser) at() {
-	vals := p.lit.split(' ')
-	if vals.len != 2 {
-		p.error('Bad @ syntax (type name)')
-	}
-	typ := vals[0]
-	// name := vals[1]
-	if !p.table.known_type(typ) {
-		p.table.register_type(typ)
-	}
-	// if p.fn == "" {
-	// p.table.registerVar(&Var{
-	// Name: name,
-	// Type: typ,
-	// Cat:  CatFunc,
-	// })
-	// } else {
-	// 
-	// fn := p.table.findVar(p.fn)
-	// p.table.registerFnVar(&Var{
-	// Name: name,
-	// Type: typ,
-	// Cat:  CatVar,
-	// }, fn)
-	// }
-	p.next()
 }
 
 fn prepend_pkg(pkg, name string) string {
