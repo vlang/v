@@ -448,6 +448,8 @@ mut args := ''
 	// Output executable name
 	// else {
 	a << '-o $c.out_name'
+	// The C file we are compiling
+	a << '$TmpPath/$c.out_name_c'
 	// }
 	// Min macos version is mandatory I think?
 	if c.os == MAC {
@@ -459,8 +461,6 @@ mut args := ''
 	if c.os == MAC {
 		a << '-x objective-c'
 	}
-	// The C file we are compiling
-	a << '$TmpPath/$c.out_name_c'
 	// Without these libs compilation will fail on Linux
 	if c.os == LINUX && c.build_mode != BUILD {
 		a << '-lm -ldl -lpthread'
