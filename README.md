@@ -96,7 +96,7 @@ Now if you want, you can start tinkering with the compiler. If you introduce a b
 
 ```
 v hello_world.v && ./hello_world # or simply
-v run hello_world.v              # This runs the program, but doesn't create the executable
+v run hello_world.v              # This builds the program and runs it right away
 
 v word_counter.v && ./word_counter cinderella.txt
 v news_fetcher.v && ./news_fetcher
