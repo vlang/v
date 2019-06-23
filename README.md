@@ -51,7 +51,7 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 ### Linux and macOS
 
 ```bash
-mkdir -p ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
+mkdir ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
 git clone https://github.com/vlang/v
 cd v/compiler
 make
@@ -68,7 +68,7 @@ That's it! Now you have a V executable at `~/code/v/compiler/v`.
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s $HOME/code/v/compiler/v /usr/local/bin/v
+sudo ln -s ~/code/v/compiler/v /usr/local/bin/v
 ```
 
 ### Windows
