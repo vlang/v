@@ -439,6 +439,20 @@ pub fn get_line() string {
 	return tos(buf, nr_chars)
 }
 
+pub fn read_line(prompt string) string {
+	$if linux {
+		return os.exec('read -p "$prompt" -e line; echo $' + 'line')
+	}
+	$if mac {
+		print(prompt)
+		return os.get_line()
+	}
+	$if windows {
+		print(prompt)
+		return os.get_line()
+	}
+}
+
 pub fn user_os() string {
 	$if linux {
 		return 'linux'

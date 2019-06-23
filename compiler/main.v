@@ -856,8 +856,7 @@ fn run_repl() []string {
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string
 	for {
-		print('>>> ')
-		mut line := os.get_line().trim_space()
+		line := os.read_line('>>> ').trim_space()
 		if line == '' {
 			break
 		}
