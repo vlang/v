@@ -32,16 +32,59 @@ fn test_compare() {
 	assert b.ge(a)
 }
 
+fn test_lt() {
+	a := ''
+	b := 'a'
+	c := 'a'
+	d := 'b'
+	e := 'aa'
+	f := 'ab'
+	assert a.lt(b)
+	assert b.lt(c) == false
+	assert c.lt(d)
+	assert d.lt(e) == false
+	assert c.lt(e)
+	assert e.lt(f)
+}
+
+fn test_ge() {
+	a := 'aa'
+	b := 'aa'
+	c := 'ab'
+	d := 'abc'
+	e := 'aaa'
+	assert b.ge(a)
+	assert c.ge(b)
+	assert d.ge(c)
+	assert c.ge(d) == false
+	assert e.ge(a)
+}
+
+fn test_compare_strings() {
+	a := 'aa'
+	b := 'aa'
+	c := 'ab'
+	d := 'abc'
+	e := 'aaa'
+	assert compare_strings(a, b) == 0
+	assert compare_strings(b, c) == -1
+	assert compare_strings(c, d) == -1
+	assert compare_strings(d, e) == 1
+	assert compare_strings(a, e) == -1
+	assert compare_strings(e, a) == 1
+}
+
 fn test_sort() {
 	mut vals := [
-	'src', 'Music', 'go'
+		'arr', 'an', 'a', 'any'
 	]
 	len := vals.len
 	vals.sort()
 	assert len == vals.len
-	assert vals[0] == 'Music'
-	assert vals[1] == 'go'
-	assert vals[2] == 'src'
+	assert vals[0] == 'a'
+	assert vals[1] == 'an'
+	assert vals[2] == 'any'
+	assert vals[3] == 'arr'
 }
 
 fn test_split() {
@@ -247,4 +290,3 @@ fn test_all_after() {
 	q := s.all_after('fn ')
 	assert q == 'hello'
 }
-
