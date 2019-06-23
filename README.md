@@ -52,7 +52,7 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 
 ```bash
 mkdir -p ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
-git clone https://github.com/vlang/v
+git clone --depth 1 https://github.com/vlang/v
 cd v/compiler
 wget https://vlang.io/v.c # Download the V compiler's source translated to C
 cc -w -o vc v.c           # Build it with Clang or GCC
