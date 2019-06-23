@@ -1,7 +1,7 @@
 all: v vc
 
 v: vc
-	./vc -o v .
+	./vc -o v . && ./v -o v . && rm vc
 
 vc: v.c
 	cc -std=c11 -w -o vc v.c
