@@ -77,7 +77,7 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 struct C.curl_slist { }
 
 fn (req &Request) do() Response {
-	println('req.do() mac/linux url="$req.url" data="$req.data"')
+	//println('req.do() mac/linux url="$req.url" data="$req.data"')
 	// println('req.do() url="$req.url"')
 	/* 
 	mut resp := Response {
@@ -137,9 +137,9 @@ fn (req &Request) do() Response {
 	C.curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hlist)
 	C.curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1)
 	C.curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1)
-	println('bef easy()')
+	//println('bef easy()')
 	res := C.curl_easy_perform(curl)
-	println('after easy()')
+	//println('after easy()')
 	# if (res != CURLE_OK )
 	{
 		err := C.curl_easy_strerror(res)
@@ -184,7 +184,7 @@ fn (req &Request) do() Response {
 	// j.println('headers=')
 	// j.println(hchunk.strings)
 	C.curl_easy_cleanup(curl)
-	println('end of req.do() url="$req.url"')
+	//println('end of req.do() url="$req.url"')
 	return Response {
 		body: body
 	}
