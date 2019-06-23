@@ -472,7 +472,12 @@ mut args := ''
 		a << '-lm -ldl -lpthread'
 	}
 	// Find clang executable
-	fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
+    $if mac {
+        fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
+    }
+    $if linux {
+        fast_clang := '/usr/bin/clang'
+    }
 	args := a.join(' ')
 	cmd := if os.file_exists(fast_clang) {
 		'$fast_clang -I. $args'
