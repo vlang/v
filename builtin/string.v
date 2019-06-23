@@ -568,10 +568,10 @@ fn (s string) trim_right(cutset string) string {
 // //C.printf("tid = %08x \n", pthread_self());
 // }
 fn compare_strings(a, b *string) int {
-	if a.le(b) {
+	if a.lt(b) {
 		return -1
 	}
-	if a.ge(b) {
+	if a.gt(b) {
 		return 1
 	}
 	return 0
