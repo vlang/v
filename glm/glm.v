@@ -129,6 +129,10 @@ fn rotate(m Mat4, angle float, vec Vec3) Mat4 {
 	return Mat4{}
 }
 */
+
+fn float_calloc(n int) *float {
+	return *float(calloc(n * sizeof(float)))
+}
 // fn translate(vec Vec3) *float {
 fn translate(m Mat4, v Vec3) Mat4 {
 	// # return glm__mat4(myglm_translate(vec.x,vec.y,vec.z)  );

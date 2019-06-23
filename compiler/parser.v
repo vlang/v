@@ -2287,8 +2287,8 @@ fn (p mut Parser) array_init() string {
 		// println('GOT TYP after [] $typ')
 	}
 	// ! after array => no malloc and no copy
-	no_copy := p.tok == NOT
-	if no_copy {
+	no_alloc := p.tok == NOT
+	if no_alloc {
 		p.next()
 	}
 	// [1,2,3]!! => [3]int{1,2,3}
@@ -2312,8 +2312,8 @@ fn (p mut Parser) array_init() string {
 	// typ += '_ptr"
 	// }
 	mut new_arr := 'new_array_from_c_array'
-	if no_copy {
-		new_arr += '_no_copy'
+	if no_alloc {
+		new_arr += '_no_alloc'
 	}
 	p.gen(' })')
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
