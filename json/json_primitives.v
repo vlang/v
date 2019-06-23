@@ -5,8 +5,8 @@
 module json
 
 // TODO: windows support
-#flag linux -I$HOME/code/v/thirdpaty/cJSON
-#flag mac -I$HOME/code/v/thirdpaty/cJSON
+#flag -Dlinux -I$HOME/code/v/thirdparty/cJSON
+#flag -Dmac -I$HOME/code/v/thirdparty/cJSON
 
 // #include "cJSON.c"
 #include "cJSON.h"
