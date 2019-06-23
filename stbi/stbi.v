@@ -41,7 +41,8 @@ fn load(path string) Image {
 		res.data = C.stbi_load(path.str, &res.width, &res.height, &res.nr_channels, 0)
 	}
 	if isnil(res.data) {
-		exit('stbi cant load')
+		println('stbi cant load')
+		exit(1)
 	}
 	return res
 }

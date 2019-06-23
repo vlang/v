@@ -18,7 +18,8 @@ import const (
 fn init_glad() {
 	ok := C.gladLoadGL()
 	if !ok {
-		os.exit('Failed to initialize glad OpenGL context')
+		println('Failed to initialize glad OpenGL context')
+		os.exit(1)
 	}
 }
 
