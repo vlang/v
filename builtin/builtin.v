@@ -5,7 +5,7 @@
 module builtin
 
 pub fn exit(code int) {
-	C.exit(1)
+	C.exit(code)
 }
 
 // isnil returns true if an object is nil (only for C objects).
