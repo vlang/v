@@ -59,6 +59,10 @@ make
 # Or build without make:
 wget https://vlang.io/v.c # Download the V compiler's source translated to C
 cc -std=c11 -w -o vc v.c  # Build it with Clang or GCC
+
+#for centos use the following command:
+clang -w -o vc v.c
+
 ./vc -o v . && rm vc      # Use the resulting V binary to build V from V source, delete the old compiler
 ```
 
