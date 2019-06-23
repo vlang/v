@@ -333,6 +333,7 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
+// weekday_str() returns the current day in string (upto 3 characters)
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
 	return Days.substr(i * 3, (i + 1) * 3)
