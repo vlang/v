@@ -556,7 +556,6 @@ fn (s string) trim_left(cutset string) string {
 }
 
 fn (s string) trim_right(cutset string) string {
-	return s
 	pos := s.last_index(cutset)
 	if pos == -1 {
 		return s
