@@ -803,6 +803,7 @@ fn run_repl() []string {
 	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string
+	mut imports := []string
 	for {
 		print('>>> ')
 		mut line := os.get_line().trim_space()
@@ -816,14 +817,15 @@ fn run_repl() []string {
 			// TODO remove this once files without main compile correctly
 			void_line := line.substr(line.index('(') + 1, line.len - 1)
 			lines << void_line
-			source_code := 'fn main(){' + lines.join('\n') + '\n' + line + '}'
+			source_code := imports.join('\n') + '\n\nfn main(){' + lines.join('\n') + '\n' + line + '}'
 			os.write_file(file, source_code)
 			mut v := new_v( ['v', '-repl', file])
 			v.compile()
 			s := os.system(TmpPath + '/vrepl')
 			println(s)
-		}
-		else {
+		} else if line.starts_with('import ') {
+			imports << line
+		} else {
 			lines << line
 		}
 	}
