@@ -1,0 +1,11 @@
+trigger:
+- master
+- dev
+
+pool:
+  vmImage: 'ubuntu-16.04'
+
+steps:
+- script: |
+    cd compiler && make
+  displayName: 'make'
