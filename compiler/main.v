@@ -115,10 +115,12 @@ fn main() {
 	if args.contains('fmt') {
 		file := args.last()
 		if !os.file_exists(file) {
-			os.exit1('"$file" does not exist')
+			println('"$file" does not exist')
+			exit(1)
 		}
 		if !file.ends_with('.v') {
-			os.exit1('v fmt can only be used on .v files')
+			println('v fmt can only be used on .v files')
+			exit(1)
 		}
 		println('vfmt is temporarily disabled')
 		return
@@ -136,7 +138,7 @@ fn main() {
 	// Generate the docs and exit
 	if args.contains('doc') {
 		// c.gen_doc_html_for_module(args.last())
-		os.exit('')
+		exit(0)
 	}
 	c.compile()
 }
@@ -380,7 +382,8 @@ string _STR_TMP(const char *fmt, ...) {
 		if ret != 0 {
 			s := os.system(cmd)
 			println(s)
-			os.exit1('ret not 0, exiting')
+			println('ret not 0, exiting')
+			exit(1)
 		}
 	}
 }
@@ -414,7 +417,7 @@ fn (c mut V) cc() {
 		libs = '$TmpPath/vlib/builtin.o'
 		if !os.file_exists(libs) {
 			println('`builtin.o` not found')
-			exit('')
+			exit(1)
 		}
 		for imp in c.table.imports {
 			if imp == 'webview' {
@@ -504,7 +507,7 @@ mut args := ''
 		'/usr/lib/x86_64-linux-gnu/crtn.o')
 		println(ress)
 		if ress.contains('error:') {
-			os.exit1('')
+			os.exit(1)
 		}
 		println('linux cross compilation done. resulting binary: "$c.out_name"')
 	}
@@ -585,7 +588,8 @@ fn (c mut V) add_user_v_files() {
 		}
 	}
 	if user_files.len == 0 {
-		exit('No input .v files')
+		println('No input .v files')
+		exit(1)
 	}
 	if c.is_verbose {
 		c.log('user_files:')
@@ -703,7 +707,8 @@ fn new_v(args[]string) *V {
 	is_test := dir.ends_with('_test.v')
 	is_script := dir.ends_with('.v')
 	if is_script && !os.file_exists(dir) {
-		exit('`$dir` does not exist')
+		println('`$dir` does not exist')
+		exit(1)
 	}
 	// No -o provided? foo.v => foo
 	if out_name == 'a.out' && dir.ends_with('.v') {

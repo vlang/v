@@ -315,15 +315,8 @@ pub fn getenv(key string) string {
 	return tos2(s)
 }
 
-fn exit(reason string) {
-	println('exit(): $reason')
-	log(reason)
-	C.exit(0)
-}
-
-fn exit1(reason string) {
-	println('exit(): $reason')
-	C.exit(1)
+fn exit(code int) {
+	C.exit(code)
 }
 
 // `file_exists` returns true if `path` exists.

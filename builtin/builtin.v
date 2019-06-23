@@ -4,12 +4,8 @@
 
 module builtin
 
-pub fn exit(reason string) {
-	if reason == '' {
-		panic('exit empty reason')
-	}
-	println('exit(): $reason')
-	C.exit(0)
+pub fn exit(code int) {
+	C.exit(1)
 }
 
 // isnil returns true if an object is nil (only for C objects).

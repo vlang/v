@@ -634,7 +634,8 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	else if typ.starts_with('fn (') {
 		T := table.find_type(typ)
 		if T.name == '' {
-			os.exit1('this should never happen')
+			println('this should never happen')
+			exit(1)
 		}
 		str_args := T.func.str_args(table)
 		return '$T.func.typ (*$name)( $str_args /*FFF*/ )'

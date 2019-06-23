@@ -456,14 +456,13 @@ fn (s mut Scanner) scan() ScanRes {
 }
 
 fn (s &Scanner) error(msg string) {
-	// println('!! SCANNER ERROR: $msg')
 	file := s.file_path.all_after('/')
 	println('panic: $file:${s.line_nr + 1}')
 	println(msg)
 	// os.print_backtrace()
 	// println(file)
 	// println(s.file_path)
-	os.exit1(' ')
+	exit(1)
 }
 
 // println('array out of bounds $idx len=$a.len')
