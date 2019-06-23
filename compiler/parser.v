@@ -688,9 +688,6 @@ fn (p mut Parser) get_type() string {
 			// println('fn return typ=$f.typ')
 		}
 		else {
-			if debug {
-				println('new line!!')
-			}
 			f.typ = 'void'
 		}
 		// Register anon fn type
@@ -700,7 +697,6 @@ fn (p mut Parser) get_type() string {
 			func: f
 		}
 		p.table.register_type2(fn_typ)
-		// println('!!!registerd typ_str="' + f.typ_str() + '" f.typ=$f.typ')
 		return f.typ_str()
 	}
 	// arrays ([]int)
@@ -1196,14 +1192,11 @@ fn (p mut Parser) name_expr() string {
 		if p.is_play && !p.builtin_pkg {
 			p.error('dereferencing is temporarily disabled on the playground, will be fixed soon')
 		}
-		// IVE BEEN LOOKING FOR YOU FOR 20 MINUTES
-		// p.gen('*/*!!!!*/')
 	}
 	mut name := p.lit
 	p.fgen(name)
 	// known_type := p.table.known_type(name)
 	orig_name := name
-	// println('\n\n!!name_expr() name=$name      cur_fn = $p.cur_fn.name')
 	is_c := name == 'C' && p.peek() == DOT
 	mut is_c_struct_init := is_c && ptr// a := &C.mycstruct{}
 	if is_c {
@@ -1281,7 +1274,6 @@ fn (p mut Parser) name_expr() string {
 		}
 		// Color.green
 		else if p.peek() == DOT {
-			// println('$name enum init!!')
 			enum_type := p.table.find_type(name)
 			if !enum_type.is_enum {
 				p.error('`$name` is not an enum')
@@ -1497,9 +1489,6 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	// field
 	if has_field {
 		field := p.table.find_field(typ, field_name)
-		if field.name == 'age' {
-			println('!! $field.name $field.is_mut')
-		}
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == INC || next == DEC
@@ -1546,7 +1535,6 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		return typ.name.right(6)
 	}
 	if false && p.tok == LSBR {
-		println('!!!!!!!! [ in DOT')
 		// if is_indexer {
 		return p.index_expr(method.typ, method_ph)
 	}
@@ -1567,7 +1555,6 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 	is_indexer := p.tok == LSBR
 	mut close_bracket := false
 	if is_indexer {
-		// println('!!! GOT []')p
 		is_fixed_arr := typ[0] == `[`
 		if !is_str && !is_arr && !is_map && !is_ptr && !is_fixed_arr {
 			p.error('Cant [] non-array/string/map. Got type "$typ"')
@@ -1747,7 +1734,6 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		}
 	}
 	// else if is_arr && is_indexer{}
-	p.log('!!indexer typ=$typ')
 	return typ
 }
 
@@ -2592,7 +2578,6 @@ fn (p mut Parser) chash() {
 	}
 	if hash.starts_with('flag ') {
 		mut flag := hash.right(5)
-		// println('FLAG!!! $flag  OS=$p.os')
 		// No the right os? Skip!
 		// mut ok := true
 		if hash.contains('linux') && p.os != LINUX {
