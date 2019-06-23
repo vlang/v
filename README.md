@@ -55,7 +55,7 @@ mkdir -p ~/code && cd ~/code  # ~/code directory has to be used (it's a temporar
 git clone https://github.com/vlang/v
 cd v/compiler
 wget https://vlang.io/v.c # Download the V compiler's source translated to C
-cc -w -o vc v.c           # Build it with Clang or GCC
+cc -std=c11 -w -o vc v.c  # Build it with Clang or GCC
 ./vc -o v .               # Use the resulting V binary to build V from V source
 ./v -o v .                # Bootstrap the compiler to make sure it works
 ```
