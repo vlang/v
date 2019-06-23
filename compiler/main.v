@@ -833,6 +833,9 @@ v -prod file.v
 
 - To specify the executable\'s name:
 v -o program file.v 
+
+- To execute a program without creating an executable:
+v run file.v
 '
 )
 
