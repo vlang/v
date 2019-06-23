@@ -615,7 +615,7 @@ fn (table mut Table) cgen_name(f &Fn) string {
 		}
 		old := name
 		name = 'f_$idx'
-		println2('$old ==> $name')
+		println('$old ==> $name')
 	}
 	return name
 }

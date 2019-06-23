@@ -228,7 +228,7 @@ pub fn (s string) split(delim string) []string {
 	}
 	if delim.len == 1 {
 		return s.split_single(delim[0])
-		// println2('split 1 only')
+		// println('split 1 only')
 		// os.exit()
 	}
 	mut i := 0

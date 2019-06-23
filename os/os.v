@@ -316,13 +316,13 @@ pub fn getenv(key string) string {
 }
 
 fn exit(reason string) {
-	println2('exit(): $reason')
+	println('exit(): $reason')
 	log(reason)
 	C.exit(0)
 }
 
 fn exit1(reason string) {
-	println2('exit(): $reason')
+	println('exit(): $reason')
 	C.exit(1)
 }
 

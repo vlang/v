@@ -30,7 +30,7 @@ pub:
 // embed 'http'
 fn get(url string) string {
 	if url == '' {
-		println2('http: empty get url')
+		println('http: empty get url')
 		return ''
 	}
 	mut req := new_request('GET', url, '')

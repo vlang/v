@@ -201,7 +201,7 @@ fn (s string) is_utf8() int {
 		return -1
 	}
 	if !ok {
-		println2('utf is bad dalen=$len KEK $s sdf')
+		println('utf is bad dalen=$len KEK $s sdf')
 		// s = s.left(i)
 	}
 	return i
@@ -215,7 +215,7 @@ fn (s string) runes() []string {
 	res := []string{}
 	if !s.is_utf8() {
 		mys := s
-		println2('string.me runes bad utf $mys HAHA')
+		println('string.me runes bad utf $mys HAHA')
 		return res
 	}
 	for i := 0; i < s.len; i++ {

@@ -8,7 +8,7 @@ pub fn exit(reason string) {
 	if reason == '' {
 		panic('exit empty reason')
 	}
-	println2('exit(): $reason')
+	println('exit(): $reason')
 	C.exit(0)
 }
 
@@ -31,7 +31,7 @@ pub fn print_backtrace() {
 }
 
 pub fn panic(s string) {
-	println2('V panic: $s')
+	println('V panic: $s')
 	print_backtrace()
 	C.exit(1)
 }
@@ -53,16 +53,12 @@ pub fn eprintln(s string) {
 	}
 	// TODO issues with stderr and cross compiling for Linux
 	$else {
-		println2(s)
+		println(s)
 	}
 }
 
 pub fn print(s string) {
 	C.printf('%.*s', s.len, s.str)
-}
-
-fn println2(s string) {
-	C.printf('%.*s\n', s.len, s.str)
 }
 
 pub fn malloc(n int) byteptr {
@@ -78,7 +74,7 @@ pub fn malloc(n int) byteptr {
 	total := i64(0)
 	# total_m += n;
 	# total = total_m;
-	println2('\n\n\nmalloc($n) total=$total')
+	println('\n\n\nmalloc($n) total=$total')
 	print_backtrace()
 #endif
 	ptr := C.malloc(n)

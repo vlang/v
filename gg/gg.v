@@ -344,7 +344,7 @@ fn new_context_text(cfg Cfg, scale int) *GG {
 		font_path = '/var/tmp/RobotoMono-Regular.ttf'
 	}
 	if !os.file_exists(font_path) {
-		println2('failed to load RobotoMono-Regular.ttf')
+		println('failed to load RobotoMono-Regular.ttf')
 		exit('')
 	}
 	# FT_Face face;

@@ -91,7 +91,7 @@ fn main() {
 	args := os.args
 	// Print the version and exit.
 	if 'version' in args {
-		println2('V $Version')
+		println('V $Version')
 		return
 	}
 	if '-h' in args || '--help' in args || 'help' in args {
@@ -120,7 +120,7 @@ fn main() {
 		if !file.ends_with('.v') {
 			os.exit1('v fmt can only be used on .v files')
 		}
-		println2('vfmt is temporarily disabled')
+		println('vfmt is temporarily disabled')
 		return
 	}
 	// V with no args? REPL
@@ -379,7 +379,7 @@ string _STR_TMP(const char *fmt, ...) {
 		ret := os.system2(cmd)
 		if ret != 0 {
 			s := os.system(cmd)
-			println2(s)
+			println(s)
 			os.exit1('ret not 0, exiting')
 		}
 	}
@@ -413,7 +413,7 @@ fn (c mut V) cc() {
 	else if c.build_mode == DEFAULT_MODE {
 		libs = '$TmpPath/vlib/builtin.o'
 		if !os.file_exists(libs) {
-			println2('`builtin.o` not found')
+			println('`builtin.o` not found')
 			exit('')
 		}
 		for imp in c.table.imports {
@@ -485,7 +485,7 @@ mut args := ''
 	res := os.system(cmd)
 	// println('C OUTPUT:')
 	if res.contains('error: ') {
-		println2(res)
+		println(res)
 		panic('clang error')
 	}
 	// Link it if we are cross compiling and need an executable
@@ -791,9 +791,9 @@ fn new_v(args[]string) *V {
 }
 
 fn run_repl() []string {
-	println2('V $Version')
-	println2('Use Ctrl-D to exit')
-	println2('For now you have to use println() to print values, this will be fixed soon\n')
+	println('V $Version')
+	println('Use Ctrl-D to exit')
+	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string
 	for {
@@ -812,7 +812,7 @@ fn run_repl() []string {
 			mut v := new_v( ['v', '-repl', file])
 			v.compile()
 			s := os.system(TmpPath + '/vrepl')
-			println2(s)
+			println(s)
 		}
 		else {
 			lines << line

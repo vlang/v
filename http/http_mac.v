@@ -98,7 +98,7 @@ fn (req &Request) do() Response {
 	// init curl
 	curl := C.curl_easy_init()
 	if isnil(curl) {
-		println2('curl init failed')
+		println('curl init failed')
 		return Response{}
 	}
 	// options
