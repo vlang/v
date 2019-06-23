@@ -94,6 +94,7 @@ fn main() {
 	}
 	if '-h' in args || '--help' in args || 'help' in args {
 		println(HelpText)
+		return
 	}
 	// TODO quit if the compiler is too old 
 	// u := os.file_last_mod_unix('/var/tmp/alex')
