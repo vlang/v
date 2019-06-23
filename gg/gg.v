@@ -273,7 +273,8 @@ fn ft_load_char(_face Face, code long) Character {
 	# FT_Face face = *((FT_Face*)_face.cobj);
 	# if (FT_Load_Char(face, code, FT_LOAD_RENDER))
 	{
-		os.exit('ERROR::FREETYTPE: Failed to load Glyph')
+		println('freetype: Failed to load Glyph')
+		exit(1)
 	}
 	// Generate texture
 	# GLuint texture;
@@ -345,14 +346,15 @@ fn new_context_text(cfg Cfg, scale int) *GG {
 	}
 	if !os.file_exists(font_path) {
 		println('failed to load RobotoMono-Regular.ttf')
-		exit('')
+		exit1()
 	}
 	# FT_Face face;
 	# if (FT_New_Face(ft, font_path.str, 0, &face))
 	// # if (FT_New_Face(ft, "/Library/Fonts/Courier New.ttf", 0, &face))
 	// # if (FT_New_Face(ft, "/System/Library/Fonts/Apple Color Emoji.ttc", 0, &face))
 	{
-		exit('ERROR::FREETYPE: Failed to load font')
+		println('freetyp: Failed to load font')
+		exit(1)
 	}
 	// Set size to load glyphs as
 	# FT_Set_Pixel_Sizes(face, 0, font_size) ;
@@ -466,7 +468,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		firstc := utext.at(0)
 		println('drawtext "$utext.s" len=$utext.s.len ulen=$utext.len x=$_x firstc=$firstc')
 		if firstc != ' ' {
-			exit('')
+			exit1()
 		}
 	}
 */
