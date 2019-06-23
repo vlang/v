@@ -18,9 +18,10 @@ struct Story {
 
 struct Fetcher {
 mut:
-	mu     sync.Mutex
-	ids    []int
-	cursor int
+	mu      sync.Mutex
+	ids     []int
+	cursor  int
+	list_id int
 }
 
 fn (f mut Fetcher) fetch() {
@@ -37,7 +38,11 @@ fn (f mut Fetcher) fetch() {
 			println('failed to decode a story')
 			exit(1)
 		}
-		println('#$f.cursor) $story.title | $story.url')
+		f.mu.lock()
+		cursor := f.list_id
+		f.list_id++
+		f.mu.unlock()
+		println('#$cursor) $story.title | $story.url')
 	}
 }
 
