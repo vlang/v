@@ -29,13 +29,11 @@ const (
 	TmpPath            = vtmp_path()
 )
 
-// TODO V was re-written in V before enums were implemented. Lots of consts need to be replaced with
-// enums.
-const (
-	MAC     = 0
-	LINUX   = 1
-	WINDOWS = 2
-)
+enum Os {
+	MAC
+	LINUX
+	WINDOWS
+}
 
 enum Pass {
 	// A very short pass that only looks at imports in the begginning of each file
@@ -59,7 +57,7 @@ enum Pass {
 struct V {
 mut:
 	build_mode BuildMode
-	os         int // the OS to build for
+	os         Os // the OS to build for
 	nofmt      bool // disable vfmt
 	out_name_c string // name of the temporary C file
 	files      []string // all V files that need to be parsed and compiled
