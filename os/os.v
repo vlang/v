@@ -5,6 +5,8 @@
 module os
 
 #include <sys/stat.h>
+#include <dirent.h>
+
 const (
 	args = []string
 )
@@ -349,6 +351,25 @@ pub fn mkdir(path string) {
 	$else {
 		C.mkdir(path.cstr(), 511)// S_IRWXU | S_IRWXG | S_IRWXO
 	}
+}
+
+// `readdir` returns array of elements in `path`. Depends on dirent.h.
+pub fn readdir(path string) []string {
+	mut files := []string
+	# DIR *dir;
+	# struct dirent *entry;
+	if !dir_exists(path) {
+		return files
+	} else {
+		# dir = opendir(path.str);
+		# while ((entry = readdir(dir)) != NULL) {
+			mut f := ''
+			# f.str = entry->d_name;
+			# f.len = strlen(entry->d_name);
+			files << f
+		# }
+	}
+	return files
 }
 
 // `rm` removes file in `path`.
