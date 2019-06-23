@@ -16,7 +16,6 @@ module glfw
 // #flag darwin -framework CoreVideo
 // #flag darwin -framework IOKit
 // struct C.GL
-// @GLFWwindow* C.glfwCreateWindow
 // #int gconst_init = 0;
 const (
 	RESIZABLE = 1

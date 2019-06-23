@@ -6,7 +6,6 @@ module http
 
 import os
 
-@size_t kek
 type downloadfn fn (written int)
 
 struct DownloadStruct {
