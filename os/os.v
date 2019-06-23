@@ -367,23 +367,6 @@ fn rmdir(path string, guard string) {
 }
 */ 
 
-pub fn unzip(path, out string) {
-	$if windows {
-		// TODO native string
-		// TODO handle older Windows
-		// The only way to unzip a file without installing dependencies is to use PowerShell + .NET
-		# char *s="powershell.exe -nologo -noprofile -command \"& { Add-Type -A 'System.IO.Compression.FileSystem'; [IO.Compression.ZipFile]::ExtractToDirectory('PATH', 'OUT'); }\" ";
-		mut cmd := ''
-		# cmd = tos(s, strlen(s));
-		cmd = cmd.replace('PATH', path)
-		cmd = cmd.replace('OUT', out)
-		os.system(cmd)
-	}
-	$else {
-		os.system('unzip -o -d "$out" "$path"')
-	}
-}
-
 fn print_c_errno() {
 	# printf("errno=%d err='%s'\n", errno, strerror(errno));
 }
