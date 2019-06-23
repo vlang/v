@@ -332,13 +332,10 @@ pub fn file_exists(path string) bool {
 }
 
 pub fn dir_exists(path string) bool {
-	res := false
-	if file_exists(path) {
-		# DIR *dir = opendir(path.str);
-		# res = dir != NULL;
-		if res {
-			# closedir(dir);
-		}
+	dir := C.opendir(path.cstr())
+	res := !isnil(dir)
+	if res {
+		C.closedir(dir)
 	}
 	return res
 }
