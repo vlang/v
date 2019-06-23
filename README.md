@@ -50,6 +50,15 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 
 ### Linux and macOS
 
+(For Mac, the command line tools and headers need to be installed first)
+
+```bash
+xcode-select --install to install command line tools and headers.
+open /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
+```
+
+Then, the following commands will work on both macOS and Linux.
+
 ```bash
 mkdir -p ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
 git clone https://github.com/vlang/v
