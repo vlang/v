@@ -1,11 +1,20 @@
-trigger:
-- master
-- dev
-
-pool:
-  vmImage: 'ubuntu-16.04'
-
-steps:
-- script: |
-    cd compiler && make
-  displayName: 'make'
+jobs:
+  - job: LinuxBuild
+    pool: 'ubuntu-16.04'
+    steps:
+      - script: |
+        displayName: 'Install Dependencies'
+      - script: |
+          cd compiler && make
+        displayName: 'Build V'
+  - job: WindowsBuild
+    pool: 'vs2017-win2016'
+  - job: OSXBuild
+    pool: 'macOS-10.13'
+    steps:
+      - script: |
+        displayName: 'Install Dependencies'
+      - script: |
+          cd compiler && make
+        displayName: 'Build V'
+  
