@@ -359,7 +359,7 @@ pub fn readdir(path string) []string {
 	# DIR *dir;
 	# struct dirent *entry;
 	if !dir_exists(path) {
-		return files
+		panic('$path is an invalid directory or file')
 	} else {
 		# dir = opendir(path.str);
 		# while ((entry = readdir(dir)) != NULL) {
