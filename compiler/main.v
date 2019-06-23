@@ -233,12 +233,12 @@ void init_consts();')
 	// Embed cjson either in embedvlib or in json.o
 	if imports_json && c.build_mode == EMBED_VLIB ||
 	(c.build_mode == BUILD && c.out_name.contains('json.o')) {
-		cgen.genln('#include "json/cJSON/cJSON.c" ')
+		cgen.genln('#include "cJSON.c" ')
 	}
 	// We need the cjson header for all the json decoding user will do in default mode
 	if c.build_mode == DEFAULT_MODE {
 		if imports_json {
-			cgen.genln('#include "json/cJSON/cJSON.h"')
+			cgen.genln('#include "cJSON.h"')
 		}
 	}
 	if c.build_mode == EMBED_VLIB || c.build_mode == DEFAULT_MODE {
