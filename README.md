@@ -1,4 +1,4 @@
-# The V Programming Language
+# The V Programming Language 0.0.12
 
 https://vlang.io
 
@@ -56,7 +56,7 @@ git clone https://github.com/vlang/v
 cd v/compiler
 wget https://vlang.io/v.c # Download the V compiler's source translated to C
 cc -std=c11 -w -o vc v.c  # Build it with Clang or GCC
-./vc -o v .               # Use the resulting V binary to build V from V source
+./vc -o v . && rm vc      # Use the resulting V binary to build V from V source, delete the old compiler
 ./v -o v .                # Bootstrap the compiler to make sure it works
 ```
 
