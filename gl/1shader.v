@@ -125,8 +125,8 @@ pub fn new_shader(name string) Shader {
 		log := gl.shader_info_log(vertex_shader)
 		println('shader $vertex_shader compilation failed')
 		println('shader source = $vertex_src')
-		println('shader')
-		os.exit(1)
+		println('shader failed to compile')
+		exit(1)
 	}
 	// fragment shader
 	// fragment_src := os.read_file(fragment_path.trim_space())
@@ -135,8 +135,8 @@ pub fn new_shader(name string) Shader {
 	gl.compile_shader(fragment_shader)
 	if gl.shader_compile_status(fragment_shader) == 0 {
 		println('fragment $fragment_shader shader compilation failed')
-		println('shader')
-		os.exit(1)
+		println('shader failed to compile')
+		exit(1)
 	}
 	// link shaders
 	shader_program := gl.create_program()
@@ -149,8 +149,8 @@ pub fn new_shader(name string) Shader {
 		println('shader compilation failed')
 		println('vertex source = $vertex_src')
 		println('fragment source = $fragment_src')
-		println('shader')
-		os.exit(1)
+		println('shader failed to compile')
+		exit(1)
 	}
 	shader := Shader {
 		program_id: shader_program,

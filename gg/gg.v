@@ -347,7 +347,7 @@ fn new_context_text(cfg Cfg, scale int) *GG {
 	}
 	if !os.file_exists(font_path) {
 		println('failed to load RobotoMono-Regular.ttf')
-		exit(1)
+		exit1()
 	}
 	# FT_Face face;
 	# if (FT_New_Face(ft, font_path.str, 0, &face))
@@ -469,7 +469,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		firstc := utext.at(0)
 		println('drawtext "$utext.s" len=$utext.s.len ulen=$utext.len x=$_x firstc=$firstc')
 		if firstc != ' ' {
-			exit(1)
+			exit1()
 		}
 	}
 */
