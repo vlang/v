@@ -497,7 +497,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 	is_print := p.is_prod &&// Hide prints only in prod
 	!p.is_test &&
 	!p.builtin_pkg &&// Allow prints in builtin  pkgs
-	(f.name == 'println' || (f.is_c && f.name == 'printf'))
+	f.is_c && f.name == 'printf'
 	if !p.cgen.nogen {
 		p.cgen.nogen = is_print
 	}
@@ -523,7 +523,6 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		// println('METHOD fn_call name=$cgen_name')
 		// mut method_call := '${cgen_typ}_${cgen_name}('
 		mut method_call := '${cgen_name}('
-		// println('GGGG $f.name')
 		receiver := f.args.first()
 		if receiver.is_mut && !p.expr_var.is_mut {
 			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
@@ -645,18 +644,13 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 	p.check(LPAR)
 	if f.is_c {
 		for p.tok != RPAR {
-			// debug("LEX before EXP", p.tok)
 			p.bool_expression()
-			// debug("LEX AFTER EXP", p.tok)
 			if p.tok == COMMA {
 				p.gen(', ')
 				p.check(COMMA)
-				// debug("UUUUU C FUNC" + fnName)
-				// p.g.Gen("C FN " + fnName)
 			}
 		}
 		p.check(RPAR)
-		// p.gen(')')
 		return f
 	}
 	// Receiver - first arg
@@ -695,26 +689,24 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		if i == 0 && f.name == 'println' && typ != 'string'
 		&& typ != 'void' {
 			// If we dont check for void, then V will compile "println(procedure())"
-			if !p.is_prod {
-				T := p.table.find_type(typ)
-				if typ == 'u8' {
-					p.cgen.set_placeholder(amp_ph, 'u8_str(')
-				}
-				else if T.parent == 'int' {
-					p.cgen.set_placeholder(amp_ph, 'int_str(')
-				}
-				else if typ.ends_with('*') {
-					p.cgen.set_placeholder(amp_ph, 'ptr_str(')
-				}
-				else {
-					// Make sure this type has a `str()` method
-					if !T.has_method('str') {
-						p.error('`$typ` needs to have method `str() string` to be printable')
-					}
-					p.cgen.set_placeholder(amp_ph, '${typ}_str(')
-				}
-				p.gen(')')
+			T := p.table.find_type(typ)
+			if typ == 'u8' {
+				p.cgen.set_placeholder(amp_ph, 'u8_str(')
 			}
+			else if T.parent == 'int' {
+				p.cgen.set_placeholder(amp_ph, 'int_str(')
+			}
+			else if typ.ends_with('*') {
+				p.cgen.set_placeholder(amp_ph, 'ptr_str(')
+			}
+			else {
+				// Make sure this type has a `str()` method
+				if !T.has_method('str') {
+					p.error('`$typ` needs to have method `str() string` to be printable')
+				}
+				p.cgen.set_placeholder(amp_ph, '${typ}_str(')
+			}
+			p.gen(')')
 			continue
 		}
 		got := typ
