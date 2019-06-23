@@ -1,3 +1,7 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module http
 
 #include <curl/curl.h>
@@ -125,7 +129,7 @@ fn (req &Request) do() Response {
 		h := '$key: $val'
 		hlist = C.curl_slist_append(hlist, h.cstr())
 	}
-	// curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,	// (long)CURL_HTTP_VERSION_2TLS);ô`CÒÊ€9À
+	// curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,	// (long)CURL_HTTP_VERSION_2TLS);ï¿½`Cï¿½Ê€9ï¿½
 	C.curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1)
 	if req.verbose {
 		C.curl_easy_setopt(curl, CURLOPT_VERBOSE, 1)
