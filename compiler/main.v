@@ -754,6 +754,11 @@ fn new_v(args[]string) *V {
 	]
 	// Location of all vlib files  TODO allow custom location
 	mut lang_dir = os.home_dir() + '/code/v/'
+	if !os.dir_exists(lang_dir) {
+		println('$lang_dir not found. Run:')
+		println('git clone https://github.com/vlang/v ~/code/v') 
+		exit(1) 
+	} 
 	out_name_c := out_name.all_after('/') + '.c'
 	mut files := []string
 	// Add builtin files
