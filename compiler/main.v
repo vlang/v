@@ -135,6 +135,11 @@ fn main() {
 	if c.is_verbose {
 		println(args)
 	}
+	// If REPL argument is given
+	if c.is_repl {
+		run_repl()
+		return
+	}
 	// Generate the docs and exit
 	if args.contains('doc') {
 		// c.gen_doc_html_for_module(args.last())
