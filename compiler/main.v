@@ -30,7 +30,7 @@ fn vtmp_path() string {
 
 const (
 	SupportedPlatforms = ['windows', 'mac', 'linux']
-	TmpPath            = vtmp_path()
+	TmpPath            = './.tmp/'
 )
 
 enum Os {
