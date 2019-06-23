@@ -4,11 +4,12 @@
 
 module stbi
 
-#include "glad.h"
 import gl
 
+#flag linux -I$HOME/code/v/thirdparty/stb_image
+
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include "stb_image.h"
 struct Image {
 mut:
 	width       int
