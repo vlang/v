@@ -4,8 +4,12 @@
 
 module json
 
-// #include "json/cJSON/cJSON.c"
-#include "json/cJSON/cJSON.h"
+// TODO: windows support
+#flag linux -I$HOME/code/v/thirdpaty/cJSON
+#flag mac -I$HOME/code/v/thirdpaty/cJSON
+
+// #include "cJSON.c"
+#include "cJSON.h"
 struct C.cJSON {
 	valueint    int
 	valuestring byteptr
