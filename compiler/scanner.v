@@ -302,6 +302,11 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(PIPE, '')
 	case `,`:
 		return scan_res(COMMA, '')
+	case `\r`:
+		if nextc == `\n` {
+			s.pos++
+			return scan_res(NL, '')
+		}
 	case `\n`:
 		return scan_res(NL, '')
 	case `.`:
