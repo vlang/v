@@ -331,6 +331,15 @@ pub fn file_exists(path string) bool {
 	return res
 }
 
+pub fn dir_exists(path string) bool {
+	dir := C.opendir(path.cstr())
+	res := !isnil(dir)
+	if res {
+		C.closedir(dir)
+	}
+	return res
+}
+
 // `mkdir` creates a new directory with the specified path.
 pub fn mkdir(path string) {
 	$if windows {
