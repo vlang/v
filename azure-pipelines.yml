@@ -1,6 +1,8 @@
 jobs:
   - job: LinuxBuild
-    pool: 'ubuntu-16.04'
+    pool: 
+      vmImage: 'ubuntu-16.04'
+    displayName: "V Linux Build"
     steps:
       - script: |
         displayName: 'Install Dependencies'
@@ -8,13 +10,16 @@ jobs:
           cd compiler && make
         displayName: 'Build V'
   - job: WindowsBuild
-    pool: 'vs2017-win2016'
+    pool: 
+      vmImage: 'vs2017-win2016'
+    displayName: "V Windows Build"
   - job: OSXBuild
-    pool: 'macOS-10.13'
+    pool: 
+      vmImage: 'macOS-10.13'
+    displayName: "V MacOSX Build"
     steps:
       - script: |
         displayName: 'Install Dependencies'
       - script: |
           cd compiler && make
         displayName: 'Build V'
-  
