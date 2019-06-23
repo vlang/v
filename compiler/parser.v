@@ -416,7 +416,7 @@ fn (p mut Parser) struct_decl() {
 		}
 	}
 	// V used to have 'type Foo struct', many Go users might use this syntax
-	if p.tok == STRUCT {
+	if !is_c && p.tok == STRUCT {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
 	// Register the type
