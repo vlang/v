@@ -100,17 +100,34 @@ pub fn file_last_mod_time(path string) time.Time {
 	return time.convert_ctime(q)
 }
 */
-// `read_lines` reads the file in `path` into an array of lines.
+// read_lines reads the file in `path` into an array of lines.
+// TODO return `?[]string` TODO implement `?[]` support
 pub fn read_lines(path string) []string {
-	return read_file_lines(path)
-}
-
-fn read_file_into_lines(path string) []string {
-	return read_file_lines(path)
+	mut res := []string
+	mut buf := [1000]byte
+	cpath := path.cstr()
+	fp := C.fopen(cpath, 'rb')
+	if isnil(fp) {
+		// TODO
+		// return error('failed to open file "$path"')
+		return res
+	}
+	for C.fgets(buf, 1000, fp) != 0 {
+		mut val := ''
+		buf[C.strlen(buf) - 1] = `\0` // eat the newline fgets() stores
+		$if windows {
+			if buf[strlen(buf)-2] == 13 {
+				buf[strlen(buf) - 2] = `\0`
+			}
+		}
+		res << tos_clone(buf)
+	}
+	C.fclose(fp)
+	return res
 }
 
 fn read_file_into_ulines(path string) []ustring {
-	lines := read_file_into_lines(path)
+	lines := read_lines(path)
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
 	for myline in lines {
@@ -123,43 +140,6 @@ fn read_file_into_ulines(path string) []ustring {
 const (
 	BUF_SIZE = 5000
 )
-
-fn read_file_lines(path string) []string {
-	// println('read file $path into lines')
-	mut res := []string
-	# char buf[os__BUF_SIZE];
-	# FILE *fp = fopen(path.str, "rb");
-	# if (!fp)
-	{
-		println('failed to open file "$path"')
-		return res
-	}
-	# while (fgets(buf, os__BUF_SIZE, fp) != NULL)
-	{
-		mut val := ''
-		# buf[strlen(buf) - 1] = '\0'; // eat the newline fgets() stores
-	#ifdef windows
-		# if (buf[strlen(buf)-2] == 13)
-		# buf[strlen(buf) - 2] = '\0'; // eat the newline fgets() stores
-	#endif
-		// # printf("%s\n", buf);
-		# val=tos_clone(buf) ;
-		// for i := 0; i < val.len; i++ {
-		// C.printf('%d) %c %d\n', i, val.str[i], val.str[i])
-		// }
-	#ifdef windows
-		// if val.str[val.len - 1] == 13 {
-		if val[val.len - 1] == 13 {
-			// TODO
-			// val.len--
-		}
-	#endif
-		// println('QQQ read line="$val"')
-		res << val
-	}
-	# fclose(fp);
-	return res
-}
 
 fn append_to_file(file, s string) {
 	# FILE* fp = fopen(file.str, "a");
