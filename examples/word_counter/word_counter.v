@@ -9,17 +9,14 @@ fn main() {
 	else {
 		path = os.args[1]
 	}
-	lines := os.read_file_lines(path.trim_space())
+	contents := os.read_file(path.trim_space())
 	mut m := map[string]int{}
-	for line in lines {
-		words := line.to_lower().split(' ')
-		for word in words {
-			key := filter_word(word)
-			if key == '' {
-				continue
-			}
-			m[key] = m[key] + 1// TODO m[key]++
+	for word in contents.to_lower().split(' ') {
+		key := filter_word(word)
+		if key == '' {
+			continue
 		}
+		m[key] = m[key] + 1// TODO m[key]++
 	}
 	// Sort the keys
 	mut keys := []string
