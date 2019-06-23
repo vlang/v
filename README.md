@@ -113,6 +113,9 @@ v run news_fetcher.v
 v run tetris.v
 ```
 
+<img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
+
+
 In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
 
 If you plan to use the http package, you also need to install libcurl.
