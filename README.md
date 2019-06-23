@@ -54,7 +54,7 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 
 ```bash
 mkdir ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
-git clone https://github.com/vlang/v
+git clone https://github.com/vlang/v.git
 cd v/compiler
 make
 
