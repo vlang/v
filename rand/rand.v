@@ -5,14 +5,18 @@
 module rand
 
 #include <time.h>
-// #include <stdlib.h>
+
+struct C.time_t{} 
+fn C.rand() int 
+
 fn seed() {
 	# time_t t;
 	# srand((unsigned) time(&t));
 }
 
 fn next(max int) int {
-	# return  rand() % max;
-	return 0
+	r := 0 
+	# r = rand();  // TODO parser bug `rand` module name conflict 
+	return r % max 
 }
 
