@@ -512,7 +512,7 @@ fn (c &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	mut files := os.ls(dir)
 	if !os.file_exists(dir) {
-		panic('$dir doesnt exist')
+		panic('$dir doesn\'t exist')
 	}
 	if c.is_verbose {
 		println('v_files_from_dir ("$dir")')

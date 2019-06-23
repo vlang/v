@@ -26,7 +26,7 @@ const (
 
 fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
-		panic('"$file_path" doesnt exist')
+		panic('"$file_path" doesn\'t exist')
 	}
 	scanner := &Scanner {
 		file_path: file_path
