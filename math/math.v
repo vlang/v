@@ -65,6 +65,10 @@ fn radians(degrees f64) f64 {
 	return degrees * (PI / 180.0)
 }
 
+fn degrees(radians f64) f64 {
+	return radians * (180.0 / PI)
+}
+
 fn round(f f64) f64 {
 	return C.round(f)
 }
