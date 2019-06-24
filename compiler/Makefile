@@ -4,7 +4,7 @@ v: vc
 	./vc -o v .
 
 vc: v.c
-	cc -std=c11 -w -o vc v.c
+	cc -std=gnu11 -w -o vc v.c
 
 v.c:
 	wget https://vlang.io/v.c
