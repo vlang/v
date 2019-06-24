@@ -13,6 +13,7 @@ const (
 
 struct Story {
 	title string
+	url string
 }
 
 struct Fetcher {
@@ -36,7 +37,7 @@ fn (f mut Fetcher) fetch() {
 			println('failed to decode a story')
 			exit(1)
 		}
-		println('#$f.cursor) $story.title')
+		println('#$f.cursor) $story.title | $story.url')
 	}
 }
 
