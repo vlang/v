@@ -188,6 +188,57 @@ fn (arr mut array) _push_many(val voidptr, size int) {
 	arr.len += size
 }
 
+fn (a[]i8) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]i8) free() {
+	C.free(a.data)
+}
+
+fn (a[]i16) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]i16) free() {
+	C.free(a.data)
+}
+
+fn (a[]i32) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]i32) free() {
+	C.free(a.data)
+}
+
 fn (a[]int) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
@@ -202,7 +253,159 @@ fn (a[]int) str() string {
 }
 
 fn (a[]int) free() {
-	// println('array free')
+	C.free(a.data)
+}
+
+fn (a[]i64) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]i64) free() {
+	C.free(a.data)
+}
+
+fn (a[]u8) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]u8) free() {
+	C.free(a.data)
+}
+
+fn (a[]byte) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]byte) free() {
+	C.free(a.data)
+}
+
+fn (a[]u16) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]u16) free() {
+	C.free(a.data)
+}
+
+fn (a[]u32) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]u32) free() {
+	C.free(a.data)
+}
+
+fn (a[]u64) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]u64) free() {
+	C.free(a.data)
+}
+
+fn (a[]f32) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]f32) free() {
+	C.free(a.data)
+}
+
+fn (a[]f64) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]f64) free() {
+	C.free(a.data)
+}
+
+fn (a[]bool) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
+
+fn (a[]bool) free() {
 	C.free(a.data)
 }
 
