@@ -11,6 +11,21 @@ Discord (primary community): https://discord.gg/n7c74HM
 Installing V: https://github.com/vlang/v#installing-v-from-source
 
 
+## Key Features of V
+
+- Simplicity: the language can be learned in half an hour, less if you already know Go
+- Fast compilation: ~100k loc right now, ~1.2 million loc once x64 generation is mature enough
+- Easy to develop: the entire language compiles in less than a second
+- Performance: within 5% of C
+- Safety: no null, no globals, no UB, immutability by default
+- C to V translation
+- Hote code reloading
+- Powerful UI and graphics libraries
+- Easy cross compilation
+- REPL
+
+
+
 ## Code Structure
 
 I tried making the code of the compiler and vlib as simple and readable as possible. One of V's goals is to be open to developers with different levels of experience in compiler development. Compilers don't need to be black boxes full of magic that only few people understand.
