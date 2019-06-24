@@ -87,6 +87,15 @@ mut:
 	vroot      string
 }
 
+struct REPL {
+mut:
+	indent int
+	in_func bool
+	lines[]string
+	imports []string
+	functions []string
+}
+
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := os.args
@@ -850,37 +859,80 @@ fn new_v(args[]string) *V {
 	}
 }
 
+fn (r mut REPL) repl_checks(line string) {
+	mut in_string := false
+
+	for i := 0; i < line.len; i++ {
+		if line[i] == `\'` && line[i - 1] != `\\` {
+			in_string = !in_string
+		}
+		if line[i] == `{` && !in_string {
+			r.indent++
+		}
+		if line[i] == `}` && !in_string {
+			r.indent--
+			if r.indent == 0 {
+				r.in_func = false
+			}
+		}
+		if i + 2 < line.len && r.indent == 0 && line[i + 1] == `f` && line[i + 2] == `n` {
+			r.in_func = true
+		}
+	}
+}
+
 fn run_repl() []string {
 	println('V $Version')
 	println('Use Ctrl-D to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
-	mut lines := []string
+	mut r := REPL{0, false, []string, []string, []string}
+
 	for {
+		// Add indentation for better visual about being inside a function
 		print('>>> ')
-		mut line := os.get_line().trim_space()
+		for i := 0 ; i < r.indent ; i++ {
+			print('  ')
+		}
+		line := os.get_line().trim_space()
 		if line == '' {
 			break
 		}
-		// Save the source only if the user is printing something,
-		// but don't add this print call to the `lines` array,
-		// so that it doesn't get called during the next print.
-		if line.starts_with('print') {
-			// TODO remove this once files without main compile correctly
-			void_line := line.substr(line.index('(') + 1, line.len - 1)
-			lines << void_line
-			source_code := 'fn main(){' + lines.join('\n') + '\n' + line + '}'
-			os.write_file(file, source_code)
-			mut v := new_v( ['v', '-repl', file])
-			v.compile()
-			s := os.exec(TmpPath + '/vrepl')
-			println(s)
+
+		// If the line starts with fn, saves next lines as functions
+		// It prevents writing functions in main, which do not compile
+		if line.starts_with('fn') {
+			r.in_func = true
 		}
-		else {
-			lines << line
+		if r.in_func {
+			// If open bracket add an indentation
+			// If closing bracket remove an indentation and check if exits the function
+			r.repl_checks(line)
+			r.functions << line
+		} else {
+			// Save the source only if the user is printing something,
+			// but don't add this print call to the `lines` array,
+			// so that it doesn't get called during the next print.
+			if line.starts_with('print') {
+				// TODO remove this once files without main compile correctly
+				void_line := line.substr(line.index('(') + 1, line.len - 1)
+				r.lines << void_line
+				source_code := r.imports.join('\n') + '\n' + r.functions.join('\n') + '\n' + 'fn main(){' + r.lines.join('\n') + '\n' + line + '}'
+				os.write_file(file, source_code)
+				mut v := new_v( ['v', '-repl', file])
+				v.compile()
+				s := os.exec(TmpPath + '/vrepl')
+				println(s)
+			}
+			else if line.starts_with('import') {
+				r.imports << line
+			}
+			else {
+				r.lines << line
+			}
 		}
 	}
-	return lines
+	return r.lines
 }
 
 // This definitely needs to be better :)
