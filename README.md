@@ -55,9 +55,9 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 ### Linux and macOS
 
 ```bash
-mkdir ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
-git clone https://github.com/vlang/v
-cd v/compiler
+# ~/code directory has to be used (it's a temporary limitation)
+git clone https://github.com/vlang/v ~/code/v
+cd ~/code/v/compiler
 make
 
 # Or build without make:
@@ -126,7 +126,7 @@ glfw and libcurl dependencies will be removed soon.
 
 ```
 Ubuntu:
-sudo apt install glfw libglfw3-dev libfreetype6-dev libcurl3-dev
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 
 macOS:
 brew install glfw freetype curl
