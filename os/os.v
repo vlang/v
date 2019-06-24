@@ -288,15 +288,15 @@ pub fn system(cmd string) string {
 fn system_into_lines(s string) []string {
 	mut res := []string
 	cmd := '$s 2>&1'
-#ifdef windows
-	# FILE* f = _popen(cmd.str, "r");
-#else
-	# FILE* f = popen(cmd.str, "r");
-#endif
-	#define MAX 5000
-	// # char buf[MAX];
-	# char * buf = malloc(sizeof(char) * MAX);
-	# while (fgets(buf, MAX, f) != NULL)
+	max := 5000 
+	$if windows { 
+		# FILE* f = _popen(cmd.str, "r");
+	}
+	$else { 
+		# FILE* f = popen(cmd.str, "r");
+	} 
+	# char * buf = malloc(sizeof(char) * max);
+	# while (fgets(buf, max, f) != NULL)
 	{
 		val := ''
 		# buf[strlen(buf) - 1] = '\0'; // eat the newline fgets() stores
@@ -323,11 +323,12 @@ fn exit(code int) {
 pub fn file_exists(path string) bool {
 	// # return access( path.str, F_OK ) != -1 ;
 	res := false
-#ifdef windows
-	# res = _access( path.str, 0 ) != -1 ;
-#else
-	# res = access( path.str, 0 ) != -1 ;
-#endif
+	$if windows { 
+		# res = _access( path.str, 0 ) != -1 ;
+	}
+	$else { 
+		# res = access( path.str, 0 ) != -1 ;
+	} 
 	return res
 }
 
@@ -435,16 +436,16 @@ pub fn write_file(path, text string) {
 }
 
 fn on_segfault(f voidptr) {
-#ifdef windows
-	return
-#endif
-#ifdef mac
-	# struct sigaction sa;
-	# memset(&sa, 0, sizeof(struct sigaction));
-	# sigemptyset(&sa.sa_mask);
-	# sa.sa_sigaction = f;
-	# sa.sa_flags   = SA_SIGINFO;
-	# sigaction(SIGSEGV, &sa, 0);
-#endif
+	$if windows { 
+		return
+	} 
+	$if mac { 
+		# struct sigaction sa;
+		# memset(&sa, 0, sizeof(struct sigaction));
+		# sigemptyset(&sa.sa_mask);
+		# sa.sa_sigaction = f;
+		# sa.sa_flags   = SA_SIGINFO;
+		# sigaction(SIGSEGV, &sa, 0);
+	} 
 }
 

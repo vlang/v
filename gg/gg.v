@@ -239,9 +239,9 @@ fn (ctx &GG) draw_rect2(x, y, w, h float, c gx.Color) {
 	ctx.shader.set_int('has_texture', 0)
 	// 4--1
 	// 3--2
-#ifdef linux
+	$if linux { 
 	// y += h
-#endif
+	} 
 	vertices := [
 	x + w, y, 0,
 	x + w, y + h, 0,

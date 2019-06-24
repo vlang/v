@@ -4,9 +4,9 @@
 
 module os
 
-#include    <execinfo.h>
+//#include <execinfo.h> // for backtrace_symbols_fd 
 #include <signal.h>
-#include  <unistd.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
 // import darwin
@@ -62,10 +62,12 @@ fn ls(path string) []string {
 }
 
 fn print_backtrace() {
+/* 
 	# void *buffer[100];
 	nptrs := 0
 	# nptrs = backtrace(buffer, 100);
 	# printf("%d!!\n", nptrs);
 	# backtrace_symbols_fd(buffer, nptrs, STDOUT_FILENO) ;
+*/ 
 }
 
