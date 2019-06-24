@@ -396,8 +396,8 @@ pub fn filename(path string) string {
 fn C.getline(voidptr, voidptr, voidptr) int
 
 pub fn get_line() string {
-	max := 256
-	buf := malloc(max)
+	max := u64(256)
+	buf := malloc(int(max))
 	nr_chars := C.getline(&buf, &max, stdin)
 	if nr_chars == 0 {
 		return ''
