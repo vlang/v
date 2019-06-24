@@ -1,13 +1,12 @@
+V_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))../
+
 all: v vc
 
 v: vc
-	./vc -o v .
+	V_PATH=$(V_PATH) ./vc -o v .
 
-vc: v.c
-	cc -std=gnu11 -w -o vc v.c
-
-v.c:
-	wget https://vlang.io/v.c
+vc: bootstrap/v.c
+	cc -std=gnu11 -w -o vc ./bootstrap/v.c
 
 clean:
 	-rm v vc v.c

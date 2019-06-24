@@ -759,32 +759,23 @@ fn new_v(args[]string) *V {
 	'option.v',
 	'string_builder.v',
 	]
-	// Location of all vlib files
-	mut lang_dir = ''
-	// First try fetching it from VROOT if it's defined
-	vroot_path := TmpPath + '/VROOT'
-	if os.file_exists(vroot_path) {
-		vroot := os.read_file(vroot_path).trim_space()
-		if os.dir_exists(vroot) && os.dir_exists(vroot + '/builtin') {
-			lang_dir = vroot
-		}
+
+	// Location of all vlib files  TODO allow custom location
+	v_path := os.getenv('V_PATH')
+	default_v_path := os.home_dir() + '/code/v/'
+	mut lang_dir = if v_path == '' {
+		os.setenv('V_PATH', default_v_path, false)
+		default_v_path
+	} else {
+		v_path
 	}
-	// no "~/.vlang/VROOT" file, so the user must be running V for the first 
-	// time.
-	if lang_dir == ''  {
-		println('Looks like you are running V for the first time.')
-		// The parent directory should contain vlib if V is run
-		// from "v/compiler"
-		cur_dir := os.getwd()
-		lang_dir = cur_dir.all_before_last('/')
-		if os.dir_exists('$lang_dir/builtin') {
-			println('Setting VROOT to "$lang_dir".')
-			os.write_file(TmpPath + '/VROOT', lang_dir)
-		} else {
-			println('Please do it from "v/compiler" directory.')
-			exit(1) 
-		}
-	} 
+
+	if !os.dir_exists(lang_dir) {
+		println('$lang_dir not found. Run:')
+		println('git clone https://github.com/vlang/v ~/code/v') 
+		exit(1) 
+	}
+
 	out_name_c := out_name.all_after('/') + '.c'
 	mut files := []string
 	// Add builtin files

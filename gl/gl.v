@@ -14,8 +14,8 @@ import const (
 )
 
 // TODO: windows support
-#flag linux -I$HOME/code/v/thirdparty/glad
-#flag darwin -I$HOME/code/v/thirdparty/glad
+#flag linux -I$V_PATH/thirdparty/glad
+#flag darwin -I$V_PATH/thirdparty/glad
 
 #include "glad.h"
 #include "glad.c"

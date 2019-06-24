@@ -6,8 +6,8 @@ module stbi
 
 import gl
 
-#flag linux -I$HOME/code/v/thirdparty/stb_image
-#flag darwin -I$HOME/code/v/thirdparty/stb_image
+#flag linux -I$V_PATH/thirdparty/stb_image
+#flag darwin -I$V_PATH/thirdparty/stb_image
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
