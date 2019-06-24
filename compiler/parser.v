@@ -460,7 +460,9 @@ fn (p mut Parser) struct_decl() {
 			is_mut = false
 			p.scanner.fmt_indent--
 			p.check(PUB)
-			p.check(COLON)
+			if p.tok != MUT {
+				p.check(COLON)
+			}
 			p.scanner.fmt_indent++
 			p.fgenln('')
 		}
@@ -472,7 +474,9 @@ fn (p mut Parser) struct_decl() {
 			is_pub = false
 			p.scanner.fmt_indent--
 			p.check(MUT)
-			p.check(COLON)
+			if p.tok != MUT {
+				p.check(COLON)
+			}
 			p.scanner.fmt_indent++
 			p.fgenln('')
 		}
