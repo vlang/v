@@ -6,6 +6,8 @@ Documentation: https://vlang.io/docs
 
 Twitter: https://twitter.com/v_language
 
+Discord: https://discord.gg/n7c74HM
+
 Installing V: https://github.com/vlang/v#installing-v-from-source
 
 
