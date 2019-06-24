@@ -84,7 +84,7 @@ pub fn calloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<0)')
 	}
-	return C.calloc(sizeof(float) * n, sizeof(float))
+	return C.calloc(n, 1)
 }
 
 fn _strlen(s byteptr) int {
