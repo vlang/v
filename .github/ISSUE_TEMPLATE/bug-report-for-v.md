@@ -1,7 +1,7 @@
 ---
 name: Bug report for V
 about: Please use the apropriate label when submitting an issue: bug/feature request/question.
-title: ""
+title: "New issue"
 labels: ''
 assignees: ''
 
@@ -9,22 +9,17 @@ assignees: ''
 
 #### V version:
 
+
 #### OS:
+
 
 #### C Compiler:
 
-## Bug description
-#### Description:
-*(A clear and concise description of what the bug is)*
 
-#### Example:
-*(Code or some such explicit example of how to reproduce)*
+## What did you do?
 
-#### Actual Result:
-*(What happened?)*
 
-#### Expected Result:
-*(What should have happened?)*
+### What did you expect to see?
 
-#### Screenshots (if applicable):
-*(Please add screenshots if it can help explain)*
+
+### What did you see instead?
