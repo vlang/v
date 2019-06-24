@@ -36,7 +36,7 @@ fn floor(a f64) f64 {
 }
 
 fn fmod(a, b f64) f64 {
-	return C.fmod(a, b);
+	return C.fmod(a, b)
 }
 
 fn log(a f64) f64 {
