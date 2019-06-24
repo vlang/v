@@ -96,3 +96,7 @@ fn tanh(a f64) f64 {
 fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
+
+fn hypot(a, b f64) f64 {
+	return sqrt(a*a+b*b)
+}
