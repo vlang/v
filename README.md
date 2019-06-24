@@ -1,4 +1,4 @@
-# The V Programming Language 0.0.12
+# The V Programming Language 0.1.0
 
 https://vlang.io
 
@@ -24,7 +24,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy cross compilation
 - REPL
 
-
+V 1.0 release is planned for December 2019.
 
 ## Code Structure
 
