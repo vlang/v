@@ -143,7 +143,6 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
-
 fn (m mut map) unset(i int) {
   if i < 0 || i >= m.entries.len {
 		panic('map.unset: index out of range: $i/$m.entries.len')
@@ -170,6 +169,7 @@ fn (m map) index(key string) int {
 	}
 	return -1
 }
+
 
 fn (m map) print() {
 	println('<<<<<<<<')
