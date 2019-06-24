@@ -89,12 +89,11 @@ pub fn calloc(n int) byteptr {
 
 fn _strlen(s byteptr) int {
 	// *slightly* weird hack
-	mut size := 0
+	init := s
 	for *s > 0 {
 		s += 1
-		size++
 	}
-	return size
+	return int(s-init)
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
