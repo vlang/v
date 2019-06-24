@@ -1,6 +1,6 @@
 # Conway's Game of Life
 
-![](demo.gif)
+![](https://github.com/fuyutarow/Conways-Game-of-Life-with-Vlang/raw/master/v-gun.gif)
 
 
 ```v
