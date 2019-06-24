@@ -1,22 +1,17 @@
 ---
 name: Bug report for V
-about: Create a report to help us improve
-title: "[BUG]"
-labels: 'bug'
+about: Please use the apropriate label when submitting an issue: bug/feature request/question.
+title: ""
+labels: ''
 assignees: ''
 
 ---
 
-## Information about your system:
-
 #### V version:
-*Enter version (ex `v0.1.0`):*
 
 #### OS:
-*Enter OS (ex `macOS 10.14.5`, `Ubuntu Linux 18.04`, `Windows 10 + build number`):*
 
-#### C COMPILER:
-*(ex: `gcc 7.3.1`)*
+#### C Compiler:
 
 ## Bug description
 #### Description:
