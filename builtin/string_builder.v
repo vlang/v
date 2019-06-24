@@ -34,3 +34,6 @@ fn (b StringBuilder) cut(n int) {
 	b.len -= n
 }
 
+fn (b mut StringBuilder) free() {
+	C.free(b.buf.data)
+}
