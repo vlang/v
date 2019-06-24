@@ -126,7 +126,7 @@ glfw and libcurl dependencies will be removed soon.
 
 ```
 Ubuntu:
-sudo apt install glfw libglfw3-dev libfreetype6-dev libcurl3-dev
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 
 macOS:
 brew install glfw freetype curl
