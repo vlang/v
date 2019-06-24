@@ -108,6 +108,15 @@ pub fn (m mut map) sort() {
 	m.is_sorted = true
 }
 
+fn (m map) keys() []string {
+	mut keys := []string{}
+	for i := 0; i < m.entries.len; i++ {
+		entry := m.entries[i]
+		keys << entry.key
+	}
+	return keys
+}
+
 fn (m map) get(key string, out voidptr) bool {
 	if m.is_sorted {
 		// println('\n\nget "$key" sorted')
