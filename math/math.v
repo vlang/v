@@ -35,6 +35,10 @@ fn floor(a f64) f64 {
 	return C.floor(a)
 }
 
+fn hypot(a, b f64) f64 {
+	return sqrt(a*a+b*b)
+}
+
 fn log(a f64) f64 {
 	return C.log(a)
 }
@@ -97,6 +101,3 @@ fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
 
-fn hypot(a, b f64) f64 {
-	return sqrt(a*a+b*b)
-}
