@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.0.12'
+	Version = '0.1.0'
 )
 
 // TODO no caps
@@ -25,7 +25,7 @@ enum BuildMode {
 }
 
 fn vtmp_path() string {
-	return os.home_dir() + '/.vlang$Version/'
+	return os.home_dir() + '/.vlang/'
 }
 
 const (
@@ -98,6 +98,10 @@ fn main() {
 		println(HelpText)
 		return
 	}
+	if 'translate' in args {
+		println('Translating C to V will be available in V 0.3') 
+		return 
+	} 
 	// TODO quit if the compiler is too old 
 	// u := os.file_last_mod_unix('/var/tmp/alex')
 	// Create a temp directory if it's not there. 
@@ -159,19 +163,6 @@ fn (c mut V) compile() {
 	}
 	// Main pass
 	cgen.run = RUN_MAIN
-	if c.os == MAC {
-		cgen.genln('#define mac (1) ')
-		// cgen.genln('#include <pthread.h>')
-	}
-	if c.os == LINUX {
-		cgen.genln('#define linux (1) ')
-		cgen.genln('#include <pthread.h>')
-	}
-	if c.os == WINDOWS {
-		cgen.genln('#define windows (1) ')
-		// cgen.genln('#include <WinSock2.h>')
-		cgen.genln('#include <windows.h> ')
-	}
 	if c.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
@@ -181,6 +172,22 @@ fn (c mut V) compile() {
 #include <signal.h>
 #include <stdarg.h> // for va_list 
 #include <inttypes.h>  // int64_t etc 
+
+
+#ifdef __linux__ 
+#include <pthread.h> 
+#endif 
+
+
+#ifdef __APPLE__ 
+
+#endif 
+
+
+#ifdef _WIN32 
+#include <windows.h>
+//#include <WinSock2.h> 
+#endif 
 
 //================================== TYPEDEFS ================================*/ 
 
@@ -838,20 +845,26 @@ fn run_repl() []string {
 // This definitely needs to be better :)
 const (
 	HelpText = '
-- To build a V program:
+- Build a V program:
 v file.v
 
-- To get current V version:
+- Get current V version:
 v version
 
-- To build an optimized executable:
+- Build an optimized executable:
 v -prod file.v
 
-- To specify the executable\'s name:
+- Specify the executable\'s name:
 v -o program file.v 
 
-- To build and execute a V program :
+- Build and execute a V program:
 v run file.v
+
+- Obfuscate the resulting binary:
+v -obf -prod build file.v
+
+- Test: 
+v string_test.v 
 '
 )
 

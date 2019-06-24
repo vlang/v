@@ -1,4 +1,4 @@
-# The V Programming Language 0.0.12
+# The V Programming Language 0.1.0
 
 https://vlang.io
 
@@ -6,8 +6,27 @@ Documentation: https://vlang.io/docs
 
 Twitter: https://twitter.com/v_language
 
+Discord (primary community): https://discord.gg/n7c74HM
+
 Installing V: https://github.com/vlang/v#installing-v-from-source
 
+
+## Key Features of V
+
+- Simplicity: the language can be learned in half an hour, less if you already know Go
+- Fast compilation: ~100k loc right now, ~1.2 million loc once x64 generation is mature enough
+- Easy to develop: V compiles itself in less than a second
+- Performance: within 5% of C
+- Safety: no null, no globals, no UB, immutability by default
+- C to V translation
+- Hote code reloading
+- Powerful UI and graphics libraries
+- Easy cross compilation
+- REPL
+
+V 1.0 release is planned for December 2019.
+
+GitHub marks V's code as written in Go. It's actually writtein in V, GitHub doesn't support the language yet.
 
 ## Code Structure
 
@@ -53,14 +72,14 @@ The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps)
 ### Linux and macOS
 
 ```bash
-mkdir ~/code && cd ~/code  # ~/code directory has to be used (it's a temporary limitation)
-git clone https://github.com/vlang/v
-cd v/compiler
+# ~/code directory has to be used (it's a temporary limitation)
+git clone https://github.com/vlang/v ~/code/v
+cd ~/code/v/compiler
 make
 
 # Or build without make:
 git clone git@github.com:vlang/vc.git vc_repository # Download the V compiler's source translated to C
-cc -std=c11 -w -o vc vc_repository/v.c  # Build it with Clang or GCC
+cc -std=gnu11 -w -o vc vc_repository/v.c  # Build it with Clang or GCC
 ./vc -o v . && rm vc     # Use the resulting V binary to build V from V source, delete the old compiler
 ```
 
@@ -124,7 +143,7 @@ glfw and libcurl dependencies will be removed soon.
 
 ```
 Ubuntu:
-sudo apt install glfw libglfw3-dev libfreetype6-dev libcurl3-dev
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 
 macOS:
 brew install glfw freetype curl
