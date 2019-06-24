@@ -29,7 +29,7 @@ fn vtmp_path() string {
 }
 
 const (
-	SupportedPlatforms = ['windows', 'mac', 'linux']
+	SupportedPlatforms = ['windows', 'mac', 'linux', 'cygwin']
 	TmpPath            = vtmp_path()
 )
 
@@ -37,6 +37,7 @@ enum Os {
 	MAC
 	LINUX
 	WINDOWS
+	CYGWIN
 }
 
 enum Pass {
@@ -171,6 +172,9 @@ fn (c mut V) compile() {
 		cgen.genln('#define windows (1) ')
 		// cgen.genln('#include <WinSock2.h>')
 		cgen.genln('#include <windows.h> ')
+	}
+	if c.os == CYGWIN {
+		cgen.genln('#define cygwin (1)')
 	}
 	if c.is_play {
 		cgen.genln('#define VPLAY (1) ')
@@ -542,11 +546,18 @@ fn (c &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_lin.v') && c.os != LINUX {
 			continue
 		}
+		if file.ends_with('_cyg.v') && c.os != CYGWIN {
+			continue
+		}
 		if file.ends_with('_mac.v') && c.os != MAC {
 			lin_file := file.replace('_mac.v', '_lin.v')
 			// println('lin_file="$lin_file"')
 			// If there are both _mac.v and _lin.v, don't use _mac.v
 			if os.file_exists('$dir/$lin_file') {
+				continue
+			}
+			cyg_file := file.replace('_mac.v', '_cyg.v')
+			if os.file_exists('$dir/$cyg_file') {
 				continue
 			}
 			else if c.os == WINDOWS {
@@ -733,12 +744,16 @@ fn new_v(args[]string) *V {
 		$if windows {
 			_os = WINDOWS
 		}
+//		$if cygwin {
+//			_os = CYGWIN
+//		}
 	}
 	else {
 		switch target_os {
 		case 'linux': _os = LINUX
 		case 'windows': _os = WINDOWS
 		case 'mac': _os = MAC
+		case 'cygwin': _os = CYGWIN
 		}
 	}
 	builtins := [

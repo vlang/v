@@ -2,3 +2,4 @@
 /compiler/vc
 /compiler/v
 *.dSYM
+*.exe
