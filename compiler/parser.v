@@ -457,7 +457,6 @@ fn (p mut Parser) struct_decl() {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
 			}
 			is_pub = true
-			is_mut = false
 			p.scanner.fmt_indent--
 			p.check(PUB)
 			if p.tok != MUT {
@@ -471,7 +470,6 @@ fn (p mut Parser) struct_decl() {
 				p.error('structs can only have one `mut:`, all private mutable fields have to be grouped')
 			}
 			is_mut = true
-			is_pub = false
 			p.scanner.fmt_indent--
 			p.check(MUT)
 			if p.tok != MUT {
