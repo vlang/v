@@ -841,20 +841,26 @@ fn run_repl() []string {
 // This definitely needs to be better :)
 const (
 	HelpText = '
-- To build a V program:
+- Build a V program:
 v file.v
 
-- To get current V version:
+- Get current V version:
 v version
 
-- To build an optimized executable:
+- Build an optimized executable:
 v -prod file.v
 
-- To specify the executable\'s name:
+- Specify the executable\'s name:
 v -o program file.v 
 
-- To build and execute a V program :
+- Build and execute a V program:
 v run file.v
+
+- Obfuscate the resulting binary:
+v -obf -prod build file.v
+
+- Test: 
+v string_test.v 
 '
 )
 
