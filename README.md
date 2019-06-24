@@ -14,7 +14,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 ## Key Features of V
 
 - Simplicity: the language can be learned in half an hour, less if you already know Go
-- Fast compilation: ~100k loc right now, ~1.2 million loc once x64 generation is mature enough
+- Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 5% of C
 - Safety: no null, no globals, no UB, immutability by default
@@ -139,8 +139,6 @@ In order to build Tetris and anything else using the graphics module, you will n
 
 If you plan to use the http package, you also need to install libcurl.
 
-glfw and libcurl dependencies will be removed soon.
-
 ```
 Ubuntu:
 sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
@@ -148,3 +146,5 @@ sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 macOS:
 brew install glfw freetype curl
 ```
+
+glfw and libcurl dependencies will be removed soon.
