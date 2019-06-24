@@ -89,8 +89,8 @@ pub fn calloc(n int) byteptr {
 
 fn _strlen(s byteptr) int {
 	// *slightly* weird hack
-    mut size := 0
-    for *s>0 {
+	mut size := 0
+	for *s > 0 {
 		s += 1
 		size++
 	}
@@ -115,14 +115,3 @@ pub fn error(s string) Option {
 		error: s
 	}
 }
-
-// TODO this is not used anymore
-fn range_int(start, end int) []int {
-	len := end - start
-	mut res := [0; len]
-	for i := 0; i < len; i++ {
-		res[i] = start + i
-	}
-	return res
-}
-
