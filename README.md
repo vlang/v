@@ -59,9 +59,9 @@ cd v/compiler
 make
 
 # Or build without make:
-wget https://vlang.io/v.c # Download the V compiler's source translated to C
-cc -std=c11 -w -o vc v.c  # Build it with Clang or GCC
-./vc -o v . && rm vc      # Use the resulting V binary to build V from V source, delete the old compiler
+git clone git@github.com:vlang/vc.git vc_repository # Download the V compiler's source translated to C
+cc -std=c11 -w -o vc vc_repository/v.c  # Build it with Clang or GCC
+./vc -o v . && rm vc     # Use the resulting V binary to build V from V source, delete the old compiler
 ```
 
 That's it! Now you have a V executable at `~/code/v/compiler/v`.
