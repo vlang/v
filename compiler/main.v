@@ -25,7 +25,7 @@ enum BuildMode {
 }
 
 fn vtmp_path() string {
-	return os.home_dir() + '/.vlang$Version/'
+	return os.home_dir() + '/.vlang/'
 }
 
 const (
@@ -159,19 +159,6 @@ fn (c mut V) compile() {
 	}
 	// Main pass
 	cgen.run = RUN_MAIN
-	if c.os == MAC {
-		cgen.genln('#define mac (1) ')
-		// cgen.genln('#include <pthread.h>')
-	}
-	if c.os == LINUX {
-		cgen.genln('#define linux (1) ')
-		cgen.genln('#include <pthread.h>')
-	}
-	if c.os == WINDOWS {
-		cgen.genln('#define windows (1) ')
-		// cgen.genln('#include <WinSock2.h>')
-		cgen.genln('#include <windows.h> ')
-	}
 	if c.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
@@ -181,6 +168,22 @@ fn (c mut V) compile() {
 #include <signal.h>
 #include <stdarg.h> // for va_list 
 #include <inttypes.h>  // int64_t etc 
+
+
+#ifdef __linux__ 
+#include <pthread.h> 
+#endif 
+
+
+#ifdef __APPLE__ 
+
+#endif 
+
+
+#ifdef _WIN32 
+#include <windows.h>
+//#include <WinSock2.h> 
+#endif 
 
 //================================== TYPEDEFS ================================*/ 
 

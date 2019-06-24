@@ -2494,6 +2494,16 @@ fn (p mut Parser) get_tmp_counter() int {
 	return p.tmp_cnt
 }
 
+fn os_name_to_ifdef(name string) string { 
+	switch name {
+		case 'windows': return '_WIN32'
+		case 'mac': return '__APPLE__'
+		case 'linux': return '__linux__' 
+	} 
+	panic('bad os ifdef name "$name"') 
+	return '' 
+} 
+
 fn (p mut Parser) comp_time() {
 	p.next()
 	if p.tok == IF {
@@ -2504,11 +2514,12 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		if name in SupportedPlatforms {
+			ifdef_name := os_name_to_ifdef(name) 
 			if not {
-				p.genln('#ifndef $name')
+				p.genln('#ifndef $ifdef_name')
 			}
 			else {
-				p.genln('#ifdef $name')
+				p.genln('#ifdef $ifdef_name')
 			}
 			p.check(LCBR)
 			p.statements_no_curly_end()
