@@ -36,7 +36,7 @@ The compiler itself is located in `compiler/`
 
 It has only 8 files (soon to be 7):
 
-1. `main.v` The entry point. 
+1. `main.v` The entry point.
 - V figures out the build mode.
 - Constructs the compiler object (`struct V`).
 - Creates a list of .v files that need to be parsed.
@@ -128,7 +128,7 @@ v hello_world.v && ./hello_world # or simply
 v run hello_world.v              # This builds the program and runs it right away
 
 v word_counter.v && ./word_counter cinderella.txt
-v run news_fetcher.v 
+v run news_fetcher.v
 v run tetris.v
 ```
 
