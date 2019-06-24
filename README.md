@@ -19,14 +19,14 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Performance: within 5% of C
 - Safety: no null, no globals, no UB, immutability by default
 - C to V translation
-- Hote code reloading
+- Hot code reloading
 - Powerful UI and graphics libraries
 - Easy cross compilation
 - REPL
 
 V 1.0 release is planned for December 2019.
 
-GitHub marks V's code as written in Go. It's actually writtein in V, GitHub doesn't support the language yet.
+GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn't support the language yet.
 
 ## Code Structure
 
