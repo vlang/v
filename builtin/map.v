@@ -143,6 +143,34 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
+
+fn (m mut map) unset(i int) {
+  if i < 0 || i >= m.entries.len {
+		panic('map.unset: index out of range: $i/$m.entries.len')
+    return
+	}
+
+  mut entries := []Entry
+
+  for j := 0; j < m.entries.len; j++ {
+    if j != i {
+      entries << m.entries[j]
+    }
+	}
+
+  m.entries = entries
+}
+
+fn (m map) index(key string) int {
+	for i := 0; i < m.entries.len; i++ {
+		entry := m.entries[i]
+		if entry.key == key {
+			return i
+		}
+	}
+	return -1
+}
+
 fn (m map) print() {
 	println('<<<<<<<<')
 	for i := 0; i < m.entries.len; i++ {
