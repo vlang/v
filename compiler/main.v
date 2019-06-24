@@ -98,6 +98,10 @@ fn main() {
 		println(HelpText)
 		return
 	}
+	if 'translate' in args {
+		println('Translating C to V will be available in V 0.3') 
+		return 
+	} 
 	// TODO quit if the compiler is too old 
 	// u := os.file_last_mod_unix('/var/tmp/alex')
 	// Create a temp directory if it's not there. 
