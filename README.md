@@ -19,7 +19,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Performance: within 5% of C
 - Safety: no null, no globals, no UB, immutability by default
 - C to V translation
-- Hote code reloading
+- Hot code reloading
 - Powerful UI and graphics libraries
 - Easy cross compilation
 - REPL
