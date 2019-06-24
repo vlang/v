@@ -395,6 +395,9 @@ pub fn filename(path string) string {
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
+//u64 is used because C.getline needs a size_t as second argument
+//Otherwise, it would cause a valgrind warning and may be dangerous
+//Malloc takes an int as argument so a cast has to be made
 pub fn get_line() string {
 	max := u64(256)
 	buf := malloc(int(max))
