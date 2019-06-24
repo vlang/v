@@ -106,11 +106,11 @@ fn main() {
 	} 
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
 	// Copy the `vlib` directory to the tmp path.
-/* 
+	/* 
 	// TODO 
 	if !os.file_exists(TmpPath) && os.file_exists('vlib') {
 	}
-*/ 
+	*/
 	// Just fmt and exit
 	if args.contains('fmt') {
 		file := args.last()
@@ -402,7 +402,7 @@ fn (c mut V) cc() {
 		a << '-shared'// -Wl,-z,defs'
 		c.out_name = c.out_name + '.so'
 	}
-*/
+	*/
 	if c.is_prod {
 		a << '-O2'
 	}
@@ -431,19 +431,22 @@ fn (c mut V) cc() {
 	}
 	// -I flags
 	/* 
-mut args := '' 
+	mut args := '' 
 	for flag in c.table.flags {
 		if !flag.starts_with('-l') {
 			args += flag
 			args += ' '
 		}
 	}
-*/
+	*/
 	if c.sanitize {
 		a << '-fsanitize=leak'
 	}
 	// Cross compiling linux
-	sysroot := '/Users/alex/tmp/lld/linuxroot/'
+	mut sysroot := '/'
+	if c.os == MAC {
+		sysroot = '/Users/alex/tmp/lld/linuxroot/'
+	}
 	if c.os == LINUX && !linux_host {
 		// Build file.o
 		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
@@ -475,7 +478,11 @@ mut args := ''
 		a << '-lm -ldl -lpthread'
 	}
 	// Find clang executable
-	fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
+	mut clang_exec_path := '/usr/bin'
+	if c.os == MAC {
+		clang_exec_path = '/usr/local/Cellar/llvm/8.0.0/bin'
+	}
+	fast_clang := clang_exec_path + '/clang'
 	args := a.join(' ')
 	cmd := if os.file_exists(fast_clang) {
 		'$fast_clang -I. $args'
@@ -499,7 +506,11 @@ mut args := ''
 		c.out_name = c.out_name.replace('.o', '')
 		obj_file := c.out_name + '.o'
 		println('linux obj_file=$obj_file out_name=$c.out_name')
-		ress := os.system('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
+		mut lld := clang_exec_path + '/ld'
+		if c.os == MAC {
+			lld = clang_exec_path + '/ld.lld'
+		}
+		ress := os.system('$lld --sysroot=$sysroot ' +
 		'-v -o $c.out_name ' +
 		'-m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 ' +
 		'/usr/lib/x86_64-linux-gnu/crt1.o ' +
@@ -851,7 +862,7 @@ v version
 v -prod file.v
 
 - Specify the executable\'s name:
-v -o program file.v 
+v -o program file.v
 
 - Build and execute a V program:
 v run file.v
@@ -860,7 +871,7 @@ v run file.v
 v -obf -prod build file.v
 
 - Test: 
-v string_test.v 
+v string_test.v
 '
 )
 

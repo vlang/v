@@ -1,4 +1,4 @@
-# The V Programming Language 0.0.12
+# The V Programming Language 0.1.0
 
 https://vlang.io
 
@@ -61,9 +61,12 @@ cd ~/code/v/compiler
 make
 
 # Or build without make:
-wget https://vlang.io/v.c # Download the V compiler's source translated to C
-cc -std=gnu11 -w -o vc v.c  # Build it with Clang or GCC
-./vc -o v . && rm vc      # Use the resulting V binary to build V from V source, delete the old compiler
+cc -std=gnu11 -w -o vc v.c # Build it with Clang or GCC
+./vc -o v . && rm vc       # Use the resulting V binary to build V from V source, delete the old compiler
+
+# Or build in CentOS:
+clang -std=gnu11 -w -o vc v.c # Build it with Clang or GCC
+./vc -o v . && rm vc          # Use the resulting V binary to build V from V source, delete the old compiler
 ```
 
 That's it! Now you have a V executable at `~/code/v/compiler/v`.
@@ -93,7 +96,7 @@ V temporarily can't be compiled with Visual Studio. This will be fixed asap.
 ```
 $ v
 
-V 0.0.12
+V 0.1.0
 Use Ctrl-D to exit
 
 >>> println('hello world')
