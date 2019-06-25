@@ -7,8 +7,7 @@ const (GDesc = '  The object of Roulette is to pick the number where the spinnin
    If your number is the good one, you\'ll get your bet x3.
    If your number is the same color as the ball one, you\'ll get your bet /2.
    Otherwise, you will lose your bet.\n')
-const (Odd = 'Red')
-const (Even = 'Black')
+const (Odd = 'Red' Even = 'Black')
 
 struct options {
     long_opt string
@@ -22,7 +21,7 @@ fn display_help() {
 fn option_parser() bool {
     help := options{'--help', '-h'}
     for i := 0; i < os.args.len; i++ {
-        if ((!compare_strings(os.args[i], help.long_opt)) || (!compare_strings(os.args[i], help.short_opt))) {
+        if compare_strings(os.args[i], help.long_opt) == 0 || compare_strings(os.args[i], help.short_opt) == 0 {
             display_help()
             return true
         }
@@ -32,7 +31,7 @@ fn option_parser() bool {
 
 fn str_is_nbr(s string) bool {
 	for i := 0; i < s.len; i++ {
-        if (!s[i].is_digit()) {
+        if !s[i].is_digit() {
             return false
         }
     }
@@ -53,7 +52,7 @@ fn get_bet_nbr() int {
             println('error: $line is not a number.')
             continue
         }
-        bet_nbr = line.to_i()
+        bet_nbr = line.int()
         if bet_nbr < 0 || bet_nbr > 49 {
             println('error: $line is not between 0 and 49.')
             bet_nbr = -1
@@ -76,7 +75,7 @@ fn get_bet(money int) int {
             println('error: $line is not a number.')
             continue
         }
-        bet = line.to_i()
+        bet = line.int()
         if bet <= 0 {
             println('error: $line is not heigher than 1.')
             continue
@@ -117,7 +116,7 @@ fn is_broke(money int) bool {
         quit := options{'yes', 'y'}
         println('You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)')
    	    line := os.get_line().trim_space().to_lower()
-        if ((!compare_strings(line, quit.long_opt)) || (!compare_strings(line, quit.short_opt))) {
+        if compare_strings(line, quit.long_opt) == 0 || compare_strings(line, quit.short_opt) == 0 {
             return false
         }
     }
