@@ -157,6 +157,7 @@ fn (m mut map) unset(i int) {
     }
 	}
 
+  C.free(m.entries[i].val)
   m.entries = entries
 }
 
@@ -167,6 +168,7 @@ fn (m map) index(key string) int {
 			return i
 		}
 	}
+
 	return -1
 }
 
