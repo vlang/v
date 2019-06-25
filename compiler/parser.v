@@ -657,6 +657,17 @@ fn (p mut Parser) error(s string) {
 		println('pass=$p.run fn=`$p.cur_fn.name`')
 	}
 	p.cgen.save()
+	// V git pull hint
+	cur_path := os.getwd()
+	if p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') {
+		println('\n====================')
+		println('It looks like you are building V. It is being frequently updated every day.' +
+		' Most likely there was a change that lead to this error. ')
+		println('Try to run `git pull`, that will most likely fix it.')
+		println('If `git pull` doesn\'t help, re-install V from source or download a precompiled' +
+		' binary from https://vlang.io')
+		println('====================\n')
+	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
 	p.scanner.error(s.replace('array_', '[]').replace('__', '.'))
