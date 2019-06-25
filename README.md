@@ -55,9 +55,11 @@ You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't hav
 git clone https://github.com/vlang/v
 cd v/compiler
 make
-
-# Or build without make:
-wget https://vlang.io/v.c  # Download the V compiler's source translated to C
+```
+Or build without make:
+```
+# Download the V compiler's source translated to C
+wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v .                 # Use the resulting V binary to build V from V source
 ./v -o v .                 # Bootstrap the compiler again to make sure it works
