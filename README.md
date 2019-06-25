@@ -114,6 +114,9 @@ In order to build Tetris and anything else using the graphics module, you will n
 If you plan to use the http package, you also need to install libcurl.
 
 ```
+Arch:
+sudo pacman -S glfw-x11 curl freetype2
+
 Ubuntu:
 sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 
