@@ -70,6 +70,7 @@ mut:
 	calling_c      bool
 	cur_fn         *Fn
 	returns        bool
+	vroot          string
 }
 
 const (
@@ -99,6 +100,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		build_mode: c.build_mode
 		is_repl: c.is_repl
 		run: run
+		vroot: c.vroot
 	}
 	p.next()
 	// p.scanner.debug_tokens()
@@ -2605,7 +2607,7 @@ fn (p mut Parser) chash() {
 			pos := flag.index(' ')
 			flag = flag.right(pos)
 		}
-		flag = flag.trim_space()
+		flag = flag.trim_space().replace('@VROOT', p.vroot)
 		if p.table.flags.contains(flag) {
 			return
 		}

@@ -84,6 +84,7 @@ mut:
 	out_name   string // "program.exe"
 	is_prod    bool // use "-O2" and skip printlns (TODO I don't thik many people want printlns to disappear in prod buidls)
 	is_repl    bool
+	vroot      string
 }
 
 fn main() {
@@ -825,6 +826,7 @@ fn new_v(args[]string) *V {
 		build_mode: build_mode
 		is_run: args.contains('run')
 		is_repl: args.contains('-repl')
+		vroot: lang_dir
 	}
 }
 
