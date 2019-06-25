@@ -1,4 +1,4 @@
-# The V Programming Language 0.1.1
+# The V Programming Language 0.1.2
 
 [![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master)
 
@@ -33,6 +33,7 @@ V 1.0 release is planned for December 2019.
 GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn't support the language yet.
 
 The compilation is temporarily slower for this release:
+
 - Debug builds are used (use `v -prod -o v` to get faster compilation).
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 - There are a lot of known issues that are quick to fix (like function lookups being O(n)).
@@ -81,7 +82,7 @@ V temporarily can't be compiled with Visual Studio. This will be fixed asap.
 ```
 $ v
 
-V 0.0.12
+V 0.1.2
 Use Ctrl-D to exit
 
 >>> println('hello world')
