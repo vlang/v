@@ -584,7 +584,7 @@ fn compare_strings_by_len(a, b *string) int {
 
 fn compare_lower_strings(a, b *string) int {
 	aa := a.to_lower()
-	bb := a.to_lower()
+	bb := b.to_lower()
 	return compare_strings(aa, bb)
 }
 
