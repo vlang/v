@@ -1020,9 +1020,9 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 			p.gen(' += ')
 		}
 	default:
-		if 	tok != MINUS_ASSIGN 					&& tok != MULT_ASSIGN					&& tok != XOR_ASSIGN
-		 && tok != MOD_ASSIGN							&& tok != AND_ASSIGN 					&& tok != OR_ASSIGN
-		 && tok != RIGHT_SHIFT_ASSIGN 		&& tok != LEFT_SHIFT_ASSIGN 	&& tok != DIV_ASSIGN {
+		if 	tok != MINUS_ASSIGN	&& tok != MULT_ASSIGN	&& tok != XOR_ASSIGN
+		 && tok != MOD_ASSIGN	&& tok != AND_ASSIGN && tok != OR_ASSIGN
+		 && tok != RIGHT_SHIFT_ASSIGN && tok != LEFT_SHIFT_ASSIGN  tok != DIV_ASSIGN {
 			p.gen(' ' + p.tok.str() + ' ')
 		}
 	}
