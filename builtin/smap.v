@@ -19,8 +19,8 @@ fn new_smap() smap {
 	return res
 }
 
-fn (m mut smap) set(key string, val string) {
-	/* 
+fn (m mut smap) set(key, val string) {
+	/*
 	for i := 0; i < m.entries.len; i++ {
 		entry := m.entries[i]
 		if entry.key == key {
