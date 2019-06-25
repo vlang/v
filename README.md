@@ -57,7 +57,7 @@ cd v/compiler
 make
 ```
 Or build without make:
-```
+```bash
 # Download the V compiler's source translated to C
 wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
