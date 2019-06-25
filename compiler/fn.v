@@ -390,10 +390,10 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 	}
 	if p.cur_fn.scope_level > 2 {
 		// p.error('unclosed {')
-    }
-    if f.name == 'main' || f.name == 'WinMain' {
-        p.genln('release_consts();')
-    }
+	}
+	if f.name == 'main' || f.name == 'WinMain' {
+		p.genln('release_consts();')
+	}
 	// Make sure all vars in this function are used (only in main for now)
 	// if p.builtin_pkg || p.pkg == 'os' ||p.pkg=='http'{
 	if p.pkg != 'main' {
