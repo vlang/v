@@ -405,9 +405,8 @@ pub fn get_line() string {
 	if buf[nr_chars - 1] == `\n` /* newline */ {
 		return tos(buf, nr_chars - 1)
 	}
-	else /* To prevent cutting end of line if no newline */ {
-		return tos(buf, nr_chars)
-	}
+	/* To prevent cutting end of line if no newline */
+	return tos(buf, nr_chars)
 }
 
 pub fn user_os() string {
