@@ -1924,23 +1924,16 @@ fn (p mut Parser) factor() string {
 	tok := p.tok
 	switch tok {
 	case INT:
-		p.gen(p.lit)
-		p.fgen(p.lit)
 		typ = 'int'
 		// typ = 'number'
 		if p.lit.starts_with('u') {
 			typ = 'long'
 		}
 		if p.lit.contains('.') || p.lit.contains('e') {
-			// typ = 'f64'
-			typ = 'float'
+			typ = 'f32'
+			// typ = 'f64' // TODO 
 		}
-	case FLOAT:
-		// TODO remove float 
-		typ = 'float'
-		// typ = 'f64'
-		// p.gen('(f64)$p.lit')
-		p.gen('$p.lit')
+		p.gen(p.lit)
 		p.fgen(p.lit)
 	case MINUS:
 		p.gen('-')
@@ -2101,8 +2094,7 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	case 'byte': return '%d'
 	case 'bool': return '%d'
 	case 'u32': return '%d'
-	case 'float': return '%f'
-	case 'double', 'f64': return '%f'
+	case 'double', 'f64', 'f32': return '%f'
 	case 'i64': return '%lld'
 	case 'byte*': return '%s'
 		// case 'array_string': return '%s'
@@ -3133,30 +3125,34 @@ fn is_compile_time_const(s string) bool {
 
 // fmt helpers
 fn (scanner mut Scanner) fgen(s string) {
+/* 
 	if scanner.fmt_line_empty {
 		s = repeat_char(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.write(s)
 	scanner.fmt_line_empty = false
+*/ 
 }
 
 fn (scanner mut Scanner) fgenln(s string) {
+/* 
 	if scanner.fmt_line_empty {
 		s = repeat_char(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.writeln(s)
 	scanner.fmt_line_empty = true
+*/ 
 }
 
 fn (p mut Parser) fgen(s string) {
-	p.scanner.fgen(s)
+	//p.scanner.fgen(s)
 }
 
 fn (p mut Parser) fspace() {
-	p.fgen(' ')
+	//p.fgen(' ')
 }
 
 fn (p mut Parser) fgenln(s string) {
-	p.scanner.fgenln(s)
+	//p.scanner.fgenln(s)
 }
 

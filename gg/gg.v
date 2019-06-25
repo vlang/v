@@ -148,7 +148,7 @@ pub fn new_context(cfg Cfg) *GG {
 	return ctx
 }
 
-pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 float, c gx.Color) {
+pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	// println('draw_triangle $x1,$y1 $x2,$y2 $x3,$y3')
 	ctx.shader.use()
 	ctx.shader.set_color('color', c)
@@ -173,7 +173,7 @@ pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 float, c gx.Color) {
 	gl.draw_arrays(GL_TRIANGLES, 0, 3)
 }
 
-pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 float, c gx.Color) {
+pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	ctx.shader.use()
 	ctx.shader.set_color('color', c)
 	ctx.shader.set_int('has_texture', 1)
@@ -198,7 +198,7 @@ pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 float, c gx.Color) {
 	gl.draw_elements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0)
 }
 
-fn (ctx &GG) draw_rect(x, y, w, h float, c gx.Color) {
+fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	// println('gg.draw_rect($x,$y,$w,$h)')
 	// wrong order
 	// // ctx.draw_triangle(x, y, x + w, y, x + w, y + h, c)
@@ -231,7 +231,7 @@ fn (ctx mut GG) init_rect_vao() {
 	gl.set_ebo(ebo, indices, GL_STATIC_DRAW)
 } 
 */
-fn (ctx &GG) draw_rect2(x, y, w, h float, c gx.Color) {
+fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	C.glDeleteBuffers(1, &ctx.VAO)
 	C.glDeleteBuffers(1, &ctx.VBO)
 	ctx.shader.use()
@@ -396,10 +396,10 @@ fn new_context_text(cfg Cfg, scale int) *GG {
 	VBO := gl.gen_buffer()
 	gl.bind_vao(VAO)
 	gl.bind_buffer(GL_ARRAY_BUFFER, VBO)
-	// # glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+	// # glBufferData(GL_ARRAY_BUFFER, sizeof(GLf32) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
 	gl.enable_vertex_attrib_array(0)
 	gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
-	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLfloat), 0);
+	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLf32), 0);
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
 	// # glBindVertexArray(0);
 	mut ctx := &GG {
@@ -432,7 +432,7 @@ fn (ctx mut GG) init_utf8_runes() {
 	}
 }
 
-// fn (ctx &GG) render_text(text string, x, y, scale float, color gx.Color) {
+// fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
 pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	// dont draw non ascii for now
 	/* 
@@ -477,11 +477,11 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		width := utext.len * 7
 		_x -= width + 10
 	}
-	x := float(_x) * ctx.scale// float(2)
+	x := f32(_x) * ctx.scale// f32(2)
 	// println('y=$_y height=$ctx.height')
 	// _y = _y * int(ctx.scale) //+ 26
 	_y = _y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y := float(ctx.height - _y)
+	y := f32(ctx.height - _y)
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()
@@ -521,10 +521,10 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		// s := 'A'
 		// c := int(s[0])
 		// ch := ctx.chars[c]
-		xpos := x + float(ch.bearing.x) * 1
-		ypos := y - float(ch.size.y - ch.bearing.y) * 1
-		w := float(ch.size.x) * 1
-		h := float(ch.size.y) * 1
+		xpos := x + f32(ch.bearing.x) * 1
+		ypos := y - f32(ch.size.y - ch.bearing.y) * 1
+		w := f32(ch.size.x) * 1
+		h := f32(ch.size.y) * 1
 		// Update VBO for each character
 		# GLfloat vertices[6][4] = {
 		# { xpos,     ypos + h,   0.0, 0.0 },
@@ -656,7 +656,7 @@ pub fn (ctx &GG) draw_line_c(x, y, x2, y2 int, color gx.Color) {
 	C.glDeleteBuffers(1, &ctx.VBO)
 	ctx.shader.use()
 	ctx.shader.set_color('color', color)
-	vertices := [float(x), float(y), float(x2), float(y2)] !
+	vertices := [f32(x), f32(y), f32(x2), f32(y2)] !
 	gl.bind_vao(ctx.VAO)
 	gl.set_vbo(ctx.VBO, vertices, GL_STATIC_DRAW)
 	gl.vertex_attrib_pointer(0, 2, GL_FLOAT, false, 2, 0)
@@ -673,8 +673,8 @@ pub fn (c &GG) draw_vertical(x, y, height int) {
 	c.draw_line(x, y, x, y + height)
 }
 
-// fn (ctx &GG) draw_image(x, y, w, h float, img stbi.Image) {
-pub fn (ctx &GG) draw_image(x, y, w, h float, tex_id u32) {
+// fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
+pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	// println('DRAW IMAGE $x $y $w $h $tex_id')
 	ctx.shader.use()
 	// ctx.shader.set_color('color', c)

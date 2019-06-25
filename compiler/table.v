@@ -97,8 +97,8 @@ fn (f Fn) str() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	NUMBER_TYPES = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'long', 'double', 'float', 'f32', 'f64']
-	FLOAT_TYPES  = ['double', 'float', 'f32', 'f64']
+	NUMBER_TYPES = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'long', 'double', 'f32', 'f64']
+	FLOAT_TYPES  = ['double', 'f32', 'f64']
 )
 
 fn is_number_type(typ string) bool {
@@ -130,7 +130,6 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('byteptr')
 	t.register_type('intptr')
 	t.register_type('double')// TODO remove
-	t.register_type('float')// TODO remove
 	t.register_type('f32')
 	t.register_type('f64')
 	t.register_type('rune')
@@ -421,16 +420,16 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 		return true
 	}
 	// Allow ints to be used as floats
-	if got.eq('int') && expected.eq('float') {
+	if got == 'int' && expected == 'f32' {
 		return true
 	}
-	if got.eq('int') && expected.eq('f64') {
+	if got == 'int' && expected == 'f64' {
 		return true
 	}
-	if got == 'f64' && expected == 'float' {
+	if got == 'f64' && expected == 'f32' {
 		return true
 	}
-	if got == 'float' && expected == 'f64' {
+	if got == 'f32' && expected == 'f64' {
 		return true
 	}
 	// Allow ints to be used as longs

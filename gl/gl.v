@@ -33,7 +33,7 @@ pub fn viewport(a int, b int, c int, d int) {
 }
 
 pub fn clear_color(r, g, b, a int) {
-	# glClearColor(((float)r)/255.0,((float)g)/255.0,b/255.0, a/255.0);
+	# glClearColor(((f32)r)/255.0,((f32)g)/255.0,b/255.0, a/255.0);
 }
 
 pub fn clear() {
@@ -132,14 +132,14 @@ pub fn buffer_data_int(typ int, vertices[]int, draw_typ int) {
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
-pub fn buffer_data_float(typ int, vertices[]float, draw_typ int) {
-	size := sizeof(float) * vertices.len
+pub fn buffer_data_f32(typ int, vertices[]f32, draw_typ int) {
+	size := sizeof(f32) * vertices.len
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
-pub fn set_vbo(vbo u32, vertices[]float, draw_typ int) {
+pub fn set_vbo(vbo u32, vertices[]f32, draw_typ int) {
 	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
-	gl.buffer_data_float(GL_ARRAY_BUFFER, vertices, draw_typ)
+	gl.buffer_data_f32(GL_ARRAY_BUFFER, vertices, draw_typ)
 }
 
 pub fn set_ebo(ebo u32, indices[]int, draw_typ int) {
@@ -182,8 +182,8 @@ pub fn gen_buffer() u32 {
 
 pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, stride int, ptr int) {
 	if typ == GL_FLOAT {
-		stride *= sizeof(float)
-		ptr *= sizeof(float)
+		stride *= sizeof(f32)
+		ptr *= sizeof(f32)
 	}
 	C.glVertexAttribPointer(index, size, typ, normalized, stride, ptr)
 }
