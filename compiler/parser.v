@@ -501,7 +501,7 @@ fn (p mut Parser) struct_decl() {
 				is_method: true
 				receiver_typ: name
 			}
-			println('is interfaace. field=$field_name run=$p.run')
+			println('is interface. field=$field_name run=$p.run')
 			p.fn_args(mut interface_method)
 			p.fspace()
 			interface_method.typ = p.get_type()// method return type
