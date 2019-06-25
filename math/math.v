@@ -94,11 +94,11 @@ fn pow(a, b f64) f64 {
 }
 
 fn radians(degrees f64) f64 {
-	return degrees * (PI / 180.0)
+	return degrees * (Pi / 180.0)
 }
 
 fn degrees(radians f64) f64 {
-	return radians * (180.0 / PI)
+	return radians * (180.0 / Pi)
 }
 
 fn round(f f64) f64 {
