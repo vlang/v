@@ -1925,10 +1925,6 @@ fn (p mut Parser) factor() string {
 	switch tok {
 	case INT:
 		typ = 'int'
-		// typ = 'number'
-		if p.lit.starts_with('u') {
-			typ = 'long'
-		}
 		if p.lit.contains('.') || p.lit.contains('e') {
 			typ = 'f32'
 			// typ = 'f64' // TODO 
@@ -2087,14 +2083,13 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	switch typ {
 	case 'string': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'long': return '%ld'
 	case 'byte': return '%d'
 	case 'int': return '%d'
 	case 'char': return '%d'
 	case 'byte': return '%d'
 	case 'bool': return '%d'
 	case 'u32': return '%d'
-	case 'double', 'f64', 'f32': return '%f'
+	case 'f64', 'f32': return '%f'
 	case 'i64': return '%lld'
 	case 'byte*': return '%s'
 		// case 'array_string': return '%s'

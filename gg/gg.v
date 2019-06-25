@@ -268,7 +268,7 @@ fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 
 // jfn ft_load_char(face FT_Face, code FT_ULong) Character {
 // fn ft_load_char(_face voidptr, _code voidptr) Character {
-fn ft_load_char(_face Face, code long) Character {
+fn ft_load_char(_face Face, code i64) Character {
 	// #FT_Face face = *(FT_Face*)(_face); FT_ULong code = *(FT_ULong*)(code);
 	# FT_Face face = *((FT_Face*)_face.cobj);
 	# if (FT_Load_Char(face, code, FT_LOAD_RENDER))
@@ -374,7 +374,7 @@ fn new_context_text(cfg Cfg, scale int) *GG {
 		// ch:=ft_load_char(face, c)
 		// # ch =gg__ft_load_char(&face, &c);
 		// ////////////////////////////////
-		mut ch := ft_load_char(f, long(c))
+		mut ch := ft_load_char(f, i64(c))
 		// s := utf32_to_str(uint(0x043f))
 		// s := 'п'
 		// ch = ft_load_char(f, s.utf32_code())
