@@ -121,6 +121,23 @@ fn (nn i64) str() string {
 	return tos(buf + max - len, len)
 }
 
+fn (nn u64) str() string {
+	mut n = nn
+	if n == u64(0) {
+		return '0'
+	}
+	mut len := 0
+	max := 32
+	mut buf := malloc(max)
+	for n > u64(0) {
+		d := int(n % u64(10))
+		buf[max - len - 1] = d + int(`0`)
+		len++
+		n = n / u64(10)
+	}
+	return tos(buf + max - len, len)
+}
+
 fn (b bool) str() string {
 	if b {
 		return 'true'
