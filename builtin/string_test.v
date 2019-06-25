@@ -251,16 +251,16 @@ fn test_arr_contains() {
 
 fn test_to_num() {
 	s := '7'
-	assert s.to_i() == 7
+	assert s.int() == 7
 	f := '71.5 hasdf'
-	assert f.to_float() == 71.5
+	assert f.f32() == 71.5
 	b := 1.52345
 	mut a := '${b:.03f}'
 	assert a == '1.523'
 	num := 7
 	a = '${num:03d}'
 	vals := ['9']
-	assert vals[0].to_i() == 9
+	assert vals[0].int() == 9
 }
 
 fn test_hash() {
@@ -289,4 +289,4 @@ fn test_all_after() {
 	s := 'fn hello'
 	q := s.all_after('fn ')
 	assert q == 'hello'
-}
+

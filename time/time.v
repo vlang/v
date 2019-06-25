@@ -260,12 +260,12 @@ pub fn parse(s string) Time {
 	second := hms[2]
 	// //////////
 	return new_time(Time {
-		year: ymd[0].to_i()
-		month: ymd[1].to_i()
-		day: ymd[2].to_i()
-		hour: hour.to_i()
-		minute: minute.to_i()
-		second: second.to_i()
+		year: ymd[0].int()
+		month: ymd[1].int()
+		day: ymd[2].int()
+		hour: hour.int()
+		minute: minute.int()
+		second: second.int()
 	})
 }
 
