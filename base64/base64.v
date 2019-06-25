@@ -37,14 +37,16 @@ fn decode(data string) string {
 	}
 	if pad > 0 {
 		mut nn := (Index[p[L]] << 18) | (Index[p[L + 1]] << 12)
-		str[str_len - 1] = nn >> 16
+		str[j] = nn >> 16
+		j++
 		if len > L + 2 && p[L + 2] != `=` {
 			nn = nn | (Index[p[L + 2]] << 6)
-			str[str_len] = nn >> 8 & 0xff
+			str[j] = nn >> 8 & 0xff
+			j++
 		}
 	}
-	str[str_len + 1] = `\0`
-	return tos(str, str_len+2)
+	str[j] = `\0`
+	return tos(str, j)
 }
 
 const (
