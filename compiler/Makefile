@@ -1,4 +1,4 @@
-all: v vc
+all: v
 
 v: vc
 	./vc -o v .
