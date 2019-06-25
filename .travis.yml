@@ -12,3 +12,4 @@ script:
   - export VROOT=$(pwd)
   - cd ./compiler
   - make
+  - make test
