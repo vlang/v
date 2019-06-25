@@ -138,7 +138,6 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
-// Casting to numbers (integers and floats)
 fn (s string) to_i() int {
 	return C.atoi(s.str)
 }
@@ -149,18 +148,6 @@ fn (s string) int() int {
 
 fn (s string) i32() int {
 	return s.to_i()
-}
-
-fn (s string) to_float() float {
-	return C.atof(s.str)
-}
-
-fn (s string) float() float {
-	return s.to_float()
-}
-
-fn (s string) f32() float {
-	return s.to_float()
 }
 
 // ==
