@@ -692,6 +692,12 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			T := p.table.find_type(typ)
 			if typ == 'u8' {
 				p.cgen.set_placeholder(amp_ph, 'u8_str(')
+			}	
+			else if typ == 'u64' {
+				p.cgen.set_placeholder(amp_ph, 'u64_str(')
+			}
+			else if typ == 'u32' {
+				p.cgen.set_placeholder(amp_ph, 'i64_str(')
 			}
 			else if T.parent == 'int' {
 				p.cgen.set_placeholder(amp_ph, 'int_str(')
