@@ -349,23 +349,36 @@ pub fn (s string) substr(start, end int) string {
 	return res
 }
 
+// KMP search
 pub fn (s string) index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && s[ii] == p[j] {
+	mut prefix := [0]
+	mut j := 0
+	for i := 1; i < p.len; i++ {
+		for p[j] != p[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == p[i] {
 			j++
-			ii++
+		}
+		prefix << j
+	}
+	j = 0
+	for i := 0; i < s.len; i++ {
+		for p[j] != s[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == s[i] {
+			j++
 		}
 		if j == p.len {
-			return i
+			prefix.free()
+			return i - p.len + 1
 		}
-		i++
 	}
+	prefix.free()
 	return -1
 }
 
