@@ -1,0 +1,15 @@
+sudo: required
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    packages:
+    - gcc-5
+    - g++-5
+    - make
+script:
+  - sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
+  - mkdir ~/code && cd ~/code
+  - git clone https://github.com/vlang/v.git
+  - cd v/compiler
+  - make
