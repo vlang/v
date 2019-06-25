@@ -79,17 +79,17 @@ make
 
 # Or build without make:
 wget https://vlang.io/v.c   # Download the V compiler's source translated to C
-cc -std=gnu11 -w -o vc v.c  # Build it with Clang or GCC
-./vc -o v . && rm vc        # Use the resulting V binary to build V from V source, delete the old compiler
-./v -o v .                  # Bootstrap the compiler to make sure it works
+mkdir -p bin && cc -std=gnu11 -w -o bin/vc v.c  # Build it with Clang or GCC
+./bin/vc -o bin/v . && rm bin/vc        # Use the resulting V binary to build V from V source, delete the old compiler
+./bin/v -o bin/v .                  # Bootstrap the compiler to make sure it works
 ```
 
-That's it! Now you have a V executable at `v/compiler/v`.
+That's it! Now you have a V executable at `v/compiler/bin/v`.
 
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s ~/code/v/compiler/v /usr/local/bin/v
+sudo ln -s ~/code/v/compiler/bin/v /usr/local/bin/v
 ```
 
 ### Windows
