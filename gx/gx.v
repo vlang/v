@@ -11,20 +11,34 @@ pub:
 	b int
 }
 
-const (
-	BLUE      = Color { r: 60, g: 126, b: 197 }
-	Blue      = Color { r: 60, g: 126, b: 197 }
-	BlueLite  = Color { r: 226, g: 233, b: 241 }
-	BLACK     = Color { r: 0, g: 0, b: 0 }
-	WHITE     = Color { r: 255, g: 255, b: 255 }
-	GRAY      = Color { r: 223, g: 223, b: 223 }
-	GRAY_DARK = Color { r: 150, g: 150, b: 150 }
-	GRAY_LITE = Color { r: 245, g: 245, b: 245 }
-	BLUE_LITE = Color { r: 226, g: 233, b: 241 }
-	ORANGE    = Color { r: 255, g: 140, b: 0 }
-	GREEN     = Color { r: 0, g: 140, b: 0 }
-	RED       = Color { r: 140, g: 0, b: 0 }
-	YELLOW    = Color { r: 255, g: 255, b: 0 }
+const (	
+	// Primary colors
+	Blue   = Color { r: 0, g: 0, b: 255 }
+	Red    = Color { r: 255, g: 0, b: 0 }
+	Yellow = Color { r: 255, g: 255, b: 0 }
+	
+	// Secondary colors
+	Green  = Color { r: 0, g: 255, b: 0 }
+	Orange = Color { r: 255, g: 165, b: 0 }
+	Purple = Color { r: 128, g: 0, b: 128 }
+	
+	// Other
+	Black  = Color { r: 0, g: 0, b: 0 }
+	Gray   = Color { r: 128, g: 128, b: 128 }
+	Indigo = Color { r: 75, g: 0, b: 130 }
+	Pink   = Color { r: 255, g: 192, b: 203 }
+	Violet = Color { r: 238, g: 130, b: 238 }
+	White  = Color { r: 255, g: 255, b: 255 }
+	
+	// Shades
+	DarkBlue   = Color { r: 0, g: 0, b: 139 }
+	DarkGray   = Color { r: 169, g: 169, b: 169 }
+	DarkGreen  = Color { r: 0, g: 100, b: 0 }
+	DarkRed    = Color { r: 139, g: 0, b: 0 }
+	LightBlue  = Color { r: 173, g: 216, b: 230 }
+	LightGray  = Color { r: 211, g: 211, b: 211 }
+	LightGreen = Color { r: 144, g: 238, b: 144 }
+	LightRed   = Color { r: 255, g: 204, b: 203 }
 )
 
 const (

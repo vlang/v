@@ -138,14 +138,12 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
-// TODO `.int()` ?
-pub fn (s string) to_i() int {
+fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
-// TODO `.f32()`
-fn (s string) to_float() float {
-	return C.atof(s.str)
+fn (s string) f32() f32 {
+	return C.atof(s.str) 
 }
 
 // ==
@@ -586,7 +584,7 @@ fn compare_strings_by_len(a, b *string) int {
 
 fn compare_lower_strings(a, b *string) int {
 	aa := a.to_lower()
-	bb := a.to_lower()
+	bb := b.to_lower()
 	return compare_strings(aa, bb)
 }
 

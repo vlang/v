@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.1.0'
+	Version = '0.1.2'
 )
 
 // TODO no caps
@@ -84,6 +84,7 @@ mut:
 	out_name   string // "program.exe"
 	is_prod    bool // use "-O2" and skip printlns (TODO I don't thik many people want printlns to disappear in prod buidls)
 	is_repl    bool
+	vroot      string
 }
 
 fn main() {
@@ -759,12 +760,31 @@ fn new_v(args[]string) *V {
 	'option.v',
 	'string_builder.v',
 	]
-	// Location of all vlib files  TODO allow custom location
-	mut lang_dir = os.home_dir() + '/code/v/'
-	if !os.dir_exists(lang_dir) {
-		println('$lang_dir not found. Run:')
-		println('git clone https://github.com/vlang/v ~/code/v') 
-		exit(1) 
+	// Location of all vlib files
+	mut lang_dir = ''
+	// First try fetching it from VROOT if it's defined
+	vroot_path := TmpPath + '/VROOT'
+	if os.file_exists(vroot_path) {
+		vroot := os.read_file(vroot_path).trim_space()
+		if os.dir_exists(vroot) && os.dir_exists(vroot + '/builtin') {
+			lang_dir = vroot
+		}
+	}
+	// no "~/.vlang/VROOT" file, so the user must be running V for the first 
+	// time.
+	if lang_dir == ''  {
+		println('Looks like you are running V for the first time.')
+		// The parent directory should contain vlib if V is run
+		// from "v/compiler"
+		cur_dir := os.getwd()
+		lang_dir = cur_dir.all_before_last('/')
+		if os.dir_exists('$lang_dir/builtin') {
+			println('Setting VROOT to "$lang_dir".')
+			os.write_file(TmpPath + '/VROOT', lang_dir)
+		} else {
+			println('Please do it from "v/compiler" directory.')
+			exit(1) 
+		}
 	} 
 	out_name_c := out_name.all_after('/') + '.c'
 	mut files := []string
@@ -806,6 +826,7 @@ fn new_v(args[]string) *V {
 		build_mode: build_mode
 		is_run: args.contains('run')
 		is_repl: args.contains('-repl')
+		vroot: lang_dir
 	}
 }
 

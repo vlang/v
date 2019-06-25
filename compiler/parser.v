@@ -70,6 +70,7 @@ mut:
 	calling_c      bool
 	cur_fn         *Fn
 	returns        bool
+	vroot          string
 }
 
 const (
@@ -99,6 +100,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		build_mode: c.build_mode
 		is_repl: c.is_repl
 		run: run
+		vroot: c.vroot
 	}
 	p.next()
 	// p.scanner.debug_tokens()
@@ -457,10 +459,11 @@ fn (p mut Parser) struct_decl() {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
 			}
 			is_pub = true
-			is_mut = false
 			p.scanner.fmt_indent--
 			p.check(PUB)
-			p.check(COLON)
+			if p.tok != MUT {
+				p.check(COLON)
+			}
 			p.scanner.fmt_indent++
 			p.fgenln('')
 		}
@@ -469,10 +472,11 @@ fn (p mut Parser) struct_decl() {
 				p.error('structs can only have one `mut:`, all private mutable fields have to be grouped')
 			}
 			is_mut = true
-			is_pub = false
 			p.scanner.fmt_indent--
 			p.check(MUT)
-			p.check(COLON)
+			if p.tok != MUT {
+				p.check(COLON)
+			}
 			p.scanner.fmt_indent++
 			p.fgenln('')
 		}
@@ -1014,10 +1018,15 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		if is_str {
 			p.gen('= string_add($v.name, ')// TODO can't do `foo.bar += '!'`
 		}
-		else {
+		else if !is_map {
 			p.gen(' += ')
 		}
-	default: p.gen(' ' + p.tok.str() + ' ')
+	default:
+		if 	tok != MINUS_ASSIGN 					&& tok != MULT_ASSIGN					&& tok != XOR_ASSIGN
+		 && tok != MOD_ASSIGN							&& tok != AND_ASSIGN 					&& tok != OR_ASSIGN
+		 && tok != RIGHT_SHIFT_ASSIGN 		&& tok != LEFT_SHIFT_ASSIGN 	&& tok != DIV_ASSIGN {
+			p.gen(' ' + p.tok.str() + ' ')
+		}
 	}
 	p.fgen(' ' + p.tok.str() + ' ')
 	p.next()
@@ -2603,7 +2612,7 @@ fn (p mut Parser) chash() {
 			pos := flag.index(' ')
 			flag = flag.right(pos)
 		}
-		flag = flag.trim_space()
+		flag = flag.trim_space().replace('@VROOT', p.vroot)
 		if p.table.flags.contains(flag) {
 			return
 		}

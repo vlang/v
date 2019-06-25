@@ -133,13 +133,23 @@ fn (m map) get(key string, out voidptr) bool {
 	return false
 }
 
+fn (m map) exists(key string) bool {
+	for i := 0; i < m.entries.len; i++ {
+		entry := m.entries[i]
+		if entry.key == key {
+			return true
+		}
+	}
+	return false
+}
+
 fn (m map) print() {
 	println('<<<<<<<<')
 	for i := 0; i < m.entries.len; i++ {
 		// entry := m.entries[i]
 		// println('$entry.key => $entry.val')
 	}
-	/* 
+	/*
 	for i := 0; i < m.cap * m.element_size; i++ {
 		b := m.table[i]
 		print('$i: ')
@@ -169,4 +179,3 @@ fn (m map_string) str() string {
 	s += '}'
 	return s
 }
-

@@ -566,7 +566,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 
 fn (ctx &GG) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
-		color: gx.BLACK,
+		color: gx.Black,
 		size: DEFAULT_FONT_SIZE,
 		align: gx.ALIGN_LEFT,
 	}
@@ -666,7 +666,7 @@ pub fn (ctx &GG) draw_line_c(x, y, x2, y2 int, color gx.Color) {
 }
 
 pub fn (c &GG) draw_line(x, y, x2, y2 int) {
-	c.draw_line_c(x, y, x2, y2, gx.GRAY)
+	c.draw_line_c(x, y, x2, y2, gx.Gray)
 }
 
 pub fn (c &GG) draw_vertical(x, y, height int) {
