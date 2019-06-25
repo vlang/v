@@ -235,7 +235,9 @@ typedef map map_string;
 byteptr g_str_buf; 
 int load_so(byteptr);
 void reload_so();
-void init_consts();')
+void init_consts();
+void release_consts();
+')
 	imports_json := c.table.imports.contains('json')
 	// TODO remove global UI hack
 	if c.os == MAC && ((c.build_mode == EMBED_VLIB && c.table.imports.contains('ui')) ||
@@ -301,6 +303,7 @@ void init_consts();')
 	if c.build_mode == DEFAULT_MODE || c.build_mode == EMBED_VLIB {
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() { g_str_buf=malloc(1000); ${cgen.consts_init.join_lines()} }')
+		cgen.genln('void release_consts() { free(g_str_buf); ${cgen.consts_release.join_lines()} }')
 		// _STR function can't be defined in vlib
 		cgen.genln('
 string _STR(const char *fmt, ...) {
@@ -357,6 +360,7 @@ string _STR_TMP(const char *fmt, ...) {
 					cgen.genln('$v.name();')
 				}
 			}
+			cgen.genln('release_consts();')
 			cgen.genln('return g_test_ok == 0; }')
 		}
 	}

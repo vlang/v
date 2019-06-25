@@ -5,29 +5,30 @@
 module main
 
 struct CGen {
-	out          os.File
-	out_path     string
-	typedefs     []string
-	type_aliases []string
-	includes     []string
-	types        []string
-	thread_args  []string
-	thread_fns   []string
-	consts       []string
-	fns          []string
-	so_fns       []string
-	consts_init  []string
-	lines        []string
-	is_user      bool
+	out             os.File
+	out_path        string
+	typedefs        []string
+	type_aliases    []string
+	includes        []string
+	types           []string
+	thread_args     []string
+	thread_fns      []string
+	consts          []string
+	fns             []string
+	so_fns          []string
+	consts_init     []string
+	consts_release  []string
+	lines           []string
+	is_user         bool
 mut:
-	run          Pass
-	nogen        bool
-	tmp_line     string
-	cur_line     string
-	prev_line    string
-	is_tmp       bool
-	fn_main      string
-	stash        string
+	run             Pass
+	nogen           bool
+	tmp_line        string
+	cur_line        string
+	prev_line       string
+	is_tmp          bool
+	fn_main         string
+	stash           string
 }
 
 fn new_cgen(out_name_c string) *CGen {
