@@ -18,7 +18,7 @@ pub:
 	uni    int // TODO it's safe to use "unix" now
 }
 
-fn asfd() {
+fn remove_me_when_c_bug_is_fixed() { // TODO 
 }
 
 struct C.tm {
