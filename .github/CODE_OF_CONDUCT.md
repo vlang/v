@@ -1,3 +1,5 @@
+# V Community Code of Conduct
+
 ## About
 Online communities include people from many different backgrounds. The V contributors are committed to providing a friendly, safe and welcoming environment for all, regardless of gender identity and expression, sexual orientation, disabilities, neurodiversity, physical appearance, body size, ethnicity, nationality, race, age, religion, or similar personal characteristics.
 
