@@ -7,5 +7,8 @@ v: v.c
 v.c:
 	wget https://raw.githubusercontent.com/vlang/vc/master/v.c
 
+test:
+	find .. -name '*_test.v' | xargs v {}
+
 clean:
 	-rm vc v.c
