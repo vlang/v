@@ -28,6 +28,12 @@ V 1.0 release is planned for December 2019.
 
 GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn't support the language yet.
 
+The compilation is temporarily slower for this relase:
+
+- Debug builds are used (use `v -prod -o v` to get faster compilation).
+- The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
+- There are a lot of known issues that are quick to fix (like function lookups being O(n)).
+
 ## Code Structure
 
 I tried making the code of the compiler and vlib as simple and readable as possible. One of V's goals is to be open to developers with different levels of experience in compiler development. Compilers don't need to be black boxes full of magic that only few people understand.
