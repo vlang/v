@@ -345,10 +345,10 @@ fn (p mut Parser) fn_decl() {
 		p.genln('init_consts();')
 		if p.table.imports.contains('os') {
 			if f.name == 'main' {
-				p.genln('os__init_os_args(argc, argv);')
+				p.genln('os__args = os__init_os_args(argc, argv);')
 			}
 			else if f.name == 'WinMain' {
-				p.genln('os__parse_windows_cmd_line(pCmdLine);')
+				p.genln('os__args = os__parse_windows_cmd_line(pCmdLine);')
 			}
 		}
 		// We are in live code reload mode, call the .so loader in bg

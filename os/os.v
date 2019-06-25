@@ -21,24 +21,21 @@ import const (
 	SEEK_END
 )
 
-fn init_os_args(argc int, c voidptr) []string {
+fn init_os_args(argc int, _argv *byteptr) []string {
 	mut args := []string
-	# char** argv = (char**) c;
+	# char** argv = (char**) _argv;
 	for i := 0; i < argc; i++ {
-		// # printf("ARG %d = '%s'\n", i, argv[i]);
 		arg := ''
-		# arg = tos(argv[i], strlen(argv[i]));
+		//arg := tos(argv[i], strlen(argv[i])) 
+		# arg = tos((char**)(argv[i]), strlen((char**)(argv[i])));
 		args << arg
 	}
-	# os__args = args;
 	return args
 }
 
-fn parse_windows_cmd_line(cmd byteptr) {
+fn parse_windows_cmd_line(cmd byteptr) []string {
 	s := tos2(cmd)
-	vals := s.split(' ')
-	println(vals)
-	# os__args = vals;
+	return s.split(' ')
 }
 
 fn C.ftell(fp voidptr) int

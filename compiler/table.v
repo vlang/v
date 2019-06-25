@@ -453,6 +453,9 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	if got.eq('int') && expected.eq('byte') {
 		return true
 	}
+	if got.eq('byteptr') && expected.eq('byte*') {
+		return true
+	}
 	if got.eq('int') && expected.eq('byte*') {
 		return true
 	}
