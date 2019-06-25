@@ -84,6 +84,10 @@ pub fn file_size(path string) int {
 	return 0
 }
 
+pub fn mv(old, new string) {
+	C.rename(old.cstr(), new.cstr()) 
+} 
+
 pub fn file_last_mod_unix(path string) int {
 	# struct stat attr;
 	# stat(path.str, &attr);
