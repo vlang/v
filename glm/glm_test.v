@@ -6,7 +6,7 @@ import os
 import gl
 import gg
 
-fn cmp(a, b float) bool {
+fn cmp(a, b f32) bool {
 	return int(a * 1000) == int(b * 1000)
 }
 

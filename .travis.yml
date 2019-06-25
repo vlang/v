@@ -1,14 +1,25 @@
-sudo: required
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-    - gcc-5
-    - g++-5
-    - make
+language: c
+matrix:
+  include:
+    - os: linux
+      sudo: required
+      addons:
+        apt:
+          sources:
+          - ubuntu-toolchain-r-test
+          packages:
+          - gcc-5
+          - g++-5
+          - make
+    - os: osx
+      osx_image: xcode10.2
+      env:
+        - MATRIX_EVAL="brew install glm freetype cjson glfw"
 script:
-  - sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
+    fi
   - export VROOT=$(pwd)
   - cd ./compiler
   - make
