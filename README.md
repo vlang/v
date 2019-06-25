@@ -48,6 +48,8 @@ https://github.com/vlang/v/blob/master/CodeStructure.md
 
 ### Linux and macOS
 
+You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
+
 ```bash
 # You can clone V anywhere
 git clone https://github.com/vlang/v
