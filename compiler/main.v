@@ -763,7 +763,7 @@ fn new_v(args[]string) *V {
 	// Location of all vlib files  TODO allow custom location
 	vroot := os.getenv('VROOT')
 	default_vroot := os.home_dir() + '/code/v/'
-	mut lang_dir = if v_path == '' {
+	mut lang_dir = if vroot == '' {
 		os.setenv('VROOT', default_vroot, false)
 		default_vroot
 	} else {
