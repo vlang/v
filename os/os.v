@@ -315,6 +315,18 @@ pub fn getenv(key string) string {
 	return tos2(s)
 }
 
+pub fn setenv(name string, value string, overwrite bool) int {
+  return C.setenv(name.cstr(), value.cstr(), overwrite)
+}
+
+pub fn unsetenv(name string) int {
+  return C.unsetenv(name.cstr())
+}
+
+pub fn clearenv() {
+  C.clearenv()
+}
+
 fn exit(code int) {
 	C.exit(code)
 }
