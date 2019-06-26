@@ -10,8 +10,6 @@ import gg
 import glfw
 import math
 
-asdf
-
 const (
 	BlockSize = 20 // pixels
 	FieldHeight = 20 // # of blocks
