@@ -161,26 +161,33 @@ fn (p mut Parser) parse() {
 			}
 		case ENUM:
 			p.next()
-			if p.tok == NAME {
-				p.fgen('enum ')
-				name := p.check_name()
-				p.fgen(' ')
-				p.enum_decl(name)
-			}
 			// enum without a name, only allowed in code, translated from C
 			// it's a very bad practice in C as well, but is used unfortunately (for example, by DOOM)
 			// such fields are basically int consts
-			else if p.translated {
+			if p.translated && p.tok != NAME {
 				p.enum_decl('int')
 			}
 			else {
-				p.check(NAME)
+				name := p.check_name()
+				p.fgen('enum ')
+				p.fgen(' ')
+				p.enum_decl(name)
 			}
 		case PUB:
-			if p.peek() == FUNC {
+			next := p.peek()
+			if next == FUNC {
 				p.fn_decl()
 			}
-			// TODO public structs
+			else if next == STRUCT {
+				//TODO public structs
+				println('Public structs are still a todo. Code might break!')	
+			}
+			else {
+				println('parse()')
+				s := 'Expected `fn` or `struct` after `pub` token. Got ${next.str()} instead.'
+				print_backtrace()
+				p.error(s)
+			}
 		case FUNC:
 			p.fn_decl()
 		case TIP:
