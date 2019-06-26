@@ -495,7 +495,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
 	if !f.is_public && !f.is_c && f.pkg != p.pkg && f.pkg != 'builtin' {
-		p.error('$p.run function `$f.name` is private $f.is_public')
+		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
 	is_print := p.is_prod &&// Hide prints only in prod

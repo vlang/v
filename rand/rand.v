@@ -4,21 +4,11 @@
 
 module rand
 
-//#include <time.h>
-
-
-struct LOLLO {
-}
-
-fn kek() {
-}
+#include <time.h>
 
 pub fn seed() {
 	# time_t t;
 	# srand((unsigned) time(&t));
-}
-
-fn ffkek() {
 }
 
 pub fn next(max int) int {
