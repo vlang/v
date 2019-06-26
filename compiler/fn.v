@@ -706,6 +706,19 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			else {
 				// Make sure this type has a `str()` method
 				if !T.has_method('str') {
+					if ((*T).fields.len > 0) {
+						mut index := p.cgen.cur_line.len - 1
+						for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
+						name := p.cgen.cur_line.right(index + 1)
+						if name == '}' {
+							p.error('`$typ` needs to have method `str() string` to be printable')
+						}
+						p.cgen.cur_line = p.cgen.cur_line.left(index)
+						p.create_type_string(*T, name)
+						p.cgen.cur_line.replace(typ, '')
+						p.next()
+						return p.fn_call_args(f)
+					}
 					p.error('`$typ` needs to have method `str() string` to be printable')
 				}
 				p.cgen.set_placeholder(amp_ph, '${typ}_str(')
