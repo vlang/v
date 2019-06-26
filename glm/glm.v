@@ -33,7 +33,7 @@ struct Vec3 {
 	z f32
 }
 
-fn vec3(x, y, z f32) Vec3 {
+pub fn vec3(x, y, z f32) Vec3 {
 	res := Vec3 {
 		x: x,
 		y: y,

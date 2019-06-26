@@ -143,7 +143,7 @@ fn (s string) int() int {
 }
 
 fn (s string) f32() f32 {
-	return C.atof(s.str) 
+	return C.atof(s.str)
 }
 
 // ==
@@ -332,7 +332,7 @@ pub fn (s string) right(n int) string {
 // puts(substr.str) will print 'rivet'
 // Avoid using C functions with these substrs!
 pub fn (s string) substr(start, end int) string {
-	/* 
+	/*
 	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
 		return ''
