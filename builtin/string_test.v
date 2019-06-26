@@ -289,4 +289,15 @@ fn test_all_after() {
 	s := 'fn hello'
 	q := s.all_after('fn ')
 	assert q == 'hello'
+}
 
+fn test_isdigit() {
+    s1 := '1234567890'
+    assert  s1.is_digit() == true
+
+    s2 := '1234ab'
+    assert s2.is_digit() == false
+    
+    s3 := 'abcdef'
+    assert s3.is_digit() == false
+}

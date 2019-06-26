@@ -691,8 +691,26 @@ fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
+fn (s string) is_digit() bool {
+    for i:=0; i<s.len; i++ {
+        if s[i] < `0` || s[i] > `9` {
+            return false
+        }
+    }
+    return true
+}
+
 fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+}
+
+fn (s string) is_letter() bool {
+    for i:=0; i<s.len; i++ {
+    	if (s[i] < `a` || s[i] > `z`) && (s[i] < `A` || s[i] > `Z`) {
+            return false
+        }
+    }
+    return true
 }
 
 pub fn (s string) free() {
