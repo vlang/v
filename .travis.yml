@@ -14,7 +14,7 @@ matrix:
     - os: osx
       osx_image: xcode10.2
       env:
-        - MATRIX_EVAL="brew install glm freetype cjson glfw"
+        - MATRIX_EVAL="brew install freetype glfw"
 script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
