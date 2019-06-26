@@ -353,14 +353,6 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos--
 		}
 		return scan_res(HASH, hash.trim_space())
-	case `@`:
-		start := s.pos + 1
-		for s.text[s.pos] != `\n` {
-			s.pos++
-		}
-		s.line_nr++
-		at := s.text.substr(start, s.pos)
-		return scan_res(AT, at.trim_space())
 	case `>`:
 		if s.text[s.pos + 1] == `=` {
 			s.pos++
