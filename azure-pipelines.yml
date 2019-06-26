@@ -9,6 +9,9 @@ jobs:
       - script: |
           cd compiler && make && make test
         displayName: 'Build V'
+      - script: |
+        make test
+        displayName: 'Run Tests'
   - job: WindowsBuild
     pool: 
       vmImage: 'vs2017-win2016'
