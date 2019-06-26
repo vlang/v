@@ -660,9 +660,9 @@ fn (p mut Parser) error(s string) {
 		println('\n====================')
 		println('It looks like you are building V. It is being frequently updated every day.' +
 		' If you didn\'t modify the compiler\'s code, most likely there was a change that lead to this error. ')
-		println('Try to run `git pull`, that will most likely fix it.')
+		println('Try to run `git pull && make clean && make`, that will most likely fix it.')
 		println('If `git pull` doesn\'t help, re-install V from source or download a precompiled' +
-		' binary from https://vlang.io')
+		' binary from https://vlang.io.')
 		println('====================\n')
 	}
 	// p.scanner.debug_tokens()
