@@ -11,7 +11,7 @@ jobs:
           cd compiler && make
         displayName: 'Build V'
       - script: |
-          make test
+          cd compiler && make test
         displayName: 'Run Tests'
   - job: WindowsBuild
     pool: 
