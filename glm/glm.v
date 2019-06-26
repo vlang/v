@@ -134,7 +134,7 @@ fn f32_calloc(n int) *f32 {
 	return *f32(calloc(n * sizeof(f32)))
 }
 // fn translate(vec Vec3) *f32 {
-fn translate(m Mat4, v Vec3) Mat4 {
+pub fn translate(m Mat4, v Vec3) Mat4 {
 	// # return glm__mat4(myglm_translate(vec.x,vec.y,vec.z)  );
 	a := m.data
 	mut out := f32_calloc(16)
@@ -161,7 +161,7 @@ fn normalize(vec Vec3) Vec3 {
 }
 */
 // https://github.com/g-truc/glm/blob/0ceb2b755fb155d593854aefe3e45d416ce153a4/glm/ext/matrix_clip_space.inl
-fn ortho(left, right, bottom, top f32) Mat4 {
+pub fn ortho(left, right, bottom, top f32) Mat4 {
 	println('glm ortho($left, $right, $bottom, $top)')
 	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
 	n := 16
@@ -176,7 +176,7 @@ fn ortho(left, right, bottom, top f32) Mat4 {
 }
 
 // fn scale(a *f32, v Vec3) *f32 {
-fn scale(m Mat4, v Vec3) Mat4 {
+pub fn scale(m Mat4, v Vec3) Mat4 {
 	a := m.data
 	mut out := f32_calloc(16)
 	x := v.x
@@ -202,7 +202,7 @@ fn scale(m Mat4, v Vec3) Mat4 {
 }
 
 // fn rotate_z(a *f32, rad f32) *f32 {
-fn rotate_z(m Mat4, rad f32) Mat4 {
+pub fn rotate_z(m Mat4, rad f32) Mat4 {
 	a := m.data
 	mut out := f32_calloc(16)
 	s := math.sin(rad)
@@ -235,7 +235,7 @@ fn rotate_z(m Mat4, rad f32) Mat4 {
 	return mat4(out)
 }
 
-fn identity() Mat4 {
+pub fn identity() Mat4 {
 	// 1 0 0 0
 	// 0 1 0 0
 	// 0 0 1 0
@@ -250,7 +250,7 @@ fn identity() Mat4 {
 }
 
 // returns *f32 without allocation
-fn identity2(res *f32) {
+pub fn identity2(res *f32) {
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1
@@ -261,7 +261,7 @@ fn identity2(res *f32) {
 	// # gl__Shader_set_mat4(shader, tos2("projection"), f) ;
 }
 
-fn identity3() []f32 {
+pub fn identity3() []f32 {
 	res := [1.0, 0, 0, 0,
 	0, 1, 0, 0,
 	0, 0, 1, 0,

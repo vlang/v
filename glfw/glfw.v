@@ -124,10 +124,10 @@ struct Pos {
 	y int
 }
 
-// type clickfn fn (window * GLFWwindow, button, action, mods int)
-type clickfn fn (window voidptr, button, action, mods int)
+// type clickpub fn pub fn (window * GLFWwindow, button, action, mods int)
+type clickpubfn fn (window voidptr, button, action, mods int)
 
-fn init() {
+pub fn init() {
 	C.glfwInit()
 	# glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	# glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -135,17 +135,17 @@ fn init() {
 	# glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 }
 
-// fn mouse_move(w * GLFWwindow, x, y double) {
-fn mouse_move(w voidptr, x, y f64) {
+// pub fn mouse_move(w * GLFWwindow, x, y double) {
+pub fn mouse_move(w voidptr, x, y f64) {
 	// #printf("%f : %f => %d \n", x,y);
 }
 
-// fn create_window(title string, w, h int) * Window {
-fn window_hint(key, val int) {
+// pub fn create_window(title string, w, h int) * Window {
+pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
-fn create_window(c WinCfg) *Window {
+pub fn create_window(c WinCfg) *Window {
 	// TODO why i need this in stdlib? extern?
 	// # if (!gconst_init)   {  init_consts(); gconst_init = 1; }
 	// ChatsRepo
@@ -180,92 +180,92 @@ fn create_window(c WinCfg) *Window {
 	return window
 }
 
-fn (w &Window) set_title(title string) {
+pub fn (w &Window) set_title(title string) {
 	C.glfwSetWindowTitle(w.data, title.str)
 }
 
-fn (w &Window) make_context_current() {
+pub fn (w &Window) make_context_current() {
 	// ChatsRepo
 	kkk := 0
 	// println('making context current' )
 	C.glfwMakeContextCurrent(w.data)
 }
 
-fn swap_interval(interval int) {
+pub fn swap_interval(interval int) {
 	C.glfwSwapInterval(interval)
 }
 
-fn wait_events() {
+pub fn wait_events() {
 	C.glfwWaitEvents()
 }
 
-fn poll_events() {
+pub fn poll_events() {
 	C.glfwPollEvents()
 }
 
-fn (w &Window) should_close() bool {
+pub fn (w &Window) should_close() bool {
 	// ChatsRepo
 	return C.glfwWindowShouldClose(w.data)
 }
 
-fn (w &Window) swap_buffers() {
+pub fn (w &Window) swap_buffers() {
 	C.glfwSwapBuffers(w.data)
 }
 
-fn (w mut Window) onmousemove(cb voidptr) {
+pub fn (w mut Window) onmousemove(cb voidptr) {
 	C.glfwSetCursorPosCallback(w.data, cb)
 }
 
-fn (w mut Window) set_mouse_button_callback(cb voidptr) {
+pub fn (w mut Window) set_mouse_button_callback(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
 }
 
-fn (w mut Window) on_click(cb voidptr) {
+pub fn (w mut Window) on_click(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
 }
 
-fn (w &Window) set_scroll_callback(cb voidptr) {
+pub fn (w &Window) set_scroll_callback(cb voidptr) {
 	C.glfwSetScrollCallback(w.data, cb)
 }
 
-fn (w &Window) on_scroll(cb voidptr) {
+pub fn (w &Window) on_scroll(cb voidptr) {
 	C.glfwSetScrollCallback(w.data, cb)
 }
 
-fn post_empty_event() {
+pub fn post_empty_event() {
 	C.glfwPostEmptyEvent()
 }
 
-fn (w mut Window) onkeydown(cb voidptr) {
+pub fn (w mut Window) onkeydown(cb voidptr) {
 	C.glfwSetKeyCallback(w.data, cb)
 }
 
-fn (w mut Window) onchar(cb voidptr) {
+pub fn (w mut Window) onchar(cb voidptr) {
 	C.glfwSetCharModsCallback(w.data, cb)
 }
 
-fn get_time() f64 {
+pub fn get_time() f64 {
 	return C.glfwGetTime()
 }
 
-fn key_pressed(wnd voidptr, key int) bool {
+pub fn key_pressed(wnd voidptr, key int) bool {
 	# return glfwGetKey(wnd, key) == GLFW_PRESS;
 	return false
 }
 
 // TODO not mut
-fn (w mut Window) get_clipboard_text() string {
+pub fn (w mut Window) get_clipboard_text() string {
 	return tos2(C.glfwGetClipboardString(w.data))
 	// # char *c = glfwGetClipboardString(w->data);
 	// # return tos_no_len(c);
 	// return ''
 }
 
-fn (w &Window) set_clipboard_text(s string) {
+pub fn (w &Window) set_clipboard_text(s string) {
 	C.glfwSetClipboardString(w.data, s.str)
 }
 
-fn (w &Window) get_cursor_pos() Pos {
+pub fn (w &Window) get_cursor_pos() Pos {
 	x := f64(0)
 	y := f64(0)
 	C.glfwGetCursorPos(w.data, &x, &y)
@@ -275,17 +275,17 @@ fn (w &Window) get_cursor_pos() Pos {
 	}
 }
 
-fn (w &Window) user_ptr() voidptr {
+pub fn (w &Window) user_ptr() voidptr {
 	return C.glfwGetWindowUserPointer(w.data)
 }
 
-fn (w &Window) set_user_ptr(ptr voidptr) {
+pub fn (w &Window) set_user_ptr(ptr voidptr) {
 	C.glfwSetWindowUserPointer(w.data, ptr)
 }
 
-fn C.glfwGetVideoMode() C.GLFWvideoMode
+pub fn C.glfwGetVideoMode() C.GLFWvideoMode
 
-fn get_monitor_size() Size {
+pub fn get_monitor_size() Size {
 	# GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
 	// window_width = mode->width;
 	// window_height = mode->height;
@@ -297,11 +297,11 @@ fn get_monitor_size() Size {
 	return res
 }
 
-fn (size Size) str() string {
+pub fn (size Size) str() string {
 	return '{$size.width, $size.height}'
 }
 
-fn get_window_user_pointer(gwnd voidptr) voidptr {
+pub fn get_window_user_pointer(gwnd voidptr) voidptr {
 	return C.glfwGetWindowUserPointer(gwnd)
 }
 

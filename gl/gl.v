@@ -20,7 +20,7 @@ import const (
 #include "glad.h"
 #include "glad.c"
 
-fn init_glad() {
+pub fn init_glad() {
 	ok := C.gladLoadGL()
 	if !ok {
 		println('Failed to initialize glad OpenGL context')
