@@ -463,3 +463,7 @@ fn on_segfault(f voidptr) {
 	}
 }
 
+fn clear() {
+	C.printf('\x1b[2J')
+	C.printf('\x1b[H')
+}
