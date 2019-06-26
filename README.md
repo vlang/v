@@ -1,4 +1,4 @@
-# The V Programming Language 0.1.2
+# The V Programming Language 0.1.3
 
 [![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master)
 
@@ -55,15 +55,21 @@ You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't hav
 # You can clone V anywhere
 git clone https://github.com/vlang/v
 cd v/compiler
-make
+```
+Build with make:
+```bash
+make # Build it with Makefile
 ```
 Or build without make:
 ```bash
 # Download the V compiler's source translated to C
-wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
-cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
-./v -o v .                 # Use the resulting V binary to build V from V source
-./v -o v .                 # Bootstrap the compiler again to make sure it works
+curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
+cc -std=gnu11 -w -o v v.c # Build it with Clang or GCC
+./v -o v .                # Use the resulting V binary to build V from V source
+```
+After build:
+```bash
+./v -o v . # Bootstrap the compiler again to make sure it works
 ```
 
 That's it! Now you have a V executable at `v/compiler/v`.
@@ -71,7 +77,8 @@ That's it! Now you have a V executable at `v/compiler/v`.
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s ~/code/v/compiler/v /usr/local/bin/v
+# You have to replace 'path/to' with Current directory of V source, e.g. '~/code'
+sudo ln -s path/to/v/compiler/v /usr/local/bin/v
 ```
 
 ### Windows
@@ -87,7 +94,7 @@ V temporarily can't be compiled with Visual Studio. This will be fixed asap.
 ```
 $ v
 
-V 0.1.2
+V 0.1.3
 Use Ctrl-D to exit
 
 >>> println('hello world')
