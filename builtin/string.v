@@ -777,11 +777,9 @@ fn (s string) reverse() string {
 		str: malloc(s.len + 1)
 	}
 
-	mut c := 0
 	for i := s.len - 1; i >= 0; i-- {
-        res[c] = s.at(i)
-		c++
-    }
+        res[s.len-i-1] = s.at(i)
+	}
 
 	return res
 }
