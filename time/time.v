@@ -10,8 +10,8 @@ import rand
 struct Time {
 pub:
 	year   int
-	day    int
 	month  int
+	day    int
 	hour   int
 	minute int
 	second int
