@@ -4,21 +4,20 @@
 
 module time
 
-// in ms
-fn ticks() double {
-	return C.GetTickCount()
+pub fn now() Time {
+	# time_t t = time(0);
+
+	res := Time{}
+	# res.sec = t;
+	return res
 }
 
-fn sleep(seconds int) {
-	C._sleep(seconds * 1000)
+pub fn sleep(t Time) {
+	if t.sec > i64(0) || t.nsec > i32(0) {
+		C.Sleep(i64(1000)*t.sec+(i64(t.nsec)+i64(999999))/i64(1000000))
+	}
 }
 
-fn usleep(seconds int) {
-	panic('usleep not impl')
-	// C._usleep(seconds)
+pub fn parse(s string) ?Time {
+	return Time{} // TODO
 }
-
-fn sleep_ms(n int) {
-	C.Sleep(n)
-}
-

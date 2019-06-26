@@ -4,30 +4,23 @@
 
 module time
 
-//#flag -framework CoreServices
-//#include <CoreServices/CoreServices.h>
-//#include <mach/mach_time.h>
+pub fn now() Time {
+	# time_t t = time(0);
 
-// in ms
-fn ticks() f64 {
-	panic('not implemented') 
-/* 
-	t := i64(C.mach_absolute_time())
-	# Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
-	# return (double)(* (uint64_t *) &elapsedNano) / 1000000;
-*/ 
-	return f64(0)
+	res := Time{}
+	# res.sec = t;
+	return res
 }
 
-fn sleep(seconds int) {
-	C.sleep(seconds)
+pub fn sleep(t Time) {
+	if t.sec > i64(0) {
+		C.sleep(t.sec)
+	}
+	if t.nsec > i32(0) {
+		C.usleep((t.nsec+i32(999))/i32(1000))
+	}
 }
 
-fn usleep(seconds int) {
-	C.usleep(seconds)
+pub fn parse(s string) ?Time {
+	return Time{} // TODO
 }
-
-fn sleep_ms(seconds int) {
-	C.usleep(seconds * 1000)
-}
-

@@ -73,7 +73,7 @@ fn main() {
 		}
 		field = new_field
 		print_field(field)
-		time.sleep_ms(100)
+		time.sleep(time.milliseconds(100))
 	}
 }
 
