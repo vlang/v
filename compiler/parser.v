@@ -657,13 +657,13 @@ fn (p mut Parser) error(s string) {
 	// V git pull hint
 	cur_path := os.getwd()
 	if p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') {
-		println('\n====================')
-		println('It looks like you are building V. It is being frequently updated every day.' +
-		' If you didn\'t modify the compiler\'s code, most likely there was a change that lead to this error. ')
-		println('Try to run `git pull && make clean && make`, that will most likely fix it.')
-		println('If `git pull` doesn\'t help, re-install V from source or download a precompiled' +
-		' binary from https://vlang.io.')
-		println('====================\n')
+		println('\n=========================')
+		println('It looks like you are building V. It is being frequently updated every day.') 
+		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
+		println('lead to this error.')
+		println('\nTry to run `git pull && make clean && make`, that will most likely fix it.')
+		println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println('=========================\n')
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
