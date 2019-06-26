@@ -690,8 +690,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		}
 		typ := p.bool_expression()
 		// TODO temporary hack to allow println(777)
-		if i == 0 && f.name == 'println' && typ != 'string'
-		&& typ != 'void' {
+		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
 			// If we dont check for void, then V will compile "println(procedure())"
 			T := p.table.find_type(typ)
 			if typ == 'u8' {
@@ -706,7 +705,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			else {
 				// Make sure this type has a `str()` method
 				if !T.has_method('str') {
-					if ((*T).fields.len > 0) {
+					if T.fields.len > 0 {
 						mut index := p.cgen.cur_line.len - 1
 						for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
 						name := p.cgen.cur_line.right(index + 1)
@@ -714,7 +713,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 							p.error('`$typ` needs to have method `str() string` to be printable')
 						}
 						p.cgen.cur_line = p.cgen.cur_line.left(index)
-						p.create_type_string(*T, name)
+						p.create_type_string(T, name)
 						p.cgen.cur_line.replace(typ, '')
 						p.next()
 						return p.fn_call_args(f)

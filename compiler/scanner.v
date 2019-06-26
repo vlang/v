@@ -677,13 +677,13 @@ fn (s mut Scanner) get_opening_bracket() int {
 	return pos
 }
 
+// Foo { bar: 3, baz: 'hi' } => '{ bar: 3, baz: "hi" }'
 fn (s mut Scanner) create_type_string(T Type, name string) {
 	line := s.line_nr
 	inside_string := s.inside_string
 	mut newtext := '\'{ '
 	start := s.get_opening_bracket() + 1
 	end := s.pos
-
 	for i, field in T.fields {
 		if i != 0 {
 			newtext += ', '
