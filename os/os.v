@@ -449,6 +449,11 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
+pub fn clear() {
+	C.printf('\x1b[2J')
+	C.printf('\x1b[H')
+}
+
 fn on_segfault(f voidptr) {
 	$if windows {
 		return
@@ -461,9 +466,4 @@ fn on_segfault(f voidptr) {
 		# sa.sa_flags   = SA_SIGINFO;
 		# sigaction(SIGSEGV, &sa, 0);
 	}
-}
-
-fn clear() {
-	C.printf('\x1b[2J')
-	C.printf('\x1b[H')
 }
