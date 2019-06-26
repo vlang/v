@@ -28,13 +28,13 @@ fn chdir(path string) {
 	C.chdir(path.cstr())
 }
 
-fn getwd() string {
+pub fn getwd() string {
 	cwd := malloc(1024)
 	# if (getcwd(cwd, 1024)) return tos2(cwd);
 	return ''
 }
 
-fn ls(path string) []string {
+pub fn ls(path string) []string {
 	mut res := []string
 	# DIR *dir;
 	# struct dirent *ent;

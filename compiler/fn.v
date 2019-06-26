@@ -23,7 +23,7 @@ mut:
 	name          string
 	is_c          bool
 	receiver_typ  string
-	is_private    bool
+	is_public    bool
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
@@ -94,11 +94,12 @@ fn (p mut Parser) is_sig() bool {
 	(p.file_path.contains(TmpPath))
 }
 
-fn new_fn(pkg string) *Fn {
+fn new_fn(pkg string, is_public bool) *Fn {
 	mut f := &Fn {
 		pkg: pkg
 		local_vars: [Var{}
 		; MaxLocalVars]
+		is_public: is_public
 	}
 	return f
 }
@@ -112,7 +113,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	p.returns = false
 	p.next()
-	mut f := new_fn(p.pkg)
+	mut f := new_fn(p.pkg, is_pub)
 	// Method receiver
 	mut receiver_typ := ''
 	if p.tok == LPAR {
@@ -345,10 +346,10 @@ fn (p mut Parser) fn_decl() {
 		p.genln('init_consts();')
 		if p.table.imports.contains('os') {
 			if f.name == 'main' {
-				p.genln('os__init_os_args(argc, argv);')
+				p.genln('os__args = os__init_os_args(argc, argv);')
 			}
 			else if f.name == 'WinMain' {
-				p.genln('os__parse_windows_cmd_line(pCmdLine);')
+				p.genln('os__args = os__parse_windows_cmd_line(pCmdLine);')
 			}
 		}
 		// We are in live code reload mode, call the .so loader in bg
@@ -493,6 +494,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
+	if !f.is_public && !f.is_c && f.pkg != p.pkg && f.pkg != 'builtin' {
+		p.error('function `$f.name` is private')
+	}
 	p.calling_c = f.is_c
 	is_print := p.is_prod &&// Hide prints only in prod
 	!p.is_test &&
