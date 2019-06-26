@@ -374,7 +374,7 @@ fn rmdir(path, guard string) {
 */
 
 fn print_c_errno() {
-	C.printf('errno=%d err="%s"\n', errno, C.strerror(errno)) 
+	//C.printf('errno=%d err="%s"\n', errno, C.strerror(errno)) 
 }
 
 
