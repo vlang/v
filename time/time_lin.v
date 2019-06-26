@@ -5,8 +5,8 @@
 module time
 
 // in ms
-fn ticks() double {
-	return double(0)
+fn ticks() f64 {
+	return f64(0)
 }
 
 fn sleep(seconds int) {
