@@ -1,5 +1,5 @@
 Please title your PR as follows: `time: fix foo bar`. Always start with the thing you are fixing, then describe the fix.
-Don't use paste tense (e.g. "fixed foo bar").
+Don't use past tense (e.g. "fixed foo bar").
 
 Explain what your PR does and why.
 
