@@ -14,4 +14,6 @@ Before submitting a PR, please run the tests with `make test`, and make sure V c
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
 
+Applying labels to PRs is not needed.
+
 Thanks a lot for your contribution!
