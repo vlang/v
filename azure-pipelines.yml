@@ -23,6 +23,7 @@ jobs:
     displayName: "V MacOSX Build"
     steps:
       - script: |
+          brew install glfw freetype curl
         displayName: 'Install Dependencies'
       - script: |
           cd compiler && make && make test
