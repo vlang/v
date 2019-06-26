@@ -131,7 +131,7 @@ fn main() {
 		return
 	}
 	// V with no args? REPL
-	if args.len < 2 {
+	if args.len < 2 || (args.len == 2 && args[1] == '-') {
 		run_repl()
 		return
 	}
@@ -885,26 +885,19 @@ fn run_repl() []string {
 // This definitely needs to be better :)
 const (
 	HelpText = '
-- Build a V program:
-v file.v
+Usage: v [options] [file | directory]
 
-- Get current V version:
-v version
-
-- Build an optimized executable:
-v -prod file.v
-
-- Specify the executable\'s name:
-v -o program file.v 
-
-- Build and execute a V program:
-v run file.v
-
-- Obfuscate the resulting binary:
-v -obf -prod build file.v
-
-- Test: 
-v string_test.v 
+Options:
+  -                 Read from stdin (Default; Interactive mode if in a tty)
+  -h, --help, help  Display this information.
+  -v, version       Display compiler version.
+  -prod             Build an optimized executable.
+  -o <file>         Place output into <file>.
+  -obf              Obfuscate the resulting binary.
+  run               Build and execute a V program.
+                    You can add arguments after file name.
+Files:
+  <file>_test.v     Test file.
 '
 )
 
