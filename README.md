@@ -55,9 +55,11 @@ You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't hav
 git clone https://github.com/vlang/v
 cd v/compiler
 make
-
-# Or build without make:
-wget https://vlang.io/v.c  # Download the V compiler's source translated to C
+```
+Or build without make:
+```bash
+# Download the V compiler's source translated to C
+wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v .                 # Use the resulting V binary to build V from V source
 ./v -o v .                 # Bootstrap the compiler again to make sure it works
@@ -114,6 +116,9 @@ In order to build Tetris and anything else using the graphics module, you will n
 If you plan to use the http package, you also need to install libcurl.
 
 ```
+Arch:
+sudo pacman -S glfw-x11 curl freetype2
+
 Ubuntu:
 sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 

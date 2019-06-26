@@ -73,7 +73,7 @@ mut:
 	is_so      bool
 	is_live    bool // for hot code reloading
 	is_prof    bool // benchmark every function
-	translated bool // `v translated doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	translated bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	obfuscate  bool // `v -obf program.v`, renames functions to "f_XXX"
 	lang_dir   string // "~/code/v"
 	is_verbose bool // print extra information with `v.log()`

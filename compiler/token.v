@@ -10,7 +10,6 @@ enum Token {
 	INT
 	STRING
 	CHAR
-	FLOAT
 	PLUS
 	MINUS
 	MUL
@@ -129,7 +128,6 @@ fn build_token_str() []string {
 	s[INT] = 'INT'
 	s[STRING] = 'STR'
 	s[CHAR] = 'CHAR'
-	s[FLOAT] = 'FLOAT'
 	s[PLUS] = '+'
 	s[MINUS] = '-'
 	s[MUL] = '*'

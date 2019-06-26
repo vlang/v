@@ -85,7 +85,7 @@ fn (s mut Scanner) ident_number() string {
 		if c == `.` {
 			is_float = true
 		}
-		is_good_hex := is_hex && (c == `x` || c == `u` || (c >= `a` && c <= `f`))
+		is_good_hex := is_hex && (c == `x`  || (c >= `a` && c <= `f`))
 		// 1e+3, 1e-3, 1e3
 		if !is_hex && c == `e` {
 			next := s.text[s.pos + 1]

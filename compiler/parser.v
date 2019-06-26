@@ -501,7 +501,7 @@ fn (p mut Parser) struct_decl() {
 				is_method: true
 				receiver_typ: name
 			}
-			println('is interfaace. field=$field_name run=$p.run')
+			println('is interface. field=$field_name run=$p.run')
 			p.fn_args(mut interface_method)
 			p.fspace()
 			interface_method.typ = p.get_type()// method return type
@@ -657,6 +657,17 @@ fn (p mut Parser) error(s string) {
 		println('pass=$p.run fn=`$p.cur_fn.name`')
 	}
 	p.cgen.save()
+	// V git pull hint
+	cur_path := os.getwd()
+	if p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') {
+		println('\n====================')
+		println('It looks like you are building V. It is being frequently updated every day.' +
+		' Most likely there was a change that lead to this error. ')
+		println('Try to run `git pull`, that will most likely fix it.')
+		println('If `git pull` doesn\'t help, re-install V from source or download a precompiled' +
+		' binary from https://vlang.io')
+		println('====================\n')
+	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
 	p.scanner.error(s.replace('array_', '[]').replace('__', '.'))
@@ -1924,23 +1935,12 @@ fn (p mut Parser) factor() string {
 	tok := p.tok
 	switch tok {
 	case INT:
-		p.gen(p.lit)
-		p.fgen(p.lit)
 		typ = 'int'
-		// typ = 'number'
-		if p.lit.starts_with('u') {
-			typ = 'long'
-		}
 		if p.lit.contains('.') || p.lit.contains('e') {
-			// typ = 'f64'
-			typ = 'float'
+			typ = 'f32'
+			// typ = 'f64' // TODO 
 		}
-	case FLOAT:
-		// TODO remove float 
-		typ = 'float'
-		// typ = 'f64'
-		// p.gen('(f64)$p.lit')
-		p.gen('$p.lit')
+		p.gen(p.lit)
 		p.fgen(p.lit)
 	case MINUS:
 		p.gen('-')
@@ -2094,15 +2094,13 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	switch typ {
 	case 'string': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'long': return '%ld'
 	case 'byte': return '%d'
 	case 'int': return '%d'
 	case 'char': return '%d'
 	case 'byte': return '%d'
 	case 'bool': return '%d'
 	case 'u32': return '%d'
-	case 'float': return '%f'
-	case 'double', 'f64': return '%f'
+	case 'f64', 'f32': return '%f'
 	case 'i64': return '%lld'
 	case 'byte*': return '%s'
 		// case 'array_string': return '%s'
@@ -3133,30 +3131,34 @@ fn is_compile_time_const(s string) bool {
 
 // fmt helpers
 fn (scanner mut Scanner) fgen(s string) {
+/* 
 	if scanner.fmt_line_empty {
 		s = repeat_char(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.write(s)
 	scanner.fmt_line_empty = false
+*/ 
 }
 
 fn (scanner mut Scanner) fgenln(s string) {
+/* 
 	if scanner.fmt_line_empty {
 		s = repeat_char(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.writeln(s)
 	scanner.fmt_line_empty = true
+*/ 
 }
 
 fn (p mut Parser) fgen(s string) {
-	p.scanner.fgen(s)
+	//p.scanner.fgen(s)
 }
 
 fn (p mut Parser) fspace() {
-	p.fgen(' ')
+	//p.fgen(' ')
 }
 
 fn (p mut Parser) fgenln(s string) {
-	p.scanner.fgenln(s)
+	//p.scanner.fgenln(s)
 }
 

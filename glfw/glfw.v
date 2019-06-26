@@ -136,7 +136,7 @@ fn init() {
 }
 
 // fn mouse_move(w * GLFWwindow, x, y double) {
-fn mouse_move(w voidptr, x, y double) {
+fn mouse_move(w voidptr, x, y f64) {
 	// #printf("%f : %f => %d \n", x,y);
 }
 
@@ -244,7 +244,7 @@ fn (w mut Window) onchar(cb voidptr) {
 	C.glfwSetCharModsCallback(w.data, cb)
 }
 
-fn get_time() double {
+fn get_time() f64 {
 	return C.glfwGetTime()
 }
 
@@ -266,8 +266,8 @@ fn (w &Window) set_clipboard_text(s string) {
 }
 
 fn (w &Window) get_cursor_pos() Pos {
-	x := double(0)
-	y := double(0)
+	x := f64(0)
+	y := f64(0)
 	C.glfwGetCursorPos(w.data, &x, &y)
 	return Pos {
 		x: int(x)

@@ -1,13 +1,14 @@
-all: v vc
+all: v
 
-v: vc
-	./vc -o v .
-
-vc: v.c
-	cc -std=gnu11 -w -o vc v.c
+v: v.c
+	cc -std=gnu11 -w -o v v.c
+	./v -o v .
 
 v.c:
-	wget https://vlang.io/v.c
+	wget https://raw.githubusercontent.com/vlang/vc/master/v.c
+
+test:
+	find .. -name '*_test.v' | xargs v {}
 
 clean:
-	-rm v vc v.c
+	-rm vc v.c
