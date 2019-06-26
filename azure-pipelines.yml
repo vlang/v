@@ -5,7 +5,7 @@ jobs:
     displayName: "V Linux Build"
     steps:
       - script: |
-        apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
+        sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
         displayName: 'Install Dependencies'
       - script: |
         cd compiler && make
