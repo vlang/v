@@ -2577,6 +2577,7 @@ fn (p mut Parser) comp_time() {
 	}
 }
 
+// TODO: keep this function in mind when the compiler relocates anything that shouldn't be relocated
 fn (p mut Parser) chash() {
 	hash := p.lit.trim_space()
 	// println('chsh() file=$p.file  is_sig=${p.is_sig()} hash="$hash"')
@@ -2654,13 +2655,15 @@ fn (p mut Parser) chash() {
 				}
 			}
 		}
+		// removed to keep relocation of #define directives from happening
 		// Move defines on top (like old gdefine)
-		if hash.contains('define') {
+		/*if hash.contains('define') {
 			p.cgen.includes << '#$hash'
 		}
 		else {
-			p.genln('#$hash')
-		}
+			
+		}*/
+		p.genln('#$hash')
 	}
 	else {
 		if p.cur_fn.name == '' {
