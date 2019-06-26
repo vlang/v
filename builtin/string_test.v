@@ -333,4 +333,16 @@ fn test_is_alnum () {
 	assert s6.is_alnum() == true
 }
 
+fn test_contain() {
+	s  := 'hello'
+	s2 := 'world'
+	s3 := ''
+	assert s.contain(s2[0]) == false
+	assert s.contain(s2[1]) == true
+	assert s.contain(s2[2]) == false
+	assert s.contain(s2[3]) == true
+	assert s.contain(s2[4]) == false
+	assert s3.contain(s2[1]) == false
+}
+
 

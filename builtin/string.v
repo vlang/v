@@ -414,6 +414,15 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
+pub fn (s string) contain(c byte) bool {
+	for i:=0;i<s.len;i++ {
+		if (s[i] == c) {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn (s string) contains(p string) bool {
 	res := s.index(p) > 0 - 1
 	return res
