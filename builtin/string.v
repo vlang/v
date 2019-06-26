@@ -778,7 +778,7 @@ fn (s string) reverse() string {
 	}
 
 	for i := s.len - 1; i >= 0; i-- {
-        res[s.len-i-1] = s.at(i)
+        res[s.len-i-1] = s[i]
 	}
 
 	return res
