@@ -89,8 +89,8 @@ pub fn file_size(path string) int {
 }
 
 pub fn mv(old, new string) {
-	C.rename(old.cstr(), new.cstr()) 
-} 
+	C.rename(old.cstr(), new.cstr())
+}
 
 pub fn file_last_mod_unix(path string) int {
 	# struct stat attr;
@@ -99,7 +99,7 @@ pub fn file_last_mod_unix(path string) int {
 	return 0
 }
 
-/* 
+/*
 pub fn file_last_mod_time(path string) time.Time {
 	return time.now()
 	q := C.tm{}
@@ -202,7 +202,7 @@ fn open_file_a(file string) File {
 	return create_file2(file, 'a')
 }
 
-fn create_file2(file string, mode string) File {
+fn create_file2(file, mode string) File {
 	res := File {
 		cfile: C.fopen(file.cstr(), mode.cstr())
 	}
@@ -286,7 +286,7 @@ pub fn system(cmd string) string {
 	if isnil(f) {
 		println('popen $cmd failed')
 	}
-	max := 1000 
+	max := 1000
 	# char buf[max];
 	# while (fgets(buf, max, f) != NULL)  {
 	# res = string_add(res, tos(buf, strlen(buf)));
@@ -297,13 +297,13 @@ pub fn system(cmd string) string {
 fn system_into_lines(s string) []string {
 	mut res := []string
 	cmd := '$s 2>&1'
-	max := 5000 
-	$if windows { 
+	max := 5000
+	$if windows {
 		# FILE* f = _popen(cmd.str, "r");
 	}
-	$else { 
+	$else {
 		# FILE* f = popen(cmd.str, "r");
-	} 
+	}
 	# char * buf = malloc(sizeof(char) * max);
 	# while (fgets(buf, max, f) != NULL)
 	{
@@ -328,12 +328,12 @@ pub fn getenv(key string) string {
 pub fn file_exists(path string) bool {
 	// # return access( path.str, F_OK ) != -1 ;
 	res := false
-	$if windows { 
+	$if windows {
 		# res = _access( path.str, 0 ) != -1 ;
 	}
-	$else { 
+	$else {
 		# res = access( path.str, 0 ) != -1 ;
-	} 
+	}
 	return res
 }
 
@@ -368,19 +368,19 @@ pub fn rm(path string) {
 	// C.unlink(path.cstr())
 }
 
-/* 
-// TODO 
-fn rmdir(path string, guard string) {
+/*
+// TODO
+fn rmdir(path, guard string) {
 	if !path.contains(guard) {
 		println('rmdir canceled because the path doesnt contain $guard')
 		return
 	}
-	$if !windows { 
-	} 
-	$else { 
-	} 
+	$if !windows {
+	}
+	$else {
+	}
 }
-*/ 
+*/
 
 fn print_c_errno() {
 	# printf("errno=%d err='%s'\n", errno, strerror(errno));
@@ -458,16 +458,16 @@ pub fn write_file(path, text string) {
 }
 
 fn on_segfault(f voidptr) {
-	$if windows { 
+	$if windows {
 		return
-	} 
-	$if mac { 
+	}
+	$if mac {
 		# struct sigaction sa;
 		# memset(&sa, 0, sizeof(struct sigaction));
 		# sigemptyset(&sa.sa_mask);
 		# sa.sa_sigaction = f;
 		# sa.sa_flags   = SA_SIGINFO;
 		# sigaction(SIGSEGV, &sa, 0);
-	} 
+	}
 }
 

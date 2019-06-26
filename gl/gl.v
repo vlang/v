@@ -28,7 +28,7 @@ fn init_glad() {
 	}
 }
 
-pub fn viewport(a int, b int, c int, d int) {
+pub fn viewport(a, b, c, d int) {
 	C.glViewport(a, b, c, d)
 }
 
@@ -48,7 +48,7 @@ pub fn create_program() int {
 	return C.glCreateProgram()
 }
 
-pub fn shader_source(shader int, a int, source string, b int) {
+pub fn shader_source(shader, a int, source string, b int) {
 	C.glShaderSource(shader, a, &source.str, b)
 }
 
@@ -62,7 +62,7 @@ pub fn shader_compile_status(shader int) int {
 	return success
 }
 
-pub fn attach_shader(program int, shader int) {
+pub fn attach_shader(program, shader int) {
 	// fn (s Shader) attach(program int) {
 	C.glAttachShader(program, shader)
 }
@@ -123,7 +123,7 @@ pub fn delete_texture(texture u32) {
 	C.glDeleteTextures(1, &texture)
 }
 
-pub fn buffer_data(typ int, size int, arr voidptr, draw_typ int) {
+pub fn buffer_data(typ, size int, arr voidptr, draw_typ int) {
 	C.glBufferData(typ, size, arr, draw_typ)
 }
 

@@ -25,7 +25,7 @@ pub:
 	// next *Entry
 }
 
-fn new_map(cap int, elm_size int) map {
+fn new_map(cap, elm_size int) map {
 	res := map {
 		// len: len,
 		element_size: elm_size
