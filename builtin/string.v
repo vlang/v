@@ -692,6 +692,9 @@ fn (c byte) is_digit() bool {
 }
 
 fn (s string) is_digit() bool {
+	if s.len == 0 {
+		return false
+	}
     for i:=0; i<s.len; i++ {
         if s[i] < `0` || s[i] > `9` {
             return false
@@ -704,9 +707,24 @@ fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
-fn (s string) is_letter() bool {
+fn (s string) is_alpha() bool {
+	if s.len == 0 {
+		return false
+	}
     for i:=0; i<s.len; i++ {
     	if (s[i] < `a` || s[i] > `z`) && (s[i] < `A` || s[i] > `Z`) {
+            return false
+        }
+    }
+    return true
+}
+
+fn (s string) is_alnum() bool {
+	if s.len == 0 {
+		return false
+	}
+    for i:=0; i<s.len; i++ {
+    	if (s[i] < `a` || s[i] > `z`) && (s[i] < `A` || s[i] > `Z`) && (s[i] <`0` || s[i]> `9`) {
             return false
         }
     }

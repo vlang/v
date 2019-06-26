@@ -302,13 +302,35 @@ fn test_is_digit() {
     assert s3.is_digit() == false
 }
 
-fn test_is_letter () {
+fn test_is_alpha () {
 	s1 := 'abcdefg'
-	assert s1.is_letter() == true
+	assert s1.is_alpha() == true
 
 	s2 := 'ABDfals'
-	assert s2.is_letter() == true
+	assert s2.is_alpha() == true
 
 	s3 := 'abcef12'
-	assert s3.is_letter() == false
+	assert s3.is_alpha() == false
 }
+
+fn test_is_alnum () {
+	s1 := 'abcdefg'
+	assert s1.is_alnum() == true
+
+	s2 := 'ABDfals'
+	assert s2.is_alnum() == true
+
+	s3 := 'abcef12'
+	assert s3.is_alnum() == true
+
+	s4 := 'abcef 12'
+	assert s4.is_alnum() == false
+
+	s5 := 'abcef!12'
+	assert s5.is_alnum() == false
+
+	s6 := 'abcDef12'
+	assert s6.is_alnum() == true
+}
+
+
