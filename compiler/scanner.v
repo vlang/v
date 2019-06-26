@@ -60,8 +60,7 @@ fn is_white(c byte) bool {
 }
 
 fn is_nl(c byte) bool {
-	i := int(c)
-	return i == 12 || i == 10
+	return c == `\r` || c == `\n`
 }
 
 fn (s mut Scanner) ident_name() string {
