@@ -1,3 +1,6 @@
+PREFIX ?= /usr/local
+BINDIR ?= /bin
+
 all: clean v
 	$(info V has been successfully built)
 
@@ -8,6 +11,9 @@ v: v.c
 
 v.c:
 	curl -Os https://raw.githubusercontent.com/vlang/vc/master/v.c
+
+install: v
+	cp -f ./v $(PREFIX)$(BINDIR)
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
