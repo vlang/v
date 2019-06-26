@@ -14,7 +14,7 @@ const (
 	47, 48, 49, 50, 51]
 )
 
-fn decode(data string) string {
+pub fn decode(data string) string {
 	p := data.cstr()
 	len := data.len
 	mut pad := 0
@@ -51,7 +51,7 @@ const (
 	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
-fn encode(data string) string {
+pub fn encode(data string) string {
 	input_length := data.len
 	output_length := 4 * ((input_length + 2) / 3)
 
