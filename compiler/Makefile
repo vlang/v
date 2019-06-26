@@ -11,4 +11,4 @@ test:
 	find .. -name '*_test.v' | xargs v {}
 
 clean:
-	-rm vc v.c
+	-rm v.c
