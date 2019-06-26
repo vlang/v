@@ -10,8 +10,8 @@ import rand
 struct Time {
 pub:
 	year   int
-	day    int
 	month  int
+	day    int
 	hour   int
 	minute int
 	second int
@@ -24,7 +24,7 @@ fn remove_me_when_c_bug_is_fixed() { // TODO
 struct C.tm {
 	tm_year int
 	tm_mon  int
-	tm_mday int
+	tm_day  int
 	tm_hour int
 	tm_min  int
 	tm_sec  int
@@ -37,7 +37,7 @@ pub fn now() Time {
 	res := Time{}
 	# res.year = now->tm_year + 1900;
 	# res.month = now->tm_mon + 1;
-	# res.day = now->tm_mday;
+	# res.day = now->tm_day;
 	# res.hour = now->tm_hour;
 	# res.minute = now->tm_min;
 	# res.second = now->tm_sec;
@@ -52,7 +52,7 @@ pub fn now() Time {
 // return Time{
 // year: now.tm_year + 1900
 // month : now.tm_mon + 1
-// day : now.tm_mday
+// day : now.tm_day
 // hour : now.tm_hour
 // minute : now.tm_min
 // second : now.tm_sec
@@ -82,7 +82,7 @@ pub fn unix(u string) Time {
 	res := Time{}
 	# res.year = now->tm_year + 1900;
 	# res.month = now->tm_mon + 1;
-	# res.day = now->tm_mday;
+	# res.day = now->tm_day;
 	# res.hour = now->tm_hour;
 	# res.minute = now->tm_min;
 	# res.second = now->tm_sec;
@@ -95,7 +95,7 @@ pub fn convert_ctime(t tm) Time {
 	return Time {
 		year: t.tm_year + 1900
 		month: t.tm_mon + 1
-		day: t.tm_mday
+		day: t.tm_day
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
@@ -114,7 +114,7 @@ pub fn unixn(uni int) Time {
 	res := Time{}
 	# res.year = now->tm_year + 1900;
 	# res.month = now->tm_mon + 1;
-	# res.day = now->tm_mday;
+	# res.day = now->tm_day;
 	# res.hour = now->tm_hour;
 	# res.minute = now->tm_min;
 	# res.second = now->tm_sec;
@@ -278,7 +278,7 @@ fn (t &Time) calc_unix() int {
 	# lDate.tm_sec = t->second;
 	# lDate.tm_min = t->minute;
 	# lDate.tm_hour = t->hour;
-	# lDate.tm_mday = t->day;
+	# lDate.tm_day = t->day;
 	# lDate.tm_mon = t->month-1;
 	# lDate.tm_year = t->year - 1900;
 	# time_t kek = mktime(&lDate);
