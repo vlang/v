@@ -386,6 +386,15 @@ fn print_c_errno() {
 	# printf("errno=%d err='%s'\n", errno, strerror(errno));
 }
 
+
+pub fn get_extension(path string) string {
+	pos := path.last_index('.')
+	if pos == -1 {
+		return ''
+	}
+	return path.right(pos)
+}
+
 pub fn basedir(path string) string {
 	pos := path.last_index('/')
 	if pos == -1 {
