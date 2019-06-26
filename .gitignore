@@ -1,9 +1,1 @@
 *.dSYM
-
-examples/game_of_life/life
-examples/hello_world
-examples/json
-examples/links_scraper
-examples/news_fetcher
-examples/tetris/tetris
-examples/word_counter/word_counter
