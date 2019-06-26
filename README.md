@@ -63,7 +63,7 @@ Or build without make:
 wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v .                 # Use the resulting V binary to build V from V source
-./v -o v .                 # Bootstrap the compiler again to make sure it works
+./v -o v .                 # Build the compiler again to make sure it works
 ```
 
 That's it! Now you have a V executable at `v/compiler/v`.
@@ -85,8 +85,11 @@ V temporarily can't be compiled with Visual Studio. This will be fixed asap.
 ### Testing
 
 ```
-$ v
+$ cd examples
+$ v run hello_world.v
+hello world
 
+$ v
 V 0.1.2
 Use Ctrl-D to exit
 
