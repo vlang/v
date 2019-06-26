@@ -291,7 +291,7 @@ fn test_all_after() {
 	assert q == 'hello'
 }
 
-fn test_isdigit() {
+fn test_is_digit() {
     s1 := '1234567890'
     assert  s1.is_digit() == true
 
@@ -300,4 +300,15 @@ fn test_isdigit() {
     
     s3 := 'abcdef'
     assert s3.is_digit() == false
+}
+
+fn test_is_letter () {
+	s1 := 'abcdefg'
+	assert s1.is_letter() == true
+
+	s2 := 'ABDfals'
+	assert s2.is_letter() == true
+
+	s3 := 'abcef12'
+	assert s3.is_letter() == false
 }
