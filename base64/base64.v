@@ -51,7 +51,7 @@ const (
 	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
-fn encode(data string) string {
+pub fn encode(data string) string {
 	input_length := data.len
 	output_length := 4 * ((input_length + 2) / 3)
 
