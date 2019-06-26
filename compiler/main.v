@@ -515,7 +515,7 @@ mut args := ''
 		'/usr/lib/x86_64-linux-gnu/crtn.o')
 		println(ress)
 		if ress.contains('error:') {
-			os.exit(1)
+			exit(1)
 		}
 		println('linux cross compilation done. resulting binary: "$c.out_name"')
 	}

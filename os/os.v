@@ -21,6 +21,12 @@ import const (
 	SEEK_END
 )
 
+fn C.getline(voidptr, voidptr, voidptr) int
+
+fn C.ftell(fp voidptr) int
+
+fn todo_remove(){}
+
 fn init_os_args(argc int, _argv *byteptr) []string {
 	mut args := []string
 	# char** argv = (char**) _argv;
@@ -37,8 +43,6 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 	s := tos2(cmd)
 	return s.split(' ')
 }
-
-fn C.ftell(fp voidptr) int
 
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
@@ -185,6 +189,7 @@ pub fn open_append(path string) File {
 	return create_file(path)
 }
 
+// TODO remove
 fn create_file(file string) File {
 	return create_file2(file, 'w')
 }
@@ -227,7 +232,7 @@ fn (f File) write_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, 0, SEEK_END)
 }
 
-fn (f File) appendln(s string) {
+pub fn (f File) appendln(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
@@ -236,7 +241,7 @@ fn (f File) appendln(s string) {
 	C.fputs('\n', f.cfile)
 }
 
-fn (f File) close() {
+pub fn (f File) close() {
 	C.fclose(f.cfile)
 }
 
@@ -319,10 +324,6 @@ pub fn getenv(key string) string {
 	return tos2(s)
 }
 
-fn exit(code int) {
-	C.exit(code)
-}
-
 // `file_exists` returns true if `path` exists.
 pub fn file_exists(path string) bool {
 	// # return access( path.str, F_OK ) != -1 ;
@@ -397,7 +398,6 @@ pub fn filename(path string) string {
 	return path.all_after('/')
 }
 
-fn C.getline(voidptr, voidptr, voidptr) int
 
 pub fn get_line() string {
 	max := 256
