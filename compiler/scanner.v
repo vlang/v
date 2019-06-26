@@ -654,3 +654,49 @@ fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
 
+fn (s mut Scanner) get_opening_bracket() int {
+	mut pos := s.pos
+	mut parentheses := 0
+	mut inside_string := false
+
+	for pos > 0 && s.text[pos] != `\n` {
+		if s.text[pos] == `)` && !inside_string {
+			parentheses++
+		}
+		if s.text[pos] == `(` && !inside_string {
+			parentheses--
+		}
+		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` {
+			inside_string = !inside_string
+		}
+		if parentheses == 0 {
+			break
+		}
+		pos--
+	}
+	return pos
+}
+
+fn (s mut Scanner) create_type_string(T Type, name string) {
+	line := s.line_nr
+	inside_string := s.inside_string
+	mut newtext := '\'{ '
+	start := s.get_opening_bracket() + 1
+	end := s.pos
+
+	for i, field in T.fields {
+		if i != 0 {
+			newtext += ', '
+		}
+		newtext += '$field.name: ' + '$${name}.${field.name}'
+	}
+	newtext += ' }\''
+	s.text = s.text.substr(0, start) + newtext + s.text.substr(end, s.text.len)
+	s.pos = start - 2
+	s.line_nr = line
+	s.inside_string = inside_string
+}
+
+fn (p mut Parser) create_type_string(T Type, name string) {
+	p.scanner.create_type_string(T, name)
+}
