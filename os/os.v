@@ -387,13 +387,22 @@ fn print_c_errno() {
 }
 
 
-pub fn get_extension(path string) string {
+pub fn ext(path string) string {
 	pos := path.last_index('.')
 	if pos == -1 {
 		return ''
 	}
 	return path.right(pos)
 }
+
+fn path_sans_ext(path string) string {
+	pos := path.last_index('.')
+	if pos == -1 {
+		return path
+	}
+	return path.left(pos)
+}
+
 
 pub fn basedir(path string) string {
 	pos := path.last_index('/')
