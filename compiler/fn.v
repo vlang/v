@@ -734,7 +734,8 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 				// println('\ne:"$expected" got:"$got"')
 				if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
-				! (expected == 'byte*' && got == 'string') {
+				! (expected == 'byte*' && got == 'string') &&
+        ! (expected == 'byte*' && got == 'byteptr') {
 					p.cgen.set_placeholder(amp_ph, '& /*11 EXP:"$expected" GOT:"$got" */')
 				}
 			}
