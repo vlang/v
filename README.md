@@ -71,7 +71,7 @@ That's it! Now you have a V executable at `v/compiler/v`.
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s ~/code/v/compiler/v /usr/local/bin/v
+sudo ln -s [path to V repo]/compiler/v /usr/local/bin/v
 ```
 
 ### Windows
@@ -104,8 +104,8 @@ Now if you want, you can start tinkering with the compiler. If you introduce a b
 ### Running the examples
 
 ```
-v hello_world.v && ./hello_world # or simply
-v run hello_world.v              # This builds the program and runs it right away
+v hello_world.v && ./hello_world    # or simply
+v run hello_world.v                 # this builds the program and runs it right away
 
 v word_counter.v && ./word_counter cinderella.txt
 v run news_fetcher.v
@@ -120,14 +120,14 @@ In order to build Tetris and anything else using the graphics module, you will n
 If you plan to use the http package, you also need to install libcurl.
 
 ```
-Arch:
-sudo pacman -S glfw-x11 curl freetype2
+macOS:
+brew install glfw freetype curl
 
 Ubuntu:
 sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 
-macOS:
-brew install glfw freetype curl
+Arch:
+sudo pacman -S glfw-x11 curl freetype2
 ```
 
 glfw and libcurl dependencies will be removed soon.
