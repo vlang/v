@@ -138,6 +138,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_const('stdin', 'int', 'main', false)
 	t.register_const('stdout', 'int', 'main', false)
 	t.register_const('stderr', 'int', 'main', false)
+	t.register_const('errno', 'int', 'main', false)
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t

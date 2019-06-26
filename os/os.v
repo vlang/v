@@ -16,6 +16,11 @@ struct File {
 	cfile *FILE
 }
 
+struct FileInfo {
+	name string
+	size int
+}
+
 import const (
 	SEEK_SET
 	SEEK_END
@@ -64,14 +69,17 @@ pub fn read_file(path string) ?string {
 	return res
 }
 
+/* 
+// TODO 
 fn (f File) read_rune() string {
 	# if (!f.cfile) return tos("", 0);
 	c := malloc(1)
 	C.fread(c, 1, 1, f.cfile)
 	return tos(c, 1)
 }
+*/ 
 
-// `file_size` returns the size of the file located in `path`.
+// file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	# struct stat s;
 	# stat(path.str, &s);
@@ -92,6 +100,7 @@ pub fn mv(old, new string) {
 	C.rename(old.cstr(), new.cstr())
 }
 
+/* 
 pub fn file_last_mod_unix(path string) int {
 	# struct stat attr;
 	# stat(path.str, &attr);
@@ -99,7 +108,6 @@ pub fn file_last_mod_unix(path string) int {
 	return 0
 }
 
-/*
 pub fn file_last_mod_time(path string) time.Time {
 	return time.now()
 	q := C.tm{}
@@ -138,7 +146,7 @@ pub fn read_lines(path string) []string {
 	return res
 }
 
-fn read_file_into_ulines(path string) []ustring {
+fn read_ulines(path string) []ustring {
 	lines := read_lines(path)
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
@@ -149,25 +157,12 @@ fn read_file_into_ulines(path string) []ustring {
 	return ulines
 }
 
-const (
-	BUF_SIZE = 5000
-)
-
-fn append_to_file(file, s string) {
-	# FILE* fp = fopen(file.str, "a");
-	# fputs(s.str, fp);
-	# fputs("\n", fp);
-	# fclose(fp);
-}
-
+/* 
 struct Reader {
 	fp *FILE
 }
+*/ 
 
-struct FileInfo {
-	name string
-	size int
-}
 
 // fn open(file string) File? {
 // return open_file(file)
@@ -222,11 +217,11 @@ fn (f File) append(s string) {
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
-fn (f File) write(data voidptr, size int) {
+fn (f File) write_bytes(data voidptr, size int) {
 	C.fwrite(data, 1, size, f.cfile)
 }
 
-fn (f File) write_at(data voidptr, size, pos int) {
+fn (f File) write_bytes_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, pos, SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, SEEK_END)
@@ -252,11 +247,9 @@ fn close_file(fp *FILE) {
 	C.fclose(fp)
 }
 
-// `system2` starts the specified command, waits for it to complete, and returns its code.
-pub fn system2(cmd string) int {
-	cstr := cmd.clone()
-	ret := int(C.system(cstr.cstr()))
-	// println(' system2 ret=$ret cmd="$s"')
+// system starts the specified command, waits for it to complete, and returns its code.
+pub fn system(cmd string) int {
+	ret := C.system(cmd.cstr()) 
 	if ret == -1 {
 		os.print_c_errno()
 	}
@@ -273,27 +266,25 @@ fn popen(path string) *FILE {
 	}
 }
 
-// TODO rename to run or exec (system doesnt return  a string)
-// `system` starts the specified command, waits for it to complete, and returns its output.
-// TODO merge the two functions.
-pub fn system(cmd string) string {
-	// println('OS SYSTEM($s)')
-	res := ''
-	ss := '$cmd 2>&1'
-	_ := 0// TODO DOLLAR TOKEN
-	f := popen(ss)// cmd)
-	// # if (!f)
+// exec starts the specified command, waits for it to complete, and returns its output.
+pub fn exec(cmd string) string {
+	cmd = '$cmd 2>&1'
+	f := popen(cmd) 
 	if isnil(f) {
+		// TODO optional or error code 
 		println('popen $cmd failed')
+		return '' 
 	}
-	max := 1000
-	# char buf[max];
-	# while (fgets(buf, max, f) != NULL)  {
-	# res = string_add(res, tos(buf, strlen(buf)));
-	# }
+	buf := [1000]byte 
+	mut res := ''
+	for C.fgets(buf, 1000, f) != 0 { 
+		res += tos(buf, strlen(buf)) 
+	}
 	return res.trim_space()
 }
 
+/* 
+// TODO 
 fn system_into_lines(s string) []string {
 	mut res := []string
 	cmd := '$s 2>&1'
@@ -314,6 +305,7 @@ fn system_into_lines(s string) []string {
 	}
 	return res
 }
+*/ 
 
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
@@ -326,7 +318,6 @@ pub fn getenv(key string) string {
 
 // `file_exists` returns true if `path` exists.
 pub fn file_exists(path string) bool {
-	// # return access( path.str, F_OK ) != -1 ;
 	res := false
 	$if windows {
 		# res = _access( path.str, 0 ) != -1 ;
@@ -383,7 +374,7 @@ fn rmdir(path, guard string) {
 */
 
 fn print_c_errno() {
-	# printf("errno=%d err='%s'\n", errno, strerror(errno));
+	C.printf('errno=%d err="%s"\n', errno, C.strerror(errno)) 
 }
 
 
@@ -416,7 +407,7 @@ pub fn filename(path string) string {
 	return path.all_after('/')
 }
 
-
+// get_line returns a one-line string from stdin 
 pub fn get_line() string {
 	max := 256
 	buf := malloc(max)
@@ -440,7 +431,7 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
-// `home_dir` returns path to user's home directory.
+// home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	mut home := os.getenv('HOME')
 	$if windows {
@@ -451,6 +442,7 @@ pub fn home_dir() string {
 	return home
 }
 
+// write_file writes text data to a file in `path`. 
 pub fn write_file(path, text string) {
 	f := os.create(path)
 	f.appendln(text)

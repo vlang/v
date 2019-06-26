@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.1.3'
+	Version = '0.1.4'
 )
 
 // TODO no caps
@@ -389,9 +389,9 @@ string _STR_TMP(const char *fmt, ...) {
 		if os.args.len > 3 {
 			cmd += ' ' + os.args.right(3).join(' ')
 		}
-		ret := os.system2(cmd)
+		ret := os.system(cmd)
 		if ret != 0 {
-			s := os.system(cmd)
+			s := os.exec(cmd)
 			println(s)
 			println('ret not 0, exiting')
 			exit(1)
@@ -496,7 +496,7 @@ mut args := ''
 		println('\n==========\n$cmd\n=========\n')
 	}
 	// Run
-	res := os.system(cmd)
+	res := os.exec(cmd)
 	// println('C OUTPUT:')
 	if res.contains('error: ') {
 		println(res)
@@ -507,7 +507,7 @@ mut args := ''
 		c.out_name = c.out_name.replace('.o', '')
 		obj_file := c.out_name + '.o'
 		println('linux obj_file=$obj_file out_name=$c.out_name')
-		ress := os.system('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
+		ress := os.exec('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
 		'-v -o $c.out_name ' +
 		'-m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 ' +
 		'/usr/lib/x86_64-linux-gnu/crt1.o ' +
@@ -795,7 +795,7 @@ fn new_v(args[]string) *V {
 		} else {
 			println('V repo not found. Cloning...') 
 			os.mv('v', 'v.bin') 
-			os.system('git clone https://github.com/vlang/v') 
+			os.exec('git clone https://github.com/vlang/v') 
 			if !os.dir_exists('v') {
 				println('failed to clone github.com/vlang/v') 
 				exit(1) 
@@ -872,7 +872,7 @@ fn run_repl() []string {
 			os.write_file(file, source_code)
 			mut v := new_v( ['v', '-repl', file])
 			v.compile()
-			s := os.system(TmpPath + '/vrepl')
+			s := os.exec(TmpPath + '/vrepl')
 			println(s)
 		}
 		else {
