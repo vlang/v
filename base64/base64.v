@@ -14,7 +14,7 @@ const (
 	47, 48, 49, 50, 51]
 )
 
-fn decode(data string) string {
+pub fn decode(data string) string {
 	p := data.cstr()
 	len := data.len
 	mut pad := 0
@@ -25,7 +25,7 @@ fn decode(data string) string {
 	str_len := L / 4 * 3 + pad
 	mut str := malloc(str_len + 2)
 	mut j := 0
-	for i := 0; i < L; i += 4 {
+	for i := 0; i < L; i = i+4 {
 		n := (Index[p[i]] << 18) | (Index[p[i + 1]] << 12) |
 			(Index[p[i + 2]] << 6) | (Index[p[i + 3]])
 		str[j] = n >> 16
@@ -44,7 +44,7 @@ fn decode(data string) string {
 		}
 	}
 	str[str_len + 1] = `\0`
-	return tos(str, str_len+2)
+	return tos(str, str_len+1)
 }
 
 const (
