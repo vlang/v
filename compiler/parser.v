@@ -179,8 +179,12 @@ fn (p mut Parser) parse() {
 		case PUB:
 			if p.peek() == FUNC {
 				p.fn_decl()
+			} else if p.peek() == STRUCT {
+				p.error('structs can\'t be declared public *yet*')
+				// TODO public structs
+			} else {
+				p.error('wrong pub keyword usage')
 			}
-			// TODO public structs
 		case FUNC:
 			p.fn_decl()
 		case TIP:
