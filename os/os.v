@@ -41,22 +41,25 @@ fn parse_windows_cmd_line(cmd byteptr) {
 	# os__args = vals;
 }
 
+fn C.ftell(fp voidptr) int
+
 // read_file reads the file in `path` and returns the contents.
-// TODO return `?string`
-pub fn read_file(path string) string {
-	res := ''
-	# FILE *f = fopen(path.str, "r");
-	# if (!f) return tos("", 0);
-	# fseek(f, 0, SEEK_END);
-	# long fsize = ftell(f);
-	// # fseek(f, 0, SEEK_SET);  //same as rewind(f);
-	# rewind(f);
-	# char *string = malloc(fsize + 1);
-	# fread(string, fsize, 1, f);
-	# fclose(f);
-	# string[fsize] = 0;
-	// # printf("RFILE= %s\n", string);
-	# res = tos(string, fsize);
+pub fn read_file(path string) ?string {
+	mut res := ''
+	cpath := path.cstr()
+	fp := C.fopen(cpath, 'r')
+	if isnil(fp) {
+		return error('failed to open file "$path"')
+	}
+	C.fseek(fp, 0, SEEK_END)
+	fsize := C.ftell(fp)
+	// C.fseek(fp, 0, SEEK_SET)  // same as C.rewind(fp) below
+	C.rewind(fp)
+	mut str := malloc(fsize + 1)
+	C.fread(str, fsize, 1, fp)
+	C.fclose(fp)
+	str[fsize] = 0
+	res = tos(str, fsize)
 	return res
 }
 

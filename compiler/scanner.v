@@ -32,9 +32,13 @@ fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
 		panic('"$file_path" doesn\'t exist')
 	}
+	text := os.read_file(file_path) or {
+		panic('scanner: failed to open "$file_path"')
+		return &Scanner{}
+	}
 	scanner := &Scanner {
 		file_path: file_path
-		text: os.read_file(file_path)
+		text: text
 		fmt_out: new_string_builder(1000)
 	}
 	// println('new scanner "$file_path" txt.len=$scanner.text.len')

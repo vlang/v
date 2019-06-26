@@ -762,12 +762,18 @@ fn new_v(args[]string) *V {
 	// Location of all vlib files
 	mut lang_dir = ''
 	// First try fetching it from VROOT if it's defined
+	for { // TODO tmp hack for optionals
 	vroot_path := TmpPath + '/VROOT'
 	if os.file_exists(vroot_path) {
-		vroot := os.read_file(vroot_path).trim_space()
+		mut vroot := os.read_file(vroot_path) or {
+			break
+		}
+		vroot=vroot.trim_space() 
 		if os.dir_exists(vroot) && os.dir_exists(vroot + '/builtin') {
 			lang_dir = vroot
 		}
+	}
+	break
 	}
 	// no "~/.vlang/VROOT" file, so the user must be running V for the first 
 	// time.
