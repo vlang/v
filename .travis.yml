@@ -17,8 +17,13 @@ matrix:
           - libcurl3-dev
     - os: osx
       osx_image: xcode10.2
-      env:
-        - MATRIX_EVAL="brew install freetype glfw"
+      addons:
+        homebrew:
+          packages:
+          - freetype
+          - glfw
+      #env:
+      #  - MATRIX_EVAL="brew install freetype glfw"
 script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
