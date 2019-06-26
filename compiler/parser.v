@@ -1933,7 +1933,8 @@ fn (p mut Parser) factor() string {
 	switch tok {
 	case INT:
 		typ = 'int'
-		if p.lit.contains('.') || p.lit.contains('e') {
+		//Check if float but not if is hexa
+		if (p.lit.contains('.') || p.lit.contains('e')) && !(p.lit[0] == `0` && p.lit[1] == `x`) {
 			typ = 'f32'
 			// typ = 'f64' // TODO 
 		}
