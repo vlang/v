@@ -511,9 +511,6 @@ fn (p mut Parser) struct_decl() {
 		}
 		// `pub` access mod
 		access_mod := if is_pub{PUBLIC} else { PRIVATE}
-		if typ.name == 'Userf' {
-			println('$field_name $access_mod mut=$is_mut')
-		}
 		p.fgen(' ')
 		field_type := p.get_type()
 		is_atomic := p.tok == ATOMIC
@@ -644,8 +641,8 @@ fn (p mut Parser) check(expected Token) {
 fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if false {
-		file_types := os.create_file('$TmpPath/types')
-		file_vars := os.create_file('$TmpPath/vars')
+		file_types := os.create('$TmpPath/types')
+		file_vars := os.create('$TmpPath/vars')
 		// ////debug("ALL T", q.J(p.table.types))
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
 		// //debug("ALL V", q.J(p.table.vars))
@@ -660,13 +657,13 @@ fn (p mut Parser) error(s string) {
 	// V git pull hint
 	cur_path := os.getwd()
 	if p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') {
-		println('\n====================')
-		println('It looks like you are building V. It is being frequently updated every day.' +
-		' Most likely there was a change that lead to this error. ')
-		println('Try to run `git pull`, that will most likely fix it.')
-		println('If `git pull` doesn\'t help, re-install V from source or download a precompiled' +
-		' binary from https://vlang.io')
-		println('====================\n')
+		println('\n=========================')
+		println('It looks like you are building V. It is being frequently updated every day.') 
+		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
+		println('lead to this error.')
+		println('\nTry to run `git pull && make clean && make`, that will most likely fix it.')
+		println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println('=========================\n')
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors

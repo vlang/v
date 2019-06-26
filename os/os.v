@@ -21,42 +21,46 @@ import const (
 	SEEK_END
 )
 
-fn init_os_args(argc int, c voidptr) []string {
+fn C.getline(voidptr, voidptr, voidptr) int
+
+fn C.ftell(fp voidptr) int
+
+fn todo_remove(){}
+
+fn init_os_args(argc int, _argv *byteptr) []string {
 	mut args := []string
-	# char** argv = (char**) c;
+	# char** argv = (char**) _argv;
 	for i := 0; i < argc; i++ {
-		// # printf("ARG %d = '%s'\n", i, argv[i]);
 		arg := ''
-		# arg = tos(argv[i], strlen(argv[i]));
+		//arg := tos(argv[i], strlen(argv[i])) 
+		# arg = tos((char**)(argv[i]), strlen((char**)(argv[i])));
 		args << arg
 	}
-	# os__args = args;
 	return args
 }
 
-fn parse_windows_cmd_line(cmd byteptr) {
+fn parse_windows_cmd_line(cmd byteptr) []string {
 	s := tos2(cmd)
-	vals := s.split(' ')
-	println(vals)
-	# os__args = vals;
+	return s.split(' ')
 }
 
 // read_file reads the file in `path` and returns the contents.
-// TODO return `?string`
-pub fn read_file(path string) string {
-	res := ''
-	# FILE *f = fopen(path.str, "r");
-	# if (!f) return tos("", 0);
-	# fseek(f, 0, SEEK_END);
-	# long fsize = ftell(f);
-	// # fseek(f, 0, SEEK_SET);  //same as rewind(f);
-	# rewind(f);
-	# char *string = malloc(fsize + 1);
-	# fread(string, fsize, 1, f);
-	# fclose(f);
-	# string[fsize] = 0;
-	// # printf("RFILE= %s\n", string);
-	# res = tos(string, fsize);
+pub fn read_file(path string) ?string {
+	mut res := ''
+	cpath := path.cstr()
+	fp := C.fopen(cpath, 'r')
+	if isnil(fp) {
+		return error('failed to open file "$path"')
+	}
+	C.fseek(fp, 0, SEEK_END)
+	fsize := C.ftell(fp)
+	// C.fseek(fp, 0, SEEK_SET)  // same as C.rewind(fp) below
+	C.rewind(fp)
+	mut str := malloc(fsize + 1)
+	C.fread(str, fsize, 1, fp)
+	C.fclose(fp)
+	str[fsize] = 0
+	res = tos(str, fsize)
 	return res
 }
 
@@ -185,6 +189,7 @@ pub fn open_append(path string) File {
 	return create_file(path)
 }
 
+// TODO remove
 fn create_file(file string) File {
 	return create_file2(file, 'w')
 }
@@ -227,7 +232,7 @@ fn (f File) write_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, 0, SEEK_END)
 }
 
-fn (f File) appendln(s string) {
+pub fn (f File) appendln(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
@@ -236,7 +241,7 @@ fn (f File) appendln(s string) {
 	C.fputs('\n', f.cfile)
 }
 
-fn (f File) close() {
+pub fn (f File) close() {
 	C.fclose(f.cfile)
 }
 
@@ -319,10 +324,6 @@ pub fn getenv(key string) string {
 	return tos2(s)
 }
 
-fn exit(code int) {
-	C.exit(code)
-}
-
 // `file_exists` returns true if `path` exists.
 pub fn file_exists(path string) bool {
 	// # return access( path.str, F_OK ) != -1 ;
@@ -385,6 +386,24 @@ fn print_c_errno() {
 	# printf("errno=%d err='%s'\n", errno, strerror(errno));
 }
 
+
+pub fn ext(path string) string {
+	pos := path.last_index('.')
+	if pos == -1 {
+		return ''
+	}
+	return path.right(pos)
+}
+
+fn path_sans_ext(path string) string {
+	pos := path.last_index('.')
+	if pos == -1 {
+		return path
+	}
+	return path.left(pos)
+}
+
+
 pub fn basedir(path string) string {
 	pos := path.last_index('/')
 	if pos == -1 {
@@ -397,7 +416,6 @@ pub fn filename(path string) string {
 	return path.all_after('/')
 }
 
-fn C.getline(voidptr, voidptr, voidptr) int
 
 pub fn get_line() string {
 	max := 256
