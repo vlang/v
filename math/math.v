@@ -130,6 +130,9 @@ pub fn trunc(a f64) f64 {
 }
 
 pub fn fact(int a) int {
+	if n < 1 {
+		return error("ValueError: does not accept valeus less than 1")
+	}
     return if n == 1 {
         1
     } else {
