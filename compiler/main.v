@@ -91,7 +91,7 @@ fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := os.args
 	// Print the version and exit.
-	if 'version' in args {
+	if '-v' in args || 'version' in args {
 		println('V $Version')
 		return
 	}
