@@ -1163,7 +1163,7 @@ fn (p mut Parser) bool_expression() string {
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
 	mut typ = p.expression()
-	is_str := typ.eq('string')
+	is_str := typ=='string' 
 	tok := p.tok
 	// if tok in [ EQ, GT, LT, LE, GE, NE] {
 	if tok == EQ || tok == GT || tok == LT || tok == LE || tok == GE || tok == NE {
@@ -1762,7 +1762,7 @@ fn (p mut Parser) expression() string {
 	p.cgen('/* expr start*/')
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
-	is_str := typ.eq('string')
+	is_str := typ=='string' 
 	// a << b ==> array2_push(&a, b)
 	if p.tok == LEFT_SHIFT {
 		if typ.contains('array_') {

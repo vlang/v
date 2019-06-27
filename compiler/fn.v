@@ -493,7 +493,8 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
-	if !f.is_public && !f.is_c && f.pkg != p.pkg && f.pkg != 'builtin' {
+	//if !f.is_public && !f.is_c && f.pkg != p.pkg && f.pkg != 'builtin' {
+	if !f.is_public && !f.is_c && !p.is_test && f.pkg != p.pkg  { 
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c

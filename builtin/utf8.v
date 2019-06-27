@@ -4,7 +4,7 @@
 
 module builtin
 
-fn (s string) is_utf8() int {
+pub fn (s string) is_utf8() int {
 	faulty_bytes := 0
 	len := s.len
 	i := 0
@@ -250,7 +250,7 @@ fn (s string) runes() []string {
 */
 // Convert utf32 to utf8
 // utf32 == Codepoint
-fn utf32_to_str(code u32) string {
+pub fn utf32_to_str(code u32) string {
 	// println('code = $code')
 	buffer := malloc(5)
 	# if (code <= 0x7F) {
@@ -282,7 +282,7 @@ fn utf32_to_str(code u32) string {
 }
 
 // TODO copypasta
-fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
+pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 	// println('code = $code')
 	# char* buffer = buf;
 	# if (code <= 0x7F) {
@@ -314,7 +314,7 @@ fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 }
 
 // Convert utf8 to utf32
-fn (_rune string) utf32_code() int {
+pub fn (_rune string) utf32_code() int {
 	// println('utf 32 of $rune len=$rune.len')
 	if _rune.len == 0 {
 		return 0

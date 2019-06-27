@@ -21,7 +21,7 @@ fn display_help() {
 fn option_parser() bool {
     help := options{'--help', '-h'}
     for i := 0; i < os.args.len; i++ {
-        if compare_strings(os.args[i], help.long_opt) == 0 || compare_strings(os.args[i], help.short_opt) == 0 {
+        if os.args[i]== help.long_opt || os.args[i]== help.short_opt {
             display_help()
             return true
         }
@@ -116,7 +116,7 @@ fn is_broke(money int) bool {
         quit := options{'yes', 'y'}
         println('You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)')
    	    line := os.get_line().trim_space().to_lower()
-        if compare_strings(line, quit.long_opt) == 0 || compare_strings(line, quit.short_opt) == 0 {
+        if line== quit.long_opt || line== quit.short_opt {
             return false
         }
     }

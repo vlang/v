@@ -507,7 +507,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 			for j := 0; j < ctx.utf_runes.len; j++ {
 				rune_j := ctx.utf_runes[j]
 				// if string_eq(ctx.utf_runes[j], rune) {
-				if rune_j.eq(_rune) {
+				if rune_j==_rune {
 					ch = ctx.utf_chars[j]
 					break
 				}

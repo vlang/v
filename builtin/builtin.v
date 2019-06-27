@@ -111,13 +111,4 @@ pub fn error(s string) Option {
 	}
 }
 
-// TODO this is not used anymore
-fn range_int(start, end int) []int {
-	len := end - start
-	mut res := [0; len]
-	for i := 0; i < len; i++ {
-		res[i] = start + i
-	}
-	return res
-}
 

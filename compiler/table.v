@@ -442,7 +442,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 		return true
 	}
 	// Todo void* allows everything right now
-	if got.eq('void*') || expected.eq('void*') {
+	if got=='void*' || expected=='void*' {
 		// if !p.builtin_pkg {
 		if p.is_play {
 			return false
@@ -451,17 +451,17 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	}
 	// TODO only allow numeric consts to be assigned to bytes, and
 	// throw an error if they are bigger than 255
-	if got.eq('int') && expected.eq('byte') {
+	if got=='int' && expected=='byte' {
 		return true
 	}
-	if got.eq('byteptr') && expected.eq('byte*') {
+	if got=='byteptr' && expected=='byte*' {
 		return true
 	}
-	if got.eq('int') && expected.eq('byte*') {
+	if got=='int' && expected=='byte*' {
 		return true
 	}
 	// byteptr += int
-	if got.eq('int') && expected.eq('byteptr') {
+	if got=='int' && expected=='byteptr' {
 		return true
 	}
 	if got == 'Option' && expected.starts_with('Option_') {
@@ -487,7 +487,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 		// return true
 		// }
 		// Allow pointer arithmetic
-		if expected.eq('void*') && got.eq('int') {
+		if expected=='void*' && got=='int' {
 			return true
 		}
 	}
