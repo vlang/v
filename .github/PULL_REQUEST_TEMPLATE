@@ -3,10 +3,6 @@ Don't use past tense (e.g. "fixed foo bar").
 
 Explain what your PR does and why.
 
-Do not use # to generate C code. This feature will be removed in a couple of days.
-
-Squash commits into one if they refer to the same thing. Use `git rebase -i` for that.
-
 Before submitting a PR, please run the tests with `make test`, and make sure V can still compile itself. Run this twice:
 
 ./v -o v
