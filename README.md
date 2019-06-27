@@ -19,7 +19,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 5% of C
-- Safety: no null, no globals, no UB, immutability by default
+- Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
 - Powerful UI and graphics libraries
