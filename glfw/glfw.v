@@ -135,6 +135,14 @@ pub fn init() {
 	# glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 }
 
+pub fn (w &Window) destroy() {
+	C.glfwDestroyWindow(w.data)
+}
+
+pub fn terminate() {
+	C.glfwTerminate()
+}
+
 // pub fn mouse_move(w * GLFWwindow, x, y double) {
 pub fn mouse_move(w voidptr, x, y f64) {
 	// #printf("%f : %f => %d \n", x,y);
@@ -201,6 +209,10 @@ pub fn wait_events() {
 
 pub fn poll_events() {
 	C.glfwPollEvents()
+}
+
+pub fn set_should_close(w voidptr, close bool) {
+	C.glfwSetWindowShouldClose(w, close)
 }
 
 pub fn (w &Window) should_close() bool {
