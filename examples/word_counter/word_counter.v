@@ -13,7 +13,10 @@ fn main() {
 	else {
 		path = os.args[1]
 	}
-	contents := os.read_file(path.trim_space())
+	contents := os.read_file(path.trim_space()) or {
+		println('failed to open $path')
+		return
+	}
 	mut m := map[string]int{}
 	for word in contents.to_lower().split(' ') {
 		key := filter_word(word)

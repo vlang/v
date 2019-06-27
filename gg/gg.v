@@ -47,7 +47,7 @@ struct Character {
 	advance    u32
 }
 
-fn init() {
+pub fn init() {
 	println(gl.TEXT_VERT)
 	gl.init_glad()
 }
@@ -198,7 +198,7 @@ pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	gl.draw_elements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0)
 }
 
-fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	// println('gg.draw_rect($x,$y,$w,$h)')
 	// wrong order
 	// // ctx.draw_triangle(x, y, x + w, y, x + w, y + h, c)
@@ -231,7 +231,7 @@ fn (ctx mut GG) init_rect_vao() {
 	gl.set_ebo(ebo, indices, GL_STATIC_DRAW)
 } 
 */
-fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	C.glDeleteBuffers(1, &ctx.VAO)
 	C.glDeleteBuffers(1, &ctx.VBO)
 	ctx.shader.use()
@@ -305,7 +305,7 @@ fn ft_load_char(_face Face, code i64) Character {
 	return ch
 }
 
-fn new_context_text(cfg Cfg, scale int) *GG {
+pub fn new_context_text(cfg Cfg, scale int) *GG {
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
 		return &GG{text_ctx: 0}

@@ -84,7 +84,7 @@ const (
 		'panic',
 		'register'
 	]
-	
+
 )
 
 // This is used in generated C code
@@ -138,6 +138,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_const('stdin', 'int', 'main', false)
 	t.register_const('stdout', 'int', 'main', false)
 	t.register_const('stderr', 'int', 'main', false)
+	t.register_const('errno', 'int', 'main', false)
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -164,7 +165,7 @@ fn (table &Table) known_pkg(pkg string) bool {
 	return pkg in table.packages
 }
 
-fn (t mut Table) register_const(name, typ string, pkg string, is_imported bool) {
+fn (t mut Table) register_const(name, typ, pkg string, is_imported bool) {
 	t.consts << Var {
 		name: name
 		typ: typ
@@ -273,11 +274,11 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 			return
 		}
 	}
-	/* 
-mut pkg := '' 
+	/*
+mut pkg := ''
 if parent == 'array' {
-pkg = 'builtin' 
-} 
+pkg = 'builtin'
+}
 */
 	datyp := Type {
 		name: typ

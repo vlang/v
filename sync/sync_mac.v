@@ -9,11 +9,11 @@ struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
-fn (m Mutex) lock() {
+pub fn (m Mutex) lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
-fn (m Mutex) unlock() {
+pub fn (m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
 

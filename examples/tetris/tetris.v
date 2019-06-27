@@ -93,8 +93,8 @@ struct Game {
 	field       array_array_int
 	// TODO: tetro Tetro
 	tetro       []Block
-	// TODO: tetros_cache []Tetro 
-	tetros_cache []Block 
+	// TODO: tetros_cache []Tetro
+	tetros_cache []Block
 	// Index of the current tetro. Refers to its color.
 	tetro_idx    int
 	// Index of the rotation (0-3)
@@ -106,7 +106,7 @@ struct Game {
 fn main() {
 	glfw.init()
 	mut game := &Game{gg: 0} // TODO
-	game.parse_tetros() 
+	game.parse_tetros()
 	game.init_game()
 	mut window := glfw.create_window(glfw.WinCfg {
 		width: WinWidth
@@ -155,13 +155,13 @@ fn (g mut Game) init_game() {
 
 fn (g mut Game) parse_tetros() {
 	for b_tetros in BTetros {
-		for b_tetro in b_tetros { 
-			for t in parse_binary_tetro(b_tetro) { 
+		for b_tetro in b_tetros {
+			for t in parse_binary_tetro(b_tetro) {
 				g.tetros_cache << t
-			} 
-		} 
-	} 
-} 
+			}
+		}
+	}
+}
 
 fn (g mut Game) run() {
 	for {
@@ -196,7 +196,7 @@ fn (g mut Game) move_tetro() {
 }
 
 fn (g mut Game) move_right(dx int) {
-	// Reached left/right edge or another tetro? 
+	// Reached left/right edge or another tetro?
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
@@ -238,15 +238,15 @@ fn (g mut Game) generate_tetro() {
 	g.pos_y = 0
 	g.pos_x = FieldWidth / 2 - TetroSize / 2
 	g.tetro_idx = rand.next(BTetros.len)
-	g.rotation_idx = 0 
-	g.get_tetro() 
+	g.rotation_idx = 0
+	g.get_tetro()
 }
 
-// Get the right tetro from cache 
+// Get the right tetro from cache
 fn (g mut Game) get_tetro() {
-	idx := g.tetro_idx * TetroSize * TetroSize + g.rotation_idx * TetroSize 
-	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize) 
-} 
+	idx := g.tetro_idx * TetroSize * TetroSize + g.rotation_idx * TetroSize
+	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize)
+}
 
 fn (g mut Game) drop_tetro() {
 	for i := 0; i < TetroSize; i++ {
@@ -267,8 +267,8 @@ fn (g &Game) draw_tetro() {
 	}
 }
 
-fn (g &Game) draw_block(i, j int, color_idx int) {
-	g.gg.draw_rect((j - 1) * BlockSize, (i - 1) * BlockSize, 
+fn (g &Game) draw_block(i, j, color_idx int) {
+	g.gg.draw_rect((j - 1) * BlockSize, (i - 1) * BlockSize,
 		BlockSize - 1, BlockSize - 1, Colors[color_idx])
 }
 
@@ -315,7 +315,7 @@ fn parse_binary_tetro(t int) []Block {
 }
 
 // TODO: this exposes the unsafe C interface, clean up
-fn key_down(wnd voidptr, key int, code int, action, mods int) {
+fn key_down(wnd voidptr, key, code, action, mods int) {
 	if action != 2 && action != 1 {
 		return
 	}
@@ -328,7 +328,7 @@ fn key_down(wnd voidptr, key int, code int, action, mods int) {
 		if game.rotation_idx == TetroSize {
 			game.rotation_idx = 0
 		}
-		game.get_tetro() 
+		game.get_tetro()
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
