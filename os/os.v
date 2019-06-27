@@ -325,10 +325,6 @@ pub fn unsetenv(name string) int {
   return C.unsetenv(name.cstr())
 }
 
-pub fn clearenv() {
-  C.clearenv()
-}
-
 fn exit(code int) {
 	C.exit(code)
 }

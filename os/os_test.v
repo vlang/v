@@ -19,8 +19,3 @@ fn test_unsetenv() {
   assert os.getenv('foo') == ''
 }
 
-fn test_clearenv() {
-  os.setenv('foo', 'bar', true)
-  os.clearenv()
-  assert os.getenv('foo') == ''
-}
