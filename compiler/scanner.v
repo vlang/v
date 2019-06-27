@@ -138,7 +138,7 @@ fn (s mut Scanner) get_var_name(pos int) string {
 
 // CAO stands for Compound Assignment Operators  (e.g '+=' )
 fn (s mut Scanner) cao_change(operator string) {
-	s.text = s.text.substr(0, s.pos - 1) + ' = ' + s.get_var_name(s.pos - 1) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
+	s.text = s.text.substr(0, s.pos - operator.len) + ' = ' + s.get_var_name(s.pos - operator.len) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
 }
 
 fn (s mut Scanner) scan() ScanRes {
