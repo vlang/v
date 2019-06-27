@@ -67,6 +67,9 @@ fn (s mut Scanner) ident_name() string {
 	start := s.pos
 	for {
 		s.pos++
+		if s.pos >= s.text.len {
+			break
+		}
 		c := s.text[s.pos]
 		if !is_name_char(c) && !c.is_digit() {
 			break
@@ -79,18 +82,21 @@ fn (s mut Scanner) ident_name() string {
 
 fn (s mut Scanner) ident_number() string {
 	start := s.pos
-	is_hex := s.text[s.pos] == `0` && s.text[s.pos + 1] == `x`
+	is_hex := s.pos + 1 < s.text.len && s.text[s.pos] == `0` && s.text[s.pos + 1] == `x`
 	is_oct := !is_hex && s.text[s.pos] == `0`
 	mut is_float := false
 	for {
 		s.pos++
+		if s.pos >= s.text.len {
+			break
+		}
 		c := s.text[s.pos]
 		if c == `.` {
 			is_float = true
 		}
 		is_good_hex := is_hex && (c == `x`  || (c >= `a` && c <= `f`))
 		// 1e+3, 1e-3, 1e3
-		if !is_hex && c == `e` {
+		if !is_hex && c == `e` && s.pos + 1 < s.text.len {
 			next := s.text[s.pos + 1]
 			if next == `+` || next == `-` || next.is_digit() {
 				s.pos++
@@ -101,7 +107,7 @@ fn (s mut Scanner) ident_number() string {
 			break
 		}
 		// 1..9
-		if c == `.` && s.text[s.pos + 1] == `.` {
+		if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `.` {
 			break
 		}
 		if is_oct && c >= `8` && !is_float {
@@ -189,7 +195,9 @@ fn (s mut Scanner) scan() ScanRes {
 	// name or keyword
 	if is_name_char(c) {
 		name := s.ident_name()
-		next_char := s.text[s.pos + 1]// tmp hack to detect . in ${}
+		// tmp hack to detect . in ${}
+		// Check if not EOF to prevent panic
+		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		// println('!!! got name=$name next_char=$next_char')
 		if is_key(name) {
 			// println('IS KEY')
@@ -201,7 +209,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// at the next ', skip it
 		if s.inside_string {
 			// println('is_letter inside string! nextc=${nextc.str()}')
-			if s.text[s.pos + 1] == SINGLE_QUOTE {
+			if next_char == SINGLE_QUOTE {
 				// println('var is last before QUOTE')
 				s.pos++
 				s.dollar_start = false
@@ -311,13 +319,13 @@ fn (s mut Scanner) scan() ScanRes {
 			s.cao_change('&')
 			return scan_res(AND_ASSIGN, '')
 		}
-		if s.text[s.pos + 1] == `&` {
+		if nextc == `&` {
 			s.pos++
 			return scan_res(AND, '')
 		}
 		return scan_res(AMP, '')
 	case `|`:
-		if s.text[s.pos + 1] == `|` {
+		if nextc == `|` {
 			s.pos++
 			return scan_res(OR, '')
 		}
@@ -337,14 +345,14 @@ fn (s mut Scanner) scan() ScanRes {
 	case `\n`:
 		return scan_res(NL, '')
 	case `.`:
-		if s.text[s.pos + 1] == `.` {
+		if nextc == `.` {
 			s.pos++
 			return scan_res(DOTDOT, '')
 		}
 		return scan_res(DOT, '')
 	case `#`:
 		start := s.pos + 1
-		for s.text[s.pos] != `\n` {
+		for s.pos < s.text.len && s.text[s.pos] != `\n` {
 			s.pos++
 		}
 		s.line_nr++
@@ -355,12 +363,12 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		return scan_res(HASH, hash.trim_space())
 	case `>`:
-		if s.text[s.pos + 1] == `=` {
+		if nextc == `=` {
 			s.pos++
 			return scan_res(GE, '')
 		}
-		else if s.text[s.pos + 1] == `>` {
-			if s.text[s.pos + 2] == `=` {
+		else if nextc == `>` {
+			if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 				s.pos += 2
 				s.cao_change('>>')
 				return scan_res(RIGHT_SHIFT_ASSIGN, '')
@@ -372,12 +380,12 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(GT, '')
 		}
 	case `<`:
-		if s.text[s.pos + 1] == `=` {
+		if nextc == `=` {
 			s.pos++
 			return scan_res(LE, '')
 		}
-		else if s.text[s.pos + 1] == `<` {
-			if s.text[s.pos + 2] == `=` {
+		else if nextc == `<` {
+			if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 				s.pos += 2
 				s.cao_change('<<')
 				return scan_res(LEFT_SHIFT_ASSIGN, '')
@@ -389,7 +397,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(LT, '')
 		}
 	case `=`:
-		if s.text[s.pos + 1] == `=` {
+		if nextc == `=` {
 			s.pos++
 			return scan_res(EQ, '')
 		}
@@ -397,7 +405,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(ASSIGN, '')
 		}
 	case `:`:
-		if s.text[s.pos + 1] == `=` {
+		if nextc == `=` {
 			s.pos++
 			return scan_res(DECL_ASSIGN, '')
 		}
@@ -407,7 +415,7 @@ fn (s mut Scanner) scan() ScanRes {
 	case `;`:
 		return scan_res(SEMICOLON, '')
 	case `!`:
-		if s.text[s.pos + 1] == `=` {
+		if nextc == `=` {
 			s.pos++
 			return scan_res(NE, '')
 		}
@@ -422,10 +430,10 @@ fn (s mut Scanner) scan() ScanRes {
 			s.cao_change('/')
 			return scan_res(DIV_ASSIGN, '')
 		}
-		if s.text[s.pos + 1] == `/` {
+		if nextc == `/` {
 			// debug("!!!!!!GOT LINE COM")
 			start := s.pos + 1
-			for s.text[s.pos] != `\n` {
+			for s.pos < s.text.len && s.text[s.pos] != `\n`{
 				s.pos++
 			}
 			s.line_nr++
@@ -443,7 +451,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(LINE_COM, s.line_comment)
 		}
 		// Multiline comments
-		if s.text[s.pos + 1] == `*` {
+		if nextc == `*` {
 			start := s.pos
 			// Skip comment
 			for ! (s.text[s.pos] == `*` && s.text[s.pos + 1] == `/`) {
