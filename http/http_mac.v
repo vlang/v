@@ -156,7 +156,7 @@ fn (req &Request) do() Response {
 	mut status_code := 0
 	if first_header.contains('HTTP/') {
 		val := first_header.find_between(' ', ' ')
-		status_code = val.to_i()
+		status_code = val.int()
 	}
 	// Build resp headers map
 	// println('building resp headers hchunk.strings.len')

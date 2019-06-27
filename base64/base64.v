@@ -14,7 +14,7 @@ const (
 	47, 48, 49, 50, 51]
 )
 
-fn decode(data string) string {
+pub fn decode(data string) string {
 	p := data.cstr()
 	len := data.len
 	mut pad := 0
@@ -25,7 +25,7 @@ fn decode(data string) string {
 	str_len := L / 4 * 3 + pad
 	mut str := malloc(str_len + 2)
 	mut j := 0
-	for i := 0; i < L; i += 4 {
+	for i := 0; i < L; i = i+4 {
 		n := (Index[p[i]] << 18) | (Index[p[i + 1]] << 12) |
 			(Index[p[i + 2]] << 6) | (Index[p[i + 3]])
 		str[j] = n >> 16
@@ -44,6 +44,52 @@ fn decode(data string) string {
 		}
 	}
 	str[str_len + 1] = `\0`
-	return tos(str, str_len+2)
+	return tos(str, str_len+1)
 }
 
+const (
+	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+)
+
+pub fn encode(data string) string {
+	input_length := data.len
+	output_length := 4 * ((input_length + 2) / 3)
+
+	mut i := 0
+	mut j := 0
+	mut str := malloc(output_length)
+
+	for i < input_length {
+		mut octet_a := 0
+		mut octet_b := 0
+		mut octet_c := 0
+
+		if i < input_length {
+			octet_a = int(data[i])
+			i++
+		}
+		if i < input_length {
+			octet_b = int(data[i])
+			i++
+		}
+		if i < input_length {
+			octet_c = int(data[i])
+			i++
+		}
+
+		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
+
+		str[j+0] = EncodingTable[(triple >> 3 * 6) & 63] // 63 is 0x3F
+		str[j+1] = EncodingTable[(triple >> 2 * 6) & 63]
+		str[j+2] = EncodingTable[(triple >> 1 * 6) & 63]
+		str[j+3] = EncodingTable[(triple >> 0 * 6) & 63]
+		j += 4
+	}
+
+	mod_table := [0, 2, 1]
+	for i = 0; i < mod_table[input_length % 3]; i++ {
+		str[output_length - 1 - i] = `=`
+	}
+
+	return tos(str, output_length)
+}

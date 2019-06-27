@@ -8,32 +8,32 @@ import math
 
 /* 
 #flag -lmyglm
-# float* myglm_ortho(float, float, float, float);
-# float* myglm_translate(float, float, float);
+# f32* myglm_ortho(f32, f32, f32, f32);
+# f32* myglm_translate(f32, f32, f32);
 */
-// # float* myglm_rotate(float *m, float angle, float, float, float);
-// # float* myglm_perspective(float, float, float, float);
-// # float* myglm_look_at(glm__Vec3, glm__Vec3, glm__Vec3);
+// # f32* myglm_rotate(f32 *m, f32 angle, f32, f32, f32);
+// # f32* myglm_perspective(f32, f32, f32, f32);
+// # f32* myglm_look_at(glm__Vec3, glm__Vec3, glm__Vec3);
 // # glm__Vec3 myglm_mult(glm__Vec3, glm__Vec3);
 // # glm__Vec3 myglm_cross(glm__Vec3, glm__Vec3);
 // # glm__Vec3 myglm_normalize(glm__Vec3);
 struct Mat4 {
 pub:
-	data *float
+	data *f32
 }
 
 struct Vec2 {
-	x float
-	y float
+	x f32
+	y f32
 }
 
 struct Vec3 {
-	x float
-	y float
-	z float
+	x f32
+	y f32
+	z f32
 }
 
-fn vec3(x, y, z float) Vec3 {
+pub fn vec3(x, y, z f32) Vec3 {
 	res := Vec3 {
 		x: x,
 		y: y,
@@ -42,7 +42,7 @@ fn vec3(x, y, z float) Vec3 {
 	return res
 }
 
-fn mat4(f *float) Mat4 {
+fn mat4(f *f32) Mat4 {
 	res := Mat4 {
 		data: f
 	}
@@ -104,7 +104,7 @@ fn (a Vec3) sub(b Vec3) Vec3 {
 // fn (a Vec3) mult(b Vec3) Vec3 {
 // # return myglm_mult(a,b);
 // }
-fn (a Vec3) mult_scalar(b float) Vec3 {
+fn (a Vec3) mult_scalar(b f32) Vec3 {
 	res := Vec3 {
 		x: a.x * b,
 		y: a.y * b,
@@ -122,7 +122,7 @@ fn (a Vec3) print() {
 }
 
 /* 
-fn rotate(m Mat4, angle float, vec Vec3) Mat4 {
+fn rotate(m Mat4, angle f32, vec Vec3) Mat4 {
 	// # t_mat4 m;
 	// println('rotate done')
 	# return glm__mat4( myglm_rotate(m.data, angle, vec.x,vec.y,vec.z) );
@@ -130,14 +130,14 @@ fn rotate(m Mat4, angle float, vec Vec3) Mat4 {
 }
 */
 
-fn float_calloc(n int) *float {
-	return *float(calloc(n * sizeof(float)))
+fn f32_calloc(n int) *f32 {
+	return *f32(calloc(n * sizeof(f32)))
 }
-// fn translate(vec Vec3) *float {
-fn translate(m Mat4, v Vec3) Mat4 {
+// fn translate(vec Vec3) *f32 {
+pub fn translate(m Mat4, v Vec3) Mat4 {
 	// # return glm__mat4(myglm_translate(vec.x,vec.y,vec.z)  );
 	a := m.data
-	mut out := float_calloc(16)
+	mut out := f32_calloc(16)
 	x := v.x
 	y := v.y
 	z := v.z
@@ -161,11 +161,11 @@ fn normalize(vec Vec3) Vec3 {
 }
 */
 // https://github.com/g-truc/glm/blob/0ceb2b755fb155d593854aefe3e45d416ce153a4/glm/ext/matrix_clip_space.inl
-fn ortho(left, right, bottom, top float) Mat4 {
+pub fn ortho(left, right, bottom, top f32) Mat4 {
 	println('glm ortho($left, $right, $bottom, $top)')
 	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
 	n := 16
-	mut res := float_calloc(n)
+	mut res := f32_calloc(n)
 	# res[0] = 2 / (right - left) ;
 	# res[5] = 2.0 / (top - bottom);
 	# res[10] =  (1);
@@ -175,10 +175,10 @@ fn ortho(left, right, bottom, top float) Mat4 {
 	return mat4(res)
 }
 
-// fn scale(a *float, v Vec3) *float {
-fn scale(m Mat4, v Vec3) Mat4 {
+// fn scale(a *f32, v Vec3) *f32 {
+pub fn scale(m Mat4, v Vec3) Mat4 {
 	a := m.data
-	mut out := float_calloc(16)
+	mut out := f32_calloc(16)
 	x := v.x
 	y := v.y
 	z := v.z
@@ -201,10 +201,10 @@ fn scale(m Mat4, v Vec3) Mat4 {
 	return mat4(out)
 }
 
-// fn rotate_z(a *float, rad float) *float {
-fn rotate_z(m Mat4, rad float) Mat4 {
+// fn rotate_z(a *f32, rad f32) *f32 {
+pub fn rotate_z(m Mat4, rad f32) Mat4 {
 	a := m.data
-	mut out := float_calloc(16)
+	mut out := f32_calloc(16)
 	s := math.sin(rad)
 	c := math.cos(rad)
 	a00 := a[0]
@@ -235,13 +235,13 @@ fn rotate_z(m Mat4, rad float) Mat4 {
 	return mat4(out)
 }
 
-fn identity() Mat4 {
+pub fn identity() Mat4 {
 	// 1 0 0 0
 	// 0 1 0 0
 	// 0 0 1 0
 	// 0 0 0 1
 	n := 16
-	mut res := float_calloc(sizeof(float) * n)
+	mut res := f32_calloc(sizeof(f32) * n)
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1
@@ -249,19 +249,19 @@ fn identity() Mat4 {
 	return mat4(res)
 }
 
-// returns *float without allocation
-fn identity2(res *float) {
+// returns *f32 without allocation
+pub fn identity2(res *f32) {
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1
 	res[15] = 1
-	// # float f[16]={0};// for (int i =0;i<16;i++)
+	// # f32 f[16]={0};// for (int i =0;i<16;i++)
 	// # printf("!!%d\n", f[0]);
 	// # glm__identity2(&f);
 	// # gl__Shader_set_mat4(shader, tos2("projection"), f) ;
 }
 
-fn identity3() []float {
+pub fn identity3() []f32 {
 	res := [1.0, 0, 0, 0,
 	0, 1, 0, 0,
 	0, 0, 1, 0,
@@ -271,13 +271,13 @@ fn identity3() []float {
 }
 
 // https://github.com/toji/gl-matrix/blob/1549cf21dfa14a2bc845993485343d519cf064fe/src/gl-matrix/mat4.js
-fn ortho_js(left, right, bottom, top float) *float {
+fn ortho_js(left, right, bottom, top f32) *f32 {
 	mynear := 1
 	myfar := 1
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
 	nf := 1.0 / 1.0// (mynear -myfar)
-	# float* out = malloc (sizeof(float) * 16);
+	# f32* out = malloc (sizeof(f32) * 16);
 	# out[0] = -2 * lr;
 	# out[1] = 0;
 	# out[2] = 0;
@@ -299,7 +299,7 @@ fn ortho_js(left, right, bottom, top float) *float {
 	return &f
 }
 
-// fn ortho_old(a, b, c, d float) *float {
+// fn ortho_old(a, b, c, d f32) *f32 {
 // # return myglm_ortho(a,b,c,d);
 // }
 fn cross(a, b Vec3) Vec3 {
@@ -308,7 +308,7 @@ fn cross(a, b Vec3) Vec3 {
 }
 
 /* 
-fn perspective(degrees float, ratio float, a, b float) Mat4 {
+fn perspective(degrees f32, ratio f32, a, b f32) Mat4 {
 	// println('lang per degrees=$degrees ratio=$ratio a=$a b=$b')
 	// # printf("lang pers degrees=%f ratio=%f a=%f b=%f\n", degrees, ratio, a,b);
 	# return glm__mat4( myglm_perspective(degrees, ratio, a,b)  ) ;

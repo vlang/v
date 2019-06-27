@@ -5,15 +5,15 @@
 module time
 
 // in ms
-fn ticks() double {
-	return double(0)
+pub fn ticks() f64 {
+	return f64(0)
 }
 
-fn sleep(seconds int) {
+pub fn sleep(seconds int) {
 	C.sleep(seconds)
 }
 
-fn sleep_ms(seconds int) {
+pub fn sleep_ms(seconds int) {
 	C.usleep(seconds * 1000)
 }
 

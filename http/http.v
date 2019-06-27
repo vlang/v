@@ -28,7 +28,7 @@ pub:
 }
 
 // embed 'http'
-fn get(url string) string {
+pub fn get(url string) string {
 	if url == '' {
 		println('http: empty get url')
 		return ''
@@ -38,17 +38,13 @@ fn get(url string) string {
 	return resp.body
 }
 
-fn get2(url string) string {
-	return ''
-}
-
-fn post(url, data string) string {
+pub fn post(url, data string) string {
 	req := new_request('POST', url, data)
 	resp := req.do()
 	return resp.body
 }
 
-fn new_request(typ, _url, _data string) *Request {
+pub fn new_request(typ, _url, _data string) *Request {
 	mut url := _url
 	mut data := _data
 	// req.headers['User-Agent'] = 'V $VERSION'
@@ -82,7 +78,7 @@ fn (resp mut Response) free() {
 	resp.headers.free()
 }
 
-fn (req mut Request) add_header(key, val string) {
+pub fn (req mut Request) add_header(key, val string) {
 	// println('start add header')
 	// println('add header "$key" "$val"')
 	// println(key)

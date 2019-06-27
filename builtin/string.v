@@ -138,13 +138,11 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
-// TODO `.int()` ?
-pub fn (s string) to_i() int {
+fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
-// TODO `.f32()`
-fn (s string) to_float() float {
+fn (s string) f32() f32 {
 	return C.atof(s.str)
 }
 
@@ -334,7 +332,7 @@ pub fn (s string) right(n int) string {
 // puts(substr.str) will print 'rivet'
 // Avoid using C functions with these substrs!
 pub fn (s string) substr(start, end int) string {
-	/* 
+	/*
 	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
 		return ''
@@ -351,23 +349,36 @@ pub fn (s string) substr(start, end int) string {
 	return res
 }
 
+// KMP search
 pub fn (s string) index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && s[ii] == p[j] {
+	mut prefix := [0]
+	mut j := 0
+	for i := 1; i < p.len; i++ {
+		for p[j] != p[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == p[i] {
 			j++
-			ii++
+		}
+		prefix << j
+	}
+	j = 0
+	for i := 0; i < s.len; i++ {
+		for p[j] != s[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == s[i] {
+			j++
 		}
 		if j == p.len {
-			return i
+			prefix.free()
+			return i - p.len + 1
 		}
-		i++
 	}
+	prefix.free()
 	return -1
 }
 
@@ -586,7 +597,7 @@ fn compare_strings_by_len(a, b *string) int {
 
 fn compare_lower_strings(a, b *string) int {
 	aa := a.to_lower()
-	bb := a.to_lower()
+	bb := b.to_lower()
 	return compare_strings(aa, bb)
 }
 
@@ -771,6 +782,19 @@ pub fn (a[]string) join(del string) string {
 
 fn (s[]string) join_lines() string {
 	return s.join('\n')
+}
+
+fn (s string) reverse() string {
+	mut res := string {
+		len: s.len
+		str: malloc(s.len + 1)
+	}
+
+	for i := s.len - 1; i >= 0; i-- {
+        res[s.len-i-1] = s[i]
+	}
+
+	return res
 }
 
 // 'hello'.limit(2) => 'he'

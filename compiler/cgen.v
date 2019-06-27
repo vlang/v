@@ -33,7 +33,7 @@ mut:
 fn new_cgen(out_name_c string) *CGen {
 	gen := &CGen {
 		out_path: '$TmpPath/$out_name_c'
-		out: os.create_file('$TmpPath/$out_name_c')
+		out: os.create('$TmpPath/$out_name_c')
 	}
 	return gen
 }

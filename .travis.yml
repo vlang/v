@@ -1,0 +1,36 @@
+language: c
+matrix:
+  include:
+    - os: linux
+      sudo: required
+      addons:
+        apt:
+          sources:
+          - ubuntu-toolchain-r-test
+          packages:
+          - gcc-5
+          - g++-5
+          - make
+          - libglfw3 
+          - libglfw3-dev
+          - libfreetype6-dev 
+          - libcurl3-dev
+    - os: osx
+      osx_image: xcode10.2
+      addons:
+        homebrew:
+          packages:
+          - freetype
+          - glfw
+      #env:
+      #  - MATRIX_EVAL="brew install freetype glfw"
+script:
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
+    fi
+  - export VROOT=$(pwd)
+  - cd ./compiler
+  - make
+  - make test
+

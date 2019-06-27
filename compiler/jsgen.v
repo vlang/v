@@ -109,7 +109,9 @@ string res = tos2("");
 }
 
 fn is_js_prim(typ string) bool {
-	return typ == 'int' || typ == 'string' || typ == 'bool'
+	return typ == 'int' || typ == 'string' ||
+	typ == 'bool' || typ == 'f32' || typ == 'f64' ||
+	typ == 'i8' || typ == 'i16' || typ == 'i32' || typ == 'i64'
 }
 
 fn (p mut Parser) decode_array(typ string) string {

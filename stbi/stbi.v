@@ -6,8 +6,8 @@ module stbi
 
 import gl
 
-#flag linux -I$HOME/code/v/thirdparty/stb_image
-#flag darwin -I$HOME/code/v/thirdparty/stb_image
+#flag linux  -I @VROOT/thirdparty/stb_image
+#flag darwin -I @VROOT/thirdparty/stb_image
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -29,7 +29,7 @@ import const (
 	STBI_rgb_alpha
 )
 
-fn load(path string) Image {
+pub fn load(path string) Image {
 	ext := path.all_after('.')
 	mut res := Image {
 		ok: true
@@ -49,11 +49,11 @@ fn load(path string) Image {
 	return res
 }
 
-fn (img Image) free() {
+pub fn (img Image) free() {
 	C.stbi_image_free(img.data)
 }
 
-fn (img Image) tex_image_2d() {
+pub fn (img Image) tex_image_2d() {
 	mut rgb_flag := GL_RGB
 	if img.ext == 'png' {
 		rgb_flag = GL_RGBA
@@ -62,7 +62,7 @@ fn (img Image) tex_image_2d() {
 	img.data)
 }
 
-fn set_flip_vertically_on_load(val bool) {
+pub fn set_flip_vertically_on_load(val bool) {
 	C.stbi_set_flip_vertically_on_load(val)
 }
 
