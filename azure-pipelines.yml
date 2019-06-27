@@ -1,7 +1,3 @@
-trigger:
-  branches:
-    include:
-    - '*'
 jobs:
   - job: LinuxBuild
     pool: 
@@ -32,3 +28,12 @@ jobs:
       - script: |
           cd compiler && make && make test
         displayName: 'Build V'
+trigger:
+  branches:
+    include:
+      - '*'
+pr:
+  autoCancel: false
+  branches:
+    include:
+      - '*'
