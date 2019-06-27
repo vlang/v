@@ -408,9 +408,12 @@ pub fn filename(path string) string {
 }
 
 // get_line returns a one-line string from stdin 
+//u64 is used because C.getline needs a size_t as second argument
+//Otherwise, it would cause a valgrind warning and may be dangerous
+//Malloc takes an int as argument so a cast has to be made
 pub fn get_line() string {
-	max := 256
-	buf := malloc(max)
+	max := u64(256)
+	buf := malloc(int(max))
 	nr_chars := C.getline(&buf, &max, stdin)
 	if nr_chars == 0 {
 		return ''
