@@ -10,7 +10,7 @@ mut:
 fn main() {
 	s := '[{ "name":"Frodo", "age":25}, {"name":"Bobby", "age":10}]'
 	users := json.decode( []User, s) or {
-		eprintln('Failed to parse json')
+		println('Failed to parse json')
 		return
 	}
 	for user in users {
