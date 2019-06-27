@@ -1,3 +1,7 @@
+trigger:
+  branches:
+    include:
+    - '*'
 jobs:
   - job: LinuxBuild
     pool: 
