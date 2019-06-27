@@ -4,6 +4,8 @@
 
 module time
 
+#include <time.h>
+
 struct Time {
 	sec i64
 	nsec i32

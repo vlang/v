@@ -4,10 +4,6 @@
 
 module time
 
-//#flag -framework CoreServices
-//#include <CoreServices/CoreServices.h>
-//#include <mach/mach_time.h>
-
 pub fn now() Time {
 	# time_t t = time(0);
 
