@@ -771,6 +771,19 @@ fn (s[]string) join_lines() string {
 	return s.join('\n')
 }
 
+fn (s string) reverse() string {
+	mut res := string {
+		len: s.len
+		str: malloc(s.len + 1)
+	}
+
+	for i := s.len - 1; i >= 0; i-- {
+        res[s.len-i-1] = s[i]
+	}
+
+	return res
+}
+
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 fn (s string) limit(max int) string {
