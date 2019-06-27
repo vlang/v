@@ -142,7 +142,8 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_pkg = p.pkg == 'builtin'
-	p.can_chash = p.pkg == 'gg' || p.pkg == 'glm' || p.pkg == 'gl' || p.pkg == 'glfw' // TODO tmp remove
+	p.can_chash = p.pkg == 'gg' || p.pkg == 'glm' || p.pkg == 'gl' || 
+		p.pkg == 'http' ||  p.pkg == 'glfw' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	p.table.register_package(p.pkg)
 	if p.run == RUN_IMPORTS {
