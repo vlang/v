@@ -7,6 +7,7 @@ module os
 #include <sys/stat.h>
 const (
 	args = []string
+	MAX_PATH = 4096
 )
 
 struct FILE {
@@ -441,5 +442,25 @@ fn on_segfault(f voidptr) {
 		sa.sa_sigaction = f
 		sa.sa_flags   = SA_SIGINFO
 		C.sigaction(SIGSEGV, &sa, 0)
+	}
+}
+
+pub fn getexepath() string {
+	mut result := [4096]byte // [MAX_PATH]byte --> error byte undefined
+	$if linux {
+		count := int(C.readlink('/proc/self/exe', result, MAX_PATH ))
+		if(count < 0) {
+			panic('error reading /proc/self/exe to get exe path')
+		}
+		return tos(result, count)
+	}
+
+	$if windows {
+		return tos( result, C.GetModuleFileName( 0, result, MAX_PATH ) )
+	}
+
+	$if mac {
+		//panic('getexepath() not impl')
+		return ''
 	}
 }
