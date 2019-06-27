@@ -858,7 +858,11 @@ fn run_repl() []string {
 	mut lines := []string
 	for {
 		print('>>> ')
-		mut line := os.get_line().trim_space()
+		mut line := os.get_raw_line()
+		if line.trim_space() == '' && line.ends_with('\n') {
+			continue
+		}
+		line = line.trim_space()
 		if line == '' {
 			break
 		}

@@ -383,6 +383,17 @@ pub fn get_line() string {
 	return tos(buf, nr_chars)
 }
 
+// get_raw_line returns a one-line string from stdin along with '\n' if there is any
+pub fn get_raw_line() string {
+	max := u64(256)
+	buf := malloc(int(max))
+	nr_chars := C.getline(&buf, &max, stdin)
+	if nr_chars == 0 {
+		return ''
+	}
+	return tos(buf, nr_chars)
+}
+
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
