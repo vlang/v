@@ -15,36 +15,53 @@ const (
 )
 
 pub fn decode(data string) string {
-	p := data.cstr()
-	len := data.len
-	mut pad := 0
-	if len > 0 && (len % 4 != 0 || p[len - 1] == `=`) {
-		pad = 1
-	}
-	L := ((len + 3) / 4 - pad) * 4
-	str_len := L / 4 * 3 + pad
-	mut str := malloc(str_len + 2)
-	mut j := 0
-	for i := 0; i < L; i = i+4 {
-		n := (Index[p[i]] << 18) | (Index[p[i + 1]] << 12) |
-			(Index[p[i + 2]] << 6) | (Index[p[i + 3]])
-		str[j] = n >> 16
-		j++
-		str[j] = n >> 8 & 0xff
-		j++
-		str[j] = n & 0xff
-		j++
-	}
-	if pad > 0 {
-		mut nn := (Index[p[L]] << 18) | (Index[p[L + 1]] << 12)
-		str[str_len - 1] = nn >> 16
-		if len > L + 2 && p[L + 2] != `=` {
-			nn = nn | (Index[p[L + 2]] << 6)
-			str[str_len] = nn >> 8 & 0xff
+	mut padding := 0
+	if data.ends_with('=') {
+		if data.ends_with('==') {
+			padding = 2
+		} else {
+			padding = 1
 		}
 	}
-	str[str_len + 1] = `\0`
-	return tos(str, str_len+1)
+	//input_length is the length of meaningful data
+	input_length := data.len - padding
+	output_length := input_length * 3 / 4
+
+	mut i := 0
+	mut j := 0
+	mut str := malloc(output_length)
+
+	for i < input_length {
+		mut char_a := 0
+		mut char_b := 0
+		mut char_c := 0
+		mut char_d := 0
+
+		if i < input_length {
+			char_a = Index[int(data[i])]
+			i++
+		}
+		if i < input_length {
+			char_b = Index[int(data[i])]
+			i++
+		}
+		if i < input_length {
+			char_c = Index[int(data[i])]
+			i++
+		}
+		if i < input_length {
+			char_d = Index[int(data[i])]
+			i++
+		}
+
+		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
+		str[j] = decoded_bytes >> 16
+		str[j+1] = (decoded_bytes >> 8) & 0xff
+		str[j+2] = (decoded_bytes >> 0) & 0xff
+
+		j += 3
+	}
+	return tos(str, output_length)
 }
 
 const (
