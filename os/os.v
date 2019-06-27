@@ -316,6 +316,20 @@ pub fn getenv(key string) string {
 	return string(s)
 }
 
+
+pub fn setenv(name string, value string, overwrite bool) int {
+  return C.setenv(name.cstr(), value.cstr(), overwrite)
+}
+
+pub fn unsetenv(name string) int {
+  return C.unsetenv(name.cstr())
+}
+
+fn exit(code int) {
+	C.exit(code)
+}
+
+
 // `file_exists` returns true if `path` exists.
 pub fn file_exists(path string) bool {
 	res := false
