@@ -74,6 +74,16 @@ You can create a symlink so that it's globally available:
 sudo ln -s [path to V repo]/compiler/v /usr/local/bin/v
 ```
 
+V is being constantly updated. To update V, simply run
+
+```
+git pull origin master
+cd compiler/
+make clean
+make
+```
+
+
 ### Windows
 
 V works great on Windows Subsystem for Linux. The instructions are the same as above.
