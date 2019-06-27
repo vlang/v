@@ -17,7 +17,7 @@ const (
 	TetroSize = 4
 	WinWidth = BlockSize * FieldWidth
 	WinHeight = BlockSize * FieldHeight
-	TimerPeriod = time.milliseconds(250) // 250ms
+	TimerPeriod = 250 // ms
 )
 
 const (
@@ -168,7 +168,7 @@ fn (g mut Game) run() {
 		g.move_tetro()
 		g.delete_completed_lines()
 		glfw.post_empty_event() // force window redraw
-		time.sleep(TimerPeriod)
+		time.sleep_ms(TimerPeriod)
 	}
 }
 

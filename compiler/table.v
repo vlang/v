@@ -644,7 +644,7 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	}
 	// TODO tm hack, do this for all C struct args
 	else if typ == 'tm' {
-		return 'struct tm $name'
+		return 'struct /*TM*/ tm $name'
 	}
 	return '$typ $name'
 }

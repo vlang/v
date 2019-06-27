@@ -517,14 +517,6 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
 	else {
-		// C only knows about functions "array_get", "array_set" etc
-		// TODO I don't need this?
-		// mut cgen_typ := receiver_type.replace('*', '')
-		// if cgen_typ.starts_with('array_') {
-		// cgen_typ = 'array'
-		// }
-		// println('METHOD fn_call name=$cgen_name')
-		// mut method_call := '${cgen_typ}_${cgen_name}('
 		mut method_call := '${cgen_name}('
 		receiver := f.args.first()
 		if receiver.is_mut && !p.expr_var.is_mut {
@@ -550,10 +542,8 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		p.cgen.set_placeholder(method_ph, '$cast $method_call')
 	}
 	p.next()
-	// p.check(LPAR)
 	p.fn_call_args(f)
 	p.gen(')')
-	// p.check(RPAR)
 	p.calling_c = false
 	if is_print {
 		p.cgen.nogen = false

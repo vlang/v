@@ -26,17 +26,30 @@ import const (
 	SEEK_END
 	SA_SIGINFO
 	SIGSEGV
+
+S_IFMT
+S_IFDIR
 )
 
 struct C.stat {
 	st_size int
+	st_mode int
+}
+
+struct C.DIR {
+
+}
+
+struct C.dirent {
+	d_name byteptr
+
 }
 
 struct C.sigaction {
-	mut:
-		sa_mask int
-		sa_sigaction int
-		sa_flags   int
+mut:
+	sa_mask int
+	sa_sigaction int
+	sa_flags   int
 }
 
 fn C.getline(voidptr, voidptr, voidptr) int

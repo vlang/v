@@ -496,15 +496,17 @@ pub fn (ar[]int) contains(val int) bool {
 	return false
 }
 
+/*
 pub fn (a[]string) to_c() voidptr {
-	# char ** res = malloc(sizeof(char*) * a.len);
+	char ** res = malloc(sizeof(char*) * a.len);
 	for i := 0; i < a.len; i++ {
 		val := a[i]
 		# res[i] = val.str;
 	}
-	# return res;
+	return res;
 	return 0
 }
+*/
 
 fn is_space(c byte) bool {
 	return C.isspace(c)
@@ -619,8 +621,8 @@ pub fn (s string) ustring() ustring {
 		runes: new_array(0, s.len, sizeof(int))
 	}
 	for i := 0; i < s.len; i++ {
-		char_len := 0
-		# char_len =UTF8_CHAR_LEN(s.str[i]);
+		char_len := utf8_char_len(s.str[i])
+		//# char_len =UTF8_CHAR_LEN(s.str[i]);
 		// println('cl=$char_len')
 		res.runes << i
 		i += char_len - 1
@@ -632,18 +634,19 @@ pub fn (s string) ustring() ustring {
 // A hack that allows to create ustring without allocations.
 // It's called from functions like draw_text() where we know that the string is going to be freed
 // right away. Uses global buffer for storing runes []int array.
-# array_int g_ustring_runes;
+__global g_ustring_runes []int
 pub fn (s string) ustring_tmp() ustring {
 	mut res := ustring {
 		s: s
 		runes: 0
 	}
-	# res.runes = g_ustring_runes ;
-	# res.runes.len = s.len ;
+	res.runes = g_ustring_runes
+	res.runes.len = s.len
 	mut j := 0
 	for i := 0; i < s.len; i++ {
-		char_len := 0
-		# char_len =UTF8_CHAR_LEN(s.str[i]);
+		//char_len := 0
+		//# char_len =UTF8_CHAR_LEN(s.str[i]);
+		char_len := utf8_char_len(s.str[i])
 		res.runes[j] = i
 		j++
 		i += char_len - 1

@@ -57,6 +57,7 @@ pub fn print(s string) {
 	C.printf('%.*s', s.len, s.str)
 }
 
+__global total_m i64 = 0
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
@@ -67,10 +68,8 @@ pub fn malloc(n int) byteptr {
 	}
 #endif
 #ifdef DEBUG_ALLOC
-	total := i64(0)
-	# total_m += n;
-	# total = total_m;
-	println('\n\n\nmalloc($n) total=$total')
+	total_m += n
+	println('\n\n\nmalloc($n) total=$total_m')
 	print_backtrace()
 #endif
 	ptr := C.malloc(n)

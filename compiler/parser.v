@@ -72,6 +72,7 @@ mut:
 	returns        bool
 	vroot          string
 	is_c_struct_init bool
+	can_chash bool
 }
 
 const (
@@ -141,6 +142,7 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_pkg = p.pkg == 'builtin'
+	p.can_chash = p.pkg == 'gg' || p.pkg == 'glm' || p.pkg == 'gl' || p.pkg == 'glfw' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	p.table.register_package(p.pkg)
 	if p.run == RUN_IMPORTS {
@@ -203,7 +205,7 @@ fn (p mut Parser) parse() {
 			// $if, $else
 			p.comp_time()
 		case GLOBAL:
-			if !p.translated {
+			if !p.translated && !p.builtin_pkg && !p.building_v() {
 				p.error('__global is only allowed in translated code')
 			}
 			p.next()
@@ -419,7 +421,7 @@ fn (p mut Parser) struct_decl() {
 		if !is_c {
 			kind := if is_union{'union'} else { 'struct'}
 			p.gen_typedef('typedef $kind $name $name;')
-			p.gen_type('$kind $name {')
+			p.gen_type('$kind /*kind*/ $name {')
 		}
 	}
 	// V used to have 'type Foo struct', many Go users might use this syntax
@@ -1010,15 +1012,8 @@ fn (p mut Parser) statement(add_semi bool) string {
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	p.log('assign_statement() name=$v.name tok=')
-	// p.print_tok()
-	// p.gen(name)
-	// p.assigned_var = name
 	tok := p.tok
-	if !v.is_mut && !v.is_arg && !p.translated {
-		p.error('`$v.name` is immutable')
-	}
-	if !v.is_mut && p.is_play && !p.builtin_pkg && !p.translated {
-		// no mutable args in play
+	if !v.is_mut && !v.is_arg && !p.translated && !v.is_global{
 		p.error('`$v.name` is immutable')
 	}
 	is_str := v.typ == 'string'
@@ -1232,7 +1227,7 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if p.table.known_pkg(name) && !p.cur_fn.known_var(name) {
+	if p.table.known_pkg(name) && !p.cur_fn.known_var(name) && !is_c {
 		// println('"$name" is a known pkg')
 		pkg := name
 		p.next()
@@ -2344,21 +2339,25 @@ fn (p mut Parser) register_array(typ string) {
 	}
 }
 
-// name == 'User'
 fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	p.is_struct_init = true
 	mut typ := p.get_type()
 	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
+	// TODO tm struct struct bug
+	if typ == 'tm' {
+		p.cgen.lines[p.cgen.lines.len-1] = ''
+		p.cgen.lines[p.cgen.lines.len-2] = ''
+	}
 	p.check(LCBR)
 	// tmp := p.get_tmp()
 	if !ptr {
 		if p.is_c_struct_init {
-			p.gen('(struct $typ){')
+			p.gen('(struct $typ) {')
 			p.is_c_struct_init = false
 		}
 		else {
-			p.gen('($typ){')
+			p.gen('($typ) {')
 		}
 	}
 	else {
@@ -2370,12 +2369,6 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 			p.check(RCBR)
 			return typ
 		}
-		mut type_gen := typ.replace('*', '')
-		// All V types are typedef'ed, C structs aren't, so we need to prepend "struct "
-		if is_c_struct_init {
-			type_gen = 'struct $type_gen'
-		}
-		// p.gen('malloc(sizeof($type_gen)); \n')
 		no_star := typ.replace('*', '')
 		p.gen('ALLOC_INIT($no_star, {')
 	}
@@ -2463,7 +2456,6 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	}
 	p.check(RCBR)
 	p.is_struct_init = false
-	// println('struct init typ=$typ')
 	return typ
 }
 
@@ -2668,13 +2660,15 @@ fn (p mut Parser) chash() {
 		}
 	}
 	else {
+		if !p.can_chash {
+			p.error('bad token `#` (embedding C code is no longer supported)')
+		}
+		//println('HASH!!! $p.file_name $p.scanner.line_nr')
 		if p.cur_fn.name == '' {
 			// p.error('# outside of fn')
 		}
 		p.genln(hash)
 	}
-	// p.cgen.nogen = false
-	// println('HASH=$hash')
 }
 
 fn is_c_pre(hash string) bool {
@@ -3134,6 +3128,14 @@ fn is_compile_time_const(s string) bool {
 	return true
 }
 
+fn (p &Parser) building_v() bool {
+	cur_dir := os.getwd()
+	return p.file_path.contains('v/compiler') || cur_dir.contains('v/compiler') 
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
 // fmt helpers
 fn (scanner mut Scanner) fgen(s string) {
 /* 
@@ -3166,4 +3168,5 @@ fn (p mut Parser) fspace() {
 fn (p mut Parser) fgenln(s string) {
 	//p.scanner.fgenln(s)
 }
+
 

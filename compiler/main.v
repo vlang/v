@@ -257,7 +257,8 @@ void init_consts();')
 	if c.build_mode == EMBED_VLIB || c.build_mode == DEFAULT_MODE {
 		// If we declare these for all modes, then when running `v a.v` we'll get
 		// `/usr/bin/ld: multiple definition of 'total_m'`
-		cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
+		// TODO
+		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		cgen.genln('int g_test_ok = 1; ')
 		if c.table.imports.contains('json') {
 			cgen.genln(' 

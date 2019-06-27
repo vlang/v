@@ -53,6 +53,6 @@ fn main() {
 		go fetcher.fetch()
 	}
 	println(fetcher.ids)
-	time.sleep(time.seconds(5))
+	time.sleep(5)
 }
 
