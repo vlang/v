@@ -859,7 +859,7 @@ fn run_repl() []string {
 		print('>>> ')
 		mut line := os.get_line().trim_space()
 		if line == '' {
-			break
+			continue
 		}
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
