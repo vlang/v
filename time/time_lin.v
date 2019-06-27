@@ -26,6 +26,48 @@ pub fn sleep(t Time) {
 	}
 }
 
+fn (t Time) local() Info {
+	info := Info{}
+	# struct tm tm;
+	# localtime_r(&t.sec, &tm);
+	# info.year = tm.tm_year + 1900;
+	# info.month = tm.tm_mon + 1;
+	# info.day = tm.tm_mday;
+	# info.hour = tm.tm_hour;
+	# info.minute = tm.tm_min;
+	# info.second = tm.tm_sec;
+	# info.yday = tm.tm_yday;
+	# info.wday = tm.tm_wday;
+	return info
+}
+
+fn (t Time) utc() Info {
+	info := Info{}
+	# struct tm tm;
+	# gmtime_r(&t.sec, &tm);
+	# info.year = tm.tm_year + 1900;
+	# info.month = tm.tm_mon + 1;
+	# info.day = tm.tm_mday;
+	# info.hour = tm.tm_hour;
+	# info.minute = tm.tm_min;
+	# info.second = tm.tm_sec;
+	# info.yday = tm.tm_yday;
+	# info.wday = tm.tm_wday;
+	return info
+}
+
+fn (t Time) format(fmt string) string {
+	res := ''
+	cfmt := fmt.cstr()
+	# char buf[1024];
+	# struct tm tm;
+	# localtime_r(&t.sec, &tm);
+	# strftime(buf, 1024, cfmt, &tm);
+	# res = tos2(buf);
+	return res
+}
+
+
 pub fn parse(s, fmt string) ?Time {
 	t := Time{}
 	cs := s.cstr()

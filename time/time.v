@@ -48,34 +48,6 @@ fn (a Time) - (b Time) Time {
 	}
 }
 
-fn (t Time) local() Info {
-	info := Info{}
-	# struct tm *x = localtime(&t.sec);
-	# info.year = x->tm_year + 1900;
-	# info.month = x->tm_mon + 1;
-	# info.day = x->tm_mday;
-	# info.hour = x->tm_hour;
-	# info.minute = x->tm_min;
-	# info.second = x->tm_sec;
-	# info.yday = x->tm_yday;
-	# info.wday = x->tm_wday;
-	return info
-}
-
-fn (t Time) utc() Info {
-	info := Info{}
-	# struct tm *x = gmtime(&t.sec);
-	# info.year = x->tm_year + 1900;
-	# info.month = x->tm_mon + 1;
-	# info.day = x->tm_mday;
-	# info.hour = x->tm_hour;
-	# info.minute = x->tm_min;
-	# info.second = x->tm_sec;
-	# info.yday = x->tm_yday;
-	# info.wday = x->tm_wday;
-	return info
-}
-
 fn (t Time) days() f64 {
 	return f64(t.sec)/86400.0
 }
@@ -102,17 +74,6 @@ fn (t Time) microseconds() f64 {
 
 fn (t Time) nanoseconds() f64 {
 	return 1000000000.0*f64(t.sec) + f64(t.nsec)
-}
-
-
-fn (t Time) format(fmt string) string {
-	res := ''
-	cfmt := fmt.cstr()
-	# char buf[1024];
-	# struct tm *x = localtime(&t.sec);
-	# strftime(buf, 1024, cfmt, x);
-	# res = tos2(buf);
-	return res
 }
 
 fn (t Time) str() string {
