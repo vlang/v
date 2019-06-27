@@ -130,13 +130,11 @@ pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
 
-pub fn factorial(a int) int {
-	mut prod := 1
-	mut i := 0	
-	for i < a {
+pub fn factorial(a int) i64 {
+	mut prod := 1	
+	for i:= 0; i < a; i++ {
 		prod = prod * (i+1)
-		i = i + 1
 	}
-	
 	return prod
 }
+
