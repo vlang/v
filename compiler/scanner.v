@@ -32,9 +32,13 @@ fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
 		panic('"$file_path" doesn\'t exist')
 	}
+	text := os.read_file(file_path) or {
+		panic('scanner: failed to open "$file_path"')
+		return &Scanner{}
+	}
 	scanner := &Scanner {
 		file_path: file_path
-		text: os.read_file(file_path)
+		text: text
 		fmt_out: new_string_builder(1000)
 	}
 	// println('new scanner "$file_path" txt.len=$scanner.text.len')
@@ -56,8 +60,7 @@ fn is_white(c byte) bool {
 }
 
 fn is_nl(c byte) bool {
-	i := int(c)
-	return i == 12 || i == 10
+	return c == `\r` || c == `\n`
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -85,7 +88,7 @@ fn (s mut Scanner) ident_number() string {
 		if c == `.` {
 			is_float = true
 		}
-		is_good_hex := is_hex && (c == `x` || c == `u` || (c >= `a` && c <= `f`))
+		is_good_hex := is_hex && (c == `x`  || (c >= `a` && c <= `f`))
 		// 1e+3, 1e-3, 1e3
 		if !is_hex && c == `e` {
 			next := s.text[s.pos + 1]
@@ -125,16 +128,17 @@ fn (s mut Scanner) skip_whitespace() {
 	// }
 }
 
-fn (s mut Scanner) get_until_start(pos int) string {
+fn (s mut Scanner) get_var_name(pos int) string {
 	mut pos_start = pos
-	for ; pos_start >= 0 && s.text[pos_start] != `\n`; pos_start-- {}
-	for ; pos_start < pos && (s.text[pos_start] == ` ` || s.text[pos_start] == `\n`); pos_start++ {}
+
+	for ; pos_start >= 0 && s.text[pos_start] != `\n` && s.text[pos_start] != `;`; pos_start-- {}
+	pos_start++
 	return s.text.substr(pos_start, pos)
 }
 
 // CAO stands for Compound Assignment Operators  (e.g '+=' )
 fn (s mut Scanner) cao_change(operator string) {
-	s.text = s.text.substr(0, s.pos - 2) + ' = ' + s.get_until_start(s.pos - 2) + ' ' + operator + s.text.substr(s.pos + 1, s.text.len)
+	s.text = s.text.substr(0, s.pos - 1) + ' = ' + s.get_var_name(s.pos - 1) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
 }
 
 fn (s mut Scanner) scan() ScanRes {
@@ -350,14 +354,6 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos--
 		}
 		return scan_res(HASH, hash.trim_space())
-	case `@`:
-		start := s.pos + 1
-		for s.text[s.pos] != `\n` {
-			s.pos++
-		}
-		s.line_nr++
-		at := s.text.substr(start, s.pos)
-		return scan_res(AT, at.trim_space())
 	case `>`:
 		if s.text[s.pos + 1] == `=` {
 			s.pos++
@@ -658,3 +654,49 @@ fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
 
+fn (s mut Scanner) get_opening_bracket() int {
+	mut pos := s.pos
+	mut parentheses := 0
+	mut inside_string := false
+
+	for pos > 0 && s.text[pos] != `\n` {
+		if s.text[pos] == `)` && !inside_string {
+			parentheses++
+		}
+		if s.text[pos] == `(` && !inside_string {
+			parentheses--
+		}
+		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` {
+			inside_string = !inside_string
+		}
+		if parentheses == 0 {
+			break
+		}
+		pos--
+	}
+	return pos
+}
+
+// Foo { bar: 3, baz: 'hi' } => '{ bar: 3, baz: "hi" }'
+fn (s mut Scanner) create_type_string(T Type, name string) {
+	line := s.line_nr
+	inside_string := s.inside_string
+	mut newtext := '\'{ '
+	start := s.get_opening_bracket() + 1
+	end := s.pos
+	for i, field in T.fields {
+		if i != 0 {
+			newtext += ', '
+		}
+		newtext += '$field.name: ' + '$${name}.${field.name}'
+	}
+	newtext += ' }\''
+	s.text = s.text.substr(0, start) + newtext + s.text.substr(end, s.text.len)
+	s.pos = start - 2
+	s.line_nr = line
+	s.inside_string = inside_string
+}
+
+fn (p mut Parser) create_type_string(T Type, name string) {
+	p.scanner.create_type_string(T, name)
+}

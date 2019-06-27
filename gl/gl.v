@@ -20,7 +20,7 @@ import const (
 #include "glad.h"
 #include "glad.c"
 
-fn init_glad() {
+pub fn init_glad() {
 	ok := C.gladLoadGL()
 	if !ok {
 		println('Failed to initialize glad OpenGL context')
@@ -28,12 +28,12 @@ fn init_glad() {
 	}
 }
 
-pub fn viewport(a int, b int, c int, d int) {
+pub fn viewport(a, b, c, d int) {
 	C.glViewport(a, b, c, d)
 }
 
 pub fn clear_color(r, g, b, a int) {
-	# glClearColor(((float)r)/255.0,((float)g)/255.0,b/255.0, a/255.0);
+	# glClearColor(((f32)r)/255.0,((f32)g)/255.0,b/255.0, a/255.0);
 }
 
 pub fn clear() {
@@ -48,7 +48,7 @@ pub fn create_program() int {
 	return C.glCreateProgram()
 }
 
-pub fn shader_source(shader int, a int, source string, b int) {
+pub fn shader_source(shader, a int, source string, b int) {
 	C.glShaderSource(shader, a, &source.str, b)
 }
 
@@ -62,7 +62,7 @@ pub fn shader_compile_status(shader int) int {
 	return success
 }
 
-pub fn attach_shader(program int, shader int) {
+pub fn attach_shader(program, shader int) {
 	// fn (s Shader) attach(program int) {
 	C.glAttachShader(program, shader)
 }
@@ -123,7 +123,7 @@ pub fn delete_texture(texture u32) {
 	C.glDeleteTextures(1, &texture)
 }
 
-pub fn buffer_data(typ int, size int, arr voidptr, draw_typ int) {
+pub fn buffer_data(typ, size int, arr voidptr, draw_typ int) {
 	C.glBufferData(typ, size, arr, draw_typ)
 }
 
@@ -132,14 +132,14 @@ pub fn buffer_data_int(typ int, vertices[]int, draw_typ int) {
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
-pub fn buffer_data_float(typ int, vertices[]float, draw_typ int) {
-	size := sizeof(float) * vertices.len
+pub fn buffer_data_f32(typ int, vertices[]f32, draw_typ int) {
+	size := sizeof(f32) * vertices.len
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
-pub fn set_vbo(vbo u32, vertices[]float, draw_typ int) {
+pub fn set_vbo(vbo u32, vertices[]f32, draw_typ int) {
 	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
-	gl.buffer_data_float(GL_ARRAY_BUFFER, vertices, draw_typ)
+	gl.buffer_data_f32(GL_ARRAY_BUFFER, vertices, draw_typ)
 }
 
 pub fn set_ebo(ebo u32, indices[]int, draw_typ int) {
@@ -182,8 +182,8 @@ pub fn gen_buffer() u32 {
 
 pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, stride int, ptr int) {
 	if typ == GL_FLOAT {
-		stride *= sizeof(float)
-		ptr *= sizeof(float)
+		stride *= sizeof(f32)
+		ptr *= sizeof(f32)
 	}
 	C.glVertexAttribPointer(index, size, typ, normalized, stride, ptr)
 }

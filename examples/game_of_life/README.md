@@ -4,7 +4,7 @@
 
 
 ```v
-v run main.v
+v run life.v
 ```
 
 Created by fuyutarow: https://github.com/fuyutarow/Conways-Game-of-Life-with-Vlang

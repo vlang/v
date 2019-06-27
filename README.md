@@ -1,6 +1,6 @@
 # The V Programming Language 0.1.2
 
-[![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master) [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 
 https://vlang.io
 
@@ -35,6 +35,7 @@ GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn
 The compilation is temporarily slower for this release:
 
 - Debug builds are used (use `v -prod -o v` to get faster compilation).
+- vlib is recompiled with every program you build.
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 - There are a lot of known issues that are quick to fix (like function lookups being O(n)).
 
@@ -55,12 +56,14 @@ You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't hav
 git clone https://github.com/vlang/v
 cd v/compiler
 make
-
-# Or build without make:
-wget https://vlang.io/v.c   # Download the V compiler's source translated to C
-cc -std=gnu11 -w -o vc v.c  # Build it with Clang or GCC
-./vc -o v . && rm vc        # Use the resulting V binary to build V from V source, delete the old compiler
-./v -o v .                  # Bootstrap the compiler to make sure it works
+```
+Or build without make:
+```bash
+# Download the V compiler's source translated to C
+wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
+cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
+./v -o v .                 # Use the resulting V binary to build V from V source
+./v -o v .                 # Build the compiler again to make sure it works
 ```
 
 That's it! Now you have a V executable at `v/compiler/v`.
@@ -68,7 +71,7 @@ That's it! Now you have a V executable at `v/compiler/v`.
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s ~/code/v/compiler/v /usr/local/bin/v
+sudo ln -s [path to V repo]/compiler/v /usr/local/bin/v
 ```
 
 ### Windows
@@ -82,8 +85,11 @@ V temporarily can't be compiled with Visual Studio. This will be fixed asap.
 ### Testing
 
 ```
-$ v
+$ cd examples
+$ v run hello_world.v
+hello world
 
+$ v
 V 0.1.2
 Use Ctrl-D to exit
 
@@ -98,8 +104,8 @@ Now if you want, you can start tinkering with the compiler. If you introduce a b
 ### Running the examples
 
 ```
-v hello_world.v && ./hello_world # or simply
-v run hello_world.v              # This builds the program and runs it right away
+v hello_world.v && ./hello_world    # or simply
+v run hello_world.v                 # this builds the program and runs it right away
 
 v word_counter.v && ./word_counter cinderella.txt
 v run news_fetcher.v
@@ -114,11 +120,14 @@ In order to build Tetris and anything else using the graphics module, you will n
 If you plan to use the http package, you also need to install libcurl.
 
 ```
+macOS:
+brew install glfw freetype curl
+
 Ubuntu:
 sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
 
-macOS:
-brew install glfw freetype curl
+Arch:
+sudo pacman -S glfw-x11 curl freetype2
 ```
 
 glfw and libcurl dependencies will be removed soon.

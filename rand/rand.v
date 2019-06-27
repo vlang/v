@@ -6,17 +6,17 @@ module rand
 
 #include <time.h>
 
-struct C.time_t{} 
-fn C.rand() int 
-
-fn seed() {
+pub fn seed() {
 	# time_t t;
 	# srand((unsigned) time(&t));
 }
 
-fn next(max int) int {
+pub fn next(max int) int {
 	r := 0 
 	# r = rand();  // TODO parser bug `rand` module name conflict 
 	return r % max 
 }
+
+struct C.time_t{} 
+fn C.rand() int 
 

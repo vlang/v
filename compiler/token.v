@@ -10,7 +10,6 @@ enum Token {
 	INT
 	STRING
 	CHAR
-	FLOAT
 	PLUS
 	MINUS
 	MUL
@@ -30,7 +29,6 @@ enum Token {
 	COLON
 	AMP
 	HASH
-	AT
 	DOLLAR
 	LEFT_SHIFT
 	RIGHT_SHIFT
@@ -129,7 +127,6 @@ fn build_token_str() []string {
 	s[INT] = 'INT'
 	s[STRING] = 'STR'
 	s[CHAR] = 'CHAR'
-	s[FLOAT] = 'FLOAT'
 	s[PLUS] = '+'
 	s[MINUS] = '-'
 	s[MUL] = '*'
@@ -140,7 +137,6 @@ fn build_token_str() []string {
 	s[PIPE] = '|'
 	s[HASH] = '#'
 	s[AMP] = '&'
-	s[AT] = '@'
 	s[INC] = '++'
 	s[DEC] = '--'
 	s[AND] = '&&'
@@ -241,7 +237,7 @@ fn (t Token) str() string {
 fn (t Token) is_decl() bool {
 	// TODO return t in [FUNC ,TIP, CONST,  IMPORT_CONST ,AT ,EOF]
 	return t == ENUM || t == INTERFACE || t == FUNC || t == STRUCT || t == TIP ||
-	t == CONST || t == IMPORT_CONST || t == AT || t == EOF
+	t == CONST || t == IMPORT_CONST || t == PUB || t == EOF
 }
 
 const (

@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.1.2'
+	Version = '0.1.4'
 )
 
 // TODO no caps
@@ -73,7 +73,7 @@ mut:
 	is_so      bool
 	is_live    bool // for hot code reloading
 	is_prof    bool // benchmark every function
-	translated bool // `v translated doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	translated bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	obfuscate  bool // `v -obf program.v`, renames functions to "f_XXX"
 	lang_dir   string // "~/code/v"
 	is_verbose bool // print extra information with `v.log()`
@@ -131,7 +131,7 @@ fn main() {
 		return
 	}
 	// V with no args? REPL
-	if args.len < 2 {
+	if args.len < 2 || (args.len == 2 && args[1] == '-') {
 		run_repl()
 		return
 	}
@@ -380,15 +380,18 @@ string _STR_TMP(const char *fmt, ...) {
 		if true || c.is_verbose {
 			println('============running $c.out_name==============================')
 		}
-		cmd := if c.out_name.starts_with('/') {
+		mut cmd := if c.out_name.starts_with('/') {
 			c.out_name
 		}
 		else {
 			'./' + c.out_name
 		}
-		ret := os.system2(cmd)
+		if os.args.len > 3 {
+			cmd += ' ' + os.args.right(3).join(' ')
+		}
+		ret := os.system(cmd)
 		if ret != 0 {
-			s := os.system(cmd)
+			s := os.exec(cmd)
 			println(s)
 			println('ret not 0, exiting')
 			exit(1)
@@ -493,7 +496,7 @@ mut args := ''
 		println('\n==========\n$cmd\n=========\n')
 	}
 	// Run
-	res := os.system(cmd)
+	res := os.exec(cmd)
 	// println('C OUTPUT:')
 	if res.contains('error: ') {
 		println(res)
@@ -504,7 +507,7 @@ mut args := ''
 		c.out_name = c.out_name.replace('.o', '')
 		obj_file := c.out_name + '.o'
 		println('linux obj_file=$obj_file out_name=$c.out_name')
-		ress := os.system('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
+		ress := os.exec('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
 		'-v -o $c.out_name ' +
 		'-m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 ' +
 		'/usr/lib/x86_64-linux-gnu/crt1.o ' +
@@ -515,7 +518,7 @@ mut args := ''
 		'/usr/lib/x86_64-linux-gnu/crtn.o')
 		println(ress)
 		if ress.contains('error:') {
-			os.exit(1)
+			exit(1)
 		}
 		println('linux cross compilation done. resulting binary: "$c.out_name"')
 	}
@@ -687,6 +690,9 @@ fn (c &V) log(s string) {
 
 fn new_v(args[]string) *V {
 	mut dir := args.last()
+	if args.contains('run') {
+		dir = args[2]
+	}
 	// println('new compiler "$dir"')
 	if args.len < 2 {
 		dir = ''
@@ -756,19 +762,24 @@ fn new_v(args[]string) *V {
 	'int.v',
 	'utf8.v',
 	'map.v',
-	'smap.v',
 	'option.v',
 	'string_builder.v',
 	]
 	// Location of all vlib files
 	mut lang_dir = ''
 	// First try fetching it from VROOT if it's defined
+	for { // TODO tmp hack for optionals
 	vroot_path := TmpPath + '/VROOT'
 	if os.file_exists(vroot_path) {
-		vroot := os.read_file(vroot_path).trim_space()
+		mut vroot := os.read_file(vroot_path) or {
+			break
+		}
+		vroot=vroot.trim_space() 
 		if os.dir_exists(vroot) && os.dir_exists(vroot + '/builtin') {
 			lang_dir = vroot
 		}
+	}
+	break
 	}
 	// no "~/.vlang/VROOT" file, so the user must be running V for the first 
 	// time.
@@ -782,7 +793,15 @@ fn new_v(args[]string) *V {
 			println('Setting VROOT to "$lang_dir".')
 			os.write_file(TmpPath + '/VROOT', lang_dir)
 		} else {
-			println('Please do it from "v/compiler" directory.')
+			println('V repo not found. Cloning...') 
+			os.mv('v', 'v.bin') 
+			os.exec('git clone https://github.com/vlang/v') 
+			if !os.dir_exists('v') {
+				println('failed to clone github.com/vlang/v') 
+				exit(1) 
+			} 
+			os.mv('v.bin', 'v/compiler/v') 
+			println('Re-launch V from v/compiler') 
 			exit(1) 
 		}
 	} 
@@ -853,7 +872,7 @@ fn run_repl() []string {
 			os.write_file(file, source_code)
 			mut v := new_v( ['v', '-repl', file])
 			v.compile()
-			s := os.system(TmpPath + '/vrepl')
+			s := os.exec(TmpPath + '/vrepl')
 			println(s)
 		}
 		else {
@@ -866,26 +885,19 @@ fn run_repl() []string {
 // This definitely needs to be better :)
 const (
 	HelpText = '
-- Build a V program:
-v file.v
+Usage: v [options] [file | directory]
 
-- Get current V version:
-v version
-
-- Build an optimized executable:
-v -prod file.v
-
-- Specify the executable\'s name:
-v -o program file.v 
-
-- Build and execute a V program:
-v run file.v
-
-- Obfuscate the resulting binary:
-v -obf -prod build file.v
-
-- Test: 
-v string_test.v 
+Options:
+  -                 Read from stdin (Default; Interactive mode if in a tty)
+  -h, --help, help  Display this information.
+  -v, version       Display compiler version.
+  -prod             Build an optimized executable.
+  -o <file>         Place output into <file>.
+  -obf              Obfuscate the resulting binary.
+  run               Build and execute a V program.
+                    You can add arguments after file name.
+Files:
+  <file>_test.v     Test file.
 '
 )
 

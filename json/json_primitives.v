@@ -13,7 +13,7 @@ module json
 #include "cJSON.h"
 struct C.cJSON {
 	valueint    int
-	valuedouble float
+	valuedouble f32 
 	valuestring byteptr
 }
 
@@ -52,13 +52,6 @@ fn jsdecode_i64(root *C.cJSON) i64 {
 		return i64(0)
 	}
 	return i64(root.valuedouble) //i64 is double in C
-}
-
-fn jsdecode_float(root *C.cJSON) float {
-	if isnil(root) {
-		return 0
-	}
-	return root.valuedouble
 }
 
 fn jsdecode_f32(root *C.cJSON) f32 {
@@ -113,10 +106,6 @@ fn jsencode_i32(val i32) *C.cJSON {
 }
 
 fn jsencode_i64(val i64) *C.cJSON {
-	return C.cJSON_CreateNumber(val)
-}
-
-fn jsencode_float(val float) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 

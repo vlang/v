@@ -15,7 +15,7 @@ pub:
 }
 
 // Private function, used by V (`nums := []int`)
-fn new_array(mylen int, cap, elm_size int) array {
+fn new_array(mylen, cap, elm_size int) array {
 	arr := array {
 		len: mylen
 		cap: cap
@@ -50,7 +50,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function, used by V  (`[0; 100]`)
-fn array_repeat(val voidptr, nr_repeats int, elm_size int) array {
+fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	arr := array {
 		len: nr_repeats
 		cap: nr_repeats
