@@ -27,8 +27,8 @@ import const (
 )
 
 fn C.getline(voidptr, voidptr, voidptr) int
-
 fn C.ftell(fp voidptr) int
+fn C.getenv(byteptr) byteptr
 
 fn todo_remove(){}
 
@@ -45,7 +45,7 @@ fn init_os_args(argc int, _argv *byteptr) []string {
 }
 
 fn parse_windows_cmd_line(cmd byteptr) []string {
-	s := tos2(cmd)
+	s := string(cmd)
 	return s.split(' ')
 }
 
@@ -313,7 +313,7 @@ pub fn getenv(key string) string {
 	if isnil(s) {
 		return ''
 	}
-	return tos2(s)
+	return string(s)
 }
 
 // `file_exists` returns true if `path` exists.

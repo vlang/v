@@ -255,10 +255,7 @@ pub fn key_pressed(wnd voidptr, key int) bool {
 
 // TODO not mut
 pub fn (w mut Window) get_clipboard_text() string {
-	return tos2(C.glfwGetClipboardString(w.data))
-	// # char *c = glfwGetClipboardString(w->data);
-	// # return tos_no_len(c);
-	// return ''
+	return string(byteptr(C.glfwGetClipboardString(w.data)))
 }
 
 pub fn (w &Window) set_clipboard_text(s string) {

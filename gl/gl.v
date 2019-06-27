@@ -86,14 +86,14 @@ pub fn shader_info_log(shader int) string {
 	# char infoLog[512];
 	# glGetShaderInfoLog(shader, 512, NULL, infoLog);
 	# printf("log=%s\n", infoLog);
-	# return tos_no_len(infoLog);
+	# return tos2(infoLog);
 	return ''
 }
 
 pub fn get_program_info_log(program int) string {
 	# char infoLog[512];
 	# glGetProgramInfoLog(program, 1024, NULL, infoLog);
-	# return tos_no_len(infoLog);
+	# return tos2(infoLog);
 	return ''
 }
 

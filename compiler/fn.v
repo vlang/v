@@ -160,7 +160,6 @@ fn (p mut Parser) fn_decl() {
 	}
 	if p.tok == PLUS || p.tok == MINUS || p.tok == MUL {
 		f.name = p.tok.str()
-		println('!!! $f.name')
 		p.next()
 	}
 	else {

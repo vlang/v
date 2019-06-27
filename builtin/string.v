@@ -54,10 +54,6 @@ fn tos2(s byteptr) string {
 	return res
 }
 
-fn tos_no_len(s byteptr) string {
-	return tos2(s)
-}
-
 fn (a string) clone() string {
 	mut b := string {
 		len: a.len

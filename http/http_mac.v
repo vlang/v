@@ -64,11 +64,11 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 		}
 		contents += start + 1
 		// printf("GOOD CONTEnTS=%s\n", contents);
-		s := tos_no_len(contents)
+		s := string(contents)
 		// mem.ws_func('kek', 0)
 		# mem->ws_func(s, mem->user_ptr);
 	}
-	mut c := tos_no_len(contents)
+	mut c := string(contents)
 	c = c.trim_space()
 	// Need to clone because libcurl reuses this memory
 	mem.strings << c.clone()
@@ -146,7 +146,7 @@ fn (req &Request) do() Response {
 		err := C.curl_easy_strerror(res)
 		println('curl_easy_perform() failed: $err')
 	}
-	body := chunk.strings.join('')// tos_no_len(chunk.memory)
+	body := chunk.strings.join('')// string(chunk.memory)
 	// chunk.strings.free()
 	// resp.headers = hchunk.strings
 	if hchunk.strings.len == 0 {
@@ -192,11 +192,11 @@ fn (req &Request) do() Response {
 }
 
 fn unescape(s string) string {
-	return tos2(C.curl_unescape(s.cstr(), s.len))
+	return string(byteptr(C.curl_unescape(s.cstr(), s.len)))
 }
 
 fn escape(s string) string {
-	return tos2(C.curl_escape(s.cstr(), s.len))
+	return string(byteptr(C.curl_escape(s.cstr(), s.len)))
 }
 
 // ////////////////

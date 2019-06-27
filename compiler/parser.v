@@ -1274,16 +1274,13 @@ fn (p mut Parser) name_expr() string {
 	if p.table.known_type(name) {
 		// float(5), byte(0), (*int)(ptr) etc
 		if p.peek() == LPAR || (deref && p.peek() == RPAR) {
-			// println('CASTT $name')
 			if deref {
-				// p.check(RPAR)
-				// p.next()
 				name += '*'
 			}
 			else if ptr {
 				name += '*'
 			}
-			p.gen('(/*casttt*/')
+			p.gen('(')
 			mut typ := p.cast(name)
 			p.gen(')')
 			for p.tok == DOT {
@@ -2470,27 +2467,29 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 // `f32(3)`
 // tok is `f32` or `)` if `(*int)(ptr)`
 fn (p mut Parser) cast(typ string) string {
-	// typ := p.lit
-	if p.file_path.contains('test') {
-		println('CAST TYP=$typ tok=')
-		p.print_tok()
-	}
-	p.gen('($typ)(')
-	// p.fgen(typ)
 	p.next()
+	pos := p.cgen.add_placeholder()
 	if p.tok == RPAR {
 		// skip `)` if it's `(*int)(ptr)`, not `int(a)`
 		p.ptr_cast = true
 		p.next()
 	}
 	p.check(LPAR)
-	p.gen('/*77*/')
 	expr_typ := p.bool_expression()
 	p.check(RPAR)
-	p.gen(')')
-	if typ == 'string' && expr_typ == 'int' {
-		p.error('cannot convert `$expr_typ` to `$typ`')
+	// `string(buffer)` => `tos2(buffer)`
+	if typ == 'string' && (expr_typ == 'byte*' || expr_typ == 'byteptr') {
+		p.cgen.set_placeholder(pos, 'tos2(')
 	}
+	// `string(234)` => error
+	else if typ == 'string' && expr_typ == 'int' {
+		p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
+	} 
+	else {
+		p.cgen.set_placeholder(pos, '($typ)(')
+		// p.fgen(typ)
+	}
+	p.gen(')')
 	return typ
 }
 
