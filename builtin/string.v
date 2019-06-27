@@ -305,7 +305,14 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // 'hello'.left(2) => 'he'
+// 'hello'.left(-2) => 'hel'
 pub fn (s string) left(n int) string {
+	if n < 0 {
+		if -n >= s.len {
+			return ''
+		}
+		return s.substr(0, s.len + n)
+	}
 	if n >= s.len {
 		return s
 	}
@@ -313,6 +320,12 @@ pub fn (s string) left(n int) string {
 }
 
 pub fn (s string) right(n int) string {
+	if n < 0 {
+		if -n >= s.len {
+			return s
+		}
+		return s.substr(s.len + n, s.len)
+	}
 	if n >= s.len {
 		return ''
 	}
@@ -669,10 +682,28 @@ fn (u ustring) substr(start, end int) string {
 }
 
 fn (u ustring) left(pos int) string {
+	if pos < 0 {
+		if -pos >= u.len {
+			return ''
+		}
+		return u.substr(0, u.len + pos)
+	}
+	if pos >= u.len {
+		return u.s
+	}
 	return u.substr(0, pos)
 }
 
 fn (u ustring) right(pos int) string {
+	if pos < 0 {
+		if -pos >= u.len {
+			return u.s
+		}
+		return u.substr(u.len + pos, u.len)
+	}
+	if pos >= u.len {
+		return ''
+	}
 	return u.substr(pos, u.len)
 }
 

@@ -231,9 +231,21 @@ fn test_left_right() {
 	s := 'ALOHA'
 	assert s.left(3) == 'ALO'
 	assert s.right(3) == 'HA'
+	assert s.left(10) == 'ALOHA'
+	assert s.right(10) == ''
+	assert s.left(-2) == 'ALO'
+	assert s.right(-2) == 'HA'
+	assert s.left(-10) == ''
+	assert s.right(-10) == 'ALOHA'
 	u := s.ustring()
 	assert u.left(3) == 'ALO'
 	assert u.right(3) == 'HA'
+	assert u.left(10) == 'ALOHA'
+	assert u.right(10) == ''
+	assert u.left(-2) == 'ALO'
+	assert u.right(-2) == 'HA'
+	assert u.left(-10) == ''
+	assert u.right(-10) == 'ALOHA'
 }
 
 fn test_contains() {
