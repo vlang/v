@@ -71,6 +71,7 @@ mut:
 	cur_fn         *Fn
 	returns        bool
 	vroot          string
+	is_c_struct_init bool
 }
 
 const (
@@ -1273,7 +1274,7 @@ fn (p mut Parser) name_expr() string {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
 		// float(5), byte(0), (*int)(ptr) etc
-		if p.peek() == LPAR || (deref && p.peek() == RPAR) {
+		if !is_c && ( p.peek() == LPAR || (deref && p.peek() == RPAR) ) {
 			if deref {
 				name += '*'
 			}
@@ -1302,15 +1303,16 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return enum_type.name
 		}
-		else {
+		else if p.peek() == LCBR {
 			// go back to name start (pkg.name)
 			p.scanner.pos = hack_pos
 			p.tok = hack_tok
 			p.lit = hack_lit
 			// TODO hack. If it's a C type, we may need to add struct before declaration:
 			// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
-			if is_c_struct_init && name != 'tm' {
-				p.cgen.insert_before('struct ')
+			if is_c_struct_init {
+				p.is_c_struct_init = true
+				p.cgen.insert_before('struct /*c struct init*/')
 			}
 			return p.struct_init(is_c_struct_init)
 		}
@@ -2351,8 +2353,9 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	p.check(LCBR)
 	// tmp := p.get_tmp()
 	if !ptr {
-		if typ == 'tm' {
-			p.gen('(struct tm) {')// TODO struct tm hack, handle all C structs
+		if p.is_c_struct_init {
+			p.gen('(struct $typ){')
+			p.is_c_struct_init = false
 		}
 		else {
 			p.gen('($typ){')
