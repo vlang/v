@@ -129,3 +129,14 @@ pub fn tanh(a f64) f64 {
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
+
+fn factorial( a int ) int {
+	mut prod := 1
+	mut i := 0	
+	for i < a {
+		prod = prod * (i+1)
+		i = i + 1
+	}
+	
+	return prod
+}
