@@ -128,3 +128,11 @@ pub fn tanh(a f64) f64 {
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
+
+pub fn fact(int a) int {
+    return if n == 1 {
+        1
+    } else {
+        fact(n-1)*n
+    }
+}
