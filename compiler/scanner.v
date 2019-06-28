@@ -213,6 +213,11 @@ fn (s mut Scanner) scan() ScanRes {
 			s.dollar_end = true
 			s.dollar_start = false
 		}
+		if s.pos == 0 && next_char == ` ` {
+			s.pos++
+			//If a single letter name at the start of the file, increment
+			//Otherwise the scanner would be stuck at s.pos = 0
+		}
 		return scan_res(NAME, name)
 	}
 	// number, `.123`
