@@ -88,9 +88,23 @@ make
 
 V works great on Windows Subsystem for Linux. The instructions are the same as above.
 
-If you want to build v.exe on Windows without WSL, you will need Visual Studio. Microsoft doesn't make it easy for developers.  Mingw-w64 could suffice, but if you plan to develop UI and graphical apps, VS is your only option.
+If you want to build v.exe on Windows without WSL, you can use MinGW-w64 or Visual Studio.
 
-V temporarily can't be compiled with Visual Studio. This will be fixed asap.
+## MinGW-w64
+
+![Download](https://downloads.sourceforge.net/project/mingw-w64/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe?r=&ts=1561736169&use_mirror=gigenet) and install MinGW-w64.
+
+Make sure the `C:/mingw-w64/bin` directory is in system's PATH.
+
+```bash
+# You can clone V anywhere
+git clone https://github.com/vlang/v
+cd v/compiler
+# Download the V compiler's source translated to C
+curl -sO https://raw.githubusercontent.com/vlang/vc/master/v.c
+gcc -std=gnu11 -w -o v.exe v.c  # Build it with GCC
+```
+
 
 ### Testing
 
