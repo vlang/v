@@ -384,44 +384,65 @@ pub fn (s string) last_index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut i := s.len - p.len
-	for i >= 0 {
-		mut j := 0
-		for j < p.len && s[i + j] == p[j] {
+	mut prefix := [0]
+	mut j := 0
+	mut last := -1
+	for i := 1; i < p.len; i++ {
+		for p[j] != p[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == p[i] {
+			j++
+		}
+		prefix << j
+	}
+	j = 0
+	for i := 0; i < s.len; i++ {
+		for p[j] != s[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == s[i] {
 			j++
 		}
 		if j == p.len {
-			return i
+			last = i - p.len + 1
+			j = prefix[j - 1]
 		}
-		i--
 	}
-	return -1
+	prefix.free()
+	return last
 }
 
 pub fn (s string) index_after(p string, start int) int {
-	if p.len > s.len {
+	if p.len + start > s.len {
 		return -1
 	}
-	mut strt := start
-	if start < 0 {
-		strt = 0
-	}
-	if start >= s.len {
-		return -1
-	}
-	mut i := strt
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && s[ii] == p[j] {
+	mut prefix := [0]
+	mut j := 0
+	for i := 1; i < p.len; i++ {
+		for p[j] != p[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == p[i] {
 			j++
-			ii++
+		}
+		prefix << j
+	}
+	j = 0
+	i0 := if start >= 0 { start } else { 0 }
+	for i := i0; i < s.len; i++ {
+		for p[j] != s[i] && j > 0 {
+			j = prefix[j - 1]
+		}
+		if p[j] == s[i] {
+			j++
 		}
 		if j == p.len {
-			return i
+			prefix.free()
+			return i - p.len + 1
 		}
-		i++
 	}
+	prefix.free()
 	return -1
 }
 
