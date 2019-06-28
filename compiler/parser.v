@@ -77,6 +77,7 @@ mut:
 
 const (
 	EmptyFn = &Fn { }
+	MainFn= &Fn{name:'main'} 
 )
 
 fn (c mut V) new_parser(path string, run Pass) Parser {
@@ -225,7 +226,7 @@ fn (p mut Parser) parse() {
 				g += p.cgen.end_tmp()
 			}
 			// p.genln('; // global')
-			g += ('; // global')
+			g += '; // global' 
 			p.cgen.consts << g
 		case EOF:
 			p.log('end of parse()')
@@ -238,25 +239,29 @@ fn (p mut Parser) parse() {
 		default:
 			// no `fn main`, add this "global" statement to cgen.fn_main
 			if p.is_script && !p.is_test {
-				if p.cur_fn.scope_level == 0 {
-					// p.cur_fn.scope_level++
-				}
-				// println('is script')
-				p.print_tok()
+				// cur_fn is empty since there was no fn main declared
+				// we need to set it to save and find variables 
+				if p.first_run() {
+					if p.cur_fn.name == '' {
+						p.cur_fn = MainFn 
+					} 
+					return 
+				} 
+				if p.cur_fn.name == '' {
+					p.cur_fn = MainFn 
+				} 
 				start := p.cgen.lines.len
 				p.statement(true)
+				p.genln('') 
 				end := p.cgen.lines.len
 				lines := p.cgen.lines.slice(start, end)
-				// p.cgen.fn_main << p.cgen.prev_line
-				// println('fn line:')
-				// println(p.cgen.fn_main + lines.join('\n'))
+				//mut line := p.cgen.fn_main + lines.join('\n') 
+				//line = line.trim_space() 
 				p.cgen.fn_main = p.cgen.fn_main + lines.join('\n')
 				p.cgen.cur_line = ''
 				for i := start; i < end; i++ {
-					// p.cgen.lines[p.cgen.lines.len - 1] = ''
 					p.cgen.lines[i] = ''
 				}
-				// exit('')
 			}
 			else {
 				p.error('unexpected token `${p.strtok()}`')
@@ -664,13 +669,14 @@ fn (p mut Parser) error(s string) {
 	p.cgen.save()
 	// V git pull hint
 	cur_path := os.getwd()
-	if p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') {
+	if !p.is_repl && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.') 
 		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
 		println('lead to this error.')
-		println('\nTry to run `git pull && make clean && make`, that will most likely fix it.')
-		println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println('\nRun `git pull && make`, that will most likely fix it.')
+		//println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println('\nIf this doesn\'t help, please create a GitHub issue.')
 		println('=========================\n')
 	}
 	// p.scanner.debug_tokens()
@@ -1349,9 +1355,7 @@ fn (p mut Parser) name_expr() string {
 	// Function (not method btw, methods are handled in dot())
 	f := p.table.find_fn(name)
 	if f.name == '' {
-		println(p.cur_fn.name)
-		println(p.cur_fn.args.len)
-		// if !p.first_run() && !p.translated {
+		// We are in a second pass, that means this function was not defined, throw an error. 
 		if !p.first_run() {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing

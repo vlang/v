@@ -84,8 +84,8 @@ fn (f mut Fn) register_var(v Var) {
 	}
 	else {
 		f.local_vars[f.var_idx] = new_var
-		f.var_idx++
 	}
+	f.var_idx++
 }
 
 // vlib header file?

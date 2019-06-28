@@ -343,7 +343,7 @@ string _STR_TMP(const char *fmt, ...) {
 		if !c.table.main_exists() && !c.is_test {
 			// It can be skipped in single file programs
 			if c.is_script {
-				println('Generating main()...')
+				//println('Generating main()...')
 				cgen.genln('int main() { $cgen.fn_main; return 0; }')
 			}
 			else {
@@ -372,14 +372,14 @@ string _STR_TMP(const char *fmt, ...) {
 		cgen.genln('return 1; }')
 	}
 	cgen.save()
-	c.log('flags=')
 	if c.is_verbose {
+		c.log('flags=')
 		println(c.table.flags)
 	}
 	c.cc()
 	if c.is_test || c.is_run {
 		if true || c.is_verbose {
-			println('============running $c.out_name==============================')
+			println('============ running $c.out_name ============') 
 		}
 		mut cmd := if c.out_name.starts_with('/') {
 			c.out_name
@@ -866,10 +866,9 @@ fn run_repl() []string {
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
 		if line.starts_with('print') {
-			// TODO remove this once files without main compile correctly
 			void_line := line.substr(line.index('(') + 1, line.len - 1)
 			lines << void_line
-			source_code := 'fn main(){' + lines.join('\n') + '\n' + line + '}'
+			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
 			mut v := new_v( ['v', '-repl', file])
 			v.compile()
