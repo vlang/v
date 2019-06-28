@@ -11,6 +11,12 @@ import const (
 	GL_VERTEX_SHADER
 	GL_ELEMENT_ARRAY_BUFFER
 	GL_DEPTH_TEST
+	GL_COLOR_BUFFER_BIT
+	GL_DEPTH_BUFFER_BIT
+	GL_STENCIL_BUFFER_BIT
+	GL_COMPILE_STATUS
+	GL_LINK_STATUS
+	GL_ARRAY_BUFFER
 )
 
 // TODO: windows support
@@ -33,11 +39,11 @@ pub fn viewport(a, b, c, d int) {
 }
 
 pub fn clear_color(r, g, b, a int) {
-	# glClearColor(((f32)r)/255.0,((f32)g)/255.0,b/255.0, a/255.0);
+	C.glClearColor(f32(r)/255.0, f32(g)/255.0, f32(b)/255.0, f32(a)/255.0)
 }
 
 pub fn clear() {
-	# glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+	C.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
 }
 
 pub fn create_shader(typ int) int {
@@ -58,7 +64,7 @@ pub fn compile_shader(shader int) {
 
 pub fn shader_compile_status(shader int) int {
 	success := 0
-	# glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+	C.glGetShaderiv(shader, GL_COMPILE_STATUS, &success)
 	return success
 }
 
@@ -73,7 +79,7 @@ pub fn link_program(program int) {
 
 pub fn get_program_link_status(program int) int {
 	success := 0
-	# glGetProgramiv(program, GL_LINK_STATUS, &success);
+	C.glGetProgramiv(program, GL_LINK_STATUS, &success)
 	return success
 }
 
@@ -82,19 +88,15 @@ pub fn delete_shader(shader int) {
 }
 
 pub fn shader_info_log(shader int) string {
-	# printf("GET info log\n");
-	# char infoLog[512];
-	# glGetShaderInfoLog(shader, 512, NULL, infoLog);
-	# printf("log=%s\n", infoLog);
-	# return tos2(infoLog);
-	return ''
+	infoLog := [512]byte
+	C.glGetShaderInfoLog(shader, 512, 0, infoLog)
+	return tos_clone(infoLog)
 }
 
 pub fn get_program_info_log(program int) string {
-	# char infoLog[512];
-	# glGetProgramInfoLog(program, 1024, NULL, infoLog);
-	# return tos2(infoLog);
-	return ''
+	infoLog := [1024]byte
+	C.glGetProgramInfoLog(program, 1024, 0, infoLog)
+	return tos_clone(infoLog)
 }
 
 pub fn bind_vao(vao u32) {
@@ -166,7 +168,7 @@ pub fn use_program(program int) {
 
 pub fn gen_vertex_array() u32 {
 	VAO := u32(0)
-	# glGenVertexArrays(1, &VAO);
+	C.glGenVertexArrays(1, &VAO)
 	return VAO
 }
 
@@ -176,7 +178,7 @@ pub fn enable_vertex_attrib_array(n int) {
 
 pub fn gen_buffer() u32 {
 	VBO := u32(0)
-	# glGenBuffers(1, &VBO);
+	C.glGenBuffers(1, &VBO)
 	return VBO
 }
 
