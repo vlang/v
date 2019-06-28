@@ -82,7 +82,7 @@ mut:
 	show_c_cmd bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize   bool // use Clang's new "-fsanitize" option
 	out_name   string // "program.exe"
-	is_prod    bool // use "-O2" and skip printlns (TODO I don't think many people want printlns to disappear in prod builds)
+	is_prod    bool // use "-O2"
 	is_repl    bool
 	vroot      string
 }
