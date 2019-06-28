@@ -693,7 +693,7 @@ fn (p mut Parser) get_type() string {
 	debug := p.fileis('fn_test') && false
 	mut mul := false
 	mut nr_muls := 0
-	mut typ = ''
+	mut typ := ''
 	// fn type
 	if p.tok == FUNC {
 		if debug {
@@ -941,6 +941,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.check(COLON)
 			return ''
 		}
+		// `a := 777` 
 		else if p.peek() == DECL_ASSIGN {
 			p.log('var decl')
 			p.var_decl()
@@ -949,7 +950,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.js_decode()
 		}
 		else {
-			// "a + 3", "a(7)" or maybe just "a"
+			// `a + 3`, `a(7)` or maybe just `a` 
 			q = p.bool_expression()
 		}
 	case GOTO:
@@ -1081,34 +1082,20 @@ fn (p mut Parser) var_decl() {
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
 	name := p.check_name()
-	p.fgen(' := ')
 	// Don't allow declaring a variable with the same name. Even in a child scope
 	// (shadowing is not allowed)
 	if !p.builtin_pkg && p.cur_fn.known_var(name) {
 		v := p.cur_fn.find_var(name)
 		p.error('redefinition of `$name`')
-		// Check if this variable has already been declared only in the first run.
-		// Otherwise the is_script code outside main will run in the first run
-		// since we can't skip the function body since there's no function.
-		// And the variable will be registered twice.
-		if p.is_play && p.first_run() && !p.builtin_pkg {
-			p.error('variable `$name` is already declared.')
-		}
 	}
-	// println('var_decl $name')
-	// p.assigned_var = name
-	p.next()// :=
+	p.check_space(DECL_ASSIGN) // := 
 	// Generate expression to tmp because we need its type first
 	// [TYP NAME =] bool_expression()
 	pos := p.cgen.add_placeholder()
-	// p.gen('typ $name = ')
-	// p.gen('/*^^^*/')
 	mut typ := p.bool_expression()
-	// p.gen('/*VVV*/')
 	// Option check ? or {
 	or_else := p.tok == OR_ELSE
 	tmp := p.get_tmp()
-	// assigned_var_copy := p.assigned_var
 	if or_else {
 		// Option_User tmp = get_user(1);
 		// if (!tmp.ok) { or_statement }
@@ -1126,7 +1113,6 @@ fn (p mut Parser) var_decl() {
 			println(p.prev_tok2)
 			p.error('`or` statement must return/continue/break')
 		}
-		// p.assigned_var = assigned_var_copy
 	}
 	p.register_var(Var {
 		name: name
@@ -1136,11 +1122,9 @@ fn (p mut Parser) var_decl() {
 	mut cgen_typ := typ
 	if !or_else {
 		gen_name := p.table.var_cgen_name(name)
-		// p.cgen.set_placeholder(pos, '$cgen_typ $gen_name = ')
 		mut nt_gen := p.table.cgen_name_type_pair(gen_name, cgen_typ) + '='
 		if is_static {
 			nt_gen = 'static $nt_gen'
-			// p.gen('static ')
 		}
 		p.cgen.set_placeholder(pos, nt_gen)
 	}
@@ -1165,7 +1149,7 @@ fn (p mut Parser) bool_expression() string {
 
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
-	mut typ = p.expression()
+	mut typ := p.expression()
 	is_str := typ=='string' 
 	tok := p.tok
 	// if tok in [ EQ, GT, LT, LE, GE, NE] {

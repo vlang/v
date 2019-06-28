@@ -129,7 +129,7 @@ fn (s mut Scanner) skip_whitespace() {
 }
 
 fn (s mut Scanner) get_var_name(pos int) string {
-	mut pos_start = pos
+	mut pos_start := pos
 
 	for ; pos_start >= 0 && s.text[pos_start] != `\n` && s.text[pos_start] != `;`; pos_start-- {}
 	pos_start++

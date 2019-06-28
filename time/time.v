@@ -100,7 +100,7 @@ fn (t Time) hhmm_tmp() string {
 // 9:04pm
 pub fn (t Time) hhmm12() string {
 	mut am := 'am'
-	mut hour = t.hour
+	mut hour := t.hour
 	if t.hour > 11 {
 		am = 'pm'
 	}
