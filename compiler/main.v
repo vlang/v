@@ -851,7 +851,7 @@ fn new_v(args[]string) *V {
 }
 
 fn run_repl() []string {
-	if $windows {
+	$if windows {
 		println('REPL does not work on Windows yet, sorry!') 
 		exit1() 
 	} 
