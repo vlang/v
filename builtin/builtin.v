@@ -57,6 +57,10 @@ pub fn print(s string) {
 	C.printf('%.*s', s.len, s.str)
 }
 
+pub fn flush_stdout() {
+	C.fflush(stdout)
+}
+
 __global total_m i64 = 0
 pub fn malloc(n int) byteptr {
 	if n < 0 {
