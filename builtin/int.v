@@ -60,7 +60,7 @@ pub fn (nn int) str() string {
 }
 
 pub fn (nn u8) str() string {
-	 mut n := nn
+	mut n := nn
 	if n == u8(0) {
 		return '0'
 	}

@@ -5,7 +5,7 @@
 import os
 
 fn main() {
-	mut path = 'cinderella.txt'
+	mut path := 'cinderella.txt'
 	if os.args.len != 2 {
 		println('usage: word_counter [text_file]')
 		println('using $path')
