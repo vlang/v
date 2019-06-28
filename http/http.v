@@ -29,10 +29,6 @@ pub:
 
 // embed 'http'
 pub fn get(url string) string {
-	if url == '' {
-		println('http: empty get url')
-		return ''
-	}
 	mut req := new_request('GET', url, '')
 	resp := req.do()
 	return resp.body
