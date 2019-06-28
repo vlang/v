@@ -75,7 +75,7 @@ pub fn (s string) cstr() byteptr {
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
-		return ''
+		return s
 	}
 	if !s.contains(rep) {
 		return s

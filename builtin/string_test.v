@@ -165,6 +165,8 @@ fn test_replace() {
 	assert b.replace('B', '') == 'onetwothree'
 	b = '**char'
 	assert b.replace('*char', 'byteptr') == '*byteptr'
+	mut c :='abc'
+	assert c.replace('','-') == c
 }
 
 fn test_itoa() {
