@@ -767,7 +767,7 @@ fn new_v(args[]string) *V {
 	'string_builder.v',
 	]
 	// Location of all vlib files
-	mut lang_dir = ''
+	mut lang_dir := ''
 	// First try fetching it from VROOT if it's defined
 	for { // TODO tmp hack for optionals
 	vroot_path := TmpPath + '/VROOT'
