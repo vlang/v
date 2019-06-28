@@ -2088,11 +2088,14 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	case 'u32': return '%d'
 	case 'f64', 'f32': return '%f'
 	case 'i64': return '%lld'
-	case 'byte*': return '%s'
+	case 'byte*', 'byteptr': return '%s'
 		// case 'array_string': return '%s'
 		// case 'array_int': return '%s'
 	case 'void': p.error('cannot interpolate this value')
 	default:
+		if typ.ends_with('*') {
+			return '%p' 
+		} 
 		p.error('unhandled sprintf format "$typ" ')
 	}
 	return ''
