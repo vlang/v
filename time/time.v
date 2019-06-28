@@ -68,7 +68,7 @@ pub fn convert_ctime(t tm) Time {
 	// uni = uni;
 }
 
-fn (t Time) format_ss() string {
+pub fn (t Time) format_ss() string {
 	return '${t.year}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 }
 
@@ -114,17 +114,17 @@ pub fn (t Time) hhmm12() string {
 }
 
 // 21:04:03
-fn (t Time) hhmmss() string {
+pub fn (t Time) hhmmss() string {
 	return '${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 }
 
 // 2012-01-05
-fn (t Time) ymmdd() string {
+pub fn (t Time) ymmdd() string {
 	return '${t.year}-${t.month:02d}-${t.day:02d}'
 }
 
 // Jul 3
-fn (t Time) md() string {
+pub fn (t Time) md() string {
 	// jl := t.smonth()
 	s := '${t.smonth()} $t.day'
 	return s
@@ -151,7 +151,7 @@ pub fn (t Time) clean() string {
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
 }
 
-fn (t Time) clean12() string {
+pub fn (t Time) clean12() string {
 	nowe := time.now()
 	// if amtime {
 	// hm = t.Format("3:04 pm")
@@ -172,12 +172,6 @@ fn (t Time) clean12() string {
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
 }
 
-/* 
-// in ms
-fn ticks() double {
-	return 0
-}
-*/
 // `parse` parses time in the following format: "2018-01-27 12:48:34"
 pub fn parse(s string) Time {
 	// println('parse="$s"')
@@ -208,11 +202,11 @@ pub fn parse(s string) Time {
 	})
 }
 
-fn new_time(t Time) Time {
+pub fn new_time(t Time) Time {
 	return{t | uni: t.calc_unix()}
 }
 
-fn (t &Time) calc_unix() int {
+pub fn (t &Time) calc_unix() int {
 	if t.uni != 0  {
 		return t.uni
 	}
@@ -263,7 +257,7 @@ pub fn (t Time) relative() string {
 	return t.md()
 }
 
-fn day_of_week(y, m, d int) int {
+pub fn day_of_week(y, m, d int) int {
 	// TODO please no
 	//# return  (d += m < 3 ? y-- : y - 2, 23*m/9 + d + 4 + y/4- y/100 + y/400)%7;
 	return 0
@@ -277,4 +271,40 @@ pub fn (t Time) day_of_week() int {
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
 	return Days.substr(i * 3, (i + 1) * 3)
+}
+
+// in ms
+pub fn ticks() f64 {
+	$if windows { 
+		return C.GetTickCount()
+	} 
+	panic('not implemented') 
+/* 
+	t := i64(C.mach_absolute_time())
+	# Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
+	# return (double)(* (uint64_t *) &elapsedNano) / 1000000;
+*/ 
+	return f64(0)
+}
+
+pub fn sleep(seconds int) {
+	$if windows { 
+		C._sleep(seconds * 1000)
+	}
+	$else {
+		C.sleep(seconds)
+	} 
+}
+
+pub fn usleep(n int) {
+	C.usleep(n)
+}
+
+pub fn sleep_ms(n int) {
+	$if windows { 
+		C.Sleep(n)
+	}
+	$else { 
+		C.usleep(n * 1000)
+	} 
 }
