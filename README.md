@@ -59,9 +59,8 @@ make
 ```
 Or build without make:
 ```bash
-# Download the V compiler's source translated to C
-wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
-cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
+# Download the V compiler's source translated to C and build it with Clang or GCC
+curl https://raw.githubusercontent.com/vlang/vc/master/v.c | cc -xc -std=gnu11 -w -o v -
 ./v -o v .                 # Use the resulting V binary to build V from V source
 ./v -o v .                 # Build the compiler again to make sure it works
 ```
