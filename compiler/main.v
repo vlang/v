@@ -523,7 +523,7 @@ mut args := ''
 		}
 		println('linux cross compilation done. resulting binary: "$c.out_name"')
 	}
-	// print_time('after gcc')
+	//os.rm('$TmpPath/$c.out_name_c') 
 }
 
 fn (c &V) v_files_from_dir(dir string) []string {
@@ -851,6 +851,10 @@ fn new_v(args[]string) *V {
 }
 
 fn run_repl() []string {
+	if $windows {
+		println('REPL does not work on Windows yet, sorry!') 
+		exit1() 
+	} 
 	println('V $Version')
 	println('Use Ctrl-D to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
@@ -900,6 +904,7 @@ Options:
   -obf              Obfuscate the resulting binary.
   run               Build and execute a V program.
                     You can add arguments after file name.
+
 Files:
   <file>_test.v     Test file.
 '

@@ -271,11 +271,21 @@ pub fn getenv(key string) string {
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
+$if windows {
+ 
+} 
+$else { 
   return C.setenv(name.cstr(), value.cstr(), overwrite)
+} 
 }
 
 pub fn unsetenv(name string) int {
+$if windows {
+ 
+} 
+$else { 
   return C.unsetenv(name.cstr())
+} 
 }
 
 // `file_exists` returns true if `path` exists.
@@ -370,28 +380,38 @@ pub fn filename(path string) string {
 //Otherwise, it would cause a valgrind warning and may be dangerous
 //Malloc takes an int as argument so a cast has to be made
 pub fn get_line() string {
-	max := u64(256)
-	buf := malloc(int(max))
-	nr_chars := C.getline(&buf, &max, stdin)
-	if nr_chars == 0 {
-		return ''
-	}
-	if buf[nr_chars - 1] == `\n` /* newline */ {
-		return tos(buf, nr_chars - 1)
-	}
-	/* To prevent cutting end of line if no newline */
-	return tos(buf, nr_chars)
+	$if windows {
+		panic('get_line() not implemented on Windows yet, sorry!') 
+	} 
+	$else { 
+		max := u64(256)
+		buf := malloc(int(max))
+		nr_chars := C.getline(&buf, &max, stdin)
+		if nr_chars == 0 {
+			return ''
+		}
+		if buf[nr_chars - 1] == `\n` { // newline  
+			return tos(buf, nr_chars - 1)
+		}
+		// To prevent cutting end of line if no newline  
+		return tos(buf, nr_chars)
+	} 
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-	max := u64(256)
-	buf := malloc(int(max))
-	nr_chars := C.getline(&buf, &max, stdin)
-	if nr_chars == 0 {
-		return ''
-	}
-	return tos(buf, nr_chars)
+	$if windows {
+		panic('get_raw_line() not implemented on Windows yet, sorry!') 
+	} 
+	$else { 
+		max := u64(256)
+		buf := malloc(int(max))
+		nr_chars := C.getline(&buf, &max, stdin)
+		if nr_chars == 0 {
+			return ''
+		}
+		return tos(buf, nr_chars)
+	} 
 }
 
 pub fn user_os() string {
