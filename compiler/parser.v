@@ -230,6 +230,10 @@ fn (p mut Parser) parse() {
 			p.cgen.consts << g
 		case EOF:
 			p.log('end of parse()')
+			if p.is_script && !p.is_test {
+				p.cur_fn = MainFn
+				p.check_unused_variables()
+			}
 			if true && !p.first_run() && p.fileis('test') {
 				out := os.create('/var/tmp/fmt.v')
 				out.appendln(p.scanner.fmt_out.str())
