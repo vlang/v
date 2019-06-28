@@ -403,7 +403,14 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 		p.fgenln('\n')
 		return
 	}
-	for var in f.local_vars {
+	p.check_unused_variables()
+	p.cur_fn = EmptyFn
+	p.fgenln('\n')
+	p.genln('}')
+}
+
+fn (p mut Parser) check_unused_variables() {
+	for var in p.cur_fn.local_vars {
 		if var.name == '' {
 			break
 		}
@@ -419,11 +426,6 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 			// p.genln('free(${var.name}.data); // !!!! XAXA')
 		}
 	}
-	// println('end of func decl')
-	// p.print_tok()
-	p.cur_fn = EmptyFn
-	p.fgenln('\n')
-	p.genln('}')
 }
 
 // Important function with 5 args.
