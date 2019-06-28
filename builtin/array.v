@@ -220,8 +220,3 @@ pub fn (a[]string) str() string {
 	res += ']'
 	return res
 }
-
-fn free(a voidptr) {
-	C.free(a)
-}
-
