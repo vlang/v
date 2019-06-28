@@ -88,6 +88,11 @@ fn (f mut Fn) register_var(v Var) {
 	f.var_idx++
 }
 
+fn (f mut Fn) clear_vars() {
+	f.var_idx = 0
+	f.local_vars = []Var
+}
+
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
 	return (p.build_mode == DEFAULT_MODE || p.build_mode == BUILD) &&

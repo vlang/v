@@ -249,6 +249,9 @@ fn (p mut Parser) parse() {
 				} 
 				if p.cur_fn.name == '' {
 					p.cur_fn = MainFn 
+					if p.is_repl {
+						p.cur_fn.clear_vars()
+					}
 				} 
 				start := p.cgen.lines.len
 				p.statement(true)
