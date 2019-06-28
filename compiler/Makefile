@@ -1,4 +1,4 @@
-all: v
+all: clean v
 
 v: v.c
 	cc -std=gnu11 -w -o v v.c
