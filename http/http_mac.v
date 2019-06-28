@@ -46,7 +46,7 @@ fn C.curl_easy_strerror(curl voidptr) byteptr
 fn C.curl_easy_perform(curl voidptr) C.CURLcode
 
 fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
-	mut mem = _mem
+	mut mem := _mem
 	// # printf("size =%d nmemb=%d contents=%s\n", size, nmemb, contents);
 	realsize := size * nmemb// TODO size_t ?
 	// if !isnil(mem.ws_func) {
