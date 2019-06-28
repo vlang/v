@@ -9,7 +9,7 @@ module time
 //#include <mach/mach_time.h>
 
 // in ms
-fn ticks() f64 {
+pub fn ticks() f64 {
 	panic('not implemented') 
 /* 
 	t := i64(C.mach_absolute_time())
@@ -19,15 +19,15 @@ fn ticks() f64 {
 	return f64(0)
 }
 
-fn sleep(seconds int) {
+pub fn sleep(seconds int) {
 	C.sleep(seconds)
 }
 
-fn usleep(seconds int) {
+pub fn usleep(seconds int) {
 	C.usleep(seconds)
 }
 
-fn sleep_ms(seconds int) {
+pub fn sleep_ms(seconds int) {
 	C.usleep(seconds * 1000)
 }
 

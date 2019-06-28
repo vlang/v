@@ -84,7 +84,7 @@ const (
 		'panic',
 		'register'
 	]
-	
+
 )
 
 // This is used in generated C code
@@ -138,6 +138,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_const('stdin', 'int', 'main', false)
 	t.register_const('stdout', 'int', 'main', false)
 	t.register_const('stderr', 'int', 'main', false)
+	t.register_const('errno', 'int', 'main', false)
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -164,7 +165,7 @@ fn (table &Table) known_pkg(pkg string) bool {
 	return pkg in table.packages
 }
 
-fn (t mut Table) register_const(name, typ string, pkg string, is_imported bool) {
+fn (t mut Table) register_const(name, typ, pkg string, is_imported bool) {
 	t.consts << Var {
 		name: name
 		typ: typ
@@ -273,11 +274,11 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 			return
 		}
 	}
-	/* 
-mut pkg := '' 
+	/*
+mut pkg := ''
 if parent == 'array' {
-pkg = 'builtin' 
-} 
+pkg = 'builtin'
+}
 */
 	datyp := Type {
 		name: typ
@@ -441,7 +442,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 		return true
 	}
 	// Todo void* allows everything right now
-	if got.eq('void*') || expected.eq('void*') {
+	if got=='void*' || expected=='void*' {
 		// if !p.builtin_pkg {
 		if p.is_play {
 			return false
@@ -450,17 +451,17 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	}
 	// TODO only allow numeric consts to be assigned to bytes, and
 	// throw an error if they are bigger than 255
-	if got.eq('int') && expected.eq('byte') {
+	if got=='int' && expected=='byte' {
 		return true
 	}
-	if got.eq('byteptr') && expected.eq('byte*') {
+	if got=='byteptr' && expected=='byte*' {
 		return true
 	}
-	if got.eq('int') && expected.eq('byte*') {
+	if got=='int' && expected=='byte*' {
 		return true
 	}
 	// byteptr += int
-	if got.eq('int') && expected.eq('byteptr') {
+	if got=='int' && expected=='byteptr' {
 		return true
 	}
 	if got == 'Option' && expected.starts_with('Option_') {
@@ -486,7 +487,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 		// return true
 		// }
 		// Allow pointer arithmetic
-		if expected.eq('void*') && got.eq('int') {
+		if expected=='void*' && got=='int' {
 			return true
 		}
 	}
@@ -643,7 +644,7 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	}
 	// TODO tm hack, do this for all C struct args
 	else if typ == 'tm' {
-		return 'struct tm $name'
+		return 'struct /*TM*/ tm $name'
 	}
 	return '$typ $name'
 }

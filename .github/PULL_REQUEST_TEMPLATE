@@ -1,11 +1,7 @@
 Please title your PR as follows: `time: fix foo bar`. Always start with the thing you are fixing, then describe the fix.
-Don't use paste tense (e.g. "fixed foo bar").
+Don't use past tense (e.g. "fixed foo bar").
 
 Explain what your PR does and why.
-
-Do not use # to generate C code. This feature will be removed in a couple of days.
-
-Squash commits into one if they refer to the same thing. Use `git rebase -i` for that.
 
 Before submitting a PR, please run the tests with `make test`, and make sure V can still compile itself. Run this twice:
 
@@ -13,5 +9,7 @@ Before submitting a PR, please run the tests with `make test`, and make sure V c
 ./v -o v
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
+
+Applying labels to PRs is not needed.
 
 Thanks a lot for your contribution!

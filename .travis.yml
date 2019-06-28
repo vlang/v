@@ -11,10 +11,19 @@ matrix:
           - gcc-5
           - g++-5
           - make
+          - libglfw3 
+          - libglfw3-dev
+          - libfreetype6-dev 
+          - libcurl3-dev
     - os: osx
       osx_image: xcode10.2
-      env:
-        - MATRIX_EVAL="brew install glm freetype cjson glfw"
+      addons:
+        homebrew:
+          packages:
+          - freetype
+          - glfw
+      #env:
+      #  - MATRIX_EVAL="brew install freetype glfw"
 script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
@@ -24,3 +33,4 @@ script:
   - cd ./compiler
   - make
   - make test
+

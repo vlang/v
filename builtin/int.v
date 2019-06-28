@@ -4,31 +4,25 @@
 
 module builtin
 
-fn (d double) str() string {
+pub fn (d double) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
 	return tos(buf, _strlen(buf))
 }
 
-fn (d float) str() string {
+pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
 	return tos(buf, _strlen(buf))
 }
 
-fn (d f64) str() string {
+pub fn (d f32) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
 	return tos(buf, _strlen(buf))
 }
 
-fn (d f32) str() string {
-	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, _strlen(buf))
-}
-
-fn ptr_str(ptr voidptr) string {
+pub fn ptr_str(ptr voidptr) string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%p', ptr)
 	return tos(buf, _strlen(buf))
@@ -37,7 +31,7 @@ fn ptr_str(ptr voidptr) string {
 // fn (nn i32) str() string {
 // return i
 // }
-fn (nn int) str() string {
+pub fn (nn int) str() string {
 	mut n = nn
 	if n == 0 {
 		return '0'
@@ -65,8 +59,8 @@ fn (nn int) str() string {
 	return tos(buf + max - len, len)
 }
 
-fn (nn u8) str() string {
-	mut n = nn
+pub fn (nn u8) str() string {
+	 mut n = nn
 	if n == u8(0) {
 		return '0'
 	}
@@ -93,7 +87,7 @@ fn (nn u8) str() string {
 	return tos(buf + max - len, len)
 }
 
-fn (nn i64) str() string {
+pub fn (nn i64) str() string {
 	mut n = nn
 	if n == i64(0) {
 		return '0'
@@ -121,28 +115,28 @@ fn (nn i64) str() string {
 	return tos(buf + max - len, len)
 }
 
-fn (b bool) str() string {
+pub fn (b bool) str() string {
 	if b {
 		return 'true'
 	}
 	return 'false'
 }
 
-fn (n int) hex() string {
+pub fn (n int) hex() string {
 	s := n.str()
 	hex := malloc(s.len + 2)
 	C.sprintf(hex, '0x%x', n)
 	return tos(hex, s.len + 2)
 }
 
-fn (n i64) hex() string {
+pub fn (n i64) hex() string {
 	s := n.str()
 	hex := malloc(s.len + 2)
 	C.sprintf(hex, '0x%x', n)
 	return tos(hex, s.len + 2)
 }
 
-fn (a[]byte) contains(val byte) bool {
+pub fn (a[]byte) contains(val byte) bool {
 	for aa in a {
 		if aa == val {
 			return true
@@ -155,7 +149,7 @@ fn (a[]byte) contains(val byte) bool {
 fn (c rune) str() string {
 }
 */
-fn (c byte) str() string {
+pub fn (c byte) str() string {
 	mut str := string {
 		len: 1
 		str: malloc(2)

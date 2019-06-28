@@ -156,7 +156,7 @@ fn (req &Request) do() Response {
 		println('ireadfile()')
 		buf[nr_read] = 0
 		C.printf('buf="%s"\n', buf)
-		s += tos2(buf)// TODO perf
+		s += string(buf)// TODO perf
 		nr_read = 0
 	}
 	C.InternetCloseHandle(request)

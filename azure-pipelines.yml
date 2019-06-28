@@ -5,10 +5,14 @@ jobs:
     displayName: "V Linux Build"
     steps:
       - script: |
+          sudo apt install -y libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
         displayName: 'Install Dependencies'
       - script: |
           cd compiler && make
         displayName: 'Build V'
+      - script: |
+          cd compiler && make test
+        displayName: 'Run Tests'
   - job: WindowsBuild
     pool: 
       vmImage: 'vs2017-win2016'
@@ -19,7 +23,17 @@ jobs:
     displayName: "V MacOSX Build"
     steps:
       - script: |
+          brew install glfw freetype curl
         displayName: 'Install Dependencies'
       - script: |
-          cd compiler && make
+          cd compiler && make && make test
         displayName: 'Build V'
+trigger:
+  branches:
+    include:
+      - '*'
+pr:
+  autoCancel: false
+  branches:
+    include:
+      - '*'

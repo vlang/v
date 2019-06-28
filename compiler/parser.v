@@ -71,6 +71,8 @@ mut:
 	cur_fn         *Fn
 	returns        bool
 	vroot          string
+	is_c_struct_init bool
+	can_chash bool
 }
 
 const (
@@ -140,6 +142,8 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_pkg = p.pkg == 'builtin'
+	p.can_chash = p.pkg == 'gg' || p.pkg == 'glm' || p.pkg == 'gl' || 
+		p.pkg == 'http' ||  p.pkg == 'glfw' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	p.table.register_package(p.pkg)
 	if p.run == RUN_IMPORTS {
@@ -179,8 +183,12 @@ fn (p mut Parser) parse() {
 		case PUB:
 			if p.peek() == FUNC {
 				p.fn_decl()
+			} else if p.peek() == STRUCT {
+				p.error('structs can\'t be declared public *yet*')
+				// TODO public structs
+			} else {
+				p.error('wrong pub keyword usage')
 			}
-			// TODO public structs
 		case FUNC:
 			p.fn_decl()
 		case TIP:
@@ -198,7 +206,7 @@ fn (p mut Parser) parse() {
 			// $if, $else
 			p.comp_time()
 		case GLOBAL:
-			if !p.translated {
+			if !p.translated && !p.builtin_pkg && !p.building_v() {
 				p.error('__global is only allowed in translated code')
 			}
 			p.next()
@@ -414,11 +422,11 @@ fn (p mut Parser) struct_decl() {
 		if !is_c {
 			kind := if is_union{'union'} else { 'struct'}
 			p.gen_typedef('typedef $kind $name $name;')
-			p.gen_type('$kind $name {')
+			p.gen_type('$kind /*kind*/ $name {')
 		}
 	}
 	// V used to have 'type Foo struct', many Go users might use this syntax
-	if p.tok == STRUCT {
+	if !is_c && p.tok == STRUCT {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
 	// Register the type
@@ -1005,15 +1013,8 @@ fn (p mut Parser) statement(add_semi bool) string {
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	p.log('assign_statement() name=$v.name tok=')
-	// p.print_tok()
-	// p.gen(name)
-	// p.assigned_var = name
 	tok := p.tok
-	if !v.is_mut && !v.is_arg && !p.translated {
-		p.error('`$v.name` is immutable')
-	}
-	if !v.is_mut && p.is_play && !p.builtin_pkg && !p.translated {
-		// no mutable args in play
+	if !v.is_mut && !v.is_arg && !p.translated && !v.is_global{
 		p.error('`$v.name` is immutable')
 	}
 	is_str := v.typ == 'string'
@@ -1159,7 +1160,7 @@ fn (p mut Parser) bool_expression() string {
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
 	mut typ = p.expression()
-	is_str := typ.eq('string')
+	is_str := typ=='string' 
 	tok := p.tok
 	// if tok in [ EQ, GT, LT, LE, GE, NE] {
 	if tok == EQ || tok == GT || tok == LT || tok == LE || tok == GE || tok == NE {
@@ -1227,7 +1228,7 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if p.table.known_pkg(name) && !p.cur_fn.known_var(name) {
+	if p.table.known_pkg(name) && !p.cur_fn.known_var(name) && !is_c {
 		// println('"$name" is a known pkg')
 		pkg := name
 		p.next()
@@ -1269,17 +1270,14 @@ fn (p mut Parser) name_expr() string {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
 		// float(5), byte(0), (*int)(ptr) etc
-		if p.peek() == LPAR || (deref && p.peek() == RPAR) {
-			// println('CASTT $name')
+		if !is_c && ( p.peek() == LPAR || (deref && p.peek() == RPAR) ) {
 			if deref {
-				// p.check(RPAR)
-				// p.next()
 				name += '*'
 			}
 			else if ptr {
 				name += '*'
 			}
-			p.gen('(/*casttt*/')
+			p.gen('(')
 			mut typ := p.cast(name)
 			p.gen(')')
 			for p.tok == DOT {
@@ -1301,15 +1299,16 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return enum_type.name
 		}
-		else {
+		else if p.peek() == LCBR {
 			// go back to name start (pkg.name)
 			p.scanner.pos = hack_pos
 			p.tok = hack_tok
 			p.lit = hack_lit
 			// TODO hack. If it's a C type, we may need to add struct before declaration:
 			// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
-			if is_c_struct_init && name != 'tm' {
-				p.cgen.insert_before('struct ')
+			if is_c_struct_init {
+				p.is_c_struct_init = true
+				p.cgen.insert_before('struct /*c struct init*/')
 			}
 			return p.struct_init(is_c_struct_init)
 		}
@@ -1761,7 +1760,7 @@ fn (p mut Parser) expression() string {
 	p.cgen('/* expr start*/')
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
-	is_str := typ.eq('string')
+	is_str := typ=='string' 
 	// a << b ==> array2_push(&a, b)
 	if p.tok == LEFT_SHIFT {
 		if typ.contains('array_') {
@@ -1933,7 +1932,9 @@ fn (p mut Parser) factor() string {
 	switch tok {
 	case INT:
 		typ = 'int'
-		if p.lit.contains('.') || p.lit.contains('e') {
+		// Check if float (`1.0`, `1e+3`) but not if is hexa
+		if (p.lit.contains('.') || p.lit.contains('e')) && 
+	 		!(p.lit[0] == `0` && p.lit[1] == `x`) {
 			typ = 'f32'
 			// typ = 'f64' // TODO 
 		}
@@ -2339,20 +2340,25 @@ fn (p mut Parser) register_array(typ string) {
 	}
 }
 
-// name == 'User'
 fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	p.is_struct_init = true
 	mut typ := p.get_type()
 	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
+	// TODO tm struct struct bug
+	if typ == 'tm' {
+		p.cgen.lines[p.cgen.lines.len-1] = ''
+		p.cgen.lines[p.cgen.lines.len-2] = ''
+	}
 	p.check(LCBR)
 	// tmp := p.get_tmp()
 	if !ptr {
-		if typ == 'tm' {
-			p.gen('(struct tm) {')// TODO struct tm hack, handle all C structs
+		if p.is_c_struct_init {
+			p.gen('(struct $typ) {')
+			p.is_c_struct_init = false
 		}
 		else {
-			p.gen('($typ){')
+			p.gen('($typ) {')
 		}
 	}
 	else {
@@ -2364,12 +2370,6 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 			p.check(RCBR)
 			return typ
 		}
-		mut type_gen := typ.replace('*', '')
-		// All V types are typedef'ed, C structs aren't, so we need to prepend "struct "
-		if is_c_struct_init {
-			type_gen = 'struct $type_gen'
-		}
-		// p.gen('malloc(sizeof($type_gen)); \n')
 		no_star := typ.replace('*', '')
 		p.gen('ALLOC_INIT($no_star, {')
 	}
@@ -2457,34 +2457,35 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	}
 	p.check(RCBR)
 	p.is_struct_init = false
-	// println('struct init typ=$typ')
 	return typ
 }
 
 // `f32(3)`
 // tok is `f32` or `)` if `(*int)(ptr)`
 fn (p mut Parser) cast(typ string) string {
-	// typ := p.lit
-	if p.file_path.contains('test') {
-		println('CAST TYP=$typ tok=')
-		p.print_tok()
-	}
-	p.gen('($typ)(')
-	// p.fgen(typ)
 	p.next()
+	pos := p.cgen.add_placeholder()
 	if p.tok == RPAR {
 		// skip `)` if it's `(*int)(ptr)`, not `int(a)`
 		p.ptr_cast = true
 		p.next()
 	}
 	p.check(LPAR)
-	p.gen('/*77*/')
 	expr_typ := p.bool_expression()
 	p.check(RPAR)
-	p.gen(')')
-	if typ == 'string' && expr_typ == 'int' {
-		p.error('cannot convert `$expr_typ` to `$typ`')
+	// `string(buffer)` => `tos2(buffer)`
+	if typ == 'string' && (expr_typ == 'byte*' || expr_typ == 'byteptr') {
+		p.cgen.set_placeholder(pos, 'tos2(')
 	}
+	// `string(234)` => error
+	else if typ == 'string' && expr_typ == 'int' {
+		p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
+	} 
+	else {
+		p.cgen.set_placeholder(pos, '($typ)(')
+		// p.fgen(typ)
+	}
+	p.gen(')')
 	return typ
 }
 
@@ -2660,13 +2661,15 @@ fn (p mut Parser) chash() {
 		}
 	}
 	else {
+		if !p.can_chash {
+			p.error('bad token `#` (embedding C code is no longer supported)')
+		}
+		//println('HASH!!! $p.file_name $p.scanner.line_nr')
 		if p.cur_fn.name == '' {
 			// p.error('# outside of fn')
 		}
 		p.genln(hash)
 	}
-	// p.cgen.nogen = false
-	// println('HASH=$hash')
 }
 
 fn is_c_pre(hash string) bool {
@@ -3126,6 +3129,14 @@ fn is_compile_time_const(s string) bool {
 	return true
 }
 
+fn (p &Parser) building_v() bool {
+	cur_dir := os.getwd()
+	return p.file_path.contains('v/compiler') || cur_dir.contains('v/compiler') 
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
 // fmt helpers
 fn (scanner mut Scanner) fgen(s string) {
 /* 
@@ -3158,4 +3169,5 @@ fn (p mut Parser) fspace() {
 fn (p mut Parser) fgenln(s string) {
 	//p.scanner.fgenln(s)
 }
+
 

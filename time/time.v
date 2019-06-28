@@ -18,6 +18,8 @@ pub:
 	uni    int // TODO it's safe to use "unix" now
 }
 
+fn C.localtime(int) *C.tm
+
 fn remove_me_when_c_bug_is_fixed() { // TODO 
 }
 
@@ -31,34 +33,12 @@ struct C.tm {
 }
 
 pub fn now() Time {
-	# time_t t = time(0);
-	// t := C.time(0)
-	# struct tm * now = localtime(&t);
-	res := Time{}
-	# res.year = now->tm_year + 1900;
-	# res.month = now->tm_mon + 1;
-	# res.day = now->tm_mday;
-	# res.hour = now->tm_hour;
-	# res.minute = now->tm_min;
-	# res.second = now->tm_sec;
-	# res.uni = (int)t;
-	// # res.ms = now->tm_msec;
-	return res
+	t := C.time(0)
+	mut now := &C.tm{!}
+	now = C.localtime(&t)
+	return convert_ctime(now)
 }
 
-// fn now() Time {
-// t := C.time(0)
-// now := localtime(&t)
-// return Time{
-// year: now.tm_year + 1900
-// month : now.tm_mon + 1
-// day : now.tm_mday
-// hour : now.tm_hour
-// minute : now.tm_min
-// second : now.tm_sec
-// uni : int(t)
-// }
-// }
 pub fn random() Time {
 	return Time {
 		year: rand.next(2) + 201
@@ -70,25 +50,10 @@ pub fn random() Time {
 	}
 }
 
-pub fn unix(u string) Time {
-	// println('unix time($u)')
-	// # int aa = atoi(u.str);
-	// #printf("!!!! %d\n", aa);
-	# int uni = atoi(u.str);
-	# time_t t = (time_t)uni;
-	# struct tm * now = localtime(&t);
-	// println('got tm')
-	// TODO COPY PASTA
-	res := Time{}
-	# res.year = now->tm_year + 1900;
-	# res.month = now->tm_mon + 1;
-	# res.day = now->tm_mday;
-	# res.hour = now->tm_hour;
-	# res.minute = now->tm_min;
-	# res.second = now->tm_sec;
-	# res.uni = uni;
-	// println('end unix')
-	return res
+pub fn unix(u int) Time {
+	mut t := &C.tm{!}
+	t = C.localtime(&u)
+	return convert_ctime(t)
 }
 
 pub fn convert_ctime(t tm) Time {
@@ -101,26 +66,6 @@ pub fn convert_ctime(t tm) Time {
 		second: t.tm_sec
 	}
 	// uni = uni;
-}
-
-pub fn unixn(uni int) Time {
-	// println('unix time($u)')
-	// # int aa = atoi(u.str);
-	// #printf("!!!! %d\n", aa);
-	# time_t t = (time_t)uni;
-	# struct tm * now = localtime(&t);
-	// println('got tm')
-	// TODO COPY PASTA
-	res := Time{}
-	# res.year = now->tm_year + 1900;
-	# res.month = now->tm_mon + 1;
-	# res.day = now->tm_mday;
-	# res.hour = now->tm_hour;
-	# res.minute = now->tm_min;
-	# res.second = now->tm_sec;
-	# res.uni = uni;
-	// println('end unix')
-	return res
 }
 
 fn (t Time) format_ss() string {
@@ -146,11 +91,13 @@ pub fn (t Time) hhmm() string {
 	return '${t.hour:02d}:${t.minute:02d}'
 }
 
+/*
 fn (t Time) hhmm_tmp() string {
 	return '${t.hour:02d}:${t.minute:02d}'
 }
+*/
 
-// 21:04
+// 9:04pm
 pub fn (t Time) hhmm12() string {
 	mut am := 'am'
 	mut hour = t.hour
@@ -183,7 +130,7 @@ fn (t Time) md() string {
 	return s
 }
 
-fn (t Time) clean() string {
+pub fn (t Time) clean() string {
 	nowe := time.now()
 	// if amtime {
 	// hm = t.Format("3:04 pm")
@@ -228,15 +175,7 @@ fn (t Time) clean12() string {
 /* 
 // in ms
 fn ticks() double {
-	# struct timeval  tv;
-	# gettimeofday(&tv, NULL);
-	# double time_in_mill =	  (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000 ; // convert tv_sec & tv_usec to millisecond
-	// # printf("!!!%f\n", time_in_mill);
-	// # return (int)time_in_mill;
-	// # return (int)(time_in_mill - 1521561736529);
-	# return (long)(time_in_mill - 1523777913000);
-	return double(0)
-	// return int64(0)
+	return 0
 }
 */
 // `parse` parses time in the following format: "2018-01-27 12:48:34"
@@ -274,22 +213,23 @@ fn new_time(t Time) Time {
 }
 
 fn (t &Time) calc_unix() int {
-	# struct tm lDate;
-	# lDate.tm_sec = t->second;
-	# lDate.tm_min = t->minute;
-	# lDate.tm_hour = t->hour;
-	# lDate.tm_mday = t->day;
-	# lDate.tm_mon = t->month-1;
-	# lDate.tm_year = t->year - 1900;
-	# time_t kek = mktime(&lDate);
-	// # t->uni = (int)kek;
-	# return (int)kek;
-	return 0
+	if t.uni != 0  {
+		return t.uni
+	}
+	tt := C.tm{
+	tm_sec : t.second
+	tm_min : t.minute
+	tm_hour : t.hour
+	tm_mday : t.day
+	tm_mon : t.month-1
+	tm_year : t.year - 1900
+	}
+	return C.mktime(&tt)
 }
 
 // TODO add(d time.Duration)
 pub fn (t Time) add_seconds(seconds int) Time {
-	return unixn(t.uni + seconds)
+	return unix(t.uni + seconds)
 }
 
 // TODO use time.Duration instead of seconds
@@ -325,7 +265,7 @@ pub fn (t Time) relative() string {
 
 fn day_of_week(y, m, d int) int {
 	// TODO please no
-	# return  (d += m < 3 ? y-- : y - 2, 23*m/9 + d + 4 + y/4- y/100 + y/400)%7;
+	//# return  (d += m < 3 ? y-- : y - 2, 23*m/9 + d + 4 + y/4- y/100 + y/400)%7;
 	return 0
 }
 

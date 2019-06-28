@@ -13,15 +13,14 @@ module os
 fn log(s string) {
 }
 
-fn is_dir(path string) bool {
-	# struct stat statbuf;
+
+pub fn is_dir(path string) bool {
+	statbuf := C.stat{}
 	cstr := path.cstr()
-	# if (stat(cstr, &statbuf) != 0)
-	{
+	if C.stat(cstr, &statbuf) != 0 {
 		return false
 	}
-	# return S_ISDIR(statbuf.st_mode);
-	return false
+	return statbuf.st_mode & S_IFMT == S_IFDIR
 }
 
 fn chdir(path string) {
@@ -29,35 +28,33 @@ fn chdir(path string) {
 }
 
 pub fn getwd() string {
-	cwd := malloc(1024)
-	# if (getcwd(cwd, 1024)) return tos2(cwd);
-	return ''
+	cwd := malloc(512)
+	if C.getcwd(cwd, 512) == 0 {
+		return ''
+	}
+	return string(cwd)
 }
 
 pub fn ls(path string) []string {
 	mut res := []string
-	# DIR *dir;
-	# struct dirent *ent;
-	# if ((dir = opendir (path.str)) == NULL)
-	{
+	dir := C.opendir(path.str)
+	if isnil(dir) {
 		println('ls() couldnt open dir "$path"')
 		print_c_errno()
 		return res
 	}
-	// print all the files and directories within directory */
-	# while ((ent = readdir (dir)) != NULL) {
-	name := ''
-	# name = tos_clone(ent->d_name);//, strlen(ent->d_name));
-	// # printf ("printf ls() %s\n", ent->d_name);
-	// println(name)
-	if name != '.' && name != '..' && name != '' {
-		res << name
+	mut ent := &C.dirent{!}
+	for {
+		ent = C.readdir(dir)
+		if isnil(ent) {
+			break
+		}
+		name := tos_clone(ent.d_name)
+		if name != '.' && name != '..' && name != '' {
+			res << name
+		}
 	}
-	# }
-	# closedir (dir);
-	// res.sort()
-	// println('sorted res')
-	// print_strings(res)
+	C.closedir(dir)
 	return res
 }
 

@@ -5,7 +5,7 @@
 fn test_add() {
 	mut a := 'a'
 	a += 'b'
-	assert a.eq('ab')
+	assert a==('ab')
 	a = 'a'
 	for i := 1; i < 1000; i++ {
 		a += 'b'
@@ -29,7 +29,7 @@ fn test_between() {
 fn test_compare() {
 	a := 'Music'
 	b := 'src'
-	assert b.ge(a)
+	assert b>=(a)
 }
 
 fn test_lt() {
@@ -39,12 +39,12 @@ fn test_lt() {
 	d := 'b'
 	e := 'aa'
 	f := 'ab'
-	assert a.lt(b)
-	assert b.lt(c) == false
-	assert c.lt(d)
-	assert d.lt(e) == false
-	assert c.lt(e)
-	assert e.lt(f)
+	assert a<(b)
+	assert !(b<c)
+	assert c<(d)
+	assert !(d<e)
+	assert c<(e)
+	assert e<(f)
 }
 
 fn test_ge() {
@@ -53,11 +53,11 @@ fn test_ge() {
 	c := 'ab'
 	d := 'abc'
 	e := 'aaa'
-	assert b.ge(a)
-	assert c.ge(b)
-	assert d.ge(c)
-	assert c.ge(d) == false
-	assert e.ge(a)
+	assert b>=(a)
+	assert c>=(b)
+	assert d>=(c)
+	assert !(c>=d) 
+	assert e>=(a)
 }
 
 fn test_compare_strings() {
@@ -150,13 +150,13 @@ fn test_clone() {
 fn test_replace() {
 	a := 'hello man!'
 	mut b := a.replace('man', 'world')
-	assert b.eq('hello world!')
+	assert b==('hello world!')
 	b = b.replace('!', '')
-	assert b.eq('hello world')
+	assert b==('hello world')
 	b = b.replace('h', 'H')
-	assert b.eq('Hello world')
+	assert b==('Hello world')
 	b = b.replace('kek', 'lul')
-	assert b.eq('Hello world')
+	assert b==('Hello world')
 	s := 'hey man how are you'
 	assert s.replace('man ', '') == 'hey how are you'
 	lol := 'lol lol lol'
@@ -344,5 +344,4 @@ fn test_contain() {
 	assert s.contain(s2[4]) == false
 	assert s3.contain(s2[1]) == false
 }
-
 

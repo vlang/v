@@ -15,7 +15,7 @@ pub:
 }
 
 // Private function, used by V (`nums := []int`)
-fn new_array(mylen int, cap, elm_size int) array {
+fn new_array(mylen, cap, elm_size int) array {
 	arr := array {
 		len: mylen
 		cap: cap
@@ -50,7 +50,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function, used by V  (`[0; 100]`)
-fn array_repeat(val voidptr, nr_repeats int, elm_size int) array {
+fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	arr := array {
 		len: nr_repeats
 		cap: nr_repeats
@@ -63,18 +63,18 @@ fn array_repeat(val voidptr, nr_repeats int, elm_size int) array {
 	return arr
 }
 
-fn (a mut array) append_array(b array) {
+pub fn (a mut array) append_array(b array) {
 	for i := 0; i < b.len; i++ {
 		val := b[i]
 		a._push(val)
 	}
 }
 
-fn (a mut array) sort_with_compare(compare voidptr) {
+pub fn (a mut array) sort_with_compare(compare voidptr) {
 	C.qsort(a.data, a.len, a.element_size, compare)
 }
 
-fn (a mut array) insert(i int, val voidptr) {
+pub fn (a mut array) insert(i int, val voidptr) {
 	if i >= a.len {
 		panic('array.insert: index larger than length')
 		return
@@ -85,11 +85,11 @@ fn (a mut array) insert(i int, val voidptr) {
 	a.set(i, val)
 }
 
-fn (a mut array) prepend(val voidptr) {
+pub fn (a mut array) prepend(val voidptr) {
 	a.insert(0, val)
 }
 
-fn (a mut array) delete(idx int) {
+pub fn (a mut array) delete(idx int) {
 	size := a.element_size
 	C.memmove(a.data + idx * size, a.data + (idx + 1) * size, (a.len - idx) * size)
 	a.len--
@@ -103,28 +103,28 @@ fn (a array) _get(i int) voidptr {
 	return a.data + i * a.element_size
 }
 
-fn (a array) first() voidptr {
+pub fn (a array) first() voidptr {
 	if a.len == 0 {
 		panic('array.first: empty array')
 	}
 	return a.data + 0
 }
 
-fn (a array) last() voidptr {
+pub fn (a array) last() voidptr {
 	if a.len == 0 {
 		panic('array.last: empty array')
 	}
 	return a.data + (a.len - 1) * a.element_size
 }
 
-fn (s array) left(n int) array {
+pub fn (s array) left(n int) array {
 	if n >= s.len {
 		return s
 	}
 	return s.slice(0, n)
 }
 
-fn (s array) right(n int) array {
+pub fn (s array) right(n int) array {
 	if n >= s.len {
 		return s
 	}
@@ -149,14 +149,14 @@ pub fn (s array) slice(start, _end int) array {
 	return res
 }
 
-fn (a mut array) set(idx int, val voidptr) {
+pub fn (a mut array) set(idx int, val voidptr) {
 	if idx < 0 || idx >= a.len {
 		panic('array index out of range: $idx / $a.len')
 	}
 	C.memcpy(a.data + a.element_size * idx, val, a.element_size)
 }
 
-fn (arr mut array) _push(val voidptr) {
+pub fn (arr mut array) _push(val voidptr) {
 	if arr.len >= arr.cap - 1 {
 		cap := (arr.len + 1) * 2
 		// println('_push: realloc, new cap=$cap')
@@ -172,7 +172,7 @@ fn (arr mut array) _push(val voidptr) {
 	arr.len++
 }
 
-fn (arr mut array) _push_many(val voidptr, size int) {
+pub fn (arr mut array) _push_many(val voidptr, size int) {
 	if arr.len >= arr.cap - size {
 		cap := (arr.len + size) * 2
 		// println('_push: realloc, new cap=$cap')
@@ -188,7 +188,7 @@ fn (arr mut array) _push_many(val voidptr, size int) {
 	arr.len += size
 }
 
-fn (a[]int) str() string {
+pub fn (a[]int) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
 		val := a[i]
@@ -201,14 +201,14 @@ fn (a[]int) str() string {
 	return res
 }
 
-fn (a[]int) free() {
+pub fn (a[]int) free() {
 	// println('array free')
 	C.free(a.data)
 }
 
 // TODO generic
 // "[ 'a', 'b', 'c' ]"
-fn (a[]string) str() string {
+pub fn (a[]string) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
 		val := a[i]

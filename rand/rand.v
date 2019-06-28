@@ -4,19 +4,15 @@
 
 module rand
 
-#include <time.h>
+import time
 
 pub fn seed() {
-	# time_t t;
-	# srand((unsigned) time(&t));
+	C.srand(time.now().uni)
 }
 
 pub fn next(max int) int {
-	r := 0 
-	# r = rand();  // TODO parser bug `rand` module name conflict 
-	return r % max 
+	return C.rand() % max
 }
 
-struct C.time_t{} 
 fn C.rand() int 
 

@@ -136,7 +136,7 @@ fn json_parse(s string) *C.cJSON {
 // json_string := json_print(encode_User(user))
 fn json_print(json *C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
-	return tos(s, _strlen(s))
+	return tos(s, C.strlen(s))
 }
 
 // /  cjson wrappers
