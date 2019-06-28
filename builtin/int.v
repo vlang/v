@@ -124,16 +124,16 @@ pub fn (b bool) str() string {
 
 pub fn (n int) hex() string {
 	s := n.str()
-	hex := malloc(s.len + 2)
+	hex := malloc(s.len + 3) // 0x + \n 
 	C.sprintf(hex, '0x%x', n)
-	return tos(hex, s.len + 2)
+	return tos(hex, s.len + 3)
 }
 
 pub fn (n i64) hex() string {
 	s := n.str()
-	hex := malloc(s.len + 2)
+	hex := malloc(s.len + 3)
 	C.sprintf(hex, '0x%x', n)
-	return tos(hex, s.len + 2)
+	return tos(hex, s.len + 3)
 }
 
 pub fn (a[]byte) contains(val byte) bool {
