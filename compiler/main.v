@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.1.7'
+	Version = '0.1.8'
 )
 
 // TODO no caps
