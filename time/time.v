@@ -64,6 +64,7 @@ pub fn convert_ctime(t tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
+		uni: C.mktime(&t)
 	}
 	// uni = uni;
 }
