@@ -68,6 +68,30 @@ pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
 }
 
+pub fn gcd(a, b int) int {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a %= b
+		if a == 0 {
+			return b
+		}
+		b %= a
+	}
+	return a
+}
+
+pub fn lcm(a, b int) int {
+	if a == 0 {
+		return a
+	}
+	return a * (b / gcd(b, a))
+}
+
 pub fn log(a f64) f64 {
 	return C.log(a)
 }
