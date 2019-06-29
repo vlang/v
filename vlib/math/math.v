@@ -68,6 +68,15 @@ pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
 }
 
+pub fn gcd(a, b i64) i64 {
+	for a != 0 {
+		temp:= b
+		b = a
+		a = temp%a
+	}
+	return b
+}
+
 pub fn log(a f64) f64 {
 	return C.log(a)
 }
