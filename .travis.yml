@@ -7,15 +7,15 @@ matrix:
       addons:
         apt:
           sources:
-          - ubuntu-toolchain-r-test
+            - ubuntu-toolchain-r-test
           packages:
-          - gcc-5
-          - g++-5
-          - make
-          - libglfw3 
-          - libglfw3-dev
-          - libfreetype6-dev 
-          - libcurl3-dev
+            - gcc-5
+            - g++-5
+            - make
+            - libglfw3 
+            - libglfw3-dev
+            - libfreetype6-dev 
+            - libcurl3-dev
     - os: windows
       language: sh
       filter_secrets: false
@@ -24,8 +24,8 @@ matrix:
       addons:
         homebrew:
           packages:
-          - freetype
-          - glfw
+            - freetype
+            - glfw
       #env:
       #  - MATRIX_EVAL="brew install freetype glfw"
 script:
@@ -41,4 +41,3 @@ script:
   - export VROOT=$(pwd)
   - make
   - make test
-
