@@ -387,6 +387,9 @@ string _STR_TMP(const char *fmt, ...) {
 		else {
 			'./' + c.out_name
 		}
+		$if windows {
+			cmd = c.out_name 
+		} 
 		if os.args.len > 3 {
 			cmd += ' ' + os.args.right(3).join(' ')
 		}
@@ -394,7 +397,8 @@ string _STR_TMP(const char *fmt, ...) {
 		if ret != 0 {
 			s := os.exec(cmd)
 			println(s)
-			println('ret not 0, exiting')
+			println('failed to run the compiled program, this should never happen')
+			println('please submit a GitHub issue') 
 			exit(1)
 		}
 	}
