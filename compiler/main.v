@@ -788,22 +788,13 @@ fn new_v(args[]string) *V {
 		println('Looks like you are running V for the first time.')
 		// The parent directory should contain vlib if V is run
 		// from "v/compiler"
-		cur_dir := os.getwd()
-		lang_dir = cur_dir.all_before_last('/')
+		lang_dir = os.getwd() 
 		if os.dir_exists('$lang_dir/vlib/builtin') {
 			println('Setting VROOT to "$lang_dir".')
 			os.write_file(TmpPath + '/VROOT', lang_dir)
 		} else {
-			println('V repo not found. Cloning...') 
-			exit(1) 
-			os.mv('v', 'v.bin') 
-			os.exec('git clone https://github.com/vlang/v') 
-			if !os.dir_exists('v') {
-				println('failed to clone github.com/vlang/v') 
-				exit(1) 
-			} 
-			os.mv('v.bin', 'v/compiler/v') 
-			println('Re-launch V from v/compiler') 
+			println('V repo not found. Go to https://vlang.io to download V.zip or') 
+			println('or install V from source.') 
 			exit(1) 
 		}
 	} 
