@@ -713,24 +713,3 @@ fn (s mut Scanner) create_type_string(T Type, name string) {
 fn (p mut Parser) create_type_string(T Type, name string) {
 	p.scanner.create_type_string(T, name)
 }
-
-//Checks if mut type can be dereferenced to be modified
-fn is_mutable_type(typ string) bool {
-	if typ == 'bool*' {
-		return true
-	}
-	if typ == 'int*' || typ == 'rune*' || typ == 'i8*' ||
-	   typ == 'i16*' || typ == 'i32*' || typ == 'i64*' {
-		return true
-	}
-	if typ == 'byte*' || typ == 'u8*' || typ == 'u16*' ||
-	   typ == 'u32*' || typ == 'u64*' {
-		return true
-	}
-	if typ == 'f32*' || typ == 'f64*' {
-		return true
-	}
-	if typ == 'string*' {
-		return true
-	}
-}

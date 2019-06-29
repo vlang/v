@@ -1197,7 +1197,7 @@ fn (p mut Parser) name_expr() string {
 	hack_lit := p.lit
 	// amp
 	ptr := p.tok == AMP
-	mut deref := p.tok == MUL
+	deref := p.tok == MUL
 	if ptr || deref {
 		p.next()
 	}
@@ -1241,7 +1241,6 @@ fn (p mut Parser) name_expr() string {
 	// Variable
 	v := p.cur_fn.find_var(name)
 	if v.name.len != 0 {
-		deref = deref || (v.is_arg && v.is_mut && is_mutable_type(v.typ))
 		if ptr {
 			p.gen('& /*vvar*/ ')
 		}
