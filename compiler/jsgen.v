@@ -56,25 +56,24 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	enc_fn.args << enc_arg
 	p.table.register_fn(enc_fn)
 	// Code gen decoder
-	dec += '
-//$t $dec_fn.name(cJSON* root) {  
-Option $dec_fn.name(cJSON* root, $t* res) {  
-//  $t res; 
-  if (!root) {
-    const char *error_ptr = cJSON_GetErrorPtr();
-    if (error_ptr != NULL)	{
-      fprintf(stderr, "Error in decode() for $t error_ptr=: %%s\\n", error_ptr);
-//      printf("\\nbad js=%%s\\n", js.str); 
-      return v_error(tos2(error_ptr));
-    }
-  }
-'
+	dec += '\n'
+	dec += '//$t $dec_fn.name(cJSON* root) {  \n'
+	dec += 'Option $dec_fn.name(cJSON* root, $t* res) {  \n'
+	dec += '//  $t res; \n'
+	dec += '  if (!root) {\n'
+	dec += '    const char *error_ptr = cJSON_GetErrorPtr();\n'
+	dec += '    if (error_ptr != NULL)	{\n'
+	dec += '      fprintf(stderr, "Error in decode() for $t error_ptr=: %%s\\n", error_ptr);\n'
+	dec += '//      printf("\\nbad js=%%s\\n", js.str); \n'
+	dec += '      return v_error(tos2(error_ptr));\n'
+	dec += '    }\n'
+	dec += '  }\n'
 	// Code gen encoder
-	enc += '
-cJSON* $enc_fn.name($t val) {  
-cJSON *o = cJSON_CreateObject();
-string res = tos2(""); 
-'
+	enc += '\n'
+	enc += 'cJSON* $enc_fn.name($t val) {  \n'
+	enc += 'cJSON *o = cJSON_CreateObject();\n'
+	enc += 'string res = tos2(""); \n'
+
 	// Handle arrays
 	if t.starts_with('array_') {
 		dec += p.decode_array(t)
@@ -127,15 +126,17 @@ fn (p mut Parser) decode_array(typ string) string {
 	else {
 		s = '  $typ val; $fn_name(jsval, &val); '
 	}
-	return '
-*res = new_array(0, 0, sizeof($typ));
-const cJSON *jsval = NULL;
-cJSON_ArrayForEach(jsval, root)
-{
-$s 
-  array__push(res, &val);
-}
-'
+	mut ret := ''
+	ret += '\n'
+	ret += '*res = new_array(0, 0, sizeof($typ));\n'
+	ret += 'const cJSON *jsval = NULL;\n'
+	ret += 'cJSON_ArrayForEach(jsval, root)\n'
+	ret += '{\n'
+	ret += '$s \n'
+	ret += '  array__push(res, &val);\n'
+	ret += '}\n'
+	ret += '\n'
+	return ret
 }
 
 fn js_enc_name(typ string) string {
@@ -151,11 +152,12 @@ fn js_dec_name(typ string) string {
 fn (p &Parser) encode_array(typ string) string {
 	typ = typ.replace('array_', '')
 	fn_name := js_enc_name(typ)
-	return '
-o = cJSON_CreateArray();
-for (int i = 0; i < val.len; i++){
-  cJSON_AddItemToArray(o, $fn_name(  (($typ*)val.data)[i]  ));
-} 
-'
+	mut ret := ''
+	ret += '\n'
+	ret += 'o = cJSON_CreateArray();\n'
+	ret += 'for (int i = 0; i < val.len; i++){\n'
+	ret += '  cJSON_AddItemToArray(o, $fn_name(  (($typ*)val.data)[i]  ));\n'
+	ret += '} \n'
+	return ret
 }
 
