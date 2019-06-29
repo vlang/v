@@ -8,10 +8,10 @@ jobs:
           sudo apt install -y libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
         displayName: 'Install Dependencies'
       - script: |
-          cd compiler && make
+          make
         displayName: 'Build V'
       - script: |
-          cd compiler && make test
+          make test
         displayName: 'Run Tests'
   - job: WindowsBuild
     pool: 
@@ -26,7 +26,7 @@ jobs:
           brew install glfw freetype curl
         displayName: 'Install Dependencies'
       - script: |
-          cd compiler && make && make test
+          make && make test
         displayName: 'Build V'
 trigger:
   branches:
