@@ -636,6 +636,9 @@ pub fn (s string) ustring() ustring {
 // right away. Uses global buffer for storing runes []int array.
 __global g_ustring_runes []int
 pub fn (s string) ustring_tmp() ustring {
+	if g_ustring_runes.len == 0 {
+		g_ustring_runes = new_array(0, 128, sizeof(int))
+	}
 	mut res := ustring {
 		s: s
 		runes: 0
@@ -792,7 +795,7 @@ pub fn (s string) reverse() string {
 	}
 
 	for i := s.len - 1; i >= 0; i-- {
-        res[s.len-i-1] = s[i]
+				res[s.len-i-1] = s[i]
 	}
 
 	return res
