@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.1.8'
+	Version = '0.1.9'
 )
 
 // TODO no caps
@@ -793,7 +793,7 @@ fn new_v(args[]string) *V {
 			println('Setting VROOT to "$lang_dir".')
 			os.write_file(TmpPath + '/VROOT', lang_dir)
 		} else {
-			println('V repo not found. Go to https://vlang.io to download V.zip or') 
+			println('V repo not found. Go to https://vlang.io to download V.zip ')  
 			println('or install V from source.') 
 			exit(1) 
 		}
