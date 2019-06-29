@@ -3,10 +3,23 @@ Don't use past tense (e.g. "fixed foo bar").
 
 Explain what your PR does and why.
 
+If you are adding a new function, please document it and add tests:
+
+```
+// foo does foo and bar
+fn foo() {
+
+// file_test.v
+fn test_foo() {
+    assert foo() == ...
+    ...
+}
+```
+
 Before submitting a PR, please run the tests with `make test`, and make sure V can still compile itself. Run this twice:
 
-./v -o v
-./v -o v
+./v -o v compiler
+./v -o v compiler
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
 

@@ -1,7 +1,14 @@
 
-# 0.1.8 
+# 0.1.9 - 0.1.10
+- Windows support via MinGW-w64. Pre-built Windows binary.
+- File structure has been simplified: all vlib modules were moved to the vlib/ directory,
+  makefile was moved to the root.
+- One single archive with pre-built binaries for all operating systems. 
+- `mut var := val` was fixed (previously `mut var = val` was allowed as well).
+
+# 0.1.8
 - Single file programs without `fn main` now work as expected.
-- REPL has been fixed: it now supports imports, consts, function definitions, etc. 
+- REPL has been fixed: it now supports imports, consts, function definitions, etc.
 
 # 0.1.7
 

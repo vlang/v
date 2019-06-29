@@ -68,6 +68,36 @@ pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
 }
 
+// gcd calculates greatest common (positive) divisor (or zero if x and y are both zero).
+pub fn gcd(a, b int) int {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a %= b
+		if a == 0 {
+			return b
+		}
+		b %= a
+	}
+	return a
+}
+
+// lcm calculates least common (non-negative) multiple.
+pub fn lcm(a, b int) int {
+	if a == 0 {
+		return a
+	}
+	res := a * (b / gcd(b, a))
+	if res < 0 {
+		return -res
+	}
+	return res
+}
+
 pub fn log(a f64) f64 {
 	return C.log(a)
 }

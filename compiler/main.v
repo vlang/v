@@ -8,7 +8,7 @@ import os
 import time
 
 const (
-	Version = '0.1.9'
+	Version = '0.1.10'
 )
 
 // TODO no caps
@@ -409,7 +409,8 @@ string _STR_TMP(const char *fmt, ...) {
 		if ret != 0 {
 			s := os.exec(cmd)
 			println(s)
-			println('ret not 0, exiting')
+			println('failed to run the compiled program, this should never happen')
+			println('please submit a GitHub issue') 
 			exit(1)
 		}
 	}
@@ -501,12 +502,15 @@ mut args := ''
 	// Find clang executable
 	fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
 	args := a.join(' ')
-	cmd := if os.file_exists(fast_clang) {
-		'$fast_clang -I. $args'
+	mut cmd := if os.file_exists(fast_clang) {
+		'$fast_clang $args'
 	}
 	else {
-		'cc -I. $args'
+		'cc $args'
 	}
+	$if windows {
+		cmd = 'gcc $args' 
+	} 
 	// Print the C command
 	if c.show_c_cmd || c.is_verbose {
 		println('\n==========\n$cmd\n=========\n')
@@ -863,7 +867,7 @@ fn run_repl() []string {
 		exit(1) 
 	} 
 	println('V $Version')
-	println('Use Ctrl-D to exit')
+	println('Use Ctrl-D or `exit` to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string
@@ -874,7 +878,7 @@ fn run_repl() []string {
 			continue
 		}
 		line = line.trim_space()
-		if line == '' {
+		if line == '' || line == 'exit' {
 			break
 		}
 		// Save the source only if the user is printing something,
