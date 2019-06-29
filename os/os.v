@@ -476,7 +476,7 @@ pub fn getexepath() string {
 	}
 
 	$if windows {
-		return tos( result, C.GetModuleFileName( 0, result, MAX_PATH ) )
+		return tos( result, int(C.GetModuleFileName( 0, result, MAX_PATH )) )
 	}
 
 	$if mac {
