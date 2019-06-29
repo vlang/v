@@ -26,7 +26,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy cross compilation
 - REPL
 
-V 1.0 release is planned for December 2019.
+V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
 
 ## Notes
 
@@ -54,32 +54,30 @@ You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't hav
 ```bash
 # You can clone V anywhere
 git clone https://github.com/vlang/v
-cd v/compiler
+cd v
 make
 ```
 Or build without make:
 ```bash
 # Download the V compiler's source translated to C
-wget https://raw.githubusercontent.com/vlang/vc/master/v.c  
+curl -sO https://raw.githubusercontent.com/vlang/vc/master/v.c
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v .                 # Use the resulting V binary to build V from V source
 ./v -o v .                 # Build the compiler again to make sure it works
 ```
 
-That's it! Now you have a V executable at `v/compiler/v`.
+That's it! Now you have a V executable at `[path to V repo]/v`.
 
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s [path to V repo]/compiler/v /usr/local/bin/v
+sudo ln -s [path to V repo]/v /usr/local/bin/v
 ```
 
 V is being constantly updated. To update V, simply run
 
 ```
 git pull origin master
-cd compiler/
-make clean
 make
 ```
 
@@ -88,9 +86,23 @@ make
 
 V works great on Windows Subsystem for Linux. The instructions are the same as above.
 
-If you want to build v.exe on Windows without WSL, you will need Visual Studio. Microsoft doesn't make it easy for developers.  Mingw-w64 could suffice, but if you plan to develop UI and graphical apps, VS is your only option.
+If you want to build v.exe on Windows without WSL, you can use MinGW-w64 or Visual Studio.
 
-V temporarily can't be compiled with Visual Studio. This will be fixed asap.
+#### MinGW-w64
+
+[Download](https://downloads.sourceforge.net/project/mingw-w64/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe?r=&ts=1561736169&use_mirror=gigenet) and install MinGW-w64.
+
+Make sure the `C:/mingw-w64/bin` directory is in system's PATH.
+
+```bash
+# You can clone V anywhere
+git clone https://github.com/vlang/v
+cd v
+# Download the V compiler's source translated to C
+curl -sO https://raw.githubusercontent.com/vlang/vc/master/v.c
+gcc -std=gnu11 -w -o v.exe v.c  # Build it with GCC
+```
+
 
 ### Testing
 

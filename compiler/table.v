@@ -210,7 +210,7 @@ fn (table &Table) known_type(typ string) bool {
 	return false
 }
 
-// TODO PERF O(N) this slows down the comiler a lot!
+// TODO PERF O(N) this slows down the compiler a lot!
 fn (t &Table) find_fn(name string) Fn {
 	for f in t.fns {
 		if f.name == name {
@@ -220,7 +220,7 @@ fn (t &Table) find_fn(name string) Fn {
 	return Fn{}
 }
 
-// TODO PERF O(N) this slows down the comiler a lot!
+// TODO PERF O(N) this slows down the compiler a lot! 
 fn (t &Table) known_fn(name string) bool {
 	for f in t.fns {
 		if f.name == name {
@@ -249,10 +249,9 @@ fn (t mut Table) register_type(typ string) {
 	// if t.types.filter( _.name == typ.name).len > 0 {
 	// return
 	// }
-	datyp := Type {
+	t.types << Type {
 		name: typ
 	}
-	t.types << datyp
 }
 
 fn (p mut Parser) register_type_with_parent(strtyp, parent string) {

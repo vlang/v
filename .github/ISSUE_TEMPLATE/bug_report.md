@@ -9,7 +9,6 @@ assignees: ''
 
 **V version:** 
 **OS:** 
-**C compiler version:** 
 
 **What did you do?**
 

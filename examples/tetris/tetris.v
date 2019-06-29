@@ -131,6 +131,11 @@ fn main() {
 		game.draw_scene()
 		window.swap_buffers()
 		glfw.wait_events()
+		if window.should_close() {
+			window.destroy()
+			glfw.terminate()
+			exit(0)
+		}
 	}
 }
 
@@ -322,6 +327,8 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	// Fetch the game object stored in the user pointer
 	mut game := &Game(glfw.get_window_user_pointer(wnd))
 	switch key {
+	case glfw.KEY_ESCAPE:
+		glfw.set_should_close(wnd, true)
 	case glfw.KeyUp:
 		// Rotate the tetro
 		game.rotation_idx++

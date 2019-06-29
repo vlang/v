@@ -1,3 +1,8 @@
+
+# 0.1.8
+- Single file programs without `fn main` now work as expected.
+- REPL has been fixed: it now supports imports, consts, function definitions, etc.
+
 # 0.1.7
 
 - All C code in the compiler and vlib has been replaced with V.

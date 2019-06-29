@@ -77,6 +77,7 @@ mut:
 
 const (
 	EmptyFn = &Fn { }
+	MainFn= &Fn{name:'main'} 
 )
 
 fn (c mut V) new_parser(path string, run Pass) Parser {
@@ -225,10 +226,14 @@ fn (p mut Parser) parse() {
 				g += p.cgen.end_tmp()
 			}
 			// p.genln('; // global')
-			g += ('; // global')
+			g += '; // global' 
 			p.cgen.consts << g
 		case EOF:
 			p.log('end of parse()')
+			if p.is_script && !p.is_test {
+				p.cur_fn = MainFn
+				p.check_unused_variables()
+			}
 			if true && !p.first_run() && p.fileis('test') {
 				out := os.create('/var/tmp/fmt.v')
 				out.appendln(p.scanner.fmt_out.str())
@@ -238,25 +243,32 @@ fn (p mut Parser) parse() {
 		default:
 			// no `fn main`, add this "global" statement to cgen.fn_main
 			if p.is_script && !p.is_test {
-				if p.cur_fn.scope_level == 0 {
-					// p.cur_fn.scope_level++
-				}
-				// println('is script')
-				p.print_tok()
+				// cur_fn is empty since there was no fn main declared
+				// we need to set it to save and find variables 
+				if p.first_run() {
+					if p.cur_fn.name == '' {
+						p.cur_fn = MainFn 
+					} 
+					return 
+				} 
+				if p.cur_fn.name == '' {
+					p.cur_fn = MainFn 
+					if p.is_repl {
+						p.cur_fn.clear_vars()
+					}
+				} 
 				start := p.cgen.lines.len
 				p.statement(true)
+				p.genln('') 
 				end := p.cgen.lines.len
 				lines := p.cgen.lines.slice(start, end)
-				// p.cgen.fn_main << p.cgen.prev_line
-				// println('fn line:')
-				// println(p.cgen.fn_main + lines.join('\n'))
+				//mut line := p.cgen.fn_main + lines.join('\n') 
+				//line = line.trim_space() 
 				p.cgen.fn_main = p.cgen.fn_main + lines.join('\n')
 				p.cgen.cur_line = ''
 				for i := start; i < end; i++ {
-					// p.cgen.lines[p.cgen.lines.len - 1] = ''
 					p.cgen.lines[i] = ''
 				}
-				// exit('')
 			}
 			else {
 				p.error('unexpected token `${p.strtok()}`')
@@ -664,13 +676,14 @@ fn (p mut Parser) error(s string) {
 	p.cgen.save()
 	// V git pull hint
 	cur_path := os.getwd()
-	if p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') {
+	if !p.is_repl && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.') 
 		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
 		println('lead to this error.')
-		println('\nTry to run `git pull && make clean && make`, that will most likely fix it.')
-		println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println('\nRun `git pull && make`, that will most likely fix it.')
+		//println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println('\nIf this doesn\'t help, please create a GitHub issue.')
 		println('=========================\n')
 	}
 	// p.scanner.debug_tokens()
@@ -687,7 +700,7 @@ fn (p mut Parser) get_type() string {
 	debug := p.fileis('fn_test') && false
 	mut mul := false
 	mut nr_muls := 0
-	mut typ = ''
+	mut typ := ''
 	// fn type
 	if p.tok == FUNC {
 		if debug {
@@ -935,6 +948,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.check(COLON)
 			return ''
 		}
+		// `a := 777` 
 		else if p.peek() == DECL_ASSIGN {
 			p.log('var decl')
 			p.var_decl()
@@ -943,7 +957,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.js_decode()
 		}
 		else {
-			// "a + 3", "a(7)" or maybe just "a"
+			// `a + 3`, `a(7)` or maybe just `a` 
 			q = p.bool_expression()
 		}
 	case GOTO:
@@ -1075,34 +1089,20 @@ fn (p mut Parser) var_decl() {
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
 	name := p.check_name()
-	p.fgen(' := ')
 	// Don't allow declaring a variable with the same name. Even in a child scope
 	// (shadowing is not allowed)
 	if !p.builtin_pkg && p.cur_fn.known_var(name) {
 		v := p.cur_fn.find_var(name)
 		p.error('redefinition of `$name`')
-		// Check if this variable has already been declared only in the first run.
-		// Otherwise the is_script code outside main will run in the first run
-		// since we can't skip the function body since there's no function.
-		// And the variable will be registered twice.
-		if p.is_play && p.first_run() && !p.builtin_pkg {
-			p.error('variable `$name` is already declared.')
-		}
 	}
-	// println('var_decl $name')
-	// p.assigned_var = name
-	p.next()// :=
+	p.check_space(DECL_ASSIGN) // := 
 	// Generate expression to tmp because we need its type first
 	// [TYP NAME =] bool_expression()
 	pos := p.cgen.add_placeholder()
-	// p.gen('typ $name = ')
-	// p.gen('/*^^^*/')
 	mut typ := p.bool_expression()
-	// p.gen('/*VVV*/')
 	// Option check ? or {
 	or_else := p.tok == OR_ELSE
 	tmp := p.get_tmp()
-	// assigned_var_copy := p.assigned_var
 	if or_else {
 		// Option_User tmp = get_user(1);
 		// if (!tmp.ok) { or_statement }
@@ -1120,7 +1120,6 @@ fn (p mut Parser) var_decl() {
 			println(p.prev_tok2)
 			p.error('`or` statement must return/continue/break')
 		}
-		// p.assigned_var = assigned_var_copy
 	}
 	p.register_var(Var {
 		name: name
@@ -1130,11 +1129,9 @@ fn (p mut Parser) var_decl() {
 	mut cgen_typ := typ
 	if !or_else {
 		gen_name := p.table.var_cgen_name(name)
-		// p.cgen.set_placeholder(pos, '$cgen_typ $gen_name = ')
 		mut nt_gen := p.table.cgen_name_type_pair(gen_name, cgen_typ) + '='
 		if is_static {
 			nt_gen = 'static $nt_gen'
-			// p.gen('static ')
 		}
 		p.cgen.set_placeholder(pos, nt_gen)
 	}
@@ -1159,7 +1156,7 @@ fn (p mut Parser) bool_expression() string {
 
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
-	mut typ = p.expression()
+	mut typ := p.expression()
 	is_str := typ=='string' 
 	tok := p.tok
 	// if tok in [ EQ, GT, LT, LE, GE, NE] {
@@ -1349,9 +1346,7 @@ fn (p mut Parser) name_expr() string {
 	// Function (not method btw, methods are handled in dot())
 	f := p.table.find_fn(name)
 	if f.name == '' {
-		println(p.cur_fn.name)
-		println(p.cur_fn.args.len)
-		// if !p.first_run() && !p.translated {
+		// We are in a second pass, that means this function was not defined, throw an error. 
 		if !p.first_run() {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
@@ -2100,11 +2095,14 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	case 'u32': return '%d'
 	case 'f64', 'f32': return '%f'
 	case 'i64': return '%lld'
-	case 'byte*': return '%s'
+	case 'byte*', 'byteptr': return '%s'
 		// case 'array_string': return '%s'
 		// case 'array_int': return '%s'
 	case 'void': p.error('cannot interpolate this value')
 	default:
+		if typ.ends_with('*') {
+			return '%p' 
+		} 
 		p.error('unhandled sprintf format "$typ" ')
 	}
 	return ''
@@ -2636,46 +2634,16 @@ fn (p mut Parser) chash() {
 			p.genln('#include $file')
 		}
 	}
-	else if is_c_pre(hash) {
-		// Skip not current OS hack
-		if hash.starts_with('ifdef') {
-			os := hash.right(6).trim_space()
-			// println('ifdef "$os" $p.scanner.line_nr')
-			if os == 'linux' && p.os != LINUX {
-				// println('linux ifdef skip')
-				for p.tok != EOF {
-					if p.tok == HASH && p.lit.contains('else') || p.lit.contains('endif') {
-						break
-					}
-					// println('skipping')
-					p.next()
-				}
-			}
-		}
-		// Move defines on top (like old gdefine)
-		if hash.contains('define') {
-			p.cgen.includes << '#$hash'
-		}
-		else {
-			p.genln('#$hash')
-		}
+	else if hash.contains('define') { 
+		// Move defines on top 
+		p.cgen.includes << '#$hash'
 	}
 	else {
 		if !p.can_chash {
 			p.error('bad token `#` (embedding C code is no longer supported)')
 		}
-		//println('HASH!!! $p.file_name $p.scanner.line_nr')
-		if p.cur_fn.name == '' {
-			// p.error('# outside of fn')
-		}
 		p.genln(hash)
 	}
-}
-
-fn is_c_pre(hash string) bool {
-	return hash.contains('ifdef') || hash.contains('define') ||
-	hash.contains('endif') || hash.contains('elif') ||
-	hash.contains('ifndef') || (hash.contains('else') && !hash.contains('{'))
 }
 
 fn (p mut Parser) if_st(is_expr bool) string {

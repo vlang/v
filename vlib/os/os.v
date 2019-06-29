@@ -5,8 +5,10 @@
 module os
 
 #include <sys/stat.h>
+
 const (
 	args = []string
+	MAX_PATH = 4096
 )
 
 struct FILE {
@@ -271,11 +273,21 @@ pub fn getenv(key string) string {
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
+$if windows {
+ 
+} 
+$else { 
   return C.setenv(name.cstr(), value.cstr(), overwrite)
+} 
 }
 
 pub fn unsetenv(name string) int {
+$if windows {
+ 
+} 
+$else { 
   return C.unsetenv(name.cstr())
+} 
 }
 
 // `file_exists` returns true if `path` exists.
@@ -370,17 +382,38 @@ pub fn filename(path string) string {
 //Otherwise, it would cause a valgrind warning and may be dangerous
 //Malloc takes an int as argument so a cast has to be made
 pub fn get_line() string {
-	max := u64(256)
-	buf := malloc(int(max))
-	nr_chars := C.getline(&buf, &max, stdin)
-	if nr_chars == 0 {
-		return ''
-	}
-	if buf[nr_chars - 1] == `\n` /* newline */ {
-		return tos(buf, nr_chars - 1)
-	}
-	/* To prevent cutting end of line if no newline */
-	return tos(buf, nr_chars)
+	$if windows {
+		panic('get_line() not implemented on Windows yet, sorry!') 
+	} 
+	$else { 
+		max := u64(256)
+		buf := malloc(int(max))
+		nr_chars := C.getline(&buf, &max, stdin)
+		if nr_chars == 0 {
+			return ''
+		}
+		if buf[nr_chars - 1] == `\n` { // newline  
+			return tos(buf, nr_chars - 1)
+		}
+		// To prevent cutting end of line if no newline  
+		return tos(buf, nr_chars)
+	} 
+}
+
+// get_raw_line returns a one-line string from stdin along with '\n' if there is any
+pub fn get_raw_line() string {
+	$if windows {
+		panic('get_raw_line() not implemented on Windows yet, sorry!') 
+	} 
+	$else { 
+		max := u64(256)
+		buf := malloc(int(max))
+		nr_chars := C.getline(&buf, &max, stdin)
+		if nr_chars == 0 {
+			return ''
+		}
+		return tos(buf, nr_chars)
+	} 
 }
 
 pub fn get_lines() []string {
@@ -458,5 +491,26 @@ fn on_segfault(f voidptr) {
 		sa.sa_sigaction = f
 		sa.sa_flags   = SA_SIGINFO
 		C.sigaction(SIGSEGV, &sa, 0)
+	}
+}
+
+pub fn getexepath() string {
+	mut result := [4096]byte // [MAX_PATH]byte --> error byte undefined
+	$if linux {
+		count := int(C.readlink('/proc/self/exe', result, MAX_PATH ))
+		if(count < 0) {
+			panic('error reading /proc/self/exe to get exe path')
+		}
+		return tos(result, count)
+	}
+
+	$if windows {
+		ret := int(C.GetModuleFileName( 0, result, MAX_PATH ))
+		return tos( result, ret)
+	}
+
+	$if mac {
+		//panic('getexepath() not impl')
+		return ''
 	}
 }

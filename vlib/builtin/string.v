@@ -75,7 +75,7 @@ pub fn (s string) cstr() byteptr {
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
-		return ''
+		return s
 	}
 	if !s.contains(rep) {
 		return s
@@ -110,7 +110,7 @@ pub fn (s string) replace(rep, with string) string {
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
-	mut b_i = 0
+	mut b_i := 0
 	for i := 0; i < s.len; i++ {
 		// Reached the location of rep, replace it with "with"
 		if i == cur_idx {

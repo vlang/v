@@ -32,14 +32,14 @@ pub fn ptr_str(ptr voidptr) string {
 // return i
 // }
 pub fn (nn int) str() string {
-	mut n = nn
+	mut n := nn
 	if n == 0 {
 		return '0'
 	}
 	max := 16
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg = false
+	mut is_neg := false
 	if n < 0 {
 		n = -n
 		is_neg = true
@@ -60,14 +60,14 @@ pub fn (nn int) str() string {
 }
 
 pub fn (nn u8) str() string {
-	 mut n = nn
+	 mut n := nn
 	if n == u8(0) {
 		return '0'
 	}
 	max := 5
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg = false
+	mut is_neg := false
 	if n < u8(0) {
 		n = -n
 		is_neg = true
@@ -88,14 +88,14 @@ pub fn (nn u8) str() string {
 }
 
 pub fn (nn i64) str() string {
-	mut n = nn
+	mut n := nn
 	if n == i64(0) {
 		return '0'
 	}
 	max := 32
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg = false
+	mut is_neg := false
 	if n < i64(0) {
 		n = -n
 		is_neg = true
@@ -124,16 +124,16 @@ pub fn (b bool) str() string {
 
 pub fn (n int) hex() string {
 	s := n.str()
-	hex := malloc(s.len + 2)
+	hex := malloc(s.len + 3) // 0x + \n 
 	C.sprintf(hex, '0x%x', n)
-	return tos(hex, s.len + 2)
+	return tos(hex, s.len + 3)
 }
 
 pub fn (n i64) hex() string {
 	s := n.str()
-	hex := malloc(s.len + 2)
+	hex := malloc(s.len + 3)
 	C.sprintf(hex, '0x%x', n)
-	return tos(hex, s.len + 2)
+	return tos(hex, s.len + 3)
 }
 
 pub fn (a[]byte) contains(val byte) bool {
