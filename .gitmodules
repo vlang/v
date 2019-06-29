@@ -1,0 +1,3 @@
+[submodule "thirdparty/freetype-windows"]
+	path = thirdparty/freetype-windows
+	url = https://github.com/ubawurinna/freetype-windows-binaries.git

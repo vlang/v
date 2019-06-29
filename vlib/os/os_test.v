@@ -1,6 +1,12 @@
 import os
 
 fn test_setenv() {
+
+$if windows {
+
+}
+$else {
+
   os.setenv('foo', 'bar', true)
   assert os.getenv('foo') == 'bar'
   
@@ -12,10 +18,10 @@ fn test_setenv() {
   os.setenv('foo', 'bar2', true)
   assert os.getenv('foo') == 'bar2'
 }
+}
 
 fn test_unsetenv() {
   os.setenv('foo', 'bar', true)
   os.unsetenv('foo')
   assert os.getenv('foo') == ''
 }
-

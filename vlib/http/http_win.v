@@ -148,7 +148,7 @@ fn (req &Request) do() Response {
 			C.printf('buf broken="%s"\n', buf)
 			if req.url.contains('websocket') {
 				println('win sleeping 2')
-				time.sleep(2)
+				C.usleep(2)
 				continue
 			}
 			break
@@ -174,12 +174,12 @@ fn (req &Request) do() Response {
 		// println('\n!')
 		// println(h)
 		vals := h.split(':')
-		pos := h.index(':')
+		posi := h.index(':')
 		if pos == -1 {
 			continue
 		}
-		key := h.left(pos)
-		val := h.right(pos + 1)
+		key := h.left(posi)
+		val := h.right(posi + 1)
 		// println('$key => $val')
 		resp.headers[key] = val.trim_space()
 	}

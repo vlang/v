@@ -7,11 +7,11 @@ module sync
 struct Mutex {
 }
 
-fn (m Mutex) lock() {
+pub fn (m Mutex) lock() {
 panic('not implemented') 
 }
 
-fn (m Mutex) unlock() {
+pub fn (m Mutex) unlock() {
 panic('not implemented') 
 }
 

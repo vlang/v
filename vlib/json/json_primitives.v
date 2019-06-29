@@ -4,10 +4,9 @@
 
 module json
 
-// TODO: windows support
-
 #flag linux  -I @VROOT/thirdparty/cJSON
 #flag darwin -I @VROOT/thirdparty/cJSON
+#flag windows -I @VROOT/thirdparty/cJSON
 
 // #include "cJSON.c"
 #include "cJSON.h"

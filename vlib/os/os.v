@@ -42,6 +42,7 @@ struct C.DIR {
 
 }
 
+
 struct C.dirent {
 	d_name byteptr
 
@@ -78,7 +79,10 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 pub fn read_file(path string) ?string {
 	mut res := ''
 	cpath := path.cstr()
-	fp := C.fopen(cpath, 'r')
+
+	//'rb' is required by windows. Everyone else does not mind 'r' or 'rb'
+	fp := C.fopen(cpath, 'rb')
+
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
@@ -180,7 +184,7 @@ fn create_file2(file, mode string) File {
 		cfile: C.fopen(file.cstr(), mode.cstr())
 	}
 	if isnil(res.cfile) {
-		println('coudlnt create file "$file"')
+		println('could not create file "$file"')
 	}
 	return res
 }
@@ -434,7 +438,14 @@ pub fn home_dir() string {
 	mut home := os.getenv('HOME')
 	$if windows {
 		home = os.getenv('HOMEDRIVE')
-		home += os.getenv('HOMEPATH')
+		if home.is_empty() {
+			home = os.getenv('SYSTEMDRIVE')
+		}
+		mut homepath := os.getenv('HOMEPATH')
+		if homepath.is_empty() {
+			homepath = '\\Users\\' + os.getenv('USERNAME')
+		}
+		home += homepath
 	}
 	home += '/'
 	return home

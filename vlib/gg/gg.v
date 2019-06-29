@@ -9,9 +9,11 @@ import glm
 import gl
 
 #flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2
+#flag windows -L @VROOT/thirdparty/freetype-windows/win64
 #flag -lfreetype
 #flag linux 	-I/usr/include/freetype2
 #flag linux -I.
+#flag windows -I @VROOT/thirdparty/freetype-windows/include
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include "glad.h"

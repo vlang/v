@@ -358,10 +358,9 @@ fn (p mut Parser) fn_decl() {
 		}
 		// We are in live code reload mode, call the .so loader in bg
 		if p.is_live {
-			p.genln(' 
-load_so("bounce.so"); 
-pthread_t _thread_so;
-pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
+			p.genln('load_so("bounce.so");')
+			p.genln('pthread_t _thread_so;')
+			p.genln('pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 		}
 		if p.is_test && !p.scanner.file_path.contains('/volt') {
 			p.error('tests cannot have function `main`')

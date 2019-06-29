@@ -379,17 +379,32 @@ string _STR_TMP(const char *fmt, ...) {
 	c.cc()
 	if c.is_test || c.is_run {
 		if true || c.is_verbose {
-			println('============ running $c.out_name ============') 
+			println('============ test $c.out_name ============')
 		}
-		mut cmd := if c.out_name.starts_with('/') {
+
+		mut cmd := if c.out_name.starts_with('/') || c.out_name.starts_with('./') {
 			c.out_name
 		}
 		else {
-			'./' + c.out_name
+			'./$c.out_name'
 		}
+
+		if os.user_os() == 'windows' {
+			println('============ WINDOWS ============')
+			if cmd.starts_with('./') {
+				cmd = cmd.substr(2, cmd.len)
+			}
+			cmd = cmd.replace('/', '\\')
+		}
+
 		if os.args.len > 3 {
 			cmd += ' ' + os.args.right(3).join(' ')
 		}
+
+		if true || c.is_verbose {
+			println('============ running $cmd ============')
+		}
+
 		ret := os.system(cmd)
 		if ret != 0 {
 			s := os.exec(cmd)
@@ -426,7 +441,7 @@ fn (c mut V) cc() {
 		// 
 	}
 	else if c.build_mode == DEFAULT_MODE {
-		libs = '$TmpPath/vlib/builtin.o'
+		libs = '"$TmpPath/vlib/builtin.o"'
 		if !os.file_exists(libs) {
 			println('`builtin.o` not found')
 			exit(1)
@@ -435,7 +450,7 @@ fn (c mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			libs += ' $TmpPath/vlib/${imp}.o'
+			libs += ' "$TmpPath/vlib/${imp}.o"'
 		}
 	}
 	// -I flags
@@ -467,7 +482,7 @@ mut args := ''
 	// else {
 	a << '-o $c.out_name'
 	// The C file we are compiling
-	a << '$TmpPath/$c.out_name_c'
+	a << '"$TmpPath/$c.out_name_c"'
 	// }
 	// Min macos version is mandatory I think?
 	if c.os == MAC {
@@ -523,7 +538,7 @@ mut args := ''
 		}
 		println('linux cross compilation done. resulting binary: "$c.out_name"')
 	}
-	//os.rm('$TmpPath/$c.out_name_c') 
+	//os.rm('"$TmpPath/$c.out_name_c"') 
 }
 
 fn (c &V) v_files_from_dir(dir string) []string {
@@ -537,8 +552,8 @@ fn (c &V) v_files_from_dir(dir string) []string {
 	if c.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	// println(files.len)
-	// println(files)
+	//println(files.len)
+	//println(files)
 	files.sort()
 	for file in files {
 		c.log('F=$file')

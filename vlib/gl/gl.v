@@ -19,9 +19,9 @@ import const (
 	GL_ARRAY_BUFFER
 )
 
-// TODO: windows support
 #flag linux  -I @VROOT/thirdparty/glad
 #flag darwin -I @VROOT/thirdparty/glad
+#flag windows -I @VROOT/thirdparty/glad
 
 #include "glad.h"
 #include "glad.c"

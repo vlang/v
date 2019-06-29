@@ -838,3 +838,6 @@ pub fn (s string) hash() int {
 	return hash
 }
 
+pub fn (s string) is_empty() bool {
+	return s.len == 0
+}
