@@ -77,28 +77,19 @@ pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
 		return s
 	}
-	if !s.contains(rep) {
-		return s
-	}
 	// println('"$s" replace  "$rep" with "$with" rep.len=$rep.len')
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{}
-	// idxs := []int {
-	// 2, 8, 14
-	// }
-	for i := 0; i < s.len; i++ {
-		// Do we have the string we are looking for (rep) starting at i?
-		// Go thru all chars in rep and compare.
-		mut rep_i := 0
-		mut j := i
-		for rep_i < rep.len && j < s.len && s[j] == rep[rep_i] {
-			rep_i++
-			j++
-		}
-		if rep_i == rep.len {
-			idxs << i
-		}
+	mut rem := s
+	mut rstart := 0
+	for {
+		mut i := rem.index(rep)
+		if i < 0 {break}
+		idxs << rstart + i
+		i += rep.len
+		rstart += i
+		rem = rem.substr(i, rem.len)
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
