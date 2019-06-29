@@ -5,6 +5,7 @@
 module os
 
 #include <sys/stat.h>
+
 const (
 	args = []string
 	MAX_PATH = 4096
@@ -476,7 +477,8 @@ pub fn getexepath() string {
 	}
 
 	$if windows {
-		return tos( result, C.GetModuleFileName( 0, result, MAX_PATH ) )
+		ret := int(C.GetModuleFileName( 0, result, MAX_PATH ))
+		return tos( result, ret)
 	}
 
 	$if mac {
