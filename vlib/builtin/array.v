@@ -156,7 +156,7 @@ pub fn (a mut array) set(idx int, val voidptr) {
 	C.memcpy(a.data + a.element_size * idx, val, a.element_size)
 }
 
-pub fn (arr mut array) _push(val voidptr) {
+fn (arr mut array) _push(val voidptr) {
 	if arr.len >= arr.cap - 1 {
 		cap := (arr.len + 1) * 2
 		// println('_push: realloc, new cap=$cap')
