@@ -4,9 +4,20 @@
 
 module os
 
-fn ls(path string) []string {
+pub fn ls(path string) []string {
 	mut res := []string
 	return res
+}
+
+pub fn getwd() string {
+	mut buffer := malloc(512)
+	
+	buffer = C._getcwd(0, 0)
+	// A NULL return value indicates an error
+	if isnil(buffer) {
+		return ''
+	}
+	return string(buffer)
 }
 
 const (
