@@ -795,7 +795,7 @@ fn new_v(args[]string) *V {
 			os.write_file(TmpPath + '/VROOT', lang_dir)
 		} else {
 			println('V repo not found. Cloning...') 
-exit(1) 
+			exit(1) 
 			os.mv('v', 'v.bin') 
 			os.exec('git clone https://github.com/vlang/v') 
 			if !os.dir_exists('v') {
