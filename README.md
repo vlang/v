@@ -54,7 +54,7 @@ You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't hav
 ```bash
 # You can clone V anywhere
 git clone https://github.com/vlang/v
-cd v/compiler
+cd v
 make
 ```
 Or build without make:
@@ -66,20 +66,18 @@ cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v .                 # Build the compiler again to make sure it works
 ```
 
-That's it! Now you have a V executable at `v/compiler/v`.
+That's it! Now you have a V executable at `[path to V repo]/v`.
 
 You can create a symlink so that it's globally available:
 
 ```
-sudo ln -s [path to V repo]/compiler/v /usr/local/bin/v
+sudo ln -s [path to V repo]/v /usr/local/bin/v
 ```
 
 V is being constantly updated. To update V, simply run
 
 ```
 git pull origin master
-cd compiler/
-make clean
 make
 ```
 
