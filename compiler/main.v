@@ -856,7 +856,7 @@ fn run_repl() []string {
 	} 
 	println('V $Version')
 	println('Use Ctrl-D or `exit` to exit')
-	println('For now you have to use println() to print values, this will be fixed soon\n')
+	println('For now you can use println() or print() values, it is fixed.\n')
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string
 	for {
