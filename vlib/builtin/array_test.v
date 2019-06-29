@@ -11,31 +11,29 @@ fn test_ints() {
 	assert a[0] == 1
 	assert a[2] == 2
 	assert a.last() == 3
-	println(a)
 	a << 4
-	println(a)
 	assert a.len == 5
 	assert a[4] == 4
 	assert a.last() == 4
-	// assert a.contains(4) == true
-	// assert a.contains(777) == false
-	// assert a.str() == '51234'
+
 	mut s := a.str()
 	assert s == '[1, 5, 2, 3, 4]'
-	// Insert
-	// val := 5
-	// a.insert(1, val)// 1 5 2 3 4
-	s = a.str()
 	assert a[1] == 5
 	assert a.last() == 4
-	// a.sort()
-	s = a.str()
-	assert s == '[1, 5, 2, 3, 4]'
-	// Delete
+}
+
+fn test_deleting() {
+	mut a := [1, 5, 2, 3, 4]
+	assert a.len == 5
+	assert a.str() == '[1, 5, 2, 3, 4]'
+
 	a.delete(0)
 	assert a.str() == '[5, 2, 3, 4]'
+	assert a.len == 4
+
 	a.delete(1)
 	assert a.str() == '[5, 3, 4]'
+	assert a.len == 3
 }
 
 fn test_short() {
@@ -75,6 +73,7 @@ fn test_empty() {
 	chunks << a
 	assert chunks.len == 1
 }
+
 fn test_push() {
 	mut a := []int
 	a << 1
@@ -84,20 +83,18 @@ fn test_push() {
 }
 
 fn test_strings() {
-	s := 'hi'
-	if s.contains('i') {
-		// println('$s')
-	}
 	a := ['a', 'b', 'c']
 	assert a.str() == '["a", "b", "c"]'
-	// println(a)
 }
 
 fn test_repeat() {
 	a := [0; 5]
-	// a := [0 x 5]
 	assert a.len == 5
 	assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
+
+	b := [7; 3]
+	assert b.len == 3
+	assert b[0] == 7 && b[1] == 7 && b[2] == 7
 }
 
 fn test_right() {
@@ -117,11 +114,9 @@ fn test_left() {
 fn test_slice() {
 	a := [1, 2, 3, 4]
 	b := a.slice(2, 4)
-	for val in b {
-		println(val)
-	}
+	assert b.len == 2
 	assert a.slice(1, 2).len == 1
-	println(a.slice(2, 4))
+	assert a.len == 4
 }
 
 fn test_push_many() {
@@ -132,7 +127,6 @@ fn test_push_many() {
 	assert a[0] == 1
 	assert a[3] == 4
 	assert a[5] == 6
-	println(a)
 }
 
 
