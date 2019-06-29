@@ -60,10 +60,10 @@ make
 Or build without make:
 ```bash
 # Download the V compiler's source translated to C
-curl -sO https://raw.githubusercontent.com/vlang/vc/master/v.c
+curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
-./v -o v .                 # Use the resulting V binary to build V from V source
-./v -o v .                 # Build the compiler again to make sure it works
+./v -o v compiler          # Use the resulting V binary to build V from V source
+./v -o v compiler          # Build the compiler again to make sure it works
 ```
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
@@ -99,7 +99,7 @@ Make sure the `C:/mingw-w64/bin` directory is in system's PATH.
 git clone https://github.com/vlang/v
 cd v
 # Download the V compiler's source translated to C
-curl -sO https://raw.githubusercontent.com/vlang/vc/master/v.c
+curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 gcc -std=gnu11 -w -o v.exe v.c  # Build it with GCC
 ```
 
@@ -112,7 +112,7 @@ $ v run hello_world.v
 hello world
 
 $ v
-V 0.1.2
+V 0.1.9
 Use Ctrl-D to exit
 
 >>> println('hello world')
