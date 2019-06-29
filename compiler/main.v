@@ -167,8 +167,7 @@ fn (c mut V) compile() {
 	if c.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
-	cgen.genln('   
-#include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually 
+	cgen.genln('#include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually 
 #include <stdlib.h>
 #include <signal.h>
 #include <stdarg.h> // for va_list 
@@ -261,9 +260,7 @@ void init_consts();')
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		cgen.genln('int g_test_ok = 1; ')
 		if c.table.imports.contains('json') {
-			cgen.genln(' 
-#define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
-')
+			cgen.genln('#define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))')
 		}
 	}
 	if os.args.contains('-debug_alloc') {
@@ -303,39 +300,36 @@ void init_consts();')
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() { g_str_buf=malloc(1000); ${cgen.consts_init.join_lines()} }')
 		// _STR function can't be defined in vlib
-		cgen.genln('
-string _STR(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;  
-	va_end(argptr);
-	byte* buf = malloc(len);  
-	va_start(argptr, fmt);
-	vsprintf(buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC 
-	puts("_STR:"); 
-	puts(buf); 
-#endif 
-	return tos2(buf);
-}
-
-string _STR_TMP(const char *fmt, ...) {
-	va_list argptr;
-	va_start(argptr, fmt);
-	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;  
-	va_end(argptr);
-	va_start(argptr, fmt);
-	vsprintf(g_str_buf, fmt, argptr);
-	va_end(argptr);
-#ifdef DEBUG_ALLOC 
-	//puts("_STR_TMP:"); 
-	//puts(g_str_buf); 
-#endif 
-	return tos2(g_str_buf);
-}
-
-')
+		cgen.genln('string _STR(const char *fmt, ...) {')
+		cgen.genln('va_list argptr;')
+		cgen.genln('va_start(argptr, fmt);')
+		cgen.genln('size_t len = vsnprintf(0, 0, fmt, argptr) + 1;')
+		cgen.genln('va_end(argptr);')
+		cgen.genln('byte* buf = malloc(len);')
+		cgen.genln('va_start(argptr, fmt);')
+		cgen.genln('vsprintf(buf, fmt, argptr);')
+		cgen.genln('va_end(argptr);')
+		cgen.genln('#ifdef DEBUG_ALLOC ')
+		cgen.genln('  puts("_STR:");')
+		cgen.genln('  puts(buf);')
+		cgen.genln('#endif')
+		cgen.genln('return tos2(buf);')
+		cgen.genln('}')
+		cgen.genln('')
+		cgen.genln('string _STR_TMP(const char *fmt, ...) {')
+		cgen.genln('	va_list argptr;')
+		cgen.genln('	va_start(argptr, fmt);')
+		cgen.genln('	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;  ')
+		cgen.genln('	va_end(argptr);')
+		cgen.genln('	va_start(argptr, fmt);')
+		cgen.genln('	vsprintf(g_str_buf, fmt, argptr);')
+		cgen.genln('	va_end(argptr);')
+		cgen.genln('#ifdef DEBUG_ALLOC ')
+		cgen.genln('	//puts("_STR_TMP:"); ')
+		cgen.genln('	//puts(g_str_buf); ')
+		cgen.genln('#endif ')
+		cgen.genln('	return tos2(g_str_buf);')
+		cgen.genln('}')
 	}
 	// Make sure the main function exists
 	// Obviously we don't need it in libraries
@@ -362,10 +356,9 @@ string _STR_TMP(const char *fmt, ...) {
 		}
 	}
 	if c.is_live {
-		cgen.genln(' int load_so(byteptr path) {
-	 printf("load_so %s\\n", path); dlclose(live_lib); live_lib = dlopen(path, RTLD_LAZY);
-	 if (!live_lib) {puts("open failed"); exit(1); return 0;}
-	 ')
+		cgen.genln('int load_so(byteptr path) {')
+	 	cgen.genln('printf("load_so %s\\n", path); dlclose(live_lib); live_lib = dlopen(path, RTLD_LAZY);')
+	 	cgen.genln('if (!live_lib) {puts("open failed"); exit(1); return 0;}')
 		for so_fn in cgen.so_fns {
 			cgen.genln('$so_fn = dlsym(live_lib, "$so_fn");  ')
 		}
@@ -918,8 +911,7 @@ Options:
 
 Files:
   <file>_test.v     Test file.
-'
-)
+')
 
 /* 
 - To disable automatic formatting: 

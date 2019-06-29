@@ -2077,6 +2077,7 @@ fn format_str(str string) string {
 	str = str.replace('"', '\\"')
 	$if windows {
 		str = str.replace('\r\n', '\\n')
+		str = str.replace('\n', '\\n')
 	} 
 	$else { 
 		str = str.replace('\n', '\\n')
@@ -2943,16 +2944,16 @@ fn (p mut Parser) assert_statement() {
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
 	filename := p.file_path
-	p.genln(';\n 
-if (!$tmp) { 
-  puts("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m");  
-g_test_ok = 0 ; 
-	// TODO
-	// Maybe print all vars in a test function if it fails? 
-} 
-else { 
-  puts("\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m");
-}')
+	p.genln(';\n') 
+	p.genln('if (!$tmp) {') 
+	p.genln('  puts("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m");') 
+	p.genln('  g_test_ok = 0 ;') 
+	p.genln('  // TODO') 
+	p.genln('  // Maybe print all vars in a test function if it fails?') 
+	p.genln('}') 
+	p.genln('else {') 
+	p.genln('  puts("\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m");')
+	p.genln('}')
 }
 
 fn (p mut Parser) return_st() {
