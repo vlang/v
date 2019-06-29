@@ -26,7 +26,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy cross compilation
 - REPL
 
-V 1.0 release is planned for December 2019.
+V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
 
 ## Notes
 
@@ -97,7 +97,7 @@ Make sure the `C:/mingw-w64/bin` directory is in system's PATH.
 ```bash
 # You can clone V anywhere
 git clone https://github.com/vlang/v
-cd v/compiler
+cd v
 # Download the V compiler's source translated to C
 curl -sO https://raw.githubusercontent.com/vlang/vc/master/v.c
 gcc -std=gnu11 -w -o v.exe v.c  # Build it with GCC
