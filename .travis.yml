@@ -2,6 +2,7 @@ language: c
 matrix:
   include:
     - os: linux
+      dist: xenial
       sudo: required
       addons:
         apt:
@@ -15,6 +16,9 @@ matrix:
           - libglfw3-dev
           - libfreetype6-dev 
           - libcurl3-dev
+    - os: windows
+      language: sh
+      filter_secrets: false
     - os: osx
       osx_image: xcode10.2
       addons:
@@ -28,6 +32,11 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
       sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
+      choco install make
+      cp "C:\\ProgramData\\chocolatey\\bin\\gcc.exe" "C:\\ProgramData\\chocolatey\\bin\\cc.exe"
     fi
   - export VROOT=$(pwd)
   - cd ./compiler
