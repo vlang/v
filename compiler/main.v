@@ -851,7 +851,7 @@ fn run_repl() []string {
 		exit(1) 
 	} 
 	println('V $Version')
-	println('Use Ctrl-D to exit')
+	println('Use Ctrl-D or `exit` to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string
@@ -862,7 +862,7 @@ fn run_repl() []string {
 			continue
 		}
 		line = line.trim_space()
-		if line == '' {
+		if line == '' || line == 'exit' {
 			break
 		}
 		// Save the source only if the user is printing something,

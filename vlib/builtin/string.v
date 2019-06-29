@@ -622,8 +622,6 @@ pub fn (s string) ustring() ustring {
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(s.str[i])
-		//# char_len =UTF8_CHAR_LEN(s.str[i]);
-		// println('cl=$char_len')
 		res.runes << i
 		i += char_len - 1
 		res.len++
@@ -644,8 +642,6 @@ pub fn (s string) ustring_tmp() ustring {
 	res.runes.len = s.len
 	mut j := 0
 	for i := 0; i < s.len; i++ {
-		//char_len := 0
-		//# char_len =UTF8_CHAR_LEN(s.str[i]);
 		char_len := utf8_char_len(s.str[i])
 		res.runes[j] = i
 		j++
@@ -656,18 +652,13 @@ pub fn (s string) ustring_tmp() ustring {
 }
 
 fn (u ustring) substr(start, end int) string {
-	// println('substr($start, $end)')
-	// println('runes=')
-	// println(u.runes)
 	start = u.runes[start]
-	// handle last char
 	if end >= u.runes.len {
 		end = u.s.len
 	}
 	else {
 		end = u.runes[end]
 	}
-	// println('fast $start, $end')
 	return u.s.substr(start, end)
 }
 
