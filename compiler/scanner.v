@@ -179,13 +179,11 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(STRING, s.ident_string())
 	}
 	s.skip_whitespace()
-	// println('ws skipped')
 	// end of file
 	if s.pos >= s.text.len {
 		// println('scan(): returning EOF (pos >= len)')
 		return scan_res(EOF, '')
 	}
-	// println('!!!!! HANDLE CHAR pos=$s.pos')
 	// handle each char
 	c := s.text[s.pos]
 	mut nextc := `\0`
@@ -481,6 +479,11 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		return scan_res(DIV, '')
 	}
+	$if windows {
+		if c == `\0` {
+			return scan_res(EOF, '')
+		} 
+	} 
 	println('(char code=$c) pos=$s.pos len=$s.text.len')
 	s.error('invalid character `${c.str()}`')
 	return scan_res(EOF, '')

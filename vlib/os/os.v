@@ -77,8 +77,14 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mut res := ''
+	mut mode := 'r' 
+	777  // TODO 
+	// Need 'rb' on windows to avoid the \r\n mess. 
+	$if windows {
+		mode = 'rb' 
+	} 
 	cpath := path.cstr()
-	fp := C.fopen(cpath, 'r')
+	fp := C.fopen(cpath, mode.cstr()) 
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
