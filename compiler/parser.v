@@ -2075,7 +2075,12 @@ fn (p mut Parser) char_expr() {
 
 fn format_str(str string) string {
 	str = str.replace('"', '\\"')
-	str = str.replace('\n', '\\n')
+	$if windows {
+		str = str.replace('\r\n', '\\n')
+	} 
+	$else { 
+		str = str.replace('\n', '\\n')
+	} 
 	return str
 }
 
