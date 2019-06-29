@@ -39,7 +39,6 @@ script:
       cp "C:\\ProgramData\\chocolatey\\bin\\gcc.exe" "C:\\ProgramData\\chocolatey\\bin\\cc.exe"
     fi
   - export VROOT=$(pwd)
-  - cd ./compiler
   - make
   - make test
 
