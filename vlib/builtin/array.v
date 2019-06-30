@@ -188,7 +188,7 @@ pub fn (arr mut array) _push_many(val voidptr, size int) {
 	arr.len += size
 }
 
-pub fn (a[]int) str() string {
+pub fn (a []int) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
 		val := a[i]
@@ -201,8 +201,7 @@ pub fn (a[]int) str() string {
 	return res
 }
 
-pub fn (a[]int) free() {
-	// println('array free')
+pub fn (a []int) free() {
 	C.free(a.data)
 }
 
