@@ -823,7 +823,6 @@ fn new_v(args []string) *V {
 			files << f
 		}
 	}
-	obfuscate := args.contains('-obf')
 	return &V {
 		os: _os
 		out_name: out_name
@@ -839,7 +838,7 @@ fn new_v(args []string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
-		obfuscate: obfuscate
+		obfuscate: args.contains('-obf') 
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')
 		sanitize: args.contains('-sanitize')

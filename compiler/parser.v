@@ -236,7 +236,7 @@ fn (p mut Parser) parse() {
 			}
 			if true && !p.first_run() && p.fileis('test') {
 				out := os.create('/var/tmp/fmt.v')
-				out.appendln(p.scanner.fmt_out.str())
+				out.writeln(p.scanner.fmt_out.str())
 				out.close()
 			}
 			return

@@ -68,7 +68,7 @@ fn (g mut CGen) gen(s string) {
 
 fn (g mut CGen) save() {
 	s := g.lines.join('\n')
-	g.out.appendln(s)
+	g.out.writeln(s)
 	g.out.close()
 }
 
