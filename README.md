@@ -42,7 +42,7 @@ The compilation is temporarily slower for this release:
 
 ## Code structure
 
-https://github.com/vlang/v/blob/master/CodeStructure.md
+https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 ## Installing V from source
 
