@@ -102,39 +102,39 @@ fn dial(addr string, port int) Conn {
 fn listen(addr string, port int) Listener {
 	mut hints := C.addrinfo{} 
 	res := &C.addrinfo{!} 
-        new_fd := 0
-        BACKLOG := 10
-        strport := port.str() 
-        option := 1
-        listener := C.socket(PF_INET, SOCK_STREAM, 0) 
-        C.setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(int)) 
-        bad_listener := Listener{their_addr: 0}
-        if listener < 0 {
-                println('couldnt create listen scoket')
-                return bad_listener
-        }
-        // socket address used for the server
+	new_fd := 0
+	BACKLOG := 10
+	strport := port.str() 
+	option := 1
+	listener := C.socket(PF_INET, SOCK_STREAM, 0) 
+	C.setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(int)) 
+	bad_listener := Listener{their_addr: 0}
+	if listener < 0 {
+		println('couldnt create listen scoket')
+		return bad_listener
+	}
+	// socket address used for the server
 	mut server_address := C.sockaddr_in{} 
 	server_address.sin_family = AF_INET 
-        // htons: host to network short: transforms a value in host byte
-        // ordering format to a short value in network byte ordering format
+	// htons: host to network short: transforms a value in host byte
+	// ordering format to a short value in network byte ordering format
 	server_address.sin_port = C.htons(port) 
-        // htonl: host to network long: same as htons but to long
-        server_address.sin_addr.s_addr = C.htonl(INADDR_ANY) 
-	// size := sizeof(C.sockaddr_in) // 16 
-        if C.bind(listener, &server_address, 16) < 0 { 
-                println('cant bind')
-                return bad_listener
-        }
-        if C.listen(listener, BACKLOG) < 0 { 
-                println('cant listen')
-                return bad_listener
-        }
-        l := Listener {
-                listener: listener,
-                their_addr: 0
-        }
-        return l
+	// htonl: host to network long: same as htons but to long
+	server_address.sin_addr.s_addr = C.htonl(INADDR_ANY) 
+	size := 16 // sizeof(C.sockaddr_in) 
+	if C.bind(listener, &server_address, size) < 0 { 
+		println('cant bind')
+		return bad_listener
+	}
+	if C.listen(listener, BACKLOG) < 0 { 
+		println('cant listen')
+		return bad_listener
+	}
+	l := Listener {
+		listener: listener,
+		their_addr: 0
+	}
+	return l
 }
 
 // accept an incoming connection
