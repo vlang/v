@@ -477,7 +477,7 @@ pub fn (s string) find_between(start, end string) string {
 }
 
 // TODO generic
-pub fn (ar[]string) contains(val string) bool {
+pub fn (ar []string) contains(val string) bool {
 	for s in ar {
 		if s == val {
 			return true
@@ -487,7 +487,7 @@ pub fn (ar[]string) contains(val string) bool {
 }
 
 // TODO generic
-pub fn (ar[]int) contains(val int) bool {
+pub fn (ar []int) contains(val int) bool {
 	for i, s in ar {
 		if s == val {
 			return true
@@ -497,7 +497,7 @@ pub fn (ar[]int) contains(val int) bool {
 }
 
 /*
-pub fn (a[]string) to_c() voidptr {
+pub fn (a []string) to_c() voidptr {
 	char ** res = malloc(sizeof(char*) * a.len);
 	for i := 0; i < a.len; i++ {
 		val := a[i]
@@ -704,7 +704,7 @@ pub fn (s string) free() {
 	C.free(s.str)
 }
 
-fn (arr[]string) free() {
+fn (arr []string) free() {
 	for s in arr {
 		s.free()
 	}
@@ -739,7 +739,7 @@ pub fn (s string) all_after(dot string) string {
 // fn (s []string) substr(a, b int) string {
 // return join_strings(s.slice_fast(a, b))
 // }
-pub fn (a[]string) join(del string) string {
+pub fn (a []string) join(del string) string {
 	if a.len == 0 {
 		return ''
 	}
@@ -772,7 +772,7 @@ pub fn (a[]string) join(del string) string {
 	return res
 }
 
-pub fn (s[]string) join_lines() string {
+pub fn (s []string) join_lines() string {
 	return s.join('\n')
 }
 
