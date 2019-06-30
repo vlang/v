@@ -1,6 +1,6 @@
 import time
 
-fn print_field(field[]array_int) {
+fn print_field(field []array_int) {
 	for line in field {
 		mut s := '    '
 		for j, cell in line {

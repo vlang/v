@@ -696,7 +696,7 @@ fn (c &V) log(s string) {
 	println(s)
 }
 
-fn new_v(args[]string) *V {
+fn new_v(args []string) *V {
 	mut dir := args.last()
 	if args.contains('run') {
 		dir = args[2]

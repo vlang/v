@@ -129,22 +129,22 @@ pub fn buffer_data(typ, size int, arr voidptr, draw_typ int) {
 	C.glBufferData(typ, size, arr, draw_typ)
 }
 
-pub fn buffer_data_int(typ int, vertices[]int, draw_typ int) {
+pub fn buffer_data_int(typ int, vertices []int, draw_typ int) {
 	size := sizeof(int) * vertices.len
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
-pub fn buffer_data_f32(typ int, vertices[]f32, draw_typ int) {
+pub fn buffer_data_f32(typ int, vertices []f32, draw_typ int) {
 	size := sizeof(f32) * vertices.len
 	C.glBufferData(typ, size, vertices.data, draw_typ)
 }
 
-pub fn set_vbo(vbo u32, vertices[]f32, draw_typ int) {
+pub fn set_vbo(vbo u32, vertices []f32, draw_typ int) {
 	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
 	gl.buffer_data_f32(GL_ARRAY_BUFFER, vertices, draw_typ)
 }
 
-pub fn set_ebo(ebo u32, indices[]int, draw_typ int) {
+pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
 	gl.bind_buffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
 	// gl.buffer_data_int(GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
 	gl.buffer_data_int(GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)

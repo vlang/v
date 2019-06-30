@@ -136,7 +136,7 @@ pub fn (n i64) hex() string {
 	return tos(hex, s.len + 3)
 }
 
-pub fn (a[]byte) contains(val byte) bool {
+pub fn (a []byte) contains(val byte) bool {
 	for aa in a {
 		if aa == val {
 			return true
