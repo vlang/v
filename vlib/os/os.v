@@ -37,9 +37,8 @@ import const (
 	SEEK_END
 	SA_SIGINFO
 	SIGSEGV
-
-S_IFMT
-S_IFDIR
+	S_IFMT
+	S_IFDIR
 )
 
 struct C.stat {
@@ -168,16 +167,7 @@ fn open_file(file string) File {
 
 // `create` creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) File {
-	return create_file(path)
-}
-
-pub fn open_append(path string) File {
-	return create_file(path)
-}
-
-// TODO remove
-fn create_file(file string) File {
-	return create_file2(file, 'w')
+	return create_file2(path, 'w')
 }
 
 fn create_file_a(file string) File {
