@@ -151,10 +151,9 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 fn (c mut V) prof_counters() string {
 	mut res := []string
 	// Global fns
-	for f in c.table.fns {
-		res << 'double ${c.table.cgen_name(f)}_time;'
-		// println(f.name)
-	}
+	//for f in c.table.fns {
+		//res << 'double ${c.table.cgen_name(f)}_time;'
+	//}
 	// Methods
 	for typ in c.table.types {
 		// println('')
@@ -170,11 +169,10 @@ fn (c mut V) prof_counters() string {
 fn (p mut Parser) print_prof_counters() string {
 	mut res := []string
 	// Global fns
-	for f in p.table.fns {
-		counter := '${p.table.cgen_name(f)}_time'
-		res << 'if ($counter) printf("%%f : $f.name \\n", $counter);'
-		// println(f.name)
-	}
+	//for f in p.table.fns {
+		//counter := '${p.table.cgen_name(f)}_time'
+		//res << 'if ($counter) printf("%%f : $f.name \\n", $counter);'
+	//}
 	// Methods
 	for typ in p.table.types {
 		// println('')

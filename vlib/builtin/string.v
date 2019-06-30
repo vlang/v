@@ -636,7 +636,6 @@ __global g_ustring_runes []int
 pub fn (s string) ustring_tmp() ustring {
 	mut res := ustring {
 		s: s
-		runes: 0
 	}
 	res.runes = g_ustring_runes
 	res.runes.len = s.len

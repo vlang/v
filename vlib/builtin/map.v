@@ -25,7 +25,7 @@ pub:
 	// next *Entry
 }
 
-pub fn new_map(cap, elm_size int) map {
+fn new_map(cap, elm_size int) map {
 	res := map {
 		// len: len,
 		element_size: elm_size
@@ -57,15 +57,6 @@ fn (m mut map) _set(key string, val voidptr) {
 	}
 	m.entries << e// m.new_entry(key, val)
 	m.is_sorted = false
-}
-
-fn volt_abs(n int) int {
-	// println('volt_abs($n)')
-	if n < 0 {
-		// println('< 0: -($n)')
-		return -n
-	}
-	return n
 }
 
 fn (m map) bs(query string, start, end int, out voidptr) {

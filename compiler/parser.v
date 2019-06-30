@@ -763,6 +763,21 @@ fn (p mut Parser) get_type() string {
 			p.check(RSBR)
 		}
 	}
+	// map[string]int 
+	if !p.builtin_pkg && p.tok == NAME && p.lit == 'map' {
+		p.next()
+		p.check(LSBR) 
+		key_type := p.check_name() 
+		if key_type != 'string' {
+			p.error('maps only support string keys for now') 
+		} 
+		p.check(RSBR) 
+		val_type := p.check_name() 
+		typ= 'map_$val_type' 
+		p.register_map(typ)
+		return typ 
+	} 
+	//  
 	for p.tok == MUL {
 		mul = true
 		nr_muls++
@@ -2345,6 +2360,18 @@ fn (p mut Parser) register_array(typ string) {
 	}
 }
 
+
+fn (p mut Parser) register_map(typ string) {
+	if typ.contains('*') {
+		println('bad map $typ')
+		return
+	}
+	if !p.table.known_type(typ) {
+		p.register_type_with_parent(typ, 'map')
+		p.cgen.typedefs << 'typedef map $typ;'
+	}
+}
+
 fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 	p.is_struct_init = true
 	mut typ := p.get_type()
@@ -2390,11 +2417,12 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 			if !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
+			f := t.find_field(field) 
 			inited_fields << field
 			p.gen('.$field = ')
 			p.check(COLON)
 			p.fspace()
-			p.expression()
+			p.check_types(p.bool_expression(),  f.typ) 
 			if p.tok == COMMA {
 				p.next()
 			}
@@ -2419,7 +2447,7 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 				p.error('pointer field `${typ}.${field.name}` must be initialized')
 			}
 			def_val := type_default(field_typ)
-			if def_val != '' {
+			if def_val != '' && def_val != '{}' {
 				p.gen('.$field.name = $def_val')
 				if i != t.fields.len - 1 {
 					p.gen(',')
@@ -2938,6 +2966,9 @@ fn (p mut Parser) switch_statement() {
 }
 
 fn (p mut Parser) assert_statement() {
+	if p.first_run() {
+		return 
+	} 
 	p.check(ASSERT)
 	p.fspace()
 	tmp := p.get_tmp()

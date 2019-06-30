@@ -8,8 +8,8 @@ struct Table {
 mut:
 	types     []Type
 	consts    []Var
-	fns       []Fn
-	obf_ids   map_int // obf_ids 'myfunction'] == 23
+	fns       map[string]Fn 
+	obf_ids   map[string]int // obf_ids 'myfunction'] == 23
 	packages  []string // List of all modules registered by the application
 	imports   []string // List of all imports
 	flags     []string //  ['-framework Cocoa', '-lglfw3']
@@ -112,6 +112,7 @@ fn is_float_type(typ string) bool {
 fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
 		obf_ids: map[string]int{}
+		fns: map[string]Fn{}
 		obfuscate: obfuscate
 	}
 	t.register_type('int')
@@ -186,15 +187,8 @@ fn (p mut Parser) register_global(name, typ string) {
 	}
 }
 
-// TODO PERF O(N) this slows down the comiler a lot!
-fn (t mut Table) register_fn(f Fn) {
-	// Avoid duplicate fn names TODO why? the name should already be unique?
-	for ff in t.fns {
-		if ff.name == f.name {
-			return
-		}
-	}
-	t.fns << f
+fn (t mut Table) register_fn(new_fn Fn) {
+	t.fns[new_fn.name] = new_fn 
 }
 
 fn (table &Table) known_type(typ string) bool {
@@ -210,24 +204,17 @@ fn (table &Table) known_type(typ string) bool {
 	return false
 }
 
-// TODO PERF O(N) this slows down the compiler a lot!
 fn (t &Table) find_fn(name string) Fn {
-	for f in t.fns {
-		if f.name == name {
-			return f
-		}
-	}
+	f := t.fns[name] 
+	if !isnil(f.name.str) { 
+		return f 
+	} 
 	return Fn{}
 }
 
-// TODO PERF O(N) this slows down the compiler a lot! 
 fn (t &Table) known_fn(name string) bool {
-	for f in t.fns {
-		if f.name == name {
-			return true
-		}
-	}
-	return false
+	f := t.find_fn(name) 
+	return f.name != '' 
 }
 
 fn (t &Table) known_const(name string) bool {
@@ -240,7 +227,6 @@ fn (t mut Table) register_type(typ string) {
 	if typ.len == 0 {
 		return
 	}
-	// println('REGISTER TYPE $typ')
 	for typ2 in t.types {
 		if typ2.name == typ {
 			return
@@ -553,6 +539,7 @@ fn type_default(typ string) string {
 	case 'byte*': return '0'
 	case 'bool': return '0'
 	}
+	return '{}' 
 	return ''
 }
 
@@ -568,7 +555,8 @@ fn (t &Table) is_interface(name string) bool {
 
 // Do we have fn main()?
 fn (t &Table) main_exists() bool {
-	for f in t.fns {
+	for entry in t.fns.entries { 
+		f := t.fns[entry.key] 
 		if f.name == 'main' {
 			return true
 		}
