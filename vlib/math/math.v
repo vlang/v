@@ -21,7 +21,7 @@ const (
 	Log10E = 1.0 / Ln10
 )
 
-// Return the absolute value.
+// Returns the absolute value.
 pub fn abs(a f64) f64 {
 	if a < 0 {
 		return -a
@@ -199,8 +199,8 @@ pub fn tanh(a f64) f64 {
 	return C.tanh(a)
 }
 
-// Rounds x toward zero, returning the nearest integral value that is not
-// larger in magnitude than x.
+// Rounds a toward zero, returning the nearest integral value that is not
+// larger in magnitude than a.
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
