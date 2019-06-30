@@ -497,8 +497,14 @@ mut args := ''
 	else {
 		'cc $args'
 	}
-	$if windows {
-		cmd = 'gcc $args' 
+	if c.os == WINDOWS {
+		println('Building for Windows')
+		if linux_host {
+			println('Cross compiling for windows')
+			cmd = 'i686-w64-mingw32-gcc $args'
+		} else {
+			cmd = 'gcc $args'
+		}
 	} 
 	// Print the C command
 	if c.show_c_cmd || c.is_verbose {
