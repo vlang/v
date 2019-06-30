@@ -352,7 +352,7 @@ pub fn (s string) index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := [0]
+	mut prefix := [0; p.len]
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for p[j] != p[i] && j > 0 {
@@ -361,7 +361,7 @@ pub fn (s string) index(p string) int {
 		if p[j] == p[i] {
 			j++
 		}
-		prefix << j
+		prefix[i] = j
 	}
 	j = 0
 	for i := 0; i < s.len; i++ {
