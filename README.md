@@ -34,7 +34,7 @@ GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn
 
 The compilation is temporarily slower for this release:
 
-- Debug builds are used (use `./v -prod -o v .` to get faster compilation).
+- Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
 - vlib is recompiled with every program you build.
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 - There are a lot of known issues that are quick to fix (like function lookups being O(n)).
@@ -62,7 +62,6 @@ Or build without make:
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v compiler          # Use the resulting V binary to build V from V source
-./v -o v compiler          # Build the compiler again to make sure it works
 ```
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
@@ -111,7 +110,7 @@ $ v run hello_world.v
 hello world
 
 $ v
-V 0.1.9
+V 0.1.x
 Use Ctrl-D to exit
 
 >>> println('hello world')
