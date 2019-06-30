@@ -207,7 +207,7 @@ pub fn (a []int) free() {
 
 // TODO generic
 // "[ 'a', 'b', 'c' ]"
-pub fn (a[]string) str() string {
+pub fn (a []string) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
 		val := a[i]
