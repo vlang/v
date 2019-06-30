@@ -21,6 +21,7 @@ const (
 	Log10E = 1.0 / Ln10
 )
 
+// Return the absolute value.
 pub fn abs(a f64) f64 {
 	if a < 0 {
 		return -a
@@ -28,42 +29,62 @@ pub fn abs(a f64) f64 {
 	return a
 }
 
+// Inverse cosine.
 pub fn acos(a f64) f64 {
 	return C.acos(a)
 }
 
+// Inverse sine.
 pub fn asin(a f64) f64 {
 	return C.asin(a)
 }
 
+// Inverse tangent
 pub fn atan(a f64) f64 {
 	return C.atan(a)
 }
 
+// Inverse tangent with two arguments, returns angle between the X axis and the point.
 pub fn atan2(a, b f64) f64 {
 	return C.atan2(a, b)
 }
 
+// Cubic root.
+pub fn cbrt(a f64) f64 {
+	return C.cbrt(a)	
+}
+
+// Returns the nearest integer equal or higher to the provided value.
 pub fn ceil(a f64) f64 {
 	return C.ceil(a)
 }
 
+// Cosine.
 pub fn cos(a f64) f64 {
 	return C.cos(a)
 }
 
+// Hyperbolic cosine.
 pub fn cosh(a f64) f64 {
 	return C.cosh(a)
 }
 
+// Returns euler number (e) raised to the provided power.
 pub fn exp(a f64) f64 {
 	return C.exp(a)
 }
 
+// Returns the base-2 exponential function of x.
+pub fn exp2(a f64) f64 {
+	return C.exp2(a)	
+}
+
+// Returns the nearest integer equal or lower of the provided value.
 pub fn floor(a f64) f64 {
 	return C.floor(a)
 }
 
+// Returns the floating-point remainder of number / denom (rounded towards zero):
 pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
 }
@@ -98,14 +119,27 @@ pub fn lcm(a, b int) int {
 	return res
 }
 
+// Returns natural (base e) logarithm of the provided value.
 pub fn log(a f64) f64 {
 	return C.log(a)
 }
 
+// Returns base 2 logarithm of the provided value.
+pub fn log2(a f64) f64 {
+	return C.log(a) / C.log(2)	
+}
+
+// Returns the common (base-10) logarithm of x.
 pub fn log10(a f64) f64 {
 	return C.log10(a)
 }
 
+// Returns base N logarithm of the provided value.
+pub fn log_n(a, b f64) f64 {
+	return C.log(a) / C.log(b)
+}
+
+// Returns the maximum value of the two provided.
 pub fn max(a, b f64) f64 {
 	if a > b {
 		return a
@@ -113,6 +147,7 @@ pub fn max(a, b f64) f64 {
 	return b
 }
 
+// Returns the minimum value of all the values provided.
 pub fn min(a, b f64) f64 {
 	if a < b {
 		return a
@@ -120,46 +155,57 @@ pub fn min(a, b f64) f64 {
 	return b
 }
 
+// Returns base raised to the provided power.
 pub fn pow(a, b f64) f64 {
 	return C.pow(a, b)
 }
 
+// Radians conversion.
 pub fn radians(degrees f64) f64 {
 	return degrees * (Pi / 180.0)
 }
 
+// Degrees conversion.
 pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / Pi)
 }
 
+// Returns the integer nearest to the provided value.
 pub fn round(f f64) f64 {
 	return C.round(f)
 }
 
+// Sine.
 pub fn sin(a f64) f64 {
 	return C.sin(a)
 }
 
+// Hyperbolic sine.
 pub fn sinh(a f64) f64 {
 	return C.sinh(a)
 }
 
+// Returns square of the provided value.
 pub fn sqrt(a f64) f64 {
 	return C.sqrt(a)
 }
-
+// Tangent.
 pub fn tan(a f64) f64 {
 	return C.tan(a)
 }
 
+// Hyperbolic tangent.
 pub fn tanh(a f64) f64 {
 	return C.tanh(a)
 }
 
+// Rounds x toward zero, returning the nearest integral value that is not
+// larger in magnitude than x.
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
 
+// Return the factorial of the value provided.
 pub fn factorial(a int) i64 {
 	mut prod := 1	
 	for i:= 0; i < a; i++ {
