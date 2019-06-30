@@ -20,6 +20,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 5% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
+- Manages memory at compilation time (like Rust)
 - C to V translation
 - Hot code reloading
 - Powerful UI and graphics libraries
