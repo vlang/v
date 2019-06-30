@@ -283,7 +283,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// TODO allow double quotes
 		// case QUOTE:
 		// return scan_res(STRING, s.ident_string())
-	case `\``:
+	case `\`:
 		return scan_res(CHAR, s.ident_char())
 	case `(`:
 		return scan_res(LPAR, '')
