@@ -60,7 +60,7 @@ make
 Or build without make:
 ```bash
 # Download the V compiler's source translated to C
-curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
+curl -O https://github.com/vlang/vc/raw/23b4932859a91849d7401f3568a16dc97248c55f/v.c
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v compiler          # Use the resulting V binary to build V from V source
 ./v -o v compiler          # Build the compiler again to make sure it works
