@@ -5,10 +5,19 @@
 module os
 
 #include <sys/stat.h>
+#include <signal.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <errno.h>
+//#include <execinfo.h> // for backtrace_symbols_fd 
 
 const (
 	args = []string
 	MAX_PATH = 4096
+)
+
+const (
+	FILE_ATTRIBUTE_DIRECTORY = 16 // Windows 
 )
 
 struct FILE {
@@ -489,4 +498,79 @@ pub fn getexepath() string {
 		//panic('getexepath() not impl')
 		return ''
 	}
+}
+
+pub fn is_dir(path string) bool {
+	$if windows {
+		val := int(C.GetFileAttributes(path.cstr()))
+		return val &FILE_ATTRIBUTE_DIRECTORY > 0
+	} 
+	$else { 
+		statbuf := C.stat{}
+		cstr := path.cstr()
+		if C.stat(cstr, &statbuf) != 0 {
+			return false
+		}
+		return statbuf.st_mode & S_IFMT == S_IFDIR
+	} 
+}
+
+fn chdir(path string) {
+	$if windows {
+		C._chdir(path.cstr())
+	}
+	$else { 
+		C.chdir(path.cstr())
+	} 
+}
+
+pub fn getwd() string {
+	buf := malloc(512)
+	$if windows {
+		if C._getcwd(buf, 512) == 0 {
+			return ''
+		}
+	}
+	$else { 
+		if C.getcwd(buf, 512) == 0 {
+			return ''
+		}
+	} 
+	return string(buf)
+}
+
+pub fn ls(path string) []string {
+	mut res := []string
+	dir := C.opendir(path.str)
+	if isnil(dir) {
+		println('ls() couldnt open dir "$path"')
+		print_c_errno()
+		return res
+	}
+	mut ent := &C.dirent{!}
+	for {
+		ent = C.readdir(dir)
+		if isnil(ent) {
+			break
+		}
+		name := tos_clone(ent.d_name)
+		if name != '.' && name != '..' && name != '' {
+			res << name
+		}
+	}
+	C.closedir(dir)
+	return res
+}
+
+fn log(s string) {
+}
+
+fn print_backtrace() {
+/* 
+	# void *buffer[100];
+	nptrs := 0
+	# nptrs = backtrace(buffer, 100);
+	# printf("%d!!\n", nptrs);
+	# backtrace_symbols_fd(buffer, nptrs, STDOUT_FILENO) ;
+*/ 
 }

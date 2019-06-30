@@ -489,7 +489,7 @@ mut args := ''
 		a << '-lm -ldl -lpthread'
 	}
 	// Find clang executable
-	fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
+	fast_clang := 'ff'///usr/local/Cellar/llvm/8.0.0/bin/clang'
 	args := a.join(' ')
 	mut cmd := if os.file_exists(fast_clang) {
 		'$fast_clang $args'
