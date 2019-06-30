@@ -7,7 +7,7 @@ const (
     ERROR = 2 
     WARN = 3
     INFO = 4
-    DEBUG =5
+    DEBUG = 5
 )
 
 struct Log{
