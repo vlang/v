@@ -16,10 +16,6 @@ const (
 	MAX_PATH = 4096
 )
 
-const (
-	FILE_ATTRIBUTE_DIRECTORY = 16 // Windows 
-)
-
 struct FILE {
 }
 
@@ -492,8 +488,8 @@ pub fn getexepath() string {
 
 pub fn is_dir(path string) bool {
 	$if windows {
-		val := int(C.GetFileAttributes(path.cstr()))
-		return val &FILE_ATTRIBUTE_DIRECTORY > 0
+		attr := int(C.GetFileAttributes(path.cstr()))
+		return attr & FILE_ATTR_DIRECTORY != 0
 	} 
 	$else { 
 		statbuf := C.stat{}
