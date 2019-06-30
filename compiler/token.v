@@ -254,7 +254,7 @@ fn (t Token) is_assign() bool {
 	return t in AssignTokens
 }
 
-fn (t[]Token) contains(val Token) bool {
+fn (t []Token) contains(val Token) bool {
 	for tt in t {
 		if tt == val {
 			return true
