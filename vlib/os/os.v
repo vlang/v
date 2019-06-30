@@ -148,9 +148,7 @@ fn read_ulines(path string) []ustring {
 	return ulines
 }
 
-// fn open(file string) File? {
-// return open_file(file)
-// }
+// TODO return `File?`
 pub fn open(path string) File {
 	return open_file(path)
 }
