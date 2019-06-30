@@ -205,6 +205,34 @@ fn test_runes() {
 	assert u.substr(1, 4) == 'рив'
 	assert s2.substr(1, 2) == 'r'
 	assert u.substr(1, 2) == 'р'
+	assert s2.substr(1, 4).len == 3
+	assert s2.substr(1, 4) == 'riv'
+	assert s2.substr(0, 2).len == 2
+	assert s2.substr(0, 2) == 'pr'
+	assert s2.substr(0, 6).len == 6
+	assert s2.substr(0, 6) == 'privet'
+	assert s2.substr(0, 7).len == 6
+	assert s2.substr(0, 7) == 'privet'
+	assert s2.substr(2, 2).len == 0
+	assert s2.substr(2, 2) == ''
+	assert s2.substr(4, 2).len == 0
+	assert s2.substr(4, 2) == ''
+	assert s2.substr(20, 2).len == 0
+	assert s2.substr(20, 2) == ''
+	assert s2.substr(1, 99).len == 5
+	assert s2.substr(1, 99) == 'rivet'
+	assert s2.substr(-4, -1).len == 3
+	assert s2.substr(-4, -1) == 'ive'
+	assert s2.substr(-4, 4).len == 2
+	assert s2.substr(-4, 4) == 'iv'
+	assert s2.substr(-1, -3) == ''
+	assert s2.substr(-1, -3).len == 0
+	assert s2.substr(-8, -1) == 'prive'
+	assert s2.substr(-8, -1).len == 5
+	assert s2.substr(-10, -44).len == 0
+	assert s2.substr(-10, -44) == ''
+	assert u.substr(1, 4).len == 6
+	assert u.substr(1, 4) == 'рив'
 	assert s2.ustring().at(1) == 'r'
 	assert u.at(1) == 'р'
 	// ///////

@@ -330,16 +330,39 @@ pub fn (s string) right(n int) string {
 // puts(substr.str) will print 'rivet'
 // Avoid using C functions with these substrs!
 pub fn (s string) substr(start, end int) string {
-	/*
-	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
-		panic('substr($start, $end) out of bounds (len=$s.len)')
-		return ''
+	// Think of the indices as pointing between characters,
+	// like slicing a salami:
+	//  0	1   2	3   4	5   6
+	//  +---+---+---+---+---+---+
+	//  | p | r | i | v | e | t |
+	//  +---+---+---+---+---+---+
+	// -6  -5  -4  -3  -2  -1
+	// Negative indexes count from the back
+	if start < 0 {
+	    start = s.len + start
 	}
-*/
-	if start >= s.len {
-		return ''
+	if end < 0 {
+	    end = s.len + end
 	}
+	// Handle overflows
+	if start > s.len {
+	    start = s.len
+	}
+	if end > s.len {
+	    end = s.len
+	}
+	// Handle underflows
+	if start < 0 {
+	    start = 0
+	}
+	if end < 0 {
+	    end = 0
+	}
+	// Cannot be less than empty (handles switched indexes)
 	len := end - start
+	if len <= 0 {
+	    return ''
+	}
 	res := string {
 		str: s.str + start
 		len: len
