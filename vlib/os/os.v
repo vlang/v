@@ -198,11 +198,11 @@ pub fn (f File) write(s string) {
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
-fn (f File) write_bytes(data voidptr, size int) {
+pub fn (f File) write_bytes(data voidptr, size int) {
 	C.fwrite(data, 1, size, f.cfile)
 }
 
-fn (f File) write_bytes_at(data voidptr, size, pos int) {
+pub fn (f File) write_bytes_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, pos, SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, SEEK_END)
