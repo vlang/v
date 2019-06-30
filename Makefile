@@ -16,5 +16,10 @@ test: v
 	echo "Building V examples..."
 	find examples -name '*.v' -print0 | xargs -0 -n1 ./v
 
+install:
+	mkdir -p /opt/v/
+	cp -ar ./* /opt/v/
+	ln -s /opt/v/v /usr/local/bin/v
+
 clean:
 	-rm -f v.c v vprod

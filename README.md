@@ -68,8 +68,12 @@ cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
 
-You can create a symlink so that it's globally available:
+You can now install it globally by executing:
 
+```
+sudo make install
+```
+Or without make:
 ```
 sudo ln -s [path to V repo]/v /usr/local/bin/v
 ```
