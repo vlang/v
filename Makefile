@@ -6,8 +6,8 @@ v: v.c
 	./v -o v compiler
 	rm v.c
 
-v.c:
-	curl -Os https://raw.githubusercontent.com/vlang/vc/master/v.c
+v.c: Makefile
+	curl -Os https://github.com/vlang/vc/raw/23b4932859a91849d7401f3568a16dc97248c55f/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
