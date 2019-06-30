@@ -75,7 +75,7 @@ mut:
 	is_prof    bool // benchmark every function
 	translated bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	obfuscate  bool // `v -obf program.v`, renames functions to "f_XXX"
-	lang_dir   string // "~/code/v"
+	lang_dir   string // path to V repo
 	is_verbose bool // print extra information with `v.log()`
 	is_run     bool // `v run program.v`
 	is_play    bool // playground mode
