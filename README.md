@@ -39,7 +39,6 @@ The compilation is temporarily slower for this release:
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 - There are a lot of known issues that are quick to fix (like function lookups being O(n)).
 
-There's some old hacky code written when V was 2 months old. All of it will be quickly cleaned up. There are ~500 lines of C code, which will be removed by the end of June.
 
 ## Code structure
 
