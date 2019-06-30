@@ -95,7 +95,7 @@ fn (f mut Fn) clear_vars() {
 
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
-	return (p.build_mode == DEFAULT_MODE || p.build_mode == BUILD) &&
+	return (p.pref.build_mode == DEFAULT_MODE || p.pref.build_mode == BUILD) &&
 	(p.file_path.contains(TmpPath))
 }
 
@@ -173,8 +173,8 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == DOT
 	// Just fn signature? only builtin.v + default build mode
-	// is_sig := p.builtin_pkg && p.build_mode == DEFAULT_MODE
-	// is_sig := p.build_mode == DEFAULT_MODE && (p.builtin_pkg || p.file.contains(LANG_TMP))
+	// is_sig := p.builtin_pkg && p.pref.build_mode == DEFAULT_MODE
+	// is_sig := p.pref.build_mode == DEFAULT_MODE && (p.builtin_pkg || p.file.contains(LANG_TMP))
 	is_sig := p.is_sig()
 	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_pkg')
 	if is_c {
@@ -182,7 +182,7 @@ fn (p mut Parser) fn_decl() {
 		f.name = p.check_name()
 		f.is_c = true
 	}
-	else if !p.translated && !p.file_path.contains('view.v') {
+	else if !p.pref.translated && !p.file_path.contains('view.v') {
 		if contains_capital(f.name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
@@ -237,7 +237,7 @@ fn (p mut Parser) fn_decl() {
 		typ = p.get_type()
 	}
 	// Translated C code can have empty functions (just definitions)
-	is_fn_header := !is_c && !is_sig && (p.translated || p.is_test) &&
+	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&
 	(p.tok != LCBR)// || (p.tok == NAME && p.peek() != LCBR))
 	if is_fn_header {
 		f.is_decl = true
@@ -274,10 +274,10 @@ fn (p mut Parser) fn_decl() {
 	// }
 	mut fn_name_cgen := p.table.cgen_name(f)
 	// Start generation of the function body
-	is_live := p.is_live && f.name != 'main' && f.name != 'reload_so'
-	skip_main_in_test := f.name == 'main' && p.is_test
+	is_live := p.pref.is_live && f.name != 'main' && f.name != 'reload_so'
+	skip_main_in_test := f.name == 'main' && p.pref.is_test
 	if !is_c && !is_live && !is_sig && !is_fn_header && !skip_main_in_test {
-		if p.obfuscate {
+		if p.pref.obfuscate {
 			p.genln('; // ${f.name}')
 		}
 		p.genln('$typ $fn_name_cgen($str_args) {')
@@ -332,13 +332,13 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Actual fn declaration!
 		mut fn_decl := '$typ $fn_name_cgen($str_args)'
-		if p.obfuscate {
+		if p.pref.obfuscate {
 			fn_decl += '; // ${f.name}'
 		}
 		// Add function definition to the top
 		if !is_c && f.name != 'main' && p.first_run() {
 			// TODO hack to make Volt compile without -embed_vlib
-			if f.name == 'darwin__nsstring' && p.build_mode == DEFAULT_MODE {
+			if f.name == 'darwin__nsstring' && p.pref.build_mode == DEFAULT_MODE {
 				return
 			}
 			p.cgen.fns << fn_decl + ';'
@@ -357,13 +357,13 @@ fn (p mut Parser) fn_decl() {
 			}
 		}
 		// We are in live code reload mode, call the .so loader in bg
-		if p.is_live {
+		if p.pref.is_live {
 			p.genln(' 
 load_so("bounce.so"); 
 pthread_t _thread_so;
 pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 		}
-		if p.is_test && !p.scanner.file_path.contains('/volt') {
+		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
 			p.error('tests cannot have function `main`')
 		}
 	}
@@ -374,14 +374,14 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 		return
 	}
 	// We are in profile mode? Start counting at the beginning of the function (save current time).
-	if p.is_prof && f.name != 'main' && f.name != 'time__ticks' {
+	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
 		f.defer = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
 	p.statements_no_curly_end()
 	// Print counting result after all statements in main
-	if p.is_prof && f.name == 'main' {
+	if p.pref.is_prof && f.name == 'main' {
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
@@ -414,14 +414,14 @@ fn (p mut Parser) check_unused_variables() {
 		if var.name == '' {
 			break
 		}
-		if !var.is_used && !var.is_arg && !p.translated && var.name != '_' {
+		if !var.is_used && !var.is_arg && !p.pref.translated && var.name != '_' {
 			p.scanner.line_nr = var.line_nr - 1
 			p.error('`$var.name` declared and not used')
 		}
 		// Very basic automatic memory management at the end of the function.
 		// This is inserted right before the final `}`, so if the object is being returned,
 		// the free method will not be called.
-		if p.is_test && var.typ.contains('array_') {
+		if p.pref.is_test && var.typ.contains('array_') {
 			// p.genln('v_${var.typ}_free($var.name); // !!!! XAXA')
 			// p.genln('free(${var.name}.data); // !!!! XAXA')
 		}
@@ -500,19 +500,19 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
-	if !f.is_public && !f.is_c && !p.is_test && f.pkg != p.pkg  { 
+	if !f.is_public && !f.is_c && !p.pref.is_test && f.pkg != p.pkg  { 
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
-	is_print := p.is_prod &&// Hide prints only in prod
-	!p.is_test &&
+	is_print := p.pref.is_prod &&// Hide prints only in prod
+	!p.pref.is_test &&
 	!p.builtin_pkg &&// Allow prints in builtin  pkgs
 	f.is_c && f.name == 'printf'
 	if !p.cgen.nogen {
 		p.cgen.nogen = is_print
 	}
 	cgen_name := p.table.cgen_name(f)
-	// if p.is_prof {
+	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name
 	// }
 	// Normal function call
@@ -853,4 +853,3 @@ fn (f &Fn) str_args(table *Table) string {
 	}
 	return s
 }
-

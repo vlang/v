@@ -414,7 +414,7 @@ fn (t &Table) find_type(name string) *Type {
 
 fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	p.log('check types got="$got" exp="$expected"  ')
-	if p.translated {
+	if p.pref.translated {
 		return true
 	}
 	// Allow ints to be used as floats
@@ -443,7 +443,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	// Todo void* allows everything right now
 	if got=='void*' || expected=='void*' {
 		// if !p.builtin_pkg {
-		if p.is_play {
+		if p.pref.is_play {
 			return false
 		}
 		return true
@@ -475,7 +475,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 		return true
 	}
 	// NsColor* return 0
-	if !p.is_play {
+	if !p.pref.is_play {
 		if expected.ends_with('*') && got == 'int' {
 			return true
 		}
