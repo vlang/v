@@ -823,6 +823,7 @@ fn new_v(args []string) *V {
 			files << f
 		}
 	}
+	obfuscate := args.contains('-obf') 
 	return &V {
 		os: _os
 		out_name: out_name
