@@ -25,7 +25,7 @@ mut:
 
 const (
 	SINGLE_QUOTE = `\'`
-	QUOTE        = `"`
+	//QUOTE        = `"`
 )
 
 fn new_scanner(file_path string) *Scanner {

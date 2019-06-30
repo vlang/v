@@ -405,6 +405,7 @@ string _STR_TMP(const char *fmt, ...) {
 }
 
 fn (c mut V) cc() {
+	ticks := time.ticks() 
 	linux_host := os.user_os() == 'linux'
 	c.log('cc() isprod=$c.is_prod outname=$c.out_name')
 	mut a := ['-w']// arguments for the C compiler
@@ -530,6 +531,10 @@ mut args := ''
 		}
 		println('linux cross compilation done. resulting binary: "$c.out_name"')
 	}
+	if c.show_c_cmd { 
+		diff := time.ticks() - ticks 
+		println('cc() took $diff ms ')
+	} 
 	//os.rm('$TmpPath/$c.out_name_c') 
 }
 

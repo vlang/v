@@ -273,18 +273,24 @@ pub fn (t Time) weekday_str() string {
 	return Days.substr(i * 3, (i + 1) * 3)
 }
 
+struct C.timeval  {
+	tv_sec int
+	tv_usec int 
+} 
+
 // in ms
-pub fn ticks() f64 {
+pub fn ticks() i64 { 
 	$if windows { 
 		return C.GetTickCount()
 	} 
-	panic('not implemented') 
+	ts := C.timeval{} 
+	C.gettimeofday(&ts,0) 
+	return ts.tv_sec * 1000 + (ts.tv_usec / 1000) 
 /* 
 	t := i64(C.mach_absolute_time())
 	# Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
 	# return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 */ 
-	return f64(0)
 }
 
 pub fn sleep(seconds int) {
