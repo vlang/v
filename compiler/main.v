@@ -832,7 +832,7 @@ fn new_v(args[]string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
-		obfuscate: args.contains('-obf')
+		obfuscate: obfuscate
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')
 		sanitize: args.contains('-sanitize')

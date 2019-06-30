@@ -37,9 +37,8 @@ import const (
 	SEEK_END
 	SA_SIGINFO
 	SIGSEGV
-
-S_IFMT
-S_IFDIR
+	S_IFMT
+	S_IFDIR
 )
 
 struct C.stat {
@@ -168,16 +167,7 @@ fn open_file(file string) File {
 
 // `create` creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) File {
-	return create_file(path)
-}
-
-pub fn open_append(path string) File {
-	return create_file(path)
-}
-
-// TODO remove
-fn create_file(file string) File {
-	return create_file2(file, 'w')
+	return create_file2(path, 'w')
 }
 
 fn create_file_a(file string) File {
@@ -198,7 +188,7 @@ fn create_file2(file, mode string) File {
 	return res
 }
 
-fn (f File) append(s string) {
+pub fn (f File) write(s string) {
 	ss := s.clone()
 	C.fputs(ss.cstr(), f.cfile)
 	// ss.free()
@@ -218,7 +208,7 @@ fn (f File) write_bytes_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, 0, SEEK_END)
 }
 
-pub fn (f File) appendln(s string) {
+pub fn (f File) writeln(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
@@ -456,7 +446,7 @@ pub fn home_dir() string {
 // write_file writes text data to a file in `path`. 
 pub fn write_file(path, text string) {
 	f := os.create(path)
-	f.appendln(text)
+	f.writeln(text)
 	f.close()
 }
 
@@ -515,7 +505,7 @@ pub fn is_dir(path string) bool {
 	} 
 }
 
-fn chdir(path string) {
+pub fn chdir(path string) {
 	$if windows {
 		C._chdir(path.cstr())
 	}
@@ -565,7 +555,7 @@ pub fn ls(path string) []string {
 fn log(s string) {
 }
 
-fn print_backtrace() {
+pub fn print_backtrace() {
 /* 
 	# void *buffer[100];
 	nptrs := 0
