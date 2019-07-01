@@ -145,10 +145,20 @@ pub fn (a []byte) contains(val byte) bool {
 	return false
 }
 
-/*  TODO 
-fn (c rune) str() string {
+pub fn (c rune) str() string {
+	fst_byte := int(c) >> 8 * 3 & 0xff
+	len := utf8_char_len(fst_byte)
+	mut str := string {
+		len: len
+		str: malloc(len + 1)
+	}
+	for i := 0; i < len; i++ {
+		str.str[i] = int(c) >> 8 * (3 - i) & 0xff
+	}
+	str[len] = `\0`
+	return str
 }
-*/
+
 pub fn (c byte) str() string {
 	mut str := string {
 		len: 1
