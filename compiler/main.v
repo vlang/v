@@ -424,7 +424,7 @@ fn (c &V) cc_windows_cross() {
                }
        }
        mut libs := ''
-       if c.pref.build_mode == DEFAULT_MODE {
+       if c.pref.build_mode == default_mode {
                libs = '$TmpPath/vlib/builtin.o'
                if !os.file_exists(libs) {
                        println('`builtin.o` not found')
@@ -462,7 +462,7 @@ fn (c &V) cc_windows_cross() {
 			println('Cross compilation for Windows failed. Make sure you have clang installed.') 
                        exit(1) 
                }
-               if c.pref.build_mode != BUILD {
+               if c.pref.build_mode != build {
                        link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' +
                        '$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' +
                        '$winroot/lib/uuid.lib'
