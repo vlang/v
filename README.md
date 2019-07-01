@@ -37,7 +37,6 @@ The compilation is temporarily slower for this release:
 - Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
 - vlib is recompiled with every program you build.
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
-- There are a lot of known issues that are quick to fix (like function lookups being O(n)).
 
 
 ## Code structure
