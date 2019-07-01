@@ -415,7 +415,7 @@ string _STR_TMP(const char *fmt, ...) {
 fn (v mut V) cc() {
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
-	mut a := ['-w']// arguments for the C compiler
+	mut a := ['-w', '-march=native']// arguments for the C compiler
 	flags := v.table.flags.join(' ')
 	/* 
 	mut shared := ''
