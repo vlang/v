@@ -154,6 +154,44 @@ pub fn dial(address string, port int) Socket {
 	return s
 }
 
+// send string data to socket
+pub fn (s Socket) send(data string) int {
+	buf := data.cstr()
+	res := C.send(s.sockfd, &buf, data.len, 0)
+	if res < 0 {
+		println('socket: send failed')
+	}
+	return res
+}
+
+// send all data to socket
+pub fn (s Socket) sendall(data string) int {
+	mut index := 0
+	mut len := data.len
+	for {
+		if len <= 0 {
+			break
+		}
+		i := s.send(data.substr(index, data.len))
+		index += i
+		len -= i
+	}
+	return data.len
+}
+
+// receive string data from socket
+pub fn (s Socket) recv(bufsize int) string {
+	buf := string {
+		str: malloc(bufsize + 1)
+		len: bufsize
+	}
+	res := C.recv(s.sockfd, &buf, bufsize, 0)
+	if res < 0 {
+		println('socket: recv failed')
+	}
+	return buf
+}
+
 // shutdown and close socket
 pub fn (s Socket) close() int {
 	shutdown_res := C.shutdown(s.sockfd, SHUT_RDWR)
