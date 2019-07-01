@@ -151,8 +151,7 @@ fn (s mut Scanner) scan() ScanRes {
 	// if s.file_path == 'd.v' {
 	// println('\nscan()')
 	// }
-	// if s.started {
-	if s.pos > 0 {
+	if s.started {
 		// || (s.pos == 0 && s.text.len > 0 && s.text[s.pos] == `\n`) {
 		s.pos++
 	}
