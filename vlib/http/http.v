@@ -60,7 +60,7 @@ pub fn new_request(typ, _url, _data string) *Request {
 		data: _data
 		ws_func: 0
 		user_ptr: 0
-		headers: new_map(0, sizeof(string))
+		headers: map[string]string{} 
 	}
 }
 

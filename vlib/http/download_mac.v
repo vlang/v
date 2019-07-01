@@ -24,7 +24,7 @@ fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) int {
 	return written 
 }
 
-fn download_file_with_progress(url, out string, cb, cb_finished downloadfn) {   
+fn download_file_with_progress(url, out string, cb downloadfn, cb_finished download_finished_fn) {   
 	curl := C.curl_easy_init()
 	if isnil(curl) {
 		return

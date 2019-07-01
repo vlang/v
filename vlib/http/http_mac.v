@@ -93,7 +93,7 @@ fn (req &Request) do() Response {
 	}
 	// header chunk
 	hchunk := MemoryStruct {
-		ws_func: 0
+		ws_func: foo 
 		user_ptr: 0
 	}
 	// init curl
