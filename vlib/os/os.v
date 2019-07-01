@@ -470,7 +470,7 @@ pub fn home_dir() string {
 // write_file writes text data to a file in `path`. 
 pub fn write_file(path, text string) {
 	f := os.create(path)
-	f.writeln(text)
+	f.write(text)
 	f.close()
 }
 

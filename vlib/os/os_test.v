@@ -19,3 +19,15 @@ fn test_unsetenv() {
   assert os.getenv('foo') == ''
 }
 
+fn test_write_and_read_string_to_file() {
+  filename := './test1.txt'
+  hello := 'hello world!'
+  os.write_file(filename, hello)
+  assert hello.len == os.file_size(filename)
+  
+  read_hello := os.read_file(filename) or {
+    panic('error reading file $filename')
+    return
+  }
+  assert hello == read_hello
+}
