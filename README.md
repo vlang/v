@@ -45,7 +45,7 @@ https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 ## Installing V from source
 
-### Linux and macOS
+### Linux, macOS, Android, Raspberry Pi
 
 You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
 
