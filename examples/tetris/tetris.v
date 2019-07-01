@@ -120,7 +120,7 @@ fn main() {
 	game.gg = gg.new_context(gg.Cfg {
 		width: WinWidth
 		height: WinHeight
-		use_ortho: true // This is needed for 2D drawing
+		use_ortho: 1 // This is needed for 2D drawing
 	})
 	go game.run() // Run the game loop in a new thread
 	gl.clear() // For some reason this is necessary to avoid an intial flickering
