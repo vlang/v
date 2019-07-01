@@ -95,7 +95,7 @@ fn (f mut Fn) clear_vars() {
 
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
-	return (p.pref.build_mode == DEFAULT_MODE || p.pref.build_mode == BUILD) &&
+	return (p.pref.build_mode == default_mode || p.pref.build_mode == build) &&
 	(p.file_path.contains(TmpPath))
 }
 
@@ -173,8 +173,8 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == DOT
 	// Just fn signature? only builtin.v + default build mode
-	// is_sig := p.builtin_pkg && p.pref.build_mode == DEFAULT_MODE
-	// is_sig := p.pref.build_mode == DEFAULT_MODE && (p.builtin_pkg || p.file.contains(LANG_TMP))
+	// is_sig := p.builtin_pkg && p.pref.build_mode == default_mode
+	// is_sig := p.pref.build_mode == default_mode && (p.builtin_pkg || p.file.contains(LANG_TMP))
 	is_sig := p.is_sig()
 	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_pkg')
 	if is_c {
@@ -338,7 +338,7 @@ fn (p mut Parser) fn_decl() {
 		// Add function definition to the top
 		if !is_c && f.name != 'main' && p.first_run() {
 			// TODO hack to make Volt compile without -embed_vlib
-			if f.name == 'darwin__nsstring' && p.pref.build_mode == DEFAULT_MODE {
+			if f.name == 'darwin__nsstring' && p.pref.build_mode == default_mode {
 				return
 			}
 			p.cgen.fns << fn_decl + ';'

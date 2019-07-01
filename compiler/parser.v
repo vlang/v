@@ -2666,7 +2666,7 @@ fn (p mut Parser) chash() {
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
 		file := hash.right(pos)
-		if p.pref.build_mode != DEFAULT_MODE {
+		if p.pref.build_mode != default_mode {
 			p.genln('#include $file')
 		}
 	}
