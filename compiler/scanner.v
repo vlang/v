@@ -455,8 +455,9 @@ fn (s mut Scanner) scan() ScanRes {
 		// Multiline comments
 		if nextc == `*` {
 			start := s.pos
+			mut nest_count := 1
 			// Skip comment
-			for ! (s.text[s.pos] == `*` && s.text[s.pos + 1] == `/`) {
+			for nest_count > 0 {
 				s.pos++
 				if s.pos >= s.text.len {
 					s.line_nr--
@@ -464,6 +465,14 @@ fn (s mut Scanner) scan() ScanRes {
 				}
 				if s.text[s.pos] == `\n` {
 					s.line_nr++
+					continue
+				}
+				if s.text[s.pos] == `/` && s.text[s.pos + 1] == `*` {
+					nest_count++
+					continue
+				}
+				if s.text[s.pos] == `*` && s.text[s.pos + 1] == `/` {
+					nest_count--
 				}
 			}
 			s.pos++
