@@ -412,7 +412,84 @@ string _STR_TMP(const char *fmt, ...) {
 	}
 }
 
+fn (c &V) cc_windows_cross() {
+       if !c.out_name.ends_with('.exe') {
+               c.out_name = c.out_name + '.exe'
+       }
+       mut args := '-o $c.out_name -w -L. '
+       // -I flags
+       for flag in c.table.flags {
+               if !flag.starts_with('-l') {
+                       args += flag
+                       args += ' '
+               }
+       }
+       mut libs := ''
+       if c.pref.build_mode == DEFAULT_MODE {
+               libs = '$TmpPath/vlib/builtin.o'
+               if !os.file_exists(libs) {
+                       println('`builtin.o` not found')
+                       exit(1) 
+               }
+               for imp in c.table.imports {
+                       libs += ' $TmpPath/vlib/${imp}.o'
+               }
+       }
+       args += ' $c.out_name_c '
+       // -l flags (libs)
+       for flag in c.table.flags {
+               if flag.starts_with('-l') {
+                       args += flag
+                       args += ' '
+               }
+       }
+               println('Cross compiling for Windows...')
+               winroot := '$TmpPath/winroot' 
+	if !os.dir_exists(winroot) {
+		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip' 
+		println('"$winroot" not found. Download it from $winroot_url and save in $TmpPath') 
+		exit(1) 
+ 
+} 
+               mut obj_name := c.out_name
+               obj_name = obj_name.replace('.exe', '')
+               obj_name = obj_name.replace('.o.o', '.o')
+               mut include := '-I $winroot/include '
+               cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $TmpPath/$c.out_name_c'
+               if c.pref.show_c_cmd {
+                       println(cmd)
+               }
+               if os.system(cmd) != 0 {
+			println('Cross compilation for Windows failed. Make sure you have clang installed.') 
+                       exit(1) 
+               }
+               if c.pref.build_mode != BUILD {
+                       link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' +
+                       '$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' +
+                       '$winroot/lib/uuid.lib'
+               if c.pref.show_c_cmd {
+		println(link_cmd) 
+		} 
+
+                if  os.system(link_cmd)  != 0 { 
+			println('Cross compilation for Windows failed. Make sure you have lld linker installed.')  
+                       exit(1) 
+} 
+                       // os.rm(obj_name)
+               }
+               println('Done!')
+}
+ 
+ 
+
 fn (v mut V) cc() {
+	// Cross compiling for Windows 
+	if v.os == WINDOWS {
+		$if !windows { 
+			v.cc_windows_cross()  
+			return 
+		} 
+	} 
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := ['-w', '-march=native']// arguments for the C compiler
@@ -530,7 +607,7 @@ mut args := ''
 		'$sysroot/lib/x86_64-linux-gnu/libm-2.28.a ' +
 		'/usr/lib/x86_64-linux-gnu/crti.o ' +
 		obj_file +
-		' /usr/lib/x86_64-linux-gnu/libv.so ' +
+		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o')
 		println(ress)
 		if ress.contains('error:') {
@@ -569,7 +646,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_lin.v') && v.os != LINUX {
 			continue
 		}
-		if file.ends_with('_mav.v') && v.os != MAC {
+		if file.ends_with('_mac.v') && v.os != MAC {
 			lin_file := file.replace('_mav.v', '_lin.v')
 			// println('lin_file="$lin_file"')
 			// If there are both _mav.v and _lin.v, don't use _mav.v

@@ -6,10 +6,23 @@ module os
 
 #include <sys/stat.h>
 #include <signal.h>
-#include <unistd.h>
-#include <dirent.h>
+//#include <unistd.h>
 #include <errno.h>
 //#include <execinfo.h> // for backtrace_symbols_fd 
+
+/* 
+struct dirent {
+               d_ino int 
+               d_off int 
+	d_reclen u16 
+	d_type byte 
+	d_name [256]byte 
+} 
+*/ 
+
+struct C.dirent {
+	d_name byteptr 
+} 
 
 const (
 	args = []string
@@ -19,6 +32,10 @@ const (
 const (
 	FILE_ATTRIBUTE_DIRECTORY = 16 // Windows 
 )
+
+import const (
+	INVALID_FILE_ATTRIBUTES
+) 
 
 struct FILE {
 }
@@ -50,10 +67,10 @@ struct C.DIR {
 
 }
 
-struct C.dirent {
-	d_name byteptr
+//struct C.dirent {
+	//d_name byteptr
 
-}
+//}
 
 struct C.sigaction {
 mut:
@@ -302,15 +319,22 @@ pub fn file_exists(path string) bool {
 }
 
 pub fn dir_exists(path string) bool {
-	dir := C.opendir(path.cstr())
-	res := !isnil(dir)
-	if res {
-		C.closedir(dir)
-	}
-	return res
+	$if windows {
+		attr := int(C.GetFileAttributes(path.cstr())) 
+		println('ATTR =$attr') 
+		return attr == FILE_ATTRIBUTE_DIRECTORY 
+	} 
+	$else { 
+		dir := C.opendir(path.cstr())
+		res := !isnil(dir)
+		if res {
+			C.closedir(dir)
+		}
+		return res
+	} 
 }
 
-// `mkdir` creates a new directory with the specified path.
+// mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) {
 	$if windows {
 		path = path.replace('/', '\\')
@@ -321,7 +345,7 @@ pub fn mkdir(path string) {
 	}
 }
 
-// `rm` removes file in `path`.
+// rm removes file in `path`.
 pub fn rm(path string) {
 	$if windows {
 		// os.system2('del /f $path')
@@ -530,6 +554,11 @@ pub fn getwd() string {
 }
 
 pub fn ls(path string) []string {
+	$if windows {
+		return []string 
+} 
+$else { 
+ 
 	mut res := []string
 	dir := C.opendir(path.str)
 	if isnil(dir) {
@@ -550,6 +579,7 @@ pub fn ls(path string) []string {
 	}
 	C.closedir(dir)
 	return res
+} 
 }
 
 fn log(s string) {

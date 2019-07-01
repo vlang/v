@@ -303,7 +303,12 @@ pub fn sleep(seconds int) {
 }
 
 pub fn usleep(n int) {
+$if windows { 
+	//C._usleep(n)
+}
+$else { 
 	C.usleep(n)
+} 
 }
 
 pub fn sleep_ms(n int) {
