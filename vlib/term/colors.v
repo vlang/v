@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module termcolor
+module term
 
 pub fn format(msg, open, close string) string {
     return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
