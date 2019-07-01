@@ -60,7 +60,7 @@ struct Face {
 struct Cfg {
 	width     int
 	height    int
-	use_ortho int
+	use_ortho bool 
 	retina    bool
 	font_size int
 }
@@ -90,7 +90,7 @@ pub fn new_context(cfg Cfg) *GG {
 	// # glScissor(0,0,300,300);
 	shader := gl.new_shader('simple')
 	shader.use()
-	if cfg.use_ortho > 0 {
+	if cfg.use_ortho { 
 		projection := glm.ortho(0, cfg.width, cfg.height, 0)
 		/* 
 		// for debugging broken tetris in gg.o
