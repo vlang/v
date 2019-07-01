@@ -95,7 +95,7 @@ mut:
 fn main() {
 	args := os.args
 	// Print the version and exit.
-	if '-v' in args || 'version' in args {
+	if '-v' in args || '--version' in args || 'version' in args {
 		println('V $Version')
 		return
 	}
