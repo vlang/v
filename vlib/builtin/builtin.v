@@ -90,8 +90,14 @@ pub fn calloc(n int) byteptr {
 }
 
 fn _strlen(s byteptr) int {
-	// TODO don't call a C function, implement it in V
-	return C.strlen(s)
+	mut i := 0
+	for {
+		if *s == `\0` {
+			return i
+		}
+		i++
+		s = s + 1
+	}
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
