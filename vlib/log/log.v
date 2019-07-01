@@ -1,6 +1,6 @@
 module log
 
-import termcolor
+import term
 
 const (
     FATAL = 1
@@ -26,28 +26,28 @@ pub fn (l Log) fatal(s string){
 
 pub fn (l Log) error(s string){
     if l.level >= ERROR{
-        f := termcolor.red('E')
+        f := term.red('E')
         println('[$f]$s')
     }
 }
 
 pub fn (l Log) warn(s string){
     if l.level >= WARN{
-        f := termcolor.yellow('W')
+        f := term.yellow('W')
         println('[$f]$s')
     }
 }
 
 pub fn (l Log) info(s string){
     if l.level >= INFO{
-        f := termcolor.white('I')
+        f := term.white('I')
         println('[$f]$s')
     }
 }
 
 pub fn (l Log) debug(s string){
     if l.level >= DEBUG{
-        f := termcolor.blue('D')
+        f := term.blue('D')
         println('[$f]$s')
     }
 }
