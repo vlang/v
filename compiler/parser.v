@@ -46,6 +46,7 @@ mut:
 	inside_const   bool
 	expr_var       Var
 	assigned_type  string
+	left_type  string
 	tmp_cnt        int
 	// TODO all these options are copy-pasted from the V struct. Create a Settings struct instead?
 	// is_test        bool
@@ -589,9 +590,10 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 	mut val := 0
 	for p.tok == NAME {
 		field := p.check_name()
-		// name := '${p.pkg}__${enum_name}_$field'
-		// name := '${enum_name}_$field'
-		name := '$field'
+		mut name := '$field'
+if enum_name == 'BuildMode' { 
+		 name = '${p.pkg}__${enum_name}_$field'
+} 
 		p.fgenln('')
 		if p.run == RUN_MAIN {
 			p.cgen.consts << '#define $name $val \n'
@@ -1178,6 +1180,7 @@ fn (p mut Parser) bool_expression() string {
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
 	mut typ := p.expression()
+	p.left_type = typ 
 	is_str := typ=='string' 
 	tok := p.tok
 	// if tok in [ EQ, GT, LT, LE, GE, NE] {
@@ -1207,7 +1210,7 @@ fn (p mut Parser) bterm() string {
 	return typ
 }
 
-// also called on *, &
+// also called on *, &, . (enum) 
 fn (p mut Parser) name_expr() string {
 	p.log('\nname expr() pass=$p.run tok=${p.tok.str()} $p.lit')
 	// print('known type:')
@@ -1217,6 +1220,7 @@ fn (p mut Parser) name_expr() string {
 	hack_tok := p.tok
 	hack_lit := p.lit
 	// amp
+	 
 	ptr := p.tok == AMP
 	deref := p.tok == MUL
 	if ptr || deref {
@@ -1243,6 +1247,17 @@ fn (p mut Parser) name_expr() string {
 			is_c_struct_init = true
 		}
 	}
+	// enum value? (`color == .green`) 
+	if p.tok == DOT {
+		//println('got enum dot val $p.left_type pass=$p.run $p.scanner.line_nr left=$p.left_type') 
+		T := p.find_type(p.left_type) 
+		if T.is_enum {
+			p.check(DOT) 
+			val := p.check_name() 
+			p.gen(p.pkg + '__' + p.left_type + '_' + val) 
+		} 
+		return p.left_type 
+	} 
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
@@ -1454,23 +1469,28 @@ fn (p mut Parser) var_expr(v Var) string {
 		}
 		if typ != 'int' {
 			if !p.pref.translated && !is_number_type(typ) {
-				// if T.parent != 'int' {
 				p.error('cannot ++/-- value of type `$typ`')
 			}
 		}
 		p.gen(p.tok.str())
 		p.fgen(p.tok.str())
-		p.next()// ++
-		// allow a := c++ in translated
+		p.next()// ++/-- 
+		// allow `a := c++` in translated code 
 		if p.pref.translated {
-			return p.index_expr(typ, fn_ph)
-			// return typ
+			//return p.index_expr(typ, fn_ph)
 		}
 		else {
 			return 'void'
 		}
 	}
 	typ = p.index_expr(typ, fn_ph)
+	// TODO hack to allow `foo.bar[0] = 2` 
+	if p.tok == DOT { 
+		for p.tok == DOT {
+			typ = p.dot(typ, fn_ph)
+		} 
+		typ = p.index_expr(typ, fn_ph)
+	} 
 	return typ
 }
 
@@ -1485,9 +1505,9 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	field_name := p.lit
 	p.fgen(field_name)
 	p.log('dot() field_name=$field_name typ=$str_typ')
-	if p.fileis('hi_test') {
-		println('dot() field_name=$field_name typ=$str_typ')
-	}
+	//if p.fileis('main.v') {
+		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}') 
+	//}
 	typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
@@ -1500,7 +1520,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 			opt_type := typ.name.substr(7, typ.name.len)
 			p.error('unhandled option type: $opt_type?')
 		}
-		println('dot():')
+		println('error in dot():')
 		println('fields:')
 		for field in typ.fields {
 			println(field.name)
@@ -1564,17 +1584,17 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		// return typ.name.replace('array_', '')
 		return typ.name.right(6)
 	}
-	if false && p.tok == LSBR {
+	//if false && p.tok == LSBR {
 		// if is_indexer {
-		return p.index_expr(method.typ, method_ph)
-	}
+		//return p.index_expr(method.typ, method_ph)
+	//}
 	return method.typ
 }
 
 fn (p mut Parser) index_expr(typ string, fn_ph int) string {
-	if p.fileis('int_test') {
-		println('index expr typ=$typ')
-	}
+	//if p.fileis('main.v') {
+		//println('index expr typ=$typ')
+	//}
 	// a[0]
 	v := p.expr_var
 	is_map := typ.starts_with('map_')
@@ -1688,16 +1708,13 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 	p.tok == MULT_ASSIGN || p.tok == DIV_ASSIGN || p.tok == XOR_ASSIGN || p.tok == MOD_ASSIGN ||
 	p.tok == OR_ASSIGN || p.tok == AND_ASSIGN || p.tok == RIGHT_SHIFT_ASSIGN ||
 	p.tok == LEFT_SHIFT_ASSIGN {
-		if is_map || is_arr {
-			// Don't generate indexer right away, but assign it to tmp
-			// p.cgen.start_tmp()
-		}
 		if is_indexer && is_str && !p.builtin_pkg {
 			p.error('strings are immutable')
 		}
 		// println('111 "$p.cgen.cur_line"')
 		assign_pos := p.cgen.cur_line.len
 		p.assigned_type = typ
+		p.left_type = typ
 		p.assign_statement(v, fn_ph, is_indexer && (is_map || is_arr))
 		// m[key] = val
 		if is_indexer && (is_map || is_arr) {
@@ -1833,7 +1850,7 @@ fn (p mut Parser) expression() string {
 		p.check_types(p.expression(), typ)
 		return 'int'
 	}
-	if p.tok == DOT {
+	if p.tok == DOT  { 
 		for p.tok == DOT {
 			typ = p.dot(typ, 0)
 		}
@@ -2669,7 +2686,7 @@ fn (p mut Parser) chash() {
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
 		file := hash.right(pos)
-		if p.pref.build_mode != default_mode {
+		if p.pref.build_mode != BuildMode.default_mode {
 			p.genln('#include $file')
 		}
 	}

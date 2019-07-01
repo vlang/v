@@ -95,7 +95,7 @@ fn (f mut Fn) clear_vars() {
 
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
-	return (p.pref.build_mode == default_mode || p.pref.build_mode == build) &&
+	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build) &&
 	(p.file_path.contains(TmpPath))
 }
 
@@ -338,7 +338,7 @@ fn (p mut Parser) fn_decl() {
 		// Add function definition to the top
 		if !is_c && f.name != 'main' && p.first_run() {
 			// TODO hack to make Volt compile without -embed_vlib
-			if f.name == 'darwin__nsstring' && p.pref.build_mode == default_mode {
+			if f.name == 'darwin__nsstring' && p.pref.build_mode == .default_mode {
 				return
 			}
 			p.cgen.fns << fn_decl + ';'

@@ -25,11 +25,6 @@ enum AccessMod {
 	PUBLIC_MUT_MUT // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
-enum TypeCategory {
-	TYPE_STRUCT
-	T_CAT_FN
-}
-
 struct Type {
 mut:
 	pkg            string
@@ -37,8 +32,6 @@ mut:
 	fields         []Var
 	methods        []Fn
 	parent         string
-	cat            TypeCategory
-	gen_types      []string
 	func           Fn // For cat == FN (type kek fn())
 	is_c           bool // C.FILE
 	is_interface   bool
@@ -369,6 +362,7 @@ fn (t &Type) find_method(name string) Fn {
 	return Fn{}
 }
 
+/* 
 fn (t mut Type) add_gen_type(type_name string) {
 	// println('add_gen_type($s)')
 	if t.gen_types.contains(type_name) {
@@ -376,6 +370,7 @@ fn (t mut Type) add_gen_type(type_name string) {
 	}
 	t.gen_types << type_name
 }
+*/ 
 
 fn (p &Parser) find_type(name string) *Type {
 	typ := p.table.find_type(name)
