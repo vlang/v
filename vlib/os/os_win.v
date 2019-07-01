@@ -5,7 +5,7 @@ module os
 type HANDLE voidptr // C.HANDLE
 
 pub fn get_file_handle(path string) HANDLE {
-    mode := 'r' 
+    mode := 'rb'
     _fh := C.fopen(path.cstr(), mode.cstr())
     if isnil(_fh) {
 	      return HANDLE(INVALID_HANDLE_VALUE)
