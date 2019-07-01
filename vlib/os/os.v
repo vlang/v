@@ -231,7 +231,6 @@ pub fn (f File) writeln(s string) {
 	// TODO perf
 	C.fputs(s.cstr(), f.cfile)
 	// ss.free()
-	C.fputs('\n', f.cfile)
 }
 
 pub fn (f File) close() {
