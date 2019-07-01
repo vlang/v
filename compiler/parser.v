@@ -259,8 +259,11 @@ fn (p mut Parser) parse() {
 						p.cur_fn.clear_vars()
 					}
 				} 
-				start := p.cgen.lines.len
+				mut start := p.cgen.lines.len
 				p.statement(true)
+				if p.cgen.lines[start - 1] != '' && p.cgen.fn_main != '' {
+					start--
+				}
 				p.genln('') 
 				end := p.cgen.lines.len
 				lines := p.cgen.lines.slice(start, end)
