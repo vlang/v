@@ -256,6 +256,17 @@ pub fn system(cmd string) int {
 	return ret
 }
 
+pub fn get_file_handle(path string) HANDLE {
+    mode := 'r' // 'r'.cstr() not working
+    _fh := C.fopen(path.cstr(), mode.cstr())
+    if isnil(_fh) {
+        //println('Failed open `$path`')
+	return HANDLE(INVALID_HANDLE_VALUE)
+    }
+    _handle := C._get_osfhandle(C._fileno(_fh)) // CreateFile? - hah, no -_-
+    return _handle
+}
+
 fn popen(path string) *FILE {
 	cpath := path.cstr()
 	$if windows {
