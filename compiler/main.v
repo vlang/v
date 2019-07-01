@@ -646,7 +646,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 			continue
 		}
 		if file.ends_with('_mac.v') && v.os != MAC {
-			lin_file := file.replace('_mav.v', '_lin.v')
+			lin_file := file.replace('_mac.v', '_lin.v')
 			// println('lin_file="$lin_file"')
 			// If there are both _mav.v and _lin.v, don't use _mav.v
 			if os.file_exists('$dir/$lin_file') {
