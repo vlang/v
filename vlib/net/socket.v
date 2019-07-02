@@ -65,7 +65,7 @@ pub fn socket(family int, _type int, proto int) Socket {
 }
 
 // set socket options
-pub fn (s Socket) setsockopt(level int, optname int, optvalue int) int {
+pub fn (s Socket) setsockopt(level int, optname int, optvalue *int) int {
 	res := C.setsockopt(s.sockfd, level, optname, optvalue, C.sizeof(optvalue))
 	return res
 }
@@ -131,7 +131,7 @@ pub fn (s Socket) connect(address string, port int) int {
 	hints.ai_family = AF_UNSPEC
 	hints.ai_socktype = SOCK_STREAM
 	hints.ai_flags = AI_PASSIVE
-	
+
 	info := &C.addrinfo{!}
 	sport := '$port'
 	info_res := C.getaddrinfo(address.cstr(), sport.cstr(), &hints, &info)
