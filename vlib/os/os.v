@@ -475,8 +475,7 @@ pub fn write_file(path, text string) {
 }
 
 pub fn clear() {
-	C.printf('\x1b[2J')
-	C.printf('\x1b[H')
+	C.printf('\033[2J')
 }
 
 fn on_segfault(f voidptr) {
