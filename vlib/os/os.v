@@ -475,7 +475,7 @@ pub fn write_file(path, text string) {
 }
 
 pub fn clear() {
-	println('\x1b[2J\x1b[H')
+	print('\x1b[2J\x1b[H')
 }
 
 fn on_segfault(f voidptr) {
