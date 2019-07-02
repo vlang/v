@@ -937,10 +937,6 @@ fn new_v(args[]string) *V {
 }
 
 fn run_repl() []string {
-	$if windows {
-		println('REPL does not work on Windows yet, sorry!') 
-		exit(1) 
-	} 
 	println('V $Version')
 	println('Use Ctrl-D or `exit` to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
