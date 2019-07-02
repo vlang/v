@@ -88,6 +88,16 @@ pub fn (s Socket) listen() int {
 	return res
 }
 
+// put socket into passive mode with user specified backlog and wait to receive
+pub fn (s Socket) listen_backlog(backlog int) int {
+	mut n := 0
+	if backlog > 0 {
+		n = backlog
+	}
+	res := C.listen(s.sockfd, n)
+	return res
+}
+
 // helper method to create, bind, and listen given port number
 pub fn listen(port int) Socket {
 	s := socket(AF_INET, SOCK_STREAM, 0)
