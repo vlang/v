@@ -2,6 +2,7 @@ module os
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
+/* 
 type HANDLE voidptr // C.HANDLE
 
 pub fn get_file_handle(path string) HANDLE {
@@ -13,3 +14,4 @@ pub fn get_file_handle(path string) HANDLE {
     _handle := C._get_osfhandle(C._fileno(_fh)) // CreateFile? - hah, no -_-
     return _handle
 }
+*/ 

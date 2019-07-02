@@ -615,7 +615,7 @@ mut args := ''
 		}
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
-	if v.out_name_c != 'v.c' { 
+	if v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' { 
 		os.rm('$TmpPath/$v.out_name_c') 
 	} 
 }
