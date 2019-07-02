@@ -423,9 +423,11 @@ pub fn get_raw_line() string {
 	$if windows {
 		max := 256
 		buf := malloc(max)
-		// todo: use HANDLE instead of voidptr
+		// TODO: Use HANDLE instead of voidptr
 		h_input := voidptr(C.GetStdHandle(STD_INPUT_HANDLE))
 		nr_chars := 0
+		// NOTE: Once we have UTF8 encode function to
+		// convert utf16 to utf8, change to ReadConsoleW
 		C.ReadConsole(h_input, buf, max, &nr_chars, 0)
 		if nr_chars == 0 {
 			return ''
