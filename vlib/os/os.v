@@ -53,9 +53,14 @@ import const (
 	SEEK_SET
 	SEEK_END
 	SA_SIGINFO
-	SIGSEGV
 	S_IFMT
 	S_IFDIR
+	SIGABRT
+	SIGFPE
+	SIGILL
+	SIGINT
+	SIGSEGV
+	SIGTERM
 )
 
 struct C.stat {
@@ -585,6 +590,10 @@ $else {
 	C.closedir(dir)
 	return res
 } 
+}
+
+pub fn signal(signum int, handler voidptr) {
+	C.signal(signum, handler)
 }
 
 fn log(s string) {
