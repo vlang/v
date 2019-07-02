@@ -956,22 +956,19 @@ fn run_repl() []string {
 		if line == '' || line == 'exit' {
 			break
 		}
-		// Save the source only if the user is printing something,
-		// but don't add this print call to the `lines` array,
-		// so that it doesn't get called during the next print.
-		if line.starts_with('print') {
+
+		if line.starts_with('print') { 
 			void_line := line.substr(line.index('(') + 1, line.len - 1)
 			lines << void_line
-			source_code := lines.join('\n') + '\n' + line 
-			os.write_file(file, source_code)
-			mut v := new_v( ['v', '-repl', file])
-			v.compile()
-			s := os.exec(TmpPath + '/vrepl')
-			println(s)
-		}
-		else {
+		} else {
 			lines << line
 		}
+		source_code := lines.join('\n') + '\n' + line
+                os.write_file(file, source_code)
+                mut v := new_v( ['v', '-repl', file])
+                v.compile()
+                s := os.exec(TmpPath + '/vrepl')
+                print(s)
 	}
 	return lines
 }
