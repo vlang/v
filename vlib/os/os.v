@@ -414,22 +414,25 @@ pub fn get_line() string {
     return str
 }
 
+const(
+	STD_INPUT_HANDLE = -10
+)
+
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-	// get_raw_line can be further simplified if we decide to use
-	// fgets or gets on all platforms, needs more thought.
 	$if windows {
 		max := 256
 		buf := malloc(max)
-		C.fgets(buf, max, stdin)
-		nr_chars := strlen(buf)
+		// todo: use HANDLE instead of voidptr
+		h_input := voidptr(C.GetStdHandle(STD_INPUT_HANDLE))
+		nr_chars := 0
+		C.ReadConsole(h_input, buf, max, &nr_chars, 0)
 		if nr_chars == 0 {
 			return ''
 		}
-
 		return tos(buf, nr_chars)
-	} 
-	$else { 
+	}
+	$else {
 		//u64 is used because C.getline needs a size_t as second argument
 		//Otherwise, it would cause a valgrind warning and may be dangerous
 		//Malloc takes an int as argument so a cast has to be made
