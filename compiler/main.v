@@ -957,15 +957,10 @@ fn run_repl() []string {
 			break
 		}
 
-		if line.starts_with('print') { 
-			void_line := line.substr(line.index('(') + 1, line.len - 1)
-			lines << void_line
-		} else {
-			lines << line
-		}
-		source_code := lines.join('\n') + '\n' + line
+		lines << line
+		source_code := lines.join('\n') + '\n'
                 os.write_file(file, source_code)
-                mut v := new_v( ['v', '-repl', file])
+                mut v := new_v( ['v', '-repl', file] )
                 v.compile()
                 s := os.exec(TmpPath + '/vrepl')
                 print(s)
