@@ -15,4 +15,7 @@ fn main() {
 	println(f2.reciprocal())
 	println(f1.equals(f1))
 	println(f2.equals(f2))
+	println(f1.equals(f2))
+	println(f1.to_decimal())
+	println(f2.to_decimal())
 }

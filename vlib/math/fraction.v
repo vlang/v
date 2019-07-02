@@ -92,12 +92,13 @@ pub fn (f1 Fraction) reduce() Fraction {
 }
 
 // Converts Fraction to decimal
-// Typecasting?
-// pub fn (f1 Fraction) to_decimal() f64 {
-// 	return f1.n/f1.d
-// }
+pub fn (f1 Fraction) to_decimal() f64 {
+	return f64(f1.n)/f64(f1.d)
+}
 
 // Compares two Fractions
 pub fn (f1 Fraction) equals(f2 Fraction) bool {
-	return (f1.n == f2.n) && (f1.d == f2.d)
+	r1 := f1.reduce()
+	r2 := f2.reduce()
+	return (r1.n == r1.n) && (r2.d == r2.d)
 }
