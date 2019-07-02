@@ -405,34 +405,32 @@ pub fn filename(path string) string {
 }
 
 // get_line returns a one-line string from stdin 
-//u64 is used because C.getline needs a size_t as second argument
-//Otherwise, it would cause a valgrind warning and may be dangerous
-//Malloc takes an int as argument so a cast has to be made
 pub fn get_line() string {
-	$if windows {
-		panic('get_line() not implemented on Windows yet, sorry!') 
-	} 
-	$else { 
-		max := u64(256)
-		buf := malloc(int(max))
-		nr_chars := C.getline(&buf, &max, stdin)
-		if nr_chars == 0 {
-			return ''
-		}
-		if buf[nr_chars - 1] == `\n` { // newline  
-			return tos(buf, nr_chars - 1)
-		}
-		// To prevent cutting end of line if no newline  
-		return tos(buf, nr_chars)
-	} 
+    str := get_raw_line()
+    if str[str.len - 1] == `\n` {
+        return str.substr(0, str.len - 1)
+    }
+
+    return str
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-		panic('get_raw_line() not implemented on Windows yet, sorry!') 
+		max := 256
+		buf := malloc(max)
+		C.fgets(buf, max, stdin)
+		nr_chars := strlen(buf)
+		if nr_chars == 0 {
+			return ''
+		}
+
+		return tos(buf, nr_chars)
 	} 
 	$else { 
+		//u64 is used because C.getline needs a size_t as second argument
+		//Otherwise, it would cause a valgrind warning and may be dangerous
+		//Malloc takes an int as argument so a cast has to be made
 		max := u64(256)
 		buf := malloc(int(max))
 		nr_chars := C.getline(&buf, &max, stdin)
