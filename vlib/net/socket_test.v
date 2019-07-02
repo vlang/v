@@ -7,7 +7,14 @@ fn test_socket() {
 //	println(client)
 //	socket := server.accept()
 //	println(socket)
-//
+
+//	message := 'Hello World'
+//	socket.send(message.cstr(), message.len)
+//	println('Sent: ' + message)
+
+//	bytes := client.recv(1024)
+//	println('Received: ' + tos(bytes, message.len))
+
 //	server.close()
 //	client.close()
 //	socket.close()
