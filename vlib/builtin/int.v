@@ -123,17 +123,25 @@ pub fn (b bool) str() string {
 }
 
 pub fn (n int) hex() string {
-	s := n.str()
-	hex := malloc(s.len + 3) // 0x + \n 
+	len := if n >= 0 {
+		n.str().len + 3
+	} else {
+		11
+	}
+	hex := malloc(len) // 0x + \n 
 	count := int(C.sprintf(hex, '0x%x', n))
 	return tos(hex, count)
 }
 
 pub fn (n i64) hex() string {
-	s := n.str()
-	hex := malloc(s.len + 3)
-	C.sprintf(hex, '0x%x', n)
-	return tos(hex, s.len + 3)
+	len := if n >= i64(0) {
+		n.str().len + 3
+	} else {
+		19
+	}
+	hex := malloc(len)
+	count := int(C.sprintf(hex, '0x%x', n))
+	return tos(hex, count)
 }
 
 pub fn (a []byte) contains(val byte) bool {
