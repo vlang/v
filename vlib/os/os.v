@@ -416,8 +416,8 @@ pub fn get_line() string {
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-	// get_raw_line can be further simplified if we decide to use gets
-	// on all platforms, needs further thought.
+	// get_raw_line can be further simplified if we decide to use
+	// fgets or gets on all platforms, needs more thought.
 	$if windows {
 		max := 256
 		buf := malloc(max)
