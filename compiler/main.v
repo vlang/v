@@ -90,10 +90,12 @@ mut:
 	is_run         bool
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize       bool // use Clang's new "-fsanitize" option
+	is_debug       bool // keep compiled C files
 }
 
 
 fn main() {
+	// There's no `flags` module yet, so args have to be parsed manually
 	args := os.args
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
@@ -615,7 +617,7 @@ mut args := ''
 		}
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
-	if v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' { 
+	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm('$TmpPath/$v.out_name_c') 
 	} 
 }
@@ -925,6 +927,7 @@ fn new_v(args[]string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
+		is_debug: args.contains('-debug')
 		obfuscate: obfuscate
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')
