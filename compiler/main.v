@@ -775,9 +775,8 @@ fn get_arg(joined_args, arg, def string) string {
 		return def
 	}
 	pos += key.len
-	mut space := joined_args.index_after(' ', pos)
-	if space == -1 {
-		space = joined_args.len
+	mut space := joined_args.index_after(' ', pos) or {
+		return joined_args.substr(pos, joined_args.len)
 	}
 	res := joined_args.substr(pos, space)
 	// println('get_arg($arg) = "$res"')

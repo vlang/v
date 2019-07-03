@@ -389,16 +389,16 @@ pub fn (s string) last_index(p string) int {
 	return -1
 }
 
-pub fn (s string) index_after(p string, start int) int {
+pub fn (s string) index_after(p string, start int) ?int {
 	if p.len > s.len {
-		return -1
+		return error('p.len > s.len')
 	}
 	mut strt := start
 	if start < 0 {
 		strt = 0
 	}
 	if start >= s.len {
-		return -1
+		return error('start >= length of receiver str')
 	}
 	mut i := strt
 	for i < s.len {
@@ -413,7 +413,7 @@ pub fn (s string) index_after(p string, start int) int {
 		}
 		i++
 	}
-	return -1
+	return error('string not found after given index')
 }
 
 pub fn (s string) contains(p string) bool {

@@ -8,11 +8,10 @@ fn main() {
 	html := http.get('https://news.ycombinator.com')
 	mut pos := 0
 	for {
-		pos = html.index_after('https://', pos + 1)
-		if pos == -1 {
+		pos = html.index_after('https://', pos + 1) or {
 			break
 		}
-		end := html.index_after('"', pos)
+		end := html.index_after('"', pos)?
 		println(html.substr(pos, end))
 	}
 }

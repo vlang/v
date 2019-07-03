@@ -1627,7 +1627,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		if is_fixed_arr {
 			// `[10]int` => `int`, `[10][3]int` => `[3]int`
 			if typ.contains('][') {
-				pos := typ.index_after('[', 1)
+				pos := typ.index_after('[', 1)?
 				typ = typ.right(pos)
 			}
 			else {
