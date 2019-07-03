@@ -106,7 +106,7 @@ pub fn fmod(a, b f64) f64 {
 }
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
-pub fn gcd(a, b int) int {
+pub fn gcd(a, b i64) i64 {
 	if a < 0 {
 		a = -a
 	}
@@ -124,7 +124,7 @@ pub fn gcd(a, b int) int {
 }
 
 // lcm calculates least common (non-negative) multiple.
-pub fn lcm(a, b int) int {
+pub fn lcm(a, b i64) i64 {
 	if a == 0 {
 		return a
 	}
