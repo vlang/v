@@ -57,6 +57,7 @@ const (
 
 const (
 	FILE_INVALID_FILE_ID = (-1)
+	INVALID_HANDLE_VALUE = (-1)
 )
 
 // (Must be realized in Syscall) (Must be specified)
