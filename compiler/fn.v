@@ -128,7 +128,7 @@ fn (p mut Parser) fn_decl() {
 		is_mut := p.tok == MUT
 		is_amp := p.tok == AMP
 		if is_mut || is_amp {
-			p.next()
+			p.check_space(p.tok) 
 		}
 		receiver_typ = p.get_type()
 		T := p.table.find_type(receiver_typ)
@@ -151,6 +151,7 @@ fn (p mut Parser) fn_decl() {
 			receiver_typ += '*'
 		}
 		p.check(RPAR)
+		p.fspace() 
 		receiver := Var {
 			name: receiver_name
 			is_arg: true

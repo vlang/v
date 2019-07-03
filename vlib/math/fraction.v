@@ -60,7 +60,7 @@ pub fn (f1 Fraction) add(f2 Fraction) Fraction {
 	return f1 + f2
 }
 
-// Fraction substract method
+// Fraction subtract method
 pub fn (f1 Fraction) subtract(f2 Fraction) Fraction {
 	return f1 - f2
 }

@@ -239,7 +239,6 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		else if nextc == `=` {
 			s.pos++
-			s.cao_change('+')
 			return scan_res(PLUS_ASSIGN, '')
 		}
 		return scan_res(PLUS, '')
@@ -250,28 +249,24 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		else if nextc == `=` {
 			s.pos++
-			s.cao_change('-')
 			return scan_res(MINUS_ASSIGN, '')
 		}
 		return scan_res(MINUS, '')
 	case `*`:
 		if nextc == `=` {
 			s.pos++
-			s.cao_change('*')
 			return scan_res(MULT_ASSIGN, '')
 		}
 		return scan_res(MUL, '')
 	case `^`:
 		if nextc == `=` {
 			s.pos++
-			s.cao_change('^')
 			return scan_res(XOR_ASSIGN, '')
 		}
 		return scan_res(XOR, '')
 	case `%`:
 		if nextc == `=` {
 			s.pos++
-			s.cao_change('%')
 			return scan_res(MOD_ASSIGN, '')
 		}
 		return scan_res(MOD, '')
@@ -318,7 +313,6 @@ fn (s mut Scanner) scan() ScanRes {
 	case `&`:
 		if nextc == `=` {
 			s.pos++
-			s.cao_change('&')
 			return scan_res(AND_ASSIGN, '')
 		}
 		if nextc == `&` {
@@ -333,7 +327,6 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		if nextc == `=` {
 			s.pos++
-			s.cao_change('|')
 			return scan_res(OR_ASSIGN, '')
 		}
 		return scan_res(PIPE, '')
@@ -372,7 +365,6 @@ fn (s mut Scanner) scan() ScanRes {
 		else if nextc == `>` {
 			if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 				s.pos += 2
-				s.cao_change('>>')
 				return scan_res(RIGHT_SHIFT_ASSIGN, '')
 			}
 			s.pos++
@@ -389,7 +381,6 @@ fn (s mut Scanner) scan() ScanRes {
 		else if nextc == `<` {
 			if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 				s.pos += 2
-				s.cao_change('<<')
 				return scan_res(LEFT_SHIFT_ASSIGN, '')
 			}
 			s.pos++
@@ -429,7 +420,6 @@ fn (s mut Scanner) scan() ScanRes {
 	case `/`:
 		if nextc == `=` {
 			s.pos++
-			s.cao_change('/')
 			return scan_res(DIV_ASSIGN, '')
 		}
 		if nextc == `/` {
@@ -493,7 +483,11 @@ fn (s mut Scanner) scan() ScanRes {
 		} 
 	} 
 	println('(char code=$c) pos=$s.pos len=$s.text.len')
-	s.error('invalid character `${c.str()}`')
+	mut msg := 'invalid character `${c.str()}`' 
+	if c == `"` {
+		msg += ', use \' to denote strings' 
+	} 
+	s.error(msg) 
 	return scan_res(EOF, '')
 }
 
