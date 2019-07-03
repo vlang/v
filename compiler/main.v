@@ -95,6 +95,7 @@ mut:
 
 
 fn main() {
+	// There's no `flags` module yet, so args have to be parsed manually
 	args := os.args
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {

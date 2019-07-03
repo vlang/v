@@ -142,6 +142,7 @@ fn (p mut Parser) parse() {
 	}
 	else {
 		p.check(PACKAGE)
+		p.fspace() 
 		p.pkg = p.check_name()
 	}
 	p.fgenln('\n')
@@ -237,7 +238,7 @@ fn (p mut Parser) parse() {
 				p.cur_fn = MainFn
 				p.check_unused_variables()
 			}
-			if true && !p.first_run() && p.fileis('test') {
+			if false && !p.first_run() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v')
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
@@ -326,7 +327,7 @@ fn (p mut Parser) const_decl() {
 	p.fspace()
 	p.check(LPAR)
 	p.fgenln('')
-	p.scanner.fmt_indent++
+	p.fmt_inc() 
 	for p.tok == NAME {
 		// `Age = 20`
 		mut name := p.check_name()
@@ -368,7 +369,7 @@ fn (p mut Parser) const_decl() {
 		}
 		p.fgenln('')
 	}
-	p.scanner.fmt_indent--
+	p.fmt_dec() 
 	p.check(RPAR)
 	p.fgenln('\n')
 	p.inside_const = false
@@ -485,12 +486,12 @@ fn (p mut Parser) struct_decl() {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
 			}
 			is_pub = true
-			p.scanner.fmt_indent--
+			p.fmt_dec() 
 			p.check(PUB)
 			if p.tok != MUT {
 				p.check(COLON)
 			}
-			p.scanner.fmt_indent++
+			p.fmt_inc() 
 			p.fgenln('')
 		}
 		if p.tok == MUT {
@@ -498,12 +499,12 @@ fn (p mut Parser) struct_decl() {
 				p.error('structs can only have one `mut:`, all private mutable fields have to be grouped')
 			}
 			is_mut = true
-			p.scanner.fmt_indent--
+			p.fmt_dec() 
 			p.check(MUT)
 			if p.tok != MUT {
 				p.check(COLON)
 			}
-			p.scanner.fmt_indent++
+			p.fmt_inc() 
 			p.fgenln('')
 		}
 		// if is_pub {
@@ -654,18 +655,19 @@ fn (p mut Parser) check(expected Token) {
 		p.error(s)
 	}
 	if expected == RCBR {
-		p.scanner.fmt_indent--
+		p.fmt_dec() 
 	}
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
 	if expected == LCBR && p.scanner.text[p.scanner.pos + 1] != `}` {
 		p.fgenln('')
-		p.scanner.fmt_indent++
+		p.fmt_inc() 
 	}
 	p.next()
 }
 
 fn (p mut Parser) error(s string) {
+//q := "SDF" 
 	// Dump all vars and types for debugging
 	if false {
 		file_types := os.create('$TmpPath/types')
@@ -786,12 +788,12 @@ fn (p mut Parser) get_type() string {
 	for p.tok == MUL {
 		mul = true
 		nr_muls++
-		p.next()
+		p.check(MUL) 
 	}
 	if p.tok == AMP {
 		mul = true
 		nr_muls++
-		p.next()
+		p.check(AMP) 
 	}
 	typ += p.lit
 	if !p.is_struct_init {
@@ -925,7 +927,7 @@ fn (p mut Parser) statements_no_curly_end() string {
 	else {
 		// p.check(RCBR)
 	}
-	p.scanner.fmt_indent--
+	//p.fmt_dec() 
 	// println('close scope line=$p.scanner.line_nr')
 	p.cur_fn.close_scope()
 	return last_st_typ
@@ -1014,13 +1016,13 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.error('`continue` statement outside `for`')
 		}
 		p.genln('continue')
-		p.next()
+		p.check(CONTINUE) 
 	case BREAK:
 		if p.for_expr_cnt == 0 {
 			p.error('`break` statement outside `for`')
 		}
 		p.genln('break')
-		p.next()
+		p.check(BREAK) 
 	case GO:
 		p.go_statement()
 	case ASSERT:
@@ -1064,17 +1066,14 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		if is_str {
 			p.gen('= string_add($v.name, ')// TODO can't do `foo.bar += '!'`
 		}
-		else if !is_map {
+		else {
 			p.gen(' += ')
 		}
-	default:
-		if 	tok != MINUS_ASSIGN 					&& tok != MULT_ASSIGN					&& tok != XOR_ASSIGN
-		 && tok != MOD_ASSIGN							&& tok != AND_ASSIGN 					&& tok != OR_ASSIGN
-		 && tok != RIGHT_SHIFT_ASSIGN 		&& tok != LEFT_SHIFT_ASSIGN 	&& tok != DIV_ASSIGN {
-			p.gen(' ' + p.tok.str() + ' ')
-		}
+	default: p.gen(' ' + p.tok.str() + ' ')
 	}
-	p.fgen(' ' + p.tok.str() + ' ')
+	p.fspace()
+	p.fgen(tok.str()) 
+	p.fspace()
 	p.next()
 	pos := p.cgen.cur_line.len
 	expr_type := p.bool_expression()
@@ -1165,7 +1164,7 @@ fn (p mut Parser) bool_expression() string {
 	typ := p.bterm()
 	for p.tok == AND || p.tok == OR {
 		p.gen(' ${p.tok.str()} ')
-		p.next()
+		p.check_space(p.tok) 
 		p.check_types(p.bterm(), typ)
 	}
 	if typ == '' {
@@ -1646,7 +1645,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			}
 		}
 		if is_arr {
-			p.fgen('[')
+			//p.fgen('[')
 			// array_int a; a[0]
 			// type is "array_int", need "int"
 			// typ = typ.replace('array_', '')
@@ -1802,7 +1801,7 @@ fn (p mut Parser) expression() string {
 			// _PUSH(&a, expression(), tmp, string)
 			tmp := p.get_tmp()
 			tmp_typ := typ.right(6)// skip "array_"
-			p.next()
+			p.check_space(LEFT_SHIFT) 
 			// Get the value we are pushing
 			p.gen(', (')
 			// Immutable? Can we push?
@@ -1860,7 +1859,7 @@ fn (p mut Parser) expression() string {
 		// for p.tok in [PLUS, MINUS, PIPE, AMP, XOR] {
 		tok_op := p.tok
 		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
-		p.next()
+		p.check_space(p.tok) 
 		if is_str && tok_op == PLUS {
 			p.cgen.set_placeholder(ph, 'string_add(')
 			p.gen(',')
@@ -1946,12 +1945,12 @@ fn (p mut Parser) unary() string {
 	switch tok {
 	case NOT:
 		p.gen('!')
-		p.next()
+		p.check(NOT) 
 		typ = 'bool'
 		p.bool_expression()
 	case BIT_NOT:
 		p.gen('~')
-		p.next()
+		p.check(BIT_NOT) 
 		typ = p.bool_expression()
 	default:
 		typ = p.factor()
@@ -2021,7 +2020,7 @@ fn (p mut Parser) factor() string {
 		return 'T'
 	case LPAR:
 		p.gen('(/*lpar*/')
-		p.next()// (
+		p.check(LPAR) 
 		typ = p.bool_expression()
 		// Hack. If this `)` referes to a ptr cast `(*int__)__`, it was already checked
 		// TODO: fix parser so that it doesn't think it's a par expression when it sees `(` in
@@ -2295,8 +2294,9 @@ fn (p mut Parser) array_init() string {
 			}
 		}
 		if p.tok != RSBR && p.tok != SEMICOLON {
-			p.gen(',')
+			p.gen(', ')
 			p.check(COMMA)
+			p.fspace() 
 		}
 		i++
 		// Repeat (a = [0;5] )
@@ -2564,14 +2564,16 @@ fn os_name_to_ifdef(name string) string {
 } 
 
 fn (p mut Parser) comp_time() {
-	p.next()
+	p.check(DOLLAR) 
 	if p.tok == IF {
-		p.next()
+		p.check(IF) 
+		p.fspace() 
 		not := p.tok == NOT
 		if not {
-			p.next()
+			p.check(NOT) 
 		}
 		name := p.check_name()
+		p.fspace() 
 		if name in SupportedPlatforms {
 			ifdef_name := os_name_to_ifdef(name) 
 			if not {
@@ -2721,7 +2723,6 @@ fn (p mut Parser) if_st(is_expr bool) string {
 	}
 	else {
 		p.genln(') {')
-		p.fgenln('{')
 		p.genln('/*if*/')
 	}
 	p.fgen(' ')
@@ -2739,7 +2740,9 @@ fn (p mut Parser) if_st(is_expr bool) string {
 	}
 	// println('IF TYp=$typ')
 	if p.tok == ELSE {
-		p.next()
+		p.fgenln('') 
+		p.check(ELSE)  
+		p.fspace() 
 		if p.tok == IF {
 			p.gen(' else ')
 			return p.if_st(is_expr)
@@ -2820,7 +2823,6 @@ fn (p mut Parser) for_st() {
 		if debug {
 			println('for 4')
 		}
-		p.fgen(' ')
 		p.genln(') { ')
 	}
 	// for i, val in array
@@ -2931,6 +2933,7 @@ fn (p mut Parser) for_st() {
 		p.check_types(p.bool_expression(), 'bool')
 		p.genln(') {')
 	}
+	p.fspace() 
 	p.check(LCBR)
 	p.statements()
 	p.cur_fn.close_scope()
@@ -2938,7 +2941,7 @@ fn (p mut Parser) for_st() {
 }
 
 fn (p mut Parser) switch_statement() {
-	p.next()
+	p.check(SWITCH) 
 	p.cgen.start_tmp()
 	typ := p.bool_expression()
 	expr := p.cgen.end_tmp()
@@ -2947,7 +2950,7 @@ fn (p mut Parser) switch_statement() {
 	for p.tok == CASE || p.tok == DEFAULT {
 		if p.tok == DEFAULT {
 			p.genln('else  { // default:')
-			p.next()
+			p.check(DEFAULT) 
 			p.check(COLON)
 			p.statements()
 			break
@@ -2969,7 +2972,7 @@ fn (p mut Parser) switch_statement() {
 				p.gen('($expr == ')
 			}
 			if p.tok == CASE || p.tok == DEFAULT {
-				p.next()
+				p.check(p.tok) 
 			}
 			p.bool_expression()
 			if p.tok != COMMA {
@@ -3166,33 +3169,29 @@ fn (p &Parser) building_v() bool {
 
 // fmt helpers
 fn (scanner mut Scanner) fgen(s string) {
-/* 
 	if scanner.fmt_line_empty {
 		s = repeat_char(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.write(s)
 	scanner.fmt_line_empty = false
-*/ 
 }
 
 fn (scanner mut Scanner) fgenln(s string) {
-/* 
 	if scanner.fmt_line_empty {
 		s = repeat_char(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.writeln(s)
 	scanner.fmt_line_empty = true
-*/ 
 }
 
 fn (p mut Parser) fgen(s string) {
-	//p.scanner.fgen(s)
+	p.scanner.fgen(s)
 }
 
 fn (p mut Parser) fspace() {
-	//p.fgen(' ')
+	p.fgen(' ')
 }
 
 fn (p mut Parser) fgenln(s string) {
-	//p.scanner.fgenln(s)
+	p.scanner.fgenln(s)
 }
