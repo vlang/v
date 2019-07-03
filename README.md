@@ -89,13 +89,26 @@ If you want to build v.exe on Windows without WSL, you can use MinGW-w64 or Visu
 
 [Download](https://downloads.sourceforge.net/project/mingw-w64/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe?r=&ts=1561736169&use_mirror=gigenet) and install MinGW-w64.
 
-Make sure the `C:/mingw-w64/bin` directory is in system's PATH.
+Make sure the directory (a.k.a. folder) where you installed MinGW-w64 (for example: `C:\mingw-w64\bin`) is in system's [PATH](https://superuser.com/a/284351). To test that it is, type this at the command prompt (`X` stands for your user name):
 
-```bash
-# You can clone V anywhere
+```dos
+C:\Users\X>gcc --version
+
+gcc (x86_64-win32-seh-rev0, Built by MinGW-W64 project) 8.1.0
+Copyright (C) 2018 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+```
+
+Download and install [Git for Windows](https://gitforwindows.org/).
+If you have a version of Windows antecedent to Windows 10 version 1803 that doesn't [ship with curl preistalled](https://stackoverflow.com/a/16216825) (in `C:\Windows\SysWOW64` and `C:\Windows\System32`), download and install [curl for Windows](https://curl.haxx.se/windows/).
+Now type this at the command prompt (prompt and commands output omitted):
+
+```dos
+rem You can clone V anywhere
 git clone https://github.com/vlang/v
 cd v
-# Download the V compiler's source translated to C
+rem Download the V compiler's source translated to C
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 gcc -std=gnu11 -w -o v.exe v.c  # Build it with GCC
 ```
@@ -110,8 +123,9 @@ hello world
 
 $ v
 V 0.1.x
-Use Ctrl-D to exit
-
+```
+Use Ctrl-D to exit ([Ctrl-Z](https://stackoverflow.com/a/16136924) in Windows)
+```
 >>> println('hello world')
 hello world
 >>>
