@@ -108,42 +108,12 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 //pub fn read_file(path string) ?string {
 pub fn read_file(path string) ?string { 
 	mut res := ''
-	mut mode := 'r' 
-	777  // TODO 
-	// Need 'rb' on windows to avoid the \r\n mess. 
-	$if windows {
-		mode = 'rb' 
-	} 
+	mut mode := 'rb' 
 	cpath := path.cstr()
 	fp := C.fopen(cpath, mode.cstr()) 
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 		//panic('failed to open file "$path"')
-	}
-	C.fseek(fp, 0, SEEK_END)
-	fsize := C.ftell(fp)
-	// C.fseek(fp, 0, SEEK_SET)  // same as C.rewind(fp) below
-	C.rewind(fp)
-	mut str := malloc(fsize + 1)
-	C.fread(str, fsize, 1, fp)
-	C.fclose(fp)
-	str[fsize] = 0
-	res = tos(str, fsize)
-	return res
-}
-
-pub fn read_file_opt(path string) ?string { 
-	mut res := ''
-	mut mode := 'r' 
-	777  // TODO 
-	// Need 'rb' on windows to avoid the \r\n mess. 
-	$if windows {
-		mode = 'rb' 
-	} 
-	cpath := path.cstr()
-	fp := C.fopen(cpath, mode.cstr()) 
-	if isnil(fp) {
-		return error('failed to open file "$path"')
 	}
 	C.fseek(fp, 0, SEEK_END)
 	fsize := C.ftell(fp)
@@ -208,7 +178,7 @@ fn read_ulines(path string) []ustring {
 pub fn open(path string) ?File {
 	cpath := path.cstr() 
 	file := File {
-		cfile: C.fopen(cpath, 'r') 
+		cfile: C.fopen(cpath, 'rb') 
 	}
 	if isnil(file.cfile) {
 		return error('failed to open file "$path"')
@@ -220,7 +190,7 @@ pub fn open(path string) ?File {
 pub fn create(path string) ?File {
 	cpath := path.cstr() 
 	file := File {
-		cfile: C.fopen(cpath, 'w') 
+		cfile: C.fopen(cpath, 'wb') 
 	}
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
@@ -231,7 +201,7 @@ pub fn create(path string) ?File {
 pub fn open_append(path string) ?File {
 	cpath := path.cstr() 
 	file := File {
-		cfile: C.fopen(cpath, 'a') 
+		cfile: C.fopen(cpath, 'ab') 
 	}
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')

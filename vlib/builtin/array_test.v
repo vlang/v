@@ -141,7 +141,7 @@ fn test_slice() {
 fn test_push_many() {
 	mut a := [1, 2, 3]
 	b := [4, 5, 6]
-	a._push_many(b.data, b.len)
+	a << b 
 	assert a.len == 6
 	assert a[0] == 1
 	assert a[3] == 4

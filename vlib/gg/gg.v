@@ -567,7 +567,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	// #free(runes.data);
 }
 
-fn (ctx &GG) draw_text_def(x, y int, text string) {
+pub fn (ctx &GG) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.Black,
 		size: DEFAULT_FONT_SIZE,
