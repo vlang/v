@@ -670,7 +670,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		if i == f.args.len - 1 && arg.name == '..' {
 			break
 		}
-		amp_ph := p.cgen.add_placeholder()
+		ph := p.cgen.add_placeholder()
 		// ) here means not enough args were supplied
 		if p.tok == RPAR {
 			str_args := f.str_args(p.table)// TODO this is C args
@@ -688,18 +688,21 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			p.check(MUT)
 		}
 		typ := p.bool_expression()
-		// TODO temporary hack to allow println(777)
+		// Optimize `println`: replace it with `printf` to avoid extra allocations and
+		// function calls. `println(777)` => `printf("%d\n", 777)` 
+		// (If we don't check for void, then V will compile `println(func())`) 
 		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
-			// If we dont check for void, then V will compile "println(procedure())"
 			T := p.table.find_type(typ)
-			if typ == 'u8' {
-				p.cgen.set_placeholder(amp_ph, 'u8_str(')
-			}
-			else if T.parent == 'int' {
-				p.cgen.set_placeholder(amp_ph, 'int_str(')
+			fmt := p.typ_to_fmt(typ) 
+			if fmt != '' { 
+				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '", ')    
+				continue 
+			}  
+			if T.parent == 'int' {
+				p.cgen.set_placeholder(ph, 'int_str(')
 			}
 			else if typ.ends_with('*') {
-				p.cgen.set_placeholder(amp_ph, 'ptr_str(')
+				p.cgen.set_placeholder(ph, 'ptr_str(')
 			}
 			else {
 				// Make sure this type has a `str()` method
@@ -719,7 +722,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 					}
 					p.error('`$typ` needs to have method `str() string` to be printable')
 				}
-				p.cgen.set_placeholder(amp_ph, '${typ}_str(')
+				p.cgen.set_placeholder(ph, '${typ}_str(')
 			}
 			p.gen(')')
 			continue
@@ -737,7 +740,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		if !is_interface {
 			// Dereference
 			if got.contains('*') && !expected.contains('*') {
-				p.cgen.set_placeholder(amp_ph, '*')
+				p.cgen.set_placeholder(ph, '*')
 			}
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
@@ -746,14 +749,14 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 				if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') {
-					p.cgen.set_placeholder(amp_ph, '& /*11 EXP:"$expected" GOT:"$got" */')
+					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" GOT:"$got" */')
 				}
 			}
 		}
 		// interface?
 		if is_interface {
 			if !got.contains('*') {
-				p.cgen.set_placeholder(amp_ph, '&')
+				p.cgen.set_placeholder(ph, '&')
 			}
 			// Pass all interface methods
 			interface_type := p.table.find_type(arg.typ)

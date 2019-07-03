@@ -2149,7 +2149,6 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 		if typ.ends_with('*') {
 			return '%p' 
 		} 
-		p.error('unhandled sprintf format "$typ" ')
 	}
 	return ''
 }
@@ -2214,17 +2213,22 @@ fn (p mut Parser) string_expr() {
 			p.next()
 		}
 		else {
-			format += p.typ_to_fmt(typ)
+			f := p.typ_to_fmt(typ)
+			if f == '' { 
+				p.error('unhandled sprintf format "$typ" ')
+			} 
+			format += f 
 		}
 	}
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {
 		return
 	}
-	// Don't allocate a new string, just print	it. TODO HACK PRINT OPT
+	// println: don't allocate a new string, just print	it. 
 	cur_line := p.cgen.cur_line.trim_space()
-	if cur_line.contains('println(') && p.tok != PLUS && !p.pref.is_prod && !cur_line.contains('string_add') {
-		p.cgen.cur_line = cur_line.replace('println(', 'printf(')
+	if cur_line.contains('println (') && p.tok != PLUS && 
+		!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
+		p.cgen.cur_line = cur_line.replace('println (', 'printf(')
 		p.gen('$format\\n$args')
 		return
 	}
