@@ -52,7 +52,7 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 	// if !isnil(mem.ws_func) {
 	# if (mem->ws_func)
 	{
-		C.printf('\n\nhttp_mac.m: GOT WS FUNC. size=%d\n', realsize)
+		//C.printf('\n\nhttp_mac.m: GOT WS FUNC. size=%d\n', realsize)
 		// Skip negative and 0 junk chars in the WS string
 		mut start := 0
 		for i := 0; i < realsize; i++ {
