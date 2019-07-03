@@ -695,35 +695,32 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			T := p.table.find_type(typ)
 			fmt := p.typ_to_fmt(typ) 
 			if fmt != '' { 
-				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '", ')    
+				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", ')    
 				continue 
 			}  
-			if T.parent == 'int' {
-				p.cgen.set_placeholder(ph, 'int_str(')
-			}
-			else if typ.ends_with('*') {
+			if typ.ends_with('*') {
 				p.cgen.set_placeholder(ph, 'ptr_str(')
+				p.gen(')')
+				continue 
 			}
-			else {
-				// Make sure this type has a `str()` method
-				if !T.has_method('str') {
-					if T.fields.len > 0 {
-						mut index := p.cgen.cur_line.len - 1
-						for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
-						name := p.cgen.cur_line.right(index + 1)
-						if name == '}' {
-							p.error('`$typ` needs to have method `str() string` to be printable')
-						}
-						p.cgen.cur_line = p.cgen.cur_line.left(index)
-						p.create_type_string(T, name)
-						p.cgen.cur_line.replace(typ, '')
-						p.next()
-						return p.fn_call_args(f)
+			// Make sure this type has a `str()` method
+			if !T.has_method('str') {
+				if T.fields.len > 0 {
+					mut index := p.cgen.cur_line.len - 1
+					for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
+					name := p.cgen.cur_line.right(index + 1)
+					if name == '}' {
+						p.error('`$typ` needs to have method `str() string` to be printable')
 					}
-					p.error('`$typ` needs to have method `str() string` to be printable')
+					p.cgen.cur_line = p.cgen.cur_line.left(index)
+					p.create_type_string(T, name)
+					p.cgen.cur_line.replace(typ, '')
+					p.next()
+					return p.fn_call_args(f)
 				}
-				p.cgen.set_placeholder(ph, '${typ}_str(')
+				p.error('`$typ` needs to have method `str() string` to be printable')
 			}
+			p.cgen.set_placeholder(ph, '${typ}_str(')
 			p.gen(')')
 			continue
 		}

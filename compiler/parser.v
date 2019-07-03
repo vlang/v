@@ -2127,20 +2127,15 @@ fn format_str(str string) string {
 
 fn (p mut Parser) typ_to_fmt(typ string) string {
 	t := p.table.find_type(typ)
-	if t.parent == 'int' {
+	if t.is_enum { 
 		return '%d'
 	}
 	switch typ {
 	case 'string': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'byte': return '%d'
-	case 'int': return '%d'
-	case 'char': return '%d'
-	case 'byte': return '%d'
-	case 'bool': return '%d'
-	case 'u32': return '%d'
+	case 'byte', 'int', 'char', 'byte', 'bool', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
 	case 'f64', 'f32': return '%f'
-	case 'i64': return '%lld'
+	case 'i64', 'u64': return '%lld'
 	case 'byte*', 'byteptr': return '%s'
 		// case 'array_string': return '%s'
 		// case 'array_int': return '%s'
@@ -2213,7 +2208,7 @@ fn (p mut Parser) string_expr() {
 			p.next()
 		}
 		else {
-			f := p.typ_to_fmt(typ)
+			f := p.typ_to_fmt(typ) 
 			if f == '' { 
 				p.error('unhandled sprintf format "$typ" ')
 			} 
