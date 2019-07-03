@@ -959,6 +959,7 @@ fn run_repl() []string {
 	println('Use Ctrl-D or `exit` to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
+	temp_file := TmpPath + '/vrepl_temp.v'
 	mut lines := []string
 	for {
 		print('>>> ')
@@ -974,17 +975,58 @@ fn run_repl() []string {
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
 		if line.starts_with('print') {
-			void_line := line.substr(line.index('(') + 1, line.len - 1)
-			lines << void_line
 			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
-			mut v := new_v( ['v', '-repl', file])
-			v.compile()
-			s := os.exec(TmpPath + '/vrepl')
-			println(s)
+			s := os.exec('v run '+TmpPath+'/vrepl.v')
+			mut vals := s.split('\n')
+			if s.contains('panic: ') {
+				if !s.contains('declared and not used') 	{
+					for i:=2; i<vals.len; i++ {
+						println(vals[i]+'\n')
+					} 
+				}
+				else {
+					print(s)
+				}
+			}
+			else {
+				for i:=0; i<vals.len-1; i++ {
+					println(vals[i])
+				}
+			}
 		}
 		else {
-			lines << line
+			mut temp_line := line
+			mut temp_flag := true
+			if !(line.contains(' ') || line.contains(':') || line.contains('=') || line.contains(',') ){
+				lines << line
+				temp_line = 'println('+line+')'
+				temp_flag = false
+			}
+			temp_source_code := lines.join('\n') + '\n' + temp_line
+			os.write_file(temp_file, temp_source_code)
+			s := os.exec('v run '+TmpPath+'/vrepl_temp.v')
+			if s.contains('panic: ') {
+				if !s.contains('declared and not used') 	{
+					lines << line
+					mut vals := s.split('\n')
+					for i:=2; i<vals.len; i++ {
+						println(vals[i])
+					} 
+				}
+				else {
+					lines << line
+				}
+			}
+			else if temp_flag {
+				lines << line
+			}
+			else {
+				mut vals := s.split('\n')
+				for i:=0; i<vals.len-1; i++ {
+					println(vals[i])
+				} 
+			}
 		}
 	}
 	return lines
