@@ -6,12 +6,12 @@ module math
 
 // Fraction Struct
 struct Fraction {
-	n int
-	d int
+	n i64
+	d i64
 }
 
 // A factory function for creating a Fraction, adds a boundary condition
-pub fn fraction(n int,d int) Fraction{
+pub fn fraction(n i64,d i64) Fraction{
 	if d != 0 {
 		return Fraction{n,d}
 	} 
@@ -60,8 +60,8 @@ pub fn (f1 Fraction) add(f2 Fraction) Fraction {
 	return f1 + f2
 }
 
-// Fraction substract method
-pub fn (f1 Fraction) substract(f2 Fraction) Fraction {
+// Fraction subtract method
+pub fn (f1 Fraction) subtract(f2 Fraction) Fraction {
 	return f1 - f2
 }
 
@@ -81,7 +81,7 @@ pub fn (f1 Fraction) reciprocal() Fraction {
 }
 
 // Fraction method which gives greatest common divisor of numerator and denominator
-pub fn (f1 Fraction) gcf() int {
+pub fn (f1 Fraction) gcd() i64 {
 	return gcd(f1.n,f1.d)
 }
 
@@ -92,7 +92,7 @@ pub fn (f1 Fraction) reduce() Fraction {
 }
 
 // Converts Fraction to decimal
-pub fn (f1 Fraction) to_decimal() f64 {
+pub fn (f1 Fraction) f64() f64 {
 	return f64(f1.n)/f64(f1.d)
 }
 
