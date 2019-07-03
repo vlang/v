@@ -2,7 +2,7 @@ all: clean v
 	$(info V has been successfully built)
 
 v: v.c
-	cc -march=native -std=gnu11 -w -o v v.c
+	cc -std=gnu11 -w -o v v.c
 	./v -o v compiler
 	rm v.c
 

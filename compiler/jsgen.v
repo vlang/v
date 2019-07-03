@@ -105,7 +105,7 @@ string res = tos2("");
 	}
 	// cJSON_delete
 	//p.cgen.fns << '$dec return opt_ok(res); \n}'
-	p.cgen.fns << '$dec return opt_ok(res, sizeof(res)); \n}'
+	p.cgen.fns << '$dec return opt_ok(res, sizeof(*res)); \n}'
 	p.cgen.fns << '/*enc start*/ $enc return o;}'
 }
 
