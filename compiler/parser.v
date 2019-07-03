@@ -239,7 +239,10 @@ fn (p mut Parser) parse() {
 				p.check_unused_variables()
 			}
 			if false && !p.first_run() && p.fileis('main.v') {
-				out := os.create('/var/tmp/fmt.v')
+				out := os.create('/var/tmp/fmt.v') or {
+					panic('failed to create fmt.v') 
+					return 
+} 
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
 			}
@@ -670,14 +673,14 @@ fn (p mut Parser) error(s string) {
 //q := "SDF" 
 	// Dump all vars and types for debugging
 	if false {
-		file_types := os.create('$TmpPath/types')
-		file_vars := os.create('$TmpPath/vars')
+		//file_types := os.create('$TmpPath/types')
+		//file_vars := os.create('$TmpPath/vars')
 		// ////debug("ALL T", q.J(p.table.types))
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
 		// //debug("ALL V", q.J(p.table.vars))
 		// os.write_to_file('/var/tmp/lang.vars', q.J(p.table.vars))
-		file_types.close()
-		file_vars.close()
+		//file_types.close()
+		//file_vars.close()
 	}
 	if !p.pref.is_repl {
 		println('pass=$p.run fn=`$p.cur_fn.name`')
@@ -1082,7 +1085,8 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		println('allowing option asss')
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
-		p.cgen.cur_line = left + 'opt_ok($expr)'
+		//p.cgen.cur_line = left + 'opt_ok($expr)'
+		p.cgen.cur_line = left + 'opt_ok($expr, sizeof($expr_type))'
 	}
 	else if !p.builtin_pkg && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.scanner.line_nr--
@@ -3030,8 +3034,9 @@ fn (p mut Parser) return_st() {
 			expr_type := p.bool_expression()
 			// Automatically wrap an object inside an option if the function returns an option
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
+				//p.cgen.set_placeholder(ph, 'opt_ok(& ')
 				p.cgen.set_placeholder(ph, 'opt_ok(& ')
-				p.gen(')')
+				p.gen(', sizeof($expr_type))')
 			}
 			p.check_types(expr_type, p.cur_fn.typ)
 		}

@@ -618,7 +618,7 @@ mut args := ''
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm('$TmpPath/$v.out_name_c') 
+		//os.rm('$TmpPath/$v.out_name_c') 
 	} 
 }
 
@@ -882,7 +882,8 @@ fn new_v(args[]string) *V {
 	if os.file_exists(vroot_path) {
 		mut vroot := os.read_file(vroot_path) or {
 			break
-		}
+		} 
+		//mut vroot := os.read_file(vroot_path) 
 		vroot=vroot.trim_space() 
 		if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
 			lang_dir = vroot

@@ -105,7 +105,34 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 }
 
 // read_file reads the file in `path` and returns the contents.
-pub fn read_file(path string) ?string {
+//pub fn read_file(path string) ?string {
+pub fn read_file(path string) ?string { 
+	mut res := ''
+	mut mode := 'r' 
+	777  // TODO 
+	// Need 'rb' on windows to avoid the \r\n mess. 
+	$if windows {
+		mode = 'rb' 
+	} 
+	cpath := path.cstr()
+	fp := C.fopen(cpath, mode.cstr()) 
+	if isnil(fp) {
+		return error('failed to open file "$path"')
+		//panic('failed to open file "$path"')
+	}
+	C.fseek(fp, 0, SEEK_END)
+	fsize := C.ftell(fp)
+	// C.fseek(fp, 0, SEEK_SET)  // same as C.rewind(fp) below
+	C.rewind(fp)
+	mut str := malloc(fsize + 1)
+	C.fread(str, fsize, 1, fp)
+	C.fclose(fp)
+	str[fsize] = 0
+	res = tos(str, fsize)
+	return res
+}
+
+pub fn read_file_opt(path string) ?string { 
 	mut res := ''
 	mut mode := 'r' 
 	777  // TODO 
@@ -178,36 +205,38 @@ fn read_ulines(path string) []ustring {
 	return ulines
 }
 
-// TODO return `File?`
-pub fn open(path string) File {
-	return open_file(path)
-}
-
-fn open_file(file string) File {
-	return create_file2(file, 'r')
-}
-
-// `create` creates a file at a specified location and returns a writable `File` object.
-pub fn create(path string) File {
-	return create_file2(path, 'w')
-}
-
-fn create_file_a(file string) File {
-	return create_file2(file, 'a')
-}
-
-fn open_file_a(file string) File {
-	return create_file2(file, 'a')
-}
-
-fn create_file2(file, mode string) File {
-	res := File {
-		cfile: C.fopen(file.cstr(), mode.cstr())
+pub fn open(path string) ?File {
+	cpath := path.cstr() 
+	file := File {
+		cfile: C.fopen(cpath, 'r') 
 	}
-	if isnil(res.cfile) {
-		println('coudlnt create file "$file"')
+	if isnil(file.cfile) {
+		return error('failed to open file "$path"')
 	}
-	return res
+	return file 
+}
+
+// create creates a file at a specified location and returns a writable `File` object.
+pub fn create(path string) ?File {
+	cpath := path.cstr() 
+	file := File {
+		cfile: C.fopen(cpath, 'w') 
+	}
+	if isnil(file.cfile) {
+		return error('failed to create file "$path"')
+	}
+	return file 
+}
+
+pub fn open_append(path string) ?File {
+	cpath := path.cstr() 
+	file := File {
+		cfile: C.fopen(cpath, 'a') 
+	}
+	if isnil(file.cfile) {
+		return error('failed to create file "$path"')
+	}
+	return file 
 }
 
 pub fn (f File) write(s string) {
@@ -241,15 +270,6 @@ pub fn (f File) writeln(s string) {
 
 pub fn (f File) close() {
 	C.fclose(f.cfile)
-}
-
-fn close_file(fp *FILE) {
-	$if windows {
-	}
-	if isnil(fp) {
-		return
-	}
-	C.fclose(fp)
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
@@ -479,7 +499,9 @@ pub fn home_dir() string {
 
 // write_file writes text data to a file in `path`. 
 pub fn write_file(path, text string) {
-	f := os.create(path)
+	f := os.create(path) or {
+		return 
+	} 
 	f.write(text)
 	f.close()
 }

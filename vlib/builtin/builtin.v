@@ -94,23 +94,11 @@ fn _strlen(s byteptr) int {
 	return C.strlen(s)
 }
 
-// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
-fn opt_ok(data voidptr) Option {
-	return Option {
-		data: data
-		ok: true
-	}
-}
 
 fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
 
-pub fn error(s string) Option {
-	return Option {
-		error: s
-	}
-}
 
 
