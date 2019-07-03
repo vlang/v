@@ -48,21 +48,9 @@ mut:
 	assigned_type  string
 	left_type  string
 	tmp_cnt        int
-	// TODO all these options are copy-pasted from the V struct. Create a Settings struct instead?
-	// is_test        bool
 	is_script      bool
 	pref           *Preferences // Setting and Preferences shared from V struct
-	// is_live        bool
-	// is_so          bool
-	// is_prof        bool
-	// translated     bool
-	// is_prod        bool
-	// is_verbose     bool
-	// obfuscate      bool
-	// is_play        bool
-	// is_repl        bool
 	builtin_pkg    bool
-	// build_mode     BuildMode
 	vh_lines       []string
 	inside_if_expr bool
 	is_struct_init bool
@@ -92,19 +80,9 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		table: c.table
 		cur_fn: EmptyFn
 		cgen: c.cgen
-		// is_test: c.pref.is_test
 		is_script: (c.pref.is_script && path == c.dir)
 		pref: c.pref
-		// is_so: c.is_so
 		os: c.os
-		// is_prof: c.is_prof
-		// is_prod: c.is_prod
-		// is_play: c.is_play
-		// translated: c.translated
-		// obfuscate: c.obfuscate
-		// is_verbose: c.is_verbose
-		// build_mode: c.build_mode
-		// is_repl: c.is_repl
 		run: run
 		vroot: c.vroot
 	}
@@ -148,7 +126,7 @@ fn (p mut Parser) parse() {
 	p.fgenln('\n')
 	p.builtin_pkg = p.pkg == 'builtin'
 	p.can_chash = p.pkg == 'gg' || p.pkg == 'glm' || p.pkg == 'gl' || 
-		p.pkg == 'http' ||  p.pkg == 'glfw' // TODO tmp remove
+		p.pkg == 'http' ||  p.pkg == 'glfw' || p.pkg=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	p.table.register_package(p.pkg)
 	if p.run == RUN_IMPORTS {
@@ -1151,8 +1129,7 @@ fn (p mut Parser) var_decl() {
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != CONTINUE && p.prev_tok2 != BREAK {
-			println(p.prev_tok2)
-			p.error('`or` statement must return/continue/break')
+			p.error('`or` block must return/continue/break/panic')
 		}
 	}
 	p.register_var(Var {
@@ -1820,13 +1797,21 @@ fn (p mut Parser) expression() string {
 			if !p.expr_var.is_mut && !p.pref.translated {
 				p.error('`$p.expr_var.name` is immutable (can\'t <<)')
 			}
-			p.check_types(p.expression(), tmp_typ)
-			// Pass tmp var info to the _PUSH macro
-			p.gen('), $tmp, $tmp_typ)')
-			// Prepend tmp initialisation and push call
-			// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
-			push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'} // p.cgen.set_placeholder(ph, '_PUSH(&')
-			p.cgen.set_placeholder(ph, push_call)
+			expr_type := p.expression() 
+			// Two arrays of the same type? 
+			push_array :=  typ == expr_type
+			if push_array { 
+				p.cgen.set_placeholder(ph, '_PUSH_MANY(&' ) 
+				p.gen('), $tmp, $typ)')
+			}  else { 
+				p.check_types(expr_type, tmp_typ)
+				// Pass tmp var info to the _PUSH macro
+				// Prepend tmp initialisation and push call
+				// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
+				push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'} 
+				p.cgen.set_placeholder(ph, push_call)
+				p.gen('), $tmp, $tmp_typ)')
+			} 
 			return 'void'
 		}
 		else {

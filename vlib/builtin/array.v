@@ -69,13 +69,6 @@ fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	return arr
 }
 
-pub fn (a mut array) append_array(b array) {
-	for i := 0; i < b.len; i++ {
-		val := b[i]
-		a._push(val)
-	}
-}
-
 pub fn (a mut array) sort_with_compare(compare voidptr) {
 	C.qsort(a.data, a.len, a.element_size, compare)
 }
@@ -178,6 +171,7 @@ fn (arr mut array) _push(val voidptr) {
 	arr.len++
 }
 
+// `val` is array.data 
 pub fn (arr mut array) _push_many(val voidptr, size int) {
 	if arr.len >= arr.cap - size {
 		cap := (arr.len + size) * 2
