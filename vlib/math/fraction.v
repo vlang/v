@@ -92,7 +92,7 @@ pub fn (f1 Fraction) reduce() Fraction {
 }
 
 // Converts Fraction to decimal
-pub fn (f1 Fraction) to_float() f64 {
+pub fn (f1 Fraction) f64() f64 {
 	return f64(f1.n)/f64(f1.d)
 }
 
