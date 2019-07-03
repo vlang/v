@@ -393,6 +393,25 @@ fn (p mut Parser) type_decl() {
 	p.table.register_type_with_parent(name, parent)
 }
 
+fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
+	mut method := &Fn {
+		name: field_name
+		is_interface: true
+		is_method: true
+		receiver_typ: receiver
+	}
+	p.log('is interface. field=$field_name run=$p.run')
+	p.fn_args(mut method)
+	if p.scanner.has_gone_over_line_end() {
+		method.typ = 'void'
+	} else {
+		method.typ = p.get_type()// method return type
+		p.fspace()
+		p.fgenln('')
+	}
+	return method
+}
+
 // also unions and interfaces
 fn (p mut Parser) struct_decl() {
 	// Attribute before type?
@@ -525,18 +544,7 @@ fn (p mut Parser) struct_decl() {
 		// We are in an interface?
 		// `run() string` => run is a method, not a struct field
 		if is_interface {
-			mut interface_method := &Fn {
-				name: field_name
-				is_interface: true
-				is_method: true
-				receiver_typ: name
-			}
-			println('is interface. field=$field_name run=$p.run')
-			p.fn_args(mut interface_method)
-			p.fspace()
-			interface_method.typ = p.get_type()// method return type
-			typ.add_method(interface_method)
-			p.fgenln('')
+			typ.add_method(p.interface_method(field_name, name))
 			continue
 		}
 		// `pub` access mod

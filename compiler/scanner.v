@@ -120,6 +120,20 @@ fn (s mut Scanner) ident_number() string {
 	return number
 }
 
+fn (s Scanner) has_gone_over_line_end() bool {
+	mut i := s.pos-1
+	for i >= 0 && !is_white(s.text[i]) {
+		i--
+	}
+	for i >= 0 && is_white(s.text[i]) {
+		if is_nl(s.text[i]) {
+			return true
+		}
+		i--
+	}
+	return false
+}
+
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && is_white(s.text[s.pos]) {
 		if is_nl(s.text[s.pos]) {
@@ -148,7 +162,8 @@ fn (s mut Scanner) cao_change(operator string) {
 	s.text = s.text.substr(0, s.pos - operator.len) + ' = ' + s.get_var_name(s.pos - operator.len) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
 }
 
-fn (s mut Scanner) scan() ScanRes {
+fn (s mut Scanner) scan() 
+ScanRes {
 	// if s.file_path == 'd.v' {
 	// println('\nscan()')
 	// }
