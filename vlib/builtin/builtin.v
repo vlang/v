@@ -57,6 +57,24 @@ pub fn print(s string) {
 	C.printf('%.*s', s.len, s.str)
 }
 
+pub fn read() string {
+	mut ch := malloc(1)
+	*ch = C.getchar()
+	return tos(ch,1)
+}
+	
+pub fn readln() string {
+	mut str := ''
+	mut ch := malloc(1)
+	*ch = C.getchar()
+	curr := tos(ch,1)
+	for curr.ne('\n') {
+		str = str.add(curr)
+		*ch = C.getchar()
+	}
+	return str
+}
+
 __global total_m i64 = 0
 pub fn malloc(n int) byteptr {
 	if n < 0 {
