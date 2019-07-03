@@ -839,7 +839,7 @@ fn (p mut Parser) get_type() string {
 		p.error('unknown type `$typ`')
 	}
 	if mul {
-		typ += repeat_char(`*`, nr_muls)
+		typ += strings.repeat(`*`, nr_muls)
 	}
 	// Register an []array type
 	if is_arr2 {
@@ -3175,7 +3175,7 @@ fn (p &Parser) building_v() bool {
 // fmt helpers
 fn (scanner mut Scanner) fgen(s string) {
 	if scanner.fmt_line_empty {
-		s = repeat_char(`\t`, scanner.fmt_indent) + s
+		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.write(s)
 	scanner.fmt_line_empty = false
@@ -3183,7 +3183,7 @@ fn (scanner mut Scanner) fgen(s string) {
 
 fn (scanner mut Scanner) fgenln(s string) {
 	if scanner.fmt_line_empty {
-		s = repeat_char(`\t`, scanner.fmt_indent) + s
+		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.writeln(s)
 	scanner.fmt_line_empty = true

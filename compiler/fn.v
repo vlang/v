@@ -4,6 +4,8 @@
 
 module main
 
+import strings 
+
 const (
 	MaxLocalVars = 50
 )
@@ -809,7 +811,7 @@ fn contains_capital(s string) bool {
 
 // "fn (int, string) int"
 fn (f Fn) typ_str() string {
-	mut sb := new_string_builder(50)
+	mut sb := strings.new_builder(50)
 	sb.write('fn (')
 	for i, arg in f.args {
 		sb.write(arg.typ)

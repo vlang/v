@@ -91,6 +91,7 @@ mut:
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize       bool // use Clang's new "-fsanitize" option
 	is_debug       bool // keep compiled C files
+	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers) 
 }
 
 
@@ -290,7 +291,7 @@ void init_consts();')
 	}
 	v.log('Done parsing.')
 	// Write everything
-	mut d := new_string_builder(10000)// Just to avoid some unnecessary allocations
+	mut d := strings.new_builder(10000)// Just to avoid some unnecessary allocations
 	d.writeln(cgen.includes.join_lines())
 	d.writeln(cgen.typedefs.join_lines())
 	d.writeln(cgen.types.join_lines())
@@ -872,7 +873,6 @@ fn new_v(args[]string) *V {
 	'utf8.v',
 	'map.v',
 	'option.v',
-	'string_builder.v',
 	]
 	// Location of all vlib files
 	mut lang_dir := ''

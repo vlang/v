@@ -18,7 +18,7 @@ mut:
 	started        bool
 	is_fmt         bool
 	// vfmt fields
-	fmt_out        StringBuilder
+	fmt_out        strings.Builder
 	fmt_indent     int
 	fmt_line_empty bool
 }
@@ -40,7 +40,7 @@ fn new_scanner(file_path string) *Scanner {
 	scanner := &Scanner {
 		file_path: file_path
 		text: text
-		fmt_out: new_string_builder(1000)
+		fmt_out: strings.new_builder(1000)
 	}
 	// println('new scanner "$file_path" txt.len=$scanner.text.len')
 	return scanner

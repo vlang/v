@@ -795,18 +795,6 @@ pub fn (c byte) is_white() bool {
 	return i == 10 || i == 32 || i == 9 || i == 13 || c == `\r`
 }
 
-// TODO move this to strings.repeat()
-pub fn repeat_char(c byte, n int) string {
-	if n <= 0 {
-		return ''
-	}
-	mut arr := malloc(n + 1)
-	for i := 0; i < n; i++ {
-		arr[i] = c
-	}
-	arr[n] = `\0`
-	return tos(arr, n)
-}
 
 pub fn (s string) hash() int {
 	mut hash := int(0)
