@@ -30,4 +30,6 @@ fn test_write_and_read_string_to_file() {
     return
   }
   assert hello == read_hello
+
+  os.rm(filename)
 }
