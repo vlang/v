@@ -4,6 +4,17 @@
 
 module term
 
+// Calling this functions enables color terminal output on windows
+// Maybe implement a way to auto run an init function when a module
+// is imported on a certain os. for example to run this?
+pub fn enable_term_color_win() {
+    h_output := C.GetStdHandle(os.STD_OUTPUT_HANDLE)
+    if h_output == os.INVALID_HANDLE_VALUE
+        || !C.SetConsoleMode(h_output, os.ENABLE_PROCESSED_OUTPUT|os.ENABLE_VIRTUAL_TERMINAL_PROCESSING) {
+        println('Sorry, there was an error enabling terminal color.')
+    }
+}
+
 pub fn format(msg, open, close string) string {
     return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
 }
