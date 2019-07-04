@@ -104,6 +104,20 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 	return s.split(' ')
 }
 
+const (
+	_M_OPEN    = 'r' 
+	_M_WRITE   = 'w'
+	_M_APPEND  = 'a'
+
+	_M_B_OPEN   = 'rb' // binary open
+	_M_B_CREAT  = 'wb' // binary create
+	_M_B_APPEND = 'ab' // binary append
+
+	_M_WIX_R    = 'r+' // read and write
+	_M_MIX_W    = 'w+' // read and write and create
+	_M_MIX_A    = 'a+' // read and write and create and append to end of file
+)
+
 // read_file reads the file in `path` and returns the contents.
 //pub fn read_file(path string) ?string {
 pub fn read_file(path string) ?string { 
@@ -175,43 +189,36 @@ fn read_ulines(path string) []ustring {
 	return ulines
 }
 
+
 pub fn open(path string) ?File {
-	cpath := path.cstr() 
-	file := File {
-		cfile: C.fopen(cpath, 'rb') 
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
+	file := open_file(path, _M_B_OPEN) or {
+		return error('failed to open "$path"')
 	}
 	return file 
+}
+
+// open_file open file with selected mode.
+pub fn open_file(path string, mode string) ?File {
+	_fd_struct := File { 
+		cfile: C.fopen(path.cstr(), mode.cstr()) 
+	}
+	if _fd_struct.cfile == 0 {
+		return error('failed to open "$path"')
+	}
+	return _fd_struct
 }
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	cpath := path.cstr() 
-	file := File {
-		cfile: C.fopen(cpath, 'wb') 
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	return file 
-}
-
-pub fn open_append(path string) ?File {
-	cpath := path.cstr() 
-	file := File {
-		cfile: C.fopen(cpath, 'ab') 
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
+	file := open_file(path, _M_B_CREAT) or {
+		return error('failed to create "$path"')
 	}
 	return file 
 }
 
 pub fn (f File) write(s string) {
-	ss := s.clone()
-	C.fputs(ss.cstr(), f.cfile)
+	scl := s.clone() // source cloned
+	C.fputs(scl.cstr(), f.cfile)
 	// ss.free()
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
@@ -220,7 +227,7 @@ pub fn (f File) write(s string) {
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
 pub fn (f File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
+	C.fwrite(data, 1, size, f.cfile) // second argument to fwrite must be replaced with sizeof(data)
 }
 
 pub fn (f File) write_bytes_at(data voidptr, size, pos int) {
