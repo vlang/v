@@ -4,6 +4,8 @@
 
 module term
 
+import os
+
 // Calling this functions enables color terminal output on windows
 // Maybe implement a way to auto run an init function when a module
 // is imported on a certain os. for example to run this?
