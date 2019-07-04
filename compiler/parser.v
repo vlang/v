@@ -2112,12 +2112,12 @@ fn (p mut Parser) char_expr() {
 
 fn format_str(str string) string {
 	str = str.replace('"', '\\"')
-	$if windows {
-		str = str.replace('\r\n', '\\n')
-	} 
-	$else { 
-		str = str.replace('\n', '\\n')
-	} 
+	
+	// convert windows style line ending to newline
+	str = str.replace('\r\n', '\n')
+	// replace all newlines
+	str = str.replace('\n', '\\n')
+
 	return str
 }
 
