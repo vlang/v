@@ -613,8 +613,15 @@ pub fn ls(path string) []string {
 	$if windows {
 		mut find_file_data := win32finddata{}
 		mut dir_files := []string
+		// We can also check if the handle is valid. but using dir_exists instead
+		// h_find_dir := C.FindFirstFile(path.cstr(), &find_file_data)
+		// if (INVALID_HANDLE_VALUE == h_find_dir) {
+		//     return dir_files
+		// }
+		// C.FindClose(h_find_dir)
 		if !dir_exists(path) {
 			println('ls() couldnt open dir "$path" (does not exist).')
+			return dir_files
 		}
 		// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 		// we need to add files to path eg. c:\windows\*.dll or :\windows\*
@@ -622,11 +629,6 @@ pub fn ls(path string) []string {
 		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 		// we should use FindFirstFileW and FindNextFileW
 		h_find_files := C.FindFirstFile(path_files.cstr(), &find_file_data)
-		// If we want to check the handle we can use this, but we already did dir_exists
-		// if (INVALID_HANDLE_VALUE == h_find_files) {
-		// 	println('ls() couldnt open dir "$path"')
-		// 	return dir_files
-		// }
 		first_filename := tos(&find_file_data.cFileName, strlen(find_file_data.cFileName))
 		if first_filename != '.' && first_filename != '..' {
 			dir_files << first_filename
