@@ -49,7 +49,6 @@ mut:
 pub fn ls(path string) []string {
     mut find_file_data := win32finddata{}
     mut dir_files := []string
-
     // We can also check if the handle is valid. but using dir_exists instead
     // h_find_dir := C.FindFirstFile(path.cstr(), &find_file_data)
     // if (INVALID_HANDLE_VALUE == h_find_dir) {
