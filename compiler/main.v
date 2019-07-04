@@ -223,6 +223,8 @@ typedef array array_int;
 typedef array array_byte; 
 typedef array array_uint; 
 typedef array array_float; 
+typedef array array_f32; 
+typedef array array_f64; 
 typedef map map_int; 
 typedef map map_string; 
 #ifndef bool
