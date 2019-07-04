@@ -8,11 +8,11 @@
 
 # V 0.1.11
 
-- Cross compilation for Windows! (https://github.com/vlang/v/issues/892)
+- Cross compilation for Windows!
 - Lots of Windows fixes
 - socket.v
 - maps fixed
-V 0.1.12 will have cross compilation for Linux.
+
 
 # 0.1.9 - 0.1.10
 - Windows support via MinGW-w64. Pre-built Windows binary.
