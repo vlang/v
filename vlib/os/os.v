@@ -346,7 +346,6 @@ pub fn file_exists(path string) bool {
 pub fn dir_exists(path string) bool {
 	$if windows {
 		attr := int(C.GetFileAttributes(path.cstr())) 
-		println('ATTR =$attr') 
 		return attr == FILE_ATTRIBUTE_DIRECTORY 
 	} 
 	$else { 
