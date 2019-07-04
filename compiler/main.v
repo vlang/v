@@ -90,10 +90,13 @@ mut:
 	is_run         bool
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize       bool // use Clang's new "-fsanitize" option
+	is_debug       bool // keep compiled C files
+	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers) 
 }
 
 
 fn main() {
+	// There's no `flags` module yet, so args have to be parsed manually
 	args := os.args
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
@@ -288,7 +291,7 @@ void init_consts();')
 	}
 	v.log('Done parsing.')
 	// Write everything
-	mut d := new_string_builder(10000)// Just to avoid some unnecessary allocations
+	mut d := strings.new_builder(10000)// Just to avoid some unnecessary allocations
 	d.writeln(cgen.includes.join_lines())
 	d.writeln(cgen.typedefs.join_lines())
 	d.writeln(cgen.types.join_lines())
@@ -615,8 +618,8 @@ mut args := ''
 		}
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
-	if v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' { 
-		os.rm('$TmpPath/$v.out_name_c') 
+	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
+		//os.rm('$TmpPath/$v.out_name_c') 
 	} 
 }
 
@@ -870,7 +873,6 @@ fn new_v(args[]string) *V {
 	'utf8.v',
 	'map.v',
 	'option.v',
-	'string_builder.v',
 	]
 	// Location of all vlib files
 	mut lang_dir := ''
@@ -880,7 +882,8 @@ fn new_v(args[]string) *V {
 	if os.file_exists(vroot_path) {
 		mut vroot := os.read_file(vroot_path) or {
 			break
-		}
+		} 
+		//mut vroot := os.read_file(vroot_path) 
 		vroot=vroot.trim_space() 
 		if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
 			lang_dir = vroot
@@ -925,6 +928,7 @@ fn new_v(args[]string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
+		is_debug: args.contains('-debug')
 		obfuscate: obfuscate
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')

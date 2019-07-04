@@ -1,4 +1,5 @@
 *.dSYM
 *_test
-v
-vprod
+/v
+/vprod
+/v.c

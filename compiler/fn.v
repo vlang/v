@@ -4,6 +4,8 @@
 
 module main
 
+import strings 
+
 const (
 	MaxLocalVars = 50
 )
@@ -128,7 +130,7 @@ fn (p mut Parser) fn_decl() {
 		is_mut := p.tok == MUT
 		is_amp := p.tok == AMP
 		if is_mut || is_amp {
-			p.next()
+			p.check_space(p.tok) 
 		}
 		receiver_typ = p.get_type()
 		T := p.table.find_type(receiver_typ)
@@ -151,6 +153,7 @@ fn (p mut Parser) fn_decl() {
 			receiver_typ += '*'
 		}
 		p.check(RPAR)
+		p.fspace() 
 		receiver := Var {
 			name: receiver_name
 			is_arg: true
@@ -667,7 +670,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		if i == f.args.len - 1 && arg.name == '..' {
 			break
 		}
-		amp_ph := p.cgen.add_placeholder()
+		ph := p.cgen.add_placeholder()
 		// ) here means not enough args were supplied
 		if p.tok == RPAR {
 			str_args := f.str_args(p.table)// TODO this is C args
@@ -685,39 +688,39 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			p.check(MUT)
 		}
 		typ := p.bool_expression()
-		// TODO temporary hack to allow println(777)
+		// Optimize `println`: replace it with `printf` to avoid extra allocations and
+		// function calls. `println(777)` => `printf("%d\n", 777)` 
+		// (If we don't check for void, then V will compile `println(func())`) 
 		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
-			// If we dont check for void, then V will compile "println(procedure())"
 			T := p.table.find_type(typ)
-			if typ == 'u8' {
-				p.cgen.set_placeholder(amp_ph, 'u8_str(')
+			fmt := p.typ_to_fmt(typ) 
+			if fmt != '' { 
+				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", ')    
+				continue 
+			}  
+			if typ.ends_with('*') {
+				p.cgen.set_placeholder(ph, 'ptr_str(')
+				p.gen(')')
+				continue 
 			}
-			else if T.parent == 'int' {
-				p.cgen.set_placeholder(amp_ph, 'int_str(')
-			}
-			else if typ.ends_with('*') {
-				p.cgen.set_placeholder(amp_ph, 'ptr_str(')
-			}
-			else {
-				// Make sure this type has a `str()` method
-				if !T.has_method('str') {
-					if T.fields.len > 0 {
-						mut index := p.cgen.cur_line.len - 1
-						for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
-						name := p.cgen.cur_line.right(index + 1)
-						if name == '}' {
-							p.error('`$typ` needs to have method `str() string` to be printable')
-						}
-						p.cgen.cur_line = p.cgen.cur_line.left(index)
-						p.create_type_string(T, name)
-						p.cgen.cur_line.replace(typ, '')
-						p.next()
-						return p.fn_call_args(f)
+			// Make sure this type has a `str()` method
+			if !T.has_method('str') {
+				if T.fields.len > 0 {
+					mut index := p.cgen.cur_line.len - 1
+					for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
+					name := p.cgen.cur_line.right(index + 1)
+					if name == '}' {
+						p.error('`$typ` needs to have method `str() string` to be printable')
 					}
-					p.error('`$typ` needs to have method `str() string` to be printable')
+					p.cgen.cur_line = p.cgen.cur_line.left(index)
+					p.create_type_string(T, name)
+					p.cgen.cur_line.replace(typ, '')
+					p.next()
+					return p.fn_call_args(f)
 				}
-				p.cgen.set_placeholder(amp_ph, '${typ}_str(')
+				p.error('`$typ` needs to have method `str() string` to be printable')
 			}
+			p.cgen.set_placeholder(ph, '${typ}_str(')
 			p.gen(')')
 			continue
 		}
@@ -734,7 +737,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		if !is_interface {
 			// Dereference
 			if got.contains('*') && !expected.contains('*') {
-				p.cgen.set_placeholder(amp_ph, '*')
+				p.cgen.set_placeholder(ph, '*')
 			}
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
@@ -743,14 +746,14 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 				if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') {
-					p.cgen.set_placeholder(amp_ph, '& /*11 EXP:"$expected" GOT:"$got" */')
+					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" GOT:"$got" */')
 				}
 			}
 		}
 		// interface?
 		if is_interface {
 			if !got.contains('*') {
-				p.cgen.set_placeholder(amp_ph, '&')
+				p.cgen.set_placeholder(ph, '&')
 			}
 			// Pass all interface methods
 			interface_type := p.table.find_type(arg.typ)
@@ -808,7 +811,7 @@ fn contains_capital(s string) bool {
 
 // "fn (int, string) int"
 fn (f Fn) typ_str() string {
-	mut sb := new_string_builder(50)
+	mut sb := strings.new_builder(50)
 	sb.write('fn (')
 	for i, arg in f.args {
 		sb.write(arg.typ)
