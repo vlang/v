@@ -408,17 +408,15 @@ pub fn get_line() string {
     return str
 }
 
-const(
-	STD_INPUT_HANDLE = -10
-)
-
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
 		max := 256
 		buf := malloc(max)
-		// TODO: Use HANDLE instead of voidptr
-		h_input := voidptr(C.GetStdHandle(STD_INPUT_HANDLE))
+		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+		if h_input == INVALID_HANDLE_VALUE {
+			panic('get_raw_line() error getting input handle.')
+		}
 		nr_chars := 0
 		// NOTE: Once we have UTF8 encode function to
 		// convert utf16 to utf8, change to ReadConsoleW
@@ -554,12 +552,6 @@ pub fn getwd() string {
 	} 
 	return string(buf)
 }
-
-
-// windows
-const(
-	INVALID_HANDLE_VALUE = -1
-)
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
