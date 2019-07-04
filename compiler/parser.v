@@ -133,6 +133,9 @@ fn (p mut Parser) parse() {
 		for p.tok == IMPORT && p.peek() != CONST {
 			p.import_statement()
 		}
+		if p.table.imports.contains('builtin') {
+			p.error('module `builtin` cannot be imported') 
+		} 
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -220,7 +223,7 @@ fn (p mut Parser) parse() {
 				out := os.create('/var/tmp/fmt.v') or {
 					panic('failed to create fmt.v') 
 					return 
-} 
+				} 
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
 			}
