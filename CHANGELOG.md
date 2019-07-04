@@ -1,3 +1,18 @@
+# V 0.1.12
+- V can finally compile itself on Windows. (https://github.com/vlang/v#mingw-w64)
+- `os` module now uses optionals in all functions that return `File`. Lots of  bugs with optionals fixed.
+- `println` was optimized. It no longer results in allocations. Now it also works correctly with all integer types.
+- Lots of `vfmt` fixes, it will be enabled tomorrow. 
+- New `strings` module.
+- Lots of other fixes and improvements, thanks to all the contributors. 
+
+# V 0.1.11
+
+- Cross compilation for Windows!
+- Lots of Windows fixes
+- socket.v
+- maps fixed
+
 
 # 0.1.9 - 0.1.10
 - Windows support via MinGW-w64. Pre-built Windows binary.
