@@ -8,10 +8,15 @@ module term
 // Maybe implement a way to auto run an init function when a module
 // is imported on a certain os. for example to run this?
 pub fn enable_term_color_win() {
-    h_output := C.GetStdHandle(os.STD_OUTPUT_HANDLE)
-    if h_output == os.INVALID_HANDLE_VALUE
-        || !C.SetConsoleMode(h_output, os.ENABLE_PROCESSED_OUTPUT|os.ENABLE_VIRTUAL_TERMINAL_PROCESSING) {
-        println('Sorry, there was an error enabling terminal color.')
+    $if windows {
+        h_output := C.GetStdHandle(os.STD_OUTPUT_HANDLE)
+        if h_output == os.INVALID_HANDLE_VALUE
+            || !C.SetConsoleMode(h_output, os.ENABLE_PROCESSED_OUTPUT|os.ENABLE_VIRTUAL_TERMINAL_PROCESSING) {
+            println('enable_term_color_win() Sorry, there was an error enabling terminal color.')
+        }
+    }
+    $else {
+        println('enable_term_color_win() should only be called on windows.')
     }
 }
 
