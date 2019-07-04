@@ -100,5 +100,5 @@ pub fn (f1 Fraction) f64() f64 {
 pub fn (f1 Fraction) equals(f2 Fraction) bool {
 	r1 := f1.reduce()
 	r2 := f2.reduce()
-	return (r1.n == r1.n) && (r2.d == r2.d)
+	return (r1.n == r2.n) && (r1.d == r2.d)
 }
