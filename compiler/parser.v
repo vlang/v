@@ -659,7 +659,6 @@ fn (p mut Parser) check(expected Token) {
 }
 
 fn (p mut Parser) error(s string) {
-//q := "SDF" 
 	// Dump all vars and types for debugging
 	if false {
 		//file_types := os.create('$TmpPath/types')
@@ -671,7 +670,7 @@ fn (p mut Parser) error(s string) {
 		//file_types.close()
 		//file_vars.close()
 	}
-	if !p.pref.is_repl {
+	if p.pref.is_verbose { 
 		println('pass=$p.run fn=`$p.cur_fn.name`')
 	}
 	p.cgen.save()
