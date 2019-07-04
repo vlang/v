@@ -1,3 +1,6 @@
+# V 0.1.13
+- Interactive vrepl update
+
 # V 0.1.12
 - V can finally compile itself on Windows. (https://github.com/vlang/v#mingw-w64)
 - `os` module now uses optionals in all functions that return `File`. Lots of  bugs with optionals fixed.
