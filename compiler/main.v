@@ -960,7 +960,7 @@ fn new_v(args[]string) *V {
 
 fn run_repl() []string {
 	println('V $Version')
-	println('Use Ctrl-D or `exit` to exit')
+	println('Use Ctrl-C or `exit` to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
 	file := TmpPath + '/vrepl.v'
 	mut lines := []string

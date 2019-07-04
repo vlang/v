@@ -90,7 +90,6 @@ pub fn calloc(n int) byteptr {
 }
 
 fn _strlen(s byteptr) int {
-	// TODO don't call a C function, implement it in V
 	return C.strlen(s)
 }
 
