@@ -98,6 +98,7 @@ cd v
 # Download the V compiler's source translated to C
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 gcc -std=gnu11 -w -o v.exe v.c  # Build it with GCC
+v.exe -o v2.exe compiler # Use V to build itself to make sure it works
 ```
 
 
