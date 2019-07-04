@@ -184,7 +184,8 @@ fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn 
 }
 
-fn (table &Table) known_type(typ string) bool {
+fn (table &Table) known_type(_typ string) bool {
+	mut typ := _typ 
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ.left(typ.len - 1)
@@ -380,7 +381,8 @@ fn (p &Parser) find_type(name string) *Type {
 	return typ
 }
 
-fn (t &Table) find_type(name string) *Type {
+fn (t &Table) find_type(_name string) *Type {
+	mut name := _name 
 	if name.ends_with('*') && !name.contains(' ') {
 		name = name.left(name.len - 1)
 	}
@@ -393,7 +395,9 @@ fn (t &Table) find_type(name string) *Type {
 	return &Type{}
 }
 
-fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
+fn (p mut Parser) _check_types(_got, _expected string, throw bool) bool {
+	mut expected := _expected 
+	mut got := _got 
 	p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
@@ -518,8 +522,8 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 
 fn type_default(typ string) string {
 	if typ.starts_with('array_') {
-		typ = typ.right(6)
-		return 'new_array(0, 1, sizeof($typ))'
+		elm_type := typ.right(6) 
+		return 'new_array(0, 1, sizeof($elm_type))'
 	}
 	// Always set pointers to 0
 	if typ.ends_with('*') {

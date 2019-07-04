@@ -262,8 +262,8 @@ fn popen(path string) *FILE {
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) string {
-	cmd = '$cmd 2>&1'
+pub fn exec(_cmd string) string {
+	cmd := '$_cmd 2>&1'
 	f := popen(cmd) 
 	if isnil(f) {
 		// TODO optional or error code 
@@ -331,8 +331,8 @@ pub fn dir_exists(path string) bool {
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) {
 	$if windows {
-		path = path.replace('/', '\\')
-		C.CreateDirectory(path.cstr(), 0)
+		_path := path.replace('/', '\\')
+		C.CreateDirectory(_path.cstr(), 0)
 	}
 	$else {
 		C.mkdir(path.cstr(), 511)// S_IRWXU | S_IRWXG | S_IRWXO
