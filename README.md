@@ -83,9 +83,14 @@ make
 
 V works great on Windows Subsystem for Linux. The instructions are the same as above.
 
-If you want to build v.exe on Windows without WSL, you can use MinGW-w64 or Visual Studio:
+If you want to build v.exe on Windows without WSL, you have to install MinGW-w64 or Visual Studio (https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows) and then run
 
-https://github.com/vlang/v/wiki/Installing-V-from-source-on-Windows
+
+```
+git clone https://github.com/vlang/v
+cd v
+make.bat
+```
 
 
 
