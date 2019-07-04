@@ -46,7 +46,7 @@ mut:
   	wFinderFlags u16
 }
 
-pub fn ls(path string) []string {
+fn _ls_win(path string) []string {
     mut find_file_data := win32finddata{}
     mut dir_files := []string
     // We can also check if the handle is valid. but using dir_exists instead

@@ -586,26 +586,31 @@ pub fn getwd() string {
 }
 
 pub fn ls(path string) []string {
-	mut res := []string
-	dir := C.opendir(path.str)
-	if isnil(dir) {
-		println('ls() couldnt open dir "$path"')
-		print_c_errno()
+	$if windows {
+		return _ls_win(path)
+	}
+	$else {
+		mut res := []string
+		dir := C.opendir(path.str)
+		if isnil(dir) {
+			println('ls() couldnt open dir "$path"')
+			print_c_errno()
+			return res
+		}
+		mut ent := &C.dirent{!}
+		for {
+			ent = C.readdir(dir)
+			if isnil(ent) {
+				break
+			}
+			name := tos_clone(ent.d_name)
+			if name != '.' && name != '..' && name != '' {
+				res << name
+			}
+		}
+		C.closedir(dir)
 		return res
 	}
-	mut ent := &C.dirent{!}
-	for {
-		ent = C.readdir(dir)
-		if isnil(ent) {
-			break
-		}
-		name := tos_clone(ent.d_name)
-		if name != '.' && name != '..' && name != '' {
-			res << name
-		}
-	}
-	C.closedir(dir)
-	return res
 }
 
 pub fn signal(signum int, handler voidptr) {
