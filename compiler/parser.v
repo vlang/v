@@ -2112,12 +2112,10 @@ fn (p mut Parser) char_expr() {
 
 fn format_str(str string) string {
 	str = str.replace('"', '\\"')
-	
 	// convert windows style line ending to newline
 	str = str.replace('\r\n', '\n')
 	// replace all newlines
 	str = str.replace('\n', '\\n')
-
 	return str
 }
 
