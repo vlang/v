@@ -223,9 +223,12 @@ pub fn trunc(a f64) f64 {
 
 // factorial calculates the factorial of the provided value.
 pub fn factorial(a int) i64 {
+	if a < 0 {
+		panic('factorial: Cannot find factorial of negative number')
+	}
 	mut prod := 1
 	for i:= 0; i < a; i++ {
-		prod = prod * (i+1)
+		prod *= (i+1)
 	}
 	return prod
 }
