@@ -443,8 +443,8 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Normal function => just its name, method => TYPE_FNNAME
 	mut fn_name := f.name
 	if f.is_method {
-		receiver_type = receiver_type.replace('*', '')
-		fn_name = '${receiver_type}_${f.name}'
+		_receiver_type := receiver_type.replace('*', '')
+		fn_name = '${_receiver_type}_${f.name}'
 	}
 	// Generate tmp struct with args
 	arg_struct_name := 'thread_arg_$fn_name'

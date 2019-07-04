@@ -642,14 +642,14 @@ pub fn (s string) ustring_tmp() ustring {
 }
 
 fn (u ustring) substr(start, end int) string {
-	start = u.runes[start]
-	if end >= u.runes.len {
-		end = u.s.len
+	_start := u.runes[start]
+	_end := if end >= u.runes.len {
+		u.s.len
 	}
 	else {
-		end = u.runes[end]
+		u.runes[end]
 	}
-	return u.s.substr(start, end)
+	return u.s.substr(_start, _end)
 }
 
 fn (u ustring) left(pos int) string {

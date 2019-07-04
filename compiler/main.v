@@ -418,7 +418,7 @@ string _STR_TMP(const char *fmt, ...) {
 	}
 }
 
-fn (c &V) cc_windows_cross() {
+fn (c mut V) cc_windows_cross() {
        if !c.out_name.ends_with('.exe') {
                c.out_name = c.out_name + '.exe'
        }
