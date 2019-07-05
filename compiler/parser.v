@@ -659,7 +659,6 @@ fn (p mut Parser) check(expected Token) {
 }
 
 fn (p mut Parser) error(s string) {
-//q := "SDF" 
 	// Dump all vars and types for debugging
 	if false {
 		//file_types := os.create('$TmpPath/types')
@@ -671,7 +670,7 @@ fn (p mut Parser) error(s string) {
 		//file_types.close()
 		//file_vars.close()
 	}
-	if !p.pref.is_repl {
+	if p.pref.is_verbose { 
 		println('pass=$p.run fn=`$p.cur_fn.name`')
 	}
 	p.cgen.save()
@@ -2110,16 +2109,6 @@ fn (p mut Parser) char_expr() {
 	p.next()
 }
 
-fn format_str(str string) string {
-	str = str.replace('"', '\\"')
-	$if windows {
-		str = str.replace('\r\n', '\\n')
-	} 
-	$else { 
-		str = str.replace('\n', '\\n')
-	} 
-	return str
-}
 
 fn (p mut Parser) typ_to_fmt(typ string) string {
 	t := p.table.find_type(typ)
@@ -2144,6 +2133,15 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	return ''
 }
 
+fn format_str(str string) string {
+	str = str.replace('"', '\\"')
+	$if windows {
+		str = str.replace('\r\n', '\\n')
+	} 
+	str = str.replace('\n', '\\n')
+	return str
+}
+
 fn (p mut Parser) string_expr() {
 	// println('STRING EXPR')
 	str := p.lit
@@ -2157,7 +2155,7 @@ fn (p mut Parser) string_expr() {
 			p.gen('"$f"')
 		}
 		else {
-			p.gen('tos2("$f")')// TODO dont call strlen here
+			p.gen('tos2("$f")') 
 		}
 		p.next()
 		return

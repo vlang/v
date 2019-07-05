@@ -172,6 +172,7 @@ fn (arr mut array) _push(val voidptr) {
 }
 
 // `val` is array.data 
+// TODO make private, right now it's used by strings.Builder 
 pub fn (arr mut array) _push_many(val voidptr, size int) {
 	if arr.len >= arr.cap - size {
 		cap := (arr.len + size) * 2
