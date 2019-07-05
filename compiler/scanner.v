@@ -138,7 +138,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && is_white(s.text[s.pos]) {
 		if is_nl(s.text[s.pos]) {
 			// Count \r\n as one line 
-			if !(s.text[s.pos] == `\n` && s.text[s.pos-1] == `\r`) { 
+			if !(s.text[s.pos] == `\n` && s.pos > 0 && s.text[s.pos-1] == `\r`) { 
 				s.line_nr++
 			} 
 			if s.is_fmt {
