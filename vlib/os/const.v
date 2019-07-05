@@ -68,10 +68,42 @@ const (
     O_RDWR   = 3 // open the file read-write.
 
     O_APPEND = 8   // append data to the file when writing.
-    O_CREATE = 16  // create a new file if none exists.
+    O_CREAT  = 16  // create a new file if none exists.
+	O_CREATE = O_CREAT // alias
     O_EXCL   = 32  // used with O_CREATE, file must not exist.
     O_SYNC   = 64  // open for synchronous I/O.
     O_TRUNC  = 128 // truncate regular writable file when opened.
+)
+
+// Ref - https://www.gnu.org/software/libc/manual/html_node/Permission-Bits.html
+const (
+	S_IREAD	 = 0400	   /* Read by owner.    */
+	S_IWRITE = 0200	   /* Write by owner.   */
+	S_IEXEC	 = 0100	   /* Execute by owner. */
+
+    	S_ISUID = 04000    /* This is the set-user-ID on execute bit */
+    	S_ISGID = 02000    /* This is the set-group-ID on execute bit */
+    	S_ISVTX = 01000    /* This is the sticky bit, usually 01000. */
+
+	S_IRUSR	= S_IREAD  /* Alias of S_IREAD  */
+	S_IWUSR	= S_IWRITE /* Alias of S_IWRITE */
+	S_IXUSR	= S_IEXEC  /* Alias of S_IEXEC  */
+
+	S_IRWXU	= (S_IREAD|S_IWRITE|S_IEXEC)
+
+	S_IRGRP	= (S_IRUSR >> 3)    /* Read by group.                     */
+	S_IWGRP	= (S_IWUSR >> 3)    /* Write by group.                    */
+	S_IXGRP	= (S_IXUSR >> 3)    /* Execute by group.                  */
+	S_IRWXG	= (S_IRWXU >> 3)    /* Read, write, and execute by group. */
+
+	S_IROTH	= (S_IRGRP >> 3)    /* Read by others.                     */
+	S_IWOTH	= (S_IWGRP >> 3)    /* Write by others.                    */
+	S_IXOTH	= (S_IXGRP >> 3)    /* Execute by others.                  */
+	S_IRWXO	= (S_IRWXG >> 3)    /* Read, write, and execute by others. */
+
+	ACCESSPERMS = (S_IRWXU|S_IRWXG|S_IRWXO)                         /* 0777 */
+	ALLPERMS    = (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO) /* 07777 */
+	DEFFILEMODE = (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) /* 0666*/
 )
 
 // Windows 

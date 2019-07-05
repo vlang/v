@@ -175,43 +175,76 @@ fn read_ulines(path string) []ustring {
 	return ulines
 }
 
-pub fn open(path string) ?File {
-	cpath := path.cstr() 
-	file := File {
-		cfile: C.fopen(cpath, 'rb') 
+const (
+	_M_OPEN    = 'r' 
+	_M_WRITE   = 'w'
+	_M_APPEND  = 'a'
+
+	_M_B_OPEN   = 'rb' // binary open
+	_M_B_CREAT  = 'wb' // binary create
+	_M_B_APPEND = 'ab' // binary append
+
+	_M_WIX_R    = 'r+' // read and write
+	_M_MIX_W    = 'w+' // read and write and create
+	_M_MIX_A    = 'a+' // read and write and create and append to end of file
+)
+
+pub fn validate_mode(mode string) bool {
+	v :=   (mode != _M_OPEN)    && (mode != _M_WRITE) 
+		&& (mode != _M_APPEND)  && (mode != _M_B_OPEN)
+		&& (mode != _M_B_CREAT) && (mode != _M_B_APPEND)
+		&& (mode != _M_WIX_R)   && (mode != _M_MIX_W) && (mode != _M_MIX_A)
+	return !v
+}
+
+pub fn convert_mode(mode string) int {
+	switch mode {
+	case _M_OPEN:   return O_RDONLY
+	case _M_WRITE:  return O_WRONLY
+	case _M_APPEND: return O_APPEND
+
+	case _M_B_OPEN:   // could not convert
+	case _M_B_CREAT:  // could not convert
+	case _M_B_APPEND: // could not convert 
+
+	case _M_WIX_R:  return O_RDWR
+	case _M_MIX_W:  return O_RDWR|O_CREAT|O_TRUNC
+	case _M_MIX_A:  return O_RDWR|O_CREAT|O_APPEND
+
+	default:        // invalid provided mode
+		return (-1)
 	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
+}
+
+pub fn open(path string) ?File {
+	file := open_file(path, _M_B_OPEN) or {
+		return error('failed to open "$path"')
 	}
 	return file 
+}
+
+// open_file open file with selected mode.
+pub fn open_file(path string, mode string) ?File {
+	_fd_struct := File { 
+		cfile: C.fopen(path.cstr(), mode.cstr()) 
+	}
+	if _fd_struct.cfile == 0 {
+		return error('failed to open "$path"')
+	}
+	return _fd_struct
 }
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	cpath := path.cstr() 
-	file := File {
-		cfile: C.fopen(cpath, 'wb') 
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	return file 
-}
-
-pub fn open_append(path string) ?File {
-	cpath := path.cstr() 
-	file := File {
-		cfile: C.fopen(cpath, 'ab') 
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
+	file := open_file(path, _M_B_CREAT) or {
+		return error('failed to create "$path"')
 	}
 	return file 
 }
 
 pub fn (f File) write(s string) {
-	ss := s.clone()
-	C.fputs(ss.cstr(), f.cfile)
+	scl := s.clone() // source cloned
+	C.fputs(scl.cstr(), f.cfile)
 	// ss.free()
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
@@ -220,7 +253,7 @@ pub fn (f File) write(s string) {
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
 pub fn (f File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
+	C.fwrite(data, 1, size, f.cfile) // second argument to fwrite must be replaced with sizeof(data)
 }
 
 pub fn (f File) write_bytes_at(data voidptr, size, pos int) {
@@ -245,7 +278,7 @@ pub fn (f File) close() {
 // system starts the specified command, waits for it to complete, and returns its code.
 pub fn system(cmd string) int {
 	ret := C.system(cmd.cstr()) 
-	if ret == -1 {
+	if ret == (-1) {
 		os.print_c_errno()
 	}
 	return ret
