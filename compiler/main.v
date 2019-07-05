@@ -987,12 +987,12 @@ fn run_repl() []string {
 			mut vals := s.split('\n')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
-					for i:=2; i<vals.len; i++ {
-						println(vals[i]+'\n')
+					for i:=1; i<vals.len; i++ {
+						println(vals[i])
 					} 
 				}
 				else {
-					print(s)
+					println(s)
 				}
 			}
 			else {
@@ -1003,28 +1003,27 @@ fn run_repl() []string {
 		}
 		else {
 			mut temp_line := line
-			mut temp_flag := true
+			mut temp_flag := false
 			if !(line.contains(' ') || line.contains(':') || line.contains('=') || line.contains(',') ){
-				lines << line
 				temp_line = 'println('+line+')'
-				temp_flag = false
+				temp_flag = true
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('v run '+TmpPath+'/vrepl_temp.v')
+			if temp_flag {
+				lines << line
+			}
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
-					for i:=2; i<vals.len; i++ {
+					for i:=1; i<vals.len; i++ {
 						println(vals[i])
 					} 
 				}
 				else {
 					lines << line
 				}
-			}
-			else if temp_flag {
-				lines << line
 			}
 			else {
 				mut vals := s.split('\n')
