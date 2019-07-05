@@ -261,7 +261,7 @@ fn (p mut Parser) fn_decl() {
 	// println('FN DECL $f.name typ=$f.typ str_args="$str_args"')
 	// Special case for main() args
 	if f.name == 'main' && !has_receiver {
-		if str_args != '' {
+		if str_args != '' || typ != 'void' {
 			p.error('fn main must have no arguments and no return values')
 		}
 		typ = 'int'
