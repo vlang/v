@@ -106,11 +106,6 @@ const (
 	DEFFILEMODE = (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) /* 0666*/
 )
 
-// Windows 
-const(
-	INVALID_HANDLE_VALUE = -1
-)
-
 const(
     STD_INPUT_HANDLE  = -10
     STD_OUTPUT_HANDLE = -11
