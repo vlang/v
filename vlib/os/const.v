@@ -81,9 +81,9 @@ const (
 	S_IWRITE = 0200	   /* Write by owner.   */
 	S_IEXEC	 = 0100	   /* Execute by owner. */
 
-    	S_ISUID = 04000    /* This is the set-user-ID on execute bit */
-    	S_ISGID = 02000    /* This is the set-group-ID on execute bit */
-    	S_ISVTX = 01000    /* This is the sticky bit, usually 01000. */
+    S_ISUID = 04000    /* This is the set-user-ID on execute bit */
+    S_ISGID = 02000    /* This is the set-group-ID on execute bit */
+    S_ISVTX = 01000    /* This is the sticky bit, usually 01000. */
 
 	S_IRUSR	= S_IREAD  /* Alias of S_IREAD  */
 	S_IWUSR	= S_IWRITE /* Alias of S_IWRITE */
