@@ -291,7 +291,7 @@ fn (p mut Parser) import_statement() {
 	}
 	mut pkg := p.lit.trim_space()
 	// submodule support
-	// allow infinate depth got now
+	// limit depth to 4 for now
 	max_submodule_depth := 4
 	mut depth := 1
 	for p.peek() == DOT && depth <= max_submodule_depth {
