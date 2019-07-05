@@ -89,6 +89,20 @@ pub fn calloc(n int) byteptr {
 	return C.calloc(n, 1)
 }
 
+pub fn range(start int, stop int) []int {
+    mut nums := []int
+    for i:=start; i<stop; i++ {
+        nums << i
+    }
+    return nums
+}
+
+fn range_test() {
+	for i in range(1,10){
+		println(i)
+	}
+}
+
 fn _strlen(s byteptr) int {
 	return C.strlen(s)
 }
@@ -98,6 +112,7 @@ fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
+
 
 
 
