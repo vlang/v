@@ -717,7 +717,12 @@ fn (v mut V) add_user_v_files() {
 	// Parse lib imports
 	if v.pref.build_mode == .default_mode {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.table.imports[i]
+			mut pkg := v.table.imports[i]
+			// submodule support
+			if pkg.contains('.') {
+				// pkg = pkg.replace('.', path_sep)
+				pkg = pkg.replace('.', '/')
+			}
 			vfiles := v.v_files_from_dir('$TmpPath/vlib/$pkg')
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -730,7 +735,12 @@ fn (v mut V) add_user_v_files() {
 		// TODO this used to crash compiler?
 		// for pkg in v.table.imports {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.table.imports[i]
+			mut pkg := v.table.imports[i]
+			// submodule support
+			if pkg.contains('.') {
+				// pkg = pkg.replace('.', path_sep)
+				pkg = pkg.replace('.', '/')
+			}
 			idir := os.getwd()
 			mut import_path := '$idir/$pkg'
 			if(!os.file_exists(import_path)) {
@@ -749,7 +759,13 @@ fn (v mut V) add_user_v_files() {
 		println(v.table.imports)
 	}
 	// Only now add all combined lib files
-	for pkg in v.table.imports {
+	for _pkg in v.table.imports {
+		mut pkg := _pkg.clone()
+		// submodule support
+		if pkg.contains('.') {
+			// pkg = pkg.replace('.', path_sep)
+			pkg = pkg.replace('.', '/')
+		}
 		idir := os.getwd()
 		mut module_path := '$idir/$pkg'
 		// If we are in default mode, we don't parse vlib .v files, but header .vh files in

@@ -289,7 +289,17 @@ fn (p mut Parser) import_statement() {
 	if p.tok != NAME {
 		p.error('bad import format')
 	}
-	pkg := p.lit.trim_space()
+	mut pkg := p.lit.trim_space()
+	// submodule support
+	// allow infinate depth got now
+	max_submodule_depth := 4
+	mut depth := 1
+	for p.peek() == DOT && depth <= max_submodule_depth {
+		p.next() // SKIP DOT
+		p.next() // SUBMODULE
+		pkg = pkg + '.' + p.lit.trim_space()
+		depth++
+	}
 	p.next()
 	p.fgenln(' ' + pkg)
 	// Make sure there are no duplicate imports
