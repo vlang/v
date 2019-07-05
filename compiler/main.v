@@ -1011,9 +1011,6 @@ fn run_repl() []string {
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('v run '+TmpPath+'/vrepl_temp.v')
-			if temp_flag {
-				lines << line
-			}
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
@@ -1026,6 +1023,7 @@ fn run_repl() []string {
 				}
 			}
 			else {
+				lines << line
 				mut vals := s.split('\n')
 				for i:=0; i<vals.len-1; i++ {
 					println(vals[i])
