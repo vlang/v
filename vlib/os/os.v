@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 
 module os
+import path
 
 #include <sys/stat.h>
 #include <signal.h>
@@ -104,25 +105,16 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 	return s.split(' ')
 }
 
-pub fn path_separator() string {
-	$if windows {
-		return PATH_SEPARATOR_WIN
-	} 
-	$else {
-		return PATH_SEPARATOR_NIX
-	}
-}
-
-// read_file reads the file in `path` and returns the contents.
-//pub fn read_file(path string) ?string {
-pub fn read_file(path string) ?string { 
+// read_file reads the file in `f_path` and returns the contents.
+//pub fn read_file(f_path string) ?string {
+pub fn read_file(f_path string) ?string { 
 	mut res := ''
 	mut mode := 'rb' 
-	cpath := path.cstr()
+	cpath := f_path.cstr()
 	fp := C.fopen(cpath, mode.cstr()) 
 	if isnil(fp) {
-		return error('failed to open file "$path"')
-		//panic('failed to open file "$path"')
+		return error('failed to open file "$f_path"')
+		//panic('failed to open file "$f_path"')
 	}
 	C.fseek(fp, 0, SEEK_END)
 	fsize := C.ftell(fp)
@@ -136,10 +128,10 @@ pub fn read_file(path string) ?string {
 	return res
 }
 
-// file_size returns the size of the file located in `path`.
-pub fn file_size(path string) int {
+// file_size returns the size of the file located in `f_path`.
+pub fn file_size(f_path string) int {
 	s := C.stat{}
-	C.stat(path.str, &s)
+	C.stat(f_path.str, &s)
 	return s.st_size
 }
 
@@ -147,16 +139,16 @@ pub fn mv(old, new string) {
 	C.rename(old.cstr(), new.cstr())
 }
 
-// read_lines reads the file in `path` into an array of lines.
+// read_lines reads the file in `f_path` into an array of lines.
 // TODO return `?[]string` TODO implement `?[]` support
-pub fn read_lines(path string) []string {
+pub fn read_lines(f_path string) []string {
 	mut res := []string
 	mut buf := [1000]byte
-	cpath := path.cstr()
+	cpath := f_path.cstr()
 	fp := C.fopen(cpath, 'rb')
 	if isnil(fp) {
 		// TODO
-		// return error('failed to open file "$path"')
+		// return error('failed to open file "$f_path"')
 		return res
 	}
 	for C.fgets(buf, 1000, fp) != 0 {
@@ -173,8 +165,8 @@ pub fn read_lines(path string) []string {
 	return res
 }
 
-fn read_ulines(path string) []ustring {
-	lines := read_lines(path)
+fn read_ulines(f_path string) []ustring {
+	lines := read_lines(f_path)
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
 	for myline in lines {
@@ -184,36 +176,36 @@ fn read_ulines(path string) []ustring {
 	return ulines
 }
 
-pub fn open(path string) ?File {
-	cpath := path.cstr() 
+pub fn open(f_path string) ?File {
+	cpath := f_path.cstr() 
 	file := File {
 		cfile: C.fopen(cpath, 'rb') 
 	}
 	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
+		return error('failed to open file "$f_path"')
 	}
 	return file 
 }
 
 // create creates a file at a specified location and returns a writable `File` object.
-pub fn create(path string) ?File {
-	cpath := path.cstr() 
+pub fn create(f_path string) ?File {
+	cpath := f_path.cstr() 
 	file := File {
 		cfile: C.fopen(cpath, 'wb') 
 	}
 	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
+		return error('failed to create file "$f_path"')
 	}
 	return file 
 }
 
-pub fn open_append(path string) ?File {
-	cpath := path.cstr() 
+pub fn open_append(f_path string) ?File {
+	cpath := f_path.cstr() 
 	file := File {
 		cfile: C.fopen(cpath, 'ab') 
 	}
 	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
+		return error('failed to create file "$f_path"')
 	}
 	return file 
 }
@@ -260,8 +252,8 @@ pub fn system(cmd string) int {
 	return ret
 }
 
-fn popen(path string) *FILE {
-	cpath := path.cstr()
+fn popen(f_path string) *FILE {
+	cpath := f_path.cstr()
 	$if windows {
 		return C._popen(cpath, 'r')
 	}
@@ -314,21 +306,21 @@ $else {
 } 
 }
 
-// `file_exists` returns true if `path` exists.
-pub fn file_exists(path string) bool {
+// `file_exists` returns true if `f_path` exists.
+pub fn file_exists(f_path string) bool {
 	$if windows {
-		return C._access( path.str, 0 ) != -1
+		return C._access( f_path.str, 0 ) != -1
 	}
-	return C.access( path.str, 0 ) != -1
+	return C.access( f_path.str, 0 ) != -1
 }
 
-pub fn dir_exists(path string) bool {
+pub fn dir_exists(d_path string) bool {
 	$if windows {
-		attr := int(C.GetFileAttributes(path.cstr())) 
+		attr := int(C.GetFileAttributes(d_path.cstr())) 
 		return attr == FILE_ATTRIBUTE_DIRECTORY 
 	} 
 	$else { 
-		dir := C.opendir(path.cstr())
+		dir := C.opendir(d_path.cstr())
 		res := !isnil(dir)
 		if res {
 			C.closedir(dir)
@@ -337,32 +329,32 @@ pub fn dir_exists(path string) bool {
 	} 
 }
 
-// mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) {
+// mkdir creates a new directory with the specified d_path.
+pub fn mkdir(d_path string) {
 	$if windows {
-		path = path.replace('/', '\\')
-		C.CreateDirectory(path.cstr(), 0)
+		d_path = d_path.replace('/', '\\')
+		C.CreateDirectory(d_path.cstr(), 0)
 	}
 	$else {
-		C.mkdir(path.cstr(), 511)// S_IRWXU | S_IRWXG | S_IRWXO
+		C.mkdir(d_path.cstr(), 511)// S_IRWXU | S_IRWXG | S_IRWXO
 	}
 }
 
-// rm removes file in `path`.
-pub fn rm(path string) {
+// rm removes file in `f_path`.
+pub fn rm(f_path string) {
 	$if windows {
-		// os.system2('del /f $path')
+		// os.system2('del /f $f_path')
 	}
 	$else {
-		C.remove(path.cstr())
+		C.remove(f_path.cstr())
 	}
-	// C.unlink(path.cstr())
+	// C.unlink(f_path.cstr())
 }
 
 /*
 // TODO
-fn rmdir(path, guard string) {
-	if !path.contains(guard) {
+fn rmdir(d_path, guard string) {
+	if !d_path.contains(guard) {
 		println('rmdir canceled because the path doesnt contain $guard')
 		return
 	}
@@ -378,33 +370,33 @@ fn print_c_errno() {
 }
 
 
-pub fn ext(path string) string {
-	pos := path.last_index('.')
+pub fn ext(f_path string) string {
+	pos := f_path.last_index('.')
 	if pos == -1 {
 		return ''
 	}
-	return path.right(pos)
+	return f_path.right(pos)
 }
 
-fn path_sans_ext(path string) string {
-	pos := path.last_index('.')
+fn path_sans_ext(f_path string) string {
+	pos := f_path.last_index('.')
 	if pos == -1 {
-		return path
+		return f_path
 	}
-	return path.left(pos)
+	return f_path.left(pos)
 }
 
 
-pub fn basedir(path string) string {
-	pos := path.last_index('/')
+pub fn basedir(d_path string) string {
+	pos := d_path.last_index('/')
 	if pos == -1 {
-		return path
+		return d_path
 	}
-	return path.left(pos + 1)
+	return d_path.left(pos + 1)
 }
 
-pub fn filename(path string) string {
-	return path.all_after('/')
+pub fn filename(f_path string) string {
+	return f_path.all_after('/')
 }
 
 // get_line returns a one-line string from stdin 
@@ -473,9 +465,9 @@ pub fn home_dir() string {
 	return home
 }
 
-// write_file writes text data to a file in `path`. 
-pub fn write_file(path, text string) {
-	f := os.create(path) or {
+// write_file writes text data to a file in `f_path`. 
+pub fn write_file(f_path, text string) {
+	f := os.create(f_path) or {
 		return 
 	} 
 	f.write(text)
@@ -522,15 +514,15 @@ pub fn getexepath() string {
 	}
 }
 
-pub fn is_dir(path string) bool {
+pub fn is_dir(d_path string) bool {
 	$if windows {
-		val := int(C.GetFileAttributes(path.cstr()))
+		val := int(C.GetFileAttributes(d_path.cstr()))
 		// Note: this return is broke (wrong). we have dir_exists already how will this differ?
 		return val &FILE_ATTRIBUTE_DIRECTORY > 0
 	} 
 	$else { 
 		statbuf := C.stat{}
-		cstr := path.cstr()
+		cstr := d_path.cstr()
 		if C.stat(cstr, &statbuf) != 0 {
 			return false
 		}
@@ -538,12 +530,12 @@ pub fn is_dir(path string) bool {
 	} 
 }
 
-pub fn chdir(path string) {
+pub fn chdir(d_path string) {
 	$if windows {
-		C._chdir(path.cstr())
+		C._chdir(d_path.cstr())
 	}
 	$else { 
-		C.chdir(path.cstr())
+		C.chdir(d_path.cstr())
 	} 
 }
 
@@ -588,22 +580,22 @@ mut:
   	wFinderFlags u16
 }
 
-pub fn ls(path string) []string {
+pub fn ls(d_path string) []string {
 	$if windows {
 		mut find_file_data := win32finddata{}
 		mut dir_files := []string
 		// We can also check if the handle is valid. but using dir_exists instead
-		// h_find_dir := C.FindFirstFile(path.cstr(), &find_file_data)
+		// h_find_dir := C.FindFirstFile(d_path.cstr(), &find_file_data)
 		// if (INVALID_HANDLE_VALUE == h_find_dir) {
 		//     return dir_files
 		// }
 		// C.FindClose(h_find_dir)
-		if !dir_exists(path) {
-			println('ls() couldnt open dir "$path" (does not exist).')
+		if !dir_exists(d_path) {
+			println('ls() couldnt open dir "$d_path" (does not exist).')
 			return dir_files
 		}
 		// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-		path_files := path + PATH_SEPARATOR_WIN + '*'
+		path_files := d_path + path.PATH_SEPARATOR_WIN + '*'
 		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 		// we should use FindFirstFileW and FindNextFileW
 		h_find_files := C.FindFirstFile(path_files.cstr(), &find_file_data)
@@ -622,9 +614,9 @@ pub fn ls(path string) []string {
 	} 
 	$else { 
 		mut res := []string
-		dir := C.opendir(path.str)
+		dir := C.opendir(d_path.str)
 		if isnil(dir) {
-			println('ls() couldnt open dir "$path"')
+			println('ls() couldnt open dir "$d_path"')
 			print_c_errno()
 			return res
 		}
