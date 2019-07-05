@@ -1044,8 +1044,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	p.log('assign_statement() name=$v.name tok=')
 	tok := p.tok
-	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
-	if !v.is_mut && !p.pref.translated && !v.is_global{
+	if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
 		p.error('`$v.name` is immutable')
 	}
 	is_str := v.typ == 'string'
@@ -1455,7 +1454,7 @@ fn (p mut Parser) var_expr(v Var) string {
 	}
 	// a++ and a--
 	if p.tok == INC || p.tok == DEC {
-		if !v.is_mut && !p.pref.translated {
+		if !v.is_mut && !v.is_arg && !p.pref.translated {
 			p.error('`$v.name` is immutable')
 		}
 		if typ != 'int' {
@@ -1582,12 +1581,11 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	return method.typ
 }
 
-fn (p mut Parser) index_expr(_typ string, fn_ph int) string {
+fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 	//if p.fileis('main.v') {
 		//println('index expr typ=$typ')
 	//}
 	// a[0]
-	mut typ := _typ 
 	v := p.expr_var
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
@@ -2135,8 +2133,8 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 	return ''
 }
 
-fn format_str(_str string) string {
-	mut str := _str.replace('"', '\\"')
+fn format_str(str string) string {
+	str = str.replace('"', '\\"')
 	$if windows {
 		str = str.replace('\r\n', '\\n')
 	} 
@@ -3079,8 +3077,7 @@ fn (p mut Parser) go_statement() {
 	}
 }
 
-fn (p mut Parser) register_var(var Var) {
-	mut v := var 
+fn (p mut Parser) register_var(v Var) {
 	if v.line_nr == 0 {
 		v.line_nr = p.scanner.line_nr
 	}
@@ -3144,8 +3141,8 @@ fn (p mut Parser) js_decode() string {
 	return ''
 }
 
-fn is_compile_time_const(_s string) bool {
-	s := _s.trim_space()
+fn is_compile_time_const(s string) bool {
+	s = s.trim_space()
 	if s == '' {
 		return false
 	}
@@ -3169,17 +3166,15 @@ fn (p &Parser) building_v() bool {
 ///////////////////////////////////////////////////////////////////////////////
 
 // fmt helpers
-fn (scanner mut Scanner) fgen(_s string) {
-	mut s := _s 
+fn (scanner mut Scanner) fgen(s string) {
 	if scanner.fmt_line_empty {
-		s = strings.repeat(`\t`, scanner.fmt_indent) + s 
+		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_out.write(s)
 	scanner.fmt_line_empty = false
 }
 
-fn (scanner mut Scanner) fgenln(_s string) {
-	mut s := _s 
+fn (scanner mut Scanner) fgenln(s string) {
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
