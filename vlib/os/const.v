@@ -74,6 +74,12 @@ const (
     O_TRUNC  = 128 // truncate regular writable file when opened.
 )
 
+// OS Path Separators
+const(
+	PATH_SEPARATOR_NIX = '/'
+	PATH_SEPARATOR_WIN = '\\'
+)
+
 // Windows 
 const(
 	INVALID_HANDLE_VALUE = -1

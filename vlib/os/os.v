@@ -104,6 +104,15 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 	return s.split(' ')
 }
 
+pub fn path_separator() string {
+	$if windows {
+		return PATH_SEPARATOR_WIN
+	} 
+	$else {
+		return PATH_SEPARATOR_NIX
+	}
+}
+
 // read_file reads the file in `path` and returns the contents.
 //pub fn read_file(path string) ?string {
 pub fn read_file(path string) ?string { 
@@ -593,9 +602,8 @@ pub fn ls(path string) []string {
 			println('ls() couldnt open dir "$path" (does not exist).')
 			return dir_files
 		}
-		// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 		// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-		path_files := '$path\\*' 
+		path_files := path + PATH_SEPARATOR_WIN + '*'
 		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 		// we should use FindFirstFileW and FindNextFileW
 		h_find_files := C.FindFirstFile(path_files.cstr(), &find_file_data)
