@@ -1,7 +1,12 @@
 /*
 https://benchmarksgame-team.pages.debian.net/benchmarksgame/performance/spectralnorm.html
 Added: Pradeep Verghese
+Benchmarks: 
+Used v -prod spectral.v
+Command: time ./spectral 5500
+Output: 1.274224153
 
+Time: 11.67s user 0.02s system 99% cpu 11.721 total
 */
 
 module main
