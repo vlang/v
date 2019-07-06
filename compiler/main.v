@@ -962,6 +962,7 @@ fn run_repl() []string {
 	println('V $Version')
 	println('Use Ctrl-C or `exit` to exit')
 	println('For now you have to use println() to print values, this will be fixed soon\n')
+	v_ex := os.getexepath()
 	file := TmpPath + '/vrepl.v'
 	temp_file := TmpPath + '/vrepl_temp.v'
 	mut lines := []string
@@ -983,7 +984,7 @@ fn run_repl() []string {
 			lines << void_line
 			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
-			s := os.exec('v run '+TmpPath+'/vrepl.v')
+			s := os.exec(v_ex + ' run '+TmpPath+'/vrepl.v')
 			mut vals := s.split('\n')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
@@ -1010,7 +1011,7 @@ fn run_repl() []string {
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('v run '+TmpPath+'/vrepl_temp.v')
+			s := os.exec(v_ex + ' run '+TmpPath+'/vrepl_temp.v')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
