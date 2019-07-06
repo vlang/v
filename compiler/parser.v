@@ -1209,6 +1209,7 @@ fn (p mut Parser) name_expr() string {
 	hack_pos := p.scanner.pos
 	hack_tok := p.tok
 	hack_lit := p.lit
+	ph := p.cgen.add_placeholder()
 	// amp
 	 
 	ptr := p.tok == AMP
@@ -1304,7 +1305,7 @@ fn (p mut Parser) name_expr() string {
 			mut typ := p.cast(name)
 			p.gen(')')
 			for p.tok == DOT {
-				typ = p.dot(typ, 0)
+				typ = p.dot(typ, ph)
 			}
 			return typ
 		}
@@ -1405,7 +1406,7 @@ fn (p mut Parser) name_expr() string {
 		mut typ := ''
 		for p.tok == DOT {
 			// println('dot #$dc')
-			typ = p.dot(f.typ, 0)
+			typ = p.dot(f.typ, ph)
 		}
 		return typ
 	}
@@ -1850,7 +1851,7 @@ fn (p mut Parser) expression() string {
 	}
 	if p.tok == DOT  { 
 		for p.tok == DOT {
-			typ = p.dot(typ, 0)
+			typ = p.dot(typ, ph)
 		}
 	}
 	// + - |
