@@ -297,11 +297,11 @@ fn (p mut Parser) import_statement() {
 	for p.peek() == DOT {
 		p.next() // SKIP DOT
 		p.next() // SUBMODULE
-		pkg_next := p.lit.trim_space()
-		pkg = pkg + '.' + pkg_next
+		submodule := p.lit.trim_space()
+		pkg = pkg + '.' + submodule
 		depth++
 		if depth > max_module_depth {
-			panic('Sorry. Module depth of $max_module_depth exceeded: $pkg ($pkg_next is too deep).')
+			panic('Sorry. Module depth of $max_module_depth exceeded: $pkg ($submodule is too deep).')
 		}
 	}
 	p.next()
