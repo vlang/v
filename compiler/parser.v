@@ -1128,6 +1128,13 @@ fn (p mut Parser) var_decl() {
 		p.next()
 		p.check(LCBR)
 		p.genln('if (!$tmp .ok) {')
+		p.register_var(Var {
+			name: 'err'
+			typ: 'string'
+			is_mut: false
+			is_used: true
+		})
+		p.genln('string err = $tmp . error;')
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != CONTINUE && p.prev_tok2 != BREAK {
