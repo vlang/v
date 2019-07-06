@@ -292,12 +292,16 @@ fn (p mut Parser) import_statement() {
 	mut pkg := p.lit.trim_space()
 	// submodule support
 	// limit depth to 4 for now
-	max_submodule_depth := 4
+	max_module_depth := 4
 	mut depth := 1
-	for p.peek() == DOT && depth <= max_submodule_depth {
+	for p.peek() == DOT {
 		p.next() // SKIP DOT
 		p.next() // SUBMODULE
-		pkg = pkg + '.' + p.lit.trim_space()
+		pkg_next := p.lit.trim_space()
+		pkg = pkg + '.' + pkg_next
+		if depth >= max_module_depth {
+			panic('Sorry. Module depth of $max_module_depth exceeded: $pkg ($pkg_next is too deep).')
+		}
 		depth++
 	}
 	p.next()
