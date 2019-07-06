@@ -1,3 +1,9 @@
+/*
+https://benchmarksgame-team.pages.debian.net/benchmarksgame/performance/spectralnorm.html
+Added: Pradeep Verghese
+
+*/
+
 module main
 import math
 import os
