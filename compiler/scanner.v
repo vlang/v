@@ -145,7 +145,7 @@ fn (s mut Scanner) ident_decimal_number() string {
 
 		// 1234.123.123
 		if is_float && c == `.` {
-			s.error('too many too many decimal points in number')
+			s.error('too many decimal points in number')
 		}
 
 		// 123e+123e-123, 123e+123.0
