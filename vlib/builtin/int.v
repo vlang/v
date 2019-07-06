@@ -177,3 +177,10 @@ pub fn (c byte) str() string {
 	return str
 }
 
+pub fn abs(a int) int {
+    if a<0{
+        return -a
+    } else {
+        return a
+    }
+}
