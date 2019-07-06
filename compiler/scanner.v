@@ -81,43 +81,118 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
-fn (s mut Scanner) ident_number() string {
+fn (s mut Scanner) ident_hex_number() string {
 	start := s.pos
-	is_hex := s.pos + 1 < s.text.len && s.text[s.pos] == `0` && s.text[s.pos + 1] == `x`
-	is_oct := !is_hex && s.text[s.pos] == `0`
-	mut is_float := false
+
+	// Skip '0x'
+	s.pos += 2
 	for {
-		s.pos++
 		if s.pos >= s.text.len {
 			break
 		}
 		c := s.text[s.pos]
-		if c == `.` {
-			is_float = true
-		}
-		is_good_hex := is_hex && (c == `x`  || (c >= `a` && c <= `f`)  || (c >= `A` && c <= `F`))
-		// 1e+3, 1e-3, 1e3
-		if !is_hex && c == `e` && s.pos + 1 < s.text.len {
-			next := s.text[s.pos + 1]
-			if next == `+` || next == `-` || next.is_digit() {
-				s.pos++
-				continue
-			}
-		}
-		if !c.is_digit() && c != `.` && !is_good_hex {
+		if !c.is_hexdigit() {
 			break
 		}
-		// 1..9
-		if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `.` {
-			break
-		}
-		if is_oct && c >= `8` && !is_float {
-			s.error('malformed octal constant')
-		}
+		s.pos++
 	}
+
 	number := s.text.substr(start, s.pos)
 	s.pos--
 	return number
+}
+
+fn (s mut Scanner) ident_oct_number() string {
+	start := s.pos
+
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+		c := s.text[s.pos]
+
+		if c.is_digit() {
+			if !c.is_octdigit() {
+				s.error('malformed octal constant')
+			}
+		} else {
+			break
+		}
+		s.pos++
+	}
+
+	number := s.text.substr(start, s.pos)
+	s.pos--
+	return number
+}
+
+fn (s mut Scanner) ident_decimal_number() string {
+	start := s.pos
+
+	mut is_float := false
+	mut is_scientific := false // e+, e-
+
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+
+		// 1..9
+		if s.expect_string('..', s.pos) {
+			break
+		}
+		c := s.text[s.pos]
+
+		// 1234.123.123
+		if is_float && c == `.` {
+			s.error('too many too many decimal points in number')
+		}
+
+		// 123e+123e-123, 123e+123.0
+		if is_scientific {
+			if c == `.` || s.expect_string('e+', s.pos) || s.expect_string('e-', s.pos) {
+				s.error('invalid suffix on floating constant')
+			}
+		}
+
+		if c == `.` {
+			is_float = true
+			s.pos++
+			continue
+		}
+
+		if s.expect_string('e+', s.pos) || s.expect_string('e-', s.pos) {
+			is_scientific = true
+			s.pos += 2
+			continue
+		}
+
+		if !c.is_digit() {
+			break
+		}
+
+		s.pos++
+	}
+
+	number := s.text.substr(start, s.pos)
+	s.pos--
+	return number
+}
+
+fn (s mut Scanner) ident_number() string {
+	if s.expect_string('0x', s.pos) {
+		return s.ident_hex_number()
+	}
+
+	if s.expect_string('0.', s.pos) || s.expect_string('0e', s.pos) {
+		return s.ident_decimal_number()
+	}
+
+	if s.text[s.pos] == `0` {
+		return s.ident_oct_number()
+	}
+
+	return s.ident_decimal_number()
 }
 
 fn (s Scanner) has_gone_over_line_end() bool {
@@ -138,7 +213,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && is_white(s.text[s.pos]) {
 		if is_nl(s.text[s.pos]) {
 			// Count \r\n as one line 
-			if !(s.text[s.pos] == `\n` && s.pos > 0 && s.text[s.pos-1] == `\r`) { 
+			if !s.expect_string('\r\n', s.pos-1) {
 				s.line_nr++
 			} 
 			if s.is_fmt {
@@ -147,9 +222,6 @@ fn (s mut Scanner) skip_whitespace() {
 		}
 		s.pos++
 	}
-	// if s.pos == s.text.len {
-	// return scan_res(EOF, '')
-	// }
 }
 
 fn (s mut Scanner) get_var_name(pos int) string {
@@ -165,8 +237,7 @@ fn (s mut Scanner) cao_change(operator string) {
 	s.text = s.text.substr(0, s.pos - operator.len) + ' = ' + s.get_var_name(s.pos - operator.len) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
 }
 
-fn (s mut Scanner) scan() 
-ScanRes {
+fn (s mut Scanner) scan() ScanRes {
 	// if s.file_path == 'd.v' {
 	// println('\nscan()')
 	// }
@@ -732,6 +803,26 @@ fn (s mut Scanner) create_type_string(T Type, name string) {
 	s.pos = start - 2
 	s.line_nr = line
 	s.inside_string = inside_string
+}
+
+fn (s Scanner) expect_string(want string, start_pos int) bool {
+	end_pos := start_pos + want.len
+
+	if start_pos < 0 || start_pos >= s.text.len {
+		return false
+	}
+
+	if end_pos < 0 || end_pos > s.text.len {
+		return false
+	}
+
+	for pos in start_pos..end_pos {
+		if s.text[pos] != want[pos-start_pos] {
+			return false
+		}
+	}
+
+	return true
 }
 
 fn (p mut Parser) create_type_string(T Type, name string) {
