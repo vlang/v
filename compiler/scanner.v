@@ -165,8 +165,7 @@ fn (s mut Scanner) cao_change(operator string) {
 	s.text = s.text.substr(0, s.pos - operator.len) + ' = ' + s.get_var_name(s.pos - operator.len) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
 }
 
-fn (s mut Scanner) scan() 
-ScanRes {
+fn (s mut Scanner) scan() ScanRes {
 	// if s.file_path == 'd.v' {
 	// println('\nscan()')
 	// }
