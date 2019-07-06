@@ -489,9 +489,9 @@ fn (c &V) cc_windows_cross() {
  
 
 fn (v mut V) cc() {
-	// Cross compiling for Windows 
+	// Cross compiling for Windows on mac
 	if v.os == WINDOWS {
-		$if !windows { 
+		$if mac {
 			v.cc_windows_cross()  
 			return 
 		} 
@@ -587,9 +587,15 @@ mut args := ''
 	//else {
 	mut cmd := 'cc $args'
 	//}
-	$if windows {
-		cmd = 'gcc $args' 
-	} 
+	if v.os == WINDOWS {
+		println('Building for Windows')
+		if linux_host {
+			println('Cross compiling for windows')
+			cmd = 'i686-w64-mingw32-gcc $args'
+		} else {
+			cmd = 'gcc $args'
+		}
+	}
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
 		println('\n==========\n$cmd\n=========\n')

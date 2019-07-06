@@ -1,6 +1,10 @@
 import os
 
 fn test_setenv() {
+  $if windows {
+    println('setenv not implemented!!')
+    return
+  }
   os.setenv('foo', 'bar', true)
   assert os.getenv('foo') == 'bar'
   

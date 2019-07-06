@@ -1,5 +1,7 @@
 module net
 
+//there is no <sys/socket.h> for windows
+//https://stackoverflow.com/questions/1517762/sockets-in-mingw
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>

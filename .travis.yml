@@ -9,6 +9,7 @@ matrix:
           sources:
             - ubuntu-toolchain-r-test
           packages:
+            - wine1.4
             - gcc-5
             - g++-5
             - make
@@ -41,3 +42,7 @@ script:
   - export VROOT=$(pwd)
   - make
   - make test
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      make crossbuild
+    fi

@@ -288,21 +288,23 @@ pub fn getenv(key string) string {
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
-$if windows {
- 
-} 
-$else { 
-  return C.setenv(name.cstr(), value.cstr(), overwrite)
-} 
+	$if windows {
+		println('setenv not implemented!!')
+		return 0
+	}
+	$else {
+		return C.setenv(name.cstr(), value.cstr(), overwrite)
+	}
 }
 
 pub fn unsetenv(name string) int {
-$if windows {
- 
-} 
-$else { 
-  return C.unsetenv(name.cstr())
-} 
+	$if windows {
+		println('unsetenv not implemented!!')
+		return 0
+	}
+	$else {
+		return C.unsetenv(name.cstr())
+	}
 }
 
 // `file_exists` returns true if `path` exists.

@@ -12,6 +12,8 @@ import gl
 #flag -lfreetype
 #flag linux 	-I/usr/include/freetype2
 #flag linux -I.
+#flag windows -I @VROOT/thirdparty/freetype-windows/include
+#flag windows -L @VROOT/thirdparty/freetype-windows/win32
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include "glad.h"
