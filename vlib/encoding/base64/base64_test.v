@@ -1,4 +1,4 @@
-import base64
+import encoding.base64
 
 struct testpair {
 	decoded string
