@@ -961,7 +961,7 @@ fn new_v(args[]string) *V {
 fn run_repl() []string {
 	println('V $Version')
 	println('Use Ctrl-C or `exit` to exit')
-	v_ex := os.getexepath()
+	v_ex := os.args[0]
 	file := TmpPath + '/vrepl.v'
 	temp_file := TmpPath + '/vrepl_temp.v'
 	mut lines := []string
