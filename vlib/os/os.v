@@ -509,7 +509,7 @@ pub fn getexepath() string {
 
 	$if mac {
 		mut bufsize := 4096
-		mut path := [bufsize]byte
+		mut path := [4096]byte
 		res := _NSGetExecutablePath(path, &bufsize)
 		if res == -1 {
 			panic('Could not get executable path, buffer too small (need: $bufsize).')
