@@ -293,3 +293,9 @@ fn test_all_after() {
 	assert q == 'hello'
 }
 
+fn test_reverse() {
+	s := 'hello'
+	assert s.reverse() == 'olleh'
+	t := ''
+	assert t.reverse() == t
+}
