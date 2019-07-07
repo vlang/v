@@ -399,6 +399,7 @@ int load_so(byteptr path) {
 void reload_so() {
 	int last = 0; 
 	while (1) {
+		// TODO use inotify 
 		int now = os__file_last_mod_unix(tos2("$file")); 
 		if (now != last) {
 			//v -o bounce -shared bounce.v 
@@ -406,7 +407,7 @@ void reload_so() {
 			last = now; 
 			load_so("$so_name"); 
 		}
-		time__sleep_ms(1000); 
+		time__sleep_ms(500); 
 	}
 }
 ' ) 
