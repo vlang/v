@@ -415,7 +415,7 @@ void reload_so() {
 
 	if v.pref.is_so {
 		cgen.genln(' int load_so(byteptr path) { return 0; }')
-} 
+	} 
 	cgen.save()
 	if v.pref.is_verbose {
 		v.log('flags=')
