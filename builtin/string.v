@@ -352,7 +352,7 @@ pub fn (s string) index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := [0]
+	mut prefix := [0; p.len]
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for p[j] != p[i] && j > 0 {
@@ -361,7 +361,7 @@ pub fn (s string) index(p string) int {
 		if p[j] == p[i] {
 			j++
 		}
-		prefix << j
+		prefix[i] = j
 	}
 	j = 0
 	for i := 0; i < s.len; i++ {
@@ -384,7 +384,7 @@ pub fn (s string) last_index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := [0]
+	mut prefix := [0; p.len()]
 	mut j := 0
 	mut last := -1
 	for i := 1; i < p.len; i++ {
@@ -394,7 +394,7 @@ pub fn (s string) last_index(p string) int {
 		if p[j] == p[i] {
 			j++
 		}
-		prefix << j
+		prefix[i] = j
 	}
 	j = 0
 	for i := 0; i < s.len; i++ {
@@ -414,36 +414,13 @@ pub fn (s string) last_index(p string) int {
 }
 
 pub fn (s string) index_after(p string, start int) int {
+	if start < 0 {
+		return -1
+	}
 	if p.len + start > s.len {
 		return -1
 	}
-	mut prefix := [0]
-	mut j := 0
-	for i := 1; i < p.len; i++ {
-		for p[j] != p[i] && j > 0 {
-			j = prefix[j - 1]
-		}
-		if p[j] == p[i] {
-			j++
-		}
-		prefix << j
-	}
-	j = 0
-	i0 := if start >= 0 { start } else { 0 }
-	for i := i0; i < s.len; i++ {
-		for p[j] != s[i] && j > 0 {
-			j = prefix[j - 1]
-		}
-		if p[j] == s[i] {
-			j++
-		}
-		if j == p.len {
-			prefix.free()
-			return i - p.len + 1
-		}
-	}
-	prefix.free()
-	return -1
+	return s.substr(start, s.len()).index(p)
 }
 
 pub fn (s string) contains(p string) bool {
