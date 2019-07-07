@@ -769,7 +769,7 @@ pub fn (s []string) join_lines() string {
 pub fn (s string) reverse() string {
 	mut res := string {
 		len: s.len
-		str: malloc(s.len + 1)
+		str: malloc(s.len)
 	}
 
 	for i := s.len - 1; i >= 0; i-- {
