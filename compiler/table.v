@@ -18,24 +18,25 @@ mut:
 }
 
 enum AccessMod {
-	PRIVATE        // private immutable
-	PRIVET_MUT     // private mutable
-	PUBLIC         // public immmutable (readonly)
-	PUBLIC_MUT     // public, but mutable only in this module
-	PUBLIC_MUT_MUT // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+	private        // private imkey_mut
+	private_mut     // private key_mut
+	public         // public immkey_mut (readonly)
+	public_mut     // public, but key_mut only in this module
+	public_mut_mut // public and key_mut both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
 struct Type {
 mut:
-	pkg            string
+	mod            string
 	name           string
 	fields         []Var
 	methods        []Fn
 	parent         string
 	func           Fn // For cat == FN (type kek fn())
-	is_c           bool // C.FILE
+	is_c           bool // C.FI.le
 	is_interface   bool
 	is_enum        bool
+	enum_vals []string 
 	// This field is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -117,8 +118,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type_with_parent('i32', 'int')
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('byte', 'int')
-	// t.register_type_with_parent('i64', 'int')
-	t.register_type('i64')
+	t.register_type_with_parent('i64', 'int')
 	t.register_type_with_parent('u64', 'int')
 	t.register_type('byteptr')
 	t.register_type('intptr')
@@ -159,13 +159,13 @@ fn (table &Table) known_pkg(pkg string) bool {
 	return pkg in table.packages
 }
 
-fn (t mut Table) register_const(name, typ, pkg string, is_imported bool) {
+fn (t mut Table) register_const(name, typ, mod string, is_imported bool) {
 	t.consts << Var {
 		name: name
 		typ: typ
 		is_const: true
 		is_import_const: is_imported
-		pkg: pkg
+		mod: mod 
 	}
 }
 
@@ -176,7 +176,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		typ: typ
 		is_const: true
 		is_global: true
-		pkg: p.pkg
+		mod: p.mod 
 	}
 }
 
@@ -237,7 +237,7 @@ fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
 	typ := Type {
 		name: strtyp
 		parent: parent
-		pkg: p.pkg
+		mod: p.mod
 	}
 	p.table.register_type2(typ)
 }
@@ -295,6 +295,10 @@ fn (t mut Type) add_field(name, typ string, is_mut bool, attr string, access_mod
 fn (t &Type) has_field(name string) bool {
 	field := t.find_field(name)
 	return (field.name != '')
+}
+
+fn (t &Type) has_enum_val(name string) bool {
+	return name in t.enum_vals 
 }
 
 fn (t &Type) find_field(name string) Var {

@@ -45,7 +45,7 @@ fn new_cgen(out_name_c string) *CGen {
 }
 
 fn (g mut CGen) genln(s string) {
-	if g.nogen || g.run == RUN_DECLS {
+	if g.nogen || g.run == .decl {
 		return
 	}
 	if g.is_tmp {
@@ -61,7 +61,7 @@ fn (g mut CGen) genln(s string) {
 }
 
 fn (g mut CGen) gen(s string) {
-	if g.nogen || g.run == RUN_DECLS {
+	if g.nogen || g.run == .decl {
 		return
 	}
 	if g.is_tmp {

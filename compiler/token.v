@@ -5,214 +5,212 @@
 module main
 
 enum Token {
-	EOF
-	NAME
-	INT
-	STRING
-	CHAR
-	PLUS
-	MINUS
-	MUL
-	DIV
-	MOD
-	XOR
-	PIPE
-	INC
-	DEC
-	AND
-	OR
-	NOT
-	BIT_NOT
-	QUESTION
-	COMMA
-	SEMICOLON
-	COLON
-	AMP
-	HASH
-	DOLLAR
-	LEFT_SHIFT
-	RIGHT_SHIFT
+	eof
+	name
+	integer
+	strtoken
+	chartoken
+	plus
+	minus
+	mul
+	div
+	mod
+	xor
+	pipe
+	inc
+	dec
+	and
+	ortok
+	not 
+	bit_not
+	question
+	comma
+	semicolon
+	colon
+	amp
+	hash
+	dollar
+	left_shift
+	righ_shift
 	// = := += -=
-	ASSIGN
-	DECL_ASSIGN
-	PLUS_ASSIGN
-	MINUS_ASSIGN
-	DIV_ASSIGN
-	MULT_ASSIGN
-	XOR_ASSIGN
-	MOD_ASSIGN
-	OR_ASSIGN
-	AND_ASSIGN
-	RIGHT_SHIFT_ASSIGN
-	LEFT_SHIFT_ASSIGN
+	assign
+	decl_assign
+	plus_assign
+	minus_assign
+	div_assign
+	mult_assign
+	xor_assign
+	mod_assign
+	or_assign
+	and_assign
+	righ_shift_assign
+	left_shift_assign
 	// {}  () []
-	LCBR
-	RCBR
-	LPAR
-	RPAR
-	LSBR
-	RSBR
+	lcbr
+	rcbr
+	lpar
+	rpar
+	lsbr
+	rsbr
 	// == != <= < >= >
-	EQ
-	NE
-	GT
-	LT
-	GE
-	LE
+	eq
+	ne
+	gt
+	lt
+	ge
+	le
 	// comments
-	LINE_COM
-	MLINE_COM
-	NL
-	DOT
-	DOTDOT
+	line_com 
+	mline_com 
+	nl 
+	dot 
+	dotdot
 	// keywords
 	keyword_beg
-	PACKAGE
-	// MODULE
-	STRUCT
-	IF
-	ELSE
-	RETURN
-	GO
-	CONST
-	IMPORT_CONST
-	MUT
-	TIP
-	ENUM
-	FOR
-	SWITCH
+	key_module
+	key_struct
+	key_if 
+	key_else
+	key_return
+	key_go
+	key_const
+	key_import_const 
+	key_mut
+	typ
+	key_enum
+	key_for
+	key_switch 
 	MATCH
-	CASE
-	FUNC
-	TRUE
-	FALSE
-	CONTINUE
-	BREAK
-	EMBED
-	IMPORT
-	TYPEOF
-	DEFAULT
-	ENDIF
-	ASSERT
-	SIZEOF
-	IN
-	ATOMIC
-	INTERFACE
-	OR_ELSE
-	GLOBAL
-	UNION
-	PUB
-	GOTO
-	STATIC
+	key_case
+	func
+	key_true
+	key_false
+	key_continue
+	key_break
+	key_embed
+	key_import
+	//typeof 
+	key_default 
+	key_assert
+	key_sizeof
+	key_in 
+	key_atomic
+	key_interface 
+	key_orelse
+	key_global
+	key_union
+	key_pub 
+	key_goto 
+	key_static
 	keyword_end
 }
 
 // build_keys genereates a map with keywords' string values:
-// Keywords['return'] == .return
+// Keywords['return'] == .key_return
 fn build_keys() map_int {
 	mut res := map[string]int{}
-	for t := int(keyword_beg) + 1; t < int(keyword_end); t++ {
+	for t := int(Token.keyword_beg) + 1; t < int(Token.keyword_end); t++ {
 		key := TOKENSTR[t]
 		res[key] = int(t)
 	}
 	return res
 }
 
+// TODO remove once we have `enum Token { name('name') if('if') ... }` 
 fn build_token_str() []string {
 	mut s := [''; NrTokens]
-	s[keyword_beg] = ''
-	s[keyword_end] = ''
-	s[EOF] = 'EOF'
-	s[NAME] = 'NAME'
-	s[INT] = 'INT'
-	s[STRING] = 'STR'
-	s[CHAR] = 'CHAR'
-	s[PLUS] = '+'
-	s[MINUS] = '-'
-	s[MUL] = '*'
-	s[DIV] = '/'
-	s[MOD] = '%'
-	s[XOR] = '^'
-	s[BIT_NOT] = '~'
-	s[PIPE] = '|'
-	s[HASH] = '#'
-	s[AMP] = '&'
-	s[INC] = '++'
-	s[DEC] = '--'
-	s[AND] = '&&'
-	s[OR] = '||'
-	s[NOT] = '!'
-	s[DOT] = '.'
-	s[DOTDOT] = '..'
-	s[COMMA] = ','
-	s[SEMICOLON] = ';'
-	s[COLON] = ':'
-	s[ASSIGN] = '='
-	s[DECL_ASSIGN] = ':='
-	s[PLUS_ASSIGN] = '+='
-	s[MINUS_ASSIGN] = '-='
-	s[MULT_ASSIGN] = '*='
-	s[DIV_ASSIGN] = '/='
-	s[XOR_ASSIGN] = '^='
-	s[MOD_ASSIGN] = '%='
-	s[OR_ASSIGN] = '|='
-	s[AND_ASSIGN] = '&='
-	s[RIGHT_SHIFT_ASSIGN] = '>>='
-	s[LEFT_SHIFT_ASSIGN] = '<<='
-	s[LCBR] = '{'
-	s[RCBR] = '}'
-	s[LPAR] = '('
-	s[RPAR] = ')'
-	s[LSBR] = '['
-	s[RSBR] = ']'
-	s[EQ] = '=='
-	s[NE] = '!='
-	s[GT] = '>'
-	s[LT] = '<'
-	s[GE] = '>='
-	s[LE] = '<='
-	s[QUESTION] = '?'
-	s[LEFT_SHIFT] = '<<'
-	s[RIGHT_SHIFT] = '>>'
-	s[LINE_COM] = '//'
-	s[NL] = 'NLL'
-	s[DOLLAR] = '$'
-	s[ASSERT] = 'assert'
-	s[STRUCT] = 'struct'
-	s[IF] = 'if'
-	s[ELSE] = 'else'
-	s[RETURN] = 'return'
-	s[PACKAGE] = 'module'
-	s[SIZEOF] = 'sizeof'
-	s[GO] = 'go'
-	s[GOTO] = 'goto'
-	s[CONST] = 'const'
-	s[MUT] = 'mut'
-	s[TIP] = 'type'
-	s[FOR] = 'for'
-	s[SWITCH] = 'switch'
-	s[MATCH] = 'match'
-	s[CASE] = 'case'
-	s[FUNC] = 'fn'
-	s[TRUE] = 'true'
-	s[FALSE] = 'false'
-	s[CONTINUE] = 'continue'
-	s[BREAK] = 'break'
-	s[IMPORT] = 'import'
-	s[EMBED] = 'embed'
-	s[TYPEOF] = 'typeof'
-	s[DEFAULT] = 'default'
-	s[ENDIF] = 'endif'
-	s[ENUM] = 'enum'
-	s[INTERFACE] = 'interface'
-	s[PUB] = 'pub'
-	s[IMPORT_CONST] = 'import_const'
-	s[IN] = 'in'
-	s[ATOMIC] = 'atomic'
-	s[OR_ELSE] = 'or'
-	s[GLOBAL] = '__global'
-	s[UNION] = 'union'
-	s[STATIC] = 'static'
+	s[Token.keyword_beg] = ''
+	s[Token.keyword_end] = ''
+	s[Token.eof] = '.eof'
+	s[Token.name] = '.name'
+	s[Token.integer] = '.integer'
+	s[Token.strtoken] = 'STR'
+	s[Token.chartoken] = '.chartoken'
+	s[Token.plus] = '+'
+	s[Token.minus] = '-'
+	s[Token.mul] = '*'
+	s[Token.div] = '/'
+	s[Token.mod] = '%'
+	s[Token.xor] = '^'
+	s[Token.bit_not] = '~'
+	s[Token.pipe] = '|'
+	s[Token.hash] = '#'
+	s[Token.amp] = '&'
+	s[Token.inc] = '++'
+	s[Token.dec] = '--'
+	s[Token.and] = '&&'
+	s[Token.ortok] = '||'
+	s[Token.not] = '!'
+	s[Token.dot] = '.'
+	s[Token.dotdot] = '..'
+	s[Token.comma] = ','
+	s[Token.semicolon] = ';'
+	s[Token.colon] = ':'
+	s[Token.assign] = '='
+	s[Token.decl_assign] = ':='
+	s[Token.plus_assign] = '+='
+	s[Token.minus_assign] = '-='
+	s[Token.mult_assign] = '*='
+	s[Token.div_assign] = '/='
+	s[Token.xor_assign] = '^='
+	s[Token.mod_assign] = '%='
+	s[Token.or_assign] = '|='
+	s[Token.and_assign] = '&='
+	s[Token.righ_shift_assign] = '>>='
+	s[Token.left_shift_assign] = '<<='
+	s[Token.lcbr] = '{'
+	s[Token.rcbr] = '}'
+	s[Token.lpar] = '('
+	s[Token.rpar] = ')'
+	s[Token.lsbr] = '['
+	s[Token.rsbr] = ']'
+	s[Token.eq] = '=='
+	s[Token.ne] = '!='
+	s[Token.gt] = '>'
+	s[Token.lt] = '<'
+	s[Token.ge] = '>='
+	s[Token.le] = '<='
+	s[Token.question] = '?'
+	s[Token.left_shift] = '<<'
+	s[Token.righ_shift] = '>>'
+	s[Token.line_com] = '//'
+	s[Token.nl] = 'NLL'
+	s[Token.dollar] = '$'
+	s[Token.key_assert] = 'assert'
+	s[Token.key_struct] = 'struct'
+	s[Token.key_if] = 'if'
+	s[Token.key_else] = 'else'
+	s[Token.key_return] = 'return'
+	s[Token.key_module] = 'module'
+	s[Token.key_sizeof] = 'sizeof'
+	s[Token.key_go] = 'go'
+	s[Token.key_goto] = 'goto'
+	s[Token.key_const] = 'const'
+	s[Token.key_mut] = 'mut'
+	s[Token.typ] = 'type'
+	s[Token.key_for] = 'for'
+	s[Token.key_switch] = 'switch'
+	//Tokens[MATCH] = 'match'
+	s[Token.key_case] = 'case'
+	s[Token.func] = 'fn'
+	s[Token.key_true] = 'true'
+	s[Token.key_false] = 'false'
+	s[Token.key_continue] = 'continue'
+	s[Token.key_break] = 'break'
+	s[Token.key_import] = 'import'
+	s[Token.key_embed] = 'embed'
+	//Tokens[TYP.eof] = 'typeof'
+	s[Token.key_default] = 'default'
+	s[Token.key_enum] = 'enum'
+	s[Token.key_interface] = 'interface'
+	s[Token.key_pub] = 'pub'
+	s[Token.key_import_const] = 'import_const'
+	s[Token.key_in] = 'in'
+	s[Token.key_atomic] = 'atomic'
+	s[Token.key_orelse] = 'or'
+	s[Token.key_global] = '__global'
+	s[Token.key_union] = 'union'
+	s[Token.key_static] = 'static'
 	return s
 }
 
@@ -236,17 +234,19 @@ fn (t Token) str() string {
 }
 
 fn (t Token) is_decl() bool {
-	// TODO return t in [FUNC ,TIP, CONST,  IMPORT_CONST ,AT ,EOF]
-	return t == ENUM || t == INTERFACE || t == FUNC || t == STRUCT || t == TIP ||
-	t == CONST || t == IMPORT_CONST || t == PUB || t == EOF
+	// TODO return t in [.func ,.typ, .key_const,  .key_import_.key_const ,AT ,.eof]
+	return t == .key_enum || t == .key_interface || t == .func || 
+	t == .key_struct || t == .typ ||
+	t == .key_const || t == .key_import_const || t == .key_pub || t == .eof
 }
 
 const (
 	AssignTokens = [
-		ASSIGN, PLUS_ASSIGN, MINUS_ASSIGN,
-		MULT_ASSIGN, DIV_ASSIGN, XOR_ASSIGN, MOD_ASSIGN,
-		OR_ASSIGN, AND_ASSIGN, RIGHT_SHIFT_ASSIGN,
-		LEFT_SHIFT_ASSIGN
+		Token.assign, Token.plus_assign, Token.minus_assign,
+		Token.mult_assign, Token.div_assign, Token.xor_assign, 
+		Token.mod_assign,
+		Token.or_assign, Token.and_assign, Token.righ_shift_assign,
+		Token.left_shift_assign
 	]
 	
 )

@@ -32,35 +32,31 @@ const (
 	TmpPath            = vtmp_path()
 )
 
-enum Os {
-	MAC
-	LINUX
-	WINDOWS
+enum OS {
+	mac
+	linux
+	windows
 }
 
 enum Pass {
 	// A very short pass that only looks at imports in the begginning of each file
-	RUN_IMPORTS
+	imports
 	// First pass, only parses and saves declarations (fn signatures, consts, types).
 	// Skips function bodies.
 	// We need this because in V things can be used before they are declared.
-	RUN_DECLS
+	decl
 	// Second pass, parses function bodies and generates C or machine code.
-	RUN_MAIN
-}
-
-/* 
-// TODO rename to: 
-enum Pass {
-	imports
-	decls
 	main
 }
-*/
+
+fn mykek(o OS) {
+
+ 
+} 
 
 struct V {
 mut:
-	os         Os // the OS to build for
+	os         OS // the OS to build for
 	out_name_c string // name of the temporary C file
 	files      []string // all V files that need to be parsed and compiled
 	dir        string // directory (or file) being compiled (TODO rename to path?)
@@ -125,7 +121,7 @@ fn main() {
 	}
 */ 
 	// Just fmt and exit
-	if args.contains('fmt') {
+	if 'fmt' in args { 
 		file := args.last()
 		if !os.file_exists(file) {
 			println('"$file" does not exist')
@@ -138,7 +134,7 @@ fn main() {
 		println('vfmt is temporarily disabled')
 		return
 	}
-	// V with no args? REPL
+	// No args? REPL
 	if args.len < 2 || (args.len == 2 && args[1] == '-') {
 		run_repl()
 		return
@@ -149,7 +145,7 @@ fn main() {
 		println(args)
 	}
 	// Generate the docs and exit
-	if args.contains('doc') {
+	if 'doc' in args { 
 		// v.gen_doc_html_for_module(args.last())
 		exit(0)
 	}
@@ -167,11 +163,11 @@ fn (v mut V) compile() {
 	}
 	// First pass (declarations)
 	for file in v.files {
-		mut p := v.new_parser(file, RUN_DECLS)
+		mut p := v.new_parser(file, Pass.decl) 
 		p.parse()
 	}
 	// Main pass
-	cgen.run = RUN_MAIN
+	cgen.run = Pass.main
 	if v.pref.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
@@ -233,13 +229,13 @@ typedef map map_string;
 	#define false 0
 #endif
 
-//============================== HELPER C MACROS =============================*/ 
+//============================== HELPER C.MACROS =============================*/ 
 
 #define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push(arr, &tmp);}
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val) 
 #define ALLOC_INIT(type, ...) (type *)memdup((type[]){ __VA_ARGS__ }, sizeof(type)) 
-#define UTF8_CHAR_LEN( byte ) (( 0xE5000000 >> (( byte >> 3 ) & 0x1e )) & 3 ) + 1 
+#define UTF8_.chartoken_.leN( byte ) (( 0xE5000000 >> (( byte >> 3 ) & 0x1e )) & 3 ) + 1 
 
 //================================== GLOBALS =================================*/   
 //int V_ZERO = 0; 
@@ -249,7 +245,7 @@ void reload_so();
 void init_consts();')
 	imports_json := v.table.imports.contains('json')
 	// TODO remove global UI hack
-	if v.os == MAC && ((v.pref.build_mode == .embed_vlib && v.table.imports.contains('ui')) ||
+	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && v.table.imports.contains('ui')) ||
 	(v.pref.build_mode == .build && v.dir.contains('/ui'))) {
 		cgen.genln('id defaultFont = 0; // main.v')
 	}
@@ -284,7 +280,7 @@ void init_consts();')
 	cgen.genln('this line will be replaced with definitions')
 	defs_pos := cgen.lines.len - 1
 	for file in v.files {
-		mut p := v.new_parser(file, RUN_MAIN)
+		mut p := v.new_parser(file, Pass.main)
 		p.parse()
 		// p.g.gen_x64()
 		// Format all files (don't format automatically generated vlib headers)
@@ -294,7 +290,7 @@ void init_consts();')
 	}
 	v.log('Done parsing.')
 	// Write everything
-	mut d := strings.new_builder(10000)// Just to avoid some unnecessary allocations
+	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
 	d.writeln(cgen.includes.join_lines())
 	d.writeln(cgen.typedefs.join_lines())
 	d.writeln(cgen.types.join_lines())
@@ -524,7 +520,7 @@ fn (c &V) cc_windows_cross() {
 
 fn (v mut V) cc() {
 	// Cross compiling for Windows 
-	if v.os == WINDOWS {
+	if v.os == .windows {
 		$if !windows { 
 			v.cc_windows_cross()  
 			return 
@@ -580,7 +576,7 @@ mut args := ''
 	}
 	// Cross compiling linux
 	sysroot := '/Users/alex/tmp/lld/linuxroot/'
-	if v.os == LINUX && !linux_host {
+	if v.os == .linux && !linux_host {
 		// Build file.o
 		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
 		// Right now `out_name` can be `file`, not `file.o`
@@ -597,17 +593,17 @@ mut args := ''
 	a << '"$TmpPath/$v.out_name_c"'
 	// }
 	// Min macos version is mandatory I think?
-	if v.os == MAC {
+	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
 	a << flags
 	a << libs
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.os == MAC {
+	if v.os == .mac {
 		a << '-x objective-c'
 	}
 	// Without these libs compilation will fail on Linux
-	if v.os == LINUX && v.pref.build_mode != .build {
+	if v.os == .linux && v.pref.build_mode != .build {
 		a << '-lm -ldl -lpthread'
 	}
 	// Find clang executable
@@ -634,7 +630,7 @@ mut args := ''
 		panic('clang error')
 	}
 	// Link it if we are cross compiling and need an executable
-	if v.os == LINUX && !linux_host && v.pref.build_mode != .build {
+	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
 		v.out_name = v.out_name.replace('.o', '')
 		obj_file := v.out_name + '.o'
 		println('linux obj_file=$obj_file out_name=$v.out_name')
@@ -680,20 +676,20 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && v.os != WINDOWS {
+		if file.ends_with('_win.v') && v.os != .windows {
 			continue
 		}
-		if file.ends_with('_lin.v') && v.os != LINUX {
+		if file.ends_with('_lin.v') && v.os != .linux { 
 			continue
 		}
-		if file.ends_with('_mac.v') && v.os != MAC {
+		if file.ends_with('_mac.v') && v.os != .mac { 
 			lin_file := file.replace('_mac.v', '_lin.v')
 			// println('lin_file="$lin_file"')
 			// If there are both _mav.v and _lin.v, don't use _mav.v
 			if os.file_exists('$dir/$lin_file') {
 				continue
 			}
-			else if v.os == WINDOWS {
+			else if v.os == .windows {
 				continue
 			}
 			else {
@@ -719,7 +715,7 @@ fn (v mut V) add_user_v_files() {
 	if is_test_with_imports {
 		user_files << dir
 		pos := dir.last_index('/')
-		dir = dir.left(pos) + '/'// TODO WHY IS THIS NEEDED?
+		dir = dir.left(pos) + '/'// TODO WHY IS THIS .neEDED?
 	}
 	if dir.ends_with('.v') {
 		// Just compile one file and get parent dir
@@ -743,7 +739,7 @@ fn (v mut V) add_user_v_files() {
 	}
 	// Parse user imports
 	for file in user_files {
-		mut p := v.new_parser(file, RUN_IMPORTS)
+		mut p := v.new_parser(file, Pass.imports)
 		p.parse()
 	}
 	// Parse lib imports
@@ -753,7 +749,7 @@ fn (v mut V) add_user_v_files() {
 			vfiles := v.v_files_from_dir('$TmpPath/vlib/$pkg')
 			// Add all imports referenced by these libs
 			for file in vfiles {
-				mut p := v.new_parser(file, RUN_IMPORTS)
+				mut p := v.new_parser(file, Pass.imports)
 				p.parse()
 			}
 		}
@@ -771,7 +767,7 @@ fn (v mut V) add_user_v_files() {
 			vfiles := v.v_files_from_dir(import_path)
 			// Add all imports referenced by these libs
 			for file in vfiles {
-				mut p := v.new_parser(file, RUN_IMPORTS)
+				mut p := v.new_parser(file, Pass.imports)
 				p.parse()
 			}
 		}
@@ -890,24 +886,24 @@ fn new_v(args[]string) *V {
 		base := os.getwd().all_after('/')
 		out_name = base.trim_space()
 	}
-	mut _os := MAC
+	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
 		$if linux {
-			_os = LINUX
+			_os = .linux 
 		}
 		$if mac {
-			_os = MAC
+			_os = .mac
 		}
 		$if windows {
-			_os = WINDOWS
+			_os = .windows
 		}
 	}
 	else {
 		switch target_os {
-		case 'linux': _os = LINUX
-		case 'windows': _os = WINDOWS
-		case 'mac': _os = MAC
+		case 'linux': _os = .linux
+		case 'windows': _os = .windows
+		case 'mac': _os = .mac
 		}
 	}
 	builtins := [
@@ -960,7 +956,7 @@ fn new_v(args[]string) *V {
 			mut f := '$lang_dir/vlib/builtin/$builtin'
 			// In default mode we use precompiled vlib.o, point to .vh files with signatures
 			if build_mode == .default_mode || build_mode == .build {
-				f = '$TmpPath/vlib/builtin/${builtin}h'
+				//f = '$TmpPath/vlib/builtin/${builtin}h'
 			}
 			files << f
 		}
