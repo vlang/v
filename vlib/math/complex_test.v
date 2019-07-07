@@ -102,3 +102,14 @@ fn test_complex_equals() {
 	c2 = math.complex(-3,19)
 	assert c1.equals(c2)
 }
+
+fn test_complex_abs() {
+	mut c1 := math.complex(3,4)
+	assert c1.abs() == 5
+	c1 = math.complex(1,2)
+	assert c1.abs() == math.sqrt(5)
+	assert c1.abs() == c1.conjugate().abs()
+	c1 = math.complex(7,0)
+	assert c1.abs() == 7
+
+}

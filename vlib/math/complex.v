@@ -26,6 +26,11 @@ pub fn (c Complex) str() string {
 	return out
 }
 
+// Complex Absolute value
+pub fn (c Complex) abs() f64 {
+	return C.hypot(c.re,c.im)
+}
+
 // Complex Addition c1 + c2
 pub fn (c1 Complex) + (c2 Complex) Complex {
 	return Complex{c1.re+c2.re,c1.im+c2.im}
