@@ -143,6 +143,7 @@ pub fn mv(old, new string) {
 pub fn read_lines(path string) []string {
 	mut res := []string
 	mut buf := [1000]byte
+
 	cpath := path.cstr()
 	fp := C.fopen(cpath, 'rb')
 	if isnil(fp) {
@@ -150,16 +151,31 @@ pub fn read_lines(path string) []string {
 		// return error('failed to open file "$path"')
 		return res
 	}
+
+	mut val := ''
 	for C.fgets(buf, 1000, fp) != 0 {
-		mut val := ''
-		buf[C.strlen(buf) - 1] = `\0` // eat the newline fgets() stores
-		$if windows {
-			if buf[strlen(buf)-2] == 13 {
-				buf[strlen(buf) - 2] = `\0`
-			}
+		val += tos_clone(buf)
+
+		if val.len == 999 && val[998] != 10 {
+			continue
 		}
-		res << tos_clone(buf)
+
+		if val[val.len - 1] == 10 {
+			val = val.substr(0, val.len - 1)
+		}
+		$if windows {
+			if val[val.len - 1] == 13 {
+				val = val.substr(0, val.len - 1)
+			}	
+		}
+
+		res << val
+		val = ''
 	}
+	if val != '' {
+		res << val
+	}
+
 	C.fclose(fp)
 	return res
 }
