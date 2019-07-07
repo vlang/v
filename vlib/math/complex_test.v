@@ -102,3 +102,18 @@ fn test_complex_equals() {
 	c2 = math.complex(-3,19)
 	assert c1.equals(c2)
 }
+
+fn test_complex_angle(){
+	mut c := math.complex(1, 0)
+	assert c.angle() * 180 / math.Pi == 0
+	c = math.complex(1, 1)
+	assert c.angle() * 180 / math.Pi == 45
+	c = math.complex(0, 1)
+	assert c.angle() * 180 / math.Pi == 90
+	c = math.complex(-1, 1)
+	assert c.angle() * 180 / math.Pi == 135
+	c = math.complex(-1, -1)
+	assert c.angle() * 180 / math.Pi == -135
+	mut cc := c.conjugate()
+	assert cc.angle() + c.angle() == 0
+}
