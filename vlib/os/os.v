@@ -66,6 +66,7 @@ import const (
 struct C.stat {
 	st_size int
 	st_mode int
+	st_mtime int 
 }
 
 struct C.DIR {
@@ -639,6 +640,16 @@ pub fn ls(path string) []string {
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
 }
+
+pub fn file_last_mod_unix(path string) int {
+	attr := C.stat{} 
+	//# struct stat attr;
+	C.stat(path.str, &attr) 
+	//# stat(path.str, &attr);
+	return attr.st_mtime 
+	//# return attr.st_mtime ;
+}
+ 
 
 fn log(s string) {
 }

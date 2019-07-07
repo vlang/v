@@ -63,6 +63,7 @@ mut:
 	vroot          string
 	is_c_struct_init bool
 	can_chash bool
+	attr string 
 }
 
 const (
@@ -179,7 +180,11 @@ fn (p mut Parser) parse() {
 			p.fn_decl()
 		case TIP:
 			p.type_decl()
-		case STRUCT, INTERFACE, UNION, LSBR:// `[` can only mean an [attribute] before the struct definition
+		case LSBR:
+			// `[` can only mean an [attribute] before a function
+			// or a struct definition
+			p.attribute() 
+		case STRUCT, INTERFACE, UNION, LSBR:
 			p.struct_decl()
 		case CONST:
 			p.const_decl()
@@ -192,8 +197,8 @@ fn (p mut Parser) parse() {
 			// $if, $else
 			p.comp_time()
 		case GLOBAL:
-			if !p.pref.translated && !p.builtin_pkg && !p.building_v() {
-				p.error('__global is only allowed in translated code')
+			if !p.pref.translated && !p.pref.is_live && !p.builtin_pkg && !p.building_v() {
+				//p.error('__global is only allowed in translated code')
 			}
 			p.next()
 			name := p.check_name()
@@ -289,21 +294,7 @@ fn (p mut Parser) import_statement() {
 	if p.tok != NAME {
 		p.error('bad import format')
 	}
-	mut pkg := p.lit.trim_space()
-	// submodule support
-	// limit depth to 4 for now
-	max_module_depth := 4
-	mut depth := 1
-	for p.peek() == DOT {
-		p.next() // SKIP DOT
-		p.next() // SUBMODULE
-		submodule := p.lit.trim_space()
-		pkg = pkg + '.' + submodule
-		depth++
-		if depth > max_module_depth {
-			panic('Sorry. Module depth of $max_module_depth exceeded: $pkg ($submodule is too deep).')
-		}
-	}
+	pkg := p.lit.trim_space()
 	p.next()
 	p.fgenln(' ' + pkg)
 	// Make sure there are no duplicate imports
@@ -1142,13 +1133,6 @@ fn (p mut Parser) var_decl() {
 		p.next()
 		p.check(LCBR)
 		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != CONTINUE && p.prev_tok2 != BREAK {
@@ -2658,13 +2642,6 @@ fn (p mut Parser) chash() {
 	if is_sig {
 		// p.cgen.nogen = true
 	}
-	if hash == 'live' {
-		if p.pref.is_so {
-			return
-		}
-		p.pref.is_live = true
-		return
-	}
 	if hash.starts_with('flag ') {
 		mut flag := hash.right(5)
 		// No the right os? Skip!
@@ -3183,6 +3160,23 @@ fn (p &Parser) building_v() bool {
 	cur_dir := os.getwd()
 	return p.file_path.contains('v/compiler') || cur_dir.contains('v/compiler') 
 }
+
+fn (p mut Parser) attribute() {
+	p.check(LSBR)
+	p.attr = p.check_name() 
+	p.check(RSBR) 
+	if p.tok == FUNC {
+		p.fn_decl() 
+		p.attr = '' 
+		return 
+	} 
+	else if p.tok == STRUCT {
+		p.struct_decl() 
+		p.attr = '' 
+		return 
+	} 
+	p.error('bad attribute usage') 
+} 
 
 
 ///////////////////////////////////////////////////////////////////////////////
