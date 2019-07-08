@@ -386,9 +386,11 @@ string _STR_TMP(const char *fmt, ...) {
 #include <dlfcn.h>
 void* live_lib; 
 int load_so(byteptr path) {
-	//printf("load_so %s\\n", path); 
+	char cpath[1024];
+	sprintf(cpath,"./%s", path);
+	//printf("load_so %s\\n", cpath); 
 	if (live_lib) dlclose(live_lib); 
-	live_lib = dlopen(path, RTLD_LAZY);
+	live_lib = dlopen(cpath, RTLD_LAZY);
 	if (!live_lib) {puts("open failed"); exit(1); return 0;} 
 ')
 		for so_fn in cgen.so_fns {
@@ -534,7 +536,7 @@ fn (v mut V) cc() {
 	flags := v.table.flags.join(' ')
 	//mut shared := ''
 	if v.pref.is_so {
-		a << '-shared'// -Wl,-z,defs'
+		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.is_prod {
