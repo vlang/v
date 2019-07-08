@@ -294,7 +294,21 @@ fn (p mut Parser) import_statement() {
 	if p.tok != NAME {
 		p.error('bad import format')
 	}
-	pkg := p.lit.trim_space()
+	mut pkg := p.lit.trim_space()
+	// submodule support
+	// limit depth to 4 for now
+	max_module_depth := 4
+	mut depth := 1
+	for p.peek() == DOT {
+		p.next() // SKIP DOT
+		p.next() // SUBMODULE
+		submodule := p.lit.trim_space()
+		pkg = pkg + '.' + submodule
+		depth++
+		if depth > max_module_depth {
+			panic('Sorry. Module depth of $max_module_depth exceeded: $pkg ($submodule is too deep).')
+		}
+	}
 	p.next()
 	p.fgenln(' ' + pkg)
 	// Make sure there are no duplicate imports
@@ -1133,6 +1147,13 @@ fn (p mut Parser) var_decl() {
 		p.next()
 		p.check(LCBR)
 		p.genln('if (!$tmp .ok) {')
+		p.register_var(Var {
+			name: 'err'
+			typ: 'string'
+			is_mut: false
+			is_used: true
+		})
+		p.genln('string err = $tmp . error;')
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != CONTINUE && p.prev_tok2 != BREAK {
