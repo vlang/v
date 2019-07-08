@@ -31,6 +31,11 @@ pub fn (c Complex) abs() f64 {
 	return C.hypot(c.re,c.im)
 }
 
+// Complex Angle
+pub fn (c Complex) angle() f64 { 
+	return atan2(c.im, c.re)
+}
+
 // Complex Addition c1 + c2
 pub fn (c1 Complex) + (c2 Complex) Complex {
 	return Complex{c1.re+c2.re,c1.im+c2.im}

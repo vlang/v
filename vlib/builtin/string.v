@@ -641,7 +641,7 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-fn (u ustring) substr(start, end int) string {
+pub fn (u ustring) substr(start, end int) string {
 	start = u.runes[start]
 	if end >= u.runes.len {
 		end = u.s.len
@@ -652,11 +652,11 @@ fn (u ustring) substr(start, end int) string {
 	return u.s.substr(start, end)
 }
 
-fn (u ustring) left(pos int) string {
+pub fn (u ustring) left(pos int) string {
 	return u.substr(0, pos)
 }
 
-fn (u ustring) right(pos int) string {
+pub fn (u ustring) right(pos int) string {
 	return u.substr(pos, u.len)
 }
 
@@ -769,7 +769,7 @@ pub fn (s []string) join_lines() string {
 pub fn (s string) reverse() string {
 	mut res := string {
 		len: s.len
-		str: malloc(s.len + 1)
+		str: malloc(s.len)
 	}
 
 	for i := s.len - 1; i >= 0; i-- {

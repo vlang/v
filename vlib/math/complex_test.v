@@ -111,5 +111,19 @@ fn test_complex_abs() {
 	assert c1.abs() == c1.conjugate().abs()
 	c1 = math.complex(7,0)
 	assert c1.abs() == 7
+}
 
+fn test_complex_angle(){
+	mut c := math.complex(1, 0)
+	assert c.angle() * 180 / math.Pi == 0
+	c = math.complex(1, 1)
+	assert c.angle() * 180 / math.Pi == 45
+	c = math.complex(0, 1)
+	assert c.angle() * 180 / math.Pi == 90
+	c = math.complex(-1, 1)
+	assert c.angle() * 180 / math.Pi == 135
+	c = math.complex(-1, -1)
+	assert c.angle() * 180 / math.Pi == -135
+	mut cc := c.conjugate()
+	assert cc.angle() + c.angle() == 0
 }

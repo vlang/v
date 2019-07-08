@@ -115,6 +115,10 @@ fn new_fn(pkg string, is_public bool) *Fn {
 fn (p mut Parser) fn_decl() {
 	p.fgen('fn ')
 	is_pub := p.tok == PUB
+	is_live := p.attr == 'live' && !p.pref.is_so 
+	if is_live && !p.pref.is_live {
+		p.error('run `v -live program.v` if you want to use [live] functions') 
+	} 
 	if is_pub {
 		p.next()
 	}
@@ -277,16 +281,12 @@ fn (p mut Parser) fn_decl() {
 	// }
 	mut fn_name_cgen := p.table.cgen_name(f)
 	// Start generation of the function body
-	is_live := p.pref.is_live && f.name != 'main' && f.name != 'reload_so'
 	skip_main_in_test := f.name == 'main' && p.pref.is_test
 	if !is_c && !is_live && !is_sig && !is_fn_header && !skip_main_in_test {
 		if p.pref.obfuscate {
-			p.genln('; // ${f.name}')
+			p.genln('; // $f.name')
 		}
 		p.genln('$typ $fn_name_cgen($str_args) {')
-		// if f.name == 'WinMain' {
-		// typ = 'int'
-		// }
 	}
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
@@ -328,8 +328,8 @@ fn (p mut Parser) fn_decl() {
 			}
 		}
 		// Live code reloading? Load all fns from .so
-		if is_live && p.first_run() {
-			// p.cgen.consts_init.push('$fn_name_cgen = dlsym(lib, "$fn_name_cgen");')
+		if is_live && p.first_run() && p.pkg == 'main' {
+			//println('ADDING SO FN $fn_name_cgen') 
 			p.cgen.so_fns << fn_name_cgen
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
@@ -361,8 +361,10 @@ fn (p mut Parser) fn_decl() {
 		}
 		// We are in live code reload mode, call the .so loader in bg
 		if p.pref.is_live {
+			file_base := p.file_path.replace('.v', '') 
+			so_name := file_base + '.so' 
 			p.genln(' 
-load_so("bounce.so"); 
+load_so("$so_name"); 
 pthread_t _thread_so;
 pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 		}

@@ -626,7 +626,10 @@ fn (s mut Scanner) ident_char() string {
 	len--
 	c := s.text.substr(start + 1, s.pos)
 	if len != 1 {
+		u := c.ustring()
+		if u.len != 1 {
 		s.error('invalid character literal (more than one character: $len)')
+		}
 	}
 	return c
 }

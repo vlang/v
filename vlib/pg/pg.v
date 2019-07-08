@@ -25,6 +25,7 @@ struct C.PGResult { }
 
 fn C.PQconnectdb(a byteptr) *C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
+fn C.PQgetvalue(voidptr, int, int) byteptr
 
 pub fn connect(dbname, user string) DB {
 	conninfo := 'host=localhost user=$user dbname=$dbname'
@@ -46,7 +47,7 @@ fn res_to_rows(res voidptr) []pg.Row {
 		mut row := Row{}
 		for j := 0; j < nr_cols; j++ {
 			val := C.PQgetvalue(res, i, j) 
-			row.vals << string(val)  
+			row.vals << string(val)
 		}
 		rows << row
 	}

@@ -374,16 +374,48 @@ string _STR_TMP(const char *fmt, ...) {
 			cgen.genln('return g_test_ok == 0; }')
 		}
 	}
+	// Hot code reloading 
 	if v.pref.is_live {
-		cgen.genln(' int load_so(byteptr path) {
-	 printf("load_so %s\\n", path); dlclose(live_lib); live_lib = dlopen(path, RTLD_LAZY);
-	 if (!live_lib) {puts("open failed"); exit(1); return 0;}
-	 ')
+		file := v.dir 
+		file_base := v.dir.replace('.v', '') 
+		so_name := file_base + '.so' 
+		// Need to build .so file before building the live application 
+		// The live app needs to load this .so file on initialization. 
+		os.system('v -o $file_base -shared $file') 
+		cgen.genln('
+#include <dlfcn.h>
+void* live_lib; 
+int load_so(byteptr path) {
+	//printf("load_so %s\\n", path); 
+	if (live_lib) dlclose(live_lib); 
+	live_lib = dlopen(path, RTLD_LAZY);
+	if (!live_lib) {puts("open failed"); exit(1); return 0;} 
+')
 		for so_fn in cgen.so_fns {
 			cgen.genln('$so_fn = dlsym(live_lib, "$so_fn");  ')
 		}
-		cgen.genln('return 1; }')
+		cgen.genln('return 1; }
+ 
+void reload_so() {
+	int last = 0; 
+	while (1) {
+		// TODO use inotify 
+		int now = os__file_last_mod_unix(tos2("$file")); 
+		if (now != last) {
+			//v -o bounce -shared bounce.v 
+			os__system(tos2("v -o $file_base -shared $file")); 
+			last = now; 
+			load_so("$so_name"); 
+		}
+		time__sleep_ms(500); 
 	}
+}
+' ) 
+	}
+
+	if v.pref.is_so {
+		cgen.genln(' int load_so(byteptr path) { return 0; }')
+	} 
 	cgen.save()
 	if v.pref.is_verbose {
 		v.log('flags=')
@@ -432,13 +464,13 @@ fn (c &V) cc_windows_cross() {
        }
        mut libs := ''
        if c.pref.build_mode == .default_mode {
-               libs = '"$TmpPath/vlib/builtin.o"'
+               libs = '$TmpPath/vlib/builtin.o'
                if !os.file_exists(libs) {
                        println('`builtin.o` not found')
                        exit(1) 
                }
                for imp in c.table.imports {
-                       libs += ' "$TmpPath/vlib/${imp}.o"'
+                       libs += ' $TmpPath/vlib/${imp}.o'
                }
        }
        args += ' $c.out_name_c '
@@ -500,13 +532,11 @@ fn (v mut V) cc() {
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := ['-w', '-march=native']// arguments for the C compiler
 	flags := v.table.flags.join(' ')
-	/* 
-	mut shared := ''
+	//mut shared := ''
 	if v.pref.is_so {
 		a << '-shared'// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
 	}
-*/
 	if v.pref.is_prod {
 		a << '-O2'
 	}
@@ -521,7 +551,7 @@ fn (v mut V) cc() {
 		// 
 	}
 	else if v.pref.build_mode == .default_mode {
-		libs = '"$TmpPath/vlib/builtin.o"'
+		libs = '$TmpPath/vlib/builtin.o'
 		if !os.file_exists(libs) {
 			println('`builtin.o` not found')
 			exit(1)
@@ -530,7 +560,7 @@ fn (v mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			libs += ' "$TmpPath/vlib/${imp}.o"'
+			libs += ' $TmpPath/vlib/${imp}.o'
 		}
 	}
 	// -I flags
@@ -562,7 +592,7 @@ mut args := ''
 	// else {
 	a << '-o $v.out_name'
 	// The C file we are compiling
-	a << '"$TmpPath/$v.out_name_c"'
+	a << '$TmpPath/$v.out_name_c'
 	// }
 	// Min macos version is mandatory I think?
 	if v.os == MAC {
@@ -717,7 +747,7 @@ fn (v mut V) add_user_v_files() {
 	// Parse lib imports
 	if v.pref.build_mode == .default_mode {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.module_path(v.table.imports[i])
+			pkg := v.table.imports[i]
 			vfiles := v.v_files_from_dir('$TmpPath/vlib/$pkg')
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -730,7 +760,7 @@ fn (v mut V) add_user_v_files() {
 		// TODO this used to crash compiler?
 		// for pkg in v.table.imports {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.module_path(v.table.imports[i])
+			pkg := v.table.imports[i]
 			idir := os.getwd()
 			mut import_path := '$idir/$pkg'
 			if(!os.file_exists(import_path)) {
@@ -749,8 +779,7 @@ fn (v mut V) add_user_v_files() {
 		println(v.table.imports)
 	}
 	// Only now add all combined lib files
-	for _pkg in v.table.imports {
-		pkg := v.module_path(_pkg)
+	for pkg in v.table.imports {
 		idir := os.getwd()
 		mut module_path := '$idir/$pkg'
 		// If we are in default mode, we don't parse vlib .v files, but header .vh files in
@@ -789,15 +818,6 @@ fn get_arg(joined_args, arg, def string) string {
 	res := joined_args.substr(pos, space)
 	// println('get_arg($arg) = "$res"')
 	return res
-}
-
-fn (v &V) module_path(pkg string) string {
-	// submodule support
-	if pkg.contains('.') {
-		// return pkg.replace('.', path_sep)
-		return pkg.replace('.', '/')
-	}
-	return pkg
 }
 
 fn (v &V) log(s string) {
