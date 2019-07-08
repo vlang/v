@@ -130,7 +130,7 @@ pub fn bfor(input1 BitField, input2 BitField) BitField {
 	mut output := new(size)
 	mut i := 0
 	for i < bitnslots {
-		output.field[i] = input1.field[1] | input2.field[i]
+		output.field[i] = input1.field[i] | input2.field[i]
 		i++
 	}
 	cleartail(output)
@@ -143,7 +143,7 @@ pub fn bfxor(input1 BitField, input2 BitField) BitField {
 	mut output := new(size)
 	mut i := 0
 	for i < bitnslots {
-		output.field[i] = input1.field[1] ^ input2.field[i]
+		output.field[i] = input1.field[i] ^ input2.field[i]
 		i++
 	}
 	cleartail(output)
