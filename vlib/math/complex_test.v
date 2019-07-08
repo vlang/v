@@ -117,3 +117,128 @@ fn test_complex_angle(){
 	mut cc := c.conjugate()
 	assert cc.angle() + c.angle() == 0
 }
+
+
+fn test_complex_addinv() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut c2 := math.complex(-5,-7)
+	mut result := c1.addinv()
+	assert result.equals(c2)
+	c1 = math.complex(-3,4)
+	c2 = math.complex(3,-4)
+	result = c1.addinv()
+	assert result.equals(c2)
+	c1 = math.complex(-1,-2)
+	c2 = math.complex(1,2)
+	result = c1.addinv()
+	assert result.equals(c2)
+}
+
+fn test_complex_mulinv() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut c2 := math.complex(0.067568,-0.094595)
+	mut result := c1.mulinv()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-3,4)
+	c2 = math.complex(-0.12,-0.16)
+	result = c1.mulinv()
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-1,-2)
+	c2 = math.complex(-0.2,0.4)
+	result = c1.mulinv()
+	assert result.equals(c2)
+}
+
+fn test_complex_mod() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut result := c1.mod()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq('8.602325')
+	c1 = math.complex(-3,4)
+	result = c1.mod()
+	assert result == 5
+	c1 = math.complex(-1,-2)
+	result = c1.mod()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq('2.236068')
+}
+
+fn test_complex_pow() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut c2 := math.complex(-24.0,70.0)
+	mut result := c1.pow(2)
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-3,4)
+	c2 = math.complex(117,44)
+	result = c1.pow(3)
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-1,-2)
+	c2 = math.complex(-7,-24)
+	result = c1.pow(4)
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
+fn test_complex_root() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut c2 := math.complex(2.607904,1.342074)
+	mut result := c1.root(2)
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-3,4)
+	c2 = math.complex(1.264953,1.150614)
+	result = c1.root(3)
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-1,-2)
+	c2 = math.complex(1.068059,-0.595482)
+	result = c1.root(4)
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
+fn test_complex_exp() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut c2 := math.complex(111.889015,97.505457)
+	mut result := c1.exp()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-3,4)
+	c2 = math.complex(-0.032543,-0.037679)
+	result = c1.exp()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-1,-2)
+	c2 = math.complex(-0.153092,-0.334512)
+	result = c1.exp()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
+fn test_complex_ln() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := math.complex(5,7)
+	mut c2 := math.complex(2.152033,0.950547)
+	mut result := c1.ln()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-3,4)
+	c2 = math.complex(1.609438,2.214297)
+	result = c1.ln()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = math.complex(-1,-2)
+	c2 = math.complex(0.804719,-2.034444)
+	result = c1.ln()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
