@@ -1008,11 +1008,9 @@ fn run_repl() []string {
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
 		if line.starts_with('print') {
-			void_line := line.substr(line.index('(') + 1, line.len - 1)
-			lines << void_line
 			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
-			s := os.exec('v run '+TmpPath+'/vrepl.v')
+			s := os.exec('v run '+TmpPath+'/vrepl.v -repl')
 			mut vals := s.split('\n')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
@@ -1039,7 +1037,7 @@ fn run_repl() []string {
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('v run '+TmpPath+'/vrepl_temp.v')
+			s := os.exec('v run '+TmpPath+'/vrepl_temp.v -repl')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
