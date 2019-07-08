@@ -31,3 +31,17 @@ fn test_factorial() {
 	assert math.factorial(5) == 120
 	assert math.factorial(0) == 1
 }
+
+fn test_is_prime(){
+     assert math.is_prime(-1) == false
+     assert math.is_prime(0) == false
+     assert math.is_prime(1) == false
+
+     assert math.is_prime(2) == true
+     assert math.is_prime(3) == true
+     assert math.is_prime(17) == true
+
+     assert math.is_prime(4) == false
+     assert math.is_prime(9) == false
+     assert math.is_prime(14) == false
+}

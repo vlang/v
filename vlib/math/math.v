@@ -233,3 +233,18 @@ pub fn factorial(a int) i64 {
 	return prod
 }
 
+// is_prime determines whether a number is prime or not
+pub fn is_prime(n i64) bool {
+    if n < 2 || (n != 2 && n%2 == 0) {
+        return false
+    }
+	mut i := 3
+	for i <= C.sqrt(n) {
+		if n % i == 0 {
+           return false
+        }
+	    i += 2
+    }
+    return true
+}
+
