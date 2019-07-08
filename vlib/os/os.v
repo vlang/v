@@ -153,10 +153,13 @@ pub fn read_lines(path string) []string {
 	}
 	for C.fgets(buf, 1000, fp) != 0 {
 		mut val := ''
-		buf[C.strlen(buf) - 1] = `\0` // eat the newline fgets() stores
-		$if windows {
-			if buf[strlen(buf)-2] == 13 {
-				buf[strlen(buf) - 2] = `\0`
+		l := C.strlen(buf)
+		v := buf[l - 1]
+		if v == 13 || v == 10 {
+			buf[l - 1] = `\0`
+			v2 := buf[l - 2]
+			if v2 == 13 || v2 == 10 {
+				buf[l - 2] = `\0`
 			}
 		}
 		res << tos_clone(buf)
