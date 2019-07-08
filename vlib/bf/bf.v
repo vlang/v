@@ -1,9 +1,10 @@
 module bf
 
-struct bitfield {
+struct BitField {
 mut:
 	size int
-	field *u32//[]u32
+	//field *u32
+	field []u32
 }
 
 /* helper functions */
@@ -19,19 +20,19 @@ fn bitslot(size int) int {
 	return size / SLOT_SIZE
 }
 
-fn bitget(instance *bitfield, bitnr int) int {
+fn bitget(instance BitField, bitnr int) int {
 	return (instance.field[bitslot(bitnr)] >> u32(bitnr % SLOT_SIZE)) & 1
 }
 
-fn bitset(instance *bitfield, bitnr int) {
+fn bitset(instance BitField, bitnr int) {
 	instance.field[bitslot(bitnr)] = instance.field[bitslot(bitnr)] | bitmask(bitnr)
 }
 
-fn bitclear(instance *bitfield, bitnr int) {
+fn bitclear(instance BitField, bitnr int) {
 	instance.field[bitslot(bitnr)] = instance.field[bitslot(bitnr)] & ~bitmask(bitnr)
 }
 
-fn bittoggle(instance *bitfield, bitnr int) {
+fn bittoggle(instance BitField, bitnr int) {
 	instance.field[bitslot(bitnr)] = instance.field[bitslot(bitnr)] ^ bitmask(bitnr)
 }
 /*
@@ -51,7 +52,7 @@ fn bitnslots(length int) int {
 	return (length - 1) / SLOT_SIZE + 1
 } 
 
-fn cleartail(instance *bitfield) {
+fn cleartail(instance BitField) {
 	tail := instance.size % SLOT_SIZE
 	if tail != 0 {
 		/* create a mask for the tail */
@@ -63,40 +64,41 @@ fn cleartail(instance *bitfield) {
 
 /* public functions */
 
-pub fn new(size int) *bitfield {
-	output := &bitfield{
+pub fn new(size int) BitField {
+	output := BitField{
 		size: size 
-		field: *u32(calloc(bitnslots(size) * SLOT_SIZE / 8)) //[u32(0); bitnslots(size)]
+		//field: *u32(calloc(bitnslots(size) * SLOT_SIZE / 8))
+		field: [u32(0); bitnslots(size)]
 	}
 	return output
 }
-
-pub fn del(instance *bitfield) {
+/*
+pub fn del(instance *BitField) {
 	free(instance.field)
 	free(instance)
 }
-
-pub fn getbit(instance *bitfield, bitnr int) int {
+*/
+pub fn (instance BitField) getbit(bitnr int) int {
 	if bitnr >= instance.size {return 0}
 	return bitget(instance, bitnr)
 }
 
-pub fn setbit(instance *bitfield, bitnr int) {
+pub fn (instance mut BitField) setbit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bitset(instance, bitnr)
 }
 
-pub fn clearbit(instance *bitfield, bitnr int) {
+pub fn (instance mut BitField) clearbit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bitclear(instance, bitnr)
 }
 
-pub fn togglebit(instance *bitfield, bitnr int) {
+pub fn (instance mut BitField) togglebit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bittoggle(instance, bitnr)
 }
 
-pub fn bfand(input1 *bitfield, input2 *bitfield) *bitfield {
+pub fn bfand(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := bitnslots(size)
 	mut output := new(size)
@@ -109,7 +111,7 @@ pub fn bfand(input1 *bitfield, input2 *bitfield) *bitfield {
 	return output
 }
 
-pub fn bfnot(input *bitfield) *bitfield {
+pub fn bfnot(input BitField) BitField {
 	size := input.size
 	bitnslots := bitnslots(size)
 	mut output := new(size)
@@ -122,7 +124,7 @@ pub fn bfnot(input *bitfield) *bitfield {
 	return output
 }
 
-pub fn bfor(input1 *bitfield, input2 *bitfield) *bitfield {
+pub fn bfor(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := bitnslots(size)
 	mut output := new(size)
@@ -135,7 +137,7 @@ pub fn bfor(input1 *bitfield, input2 *bitfield) *bitfield {
 	return output
 }
 
-pub fn bfxor(input1 *bitfield, input2 *bitfield) *bitfield {
+pub fn bfxor(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := bitnslots(size)
 	mut output := new(size)
@@ -148,10 +150,10 @@ pub fn bfxor(input1 *bitfield, input2 *bitfield) *bitfield {
 	return output
 }
 
-pub fn print(instance *bitfield) {
+pub fn print(instance BitField) {
 	mut i := 0
 	for i < instance.size {
-		if getbit(instance, i) == 1 {
+		if instance.getbit(i) == 1 {
 			print('1')
 		}
 		else {
@@ -161,11 +163,11 @@ pub fn print(instance *bitfield) {
 	}
 }
 
-pub fn size(instance *bitfield) int {
+pub fn (instance BitField) getsize() int {
 	return instance.size
 }
 
-pub fn clone(input *bitfield) *bitfield {
+pub fn clone(input BitField) BitField {
 	bitnslots := bitnslots(input.size)
 	mut output := new(input.size)
 	mut i := 0

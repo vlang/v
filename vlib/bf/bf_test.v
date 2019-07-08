@@ -2,39 +2,33 @@ import bf
 
 import rand
 
-fn test_bf_new_size_del() {
-	mut result := 1
+fn test_bf_new_size() {
 	instance := bf.new(5)
-	if bf.size(instance) != 5 {result = 0}
-	bf.del(instance)
-	if bf.size(instance) == 5 {result = 0}
-	assert result == 1
+	assert instance.getsize() == 5
 }
 
 fn test_bf_set_clear_toggle_get() {
-	mut result := 1
-	instance := bf.new(5)
-	bf.setbit(instance, 4)
-	if bf.getbit(instance, 4) != 1 {result = 0}
-	bf.clearbit(instance, 4)
-	if bf.getbit(instance, 4) != 0 {result = 0}
-	bf.togglebit(instance, 4)
-	if bf.getbit(instance, 4) != 1 {result = 0}
-	assert result == 1
+	mut instance := bf.new(5)
+	instance.setbit(4)
+	assert instance.getbit(4) == 1
+	instance.clearbit(4)
+	assert instance.getbit(4) == 0
+	instance.togglebit(4)
+	assert instance.getbit(4) == 1
 }
 
 fn test_bf_and_not_or_xor() {
 	rand.seed()
 	len := 80
-	input1 := bf.new(len)
-	input2 := bf.new(len)
+	mut input1 := bf.new(len)
+	mut input2 := bf.new(len)
 	mut i := 0
 	for i < len {
 		if rand.next(2) == 1 {
-			bf.setbit(input1, i)
+			input1.setbit(i)
 		}
 		if rand.next(2) == 1{
-			bf.setbit(input2, i)
+			input2.setbit(i)
 		}
 		i++
 	}
@@ -45,7 +39,7 @@ fn test_bf_and_not_or_xor() {
 	output2 := bf.bfand(bfor, bfnot)
 	mut result := 1
 	for i < len {
-		if bf.getbit(output1, i) != bf.getbit(output2, i) {result = 0}
+		if output1.getbit(i) != output2.getbit(i) {result = 0}
 	}
 	assert result == 1
 }
