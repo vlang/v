@@ -802,6 +802,9 @@ fn new_v(args[]string) *V {
 		cflags: cflags
 		ccompiler: find_c_compiler()
 	}
+	if pref.is_verbose || pref.is_debug {
+		println('C compiler=$pref.ccompiler')
+	}
 	if pref.is_play {
 		println('Playground')
 	}
