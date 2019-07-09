@@ -26,6 +26,11 @@ pub fn (c Complex) str() string {
 	return out
 }
 
+// Complex Absolute value
+pub fn (c Complex) abs() f64 {
+	return C.hypot(c.re,c.im)
+}
+
 // Complex Angle
 pub fn (c Complex) angle() f64 { 
 	return atan2(c.im, c.re)
