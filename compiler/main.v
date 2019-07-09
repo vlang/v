@@ -466,13 +466,13 @@ fn (c &V) cc_windows_cross() {
        }
        mut libs := ''
        if c.pref.build_mode == .default_mode {
-               libs = '$TmpPath/vlib/builtin.o'
+               libs = '"$TmpPath/vlib/builtin.o"'
                if !os.file_exists(libs) {
                        println('`builtin.o` not found')
                        exit(1) 
                }
                for imp in c.table.imports {
-                       libs += ' $TmpPath/vlib/${imp}.o'
+                       libs += ' "$TmpPath/vlib/${imp}.o"'
                }
        }
        args += ' $c.out_name_c '
@@ -553,7 +553,7 @@ fn (v mut V) cc() {
 		// 
 	}
 	else if v.pref.build_mode == .default_mode {
-		libs = '$TmpPath/vlib/builtin.o'
+		libs = '"$TmpPath/vlib/builtin.o"'
 		if !os.file_exists(libs) {
 			println('`builtin.o` not found')
 			exit(1)
@@ -562,7 +562,7 @@ fn (v mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			libs += ' $TmpPath/vlib/${imp}.o'
+			libs += ' "$TmpPath/vlib/${imp}.o"'
 		}
 	}
 	// -I flags
@@ -594,7 +594,7 @@ mut args := ''
 	// else {
 	a << '-o $v.out_name'
 	// The C file we are compiling
-	a << '$TmpPath/$v.out_name_c'
+	a << '"$TmpPath/$v.out_name_c"'
 	// }
 	// Min macos version is mandatory I think?
 	if v.os == MAC {
@@ -749,7 +749,7 @@ fn (v mut V) add_user_v_files() {
 	// Parse lib imports
 	if v.pref.build_mode == .default_mode {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.table.imports[i]
+			pkg := v.module_path(v.table.imports[i])
 			vfiles := v.v_files_from_dir('$TmpPath/vlib/$pkg')
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -762,7 +762,7 @@ fn (v mut V) add_user_v_files() {
 		// TODO this used to crash compiler?
 		// for pkg in v.table.imports {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.table.imports[i]
+			pkg := v.module_path(v.table.imports[i])
 			idir := os.getwd()
 			mut import_path := '$idir/$pkg'
 			if(!os.file_exists(import_path)) {
@@ -781,7 +781,8 @@ fn (v mut V) add_user_v_files() {
 		println(v.table.imports)
 	}
 	// Only now add all combined lib files
-	for pkg in v.table.imports {
+	for _pkg in v.table.imports {
+		pkg := v.module_path(_pkg)
 		idir := os.getwd()
 		mut module_path := '$idir/$pkg'
 		// If we are in default mode, we don't parse vlib .v files, but header .vh files in
@@ -820,6 +821,15 @@ fn get_arg(joined_args, arg, def string) string {
 	res := joined_args.substr(pos, space)
 	// println('get_arg($arg) = "$res"')
 	return res
+}
+
+fn (v &V) module_path(pkg string) string {
+	// submodule support
+	if pkg.contains('.') {
+		//return pkg.replace('.', path_sep)
+		return pkg.replace('.', '/')
+	}
+	return pkg
 }
 
 fn (v &V) log(s string) {
