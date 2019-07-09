@@ -151,10 +151,16 @@ pub fn read_lines(path string) []string {
 		// return error('failed to open file "$path"')
 		return res
 	}
+	mut size := 0
+	mut longbuf := malloc(0)
 	for C.fgets(buf, 1000, fp) != 0 {
-		mut val := ''
 		l := C.strlen(buf)
 		v := buf[l - 1]
+		if l == 999 && v != 10 && v != 13 {
+			longbuf = join(longbuf, buf, size, l)
+			size += 999
+			continue
+		}
 		if v == 13 || v == 10 {
 			buf[l - 1] = `\0`
 			v2 := buf[l - 2]
@@ -162,10 +168,23 @@ pub fn read_lines(path string) []string {
 				buf[l - 2] = `\0`
 			}
 		}
-		res << tos_clone(buf)
+		if size == 0 {
+			res << tos_clone(buf)
+		} else {
+			longbuf = join(longbuf, buf, size, l)
+			res << string(longbuf)
+			size = 0
+		}
 	}
 	C.fclose(fp)
 	return res
+}
+
+fn join(a byteptr, b byteptr, asize int, bsize int) byteptr {
+	t := malloc(asize + bsize)
+	C.memcpy(t, a, asize)
+	C.memcpy(t + asize, b, bsize)
+	return t
 }
 
 fn read_ulines(path string) []ustring {
