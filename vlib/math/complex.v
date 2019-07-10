@@ -158,6 +158,60 @@ pub fn (c Complex) ln() Complex {
 	}
 }
 
+// Complex Sin
+// Based on
+// http://www.milefoot.com/math/complex/functionsofi.htm
+pub fn (c Complex) sin() Complex {
+	return Complex{
+		sin(c.re) * cosh(c.im),
+		cos(c.re) * sinh(c.im)
+	}
+}
+
+// Complex Cosine
+// Based on
+// http://www.milefoot.com/math/complex/functionsofi.htm
+pub fn (c Complex) cos() Complex {
+	return Complex{
+		cos(c.re) * cosh(c.im),
+		-(sin(c.re) * sinh(c.im))
+	}
+}
+
+// Complex Tangent
+// Based on
+// http://www.milefoot.com/math/complex/functionsofi.htm
+pub fn (c Complex) tan() Complex {
+	return c.sin().divide(c.cos())
+}
+
+// Complex Hyperbolic Sin
+// Based on
+// http://www.milefoot.com/math/complex/functionsofi.htm
+pub fn (c Complex) sinh() Complex {
+	return Complex{
+		cos(c.im) * sinh(c.re),
+		sin(c.im) * cosh(c.re)
+	}
+}
+
+// Complex Hyperbolic Cosine
+// Based on
+// http://www.milefoot.com/math/complex/functionsofi.htm
+pub fn (c Complex) cosh() Complex {
+	return Complex{
+		cos(c.im) * cosh(c.re),
+		sin(c.im) * sinh(c.re)
+	}
+}
+
+// Complex Hyperbolic Tangent
+// Based on
+// http://www.milefoot.com/math/complex/functionsofi.htm
+pub fn (c Complex) tanh() Complex {
+	return c.sinh().divide(c.cosh())
+}
+
 // Complex Equals
 pub fn (c1 Complex) equals(c2 Complex) bool {
 	return (c1.re == c2.re) && (c1.im == c2.im)
