@@ -71,6 +71,10 @@ const (
 	MainFn= &Fn{name:'main'} 
 )
 
+const (
+	MaxModuleDepth = 4
+) 
+
 fn (c mut V) new_parser(path string, run Pass) Parser {
 	c.log('new_parser("$path")')
 	c.cgen.run = run
@@ -296,20 +300,17 @@ fn (p mut Parser) import_statement() {
 	}
 	mut pkg := p.lit.trim_space()
 	// submodule support
-	// limit depth to 4 for now
-	max_module_depth := 4
 	mut depth := 1
-	for p.peek() == .dot {
-		p.next() // SKIP DOT
-		p.next() // SUBMODULE
-		submodule := p.lit.trim_space()
-		pkg = pkg + '.' + submodule
+	p.next() 
+	for p.tok == .dot {
+		p.check(.dot) 
+		submodule := p.check_name() 
+		pkg += '.' + submodule
 		depth++
-		if depth > max_module_depth {
-			panic('Sorry. Module depth of $max_module_depth exceeded: $pkg ($submodule is too deep).')
+		if depth > MaxModuleDepth { 
+			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
 		}
 	}
-	p.next()
 	p.fgenln(' ' + pkg)
 	// Make sure there are no duplicate imports
 	if p.table.imports.contains(pkg) {
