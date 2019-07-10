@@ -229,13 +229,12 @@ typedef map map_string;
 	#define false 0
 #endif
 
-//============================== HELPER C.MACROS =============================*/ 
+//============================== HELPER C MACROS =============================*/ 
 
 #define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push(arr, &tmp);}
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val) 
 #define ALLOC_INIT(type, ...) (type *)memdup((type[]){ __VA_ARGS__ }, sizeof(type)) 
-#define UTF8_.chartoken_.leN( byte ) (( 0xE5000000 >> (( byte >> 3 ) & 0x1e )) & 3 ) + 1 
 
 //================================== GLOBALS =================================*/   
 //int V_ZERO = 0; 

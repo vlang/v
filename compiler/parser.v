@@ -3017,7 +3017,7 @@ fn (p mut Parser) assert_statement() {
 	filename := p.file_path
 	p.genln(';\n 
 if (!$tmp) { 
-  puts("\\x1B[31mFAI.leD: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m");  
+  puts("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m");  
 g_test_ok = 0 ; 
 	// TODO
 	// Maybe print all vars in a test function if it fails? 
