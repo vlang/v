@@ -2155,6 +2155,9 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 			return '%p' 
 		} 
 	}
+	if t.parent != '' { 
+		return p.typ_to_fmt(t.parent) 
+	} 
 	return ''
 }
 

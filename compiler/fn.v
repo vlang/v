@@ -678,8 +678,8 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			str_args := f.str_args(p.table)// TODO this is C args
 			p.error('not enough arguments in call to `$f.name ($str_args)`')
 		}
-		// If `arg` is key_mut, the caller needs to provide `mut`: 
-		// `arr := [1,2,3]; reverse(mut arr);`
+		// If `arg` is mutable, the caller needs to provide `mut`: 
+		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
 			if p.tok != .key_mut {
 				p.error('`$arg.name` is a key_mut argument, you need to provide `mut`: `$f.name(...mut a...)`')
@@ -690,10 +690,6 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			p.check(.key_mut)
 		}
 		p.expected_type = arg.typ 
-		//TT := p.table.find_type(arg.typ)  
-		//if arg.typ.parent == 'int' {
-			//p.expected_type =  
-//} 
 		typ := p.bool_expression()
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls. `println(777)` => `printf("%d\n", 777)` 
@@ -712,12 +708,13 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			}
 			// Make sure this type has a `str()` method
 			if !T.has_method('str') {
+				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				if T.fields.len > 0 {
 					mut index := p.cgen.cur_line.len - 1
 					for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
 					name := p.cgen.cur_line.right(index + 1)
 					if name == '}' {
-						p.error('`$typ` needs to have method `str() string` to be printable')
+						p.error(error_msg) 
 					}
 					p.cgen.cur_line = p.cgen.cur_line.left(index)
 					p.create_type_string(T, name)
@@ -725,7 +722,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 					p.next()
 					return p.fn_call_args(f)
 				}
-				p.error('`$typ` needs to have method `str() string` to be printable')
+				p.error(error_msg) 
 			}
 			p.cgen.set_placeholder(ph, '${typ}_str(')
 			p.gen(')')
