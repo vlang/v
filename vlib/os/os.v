@@ -181,8 +181,7 @@ pub fn read_lines(path string) []string {
 }
 
 fn join(a byteptr, b byteptr, asize int, bsize int) byteptr {
-	t := malloc(asize + bsize)
-	C.memcpy(t, a, asize)
+	t := C.realloc(a, asize + bsize)
 	C.memcpy(t + asize, b, bsize)
 	return t
 }
