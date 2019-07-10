@@ -696,7 +696,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		// (If we don't check for void, then V will compile `println(func())`) 
 		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
 			T := p.table.find_type(typ)
-			fmt := p.typ_to_fmt(typ) 
+			fmt := p.typ_to_fmt(typ, 0) 
 			if fmt != '' { 
 				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", ')    
 				continue 

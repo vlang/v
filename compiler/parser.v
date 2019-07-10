@@ -2135,7 +2135,7 @@ fn (p mut Parser) char_expr() {
 }
 
 
-fn (p mut Parser) typ_to_fmt(typ string) string {
+fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	t := p.table.find_type(typ)
 	if t.is_enum { 
 		return '%d'
@@ -2155,8 +2155,8 @@ fn (p mut Parser) typ_to_fmt(typ string) string {
 			return '%p' 
 		} 
 	}
-	if t.parent != '' { 
-		return p.typ_to_fmt(t.parent) 
+	if t.parent != '' && level == 0 { 
+		return p.typ_to_fmt(t.parent, level+1) 
 	} 
 	return ''
 }
@@ -2230,7 +2230,7 @@ fn (p mut Parser) string_expr() {
 			p.next()
 		}
 		else {
-			f := p.typ_to_fmt(typ) 
+			f := p.typ_to_fmt(typ, 0) 
 			if f == '' { 
 				p.error('unhandled sprintf format "$typ" ')
 			} 
