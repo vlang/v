@@ -1994,6 +1994,9 @@ fn (p mut Parser) factor() string {
 			typ = 'f32'
 			// typ = 'f64' // TODO 
 		}
+		if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) { 
+			p.error('constant `$p.lit` overflows `$p.expected_type`') 
+		} 
 		p.gen(p.lit)
 		p.fgen(p.lit)
 	case Token.minus:
@@ -2252,7 +2255,7 @@ fn (p mut Parser) string_expr() {
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
 	if p.tok == .not {
-		p.next()
+		p.check(.not) 
 		p.gen('_STR_TMP($format$args)')
 	}
 	else {
@@ -2550,7 +2553,9 @@ fn (p mut Parser) cast(typ string) string {
 		p.next()
 	}
 	p.check(.lpar)
+	p.expected_type = typ 
 	expr_typ := p.bool_expression()
+	p.expected_type = '' 
 	p.check(.rpar)
 	// `string(buffer)` => `tos2(buffer)`
 	if typ == 'string' && (expr_typ == 'byte*' || expr_typ == 'byteptr') {
@@ -2562,7 +2567,6 @@ fn (p mut Parser) cast(typ string) string {
 	} 
 	else {
 		p.cgen.set_placeholder(pos, '($typ)(')
-		// p.fgen(typ)
 	}
 	p.gen(')')
 	return typ

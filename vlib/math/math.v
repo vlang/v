@@ -22,6 +22,21 @@ const (
 	Log10E = 1.0 / Ln10
 )
 
+const (
+        MaxI8   = (1<<7) - 1
+        MinI8   = -1 << 7
+        MaxI16  = (1<<15) - 1
+        MinI16  = -1 << 15
+        MaxI32  = (1<<31) - 1
+        MinI32  = -1 << 31
+//        MaxI64  = ((1<<63) - 1) 
+//        MinI64  = (-(1 << 63) ) 
+        MaxU8  = (1<<8) - 1 
+        MaxU16 = (1<<16) - 1
+        MaxU32 = (1<<32) - 1
+        MaxU64 = (1<<64) - 1
+) 
+
 // Returns the absolute value.
 pub fn abs(a f64) f64 {
 	if a < 0 {

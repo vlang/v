@@ -133,6 +133,10 @@ pub fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
+pub fn (s string) i64() i64 {
+	return C.atoll(s.str)
+}
+
 pub fn (s string) f32() f32 {
 	return C.atof(s.str)
 }
