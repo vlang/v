@@ -4,6 +4,10 @@
 
 module glfw
 
+#flag -I @VROOT/thirdparty/glfw 
+
+#flag windows @VROOT/thirdparty/glfw/libglfw3.a 
+
 // Debugging a custom build
 #flag darwin -L/var/tmp/glfw/src/
 #flag darwin -lglfw

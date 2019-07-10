@@ -356,7 +356,7 @@ fn (p mut Parser) const_decl() {
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
 			// output a #define so that we don't pollute the binary with unnecessary global vars
 			if is_compile_time_const(p.cgen.cur_line) {
-				p.cgen.consts << '#define $name $p.cgen.cur_line'
+				p.cgen.consts << '#define $name $p.cgen.cur_line' 
 				p.cgen.cur_line = ''
 				p.fgenln('')
 				continue
@@ -464,7 +464,7 @@ fn (p mut Parser) struct_decl() {
 		if !is_c {
 			kind := if is_union{'union'} else { 'struct'}
 			p.gen_typedef('typedef $kind $name $name;')
-			p.gen_type('$kind /*kind*/ $name {')
+			p.gen_type('$kind $name {')
 		}
 	}
 	// V used to have 'type Foo struct', many Go users might use this syntax
@@ -591,7 +591,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 	}
 	// Skip empty enums
 	if enum_name != 'int' {
-		p.cgen.typedefs << 'typedef int $enum_name ;\n'
+		p.cgen.typedefs << 'typedef int $enum_name;'
 	}
 	p.check(.lcbr)
 	mut val := 0
@@ -602,7 +602,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		name := '${p.mod}__${enum_name}_$field'
 		p.fgenln('')
 		if p.run == .main {
-			p.cgen.consts << '#define $name $val \n'
+			p.cgen.consts << '#define $name $val' 
 		}
 		if p.tok == .comma {
 			p.next()
@@ -2046,7 +2046,8 @@ fn (p mut Parser) factor() string {
 		p.next()
 		return 'T'
 	case Token.lpar:
-		p.gen('(/*lpar*/')
+		//p.gen('(/*lpar*/')
+		p.gen('(')
 		p.check(.lpar) 
 		typ = p.bool_expression()
 		// Hack. If this `)` referes to a ptr cast `(*int__)__`, it was already checked
@@ -2686,13 +2687,17 @@ fn (p mut Parser) chash() {
 			pos := flag.index(' ')
 			flag = flag.right(pos)
 		}
+		has_vroot := flag.contains('@VROOT') 
 		flag = flag.trim_space().replace('@VROOT', p.vroot)
 		if p.table.flags.contains(flag) {
 			return
 		}
 		p.log('adding flag "$flag"')
-		p.table.flags << flag// .all_after(' '))
-		// }
+		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it 
+		if has_vroot && flag.contains('.o') { 
+			build_thirdparty_obj_file(flag) 
+		} 
+		p.table.flags << flag 
 		return
 	}
 	if hash.starts_with('include') {
@@ -2745,7 +2750,6 @@ fn (p mut Parser) if_st(is_expr bool) string {
 	}
 	else {
 		p.genln(') {')
-		p.genln('/*if*/')
 	}
 	p.fgen(' ')
 	p.check(.lcbr)
@@ -2775,7 +2779,6 @@ fn (p mut Parser) if_st(is_expr bool) string {
 		}
 		else {
 			p.genln(' else { ')
-			p.genln('/*else if*/')
 		}
 		p.check(.lcbr)
 		// statements() returns the type of the last statement
@@ -2957,6 +2960,7 @@ fn (p mut Parser) for_st() {
 	}
 	p.fspace() 
 	p.check(.lcbr)
+	p.genln('') 
 	p.statements()
 	p.cur_fn.close_scope()
 	p.for_expr_cnt--

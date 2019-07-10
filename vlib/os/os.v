@@ -615,7 +615,7 @@ pub fn ls(path string) []string {
 	} 
 	$else { 
 		mut res := []string
-		dir := C.opendir(path.str)
+		dir := C.opendir(path.cstr()) 
 		if isnil(dir) {
 			println('ls() couldnt open dir "$path"')
 			print_c_errno()

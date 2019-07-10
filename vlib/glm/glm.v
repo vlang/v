@@ -117,7 +117,7 @@ fn (a Vec3) print() {
 	x := a.x
 	y := a.y
 	z := a.z
-	# printf("vec3{%f,%f,%f}\n",x,y,z);
+	C.printf('vec3{%f,%f,%f}\n',x,y,z) 
 	// println('vec3{$x,$y,$z}')
 }
 
@@ -162,7 +162,7 @@ fn normalize(vec Vec3) Vec3 {
 */
 // https://github.com/g-truc/glm/blob/0ceb2b755fb155d593854aefe3e45d416ce153a4/glm/ext/matrix_clip_space.inl
 pub fn ortho(left, right, bottom, top f32) Mat4 {
-	println('glm ortho($left, $right, $bottom, $top)')
+	//println('glm ortho($left, $right, $bottom, $top)')
 	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
 	n := 16
 	mut res := f32_calloc(n)
