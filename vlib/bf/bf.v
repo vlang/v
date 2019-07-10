@@ -7,7 +7,7 @@ mut:
 	field []u32
 }
 
-/* helper functions */
+// helper functions  
 const (
 	SLOT_SIZE = 32
 )
@@ -55,14 +55,14 @@ fn bitnslots(length int) int {
 fn cleartail(instance BitField) {
 	tail := instance.size % SLOT_SIZE
 	if tail != 0 {
-		/* create a mask for the tail */
+		// create a mask for the tail 
 		mask := u32((1 << tail) - 1)
-		/* clear the extra bits */
+		// clear the extra bits 
 		instance.field[bitnslots(instance.size) - 1] = instance.field[bitnslots(instance.size) - 1] & mask
 	}
 }
 
-/* public functions */
+// public functions 
 
 pub fn new(size int) BitField {
 	output := BitField{
@@ -177,3 +177,4 @@ pub fn clone(input BitField) BitField {
 	}
 	return output
 }
+

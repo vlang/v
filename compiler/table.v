@@ -644,7 +644,7 @@ fn is_valid_int_const(val, typ string) bool {
 	switch typ {
 	case 'byte', 'u8': return 0 <= x && x <= math.MaxU8 
 	case 'u16': return 0 <= x && x <= math.MaxU16 
-	case 'u32': return 0 <= x && x <= math.MaxU32 
+	//case 'u32': return 0 <= x && x <= math.MaxU32 
 	//case 'u64': return 0 <= x && x <= math.MaxU64 
 	////////////// 
 	case 'i8': return math.MinI8 <= x && x <= math.MaxI8 
