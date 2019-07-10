@@ -1,3 +1,14 @@
+# V 0.1.13
+- New enum syntax (`token == .name`), enum values are no longer global consts
+- Submodules (`import encoding.base64`)
+- Hot code reloading
+- Special `err` variable for getting error values
+- Complex numbers
+- `<<` can now append arrays (`numbers << [1, 2, 3]`)
+- Lots of Windows fixes (Windows still needs some work)
+- Lots of REPL improvements (e.g. `>> 2 + 3` works no, no `println` required)
+
+
 # V 0.1.12
 - V can finally compile itself on Windows. (https://github.com/vlang/v#mingw-w64)
 - `os` module now uses optionals in all functions that return `File`. Lots of  bugs with optionals fixed.
@@ -5,6 +16,7 @@
 - Lots of `vfmt` fixes, it will be enabled tomorrow. 
 - New `strings` module.
 - Lots of other fixes and improvements, thanks to all the contributors. 
+
 
 # V 0.1.11
 
