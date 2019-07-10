@@ -299,7 +299,7 @@ fn (p mut Parser) import_statement() {
 	// limit depth to 4 for now
 	max_module_depth := 4
 	mut depth := 1
-	for p.peek() == DOT {
+	for p.peek() == .dot {
 		p.next() // SKIP DOT
 		p.next() // SUBMODULE
 		submodule := p.lit.trim_space()
