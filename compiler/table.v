@@ -258,18 +258,17 @@ if parent == 'array' {
 pkg = 'builtin'
 }
 */
-	datyp := Type {
+	t.types << Type { 
 		name: typ
 		parent: parent
+		//mod: mod 
 	}
-	t.types << datyp
 }
 
 fn (t mut Table) register_type2(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}
-	// println('register type2 $typ.name')
 	for typ2 in t.types {
 		if typ2.name == typ.name {
 			return

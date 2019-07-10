@@ -144,7 +144,7 @@ fn (p mut Parser) fn_decl() {
 		// Don't allow modifying types from a different module
 		if !p.first_run() && !p.builtin_pkg && T.mod != p.mod {
 			println('T.mod=$T.mod')
-			println('pkg=$p.mod')
+			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
 		}
 		// (a *Foo) instead of (a mut Foo) is a common mistake
@@ -533,7 +533,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		receiver := f.args.first()
 		if receiver.is_mut && !p.expr_var.is_mut {
 			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
-			p.error('`$p.expr_var.name` is imkey_mut')
+			p.error('`$p.expr_var.name` is immutable')
 		}
 		// if receiver is key_mut or a ref (&), generate & for the first arg
 		if receiver.ref || (receiver.is_mut && !receiver_type.contains('*')) {
