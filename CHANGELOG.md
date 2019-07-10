@@ -6,7 +6,7 @@
 - Complex numbers
 - `<<` can now append arrays (`numbers << [1, 2, 3]`)
 - Lots of Windows fixes (Windows still needs some work)
-- Lots of REPL improvements (e.g. `>> 2 + 3` works no, no `println` required)
+- Lots of REPL improvements (e.g. `>> 2 + 3` works now, no `println` required)
 
 
 # V 0.1.12
