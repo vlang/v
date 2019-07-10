@@ -194,7 +194,7 @@ fn (p mut Parser) fn_decl() {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if f.name.contains('__') {
-			p.error('function names cannot contain double underscores ("__"), use single underscores instead')
+			p.error('function names cannot contain double underscores, use single underscores instead')
 		}
 	}
 	// simple_name := f.name
