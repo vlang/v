@@ -26,10 +26,15 @@ pub fn (c Complex) str() string {
 	return out
 }
 
-// Complex Absolute value
+// Complex Modulus value
+// mod() and abs() return the same
 pub fn (c Complex) abs() f64 {
 	return C.hypot(c.re, c.im)
 }
+pub fn (c Complex) mod() f64 {
+	return C.hypot(c.re, c.im)
+}
+
 
 // Complex Angle
 pub fn (c Complex) angle() f64 { 
