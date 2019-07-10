@@ -114,8 +114,8 @@ pub fn (c Complex) addinv() Complex {
 // http://tutorial.math.lamar.edu/Extras/ComplexPrimer/Arithmetic.aspx
 pub fn (c Complex) mulinv() Complex {
 	return Complex {
-		c.re / c.abs(),
-		-c.im / c.abs()
+		c.re / (c.re * c.re + c.im * c.im),
+		-c.im / (c.re * c.re + c.im * c.im)
 	}
 }
  
