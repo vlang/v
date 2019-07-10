@@ -597,7 +597,7 @@ mut args := ''
 		a << '-x objective-c'
 	}
 	// Without these libs compilation will fail on Linux
-	if v.os == .linux && v.pref.build_mode != .build {
+	if (v.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build {
 		a << '-lm -ldl -lpthread'
 	}
 	// Find clang executable
