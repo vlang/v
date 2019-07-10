@@ -93,40 +93,33 @@ pub fn (c1 Complex) divide(c2 Complex) Complex {
 }
 
 // Complex Conjugate
-pub fn (c1 Complex) conjugate() Complex{
-	return Complex{c1.re,-c1.im}
+pub fn (c Complex) conjugate() Complex{
+	return Complex{c.re,-c.im}
 }
 
 // Complex Additive Inverse
 // Based on 
 // http://tutorial.math.lamar.edu/Extras/ComplexPrimer/Arithmetic.aspx
-pub fn (c1 Complex) addinv() Complex {
-	return Complex{-c1.re,-c1.im}
+pub fn (c Complex) addinv() Complex {
+	return Complex{-c.re,-c.im}
 }
 
 // Complex Multiplicative Inverse
 // Based on
 // http://tutorial.math.lamar.edu/Extras/ComplexPrimer/Arithmetic.aspx
-pub fn (c1 Complex) mulinv() Complex {
+pub fn (c Complex) mulinv() Complex {
 	return Complex {
-		c1.re / (pow(c1.re,2) + pow(c1.im,2)),
-		-c1.im / (pow(c1.re,2) + pow(c1.im,2))
+		c.re / c.abs(),
+		-c.im / c.abs()
 	}
 }
  
-// Complex Mod or Absolute
-// Based on
-// http://tutorial.math.lamar.edu/Extras/ComplexPrimer/ConjugateModulus.aspx
-pub fn (c1 Complex) mod() f64 {
-	return sqrt(pow(c1.re,2)+pow(c1.im,2))
-}
-
 // Complex Power
 // Based on
 // https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers/multiplying-and-dividing-complex-numbers-in-polar-form/a/complex-number-polar-form-review
-pub fn (c1 Complex) pow(n f64) Complex {
-	r := pow(c1.mod(),n)
-	angle := atan2(c1.im,c1.re)
+pub fn (c Complex) pow(n f64) Complex {
+	r := pow(c.abs(),n)
+	angle := c.angle()
 	return Complex {
 		r * cos(n*angle),
 		r * sin(n*angle)
@@ -134,29 +127,29 @@ pub fn (c1 Complex) pow(n f64) Complex {
 }
 
 // Complex nth root 
-pub fn (c1 Complex) root(n f64) Complex {
-	return c1.pow(1.0/n)
+pub fn (c Complex) root(n f64) Complex {
+	return c.pow(1.0/n)
 }
 
 // Complex Exponential
 // Using Euler's Identity 
 // Based on
 // https://www.math.wisc.edu/~angenent/Free-Lecture-Notes/freecomplexnumbers.pdf
-pub fn (c1 Complex) exp() Complex {
-	a := exp(c1.re)
+pub fn (c Complex) exp() Complex {
+	a := exp(c.re)
 	return Complex {
-		a * cos(c1.im),
-		a * sin(c1.im)
+		a * cos(c.im),
+		a * sin(c.im)
 	}
 }
 
 // Complex Natural Logarithm
 // Based on 
 // http://www.chemistrylearning.com/logarithm-of-complex-number/
-pub fn (c1 Complex) ln() Complex {
+pub fn (c Complex) ln() Complex {
 	return Complex {
-		log(c1.mod()),
-		atan2(c1.im,c1.re)
+		log(c.abs()),
+		c.angle()
 	}
 }
 
