@@ -1,12 +1,13 @@
 # V 0.1.13
-- New enum syntax (`token == .name`), enum values are no longer global consts
-- Submodules (`import encoding.base64`)
-- Hot code reloading
-- Special `err` variable for getting error values
-- Complex numbers
-- `<<` can now append arrays (`numbers << [1, 2, 3]`)
-- Lots of Windows fixes (Windows still needs some work)
-- Lots of REPL improvements (e.g. `>> 2 + 3` works now, no `println` required)
+- New enum syntax (`token == .name`), enum values are no longer global consts.
+- Submodules (`import encoding.base64`).
+- Hot code reloading.
+- Special `err` variable for getting error values.
+- Complex numbers.
+- `<<` can now append arrays (`numbers << [1, 2, 3]`).
+- Lots of Windows fixes (Windows still needs some work).
+- Lots of REPL improvements (e.g. `>> 2 + 3` works now, no `println` required).
+- The website was made easily translatable, it's now partially available in several languages.
 
 
 # V 0.1.12
