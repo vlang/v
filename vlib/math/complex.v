@@ -32,7 +32,7 @@ pub fn (c Complex) abs() f64 {
 	return C.hypot(c.re, c.im)
 }
 pub fn (c Complex) mod() f64 {
-	return C.hypot(c.re, c.im)
+	return c.abs()
 }
 
 
