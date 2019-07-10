@@ -32,7 +32,7 @@ mut:
 	fields         []Var
 	methods        []Fn
 	parent         string
-	func           Fn // For cat == FN (type kek fn())
+	func           Fn // For cat == FN (type myfn fn())
 	is_c           bool // C.FI.le
 	is_interface   bool
 	is_enum        bool

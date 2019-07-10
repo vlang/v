@@ -54,7 +54,6 @@ pub fn init() {
 
 struct Face {
 	cobj voidptr
-	kek  int
 }
 
 struct Cfg {
@@ -368,7 +367,6 @@ pub fn new_context_text(cfg Cfg, scale int) *GG {
 	mut chars := []gg.Character{}
 	f := Face {
 		cobj: 0
-		kek: 0
 	}
 	# f.cobj = &face;
 	// # for (GLubyte c = 0; c < 128; c++)

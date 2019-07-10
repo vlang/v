@@ -314,8 +314,8 @@ fn (s mut Scanner) scan() ScanRes {
 	case `$`:
 		return scan_res(.dollar, '')
 	case `}`:
-		// s = `hello $name kek`
-		// s = `hello ${name} kek`
+		// s = `hello $name !`
+		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
 			// TODO UN.neEDED?

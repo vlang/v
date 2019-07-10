@@ -6,6 +6,8 @@ module builtin
 
 // V strings are not null-terminated.
 struct string {
+mut:
+	hash_cache int 
 pub:
 	str byteptr
 	len int
@@ -797,13 +799,12 @@ pub fn (c byte) is_white() bool {
 
 
 pub fn (s string) hash() int {
-	mut hash := int(0)
-	for i := 0; i < s.len; i++ {
-		// if key == 'Content-Type' {
-		// println('$i) $hash')
-		// }
-		hash = hash * int(31) + int(s.str[i])
-	}
-	return hash
+	mut h := s.hash_cache 
+	if h == 0 && s.len > 0 { 
+		for c in s { 
+			h = h * 31 + int(c) 
+		}
+	} 
+	return h 
 }
 

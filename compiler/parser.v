@@ -2301,7 +2301,7 @@ fn (p mut Parser) array_init() string {
 					name := p.check_name()
 					if p.table.known_type(name) {
 						p.cgen.cur_line = ''
-						p.gen('{} /* arkek init*/')
+						p.gen('{}')
 						return '[$lit]$name'
 					}
 					else {

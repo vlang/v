@@ -49,11 +49,6 @@ enum Pass {
 	main
 }
 
-fn mykek(o OS) {
-
- 
-} 
-
 struct V {
 mut:
 	os         OS // the OS to build for
