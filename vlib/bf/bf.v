@@ -13,7 +13,7 @@ const (
 )
 
 fn bitmask(bitnr int) u32 {
-	return u32(1 << (bitnr % SLOT_SIZE))
+	return u32(u32(1) << u32(bitnr % SLOT_SIZE))
 }
 
 fn bitslot(size int) int {

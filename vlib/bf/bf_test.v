@@ -3,18 +3,18 @@ import bf
 import rand
 
 fn test_bf_new_size() {
-	instance := bf.new(5)
-	assert instance.getsize() == 5
+	instance := bf.new(75)
+	assert instance.getsize() == 75
 }
 
 fn test_bf_set_clear_toggle_get() {
-	mut instance := bf.new(5)
-	instance.setbit(4)
-	assert instance.getbit(4) == 1
-	instance.clearbit(4)
-	assert instance.getbit(4) == 0
-	instance.togglebit(4)
-	assert instance.getbit(4) == 1
+	mut instance := bf.new(75)
+	instance.setbit(47)
+	assert instance.getbit(47) == 1
+	instance.clearbit(47)
+	assert instance.getbit(47) == 0
+	instance.togglebit(47)
+	assert instance.getbit(47) == 1
 }
 
 fn test_bf_and_not_or_xor() {
