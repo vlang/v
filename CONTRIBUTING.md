@@ -4,7 +4,7 @@ I tried making the code of the compiler and vlib as simple and readable as possi
 
 The compiler itself is located in `compiler/`
 
-It has only 8 files (soon to be 7):
+It has only 8 files (soon to be 7) and a directory:
 
 1. `main.v` The entry point.
 - V figures out the build mode.
