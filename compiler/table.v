@@ -668,7 +668,7 @@ fn is_valid_int_const(val, typ string) bool {
 // this is not optimal
 fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
-		if m.contains('.') {
+		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
 			m_path := m_parts.join('/')
 			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
