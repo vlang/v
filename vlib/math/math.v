@@ -157,7 +157,7 @@ pub fn log(a f64) f64 {
 
 // log2 calculates base-2 logarithm of the provided value.
 pub fn log2(a f64) f64 {
-	return C.log(a) / C.log(2)
+	return C.log2(a)
 }
 
 // log10 calculates the common (base-10) logarithm of the provided value.
