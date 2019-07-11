@@ -679,7 +679,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn new_file_import_table(file_path) *FileImportTable {
+fn new_file_import_table(file_path string) *FileImportTable {
 	mut t := &FileImportTable{
 		file_path: file_path
 		imports:   map[string]string{}
