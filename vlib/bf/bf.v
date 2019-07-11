@@ -205,3 +205,8 @@ pub fn (instance BitField) popcount() int {
 	}
 	return count
 }
+
+pub fn hamming (input1 BitField, input2 BitField) int {
+	input_xored := bfxor(input1, input2)
+	return input_xored.popcount()
+}

@@ -72,3 +72,26 @@ fn test_popcount() {
 	count1 := input.popcount()
 	assert count0 == count1
 }
+
+fn test_hamming() {
+	rand.seed()
+	len := 80
+	mut count := 0
+	mut input1 := bf.new(len)
+	mut input2 := bf.new(len)
+	for i := 0; i < len; i++ {
+		switch rand.next(4) {
+			case 0:
+			case 1:
+				input1.setbit(i)
+				count++
+			case 2:
+				input2.setbit(i)
+				count++
+			case 3:
+				input1.setbit(i)
+				input2.setbit(i)
+		}
+	}
+	assert count == bf.hamming(input1, input2)
+}
