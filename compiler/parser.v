@@ -334,7 +334,7 @@ fn (p mut Parser) import_statement() {
 	// add import to file scope import table
 	p.f_import_table.register_alias(alias, pkg)
 	// Make sure there are no duplicate imports
-	if p.table.imports.contains(pkg)  {
+	if p.table.imports.contains(pkg) {
 		return
 	}
 	p.log('adding import $pkg')
