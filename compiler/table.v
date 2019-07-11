@@ -8,15 +8,15 @@ import math
 
 struct Table {
 mut:
-	types        []Type
-	consts       []Var
-	fns          map[string]Fn 
-	obf_ids      map[string]int // obf_ids['myfunction'] == 23
-	packages     []string // List of all modules registered by the application
-	imports      []string // List of all imports
-	flags        []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt       int atomic
-	obfuscate    bool
+	types     []Type
+	consts    []Var
+	fns       map[string]Fn 
+	obf_ids   map[string]int // obf_ids['myfunction'] == 23
+	packages  []string // List of all modules registered by the application
+	imports   []string // List of all imports
+	flags     []string //  ['-framework Cocoa', '-lglfw3']
+	fn_cnt    int atomic
+	obfuscate bool
 }
 
 // Holds import information scoped to the parsed file
