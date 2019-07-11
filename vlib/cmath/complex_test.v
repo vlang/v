@@ -311,6 +311,63 @@ fn test_complex_tan() {
 	assert result.str().eq(c2.str())
 }
 
+fn test_complex_asin() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := cmath.complex(5,7)
+	mut c2 := cmath.complex(0.617064,2.846289)
+	mut result := c1.asin()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-3,4)
+	c2 = cmath.complex(-0.633984,2.305509)
+	result = c1.asin()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-1,-2)
+	c2 = cmath.complex(-0.427079,-1.528571)
+	result = c1.asin()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
+fn test_complex_acos() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := cmath.complex(5,7)
+	mut c2 := cmath.complex(0.953732,-2.846289)
+	mut result := c1.acos()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-3,4)
+	c2 = cmath.complex(2.204780,-2.305509)
+	result = c1.acos()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-1,-2)
+	c2 = cmath.complex(1.997875,1.528571)
+	result = c1.acos()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
+fn test_complex_atan() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := cmath.complex(5,7)
+	mut c2 := cmath.complex(1.502727,0.094441)
+	mut result := c1.atan()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-3,4)
+	c2 = cmath.complex(-1.448307,0.158997)
+	result = c1.atan()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-1,-2)
+	c2 = cmath.complex(-1.338973,-0.402359)
+	result = c1.atan()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
 fn test_complex_sinh() {
 	// Tests were also verified on Wolfram Alpha
 	mut c1 := cmath.complex(5,7)
@@ -368,4 +425,59 @@ fn test_complex_tanh() {
 	assert result.str().eq(c2.str())
 }
  
+fn test_complex_asinh() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := cmath.complex(5,7)
+	mut c2 := cmath.complex(2.844098,0.947341)
+	mut result := c1.asinh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-3,4)
+	c2 = cmath.complex(-2.299914,0.917617)
+	result = c1.asinh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-1,-2)
+	c2 = cmath.complex(-1.469352,-1.063440)
+	result = c1.asinh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
 
+fn test_complex_acosh() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := cmath.complex(5,7)
+	mut c2 := cmath.complex(2.846289,0.953732)
+	mut result := c1.acosh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-3,4)
+	c2 = cmath.complex(2.305509,2.204780)
+	result = c1.acosh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-1,-2)
+	c2 = cmath.complex(1.528571,-1.997875)
+	result = c1.acosh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
+
+fn test_complex_atanh() {
+	// Tests were also verified on Wolfram Alpha
+	mut c1 := cmath.complex(5,7)
+	mut c2 := cmath.complex(0.067066,1.476056)
+	mut result := c1.atanh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-3,4)
+	c2 = cmath.complex(-0.117501,1.409921)
+	result = c1.atanh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+	c1 = cmath.complex(-1,-2)
+	c2 = cmath.complex(-0.173287,-1.178097)
+	result = c1.atanh()
+	// Some issue with precision comparison in f64 using == operator hence serializing to string
+	assert result.str().eq(c2.str())
+}
