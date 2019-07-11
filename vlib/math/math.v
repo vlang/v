@@ -248,3 +248,22 @@ pub fn factorial(a int) i64 {
 	return prod
 }
 
+// erf computes the error funtion value
+pub fn erf(a f64) f64 {
+	return C.erf(a)
+}
+
+// erfc computes the complimentary error function value
+pub fn erfc(a f64) f64 {
+	return C.erfc(a)
+}
+
+// gamma computes the gamma function value
+pub fn gamma(a f64) f64 {
+	return C.tgamma(a)
+}
+
+// log_gamma computes the log-gamma function value
+pub fn log_gamma(a f64) f64 {
+	return C.lgamma(a)
+}
