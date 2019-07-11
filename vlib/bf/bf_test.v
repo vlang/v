@@ -57,3 +57,18 @@ fn test_clone_cmp() {
 	assert output.getsize() == len
 	assert bf.cmp(input, output) == true
 }
+
+fn test_popcount() {
+	rand.seed()
+	len := 80
+	mut count0 := 0
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+			count0++
+		}
+	}
+	count1 := input.popcount()
+	assert count0 == count1
+}

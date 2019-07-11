@@ -186,3 +186,22 @@ pub fn cmp(input1 BitField, input2 BitField) bool {
 	return true
 }
 
+pub fn (instance BitField) popcount() int {
+	size := instance.size
+	bitnslots := bitnslots(size)
+	tail := size % SLOT_SIZE
+	mut count := 0
+	for i := 0; i < bitnslots - 1; i++ {
+		for j := 0; j < SLOT_SIZE; j++ {
+			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
+				count++
+			}
+		}
+	}
+	for j := 0; j < tail; j++ {
+		if u32(instance.field[bitnslots - 1] >> u32(j)) & u32(1) == u32(1) {
+			count++
+		}
+	}
+	return count
+}
