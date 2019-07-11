@@ -317,11 +317,10 @@ fn (p mut Parser) import_statement() {
 	mut pkg := p.lit.trim_space()
 	// submodule support
 	mut depth := 1
-	mut submodule := ''
-	p.next() 
+	p.next()
 	for p.tok == .dot {
 		p.check(.dot) 
-		submodule = p.check_name()
+		submodule := p.check_name()
 		if alias == '' { alias = submodule }
 		pkg += '.' + submodule
 		depth++
