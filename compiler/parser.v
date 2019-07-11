@@ -42,7 +42,7 @@ mut:
 	lit            string
 	cgen           *CGen
 	table          *Table
-	f_import_table *FileImportTable // Holds imports for just the file being parsed
+	import_table   *FileImportTable // Holds imports for just the file being parsed
 	run            Pass // TODO rename `run` to `pass`
 	os             OS 
 	mod            string
@@ -86,7 +86,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		file_name: path.all_after('/')
 		scanner: new_scanner(path)
 		table: c.table
-		f_import_table: new_file_import_table(path)
+		import_table: new_file_import_table(path)
 		cur_fn: EmptyFn
 		cgen: c.cgen
 		is_script: (c.pref.is_script && path == c.dir)
@@ -137,10 +137,10 @@ fn (p mut Parser) parse() {
 	p.can_chash = p.mod == 'gg' || p.mod == 'glm' || p.mod == 'gl' || 
 		p.mod == 'http' ||  p.mod == 'glfw' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
-	// fully qualify the module, eg base64 to encoding.base64
+	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
 	p.table.register_package(fq_mod)
-	// repalce . with / for C variable names
+	// replace "." with "_" for C variable names
 	p.mod = fq_mod.replace('.', '_')
 	if p.run == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
@@ -294,8 +294,8 @@ fn (p mut Parser) import_statement() {
 			pkg := p.lit.trim_space()
 			p.next()
 			// TODO: aliased for import() syntax
-			// p.f_import_table.register_alias(alias, pkg)
-			// p.f_import_table.register_import(pkg)
+			// p.import_table.register_alias(alias, pkg)
+			// p.import_table.register_import(pkg)
 			if p.table.imports.contains(pkg) {
 				continue
 			}
@@ -331,7 +331,7 @@ fn (p mut Parser) import_statement() {
 	if alias == '' { alias = pkg }
 	p.fgenln(' ' + pkg)
 	// add import to file scope import table
-	p.f_import_table.register_alias(alias, pkg)
+	p.import_table.register_alias(alias, pkg)
 	// Make sure there are no duplicate imports
 	if p.table.imports.contains(pkg) {
 		return
@@ -1304,12 +1304,13 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if (p.table.known_pkg(name) || p.f_import_table.known_alias(name))
+	if (p.table.known_pkg(name) || p.import_table.known_alias(name))
 		&& !p.cur_fn.known_var(name) && !is_c {
 		mut pkg := name
-		// must be aliased package
-		if name != p.mod && p.f_import_table.known_alias(name) {
-			pkg = p.f_import_table.resolve_alias(name).replace('.', '_')
+		// must be aliased module
+		if name != p.mod && p.import_table.known_alias(name) {
+			// we replaced "." with "_" in p.mod for C variable names, do same here.
+			pkg = p.import_table.resolve_alias(name).replace('.', '_')
 		}
 		p.next()
 		p.check(.dot)
@@ -1434,7 +1435,7 @@ fn (p mut Parser) name_expr() string {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
 			// if p.table.known_pkg(orig_name) {
-			if p.table.known_pkg(orig_name) && p.f_import_table.known_alias(orig_name) {
+			if p.table.known_pkg(orig_name) && p.import_table.known_alias(orig_name) {
 				name = name.replace('__', '.')
 				p.error('undefined: `$name`')
 			}
