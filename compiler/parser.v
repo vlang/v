@@ -117,9 +117,6 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse() {
 	p.log('\nparse() run=$p.run file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
-	if p.file_path.contains('base64') {
-		println(' **** $p.file_path')
-	}
 	// `module main` is not required if it's a single file program
 	if p.is_script || p.pref.is_test {
 		p.mod = 'main'
@@ -334,15 +331,12 @@ fn (p mut Parser) import_statement() {
 	}
 	if alias == '' { alias = pkg }
 	p.fgenln(' ' + pkg)
-
 	// add import to file scope import table
 	p.f_import_table.register_alias(alias, pkg)
-	
 	// Make sure there are no duplicate imports
 	if p.table.imports.contains(pkg)  {
 		return
 	}
-	
 	p.log('adding import $pkg')
 	p.table.imports << pkg
 	p.table.register_package(pkg)
@@ -1280,7 +1274,7 @@ fn (p mut Parser) name_expr() string {
 	mut name := p.lit
 	p.fgen(name)
 	// known_type := p.table.known_type(name)
-	mut orig_name := name
+	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot 
 	mut is_c_struct_init := is_c && ptr// a := &C.mycstruct{}
 	if is_c {
@@ -1311,12 +1305,12 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if (p.table.known_pkg(name) || p.import_table.known_alias(name))
+	if (p.table.known_pkg(name) || p.f_import_table.known_alias(name))
 		&& !p.cur_fn.known_var(name) && !is_c {
 		mut pkg := name
 		// must be aliased package
-		if name != p.mod && p.import_table.known_alias(name) {
-			pkg = p.import_table.resolve_alias(name).replace('.', '_')
+		if name != p.mod && p.f_import_table.known_alias(name) {
+			pkg = p.f_import_table.resolve_alias(name).replace('.', '_')
 		}
 		p.next()
 		p.check(.dot)
@@ -1441,7 +1435,7 @@ fn (p mut Parser) name_expr() string {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
 			// if p.table.known_pkg(orig_name) {
-			if p.table.known_pkg(orig_name.replace('_', '.')) && p.import_table.known_alias(orig_name) {
+			if p.table.known_pkg(orig_name) && p.f_import_table.known_alias(orig_name) {
 				name = name.replace('__', '.')
 				p.error('undefined: `$name`')
 			}
