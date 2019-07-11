@@ -86,7 +86,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		file_name: path.all_after('/')
 		scanner: new_scanner(path)
 		table: c.table
-        f_import_table: new_file_import_table(path)
+		f_import_table: new_file_import_table(path)
 		cur_fn: EmptyFn
 		cgen: c.cgen
 		is_script: (c.pref.is_script && path == c.dir)

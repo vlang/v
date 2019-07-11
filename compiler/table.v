@@ -646,6 +646,24 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	return '$typ $name'
 }
 
+fn is_valid_int_const(val, typ string) bool {
+	x := val.int() 
+	switch typ {
+	case 'byte', 'u8': return 0 <= x && x <= math.MaxU8 
+	case 'u16': return 0 <= x && x <= math.MaxU16 
+	//case 'u32': return 0 <= x && x <= math.MaxU32 
+	//case 'u64': return 0 <= x && x <= math.MaxU64 
+	////////////// 
+	case 'i8': return math.MinI8 <= x && x <= math.MaxI8 
+	case 'i16': return math.MinI16 <= x && x <= math.MaxI16 
+	case 'int', 'i32': return math.MinI32 <= x && x <= math.MaxI32 
+	//case 'i64': 
+		//x64 := val.i64() 
+		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1) 
+	} 
+	return true 
+}
+
 // Once we have a module format we can read from module file instead
 // this is not optimal
 fn (table &Table) qualify_module(mod string, file_path string) string {
@@ -661,8 +679,9 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn new_file_import_table() *FileImportTable {
+fn new_file_import_table(file_path) *FileImportTable {
 	mut t := &FileImportTable{
+		file_path: file_path
 		imports:   map[string]string{}
 	}
 	return t
@@ -701,22 +720,3 @@ fn (fit &FileImportTable) resolve_alias(alias string) string {
 	}
 	return ''
 }
-
-fn is_valid_int_const(val, typ string) bool {
-	x := val.int() 
-	switch typ {
-	case 'byte', 'u8': return 0 <= x && x <= math.MaxU8 
-	case 'u16': return 0 <= x && x <= math.MaxU16 
-	//case 'u32': return 0 <= x && x <= math.MaxU32 
-	//case 'u64': return 0 <= x && x <= math.MaxU64 
-	////////////// 
-	case 'i8': return math.MinI8 <= x && x <= math.MaxI8 
-	case 'i16': return math.MinI16 <= x && x <= math.MaxI16 
-	case 'int', 'i32': return math.MinI32 <= x && x <= math.MaxI32 
-	//case 'i64': 
-		//x64 := val.i64() 
-		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1) 
-	} 
-	return true 
-} 
-
