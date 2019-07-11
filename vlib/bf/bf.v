@@ -178,3 +178,11 @@ pub fn clone(input BitField) BitField {
 	return output
 }
 
+pub fn cmp(input1 BitField, input2 BitField) bool {
+	if input1.size != input2.size {return false}
+	for i := 0; i < bitnslots(input1.size); i++ {
+		if input1.field[i] != input2.field[i] {return false}
+	}
+	return true
+}
+

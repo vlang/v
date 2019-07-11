@@ -43,3 +43,17 @@ fn test_bf_and_not_or_xor() {
 	}
 	assert result == 1
 }
+
+fn test_clone_cmp() {
+	rand.seed()
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	output := bf.clone(input)
+	assert output.getsize() == len
+	assert bf.cmp(input, output) == true
+}
