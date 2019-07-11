@@ -8,15 +8,22 @@ import math
 
 struct Table {
 mut:
-	types     []Type
-	consts    []Var
-	fns       map[string]Fn 
-	obf_ids   map[string]int // obf_ids['myfunction'] == 23
-	packages  []string // List of all modules registered by the application
-	imports   []string // List of all imports
-	flags     []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt    int atomic
-	obfuscate bool
+	types        []Type
+	consts       []Var
+	fns          map[string]Fn 
+	obf_ids      map[string]int // obf_ids['myfunction'] == 23
+	packages     []string // List of all modules registered by the application
+	imports      []string // List of all imports
+	flags        []string //  ['-framework Cocoa', '-lglfw3']
+	fn_cnt       int atomic
+	obfuscate    bool
+}
+
+// Holds import information scoped to the parsed file
+struct FileImportTable {
+mut:
+	file_path string
+	imports   map[string]string
 }
 
 enum AccessMod {
@@ -637,6 +644,62 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 		return 'struct /*TM*/ tm $name'
 	}
 	return '$typ $name'
+}
+
+// Once we have a module format we can read from module file instead
+// this is not optimal
+fn (table &Table) qualify_module(mod string, file_path string) string {
+	for m in table.imports {
+		if m.contains('.') {
+			m_parts := m.split('.')
+			m_path := m_parts.join('/')
+			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
+				return m
+			}
+		}
+	}
+	return mod
+}
+
+fn new_file_import_table() *FileImportTable {
+	mut t := &FileImportTable{
+		imports:   map[string]string{}
+	}
+	return t
+}
+
+fn (fit FileImportTable) known_import(mod string) bool {
+	return fit.imports.exists(mod) || fit.is_aliased(mod)
+}
+
+fn (fit mut FileImportTable) register_import(mod string) {
+	fit.register_alias(mod, mod)
+}
+
+fn (fit mut FileImportTable) register_alias(alias string, mod string) {
+	if !fit.imports.exists(alias) {
+		fit.imports[alias] = mod
+	}
+}
+
+fn (fit &FileImportTable) known_alias(alias string) bool {
+	return fit.imports.exists(alias)
+}
+
+fn (fit &FileImportTable) is_aliased(mod string) bool {
+	for i in fit.imports.keys() {
+		if fit.imports[i] == mod {
+			return true
+		}
+	}
+	return false
+}
+
+fn (fit &FileImportTable) resolve_alias(alias string) string {
+	if fit.imports.exists(alias) {
+		return fit.imports[alias]
+	}
+	return ''
 }
 
 fn is_valid_int_const(val, typ string) bool {
