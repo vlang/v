@@ -58,6 +58,29 @@ fn test_clone_cmp() {
 	assert bf.cmp(input, output) == true
 }
 
+fn test_slice_join() {
+	rand.seed()
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	mut result := 1
+	for point := 1; point < (len - 1); point++ {
+		// divide a bitfield into two subfields
+		chunk1 := input.slice(0, point)
+		chunk2 := input.slice(point, input.getsize())
+		// concatenate them back into one and compare to the original
+		output := bf.join(chunk1, chunk2)
+		if !bf.cmp(input, output) {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
 fn test_popcount() {
 	rand.seed()
 	len := 80

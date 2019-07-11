@@ -150,6 +150,53 @@ pub fn bfxor(input1 BitField, input2 BitField) BitField {
 	return output
 }
 
+pub fn join(input1 BitField, input2 BitField) BitField {
+	output_size := input1.size + input2.size
+	mut output := new(output_size)
+	// copy the first input to output as is
+	for i := 0; i < bitnslots(input1.size); i++ {
+		output.field[i] = input1.field[i]
+	}
+
+	// find offset bit and offset slot
+	offset_bit := input1.size % SLOT_SIZE
+	offset_slot := input1.size / SLOT_SIZE
+
+	for i := 0; i < bitnslots(input2.size); i++ {
+		output.field[i + offset_slot] =
+		    output.field[i + offset_slot] |
+		    u32(input2.field[i] << u32(offset_bit))
+	}
+
+	/*
+	 * If offset_bit is not zero, additional operations are needed.
+	 * Number of iterations depends on the nr of slots in output. Two
+	 * options:
+	 * (a) nr of slots in output is the sum of inputs' slots. In this
+	 * case, the nr of bits in the last slot of output is less than the
+	 * nr of bits in second input (i.e. ), OR
+	 * (b) nr of slots of output is the sum of inputs' slots less one
+	 * (i.e. less iterations needed). In this case, the nr of bits in
+	 * the last slot of output is greater than the nr of bits in second
+	 * input.
+	 * If offset_bit is zero, no additional copies needed.
+	 */
+	if (output_size - 1) % SLOT_SIZE < (input2.size - 1) % SLOT_SIZE {
+		for i := 0; i < bitnslots(input2.size); i++ {
+			output.field[i + offset_slot + 1] =
+			    output.field[i + offset_slot + 1] |
+			    u32(input2.field[i] >> u32(SLOT_SIZE - offset_bit))
+		}
+	} else if (output_size - 1) % SLOT_SIZE > (input2.size - 1) % SLOT_SIZE {
+		for i := 0; i < bitnslots(input2.size) - 1; i++ {
+			output.field[i + offset_slot + 1] =
+			    output.field[i + offset_slot + 1] |
+			    u32(input2.field[i] >> u32(SLOT_SIZE - offset_bit))
+		}
+	}
+	return output
+}
+
 pub fn print(instance BitField) {
 	mut i := 0
 	for i < instance.size {
@@ -209,4 +256,71 @@ pub fn (instance BitField) popcount() int {
 pub fn hamming (input1 BitField, input2 BitField) int {
 	input_xored := bfxor(input1, input2)
 	return input_xored.popcount()
+}
+
+pub fn (input BitField) slice(_start int, _end int) BitField {
+	// boundary checks
+	mut start := _start
+	mut end := _end
+	if end > input.size {
+		end = input.size // or panic?
+	}
+	if start > end {
+		start = end // or panic?
+	}
+
+	mut output := new(end - start)
+	start_offset := start % SLOT_SIZE
+	end_offset := (end - 1) % SLOT_SIZE
+	start_slot := start / SLOT_SIZE
+	end_slot := (end - 1) / SLOT_SIZE
+	output_slots := bitnslots(end - start)
+
+	if output_slots > 1 {
+		if start_offset != 0 {
+			for i := 0; i < output_slots - 1; i++ {
+				output.field[i] =
+				    u32(input.field[start_slot + i] >> u32(start_offset))
+				output.field[i] = output.field[i] |
+				    u32(input.field[start_slot + i + 1] <<
+				    u32(SLOT_SIZE - start_offset))
+			}
+		}
+		else {
+			for i := 0; i < output_slots - 1; i++ {
+				output.field[i] =
+				    u32(input.field[start_slot + i])
+			}
+		}
+	}
+
+	if start_offset > end_offset {
+		output.field[(end - start - 1) / SLOT_SIZE] =
+		    u32(input.field[end_slot - 1] >> u32(start_offset))
+		mut mask := u32((1 << (end_offset + 1)) - 1)
+		mask = input.field[end_slot] & mask
+		mask = u32(mask << u32(SLOT_SIZE - start_offset))
+		output.field[(end - start - 1) / SLOT_SIZE] =
+		    output.field[(end - start - 1) / SLOT_SIZE] | mask
+	}
+	else if start_offset == 0 {
+		mut mask := u32(0)
+		if end_offset == SLOT_SIZE - 1 {
+			mask = u32(-1)
+		}
+		else {
+			mask = u32(u32(1) << u32(end_offset + 1))
+			mask = mask - u32(1)
+		}
+		output.field[(end - start - 1) / SLOT_SIZE] =
+		    (input.field[end_slot] & mask)
+	}
+	else {
+		mut mask := u32(((1 << (end_offset - start_offset + 1)) - 1)  << start_offset)
+		mask = input.field[end_slot] & mask
+		mask = u32(mask >> u32(start_offset))
+		output.field[(end - start - 1) / SLOT_SIZE] =
+		    output.field[(end - start - 1) / SLOT_SIZE] | mask
+	}
+	return output
 }
