@@ -199,8 +199,12 @@ fn (v mut V) compile() {
 
 
 #ifdef _WIN32 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-//#include <WinSock2.h> 
+#include <io.h> // _waccess
+#include <fcntl.h> // _O_U8TEXT
+#include <direct.h> // _wgetcwd
+//#include <WinSock2.h>
 #endif 
 
 //================================== TYPEDEFS ================================*/ 
@@ -359,7 +363,7 @@ string _STR_TMP(const char *fmt, ...) {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
 				//println('Generating main()...')
-				cgen.genln('int main() { init_consts(); $cgen.fn_main; return 0; }')
+				cgen.genln('int main() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \n#endif\n init_consts(); $cgen.fn_main; return 0; }')
 			}
 			else {
 				println('panic: function `main` is undeclared in the main module')
@@ -368,7 +372,7 @@ string _STR_TMP(const char *fmt, ...) {
 		}
 		// Generate `main` which calls every single test function
 		else if v.pref.is_test {
-			cgen.genln('int main() { init_consts();')
+			cgen.genln('int main() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \n#endif\n init_consts();')
 			for key, f in v.table.fns { 
 				if f.name.starts_with('test_') {
 					cgen.genln('$f.name();')
@@ -499,7 +503,7 @@ fn (c &V) cc_windows_cross() {
                obj_name = obj_name.replace('.exe', '')
                obj_name = obj_name.replace('.o.o', '.o')
                mut include := '-I $winroot/include '
-               cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
+               cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
                if c.pref.show_c_cmd {
                        println(cmd)
                }
@@ -629,6 +633,9 @@ mut args := ''
 		if v.os == .linux {
 			a << ' -ldl ' 
 		} 
+	}
+	if v.os == .windows {
+		a << '-DUNICODE -D_UNICODE'
 	}
 	// Find clang executable
 	//fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'

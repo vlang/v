@@ -37,7 +37,11 @@ pub fn println(s string) {
 	if isnil(s.str) {
 		panic('println(NIL)')
 	}
-	C.printf('%.*s\n', s.len, s.str)
+	$if windows {
+		C._putws(s.to_wide())
+	} $else {
+		C.printf('%.*s\n', s.len, s.str)
+	}
 }
 
 pub fn eprintln(s string) {
@@ -54,7 +58,11 @@ pub fn eprintln(s string) {
 }
 
 pub fn print(s string) {
-	C.printf('%.*s', s.len, s.str)
+	$if windows {
+		C.wprintf(s.to_wide())
+	} $else {
+		C.printf('%.*s', s.len, s.str)
+	}
 }
 
 __global total_m i64 = 0
