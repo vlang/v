@@ -1304,11 +1304,12 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if (p.table.known_pkg(name) || p.import_table.known_alias(name))
+	// if p.table.known_pkg(name)
+	if ((name == p.mod && p.table.known_pkg(name)) || p.import_table.known_alias(name))
 		&& !p.cur_fn.known_var(name) && !is_c {
 		mut pkg := name
 		// must be aliased module
-		if name != p.mod && p.import_table.known_alias(name) {
+		if name != p.mod && !p.table.known_pkg(name) {
 			// we replaced "." with "_" in p.mod for C variable names, do same here.
 			pkg = p.import_table.resolve_alias(name).replace('.', '_')
 		}
