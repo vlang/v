@@ -25,7 +25,7 @@
 - New `strings` module.
 - Lots of other fixes and improvements, thanks to all the contributors. 
 
-## V 0.1.11 - 1 Jul 2019 
+## 0.1.11 - 1 Jul 2019 
 - Cross compilation for Windows!
 - Lots of Windows fixes
 - socket.v
