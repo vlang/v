@@ -2776,7 +2776,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 			}
 			else {
 				p.gen(' else ')
-				return p.if_st(is_expr, elif_depth)
+				return p.if_st(is_expr, 0)
 			}
 			// return ''
 		}
