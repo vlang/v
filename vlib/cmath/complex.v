@@ -187,6 +187,53 @@ pub fn (c Complex) tan() Complex {
 	return c.sin().divide(c.cos())
 }
 
+// Complex Arc Sin / Sin Inverse
+// Based on 
+// http://www.milefoot.com/math/complex/summaryops.htm
+pub fn (c Complex) asin() Complex {
+	return complex(0,-1).multiply(
+			complex(0,1)
+			.multiply(c)
+			.add(
+				complex(1,0)
+				.subtract(c.pow(2))
+				.root(2)
+			)
+			.ln()
+	)
+}
+
+// Complex Arc Consine / Consine Inverse
+// Based on 
+// http://www.milefoot.com/math/complex/summaryops.htm
+pub fn (c Complex) acos() Complex {
+	return complex(0,-1).multiply(
+		c.add(
+			complex(0,1)
+			.multiply(
+				complex(1,0)
+				.subtract(c.pow(2))
+				.root(2)
+			)
+		)
+		.ln()
+	)
+}
+
+// Complex Arc Tangent / Tangent Inverse
+// Based on 
+// http://www.milefoot.com/math/complex/summaryops.htm
+pub fn (c Complex) atan() Complex {
+	i := complex(0,1)
+	return complex(0,1.0/2).multiply(
+		i.add(c)
+		.divide(
+			i.subtract(c)
+		)
+		.ln()
+	)
+}
+
 // Complex Hyperbolic Sin
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
@@ -212,6 +259,72 @@ pub fn (c Complex) cosh() Complex {
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) tanh() Complex {
 	return c.sinh().divide(c.cosh())
+}
+
+// Complex Hyperbolic Arc Sin / Sin Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
+pub fn (c Complex) asinh() Complex {
+	return c.add(
+		c.pow(2)
+		.add(complex(1,0))
+		.root(2)
+	).ln()
+}
+
+// Complex Hyperbolic Arc Consine / Consine Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
+pub fn (c Complex) acosh() Complex {
+	if(c.re > 1) {
+		return c.add(
+			c.pow(2)
+			.subtract(complex(1,0))
+			.root(2)
+		).ln()
+	}
+	else {
+		one := complex(1,0)
+		return c.add(
+			c.add(one)
+			.root(2)
+			.multiply(
+				c.subtract(one)
+				.root(2)
+			)
+		).ln()
+	}
+}
+
+// Complex Hyperbolic Arc Tangent / Tangent Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
+pub fn (c Complex) atanh() Complex {
+	if(c.re < 1) {
+		one := complex(1,0)
+		return complex(1.0/2,0).multiply(
+			one
+			.add(c)
+			.divide(
+				one
+				.subtract(c)
+			)
+			.ln()
+		)
+	}
+	else {
+		one := complex(1,0)
+		return complex(1.0/2,0).multiply(
+			one
+			.add(c)
+			.ln()
+			.subtract(
+				one
+				.subtract(c)
+				.ln()
+			)
+		)
+	}
 }
 
 // Complex Equals
