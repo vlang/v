@@ -11,13 +11,11 @@
 //  ```v
 //  module main
 //  
-//  import (
-//  	os
-//  	flag
-//  )
+//  import os
+//  import flag
 //  
 //  fn main() {
-//  	mut fp := flag.new_flag_set(os.args)
+//  	mut fp := flag.new_flag_parser(os.args)
 //  	fp.application('flag_example_tool')
 //  	fp.version('v0.0.0')
 //  	fp.description('This tool is only designed to show how the flag lib is working')
