@@ -45,9 +45,8 @@ https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 ## Installing V from source
 
-### Linux, macOS, Android, Raspberry Pi
+### Linux, macOS, Windows, WSL, Android, Raspberry Pi
 
-You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
 
 ```bash
 # You can clone V anywhere
@@ -55,7 +54,19 @@ git clone https://github.com/vlang/v
 cd v
 make
 ```
-Or build without make:
+
+That's it! Now you have a V executable at `[path to V repo]/v`.
+
+
+### C compiler
+
+You'll need Clang or GCC.
+
+On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
+
+On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+
+### Building without make
 ```bash
 # Download the V compiler's source translated to C
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
@@ -63,7 +74,7 @@ cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v compiler          # Use the resulting V binary to build V from V source
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`.
+### Symlinking and updates
 
 You can create a symlink so that it's globally available:
 
@@ -76,20 +87,6 @@ V is being constantly updated. To update V, simply run
 ```
 git pull origin master
 make
-```
-
-
-### Windows
-
-V works great on Windows Subsystem for Linux. The instructions are the same as above.
-
-If you want to build v.exe on Windows without WSL, you have to install MinGW-w64 or Visual Studio ([github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)) and then run
-
-
-```
-git clone https://github.com/vlang/v
-cd v
-make.bat
 ```
 
 
