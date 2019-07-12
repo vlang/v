@@ -2806,10 +2806,7 @@ fn (p mut Parser) for_st() {
 	p.fgen(' ')
 	p.for_expr_cnt++
 	next_tok := p.peek()
-	debug := p.scanner.file_path.contains('r_draw')
-	if debug {
-		println('\n\nF.ortok {')
-	}
+	//debug := p.scanner.file_path.contains('r_draw')
 	p.cur_fn.open_scope()
 	if p.tok == .lcbr {
 		// Infinite loop
@@ -2820,9 +2817,6 @@ fn (p mut Parser) for_st() {
 	}
 	// for i := 0; i < 10; i++ {
 	else if next_tok == .decl_assign || next_tok == .assign || p.tok == .semicolon {
-		if debug {
-			println('for 1')
-		}
 		p.genln('for (')
 		if next_tok == .decl_assign {
 			p.var_decl()
@@ -2832,26 +2826,17 @@ fn (p mut Parser) for_st() {
 			// Allow `for i = 0; i < ...`
 			p.statement(false)
 		}
-		if debug {
-			println('for 2')
-		}
 		p.check(.semicolon)
 		p.gen(' ; ')
 		p.fgen(' ')
 		if p.tok != .semicolon {
 			p.bool_expression()
 		}
-		if debug {
-			println('for 3')
-		}
 		p.check(.semicolon)
 		p.gen(' ; ')
 		p.fgen(' ')
 		if p.tok != .lcbr {
 			p.statement(false)
-		}
-		if debug {
-			println('for 4')
 		}
 		p.genln(') { ')
 	}
@@ -2871,27 +2856,47 @@ fn (p mut Parser) for_st() {
 		tmp := p.get_tmp()
 		p.cgen.start_tmp()
 		typ := p.bool_expression()
+		is_arr := typ.starts_with('array_') 
+		is_map := typ.starts_with('map_') 
+		is_str := typ == 'string' 
+		if !is_arr && !is_str && !is_map { 
+			p.error('cannot range over type `$typ`') 
+		} 
 		expr := p.cgen.end_tmp()
 		p.genln('$typ $tmp = $expr ;')
-		var_typ := typ.right(6)
+		pad := if is_arr { 6 } else  { 4 } 
+		var_typ := typ.right(pad)
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		// Register temp var
 		val_var := Var {
 			name: val
 			typ: var_typ
-			// parent_fn: p.cur_fn
 			ptr: typ.contains('*')
 		}
 		p.register_var(val_var)
-		i_var := Var {
-			name: i
-			typ: 'int'
-			// parent_fn: p.cur_fn
-			is_mut: true
+		if is_arr || is_str { 
+			i_var := Var {
+				name: i
+				typ: 'int'
+				// parent_fn: p.cur_fn
+				is_mut: true
+			}
+			p.register_var(i_var)
+			p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
+			p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
 		}
-		p.register_var(i_var)
-		p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
-		p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
+		else if is_map {
+			i_var := Var {
+				name: i
+				typ: 'string'
+				is_mut: true
+			}
+			p.register_var(i_var)
+			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
+			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
+			p.genln('string $i = entry.key;') 
+			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
+		} 
 	}
 	// `for val in vals`
 	else if p.peek() == .key_in {
@@ -2903,8 +2908,6 @@ fn (p mut Parser) for_st() {
 		p.cgen.start_tmp()
 		typ := p.bool_expression()
 		expr := p.cgen.end_tmp()
-		// println('if in:')
-		// println(p.strtok())
 		is_range := p.tok == .dotdot
 		mut range_end := ''
 		if is_range {
@@ -2916,9 +2919,8 @@ fn (p mut Parser) for_st() {
 		}
 		is_arr := typ.contains('array')
 		is_str := typ == 'string'
-		// ////if !typ.contains('array') && typ != 'string' {
 		if !is_arr && !is_str && !is_range {
-			p.error('`for in` requires an array or a string but got `$typ`')
+			p.error('cannot range over type `$typ`') 
 		}
 		p.genln('$typ $tmp = $expr;')
 		// TODO var_type := if...

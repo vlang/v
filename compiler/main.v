@@ -14,13 +14,13 @@ const (
 enum BuildMode {
 	// `v program.v'
 	// Build user code only, and add pre-compiled vlib (`cc program.o builtin.o os.o...`)
-    default_mode
+	default_mode
 	// `v -embed_vlib program.v`
 	// vlib + user code in one file (slower compilation, but easier when working on vlib and cross-compiling)
-    embed_vlib
+	embed_vlib
 	// `v -lib ~/v/os`
 	// build any module (generate os.o + os.vh)
-    build //TODO a better name would be smth like `.build_module` I think
+	build //TODO a better name would be smth like `.build_module` I think
 }
 
 fn vtmp_path() string {
