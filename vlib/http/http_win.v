@@ -21,7 +21,6 @@ import const (
 )
 
 fn (req &Request) do() Response {
-	mut s := ''
 	emptyresp := Response{}
 	mut url := req.url
 	//println('\n\nhttp.do() WIN URL="$url" TYP=$req.typ data="$req.data" headers.len=req.headers.len"')
@@ -137,6 +136,7 @@ fn (req &Request) do() Response {
 	// }
 	// # printf("dwread=%d\n", dwRead);
 	// # while ((InternetReadFile(request, buf, BUF_MAX, &nr_read)) && nr_read > 0)
+	mut s := ''
 	for
 	{
 		ok := C.InternetReadFile(request, buf, BUF_MAX, &nr_read)
@@ -176,7 +176,7 @@ fn (req &Request) do() Response {
 		// println(h)
 		vals := h.split(':')
 		hpos := h.index(':')
-		if pos == -1 {
+		if hpos == -1 {
 			continue
 		}
 		key := h.left(hpos)
