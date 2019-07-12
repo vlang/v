@@ -699,7 +699,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if !fit.imports.exists(alias) {
 		fit.imports[alias] = mod
 	} else {
-		panic('Cannot import $mod as $alias: import name $alias already in use.')
+		panic('Cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 	}
 }
 
