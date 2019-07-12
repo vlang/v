@@ -85,6 +85,11 @@ pub fn cosh(a f64) f64 {
 	return C.cosh(a)
 }
 
+// degrees convert from degrees to radians.
+pub fn degrees(radians f64) f64 {
+	return radians * (180.0 / Pi)
+}
+
 // exp calculates exponement of the number (math.pow(math.E, a)).
 pub fn exp(a f64) f64 {
 	return C.exp(a)
@@ -105,9 +110,31 @@ pub fn digits(n, base int) []int {
 	return res
 }
 
+// erf computes the error funtion value
+pub fn erf(a f64) f64 {
+	return C.erf(a)
+}
+
+// erfc computes the complimentary error function value
+pub fn erfc(a f64) f64 {
+	return C.erfc(a)
+}
+
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 pub fn exp2(a f64) f64 {
 	return C.exp2(a)
+}
+
+// factorial calculates the factorial of the provided value.
+pub fn factorial(a int) i64 {
+	if a < 0 {
+		panic('factorial: Cannot find factorial of negative number')
+	}
+	mut prod := 1
+	for i:= 0; i < a; i++ {
+		prod *= (i+1)
+	}
+	return prod
 }
 
 // floor returns the nearest integer equal or lower of the provided value.
@@ -118,6 +145,11 @@ pub fn floor(a f64) f64 {
 // fmod returns the floating-point remainder of number / denom (rounded towards zero):
 pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
+}
+
+// gamma computes the gamma function value
+pub fn gamma(a f64) f64 {
+	return C.tgamma(a)
 }
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
@@ -165,6 +197,11 @@ pub fn log10(a f64) f64 {
 	return C.log10(a)
 }
 
+// log_gamma computes the log-gamma function value
+pub fn log_gamma(a f64) f64 {
+	return C.lgamma(a)
+}
+
 // log_n calculates base-N logarithm of the provided value.
 pub fn log_n(a, b f64) f64 {
 	return C.log(a) / C.log(b)
@@ -194,11 +231,6 @@ pub fn pow(a, b f64) f64 {
 // radians convert from radians to degrees.
 pub fn radians(degrees f64) f64 {
 	return degrees * (Pi / 180.0)
-}
-
-// degrees convert from degrees to radians.
-pub fn degrees(radians f64) f64 {
-	return radians * (180.0 / Pi)
 }
 
 // round returns the integer nearest to the provided value.
@@ -234,36 +266,4 @@ pub fn tanh(a f64) f64 {
 // larger in magnitude than a.
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
-}
-
-// factorial calculates the factorial of the provided value.
-pub fn factorial(a int) i64 {
-	if a < 0 {
-		panic('factorial: Cannot find factorial of negative number')
-	}
-	mut prod := 1
-	for i:= 0; i < a; i++ {
-		prod *= (i+1)
-	}
-	return prod
-}
-
-// erf computes the error funtion value
-pub fn erf(a f64) f64 {
-	return C.erf(a)
-}
-
-// erfc computes the complimentary error function value
-pub fn erfc(a f64) f64 {
-	return C.erfc(a)
-}
-
-// gamma computes the gamma function value
-pub fn gamma(a f64) f64 {
-	return C.tgamma(a)
-}
-
-// log_gamma computes the log-gamma function value
-pub fn log_gamma(a f64) f64 {
-	return C.lgamma(a)
 }
