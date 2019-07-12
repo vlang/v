@@ -2781,9 +2781,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	mut typ := ''
 	// if { if hack
 	if p.tok == .key_if && p.inside_if_expr {
-		println('AAAWWFAFAF')
 		typ = p.factor()
-		println('QWEWQE typ=$typ')
 		p.next()
 	}
 	else {
