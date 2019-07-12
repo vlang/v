@@ -65,7 +65,7 @@ pub fn atan(a f64) f64 {
 	return C.atan(a)
 }
 
-// atan2 calculates inverseed tangent with two arguments, returns angle between the X axis and the point.
+// atan2 calculates inversed tangent with two arguments, returns angle between the X axis and the point.
 pub fn atan2(a, b f64) f64 {
 	return C.atan2(a, b)
 }
@@ -75,7 +75,7 @@ pub fn cbrt(a f64) f64 {
 	return C.cbrt(a)
 }
 
-// ceil returns the nearest integer equal or higher to the provided value.
+// ceil returns the nearest integer greater or equal to the provided value.
 pub fn ceil(a f64) f64 {
 	return C.ceil(a)
 }
@@ -142,7 +142,7 @@ pub fn factorial(a int) i64 {
 	return prod
 }
 
-// floor returns the nearest integer equal or lower of the provided value.
+// floor returns the nearest integer lower or equal of the provided value.
 pub fn floor(a f64) f64 {
 	return C.floor(a)
 }
@@ -187,7 +187,7 @@ pub fn lcm(a, b i64) i64 {
 	return res
 }
 
-// log calculates natural (base e) logarithm of the provided value.
+// log calculates natural (base-e) logarithm of the provided value.
 pub fn log(a f64) f64 {
 	return C.log(a)
 }
@@ -220,7 +220,7 @@ pub fn max(a, b f64) f64 {
 	return b
 }
 
-// min returns the minimum value of all the values provided.
+// min returns the minimum value of the two provided.
 pub fn min(a, b f64) f64 {
 	if a < b {
 		return a
@@ -253,7 +253,7 @@ pub fn sinh(a f64) f64 {
 	return C.sinh(a)
 }
 
-// sqrt calculates square of the provided value.
+// sqrt calculates square-root of the provided value.
 pub fn sqrt(a f64) f64 {
 	return C.sqrt(a)
 }

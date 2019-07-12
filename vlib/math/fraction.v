@@ -35,7 +35,7 @@ pub fn (f1 Fraction) + (f2 Fraction) Fraction {
 	}
 }
 
-// Fraction substract using operator overloading
+// Fraction subtract using operator overloading
 pub fn (f1 Fraction) - (f2 Fraction) Fraction {
 	if f1.d == f2.d {
 		return Fraction{f1.n - f2.n, f1.d}
