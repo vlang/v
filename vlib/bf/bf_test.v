@@ -3,18 +3,18 @@ import bf
 import rand
 
 fn test_bf_new_size() {
-	instance := bf.new(5)
-	assert instance.getsize() == 5
+	instance := bf.new(75)
+	assert instance.getsize() == 75
 }
 
 fn test_bf_set_clear_toggle_get() {
-	mut instance := bf.new(5)
-	instance.setbit(4)
-	assert instance.getbit(4) == 1
-	instance.clearbit(4)
-	assert instance.getbit(4) == 0
-	instance.togglebit(4)
-	assert instance.getbit(4) == 1
+	mut instance := bf.new(75)
+	instance.setbit(47)
+	assert instance.getbit(47) == 1
+	instance.clearbit(47)
+	assert instance.getbit(47) == 0
+	instance.togglebit(47)
+	assert instance.getbit(47) == 1
 }
 
 fn test_bf_and_not_or_xor() {
@@ -42,4 +42,79 @@ fn test_bf_and_not_or_xor() {
 		if output1.getbit(i) != output2.getbit(i) {result = 0}
 	}
 	assert result == 1
+}
+
+fn test_clone_cmp() {
+	rand.seed()
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	output := bf.clone(input)
+	assert output.getsize() == len
+	assert bf.cmp(input, output) == true
+}
+
+fn test_slice_join() {
+	rand.seed()
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	mut result := 1
+	for point := 1; point < (len - 1); point++ {
+		// divide a bitfield into two subfields
+		chunk1 := input.slice(0, point)
+		chunk2 := input.slice(point, input.getsize())
+		// concatenate them back into one and compare to the original
+		output := bf.join(chunk1, chunk2)
+		if !bf.cmp(input, output) {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
+fn test_popcount() {
+	rand.seed()
+	len := 80
+	mut count0 := 0
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+			count0++
+		}
+	}
+	count1 := input.popcount()
+	assert count0 == count1
+}
+
+fn test_hamming() {
+	rand.seed()
+	len := 80
+	mut count := 0
+	mut input1 := bf.new(len)
+	mut input2 := bf.new(len)
+	for i := 0; i < len; i++ {
+		switch rand.next(4) {
+			case 0:
+			case 1:
+				input1.setbit(i)
+				count++
+			case 2:
+				input2.setbit(i)
+				count++
+			case 3:
+				input1.setbit(i)
+				input2.setbit(i)
+		}
+	}
+	assert count == bf.hamming(input1, input2)
 }
