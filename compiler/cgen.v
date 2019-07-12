@@ -33,6 +33,7 @@ mut:
 }
 
 fn new_cgen(out_name_c string) *CGen {
+	//println('TmpPath: "$TmpPath"')
 	path:='$TmpPath/$out_name_c'
 	out := os.create(path) or {
 		println('failed to create $path') 
