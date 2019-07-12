@@ -5,23 +5,19 @@
 module glfw
 
 #flag -I @VROOT/thirdparty/glfw 
-
-#flag windows @VROOT/thirdparty/glfw/libglfw3.a 
+#flag -L @VROOT/thirdparty/glfw 
 
 // Debugging a custom build
-#flag darwin -L/var/tmp/glfw/src/
+//-#flag darwin -L/var/tmp/glfw/src/
+
 #flag darwin -lglfw
 #flag linux -lglfw
-#flag windows -I/usr/local/Cellar/glfw/3.2.1/include/
-// #include <glad/glad.h> // !gen.go include GLFW.v
+#flag windows -lglfw3 
 #include <GLFW/glfw3.h>
 // #flag darwin -framework Carbon
 // #flag darwin -framework Cocoa
 // #flag darwin -framework CoreVideo
 // #flag darwin -framework IOKit
-// struct C.GL
-// @GLFWwindow* C.glfwCreateWindow
-// #int gconst_init = 0;
 const (
 	RESIZABLE = 1
 	DECORATED = 2
