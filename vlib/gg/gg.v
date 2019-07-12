@@ -112,13 +112,13 @@ pub fn new_context(cfg Cfg) *GG {
 	if cfg.retina {
 		scale = 2
 	}
-	gl.enable(GL_BLEND)
-	# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	//gl.enable(GL_BLEND)
+	//# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	//println('new gg text context VAO=$VAO')
-	gl.bind_vao(VAO)
-	gl.bind_buffer(GL_ARRAY_BUFFER, VBO)
-	gl.enable_vertex_attrib_array(0)
-	gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
+	//gl.bind_vao(VAO)
+	//gl.bind_buffer(GL_ARRAY_BUFFER, VBO)
+	//gl.enable_vertex_attrib_array(0)
+	//gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
 	todo_remove_me(cfg, scale) 
 	mut ctx := &GG {
 		shader: shader 
@@ -263,7 +263,7 @@ fn todo_remove_me(cfg Cfg, scale int) {
 	mut height := cfg.height * scale
 	font_size := cfg.font_size * scale
 	gl.enable(GL_BLEND)
-	# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	//# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	shader := gl.new_shader('text')
 	shader.use()
 	projection := glm.ortho(0, width, 0, height)// 0 at BOT
