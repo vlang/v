@@ -4,6 +4,8 @@
 
 module main
 
+import os
+
 struct CGen {
 	out          os.File
 	out_path     string

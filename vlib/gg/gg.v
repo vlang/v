@@ -7,6 +7,8 @@ module gg
 import stbi
 import glm
 import gl
+import gx
+import os
 
 struct Vec2 {
 	x int

@@ -6,6 +6,7 @@ module main
 
 import os
 import time
+import strings
 
 const (
 	Version = '0.1.14' 
