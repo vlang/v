@@ -1009,7 +1009,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 	case Token.dollar:
 		p.comp_time()
 	case Token.key_if:
-		p.if_st(false)
+		p.if_st(false, false)
 	case Token.key_for:
 		p.for_st()
 	case Token.key_switch: 
@@ -2084,7 +2084,7 @@ fn (p mut Parser) factor() string {
 		// { user | name :'new name' }
 		return p.assoc()
 	case Token.key_if:
-		typ = p.if_st(true)
+		typ = p.if_st(true, false)
 		return typ
 	default:
 		next := p.peek()
@@ -2731,7 +2731,7 @@ fn (p mut Parser) chash() {
 	}
 }
 
-fn (p mut Parser) if_st(is_expr bool) string {
+fn (p mut Parser) if_st(is_expr, is_elif_expr bool) string {
 	if is_expr {
 		if p.fileis('if_expr') {
 			println('IF EXPR')
@@ -2770,8 +2770,14 @@ fn (p mut Parser) if_st(is_expr bool) string {
 		p.check(.key_else)  
 		p.fspace() 
 		if p.tok == .key_if {
-			p.gen(' else ')
-			return p.if_st(is_expr)
+			if is_expr {
+				p.gen(') : (')
+				return p.if_st(is_expr, true)
+			}
+			else {
+				p.gen(' else ')
+				return p.if_st(is_expr, false)
+			}
 			// return ''
 		}
 		if is_expr {
@@ -2785,7 +2791,12 @@ fn (p mut Parser) if_st(is_expr bool) string {
 		typ = p.statements()
 		p.inside_if_expr = false
 		if is_expr {
-			p.gen(')')
+			if is_elif_expr {
+				p.gen('))')
+			}
+			else {
+				p.gen(')')
+			}
 		}
 		return typ
 	}
