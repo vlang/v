@@ -22,10 +22,10 @@
 //  
 //  	fp.skip_executable()
 //  
-//  	an_int := fp.get_int('an_int', 'some int to define 666 is default', 666)
-//  	a_bool := fp.get_bool('a_bool', 'some \'real\' flag', false)
-//  	a_float := fp.get_float('a_float', 'also floats', 1.0)
-//  	a_string := fp.get_string('a_string', 'finally, some text', '214425256')
+//  	an_int := fp.int('an_int', 666, 'some int to define 666 is default')
+//  	a_bool := fp.bool('a_bool', false, 'some \'real\' flag')
+//  	a_float := fp.float('a_float', 1.0, 'also floats')
+//  	a_string := fp.string('a_string', 'no text', 'finally, some text')
 //  
 //  	additional_args := fp.finalize() or {
 //  		eprintln(err)
@@ -84,7 +84,8 @@ pub fn (fs mut FlagParser) description(n string) {
   fs.application_description = n
 }
 
-pub fn (fs mut FlagParser)  skip_executable() {
+// in most cases you do not need the first argv for flag parsing
+pub fn (fs mut FlagParser) skip_executable() {
   fs.args.delete(0)
 }
 
@@ -162,7 +163,7 @@ fn (fs mut FlagParser) parse_bool_value(n string) ?string {
 //  else 
 //      the default value is returned
 //TODO error handling for invalid string to bool conversion
-pub fn (fs mut FlagParser) get_bool(n, u string, v bool) bool {
+pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
   fs.add_flag(n, u, '')
   parsed := fs.parse_bool_value(n) or {
     return v
@@ -176,7 +177,7 @@ pub fn (fs mut FlagParser) get_bool(n, u string, v bool) bool {
 //  else 
 //      the default value is returned
 //TODO error handling for invalid string to int conversion
-pub fn (fs mut FlagParser) get_int(n, u string, i int) int {
+pub fn (fs mut FlagParser) int(n string, i int, u string) int {
   fs.add_flag(n, u, '<int>')
   parsed := fs.parse_value(n) or {
     return i
@@ -190,7 +191,7 @@ pub fn (fs mut FlagParser) get_int(n, u string, i int) int {
 //  else 
 //      the default value is returned
 //TODO error handling for invalid string to float conversion
-pub fn (fs mut FlagParser) get_float(n, u string, f f32) f32 {
+pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
   fs.add_flag(n, u, '<float>')
   parsed := fs.parse_value(n) or {
     return f
@@ -203,7 +204,7 @@ pub fn (fs mut FlagParser) get_float(n, u string, f f32) f32 {
 //      the value is returned (string)
 //  else 
 //      the default value is returned
-pub fn (fs mut FlagParser) get_string(n, u, v string) string {
+pub fn (fs mut FlagParser) string(n, v, u string) string {
   fs.add_flag(n, u, '<arg>')
   parsed := fs.parse_value(n) or {
     return v
