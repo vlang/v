@@ -4,6 +4,11 @@
 
 module math
 
+
+// NOTE
+// When adding a new function, please make sure it's in the right place.
+// All functions are sorted alphabetically. 
+
 const (
 	E   = 2.71828182845904523536028747135266249775724709369995957496696763
 	Pi  = 3.14159265358979323846264338327950288419716939937510582097494459
