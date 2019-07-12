@@ -16,9 +16,9 @@ matrix:
             - libglfw3-dev
             - libfreetype6-dev 
             - libcurl3-dev
-    #- os: windows
-    #  language: sh
-    #  filter_secrets: false
+    - os: windows
+      language: sh
+      filter_secrets: false
     - os: osx
       osx_image: xcode10.2
       addons:
