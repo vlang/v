@@ -345,7 +345,7 @@ string _STR_TMP(const char *fmt, ...) {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
 				//println('Generating main()...')
-				cgen.genln('int main() { $cgen.fn_main; return 0; }')
+				cgen.genln('int main() { init_consts(); $cgen.fn_main; return 0; }')
 			}
 			else {
 				println('panic: function `main` is undeclared in the main module')
