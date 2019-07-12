@@ -133,3 +133,9 @@ fn test_fraction_equals() {
 	f2 = math.fraction(3,4)
 	assert !f1.equals(f2)
 }
+
+fn test_gcd_and_reduce(){
+	mut f := math.fraction(3, 9)
+	assert f.gcd() == 3
+	assert f.reduce().equals(math.fraction(1, 3)) 
+}
