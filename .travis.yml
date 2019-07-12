@@ -39,8 +39,12 @@ script:
       cp "C:\\ProgramData\\chocolatey\\bin\\gcc.exe" "C:\\ProgramData\\chocolatey\\bin\\cc.exe"
     fi
   - export VROOT=$(pwd)
-  - make
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
+      ./make.bat
+    fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
+      make
       make test
     fi
