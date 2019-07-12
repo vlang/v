@@ -187,6 +187,27 @@ pub fn (c Complex) tan() Complex {
 	return c.sin().divide(c.cos())
 }
 
+// Complex Cotangent
+// Based on
+// http://www.suitcaseofdreams.net/Trigonometric_Functions.htm
+pub fn (c Complex) cot() Complex {
+	return c.cos().divide(c.sin())
+}
+
+// Complex Secant
+// Based on
+// http://www.suitcaseofdreams.net/Trigonometric_Functions.htm
+pub fn (c Complex) sec() Complex {
+	return complex(1,0).divide(c.cos())
+}
+
+// Complex Cosecant
+// Based on
+// http://www.suitcaseofdreams.net/Trigonometric_Functions.htm
+pub fn (c Complex) csc() Complex {
+	return complex(1,0).divide(c.sin())
+}
+
 // Complex Arc Sin / Sin Inverse
 // Based on 
 // http://www.milefoot.com/math/complex/summaryops.htm
@@ -234,6 +255,27 @@ pub fn (c Complex) atan() Complex {
 	)
 }
 
+// Complex Arc Cotangent / Cotangent Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse_Functions.htm
+pub fn (c Complex) acot() Complex {
+	return complex(1,0).divide(c).atan()
+}
+
+// Complex Arc Secant / Secant Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse_Functions.htm
+pub fn (c Complex) asec() Complex {
+	return complex(1,0).divide(c).acos()
+}
+
+// Complex Arc Cosecant / Cosecant Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse_Functions.htm
+pub fn (c Complex) acsc() Complex {
+	return complex(1,0).divide(c).asin()
+}
+
 // Complex Hyperbolic Sin
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
@@ -259,6 +301,27 @@ pub fn (c Complex) cosh() Complex {
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) tanh() Complex {
 	return c.sinh().divide(c.cosh())
+}
+
+// Complex Hyperbolic Cotangent
+// Based on
+// http://www.suitcaseofdreams.net/Hyperbolic_Functions.htm
+pub fn (c Complex) coth() Complex {
+	return c.cosh().divide(c.sinh())
+}
+
+// Complex Hyperbolic Secant
+// Based on
+// http://www.suitcaseofdreams.net/Hyperbolic_Functions.htm
+pub fn (c Complex) sech() Complex {
+	return complex(1,0).divide(c.cosh())
+}
+
+// Complex Hyperbolic Cosecant
+// Based on
+// http://www.suitcaseofdreams.net/Hyperbolic_Functions.htm
+pub fn (c Complex) csch() Complex {
+	return complex(1,0).divide(c.sinh())
 }
 
 // Complex Hyperbolic Arc Sin / Sin Inverse
@@ -300,8 +363,8 @@ pub fn (c Complex) acosh() Complex {
 // Based on 
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) atanh() Complex {
+	one := complex(1,0)
 	if(c.re < 1) {
-		one := complex(1,0)
 		return complex(1.0/2,0).multiply(
 			one
 			.add(c)
@@ -313,7 +376,6 @@ pub fn (c Complex) atanh() Complex {
 		)
 	}
 	else {
-		one := complex(1,0)
 		return complex(1.0/2,0).multiply(
 			one
 			.add(c)
@@ -324,6 +386,91 @@ pub fn (c Complex) atanh() Complex {
 				.ln()
 			)
 		)
+	}
+}
+
+// Complex Hyperbolic Arc Cotangent / Cotangent Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
+pub fn (c Complex) acoth() Complex {
+	one := complex(1,0)
+	if(c.re < 0 || c.re > 1) {
+		return complex(1.0/2,0).multiply(
+			c
+			.add(one)
+			.divide(
+				c.subtract(one)
+			)
+			.ln()
+		)
+	}
+	else {
+		div := one.divide(c)
+		return complex(1.0/2,0).multiply(
+			one
+			.add(div)
+			.ln()
+			.subtract(
+				one
+				.subtract(div)
+				.ln()
+			)
+		)
+	}
+}
+
+// Complex Hyperbolic Arc Secant / Secant Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
+// For certain scenarios, Result mismatch in crossverification with Wolfram Alpha - analysis pending
+// pub fn (c Complex) asech() Complex {
+// 	one := complex(1,0)
+	// if(c.re < -1.0) {
+	// 	return one.subtract(
+	// 		one.subtract(
+	// 			c.pow(2) 
+	// 		)
+	// 		.root(2)
+	// 	)
+	// 	.divide(c)
+	// 	.ln()
+	// }
+	// else {
+		// return one.add(
+		// 	one.subtract(
+		// 		c.pow(2) 
+		// 	)
+		// 	.root(2)
+		// )
+		// .divide(c)
+		// .ln()
+	// }
+// }
+
+// Complex Hyperbolic Arc Cosecant / Cosecant Inverse
+// Based on 
+// http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
+pub fn (c Complex) acsch() Complex {
+	one := complex(1,0)
+	if(c.re < 0) {
+		return one.subtract(
+			one.add(
+				c.pow(2) 
+			)
+			.root(2)
+		)
+		.divide(c)
+		.ln()
+	}
+	if(c.re > 0) {
+		return one.add(
+			one.add(
+				c.pow(2) 
+			)
+			.root(2)
+		)
+		.divide(c)
+		.ln()
 	}
 }
 
