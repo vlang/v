@@ -244,11 +244,9 @@ fn (p mut Parser) fn_decl() {
 		typ = p.get_type()
 	}
 	// Translated C code can have empty functions (just definitions)
-	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&
-	(p.tok != .lcbr)// || (p.tok == .name && p.peek() != .lcbr))
+	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr 
 	if is_fn_header {
 		f.is_decl = true
-		// println('.key_goT fn header $f.name')
 	}
 	// { required only in normal function declarations
 	if !is_c && !is_sig && !is_fn_header {

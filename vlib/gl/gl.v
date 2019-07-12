@@ -19,12 +19,11 @@ import const (
 	GL_ARRAY_BUFFER
 )
 
-// TODO: windows support
-#flag linux  -I @VROOT/thirdparty/glad
-#flag darwin -I @VROOT/thirdparty/glad
+#flag  -I @VROOT/thirdparty/glad
 
 #include "glad.h"
-#include "glad.c"
+#flag @VROOT/thirdparty/glad/glad.o 
+//#include "glad.c"  
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()

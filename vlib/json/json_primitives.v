@@ -9,7 +9,8 @@ module json
 #flag linux  -I @VROOT/thirdparty/cJSON
 #flag darwin -I @VROOT/thirdparty/cJSON
 
-// #include "cJSON.c"
+#flag @VROOT/thirdparty/cJSON/cJSON.o 
+
 #include "cJSON.h"
 struct C.cJSON {
 	valueint    int
