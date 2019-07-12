@@ -4,6 +4,9 @@
 
 module main
 
+import os
+import strings
+
 struct Scanner {
 mut:
 	file_path      string

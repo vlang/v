@@ -4,7 +4,9 @@
 
 module main
 
+import os
 import rand
+import strings
 
 struct Var {
 mut:
@@ -40,6 +42,7 @@ mut:
 	lit            string
 	cgen           *CGen
 	table          *Table
+	import_table   *FileImportTable // Holds imports for just the file being parsed
 	run            Pass // TODO rename `run` to `pass`
 	os             OS 
 	mod            string
@@ -83,6 +86,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		file_name: path.all_after('/')
 		scanner: new_scanner(path)
 		table: c.table
+		import_table: new_file_import_table(path)
 		cur_fn: EmptyFn
 		cgen: c.cgen
 		is_script: (c.pref.is_script && path == c.dir)
@@ -130,10 +134,13 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_pkg = p.mod == 'builtin'
-	p.can_chash = p.mod == 'gg' || p.mod == 'glm' || p.mod == 'gl' || 
-		p.mod == 'http' ||  p.mod == 'glfw' || p.mod=='ui' // TODO tmp remove
+	p.can_chash = p.mod == 'ft' || 	p.mod == 'http' ||  p.mod == 'glfw' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
-	p.table.register_package(p.mod)
+	// fully qualify the module name, eg base64 to encoding.base64
+	fq_mod := p.table.qualify_module(p.mod, p.file_path)
+	p.table.register_package(fq_mod)
+	// replace "." with "_" for C variable names
+	p.mod = fq_mod.replace('.', '_')
 	if p.run == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
 			p.import_statement()
@@ -285,6 +292,9 @@ fn (p mut Parser) import_statement() {
 		for p.tok != .rpar && p.tok != .eof {
 			pkg := p.lit.trim_space()
 			p.next()
+			// TODO: aliased for import() syntax
+			// p.import_table.register_alias(alias, pkg)
+			// p.import_table.register_import(pkg)
 			if p.table.imports.contains(pkg) {
 				continue
 			}
@@ -298,20 +308,29 @@ fn (p mut Parser) import_statement() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
+	// aliasing (import b64 encoding.base64)
+	mut alias := ''
+	if p.tok == .name && p.peek() == .name {
+		alias = p.check_name()
+	}
 	mut pkg := p.lit.trim_space()
 	// submodule support
 	mut depth := 1
-	p.next() 
+	p.next()
 	for p.tok == .dot {
 		p.check(.dot) 
-		submodule := p.check_name() 
+		submodule := p.check_name()
+		if alias == '' { alias = submodule }
 		pkg += '.' + submodule
 		depth++
 		if depth > MaxModuleDepth { 
 			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
 		}
 	}
+	if alias == '' { alias = pkg }
 	p.fgenln(' ' + pkg)
+	// add import to file scope import table
+	p.import_table.register_alias(alias, pkg)
 	// Make sure there are no duplicate imports
 	if p.table.imports.contains(pkg) {
 		return
@@ -356,7 +375,7 @@ fn (p mut Parser) const_decl() {
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
 			// output a #define so that we don't pollute the binary with unnecessary global vars
 			if is_compile_time_const(p.cgen.cur_line) {
-				p.cgen.consts << '#define $name $p.cgen.cur_line'
+				p.cgen.consts << '#define $name $p.cgen.cur_line' 
 				p.cgen.cur_line = ''
 				p.fgenln('')
 				continue
@@ -464,7 +483,7 @@ fn (p mut Parser) struct_decl() {
 		if !is_c {
 			kind := if is_union{'union'} else { 'struct'}
 			p.gen_typedef('typedef $kind $name $name;')
-			p.gen_type('$kind /*kind*/ $name {')
+			p.gen_type('$kind $name {')
 		}
 	}
 	// V used to have 'type Foo struct', many Go users might use this syntax
@@ -591,7 +610,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 	}
 	// Skip empty enums
 	if enum_name != 'int' {
-		p.cgen.typedefs << 'typedef int $enum_name ;\n'
+		p.cgen.typedefs << 'typedef int $enum_name;'
 	}
 	p.check(.lcbr)
 	mut val := 0
@@ -602,7 +621,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		name := '${p.mod}__${enum_name}_$field'
 		p.fgenln('')
 		if p.run == .main {
-			p.cgen.consts << '#define $name $val \n'
+			p.cgen.consts << '#define $name $val' 
 		}
 		if p.tok == .comma {
 			p.next()
@@ -1009,7 +1028,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 	case Token.dollar:
 		p.comp_time()
 	case Token.key_if:
-		p.if_st(false)
+		p.if_st(false, 0)
 	case Token.key_for:
 		p.for_st()
 	case Token.key_switch: 
@@ -1284,9 +1303,14 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if p.table.known_pkg(name) && !p.cur_fn.known_var(name) && !is_c {
-		// println('"$name" is a known pkg')
-		pkg := name
+	if ((name == p.mod && p.table.known_pkg(name)) || p.import_table.known_alias(name))
+		&& !p.cur_fn.known_var(name) && !is_c {
+		mut pkg := name
+		// must be aliased module
+		if name != p.mod && p.import_table.known_alias(name) {
+			// we replaced "." with "_" in p.mod for C variable names, do same here.
+			pkg = p.import_table.resolve_alias(name).replace('.', '_')
+		}
 		p.next()
 		p.check(.dot)
 		name = p.lit
@@ -1409,7 +1433,8 @@ fn (p mut Parser) name_expr() string {
 		if !p.first_run() {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
-			if p.table.known_pkg(orig_name) {
+			// if p.table.known_pkg(orig_name) {
+			if p.table.known_pkg(orig_name) && p.import_table.known_alias(orig_name) {
 				name = name.replace('__', '.')
 				p.error('undefined: `$name`')
 			}
@@ -2046,7 +2071,8 @@ fn (p mut Parser) factor() string {
 		p.next()
 		return 'T'
 	case Token.lpar:
-		p.gen('(/*lpar*/')
+		//p.gen('(/*lpar*/')
+		p.gen('(')
 		p.check(.lpar) 
 		typ = p.bool_expression()
 		// Hack. If this `)` referes to a ptr cast `(*int__)__`, it was already checked
@@ -2083,7 +2109,7 @@ fn (p mut Parser) factor() string {
 		// { user | name :'new name' }
 		return p.assoc()
 	case Token.key_if:
-		typ = p.if_st(true)
+		typ = p.if_st(true, 0)
 		return typ
 	default:
 		next := p.peek()
@@ -2686,13 +2712,17 @@ fn (p mut Parser) chash() {
 			pos := flag.index(' ')
 			flag = flag.right(pos)
 		}
+		has_vroot := flag.contains('@VROOT') 
 		flag = flag.trim_space().replace('@VROOT', p.vroot)
 		if p.table.flags.contains(flag) {
 			return
 		}
 		p.log('adding flag "$flag"')
-		p.table.flags << flag// .all_after(' '))
-		// }
+		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it 
+		if has_vroot && flag.contains('.o') { 
+			build_thirdparty_obj_file(flag) 
+		} 
+		p.table.flags << flag 
 		return
 	}
 	if hash.starts_with('include') {
@@ -2726,7 +2756,7 @@ fn (p mut Parser) chash() {
 	}
 }
 
-fn (p mut Parser) if_st(is_expr bool) string {
+fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {
 		if p.fileis('if_expr') {
 			println('IF EXPR')
@@ -2745,7 +2775,6 @@ fn (p mut Parser) if_st(is_expr bool) string {
 	}
 	else {
 		p.genln(') {')
-		p.genln('/*if*/')
 	}
 	p.fgen(' ')
 	p.check(.lcbr)
@@ -2766,8 +2795,14 @@ fn (p mut Parser) if_st(is_expr bool) string {
 		p.check(.key_else)  
 		p.fspace() 
 		if p.tok == .key_if {
-			p.gen(' else ')
-			return p.if_st(is_expr)
+			if is_expr {
+				p.gen(') : (')
+				return p.if_st(is_expr, elif_depth + 1)
+			}
+			else {
+				p.gen(' else ')
+				return p.if_st(is_expr, 0)
+			}
 			// return ''
 		}
 		if is_expr {
@@ -2775,14 +2810,13 @@ fn (p mut Parser) if_st(is_expr bool) string {
 		}
 		else {
 			p.genln(' else { ')
-			p.genln('/*else if*/')
 		}
 		p.check(.lcbr)
 		// statements() returns the type of the last statement
 		typ = p.statements()
 		p.inside_if_expr = false
 		if is_expr {
-			p.gen(')')
+			p.gen(strings.repeat(`)`, elif_depth + 1))
 		}
 		return typ
 	}
@@ -2798,10 +2832,7 @@ fn (p mut Parser) for_st() {
 	p.fgen(' ')
 	p.for_expr_cnt++
 	next_tok := p.peek()
-	debug := p.scanner.file_path.contains('r_draw')
-	if debug {
-		println('\n\nF.ortok {')
-	}
+	//debug := p.scanner.file_path.contains('r_draw')
 	p.cur_fn.open_scope()
 	if p.tok == .lcbr {
 		// Infinite loop
@@ -2812,9 +2843,6 @@ fn (p mut Parser) for_st() {
 	}
 	// for i := 0; i < 10; i++ {
 	else if next_tok == .decl_assign || next_tok == .assign || p.tok == .semicolon {
-		if debug {
-			println('for 1')
-		}
 		p.genln('for (')
 		if next_tok == .decl_assign {
 			p.var_decl()
@@ -2824,26 +2852,17 @@ fn (p mut Parser) for_st() {
 			// Allow `for i = 0; i < ...`
 			p.statement(false)
 		}
-		if debug {
-			println('for 2')
-		}
 		p.check(.semicolon)
 		p.gen(' ; ')
 		p.fgen(' ')
 		if p.tok != .semicolon {
 			p.bool_expression()
 		}
-		if debug {
-			println('for 3')
-		}
 		p.check(.semicolon)
 		p.gen(' ; ')
 		p.fgen(' ')
 		if p.tok != .lcbr {
 			p.statement(false)
-		}
-		if debug {
-			println('for 4')
 		}
 		p.genln(') { ')
 	}
@@ -2863,27 +2882,47 @@ fn (p mut Parser) for_st() {
 		tmp := p.get_tmp()
 		p.cgen.start_tmp()
 		typ := p.bool_expression()
+		is_arr := typ.starts_with('array_') 
+		is_map := typ.starts_with('map_') 
+		is_str := typ == 'string' 
+		if !is_arr && !is_str && !is_map { 
+			p.error('cannot range over type `$typ`') 
+		} 
 		expr := p.cgen.end_tmp()
 		p.genln('$typ $tmp = $expr ;')
-		var_typ := typ.right(6)
+		pad := if is_arr { 6 } else  { 4 } 
+		var_typ := typ.right(pad)
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		// Register temp var
 		val_var := Var {
 			name: val
 			typ: var_typ
-			// parent_fn: p.cur_fn
 			ptr: typ.contains('*')
 		}
 		p.register_var(val_var)
-		i_var := Var {
-			name: i
-			typ: 'int'
-			// parent_fn: p.cur_fn
-			is_mut: true
+		if is_arr || is_str { 
+			i_var := Var {
+				name: i
+				typ: 'int'
+				// parent_fn: p.cur_fn
+				is_mut: true
+			}
+			p.register_var(i_var)
+			p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
+			p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
 		}
-		p.register_var(i_var)
-		p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
-		p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
+		else if is_map {
+			i_var := Var {
+				name: i
+				typ: 'string'
+				is_mut: true
+			}
+			p.register_var(i_var)
+			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
+			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
+			p.genln('string $i = entry.key;') 
+			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
+		} 
 	}
 	// `for val in vals`
 	else if p.peek() == .key_in {
@@ -2895,8 +2934,6 @@ fn (p mut Parser) for_st() {
 		p.cgen.start_tmp()
 		typ := p.bool_expression()
 		expr := p.cgen.end_tmp()
-		// println('if in:')
-		// println(p.strtok())
 		is_range := p.tok == .dotdot
 		mut range_end := ''
 		if is_range {
@@ -2908,9 +2945,8 @@ fn (p mut Parser) for_st() {
 		}
 		is_arr := typ.contains('array')
 		is_str := typ == 'string'
-		// ////if !typ.contains('array') && typ != 'string' {
 		if !is_arr && !is_str && !is_range {
-			p.error('`for in` requires an array or a string but got `$typ`')
+			p.error('cannot range over type `$typ`') 
 		}
 		p.genln('$typ $tmp = $expr;')
 		// TODO var_type := if...
@@ -2957,6 +2993,7 @@ fn (p mut Parser) for_st() {
 	}
 	p.fspace() 
 	p.check(.lcbr)
+	p.genln('') 
 	p.statements()
 	p.cur_fn.close_scope()
 	p.for_expr_cnt--

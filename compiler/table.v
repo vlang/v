@@ -19,6 +19,13 @@ mut:
 	obfuscate bool
 }
 
+// Holds import information scoped to the parsed file
+struct FileImportTable {
+mut:
+	file_path string
+	imports   map[string]string
+}
+
 enum AccessMod {
 	private        // private imkey_mut
 	private_mut     // private key_mut
@@ -655,5 +662,63 @@ fn is_valid_int_const(val, typ string) bool {
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1) 
 	} 
 	return true 
-} 
+}
 
+// Once we have a module format we can read from module file instead
+// this is not optimal
+fn (table &Table) qualify_module(mod string, file_path string) string {
+	for m in table.imports {
+		if m.contains('.') && m.contains(mod) {
+			m_parts := m.split('.')
+			m_path := m_parts.join('/')
+			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
+				return m
+			}
+		}
+	}
+	return mod
+}
+
+fn new_file_import_table(file_path string) *FileImportTable {
+	mut t := &FileImportTable{
+		file_path: file_path
+		imports:   map[string]string{}
+	}
+	return t
+}
+
+fn (fit FileImportTable) known_import(mod string) bool {
+	return fit.imports.exists(mod) || fit.is_aliased(mod)
+}
+
+fn (fit mut FileImportTable) register_import(mod string) {
+	fit.register_alias(mod, mod)
+}
+
+fn (fit mut FileImportTable) register_alias(alias string, mod string) {
+	if !fit.imports.exists(alias) {
+		fit.imports[alias] = mod
+	} else {
+		panic('Cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+	}
+}
+
+fn (fit &FileImportTable) known_alias(alias string) bool {
+	return fit.imports.exists(alias)
+}
+
+fn (fit &FileImportTable) is_aliased(mod string) bool {
+	for i in fit.imports.keys() {
+		if fit.imports[i] == mod {
+			return true
+		}
+	}
+	return false
+}
+
+fn (fit &FileImportTable) resolve_alias(alias string) string {
+	if fit.imports.exists(alias) {
+		return fit.imports[alias]
+	}
+	return ''
+}

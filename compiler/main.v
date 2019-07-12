@@ -6,21 +6,22 @@ module main
 
 import os
 import time
+import strings
 
 const (
-	Version = '0.1.13' 
+	Version = '0.1.14' 
 )
 
 enum BuildMode {
 	// `v program.v'
 	// Build user code only, and add pre-compiled vlib (`cc program.o builtin.o os.o...`)
-    default_mode
+	default_mode
 	// `v -embed_vlib program.v`
 	// vlib + user code in one file (slower compilation, but easier when working on vlib and cross-compiling)
-    embed_vlib
+	embed_vlib
 	// `v -lib ~/v/os`
 	// build any module (generate os.o + os.vh)
-    build //TODO a better name would be smth like `.build_module` I think
+	build //TODO a better name would be smth like `.build_module` I think
 }
 
 fn vtmp_path() string {
@@ -247,7 +248,7 @@ void init_consts();')
 	// Embed cjson either in embedvlib or in json.o
 	if imports_json && v.pref.build_mode == .embed_vlib ||
 	(v.pref.build_mode == .build && v.out_name.contains('json.o')) {
-		cgen.genln('#include "cJSON.c" ')
+		//cgen.genln('#include "cJSON.c" ')
 	}
 	// We need the cjson header for all the json decoding user will do in default mode
 	if v.pref.build_mode == .default_mode {
@@ -345,7 +346,7 @@ string _STR_TMP(const char *fmt, ...) {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
 				//println('Generating main()...')
-				cgen.genln('int main() { $cgen.fn_main; return 0; }')
+				cgen.genln('int main() { init_consts(); $cgen.fn_main; return 0; }')
 			}
 			else {
 				println('panic: function `main` is undeclared in the main module')
@@ -522,7 +523,7 @@ fn (v mut V) cc() {
 	} 
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
-	mut a := ['-w', '-march=native']// arguments for the C compiler
+	mut a := ['-w'] // arguments for the C compiler
 	flags := v.table.flags.join(' ')
 	//mut shared := ''
 	if v.pref.is_so {

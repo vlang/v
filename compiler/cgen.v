@@ -4,6 +4,8 @@
 
 module main
 
+import os
+
 struct CGen {
 	out          os.File
 	out_path     string
@@ -40,6 +42,7 @@ fn new_cgen(out_name_c string) *CGen {
 	gen := &CGen {
 		out_path: path 
 		out: out 
+		lines: _make(0, 1000, sizeof(string)) 
 	}
 	return gen
 }
@@ -219,4 +222,25 @@ fn (g mut CGen) add_to_main(s string) {
 	println('add to main')
 	g.fn_main = g.fn_main + s
 }
+
+
+fn build_thirdparty_obj_file(flag string) { 
+	obj_path := flag.all_after(' ') 
+	if os.file_exists(obj_path) {
+		return 
+	} 
+	println('$obj_path not found, building it...') 
+	parent := obj_path.all_before_last('/').trim_space() 
+	files := os.ls(parent) 
+	//files := os.ls(parent).filter(_.ends_with('.c'))  TODO 
+	mut cfiles := '' 
+	for file in files {
+		if file.ends_with('.c') { 
+			cfiles += parent + '/' + file + ' ' 
+		} 
+	} 
+	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows  
+	res := os.exec('$cc -c -o $obj_path $cfiles') 
+	println(res) 
+} 
 
