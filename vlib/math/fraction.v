@@ -87,7 +87,7 @@ pub fn (f1 Fraction) gcd() i64 {
 
 // Fraction method which reduces the fraction
 pub fn (f1 Fraction) reduce() Fraction {
-	cf := gcd(f1.n, f1.d)
+	cf := f1.gcd()
 	return Fraction{f1.n / cf, f1.d / cf}
 }
 
