@@ -7,6 +7,7 @@ module gg
 import stbi
 import glm
 import gl
+import gx
 import os
 
 #flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2
