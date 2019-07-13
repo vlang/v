@@ -107,9 +107,9 @@ fn (req &Request) do() Response {
 	}
 	// println('LEN BEFORE SEND=$headers.len ; $headers')
 	# bool ret =HttpSendRequest(request, headers.str, -1, data.str, data.len);
-	# printf("RET=%d\n", ret);
-	# int e = GetLastError();
-	# printf("e=%d\n", e);
+	// # printf("RET=%d\n", ret);
+	// # int e = GetLastError();
+	// # printf("e=%d\n", e);
 	// Get response headers
 	// Todo call twice to get len
 	# LPSTR h_buf = malloc(1024);
@@ -157,7 +157,7 @@ fn (req &Request) do() Response {
 		buf[nr_read] = 0
 		//C.printf('buf="%s"\n', buf)
 		
-		s += tos(buf, nr_read + 1) // TODO perf
+		s += tos(buf, nr_read) // TODO perf
 		nr_read = 0
 	}
 	C.InternetCloseHandle(request)
