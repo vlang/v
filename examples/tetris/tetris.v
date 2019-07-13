@@ -140,7 +140,7 @@ fn main() {
 }
 
 fn (g mut Game) init_game() {
-	rand.seed()
+	rand.seed(time.now().uni)
 	g.generate_tetro()
 	g.field = []array_int // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
