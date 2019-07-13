@@ -49,13 +49,12 @@ https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 
 ```bash
-# You can clone V anywhere
 git clone https://github.com/vlang/v
 cd v
 make
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`.
+That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
 
 ### C compiler
@@ -73,6 +72,7 @@ curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
 ./v -o v compiler          # Use the resulting V binary to build V from V source
 ```
+(These instructions won't work on Windows, use `make.bat` instead).
 
 ### Symlinking and updates
 
