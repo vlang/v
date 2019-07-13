@@ -4,10 +4,8 @@
 
 module rand
 
-import time
-
-pub fn seed() {
-	C.srand(time.now().uni)
+pub fn seed(s int) {
+	C.srand(s)
 }
 
 pub fn next(max int) int {
@@ -15,4 +13,3 @@ pub fn next(max int) int {
 }
 
 fn C.rand() int 
-

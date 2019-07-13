@@ -1,6 +1,7 @@
 import bf
 
 import rand
+import time
 
 fn test_bf_new_size() {
 	instance := bf.new(75)
@@ -18,7 +19,7 @@ fn test_bf_set_clear_toggle_get() {
 }
 
 fn test_bf_and_not_or_xor() {
-	rand.seed()
+	rand.seed(time.now().uni)
 	len := 80
 	mut input1 := bf.new(len)
 	mut input2 := bf.new(len)
@@ -45,7 +46,7 @@ fn test_bf_and_not_or_xor() {
 }
 
 fn test_clone_cmp() {
-	rand.seed()
+	rand.seed(time.now().uni)
 	len := 80
 	mut input := bf.new(len)
 	for i := 0; i < len; i++ {
@@ -59,7 +60,7 @@ fn test_clone_cmp() {
 }
 
 fn test_slice_join() {
-	rand.seed()
+	rand.seed(time.now().uni)
 	len := 80
 	mut input := bf.new(len)
 	for i := 0; i < len; i++ {
@@ -82,7 +83,7 @@ fn test_slice_join() {
 }
 
 fn test_popcount() {
-	rand.seed()
+	rand.seed(time.now().uni)
 	len := 80
 	mut count0 := 0
 	mut input := bf.new(len)
@@ -97,7 +98,7 @@ fn test_popcount() {
 }
 
 fn test_hamming() {
-	rand.seed()
+	rand.seed(time.now().uni)
 	len := 80
 	mut count := 0
 	mut input1 := bf.new(len)
