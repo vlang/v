@@ -308,29 +308,29 @@ fn (p mut Parser) import_statement() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
-	// aliasing (import b64 encoding.base64)
-	mut alias := ''
-	if p.tok == .name && p.peek() == .name {
-		alias = p.check_name()
-	}
 	mut pkg := p.lit.trim_space()
+	mut mod_alias := pkg
 	// submodule support
 	mut depth := 1
 	p.next()
 	for p.tok == .dot {
 		p.check(.dot) 
 		submodule := p.check_name()
-		if alias == '' { alias = submodule }
+		mod_alias = submodule
 		pkg += '.' + submodule
 		depth++
 		if depth > MaxModuleDepth { 
 			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
 		}
 	}
-	if alias == '' { alias = pkg }
+	// aliasing (import b64 encoding.base64)
+	if p.tok == .key_as && p.peek() == .name {
+		p.check(.key_as) 
+		mod_alias = p.check_name()
+	}
 	p.fgenln(' ' + pkg)
 	// add import to file scope import table
-	p.import_table.register_alias(alias, pkg)
+	p.import_table.register_alias(mod_alias, pkg)
 	// Make sure there are no duplicate imports
 	if p.table.imports.contains(pkg) {
 		return

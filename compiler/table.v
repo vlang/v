@@ -687,7 +687,7 @@ fn new_file_import_table(file_path string) *FileImportTable {
 	return t
 }
 
-fn (fit FileImportTable) known_import(mod string) bool {
+fn (fit &FileImportTable) known_import(mod string) bool {
 	return fit.imports.exists(mod) || fit.is_aliased(mod)
 }
 
