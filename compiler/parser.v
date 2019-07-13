@@ -139,8 +139,8 @@ fn (p mut Parser) parse() {
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
 	p.table.register_package(fq_mod)
-	// replace "." with "_" for C variable names
-	p.mod = fq_mod.replace('.', '_')
+	// replace "." with "__" in module name for C variable names
+	p.mod = fq_mod.replace('.', '__')
 	if p.run == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
 			p.import_statement()
@@ -308,29 +308,29 @@ fn (p mut Parser) import_statement() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
-	// aliasing (import b64 encoding.base64)
-	mut alias := ''
-	if p.tok == .name && p.peek() == .name {
-		alias = p.check_name()
-	}
 	mut pkg := p.lit.trim_space()
+	mut mod_alias := pkg
 	// submodule support
 	mut depth := 1
 	p.next()
 	for p.tok == .dot {
 		p.check(.dot) 
 		submodule := p.check_name()
-		if alias == '' { alias = submodule }
+		mod_alias = submodule
 		pkg += '.' + submodule
 		depth++
 		if depth > MaxModuleDepth { 
 			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
 		}
 	}
-	if alias == '' { alias = pkg }
+	// aliasing (import encoding.base64 as b64)
+	if p.tok == .key_as && p.peek() == .name {
+		p.check(.key_as) 
+		mod_alias = p.check_name()
+	}
 	p.fgenln(' ' + pkg)
 	// add import to file scope import table
-	p.import_table.register_alias(alias, pkg)
+	p.import_table.register_alias(mod_alias, pkg)
 	// Make sure there are no duplicate imports
 	if p.table.imports.contains(pkg) {
 		return
@@ -1308,8 +1308,8 @@ fn (p mut Parser) name_expr() string {
 		mut pkg := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
-			// we replaced "." with "_" in p.mod for C variable names, do same here.
-			pkg = p.import_table.resolve_alias(name).replace('.', '_')
+			// we replaced "." with "__" in p.mod for C variable names, do same here.
+			pkg = p.import_table.resolve_alias(name).replace('.', '__')
 		}
 		p.next()
 		p.check(.dot)
@@ -1434,7 +1434,7 @@ fn (p mut Parser) name_expr() string {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
 			// if p.table.known_pkg(orig_name) {
-			if p.table.known_pkg(orig_name) && p.import_table.known_alias(orig_name) {
+			if p.table.known_pkg(orig_name) || p.import_table.known_alias(orig_name) {
 				name = name.replace('__', '.')
 				p.error('undefined: `$name`')
 			}

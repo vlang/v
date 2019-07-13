@@ -13,7 +13,7 @@ struct C {
 mut: 
 	b B 
 	nums []int 
-	as []A 
+	aarr []A 
 	num int 
 } 
 
@@ -40,13 +40,13 @@ fn test_struct_levels() {
 	assert c.b.a.nums[1] == 2 
 	c.b.a.nums [0] = 7 
 	assert c.b.a.nums[0] == 7 
-	c.as << A{val:8} 
-	assert c.as.len == 1 
-	assert c.as[0].val == 8 
+	c.aarr << A{val:8} 
+	assert c.aarr.len == 1 
+	assert c.aarr[0].val == 8 
 	c.num = 20 
 	assert c.num == 20 
-	c.as[0].val  = 10 
-	assert c.as[0].val == 10 
+	c.aarr[0].val  = 10 
+	assert c.aarr[0].val == 10 
 } 
 
 fn test_struct_str() {

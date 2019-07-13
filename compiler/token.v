@@ -102,6 +102,7 @@ enum Token {
 	key_pub 
 	key_goto 
 	key_static
+	key_as
 	keyword_end
 }
 
@@ -211,6 +212,7 @@ fn build_token_str() []string {
 	s[Token.key_global] = '__global'
 	s[Token.key_union] = 'union'
 	s[Token.key_static] = 'static'
+	s[Token.key_as] = 'as'
 	return s
 }
 
