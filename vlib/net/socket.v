@@ -1,9 +1,5 @@
 module net
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-
 struct Socket {
 pub:
 	sockfd int
@@ -25,7 +21,20 @@ import const (
 	SHUT_RD
 	SHUT_WR
 	SHUT_RDWR
+	SD_BOTH
 )
+
+// used for WinSock init
+struct C.WSAData {
+mut:
+	wVersion u16
+	wHighVersion u16	
+	szDescription [257]byte
+	szSystemStatus [129]byte
+	iMaxSockets u16
+	iMaxUdpDg u16
+	lpVendorInfo byteptr
+}
 
 struct C.in_addr {
 mut:
@@ -54,6 +63,12 @@ struct C.sockaddr_storage {}
 
 // create socket
 pub fn socket(family int, _type int, proto int) Socket {
+	$if windows {
+		mut wsadata := C.WSAData{}
+		res := C.WSAStartup(0x202, &wsadata)
+		// TODO: throw error if WSAStartup fails
+	}
+
 	sockfd := C.socket(family, _type, proto)
 	s := Socket {
 		sockfd: sockfd
@@ -185,14 +200,36 @@ pub fn (s Socket) recv(bufsize int) byteptr {
 
 // shutdown and close socket
 pub fn (s Socket) close() int {
-	shutdown_res := C.shutdown(s.sockfd, SHUT_RDWR)
-	if shutdown_res < 0 {
-		println('socket: shutdown failed')
+	// WinSock
+	$if windows {
+		C.WSACleanup()
 	}
-	res := C.close(s.sockfd)
-	if res < 0 {
-		println('socket: close failed')
+
+	$if windows {
+		shutdown_res := C.shutdown(s.sockfd, SD_BOTH)
+		if shutdown_res < 0 {
+			println('socket: shutdown failed')
+		}
 	}
+	$else {
+		shutdown_res := C.shutdown(s.sockfd, SHUT_RDWR)
+		if shutdown_res < 0 {
+			println('socket: shutdown failed')
+		}
+	}
+
+	$if windows {
+		res := C.closesocket(s.sockfd)
+		if res < 0 {
+			println('socket: close failed')
+		}
+	}
+	$else {
+		res := C.close(s.sockfd)
+		if res < 0 {
+			println('socket: close failed')
+		}
+	}
+
 	return 0
 }
-
