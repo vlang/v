@@ -1,3 +1,9 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
+// This is a very basic crc32 implementation
+// at the moment with no architecture optimizations
 module crc32
 
 // polynomials
