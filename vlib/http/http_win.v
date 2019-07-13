@@ -27,8 +27,9 @@ fn (req &Request) do() Response {
 	//println(req.headers)
 	is_ssl := req.url.starts_with('https://')
 	//println('is ssl=$is_ssl')
-	mut pos := url.index('/')
-	url = url.right(pos + 2)
+	mut pos := url.index('://')
+	if pos == -1 {return emptyresp}
+	url = url.right(pos + 3)
 	mut host := url
 	mut path := '/'
 	pos = url.index('/')
