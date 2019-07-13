@@ -139,8 +139,8 @@ fn (p mut Parser) parse() {
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
 	p.table.register_package(fq_mod)
-	// replace "." with "_" for C variable names
-	p.mod = fq_mod.replace('.', '_')
+	// replace "." with "__" in module name for C variable names
+	p.mod = fq_mod.replace('.', '__')
 	if p.run == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
 			p.import_statement()
@@ -1308,8 +1308,8 @@ fn (p mut Parser) name_expr() string {
 		mut pkg := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
-			// we replaced "." with "_" in p.mod for C variable names, do same here.
-			pkg = p.import_table.resolve_alias(name).replace('.', '_')
+			// we replaced "." with "__" in p.mod for C variable names, do same here.
+			pkg = p.import_table.resolve_alias(name).replace('.', '__')
 		}
 		p.next()
 		p.check(.dot)
@@ -1434,7 +1434,7 @@ fn (p mut Parser) name_expr() string {
 			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
 			// if p.table.known_pkg(orig_name) {
-			if p.table.known_pkg(orig_name) && p.import_table.known_alias(orig_name) {
+			if p.table.known_pkg(orig_name) || p.import_table.known_alias(orig_name) {
 				name = name.replace('__', '.')
 				p.error('undefined: `$name`')
 			}
