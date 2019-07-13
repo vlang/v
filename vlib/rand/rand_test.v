@@ -1,6 +1,6 @@
 import rand
 
-fn trial(seed int) []int {
+fn gen_randoms(seed int) []int {
 	mut randoms := [0; 20]
 	rand.seed(seed)
 	for _ in 0..20 {
@@ -10,8 +10,8 @@ fn trial(seed int) []int {
 }
 
 fn test_rand_reproducibility() {
-	mut randoms1 := trial(42)
-	mut randoms2 := trial(42)
+	mut randoms1 := gen_randoms(42)
+	mut randoms2 := gen_randoms(42)
 	assert randoms1.len == randoms2.len
 
 	mut len := randoms1.len
@@ -19,8 +19,8 @@ fn test_rand_reproducibility() {
 		assert randoms1[i] == randoms2[i]
 	}
 
-	randoms1 = trial(256)
-	randoms2 = trial(256)
+	randoms1 = gen_randoms(256)
+	randoms2 = gen_randoms(256)
 	assert randoms1.len == randoms2.len
 
 	len = randoms1.len
