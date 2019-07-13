@@ -40,7 +40,7 @@ enum OS {
 }
 
 enum Pass {
-	// A very short pass that only looks at imports in the begginning of each file
+	// A very short pass that only looks at imports in the beginning of each file
 	imports
 	// First pass, only parses and saves declarations (fn signatures, consts, types).
 	// Skips function bodies.
@@ -1071,8 +1071,9 @@ Usage: v [options] [file | directory]
 
 Options:
   -                 Read from stdin (Default; Interactive mode if in a tty)
-  -h, --help, help  Display this information.
+  -h, help          Display this information.
   -v, version       Display compiler version.
+  -lib              Generate object file.
   -prod             Build an optimized executable.
   -o <file>         Place output into <file>.
   -obf              Obfuscate the resulting binary.
