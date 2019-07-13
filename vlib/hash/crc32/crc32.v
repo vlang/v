@@ -9,7 +9,7 @@ const (
 
 struct Crc32 {
 mut:
-    table []u32
+	table []u32
 }
 
 fn(c mut Crc32) generate_table(poly int) {
@@ -22,32 +22,32 @@ fn(c mut Crc32) generate_table(poly int) {
 				crc >>= u32(1)
 			}
 		}
-        c.table << crc
+		c.table << crc
 	}
 }
  
 fn(c &Crc32) sum_32(s string) u32 {
-    mut crc := ~u32(0)
-    for i := 0; i < s.len; i++ {
-        crc = c.table[byte(crc)^s[i]] ^ u32(crc >> u32(8))
-    }
-    return ~crc
+	mut crc := ~u32(0)
+	for i := 0; i < s.len; i++ {
+		crc = c.table[byte(crc)^s[i]] ^ u32(crc >> u32(8))
+	}
+	return ~crc
 }
 
 pub fn(c &Crc32) checksum(s string) u32 {
-    return c.sum_32(s)
+	return c.sum_32(s)
 }
 
 // pass the polinomial to use
 pub fn new(poly int) *Crc32 {
-    mut c := &Crc32{}
-    c.generate_table(poly)
-    return c
+	mut c := &Crc32{}
+	c.generate_table(poly)
+	return c
 }
 
 // calculate crc32 using IEEE
 pub fn sum(s string) u32 {
-    mut c := new(IEEE)
-    return c.sum_32(s)
+	mut c := new(IEEE)
+	return c.sum_32(s)
 }
 
