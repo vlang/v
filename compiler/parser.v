@@ -323,7 +323,7 @@ fn (p mut Parser) import_statement() {
 			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
 		}
 	}
-	// aliasing (import b64 encoding.base64)
+	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
 		p.check(.key_as) 
 		mod_alias = p.check_name()
