@@ -3,8 +3,8 @@ import rand
 fn gen_randoms(seed int) []int {
 	mut randoms := [0; 20]
 	rand.seed(seed)
-	for _ in 0..20 {
-		randoms << rand.next(100)
+	for i in 0..20 {
+		randoms[i] = rand.next(100)
 	}
 	return randoms
 }
