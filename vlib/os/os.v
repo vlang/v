@@ -239,6 +239,10 @@ pub fn (f File) writeln(s string) {
 	C.fputs('\n', f.cfile)
 }
 
+pub fn (f File) flush() {
+	C.fflush(f.cfile)
+}
+
 pub fn (f File) close() {
 	C.fclose(f.cfile)
 }
