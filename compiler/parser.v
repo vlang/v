@@ -1296,7 +1296,7 @@ fn (p mut Parser) name_expr() string {
 			if !T.has_enum_val(val) {
 				p.error('enum `$T.name` does not have value `$val`') 
 			} 
-			p.gen(p.mod + '__' + p.expected_type + '_' + val) 
+			p.gen(T.mod + '__' + p.expected_type + '_' + val) 
 		} 
 		return p.expected_type 
 	} 
@@ -1375,7 +1375,7 @@ fn (p mut Parser) name_expr() string {
 			p.check(.dot)
 			val := p.lit
 			// println('enum val $val')
-			p.gen(p.mod + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
+			p.gen(enum_type.mod + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
 			return enum_type.name
 		}
