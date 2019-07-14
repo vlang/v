@@ -16,13 +16,13 @@ fn test_is_leap_year() {
     assert time.is_leap_year(1997) == false
 }
 
-fn test_days_in_month() {
-	fn check(month, year, expectedDays int) bool {
-		return time.days_in_month(month, year) or {
-			return false
-		}
+fn check(month, year, expectedDays int) bool {
+	return time.days_in_month(month, year) or {
+		return false
 	}
-	
+}
+
+fn test_days_in_month() {
 	assert check(1, 2001, 31) // January
 	assert check(2, 2001, 28) // February
 	assert check(2, 2000, 29) // February (leap)
