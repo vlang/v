@@ -17,17 +17,23 @@ fn test_is_leap_year() {
 }
 
 fn test_days_in_month() {
-	assert time.days_in_month(1, 2001)?  == 31 // January
-	assert time.days_in_month(2, 2001)?  == 28 // February
-	assert time.days_in_month(2, 2000)?  == 29 // February (leap)
-	assert time.days_in_month(3, 2001)?  == 31 // March
-	assert time.days_in_month(4, 2001)?  == 30 // April
-	assert time.days_in_month(5, 2001)?  == 31 // May
-	assert time.days_in_month(6, 2001)?  == 30 // June
-	assert time.days_in_month(7, 2001)?  == 31 // July
-	assert time.days_in_month(8, 2001)?  == 31 // August
-	assert time.days_in_month(9, 2001)?  == 30 // September
-	assert time.days_in_month(10, 2001)? == 31 // October
-	assert time.days_in_month(11, 2001)? == 30 // November
-	assert time.days_in_month(12, 2001)? == 31 // December
+	fn check(month, year, expectedDays int) bool {
+		return time.days_in_month(month, year) or {
+			return false
+		}
+	}
+	
+	assert check(1, 2001, 31) // January
+	assert check(2, 2001, 28) // February
+	assert check(2, 2000, 29) // February (leap)
+	assert check(3, 2001, 31) // March
+	assert check(4, 2001, 30) // April
+	assert check(5, 2001, 31) // May
+	assert check(6, 2001, 30) // June
+	assert check(7, 2001, 31) // July
+	assert check(8, 2001, 31) // August
+	assert check(9, 2001, 30) // September
+	assert check(10, 2001, 31) // October
+	assert check(11, 2001, 30) // November
+	assert check(12, 2001, 31) // December
 }
