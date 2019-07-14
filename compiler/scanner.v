@@ -36,15 +36,27 @@ fn new_scanner(file_path string) *Scanner {
 		panic('"$file_path" doesn\'t exist')
 	}
 	//text := os.read_file(file_path) 
-	text := os.read_file(file_path) or {
+	mut raw_text := os.read_file(file_path) or {
 		panic('scanner: failed to open "$file_path"')
 		return &Scanner{}
 	}
+
+	c_text := raw_text.cstr()
+
+	if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
+		// skip three BOM bytes
+		offset_from_begin := 3
+		raw_text = tos(c_text[offset_from_begin], C.strlen(c_text) - offset_from_begin)
+	}
+
+	text := raw_text
+
 	scanner := &Scanner {
 		file_path: file_path
 		text: text
 		fmt_out: strings.new_builder(1000)
 	}
+
 	// println('new scanner "$file_path" txt.len=$scanner.text.len')
 	return scanner
 }
