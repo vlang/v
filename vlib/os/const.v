@@ -1,5 +1,11 @@
 module os
 
+// Ref - winnt.h
+const (
+	SUCCESS = 0 // ERROR_SUCCESS
+	ERROR_INSUFFICIENT_BUFFER = 130
+)
+
 const (
 	FILE_SHARE_READ   = 1
 	FILE_SHARE_WRITE  = 2
