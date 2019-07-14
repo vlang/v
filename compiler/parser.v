@@ -668,7 +668,7 @@ fn (p &Parser) strtok() string {
 	return res
 }
 
-// same as check(), but addes a space to the formatter output
+// same as check(), but adds a space to the formatter output
 // TODO bad name
 fn (p mut Parser) check_space(expected Token) {
 	p.fspace()
@@ -1827,7 +1827,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 // returns resulting type
 fn (p mut Parser) expression() string {
 	if p.scanner.file_path.contains('test_test') {
-		println('epxression() pass=$p.run tok=')
+		println('expression() pass=$p.run tok=')
 		p.print_tok()
 	}
 	p.cgen('/* expr start*/')
