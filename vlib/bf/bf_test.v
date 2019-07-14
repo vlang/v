@@ -119,3 +119,86 @@ fn test_hamming() {
 	}
 	assert count == bf.hamming(input1, input2)
 }
+
+fn test_bf_str2bf() {
+	rand.seed(time.now().uni)
+	len := 80
+	mut input := ''
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input = input + '1'
+		}
+		else {
+			input = input + '0'
+		}
+	}
+	output := bf.str2bf(input)
+	mut result := 1
+	for i := 0; i < len; i++ {
+		if input[i] != output.getbit(i) + 48 {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
+fn test_bf_bf2str() {
+	rand.seed(time.now().uni)
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	mut check := ''
+	for i := 0; i < len; i++ {
+		if input.getbit(i) == 1 {
+			check = check + '1'
+		}
+		else {
+			check = check + '0'
+		}
+	}
+	output := input.string()
+	mut result := 1
+	for i := 0; i < len; i++ {
+		if check[i] != output[i] {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
+fn test_bf_setall() {
+		rand.seed(time.now().uni)
+	len := 80
+	mut input := bf.new(len)
+	input.setall()
+	mut result := 1
+	for i := 0; i < len; i++ {
+		if input.getbit(i) != 1 {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
+fn test_bf_clearall() {
+		rand.seed(time.now().uni)
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	input.clearall()
+	mut result := 1
+	for i := 0; i < len; i++ {
+		if input.getbit(i) != 0 {
+			result = 0
+		}
+	}
+	assert result == 1
+}

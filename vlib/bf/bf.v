@@ -64,6 +64,29 @@ fn cleartail(instance BitField) {
 
 // public functions 
 
+pub fn str2bf(input string) BitField {
+	mut output := new(input.len)
+	for i := 0; i < input.len; i++ {
+		if input[i] != 48 {
+			output.setbit(i)
+		}
+	}
+	return output
+}
+
+pub fn (input BitField) string() string {
+	mut output := ''
+	for i := 0; i < input.size; i++ {
+		if input.getbit(i) == 1 {
+			output = output + '1'
+		}
+		else {
+			output = output + '0'
+		}
+	}
+	return output
+}
+
 pub fn new(size int) BitField {
 	output := BitField{
 		size: size 
@@ -91,6 +114,19 @@ pub fn (instance mut BitField) setbit(bitnr int) {
 pub fn (instance mut BitField) clearbit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bitclear(instance, bitnr)
+}
+
+pub fn (instance mut BitField) setall() {
+	for i := 0; i < bitnslots(instance.size); i++ {
+		instance.field[i] = u32(-1)
+	}
+	cleartail(instance)
+}
+
+pub fn (instance mut BitField) clearall() {
+	for i := 0; i < bitnslots(instance.size); i++ {
+		instance.field[i] = u32(0)
+	}
 }
 
 pub fn (instance mut BitField) togglebit(bitnr int) {
