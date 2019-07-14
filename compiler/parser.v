@@ -1200,7 +1200,7 @@ fn (p mut Parser) var_decl() {
 fn (p mut Parser) bool_expression() string {
 	tok := p.tok
 	typ := p.bterm()
-	for p.tok == .and || p.tok == .ortok {
+	for p.tok == .and || p.tok == .logical_or {
 		p.gen(' ${p.tok.str()} ')
 		p.check_space(p.tok) 
 		p.check_types(p.bterm(), typ)
@@ -2916,10 +2916,21 @@ fn (p mut Parser) for_st() {
 				is_mut: true
 			}
 			p.register_var(i_var)
+			p.genln('array_string keys_$tmp = map_keys(& $tmp ); ') 
+			p.genln('for (int l = 0; l < keys_$tmp .len; l++) {') 
+			p.genln('  string $i = ((string*)keys_$tmp .data)[l];') 
+			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );') 
+			def := type_default(var_typ) 
+			// TODO don't call map_get() for each key, fetch values while traversing
+			// the tree (replace `map_keys()` above with `map_key_vals()`) 
+			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);') 
+			
+			/* 
 			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
 			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
 			p.genln('string $i = entry.key;') 
 			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
+			*/ 
 		} 
 	}
 	// `for val in vals`

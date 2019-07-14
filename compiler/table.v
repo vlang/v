@@ -565,8 +565,7 @@ fn (t &Table) is_interface(name string) bool {
 
 // Do we have fn main()?
 fn (t &Table) main_exists() bool {
-	for entry in t.fns.entries { 
-		f := t.fns[entry.key] 
+	for _, f in t.fns { 
 		if f.name == 'main' {
 			return true
 		}
@@ -696,11 +695,11 @@ fn (fit mut FileImportTable) register_import(mod string) {
 }
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
-	if !fit.imports.exists(alias) {
-		fit.imports[alias] = mod
-	} else {
-		panic('Cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
-	}
+	if fit.imports.exists(alias) {
+		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		return 
+	} 
+	fit.imports[alias] = mod
 }
 
 fn (fit &FileImportTable) known_alias(alias string) bool {
@@ -708,10 +707,10 @@ fn (fit &FileImportTable) known_alias(alias string) bool {
 }
 
 fn (fit &FileImportTable) is_aliased(mod string) bool {
-	for i in fit.imports.keys() {
-		if fit.imports[i] == mod {
-			return true
-		}
+	for _, val in fit.imports { 
+		if val == mod {
+			return true 
+		} 
 	}
 	return false
 }
