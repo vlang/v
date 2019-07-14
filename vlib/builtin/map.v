@@ -202,7 +202,7 @@ pub fn (m map_string) str() string {
 	}
 	// TODO use bytes buffer
 	mut s := '{\n'
-	//for entry in m.entries {
+	//for key, val  in m { 
 		//val := m[entry.key]
 		//s += '  "$entry.key" => "$val"\n'
 	//}

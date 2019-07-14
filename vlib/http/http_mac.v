@@ -124,9 +124,7 @@ fn (req &Request) do() Response {
 	// Add request headers
 	mut hlist := &C.curl_slist{!}
 	// for i, h := range req.headers {
-	for entry in req.headers.entries {
-		key := entry.key
-		val := req.headers[key]
+	for key, val in req.headers {
 		h := '$key: $val'
 		hlist = C.curl_slist_append(hlist, h.cstr())
 	}
