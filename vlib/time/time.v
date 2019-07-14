@@ -336,10 +336,7 @@ pub fn days_in_month(month, year int) ?int {
 	if month > 12 || month < 1 {
 		return error('Invalid month: $month')
 	}
-
-	if month == 2 {
-		return MonthDays[month-1] + if is_leap_year(year) {1} else {0}
-	} else {
-		return MonthDays[month-1]
-	}
+	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
+	res := MonthDays[month-1] + extra 
+	return res 
 }
