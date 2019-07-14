@@ -652,6 +652,16 @@ pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
 }
 
+pub fn fork() int {
+	pid := C.fork()
+	return pid
+}
+
+pub fn wait() int {
+	pid := C.wait(0)
+	return pid
+}
+
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{} 
 	//# struct stat attr;
