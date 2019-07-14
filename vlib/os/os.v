@@ -653,13 +653,17 @@ pub fn signal(signum int, handler voidptr) {
 }
 
 pub fn fork() int {
-	pid := C.fork()
-	return pid
+	$if !windows {
+		pid := C.fork()
+		return pid
+	}
 }
 
 pub fn wait() int {
-	pid := C.wait(0)
-	return pid
+	$if !windows {
+		pid := C.wait(0)
+		return pid
+	}
 }
 
 pub fn file_last_mod_unix(path string) int {
