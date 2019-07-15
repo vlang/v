@@ -77,7 +77,7 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 
 struct C.curl_slist { }
 
-fn (req &Request) do() Response {
+pub fn (req &Request) do() Response {
 	//println('req.do() mac/linux url="$req.url" data="$req.data"')
 	// println('req.do() url="$req.url"')
 	/* 

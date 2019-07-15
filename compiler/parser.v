@@ -2222,6 +2222,7 @@ fn (p mut Parser) string_expr() {
 	mut format := '"'
 	for p.tok == .strtoken {
 		// Add the string between %d's
+		p.lit = p.lit.replace('%', '%%')
 		format += format_str(p.lit)
 		p.next()// skip $
 		if p.tok != .dollar {
@@ -2303,10 +2304,12 @@ fn (p mut Parser) map_init() string {
 	if !p.table.known_type(val_type) {
 		p.error('map init unknown type "$val_type"')
 	}
+	typ := 'map_$val_type'
+	p.register_map(typ)
 	p.gen('new_map(1, sizeof($val_type))')
 	p.check(.lcbr)
 	p.check(.rcbr)
-	return 'map_$val_type'
+	return typ
 }
 
 // [1,2,3]
@@ -3082,12 +3085,14 @@ else {
 
 fn (p mut Parser) return_st() {
 	p.cgen.insert_before(p.cur_fn.defer)
-	p.gen('return ')
-	if p.cur_fn.name == 'main' {
-		p.gen(' 0')
-	}
 	p.check(.key_return)
-	p.fgen(' ')
+
+	if p.cur_fn.name == 'main' {
+		p.gen('return 0')
+		p.returns = true
+		return
+	}
+
 	fn_returns := p.cur_fn.typ != 'void'
 	if fn_returns {
 		if p.tok == .rcbr {
@@ -3098,9 +3103,15 @@ fn (p mut Parser) return_st() {
 			expr_type := p.bool_expression()
 			// Automatically wrap an object inside an option if the function returns an option
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
-				//p.cgen.set_placeholder(ph, 'opt_ok(& ')
-				p.cgen.set_placeholder(ph, 'opt_ok(& ')
-				p.gen(', sizeof($expr_type))')
+				tmp := p.get_tmp()
+				ret := p.cgen.cur_line.right(ph)
+
+				p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
+				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
+			}
+			else {
+				ret := p.cgen.cur_line.right(ph)
+				p.cgen.cur_line = 'return $ret'
 			}
 			p.check_types(expr_type, p.cur_fn.typ)
 		}
@@ -3111,6 +3122,7 @@ fn (p mut Parser) return_st() {
 		if false && p.tok == .name || p.tok == .integer {
 			p.error('function `$p.cur_fn.name` does not return a value')
 		}
+		p.gen('return')
 	}
 	p.returns = true
 }
