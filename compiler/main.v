@@ -669,11 +669,8 @@ fn (v &V) v_files_from_dir(dir string) []string {
 	if v.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	// println(files.len)
-	// println(files)
 	files.sort()
 	for file in files {
-		v.log('F=$file')
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
 		}
@@ -687,19 +684,11 @@ fn (v &V) v_files_from_dir(dir string) []string {
 			continue
 		}
 		if file.ends_with('_mac.v') && v.os != .mac { 
-			lin_file := file.replace('_mac.v', '_lin.v')
-			// println('lin_file="$lin_file"')
-			// If there are both _mac.v and _lin.v, don't use _mav.v
-			if os.file_exists('$dir/$lin_file') {
-				continue
-			}
-			else if v.os == .windows {
-				continue
-			}
-			else {
-				// If there's only _mav.v, then it can be used on Linux too
-			}
-		}
+			continue
+		} 
+		if file.ends_with('_nix.v') && v.os == .windows {
+			continue 
+		} 
 		res << '$dir/$file'
 	}
 	return res
