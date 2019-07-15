@@ -131,15 +131,15 @@ pub fn exp2(a f64) f64 {
 }
 
 // factorial calculates the factorial of the provided value.
-fn recursive_product( n int, currentN &int) int{
+fn recursive_product( n int, current_number_ptr &int) int{
     mut m := n / 2
     if (m == 0){
-        return *currentN += 2
+        return *current_number_ptr += 2
     }
     if (n == 2){
-        return (*currentN += 2) * (*currentN += 2)
+        return (*current_number_ptr += 2) * (*current_number_ptr += 2)
     }
-    return recursive_product((n - m), *currentN) * recursive_product(m, *currentN)
+    return recursive_product((n - m), *current_number_ptr) * recursive_product(m, *current_number_ptr)
 }
 
 pub fn factorial(n int) u64 {
@@ -152,7 +152,7 @@ pub fn factorial(n int) u64 {
     }
     mut r := 1
     mut p := 1
-    mut currentnumber := 1
+    mut current_number := 1
     mut h := 0
     mut shift := 0
     mut high := 1
@@ -167,7 +167,7 @@ pub fn factorial(n int) u64 {
         high = (h - 1) | 1
         len = (high - len)/2
         if (len > 0){
-            p *= recursive_product(len, &currentnumber)
+            p *= recursive_product(len, &current_number)
             r *= p
         }
     }
