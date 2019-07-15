@@ -50,10 +50,7 @@ fn (d mut Digest) reset() {
 	d.len = u64(0)
 }
 
-// New returns a new hash.Hash computing the SHA1 checksum. The Hash also
-// implements encoding.BinaryMarshaler and encoding.BinaryUnmarshaler to
-// marshal and unmarshal the internal state of the hash.
-// fn new() hash.Hash {
+// New returns a new Digest (implementing hash.Hash) computing the SHA1 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
 	d.reset()
