@@ -933,44 +933,22 @@ fn new_v(args[]string) *V {
 	'option.v',
 	]
 	// Location of all vlib files
-	mut lang_dir := ''
-	// First try fetching it from VROOT if it's defined
-	for { // TODO tmp hack for optionals
-	vroot_path := TmpPath + '/VROOT'
-	if os.file_exists(vroot_path) {
-		mut vroot := os.read_file(vroot_path) or {
-			break
-		} 
-		//mut vroot := os.read_file(vroot_path) 
-		vroot=vroot.trim_space() 
-		if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
-			lang_dir = vroot
-		}
-	}
-	break
-	}
-	// no "~/.vlang/VROOT" file, so the user must be running V for the first 
-	// time.
-	if lang_dir == ''  {
-		println('Looks like you are running V for the first time.')
-		// The parent directory should contain vlib if V is run
-		// from "v/compiler"
-		lang_dir = os.getwd() 
-		if os.dir_exists('$lang_dir/vlib/builtin') {
-			println('Setting VROOT to "$lang_dir".')
-			os.write_file(TmpPath + '/VROOT', lang_dir)
-		} else {
-			println('V repo not found. Go to https://vlang.io to download V.zip ')  
-			println('or install V from source.') 
-			exit(1) 
-		}
+	vroot := os.executable().all_before_last('/') 
+	println('VROOT=$vroot') 
+	// v.exe's parent directory should contain vlib 
+	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
+ 
+	}  else {
+		println('vlib not found. It should be next to V executable. ') 
+		println('Go to https://vlang.io to install V.') 
+		exit(1) 
 	} 
 	mut out_name_c := out_name.all_after('/') + '.c'
 	mut files := []string
 	// Add builtin files
 	if !out_name.contains('builtin.o') {
 		for builtin in builtins {
-			mut f := '$lang_dir/vlib/builtin/$builtin'
+			mut f := '$vroot/vlib/builtin/$builtin'
 			// In default mode we use precompiled vlib.o, point to .vh files with signatures
 			if build_mode == .default_mode || build_mode == .build {
 				//f = '$TmpPath/vlib/builtin/${builtin}h'
@@ -1008,12 +986,12 @@ fn new_v(args[]string) *V {
 		out_name: out_name
 		files: files
 		dir: dir
-		lang_dir: lang_dir
+		lang_dir: vroot 
 		table: new_table(obfuscate)
 		out_name: out_name
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
-		vroot: lang_dir
+		vroot: vroot 
 		pref: pref
 	}
 }
