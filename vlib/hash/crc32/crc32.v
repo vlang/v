@@ -14,7 +14,9 @@ const (
 )
 
 // The size of a CRC-32 checksum in bytes.
-const Size = 4
+const (
+	Size = 4
+)
 
 struct Crc32 {
 mut:
