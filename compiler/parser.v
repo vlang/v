@@ -2222,6 +2222,7 @@ fn (p mut Parser) string_expr() {
 	mut format := '"'
 	for p.tok == .strtoken {
 		// Add the string between %d's
+		p.lit = p.lit.replace('%', '%%')
 		format += format_str(p.lit)
 		p.next()// skip $
 		if p.tok != .dollar {
