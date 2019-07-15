@@ -228,10 +228,10 @@ fn free(a voidptr) {
 }
 
 pub fn (b []byte) hex() string {
-    mut hex := malloc(b.len*2+1)
-    mut ptr := &hex[0]
-    for i := 0; i < b.len ; i++ {
-        ptr += C.sprintf(ptr, '%02X', b[i])
-    }
-    return string(hex)
+	mut hex := malloc(b.len*2+1)
+	mut ptr := &hex[0]
+	for i := 0; i < b.len ; i++ {
+		ptr += C.sprintf(ptr, '%02X', b[i])
+	}
+	return string(hex)
 }
