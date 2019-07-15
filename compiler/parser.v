@@ -3087,12 +3087,6 @@ fn (p mut Parser) return_st() {
 	p.cgen.insert_before(p.cur_fn.defer)
 	p.check(.key_return)
 
-	if p.cur_fn.name == 'main' {
-		p.gen('return 0')
-		p.returns = true
-		return
-	}
-
 	fn_returns := p.cur_fn.typ != 'void'
 	if fn_returns {
 		if p.tok == .rcbr {
@@ -3118,11 +3112,16 @@ fn (p mut Parser) return_st() {
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
-		// if p.tok != .rcbr && p.tok != .hash {
 		if false && p.tok == .name || p.tok == .integer {
 			p.error('function `$p.cur_fn.name` does not return a value')
 		}
-		p.gen('return')
+
+		if p.cur_fn.name == 'main' {
+			p.gen('return 0')
+		}
+		else {
+			p.gen('return')
+		}
 	}
 	p.returns = true
 }
