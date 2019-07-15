@@ -1,4 +1,4 @@
-import fractions
+import math.fractions as fractions
 
 // Results are verified using https://www.calculatorsoup.com/calculators/math/fractions.php
 
