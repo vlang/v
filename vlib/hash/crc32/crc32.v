@@ -21,13 +21,6 @@ mut:
 	table []u32
 }
 
-struct Digest  {
-	crc uint32
-	tab *Table
-}
-
-func (d *igest) Reset() { d.crc = 0 }
-
 fn(c mut Crc32) generate_table(poly int) {
 	for i := 0; i < 256; i++ {
 		mut crc := u32(i)
@@ -51,7 +44,7 @@ fn(c &Crc32) sum32(s string) u32 {
 }
 
 pub fn(c &Crc32) checksum(s string) u32 {
-	return c.sum_32(s)
+	return c.sum32(s)
 }
 
 // pass the polinomial to use
@@ -67,6 +60,3 @@ pub fn sum(s string) u32 {
 	return c.sum32(s)
 }
 
-func (d *Digest) Size() int { return Size }
-
-func (d *Digest) BlockSize() int { return 1 }
