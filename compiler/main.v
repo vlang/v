@@ -613,7 +613,10 @@ mut args := ''
 	// || os.user_os() == 'linux' 
 	if v.pref.build_mode != .build && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
 		v.os == .netbsd || v.os == .dragonfly) { 
-		a << '-lm -lpthread' // -ldl 
+		a << '-lm -lpthread ' 
+		if v.os == .linux {
+			a << ' -ldl ' 
+		} 
 	}
 	// Find clang executable
 	//fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
