@@ -39,13 +39,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	// d.x = [byte(0); Chunk]
-	// d.x = make_arr_byte(Chunk)
 	d.x = [byte(0); Chunk]
-	// for i in d.x {
-	// 	println('byte')
-	// }
-	d.h = make_arr_u32(5)
+	d.h = [u32(0); 5]
 	d.h[0] = u32(Init0)
 	d.h[1] = u32(Init1)
 	d.h[2] = u32(Init2)
@@ -116,8 +111,7 @@ pub fn (d &Digest) sum(b_in mut []byte) []byte {
 fn (d mut Digest) check_sum() []byte {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
-	// mut tmp := [byte(0); 64]
-	mut tmp := make_arr_byte(64)
+	mut tmp := [byte(0); 64]
 
 	tmp[0] = 0x80
 
@@ -132,8 +126,7 @@ fn (d mut Digest) check_sum() []byte {
 	binary.big_endian_put_u64(tmp, len)
 	d.write(tmp.left(8))
 
-	// mut tmp := [byte(0); Size]
-	mut digest := make_arr_byte(Size)
+	mut digest := [byte(0); Size]
 
 	binary.big_endian_put_u32(digest, d.h[0])
 	binary.big_endian_put_u32(digest.right(4), d.h[1])
@@ -145,28 +138,11 @@ fn (d mut Digest) check_sum() []byte {
 }
 
 // Sum returns the SHA-1 checksum of the data.
-// fn sum(data []byte) [Size]byte {
 pub fn sum(data []byte) []byte {
 	mut d := Digest{}
 	d.reset()
 	d.write(data)
 	return d.check_sum()
-}
-
-pub fn make_arr_byte(size int) []byte {
-	mut b := []byte
-	for i:=0; i<size; i++ {
-		b << 0x00
-	}
-	return b
-}
-
-pub fn make_arr_u32(size int) []u32 {
-	mut b := []u32
-	for i:=0; i<size; i++ {
-		b << u32(0)
-	}
-	return b
 }
 
 pub fn (d &Digest) size() int { return Size }

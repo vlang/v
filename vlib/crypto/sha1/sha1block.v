@@ -10,8 +10,7 @@ const (
 )
 
 fn block(dig &Digest, p []byte) {
-	// mut w := [byte(0); 16]
-	mut w := make_arr_u32(16)
+	mut w := [u32(0); 16]
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]
 	mut h2 := dig.h[2]
