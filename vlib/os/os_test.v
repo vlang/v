@@ -34,6 +34,15 @@ fn test_write_and_read_string_to_file() {
   os.rm(filename)
 }
 
+fn test_dir() {
+	$if windows {
+		assert os.dir('C:\a\b\c') == 'C:\a\b' 
+ 
+	} $else { 
+		assert os.dir('/var/tmp/foo') == '/var/tmp' 
+	} 
+} 
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {
