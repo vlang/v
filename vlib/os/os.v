@@ -507,8 +507,8 @@ fn on_segfault(f voidptr) {
 	}
 }
 
-pub fn getexepath() string {
-	mut result := [4096]byte // [MAX_PATH]byte --> error byte undefined
+pub fn executable() string {
+	mut result := malloc(MAX_PATH) 
 	$if linux {
 		count := int(C.readlink('/proc/self/exe', result, MAX_PATH ))
 		if(count < 0) {
@@ -523,11 +523,22 @@ pub fn getexepath() string {
 	}
 
 	$if mac {
+		buf := malloc(MAX_PATH) 
+		pid := C.getpid() 
+		ret := C.proc_pidpath (pid, buf, MAX_PATH) 
+		if ret <= 0  {
+		println('executable() failed') 
+		return '' 
+		}  
+		return string(buf) 
+/* 
+// This doesn't work with symlinks 
 		mut bufsize := MAX_PATH // if buffer is too small this will be updated with size needed
 		if C._NSGetExecutablePath(result, &bufsize) == -1 {
 			panic('Could not get executable path, buffer too small (need: $bufsize).')
 		}
-		return tos(result, strlen(result))
+		return string(result) 
+*/ 
 	}
 }
 
