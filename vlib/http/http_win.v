@@ -20,7 +20,7 @@ import const (
 	INTERNET_SERVICE_HTTP
 )
 
-fn (req &Request) do() Response {
+pub fn (req &Request) do() Response {
 	emptyresp := Response{}
 	mut url := req.url
 	//println('\n\nhttp.do() WIN URL="$url" TYP=$req.typ data="$req.data" headers.len=req.headers.len"')
