@@ -9,7 +9,7 @@ import time
 import strings
 
 const (
-	Version = '0.1.14' 
+	Version = '0.1.15'  
 )
 
 enum BuildMode {
