@@ -3085,12 +3085,14 @@ else {
 
 fn (p mut Parser) return_st() {
 	p.cgen.insert_before(p.cur_fn.defer)
-	p.gen('return ')
-	if p.cur_fn.name == 'main' {
-		p.gen(' 0')
-	}
 	p.check(.key_return)
-	p.fgen(' ')
+
+	if p.cur_fn.name == 'main' {
+		p.gen('return 0')
+		p.returns = true
+		return
+	}
+
 	fn_returns := p.cur_fn.typ != 'void'
 	if fn_returns {
 		if p.tok == .rcbr {
@@ -3101,9 +3103,15 @@ fn (p mut Parser) return_st() {
 			expr_type := p.bool_expression()
 			// Automatically wrap an object inside an option if the function returns an option
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
-				//p.cgen.set_placeholder(ph, 'opt_ok(& ')
-				p.cgen.set_placeholder(ph, 'opt_ok(& ')
-				p.gen(', sizeof($expr_type))')
+				tmp := p.get_tmp()
+				ret := p.cgen.cur_line.right(ph)
+
+				p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
+				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
+			}
+			else {
+				ret := p.cgen.cur_line.right(ph)
+				p.cgen.cur_line = 'return $ret'
 			}
 			p.check_types(expr_type, p.cur_fn.typ)
 		}
@@ -3114,6 +3122,7 @@ fn (p mut Parser) return_st() {
 		if false && p.tok == .name || p.tok == .integer {
 			p.error('function `$p.cur_fn.name` does not return a value')
 		}
+		p.gen('return')
 	}
 	p.returns = true
 }
