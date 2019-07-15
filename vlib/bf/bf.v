@@ -294,6 +294,26 @@ pub fn hamming (input1 BitField, input2 BitField) int {
 	return input_xored.popcount()
 }
 
+pub fn (haystack BitField) pos(needle BitField) int {
+	heystack_size := haystack.size
+	needle_size := needle.size
+	diff := heystack_size - needle_size
+
+	// needle longer than haystack; return error code -2
+	if diff < 0 {
+		return -2
+	}
+	for i := 0; i <= diff; i++ {
+		needle_candidate := haystack.slice(i, needle_size + i)
+		if cmp(needle_candidate, needle) {
+			// needle matches a sub-array of haystack; return starting position of the sub-array
+			return i
+		}
+	}
+	// nothing matched; return -1
+	return -1
+}
+
 pub fn (input BitField) slice(_start int, _end int) BitField {
 	// boundary checks
 	mut start := _start
@@ -358,5 +378,64 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		output.field[(end - start - 1) / SLOT_SIZE] =
 		    output.field[(end - start - 1) / SLOT_SIZE] | mask
 	}
+	return output
+}
+
+pub fn (instance mut BitField) reverse() BitField {
+	size := instance.size
+	bitnslots := bitnslots(size)
+	mut output := new(size)
+	for i:= 0; i < (bitnslots - 1); i++ {
+		for j := 0; j < SLOT_SIZE; j++ {
+			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
+				bitset(output, size - i * SLOT_SIZE - j - 1)
+			}
+		}
+	}
+	bits_in_last_input_slot := (size - 1) % SLOT_SIZE + 1
+	for j := 0; j < bits_in_last_input_slot; j++ {
+		if u32(instance.field[bitnslots - 1] >> u32(j)) & u32(1) == u32(1) {
+			bitset(output, bits_in_last_input_slot - j - 1)
+		}
+	}
+	return output
+}
+
+pub fn (instance mut BitField) resize(size int) {
+	bitnslots := bitnslots(size)
+	old_size := instance.size
+	old_bitnslots := bitnslots(old_size)
+	mut field := [u32(0); bitnslots]
+	for i := 0; i < old_bitnslots && i < bitnslots; i++ {
+		field[i] = instance.field[i]
+	}
+	instance.field = field
+	instance.size = size
+	if size < old_size && size % SLOT_SIZE != 0 {
+		cleartail(instance)
+	}
+}
+
+pub fn (instance BitField) rotate(offset int) BitField {
+	/**
+	 * This function "cuts" the bitfield into two and swaps them.
+	 * If the offset is positive, the cutting point is counted from the
+	 * beginning of the bit array, otherwise from the end.
+	**/
+	size := instance.size
+	// removing extra rotations
+
+	mut offset_internal := offset % size
+	if (offset_internal == 0) {
+		// nothing to shift
+		return instance
+	}
+	if offset_internal < 0 {
+		offset_internal = offset_internal + size
+	}
+
+	first_chunk := instance.slice(0, offset_internal)
+	second_chunk := instance.slice(offset_internal, size)
+	output := join(second_chunk, first_chunk)
 	return output
 }
