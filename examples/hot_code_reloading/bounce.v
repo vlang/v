@@ -1,5 +1,5 @@
 // Build this example with
-// v -live -sanitize bounce.v
+// v -live bounce.v
 module main
 
 import gx

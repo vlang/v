@@ -535,6 +535,9 @@ fn (v mut V) cc() {
 	else {
 		a << '-g'
 	}
+	if v.pref.is_live {
+		a << '-rdynamic'
+	}
 	mut libs := ''// builtin.o os.o http.o etc
 	if v.pref.build_mode == .build {
 		a << '-c'
