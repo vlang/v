@@ -2617,6 +2617,9 @@ fn os_name_to_ifdef(name string) string {
 		case 'mac': return '__APPLE__'
 		case 'linux': return '__linux__' 
 		case 'freebsd': return '__FreeBSD__' 
+		case 'openbsd': return '__OpenBSD__' 
+		case 'netbsd': return '__NetBSD__' 
+		case 'dragonfly': return '__DragonFly__' 
 	} 
 	panic('bad os ifdef name "$name"') 
 	return '' 
