@@ -1,16 +1,15 @@
 ## V 0.1.15 
 *15 Jul 2019* 
 - FreeBSD, OpenBSD, NetBSD, DragonFly support. 
-- Hot code reloading now works with graphical applications:  
-  [bounce.v](https://github.com/vlang/v/blob/master/examples/hot_code_reloading/bounce.v) 
+- Hot code reloading now works with graphical applications: [bounce.v](https://github.com/vlang/v/blob/master/examples/hot_code_reloading/bounce.v) 
 - VROOT was removed, the installation process is now much simpler. 
-- `defer` statement
+- `defer` statement.
 - map.v was re-written. It's now much faster.
 - `for key, val in map` syntax. 
 - `flag` module for parsing command line arguments. 
 - `zip` module. 
 - `crypto/sha1` module. 
-- Submodules and module aliases (`import encoding/base64 as b64`). 
+- Submodules and module aliases (`import encoding.base64 as b64`). 
 
 
 
