@@ -81,7 +81,7 @@ fn get_bet(money int) int {
             println('error: $line is not heigher than 1.')
             continue
         } else if bet > money {
-            println('error: $line is not heigher than your money.')
+            println('error: $line is more money than you have.')
         }
     }
     return bet
