@@ -221,10 +221,6 @@ pub fn (a []string) str() string {
 	return res
 }
 
-fn free(a voidptr) {
-	C.free(a)
-}
-
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len*2+1)
 	mut ptr := &hex[0]
