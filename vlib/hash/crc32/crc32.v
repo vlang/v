@@ -13,6 +13,11 @@ const (
 	Koopman    = 0xeb31d82e
 )
 
+// The size of a CRC-32 checksum in bytes.
+const (
+	Size = 4
+)
+
 struct Crc32 {
 mut:
 	table []u32
@@ -32,7 +37,7 @@ fn(c mut Crc32) generate_table(poly int) {
 	}
 }
  
-fn(c &Crc32) sum_32(s string) u32 {
+fn(c &Crc32) sum32(s string) u32 {
 	mut crc := ~u32(0)
 	for i := 0; i < s.len; i++ {
 		crc = c.table[byte(crc)^s[i]] ^ u32(crc >> u32(8))
@@ -41,7 +46,7 @@ fn(c &Crc32) sum_32(s string) u32 {
 }
 
 pub fn(c &Crc32) checksum(s string) u32 {
-	return c.sum_32(s)
+	return c.sum32(s)
 }
 
 // pass the polinomial to use
@@ -54,6 +59,6 @@ pub fn new(poly int) *Crc32 {
 // calculate crc32 using IEEE
 pub fn sum(s string) u32 {
 	mut c := new(IEEE)
-	return c.sum_32(s)
+	return c.sum32(s)
 }
 
