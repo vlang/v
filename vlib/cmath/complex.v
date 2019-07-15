@@ -160,6 +160,34 @@ pub fn (c Complex) ln() Complex {
 	}
 }
 
+// Complex Log Base Complex
+// Based on 
+// http://www.milefoot.com/math/complex/summaryops.htm
+pub fn (c Complex) log(base Complex) Complex {
+	return base.ln().divide(c.ln())
+}
+
+// Complex Argument
+// Based on
+// http://mathworld.wolfram.com/ComplexArgument.html
+pub fn (c Complex) arg() f64 {
+	return math.atan2(c.im,c.re)
+}
+
+// Complex raised to Complex Power
+// Based on
+// http://mathworld.wolfram.com/ComplexExponentiation.html
+pub fn (c Complex) cpow(p Complex) Complex {
+	a := c.arg()
+	b := math.pow(c.re,2) + math.pow(c.im,2)
+	d := p.re * a + (1.0/2) * p.im * math.log(b)
+	t1 := math.pow(b,p.re/2) * math.exp(-p.im*a)
+	return Complex{
+		t1 * math.cos(d), 
+		t1 * math.sin(d)
+	}
+}
+
 // Complex Sin
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
