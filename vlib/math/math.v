@@ -148,7 +148,7 @@ pub fn factorial(n int) i64 {
         panic('factorial: Cannot find factorial of negative number')
     }
     if n < 2 {
-        return u64(1)
+        return i64(1)
     }
     mut r := 1
     mut p := 1
@@ -172,7 +172,7 @@ pub fn factorial(n int) i64 {
         }
     }
     println( r)
-    return u64((r << shift))
+    return i64((r << shift))
 }
 }
 
