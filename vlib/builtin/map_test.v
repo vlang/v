@@ -72,4 +72,65 @@ fn test_large_map() {
 	assert nums['1000000'] == 0 
 	//println(time.ticks() - ticks) 
 } 
- 
+
+fn test_various_map_value() {
+	mut m1 := map[string]int{}
+	m1['test'] = 1
+	assert m1['test'] == 1
+	
+	mut m2 := map[string]string{}
+	m2['test'] = 'test'
+	assert m2['test'] == 'test'
+	
+	mut m3 := map[string]i8{}
+	m3['test'] = i8(0)
+	assert m3['test'] == i8(0)
+	
+	mut m4 := map[string]i16{}
+	m4['test'] = i16(0)
+	assert m4['test'] == i16(0)
+	
+	mut m5 := map[string]i32{}
+	m5['test'] = i32(0)
+	assert m5['test'] == i32(0)
+	
+	mut m6 := map[string]u8{}
+	m6['test'] = u8(0)
+	assert m6['test'] == u8(0)
+	
+	mut m7 := map[string]u16{}
+	m7['test'] = u16(0)
+	assert m7['test'] == u16(0)
+	
+	mut m8 := map[string]u32{}
+	m8['test'] = u32(0)
+	assert m8['test'] == u32(0)
+	
+	mut m9 := map[string]bool{}
+	m9['test'] = true
+	assert m9['test'] == true
+	
+	mut m10 := map[string]byte{}
+	m10['test'] = byte(0)
+	assert m10['test'] == byte(0)
+	
+	mut m11 := map[string]f32{}
+	m11['test'] = f32(0.0)
+	assert m11['test'] == f32(0.0)
+	
+	mut m12 := map[string]f64{}
+	m12['test'] = f64(0.0)
+	assert m12['test'] == f64(0.0)
+
+	mut m13 := map[string]rune{}
+	m13['test'] = rune(0)
+	assert m13['test'] == rune(0)
+
+	mut m14 := map[string]voidptr{}
+	m14['test'] = voidptr(0)
+	assert m14['test'] == voidptr(0)
+
+	mut m15 := map[string]byteptr{}
+	m15['test'] = byteptr(0)
+	assert m15['test'] == byteptr(0)
+}
