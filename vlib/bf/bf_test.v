@@ -202,3 +202,104 @@ fn test_bf_clearall() {
 	}
 	assert result == 1
 }
+
+fn test_bf_reverse() {
+	rand.seed(time.now().uni)
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < len; i++ {
+		if rand.next(2) == 1 {
+			input.setbit(i)
+		}
+	}
+	check := bf.clone(input)
+	output := input.reverse()
+	mut result := 1
+	for i := 0; i < len; i++ {
+		if output.getbit(i) != check.getbit(len - i - 1) {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
+fn test_bf_resize() {
+	rand.seed(time.now().uni)
+	len := 80
+	mut input := bf.new(len)
+	for i := 0; i < 100; i++ {
+		input.resize(rand.next(input.getsize()) + 1)
+		input.setbit(input.getsize() - 1)
+	}
+	assert input.getbit(input.getsize() - 1) == 1
+}
+
+fn test_bf_pos() {
+	/**
+	 * set haystack size to 80
+	 * test different sizes of needle, from 1 to 80
+	 * test different positions of needle, from 0 to where it fits
+	 * all haystacks here contain exactly one instanse of needle,
+	 * so search should return non-negative-values
+	**/
+	rand.seed(time.now().uni)
+	len := 80
+	mut result := 1
+	for i := 1; i < len; i++ {	// needle size
+		for j := 0; j < len - i; j++ {	// needle position in the haystack
+			// create the needle
+			mut needle := bf.new(i)
+
+			// fill the needle with random values
+			for k := 0; k < i; k++ {
+				if rand.next(2) == 1 {
+					needle.setbit(k)
+				}
+			}
+
+			// make sure the needle contains at least one set bit, selected randomly
+			r := rand.next(i)
+			needle.setbit(r)
+
+			// create the haystack, make sure it contains the needle
+			mut haystack := bf.clone(needle)
+
+			// if there is space between the start of the haystack and the sought needle, fill it with zeroes
+			if j > 0 {
+				start := bf.new(j)
+				tmp := bf.join(start, haystack)
+				haystack = tmp
+			}
+
+			// if there is space between the sought needle and the end of haystack, fill it with zeroes
+			if j + i < len {
+				end := bf.new(len - j - i)
+				tmp2 := bf.join(haystack, end)
+				haystack = tmp2
+			}
+
+			// now let's test
+			// the result should be equal to j
+			if haystack.pos(needle) != j {
+				result = 0
+			}
+		}
+	}
+	assert result == 1
+}
+
+fn test_bf_rotate() {
+	mut result := 1
+	len := 80
+	for i := 1; i < 80 && result == 1; i++ {
+		mut chunk1 := bf.new(i)
+		chunk2 := bf.new(len - i)
+		chunk1.setall()
+		input := bf.join(chunk1, chunk2)
+		output := input.rotate(i)
+		if output.getbit(len - i - 1) != 0 || output.getbit(len - i) != 1 {
+			result = 0
+		}
+	}
+	assert result == 1
+}
