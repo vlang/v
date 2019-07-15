@@ -2,17 +2,6 @@ module bits
 
 // --- RotateLeft ---
 
-// RotateLeft returns the value of x rotated left by (k mod UintSize) bits.
-// To rotate x right by k bits, call RotateLeft(x, -k).
-//
-// This function's execution time does not depend on the inputs.
-// pub fn rotate_left(x uint, k int) uint {
-// 	if UintSize == 32 {
-// 		return uint(rotate_left_32(uint32(x), k))
-// 	}
-// 	return uint(rotate_left64(uint64(x), k))
-// }
-
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //

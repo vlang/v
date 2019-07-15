@@ -812,3 +812,11 @@ pub fn (s string) hash() int {
 	return h 
 }
 
+pub fn (s string) bytes() []byte {
+	if s.len == 0 {
+		return []byte
+	}
+	mut buf := [byte(0); s.len]
+	C.memcpy(buf.data, s.str, s.len)
+	return buf
+}

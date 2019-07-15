@@ -5,14 +5,17 @@
 module hash
 
 interface Hash {
-	Sum(b []byte) []byte
+	// Sum appends the current hash to b and returns the resulting array.
+	// It does not change the underlying hash state.
+	sum(b []byte) []byte
+	size() int
+	block_size() int
 }
 
-
 interface Hash32 {
-	Sum32() uint32
+	sum32() uint32
 }
 
 interface Hash64 {
-	Sum64() uint64
+	sum64() uint64
 }

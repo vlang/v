@@ -10,17 +10,14 @@ const (
 )
 
 fn block(dig &Digest, p []byte) {
-    println('block.')
-	// mut w := [16]u32
+	// mut w := [byte(0); 16]
 	mut w := make_arr_u32(16)
-
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]
 	mut h2 := dig.h[2]
 	mut h3 := dig.h[3]
 	mut h4 := dig.h[4]
-	for p.len >= chunk {
-        println('here')
+	for p.len >= Chunk {
 		// Can interlace the computation of w with the
 		// rounds below if needed for speed.
 		for i := 0; i < 16; i++ {
@@ -39,26 +36,25 @@ fn block(dig &Digest, p []byte) {
 		// the choice of K (_K0, _K1, etc).
 		mut i := 0
 		for i < 16 {
-			f := b&c | (~b)&d
+			f := u32(b&c | (~b)&d)
 			t := bits.rotate_left_32(a, 5) + f + e + w[i&0xf] + u32(_K0)
-			a = t
-			b = a
-			c = bits.rotate_left_32(b, 30)
-			d = c
 			e = d
+			d = c
+			c = bits.rotate_left_32(b, 30)
+			b = a
+			a = t
 			i++
 		}
 		for i < 20 {
 			tmp := w[(i-3)&0xf] ^ w[(i-8)&0xf] ^ w[(i-14)&0xf] ^ w[(i)&0xf]
 			w[i&0xf] = u32(tmp<<u32(1)) | u32(tmp>>u32(32-1))
-
 			f := b&c | (~b)&d
 			t := bits.rotate_left_32(a, 5) + f + e + w[i&0xf] + u32(_K0)
-			a = t
-			b = a
-			c = bits.rotate_left_32(b, 30)
-			d = c
 			e = d
+			d = c
+			c = bits.rotate_left_32(b, 30)
+			b = a
+			a = t
 			i++
 		}
 		for i < 40 {
@@ -66,11 +62,11 @@ fn block(dig &Digest, p []byte) {
 			w[i&0xf] = u32(tmp<<u32(1)) | u32(tmp>>u32(32-1))
 			f := b ^ c ^ d
 			t := bits.rotate_left_32(a, 5) + f + e + w[i&0xf] + u32(_K1)
-			a = t
-			b = a
-			c = bits.rotate_left_32(b, 30)
-			d = c
 			e = d
+			d = c
+			c = bits.rotate_left_32(b, 30)
+			b = a
+			a = t
 			i++
 		}
 		for i < 60 {
@@ -78,11 +74,13 @@ fn block(dig &Digest, p []byte) {
 			w[i&0xf] = u32(tmp<<u32(1)) | u32(tmp>>u32(32-1))
 			f := ((b | c) & d) | (b & c)
 			t := bits.rotate_left_32(a, 5) + f + e + w[i&0xf] + u32(_K2)
-			a = t
-			b = a
-			c = bits.rotate_left_32(b, 30)
-			d = d
+			
 			e = d
+			d = c
+			c = bits.rotate_left_32(b, 30)
+			b = a
+			a = t
+			
 			i++
 		}
 		for i < 80 {
@@ -90,11 +88,11 @@ fn block(dig &Digest, p []byte) {
 			w[i&0xf] = u32(tmp<<u32(1)) | u32(tmp>>u32(32-1))
 			f := b ^ c ^ d
 			t := bits.rotate_left_32(a, 5) + f + e + w[i&0xf] + u32(_K3)
-			a = t
-			b = a
-			c = bits.rotate_left_32(b, 30)
-			d = c
 			e = d
+			d = c
+			c = bits.rotate_left_32(b, 30)
+			b = a
+			a = t
 			i++
 		}
 
@@ -104,8 +102,12 @@ fn block(dig &Digest, p []byte) {
 		h3 += d
 		h4 += e
 
-		// p = p[chunk:]
-		p = p.right(chunk)
+		if Chunk >= p.len {
+			p = []byte
+		} else {
+			p = p.right(Chunk)
+		}
+		
 	}
 
 	dig.h[0] = h0
