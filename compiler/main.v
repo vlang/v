@@ -400,7 +400,7 @@ void reload_so() {
 			last = now; 
 			load_so("$so_name"); 
 		}
-		time__sleep_ms(500); 
+		time__sleep_ms(400); 
 	}
 }
 ' ) 

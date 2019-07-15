@@ -26,6 +26,7 @@ const (
 import const (
 	GLFW_RESIZABLE
 	GLFW_DECORATED
+	GLFW_FLOATING 
 )
 
 import const (
@@ -102,6 +103,7 @@ struct WinCfg {
 	is_modal   int
 	is_browser bool
 	url        string
+	always_on_top     bool 
 }
 
 // data  *C.GLFWwindow
@@ -161,6 +163,10 @@ pub fn create_window(c WinCfg) *Window {
 		window_hint(GLFW_RESIZABLE, 0)
 		window_hint(GLFW_DECORATED, 0)
 	}
+	if c.always_on_top {
+		window_hint(GLFW_FLOATING, 1) 
+ 
+} 
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	# if (!cwindow)
 	// if cwindow == 0
