@@ -543,11 +543,21 @@ fn type_default(typ string) string {
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
-	case 'int': return '0'
-	case 'string': return 'tos("", 0)'
-	case 'void*': return '0'
-	case 'byte*': return '0'
 	case 'bool': return '0'
+	case 'string': return 'tos("", 0)'
+	case 'i8': return '0'
+	case 'i16': return '0'
+	case 'i32': return '0'
+	case 'u8': return '0'
+	case 'u16': return '0'
+	case 'u32': return '0'
+	case 'byte': return '0'
+	case 'int': return '0'
+	case 'rune': return '0'
+	case 'f32': return '0.0'
+	case 'f64': return '0.0'
+	case 'byteptr': return '0'
+	case 'voidptr': return '0'
 	}
 	return '{}' 
 	return ''

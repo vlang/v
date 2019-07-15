@@ -2303,10 +2303,12 @@ fn (p mut Parser) map_init() string {
 	if !p.table.known_type(val_type) {
 		p.error('map init unknown type "$val_type"')
 	}
+	typ := 'map_$val_type'
+	p.register_map(typ)
 	p.gen('new_map(1, sizeof($val_type))')
 	p.check(.lcbr)
 	p.check(.rcbr)
-	return 'map_$val_type'
+	return typ
 }
 
 // [1,2,3]
