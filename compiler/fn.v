@@ -25,11 +25,11 @@ mut:
 	typ           string // return type
 	is_c          bool
 	receiver_typ  string
-	is_public    bool
+	is_public     bool
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
-	defer         string
+	defer_text    string
 }
 
 fn (f &Fn) find_var(name string) Var {
@@ -380,7 +380,7 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
-		f.defer = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
 	p.statements_no_curly_end()
 	// Print counting result after all statements in main
@@ -388,7 +388,7 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer)
+	p.genln(f.defer_text)
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}

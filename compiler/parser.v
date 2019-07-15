@@ -1022,6 +1022,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 		label := p.check_name()
 		p.genln('goto $label;')
 		return ''
+	case Token.key_defer:
+		p.defer_st()
+		return ''
 	case Token.hash:
 		p.chash()
 		return ''
@@ -1038,7 +1041,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 	case Token.key_return:
 		p.return_st()
 	case Token.lcbr:// {} block
-		p.next()
+		p.check(.lcbr) 
 		p.genln('{')
 		p.statements()
 		return ''
@@ -3088,7 +3091,7 @@ else {
 }
 
 fn (p mut Parser) return_st() {
-	p.cgen.insert_before(p.cur_fn.defer)
+	p.cgen.insert_before(p.cur_fn.defer_text)
 	p.check(.key_return)
 
 	fn_returns := p.cur_fn.typ != 'void'
@@ -3264,6 +3267,19 @@ fn (p mut Parser) attribute() {
 	} 
 	p.error('bad attribute usage') 
 } 
+
+fn (p mut Parser) defer_st() {
+	p.check(.key_defer)
+	// Wrap everything inside the defer block in /**/ comments, and save it in 
+	// `defer_text`. It will be inserted before every `return`. 
+	p.genln('/*') 
+	pos := p.cgen.lines.len 
+	p.check(.lcbr) 
+	p.genln('{') 
+	p.statements() 
+	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') 
+	p.genln('*/') 
+}  
 
 
 ///////////////////////////////////////////////////////////////////////////////
