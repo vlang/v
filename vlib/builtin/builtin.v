@@ -89,6 +89,10 @@ pub fn calloc(n int) byteptr {
 	return C.calloc(n, 1)
 }
 
+pub fn free(ptr voidptr) {
+	C.free(ptr)
+}
+
 fn _strlen(s byteptr) int {
 	return C.strlen(s)
 }
