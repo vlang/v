@@ -143,7 +143,6 @@ fn recursive_product( n int, current_number_ptr &int) int{
 }
 
 pub fn factorial(n int) i64 {
-{
     if n < 0 {
         panic('factorial: Cannot find factorial of negative number')
     }
@@ -173,7 +172,6 @@ pub fn factorial(n int) i64 {
     }
     println( r)
     return i64((r << shift))
-}
 }
 
 // floor returns the nearest integer lower or equal of the provided value.
