@@ -29,7 +29,7 @@ fn vtmp_path() string {
 }
 
 const (
-	SupportedPlatforms = ['windows', 'mac', 'linux']
+	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd']
 	TmpPath            = vtmp_path()
 )
 
@@ -37,6 +37,7 @@ enum OS {
 	mac
 	linux
 	windows
+	freebsd 
 }
 
 enum Pass {
@@ -597,7 +598,7 @@ mut args := ''
 		a << '-x objective-c'
 	}
 	// Without these libs compilation will fail on Linux
-	if (v.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build {
+	if (v.os == .linux || os.user_os() == 'linux' || v.os == .freebsd) && v.pref.build_mode != .build {
 		a << '-lm -ldl -lpthread'
 	}
 	// Find clang executable
@@ -892,12 +893,16 @@ fn new_v(args[]string) *V {
 		$if windows {
 			_os = .windows
 		}
+		$if freebsd {
+			_os = .freebsd 
+		}
 	}
 	else {
 		switch target_os {
 		case 'linux': _os = .linux
 		case 'windows': _os = .windows
 		case 'mac': _os = .mac
+		case 'freebsd': _os = .freebsd 
 		}
 	}
 	builtins := [

@@ -455,6 +455,9 @@ pub fn user_os() string {
 	$if windows {
 		return 'windows'
 	}
+	$if freebsd {
+		return 'freebsd' 
+	} 
 	return 'unknown'
 }
 
