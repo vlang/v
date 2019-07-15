@@ -2,7 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module math
+module fractions
+
+import math
 
 // Fraction Struct
 struct Fraction {
@@ -82,7 +84,7 @@ pub fn (f1 Fraction) reciprocal() Fraction {
 
 // Fraction method which gives greatest common divisor of numerator and denominator
 pub fn (f1 Fraction) gcd() i64 {
-	return gcd(f1.n, f1.d)
+	return math.gcd(f1.n, f1.d)
 }
 
 // Fraction method which reduces the fraction
