@@ -1,7 +1,7 @@
 module os
 
 const (
-	PathSeparator = '/' 
+	PathSeparator = '\\' 
 ) 
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
