@@ -1,5 +1,5 @@
 // Build this example with
-// v -live bounce.v 
+// v -live -sanitize bounce.v
 module main
 
 import gx
@@ -64,7 +64,7 @@ const (
 	W = 50
 )
 
-//[live] TODO segfaults
+[live]
 fn (ctx &Game) draw() {
 	ctx.vg.draw_rect(ctx.x, ctx.y, W, W, gx.rgb(0, 0, 255))
 }

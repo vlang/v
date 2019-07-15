@@ -241,7 +241,7 @@ fn build_thirdparty_obj_file(flag string) {
 		} 
 	} 
 	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows  
-	res := os.exec('$cc -c -o $obj_path $cfiles') 
+	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') 
 	println(res) 
 } 
 
