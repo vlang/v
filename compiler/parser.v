@@ -1152,6 +1152,9 @@ fn (p mut Parser) var_decl() {
 		v := p.cur_fn.find_var(name)
 		p.error('redefinition of `$name`')
 	}
+	if name.len > 1 && contains_capital(name) {
+		p.error('variable names cannot contain uppercase letters, use snake_case instead')
+	}
 	p.check_space(.decl_assign) // := 
 	// Generate expression to tmp because we need its type first
 	// [TYP .name =] bool_expression()

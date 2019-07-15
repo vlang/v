@@ -107,9 +107,9 @@ pub fn new_context(cfg Cfg) *GG {
 		// i := glm.identity3()
 		shader.set_mat4('projection', glm.identity())
 	}
-	VAO := gl.gen_vertex_array()
+	vao := gl.gen_vertex_array()
 	//println('new gg context VAO=$VAO')
-	VBO := gl.gen_buffer()
+	vbo := gl.gen_buffer()
 	mut scale := 1
 	if cfg.retina {
 		scale = 2
@@ -126,8 +126,8 @@ pub fn new_context(cfg Cfg) *GG {
 		shader: shader 
 		width: cfg.width 
 		height: cfg.height 
-		VAO: VAO 
-		VBO: VBO 
+		VAO: vao 
+		VBO: vbo 
 		// /line_vao: gl.gen_vertex_array()
 		// /line_vbo: gl.gen_buffer()
 		//text_ctx: new_context_text(cfg, scale),
@@ -272,11 +272,11 @@ fn todo_remove_me(cfg Cfg, scale int) {
 	// projection_new := ortho(0, width, 0, height)// 0 at BOT
 	// projection := gl.ortho(0, width,height,0)  // 0 at TOP
 	shader.set_mat4('projection', projection)
-	VAO := gl.gen_vertex_array()
+	vao := gl.gen_vertex_array()
 	//println('new gg text context VAO=$VAO')
-	VBO := gl.gen_buffer()
-	gl.bind_vao(VAO)
-	gl.bind_buffer(GL_ARRAY_BUFFER, VBO)
+	vbo := gl.gen_buffer()
+	gl.bind_vao(vao)
+	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
 	gl.enable_vertex_attrib_array(0)
 	gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
 }

@@ -41,6 +41,7 @@ fn (f &Fn) find_var(name string) Var {
 	return Var{}
 }
 
+
 fn (f mut Fn) open_scope() {
 	f.scope_level++
 }
@@ -297,20 +298,19 @@ fn (p mut Parser) fn_decl() {
 	p.cur_fn = f
 	// Register the method
 	if receiver_typ != '' {
-		mut receiver_T := p.table.find_type(receiver_typ)
+		mut receiver_t := p.table.find_type(receiver_typ)
 		// No such type yet? It could be defined later. Create a new type.
 		// struct declaration later will modify it instead of creating a new one.
-		if p.first_run() && receiver_T.name == '' {
+		if p.first_run() && receiver_t.name == '' {
 			// println('fn decl !!!!!!! REG PH $receiver_typ')
-			ttyp := Type {
+			p.table.register_type2(Type { 
 				name: receiver_typ.replace('*', '')
 				mod: p.mod
 				is_placeholder: true
-			}
-			p.table.register_type2(ttyp)
+			}) 
 		}
 		// f.idx = p.table.fn_cnt
-		receiver_T.add_method(f)
+		receiver_t.add_method(f)
 	}
 	else {
 		// println('register_fn typ=$typ isg=$is_generic')
@@ -734,7 +734,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 				if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') {
-					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" .key_goT:"$got" */')
+					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" GOT:"$got" */') 
 				}
 			}
 		}
