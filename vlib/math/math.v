@@ -142,7 +142,7 @@ fn recursive_product( n int, current_number_ptr &int) int{
     return recursive_product((n - m), *current_number_ptr) * recursive_product(m, *current_number_ptr)
 }
 
-pub fn factorial(n int) u64 {
+pub fn factorial(n int) i64 {
 {
     if n < 0 {
         panic('factorial: Cannot find factorial of negative number')
