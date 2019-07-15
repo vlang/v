@@ -942,7 +942,7 @@ fn new_v(args[]string) *V {
 			exit(1) 
 		}
 	} 
-	out_name_c := out_name.all_after('/') + '.c'
+	mut out_name_c := out_name.all_after('/') + '.c'
 	mut files := []string
 	// Add builtin files
 	if !out_name.contains('builtin.o') {
@@ -974,7 +974,12 @@ fn new_v(args[]string) *V {
 		is_run: args.contains('run')
 		is_repl: args.contains('-repl')
 		build_mode: build_mode
+	}  
+
+	if pref.is_so {
+		out_name_c = out_name.all_after('/') + '_shared_lib.c'
 	}
+
 	return &V {
 		os: _os
 		out_name: out_name
