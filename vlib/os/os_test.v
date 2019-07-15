@@ -33,3 +33,26 @@ fn test_write_and_read_string_to_file() {
 
   os.rm(filename)
 }
+
+//fn test_fork() {
+//  pid := os.fork()
+//  if pid == 0 {
+//    println('Child')
+//  }
+//  else {
+//    println('Parent')
+//  }
+//}
+
+//fn test_wait() {
+//  pid := os.fork()
+//  if pid == 0 {
+//    println('Child')
+//    exit(0)
+//  }
+//  else {
+//    cpid := os.wait()
+//    println('Parent')
+//    println(cpid)
+//  }
+//}

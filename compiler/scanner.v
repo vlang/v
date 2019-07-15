@@ -344,7 +344,7 @@ fn (s mut Scanner) scan() ScanRes {
 	case `|`:
 		if nextc == `|` {
 			s.pos++
-			return scan_res(.ortok, '')
+			return scan_res(.logical_or, '')
 		}
 		if nextc == `=` {
 			s.pos++

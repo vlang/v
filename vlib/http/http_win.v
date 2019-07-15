@@ -42,10 +42,7 @@ fn (req &Request) do() Response {
 	mut headers := ''
 	mut resp_headers := ''
 	// for header in req.headers {
-	for entry in req.headers.entries {
-		// headers += '$header\r\n'
-		key := entry.key
-		val := req.headers[key]
+	for key, val in req.headers {
 		headers += '$key: $val\r\n'
 	}
 	if req.typ == 'POST' {

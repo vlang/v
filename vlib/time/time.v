@@ -6,6 +6,11 @@ module time
 
 import rand
 
+// https://en.wikipedia.org/wiki/Month#Julian_and_Gregorian_calendars
+const (
+	MonthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+)
+
 #include <time.h>
 struct Time {
 pub:
@@ -17,6 +22,7 @@ pub:
 	second int
 	uni    int // TODO it's safe to use "unix" now
 }
+
 
 fn C.localtime(int) *C.tm
 
@@ -323,4 +329,14 @@ pub fn sleep_ms(n int) {
 // Determine whether a year is a leap year.
 pub fn is_leap_year(year int) bool {
 	return (year%4 == 0) && (year%100 != 0 || year%400 == 0)
+}
+
+// Returns number of days in month
+pub fn days_in_month(month, year int) ?int {
+	if month > 12 || month < 1 {
+		return error('Invalid month: $month')
+	}
+	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
+	res := MonthDays[month-1] + extra 
+	return res 
 }

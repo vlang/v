@@ -40,7 +40,7 @@ enum OS {
 }
 
 enum Pass {
-	// A very short pass that only looks at imports in the begginning of each file
+	// A very short pass that only looks at imports in the beginning of each file
 	imports
 	// First pass, only parses and saves declarations (fn signatures, consts, types).
 	// Skips function bodies.
@@ -356,8 +356,7 @@ string _STR_TMP(const char *fmt, ...) {
 		// Generate `main` which calls every single test function
 		else if v.pref.is_test {
 			cgen.genln('int main() { init_consts();')
-			for entry in v.table.fns.entries { 
-				f := v.table.fns[entry.key] 
+			for key, f in v.table.fns { 
 				if f.name.starts_with('test_') {
 					cgen.genln('$f.name();')
 				}
@@ -680,7 +679,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac { 
 			lin_file := file.replace('_mac.v', '_lin.v')
 			// println('lin_file="$lin_file"')
-			// If there are both _mav.v and _lin.v, don't use _mav.v
+			// If there are both _mac.v and _lin.v, don't use _mav.v
 			if os.file_exists('$dir/$lin_file') {
 				continue
 			}
@@ -1035,7 +1034,7 @@ fn run_repl() []string {
 			mut temp_line := line
 			mut temp_flag := false
 			if !(line.contains(' ') || line.contains(':') || line.contains('=') || line.contains(',') ){
-				temp_line = 'println('+line+')'
+				temp_line = 'println($line)'
 				temp_flag = true
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
@@ -1064,20 +1063,19 @@ fn run_repl() []string {
 	return lines
 }
 
-// This definitely needs to be better :)
 const (
 	HelpText = '
 Usage: v [options] [file | directory]
 
 Options:
   -                 Read from stdin (Default; Interactive mode if in a tty)
-  -h, --help, help  Display this information.
+  -h, help          Display this information.
   -v, version       Display compiler version.
+  -lib              Generate object file.
   -prod             Build an optimized executable.
   -o <file>         Place output into <file>.
   -obf              Obfuscate the resulting binary.
-  run               Build and execute a V program.
-                    You can add arguments after file name.
+  run               Build and execute a V program. You can add arguments after file name.
 
 Files:
   <file>_test.v     Test file.

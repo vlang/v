@@ -5,60 +5,116 @@
 module builtin
 
 struct map {
-	// cap          int
-	// keys         []string
-	// table        byteptr
-	// keys_table   *string
-	// table *Entry
 	element_size int
-	// collisions   []Entry
-pub:
-	entries      []Entry
-	is_sorted    bool
+	root      *Node 
+	_keys []string // used by `keys()` TODO remove this from map struct, 
+	key_i int      // store in a separate var 
+pub: 
+	size int 
 }
 
-struct Entry {
-pub:
+struct Node {
+	left *Node
+	right *Node 
 	key string
 	val voidptr
-	// linked list for collisions
-	// next *Entry
 }
 
 fn new_map(cap, elm_size int) map {
 	res := map {
-		// len: len,
 		element_size: elm_size
-		// entries:
-		// keys: []string
+		root: 0 
 	}
 	return res
 }
 
-fn (m &map) new_entry(key string, val voidptr) Entry {
-	new_e := Entry {
+fn new_node(key string, val voidptr, element_size int) *Node {
+	new_e := &Node {
 		key: key
-		val: malloc(m.element_size)
-		// next: 0
+		val: malloc(element_size)
+		left: 0
+		right: 0 
 	}
-	C.memcpy(new_e.val, val, m.element_size)
+	C.memcpy(new_e.val, val, element_size)
 	return new_e
 }
 
+fn (m mut map) insert(n mut Node, key string, val voidptr) {
+	if n.key == key {
+		C.memcpy(n.val, val, m.element_size)
+		return 
+	} 
+	if n.key > key {
+		if isnil(n.left) {
+			n.left = new_node(key, val, m.element_size) 
+			m.size++ 
+		}  else { 
+			m.insert(mut n.left, key, val) 
+		} 
+		return 
+	} 
+	if isnil(n.right) {
+		n.right = new_node(key, val, m.element_size)  
+		m.size++ 
+	}  else { 
+		m.insert(mut n.right, key, val) 
+	} 
+} 
+
+fn (n & Node) find(key string, out voidptr, element_size int) bool{ 
+	if n.key == key {
+		C.memcpy(out, n.val, element_size)
+		return true 
+	} 
+	else if n.key > key {
+		if isnil(n.left) {
+			return false 
+		}  else { 
+			return n.left.find(key, out, element_size) 
+		} 
+	} 
+	else {
+		if isnil(n.right) {
+			return false 
+		}  else { 
+			return n.right.find(key, out, element_size) 
+		} 
+	} 
+	return false 
+} 
+
+// same as `find`, but doesn't return a value. Used by `exists` 
+fn (n & Node) find2(key string, element_size int) bool{ 
+	if n.key == key {
+		return true 
+	} 
+	else if n.key > key {
+		if isnil(n.left) {
+			return false 
+		}  else { 
+			return n.left.find2(key, element_size) 
+		} 
+	} 
+	else {
+		if isnil(n.right) {
+			return false 
+		}  else { 
+			return n.right.find2(key, element_size) 
+		} 
+	} 
+	return false 
+} 
+
 fn (m mut map) _set(key string, val voidptr) {
-	e := m.new_entry(key, val)
-	for i := 0; i < m.entries.len; i++ {
-		entry := m.entries[i]
-		if entry.key == key {
-			// e := Entry2{key: key, val: val}
-			m.entries[i] = e
-			return
-		}
-	}
-	m.entries << e// m.new_entry(key, val)
-	m.is_sorted = false
+	if isnil(m.root) {
+		m.root = new_node(key, val, m.element_size) 
+		m.size++ 
+		return 
+	} 
+	m.insert(mut m.root, key, val) 
 }
 
+/* 
 fn (m map) bs(query string, start, end int, out voidptr) {
 	// println('bs "$query" $start -> $end')
 	mid := start + ((end - start) / 2)
@@ -83,63 +139,46 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 	}
 	m.bs(query, mid, end, out)
 }
+*/ 
 
-fn compare_map(a, b *Entry) int {
-	if a.key < b.key {
-		return -1
-	}
-	if a.key > b.key {
-		return 1
-	}
-	return 0
-}
+fn (m mut map) preorder_keys(node &Node) { 
+	m._keys[m.key_i] = node.key 
+	m.key_i++ 
+	if !isnil(node.left) { 
+		m.preorder_keys(node.left) 
+	} 
+	if !isnil(node.right) { 
+		m.preorder_keys(node.right) 
+	} 
+} 
 
-pub fn (m mut map) sort() {
-	m.entries.sort_with_compare(compare_map)
-	m.is_sorted = true
-}
-
-pub fn (m map) keys() []string {
-	mut keys := []string{}
-	for i := 0; i < m.entries.len; i++ {
-		entry := m.entries[i]
-		keys << entry.key
-	}
-	return keys
+pub fn (m mut map) keys() []string {
+	m._keys = [''; m.size] 
+	m.key_i = 0 
+	if isnil(m.root) {
+		return m._keys
+	} 
+	m.preorder_keys(m.root) 
+	return m._keys
 }
 
 fn (m map) get(key string, out voidptr) bool {
-	if m.is_sorted {
-		// println('\n\nget "$key" sorted')
-		m.bs(key, 0, m.entries.len, out)
-		return true
-	}
-	for i := 0; i < m.entries.len; i++ {
-		entry := m.entries[i]
-		if entry.key == key {
-			C.memcpy(out, entry.val, m.element_size)
-			return true
-		}
-	}
-	return false
+	if isnil(m.root) {
+		return false 
+	} 
+	return m.root.find(key, out, m.element_size) 
 }
 
 pub fn (m map) exists(key string) bool {
-	for i := 0; i < m.entries.len; i++ {
-		entry := m.entries[i]
-		if entry.key == key {
-			return true
-		}
-	}
-	return false
+	return !isnil(m.root) && m.root.find2(key, m.element_size) 
 }
 
 pub fn (m map) print() {
 	println('<<<<<<<<')
-	for i := 0; i < m.entries.len; i++ {
+	//for i := 0; i < m.entries.len; i++ {
 		// entry := m.entries[i]
 		// println('$entry.key => $entry.val')
-	}
+	//}
 	/*
 	for i := 0; i < m.cap * m.element_size; i++ {
 		b := m.table[i]
@@ -158,15 +197,15 @@ pub fn (m map) free() {
 
 pub fn (m map_string) str() string {
 	// return 'not impl'
-	if m.entries.len == 0 {
+	if m.size == 0 {
 		return '{}'
 	}
 	// TODO use bytes buffer
 	mut s := '{\n'
-	for entry in m.entries {
-		val := m[entry.key]
-		s += '  "$entry.key" => "$val"\n'
-	}
+	//for key, val  in m { 
+		//val := m[entry.key]
+		//s += '  "$entry.key" => "$val"\n'
+	//}
 	s += '}'
 	return s
 }

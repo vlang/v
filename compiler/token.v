@@ -20,7 +20,7 @@ enum Token {
 	inc
 	dec
 	and
-	ortok
+	logical_or 
 	not 
 	bit_not
 	question
@@ -67,51 +67,51 @@ enum Token {
 	dotdot
 	// keywords
 	keyword_beg
-	key_module
-	key_struct
-	key_if 
-	key_else
-	key_return
-	key_go
-	key_const
-	key_import_const 
-	key_mut
-	typ
-	key_enum
-	key_for
-	key_switch 
-	MATCH
-	key_case
-	func
-	key_true
-	key_false
-	key_continue
-	key_break
-	key_embed
-	key_import
-	//typeof 
-	key_default 
+	key_as
 	key_assert
-	key_sizeof
-	key_in 
 	key_atomic
-	key_interface 
-	key_orelse
+	key_break
+	key_case
+	key_const
+	key_continue
+	key_default 
+	key_else
+	key_embed
+	key_enum
+	key_false
+	key_for
+	func
 	key_global
+	key_go
+	key_goto 
+	key_if 
+	key_import
+	key_import_const 
+	key_in 
+	key_interface 
+	MATCH
+	key_module
+	key_mut
+	key_return
+	key_sizeof
+	key_struct
+	key_switch 
+	key_true
+	typ
+	//typeof 
+	key_orelse
 	key_union
 	key_pub 
-	key_goto 
 	key_static
-	key_as
 	keyword_end
 }
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
-fn build_keys() map_int {
+fn build_keys() map[string]int {
 	mut res := map[string]int{}
 	for t := int(Token.keyword_beg) + 1; t < int(Token.keyword_end); t++ {
-		key := TOKENSTR[t]
+		key := TokenStr[t]
 		res[key] = int(t)
 	}
 	return res
@@ -140,7 +140,7 @@ fn build_token_str() []string {
 	s[Token.inc] = '++'
 	s[Token.dec] = '--'
 	s[Token.and] = '&&'
-	s[Token.ortok] = '||'
+	s[Token.logical_or] = '||'
 	s[Token.not] = '!'
 	s[Token.dot] = '.'
 	s[Token.dotdot] = '..'
@@ -218,7 +218,7 @@ fn build_token_str() []string {
 
 const (
 	NrTokens = 140
-	TOKENSTR = build_token_str()
+	TokenStr = build_token_str()
 	KEYWORDS = build_keys()
 )
 
@@ -232,11 +232,13 @@ fn is_key(key string) bool {
 }
 
 fn (t Token) str() string {
-	return TOKENSTR[int(t)]
+	return TokenStr[int(t)]
 }
 
 fn (t Token) is_decl() bool {
-	// TODO return t in [.func ,.typ, .key_const,  .key_import_.key_const ,AT ,.eof]
+	// TODO i
+	//return t in [.key_enum, .key_interface, .func, .typ, .key_const,  
+		//.key_import_const, .key_struct, .key_pub, .eof]
 	return t == .key_enum || t == .key_interface || t == .func || 
 	t == .key_struct || t == .typ ||
 	t == .key_const || t == .key_import_const || t == .key_pub || t == .eof

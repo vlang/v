@@ -668,7 +668,7 @@ fn (p &Parser) strtok() string {
 	return res
 }
 
-// same as check(), but addes a space to the formatter output
+// same as check(), but adds a space to the formatter output
 // TODO bad name
 fn (p mut Parser) check_space(expected Token) {
 	p.fspace()
@@ -1200,7 +1200,7 @@ fn (p mut Parser) var_decl() {
 fn (p mut Parser) bool_expression() string {
 	tok := p.tok
 	typ := p.bterm()
-	for p.tok == .and || p.tok == .ortok {
+	for p.tok == .and || p.tok == .logical_or {
 		p.gen(' ${p.tok.str()} ')
 		p.check_space(p.tok) 
 		p.check_types(p.bterm(), typ)
@@ -1296,7 +1296,7 @@ fn (p mut Parser) name_expr() string {
 			if !T.has_enum_val(val) {
 				p.error('enum `$T.name` does not have value `$val`') 
 			} 
-			p.gen(p.mod + '__' + p.expected_type + '_' + val) 
+			p.gen(T.mod + '__' + p.expected_type + '_' + val) 
 		} 
 		return p.expected_type 
 	} 
@@ -1375,7 +1375,7 @@ fn (p mut Parser) name_expr() string {
 			p.check(.dot)
 			val := p.lit
 			// println('enum val $val')
-			p.gen(p.mod + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
+			p.gen(enum_type.mod + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
 			return enum_type.name
 		}
@@ -1827,7 +1827,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 // returns resulting type
 fn (p mut Parser) expression() string {
 	if p.scanner.file_path.contains('test_test') {
-		println('epxression() pass=$p.run tok=')
+		println('expression() pass=$p.run tok=')
 		p.print_tok()
 	}
 	p.cgen('/* expr start*/')
@@ -2916,10 +2916,21 @@ fn (p mut Parser) for_st() {
 				is_mut: true
 			}
 			p.register_var(i_var)
+			p.genln('array_string keys_$tmp = map_keys(& $tmp ); ') 
+			p.genln('for (int l = 0; l < keys_$tmp .len; l++) {') 
+			p.genln('  string $i = ((string*)keys_$tmp .data)[l];') 
+			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );') 
+			def := type_default(var_typ) 
+			// TODO don't call map_get() for each key, fetch values while traversing
+			// the tree (replace `map_keys()` above with `map_key_vals()`) 
+			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);') 
+			
+			/* 
 			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
 			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
 			p.genln('string $i = entry.key;') 
 			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
+			*/ 
 		} 
 	}
 	// `for val in vals`

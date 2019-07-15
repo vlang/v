@@ -13,6 +13,7 @@ const (
 struct Fn {
 	// addr int
 mut:
+	name          string
 	pkg           string
 	local_vars    []Var
 	var_idx       int
@@ -22,7 +23,6 @@ mut:
 	// idx           int
 	scope_level   int
 	typ           string // return type
-	name          string
 	is_c          bool
 	receiver_typ  string
 	is_public    bool

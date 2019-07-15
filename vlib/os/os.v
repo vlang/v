@@ -520,8 +520,11 @@ pub fn getexepath() string {
 	}
 
 	$if mac {
-		//panic('getexepath() not impl')
-		return ''
+		mut bufsize := MAX_PATH // if buffer is too small this will be updated with size needed
+		if C._NSGetExecutablePath(result, &bufsize) == -1 {
+			panic('Could not get executable path, buffer too small (need: $bufsize).')
+		}
+		return tos(result, strlen(result))
 	}
 }
 
@@ -650,6 +653,20 @@ pub fn ls(path string) []string {
 
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
+}
+
+pub fn fork() int {
+	$if !windows {
+		pid := C.fork()
+		return pid
+	}
+}
+
+pub fn wait() int {
+	$if !windows {
+		pid := C.wait(0)
+		return pid
+	}
 }
 
 pub fn file_last_mod_unix(path string) int {
