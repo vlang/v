@@ -4,8 +4,6 @@
 
 module builtin
 
-import strings
-
 struct array {
 	// Using a void pointer allows to implement arrays without generics and without generating
 	// extra code for every type.
