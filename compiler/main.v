@@ -390,7 +390,7 @@ int load_so(byteptr path) {
 		cgen.genln('return 1; }
  
 void reload_so() {
-	int last = 0; 
+	int last = os__file_last_mod_unix(tos2("$file"));
 	while (1) {
 		// TODO use inotify 
 		int now = os__file_last_mod_unix(tos2("$file")); 
@@ -535,6 +535,15 @@ fn (v mut V) cc() {
 	}
 	else {
 		a << '-g'
+	}
+	if v.pref.is_live || v.pref.is_so {
+		// See 'man dlopen', and test running a GUI program compiled with -live
+		if (v.os == .linux || os.user_os() == 'linux'){    
+			a << '-rdynamic'
+		}
+		if (v.os == .mac || os.user_os() == 'mac'){
+			a << '-flat_namespace'
+		}
 	}
 	mut libs := ''// builtin.o os.o http.o etc
 	if v.pref.build_mode == .build {
