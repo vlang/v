@@ -535,8 +535,14 @@ fn (v mut V) cc() {
 	else {
 		a << '-g'
 	}
-	if v.pref.is_live {
-		a << '-rdynamic'
+	if v.pref.is_live || v.pref.is_so {
+		// See 'man dlopen', and test running a GUI program compiled with -live
+		if (v.os == .linux || os.user_os() == 'linux'){    
+			a << '-rdynamic'
+		}
+		if (v.os == .mac || os.user_os() == 'mac'){
+			a << '-flat_namespace'
+		}
 	}
 	mut libs := ''// builtin.o os.o http.o etc
 	if v.pref.build_mode == .build {
