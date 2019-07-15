@@ -114,6 +114,7 @@ fn new_fn(pkg string, is_public bool) *Fn {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.fgen('fn ')
+	defer { p.fgenln('\n') } 
 	is_pub := p.tok == .key_pub 
 	is_live := p.attr == 'live' && !p.pref.is_so 
 	if is_live && !p.pref.is_live {
@@ -344,7 +345,6 @@ fn (p mut Parser) fn_decl() {
 			}
 			p.cgen.fns << fn_decl + ';'
 		}
-		p.fgenln('\n')// TODO defer this instead of copy pasting
 		return
 	}
 	if f.name == 'main' || f.name == 'WinMain' {
@@ -373,7 +373,6 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 	// println('is_c=$is_c name=$f.name')
 	if is_c || is_sig || is_fn_header {
 		// println('IS SIG .key_returnING tok=${p.strtok()}')
-		p.fgenln('\n')
 		return
 	}
 	// We are in profile mode? Start counting at the beginning of the function (save current time).
@@ -403,12 +402,10 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 	// if p.builtin_pkg || p.mod == 'os' ||p.mod=='http'{
 	if p.mod != 'main' {
 		p.genln('}')
-		p.fgenln('\n')
 		return
 	}
 	p.check_unused_variables()
 	p.cur_fn = EmptyFn
-	p.fgenln('\n')
 	p.genln('}')
 }
 
@@ -555,7 +552,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 // return an updated Fn object with args[] field set
 fn (p mut Parser) fn_args(f mut Fn) {
 	p.check(.lpar)
-	// TODO defer  	p.check(.rpar)
+	defer { p.check(.rpar) } 
 	if f.is_interface {
 		int_arg := Var {
 			typ: f.receiver_typ
@@ -626,7 +623,6 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			p.next()
 		}
 	}
-	p.check(.rpar)
 }
 
 fn (p mut Parser) fn_call_args(f *Fn) *Fn {
