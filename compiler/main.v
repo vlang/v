@@ -389,7 +389,7 @@ int load_so(byteptr path) {
 		cgen.genln('return 1; }
  
 void reload_so() {
-	int last = 0; 
+	int last = os__file_last_mod_unix(tos2("$file"));
 	while (1) {
 		// TODO use inotify 
 		int now = os__file_last_mod_unix(tos2("$file")); 
