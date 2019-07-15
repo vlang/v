@@ -384,33 +384,32 @@ pub fn (s string) last_index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := [0; p.len()]
+	mut prefix := [0; p.len]
 	mut j := 0
-	mut last := -1
 	for i := 1; i < p.len; i++ {
-		for p[j] != p[i] && j > 0 {
+		for p[p.len - 1 - j] != p[p.len - 1 - i] && j > 0 {
 			j = prefix[j - 1]
 		}
-		if p[j] == p[i] {
+		if p[p.len - 1 - j] == p[p.len - 1 - i] {
 			j++
 		}
 		prefix[i] = j
 	}
 	j = 0
-	for i := 0; i < s.len; i++ {
-		for p[j] != s[i] && j > 0 {
+	for i := s.len - 1; i >= 0; i-- {
+		for p[s.len - 1 - j] != s[i] && j > 0 {
 			j = prefix[j - 1]
 		}
-		if p[j] == s[i] {
+		if p[s.len - 1 - j] == s[i] {
 			j++
 		}
 		if j == p.len {
-			last = i - p.len + 1
-			j = prefix[j - 1]
+			prefix.free()
+			return i
 		}
 	}
 	prefix.free()
-	return last
+	return -1
 }
 
 pub fn (s string) index_after(p string, start int) int {
