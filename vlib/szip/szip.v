@@ -1,8 +1,6 @@
 module szip
 
-//  what the shit im do 
-// #flag -I @VROOT/thirdparty/szip
-#flag -I .
+#flag -I @VROOT/thirdparty/zip
 
 #include "zip.c"
 #include "zip.h"
@@ -284,4 +282,5 @@ pub fn (zentry mut zip_ptr) total() ?int {
         return error('szip: cannot count total entries.')
     }
     return _tentry
-}
+} 
+
