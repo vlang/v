@@ -523,43 +523,50 @@ pub fn executable() string {
 	mut result := malloc(MAX_PATH) 
 	$if linux {
 		count := int(C.readlink('/proc/self/exe', result, MAX_PATH ))
-		if(count < 0) {
+		if count < 0 {
 			panic('error reading /proc/self/exe to get exe path')
 		}
 		return tos(result, count)
 	}
-
 	$if windows {
 		ret := int(C.GetModuleFileName( 0, result, MAX_PATH ))
 		return tos( result, ret)
 	}
-
 	$if mac {
-		buf := malloc(MAX_PATH) 
 		pid := C.getpid() 
-		ret := C.proc_pidpath (pid, buf, MAX_PATH) 
+		ret := C.proc_pidpath (pid, result, MAX_PATH) 
 		if ret <= 0  {
-		println('executable() failed') 
-		return '' 
+			println('os.executable() failed') 
+			return '.'  
 		}  
-		return string(buf) 
-/* 
-// This doesn't work with symlinks 
-		mut bufsize := MAX_PATH // if buffer is too small this will be updated with size needed
-		if C._NSGetExecutablePath(result, &bufsize) == -1 {
-			panic('Could not get executable path, buffer too small (need: $bufsize).')
-		}
 		return string(result) 
-*/ 
 	}
 	$if freebsd {
 		mut mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]!! 
-		buf := [1024]byte 
-		size := 1024 
-		C.sysctl(mib, 4, buf, &size, 0, 0) 
-		return tos(buf, strlen(buf)) 
+		size := MAX_PATH 
+		C.sysctl(mib, 4, result, &size, 0, 0) 
+		return string(result) 
 	} 
- 
+	$if openbsd {
+		// "Sadly there is no way to get the full path of the executed file in OpenBSD." 
+		// lol 
+		return os.args[0] 
+	} 
+	$if netbsd {
+		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
+		if count < 0 {
+			panic('error reading /proc/curproc/exe to get exe path')
+		}
+		return tos(result, count)
+	} 
+	$if dragonfly {
+		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH ))
+		if count < 0 {
+			panic('error reading /proc/curproc/file to get exe path')
+		}
+		return tos(result, count)
+	} 
+	return '.' 
 }
 
 pub fn is_dir(path string) bool {
