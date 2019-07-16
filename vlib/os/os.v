@@ -6,7 +6,7 @@ module os
 
 #include <sys/stat.h>
 #include <signal.h>
-//#include <unistd.h>
+#include <unistd.h>
 #include <errno.h>
 //#include <execinfo.h> // for backtrace_symbols_fd 
 
@@ -347,28 +347,21 @@ pub fn mkdir(path string) {
 
 // rm removes file in `path`.
 pub fn rm(path string) {
-	$if windows {
-		// os.system2('del /f $path')
-	}
-	$else {
 		C.remove(path.cstr())
-	}
 	// C.unlink(path.cstr())
 }
 
-/*
-// TODO
-fn rmdir(path, guard string) {
-	if !path.contains(guard) {
-		println('rmdir canceled because the path doesnt contain $guard')
-		return
-	}
+
+// rmdir removes a specified directory.
+pub fn rmdir(path string) {
 	$if !windows {
+		C.rmdir(path.cstr())		
 	}
 	$else {
+		C.RemoveDirectoryA(path.cstr())
 	}
 }
-*/
+
 
 fn print_c_errno() {
 	//C.printf('errno=%d err="%s"\n', errno, C.strerror(errno)) 

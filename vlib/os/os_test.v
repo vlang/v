@@ -34,9 +34,23 @@ fn test_write_and_read_string_to_file() {
   os.rm(filename)
 }
 
+fn test_create_and_delete_folder() {
+  folder := './test1'
+  os.mkdir(folder)
+
+  folder_contents := os.ls(folder)
+  assert folder_contents.len == 0
+
+  os.rmdir(folder)
+
+  folder_exists := os.dir_exists(folder)
+
+  assert folder_exists == false
+}
+
 fn test_dir() {
 	$if windows {
-		assert os.dir('C:\a\b\c') == 'C:\a\b' 
+		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b' 
  
 	} $else { 
 		assert os.dir('/var/tmp/foo') == '/var/tmp' 
