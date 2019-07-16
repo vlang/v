@@ -1269,7 +1269,6 @@ fn (p mut Parser) name_expr() string {
 	hack_lit := p.lit
 	ph := p.cgen.add_placeholder()
 	// amp
-	 
 	ptr := p.tok == .amp
 	deref := p.tok == .mul
 	if ptr || deref {
