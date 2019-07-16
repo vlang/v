@@ -759,7 +759,12 @@ fn (p mut Parser) get_type() string {
 			if debug {
 				println('same line getting type')
 			}
-			f.typ = p.get_type()
+			if p.tok == .name { 
+				f.typ = p.get_type()
+			} 
+			else { 
+				f.typ = 'void'
+			} 
 			// println('fn return typ=$f.typ')
 		}
 		else {
@@ -1380,7 +1385,7 @@ fn (p mut Parser) name_expr() string {
 			enum_type := p.table.find_type(name)
 			if !enum_type.is_enum {
 				p.error('`$name` is not an enum')
-			}
+			} 
 			p.next()
 			p.check(.dot)
 			val := p.lit
@@ -1441,7 +1446,6 @@ fn (p mut Parser) name_expr() string {
 	if f.name == '' {
 		// We are in a second pass, that means this function was not defined, throw an error. 
 		if !p.first_run() {
-			// println('name_expr():')
 			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
 			// if p.table.known_pkg(orig_name) {
 			if p.table.known_pkg(orig_name) || p.import_table.known_alias(orig_name) {
@@ -1453,6 +1457,7 @@ fn (p mut Parser) name_expr() string {
 			}
 		}
 		p.next()
+		// First pass, the function can be defined later. 
 		return 'void'
 	}
 	// no () after func, so func is an argument, just gen its name
@@ -1484,14 +1489,13 @@ fn (p mut Parser) name_expr() string {
 fn (p mut Parser) var_expr(v Var) string {
 	p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
-	// p.gen('VAR EXPR ')
 	p.cur_fn.mark_var_used(v)
 	fn_ph := p.cgen.add_placeholder()
 	p.expr_var = v
 	p.gen(p.table.var_cgen_name(v.name))
 	p.next()
 	mut typ := v.typ
-	// fn_pointer()
+	// Function pointer? 
 	if typ.starts_with('fn ') {
 		println('CALLING FN PTR')
 		p.print_tok()
