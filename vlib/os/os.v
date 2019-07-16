@@ -484,11 +484,15 @@ pub fn user_os() string {
 }
 
 // hostname returns hostname
-pub fn hostname() string {
-  mut hname := [1024]byte
-  hname[1023] = `\0`
-  C.gethostname(&hname, 1023)
-  return tos_clone(hname)
+pub fn hostname() ?string {
+  	mut hname := [256]byte
+	// https://www.ietf.org/rfc/rfc1035.txt
+	// The host name is returned as a null-terminated string.
+	res := C.gethostname(&hname, 256)
+	if res != 0 {
+		return error('os: hostname cannot get host name of PC.')
+	}
+  	return tos_clone(hname)
 }
 
 // home_dir returns path to user's home directory.
