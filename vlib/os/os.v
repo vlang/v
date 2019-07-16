@@ -29,11 +29,9 @@ const (
 	MAX_PATH = 4096
 )
 
-const (
-	FILE_ATTRIBUTE_DIRECTORY = 16 // Windows 
-)
-
+// Windows 
 import const (
+	FILE_ATTRIBUTE_DIRECTORY
 	INVALID_FILE_ATTRIBUTES
 ) 
 
@@ -327,9 +325,14 @@ pub fn file_exists(path string) bool {
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		return file_exists(path) 
-		//attr := int(C.GetFileAttributes(path.cstr())) 
-		//return attr & FILE_ATTRIBUTE_DIRECTORY 
+		attr := int(C.GetFileAttributes(path.cstr())) 
+		if attr == INVALID_FILE_ATTRIBUTES {
+			return false
+		}
+		if (attr & FILE_ATTRIBUTE_DIRECTORY) != 0 {
+			return true
+		}
+		return false
 	} 
 	$else { 
 		dir := C.opendir(path.cstr())
