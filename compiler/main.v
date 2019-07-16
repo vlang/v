@@ -597,7 +597,8 @@ mut args := ''
 	// else {
 	a << '-o $v.out_name'
 	// The C file we are compiling
-	a << '"$TmpPath/$v.out_name_c"'
+	//a << '"$TmpPath/$v.out_name_c"'
+	a << '".$v.out_name_c"'
 	// }
 	// Min macos version is mandatory I think?
 	if v.os == .mac {
@@ -662,7 +663,7 @@ mut args := ''
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		//os.rm('$TmpPath/$v.out_name_c') 
+		os.rm('.$v.out_name_c') 
 	} 
 }
 
