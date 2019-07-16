@@ -1,5 +1,8 @@
 module os
 
+#flag -lws2_32
+#include <winsock2.h>
+
 const (
 	PathSeparator = '\\' 
 ) 
