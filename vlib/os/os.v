@@ -320,8 +320,9 @@ pub fn file_exists(path string) bool {
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		attr := int(C.GetFileAttributes(path.cstr())) 
-		return attr == FILE_ATTRIBUTE_DIRECTORY 
+		return file_exists(path) 
+		//attr := int(C.GetFileAttributes(path.cstr())) 
+		//return attr & FILE_ATTRIBUTE_DIRECTORY 
 	} 
 	$else { 
 		dir := C.opendir(path.cstr())
