@@ -347,27 +347,18 @@ pub fn mkdir(path string) {
 
 // rm removes file in `path`.
 pub fn rm(path string) {
-	$if windows {
-		os.system('del /f $path')
-	}
-	$else {
 		C.remove(path.cstr())
-		C.unlink(path.cstr())
-	}
+	// C.unlink(path.cstr())
 }
 
 
-// TODO
+// rmdir removes a specified directory.
 pub fn rmdir(path string) {
-	// if !path.contains(guard) {
-	//	println('rmdir canceled because the path doesnt contain $guard')
-	//	return
-	// }
 	$if !windows {
 		C.rmdir(path.cstr())		
 	}
 	$else {
-		C.rmdir(path.cstr())
+		C.RemoveDirectoryA(path.cstr())
 	}
 }
 
