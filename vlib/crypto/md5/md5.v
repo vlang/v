@@ -25,7 +25,7 @@ const (
 	Init0 = 0x67452301
 	Init1 = 0xEFCDAB89
 	Init2 = 0x98BADCFE
-	init3 = 0x10325476
+	Init3 = 0x10325476
 )
 
 // Digest represents the partial evaluation of a checksum.
@@ -43,7 +43,7 @@ fn (d mut Digest) reset() {
     d.s[0] = u32(Init0)
 	d.s[1] = u32(Init1)
 	d.s[2] = u32(Init2)
-	d.s[3] = u32(init3)
+	d.s[3] = u32(Init3)
 	d.nx = 0
 	d.len = u64(0)
 }
