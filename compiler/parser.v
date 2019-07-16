@@ -1561,8 +1561,10 @@ fn (p &Parser) fileis(s string) bool {
 // user.company.name => `str_typ` is `Company`
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	p.check(.dot)
-	field_name := p.lit
-	p.fgen(field_name)
+	mut field_name := p.lit
+	if p.tok == .key_type {
+		field_name = 'type' 
+	} 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}') 

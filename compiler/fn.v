@@ -321,7 +321,7 @@ fn (p mut Parser) fn_decl() {
 		if !is_sig && !is_fn_header {
 			for {
 				p.next()
-				if p.tok.is_decl() {
+				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
 					break
 				}
 			}
