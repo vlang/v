@@ -557,7 +557,7 @@ pub fn executable() string {
 		buf := [1024]byte 
 		size := 1024 
 		C.sysctl(mib, 4, buf, &size, 0, 0) 
-		return string(buf) 
+		return tos(buf, strlen(buf)) 
 	} 
  
 }
