@@ -3,15 +3,16 @@
 // that can be found in the LICENSE file.
 
 // Package sha1 implements the SHA-1 hash algorithm as defined in RFC 3174.
-//
+
 // SHA-1 is cryptographically broken and should not be used for secure
 // applications.
+
 // Adapted from: https://github.com/golang/go/blob/master/src/crypto/sha1
+
 module sha1
 
 import math
 import encoding.binary
-
 
 const(
 	// The size of a SHA-1 checksum in bytes.
@@ -68,7 +69,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 		}
 		d.nx += n
 		if d.nx == Chunk {
-			block(d, d.x)
+			block_generic(d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -79,7 +80,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= Chunk {
 		n := p.len &~ (Chunk - 1)
-		block(d, p.left(n))
+		block_generic(d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -98,14 +99,14 @@ pub fn (d mut Digest) write(p []byte) ?int {
 pub fn (d &Digest) sum(b_in mut []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
-	hash := d0.check_sum()
+	hash := d0.checksum()
 	for b in hash {
 		b_in << b
 	}
 	return *b_in
 }
 
-fn (d mut Digest) check_sum() []byte {
+fn (d mut Digest) checksum() []byte {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
 	mut tmp := [byte(0); 64]
@@ -136,10 +137,9 @@ fn (d mut Digest) check_sum() []byte {
 
 // Sum returns the SHA-1 checksum of the data.
 pub fn sum(data []byte) []byte {
-	mut d := Digest{}
-	d.reset()
+	mut d := new()
 	d.write(data)
-	return d.check_sum()
+	return d.checksum()
 }
 
 pub fn (d &Digest) size() int { return Size }
