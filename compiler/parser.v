@@ -1489,7 +1489,7 @@ fn (p mut Parser) name_expr() string {
 fn (p mut Parser) var_expr(v Var) string {
 	p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
-	p.cur_fn.mark_var_used(v)
+	p.cur_fn.mark_var_used(v) 
 	fn_ph := p.cgen.add_placeholder()
 	p.expr_var = v
 	p.gen(p.table.var_cgen_name(v.name))
@@ -1497,8 +1497,8 @@ fn (p mut Parser) var_expr(v Var) string {
 	mut typ := v.typ
 	// Function pointer? 
 	if typ.starts_with('fn ') {
-		println('CALLING FN PTR')
-		p.print_tok()
+		//println('CALLING FN PTR')
+		//p.print_tok()
 		T := p.table.find_type(typ)
 		p.gen('(')
 		p.fn_call_args(T.func)
