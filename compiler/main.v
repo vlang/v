@@ -88,6 +88,9 @@ mut:
 	sanitize       bool // use Clang's new "-fsanitize" option
 	is_debug       bool // keep compiled C files
 	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers) 
+	c_options      string // Additional options which will be passed to the C compiler.
+                        // For example, passing -c_options=-Os will cause the C compiler to optimize the generated binaries for size.
+                        // You could pass several -c_options=XXX arguments. They will be merged with each other.
 }
 
 
@@ -526,7 +529,7 @@ fn (v mut V) cc() {
 	} 
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
-	mut a := ['-w'] // arguments for the C compiler
+	mut a := [v.pref.c_options, '-w'] // arguments for the C compiler
 	flags := v.table.flags.join(' ')
 	//mut shared := ''
 	if v.pref.is_so {
@@ -957,6 +960,14 @@ fn new_v(args[]string) *V {
 			files << f
 		}
 	}
+
+	mut c_options := ''
+	for ci, cv in args {
+		if cv.starts_with('-c_options=') {
+			c_options += cv.replace('-c_options=','') + ' '
+		}
+	}
+
 	obfuscate := args.contains('-obf')
 	pref := &Preferences {
 		is_test: is_test
@@ -976,6 +987,7 @@ fn new_v(args[]string) *V {
 		is_run: args.contains('run')
 		is_repl: args.contains('-repl')
 		build_mode: build_mode
+		c_options: c_options
 	}  
 
 	if pref.is_so {
