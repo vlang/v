@@ -430,6 +430,10 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos++
 			return scan_res(.eq, '')
 		}
+		else if nextc == `>` {
+			s.pos++
+			return scan_res(.arrow, '')
+		} 
 		else {
 			return scan_res(.assign, '')
 		}

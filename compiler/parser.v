@@ -946,7 +946,7 @@ fn (p mut Parser) statements_no_curly_end() string {
 	mut i := 0
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof && p.tok != .key_case && 
-		p.tok != .key_default {
+		p.tok != .key_default && p.peek() != .arrow {
 		// println(p.tok.str())
 		// p.print_tok()
 		last_st_typ = p.statement(true)
@@ -961,7 +961,7 @@ fn (p mut Parser) statements_no_curly_end() string {
 			p.error('more than 50 000 statements in function `$p.cur_fn.name`')
 		}
 	}
-	if p.tok != .key_case && p.tok != .key_default {
+	if p.tok != .key_case && p.tok != .key_default && p.peek() != .arrow {
 		// p.next()
 		p.check(.rcbr)
 	}
@@ -1044,7 +1044,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 		p.if_st(false, 0)
 	case Token.key_for:
 		p.for_st()
-	case Token.key_switch: 
+	case Token.key_switch, Token.key_match: 
 		p.switch_statement()
 	case Token.key_mut, Token.key_static:
 		p.var_decl()
@@ -3031,14 +3031,18 @@ fn (p mut Parser) for_st() {
 }
 
 fn (p mut Parser) switch_statement() {
-	p.check(.key_switch) 
+	if p.tok == .key_switch { 
+		p.check(.key_switch) 
+	} else {
+		p.check(.key_match) 
+	} 
 	p.cgen.start_tmp()
 	typ := p.bool_expression()
 	expr := p.cgen.end_tmp()
 	p.check(.lcbr)
 	mut i := 0
-	for p.tok == .key_case || p.tok == .key_default { 
-		if p.tok == .key_default { 
+	for p.tok == .key_case || p.tok == .key_default || p.peek() == .arrow || p.tok == .key_else { 
+		if p.tok == .key_default || p.tok == .key_else { 
 			p.genln('else  { // default:')
 			p.check(.key_default) 
 			p.check(.colon)
@@ -3071,7 +3075,12 @@ fn (p mut Parser) switch_statement() {
 			p.check(.comma)
 			got_comma = true
 		}
-		p.check(.colon)
+		if p.tok == .colon { 
+			p.check(.colon)
+		} 
+		else { 
+			p.check(.arrow) 
+		} 
 		p.gen(')) {')
 		p.genln('/* case */')
 		p.statements()

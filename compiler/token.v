@@ -27,6 +27,7 @@ enum Token {
 	comma
 	semicolon
 	colon
+	arrow // => 
 	amp
 	hash
 	dollar
@@ -90,7 +91,7 @@ enum Token {
 	key_import_const 
 	key_in 
 	key_interface 
-	MATCH
+	key_match 
 	key_module
 	key_mut
 	key_return
@@ -148,6 +149,7 @@ fn build_token_str() []string {
 	s[Token.comma] = ','
 	s[Token.semicolon] = ';'
 	s[Token.colon] = ':'
+	s[Token.arrow] = '=>'
 	s[Token.assign] = '='
 	s[Token.decl_assign] = ':='
 	s[Token.plus_assign] = '+='
@@ -215,6 +217,7 @@ fn build_token_str() []string {
 	s[Token.key_static] = 'static'
 	s[Token.key_as] = 'as'
 	s[Token.key_defer] = 'defer'
+	s[Token.key_match] = 'match'
 	return s
 }
 
