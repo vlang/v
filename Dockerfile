@@ -1,3 +1,4 @@
+#same container that golang use
 FROM buildpack-deps:buster-curl
 
 LABEL maintainer="ANAGO Ronnel <anagoandy@gmail.com>"
