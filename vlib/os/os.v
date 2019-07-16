@@ -408,6 +408,13 @@ fn path_sans_ext(path string) string {
 	return path.left(pos)
 }
 
+pub fn path(path string) string {
+	$if windows {
+		return path.replace('/', '\\')
+	}
+	return path
+}
+
 
 pub fn basedir(path string) string {
 	pos := path.last_index('/')

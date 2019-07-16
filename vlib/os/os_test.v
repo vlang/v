@@ -41,6 +41,10 @@ fn test_dir() {
 	} $else { 
 		assert os.dir('/var/tmp/foo') == '/var/tmp' 
 	} 
+}
+
+fn test_path() {
+  assert os.path('this/is/a/test') == 'this\\is\\a\\test'
 } 
 
 //fn test_fork() {
