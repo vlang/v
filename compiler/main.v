@@ -96,7 +96,7 @@ mut:
 
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
-	args := os.args
+	args := env_vflags_and_os_args()
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
 		println('V $Version')
@@ -1116,3 +1116,18 @@ v -nofmt file.v
 are working on vlib) 
 v -embed_vlib file.v 
 */
+
+fn env_vflags_and_os_args() []string {
+   mut args := []string
+   vflags := os.getenv('VFLAGS')
+   if '' != vflags {
+     args << os.args[0]
+     args << vflags.split(' ')
+     if os.args.len > 1 {
+       args << os.args.right(1)
+     }
+   }else{
+     args << os.args
+   }
+   return args
+}
