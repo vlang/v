@@ -1,5 +1,9 @@
 module os
 
+const (
+	PathSeparator = '\\' 
+) 
+
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 type HANDLE voidptr

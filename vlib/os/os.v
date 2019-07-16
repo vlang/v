@@ -320,8 +320,9 @@ pub fn file_exists(path string) bool {
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		attr := int(C.GetFileAttributes(path.cstr())) 
-		return attr == FILE_ATTRIBUTE_DIRECTORY 
+		return file_exists(path) 
+		//attr := int(C.GetFileAttributes(path.cstr())) 
+		//return attr & FILE_ATTRIBUTE_DIRECTORY 
 	} 
 	$else { 
 		dir := C.opendir(path.cstr())
@@ -381,6 +382,24 @@ pub fn ext(path string) string {
 	}
 	return path.right(pos)
 }
+
+
+// dir returns all but the last element of path, typically the path's directory.  
+pub fn dir(path string) string {
+	mut pos := -1
+	// TODO PathSeparator defined in os_win.v doesn't work when building V, 
+	// because v.c is generated for a nix system. 
+	$if windows { 
+		pos = path.last_index('\\') 
+	} 
+	$else { 
+		pos = path.last_index(PathSeparator) 
+	} 
+	if pos == -1 {
+		return '.' 
+	} 
+	return path.left(pos) 
+} 
 
 fn path_sans_ext(path string) string {
 	pos := path.last_index('.')

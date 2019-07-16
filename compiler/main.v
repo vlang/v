@@ -9,7 +9,7 @@ import time
 import strings
 
 const (
-	Version = '0.1.14' 
+	Version = '0.1.15'  
 )
 
 enum BuildMode {
@@ -597,7 +597,8 @@ mut args := ''
 	// else {
 	a << '-o $v.out_name'
 	// The C file we are compiling
-	a << '"$TmpPath/$v.out_name_c"'
+	//a << '"$TmpPath/$v.out_name_c"'
+	a << '".$v.out_name_c"'
 	// }
 	// Min macos version is mandatory I think?
 	if v.os == .mac {
@@ -662,7 +663,7 @@ mut args := ''
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		//os.rm('$TmpPath/$v.out_name_c') 
+		os.rm('.$v.out_name_c') 
 	} 
 }
 
@@ -933,7 +934,7 @@ fn new_v(args[]string) *V {
 	'option.v',
 	]
 	// Location of all vlib files
-	vroot := os.executable().all_before_last('/') 
+	vroot := os.dir(os.executable()) 
 	println('VROOT=$vroot') 
 	// v.exe's parent directory should contain vlib 
 	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
