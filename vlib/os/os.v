@@ -483,6 +483,14 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
+// hostname returns hostname
+pub fn hostname() string {
+  mut hname := [1024]byte
+  hname[1023] = `\0`
+  C.gethostname(&hname, 1023)
+  return tos_clone(hname)
+}
+
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	mut home := os.getenv('HOME')
