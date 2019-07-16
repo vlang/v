@@ -44,11 +44,14 @@ enum OS {
 }
 
 enum Pass {
-	// A very short pass that only looks at imports in the beginning of each file
+	// A very short pass that only looks at imports in the beginning of
+	// each file
 	imports
-	// First pass, only parses and saves declarations (fn signatures, consts, types).
+	// First pass, only parses and saves declarations (fn signatures,
+	// consts, types).
 	// Skips function bodies.
-	// We need this because in V things can be used before they are declared.
+	// We need this because in V things can be used before they are
+	// declared.
 	decl
 	// Second pass, parses function bodies and generates C or machine code.
 	main
@@ -622,6 +625,7 @@ mut args := ''
 	if v.pref.build_mode != .build && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
 		v.os == .netbsd || v.os == .dragonfly) { 
 		a << '-lm -lpthread ' 
+		// -ldl is a Linux only thing. BSDs have it in libc.
 		if v.os == .linux {
 			a << ' -ldl ' 
 		} 

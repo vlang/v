@@ -5,6 +5,7 @@
 module main
 
 import os
+import strings 
 
 struct CGen {
 	out          os.File
@@ -20,6 +21,7 @@ struct CGen {
 	so_fns       []string
 	consts_init  []string
 	lines        []string
+	//buf          strings.Builder 
 	is_user      bool
 mut:
 	run          Pass
@@ -37,11 +39,11 @@ fn new_cgen(out_name_c string) *CGen {
 	out := os.create(path) or {
 		println('failed to create $path') 
 		return &CGen{} 
-} 
-	 
+	} 
 	gen := &CGen {
 		out_path: path 
 		out: out 
+		//buf: strings.new_builder(10000) 
 		lines: _make(0, 1000, sizeof(string)) 
 	}
 	return gen
@@ -144,7 +146,8 @@ fn (g mut CGen) set_placeholder2(pos int, val string) {
 }
 
 fn (g mut CGen) insert_before(val string) {
-	g.lines.insert(g.lines.len - 1, val)
+	prev := g.lines[g.lines.len - 1] 
+	g.lines[g.lines.len - 1] = '$prev \n $val \n' 
 }
 
 fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text string) {

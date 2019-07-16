@@ -6,20 +6,21 @@ module main
 
 enum Token {
 	eof
-	name
-	integer
-	strtoken
-	chartoken
+	name        // user 
+	integer     // 123 
+	str         // 'foo' 
+	str_inter   // 'name=$user.name' 
+	chartoken   // `A` 
 	plus
 	minus
 	mul
 	div
 	mod
-	xor
-	pipe
-	inc
-	dec
-	and
+	xor // ^ 
+	pipe // | 
+	inc // ++ 
+	dec // -- 
+	and // && 
 	logical_or 
 	not 
 	bit_not
@@ -61,8 +62,8 @@ enum Token {
 	ge
 	le
 	// comments
-	line_com 
-	mline_com 
+	//line_com 
+	//mline_com 
 	nl 
 	dot 
 	dotdot
@@ -127,7 +128,7 @@ fn build_token_str() []string {
 	s[Token.eof] = '.eof'
 	s[Token.name] = '.name'
 	s[Token.integer] = '.integer'
-	s[Token.strtoken] = 'STR'
+	s[Token.str] = 'STR'
 	s[Token.chartoken] = '.chartoken'
 	s[Token.plus] = '+'
 	s[Token.minus] = '-'
@@ -177,7 +178,7 @@ fn build_token_str() []string {
 	s[Token.question] = '?'
 	s[Token.left_shift] = '<<'
 	s[Token.righ_shift] = '>>'
-	s[Token.line_com] = '//'
+	//s[Token.line_com] = '//'
 	s[Token.nl] = 'NLL'
 	s[Token.dollar] = '$'
 	s[Token.key_assert] = 'assert'

@@ -104,6 +104,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 fn (p mut Parser) next() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
+	p.scanner.prev_tok = p.tok 
 	res := p.scanner.scan()
 	p.tok = res.tok
 	p.lit = res.lit
@@ -144,7 +145,7 @@ fn (p mut Parser) parse() {
 	p.mod = fq_mod.replace('.', '_dot_')
 	if p.run == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
-			p.import_statement()
+			p.imports()
 		}
 		if p.table.imports.contains('builtin') {
 			p.error('module `builtin` cannot be imported') 
@@ -160,7 +161,10 @@ fn (p mut Parser) parse() {
 			}
 			else {
 				// TODO remove imported consts from the language
-				p.import_statement()
+				p.imports()
+				if p.tok != .key_import { 
+					p.fgenln('') 
+				} 
 			}
 		case Token.key_enum:
 			p.next()
@@ -285,7 +289,7 @@ fn (p mut Parser) parse() {
 	}
 }
 
-fn (p mut Parser) import_statement() {
+fn (p mut Parser) imports() {
 	p.check(.key_import)
 	// `import ()`
 	if p.tok == .lpar {
@@ -482,7 +486,7 @@ fn (p mut Parser) struct_decl() {
 	else {
 		// type alias is generated later
 		if !is_c {
-			kind := if is_union{'union'} else { 'struct'}
+			kind := if is_union {'union'} else {'struct'}
 			p.gen_typedef('typedef $kind $name $name;')
 			p.gen_type('$kind $name {')
 		}
@@ -510,9 +514,7 @@ fn (p mut Parser) struct_decl() {
 		}
 	}
 	// Struct `C.Foo` declaration, no body
-	// println('EEEE $is_c $is_struct')
 	if is_c && is_struct && p.tok != .lcbr {
-		// println('skipping struct header $name')
 		p.table.register_type2(typ)
 		return
 	}
@@ -522,7 +524,15 @@ fn (p mut Parser) struct_decl() {
 	mut is_pub := false
 	mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
-	// mut is_mut_mut := false
+/* 
+	mut fmt_max_len := 0 
+	for field in typ.fields  {
+		if field.name.len > max_len {
+			fmt_max_len = field.name.len 
+		} 
+	} 
+	println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.run') 
+*/ 
 	for p.tok != .rcbr {
 		if p.tok == .key_pub {
 			if is_pub {
@@ -592,6 +602,7 @@ fn (p mut Parser) struct_decl() {
 	}
 	if !is_ph && p.first_run() {
 		p.table.register_type2(typ)
+		//println('registering 1 nrfields=$typ.fields.len') 
 	}
 	p.check(.rcbr)
 	if !is_c {
@@ -619,8 +630,8 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 	for p.tok == .name {
 		field := p.check_name()
 		fields << field 
-		name := '${p.mod}__${enum_name}_$field'
 		p.fgenln('')
+		name := '${p.mod}__${enum_name}_$field'
 		if p.run == .main {
 			p.cgen.consts << '#define $name $val' 
 		}
@@ -655,7 +666,7 @@ fn (p mut Parser) check_name() string {
 
 fn (p mut Parser) check_string() string {
 	s := p.lit
-	p.check(.strtoken)
+	p.check(.str)
 	return s
 }
 
@@ -663,7 +674,7 @@ fn (p &Parser) strtok() string {
 	if p.tok == .name {
 		return p.lit
 	}
-	if p.tok == .strtoken {
+	if p.tok == .str {
 		return '"$p.lit"'
 	}
 	res := p.tok.str()
@@ -701,6 +712,11 @@ fn (p mut Parser) check(expected Token) {
 		p.fmt_inc() 
 	}
 	p.next()
+
+if p.scanner.line_comment != '' { 
+	//p.fgenln('// ! "$p.scanner.line_comment"')
+	//p.scanner.line_comment = '' 
+} 
 }
 
 fn (p mut Parser) error(s string) {
@@ -919,7 +935,7 @@ fn (p &Parser) print_tok() {
 		println(p.lit)
 		return
 	}
-	if p.tok == .strtoken {
+	if p.tok == .str {
 		println('"$p.lit"')
 		return
 	}
@@ -1585,6 +1601,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	if p.tok == .key_type {
 		field_name = 'type' 
 	} 
+	p.fgen(field_name) 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}') 
@@ -2120,7 +2137,7 @@ fn (p mut Parser) factor() string {
 		p.char_expr()
 		typ = 'byte'
 		return typ
-	case Token.strtoken:
+	case Token.str:
 		p.string_expr()
 		typ = 'string'
 		return typ
@@ -2232,11 +2249,11 @@ fn format_str(str string) string {
 }
 
 fn (p mut Parser) string_expr() {
-	// println('.strtoken EXPR')
+	// println('.str EXPR')
 	str := p.lit
-	p.fgen('\'$str\'')
-	// No ${}, just return simple string
+	// No ${}, just return a simple string
 	if p.peek() != .dollar {
+		p.fgen('\'$str\'')
 		// println('before format: "$str"')
 		f := format_str(str)
 		// println('after format: "$str"')
@@ -2252,8 +2269,11 @@ fn (p mut Parser) string_expr() {
 	// tmp := p.get_tmp()
 	mut args := '"'
 	mut format := '"'
-	for p.tok == .strtoken {
+	p.fgen('\'') 
+	mut complex_inter := false  // for vfmt 
+	for p.tok == .str {
 		// Add the string between %d's
+		p.fgen(p.lit) 
 		p.lit = p.lit.replace('%', '%%')
 		format += format_str(p.lit)
 		p.next()// skip $
@@ -2261,7 +2281,13 @@ fn (p mut Parser) string_expr() {
 			continue
 		}
 		// Handle .dollar
-		p.next()
+		p.check(.dollar) 
+		// If there's no string after current token, it means we are in
+		// a complex expression (`${...}`) 
+		if p.peek() != .str {
+			p.fgen('{') 
+			complex_inter = true 
+		} 
 		// Get bool expr inside a temp var
 		p.cgen.start_tmp()
 		typ := p.bool_expression()
@@ -2299,6 +2325,10 @@ fn (p mut Parser) string_expr() {
 			format += f 
 		}
 	}
+	if complex_inter {
+	p.fgen('}') 
+} 
+	p.fgen('\'') 
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {
 		return
@@ -3140,7 +3170,7 @@ else {
 fn (p mut Parser) return_st() {
 	p.cgen.insert_before(p.cur_fn.defer_text)
 	p.check(.key_return)
-
+	p.fgen(' ') 
 	fn_returns := p.cur_fn.typ != 'void'
 	if fn_returns {
 		if p.tok == .rcbr {
