@@ -2,22 +2,20 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
+// This is a generic implementation with no arch optimizations
+
 module md5
 
 import math.bits
 import encoding.binary
 
-fn block_generic(dig *Digest, p []byte) {
+fn block_generic(dig &Digest, p []byte) {
 	// load state
 	mut a := dig.s[0]
 	mut b := dig.s[1]
 	mut c := dig.s[2]
 	mut d := dig.s[3]
-
 	for i := 0; i <= p.len-BlockSize; i += BlockSize {
-		// eliminate bounds checks on p
-		// q := p[i:]
-		// q = q[:BlockSize:BlockSize]
 		mut q := p.right(i)
 		q = q.left(BlockSize)
 		// save current state

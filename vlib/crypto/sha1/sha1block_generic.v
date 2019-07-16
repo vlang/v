@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
+// This is a generic implementation with no arch optimizations
+
 module sha1
 
 import math.bits
