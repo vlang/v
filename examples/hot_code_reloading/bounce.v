@@ -27,8 +27,8 @@ fn main() {
 	height := 300
 	mut game := &Game{
 		vg: 0 
-		dx: 1 
-		dy: 1 
+		dx: 2 
+		dy: 2 
 		height: height 
 		width: width 
 	}
@@ -61,7 +61,6 @@ fn main() {
 	}
 }
 
-
 const (
 	W = 50
 )
@@ -87,22 +86,4 @@ fn (ctx mut Game) run() {
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//sdfsd 
 
