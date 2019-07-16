@@ -157,7 +157,6 @@ pub fn factorial(n int) i64 {
     mut high := 1
     mut len := high
     mut log2n := int(floor(log2(n)))
-    println( log2n)
     for ;h != n; {
         shift += h
         h = n >> log2n
@@ -170,7 +169,6 @@ pub fn factorial(n int) i64 {
             r *= p
         }
     }
-    println( r)
     return i64((r << shift))
 }
 
