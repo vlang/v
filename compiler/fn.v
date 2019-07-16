@@ -99,7 +99,7 @@ fn (f mut Fn) clear_vars() {
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
 	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build) &&
-	(p.file_path.contains(TmpPath))
+	(p.file_path.contains(ModPath))
 }
 
 fn new_fn(pkg string, is_public bool) *Fn {
