@@ -385,7 +385,15 @@ pub fn ext(path string) string {
 
 // dir returns all but the last element of path, typically the path's directory.  
 pub fn dir(path string) string {
-	pos := path.last_index(PathSeparator) 
+	mut pos := -1
+	// TODO PathSeparator defined in os_win.v doesn't work when building V, 
+	// because v.c is generated for a nix system. 
+	$if windows { 
+		pos = path.last_index('\\') 
+	} 
+	$else { 
+		pos = path.last_index(PathSeparator) 
+	} 
 	if pos == -1 {
 		return '.' 
 	} 
