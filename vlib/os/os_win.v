@@ -1,4 +1,7 @@
 module os
+	
+#flag -lShlwapi
+#include <shlwapi.h>
 
 const (
 	PathSeparator = '\\' 
