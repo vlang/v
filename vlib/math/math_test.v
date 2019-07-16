@@ -28,6 +28,7 @@ fn test_digits() {
 }
 
 fn test_factorial() {
+	assert math.factorial(12) == 479001600
 	assert math.factorial(5) == 120
 	assert math.factorial(0) == 1
 }
