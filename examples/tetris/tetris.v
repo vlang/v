@@ -89,8 +89,7 @@ struct Game {
 	// -1  0  0 -1
 	// -1  0  0 -1
 	// -1 -1 -1 -1
-	// TODO: field [][]int
-	field       array_array_int
+	field       [][]int 
 	// TODO: tetro Tetro
 	tetro       []Block
 	// TODO: tetros_cache []Tetro

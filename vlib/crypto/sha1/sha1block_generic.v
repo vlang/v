@@ -1,3 +1,9 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
+// This is a generic implementation with no arch optimizations
+
 module sha1
 
 import math.bits
@@ -9,7 +15,7 @@ const (
 	_K3 = 0xCA62C1D6
 )
 
-fn block(dig &Digest, p []byte) {
+fn block_generic(dig &Digest, p []byte) {
 	mut w := [u32(0); 16]
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]
@@ -73,13 +79,11 @@ fn block(dig &Digest, p []byte) {
 			w[i&0xf] = u32(tmp<<u32(1)) | u32(tmp>>u32(32-1))
 			f := ((b | c) & d) | (b & c)
 			t := bits.rotate_left_32(a, 5) + f + e + w[i&0xf] + u32(_K2)
-			
 			e = d
 			d = c
 			c = bits.rotate_left_32(b, 30)
 			b = a
 			a = t
-			
 			i++
 		}
 		for i < 80 {

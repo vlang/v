@@ -99,7 +99,7 @@ fn (f mut Fn) clear_vars() {
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
 	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build) &&
-	(p.file_path.contains(TmpPath))
+	(p.file_path.contains(ModPath))
 }
 
 fn new_fn(pkg string, is_public bool) *Fn {
@@ -321,7 +321,7 @@ fn (p mut Parser) fn_decl() {
 		if !is_sig && !is_fn_header {
 			for {
 				p.next()
-				if p.tok.is_decl() {
+				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
 					break
 				}
 			}

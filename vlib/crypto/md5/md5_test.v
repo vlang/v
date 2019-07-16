@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-import crypto.sha1
+import crypto.md5
 
-fn test_crypto_sha1() {	 
-	assert sha1.sum('This is a sha1 checksum.'.bytes()).hex() == 'E100D74442FAA5DCD59463B808983C810A8EB5A1'
+fn test_crypto_md5() {	 
+	assert md5.sum('this is a md5 checksum.'.bytes()).hex() == '6FB421FF99036547655984DA12973431'
 }

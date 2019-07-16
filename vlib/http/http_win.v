@@ -20,6 +20,10 @@ import const (
 	INTERNET_SERVICE_HTTP
 )
 
+const (
+	BUF_MAX = 1024
+) 
+
 pub fn (req &Request) do() Response {
 	emptyresp := Response{}
 	mut url := req.url
@@ -121,7 +125,6 @@ pub fn (req &Request) do() Response {
 	// # TCHAR buf[BUF_MAX + 1];
 	mut buf := [1025]byte
 	mut nr_read := 0
-	BUF_MAX := 1024
 	// ok := C.InternetReadFile(request, buf, BUF_MAX, &nr_read)
 	// # DWORD dwRead = 0;
 	// /println('calling InternetReadFile()')
