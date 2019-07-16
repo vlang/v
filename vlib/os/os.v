@@ -106,7 +106,6 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 }
 
 // read_file reads the file in `path` and returns the contents.
-//pub fn read_file(path string) ?string {
 pub fn read_file(path string) ?string { 
 	mut res := ''
 	mut mode := 'rb' 
@@ -293,21 +292,29 @@ pub fn getenv(key string) string {
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
-$if windows {
- 
-} 
-$else { 
-  return C.setenv(name.cstr(), value.cstr(), overwrite)
-} 
+	$if windows {
+		format := '$name=$value'
+
+		if overwrite {
+			return C._putenv(format.cstr())
+		}
+
+		return -1
+	} 
+	$else { 
+		return C.setenv(name.cstr(), value.cstr(), overwrite)
+	} 
 }
 
 pub fn unsetenv(name string) int {
-$if windows {
- 
-} 
-$else { 
-  return C.unsetenv(name.cstr())
-} 
+	$if windows {
+		format := '${name}='
+		
+		return C._putenv(format.cstr())
+	} 
+	$else { 
+		return C.unsetenv(name.cstr())
+	} 
 }
 
 // `file_exists` returns true if `path` exists.
@@ -347,7 +354,7 @@ pub fn mkdir(path string) {
 
 // rm removes file in `path`.
 pub fn rm(path string) {
-		C.remove(path.cstr())
+	C.remove(path.cstr())
 	// C.unlink(path.cstr())
 }
 
