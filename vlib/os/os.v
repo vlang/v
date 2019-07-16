@@ -552,6 +552,14 @@ pub fn executable() string {
 		return string(result) 
 */ 
 	}
+	$if freebsd {
+		mut mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]!! 
+		buf := [1024]byte 
+		size := 1024 
+		C.sysctl(mib, 4, buf, &size, 0, 0) 
+		return string(buf) 
+	} 
+ 
 }
 
 pub fn is_dir(path string) bool {
