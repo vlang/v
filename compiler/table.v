@@ -537,9 +537,9 @@ fn type_default(typ string) string {
 	if typ.ends_with('*') {
 		return '0'
 	}
-	// ?
+	// User struct defined in another module. 
 	if typ.contains('__') {
-		return ''
+		return '{}'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
@@ -560,7 +560,6 @@ fn type_default(typ string) string {
 	case 'voidptr': return '0'
 	}
 	return '{}' 
-	return ''
 }
 
 // TODO PERF O(n)

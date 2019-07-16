@@ -935,7 +935,7 @@ fn new_v(args[]string) *V {
 	]
 	// Location of all vlib files
 	vroot := os.dir(os.executable()) 
-	println('VROOT=$vroot') 
+	//println('VROOT=$vroot') 
 	// v.exe's parent directory should contain vlib 
 	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
  

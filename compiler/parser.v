@@ -189,7 +189,7 @@ fn (p mut Parser) parse() {
 			}
 		case Token.func:
 			p.fn_decl()
-		case Token.typ:
+		case Token.key_type:
 			p.type_decl()
 		case Token.lsbr:
 			// `[` can only mean an [attribute] before a function
@@ -401,7 +401,7 @@ fn (p mut Parser) const_decl() {
 // `type myint int`
 // `type onclickfn fn(voidptr) int`
 fn (p mut Parser) type_decl() {
-	p.check(.typ)
+	p.check(.key_type)
 	name := p.check_name()
 	parent := p.get_type()
 	nt_pair := p.table.cgen_name_type_pair(name, parent)
@@ -642,7 +642,12 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 
 // check_name checks for a name token and returns its literal
 fn (p mut Parser) check_name() string {
+	if p.tok == .key_type {
+		p.check(.key_type) 
+		return 'type' 
+	} 
 	name := p.lit
+	 
 	p.check(.name)
 	return name
 }
@@ -1264,7 +1269,6 @@ fn (p mut Parser) name_expr() string {
 	hack_lit := p.lit
 	ph := p.cgen.add_placeholder()
 	// amp
-	 
 	ptr := p.tok == .amp
 	deref := p.tok == .mul
 	if ptr || deref {
@@ -1556,8 +1560,10 @@ fn (p &Parser) fileis(s string) bool {
 // user.company.name => `str_typ` is `Company`
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	p.check(.dot)
-	field_name := p.lit
-	p.fgen(field_name)
+	mut field_name := p.lit
+	if p.tok == .key_type {
+		field_name = 'type' 
+	} 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}') 
@@ -1569,9 +1575,8 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	has_field := p.table.type_has_field(typ, field_name)
 	has_method := p.table.type_has_method(typ, field_name)
 	if !typ.is_c && !has_field && !has_method && !p.first_run() {
-		// println(typ.str())
 		if typ.name.starts_with('Option_') {
-			opt_type := typ.name.substr(7, typ.name.len)
+			opt_type := typ.name.right(7) 
 			p.error('unhandled option type: $opt_type?')
 		}
 		println('error in dot():')
