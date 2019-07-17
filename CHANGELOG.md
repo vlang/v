@@ -1,7 +1,7 @@
 ## V 0.1.16 
 *17 Jul 2019* 
 - High order functions 
-
+- `match` expression 
 
 
 
