@@ -23,6 +23,10 @@ pub fn enable_term_color_win() {
 }
 
 pub fn format(msg, open, close string) string {
+    $if windows {
+        enable_term_color_win()
+    }
+
     return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
 }
 
