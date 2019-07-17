@@ -189,6 +189,19 @@ pub fn (arr mut array) _push_many(val voidptr, size int) {
 	arr.len += size
 }
 
+pub fn (a array) reverse() array {
+	arr := array {
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: malloc(a.cap * a.element_size)
+	}
+	for i := 0; i < a.len; i++ {
+		C.memcpy(arr.data + i * arr.element_size, &a[a.len-1-i], arr.element_size)
+	}
+	return arr
+}
+
 pub fn (a []int) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
