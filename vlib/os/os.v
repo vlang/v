@@ -8,7 +8,9 @@ module os
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+#ifdef _WIN32 
 #include <winsock2.h>
+#endif 
 //#include <execinfo.h> // for backtrace_symbols_fd 
 
 /* 
