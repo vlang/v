@@ -150,11 +150,11 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return C.strtoul(s.str, 0, 10)
+	return C.strtoul(s.str, 0, 0)
 }
 
 pub fn (s string) u64() u64 {
-	return C.strtoull(s.str, 0, 10)
+	return C.strtoull(s.str, 0, 0)
 }
 
 // ==
