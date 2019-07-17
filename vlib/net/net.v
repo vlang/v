@@ -7,7 +7,7 @@ pub fn hostname() ?string {
 	// The host name is returned as a null-terminated string.
 	res := C.gethostname(&name, 256)
 	if res != 0 {
-		return error('os.hostname() cannot get the host name')
+		return error('net.hostname() cannot get the host name')
 	}
   	return tos_clone(name)
 }
