@@ -381,7 +381,8 @@ string _STR_TMP(const char *fmt, ...) {
 		so_name := file_base + '.so' 
 		// Need to build .so file before building the live application 
 		// The live app needs to load this .so file on initialization. 
-		os.system('v -o $file_base -shared $file') 
+		vexe := os.args[0] 
+		os.system('$vexe -o $file_base -shared $file') 
 		cgen.genln('
 #include <dlfcn.h>
 void* live_lib; 
@@ -1022,6 +1023,7 @@ fn run_repl() []string {
 		os.rm(temp_file) 
 	} 
 	mut lines := []string
+	vexe := os.args[0] 
 	for {
 		print('>>> ')
 		mut line := os.get_raw_line()
@@ -1038,7 +1040,7 @@ fn run_repl() []string {
 		if line.starts_with('print') {
 			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
-			s := os.exec('v run $file -repl')
+			s := os.exec('$vexe run $file -repl')
 			mut vals := s.split('\n')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
@@ -1065,7 +1067,7 @@ fn run_repl() []string {
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('v run $temp_file -repl')
+			s := os.exec('$vexe run $temp_file -repl')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
