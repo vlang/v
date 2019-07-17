@@ -1,8 +1,11 @@
+CC ?= cc
+CFLAGS ?= -fPIC -O2
+
 all: clean v
 	$(info V has been successfully built)
 
 v: v.c
-	cc -std=gnu11 -w -o v v.c -lm 
+	${CC} -std=gnu11 -w -o v v.c -lm 
 	./v -o v compiler
 	rm v.c
 
@@ -17,4 +20,9 @@ test: v
 	find examples -name '*.v' -not -path "examples/hot_code_reloading/*" -print0 | xargs -0 -n1 ./v
 
 clean:
-	-rm -f v.c v vprod
+	-rm -f v.c .v.c v vprod thirdparty/**/*.o
+
+SOURCES = $(wildcard thirdparty/**/*.c)
+OBJECTS := ${SOURCES:.c=.o} 
+
+thirdparty: ${OBJECTS}
