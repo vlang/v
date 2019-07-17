@@ -109,7 +109,7 @@ pub fn get_error_msg(code int) string {
         if code < 0 { // -1
             return ''
         }
-        _ptrdata := ptr_win_get_error_msg(u32(code))
+        _ptrdata := os.ptr_win_get_error_msg(u32(code))
         if _ptrdata == 0 {
             return ''
         }
