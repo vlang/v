@@ -67,6 +67,7 @@ mut:
 	is_c_struct_init bool
 	can_chash bool
 	attr string 
+	v_script bool // "V bash", import all os functions into global space 
 }
 
 const (
@@ -1258,6 +1259,14 @@ fn (p mut Parser) bterm() string {
 			case Token.gt: p.cgen.set_placeholder(ph, 'string_gt(')
 			case Token.lt: p.cgen.set_placeholder(ph, 'string_lt(')
 			}
+/* 
+			 Token.eq => p.cgen.set_placeholder(ph, 'string_eq(')
+			 Token.ne => p.cgen.set_placeholder(ph, 'string_ne(')
+			 Token.le => p.cgen.set_placeholder(ph, 'string_le(')
+			 Token.ge => p.cgen.set_placeholder(ph, 'string_ge(')
+			 Token.gt => p.cgen.set_placeholder(ph, 'string_gt(')
+			 Token.lt => p.cgen.set_placeholder(ph, 'string_lt(')
+*/ 
 		}
 	}
 	return typ
@@ -1442,23 +1451,31 @@ fn (p mut Parser) name_expr() string {
 		return typ
 	}
 	// Function (not method btw, methods are handled in dot())
-	f := p.table.find_fn(name)
+	mut f := p.table.find_fn(name)
 	if f.name == '' {
 		// We are in a second pass, that means this function was not defined, throw an error. 
 		if !p.first_run() {
-			// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
-			// if p.table.known_pkg(orig_name) {
-			if p.table.known_pkg(orig_name) || p.import_table.known_alias(orig_name) {
-				name = name.replace('__', '.').replace('_dot_', '.')
-				p.error('undefined: `$name`')
-			}
-			else {
-				p.error('undefined: `$orig_name`')
-			}
-		}
-		p.next()
-		// First pass, the function can be defined later. 
-		return 'void'
+			// V script? Try os module. 
+			if p.v_script { 
+				name = name.replace('main__', 'os__') 
+				f = p.table.find_fn(name) 
+			} 
+			if f.name == '' { 
+				// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
+				// if p.table.known_pkg(orig_name) {
+				if p.table.known_pkg(orig_name) || p.import_table.known_alias(orig_name) {
+					name = name.replace('__', '.').replace('_dot_', '.')
+					p.error('undefined: `$name`')
+				}
+				else {
+					p.error('undefined: `$orig_name`')
+				}
+			} 
+		} else { 
+			p.next()
+			// First pass, the function can be defined later. 
+			return 'void'
+		} 
 	}
 	// no () after func, so func is an argument, just gen its name
 	// TODO verify this and handle errors
@@ -2770,6 +2787,10 @@ fn (p mut Parser) chash() {
 		// Move defines on top 
 		p.cgen.includes << '#$hash'
 	}
+	else if hash == 'v' {
+		println('v script') 
+		//p.v_script = true 
+	} 
 	else {
 		if !p.can_chash {
 			p.error('bad token `#` (embedding C code is no longer supported)')
