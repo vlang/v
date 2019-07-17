@@ -151,7 +151,12 @@ fn test_push_many() {
 fn test_reverse() {
 	mut a := [1, 2, 3, 4]
 	mut b := ['test', 'array', 'reverse']
-
-	assert a.reverse() == [4, 3, 2, 1]
-	assert b.reverse() == ['reverse', 'array', 'test']
+    c := a.reverse()
+    d := b.reverse()
+    for i, _  in c {
+        assert c[i] == a[a.len-i-1]
+    }
+    for i, _ in d {
+        assert d[i] == b[b.len-i-1]
+    }
 }
