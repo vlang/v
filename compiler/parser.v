@@ -3044,8 +3044,13 @@ fn (p mut Parser) switch_statement() {
 	for p.tok == .key_case || p.tok == .key_default || p.peek() == .arrow || p.tok == .key_else { 
 		if p.tok == .key_default || p.tok == .key_else { 
 			p.genln('else  { // default:')
-			p.check(.key_default) 
-			p.check(.colon)
+			if p.tok == .key_default { 
+				p.check(.key_default) 
+				p.check(.colon)
+			}  else { 
+				p.check(.key_else) 
+				p.check(.arrow)
+			} 
 			p.statements()
 			break
 		}
