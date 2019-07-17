@@ -1233,7 +1233,7 @@ fn (p mut Parser) bool_expression() string {
 }
 
 fn (p mut Parser) bterm() string {
-	ph := p.cgen.add_placeholder()
+	mut ph := p.cgen.add_placeholder()
 	mut typ := p.expression()
 	p.expected_type = typ 
 	is_str := typ=='string' 
@@ -1261,10 +1261,28 @@ fn (p mut Parser) bterm() string {
 			}
 		}
 		for p.tok == .eq || p.tok == .gt || p.tok == .lt || p.tok == .le || p.tok == .ge {
+			p.gen('&&')
+			ph = p.cgen.add_placeholder()
 			p.fgen('&& ${p.tok.str()} ')
-			p.gen('&& ${p.prev_lit} ${p.tok.str()}')
+			if is_str {
+				switch tok {
+				case Token.eq: p.cgen.set_placeholder(ph, 'string_eq(')
+				case Token.ne: p.cgen.set_placeholder(ph, 'string_ne(')
+				case Token.le: p.cgen.set_placeholder(ph, 'string_le(')
+				case Token.ge: p.cgen.set_placeholder(ph, 'string_ge(')
+				case Token.gt: p.cgen.set_placeholder(ph, 'string_gt(')
+				case Token.lt: p.cgen.set_placeholder(ph, 'string_lt(')
+				}
+				p.gen(' tos2("${p.prev_lit}"), ')
+			}
+			else {
+				p.gen(' ${p.prev_lit} ${p.tok.str()}')
+			}
 			p.next()
 			p.check_types(p.expression(), typ)
+			if is_str {
+				p.gen(')')
+			}
 		}
 		typ = 'bool'
 	}
