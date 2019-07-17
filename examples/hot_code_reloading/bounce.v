@@ -10,7 +10,7 @@ import time
 
 struct Game {
 mut: 
-	vg       *gg.GG
+	gg       *gg.GG
 	x        int
 	y        int
 	dy       int
@@ -26,7 +26,7 @@ fn main() {
 	width := 600
 	height := 300
 	mut game := &Game{
-		vg: 0 
+		gg: 0 
 		dx: 2 
 		dy: 2 
 		height: height 
@@ -44,13 +44,13 @@ fn main() {
 	game.main_wnd = window 
 	window.make_context_current()
 	gg.init() 
-	game.vg = gg.new_context(gg.Cfg {
+	game.gg = gg.new_context(gg.Cfg {
 		width: width
 		height: height
 		font_size: 20
 		use_ortho: true
 	})
-	println('Starting game loop...')
+	println('Starting the game loop...')
 	go game.run()
 	for {
 		gl.clear()
@@ -66,19 +66,19 @@ const (
 )
 
 [live]
-fn (ctx &Game) draw() {
-	ctx.vg.draw_rect(ctx.x, ctx.y, W, W, gx.rgb(255, 0, 0)) 
+fn (game &Game) draw() {
+	game.gg.draw_rect(game.x, game.y, W, W, gx.rgb(255, 0, 0)) 
 }
 
-fn (ctx mut Game) run() {
+fn (game mut Game) run() {
 	for {
-		ctx.x += ctx.dx
-		ctx.y += ctx.dy
-		if ctx.y >= ctx.height - W || ctx.y <= 0 {
-			ctx.dy = - ctx.dy
+		game.x += game.dx
+		game.y += game.dy
+		if game.y >= game.height - W || game.y <= 0 {
+			game.dy = - game.dy
 		}
-		if ctx.x >= ctx.width - W || ctx.x <= 0 {
-			ctx.dx = - ctx.dx
+		if game.x >= game.width - W || game.x <= 0 {
+			game.dx = - game.dx
 		}
 		// Refresh
 		time.sleep_ms(17)
