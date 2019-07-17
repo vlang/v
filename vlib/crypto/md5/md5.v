@@ -48,7 +48,7 @@ fn (d mut Digest) reset() {
 	d.len = u64(0)
 }
 
-// New returns a new hash.Hash computing the MD5 checksum.
+// new returns a new hash.Hash computing the MD5 checksum.
 pub fn new() *Digest {
 	mut d := &Digest{}
 	d.reset()
@@ -65,7 +65,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 		}
 		d.nx += n
 		if d.nx == BlockSize {
-            block_generic(d, d.x)
+            block(d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -76,7 +76,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= BlockSize {
 		n := p.len &~ (BlockSize - 1)
-		block_generic(d, p.left(n))
+		block(d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -130,12 +130,17 @@ pub fn (d mut Digest) checksum() []byte {
 	return digest
 }
 
-// Sum returns the MD5 checksum of the data.
-// pub fn Sum(data []byte) [Size]byte {
+// sum returns the MD5 checksum of the data.
 pub fn sum(data []byte) []byte {
 	mut d := new()
 	d.write(data)
 	return d.checksum()
+}
+
+fn block(dig &Digest, p []byte) {
+    // For now just use block_generic until we have specific
+	// architecture optimized versions
+    block_generic(dig, p)
 }
 
 pub fn (d &Digest) size() int { return Size }
