@@ -197,7 +197,7 @@ fn (v mut V) compile() {
 
 #ifdef _WIN32 
 #include <windows.h>
-//#include <WinSock2.h> 
+#include <winsock2.h> 
 #endif 
 
 //================================== TYPEDEFS ================================*/ 
