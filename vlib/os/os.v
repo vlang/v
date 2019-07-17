@@ -142,7 +142,9 @@ pub fn mv(old, new string) {
 // TODO return `?[]string` TODO implement `?[]` support
 pub fn read_lines(path string) []string {
 	mut res := []string
-	mut buf := [1000]byte
+	mut buf_len := 1024
+	mut buf := C.malloc(buf_len)
+
 	cpath := path.cstr()
 	fp := C.fopen(cpath, 'rb')
 	if isnil(fp) {
@@ -150,16 +152,29 @@ pub fn read_lines(path string) []string {
 		// return error('failed to open file "$path"')
 		return res
 	}
-	for C.fgets(buf, 1000, fp) != 0 {
-		if buf[C.strlen(buf) - 1] == 10 {
-			buf[C.strlen(buf) - 1] = `\0`
+
+	mut buf_index := 0
+	for C.fgets(buf + buf_index, buf_len - buf_index, fp) != 0 {
+		len := C.strlen(buf)
+		if len == buf_len - 1 && buf[len - 1] != 10 {
+			buf_len *= 2
+			buf = C.realloc(buf, buf_len)
+			if isnil(buf) {
+				panic('Could not reallocate the read buffer')
+			}
+			buf_index = len
+			continue
+		}
+		if buf[len - 1] == 10 {
+			buf[len - 1] = `\0`
 		}
 		$if windows {
-			if buf[strlen(buf) - 1] == 13 {
-				buf[strlen(buf) - 1] = `\0`
+			if buf[len - 2] == 13 {
+				buf[len - 2] = `\0`
 			}
 		}
 		res << tos_clone(buf)
+		buf_index = 0
 	}
 	C.fclose(fp)
 	return res
