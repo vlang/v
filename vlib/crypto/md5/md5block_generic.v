@@ -2,7 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-// This is a generic implementation with no arch optimizations
+// This is the generic version with no architecture optimizations.
+// In its own file so that an architecture
+// optimized verision can be substituted
 
 module md5
 
