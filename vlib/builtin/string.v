@@ -133,12 +133,28 @@ pub fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
+pub fn (s string) i32() i32 {
+	return C.atol(s.str)
+}
+
 pub fn (s string) i64() i64 {
 	return C.atoll(s.str)
 }
 
 pub fn (s string) f32() f32 {
 	return C.atof(s.str)
+}
+
+pub fn (s string) f64() f64 {
+	return C.atof(s.str)
+}
+
+pub fn (s string) u32() u32 {
+	return C.strtoul(s.str, 0, 0)
+}
+
+pub fn (s string) u64() u64 {
+	return C.strtoull(s.str, 0, 0)
 }
 
 // ==
