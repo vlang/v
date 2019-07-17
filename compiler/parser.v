@@ -39,6 +39,7 @@ mut:
 	tok            Token
 	prev_tok       Token
 	prev_tok2      Token // TODO remove these once the tokens are cached
+	prev_lit       string
 	lit            string
 	cgen           *CGen
 	table          *Table
@@ -103,6 +104,7 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 fn (p mut Parser) next() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
+	p.prev_lit = p.lit
 	res := p.scanner.scan()
 	p.tok = res.tok
 	p.lit = res.lit
@@ -1247,7 +1249,6 @@ fn (p mut Parser) bterm() string {
 		}
 		p.next()
 		p.check_types(p.expression(), typ)
-		typ = 'bool'
 		if is_str {
 			p.gen(')')
 			switch tok {
@@ -1259,6 +1260,13 @@ fn (p mut Parser) bterm() string {
 			case Token.lt: p.cgen.set_placeholder(ph, 'string_lt(')
 			}
 		}
+		for p.tok == .eq || p.tok == .gt || p.tok == .lt || p.tok == .le || p.tok == .ge {
+			p.fgen('&& ${p.tok.str()} ')
+			p.gen('&& ${p.prev_lit} ${p.tok.str()}')
+			p.next()
+			p.check_types(p.expression(), typ)
+		}
+		typ = 'bool'
 	}
 	return typ
 }
