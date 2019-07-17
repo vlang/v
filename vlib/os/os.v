@@ -106,20 +106,22 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
     $if windows {
-        if code < 0 { // -1
+        if code < 0 { // skip negative
             return ''
         }
-        _ptrdata := os.ptr_win_get_error_msg(u32(code))
-        if _ptrdata == 0 {
+        _ptr_text := ptr_win_get_error_msg(u32(code))
+        if _ptr_text == 0 { // compare with null
             return ''
         }
-        return tos(_ptrdata, C.strlen(_ptrdata))
-    }
-    _data := C.strerror(code) // voidptr?
-	if _data == 0 {
-        return ''
-    }
-    return tos(_data, C.strlen(_data))
+        return tos(_ptr_text, C.strlen(_ptr_text))
+    } 
+	$if !windows {
+		_ptr_text := C.strerror(code) // voidptr?
+		if _ptr_text == 0 {
+			return ''
+		}
+		return tos(_ptr_text, C.strlen(_ptr_text))
+	}
 }
 
 // read_file reads the file in `path` and returns the contents.

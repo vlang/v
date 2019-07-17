@@ -69,7 +69,7 @@ const (
 
 // ptr_win_get_error_msg return string (voidptr) 
 // representation of error, only for windows. 
-pub fn ptr_win_get_error_msg(code u32) voidptr {
+fn ptr_win_get_error_msg(code u32) voidptr {
     mut buf := voidptr(0)
     // Check for code overflow
     if code > u32(MAX_ERROR_CODE) {
