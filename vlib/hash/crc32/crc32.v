@@ -18,12 +18,14 @@ const (
 	Size = 4
 )
 
-struct Crc32 {
+// digest represents the partial evaluation of a checksum.
+struct Digest {
 mut:
+	crc 32
 	table []u32
 }
 
-fn(c mut Crc32) generate_table(poly int) {
+fn(d mut Digest) generate_table(poly int) {
 	for i := 0; i < 256; i++ {
 		mut crc := u32(i)
 		for j := 0; j < 8; j++ {
@@ -33,27 +35,32 @@ fn(c mut Crc32) generate_table(poly int) {
 				crc >>= u32(1)
 			}
 		}
-		c.table << crc
+		d.table << crc
 	}
 }
+
+fn(d &Digest) sum32(s string) u32 {
+	return d.crc
+}
  
-fn(c &Crc32) sum32(s string) u32 {
+fn (d &Digest) sum(s string) u32 {
 	mut crc := ~u32(0)
 	for i := 0; i < s.len; i++ {
-		crc = c.table[byte(crc)^s[i]] ^ u32(crc >> u32(8))
+		crc = d.table[byte(crc)^s[i]] ^ u32(crc >> u32(8))
 	}
 	return ~crc
 }
 
-pub fn(c &Crc32) checksum(s string) u32 {
-	return c.sum32(s)
+pub fn(d &Digest) checksum(s string) u32 {
+	return d.sum32(s)
 }
 
 // pass the polinomial to use
-pub fn new(poly int) *Crc32 {
-	mut c := &Crc32{}
-	c.generate_table(poly)
-	return c
+pub fn new(poly int) *Digest {
+	mut d := &Digest{}
+	d.reset()
+	d.generate_table(poly)
+	return d
 }
 
 // calculate crc32 using IEEE
@@ -62,3 +69,8 @@ pub fn sum(s string) u32 {
 	return c.sum32(s)
 }
 
+pub fn (d *Digest) Reset() { d.crc = 0 }
+
+pub fn (d *Digest) Size() int { return Size }
+
+pub fn (d *Digest) BlockSize() int { return 1 }
