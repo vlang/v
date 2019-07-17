@@ -4,4 +4,4 @@ module os
 
 const (
 	PathSeparator = '/' 
-) 
+)

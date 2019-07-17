@@ -67,7 +67,9 @@ const (
     MAX_ERROR_CODE  = 15841 // ERROR_API_UNAVAILABLE
 )
 
-fn ptr_get_error_message(code u32) voidptr {
+// ptr_win_get_error_msg return string (voidptr) 
+// representation of error, only for windows. 
+fn ptr_win_get_error_msg(code u32) voidptr {
     mut buf := voidptr(0)
     // Check for code overflow
     if code > u32(MAX_ERROR_CODE) {
@@ -79,12 +81,4 @@ fn ptr_get_error_message(code u32) voidptr {
 		| FORMAT_MESSAGE_IGNORE_INSERTS,
         0, code, C.MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), &buf, 0, 0)
     return buf
-}
-
-pub fn get_error_msg(code u32) string {
-	_ptrdata := ptr_get_error_message(code)
-    if _ptrdata == voidptr(0) {
-        return ''
-    }
-	return tos(_ptrdata, C.strlen(_ptrdata))
 }

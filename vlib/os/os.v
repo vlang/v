@@ -103,6 +103,25 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 	return s.split(' ')
 }
 
+// get_error_msg return error code representation in string.
+pub fn get_error_msg(code int) string {
+    $if windows {
+        if code < 0 { // -1
+            return ''
+        }
+        _ptrdata := ptr_win_get_error_msg(u32(code))
+        if _ptrdata == 0 {
+            return ''
+        }
+        return tos(_ptrdata, C.strlen(_ptrdata))
+    }
+    _data := C.strerror(code) // voidptr?
+	if _data == 0 {
+        return ''
+    }
+    return tos(_data, C.strlen(_data))
+}
+
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string { 
 	mut res := ''
