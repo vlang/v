@@ -682,7 +682,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			T := p.table.find_type(typ)
 			fmt := p.typ_to_fmt(typ, 0) 
 			if fmt != '' { 
-				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", ')    
+				p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
 				continue 
 			}  
 			if typ.ends_with('*') {
@@ -700,7 +700,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 					if name == '}' {
 						p.error(error_msg) 
 					}
-					p.cgen.cur_line = p.cgen.cur_line.left(index)
+					p.cgen.resetln(p.cgen.cur_line.left(index))
 					p.create_type_string(T, name)
 					p.cgen.cur_line.replace(typ, '')
 					p.next()

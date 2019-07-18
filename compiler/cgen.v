@@ -50,7 +50,7 @@ fn new_cgen(out_name_c string) *CGen {
 }
 
 fn (g mut CGen) genln(s string) {
-	if g.nogen || g.run == .decl {
+	if g.nogen || g.run != .main {
 		return
 	}
 	if g.is_tmp {
@@ -66,7 +66,7 @@ fn (g mut CGen) genln(s string) {
 }
 
 fn (g mut CGen) gen(s string) {
-	if g.nogen || g.run == .decl {
+	if g.nogen || g.run != .main {
 		return
 	}
 	if g.is_tmp {
@@ -74,6 +74,18 @@ fn (g mut CGen) gen(s string) {
 	}
 	else {
 		g.cur_line = '$g.cur_line $s'
+	}
+}
+
+fn (g mut CGen) resetln(s string) {
+	if g.nogen || g.run != .main {
+		return
+	}
+	if g.is_tmp {
+		g.tmp_line = s
+	}
+	else {
+		g.cur_line = s
 	}
 }
 
@@ -109,7 +121,7 @@ fn (g mut CGen) add_placeholder() int {
 }
 
 fn (g mut CGen) set_placeholder(pos int, val string) {
-	if g.nogen {
+	if g.nogen || g.run == .decl {
 		return
 	}
 	// g.lines.set(pos, val)
@@ -135,7 +147,7 @@ fn (g mut CGen) add_placeholder2() int {
 }
 
 fn (g mut CGen) set_placeholder2(pos int, val string) {
-	if g.nogen {
+	if g.nogen || g.run != .main {
 		return
 	}
 	if g.is_tmp {
