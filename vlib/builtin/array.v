@@ -242,3 +242,11 @@ pub fn (b []byte) hex() string {
 	}
 	return string(hex)
 }
+
+pub fn (a array) map(f fn(voidptr) voidptr) array {
+	mut arr := []voidptr
+	for x in a {
+		arr << f(x)
+	}
+	return arr
+}
