@@ -17,6 +17,7 @@ fn block_generic(dig &Digest, p []byte) {
 	mut b := dig.s[1]
 	mut c := dig.s[2]
 	mut d := dig.s[3]
+	
 	for i := 0; i <= p.len-BlockSize; i += BlockSize {
 		mut q := p.right(i)
 		q = q.left(BlockSize)

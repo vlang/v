@@ -48,7 +48,7 @@ fn (d mut Digest) reset() {
 	d.len = u64(0)
 }
 
-// new returns a new hash.Hash computing the MD5 checksum.
+// new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
 pub fn new() *Digest {
 	mut d := &Digest{}
 	d.reset()
