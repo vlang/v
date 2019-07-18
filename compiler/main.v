@@ -409,7 +409,7 @@ void reload_so() {
 		int now = os__file_last_mod_unix(tos2("$file")); 
 		if (now != last) {
 			//v -o bounce -shared bounce.v 
-			os__system(tos2("v -o $file_base -shared $file")); 
+			os__system(tos2("$vexe -o $file_base -shared $file")); 
 			last = now; 
 			load_so("$so_name"); 
 		}
