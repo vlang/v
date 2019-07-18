@@ -118,7 +118,7 @@ fn (p mut Parser) fn_decl() {
 	defer { p.fgenln('\n') } 
 	is_pub := p.tok == .key_pub 
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live 
-	if p.attr == 'live' &&  p.first_run() { 
+	if p.attr == 'live' &&  p.first_run() && !p.pref.is_live && !p.pref.is_so { 
 		println('INFO: run `v -live program.v` if you want to use [live] functions') 
 	} 
 	if is_pub {
