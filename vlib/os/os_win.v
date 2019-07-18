@@ -82,3 +82,15 @@ fn ptr_win_get_error_msg(code u32) voidptr {
         0, code, C.MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), &buf, 0, 0)
     return buf
 }
+
+// get_error_msg return error code representation in string.
+pub fn get_error_msg(code int) string {
+    if code < 0 { // skip negative
+        return ''
+    }
+    _ptr_text := ptr_win_get_error_msg(u32(code))
+    if _ptr_text == 0 { // compare with null
+        return ''
+    }
+    return tos(_ptr_text, C.strlen(_ptr_text))
+}

@@ -103,27 +103,6 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 	return s.split(' ')
 }
 
-// get_error_msg return error code representation in string.
-pub fn get_error_msg(code int) string {
-    $if windows {
-        if code < 0 { // skip negative
-            return ''
-        }
-        _ptr_text := ptr_win_get_error_msg(u32(code))
-        if _ptr_text == 0 { // compare with null
-            return ''
-        }
-        return tos(_ptr_text, C.strlen(_ptr_text))
-    } 
-	$if !windows {
-		_ptr_text := C.strerror(code) // voidptr?
-		if _ptr_text == 0 {
-			return ''
-		}
-		return tos(_ptr_text, C.strlen(_ptr_text))
-	}
-}
-
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string { 
 	mut res := ''
@@ -503,8 +482,6 @@ pub fn user_os() string {
 	} 
 	return 'unknown'
 }
-
-
 
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
