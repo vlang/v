@@ -73,93 +73,46 @@ mut:
 	function crypto.Hash
 }
 
-// Note: when u64 const is working uncomment this and remove reset() below
-// fn (d mut Digest) reset() {
-//     d.h = [u64(0); 8]
-//     d.x = [byte(0); Chunk]
-// 	switch d.function {
-// 	case crypto.Hash.SHA384:
-// 		d.h[0] = u64(Init0_384)
-// 		d.h[1] = u64(Init1_384)
-// 		d.h[2] = u64(Init2_384)
-// 		d.h[3] = u64(Init3_384)
-// 		d.h[4] = u64(Init4_384)
-// 		d.h[5] = u64(Init5_384)
-// 		d.h[6] = u64(Init6_384)
-// 		d.h[7] = u64(Init7_384)
-// 	case crypto.Hash.SHA512_224:
-// 		d.h[0] = u64(Init0_224)
-// 		d.h[1] = u64(Init1_224)
-// 		d.h[2] = u64(Init2_224)
-// 		d.h[3] = u64(Init3_224)
-// 		d.h[4] = u64(Init4_224)
-// 		d.h[5] = u64(Init5_224)
-// 		d.h[6] = u64(Init6_224)
-// 		d.h[7] = u64(Init7_224)
-// 	case crypto.Hash.SHA512_256:
-// 		d.h[0] = u64(Init0_256)
-// 		d.h[1] = u64(Init1_256)
-// 		d.h[2] = u64(Init2_256)
-// 		d.h[3] = u64(Init3_256)
-// 		d.h[4] = u64(Init4_256)
-// 		d.h[5] = u64(Init5_256)
-// 		d.h[6] = u64(Init6_256)
-// 		d.h[7] = u64(Init7_256)
-// 	default:
-// 		d.h[0] = u64(Init0)
-// 		d.h[1] = u64(Init1)
-// 		d.h[2] = u64(Init2)
-// 		d.h[3] = u64(Init3)
-// 		d.h[4] = u64(Init4)
-// 		d.h[5] = u64(Init5)
-// 		d.h[6] = u64(Init6)
-// 		d.h[7] = u64(Init7)
-// 	}
-// 	d.nx = 0
-// 	d.len = u64(0)
-// }
-
-// Note: when u64 const is working remove this and uncomment above
 fn (d mut Digest) reset() {
 	d.h = [u64(0); 8]
 	d.x = [byte(0); Chunk]
 	switch d.function {
 	case crypto.Hash.SHA384:
-		d.h[0] = u64(0xcbbb9d5dc1059ed8)
-		d.h[1] = u64(0x629a292a367cd507)
-		d.h[2] = u64(0x9159015a3070dd17)
-		d.h[3] = u64(0x152fecd8f70e5939)
-		d.h[4] = u64(0x67332667ffc00b31)
-		d.h[5] = u64(0x8eb44a8768581511)
-		d.h[6] = u64(0xdb0c2e0d64f98fa7)
-		d.h[7] = u64(0x47b5481dbefa4fa4)
+		d.h[0] = u64(Init0_384)
+		d.h[1] = u64(Init1_384)
+		d.h[2] = u64(Init2_384)
+		d.h[3] = u64(Init3_384)
+		d.h[4] = u64(Init4_384)
+		d.h[5] = u64(Init5_384)
+		d.h[6] = u64(Init6_384)
+		d.h[7] = u64(Init7_384)
 	case crypto.Hash.SHA512_224:
-		d.h[0] = u64(0x8c3d37c819544da2)
-		d.h[1] = u64(0x73e1996689dcd4d6)
-		d.h[2] = u64(0x1dfab7ae32ff9c82)
-		d.h[3] = u64(0x679dd514582f9fcf)
-		d.h[4] = u64(0x0f6d2b697bd44da8)
-		d.h[5] = u64(0x77e36f7304c48942)
-		d.h[6] = u64(0x3f9d85a86a1d36c8)
-		d.h[7] = u64(0x1112e6ad91d692a1)
+		d.h[0] = u64(Init0_224)
+		d.h[1] = u64(Init1_224)
+		d.h[2] = u64(Init2_224)
+		d.h[3] = u64(Init3_224)
+		d.h[4] = u64(Init4_224)
+		d.h[5] = u64(Init5_224)
+		d.h[6] = u64(Init6_224)
+		d.h[7] = u64(Init7_224)
 	case crypto.Hash.SHA512_256:
-		d.h[0] = u64(0x22312194fc2bf72c)
-		d.h[1] = u64(0x9f555fa3c84c64c2)
-		d.h[2] = u64(0x2393b86b6f53b151)
-		d.h[3] = u64(0x963877195940eabd)
-		d.h[4] = u64(0x96283ee2a88effe3)
-		d.h[5] = u64(0xbe5e1e2553863992)
-		d.h[6] = u64(0x2b0199fc2c85b8aa)
-		d.h[7] = u64(0x0eb72ddc81c52ca2)
+		d.h[0] = u64(Init0_256)
+		d.h[1] = u64(Init1_256)
+		d.h[2] = u64(Init2_256)
+		d.h[3] = u64(Init3_256)
+		d.h[4] = u64(Init4_256)
+		d.h[5] = u64(Init5_256)
+		d.h[6] = u64(Init6_256)
+		d.h[7] = u64(Init7_256)
 	default:
-		d.h[0] = u64(0x6a09e667f3bcc908)
-		d.h[1] = u64(0xbb67ae8584caa73b)
-		d.h[2] = u64(0x3c6ef372fe94f82b)
-		d.h[3] = u64(0xa54ff53a5f1d36f1)
-		d.h[4] = u64(0x510e527fade682d1)
-		d.h[5] = u64(0x9b05688c2b3e6c1f)
-		d.h[6] = u64(0x1f83d9abfb41bd6b)
-		d.h[7] = u64(0x5be0cd19137e2179)
+		d.h[0] = u64(Init0)
+		d.h[1] = u64(Init1)
+		d.h[2] = u64(Init2)
+		d.h[3] = u64(Init3)
+		d.h[4] = u64(Init4)
+		d.h[5] = u64(Init5)
+		d.h[6] = u64(Init6)
+		d.h[7] = u64(Init7)
 	}
 	d.nx = 0
 	d.len = u64(0)
