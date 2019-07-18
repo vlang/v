@@ -121,8 +121,8 @@ mut:
 
 // Note: when u64 const is working remove this and uncomment above
 fn (d mut Digest) reset() {
-    d.h = [u64(0); 8]
-    d.x = [byte(0); Chunk]
+	d.h = [u64(0); 8]
+	d.x = [byte(0); Chunk]
 	switch d.function {
 	case crypto.Hash.SHA384:
 		d.h[0] = u64(0xcbbb9d5dc1059ed8)
@@ -152,14 +152,14 @@ fn (d mut Digest) reset() {
 		d.h[6] = u64(0x2b0199fc2c85b8aa)
 		d.h[7] = u64(0x0eb72ddc81c52ca2)
 	default:
-        d.h[0] = u64(0x6a09e667f3bcc908)
-        d.h[1] = u64(0xbb67ae8584caa73b)
-        d.h[2] = u64(0x3c6ef372fe94f82b)
-        d.h[3] = u64(0xa54ff53a5f1d36f1)
-        d.h[4] = u64(0x510e527fade682d1)
-        d.h[5] = u64(0x9b05688c2b3e6c1f)
-        d.h[6] = u64(0x1f83d9abfb41bd6b)
-        d.h[7] = u64(0x5be0cd19137e2179)
+		d.h[0] = u64(0x6a09e667f3bcc908)
+		d.h[1] = u64(0xbb67ae8584caa73b)
+		d.h[2] = u64(0x3c6ef372fe94f82b)
+		d.h[3] = u64(0xa54ff53a5f1d36f1)
+		d.h[4] = u64(0x510e527fade682d1)
+		d.h[5] = u64(0x9b05688c2b3e6c1f)
+		d.h[6] = u64(0x1f83d9abfb41bd6b)
+		d.h[7] = u64(0x5be0cd19137e2179)
 	}
 	d.nx = 0
 	d.len = u64(0)
@@ -235,22 +235,22 @@ fn (d mut Digest) sum(b_in mut []byte) []byte {
 	switch d0.function {
 	case crypto.Hash.SHA384:
 		for b in hash.left(Size384) {
-            b_in << b
-        }
+			b_in << b
+		}
 	case crypto.Hash.SHA512_224:
 		for b in hash.left(Size224) {
-            b_in << b
-        }
+			b_in << b
+		}
 	case crypto.Hash.SHA512_256:
 		for b in hash.left(Size256) {
-            b_in << b
-        }
+			b_in << b
+		}
 	default:
 		for b in hash {
-            b_in << b
-        }
+			b_in << b
+		}
 	}
-    return *b_in
+	return *b_in
 }
 
 fn (d mut Digest) checksum() []byte {
@@ -259,8 +259,8 @@ fn (d mut Digest) checksum() []byte {
 	mut tmp := [byte(0); 128]
 	tmp[0] = 0x80
 
-    if int(len)%128 < 112 {
-        d.write(tmp.left(112-int(len)%128))
+	if int(len)%128 < 112 {
+		d.write(tmp.left(112-int(len)%128))
 	} else {
 		d.write(tmp.left(128+112-int(len)%128))
 	}
@@ -269,7 +269,7 @@ fn (d mut Digest) checksum() []byte {
 	len <<= u64(3)
 
 	binary.big_endian_put_u64(tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
-    binary.big_endian_put_u64(tmp.right(8), len)
+	binary.big_endian_put_u64(tmp.right(8), len)
 	d.write(tmp.left(16))
 
 	if d.nx != 0 {
@@ -278,7 +278,7 @@ fn (d mut Digest) checksum() []byte {
 
 	mut digest := [byte(0); Size]
 	
-    binary.big_endian_put_u64(digest, d.h[0])
+	binary.big_endian_put_u64(digest, d.h[0])
 	binary.big_endian_put_u64(digest.right(8), d.h[1])
 	binary.big_endian_put_u64(digest.right(16), d.h[2])
 	binary.big_endian_put_u64(digest.right(24), d.h[3])
@@ -304,7 +304,7 @@ pub fn sum384(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA384)
 	d.write(data)
 	sum := d.checksum()
-    sum384 := sum.left(Size384)
+	sum384 := sum.left(Size384)
 	return sum384
 }
 
@@ -313,7 +313,7 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_224)
 	d.write(data)
 	sum := d.checksum()
-    sum224 := sum.left(Size224)
+	sum224 := sum.left(Size224)
 	return sum224
 }
 
@@ -322,14 +322,14 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_256)
 	d.write(data)
 	sum := d.checksum()
-    sum256 := sum.left(Size256)
+	sum256 := sum.left(Size256)
 	return sum256
 }
 
 fn block(dig &Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(dig, p)
+	block_generic(dig, p)
 }
 
 pub fn (d &Digest) size() int {
