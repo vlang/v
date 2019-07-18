@@ -277,7 +277,7 @@ fn (p mut Parser) parse() {
 				//mut line := p.cgen.fn_main + lines.join('\n') 
 				//line = line.trim_space() 
 				p.cgen.fn_main = p.cgen.fn_main + lines.join('\n')
-				p.cgen.cur_line = ''
+				p.cgen.resetln('')
 				for i := start; i < end; i++ {
 					p.cgen.lines[i] = ''
 				}
@@ -381,7 +381,7 @@ fn (p mut Parser) const_decl() {
 			// output a #define so that we don't pollute the binary with unnecessary global vars
 			if is_compile_time_const(p.cgen.cur_line) {
 				p.cgen.consts << '#define $name $p.cgen.cur_line' 
-				p.cgen.cur_line = ''
+				p.cgen.resetln('')
 				p.fgenln('')
 				continue
 			}
@@ -393,7 +393,7 @@ fn (p mut Parser) const_decl() {
 				p.cgen.consts << p.table.cgen_name_type_pair(name, typ) + ';'
 				p.cgen.consts_init << '$name = $p.cgen.cur_line;'
 			}
-			p.cgen.cur_line = ''
+			p.cgen.resetln('')
 		}
 		p.fgenln('')
 	}
@@ -1144,7 +1144,7 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
 		//p.cgen.cur_line = left + 'opt_ok($expr)'
-		p.cgen.cur_line = left + 'opt_ok($expr, sizeof($expr_type))'
+		p.cgen.resetln(left + 'opt_ok($expr, sizeof($expr_type))')
 	}
 	else if !p.builtin_pkg && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.scanner.line_nr--
@@ -1813,7 +1813,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			// Cant have &7, so need a tmp
 			tmp := p.get_tmp()
 			tmp_val := p.cgen.cur_line.right(assign_pos)
-			p.cgen.cur_line = p.cgen.cur_line.left(assign_pos)
+			p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
 			// val := p.cgen.end_tmp()
 			if is_map {
 				p.cgen.set_placeholder(fn_ph, 'map__set(&')
@@ -1841,7 +1841,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		// "m, 0" gets killed since we need to start from scratch. It's messy.
 		// "m, 0" is an index expression, save it before deleting and insert later in map_get()
 		index_expr := p.cgen.cur_line.right(fn_ph)
-		p.cgen.cur_line = p.cgen.cur_line.left(fn_ph)
+		p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
 		// Can't pass integer literal, because map_get() requires a void*
 		tmp := p.get_tmp()
 		tmp_ok := p.get_tmp()
@@ -2342,7 +2342,7 @@ fn (p mut Parser) string_expr() {
 	cur_line := p.cgen.cur_line.trim_space()
 	if cur_line.contains('println (') && p.tok != .plus && 
 		!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
-		p.cgen.cur_line = cur_line.replace('println (', 'printf(')
+		p.cgen.resetln(cur_line.replace('println (', 'printf('))
 		p.gen('$format\\n$args')
 		return
 	}
@@ -2402,7 +2402,7 @@ fn (p mut Parser) array_init() string {
 					p.check(.rsbr)
 					name := p.check_name()
 					if p.table.known_type(name) {
-						p.cgen.cur_line = ''
+						p.cgen.resetln('')
 						p.gen('{}')
 						return '[$lit]$name'
 					}
@@ -2428,7 +2428,7 @@ fn (p mut Parser) array_init() string {
 			p.check_space(.semicolon)
 			val := p.cgen.cur_line.right(pos)
 			// p.cgen.cur_line = ''
-			p.cgen.cur_line = p.cgen.cur_line.left(pos)
+			p.cgen.resetln(p.cgen.cur_line.left(pos))
 			// Special case for zero
 			if false && val.trim_space() == '0' {
 				p.gen('array_repeat( & V_ZERO, ')
@@ -3197,12 +3197,12 @@ fn (p mut Parser) return_st() {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 
-				p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
+				p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
 				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)
-				p.cgen.cur_line = 'return $ret'
+				p.cgen.resetln('return $ret')
 			}
 			p.check_types(expr_type, p.cur_fn.typ)
 		}
