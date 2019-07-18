@@ -180,6 +180,7 @@ fn block_generic(dig &Digest, p []byte) {
 	]
 	
 	mut w := [u64(0); 80]
+	
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]
 	mut h2 := dig.h[2]
@@ -188,6 +189,7 @@ fn block_generic(dig &Digest, p []byte) {
 	mut h5 := dig.h[5]
 	mut h6 := dig.h[6]
 	mut h7 := dig.h[7]
+	
 	for p.len >= Chunk {
 		for i := 0; i < 16; i++ {
 			j := i * 8

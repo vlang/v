@@ -5,7 +5,7 @@
 // Package sha512 implements the SHA-384, SHA-512, SHA-512/224, and SHA-512/256
 // hash algorithms as defined in FIPS 180-4.
 
-// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha256
+// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha512
 
 module sha512
 
@@ -65,8 +65,6 @@ const (
 
 // digest represents the partial evaluation of a checksum.
 struct Digest {
-	// h        [8]uint64
-	// x        [chunk]byte
 mut:
 	h        []u64
 	x        []byte
@@ -173,22 +171,22 @@ fn _new(hash crypto.Hash) *Digest {
 	return d
 }
 
-// new returns a new hash.Hash computing the SHA-512 checksum.
+// new returns a new Digest (implementing hash.Hash) computing the SHA-512 checksum.
 pub fn new() *Digest {
 	return _new(crypto.Hash.SHA512)
 }
 
-// new512_224 returns a new hash.Hash computing the SHA-512/224 checksum.
+// new512_224 returns a new Digest (implementing hash.Hash) computing the SHA-512/224 checksum.
 fn new512_224() *Digest {
 	return _new(crypto.Hash.SHA512_224)
 }
 
-// new512_256 returns a new hash.Hash computing the SHA-512/256 checksum.
+// new512_256 returns a new Digest (implementing hash.Hash) computing the SHA-512/256 checksum.
 fn new512_256() *Digest {
 	return _new(crypto.Hash.SHA512_256)
 }
 
-// new384 returns a new hash.Hash computing the SHA-384 checksum.
+// new384 returns a new Digest (implementing hash.Hash) computing the SHA-384 checksum.
 fn new384() *Digest {
 	return _new(crypto.Hash.SHA384)
 }
@@ -329,7 +327,7 @@ pub fn sum512_256(data []byte) []byte {
 }
 
 fn block(dig &Digest, p []byte) {
-    // For now just use block_generic until we have specific
+	// For now just use block_generic until we have specific
 	// architecture optimized versions
     block_generic(dig, p)
 }
