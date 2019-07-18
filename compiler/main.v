@@ -832,7 +832,6 @@ fn (v mut V) add_user_v_files() {
 			v.files << fit.file_path
 		}
 	}
-	//
 }
 
 fn get_arg(joined_args, arg, def string) string {
