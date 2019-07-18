@@ -133,4 +133,12 @@ fn test_various_map_value() {
 	mut m15 := map[string]byteptr{}
 	m15['test'] = byteptr(0)
 	assert m15['test'] == byteptr(0)
+
+	mut m16 := map[string]i64{}
+	m16['test'] = i64(0)
+	assert m16['test'] == i64(0)
+
+	mut m17 := map[string]u64{}
+	m17['test'] = u64(0)
+	assert m17['test'] == u64(0)
 }
