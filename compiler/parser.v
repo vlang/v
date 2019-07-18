@@ -2063,10 +2063,15 @@ fn (p mut Parser) factor() string {
 	case .integer:
 		typ = 'int'
 		// Check if float (`1.0`, `1e+3`) but not if is hexa
-		if (p.lit.contains('.') || p.lit.contains('e')) && 
-	 		!(p.lit[0] == `0` && p.lit[1] == `x`) {
+		if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) && 
+			!(p.lit[0] == `0` && (p.lit[1] == `x` || p.lit[1] == `X`)) {
 			typ = 'f32'
 			// typ = 'f64' // TODO 
+		} else {
+			v_u64 := p.lit.u64()
+			if u64(u32(v_u64)) < v_u64 {
+				typ = 'u64'
+			}
 		}
 		if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) { 
 			p.error('constant `$p.lit` overflows `$p.expected_type`') 
