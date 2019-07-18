@@ -13,12 +13,12 @@ import math
 import encoding.binary
 
 const (
-    // The size of a SHA256 checksum in bytes.
-    Size = 32
-    // The size of a SHA224 checksum in bytes.
-    Size224 = 28
-    // The blocksize of SHA256 and SHA224 in bytes.
-    BlockSize = 64
+	// The size of a SHA256 checksum in bytes.
+	Size = 32
+	// The size of a SHA224 checksum in bytes.
+	Size224 = 28
+	// The blocksize of SHA256 and SHA224 in bytes.
+	BlockSize = 64
 )
 
 const (
@@ -52,8 +52,8 @@ mut:
 }
 
 fn (d &Digest) reset() {
-    d.h = [u32(0); 8]
-    d.x = [byte(0); Chunk]
+	d.h = [u32(0); 8]
+	d.x = [byte(0); Chunk]
 	if !d.is224 {
 		d.h[0] = u32(Init0)
 		d.h[1] = u32(Init1)
@@ -134,14 +134,14 @@ fn (d &Digest) sum(b_in mut []byte) []byte {
 	mut d0 := *d
 	hash := d0.checksum()
 	if d0.is224 {
-        for b in hash.left(Size224) {
-            b_in << b
-        }
+		for b in hash.left(Size224) {
+			b_in << b
+		}
 	} else {
-        for b in hash {
-            b_in << b
-        }
-    }
+		for b in hash {
+			b_in << b
+		}
+	}
 	return *b_in
 }
 
@@ -183,7 +183,7 @@ fn (d mut Digest) checksum() []byte {
 
 // sum256 returns the SHA256 checksum of the data.
 pub fn sum(data []byte) []byte {
-    return sum256(data)
+	return sum256(data)
 }
 
 // sum256 returns the SHA256 checksum of the data.
@@ -199,13 +199,13 @@ pub fn sum224(data []byte) []byte {
 	d.write(data)
 	sum := d.checksum()
 	sum224 := sum.left(Size224)
-    return sum224
+	return sum224
 }
 
 fn block(dig &Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(dig, p)
+	block_generic(dig, p)
 }
 
 pub fn (d &Digest) size() int {
