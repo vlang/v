@@ -46,7 +46,7 @@ https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 ## Installing V in docker container
 
 ```bash
-git clone https://github.com/anagobabatunde/v.git
+git clone https://github.com/vlang/v
 cd v
 docker build -t vlang .
 #to enter in docker container
