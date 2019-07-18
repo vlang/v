@@ -74,8 +74,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-    d.h = [u64(0); 8]
-    d.x = [byte(0); Chunk]
+	d.h = [u64(0); 8]
+	d.x = [byte(0); Chunk]
 	switch d.function {
 	case crypto.Hash.SHA384:
 		d.h[0] = u64(Init0_384)
