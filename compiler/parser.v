@@ -2647,10 +2647,17 @@ fn (p mut Parser) cast(typ string) string {
 	p.expected_type = typ 
 	expr_typ := p.bool_expression()
 	p.expected_type = '' 
-	p.check(.rpar)
 	// `string(buffer)` => `tos2(buffer)`
+	// `string(buffer, len)` => `tos(buffer, len)`
 	if typ == 'string' && (expr_typ == 'byte*' || expr_typ == 'byteptr') {
-		p.cgen.set_placeholder(pos, 'tos2(')
+		if p.tok == .comma { 
+			p.check(.comma) 
+			p.cgen.set_placeholder(pos, 'tos(')
+			p.gen(', ') 
+			p.check_types(p.expression(), 'int') 
+		}  else { 
+			p.cgen.set_placeholder(pos, 'tos2(')
+		} 
 	}
 	// `string(234)` => error
 	else if typ == 'string' && expr_typ == 'int' {
@@ -2659,6 +2666,7 @@ fn (p mut Parser) cast(typ string) string {
 	else {
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
+	p.check(.rpar)
 	p.gen(')')
 	return typ
 }
