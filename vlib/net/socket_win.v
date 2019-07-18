@@ -13,13 +13,13 @@ const (
     WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
 )
 
-pub fn socket(family int, stype int, prototype int) Socket {
-	sockfd := C.socket(family, _type, proto)
+pub fn socket(family int, stype int, proto int) Socket {
+	sockfd := C.socket(family, stype, proto)
 	s := Socket {
-		sockfd: sockfd
-		family: family
-		_type: _type
-		proto: proto
+		sockfd: sockfd // socket descriptor
+		family: family // socket family
+		_type:  stype  // socket type
+		proto:  proto  // socket proto 
 	}
 	return s
 }
