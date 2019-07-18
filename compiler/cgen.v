@@ -121,7 +121,7 @@ fn (g mut CGen) add_placeholder() int {
 }
 
 fn (g mut CGen) set_placeholder(pos int, val string) {
-	if g.nogen || g.run == .decl {
+	if g.nogen || g.run != .main {
 		return
 	}
 	// g.lines.set(pos, val)
