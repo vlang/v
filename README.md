@@ -69,8 +69,8 @@ On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-co
 ```bash
 # Download the V compiler's source translated to C
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
-cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
-./v -o v compiler          # Use the resulting V binary to build V from V source
+cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
+./v -o v compiler              # Use the resulting V binary to build V from V source
 ```
 (These instructions won't work on Windows, use `make.bat` instead).
 
