@@ -319,11 +319,25 @@ fn (p mut Parser) fn_decl() {
 	if is_sig || p.first_run() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now [BIG]
 		if !is_sig && !is_fn_header {
+			mut opened_scopes := 0
+			mut closed_scopes := 0
 			for {
+				if p.tok == .lcbr {
+					opened_scopes++
+				}
+				if p.tok == .rcbr {
+					closed_scopes++
+				}
 				p.next()
 				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
 					break
 				}
+				//fn body ended, and a new fn attribute declaration like [live] is starting?
+				if closed_scopes > opened_scopes && p.prev_tok == .rcbr {
+					if p.tok == .lsbr {
+						break
+					}
+				}          
 			}
 		}
 		// Live code reloading? Load all fns from .so
