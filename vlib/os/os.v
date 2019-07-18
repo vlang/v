@@ -483,8 +483,6 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
-
-
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	mut home := os.getenv('HOME')
