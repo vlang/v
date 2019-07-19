@@ -36,7 +36,7 @@ fn test_geometric_mean() {
 	data = [f64(-3.0),f64(67.31),f64(4.4),f64(1.89)]
 	o = stats.geometric_mean(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
-	assert o.str().eq('nan') // Because in math it yields a complex number
+	assert o.str().eq('nan') || o.str().eq('NAN') || o == f64(0) // Because in math it yields a complex number
 	data = [f64(12.0),f64(7.88),f64(76.122),f64(54.83)]
 	o = stats.geometric_mean(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
