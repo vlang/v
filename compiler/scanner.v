@@ -26,11 +26,6 @@ mut:
 	prev_tok Token 
 }
 
-const (
-	SingleQuote = `\'`
-	//QUOTE        = `"`
-)
-
 fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
 		panic('"$file_path" doesn\'t exist')
@@ -205,7 +200,7 @@ if s.line_comment != '' {
 	// End of $var, start next string
 	if s.dollar_end {
 		// fmt.Println("end of $var, get string", s.pos, string(s.text[s.pos]))
-		if s.text[s.pos] == SingleQuote {
+		if s.text[s.pos] == `\'` {
 			s.dollar_end = false
 			return scan_res(.str, '')
 		}
@@ -241,7 +236,7 @@ if s.line_comment != '' {
 		// at the next ', skip it
 		if s.inside_string {
 			// println('is_letter inside string! nextc=${nextc.str()}')
-			if next_char == SingleQuote {
+			if next_char == `\'` {
 				// println('var is last before QUOTE')
 				s.pos++
 				s.dollar_start = false
@@ -307,7 +302,7 @@ if s.line_comment != '' {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case SingleQuote:
+	case `\'`:
 		return scan_res(.str, s.ident_string())
 		// TODO allow double quotes
 		// case QUOTE:
@@ -336,7 +331,7 @@ if s.line_comment != '' {
 		if s.inside_string {
 			s.pos++
 			// TODO UN.neEDED?
-			if s.text[s.pos] == SingleQuote {
+			if s.text[s.pos] == `\'` {
 				s.inside_string = false
 				return scan_res(.str, '')
 			}
@@ -549,7 +544,7 @@ fn (s mut Scanner) ident_string() string {
 		}
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == SingleQuote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
@@ -583,7 +578,7 @@ fn (s mut Scanner) ident_string() string {
 		}
 	}
 	mut lit := ''
-	if s.text[start] == SingleQuote {
+	if s.text[start] == `\'` {
 		start++
 	}
 	mut end := s.pos
