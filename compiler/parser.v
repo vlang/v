@@ -68,6 +68,7 @@ mut:
 	can_chash bool
 	attr string 
 	v_script bool // "V bash", import all os functions into global space 
+	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization 
 }
 
 const (
@@ -1173,6 +1174,7 @@ fn (p mut Parser) var_decl() {
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
 	name := p.check_name()
+	p.var_decl_name = name 
 	// Don't allow declaring a variable with the same name. Even in a child scope
 	// (shadowing is not allowed)
 	if !p.builtin_pkg && p.cur_fn.known_var(name) {
@@ -1186,6 +1188,7 @@ fn (p mut Parser) var_decl() {
 	// Generate expression to tmp because we need its type first
 	// [TYP .name =] bool_expression()
 	pos := p.cgen.add_placeholder()
+
 	mut typ := p.bool_expression()
 	// Option check ? or {
 	or_else := p.tok == .key_orelse 
@@ -1228,6 +1231,7 @@ fn (p mut Parser) var_decl() {
 		}
 		p.cgen.set_placeholder(pos, nt_gen)
 	}
+	p.var_decl_name = '' 
 }
 
 fn (p mut Parser) bool_expression() string {
@@ -1362,7 +1366,14 @@ fn (p mut Parser) name_expr() string {
 		name = p.prepend_pkg(name)
 	}
 	// Variable
-	v := p.cur_fn.find_var(name)
+	mut v := p.cur_fn.find_var(name)
+	// A hack to allow `newvar := Foo{ field: newvar }`  
+	// Declare the variable so that it can be used in the initialization 
+	if name == 'main__' + p.var_decl_name {
+		v.name = p.var_decl_name
+		v.typ = 'voidptr' 
+		v.is_mut = true 
+	} 
 	if v.name.len != 0 {
 		if ptr {
 			p.gen('& /*vvar*/ ')
