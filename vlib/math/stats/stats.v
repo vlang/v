@@ -30,6 +30,9 @@ import math
 // Based on 
 // https://www.mathsisfun.com/data/frequency-distribution.html
 pub fn freq(arr []f64, val f64) int {
+	if arr.len == 0 {
+		return 0
+	}
 	mut count := 0
 	for v in arr {
 		if v == val {
@@ -44,6 +47,9 @@ pub fn freq(arr []f64, val f64) int {
 // Based on 
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mean(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut sum := f64(0)
 	for v in arr {
 		sum += v
@@ -56,6 +62,9 @@ pub fn mean(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/numbers/geometric-mean.html
 pub fn geometric_mean(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut sum := f64(1)
 	for v in arr {
 		sum *= v
@@ -68,6 +77,9 @@ pub fn geometric_mean(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/numbers/harmonic-mean.html
 pub fn harmonic_mean(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut sum := f64(0)
 	for v in arr {
 		sum += f64(1)/v
@@ -80,6 +92,9 @@ pub fn harmonic_mean(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn median(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	if arr.len % 2 == 0 {
 		mid := (arr.len/2)-1
 		return (arr[mid] + arr[mid+1])/f64(2)
@@ -94,6 +109,9 @@ pub fn median(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mode(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut freqs := []int
 	for v in arr {
 		freqs<<freq(arr,v)
@@ -113,6 +131,9 @@ pub fn mode(arr []f64) f64 {
 // Based on 
 // https://en.wikipedia.org/wiki/Root_mean_square
 pub fn rms(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut sum := f64(0)
 	for v in arr {
 		sum += math.pow(v,2)
@@ -125,6 +146,9 @@ pub fn rms(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn population_variance(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	m := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
@@ -138,6 +162,9 @@ pub fn population_variance(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn sample_variance(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	m := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
@@ -151,6 +178,9 @@ pub fn sample_variance(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn population_stddev(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	return math.sqrt(population_variance(arr))
 }
 
@@ -159,6 +189,9 @@ pub fn population_stddev(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn sample_stddev(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	return math.sqrt(sample_variance(arr))
 }
 
@@ -167,6 +200,9 @@ pub fn sample_stddev(arr []f64) f64 {
 // Based on 
 // https://en.wikipedia.org/wiki/Average_absolute_deviation
 pub fn mean_absdev(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mean := mean(arr)
 	mut sum := f64(0)
 	for v in arr {
@@ -177,6 +213,9 @@ pub fn mean_absdev(arr []f64) f64 {
 
 // Minimum of the given input array
 pub fn min(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut min := arr[0]
 	for v in arr {
 		if v < min {
@@ -188,6 +227,9 @@ pub fn min(arr []f64) f64 {
 
 // Maximum of the given input array
 pub fn max(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	mut max := arr[0]
 	for v in arr {
 		if v > max {
@@ -202,5 +244,8 @@ pub fn max(arr []f64) f64 {
 // Based on 
 // https://www.mathsisfun.com/data/range.html
 pub fn range(arr []f64) f64 {
+	if arr.len == 0 {
+		return f64(0)
+	}
 	return max(arr) - min(arr)
 }

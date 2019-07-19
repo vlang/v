@@ -238,3 +238,22 @@ fn test_range() {
 	o = stats.range(data)
 	assert o == f64(68.242)
 }
+
+fn test_passing_empty() {
+	data := []f64
+	assert stats.freq(data,0) == 0
+	assert stats.mean(data) == f64(0)
+	assert stats.geometric_mean(data) == f64(0)
+	assert stats.harmonic_mean(data) == f64(0)
+	assert stats.median(data) == f64(0)
+	assert stats.mode(data) == f64(0)
+	assert stats.rms(data) == f64(0)
+	assert stats.population_variance(data) == f64(0)
+	assert stats.sample_variance(data) == f64(0)
+	assert stats.population_stddev(data) == f64(0)
+	assert stats.sample_stddev(data) == f64(0)
+	assert stats.mean_absdev(data) == f64(0)
+	assert stats.min(data) == f64(0)
+	assert stats.max(data) == f64(0)
+	assert stats.range(data) == f64(0)
+}
