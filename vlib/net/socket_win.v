@@ -12,14 +12,3 @@ const (
     WSA_V21 = 0x201 // C.MAKEWORD(2, 1)
     WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
 )
-
-pub fn socket(family int, stype int, prototype int) Socket {
-	sockfd := C.socket(family, _type, proto)
-	s := Socket {
-		sockfd: sockfd
-		family: family
-		_type: _type
-		proto: proto
-	}
-	return s
-}
