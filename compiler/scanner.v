@@ -68,10 +68,6 @@ fn scan_res(tok Token, lit string) ScanRes {
 	return ScanRes{tok, lit}
 }
 
-fn is_white(c byte) bool {
-	return c.is_white()
-}
-
 fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
@@ -134,10 +130,10 @@ fn (s mut Scanner) ident_number() string {
 
 fn (s Scanner) has_gone_over_line_end() bool {
 	mut i := s.pos-1
-	for i >= 0 && !is_white(s.text[i]) {
+	for i >= 0 && !s.text[i].is_white() {
 		i--
 	}
-	for i >= 0 && is_white(s.text[i]) {
+	for i >= 0 && s.text[i].is_white() {
 		if is_nl(s.text[i]) {
 			return true
 		}
@@ -147,7 +143,7 @@ fn (s Scanner) has_gone_over_line_end() bool {
 }
 
 fn (s mut Scanner) skip_whitespace() {
-	for s.pos < s.text.len && is_white(s.text[s.pos]) {
+	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		if is_nl(s.text[s.pos]) {
 			// Count \r\n as one line 
 			if !s.expect('\r\n', s.pos-1) {
