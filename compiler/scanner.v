@@ -95,7 +95,7 @@ fn (s mut Scanner) ident_name() string {
 
 fn (s mut Scanner) ident_number() string {
 	start := s.pos
-	is_hex := s.pos + 1 < s.text.len && s.text[s.pos] == `0` && s.text[s.pos + 1] == `x`
+	is_hex := s.pos + 1 < s.text.len && s.expect('0x', s.pos)
 	is_oct := !is_hex && s.text[s.pos] == `0`
 	mut is_float := false
 	for {
@@ -150,7 +150,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && is_white(s.text[s.pos]) {
 		if is_nl(s.text[s.pos]) {
 			// Count \r\n as one line 
-			if !(s.text[s.pos] == `\n` && s.pos > 0 && s.text[s.pos-1] == `\r`) { 
+			if !s.expect('\r\n', s.pos-1) {
 				s.line_nr++
 			} 
 		}
@@ -469,11 +469,11 @@ fn (s mut Scanner) scan() ScanRes {
 					s.line_nr++
 					continue
 				}
-				if s.text[s.pos] == `/` && s.text[s.pos + 1] == `*` {
+				if s.expect('/*', s.pos) {
 					nest_count++
 					continue
 				}
-				if s.text[s.pos] == `*` && s.text[s.pos + 1] == `/` {
+				if s.expect('*/', s.pos) {
 					nest_count--
 				}
 			}
@@ -615,6 +615,22 @@ fn (s mut Scanner) peek() Token {
 	s.dollar_start = dollar_start
 	s.dollar_end = dollar_end
 	return tok
+}
+
+fn (s mut Scanner) expect(want string, start_pos int) bool {
+	end_pos := start_pos + want.len
+	if start_pos < 0 || start_pos >= s.text.len {
+		return false
+	}
+	if end_pos < 0 || end_pos > s.text.len {
+		return false
+	}
+	for pos in start_pos..end_pos {
+		if s.text[pos] != want[pos-start_pos] {
+			return false
+		}
+	}
+	return true
 }
 
 fn (s mut Scanner) debug_tokens() {
