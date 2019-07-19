@@ -30,7 +30,7 @@ fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
 		panic('"$file_path" doesn\'t exist')
 	}
-	//text := os.read_file(file_path) 
+
 	mut raw_text := os.read_file(file_path) or {
 		panic('scanner: failed to open "$file_path"')
 		return &Scanner{}
@@ -55,7 +55,6 @@ fn new_scanner(file_path string) *Scanner {
 		fmt_out: strings.new_builder(1000)
 	}
 
-	// println('new scanner "$file_path" txt.len=$scanner.text.len')
 	return scanner
 }
 
@@ -157,9 +156,6 @@ fn (s mut Scanner) skip_whitespace() {
 		}
 		s.pos++
 	}
-	// if s.pos == s.text.len {
-	// return scan_res(.eof, '')
-	// }
 }
 
 fn (s mut Scanner) get_var_name(pos int) string {
@@ -178,28 +174,27 @@ fn (s mut Scanner) cao_change(operator string) {
 */ 
 
 fn (s mut Scanner) scan() ScanRes {
-if s.line_comment != '' { 
-	//s.fgenln('// LOL "$s.line_comment"')
-	//s.line_comment = '' 
-} 
-	// if s.file_path == 'd.v' {
-	// println('\nscan()')
-	// }
+	if s.line_comment != '' { 
+		//s.fgenln('// LOL "$s.line_comment"')
+		//s.line_comment = '' 
+	} 
+
 	if s.started {
-		// || (s.pos == 0 && s.text.len > 0 && s.text[s.pos] == `\n`) {
 		s.pos++
 	}
+
 	s.started = true
 	if s.pos >= s.text.len {
 		return scan_res(.eof, '')
 	}
+
 	// skip whitespace
 	if !s.inside_string {
 		s.skip_whitespace()
 	}
+
 	// End of $var, start next string
 	if s.dollar_end {
-		// fmt.Println("end of $var, get string", s.pos, string(s.text[s.pos]))
 		if s.text[s.pos] == `\'` {
 			s.dollar_end = false
 			return scan_res(.str, '')
@@ -208,43 +203,38 @@ if s.line_comment != '' {
 		return scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
+
 	// end of file
 	if s.pos >= s.text.len {
-		// println('scan(): returning .eof (pos >= len)')
 		return scan_res(.eof, '')
 	}
+
 	// handle each char
 	c := s.text[s.pos]
 	mut nextc := `\0`
 	if s.pos + 1 < s.text.len {
 		nextc = s.text[s.pos + 1]
 	}
+
 	// name or keyword
 	if is_name_char(c) {
 		name := s.ident_name()
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
-		// println('!!! got name=$name next_char=$next_char')
 		if is_key(name) {
-			// println('IS KEY')
-			// tok := (key_to_token(name))
-			// println(tok.str())
 			return scan_res(key_to_token(name), '')
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
 		if s.inside_string {
-			// println('is_letter inside string! nextc=${nextc.str()}')
 			if next_char == `\'` {
-				// println('var is last before QUOTE')
 				s.pos++
 				s.dollar_start = false
 				s.inside_string = false
 			}
 		}
-		if s.dollar_start && next_char != `.` {//&& next_char != `(` {
-			// println('INSIDE .str .dollar var=$name')
+		if s.dollar_start && next_char != `.` {
 			s.dollar_end = true
 			s.dollar_start = false
 		}
@@ -453,7 +443,6 @@ if s.line_comment != '' {
 			return scan_res(.div_assign, '')
 		}
 		if nextc == `/` {
-			// debug("!!!!!!.key_goT LI.ne COM")
 			start := s.pos + 1
 			for s.pos < s.text.len && s.text[s.pos] != `\n`{
 				s.pos++
@@ -515,9 +504,6 @@ fn (s &Scanner) error(msg string) {
 	file := s.file_path.all_after('/')
 	println('panic: $file:${s.line_nr + 1}')
 	println(msg)
-	// os.print_backtrace()
-	// println(file)
-	// println(s.file_path)
 	exit(1)
 }
 
@@ -568,7 +554,6 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		// $var
-		// if !s.is_fmt && c != `{` && c != ` ` && ! (c >= `0` && c <= `9`)  && prevc == `$` {
 		if (c.is_letter() || c == `_`) && prevc == `$` {
 			s.inside_string = true
 			s.dollar_start = true
@@ -589,17 +574,6 @@ fn (s mut Scanner) ident_string() string {
 	else {
 		lit = s.text.substr(start, end)
 	}
-	// if lit.contains('\n') {
-	// println('\nstring lit="$lit" pos=$s.pos line=$s.line_nr')
-	// }
-	/* 
-	for c in lit {
-		if s.file_path.contains('range_test') {
-			println('!')
-			println(c)
-		}
-	}
-*/
 	return lit
 }
 
@@ -649,7 +623,6 @@ fn (s mut Scanner) peek() Token {
 	inside_string := s.inside_string
 	dollar_start := s.dollar_start
 	dollar_end := s.dollar_end
-	// /////
 	res := s.scan()
 	tok := res.tok
 	s.pos = pos
@@ -662,28 +635,19 @@ fn (s mut Scanner) peek() Token {
 
 fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
-	fname := s.file_path.all_after('/')
-	println('\n===DEBUG TOKENS $fname===')
-	// allToks := ''
 	s.debug = true
 	for {
 		res := s.scan()
 		tok := res.tok
 		lit := res.lit
-		// printiln(tok)
 		print(tok.str())
-		// allToks += tok.String()
 		if lit != '' {
 			println(' `$lit`')
-			// allToks += " `" + lit + "`"
 		}
 		else {
 			println('')
 		}
-		// allToks += "\n"
 		if tok == .eof {
-			println('============ END OF DEBUG TOKENS ==================')
-			// fmt.Println("========"+s.file+"========\n", allToks)
 			break
 		}
 	}
