@@ -3402,3 +3402,12 @@ fn (p mut Parser) fspace() {
 fn (p mut Parser) fgenln(s string) {
 	p.scanner.fgenln(s)
 }
+
+fn (p mut Parser) peek() Token {
+	for {
+		tok := p.scanner.peek()
+		if tok != .nl {
+			return tok
+		}
+	}
+}

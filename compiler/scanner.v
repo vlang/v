@@ -601,15 +601,6 @@ fn (s mut Scanner) ident_char() string {
 	return c
 }
 
-fn (p mut Parser) peek() Token {
-	for {
-		tok := p.scanner.peek()
-		if tok != .nl {
-			return tok
-		}
-	}
-}
-
 fn (s mut Scanner) peek() Token {
 	pos := s.pos
 	line := s.line_nr
