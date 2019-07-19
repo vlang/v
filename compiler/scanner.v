@@ -248,7 +248,7 @@ fn (s mut Scanner) scan() ScanRes {
 	// `123`, `.123`
 	else if c.is_digit() || c == `.` && nextc.is_digit() {
 		num := s.ident_number()
-		return scan_res(.integer, num)
+		return scan_res(.number, num)
 	}
 	// all other tokens
 	switch c {

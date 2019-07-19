@@ -7,7 +7,7 @@ module main
 enum Token {
 	eof
 	name        // user 
-	integer     // 123 
+	number      // 123 
 	str         // 'foo' 
 	str_inter   // 'name=$user.name' 
 	chartoken   // `A` 
@@ -127,7 +127,7 @@ fn build_token_str() []string {
 	s[Token.keyword_end] = ''
 	s[Token.eof] = '.eof'
 	s[Token.name] = '.name'
-	s[Token.integer] = '.integer'
+	s[Token.number] = '.number'
 	s[Token.str] = 'STR'
 	s[Token.chartoken] = '.chartoken'
 	s[Token.plus] = '+'

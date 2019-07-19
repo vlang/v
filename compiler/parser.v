@@ -806,7 +806,7 @@ fn (p mut Parser) get_type() string {
 	if p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
-		if p.tok == .integer {
+		if p.tok == .number {
 			typ = '[$p.lit]'
 			p.next()
 		}
@@ -817,9 +817,9 @@ fn (p mut Parser) get_type() string {
 		// [10][3]int
 		if p.tok == .lsbr {
 			p.next()
-			if p.tok == .integer {
+			if p.tok == .number {
 				typ += '[$p.lit]'
-				p.check(.integer)
+				p.check(.number)
 			}
 			else {
 				is_arr2 = true
@@ -2026,7 +2026,7 @@ fn (p mut Parser) term() string {
 		p.next()
 		p.gen(tok.str())// + ' /*op2*/ ')
 		p.fgen(' ' + tok.str() + ' ')
-		if is_div && p.tok == .integer && p.lit == '0' {
+		if is_div && p.tok == .number && p.lit == '0' {
 			p.error('division by zero')
 		}
 		if is_mod && (is_float_type(typ) || !is_number_type(typ)) {
@@ -2060,7 +2060,7 @@ fn (p mut Parser) factor() string {
 	mut typ := ''
 	tok := p.tok
 	switch tok {
-	case .integer:
+	case .number:
 		typ = 'int'
 		// Check if float (`1.0`, `1e+3`) but not if is hexa
 		if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) && 
@@ -2382,7 +2382,7 @@ fn (p mut Parser) map_init() string {
 // [1,2,3]
 fn (p mut Parser) array_init() string {
 	p.check(.lsbr)
-	is_integer := p.tok == .integer
+	is_integer := p.tok == .number
 	lit := p.lit
 	mut typ := ''
 	new_arr_ph := p.cgen.add_placeholder()
@@ -3209,7 +3209,7 @@ fn (p mut Parser) return_st() {
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
-		if false && p.tok == .name || p.tok == .integer {
+		if false && p.tok == .name || p.tok == .number {
 			p.error('function `$p.cur_fn.name` does not return a value')
 		}
 
