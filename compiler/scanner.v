@@ -512,10 +512,6 @@ fn (s &Scanner) error(msg string) {
 fn (s mut Scanner) ident_string() string {
 	// println("\nidentString() at char=", string(s.text[s.pos]),
 	// "chard=", s.text[s.pos], " pos=", s.pos, "txt=", s.text[s.pos:s.pos+7])
-	debug := s.file_path.contains('test_test')
-	if debug {
-		println('identStr() $s.file_path line=$s.line_nr pos=$s.pos')
-	}
 	mut start := s.pos
 	s.inside_string = false
 	slash := `\\`
@@ -525,9 +521,6 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		c := s.text[s.pos]
-		if debug {
-			println(c.str())
-		}
 		prevc := s.text[s.pos - 1]
 		// end of string
 		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
