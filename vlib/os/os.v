@@ -108,7 +108,10 @@ pub fn read_file(path string) ?string {
 	mut res := ''
 	mut mode := 'rb' 
 	cpath := path.cstr()
-	fp := C.fopen(cpath, mode.cstr()) 
+	cmode := mode.cstr()
+	fp := C.fopen(cpath, cmode)
+	free(cmode)
+	free(cpath)
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 		//panic('failed to open file "$path"')
@@ -178,6 +181,7 @@ pub fn open(path string) ?File {
 	file := File {
 		cfile: C.fopen(cpath, 'rb') 
 	}
+	free(cpath)
 	if isnil(file.cfile) {
 		return error('failed to open file "$path"')
 	}
@@ -190,6 +194,7 @@ pub fn create(path string) ?File {
 	file := File {
 		cfile: C.fopen(cpath, 'wb') 
 	}
+	free(cpath)
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
 	}
@@ -201,6 +206,7 @@ pub fn open_append(path string) ?File {
 	file := File {
 		cfile: C.fopen(cpath, 'ab') 
 	}
+	free(cpath)
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
 	}
@@ -208,9 +214,9 @@ pub fn open_append(path string) ?File {
 }
 
 pub fn (f File) write(s string) {
-	ss := s.clone()
-	C.fputs(ss.cstr(), f.cfile)
-	// ss.free()
+	cs := s.cstr()
+	C.fputs(cs, f.cfile)
+	free(cs)
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
 
@@ -231,8 +237,9 @@ pub fn (f File) writeln(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
-	C.fputs(s.cstr(), f.cfile)
-	// ss.free()
+	cs := s.cstr()
+	C.fputs(cs, f.cfile)
+	free(cs)
 	C.fputs('\n', f.cfile)
 }
 
@@ -246,7 +253,9 @@ pub fn (f File) close() {
 
 // system starts the specified command, waits for it to complete, and returns its code.
 pub fn system(cmd string) int {
-	ret := C.system(cmd.cstr()) 
+	cmd_cs := cmd.cstr()
+	ret := C.system(cmd_cs)
+	free(cmd_cs)
 	if ret == -1 {
 		os.print_c_errno()
 	}
@@ -255,29 +264,48 @@ pub fn system(cmd string) int {
 
 fn popen(path string) *FILE {
 	cpath := path.cstr()
+	defer { free(cpath) }
 	$if windows {
-		return C._popen(cpath, 'r')
+		r := C._popen(cpath, 'r')
+		return r
 	}
 	$else {
-		return C.popen(cpath, 'r')
+		r := C.popen(cpath, 'r')
+		return r
+	}
+}
+
+fn pclose(stream *FILE) int {
+	$if windows {
+		// TODO close process
+		return 0
+	}
+	$else {
+		return C.pclose(stream)
 	}
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) string {
 	cmd = '$cmd 2>&1'
-	f := popen(cmd) 
+	f := popen(cmd)
 	if isnil(f) {
 		// TODO optional or error code 
 		println('popen $cmd failed')
-		return '' 
+		return ''.clone() // always return an owned string
 	}
+	cmd.free()
 	buf := [1000]byte 
-	mut res := ''
-	for C.fgets(buf, 1000, f) != 0 { 
+	mut res := ''.clone()
+	for C.fgets(buf, 1000, f) != 0 {
+		prev := res
 		res += tos(buf, strlen(buf)) 
+		prev.free()
 	}
-	return res.trim_space()
+	pclose(f)
+	trim := res.trim_space().clone() // convert slice to owned string
+	res.free()
+	return trim
 }
 
 // `getenv` returns the value of the environment variable named by the key.
