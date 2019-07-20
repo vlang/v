@@ -89,43 +89,111 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
-fn (s mut Scanner) ident_number() string {
-	start := s.pos
-	is_hex := s.pos + 1 < s.text.len && s.expect('0x', s.pos)
-	is_oct := !is_hex && s.text[s.pos] == `0`
-	mut is_float := false
+fn (s mut Scanner) ident_hex_number() string {
+	start_pos := s.pos
+	s.pos += 2 // skip '0x'
 	for {
-		s.pos++
 		if s.pos >= s.text.len {
 			break
 		}
 		c := s.text[s.pos]
-		if c == `.` {
-			is_float = true
-		}
-		is_good_hex := is_hex && (c == `x`  || (c >= `a` && c <= `f`)  || (c >= `A` && c <= `F`))
-		// 1e+3, 1e-3, 1e3
-		if !is_hex && c == `e` && s.pos + 1 < s.text.len {
-			next := s.text[s.pos + 1]
-			if next == `+` || next == `-` || next.is_digit() {
-				s.pos++
-				continue
-			}
-		}
-		if !c.is_digit() && c != `.` && !is_good_hex {
+		if !c.is_hex_digit() {
 			break
 		}
-		// 1..9
-		if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `.` {
-			break
-		}
-		if is_oct && c >= `8` && !is_float {
-			s.error('malformed octal constant')
-		}
+		s.pos++
 	}
-	number := s.text.substr(start, s.pos)
+	number := s.text.substr(start_pos, s.pos)
 	s.pos--
 	return number
+}
+
+fn (s mut Scanner) ident_oct_number() string {
+	start_pos := s.pos
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+		c := s.text[s.pos]
+		if c.is_digit() {
+			if !c.is_oct_digit() {
+				s.error('malformed octal constant')
+			}
+		} else {
+			break
+		}
+		s.pos++
+	}
+	number := s.text.substr(start_pos, s.pos)
+	s.pos--
+	return number
+}
+
+fn (s mut Scanner) ident_dec_number() string {
+	start_pos := s.pos
+
+	// scan integer part
+	for s.text[s.pos].is_digit() {
+		s.pos++
+	}
+
+	// e.g. 1..9
+	// we just return '1' and don't scan '..9'
+	if s.expect('..', s.pos) {
+		number := s.text.substr(start_pos, s.pos)
+		s.pos--
+		return number
+	}
+
+	// scan fractional part
+	if s.text[s.pos] == `.` {
+		s.pos++
+		for s.text[s.pos].is_digit() {
+			s.pos++
+		}
+	}
+
+	// scan exponential part
+	mut has_exponential_part := false
+	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
+		exp_start_pos := s.pos += 2
+		for s.text[s.pos].is_digit() {
+			s.pos++
+		}
+		if exp_start_pos == s.pos {
+			s.error('exponent has no digits')
+		}
+		has_exponential_part = true
+	}
+
+	// error check: 1.23.4, 123.e+3.4
+	if s.text[s.pos] == `.` {
+		if has_exponential_part {
+			s.error('exponential part should be integer')
+		}
+		else {
+			s.error('too many decimal points in number')
+		}
+	}
+
+	number := s.text.substr(start_pos, s.pos)
+	s.pos--
+	return number
+}
+
+fn (s mut Scanner) ident_number() string {
+	if s.expect('0x', s.pos) {
+		return s.ident_hex_number()
+	}
+
+	if s.expect('0.', s.pos) || s.expect('0e', s.pos) {
+		return s.ident_dec_number()
+	}
+
+	if s.text[s.pos] == `0` {
+		return s.ident_oct_number()
+	}
+
+	return s.ident_dec_number()
 }
 
 fn (s Scanner) has_gone_over_line_end() bool {
@@ -598,13 +666,17 @@ fn (s mut Scanner) ident_char() string {
 }
 
 fn (s mut Scanner) peek() Token {
+	// save scanner state
 	pos := s.pos
 	line := s.line_nr
 	inside_string := s.inside_string
 	dollar_start := s.dollar_start
 	dollar_end := s.dollar_end
+
 	res := s.scan()
 	tok := res.tok
+
+	// restore scanner state
 	s.pos = pos
 	s.line_nr = line
 	s.inside_string = inside_string
