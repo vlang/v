@@ -4,11 +4,11 @@ import gx
 import gg
 import time 
 import glfw 
+import math 
 	
 const (
-	WIDTH  = 1000
-	HEIGHT = 1000
-	SCALE  = 50
+	Size  = 1000
+	Scale  = 50.0 
 )
 
 struct Context {
@@ -19,12 +19,13 @@ fn main() {
 	glfw.init()
 	ctx:= &Context{ 
 		gg: gg.new_context(gg.Cfg {
-			width: WIDTH 
-			height: HEIGHT 
+			width: Size 
+			height: Size 
 			use_ortho: true 
 			create_window: true 
-			window_title: 'graph builder' 
+			window_title: 'Graph builder' 
 			window_user_ptr: ctx 
+			always_on_top: true
 		})
 	} 
 	for { 
@@ -35,22 +36,13 @@ fn main() {
 }
 
 [live] 
-fn (ctx & Context) draw() {
-	// x axis
-	ctx.gg.draw_line(0, HEIGHT / 2, WIDTH, HEIGHT / 2)
-	// y axis
-	ctx.gg.draw_line(WIDTH / 2, 0, WIDTH / 2, HEIGHT)
-	mut prev_x := f64(0)
-	mut prev_y := f64(0)
-	center := f64(WIDTH / 2)
-	for x := f64(- 10); x <= f64(10); x += 0.01 {
-		//y := (x * x - 2) * f64(SCALE)
-		y := (1.0 / x) * f64(SCALE)
-		//ctx.gg.draw_line(int(center + prev_x), int(center+prev_y), 
-			//int(center + x*f64(10)), int(center+y))
-		ctx.gg.draw_rect(int(center) + int(x * f64(SCALE)), int(center - y), 2, 1, gx.Black)
-		// gx.draw_rect_f(center + (x * f64(SCALE)), center - y, 1, 1, gx.BLACK)
-		prev_x = x
-		prev_y = y
+fn (ctx &Context) draw() {
+	ctx.gg.draw_line(0, Size / 2, Size, Size / 2) // x axis 
+	ctx.gg.draw_line(Size / 2, 0, Size / 2, Size) // y axis 
+	center := f64(Size / 2) 
+	for x := -10.0; x <= 10.0; x += 0.002 {
+		y := (x - 1) * (x - 1) + 1
+		ctx.gg.draw_rect(center + x * Scale, 
+			center - y * Scale, 1, 1, gx.Black) 
 	}
 }

@@ -56,6 +56,7 @@ struct Cfg {
 	create_window bool 
 	window_user_ptr voidptr 
 	window_title string 
+	always_on_top bool 
 }
 
 struct GG {
@@ -85,6 +86,7 @@ pub fn new_context(cfg Cfg) *GG {
 			width: cfg.width 
 			height: cfg.height 
 			ptr: cfg.window_user_ptr 
+			always_on_top: cfg.always_on_top 
 		})
 		window.make_context_current()
 		init() 
@@ -401,7 +403,7 @@ pub fn create_image(file string) u32 {
 	return texture
 }
 
-pub fn (ctx &GG) draw_line_c(x, y, x2, y2 int, color gx.Color) {
+pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
 	C.glDeleteBuffers(1, &ctx.VAO)
 	C.glDeleteBuffers(1, &ctx.VBO)
 	ctx.shader.use()
@@ -415,13 +417,16 @@ pub fn (ctx &GG) draw_line_c(x, y, x2, y2 int, color gx.Color) {
 	gl.draw_arrays(GL_LINES, 0, 2)
 }
 
-pub fn (c &GG) draw_line(x, y, x2, y2 int) {
+pub fn (c &GG) draw_line(x, y, x2, y2 f32) {
 	c.draw_line_c(x, y, x2, y2, gx.Gray)
 }
 
 pub fn (c &GG) draw_vertical(x, y, height int) {
 	c.draw_line(x, y, x, y + height)
 }
+
+
+//ctx.gg.draw_line(center + prev_x, center+prev_y, center + x*10.0, center+y)
 
 // fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
 pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
