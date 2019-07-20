@@ -3206,7 +3206,6 @@ else {
 }
 
 fn (p mut Parser) return_st() {
-	p.cgen.insert_before(p.cur_fn.defer_text)
 	p.check(.key_return)
 	p.fgen(' ') 
 	fn_returns := p.cur_fn.typ != 'void'
@@ -3223,11 +3222,20 @@ fn (p mut Parser) return_st() {
 				ret := p.cgen.cur_line.right(ph)
 
 				p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
+				p.cgen(p.cur_fn.defer_text) 
 				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)
-				p.cgen.resetln('return $ret')
+				p.cgen(p.cur_fn.defer_text) 
+				if expr_type == 'void*' { 
+					p.cgen.resetln('return $ret')
+				}  else { 
+					tmp := p.get_tmp() 
+					p.cgen.resetln('$expr_type $tmp = $ret;') 
+					p.genln(p.cur_fn.defer_text) 
+					p.genln('return $tmp;') 
+				} 
 			}
 			p.check_types(expr_type, p.cur_fn.typ)
 		}
