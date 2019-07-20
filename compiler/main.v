@@ -189,7 +189,7 @@ fn (v mut V) compile() {
 #include <inttypes.h>  // int64_t etc 
 
 
-#ifdef __linux__ 
+#if defined(__linux__) || defined(__OpenBSD__) 
 #include <pthread.h> 
 #endif 
 
