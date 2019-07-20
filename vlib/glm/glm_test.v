@@ -4,7 +4,6 @@
 
 import os
 import gl
-import gg
 import glm
 
 fn cmp(a, b f32) bool {
