@@ -210,7 +210,7 @@ fn (s string) ge(a string) bool {
 }
 
 // TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
-pub fn (s string) add(a string) string {
+fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string {
 		len: new_len
