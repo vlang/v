@@ -212,30 +212,13 @@ fn (s Scanner) has_gone_over_line_end() bool {
 
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
-		if is_nl(s.text[s.pos]) {
-			// Count \r\n as one line 
-			if !s.expect('\r\n', s.pos-1) {
+		// Count \r\n as one line 
+		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 				s.line_nr++
-			} 
 		}
 		s.pos++
 	}
 }
-
-fn (s mut Scanner) get_var_name(pos int) string {
-	mut pos_start := pos
-
-	for ; pos_start >= 0 && s.text[pos_start] != `\n` && s.text[pos_start] != `;`; pos_start-- {}
-	pos_start++
-	return s.text.substr(pos_start, pos)
-}
-
-// CAO stands for Compound Assignment Operators  (e.g '+=' )
-/* 
-fn (s mut Scanner) cao_change(operator string) {
-	s.text = s.text.substr(0, s.pos - operator.len) + ' = ' + s.get_var_name(s.pos - operator.len) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
-}
-*/ 
 
 fn (s mut Scanner) scan() ScanRes {
 	if s.line_comment != '' { 
