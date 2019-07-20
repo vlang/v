@@ -68,10 +68,6 @@ fn scan_res(tok Token, lit string) ScanRes {
 	return ScanRes{tok, lit}
 }
 
-fn is_nl(c byte) bool {
-	return c == `\r` || c == `\n`
-}
-
 fn (s mut Scanner) ident_name() string {
 	start := s.pos
 	for {
@@ -225,21 +221,17 @@ fn (s mut Scanner) scan() ScanRes {
 		//s.fgenln('// LOL "$s.line_comment"')
 		//s.line_comment = '' 
 	} 
-
 	if s.started {
 		s.pos++
 	}
-
 	s.started = true
 	if s.pos >= s.text.len {
 		return scan_res(.eof, '')
 	}
-
 	// skip whitespace
 	if !s.inside_string {
 		s.skip_whitespace()
 	}
-
 	// End of $var, start next string
 	if s.dollar_end {
 		if s.text[s.pos] == `\'` {
@@ -250,19 +242,16 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
-
 	// end of file
 	if s.pos >= s.text.len {
 		return scan_res(.eof, '')
 	}
-
 	// handle each char
 	c := s.text[s.pos]
 	mut nextc := `\0`
 	if s.pos + 1 < s.text.len {
 		nextc = s.text[s.pos + 1]
 	}
-
 	// name or keyword
 	if is_name_char(c) {
 		name := s.ident_name()
@@ -538,7 +527,6 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.eof, '')
 		} 
 	} 
-	println('(char code=$c) pos=$s.pos len=$s.text.len')
 	mut msg := 'invalid character `${c.str()}`' 
 	if c == `"` {
 		msg += ', use \' to denote strings' 
@@ -582,8 +570,7 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// Don't allow \x00
-		if c == `0` && s.pos > 5 && s.text[s.pos - 1] == `0` && s.text[s.pos - 2] == `x` &&
-		s.text[s.pos - 3] == `\\` {
+		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
@@ -597,7 +584,6 @@ fn (s mut Scanner) ident_string() string {
 		if (c.is_letter() || c == `_`) && prevc == `$` {
 			s.inside_string = true
 			s.dollar_start = true
-			// println('setting s.dollar=true pos=$s.pos')
 			s.pos -= 2
 			break
 		}
@@ -629,7 +615,7 @@ fn (s mut Scanner) ident_char() string {
 		if s.text[s.pos] != slash {
 			len++
 		}
-		double_slash := s.text[s.pos - 1] == slash && s.text[s.pos - 2] == slash
+		double_slash := s.expect('\\\\', s.pos - 2)
 		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) {
 			if double_slash {
 				len++
@@ -642,7 +628,7 @@ fn (s mut Scanner) ident_char() string {
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
-		s.error('invalid character literal (more than one character: $len)')
+			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
 	return c
@@ -706,6 +692,10 @@ fn (s mut Scanner) debug_tokens() {
 
 fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
+}
+
+fn is_nl(c byte) bool {
+	return c == `\r` || c == `\n`
 }
 
 fn (s mut Scanner) get_opening_bracket() int {
