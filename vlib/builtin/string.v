@@ -709,7 +709,7 @@ pub fn (c byte) is_digit() bool {
 }
 
 pub fn (c byte) is_hex_digit() bool {
-	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `a` && c <= `f`)
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 pub fn (c byte) is_oct_digit() bool {
