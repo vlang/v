@@ -2668,26 +2668,31 @@ fn (p mut Parser) cast(typ string) string {
 	// `string(bytes_array, len)` => `tos(bytes_array.data, len)`
 	is_byteptr := expr_typ == 'byte*' || expr_typ == 'byteptr' 
 	is_bytearr := expr_typ == 'array_byte' 
-	if typ == 'string' && (is_byteptr || is_bytearr) { 
-		if p.tok == .comma { 
-			p.check(.comma) 
-			p.cgen.set_placeholder(pos, 'tos(')
-			if is_bytearr {
-				p.gen('.data') 
+	if typ == 'string' {
+		if is_byteptr || is_bytearr { 
+			if p.tok == .comma { 
+				p.check(.comma) 
+				p.cgen.set_placeholder(pos, 'tos(')
+				if is_bytearr {
+					p.gen('.data') 
+				} 
+				p.gen(', ') 
+				p.check_types(p.expression(), 'int') 
+			}  else { 
+				if is_bytearr {
+					p.gen('.data') 
+				} 
+				p.cgen.set_placeholder(pos, 'tos2(')
 			} 
-			p.gen(', ') 
-			p.check_types(p.expression(), 'int') 
-		}  else { 
-			if is_bytearr {
-				p.gen('.data') 
-			} 
-			p.cgen.set_placeholder(pos, 'tos2(')
+		} 
+		// `string(234)` => error
+		else if expr_typ == 'int' {
+			p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
+		} 
+		else {
+			p.error('cannot cast `$expr_typ` to `$typ`') 
 		} 
 	}
-	// `string(234)` => error
-	else if typ == 'string' && expr_typ == 'int' {
-		p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
-	} 
 	else {
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
