@@ -3411,3 +3411,7 @@ fn (p mut Parser) peek() Token {
 		}
 	}
 }
+
+fn (p mut Parser) create_type_string(T Type, name string) {
+	p.scanner.create_type_string(T, name)
+}

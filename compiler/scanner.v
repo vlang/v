@@ -740,7 +740,3 @@ fn (s mut Scanner) create_type_string(T Type, name string) {
 	s.line_nr = line
 	s.inside_string = inside_string
 }
-
-fn (p mut Parser) create_type_string(T Type, name string) {
-	p.scanner.create_type_string(T, name)
-}
