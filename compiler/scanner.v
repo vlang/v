@@ -673,6 +673,10 @@ fn (s mut Scanner) expect(want string, start_pos int) bool {
 fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.debug = true
+
+	fname := s.file_path.all_after('/')
+	println('\n===DEBUG TOKENS $fname===')
+
 	for {
 		res := s.scan()
 		tok := res.tok
@@ -685,6 +689,7 @@ fn (s mut Scanner) debug_tokens() {
 			println('')
 		}
 		if tok == .eof {
+			println('============ END OF DEBUG TOKENS ==================')
 			break
 		}
 	}
