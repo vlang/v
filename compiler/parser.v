@@ -2665,13 +2665,22 @@ fn (p mut Parser) cast(typ string) string {
 	p.expected_type = '' 
 	// `string(buffer)` => `tos2(buffer)`
 	// `string(buffer, len)` => `tos(buffer, len)`
-	if typ == 'string' && (expr_typ == 'byte*' || expr_typ == 'byteptr') {
+	// `string(bytes_array, len)` => `tos(bytes_array.data, len)`
+	is_byteptr := expr_typ == 'byte*' || expr_typ == 'byteptr' 
+	is_bytearr := expr_typ == 'array_byte' 
+	if typ == 'string' && (is_byteptr || is_bytearr) { 
 		if p.tok == .comma { 
 			p.check(.comma) 
 			p.cgen.set_placeholder(pos, 'tos(')
+			if is_bytearr {
+				p.gen('.data') 
+			} 
 			p.gen(', ') 
 			p.check_types(p.expression(), 'int') 
 		}  else { 
+			if is_bytearr {
+				p.gen('.data') 
+			} 
 			p.cgen.set_placeholder(pos, 'tos2(')
 		} 
 	}
