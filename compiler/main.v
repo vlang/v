@@ -1133,7 +1133,9 @@ Options:
   -prod             Build an optimized executable.
   -o <file>         Place output into <file>.
   -obf              Obfuscate the resulting binary.
-  run               Build and execute a V program. You can add arguments after file name.
+  -show_c_cmd       Print the full C compilation command. 
+  -debug            Leave a C file for debugging in .program.c. 
+  run               Build and execute a V program. You can add arguments after the file name.
 
 Files:
   <file>_test.v     Test file.
