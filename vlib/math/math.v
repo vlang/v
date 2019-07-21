@@ -218,6 +218,11 @@ pub fn lcm(a, b i64) i64 {
 	return res
 }
 
+// ldexp returns no. multiplied by 2 raised to the power of exponent.
+pub fn ldexp (a, b f64) f64 {
+	return C.ldexp(a,b)
+}
+
 // log calculates natural (base-e) logarithm of the provided value.
 pub fn log(a f64) f64 {
 	return C.log(a)
