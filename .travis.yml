@@ -35,12 +35,6 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      #choco install make
-      #cp "C:\\ProgramData\\chocolatey\\bin\\gcc.exe" "C:\\ProgramData\\chocolatey\\bin\\cc.exe"
-    fi
-  #- export VROOT=$(pwd)
-  - |
-    if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
       echo "Running make.bat..."
       ./make.bat
     fi
