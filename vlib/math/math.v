@@ -259,6 +259,11 @@ pub fn min(a, b f64) f64 {
 	return b
 }
 
+// modf returns the fraction component and sets integer to the integer component.
+pub fn modf(a,*b f64) f64 {
+	return C.modf(a,&b)
+}
+
 // pow returns base raised to the provided power.
 pub fn pow(a, b f64) f64 {
 	return C.pow(a, b)
