@@ -643,12 +643,17 @@ mut args := ''
 	$if windows {
 		cmd = 'gcc $args' 
 	} 
+	// Run
+	ticks := time.ticks() 
+	res := os.exec(cmd)
+	diff := time.ticks() - ticks 
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
-		println('\n==========\n$cmd\n=========\n')
+		println('\n==========')
+		println(cmd) 
+		println('cc took $diff ms') 
+		println('=========\n')
 	}
-	// Run
-	res := os.exec(cmd)
 	// println('C OUTPUT:')
 	if res.contains('error: ') {
 		println(res)
@@ -1124,9 +1129,12 @@ Options:
   -prod             Build an optimized executable.
   -o <file>         Place output into <file>.
   -obf              Obfuscate the resulting binary.
-  -show_c_cmd       Print the full C compilation command. 
+  -show_c_cmd       Print the full C compilation command and how much time it took. 
   -debug            Leave a C file for debugging in .program.c. 
+  -live             Enable hot code reloading (required by functions marked with [live]). 
+  fmt               Run vfmt to format the source code. 
   run               Build and execute a V program. You can add arguments after the file name.
+
 
 Files:
   <file>_test.v     Test file.
