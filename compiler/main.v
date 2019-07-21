@@ -977,7 +977,7 @@ fn new_v(args[]string) *V {
 	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
  
 	}  else {
-		println('vlib not found. It should be next to V executable. ') 
+		println('vlib not found. It should be next to the V executable. ')  
 		println('Go to https://vlang.io to install V.') 
 		exit(1) 
 	} 

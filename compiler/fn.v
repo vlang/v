@@ -46,23 +46,6 @@ fn (f mut Fn) open_scope() {
 	f.scope_level++
 }
 
-fn (f mut Fn) close_scope() {
-	// println('close_scope level=$f.scope_level var_idx=$f.var_idx')
-	// Move back `var_idx` (pointer to the end of the array) till we reach the previous scope level.
-	// This effectivly deletes (closes) current scope.
-	mut i := f.var_idx - 1
-	for; i >= 0; i-- {
-		v := f.local_vars[i]
-		if v.scope_level != f.scope_level {
-			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
-			break
-		}
-	}
-	f.var_idx = i + 1
-	// println('close_scope new var_idx=$f.var_idx\n')
-	f.scope_level--
-}
-
 fn (f &Fn) mark_var_used(v Var) {
 	for i, vv in f.local_vars {
 		if vv.name == v.name {
@@ -432,19 +415,11 @@ fn (p mut Parser) check_unused_variables() {
 			p.scanner.line_nr = var.line_nr - 1
 			p.error('`$var.name` declared and not used')
 		}
-		// Very basic automatic memory management at the end of the function.
-		// This is inserted right before the final `}`, so if the object is being returned,
-		// the free method will not be called.
-		if p.pref.is_test && var.typ.contains('array_') {
-			// p.genln('v_${var.typ}_free($var.name); // !!!! XAXA')
-			// p.genln('free(${var.name}.data); // !!!! XAXA')
-		}
 	}
 }
 
-// Important function with 5 args.
-// user.say_hi() => "User_say_hi(user)"
-// method_ph - where to insert "user_say_hi("
+// user.register() => "User_register(user)"
+// method_ph - where to insert "user_register("
 // receiver_var - "user" (needed for pthreads)
 // receiver_type - "User"
 fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {

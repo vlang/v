@@ -27,6 +27,7 @@ mut:
 	is_global       bool // __global (translated from C only)
 	is_used         bool
 	scope_level     int
+	is_alloc        bool 
 }
 
 struct Parser {
@@ -69,6 +70,7 @@ mut:
 	attr string 
 	v_script bool // "V bash", import all os functions into global space 
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization 
+	building_v bool 
 }
 
 const (
@@ -96,6 +98,9 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 		os: c.os
 		run: run
 		vroot: c.vroot
+		building_v: !c.pref.is_repl && (path.contains('compiler/')  || 
+			path.contains('v/vlib')) 
+			 
 	}
 	p.next()
 	// p.scanner.debug_tokens()
@@ -214,8 +219,9 @@ fn (p mut Parser) parse() {
 			// $if, $else
 			p.comp_time()
 		case Token.key_global:
-			if !p.pref.translated && !p.pref.is_live && !p.builtin_pkg && !p.building_v() {
-				//p.error('__global is only allowed in translated code')
+			if !p.pref.translated && !p.pref.is_live && 
+				!p.builtin_pkg && !p.building_v {
+				p.error('__global is only allowed in translated code')
 			}
 			p.next()
 			name := p.check_name()
@@ -988,9 +994,34 @@ fn (p mut Parser) statements_no_curly_end() string {
 	}
 	//p.fmt_dec() 
 	// println('close scope line=$p.scanner.line_nr')
-	p.cur_fn.close_scope()
+	p.close_scope()
 	return last_st_typ
 }
+
+fn (p mut Parser) close_scope() {
+	// println('close_scope level=$f.scope_level var_idx=$f.var_idx')
+	// Move back `var_idx` (pointer to the end of the array) till we reach the previous scope level.
+	// This effectivly deletes (closes) current scope.
+	mut i := p.cur_fn.var_idx - 1
+	for; i >= 0; i-- {
+		v := p.cur_fn.local_vars[i]
+		if v.scope_level != p.cur_fn.scope_level {
+			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
+			break
+		}
+		if !p.building_v && !v.is_mut && v.is_alloc {
+			if v.typ.starts_with('array_') { 
+				p.genln('v_array_free($v.name); // close_scope free') 
+			} 
+			else { 
+				p.genln('free($v.name); // close_scope free') 
+			} 
+		} 
+	}
+	p.cur_fn.var_idx = i + 1
+	// println('close_scope new var_idx=$f.var_idx\n')
+	p.cur_fn.scope_level--
+} 
 
 fn (p mut Parser) genln(s string) {
 	p.cgen.genln(s)
@@ -1221,6 +1252,7 @@ fn (p mut Parser) var_decl() {
 		name: name
 		typ: typ
 		is_mut: is_mut
+		is_alloc: typ.starts_with('array_') 
 	})
 	mut cgen_typ := typ
 	if !or_else {
@@ -3115,7 +3147,7 @@ fn (p mut Parser) for_st() {
 	p.check(.lcbr)
 	p.genln('') 
 	p.statements()
-	p.cur_fn.close_scope()
+	p.close_scope()
 	p.for_expr_cnt--
 }
 
@@ -3228,7 +3260,7 @@ fn (p mut Parser) return_st() {
 			else {
 				ret := p.cgen.cur_line.right(ph)
 				p.cgen(p.cur_fn.defer_text) 
-				if expr_type == 'void*' { 
+				if p.cur_fn.defer_text == '' || expr_type == 'void*' { 
 					p.cgen.resetln('return $ret')
 				}  else { 
 					tmp := p.get_tmp() 
@@ -3369,10 +3401,12 @@ fn is_compile_time_const(s string) bool {
 	return true
 }
 
+/* 
 fn (p &Parser) building_v() bool {
 	cur_dir := os.getwd()
 	return p.file_path.contains('v/compiler') || cur_dir.contains('v/compiler') 
 }
+*/ 
 
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)

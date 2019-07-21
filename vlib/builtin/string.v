@@ -716,12 +716,14 @@ pub fn (s string) free() {
 	C.free(s.str)
 }
 
+/* 
 fn (arr []string) free() {
 	for s in arr {
 		s.free()
 	}
 	C.free(arr.data)
 }
+*/ 
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
