@@ -3239,7 +3239,7 @@ g_test_ok = 0 ;
 	// Maybe print all vars in a test function if it fails? 
 } 
 else { 
-  puts("\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m");
+  //puts("\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m");
 }')
 }
 
