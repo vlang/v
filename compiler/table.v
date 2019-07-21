@@ -22,8 +22,9 @@ mut:
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
-	file_path string
-	imports   map[string]string
+	module_name string
+	file_path   string
+	imports     map[string]string
 }
 
 enum AccessMod {

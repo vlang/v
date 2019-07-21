@@ -141,6 +141,7 @@ fn (p mut Parser) parse() {
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
+	p.import_table.module_name = fq_mod
 	p.table.register_package(fq_mod)
 	// replace "." with "_dot_" in module name for C variable names
 	p.mod = fq_mod.replace('.', '_dot_')
