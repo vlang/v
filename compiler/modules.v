@@ -5,8 +5,10 @@
 module main
 
 struct ModDepGraphNode  {
+mut:
 	name string
 	deps []string
+	last_cycle string
 }
 
 struct ModDepGraph {
@@ -21,13 +23,13 @@ struct DepSet {
 	items []string
 }
 
-pub fn(mapset mut DepSet) add(item string) {
-	mapset.items << item
+pub fn(dset mut DepSet) add(item string) {
+	dset.items << item
 }
 
-pub fn(mapset &DepSet) diff(otherset DepSet) DepSet {
+pub fn(dset &DepSet) diff(otherset DepSet) DepSet {
 	mut diff := DepSet{}
-	for item in mapset.items {
+	for item in dset.items {
 		if !item in otherset.items {
 			diff.items << item
 		}
@@ -35,8 +37,8 @@ pub fn(mapset &DepSet) diff(otherset DepSet) DepSet {
 	return diff
 }
 
-pub fn(mapset &DepSet) size() int {
-	return mapset.items.len
+pub fn(dset &DepSet) size() int {
+	return dset.items.len
 }
 
 pub fn new_mod_dep_graph() *ModDepGraph {
@@ -89,7 +91,11 @@ pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
 			mut g := new_mod_dep_graph()
 			g.acyclic = false
 			for name, _ in node_deps {				
-				g.nodes << node_names[name]
+				mut node := node_names[name]
+				if name == node_deps.keys()[node_deps.size-1] {
+					node.last_cycle = node_deps[name].items[node_deps[name].items.len-1]
+				}
+				g.nodes << node
 			}
 			return g
 		}
@@ -133,9 +139,14 @@ pub fn(graph &ModDepGraph) last_node() {
 }
 
 pub fn(graph &ModDepGraph) display() {
-	for _, node in graph.nodes {
-		for _, dep in node.deps {
-			println(' * $node.name -> $dep')
+	for i:=0; i<graph.nodes.len; i++ {
+		node := graph.nodes[i]
+		for dep in node.deps {
+			mut out := ' * $node.name -> $dep'
+			if !graph.acyclic && i == graph.nodes.len-1 && dep == node.last_cycle {
+				out += ' <-- last cycle'
+			}
+			println(out)
 		}
 	}
 }
