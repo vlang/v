@@ -100,7 +100,7 @@ pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
 			return g
 		}
 
-		ready_set.items.len > 0 {
+		ready_set.size() > 0 {
 			mut new_set := map[string]DepSet{}
 			for name in ready_set.items {
 				// node_deps.remove(name)
