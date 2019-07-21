@@ -15,7 +15,7 @@ type HANDLE voidptr
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
     mode := 'rb'
-    _fd := C._wfopen(path.to_wide(), mode.cstr())
+    _fd := C.fopen(path.cstr(), mode.cstr())
     if _fd == 0 {
 	    return HANDLE(INVALID_HANDLE_VALUE)
     }
@@ -27,14 +27,17 @@ pub fn get_file_handle(path string) HANDLE {
 // get_module_filename retrieves the fully qualified path for the file that contains the specified module. 
 // The module must have been loaded by the current process.
 pub fn get_module_filename(handle HANDLE) ?string {
-    mut sz := int(4096) // Optimized length 
-    mut buf := &u16(malloc(4096))
+    mut sz := int(1024) // Optimized length 
+    mut buf := [byte(0); sz] // Not work for GetModuleFileNameW :(
     for {
         status := C.GetModuleFileName(handle, &buf, sz)
         switch status {
         case SUCCESS:
-            _filename := string_from_wide2(buf, sz)
+            _filename := tos(buf.data, sz)
             return _filename
+        case ERROR_INSUFFICIENT_BUFFER:
+            sz += 1024 // increment buffer cluster by 1024
+            buf = [byte(0); sz] // clear buffer
         default:
             // Must handled with GetLastError and converted by FormatMessage
             return error('Cannot get file name from handle.')
