@@ -35,14 +35,14 @@ pub fn(mapset &DepSet) size() int {
 	return mapset.items.len
 }
 
-pub fn new_dep_graph() *ModDepGraph {
+pub fn new_mod_dep_graph() *ModDepGraph {
 	return &ModDepGraph{
 		acyclic: true
 	}
 }
 
 pub fn(graph mut ModDepGraph) from_import_tables(import_tables []FileImportTable) {
-	for fit in file_imports {
+	for fit in import_tables {
 		mut deps := []string
 		for _, m in fit.imports {
 			deps << m
@@ -72,7 +72,7 @@ pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
 		node_deps[node.name] = dep_set
 	}
 
-	mut resolved := new_dep_graph()
+	mut resolved := new_mod_dep_graph()
 	for node_deps.size != 0 {
 		mut ready_set := DepSet{}
 		for name, deps in node_deps {
@@ -82,7 +82,7 @@ pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
 		}
 
 		if ready_set.size() == 0 {
-			mut g := new_dep_graph()
+			mut g := new_mod_dep_graph()
 			g.acyclic = false
 			for name, _ in node_deps {				
 				g.nodes << node_names[name]
