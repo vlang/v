@@ -1,10 +1,10 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// that can be found in the LICENSE file.  
 
 import rand
 import time
-import gx
+import gx 
 import gl
 import gg
 import glfw
@@ -114,6 +114,7 @@ fn main() {
 			window_user_ptr: game 
 		})
 	} 
+	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
