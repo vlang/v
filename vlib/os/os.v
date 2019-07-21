@@ -660,9 +660,10 @@ pub fn executable() string {
 
 pub fn is_dir(path string) bool {
 	$if windows {
-		val := int(C.GetFileAttributes(path.to_wide()))
+		return dir_exists(path) 
+		//val := int(C.GetFileAttributes(path.to_wide()))
 		// Note: this return is broke (wrong). we have dir_exists already how will this differ?
-		return (val &FILE_ATTRIBUTE_DIRECTORY) > 0
+		//return (val &FILE_ATTRIBUTE_DIRECTORY) > 0
 	} 
 	$else { 
 		statbuf := C.stat{}
