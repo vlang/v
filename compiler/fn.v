@@ -518,6 +518,13 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
+	if f.is_c && !p.builtin_pkg {
+		if f.name == 'free' {
+			p.error('use `free()` instead of `C.free()`') 
+		} else if f.name == 'malloc' {
+			p.error('use `malloc()` instead of `C.malloc()`') 
+		} 
+	} 
 	cgen_name := p.table.cgen_name(f)
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name

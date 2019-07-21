@@ -105,24 +105,21 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string { 
-	mut res := ''
 	mut mode := 'rb' 
 	cpath := path.cstr()
 	fp := C.fopen(cpath, mode.cstr()) 
 	if isnil(fp) {
 		return error('failed to open file "$path"')
-		//panic('failed to open file "$path"')
 	}
 	C.fseek(fp, 0, SEEK_END)
 	fsize := C.ftell(fp)
-	// C.fseek(fp, 0, SEEK_SET)  // same as C.rewind(fp) below
+	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	mut str := malloc(fsize + 1)
 	C.fread(str, fsize, 1, fp)
 	C.fclose(fp)
 	str[fsize] = 0
-	res = tos(str, fsize)
-	return res
+	return string(str, fsize)
 }
 
 // file_size returns the size of the file located in `path`.
@@ -463,7 +460,7 @@ pub fn get_raw_line() string {
 		if nr_chars == 0 {
 			return ''
 		}
-		return tos(buf, nr_chars)
+		return string(buf, nr_chars)
 	} 
 }
 
@@ -479,6 +476,15 @@ pub fn user_os() string {
 	}
 	$if freebsd {
 		return 'freebsd' 
+	} 
+	$if openbsd {
+		return 'openbsd' 
+	} 
+	$if netbsd {
+		return 'netbsd' 
+	} 
+	$if dragonfly {
+		return 'dragonfly' 
 	} 
 	return 'unknown'
 }
@@ -501,7 +507,7 @@ pub fn home_dir() string {
 	return home
 }
 
-// write_file writes text data to a file in `path`. 
+// write_file writes `text` data to a file in `path`. 
 pub fn write_file(path, text string) {
 	f := os.create(path) or {
 		return 
@@ -536,11 +542,11 @@ pub fn executable() string {
 		if count < 0 {
 			panic('error reading /proc/self/exe to get exe path')
 		}
-		return tos(result, count)
+		return string(result, count)
 	}
 	$if windows {
 		ret := int(C.GetModuleFileName( 0, result, MAX_PATH ))
-		return tos( result, ret)
+		return string( result, ret)
 	}
 	$if mac {
 		pid := C.getpid() 
@@ -567,14 +573,14 @@ pub fn executable() string {
 		if count < 0 {
 			panic('error reading /proc/curproc/exe to get exe path')
 		}
-		return tos(result, count)
+		return string(result, count)
 	} 
 	$if dragonfly {
 		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH ))
 		if count < 0 {
 			panic('error reading /proc/curproc/file to get exe path')
 		}
-		return tos(result, count)
+		return string(result, count)
 	} 
 	return '.' 
 }

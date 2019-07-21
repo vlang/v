@@ -93,11 +93,6 @@ pub fn free(ptr voidptr) {
 	C.free(ptr)
 }
 
-fn _strlen(s byteptr) int {
-	return C.strlen(s)
-}
-
-
 fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
