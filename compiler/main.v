@@ -797,14 +797,7 @@ fn (v mut V) add_user_v_files() {
 	}
 	// graph deps
 	mut dep_graph := new_mod_dep_graph()
-	// dep_graph.from_import_tables(file_imports)
-	for fit in file_imports {
-		mut deps := []string
-		for _, m in fit.imports {
-			deps << m
-		}
-		dep_graph.add(fit.module_name, deps)
-	}
+	dep_graph.from_import_tables(file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
