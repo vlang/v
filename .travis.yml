@@ -37,6 +37,8 @@ script:
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
       echo "Running make.bat..."
       ./make.bat
+      v.exe -o v2.exe compiler
+      v2.exe -o v3.exe compiler
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
