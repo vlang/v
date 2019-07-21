@@ -20,10 +20,8 @@ import const (
 )
 
 #flag  -I @VROOT/thirdparty/glad
-
 #include "glad.h"
 #flag @VROOT/thirdparty/glad/glad.o 
-//#include "glad.c"  
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()

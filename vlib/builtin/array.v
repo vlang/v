@@ -5,7 +5,6 @@
 module builtin
 
 struct array {
-	is_slice bool 
 pub:
 	// Using a void pointer allows to implement arrays without generics and without generating
 	// extra code for every type.
@@ -146,7 +145,7 @@ pub fn (s array) slice(start, _end int) array {
 		data: s.data + start * s.element_size
 		len: l
 		cap: l
-		is_slice: true 
+		//is_slice: true 
 	}
 	return res
 }
@@ -220,9 +219,9 @@ pub fn (a []int) str() string {
 
 //pub fn (a []int) free() {
 pub fn (a array) free() {
-	if a.is_slice {
-		return 
-	} 
+	//if a.is_slice {
+		//return 
+	//} 
 	C.free(a.data)
 }
 

@@ -176,6 +176,7 @@ fn (g mut Game) move_tetro() {
 		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
 		// TODO: if g.field[y][x] != 0
+		//if g.field[y][x] != 0 { 
 		row := g.field[y]
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game

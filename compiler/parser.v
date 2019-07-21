@@ -18,6 +18,7 @@ mut:
 	args            []Var // function args
 	attr            string //  [json] etc
 	is_mut          bool
+	is_alloc        bool 
 	ptr             bool
 	ref             bool
 	parent_fn       string // Variables can only be defined in functions
@@ -27,7 +28,6 @@ mut:
 	is_global       bool // __global (translated from C only)
 	is_used         bool
 	scope_level     int
-	is_alloc        bool 
 }
 
 struct Parser {
@@ -71,6 +71,7 @@ mut:
 	v_script bool // "V bash", import all os functions into global space 
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization 
 	building_v bool 
+	is_alloc   bool // Whether current expression resulted in an allocation 
 }
 
 const (
@@ -117,10 +118,12 @@ fn (p mut Parser) next() {
 }
 
 fn (p &Parser) log(s string) {
+/* 
 	if !p.pref.is_verbose {
 		return
 	}
 	println(s)
+*/ 
 }
 
 fn (p mut Parser) parse() {
@@ -1017,6 +1020,7 @@ fn (p mut Parser) close_scope() {
 				p.genln('free($v.name); // close_scope free') 
 			} 
 		} 
+
 	}
 	p.cur_fn.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
@@ -1193,6 +1197,7 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 }
 
 fn (p mut Parser) var_decl() {
+	p.is_alloc = false 
 	is_mut := p.tok == .key_mut || p.prev_tok == .key_for
 	is_static := p.tok == .key_static
 	if p.tok == .key_mut {
@@ -1219,7 +1224,6 @@ fn (p mut Parser) var_decl() {
 	// Generate expression to tmp because we need its type first
 	// [TYP .name =] bool_expression()
 	pos := p.cgen.add_placeholder()
-
 	mut typ := p.bool_expression()
 	// Option check ? or {
 	or_else := p.tok == .key_orelse 
@@ -1252,7 +1256,7 @@ fn (p mut Parser) var_decl() {
 		name: name
 		typ: typ
 		is_mut: is_mut
-		is_alloc: typ.starts_with('array_') 
+		is_alloc: p.is_alloc 
 	})
 	mut cgen_typ := typ
 	if !or_else {
@@ -2424,6 +2428,7 @@ fn (p mut Parser) map_init() string {
 
 // [1,2,3]
 fn (p mut Parser) array_init() string {
+	p.is_alloc = true 
 	p.check(.lsbr)
 	is_integer := p.tok == .integer
 	lit := p.lit
