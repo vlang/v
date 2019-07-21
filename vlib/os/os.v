@@ -304,7 +304,7 @@ pub fn system(cmd string) int {
 
 fn popen(path string) *FILE {
 	$if windows {
-		mode := string('rb')
+		mode := 'rb'
 		wpath := path.to_wide()
 		return C._wpopen(wpath, mode.to_wide())
 	}
