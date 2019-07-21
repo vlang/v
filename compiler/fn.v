@@ -118,7 +118,7 @@ fn (p mut Parser) fn_decl() {
 	defer { p.fgenln('\n') } 
 	is_pub := p.tok == .key_pub 
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live 
-	if p.attr == 'live' &&  p.first_run() { 
+	if p.attr == 'live' &&  p.first_run() && !p.pref.is_live && !p.pref.is_so { 
 		println('INFO: run `v -live program.v` if you want to use [live] functions') 
 	} 
 	if is_pub {
@@ -319,11 +319,25 @@ fn (p mut Parser) fn_decl() {
 	if is_sig || p.first_run() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now [BIG]
 		if !is_sig && !is_fn_header {
+			mut opened_scopes := 0
+			mut closed_scopes := 0
 			for {
+				if p.tok == .lcbr {
+					opened_scopes++
+				}
+				if p.tok == .rcbr {
+					closed_scopes++
+				}
 				p.next()
 				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
 					break
 				}
+				//fn body ended, and a new fn attribute declaration like [live] is starting?
+				if closed_scopes > opened_scopes && p.prev_tok == .rcbr {
+					if p.tok == .lsbr {
+						break
+					}
+				}          
 			}
 		}
 		// Live code reloading? Load all fns from .so
@@ -504,6 +518,13 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
+	if f.is_c && !p.builtin_pkg {
+		if f.name == 'free' {
+			p.error('use `free()` instead of `C.free()`') 
+		} else if f.name == 'malloc' {
+			p.error('use `malloc()` instead of `C.malloc()`') 
+		} 
+	} 
 	cgen_name := p.table.cgen_name(f)
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name
@@ -682,7 +703,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			T := p.table.find_type(typ)
 			fmt := p.typ_to_fmt(typ, 0) 
 			if fmt != '' { 
-				p.cgen.cur_line = p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", ')    
+				p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
 				continue 
 			}  
 			if typ.ends_with('*') {
@@ -700,7 +721,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 					if name == '}' {
 						p.error(error_msg) 
 					}
-					p.cgen.cur_line = p.cgen.cur_line.left(index)
+					p.cgen.resetln(p.cgen.cur_line.left(index))
 					p.create_type_string(T, name)
 					p.cgen.cur_line.replace(typ, '')
 					p.next()

@@ -68,6 +68,7 @@ mut:
 	can_chash bool
 	attr string 
 	v_script bool // "V bash", import all os functions into global space 
+	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization 
 }
 
 const (
@@ -277,7 +278,7 @@ fn (p mut Parser) parse() {
 				//mut line := p.cgen.fn_main + lines.join('\n') 
 				//line = line.trim_space() 
 				p.cgen.fn_main = p.cgen.fn_main + lines.join('\n')
-				p.cgen.cur_line = ''
+				p.cgen.resetln('')
 				for i := start; i < end; i++ {
 					p.cgen.lines[i] = ''
 				}
@@ -381,7 +382,7 @@ fn (p mut Parser) const_decl() {
 			// output a #define so that we don't pollute the binary with unnecessary global vars
 			if is_compile_time_const(p.cgen.cur_line) {
 				p.cgen.consts << '#define $name $p.cgen.cur_line' 
-				p.cgen.cur_line = ''
+				p.cgen.resetln('')
 				p.fgenln('')
 				continue
 			}
@@ -393,7 +394,7 @@ fn (p mut Parser) const_decl() {
 				p.cgen.consts << p.table.cgen_name_type_pair(name, typ) + ';'
 				p.cgen.consts_init << '$name = $p.cgen.cur_line;'
 			}
-			p.cgen.cur_line = ''
+			p.cgen.resetln('')
 		}
 		p.fgenln('')
 	}
@@ -1144,7 +1145,7 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
 		//p.cgen.cur_line = left + 'opt_ok($expr)'
-		p.cgen.cur_line = left + 'opt_ok($expr, sizeof($expr_type))'
+		p.cgen.resetln(left + 'opt_ok($expr, sizeof($expr_type))')
 	}
 	else if !p.builtin_pkg && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.scanner.line_nr--
@@ -1173,6 +1174,7 @@ fn (p mut Parser) var_decl() {
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
 	name := p.check_name()
+	p.var_decl_name = name 
 	// Don't allow declaring a variable with the same name. Even in a child scope
 	// (shadowing is not allowed)
 	if !p.builtin_pkg && p.cur_fn.known_var(name) {
@@ -1186,6 +1188,7 @@ fn (p mut Parser) var_decl() {
 	// Generate expression to tmp because we need its type first
 	// [TYP .name =] bool_expression()
 	pos := p.cgen.add_placeholder()
+
 	mut typ := p.bool_expression()
 	// Option check ? or {
 	or_else := p.tok == .key_orelse 
@@ -1228,6 +1231,7 @@ fn (p mut Parser) var_decl() {
 		}
 		p.cgen.set_placeholder(pos, nt_gen)
 	}
+	p.var_decl_name = '' 
 }
 
 fn (p mut Parser) bool_expression() string {
@@ -1362,7 +1366,14 @@ fn (p mut Parser) name_expr() string {
 		name = p.prepend_pkg(name)
 	}
 	// Variable
-	v := p.cur_fn.find_var(name)
+	mut v := p.cur_fn.find_var(name)
+	// A hack to allow `newvar := Foo{ field: newvar }`  
+	// Declare the variable so that it can be used in the initialization 
+	if name == 'main__' + p.var_decl_name {
+		v.name = p.var_decl_name
+		v.typ = 'voidptr' 
+		v.is_mut = true 
+	} 
 	if v.name.len != 0 {
 		if ptr {
 			p.gen('& /*vvar*/ ')
@@ -1813,7 +1824,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			// Cant have &7, so need a tmp
 			tmp := p.get_tmp()
 			tmp_val := p.cgen.cur_line.right(assign_pos)
-			p.cgen.cur_line = p.cgen.cur_line.left(assign_pos)
+			p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
 			// val := p.cgen.end_tmp()
 			if is_map {
 				p.cgen.set_placeholder(fn_ph, 'map__set(&')
@@ -1841,7 +1852,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		// "m, 0" gets killed since we need to start from scratch. It's messy.
 		// "m, 0" is an index expression, save it before deleting and insert later in map_get()
 		index_expr := p.cgen.cur_line.right(fn_ph)
-		p.cgen.cur_line = p.cgen.cur_line.left(fn_ph)
+		p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
 		// Can't pass integer literal, because map_get() requires a void*
 		tmp := p.get_tmp()
 		tmp_ok := p.get_tmp()
@@ -2342,7 +2353,7 @@ fn (p mut Parser) string_expr() {
 	cur_line := p.cgen.cur_line.trim_space()
 	if cur_line.contains('println (') && p.tok != .plus && 
 		!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
-		p.cgen.cur_line = cur_line.replace('println (', 'printf(')
+		p.cgen.resetln(cur_line.replace('println (', 'printf('))
 		p.gen('$format\\n$args')
 		return
 	}
@@ -2402,7 +2413,7 @@ fn (p mut Parser) array_init() string {
 					p.check(.rsbr)
 					name := p.check_name()
 					if p.table.known_type(name) {
-						p.cgen.cur_line = ''
+						p.cgen.resetln('')
 						p.gen('{}')
 						return '[$lit]$name'
 					}
@@ -2428,7 +2439,7 @@ fn (p mut Parser) array_init() string {
 			p.check_space(.semicolon)
 			val := p.cgen.cur_line.right(pos)
 			// p.cgen.cur_line = ''
-			p.cgen.cur_line = p.cgen.cur_line.left(pos)
+			p.cgen.resetln(p.cgen.cur_line.left(pos))
 			// Special case for zero
 			if false && val.trim_space() == '0' {
 				p.gen('array_repeat( & V_ZERO, ')
@@ -2654,20 +2665,34 @@ fn (p mut Parser) cast(typ string) string {
 	p.expected_type = '' 
 	// `string(buffer)` => `tos2(buffer)`
 	// `string(buffer, len)` => `tos(buffer, len)`
-	if typ == 'string' && (expr_typ == 'byte*' || expr_typ == 'byteptr') {
-		if p.tok == .comma { 
-			p.check(.comma) 
-			p.cgen.set_placeholder(pos, 'tos(')
-			p.gen(', ') 
-			p.check_types(p.expression(), 'int') 
-		}  else { 
-			p.cgen.set_placeholder(pos, 'tos2(')
+	// `string(bytes_array, len)` => `tos(bytes_array.data, len)`
+	is_byteptr := expr_typ == 'byte*' || expr_typ == 'byteptr' 
+	is_bytearr := expr_typ == 'array_byte' 
+	if typ == 'string' {
+		if is_byteptr || is_bytearr { 
+			if p.tok == .comma { 
+				p.check(.comma) 
+				p.cgen.set_placeholder(pos, 'tos(')
+				if is_bytearr {
+					p.gen('.data') 
+				} 
+				p.gen(', ') 
+				p.check_types(p.expression(), 'int') 
+			}  else { 
+				if is_bytearr {
+					p.gen('.data') 
+				} 
+				p.cgen.set_placeholder(pos, 'tos2(')
+			} 
+		} 
+		// `string(234)` => error
+		else if expr_typ == 'int' {
+			p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
+		} 
+		else {
+			p.error('cannot cast `$expr_typ` to `$typ`') 
 		} 
 	}
-	// `string(234)` => error
-	else if typ == 'string' && expr_typ == 'int' {
-		p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
-	} 
 	else {
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
@@ -3181,7 +3206,6 @@ else {
 }
 
 fn (p mut Parser) return_st() {
-	p.cgen.insert_before(p.cur_fn.defer_text)
 	p.check(.key_return)
 	p.fgen(' ') 
 	fn_returns := p.cur_fn.typ != 'void'
@@ -3197,12 +3221,21 @@ fn (p mut Parser) return_st() {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 
-				p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
+				p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
+				p.cgen(p.cur_fn.defer_text) 
 				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)
-				p.cgen.cur_line = 'return $ret'
+				p.cgen(p.cur_fn.defer_text) 
+				if expr_type == 'void*' { 
+					p.cgen.resetln('return $ret')
+				}  else { 
+					tmp := p.get_tmp() 
+					p.cgen.resetln('$expr_type $tmp = $ret;') 
+					p.genln(p.cur_fn.defer_text) 
+					p.genln('return $tmp;') 
+				} 
 			}
 			p.check_types(expr_type, p.cur_fn.typ)
 		}

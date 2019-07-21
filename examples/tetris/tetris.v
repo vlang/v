@@ -1,10 +1,10 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// that can be found in the LICENSE file.  
 
 import rand
 import time
-import gx
+import gx 
 import gl
 import gg
 import glfw
@@ -104,41 +104,34 @@ struct Game {
 
 fn main() {
 	glfw.init()
-	mut game := &Game{gg: 0} // TODO
-	game.parse_tetros()
+	mut game := &Game{
+		gg: gg.new_context(gg.Cfg {
+			width: WinWidth
+			height: WinHeight
+			use_ortho: true // This is needed for 2D drawing
+			create_window: true
+			window_title: 'V Tetris'
+			window_user_ptr: game 
+		})
+	} 
+	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
 	game.init_game()
-	mut window := glfw.create_window(glfw.WinCfg {
-		width: WinWidth
-		height: WinHeight
-		title: 'V Tetris'
-		ptr: game // glfw user pointer
-	})
-	window.make_context_current()
-	window.onkeydown(key_down)
-	gg.init()
-	game.gg = gg.new_context(gg.Cfg {
-		width: WinWidth
-		height: WinHeight
-		use_ortho: true // This is needed for 2D drawing
-	})
+	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gl.clear() // For some reason this is necessary to avoid an intial flickering
-	gl.clear_color(255, 255, 255, 255)
+	gg.clear(gx.White) 
 	for {
-		gl.clear()
-		gl.clear_color(255, 255, 255, 255)
+		gg.clear(gx.White) 
 		game.draw_scene()
-		window.swap_buffers()
-		glfw.wait_events()
-		if window.should_close() {
-			window.destroy()
-			glfw.terminate()
-			exit(0)
+		game.gg.render() 
+		if game.gg.window.should_close() {
+			game.gg.window.destroy()
+			return 
 		}
 	}
 }
 
 fn (g mut Game) init_game() {
+	g.parse_tetros()
 	rand.seed(time.now().uni)
 	g.generate_tetro()
 	g.field = []array_int // TODO: g.field = [][]int

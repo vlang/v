@@ -9,6 +9,7 @@ import glm
 import gl
 import gx
 import os
+import glfw 
 
 struct Vec2 {
 	x int
@@ -36,6 +37,7 @@ pub fn vec2(x, y int) Vec2 {
 }
 
 pub fn init() {
+	glfw.init()
 	println(gl.TEXT_VERT)
 	gl.init_glad()
 }
@@ -49,7 +51,12 @@ struct Cfg {
 	height    int
 	use_ortho bool 
 	retina    bool
+	 
 	font_size int
+	create_window bool 
+	window_user_ptr voidptr 
+	window_title string 
+	always_on_top bool 
 }
 
 struct GG {
@@ -64,12 +71,26 @@ struct GG {
 	line_vbo  u32
 	VBO       u32
 	scale     int // retina = 2 , normal = 1
+pub mut: 
+	window *glfw.Window 
+	render_fn fn() 
 }
+
 
 // fn new_context(width, height int, use_ortho bool, font_size int) *GG {
 pub fn new_context(cfg Cfg) *GG {
-	// println('new context orhto=$cfg.use_ortho')
-	// # glScissor(0,0,300,300);
+	mut window := &glfw.Window{!} 
+	if cfg.create_window {
+		window = glfw.create_window(glfw.WinCfg{
+			title: cfg.window_title 
+			width: cfg.width 
+			height: cfg.height 
+			ptr: cfg.window_user_ptr 
+			always_on_top: cfg.always_on_top 
+		})
+		window.make_context_current()
+		init() 
+	} 
 	shader := gl.new_shader('simple')
 	shader.use()
 	if cfg.use_ortho { 
@@ -122,21 +143,44 @@ pub fn new_context(cfg Cfg) *GG {
 	//gl.enable_vertex_attrib_array(0)
 	//gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
 	todo_remove_me(cfg, scale) 
-	mut ctx := &GG {
+	return &GG {
 		shader: shader 
 		width: cfg.width 
 		height: cfg.height 
 		VAO: vao 
 		VBO: vbo 
+		window: window 
+	 
 		// /line_vao: gl.gen_vertex_array()
 		// /line_vbo: gl.gen_buffer()
 		//text_ctx: new_context_text(cfg, scale),
 		scale: scale
 		// use_ortho: use_ortho
 	}
+
 	// ctx.init_rect_vao()
-	return ctx
+	//return ctx
 }
+
+/* 
+pub fn (gg &GG) render_loop() bool {
+	for !gg.window.show_close() { 
+		gg.render_fn() 
+		gg.window.swap_buffers()
+		glfw.wait_events()
+	} 
+} 
+*/ 
+
+pub fn clear(color gx.Color) { 
+	gl.clear()
+	gl.clear_color(255, 255, 255, 255)
+} 
+
+pub fn (gg &GG) render() { 
+	gg.window.swap_buffers()
+	glfw.wait_events()
+} 
 
 pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	// println('draw_triangle $x1,$y1 $x2,$y2 $x3,$y3')
@@ -359,7 +403,7 @@ pub fn create_image(file string) u32 {
 	return texture
 }
 
-pub fn (ctx &GG) draw_line_c(x, y, x2, y2 int, color gx.Color) {
+pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
 	C.glDeleteBuffers(1, &ctx.VAO)
 	C.glDeleteBuffers(1, &ctx.VBO)
 	ctx.shader.use()
@@ -373,13 +417,16 @@ pub fn (ctx &GG) draw_line_c(x, y, x2, y2 int, color gx.Color) {
 	gl.draw_arrays(GL_LINES, 0, 2)
 }
 
-pub fn (c &GG) draw_line(x, y, x2, y2 int) {
+pub fn (c &GG) draw_line(x, y, x2, y2 f32) {
 	c.draw_line_c(x, y, x2, y2, gx.Gray)
 }
 
 pub fn (c &GG) draw_vertical(x, y, height int) {
 	c.draw_line(x, y, x, y + height)
 }
+
+
+//ctx.gg.draw_line(center + prev_x, center+prev_y, center + x*10.0, center+y)
 
 // fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
 pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {

@@ -7,25 +7,25 @@ module builtin
 pub fn (d double) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
-	return tos(buf, _strlen(buf))
+	return tos(buf, strlen(buf))
 }
 
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
-	return tos(buf, _strlen(buf))
+	return tos(buf, strlen(buf))
 }
 
 pub fn (d f32) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
-	return tos(buf, _strlen(buf))
+	return tos(buf, strlen(buf))
 }
 
 pub fn ptr_str(ptr voidptr) string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%p', ptr)
-	return tos(buf, _strlen(buf))
+	return tos(buf, strlen(buf))
 }
 
 // fn (nn i32) str() string {
