@@ -136,6 +136,9 @@ pub fn (s array) slice(start, _end int) array {
 	if start > end {
 		panic('invalid slice index: $start > $end')
 	}
+	if start < 0 {
+		panic('invalid slice index: $start < 0')
+	}
 	if end >= s.len {
 		end = s.len
 	}
