@@ -3439,7 +3439,7 @@ fn (p mut Parser) defer_st() {
 	p.check(.lcbr) 
 	p.genln('{') 
 	p.statements() 
-	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') 
+	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text 
 	p.genln('*/') 
 }  
 

@@ -6,6 +6,7 @@ fn foo() string {
 fn foo2() string { 
 	println('start') 
 	defer { println('defer') } 
+	defer { println('defer2') } 
 	println('end') 
 	return foo() 
 } 
