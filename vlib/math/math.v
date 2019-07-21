@@ -183,6 +183,11 @@ pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
 }
 
+//The returned value is the mantissa and the integer pointed to by exponent is the exponent. The resultant value is x = mantissa * 2 ^ exponent.
+pub fn frexp (a, *b f64)f64 {
+	return C.frexp(a,&b)
+}
+
 // gamma computes the gamma function value
 pub fn gamma(a f64) f64 {
 	return C.tgamma(a)
