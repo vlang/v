@@ -6,8 +6,8 @@ module os
 
 #include <sys/stat.h>
 #include <signal.h>
-#include <unistd.h>
 #include <errno.h>
+
 //#include <execinfo.h> // for backtrace_symbols_fd 
 
 /* 
