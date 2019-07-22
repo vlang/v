@@ -252,6 +252,14 @@ byteptr g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void init_consts();')
+	
+	if v.pref.is_so {
+		cgen.genln('extern pthread_mutex_t live_fn_mutex;')
+	}  
+	if v.pref.is_live {
+		cgen.genln('pthread_mutex_t live_fn_mutex = PTHREAD_MUTEX_INITIALIZER;')
+	}
+	
 	imports_json := v.table.imports.contains('json')
 	// TODO remove global UI hack
 	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && v.table.imports.contains('ui')) ||
@@ -388,6 +396,15 @@ string _STR_TMP(const char *fmt, ...) {
 		vexe := os.args[0] 
 		os.system('$vexe -o $file_base -shared $file') 
 		cgen.genln('
+
+void lfnmutex_print(char *s){
+	if(0){
+		fflush(stderr);
+		fprintf(stderr,">> live_fn_mutex: %p | %s\\n", &live_fn_mutex, s);
+		fflush(stderr);
+	}
+}
+
 #include <dlfcn.h>
 void* live_lib; 
 int load_so(byteptr path) {
@@ -401,20 +418,40 @@ int load_so(byteptr path) {
 		for so_fn in cgen.so_fns {
 			cgen.genln('$so_fn = dlsym(live_lib, "$so_fn");  ')
 		}
-		cgen.genln('return 1; }
- 
+		
+		cgen.genln('return 1; 
+}
+
+int _live_reloads = 0;
 void reload_so() {
 	int last = os__file_last_mod_unix(tos2("$file"));
 	while (1) {
 		// TODO use inotify 
 		int now = os__file_last_mod_unix(tos2("$file")); 
 		if (now != last) {
+			last = now;
+			
 			//v -o bounce -shared bounce.v 
-			os__system(tos2("$vexe -o $file_base -shared $file")); 
-			last = now; 
-			load_so("$so_name"); 
+			lfnmutex_print("compiling tmp.${file_base} ...");
+			os__system(tos2("$vexe -o tmp.${file_base} -shared $file"));
+			lfnmutex_print("tmp.${file_base}.so compiled. reloading ...");      			
+			
+			lfnmutex_print("reload_so locking...");    
+			pthread_mutex_lock(&live_fn_mutex);    
+			lfnmutex_print("reload_so locked");
+			
+			if(0 == rename("tmp.${file_base}.so", "${so_name}")){
+				load_so("$so_name");
+				lfnmutex_print("loaded ${so_name}");
+			}
+			
+			lfnmutex_print("reload_so unlocking...");  
+			pthread_mutex_unlock(&live_fn_mutex);  
+			lfnmutex_print("reload_so unlocked");
+						
+			_live_reloads++;
 		}
-		time__sleep_ms(400); 
+		time__sleep_ms(100); 
 	}
 }
 ' ) 
