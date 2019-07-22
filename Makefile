@@ -21,7 +21,7 @@ test: v
 	echo "Running V tests..."
 	find . -name '*_test.v' -print0 | xargs -0 -n1 ./v
 	echo "Building V examples..."
-	find examples -name '*.v' -not -path "examples/hot_code_reloading/*" -print0 | xargs -0 -n1 ./v
+	find examples -name '*.v' -print0 | xargs -0 -n1 ./v
 
 clean:
 	-rm -f v.c .v.c v vprod thirdparty/**/*.o
