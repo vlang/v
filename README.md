@@ -40,6 +40,18 @@ The compilation is temporarily slower for this release:
 
 
 
+## Installing V in docker container
+
+```bash
+git clone https://github.com/vlang/v
+cd v
+docker build -t vlang .
+#to enter in docker container
+docker run --rm -it vlang:latest
+#to enter in v shell run
+v
+```
+
 ## Installing V from source
 
 ### Linux, macOS, Windows, *BSD, WSL, Android, Raspberry Pi
