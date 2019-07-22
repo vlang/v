@@ -1,5 +1,6 @@
 CC ?= cc
-CFLAGS ?= -fPIC -O2
+CFLAGS ?= -O2 -fPIC
+PREFIX ?= /usr/local
 
 all: clean v
 	$(info V has been successfully built)
@@ -8,7 +9,8 @@ v: v.c
 	./v -o v compiler
 
 v-release: v.c
-	./v -prod -o v compiler
+	./v -cflags '${CFLAGS}' -o v compiler
+	strip v
 
 v.c:
 	curl -Os https://raw.githubusercontent.com/vlang/vc/master/v.c
@@ -36,3 +38,14 @@ debug: clean v thirdparty
 
 release: CFLAGS += -pie
 release: clean v-release thirdparty-release
+
+install: uninstall
+	mkdir -p ${PREFIX}/lib/vlang
+	cp -r {v,vlib,thirdparty} ${PREFIX}/lib/vlang
+	ln -s ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
+
+uninstall:
+	rm -rf ${PREFIX}/{bin/v,lib/vlang}
+
+symlink:
+	ln -sf `pwd`/v ${PREFIX}/bin/v
