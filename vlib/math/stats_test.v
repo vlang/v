@@ -37,7 +37,7 @@ fn test_geometric_mean() {
 	o = stats.geometric_mean(data)
 	println(o)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
-	assert o.str().eq('nan') || o.str().eq('-nan') || o == f64(0) // Because in math it yields a complex number
+	assert o.str().eq('nan') || o.str().eq('-nan') || o.str().eq('-1.#IND00') || o == f64(0) // Because in math it yields a complex number
 	data = [f64(12.0),f64(7.88),f64(76.122),f64(54.83)]
 	o = stats.geometric_mean(data)
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
@@ -90,7 +90,7 @@ fn test_median() {
 	assert o == f64(12.0)
 }
 
-fn test_mode() { 
+fn test_mode() {
 	// Tests were also verified on Wolfram Alpha
 	mut data := [f64(2.7),f64(2.7),f64(4.45),f64(5.9),f64(10.0)]
 	mut o := stats.mode(data)
