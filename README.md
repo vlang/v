@@ -39,13 +39,10 @@ The compilation is temporarily slower for this release:
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 
 
-## Code structure
-
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 ## Installing V from source
 
-### Linux, macOS, Windows, WSL, Android, Raspberry Pi
+### Linux, macOS, Windows, *BSD, WSL, Android, Raspberry Pi
 
 
 ```bash
@@ -141,3 +138,8 @@ sudo pacman -S glfw-x11 curl freetype2
 ```
 
 glfw and libcurl dependencies will be removed soon.
+
+## Code structure
+
+https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
