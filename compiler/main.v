@@ -406,14 +406,18 @@ void lfnmutex_print(char *s){
 }
 
 #include <dlfcn.h>
-void* live_lib; 
+void* live_lib=0;
 int load_so(byteptr path) {
 	char cpath[1024];
 	sprintf(cpath,"./%s", path);
 	//printf("load_so %s\\n", cpath); 
-	if (live_lib) dlclose(live_lib); 
+	if (live_lib) dlclose(live_lib);
 	live_lib = dlopen(cpath, RTLD_LAZY);
-	if (!live_lib) {puts("open failed"); exit(1); return 0;} 
+	if (!live_lib) {
+		puts("open failed"); 
+		exit(1); 
+		return 0;
+	}
 ')
 		for so_fn in cgen.so_fns {
 			cgen.genln('$so_fn = dlsym(live_lib, "$so_fn");  ')
@@ -424,32 +428,43 @@ int load_so(byteptr path) {
 
 int _live_reloads = 0;
 void reload_so() {
+	char new_so_base[1024];
+	char new_so_name[1024];
+	char compile_cmd[1024];
 	int last = os__file_last_mod_unix(tos2("$file"));
 	while (1) {
-		// TODO use inotify 
-		int now = os__file_last_mod_unix(tos2("$file")); 
+		// TODO use inotify
+		int now = os__file_last_mod_unix(tos2("$file"));
 		if (now != last) {
 			last = now;
-			
-			//v -o bounce -shared bounce.v 
-			lfnmutex_print("compiling tmp.${file_base} ...");
-			os__system(tos2("$vexe -o tmp.${file_base} -shared $file"));
-			lfnmutex_print("tmp.${file_base}.so compiled. reloading ...");      			
-			
+			_live_reloads++;
+
+			//v -o bounce -shared bounce.v
+			sprintf(new_so_base, ".tmp.%d.${file_base}", _live_reloads);
+			sprintf(new_so_name, "%s.so", new_so_base);
+			sprintf(compile_cmd, "$vexe -o %s -shared $file", new_so_base);
+			os__system(tos2(compile_cmd));
+
+			if( !os__file_exists(tos2(new_so_name)) ) {
+				fprintf(stderr, "Errors while compiling $file\\n");
+				continue;        
+			}
+      
 			lfnmutex_print("reload_so locking...");    
 			pthread_mutex_lock(&live_fn_mutex);    
 			lfnmutex_print("reload_so locked");
-			
-			if(0 == rename("tmp.${file_base}.so", "${so_name}")){
-				load_so("$so_name");
-				lfnmutex_print("loaded ${so_name}");
-			}
-			
+        
+			live_lib = 0; // hack: force skipping dlclose/1, the code may be still used...
+			load_so(new_so_name); 
+			unlink(new_so_name); // removing the .so file from the filesystem after dlopen-ing it is safe, since it will still be mapped in memory.
+			//if(0 == rename(new_so_name, "${so_name}")){
+			//	load_so("${so_name}"); 
+			//}
+
 			lfnmutex_print("reload_so unlocking...");  
 			pthread_mutex_unlock(&live_fn_mutex);  
 			lfnmutex_print("reload_so unlocked");
-						
-			_live_reloads++;
+
 		}
 		time__sleep_ms(100); 
 	}
