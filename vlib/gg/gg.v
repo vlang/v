@@ -329,6 +329,10 @@ fn update() {
 	// # ui__post_empty_event();
 }
 
+pub fn post_empty_event() { 
+	glfw.post_empty_event() 
+} 
+
 pub fn (c GG) circle(x, y, r int) {
 }
 
