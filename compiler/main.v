@@ -254,7 +254,7 @@ void reload_so();
 void init_consts();')
 	
 	if v.pref.is_so {
-		cgen.genln('extern pthread_mutex_t live_fn_mutex;')
+		cgen.genln('pthread_mutex_t live_fn_mutex;')
 	}  
 	if v.pref.is_live {
 		cgen.genln('pthread_mutex_t live_fn_mutex = PTHREAD_MUTEX_INITIALIZER;')
