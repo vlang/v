@@ -546,7 +546,6 @@ fn (p mut Parser) struct_decl() {
 */ 
 	mut did_gen_something := false
 	for p.tok != .rcbr {
-		did_gen_something = true
 		if p.tok == .key_pub {
 			if is_pub {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
@@ -610,6 +609,8 @@ fn (p mut Parser) struct_decl() {
 			attr = p.check_name()
 			p.check(.rsbr)
 		}
+		did_gen_something = true
+
 		typ.add_field(field_name, field_type, is_mut, attr, access_mod)
 		p.fgenln('')
 	}
@@ -2624,6 +2625,7 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 		no_star := typ.replace('*', '')
 		p.gen('ALLOC_INIT($no_star, {')
 	}
+	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
 	// u := User{age:20, name:'bob'}
 	// Remember which fields were set, so that we dont have to zero them later
@@ -2649,6 +2651,7 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 				p.gen(',')
 			}
 			p.fgenln('')
+			did_gen_something = true
 		}
 		// If we already set some fields, need to prepend a comma
 		if t.fields.len != inited_fields.len && inited_fields.len > 0 {
@@ -2672,6 +2675,7 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 					p.gen(',')
 				}
 			}
+			did_gen_something = true
 		}
 	}
 	// Point{3,4} syntax
@@ -2702,7 +2706,13 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 		if p.tok != .rcbr {
 			p.error('too many fields initialized: `$typ` has $T.fields.len field(s)')
 		}
+		did_gen_something = true
 	}
+
+	if p.os == .msvc && !did_gen_something {
+		p.gen('0')
+	}
+
 	p.gen('}')
 	if ptr {
 		p.gen(')')
