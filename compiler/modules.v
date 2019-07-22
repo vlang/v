@@ -90,9 +90,10 @@ pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
 		if ready_set.size() == 0 {
 			mut g := new_mod_dep_graph()
 			g.acyclic = false
+			ndk := node_deps.keys()
 			for name, _ in node_deps {				
 				mut node := node_names[name]
-				if name == node_deps.keys()[node_deps.size-1] {
+				if name == ndk[node_deps.size-1] {
 					node.last_cycle = node_deps[name].items[node_deps[name].items.len-1]
 				}
 				g.nodes << node
