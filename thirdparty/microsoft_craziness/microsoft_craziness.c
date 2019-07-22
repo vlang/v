@@ -4,7 +4,7 @@
 
 // Never hang around to a pointer from this function
 // This is not thread safe
-char *wide_string_to_narrow_string_facepalm(wchar_t *wc) {
+char *wide_string_to_narrow_temp(wchar_t *wc) {
     static char buffer[10000][10];
     static int counter = 0;
 

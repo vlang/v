@@ -54,7 +54,7 @@ Find_Result *find_visual_studio_and_windows_sdk();
 void free_resources(Find_Result *result);
 
 // Emily: wide_string_to_narrow_string_facepalm
-char *wide_string_to_narrow_string_facepalm(wchar_t *);
+char *wide_string_to_narrow_temp(wchar_t *);
 
 #endif // MICROSOFT_CRAZINESS_HEADER_GUARD
 
