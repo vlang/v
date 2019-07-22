@@ -29,7 +29,7 @@ fn modules_path() string {
 }
 
 const (
-	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] 
+	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'msvc'] 
 	ModPath            = modules_path()
 )
 
@@ -41,6 +41,7 @@ enum OS {
 	openbsd 
 	netbsd 
 	dragonfly 
+	msvc 
 }
 
 enum Pass {
@@ -199,9 +200,13 @@ fn (v mut V) compile() {
 #endif 
 
 
-#ifdef _WIN32 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-//#include <WinSock2.h> 
+//#include <WinSock2.h>
+#ifdef _MSC_VER
+#define _Atomic
+#endif
 #endif 
 
 //================================== TYPEDEFS ================================*/ 
@@ -587,6 +592,11 @@ fn (v mut V) cc() {
 			return 
 		} 
 	} 
+	if v.os == .msvc {
+		cc_msvc(v)
+		return
+	}
+
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-w'] // arguments for the C compiler
@@ -759,7 +769,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && v.os != .windows {
+		if file.ends_with('_win.v') && (v.os != .windows && v.os != .msvc) {
 			continue
 		}
 		if file.ends_with('_lin.v') && v.os != .linux { 
@@ -768,7 +778,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac { 
 			continue
 		} 
-		if file.ends_with('_nix.v') && v.os == .windows {
+		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
 			continue 
 		} 
 		res << '$dir/$file'
@@ -1011,6 +1021,7 @@ fn new_v(args[]string) *V {
 		case 'openbsd': _os = .openbsd 
 		case 'netbsd': _os = .netbsd 
 		case 'dragonfly': _os = .dragonfly 
+		case 'msvc': _os = .msvc
 		}
 	}
 	builtins := [
