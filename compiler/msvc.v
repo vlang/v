@@ -82,11 +82,7 @@ fn find_msvc() *MsvcResult {
 pub fn cc_msvc(v *V) {
 	r := find_msvc()
 
-	for o in v.pref.c_options {
-		println('$o')
-	}
-
-	mut a := [v.pref.c_options, '-w'] // arguments for the C compiler
+	mut a := ['-w'] // arguments for the C compiler
 
 	// cl.exe is stupid so these are in a different order to the ones below!
 
