@@ -119,7 +119,7 @@ v run hello_world.v                 # this builds the program and runs it right 
 
 v word_counter.v && ./word_counter cinderella.txt
 v run news_fetcher.v
-v run tetris.v
+v run tetris/tetris.v
 ```
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
