@@ -545,13 +545,12 @@ pub fn (s string) trim_space() string {
 	for i < s.len && is_space(s[i]) {
 		i++
 	}
-	mut res := s.right(i)
-	mut end := res.len - 1
-	for end >= 0 && is_space(res[end]) {
+	mut end := s.len - 1
+	for end >= 0 && is_space(s[end]) {
 		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
-	res = res.left(end + 1)
+	res := s.substr(i, end + 1)
 	// println('after SPACE "$res"')
 	return res
 }
