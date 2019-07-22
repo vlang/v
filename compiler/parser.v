@@ -544,7 +544,9 @@ fn (p mut Parser) struct_decl() {
 	} 
 	println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.run') 
 */ 
+	mut did_gen_something := false
 	for p.tok != .rcbr {
+		did_gen_something = true
 		if p.tok == .key_pub {
 			if is_pub {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
@@ -611,13 +613,20 @@ fn (p mut Parser) struct_decl() {
 		typ.add_field(field_name, field_type, is_mut, attr, access_mod)
 		p.fgenln('')
 	}
+
 	if !is_ph && p.first_run() {
 		p.table.register_type2(typ)
 		//println('registering 1 nrfields=$typ.fields.len') 
 	}
+
 	p.check(.rcbr)
 	if !is_c {
-		p.gen_type('}; ')
+		if p.os == .msvc && !did_gen_something {
+			p.gen_type('void *____dummy_variable; };')
+			p.fgenln('')
+		} else {
+			p.gen_type('}; ')
+		}
 	}
 	if is_objc {
 		p.gen_type('@end')
@@ -1895,7 +1904,10 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		tmp_ok := p.get_tmp()
 		if is_map {
 			p.gen('$tmp')
-			def := type_default(typ)
+			mut def := type_default(typ)
+			if p.os == .msvc && def == '{}' {
+				def = '{0}'
+			}
 			p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
 		}
 		else if is_arr {
@@ -2012,6 +2024,11 @@ fn (p mut Parser) expression() string {
 		}
 		// 3 + 4
 		else if is_num {
+			if p.os == .msvc && typ == 'void*' {
+				// Msvc errors on void* pointer arithmatic
+				// ... So cast to byte* and then do the add
+				p.cgen.set_placeholder(ph, '(byte*)')
+			}
 			p.gen(tok_op.str())
 		}
 		// Vec + Vec
@@ -2452,7 +2469,11 @@ fn (p mut Parser) array_init() string {
 					name := p.check_name()
 					if p.table.known_type(name) {
 						p.cgen.resetln('')
-						p.gen('{}')
+						if p.os == .msvc {
+							p.gen('{0}')
+						} else {
+							p.gen('{}')
+						}
 						return '[$lit]$name'
 					}
 					else {
@@ -2536,7 +2557,11 @@ fn (p mut Parser) array_init() string {
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
 	// TODO why need !first_run()?? Otherwise it goes to the very top of the out.c file
 	if !p.first_run() {
-		p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
+		if p.os == .msvc && i == 0 {
+			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) {0 ')
+		} else {
+			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
+		}
 	}
 	typ = 'array_$typ'
 	p.register_array(typ)
@@ -2758,6 +2783,7 @@ fn os_name_to_ifdef(name string) string {
 		case 'openbsd': return '__OpenBSD__' 
 		case 'netbsd': return '__NetBSD__' 
 		case 'dragonfly': return '__DragonFly__' 
+		case 'msvc': return '_MSC_VER' 
 	} 
 	panic('bad os ifdef name "$name"') 
 	return '' 
@@ -2849,7 +2875,7 @@ fn (p mut Parser) chash() {
 		else if hash.contains('darwin') && p.os != .mac {  
 			return
 		}
-		else if hash.contains('windows') && p.os != .windows {
+		else if hash.contains('windows') && (p.os != .windows && p.os != .msvc) {
 			return
 		}
 		// Remove "linux" etc from flag
@@ -2864,8 +2890,13 @@ fn (p mut Parser) chash() {
 		}
 		p.log('adding flag "$flag"')
 		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it 
-		if has_vroot && flag.contains('.o') { 
-			build_thirdparty_obj_file(flag) 
+		if has_vroot && flag.contains('.o') {
+			if p.os == .msvc {
+				build_thirdparty_obj_file_with_msvc(flag)
+			} 
+			else {
+				build_thirdparty_obj_file(flag)
+			}
 		} 
 		p.table.flags << flag 
 		return
@@ -3069,7 +3100,10 @@ fn (p mut Parser) for_st() {
 			p.genln('for (int l = 0; l < keys_$tmp .len; l++) {') 
 			p.genln('  string $i = ((string*)keys_$tmp .data)[l];') 
 			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );') 
-			def := type_default(var_typ) 
+			mut def := type_default(typ)
+			if p.os == .msvc && def == '{}' {
+				def = '{0}'
+			}
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`) 
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);') 
@@ -3259,8 +3293,15 @@ fn (p mut Parser) return_st() {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 
-				p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
-				p.cgen(p.cur_fn.defer_text) 
+				if p.os != .msvc {
+					p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
+					p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
+				} else {
+					// Both the return type and the expression type have already been concluded
+					// to be the same - the cast is slightly pointless
+					// and msvc cant do it
+					p.cgen.resetln('$expr_type $tmp = ($ret);')
+				}
 				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
 			}
 			else {
