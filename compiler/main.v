@@ -195,7 +195,7 @@ fn (v mut V) compile() {
 
 
 #ifdef __APPLE__ 
-
+#include <pthread.h> 
 #endif 
 
 
