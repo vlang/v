@@ -344,6 +344,12 @@ fn (p mut Parser) fn_decl() {
 		}
 		return
 	}
+
+	if p.attr == 'live' && p.pref.is_so {
+		//p.genln('// live_function body start')
+		p.genln('pthread_mutex_lock(&live_fn_mutex);')
+	}
+
 	if f.name == 'main' || f.name == 'WinMain' {
 		p.genln('init_consts();')
 		if p.table.imports.contains('os') {
@@ -388,6 +394,12 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
+	
+	if p.attr == 'live' && p.pref.is_so {
+		//p.genln('// live_function body end')
+		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
+	}
+	
 	// {} closed correctly? scope_level should be 0
 	if p.mod == 'main' {
 		// println(p.cur_fn.scope_level)
