@@ -9,7 +9,7 @@ fn test_socket() {
 //	println(socket)
 
 //	message := 'Hello World'
-//	socket.send(message.cstr(), message.len)
+//	socket.send(message.str, message.len)
 //	println('Sent: ' + message)
 
 //	bytes := client.recv(1024)

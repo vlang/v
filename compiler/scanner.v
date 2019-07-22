@@ -43,7 +43,7 @@ fn new_scanner(file_path string) *Scanner {
 
 	// BOM check
 	if raw_text.len >= 3 {
-		c_text := raw_text.cstr()
+		c_text := raw_text.str
 
 		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
 			// skip three BOM bytes

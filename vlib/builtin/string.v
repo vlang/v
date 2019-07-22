@@ -70,10 +70,12 @@ pub fn (a string) clone() string {
 	return b
 }
 
+/* 
 pub fn (s string) cstr() byteptr {
 	clone := s.clone()
 	return clone.str
 }
+*/ 
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
@@ -332,16 +334,7 @@ pub fn (s string) right(n int) string {
 	return s.substr(n, s.len)
 }
 
-// Because the string is immutable, it is safe for multiple strings to share
-// the same storage, so slicing s results in a new 2-word structure with a
-// potentially different pointer and length that still refers to the same byte
-// sequence. This means that slicing can be done without allocation or copying,
-// making string slices as efficient as passing around explicit indexes.
-// substr without allocations. Reuses memory and works great. BUT. This substring does not have
-// a \0 at the end, and it's not possible to add it. So if we have s = 'privet'
-// and substr := s.substr_fast(1, 4) ('riv')
-// puts(substr.str) will print 'rivet'
-// Avoid using C functions with these substrs!
+// substr 
 pub fn (s string) substr(start, end int) string {
 	/*
 	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
@@ -353,11 +346,25 @@ pub fn (s string) substr(start, end int) string {
 		return ''
 	}
 	len := end - start
+
+	// Copy instead of pointing, like in Java and C#. 
+	// Much easier to free such strings. 
+	mut res := string {
+		len: len
+		str: malloc(len + 1)
+	}
+	for i := 0; i < len; i++ {
+		res.str[i] = s.str[start + i]
+	}
+	res.str[len] = `\0`
+	return res 
+/* 
 	res := string {
 		str: s.str + start
 		len: len
 	}
 	return res
+*/ 
 }
 
 // KMP search

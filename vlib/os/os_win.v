@@ -15,7 +15,7 @@ type HANDLE voidptr
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
     mode := 'rb'
-    _fd := C.fopen(path.cstr(), mode.cstr())
+    _fd := C.fopen(path.str, mode.str)
     if _fd == 0 {
 	    return HANDLE(INVALID_HANDLE_VALUE)
     }

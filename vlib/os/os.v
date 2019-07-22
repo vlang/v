@@ -106,8 +106,7 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string { 
 	mut mode := 'rb' 
-	cpath := path.cstr()
-	fp := C.fopen(cpath, mode.cstr()) 
+	fp := C.fopen(path.str, mode.str) 
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
@@ -130,7 +129,7 @@ pub fn file_size(path string) int {
 }
 
 pub fn mv(old, new string) {
-	C.rename(old.cstr(), new.cstr())
+	C.rename(old.str, new.str)
 }
 
 // read_lines reads the file in `path` into an array of lines.
@@ -138,8 +137,7 @@ pub fn mv(old, new string) {
 pub fn read_lines(path string) []string {
 	mut res := []string
 	mut buf := [1000]byte
-	cpath := path.cstr()
-	fp := C.fopen(cpath, 'rb')
+	fp := C.fopen(path.str, 'rb')
 	if isnil(fp) {
 		// TODO
 		// return error('failed to open file "$path"')
@@ -171,9 +169,8 @@ fn read_ulines(path string) []ustring {
 }
 
 pub fn open(path string) ?File {
-	cpath := path.cstr() 
 	file := File {
-		cfile: C.fopen(cpath, 'rb') 
+		cfile: C.fopen(path.str, 'rb') 
 	}
 	if isnil(file.cfile) {
 		return error('failed to open file "$path"')
@@ -183,9 +180,8 @@ pub fn open(path string) ?File {
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	cpath := path.cstr() 
 	file := File {
-		cfile: C.fopen(cpath, 'wb') 
+		cfile: C.fopen(path.str, 'wb') 
 	}
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
@@ -194,9 +190,8 @@ pub fn create(path string) ?File {
 }
 
 pub fn open_append(path string) ?File {
-	cpath := path.cstr() 
 	file := File {
-		cfile: C.fopen(cpath, 'ab') 
+		cfile: C.fopen(path.str, 'ab') 
 	}
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
@@ -205,8 +200,8 @@ pub fn open_append(path string) ?File {
 }
 
 pub fn (f File) write(s string) {
-	ss := s.clone()
-	C.fputs(ss.cstr(), f.cfile)
+	ss := s.clone() // TODO is clone() needed here? 
+	C.fputs(ss.str, f.cfile)
 	// ss.free()
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
@@ -228,7 +223,7 @@ pub fn (f File) writeln(s string) {
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
-	C.fputs(s.cstr(), f.cfile)
+	C.fputs(s.str, f.cfile)
 	// ss.free()
 	C.fputs('\n', f.cfile)
 }
@@ -243,7 +238,7 @@ pub fn (f File) close() {
 
 // system starts the specified command, waits for it to complete, and returns its code.
 pub fn system(cmd string) int {
-	ret := C.system(cmd.cstr()) 
+	ret := C.system(cmd.str) 
 	if ret == -1 {
 		os.print_c_errno()
 	}
@@ -251,7 +246,7 @@ pub fn system(cmd string) int {
 }
 
 fn popen(path string) *FILE {
-	cpath := path.cstr()
+	cpath := path.str
 	$if windows {
 		return C._popen(cpath, 'r')
 	}
@@ -279,7 +274,7 @@ pub fn exec(cmd string) string {
 
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
-	s := C.getenv(key.cstr())
+	s := C.getenv(key.str)
 	if isnil(s) {
 		return ''
 	}
@@ -291,13 +286,13 @@ pub fn setenv(name string, value string, overwrite bool) int {
 		format := '$name=$value'
 
 		if overwrite {
-			return C._putenv(format.cstr())
+			return C._putenv(format.str)
 		}
 
 		return -1
 	} 
 	$else { 
-		return C.setenv(name.cstr(), value.cstr(), overwrite)
+		return C.setenv(name.str, value.str, overwrite)
 	} 
 }
 
@@ -305,10 +300,10 @@ pub fn unsetenv(name string) int {
 	$if windows {
 		format := '${name}='
 		
-		return C._putenv(format.cstr())
+		return C._putenv(format.str)
 	} 
 	$else { 
-		return C.unsetenv(name.cstr())
+		return C.unsetenv(name.str)
 	} 
 }
 
@@ -322,7 +317,7 @@ pub fn file_exists(path string) bool {
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		attr := int(C.GetFileAttributes(path.cstr())) 
+		attr := int(C.GetFileAttributes(path.str)) 
 		if attr == INVALID_FILE_ATTRIBUTES {
 			return false
 		}
@@ -332,7 +327,7 @@ pub fn dir_exists(path string) bool {
 		return false
 	} 
 	$else { 
-		dir := C.opendir(path.cstr())
+		dir := C.opendir(path.str)
 		res := !isnil(dir)
 		if res {
 			C.closedir(dir)
@@ -345,27 +340,27 @@ pub fn dir_exists(path string) bool {
 pub fn mkdir(path string) {
 	$if windows {
 		path = path.replace('/', '\\')
-		C.CreateDirectory(path.cstr(), 0)
+		C.CreateDirectory(path.str, 0)
 	}
 	$else {
-		C.mkdir(path.cstr(), 511)// S_IRWXU | S_IRWXG | S_IRWXO
+		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
 	}
 }
 
 // rm removes file in `path`.
 pub fn rm(path string) {
-	C.remove(path.cstr())
-	// C.unlink(path.cstr())
+	C.remove(path.str)
+	// C.unlink(path.str)
 }
 
 
 // rmdir removes a specified directory.
 pub fn rmdir(path string) {
 	$if !windows {
-		C.rmdir(path.cstr())		
+		C.rmdir(path.str)		
 	}
 	$else {
-		C.RemoveDirectoryA(path.cstr())
+		C.RemoveDirectoryA(path.str)
 	}
 }
 
@@ -594,7 +589,7 @@ pub fn is_dir(path string) bool {
 	} 
 	$else { 
 		statbuf := C.stat{}
-		cstr := path.cstr()
+		cstr := path.str
 		if C.stat(cstr, &statbuf) != 0 {
 			return false
 		}
@@ -604,10 +599,10 @@ pub fn is_dir(path string) bool {
 
 pub fn chdir(path string) {
 	$if windows {
-		C._chdir(path.cstr())
+		C._chdir(path.str)
 	}
 	$else { 
-		C.chdir(path.cstr())
+		C.chdir(path.str)
 	} 
 }
 
@@ -657,7 +652,7 @@ pub fn ls(path string) []string {
 		mut find_file_data := win32finddata{}
 		mut dir_files := []string
 		// We can also check if the handle is valid. but using dir_exists instead
-		// h_find_dir := C.FindFirstFile(path.cstr(), &find_file_data)
+		// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
 		// if (INVALID_HANDLE_VALUE == h_find_dir) {
 		//     return dir_files
 		// }
@@ -671,7 +666,7 @@ pub fn ls(path string) []string {
 		path_files := '$path\\*' 
 		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 		// we should use FindFirstFileW and FindNextFileW
-		h_find_files := C.FindFirstFile(path_files.cstr(), &find_file_data)
+		h_find_files := C.FindFirstFile(path_files.str, &find_file_data)
 		first_filename := tos(&find_file_data.cFileName, strlen(find_file_data.cFileName))
 		if first_filename != '.' && first_filename != '..' {
 			dir_files << first_filename
@@ -687,7 +682,7 @@ pub fn ls(path string) []string {
 	} 
 	$else { 
 		mut res := []string
-		dir := C.opendir(path.cstr()) 
+		dir := C.opendir(path.str) 
 		if isnil(dir) {
 			println('ls() couldnt open dir "$path"')
 			print_c_errno()

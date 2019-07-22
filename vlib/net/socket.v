@@ -159,7 +159,7 @@ pub fn (s Socket) connect(address string, port int) int {
 
 	info := &C.addrinfo{!}
 	sport := '$port'
-	info_res := C.getaddrinfo(address.cstr(), sport.cstr(), &hints, &info)
+	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
 		println('socket: getaddrinfo failed')
 		return info_res
