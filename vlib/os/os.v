@@ -6,8 +6,8 @@ module os
 
 #include <sys/stat.h>
 #include <signal.h>
-#include <unistd.h>
 #include <errno.h>
+
 //#include <execinfo.h> // for backtrace_symbols_fd 
 
 /* 
@@ -340,6 +340,11 @@ pub fn dir_exists(path string) bool {
 pub fn mkdir(path string) {
 	$if windows {
 		path = path.replace('/', '\\')
+		// Windows doesnt recursively create the folders
+		// so we need to help it out here
+		if path.last_index('\\') != -1 {
+			mkdir(path.all_before_last('\\'))
+		}
 		C.CreateDirectory(path.str, 0)
 	}
 	$else {
@@ -480,7 +485,10 @@ pub fn user_os() string {
 	} 
 	$if dragonfly {
 		return 'dragonfly' 
-	} 
+	}
+	// $if msvc {
+	// 	return 'windows'
+	// }
 	return 'unknown'
 }
 
