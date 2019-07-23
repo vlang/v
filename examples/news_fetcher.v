@@ -57,7 +57,6 @@ fn main() {
 	for i := 0; i < NR_THREADS; i++ {
 		go fetcher.fetch()
 	}
-	println(fetcher.ids)
 	time.sleep(5)
 }
 
