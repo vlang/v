@@ -37,6 +37,8 @@ extern "C" {
 #ifndef MICROSOFT_CRAZINESS_HEADER_GUARD
 #define MICROSOFT_CRAZINESS_HEADER_GUARD
 
+#ifdef _WIN32
+
 #include <string.h>
 
 typedef struct {
@@ -55,6 +57,8 @@ void free_resources(Find_Result *result);
 
 // Emily: wide_string_to_narrow_string_facepalm
 char *wide_string_to_narrow_temp(wchar_t *);
+
+#endif
 
 #endif // MICROSOFT_CRAZINESS_HEADER_GUARD
 
@@ -134,6 +138,8 @@ char *wide_string_to_narrow_temp(wchar_t *);
 #ifdef MICROSOFT_CRAZINESS_IMPLEMENTATION
 #ifndef MICROSOFT_CRAZINESS_IMPLEMENTATION_GUARD
 #define MICROSOFT_CRAZINESS_IMPLEMENTATION_GUARD
+
+#ifdef _WIN32
 
 #include <io.h> // For _get_osfhandle
 #include <stdbool.h>
@@ -701,6 +707,8 @@ Find_Result *find_visual_studio_and_windows_sdk() {
 
   return result;
 }
+
+#endif
 
 #endif // MICROSOFT_CRAZINESS_IMPLEMENTATION_GUARD
 #endif // MICROSOFT_CRAZINESS_IMPLEMENTATION
