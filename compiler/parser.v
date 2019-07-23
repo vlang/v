@@ -3111,7 +3111,7 @@ fn (p mut Parser) for_st() {
 			p.genln('  string $i = ((string*)keys_$tmp .data)[l];') 
 			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );') 
 			mut def := type_default(typ)
-			if p.os == .msvc && def == '{}' {
+			if def == '{}' {
 				def = '{0}'
 			}
 			// TODO don't call map_get() for each key, fetch values while traversing
