@@ -113,16 +113,16 @@ pub fn cc_msvc(v *V) {
 		// 
 	}
 	else if v.pref.build_mode == .default_mode {
-		libs = '"$ModPath/vlib/builtin.o"'
+		libs = '"$ModPath/vlib/builtin.obj"'
 		if !os.file_exists(libs) {
-			println('`builtin.o` not found')
+			println('`builtin.obj` not found')
 			exit(1)
 		}
 		for imp in v.table.imports {
 			if imp == 'webview' {
 				continue
 			}
-			libs += ' "$ModPath/vlib/${imp}.o"'
+			libs += ' "$ModPath/vlib/${imp}.obj"'
 		}
 	}
 
