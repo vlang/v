@@ -377,7 +377,7 @@ load_so("$so_name");
 pthread_t _thread_so;
 pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 			} else {
-				so_name := file_base + '.dll'
+				so_name := file_base + if p.os == .msvc {'.dll'} else {'.so'} 
 				p.genln('
 live_fn_mutex = CreateMutexA(0, 0, 0);
 load_so("$so_name");
@@ -471,6 +471,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// str_args contains the args for the wrapper function:
 	// wrapper(arg_struct * arg) { fn("arg->a, arg->b"); }
 	mut str_args := ''
+	mut did_gen_something := false
 	for i, arg in f.args {
 		arg_struct += '$arg.typ $arg.name ;'// Add another field (arg) to the tmp struct definition
 		str_args += 'arg->$arg.name'
@@ -489,7 +490,14 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 			p.check(.comma)
 			str_args += ','
 		}
+		did_gen_something = true
 	}
+
+	if p.os == .msvc && !did_gen_something {
+		// Msvc doesnt like empty struct
+		arg_struct += 'void *____dummy_variable;'
+	}
+
 	arg_struct += '} $arg_struct_name ;'
 	// Also register the wrapper, so we can use the original function without modifying it
 	fn_name = p.table.cgen_name(f)
@@ -499,7 +507,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
 	thread_name = '_thread$tmp_nr'
-	if p.os != .windows {
+	if p.os != .windows && p.os != .msvc {
 		p.genln('pthread_t $thread_name;')
 	}
 	tmp2 := p.get_tmp()
@@ -508,7 +516,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		parg = ' $tmp_struct'
 	}
 	// Call the wrapper
-	if p.os == .windows {
+	if p.os == .windows || p.os == .msvc {
 		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
 	}
 	else {
