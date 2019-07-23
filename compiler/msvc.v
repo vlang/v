@@ -147,7 +147,12 @@ pub fn cc_msvc(v *V) {
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler
 		if f.starts_with('-l') {
-			real_libs << f.right(2).trim_space() + '.lib'
+			lib_base := f.right(2).trim_space()
+
+			// MSVC has no method of linking against a .dll
+			// TODO: we should look for .defs aswell
+			lib_lib := lib_base + '.lib'
+			real_libs << lib_lib
 		} 
 		else if f.starts_with('-L') {
 			lib_paths << f.right(2).trim_space()
@@ -201,6 +206,7 @@ pub fn cc_msvc(v *V) {
 	a << '/LIBPATH:"$r.ucrt_lib_path"'
 	a << '/LIBPATH:"$r.um_lib_path"'
 	a << '/LIBPATH:"$r.vs_lib_path"'
+	a << '/INCREMENTAL:NO' // Disable incremental linking
 
 	for l in lib_paths {
 		a << '/LIBPATH:"$l"'

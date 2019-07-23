@@ -254,6 +254,13 @@ fn (p mut Parser) fn_decl() {
 		typ = 'int'
 		str_args = 'int argc, char** argv'
 	}
+
+	mut dll_export_linkage := ''
+
+	if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+		dll_export_linkage = '__declspec(dllexport) '
+	}
+
 	// Only in C code generate User_register() instead of register()
 	// Internally it's still stored as "register" in type User
 	// mut fn_name_cgen := f.name
@@ -269,7 +276,7 @@ fn (p mut Parser) fn_decl() {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
 		}
-		p.genln('$typ $fn_name_cgen($str_args) {')
+		p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 	}
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
@@ -330,7 +337,7 @@ fn (p mut Parser) fn_decl() {
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
 		// Actual fn declaration!
-		mut fn_decl := '$typ $fn_name_cgen($str_args)'
+		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen($str_args)'
 		if p.pref.obfuscate {
 			fn_decl += '; // ${f.name}'
 		}
@@ -363,11 +370,21 @@ fn (p mut Parser) fn_decl() {
 		// We are in live code reload mode, call the .so loader in bg
 		if p.pref.is_live {
 			file_base := p.file_path.replace('.v', '') 
-			so_name := file_base + '.so' 
-			p.genln(' 
+			if p.os != .windows && p.os != .msvc {
+				so_name := file_base + '.so'
+				p.genln(' 
 load_so("$so_name"); 
 pthread_t _thread_so;
 pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
+			} else {
+				so_name := file_base + '.dll'
+				p.genln('
+live_fn_mutex = CreateMutexA(0, 0, 0);
+load_so("$so_name");
+unsigned long _thread_so;
+_thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
+				')
+			}
 		}
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
 			p.error('tests cannot have function `main`')
