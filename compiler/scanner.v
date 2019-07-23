@@ -26,16 +26,11 @@ mut:
 	prev_tok Token 
 }
 
-const (
-	SingleQuote = `\'`
-	//QUOTE        = `"`
-)
-
 fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
 		panic('"$file_path" doesn\'t exist')
 	}
-	//text := os.read_file(file_path) 
+
 	mut raw_text := os.read_file(file_path) or {
 		panic('scanner: failed to open "$file_path"')
 		return &Scanner{}
@@ -60,7 +55,6 @@ fn new_scanner(file_path string) *Scanner {
 		fmt_out: strings.new_builder(1000)
 	}
 
-	// println('new scanner "$file_path" txt.len=$scanner.text.len')
 	return scanner
 }
 
@@ -72,14 +66,6 @@ struct ScanRes {
 
 fn scan_res(tok Token, lit string) ScanRes {
 	return ScanRes{tok, lit}
-}
-
-fn is_white(c byte) bool {
-	return c.is_white()
-}
-
-fn is_nl(c byte) bool {
-	return c == `\r` || c == `\n`
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -99,51 +85,119 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
-fn (s mut Scanner) ident_number() string {
-	start := s.pos
-	is_hex := s.pos + 1 < s.text.len && s.text[s.pos] == `0` && s.text[s.pos + 1] == `x`
-	is_oct := !is_hex && s.text[s.pos] == `0`
-	mut is_float := false
+fn (s mut Scanner) ident_hex_number() string {
+	start_pos := s.pos
+	s.pos += 2 // skip '0x'
 	for {
-		s.pos++
 		if s.pos >= s.text.len {
 			break
 		}
 		c := s.text[s.pos]
-		if c == `.` {
-			is_float = true
-		}
-		is_good_hex := is_hex && (c == `x`  || (c >= `a` && c <= `f`)  || (c >= `A` && c <= `F`))
-		// 1e+3, 1e-3, 1e3
-		if !is_hex && c == `e` && s.pos + 1 < s.text.len {
-			next := s.text[s.pos + 1]
-			if next == `+` || next == `-` || next.is_digit() {
-				s.pos++
-				continue
-			}
-		}
-		if !c.is_digit() && c != `.` && !is_good_hex {
+		if !c.is_hex_digit() {
 			break
 		}
-		// 1..9
-		if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `.` {
-			break
-		}
-		if is_oct && c >= `8` && !is_float {
-			s.error('malformed octal constant')
-		}
+		s.pos++
 	}
-	number := s.text.substr(start, s.pos)
+	number := s.text.substr(start_pos, s.pos)
 	s.pos--
 	return number
 }
 
+fn (s mut Scanner) ident_oct_number() string {
+	start_pos := s.pos
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+		c := s.text[s.pos]
+		if c.is_digit() {
+			if !c.is_oct_digit() {
+				s.error('malformed octal constant')
+			}
+		} else {
+			break
+		}
+		s.pos++
+	}
+	number := s.text.substr(start_pos, s.pos)
+	s.pos--
+	return number
+}
+
+fn (s mut Scanner) ident_dec_number() string {
+	start_pos := s.pos
+
+	// scan integer part
+	for s.text[s.pos].is_digit() {
+		s.pos++
+	}
+
+	// e.g. 1..9
+	// we just return '1' and don't scan '..9'
+	if s.expect('..', s.pos) {
+		number := s.text.substr(start_pos, s.pos)
+		s.pos--
+		return number
+	}
+
+	// scan fractional part
+	if s.text[s.pos] == `.` {
+		s.pos++
+		for s.text[s.pos].is_digit() {
+			s.pos++
+		}
+	}
+
+	// scan exponential part
+	mut has_exponential_part := false
+	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
+		exp_start_pos := s.pos += 2
+		for s.text[s.pos].is_digit() {
+			s.pos++
+		}
+		if exp_start_pos == s.pos {
+			s.error('exponent has no digits')
+		}
+		has_exponential_part = true
+	}
+
+	// error check: 1.23.4, 123.e+3.4
+	if s.text[s.pos] == `.` {
+		if has_exponential_part {
+			s.error('exponential part should be integer')
+		}
+		else {
+			s.error('too many decimal points in number')
+		}
+	}
+
+	number := s.text.substr(start_pos, s.pos)
+	s.pos--
+	return number
+}
+
+fn (s mut Scanner) ident_number() string {
+	if s.expect('0x', s.pos) {
+		return s.ident_hex_number()
+	}
+
+	if s.expect('0.', s.pos) || s.expect('0e', s.pos) {
+		return s.ident_dec_number()
+	}
+
+	if s.text[s.pos] == `0` {
+		return s.ident_oct_number()
+	}
+
+	return s.ident_dec_number()
+}
+
 fn (s Scanner) has_gone_over_line_end() bool {
 	mut i := s.pos-1
-	for i >= 0 && !is_white(s.text[i]) {
+	for i >= 0 && !s.text[i].is_white() {
 		i--
 	}
-	for i >= 0 && is_white(s.text[i]) {
+	for i >= 0 && s.text[i].is_white() {
 		if is_nl(s.text[i]) {
 			return true
 		}
@@ -153,45 +207,21 @@ fn (s Scanner) has_gone_over_line_end() bool {
 }
 
 fn (s mut Scanner) skip_whitespace() {
-	for s.pos < s.text.len && is_white(s.text[s.pos]) {
-		if is_nl(s.text[s.pos]) {
-			// Count \r\n as one line 
-			if !(s.text[s.pos] == `\n` && s.pos > 0 && s.text[s.pos-1] == `\r`) { 
+	for s.pos < s.text.len && s.text[s.pos].is_white() {
+		// Count \r\n as one line 
+		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 				s.line_nr++
-			} 
 		}
 		s.pos++
 	}
-	// if s.pos == s.text.len {
-	// return scan_res(.eof, '')
-	// }
 }
-
-fn (s mut Scanner) get_var_name(pos int) string {
-	mut pos_start := pos
-
-	for ; pos_start >= 0 && s.text[pos_start] != `\n` && s.text[pos_start] != `;`; pos_start-- {}
-	pos_start++
-	return s.text.substr(pos_start, pos)
-}
-
-// CAO stands for Compound Assignment Operators  (e.g '+=' )
-/* 
-fn (s mut Scanner) cao_change(operator string) {
-	s.text = s.text.substr(0, s.pos - operator.len) + ' = ' + s.get_var_name(s.pos - operator.len) + ' ' + operator + ' ' + s.text.substr(s.pos + 1, s.text.len)
-}
-*/ 
 
 fn (s mut Scanner) scan() ScanRes {
-if s.line_comment != '' { 
-	//s.fgenln('// LOL "$s.line_comment"')
-	//s.line_comment = '' 
-} 
-	// if s.file_path == 'd.v' {
-	// println('\nscan()')
-	// }
+	if s.line_comment != '' { 
+		//s.fgenln('// LOL "$s.line_comment"')
+		//s.line_comment = '' 
+	} 
 	if s.started {
-		// || (s.pos == 0 && s.text.len > 0 && s.text[s.pos] == `\n`) {
 		s.pos++
 	}
 	s.started = true
@@ -204,8 +234,7 @@ if s.line_comment != '' {
 	}
 	// End of $var, start next string
 	if s.dollar_end {
-		// fmt.Println("end of $var, get string", s.pos, string(s.text[s.pos]))
-		if s.text[s.pos] == SingleQuote {
+		if s.text[s.pos] == `\'` {
 			s.dollar_end = false
 			return scan_res(.str, '')
 		}
@@ -215,7 +244,6 @@ if s.line_comment != '' {
 	s.skip_whitespace()
 	// end of file
 	if s.pos >= s.text.len {
-		// println('scan(): returning .eof (pos >= len)')
 		return scan_res(.eof, '')
 	}
 	// handle each char
@@ -230,26 +258,19 @@ if s.line_comment != '' {
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
-		// println('!!! got name=$name next_char=$next_char')
 		if is_key(name) {
-			// println('IS KEY')
-			// tok := (key_to_token(name))
-			// println(tok.str())
 			return scan_res(key_to_token(name), '')
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
 		if s.inside_string {
-			// println('is_letter inside string! nextc=${nextc.str()}')
-			if next_char == SingleQuote {
-				// println('var is last before QUOTE')
+			if next_char == `\'` {
 				s.pos++
 				s.dollar_start = false
 				s.inside_string = false
 			}
 		}
-		if s.dollar_start && next_char != `.` {//&& next_char != `(` {
-			// println('INSIDE .str .dollar var=$name')
+		if s.dollar_start && next_char != `.` {
 			s.dollar_end = true
 			s.dollar_start = false
 		}
@@ -263,7 +284,7 @@ if s.line_comment != '' {
 	// `123`, `.123`
 	else if c.is_digit() || c == `.` && nextc.is_digit() {
 		num := s.ident_number()
-		return scan_res(.integer, num)
+		return scan_res(.number, num)
 	}
 	// all other tokens
 	switch c {
@@ -307,7 +328,7 @@ if s.line_comment != '' {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case SingleQuote:
+	case `\'`:
 		return scan_res(.str, s.ident_string())
 		// TODO allow double quotes
 		// case QUOTE:
@@ -336,7 +357,7 @@ if s.line_comment != '' {
 		if s.inside_string {
 			s.pos++
 			// TODO UN.neEDED?
-			if s.text[s.pos] == SingleQuote {
+			if s.text[s.pos] == `\'` {
 				s.inside_string = false
 				return scan_res(.str, '')
 			}
@@ -458,7 +479,6 @@ if s.line_comment != '' {
 			return scan_res(.div_assign, '')
 		}
 		if nextc == `/` {
-			// debug("!!!!!!.key_goT LI.ne COM")
 			start := s.pos + 1
 			for s.pos < s.text.len && s.text[s.pos] != `\n`{
 				s.pos++
@@ -485,11 +505,11 @@ if s.line_comment != '' {
 					s.line_nr++
 					continue
 				}
-				if s.text[s.pos] == `/` && s.text[s.pos + 1] == `*` {
+				if s.expect('/*', s.pos) {
 					nest_count++
 					continue
 				}
-				if s.text[s.pos] == `*` && s.text[s.pos + 1] == `/` {
+				if s.expect('*/', s.pos) {
 					nest_count--
 				}
 			}
@@ -507,7 +527,6 @@ if s.line_comment != '' {
 			return scan_res(.eof, '')
 		} 
 	} 
-	println('(char code=$c) pos=$s.pos len=$s.text.len')
 	mut msg := 'invalid character `${c.str()}`' 
 	if c == `"` {
 		msg += ', use \' to denote strings' 
@@ -520,9 +539,6 @@ fn (s &Scanner) error(msg string) {
 	file := s.file_path.all_after('/')
 	println('panic: $file:${s.line_nr + 1}')
 	println(msg)
-	// os.print_backtrace()
-	// println(file)
-	// println(s.file_path)
 	exit(1)
 }
 
@@ -531,10 +547,6 @@ fn (s &Scanner) error(msg string) {
 fn (s mut Scanner) ident_string() string {
 	// println("\nidentString() at char=", string(s.text[s.pos]),
 	// "chard=", s.text[s.pos], " pos=", s.pos, "txt=", s.text[s.pos:s.pos+7])
-	debug := s.file_path.contains('test_test')
-	if debug {
-		println('identStr() $s.file_path line=$s.line_nr pos=$s.pos')
-	}
 	mut start := s.pos
 	s.inside_string = false
 	slash := `\\`
@@ -544,12 +556,9 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		c := s.text[s.pos]
-		if debug {
-			println(c.str())
-		}
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == SingleQuote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
@@ -561,8 +570,7 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// Don't allow \x00
-		if c == `0` && s.pos > 5 && s.text[s.pos - 1] == `0` && s.text[s.pos - 2] == `x` &&
-		s.text[s.pos - 3] == `\\` {
+		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
@@ -573,17 +581,15 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		// $var
-		// if !s.is_fmt && c != `{` && c != ` ` && ! (c >= `0` && c <= `9`)  && prevc == `$` {
 		if (c.is_letter() || c == `_`) && prevc == `$` {
 			s.inside_string = true
 			s.dollar_start = true
-			// println('setting s.dollar=true pos=$s.pos')
 			s.pos -= 2
 			break
 		}
 	}
 	mut lit := ''
-	if s.text[start] == SingleQuote {
+	if s.text[start] == `\'` {
 		start++
 	}
 	mut end := s.pos
@@ -594,17 +600,6 @@ fn (s mut Scanner) ident_string() string {
 	else {
 		lit = s.text.substr(start, end)
 	}
-	// if lit.contains('\n') {
-	// println('\nstring lit="$lit" pos=$s.pos line=$s.line_nr')
-	// }
-	/* 
-	for c in lit {
-		if s.file_path.contains('range_test') {
-			println('!')
-			println(c)
-		}
-	}
-*/
 	return lit
 }
 
@@ -620,7 +615,7 @@ fn (s mut Scanner) ident_char() string {
 		if s.text[s.pos] != slash {
 			len++
 		}
-		double_slash := s.text[s.pos - 1] == slash && s.text[s.pos - 2] == slash
+		double_slash := s.expect('\\\\', s.pos - 2)
 		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) {
 			if double_slash {
 				len++
@@ -633,30 +628,24 @@ fn (s mut Scanner) ident_char() string {
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
-		s.error('invalid character literal (more than one character: $len)')
+			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
 	return c
 }
 
-fn (p mut Parser) peek() Token {
-	for {
-		tok := p.scanner.peek()
-		if tok != .nl {
-			return tok
-		}
-	}
-}
-
 fn (s mut Scanner) peek() Token {
+	// save scanner state
 	pos := s.pos
 	line := s.line_nr
 	inside_string := s.inside_string
 	dollar_start := s.dollar_start
 	dollar_end := s.dollar_end
-	// /////
+
 	res := s.scan()
 	tok := res.tok
+
+	// restore scanner state
 	s.pos = pos
 	s.line_nr = line
 	s.inside_string = inside_string
@@ -665,30 +654,42 @@ fn (s mut Scanner) peek() Token {
 	return tok
 }
 
+fn (s mut Scanner) expect(want string, start_pos int) bool {
+	end_pos := start_pos + want.len
+	if start_pos < 0 || start_pos >= s.text.len {
+		return false
+	}
+	if end_pos < 0 || end_pos > s.text.len {
+		return false
+	}
+	for pos in start_pos..end_pos {
+		if s.text[pos] != want[pos-start_pos] {
+			return false
+		}
+	}
+	return true
+}
+
 fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
+	s.debug = true
+
 	fname := s.file_path.all_after('/')
 	println('\n===DEBUG TOKENS $fname===')
-	// allToks := ''
-	s.debug = true
+
 	for {
 		res := s.scan()
 		tok := res.tok
 		lit := res.lit
-		// printiln(tok)
 		print(tok.str())
-		// allToks += tok.String()
 		if lit != '' {
 			println(' `$lit`')
-			// allToks += " `" + lit + "`"
 		}
 		else {
 			println('')
 		}
-		// allToks += "\n"
 		if tok == .eof {
 			println('============ END OF DEBUG TOKENS ==================')
-			// fmt.Println("========"+s.file+"========\n", allToks)
 			break
 		}
 	}
@@ -696,6 +697,10 @@ fn (s mut Scanner) debug_tokens() {
 
 fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
+}
+
+fn is_nl(c byte) bool {
+	return c == `\r` || c == `\n`
 }
 
 fn (s mut Scanner) get_opening_bracket() int {
@@ -739,8 +744,4 @@ fn (s mut Scanner) create_type_string(T Type, name string) {
 	s.pos = start - 2
 	s.line_nr = line
 	s.inside_string = inside_string
-}
-
-fn (p mut Parser) create_type_string(T Type, name string) {
-	p.scanner.create_type_string(T, name)
 }

@@ -714,6 +714,14 @@ pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
+pub fn (c byte) is_hex_digit() bool {
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+}
+
+pub fn (c byte) is_oct_digit() bool {
+	return c >= `0` && c <= `7`
+}
+
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
