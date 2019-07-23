@@ -4,7 +4,6 @@
 
 module math
 
-#include <math.h>
 
 // NOTE
 // When adding a new function, please make sure it's in the right place.
