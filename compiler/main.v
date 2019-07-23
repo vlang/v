@@ -205,7 +205,8 @@ fn (v mut V) compile() {
 #include <windows.h>
 //#include <WinSock2.h>
 #ifdef _MSC_VER
-#define _Atomic
+// On MSVC these are the same (as long as /volatile:ms is passed)
+#define _Atomic volatile
 #endif
 
 void pthread_mutex_lock(HANDLE *m) {

@@ -87,7 +87,7 @@ fn find_msvc() *MsvcResult {
 pub fn cc_msvc(v *V) {
 	r := find_msvc()
 
-	mut a := ['-w'] // arguments for the C compiler
+	mut a := ['-w', '/volatile:ms'] // arguments for the C compiler
 
 	// cl.exe is stupid so these are in a different order to the ones below!
 
@@ -273,6 +273,6 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	println('$cfiles')
 
-	res := os.exec('""$msvc.exe_path\\cl.exe" /Z7 $include_string /c $cfiles /Fo"$obj_path""')
+	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path""')
 	println(res)
 }
