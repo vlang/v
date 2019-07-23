@@ -189,19 +189,11 @@ fn (v mut V) compile() {
 #include <inttypes.h>  // int64_t etc 
 
 
-#if defined(__linux__) || defined(__OpenBSD__) 
-#include <pthread.h> 
-#endif 
-
-
-#ifdef __APPLE__ 
-#include <pthread.h> 
-#endif 
-
-
 #ifdef _WIN32 
 #include <windows.h>
 //#include <WinSock2.h> 
+#else
+#include <pthread.h> 
 #endif 
 
 //================================== TYPEDEFS ================================*/ 
