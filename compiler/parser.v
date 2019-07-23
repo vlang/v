@@ -306,21 +306,16 @@ fn (p mut Parser) imports() {
 	if p.tok == .lpar {
 		p.check(.lpar)
 		for p.tok != .rpar && p.tok != .eof {
-			pkg := p.lit.trim_space()
-			p.next()
-			// TODO: aliased for import() syntax
-			// p.import_table.register_alias(alias, pkg)
-			// p.import_table.register_import(pkg)
-			if p.table.imports.contains(pkg) {
-				continue
-			}
-			p.table.imports << pkg
-			p.table.register_package(pkg)
+			p.register_import()
 		}
 		p.check(.rpar)
 		return
 	}
 	// `import foo`
+	p.register_import()
+}
+
+fn (p mut Parser) register_import() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
@@ -344,7 +339,6 @@ fn (p mut Parser) imports() {
 		p.check(.key_as) 
 		mod_alias = p.check_name()
 	}
-	p.fgenln(' ' + pkg)
 	// add import to file scope import table
 	p.import_table.register_alias(mod_alias, pkg)
 	// Make sure there are no duplicate imports
@@ -354,6 +348,8 @@ fn (p mut Parser) imports() {
 	p.log('adding import $pkg')
 	p.table.imports << pkg
 	p.table.register_package(pkg)
+	
+	p.fgenln(' ' + pkg)
 }
 
 fn (p mut Parser) const_decl() {
