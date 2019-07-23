@@ -486,9 +486,9 @@ pub fn user_os() string {
 	$if dragonfly {
 		return 'dragonfly' 
 	}
-	$if msvc {
-		return 'windows'
-	}
+	// $if msvc {
+	// 	return 'windows'
+	// }
 	return 'unknown'
 }
 
