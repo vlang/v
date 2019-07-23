@@ -170,6 +170,11 @@ fn (m map) get(key string, out voidptr) bool {
 }
 
 pub fn (m map) exists(key string) bool {
+	panic('map.exists(key) was removed from the language. Use `key in map` instead.') 
+	return false 
+}
+
+fn (m map) _exists(key string) bool {
 	return !isnil(m.root) && m.root.find2(key, m.element_size) 
 }
 

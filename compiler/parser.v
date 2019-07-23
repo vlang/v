@@ -1970,22 +1970,29 @@ fn (p mut Parser) expression() string {
 			return 'int'
 		}
 	}
-	// a in [1,2,3]
+	// `a in [1, 2, 3]` 
+	// `key in map` 
 	if p.tok == .key_in {
 		p.fgen(' ')
 		p.check(.key_in)
 		p.fgen(' ')
 		p.gen(', ')
 		arr_typ := p.expression()
-		if !arr_typ.starts_with('array_') {
-			p.error('`in` requires an array')
+		is_map := arr_typ.starts_with('map_') 
+		if !arr_typ.starts_with('array_') && !is_map { 
+			p.error('`in` requires an array/map')
 		}
 		T := p.table.find_type(arr_typ)
-		if !T.has_method('contains') {
+		if !is_map && !T.has_method('contains') {
 			p.error('$arr_typ has no method `contains`')
 		}
-		// `typ` is element type
-		p.cgen.set_placeholder(ph, '_IN($typ, ')
+		// `typ` is element's type
+		if is_map {
+			p.cgen.set_placeholder(ph, '_IN_MAP( ')
+		} 
+		else { 
+			p.cgen.set_placeholder(ph, '_IN($typ, ')
+		} 
 		p.gen(')')
 		return 'bool'
 	}
