@@ -4,8 +4,8 @@ import os
 
 #flag -I @VROOT/thirdparty/microsoft_craziness
 #flag @VROOT/thirdparty/microsoft_craziness/microsoft_craziness.o
-#flag -l ole32
-#flag -l oleaut32
+#flag windows -l ole32
+#flag windows -l oleaut32
 
 // Emily: If these arent included then msvc assumes that 
 // these return int (which should be 64bit)
