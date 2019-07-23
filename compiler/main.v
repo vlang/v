@@ -652,7 +652,12 @@ fn (c &V) cc_windows_cross() {
                }
                println('Done!')
 }
- 
+
+$if !windows {
+	cc_msvc(v *V) {
+		panic('MSVC not supported on this platform')
+	}
+}
  
 
 fn (v mut V) cc() {
@@ -664,9 +669,7 @@ fn (v mut V) cc() {
 		} 
 	} 
 	if v.os == .msvc {
-		$if windows {
-			cc_msvc(v)
-		}
+		cc_msvc(v)
 		return
 	}
 
