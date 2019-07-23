@@ -193,7 +193,7 @@ fn (g mut Game) move_tetro() {
 	g.pos_y++
 }
 
-fn (g mut Game) move_right(dx int) {
+fn (g mut Game) move_right(dx int) bool { 
 	// Reached left/right edge or another tetro?
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
@@ -202,10 +202,11 @@ fn (g mut Game) move_right(dx int) {
 		row := g.field[y]
 		if row[x] != 0 {
 			// Do not move
-			return
+			return false 
 		}
 	}
 	g.pos_x += dx
+	return true 
 }
 
 fn (g mut Game) delete_completed_lines() {
@@ -324,11 +325,17 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 		glfw.set_should_close(wnd, true)
 	case glfw.KeyUp:
 		// Rotate the tetro
+		old_rotation_idx := game.rotation_idx 
 		game.rotation_idx++
 		if game.rotation_idx == TetroSize {
 			game.rotation_idx = 0
 		}
 		game.get_tetro()
+		if !game.move_right(0) {
+			game.rotation_idx = old_rotation_idx 
+			game.get_tetro()
+		} 
+	 
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
