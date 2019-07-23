@@ -50,6 +50,11 @@ pub fn abs(a f64) f64 {
 	return a
 }
 
+// Returns hypotenuse of a right triangle.
+pub fn hypot(a, b f64) f64 {
+	return C.hypot(a, b)
+}
+
 // acos calculates inversed cosine (arccosine).
 pub fn acos(a f64) f64 {
 	return C.acos(a)
