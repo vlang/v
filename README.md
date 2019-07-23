@@ -78,6 +78,7 @@ cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
 You can create a symlink so that it's globally available:
 
 ```
+chmod +755 [path to V repo]/v
 sudo ln -s [path to V repo]/v /usr/local/bin/v
 ```
 
