@@ -94,7 +94,7 @@ pub fn cc_msvc(v *V) {
 		a << '/MDd'
 	}
 
-	if v.pref.is_live || v.pref.is_so {
+	if v.pref.is_so {
 		// Dont think we have to do anything for this
 		if !v.out_name.ends_with('.dll') {
 			v.out_name = v.out_name + '.dll'
