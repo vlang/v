@@ -694,7 +694,11 @@ mut args := ''
 	//}
 	$if windows {
 		cmd = 'gcc $args' 
-	} 
+	}
+	if v.out_name.ends_with('.c') {
+		os.mv( '.$v.out_name_c', v.out_name )
+		exit(0)
+	}
 	// Run
 	ticks := time.ticks() 
 	res := os.exec(cmd)
