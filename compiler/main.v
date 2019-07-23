@@ -567,7 +567,8 @@ void reload_so() {
 			'./' + v.out_name
 		}
 		$if windows {
-			cmd = v.out_name 
+			cmd = v.out_name
+			cmd = cmd.replace('/', '\\')
 		} 
 		if os.args.len > 3 {
 			cmd += ' ' + os.args.right(3).join(' ')

@@ -136,7 +136,6 @@ pub fn cc_msvc(v *V) {
 	// so fix that now
 
 	a << '".$v.out_name_c"'
-	println('".$v.out_name_c"')
 
 	mut other_flags := []string{}
 	mut real_libs := []string{}
