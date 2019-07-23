@@ -342,11 +342,13 @@ fn (p mut Parser) register_import() {
 	// add import to file scope import table
 	p.import_table.register_alias(mod_alias, pkg)
 	// Make sure there are no duplicate imports
-	if !p.table.imports.contains(pkg) {
-		p.log('adding import $pkg')
-		p.table.imports << pkg
-		p.table.register_package(pkg)
+	if p.table.imports.contains(pkg) {
+		return
 	}
+	p.log('adding import $pkg')
+	p.table.imports << pkg
+	p.table.register_package(pkg)
+	
 	p.fgenln(' ' + pkg)
 }
 
