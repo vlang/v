@@ -664,11 +664,12 @@ fn (v mut V) cc() {
 			return 
 		} 
 	} 
-	if v.os == .msvc {
-		cc_msvc(v)
-		return
-	}
-
+	$if windows { 
+		if v.os == .msvc {
+			cc_msvc(v)
+			return
+		}
+	} 
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-w'] // arguments for the C compiler
