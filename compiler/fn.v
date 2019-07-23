@@ -254,6 +254,13 @@ fn (p mut Parser) fn_decl() {
 		typ = 'int'
 		str_args = 'int argc, char** argv'
 	}
+
+	mut dll_export_linkage := ''
+
+	if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+		dll_export_linkage = '__declspec(dllexport) '
+	}
+
 	// Only in C code generate User_register() instead of register()
 	// Internally it's still stored as "register" in type User
 	// mut fn_name_cgen := f.name
@@ -269,7 +276,7 @@ fn (p mut Parser) fn_decl() {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
 		}
-		p.genln('$typ $fn_name_cgen($str_args) {')
+		p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 	}
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
@@ -330,7 +337,7 @@ fn (p mut Parser) fn_decl() {
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
 		// Actual fn declaration!
-		mut fn_decl := '$typ $fn_name_cgen($str_args)'
+		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen($str_args)'
 		if p.pref.obfuscate {
 			fn_decl += '; // ${f.name}'
 		}
@@ -363,11 +370,21 @@ fn (p mut Parser) fn_decl() {
 		// We are in live code reload mode, call the .so loader in bg
 		if p.pref.is_live {
 			file_base := p.file_path.replace('.v', '') 
-			so_name := file_base + '.so' 
-			p.genln(' 
+			if p.os != .windows && p.os != .msvc {
+				so_name := file_base + '.so'
+				p.genln(' 
 load_so("$so_name"); 
 pthread_t _thread_so;
 pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
+			} else {
+				so_name := file_base + if p.os == .msvc {'.dll'} else {'.so'} 
+				p.genln('
+live_fn_mutex = CreateMutexA(0, 0, 0);
+load_so("$so_name");
+unsigned long _thread_so;
+_thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
+				')
+			}
 		}
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
 			p.error('tests cannot have function `main`')
@@ -454,6 +471,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// str_args contains the args for the wrapper function:
 	// wrapper(arg_struct * arg) { fn("arg->a, arg->b"); }
 	mut str_args := ''
+	mut did_gen_something := false
 	for i, arg in f.args {
 		arg_struct += '$arg.typ $arg.name ;'// Add another field (arg) to the tmp struct definition
 		str_args += 'arg->$arg.name'
@@ -472,7 +490,14 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 			p.check(.comma)
 			str_args += ','
 		}
+		did_gen_something = true
 	}
+
+	if p.os == .msvc && !did_gen_something {
+		// Msvc doesnt like empty struct
+		arg_struct += 'void *____dummy_variable;'
+	}
+
 	arg_struct += '} $arg_struct_name ;'
 	// Also register the wrapper, so we can use the original function without modifying it
 	fn_name = p.table.cgen_name(f)
@@ -482,7 +507,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
 	thread_name = '_thread$tmp_nr'
-	if p.os != .windows {
+	if p.os != .windows && p.os != .msvc {
 		p.genln('pthread_t $thread_name;')
 	}
 	tmp2 := p.get_tmp()
@@ -491,7 +516,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		parg = ' $tmp_struct'
 	}
 	// Call the wrapper
-	if p.os == .windows {
+	if p.os == .windows || p.os == .msvc {
 		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
 	}
 	else {

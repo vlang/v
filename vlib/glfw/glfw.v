@@ -164,7 +164,7 @@ pub fn create_window(c WinCfg) *Window {
 	} 
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	if isnil(cwindow) { 
-		println('failed to credate glfw  window')
+		println('failed to create glfw window')
 		C.glfwTerminate()
 	}
 	// # glfwSetCursorPosCallback(cwindow, glfw__mouse_move) ;
