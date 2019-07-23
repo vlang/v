@@ -306,21 +306,16 @@ fn (p mut Parser) imports() {
 	if p.tok == .lpar {
 		p.check(.lpar)
 		for p.tok != .rpar && p.tok != .eof {
-			pkg := p.lit.trim_space()
-			p.next()
-			// TODO: aliased for import() syntax
-			// p.import_table.register_alias(alias, pkg)
-			// p.import_table.register_import(pkg)
-			if p.table.imports.contains(pkg) {
-				continue
-			}
-			p.table.imports << pkg
-			p.table.register_package(pkg)
+			p.register_import()
 		}
 		p.check(.rpar)
 		return
 	}
 	// `import foo`
+	p.register_import()
+}
+
+fn (p mut Parser) register_import() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
@@ -344,7 +339,6 @@ fn (p mut Parser) imports() {
 		p.check(.key_as) 
 		mod_alias = p.check_name()
 	}
-	p.fgenln(' ' + pkg)
 	// add import to file scope import table
 	p.import_table.register_alias(mod_alias, pkg)
 	// Make sure there are no duplicate imports
@@ -354,6 +348,8 @@ fn (p mut Parser) imports() {
 	p.log('adding import $pkg')
 	p.table.imports << pkg
 	p.table.register_package(pkg)
+	
+	p.fgenln(' ' + pkg)
 }
 
 fn (p mut Parser) const_decl() {
@@ -1983,22 +1979,29 @@ fn (p mut Parser) expression() string {
 			return 'int'
 		}
 	}
-	// a in [1,2,3]
+	// `a in [1, 2, 3]` 
+	// `key in map` 
 	if p.tok == .key_in {
 		p.fgen(' ')
 		p.check(.key_in)
 		p.fgen(' ')
 		p.gen(', ')
 		arr_typ := p.expression()
-		if !arr_typ.starts_with('array_') {
-			p.error('`in` requires an array')
+		is_map := arr_typ.starts_with('map_') 
+		if !arr_typ.starts_with('array_') && !is_map { 
+			p.error('`in` requires an array/map')
 		}
 		T := p.table.find_type(arr_typ)
-		if !T.has_method('contains') {
+		if !is_map && !T.has_method('contains') {
 			p.error('$arr_typ has no method `contains`')
 		}
-		// `typ` is element type
-		p.cgen.set_placeholder(ph, '_IN($typ, ')
+		// `typ` is element's type
+		if is_map {
+			p.cgen.set_placeholder(ph, '_IN_MAP( ')
+		} 
+		else { 
+			p.cgen.set_placeholder(ph, '_IN($typ, ')
+		} 
 		p.gen(')')
 		return 'bool'
 	}

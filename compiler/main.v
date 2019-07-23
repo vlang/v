@@ -190,16 +190,6 @@ fn (v mut V) compile() {
 #include <inttypes.h>  // int64_t etc 
 
 
-#if defined(__linux__) || defined(__OpenBSD__) 
-#include <pthread.h> 
-#endif 
-
-
-#ifdef __APPLE__ 
-#include <pthread.h> 
-#endif 
-
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -216,6 +206,8 @@ void pthread_mutex_lock(HANDLE *m) {
 void pthread_mutex_unlock(HANDLE *m) {
 	ReleaseMutex(*m);
 }
+#else
+#include <pthread.h> 
 #endif 
 
 //================================== TYPEDEFS ================================*/ 
@@ -258,6 +250,7 @@ typedef map map_string;
 #define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push(arr, &tmp);}
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val) 
+#define _IN_MAP(val, m) map__exists(m, val) 
 #define ALLOC_INIT(type, ...) (type *)memdup((type[]){ __VA_ARGS__ }, sizeof(type)) 
 
 //================================== GLOBALS =================================*/   
