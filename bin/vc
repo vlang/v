@@ -1,0 +1,7 @@
+#!/bin/sh
+[ -z "$CC" ] && CC=cc
+[ -z "$CFLAGS" ] && CFLAGS='-O2 -std=gnu11 -w -fPIC -pie '
+[ -z "$LDFLAGS" ] && LDFLAGS='-lm '
+
+v -o $1.c "${@:2}"
+eval $CC $CFLAGS -o $1 $1.c $LDFLAGS
