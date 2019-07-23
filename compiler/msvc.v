@@ -39,16 +39,16 @@ struct FindResult {
 }
 
 fn C.find_visual_studio_and_windows_sdk() *FindResult
-fn C.wide_string_to_narrow_string_facepalm(byteptr) byteptr
+fn C.wide_string_to_narrow_temp(byteptr) byteptr
 
 fn find_msvc() *MsvcResult {
 	r := C.find_visual_studio_and_windows_sdk()
 
-	windows_sdk_root := tos_clone(C.wide_string_to_narrow_string_facepalm(r.windows_sdk_root))
-	ucrt_lib_folder := tos_clone(C.wide_string_to_narrow_string_facepalm(r.windows_sdk_ucrt_library_path))
-	um_lib_folder := tos_clone(C.wide_string_to_narrow_string_facepalm(r.windows_sdk_um_library_path))
-	vs_lib_folder := tos_clone(C.wide_string_to_narrow_string_facepalm(r.vs_library_path))
-	exe_folder := tos_clone(C.wide_string_to_narrow_string_facepalm(r.vs_exe_path))
+	windows_sdk_root := tos_clone(C.wide_string_to_narrow_temp(r.windows_sdk_root))
+	ucrt_lib_folder := tos_clone(C.wide_string_to_narrow_temp(r.windows_sdk_ucrt_library_path))
+	um_lib_folder := tos_clone(C.wide_string_to_narrow_temp(r.windows_sdk_um_library_path))
+	vs_lib_folder := tos_clone(C.wide_string_to_narrow_temp(r.vs_library_path))
+	exe_folder := tos_clone(C.wide_string_to_narrow_temp(r.vs_exe_path))
 
 	mut ucrt_include_folder := ucrt_lib_folder.replace('Lib', 'Include')
 	mut vs_include_folder := vs_lib_folder.replace('lib', 'include')
@@ -134,22 +134,29 @@ pub fn cc_msvc(v *V) {
 	//a << '"$TmpPath/$v.out_name_c"'
 	// this isnt correct for some reason
 	// so fix that now
-	mut out_name_c := v.out_name.all_after('/') + '.c'
-	a << '".$out_name_c"'
+
+	a << '".$v.out_name_c"'
+	println('".$v.out_name_c"')
 
 	mut other_flags := []string{}
 	mut real_libs := []string{}
+	mut lib_paths := []string{}
 
 	for f in v.table.flags {
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler
-		if f.contains('-l') {
+		if f.starts_with('-l') {
 			real_libs << f.right(2).trim_space() + '.lib'
-		} else if f.ends_with('.o') {
+		} 
+		else if f.starts_with('-L') {
+			lib_paths << f.right(2).trim_space()
+		}
+		else if f.ends_with('.o') {
 			// msvc expects .obj not .o
 			other_flags << f + 'bj'
-		} else {
+		} 
+		else {
 			other_flags << f
 		}
 	}
@@ -173,8 +180,6 @@ pub fn cc_msvc(v *V) {
 
 	for l in default_libs {
 		real_libs << l
-
-		println('$l')
 	}
 
 
@@ -197,6 +202,10 @@ pub fn cc_msvc(v *V) {
 	a << '/LIBPATH:"$r.um_lib_path"'
 	a << '/LIBPATH:"$r.vs_lib_path"'
 
+	for l in lib_paths {
+		a << '/LIBPATH:"$l"'
+	}
+
 	if !v.pref.is_prod {
 		a << '/DEBUG:FULL'
 	}
@@ -210,14 +219,12 @@ pub fn cc_msvc(v *V) {
 
 	cmd := '""$escaped_path\\cl.exe" $args"'
 
-	println('$cmd')
+	// println('$cmd')
 
 	res := os.exec(cmd)
-	println('==== Result ====')
-	println(res)
-	println('=======')
+	// println(res)
 	// println('C OUTPUT:')
-	if res.contains('error: ') {
+	if res.contains('error') {
 		println(res)
 		panic('msvc error')
 	}
