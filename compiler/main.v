@@ -653,13 +653,6 @@ fn (c &V) cc_windows_cross() {
                println('Done!')
 }
 
-$if !windows {
-	cc_msvc(v *V) {
-		panic('MSVC not supported on this platform')
-	}
-}
- 
-
 fn (v mut V) cc() {
 	// Cross compiling for Windows 
 	if v.os == .windows {
