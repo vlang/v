@@ -10,6 +10,7 @@ fn test_err(){
 }
 
 fn err_call(ok bool) ?int {
+return 'sdf' 
 	if !ok {
 		return error('Not ok!')
 	}

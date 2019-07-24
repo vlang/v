@@ -761,7 +761,7 @@ fn (p mut Parser) error(s string) {
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
-	p.scanner.error(s.replace('array_', '[]').replace('__', '.'))
+	p.scanner.error(s.replace('array_', '[]').replace('__', '.').replace('Option_', '?')) 
 }
 
 fn (p &Parser) first_run() bool {
