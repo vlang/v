@@ -113,6 +113,10 @@ fn is_float_type(typ string) bool {
 	return FLOAT_TYPES.contains(typ)
 }
 
+fn is_primitive_type(typ string) bool {
+	return is_number_type(typ) || typ == 'string' 
+} 
+
 fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
 		obf_ids: map[string]int{}

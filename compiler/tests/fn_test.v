@@ -63,6 +63,49 @@ fn myprint(s string, ..) {
 	println('/* /* comment */ */')
 }
 
+fn modify_array(a mut []int) {
+	a[0] = 10 
+	for i in 0..a.len {
+		a[i] = a[i] * 2
+	}
+	a << 888 
+} 
+
+fn test_mut_array() {
+	mut nums := [1, 2, 3] 
+	modify_array(mut nums) 
+	assert nums.len == 4 
+	assert nums[0] == 20 
+	assert nums[1] == 4
+	assert nums[2] == 6 
+	assert nums[3] == 888 
+} 
+
+fn mod_struct(user mut User) {
+	user.age++ 
+}
+
+struct User {
+mut: 
+	age int 
+} 
+
+fn test_mut_struct() {
+	mut user := User{18} 
+	mod_struct(mut user)
+	assert user.age == 19 
+} 
+
+fn mod_ptr(buf mut byteptr) {
+	buf[0] = 77 
+} 
+
+fn test_mut_ptr() {
+	buf := malloc(10) 
+	mod_ptr(mut buf) 
+	assert buf[0] == 77 
+} 
+
 fn test_fns() {
 	// no asserts for now, just test function declarations above 
 } 

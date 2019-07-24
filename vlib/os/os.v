@@ -33,9 +33,10 @@ const (
 import const (
 	FILE_ATTRIBUTE_DIRECTORY
 	INVALID_FILE_ATTRIBUTES
-) 
+)
 
-struct FILE {
+struct C.FILE {
+	
 }
 
 struct File {
@@ -92,8 +93,17 @@ fn todo_remove(){}
 
 fn init_os_args(argc int, argv *byteptr) []string {
 	mut args := []string
-	for i := 0; i < argc; i++ {
-		args << string(argv[i])
+	$if windows {
+		mut args_list := &voidptr(0)
+		mut args_count := 0
+		args_list = C.CommandLineToArgvW(C.GetCommandLine(), &args_count)
+		for i := 0; i < args_count; i++ {
+			args << string_from_wide(&u16(args_list[i]))
+		}
+	} $else {
+		for i := 0; i < argc; i++ {
+			args << string(argv[i])
+		}		
 	}
 	return args
 }
@@ -105,8 +115,14 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string { 
-	mut mode := 'rb' 
-	fp := C.fopen(path.str, mode.str) 
+	mode := 'rb'
+	mut fp := &C.FILE{}
+	$if windows {
+		fp = C._wfopen(path.to_wide(), mode.to_wide())
+	} $else {
+		cpath := path.str
+		fp = C.fopen(cpath, mode.str) 
+	}
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
@@ -123,13 +139,21 @@ pub fn read_file(path string) ?string {
 
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
-	s := C.stat{}
-	C.stat(path.str, &s)
+	mut s := C.stat{}
+	$if windows {
+		C._wstat(path.to_wide(), &s)
+	} $else {
+		C.stat(path.str, &s)
+	}
 	return s.st_size
 }
 
 pub fn mv(old, new string) {
-	C.rename(old.str, new.str)
+	$if windows {
+		C._wrename(old.to_wide(), new.to_wide())
+	} $else {
+		C.rename(old.str, new.str)
+	}
 }
 
 // read_lines reads the file in `path` into an array of lines.
@@ -137,7 +161,14 @@ pub fn mv(old, new string) {
 pub fn read_lines(path string) []string {
 	mut res := []string
 	mut buf := [1000]byte
-	fp := C.fopen(path.str, 'rb')
+	mode := 'rb'
+	mut fp := &C.FILE{}
+	$if windows {
+		fp = C._wfopen(path.to_wide(), mode.to_wide())
+	} $else {
+		cpath := path.str
+		fp = C.fopen(cpath, mode.str) 
+	}
 	if isnil(fp) {
 		// TODO
 		// return error('failed to open file "$path"')
@@ -169,8 +200,18 @@ fn read_ulines(path string) []ustring {
 }
 
 pub fn open(path string) ?File {
-	file := File {
-		cfile: C.fopen(path.str, 'rb') 
+	mut file := File{}
+	$if windows {
+		wpath := path.to_wide()
+		mode := 'rb'
+		file = File {			
+			cfile: C._wfopen(wpath, mode.to_wide())
+		}
+	} $else {
+		cpath := path.str 
+		file = File {
+			cfile: C.fopen(cpath, 'rb') 
+		}
 	}
 	if isnil(file.cfile) {
 		return error('failed to open file "$path"')
@@ -180,8 +221,18 @@ pub fn open(path string) ?File {
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	file := File {
-		cfile: C.fopen(path.str, 'wb') 
+	mut file := File{}
+	$if windows {
+		wpath := path.replace('/', '\\').to_wide()
+		mode := 'wb'
+		file = File {			
+			cfile: C._wfopen(wpath, mode.to_wide())
+		}
+	} $else {
+		cpath := path.str 
+		file = File {
+			cfile: C.fopen(cpath, 'wb') 
+		}
 	}
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
@@ -190,11 +241,21 @@ pub fn create(path string) ?File {
 }
 
 pub fn open_append(path string) ?File {
-	file := File {
-		cfile: C.fopen(path.str, 'ab') 
+	mut file := File{}
+	$if windows {
+		wpath := path.replace('/', '\\').to_wide()
+		mode := 'ab'
+		file = File {			
+			cfile: C._wfopen(wpath, mode.to_wide())
+		}
+	} $else {
+		cpath := path.str 
+		file = File {
+			cfile: C.fopen(cpath, 'ab') 
+		}
 	}
 	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
+		return error('failed to create(append) file "$path"')
 	}
 	return file 
 }
@@ -238,7 +299,12 @@ pub fn (f File) close() {
 
 // system starts the specified command, waits for it to complete, and returns its code.
 pub fn system(cmd string) int {
-	ret := C.system(cmd.str) 
+	mut ret := int(0)
+	$if windows {
+		ret = C._wsystem(cmd.to_wide())
+	} $else {
+		ret = C.system(cmd.str) 
+	}
 	if ret == -1 {
 		os.print_c_errno()
 	}
@@ -246,11 +312,13 @@ pub fn system(cmd string) int {
 }
 
 fn popen(path string) *FILE {
-	cpath := path.str
 	$if windows {
-		return C._popen(cpath, 'r')
+		mode := 'rb'
+		wpath := path.to_wide()
+		return C._wpopen(wpath, mode.to_wide())
 	}
 	$else {
+		cpath := path.str
 		return C.popen(cpath, 'r')
 	}
 }
@@ -258,7 +326,7 @@ fn popen(path string) *FILE {
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) string {
 	cmd = '$cmd 2>&1'
-	f := popen(cmd) 
+	f := popen(cmd)
 	if isnil(f) {
 		// TODO optional or error code 
 		println('popen $cmd failed')
@@ -273,12 +341,20 @@ pub fn exec(cmd string) string {
 }
 
 // `getenv` returns the value of the environment variable named by the key.
-pub fn getenv(key string) string {
-	s := C.getenv(key.str)
-	if isnil(s) {
-		return ''
+pub fn getenv(key string) string {	
+	$if windows {
+		s := C._wgetenv(key.to_wide())
+		if isnil(s) {
+			return ''
+		}
+		return string_from_wide(s)
+	} $else {
+		s := C.getenv(key.str)
+		if isnil(s) {
+			return ''
+		}
+		return string(s)
 	}
-	return string(s)
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
@@ -310,14 +386,17 @@ pub fn unsetenv(name string) int {
 // `file_exists` returns true if `path` exists.
 pub fn file_exists(path string) bool {
 	$if windows {
-		return C._access( path.str, 0 ) != -1
+		path = path.replace('/', '\\')
+		return C._waccess( path.to_wide(), 0 ) != -1
+	} $else {
+		return C.access( path.str, 0 ) != -1
 	}
-	return C.access( path.str, 0 ) != -1
 }
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		attr := int(C.GetFileAttributes(path.str)) 
+		path = path.replace('/', '\\')
+		attr := int(C.GetFileAttributes(path.to_wide()))
 		if attr == INVALID_FILE_ATTRIBUTES {
 			return false
 		}
@@ -345,7 +424,7 @@ pub fn mkdir(path string) {
 		if path.last_index('\\') != -1 {
 			mkdir(path.all_before_last('\\'))
 		}
-		C.CreateDirectory(path.str, 0)
+		C.CreateDirectory(path.to_wide(), 0)
 	}
 	$else {
 		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
@@ -354,8 +433,13 @@ pub fn mkdir(path string) {
 
 // rm removes file in `path`.
 pub fn rm(path string) {
-	C.remove(path.str)
-	// C.unlink(path.str)
+	$if windows {
+		C._wremove(path.to_wide())
+	}
+	$else {
+		C.remove(path.str)
+	}
+	// C.unlink(path.cstr())
 }
 
 
@@ -365,7 +449,7 @@ pub fn rmdir(path string) {
 		C.rmdir(path.str)		
 	}
 	$else {
-		C.RemoveDirectoryA(path.str)
+		C.RemoveDirectory(path.to_wide())
 	}
 }
 
@@ -435,20 +519,18 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-		max := 256
-		buf := malloc(max)
+		max := 512 // MAX_PATH * sizeof(wchar_t)
+		buf := &u16(malloc(max))
 		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
 		if h_input == INVALID_HANDLE_VALUE {
 			panic('get_raw_line() error getting input handle.')
 		}
-		nr_chars := 0
-		// NOTE: Once we have UTF8 encode function to
-		// convert utf16 to utf8, change to ReadConsoleW
+		mut nr_chars := 0
 		C.ReadConsole(h_input, buf, max, &nr_chars, 0)
 		if nr_chars == 0 {
 			return ''
 		}
-		return tos(buf, nr_chars)
+		return string_from_wide2(buf, nr_chars)
 	}
 	$else {
 		//u64 is used because C.getline needs a size_t as second argument
@@ -539,8 +621,8 @@ fn on_segfault(f voidptr) {
 }
 
 pub fn executable() string {
-	mut result := malloc(MAX_PATH) 
 	$if linux {
+		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/self/exe', result, MAX_PATH ))
 		if count < 0 {
 			panic('error reading /proc/self/exe to get exe path')
@@ -548,10 +630,12 @@ pub fn executable() string {
 		return string(result, count)
 	}
 	$if windows {
-		ret := int(C.GetModuleFileName( 0, result, MAX_PATH ))
-		return string( result, ret)
+		mut result := &u16(malloc(512)) // MAX_PATH * sizeof(wchar_t)
+		len := int(C.GetModuleFileName( 0, result, MAX_PATH ))
+		return string_from_wide2(result, len)
 	}
 	$if mac {
+		mut result := malloc(MAX_PATH)
 		pid := C.getpid() 
 		ret := C.proc_pidpath (pid, result, MAX_PATH) 
 		if ret <= 0  {
@@ -561,6 +645,7 @@ pub fn executable() string {
 		return string(result) 
 	}
 	$if freebsd {
+		mut result := malloc(MAX_PATH)
 		mut mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]!! 
 		size := MAX_PATH 
 		C.sysctl(mib, 4, result, &size, 0, 0) 
@@ -572,6 +657,7 @@ pub fn executable() string {
 		return os.args[0] 
 	} 
 	$if netbsd {
+		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
 		if count < 0 {
 			panic('error reading /proc/curproc/exe to get exe path')
@@ -579,6 +665,7 @@ pub fn executable() string {
 		return string(result, count)
 	} 
 	$if dragonfly {
+		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH ))
 		if count < 0 {
 			panic('error reading /proc/curproc/file to get exe path')
@@ -607,26 +694,29 @@ pub fn is_dir(path string) bool {
 
 pub fn chdir(path string) {
 	$if windows {
-		C._chdir(path.str)
+		C._wchdir(path.to_wide())
 	}
 	$else { 
 		C.chdir(path.str)
 	} 
 }
 
-pub fn getwd() string {
-	buf := malloc(512)
+pub fn getwd() string {	
 	$if windows {
-		if C._getcwd(buf, 512) == 0 {
+		max := 1024 // MAX_PATH * sizeof(wchar_t)
+		buf := &u16(malloc(max))
+		if C._wgetcwd(buf, max/2) == 0 {
 			return ''
 		}
+		return string_from_wide(buf)
 	}
-	$else { 
+	$else {
+		buf := malloc(512) 
 		if C.getcwd(buf, 512) == 0 {
 			return ''
 		}
-	} 
-	return string(buf)
+		return string(buf)
+	}
 }
 
 // win: FILETIME
@@ -637,7 +727,7 @@ struct filetime {
 }
 
 // win: WIN32_FIND_DATA
-// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataa
+// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
 struct win32finddata {
 mut:
     dwFileAttributes u32
@@ -674,13 +764,13 @@ pub fn ls(path string) []string {
 		path_files := '$path\\*' 
 		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 		// we should use FindFirstFileW and FindNextFileW
-		h_find_files := C.FindFirstFile(path_files.str, &find_file_data)
-		first_filename := tos(&find_file_data.cFileName, strlen(find_file_data.cFileName))
+		h_find_files := C.FindFirstFile(path_files.to_wide(), &find_file_data)
+		first_filename := string_from_wide(&u16(find_file_data.cFileName))
 		if first_filename != '.' && first_filename != '..' {
 			dir_files << first_filename
 		}
 		for C.FindNextFile(h_find_files, &find_file_data) {
-			filename := tos(&find_file_data.cFileName, strlen(find_file_data.cFileName))
+			filename := string_from_wide(&u16(find_file_data.cFileName))
 			if filename != '.' && filename != '..' {
 				dir_files << filename.clone()
 			}
@@ -742,6 +832,10 @@ pub fn file_last_mod_unix(path string) int {
 
 fn log(s string) {
 }
+
+pub fn flush_stdout() {
+	C.fflush(stdout)
+} 
 
 pub fn print_backtrace() {
 /* 

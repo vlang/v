@@ -671,12 +671,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 
 // check_name checks for a name token and returns its literal
 fn (p mut Parser) check_name() string {
-	if p.tok == .key_type {
-		p.check(.key_type) 
-		return 'type' 
-	} 
 	name := p.lit
-	 
 	p.check(.name)
 	return name
 }
@@ -962,17 +957,17 @@ fn (p &Parser) print_tok() {
 // statements() returns the type of the last statement
 fn (p mut Parser) statements() string {
 	p.log('statements()')
-	typ := p.statements_no_curly_end()
+	typ := p.statements_no_rcbr()
 	if !p.inside_if_expr {
 		p.genln('}')
 	}
-	if p.fileis('if_expr') {
-		println('statements() ret=$typ line=$p.scanner.line_nr')
-	}
+	//if p.fileis('if_expr') {
+		//println('statements() ret=$typ line=$p.scanner.line_nr')
+	//}
 	return typ
 }
 
-fn (p mut Parser) statements_no_curly_end() string {
+fn (p mut Parser) statements_no_rcbr() string {
 	p.cur_fn.open_scope()
 	if !p.inside_if_expr {
 		p.genln('')
@@ -1652,9 +1647,6 @@ fn (p &Parser) fileis(s string) bool {
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	p.check(.dot)
 	mut field_name := p.lit
-	if p.tok == .key_type {
-		field_name = 'type' 
-	} 
 	p.fgen(field_name) 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
@@ -1736,11 +1728,12 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 }
 
 fn (p mut Parser) index_expr(typ string, fn_ph int) string {
-	//if p.fileis('main.v') {
-		//println('index expr typ=$typ')
-	//}
 	// a[0]
 	v := p.expr_var
+	//if p.fileis('fn_test.v') {
+		//println('index expr typ=$typ')
+		//println(v.name) 
+	//}
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
 	is_arr0 := typ.starts_with('array_')
@@ -1912,7 +1905,11 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 				p.gen('$index_expr ]')
 			}
 			else {
-				p.gen('( *($typ*) array__get($index_expr) )')
+				if is_ptr { 
+					p.gen('( *($typ*) array__get(* $index_expr) )')
+				}  else { 
+					p.gen('( *($typ*) array__get($index_expr) )')
+				} 
 			}
 		}
 		else if is_str && !p.builtin_pkg {
@@ -2076,13 +2073,13 @@ fn (p mut Parser) expression() string {
 
 fn (p mut Parser) term() string {
 	line_nr := p.scanner.line_nr
-	if p.fileis('fn_test') {
-		println('\nterm() $line_nr')
-	}
+	//if p.fileis('fn_test') {
+		//println('\nterm() $line_nr')
+	//}
 	typ := p.unary()
-	if p.fileis('fn_test') {
-		println('2: $line_nr')
-	}
+	//if p.fileis('fn_test') {
+		//println('2: $line_nr')
+	//}
 	// `*` on a newline? Can't be multiplication, only dereference
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
@@ -2819,7 +2816,7 @@ fn (p mut Parser) comp_time() {
 				p.genln('#ifdef $ifdef_name')
 			}
 			p.check(.lcbr)
-			p.statements_no_curly_end()
+			p.statements_no_rcbr()
 			if ! (p.tok == .dollar && p.peek() == .key_else) {
 				p.genln('#endif')
 			}
@@ -2859,7 +2856,7 @@ fn (p mut Parser) comp_time() {
 		p.next()
 		p.check(.lcbr)
 		p.genln('#else')
-		p.statements_no_curly_end()
+		p.statements_no_rcbr()
 		p.genln('#endif')
 	}
 	else {
@@ -3117,13 +3114,6 @@ fn (p mut Parser) for_st() {
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`) 
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);') 
-			
-			/* 
-			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
-			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
-			p.genln('string $i = entry.key;') 
-			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
-			*/ 
 		} 
 	}
 	// `for val in vals`
