@@ -193,6 +193,7 @@ fn (v mut V) compile() {
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #include <io.h> // _waccess
 #include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
