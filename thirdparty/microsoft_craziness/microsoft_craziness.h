@@ -351,8 +351,8 @@ wchar_t *find_windows_kit_root_with_key(HKEY key, wchar_t *version) {
   // The documentation says that if the string for some reason was not stored
   // with zero-termination, we need to manually terminate it. Sigh!!
 
-  if (value[required_length/2-1]) {
-    value[required_length/2] = 0;
+  if (value[required_length / 2 - 1]) {
+    value[required_length / 2] = 0;
   }
 
   return value;
@@ -522,6 +522,13 @@ bool find_visual_studio_2017_by_fighting_through_microsoft_craziness(
   if (!instances)
     return false;
 
+  // SetupInstance will return the installations in the order they were made
+  // - this results in 2017 being got before 2019 and we dont want this
+  // so get all the installations first, parse the versions and pick the best
+  BSTR best_path = NULL;
+  Version_Data best_version;
+  best_version.best_name = NULL;
+
   bool found_visual_studio_2017 = false;
   while (1) {
     ULONG found = 0;
@@ -530,80 +537,94 @@ bool find_visual_studio_2017_by_fighting_through_microsoft_craziness(
     if (hr != S_OK)
       break;
 
+    BSTR vs_version;
+    hr = CALL_STDMETHOD(instance, GetInstallationVersion, &vs_version);
+
+    win10_best(vs_version, vs_version, &best_version);
+
     BSTR bstr_inst_path;
     hr = CALL_STDMETHOD(instance, GetInstallationPath, &bstr_inst_path);
     CALL_STDMETHOD_(instance, Release);
     if (hr != S_OK)
       continue;
 
-    wchar_t *tools_filename = concat2(
-        bstr_inst_path,
-        L"\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt");
-    SysFreeString(bstr_inst_path);
-
-    FILE *f;
-    errno_t open_result = _wfopen_s(&f, tools_filename, L"rt");
-    free(tools_filename);
-    if (open_result != 0)
-      continue;
-    if (!f)
+    // Do this here to get instance->Release() called
+    if (lstrcmpW(best_version.best_name, vs_version))
       continue;
 
-    LARGE_INTEGER tools_file_size;
-    HANDLE file_handle = (HANDLE)_get_osfhandle(_fileno(f));
-    BOOL success = GetFileSizeEx(file_handle, &tools_file_size);
-    if (!success) {
-      fclose(f);
-      continue;
-    }
-
-    uint64_t version_bytes =
-        (tools_file_size.QuadPart + 1) *
-        2; // Warning: This multiplication by 2 presumes there is no
-           // variable-length encoding in the wchars (wacky characters in the
-           // file could betray this expectation).
-    wchar_t *version = (wchar_t *)malloc(version_bytes);
-
-    wchar_t *read_result = fgetws(version, version_bytes, f);
-    fclose(f);
-    if (!read_result)
-      continue;
-
-    wchar_t *version_tail = wcschr(version, '\n');
-    if (version_tail)
-      *version_tail = 0; // Stomp the data, because nobody cares about it.
-
-    wchar_t *library_path =
-        concat4(bstr_inst_path, L"\\VC\\Tools\\MSVC\\", version, L"\\lib\\x64");
-    wchar_t *library_file =
-        concat2(library_path,
-                L"\\vcruntime.lib"); // @Speed: Could have library_path point to
-                                     // this string, with a smaller count, to
-                                     // save on memory flailing!
-
-    if (os_file_exists(library_file)) {
-      wchar_t *link_exe_path = concat4(bstr_inst_path, L"\\VC\\Tools\\MSVC\\",
-                                       version, L"\\bin\\Hostx64\\x64");
-      free(version);
-
-      result->vs_exe_path = link_exe_path;
-      result->vs_library_path = library_path;
-      found_visual_studio_2017 = true;
-      break;
-    }
-
-    free(version);
-
-    /*
-       Ryan Saunderson said:
-       "Clang uses the 'SetupInstance->GetInstallationVersion' /
-       ISetupHelper->ParseVersion to find the newest version and then reads the
-       tools file to define the tools path - which is definitely better than
-       what i did."
-
-       So... @Incomplete: Should probably pick the newest version...
-    */
+    best_path = bstr_inst_path;
   }
+
+  if (best_path == NULL)
+    goto failed;
+
+  // result->vs_root_path = _wcsdup(best_path);
+
+  wchar_t *tools_filename =
+      concat2(best_path,
+              L"\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt");
+
+  FILE *f;
+  errno_t open_result = _wfopen_s(&f, tools_filename, L"rt");
+  free(tools_filename);
+  if (open_result != 0)
+    return false;
+  if (!f)
+    return false;
+
+  LARGE_INTEGER tools_file_size;
+  HANDLE file_handle = (HANDLE)_get_osfhandle(_fileno(f));
+  BOOL success = GetFileSizeEx(file_handle, &tools_file_size);
+  if (!success) {
+    fclose(f);
+    return false;
+  }
+
+  uint64_t version_bytes =
+      (tools_file_size.QuadPart + 1) *
+      2; // Warning: This multiplication by 2 presumes there is no
+         // variable-length encoding in the wchars (wacky characters in the file
+         // could betray this expectation).
+  wchar_t *version = (wchar_t *)malloc(version_bytes);
+
+  wchar_t *read_result = fgetws(version, version_bytes, f);
+  fclose(f);
+  if (!read_result)
+    return false;
+
+  wchar_t *version_tail = wcschr(version, '\n');
+  if (version_tail)
+    *version_tail = 0; // Stomp the data, because nobody cares about it.
+
+  wchar_t *library_path =
+      concat4(best_path, L"\\VC\\Tools\\MSVC\\", version, L"\\lib\\x64");
+  wchar_t *library_file = concat2(
+      library_path, L"\\vcruntime.lib"); // @Speed: Could have library_path
+                                         // point to this string, with a smaller
+                                         // count, to save on memory flailing!
+
+  if (os_file_exists(library_file)) {
+    wchar_t *link_exe_path = concat4(best_path, L"\\VC\\Tools\\MSVC\\", version,
+                                     L"\\bin\\Hostx64\\x64");
+
+    result->vs_exe_path = link_exe_path;
+    result->vs_library_path = library_path;
+
+    found_visual_studio_2017 = true;
+  }
+
+  free(version);
+  SysFreeString(best_path);
+
+  /*
+      Ryan Saunderson said:
+      "Clang uses the 'SetupInstance->GetInstallationVersion' /
+     ISetupHelper->ParseVersion to find the newest version and then reads the
+     tools file to define the tools path - which is definitely better than what
+     i did." So... @Incomplete: Should probably pick the newest version...
+  */
+
+failed:
 
   CALL_STDMETHOD_(instances, Release);
   return found_visual_studio_2017;
