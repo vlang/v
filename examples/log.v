@@ -1,7 +1,7 @@
 import log
 
 fn main(){
-    mut l := log.Log{level:log.INFO, 'terminal'}
+    mut l := log.Log{log.INFO, 'terminal'}
     l.info('info')
     l.warn('warn')
     l.error('error')
