@@ -351,9 +351,9 @@ wchar_t *find_windows_kit_root_with_key(HKEY key, wchar_t *version) {
   // The documentation says that if the string for some reason was not stored
   // with zero-termination, we need to manually terminate it. Sigh!!
 
-  //if (value[length/2]) {
-  //  value[length/2 + 1] = 0;
-  //}
+  if (value[required_length/2-1]) {
+    value[required_length/2] = 0;
+  }
 
   return value;
 }
