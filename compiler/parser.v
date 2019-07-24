@@ -1895,7 +1895,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		if is_map {
 			p.gen('$tmp')
 			mut def := type_default(typ)
-			if def == '{}' {
+			if def == 'STRUCT_DEFAULT_VALUE' {
 				def = '{0}'
 			}
 			p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
@@ -3104,7 +3104,7 @@ fn (p mut Parser) for_st() {
 			p.genln('  string $i = ((string*)keys_$tmp .data)[l];') 
 			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );') 
 			mut def := type_default(typ)
-			if def == '{}' {
+			if def == 'STRUCT_DEFAULT_VALUE' {
 				def = '{0}'
 			}
 			// TODO don't call map_get() for each key, fetch values while traversing
