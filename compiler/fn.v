@@ -626,17 +626,21 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if is_mut {
 			p.next()
 		}
-		mut typ2 := p.get_type()
+		mut typ := p.get_type()
+		if is_mut && is_primitive_type(typ) {
+			p.error('mutable arguments are only allowed for arrays, maps, and structs.' + 
+			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`') 
+		} 
 		for name in names {
-			if !p.first_run() && !p.table.known_type(typ2) {
-				p.error('fn_args: unknown type $typ2')
+			if !p.first_run() && !p.table.known_type(typ) { 
+				p.error('fn_args: unknown type $typ')
 			}
 			if is_mut { 
-				typ2 += '*'
+				typ += '*'
 			}
 			v := Var {
 				name: name
-				typ: typ2
+				typ: typ 
 				is_arg: true
 				is_mut: is_mut
 				ptr: is_mut
