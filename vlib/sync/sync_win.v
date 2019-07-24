@@ -42,7 +42,7 @@ const (
     WAIT_FAILED        = 0xFFFFFFFF
 )
 
-pub fn (m &Mutex) lock() {
+pub fn (m mut Mutex) lock() {
     // if mutex handle not initalized
     if m.mx == MHANDLE(0) {
         m.mx = C.CreateMutex(0, false, 0)
@@ -70,7 +70,7 @@ pub fn (m &Mutex) lock() {
     // todo implement atomic counter
 }
 
-pub fn (m &Mutex) unlock() {
+pub fn (m mut Mutex) unlock() {
     _pmx := &m.mx
     if _pmx != os.INVALID_HANDLE_VALUE {
         if m.wstate == (WAIT & u32(0xff)) {
@@ -85,7 +85,7 @@ pub fn (m &Mutex) unlock() {
     m.wstate = BROKEN
 }
 
-pub fn (m &Mutex) destroy() {
+pub fn (m mut Mutex) destroy() {
     if m.wstate == WAIT {
         m.unlock() // unlock mutex before destroying
     }
