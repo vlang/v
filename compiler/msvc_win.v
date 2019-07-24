@@ -32,25 +32,24 @@ struct MsvcResult {
 
 struct FindResult {
 	sdk_ver int
-	windows_sdk_root byteptr
-	windows_sdk_um_library_path byteptr
-	windows_sdk_ucrt_library_path byteptr
-	vs_exe_path byteptr
-	vs_library_path byteptr
+	windows_sdk_root *u16
+	windows_sdk_um_library_path *u16
+	windows_sdk_ucrt_library_path *u16
+	vs_exe_path *u16
+	vs_library_path *u16
 }
 
 fn C.find_visual_studio_and_windows_sdk() *FindResult
-fn C.wide_string_to_narrow_temp(byteptr) byteptr
 
 fn find_msvc() *MsvcResult {
 	$if windows {
 		r := C.find_visual_studio_and_windows_sdk()
 
-		windows_sdk_root := tos_clone(C.wide_string_to_narrow_temp(r.windows_sdk_root))
-		ucrt_lib_folder := tos_clone(C.wide_string_to_narrow_temp(r.windows_sdk_ucrt_library_path))
-		um_lib_folder := tos_clone(C.wide_string_to_narrow_temp(r.windows_sdk_um_library_path))
-		vs_lib_folder := tos_clone(C.wide_string_to_narrow_temp(r.vs_library_path))
-		exe_folder := tos_clone(C.wide_string_to_narrow_temp(r.vs_exe_path))
+		windows_sdk_root := string_from_wide(r.windows_sdk_root)
+		ucrt_lib_folder := string_from_wide(r.windows_sdk_ucrt_library_path)
+		um_lib_folder := string_from_wide(r.windows_sdk_um_library_path)
+		vs_lib_folder := string_from_wide(r.vs_library_path)
+		exe_folder := string_from_wide(r.vs_exe_path)
 
 		mut ucrt_include_folder := ucrt_lib_folder.replace('Lib', 'Include')
 		mut vs_include_folder := vs_lib_folder.replace('lib', 'include')
@@ -88,7 +87,7 @@ fn find_msvc() *MsvcResult {
 pub fn cc_msvc(v *V) {
 	r := find_msvc()
 
-	mut a := ['-w', '/volatile:ms'] // arguments for the C compiler
+	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE'] // arguments for the C compiler
 
 	// cl.exe is stupid so these are in a different order to the ones below!
 
@@ -274,6 +273,6 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	println('$cfiles')
 
-	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path""')
+	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"')
 	println(res)
 }
