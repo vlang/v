@@ -2,6 +2,7 @@
 
 - @ for escaping keywords (e.g. `struct Foo { @type string }`). 
 - Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
+- Fix mutable args bugs + don't allow primitive arguments to be modified.  
 
 
 ## V 0.1.16 
