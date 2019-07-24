@@ -653,6 +653,9 @@ pub fn (s string) ustring() ustring {
 // right away. Uses global buffer for storing runes []int array.
 __global g_ustring_runes []int
 pub fn (s string) ustring_tmp() ustring {
+	if g_ustring_runes.len == 0 {
+		g_ustring_runes = new_array(0, 128, sizeof(int))
+	}
 	mut res := ustring {
 		s: s
 	}
@@ -712,6 +715,14 @@ fn abs(a int) int {
 
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
+}
+
+pub fn (c byte) is_hex_digit() bool {
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+}
+
+pub fn (c byte) is_oct_digit() bool {
+	return c >= `0` && c <= `7`
 }
 
 pub fn (c byte) is_letter() bool {
@@ -803,7 +814,7 @@ pub fn (s string) reverse() string {
 	}
 
 	for i := s.len - 1; i >= 0; i-- {
-        res[s.len-i-1] = s[i]
+				res[s.len-i-1] = s[i]
 	}
 
 	return res

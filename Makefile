@@ -25,6 +25,7 @@ test: v
 
 clean:
 	-rm -f v.c .v.c v vprod thirdparty/**/*.o
+	find . -name '.*.c' -print0 | xargs -0 -n1 rm -f
 
 SOURCES = $(wildcard thirdparty/**/*.c)
 OBJECTS := ${SOURCES:.c=.o} 

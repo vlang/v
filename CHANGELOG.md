@@ -1,7 +1,26 @@
+## V 0.1.17 
+
+- @ for escaping keywords (e.g. `struct Foo { @type string }`). 
+- Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
+- Fix mutable args bugs + don't allow primitive arguments to be modified.  
+
+
 ## V 0.1.16 
-*17 Jul 2019* 
-- High order functions 
-- `match` expression 
+*23 Jul 2019* 
+- V can now be used with Visual Studio! 
+- Hot code reloading now works with graphical applications (e.g. graph.v, bounce.v).  
+- Compile time memory management for arrays. 
+- High order functions. 
+- `match` expression (replacing `switch`). 
+- Import cycle detection. 
+- `crypto/md5`, `crypto/sha256`, and `crypro/sha512` modules.
+- `os.executable()` - a cross platform function that returns full path to current executable. 
+- `~/.vlang` and `VROOT` were removed entirely. The installation is a lot cleaner now. 
+- V can now be packaged for all Linux distros. 
+- Arch Linux package. 
+- `string(bytes_buffer, len)`, `string(bytes_array)` casts. 
+- Multiple `defer`s. 
+- `key in map` syntax (replacing `map.exists(key)`). 
 
 
 

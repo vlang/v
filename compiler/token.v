@@ -7,7 +7,7 @@ module main
 enum Token {
 	eof
 	name        // user 
-	integer     // 123 
+	number      // 123 
 	str         // 'foo' 
 	str_inter   // 'name=$user.name' 
 	chartoken   // `A` 
@@ -34,6 +34,7 @@ enum Token {
 	dollar
 	left_shift
 	righ_shift
+	//at // @ 
 	// = := += -=
 	assign
 	decl_assign
@@ -127,7 +128,7 @@ fn build_token_str() []string {
 	s[Token.keyword_end] = ''
 	s[Token.eof] = '.eof'
 	s[Token.name] = '.name'
-	s[Token.integer] = '.integer'
+	s[Token.number] = '.number'
 	s[Token.str] = 'STR'
 	s[Token.chartoken] = '.chartoken'
 	s[Token.plus] = '+'
@@ -148,6 +149,7 @@ fn build_token_str() []string {
 	s[Token.dot] = '.'
 	s[Token.dotdot] = '..'
 	s[Token.comma] = ','
+	//s[Token.at] = '@'
 	s[Token.semicolon] = ';'
 	s[Token.colon] = ':'
 	s[Token.arrow] = '=>'

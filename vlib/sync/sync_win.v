@@ -21,6 +21,7 @@ mut:
     writer_sem   u32     // writer semaphones 
 }
 
+
 const (
     WAIT   = u32(8)  // Waiting mutex
     WOKEN  = u32(16) // Woken mutex
@@ -83,7 +84,7 @@ pub fn (m mut Mutex) unlock() {
         }
     }
     m.wstate = BROKEN
-}
+
 
 pub fn (m mut Mutex) destroy() {
     if m.wstate == WAIT {
