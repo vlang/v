@@ -1,6 +1,6 @@
 # The V Programming Language 0.1.x
 
-[![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master) [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
+[![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 
 https://vlang.io
 
@@ -39,31 +39,41 @@ The compilation is temporarily slower for this release:
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 
 
-## Code structure
 
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
 
 ## Installing V from source
 
-### Linux, macOS, Android, Raspberry Pi
+### Linux, macOS, Windows, *BSD, WSL, Android, Raspbian
 
-You'll need Clang or GCC. On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
 
 ```bash
-# You can clone V anywhere
 git clone https://github.com/vlang/v
 cd v
 make
 ```
-Or build without make:
+
+That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
+
+
+### C compiler
+
+You'll need Clang or GCC.
+
+On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
+
+On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+
+### Building without make
 ```bash
 # Download the V compiler's source translated to C
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
-cc -std=gnu11 -w -o v v.c  # Build it with Clang or GCC
-./v -o v compiler          # Use the resulting V binary to build V from V source
+cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
+./v -o v compiler              # Use the resulting V binary to build V from V source
 ```
+(These instructions won't work on Windows, use `make.bat` instead).
 
-That's it! Now you have a V executable at `[path to V repo]/v`.
+### Symlinking and updates
 
 You can create a symlink so that it's globally available:
 
@@ -78,20 +88,15 @@ git pull origin master
 make
 ```
 
+## Docker
 
-### Windows
-
-V works great on Windows Subsystem for Linux. The instructions are the same as above.
-
-If you want to build v.exe on Windows without WSL, you have to install MinGW-w64 or Visual Studio ([github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)) and then run
-
-
-```
+```bash
 git clone https://github.com/vlang/v
 cd v
-make.bat
+docker build -t vlang .
+docker run --rm -it vlang:latest
+v
 ```
-
 
 
 
@@ -122,7 +127,7 @@ v run hello_world.v                 # this builds the program and runs it right 
 
 v word_counter.v && ./word_counter cinderella.txt
 v run news_fetcher.v
-v run tetris.v
+v run tetris/tetris.v
 ```
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
@@ -144,3 +149,8 @@ sudo pacman -S glfw-x11 curl freetype2
 ```
 
 glfw and libcurl dependencies will be removed soon.
+
+## Code structure
+
+https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+

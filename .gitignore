@@ -3,3 +3,11 @@
 /v
 /vprod
 /v.c
+/v.exe
+*.exe
+*.o
+.*.c
+
+*.obj
+
+*.pdb

@@ -43,9 +43,9 @@ fn advance(sys System, dt f64) {
             dy := sys.s[i].y - sys.s[j].y
             dz := sys.s[i].z - sys.s[j].z
 
-            dSquared := dx * dx + dy * dy + dz * dz
-            distance := math.sqrt(dSquared)
-            mag := (dt / (dSquared * distance))
+            dsquared := dx * dx + dy * dy + dz * dz
+            distance := math.sqrt(dsquared)
+            mag := (dt / (dsquared * distance))
             mi := sys.v[i].m
 
             _vx -= dx * sys.v[j].m * mag

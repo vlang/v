@@ -1,4 +1,5 @@
 import rand
+import time
 import os
 
 const (HelpText = ' Usage:\t./VCasino\n
@@ -80,14 +81,14 @@ fn get_bet(money int) int {
             println('error: $line is not heigher than 1.')
             continue
         } else if bet > money {
-            println('error: $line is not heigher than your money.')
+            println('error: $line is more money than you have.')
         }
     }
     return bet
 }
 
 fn run_wheel(bet_nbr int, bet int) int {
-    rand.seed()
+    rand.seed(time.now().uni)
     winning_nbr := rand.next(50)
     print('Roulette Wheel spinning... and stops on the number $winning_nbr which is a ')
     if winning_nbr % 2 == 1 {

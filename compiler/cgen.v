@@ -4,6 +4,9 @@
 
 module main
 
+import os
+import strings 
+
 struct CGen {
 	out          os.File
 	out_path     string
@@ -18,6 +21,7 @@ struct CGen {
 	so_fns       []string
 	consts_init  []string
 	lines        []string
+	//buf          strings.Builder 
 	is_user      bool
 mut:
 	run          Pass
@@ -31,21 +35,22 @@ mut:
 }
 
 fn new_cgen(out_name_c string) *CGen {
-	path:='$TmpPath/$out_name_c'
+	path:='.$out_name_c'
 	out := os.create(path) or {
 		println('failed to create $path') 
 		return &CGen{} 
-} 
-	 
+	} 
 	gen := &CGen {
 		out_path: path 
 		out: out 
+		//buf: strings.new_builder(10000) 
+		lines: _make(0, 1000, sizeof(string)) 
 	}
 	return gen
 }
 
 fn (g mut CGen) genln(s string) {
-	if g.nogen || g.run == RUN_DECLS {
+	if g.nogen || g.run != .main {
 		return
 	}
 	if g.is_tmp {
@@ -61,7 +66,7 @@ fn (g mut CGen) genln(s string) {
 }
 
 fn (g mut CGen) gen(s string) {
-	if g.nogen || g.run == RUN_DECLS {
+	if g.nogen || g.run != .main {
 		return
 	}
 	if g.is_tmp {
@@ -69,6 +74,18 @@ fn (g mut CGen) gen(s string) {
 	}
 	else {
 		g.cur_line = '$g.cur_line $s'
+	}
+}
+
+fn (g mut CGen) resetln(s string) {
+	if g.nogen || g.run != .main {
+		return
+	}
+	if g.is_tmp {
+		g.tmp_line = s
+	}
+	else {
+		g.cur_line = s
 	}
 }
 
@@ -104,7 +121,7 @@ fn (g mut CGen) add_placeholder() int {
 }
 
 fn (g mut CGen) set_placeholder(pos int, val string) {
-	if g.nogen {
+	if g.nogen || g.run != .main {
 		return
 	}
 	// g.lines.set(pos, val)
@@ -130,7 +147,7 @@ fn (g mut CGen) add_placeholder2() int {
 }
 
 fn (g mut CGen) set_placeholder2(pos int, val string) {
-	if g.nogen {
+	if g.nogen || g.run != .main {
 		return
 	}
 	if g.is_tmp {
@@ -141,7 +158,8 @@ fn (g mut CGen) set_placeholder2(pos int, val string) {
 }
 
 fn (g mut CGen) insert_before(val string) {
-	g.lines.insert(g.lines.len - 1, val)
+	prev := g.lines[g.lines.len - 1] 
+	g.lines[g.lines.len - 1] = '$prev \n $val \n' 
 }
 
 fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text string) {
@@ -219,4 +237,25 @@ fn (g mut CGen) add_to_main(s string) {
 	println('add to main')
 	g.fn_main = g.fn_main + s
 }
+
+
+fn build_thirdparty_obj_file(flag string) { 
+	obj_path := flag.all_after(' ') 
+	if os.file_exists(obj_path) {
+		return 
+	} 
+	println('$obj_path not found, building it...') 
+	parent := obj_path.all_before_last('/').trim_space() 
+	files := os.ls(parent) 
+	//files := os.ls(parent).filter(_.ends_with('.c'))  TODO 
+	mut cfiles := '' 
+	for file in files {
+		if file.ends_with('.c') { 
+			cfiles += parent + '/' + file + ' ' 
+		} 
+	} 
+	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows  
+	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') 
+	println(res) 
+} 
 

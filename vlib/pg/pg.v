@@ -25,10 +25,11 @@ struct C.PGResult { }
 
 fn C.PQconnectdb(a byteptr) *C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
+fn C.PQgetvalue(voidptr, int, int) byteptr
 
 pub fn connect(dbname, user string) DB {
 	conninfo := 'host=localhost user=$user dbname=$dbname'
-	conn:=C.PQconnectdb(conninfo.cstr())
+	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	if status != CONNECTION_OK { 
 		error_msg := C.PQerrorMessage(conn) 
@@ -46,7 +47,7 @@ fn res_to_rows(res voidptr) []pg.Row {
 		mut row := Row{}
 		for j := 0; j < nr_cols; j++ {
 			val := C.PQgetvalue(res, i, j) 
-			row.vals << string(val)  
+			row.vals << string(val)
 		}
 		rows << row
 	}
@@ -86,7 +87,7 @@ pub fn (db DB) q_strings(query string) []pg.Row {
 }
 
 pub fn (db DB) exec(query string) []pg.Row {
-	res := C.PQexec(db.conn, query.cstr())
+	res := C.PQexec(db.conn, query.str)
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
 		println('pg exec error:')

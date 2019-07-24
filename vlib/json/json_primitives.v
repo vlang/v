@@ -4,13 +4,10 @@
 
 module json
 
-// TODO: windows support
-
-#flag linux  -I @VROOT/thirdparty/cJSON
-#flag darwin -I @VROOT/thirdparty/cJSON
-
-// #include "cJSON.c"
+#flag -I @VROOT/thirdparty/cJSON
+#flag @VROOT/thirdparty/cJSON/cJSON.o 
 #include "cJSON.h"
+
 struct C.cJSON {
 	valueint    int
 	valuedouble f32 
@@ -23,8 +20,6 @@ fn jsdecode_int(root *C.cJSON) int {
 	}
 	return root.valueint
 }
-
-//TODO: Refactor with generics when it will be avaible
 
 fn jsdecode_i8(root *C.cJSON) i8 {
 	if isnil(root) {
@@ -89,7 +84,6 @@ fn jsdecode_bool(root *C.cJSON) bool {
 }
 
 // ///////////////////
-//TODO: Refactor with Generics when it will be available
 fn jsencode_int(val int) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }

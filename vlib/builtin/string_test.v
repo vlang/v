@@ -155,12 +155,12 @@ fn test_replace() {
 	assert b==('hello world')
 	b = b.replace('h', 'H')
 	assert b==('Hello world')
-	b = b.replace('kek', 'lul')
+	b = b.replace('foo', 'bar')
 	assert b==('Hello world')
 	s := 'hey man how are you'
 	assert s.replace('man ', '') == 'hey how are you'
 	lol := 'lol lol lol'
-	assert lol.replace('lol', 'kek') == 'kek kek kek'
+	assert lol.replace('lol', 'LOL') == 'LOL LOL LOL'
 	b = 'oneBtwoBBthree'
 	assert b.replace('B', '') == 'onetwothree'
 	b = '**char'
@@ -293,3 +293,41 @@ fn test_all_after() {
 	assert q == 'hello'
 }
 
+fn test_reverse() {
+	s := 'hello'
+	assert s.reverse() == 'olleh'
+	t := ''
+	assert t.reverse() == t
+}
+
+
+struct Foo {
+	bar int 
+} 
+
+fn (f Foo) baz() string {
+	return 'baz' 
+} 
+
+fn test_interpolation() {
+	num := 7 
+	mut s := 'number=$num' 
+	assert s == 'number=7' 
+	foo := Foo{} 
+	s = 'baz=${foo.baz()}' 
+	assert s == 'baz=baz' 
+ 
+} 
+
+fn test_bytes_to_string() {
+	mut buf := malloc(10) 
+	buf[0] = `h` 
+	buf[1] = `e` 
+	buf[2] = `l` 
+	buf[3] = `l` 
+	buf[4] = `o` 
+	assert string(buf) == 'hello' 
+	assert string(buf, 2) == 'he' 
+	bytes := [`h`, `e`, `l`, `l`, `o`] 
+	assert string(bytes) == 'hello' 
+} 

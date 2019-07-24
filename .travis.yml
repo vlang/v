@@ -16,9 +16,9 @@ matrix:
             - libglfw3-dev
             - libfreetype6-dev 
             - libcurl3-dev
-    #- os: windows
-    #  language: sh
-    #  filter_secrets: false
+    - os: windows
+      language: sh
+      filter_secrets: false
     - os: osx
       osx_image: xcode10.2
       addons:
@@ -26,8 +26,6 @@ matrix:
           packages:
             - freetype
             - glfw
-      #env:
-      #  - MATRIX_EVAL="brew install freetype glfw"
 script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
@@ -35,9 +33,14 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      choco install make
-      cp "C:\\ProgramData\\chocolatey\\bin\\gcc.exe" "C:\\ProgramData\\chocolatey\\bin\\cc.exe"
+      echo "Running make.bat..."
+      ./make.bat
+      ./v.exe -debug -o v2.exe compiler
+      gcc -Ithirdparty/microsoft_craziness -DUNICODE -D_UNICODE .v2.exe.c thirdparty/microsoft_craziness/microsoft_craziness.c -o v2.exe -lole32 -ladvapi32 -loleaut32
+      ./v2.exe -o v3.exe compiler
     fi
-  - export VROOT=$(pwd)
-  - make
-  - make test
+  - |
+    if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
+      make
+      make test
+    fi

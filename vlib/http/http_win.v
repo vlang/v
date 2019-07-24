@@ -4,9 +4,11 @@
 
 module http
 
-#flag -lwininet
+import time
+
+#flag -lwininet -lShlwapi
 #flag -lurlmon
-// #include <WinInet.h>
+#include <WinInet.h>
 #include "urlmon.h"
 #include <shlwapi.h>
 // #LPWSTR winstring(string s);
@@ -18,16 +20,20 @@ import const (
 	INTERNET_SERVICE_HTTP
 )
 
-fn (req &Request) do() Response {
-	mut s := ''
+const (
+	BUF_MAX = 1024
+) 
+
+pub fn (req &Request) do() Response {
 	emptyresp := Response{}
 	mut url := req.url
-	println('\n\nhttp.do() WIN URL="$url" TYP=$req.typ data="$req.data" headers.len=req.headers.len"')
-	println(req.headers)
+	//println('\n\nhttp.do() WIN URL="$url" TYP=$req.typ data="$req.data" headers.len=req.headers.len"')
+	//println(req.headers)
 	is_ssl := req.url.starts_with('https://')
-	println('is ssl=$is_ssl')
-	mut pos := url.index('/')
-	url = url.right(pos + 2)
+	//println('is ssl=$is_ssl')
+	mut pos := url.index('://')
+	if pos == -1 {return emptyresp}
+	url = url.right(pos + 3)
 	mut host := url
 	mut path := '/'
 	pos = url.index('/')
@@ -41,10 +47,7 @@ fn (req &Request) do() Response {
 	mut headers := ''
 	mut resp_headers := ''
 	// for header in req.headers {
-	for entry in req.headers.entries {
-		// headers += '$header\r\n'
-		key := entry.key
-		val := req.headers[key]
+	for key, val in req.headers {
 		headers += '$key: $val\r\n'
 	}
 	if req.typ == 'POST' {
@@ -106,9 +109,9 @@ fn (req &Request) do() Response {
 	}
 	// println('LEN BEFORE SEND=$headers.len ; $headers')
 	# bool ret =HttpSendRequest(request, headers.str, -1, data.str, data.len);
-	# printf("RET=%d\n", ret);
-	# int e = GetLastError();
-	# printf("e=%d\n", e);
+	// # printf("RET=%d\n", ret);
+	// # int e = GetLastError();
+	// # printf("e=%d\n", e);
 	// Get response headers
 	// Todo call twice to get len
 	# LPSTR h_buf = malloc(1024);
@@ -116,13 +119,12 @@ fn (req &Request) do() Response {
 	// LPVOID lpOutBuffer=malloc(dwSize);
 	# HttpQueryInfo(request, HTTP_QUERY_RAW_HEADERS_CRLF,
 	# h_buf,&dwSize,NULL);
-	# printf(" resp HEADERS %s\n", h_buf);
+	//# printf(" resp HEADERS %s\n", h_buf);
 	// Get response  body
 	// # const int BUF_MAX = 1024;
 	// # TCHAR buf[BUF_MAX + 1];
 	mut buf := [1025]byte
 	mut nr_read := 0
-	BUF_MAX := 1024
 	// ok := C.InternetReadFile(request, buf, BUF_MAX, &nr_read)
 	// # DWORD dwRead = 0;
 	// /println('calling InternetReadFile()')
@@ -135,17 +137,16 @@ fn (req &Request) do() Response {
 	// }
 	// # printf("dwread=%d\n", dwRead);
 	// # while ((InternetReadFile(request, buf, BUF_MAX, &nr_read)) && nr_read > 0)
+	mut s := ''
 	for
 	{
-		println('111')
 		ok := C.InternetReadFile(request, buf, BUF_MAX, &nr_read)
-		println('222')
 		if !ok {
 			println('InternetReadFile() not ok ')
 		}
 		if ok && nr_read == 0 {
-			println('ok && nr read == 0, breaking')
-			C.printf('buf broken="%s"\n', buf)
+			//println('ok && nr read == 0, breaking')
+			//C.printf('buf broken="%s"\n', buf)
 			if req.url.contains('websocket') {
 				println('win sleeping 2')
 				time.sleep(2)
@@ -153,10 +154,11 @@ fn (req &Request) do() Response {
 			}
 			break
 		}
-		println('ireadfile()')
+		//println('ireadfile()')
 		buf[nr_read] = 0
-		C.printf('buf="%s"\n', buf)
-		s += string(buf)// TODO perf
+		//C.printf('buf="%s"\n', buf)
+		
+		s += tos(buf, nr_read) // TODO perf
 		nr_read = 0
 	}
 	C.InternetCloseHandle(request)
@@ -174,16 +176,16 @@ fn (req &Request) do() Response {
 		// println('\n!')
 		// println(h)
 		vals := h.split(':')
-		pos := h.index(':')
-		if pos == -1 {
+		hpos := h.index(':')
+		if hpos == -1 {
 			continue
 		}
-		key := h.left(pos)
-		val := h.right(pos + 1)
+		key := h.left(hpos)
+		val := h.right(hpos + 1)
 		// println('$key => $val')
 		resp.headers[key] = val.trim_space()
 	}
-	println('END OF WIN req.do($req.url)')
+	//println('END OF WIN req.do($req.url)')
 	return resp
 }
 

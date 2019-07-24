@@ -56,8 +56,8 @@ pub fn new_request(typ, _url, _data string) *Request {
 	// req.headers = new_map(0, sizeof(string))// []string{}
 	return &Request {
 		typ: typ
-		url: _url
-		data: _data
+		url: url
+		data: data
 		ws_func: 0
 		user_ptr: 0
 		headers: map[string]string{} 

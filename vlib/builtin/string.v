@@ -6,6 +6,8 @@ module builtin
 
 // V strings are not null-terminated.
 struct string {
+mut:
+	hash_cache int 
 pub:
 	str byteptr
 	len int
@@ -68,10 +70,12 @@ pub fn (a string) clone() string {
 	return b
 }
 
+/* 
 pub fn (s string) cstr() byteptr {
 	clone := s.clone()
 	return clone.str
 }
+*/ 
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
@@ -131,8 +135,28 @@ pub fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
+pub fn (s string) i32() i32 {
+	return C.atol(s.str)
+}
+
+pub fn (s string) i64() i64 {
+	return C.atoll(s.str)
+}
+
 pub fn (s string) f32() f32 {
 	return C.atof(s.str)
+}
+
+pub fn (s string) f64() f64 {
+	return C.atof(s.str)
+}
+
+pub fn (s string) u32() u32 {
+	return C.strtoul(s.str, 0, 0)
+}
+
+pub fn (s string) u64() u64 {
+	return C.strtoull(s.str, 0, 0)
 }
 
 // ==
@@ -188,7 +212,7 @@ fn (s string) ge(a string) bool {
 }
 
 // TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
-pub fn (s string) add(a string) string {
+fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string {
 		len: new_len
@@ -310,16 +334,7 @@ pub fn (s string) right(n int) string {
 	return s.substr(n, s.len)
 }
 
-// Because the string is immutable, it is safe for multiple strings to share
-// the same storage, so slicing s results in a new 2-word structure with a
-// potentially different pointer and length that still refers to the same byte
-// sequence. This means that slicing can be done without allocation or copying,
-// making string slices as efficient as passing around explicit indexes.
-// substr without allocations. Reuses memory and works great. BUT. This substring does not have
-// a \0 at the end, and it's not possible to add it. So if we have s = 'privet'
-// and substr := s.substr_fast(1, 4) ('riv')
-// puts(substr.str) will print 'rivet'
-// Avoid using C functions with these substrs!
+// substr 
 pub fn (s string) substr(start, end int) string {
 	/*
 	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
@@ -331,11 +346,25 @@ pub fn (s string) substr(start, end int) string {
 		return ''
 	}
 	len := end - start
+
+	// Copy instead of pointing, like in Java and C#. 
+	// Much easier to free such strings. 
+	mut res := string {
+		len: len
+		str: malloc(len + 1)
+	}
+	for i := 0; i < len; i++ {
+		res.str[i] = s.str[start + i]
+	}
+	res.str[len] = `\0`
+	return res 
+/* 
 	res := string {
 		str: s.str + start
 		len: len
 	}
 	return res
+*/ 
 }
 
 // KMP search
@@ -516,13 +545,12 @@ pub fn (s string) trim_space() string {
 	for i < s.len && is_space(s[i]) {
 		i++
 	}
-	mut res := s.right(i)
-	mut end := res.len - 1
-	for end >= 0 && is_space(res[end]) {
+	mut end := s.len - 1
+	for end >= 0 && is_space(s[end]) {
 		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
-	res = res.left(end + 1)
+	res := s.substr(i, end + 1)
 	// println('after SPACE "$res"')
 	return res
 }
@@ -625,6 +653,9 @@ pub fn (s string) ustring() ustring {
 // right away. Uses global buffer for storing runes []int array.
 __global g_ustring_runes []int
 pub fn (s string) ustring_tmp() ustring {
+	if g_ustring_runes.len == 0 {
+		g_ustring_runes = new_array(0, 128, sizeof(int))
+	}
 	mut res := ustring {
 		s: s
 	}
@@ -641,7 +672,7 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-fn (u ustring) substr(start, end int) string {
+pub fn (u ustring) substr(start, end int) string {
 	start = u.runes[start]
 	if end >= u.runes.len {
 		end = u.s.len
@@ -652,11 +683,11 @@ fn (u ustring) substr(start, end int) string {
 	return u.s.substr(start, end)
 }
 
-fn (u ustring) left(pos int) string {
+pub fn (u ustring) left(pos int) string {
 	return u.substr(0, pos)
 }
 
-fn (u ustring) right(pos int) string {
+pub fn (u ustring) right(pos int) string {
 	return u.substr(pos, u.len)
 }
 
@@ -686,6 +717,14 @@ pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
+pub fn (c byte) is_hex_digit() bool {
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+}
+
+pub fn (c byte) is_oct_digit() bool {
+	return c >= `0` && c <= `7`
+}
+
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
@@ -694,12 +733,14 @@ pub fn (s string) free() {
 	C.free(s.str)
 }
 
+/* 
 fn (arr []string) free() {
 	for s in arr {
 		s.free()
 	}
 	C.free(arr.data)
 }
+*/ 
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
@@ -769,11 +810,11 @@ pub fn (s []string) join_lines() string {
 pub fn (s string) reverse() string {
 	mut res := string {
 		len: s.len
-		str: malloc(s.len + 1)
+		str: malloc(s.len)
 	}
 
 	for i := s.len - 1; i >= 0; i-- {
-        res[s.len-i-1] = s[i]
+				res[s.len-i-1] = s[i]
 	}
 
 	return res
@@ -797,13 +838,20 @@ pub fn (c byte) is_white() bool {
 
 
 pub fn (s string) hash() int {
-	mut hash := int(0)
-	for i := 0; i < s.len; i++ {
-		// if key == 'Content-Type' {
-		// println('$i) $hash')
-		// }
-		hash = hash * int(31) + int(s.str[i])
-	}
-	return hash
+	mut h := s.hash_cache 
+	if h == 0 && s.len > 0 { 
+		for c in s { 
+			h = h * 31 + int(c) 
+		}
+	} 
+	return h 
 }
 
+pub fn (s string) bytes() []byte {
+	if s.len == 0 {
+		return []byte
+	}
+	mut buf := [byte(0); s.len]
+	C.memcpy(buf.data, s.str, s.len)
+	return buf
+}

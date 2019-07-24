@@ -1,9 +1,5 @@
 module net
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-
 struct Socket {
 pub:
 	sockfd int
@@ -25,6 +21,26 @@ import const (
 	SHUT_RD
 	SHUT_WR
 	SHUT_RDWR
+	SD_BOTH
+)
+
+struct C.WSAData {
+mut:
+	wVersion u16
+	wHighVersion u16	
+	szDescription [257]byte
+	szSystemStatus [129]byte
+	iMaxSockets u16
+	iMaxUdpDg u16
+	lpVendorInfo byteptr
+}
+
+const (
+    WSA_V1  = 0x100 // C.MAKEWORD(1, 0)
+    WSA_V11 = 0x101 // C.MAKEWORD(1, 1)
+    WSA_V2  = 0x200 // C.MAKEWORD(2, 0)
+    WSA_V21 = 0x201 // C.MAKEWORD(2, 1)
+    WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
 )
 
 struct C.in_addr {
@@ -53,8 +69,19 @@ mut:
 struct C.sockaddr_storage {}
 
 // create socket
-pub fn socket(family int, _type int, proto int) Socket {
+pub fn socket(family int, _type int, proto int) ?Socket {
+	$if windows {
+		mut wsadata := C.WSAData{}
+		res := C.WSAStartup(WSA_V22, &wsadata)
+		if res != 0 {
+			return error('socket: WSAStartup failed')
+		}
+	}
+
 	sockfd := C.socket(family, _type, proto)
+	if sockfd == 0 {
+		return error('socket: init failed')
+	}
 	s := Socket {
 		sockfd: sockfd
 		family: family
@@ -65,66 +92,72 @@ pub fn socket(family int, _type int, proto int) Socket {
 }
 
 // set socket options
-pub fn (s Socket) setsockopt(level int, optname int, optvalue *int) int {
+pub fn (s Socket) setsockopt(level int, optname int, optvalue *int) ?int {
 	res := C.setsockopt(s.sockfd, level, optname, optvalue, C.sizeof(optvalue))
-	return res
+	if res < 0 {
+		return error('socket: setsockopt failed')
+	}
+	return int(res)
 }
 
 // bind socket to port
-pub fn (s Socket) bind(port int) int {
+pub fn (s Socket) bind(port int) ?int {
 	mut addr := C.sockaddr_in{}
 	addr.sin_family = s.family
 	addr.sin_port = C.htons(port)
 	addr.sin_addr.s_addr = C.htonl(INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
 	res := C.bind(s.sockfd, &addr, size)
-	return res
+	if res < 0 {
+		return error('socket: bind failed')
+	}
+	return int(res)
 }
 
 // put socket into passive mode and wait to receive
-pub fn (s Socket) listen() int {
+pub fn (s Socket) listen() ?int {
 	backlog := 128
 	res := C.listen(s.sockfd, backlog)
-	return res
+	if res < 0 {
+		return error('socket: listen failed')
+	}
+	return int(res)
 }
 
 // put socket into passive mode with user specified backlog and wait to receive
-pub fn (s Socket) listen_backlog(backlog int) int {
+pub fn (s Socket) listen_backlog(backlog int) ?int {
 	mut n := 0
 	if backlog > 0 {
 		n = backlog
 	}
 	res := C.listen(s.sockfd, n)
-	return res
+	if res < 0 {
+		return error('socket: listen_backlog failed')
+	}
+	return int(res)
 }
 
 // helper method to create, bind, and listen given port number
-pub fn listen(port int) Socket {
-	s := socket(AF_INET, SOCK_STREAM, 0)
-	if s.sockfd == 0 {
-		println('socket: init socket failed')
-		return s
+pub fn listen(port int) ?Socket {
+	s := socket(AF_INET, SOCK_STREAM, 0) or {
+		return error(err)
 	}
-	bind_res := s.bind(port)
-	if bind_res < 0 {
-		println('socket: bind failed')
-		return s
+	bind_res := s.bind(port) or {
+		return error(err)
 	}
-	listen_res := s.listen()
-	if listen_res < 0 {
-		println('socket: listen failed')
-		return s
+	listen_res := s.listen() or {
+		return error(err)
 	}
 	return s
 }
 
 // accept first connection request from socket queue
-pub fn (s Socket) accept() Socket {
+pub fn (s Socket) accept() ?Socket {
 	addr := C.sockaddr_storage{}
 	size := 128 // sizeof(sockaddr_storage)
 	sockfd := C.accept(s.sockfd, &addr, &size)
 	if sockfd < 0 {
-		println('socket: accept failed')
+		return error('socket: accept failed')
 	}
 	c := Socket {
 		sockfd: sockfd
@@ -136,7 +169,7 @@ pub fn (s Socket) accept() Socket {
 }
 
 // connect to given addrress and port
-pub fn (s Socket) connect(address string, port int) int {
+pub fn (s Socket) connect(address string, port int) ?int {
 	mut hints := C.addrinfo{}
 	hints.ai_family = AF_UNSPEC
 	hints.ai_socktype = SOCK_STREAM
@@ -144,22 +177,24 @@ pub fn (s Socket) connect(address string, port int) int {
 
 	info := &C.addrinfo{!}
 	sport := '$port'
-	info_res := C.getaddrinfo(address.cstr(), sport.cstr(), &hints, &info)
+	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
-		println('socket: getaddrinfo failed')
-		return info_res
+		return error('socket: connect failed')
 	}
-
 	res := C.connect(s.sockfd, info.ai_addr, info.ai_addrlen)
-	return res
+	if res < 0 {
+		return error('socket: connect failed')
+	}
+	return int(res)
 }
 
 // helper method to create socket and connect
-pub fn dial(address string, port int) Socket {
-	s := socket(AF_INET, SOCK_STREAM, 0)
-	res := s.connect(address, port)
-	if res < 0 {
-		println('socket: failed to connect')
+pub fn dial(address string, port int) ?Socket {
+	s := socket(AF_INET, SOCK_STREAM, 0) or {
+		return error(err)
+	}
+	res := s.connect(address, port) or {
+		return error(err)
 	}
 	return s
 }
@@ -167,9 +202,9 @@ pub fn dial(address string, port int) Socket {
 // send string data to socket
 pub fn (s Socket) send(buf byteptr, len int) int {
 	res := C.send(s.sockfd, buf, len, 0)
-	if res < 0 {
-		println('socket: send failed')
-	}
+//	if res < 0 {
+//		return error('socket: send failed')
+//	}
 	return res
 }
 
@@ -177,22 +212,42 @@ pub fn (s Socket) send(buf byteptr, len int) int {
 pub fn (s Socket) recv(bufsize int) byteptr {
 	buf := malloc(bufsize)
 	res := C.recv(s.sockfd, buf, bufsize, 0)
-	if res < 0 {
-		println('socket: recv failed')
-	}
+//	if res < 0 {
+//		return error('socket: recv failed')
+//	}
 	return buf
 }
 
 // shutdown and close socket
-pub fn (s Socket) close() int {
-	shutdown_res := C.shutdown(s.sockfd, SHUT_RDWR)
-	if shutdown_res < 0 {
-		println('socket: shutdown failed')
+pub fn (s Socket) close() ?int {
+	// WinSock
+	$if windows {
+		C.WSACleanup()
 	}
-	res := C.close(s.sockfd)
+
+	mut shutdown_res := 0
+	$if windows {
+		shutdown_res = C.shutdown(s.sockfd, SD_BOTH)
+	}
+	$else {
+		shutdown_res = C.shutdown(s.sockfd, SHUT_RDWR)
+	}
+	// TODO: should shutdown throw an error? close will
+	// continue even if shutdown failed
+//	if shutdown_res < 0 {
+//		return error('socket: shutdown failed')
+//	}
+
+	mut res := 0
+	$if windows {
+		res = C.closesocket(s.sockfd)
+	}
+	$else {
+		res = C.close(s.sockfd)
+	}
 	if res < 0 {
-		println('socket: close failed')
+		return error('socket: close failed')
 	}
+
 	return 0
 }
-

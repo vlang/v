@@ -1,10 +1,10 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// that can be found in the LICENSE file.  
 
 import rand
 import time
-import gx
+import gx 
 import gl
 import gg
 import glfw
@@ -89,8 +89,7 @@ struct Game {
 	// -1  0  0 -1
 	// -1  0  0 -1
 	// -1 -1 -1 -1
-	// TODO: field [][]int
-	field       array_array_int
+	field       [][]int 
 	// TODO: tetro Tetro
 	tetro       []Block
 	// TODO: tetros_cache []Tetro
@@ -105,42 +104,35 @@ struct Game {
 
 fn main() {
 	glfw.init()
-	mut game := &Game{gg: 0} // TODO
-	game.parse_tetros()
+	mut game := &Game{
+		gg: gg.new_context(gg.Cfg {
+			width: WinWidth
+			height: WinHeight
+			use_ortho: true // This is needed for 2D drawing
+			create_window: true
+			window_title: 'V Tetris'
+			window_user_ptr: game 
+		})
+	} 
+	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
 	game.init_game()
-	mut window := glfw.create_window(glfw.WinCfg {
-		width: WinWidth
-		height: WinHeight
-		title: 'V Tetris'
-		ptr: game // glfw user pointer
-	})
-	window.make_context_current()
-	window.onkeydown(key_down)
-	gg.init()
-	game.gg = gg.new_context(gg.Cfg {
-		width: WinWidth
-		height: WinHeight
-		use_ortho: true // This is needed for 2D drawing
-	})
+	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gl.clear() // For some reason this is necessary to avoid an intial flickering
-	gl.clear_color(255, 255, 255, 255)
+	gg.clear(gx.White) 
 	for {
-		gl.clear()
-		gl.clear_color(255, 255, 255, 255)
+		gg.clear(gx.White) 
 		game.draw_scene()
-		window.swap_buffers()
-		glfw.wait_events()
-		if window.should_close() {
-			window.destroy()
-			glfw.terminate()
-			exit(0)
+		game.gg.render() 
+		if game.gg.window.should_close() {
+			game.gg.window.destroy()
+			return 
 		}
 	}
 }
 
 fn (g mut Game) init_game() {
-	rand.seed()
+	g.parse_tetros()
+	rand.seed(time.now().uni)
 	g.generate_tetro()
 	g.field = []array_int // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
@@ -184,6 +176,7 @@ fn (g mut Game) move_tetro() {
 		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
 		// TODO: if g.field[y][x] != 0
+		//if g.field[y][x] != 0 { 
 		row := g.field[y]
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game
@@ -200,7 +193,7 @@ fn (g mut Game) move_tetro() {
 	g.pos_y++
 }
 
-fn (g mut Game) move_right(dx int) {
+fn (g mut Game) move_right(dx int) bool { 
 	// Reached left/right edge or another tetro?
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
@@ -209,10 +202,11 @@ fn (g mut Game) move_right(dx int) {
 		row := g.field[y]
 		if row[x] != 0 {
 			// Do not move
-			return
+			return false 
 		}
 	}
 	g.pos_x += dx
+	return true 
 }
 
 fn (g mut Game) delete_completed_lines() {
@@ -331,11 +325,17 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 		glfw.set_should_close(wnd, true)
 	case glfw.KeyUp:
 		// Rotate the tetro
+		old_rotation_idx := game.rotation_idx 
 		game.rotation_idx++
 		if game.rotation_idx == TetroSize {
 			game.rotation_idx = 0
 		}
 		game.get_tetro()
+		if !game.move_right(0) {
+			game.rotation_idx = old_rotation_idx 
+			game.get_tetro()
+		} 
+	 
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}

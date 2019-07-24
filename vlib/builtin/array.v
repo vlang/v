@@ -5,13 +5,14 @@
 module builtin
 
 struct array {
+pub:
 	// Using a void pointer allows to implement arrays without generics and without generating
 	// extra code for every type.
-pub:
 	data         voidptr
 	len          int
 	cap          int
 	element_size int
+	 
 }
 
 // Private function, used by V (`nums := []int`)
@@ -135,8 +136,11 @@ pub fn (s array) slice(start, _end int) array {
 	if start > end {
 		panic('invalid slice index: $start > $end')
 	}
-	if end >= s.len {
-		end = s.len
+	if end > s.len {
+		panic('runtime error: slice bounds out of range ($end >= $s.len)') 
+	}
+	if start < 0 { 
+		panic('runtime error: slice bounds out of range ($start < 0)') 
 	}
 	l := end - start
 	res := array {
@@ -144,6 +148,7 @@ pub fn (s array) slice(start, _end int) array {
 		data: s.data + start * s.element_size
 		len: l
 		cap: l
+		//is_slice: true 
 	}
 	return res
 }
@@ -189,6 +194,19 @@ pub fn (arr mut array) _push_many(val voidptr, size int) {
 	arr.len += size
 }
 
+pub fn (a array) reverse() array {
+	arr := array {
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: malloc(a.cap * a.element_size)
+	}
+	for i := 0; i < a.len; i++ {
+		C.memcpy(arr.data + i * arr.element_size, &a[a.len-1-i], arr.element_size)
+	}
+	return arr
+}
+
 pub fn (a []int) str() string {
 	mut res := '['
 	for i := 0; i < a.len; i++ {
@@ -202,7 +220,11 @@ pub fn (a []int) str() string {
 	return res
 }
 
-pub fn (a []int) free() {
+//pub fn (a []int) free() {
+pub fn (a array) free() {
+	//if a.is_slice {
+		//return 
+	//} 
 	C.free(a.data)
 }
 
@@ -221,7 +243,11 @@ pub fn (a []string) str() string {
 	return res
 }
 
-fn free(a voidptr) {
-	C.free(a)
+pub fn (b []byte) hex() string {
+	mut hex := malloc(b.len*2+1)
+	mut ptr := &hex[0]
+	for i := 0; i < b.len ; i++ {
+		ptr += C.sprintf(ptr, '%02X', b[i])
+	}
+	return string(hex)
 }
-

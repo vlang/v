@@ -19,12 +19,9 @@ import const (
 	GL_ARRAY_BUFFER
 )
 
-// TODO: windows support
-#flag linux  -I @VROOT/thirdparty/glad
-#flag darwin -I @VROOT/thirdparty/glad
-
+#flag  -I @VROOT/thirdparty/glad
 #include "glad.h"
-#include "glad.c"
+#flag @VROOT/thirdparty/glad/glad.o 
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()
@@ -88,15 +85,15 @@ pub fn delete_shader(shader int) {
 }
 
 pub fn shader_info_log(shader int) string {
-	infoLog := [512]byte
-	C.glGetShaderInfoLog(shader, 512, 0, infoLog)
-	return tos_clone(infoLog)
+	info_log := [512]byte
+	C.glGetShaderInfoLog(shader, 512, 0, info_log)
+	return tos_clone(info_log)
 }
 
 pub fn get_program_info_log(program int) string {
-	infoLog := [1024]byte
-	C.glGetProgramInfoLog(program, 1024, 0, infoLog)
-	return tos_clone(infoLog)
+	info_log := [1024]byte
+	C.glGetProgramInfoLog(program, 1024, 0, info_log)
+	return tos_clone(info_log)
 }
 
 pub fn bind_vao(vao u32) {
@@ -167,9 +164,9 @@ pub fn use_program(program int) {
 }
 
 pub fn gen_vertex_array() u32 {
-	VAO := u32(0)
-	C.glGenVertexArrays(1, &VAO)
-	return VAO
+	vao := u32(0)
+	C.glGenVertexArrays(1, &vao)
+	return vao 
 }
 
 pub fn enable_vertex_attrib_array(n int) {
@@ -177,9 +174,9 @@ pub fn enable_vertex_attrib_array(n int) {
 }
 
 pub fn gen_buffer() u32 {
-	VBO := u32(0)
-	C.glGenBuffers(1, &VBO)
-	return VBO
+	vbo := u32(0)
+	C.glGenBuffers(1, &vbo)
+	return vbo 
 }
 
 pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, stride int, ptr int) {

@@ -4,6 +4,12 @@
 
 module math
 
+#include <math.h>
+
+// NOTE
+// When adding a new function, please make sure it's in the right place.
+// All functions are sorted alphabetically.
+
 const (
 	E   = 2.71828182845904523536028747135266249775724709369995957496696763
 	Pi  = 3.14159265358979323846264338327950288419716939937510582097494459
@@ -20,6 +26,21 @@ const (
 	Log2E  = 1.0 / Ln2
 	Ln10   = 2.30258509299404568401799145468436420760110148862877297603332790
 	Log10E = 1.0 / Ln10
+)
+
+const (
+        MaxI8   = (1<<7) - 1
+        MinI8   = -1 << 7
+        MaxI16  = (1<<15) - 1
+        MinI16  = -1 << 15
+        MaxI32  = (1<<31) - 1
+        MinI32  = -1 << 31
+//        MaxI64  = ((1<<63) - 1)
+//        MinI64  = (-(1 << 63) )
+        MaxU8  = (1<<8) - 1
+        MaxU16 = (1<<16) - 1
+        MaxU32 = (1<<32) - 1
+        MaxU64 = (1<<64) - 1
 )
 
 // Returns the absolute value.
@@ -45,7 +66,7 @@ pub fn atan(a f64) f64 {
 	return C.atan(a)
 }
 
-// atan2 calculates inverseed tangent with two arguments, returns angle between the X axis and the point.
+// atan2 calculates inversed tangent with two arguments, returns angle between the X axis and the point.
 pub fn atan2(a, b f64) f64 {
 	return C.atan2(a, b)
 }
@@ -55,8 +76,8 @@ pub fn cbrt(a f64) f64 {
 	return C.cbrt(a)
 }
 
-// ceil returns the nearest integer equal or higher to the provided value.
-pub fn ceil(a f64) f64 {
+// ceil returns the nearest integer greater or equal to the provided value.
+pub fn ceil(a f64) int {
 	return C.ceil(a)
 }
 
@@ -68,6 +89,11 @@ pub fn cos(a f64) f64 {
 // cosh calculates hyperbolic cosine.
 pub fn cosh(a f64) f64 {
 	return C.cosh(a)
+}
+
+// degrees convert from degrees to radians.
+pub fn degrees(radians f64) f64 {
+	return radians * (180.0 / Pi)
 }
 
 // exp calculates exponement of the number (math.pow(math.E, a)).
@@ -90,12 +116,64 @@ pub fn digits(n, base int) []int {
 	return res
 }
 
+// erf computes the error funtion value
+pub fn erf(a f64) f64 {
+	return C.erf(a)
+}
+
+// erfc computes the complimentary error function value
+pub fn erfc(a f64) f64 {
+	return C.erfc(a)
+}
+
 // exp2 returns the base-2 exponential function of a (math.pow(2, a)).
 pub fn exp2(a f64) f64 {
 	return C.exp2(a)
 }
 
-// floor returns the nearest integer equal or lower of the provided value.
+// factorial calculates the factorial of the provided value.
+fn recursive_product( n int, current_number_ptr &int) int{
+    mut m := n / 2
+    if (m == 0){
+        return *current_number_ptr += 2
+    }
+    if (n == 2){
+        return (*current_number_ptr += 2) * (*current_number_ptr += 2)
+    }
+    return recursive_product((n - m), *current_number_ptr) * recursive_product(m, *current_number_ptr)
+}
+
+pub fn factorial(n int) i64 {
+    if n < 0 {
+        panic('factorial: Cannot find factorial of negative number')
+    }
+    if n < 2 {
+        return i64(1)
+    }
+    mut r := 1
+    mut p := 1
+    mut current_number := 1
+    mut h := 0
+    mut shift := 0
+    mut high := 1
+    mut len := high
+    mut log2n := int(floor(log2(n)))
+    for ;h != n; {
+        shift += h
+        h = n >> log2n
+        log2n -= 1
+        len = high
+        high = (h - 1) | 1
+        len = (high - len)/2
+        if (len > 0){
+            p *= recursive_product(len, &current_number)
+            r *= p
+        }
+    }
+    return i64((r << shift))
+}
+
+// floor returns the nearest integer lower or equal of the provided value.
 pub fn floor(a f64) f64 {
 	return C.floor(a)
 }
@@ -103,6 +181,11 @@ pub fn floor(a f64) f64 {
 // fmod returns the floating-point remainder of number / denom (rounded towards zero):
 pub fn fmod(a, b f64) f64 {
 	return C.fmod(a, b)
+}
+
+// gamma computes the gamma function value
+pub fn gamma(a f64) f64 {
+	return C.tgamma(a)
 }
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
@@ -123,6 +206,11 @@ pub fn gcd(a, b i64) i64 {
 	return a
 }
 
+// Returns hypotenuse of a right triangle.
+pub fn hypot(a, b f64) f64 {
+	return C.hypot(a, b)
+}
+
 // lcm calculates least common (non-negative) multiple.
 pub fn lcm(a, b i64) i64 {
 	if a == 0 {
@@ -135,19 +223,24 @@ pub fn lcm(a, b i64) i64 {
 	return res
 }
 
-// log calculates natural (base e) logarithm of the provided value.
+// log calculates natural (base-e) logarithm of the provided value.
 pub fn log(a f64) f64 {
 	return C.log(a)
 }
 
 // log2 calculates base-2 logarithm of the provided value.
 pub fn log2(a f64) f64 {
-	return C.log(a) / C.log(2)
+	return C.log2(a)
 }
 
 // log10 calculates the common (base-10) logarithm of the provided value.
 pub fn log10(a f64) f64 {
 	return C.log10(a)
+}
+
+// log_gamma computes the log-gamma function value
+pub fn log_gamma(a f64) f64 {
+	return C.lgamma(a)
 }
 
 // log_n calculates base-N logarithm of the provided value.
@@ -163,7 +256,7 @@ pub fn max(a, b f64) f64 {
 	return b
 }
 
-// min returns the minimum value of all the values provided.
+// min returns the minimum value of the two provided.
 pub fn min(a, b f64) f64 {
 	if a < b {
 		return a
@@ -181,11 +274,6 @@ pub fn radians(degrees f64) f64 {
 	return degrees * (Pi / 180.0)
 }
 
-// degrees convert from degrees to radians.
-pub fn degrees(radians f64) f64 {
-	return radians * (180.0 / Pi)
-}
-
 // round returns the integer nearest to the provided value.
 pub fn round(f f64) f64 {
 	return C.round(f)
@@ -201,7 +289,7 @@ pub fn sinh(a f64) f64 {
 	return C.sinh(a)
 }
 
-// sqrt calculates square of the provided value.
+// sqrt calculates square-root of the provided value.
 pub fn sqrt(a f64) f64 {
 	return C.sqrt(a)
 }
@@ -220,16 +308,3 @@ pub fn tanh(a f64) f64 {
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
-
-// factorial calculates the factorial of the provided value.
-pub fn factorial(a int) i64 {
-	if a < 0 {
-		panic('factorial: Cannot find factorial of negative number')
-	}
-	mut prod := 1
-	for i:= 0; i < a; i++ {
-		prod *= (i+1)
-	}
-	return prod
-}
-

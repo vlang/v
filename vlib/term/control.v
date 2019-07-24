@@ -26,24 +26,24 @@ pub fn set_cursor_position(x int,y int) {
 // direction: B is down / South
 // direction: C is forward / East
 // direction: D is backward / West
-pub fn move(n int,direction string) string {
-    return '\x1b[$n$direction'
+pub fn move(n int,direction string) {
+    print('\x1b[$n$direction')
 }
 
 pub fn cursor_up(n int) {
-    print(move(n,'A'))
+    move(n,'A')
 }
 
 pub fn cursor_down(n int) {
-    print(move(n,'B'))
+    move(n,'B')
 }
 
 pub fn cursor_forward(n int) {
-    print(move(n,'C'))
+    move(n,'C')
 }
 
 pub fn cursor_back(n int) {
-    print(move(n,'D'))
+    move(n,'D')
 }
 
 // type: 0 -> current cursor postion to end of the screen

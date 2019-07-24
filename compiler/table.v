@@ -4,6 +4,8 @@
 
 module main
 
+import math 
+
 struct Table {
 mut:
 	types     []Type
@@ -17,25 +19,34 @@ mut:
 	obfuscate bool
 }
 
+// Holds import information scoped to the parsed file
+struct FileImportTable {
+mut:
+	module_name string
+	file_path   string
+	imports     map[string]string
+}
+
 enum AccessMod {
-	PRIVATE        // private immutable
-	PRIVET_MUT     // private mutable
-	PUBLIC         // public immmutable (readonly)
-	PUBLIC_MUT     // public, but mutable only in this module
-	PUBLIC_MUT_MUT // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+	private        // private imkey_mut
+	private_mut     // private key_mut
+	public         // public immkey_mut (readonly)
+	public_mut     // public, but key_mut only in this module
+	public_mut_mut // public and key_mut both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
 struct Type {
 mut:
-	pkg            string
+	mod            string
 	name           string
 	fields         []Var
 	methods        []Fn
 	parent         string
-	func           Fn // For cat == FN (type kek fn())
-	is_c           bool // C.FILE
+	func           Fn // For cat == FN (type myfn fn())
+	is_c           bool // C.FI.le
 	is_interface   bool
 	is_enum        bool
+	enum_vals []string 
 	// This field is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -102,6 +113,10 @@ fn is_float_type(typ string) bool {
 	return FLOAT_TYPES.contains(typ)
 }
 
+fn is_primitive_type(typ string) bool {
+	return is_number_type(typ) || typ == 'string' 
+} 
+
 fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
 		obf_ids: map[string]int{}
@@ -117,8 +132,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type_with_parent('i32', 'int')
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('byte', 'int')
-	// t.register_type_with_parent('i64', 'int')
-	t.register_type('i64')
+	t.register_type_with_parent('i64', 'int')
 	t.register_type_with_parent('u64', 'int')
 	t.register_type('byteptr')
 	t.register_type('intptr')
@@ -159,13 +173,13 @@ fn (table &Table) known_pkg(pkg string) bool {
 	return pkg in table.packages
 }
 
-fn (t mut Table) register_const(name, typ, pkg string, is_imported bool) {
+fn (t mut Table) register_const(name, typ, mod string, is_imported bool) {
 	t.consts << Var {
 		name: name
 		typ: typ
 		is_const: true
 		is_import_const: is_imported
-		pkg: pkg
+		mod: mod 
 	}
 }
 
@@ -176,7 +190,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		typ: typ
 		is_const: true
 		is_global: true
-		pkg: p.pkg
+		mod: p.mod 
 	}
 }
 
@@ -237,7 +251,7 @@ fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
 	typ := Type {
 		name: strtyp
 		parent: parent
-		pkg: p.pkg
+		mod: p.mod
 	}
 	p.table.register_type2(typ)
 }
@@ -258,18 +272,17 @@ if parent == 'array' {
 pkg = 'builtin'
 }
 */
-	datyp := Type {
+	t.types << Type { 
 		name: typ
 		parent: parent
+		//mod: mod 
 	}
-	t.types << datyp
 }
 
 fn (t mut Table) register_type2(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}
-	// println('register type2 $typ.name')
 	for typ2 in t.types {
 		if typ2.name == typ.name {
 			return
@@ -295,6 +308,10 @@ fn (t mut Type) add_field(name, typ string, is_mut bool, attr string, access_mod
 fn (t &Type) has_field(name string) bool {
 	field := t.find_field(name)
 	return (field.name != '')
+}
+
+fn (t &Type) has_enum_val(name string) bool {
+	return name in t.enum_vals 
 }
 
 fn (t &Type) find_field(name string) Var {
@@ -525,20 +542,31 @@ fn type_default(typ string) string {
 	if typ.ends_with('*') {
 		return '0'
 	}
-	// ?
+	// User struct defined in another module. 
 	if typ.contains('__') {
-		return ''
+		return 'STRUCT_DEFAULT_VALUE'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
-	case 'int': return '0'
-	case 'string': return 'tos("", 0)'
-	case 'void*': return '0'
-	case 'byte*': return '0'
 	case 'bool': return '0'
+	case 'string': return 'tos("", 0)'
+	case 'i8': return '0'
+	case 'i16': return '0'
+	case 'i32': return '0'
+	case 'i64': return '0'
+	case 'u8': return '0'
+	case 'u16': return '0'
+	case 'u32': return '0'
+	case 'u64': return '0'
+	case 'byte': return '0'
+	case 'int': return '0'
+	case 'rune': return '0'
+	case 'f32': return '0.0'
+	case 'f64': return '0.0'
+	case 'byteptr': return '0'
+	case 'voidptr': return '0'
 	}
-	return '{}' 
-	return ''
+	return 'STRUCT_DEFAULT_VALUE' 
 }
 
 // TODO PERF O(n)
@@ -553,8 +581,7 @@ fn (t &Table) is_interface(name string) bool {
 
 // Do we have fn main()?
 fn (t &Table) main_exists() bool {
-	for entry in t.fns.entries { 
-		f := t.fns[entry.key] 
+	for _, f in t.fns { 
 		if f.name == 'main' {
 			return true
 		}
@@ -634,3 +661,76 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	return '$typ $name'
 }
 
+fn is_valid_int_const(val, typ string) bool {
+	x := val.int() 
+	switch typ {
+	case 'byte', 'u8': return 0 <= x && x <= math.MaxU8 
+	case 'u16': return 0 <= x && x <= math.MaxU16 
+	//case 'u32': return 0 <= x && x <= math.MaxU32 
+	//case 'u64': return 0 <= x && x <= math.MaxU64 
+	////////////// 
+	case 'i8': return math.MinI8 <= x && x <= math.MaxI8 
+	case 'i16': return math.MinI16 <= x && x <= math.MaxI16 
+	case 'int', 'i32': return math.MinI32 <= x && x <= math.MaxI32 
+	//case 'i64': 
+		//x64 := val.i64() 
+		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1) 
+	} 
+	return true 
+}
+
+// Once we have a module format we can read from module file instead
+// this is not optimal
+fn (table &Table) qualify_module(mod string, file_path string) string {
+	for m in table.imports {
+		if m.contains('.') && m.contains(mod) {
+			m_parts := m.split('.')
+			m_path := m_parts.join('/')
+			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
+				return m
+			}
+		}
+	}
+	return mod
+}
+
+fn new_file_import_table(file_path string) *FileImportTable {
+	mut t := &FileImportTable{
+		file_path: file_path
+		imports:   map[string]string{}
+	}
+	return t
+}
+
+fn (fit &FileImportTable) known_import(mod string) bool {
+	return mod in fit.imports || fit.is_aliased(mod)
+}
+
+fn (fit mut FileImportTable) register_import(mod string) {
+	fit.register_alias(mod, mod)
+}
+
+fn (fit mut FileImportTable) register_alias(alias string, mod string) {
+	if alias in fit.imports { 
+		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		return 
+	} 
+	fit.imports[alias] = mod
+}
+
+fn (fit &FileImportTable) known_alias(alias string) bool {
+	return alias in fit.imports 
+}
+
+fn (fit &FileImportTable) is_aliased(mod string) bool {
+	for _, val in fit.imports { 
+		if val == mod {
+			return true 
+		} 
+	}
+	return false
+}
+
+fn (fit &FileImportTable) resolve_alias(alias string) string {
+	return fit.imports[alias]
+}
