@@ -671,12 +671,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 
 // check_name checks for a name token and returns its literal
 fn (p mut Parser) check_name() string {
-	if p.tok == .key_type {
-		p.check(.key_type) 
-		return 'type' 
-	} 
 	name := p.lit
-	 
 	p.check(.name)
 	return name
 }
@@ -1652,9 +1647,6 @@ fn (p &Parser) fileis(s string) bool {
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	p.check(.dot)
 	mut field_name := p.lit
-	if p.tok == .key_type {
-		field_name = 'type' 
-	} 
 	p.fgen(field_name) 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
