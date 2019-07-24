@@ -22,8 +22,9 @@ mut:
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
-	file_path string
-	imports   map[string]string
+	module_name string
+	file_path   string
+	imports     map[string]string
 }
 
 enum AccessMod {
@@ -698,7 +699,7 @@ fn new_file_import_table(file_path string) *FileImportTable {
 }
 
 fn (fit &FileImportTable) known_import(mod string) bool {
-	return fit.imports.exists(mod) || fit.is_aliased(mod)
+	return mod in fit.imports || fit.is_aliased(mod)
 }
 
 fn (fit mut FileImportTable) register_import(mod string) {
@@ -706,7 +707,7 @@ fn (fit mut FileImportTable) register_import(mod string) {
 }
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
-	if fit.imports.exists(alias) {
+	if alias in fit.imports { 
 		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 		return 
 	} 
@@ -714,7 +715,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 }
 
 fn (fit &FileImportTable) known_alias(alias string) bool {
-	return fit.imports.exists(alias)
+	return alias in fit.imports 
 }
 
 fn (fit &FileImportTable) is_aliased(mod string) bool {
@@ -727,8 +728,5 @@ fn (fit &FileImportTable) is_aliased(mod string) bool {
 }
 
 fn (fit &FileImportTable) resolve_alias(alias string) string {
-	if fit.imports.exists(alias) {
-		return fit.imports[alias]
-	}
-	return ''
+	return fit.imports[alias]
 }

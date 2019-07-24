@@ -29,9 +29,9 @@ fn download_file_with_progress(url, out string, cb downloadfn, cb_finished downl
 	if isnil(curl) {
 		return
 	}
-	cout := out.cstr() 
+	cout := out.str 
 	fp := C.fopen(cout, 'wb') 
-	C.curl_easy_setopt(curl, CURLOPT_URL, url.cstr()) 
+	C.curl_easy_setopt(curl, CURLOPT_URL, url.str) 
 	C.curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, download_cb)
 	data := &DownloadStruct {
 		stream:fp

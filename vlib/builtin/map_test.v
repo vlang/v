@@ -21,6 +21,7 @@ fn test_map() {
 	assert m['hi'] == 80
 	assert m['hello'] == 101 
 	assert m.size == 2 
+	assert 'hi' in m 
 	mut sum := 0
 	mut key_sum := '' 
 	// Test `for in` 

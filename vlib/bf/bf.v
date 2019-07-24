@@ -1,5 +1,18 @@
 module bf
 
+/*
+bf (BitField) is a module (shared library for V programming language) for
+manipulating arrays of bits, i.e. series of zeroes and ones spread across an
+array of storage units (unsigned 32-bit integers).
+
+BitField structure
+------------------
+
+Bit arrays are stored in data structures called 'BitField'. The structure is
+'opaque', i.e. its internals are not available to the end user. This module
+provides API (functions and methods) for accessing and modifying bit arrays.
+*/
+
 struct BitField {
 mut:
 	size int
@@ -64,6 +77,9 @@ fn cleartail(instance BitField) {
 
 // public functions 
 
+// str2bf() converts a string of characters ('0' and '1') to a bit
+// array. Any character different from '0' is treated as '1'.
+
 pub fn str2bf(input string) BitField {
 	mut output := new(input.len)
 	for i := 0; i < input.len; i++ {
@@ -73,6 +89,9 @@ pub fn str2bf(input string) BitField {
 	}
 	return output
 }
+
+// string() converts the bit array to a string of characters ('0' and '1') and
+// return the string
 
 pub fn (input BitField) string() string {
 	mut output := ''
@@ -86,6 +105,8 @@ pub fn (input BitField) string() string {
 	}
 	return output
 }
+
+//new() creates an empty bit array of capable of storing 'size' bits.
 
 pub fn new(size int) BitField {
 	output := BitField{
@@ -101,20 +122,30 @@ pub fn del(instance *BitField) {
 	free(instance)
 }
 */
+
+// getbit() returns the value (0 or 1) of bit number 'bit_nr' (count from
+// 0)
+
 pub fn (instance BitField) getbit(bitnr int) int {
 	if bitnr >= instance.size {return 0}
 	return bitget(instance, bitnr)
 }
+
+// setbit() set bit number 'bit_nr' to 1 (count from 0)
 
 pub fn (instance mut BitField) setbit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bitset(instance, bitnr)
 }
 
+// clearbit() clears (sets to zero) bit number 'bit_nr' (count from 0)
+
 pub fn (instance mut BitField) clearbit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bitclear(instance, bitnr)
 }
+
+// setall() sets all bits in the array to 1
 
 pub fn (instance mut BitField) setall() {
 	for i := 0; i < bitnslots(instance.size); i++ {
@@ -123,16 +154,25 @@ pub fn (instance mut BitField) setall() {
 	cleartail(instance)
 }
 
+// clearall() clears (sets to zero) all bits in the array
+
 pub fn (instance mut BitField) clearall() {
 	for i := 0; i < bitnslots(instance.size); i++ {
 		instance.field[i] = u32(0)
 	}
 }
 
+// togglebit() change the value (from 0 to 1 or from 1 to 0) of bit
+// number 'bit_nr'
+
 pub fn (instance mut BitField) togglebit(bitnr int) {
 	if bitnr >= instance.size {return}
 	bittoggle(instance, bitnr)
 }
+
+// bfand() perform logical AND operation on every pair of bits from 'input1'
+// and 'input2' and return the result as a new array. If inputs differ in size,
+// the tail of the longer one is ignored.
 
 pub fn bfand(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
@@ -147,6 +187,8 @@ pub fn bfand(input1 BitField, input2 BitField) BitField {
 	return output
 }
 
+// bfnot() toggle all bits in a bit array and return the result as a new array
+
 pub fn bfnot(input BitField) BitField {
 	size := input.size
 	bitnslots := bitnslots(size)
@@ -159,6 +201,10 @@ pub fn bfnot(input BitField) BitField {
 	cleartail(output)
 	return output
 }
+
+// bfor() perform logical OR operation on every pair of bits from 'input1' and
+// 'input2' and return the result as a new array. If inputs differ in size, the
+// tail of the longer one is ignored.
 
 pub fn bfor(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
@@ -173,6 +219,10 @@ pub fn bfor(input1 BitField, input2 BitField) BitField {
 	return output
 }
 
+// bfxor(input1 BitField, input2 BitField) perform logical XOR operation on
+// every pair of bits from 'input1' and 'input2' and return the result as a new
+// array. If inputs differ in size, the tail of the longer one is ignored.
+
 pub fn bfxor(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := bitnslots(size)
@@ -185,6 +235,8 @@ pub fn bfxor(input1 BitField, input2 BitField) BitField {
 	cleartail(output)
 	return output
 }
+
+// join() concatenates two bit arrays and return the result as a new array.
 
 pub fn join(input1 BitField, input2 BitField) BitField {
 	output_size := input1.size + input2.size
@@ -233,6 +285,9 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	return output
 }
 
+// print(instance BitField) send the content of a bit array to stdout as a
+// string of characters ('0' and '1').
+
 pub fn print(instance BitField) {
 	mut i := 0
 	for i < instance.size {
@@ -246,9 +301,13 @@ pub fn print(instance BitField) {
 	}
 }
 
+// getsize() returns the number of bits the array can hold
+
 pub fn (instance BitField) getsize() int {
 	return instance.size
 }
+
+// clone() create a copy of a bit array
 
 pub fn clone(input BitField) BitField {
 	bitnslots := bitnslots(input.size)
@@ -261,6 +320,9 @@ pub fn clone(input BitField) BitField {
 	return output
 }
 
+// cmp() compare two bit arrays bit by bit and return 'true' if they are
+// identical by length and contents and 'false' otherwise.
+
 pub fn cmp(input1 BitField, input2 BitField) bool {
 	if input1.size != input2.size {return false}
 	for i := 0; i < bitnslots(input1.size); i++ {
@@ -268,6 +330,8 @@ pub fn cmp(input1 BitField, input2 BitField) bool {
 	}
 	return true
 }
+
+// popcount() returns the number of set bits (ones) in the array
 
 pub fn (instance BitField) popcount() int {
 	size := instance.size
@@ -289,10 +353,15 @@ pub fn (instance BitField) popcount() int {
 	return count
 }
 
+// hamming () compute the Hamming distance between two bit arrays.
+
 pub fn hamming (input1 BitField, input2 BitField) int {
 	input_xored := bfxor(input1, input2)
 	return input_xored.popcount()
 }
+
+// pos() checks if the array contains a sub-array 'needle' and returns its
+// position if it does, -1 if it does not, and -2 on error.
 
 pub fn (haystack BitField) pos(needle BitField) int {
 	heystack_size := haystack.size
@@ -313,6 +382,9 @@ pub fn (haystack BitField) pos(needle BitField) int {
 	// nothing matched; return -1
 	return -1
 }
+
+// slice() return a sub-array of bits between 'start_bit_nr' (included) and 
+// 'end_bit_nr' (excluded)
 
 pub fn (input BitField) slice(_start int, _end int) BitField {
 	// boundary checks
@@ -381,6 +453,9 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 	return output
 }
 
+// reverse() reverses the order of bits in the array (swap the first with the
+// last, the second with the last but one and so on)
+
 pub fn (instance mut BitField) reverse() BitField {
 	size := instance.size
 	bitnslots := bitnslots(size)
@@ -401,6 +476,8 @@ pub fn (instance mut BitField) reverse() BitField {
 	return output
 }
 
+// resize() changes the size of the bit array to 'new_size'
+
 pub fn (instance mut BitField) resize(size int) {
 	bitnslots := bitnslots(size)
 	old_size := instance.size
@@ -415,6 +492,9 @@ pub fn (instance mut BitField) resize(size int) {
 		cleartail(instance)
 	}
 }
+
+// rotate(offset int) circular-shift the bits by 'offset' positions (move
+// 'offset' bit to 0, 'offset+1' bit to 1, and so on)
 
 pub fn (instance BitField) rotate(offset int) BitField {
 	/**

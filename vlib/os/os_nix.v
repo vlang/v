@@ -1,6 +1,7 @@
 module os 
 
 #include <dirent.h>
+#include <unistd.h>
 
 const (
 	PathSeparator = '/' 

@@ -289,9 +289,12 @@ pub fn ticks() i64 {
 	$if windows { 
 		return C.GetTickCount()
 	} 
-	ts := C.timeval{} 
-	C.gettimeofday(&ts,0) 
-	return ts.tv_sec * 1000 + (ts.tv_usec / 1000) 
+	$else {
+		ts := C.timeval{} 
+		C.gettimeofday(&ts,0) 
+		return ts.tv_sec * 1000 + (ts.tv_usec / 1000) 
+	}
+
 /* 
 	t := i64(C.mach_absolute_time())
 	# Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );

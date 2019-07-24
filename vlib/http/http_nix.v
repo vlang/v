@@ -104,7 +104,7 @@ pub fn (req &Request) do() Response {
 	}
 	// options
 	// url2 := req.url.clone()
-	C.curl_easy_setopt(curl, CURLOPT_URL, req.url.cstr())// ..clone())
+	C.curl_easy_setopt(curl, CURLOPT_URL, req.url.str)// ..clone())
 	// C.curl_easy_setopt(curl, CURLOPT_URL, 'http://example.com')
 	// return resp
 	// curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
@@ -117,7 +117,7 @@ pub fn (req &Request) do() Response {
 	C.curl_easy_setopt(curl, CURLOPT_HEADERDATA, &hchunk)
 	C.curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1)
 	if req.typ == 'POST' {
-		C.curl_easy_setopt(curl, CURLOPT_POSTFIELDS, req.data.cstr())
+		C.curl_easy_setopt(curl, CURLOPT_POSTFIELDS, req.data.str)
 		C.curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, 'POST')
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
 	}
@@ -126,7 +126,7 @@ pub fn (req &Request) do() Response {
 	// for i, h := range req.headers {
 	for key, val in req.headers {
 		h := '$key: $val'
-		hlist = C.curl_slist_append(hlist, h.cstr())
+		hlist = C.curl_slist_append(hlist, h.str)
 	}
 	// curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,	// (long)CURL_HTTP_VERSION_2TLS);�`C�ʀ9�
 	C.curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1)
@@ -190,11 +190,11 @@ pub fn (req &Request) do() Response {
 }
 
 fn unescape(s string) string {
-	return string(byteptr(C.curl_unescape(s.cstr(), s.len)))
+	return string(byteptr(C.curl_unescape(s.str, s.len)))
 }
 
 fn escape(s string) string {
-	return string(byteptr(C.curl_escape(s.cstr(), s.len)))
+	return string(byteptr(C.curl_escape(s.str, s.len)))
 }
 
 // ////////////////

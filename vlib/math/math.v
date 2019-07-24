@@ -205,6 +205,11 @@ pub fn gcd(a, b i64) i64 {
 	return a
 }
 
+// Returns hypotenuse of a right triangle.
+pub fn hypot(a, b f64) f64 {
+	return C.hypot(a, b)
+}
+
 // lcm calculates least common (non-negative) multiple.
 pub fn lcm(a, b i64) i64 {
 	if a == 0 {

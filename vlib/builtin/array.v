@@ -5,13 +5,14 @@
 module builtin
 
 struct array {
+pub:
 	// Using a void pointer allows to implement arrays without generics and without generating
 	// extra code for every type.
-pub:
 	data         voidptr
 	len          int
 	cap          int
 	element_size int
+	 
 }
 
 // Private function, used by V (`nums := []int`)
@@ -135,8 +136,11 @@ pub fn (s array) slice(start, _end int) array {
 	if start > end {
 		panic('invalid slice index: $start > $end')
 	}
-	if end >= s.len {
-		end = s.len
+	if end > s.len {
+		panic('runtime error: slice bounds out of range ($end >= $s.len)') 
+	}
+	if start < 0 { 
+		panic('runtime error: slice bounds out of range ($start < 0)') 
 	}
 	l := end - start
 	res := array {
@@ -144,6 +148,7 @@ pub fn (s array) slice(start, _end int) array {
 		data: s.data + start * s.element_size
 		len: l
 		cap: l
+		//is_slice: true 
 	}
 	return res
 }
@@ -215,7 +220,11 @@ pub fn (a []int) str() string {
 	return res
 }
 
-pub fn (a []int) free() {
+//pub fn (a []int) free() {
+pub fn (a array) free() {
+	//if a.is_slice {
+		//return 
+	//} 
 	C.free(a.data)
 }
 

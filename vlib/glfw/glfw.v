@@ -150,28 +150,21 @@ pub fn mouse_move(w voidptr, x, y f64) {
 	// #printf("%f : %f => %d \n", x,y);
 }
 
-// pub fn create_window(title string, w, h int) * Window {
 pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
 pub fn create_window(c WinCfg) *Window {
-	// TODO why i need this in stdlib? extern?
-	// # if (!gconst_init)   {  init_consts(); gconst_init = 1; }
-	// ChatsRepo
 	if c.borderless {
 		window_hint(GLFW_RESIZABLE, 0)
 		window_hint(GLFW_DECORATED, 0)
 	}
 	if c.always_on_top {
 		window_hint(GLFW_FLOATING, 1) 
- 
-} 
+	} 
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
-	# if (!cwindow)
-	// if cwindow == 0
-	{
-		println('failed to credate glfw  window')
+	if isnil(cwindow) { 
+		println('failed to create glfw window')
 		C.glfwTerminate()
 	}
 	// # glfwSetCursorPosCallback(cwindow, glfw__mouse_move) ;
@@ -184,13 +177,6 @@ pub fn create_window(c WinCfg) *Window {
 		data: cwindow,
 		title: c.title,
 	}
-	// user_ptr: ptr,
-	// repo: repo,
-	// for !C.glfwWindowShouldClose(cwindow) {
-	// C.glfwPollEvents()
-	// wait_events()
-	// }
-	// C.glfwTerminate()
 	return window
 }
 

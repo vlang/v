@@ -21,6 +21,10 @@ struct User {
 	name string
 	age int 
 } 
+
+struct Foo {
+	@type string 
+} 
  
 fn test_struct_levels() { 
 	mut c := C{} 
@@ -53,4 +57,9 @@ fn test_struct_str() {
 	u := User{'Bob', 30} 
 	println(u)  // make sure the struct is printable 
 	// assert u.str() == '{name:"Bob", age:30}'  // TODO 
+} 
+
+fn test_at() {
+	foo := Foo{ @type: 'test' } 
+	println(foo.@type) 
 } 

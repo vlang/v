@@ -46,23 +46,6 @@ fn (f mut Fn) open_scope() {
 	f.scope_level++
 }
 
-fn (f mut Fn) close_scope() {
-	// println('close_scope level=$f.scope_level var_idx=$f.var_idx')
-	// Move back `var_idx` (pointer to the end of the array) till we reach the previous scope level.
-	// This effectivly deletes (closes) current scope.
-	mut i := f.var_idx - 1
-	for; i >= 0; i-- {
-		v := f.local_vars[i]
-		if v.scope_level != f.scope_level {
-			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
-			break
-		}
-	}
-	f.var_idx = i + 1
-	// println('close_scope new var_idx=$f.var_idx\n')
-	f.scope_level--
-}
-
 fn (f &Fn) mark_var_used(v Var) {
 	for i, vv in f.local_vars {
 		if vv.name == v.name {
@@ -271,6 +254,13 @@ fn (p mut Parser) fn_decl() {
 		typ = 'int'
 		str_args = 'int argc, char** argv'
 	}
+
+	mut dll_export_linkage := ''
+
+	if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+		dll_export_linkage = '__declspec(dllexport) '
+	}
+
 	// Only in C code generate User_register() instead of register()
 	// Internally it's still stored as "register" in type User
 	// mut fn_name_cgen := f.name
@@ -286,7 +276,7 @@ fn (p mut Parser) fn_decl() {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
 		}
-		p.genln('$typ $fn_name_cgen($str_args) {')
+		p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 	}
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
@@ -347,7 +337,7 @@ fn (p mut Parser) fn_decl() {
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
 		// Actual fn declaration!
-		mut fn_decl := '$typ $fn_name_cgen($str_args)'
+		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen($str_args)'
 		if p.pref.obfuscate {
 			fn_decl += '; // ${f.name}'
 		}
@@ -361,6 +351,12 @@ fn (p mut Parser) fn_decl() {
 		}
 		return
 	}
+
+	if p.attr == 'live' && p.pref.is_so {
+		//p.genln('// live_function body start')
+		p.genln('pthread_mutex_lock(&live_fn_mutex);')
+	}
+
 	if f.name == 'main' || f.name == 'WinMain' {
 		p.genln('init_consts();')
 		if p.table.imports.contains('os') {
@@ -374,11 +370,21 @@ fn (p mut Parser) fn_decl() {
 		// We are in live code reload mode, call the .so loader in bg
 		if p.pref.is_live {
 			file_base := p.file_path.replace('.v', '') 
-			so_name := file_base + '.so' 
-			p.genln(' 
+			if p.os != .windows && p.os != .msvc {
+				so_name := file_base + '.so'
+				p.genln(' 
 load_so("$so_name"); 
 pthread_t _thread_so;
 pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
+			} else {
+				so_name := file_base + if p.os == .msvc {'.dll'} else {'.so'} 
+				p.genln('
+live_fn_mutex = CreateMutexA(0, 0, 0);
+load_so("$so_name");
+unsigned long _thread_so;
+_thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
+				')
+			}
 		}
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
 			p.error('tests cannot have function `main`')
@@ -405,6 +411,12 @@ pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
+	
+	if p.attr == 'live' && p.pref.is_so {
+		//p.genln('// live_function body end')
+		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
+	}
+	
 	// {} closed correctly? scope_level should be 0
 	if p.mod == 'main' {
 		// println(p.cur_fn.scope_level)
@@ -432,19 +444,11 @@ fn (p mut Parser) check_unused_variables() {
 			p.scanner.line_nr = var.line_nr - 1
 			p.error('`$var.name` declared and not used')
 		}
-		// Very basic automatic memory management at the end of the function.
-		// This is inserted right before the final `}`, so if the object is being returned,
-		// the free method will not be called.
-		if p.pref.is_test && var.typ.contains('array_') {
-			// p.genln('v_${var.typ}_free($var.name); // !!!! XAXA')
-			// p.genln('free(${var.name}.data); // !!!! XAXA')
-		}
 	}
 }
 
-// Important function with 5 args.
-// user.say_hi() => "User_say_hi(user)"
-// method_ph - where to insert "user_say_hi("
+// user.register() => "User_register(user)"
+// method_ph - where to insert "user_register("
 // receiver_var - "user" (needed for pthreads)
 // receiver_type - "User"
 fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
@@ -467,6 +471,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// str_args contains the args for the wrapper function:
 	// wrapper(arg_struct * arg) { fn("arg->a, arg->b"); }
 	mut str_args := ''
+	mut did_gen_something := false
 	for i, arg in f.args {
 		arg_struct += '$arg.typ $arg.name ;'// Add another field (arg) to the tmp struct definition
 		str_args += 'arg->$arg.name'
@@ -485,7 +490,14 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 			p.check(.comma)
 			str_args += ','
 		}
+		did_gen_something = true
 	}
+
+	if p.os == .msvc && !did_gen_something {
+		// Msvc doesnt like empty struct
+		arg_struct += 'void *____dummy_variable;'
+	}
+
 	arg_struct += '} $arg_struct_name ;'
 	// Also register the wrapper, so we can use the original function without modifying it
 	fn_name = p.table.cgen_name(f)
@@ -495,7 +507,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
 	thread_name = '_thread$tmp_nr'
-	if p.os != .windows {
+	if p.os != .windows && p.os != .msvc {
 		p.genln('pthread_t $thread_name;')
 	}
 	tmp2 := p.get_tmp()
@@ -504,7 +516,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		parg = ' $tmp_struct'
 	}
 	// Call the wrapper
-	if p.os == .windows {
+	if p.os == .windows || p.os == .msvc {
 		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
 	}
 	else {
@@ -518,6 +530,13 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
+	if f.is_c && !p.builtin_pkg {
+		if f.name == 'free' {
+			p.error('use `free()` instead of `C.free()`') 
+		} else if f.name == 'malloc' {
+			p.error('use `malloc()` instead of `C.malloc()`') 
+		} 
+	} 
 	cgen_name := p.table.cgen_name(f)
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name

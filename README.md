@@ -1,6 +1,6 @@
 # The V Programming Language 0.1.x
 
-[![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master) [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
+[![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 
 https://vlang.io
 
@@ -39,13 +39,12 @@ The compilation is temporarily slower for this release:
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 
 
-## Code structure
 
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
 
 ## Installing V from source
 
-### Linux, macOS, Windows, WSL, Android, Raspberry Pi
+### Linux, macOS, Windows, *BSD, WSL, Android, Raspbian
 
 
 ```bash
@@ -89,6 +88,15 @@ git pull origin master
 make
 ```
 
+## Docker
+
+```bash
+git clone https://github.com/vlang/v
+cd v
+docker build -t vlang .
+docker run --rm -it vlang:latest
+v
+```
 
 
 
@@ -119,7 +127,7 @@ v run hello_world.v                 # this builds the program and runs it right 
 
 v word_counter.v && ./word_counter cinderella.txt
 v run news_fetcher.v
-v run tetris.v
+v run tetris/tetris.v
 ```
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
@@ -141,3 +149,8 @@ sudo pacman -S glfw-x11 curl freetype2
 ```
 
 glfw and libcurl dependencies will be removed soon.
+
+## Code structure
+
+https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
