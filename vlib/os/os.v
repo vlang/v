@@ -546,6 +546,34 @@ pub fn get_raw_line() string {
 	} 
 }
 
+pub fn get_lines() []string {
+        mut line := ''
+        mut inputstr := []string
+        for {
+                line = get_line()
+                if(line.len <= 0) {
+                        break
+                }
+                line = line.trim_space()
+                inputstr << line
+        }
+        return inputstr
+}
+
+pub fn get_lines_joined() string {
+        mut line := ''
+        mut inputstr := ''
+        for {
+                line = get_line()
+                if(line.len <= 0) {
+                        break
+                }
+                line = line.trim_space()
+                inputstr += line
+        }
+        return inputstr
+}
+
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
