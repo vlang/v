@@ -63,6 +63,24 @@ fn myprint(s string, ..) {
 	println('/* /* comment */ */')
 }
 
+fn modify_array(a mut []int) {
+	a[0] = 10 
+	for i in 0..a.len {
+		a[i] = a[i] * 2
+	}
+	a << 888 
+} 
+
+fn test_mut() {
+	mut nums := [1, 2, 3] 
+	modify_array(mut nums) 
+	assert nums.len == 4 
+	assert nums[0] == 20 
+	assert nums[1] == 4
+	assert nums[2] == 6 
+	assert nums[3] == 888 
+} 
+
 fn test_fns() {
 	// no asserts for now, just test function declarations above 
 } 

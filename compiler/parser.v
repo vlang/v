@@ -1736,11 +1736,12 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 }
 
 fn (p mut Parser) index_expr(typ string, fn_ph int) string {
-	//if p.fileis('main.v') {
-		//println('index expr typ=$typ')
-	//}
 	// a[0]
 	v := p.expr_var
+	//if p.fileis('fn_test.v') {
+		//println('index expr typ=$typ')
+		//println(v.name) 
+	//}
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
 	is_arr0 := typ.starts_with('array_')
@@ -1912,7 +1913,11 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 				p.gen('$index_expr ]')
 			}
 			else {
-				p.gen('( *($typ*) array__get($index_expr) )')
+				if is_ptr { 
+					p.gen('( *($typ*) array__get(* $index_expr) )')
+				}  else { 
+					p.gen('( *($typ*) array__get($index_expr) )')
+				} 
 			}
 		}
 		else if is_str && !p.builtin_pkg {
@@ -2076,13 +2081,13 @@ fn (p mut Parser) expression() string {
 
 fn (p mut Parser) term() string {
 	line_nr := p.scanner.line_nr
-	if p.fileis('fn_test') {
-		println('\nterm() $line_nr')
-	}
+	//if p.fileis('fn_test') {
+		//println('\nterm() $line_nr')
+	//}
 	typ := p.unary()
-	if p.fileis('fn_test') {
-		println('2: $line_nr')
-	}
+	//if p.fileis('fn_test') {
+		//println('2: $line_nr')
+	//}
 	// `*` on a newline? Can't be multiplication, only dereference
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
@@ -3117,13 +3122,6 @@ fn (p mut Parser) for_st() {
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`) 
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);') 
-			
-			/* 
-			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
-			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
-			p.genln('string $i = entry.key;') 
-			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
-			*/ 
 		} 
 	}
 	// `for val in vals`

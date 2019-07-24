@@ -631,8 +631,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			if !p.first_run() && !p.table.known_type(typ2) {
 				p.error('fn_args: unknown type $typ2')
 			}
-			if is_mut {
-				// && !typ2.starts_with('array_') {
+			if is_mut { 
 				typ2 += '*'
 			}
 			v := Var {
