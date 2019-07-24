@@ -401,7 +401,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		cgen_name := p.table.cgen_name(f)
 		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
-	p.statements_no_curly_end()
+	p.statements_no_rcbr()
 	// Print counting result after all statements in main
 	if p.pref.is_prof && f.name == 'main' {
 		p.genln(p.print_prof_counters())

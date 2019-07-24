@@ -962,17 +962,17 @@ fn (p &Parser) print_tok() {
 // statements() returns the type of the last statement
 fn (p mut Parser) statements() string {
 	p.log('statements()')
-	typ := p.statements_no_curly_end()
+	typ := p.statements_no_rcbr()
 	if !p.inside_if_expr {
 		p.genln('}')
 	}
-	if p.fileis('if_expr') {
-		println('statements() ret=$typ line=$p.scanner.line_nr')
-	}
+	//if p.fileis('if_expr') {
+		//println('statements() ret=$typ line=$p.scanner.line_nr')
+	//}
 	return typ
 }
 
-fn (p mut Parser) statements_no_curly_end() string {
+fn (p mut Parser) statements_no_rcbr() string {
 	p.cur_fn.open_scope()
 	if !p.inside_if_expr {
 		p.genln('')
@@ -2819,7 +2819,7 @@ fn (p mut Parser) comp_time() {
 				p.genln('#ifdef $ifdef_name')
 			}
 			p.check(.lcbr)
-			p.statements_no_curly_end()
+			p.statements_no_rcbr()
 			if ! (p.tok == .dollar && p.peek() == .key_else) {
 				p.genln('#endif')
 			}
@@ -2859,7 +2859,7 @@ fn (p mut Parser) comp_time() {
 		p.next()
 		p.check(.lcbr)
 		p.genln('#else')
-		p.statements_no_curly_end()
+		p.statements_no_rcbr()
 		p.genln('#endif')
 	}
 	else {
