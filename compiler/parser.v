@@ -1018,6 +1018,9 @@ fn (p mut Parser) close_scope() {
 			if v.typ.starts_with('array_') { 
 				p.genln('v_array_free($v.name); // close_scope free') 
 			} 
+			else if v.typ == 'string' { 
+				p.genln('v_string_free($v.name); // close_scope free') 
+			} 
 			else { 
 				p.genln('free($v.name); // close_scope free') 
 			} 
@@ -1839,6 +1842,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			p.gen(']/*r$typ $v.is_mut*/')
 		}
 	}
+	// TODO move this from index_expr() 
 	// TODO if p.tok in ...
 	// if p.tok in [.assign, .plus_assign, .minus_assign]
 	if p.tok == .assign || p.tok == .plus_assign || p.tok == .minus_assign ||
@@ -2335,6 +2339,7 @@ fn (p mut Parser) string_expr() {
 		return
 	}
 	// tmp := p.get_tmp()
+	p.is_alloc = true // $ interpolation means there's allocation 
 	mut args := '"'
 	mut format := '"'
 	p.fgen('\'') 
