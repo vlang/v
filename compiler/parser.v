@@ -1335,7 +1335,7 @@ fn (p mut Parser) bterm() string {
 	return typ
 }
 
-// also called on *, &, . (enum) 
+// also called on *, &, @, . (enum) 
 fn (p mut Parser) name_expr() string {
 	p.log('\nname expr() pass=$p.run tok=${p.tok.str()} $p.lit')
 	// print('known type:')
@@ -2167,11 +2167,8 @@ fn (p mut Parser) factor() string {
 		p.gen('$sizeof_typ)')
 		p.fgen('$sizeof_typ)')
 		return 'int'
-	case Token.amp:
-		return p.name_expr()
-	case Token.dot:
-		return p.name_expr()// `.green` (enum)
-	case Token.mul:
+	case Token.amp, Token.dot, Token.mul: 
+		// (dot is for enum vals: `.green`) 
 		return p.name_expr()
 	case Token.name:
 		// map[string]int

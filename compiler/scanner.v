@@ -388,6 +388,13 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.pipe, '')
 	case `,`:
 		return scan_res(.comma, '')
+	case `@`:
+		s.pos++ 
+		name := s.ident_name()
+		if !is_key(name) {
+			s.error('@ must be used before keywords (e.g. `@type string`)') 
+		} 
+		return scan_res(.name, name)
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++

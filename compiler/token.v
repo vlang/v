@@ -34,6 +34,7 @@ enum Token {
 	dollar
 	left_shift
 	righ_shift
+	//at // @ 
 	// = := += -=
 	assign
 	decl_assign
@@ -148,6 +149,7 @@ fn build_token_str() []string {
 	s[Token.dot] = '.'
 	s[Token.dotdot] = '..'
 	s[Token.comma] = ','
+	//s[Token.at] = '@'
 	s[Token.semicolon] = ';'
 	s[Token.colon] = ':'
 	s[Token.arrow] = '=>'
