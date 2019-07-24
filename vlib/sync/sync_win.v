@@ -5,14 +5,20 @@
 module sync
 import os
 
+// Unsafe pointer
+type Pointer voidptr
+
 // Mutex HANDLE
 type MHANDLE voidptr
 
 struct Mutex {
 mut:
-    counter i64     // counter
-    wstate  u32     // wait state
-    mx      MHANDLE // mutex handle
+    mx           MHANDLE // mutex handle
+    wstate       u32     // wait state
+    cycle_wait   i64     // waiting cycles (implemented only with atomic)
+    cycle_woken  i64     // woken cycles    ^
+    reader_sem   u32     // reader semarphone
+    writer_sem   u32     // writer semaphones 
 }
 
 const (
@@ -47,10 +53,19 @@ pub fn (m &Mutex) lock() {
         }
     }
     state := C.WaitForSingleObject(m.mx, INFINITY) // infinity wait
+    // for {
+    //     if (m.cycle_woken - 1) < 0 {
+    //         break
+    //     }
+    //     if state&0x00000080 {
+    //         continue // abondoned
+    //     }
+    //     m.cycle_wait++
+    // }
     match state {
         WAIT_FAILED    => m.wstate = BROKEN
         WAIT_ABANDONED => m.wstate = ABOND
-        WAIT_OBJECT_0  => m.wstate = WAIT
+        WAIT_OBJECT_0  => m.wstate = WAIT & u32(0xff)
     }
     // todo implement atomic counter
 }
