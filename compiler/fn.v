@@ -493,9 +493,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		did_gen_something = true
 	}
 
-	if p.os == .msvc && !did_gen_something {
+	if !did_gen_something {
 		// Msvc doesnt like empty struct
-		arg_struct += 'void *____dummy_variable;'
+		arg_struct += 'EMPTY_STRUCT_DECLARATION'
 	}
 
 	arg_struct += '} $arg_struct_name ;'

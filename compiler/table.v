@@ -544,7 +544,7 @@ fn type_default(typ string) string {
 	}
 	// User struct defined in another module. 
 	if typ.contains('__') {
-		return '{}'
+		return 'STRUCT_DEFAULT_VALUE'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
@@ -566,7 +566,7 @@ fn type_default(typ string) string {
 	case 'byteptr': return '0'
 	case 'voidptr': return '0'
 	}
-	return '{}' 
+	return 'STRUCT_DEFAULT_VALUE' 
 }
 
 // TODO PERF O(n)

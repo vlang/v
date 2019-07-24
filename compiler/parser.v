@@ -618,8 +618,8 @@ fn (p mut Parser) struct_decl() {
 
 	p.check(.rcbr)
 	if !is_c {
-		if p.os == .msvc && !did_gen_something {
-			p.gen_type('void *____dummy_variable; };')
+		if !did_gen_something {
+			p.gen_type('EMPTY_STRUCT_DECLARATION };')
 			p.fgenln('')
 		} else {
 			p.gen_type('}; ')
@@ -1895,7 +1895,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		if is_map {
 			p.gen('$tmp')
 			mut def := type_default(typ)
-			if p.os == .msvc && def == '{}' {
+			if def == '{}' {
 				def = '{0}'
 			}
 			p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
@@ -2025,7 +2025,7 @@ fn (p mut Parser) expression() string {
 		}
 		// 3 + 4
 		else if is_num {
-			if p.os == .msvc && typ == 'void*' {
+			if typ == 'void*' {
 				// Msvc errors on void* pointer arithmatic
 				// ... So cast to byte* and then do the add
 				p.cgen.set_placeholder(ph, '(byte*)')
@@ -2467,11 +2467,7 @@ fn (p mut Parser) array_init() string {
 					name := p.check_name()
 					if p.table.known_type(name) {
 						p.cgen.resetln('')
-						if p.os == .msvc {
-							p.gen('{0}')
-						} else {
-							p.gen('{}')
-						}
+						p.gen('STRUCT_DEFAULT_VALUE')
 						return '[$lit]$name'
 					}
 					else {
@@ -2555,8 +2551,8 @@ fn (p mut Parser) array_init() string {
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
 	// TODO why need !first_run()?? Otherwise it goes to the very top of the out.c file
 	if !p.first_run() {
-		if p.os == .msvc && i == 0 {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) {0 ')
+		if i == 0 {
+			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) {EMPTY_STRUCT_INIT ')
 		} else {
 			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
 		}
@@ -2666,7 +2662,7 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 				p.error('pointer field `${typ}.${field.name}` must be initialized')
 			}
 			def_val := type_default(field_typ)
-			if def_val != '' && def_val != '{}' {
+			if def_val != '' && def_val != 'STRUCT_DEFAULT_VALUE' {
 				p.gen('.$field.name = $def_val')
 				if i != t.fields.len - 1 {
 					p.gen(',')
@@ -2706,8 +2702,8 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 		did_gen_something = true
 	}
 
-	if p.os == .msvc && !did_gen_something {
-		p.gen('0')
+	if !did_gen_something {
+		p.gen('EMPTY_STRUCT_INIT')
 	}
 
 	p.gen('}')
@@ -3293,15 +3289,8 @@ fn (p mut Parser) return_st() {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 
-				if p.os != .msvc {
-					p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
-					p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
-				} else {
-					// Both the return type and the expression type have already been concluded
-					// to be the same - the cast is slightly pointless
-					// and msvc cant do it
-					p.cgen.resetln('$expr_type $tmp = ($ret);')
-				}
+				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($expr_type)($ret);'
+				p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
 				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
 			}
 			else {
