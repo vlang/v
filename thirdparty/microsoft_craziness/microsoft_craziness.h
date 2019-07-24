@@ -338,6 +338,7 @@ wchar_t *find_windows_kit_root_with_key(HKEY key, wchar_t *version) {
   DWORD length =
       required_length + 2; // The +2 is for the maybe optional zero later on.
                            // Probably we are over-allocating.
+
   wchar_t *value = (wchar_t *)malloc(length);
   if (!value)
     return NULL;
@@ -350,9 +351,9 @@ wchar_t *find_windows_kit_root_with_key(HKEY key, wchar_t *version) {
   // The documentation says that if the string for some reason was not stored
   // with zero-termination, we need to manually terminate it. Sigh!!
 
-  if (value[length]) {
-    value[length + 1] = 0;
-  }
+  //if (value[length/2]) {
+  //  value[length/2 + 1] = 0;
+  //}
 
   return value;
 }

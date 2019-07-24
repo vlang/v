@@ -703,9 +703,9 @@ pub fn chdir(path string) {
 
 pub fn getwd() string {	
 	$if windows {
-		max := 512 // MAX_PATH * sizeof(wchar_t)
+		max := 1024 // MAX_PATH * sizeof(wchar_t)
 		buf := &u16(malloc(max))
-		if C._wgetcwd(buf, max) == 0 {
+		if C._wgetcwd(buf, max/2) == 0 {
 			return ''
 		}
 		return string_from_wide(buf)
