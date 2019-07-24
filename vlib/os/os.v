@@ -263,9 +263,7 @@ pub fn open_append(path string) ?File {
 }
 
 pub fn (f File) write(s string) {
-	ss := s.clone() // TODO is clone() needed here? 
-	C.fputs(ss.str, f.cfile)
-	// ss.free()
+	C.fputs(s.str, f.cfile)
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
 
