@@ -30,7 +30,7 @@ const (
 
 // Given a root key look for the subkey 'version' and get the path 
 fn find_windows_kit_internal(key RegKey, version string) ?string {
-	mut required_bytes := 0
+	required_bytes := 0 // TODO mut 
 	result := C.RegQueryValueExW(key, version.to_wide(), 0, 0, 0, &required_bytes)
 
 	length := required_bytes / 2
@@ -388,4 +388,5 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"')
 	println(res)
-}
+} 
+
