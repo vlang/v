@@ -213,6 +213,7 @@ fn (v mut V) compile() {
 #define EMPTY_STRUCT_DECLARATION void *____dummy_variable;
 #undef EMPTY_STRUCT_INIT
 #define EMPTY_STRUCT_INIT 0
+#undef OPTION_CAST
 #define OPTION_CAST(x)
 #endif
 
