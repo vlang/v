@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 
 // This implementation is derived from the golang implementation
-// which itself is deroved in part from the reference
+// which itself is derived in part from the reference
 // ANSI C implementation, which carries the following notice:
 //
 //	rijndael-alg-fst.c
