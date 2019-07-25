@@ -639,7 +639,7 @@ fn (c &V) cc_windows_cross() {
                mut obj_name := c.out_name
                obj_name = obj_name.replace('.exe', '')
                obj_name = obj_name.replace('.o.o', '.o')
-               mut include := '-I $winroot/include '
+               include := '-I $winroot/include '
                cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
                if c.pref.show_c_cmd {
                        println(cmd)
@@ -1259,7 +1259,7 @@ fn run_repl() []string {
 			}
 			else {
 				lines << line
-				mut vals := s.split('\n')
+				vals := s.split('\n')
 				for i:=0; i<vals.len-1; i++ {
 					println(vals[i])
 				} 

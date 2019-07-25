@@ -49,9 +49,20 @@ fn (f mut Fn) open_scope() {
 fn (f &Fn) mark_var_used(v Var) {
 	for i, vv in f.local_vars {
 		if vv.name == v.name {
-			mut ptr := &f.local_vars[i]
-			ptr.is_used = true
-			// / f.local_vars[i].is_used = true
+			//mut ptr := &f.local_vars[i]
+			//ptr.is_used = true
+			f.local_vars[i].is_used = true
+			return
+		}
+	}
+}
+
+fn (f &Fn) mark_var_changed(v Var) {
+	for i, vv in f.local_vars {
+		if vv.name == v.name {
+			//mut ptr := &f.local_vars[i]
+			//ptr.is_used = true
+			f.local_vars[i].is_changed = true
 			// return
 		}
 	}
@@ -86,13 +97,11 @@ fn (p mut Parser) is_sig() bool {
 }
 
 fn new_fn(pkg string, is_public bool) *Fn {
-	mut f := &Fn {
+	return &Fn {
 		pkg: pkg
-		local_vars: [Var{}
-		; MaxLocalVars]
+		local_vars: [Var{}		; MaxLocalVars]
 		is_public: is_public
 	}
-	return f
 }
 
 // Function signatures are added to the top of the .c file in the first run.
@@ -444,6 +453,11 @@ fn (p mut Parser) check_unused_variables() {
 			p.scanner.line_nr = var.line_nr - 1
 			p.error('`$var.name` declared and not used')
 		}
+ 
+		if !var.is_changed && var.is_mut && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
+			p.scanner.line_nr = var.line_nr - 1
+			p.error('`$var.name` is declared mutable, but it was never changed') 
+		}
 	}
 }
 
@@ -555,7 +569,10 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		if receiver.is_mut && !p.expr_var.is_mut {
 			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
 			p.error('`$p.expr_var.name` is immutable')
-		}
+		} 
+		if !p.expr_var.is_changed {
+			p.cur_fn.mark_var_changed(p.expr_var) 
+		} 
 		// if receiver is key_mut or a ref (&), generate & for the first arg
 		if receiver.ref || (receiver.is_mut && !receiver_type.contains('*')) {
 			method_call += '& /* ? */'
