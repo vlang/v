@@ -1159,8 +1159,8 @@ fn new_v(args[]string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
-		is_debuggable: args.contains('-debuggable') // -debuggable implys debug
-		is_debug: args.contains('-debug')
+		is_debuggable: args.contains('-g') // -debuggable implys debug
+		is_debug: args.contains('-debug') || args.contains('-g')
 		obfuscate: obfuscate
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')
