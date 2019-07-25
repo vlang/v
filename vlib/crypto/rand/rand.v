@@ -43,6 +43,18 @@ import const (
 	BCRYPT_USE_SYSTEM_PREFERRED_RNG
 )
 
+fn new_array_from_c_array_rand(len, cap, elm_size int, c_array voidptr) array {
+	arr := array {
+		len: len
+		cap: cap
+		element_size: elm_size
+		data: malloc(cap * elm_size)
+	}
+	// TODO Write all memory functions (like memcpy) in V
+	C.memcpy(arr.data, c_array, len * elm_size)
+	return arr
+}
+
 pub fn read(bytes_needed int) []byte {	
 	// buffer := [bytes_needed]byte
 	buffer := malloc(bytes_needed)
@@ -62,8 +74,8 @@ pub fn read(bytes_needed int) []byte {
 	// for b in buffer {
 	// 	d << b
 	// }
-	
-	return buffer
+	return []byte
+	// return new_array_from_c_array_rand(bytes_needed, bytes_needed, bytes_needed, buffer)
 }
 
 // pub fn read(bytes_needed int)
