@@ -4,7 +4,7 @@
 
 module hash
 
-interface Hasher {
+interface Hash {
 	// Sum appends the current hash to b and returns the resulting array.
 	// It does not change the underlying hash state.
 	sum(b []byte) []byte
