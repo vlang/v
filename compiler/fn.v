@@ -401,7 +401,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		cgen_name := p.table.cgen_name(f)
 		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
-	p.statements_no_curly_end()
+	p.statements_no_rcbr()
 	// Print counting result after all statements in main
 	if p.pref.is_prof && f.name == 'main' {
 		p.genln(p.print_prof_counters())
@@ -493,9 +493,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		did_gen_something = true
 	}
 
-	if p.os == .msvc && !did_gen_something {
+	if !did_gen_something {
 		// Msvc doesnt like empty struct
-		arg_struct += 'void *____dummy_variable;'
+		arg_struct += 'EMPTY_STRUCT_DECLARATION'
 	}
 
 	arg_struct += '} $arg_struct_name ;'
@@ -626,18 +626,21 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if is_mut {
 			p.next()
 		}
-		mut typ2 := p.get_type()
+		mut typ := p.get_type()
+		if is_mut && is_primitive_type(typ) {
+			p.error('mutable arguments are only allowed for arrays, maps, and structs.' + 
+			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`') 
+		} 
 		for name in names {
-			if !p.first_run() && !p.table.known_type(typ2) {
-				p.error('fn_args: unknown type $typ2')
+			if !p.first_run() && !p.table.known_type(typ) { 
+				p.error('fn_args: unknown type $typ')
 			}
-			if is_mut {
-				// && !typ2.starts_with('array_') {
-				typ2 += '*'
+			if is_mut { 
+				typ += '*'
 			}
 			v := Var {
 				name: name
-				typ: typ2
+				typ: typ 
 				is_arg: true
 				is_mut: is_mut
 				ptr: is_mut

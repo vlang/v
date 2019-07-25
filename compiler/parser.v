@@ -618,8 +618,8 @@ fn (p mut Parser) struct_decl() {
 
 	p.check(.rcbr)
 	if !is_c {
-		if p.os == .msvc && !did_gen_something {
-			p.gen_type('void *____dummy_variable; };')
+		if !did_gen_something {
+			p.gen_type('EMPTY_STRUCT_DECLARATION };')
 			p.fgenln('')
 		} else {
 			p.gen_type('}; ')
@@ -671,12 +671,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 
 // check_name checks for a name token and returns its literal
 fn (p mut Parser) check_name() string {
-	if p.tok == .key_type {
-		p.check(.key_type) 
-		return 'type' 
-	} 
 	name := p.lit
-	 
 	p.check(.name)
 	return name
 }
@@ -766,7 +761,7 @@ fn (p mut Parser) error(s string) {
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
-	p.scanner.error(s.replace('array_', '[]').replace('__', '.'))
+	p.scanner.error(s.replace('array_', '[]').replace('__', '.').replace('Option_', '?')) 
 }
 
 fn (p &Parser) first_run() bool {
@@ -962,17 +957,17 @@ fn (p &Parser) print_tok() {
 // statements() returns the type of the last statement
 fn (p mut Parser) statements() string {
 	p.log('statements()')
-	typ := p.statements_no_curly_end()
+	typ := p.statements_no_rcbr()
 	if !p.inside_if_expr {
 		p.genln('}')
 	}
-	if p.fileis('if_expr') {
-		println('statements() ret=$typ line=$p.scanner.line_nr')
-	}
+	//if p.fileis('if_expr') {
+		//println('statements() ret=$typ line=$p.scanner.line_nr')
+	//}
 	return typ
 }
 
-fn (p mut Parser) statements_no_curly_end() string {
+fn (p mut Parser) statements_no_rcbr() string {
 	p.cur_fn.open_scope()
 	if !p.inside_if_expr {
 		p.genln('')
@@ -1022,6 +1017,9 @@ fn (p mut Parser) close_scope() {
 		if !p.building_v && !v.is_mut && v.is_alloc {
 			if v.typ.starts_with('array_') { 
 				p.genln('v_array_free($v.name); // close_scope free') 
+			} 
+			else if v.typ == 'string' { 
+				p.genln('v_string_free($v.name); // close_scope free') 
 			} 
 			else { 
 				p.genln('free($v.name); // close_scope free') 
@@ -1652,9 +1650,6 @@ fn (p &Parser) fileis(s string) bool {
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	p.check(.dot)
 	mut field_name := p.lit
-	if p.tok == .key_type {
-		field_name = 'type' 
-	} 
 	p.fgen(field_name) 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
@@ -1736,11 +1731,12 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 }
 
 fn (p mut Parser) index_expr(typ string, fn_ph int) string {
-	//if p.fileis('main.v') {
-		//println('index expr typ=$typ')
-	//}
 	// a[0]
 	v := p.expr_var
+	//if p.fileis('fn_test.v') {
+		//println('index expr typ=$typ')
+		//println(v.name) 
+	//}
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
 	is_arr0 := typ.starts_with('array_')
@@ -1846,6 +1842,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			p.gen(']/*r$typ $v.is_mut*/')
 		}
 	}
+	// TODO move this from index_expr() 
 	// TODO if p.tok in ...
 	// if p.tok in [.assign, .plus_assign, .minus_assign]
 	if p.tok == .assign || p.tok == .plus_assign || p.tok == .minus_assign ||
@@ -1902,7 +1899,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		if is_map {
 			p.gen('$tmp')
 			mut def := type_default(typ)
-			if p.os == .msvc && def == '{}' {
+			if def == 'STRUCT_DEFAULT_VALUE' {
 				def = '{0}'
 			}
 			p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
@@ -1912,7 +1909,11 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 				p.gen('$index_expr ]')
 			}
 			else {
-				p.gen('( *($typ*) array__get($index_expr) )')
+				if is_ptr { 
+					p.gen('( *($typ*) array__get(* $index_expr) )')
+				}  else { 
+					p.gen('( *($typ*) array__get($index_expr) )')
+				} 
 			}
 		}
 		else if is_str && !p.builtin_pkg {
@@ -2028,7 +2029,7 @@ fn (p mut Parser) expression() string {
 		}
 		// 3 + 4
 		else if is_num {
-			if p.os == .msvc && typ == 'void*' {
+			if typ == 'void*' {
 				// Msvc errors on void* pointer arithmatic
 				// ... So cast to byte* and then do the add
 				p.cgen.set_placeholder(ph, '(byte*)')
@@ -2076,13 +2077,13 @@ fn (p mut Parser) expression() string {
 
 fn (p mut Parser) term() string {
 	line_nr := p.scanner.line_nr
-	if p.fileis('fn_test') {
-		println('\nterm() $line_nr')
-	}
+	//if p.fileis('fn_test') {
+		//println('\nterm() $line_nr')
+	//}
 	typ := p.unary()
-	if p.fileis('fn_test') {
-		println('2: $line_nr')
-	}
+	//if p.fileis('fn_test') {
+		//println('2: $line_nr')
+	//}
 	// `*` on a newline? Can't be multiplication, only dereference
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
@@ -2338,6 +2339,7 @@ fn (p mut Parser) string_expr() {
 		return
 	}
 	// tmp := p.get_tmp()
+	p.is_alloc = true // $ interpolation means there's allocation 
 	mut args := '"'
 	mut format := '"'
 	p.fgen('\'') 
@@ -2470,11 +2472,7 @@ fn (p mut Parser) array_init() string {
 					name := p.check_name()
 					if p.table.known_type(name) {
 						p.cgen.resetln('')
-						if p.os == .msvc {
-							p.gen('{0}')
-						} else {
-							p.gen('{}')
-						}
+						p.gen('STRUCT_DEFAULT_VALUE')
 						return '[$lit]$name'
 					}
 					else {
@@ -2558,8 +2556,8 @@ fn (p mut Parser) array_init() string {
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
 	// TODO why need !first_run()?? Otherwise it goes to the very top of the out.c file
 	if !p.first_run() {
-		if p.os == .msvc && i == 0 {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) {0 ')
+		if i == 0 {
+			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) {EMPTY_STRUCT_INIT ')
 		} else {
 			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
 		}
@@ -2669,7 +2667,7 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 				p.error('pointer field `${typ}.${field.name}` must be initialized')
 			}
 			def_val := type_default(field_typ)
-			if def_val != '' && def_val != '{}' {
+			if def_val != '' && def_val != 'STRUCT_DEFAULT_VALUE' {
 				p.gen('.$field.name = $def_val')
 				if i != t.fields.len - 1 {
 					p.gen(',')
@@ -2709,8 +2707,8 @@ fn (p mut Parser) struct_init(is_c_struct_init bool) string {
 		did_gen_something = true
 	}
 
-	if p.os == .msvc && !did_gen_something {
-		p.gen('0')
+	if !did_gen_something {
+		p.gen('EMPTY_STRUCT_INIT')
 	}
 
 	p.gen('}')
@@ -2819,7 +2817,7 @@ fn (p mut Parser) comp_time() {
 				p.genln('#ifdef $ifdef_name')
 			}
 			p.check(.lcbr)
-			p.statements_no_curly_end()
+			p.statements_no_rcbr()
 			if ! (p.tok == .dollar && p.peek() == .key_else) {
 				p.genln('#endif')
 			}
@@ -2859,7 +2857,7 @@ fn (p mut Parser) comp_time() {
 		p.next()
 		p.check(.lcbr)
 		p.genln('#else')
-		p.statements_no_curly_end()
+		p.statements_no_rcbr()
 		p.genln('#endif')
 	}
 	else {
@@ -3111,19 +3109,12 @@ fn (p mut Parser) for_st() {
 			p.genln('  string $i = ((string*)keys_$tmp .data)[l];') 
 			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );') 
 			mut def := type_default(typ)
-			if def == '{}' {
+			if def == 'STRUCT_DEFAULT_VALUE' {
 				def = '{0}'
 			}
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`) 
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);') 
-			
-			/* 
-			p.genln('for (int l = 0; l < $tmp . entries.len; l++) {') 
-			p.genln('Entry entry = *((Entry*) (array__get($tmp .entries, l)));') 
-			p.genln('string $i = entry.key;') 
-			p.genln('$var_typ $val; map_get($tmp, $i, & $val);') 
-			*/ 
 		} 
 	}
 	// `for val in vals`
@@ -3303,15 +3294,8 @@ fn (p mut Parser) return_st() {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 
-				if p.os != .msvc {
-					p.cgen.cur_line = '$expr_type $tmp = ($expr_type)($ret);'
-					p.cgen.resetln('$expr_type $tmp = ($expr_type)($ret);')
-				} else {
-					// Both the return type and the expression type have already been concluded
-					// to be the same - the cast is slightly pointless
-					// and msvc cant do it
-					p.cgen.resetln('$expr_type $tmp = ($ret);')
-				}
+				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($expr_type)($ret);'
+				p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
 				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
 			}
 			else {

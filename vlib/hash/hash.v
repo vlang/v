@@ -12,10 +12,10 @@ interface Hasher {
 	block_size() int
 }
 
-interface Hash32er {
+interface Hash32 {
 	sum32() u32
 }
 
-interface Hash64er {
-	sum64() u32
+interface Hash64 {
+	sum64() u64
 }

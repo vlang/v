@@ -4,7 +4,6 @@
 
 module builtin
 
-// V strings are not null-terminated.
 struct string {
 mut:
 	hash_cache int 
@@ -25,7 +24,8 @@ fn C.strlen(s byteptr) int
 
 fn todo() { } 
 
-// Converts a C string to a V string
+// Converts a C string to a V string. 
+// String data is reused, not copied. 
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if isnil(s) {
@@ -48,6 +48,7 @@ pub fn tos_clone(s byteptr) string {
 }
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts. 
+// Used only internally. 
 fn tos2(s byteptr) string {
 	if isnil(s) {
 		panic('tos2: nil string')
@@ -653,6 +654,9 @@ pub fn (s string) ustring() ustring {
 // right away. Uses global buffer for storing runes []int array.
 __global g_ustring_runes []int
 pub fn (s string) ustring_tmp() ustring {
+	if g_ustring_runes.len == 0 {
+		g_ustring_runes = new_array(0, 128, sizeof(int))
+	}
 	mut res := ustring {
 		s: s
 	}
@@ -727,7 +731,7 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s string) free() {
-	C.free(s.str)
+	free(s.str)
 }
 
 /* 
@@ -811,7 +815,7 @@ pub fn (s string) reverse() string {
 	}
 
 	for i := s.len - 1; i >= 0; i-- {
-        res[s.len-i-1] = s[i]
+				res[s.len-i-1] = s[i]
 	}
 
 	return res

@@ -113,6 +113,10 @@ fn is_float_type(typ string) bool {
 	return FLOAT_TYPES.contains(typ)
 }
 
+fn is_primitive_type(typ string) bool {
+	return is_number_type(typ) || typ == 'string' 
+} 
+
 fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
 		obf_ids: map[string]int{}
@@ -540,7 +544,7 @@ fn type_default(typ string) string {
 	}
 	// User struct defined in another module. 
 	if typ.contains('__') {
-		return '{}'
+		return 'STRUCT_DEFAULT_VALUE'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
@@ -562,7 +566,7 @@ fn type_default(typ string) string {
 	case 'byteptr': return '0'
 	case 'voidptr': return '0'
 	}
-	return '{}' 
+	return 'STRUCT_DEFAULT_VALUE' 
 }
 
 // TODO PERF O(n)

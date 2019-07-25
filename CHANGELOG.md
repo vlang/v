@@ -1,3 +1,10 @@
+## V 0.1.17 
+
+- @ for escaping keywords (e.g. `struct Foo { @type string }`). 
+- Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
+- Fix mutable args bugs + don't allow primitive arguments to be modified.  
+
+
 ## V 0.1.16 
 *23 Jul 2019* 
 - V can now be used with Visual Studio! 
