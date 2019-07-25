@@ -226,7 +226,7 @@ fn (g mut Game) delete_completed_line(y int) {
 	for yy := y - 1; yy >= 1; yy-- {
 		for x := 1; x <= FieldWidth; x++ {
 			mut a := g.field[yy + 1]
-			mut b := g.field[yy]
+			b := g.field[yy]
 			a[x] = b[x]
 		}
 	}

@@ -2,7 +2,7 @@ import math.stats as stats
 
 fn test_freq() {
 	// Tests were also verified on Wolfram Alpha
-	mut data := [f64(10.0),f64(10.0),f64(5.9),f64(2.7)]
+	data := [f64(10.0),f64(10.0),f64(5.9),f64(2.7)]
 	mut o := stats.freq(data,10.0)
 	assert o == 2
 	o = stats.freq(data,2.7)
@@ -256,4 +256,5 @@ fn test_passing_empty() {
 	assert stats.min(data) == f64(0)
 	assert stats.max(data) == f64(0)
 	assert stats.range(data) == f64(0)
-}
+} 
+

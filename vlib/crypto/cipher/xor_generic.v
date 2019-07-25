@@ -17,7 +17,7 @@ pub fn xor_bytes(dst, a, b []byte) int {
 		return 0
 	}
 
-    safe_xor_bytes(dst, a, b, n)
+	safe_xor_bytes(dst, a, b, n)
 
 	return n
 }
@@ -32,5 +32,5 @@ pub fn safe_xor_bytes(dst, a, b []byte, n int) {
 // fast_xor_words XORs multiples of 4 or 8 bytes (depending on architecture.)
 // The slice arguments a and b are assumed to be of equal length.
 pub fn xor_words(dst, a, b []byte) {
-    safe_xor_bytes(dst, a, b, b.len)
+	safe_xor_bytes(dst, a, b, b.len)
 }

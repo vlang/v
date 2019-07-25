@@ -14,8 +14,8 @@
 module aes
 
 import (
-    crypto.cipher
-    crypto.internal.subtle
+	crypto.cipher
+	crypto.internal.subtle
 )
 
 struct AesCbc {

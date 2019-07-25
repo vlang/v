@@ -92,7 +92,7 @@ mut:
 
 fn test_mut_struct() {
 	mut user := User{18} 
-	mod_struct(mut user)
+	mod_struct(mut user) 
 	assert user.age == 19 
 } 
 
