@@ -84,7 +84,7 @@ pub fn (m mut Mutex) unlock() {
         }
     }
     m.wstate = BROKEN
-
+}
 
 pub fn (m mut Mutex) destroy() {
     if m.wstate == WAIT {
