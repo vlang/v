@@ -19,6 +19,7 @@ struct MsvcResult {
 
 type RegKey u32
 
+// Taken from the windows SDK
 const (
 	HKEY_LOCAL_MACHINE = RegKey(0x80000002)
 	KEY_QUERY_VALUE = (0x0001)
@@ -26,6 +27,7 @@ const (
 	KEY_ENUMERATE_SUB_KEYS = (0x0008)
 )
 
+// Given a root key look for the subkey 'version' and get the path 
 fn find_windows_kit_internal(key RegKey, version string) ?string {
 	mut required_bytes := 0
 	result := C.RegQueryValueExW(key, version.to_wide(), 0, 0, 0, &required_bytes)
@@ -67,7 +69,8 @@ struct WindowsKit {
 	shared_include_path string
 }
 
-fn v_find_windows_kit_root() ?WindowsKit {
+// Try and find the root key for installed windows kits
+fn find_windows_kit_root() ?WindowsKit {
 	root_key := RegKey(0)
 	rc := C.RegOpenKeyExA(
 		HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots', 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
@@ -77,13 +80,11 @@ fn v_find_windows_kit_root() ?WindowsKit {
 	if rc != 0 {
 		return error('Unable to open root key')
 	}
-
-	// Given a key to an already opened registry entry,
-	// get the value stored under the 'version' subkey.
-
 	// Try and find win10 kit
 	kit_root := find_windows_kit_internal(root_key, 'KitsRoot10') or {
+		// Fallback to windows 8
 		k := find_windows_kit_internal(root_key, 'KitsRoot81') or {
+			println('Unable to find windows sdk')
 			return error('Unable to find a windows kit')
 		}
 		k
@@ -109,7 +110,7 @@ fn v_find_windows_kit_root() ?WindowsKit {
 	kit_lib_highest := kit_lib + '\\$highest_path'
 	kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
 
-	println('$kit_lib_highest $kit_include_highest')
+	// println('$kit_lib_highest $kit_include_highest')
 
 	return WindowsKit {
 		um_lib_path: kit_lib_highest + '\\um\\x64'
@@ -128,6 +129,10 @@ struct VsInstallation {
 }
 
 fn find_vs() ?VsInstallation {
+	// Emily:
+	// VSWhere is guaranteed to be installed at this location now
+	// If its not there then end user needs to update their visual studio 
+	// installation!
 	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"')
 	// println('res: "$res"')
 
@@ -165,7 +170,7 @@ fn find_vs() ?VsInstallation {
 
 fn find_msvc() ?MsvcResult {
 	$if windows {
-		wk := v_find_windows_kit_root() or {
+		wk := find_windows_kit_root() or {
 			return error('Unable to find windows sdk')
 		}
 		vs := find_vs() or {
@@ -201,9 +206,8 @@ pub fn cc_msvc(v *V) {
 		return
 	}
 
-	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE'] // arguments for the C compiler
-
-	// cl.exe is stupid so these are in a different order to the ones below!
+	// Default arguments
+	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE']
 
 	if v.pref.is_prod {
 		a << '/O2'
@@ -251,15 +255,30 @@ pub fn cc_msvc(v *V) {
 
 	// The C file we are compiling
 	//a << '"$TmpPath/$v.out_name_c"'
-	// this isnt correct for some reason
-	// so fix that now
-
 	a << '".$v.out_name_c"'
 
-	mut other_flags := []string{}
-	mut real_libs := []string{}
-	mut lib_paths := []string{}
+	mut real_libs :=  [
+		'kernel32.lib',
+		'user32.lib',
+		'gdi32.lib',
+		'winspool.lib',
+		'comdlg32.lib',
+		'advapi32.lib',
+		'shell32.lib',
+		'ole32.lib',
+		'oleaut32.lib',
+		'uuid.lib',
+		'odbc32.lib',
+		'odbccp32.lib',
+		'vcruntime.lib',
+	]
 
+	mut lib_paths := []string{}
+	mut other_flags := []string{}
+
+	// Emily:
+	// this is a hack to try and support -l -L and object files
+	// passed on the command line
 	for f in v.table.flags {
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
@@ -283,29 +302,6 @@ pub fn cc_msvc(v *V) {
 			other_flags << f
 		}
 	}
-
-	default_libs := [
-		'kernel32.lib',
-		'user32.lib',
-		'gdi32.lib',
-		'winspool.lib',
-		'comdlg32.lib',
-		'advapi32.lib',
-		'shell32.lib',
-		'ole32.lib',
-		'oleaut32.lib',
-		'uuid.lib',
-		'odbc32.lib',
-		'odbccp32.lib',
-		'vcruntime.lib',
-	]
-
-	for l in default_libs {
-		real_libs << l
-	}
-
-
-	// flags := v.table.flags.join(' ')
 
 	// Include the base paths
 	a << '-I "$r.ucrt_include_path" -I "$r.vs_include_path" -I "$r.um_include_path" -I "$r.shared_include_path"'
