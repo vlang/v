@@ -16,7 +16,7 @@ fn test_ints() {
 	assert a[4] == 4
 	assert a.last() == 4
 
-	mut s := a.str()
+	s := a.str()
 	assert s == '[1, 5, 2, 3, 4]'
 	assert a[1] == 5
 	assert a.last() == 4
