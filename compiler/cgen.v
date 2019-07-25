@@ -52,11 +52,6 @@ fn new_cgen(out_name_c string) *CGen {
 	return gen
 }
 
-fn (g mut CGen) set_file_and_line(file string, line int) {
-	g.file = file
-	g.line = line
-}
-
 fn (g mut CGen) genln(s string) {
 	if g.nogen || g.run != .main {
 		return
