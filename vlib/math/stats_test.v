@@ -256,4 +256,5 @@ fn test_passing_empty() {
 	assert stats.min(data) == f64(0)
 	assert stats.max(data) == f64(0)
 	assert stats.range(data) == f64(0)
+} 
 

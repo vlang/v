@@ -109,7 +109,7 @@ fn test_repeat() {
 		assert aa[9] == f32(1.1)
 	}
 	{
-		mut aa := [f64(1.1) ; 10]
+		aa := [f64(1.1) ; 10]
 		assert aa[0] == f64(1.1)
 		assert aa[5] == f64(1.1)
 		assert aa[9] == f64(1.1)

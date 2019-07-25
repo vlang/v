@@ -141,7 +141,7 @@ fn test_clone() {
 	a += 'a'
 	a += 'a'
 	b := a
-	mut c := a.clone()
+	c := a.clone()
 	assert c == a
 	assert c == 'aaa'
 	assert b == 'aaa'
