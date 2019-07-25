@@ -17,7 +17,8 @@ struct MsvcResult {
     shared_include_path string
 }
 
-type RegKey u32
+// Mimics a HKEY
+type RegKey voidptr
 
 // Taken from the windows SDK
 const (
