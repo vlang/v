@@ -416,7 +416,6 @@ fn (s mut Scanner) scan() ScanRes {
 		s.line_nr++
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
-			s.line_nr++
 			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
 			s.fgenln('// shebang line "$s.line_comment"')
 			return s.scan()
