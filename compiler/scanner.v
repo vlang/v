@@ -414,6 +414,13 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos++
 		}
 		s.line_nr++
+		if nextc == `!` {
+			// treat shebang line (#!) as a comment
+			s.line_nr++
+			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
+			s.fgenln('// shebang line "$s.line_comment"')
+			return s.scan()
+		}
 		hash := s.text.substr(start, s.pos)
 		return scan_res(.hash, hash.trim_space())
 	case `>`:
