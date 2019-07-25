@@ -14,8 +14,6 @@ fn test_crypto_aes() {
 	if ciphertext.len < aes.BlockSize {
 		panic('ciphertext too short')
 	}
-	// iv := ciphertext[:aes.BlockSize]
-	// ciphertext = ciphertext[aes.BlockSize:]
 	iv := ciphertext.left(aes.BlockSize)
 	ciphertext = ciphertext.right(aes.BlockSize)
 	// CBC mode always works in whole blocks.
