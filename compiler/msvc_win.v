@@ -171,6 +171,7 @@ pub fn cc_msvc(v *V) {
 	}
 
 	default_libs := [
+		'bcrypt.lib',
 		'kernel32.lib',
 		'user32.lib',
 		'gdi32.lib',
@@ -229,7 +230,7 @@ pub fn cc_msvc(v *V) {
 
 	cmd := '""$escaped_path\\cl.exe" $args"'
 
-	// println('$cmd')
+	println('$cmd')
 
 	res := os.exec(cmd)
 	// println(res)
