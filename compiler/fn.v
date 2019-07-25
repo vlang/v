@@ -678,6 +678,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	}
 }
 
+// foo *(1, 2, 3, mut bar)* 
 fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 	// p.gen('(')
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
@@ -725,7 +726,15 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
-		}
+			var_name := p.lit 
+			v := p.cur_fn.find_var(var_name) 
+			if v.name == '' { 
+				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+			} 
+			if !v.is_changed {
+				p.cur_fn.mark_var_changed(v) 
+			} 
+		} 
 		p.expected_type = arg.typ 
 		typ := p.bool_expression()
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
