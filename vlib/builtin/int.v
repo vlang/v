@@ -177,3 +177,11 @@ pub fn (c byte) str() string {
 	return str
 }
 
+pub fn (b []byte) clone() []byte {
+	mut res := [byte(0); b.len] 
+	for i := 0; i < b.len; i++ {
+		res[i] = b[i] 
+	} 
+	return res 
+} 
+
