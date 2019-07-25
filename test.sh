@@ -1,6 +1,6 @@
-#!/bin/zsh
+#!/bin/sh
 
-for f in **/*_test.v ; do
+for f in $(find . -type f -name '*_test.v'); do
         echo "Testing $f..."
         v $f || echo "fail"
 done
