@@ -7,6 +7,8 @@
 
 module subtle
 
+// NOTE: require unsafe in future
+
 // any_overlap reports whether x and y share memory at any (not necessarily
 // corresponding) index. The memory beyond the slice length is ignored.
 pub fn any_overlap(x, y []byte) bool {
