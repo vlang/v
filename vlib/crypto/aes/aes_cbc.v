@@ -83,13 +83,13 @@ pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
 
 pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
 	if src.len%x.block_size != 0 {
-		panic('crypto/cipher: input not full blocks')
+		panic('crypto.cipher: input not full blocks')
 	}
 	if dst.len < src.len {
-		panic('crypto/cipher: output smaller than input')
+		panic('crypto.cipher: output smaller than input')
 	}
 	if subtle.inexact_overlap(dst.left(src.len), src) {
-		panic('crypto/cipher: invalid buffer overlap')
+		panic('crypto.cipher: invalid buffer overlap')
 	}
 	if src.len == 0 {
 		return

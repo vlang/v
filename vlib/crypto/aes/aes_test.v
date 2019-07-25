@@ -25,5 +25,5 @@ fn test_crypto_aes() {
 	mode := aes.new_cbc(block, iv)
 	mode.encrypt_blocks(ciphertext, ciphertext)
 
-	ciphertext.hex()
+	assert ciphertext.hex() == 'C210459B514668DDC44674885E4979215265A6C44431A248421254EF357A8C2A308A8BDDF5623AF9DF91737562041CF1'
 }
