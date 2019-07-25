@@ -210,7 +210,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line 
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
-				s.line_nr++
+			s.line_nr++
 		}
 		s.pos++
 	}

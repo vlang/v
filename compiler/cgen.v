@@ -24,14 +24,17 @@ struct CGen {
 	//buf          strings.Builder 
 	is_user      bool
 mut:
-	run          Pass
-	nogen        bool
-	tmp_line     string
-	cur_line     string
-	prev_line    string
-	is_tmp       bool
-	fn_main      string
-	stash        string
+	run             Pass
+	nogen           bool
+	tmp_line        string
+	cur_line        string
+	prev_line       string
+	is_tmp          bool
+	fn_main         string
+	stash           string
+	file            string
+	line            int
+	line_directives bool
 }
 
 fn new_cgen(out_name_c string) *CGen {
@@ -44,9 +47,14 @@ fn new_cgen(out_name_c string) *CGen {
 		out_path: path 
 		out: out 
 		//buf: strings.new_builder(10000) 
-		lines: _make(0, 1000, sizeof(string)) 
+		lines: _make(0, 1000, sizeof(string))
 	}
 	return gen
+}
+
+fn (g mut CGen) set_file_and_line(file string, line int) {
+	g.file = file
+	g.line = line
 }
 
 fn (g mut CGen) genln(s string) {
@@ -58,7 +66,10 @@ fn (g mut CGen) genln(s string) {
 		return
 	}
 	g.cur_line = '$g.cur_line $s'
-	if g.cur_line != '' {
+	if g.cur_line.trim_space() != '' {
+		if g.line_directives {
+			g.lines << '#line $g.line "$g.file"'
+		}
 		g.lines << g.cur_line
 		g.prev_line = g.cur_line
 		g.cur_line = ''
