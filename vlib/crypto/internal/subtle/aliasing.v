@@ -1,18 +1,16 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// +build !appengine
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 
 // Package subtle implements functions that are often useful in cryptographic
 // code but require careful thought to use correctly.
-//
-// This is a mirror of golang.org/x/crypto/internal/subtle.
-module subtle // import "crypto/internal/subtle"
+
+module subtle
 
 // any_overlap reports whether x and y share memory at any (not necessarily
 // corresponding) index. The memory beyond the slice length is ignored.
 pub fn any_overlap(x, y []byte) bool {
+	// NOTE: Remember to come back to this (joe-c)
 	return x.len > 0 && y.len > 0 &&
 		// &x.data[0] <= &y.data[y.len-1] &&
 		// &y.data[0] <= &x.data[x.len-1]
