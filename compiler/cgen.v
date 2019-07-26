@@ -61,8 +61,8 @@ fn (g mut CGen) genln(s string) {
 		return
 	}
 	g.cur_line = '$g.cur_line $s'
-	if g.cur_line.trim_space() != '' {
-		if g.line_directives {
+	if g.cur_line != '' {
+		if g.line_directives && g.cur_line.trim_space() != '' {
 			g.lines << '#line $g.line "$g.file"'
 		}
 		g.lines << g.cur_line
