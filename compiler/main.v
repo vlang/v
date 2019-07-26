@@ -920,7 +920,7 @@ fn (v mut V) add_user_v_files() {
 	if v.pref.build_mode == .default_mode {
 		for i := 0; i < v.table.imports.len; i++ {
 			mod := v.table.imports[i]
-			mod_path := v.module_path(v.table.imports[i])
+			mod_path := v.module_path(mod)
 			vfiles := v.v_files_from_dir('$ModPath/vlib/$mod_path')
 			if vfiles.len == 0 {
 				panic('cannot import module $mod, it does not exist.')
@@ -938,7 +938,7 @@ fn (v mut V) add_user_v_files() {
 		// for mod in v.table.imports {
 		for i := 0; i < v.table.imports.len; i++ {
 			mod := v.table.imports[i]
-			mod_path := v.module_path(v.table.imports[i])
+			mod_path := v.module_path(mod)
 			idir := os.getwd()
 			mut import_path := '$idir/$mod_path'
 			if !os.file_exists(import_path) {
