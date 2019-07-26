@@ -5,7 +5,7 @@
 import crypto.aes
 
 fn test_crypto_aes() {
-    // TEST CBC
+	// TEST CBC
 	key := '6368616e676520746869732070617373'.bytes()
 	mut ciphertext := '73c86d43a9d700a253a96c85b0f6b03ac9792e0e757f869cca306bd3cba1c62b'.bytes()
 	block := aes.new_cipher(key)
@@ -14,8 +14,6 @@ fn test_crypto_aes() {
 	if ciphertext.len < aes.BlockSize {
 		panic('ciphertext too short')
 	}
-	// iv := ciphertext[:aes.BlockSize]
-	// ciphertext = ciphertext[aes.BlockSize:]
 	iv := ciphertext.left(aes.BlockSize)
 	ciphertext = ciphertext.right(aes.BlockSize)
 	// CBC mode always works in whole blocks.

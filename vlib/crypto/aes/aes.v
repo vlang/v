@@ -33,7 +33,7 @@ pub fn new_cipher(key []byte) AesCipher {
 		panic('crypto.aes: invalid key size ' + k.str())
 		// return error('crypto.aes: invalid key size ' + k.str())
 	}
-    // for now use generic version
+	// for now use generic version
 	return new_cipher_generic(key)
 }
 
@@ -50,7 +50,7 @@ pub fn (c &AesCipher) encrypt(dst, src []byte) {
 	if subtle.inexact_overlap(dst.left(BlockSize), src.left(BlockSize)) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
-    // for now use generic version
+	// for now use generic version
 	encrypt_block_generic(c.enc, dst, src)
 }
 
@@ -64,6 +64,6 @@ pub fn (c &AesCipher) decrypt(dst, src []byte) {
 	if subtle.inexact_overlap(dst.left(BlockSize), src.left(BlockSize)) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
-    // for now use generic version
+	// for now use generic version
 	decrypt_block_generic(c.dec, dst, src)
 }

@@ -695,11 +695,10 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 }
 
 fn new_file_import_table(file_path string) *FileImportTable {
-	mut t := &FileImportTable{
+	return &FileImportTable{
 		file_path: file_path
 		imports:   map[string]string{}
 	}
-	return t
 }
 
 fn (fit &FileImportTable) known_import(mod string) bool {

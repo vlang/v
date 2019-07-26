@@ -27,6 +27,7 @@ mut:
 	access_mod      AccessMod
 	is_global       bool // __global (translated from C only)
 	is_used         bool
+	is_changed      bool 
 	scope_level     int
 }
 
@@ -708,7 +709,7 @@ fn (p mut Parser) check_space(expected Token) {
 fn (p mut Parser) check(expected Token) {
 	if p.tok != expected {
 		println('check()')
-		mut s := 'expected `${expected.str()}` but got `${p.strtok()}`'
+		s := 'expected `${expected.str()}` but got `${p.strtok()}`'
 		p.next()
 		println('next token = `${p.strtok()}`')
 		print_backtrace()
@@ -1158,6 +1159,9 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
 		p.error('`$v.name` is immutable')
 	}
+	if !v.is_changed {
+		p.cur_fn.mark_var_changed(v) 
+	} 
 	is_str := v.typ == 'string'
 	switch tok {
 	case Token.assign:
@@ -1263,10 +1267,9 @@ fn (p mut Parser) var_decl() {
 		is_mut: is_mut
 		is_alloc: p.is_alloc 
 	})
-	mut cgen_typ := typ
 	if !or_else {
 		gen_name := p.table.var_cgen_name(name)
-		mut nt_gen := p.table.cgen_name_type_pair(gen_name, cgen_typ) + '='
+		mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ) + '='
 		if is_static {
 			nt_gen = 'static $nt_gen'
 		}
@@ -1502,7 +1505,7 @@ fn (p mut Parser) name_expr() string {
 		return cfn.typ
 	}
 	// Constant
-	mut c := p.table.find_const(name)
+	c := p.table.find_const(name)
 	if c.name != '' && ptr && !c.is_global {
 		p.error('cannot take the address of constant `$c.name`')
 	}
@@ -1614,6 +1617,9 @@ fn (p mut Parser) var_expr(v Var) string {
 		if !v.is_mut && !v.is_arg && !p.pref.translated {
 			p.error('`$v.name` is immutable')
 		}
+		if !v.is_changed {
+			p.cur_fn.mark_var_changed(v) 
+		} 
 		if typ != 'int' {
 			if !p.pref.translated && !is_number_type(typ) {
 				p.error('cannot ++/-- value of type `$typ`')
@@ -1649,7 +1655,7 @@ fn (p &Parser) fileis(s string) bool {
 // user.company.name => `str_typ` is `Company`
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	p.check(.dot)
-	mut field_name := p.lit
+	field_name := p.lit
 	p.fgen(field_name) 
 	p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
@@ -1713,7 +1719,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		return field.typ
 	}
 	// method
-	mut method := p.table.find_method(typ, field_name)
+	method := p.table.find_method(typ, field_name)
 	p.fn_call(method, method_ph, '', str_typ)
 	// Methods returning `array` should return `array_string` 
 	if method.typ == 'array' && typ.name.starts_with('array_') {
@@ -1956,6 +1962,9 @@ fn (p mut Parser) expression() string {
 			if !p.expr_var.is_mut && !p.pref.translated {
 				p.error('`$p.expr_var.name` is immutable (can\'t <<)')
 			}
+			if !p.expr_var.is_changed {
+				p.cur_fn.mark_var_changed(p.expr_var) 
+			} 
 			expr_type := p.expression() 
 			// Two arrays of the same type? 
 			push_array :=  typ == expr_type
@@ -3092,6 +3101,7 @@ fn (p mut Parser) for_st() {
 				typ: 'int'
 				// parent_fn: p.cur_fn
 				is_mut: true
+				is_changed: true 
 			}
 			p.register_var(i_var)
 			p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
@@ -3102,6 +3112,7 @@ fn (p mut Parser) for_st() {
 				name: i
 				typ: 'string'
 				is_mut: true
+				is_changed: true 
 			}
 			p.register_var(i_var)
 			p.genln('array_string keys_$tmp = map_keys(& $tmp ); ') 
@@ -3159,6 +3170,7 @@ fn (p mut Parser) for_st() {
 			name: val
 			typ: var_type
 			ptr: typ.contains('*')
+			is_changed: true 
 		}
 		p.register_var(val_var)
 		i := p.get_tmp()
@@ -3348,7 +3360,7 @@ fn (p mut Parser) go_statement() {
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
-		mut method := p.table.find_method(typ, p.lit)
+		method := p.table.find_method(typ, p.lit)
 		p.async_fn_call(method, 0, var_name, v.typ)
 	}
 	// Normal function

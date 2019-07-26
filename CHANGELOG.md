@@ -3,6 +3,7 @@
 - @ for escaping keywords (e.g. `struct Foo { @type string }`). 
 - Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
 - Fix mutable args bugs + don't allow primitive arguments to be modified.  
+- Declaring a mutable variable and never modifying it results in a compilation error.
 
 
 ## V 0.1.16 
