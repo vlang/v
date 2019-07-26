@@ -919,8 +919,12 @@ fn (v mut V) add_user_v_files() {
 	// Parse lib imports
 	if v.pref.build_mode == .default_mode {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.module_path(v.table.imports[i])
-			vfiles := v.v_files_from_dir('$ModPath/vlib/$pkg')
+			mod := v.table.imports[i]
+			mod_path := v.module_path(v.table.imports[i])
+			vfiles := v.v_files_from_dir('$ModPath/vlib/$mod_path')
+			if vfiles.len == 0 {
+				panic('cannot import module $mod, it does not exist.')
+			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
@@ -931,15 +935,19 @@ fn (v mut V) add_user_v_files() {
 	}
 	else {
 		// TODO this used to crash compiler?
-		// for pkg in v.table.imports {
+		// for mod in v.table.imports {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.module_path(v.table.imports[i])
+			mod := v.table.imports[i]
+			mod_path := v.module_path(v.table.imports[i])
 			idir := os.getwd()
-			mut import_path := '$idir/$pkg'
+			mut import_path := '$idir/$mod_path'
 			if !os.file_exists(import_path) {
-				import_path = '$v.lang_dir/vlib/$pkg'
+				import_path = '$v.lang_dir/vlib/$mod_path'
 			}
 			vfiles := v.v_files_from_dir(import_path)
+			if vfiles.len == 0 {
+				panic('cannot import module $mod, it does not exist.')
+			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
