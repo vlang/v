@@ -339,7 +339,7 @@ pub fn cc_msvc(v *V) {
 
 	cmd := '""$escaped_path\\cl.exe" $args"'
 
-	println('$cmd')
+	// println('$cmd')
 
 	res := os.exec(cmd)
 	// println(res)
