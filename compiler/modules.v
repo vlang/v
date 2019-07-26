@@ -139,6 +139,10 @@ pub fn(graph &ModDepGraph) last_node() {
 	return graph.nodes[graph.nodes.len-1]
 }
 
+pub fn(graph &ModDepGraph) last_cycle() string {
+	return graph.nodes[graph.nodes.len-1].last_cycle
+}
+
 pub fn(graph &ModDepGraph) display() {
 	for i:=0; i<graph.nodes.len; i++ {
 		node := graph.nodes[i]
