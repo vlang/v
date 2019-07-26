@@ -723,7 +723,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			panic('module $mod can only imported by internal libs.')
+			panic('module $mod can only imported by internally by libs.')
 		}
 	}
 	fit.imports[alias] = mod
