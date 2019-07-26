@@ -91,13 +91,17 @@ make
 ## Docker
 
 ```bash
-git clone https://github.com/vlang/v
-cd v
-docker build -t vlang .
-docker run --rm -it vlang:latest
-v
+$ git clone https://github.com/vlang/v
+$ cd v
+$ make docker.build
+$ make docker.run.v
 ```
 
+If you wanna rebuild, execute the following command.
+
+```bash
+$ make docker.rebuild
+```
 
 
 ### Testing
