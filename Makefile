@@ -50,3 +50,18 @@ uninstall:
 
 symlink:
 	ln -sf `pwd`/v ${PREFIX}/bin/v
+
+NAME := vlang
+TAG_NAME := latest
+
+docker.build: ## Build docker image
+	docker build -t ${NAME} .
+
+docker.rebuild: ## Rebuild docker image
+	docker build --no-cache -t ${NAME} .
+
+docker.run: ## Run a console with vlang
+	docker run --rm -it ${NAME}:${TAG_NAME}
+
+docker.run.v: ## Run vlang REPL on docker
+	docker run --rm -it ${IMAGE_NAME}:${TAG_NAME} v
