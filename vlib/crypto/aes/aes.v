@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
+// Adapted from: https://github.com/golang/go/blob/master/src/crypto/aes
+
 module aes
 
 import (
