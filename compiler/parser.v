@@ -104,6 +104,10 @@ fn (c mut V) new_parser(path string, run Pass) Parser {
 			path.contains('v/vlib')) 
 			 
 	}
+
+	c.cgen.line_directives = c.pref.is_debuggable
+	c.cgen.file = path
+
 	p.next()
 	// p.scanner.debug_tokens()
 	return p
@@ -1243,7 +1247,7 @@ fn (p mut Parser) var_decl() {
 		// User user = *(User*)tmp.data;
 		// p.assigned_var = ''
 		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.gen(';')
+		p.genln(';')
 		typ = typ.replace('Option_', '')
 		p.next()
 		p.check(.lcbr)
@@ -3317,7 +3321,7 @@ fn (p mut Parser) return_st() {
 					p.cgen.resetln('return $ret')
 				}  else { 
 					tmp := p.get_tmp() 
-					p.cgen.resetln('$expr_type $tmp = $ret;') 
+					p.cgen.resetln('$expr_type $tmp = $ret;\n')
 					p.genln(p.cur_fn.defer_text) 
 					p.genln('return $tmp;') 
 				} 
@@ -3525,10 +3529,11 @@ fn (p mut Parser) fgenln(s string) {
 
 fn (p mut Parser) peek() Token {
 	for {
+		p.cgen.line = p.scanner.line_nr + 1
 		tok := p.scanner.peek()
 		if tok != .nl {
 			return tok
-		}
+		} 
 	}
 }
 

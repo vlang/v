@@ -90,6 +90,7 @@ mut:
 	is_run         bool
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize       bool // use Clang's new "-fsanitize" option
+	is_debuggable  bool
 	is_debug       bool // keep compiled C files
 	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers) 
 	cflags        string // Additional options which will be passed to the C compiler.
@@ -1158,7 +1159,8 @@ fn new_v(args[]string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
-		is_debug: args.contains('-debug')
+		is_debuggable: args.contains('-g') // -debuggable implys debug
+		is_debug: args.contains('-debug') || args.contains('-g')
 		obfuscate: obfuscate
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')
