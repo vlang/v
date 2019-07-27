@@ -921,9 +921,10 @@ fn (v mut V) add_user_v_files() {
 		for i := 0; i < v.table.imports.len; i++ {
 			mod := v.table.imports[i]
 			mod_path := v.module_path(mod)
-			vfiles := v.v_files_from_dir('$ModPath/vlib/$mod_path')
+			import_path := '$ModPath/vlib/$mod_path'
+			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				panic('cannot import module $mod, it does not exist.')
+				panic('cannot import module $mod (no .v files in "$import_path").')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -946,7 +947,7 @@ fn (v mut V) add_user_v_files() {
 			}
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				panic('cannot import module $mod, it does not exist.')
+				panic('cannot import module $mod (no .v files in "$import_path").')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
