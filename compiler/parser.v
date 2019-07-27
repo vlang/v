@@ -2423,9 +2423,19 @@ fn (p mut Parser) string_expr() {
 	cur_line := p.cgen.cur_line.trim_space()
 	if cur_line.contains('println (') && p.tok != .plus && 
 		!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
-		p.cgen.resetln(cur_line.replace('println (', 'printf('))
-		p.gen('$format\\n$args')
-		return
+			if p.os == .windows || p.os == .msvc {
+				p.cgen.resetln(cur_line.replace('println (', 'wprintf( TEXT('))// .replace('%.*s', '%.*S'))
+
+				// Emily: HACKY HACK
+				real_format := format.replace('%.*s', '%.*S')
+				real_args := args.right(1)
+				p.gen('$real_format\\n")$real_args')
+			} else {
+				p.cgen.resetln(cur_line.replace('println (', 'printf('))
+				p.gen('$format\\n$args')
+			}
+
+			return
 	}
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
