@@ -888,7 +888,13 @@ fn (f &Fn) str_args(table *Table) string {
 			// Now  all methods
 			interface_type := table.find_type(arg.typ)
 			for method in interface_type.methods {
-				s += ', $method.typ (*${arg.typ}_${method.name})(void*) '
+				s += ', $method.typ (*${arg.typ}_${method.name})(void*'
+				if method.args.len > 1 {
+					for a in method.args.right(1) {
+						s += ', $a.typ'
+					}
+				}
+				s += ')'
 			}
 		}
 		else if arg.name == '..' {
