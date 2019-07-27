@@ -5,7 +5,7 @@
 module http
 
 struct Request {
-pub:
+pub mut:
 	// headers  []string
 	headers  map_string
 	method   string
@@ -28,48 +28,43 @@ pub:
 }
 
 // embed 'http'
-pub fn get(url string) Response {
-	if url == '' {
-		println('http: empty get url')
-		return Response{}
+
+pub fn request() *Request{
+	return &Request{
+		data:''
+		ws_func: 0
+		user_ptr: 0
+		headers: map[string]string{}
 	}
-	mut req := new_request('GET', url, '')
+}
+
+pub fn (r Request) get (url string) Response{
+	mut req := request()
+	req.typ = 'GET'
+	req.url = url
 	resp := req.do()
 	return resp
+}
+
+pub fn (r Request) post (url string, data string) Response{
+	mut req := request()
+	req.typ = 'POST'
+	req.url = url
+	req.data = data
+	resp := req.do()
+	return resp
+}
+
+pub fn get(url string) Response {
+	req := request()
+	return req.get(url)
 }
 
 pub fn post(url, data string) Response {
-	req := new_request('POST', url, data)
-	resp := req.do()
-	return resp
+	req := request()
+	return req.post(url,data)
 }
 
-pub fn new_request(typ, _url, _data string) *Request {
-	mut url := _url
-	mut data := _data
-	// req.headers['User-Agent'] = 'V $VERSION'
-	if typ == 'GET' && !url.contains('?') && data != '' {
-		println('zeroing data, to url')
-		url = '$url?$data'
-		data = ''
-	}
-	// req.headers = new_map(0, sizeof(string))// []string{}
-	return &Request {
-		typ: typ
-		url: url
-		data: data
-		ws_func: 0
-		user_ptr: 0
-		headers: map[string]string{} 
-	}
-}
-
-/* 
-fn (req &Request) do() Response {
-	mut resp := Response{}
-	return resp
-}
-*/
 fn (req mut Request) free() {
 	req.headers.free()
 }
