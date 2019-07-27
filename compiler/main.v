@@ -918,8 +918,7 @@ fn (v mut V) add_user_v_files() {
 	}
 	// Parse lib imports
 	if v.pref.build_mode == .default_mode {
-		for i := 0; i < v.table.imports.len; i++ {
-			mod := v.table.imports[i]
+		for mod in v.table.imports {
 			mod_path := v.module_path(mod)
 			import_path := '$ModPath/vlib/$mod_path'
 			vfiles := v.v_files_from_dir(import_path)
@@ -935,14 +934,12 @@ fn (v mut V) add_user_v_files() {
 		}
 	}
 	else {
-		// TODO this used to crash compiler?
-		// for mod in v.table.imports {
-		for i := 0; i < v.table.imports.len; i++ {
-			mod := v.table.imports[i]
+		for mod in v.table.imports {
 			mod_path := v.module_path(mod)
 			idir := os.getwd()
 			mut import_path := '$idir/$mod_path'
-			if !os.file_exists(import_path) {
+			//if !os.file_exists(import_path) || !os.is_dir(import_path){
+			if !os.is_dir(import_path){
 				import_path = '$v.lang_dir/vlib/$mod_path'
 			}
 			vfiles := v.v_files_from_dir(import_path)
@@ -980,7 +977,7 @@ fn (v mut V) add_user_v_files() {
 		if v.pref.build_mode == .default_mode || v.pref.build_mode == .build {
 			module_path = '$ModPath/vlib/$mod_p'
 		}
-		if !os.file_exists(module_path) {
+		if !os.is_dir(module_path) {
 			module_path = '$v.lang_dir/vlib/$mod_p'
 		}
 		vfiles := v.v_files_from_dir(module_path)
@@ -989,7 +986,6 @@ fn (v mut V) add_user_v_files() {
 				v.files << file
 			}
 		}
-		// TODO v.files.append_array(vfiles)
 	}
 	// add remaining files (not mods)
 	for fit in file_imports {
