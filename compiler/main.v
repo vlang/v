@@ -924,7 +924,7 @@ fn (v mut V) add_user_v_files() {
 			import_path := '$ModPath/vlib/$mod_path'
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				panic('Cannot import module ${mod} (no .v files in "${import_path}").')
+				panic('cannot import module $mod (no .v files in "$import_path").')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -947,7 +947,7 @@ fn (v mut V) add_user_v_files() {
 			}
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				panic('Cannot import module ${mod} (no .v files in "${import_path}").')
+				panic('cannot import module $mod (no .v files in "$import_path").')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
