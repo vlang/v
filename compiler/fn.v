@@ -400,7 +400,9 @@ fn (p mut Parser) fn_decl() {
 		p.genln('pthread_mutex_lock(&live_fn_mutex);')
 	}
 	if f.name == 'main' || f.name == 'WinMain' {
+		p.genln('')
 		p.genln('init_consts();')
+		p.genln('#ifdef _WIN32\n fflush(stdout); _setmode(_fileno(stdout), _O_U8TEXT); \n#endif\n')
 		if p.table.imports.contains('os') {
 			if f.name == 'main' {
 				p.genln('os__args = os__init_os_args(argc, argv);')
@@ -810,7 +812,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			T := p.table.find_type(typ)
 			fmt := p.typ_to_fmt(typ, 0) 
 			if fmt != '' { 
-				p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+				// Fix for win32 unicode support
+				if p.os == .windows || p.os == .msvc {
+					//p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+					p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/wprintf (L"' + fmt.replace('%.*s', '%.*S') + '\\n", '))
+				} else {
+					p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+				}
 				continue 
 			}  
 			if typ.ends_with('*') {
