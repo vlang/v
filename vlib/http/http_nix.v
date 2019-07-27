@@ -47,7 +47,7 @@ fn C.curl_easy_perform(curl voidptr) C.CURLcode
 
 fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 	mut mem := _mem
-	// # printf("size =%d nmemb=%d contents=%s\n", size, nmemb, contents);
+	//C.printf('size =%d nmemb=%d contents=%s\n', size, nmemb, contents)
 	realsize := size * nmemb// TODO size_t ?
 	// if !isnil(mem.ws_func) {
 	# if (mem->ws_func)
@@ -75,16 +75,42 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 	return realsize
 }
 
+fn write_hfn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
+	mut mem := _mem
+	//C.printf('size =%d nmemb=%d contents=%s\n', size, nmemb, contents)
+	realsize := size * nmemb// TODO size_t ?
+	// if !isnil(mem.ws_func) {
+	# if (mem->ws_func)
+	{
+		//C.printf('\n\nhttp_mac.m: GOT WS FUNC. size=%d\n', realsize)
+		// Skip negative and 0 junk chars in the WS string
+		mut start := 0
+		for i := 0; i < realsize; i++ {
+			// printf("char=%d %c\n", s[i], s[i]);
+			if contents[i] == 0 && start == 0 {
+				start = i
+				break
+			}
+		}
+		contents += start
+		// printf("GOOD CONTEnTS=%s\n", contents);
+		s := string(contents)
+		// mem.ws_func('kek', 0)
+		# mem->ws_func(s, mem->user_ptr);
+	}
+	mut c := string(contents)
+	c = c.trim_space()
+	// Need to clone because libcurl reuses this memory
+	mem.strings << c.clone()
+	return realsize
+}
+
 struct C.curl_slist { }
 
 pub fn (req &Request) do() Response {
 	//println('req.do() mac/linux url="$req.url" data="$req.data"')
 	// println('req.do() url="$req.url"')
-	/* 
-	mut resp := Response {
-		headers: map[string]string{}
-	}
-*/
+
 	mut headers := map[string]string{}
 	// no data at this point
 	chunk := MemoryStruct {
@@ -105,14 +131,12 @@ pub fn (req &Request) do() Response {
 	// options
 	// url2 := req.url.clone()
 	C.curl_easy_setopt(curl, CURLOPT_URL, req.url.str)// ..clone())
-	// C.curl_easy_setopt(curl, CURLOPT_URL, 'http://example.com')
-	// return resp
-	// curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
+	
 	$if windows {
 		C.curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0)
 	}
 	C.curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_fn)
-	C.curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_fn)
+	C.curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_hfn)
 	C.curl_easy_setopt(curl, CURLOPT_WRITEDATA, &chunk)
 	C.curl_easy_setopt(curl, CURLOPT_HEADERDATA, &hchunk)
 	C.curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1)
@@ -147,45 +171,39 @@ pub fn (req &Request) do() Response {
 	body := chunk.strings.join('')// string(chunk.memory)
 	// chunk.strings.free()
 	// resp.headers = hchunk.strings
+	//println(hchunk.strings)
 	if hchunk.strings.len == 0 {
 		return Response{}
 	}
 	first_header := hchunk.strings.first()
 	mut status_code := 0
-	if first_header.contains('HTTP/') {
-		val := first_header.find_between(' ', ' ')
-		status_code = val.int()
-	}
+	oneline := hchunk.strings[0].split(' ')
+	status_code = oneline[1].int()
 	// Build resp headers map
 	// println('building resp headers hchunk.strings.len')
 	for h in hchunk.strings {
 		// break
-		// println(h)
 		vals := h.split(':')
 		pos := h.index(':')
 		if pos == -1 {
+			//println(h.left(pos))
 			continue
 		}
 		if h.contains('Content-Type') {
 			continue
 		}
 		key := h.left(pos)
-		val := h.right(pos + 1)
-		// println('"$key" *** "$val"')
-		// val2 := val.trim_space()
-		// println('val2="$val2"')
+		val := h.right(pos+1).trim_space()
+		//println('"$key" : "$val"')
 		headers[key] = val// val.trim_space()
 	}
-	// println('done')
-	// j.println(resp.status_code)
-	// println('body=')
-	// j.println(resp.body)
-	// j.println('headers=')
-	// j.println(hchunk.strings)
+
 	C.curl_easy_cleanup(curl)
-	//println('end of req.do() url="$req.url"')
+
 	return Response {
+		headers: headers
 		body: body
+		status_code: status_code
 	}
 }
 

@@ -28,20 +28,20 @@ pub:
 }
 
 // embed 'http'
-pub fn get(url string) string {
+pub fn get(url string) Response {
 	if url == '' {
 		println('http: empty get url')
-		return ''
+		return Response{}
 	}
 	mut req := new_request('GET', url, '')
 	resp := req.do()
-	return resp.body
+	return resp
 }
 
-pub fn post(url, data string) string {
+pub fn post(url, data string) Response {
 	req := new_request('POST', url, data)
 	resp := req.do()
-	return resp.body
+	return resp
 }
 
 pub fn new_request(typ, _url, _data string) *Request {
@@ -79,16 +79,6 @@ fn (resp mut Response) free() {
 }
 
 pub fn (req mut Request) add_header(key, val string) {
-	// println('start add header')
-	// println('add header "$key" "$val"')
-	// println(key)
-	// println(val)
-	// h := '$key: $val'
-	// println('SET H')
-	// req.headers << h
 	req.headers[key] = val
-	// mut h := req.h
-	// h += ' -H "${key}: ${val}" '
-	// req.h = h
 }
 
