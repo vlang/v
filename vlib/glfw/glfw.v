@@ -4,6 +4,8 @@
 
 module glfw
 
+import gl
+
 #flag -I @VROOT/thirdparty/glfw 
 #flag -L @VROOT/thirdparty/glfw 
 

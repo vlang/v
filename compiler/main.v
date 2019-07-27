@@ -570,7 +570,7 @@ void reload_so() {
 	}
 	v.cc()
 	if v.pref.is_test || v.pref.is_run {
-		if true || v.pref.is_verbose {
+		if v.pref.is_verbose {
 			println('============ running $v.out_name ============') 
 		}
 		mut cmd := if v.out_name.starts_with('/') {
