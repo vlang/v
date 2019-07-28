@@ -34,7 +34,7 @@ GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn
 
 The compilation is temporarily slower for this release:
 
-- Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
+- Debug builds are used (use `./v -cflags '-O2 -fPIC' -o v compiler` to get faster compilation).
 - vlib is recompiled with every program you build.
 - The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
 
