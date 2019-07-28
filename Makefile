@@ -5,13 +5,15 @@ PREFIX ?= /usr/local
 all: v
 	$(info V has been successfully built)
 
-v: v.c
-	${CC} -std=gnu11 -w -o v v.c -lm
-	./v -o v compiler
+v: v.c.out
+	./v.c.out -o v compiler
 
 v-release: v.c
 	./v -cflags '${CFLAGS}' -o v compiler
 	strip v
+
+v.c.out:
+	${CC} -std=gnu11 -w -o v v.c.out -lm
 
 v.c:
 	curl -Os https://raw.githubusercontent.com/vlang/vc/master/v.c
