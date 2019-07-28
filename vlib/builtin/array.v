@@ -253,7 +253,7 @@ pub fn (b []byte) hex() string {
 }
 
 // TODO: implement for all types
-fn copy(dst []byte, src []byte) int {
+pub fn copy(dst []byte, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		min := if dst.len < src.len { dst.len } else { src.len }
 		C.memcpy(dst.data, src.left(min).data, dst.element_size*min)
