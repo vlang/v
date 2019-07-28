@@ -6,6 +6,7 @@ all: clean v
 	$(info V has been successfully built)
 
 v: v.c
+	${CC} -std=gnu11 -w -o v v.c -lm
 	./v -o v compiler
 
 v-release: v.c
@@ -14,7 +15,6 @@ v-release: v.c
 
 v.c:
 	curl -Os https://raw.githubusercontent.com/vlang/vc/master/v.c
-	${CC} -std=gnu11 -w -o v v.c -lm 
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
