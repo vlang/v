@@ -5,10 +5,10 @@ import crypto.sha256 as s2
 import (
 	math
 	log as l
-	crypto.sha515 as s5
+	crypto.sha512 as s5
 )
 
-pub fn test_modules() {
+pub fn main() {
 	assert os.SUCCESS == os.SUCCESS &&
 		t.MonthDays[0] == t.MonthDays[0] &&
 		s2.Size == s2.Size &&
