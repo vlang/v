@@ -11,14 +11,24 @@ import os
 // is imported on a certain os. for example to run this?
 pub fn enable_term_color_win() {
     $if windows {
+        mode_wanted := os.ENABLE_PROCESSED_OUTPUT | os.ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        mut mode_current := 0
         h_output := C.GetStdHandle(os.STD_OUTPUT_HANDLE)
-        if h_output == os.INVALID_HANDLE_VALUE
-            || !C.SetConsoleMode(h_output, os.ENABLE_PROCESSED_OUTPUT|os.ENABLE_VIRTUAL_TERMINAL_PROCESSING) {
-            println('enable_term_color_win() Sorry, there was an error enabling terminal color.')
+        if h_output == os.INVALID_HANDLE_VALUE {
+            panic('term.enable_term_color_win(): error getting output handle.')
+        }
+        if !C.GetConsoleMode(h_output, &mode_current) {
+            panic('term.enable_term_color_win(): error getting console mode.')
+        }
+        if mode_wanted == mode_current {
+            return
+        }
+        if !C.SetConsoleMode(h_output, mode_wanted) {
+            panic('term.enable_term_color_win(): error setting console mode.')
         }
     }
     $else {
-        println('enable_term_color_win() should only be called on windows.')
+        println('term.enable_term_color_win() should only be called on windows.')
     }
 }
 
