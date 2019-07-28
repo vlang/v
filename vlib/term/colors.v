@@ -28,7 +28,7 @@ pub fn enable_term_color_win() {
         }
     }
     $else {
-        println('term.enable_term_color_win(): should only be called on windows.')
+        println('term.enable_term_color_win() should only be called on windows.')
     }
 }
 
