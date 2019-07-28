@@ -544,7 +544,7 @@ fn type_default(typ string) string {
 	}
 	// User struct defined in another module. 
 	if typ.contains('__') {
-		return '{}'
+		return 'STRUCT_DEFAULT_VALUE'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
@@ -566,7 +566,7 @@ fn type_default(typ string) string {
 	case 'byteptr': return '0'
 	case 'voidptr': return '0'
 	}
-	return '{}' 
+	return 'STRUCT_DEFAULT_VALUE' 
 }
 
 // TODO PERF O(n)
@@ -695,11 +695,10 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 }
 
 fn new_file_import_table(file_path string) *FileImportTable {
-	mut t := &FileImportTable{
+	return &FileImportTable{
 		file_path: file_path
 		imports:   map[string]string{}
 	}
-	return t
 }
 
 fn (fit &FileImportTable) known_import(mod string) bool {
@@ -714,7 +713,19 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports { 
 		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 		return 
-	} 
+	}
+	if mod.contains('.internal.') {
+		mod_parts := mod.split('.')
+		mut internal_mod_parts := []string
+		for part in mod_parts {
+			if part == 'internal' { break }
+			internal_mod_parts << part
+		}
+		internal_parent := internal_mod_parts.join('.')
+		if !fit.module_name.starts_with(internal_parent) {
+			panic('module $mod can only be imported internally by libs.')
+		}
+	}
 	fit.imports[alias] = mod
 }
 

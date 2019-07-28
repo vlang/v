@@ -210,7 +210,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line 
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
-				s.line_nr++
+			s.line_nr++
 		}
 		s.pos++
 	}
@@ -414,6 +414,12 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos++
 		}
 		s.line_nr++
+		if nextc == `!` {
+			// treat shebang line (#!) as a comment
+			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
+			s.fgenln('// shebang line "$s.line_comment"')
+			return s.scan()
+		}
 		hash := s.text.substr(start, s.pos)
 		return scan_res(.hash, hash.trim_space())
 	case `>`:

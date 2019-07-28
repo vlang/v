@@ -90,6 +90,7 @@ mut:
 	is_run         bool
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize       bool // use Clang's new "-fsanitize" option
+	is_debuggable  bool
 	is_debug       bool // keep compiled C files
 	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers) 
 	cflags        string // Additional options which will be passed to the C compiler.
@@ -189,6 +190,10 @@ fn (v mut V) compile() {
 #include <stdarg.h> // for va_list 
 #include <inttypes.h>  // int64_t etc 
 
+#define STRUCT_DEFAULT_VALUE {}
+#define EMPTY_STRUCT_DECLARATION
+#define EMPTY_STRUCT_INIT
+#define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -201,6 +206,16 @@ fn (v mut V) compile() {
 #ifdef _MSC_VER
 // On MSVC these are the same (as long as /volatile:ms is passed)
 #define _Atomic volatile
+
+// MSVC can\'t parse some things properly
+#undef STRUCT_DEFAULT_VALUE
+#define STRUCT_DEFAULT_VALUE {0}
+#undef EMPTY_STRUCT_DECLARATION
+#define EMPTY_STRUCT_DECLARATION void *____dummy_variable;
+#undef EMPTY_STRUCT_INIT
+#define EMPTY_STRUCT_INIT 0
+#undef OPTION_CAST
+#define OPTION_CAST(x)
 #endif
 
 void pthread_mutex_lock(HANDLE *m) {
@@ -555,7 +570,7 @@ void reload_so() {
 	}
 	v.cc()
 	if v.pref.is_test || v.pref.is_run {
-		if true || v.pref.is_verbose {
+		if v.pref.is_verbose {
 			println('============ running $v.out_name ============') 
 		}
 		mut cmd := if v.out_name.starts_with('/') {
@@ -625,7 +640,7 @@ fn (c &V) cc_windows_cross() {
                mut obj_name := c.out_name
                obj_name = obj_name.replace('.exe', '')
                obj_name = obj_name.replace('.o.o', '.o')
-               mut include := '-I $winroot/include '
+               include := '-I $winroot/include '
                cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
                if c.pref.show_c_cmd {
                        println(cmd)
@@ -904,8 +919,13 @@ fn (v mut V) add_user_v_files() {
 	// Parse lib imports
 	if v.pref.build_mode == .default_mode {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.module_path(v.table.imports[i])
-			vfiles := v.v_files_from_dir('$ModPath/vlib/$pkg')
+			mod := v.table.imports[i]
+			mod_path := v.module_path(mod)
+			import_path := '$ModPath/vlib/$mod_path'
+			vfiles := v.v_files_from_dir(import_path)
+			if vfiles.len == 0 {
+				panic('cannot import module $mod (no .v files in "$import_path").')
+			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
@@ -916,15 +936,19 @@ fn (v mut V) add_user_v_files() {
 	}
 	else {
 		// TODO this used to crash compiler?
-		// for pkg in v.table.imports {
+		// for mod in v.table.imports {
 		for i := 0; i < v.table.imports.len; i++ {
-			pkg := v.module_path(v.table.imports[i])
+			mod := v.table.imports[i]
+			mod_path := v.module_path(mod)
 			idir := os.getwd()
-			mut import_path := '$idir/$pkg'
+			mut import_path := '$idir/$mod_path'
 			if !os.file_exists(import_path) {
-				import_path = '$v.lang_dir/vlib/$pkg'
+				import_path = '$v.lang_dir/vlib/$mod_path'
 			}
 			vfiles := v.v_files_from_dir(import_path)
+			if vfiles.len == 0 {
+				panic('cannot import module $mod (no .v files in "$import_path").')
+			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
@@ -1144,7 +1168,8 @@ fn new_v(args[]string) *V {
 		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
-		is_debug: args.contains('-debug')
+		is_debuggable: args.contains('-g') // -debuggable implys debug
+		is_debug: args.contains('-debug') || args.contains('-g')
 		obfuscate: obfuscate
 		is_prof: args.contains('-prof')
 		is_live: args.contains('-live')
@@ -1245,7 +1270,7 @@ fn run_repl() []string {
 			}
 			else {
 				lines << line
-				mut vals := s.split('\n')
+				vals := s.split('\n')
 				for i:=0; i<vals.len-1; i++ {
 					println(vals[i])
 				} 

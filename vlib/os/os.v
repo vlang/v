@@ -100,6 +100,8 @@ fn init_os_args(argc int, argv *byteptr) []string {
 		for i := 0; i < args_count; i++ {
 			args << string_from_wide(&u16(args_list[i]))
 		}
+
+		C.LocalFree(args_list)
 	} $else {
 		for i := 0; i < argc; i++ {
 			args << string(argv[i])
@@ -261,9 +263,7 @@ pub fn open_append(path string) ?File {
 }
 
 pub fn (f File) write(s string) {
-	ss := s.clone() // TODO is clone() needed here? 
-	C.fputs(ss.str, f.cfile)
-	// ss.free()
+	C.fputs(s.str, f.cfile)
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
 
@@ -520,7 +520,7 @@ pub fn get_line() string {
 pub fn get_raw_line() string {
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(malloc(max))
+		buf := &u16(malloc(max*2))
 		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
 		if h_input == INVALID_HANDLE_VALUE {
 			panic('get_raw_line() error getting input handle.')
@@ -546,6 +546,34 @@ pub fn get_raw_line() string {
 	} 
 }
 
+pub fn get_lines() []string {
+        mut line := ''
+        mut inputstr := []string
+        for {
+                line = get_line()
+                if(line.len <= 0) {
+                        break
+                }
+                line = line.trim_space()
+                inputstr << line
+        }
+        return inputstr
+}
+
+pub fn get_lines_joined() string {
+        mut line := ''
+        mut inputstr := ''
+        for {
+                line = get_line()
+                if(line.len <= 0) {
+                        break
+                }
+                line = line.trim_space()
+                inputstr += line
+        }
+        return inputstr
+}
+
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -568,9 +596,9 @@ pub fn user_os() string {
 	$if dragonfly {
 		return 'dragonfly' 
 	}
-	// $if msvc {
-	// 	return 'windows'
-	// }
+	$if msvc {
+		return 'windows'
+	}
 	return 'unknown'
 }
 
@@ -630,8 +658,9 @@ pub fn executable() string {
 		return string(result, count)
 	}
 	$if windows {
-		mut result := &u16(malloc(512)) // MAX_PATH * sizeof(wchar_t)
-		len := int(C.GetModuleFileName( 0, result, MAX_PATH ))
+		max := 512
+		mut result := &u16(malloc(max*2)) // MAX_PATH * sizeof(wchar_t)
+		len := int(C.GetModuleFileName( 0, result, max ))
 		return string_from_wide2(result, len)
 	}
 	$if mac {
@@ -703,9 +732,9 @@ pub fn chdir(path string) {
 
 pub fn getwd() string {	
 	$if windows {
-		max := 1024 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(malloc(max))
-		if C._wgetcwd(buf, max/2) == 0 {
+		max := 512 // MAX_PATH * sizeof(wchar_t)
+		buf := &u16(malloc(max*2))
+		if C._wgetcwd(buf, max) == 0 {
 			return ''
 		}
 		return string_from_wide(buf)

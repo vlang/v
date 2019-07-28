@@ -13,9 +13,9 @@ interface Hash {
 }
 
 interface Hash32 {
-	sum32() uint32
+	sum32() u32
 }
 
 interface Hash64 {
-	sum64() uint64
+	sum64() u64
 }

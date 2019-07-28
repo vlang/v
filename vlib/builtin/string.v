@@ -4,7 +4,6 @@
 
 module builtin
 
-// V strings are not null-terminated.
 struct string {
 mut:
 	hash_cache int 
@@ -25,7 +24,8 @@ fn C.strlen(s byteptr) int
 
 fn todo() { } 
 
-// Converts a C string to a V string
+// Converts a C string to a V string. 
+// String data is reused, not copied. 
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if isnil(s) {
@@ -48,6 +48,7 @@ pub fn tos_clone(s byteptr) string {
 }
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts. 
+// Used only internally. 
 fn tos2(s byteptr) string {
 	if isnil(s) {
 		panic('tos2: nil string')
@@ -730,7 +731,7 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s string) free() {
-	C.free(s.str)
+	free(s.str)
 }
 
 /* 
