@@ -5,6 +5,7 @@ LABEL maintainer="ANAGO Ronnel <anagoandy@gmail.com>"
 WORKDIR /opt/vlang
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc clang make && \
+    apt-get clean && rm -rf /var/cache/apt/archives/* && \
     rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN make && \
