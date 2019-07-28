@@ -20,7 +20,7 @@ pub fn enable_term_color_win() {
         if !C.GetConsoleMode(h_output, &mode_current) {
             panic('term.enable_term_color_win(): error getting console mode.')
         }
-        if mode_current == mode_wanted {
+        if mode_wanted == mode_current {
             return
         }
         if !C.SetConsoleMode(h_output, mode_wanted) {
