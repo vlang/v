@@ -2,7 +2,7 @@ CC ?= cc
 CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
 
-all: clean v
+all: v
 	$(info V has been successfully built)
 
 v: v.c
