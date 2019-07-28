@@ -509,11 +509,12 @@ pub fn filename(path string) string {
 // get_line returns a one-line string from stdin 
 pub fn get_line() string {
     str := get_raw_line()
-    if str[str.len - 1] == `\n` {
-        return str.substr(0, str.len - 1)
-    }
-
-    return str
+		$if windows {
+			return str.trim_right('\r\n')
+		}
+		$else {
+			return str.trim_right('\n')
+		}
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
