@@ -479,11 +479,11 @@ pub fn (instance mut BitField) reverse() BitField {
 // resize() changes the size of the bit array to 'new_size'
 
 pub fn (instance mut BitField) resize(size int) {
-	bitnslots := bitnslots(size)
+	new_bitnslots := bitnslots(size)
 	old_size := instance.size
 	old_bitnslots := bitnslots(old_size)
-	mut field := [u32(0); bitnslots]
-	for i := 0; i < old_bitnslots && i < bitnslots; i++ {
+	mut field := [u32(0); new_bitnslots]
+	for i := 0; i < old_bitnslots && i < new_bitnslots; i++ {
 		field[i] = instance.field[i]
 	}
 	instance.field = field
