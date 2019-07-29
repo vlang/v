@@ -1,5 +1,9 @@
 ## V 0.1.17 
-
+*29 Jul 2019* 
+- `vweb` module for developing web apps in V. 
+- vtalk, open source V forum software. 
+- Generics (very limited right now, but they will be gradually improved).  
+- Comptime codegen (`foo.$method()` where `method` is a string). 
 - @ for escaping keywords (e.g. `struct Foo { @type string }`). 
 - Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
 - Fix mutable args bugs + don't allow primitive arguments to be modified.  
