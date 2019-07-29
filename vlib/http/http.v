@@ -28,7 +28,7 @@ pub:
 }
 
 // embed 'http'
-pub fn request(typ, url, data string) ?Response {
+pub fn response(typ, url, data string) ?Response {
 	req := new_request('GET', url, '') or {
 		return error(err)
 	}
@@ -37,14 +37,14 @@ pub fn request(typ, url, data string) ?Response {
 }
 
 pub fn get(url string) ?string {
-	resp := request('GET', url, '') or {
+	resp := response('GET', url, '') or {
 		return error(err)
 	}
 	return resp.body
 }
 
 pub fn post(url, data string) ?string {
-	resp := request('POST', url, data) or {
+	resp := response('POST', url, data) or {
 		return error(err)
 	}
 	return resp.body
