@@ -324,6 +324,9 @@ fn (p mut Parser) register_import() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
+	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
+		p.error('bad import format. module/submodule names cannot begin with a number.')
+	}
 	mut pkg := p.check_name().trim_space()
 	mut mod_alias := pkg
 	// submodule support
