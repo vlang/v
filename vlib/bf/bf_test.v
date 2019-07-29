@@ -226,9 +226,9 @@ fn test_bf_reverse() {
 fn test_bf_resize() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bf.new(rand.next(len) + 1)
 	for i := 0; i < 100; i++ {
-		input.resize(rand.next(input.getsize()) + 1)
+		input.resize(rand.next(len) + 1)
 		input.setbit(input.getsize() - 1)
 	}
 	assert input.getbit(input.getsize() - 1) == 1
