@@ -11,7 +11,6 @@
 
 module md5
 
-import math
 import encoding.binary
 
 const (

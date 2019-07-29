@@ -9,7 +9,6 @@
 
 module sha512
 
-import math
 import crypto
 import encoding.binary
 
