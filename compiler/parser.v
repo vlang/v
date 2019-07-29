@@ -1298,17 +1298,6 @@ fn (p mut Parser) bterm() string {
 
 // also called on *, &, @, . (enum) 
 fn (p mut Parser) name_expr() string {
-if p.fileis('vtalk') { 
-	//println('\nname expr() pass=$p.pass tok=${p.tok.str()} lit="$p.lit" ${p.scanner.line_nr+1}') 
-} 
-	// print('known type:')
-	// println(p.table.known_type(p.lit))
-	// hack for struct_init TODO
-/* 
-	hack_pos := p.scanner.pos
-	hack_tok := p.tok
-	hack_lit := p.lit
-*/ 
 	ph := p.cgen.add_placeholder()
 	// amp
 	ptr := p.tok == .amp
@@ -1533,9 +1522,6 @@ if p.fileis('vtalk') {
 		// p.error('`$f.name` used as value')
 	}
 	p.log('calling function')
-if p.fileis('vtalk') {
-//println('calling fn $f.name') 
-} 
 	p.fn_call(f, 0, '', '')
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {

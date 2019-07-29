@@ -274,11 +274,8 @@ fn (p mut Parser) fn_decl() {
 	} else {
 		'' 
 	} 
-	//	if p.file_name != '.vwebtmpl.v' { 
-	//	oif !p.name.ends_with('_vwebview') { 
 	if !p.is_vweb { 
-//println('SETTING CUR FN TO "$f.name" "$p.file_name"') 
-	p.cur_fn = f
+		p.cur_fn = f
 	} 
 	// Generate `User_register()` instead of `register()` 
 	// Internally it's still stored as "register" in type User
@@ -582,9 +579,6 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
-if p.fileis('vtalk2.v') { 
-//println('FN CALL k $f.name') 
-} 
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.pkg != p.mod  { 
 		p.error('function `$f.name` is private')
 	}
@@ -602,17 +596,16 @@ if p.fileis('vtalk2.v') {
 	if p.tok == .lt {
 		p.check(.lt)
 		gen_type = p.check_name() 
-// `foo<Bar>()` 
-// If we are in the first pass, we need to add `Bar` type to the generic function `foo`, 
-// so that generic `foo`s body can be generated for each type in the second pass. 
-if p.first_pass() {
-println('reging $gen_type in $f.name') 
-p.table.register_generic_fn_type(f.name, gen_type) 
-// Function bodies are skipped in the first passed, we only need to register the generic type here. 
-return 
-} 
+		// `foo<Bar>()` 
+		// If we are in the first pass, we need to add `Bar` type to the generic function `foo`, 
+		// so that generic `foo`s body can be generated for each type in the second pass. 
+		if p.first_pass() {
+			//println('registering $gen_type in $f.name') 
+			p.table.register_generic_fn_type(f.name, gen_type) 
+			// Function bodies are skipped in the first passed, we only need to register the generic type here. 
+			return 
+		} 
 		cgen_name += '_' + gen_type 
-
 		p.check(.gt)
 	} 
 	// if p.pref.is_prof {
