@@ -5,6 +5,7 @@ import time
 
 #flag -lpq
 #flag linux -I/usr/include/postgresql
+#flag darwin -I/opt/local/include/postgresql11
 #include <libpq-fe.h>
 
 struct DB {
