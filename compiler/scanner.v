@@ -282,7 +282,9 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.name, name)
 	}
 	// `123`, `.123`
-	else if c.is_digit() || c == `.` && nextc.is_digit() {
+	else if c.is_digit() || c == `.` && nextc.is_digit() && 
+		// in case of (import mod.123) otherwise tries to re import mod
+		s.prev_tok != .name { 
 		num := s.ident_number()
 		return scan_res(.number, num)
 	}

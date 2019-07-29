@@ -324,11 +324,10 @@ fn (p mut Parser) register_import() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
-	mut pkg := p.lit.trim_space()
+	mut pkg := p.check_name().trim_space()
 	mut mod_alias := pkg
 	// submodule support
 	mut depth := 1
-	p.next()
 	for p.tok == .dot {
 		p.check(.dot) 
 		submodule := p.check_name()
