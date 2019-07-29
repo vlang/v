@@ -28,17 +28,19 @@ pub:
 }
 
 // embed 'http'
-pub fn get(url string) string {
+pub fn get(url string) ?string {
 	if url == '' {
-		println('http: empty get url')
-		return ''
+		return error('http: empty url')
 	}
 	mut req := new_request('GET', url, '')
 	resp := req.do()
 	return resp.body
 }
 
-pub fn post(url, data string) string {
+pub fn post(url, data string) ?string {
+	if url == '' {
+		return error('http: empty url')
+	}
 	req := new_request('POST', url, data)
 	resp := req.do()
 	return resp.body
