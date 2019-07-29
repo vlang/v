@@ -9,8 +9,10 @@
 
 module sha512
 
-import crypto
-import encoding.binary
+import (
+	crypto
+	encoding.binary
+)
 
 const (
 	// Size is the size, in bytes, of a SHA-512 checksum.
