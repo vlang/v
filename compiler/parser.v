@@ -3331,8 +3331,8 @@ fn (p mut Parser) return_st() {
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
-		if false && p.tok == .name || p.tok == .number {
-			p.error('function `$p.cur_fn.name` does not return a value')
+		if p.tok == .name || p.tok == .number || p.tok == .str {
+			p.error('function `$p.cur_fn.name` should not return a value')
 		}
 
 		if p.cur_fn.name == 'main' {
