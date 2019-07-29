@@ -179,7 +179,7 @@ fn (v mut V) compile() {
 		p.parse()
 	}
 	// Main pass
-	cgen.run = Pass.main
+	cgen.pass = Pass.main
 	if v.pref.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
