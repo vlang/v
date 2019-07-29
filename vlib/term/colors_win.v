@@ -33,6 +33,6 @@ pub fn enable_term_color_win() {
 }
 
 pub fn format(msg, open, close string) string {
-    enable_term_color_win()
+	enable_term_color_win()
 	return _format(msg, open, close)
 }
