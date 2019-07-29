@@ -848,9 +848,6 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		println('v_files_from_dir ("$dir")')
 	}
 	files.sort()
-	// reverse so os specific versions get included first
-	// in case functions from there are referenced 
-	files = files.reverse()
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
