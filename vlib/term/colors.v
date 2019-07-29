@@ -6,12 +6,12 @@ module term
 
 import os
 
-pub fn format(msg, open, close string) string {
-    $if windows {
-        enable_term_color_win()
-    }
-
+fn _format(msg, open, close string) string {
     return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
+}
+
+pub fn format(msg, open, close string) string {
+    return _format(msg, open, close)
 }
 
 pub fn bg_black(msg string) string {
