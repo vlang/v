@@ -8,6 +8,15 @@
 - Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
 - Fix mutable args bugs + don't allow primitive arguments to be modified.  
 - Declaring a mutable variable and never modifying it results in a compilation error.
+- Interactive debugging support.
+- `sync` module for Windows.
+- `#!` support on Unix systems (V scripts).
+- Lots of Visual Studio fixes.
+- `crypto.aes` and `crypto.rc4` modules.
+- Internal modules.
+
+
+
 
 
 ## V 0.1.16 
