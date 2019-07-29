@@ -93,7 +93,6 @@ const (
 )
 
 // Lookup tables for encryption.
-// These can be recomputed by adapting the tests in aes_test.go.
 
 const (
 	Te0 = [
@@ -235,7 +234,6 @@ const (
 )
 
 // Lookup tables for decryption.
-// These can be recomputed by adapting the tests in aes_test.go.
 const (
 	Td0 = [
 		0x51f4a750, 0x7e416553, 0x1a17a4c3, 0x3a275e96, 0x3bab6bcb, 0x1f9d45f1, 0xacfa58ab, 0x4be30393,
