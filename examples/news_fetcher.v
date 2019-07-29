@@ -33,7 +33,10 @@ fn (f mut Fetcher) fetch() {
 		id := f.ids[f.cursor]
 		f.cursor++
 		f.mu.unlock()
-		resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json')
+		resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
+			println('failed to fetch data from /v0/item/${id}.json')
+			exit(1)
+		}
 		story := json.decode(Story, resp) or {
 			println('failed to decode a story')
 			exit(1)
@@ -48,9 +51,12 @@ fn (f mut Fetcher) fetch() {
 
 // Fetches top HN stories in 8 coroutines
 fn main() {
-	resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json')
+	resp := http.get('https://hacker-news.firebaseio.com/v0/topstories.json') or {
+		println('failed to fetch data from /v0/topstories.json')
+		return
+	}
 	ids := json.decode( []int, resp) or {
-		println('failed to fetch topstories.json')
+		println('failed to decode topstories.json')
 		return
 	}
 	fetcher := &Fetcher{ids: ids}

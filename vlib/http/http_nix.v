@@ -189,11 +189,11 @@ pub fn (req &Request) do() Response {
 	}
 }
 
-fn unescape(s string) string {
+pub fn unescape(s string) string {
 	return string(byteptr(C.curl_unescape(s.str, s.len)))
 }
 
-fn escape(s string) string {
+pub fn escape(s string) string {
 	return string(byteptr(C.curl_escape(s.str, s.len)))
 }
 

@@ -79,6 +79,10 @@ pub fn socket(family int, _type int, proto int) ?Socket {
 	}
 
 	sockfd := C.socket(family, _type, proto)
+	one:=1 
+	// This is needed so that there are no problems with reusing the 
+	// same port after the application exits. 
+	C.setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int))  
 	if sockfd == 0 {
 		return error('socket: init failed')
 	}
@@ -117,11 +121,12 @@ pub fn (s Socket) bind(port int) ?int {
 // put socket into passive mode and wait to receive
 pub fn (s Socket) listen() ?int {
 	backlog := 128
-	res := C.listen(s.sockfd, backlog)
+	res := int(C.listen(s.sockfd, backlog)) 
 	if res < 0 {
 		return error('socket: listen failed')
 	}
-	return int(res)
+println('liisten res = $res') 
+	return res 
 }
 
 // put socket into passive mode with user specified backlog and wait to receive
@@ -139,6 +144,7 @@ pub fn (s Socket) listen_backlog(backlog int) ?int {
 
 // helper method to create, bind, and listen given port number
 pub fn listen(port int) ?Socket {
+println('net.listen($port)') 
 	s := socket(AF_INET, SOCK_STREAM, 0) or {
 		return error(err)
 	}
@@ -153,6 +159,7 @@ pub fn listen(port int) ?Socket {
 
 // accept first connection request from socket queue
 pub fn (s Socket) accept() ?Socket {
+println('accept()') 
 	addr := C.sockaddr_storage{}
 	size := 128 // sizeof(sockaddr_storage)
 	sockfd := C.accept(s.sockfd, &addr, &size)
@@ -251,3 +258,47 @@ pub fn (s Socket) close() ?int {
 
 	return 0
 }
+
+const ( 
+        MAX_READ = 400
+) 
+pub fn (s Socket) write(str string) {
+        line := '$str\r\n'
+        C.write(s.sockfd, line.str, line.len)
+}
+ 
+pub fn (s Socket) read_line() string {
+        mut res := ''
+        for {
+                println('.')
+                mut buf := malloc(MAX_READ)
+                n := int(C.recv(s.sockfd, buf, MAX_READ-1, 0))
+                println('numbytes=$n')
+                if n == -1 {
+                        println('recv failed')
+                        // TODO
+                        return ''
+                }
+                if n == 0 {
+                        break
+                }
+                // println('resp len=$numbytes')
+                buf[n] = `\0`
+		//  C.printf('!!buf= "%s" n=%d\n', buf,n) 
+                line := string(buf)
+                res += line
+                // Reached a newline. That's an end of an IRC message
+                // TODO dont need ends_with check ?
+                if line.ends_with('\n') || n < MAX_READ - 1 {
+                        // println('NL')
+                        break
+                }
+                if line.ends_with('\r\n') {
+                        // println('RNL')
+                        break
+                }
+        }
+        return res
+}
+
+ 

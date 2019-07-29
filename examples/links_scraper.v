@@ -5,7 +5,10 @@
 import http
 
 fn main() {
-	html := http.get('https://news.ycombinator.com')
+	html := http.get('https://news.ycombinator.com') or {
+		println('Failed fetching from URL')
+		return
+	}
 	mut pos := 0
 	for {
 		pos = html.index_after('https://', pos + 1)

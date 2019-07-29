@@ -22,7 +22,7 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	if t == 'int' || t == 'string' || t == 'bool' {
 		return
 	}
-	if p.first_run() {
+	if p.first_pass() {
 		return
 	}
 	// println('gen_json_for_type( $typ.name )')

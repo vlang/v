@@ -28,23 +28,32 @@ pub:
 }
 
 // embed 'http'
-pub fn get(url string) string {
-	if url == '' {
-		println('http: empty get url')
-		return ''
+pub fn fetch(typ, url, data string) ?Response {
+	req := new_request('GET', url, '') or {
+		return error(err)
 	}
-	mut req := new_request('GET', url, '')
 	resp := req.do()
+	return resp
+}
+
+pub fn get(url string) ?string {
+	resp := fetch('GET', url, '') or {
+		return error(err)
+	}
 	return resp.body
 }
 
-pub fn post(url, data string) string {
-	req := new_request('POST', url, data)
-	resp := req.do()
+pub fn post(url, data string) ?string {
+	resp := fetch('POST', url, data) or {
+		return error(err)
+	}
 	return resp.body
 }
 
-pub fn new_request(typ, _url, _data string) *Request {
+pub fn new_request(typ, _url, _data string) ?Request {
+	if _url == '' {
+		return error('http: empty url')
+	}
 	mut url := _url
 	mut data := _data
 	// req.headers['User-Agent'] = 'V $VERSION'
@@ -54,7 +63,7 @@ pub fn new_request(typ, _url, _data string) *Request {
 		data = ''
 	}
 	// req.headers = new_map(0, sizeof(string))// []string{}
-	return &Request {
+	return Request {
 		typ: typ
 		url: url
 		data: data
@@ -64,12 +73,6 @@ pub fn new_request(typ, _url, _data string) *Request {
 	}
 }
 
-/* 
-fn (req &Request) do() Response {
-	mut resp := Response{}
-	return resp
-}
-*/
 fn (req mut Request) free() {
 	req.headers.free()
 }
