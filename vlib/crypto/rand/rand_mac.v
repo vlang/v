@@ -6,10 +6,15 @@ module rand
 
 #flag darwin -framework Security
 
-const (
-	kSecRandomDefault = 0
-	errSecSuccess     = 0
+import const (
+	kSecRandomDefault
+	errSecSuccess
 )
+
+// const (
+// 	kSecRandomDefault = 0
+// 	errSecSuccess     = 0
+// )
 
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
