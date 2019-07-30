@@ -8,8 +8,10 @@
 
 module md5
 
-import math.bits
-import encoding.binary
+import (
+	math.bits
+	encoding.binary
+)
 
 fn block_generic(dig &Digest, p []byte) {
 	// load state

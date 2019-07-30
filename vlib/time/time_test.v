@@ -38,3 +38,16 @@ fn test_days_in_month() {
 	assert check(11, 2001, 30) // November
 	assert check(12, 2001, 31) // December
 }
+
+
+fn test_unix() {
+	t := time.unix(1564366499) 
+	assert t.year == 2019
+	assert t.month == 7 
+	assert t.day == 29 
+	assert t.hour == 2 
+	assert t.minute == 14 
+	//assert t.second == 32  // TODO broken 
+} 
+
+

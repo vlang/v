@@ -9,7 +9,6 @@
 
 module sha256
 
-import math
 import encoding.binary
 
 const (
@@ -96,10 +95,7 @@ fn (d mut Digest) write(p []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
 			block(d, d.x)
@@ -121,10 +117,7 @@ fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
@@ -198,7 +191,8 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data)
 	sum := d.checksum()
-	sum224 := sum.left(Size224)
+	mut sum224 := [byte(0); Size224]
+	copy(sum224, sum.left(Size224))
 	return sum224
 }
 

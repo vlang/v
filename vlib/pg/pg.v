@@ -5,6 +5,7 @@ import time
 
 #flag -lpq
 #flag linux -I/usr/include/postgresql
+#flag darwin -I/opt/local/include/postgresql11
 #include <libpq-fe.h>
 
 struct DB {
@@ -26,6 +27,7 @@ struct C.PGResult { }
 fn C.PQconnectdb(a byteptr) *C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
 fn C.PQgetvalue(voidptr, int, int) byteptr
+fn C.PQstatus(voidptr) int 
 
 pub fn connect(dbname, user string) DB {
 	conninfo := 'host=localhost user=$user dbname=$dbname'

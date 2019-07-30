@@ -9,7 +9,7 @@ import time
 import strings
 
 const (
-	Version = '0.1.16'  
+	Version = '0.1.17'  
 )
 
 enum BuildMode {
@@ -179,7 +179,7 @@ fn (v mut V) compile() {
 		p.parse()
 	}
 	// Main pass
-	cgen.run = Pass.main
+	cgen.pass = Pass.main
 	if v.pref.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
@@ -806,10 +806,11 @@ mut args := ''
 		println('cc took $diff ms') 
 		println('=========\n')
 	}
-	// println('C OUTPUT:')
 	if res.contains('error: ') {
-		println(res)
-		panic('clang error')
+		if v.pref.is_debug { 
+			println(res)
+		} 
+		panic('C error. This should never happen. Please create a GitHub issue.')
 	}
 	// Link it if we are cross compiling and need an executable
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {

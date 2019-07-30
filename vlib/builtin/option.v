@@ -13,7 +13,7 @@ struct Option {
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, size int) Option {
 	if size > 255 {
-		panic('option size too big: $size (max is 255)') 
+		panic('option size too big: $size (max is 255), this is a temporary limit') 
 	} 
 	res := Option { 
 		ok: true
