@@ -1,23 +1,24 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module rand
 
-#flag -Llibraries/bcrypt -lbcrypt
+#flag windows -Llibraries/bcrypt -lbcrypt
 #include <winternl.h>
 #include <bcrypt.h>
 
-import const (
-	STATUS_SUCCESS
-	BCRYPT_USE_SYSTEM_PREFERRED_RNG
+const (
+	STATUS_SUCCESS                  = 0x00000000
+	BCRYPT_USE_SYSTEM_PREFERRED_RNG = 0x00000002
 )
 
 pub fn read(bytes_needed int) ?[]byte {	
 	mut buffer := malloc(bytes_needed)
-	// use BCRYPT_USE_SYSTEM_PREFERRED_RNG as we passed null as algo
+	// use BCRYPT_USE_SYSTEM_PREFERRED_RNG because we passed null as algo
 	status := C.BCryptGenRandom(0, buffer, bytes_needed, BCRYPT_USE_SYSTEM_PREFERRED_RNG)
-
 	if !C.NT_SUCCESS(status) {
 		return error('crypt.random.read: error')
 	}
-
-	// NOTE: temp until we have []bytes(buff)
-	return new_array_from_c_array_no_alloc_rand(bytes_needed, 1, 1, buffer)
+	return c_array_to_bytes_tmp(bytes_needed, buffer)
 }
