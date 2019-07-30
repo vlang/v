@@ -18,7 +18,7 @@ pub fn read(bytes_needed int) ?[]byte {
 	// use BCRYPT_USE_SYSTEM_PREFERRED_RNG because we passed null as algo
 	status := C.BCryptGenRandom(0, buffer, bytes_needed, BCRYPT_USE_SYSTEM_PREFERRED_RNG)
 	if !C.NT_SUCCESS(status) {
-		return error('crypt.random.read: error')
+		return ReadError
 	}
 	return c_array_to_bytes_tmp(bytes_needed, buffer)
 }

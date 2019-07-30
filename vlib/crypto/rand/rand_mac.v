@@ -11,7 +11,7 @@ const (
 	errSecSuccess     = 0
 )
 
-pub fn read(bytes_needed int) []byte {
+pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
 	status := SecRandomCopyBytes(kSecRandomDefault, bytes_needed, buffer)
 	if status != errSecSuccess {
