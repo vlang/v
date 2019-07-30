@@ -13,7 +13,7 @@ const (
 
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
-	status := SecRandomCopyBytes(kSecRandomDefault, bytes_needed, buffer)
+	status := C.SecRandomCopyBytes(kSecRandomDefault, bytes_needed, buffer)
 	if status != errSecSuccess {
 		return ReadError
 	}
