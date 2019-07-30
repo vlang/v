@@ -30,8 +30,7 @@ fn _new_cbc(b AesCipher, iv []byte) AesCbc {
 	return AesCbc{
 		b:          b,
 		block_size: b.block_size(),
-		// TODO: make b.iv copy of iv
-		iv:         iv,
+		iv:         iv.clone(),
 		tmp:        [byte(0); b.block_size()],
 	}
 }
@@ -77,8 +76,7 @@ pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
 	}
 
 	// Save the iv for the next crypt_blocks call.
-	// TODO: make x.iv a copy of iv
-	x.iv = iv
+	copy(x.iv, iv)
 }
 
 pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
@@ -102,8 +100,7 @@ pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
 	mut prev := start - x.block_size
 
 	// Copy the last block of ciphertext in preparation as the new iv.
-	// TODO: copy
-	x.tmp = src.slice(start, end)
+	copy(x.tmp, src.slice(start, end))
 
 	// Loop over all but the first block.
 	for start > 0 {
@@ -129,6 +126,5 @@ fn (x &AesCbc) set_iv(iv []byte) {
 	if iv.len != x.iv.len {
 		panic('cipher: incorrect length IV')
 	}
-	// TODO: make x.iv a copy of iv
-	x.iv = iv
+	copy(x.iv, iv)
 }

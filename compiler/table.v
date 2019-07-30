@@ -5,12 +5,14 @@
 module main
 
 import math 
+import strings 
 
 struct Table {
 mut:
 	types     []Type
 	consts    []Var
 	fns       map[string]Fn 
+	generic_fns []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum'] 
 	obf_ids   map[string]int // obf_ids['myfunction'] == 23
 	packages  []string // List of all modules registered by the application
 	imports   []string // List of all imports
@@ -18,6 +20,11 @@ mut:
 	fn_cnt    int atomic
 	obfuscate bool
 }
+
+struct GenTable {
+	fn_name string 
+	types []string 
+} 
 
 // Holds import information scoped to the parsed file
 struct FileImportTable {
@@ -28,11 +35,11 @@ mut:
 }
 
 enum AccessMod {
-	private        // private imkey_mut
-	private_mut     // private key_mut
-	public         // public immkey_mut (readonly)
-	public_mut     // public, but key_mut only in this module
-	public_mut_mut // public and key_mut both inside and outside (not recommended to use, that's why it's so verbose)
+	private        // private immutable 
+	private_mut    // private mutable 
+	public         // public immutable (readonly)
+	public_mut     // public, but mutable only in this module
+	public_mut_mut // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
 struct Type {
@@ -47,6 +54,7 @@ mut:
 	is_interface   bool
 	is_enum        bool
 	enum_vals []string 
+	gen_types []string 
 	// This field is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -98,6 +106,14 @@ fn (f Fn) str() string {
 	return '$f.name($str_args) $f.typ'
 }
 
+fn (t &Table) debug_fns() string {
+	mut s := strings.new_builder(1000) 
+	for _, f in t.fns {
+		s.writeln(f.name) 
+	} 
+	return s.str() 
+} 
+
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
@@ -121,6 +137,8 @@ fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
 		obf_ids: map[string]int{}
 		fns: map[string]Fn{}
+		//generic_fns: map[string]GenTable{} 
+		generic_fns: []GenTable 
 		obfuscate: obfuscate
 	}
 	t.register_type('int')
@@ -142,6 +160,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('bool')
 	t.register_type('void')
 	t.register_type('voidptr')
+	t.register_type('T')
 	t.register_type('va_list')
 	t.register_const('stdin', 'int', 'main', false)
 	t.register_const('stdout', 'int', 'main', false)
@@ -167,6 +186,66 @@ fn (t mut Table) register_package(pkg string) {
 		return
 	}
 	t.packages << pkg
+}
+
+fn (p mut Parser) register_import() {
+	if p.tok != .name {
+		p.error('bad import format')
+	}
+	mut pkg := p.lit.trim_space()
+	mut mod_alias := pkg
+	// submodule support
+	mut depth := 1
+	p.next()
+	for p.tok == .dot {
+		p.check(.dot) 
+		submodule := p.check_name()
+		mod_alias = submodule
+		pkg += '.' + submodule
+		depth++
+		if depth > MaxModuleDepth { 
+			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
+		}
+	}
+	// aliasing (import encoding.base64 as b64)
+	if p.tok == .key_as && p.peek() == .name {
+		p.check(.key_as) 
+		mod_alias = p.check_name()
+	}
+	// add import to file scope import table
+	p.import_table.register_alias(mod_alias, pkg)
+	// Make sure there are no duplicate imports
+	if p.table.imports.contains(pkg) {
+		return
+	}
+	p.log('adding import $pkg')
+	p.table.imports << pkg
+	p.table.register_package(pkg)
+	
+	p.fgenln(' ' + pkg)
+}
+
+
+fn (p mut Parser) register_array(typ string) {
+	if typ.contains('*') {
+		println('bad arr $typ')
+		return
+	}
+	if !p.table.known_type(typ) {
+		p.register_type_with_parent(typ, 'array')
+		p.cgen.typedefs << 'typedef array $typ;'
+	}
+}
+
+fn (p mut Parser) register_map(typ string) {
+	if typ.contains('*') {
+		println('bad map $typ')
+		return
+	}
+	if !p.table.known_type(typ) {
+		p.register_type_with_parent(typ, 'map')
+		p.cgen.typedefs << 'typedef map $typ;'
+	}
 }
 
 fn (table &Table) known_pkg(pkg string) bool {
@@ -677,6 +756,72 @@ fn is_valid_int_const(val, typ string) bool {
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1) 
 	} 
 	return true 
+}
+
+fn (t mut Table) register_generic_fn(fn_name string) { 
+	t.generic_fns << GenTable{fn_name, []string} 
+} 
+
+fn (t mut Table) fn_gen_types(fn_name string) []string { 
+	for _, f in t.generic_fns {
+		if f.fn_name == fn_name {
+			return f.types
+		} 
+	} 
+} 
+
+// `foo<Bar>()`
+// fn_name == 'foo'
+// typ == 'Bar' 
+fn (t mut Table) register_generic_fn_type(fn_name, typ string) { 
+	for i, f in t.generic_fns {
+		if f.fn_name == fn_name {
+			t.generic_fns[i].types << typ 
+			return 
+		} 
+	} 
+} 
+
+fn (p mut Parser) typ_to_fmt(typ string, level int) string {
+	t := p.table.find_type(typ)
+	if t.is_enum { 
+		return '%d'
+	}
+	switch typ {
+	case 'string': return '%.*s'
+	case 'ustring': return '%.*s'
+	case 'byte', 'int', 'char', 'byte', 'bool', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
+	case 'f64', 'f32': return '%f'
+	case 'i64', 'u64': return '%lld'
+	case 'byte*', 'byteptr': return '%s'
+		// case 'array_string': return '%s'
+		// case 'array_int': return '%s'
+	case 'void': p.error('cannot interpolate this value')
+	default:
+		if typ.ends_with('*') {
+			return '%p' 
+		} 
+	}
+	if t.parent != '' && level == 0 { 
+		return p.typ_to_fmt(t.parent, level+1) 
+	} 
+	return ''
+}
+
+fn is_compile_time_const(s string) bool {
+	s = s.trim_space()
+	if s == '' {
+		return false
+	}
+	if s.contains('\'') {
+		return true
+	}
+	for c in s {
+		if ! ((c >= `0` && c <= `9`) || c == `.`) {
+			return false
+		}
+	}
+	return true
 }
 
 // Once we have a module format we can read from module file instead

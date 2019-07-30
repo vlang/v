@@ -135,7 +135,7 @@ pub fn(graph &ModDepGraph) imports() []string {
 	return mods
 }
 
-pub fn(graph &ModDepGraph) last_node() {
+pub fn(graph &ModDepGraph) last_node() ModDepGraphNode {
 	return graph.nodes[graph.nodes.len-1]
 }
 

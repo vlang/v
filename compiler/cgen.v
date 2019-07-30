@@ -20,11 +20,11 @@ struct CGen {
 	fns          []string
 	so_fns       []string
 	consts_init  []string
-	lines        []string
 	//buf          strings.Builder 
 	is_user      bool
 mut:
-	run             Pass
+	lines        []string
+	pass         Pass
 	nogen           bool
 	tmp_line        string
 	cur_line        string
@@ -53,7 +53,7 @@ fn new_cgen(out_name_c string) *CGen {
 }
 
 fn (g mut CGen) genln(s string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -72,7 +72,7 @@ fn (g mut CGen) genln(s string) {
 }
 
 fn (g mut CGen) gen(s string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -84,7 +84,7 @@ fn (g mut CGen) gen(s string) {
 }
 
 fn (g mut CGen) resetln(s string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -127,7 +127,7 @@ fn (g mut CGen) add_placeholder() int {
 }
 
 fn (g mut CGen) set_placeholder(pos int, val string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	// g.lines.set(pos, val)
@@ -153,7 +153,7 @@ fn (g mut CGen) add_placeholder2() int {
 }
 
 fn (g mut CGen) set_placeholder2(pos int, val string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -219,21 +219,21 @@ fn (p mut Parser) print_prof_counters() string {
 }
 
 fn (p mut Parser) gen_type(s string) {
-	if !p.first_run() {
+	if !p.first_pass() {
 		return
 	}
 	p.cgen.types << s
 }
 
 fn (p mut Parser) gen_typedef(s string) {
-	if !p.first_run() {
+	if !p.first_pass() {
 		return
 	}
 	p.cgen.typedefs << s
 }
 
 fn (p mut Parser) gen_type_alias(s string) {
-	if !p.first_run() {
+	if !p.first_pass() {
 		return
 	}
 	p.cgen.type_aliases << s

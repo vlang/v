@@ -11,7 +11,6 @@
 
 module md5
 
-import math
 import encoding.binary
 
 const (
@@ -59,10 +58,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == BlockSize {
             block(d, d.x)
@@ -84,10 +80,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }

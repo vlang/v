@@ -9,9 +9,10 @@
 
 module sha512
 
-import math
-import crypto
-import encoding.binary
+import (
+	crypto
+	encoding.binary
+)
 
 const (
 	// Size is the size, in bytes, of a SHA-512 checksum.
@@ -78,41 +79,41 @@ fn (d mut Digest) reset() {
 	d.x = [byte(0); Chunk]
 	switch d.function {
 	case crypto.Hash.SHA384:
-		d.h[0] = u64(Init0_384)
-		d.h[1] = u64(Init1_384)
-		d.h[2] = u64(Init2_384)
-		d.h[3] = u64(Init3_384)
-		d.h[4] = u64(Init4_384)
-		d.h[5] = u64(Init5_384)
-		d.h[6] = u64(Init6_384)
-		d.h[7] = u64(Init7_384)
+		d.h[0] = Init0_384
+		d.h[1] = Init1_384
+		d.h[2] = Init2_384
+		d.h[3] = Init3_384
+		d.h[4] = Init4_384
+		d.h[5] = Init5_384
+		d.h[6] = Init6_384
+		d.h[7] = Init7_384
 	case crypto.Hash.SHA512_224:
-		d.h[0] = u64(Init0_224)
-		d.h[1] = u64(Init1_224)
-		d.h[2] = u64(Init2_224)
-		d.h[3] = u64(Init3_224)
-		d.h[4] = u64(Init4_224)
-		d.h[5] = u64(Init5_224)
-		d.h[6] = u64(Init6_224)
-		d.h[7] = u64(Init7_224)
+		d.h[0] = Init0_224
+		d.h[1] = Init1_224
+		d.h[2] = Init2_224
+		d.h[3] = Init3_224
+		d.h[4] = Init4_224
+		d.h[5] = Init5_224
+		d.h[6] = Init6_224
+		d.h[7] = Init7_224
 	case crypto.Hash.SHA512_256:
-		d.h[0] = u64(Init0_256)
-		d.h[1] = u64(Init1_256)
-		d.h[2] = u64(Init2_256)
-		d.h[3] = u64(Init3_256)
-		d.h[4] = u64(Init4_256)
-		d.h[5] = u64(Init5_256)
-		d.h[6] = u64(Init6_256)
-		d.h[7] = u64(Init7_256)
+		d.h[0] = Init0_256
+		d.h[1] = Init1_256
+		d.h[2] = Init2_256
+		d.h[3] = Init3_256
+		d.h[4] = Init4_256
+		d.h[5] = Init5_256
+		d.h[6] = Init6_256
+		d.h[7] = Init7_256
 	default:
-		d.h[0] = u64(Init0)
-		d.h[1] = u64(Init1)
-		d.h[2] = u64(Init2)
-		d.h[3] = u64(Init3)
-		d.h[4] = u64(Init4)
-		d.h[5] = u64(Init5)
-		d.h[6] = u64(Init6)
-		d.h[7] = u64(Init7)
+		d.h[0] = Init0
+		d.h[1] = Init1
+		d.h[2] = Init2
+		d.h[3] = Init3
+		d.h[4] = Init4
+		d.h[5] = Init5
+		d.h[6] = Init6
+		d.h[7] = Init7
 	}
 	d.nx = 0
 	d.len = u64(0)
@@ -148,10 +149,7 @@ fn (d mut Digest) write(p []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
 			block(d, d.x)
@@ -173,10 +171,7 @@ fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
@@ -257,7 +252,8 @@ pub fn sum384(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA384)
 	d.write(data)
 	sum := d.checksum()
-	sum384 := sum.left(Size384)
+	mut sum384 := [byte(0); Size384]
+	copy(sum384, sum.left(Size384))
 	return sum384
 }
 
@@ -266,7 +262,8 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_224)
 	d.write(data)
 	sum := d.checksum()
-	sum224 := sum.left(Size224)
+	mut sum224 := [byte(0); Size224]
+	copy(sum224, sum.left(Size224))
 	return sum224
 }
 
@@ -275,7 +272,8 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_256)
 	d.write(data)
 	sum := d.checksum()
-	sum256 := sum.left(Size256)
+	mut sum256 := [byte(0); Size256]
+	copy(sum256, sum.left(Size256))
 	return sum256
 }
 
