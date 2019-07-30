@@ -36,13 +36,15 @@ fn test_map() {
 	assert keys.len == 2 
 	assert keys[0] == 'hi'
 	assert keys[1] == 'hello' 
+	m.delete('hi') 
+	assert m.size == 1 
+	assert m['hi'] == 0
+	//assert m.keys().len == 1 
 	//// 
 	mut users := map[string]User{} 
 	users['1'] = User{'Peter'} 
 	peter := users['1']
 	assert  peter.name == 'Peter' 
-	println(peter.name) 
-
 	mut a := A{
 		m: map[string]int{} 
 		users: map[string]User{} 

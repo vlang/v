@@ -169,6 +169,32 @@ fn (m map) get(key string, out voidptr) bool {
 	return m.root.find(key, out, m.element_size) 
 }
 
+pub fn (n mut Node) delete(key string, element_size int) { 
+	if n.key == key {
+		C.memset(n.val, 0, element_size)
+		return 
+	} 
+	else if n.key > key {
+		if isnil(n.left) {
+			return 
+		}  else { 
+			n.left.delete(key, element_size) 
+		} 
+	} 
+	else {
+		if isnil(n.right) {
+			return 
+		}  else { 
+			n.right.delete(key, element_size) 
+		} 
+	} 
+} 
+
+pub fn (m mut map) delete(key string) { 
+	m.root.delete(key, m.element_size) 
+	m.size-- 
+} 
+
 pub fn (m map) exists(key string) bool {
 	panic('map.exists(key) was removed from the language. Use `key in map` instead.') 
 	return false 
