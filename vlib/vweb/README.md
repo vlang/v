@@ -2,9 +2,13 @@ This is pre-alpha software.
 
 Lots of things are broken and not implemented yet in V and vweb.
 
-There's no documentation yet, have a look at https://github.com/vlang/vtalk for an example of a simple vweb app.
+There's no documentation yet, have a look at a simple example: 
 
-`vtalk.v` contains all GET and POST actions.
+https://github.com/vlang/v/tree/master/examples/vweb/test_app.v 
+
+There's also the V forum: https://github.com/vlang/vorum 
+
+`vorum.v` contains all GET and POST actions.
 
 ```Go
 pub fn (app mut App) index() {
