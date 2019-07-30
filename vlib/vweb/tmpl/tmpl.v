@@ -1,3 +1,7 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module tmpl 
 
 import os 
@@ -33,7 +37,15 @@ _ := header
 //footer := \'footer\' 
 ') 
 	s.writeln(STR_START)
-	for line in lines {
+	mut in_css := false 
+	for _line in lines {
+		line := _line.trim_space() 
+		if line == '<style>' {
+			in_css = true 
+		} 
+		else if line == '</style>' {
+			in_css = false 
+		} 
 		if line.contains('@if ') {
 			s.writeln(STR_END)
 			pos := line.index('@if')
@@ -56,7 +68,14 @@ _ := header
 			s.writeln('for ' + line.right(pos + 4) + '{')
 			s.writeln(STR_START)
 		}
-		// @name
+		else if !in_css && line.contains('.') && line.ends_with('{') {
+			class := line.find_between('.', '{') 
+			s.writeln('<div class="$class">') 
+		} 
+		else if !in_css && line == '}' {
+			s.writeln('</div>') 
+		} 
+		// HTML, may include `@var` 
 		else { 
 			s.writeln(line.replace('@', '\x24').replace('\'', '"') ) 
 		}
