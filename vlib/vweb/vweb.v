@@ -12,8 +12,18 @@ pub:
 	req http.Request 
 	conn net.Socket 
 	post_form map[string]string 
+	static_files map[string]string 
 	// TODO Response 
-	headers []string 
+	headers []string  // response headers 
+} 
+
+pub fn (ctx Context) text(s string) {
+	h := ctx.headers.join('\n')
+	ctx.conn.write('HTTP/1.1 200 OK 
+Content-Type: text/plain 
+$h
+$s 
+') 
 } 
 
 pub fn (ctx Context) json(s string) {
@@ -88,8 +98,10 @@ pub fn run<T>(port int) {
 				req: req 
 				conn: conn 
 				post_form: map[string]string{} 
+				static_files: map[string]string{} 
 			} 
 		} 
+println('calling init') 
 		app.init() 
 		if req.method == 'POST' {
 			app.vweb.parse_form(s) 
@@ -99,6 +111,12 @@ pub fn run<T>(port int) {
 			println('no vals for http') 
 			return 
 		} 
+		// Serve a static file if it's one 
+		if app.vweb.handle_static() {
+			conn.close()
+			continue 
+		} 
+		// Call the right action 
 		app.$action() 
 		conn.close()
 	}
@@ -122,6 +140,24 @@ fn (ctx mut Context) parse_form(s string) {
 			ctx.post_form[key] = http.unescape(val) 
 		}
 	}
+} 
+
+fn (ctx mut Context) handle_static() bool { 
+	static_file := ctx.static_files[ctx.req.url] 
+	if static_file != '' { 
+		data := os.read_file(static_file) or { return false }  
+		ctx.conn.write('HTTP/1.1 200 OK 
+Content-Type: text/css 
+
+$data 
+')
+		return true 
+	} 
+	return false 
+} 
+
+pub fn (ctx mut Context) serve_static(url, file_path string) { 
+	ctx.static_files[url] = file_path 
 } 
 
 
