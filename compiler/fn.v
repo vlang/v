@@ -752,6 +752,16 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		p.check(.rpar)
 		return f
 	}
+	// add debug information to panic when -debug arg is passed
+	if p.v.pref.is_debug && f.name == 'panic' {
+		mod_name := p.mod.replace('_dot_', '.')
+		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
+		file_path := p.file_path.replace('\\', '\\\\') // escape \
+		p.cgen.resetln(p.cgen.cur_line.replace(
+			'v_panic (',
+			'_panic_debug ($p.scanner.line_nr, tos2("$file_path"), tos2("$mod_name"), tos2("$fn_name"), '
+		))
+	}
 	// Receiver - first arg
 	for i, arg in f.args {
 		// println('$i) arg=$arg.name')
