@@ -752,7 +752,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		p.check(.rpar)
 		return f
 	}
-	// Add debug information to panic when -debug is passed
+	// add debug information to panic when -debug arg is passed
 	if p.v.pref.is_debug && f.name == 'panic' {
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
 		file_path := p.file_path.replace('\\', '\\\\') // escape \
