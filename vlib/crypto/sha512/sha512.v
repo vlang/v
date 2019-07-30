@@ -146,7 +146,6 @@ fn new384() *Digest {
 }
 
 fn (d mut Digest) write(p []byte) ?int {
-	panic('error writing')
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
