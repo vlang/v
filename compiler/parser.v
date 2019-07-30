@@ -3283,14 +3283,18 @@ fn (p mut Parser) attribute() {
 
 fn (p mut Parser) defer_st() {
 	p.check(.key_defer)
-	// Wrap everything inside the defer block in /**/ comments, and save it in 
-	// `defer_text`. It will be inserted before every `return`. 
-	p.genln('/*') 
-	pos := p.cgen.lines.len 
 	p.check(.lcbr) 
+
+	pos := p.cgen.lines.len 
+
+	// Save everything inside the defer block to `defer_text`.
+	// It will be inserted before every `return`
 	p.genln('{') 
 	p.statements() 
 	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text 
-	p.genln('*/') 
+
+	// Rollback p.cgen.lines
+	p.cgen.lines = p.cgen.lines.left(pos)
+	p.cgen.resetln('')
 }  
 
