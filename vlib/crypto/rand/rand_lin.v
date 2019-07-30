@@ -43,7 +43,7 @@ pub fn read(bytes_needed int) ?[]byte {
 	return c_array_to_bytes_tmp(bytes_needed, buffer)
 }
 
-fn _getrandom(bytes_needed int, buffer byteptr) int {
+fn _getrandom(bytes_needed int, buffer voidptr) int {
 	if bytes_needed > ReadBatchSize {
 		panic('_getrandom() dont request more thane $ReadBatchSize bytes at once.')
 	}
