@@ -17,5 +17,5 @@ pub fn read(bytes_needed int) ?[]byte {
 	if status != errSecSuccess {
 		return ReadError
 	}
-	c_array_to_bytes_tmp(bytes_needed, tmp)
+	c_array_to_bytes_tmp(bytes_needed, buffer)
 }
