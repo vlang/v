@@ -317,13 +317,52 @@ fn (p mut Parser) imports() {
 	if p.tok == .lpar {
 		p.check(.lpar)
 		for p.tok != .rpar && p.tok != .eof {
-			p.register_import()
+			p.import_statement()
 		}
 		p.check(.rpar)
 		return
 	}
 	// `import foo`
-	p.register_import()
+	p.import_statement()
+}
+
+fn (p mut Parser) import_statement() {
+	if p.tok != .name {
+		p.error('bad import format')
+	}
+	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
+		p.error('bad import format. module/submodule names cannot begin with a number.')
+	}
+	mut pkg := p.check_name().trim_space()
+	mut mod_alias := pkg
+	// submodule support
+	mut depth := 1
+	for p.tok == .dot {
+		p.check(.dot) 
+		submodule := p.check_name()
+		mod_alias = submodule
+		pkg += '.' + submodule
+		depth++
+		if depth > MaxModuleDepth { 
+			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
+		}
+	}
+	// aliasing (import encoding.base64 as b64)
+	if p.tok == .key_as && p.peek() == .name {
+		p.check(.key_as) 
+		mod_alias = p.check_name()
+	}
+	// add import to file scope import table
+	p.import_table.register_alias(mod_alias, pkg)
+	// Make sure there are no duplicate imports
+	if p.table.imports.contains(pkg) {
+		return
+	}
+	p.log('adding import $pkg')
+	p.table.imports << pkg
+	p.table.register_package(pkg)
+	
+	p.fgenln(' ' + pkg)
 }
 
 fn (p mut Parser) const_decl() {

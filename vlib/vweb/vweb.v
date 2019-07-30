@@ -16,8 +16,14 @@ pub:
 	headers []string 
 } 
 
-pub fn (ctx Context) write(s string) {
-	//ctx.conn.write(s) 
+pub fn (ctx Context) json(s string) {
+	h := ctx.headers.join('\n')
+	ctx.conn.write('HTTP/1.1 200 OK 
+Content-Type: application/json 
+$h
+
+$s 
+') 
 } 
 
 pub fn (ctx Context) redirect(url string) {
