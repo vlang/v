@@ -51,9 +51,7 @@ pub fn println(s string) {
 		panic('println(NIL)')
 	}
 	$if windows {
-		// HACKY HACK 
-		// use capital s for printing regular ascii strings
-		C.wprintf(C.TEXT('%.*S\n'), s.len, s)
+		C._putws(s.to_wide())
 	} $else {
 		C.printf('%.*s\n', s.len, s.str)
 	}
