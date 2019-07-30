@@ -946,7 +946,7 @@ fn (v mut V) add_user_v_files() {
 			idir := os.getwd()
 			mut import_path := '$idir/$mod_path'
 			//if !os.file_exists(import_path) || !os.is_dir(import_path){
-			if !os.is_dir(import_path){
+			if !os.dir_exists(import_path){
 				import_path = '$v.lang_dir/vlib/$mod_path'
 			}
 			vfiles := v.v_files_from_dir(import_path)
@@ -984,7 +984,7 @@ fn (v mut V) add_user_v_files() {
 		if v.pref.build_mode == .default_mode || v.pref.build_mode == .build {
 			module_path = '$ModPath/vlib/$mod_p'
 		}
-		if !os.is_dir(module_path) {
+		if !os.dir_exists(module_path) {
 			module_path = '$v.lang_dir/vlib/$mod_p'
 		}
 		vfiles := v.v_files_from_dir(module_path)
