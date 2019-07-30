@@ -5,7 +5,6 @@
 module rand
 
 #flag windows -Llibraries/bcrypt -lbcrypt
-#include <winternl.h>
 #include <bcrypt.h>
 
 const (

@@ -6,15 +6,15 @@ module rand
 
 #flag darwin -framework Security
 
-import const (
-	kSecRandomDefault
-	errSecSuccess
-)
-
-// const (
-// 	kSecRandomDefault = 0
-// 	errSecSuccess     = 0
+// import const (
+// 	kSecRandomDefault
+// 	errSecSuccess
 // )
+
+const (
+	kSecRandomDefault = 0
+	errSecSuccess     = 0
+)
 
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
@@ -22,5 +22,5 @@ pub fn read(bytes_needed int) ?[]byte {
 	if status != errSecSuccess {
 		return ReadError
 	}
-	c_array_to_bytes_tmp(bytes_needed, buffer)
+	return c_array_to_bytes_tmp(bytes_needed, buffer)
 }
