@@ -333,11 +333,10 @@ fn (p mut Parser) import_statement() {
 	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
 		p.error('bad import format. module/submodule names cannot begin with a number.')
 	}
-	mut pkg := p.lit.trim_space()
+	mut pkg := p.check_name().trim_space()
 	mut mod_alias := pkg
 	// submodule support
 	mut depth := 1
-	p.next()
 	for p.tok == .dot {
 		p.check(.dot) 
 		submodule := p.check_name()
