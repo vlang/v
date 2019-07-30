@@ -188,44 +188,6 @@ fn (t mut Table) register_package(pkg string) {
 	t.packages << pkg
 }
 
-fn (p mut Parser) register_import() {
-	if p.tok != .name {
-		p.error('bad import format')
-	}
-	mut pkg := p.lit.trim_space()
-	mut mod_alias := pkg
-	// submodule support
-	mut depth := 1
-	p.next()
-	for p.tok == .dot {
-		p.check(.dot) 
-		submodule := p.check_name()
-		mod_alias = submodule
-		pkg += '.' + submodule
-		depth++
-		if depth > MaxModuleDepth { 
-			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
-		}
-	}
-	// aliasing (import encoding.base64 as b64)
-	if p.tok == .key_as && p.peek() == .name {
-		p.check(.key_as) 
-		mod_alias = p.check_name()
-	}
-	// add import to file scope import table
-	p.import_table.register_alias(mod_alias, pkg)
-	// Make sure there are no duplicate imports
-	if p.table.imports.contains(pkg) {
-		return
-	}
-	p.log('adding import $pkg')
-	p.table.imports << pkg
-	p.table.register_package(pkg)
-	
-	p.fgenln(' ' + pkg)
-}
-
-
 fn (p mut Parser) register_array(typ string) {
 	if typ.contains('*') {
 		println('bad arr $typ')
