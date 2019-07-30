@@ -8,11 +8,11 @@ import (
 ) 
 
 struct Context {
+	static_files map[string]string 
 pub: 
 	req http.Request 
 	conn net.Socket 
 	post_form map[string]string 
-	static_files map[string]string 
 	// TODO Response 
 	headers []string  // response headers 
 } 
@@ -101,7 +101,6 @@ pub fn run<T>(port int) {
 				static_files: map[string]string{} 
 			} 
 		} 
-println('calling init') 
 		app.init() 
 		if req.method == 'POST' {
 			app.vweb.parse_form(s) 
