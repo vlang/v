@@ -70,6 +70,7 @@ $html
 } 
 
 pub fn run<T>(port int) { 
+	println('Running vweb app on http://localhost:$port ...')  
 	l := net.listen(port) or { panic('failed to listen') return } 
 	for {
 		conn := l.accept() or {
