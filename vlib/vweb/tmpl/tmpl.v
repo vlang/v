@@ -25,7 +25,7 @@ pub fn compile_template(path string) string {
 			panic('html failed')
 			return ''
 		} 
-		header = h//.replace('\'', '"') 
+		header = h.replace('\'', '"') 
 	} 
 	lines := html.split_into_lines() 
 	mut s := strings.new_builder(1000) 

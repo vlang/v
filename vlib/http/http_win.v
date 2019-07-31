@@ -189,7 +189,7 @@ pub fn (req &Request) do() Response {
 	return resp
 }
 
-fn escape(s string) string {
+pub fn escape(s string) string {
 	# DWORD size=1;
 	# char *escaped = NULL;
 	# char *empty_string = NULL;
