@@ -22,6 +22,22 @@ pub fn bg_rgb(r, g, b int, msg string) string {
 	return format_rgb(r, g, b, msg, '48', '49')
 }
 
+pub fn hex(hex int, msg string) string {
+	return format_rgb(
+		hex >> 16,
+		hex >> 8 & 0xFF,
+		hex & 0xFF,
+		msg, '38', '39')
+}
+
+pub fn bg_hex(hex int, msg string) string {
+		return format_rgb(
+		hex >> 16,
+		hex >> 8 & 0xFF,
+		hex & 0xFF,
+		msg, '48', '49')
+}
+
 pub fn bg_black(msg string) string {
 	return format(msg, '40', '49')
 }
