@@ -813,8 +813,14 @@ mut args := ''
 	if res.contains('error: ') {
 		if v.pref.is_debug { 
 			println(res)
+		} else {
+			print(res.limit(200)) 
+			if res.len > 200 { 
+				println('...\n(Use `v -debug` to print the entire error message)\n')   
+			} 
 		} 
-		panic('C error. This should never happen. Please create a GitHub issue.')
+		panic('C error. This should never happen. ' +
+			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	// Link it if we are cross compiling and need an executable
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
