@@ -18,10 +18,15 @@ import const (
 	INTERNET_DEFAULT_HTTP_PORT
 	INTERNET_DEFAULT_HTTPS_PORT
 	INTERNET_SERVICE_HTTP
+	INTERNET_MAX_URL_LENGTH
+	URL_ESCAPE_PERCENT
+	URL_ESCAPE_SEGMENT_ONLY		
 )
 
 const (
 	BUF_MAX = 1024
+	URL_ESCAPE_AS_UTF8 = 0x00040000 // missing in mingw, require Windows 7
+	URL_ESCAPE_ASCII_URI_COMPONENT = 0x00080000 // missing in mingw, require Windows 8
 ) 
 
 pub fn (req &Request) do() Response {
@@ -190,19 +195,17 @@ pub fn (req &Request) do() Response {
 }
 
 pub fn escape(s string) string {
-	# DWORD size=1;
-	# char *escaped = NULL;
-	# char *empty_string = NULL;
-	# HRESULT    res = UrlEscapeA(s.str, empty_string, &size, URL_ESCAPE_PERCENT | URL_ESCAPE_SEGMENT_ONLY);
-	# if (res == E_POINTER)
-	{
-		# escaped = HeapAlloc(GetProcessHeap(), 0, size);
-		# if (!escaped)
-		# return s;
-		# UrlEscapeA(s.str, escaped, &size, URL_ESCAPE_PERCENT | URL_ESCAPE_SEGMENT_ONLY);
-		# return tos2(escaped);
-	}
-	return ''
+	mut buf := &u16(malloc(INTERNET_MAX_URL_LENGTH * 2)) // INTERNET_MAX_URL_LENGTH * sizeof(wchar_t)
+	mut nr_chars := INTERNET_MAX_URL_LENGTH
+	res := C.UrlEscape(s.to_wide(), buf, &nr_chars, URL_ESCAPE_PERCENT | URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
+	return string_from_wide2(buf, nr_chars)
+}
+
+pub fn unescape(s string) string {
+	mut buf := &u16(malloc(INTERNET_MAX_URL_LENGTH * 2))
+	mut nr_chars := INTERNET_MAX_URL_LENGTH	
+	res := C.UrlUnescape(s.to_wide(), &buf, &nr_chars, URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
+	return string_from_wide2(buf, nr_chars)
 }
 
 fn C.InternetReadFile(voidptr, voidptr, int, intptr) bool
