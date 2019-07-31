@@ -84,8 +84,7 @@ sudo ln -s [path to V repo]/v /usr/local/bin/v
 V is being constantly updated. To update V, simply run
 
 ```
-git pull origin master
-make
+v up
 ```
 
 ## Docker
