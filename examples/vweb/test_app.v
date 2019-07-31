@@ -17,8 +17,7 @@ fn main() {
 }
 
 pub fn (app mut App) init() {
-	app.vweb.serve_static('/css.css', 'static/css.css')
-	app.vweb.serve_static('/jquery.js', 'static/jquery.js')
+	app.vweb.handle_static('.')
 }
 
 pub fn (app mut App) json_endpoint() {
