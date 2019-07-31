@@ -718,7 +718,8 @@ pub fn is_dir(path string) bool {
 		if C.stat(cstr, &statbuf) != 0 {
 			return false
 		}
-		return statbuf.st_mode & S_IFMT == S_IFDIR
+		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
+		return (statbuf.st_mode & S_IFMT) == S_IFDIR
 	} 
 }
 
