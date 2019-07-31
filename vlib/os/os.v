@@ -190,13 +190,11 @@ pub fn read_lines(path string) []string {
 			buf_index = len
 			continue
 		}
-		if buf[len - 1] == 10 {
+		if buf[len - 1] == 10 || buf[len - 1] == 13 {
 			buf[len - 1] = `\0`
 		}
-		$if windows {
-			if buf[len - 2] == 13 {
-				buf[len - 2] = `\0`
-			}
+		if len > 1 && buf[len - 2] == 13 {
+			buf[len - 2] = `\0`
 		}
 		res << tos_clone(buf)
 		buf_index = 0
