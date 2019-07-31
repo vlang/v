@@ -27,6 +27,8 @@ pub:
 	status_code int
 }
 
+struct UrlParams
+
 // embed 'http'
 pub fn fetch(typ, url, data string) ?Response {
 	req := new_request('GET', url, '') or {
