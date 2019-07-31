@@ -31,7 +31,7 @@ pub fn hex(hex int, msg string) string {
 }
 
 pub fn bg_hex(hex int, msg string) string {
-		return format_rgb(
+	return format_rgb(
 		hex >> 16,
 		hex >> 8 & 0xFF,
 		hex & 0xFF,
