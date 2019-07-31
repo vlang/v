@@ -189,12 +189,22 @@ pub fn (req &Request) do() Response {
 	}
 }
 
-pub fn unescape(s string) string {
+pub fn unescape_url(s string) string {
 	return string(byteptr(C.curl_unescape(s.str, s.len)))
 }
 
-pub fn escape(s string) string {
+pub fn escape_url(s string) string {
 	return string(byteptr(C.curl_escape(s.str, s.len)))
+}
+
+pub fn unescape(s string) string {
+	panic('http.unescape() was replaced with http.unescape_url()') 
+	return '' 
+}
+
+pub fn escape(s string) string {
+	panic('http.escape() was replaced with http.escape_url()') 
+	return '' 
 }
 
 // ////////////////

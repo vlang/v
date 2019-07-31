@@ -194,18 +194,28 @@ pub fn (req &Request) do() Response {
 	return resp
 }
 
-pub fn escape(s string) string {
+pub fn escape_url(s string) string {
 	mut buf := &u16(malloc(INTERNET_MAX_URL_LENGTH * 2)) // INTERNET_MAX_URL_LENGTH * sizeof(wchar_t)
 	mut nr_chars := INTERNET_MAX_URL_LENGTH
 	res := C.UrlEscape(s.to_wide(), buf, &nr_chars, URL_ESCAPE_PERCENT | URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
 	return string_from_wide2(buf, nr_chars)
 }
 
-pub fn unescape(s string) string {
+pub fn unescape_url(s string) string {
 	mut buf := &u16(malloc(INTERNET_MAX_URL_LENGTH * 2))
 	mut nr_chars := INTERNET_MAX_URL_LENGTH	
 	res := C.UrlUnescape(s.to_wide(), &buf, &nr_chars, URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
 	return string_from_wide2(buf, nr_chars)
+}
+
+pub fn unescape(s string) string {
+	panic('http.unescape() was replaced with http.unescape_url()') 
+	return '' 
+}
+
+pub fn escape(s string) string {
+	panic('http.escape() was replaced with http.escape_url()') 
+	return '' 
 }
 
 fn C.InternetReadFile(voidptr, voidptr, int, intptr) bool

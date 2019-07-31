@@ -140,7 +140,7 @@ fn (ctx mut Context) parse_form(s string) {
 			key := keyval[0]
 			val := keyval[1]
 			//println('http form $key => $val') 
-			ctx.post_form[key] = http.unescape(val) 
+			ctx.post_form[key] = http.unescape_url(val) 
 		}
 	}
 } 
