@@ -2395,12 +2395,14 @@ fn (p mut Parser) string_expr() {
 		return
 	}
 	// println: don't allocate a new string, just print	it. 
-	cur_line := p.cgen.cur_line.trim_space()
-	if cur_line.contains('println (') && p.tok != .plus && 
-		!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
-		p.cgen.resetln(cur_line.replace('println (', 'printf('))
-		p.gen('$format\\n$args')
-		return
+	$if !windows {
+		cur_line := p.cgen.cur_line.trim_space()
+		if cur_line.contains('println (') && p.tok != .plus &&
+			!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
+			p.cgen.resetln(cur_line.replace('println (', 'printf('))
+			p.gen('$format\\n$args')
+			return
+		}
 	}
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
