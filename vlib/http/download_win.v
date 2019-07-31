@@ -8,8 +8,9 @@ fn download_file_with_progress(url, out string, cb, cb_finished voidptr) {
 }
 
 fn download_file(url, out string) {
-	# HRESULT res = URLDownloadToFile(NULL, url.str, out.str, 0, NULL);
-	# if(res == S_OK) {
+	C.URLDownloadToFile(0, url.str, out.str, 0, 0)
+	/*
+	if (res == S_OK) {
 	println('Download Ok')
 	# } else if(res == E_OUTOFMEMORY) {
 	println('Buffer length invalid, or insufficient memory')
@@ -18,5 +19,6 @@ fn download_file(url, out string) {
 	# } else {
 	# printf("Download error: %d\n", res);
 	# }
+	*/
 }
 
