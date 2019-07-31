@@ -2309,19 +2309,17 @@ fn format_str(str string) string {
 }
 
 fn (p mut Parser) string_expr() {
-	// println('.str EXPR')
 	str := p.lit
 	// No ${}, just return a simple string
 	if p.peek() != .dollar {
 		p.fgen('\'$str\'')
-		// println('before format: "$str"')
 		f := format_str(str)
-		// println('after format: "$str"')
+		// `C.puts('hi')` => `puts("hi");` 
 		if p.calling_c || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
 		}
 		else {
-			p.gen('tos2("$f")') 
+			p.gen('tos2((byte*)"$f")') 
 		}
 		p.next()
 		return
@@ -2387,8 +2385,8 @@ fn (p mut Parser) string_expr() {
 		}
 	}
 	if complex_inter {
-	p.fgen('}') 
-} 
+		p.fgen('}') 
+	} 
 	p.fgen('\'') 
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {

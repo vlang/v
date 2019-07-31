@@ -193,6 +193,7 @@ fn (v mut V) compile() {
 #include <signal.h>
 #include <stdarg.h> // for va_list 
 #include <inttypes.h>  // int64_t etc 
+#include <string.h> // memcpy 
 
 #define STRUCT_DEFAULT_VALUE {}
 #define EMPTY_STRUCT_DECLARATION
