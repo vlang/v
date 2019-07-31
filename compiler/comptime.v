@@ -77,6 +77,9 @@ fn (p mut Parser) comp_time() {
 	// that returns an html string 
 	else if p.tok == .name && p.lit == 'vweb' {
 		path := p.cur_fn.name + '.html' 
+		if p.pref.is_debug {
+			println('compiling tmpl $path') 
+		} 
 		if !os.file_exists(path) {
 			p.error('vweb HTML template "$path" not found') 
 		} 
@@ -86,13 +89,18 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar) 
 		p.check(.rpar) 
 		v_code := tmpl.compile_template(path) 
+		if os.file_exists('.vwebtmpl.v') {
+			os.rm('.vwebtmpl.v') 
+		} 
 		os.write_file('.vwebtmpl.v', v_code.clone()) // TODO don't need clone, compiler bug 
 		p.genln('') 
 		// Parse the function and embed resulting C code in current function so that
 		// all variables are available. 
 		pos := p.cgen.lines.len - 1 
 		mut pp := p.v.new_parser('.vwebtmpl.v', Pass.main)  
-		os.rm('.vwebtmpl.v') 
+		if !p.pref.is_debug { 
+			os.rm('.vwebtmpl.v') 
+		} 
 		pp.is_vweb = true 
 		pp.cur_fn = p.cur_fn // give access too all variables in current function 
 		pp.parse() 
