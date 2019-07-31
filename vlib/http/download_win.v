@@ -7,8 +7,8 @@ module http
 fn download_file_with_progress(url, out string, cb, cb_finished voidptr) {
 }
 
-fn download_file(url, out string) {
-	C.URLDownloadToFile(0, url.str, out.str, 0, 0)
+pub fn download_file(url, out string) {
+	C.URLDownloadToFileW(0, url.to_wide(), out.to_wide(), 0, 0)
 	/*
 	if (res == S_OK) {
 	println('Download Ok')
@@ -21,4 +21,3 @@ fn download_file(url, out string) {
 	# }
 	*/
 }
-
