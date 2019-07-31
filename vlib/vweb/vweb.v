@@ -32,7 +32,6 @@ pub fn (ctx Context) json(s string) {
 	ctx.conn.write('HTTP/1.1 200 OK 
 Content-Type: application/json 
 $h
-
 $s 
 ') 
 } 
@@ -71,6 +70,7 @@ $html
 } 
 
 pub fn run<T>(port int) { 
+	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') return } 
 	for {
 		conn := l.accept() or {
