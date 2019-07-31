@@ -101,19 +101,9 @@ pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
 			return g
 		}
 
-		ready_set.size() > 0 {
-			mut new_set := map[string]DepSet{}
-			for name in ready_set.items {
-				// node_deps.remove(name)
-				resolved.nodes << node_names[name]
-			}
-			// remove once we have map.remove/delete 
-			for k, d in node_deps {
-				if !k in ready_set.items {
-					new_set[k] = d
-				}
-			}
-			node_deps = new_set
+		for name in ready_set.items {
+			node_deps.delete(name)
+			resolved.nodes << node_names[name]
 		}
 
 		for name, deps in node_deps {
@@ -140,7 +130,7 @@ pub fn(graph &ModDepGraph) last_node() ModDepGraphNode {
 }
 
 pub fn(graph &ModDepGraph) last_cycle() string {
-	return graph.nodes[graph.nodes.len-1].last_cycle
+	return graph.last_node().last_cycle
 }
 
 pub fn(graph &ModDepGraph) display() {
