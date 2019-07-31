@@ -808,11 +808,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// (If we don't check for void, then V will compile `println(func())`) 
 		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
 			T := p.table.find_type(typ)
-			fmt := p.typ_to_fmt(typ, 0) 
-			if fmt != '' { 
-				p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
-				continue 
-			}  
+			$if !windows {
+				fmt := p.typ_to_fmt(typ, 0)
+				if fmt != '' {
+					p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+					continue 
+				}
+			}
 			if typ.ends_with('*') {
 				p.cgen.set_placeholder(ph, 'ptr_str(')
 				p.gen(')')
