@@ -19,14 +19,14 @@ import const (
 	INTERNET_SERVICE_HTTP
 	INTERNET_MAX_URL_LENGTH
 	URL_ESCAPE_PERCENT
-	URL_ESCAPE_SEGMENT_ONLY		
+	URL_ESCAPE_SEGMENT_ONLY
 )
 
 const (
 	BUF_MAX = 1024
 	URL_ESCAPE_AS_UTF8 = 0x00040000 // missing in mingw, require Windows 7
 	URL_ESCAPE_ASCII_URI_COMPONENT = 0x00080000 // missing in mingw, require Windows 8
-) 
+)
 
 pub fn (req &Request) do() Response {
 	emptyresp := Response{}
@@ -55,13 +55,23 @@ pub fn (req &Request) do() Response {
 	data := req.data
 	// Retrieve default http user agent
 	user_agent := ''
-	internet := C.InternetOpenA(user_agent.str, INTERNET_OPEN_TYPE_PRECONFIG, 0, 0, 0)
+	// DWORD szhttpUserAgent = sizeof(httpUseragent);
+	// ObtainUserAgentString(0, httpUseragent, &szhttpUserAgent);
+	// # HINTERNET internet = InternetOpenA(httpUseragent, INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+	internet := C.InternetOpen(user_agent.to_wide(), INTERNET_OPEN_TYPE_PRECONFIG, 0, 0, 0)
+	// # if (!internet)
 	if isnil(internet) {
 		println('InternetOpen() failed')
 		return emptyresp
 	}
 	port := int(if is_ssl{INTERNET_DEFAULT_HTTPS_PORT} else { INTERNET_DEFAULT_HTTP_PORT})
-	connect := C.InternetConnectA(internet, host.str, port, 0, 0, INTERNET_SERVICE_HTTP, 0, 0)
+	// if is_ssl {
+	// # port = INTERNET_DEFAULT_HTTPS_PORT;
+	// }
+	connect := C.InternetConnect(internet, host.to_wide(), port, 0, 0, INTERNET_SERVICE_HTTP, 0, 0)
+	// # HINTERNET connect = InternetConnectA(internet, host.str, port, NULL, NULL,
+	// # INTERNET_SERVICE_HTTP, 0, 0);
+	# if (!connect)
 	if isnil(connect) {
 		e := C.GetLastError()
 		println('[windows] InternetConnect() failed')
@@ -75,18 +85,28 @@ pub fn (req &Request) do() Response {
 	# INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP |
 	# INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS | INTERNET_FLAG_NO_AUTH |
 	# INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_NO_UI |
-	# INTERNET_FLAG_NO_COOKIES  |  // ... 
+	# INTERNET_FLAG_NO_COOKIES  |  // ...
 	# INTERNET_FLAG_KEEP_CONNECTION |
 	# INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_RELOAD ;
 	if is_ssl {
 		#flags = flags | INTERNET_FLAG_SECURE;
 	}
-	request := C.HttpOpenRequest(connect, req.typ.str, path.str, 'HTTP/1.1', 0, 0, flags, 0)
+	request := C.HttpOpenRequest(connect, req.typ.to_wide(), path.to_wide(), 'HTTP/1.1'.to_wide(), 0, 0, flags, 0)
+	// request := C.InternetOpenUrl(connect, req.typ.str, path.str, 'HTTP/1.1', 0, 0, flags, 0)
+	// # HINTERNET request = HttpOpenRequest(connect, req->typ.str, path.str, "HTTP/1.1",
+	// # NULL, NULL, flags, NULL);
+	// # if (!request)
 	if isnil(request) {
 		println('HttpOpenRequest() failed')
 		return emptyresp
 	}
-	# bool ret =HttpSendRequest(request, headers.str, -1, data.str, data.len);
+	// println('LEN BEFORE SEND=$headers.len ; $headers')
+	ret := C.HttpSendRequest(request, headers.to_wide(), -1, data.str, data.len)
+	// # printf("RET=%d\n", ret);
+	// # int e = GetLastError();
+	// # printf("e=%d\n", e);
+	// Get response headers
+	// Todo call twice to get len
 	# LPSTR h_buf = malloc(1024);
 	# DWORD dwSize = 1024;
 	# HttpQueryInfo(request, HTTP_QUERY_RAW_HEADERS_CRLF,
@@ -109,7 +129,7 @@ pub fn (req &Request) do() Response {
 			break
 		}
 		buf[nr_read] = 0
-		s += string(buf, nr_read) // TODO perf
+		s += tos(buf, nr_read) // TODO perf
 		nr_read = 0
 	}
 	C.InternetCloseHandle(request)
@@ -145,19 +165,19 @@ pub fn escape_url(s string) string {
 
 pub fn unescape_url(s string) string {
 	mut buf := &u16(malloc(INTERNET_MAX_URL_LENGTH * 2))
-	mut nr_chars := INTERNET_MAX_URL_LENGTH	
+	mut nr_chars := INTERNET_MAX_URL_LENGTH
 	res := C.UrlUnescape(s.to_wide(), &buf, &nr_chars, URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
 	return string_from_wide2(buf, nr_chars)
 }
 
 pub fn unescape(s string) string {
-	panic('http.unescape() was replaced with http.unescape_url()') 
-	return '' 
+	panic('http.unescape() was replaced with http.unescape_url()')
+	return ''
 }
 
 pub fn escape(s string) string {
-	panic('http.escape() was replaced with http.escape_url()') 
-	return '' 
+	panic('http.escape() was replaced with http.escape_url()')
+	return ''
 }
 
 fn C.InternetReadFile(voidptr, voidptr, int, intptr) bool
