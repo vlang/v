@@ -1256,7 +1256,7 @@ fn run_repl() []string {
 				}
 			}
 			else {
-				for i:=0; i<vals.len-1; i++ {
+				for i:=0; i < vals.len; i++ {
 					println(vals[i])
 				}
 			}
@@ -1274,7 +1274,7 @@ fn run_repl() []string {
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
-					for i:=1; i<vals.len; i++ {
+					for i:=0; i < vals.len; i++ {
 						println(vals[i])
 					} 
 				}
