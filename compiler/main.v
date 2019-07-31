@@ -757,6 +757,9 @@ mut args := ''
 	// Output executable name
 	// else {
 	a << '-o $v.out_name'
+	if os.dir_exists(v.out_name) {
+		panic('\'$v.out_name\' is a directory')
+	}
 	// The C file we are compiling
 	//a << '"$TmpPath/$v.out_name_c"'
 	a << '".$v.out_name_c"'
