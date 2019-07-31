@@ -10,6 +10,18 @@ fn _format(msg, open, close string) string {
 	return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
 }
 
+fn _format_rgb(r, g, b int, msg, open, close string) string {
+	return '\x1b[' + open + ';2;' + r.str() + ';' + g.str() + ';' + b.str() + 'm' + msg + '\x1b[' + close + 'm'
+}
+
+pub fn rgb(r, g, b int, msg string) string {
+	return format_rgb(r, g, b, msg, '38', '39')
+}
+
+pub fn bg_rgb(r, g, b int, msg string) string {
+	return format_rgb(r, g, b, msg, '48', '49')
+}
+
 pub fn bg_black(msg string) string {
 	return format(msg, '40', '49')
 }

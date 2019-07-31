@@ -31,3 +31,8 @@ pub fn format(msg, open, close string) string {
 	enable_term_color_win()
 	return _format(msg, open, close)
 }
+
+pub fn format_rgb(r, g, b int, msg, open, close string) string {
+	enable_term_color_win()
+	return _format_rgb(r, g, b, msg, open, close)
+}
