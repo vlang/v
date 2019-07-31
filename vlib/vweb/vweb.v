@@ -1,7 +1,3 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
-
 module vweb
 
 import (
@@ -12,7 +8,8 @@ import (
 ) 
 
 struct Context {
-	static_files map[string]string 
+	static_files map[string]string
+	static_mime_types map[string]string
 pub: 
 	req http.Request 
 	conn net.Socket 
@@ -74,7 +71,6 @@ $html
 } 
 
 pub fn run<T>(port int) { 
-	println('Running vweb app on http://localhost:$port ...')  
 	l := net.listen(port) or { panic('failed to listen') return } 
 	for {
 		conn := l.accept() or {
@@ -104,6 +100,7 @@ pub fn run<T>(port int) {
 				conn: conn 
 				post_form: map[string]string{} 
 				static_files: map[string]string{} 
+				static_mime_types: map[string]string{}
 			} 
 		} 
 		app.init() 
@@ -115,11 +112,13 @@ pub fn run<T>(port int) {
 			println('no vals for http') 
 			return 
 		} 
+
 		// Serve a static file if it's one 
-		if app.vweb.handle_static() {
-			conn.close()
-			continue 
-		} 
+		// if app.vweb.handle_static() {
+		// 	conn.close()
+		// 	continue 
+		// } 
+
 		// Call the right action 
 		app.$action() 
 		conn.close()
@@ -146,12 +145,60 @@ fn (ctx mut Context) parse_form(s string) {
 	}
 } 
 
-fn (ctx mut Context) handle_static() bool { 
+fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
+	// mime types
+	mut mime_types := map[string]string{}
+	mime_types['.css'] = 'text/css; charset=utf-8'
+	mime_types['.gif'] = 'image/gif'
+	mime_types['.htm'] = 'text/html; charset=utf-8'
+	mime_types['.html'] = 'text/html; charset=utf-8'
+	mime_types['.jpg'] = 'image/jpeg'
+	mime_types['.js'] = 'application/javascript'
+	mime_types['.wasm'] = 'application/wasm'
+	mime_types['.pdf'] = 'application/pdf'
+	mime_types['.png'] = 'image/png'
+	mime_types['.svg'] = 'image/svg+xml'
+	mime_types['.xml'] = 'text/xml; charset=utf-8'
+
+	files := os.ls(directory_path)
+
+	if files.len > 0 {
+		for file in files {			
+			mut ext := ''
+			mut i := file.len
+			mut flag := true
+			for i > 0 {
+		 		i--
+				if flag {
+					ext = file.substr(i, i + 1) + ext
+				}
+				if file.substr(i, i + 1) == '.' {
+					flag = false
+				}
+			}
+
+			// todo: os.is_dir is broken now
+			//       so we expect that file is dir it has no extension
+			if flag {
+				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
+			} else {
+				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file 
+				ctx.static_mime_types[mount_path + '/' + file] = mime_types[ext]
+			}
+		}
+	}
+}
+
+pub fn (ctx mut Context) handle_static(directory_path string) bool { 
+	ctx.scan_static_directory(directory_path, '')
+
 	static_file := ctx.static_files[ctx.req.url] 
+	mime_type := ctx.static_mime_types[ctx.req.url]
+
 	if static_file != '' { 
 		data := os.read_file(static_file) or { return false }  
 		ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: text/css 
+Content-Type: $mime_type
 
 $data 
 ')
@@ -160,8 +207,9 @@ $data
 	return false 
 } 
 
-pub fn (ctx mut Context) serve_static(url, file_path string) { 
+pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) { 
 	ctx.static_files[url] = file_path 
+	ctx.static_mime_types[url] = mime_type
 } 
 
 
