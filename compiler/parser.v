@@ -1029,7 +1029,7 @@ fn (p mut Parser) close_scope() {
 			else if v.typ == 'string' { 
 				p.genln('v_string_free($v.name); // close_scope free') 
 			} 
-			else { 
+			else if v.ptr {
 				p.genln('free($v.name); // close_scope free') 
 			} 
 		} 
