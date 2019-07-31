@@ -365,7 +365,7 @@ void init_consts();')
 	// if v.build_mode in [.default, .embed_vlib] {
 	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
 		// vlib can't have `init_consts()`
-		cgen.genln('void init_consts() { g_str_buf=malloc(1000); ${cgen.consts_init.join_lines()} }')
+		cgen.genln('void init_consts() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \n#endif\n g_str_buf=malloc(1000); ${cgen.consts_init.join_lines()} }')
 		// _STR function can't be defined in vlib
 		cgen.genln('
 string _STR(const char *fmt, ...) {
@@ -408,7 +408,7 @@ string _STR_TMP(const char *fmt, ...) {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
 				//println('Generating main()...')
-				cgen.genln('int main() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \n#endif\n init_consts(); $cgen.fn_main; return 0; }')
+				cgen.genln('int main() { init_consts(); $cgen.fn_main; return 0; }')
 			}
 			else {
 				println('panic: function `main` is undeclared in the main module')
@@ -417,7 +417,7 @@ string _STR_TMP(const char *fmt, ...) {
 		}
 		// Generate `main` which calls every single test function
 		else if v.pref.is_test {
-			cgen.genln('int main() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \n#endif\n init_consts();')
+			cgen.genln('int main() { init_consts();')
 			for key, f in v.table.fns { 
 				if f.name.starts_with('test_') {
 					cgen.genln('$f.name();')
