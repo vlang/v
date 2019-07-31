@@ -16,6 +16,7 @@ pub:
 struct Node {
 	left *Node
 	right *Node 
+	is_empty bool 
 	key string
 	val voidptr
 }
@@ -142,6 +143,9 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 */ 
 
 fn (m mut map) preorder_keys(node &Node) { 
+	if node.is_empty {
+		return 
+	} 
 	m._keys[m.key_i] = node.key 
 	m.key_i++ 
 	if !isnil(node.left) { 
@@ -172,6 +176,7 @@ fn (m map) get(key string, out voidptr) bool {
 pub fn (n mut Node) delete(key string, element_size int) { 
 	if n.key == key {
 		C.memset(n.val, 0, element_size)
+		n.is_empty = true 
 		return 
 	} 
 	else if n.key > key {
