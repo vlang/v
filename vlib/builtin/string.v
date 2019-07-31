@@ -238,8 +238,6 @@ pub fn (s string) split(delim string) []string {
 	}
 	if delim.len == 1 {
 		return s.split_single(delim[0])
-		// println('split 1 only')
-		// os.exit()
 	}
 	mut i := 0
 	mut start := 0// - 1
@@ -283,15 +281,15 @@ pub fn (s string) split_single(delim byte) []string {
 	mut i := 0
 	mut start := 0
 	for i < s.len {
-		a := s[i] == delim
-		b := i == s.len - 1
-		if a || b {
-			if i == s.len - 1 {
+		is_delim := s[i] == delim
+		last := i == s.len - 1
+		if is_delim || last {
+			if !is_delim && i == s.len - 1 {
 				i++
 			}
 			val := s.substr(start, i)
 			if val.len > 0 {
-				res << val.trim_space()
+				res << val 
 			}
 			start = i + 1
 		}
