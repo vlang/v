@@ -22,47 +22,36 @@ pub:
 
 struct Response {
 pub:
-	body        string
-	headers     map_string
+	text        string
+	headers     map[string]string 
 	status_code int
 }
 
-// embed 'http'
-pub fn fetch(typ, url, data string) ?Response {
+pub fn get(url string) ?Response {
 	req := new_request('GET', url, '') or {
 		return error(err)
 	}
-	resp := req.do()
-	return resp
+	return req.do()
 }
 
-pub fn get(url string) ?string {
-	resp := fetch('GET', url, '') or {
+pub fn post(url, data string) ?Response {
+	req := new_request('POST', url, data) or {
 		return error(err)
 	}
-	return resp.body
-}
-
-pub fn post(url, data string) ?string {
-	resp := fetch('POST', url, data) or {
-		return error(err)
-	}
-	return resp.body
+	return req.do()
 }
 
 pub fn new_request(typ, _url, _data string) ?Request {
 	if _url == '' {
-		return error('http: empty url')
+		return error('bad url') 
 	}
 	mut url := _url
 	mut data := _data
 	// req.headers['User-Agent'] = 'V $VERSION'
 	if typ == 'GET' && !url.contains('?') && data != '' {
-		println('zeroing data, to url')
 		url = '$url?$data'
 		data = ''
 	}
-	// req.headers = new_map(0, sizeof(string))// []string{}
 	return Request {
 		typ: typ
 		url: url
@@ -72,6 +61,11 @@ pub fn new_request(typ, _url, _data string) ?Request {
 		headers: map[string]string{} 
 	}
 }
+
+pub fn get_text(url string) string {
+	resp := get(url) or { return  '' } 
+	return resp.text 
+} 
 
 fn (req mut Request) free() {
 	req.headers.free()

@@ -185,7 +185,7 @@ pub fn (req &Request) do() Response {
 	C.curl_easy_cleanup(curl)
 	//println('end of req.do() url="$req.url"')
 	return Response {
-		body: body
+		text: body
 	}
 }
 

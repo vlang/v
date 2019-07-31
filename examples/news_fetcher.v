@@ -37,7 +37,7 @@ fn (f mut Fetcher) fetch() {
 			println('failed to fetch data from /v0/item/${id}.json')
 			exit(1)
 		}
-		story := json.decode(Story, resp) or {
+		story := json.decode(Story, resp.text) or {
 			println('failed to decode a story')
 			exit(1)
 		}
@@ -52,7 +52,7 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	mut ids := json.decode([]int, resp) or {
+	mut ids := json.decode([]int, resp.text) or {
 		println('failed to decode topstories.json')
 		return
 	}
