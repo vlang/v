@@ -80,6 +80,12 @@ const (
     O_TRUNC  = 128 // truncate regular writable file when opened.
 )
 
+// ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
+const (
+	S_IFMT  = 0xF000 // type of file
+	S_IFDIR = 0x4000 // directory
+)
+
 // Windows 
 const(
 	INVALID_HANDLE_VALUE = -1
