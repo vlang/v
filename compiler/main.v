@@ -1342,6 +1342,7 @@ fn update_v() {
 	mut s := os.exec('git -C "$vroot" pull --rebase origin master') 
 	println(s) 
 	$if windows { 
+		os.mv('$vroot/v.exe', '$vroot/v_old.exe') 
 		s = os.exec('$vroot/make.bat') 
 		println(s) 
 	} $else { 
