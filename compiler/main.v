@@ -116,6 +116,10 @@ fn main() {
 		println('Translating C to V will be available in V 0.3') 
 		return 
 	} 
+	if 'up' in args {
+		update_v() 
+		return 
+	} 
 	// TODO quit if the compiler is too old 
 	// u := os.file_last_mod_unix('v')
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
@@ -1299,6 +1303,7 @@ Options:
   -debug            Leave a C file for debugging in .program.c. 
   -live             Enable hot code reloading (required by functions marked with [live]). 
   fmt               Run vfmt to format the source code. 
+  up                Update V. 
   run               Build and execute a V program. You can add arguments after the file name.
 
 
@@ -1330,3 +1335,17 @@ fn env_vflags_and_os_args() []string {
    }
    return args
 }
+
+fn update_v() {
+	println('Updating V...') 
+	vroot := os.dir(os.executable()) 
+	mut s := os.exec('git -C "$vroot" pull --rebase origin master') 
+	println(s) 
+	$if windows { 
+		s = os.exec('$vroot/make.bat') 
+		println(s) 
+	} $else { 
+		s = os.exec('make -C "$vroot"') 
+		println(s) 
+	} 
+} 
