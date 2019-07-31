@@ -20,6 +20,21 @@ import const (
 	INTERNET_MAX_URL_LENGTH
 	URL_ESCAPE_PERCENT
 	URL_ESCAPE_SEGMENT_ONLY
+	HTTP_QUERY_RAW_HEADERS_CRLF
+	// flags
+	INTERNET_FLAG_HYPERLINK
+	INTERNET_FLAG_IGNORE_CERT_CN_INVALID
+	INTERNET_FLAG_IGNORE_CERT_DATE_INVALID
+	INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP
+	INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS
+	INTERNET_FLAG_NO_AUTH
+	INTERNET_FLAG_NO_CACHE_WRITE
+	INTERNET_FLAG_NO_UI
+	INTERNET_FLAG_NO_COOKIES
+	INTERNET_FLAG_KEEP_CONNECTION
+	INTERNET_FLAG_PRAGMA_NOCACHE
+	INTERNET_FLAG_SECURE
+	INTERNET_FLAG_RELOAD
 )
 
 const (
@@ -55,62 +70,43 @@ pub fn (req &Request) do() Response {
 	data := req.data
 	// Retrieve default http user agent
 	user_agent := ''
-	// DWORD szhttpUserAgent = sizeof(httpUseragent);
-	// ObtainUserAgentString(0, httpUseragent, &szhttpUserAgent);
-	// # HINTERNET internet = InternetOpenA(httpUseragent, INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
 	internet := C.InternetOpen(user_agent.to_wide(), INTERNET_OPEN_TYPE_PRECONFIG, 0, 0, 0)
-	// # if (!internet)
 	if isnil(internet) {
 		println('InternetOpen() failed')
 		return emptyresp
 	}
 	port := int(if is_ssl{INTERNET_DEFAULT_HTTPS_PORT} else { INTERNET_DEFAULT_HTTP_PORT})
-	// if is_ssl {
-	// # port = INTERNET_DEFAULT_HTTPS_PORT;
-	// }
 	connect := C.InternetConnect(internet, host.to_wide(), port, 0, 0, INTERNET_SERVICE_HTTP, 0, 0)
-	// # HINTERNET connect = InternetConnectA(internet, host.str, port, NULL, NULL,
-	// # INTERNET_SERVICE_HTTP, 0, 0);
-	# if (!connect)
 	if isnil(connect) {
 		e := C.GetLastError()
 		println('[windows] InternetConnect() failed')
 		C.printf('err=%d\n', e)
 		return emptyresp
 	}
-	flags := 0
-	#flags =
-	# INTERNET_FLAG_HYPERLINK | INTERNET_FLAG_IGNORE_CERT_CN_INVALID |
-	# INTERNET_FLAG_IGNORE_CERT_DATE_INVALID |
-	# INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP |
-	# INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS | INTERNET_FLAG_NO_AUTH |
-	# INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_NO_UI |
-	# INTERNET_FLAG_NO_COOKIES  |  // ...
-	# INTERNET_FLAG_KEEP_CONNECTION |
-	# INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_RELOAD ;
+	mut flags :=
+	 INTERNET_FLAG_HYPERLINK | INTERNET_FLAG_IGNORE_CERT_CN_INVALID |
+	 INTERNET_FLAG_IGNORE_CERT_DATE_INVALID |
+	 INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP |
+	 INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS | INTERNET_FLAG_NO_AUTH |
+	 INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_NO_UI |
+	 INTERNET_FLAG_NO_COOKIES  |  // ...
+	 INTERNET_FLAG_KEEP_CONNECTION |
+	 INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_RELOAD
 	if is_ssl {
-		#flags = flags | INTERNET_FLAG_SECURE;
+		flags = flags | INTERNET_FLAG_SECURE
 	}
 	request := C.HttpOpenRequest(connect, req.typ.to_wide(), path.to_wide(), 'HTTP/1.1'.to_wide(), 0, 0, flags, 0)
-	// request := C.InternetOpenUrl(connect, req.typ.str, path.str, 'HTTP/1.1', 0, 0, flags, 0)
-	// # HINTERNET request = HttpOpenRequest(connect, req->typ.str, path.str, "HTTP/1.1",
-	// # NULL, NULL, flags, NULL);
-	// # if (!request)
 	if isnil(request) {
 		println('HttpOpenRequest() failed')
 		return emptyresp
 	}
-	// println('LEN BEFORE SEND=$headers.len ; $headers')
 	ret := C.HttpSendRequest(request, headers.to_wide(), -1, data.str, data.len)
-	// # printf("RET=%d\n", ret);
-	// # int e = GetLastError();
-	// # printf("e=%d\n", e);
 	// Get response headers
 	// Todo call twice to get len
-	# LPSTR h_buf = malloc(1024);
-	# DWORD dwSize = 1024;
-	# HttpQueryInfo(request, HTTP_QUERY_RAW_HEADERS_CRLF,
-	# h_buf,&dwSize,NULL);
+	size := 1024
+	h_buf := malloc(size)
+	
+	C.HttpQueryInfo(request, HTTP_QUERY_RAW_HEADERS_CRLF, h_buf, &size, 0)
 	// Get response  body
 	mut buf := [1025]byte
 	mut nr_read := 0
@@ -135,7 +131,7 @@ pub fn (req &Request) do() Response {
 	C.InternetCloseHandle(request)
 	C.InternetCloseHandle(connect)
 	C.InternetCloseHandle(internet)
-	# resp_headers = tos2(h_buf);
+	resp_headers = string(h_buf)
 	hh := resp_headers.split('\n')
 	mut resp := Response {
 		text: s
