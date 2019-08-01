@@ -3,16 +3,14 @@
 // that can be found in the LICENSE file.
 
 fn test_new_url() {
-	u := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
-
 	query := 'Hellö Wörld@vlang'
 	assert url.query_escape(query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
 
-	u := url.parse(u) or {
+	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
+	u := url.parse(test_url) or {
 		assert false
 		return
 	}
-
 	assert u.scheme     == 'https' &&
 		u.hostname()    == 'www.mydomain.com' &&
 		u.port()        == '8080' &&
