@@ -144,7 +144,7 @@ pub fn path_unescape(s string) ?string {
 
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
-pub fn unescape(s string, mode EncodingMode) ?string {
+fn unescape(s string, mode EncodingMode) ?string {
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
@@ -201,8 +201,7 @@ pub fn unescape(s string, mode EncodingMode) ?string {
 		return s
 	}
 
-	mut t := strings.new_builder(1000) 
-	// t.Grow(s.len - 2*n)
+	mut t := strings.new_builder(s.len - 2*n)
 	for i := 0; i < s.len; i++ {
 		x := s[i]
 		switch x {
@@ -224,13 +223,13 @@ pub fn unescape(s string, mode EncodingMode) ?string {
 
 // query_escape escapes the string so it can be safely placed
 // inside a URL query.
-fn query_escape(s string) string {
+pub fn query_escape(s string) string {
 	return escape(s, EncodingMode.EncodeQueryComponent)
 }
 
 // path_escape escapes the string so it can be safely placed inside a URL path segment,
 // replacing special characters (including /) with %XX sequences as needed.
-fn path_escape(s string) string {
+pub fn path_escape(s string) string {
 	return escape(s, EncodingMode.EncodePathSegment)
 }
 
@@ -279,11 +278,11 @@ fn escape(s string, mode EncodingMode) string {
 		if c1 == ` ` && mode == EncodingMode.EncodeQueryComponent {
 			t[j] = `+`
 			j++
-		} else if should_escape(c, mode) {
+		} else if should_escape(c1, mode) {
 			t[j] = `%`
-			// NOTE: CHECK
-			t[j+1] = byte('0123456789ABCDEF'.at(int(c1)>>4))
-			t[j+2] = byte('0123456789ABCDEF'.at(int(c1)&15))
+			x := '0123456789ABCDEF'
+			t[j+1] = x[c1>>4]
+			t[j+2] = x[c1&15]
 			j += 3
 		} else {
 			t[j] = s[i]
@@ -326,7 +325,7 @@ pub: mut:
 
 // user returns a Userinfo containing the provided username
 // and no password set.
-fn user(username string) *Userinfo {
+pub fn user(username string) *Userinfo {
 	return &Userinfo{
 		username: username,
 		password: '',
@@ -743,10 +742,7 @@ fn valid_optional_port(port string) bool {
 //	- if u.raw_query is empty, ?query is omitted.
 //	- if u.fragment is empty, #fragment is omitted.
 pub fn (u &URL) str() string {
-	mut buf := strings.new_builder(1000) 
-	defer {
-		buf.free()
-	}
+	mut buf := strings.new_builder(200)
 	if u.scheme != '' {
 		buf.write(u.scheme)
 		buf.write(':')
@@ -871,7 +867,7 @@ fn (v Values) encode() string {
 	if v.size == 0 {
 		return ''
 	}
-	mut buf := strings.new_builder(1000) 
+	mut buf := strings.new_builder(200)
 	mut keys := []string
 	for k, _ in v.data {
 		keys << k
@@ -1026,12 +1022,10 @@ pub fn (u &URL) port() string {
 }
 
 pub fn strip_port(hostport string) string {
-	// colon := strings.IndexByte(hostport, ':')
 	colon := hostport.index(':')
 	if colon == -1 {
 		return hostport
 	}
-	// if i := strings.IndexByte(hostport, ']'); i != -1 {
 	i := hostport.index(']')
 	if i != -1 {
 		return hostport.left(i).trim_left('[')
@@ -1040,7 +1034,6 @@ pub fn strip_port(hostport string) string {
 }
 
 pub fn port_only(hostport string) string {
-	// colon := strings.IndexByte(hostport, ':')
 	colon := hostport.index(':')
 	if colon == -1 {
 		return ''

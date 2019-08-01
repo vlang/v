@@ -1,3 +1,7 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module url
 
 struct ValueStruct {
@@ -50,7 +54,6 @@ fn (v Values) set(key, value string) {
 // Add adds the value to key. It appends to any existing
 // values associated with key.
 fn (v mut Values) add(key, value string) {
-	println('add: $key - $value')
 	mut a := v.data[key]
 	a.data << value
 }
@@ -62,8 +65,5 @@ fn (v mut Values) del(key string) {
 }
 
 pub fn (v Values) iter() map[string]Value {
-	for k, vv in v.data {
-		println(' * K: $k')
-	}
 	return v.data
 }
