@@ -156,7 +156,7 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_pkg = p.mod == 'builtin'
-	p.can_chash = p.mod == 'ft' || 	p.mod == 'http' ||  p.mod == 'glfw' || p.mod=='ui' // TODO tmp remove
+	p.can_chash = p.mod == 'ft' || 	p.mod == 'glfw' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
@@ -1029,7 +1029,7 @@ fn (p mut Parser) close_scope() {
 			else if v.typ == 'string' { 
 				p.genln('v_string_free($v.name); // close_scope free') 
 			} 
-			else { 
+			else if v.ptr {
 				p.genln('free($v.name); // close_scope free') 
 			} 
 		} 
@@ -3086,10 +3086,10 @@ fn (p mut Parser) assert_statement() {
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
-	filename := p.file_path
+	filename := p.file_path.replace('\\', '\\\\')
 	p.genln(';\n 
-if (!$tmp) { 
-  puts("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m");  
+if (!$tmp) {
+  println(tos2("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
 g_test_ok = 0 ; 
 	// TODO
 	// Maybe print all vars in a test function if it fails? 

@@ -400,8 +400,8 @@ pub fn (s string) index(p string) int {
 }
 
 pub fn (s string) index_any(chars string) int {
-	for char in chars {
-		index := s.index(char)
+	for c in chars {
+		index := s.index(c.str())
 		if index != -1 {
 			return index
 		}
@@ -700,7 +700,7 @@ pub fn (u ustring) right(pos int) string {
 	return u.substr(pos, u.len)
 }
 
-fn (s string) at(idx int) byte {
+pub fn (s string) at(idx int) byte {
 	if idx < 0 || idx >= s.len {
 		panic('string index out of range: $idx / $s.len')
 	}

@@ -7,6 +7,7 @@ module strings
 struct Builder {
 mut: 
 	buf []byte
+pub:
 	len int
 }
 

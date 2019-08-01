@@ -17,7 +17,8 @@ type wsfn fn (s string, ptr voidptr)
 
 struct MemoryStruct {
 	size     size_t
-	ws_func  wsfn
+	//ws_func  wsfn
+	ws_func  fn(string, voidptr) 
 	user_ptr voidptr // for wsfn
 	strings  []string
 }
@@ -43,15 +44,13 @@ import const (
 
 fn C.curl_easy_strerror(curl voidptr) byteptr
 
-fn C.curl_easy_perform(curl voidptr) C.CURLcode
+fn C.curl_easy_perform(curl voidptr) int// C.CURLcode
 
 fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 	mut mem := _mem
 	// # printf("size =%d nmemb=%d contents=%s\n", size, nmemb, contents);
 	realsize := size * nmemb// TODO size_t ?
-	// if !isnil(mem.ws_func) {
-	# if (mem->ws_func)
-	{
+	if !isnil(mem.ws_func) {
 		//C.printf('\n\nhttp_mac.m: GOT WS FUNC. size=%d\n', realsize)
 		// Skip negative and 0 junk chars in the WS string
 		mut start := 0
@@ -65,8 +64,9 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 		contents += start + 1
 		// printf("GOOD CONTEnTS=%s\n", contents);
 		s := string(contents)
-		// mem.ws_func('kek', 0)
-		# mem->ws_func(s, mem->user_ptr);
+		f := mem.ws_func 
+		f(s, mem.user_ptr) 
+		//# mem->ws_func(s, mem->user_ptr);
 	}
 	mut c := string(contents)
 	c = c.trim_space()
@@ -139,8 +139,7 @@ pub fn (req &Request) do() Response {
 	//println('bef easy()')
 	res := C.curl_easy_perform(curl)
 	//println('after easy()')
-	# if (res != CURLE_OK )
-	{
+	if res != CURLE_OK { 
 		err := C.curl_easy_strerror(res)
 		println('curl_easy_perform() failed: $err')
 	}
@@ -185,16 +184,26 @@ pub fn (req &Request) do() Response {
 	C.curl_easy_cleanup(curl)
 	//println('end of req.do() url="$req.url"')
 	return Response {
-		body: body
+		text: body
 	}
 }
 
-pub fn unescape(s string) string {
+pub fn unescape_url(s string) string {
 	return string(byteptr(C.curl_unescape(s.str, s.len)))
 }
 
-pub fn escape(s string) string {
+pub fn escape_url(s string) string {
 	return string(byteptr(C.curl_escape(s.str, s.len)))
+}
+
+pub fn unescape(s string) string {
+	panic('http.unescape() was replaced with http.unescape_url()') 
+	return '' 
+}
+
+pub fn escape(s string) string {
+	panic('http.escape() was replaced with http.escape_url()') 
+	return '' 
 }
 
 // ////////////////

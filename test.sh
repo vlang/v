@@ -5,7 +5,7 @@ for f in `find . -type f -name '*_test.v'`; do
         v $f || echo "fail"
 done
 
-for f in examples/*.v ; do
+for f in `find examples -type f -name '*.v'`; do
         echo "Building $f..."
         v $f || echo "fail"
 done

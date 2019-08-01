@@ -20,11 +20,12 @@ fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) int {
 	mut data := &DownloadStruct(userp)
 	written := C.fwrite(ptr, size, nmemb, data.stream) 
 	data.written += written 
-	#data->cb(data->written); // TODO 
+	data.cb(data.written) 
+	//#data->cb(data->written); // TODO 
 	return written 
 }
 
-fn download_file_with_progress(url, out string, cb downloadfn, cb_finished download_finished_fn) {   
+fn download_file_with_progress(url, out string, cb downloadfn, cb_finished fn()) {   
 	curl := C.curl_easy_init()
 	if isnil(curl) {
 		return
@@ -43,7 +44,7 @@ fn download_file_with_progress(url, out string, cb downloadfn, cb_finished downl
 	C.curl_easy_perform(curl) 
 	C.curl_easy_cleanup(curl) 
 	C.fclose(fp) 
-	#cb_finished(); // TODO 
+	cb_finished() 
 }
 
 fn download_file(url, out string) {

@@ -33,11 +33,8 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      echo "Running make.bat..."
-      ./make.bat
-      ./v.exe -debug -o v2.exe compiler
-      gcc -Ithirdparty/microsoft_craziness -DUNICODE -D_UNICODE .v2.exe.c thirdparty/microsoft_craziness/microsoft_craziness.c -o v2.exe -lole32 -ladvapi32 -loleaut32
-      ./v2.exe -o v3.exe compiler
+      echo "Running make_tests.bat..."
+      ./make_tests.bat
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
