@@ -84,6 +84,9 @@ pub fn run<T>(port int) {
 		first_line := s.all_before('\n')
 		vals := first_line.split(' ') 
 		mut action := vals[1].right(1).all_before('/') 
+		if action.contains('?') {
+			action = action.all_before('?') 
+		} 
 		if action == '' {
 			action = 'index' 
 		} 
