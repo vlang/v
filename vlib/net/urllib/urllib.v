@@ -204,7 +204,7 @@ fn unescape(s string, mode EncodingMode) ?string {
 		x := s[i]
 		switch x {
 		case `%`:
-			t.write( (unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
+			t.write( byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
 			i += 2
 		case `+`:
 			if mode == .EncodeQueryComponent {
@@ -482,7 +482,7 @@ fn parse_request_url(rawurl string, via_request bool) ?URL {
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
 
-	// if rest.ends_with('?') && strings.Count(rest, '?') == 1 {
+	// if rest.ends_with('?') && strings.count(rest, '?') == 1 {
 	if rest.ends_with('?') && !rest.trim_right('?').contains('?') {
 		url.force_query = true
 		rest = rest.left(rest.len-1)
