@@ -162,7 +162,7 @@ pub fn escape_url(s string) string {
 pub fn unescape_url(s string) string {
 	mut buf := &u16(malloc(INTERNET_MAX_URL_LENGTH * 2))
 	mut nr_chars := INTERNET_MAX_URL_LENGTH
-	res := C.UrlUnescape(s.to_wide(), &buf, &nr_chars, URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
+	res := C.UrlUnescape(s.to_wide(), buf, &nr_chars, URL_ESCAPE_AS_UTF8 | URL_ESCAPE_ASCII_URI_COMPONENT)
 	return string_from_wide2(buf, nr_chars)
 }
 
