@@ -15,9 +15,7 @@
 
 module urllib
 
-import (
-	strings
-)
+import strings
 
 enum EncodingMode {
 	EncodePath

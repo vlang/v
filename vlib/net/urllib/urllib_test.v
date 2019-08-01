@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-import urllib
+import net.urllib
 
 fn test_new_urllib() {
 	test_query := 'Hellö Wörld@vlang'
