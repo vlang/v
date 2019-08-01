@@ -88,3 +88,4 @@ pub fn (req mut Request) add_header(key, val string) {
 	// h += ' -H "${key}: ${val}" '
 	// req.h = h
 }
+
