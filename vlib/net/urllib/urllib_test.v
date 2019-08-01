@@ -2,7 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-fn test_new_url() {
+import urllib
+
+fn test_new_urllib() {
 	query := 'Hellö Wörld@vlang'
 	assert url.query_escape(query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
 
