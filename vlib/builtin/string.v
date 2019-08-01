@@ -700,7 +700,7 @@ pub fn (u ustring) right(pos int) string {
 	return u.substr(pos, u.len)
 }
 
-pub fn (s string) at(idx int) byte {
+fn (s string) at(idx int) byte {
 	if idx < 0 || idx >= s.len {
 		panic('string index out of range: $idx / $s.len')
 	}
