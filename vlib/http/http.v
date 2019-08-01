@@ -6,8 +6,8 @@ module http
 
 struct Request {
 pub:
-	// headers  []string
-	headers  map_string
+	headers2  []string
+	headers  map[string]string 
 	method   string
 	// cookies map[string]string
 	h        string
