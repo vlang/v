@@ -27,10 +27,7 @@ pub:
 	status_code int
 }
 
-struct UrlParams
-
-// embed 'http'
-pub fn fetch(typ, url, data string) ?Response {
+pub fn get(url string) ?Response {
 	req := new_request('GET', url, '') or {
 		return error(err)
 	}
@@ -91,4 +88,3 @@ pub fn (req mut Request) add_header(key, val string) {
 	// h += ' -H "${key}: ${val}" '
 	// req.h = h
 }
-
