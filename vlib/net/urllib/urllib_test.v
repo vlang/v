@@ -6,10 +6,10 @@ import net.urllib
 
 fn test_new_urllib() {
 	test_query := 'Hellö Wörld@vlang'
-	assert url.query_escape(test_query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
+	assert urllib.query_escape(test_query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
 
 	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
-	u := url.parse(test_url) or {
+	u := urllib.parse(test_url) or {
 		assert false
 		return
 	}
