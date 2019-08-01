@@ -399,6 +399,16 @@ pub fn (s string) index(p string) int {
 	return -1
 }
 
+pub fn (s string) index_any(chars string) int {
+	for c in chars {
+		index := s.index(c.str())
+		if index != -1 {
+			return index
+		}
+	}
+	return -1
+}
+
 pub fn (s string) last_index(p string) int {
 	if p.len > s.len {
 		return -1
