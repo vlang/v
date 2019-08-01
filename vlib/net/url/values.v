@@ -12,7 +12,7 @@ struct Values {
 pub:
 mut:
 	data map[string]Value
-    size int
+	size int
 }
 
 fn new_values() Values {
@@ -22,7 +22,7 @@ fn new_values() Values {
 }
 
 pub fn (v Value) all() []string {
-    return v.data
+	return v.data
 }
 
 // Get gets the first value associated with the given key.
@@ -44,26 +44,26 @@ fn (v Values) get(key string) string {
 // values.
 fn (v Values) set(key, value string) {
 	v.data[key].data = [value]
-    v.size = v.data.size
+	v.size = v.data.size
 }
 
 // Add adds the value to key. It appends to any existing
 // values associated with key.
 fn (v mut Values) add(key, value string) {
 	println('add: $key - $value')
-    mut a := v.data[key]
-    a.data << value
+	mut a := v.data[key]
+	a.data << value
 }
 
 // Del deletes the values associated with key.
 fn (v mut Values) del(key string) {
 	v.data.delete(key)
-    v.size = v.data.size
+	v.size = v.data.size
 }
 
 pub fn (v Values) iter() map[string]Value {
-    for k, vv in v.data {
-        println(' * K: $k')
-    }
-    return v.data
+	for k, vv in v.data {
+		println(' * K: $k')
+	}
+	return v.data
 }

@@ -1095,13 +1095,13 @@ fn string_contains_ctl_byte(s string) bool {
 
 pub fn ishex(c byte) bool {
 	if `0` <= c && c <= `9` {
-        return true
-    } else if `a` <= c && c <= `f` {
-        return true
-    } else if `A` <= c && c <= `F` {
-        return true
-    }
-    return false
+		return true
+	} else if `a` <= c && c <= `f` {
+		return true
+	} else if `A` <= c && c <= `F` {
+		return true
+	}
+	return false
 }
 
 fn unhex(c byte) byte {
