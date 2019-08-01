@@ -1,6 +1,6 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 
 // Package url parses URLs and implements query escaping.
 
@@ -9,6 +9,9 @@
 
 // Based off:   https://github.com/golang/go/blob/master/src/net/url/url.go
 // Last commit: https://github.com/golang/go/commit/a326bc6df27309815e4a2ae005adef233cfb9ea9
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 module url
 
