@@ -58,12 +58,12 @@ pub fn (v mut Values) set(key, value string) {
 // Add adds the value to key. It appends to any existing
 // values associated with key.
 pub fn (v mut Values) add(key, value string) {
-    mut a := v.data[key]
-    if a.data.len == 0 {
-    	a.data = []string
-    }
-    a.data << value
-    v.data[key] = a
+	mut a := v.data[key]
+	if a.data.len == 0 {
+		a.data = []string
+	}
+	a.data << value
+	v.data[key] = a
 	v.size = v.data.size
 }
 
