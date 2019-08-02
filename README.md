@@ -134,6 +134,10 @@ v run tetris/tetris.v
 
 In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
 
+```
+v install glfw
+```
+
 If you plan to use the http package, you also need to install libcurl.
 
 ```
