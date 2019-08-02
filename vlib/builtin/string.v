@@ -454,6 +454,22 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
+// counts occurrences of substr in s
+pub fn (s string) count(substr string) int {
+	if s.len == 0 || substr.len == 0 {
+		return 0
+	}
+	mut n := 0
+	for {
+		i := s.index(substr)
+		if i == -1 {
+			return n
+		}
+		n++
+		s = s.right(i+substr.len)
+	}
+}
+
 pub fn (s string) contains(p string) bool {
 	res := s.index(p) > 0 - 1
 	return res
