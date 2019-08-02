@@ -92,7 +92,3 @@ pub fn (v mut Values) del(key string) {
 	v.data.delete(key)
 	v.size = v.data.size
 }
-
-pub fn (v Values) iter() map[string]Value {
-	return v.data
-}
