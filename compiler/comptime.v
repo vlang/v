@@ -207,5 +207,11 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	} 
 	p.check(.lpar) 
 	p.check(.rpar) 
+	if p.tok == .key_orelse {
+		p.check(.key_orelse) 
+		p.genln('else {') 
+		p.check(.lcbr)
+		p.statements() 
+	} 
 } 
 

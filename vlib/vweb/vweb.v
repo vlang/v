@@ -45,6 +45,10 @@ $h
 ') 
 } 
 
+pub fn (ctx Context) not_found(s string) {
+        ctx.conn.write('HTTP/1.1 404 Not Found') 
+} 
+
 pub fn (ctx mut Context) set_cookie(key, val string) {
 	ctx.set_header('Set-Cookie', '$key=$val') 
 } 
@@ -117,6 +121,12 @@ pub fn run<T>(port int) {
 		if action.contains('?') {
 			action = action.all_before('?') 
 		} 
+		if action == 'favicon.ico' {
+			println('favicon.ico') 
+			conn.write('HTTP/1.1 404 Not Found') 
+			conn.close()
+			continue 
+		} 
 		if action == '' {
 			action = 'index' 
 		} 
@@ -144,7 +154,8 @@ pub fn run<T>(port int) {
 		println('vweb action = "$action"') 
 		if vals.len < 2 {
 			println('no vals for http') 
-			return 
+			conn.close()
+			continue 
 		} 
 
 		// Serve a static file if it's one 
@@ -154,7 +165,13 @@ pub fn run<T>(port int) {
 		// } 
 
 		// Call the right action 
-		app.$action() 
+		app.$action() or { 
+			conn.write('HTTP/1.1 404 Not Found 
+Content-Type: text/plain 
+
+404 not found 
+') 
+		} 
 		conn.close()
 	}
 } 
@@ -170,7 +187,9 @@ fn (ctx mut Context) parse_form(s string) {
 		str_form = str_form.replace('+', ' ')
 		words := str_form.split('&')
 		for word in words {
+			println('parse form keyval="$word"') 
 			keyval := word.split('=')
+			if keyval.len != 2 { continue } 
 			key := keyval[0]
 			val := keyval[1]
 			//println('http form $key => $val') 
