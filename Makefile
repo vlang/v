@@ -1,6 +1,7 @@
 CC ?= cc
 CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
+VC ?= 0.1.17
 
 all: v
 	$(info V has been successfully built)
@@ -12,11 +13,11 @@ v-release: v.c
 	./v -cflags '${CFLAGS}' -o v compiler
 	strip v
 
-v.c.out: v.0.1.16.c
-	${CC} -std=gnu11 -w -o v.c.out v.0.1.16.c -lm
+v.c.out: v.${VC}.c
+	${CC} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
 
-v.0.1.16.c:
-	curl -o v.0.1.16.c -Ls https://github.com/vlang/vc/raw/0.1.16/v.c
+v.${VC}.c:
+	curl -o v.${VC}.c -Ls https://github.com/vlang/vc/raw/${VC}/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
