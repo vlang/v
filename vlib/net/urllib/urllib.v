@@ -432,7 +432,7 @@ pub fn parse(rawurl string) ?URL {
 	p := split(rawurl, '#', true)
 	u := p[0]
 	frag := p[1]
-	mut url := parse_request_url(u, false) or {
+	mut url := _parse(u, false) or {
 		return error(error_msg(ParseError, u))
 	}
 	if frag == '' {
@@ -451,14 +451,14 @@ pub fn parse(rawurl string) ?URL {
 // The string rawurl is assumed not to have a #fragment suffix.
 // (Web browsers strip #fragment before sending the URL to a web server.)
 fn parse_request_uri(rawurl string) ?URL {
-	return parse_request_url(rawurl, true)
+	return _parse(rawurl, true)
 }
 
-// parse parses a URL from a string in one of two contexts. If
+// _parse parses a URL from a string in one of two contexts. If
 // via_request is true, the URL is assumed to have arrived via an HTTP request,
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If via_request is false, all forms of relative URLs are allowed.
-fn parse_request_url(rawurl string, via_request bool) ?URL {
+fn _parse(rawurl string, via_request bool) ?URL {
 	if string_contains_ctl_byte(rawurl) {
 		return error(error_msg('invalid control character in URL', rawurl))
 	}
