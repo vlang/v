@@ -460,13 +460,14 @@ pub fn (s string) count(substr string) int {
 		return 0
 	}
 	mut n := 0
+	mut i := 0
 	for {
-		i := s.index(substr)
+		i := s.index_after(substr, i)
 		if i == -1 {
 			return n
 		}
+		i += substr.len
 		n++
-		s = s.right(i+substr.len)
 	}
 }
 
