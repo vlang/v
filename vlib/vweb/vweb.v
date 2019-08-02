@@ -120,14 +120,9 @@ pub fn run<T>(port int) {
 		first_line := s.all_before('\n')
 		vals := first_line.split(' ') 
 		mut action := vals[1].right(1).all_before('/') 
+		println('vweb.v: action="$action"')
 		if action.contains('?') {
 			action = action.all_before('?') 
-		} 
-		if action == 'favicon.ico' {
-			println('favicon.ico') 
-			conn.write('HTTP/1.1 404 Not Found') 
-			conn.close()
-			continue 
 		} 
 		if action == '' {
 			action = 'index' 
@@ -170,7 +165,7 @@ pub fn run<T>(port int) {
 			conn.write('HTTP/1.1 404 Not Found 
 Content-Type: text/plain 
 
-404 not found 
+404 not found
 ') 
 		} 
 		conn.close()
