@@ -10,9 +10,6 @@
 
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/rc4
 // Last commit: https://github.com/golang/go/commit/b35dacaac57b039205d9b07ea24098e2c3fcb12e
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
 
 module rc4
 

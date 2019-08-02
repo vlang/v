@@ -9,9 +9,6 @@
 
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/md5
 // Last commit: https://github.com/golang/go/commit/ed7f323c8f4f6bc61a75146bf34f5b8f73063a17
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
 
 module md5
 

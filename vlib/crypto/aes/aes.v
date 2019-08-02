@@ -4,9 +4,6 @@
 
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/aes
 // Last commit: https://github.com/golang/go/commit/691a2d457ab1bf03bd46d4b69e0f93b8993c0055
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
 
 module aes
 
