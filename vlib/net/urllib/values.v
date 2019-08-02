@@ -10,6 +10,8 @@ mut:
 	data []string
 }
 
+// using this instead of just ValueStruct
+// because of unknown map initializer bug
 type Value ValueStruct
 
 struct Values {
@@ -19,21 +21,27 @@ mut:
 	size int
 }
 
-fn new_values() Values {
+// new_values returns a new Values struct for creating
+// urlencoded query string parameters. it can also be to 
+// post form data with application/x-www-form-urlencoded.
+// values.encode() will return the encoded data
+pub fn new_values() Values {
 	return Values{
 		data: map[string]Value{}
 	}
 }
 
-pub fn (v Value) all() []string {
+// Currently you will need to use all()[key].data
+// once map[string][]string is implemented
+// this will be fixed
+pub fn (v &Value) all() []string {
 	return v.data
 }
 
-// Get gets the first value associated with the given key.
-// If there are no values associated with the key, Get returns
-// the empty string. To access multiple values, use the map
-// directly.
-fn (v Values) get(key string) string {
+// get gets the first value associated with the given key.
+// If there are no values associated with the key, get returns
+// a empty string.
+pub fn (v Values) get(key string) string {
 	if v.data.size == 0 {
 		return ''
 	}
@@ -44,26 +52,43 @@ fn (v Values) get(key string) string {
 	return vs.data[0]
 }
 
-// Set sets the key to value. It replaces any existing
+// get_all gets the all the values associated with the given key.
+// If there are no values associated with the key, get returns
+// a empty []string.
+pub fn (v Values) get_all(key string) []string {
+	if v.data.size == 0 {
+		return []string
+	}
+	vs := v.data[key]
+	if vs.data.len == 0 {
+		return []string
+	}
+	return vs.data
+}
+
+// set sets the key to value. It replaces any existing
 // values.
-fn (v Values) set(key, value string) {
-	v.data[key].data = [value]
+pub fn (v mut Values) set(key, value string) {
+	mut a := v.data[key]
+	a.data = [value]
+	v.data[key] = a
 	v.size = v.data.size
 }
 
-// Add adds the value to key. It appends to any existing
+// add adds the value to key. It appends to any existing
 // values associated with key.
-fn (v mut Values) add(key, value string) {
+pub fn (v mut Values) add(key, value string) {
 	mut a := v.data[key]
+	if a.data.len == 0 {
+		a.data = []string
+	}
 	a.data << value
+	v.data[key] = a
+	v.size = v.data.size
 }
 
-// Del deletes the values associated with key.
-fn (v mut Values) del(key string) {
+// del deletes the values associated with key.
+pub fn (v mut Values) del(key string) {
 	v.data.delete(key)
 	v.size = v.data.size
-}
-
-pub fn (v Values) iter() map[string]Value {
-	return v.data
 }
