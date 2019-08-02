@@ -16,7 +16,7 @@ v.c.out: v.0.1.16.c
 	${CC} -std=gnu11 -w -o v.c.out v.0.1.16.c -lm
 
 v.0.1.16.c:
-	curl -o v.0.1.16.c -s https://github.com/vlang/vc/raw/0.1.16/v.c
+	curl -o v.0.1.16.c -Ls https://github.com/vlang/vc/raw/0.1.16/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
