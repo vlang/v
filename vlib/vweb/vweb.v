@@ -88,6 +88,8 @@ $html
 pub fn run<T>(port int) { 
 	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') return } 
+	mut app := T{} 
+	app.init() 
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
@@ -138,16 +140,15 @@ pub fn run<T>(port int) {
 		        method: vals[0]
 		        url: vals[1] 
 		} 
-		mut app := T{
-			vweb: Context{
-				req: req 
-				conn: conn 
-				post_form: map[string]string{} 
-				static_files: map[string]string{} 
-				static_mime_types: map[string]string{}
-			} 
+		//mut app := T{
+		app.vweb = Context{
+			req: req 
+			conn: conn 
+			post_form: map[string]string{} 
+			static_files: map[string]string{} 
+			static_mime_types: map[string]string{}
 		} 
-		app.init() 
+		//} 
 		if req.method == 'POST' {
 			app.vweb.parse_form(s) 
 		} 
