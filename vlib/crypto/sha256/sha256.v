@@ -5,7 +5,11 @@
 // Package sha256 implements the SHA224 and SHA256 hash algorithms as defined
 // in FIPS 180-4.
 
-// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha256
+// Based off:   https://github.com/golang/go/tree/master/src/crypto/sha256
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 module sha256
 
