@@ -73,8 +73,7 @@ fn (ctx mut Context) set_header(key, val string) {
 }
 
 pub fn (ctx Context) html(html string) { 
-	//tmpl := os.read_file(path)  or {return} 
-        h := ctx.headers.join('\n')
+	h := ctx.headers.join('\n')
 	ctx.conn.write('HTTP/1.1 200 OK 
 Content-Type: text/html 
 $h 
@@ -119,7 +118,6 @@ pub fn run<T>(port int) {
 		first_line := s.all_before('\n')
 		vals := first_line.split(' ') 
 		mut action := vals[1].right(1).all_before('/') 
-		println('vweb.v: action="$action"')
 		if action.contains('?') {
 			action = action.all_before('?') 
 		} 
@@ -134,19 +132,19 @@ pub fn run<T>(port int) {
 		        method: vals[0]
 		        url: vals[1] 
 		} 
-		//mut app := T{
-		app.vweb = Context{
+		println('vweb action = "$action"') 
+		mut app := T{
+		vweb: Context{
 			req: req 
 			conn: conn 
 			post_form: map[string]string{} 
 			static_files: map[string]string{} 
 			static_mime_types: map[string]string{}
 		} 
-		//} 
+		} 
 		if req.method == 'POST' {
 			app.vweb.parse_form(s) 
 		} 
-		println('vweb action = "$action"') 
 		if vals.len < 2 {
 			println('no vals for http') 
 			conn.close()
