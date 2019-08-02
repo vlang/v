@@ -327,7 +327,7 @@ fn test_interpolation() {
 } 
 
 fn test_bytes_to_string() {
-	mut buf := malloc(10) 
+	mut buf := calloc(10)
 	buf[0] = `h` 
 	buf[1] = `e` 
 	buf[2] = `l` 
@@ -336,5 +336,5 @@ fn test_bytes_to_string() {
 	assert string(buf) == 'hello' 
 	assert string(buf, 2) == 'he' 
 	bytes := [`h`, `e`, `l`, `l`, `o`] 
-	assert string(bytes) == 'hello' 
+	assert string(bytes, 5) == 'hello' 
 } 
