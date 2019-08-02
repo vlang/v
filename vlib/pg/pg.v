@@ -106,6 +106,12 @@ pub fn (db DB) exec_param2(query string, param, param2 string) []pg.Row {
 	param_vals[0] = param.str 
 	param_vals[1] = param2.str 
 	res := C.PQexecParams(db.conn, query.str, 2, 0, param_vals, 0, 0, 0)  
+	e := string(C.PQerrorMessage(db.conn))
+	if e != '' {
+		println('pg exec2 error:')
+		println(e)
+		return res_to_rows(res)
+	}
 	return res_to_rows(res)
 }
 
