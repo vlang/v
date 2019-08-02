@@ -1016,7 +1016,7 @@ fn (p mut Parser) close_scope() {
 	// Move back `var_idx` (pointer to the end of the array) till we reach the previous scope level.
 	// This effectivly deletes (closes) current scope.
 	mut i := p.cur_fn.var_idx - 1
-	for; i >= 0; i-- {
+	for ; i >= 0; i-- {
 		v := p.cur_fn.local_vars[i]
 		if v.scope_level != p.cur_fn.scope_level {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
@@ -1030,7 +1030,7 @@ fn (p mut Parser) close_scope() {
 				p.genln('v_string_free($v.name); // close_scope free') 
 			} 
 			else if v.ptr {
-				p.genln('free($v.name); // close_scope free') 
+				//p.genln('free($v.name); // close_scope free') 
 			} 
 		} 
 
