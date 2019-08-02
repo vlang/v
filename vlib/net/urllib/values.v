@@ -21,9 +21,9 @@ mut:
 	size int
 }
 
-// Used for constructing query string parameters
-// can also be to post form data with
-// application/x-www-form-urlencoded
+// new_values returns a new Values struct for creating
+// urlencoded query string parameters. it can also be to 
+// post form data with application/x-www-form-urlencoded.
 // values.encode() will return the encoded data
 pub fn new_values() Values {
 	return Values{
@@ -38,7 +38,7 @@ pub fn (v &Value) all() []string {
 	return v.data
 }
 
-// Get gets the first value associated with the given key.
+// get gets the first value associated with the given key.
 // If there are no values associated with the key, get returns
 // a empty string.
 pub fn (v Values) get(key string) string {
@@ -52,7 +52,7 @@ pub fn (v Values) get(key string) string {
 	return vs.data[0]
 }
 
-// Get gets the all the values associated with the given key.
+// get_all gets the all the values associated with the given key.
 // If there are no values associated with the key, get returns
 // a empty []string.
 pub fn (v Values) get_all(key string) []string {
@@ -66,7 +66,7 @@ pub fn (v Values) get_all(key string) []string {
 	return vs.data
 }
 
-// Set sets the key to value. It replaces any existing
+// set sets the key to value. It replaces any existing
 // values.
 pub fn (v mut Values) set(key, value string) {
 	mut a := v.data[key]
@@ -75,7 +75,7 @@ pub fn (v mut Values) set(key, value string) {
 	v.size = v.data.size
 }
 
-// Add adds the value to key. It appends to any existing
+// add adds the value to key. It appends to any existing
 // values associated with key.
 pub fn (v mut Values) add(key, value string) {
 	mut a := v.data[key]
@@ -87,7 +87,7 @@ pub fn (v mut Values) add(key, value string) {
 	v.size = v.data.size
 }
 
-// Del deletes the values associated with key.
+// del deletes the values associated with key.
 pub fn (v mut Values) del(key string) {
 	v.data.delete(key)
 	v.size = v.data.size
