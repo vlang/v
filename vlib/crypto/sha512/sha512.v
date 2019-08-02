@@ -5,7 +5,8 @@
 // Package sha512 implements the SHA-384, SHA-512, SHA-512/224, and SHA-512/256
 // hash algorithms as defined in FIPS 180-4.
 
-// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha512
+// Based off:   https://github.com/golang/go/tree/master/src/crypto/sha512
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 
 module sha512
 

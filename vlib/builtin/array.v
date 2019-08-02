@@ -220,6 +220,18 @@ pub fn (a []int) str() string {
 	return res
 }
 
+pub fn (a []u64) str() string {
+	mut res := '['
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		res += '$val'
+		if i < a.len - 1 {
+			res += ', '
+		}
+	}
+	res += ']'
+	return res
+}
 //pub fn (a []int) free() {
 pub fn (a array) free() {
 	//if a.is_slice {

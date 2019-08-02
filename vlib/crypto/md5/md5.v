@@ -7,7 +7,8 @@
 // MD5 is cryptographically broken and should not be used for secure
 // applications.
 
-// Adapted from: https://github.com/golang/go/blob/master/src/crypto/md5
+// Based off:   https://github.com/golang/go/blob/master/src/crypto/md5
+// Last commit: https://github.com/golang/go/commit/ed7f323c8f4f6bc61a75146bf34f5b8f73063a17
 
 module md5
 

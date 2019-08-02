@@ -46,14 +46,10 @@ pub fn now() Time {
 }
 
 pub fn random() Time {
-	return Time {
-		year: rand.next(2) + 201
-		month: rand.next(12) + 1
-		day: rand.next(30) + 1
-		hour: rand.next(24)
-		minute: rand.next(60)
-		second: rand.next(60)
-	}
+	now_unix := now().uni
+	rand_unix := rand.next(now_unix)
+
+	return time.unix(rand_unix)
 }
 
 const (

@@ -197,15 +197,24 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	p.cgen.cur_line = '' 
 	p.check(.dollar)
 	var := p.check_name() 
-	for method in typ.methods {
+	for i, method in typ.methods {
 		if method.typ != 'void' {
 			continue 
 		} 
 		receiver := method.args[0] 
 		amp := if receiver.is_mut { '&' } else { '' } 
+		if i > 0 { 
+			p.gen(' else ')
+		} 
 		p.gen('if ( string_eq($var, _STR("$method.name")) ) ${typ.name}_$method.name($amp $p.expr_var.name);') 
 	} 
 	p.check(.lpar) 
 	p.check(.rpar) 
+	if p.tok == .key_orelse {
+		p.check(.key_orelse) 
+		p.genln('else {') 
+		p.check(.lcbr)
+		p.statements() 
+	} 
 } 
 
