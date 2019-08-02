@@ -27,14 +27,13 @@ pub fn new_values() Values {
 	}
 }
 
-pub fn (v Value) all() []string {
+pub fn (v &Value) all() []string {
 	return v.data
 }
 
 // Get gets the first value associated with the given key.
-// If there are no values associated with the key, Get returns
-// the empty string. To access multiple values, use the map
-// directly.
+// If there are no values associated with the key, get returns
+// a empty string.
 pub fn (v Values) get(key string) string {
 	if v.data.size == 0 {
 		return ''
@@ -44,6 +43,20 @@ pub fn (v Values) get(key string) string {
 		return ''
 	}
 	return vs.data[0]
+}
+
+// Get gets the all the values associated with the given key.
+// If there are no values associated with the key, get returns
+// a empty []string.
+pub fn (v Values) get_all(key string) []string {
+	if v.data.size == 0 {
+		return []string
+	}
+	vs := v.data[key]
+	if vs.data.len == 0 {
+		return []string
+	}
+	return vs.data
 }
 
 // Set sets the key to value. It replaces any existing
