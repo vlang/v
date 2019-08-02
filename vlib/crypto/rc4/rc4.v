@@ -8,7 +8,8 @@
 // RC4 is cryptographically broken and should not be used for secure
 // applications.
 
-// Adapted from: https://github.com/golang/go/blob/master/src/crypto/rc4
+// Based off:   https://github.com/golang/go/blob/master/src/crypto/rc4
+// Last commit: https://github.com/golang/go/commit/b35dacaac57b039205d9b07ea24098e2c3fcb12e
 
 module rc4
 

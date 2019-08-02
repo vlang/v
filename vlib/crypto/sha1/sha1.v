@@ -7,7 +7,8 @@
 // SHA-1 is cryptographically broken and should not be used for secure
 // applications.
 
-// Adapted from: https://github.com/golang/go/blob/master/src/crypto/sha1
+// Based off:   https://github.com/golang/go/blob/master/src/crypto/sha1
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01 
 
 module sha1
 
