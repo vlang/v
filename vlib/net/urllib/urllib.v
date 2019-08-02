@@ -33,7 +33,7 @@ const (
 )
 
 fn error_msg(message, val string) string {
-	mut msg := 'net.url: $message'
+	mut msg := 'net.urllib: $message'
 	if val != '' { msg = '$msg ($val)' }
 	return msg
 }
