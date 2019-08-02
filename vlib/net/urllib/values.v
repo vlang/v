@@ -21,12 +21,19 @@ mut:
 	size int
 }
 
+// Used for constructing query string parameters
+// can also be to post form data with
+// application/x-www-form-urlencoded
+// values.encode() will return the encoded data
 pub fn new_values() Values {
 	return Values{
 		data: map[string]Value{}
 	}
 }
 
+// Currently you will need to use all()[key].data
+// once map[string][]string is implemented
+// this will be fixed
 pub fn (v &Value) all() []string {
 	return v.data
 }
