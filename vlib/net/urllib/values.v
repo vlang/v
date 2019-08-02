@@ -10,6 +10,8 @@ mut:
 	data []string
 }
 
+// using this instead of just ValueStruct
+// because of unknown map initializer bug
 type Value ValueStruct
 
 struct Values {
@@ -19,7 +21,7 @@ mut:
 	size int
 }
 
-fn new_values() Values {
+pub fn new_values() Values {
 	return Values{
 		data: map[string]Value{}
 	}
@@ -33,7 +35,7 @@ pub fn (v Value) all() []string {
 // If there are no values associated with the key, Get returns
 // the empty string. To access multiple values, use the map
 // directly.
-fn (v Values) get(key string) string {
+pub fn (v Values) get(key string) string {
 	if v.data.size == 0 {
 		return ''
 	}
@@ -46,20 +48,27 @@ fn (v Values) get(key string) string {
 
 // Set sets the key to value. It replaces any existing
 // values.
-fn (v Values) set(key, value string) {
-	v.data[key].data = [value]
+pub fn (v mut Values) set(key, value string) {
+	mut a := v.data[key]
+	a.data = [value]
+	v.data[key] = a
 	v.size = v.data.size
 }
 
 // Add adds the value to key. It appends to any existing
 // values associated with key.
-fn (v mut Values) add(key, value string) {
-	mut a := v.data[key]
-	a.data << value
+pub fn (v mut Values) add(key, value string) {
+    mut a := v.data[key]
+    if a.data.len == 0 {
+    	a.data = []string
+    }
+    a.data << value
+    v.data[key] = a
+	v.size = v.data.size
 }
 
 // Del deletes the values associated with key.
-fn (v mut Values) del(key string) {
+pub fn (v mut Values) del(key string) {
 	v.data.delete(key)
 	v.size = v.data.size
 }
