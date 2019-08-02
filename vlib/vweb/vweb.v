@@ -38,8 +38,7 @@ $s
 
 pub fn (ctx Context) redirect(url string) {
         h := ctx.headers.join('\n')
-        ctx.conn.write('
-HTTP/1.1 302 Found
+        ctx.conn.write('HTTP/1.1 302 Found
 Location: $url
 $h
 ') 
@@ -55,9 +54,9 @@ pub fn (ctx mut Context) set_cookie(key, val string) {
 
 pub fn (ctx Context) get_cookie(key string) string { 
 	for h in ctx.req.headers2 {
-		if h.starts_with('Cookie:') {
+		if h.starts_with('Cookie:') ||	h.starts_with('cookie:') {
 			cookie := h.right(7) 
-			return cookie.find_between('$key=', ';')
+			return cookie.find_between(' $key=', ';')
 		} 
 	} 
 	return '' 
@@ -88,8 +87,8 @@ $html
 pub fn run<T>(port int) { 
 	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') return } 
-	mut app := T{} 
-	app.init() 
+	mut app_init := T{} 
+	app_init.init() 
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
