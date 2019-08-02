@@ -550,8 +550,7 @@ fn (s mut Scanner) scan() ScanRes {
 
 fn (s &Scanner) error(msg string) {
 	file := s.file_path.all_after('/')
-	println('panic: $file:${s.line_nr + 1}')
-	println(msg)
+	println('$file:${s.line_nr + 1} panic: $msg')
 	exit(1)
 }
 
