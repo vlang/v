@@ -61,7 +61,7 @@ fn test_map() {
 }
 
 fn test_map_init() {
-	m := { 'one': 1, 'two': 2, 'jooo': 'sdf' } 
+	m := { 'one': 1, 'two': 2 } 
 	assert m['one'] == 1 
 	assert m['two'] == 2 
 	assert m['three'] == 0 

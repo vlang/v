@@ -2243,8 +2243,8 @@ fn (p mut Parser) factor() string {
 	case Token.lcbr:
 		// `m := { 'one': 1 }` 
 		if p.peek() == .str {
-return p.map_init() 
-} 
+			return p.map_init() 
+		} 
 		// { user | name :'new name' }
 		return p.assoc()
 	case Token.key_if:
@@ -2422,17 +2422,14 @@ fn (p mut Parser) string_expr() {
 // m := { 'one': 1 } 
 fn (p mut Parser) map_init() string {
 	// m := { 'one': 1, 'two': 2 } 
-	mut keys := []string  // ['one', 'two'] 
-	mut keys_gen := '' // ' (string[]){tos2("one"), tos2("two")} 
-	mut vals := []string // [1, 2] 
-	mut vals_gen := '' 
+	mut keys_gen := '' // (string[]){tos2("one"), tos2("two")} 
+	mut vals_gen := '' // (int[]){1, 2} 
 	mut val_type := ''  // 'int' 
 	if p.tok == .lcbr {
 		p.check(.lcbr)
 		mut i := 0 
 		for { 
 			key := p.lit 
-			keys << key 
 			keys_gen += 'tos2("$key"), ' 
 			p.check(.str) 
 			p.check(.colon) 
@@ -2448,7 +2445,6 @@ fn (p mut Parser) map_init() string {
 				}
 			}
 			val_expr := p.cgen.end_tmp() 
-			vals << val_expr 
 			vals_gen += '$val_expr, ' 
 			if p.tok == .rcbr {
 				p.check(.rcbr) 
@@ -2458,7 +2454,7 @@ fn (p mut Parser) map_init() string {
 				p.check(.comma)
 			} 
 		} 
-		p.gen('new_map_init($keys.len, sizeof($val_type), ' +
+		p.gen('new_map_init($i, sizeof($val_type), ' +
 			'(string[]){ $keys_gen }, ($val_type []){ $vals_gen } )') 
 		typ := 'map_$val_type' 
 		return typ 
