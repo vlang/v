@@ -74,17 +74,18 @@ fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
 	}
 	cache_key := am.get_cache_key(asset_type)
 	out_file := '$am.cache_dir/${cache_key}.$asset_type'
+	mut out := ''
 	// use cache 
 	if os.file_exists(out_file) {
-		if !to_file {
-			out := os.read_file(out_file) or {
-				return ''
-			}
+		cached := os.read_file(out_file) or {
+			return ''
 		}
-		return out_file
+		out = cached
+		if !to_file {
+			return out
+		}
 	}
 	// rebuild
-	mut out := ''
 	for asset in am.get_assets(asset_type) {
 		mut data := os.read_file(asset.file_path) or {
 			return ''
@@ -140,7 +141,7 @@ fn (am mut AssetManager) include(asset_type string, combine bool) string {
 	if asset_type == 'js' {
 		if combine {
 			file := am.combine(asset_type, true)
-			return '<link rel="stylesheet" href="$file">\n'
+			return '<script type="text/javascript" src="$file"></script>\n'
 		}
 		for asset in assets {
 			out += '<script type="text/javascript" src="$asset.file_path"></script>\n'
@@ -181,7 +182,7 @@ fn (am mut AssetManager) exists(asset_type, file string) bool {
 }
 
 fn (am mut AssetManager) get_assets(asset_type string) []Asset {
-	if asset_type != 'css' || asset_type != 'css' {
+	if asset_type != 'css' && asset_type != 'js' {
 		panic('$UnknownAssetTypeError ($asset_type).')
 	}
 	assets := if asset_type == 'css' {
