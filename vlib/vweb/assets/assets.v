@@ -3,6 +3,7 @@ module assets
 import (
 	os
 	time
+	// strings
 	crypto.md5
 )
 
@@ -191,9 +192,17 @@ fn (am mut AssetManager) get_assets(asset_type string) []Asset {
 
 // todo: implement minification
 pub fn minify_css(css string) string {
-	return css.replace('\r\n', ' ').replace('\n', ' ')
+	lines := css.split('\n')
+	for i, _ in lines {
+		lines[i] = lines[i].trim_space()
+	}
+	return lines.join(' ')
 }
 
 pub fn minify_js(js string) string {
-	return js.replace('\r\n', ' ').replace('\n', ' ')
+	lines := js.split('\n')
+	for i, _ in lines {
+		lines[i] = lines[i].trim_space()
+	}
+	return lines.join(' ')
 }
