@@ -74,11 +74,11 @@ fn (ctx mut Context) set_header(key, val string) {
 
 pub fn (ctx Context) html(html string) { 
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: text/html 
-$h 
+	ctx.conn.write('HTTP/1.1 200 OK
+Content-Type: text/html
+$h
 
-$html 
+$html
 ')
 	 
 } 
@@ -86,8 +86,8 @@ $html
 pub fn run<T>(port int) { 
 	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') return } 
-	mut app_init := T{} 
-	app_init.init() 
+	mut app := T{} 
+	app.init() 
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
@@ -133,15 +133,15 @@ pub fn run<T>(port int) {
 		        url: vals[1] 
 		} 
 		println('vweb action = "$action"') 
-		mut app := T{
-		vweb: Context{
+		//mut app := T{
+		app.vweb = Context{
 			req: req 
 			conn: conn 
 			post_form: map[string]string{} 
 			static_files: map[string]string{} 
 			static_mime_types: map[string]string{}
 		} 
-		} 
+		//} 
 		if req.method == 'POST' {
 			app.vweb.parse_form(s) 
 		} 
@@ -181,12 +181,12 @@ fn (ctx mut Context) parse_form(s string) {
 		words := str_form.split('&')
 		for word in words {
 			println('parse form keyval="$word"') 
-			keyval := word.split('=')
+			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
-			val := keyval[1]
-			//println('http form $key => $val') 
-			ctx.post_form[key] = http.unescape_url(val) 
+			val := http.unescape_url(keyval[1]) 
+			println('http form "$key" => "$val"') 
+			ctx.post_form[key] = val 
 		}
 	}
 } 

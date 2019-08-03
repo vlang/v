@@ -1,3 +1,8 @@
+## V 0.1.18
+
+- Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘kek’ }`  
+
+
 ## V 0.1.17 
 *29 Jul 2019* 
 - `vweb` module for developing web apps in V. 
