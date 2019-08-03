@@ -34,20 +34,14 @@ pub fn new_manager() *AssetManager {
 	return &AssetManager{}
 }
 
-// add_js adds a js asset
-pub fn (am mut AssetManager) add_js(file string) bool {
-	_ := am.add('js', file) or {
-		return false
-	}
-	return true
-}
-
 // add_js adds a css asset
 pub fn (am mut AssetManager) add_css(file string) bool {
-	_ := am.add('css', file) or {
-		return false
-	}
-	return true
+	return am.add('css', file)
+}
+
+// add_js adds a js asset
+pub fn (am mut AssetManager) add_js(file string) bool {
+	return am.add('js', file)
 }
 
 // combine_css returns the combined css as a string when to_file is false
@@ -155,9 +149,12 @@ fn (am mut AssetManager) include(asset_type string, combine bool) string {
 	return out
 }
 
-fn (am mut AssetManager) add(asset_type, file string) ?bool {
+// dont return option until size limit is removed
+// fn (am mut AssetManager) add(asset_type, file string) ?bool {
+fn (am mut AssetManager) add(asset_type, file string) bool {
 	if !os.file_exists(file) {
-		return error('vweb.assets: cannot add asset $file, it does not exist.')
+		// return error('vweb.assets: cannot add asset $file, it does not exist.')
+		return false
 	}
 	asset := Asset{
 		file_path: file
@@ -170,6 +167,7 @@ fn (am mut AssetManager) add(asset_type, file string) ?bool {
 	} else {
 		panic('$UnknownAssetTypeError ($asset_type).')
 	}
+	return true
 }
 
 fn (am mut AssetManager) exists(asset_type, file string) bool {
