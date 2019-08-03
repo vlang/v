@@ -4,6 +4,8 @@
 
 module main
 
+import os 
+
 struct ModDepGraphNode  {
 mut:
 	name string
@@ -145,3 +147,25 @@ pub fn(graph &ModDepGraph) display() {
 		}
 	}
 }
+
+// 'strings' => 'VROOT/vlib/strings' 
+// 'installed_mod' => '~/.vmodules/installed_mod' 
+// 'local_mod' => '/path/to/current/dir/local_mod' 
+fn (v &V) find_module_path(mod string) string {
+	mod_path := v.module_path(mod)
+	// First check for local modules in the same directory 
+	mut import_path := os.getwd() + '/$mod_path'
+	// Now search in vlib/ 
+	if !os.dir_exists(import_path) {
+		import_path = '$v.lang_dir/vlib/$mod_path'
+	} 
+	//println('ip=$import_path') 
+	// Finally try modules installed with vpm (~/.vmodules) 
+	if !os.dir_exists(import_path) {
+		import_path = '$ModPath/$mod_path'
+		if !os.dir_exists(import_path){
+			panic('module "$mod" not found')
+		} 
+	}
+	return import_path 
+} 
