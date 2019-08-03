@@ -1,14 +1,16 @@
 module assets
 
+// this module provides an AssetManager for combining
+// and caching javascript & css.
+
 import (
 	os
 	time
-	// strings
 	crypto.md5
 )
 
 const (
-	UnknownAssetTypeError = 'vewb: unknown asset type'
+	UnknownAssetTypeError = 'vweb.assets: unknown asset type'
 )
 
 struct AssetManager {
@@ -74,7 +76,7 @@ pub fn (am mut AssetManager) include_js(combine bool) string {
 
 fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
 	if am.cache_dir == '' {
-		panic('vewb.assets: you must set a cache dir.')
+		panic('vweb.assets: you must set a cache dir.')
 	}
 	cache_key := am.get_cache_key(asset_type)
 	out_file := '$am.cache_dir/${cache_key}.$asset_type'
@@ -104,10 +106,6 @@ fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
 	}
 	if !to_file {
 		return out
-	}
-	// output to file
-	if am.cache_dir == '' {
-		panic('vweb.asses: cache_dir is not set.')
 	}
 	if !os.dir_exists(am.cache_dir) {
 		os.mkdir(am.cache_dir)
@@ -159,7 +157,7 @@ fn (am mut AssetManager) include(asset_type string, combine bool) string {
 
 fn (am mut AssetManager) add(asset_type, file string) ?bool {
 	if !os.file_exists(file) {
-		return error('vweb: cannot add asset $file, it does not exist.')
+		return error('vweb.assets: cannot add asset $file, it does not exist.')
 	}
 	asset := Asset{
 		file_path: file
@@ -170,7 +168,7 @@ fn (am mut AssetManager) add(asset_type, file string) ?bool {
 	} else if asset_type == 'js' {
 		am.js << asset
 	} else {
-		panic('$UnknownAssetTypeError $asset_type')
+		panic('$UnknownAssetTypeError ($asset_type).')
 	}
 }
 
@@ -186,7 +184,7 @@ fn (am mut AssetManager) exists(asset_type, file string) bool {
 
 fn (am mut AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' || asset_type != 'css' {
-		panic('$UnknownAssetTypeError $asset_type')
+		panic('$UnknownAssetTypeError ($asset_type).')
 	}
 	assets := if asset_type == 'css' {
 		am.css
@@ -196,7 +194,7 @@ fn (am mut AssetManager) get_assets(asset_type string) []Asset {
 	return assets
 }
 
-// todo: implement minification
+// todo: implement proper minification
 pub fn minify_css(css string) string {
 	mut lines := css.split('\n')
 	for i, _ in lines {
@@ -205,6 +203,7 @@ pub fn minify_css(css string) string {
 	return lines.join(' ')
 }
 
+// todo: implement proper minification
 pub fn minify_js(js string) string {
 	mut lines := js.split('\n')
 	for i, _ in lines {
