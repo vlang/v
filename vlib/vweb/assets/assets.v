@@ -167,7 +167,7 @@ fn (am mut AssetManager) add(asset_type, file string) ?bool {
 	}
 }
 
-fn (am &AssetManager) exists(asset_type, file string) bool {
+fn (am mut AssetManager) exists(asset_type, file string) bool {
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.file_path == file {
