@@ -33,13 +33,19 @@ pub fn new_manager() *AssetManager {
 }
 
 // add_js adds a js asset
-pub fn (am mut AssetManager) add_js(file string) ?bool {
-	return am.add('js', file)
+pub fn (am mut AssetManager) add_js(file string) bool {
+	_ := am.add('js', file) or {
+		return false
+	}
+	return true
 }
 
 // add_js adds a css asset
-pub fn (am mut AssetManager) add_css(file string) ?bool {
-	return am.add('css', file)
+pub fn (am mut AssetManager) add_css(file string) bool {
+	_ := am.add('css', file) or {
+		return false
+	}
+	return true
 }
 
 // combine_css returns the combined css as a string when to_file is false
