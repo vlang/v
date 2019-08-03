@@ -692,7 +692,7 @@ pub fn executable() string {
 	}
 	$if freebsd {
 		mut result := malloc(MAX_PATH)
-		mut mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]!! 
+		mut mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := MAX_PATH 
 		C.sysctl(mib, 4, result, &size, 0, 0) 
 		return string(result) 
