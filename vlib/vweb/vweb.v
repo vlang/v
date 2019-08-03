@@ -7,6 +7,14 @@ import (
 	http 
 ) 
 
+// Add web consts
+const (
+   HttpOK='HTTP/1.1 200 OK\n\rContent-Type: text/plain\n\r'
+   HttpFound='HTTP/1.1 302 Found\n\rLocation:'
+   HttpNotFound='HTTP/1.1 404 Not Found'
+   
+)
+
 struct Context {
 	static_files map[string]string
 	static_mime_types map[string]string
