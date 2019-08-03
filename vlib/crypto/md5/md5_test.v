@@ -5,5 +5,5 @@
 import crypto.md5
 
 fn test_crypto_md5() {	 
-	assert md5.sum('this is a md5 checksum.'.bytes()).hex() == '6FB421FF99036547655984DA12973431'
+	assert md5.sum('this is a md5 checksum.'.bytes()).hex() == '6fb421ff99036547655984da12973431'
 }

@@ -19,5 +19,5 @@ fn test_crypto_rc4() {
 	
 	c.reset()
 
-	assert src.hex() == '189A39A91AEA8AFA65'
+	assert src.hex() == '189a39a91aea8afa65'
 }
