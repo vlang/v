@@ -3,7 +3,6 @@ module assets
 import (
 	os
 	time
-	strings
 	crypto.md5
 )
 
@@ -16,8 +15,10 @@ mut:
 	css       []Asset
 	js        []Asset
 pub:
+	// when true assets will be minified
 	minify    bool
-	cache_dir string
+	// the directory to store the cached/combined files
+	cache_dir string 
 }
 
 struct Asset {
@@ -25,6 +26,7 @@ struct Asset {
 	last_modified time.Time
 }
 
+// new_manager returns a new AssetManager
 pub fn new_manager() *AssetManager {
 	return &AssetManager{}
 }
@@ -124,7 +126,6 @@ fn (am mut AssetManager) get_cache_key(asset_type string) string {
 	return '$hash-$latest_modified'
 }
 
-// include returns the html link/script
 fn (am mut AssetManager) include(asset_type string, combine bool) string {
 	assets := am.get_assets(asset_type)
 	mut out := ''
@@ -166,7 +167,7 @@ fn (am mut AssetManager) add(asset_type, file string) ?bool {
 	}
 }
 
-fn (am mut AssetManager) exists(asset_type, file string) bool {
+fn (am &AssetManager) exists(asset_type, file string) bool {
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.file_path == file {
