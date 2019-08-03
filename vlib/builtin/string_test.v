@@ -338,3 +338,13 @@ fn test_bytes_to_string() {
 	bytes := [`h`, `e`, `l`, `l`, `o`] 
 	assert string(bytes, 5) == 'hello' 
 } 
+
+fn test_count() {
+	assert ''.count('') == 0
+	assert ''.count('a') == 0
+	assert 'a'.count('') == 0
+	assert 'aa'.count('a') == 2
+	assert 'aa'.count('aa') == 1
+	assert 'aabbaa'.count('aa') == 2
+	assert 'bbaabb'.count('aa') == 1
+}
