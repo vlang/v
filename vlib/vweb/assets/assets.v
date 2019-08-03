@@ -17,7 +17,6 @@ mut:
 	js        []Asset
 pub:
 	minify    bool
-	// uglify    bool
 	cache_dir string
 }
 
@@ -30,17 +29,44 @@ pub fn new_manager() *AssetManager {
 	return &AssetManager{}
 }
 
+// add_js adds a js asset
+pub fn (am mut AssetManager) add_js(file string) ?bool {
+	return am.add('js', file)
+}
+
+// add_js adds a css asset
+pub fn (am mut AssetManager) add_css(file string) ?bool {
+	return am.add('css', file)
+}
+
+// combine_css returns the combined css as a string when to_file is false
+// when to_file is true it combines the css to disk and returns the path of the file
 pub fn (am mut AssetManager) combine_css(to_file bool) string {
 	return am.combine('css', to_file)
 }
 
+// combine_js returns the combined js as a string when to_file is false
+// when to_file is true it combines the css to disk and returns the path of the file
 pub fn (am mut AssetManager) combine_js(to_file bool) string {
 	return am.combine('js', to_file)
 }
 
-// if to_file is true combine will return the path to the combined file
-// if it is false combine will return the combined file contents
-pub fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
+// include_css returns the html <link> for including the css files in a page.
+// when combine is true the files are combined.
+pub fn (am mut AssetManager) include_css(combine bool) string {
+	return am.include('css', combine)
+}
+
+// include_js returns the html <script> for including the js files in a page.
+// when combine is true the files are combined.
+pub fn (am mut AssetManager) include_js(combine bool) string {
+	return am.include('js', combine)
+}
+
+fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
+	if am.cache_dir == '' {
+		panic('vewb.assets: you must set a cache dir.')
+	}
 	cache_key := am.get_cache_key(asset_type)
 	out_file := '$am.cache_dir/${cache_key}.$asset_type'
 	// use cache 
@@ -90,7 +116,6 @@ fn (am mut AssetManager) get_cache_key(asset_type string) string {
 	mut latest_modified := 0
 	for asset in am.get_assets(asset_type) {
 		files_salt += asset.file_path
-		println('asset lm: ' + asset.last_modified.uni.str())
 		if asset.last_modified.uni > latest_modified {
 			latest_modified = asset.last_modified.uni
 		}
@@ -99,25 +124,24 @@ fn (am mut AssetManager) get_cache_key(asset_type string) string {
 	return '$hash-$latest_modified'
 }
 
-pub fn (am mut AssetManager) include_css(combine bool) string {
-	return am.include('css', combine)
-}
-
-pub fn (am mut AssetManager) include_js(combine bool) string {
-	return am.include('js', combine)
-}
-
 // include returns the html link/script
-pub fn (am mut AssetManager) include(asset_type string, combine bool) string {
+fn (am mut AssetManager) include(asset_type string, combine bool) string {
 	assets := am.get_assets(asset_type)
 	mut out := ''
 	if asset_type == 'css' {
+		if combine {
+			file := am.combine(asset_type, true)
+			return '<link rel="stylesheet" href="$file">\n'
+		}
 		for asset in assets {
-			println('here')
 			out += '<link rel="stylesheet" href="$asset.file_path">\n'
 		}
 	}
 	if asset_type == 'js' {
+		if combine {
+			file := am.combine(asset_type, true)
+			return '<link rel="stylesheet" href="$file">\n'
+		}
 		for asset in assets {
 			out += '<script type="text/javascript" src="$asset.file_path"></script>\n'
 		}
@@ -125,27 +149,13 @@ pub fn (am mut AssetManager) include(asset_type string, combine bool) string {
 	return out
 }
 
-
-pub fn (am mut AssetManager) add_js(file string) ?bool {
-	println('adding: $file')
-	return am.add('js', file)
-}
-
-
-pub fn (am mut AssetManager) add_css(file string) ?bool {
-	println('adding: $file')
-	return am.add('css', file)
-}
-
-pub fn (am mut AssetManager) add(asset_type, file string) ?bool {
+fn (am mut AssetManager) add(asset_type, file string) ?bool {
 	if !os.file_exists(file) {
 		return error('vweb: cannot add asset $file, it does not exist.')
 	}
-	// lm := time.unix(os.file_last_mod_unix(file)
-	println('lm: ' + os.file_last_mod_unix(file).str())
 	asset := Asset{
 		file_path: file
-		last_modified: time.unix(os.file_last_mod_unix(file))
+		last_modified: time.Time{uni: os.file_last_mod_unix(file)}
 	}
 	if asset_type == 'css' {
 		am.css << asset
@@ -178,11 +188,11 @@ fn (am mut AssetManager) get_assets(asset_type string) []Asset {
 	return assets
 }
 
-// todo: implement advanced minification
+// todo: implement minification
 pub fn minify_css(css string) string {
-	return css.replace('\r\n', '').replace('\n', '')
+	return css.replace('\r\n', ' ').replace('\n', ' ')
 }
 
 pub fn minify_js(js string) string {
-	return js.replace('\r\n', '').replace('\n', '')
+	return js.replace('\r\n', ' ').replace('\n', ' ')
 }
