@@ -2241,6 +2241,10 @@ fn (p mut Parser) factor() string {
 		// everything should do next()
 		return p.array_init()
 	case Token.lcbr:
+		// `m := { 'one': 1 }` 
+		if p.peek() == .str {
+			return p.map_init() 
+		} 
 		// { user | name :'new name' }
 		return p.assoc()
 	case Token.key_if:
@@ -2415,7 +2419,46 @@ fn (p mut Parser) string_expr() {
 }
 
 // m := map[string]int{}
+// m := { 'one': 1 } 
 fn (p mut Parser) map_init() string {
+	// m := { 'one': 1, 'two': 2 } 
+	mut keys_gen := '' // (string[]){tos2("one"), tos2("two")} 
+	mut vals_gen := '' // (int[]){1, 2} 
+	mut val_type := ''  // 'int' 
+	if p.tok == .lcbr {
+		p.check(.lcbr)
+		mut i := 0 
+		for { 
+			key := p.lit 
+			keys_gen += 'tos2("$key"), ' 
+			p.check(.str) 
+			p.check(.colon) 
+			p.cgen.start_tmp() 
+			t := p.bool_expression() 
+			if i == 0 { 
+				val_type = t 
+			} 
+			i++ 
+			if val_type != t {
+				if !p.check_types_no_throw(val_type, t) {
+					p.error('bad map element type `$val_type` instead of `$t`')
+				}
+			}
+			val_expr := p.cgen.end_tmp() 
+			vals_gen += '$val_expr, ' 
+			if p.tok == .rcbr {
+				p.check(.rcbr) 
+				break 
+			} 
+			if p.tok == .comma {
+				p.check(.comma)
+			} 
+		} 
+		p.gen('new_map_init($i, sizeof($val_type), ' +
+			'(string[]){ $keys_gen }, ($val_type []){ $vals_gen } )') 
+		typ := 'map_$val_type' 
+		return typ 
+	} 
 	p.next()
 	p.check(.lsbr)
 	key_type := p.check_name()
@@ -2423,7 +2466,7 @@ fn (p mut Parser) map_init() string {
 		p.error('only string key maps allowed for now')
 	}
 	p.check(.rsbr)
-	val_type := p.check_name()
+	val_type = p.check_name()
 	if !p.table.known_type(val_type) {
 		p.error('map init unknown type "$val_type"')
 	}
@@ -2435,7 +2478,7 @@ fn (p mut Parser) map_init() string {
 	return typ
 }
 
-// [1,2,3]
+// `nums := [1, 2, 3]` 
 fn (p mut Parser) array_init() string {
 	p.is_alloc = true 
 	p.check(.lsbr)

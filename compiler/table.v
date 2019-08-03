@@ -501,6 +501,9 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	if got=='int' && expected=='byte*' {
 		return true
 	}
+	//if got=='int' && expected=='voidptr*' {
+		//return true 
+	//} 
 	// byteptr += int
 	if got=='int' && expected=='byteptr' {
 		return true
