@@ -62,13 +62,13 @@ pub fn (am mut AssetManager) combine_js(to_file bool) string {
 	return am.combine('js', to_file)
 }
 
-// include_css returns the html <link> for including the css files in a page.
+// include_css returns the html <link> tag(s) for including the css files in a page.
 // when combine is true the files are combined.
 pub fn (am mut AssetManager) include_css(combine bool) string {
 	return am.include('css', combine)
 }
 
-// include_js returns the html <script> for including the js files in a page.
+// include_js returns the html <script> tag(s) for including the js files in a page.
 // when combine is true the files are combined.
 pub fn (am mut AssetManager) include_js(combine bool) string {
 	return am.include('js', combine)
