@@ -64,12 +64,12 @@ struct GG {
 	// use_ortho bool
 	width     int
 	height    int
-	VAO       u32
+	vao       u32
 	rect_vao  u32
 	rect_vbo  u32
 	line_vao  u32
 	line_vbo  u32
-	VBO       u32
+	vbo       u32
 	scale     int // retina = 2 , normal = 1
 pub mut: 
 	window *glfw.Window 
@@ -147,8 +147,8 @@ pub fn new_context(cfg Cfg) *GG {
 		shader: shader 
 		width: cfg.width 
 		height: cfg.height 
-		VAO: vao 
-		VBO: vbo 
+		vao: vao 
+		vbo: vbo 
 		window: window 
 	 
 		// /line_vao: gl.gen_vertex_array()
@@ -193,8 +193,8 @@ pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	] !
 	// bind the Vertex Array Object first, then bind and set vertex buffer(s),
 	// and then configure vertex attributes(s).
-	gl.bind_vao(ctx.VAO)
-	gl.set_vbo(ctx.VBO, vertices, GL_STATIC_DRAW)
+	gl.bind_vao(ctx.vao)
+	gl.set_vbo(ctx.vbo, vertices, GL_STATIC_DRAW)
 	gl.vertex_attrib_pointer(0, 3, GL_FLOAT, false, 3, 0)
 	gl.enable_vertex_attrib_array(0)
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
@@ -216,8 +216,8 @@ pub fn (ctx &GG) draw_triangle_tex(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	x2, y2, 0, 0, 0, 0, 1, 0,
 	x3, y3, 0, 0, 0, 0, 0, 0,
 	] !
-	gl.bind_vao(ctx.VAO)
-	gl.set_vbo(ctx.VBO, vertices, GL_STATIC_DRAW)
+	gl.bind_vao(ctx.vao)
+	gl.set_vbo(ctx.vbo, vertices, GL_STATIC_DRAW)
 	// position attribute
 	gl.vertex_attrib_pointer(0, 3, GL_FLOAT, false, 3, 0)
 	gl.enable_vertex_attrib_array(0)
@@ -266,8 +266,8 @@ fn (ctx mut GG) init_rect_vao() {
 } 
 */
 pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
-	C.glDeleteBuffers(1, &ctx.VAO)
-	C.glDeleteBuffers(1, &ctx.VBO)
+	C.glDeleteBuffers(1, &ctx.vao)
+	C.glDeleteBuffers(1, &ctx.vbo)
 	ctx.shader.use()
 	ctx.shader.set_color('color', c)
 	ctx.shader.set_int('has_texture', 0)
@@ -286,8 +286,8 @@ pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	0, 1, 3,// first triangle
 	1, 2, 3// second triangle
 	] !
-	gl.bind_vao(ctx.VAO)
-	gl.set_vbo(ctx.VBO, vertices, GL_STATIC_DRAW)
+	gl.bind_vao(ctx.vao)
+	gl.set_vbo(ctx.vbo, vertices, GL_STATIC_DRAW)
 	ebo := gl.gen_buffer()
 	// ///////
 	gl.set_ebo(ebo, indices, GL_STATIC_DRAW)// !!! LEAKS
@@ -295,7 +295,7 @@ pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	gl.vertex_attrib_pointer(0, 3, GL_FLOAT, false, 3, 0)
 	gl.enable_vertex_attrib_array(0)
 	// gl.bind_vao(ctx.rect_vao)
-	gl.bind_vao(ctx.VAO)
+	gl.bind_vao(ctx.vao)
 	gl.draw_elements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0)
 	C.glDeleteBuffers(1, &ebo)
 }
@@ -408,16 +408,16 @@ pub fn create_image(file string) u32 {
 }
 
 pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
-	C.glDeleteBuffers(1, &ctx.VAO)
-	C.glDeleteBuffers(1, &ctx.VBO)
+	C.glDeleteBuffers(1, &ctx.vao)
+	C.glDeleteBuffers(1, &ctx.vbo)
 	ctx.shader.use()
 	ctx.shader.set_color('color', color)
 	vertices := [f32(x), f32(y), f32(x2), f32(y2)] !
-	gl.bind_vao(ctx.VAO)
-	gl.set_vbo(ctx.VBO, vertices, GL_STATIC_DRAW)
+	gl.bind_vao(ctx.vao)
+	gl.set_vbo(ctx.vbo, vertices, GL_STATIC_DRAW)
 	gl.vertex_attrib_pointer(0, 2, GL_FLOAT, false, 2, 0)
 	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.VAO)
+	gl.bind_vao(ctx.vao)
 	gl.draw_arrays(GL_LINES, 0, 2)
 }
 
@@ -453,8 +453,8 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	] !
 	// VAO := gl.gen_vertex_array()
 	// VBO := gl.gen_buffer()
-	gl.bind_vao(ctx.VAO)
-	gl.set_vbo(ctx.VBO, vertices, GL_STATIC_DRAW)
+	gl.bind_vao(ctx.vao)
+	gl.set_vbo(ctx.vbo, vertices, GL_STATIC_DRAW)
 	ebo := gl.gen_buffer()
 	gl.set_ebo(ebo, indices, GL_STATIC_DRAW)
 	gl.vertex_attrib_pointer(0, 3, GL_FLOAT, false, 8, 0)
@@ -464,7 +464,7 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	gl.vertex_attrib_pointer(2, 2, GL_FLOAT, false, 8, 6)
 	gl.enable_vertex_attrib_array(2)
 	gl.bind_2d_texture(u32(tex_id))
-	gl.bind_vao(ctx.VAO)
+	gl.bind_vao(ctx.vao)
 	gl.draw_elements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0)
 }
 
