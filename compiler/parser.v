@@ -3278,7 +3278,7 @@ fn (p mut Parser) js_decode() string {
 		for field in T.fields {
 			def_val := type_default(field.typ)
 			if def_val != '' {
-				decl += '$tmp . $field.name = $def_val;\n'
+				decl += '$tmp . $field.name = OPTION_CAST($field.typ) $def_val;\n'
 			}
 		}
 		p.gen_json_for_type(T)
