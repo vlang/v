@@ -1,10 +1,12 @@
-@echo off
+REM @echo off
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o vc.exe v.c
 del v.c
+
+"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+
 vc.exe -o v.exe compiler
 vc.exe -os msvc -o v.msvc.exe compiler
-dir
 v.msvc.exe -os msvc -o v.msvc.2.exe compiler
 v.msvc.exe -o v.gcc.exe compiler
 setlocal EnableDelayedExpansion
