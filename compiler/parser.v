@@ -592,6 +592,9 @@ fn (p mut Parser) struct_decl() {
 		if field_name in names {
 			p.error('duplicate field `$field_name`')
 		}
+		if p.mod != 'os' && contains_capital(field_name) {
+			p.error('struct fields cannot contain uppercase letters, use snake_case instead')
+		} 
 		names << field_name
 		// We are in an interface?
 		// `run() string` => run is a method, not a struct field
