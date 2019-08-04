@@ -27,7 +27,7 @@ fn main() {
 	s := http.get_text(url + '/jsmod/$name') 
 	mod := json.decode(Mod, s) or { return } 
 	home := os.home_dir() 
-	os.exec('git -C "$home/.vmodules" clone $mod.url') 
+	os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url $mod.name')
 	println(s) 
 } 
 
