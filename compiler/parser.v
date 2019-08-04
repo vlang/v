@@ -2482,7 +2482,16 @@ fn (p mut Parser) map_init() string {
 fn (p mut Parser) array_init() string {
 	p.is_alloc = true 
 	p.check(.lsbr)
-	is_integer := p.tok == .number
+	mut is_integer := p.tok == .number  // for `[10]int` 
+	// fixed length arrays with a const len: `nums := [N]int`, same as `[10]int` basically 
+	mut is_const_len := false 
+	if p.tok == .name {
+		c := p.table.find_const(p.prepend_pkg(p.lit)) 
+		if c.name != '' && c.typ == 'int' && p.peek() == .rsbr && !p.inside_const {
+			is_integer = true 
+			is_const_len = true 
+		} 
+	} 
 	lit := p.lit
 	mut typ := ''
 	new_arr_ph := p.cgen.add_placeholder()
@@ -2504,6 +2513,9 @@ fn (p mut Parser) array_init() string {
 					if p.table.known_type(name) {
 						p.cgen.resetln('')
 						p.gen('STRUCT_DEFAULT_VALUE')
+						if is_const_len { 
+							return '[${p.mod}__$lit]$name' 
+						} 
 						return '[$lit]$name'
 					}
 					else {

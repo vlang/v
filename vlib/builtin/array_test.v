@@ -160,3 +160,20 @@ fn test_reverse() {
 		assert d[i] == b[b.len-i-1]
 	}
 }
+
+const (
+	N = 5
+) 
+
+fn test_fixed() {
+	mut nums := [4]int 
+	assert nums[0] == 0 
+	assert nums[1] == 0 
+	assert nums[2] == 0 
+	assert nums[3] == 0 
+	nums[1] = 7 
+	assert nums[1] == 7 
+	///////
+	nums2 := [N]int 
+	assert nums2[N - 1] == 0 
+} 
