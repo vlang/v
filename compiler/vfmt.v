@@ -37,6 +37,7 @@ fn (p mut Parser) fgenln(s string) {
 
 fn (p mut Parser) peek() Token {
 	for {
+		p.cgen.line = p.scanner.line_nr + 1
 		tok := p.scanner.peek()
 		if tok != .nl {
 			return tok
