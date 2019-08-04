@@ -4,6 +4,7 @@ gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o vc.exe v.c
 del v.c
 vc.exe -o v.exe compiler
 vc.exe -os msvc -o v.msvc.exe compiler
+dir
 v.msvc.exe -os msvc -o v.msvc.2.exe compiler
 v.msvc.exe -o v.gcc.exe compiler
 setlocal EnableDelayedExpansion
