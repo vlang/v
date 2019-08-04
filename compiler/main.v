@@ -710,7 +710,7 @@ fn (v mut V) cc() {
 	} 
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
-	mut a := [v.pref.cflags, '-w'] // arguments for the C compiler
+	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
 	flags := v.table.flags.join(' ')
 	//mut shared := ''
 	if v.pref.is_so {
