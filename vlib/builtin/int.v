@@ -188,6 +188,10 @@ pub fn (c byte) str() string {
 	return str
 }
 
+pub fn (c byte) is_capital() bool {
+	return c >= `A` && c <= `Z` 
+} 
+
 pub fn (b []byte) clone() []byte {
 	mut res := [byte(0); b.len] 
 	for i := 0; i < b.len; i++ {

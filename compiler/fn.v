@@ -915,17 +915,6 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 	// p.gen(')')
 }
 
-fn contains_capital(s string) bool {
-	// for c in s {
-	for i := 0; i < s.len; i++ {
-		c := s[i]
-		if c >= `A` && c <= `Z` {
-			return true
-		}
-	}
-	return false
-}
-
 // "fn (int, string) int"
 fn (f Fn) typ_str() string {
 	mut sb := strings.new_builder(50)

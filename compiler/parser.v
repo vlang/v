@@ -492,6 +492,9 @@ fn (p mut Parser) struct_decl() {
 		p.check(.dot)
 		name = p.check_name()
 	}
+	if !is_c && !good_type_name(name) {
+		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')  
+	} 
 	// Specify full type name
 	if !is_c && !p.builtin_pkg && p.mod != 'main' {
 		name = p.prepend_pkg(name)
@@ -592,7 +595,7 @@ fn (p mut Parser) struct_decl() {
 		if field_name in names {
 			p.error('duplicate field `$field_name`')
 		}
-		if p.mod != 'os' && contains_capital(field_name) {
+		if !is_c && p.mod != 'os' && contains_capital(field_name) {
 			p.error('struct fields cannot contain uppercase letters, use snake_case instead')
 		} 
 		names << field_name

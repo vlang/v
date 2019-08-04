@@ -758,3 +758,29 @@ fn (s mut Scanner) create_type_string(T Type, name string) {
 	s.inside_string = inside_string
 }
 
+fn contains_capital(s string) bool {
+	// for c in s {
+	for i := 0; i < s.len; i++ {
+		c := s[i]
+		if c >= `A` && c <= `Z` {
+			return true
+		}
+	}
+	return false
+}
+
+// HTTPRequest  bad
+// HttpRequest  good 
+fn good_type_name(s string) bool {
+	if s.len < 4 {
+		return true 
+	} 
+	for i in 2 .. s.len { 
+		if s[i].is_capital() && s[i-1].is_capital() && s[i-2].is_capital() {
+			return false 
+		} 
+	} 
+	return true 
+} 
+
+
