@@ -9,6 +9,9 @@ vc.exe -o v.exe compiler
 vc.exe -os msvc -o v.msvc.exe compiler
 v.msvc.exe -os msvc -o v.msvc.2.exe compiler
 v.msvc.exe -o v.gcc.exe compiler
+
+dir
+
 setlocal EnableDelayedExpansion
 for /r . %%x in (*_test.v) do (
   v -o test.exe -debug %%x
