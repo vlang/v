@@ -36,6 +36,10 @@ mut:
 struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
+	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
+	file_pcguard   string // When p.file_pcguard != '', it contains a 
+	                      // C ifdef guard clause that must be put before 
+	                      // the #include directives in the parsed .v file
 mut:
 	v              *V 
 	scanner        *Scanner
@@ -89,13 +93,38 @@ const (
 	MaxModuleDepth = 4
 ) 
 
+fn platform_postfix_to_ifdefguard(name string) string {
+  switch name {
+    case '.v': return '' // no guard needed
+    case '_win.v': return '#ifdef _WIN32'
+    case '_nix.v': return '#ifndef _WIN32'
+    case '_lin.v': return '#ifdef __linux__'
+    case '_mac.v': return '#ifdef __APPLE__'
+  }
+  panic('bad platform_postfix "$name"')
+  return ''
+}
+
 fn (v mut V) new_parser(path string, pass Pass) Parser {
 	v.log('new_parser("$path")')
-	v.cgen.pass = pass 
+	v.cgen.pass = pass
+	
+	mut path_pcguard := ''
+	mut path_platform := '.v'
+	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v'] {
+		if path.ends_with(path_ending) {
+			path_platform = path_ending
+			path_pcguard = platform_postfix_to_ifdefguard( path_ending )
+			break
+		}		
+	}
+	
 	mut p := Parser {
 		v: v 
 		file_path: path
 		file_name: path.all_after('/')
+		file_platform: path_platform
+		file_pcguard: path_pcguard
 		scanner: new_scanner(path)
 		table: v.table
 		import_table: new_file_import_table(path)
