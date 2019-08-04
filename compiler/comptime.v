@@ -164,6 +164,11 @@ fn (p mut Parser) chash() {
 	}
 	if hash.starts_with('include') {
 		if p.first_pass() && !is_sig {
+			if p.file_pcguard.len != 0 {
+				//println('p: $p.file_platform $p.file_pcguard')
+				p.cgen.includes << '$p.file_pcguard\n#$hash\n#endif'
+				return
+			}
 			p.cgen.includes << '#$hash'
 			return
 		}
