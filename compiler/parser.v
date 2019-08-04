@@ -1312,10 +1312,25 @@ fn (p mut Parser) var_decl() {
 	p.var_decl_name = '' 
 }
 
+const (
+	and_or_error = 'use `()` to make the boolean expression clear\n' +
+'for example: `(a && b) || c` instead of `a && b || c`'
+) 
+
 fn (p mut Parser) bool_expression() string {
 	tok := p.tok
 	typ := p.bterm()
+	mut got_and := false // to catch `a && b || c` in one expression without () 
+	mut got_or := false 
 	for p.tok == .and || p.tok == .logical_or {
+		if p.tok == .and {
+			got_and = true 
+			if got_or { p.error(and_or_error) } 
+		} 
+		if p.tok == .logical_or {
+			got_or = true 
+			if got_and { p.error(and_or_error) } 
+		} 
 		p.gen(' ${p.tok.str()} ')
 		p.check_space(p.tok) 
 		p.check_types(p.bterm(), typ)

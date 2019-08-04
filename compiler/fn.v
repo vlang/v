@@ -354,9 +354,10 @@ fn (p mut Parser) fn_decl() {
 				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
 					p.scanner.text[p.scanner.pos-1] != `T` { 
 					p.scanner.pos -= 3 
-					for p.scanner.pos > 0 && is_name_char(p.scanner.text[p.scanner.pos]) || p.scanner.text[p.scanner.pos] == `.`  ||
-						p.scanner.text[p.scanner.pos] == `<` { 
-						p.scanner.pos-- 
+					for p.scanner.pos > 0 && (is_name_char(p.scanner.text[p.scanner.pos]) || 
+						p.scanner.text[p.scanner.pos] == `.`  ||
+						p.scanner.text[p.scanner.pos] == `<` ) { 
+						p.scanner.pos--  
 					} 
 					p.scanner.pos-- 
 					p.next() 

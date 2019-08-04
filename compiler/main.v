@@ -332,7 +332,7 @@ void init_consts();')
 	}
 	// TODO remove ugly .c include once V has its own json parser
 	// Embed cjson either in embedvlib or in json.o
-	if imports_json && v.pref.build_mode == .embed_vlib ||
+	if (imports_json && v.pref.build_mode == .embed_vlib) ||
 	(v.pref.build_mode == .build && v.out_name.contains('json.o')) {
 		//cgen.genln('#include "cJSON.c" ')
 	}

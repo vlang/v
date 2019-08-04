@@ -117,16 +117,16 @@ fn (t &Table) debug_fns() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	NUMBER_TYPES = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
-	FLOAT_TYPES  = ['f32', 'f64']
+	number_types = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
+	float_types  = ['f32', 'f64']
 )
 
 fn is_number_type(typ string) bool {
-	return NUMBER_TYPES.contains(typ)
+	return typ in number_types 
 }
 
 fn is_float_type(typ string) bool {
-	return FLOAT_TYPES.contains(typ)
+	return typ in float_types 
 }
 
 fn is_primitive_type(typ string) bool {
