@@ -12,6 +12,7 @@ import os
 import glfw 
 
 struct Vec2 {
+pub: 
 	x int
 	y int
 }
@@ -22,10 +23,6 @@ import const (
 	GL_FALSE
 	GL_UNSIGNED_INT
 	GL_INT
-)
-
-const (
-	DEFAULT_FONT_SIZE = 12
 )
 
 pub fn vec2(x, y int) Vec2 {
@@ -42,11 +39,9 @@ pub fn init() {
 	gl.init_glad()
 }
 
-struct Face {
-	cobj voidptr
-}
 
 struct Cfg {
+pub: 
 	width     int
 	height    int
 	use_ortho bool 
@@ -95,32 +90,6 @@ pub fn new_context(cfg Cfg) *GG {
 	shader.use()
 	if cfg.use_ortho { 
 		projection := glm.ortho(0, cfg.width, cfg.height, 0)
-		/* 
-		// for debugging broken tetris in gg.o
-		# projection.data[0]=0.010000;
-		# projection.data[1]=0.000000;
-		# projection.data[2]=0.000000;
-		# projection.data[3]=0.000000;
-		# projection.data[4]=0.000000;
-		# projection.data[5]=-0.005000;
-		# projection.data[6]=0.000000;
-		# projection.data[7]=0.000000;
-		# projection.data[8]=0.000000;
-		# projection.data[9]=0.000000;
-		# projection.data[10]=1.000000;
-		# projection.data[11]=0.000000;
-		# projection.data[12]=-1.000000;
-		# projection.data[13]=1.000000;
-		# projection.data[14]=0.000000;
-		# projection.data[15]=1.000000;
-*/
-		// projection_new := ortho(0, width, height, 0)
-		// println('\nORTHO OLD=')
-		//# for (int i=0;i<16;i++) printf("%d=%f ",i, projection.data[i]);
-		// println('\n\n!ORTHO NEW=')
-		// # for (int i=0;i<16;i++) printf("%d=%f ",i, projection_new[i]);
-		// println('\n\n')
-		//println('setting o')
 		shader.set_mat4('projection', projection)
 	}
 	else {
@@ -341,6 +310,10 @@ fn (c GG) fill_color(color gx.Color) {
 
 fn (c GG) fill() {
 }
+
+pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
+//pub fn (c &GG) draw_text(x, y int) {
+} 
 
 fn (c GG) move_to(x, y int) {
 }

@@ -7,3 +7,4 @@ fn test_escape_unescape() {
   unescaped := http.unescape_url(escaped)
   assert unescaped == original
 }
+

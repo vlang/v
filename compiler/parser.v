@@ -1059,7 +1059,7 @@ fn (p mut Parser) close_scope() {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
-		if !p.building_v && !v.is_mut && v.is_alloc {
+		if false && !p.building_v && !v.is_mut && v.is_alloc {
 			if v.typ.starts_with('array_') { 
 				p.genln('v_array_free($v.name); // close_scope free') 
 			} 
@@ -1729,17 +1729,17 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 			opt_type := typ.name.right(7) 
 			p.error('unhandled option type: $opt_type?')
 		}
-		println('error in dot():')
-		println('fields:')
-		for field in typ.fields {
-			println(field.name)
-		}
-		println('methods:')
-		for field in typ.methods {
-			println(field.name)
-		}
-		println('str_typ=="$str_typ"')
-		p.error('type `$typ.name`  has no field or method `$field_name`')
+		//println('error in dot():')
+		//println('fields:')
+		//for field in typ.fields {
+			//println(field.name)
+		//}
+		//println('methods:')
+		//for field in typ.methods {
+			//println(field.name)
+		//}
+		//println('str_typ=="$str_typ"')
+		p.error('type `$typ.name` has no field or method `$field_name`')
 	}
 	mut dot := '.'
 	if str_typ.contains('*') {

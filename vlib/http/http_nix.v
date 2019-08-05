@@ -50,7 +50,8 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 	mut mem := _mem
 	// # printf("size =%d nmemb=%d contents=%s\n", size, nmemb, contents);
 	realsize := size * nmemb// TODO size_t ?
-	if !isnil(mem.ws_func) {
+/* 
+	if false && !isnil(mem.ws_func) {
 		//C.printf('\n\nhttp_mac.m: GOT WS FUNC. size=%d\n', realsize)
 		// Skip negative and 0 junk chars in the WS string
 		mut start := 0
@@ -62,12 +63,13 @@ fn write_fn(contents byteptr, size, nmemb int, _mem *MemoryStruct) int {
 			}
 		}
 		contents += start + 1
-		// printf("GOOD CONTEnTS=%s\n", contents);
+		C.printf('GOOD CONTEnTS=%s\n', contents) 
 		s := string(contents)
 		f := mem.ws_func 
 		f(s, mem.user_ptr) 
 		//# mem->ws_func(s, mem->user_ptr);
 	}
+*/ 
 	mut c := string(contents)
 	c = c.trim_space()
 	// Need to clone because libcurl reuses this memory
@@ -169,22 +171,18 @@ pub fn (req &Request) do() Response {
 			continue
 		}
 		key := h.left(pos)
-		val := h.right(pos + 1)
-		// println('"$key" *** "$val"')
+		val := h.right(pos + 2)
+		//println('"$h" "$key" *** "$val"')
 		// val2 := val.trim_space()
 		// println('val2="$val2"')
 		headers[key] = val// val.trim_space()
 	}
-	// println('done')
-	// j.println(resp.status_code)
-	// println('body=')
-	// j.println(resp.body)
-	// j.println('headers=')
-	// j.println(hchunk.strings)
 	C.curl_easy_cleanup(curl)
 	//println('end of req.do() url="$req.url"')
 	return Response {
 		text: body
+		status_code: status_code 
+		headers: headers 
 	}
 }
 

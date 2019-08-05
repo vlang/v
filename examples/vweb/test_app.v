@@ -12,7 +12,6 @@ pub mut:
 }
 
 fn main() {
-        println('Running vweb test on http://localhost:$Port')
         vweb.run<App>(Port)
 }
 
@@ -27,3 +26,4 @@ pub fn (app mut App) json_endpoint() {
 pub fn (app mut App) index() {
         app.vweb.text('hello world')
 }
+

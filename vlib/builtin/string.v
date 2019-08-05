@@ -5,8 +5,8 @@
 module builtin
 
 struct string {
-mut:
-	hash_cache int 
+//mut:
+	//hash_cache int 
 pub:
 	str byteptr
 	len int
@@ -864,7 +864,8 @@ pub fn (c byte) is_white() bool {
 
 
 pub fn (s string) hash() int {
-	mut h := s.hash_cache 
+	//mut h := s.hash_cache 
+	mut h := 0 
 	if h == 0 && s.len > 0 { 
 		for c in s { 
 			h = h * 31 + int(c) 
