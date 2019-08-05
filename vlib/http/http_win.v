@@ -138,7 +138,7 @@ pub fn (req &Request) do() Response {
 		headers: map[string]string{}
 		// headers: resp_headers
 
-        //hard coded http version 'HTTP/1.1' - 9
+        //hard coded http version 'HTTP/1.1' + space - 9
         //3-digit HTTP status codes - 9+3
         //HTTP/1.1 200 OK
 		status_code: resp_headers.substr(9,12).int()
@@ -181,4 +181,3 @@ pub fn escape(s string) string {
 }
 
 fn C.InternetReadFile(voidptr, voidptr, int, intptr) bool
-
