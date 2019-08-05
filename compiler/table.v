@@ -9,16 +9,17 @@ import strings
 
 struct Table {
 mut:
-	types     []Type
-	consts    []Var
-	fns       map[string]Fn 
-	generic_fns []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum'] 
-	obf_ids   map[string]int // obf_ids['myfunction'] == 23
-	modules   []string // List of all modules registered by the application
-	imports   []string // List of all imports
-	flags     []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt    int atomic
-	obfuscate bool
+	types        []Type
+	consts       []Var
+	fns          map[string]Fn 
+	generic_fns  []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum'] 
+	obf_ids      map[string]int // obf_ids['myfunction'] == 23
+	modules      []string // List of all modules registered by the application
+	imports      []string // List of all imports
+	file_imports []FileImportTable
+	flags        []string //  ['-framework Cocoa', '-lglfw3']
+	fn_cnt       int atomic
+	obfuscate    bool
 }
 
 struct GenTable {
@@ -140,6 +141,7 @@ fn new_table(obfuscate bool) *Table {
 		//generic_fns: map[string]GenTable{} 
 		generic_fns: []GenTable 
 		obfuscate: obfuscate
+		file_imports: []FileImportTable
 	}
 	t.register_type('int')
 	t.register_type('size_t')

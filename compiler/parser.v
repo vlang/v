@@ -199,7 +199,9 @@ fn (p mut Parser) parse() {
 		}
 		if p.table.imports.contains('builtin') {
 			p.error('module `builtin` cannot be imported') 
-		} 
+		}
+		// save file import table
+		p.table.file_imports << *p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
