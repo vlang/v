@@ -106,7 +106,7 @@ fn test_mut_ptr() {
 	assert buf[0] == 77 
 } 
 
-fn test_high_fn(f fn(int) int) {
+fn high_fn(f fn(int) int) {
  
 } 
 

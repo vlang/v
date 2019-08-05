@@ -45,7 +45,7 @@ fn error_msg(message, val string) string {
 // reserved characters correctly. See golang.org/issue/5684.
 fn should_escape(c byte, mode EncodingMode) bool {
 	// §2.3 Unreserved characters (alphanum)
-	if `a` <= c && c <= `z` || `A` <= c && c <= `Z` || `0` <= c && c <= `9` {
+	if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) || (`0` <= c && c <= `9`) {
 		return false
 	}
 
@@ -377,10 +377,10 @@ fn (u &Userinfo) string() string {
 fn split_by_scheme(rawurl string) ?[]string {
 	for i := 0; i < rawurl.len; i++ {
 		c := rawurl[i]		
-		if `a` <= c && c <= `z` || `A` <= c && c <= `Z` {
+		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
 			// do nothing
 		}
-		else if `0` <= c && c <= `9` || c == `+` || c == `-` || c == `.` {
+		else if (`0` <= c && c <= `9`) || (c == `+` || c == `-` || c == `.`) {
 			if i == 0 {
 				return ['', rawurl]
 			}
