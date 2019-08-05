@@ -149,9 +149,15 @@ fn (p mut Parser) chash() {
 		if p.table.flags.contains(flag) {
 			return
 		}
+		// expand `@VMOD/pg/pg.o` to absolute path
+		has_vmod := flag.contains('@VMOD')
+		flag = flag.trim_space().replace('@VMOD', ModPath)
+		if p.table.flags.contains(flag) {
+			return
+		}
 		p.log('adding flag "$flag"')
 		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it 
-		if has_vroot && flag.contains('.o') {
+		if (has_vroot || has_vmod) && flag.contains('.o') {
 			if p.os == .msvc {
 				build_thirdparty_obj_file_with_msvc(flag)
 			} 

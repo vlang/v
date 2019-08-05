@@ -249,15 +249,11 @@ pub fn (m map_string) str() string {
 		return '{}'
 	}
 	// TODO use bytes buffer
-	//mut sb := strings.new_builder(50)
-	//sb.writeln('{') 
-	mut s := '{\n' 
+	mut sb := strings.new_builder(50)
+	sb.writeln('{') 
 	for key, val  in m { 
-		//sb.writeln('  "$entry.key" => "$val"') 
-		s += '  "$key" => "$val"\n' 
+		sb.writeln('  "$key" => "$val"') 
 	}
-	s += '}\n' 
-	//sb.writeln('}') 
-	//return sb.str() 
-	return s 
+	sb.writeln('}') 
+	return sb.str() 
 }
