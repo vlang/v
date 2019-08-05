@@ -28,7 +28,7 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	// println('gen_json_for_type( $typ.name )')
 	// Register decoder fn
 	mut dec_fn := Fn {
-		pkg: p.mod
+		mod: p.mod
 		typ: 'Option_$typ.name'
 		name: js_dec_name(t)
 	}
@@ -45,7 +45,7 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	p.table.register_fn(dec_fn)
 	// Register encoder fn
 	mut enc_fn := Fn {
-		pkg: p.mod
+		mod: p.mod
 		typ: 'cJSON*'
 		name: js_enc_name(t)
 	}

@@ -946,19 +946,15 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('user_files:')
 		println(user_files)
 	}
-	// import tables for user/lib files
-	mut file_imports := []FileImportTable
 	// Parse builtin imports
 	for file in v.files {
 		mut p := v.new_parser(file, Pass.imports)
 		p.parse()
-		file_imports << *p.import_table
 	}
 	// Parse user imports
 	for file in user_files {
 		mut p := v.new_parser(file, Pass.imports)
 		p.parse()
-		file_imports << *p.import_table
 	}
 	// Parse lib imports
 /* 
@@ -977,7 +973,6 @@ fn (v mut V) add_v_files_to_compile() {
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
 				p.parse()
-				file_imports << *p.import_table
 			}
 		}
 	}
@@ -996,7 +991,6 @@ fn (v mut V) add_v_files_to_compile() {
 		for file in vfiles {
 			mut p := v.new_parser(file, Pass.imports)
 			p.parse()
-			file_imports << *p.import_table
 		}
 	}
 	if v.pref.is_verbose {
@@ -1005,7 +999,7 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	// graph deps
 	mut dep_graph := new_mod_dep_graph()
-	dep_graph.from_import_tables(file_imports)
+	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
@@ -1034,7 +1028,7 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 	}
 	// add remaining files (not modules)
-	for fit in file_imports {
+	for fit in v.table.file_imports {
 		//println('fit $fit.file_path') 
 		if !fit.file_path in v.files {
 			v.files << fit.file_path
@@ -1058,13 +1052,13 @@ fn get_arg(joined_args, arg, def string) string {
 	return res
 }
 
-fn (v &V) module_path(pkg string) string {
+fn (v &V) module_path(mod string) string {
 	// submodule support
-	if pkg.contains('.') {
-		//return pkg.replace('.', path_sep)
-		return pkg.replace('.', '/')
+	if mod.contains('.') {
+		//return mod.replace('.', path_sep)
+		return mod.replace('.', '/')
 	}
-	return pkg
+	return mod
 }
 
 fn (v &V) log(s string) {
