@@ -948,6 +948,12 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	// import tables for user/lib files
 	mut file_imports := []FileImportTable
+	// Parse builtin imports
+	for file in v.files {
+		mut p := v.new_parser(file, Pass.imports)
+		p.parse()
+		file_imports << *p.import_table
+	}
 	// Parse user imports
 	for file in user_files {
 		mut p := v.new_parser(file, Pass.imports)
