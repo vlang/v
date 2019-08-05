@@ -105,7 +105,7 @@ pub fn (req &Request) do() Response {
 	// Todo call twice to get len
 	size := 1024
 	h_buf := malloc(size)
-	
+
 	C.HttpQueryInfo(request, HTTP_QUERY_RAW_HEADERS_CRLF, h_buf, &size, 0)
 	// Get response  body
 	mut buf := [1025]byte
@@ -137,7 +137,7 @@ pub fn (req &Request) do() Response {
 		text: s
 		headers: map[string]string{}
 		// headers: resp_headers
-		status_code:resp_headers.substr(9,12).int()
+		status_code: resp_headers.substr(9,12).int()
 	}
 	for h in hh {
 		hpos := h.index(':')
