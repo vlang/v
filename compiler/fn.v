@@ -14,7 +14,7 @@ struct Fn {
 	// addr int
 mut:
 	name          string
-	pkg           string
+	mod           string
 	local_vars    []Var
 	var_idx       int
 	args          []Var
@@ -97,9 +97,9 @@ fn (p mut Parser) is_sig() bool {
 	(p.file_path.contains(ModPath))
 }
 
-fn new_fn(pkg string, is_public bool) *Fn {
+fn new_fn(mod string, is_public bool) *Fn {
 	return &Fn {
-		pkg: pkg
+		mod: mod
 		local_vars: [Var{}		; MaxLocalVars]
 		is_public: is_public
 	}
@@ -137,13 +137,13 @@ fn (p mut Parser) fn_decl() {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module
-		if !p.first_pass() && !p.builtin_pkg && T.mod != p.mod {
+		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod {
 			println('T.mod=$T.mod')
 			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
 		}
 		// (a *Foo) instead of (a mut Foo) is a common mistake
-		if !p.builtin_pkg && receiver_typ.contains('*') {
+		if !p.builtin_mod && receiver_typ.contains('*') {
 			t := receiver_typ.replace('*', '')
 			p.error('use `($receiver_name mut $t)` instead of `($receiver_name *$t)`')
 		}
@@ -175,10 +175,10 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot 
 	// Just fn signature? only builtin.v + default build mode
-	// is_sig := p.builtin_pkg && p.pref.build_mode == default_mode
-	// is_sig := p.pref.build_mode == default_mode && (p.builtin_pkg || p.file.contains(LANG_TMP))
+	// is_sig := p.builtin_mod && p.pref.build_mode == default_mode
+	// is_sig := p.pref.build_mode == default_mode && (p.builtin_mod || p.file.contains(LANG_TMP))
 	is_sig := p.is_sig()
-	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_pkg')
+	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_mod')
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -199,10 +199,10 @@ fn (p mut Parser) fn_decl() {
 	if receiver_typ != '' {
 		// f.name = '${receiver_typ}_${f.name}'
 	}
-	// full pkg function name
+	// full mod function name
 	// os.exit ==> os__exit()
-	if !is_c && !p.builtin_pkg && p.mod != 'main' && receiver_typ.len == 0 {
-		f.name = p.prepend_pkg(f.name)
+	if !is_c && !p.builtin_mod && p.mod != 'main' && receiver_typ.len == 0 {
+		f.name = p.prepend_mod(f.name)
 	}
 	if p.first_pass() && p.table.known_fn(f.name) && receiver_typ.len == 0 {
 		existing_fn := p.table.find_fn(f.name)
@@ -471,7 +471,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		// p.error('unclosed {')
 	}
 	// Make sure all vars in this function are used (only in main for now)
-	// if p.builtin_pkg || p.mod == 'os' ||p.mod=='http'{
+	// if p.builtin_mod || p.mod == 'os' ||p.mod=='http'{
 	if p.mod != 'main' {
 		if !is_generic { 
 			p.genln('}')
@@ -580,11 +580,11 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.pkg != p.mod  { 
+	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  { 
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
-	if f.is_c && !p.builtin_pkg {
+	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
 			p.error('use `free()` instead of `C.free()`') 
 		} else if f.name == 'malloc' {
