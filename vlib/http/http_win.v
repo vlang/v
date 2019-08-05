@@ -137,9 +137,9 @@ pub fn (req &Request) do() Response {
 		text: s
 		headers: map[string]string{}
 		// headers: resp_headers
+		status_code:resp_headers.substr(9,12).int()
 	}
 	for h in hh {
-		vals := h.split(':')
 		hpos := h.index(':')
 		if hpos == -1 {
 			continue
