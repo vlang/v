@@ -151,8 +151,7 @@ fn (p mut Parser) chash() {
 		}
 		// expand `@VMOD/pg/pg.o` to absolute path
 		has_vmod := flag.contains('@VMOD')
-		home := os.home_dir()
-		flag = flag.trim_space().replace('@VMOD', home + '/.vmodules')
+		flag = flag.trim_space().replace('@VMOD', ModPath)
 		if p.table.flags.contains(flag) {
 			return
 		}
