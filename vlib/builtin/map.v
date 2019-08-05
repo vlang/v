@@ -4,6 +4,8 @@
 
 module builtin
 
+import strings 
+
 struct map {
 	element_size int
 	root      *Node 
@@ -243,16 +245,19 @@ pub fn (m map) free() {
 }
 
 pub fn (m map_string) str() string {
-	// return 'not impl'
 	if m.size == 0 {
 		return '{}'
 	}
 	// TODO use bytes buffer
-	mut s := '{\n'
-	//for key, val  in m { 
-		//val := m[entry.key]
-		//s += '  "$entry.key" => "$val"\n'
-	//}
-	s += '}'
-	return s
+	//mut sb := strings.new_builder(50)
+	//sb.writeln('{') 
+	mut s := '{\n' 
+	for key, val  in m { 
+		//sb.writeln('  "$entry.key" => "$val"') 
+		s += '  "$key" => "$val"\n' 
+	}
+	s += '}\n' 
+	//sb.writeln('}') 
+	//return sb.str() 
+	return s 
 }
