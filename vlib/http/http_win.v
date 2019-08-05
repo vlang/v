@@ -105,7 +105,7 @@ pub fn (req &Request) do() Response {
 	// Todo call twice to get len
 	size := 1024
 	h_buf := malloc(size)
-	
+
 	C.HttpQueryInfo(request, HTTP_QUERY_RAW_HEADERS_CRLF, h_buf, &size, 0)
 	// Get response  body
 	mut buf := [1025]byte
@@ -137,9 +137,13 @@ pub fn (req &Request) do() Response {
 		text: s
 		headers: map[string]string{}
 		// headers: resp_headers
+
+        //hard coded http version 'HTTP/1.1' + space - 9
+        //3-digit HTTP status codes - 9+3
+        //HTTP/1.1 200 OK
+		status_code: resp_headers.substr(9,12).int()
 	}
 	for h in hh {
-		vals := h.split(':')
 		hpos := h.index(':')
 		if hpos == -1 {
 			continue
@@ -177,4 +181,3 @@ pub fn escape(s string) string {
 }
 
 fn C.InternetReadFile(voidptr, voidptr, int, intptr) bool
-
