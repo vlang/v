@@ -1058,13 +1058,13 @@ fn get_arg(joined_args, arg, def string) string {
 	return res
 }
 
-fn (v &V) module_path(pkg string) string {
+fn (v &V) module_path(mod string) string {
 	// submodule support
-	if pkg.contains('.') {
-		//return pkg.replace('.', path_sep)
-		return pkg.replace('.', '/')
+	if mod.contains('.') {
+		//return mod.replace('.', path_sep)
+		return mod.replace('.', '/')
 	}
-	return pkg
+	return mod
 }
 
 fn (v &V) log(s string) {

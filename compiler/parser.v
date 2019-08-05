@@ -62,7 +62,7 @@ mut:
 	tmp_cnt        int
 	is_script      bool
 	pref           *Preferences // Setting and Preferences shared from V struct
-	builtin_pkg    bool
+	builtin_mod    bool
 	vh_lines       []string
 	inside_if_expr bool
 	is_struct_init bool
@@ -184,13 +184,13 @@ fn (p mut Parser) parse() {
 		p.mod = p.check_name()
 	}
 	p.fgenln('\n')
-	p.builtin_pkg = p.mod == 'builtin'
+	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod == 'ft' || 	p.mod == 'glfw'  || p.mod=='glfw2' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
 	p.import_table.module_name = fq_mod
-	p.table.register_package(fq_mod)
+	p.table.known_module(fq_mod)
 	// replace "." with "_dot_" in module name for C variable names
 	p.mod = fq_mod.replace('.', '_dot_')
 	if p.pass == .imports {
@@ -264,7 +264,7 @@ fn (p mut Parser) parse() {
 			p.comp_time()
 		case Token.key_global:
 			if !p.pref.translated && !p.pref.is_live && 
-				!p.builtin_pkg && !p.building_v {
+				!p.builtin_mod && !p.building_v {
 				p.error('__global is only allowed in translated code')
 			}
 			p.next()
@@ -362,18 +362,18 @@ fn (p mut Parser) import_statement() {
 	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
 		p.error('bad import format. module/submodule names cannot begin with a number.')
 	}
-	mut pkg := p.check_name().trim_space()
-	mut mod_alias := pkg
+	mut mod := p.check_name().trim_space()
+	mut mod_alias := mod
 	// submodule support
 	mut depth := 1
 	for p.tok == .dot {
 		p.check(.dot) 
 		submodule := p.check_name()
 		mod_alias = submodule
-		pkg += '.' + submodule
+		mod += '.' + submodule
 		depth++
 		if depth > MaxModuleDepth { 
-			p.error('module depth of $MaxModuleDepth exceeded: $pkg') 
+			p.error('module depth of $MaxModuleDepth exceeded: $mod') 
 		}
 	}
 	// aliasing (import encoding.base64 as b64)
@@ -382,16 +382,16 @@ fn (p mut Parser) import_statement() {
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
-	p.import_table.register_alias(mod_alias, pkg)
+	p.import_table.register_alias(mod_alias, mod)
 	// Make sure there are no duplicate imports
-	if p.table.imports.contains(pkg) {
+	if p.table.imports.contains(mod) {
 		return
 	}
-	p.log('adding import $pkg')
-	p.table.imports << pkg
-	p.table.register_package(pkg)
+	p.log('adding import $mod')
+	p.table.imports << mod
+	p.table.known_module(mod)
 	
-	p.fgenln(' ' + pkg)
+	p.fgenln(' ' + mod)
 }
 
 fn (p mut Parser) const_decl() {
@@ -411,9 +411,9 @@ fn (p mut Parser) const_decl() {
 		//if ! (name[0] >= `A` && name[0] <= `Z`) {
 			//p.error('const name must be capitalized')
 		//}
-		// Imported consts (like GL_TRIANG.leS) dont need pkg prepended (gl__GL_TRIANG.leS)
+		// Imported consts (like GL_TRIANG.leS) dont need mod prepended (gl__GL_TRIANG.leS)
 		if !is_import {
-			name = p.prepend_pkg(name)
+			name = p.prepend_mod(name)
 		}
 		mut typ := 'int'
 		if !is_import {
@@ -525,8 +525,8 @@ fn (p mut Parser) struct_decl() {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')  
 	} 
 	// Specify full type name
-	if !is_c && !p.builtin_pkg && p.mod != 'main' {
-		name = p.prepend_pkg(name)
+	if !is_c && !p.builtin_mod && p.mod != 'main' {
+		name = p.prepend_mod(name)
 	}
 	if p.pass == .decl && p.table.known_type(name) {
 		p.error('`$name` redeclared')
@@ -682,8 +682,8 @@ fn (p mut Parser) struct_decl() {
 fn (p mut Parser) enum_decl(_enum_name string) {
 	mut enum_name := _enum_name
 	// Specify full type name
-	if !p.builtin_pkg && p.mod != 'main' {
-		enum_name = p.prepend_pkg(enum_name)
+	if !p.builtin_mod && p.mod != 'main' {
+		enum_name = p.prepend_mod(enum_name)
 	}
 	// Skip empty enums
 	if enum_name != 'int' {
@@ -822,7 +822,7 @@ fn (p mut Parser) get_type() string {
 		if debug {
 			println('\nget_type() .key_goT FN TYP line=$p.scanner.line_nr')
 		}
-		mut f := Fn{name: '_', pkg: p.mod}
+		mut f := Fn{name: '_', mod: p.mod}
 		p.next()
 		line_nr := p.scanner.line_nr
 		p.fn_args(mut f)
@@ -883,7 +883,7 @@ fn (p mut Parser) get_type() string {
 		}
 	}
 	// map[string]int 
-	if !p.builtin_pkg && p.tok == .name && p.lit == 'map' {
+	if !p.builtin_mod && p.tok == .name && p.lit == 'map' {
 		p.next()
 		p.check(.lsbr) 
 		key_type := p.check_name() 
@@ -919,19 +919,19 @@ fn (p mut Parser) get_type() string {
 		typ = p.lit
 	}
 	else {
-		// Package specified? (e.g. gx.Image)
+		// Module specified? (e.g. gx.Image)
 		if p.peek() == .dot {
 			p.next()
 			p.check(.dot)
 			typ += '__$p.lit'
 		}
 		mut t := p.table.find_type(typ)
-		// "typ" not found? try "pkg__typ"
-		if t.name == '' && !p.builtin_pkg {
+		// "typ" not found? try "mod__typ"
+		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
 			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') &&
 				!typ.starts_with('[') { 
-				typ = p.prepend_pkg(typ)
+				typ = p.prepend_mod(typ)
 			}
 			t = p.table.find_type(typ)
 			if t.name == '' && !p.pref.translated && !p.first_pass() && !typ.starts_with('[') {
@@ -974,7 +974,7 @@ fn (p mut Parser) get_type() string {
 		return 'byte*'
 	}
 	if typ == 'voidptr' {
-		//if !p.builtin_pkg && p.mod != 'os' && p.mod != 'gx' && p.mod != 'gg' && !p.pref.translated {
+		//if !p.builtin_mod && p.mod != 'os' && p.mod != 'gx' && p.mod != 'gg' && !p.pref.translated {
 			//p.error('voidptr can only be used in unsafe code')
 		//}
 		return 'void*'
@@ -1225,7 +1225,7 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		//p.cgen.cur_line = left + 'opt_ok($expr)'
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($expr_type))')
 	}
-	else if !p.builtin_pkg && !p.check_types_no_throw(expr_type, p.assigned_type) {
+	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.scanner.line_nr--
 		p.error('cannot use type `$expr_type` as type `$p.assigned_type` in assignment')
 	}
@@ -1256,7 +1256,7 @@ fn (p mut Parser) var_decl() {
 	p.var_decl_name = name 
 	// Don't allow declaring a variable with the same name. Even in a child scope
 	// (shadowing is not allowed)
-	if !p.builtin_pkg && p.cur_fn.known_var(name) {
+	if !p.builtin_mod && p.cur_fn.known_var(name) {
 		v := p.cur_fn.find_var(name)
 		p.error('redefinition of `$name`')
 	}
@@ -1395,7 +1395,7 @@ fn (p mut Parser) name_expr() string {
 		p.next()
 	}
 	if deref {
-		if p.pref.is_play && !p.builtin_pkg {
+		if p.pref.is_play && !p.builtin_mod {
 			p.error('dereferencing is temporarily disabled on the playground, will be fixed soon')
 		}
 	}
@@ -1433,23 +1433,23 @@ fn (p mut Parser) name_expr() string {
 	// //////////////////////////
 	// module ?
 	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if ((name == p.mod && p.table.known_pkg(name)) || p.import_table.known_alias(name))
+	if ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
 		&& !p.cur_fn.known_var(name) && !is_c {
-		mut pkg := name
+		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
 			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
-			pkg = p.import_table.resolve_alias(name).replace('.', '_dot_')
+			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
 		p.next()
 		p.check(.dot)
 		name = p.lit
 		p.fgen(name)
-		name = prepend_pkg(pkg, name)
+		name = prepend_mod(mod, name)
 	}
 	else if !p.table.known_type(name) && !p.cur_fn.known_var(name) &&
 	!p.table.known_fn(name) && !p.table.known_const(name) && !is_c {
-		name = p.prepend_pkg(name)
+		name = p.prepend_mod(name)
 	}
 	// Variable
 	mut v := p.cur_fn.find_var(name)
@@ -1517,7 +1517,7 @@ fn (p mut Parser) name_expr() string {
 			return enum_type.name
 		}
 		else if p.peek() == .lcbr {
-			// go back to name start (pkg.name)
+			// go back to name start (mod.name)
 /* 
 			p.scanner.pos = hack_pos
 			p.tok = hack_tok
@@ -1582,9 +1582,9 @@ fn (p mut Parser) name_expr() string {
 				f = p.table.find_fn(name) 
 			} 
 			if f.name == '' { 
-				// If orig_name is a pkg, then printing undefined: `pkg` tells us nothing
-				// if p.table.known_pkg(orig_name) {
-				if p.table.known_pkg(orig_name) || p.import_table.known_alias(orig_name) {
+				// If orig_name is a mod, then printing undefined: `mod` tells us nothing
+				// if p.table.known_mod(orig_name) {
+				if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
 					name = name.replace('__', '.').replace('_dot_', '.')
 					p.error('undefined: `$name`')
 				}
@@ -1750,21 +1750,21 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec
 		is_vi := p.fileis('vi')
-		if !p.builtin_pkg && !p.pref.translated && modifying && !field.is_mut && !is_vi {
+		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
 			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)')
 		}
-		if !p.builtin_pkg && p.mod != typ.mod {
+		if !p.builtin_mod && p.mod != typ.mod {
 		}
-		// if p.pref.is_play && field.access_mod ==.private && !p.builtin_pkg && p.mod != typ.mod {
+		// if p.pref.is_play && field.access_mod ==.private && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `arr.data`
-		if field.access_mod == .private && !p.builtin_pkg && !p.pref.translated && p.mod != typ.mod {
+		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
 			p.error('cannot refer to unexported field `$field_name` (type `$typ.name`)')
 		}
-		// if field.access_mod ==.public && p.peek() == .assign && !p.builtin_pkg && p.mod != typ.mod {
+		// if field.access_mod ==.public && p.peek() == .assign && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `str.len = 0`
-		if field.access_mod == .public && !p.builtin_pkg && p.mod != typ.mod {
+		if field.access_mod == .public && !p.builtin_mod && p.mod != typ.mod {
 			if !field.is_mut && !p.pref.translated && modifying {
 				p.error('cannot modify public immutable field `$field_name` (type `$typ.name`)')
 			}
@@ -1815,8 +1815,8 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 		if is_str {
 			typ = 'byte'
 			p.fgen('[')
-			// Direct faster access to .str[i] in builtin package
-			if p.builtin_pkg {
+			// Direct faster access to .str[i] in builtin modules
+			if p.builtin_mod {
 				p.gen('.str[')
 				close_bracket = true
 			}
@@ -1866,7 +1866,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 				typ = 'void*'
 			}
 			// No bounds check in translated from C code
-			if p.pref.translated && !p.builtin_pkg{
+			if p.pref.translated && !p.builtin_mod{
 				// Cast void* to typ*: add (typ*) to the beginning of the assignment :
 				// ((int*)a.data = ...
 				p.cgen.set_placeholder(fn_ph, '(($typ*)(')
@@ -1898,7 +1898,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			p.expression()
 		}
 		p.check(.rsbr)
-		// if (is_str && p.builtin_pkg) || is_ptr || is_fixed_arr && ! (is_ptr && is_arr) {
+		// if (is_str && p.builtin_mod) || is_ptr || is_fixed_arr && ! (is_ptr && is_arr) {
 		if close_bracket {
 			p.gen(']/*r$typ $v.is_mut*/')
 		}
@@ -1910,7 +1910,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 	p.tok == .mult_assign || p.tok == .div_assign || p.tok == .xor_assign || p.tok == .mod_assign ||
 	p.tok == .or_assign || p.tok == .and_assign || p.tok == .righ_shift_assign ||
 	p.tok == .left_shift_assign {
-		if is_indexer && is_str && !p.builtin_pkg {
+		if is_indexer && is_str && !p.builtin_mod {
 			p.error('strings are immutable')
 		}
 		assign_pos := p.cgen.cur_line.len
@@ -1948,7 +1948,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 	// p.error('didnt assign')
 	// }
 	// m[key]. no =, just a getter
-	else if (is_map || is_arr || (is_str && !p.builtin_pkg)) && is_indexer {
+	else if (is_map || is_arr || (is_str && !p.builtin_mod)) && is_indexer {
 		// Erase var name we generated earlier:	"int a = m, 0"
 		// "m, 0" gets killed since we need to start from scratch. It's messy.
 		// "m, 0" is an index expression, save it before deleting and insert later in map_get()
@@ -1966,7 +1966,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 			p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
 		}
 		else if is_arr {
-			if p.pref.translated && !p.builtin_pkg {
+			if p.pref.translated && !p.builtin_mod {
 				p.gen('$index_expr ]')
 			}
 			else {
@@ -1977,7 +1977,7 @@ fn (p mut Parser) index_expr(typ string, fn_ph int) string {
 				} 
 			}
 		}
-		else if is_str && !p.builtin_pkg {
+		else if is_str && !p.builtin_mod {
 			p.gen('string_at($index_expr)')
 		}
 		// Zero the string after map_get() if it's nil, numbers are automatically 0
@@ -2536,7 +2536,7 @@ fn (p mut Parser) array_init() string {
 	// fixed length arrays with a const len: `nums := [N]int`, same as `[10]int` basically 
 	mut is_const_len := false 
 	if p.tok == .name {
-		c := p.table.find_const(p.prepend_pkg(p.lit)) 
+		c := p.table.find_const(p.prepend_mod(p.lit)) 
 		if c.name != '' && c.typ == 'int' && p.peek() == .rsbr && !p.inside_const {
 			is_integer = true 
 			is_const_len = true 
@@ -2733,7 +2733,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 				continue
 			}
 			field_typ := field.typ
-			if !p.builtin_pkg && field_typ.ends_with('*') && field_typ.contains('Cfg') {
+			if !p.builtin_mod && field_typ.ends_with('*') && field_typ.contains('Cfg') {
 				p.error('pointer field `${typ}.${field.name}` must be initialized')
 			}
 			def_val := type_default(field_typ)
@@ -3255,12 +3255,12 @@ fn (p mut Parser) return_st() {
 	p.returns = true
 }
 
-fn prepend_pkg(pkg, name string) string {
-	return '${pkg}__${name}'
+fn prepend_mod(mod, name string) string {
+	return '${mod}__${name}'
 }
 
-fn (p &Parser) prepend_pkg(name string) string {
-	return prepend_pkg(p.mod, name)
+fn (p &Parser) prepend_mod(name string) string {
+	return prepend_mod(p.mod, name)
 }
 
 fn (p mut Parser) go_statement() {
