@@ -191,3 +191,43 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
   
   assert !fp.usage().contains('options:')
 }
+
+fn test_free_args_could_be_limited() {
+  mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
+  fp1.limit_free_args(1, 4)
+  args := fp1.finalize() or {
+    assert false
+    return
+  }
+  assert args[0] == 'a' && args[1] == 'b' && args[2] == 'c'
+}
+
+fn test_error_for_to_few_free_args() {
+  mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
+  fp1.limit_free_args(5, 6)
+  args := fp1.finalize() or {
+    assert err == 'Expect at least 5 arguments'
+    return
+  }
+  assert args.len < 0 // expect an error and need to use args 
+}
+
+fn test_error_for_to_much_free_args() {
+  mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
+  fp1.limit_free_args(1, 2)
+  args := fp1.finalize() or {
+    assert err == 'Expect at most 2 arguments'
+    return
+  }
+  assert args.len < 0 // expect an error and need to use args 
+}
+
+fn test_could_expect_no_free_args() {
+  mut fp1 := flag.new_flag_parser(['a'])
+  fp1.limit_free_args(0, 0)
+  args := fp1.finalize() or {
+    assert err == 'Expect no arguments'
+    return
+  }
+  assert args.len < 0 // expect an error and need to use args 
+}
