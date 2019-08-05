@@ -62,11 +62,15 @@ pub mut:
   application_name        string
   application_version     string
   application_description string
+
+  min_free_args int
+  max_free_args int
 }
 
 // create a new flag set for parsing command line arguments
+// TODO use INT_MAX some how
 pub fn new_flag_parser(args []string) &FlagParser {
-  return &FlagParser{args:args}
+  return &FlagParser{args:args, max_free_args: 4048}
 }
 
 // change the application name to be used in 'usage' output
@@ -212,6 +216,17 @@ pub fn (fs mut FlagParser) string(n, v, u string) string {
   return parsed
 }
 
+// add an additional check for free arguments 
+// this will cause an error in finalize() if free args are out of range
+// (min, ..., max)
+pub fn (fs mut FlagParser) limit_free_args(min, max int) {
+  if min > max {
+    panic('flag.limit_free_args expect min < max, got $min >= $max')
+  }
+  fs.min_free_args = min
+  fs.max_free_args = max
+}
+
 const (
   // used for formating usage message
   SPACE = '                            '
@@ -259,5 +274,16 @@ pub fn (fs FlagParser) finalize() ?[]string {
       return error('Unknown argument \'${a.right(2)}\'')
     }
   }
+  if fs.args.len < fs.min_free_args {
+    return error('Expect at least ${fs.min_free_args} arguments')
+  }
+  if fs.args.len >= fs.max_free_args {
+    if fs.max_free_args > 0 {
+      return error('Expect at most ${fs.max_free_args} arguments')
+    } else {
+      return error('Expect no arguments')
+    }
+  }
   return fs.args
 }
+
