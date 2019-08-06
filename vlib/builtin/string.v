@@ -469,6 +469,7 @@ pub fn (s string) count(substr string) int {
 		i += substr.len
 		n++
 	}
+	return -1 // TODO this return is neccesary because the compiler doesn't know that the loop goes forever until you return
 }
 
 pub fn (s string) contains(p string) bool {
