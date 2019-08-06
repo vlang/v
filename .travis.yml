@@ -38,7 +38,7 @@ script:
     fi    
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      choco install openssl
+      choco install openssl.light
       echo "Running make_tests.bat..."
       ./make_tests.bat
     fi
