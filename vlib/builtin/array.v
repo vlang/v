@@ -209,12 +209,11 @@ pub fn (a array) reverse() array {
 
 pub fn (a []int) str() string {
 	mut res := '['
-	for i := 0; i < a.len; i++ {
-		val := a[i]
-		res += '$val'
-		if i < a.len - 1 {
+	for i, val in a {
+		if i > 0 {
 			res += ', '
 		}
+		res += '$val'
 	}
 	res += ']'
 	return res
@@ -222,16 +221,40 @@ pub fn (a []int) str() string {
 
 pub fn (a []u64) str() string {
 	mut res := '['
-	for i := 0; i < a.len; i++ {
-		val := a[i]
-		res += '$val'
-		if i < a.len - 1 {
+	for i, val in a {
+		if i > 0 {
 			res += ', '
 		}
+		res += '$val'
 	}
 	res += ']'
 	return res
 }
+
+pub fn (a []f32) str() string {
+	mut res := '['
+	for i, val in a {
+		if i > 0 {
+			res += ', '
+		}
+		res += '$val'
+	}
+	res += ']'
+	return res
+}
+
+pub fn (a []f64) str() string {
+	mut res := '['
+	for i, val in a {
+		if i > 0 {
+			res += ', '
+		}
+		res += '$val'
+	}
+	res += ']'
+	return res
+}
+
 //pub fn (a []int) free() {
 pub fn (a array) free() {
 	//if a.is_slice {
