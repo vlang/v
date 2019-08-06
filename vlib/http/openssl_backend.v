@@ -19,6 +19,9 @@ fn init_module() {
 	$if mac { 
 		C.SSL_library_init() 
 	} 
+	$if linux { 
+		C.SSL_library_init() 
+	} 
 	//C.SSL_load_error_strings() 
 	//C.OPENSSL_config(0) 
 }
