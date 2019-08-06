@@ -137,6 +137,7 @@ fn find_vs() ?VsInstallation {
 	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" '
 		+ '-latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
 		panic(err)
+		return error('panic') // TODO remove this
 	}
 	// println('res: "$res"')
 
@@ -347,6 +348,7 @@ pub fn cc_msvc(v *V) {
 	res := os.exec(cmd) or {
 		println(err)
 		panic('msvc error')
+		return // TODO remove this
 	}
 	// println(res)
 	// println('C OUTPUT:')
@@ -390,6 +392,7 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
 		panic(err)
+		return // TODO remove this
 	}
 	println(res)
 } 

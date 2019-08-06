@@ -32,6 +32,7 @@ fn main() {
 	home := os.home_dir() 
 	_ := os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url $mod.name') or {
 		panic(err)
+		return // TODO remove this
 	}
 	println(s) 
 } 

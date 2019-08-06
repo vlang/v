@@ -139,12 +139,14 @@ fn main() {
 			vexec := os.args[0] 
 			_ := os.exec('$vexec vget.v') or {
 				panic(err)
+				return // TODO remove this
 			}
 			println('Done.') 
 		} 
 		println('Installing module ${mod}...') 
 		_ := os.exec('$vget $mod') or {
 			panic(err)
+			return // TODO remove this
 		}
 		return 
 	} 
@@ -841,6 +843,7 @@ mut args := ''
 		}
 		panic('C error. This should never happen. ' +
 			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
+		return // TODO remove this
 	}
 	diff := time.ticks() - ticks 
 	// Print the C command
@@ -865,6 +868,7 @@ mut args := ''
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
 			panic(err)
+			return // TODO remove this
 		}
 		println(ress)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
@@ -1365,11 +1369,13 @@ fn update_v() {
 		os.mv('$vroot/v.exe', '$vroot/v_old.exe') 
 		s2 := os.exec('$vroot/make.bat') or {
 			panic(err)
+			return // TODO remove this
 		}
 		println(s2) 
 	} $else { 
 		s2 := os.exec('make -C "$vroot"') or {
 			panic(err)
+			return // TODO remove this
 		}
 		println(s2) 
 	} 
