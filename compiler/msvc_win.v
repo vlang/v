@@ -134,7 +134,7 @@ fn find_vs() ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio 
 	// installation!
-	_ := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" '
+	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" '
 		+ '-latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
 		panic(err)
 		return error('panic') // TODO remove this
@@ -345,7 +345,7 @@ pub fn cc_msvc(v *V) {
 
 	// println('$cmd')
 
-	res := os.exec(cmd) or {
+	_ := os.exec(cmd) or {
 		println(err)
 		panic('msvc error')
 		return // TODO remove this
