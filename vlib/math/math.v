@@ -102,7 +102,8 @@ pub fn exp(a f64) f64 {
 }
 
 // digits returns an array of the digits of n in the given base.
-pub fn digits(n, base int) []int {
+pub fn digits(_n, base int) []int {
+	mut n := _n 
 	mut sign := 1
 	if n < 0 {
 		sign = -1
@@ -132,6 +133,7 @@ pub fn exp2(a f64) f64 {
 }
 
 // factorial calculates the factorial of the provided value.
+// TODO bring back once multiple value functions are implemented 
 fn recursive_product( n int, current_number_ptr &int) int{
     mut m := n / 2
     if (m == 0){

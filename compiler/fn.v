@@ -666,6 +666,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		}
 		f.args << int_arg
 	}
+	// `(int, string, int)` 
 	// Just register fn arg types
 	types_only := p.tok == .mul || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
 	if types_only {
@@ -684,12 +685,12 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			}
 		}
 	}
-	// (a int, b,c string) syntax
+	// `(a int, b, c string)` syntax
 	for p.tok != .rpar {
 		mut names := [
 		p.check_name()
 		]
-		// a,b,c int syntax
+		// `a,b,c int` syntax
 		for p.tok == .comma {
 			p.check(.comma)
 			p.fspace()
