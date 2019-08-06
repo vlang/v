@@ -128,7 +128,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 
 	// scan integer part
-	for s.text[s.pos].is_digit() {
+	for s.pos < s.text.len && s.text[s.pos].is_digit() {
 		s.pos++
 	}
 
@@ -141,9 +141,9 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 
 	// scan fractional part
-	if s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
-		for s.text[s.pos].is_digit() {
+		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
 	}
@@ -152,7 +152,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	mut has_exponential_part := false
 	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
 		exp_start_pos := s.pos += 2
-		for s.text[s.pos].is_digit() {
+		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
 		if exp_start_pos == s.pos {
@@ -162,7 +162,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 
 	// error check: 1.23.4, 123.e+3.4
-	if s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		if has_exponential_part {
 			s.error('exponential part should be integer')
 		}
