@@ -16,17 +16,12 @@ struct C.SSL {
 } 
 
 fn init_module() {
-	init_openssl() 
-} 
-
-fn init_openssl() { 
 	C.SSL_library_init() 
 	//C.SSL_load_error_strings() 
 	//C.OPENSSL_config(0) 
 }
 
 fn ssl_do(method, host_name, path string) string { 
-	init_openssl() 
 	ssl_method := C.SSLv23_method() 
 	if isnil(method) { 
 	} 

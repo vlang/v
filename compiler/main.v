@@ -388,8 +388,19 @@ void init_consts();')
 	cgen.lines.set(defs_pos, dd)// TODO `def.str()` doesn't compile
 	// if v.build_mode in [.default, .embed_vlib] {
 	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
+		mut consts_init_body := cgen.consts_init.join_lines() 
+		for imp in v.table.imports {
+			if imp == 'http' {
+				consts_init_body += '\n http__init_module();'  
+			} 
+		} 
 		// vlib can't have `init_consts()`
-		cgen.genln('void init_consts() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \nSetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004); // ENABLE_VIRTUAL_TERMINAL_PROCESSING\n#endif\n g_str_buf=malloc(1000); ${cgen.consts_init.join_lines()} }')
+		cgen.genln('void init_consts() { 
+#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT);
+SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004); 
+// ENABLE_VIRTUAL_TERMINAL_PROCESSING\n#endif\n g_str_buf=malloc(1000);
+$consts_init_body 
+}')
 		// _STR function can't be defined in vlib
 		cgen.genln('
 string _STR(const char *fmt, ...) {
