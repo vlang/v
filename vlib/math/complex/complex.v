@@ -500,6 +500,7 @@ pub fn (c Complex) acsch() Complex {
 		.divide(c)
 		.ln()
 	}
+	panic('unimplemented') // TODO don't know what it's supposed to do
 }
 
 // Complex Equals

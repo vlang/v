@@ -34,12 +34,10 @@ fn (f mut Fetcher) fetch() {
 		cursor := f.cursor
 		f.mu.unlock()
 		resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
-			println('failed to fetch data from /v0/item/${id}.json')
-			exit(1)
+			panic('failed to fetch data from /v0/item/${id}.json')
 		}
 		story := json.decode(Story, resp.text) or {
-			println('failed to decode a story')
-			exit(1)
+			panic('failed to fetch data from /v0/item/${id}.json')
 		}
 		f.wg.done()
 		println('#$cursor) $story.title | $story.url')
