@@ -1118,6 +1118,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.js_decode()
 		}
 		else {
+			// panic is a pseudo return
+			if p.lit == 'panic' {
+				p.returns = true
+			}
 			// `a + 3`, `a(7)` or maybe just `a` 
 			q = p.bool_expression()
 		}
