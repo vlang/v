@@ -234,6 +234,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		is_const: true
 		is_global: true
 		mod: p.mod 
+		is_mut: true 
 	}
 }
 

@@ -335,19 +335,12 @@ pub fn (s string) right(n int) string {
 
 // substr 
 pub fn (s string) substr(start, end int) string {
-	/*
-	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
+	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
-		return ''
-	}
-*/
-	if start >= s.len {
 		return ''
 	}
 	len := end - start
 
-	// Copy instead of pointing, like in Java and C#. 
-	// Much easier to free such strings. 
 	mut res := string {
 		len: len
 		str: malloc(len + 1)
@@ -356,14 +349,14 @@ pub fn (s string) substr(start, end int) string {
 		res.str[i] = s.str[start + i]
 	}
 	res.str[len] = `\0`
-	return res 
+
 /* 
 	res := string {
 		str: s.str + start
 		len: len
 	}
-	return res
 */ 
+	return res
 }
 
 // KMP search
@@ -576,6 +569,9 @@ pub fn (s string) trim_space() string {
 		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
+if i > end + 1 {
+return s 
+} 
 	res := s.substr(i, end + 1)
 	// println('after SPACE "$res"')
 	return res

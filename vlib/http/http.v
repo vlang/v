@@ -89,3 +89,91 @@ pub fn (req mut Request) add_header(key, val string) {
 	// req.h = h
 }
 
+pub fn (req &Request) do() Response {
+	mut headers := map[string]string{}
+	if req.typ == 'POST' {
+		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
+	}
+	for key, val in req.headers {
+		//h := '$key: $val'
+	}
+	mut url := req.url
+	mut host := url
+	mut path := '/'
+	is_ssl := req.url.starts_with('https://')
+	if !is_ssl {
+		panic('non https requests are not supported right now') 
+	} 
+	mut pos := url.index('://')
+	if pos == -1 { return Response{} } //error('ff')}
+	url = url.right(pos + 3)
+	pos = url.index('/')
+	if pos > -1 {
+		host = url.left(pos)
+		host = host.clone()
+		path = url.right(pos)
+	}
+	s := ssl_do(req.typ, host, path) 
+	first_header := s.all_before('\n') 
+	mut status_code := 0 
+	if first_header.contains('HTTP/') {
+		val := first_header.find_between(' ', ' ')
+		status_code = val.int()
+	}
+	mut text := '' 
+	// Build resp headers map and separate the body 
+	mut nl_pos := 3 
+	mut i := 1 
+	for { 
+		old_pos := nl_pos 
+		nl_pos = s.index_after('\n', nl_pos+1) 
+		if nl_pos == -1 {
+			break 
+		} 
+		h := s.substr(old_pos + 1, nl_pos) 
+		// End of headers 
+		if h.len <= 1 {
+			text = s.right(nl_pos + 1) 
+			break 
+		} 
+		i++ 
+		pos = h.index(':')
+		if pos == -1 {
+			continue
+		}
+		//if h.contains('Content-Type') {
+			//continue
+		//}
+		key := h.left(pos)
+		val := h.right(pos + 2)
+		headers[key] = val.trim_space()
+	} 
+	return Response {
+		status_code: status_code 
+		headers: headers
+		text: text 
+	} 
+}
+
+pub fn unescape_url(s string) string {
+	panic('http.unescape_url() was replaced with urllib.query_unescape()') 
+	return '' 
+}
+
+pub fn escape_url(s string) string {
+	panic('http.escape_url() was replaced with urllib.query_escape()') 
+	return '' 
+}
+
+pub fn unescape(s string) string {
+	panic('http.unescape() was replaced with http.unescape_url()') 
+	return '' 
+}
+
+pub fn escape(s string) string {
+	panic('http.escape() was replaced with http.escape_url()') 
+	return '' 
+}
+
+type wsfn fn (s string, ptr voidptr)
+

@@ -1540,8 +1540,14 @@ fn (p mut Parser) name_expr() string {
 			return p.struct_init(name, is_c_struct_init)
 		}
 	}
-	// C fn
 	if is_c {
+		// C const (`C.GLFW_KEY_LEFT`) 
+		if p.peek() != .lpar {
+			p.gen(name) 
+			p.next() 
+			return 'int' 
+		}  
+		// C fn
 		f := Fn {
 			name: name// .replace('c_', '')
 			is_c: true
