@@ -1069,9 +1069,15 @@ fn (p mut Parser) close_scope() {
 			else if v.ptr {
 				//p.genln('free($v.name); // close_scope free') 
 			} 
-		} 
-
+		}
 	}
+
+	if p.cur_fn.defer_text != '' {
+		println('scope closed')
+		p.genln(p.cur_fn.defer_text)
+		p.cur_fn.defer_text = ''
+	}
+
 	p.cur_fn.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
 	p.cur_fn.scope_level--
