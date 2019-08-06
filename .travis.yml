@@ -26,6 +26,7 @@ matrix:
           packages:
             - freetype
             - glfw
+            - openssl
 script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
