@@ -52,7 +52,7 @@ pub fn decode(text string) string {
 		text: text
 	}
 	for {
-    	csize := cscanner.read_chunk_size()
+	csize := cscanner.read_chunk_size()
 		if 0 == csize { break }
 		cscanner.skip_crlf()
 		sb.write( cscanner.read_chunk(csize) )
