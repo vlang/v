@@ -137,11 +137,15 @@ fn main() {
 			println('Building vget...') 
 			os.chdir(vroot + '/tools') 
 			vexec := os.args[0] 
-			os.exec('$vexec vget.v') 
+			_ := os.exec('$vexec vget.v') or {
+				panic(err)
+			}
 			println('Done.') 
 		} 
 		println('Installing module ${mod}...') 
-		os.exec('$vget $mod') 
+		_ := os.exec('$vget $mod') or {
+			panic(err)
+		}
 		return 
 	} 
 	// TODO quit if the compiler is too old 
@@ -616,9 +620,7 @@ void reload_so() {
 		}
 		ret := os.system(cmd)
 		if ret != 0 {
-			if !v.pref.is_test { 
-				s := os.exec(cmd)
-				println(s)
+			if !v.pref.is_test {
 				println('failed to run the compiled program')
 			} 
 			exit(1)
@@ -828,7 +830,18 @@ mut args := ''
 	}
 	// Run
 	ticks := time.ticks() 
-	res := os.exec(cmd)
+	_ := os.exec(cmd) or {
+		if v.pref.is_debug {
+			println(err)
+		} else {
+			print(err.limit(200))
+			if err.len > 200 {
+				println('...\n(Use `v -debug` to print the entire error message)\n')
+			}
+		}
+		panic('C error. This should never happen. ' +
+			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
+	}
 	diff := time.ticks() - ticks 
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -836,18 +849,6 @@ mut args := ''
 		println(cmd) 
 		println('cc took $diff ms') 
 		println('=========\n')
-	}
-	if res.contains('error: ') {
-		if v.pref.is_debug { 
-			println(res)
-		} else {
-			print(res.limit(200)) 
-			if res.len > 200 { 
-				println('...\n(Use `v -debug` to print the entire error message)\n')   
-			} 
-		} 
-		panic('C error. This should never happen. ' +
-			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	// Link it if we are cross compiling and need an executable
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
@@ -862,11 +863,10 @@ mut args := ''
 		'/usr/lib/x86_64-linux-gnu/crti.o ' +
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
-		'/usr/lib/x86_64-linux-gnu/crtn.o')
-		println(ress)
-		if ress.contains('error:') {
-			exit(1)
+		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
+			panic(err)
 		}
+		println(ress)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
@@ -1272,22 +1272,13 @@ fn run_repl() []string {
 		if line.starts_with('print') {
 			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
-			s := os.exec('$vexe run $file -repl')
-			mut vals := s.split('\n')
-			if s.contains('panic: ') {
-				if !s.contains('declared and not used') 	{
-					for i:=1; i<vals.len; i++ {
-						println(vals[i])
-					} 
-				}
-				else {
-					println(s)
-				}
+			s := os.exec('$vexe run $file -repl') or {
+				panic(err)
+				break // TODO doesn't recognise the panic for some reason
 			}
-			else {
-				for i:=0; i < vals.len; i++ {
-					println(vals[i])
-				}
+			mut vals := s.split('\n')
+			for i:=0; i < vals.len; i++ {
+				println(vals[i])
 			}
 		}
 		else {
@@ -1299,24 +1290,14 @@ fn run_repl() []string {
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('$vexe run $temp_file -repl')
-			if s.contains('panic: ') {
-				if !s.contains('declared and not used') 	{
-					mut vals := s.split('\n')
-					for i:=0; i < vals.len; i++ {
-						println(vals[i])
-					} 
-				}
-				else {
-					lines << line
-				}
+			s := os.exec('$vexe run $temp_file -repl') or {
+				panic(err)
+				break // TODO doesn't recognise the panic for some reason
 			}
-			else {
-				lines << line
-				vals := s.split('\n')
-				for i:=0; i<vals.len-1; i++ {
-					println(vals[i])
-				} 
+			lines << line
+			vals := s.split('\n')
+			for i:=0; i<vals.len-1; i++ {
+				println(vals[i])
 			}
 		}
 	}
@@ -1375,15 +1356,22 @@ fn env_vflags_and_os_args() []string {
 fn update_v() {
 	println('Updating V...') 
 	vroot := os.dir(os.executable()) 
-	mut s := os.exec('git -C "$vroot" pull --rebase origin master') 
+	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
+		panic(err)
+		return // TODO doesn't recognise the panic for some reason
+	}
 	println(s) 
 	$if windows { 
 		os.mv('$vroot/v.exe', '$vroot/v_old.exe') 
-		s = os.exec('$vroot/make.bat') 
-		println(s) 
+		s2 := os.exec('$vroot/make.bat') or {
+			panic(err)
+		}
+		println(s2) 
 	} $else { 
-		s = os.exec('make -C "$vroot"') 
-		println(s) 
+		s2 := os.exec('make -C "$vroot"') or {
+			panic(err)
+		}
+		println(s2) 
 	} 
 } 
 
