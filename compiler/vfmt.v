@@ -43,6 +43,7 @@ fn (p mut Parser) peek() Token {
 			return tok
 		}
 	}
+	panic('no more tokens')
 }
 
 fn (p mut Parser) fmt_inc() {

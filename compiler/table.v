@@ -734,7 +734,8 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 		if f.fn_name == fn_name {
 			return f.types
 		} 
-	} 
+	}
+	panic('function not found')
 } 
 
 // `foo<Bar>()`
