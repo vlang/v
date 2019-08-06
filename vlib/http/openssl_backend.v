@@ -16,13 +16,16 @@ struct C.SSL {
 } 
 
 fn init_module() {
-	C.SSL_library_init() 
+	$if mac { 
+		C.SSL_library_init() 
+	} 
 	//C.SSL_load_error_strings() 
 	//C.OPENSSL_config(0) 
 }
 
 fn ssl_do(method, host_name, path string) string { 
-	ssl_method := C.SSLv23_method() 
+	//ssl_method := C.SSLv23_method() 
+	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 
 	} 
 	ctx := C.SSL_CTX_new(ssl_method) 
