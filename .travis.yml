@@ -15,7 +15,7 @@ matrix:
             - libglfw3 
             - libglfw3-dev
             - libfreetype6-dev 
-            - libcurl3-dev
+            - libssl-dev
     - os: windows
       language: sh
       filter_secrets: false
