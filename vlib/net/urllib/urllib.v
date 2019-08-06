@@ -270,6 +270,7 @@ fn escape(s string, mode EncodingMode) string {
 		return string(t)
 	}
 
+	ctab := '0123456789ABCDEF'
 	mut j := 0
 	for i := 0; i < s.len; i++ {
 		c1 := s[i]
@@ -278,9 +279,8 @@ fn escape(s string, mode EncodingMode) string {
 			j++
 		} else if should_escape(c1, mode) {
 			t[j] = `%`
-			x := '0123456789ABCDEF'
-			t[j+1] = x[c1>>4]
-			t[j+2] = x[c1&15]
+			t[j+1] = ctab[c1>>4]
+			t[j+2] = ctab[c1&15]
 			j += 3
 		} else {
 			t[j] = s[i]
