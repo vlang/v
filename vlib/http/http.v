@@ -5,6 +5,7 @@
 module http
 
 import net.urllib
+import http.chunked
 
 struct Request {
 pub:
@@ -141,7 +142,10 @@ pub fn (req &Request) do() Response {
 		key := h.left(pos)
 		val := h.right(pos + 2)
 		headers[key] = val.trim_space()
-	} 
+	}
+	if headers['Transfer-Encoding'] == 'chunked' {
+		text = chunked.decode( text )
+	}
 	return Response {
 		status_code: status_code 
 		headers: headers
