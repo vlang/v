@@ -4,6 +4,8 @@
 
 module http
 
+import net.urllib
+
 struct Request {
 pub:
 	headers2  []string
@@ -97,23 +99,15 @@ pub fn (req &Request) do() Response {
 	for key, val in req.headers {
 		//h := '$key: $val'
 	}
-	mut url := req.url
-	mut host := url
-	mut path := '/'
-	is_ssl := req.url.starts_with('https://')
+	url := urllib.parse(req.url) or {
+		// panic('http.request.do: invalid URL $req.url'
+		return Response{} //error('ff')}
+	}
+	is_ssl := url.scheme == 'https'
 	if !is_ssl {
 		panic('non https requests are not supported right now') 
-	} 
-	mut pos := url.index('://')
-	if pos == -1 { return Response{} } //error('ff')}
-	url = url.right(pos + 3)
-	pos = url.index('/')
-	if pos > -1 {
-		host = url.left(pos)
-		host = host.clone()
-		path = url.right(pos)
 	}
-	s := ssl_do(req.typ, host, path) 
+	s := ssl_do(req.typ, url.host, url.path) 
 	first_header := s.all_before('\n') 
 	mut status_code := 0 
 	if first_header.contains('HTTP/') {
@@ -137,7 +131,7 @@ pub fn (req &Request) do() Response {
 			break 
 		} 
 		i++ 
-		pos = h.index(':')
+		pos := h.index(':')
 		if pos == -1 {
 			continue
 		}
