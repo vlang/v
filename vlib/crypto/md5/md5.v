@@ -62,7 +62,7 @@ pub fn (d mut Digest) write(p mut []byte) ?int {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == BlockSize {
-            block(d, d.x)
+            block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -73,7 +73,7 @@ pub fn (d mut Digest) write(p mut []byte) ?int {
 	}
 	if p.len >= BlockSize {
 		n := p.len &~ (BlockSize - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {

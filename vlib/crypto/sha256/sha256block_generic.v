@@ -80,7 +80,9 @@ const (
 	]
 )
 
-fn block_generic(dig mut Digest, p []byte) {
+fn block_generic(dig mut Digest, p_ []byte) {
+	mut p := p_
+
 	mut w := [u32(0); 64]
 	
 	mut h0 := dig.h[0]

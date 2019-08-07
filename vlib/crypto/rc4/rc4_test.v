@@ -7,7 +7,7 @@ import crypto.rc4
 fn test_crypto_rc4() {	 
 	key := 'tthisisourrc4key'.bytes()
 	
-	c := rc4.new_cipher(key) or {
+	mut c := rc4.new_cipher(key) or {
 		println(err)
 		return
 	}
