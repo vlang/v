@@ -12,11 +12,11 @@ fn (d Dog) name() string {
 
 interface Speaker {
 	name() string
-	speak() 
+	speak()
 }
 
 interface Speak2er {
-	speak() 
+	speak()
 	name() string
 }
 

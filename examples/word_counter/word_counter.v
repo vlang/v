@@ -26,7 +26,7 @@ fn main() {
 		m[key] = m[key] + 1// TODO m[key]++
 	}
 	// Sort the keys
-	mut keys := m.keys() 
+	mut keys := m.keys()
 	keys.sort()
 	// Print the map
 	for key in keys {

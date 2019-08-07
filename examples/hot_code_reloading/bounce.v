@@ -9,7 +9,7 @@ import glfw
 import time
 
 struct Game {
-mut: 
+mut:
 	gg       *gg.GG
 	x        int
 	y        int
@@ -26,24 +26,24 @@ fn main() {
 	width := 600
 	height := 300
 	mut game := &Game{
-		gg: 0 
-		dx: 2 
-		dy: 2 
-		height: height 
-		width: width 
+		gg: 0
+		dx: 2
+		dy: 2
+		height: height
+		width: width
 	}
 	mut window := glfw.create_window(glfw.WinCfg {
-		width: width 
-		height: height 
-		borderless: false 
+		width: width
+		height: height
+		borderless: false
 		title: 'Hot code reloading demo'
-		ptr: game 
-		always_on_top: true 
-	}) 
+		ptr: game
+		always_on_top: true
+	})
 	//window.onkeydown(key_down)
-	game.main_wnd = window 
+	game.main_wnd = window
 	window.make_context_current()
-	gg.init() 
+	gg.init()
 	game.gg = gg.new_context(gg.Cfg {
 		width: width
 		height: height
@@ -67,7 +67,7 @@ const (
 
 [live]
 fn (game &Game) draw() {
-	game.gg.draw_rect(game.x, game.y, W, W, gx.rgb(255, 0, 0)) 
+	game.gg.draw_rect(game.x, game.y, W, W, gx.rgb(255, 0, 0))
 }
 
 fn (game mut Game) run() {

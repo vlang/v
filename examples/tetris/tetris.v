@@ -1,10 +1,10 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.  
+// that can be found in the LICENSE file.
 
 import rand
 import time
-import gx 
+import gx
 import gl
 import gg
 import glfw
@@ -89,7 +89,7 @@ struct Game {
 	// -1  0  0 -1
 	// -1  0  0 -1
 	// -1 -1 -1 -1
-	field       [][]int 
+	field       [][]int
 	// TODO: tetro Tetro
 	tetro       []Block
 	// TODO: tetros_cache []Tetro
@@ -111,21 +111,21 @@ fn main() {
 			use_ortho: true // This is needed for 2D drawing
 			create_window: true
 			window_title: 'V Tetris'
-			window_user_ptr: game 
+			window_user_ptr: game
 		})
-	} 
-	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
+	}
+	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(gx.White) 
+	gg.clear(gx.White)
 	for {
-		gg.clear(gx.White) 
+		gg.clear(gx.White)
 		game.draw_scene()
-		game.gg.render() 
+		game.gg.render()
 		if game.gg.window.should_close() {
 			game.gg.window.destroy()
-			return 
+			return
 		}
 	}
 }
@@ -176,7 +176,7 @@ fn (g mut Game) move_tetro() {
 		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
 		// TODO: if g.field[y][x] != 0
-		//if g.field[y][x] != 0 { 
+		//if g.field[y][x] != 0 {
 		row := g.field[y]
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game
@@ -193,7 +193,7 @@ fn (g mut Game) move_tetro() {
 	g.pos_y++
 }
 
-fn (g mut Game) move_right(dx int) bool { 
+fn (g mut Game) move_right(dx int) bool {
 	// Reached left/right edge or another tetro?
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
@@ -202,11 +202,11 @@ fn (g mut Game) move_right(dx int) bool {
 		row := g.field[y]
 		if row[x] != 0 {
 			// Do not move
-			return false 
+			return false
 		}
 	}
 	g.pos_x += dx
-	return true 
+	return true
 }
 
 fn (g mut Game) delete_completed_lines() {
@@ -288,7 +288,7 @@ fn (g &Game) draw_scene() {
 }
 
 fn parse_binary_tetro(t_ int) []Block {
-	mut t := t_ 
+	mut t := t_
 	res := [Block{} ; 4]
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
@@ -326,17 +326,17 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 		glfw.set_should_close(wnd, true)
 	case glfw.KeyUp:
 		// Rotate the tetro
-		old_rotation_idx := game.rotation_idx 
+		old_rotation_idx := game.rotation_idx
 		game.rotation_idx++
 		if game.rotation_idx == TetroSize {
 			game.rotation_idx = 0
 		}
 		game.get_tetro()
 		if !game.move_right(0) {
-			game.rotation_idx = old_rotation_idx 
+			game.rotation_idx = old_rotation_idx
 			game.get_tetro()
-		} 
-	 
+		}
+
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
