@@ -79,10 +79,12 @@ pub fn print(s string) {
 }
 
 __global total_m i64 = 0
+//__global nr_mallocs int = 0 
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
+	//nr_mallocs++ 
 /* 
 TODO 
 #ifdef VPLAY

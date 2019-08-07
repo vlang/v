@@ -30,7 +30,12 @@ fn main() {
 		return
 	} 
 	home := os.home_dir() 
-	os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url $mod.name')
+        if !os.dir_exists(home + '/.vmodules') {
+	println('Creating vmodules directory...') 
+	os.chdir(home) 
+	os.mkdir('.vmodules') 
+	println('Done.') 
+	} 
+	os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url ' + mod.name.replace('.', '/'))
 	println(s) 
 } 
-

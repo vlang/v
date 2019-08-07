@@ -15,7 +15,7 @@ matrix:
             - libglfw3 
             - libglfw3-dev
             - libfreetype6-dev 
-            - libcurl3-dev
+            - libssl-dev
     - os: windows
       language: sh
       filter_secrets: false
@@ -26,13 +26,19 @@ matrix:
           packages:
             - freetype
             - glfw
+            - openssl
 script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
       sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
     fi
   - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/opt/openssl/lib/
+    fi    
+  - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
+      choco install openssl.light
       echo "Running make_tests.bat..."
       ./make_tests.bat
     fi

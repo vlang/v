@@ -18,18 +18,18 @@ module urllib
 import strings
 
 enum EncodingMode {
-	EncodePath
-	EncodePathSegment
-	EncodeHost
-	EncodeZone
-	EncodeUserPassword
-	EncodeQueryComponent
-	EncodeFragment
+	encode_path
+	encode_path_segment
+	encode_host
+	encode_zone
+	encode_user_password
+	encode_query_component
+	encode_fragment
 }
 
 const (
-	EscapeError = 'invalid URL escape'
-	ParseError  = 'error parsing url'
+	err_msg_escape = 'invalid URL escape'
+	err_msg_parse  = 'error parsing url'
 )
 
 fn error_msg(message, val string) string {
@@ -49,7 +49,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		return false
 	}
 
-	if mode == .EncodeHost || mode == .EncodeZone {
+	if mode == .encode_host || mode == .encode_zone {
 		// §3.2.2 host allows
 		//	sub-delims = `!` / `$` / `&` / ``` / `(` / `)` / `*` / `+` / `,` / `;` / `=`
 		// as part of reg-name.
@@ -73,37 +73,37 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// Different sections of the URL allow a few of
 		// the reserved characters to appear unescaped.
 		switch mode {
-		case EncodingMode.EncodePath: // §3.3
+		case EncodingMode.encode_path: // §3.3
 			// The RFC allows : @ & = + $ but saves / ; , for assigning
 			// meaning to individual path segments. This package
 			// only manipulates the path as a whole, so we allow those
 			// last three as well. That leaves only ? to escape.
 			return c == `?`
 
-		case EncodingMode.EncodePathSegment: // §3.3
+		case EncodingMode.encode_path_segment: // §3.3
 			// The RFC allows : @ & = + $ but saves / ; , for assigning
 			// meaning to individual path segments.
 			return c == `/` || c == `;` || c == `,` || c == `?`
 
-		case EncodingMode.EncodeUserPassword: // §3.2.1
+		case EncodingMode.encode_user_password: // §3.2.1
 			// The RFC allows `;`, `:`, `&`, `=`, `+`, `$`, and `,` in
 			// userinfo, so we must escape only `@`, `/`, and `?`.
 			// The parsing of userinfo treats `:` as special so we must escape
 			// that too.
 			return c == `@` || c == `/` || c == `?` || c == `:`
 
-		case EncodingMode.EncodeQueryComponent: // §3.4
+		case EncodingMode.encode_query_component: // §3.4
 			// The RFC reserves (so we must escape) everything.
 			return true
 
-		case EncodingMode.EncodeFragment: // §4.1
+		case EncodingMode.encode_fragment: // §4.1
 			// The RFC text is silent but the grammar allows
 			// everything, so escape nothing.
 			return false
 		}
 	}
 
-	if mode == .EncodeFragment {
+	if mode == .encode_fragment {
 		// RFC 3986 §2.2 allows not escaping sub-delims. A subset of sub-delims are
 		// included in reserved from RFC 2396 §2.2. The remaining sub-delims do not
 		// need to be escaped. To minimize potential breakage, we apply two restrictions:
@@ -126,7 +126,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 // It returns an error if any % is not followed by two hexadecimal
 // digits.
 pub fn query_unescape(s string) ?string {
-	return unescape(s, .EncodeQueryComponent)
+	return unescape(s, .encode_query_component)
 }
 
 // path_unescape does the inverse transformation of path_escape,
@@ -137,7 +137,7 @@ pub fn query_unescape(s string) ?string {
 // path_unescape is identical to query_unescape except that it does not
 // unescape '+' to ' ' (space).
 pub fn path_unescape(s string) ?string {
-	return unescape(s, .EncodePathSegment)
+	return unescape(s, .encode_path_segment)
 }
 
 // unescape unescapes a string; the mode specifies
@@ -159,7 +159,7 @@ fn unescape(s string, mode EncodingMode) ?string {
 				if s.len > 3 {
 					s = s.left(3)
 				}
-				return error(error_msg(EscapeError, s))
+				return error(error_msg(err_msg_escape, s))
 			}
 			// Per https://tools.ietf.org/html/rfc3986#page-21
 			// in the host component %-encoding can only be used
@@ -167,10 +167,10 @@ fn unescape(s string, mode EncodingMode) ?string {
 			// But https://tools.ietf.org/html/rfc6874#section-2
 			// introduces %25 being allowed to escape a percent sign
 			// in IPv6 scoped-address literals. Yay.
-			if mode == .EncodeHost && unhex(s[i+1]) < 8 && s.substr(i, i+3) != '%25' {
-				return error(error_msg(EscapeError, s.substr(i, i+3)))
+			if mode == .encode_host && unhex(s[i+1]) < 8 && s.substr(i, i+3) != '%25' {
+				return error(error_msg(err_msg_escape, s.substr(i, i+3)))
 			}
-			if mode == .EncodeZone {
+			if mode == .encode_zone {
 				// RFC 6874 says basically 'anything goes' for zone identifiers
 				// and that even non-ASCII can be redundantly escaped,
 				// but it seems prudent to restrict %-escaped bytes here to those
@@ -179,16 +179,16 @@ fn unescape(s string, mode EncodingMode) ?string {
 				// to introduce bytes you couldn't just write directly.
 				// But Windows puts spaces here! Yay.
 				v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
-				if s.substr(i, i+3) != '%25' && v != ` ` && should_escape(v, .EncodeHost) {
-					error(error_msg(EscapeError, s.substr(i, i+3)))
+				if s.substr(i, i+3) != '%25' && v != ` ` && should_escape(v, .encode_host) {
+					error(error_msg(err_msg_escape, s.substr(i, i+3)))
 				}
 			}
 			i += 3
 		case `+`:
-			has_plus = mode == .EncodeQueryComponent
+			has_plus = mode == .encode_query_component
 			i++
 		default:
-			if (mode == .EncodeHost || mode == .EncodeZone) && s[i] < 0x80 && should_escape(s[i], mode) {
+			if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
 				error(error_msg('invalid character in host name', s.substr(i, i+1)))
 			}
 			i++
@@ -207,7 +207,7 @@ fn unescape(s string, mode EncodingMode) ?string {
 			t.write( byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
 			i += 2
 		case `+`:
-			if mode == .EncodeQueryComponent {
+			if mode == .encode_query_component {
 				t.write(' ')
 			} else {
 				t.write('+')
@@ -222,13 +222,13 @@ fn unescape(s string, mode EncodingMode) ?string {
 // query_escape escapes the string so it can be safely placed
 // inside a URL query.
 pub fn query_escape(s string) string {
-	return escape(s, .EncodeQueryComponent)
+	return escape(s, .encode_query_component)
 }
 
 // path_escape escapes the string so it can be safely placed inside a URL path segment,
 // replacing special characters (including /) with %XX sequences as needed.
 pub fn path_escape(s string) string {
-	return escape(s, .EncodePathSegment)
+	return escape(s, .encode_path_segment)
 }
 
 fn escape(s string, mode EncodingMode) string {
@@ -238,7 +238,7 @@ fn escape(s string, mode EncodingMode) string {
 	for i := 0; i < s.len; i++ {
 		c = s[i]
 		if should_escape(c, mode) {
-			if c == ` ` && mode == .EncodeQueryComponent {
+			if c == ` ` && mode == .encode_query_component {
 				space_count++
 			} else {
 				hex_count++
@@ -270,17 +270,17 @@ fn escape(s string, mode EncodingMode) string {
 		return string(t)
 	}
 
+	ctab := '0123456789ABCDEF'
 	mut j := 0
 	for i := 0; i < s.len; i++ {
 		c1 := s[i]
-		if c1 == ` ` && mode == .EncodeQueryComponent {
+		if c1 == ` ` && mode == .encode_query_component {
 			t[j] = `+`
 			j++
 		} else if should_escape(c1, mode) {
 			t[j] = `%`
-			x := '0123456789ABCDEF'
-			t[j+1] = x[c1>>4]
-			t[j+2] = x[c1&15]
+			t[j+1] = ctab[c1>>4]
+			t[j+2] = ctab[c1&15]
 			j += 3
 		} else {
 			t[j] = s[i]
@@ -364,9 +364,9 @@ fn (u &Userinfo) string() string {
 	if u.empty() {
 		return ''
 	}
-	mut s := escape(u.username, .EncodeUserPassword)
+	mut s := escape(u.username, .encode_user_password)
 	if u.password_set {
-		s += ':' + escape(u.password, .EncodeUserPassword)
+		s += ':' + escape(u.password, .encode_user_password)
 	}
 	return s
 }
@@ -433,13 +433,13 @@ pub fn parse(rawurl string) ?URL {
 	u := p[0]
 	frag := p[1]
 	mut url := _parse(u, false) or {
-		return error(error_msg(ParseError, u))
+		return error(error_msg(err_msg_parse, u))
 	}
 	if frag == '' {
 		return url
 	}
-	f := unescape(frag, .EncodeFragment) or {
-		return error(error_msg(ParseError, u))
+	f := unescape(frag, .encode_fragment) or {
+		return error(error_msg(err_msg_parse, u))
 	}
 	url.fragment = f
 	return url
@@ -564,7 +564,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		return error(error_msg('invalid userinfo', ''))
 	}
 	if !userinfo.contains(':') {
-		u := unescape(userinfo, .EncodeUserPassword) or {
+		u := unescape(userinfo, .encode_user_password) or {
 			return error(err)
 		}
 		userinfo = u
@@ -573,11 +573,11 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		parts := split(userinfo, ':', true)
 		mut username := parts[0]
 		mut password := parts[1]
-		u := unescape(username, .EncodeUserPassword) or {
+		u := unescape(username, .encode_user_password) or {
 			return error(err)
 		}
 		username = u
-		p := unescape(password, .EncodeUserPassword) or {
+		p := unescape(password, .encode_user_password) or {
 			return error(err)
 		}
 		password = p
@@ -612,20 +612,20 @@ fn parse_host(host string) ?string {
 		// like newlines.
 		zone := host.left(i).index('%25')
 		if zone >= 0 {
-			host1 := unescape(host.left(zone), .EncodeHost) or {
+			host1 := unescape(host.left(zone), .encode_host) or {
 				return err
 			}
-			host2 := unescape(host.substr(zone, i), .EncodeZone) or {
+			host2 := unescape(host.substr(zone, i), .encode_zone) or {
 				return err
 			}
-			host3 := unescape(host.right(i), .EncodeHost) or {
+			host3 := unescape(host.right(i), .encode_host) or {
 				return err
 			}
 			return host1 + host2 + host3
 		}
 	}
 
-	h := unescape(host, .EncodeHost) or {
+	h := unescape(host, .encode_host) or {
 		return err
 	}
 	host = h
@@ -641,11 +641,11 @@ fn parse_host(host string) ?string {
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
 fn (u &URL) set_path(p string) ?bool {
-	path := unescape(p, .EncodePath) or {
+	path := unescape(p, .encode_path) or {
 		return error(err)
 	}
 	u.path = path
-	escp := escape(path, .EncodePath)
+	escp := escape(path, .encode_path)
 	if p == escp {
 		// Default encoding is fine.
 		u.raw_path = ''
@@ -666,13 +666,13 @@ fn (u &URL) set_path(p string) ?bool {
 // reading u.raw_path directly.
 fn (u &URL) escaped_path() string {
 	if u.raw_path != '' && valid_encoded_path(u.raw_path) {
-		p := unescape(u.raw_path, .EncodePath)
+		p := unescape(u.raw_path, .encode_path)
 		return u.raw_path
 	}
 	if u.path == '*' {
 		return '*' // don't escape (Issue 11202)
 	}
-	return escape(u.path, .EncodePath)
+	return escape(u.path, .encode_path)
 }
 
 // valid_encoded_path reports whether s is a valid encoded path.
@@ -693,7 +693,7 @@ fn valid_encoded_path(s string) bool {
 		case `%`:
 			// ok - percent encoded, will decode
 		default:
-			if should_escape(s[i], .EncodePath) {
+			if should_escape(s[i], .encode_path) {
 				return false
 			}
 		}
@@ -757,7 +757,7 @@ pub fn (u &URL) str() string {
 				buf.write('@')
 			}
 			if u.host != '' {
-				buf.write(escape(u.host, .EncodeHost))
+				buf.write(escape(u.host, .encode_host))
 			}
 		}
 		path := u.escaped_path()
@@ -784,7 +784,7 @@ pub fn (u &URL) str() string {
 	}
 	if u.fragment != '' {
 		buf.write('#')
-		buf.write(escape(u.fragment, .EncodeFragment))
+		buf.write(escape(u.fragment, .encode_fragment))
 	}
 	return buf.str()
 }

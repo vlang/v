@@ -66,6 +66,8 @@ On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-co
 
 ### Building without make
 ```bash
+git clone https://github.com/vlang/v
+cd v
 # Download the V compiler's source translated to C
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC

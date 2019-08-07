@@ -9,16 +9,17 @@ import strings
 
 struct Table {
 mut:
-	types     []Type
-	consts    []Var
-	fns       map[string]Fn 
-	generic_fns []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum'] 
-	obf_ids   map[string]int // obf_ids['myfunction'] == 23
-	packages  []string // List of all modules registered by the application
-	imports   []string // List of all imports
-	flags     []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt    int atomic
-	obfuscate bool
+	types        []Type
+	consts       []Var
+	fns          map[string]Fn 
+	generic_fns  []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum'] 
+	obf_ids      map[string]int // obf_ids['myfunction'] == 23
+	modules      []string // List of all modules registered by the application
+	imports      []string // List of all imports
+	file_imports []FileImportTable // List of imports for file
+	flags        []string //  ['-framework Cocoa', '-lglfw3']
+	fn_cnt       int atomic
+	obfuscate    bool
 }
 
 struct GenTable {
@@ -140,6 +141,7 @@ fn new_table(obfuscate bool) *Table {
 		//generic_fns: map[string]GenTable{} 
 		generic_fns: []GenTable 
 		obfuscate: obfuscate
+		file_imports: []FileImportTable
 	}
 	t.register_type('int')
 	t.register_type('size_t')
@@ -181,11 +183,11 @@ fn (t mut Table) var_cgen_name(name string) string {
 	}
 }
 
-fn (t mut Table) register_package(pkg string) {
-	if t.packages.contains(pkg) {
+fn (t mut Table) register_module(mod string) {
+	if t.modules.contains(mod) {
 		return
 	}
-	t.packages << pkg
+	t.modules << mod
 }
 
 fn (p mut Parser) register_array(typ string) {
@@ -210,8 +212,8 @@ fn (p mut Parser) register_map(typ string) {
 	}
 }
 
-fn (table &Table) known_pkg(pkg string) bool {
-	return pkg in table.packages
+fn (table &Table) known_mod(mod string) bool {
+	return mod in table.modules
 }
 
 fn (t mut Table) register_const(name, typ, mod string, is_imported bool) {
@@ -232,6 +234,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		is_const: true
 		is_global: true
 		mod: p.mod 
+		is_mut: true 
 	}
 }
 
@@ -308,9 +311,9 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 		}
 	}
 	/*
-mut pkg := ''
+mut mod := ''
 if parent == 'array' {
-pkg = 'builtin'
+mod = 'builtin'
 }
 */
 	t.types << Type { 
@@ -433,7 +436,7 @@ fn (t mut Type) add_gen_type(type_name string) {
 fn (p &Parser) find_type(name string) *Type {
 	typ := p.table.find_type(name)
 	if typ.name.len == 0 {
-		return p.table.find_type(p.prepend_pkg(name))
+		return p.table.find_type(p.prepend_mod(name))
 	}
 	return typ
 }
@@ -481,7 +484,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	}
 	// Todo void* allows everything right now
 	if got=='void*' || expected=='void*' {
-		// if !p.builtin_pkg {
+		// if !p.builtin_mod {
 		if p.pref.is_play {
 			return false
 		}
@@ -655,14 +658,14 @@ fn (table mut Table) cgen_name(f &Fn) string {
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate b_abs(), b_print()
 	// TODO duplicate functionality
-	if f.pkg == 'builtin' && CReserved.contains(f.name) {
+	if f.mod == 'builtin' && CReserved.contains(f.name) {
 		return 'v_$name'
 	}
 	// Obfuscate but skip certain names
 	// TODO ugly, fix
-	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.pkg != 'builtin' && !f.is_c &&
-	f.pkg != 'darwin' && f.pkg != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
-	f.name != 'build_token_str' && f.name != 'build_keys' && f.pkg != 'json' &&
+	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.mod != 'builtin' && !f.is_c &&
+	f.mod != 'darwin' && f.mod != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
+	f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'json' &&
 	!name.ends_with('_str') && !name.contains('contains') {
 		mut idx := table.obf_ids[name]
 		// No such function yet, register it

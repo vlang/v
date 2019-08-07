@@ -248,7 +248,6 @@ pub fn (m map_string) str() string {
 	if m.size == 0 {
 		return '{}'
 	}
-	// TODO use bytes buffer
 	mut sb := strings.new_builder(50)
 	sb.writeln('{') 
 	for key, val  in m { 

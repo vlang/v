@@ -252,7 +252,6 @@ pub fn (fs mut FlagParser) string_(n string, a byte, v, u string) string {
   return parsed
 }
 
-// add an additional check for free arguments 
 // defining and parsing a string flag 
 //  if defined 
 //      the value is returned (string)
@@ -262,7 +261,6 @@ pub fn (fs mut FlagParser) string(n, v, u string) string {
   return fs.string_(n, `\0`, v, u)
 }
 
-// add an additional check for free arguments 
 // this will cause an error in finalize() if free args are out of range
 // (min, ..., max)
 pub fn (fs mut FlagParser) limit_free_args(min, max int) {

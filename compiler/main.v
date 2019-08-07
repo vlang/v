@@ -189,7 +189,24 @@ fn main() {
 		// v.gen_doc_html_for_module(args.last())
 		exit(0)
 	}
+  
+	if 'run' in args {
+		vsource := v.dir
+		vtarget := final_target_out_name( v.out_name )
+		if os.file_exists(vtarget) && ( os.file_last_mod_unix(vsource) <= os.file_last_mod_unix(vtarget) ) {
+			//println('ALREADY BUILD FROM vsource: $vsource | vtarget: $vtarget')
+			v.run_compiled_executable_and_exit()
+		}
+		v.compile()
+		v.run_compiled_executable_and_exit()
+	}
+  
 	v.compile()
+  
+	if v.pref.is_test {
+		v.run_compiled_executable_and_exit()
+	}
+  
 }
 
 fn (v mut V) compile() {
@@ -226,7 +243,10 @@ fn (v mut V) compile() {
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+// must be included after <windows.h> 
 #include <shellapi.h>
+
 #include <io.h> // _waccess
 #include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
@@ -388,8 +408,19 @@ void init_consts();')
 	cgen.lines.set(defs_pos, dd)// TODO `def.str()` doesn't compile
 	// if v.build_mode in [.default, .embed_vlib] {
 	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
+		mut consts_init_body := cgen.consts_init.join_lines() 
+		for imp in v.table.imports {
+			if imp == 'http' {
+				consts_init_body += '\n http__init_module();'  
+			} 
+		} 
 		// vlib can't have `init_consts()`
-		cgen.genln('void init_consts() { \n#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT); \nSetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004); // ENABLE_VIRTUAL_TERMINAL_PROCESSING\n#endif\n g_str_buf=malloc(1000); ${cgen.consts_init.join_lines()} }')
+		cgen.genln('void init_consts() { 
+#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT);
+SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004); 
+// ENABLE_VIRTUAL_TERMINAL_PROCESSING\n#endif\n g_str_buf=malloc(1000);
+$consts_init_body 
+}')
 		// _STR function can't be defined in vlib
 		cgen.genln('
 string _STR(const char *fmt, ...) {
@@ -595,35 +626,47 @@ void reload_so() {
 	if v.pref.is_verbose {
 		v.log('flags=')
 		println(v.table.flags)
-	}
+	}  
 	v.cc()
-	if v.pref.is_test || v.pref.is_run {
-		if v.pref.is_verbose {
-			println('============ running $v.out_name ============') 
-		}
-		mut cmd := if v.out_name.starts_with('/') {
-			v.out_name
-		}
-		else {
-			'./' + v.out_name
-		}
-		$if windows {
-			cmd = v.out_name
-			cmd = cmd.replace('/', '\\')
-		} 
-		if os.args.len > 3 {
-			cmd += ' ' + os.args.right(3).join(' ')
-		}
+}
+
+fn final_target_out_name(out_name string) string {
+	mut cmd := if out_name.starts_with('/') {
+		out_name
+	}
+	else {
+		'./' + out_name
+	}
+	$if windows {
+		cmd = out_name
+		cmd = cmd.replace('/', '\\')
+	}
+	return cmd
+}
+
+fn (v V) run_compiled_executable_and_exit() {
+	if v.pref.is_verbose {
+		println('============ running $v.out_name ============') 
+	}	  
+	mut cmd := final_target_out_name(v.out_name)
+	if os.args.len > 3 {
+		cmd += ' ' + os.args.right(3).join(' ')
+	}
+	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
-			if !v.pref.is_test { 
-				s := os.exec(cmd)
-				println(s)
-				println('failed to run the compiled program')
-			} 
 			exit(1)
 		}
+	}    
+	if v.pref.is_run {
+		ret := os.system(cmd)
+		// TODO: make the runner wrapping as transparent as possible 
+		// (i.e. use execve when implemented). For now though, the runner 
+		// just returns the same exit code as the child process 
+		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
+		exit( ret >> 8 ) 
 	}
+	exit(0)
 }
 
 fn (c &V) cc_windows_cross() {
@@ -946,19 +989,15 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('user_files:')
 		println(user_files)
 	}
-	// import tables for user/lib files
-	mut file_imports := []FileImportTable
 	// Parse builtin imports
 	for file in v.files {
 		mut p := v.new_parser(file, Pass.imports)
 		p.parse()
-		file_imports << *p.import_table
 	}
 	// Parse user imports
 	for file in user_files {
 		mut p := v.new_parser(file, Pass.imports)
 		p.parse()
-		file_imports << *p.import_table
 	}
 	// Parse lib imports
 /* 
@@ -977,7 +1016,6 @@ fn (v mut V) add_v_files_to_compile() {
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
 				p.parse()
-				file_imports << *p.import_table
 			}
 		}
 	}
@@ -996,7 +1034,6 @@ fn (v mut V) add_v_files_to_compile() {
 		for file in vfiles {
 			mut p := v.new_parser(file, Pass.imports)
 			p.parse()
-			file_imports << *p.import_table
 		}
 	}
 	if v.pref.is_verbose {
@@ -1005,7 +1042,7 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	// graph deps
 	mut dep_graph := new_mod_dep_graph()
-	dep_graph.from_import_tables(file_imports)
+	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
@@ -1034,7 +1071,7 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 	}
 	// add remaining files (not modules)
-	for fit in file_imports {
+	for fit in v.table.file_imports {
 		//println('fit $fit.file_path') 
 		if !fit.file_path in v.files {
 			v.files << fit.file_path
@@ -1058,13 +1095,13 @@ fn get_arg(joined_args, arg, def string) string {
 	return res
 }
 
-fn (v &V) module_path(pkg string) string {
+fn (v &V) module_path(mod string) string {
 	// submodule support
-	if pkg.contains('.') {
-		//return pkg.replace('.', path_sep)
-		return pkg.replace('.', '/')
+	if mod.contains('.') {
+		//return mod.replace('.', path_sep)
+		return mod.replace('.', '/')
 	}
-	return pkg
+	return mod
 }
 
 fn (v &V) log(s string) {
