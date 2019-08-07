@@ -153,7 +153,7 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= u64(3)
 	binary.big_endian_put_u64(mut tmp, len)
-	d.write(tmp.left(8))
+	d.write(mut tmp.left(8))
 
 	if d.nx != 0 {
 		panic('d.nx != 0')
@@ -169,7 +169,7 @@ fn (d mut Digest) checksum() []byte {
 	binary.big_endian_put_u32(mut digest.right(20), d.h[5])
 	binary.big_endian_put_u32(mut digest.right(24), d.h[6])
 	if !d.is224 {
-		binary.big_endian_put_u32(digest.right(28), d.h[7])
+		binary.big_endian_put_u32(mut digest.right(28), d.h[7])
 	}
 
 	return digest
@@ -183,14 +183,14 @@ pub fn sum(data []byte) []byte {
 // sum256 returns the SHA256 checksum of the data.
 pub fn sum256(data []byte) []byte {
 	mut d := new()
-	d.write(data)
+	d.write(mut data)
 	return d.checksum()
 }
 
 // sum224 returns the SHA224 checksum of the data.
 pub fn sum224(data []byte) []byte {
 	mut d := new224()
-	d.write(data)
+	d.write(mut data)
 	sum := d.checksum()
 	mut sum224 := [byte(0); Size224]
 	copy(sum224, sum.left(Size224))

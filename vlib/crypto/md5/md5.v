@@ -127,7 +127,7 @@ pub fn (d mut Digest) checksum() []byte {
 // sum returns the MD5 checksum of the data.
 pub fn sum(data []byte) []byte {
 	mut d := new()
-	d.write(data)
+	d.write(mut data)
 	return d.checksum()
 }
 

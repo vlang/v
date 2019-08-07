@@ -62,7 +62,7 @@ pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
 
 	for src.len > 0 {
 		// Write the xor to dst, then encrypt in place.
-		cipher.xor_bytes(dst.left(x.block_size), src.left(x.block_size), iv)
+		cipher.xor_bytes(mut dst.left(x.block_size), src.left(x.block_size), iv)
 		x.b.encrypt(dst.left(x.block_size), dst.left(x.block_size))
 
 		// Move to the next block with this block as the next iv.
@@ -79,7 +79,7 @@ pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
 	copy(x.iv, iv)
 }
 
-pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
+pub fn (x &AesCbc) decrypt_blocks(mut dst, src []byte) {
 	if src.len%x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
 	}
@@ -114,7 +114,7 @@ pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
 
 	// The first block is special because it uses the saved iv.
 	x.b.decrypt(dst.slice(start, end), src.slice(start, end))
-	cipher.xor_bytes(dst.slice(start, end), dst.slice(start, end), x.iv)
+	cipher.xor_bytes(mut dst.slice(start, end), dst.slice(start, end), x.iv)
 
 
 	// Set the new iv to the first block we copied earlier.

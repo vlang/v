@@ -282,7 +282,7 @@ pub fn sum512_256(data []byte) []byte {
 fn block(dig mut Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-	block_generic(mut dig, p)
+	block_generic(mut dig, mut p)
 }
 
 pub fn (d &Digest) size() int {
