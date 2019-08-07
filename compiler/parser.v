@@ -1191,9 +1191,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	p.log('assign_statement() name=$v.name tok=')
+	is_vid := p.fileis('vid') // TODO remove 
 	tok := p.tok
 	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
-	if !v.is_mut && !p.pref.translated && !v.is_global{
+	if !v.is_mut && !p.pref.translated && !v.is_global && !is_vid {
 		p.error('`$v.name` is immutable')
 	}
 	if !v.is_changed {
@@ -1758,7 +1759,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec
-		is_vi := p.fileis('vi')
+		is_vi := p.fileis('vid')
 		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
 			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)')
 		}
