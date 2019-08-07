@@ -1,4 +1,4 @@
-@echo off
+REM @echo off
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 
 echo DOWNLOAD COMPLETE
