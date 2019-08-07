@@ -7,6 +7,8 @@ gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o vc.exe v.c
 
 echo BUILD COMPLETE
 
+dir
+
 del v.c
 
 vc.exe -o v.exe compiler
@@ -14,6 +16,7 @@ v.exe -os msvc -o v.msvc.exe compiler
 v.msvc.exe -os msvc -o v.msvc.2.exe compiler
 v.msvc.exe -o v.gcc.exe compiler
 
+dir
 
 setlocal EnableDelayedExpansion
 for /r . %%x in (*_test.v) do (
