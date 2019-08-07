@@ -7,7 +7,8 @@ module main
 import strings 
 
 // fmt helpers
-fn (scanner mut Scanner) fgen(s string) {
+fn (scanner mut Scanner) fgen(s_ string) {
+	mut s := s_ 
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
@@ -15,7 +16,8 @@ fn (scanner mut Scanner) fgen(s string) {
 	scanner.fmt_line_empty = false
 }
 
-fn (scanner mut Scanner) fgenln(s string) {
+fn (scanner mut Scanner) fgenln(s_ string) {
+	mut s := s_ 
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}

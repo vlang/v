@@ -1,6 +1,6 @@
 module main
 
-fn cc_msvc(v *V) {
+fn (v mut V) cc_msvc() { 
 }
 
 fn build_thirdparty_obj_file_with_msvc(flag string) {

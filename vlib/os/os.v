@@ -337,8 +337,8 @@ fn popen(path string) *FILE {
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) string {
-	cmd = '$cmd 2>&1'
+pub fn exec(_cmd string) string {
+	cmd := '$_cmd 2>&1'
 	f := popen(cmd)
 	if isnil(f) {
 		// TODO optional or error code 
@@ -397,19 +397,19 @@ pub fn unsetenv(name string) int {
 }
 
 // `file_exists` returns true if `path` exists.
-pub fn file_exists(path string) bool {
+pub fn file_exists(_path string) bool {
 	$if windows {
-		path = path.replace('/', '\\')
-		return C._waccess( path.to_wide(), 0 ) != -1
+		path := _path.replace('/', '\\')
+		return C._waccess(path.to_wide(), 0) != -1
 	} $else {
-		return C.access( path.str, 0 ) != -1
+		return C.access(_path.str, 0 ) != -1
 	}
 }
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		path = path.replace('/', '\\')
-		attr := int(C.GetFileAttributes(path.to_wide()))
+		_path := path.replace('/', '\\')
+		attr := int(C.GetFileAttributes(_path.to_wide()))
 		if attr == INVALID_FILE_ATTRIBUTES {
 			return false
 		}
@@ -431,13 +431,13 @@ pub fn dir_exists(path string) bool {
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) {
 	$if windows {
-		path = path.replace('/', '\\')
+		_path := path.replace('/', '\\')
 		// Windows doesnt recursively create the folders
 		// so we need to help it out here
-		if path.last_index('\\') != -1 {
-			mkdir(path.all_before_last('\\'))
+		if _path.last_index('\\') != -1 {
+			mkdir(_path.all_before_last('\\'))
 		}
-		C.CreateDirectory(path.to_wide(), 0)
+		C.CreateDirectory(_path.to_wide(), 0)
 	}
 	$else {
 		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO

@@ -87,10 +87,10 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	s3 ^= xk[k+3]
 
 	_ = dst[15] // early bounds check
-	binary.big_endian_put_u32(dst.left(4), s0)
-	binary.big_endian_put_u32(dst.slice(4, 8), s1)
-	binary.big_endian_put_u32(dst.slice(8, 12), s2)
-	binary.big_endian_put_u32(dst.slice(12, 16), s3)
+	binary.big_endian_put_u32(mut dst.left(4), s0)
+	binary.big_endian_put_u32(mut dst.slice(4, 8), s1)
+	binary.big_endian_put_u32(mut dst.slice(8, 12), s2)
+	binary.big_endian_put_u32(mut dst.slice(12, 16), s3)
 }
 
 // Decrypt one block from src into dst, using the expanded key xk.
@@ -141,10 +141,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	s3 ^= xk[k+3]
 
 	_ = dst[15] // early bounds check
-	binary.big_endian_put_u32(dst.left(4), s0)
-	binary.big_endian_put_u32(dst.slice(4, 8), s1)
-	binary.big_endian_put_u32(dst.slice(8, 12), s2)
-	binary.big_endian_put_u32(dst.slice(12, 16), s3)
+	binary.big_endian_put_u32(mut dst.left(4), s0)
+	binary.big_endian_put_u32(mut dst.slice(4, 8), s1)
+	binary.big_endian_put_u32(mut dst.slice(8, 12), s2)
+	binary.big_endian_put_u32(mut dst.slice(12, 16), s3)
 }
 
 // Apply SBox0 to each byte in w.
@@ -160,7 +160,7 @@ fn rotw(w u32) u32 { return u32(w<<u32(8)) | u32(w>>u32(24)) }
 
 // Key expansion algorithm. See FIPS-197, Figure 11.
 // Their rcon[i] is our powx[i-1] << 24.
-fn expand_key_generic(key []byte, enc, dec []u32) {
+fn expand_key_generic(key []byte, enc mut []u32, dec mut []u32) {
 	// Encryption key setup.
 	mut i := 0
 	nk := key.len / 4

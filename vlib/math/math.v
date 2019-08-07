@@ -102,7 +102,8 @@ pub fn exp(a f64) f64 {
 }
 
 // digits returns an array of the digits of n in the given base.
-pub fn digits(n, base int) []int {
+pub fn digits(_n, base int) []int {
+	mut n := _n 
 	mut sign := 1
 	if n < 0 {
 		sign = -1
@@ -132,6 +133,8 @@ pub fn exp2(a f64) f64 {
 }
 
 // factorial calculates the factorial of the provided value.
+// TODO bring back once multiple value functions are implemented 
+/* 
 fn recursive_product( n int, current_number_ptr &int) int{
     mut m := n / 2
     if (m == 0){
@@ -172,6 +175,7 @@ pub fn factorial(n int) i64 {
     }
     return i64((r << shift))
 }
+*/ 
 
 // floor returns the nearest integer lower or equal of the provided value.
 pub fn floor(a f64) f64 {
@@ -189,7 +193,9 @@ pub fn gamma(a f64) f64 {
 }
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
-pub fn gcd(a, b i64) i64 {
+pub fn gcd(a_, b_ i64) i64 {
+	mut a := a_ 
+	mut b := b_ 
 	if a < 0 {
 		a = -a
 	}

@@ -512,8 +512,8 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Normal function => just its name, method => TYPE_FN.name
 	mut fn_name := f.name
 	if f.is_method {
-		receiver_type = receiver_type.replace('*', '')
-		fn_name = '${receiver_type}_${f.name}'
+		fn_name = receiver_type.replace('*', '') + '_' + f.name 
+		//fn_name = '${receiver_type}_${f.name}'
 	}
 	// Generate tmp struct with args
 	arg_struct_name := 'thread_arg_$fn_name'
@@ -666,6 +666,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		}
 		f.args << int_arg
 	}
+	// `(int, string, int)` 
 	// Just register fn arg types
 	types_only := p.tok == .mul || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
 	if types_only {
@@ -684,12 +685,12 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			}
 		}
 	}
-	// (a int, b,c string) syntax
+	// `(a int, b, c string)` syntax
 	for p.tok != .rpar {
 		mut names := [
 		p.check_name()
 		]
-		// a,b,c int syntax
+		// `a,b,c int` syntax
 		for p.tok == .comma {
 			p.check(.comma)
 			p.fspace()
@@ -852,7 +853,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			p.error(err)
 		}
 		is_interface := p.table.is_interface(arg.typ)
-		// Add & or * before arg?
+		// Add `&` or `*` before an argument?
 		if !is_interface {
 			// Dereference
 			if got.contains('*') && !expected.contains('*') {
@@ -861,11 +862,17 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
 			if !got.contains('*') && expected.contains('*') && got != 'voidptr' {
+				// Special case for mutable arrays. We can't `&` function results,
+				// have to use `(array[]){ expr }` hack. 
+				if expected.starts_with('array_') && expected.ends_with('*') { 
+					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){') 
+					p.gen('} ') 
+				} 
 				// println('\ne:"$expected" got:"$got"')
-				if ! (expected == 'void*' && got == 'int') &&
+				else if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') {
-					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" GOT:"$got" */') 
+					p.cgen.set_placeholder(ph, '& /*112 EXP:"$expected" GOT:"$got" */') 
 				}
 			}
 		}

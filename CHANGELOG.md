@@ -1,6 +1,10 @@
 ## V 0.1.18
 
 - Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘kek’ }`  
+- `libcurl` dependency was removed from `http` module. 
+- All function arguments are now immutable by default (previously they could be 
+  modifed inside the function). 
+
 
 
 ## V 0.1.17 

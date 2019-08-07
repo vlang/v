@@ -7,10 +7,18 @@ import term
 const (
     FATAL = 1
     ERROR = 2 
-    WARN = 3
-    INFO = 4
-    DEBUG =5
+    WARN  = 3
+    INFO  = 4
+    DEBUG = 5
 )
+
+interface Logger {
+    fatal(s string)
+    error(s string)
+    warn(s string)
+    info(s string)
+    debug(s string)
+}
 
 struct Log{
 mut:

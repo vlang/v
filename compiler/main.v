@@ -189,7 +189,24 @@ fn main() {
 		// v.gen_doc_html_for_module(args.last())
 		exit(0)
 	}
+  
+	if 'run' in args {
+		vsource := v.dir
+		vtarget := final_target_out_name( v.out_name )
+		if os.file_exists(vtarget) && ( os.file_last_mod_unix(vsource) <= os.file_last_mod_unix(vtarget) ) {
+			//println('ALREADY BUILD FROM vsource: $vsource | vtarget: $vtarget')
+			v.run_compiled_executable_and_exit()
+		}
+		v.compile()
+		v.run_compiled_executable_and_exit()
+	}
+  
 	v.compile()
+  
+	if v.pref.is_test {
+		v.run_compiled_executable_and_exit()
+	}
+  
 }
 
 fn (v mut V) compile() {
@@ -226,7 +243,10 @@ fn (v mut V) compile() {
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+// must be included after <windows.h> 
 #include <shellapi.h>
+
 #include <io.h> // _waccess
 #include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
@@ -606,38 +626,50 @@ void reload_so() {
 	if v.pref.is_verbose {
 		v.log('flags=')
 		println(v.table.flags)
-	}
+	}  
 	v.cc()
-	if v.pref.is_test || v.pref.is_run {
-		if v.pref.is_verbose {
-			println('============ running $v.out_name ============') 
-		}
-		mut cmd := if v.out_name.starts_with('/') {
-			v.out_name
-		}
-		else {
-			'./' + v.out_name
-		}
-		$if windows {
-			cmd = v.out_name
-			cmd = cmd.replace('/', '\\')
-		} 
-		if os.args.len > 3 {
-			cmd += ' ' + os.args.right(3).join(' ')
-		}
-		ret := os.system(cmd)
-		if ret != 0 {
-			if !v.pref.is_test { 
-				s := os.exec(cmd)
-				println(s)
-				println('failed to run the compiled program')
-			} 
-			exit(1)
-		}
-	}
 }
 
-fn (c &V) cc_windows_cross() {
+fn final_target_out_name(out_name string) string {
+	mut cmd := if out_name.starts_with('/') {
+		out_name
+	}
+	else {
+		'./' + out_name
+	}
+	$if windows {
+		cmd = out_name
+		cmd = cmd.replace('/', '\\')
+	}
+	return cmd
+}
+
+fn (v V) run_compiled_executable_and_exit() {
+	if v.pref.is_verbose {
+		println('============ running $v.out_name ============') 
+	}	  
+	mut cmd := final_target_out_name(v.out_name)
+	if os.args.len > 3 {
+		cmd += ' ' + os.args.right(3).join(' ')
+	}
+	if v.pref.is_test {
+		ret := os.system(cmd)
+		if ret != 0 {
+			exit(1)
+		}
+	}    
+	if v.pref.is_run {
+		ret := os.system(cmd)
+		// TODO: make the runner wrapping as transparent as possible 
+		// (i.e. use execve when implemented). For now though, the runner 
+		// just returns the same exit code as the child process 
+		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
+		exit( ret >> 8 ) 
+	}
+	exit(0)
+}
+
+fn (c mut V) cc_windows_cross() {
        if !c.out_name.ends_with('.exe') {
                c.out_name = c.out_name + '.exe'
        }
@@ -715,7 +747,7 @@ fn (v mut V) cc() {
 	} 
 	$if windows { 
 		if v.os == .msvc {
-			cc_msvc(v)
+			v.cc_msvc() 
 			return
 		}
 	} 

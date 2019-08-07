@@ -47,7 +47,8 @@ pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
 
 pub fn (x &AesCbc) block_size() int { return x.block_size }
 
-pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
+pub fn (x mut AesCbc) encrypt_blocks(dst mut []byte, src_ []byte) {
+	mut src := src_
 	if src.len%x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
 	}
@@ -62,7 +63,7 @@ pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
 
 	for src.len > 0 {
 		// Write the xor to dst, then encrypt in place.
-		cipher.xor_bytes(dst.left(x.block_size), src.left(x.block_size), iv)
+		cipher.xor_bytes(mut dst.left(x.block_size), src.left(x.block_size), iv)
 		x.b.encrypt(dst.left(x.block_size), dst.left(x.block_size))
 
 		// Move to the next block with this block as the next iv.
@@ -72,14 +73,14 @@ pub fn (x &AesCbc) encrypt_blocks(dst, src []byte) {
 		} else {
 			src = src.right(x.block_size)
 		}
-		dst = dst.right(x.block_size)
+		*dst = dst.right(x.block_size)
 	}
 
 	// Save the iv for the next crypt_blocks call.
 	copy(x.iv, iv)
 }
 
-pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
+pub fn (x mut AesCbc) decrypt_blocks(dst mut []byte, src []byte) {
 	if src.len%x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
 	}
@@ -105,7 +106,7 @@ pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
 	// Loop over all but the first block.
 	for start > 0 {
 		x.b.decrypt(dst.slice(start, end), src.slice(start, end))
-		cipher.xor_bytes(dst.slice(start, end), dst.slice(start, end), src.slice(prev, start))
+		cipher.xor_bytes(mut dst.slice(start, end), dst.slice(start, end), src.slice(prev, start))
 
 		end = start
 		start = prev
@@ -114,7 +115,7 @@ pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
 
 	// The first block is special because it uses the saved iv.
 	x.b.decrypt(dst.slice(start, end), src.slice(start, end))
-	cipher.xor_bytes(dst.slice(start, end), dst.slice(start, end), x.iv)
+	cipher.xor_bytes(mut dst.slice(start, end), dst.slice(start, end), x.iv)
 
 
 	// Set the new iv to the first block we copied earlier.
@@ -122,7 +123,7 @@ pub fn (x &AesCbc) decrypt_blocks(dst, src []byte) {
 	x.tmp = x.iv
 }
 
-fn (x &AesCbc) set_iv(iv []byte) {
+fn (x mut AesCbc) set_iv(iv []byte) {
 	if iv.len != x.iv.len {
 		panic('cipher: incorrect length IV')
 	}

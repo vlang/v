@@ -694,13 +694,13 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-pub fn (u ustring) substr(start, end int) string {
-	start = u.runes[start]
-	if end >= u.runes.len {
-		end = u.s.len
+pub fn (u ustring) substr(_start, _end int) string {
+	start := u.runes[_start]
+	end := if _end >= u.runes.len {
+		u.s.len
 	}
 	else {
-		end = u.runes[end]
+		u.runes[_end]
 	}
 	return u.s.substr(start, end)
 }

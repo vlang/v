@@ -7,7 +7,7 @@ import crypto.rc4
 fn test_crypto_rc4() {	 
 	key := 'tthisisourrc4key'.bytes()
 	
-	c := rc4.new_cipher(key) or {
+	mut c := rc4.new_cipher(key) or {
 		println(err)
 		return
 	}
@@ -15,7 +15,7 @@ fn test_crypto_rc4() {
 	mut src := 'toencrypt'.bytes()
 	
 	// src & dst same, encrypt in place
-	c.xor_key_stream(src, src) // encrypt data
+	c.xor_key_stream(mut src, src) // encrypt data
 	
 	c.reset()
 

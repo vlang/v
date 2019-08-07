@@ -1197,8 +1197,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	p.log('assign_statement() name=$v.name tok=')
+	is_vid := p.fileis('vid') // TODO remove 
 	tok := p.tok
-	if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
+	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
+	if !v.is_mut && !p.pref.translated && !v.is_global && !is_vid {
 		p.error('`$v.name` is immutable')
 	}
 	if !v.is_changed {
@@ -1763,7 +1765,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec
-		is_vi := p.fileis('vi')
+		is_vi := p.fileis('vid')
 		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
 			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)')
 		}
@@ -1805,7 +1807,8 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	return method.typ
 }
 
-fn (p mut Parser) index_expr(typ string, fn_ph int) string {
+fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
+	mut typ := typ_ 
 	// a[0]
 	v := p.expr_var
 	//if p.fileis('fn_test.v') {
@@ -2367,8 +2370,8 @@ fn (p mut Parser) char_expr() {
 }
 
 
-fn format_str(str string) string {
-	str = str.replace('"', '\\"')
+fn format_str(_str string) string {
+	mut str := _str.replace('"', '\\"')
 	$if windows {
 		str = str.replace('\r\n', '\\n')
 	} 
@@ -3304,9 +3307,11 @@ fn (p mut Parser) go_statement() {
 
 fn (p mut Parser) register_var(v Var) {
 	if v.line_nr == 0 {
-		v.line_nr = p.scanner.line_nr
-	}
-	p.cur_fn.register_var(v)
+		//v.line_nr = p.scanner.line_nr
+		p.cur_fn.register_var({ v | line_nr: p.scanner.line_nr }) 
+	} else { 
+		p.cur_fn.register_var(v)
+	} 
 }
 
 // user:=jsdecode(User, user_json_string)
