@@ -94,15 +94,15 @@ const (
 )
 
 fn platform_postfix_to_ifdefguard(name string) string {
-  switch name {
-    case '.v': return '' // no guard needed
-    case '_win.v': return '#ifdef _WIN32'
-    case '_nix.v': return '#ifndef _WIN32'
-    case '_lin.v': return '#ifdef __linux__'
-    case '_mac.v': return '#ifdef __APPLE__'
-  }
-  panic('bad platform_postfix "$name"')
-  return ''
+	switch name {
+		case '.v': return '' // no guard needed
+		case '_win.v': return '#ifdef _WIN32'
+		case '_nix.v': return '#ifndef _WIN32'
+		case '_lin.v': return '#ifdef __linux__'
+		case '_mac.v': return '#ifdef __APPLE__'
+	}
+	panic('bad platform_postfix "$name"')
+	return ''
 }
 
 fn (v mut V) new_parser(path string, pass Pass) Parser {

@@ -12,8 +12,8 @@ module os
 
 /*
 struct dirent {
-               d_ino int
-               d_off int
+	d_ino int
+	d_off int
 	d_reclen u16
 	d_type byte
 	d_name [256]byte
@@ -524,13 +524,13 @@ pub fn filename(path string) string {
 
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
-    str := get_raw_line()
-		$if windows {
-			return str.trim_right('\r\n')
-		}
-		$else {
-			return str.trim_right('\n')
-		}
+	str := get_raw_line()
+	$if windows {
+		return str.trim_right('\r\n')
+	}
+	$else {
+		return str.trim_right('\n')
+	}
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
@@ -564,31 +564,31 @@ pub fn get_raw_line() string {
 }
 
 pub fn get_lines() []string {
-        mut line := ''
-        mut inputstr := []string
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr << line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := []string
+	for {
+		line = get_line()
+		if(line.len <= 0) {
+			break
+		}
+		line = line.trim_space()
+		inputstr << line
+	}
+	return inputstr
 }
 
 pub fn get_lines_joined() string {
-        mut line := ''
-        mut inputstr := ''
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr += line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := ''
+	for {
+		line = get_line()
+		if(line.len <= 0) {
+			break
+		}
+		line = line.trim_space()
+		inputstr += line
+	}
+	return inputstr
 }
 
 pub fn user_os() string {
@@ -769,27 +769,27 @@ pub fn getwd() string {
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
 struct filetime {
-  dwLowDateTime u32
-  dwHighDateTime u32
+	dwLowDateTime u32
+	dwHighDateTime u32
 }
 
 // win: WIN32_FIND_DATA
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
 struct win32finddata {
 mut:
-    dwFileAttributes u32
-    ftCreationTime filetime
-  	ftLastAccessTime filetime
-  	ftLastWriteTime filetime
+	dwFileAttributes u32
+	ftCreationTime filetime
+	ftLastAccessTime filetime
+	ftLastWriteTime filetime
 	nFileSizeHigh u32
 	nFileSizeLow u32
 	dwReserved0 u32
 	dwReserved1 u32
 	cFileName [260]u16 // MAX_PATH = 260
 	cAlternateFileName [14]u16 // 14
-  	dwFileType u32
-  	dwCreatorType u32
-  	wFinderFlags u16
+	dwFileType u32
+	dwCreatorType u32
+	wFinderFlags u16
 }
 
 pub fn ls(path string) []string {

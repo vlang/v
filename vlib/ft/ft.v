@@ -6,11 +6,11 @@ module ft
 
 import (
 	os
-gx
-gg
- stbi
- glm
- gl
+	gx
+	gg
+	stbi
+	glm
+	gl
 )
 
 #flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2

@@ -5,16 +5,16 @@ import os
 #flag windows -l shell32
 
 struct MsvcResult {
-    exe_path string
+	exe_path string
 
-    um_lib_path string
-    ucrt_lib_path string
-    vs_lib_path string
+	um_lib_path string
+	ucrt_lib_path string
+	vs_lib_path string
 
-    um_include_path string
-    ucrt_include_path string
-    vs_include_path string
-    shared_include_path string
+	um_include_path string
+	ucrt_include_path string
+	vs_include_path string
+	shared_include_path string
 }
 
 // Mimics a HKEY

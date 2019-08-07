@@ -36,11 +36,11 @@ mut:
 }
 
 const (
-    WSA_V1  = 0x100 // C.MAKEWORD(1, 0)
-    WSA_V11 = 0x101 // C.MAKEWORD(1, 1)
-    WSA_V2  = 0x200 // C.MAKEWORD(2, 0)
-    WSA_V21 = 0x201 // C.MAKEWORD(2, 1)
-    WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
+	WSA_V1  = 0x100 // C.MAKEWORD(1, 0)
+	WSA_V11 = 0x101 // C.MAKEWORD(1, 1)
+	WSA_V2  = 0x200 // C.MAKEWORD(2, 0)
+	WSA_V21 = 0x201 // C.MAKEWORD(2, 1)
+	WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
 )
 
 struct C.in_addr {
@@ -255,45 +255,45 @@ pub fn (s Socket) close() ?int {
 }
 
 const (
-        MAX_READ = 400
+	MAX_READ = 400
 )
 pub fn (s Socket) write(str string) {
-        line := '$str\r\n'
-        C.write(s.sockfd, line.str, line.len)
+	line := '$str\r\n'
+	C.write(s.sockfd, line.str, line.len)
 }
 
 pub fn (s Socket) read_line() string {
-        mut res := ''
-        for {
-                println('.')
-                mut buf := malloc(MAX_READ)
-                n := int(C.recv(s.sockfd, buf, MAX_READ-1, 0))
-                println('numbytes=$n')
-                if n == -1 {
-                        println('recv failed')
-                        // TODO
-                        return ''
-                }
-                if n == 0 {
-                        break
-                }
-                // println('resp len=$numbytes')
-                buf[n] = `\0`
+	mut res := ''
+	for {
+		println('.')
+		mut buf := malloc(MAX_READ)
+		n := int(C.recv(s.sockfd, buf, MAX_READ-1, 0))
+		println('numbytes=$n')
+		if n == -1 {
+			println('recv failed')
+			// TODO
+			return ''
+		}
+		if n == 0 {
+			break
+		}
+		// println('resp len=$numbytes')
+		buf[n] = `\0`
 		//  C.printf('!!buf= "%s" n=%d\n', buf,n)
-                line := string(buf)
-                res += line
-                // Reached a newline. That's an end of an IRC message
-                // TODO dont need ends_with check ?
-                if line.ends_with('\n') || n < MAX_READ - 1 {
-                        // println('NL')
-                        break
-                }
-                if line.ends_with('\r\n') {
-                        // println('RNL')
-                        break
-                }
-        }
-        return res
+		line := string(buf)
+		res += line
+		// Reached a newline. That's an end of an IRC message
+		// TODO dont need ends_with check ?
+		if line.ends_with('\n') || n < MAX_READ - 1 {
+			// println('NL')
+			break
+		}
+		if line.ends_with('\r\n') {
+			// println('RNL')
+			break
+		}
+	}
+	return res
 }
 
 

@@ -40,7 +40,7 @@ mut:
 fn (d mut Digest) reset() {
 	d.s = [u32(0); 4]
 	d.x = [byte(0); BlockSize]
-    d.s[0] = u32(Init0)
+	d.s[0] = u32(Init0)
 	d.s[1] = u32(Init1)
 	d.s[2] = u32(Init2)
 	d.s[3] = u32(Init3)
@@ -63,7 +63,7 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == BlockSize {
-            block(mut d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -104,11 +104,11 @@ pub fn (d mut Digest) checksum() []byte {
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
 	// tmp := [1 + 63 + 8]byte{0x80}
-    mut tmp := [byte(0); 1 + 63 + 8]
+	mut tmp := [byte(0); 1 + 63 + 8]
 	tmp[0] = 0x80
 	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
 	binary.little_endian_put_u64(mut tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
-    d.write(tmp.left(1+pad+8))
+	d.write(tmp.left(1+pad+8))
 
 	// The previous write ensures that a whole number of
 	// blocks (i.e. a multiple of 64 bytes) have been hashed.
@@ -116,7 +116,7 @@ pub fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0); Size]
+	digest := [byte(0); Size]
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
@@ -133,9 +133,9 @@ pub fn sum(data []byte) []byte {
 }
 
 fn block(dig mut Digest, p []byte) {
-    // For now just use block_generic until we have specific
+	// For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(mut dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int { return Size }

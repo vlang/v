@@ -37,15 +37,15 @@ $s
 }
 
 pub fn (ctx Context) redirect(url string) {
-        h := ctx.headers.join('\n')
-        ctx.conn.write('HTTP/1.1 302 Found
+	h := ctx.headers.join('\n')
+	ctx.conn.write('HTTP/1.1 302 Found
 Location: $url
 $h
 ')
 }
 
 pub fn (ctx Context) not_found(s string) {
-        ctx.conn.write('HTTP/1.1 404 Not Found')
+	ctx.conn.write('HTTP/1.1 404 Not Found')
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) {
@@ -95,23 +95,23 @@ pub fn run<T>(port int) {
 		}
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
-		 // Parse request headers
-		 lines := s.split_into_lines()
-		 mut headers := []string //map[string]string{}
-		 for i, line in lines {
-		         if i == 0 {
-		                 continue
-		         }
-		         words := line.split(':')
-		         if words.len != 2 {
-		                 continue
-		         }
+		// Parse request headers
+		lines := s.split_into_lines()
+		mut headers := []string //map[string]string{}
+		for i, line in lines {
+			if i == 0 {
+					continue
+			}
+			words := line.split(':')
+			if words.len != 2 {
+					continue
+			}
 			headers << line
-/*
-		         key := words[0]
-		         val := words[1]
-		         headers[key] = val
-*/
+			/*
+			key := words[0]
+			val := words[1]
+			headers[key] = val
+			*/
 		}
 		// Parse the first line
 		// "GET / HTTP/1.1"
@@ -125,12 +125,12 @@ pub fn run<T>(port int) {
 			action = 'index'
 		}
 		req := http.Request{
-		        headers: map[string]string{}
+			headers: map[string]string{}
 			headers2: headers
-		        ws_func: 0
-		        user_ptr: 0
-		        method: vals[0]
-		        url: vals[1]
+			ws_func: 0
+			user_ptr: 0
+			method: vals[0]
+			url: vals[1]
 		}
 		println('vweb action = "$action"')
 		//mut app := T{

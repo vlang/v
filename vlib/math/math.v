@@ -29,18 +29,18 @@ const (
 )
 
 const (
-        MaxI8   = (1<<7) - 1
-        MinI8   = -1 << 7
-        MaxI16  = (1<<15) - 1
-        MinI16  = -1 << 15
-        MaxI32  = (1<<31) - 1
-        MinI32  = -1 << 31
-//        MaxI64  = ((1<<63) - 1)
-//        MinI64  = (-(1 << 63) )
-        MaxU8  = (1<<8) - 1
-        MaxU16 = (1<<16) - 1
-        MaxU32 = (1<<32) - 1
-        MaxU64 = (1<<64) - 1
+	MaxI8   = (1<<7) - 1
+	MinI8   = -1 << 7
+	MaxI16  = (1<<15) - 1
+	MinI16  = -1 << 15
+	MaxI32  = (1<<31) - 1
+	MinI32  = -1 << 31
+	// MaxI64  = ((1<<63) - 1)
+	// MinI64  = (-(1 << 63) )
+	MaxU8  = (1<<8) - 1
+	MaxU16 = (1<<16) - 1
+	MaxU32 = (1<<32) - 1
+	MaxU64 = (1<<64) - 1
 )
 
 // Returns the absolute value.
@@ -136,44 +136,44 @@ pub fn exp2(a f64) f64 {
 // TODO bring back once multiple value functions are implemented
 /*
 fn recursive_product( n int, current_number_ptr &int) int{
-    mut m := n / 2
-    if (m == 0){
-        return *current_number_ptr += 2
-    }
-    if (n == 2){
-        return (*current_number_ptr += 2) * (*current_number_ptr += 2)
-    }
-    return recursive_product((n - m), *current_number_ptr) * recursive_product(m, *current_number_ptr)
+	mut m := n / 2
+	if (m == 0){
+		return *current_number_ptr += 2
+	}
+	if (n == 2){
+		return (*current_number_ptr += 2) * (*current_number_ptr += 2)
+	}
+	return recursive_product((n - m), *current_number_ptr) * recursive_product(m, *current_number_ptr)
 }
 
 pub fn factorial(n int) i64 {
-    if n < 0 {
-        panic('factorial: Cannot find factorial of negative number')
-    }
-    if n < 2 {
-        return i64(1)
-    }
-    mut r := 1
-    mut p := 1
-    mut current_number := 1
-    mut h := 0
-    mut shift := 0
-    mut high := 1
-    mut len := high
-    mut log2n := int(floor(log2(n)))
-    for ;h != n; {
-        shift += h
-        h = n >> log2n
-        log2n -= 1
-        len = high
-        high = (h - 1) | 1
-        len = (high - len)/2
-        if (len > 0){
-            p *= recursive_product(len, &current_number)
-            r *= p
-        }
-    }
-    return i64((r << shift))
+	if n < 0 {
+		panic('factorial: Cannot find factorial of negative number')
+	}
+	if n < 2 {
+		return i64(1)
+	}
+	mut r := 1
+	mut p := 1
+	mut current_number := 1
+	mut h := 0
+	mut shift := 0
+	mut high := 1
+	mut len := high
+	mut log2n := int(floor(log2(n)))
+	for ;h != n; {
+		shift += h
+		h = n >> log2n
+		log2n -= 1
+		len = high
+		high = (h - 1) | 1
+		len = (high - len)/2
+		if (len > 0){
+			p *= recursive_product(len, &current_number)
+			r *= p
+		}
+	}
+	return i64((r << shift))
 }
 */
 
