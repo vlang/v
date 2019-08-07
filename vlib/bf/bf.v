@@ -65,7 +65,7 @@ fn bitnslots(length int) int {
 	return (length - 1) / SLOT_SIZE + 1
 } 
 
-fn cleartail(instance BitField) {
+fn cleartail(instance mut BitField) {
 	tail := instance.size % SLOT_SIZE
 	if tail != 0 {
 		// create a mask for the tail 

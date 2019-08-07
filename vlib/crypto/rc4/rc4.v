@@ -59,7 +59,7 @@ pub fn (c mut Cipher) reset() {
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.
 // Dst and src must overlap entirely or not at all.
-pub fn (c mut Cipher) xor_key_stream(dst, src []byte) {
+pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	if src.len == 0 {
 		return
 	}
