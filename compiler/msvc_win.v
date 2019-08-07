@@ -344,16 +344,13 @@ pub fn cc_msvc(v *V) {
 
 	// println('$cmd')
 
-	res := os.exec(cmd) or {
-		panic(err)
+	_ := os.exec(cmd) or {
+		println(err)
+		panic('msvc error')
 		return // TODO remove return
 	}
 	// println(res)
 	// println('C OUTPUT:')
-	if res.contains('error') {
-		println(res)
-		panic('msvc error')
-	}
 
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm('.$v.out_name_c') 
