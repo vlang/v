@@ -28,9 +28,9 @@ const (
 	KEY_ENUMERATE_SUB_KEYS = (0x0008)
 )
 
-// Given a root key look for the subkey 'version' and get the path 
+// Given a root key look for the subkey 'version' and get the path
 fn find_windows_kit_internal(key RegKey, version string) ?string {
-	required_bytes := 0 // TODO mut 
+	required_bytes := 0 // TODO mut
 	result := C.RegQueryValueExW(key, version.to_wide(), 0, 0, 0, &required_bytes)
 
 	length := required_bytes / 2
@@ -75,7 +75,7 @@ fn find_windows_kit_root() ?WindowsKit {
 	root_key := RegKey(0)
 	rc := C.RegOpenKeyExA(
 		HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots', 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
-	
+
 	defer {C.RegCloseKey(root_key)}
 
 	if rc != 0 {
@@ -132,7 +132,7 @@ struct VsInstallation {
 fn find_vs() ?VsInstallation {
 	// Emily:
 	// VSWhere is guaranteed to be installed at this location now
-	// If its not there then end user needs to update their visual studio 
+	// If its not there then end user needs to update their visual studio
 	// installation!
 	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"')
 	// println('res: "$res"')
@@ -199,10 +199,10 @@ fn find_msvc() ?MsvcResult {
 pub fn cc_msvc(v *V) {
 	r := find_msvc() or {
 		println('Could not find MSVC')
-		
+
 		// TODO: code reuse
 		if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-			os.rm('.$v.out_name_c') 
+			os.rm('.$v.out_name_c')
 		}
 		return
 	}
@@ -217,24 +217,24 @@ pub fn cc_msvc(v *V) {
 		a << '/Z7'
 		a << '/MDd'
 	}
-
+    mut out_name :=v.out_name
 	if v.pref.is_so {
 		// Dont think we have to do anything for this
-		if !v.out_name.ends_with('.dll') {
-			v.out_name = v.out_name + '.dll'
+		if !out_name.ends_with('.dll') {
+			out_name = out_name + '.dll'
 		}
 
 		// Build dll
 		a << '/LD'
-	} else if !v.out_name.ends_with('.exe') {
-		v.out_name = v.out_name + '.exe'
+	} else if !out_name.ends_with('.exe') {
+		out_name = out_name + '.exe'
 	}
 
 	mut libs := ''// builtin.o os.o http.o etc
 	if v.pref.build_mode == .build {
 	}
 	else if v.pref.build_mode == .embed_vlib {
-		// 
+		//
 	}
 	else if v.pref.build_mode == .default_mode {
 		libs = '"$ModPath/vlib/builtin.obj"'
@@ -291,14 +291,14 @@ pub fn cc_msvc(v *V) {
 			// TODO: we should look for .defs aswell
 			lib_lib := lib_base + '.lib'
 			real_libs << lib_lib
-		} 
+		}
 		else if f.starts_with('-L') {
 			lib_paths << f.right(2).trim_space()
 		}
 		else if f.ends_with('.o') {
 			// msvc expects .obj not .o
 			other_flags << f + 'bj'
-		} 
+		}
 		else {
 			other_flags << f
 		}
@@ -316,7 +316,7 @@ pub fn cc_msvc(v *V) {
 
 	a << '/link'
 	a << '/NOLOGO'
-	a << '/OUT:$v.out_name'
+	a << '/OUT:$out_name'
 	a << '/LIBPATH:"$r.ucrt_lib_path"'
 	a << '/LIBPATH:"$r.um_lib_path"'
 	a << '/LIBPATH:"$r.vs_lib_path"'
@@ -350,8 +350,8 @@ pub fn cc_msvc(v *V) {
 	}
 
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm('.$v.out_name_c') 
-	} 
+		os.rm('.$v.out_name_c')
+	}
 
 }
 
@@ -369,17 +369,17 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 	}
 
 	if os.file_exists(obj_path) {
-		return 
-	} 
-	println('$obj_path not found, building it (with msvc)...') 
-	parent := obj_path.all_before_last('/').trim_space() 
+		return
+	}
+	println('$obj_path not found, building it (with msvc)...')
+	parent := obj_path.all_before_last('/').trim_space()
 	files := os.ls(parent)
 
-	mut cfiles := '' 
+	mut cfiles := ''
 	for file in files {
-		if file.ends_with('.c') { 
-			cfiles += parent + '/' + file + ' ' 
-		} 
+		if file.ends_with('.c') {
+			cfiles += parent + '/' + file + ' '
+		}
 	}
 
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
@@ -388,5 +388,4 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"')
 	println(res)
-} 
-
+}
