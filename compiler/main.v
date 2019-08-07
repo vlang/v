@@ -747,7 +747,7 @@ fn (v mut V) cc() {
 	} 
 	$if windows { 
 		if v.os == .msvc {
-			cc_msvc(v)
+			cc_msvc(mut v)
 			return
 		}
 	} 

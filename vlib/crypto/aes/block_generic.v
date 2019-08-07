@@ -160,7 +160,7 @@ fn rotw(w u32) u32 { return u32(w<<u32(8)) | u32(w>>u32(24)) }
 
 // Key expansion algorithm. See FIPS-197, Figure 11.
 // Their rcon[i] is our powx[i-1] << 24.
-fn expand_key_generic(key []byte, enc, dec []u32) {
+fn expand_key_generic(key []byte, enc mut []u32, dec mut []u32) {
 	// Encryption key setup.
 	mut i := 0
 	nk := key.len / 4
