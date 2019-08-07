@@ -7,6 +7,7 @@ module http
 import strings 
 
 #flag windows -I @VROOT/thirdparty/openssl/include 
+#flag darwin -I @VROOT/thirdparty/openssl/include 
 #flag -lssl -lcrypto
 // MacPorts
 #flag darwin -L/opt/local/lib

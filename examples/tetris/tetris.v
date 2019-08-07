@@ -287,7 +287,8 @@ fn (g &Game) draw_scene() {
 	g.draw_field()
 }
 
-fn parse_binary_tetro(t int) []Block {
+fn parse_binary_tetro(t_ int) []Block {
+	mut t := t_ 
 	res := [Block{} ; 4]
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
