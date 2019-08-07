@@ -26,6 +26,7 @@ for /r . %%x in (*_test.v) do (
 goto :done
 
 :fail
+echo fail
 exit /b 1
 
 :done

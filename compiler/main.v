@@ -137,11 +137,17 @@ fn main() {
 			println('Building vget...') 
 			os.chdir(vroot + '/tools') 
 			vexec := os.args[0] 
-			os.exec('$vexec vget.v') 
+			_ := os.exec('$vexec vget.v') or {
+				panic(err)
+				return // TODO remove return
+			}
 			println('Done.') 
 		} 
 		println('Installing module ${mod}...') 
-		os.exec('$vget $mod') 
+		_ := os.exec('$vget $mod') or {
+			panic(err)
+			return // TODO remove return
+		}
 		return 
 	} 
 	// TODO quit if the compiler is too old 
@@ -631,7 +637,10 @@ void reload_so() {
 		ret := os.system(cmd)
 		if ret != 0 {
 			if !v.pref.is_test { 
-				s := os.exec(cmd)
+				s := os.exec(cmd) or {
+					panic(err)
+					return // TODO remove return
+				}
 				println(s)
 				println('failed to run the compiled program')
 			} 
@@ -842,7 +851,10 @@ mut args := ''
 	}
 	// Run
 	ticks := time.ticks() 
-	res := os.exec(cmd)
+	res := os.exec(cmd) or {
+		panic(err)
+		return // TODO remove return
+	}
 	diff := time.ticks() - ticks 
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -876,7 +888,10 @@ mut args := ''
 		'/usr/lib/x86_64-linux-gnu/crti.o ' +
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
-		'/usr/lib/x86_64-linux-gnu/crtn.o')
+		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
+			panic(err)
+			return // TODO remove return
+		}
 		println(ress)
 		if ress.contains('error:') {
 			exit(1)
@@ -1286,7 +1301,10 @@ fn run_repl() []string {
 		if line.starts_with('print') {
 			source_code := lines.join('\n') + '\n' + line 
 			os.write_file(file, source_code)
-			s := os.exec('$vexe run $file -repl')
+			s := os.exec('$vexe run $file -repl') or {
+				panic(err)
+				break // TODO remove break
+			}
 			mut vals := s.split('\n')
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
@@ -1313,7 +1331,10 @@ fn run_repl() []string {
 			}
 			temp_source_code := lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('$vexe run $temp_file -repl')
+			s := os.exec('$vexe run $temp_file -repl') or {
+				panic(err)
+				break // TODO remove break
+			}
 			if s.contains('panic: ') {
 				if !s.contains('declared and not used') 	{
 					mut vals := s.split('\n')
@@ -1389,15 +1410,24 @@ fn env_vflags_and_os_args() []string {
 fn update_v() {
 	println('Updating V...') 
 	vroot := os.dir(os.executable()) 
-	mut s := os.exec('git -C "$vroot" pull --rebase origin master') 
+	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
+		panic(err)
+		return // TODO remove return
+	}
 	println(s) 
 	$if windows { 
 		os.mv('$vroot/v.exe', '$vroot/v_old.exe') 
-		s = os.exec('$vroot/make.bat') 
-		println(s) 
+		s2 := os.exec('$vroot/make.bat') or {
+			panic(err)
+			return // TODO remove return
+		}
+		println(s2) 
 	} $else { 
-		s = os.exec('make -C "$vroot"') 
-		println(s) 
+		s2 := os.exec('make -C "$vroot"') or {
+			panic(err)
+			return // TODO remove return
+		}
+		println(s2) 
 	} 
 } 
 
