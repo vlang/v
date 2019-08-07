@@ -55,7 +55,8 @@ pub fn new() *Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p mut []byte) ?int {
+pub fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
@@ -107,7 +108,7 @@ pub fn (d mut Digest) checksum() []byte {
 	tmp[0] = 0x80
 	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
 	binary.little_endian_put_u64(mut tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
-    d.write(mut tmp.left(1+pad+8))
+    d.write(tmp.left(1+pad+8))
 
 	// The previous write ensures that a whole number of
 	// blocks (i.e. a multiple of 64 bytes) have been hashed.
@@ -127,7 +128,7 @@ pub fn (d mut Digest) checksum() []byte {
 // sum returns the MD5 checksum of the data.
 pub fn sum(data []byte) []byte {
 	mut d := new()
-	d.write(mut data)
+	d.write(data)
 	return d.checksum()
 }
 

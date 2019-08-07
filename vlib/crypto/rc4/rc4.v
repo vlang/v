@@ -45,7 +45,7 @@ pub fn new_cipher(key []byte) ?Cipher {
 	return c
 }
 
-// reset zeros the key data and makes the Cipher unusable.
+// reset zeros the key data and makes the Cipher unusable.good to com
 //
 // Deprecated: Reset can't guarantee that the key will be entirely removed from
 // the process's memory.
@@ -69,7 +69,7 @@ pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	mut i := c.i
 	mut j := c.j
 	_ := dst[src.len-1]
-	dst = dst.left(src.len) // eliminate bounds check from loop
+	*dst = dst.left(src.len) // eliminate bounds check from loop
 	for k, v in src {
 		i += u8(1)
 		x := c.s[i]

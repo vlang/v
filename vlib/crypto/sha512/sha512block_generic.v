@@ -94,7 +94,7 @@ const(
 	]
 )
 
-fn block_generic(dig mut Digest, p_ mut []byte) {
+fn block_generic(dig mut Digest, p_ []byte) {
 	mut p := p_
 	
 	mut w := [u64(0); 80]

@@ -58,7 +58,8 @@ pub fn new() &Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p mut []byte) ?int {
+pub fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 
@@ -108,15 +109,15 @@ fn (d mut Digest) checksum() []byte {
 	tmp[0] = 0x80
 
 	if int(len)%64 < 56 {
-		d.write(mut tmp.left(56-int(len)%64))
+		d.write(tmp.left(56-int(len)%64))
 	} else {
-		d.write(mut tmp.left(64+56-int(len)%64))
+		d.write(tmp.left(64+56-int(len)%64))
 	}
 
 	// Length in bits.
 	len <<= u64(3)
 	binary.big_endian_put_u64(mut tmp, len)
-	d.write(mut tmp.left(8))
+	d.write(tmp.left(8))
 
 	mut digest := [byte(0); Size]
 
@@ -132,7 +133,7 @@ fn (d mut Digest) checksum() []byte {
 // Sum returns the SHA-1 checksum of the data.
 pub fn sum(data []byte) []byte {
 	mut d := new()
-	d.write(mut data)
+	d.write(data)
 	return d.checksum()
 }
 
