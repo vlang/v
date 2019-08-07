@@ -49,7 +49,7 @@ fn test_struct_levels() {
 	assert c.aarr[0].val == 8
 	c.num = 20
 	assert c.num == 20
-	c.aarr[0].val  = 10
+	c.aarr[0].val = 10
 	assert c.aarr[0].val == 10
 }
 

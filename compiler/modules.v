@@ -6,7 +6,7 @@ module main
 
 import os
 
-struct ModDepGraphNode  {
+struct ModDepGraphNode {
 mut:
 	name string
 	deps []string

@@ -116,8 +116,8 @@ fn (p mut Parser) fn_decl() {
 	p.fgen('fn ')
 	defer { p.fgenln('\n') }
 	is_pub := p.tok == .key_pub
-	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
-	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
+	is_live := p.attr == 'live' && !p.pref.is_so && p.pref.is_live
+	if p.attr == 'live' && p.first_pass() && !p.pref.is_live && !p.pref.is_so {
 		println('INFO: run `v -live program.v` if you want to use [live] functions')
 	}
 	if is_pub {
@@ -229,7 +229,7 @@ fn (p mut Parser) fn_decl() {
 		p.check(.gt)
 		if p.first_pass() {
 			p.table.register_generic_fn(f.name)
-		}  else {
+		} else {
 			//gen_types := p.table.fn_gen_types(f.name)
 			//println(gen_types)
 		}
@@ -306,7 +306,7 @@ fn (p mut Parser) fn_decl() {
 				p.cur_gen_type = gen_type // TODO support more than T
 				p.statements()
 				p.scanner.pos = cur_pos
-				p.tok  = cur_tok
+				p.tok = cur_tok
 				p.lit = cur_lit
 			}
 		}
@@ -357,11 +357,11 @@ fn (p mut Parser) fn_decl() {
 				p.next()
 				// find `foo<Bar>()` in function bodies and register generic types
 				// TODO remove this once tokens are cached
-				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
+				if p.tok == .gt && p.prev_tok == .name && p.prev_tok2 == .lt &&
 					p.scanner.text[p.scanner.pos-1] != `T` {
 					p.scanner.pos -= 3
 					for p.scanner.pos > 0 && (is_name_char(p.scanner.text[p.scanner.pos]) ||
-						p.scanner.text[p.scanner.pos] == `.`  ||
+						p.scanner.text[p.scanner.pos] == `.` ||
 						p.scanner.text[p.scanner.pos] == `<` ) {
 						p.scanner.pos--
 					}
@@ -586,7 +586,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
+	if !f.is_public && !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
@@ -957,7 +957,7 @@ fn (f &Fn) str_args(table *Table) string {
 		if table.is_interface(arg.typ) {
 			// First the object (same name as the interface argument)
 			s += ' void* $arg.name'
-			// Now  all methods
+			// Now all methods
 			interface_type := table.find_type(arg.typ)
 			for method in interface_type.methods {
 				s += ', $method.typ (*${arg.typ}_${method.name})(void*'

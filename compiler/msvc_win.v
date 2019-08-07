@@ -258,7 +258,7 @@ pub fn (v mut V) cc_msvc() {
 	//a << '"$TmpPath/$v.out_name_c"'
 	a << '".$v.out_name_c"'
 
-	mut real_libs :=  [
+	mut real_libs := [
 		'kernel32.lib',
 		'user32.lib',
 		'gdi32.lib',

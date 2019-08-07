@@ -63,7 +63,7 @@ fn (m mut map) insert(n mut Node, key string, val voidptr) {
 		if isnil(n.left) {
 			n.left = new_node(key, val, m.element_size)
 			m.size++
-		}  else {
+		} else {
 			m.insert(mut n.left, key, val)
 		}
 		return
@@ -71,7 +71,7 @@ fn (m mut map) insert(n mut Node, key string, val voidptr) {
 	if isnil(n.right) {
 		n.right = new_node(key, val, m.element_size)
 		m.size++
-	}  else {
+	} else {
 		m.insert(mut n.right, key, val)
 	}
 }
@@ -84,14 +84,14 @@ fn (n & Node) find(key string, out voidptr, element_size int) bool{
 	else if n.key > key {
 		if isnil(n.left) {
 			return false
-		}  else {
+		} else {
 			return n.left.find(key, out, element_size)
 		}
 	}
 	else {
 		if isnil(n.right) {
 			return false
-		}  else {
+		} else {
 			return n.right.find(key, out, element_size)
 		}
 	}
@@ -106,14 +106,14 @@ fn (n & Node) find2(key string, element_size int) bool{
 	else if n.key > key {
 		if isnil(n.left) {
 			return false
-		}  else {
+		} else {
 			return n.left.find2(key, element_size)
 		}
 	}
 	else {
 		if isnil(n.right) {
 			return false
-		}  else {
+		} else {
 			return n.right.find2(key, element_size)
 		}
 	}
@@ -195,14 +195,14 @@ pub fn (n mut Node) delete(key string, element_size int) {
 	else if n.key > key {
 		if isnil(n.left) {
 			return
-		}  else {
+		} else {
 			n.left.delete(key, element_size)
 		}
 	}
 	else {
 		if isnil(n.right) {
 			return
-		}  else {
+		} else {
 			n.right.delete(key, element_size)
 		}
 	}
@@ -250,7 +250,7 @@ pub fn (m map_string) str() string {
 	}
 	mut sb := strings.new_builder(50)
 	sb.writeln('{')
-	for key, val  in m {
+	for key, val in m {
 		sb.writeln('  "$key" => "$val"')
 	}
 	sb.writeln('}')

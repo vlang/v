@@ -81,7 +81,7 @@ struct C.sigaction {
 mut:
 	sa_mask int
 	sa_sigaction int
-	sa_flags   int
+	sa_flags int
 }
 
 fn C.getline(voidptr, voidptr, voidptr) int
@@ -660,7 +660,7 @@ fn on_segfault(f voidptr) {
 		C.memset(&sa, 0, sizeof(sigaction))
 		C.sigemptyset(&sa.sa_mask)
 		sa.sa_sigaction = f
-		sa.sa_flags   = SA_SIGINFO
+		sa.sa_flags = SA_SIGINFO
 		C.sigaction(SIGSEGV, &sa, 0)
 	}
 }
@@ -684,7 +684,7 @@ pub fn executable() string {
 		mut result := malloc(MAX_PATH)
 		pid := C.getpid()
 		ret := C.proc_pidpath (pid, result, MAX_PATH)
-		if ret <= 0  {
+		if ret <= 0 {
 			println('os.executable() failed')
 			return '.'
 		}

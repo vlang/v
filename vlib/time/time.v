@@ -309,7 +309,7 @@ pub fn new_time(t Time) Time {
 }
 
 pub fn (t &Time) calc_unix() int {
-	if t.uni != 0  {
+	if t.uni != 0 {
 		return t.uni
 	}
 	tt := C.tm{
@@ -375,7 +375,7 @@ pub fn (t Time) weekday_str() string {
 	return Days.substr(i * 3, (i + 1) * 3)
 }
 
-struct C.timeval  {
+struct C.timeval {
 	tv_sec int
 	tv_usec int
 }

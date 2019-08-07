@@ -444,7 +444,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		    (input.field[end_slot] & mask)
 	}
 	else {
-		mut mask := u32(((1 << (end_offset - start_offset + 1)) - 1)  << start_offset)
+		mut mask := u32(((1 << (end_offset - start_offset + 1)) - 1) << start_offset)
 		mask = input.field[end_slot] & mask
 		mask = u32(mask >> u32(start_offset))
 		output.field[(end - start - 1) / SLOT_SIZE] =

@@ -170,7 +170,7 @@ fn main() {
 	// v get sqlite
 	if 'get' in args {
 		// Create the modules directory if it's not there.
-		if !os.file_exists(ModPath)  {
+		if !os.file_exists(ModPath) {
 			os.mkdir(ModPath)
 		}
 	}
@@ -728,7 +728,7 @@ fn (c mut V) cc_windows_cross() {
 			println(link_cmd)
 		}
 
-		if  os.system(link_cmd)  != 0 {
+		if os.system(link_cmd) != 0 {
 			println('Cross compilation for Windows failed. Make sure you have lld linker installed.')
 			exit(1)
 		}
@@ -1217,7 +1217,7 @@ fn new_v(args[]string) *V {
 	// v.exe's parent directory should contain vlib
 	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
 
-	}  else {
+	} else {
 		println('vlib not found. It should be next to the V executable. ')
 		println('Go to https://vlang.io to install V.')
 		exit(1)

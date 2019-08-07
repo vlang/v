@@ -48,7 +48,7 @@ enum Token {
 	and_assign
 	righ_shift_assign
 	left_shift_assign
-	// {}  () []
+	// {} () []
 	lcbr
 	rcbr
 	lpar

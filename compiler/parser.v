@@ -135,7 +135,7 @@ fn (v mut V) new_parser(path string, pass Pass) Parser {
 		os: v.os
 		pass: pass
 		vroot: v.vroot
-		building_v: !v.pref.is_repl && (path.contains('compiler/')  ||
+		building_v: !v.pref.is_repl && (path.contains('compiler/') ||
 			path.contains('v/vlib'))
 
 	}
@@ -185,7 +185,7 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod == 'ft' || 	p.mod == 'glfw'  || p.mod=='glfw2' || p.mod=='ui' // TODO tmp remove
+	p.can_chash = p.mod == 'ft' || 	p.mod == 'glfw' || p.mod=='glfw2' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
@@ -580,7 +580,7 @@ fn (p mut Parser) struct_decl() {
 	mut names := []string// to avoid dup names TODO alloc perf
 /*
 	mut fmt_max_len := 0
-	for field in typ.fields  {
+	for field in typ.fields {
 		if field.name.len > max_len {
 			fmt_max_len = field.name.len
 		}
@@ -1539,7 +1539,7 @@ fn (p mut Parser) name_expr() string {
 				p.cgen.insert_before('struct /*c struct init*/')
 			}
 			if ptr {
-			        name += '*'  // `&User{}` => type `User*`
+				name += '*'  // `&User{}` => type `User*`
 			}
 			if name == 'T' {
 				name = p.cur_gen_type
@@ -1988,7 +1988,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			else {
 				if is_ptr {
 					p.gen('( *($typ*) array__get(* $index_expr) )')
-				}  else {
+				} else {
 					p.gen('( *($typ*) array__get($index_expr) )')
 				}
 			}
@@ -2038,11 +2038,11 @@ fn (p mut Parser) expression() string {
 			}
 			expr_type := p.expression()
 			// Two arrays of the same type?
-			push_array :=  typ == expr_type
+			push_array := typ == expr_type
 			if push_array {
 				p.cgen.set_placeholder(ph, '_PUSH_MANY(&' )
 				p.gen('), $tmp, $typ)')
-			}  else {
+			} else {
 				p.check_types(expr_type, tmp_typ)
 				// Pass tmp var info to the _PUSH macro
 				// Prepend tmp initialisation and push call
@@ -2092,7 +2092,7 @@ fn (p mut Parser) expression() string {
 		p.check_types(p.expression(), typ)
 		return 'int'
 	}
-	if p.tok == .dot  {
+	if p.tok == .dot {
 		for p.tok == .dot {
 			typ = p.dot(typ, ph)
 		}
@@ -2490,7 +2490,7 @@ fn (p mut Parser) map_init() string {
 	// m := { 'one': 1, 'two': 2 }
 	mut keys_gen := '' // (string[]){tos2("one"), tos2("two")}
 	mut vals_gen := '' // (int[]){1, 2}
-	mut val_type := ''  // 'int'
+	mut val_type := '' // 'int'
 	if p.tok == .lcbr {
 		p.check(.lcbr)
 		mut i := 0
@@ -2727,7 +2727,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.gen('.$field = ')
 			p.check(.colon)
 			p.fspace()
-			p.check_types(p.bool_expression(),  f.typ)
+			p.check_types(p.bool_expression(), f.typ)
 			if p.tok == .comma {
 				p.next()
 			}
@@ -2835,7 +2835,7 @@ fn (p mut Parser) cast(typ string) string {
 				}
 				p.gen(', ')
 				p.check_types(p.expression(), 'int')
-			}  else {
+			} else {
 				if is_bytearr {
 					p.gen('.data')
 				}
@@ -3151,7 +3151,7 @@ fn (p mut Parser) switch_statement() {
 			if p.tok == .key_default {
 				p.check(.key_default)
 				p.check(.colon)
-			}  else {
+			} else {
 				p.check(.key_else)
 				p.check(.arrow)
 			}
@@ -3259,7 +3259,7 @@ fn (p mut Parser) return_st() {
 
 				if total_text == '' || expr_type == 'void*' {
 					p.cgen.resetln('return $ret')
-				}  else {
+				} else {
 					tmp := p.get_tmp()
 					p.cgen.resetln('$expr_type $tmp = $ret;\n')
 					p.genln(total_text)

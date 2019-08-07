@@ -117,7 +117,7 @@ fn is_broke(money int) bool {
     } else {
         quit := options{'yes', 'y'}
         println('You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)')
-   	    line := os.get_line().trim_space().to_lower()
+        line := os.get_line().trim_space().to_lower()
         if line== quit.long_opt || line== quit.short_opt {
             return false
         }

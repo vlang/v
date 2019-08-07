@@ -839,7 +839,7 @@ fn _parse_query(m mut Values, query string) ?bool {
 		}
 		mut value := ''
 		i = key.index('=')
-		if  i >= 0 {
+		if i >= 0 {
 			value = key.right(i+1)
 			key = key.left(i)
 		}
@@ -921,7 +921,7 @@ fn resolve_path(base, ref string) string {
 	last := src[src.len-1]
 	if last == '.' || last == '..' {
 		// Add final slash to the joined path.
-		dst <<  ''
+		dst << ''
 	}
 	return '/' + dst.join('/').trim_left('/')
 }

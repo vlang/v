@@ -9,7 +9,7 @@ import math
 
 const (
 	Size  = 700
-	Scale  = 50.0
+	Scale = 50.0
 )
 
 struct Context {
