@@ -862,10 +862,10 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
 			if !got.contains('*') && expected.contains('*') && got != 'voidptr' {
-				// Special case for mutable arrays. We can't & function results,
+				// Special case for mutable arrays. We can't `&` function results,
 				// have to use `(array[]){ expr }` hack. 
 				if expected.starts_with('array_') && expected.ends_with('*') { 
-					p.cgen.set_placeholder(ph, '& /*111*/ (array_int[]){') 
+					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){') 
 					p.gen('} ') 
 				} 
 				// println('\ne:"$expected" got:"$got"')

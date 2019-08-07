@@ -183,9 +183,11 @@ fn modify (numbers mut []int) {
 }
 
 fn test_mut_slice() { 
-        mut n := [1,2,3]
-        modify(mut n.left(2)) 
+	mut n := [1,2,3]
+	modify(mut n.left(2)) 
 	assert n[0] == 777 
-        println(n)
+	modify(mut n.right(2)) 
+	assert n[2] == 777 
+	println(n)
 }
  
