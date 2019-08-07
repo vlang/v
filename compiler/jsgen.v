@@ -57,23 +57,23 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	p.table.register_fn(enc_fn)
 	// Code gen decoder
 	dec += '
-//$t $dec_fn.name(cJSON* root) {  
-Option $dec_fn.name(cJSON* root, $t* res) {  
-//  $t res; 
+//$t $dec_fn.name(cJSON* root) {
+Option $dec_fn.name(cJSON* root, $t* res) {
+//  $t res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
     if (error_ptr != NULL)	{
       fprintf(stderr, "Error in decode() for $t error_ptr=: %%s\\n", error_ptr);
-//      printf("\\nbad js=%%s\\n", js.str); 
+//      printf("\\nbad js=%%s\\n", js.str);
       return v_error(tos2(error_ptr));
     }
   }
 '
 	// Code gen encoder
 	enc += '
-cJSON* $enc_fn.name($t val) {  
+cJSON* $enc_fn.name($t val) {
 cJSON *o = cJSON_CreateObject();
-string res = tos2(""); 
+string res = tos2("");
 '
 	// Handle arrays
 	if t.starts_with('array_') {
@@ -133,7 +133,7 @@ fn (p mut Parser) decode_array(array_type string) string {
 const cJSON *jsval = NULL;
 cJSON_ArrayForEach(jsval, root)
 {
-$s 
+$s
   array__push(res, &val);
 }
 '
@@ -156,7 +156,7 @@ fn (p &Parser) encode_array(array_type string) string {
 o = cJSON_CreateArray();
 for (int i = 0; i < val.len; i++){
   cJSON_AddItemToArray(o, $fn_name(  (($typ*)val.data)[i]  ));
-} 
+}
 '
 }
 

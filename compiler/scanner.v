@@ -23,7 +23,7 @@ mut:
 	fmt_out        strings.Builder
 	fmt_indent     int
 	fmt_line_empty bool
-	prev_tok Token 
+	prev_tok Token
 }
 
 fn new_scanner(file_path string) *Scanner {
@@ -208,7 +208,7 @@ fn (s Scanner) has_gone_over_line_end() bool {
 
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
-		// Count \r\n as one line 
+		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.line_nr++
 		}
@@ -217,10 +217,10 @@ fn (s mut Scanner) skip_whitespace() {
 }
 
 fn (s mut Scanner) scan() ScanRes {
-	if s.line_comment != '' { 
+	if s.line_comment != '' {
 		//s.fgenln('// LOL "$s.line_comment"')
-		//s.line_comment = '' 
-	} 
+		//s.line_comment = ''
+	}
 	if s.started {
 		s.pos++
 	}
@@ -389,11 +389,11 @@ fn (s mut Scanner) scan() ScanRes {
 	case `,`:
 		return scan_res(.comma, '')
 	case `@`:
-		s.pos++ 
+		s.pos++
 		name := s.ident_name()
 		if !is_key(name) {
-			s.error('@ must be used before keywords (e.g. `@type string`)') 
-		} 
+			s.error('@ must be used before keywords (e.g. `@type string`)')
+		}
 		return scan_res(.name, name)
 	case `\r`:
 		if nextc == `\n` {
@@ -462,7 +462,7 @@ fn (s mut Scanner) scan() ScanRes {
 		else if nextc == `>` {
 			s.pos++
 			return scan_res(.arrow, '')
-		} 
+		}
 		else {
 			return scan_res(.assign, '')
 		}
@@ -500,7 +500,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.line_comment = s.text.substr(start + 1, s.pos)
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
-			// Skip the comment (return the next token) 
+			// Skip the comment (return the next token)
 			return s.scan()
 		}
 		// Multiline comments
@@ -538,13 +538,13 @@ fn (s mut Scanner) scan() ScanRes {
 	$if windows {
 		if c == `\0` {
 			return scan_res(.eof, '')
-		} 
-	} 
-	mut msg := 'invalid character `${c.str()}`' 
+		}
+	}
+	mut msg := 'invalid character `${c.str()}`'
 	if c == `"` {
-		msg += ', use \' to denote strings' 
-	} 
-	s.error(msg) 
+		msg += ', use \' to denote strings'
+	}
+	s.error(msg)
 	return scan_res(.eof, '')
 }
 
@@ -770,17 +770,17 @@ fn contains_capital(s string) bool {
 }
 
 // HTTPRequest  bad
-// HttpRequest  good 
+// HttpRequest  good
 fn good_type_name(s string) bool {
 	if s.len < 4 {
-		return true 
-	} 
-	for i in 2 .. s.len { 
+		return true
+	}
+	for i in 2 .. s.len {
 		if s[i].is_capital() && s[i-1].is_capital() && s[i-2].is_capital() {
-			return false 
-		} 
-	} 
-	return true 
-} 
+			return false
+		}
+	}
+	return true
+}
 
 

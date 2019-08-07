@@ -5,7 +5,7 @@
 module main
 
 import os
-import strings 
+import strings
 
 struct CGen {
 	out          os.File
@@ -20,7 +20,7 @@ struct CGen {
 	fns          []string
 	so_fns       []string
 	consts_init  []string
-	//buf          strings.Builder 
+	//buf          strings.Builder
 	is_user      bool
 mut:
 	lines        []string
@@ -40,13 +40,13 @@ mut:
 fn new_cgen(out_name_c string) *CGen {
 	path:='.$out_name_c'
 	out := os.create(path) or {
-		println('failed to create $path') 
-		return &CGen{} 
-	} 
+		println('failed to create $path')
+		return &CGen{}
+	}
 	gen := &CGen {
-		out_path: path 
-		out: out 
-		//buf: strings.new_builder(10000) 
+		out_path: path
+		out: out
+		//buf: strings.new_builder(10000)
 		lines: _make(0, 1000, sizeof(string))
 	}
 	return gen
@@ -164,8 +164,8 @@ fn (g mut CGen) set_placeholder2(pos int, val string) {
 }
 
 fn (g mut CGen) insert_before(val string) {
-	prev := g.lines[g.lines.len - 1] 
-	g.lines[g.lines.len - 1] = '$prev \n $val \n' 
+	prev := g.lines[g.lines.len - 1]
+	g.lines[g.lines.len - 1] = '$prev \n $val \n'
 }
 
 fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text string) {
@@ -245,23 +245,23 @@ fn (g mut CGen) add_to_main(s string) {
 }
 
 
-fn build_thirdparty_obj_file(flag string) { 
-	obj_path := flag.all_after(' ') 
+fn build_thirdparty_obj_file(flag string) {
+	obj_path := flag.all_after(' ')
 	if os.file_exists(obj_path) {
-		return 
-	} 
-	println('$obj_path not found, building it...') 
-	parent := obj_path.all_before_last('/').trim_space() 
-	files := os.ls(parent) 
-	//files := os.ls(parent).filter(_.ends_with('.c'))  TODO 
-	mut cfiles := '' 
+		return
+	}
+	println('$obj_path not found, building it...')
+	parent := obj_path.all_before_last('/').trim_space()
+	files := os.ls(parent)
+	//files := os.ls(parent).filter(_.ends_with('.c'))  TODO
+	mut cfiles := ''
 	for file in files {
-		if file.ends_with('.c') { 
-			cfiles += parent + '/' + file + ' ' 
-		} 
-	} 
-	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows  
-	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') 
-	println(res) 
-} 
+		if file.ends_with('.c') {
+			cfiles += parent + '/' + file + ' '
+		}
+	}
+	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows
+	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles')
+	println(res)
+}
 
