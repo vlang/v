@@ -20,7 +20,7 @@ fn check(month, year, expected int) bool {
 	res := time.days_in_month(month, year) or {
 		return false
 	}
-	return res == expected 
+	return res == expected
 }
 
 fn test_days_in_month() {
@@ -41,13 +41,13 @@ fn test_days_in_month() {
 
 
 fn test_unix() {
-	t := time.unix(1564366499) 
+	t := time.unix(1564366499)
 	assert t.year == 2019
-	assert t.month == 7 
-	assert t.day == 29 
-	assert t.hour == 2 
-	assert t.minute == 14 
-	//assert t.second == 32  // TODO broken 
-} 
+	assert t.month == 7
+	assert t.day == 29
+	assert t.hour == 2
+	assert t.minute == 14
+	//assert t.second == 32  // TODO broken
+}
 
 

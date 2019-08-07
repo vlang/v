@@ -143,7 +143,7 @@ pub fn path_unescape(s string) ?string {
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
 fn unescape(s_ string, mode EncodingMode) ?string {
-	mut s := s_ 
+	mut s := s_
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
@@ -153,7 +153,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		case `%`:
 			if s == '' {
 				break
-			} 
+			}
 			n++
 			if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
 				s = s.right(i)
@@ -377,7 +377,7 @@ fn (u &Userinfo) string() string {
 // If so, return [scheme, path]; else return ['', rawurl]
 fn split_by_scheme(rawurl string) ?[]string {
 	for i := 0; i < rawurl.len; i++ {
-		c := rawurl[i]		
+		c := rawurl[i]
 		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
 			// do nothing
 		}
@@ -554,7 +554,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	} else {
 		h := parse_host(authority.right(i+1)) or {
 			return error(err)
-		} 
+		}
 		host = h
 	}
 	if i < 0 {
@@ -629,7 +629,7 @@ fn parse_host(host string) ?string {
 	h := unescape(host, .encode_host) or {
 		return err
 	}
-	return h 
+	return h
 	//host = h
 	//return host
 }
@@ -686,7 +686,7 @@ fn valid_encoded_path(s string) bool {
 		// should_escape is not quite compliant with the RFC,
 		// so we check the sub-delims ourselves and let
 		// should_escape handle the others.
-		x := s[i] 
+		x := s[i]
 		switch x {
 		case `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@`:
 			// ok
@@ -815,7 +815,7 @@ pub fn parse_query(query string) ?Values {
 }
 
 // parse_query_silent is the same as parse_query
-// but any errors will be silent 
+// but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
 	_ := _parse_query(mut m, query)
@@ -848,7 +848,7 @@ fn _parse_query(m mut Values, query string) ?bool {
 			continue
 		}
 		key = k
-		
+
 		v := query_unescape(value) or {
 			had_error = true
 			continue

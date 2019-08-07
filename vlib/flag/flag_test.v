@@ -3,7 +3,7 @@ import flag
 
 fn test_if_flag_not_given_return_default_values() {
   mut fp := flag.new_flag_parser([]string)
-  
+
   assert false == fp.bool('a_bool', false, '')
     && 42 == fp.int('an_int', 42, '')
     && 1.0 == fp.float('a_float', 1.0, '')
@@ -30,12 +30,12 @@ fn test_bool_flags_do_not_need_an_value() {
 
 fn test_flags_could_be_defined_with_eq() {
   mut fp := flag.new_flag_parser([
-    '--an_int=42', 
+    '--an_int=42',
     '--a_float=2.0',
     '--bool_without',
     '--a_string=stuff',
     '--a_bool=true'])
-  
+
   assert 42 == fp.int('an_int', 666, '')
     && true == fp.bool('a_bool', false, '')
     && true == fp.bool('bool_without', false, '')
@@ -45,12 +45,12 @@ fn test_flags_could_be_defined_with_eq() {
 
 fn test_values_could_be_defined_without_eq() {
   mut fp := flag.new_flag_parser([
-    '--an_int', '42', 
+    '--an_int', '42',
     '--a_float', '2.0',
     '--bool_without',
     '--a_string', 'stuff',
     '--a_bool', 'true'])
-  
+
   assert 42 == fp.int('an_int', 666, '')
     && true == fp.bool('a_bool', false, '')
     && true == fp.bool('bool_without', false, '')
@@ -60,12 +60,12 @@ fn test_values_could_be_defined_without_eq() {
 
 fn test_values_could_be_defined_mixed() {
   mut fp := flag.new_flag_parser([
-    '--an_int', '42', 
+    '--an_int', '42',
     '--a_float=2.0',
     '--bool_without',
     '--a_string', 'stuff',
     '--a_bool=true'])
-  
+
   assert 42 == fp.int('an_int', 666, '')
     && true == fp.bool('a_bool', false, '')
     && true == fp.bool('bool_without', false, '')
@@ -75,10 +75,10 @@ fn test_values_could_be_defined_mixed() {
 
 fn test_beaware_for_argument_names_with_same_prefix() {
   mut fp := flag.new_flag_parser([
-    '--short', '5', 
+    '--short', '5',
     '--shorter=7'
     ])
-  
+
   assert 5 == fp.int('short', 666, '')
     && 7 == fp.int('shorter', 666, '')
 }
@@ -86,18 +86,18 @@ fn test_beaware_for_argument_names_with_same_prefix() {
 fn test_beaware_for_argument_names_with_same_prefix_inverse() {
   mut fp := flag.new_flag_parser([
     '--shorter=7',
-    '--short', '5', 
+    '--short', '5',
     ])
-  
+
   assert 5 == fp.int('short', 666, '')
     && 7 == fp.int('shorter', 666, '')
 }
 
 fn test_allow_to_skip_executable_path() {
   mut fp := flag.new_flag_parser(['./path/to/execuable'])
-  
+
   fp.skip_executable()
-  
+
   args := fp.finalize() or {
     assert false
     return
@@ -108,7 +108,7 @@ fn test_allow_to_skip_executable_path() {
 fn test_none_flag_arguments_are_allowed() {
   mut fp := flag.new_flag_parser([
     'file1', '--an_int=2', 'file2', 'file3', '--bool_without', 'file4', '--outfile', 'outfile'])
-  
+
   assert 2 == fp.int('an_int', 666, '')
     && 'outfile' == fp.string('outfile', 'bad', '')
     && true == fp.bool('bool_without', false, '')
@@ -124,7 +124,7 @@ fn test_finalize_returns_none_flag_arguments_ordered() {
   }
 
   expected := ['d', 'b', 'x', 'a']
-  mut all_as_expected := true 
+  mut all_as_expected := true
   for i, v in finalized {
     all_as_expected = all_as_expected && v == expected[i]
   }
@@ -133,7 +133,7 @@ fn test_finalize_returns_none_flag_arguments_ordered() {
 
 fn test_finalize_returns_error_for_unknown_flags() {
   mut fp := flag.new_flag_parser(['--known', '--unknown'])
-  
+
   fp.bool('known', false, '')
 
   finalized := fp.finalize() or {
@@ -154,11 +154,11 @@ fn test_allow_to_build_usage_message() {
   fp.bool('bool_without_but_really_big', false, 'this should appear on the next line')
   fp.float('a_float', 1.0, 'some float as well')
   fp.string('a_string', 'not_stuff', 'your credit card number')
-  
+
   usage := fp.usage()
   mut all_strings_found := true
-  for s in ['flag_tool', 'v0.0.0', 
-            'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>', 'a_string <arg>', 
+  for s in ['flag_tool', 'v0.0.0',
+            'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>', 'a_string <arg>',
             'some int to define',
             'some bool to define',
             'this should appear on the next line',
@@ -180,7 +180,7 @@ fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
   fp.version('v0.0.0')
 
   fp.bool('a_bool', false, '')
-  
+
   assert !fp.usage().contains('description:')
 }
 
@@ -188,7 +188,7 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
   mut fp := flag.new_flag_parser([]string)
   fp.application('flag_tool')
   fp.version('v0.0.0')
-  
+
   assert !fp.usage().contains('options:')
 }
 
@@ -209,7 +209,7 @@ fn test_error_for_to_few_free_args() {
     assert err == 'Expect at least 5 arguments'
     return
   }
-  assert args.len < 0 // expect an error and need to use args 
+  assert args.len < 0 // expect an error and need to use args
 }
 
 fn test_error_for_to_much_free_args() {
@@ -219,7 +219,7 @@ fn test_error_for_to_much_free_args() {
     assert err == 'Expect at most 2 arguments'
     return
   }
-  assert args.len < 0 // expect an error and need to use args 
+  assert args.len < 0 // expect an error and need to use args
 }
 
 fn test_could_expect_no_free_args() {
@@ -229,7 +229,7 @@ fn test_could_expect_no_free_args() {
     assert err == 'Expect no arguments'
     return
   }
-  assert args.len < 0 // expect an error and need to use args 
+  assert args.len < 0 // expect an error and need to use args
 }
 
 fn test_allow_abreviations() {

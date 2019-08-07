@@ -5,12 +5,12 @@
 module json
 
 #flag -I @VROOT/thirdparty/cJSON
-#flag @VROOT/thirdparty/cJSON/cJSON.o 
+#flag @VROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 
 struct C.cJSON {
 	valueint    int
-	valuedouble f32 
+	valuedouble f32
 	valuestring byteptr
 }
 

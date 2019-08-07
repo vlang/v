@@ -36,7 +36,7 @@ fn(c mut Crc32) generate_table(poly int) {
 		c.table << crc
 	}
 }
- 
+
 fn(c &Crc32) sum32(b []byte) u32 {
 	mut crc := ~u32(0)
 	for i := 0; i < b.len; i++ {

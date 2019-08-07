@@ -18,6 +18,6 @@ fn test_new_urllib() {
 		u.port()        == '8080' &&
 		u.path          == '/som/url' &&
 		u.fragment      == 'testfragment' &&
-		u.user.username == 'joe' && 
+		u.user.username == 'joe' &&
 		u.user.password == 'pass'
 }

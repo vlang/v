@@ -16,15 +16,15 @@ struct Fraction {
 pub fn fraction(n i64, d i64) Fraction{
 	if d != 0 {
 		return Fraction{n, d}
-	} 
+	}
 	else {
 		panic('Denominator cannot be zero')
 	}
 }
 
 // To String method
-pub fn (f Fraction) str() string { 
-	return '$f.n/$f.d' 
+pub fn (f Fraction) str() string {
+	return '$f.n/$f.d'
 }
 
 // Fraction add using operator overloading

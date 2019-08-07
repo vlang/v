@@ -22,7 +22,7 @@ mut:
 }
 
 // new_values returns a new Values struct for creating
-// urlencoded query string parameters. it can also be to 
+// urlencoded query string parameters. it can also be to
 // post form data with application/x-www-form-urlencoded.
 // values.encode() will return the encoded data
 pub fn new_values() Values {

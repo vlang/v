@@ -21,7 +21,7 @@ import const (
 
 #flag  -I @VROOT/thirdparty/glad
 #include "glad.h"
-#flag @VROOT/thirdparty/glad/glad.o 
+#flag @VROOT/thirdparty/glad/glad.o
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()
@@ -166,7 +166,7 @@ pub fn use_program(program int) {
 pub fn gen_vertex_array() u32 {
 	vao := u32(0)
 	C.glGenVertexArrays(1, &vao)
-	return vao 
+	return vao
 }
 
 pub fn enable_vertex_attrib_array(n int) {
@@ -176,12 +176,12 @@ pub fn enable_vertex_attrib_array(n int) {
 pub fn gen_buffer() u32 {
 	vbo := u32(0)
 	C.glGenBuffers(1, &vbo)
-	return vbo 
+	return vbo
 }
 
-pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride int, _ptr int) { 
-	mut stride := _stride 
-	mut ptr := _ptr 
+pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride int, _ptr int) {
+	mut stride := _stride
+	mut ptr := _ptr
 	if typ == GL_FLOAT {
 		stride *= sizeof(f32)
 		ptr *= sizeof(f32)

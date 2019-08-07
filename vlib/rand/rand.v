@@ -12,4 +12,4 @@ pub fn next(max int) int {
 	return C.rand() % max
 }
 
-fn C.rand() int 
+fn C.rand() int

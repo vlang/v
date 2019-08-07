@@ -1,4 +1,4 @@
-import net 
+import net
 
 fn test_socket() {
 //	server := net.listen(8080) or {
@@ -27,4 +27,4 @@ fn test_socket() {
 //	server.close()
 //	client.close()
 //	socket.close()
-} 
+}

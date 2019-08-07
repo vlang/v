@@ -27,13 +27,13 @@ fn test_digits() {
 	assert negative_digits[2] == -1
 }
 
-/* 
+/*
 fn test_factorial() {
 	assert math.factorial(12) == 479001600
 	assert math.factorial(5) == 120
 	assert math.factorial(0) == 1
 }
-*/ 
+*/
 
 fn test_erf() {
 	assert math.erf(0) == 0

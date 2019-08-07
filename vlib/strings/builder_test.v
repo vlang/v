@@ -1,5 +1,5 @@
 import strings
- 
+
 fn test_sb() {
 	mut sb := strings.Builder{}
 	sb.write('hi')

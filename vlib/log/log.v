@@ -6,7 +6,7 @@ import term
 
 const (
     FATAL = 1
-    ERROR = 2 
+    ERROR = 2
     WARN  = 3
     INFO  = 4
     DEBUG = 5
@@ -74,7 +74,7 @@ pub fn (l Log) warn(s string){
         default:
             l.log_file(s, 'W')
         }
-    }  
+    }
 }
 
 pub fn (l Log) info(s string){

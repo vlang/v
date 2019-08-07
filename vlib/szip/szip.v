@@ -53,7 +53,7 @@ pub fn open(name string, level int, mode string) ?zip_ptr {
     if mode != M_WRITE && mode != M_RONLY && mode != M_APPEND {
         return error('szip: invalid provided open mode')
     }
-    /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str, 
+    /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str,
                                  _nlevel, mode.str))
     if _p_zip == zip_ptr(0) {
         return error('szip: cannot open/create/append new zip archive.')
@@ -186,9 +186,9 @@ pub fn (zentry mut zip_ptr) crc32() u32 {
  * @return the return code - 0 on success, negative number (< 0) on error.
  */
 pub fn (zentry mut zip_ptr) write_entry(data []byte) bool {
-    if (data[0] & 0xff) == -1 { 
-        return false 
-    } 
+    if (data[0] & 0xff) == -1 {
+        return false
+    }
     buf := data // alias of data
     res := C.zip_entry_write(zentry, buf.data, buf.len)
     return res == 0
@@ -282,5 +282,5 @@ pub fn (zentry mut zip_ptr) total() ?int {
         return error('szip: cannot count total entries.')
     }
     return _tentry
-} 
+}
 

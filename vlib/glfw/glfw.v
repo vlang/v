@@ -6,8 +6,8 @@ module glfw
 
 import gl
 
-#flag -I @VROOT/thirdparty/glfw 
-#flag -L @VROOT/thirdparty/glfw 
+#flag -I @VROOT/thirdparty/glfw
+#flag -L @VROOT/thirdparty/glfw
 
 // Debugging a custom build
 //-#flag darwin -L/var/tmp/glfw/src/
@@ -17,7 +17,7 @@ import gl
 
 #flag darwin -lglfw
 #flag linux -lglfw
-#flag windows -lglfw3 
+#flag windows -lglfw3
 #include <GLFW/glfw3.h>
 // #flag darwin -framework Carbon
 // #flag darwin -framework Cocoa
@@ -31,7 +31,7 @@ const (
 import const (
 	GLFW_RESIZABLE
 	GLFW_DECORATED
-	GLFW_FLOATING 
+	GLFW_FLOATING
 )
 
 import const (
@@ -108,7 +108,7 @@ struct WinCfg {
 	is_modal   int
 	is_browser bool
 	url        string
-	always_on_top     bool 
+	always_on_top     bool
 }
 
 // data  *C.GLFWwindow
@@ -165,10 +165,10 @@ pub fn create_window(c WinCfg) *Window {
 		window_hint(GLFW_DECORATED, 0)
 	}
 	if c.always_on_top {
-		window_hint(GLFW_FLOATING, 1) 
-	} 
+		window_hint(GLFW_FLOATING, 1)
+	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
-	if isnil(cwindow) { 
+	if isnil(cwindow) {
 		println('failed to create glfw window')
 		C.glfwTerminate()
 	}

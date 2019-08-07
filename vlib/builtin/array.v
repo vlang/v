@@ -12,7 +12,7 @@ pub:
 	len          int
 	cap          int
 	element_size int
-	 
+
 }
 
 // Private function, used by V (`nums := []int`)
@@ -27,10 +27,10 @@ fn new_array(mylen, cap, elm_size int) array {
 }
 
 
-// TODO 
+// TODO
 pub fn _make(len, cap, elm_size int) array {
-	return new_array(len, cap, elm_size) 
-} 
+	return new_array(len, cap, elm_size)
+}
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
@@ -137,10 +137,10 @@ pub fn (s array) slice(start, _end int) array {
 		panic('invalid slice index: $start > $end')
 	}
 	if end > s.len {
-		panic('runtime error: slice bounds out of range ($end >= $s.len)') 
+		panic('runtime error: slice bounds out of range ($end >= $s.len)')
 	}
-	if start < 0 { 
-		panic('runtime error: slice bounds out of range ($start < 0)') 
+	if start < 0 {
+		panic('runtime error: slice bounds out of range ($start < 0)')
 	}
 	l := end - start
 	res := array {
@@ -148,7 +148,7 @@ pub fn (s array) slice(start, _end int) array {
 		data: s.data + start * s.element_size
 		len: l
 		cap: l
-		//is_slice: true 
+		//is_slice: true
 	}
 	return res
 }
@@ -176,8 +176,8 @@ fn (arr mut array) _push(val voidptr) {
 	arr.len++
 }
 
-// `val` is array.data 
-// TODO make private, right now it's used by strings.Builder 
+// `val` is array.data
+// TODO make private, right now it's used by strings.Builder
 pub fn (arr mut array) _push_many(val voidptr, size int) {
 	if arr.len >= arr.cap - size {
 		cap := (arr.len + size) * 2
@@ -235,8 +235,8 @@ pub fn (a []u64) str() string {
 //pub fn (a []int) free() {
 pub fn (a array) free() {
 	//if a.is_slice {
-		//return 
-	//} 
+		//return
+	//}
 	C.free(a.data)
 }
 

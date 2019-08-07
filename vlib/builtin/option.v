@@ -5,7 +5,7 @@
 module builtin
 
 struct Option {
-	data [500]byte 
+	data [500]byte
 	error string
 	ok    bool
 }
@@ -13,13 +13,13 @@ struct Option {
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, size int) Option {
 	if size >= 500 {
-		panic('option size too big: $size (max is 500), this is a temporary limit') 
-	} 
-	res := Option { 
+		panic('option size too big: $size (max is 500), this is a temporary limit')
+	}
+	res := Option {
 		ok: true
 	}
-	C.memcpy(res.data, data, size) 
-	return res 
+	C.memcpy(res.data, data, size)
+	return res
 }
 
 pub fn error(s string) Option {

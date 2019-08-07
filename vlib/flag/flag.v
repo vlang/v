@@ -4,35 +4,35 @@
 // - parsing flags like '--flag' or '--stuff=things' or '--things stuff'
 // - handles bool, int, float and string args
 // - is able to pring usage
-// - handled unknown arguments as error 
-// 
+// - handled unknown arguments as error
+//
 // Usage example:
 //
 //  ```v
 //  module main
-//  
+//
 //  import os
 //  import flag
-//  
+//
 //  fn main() {
 //  	mut fp := flag.new_flag_parser(os.args)
 //  	fp.application('flag_example_tool')
 //  	fp.version('v0.0.0')
 //  	fp.description('This tool is only designed to show how the flag lib is working')
-//  
+//
 //  	fp.skip_executable()
-//  
+//
 //  	an_int := fp.int('an_int', 666, 'some int to define 666 is default')
 //  	a_bool := fp.bool('a_bool', false, 'some \'real\' flag')
 //  	a_float := fp.float('a_float', 1.0, 'also floats')
 //  	a_string := fp.string('a_string', 'no text', 'finally, some text')
-//  
+//
 //  	additional_args := fp.finalize() or {
 //  		eprintln(err)
 //  		println(fp.usage())
 //  		return
 //  	}
-//  
+//
 //  	println('
 //  		  an_int: $an_int
 //  		  a_bool: $a_bool
@@ -54,9 +54,9 @@ pub:
   val_desc string // something like '<arg>' that appears in usage
 }
 
-// 
+//
 struct FlagParser {
-pub mut: 
+pub mut:
   args  []string                  // the arguments to be parsed
   flags []Flag                    // registered flags
 
@@ -104,11 +104,11 @@ fn (fs mut FlagParser) add_flag(n string, a byte, u, vd string) {
   }
 }
 
-// private: general parsing a single argument 
+// private: general parsing a single argument
 //  - search args for existance
 //    if true
 //      extract the defined value as string
-//    else 
+//    else
 //      return an (dummy) error -> argument is not defined
 //
 //  - the name, usage are registered
@@ -134,9 +134,9 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
   return error('parameter \'$n\' not found')
 }
 
-// special parsing for bool values 
+// special parsing for bool values
 // see also: parse_value
-// 
+//
 // special: it is allowed to define bool flags without value
 // -> '--flag' is parsed as true
 // -> '--flag' is equal to '--flag=true'
@@ -163,10 +163,10 @@ fn (fs mut FlagParser) parse_bool_value(n string, ab byte) ?string {
   return error('parameter \'$n\' not found')
 }
 
-// defining and parsing a bool flag 
-//  if defined 
+// defining and parsing a bool flag
+//  if defined
 //      the value is returned (true/false)
-//  else 
+//  else
 //      the default value is returned
 // version with abbreviation
 //TODO error handling for invalid string to bool conversion
@@ -178,20 +178,20 @@ pub fn (fs mut FlagParser) bool_(n string, a byte, v bool, u string) bool {
   return parsed == 'true'
 }
 
-// defining and parsing a bool flag 
-//  if defined 
+// defining and parsing a bool flag
+//  if defined
 //      the value is returned (true/false)
-//  else 
+//  else
 //      the default value is returned
 //TODO error handling for invalid string to bool conversion
 pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
   return fs.bool_(n, `\0`, v, u)
 }
 
-// defining and parsing an int flag 
-//  if defined 
+// defining and parsing an int flag
+//  if defined
 //      the value is returned (int)
-//  else 
+//  else
 //      the default value is returned
 // version with abbreviation
 //TODO error handling for invalid string to int conversion
@@ -203,20 +203,20 @@ pub fn (fs mut FlagParser) int_(n string, a byte, i int, u string) int {
   return parsed.int()
 }
 
-// defining and parsing an int flag 
-//  if defined 
+// defining and parsing an int flag
+//  if defined
 //      the value is returned (int)
-//  else 
+//  else
 //      the default value is returned
 //TODO error handling for invalid string to int conversion
 pub fn (fs mut FlagParser) int(n string, i int, u string) int {
   return fs.int_(n, `\0`, i, u)
 }
 
-// defining and parsing a flaot flag 
-//  if defined 
+// defining and parsing a flaot flag
+//  if defined
 //      the value is returned (float)
-//  else 
+//  else
 //      the default value is returned
 // version with abbreviation
 //TODO error handling for invalid string to float conversion
@@ -228,20 +228,20 @@ pub fn (fs mut FlagParser) float_(n string, a byte, f f32, u string) f32 {
   return parsed.f32()
 }
 
-// defining and parsing a flaot flag 
-//  if defined 
+// defining and parsing a flaot flag
+//  if defined
 //      the value is returned (float)
-//  else 
+//  else
 //      the default value is returned
 //TODO error handling for invalid string to float conversion
 pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
   return fs.float_(n, `\0`, f, u)
 }
 
-// defining and parsing a string flag 
-//  if defined 
+// defining and parsing a string flag
+//  if defined
 //      the value is returned (string)
-//  else 
+//  else
 //      the default value is returned
 // version with abbreviation
 pub fn (fs mut FlagParser) string_(n string, a byte, v, u string) string {
@@ -252,10 +252,10 @@ pub fn (fs mut FlagParser) string_(n string, a byte, v, u string) string {
   return parsed
 }
 
-// defining and parsing a string flag 
-//  if defined 
+// defining and parsing a string flag
+//  if defined
 //      the value is returned (string)
-//  else 
+//  else
 //      the default value is returned
 pub fn (fs mut FlagParser) string(n, v, u string) string {
   return fs.string_(n, `\0`, v, u)
@@ -276,7 +276,7 @@ const (
   SPACE = '                            '
 )
 
-// collect all given information and 
+// collect all given information and
 pub fn (fs FlagParser) usage() string {
   mut use := '\n'
   use += 'usage ${fs.application_name} [options] [ARGS]\n'
@@ -311,7 +311,7 @@ pub fn (fs FlagParser) usage() string {
 // all remaining arguments are returned in the same order they are defined on
 // commandline
 //
-// if additional flag are found (things starting with '--') an error is returned 
+// if additional flag are found (things starting with '--') an error is returned
 // error handling is up to the application developer
 pub fn (fs FlagParser) finalize() ?[]string {
   for a in fs.args {

@@ -4,8 +4,8 @@ import strings
 
 // See: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
 ///////////////////////////////////////////////////////////////
-// The chunk size is transferred as a hexadecimal number 
-// followed by \r\n as a line separator, 
+// The chunk size is transferred as a hexadecimal number
+// followed by \r\n as a line separator,
 // followed by a chunk of data of the given size.
 // The end is marked with a chunk with size 0.
 
@@ -29,8 +29,8 @@ fn (s mut ChunkScanner) read_chunk_size() int {
 }
 
 fn unhex(c byte) byte {
-	if      `0` <= c && c <= `9` {   return c - `0`       } 
-	else if `a` <= c && c <= `f` {   return c - `a` + 10  } 
+	if      `0` <= c && c <= `9` {   return c - `0`       }
+	else if `a` <= c && c <= `f` {   return c - `a` + 10  }
 	else if `A` <= c && c <= `F` {   return c - `A` + 10  }
 	return 0
 }

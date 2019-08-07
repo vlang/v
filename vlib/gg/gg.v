@@ -9,10 +9,10 @@ import glm
 import gl
 import gx
 import os
-import glfw 
+import glfw
 
 struct Vec2 {
-pub: 
+pub:
 	x int
 	y int
 }
@@ -41,17 +41,17 @@ pub fn init() {
 
 
 struct Cfg {
-pub: 
+pub:
 	width     int
 	height    int
-	use_ortho bool 
+	use_ortho bool
 	retina    bool
-	 
+
 	font_size int
-	create_window bool 
-	window_user_ptr voidptr 
-	window_title string 
-	always_on_top bool 
+	create_window bool
+	window_user_ptr voidptr
+	window_title string
+	always_on_top bool
 }
 
 struct GG {
@@ -66,29 +66,29 @@ struct GG {
 	line_vbo  u32
 	vbo       u32
 	scale     int // retina = 2 , normal = 1
-pub mut: 
-	window *glfw.Window 
-	render_fn fn() 
+pub mut:
+	window *glfw.Window
+	render_fn fn()
 }
 
 
 // fn new_context(width, height int, use_ortho bool, font_size int) *GG {
 pub fn new_context(cfg Cfg) *GG {
-	mut window := &glfw.Window{!} 
+	mut window := &glfw.Window{!}
 	if cfg.create_window {
 		window = glfw.create_window(glfw.WinCfg{
-			title: cfg.window_title 
-			width: cfg.width 
-			height: cfg.height 
-			ptr: cfg.window_user_ptr 
-			always_on_top: cfg.always_on_top 
+			title: cfg.window_title
+			width: cfg.width
+			height: cfg.height
+			ptr: cfg.window_user_ptr
+			always_on_top: cfg.always_on_top
 		})
 		window.make_context_current()
-		init() 
-	} 
+		init()
+	}
 	shader := gl.new_shader('simple')
 	shader.use()
-	if cfg.use_ortho { 
+	if cfg.use_ortho {
 		projection := glm.ortho(0, cfg.width, cfg.height, 0)
 		shader.set_mat4('projection', projection)
 	}
@@ -111,15 +111,15 @@ pub fn new_context(cfg Cfg) *GG {
 	//gl.bind_buffer(GL_ARRAY_BUFFER, VBO)
 	//gl.enable_vertex_attrib_array(0)
 	//gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
-	todo_remove_me(cfg, scale) 
+	todo_remove_me(cfg, scale)
 	return &GG {
-		shader: shader 
-		width: cfg.width 
-		height: cfg.height 
-		vao: vao 
-		vbo: vbo 
-		window: window 
-	 
+		shader: shader
+		width: cfg.width
+		height: cfg.height
+		vao: vao
+		vbo: vbo
+		window: window
+
 		// /line_vao: gl.gen_vertex_array()
 		// /line_vbo: gl.gen_buffer()
 		//text_ctx: new_context_text(cfg, scale),
@@ -131,25 +131,25 @@ pub fn new_context(cfg Cfg) *GG {
 	//return ctx
 }
 
-/* 
+/*
 pub fn (gg &GG) render_loop() bool {
-	for !gg.window.show_close() { 
-		gg.render_fn() 
+	for !gg.window.show_close() {
+		gg.render_fn()
 		gg.window.swap_buffers()
 		glfw.wait_events()
-	} 
-} 
-*/ 
+	}
+}
+*/
 
-pub fn clear(color gx.Color) { 
+pub fn clear(color gx.Color) {
 	gl.clear()
 	gl.clear_color(255, 255, 255, 255)
-} 
+}
 
-pub fn (gg &GG) render() { 
+pub fn (gg &GG) render() {
 	gg.window.swap_buffers()
 	glfw.wait_events()
-} 
+}
 
 pub fn (ctx &GG) draw_triangle(x1, y1, x2, y2, x3, y3 f32, c gx.Color) {
 	// println('draw_triangle $x1,$y1 $x2,$y2 $x3,$y3')
@@ -212,9 +212,9 @@ pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	ctx.draw_rect2(x, y, w, h, c)
 }
 
-/* 
+/*
 fn (ctx mut GG) init_rect_vao() {
- 
+
 	ctx.rect_vao = gl.gen_vertex_array()
 	ctx.rect_vbo = gl.gen_buffer()
 	vertices := [
@@ -232,7 +232,7 @@ fn (ctx mut GG) init_rect_vao() {
 	ebo := gl.gen_buffer()
 	// ///////
 	gl.set_ebo(ebo, indices, GL_STATIC_DRAW)
-} 
+}
 */
 pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	C.glDeleteBuffers(1, &ctx.vao)
@@ -242,9 +242,9 @@ pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	ctx.shader.set_int('has_texture', 0)
 	// 4--1
 	// 3--2
-	$if linux { 
+	$if linux {
 	// y += h
-	} 
+	}
 	vertices := [
 	x + w, y, 0,
 	x + w, y + h, 0,
@@ -269,10 +269,10 @@ pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 	C.glDeleteBuffers(1, &ebo)
 }
 
-fn todo_remove_me(cfg Cfg, scale int) { 
+fn todo_remove_me(cfg Cfg, scale int) {
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
-		return &GG{} 
+		return &GG{}
 	}
 	mut width := cfg.width * scale
 	mut height := cfg.height * scale
@@ -298,9 +298,9 @@ fn update() {
 	// # ui__post_empty_event();
 }
 
-pub fn post_empty_event() { 
-	glfw.post_empty_event() 
-} 
+pub fn post_empty_event() {
+	glfw.post_empty_event()
+}
 
 pub fn (c GG) circle(x, y, r int) {
 }
@@ -313,7 +313,7 @@ fn (c GG) fill() {
 
 pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 //pub fn (c &GG) draw_text(x, y int) {
-} 
+}
 
 fn (c GG) move_to(x, y int) {
 }

@@ -31,7 +31,7 @@ fn test_ortho() {
 	assert cmp(projection.data[15], 1.000000)
 	// f := gg.ortho(1,2,3,4)
 
-		/* 
+		/*
 		// for debugging broken tetris in gg.o
 		# projection.data[0]=0.010000;
 		# projection.data[1]=0.000000;
@@ -65,7 +65,7 @@ fn test_translate() {
 	mut m := glm.identity()
 	m = glm.translate(m, glm.vec3(0, 0, - 0.5))
 	println(m)
-	// TODO 
+	// TODO
 	// mat4x4((1.000000, 0.000000, 0.000000, 0.000000),
 	// (0.000000, 1.000000, 0.000000, 0.000000),
 	// (0.000000, 0.000000, 1.000000, 0.000000),

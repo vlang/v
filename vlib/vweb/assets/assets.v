@@ -21,7 +21,7 @@ pub:
 	// when true assets will be minified
 	minify    bool
 	// the directory to store the cached/combined files
-	cache_dir string 
+	cache_dir string
 }
 
 struct Asset {
@@ -75,11 +75,11 @@ fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
 	cache_key := am.get_cache_key(asset_type)
 	out_file := '$am.cache_dir/${cache_key}.$asset_type'
 	mut out := ''
-	// use cache 
+	// use cache
 	if os.file_exists(out_file) {
 		if to_file {
 			return out_file
-		}    	
+		}
 		cached := os.read_file(out_file) or {
 			return ''
 		}

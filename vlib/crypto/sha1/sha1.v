@@ -8,7 +8,7 @@
 // applications.
 
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/sha1
-// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01 
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 
 module sha1
 

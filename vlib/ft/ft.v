@@ -2,24 +2,24 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module ft 
+module ft
 
 import (
-	os 
-gx 
-gg 
+	os
+gx
+gg
  stbi
  glm
  gl
-) 
+)
 
-#flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2 
-#flag -lfreetype 
+#flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2
+#flag -lfreetype
 
-//#flag -I @VROOT/thirdparty/freetype 
+//#flag -I @VROOT/thirdparty/freetype
 
-//#flag @VROOT/thirdparty/freetype/libfreetype.a 
-#flag darwin -lpng -lbz2 -lz 
+//#flag @VROOT/thirdparty/freetype/libfreetype.a
+#flag darwin -lpng -lbz2 -lz
 
 
 #flag linux 	-I/usr/include/freetype2
@@ -66,14 +66,14 @@ struct GG {
 struct Cfg {
 	width     int
 	height    int
-	use_ortho bool 
+	use_ortho bool
 	retina    bool
-	 
+
 	font_size int
-	create_window bool 
-	window_user_ptr voidptr 
-	window_title string 
-	always_on_top bool 
+	create_window bool
+	window_user_ptr voidptr
+	window_title string
+	always_on_top bool
 }
 
 
@@ -131,12 +131,12 @@ pub fn new_context(cfg gg.Cfg, scale int) *GG {
 	// height = height * 2// scale// 2
 	// font_size *= scale// 2
 	// }
-	/* 
+	/*
 	gl.viewport(0, 0, width, height)
 */
-	// gl.enable(GL_CULL_FACE) // TODO NEED CULL?  
+	// gl.enable(GL_CULL_FACE) // TODO NEED CULL?
 	gl.enable(GL_BLEND)
-//return &GG{} 
+//return &GG{}
 	// return &GG{}
 	# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	shader := gl.new_shader('text')
@@ -232,7 +232,7 @@ pub fn new_context(cfg gg.Cfg, scale int) *GG {
 }
 
 // A dirty hack to implement rendering of cyrillic letters.
-// All UTF-8 must be supported. 
+// All UTF-8 must be supported.
 fn (ctx mut GG) init_utf8_runes() {
 	s := '≈йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
 	println(s)
@@ -248,11 +248,11 @@ fn (ctx mut GG) init_utf8_runes() {
 
 // fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
 pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-println('draw text start') 
+println('draw text start')
 	utext := text.ustring_tmp()
 	// utext := text.ustring()
 	ctx._draw_text(_x, _y, utext, cfg)
-println('draw text end') 
+println('draw text end')
 	// utext.free()
 	// # glScissor(0,0,ctx->width*2,ctx->height*2);
 	// gl.disable(GL_SCISSOR_TEST)// TODO
@@ -266,7 +266,7 @@ fn (ctx &GG) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
 // TODO  HACK with second text context
 // fn (ctx &GG) _draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
-	/* 
+	/*
 	if utext.s.contains('on_seg') {
 		println('\nat(0)')
 		println(utext.runes)
@@ -277,8 +277,8 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		}
 	}
 */
-	mut x := f32(_x) 
-	mut y := f32(_y) 
+	mut x := f32(_x)
+	mut y := f32(_y)
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		width := utext.len * 7
@@ -288,8 +288,8 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	// println('y=$_y height=$ctx.height')
 	// _y = _y * int(ctx.scale) //+ 26
 	y = y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y = f32(ctx.height) - y 
-println('($x, $y)' ) 
+	y = f32(ctx.height) - y
+println('($x, $y)' )
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()

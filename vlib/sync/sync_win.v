@@ -18,7 +18,7 @@ mut:
     cycle_wait   i64     // waiting cycles (implemented only with atomic)
     cycle_woken  i64     // woken cycles    ^
     reader_sem   u32     // reader semarphone
-    writer_sem   u32     // writer semaphones 
+    writer_sem   u32     // writer semaphones
 }
 
 

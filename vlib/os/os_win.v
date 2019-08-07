@@ -4,8 +4,8 @@ module os
 #include <winsock2.h>
 
 const (
-	PathSeparator = '\\' 
-) 
+	PathSeparator = '\\'
+)
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
@@ -24,10 +24,10 @@ pub fn get_file_handle(path string) HANDLE {
 }
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamea
-// get_module_filename retrieves the fully qualified path for the file that contains the specified module. 
+// get_module_filename retrieves the fully qualified path for the file that contains the specified module.
 // The module must have been loaded by the current process.
 pub fn get_module_filename(handle HANDLE) ?string {
-    mut sz := int(4096) // Optimized length 
+    mut sz := int(4096) // Optimized length
     mut buf := &u16(malloc(4096))
     for {
         status := C.GetModuleFileName(handle, &buf, sz)
@@ -57,15 +57,15 @@ const (
     SUBLANG_NEUTRAL = 0x00
     SUBLANG_DEFAULT = 0x01
     LANG_NEUTRAL    = (SUBLANG_NEUTRAL)
-)   
+)
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
 const (
     MAX_ERROR_CODE  = 15841 // ERROR_API_UNAVAILABLE
 )
 
-// ptr_win_get_error_msg return string (voidptr) 
-// representation of error, only for windows. 
+// ptr_win_get_error_msg return string (voidptr)
+// representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
     mut buf := voidptr(0)
     // Check for code overflow

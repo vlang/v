@@ -1,10 +1,10 @@
-module os 
+module os
 
 #include <dirent.h>
 #include <unistd.h>
 
 const (
-	PathSeparator = '/' 
+	PathSeparator = '/'
 )
 
 // get_error_msg return error code representation in string.

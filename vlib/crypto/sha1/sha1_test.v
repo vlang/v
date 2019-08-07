@@ -4,6 +4,6 @@
 
 import crypto.sha1
 
-fn test_crypto_sha1() {	 
+fn test_crypto_sha1() {
 	assert sha1.sum('This is a sha1 checksum.'.bytes()).hex() == 'e100d74442faa5dcd59463b808983c810a8eb5a1'
 }
