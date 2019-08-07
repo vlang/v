@@ -824,14 +824,15 @@ fn parse_query_silent(query string) Values {
 
 fn _parse_query(m mut Values, query string) ?bool {
 	mut had_error := false
-	for query != '' {
-		mut key := query
+	mut q := query
+	for q != '' {
+		mut key := q
 		mut i := key.index_any('&;')
 		if i >= 0 {
-			query = key.right(i+1)
+			q = key.right(i+1)
 			key = key.left(i)
 		} else {
-			query = ''
+			q = ''
 		}
 		if key == '' {
 			continue

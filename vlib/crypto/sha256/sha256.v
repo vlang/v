@@ -99,7 +99,7 @@ fn (d mut Digest) write(p mut []byte) ?int {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
-			block(d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -110,7 +110,7 @@ fn (d mut Digest) write(p mut []byte) ?int {
 	}
 	if p.len >= Chunk {
 		n := p.len &~ (Chunk - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -153,7 +153,7 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= u64(3)
 	binary.big_endian_put_u64(mut tmp, len)
-	d.write(tmp.left(8))
+	d.write(mut tmp.left(8))
 
 	if d.nx != 0 {
 		panic('d.nx != 0')
@@ -169,7 +169,7 @@ fn (d mut Digest) checksum() []byte {
 	binary.big_endian_put_u32(mut digest.right(20), d.h[5])
 	binary.big_endian_put_u32(mut digest.right(24), d.h[6])
 	if !d.is224 {
-		binary.big_endian_put_u32(digest.right(28), d.h[7])
+		binary.big_endian_put_u32(mut digest.right(28), d.h[7])
 	}
 
 	return digest
@@ -183,24 +183,24 @@ pub fn sum(data []byte) []byte {
 // sum256 returns the SHA256 checksum of the data.
 pub fn sum256(data []byte) []byte {
 	mut d := new()
-	d.write(data)
+	d.write(mut data)
 	return d.checksum()
 }
 
 // sum224 returns the SHA224 checksum of the data.
 pub fn sum224(data []byte) []byte {
 	mut d := new224()
-	d.write(data)
+	d.write(mut data)
 	sum := d.checksum()
 	mut sum224 := [byte(0); Size224]
 	copy(sum224, sum.left(Size224))
 	return sum224
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(dig mut Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-	block_generic(dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int {

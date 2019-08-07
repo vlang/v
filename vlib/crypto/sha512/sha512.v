@@ -146,8 +146,7 @@ fn new384() *Digest {
 	return _new(crypto.Hash.SHA384)
 }
 
-fn (d mut Digest) write(p_ []byte) ?int {
-	mut p := p_ 
+fn (d mut Digest) write(p mut []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
@@ -210,9 +209,9 @@ fn (d mut Digest) checksum() []byte {
 	tmp[0] = 0x80
 
 	if int(len)%128 < 112 {
-		d.write(tmp.left(112-int(len)%128))
+		d.write(mut tmp.left(112-int(len)%128))
 	} else {
-		d.write(tmp.left(128+112-int(len)%128))
+		d.write(mut tmp.left(128+112-int(len)%128))
 	}
 
 	// Length in bits.
@@ -220,7 +219,7 @@ fn (d mut Digest) checksum() []byte {
 
 	binary.big_endian_put_u64(mut tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
 	binary.big_endian_put_u64(mut tmp.right(8), len)
-	d.write(tmp.left(16))
+	d.write(mut tmp.left(16))
 
 	if d.nx != 0 {
 		panic('d.nx != 0')
@@ -245,14 +244,14 @@ fn (d mut Digest) checksum() []byte {
 // sum512 returns the SHA512 checksum of the data.
 pub fn sum512(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512)
-	d.write(data)
+	d.write(mut data)
 	return d.checksum()
 }
 
 // sum384 returns the SHA384 checksum of the data.
 pub fn sum384(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA384)
-	d.write(data)
+	d.write(mut data)
 	sum := d.checksum()
 	mut sum384 := [byte(0); Size384]
 	copy(sum384, sum.left(Size384))
@@ -262,7 +261,7 @@ pub fn sum384(data []byte) []byte {
 // sum512_224 returns the Sum512/224 checksum of the data.
 pub fn sum512_224(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_224)
-	d.write(data)
+	d.write(mut data)
 	sum := d.checksum()
 	mut sum224 := [byte(0); Size224]
 	copy(sum224, sum.left(Size224))
@@ -272,7 +271,7 @@ pub fn sum512_224(data []byte) []byte {
 // Sum512_256 returns the Sum512/256 checksum of the data.
 pub fn sum512_256(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_256)
-	d.write(data)
+	d.write(mut data)
 	sum := d.checksum()
 	mut sum256 := [byte(0); Size256]
 	copy(sum256, sum.left(Size256))
@@ -282,7 +281,7 @@ pub fn sum512_256(data []byte) []byte {
 fn block(dig mut Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-	block_generic(mut dig, p)
+	block_generic(mut dig, mut p)
 }
 
 pub fn (d &Digest) size() int {

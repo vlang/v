@@ -37,15 +37,15 @@ fn bitget(instance BitField, bitnr int) int {
 	return (instance.field[bitslot(bitnr)] >> u32(bitnr % SLOT_SIZE)) & 1
 }
 
-fn bitset(instance BitField, bitnr int) {
+fn bitset(instance mut BitField, bitnr int) {
 	instance.field[bitslot(bitnr)] = instance.field[bitslot(bitnr)] | bitmask(bitnr)
 }
 
-fn bitclear(instance BitField, bitnr int) {
+fn bitclear(instance mut BitField, bitnr int) {
 	instance.field[bitslot(bitnr)] = instance.field[bitslot(bitnr)] & ~bitmask(bitnr)
 }
 
-fn bittoggle(instance BitField, bitnr int) {
+fn bittoggle(instance mut BitField, bitnr int) {
 	instance.field[bitslot(bitnr)] = instance.field[bitslot(bitnr)] ^ bitmask(bitnr)
 }
 /*
@@ -65,7 +65,7 @@ fn bitnslots(length int) int {
 	return (length - 1) / SLOT_SIZE + 1
 } 
 
-fn cleartail(instance BitField) {
+fn cleartail(instance mut BitField) {
 	tail := instance.size % SLOT_SIZE
 	if tail != 0 {
 		// create a mask for the tail 

@@ -115,16 +115,16 @@ fn (d mut Digest) checksum() []byte {
 
 	// Length in bits.
 	len <<= u64(3)
-	binary.big_endian_put_u64(tmp, len)
-	d.write(tmp.left(8))
+	binary.big_endian_put_u64(mut tmp, len)
+	d.write(mut tmp.left(8))
 
 	mut digest := [byte(0); Size]
 
-	binary.big_endian_put_u32(digest, d.h[0])
-	binary.big_endian_put_u32(digest.right(4), d.h[1])
-	binary.big_endian_put_u32(digest.right(8), d.h[2])
-	binary.big_endian_put_u32(digest.right(12), d.h[3])
-	binary.big_endian_put_u32(digest.right(16), d.h[4])
+	binary.big_endian_put_u32(mut digest, d.h[0])
+	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
+	binary.big_endian_put_u32(mut digest.right(8), d.h[2])
+	binary.big_endian_put_u32(mut digest.right(12), d.h[3])
+	binary.big_endian_put_u32(mut digest.right(16), d.h[4])
 
 	return digest
 }
@@ -132,7 +132,7 @@ fn (d mut Digest) checksum() []byte {
 // Sum returns the SHA-1 checksum of the data.
 pub fn sum(data []byte) []byte {
 	mut d := new()
-	d.write(data)
+	d.write(mut data)
 	return d.checksum()
 }
 

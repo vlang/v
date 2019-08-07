@@ -127,14 +127,14 @@ pub fn (d mut Digest) checksum() []byte {
 // sum returns the MD5 checksum of the data.
 pub fn sum(data []byte) []byte {
 	mut d := new()
-	d.write(data)
+	d.write(mut data)
 	return d.checksum()
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(dig mut Digest, p []byte) {
     // For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(dig, p)
+    block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int { return Size }
