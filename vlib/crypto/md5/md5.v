@@ -55,7 +55,7 @@ pub fn new() *Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p []byte) ?int {
+pub fn (d mut Digest) write(p mut []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
@@ -106,8 +106,8 @@ pub fn (d mut Digest) checksum() []byte {
     mut tmp := [byte(0); 1 + 63 + 8]
 	tmp[0] = 0x80
 	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
-	binary.little_endian_put_u64(tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
-    d.write(tmp.left(1+pad+8))
+	binary.little_endian_put_u64(mut tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
+    d.write(mut tmp.left(1+pad+8))
 
 	// The previous write ensures that a whole number of
 	// blocks (i.e. a multiple of 64 bytes) have been hashed.
@@ -117,10 +117,10 @@ pub fn (d mut Digest) checksum() []byte {
 
     digest := [byte(0); Size]
 
-	binary.little_endian_put_u32(digest, d.s[0])
-	binary.little_endian_put_u32(digest.right(4), d.s[1])
-	binary.little_endian_put_u32(digest.right(8), d.s[2])
-	binary.little_endian_put_u32(digest.right(12), d.s[3])
+	binary.little_endian_put_u32(mut digest, d.s[0])
+	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
+	binary.little_endian_put_u32(mut digest.right(8), d.s[2])
+	binary.little_endian_put_u32(mut digest.right(12), d.s[3])
 	return digest
 }
 

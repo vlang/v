@@ -17,7 +17,7 @@ const (
 	_K3 = 0xCA62C1D6
 )
 
-fn block_generic(dig &Digest, p []byte) {
+fn block_generic(dig mut Digest, p []byte) {
 	mut w := [u32(0); 16]
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]

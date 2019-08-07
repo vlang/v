@@ -58,7 +58,7 @@ pub fn new() &Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p []byte) ?int {
+pub fn (d mut Digest) write(p mut []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 
@@ -108,9 +108,9 @@ fn (d mut Digest) checksum() []byte {
 	tmp[0] = 0x80
 
 	if int(len)%64 < 56 {
-		d.write(tmp.left(56-int(len)%64))
+		d.write(mut tmp.left(56-int(len)%64))
 	} else {
-		d.write(tmp.left(64+56-int(len)%64))
+		d.write(mut tmp.left(64+56-int(len)%64))
 	}
 
 	// Length in bits.

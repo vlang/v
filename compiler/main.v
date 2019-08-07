@@ -669,7 +669,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	exit(0)
 }
 
-fn (c &V) cc_windows_cross() {
+fn (c mut V) cc_windows_cross() {
        if !c.out_name.ends_with('.exe') {
                c.out_name = c.out_name + '.exe'
        }

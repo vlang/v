@@ -142,7 +142,8 @@ pub fn path_unescape(s string) ?string {
 
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
-fn unescape(s string, mode EncodingMode) ?string {
+fn unescape(s_ string, mode EncodingMode) ?string {
+	mut s := s_ 
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
@@ -628,8 +629,9 @@ fn parse_host(host string) ?string {
 	h := unescape(host, .encode_host) or {
 		return err
 	}
-	host = h
-	return host
+	return h 
+	//host = h
+	//return host
 }
 
 // set_path sets the path and raw_path fields of the URL based on the provided
@@ -640,7 +642,7 @@ fn parse_host(host string) ?string {
 // - set_path('/foo%2fbar') will set path='/foo/bar' and raw_path='/foo%2fbar'
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
-fn (u &URL) set_path(p string) ?bool {
+fn (u mut URL) set_path(p string) ?bool {
 	path := unescape(p, .encode_path) or {
 		return error(err)
 	}

@@ -51,7 +51,7 @@ mut:
 	is224 bool // mark if this digest is SHA-224
 }
 
-fn (d &Digest) reset() {
+fn (d mut Digest) reset() {
 	d.h = [u32(0); 8]
 	d.x = [byte(0); Chunk]
 	if !d.is224 {
@@ -92,7 +92,7 @@ pub fn new224() *Digest {
 	return d
 }
 
-fn (d mut Digest) write(p []byte) ?int {
+fn (d mut Digest) write(p mut []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
@@ -145,14 +145,14 @@ fn (d mut Digest) checksum() []byte {
 	mut tmp := [byte(0); 64]
 	tmp[0] = 0x80
 	if int(len)%64 < 56 {
-		d.write(tmp.left(56-int(len)%64))
+		d.write(mut tmp.left(56-int(len)%64))
 	} else {
-		d.write(tmp.left(64+56-int(len)%64))
+		d.write(mut tmp.left(64+56-int(len)%64))
 	}
 
 	// Length in bits.
 	len <<= u64(3)
-	binary.big_endian_put_u64(tmp, len)
+	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp.left(8))
 
 	if d.nx != 0 {
@@ -161,13 +161,13 @@ fn (d mut Digest) checksum() []byte {
 
 	digest := [byte(0); Size]
 
-	binary.big_endian_put_u32(digest, d.h[0])
-	binary.big_endian_put_u32(digest.right(4), d.h[1])
-	binary.big_endian_put_u32(digest.right(8), d.h[2])
-	binary.big_endian_put_u32(digest.right(12), d.h[3])
-	binary.big_endian_put_u32(digest.right(16), d.h[4])
-	binary.big_endian_put_u32(digest.right(20), d.h[5])
-	binary.big_endian_put_u32(digest.right(24), d.h[6])
+	binary.big_endian_put_u32(mut digest, d.h[0])
+	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
+	binary.big_endian_put_u32(mut digest.right(8), d.h[2])
+	binary.big_endian_put_u32(mut digest.right(12), d.h[3])
+	binary.big_endian_put_u32(mut digest.right(16), d.h[4])
+	binary.big_endian_put_u32(mut digest.right(20), d.h[5])
+	binary.big_endian_put_u32(mut digest.right(24), d.h[6])
 	if !d.is224 {
 		binary.big_endian_put_u32(digest.right(28), d.h[7])
 	}

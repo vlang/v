@@ -146,14 +146,15 @@ fn new384() *Digest {
 	return _new(crypto.Hash.SHA384)
 }
 
-fn (d mut Digest) write(p []byte) ?int {
+fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_ 
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
-			block(d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -164,7 +165,7 @@ fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= Chunk {
 		n := p.len &~ (Chunk - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -217,8 +218,8 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= u64(3)
 
-	binary.big_endian_put_u64(tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
-	binary.big_endian_put_u64(tmp.right(8), len)
+	binary.big_endian_put_u64(mut tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
+	binary.big_endian_put_u64(mut tmp.right(8), len)
 	d.write(tmp.left(16))
 
 	if d.nx != 0 {
@@ -227,15 +228,15 @@ fn (d mut Digest) checksum() []byte {
 
 	mut digest := [byte(0); Size]
 	
-	binary.big_endian_put_u64(digest, d.h[0])
-	binary.big_endian_put_u64(digest.right(8), d.h[1])
-	binary.big_endian_put_u64(digest.right(16), d.h[2])
-	binary.big_endian_put_u64(digest.right(24), d.h[3])
-	binary.big_endian_put_u64(digest.right(32), d.h[4])
-	binary.big_endian_put_u64(digest.right(40), d.h[5])
+	binary.big_endian_put_u64(mut digest, d.h[0])
+	binary.big_endian_put_u64(mut digest.right(8), d.h[1])
+	binary.big_endian_put_u64(mut digest.right(16), d.h[2])
+	binary.big_endian_put_u64(mut digest.right(24), d.h[3])
+	binary.big_endian_put_u64(mut digest.right(32), d.h[4])
+	binary.big_endian_put_u64(mut digest.right(40), d.h[5])
 	if d.function != crypto.Hash.SHA384 {
-		binary.big_endian_put_u64(digest.right(48), d.h[6])
-		binary.big_endian_put_u64(digest.right(56), d.h[7])
+		binary.big_endian_put_u64(mut digest.right(48), d.h[6])
+		binary.big_endian_put_u64(mut digest.right(56), d.h[7])
 	}
 
 	return digest
@@ -278,10 +279,10 @@ pub fn sum512_256(data []byte) []byte {
 	return sum256
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(dig mut Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-	block_generic(dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int {
