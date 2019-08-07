@@ -196,7 +196,7 @@ fn find_msvc() ?MsvcResult {
 	}
 }
 
-pub fn v (mut V) cc_msvc() { 
+pub fn (v mut V) cc_msvc() { 
 	r := find_msvc() or {
 		println('Could not find MSVC')
 		
