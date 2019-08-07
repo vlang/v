@@ -29,7 +29,7 @@ mut:
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
-	defer_text    string
+	defer_text    []string
 	//gen_types []string 
 }
 
@@ -44,7 +44,13 @@ fn (f &Fn) find_var(name string) Var {
 
 
 fn (f mut Fn) open_scope() {
+	f.defer_text << ''
 	f.scope_level++
+}
+
+fn (f mut Fn) close_scope() {
+	f.scope_level--
+	f.defer_text = f.defer_text.left(f.scope_level + 1)
 }
 
 fn (f &Fn) mark_var_used(v Var) {
@@ -442,7 +448,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
-		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+		f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
 	if is_generic { 
 		// Don't need to generate body for the actual generic definition 
@@ -455,7 +461,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer_text)
+	p.genln(f.defer_text[f.scope_level])
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}

@@ -4,7 +4,8 @@
 
 module rand
 
-#flag windows -Llibraries/bcrypt -lbcrypt
+#flag windows -Llibraries/bcrypt
+#flag windows -lbcrypt
 #include <bcrypt.h>
 
 const (

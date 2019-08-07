@@ -1069,13 +1069,18 @@ fn (p mut Parser) close_scope() {
 			else if v.ptr {
 				//p.genln('free($v.name); // close_scope free') 
 			} 
-		} 
-
+		}
 	}
+
+	if p.cur_fn.defer_text.last() != '' {
+		p.genln(p.cur_fn.defer_text.last())
+		//p.cur_fn.defer_text[f] = ''
+	}
+	
+	p.cur_fn.close_scope()
 	p.cur_fn.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
-	p.cur_fn.scope_level--
-} 
+}
 
 fn (p mut Parser) genln(s string) {
 	p.cgen.genln(s)
@@ -3237,13 +3242,27 @@ fn (p mut Parser) return_st() {
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)
-				p.cgen(p.cur_fn.defer_text) 
-				if p.cur_fn.defer_text == '' || expr_type == 'void*' { 
+
+				// @emily33901: Scoped defer
+				// Check all of our defer texts to see if there is one at a higher scope level
+				// The one for our current scope would be the last so any before that need to be
+				// added.
+
+				mut total_text := ''
+
+				for text in p.cur_fn.defer_text {
+					if text != '' {
+						// In reverse order
+						total_text = text + total_text
+					}
+				}
+
+				if total_text == '' || expr_type == 'void*' {
 					p.cgen.resetln('return $ret')
 				}  else { 
 					tmp := p.get_tmp() 
 					p.cgen.resetln('$expr_type $tmp = $ret;\n')
-					p.genln(p.cur_fn.defer_text) 
+					p.genln(total_text)
 					p.genln('return $tmp;') 
 				} 
 			}
@@ -3397,9 +3416,14 @@ fn (p mut Parser) defer_st() {
 
 	// Save everything inside the defer block to `defer_text`.
 	// It will be inserted before every `return`
+
+	// Emily: TODO: all variables that are used in this defer statement need to be evaluated when the block
+	// is defined otherwise they could change over the course of the function
+	// (make temps out of them)
+
 	p.genln('{') 
 	p.statements() 
-	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text 
+	p.cur_fn.defer_text.last() = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text.last()
 
 	// Rollback p.cgen.lines
 	p.cgen.lines = p.cgen.lines.left(pos)
