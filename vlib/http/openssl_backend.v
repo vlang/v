@@ -11,7 +11,9 @@ import strings
 #flag -lssl -lcrypto
 // MacPorts
 #flag darwin -L/opt/local/lib
- 
+// Brew
+#flag darwin -L/usr/local/opt/openssl/lib
+
 #include <openssl/ssl.h>
 
 struct C.SSL {
