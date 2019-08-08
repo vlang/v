@@ -923,6 +923,13 @@ fn (p mut Parser) get_type() string {
 	else {
 		// Module specified? (e.g. gx.Image)
 		if p.peek() == .dot {
+			// try resolve full submodule
+			if !p.builtin_mod && p.import_table.known_alias(typ) {
+				mod := p.import_table.resolve_alias(typ)
+				if mod.contains('.') {
+					typ = mod.replace('.', '_dot_')
+				}
+			}
 			p.next()
 			p.check(.dot)
 			typ += '__$p.lit'
@@ -931,15 +938,6 @@ fn (p mut Parser) get_type() string {
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
-			// we are a module
-			if typ.contains('__') {
-				// so try resolve full submodule
-				mod := p.import_table.resolve_alias(p.lit).replace('.', '_dot_')
-				if mod != '' {
-					typ = prepend_mod(mod, typ)
-				}
-			}
-			t = p.table.find_type(typ)
 			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') &&
 				!typ.starts_with('[') { 
 				typ = p.prepend_mod(typ)
