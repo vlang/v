@@ -23,6 +23,8 @@ fn schannel_do(method, host_name, path string) string {
     C.schannel_request(host_name.str, path.str, buf, &length)
     println('Here D')
 	
+
+    
     z := string(buf)
     println(z)
 
