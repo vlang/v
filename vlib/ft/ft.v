@@ -76,7 +76,57 @@ struct Cfg {
 	always_on_top bool 
 }
 
+const (
+	FT_LOAD_DEFAULT                      = 0
+	FT_LOAD_NO_SCALE                     = 1 << 0
+	FT_LOAD_NO_HINTING                   = 1 << 1
+	FT_LOAD_RENDER                       = 1 << 2
+	FT_LOAD_NO_BITMAP                    = 1 << 3
+	FT_LOAD_VERTICAL_LAYOUT              = 1 << 4
+	FT_LOAD_FORCE_AUTOHINT               = 1 << 5
+	FT_LOAD_CROP_BITMAP                  = 1 << 6
+	FT_LOAD_PEDANTIC                     = 1 << 7
+	FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  = 1 << 9
+	FT_LOAD_NO_RECURSE                   = 1 << 10
+	FT_LOAD_IGNORE_TRANSFORM             = 1 << 11
+	FT_LOAD_MONOCHROME                   = 1 << 12
+	FT_LOAD_LINEAR_DESIGN                = 1 << 13
+	FT_LOAD_NO_AUTOHINT                  = 1 << 15
+	FT_LOAD_COLOR                        = 1 << 20
+	FT_LOAD_COMPUTE_METRICS              = 1 << 21
+	FT_LOAD_BITMAP_METRICS_ONLY          = 1 << 22
+)
 
+type GLenum     u16
+type GLboolean  bool 
+type GLbitfield u32
+type GLbyte     byte
+type GLshort    i16
+type GLint      i32 
+type GLclampx   i32
+type GLubyte    byte
+type GLushort   u16
+type GLuint     u32
+type GLsizei    i32
+	
+const (
+	GL_RED        = 0x1903
+	GL_GREEN      = 0x1904
+	GL_BLUE       = 0x1905
+	GL_TEXTURE_1D = 0x0DE0
+	GL_TEXTURE_2D = 0x0DE1
+
+	GL_UNSIGNED_BYTE      = 0x1401
+	GL_TEXTURE_WRAP_S     = 0x2802
+	GL_TEXTURE_WRAP_T     = 0x2803
+	GL_PROXY_TEXTURE_1D   = 0x8063
+	GL_PROXY_TEXTURE_2D   = 0x8064
+	GL_TEXTURE_MAG_FILTER = 0x2800
+	GL_TEXTURE_MIN_FILTER = 0x2801
+	GL_CLAMP_TO_EDGE      = 0x812F
+	GL_LINEAR             = 0x2601
+)
+	
 // jfn ft_load_char(face FT_Face, code FT_ULong) Character {
 // fn ft_load_char(_face voidptr, _code voidptr) Character {
 fn ft_load_char(_face Face, code i64) Character {
