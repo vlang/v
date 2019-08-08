@@ -248,20 +248,11 @@ fn (ctx mut GG) init_utf8_runes() {
 
 // fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
 pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-	// dont draw non ascii for now
-	/* 
-	for i := 0; i < text.len; i++ {
-		c := text[i]
-		if int(c) > 128 {
-			// ctx.text_ctx._draw_text(_x, _y, '[NON ASCII]', cfg)
-			// return
-		}
-	}
-*/
-	// # glScissor(0,0,300,300);
+println('draw text start') 
 	utext := text.ustring_tmp()
 	// utext := text.ustring()
-	ctx.text_ctx._draw_text(_x, _y, utext, cfg)
+	ctx._draw_text(_x, _y, utext, cfg)
+println('draw text end') 
 	// utext.free()
 	// # glScissor(0,0,ctx->width*2,ctx->height*2);
 	// gl.disable(GL_SCISSOR_TEST)// TODO
@@ -286,16 +277,19 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		}
 	}
 */
+	mut x := f32(_x) 
+	mut y := f32(_y) 
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		width := utext.len * 7
-		_x -= width + 10
+		x -= width + 10
 	}
-	x := f32(_x) * ctx.scale// f32(2)
+	x *= ctx.scale// f32(2)
 	// println('y=$_y height=$ctx.height')
 	// _y = _y * int(ctx.scale) //+ 26
-	_y = _y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y := f32(ctx.height - _y)
+	y = y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
+	y = f32(ctx.height) - y 
+println('($x, $y)' ) 
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()

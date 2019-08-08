@@ -29,7 +29,7 @@ mut:
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
-	defer_text    string
+	defer_text    []string
 	//gen_types []string 
 }
 
@@ -44,7 +44,13 @@ fn (f &Fn) find_var(name string) Var {
 
 
 fn (f mut Fn) open_scope() {
+	f.defer_text << ''
 	f.scope_level++
+}
+
+fn (f mut Fn) close_scope() {
+	f.scope_level--
+	f.defer_text = f.defer_text.left(f.scope_level + 1)
 }
 
 fn (f &Fn) mark_var_used(v Var) {
@@ -442,7 +448,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
-		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+		f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
 	if is_generic { 
 		// Don't need to generate body for the actual generic definition 
@@ -455,7 +461,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer_text)
+	p.genln(f.defer_text[f.scope_level])
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
@@ -512,8 +518,8 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Normal function => just its name, method => TYPE_FN.name
 	mut fn_name := f.name
 	if f.is_method {
-		receiver_type = receiver_type.replace('*', '')
-		fn_name = '${receiver_type}_${f.name}'
+		fn_name = receiver_type.replace('*', '') + '_' + f.name 
+		//fn_name = '${receiver_type}_${f.name}'
 	}
 	// Generate tmp struct with args
 	arg_struct_name := 'thread_arg_$fn_name'
@@ -853,7 +859,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			p.error(err)
 		}
 		is_interface := p.table.is_interface(arg.typ)
-		// Add & or * before arg?
+		// Add `&` or `*` before an argument?
 		if !is_interface {
 			// Dereference
 			if got.contains('*') && !expected.contains('*') {
@@ -862,11 +868,17 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
 			if !got.contains('*') && expected.contains('*') && got != 'voidptr' {
+				// Special case for mutable arrays. We can't `&` function results,
+				// have to use `(array[]){ expr }` hack. 
+				if expected.starts_with('array_') && expected.ends_with('*') { 
+					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){') 
+					p.gen('} ') 
+				} 
 				// println('\ne:"$expected" got:"$got"')
-				if ! (expected == 'void*' && got == 'int') &&
+				else if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') {
-					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" GOT:"$got" */') 
+					p.cgen.set_placeholder(ph, '& /*112 EXP:"$expected" GOT:"$got" */') 
 				}
 			}
 		}

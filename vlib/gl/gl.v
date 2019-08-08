@@ -179,7 +179,9 @@ pub fn gen_buffer() u32 {
 	return vbo 
 }
 
-pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, stride int, ptr int) {
+pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride int, _ptr int) { 
+	mut stride := _stride 
+	mut ptr := _ptr 
 	if typ == GL_FLOAT {
 		stride *= sizeof(f32)
 		ptr *= sizeof(f32)

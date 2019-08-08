@@ -177,3 +177,17 @@ fn test_fixed() {
 	nums2 := [N]int 
 	assert nums2[N - 1] == 0 
 } 
+
+fn modify (numbers mut []int) {
+        numbers[0] = 777
+}
+
+fn test_mut_slice() { 
+	mut n := [1,2,3]
+	modify(mut n.left(2)) 
+	assert n[0] == 777 
+	modify(mut n.right(2)) 
+	assert n[2] == 777 
+	println(n)
+}
+ 

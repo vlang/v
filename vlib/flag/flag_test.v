@@ -231,3 +231,17 @@ fn test_could_expect_no_free_args() {
   }
   assert args.len < 0 // expect an error and need to use args 
 }
+
+fn test_allow_abreviations() {
+  mut fp := flag.new_flag_parser(['-v', '-o', 'some_file', '-i', '42', '-f', '2.0'])
+
+  v := fp.bool_('version', `v`, false, '')
+  o := fp.string_('output', `o`, 'empty', '')
+  i := fp.int_('count', `i`, 0, '')
+  f := fp.float_('value', `f`, 0.0, '')
+
+  assert v && o == 'some_file' && i == 42 && f == 2.0
+
+  u := fp.usage()
+  assert u.contains(' -v') && u.contains(' -o') && u.contains(' -i') && u.contains(' -f')
+}

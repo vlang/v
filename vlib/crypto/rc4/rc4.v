@@ -45,11 +45,11 @@ pub fn new_cipher(key []byte) ?Cipher {
 	return c
 }
 
-// reset zeros the key data and makes the Cipher unusable.
+// reset zeros the key data and makes the Cipher unusable.good to com
 //
 // Deprecated: Reset can't guarantee that the key will be entirely removed from
 // the process's memory.
-pub fn (c &Cipher) reset() {
+pub fn (c mut Cipher) reset() {
 	for i in c.s {
 		c.s[i] = u32(0)
 	}
@@ -59,7 +59,7 @@ pub fn (c &Cipher) reset() {
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.
 // Dst and src must overlap entirely or not at all.
-pub fn (c &Cipher) xor_key_stream(dst, src []byte) {
+pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	if src.len == 0 {
 		return
 	}
@@ -69,7 +69,7 @@ pub fn (c &Cipher) xor_key_stream(dst, src []byte) {
 	mut i := c.i
 	mut j := c.j
 	_ := dst[src.len-1]
-	dst = dst.left(src.len) // eliminate bounds check from loop
+	*dst = dst.left(src.len) // eliminate bounds check from loop
 	for k, v in src {
 		i += u8(1)
 		x := c.s[i]

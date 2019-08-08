@@ -1069,13 +1069,18 @@ fn (p mut Parser) close_scope() {
 			else if v.ptr {
 				//p.genln('free($v.name); // close_scope free') 
 			} 
-		} 
-
+		}
 	}
+
+	if p.cur_fn.defer_text.last() != '' {
+		p.genln(p.cur_fn.defer_text.last())
+		//p.cur_fn.defer_text[f] = ''
+	}
+	
+	p.cur_fn.close_scope()
 	p.cur_fn.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
-	p.cur_fn.scope_level--
-} 
+}
 
 fn (p mut Parser) genln(s string) {
 	p.cgen.genln(s)
@@ -1191,8 +1196,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	p.log('assign_statement() name=$v.name tok=')
+	is_vid := p.fileis('vid') // TODO remove 
 	tok := p.tok
-	if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
+	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
+	if !v.is_mut && !p.pref.translated && !v.is_global && !is_vid {
 		p.error('`$v.name` is immutable')
 	}
 	if !v.is_changed {
@@ -1757,7 +1764,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec
-		is_vi := p.fileis('vi')
+		is_vi := p.fileis('vid')
 		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
 			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)')
 		}
@@ -1799,7 +1806,8 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	return method.typ
 }
 
-fn (p mut Parser) index_expr(typ string, fn_ph int) string {
+fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
+	mut typ := typ_ 
 	// a[0]
 	v := p.expr_var
 	//if p.fileis('fn_test.v') {
@@ -2361,8 +2369,8 @@ fn (p mut Parser) char_expr() {
 }
 
 
-fn format_str(str string) string {
-	str = str.replace('"', '\\"')
+fn format_str(_str string) string {
+	mut str := _str.replace('"', '\\"')
 	$if windows {
 		str = str.replace('\r\n', '\\n')
 	} 
@@ -3234,13 +3242,27 @@ fn (p mut Parser) return_st() {
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)
-				p.cgen(p.cur_fn.defer_text) 
-				if p.cur_fn.defer_text == '' || expr_type == 'void*' { 
+
+				// @emily33901: Scoped defer
+				// Check all of our defer texts to see if there is one at a higher scope level
+				// The one for our current scope would be the last so any before that need to be
+				// added.
+
+				mut total_text := ''
+
+				for text in p.cur_fn.defer_text {
+					if text != '' {
+						// In reverse order
+						total_text = text + total_text
+					}
+				}
+
+				if total_text == '' || expr_type == 'void*' {
 					p.cgen.resetln('return $ret')
 				}  else { 
 					tmp := p.get_tmp() 
 					p.cgen.resetln('$expr_type $tmp = $ret;\n')
-					p.genln(p.cur_fn.defer_text) 
+					p.genln(total_text)
 					p.genln('return $tmp;') 
 				} 
 			}
@@ -3298,9 +3320,11 @@ fn (p mut Parser) go_statement() {
 
 fn (p mut Parser) register_var(v Var) {
 	if v.line_nr == 0 {
-		v.line_nr = p.scanner.line_nr
-	}
-	p.cur_fn.register_var(v)
+		//v.line_nr = p.scanner.line_nr
+		p.cur_fn.register_var({ v | line_nr: p.scanner.line_nr }) 
+	} else { 
+		p.cur_fn.register_var(v)
+	} 
 }
 
 // user:=jsdecode(User, user_json_string)
@@ -3392,9 +3416,14 @@ fn (p mut Parser) defer_st() {
 
 	// Save everything inside the defer block to `defer_text`.
 	// It will be inserted before every `return`
+
+	// Emily: TODO: all variables that are used in this defer statement need to be evaluated when the block
+	// is defined otherwise they could change over the course of the function
+	// (make temps out of them)
+
 	p.genln('{') 
 	p.statements() 
-	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text 
+	p.cur_fn.defer_text.last() = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text.last()
 
 	// Rollback p.cgen.lines
 	p.cgen.lines = p.cgen.lines.left(pos)
