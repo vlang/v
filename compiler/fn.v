@@ -927,6 +927,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 	}
 	p.check(.rpar)
 	// p.gen(')')
+	return f // TODO is return f right?
 }
 
 // "fn (int, string) int"

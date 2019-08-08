@@ -45,6 +45,7 @@ fn (p mut Parser) peek() Token {
 			return tok
 		}
 	}
+	return .eof // TODO can never get here - v doesn't know that
 }
 
 fn (p mut Parser) fmt_inc() {

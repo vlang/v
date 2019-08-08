@@ -500,6 +500,7 @@ pub fn (c Complex) acsch() Complex {
 		.divide(c)
 		.ln()
 	}
+	return Complex{0.0/0.0, 0.0/0.0} // TODO function is undefined (?) but must return
 }
 
 // Complex Equals
