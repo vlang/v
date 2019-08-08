@@ -48,3 +48,8 @@ script:
       ./v install glfw
       make test
     fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      git clone https://github.com/vlang/vid
+      cd vid && v .
+    fi    
