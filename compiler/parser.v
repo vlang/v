@@ -2914,6 +2914,8 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	else {
 		typ = p.statements()
 	}
+	if_returns := p.returns
+	p.returns = false
 	// println('IF TYp=$typ')
 	if p.tok == .key_else {
 		p.fgenln('') 
@@ -2945,6 +2947,8 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		}
 		return typ
 	}
+	else_returns := p.returns
+	p.returns = if_returns && else_returns
 	p.inside_if_expr = false
 	if p.fileis('test_test') {
 		println('if ret typ="$typ" line=$p.scanner.line_nr')
