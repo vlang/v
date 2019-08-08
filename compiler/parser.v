@@ -924,7 +924,7 @@ fn (p mut Parser) get_type() string {
 		// Module specified? (e.g. gx.Image)
 		if p.peek() == .dot {
 			// try resolve full submodule
-			if p.import_table.known_alias(typ) {
+			if !p.builtin_mod && p.import_table.known_alias(typ) {
 				mod := p.import_table.resolve_alias(typ)
 				if mod.contains('.') {
 					typ = mod.replace('.', '_dot_')
