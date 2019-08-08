@@ -739,6 +739,8 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		} 
 	} 
+	panic('function $fn_name not found') // TODO panic or return []?
+	return []string // TODO remove return
 } 
 
 // `foo<Bar>()`

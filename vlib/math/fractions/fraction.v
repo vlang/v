@@ -19,6 +19,7 @@ pub fn fraction(n i64, d i64) Fraction{
 	} 
 	else {
 		panic('Denominator cannot be zero')
+		return Fraction{} // TODO remove return
 	}
 }
 
