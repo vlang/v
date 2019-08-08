@@ -346,8 +346,8 @@ fn pclose(f *FILE) int {
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) ?string {
-	cmd = '$cmd 2>&1'
+pub fn exec(_cmd string) ?string {
+	cmd := '$_cmd 2>&1'
 	f := popen(cmd)
 	if isnil(f) {
 		return error('popen $cmd failed')
