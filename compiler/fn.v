@@ -631,7 +631,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		receiver := f.args.first()
 		if receiver.is_mut && !p.expr_var.is_mut {
 			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
-			p.error('`$p.expr_var.name` is immutable')
+			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 		} 
 		if !p.expr_var.is_changed {
 			p.cur_fn.mark_var_changed(p.expr_var) 

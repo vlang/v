@@ -788,9 +788,9 @@ fn (p mut Parser) error(s string) {
 		// os.write_to_file('/var/tmp/lang.vars', q.J(p.table.vars))
 		os.write_file('fns.txt', p.table.debug_fns()) 
 	}
-	//if p.pref.is_verbose { 
-		println('pass=$p.pass fn=`$p.cur_fn.name`')
-	//}
+	if p.pref.is_verbose || p.pref.is_debug { 
+		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
+	}
 	p.cgen.save()
 	// V git pull hint
 	cur_path := os.getwd()
@@ -1200,7 +1200,14 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	tok := p.tok
 	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
 	if !v.is_mut && !p.pref.translated && !v.is_global && !is_vid {
-		p.error('`$v.name` is immutable')
+		if v.is_arg {
+			if p.cur_fn.args.len > 0 && p.cur_fn.args[0].name == v.name {
+				println('make the receiver `$v.name` mutable:
+fn ($v.name mut $v.typ) $p.cur_fn.name (...) { 
+') 
+			} 
+		} 
+		p.error('`$v.name` is immutable.')
 	}
 	if !v.is_changed {
 		p.cur_fn.mark_var_changed(v) 
@@ -1766,7 +1773,14 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		modifying := next.is_assign() || next == .inc || next == .dec
 		is_vi := p.fileis('vid')
 		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
-			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)')
+			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)\n' + 
+				'declare the field with `mut:`
+
+struct $typ.name {
+  mut:
+	$field_name $field.typ 
+} 
+') 
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
