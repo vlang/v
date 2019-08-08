@@ -29,7 +29,7 @@ mut:
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
-	defer_text    string
+	defer_text    []string
 	//gen_types []string 
 }
 
@@ -44,7 +44,13 @@ fn (f &Fn) find_var(name string) Var {
 
 
 fn (f mut Fn) open_scope() {
+	f.defer_text << ''
 	f.scope_level++
+}
+
+fn (f mut Fn) close_scope() {
+	f.scope_level--
+	f.defer_text = f.defer_text.left(f.scope_level + 1)
 }
 
 fn (f &Fn) mark_var_used(v Var) {
@@ -442,7 +448,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
-		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+		f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
 	if is_generic { 
 		// Don't need to generate body for the actual generic definition 
@@ -455,7 +461,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer_text)
+	p.genln(f.defer_text[f.scope_level])
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
@@ -625,7 +631,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		receiver := f.args.first()
 		if receiver.is_mut && !p.expr_var.is_mut {
 			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
-			p.error('`$p.expr_var.name` is immutable')
+			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 		} 
 		if !p.expr_var.is_changed {
 			p.cur_fn.mark_var_changed(p.expr_var) 
@@ -788,16 +794,16 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
 			if p.tok != .key_mut {
-				p.error('`$arg.name` is a key_mut argument, you need to provide `mut`: `$f.name(...mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name(...mut a...)`')
 			}
 			if p.peek() != .name {
-				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
 			var_name := p.lit 
 			v := p.cur_fn.find_var(var_name) 
 			if v.name == '' { 
-				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			} 
 			if !v.is_changed {
 				p.cur_fn.mark_var_changed(v) 
@@ -921,6 +927,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 	}
 	p.check(.rpar)
 	// p.gen(')')
+	return f // TODO is return f right?
 }
 
 // "fn (int, string) int"

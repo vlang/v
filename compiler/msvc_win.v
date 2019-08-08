@@ -134,7 +134,10 @@ fn find_vs() ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio 
 	// installation!
-	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"')
+	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
+		panic(err)
+		return error(err)// TODO remove return
+	}
 	// println('res: "$res"')
 
 	version := os.read_file('$res\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
@@ -341,13 +344,13 @@ pub fn (v mut V) cc_msvc() {
 
 	// println('$cmd')
 
-	res := os.exec(cmd)
+	_ := os.exec(cmd) or {
+		println(err)
+		panic('msvc error')
+		return // TODO remove return
+	}
 	// println(res)
 	// println('C OUTPUT:')
-	if res.contains('error') {
-		println(res)
-		panic('msvc error')
-	}
 
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm('.$v.out_name_c') 
@@ -386,7 +389,10 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	println('$cfiles')
 
-	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"')
+	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
+		panic(err)
+		return // TODO remove return
+	}
 	println(res)
 } 
 

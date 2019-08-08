@@ -788,9 +788,9 @@ fn (p mut Parser) error(s string) {
 		// os.write_to_file('/var/tmp/lang.vars', q.J(p.table.vars))
 		os.write_file('fns.txt', p.table.debug_fns()) 
 	}
-	//if p.pref.is_verbose { 
-		println('pass=$p.pass fn=`$p.cur_fn.name`')
-	//}
+	if p.pref.is_verbose || p.pref.is_debug { 
+		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
+	}
 	p.cgen.save()
 	// V git pull hint
 	cur_path := os.getwd()
@@ -931,6 +931,15 @@ fn (p mut Parser) get_type() string {
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
+			// we are a module
+			if typ.contains('__') {
+				// so try resolve full submodule
+				mod := p.import_table.resolve_alias(p.lit).replace('.', '_dot_')
+				if mod != '' {
+					typ = prepend_mod(mod, typ)
+				}
+			}
+			t = p.table.find_type(typ)
 			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') &&
 				!typ.starts_with('[') { 
 				typ = p.prepend_mod(typ)
@@ -1069,13 +1078,18 @@ fn (p mut Parser) close_scope() {
 			else if v.ptr {
 				//p.genln('free($v.name); // close_scope free') 
 			} 
-		} 
-
+		}
 	}
+
+	if p.cur_fn.defer_text.last() != '' {
+		p.genln(p.cur_fn.defer_text.last())
+		//p.cur_fn.defer_text[f] = ''
+	}
+	
+	p.cur_fn.close_scope()
 	p.cur_fn.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
-	p.cur_fn.scope_level--
-} 
+}
 
 fn (p mut Parser) genln(s string) {
 	p.cgen.genln(s)
@@ -1195,7 +1209,14 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	tok := p.tok
 	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
 	if !v.is_mut && !p.pref.translated && !v.is_global && !is_vid {
-		p.error('`$v.name` is immutable')
+		if v.is_arg {
+			if p.cur_fn.args.len > 0 && p.cur_fn.args[0].name == v.name {
+				println('make the receiver `$v.name` mutable:
+fn ($v.name mut $v.typ) $p.cur_fn.name (...) { 
+') 
+			} 
+		} 
+		p.error('`$v.name` is immutable.')
 	}
 	if !v.is_changed {
 		p.cur_fn.mark_var_changed(v) 
@@ -1761,7 +1782,14 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		modifying := next.is_assign() || next == .inc || next == .dec
 		is_vi := p.fileis('vid')
 		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
-			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)')
+			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)\n' + 
+				'declare the field with `mut:`
+
+struct $typ.name {
+  mut:
+	$field_name $field.typ 
+} 
+') 
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
@@ -2909,6 +2937,8 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	else {
 		typ = p.statements()
 	}
+	if_returns := p.returns
+	p.returns = false
 	// println('IF TYp=$typ')
 	if p.tok == .key_else {
 		p.fgenln('') 
@@ -2940,6 +2970,8 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		}
 		return typ
 	}
+	else_returns := p.returns
+	p.returns = if_returns && else_returns
 	p.inside_if_expr = false
 	if p.fileis('test_test') {
 		println('if ret typ="$typ" line=$p.scanner.line_nr')
@@ -3237,13 +3269,27 @@ fn (p mut Parser) return_st() {
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)
-				p.cgen(p.cur_fn.defer_text) 
-				if p.cur_fn.defer_text == '' || expr_type == 'void*' { 
+
+				// @emily33901: Scoped defer
+				// Check all of our defer texts to see if there is one at a higher scope level
+				// The one for our current scope would be the last so any before that need to be
+				// added.
+
+				mut total_text := ''
+
+				for text in p.cur_fn.defer_text {
+					if text != '' {
+						// In reverse order
+						total_text = text + total_text
+					}
+				}
+
+				if total_text == '' || expr_type == 'void*' {
 					p.cgen.resetln('return $ret')
 				}  else { 
 					tmp := p.get_tmp() 
 					p.cgen.resetln('$expr_type $tmp = $ret;\n')
-					p.genln(p.cur_fn.defer_text) 
+					p.genln(total_text)
 					p.genln('return $tmp;') 
 				} 
 			}
@@ -3397,9 +3443,14 @@ fn (p mut Parser) defer_st() {
 
 	// Save everything inside the defer block to `defer_text`.
 	// It will be inserted before every `return`
+
+	// Emily: TODO: all variables that are used in this defer statement need to be evaluated when the block
+	// is defined otherwise they could change over the course of the function
+	// (make temps out of them)
+
 	p.genln('{') 
 	p.statements() 
-	p.cur_fn.defer_text = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text 
+	p.cur_fn.defer_text.last() = p.cgen.lines.right(pos).join('\n') + p.cur_fn.defer_text.last()
 
 	// Rollback p.cgen.lines
 	p.cgen.lines = p.cgen.lines.left(pos)

@@ -6,11 +6,11 @@ module ft
 
 import (
 	os 
-gx 
-gg 
- stbi
- glm
- gl
+	gx 
+	gg 
+	stbi
+	glm
+	gl
 ) 
 
 #flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2 
@@ -248,11 +248,9 @@ fn (ctx mut GG) init_utf8_runes() {
 
 // fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
 pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-println('draw text start') 
 	utext := text.ustring_tmp()
 	// utext := text.ustring()
 	ctx._draw_text(_x, _y, utext, cfg)
-println('draw text end') 
 	// utext.free()
 	// # glScissor(0,0,ctx->width*2,ctx->height*2);
 	// gl.disable(GL_SCISSOR_TEST)// TODO
@@ -289,7 +287,6 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	// _y = _y * int(ctx.scale) //+ 26
 	y = y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
 	y = f32(ctx.height) - y 
-println('($x, $y)' ) 
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()

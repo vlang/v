@@ -489,8 +489,7 @@ pub fn (c Complex) acsch() Complex {
 		)
 		.divide(c)
 		.ln()
-	}
-	if(c.re > 0) {
+	} else {
 		return one.add(
 			one.add(
 				c.pow(2) 
