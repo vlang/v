@@ -8,7 +8,7 @@ fn download_file_with_progress(url, out string, cb, cb_finished voidptr) {
 }
 
 pub fn download_file(url, out string) {
-	C.URLDownloadToFileW(0, url.to_wide(), out.to_wide(), 0, 0)
+	// C.URLDownloadToFileW(0, url.to_wide(), out.to_wide(), 0, 0)
 	/*
 	if (res == S_OK) {
 	println('Download Ok')
