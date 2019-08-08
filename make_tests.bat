@@ -23,6 +23,7 @@ for /r . %%x in (*_test.v) do (
   v -os msvc -o test.exe -debug %%x
   if !ERRORLEVEL! NEQ 0 goto :fail
 )
+
 for /r . %%x in (*_test.v) do (
   v.msvc.exe -os msvc -o test.exe -debug %%x
   if !ERRORLEVEL! NEQ 0 goto :fail
