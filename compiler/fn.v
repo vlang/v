@@ -794,16 +794,16 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
 			if p.tok != .key_mut {
-				p.error('`$arg.name` is a key_mut argument, you need to provide `mut`: `$f.name(...mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name(...mut a...)`')
 			}
 			if p.peek() != .name {
-				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
 			var_name := p.lit 
 			v := p.cur_fn.find_var(var_name) 
 			if v.name == '' { 
-				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			} 
 			if !v.is_changed {
 				p.cur_fn.mark_var_changed(v) 
