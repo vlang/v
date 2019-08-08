@@ -75,45 +75,107 @@ struct Cfg {
 	window_title string 
 	always_on_top bool 
 }
+	
+const (
+  	FT_LOAD_DEFAULT                      = 0
+  	FT_LOAD_NO_SCALE                     = 1 << 0
+  	FT_LOAD_NO_HINTING                   = 1 << 1
+  	FT_LOAD_RENDER                       = 1 << 2
+  	FT_LOAD_NO_BITMAP                    = 1 << 3
+  	FT_LOAD_VERTICAL_LAYOUT              = 1 << 4
+  	FT_LOAD_FORCE_AUTOHINT               = 1 << 5
+  	FT_LOAD_CROP_BITMAP                  = 1 << 6
+  	FT_LOAD_PEDANTIC                     = 1 << 7
+  	FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  = 1 << 9
+  	FT_LOAD_NO_RECURSE                   = 1 << 10
+  	FT_LOAD_IGNORE_TRANSFORM             = 1 << 11
+  	FT_LOAD_MONOCHROME                   = 1 << 12
+  	FT_LOAD_LINEAR_DESIGN                = 1 << 13
+  	FT_LOAD_NO_AUTOHINT                  = 1 << 15
+  	FT_LOAD_COLOR                        = 1 << 20
+  	FT_LOAD_COMPUTE_METRICS              = 1 << 21
+  	FT_LOAD_BITMAP_METRICS_ONLY          = 1 << 22
+)
 
+type GLenum     u16
+type GLboolean  bool 
+type GLbitfield u32
+type GLbyte     byte
+type GLshort    i16
+type GLint      i32 
+type GLclampx   i32
+type GLubyte    byte
+type GLushort   u16
+type GLuint     u32
+type GLsizei    i32
+
+const (
+  	GL_RED        = 0x1903
+  	GL_GREEN      = 0x1904
+  	GL_BLUE       = 0x1905
+  	GL_TEXTURE_1D = 0x0DE0
+  	GL_TEXTURE_2D = 0x0DE1
+
+  	GL_UNSIGNED_BYTE       = 0x1401
+  	GL_TEXTURE_WRAP_S      = 0x2802
+  	GL_TEXTURE_WRAP_T      = 0x2803
+  	GL_PROXY_TEXTURE_1D    = 0x8063
+  	GL_PROXY_TEXTURE_2D    = 0x8064
+  	GL_TEXTURE_MAG_FILTER  = 0x2800
+  	GL_TEXTURE_MIN_FILTER  = 0x2801
+  	GL_CLAMP_TO_EDGE       = 0x812F
+  	GL_SRC_ALPHA           = 0x0302
+  	GL_ONE_MINUS_SRC_ALPHA = 0x0303
+  	GL_UNPACK_ALIGNMENT    = 0x0CF5
+  	GL_LINEAR              = 0x2601
+)
 
 // jfn ft_load_char(face FT_Face, code FT_ULong) Character {
 // fn ft_load_char(_face voidptr, _code voidptr) Character {
 fn ft_load_char(_face Face, code i64) Character {
-	// #FT_Face face = *(FT_Face*)(_face); FT_ULong code = *(FT_ULong*)(code);
-	# FT_Face face = *((FT_Face*)_face.cobj);
-	# if (FT_Load_Char(face, code, FT_LOAD_RENDER))
-	{
-		println('freetype: Failed to load Glyph')
-		exit(1)
-	}
-	// Generate texture
-	# GLuint texture;
-	# glGenTextures(1, &texture);
-	# glBindTexture(GL_TEXTURE_2D, texture);
-	# glTexImage2D(
-	# GL_TEXTURE_2D,
-	# 0,
-	# GL_RED,
-	# face->glyph->bitmap.width,
-	# face->glyph->bitmap.rows,
-	# 0,
-	# GL_RED,
-	# GL_UNSIGNED_BYTE,
-	# face->glyph->bitmap.buffer
-	# );
-	// Set texture options
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// Now store character for later use
-	ch := Character{}
-	# ch.texture_id=texture ;
-	# ch.size  = gg__vec2(face->glyph->bitmap.width, face->glyph->bitmap.rows);
-	# ch.bearing = gg__vec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
-	# ch.advance = face->glyph->advance.x;
-	return ch
+  	// #FT_Face face = *(FT_Face*)(_face); FT_ULong code = *(FT_ULong*)(code);
+  	face := C.FT_Face(_face.cobj)
+  	if C.FT_Load_Char(face, code, FT_LOAD_RENDER) {
+    	println('freetype: Failed to load Glyph')
+    	exit(1)
+  	}
+  	// Generate texture
+  	mut texture := GLuint(0)
+  	C.glGenTextures(GLsizei(1), &texture)
+  	C.glBindTexture(GLenum(GL_TEXTURE_2D), texture)
+  	fgwidth := face.glyph.bitmap.width
+  	fgrows  := face.glyph.bitmap.rows
+  	C.glTexImage2D(
+		GL_TEXTURE_2D,
+    	0,
+    	GL_RED,
+    	fgwidth,
+    	fgrows,
+    	0,
+    	GL_RED,
+    	GL_UNSIGNED_BYTE,
+    	face.glyph.bitmap.buffer
+  	)
+
+  	// Set texture options
+  	C.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  	C.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  	C.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  	C.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+
+  	// face->glyph.bitmap_left
+  	// face->glyph.bitmap_top
+  	fgleft := face.glyph.bitmap_left
+  	fgtop := face.glyph.bitmap_top
+
+  	// Now store character for later use
+  	ch := Character {
+    	texture_id: texture
+    	size:    gg.vec2(fgwidth, fgrows)
+    	bearing: gg.vec2(fgleft, fgtop)
+    	advance: face.glyph.advance.x
+  	}
+  	return ch
 }
 
 pub fn new_context(cfg gg.Cfg, scale int) *GG {
