@@ -489,8 +489,7 @@ pub fn (c Complex) acsch() Complex {
 		)
 		.divide(c)
 		.ln()
-	}
-	if(c.re > 0) {
+	} else {
 		return one.add(
 			one.add(
 				c.pow(2) 
@@ -500,7 +499,6 @@ pub fn (c Complex) acsch() Complex {
 		.divide(c)
 		.ln()
 	}
-	return Complex{0.0/0.0, 0.0/0.0} // TODO function is undefined (?) but must return
 }
 
 // Complex Equals
