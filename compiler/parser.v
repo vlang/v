@@ -938,7 +938,6 @@ fn (p mut Parser) get_type() string {
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
-			t = p.table.find_type(typ)
 			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') &&
 				!typ.starts_with('[') { 
 				typ = p.prepend_mod(typ)
