@@ -52,7 +52,7 @@ fn do_request(method, host_name, path string) string {
 	res = C.BIO_set_conn_hostname(web, addr.str) 
 	if res != 1 {
 	} 
-	ssl := &C.SSL{} 
+	ssl := &C.SSL{!} 
 	C.BIO_get_ssl(web, &ssl) 
 	if isnil(ssl) { 
 	} 
