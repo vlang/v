@@ -876,6 +876,10 @@ mut args := ''
 		exit(0)
 	}
 	// Run
+	if v.pref.show_c_cmd || v.pref.is_verbose {
+		println('\n==========')
+		println(cmd)
+	}    
 	ticks := time.ticks() 
 	_ := os.exec(cmd) or {
 		if v.pref.is_debug {
@@ -893,8 +897,6 @@ mut args := ''
 	diff := time.ticks() - ticks 
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
-		println('\n==========')
-		println(cmd) 
 		println('cc took $diff ms') 
 		println('=========\n')
 	}
