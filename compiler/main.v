@@ -657,7 +657,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============') 
 	}	  
-	mut cmd := final_target_out_name(v.out_name)
+	mut cmd := final_target_out_name(v.out_name).replace('.exe','')
 	if os.args.len > 3 {
 		cmd += ' ' + os.args.right(3).join(' ')
 	}
