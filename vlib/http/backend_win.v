@@ -7,10 +7,10 @@ module http
 import strings 
 
 #flag windows -I @VROOT/thirdparty/vschannel
-#flag -lws2_32 -lsecurity -lCRYPT32 -lwininet
+#flag -lws2_32 -lcrypt32
  
-
 #include "vschannel.c"
+
 
 fn init_module() {}
 
