@@ -17,7 +17,7 @@ v.c.out: v.${VC}.c
 	${CC} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
 
 v.${VC}.c:
-	curl -o v.${VC}.c -Ls https://github.com/vlang/vc/raw/${VC}/v.c
+	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
