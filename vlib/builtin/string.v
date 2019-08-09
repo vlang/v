@@ -671,7 +671,7 @@ pub fn (s string) ustring_tmp() ustring {
 
 pub fn (u ustring) substr(_start, _end int) string {
 	start := u.runes[_start]
-    mut end := _end
+	mut end := _end
 	if end >= u.runes.len {
 		end = u.s.len
 	}
