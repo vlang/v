@@ -739,8 +739,7 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		} 
 	} 
-	panic('function $fn_name not found') // TODO panic or return []?
-	return []string // TODO remove return
+	panic('function $fn_name not found')
 } 
 
 // `foo<Bar>()`
@@ -830,7 +829,6 @@ fn (fit mut FileImportTable) register_import(mod string) {
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports { 
 		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
-		return 
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')

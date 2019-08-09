@@ -295,7 +295,6 @@ fn (p mut Parser) parse() {
 			if false && !p.first_pass() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v') or {
 					panic('failed to create fmt.v') 
-					return 
 				} 
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
@@ -1987,7 +1986,6 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.cgen.insert_before('$typ $tmp = $tmp_val;')
 		}
 		return typ
-		return 'void'
 	}
 	// else if p.pref.is_verbose && p.assigned_var != '' {
 	// p.error('didnt assign')
@@ -2909,7 +2907,6 @@ fn os_name_to_ifdef(name string) string {
 		case 'msvc': return '_MSC_VER' 
 	} 
 	panic('bad os ifdef name "$name"') 
-	return '' 
 } 
 
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
@@ -3188,7 +3185,9 @@ fn (p mut Parser) switch_statement() {
 	expr := p.cgen.end_tmp()
 	p.check(.lcbr)
 	mut i := 0
+	mut all_cases_return := true
 	for p.tok == .key_case || p.tok == .key_default || p.peek() == .arrow || p.tok == .key_else { 
+		p.returns = false
 		if p.tok == .key_default || p.tok == .key_else { 
 			p.genln('else  { // default:')
 			if p.tok == .key_default { 
@@ -3199,7 +3198,8 @@ fn (p mut Parser) switch_statement() {
 				p.check(.arrow)
 			} 
 			p.statements()
-			break
+			p.returns = all_cases_return && p.returns
+			return
 		}
 		if i > 0 {
 			p.gen('else ')
@@ -3236,8 +3236,10 @@ fn (p mut Parser) switch_statement() {
 		p.gen(')) {')
 		p.genln('/* case */')
 		p.statements()
+		all_cases_return = all_cases_return && p.returns
 		i++
 	}
+	p.returns = false // only get here when no default, so return is not guaranteed
 }
 
 fn (p mut Parser) assert_statement() {
