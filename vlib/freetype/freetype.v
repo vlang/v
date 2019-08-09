@@ -63,18 +63,20 @@ struct Context {
 	scale     int // retina = 2 , normal = 1
 }
 
+/* 
 struct Cfg {
 	width     int
 	height    int
 	use_ortho bool 
 	retina    bool
-	 
+	scale int 
 	font_size int
 	create_window bool 
 	window_user_ptr voidptr 
 	window_title string 
 	always_on_top bool 
 }
+*/ 
 
 
 // jfn ft_load_char(face FT_Face, code FT_ULong) Character {
@@ -116,7 +118,8 @@ fn ft_load_char(_face Face, code i64) Character {
 	return ch
 }
 
-pub fn new_context(cfg gg.Cfg, scale int) *Context {
+pub fn new_context(cfg gg.Cfg) *Context {
+	scale := cfg.scale 
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
 		return &Context{} 

@@ -140,7 +140,8 @@ fn main() {
 			height: WinHeight
 			use_ortho: true
 			font_size: 18
-		}, 1)
+			scale: 2
+	}) 
 	game.font_loaded = (game.ft != 0 ) 
 	for {
 		gg.clear(gx.White)
