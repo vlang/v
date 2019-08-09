@@ -438,6 +438,22 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.gt, '')
 		}
+	case 0xE2:
+		//case `≠`:
+		if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
+			s.pos += 2
+			return scan_res(.ne, '')
+		}
+		// ⩽
+		else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
+			s.pos += 2
+			return scan_res(.le, '')
+		}
+		// ⩾
+		else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
+			s.pos += 2
+			return scan_res(.ge, '')
+		}
 	case `<`:
 		if nextc == `=` {
 			s.pos++

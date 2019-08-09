@@ -185,7 +185,7 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod == 'ft' || 	p.mod == 'glfw'  || p.mod=='glfw2' || p.mod=='ui' // TODO tmp remove
+	p.can_chash = p.mod == 'freetype' || 	p.mod == 'glfw'  || p.mod=='glfw2' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
@@ -923,6 +923,13 @@ fn (p mut Parser) get_type() string {
 	else {
 		// Module specified? (e.g. gx.Image)
 		if p.peek() == .dot {
+			// try resolve full submodule
+			if !p.builtin_mod && p.import_table.known_alias(typ) {
+				mod := p.import_table.resolve_alias(typ)
+				if mod.contains('.') {
+					typ = mod.replace('.', '_dot_')
+				}
+			}
 			p.next()
 			p.check(.dot)
 			typ += '__$p.lit'
@@ -931,15 +938,6 @@ fn (p mut Parser) get_type() string {
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
-			// we are a module
-			if typ.contains('__') {
-				// so try resolve full submodule
-				mod := p.import_table.resolve_alias(p.lit).replace('.', '_dot_')
-				if mod != '' {
-					typ = prepend_mod(mod, typ)
-				}
-			}
-			t = p.table.find_type(typ)
 			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') &&
 				!typ.starts_with('[') { 
 				typ = p.prepend_mod(typ)
@@ -1132,6 +1130,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.js_decode()
 		}
 		else {
+			// panic and exit count as returns since they stop the function
+			if p.lit == 'panic' || p.lit == 'exit' {
+				p.returns = true
+			}
 			// `a + 3`, `a(7)` or maybe just `a` 
 			q = p.bool_expression()
 		}
@@ -2947,11 +2949,17 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		if p.tok == .key_if {
 			if is_expr {
 				p.gen(') : (')
-				return p.if_st(is_expr, elif_depth + 1)
+				nested := p.if_st(is_expr, elif_depth + 1)
+				nested_returns := p.returns
+				p.returns = if_returns && nested_returns
+				return nested
 			}
 			else {
 				p.gen(' else ')
-				return p.if_st(is_expr, 0)
+				nested := p.if_st(is_expr, 0)
+				nested_returns := p.returns
+				p.returns = if_returns && nested_returns
+				return nested
 			}
 			// return ''
 		}
@@ -2968,10 +2976,10 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		if is_expr {
 			p.gen(strings.repeat(`)`, elif_depth + 1))
 		}
+		else_returns := p.returns
+		p.returns = if_returns && else_returns
 		return typ
 	}
-	else_returns := p.returns
-	p.returns = if_returns && else_returns
 	p.inside_if_expr = false
 	if p.fileis('test_test') {
 		println('if ret typ="$typ" line=$p.scanner.line_nr')

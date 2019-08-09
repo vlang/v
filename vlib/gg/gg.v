@@ -5,7 +5,7 @@
 module gg
 
 import stbi
-import glm
+import glm 
 import gl
 import gx
 import os
@@ -27,8 +27,8 @@ import const (
 
 pub fn vec2(x, y int) Vec2 {
 	res := Vec2 {
-		x: x,
-		y: y,
+		x: x 
+		y: y 
 	}
 	return res
 }
@@ -310,10 +310,6 @@ fn (c GG) fill_color(color gx.Color) {
 
 fn (c GG) fill() {
 }
-
-pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-//pub fn (c &GG) draw_text(x, y int) {
-} 
 
 fn (c GG) move_to(x, y int) {
 }
