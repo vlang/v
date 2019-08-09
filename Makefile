@@ -6,10 +6,10 @@ VC ?= 0.1.17
 all: v
 	$(info V has been successfully built)
 
-v: v.c.out
+v: v.c.out compiler/*.v vlib/**/*.v
 	./v.c.out -o v compiler
 
-v-release: v.c
+v-release:
 	./v -cflags '${CFLAGS}' -o v compiler
 	strip v
 
@@ -17,7 +17,7 @@ v.c.out: v.${VC}.c
 	${CC} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
 
 v.${VC}.c:
-	curl -o v.${VC}.c -Ls https://github.com/vlang/vc/raw/${VC}/v.c
+	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build

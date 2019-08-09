@@ -3,6 +3,8 @@
 /v
 /vprod
 /v.c
+/v.*.c
+/v.c.out
 /v.exe
 *.exe
 *.o
