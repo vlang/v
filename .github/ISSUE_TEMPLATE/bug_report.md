@@ -9,6 +9,8 @@ assignees: ''
 
 **V version:** 
 **OS:** 
+**Compiler:**
+**Specific environnment (VM, Docker, Cygwin):**
 
 **What did you do?**
 
@@ -17,3 +19,6 @@ assignees: ''
 
  
 **What did you see instead?**
+
+
+**Logs (enventually with verbose option if you know how to):**
