@@ -6,19 +6,19 @@ module http
 
 import strings 
 
-// #flag windows -I @VROOT/thirdparty/openssl/include 
-// #flag darwin -I @VROOT/thirdparty/openssl/include 
-// #flag -lssl -lcrypto
-// // MacPorts
-// #flag darwin -L/opt/local/lib
-// // Brew
-// #flag darwin -L/usr/local/opt/openssl/lib
+#flag windows -I @VROOT/thirdparty/openssl/include 
+#flag darwin -I @VROOT/thirdparty/openssl/include 
+#flag -lssl -lcrypto
+// MacPorts
+#flag darwin -L/opt/local/lib
+// Brew
+#flag darwin -L/usr/local/opt/openssl/lib
 
-// #include <openssl/ssl.h>
+#include <openssl/ssl.h>
 
-// struct C.SSL {
+struct C.SSL {
  
-// } 
+} 
 
 fn init_module() {
 	$if mac { 
