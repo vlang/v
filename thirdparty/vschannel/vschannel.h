@@ -15,8 +15,8 @@
 
 #define TLS_MAX_BUFSIZ      32768
 
-// #define DLL_NAME TEXT("Secur32.dll")
-// #define NT4_DLL_NAME TEXT("Security.dll")
+// Define here to be sure
+#define SP_PROT_TLS1_2_CLIENT 0x00000800
 
 
 INT request(CHAR *host, CHAR *req, CHAR *out);

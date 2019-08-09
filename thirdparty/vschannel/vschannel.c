@@ -24,9 +24,6 @@ HMODULE g_hsecurity = NULL;
 // SSPI
 PSecurityFunctionTable sspi;
 
-// Define here to be sure
-#define SP_PROT_TLS1_2_CLIENT 0x00000800
-
 
 BOOL load_security_library(void) {
 	INIT_SECURITY_INTERFACE pInitSecurityInterface;
