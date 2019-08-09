@@ -195,13 +195,9 @@ fn main() {
 	}
   
 	if 'run' in args {
-		vsource := v.dir
-		vtarget := final_target_out_name( v.out_name )
-		if os.file_exists(vtarget) && ( os.file_last_mod_unix(vsource) <= os.file_last_mod_unix(vtarget) ) {
-			//println('ALREADY BUILD FROM vsource: $vsource | vtarget: $vtarget')
-			v.run_compiled_executable_and_exit()
-		}
-		v.compile()
+		// always recompile for now, too error prone to skip recompilation otherwise
+		// for example for -repl usage, especially when piping lines to v
+		v.compile() 
 		v.run_compiled_executable_and_exit()
 	}
   
@@ -644,6 +640,7 @@ fn final_target_out_name(out_name string) string {
 	$if windows {
 		cmd = out_name
 		cmd = cmd.replace('/', '\\')
+		cmd += '.exe'
 	}
 	return cmd
 }
@@ -652,7 +649,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============') 
 	}	  
-	mut cmd := final_target_out_name(v.out_name)
+	mut cmd := final_target_out_name(v.out_name).replace('.exe','')
 	if os.args.len > 3 {
 		cmd += ' ' + os.args.right(3).join(' ')
 	}
@@ -874,6 +871,10 @@ mut args := ''
 		exit(0)
 	}
 	// Run
+	if v.pref.show_c_cmd || v.pref.is_verbose {
+		println('\n==========')
+		println(cmd)
+	}    
 	ticks := time.ticks() 
 	_ := os.exec(cmd) or {
 		if v.pref.is_debug {
@@ -890,8 +891,6 @@ mut args := ''
 	diff := time.ticks() - ticks 
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
-		println('\n==========')
-		println(cmd) 
 		println('cc took $diff ms') 
 		println('=========\n')
 	}
@@ -1300,6 +1299,8 @@ fn run_repl() []string {
 	defer {
 		os.rm(file) 
 		os.rm(temp_file) 
+		os.rm(file.left(file.len - 2))
+		os.rm(temp_file.left(temp_file.len - 2))
 	} 
 	mut lines := []string
 	vexe := os.args[0] 
@@ -1310,8 +1311,11 @@ fn run_repl() []string {
 			continue
 		}
 		line = line.trim_space()
-		if line == '' || line == 'exit' {
+		if line.len == -1 || line == '' || line == 'exit' {
 			break
+		}
+		if line == '\n' {
+			continue
 		}
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,

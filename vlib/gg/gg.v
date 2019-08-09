@@ -48,6 +48,7 @@ pub:
 	retina    bool
 	 
 	font_size int
+	font_path string
 	create_window bool 
 	window_user_ptr voidptr 
 	window_title string 
