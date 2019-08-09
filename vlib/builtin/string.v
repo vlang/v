@@ -669,8 +669,9 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-pub fn (u ustring) substr(start, end int) string {
-	start = u.runes[start]
+pub fn (u ustring) substr(_start, _end int) string {
+	start := u.runes[_start]
+    mut end := _end
 	if end >= u.runes.len {
 		end = u.s.len
 	}
