@@ -1130,6 +1130,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.js_decode()
 		}
 		else {
+			// panic and exit count as returns since they stop the function
+			if p.lit == 'panic' || p.lit == 'exit' {
+				p.returns = true
+			}
 			// `a + 3`, `a(7)` or maybe just `a` 
 			q = p.bool_expression()
 		}
@@ -2945,11 +2949,17 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		if p.tok == .key_if {
 			if is_expr {
 				p.gen(') : (')
-				return p.if_st(is_expr, elif_depth + 1)
+				nested := p.if_st(is_expr, elif_depth + 1)
+				nested_returns := p.returns
+				p.returns = if_returns && nested_returns
+				return nested
 			}
 			else {
 				p.gen(' else ')
-				return p.if_st(is_expr, 0)
+				nested := p.if_st(is_expr, 0)
+				nested_returns := p.returns
+				p.returns = if_returns && nested_returns
+				return nested
 			}
 			// return ''
 		}
@@ -2966,10 +2976,10 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		if is_expr {
 			p.gen(strings.repeat(`)`, elif_depth + 1))
 		}
+		else_returns := p.returns
+		p.returns = if_returns && else_returns
 		return typ
 	}
-	else_returns := p.returns
-	p.returns = if_returns && else_returns
 	p.inside_if_expr = false
 	if p.fileis('test_test') {
 		println('if ret typ="$typ" line=$p.scanner.line_nr')
