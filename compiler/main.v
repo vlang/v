@@ -1314,8 +1314,11 @@ fn run_repl() []string {
 			continue
 		}
 		line = line.trim_space()
-		if line == '' || line == 'exit' {
+		if line.len == -1 || line == '' || line == 'exit' {
 			break
+		}
+		if line == '\n' {
+			continue
 		}
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
