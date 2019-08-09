@@ -31,7 +31,7 @@ fn init_module() {
 	//C.OPENSSL_config(0) 
 }
 
-fn do_request(method, host_name, path string) string { 
+fn ssl_do(method, host_name, path string) string { 
 	//ssl_method := C.SSLv23_method() 
 	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 

@@ -108,7 +108,7 @@ pub fn (req &Request) do() Response {
 	if !is_ssl {
 		panic('non https requests are not supported right now') 
 	}
-	s := do_request(req.typ, url.host, url.path)
+	s := ssl_do(req.typ, url.host, url.path)
 	// s := ssl_do(req.typ, url.host, url.path) 
 	first_header := s.all_before('\n') 
 	mut status_code := 0 

@@ -14,7 +14,7 @@ import strings
 
 fn init_module() {}
 
-fn do_request(method, host_name, path string) string { 
+fn ssl_do(method, host_name, path string) string { 
 	mut buff := malloc(10000)
 	
 	req := '$method $path HTTP/1.0\r\nUser-Agent: v\r\nAccept:*/*\r\n\r\n'
