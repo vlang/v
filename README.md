@@ -146,11 +146,14 @@ If you plan to use the http package, you also need to install libcurl.
 macOS:
 brew install glfw freetype curl
 
-Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
+Debian/Ubuntu:
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl4-openssl-dev
 
-Arch:
+Arch/Manjaro:
 sudo pacman -S glfw-x11 curl freetype2
+
+Fedora:
+sudo dnf install glfw glfw-devel freetype-devel libcurl-devel
 ```
 
 glfw and libcurl dependencies will be removed soon.
