@@ -20,28 +20,17 @@ pub:
 
 pub fn (ctx Context) text(s string) {
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: text/plain 
-$h
-$s 
-') 
+	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/plain\n$h\n$s') 
 } 
 
 pub fn (ctx Context) json(s string) {
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: application/json 
-$h
-$s 
-') 
+	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: application/json\n$h\n$s') 
 } 
 
 pub fn (ctx Context) redirect(url string) {
         h := ctx.headers.join('\n')
-        ctx.conn.write('HTTP/1.1 302 Found
-Location: $url
-$h
-') 
+        ctx.conn.write('HTTP/1.1 302 Found\nLocation: $url\n$h') 
 } 
 
 pub fn (ctx Context) not_found(s string) {
@@ -74,12 +63,7 @@ fn (ctx mut Context) set_header(key, val string) {
 
 pub fn (ctx Context) html(html string) { 
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK
-Content-Type: text/html
-$h
-
-$html
-')
+	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/html\n$h\n\n$html')
 	 
 } 
 
@@ -94,77 +78,78 @@ pub fn run<T>(port int) {
 			return 
 		} 
 		// TODO move this to handle_conn<T>(conn, app)
-		s := conn.read_line() 
-		 // Parse request headers
-		 lines := s.split_into_lines()
-		 mut headers := []string //map[string]string{}
-		 for i, line in lines {
-		         if i == 0 {
-		                 continue
-		         }
-		         words := line.split(':')
-		         if words.len != 2 {
-		                 continue
-		         }
-			headers << line 
-/* 
-		         key := words[0]
-		         val := words[1]
-		         headers[key] = val
-*/ 
-		} 
-		// Parse the first line
-		// "GET / HTTP/1.1"
-		first_line := s.all_before('\n')
-		vals := first_line.split(' ') 
-		mut action := vals[1].right(1).all_before('/') 
-		if action.contains('?') {
-			action = action.all_before('?') 
-		} 
-		if action == '' {
-			action = 'index' 
-		} 
-		req := http.Request{
-		        headers: map[string]string{} 
-			headers2: headers 
-		        ws_func: 0
-		        user_ptr: 0
-		        method: vals[0]
-		        url: vals[1] 
-		} 
-		println('vweb action = "$action"') 
-		//mut app := T{
-		app.vweb = Context{
-			req: req 
-			conn: conn 
-			post_form: map[string]string{} 
-			static_files: map[string]string{} 
-			static_mime_types: map[string]string{}
-		} 
-		//} 
-		if req.method == 'POST' {
-			app.vweb.parse_form(s) 
-		} 
-		if vals.len < 2 {
-			println('no vals for http') 
-			conn.close()
-			continue 
-		} 
+		s := conn.read_line()
+		if(s != '')
+		{
+			 // Parse request headers
+			 lines := s.split_into_lines()
+			 mut headers := []string //map[string]string{}
+			 for i, line in lines {
+					 if i == 0 {
+							 continue
+					 }
+					 words := line.split(':')
+					 if words.len != 2 {
+							 continue
+					 }
+				headers << line 
+	/* 
+					 key := words[0]
+					 val := words[1]
+					 headers[key] = val
+	*/ 
+			} 
+			// Parse the first line
+			// "GET / HTTP/1.1"
+			first_line := s.all_before('\n')
+			vals := first_line.split(' ') 
+			mut action := vals[1].right(1).all_before('/') 
+			if action.contains('?') {
+				action = action.all_before('?') 
+			} 
+			if action == '' {
+				action = 'index' 
+			} 
+			req := http.Request{
+					headers: map[string]string{} 
+				headers2: headers 
+					ws_func: 0
+					user_ptr: 0
+					method: vals[0]
+					url: vals[1] 
+			} 
+			println('vweb action = "$action"') 
+			//mut app := T{
+			app.vweb = Context{
+				req: req 
+				conn: conn 
+				post_form: map[string]string{} 
+				static_files: map[string]string{} 
+				static_mime_types: map[string]string{}
+			} 
+			//} 
+			if req.method == 'POST' {
+				app.vweb.parse_form(s) 
+			} 
+			if vals.len < 2 {
+				println('no vals for http') 
+				conn.close()
+				continue 
+			} 
 
-		// Serve a static file if it's one 
-		// if app.vweb.handle_static() {
-		// 	conn.close()
-		// 	continue 
-		// } 
+			// Serve a static file if it's one 
+			// if app.vweb.handle_static() {
+			// 	conn.close()
+			// 	continue 
+			// } 
 
-		// Call the right action 
-		app.$action() or { 
-			conn.write('HTTP/1.1 404 Not Found 
-Content-Type: text/plain 
-
-404 not found
-') 
-		} 
+			// Call the right action 
+			app.$action() or { 
+				conn.write('HTTP/1.1 404 Not Found \nContent-Type: text/plain \n\n404 not found') 
+			}
+		} else {
+			conn.write('HTTP/1.1 500 Not Found \nContent-Type: text/plain \n\n500') 
+		}
 		conn.close()
 	}
 } 
@@ -243,11 +228,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' { 
 		data := os.read_file(static_file) or { return false }  
-		ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: $mime_type
-
-$data 
-')
+		ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: $mime_type\n\n$data')
 		return true 
 	} 
 	return false 
@@ -256,6 +237,4 @@ $data
 pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) { 
 	ctx.static_files[url] = file_path 
 	ctx.static_mime_types[url] = mime_type
-} 
-
-
+}
