@@ -102,7 +102,6 @@ fn platform_postfix_to_ifdefguard(name string) string {
     case '_mac.v': return '#ifdef __APPLE__'
   }
   panic('bad platform_postfix "$name"')
-  return ''
 }
 
 fn (v mut V) new_parser(path string, pass Pass) Parser {
@@ -1103,6 +1102,9 @@ fn (p mut Parser) vh_genln(s string) {
 }
 
 fn (p mut Parser) statement(add_semi bool) string {
+	if(p.returns) {
+		p.error('unreachable code')
+	}
 	p.cgen.is_tmp = false
 	tok := p.tok
 	mut q := ''
@@ -1133,6 +1135,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			// panic and exit count as returns since they stop the function
 			if p.lit == 'panic' || p.lit == 'exit' {
 				p.returns = true
+		p.gen('/* returns $p.returns */')
 			}
 			// `a + 3`, `a(7)` or maybe just `a` 
 			q = p.bool_expression()
@@ -1321,6 +1324,7 @@ fn (p mut Parser) var_decl() {
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
 			p.error('`or` block must return/continue/break/panic')
 		}
+		p.returns = false
 	}
 	p.register_var(Var {
 		name: name
@@ -2941,6 +2945,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	}
 	if_returns := p.returns
 	p.returns = false
+		p.gen('/* returns $p.returns */')
 	// println('IF TYp=$typ')
 	if p.tok == .key_else {
 		p.fgenln('') 
@@ -2952,6 +2957,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 				nested := p.if_st(is_expr, elif_depth + 1)
 				nested_returns := p.returns
 				p.returns = if_returns && nested_returns
+		p.gen('/* returns $p.returns */')
 				return nested
 			}
 			else {
@@ -2959,6 +2965,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 				nested := p.if_st(is_expr, 0)
 				nested_returns := p.returns
 				p.returns = if_returns && nested_returns
+		p.gen('/* returns $p.returns */')
 				return nested
 			}
 			// return ''
@@ -2978,6 +2985,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		}
 		else_returns := p.returns
 		p.returns = if_returns && else_returns
+		p.gen('/* returns $p.returns */')
 		return typ
 	}
 	p.inside_if_expr = false
@@ -3318,6 +3326,7 @@ fn (p mut Parser) return_st() {
 		}
 	}
 	p.returns = true
+		p.gen('/* returns $p.returns */')
 }
 
 fn prepend_mod(mod, name string) string {
