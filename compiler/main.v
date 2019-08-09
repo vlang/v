@@ -1304,6 +1304,8 @@ fn run_repl() []string {
 	defer {
 		os.rm(file) 
 		os.rm(temp_file) 
+		os.rm(file.left(file.len - 2))
+		os.rm(temp_file.left(temp_file.len - 2))
 	} 
 	mut lines := []string
 	vexe := os.args[0] 
