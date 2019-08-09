@@ -17,13 +17,9 @@
 
 // #define DLL_NAME TEXT("Secur32.dll")
 // #define NT4_DLL_NAME TEXT("Security.dll")
-#define DLL_NAME TEXT("C:\\Windows\\System32\\secur32.dll")
-#define NT4_DLL_NAME TEXT("C:\\Windows\\System32\\secur32.dll")
 
 
-int joe_test();
-
-static void schannel_request(CHAR *host, CHAR *path, CHAR *out, int *length);
+INT request(CHAR *host, CHAR *req, CHAR *out);
 
 static SECURITY_STATUS create_credentials(PCredHandle phCreds);
 
@@ -37,9 +33,9 @@ static SECURITY_STATUS client_handshake_loop(
 	SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext,
 	BOOL fDoInitialRead, SecBuffer *pExtraData);
 
-static SECURITY_STATUS https_get(
+static SECURITY_STATUS https_make_request(
 	SOCKET Socket, PCredHandle phCreds,
-	CtxtHandle *phContext, CHAR *path, CHAR *out, int *length);
+	CtxtHandle *phContext, CHAR *req, CHAR *out, int *length);
 	// CtxtHandle *phContext, CHAR *path);
 
 static DWORD verify_server_certificate(
@@ -47,7 +43,5 @@ static DWORD verify_server_certificate(
 
 static LONG disconnect_from_server(
 	SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext);
-
-static void display_connection_info(CtxtHandle *phContext);
 
 static void get_new_client_credentials(CredHandle *phCreds, CtxtHandle *phContext);

@@ -1,58 +1,40 @@
-#include "vschannel.h"
+#include <vschannel.h>
 
-SOCKET p_socket;
-CHAR *  pszProxyServer  = "proxy";
-INT     iProxyPort      = 80;
 
-// User options.
+// TODO: joe-c
+// create context struct instead of using global
+
+// Proxy
+CHAR *  psz_proxy_server  = "proxy";
+INT     i_proxy_port      = 80;
+
+// Options
 INT     port_number     = 443;
 BOOL    use_proxy       = FALSE;
-DWORD   protocol      = 0;
-ALG_ID  aid_key_exch       = 0;
+DWORD   protocol        = 0;
+ALG_ID  aid_key_exch    = 0;
 
+// Cred store
 HCERTSTORE      cert_store = NULL;
-SCHANNEL_CRED   SchannelCred;
+SCHANNEL_CRED   schannel_cred;
 
+// Loaded sec lib
 HMODULE g_hsecurity = NULL;
 
+// SSPI
 PSecurityFunctionTable sspi;
 
-int joe_test()
-{
-	printf("HERE IN C");
-	return 444;
-}
+// Define here to be sure
+#define SP_PROT_TLS1_2_CLIENT 0x00000800
+
 
 BOOL load_security_library(void) {
 	INIT_SECURITY_INTERFACE pInitSecurityInterface;
-	
-	// QUERY_CREDENTIALS_ATTRIBUTES_FN pQueryCredentialsAttributes;
-	OSVERSIONINFO VerInfo;
-	UCHAR lpszDLL[MAX_PATH];
-
-	//  Find out which security DLL to use, depending on
-	//  whether we are on Win2K, NT or Win9x
-	VerInfo.dwOSVersionInfoSize = sizeof (OSVERSIONINFO);
-	if (!GetVersionEx (&VerInfo)) {
-		return FALSE;
-	}
-
-	if (VerInfo.dwPlatformId == VER_PLATFORM_WIN32_NT &&
-	    VerInfo.dwMajorVersion == 4) {
-		strcpy (lpszDLL, NT4_DLL_NAME );
-	}
-	else if (VerInfo.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS ||
-			 VerInfo.dwPlatformId == VER_PLATFORM_WIN32_NT ) {
-		strcpy (lpszDLL, DLL_NAME );
-	}
-	else {
-		return FALSE;
-	}
 
 	//  Load Security DLL
 	g_hsecurity = LoadLibraryA("schannel.dll");
 	if(g_hsecurity == NULL) {
-		printf("Error 0x%x loading %s.\n", GetLastError(), lpszDLL);
+		printf("Error 0x%x loading %s.\n", GetLastError(), "schannel.dll");
 		return FALSE;
 	}
 
@@ -80,13 +62,8 @@ void unload_security_library(void) {
 }
 
 
-#define SP_PROT_TLS1_2_CLIENT 0x00000800
-
-
-
-void schannel_request(CHAR *host, CHAR *path, CHAR *out, int *length)
+INT request(CHAR *host, CHAR *req, CHAR *out)
 {
-	puts("HERE IN C\n");
 	WSADATA WsaData;
 	SOCKET  Socket = INVALID_SOCKET;
 
@@ -103,6 +80,8 @@ void schannel_request(CHAR *host, CHAR *path, CHAR *out, int *length)
 	INT i;
 	INT iOption;
 	PCHAR pszOption;
+
+	INT resp_length = 0;
 
 	// protocol = SP_PROT_PCT1;
 	// protocol = SP_PROT_SSL2;
@@ -171,11 +150,10 @@ void schannel_request(CHAR *host, CHAR *path, CHAR *out, int *length)
 	CertFreeCertificateContext(pRemoteCertContext);
 	pRemoteCertContext = NULL;
 
-	// Read file from server.
-	if(https_get(Socket, &hClientCreds, &hContext,  path, out, length)) {
-		printf("Error fetching file from server\n");
+	// Request from server
+	if(https_make_request(Socket, &hClientCreds, &hContext,  req, out, &resp_length)) {
 		goto cleanup;
-	}
+	} else 
 
 	// Send a close_notify alert to the server and
 	// close down the connection.
@@ -222,7 +200,7 @@ cleanup:
 
 	unload_security_library();
 
-	printf("Done\n");
+	return resp_length;
 }
 
 
@@ -252,16 +230,16 @@ static SECURITY_STATUS create_credentials(PCredHandle phCreds) {
 	// of course). Real applications may wish to specify other parameters 
 	// as well.
 
-	ZeroMemory(&SchannelCred, sizeof(SchannelCred));
+	ZeroMemory(&schannel_cred, sizeof(schannel_cred));
 
-	SchannelCred.dwVersion  = SCHANNEL_CRED_VERSION;
+	schannel_cred.dwVersion  = SCHANNEL_CRED_VERSION;
 	if(pCertContext)
 	{
-		SchannelCred.cCreds     = 1;
-		SchannelCred.paCred     = &pCertContext;
+		schannel_cred.cCreds     = 1;
+		schannel_cred.paCred     = &pCertContext;
 	}
 
-	SchannelCred.grbitEnabledProtocols = protocol;
+	schannel_cred.grbitEnabledProtocols = protocol;
 
 	if(aid_key_exch)
 	{
@@ -270,11 +248,11 @@ static SECURITY_STATUS create_credentials(PCredHandle phCreds) {
 
 	if(cSupportedAlgs)
 	{
-		SchannelCred.cSupportedAlgs    = cSupportedAlgs;
-		SchannelCred.palgSupportedAlgs = rgbSupportedAlgs;
+		schannel_cred.cSupportedAlgs    = cSupportedAlgs;
+		schannel_cred.palgSupportedAlgs = rgbSupportedAlgs;
 	}
 
-	SchannelCred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+	schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
 
 	// The SCH_CRED_MANUAL_CRED_VALIDATION flag is specified because
 	// this sample verifies the server certificate manually. 
@@ -283,16 +261,16 @@ static SECURITY_STATUS create_credentials(PCredHandle phCreds) {
 	// certificate. Applications running on newer versions of Windows can
 	// leave off this flag, in which case the InitializeSecurityContext
 	// function will validate the server certificate automatically.
-	// SchannelCred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+	// schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
 
 	// Create an SSPI credential.
 
-	Status = sspi->AcquireCredentialsHandleW(
+	Status = sspi->AcquireCredentialsHandle(
 						NULL,                   // Name of principal    
 						UNISP_NAME_A,           // Name of package
 						SECPKG_CRED_OUTBOUND,   // Flags indicating use
 						NULL,                   // Pointer to logon ID
-						&SchannelCred,          // Package specific data
+						&schannel_cred,          // Package specific data
 						NULL,                   // Pointer to GetKey() func
 						NULL,                   // Value to pass to GetKey()
 						phCreds,                // (out) Cred Handle
@@ -328,9 +306,9 @@ static INT connect_to_server( CHAR *host, INT port_number, SOCKET *pSocket) {
 
 	if(use_proxy) {
 		sin.sin_family = AF_INET;
-		sin.sin_port = ntohs((u_short)iProxyPort);
+		sin.sin_port = ntohs((u_short)i_proxy_port);
 
-		if((hp = gethostbyname(pszProxyServer)) == NULL)
+		if((hp = gethostbyname(psz_proxy_server)) == NULL)
 		{
 			printf("Error %d returned by gethostbyname\n", WSAGetLastError());
 			return WSAGetLastError();
@@ -372,7 +350,7 @@ static INT connect_to_server( CHAR *host, INT port_number, SOCKET *pSocket) {
 		strcat(pbMessage, host);
 		strcat(pbMessage, ":");
 		_itoa(port_number, pbMessage + strlen(pbMessage), 10);
-		strcat(pbMessage, " HTTP/1.0\r\nUser-Agent: v\r\n\r\n");
+		strcat(pbMessage, " HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n");
 		cbMessage = (DWORD)strlen(pbMessage);
 
 		// Send message to proxy server
@@ -447,7 +425,7 @@ static LONG disconnect_from_server(SOCKET Socket, PCredHandle phCreds, CtxtHandl
 	OutBuffer.pBuffers  = OutBuffers;
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
-	Status = sspi->InitializeSecurityContextW(
+	Status = sspi->InitializeSecurityContext(
 		phCreds, phContext, NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
 		NULL, 0, phContext, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
@@ -522,7 +500,7 @@ perform_client_handshake(
 	OutBuffer.pBuffers = OutBuffers;
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
-	scRet = sspi->InitializeSecurityContextW(
+	scRet = sspi->InitializeSecurityContext(
 					phCreds,
 					NULL,
 					host,
@@ -613,7 +591,7 @@ static SECURITY_STATUS client_handshake_loop(
 	scRet = SEC_I_CONTINUE_NEEDED;
 
 	while(scRet == SEC_I_CONTINUE_NEEDED ||
-	      scRet == SEC_E_INCOMPLETE_MESSAGE ||
+		  scRet == SEC_E_INCOMPLETE_MESSAGE ||
 		  scRet == SEC_I_INCOMPLETE_CREDENTIALS) {
 		
 		// Read data from server.
@@ -672,7 +650,7 @@ static SECURITY_STATUS client_handshake_loop(
 
 		// Call InitializeSecurityContext.
 
-		scRet = sspi->InitializeSecurityContextW(
+		scRet = sspi->InitializeSecurityContext(
 			phCreds, phContext,	NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
 			&InBuffer, 0, NULL, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
@@ -798,8 +776,7 @@ static SECURITY_STATUS client_handshake_loop(
 }
 
 
-// static SECURITY_STATUS https_get(SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext, CHAR *path, CHAR *out) {
-static SECURITY_STATUS https_get(SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext, CHAR *path, CHAR *out, int *length) {
+static SECURITY_STATUS https_make_request(SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext, CHAR *req, CHAR *out, int *length) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
 	SecBufferDesc   Message;
@@ -838,11 +815,6 @@ static SECURITY_STATUS https_get(SOCKET Socket, PCredHandle phCreds, CtxtHandle 
 	
 	// Build an HTTP request to send to the server.
 
-	// Remove the trailing backslash from the filename, should one exist.
-	if(path &&  strlen(path) > 1 && path[strlen(path) - 1] == '/') {
-		path[strlen(path)-1] = 0;
-	}
-
 	// Build the HTTP request offset into the data buffer by "header size"
 	// bytes. This enables Schannel to perform the encryption in place,
 	// which is a significant performance win.
@@ -850,8 +822,7 @@ static SECURITY_STATUS https_get(SOCKET Socket, PCredHandle phCreds, CtxtHandle 
 
 	// Build HTTP request. Note that I'm assuming that this is less than
 	// the maximum message size. If it weren't, it would have to be broken up.
-	sprintf(pbMessage,  "GET /%s HTTP/1.0\r\nUser-Agent: v\r\nAccept:*/*\r\n\r\n", path);
-	printf("\nHTTP request: %s\n", pbMessage);
+	sprintf(pbMessage,  req);
 
 	cbMessage = (DWORD)strlen(pbMessage);
 
@@ -967,10 +938,11 @@ static SECURITY_STATUS https_get(SOCKET Socket, PCredHandle phCreds, CtxtHandle 
 			}
 		}
 
-		// Display or otherwise process the decrypted data.
-		// printf("%s", pDataBuffer->cbBuffer);
+		// Copy the decrypted data to our output buffer
 		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
-		length = (int)pDataBuffer->cbBuffer;
+		*length += (int)pDataBuffer->cbBuffer;
+		out += (int)pDataBuffer->cbBuffer;
+		
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
 			MoveMemory(pbIoBuffer, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
@@ -1144,16 +1116,16 @@ static void get_new_client_credentials(CredHandle *phCreds, CtxtHandle *phContex
 		pCertContext = pChainContext->rgpChain[0]->rgpElement[0]->pCertContext;
 
 		// Create schannel credential.
-		SchannelCred.dwVersion = SCHANNEL_CRED_VERSION;
-		SchannelCred.cCreds = 1;
-		SchannelCred.paCred = &pCertContext;
+		schannel_cred.dwVersion = SCHANNEL_CRED_VERSION;
+		schannel_cred.cCreds = 1;
+		schannel_cred.paCred = &pCertContext;
 
-		Status = sspi->AcquireCredentialsHandleW(
+		Status = sspi->AcquireCredentialsHandle(
 							NULL,                   // Name of principal
 							UNISP_NAME_A,           // Name of package
 							SECPKG_CRED_OUTBOUND,   // Flags indicating use
 							NULL,                   // Pointer to logon ID
-							&SchannelCred,          // Package specific data
+							&schannel_cred,          // Package specific data
 							NULL,                   // Pointer to GetKey() func
 							NULL,                   // Value to pass to GetKey()
 							&hCreds,                // (out) Cred Handle
@@ -1188,5 +1160,5 @@ static void get_new_client_credentials(CredHandle *phCreds, CtxtHandle *phContex
 		break;
 	}
 }
-
+	
 
