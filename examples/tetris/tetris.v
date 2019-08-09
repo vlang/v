@@ -1,14 +1,15 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.  
+// that can be found in the LICENSE file.
 
 import rand
 import time
-import gx 
+import gx
 import gl
 import gg
 import glfw
 import math
+import freetype
 
 const (
 	BlockSize = 20 // pixels
@@ -80,6 +81,8 @@ struct Block {
 
 struct Game {
 	mut:
+	// Score of the current game
+	score        int
 	// Position of the current tetro
 	pos_x        int
 	pos_y        int
@@ -89,7 +92,7 @@ struct Game {
 	// -1  0  0 -1
 	// -1  0  0 -1
 	// -1 -1 -1 -1
-	field       [][]int 
+	field       [][]int
 	// TODO: tetro Tetro
 	tetro       []Block
 	// TODO: tetros_cache []Tetro
@@ -100,6 +103,10 @@ struct Game {
 	rotation_idx int
 	// gg context for drawing
 	gg          *gg.GG
+	// ft context for font drawing
+	ft          *freetype.Context
+	// gx text config for font drawing
+	tcfg        *gx.TextCfg
 }
 
 fn main() {
@@ -111,21 +118,38 @@ fn main() {
 			use_ortho: true // This is needed for 2D drawing
 			create_window: true
 			window_title: 'V Tetris'
-			window_user_ptr: game 
+			window_user_ptr: game
 		})
-	} 
+		ft: 0
+		tcfg: 0
+	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(gx.White) 
+	gg.clear(gx.White)
+	// Try to load font
+	game.ft = freetype.new_context(gg.Cfg{
+			width: WinWidth
+			height: WinHeight
+			use_ortho: true
+			font_size: 18
+		}, 1)
+	if game.ft != 0 {
+	        // if font loaded, define default font color etc..
+		game.tcfg = &gx.TextCfg{
+			align:gx.ALIGN_LEFT
+			size:12
+			color:gx.rgb(0, 0, 170)
+		}
+	}
 	for {
-		gg.clear(gx.White) 
+		gg.clear(gx.White)
 		game.draw_scene()
-		game.gg.render() 
+		game.gg.render()
 		if game.gg.window.should_close() {
 			game.gg.window.destroy()
-			return 
+			return
 		}
 	}
 }
@@ -148,6 +172,7 @@ fn (g mut Game) init_game() {
 		first_row[j] = - 1
 		last_row[j] = - 1
 	}
+	g.score = 0
 }
 
 fn (g mut Game) parse_tetros() {
@@ -176,7 +201,7 @@ fn (g mut Game) move_tetro() {
 		x := block.x + g.pos_x
 		// Reached the bottom of the screen or another block?
 		// TODO: if g.field[y][x] != 0
-		//if g.field[y][x] != 0 { 
+		//if g.field[y][x] != 0 {
 		row := g.field[y]
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game
@@ -193,7 +218,7 @@ fn (g mut Game) move_tetro() {
 	g.pos_y++
 }
 
-fn (g mut Game) move_right(dx int) bool { 
+fn (g mut Game) move_right(dx int) bool {
 	// Reached left/right edge or another tetro?
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
@@ -202,11 +227,11 @@ fn (g mut Game) move_right(dx int) bool {
 		row := g.field[y]
 		if row[x] != 0 {
 			// Do not move
-			return false 
+			return false
 		}
 	}
 	g.pos_x += dx
-	return true 
+	return true
 }
 
 fn (g mut Game) delete_completed_lines() {
@@ -222,6 +247,7 @@ fn (g mut Game) delete_completed_line(y int) {
 			return
 		}
 	}
+	g.score += 10
 	// Move everything down by 1 position
 	for yy := y - 1; yy >= 1; yy-- {
 		for x := 1; x <= FieldWidth; x++ {
@@ -282,13 +308,20 @@ fn (g &Game) draw_field() {
 	}
 }
 
+fn (g &Game) draw_score() {
+	if g.tcfg != 0 {
+		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), g.tcfg)
+	}
+}
+
 fn (g &Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
+	g.draw_score()
 }
 
 fn parse_binary_tetro(t_ int) []Block {
-	mut t := t_ 
+	mut t := t_
 	res := [Block{} ; 4]
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
@@ -326,17 +359,17 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 		glfw.set_should_close(wnd, true)
 	case glfw.KeyUp:
 		// Rotate the tetro
-		old_rotation_idx := game.rotation_idx 
+		old_rotation_idx := game.rotation_idx
 		game.rotation_idx++
 		if game.rotation_idx == TetroSize {
 			game.rotation_idx = 0
 		}
 		game.get_tetro()
 		if !game.move_right(0) {
-			game.rotation_idx = old_rotation_idx 
+			game.rotation_idx = old_rotation_idx
 			game.get_tetro()
-		} 
-	 
+		}
+
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
@@ -348,4 +381,3 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 		game.move_tetro() // drop faster when the player presses <down>
 	}
 }
-

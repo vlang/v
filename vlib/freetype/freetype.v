@@ -160,7 +160,7 @@ pub fn new_context(cfg gg.Cfg, scale int) *Context {
 	}
 	if !os.file_exists(font_path) {
 		println('failed to load RobotoMono-Regular.ttf')
-		exit(1)
+		return 0
 	}
 	# FT_Face face;
 	# if (FT_New_Face(ft, font_path.str, 0, &face))
