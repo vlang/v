@@ -1105,7 +1105,6 @@ fn (p mut Parser) vh_genln(s string) {
 }
 
 fn (p mut Parser) statement(add_semi bool) string {
-	p.cgen.insert_before('/* return is $p.returns */')
 	p.cgen.is_tmp = false
 	tok := p.tok
 	mut q := ''
@@ -2944,7 +2943,6 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	}
 	if_returns := p.returns
 	p.returns = false
-	p.gen('/* returns = $p.returns if_st start of else */')
 	// println('IF TYp=$typ')
 	if p.tok == .key_else {
 		p.fgenln('') 
@@ -2956,7 +2954,6 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 				nested := p.if_st(is_expr, elif_depth + 1)
 				nested_returns := p.returns
 				p.returns = if_returns && nested_returns
-				p.gen('/* returns = $p.returns if_st nested 1 */')
 				return nested
 			}
 			else {
@@ -2964,7 +2961,6 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 				nested := p.if_st(is_expr, 0)
 				nested_returns := p.returns
 				p.returns = if_returns && nested_returns
-				p.gen('/* returns = $p.returns if_st nested 2 */')
 				return nested
 			}
 			// return ''
@@ -2984,7 +2980,6 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		}
 		else_returns := p.returns
 		p.returns = if_returns && else_returns
-		p.gen('/* returns = $p.returns if_st end of else */')
 		return typ
 	}
 	p.inside_if_expr = false
@@ -3325,7 +3320,6 @@ fn (p mut Parser) return_st() {
 		}
 	}
 	p.returns = true
-	p.gen('/* returns = $p.returns end of return_st */')
 }
 
 fn prepend_mod(mod, name string) string {
