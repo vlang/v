@@ -769,7 +769,7 @@ fn (p mut Parser) check(expected Token) {
 	}
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
-	if expected == .lcbr && p.scanner.text[p.scanner.pos + 1] != `}` {
+	if expected == .lcbr && p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
 		p.fgenln('')
 		p.fmt_inc() 
 	}
