@@ -198,6 +198,7 @@ fn main() {
   
 	if 'run' in args {
 		// always recompile for now, too error prone to skip recompilation otherwise
+    // for example for -repl usage, especially when piping lines to v
 		v.compile() 
 		v.run_compiled_executable_and_exit()
 	}
