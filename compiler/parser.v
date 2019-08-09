@@ -3172,6 +3172,7 @@ fn (p mut Parser) for_st() {
 	p.statements()
 	p.close_scope()
 	p.for_expr_cnt--
+	p.returns = false // TODO handle loops that are guaranteed to return
 }
 
 fn (p mut Parser) switch_statement() {

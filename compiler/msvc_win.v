@@ -344,7 +344,6 @@ pub fn (v mut V) cc_msvc() {
 	_ := os.exec(cmd) or {
 		println(err)
 		panic('msvc error')
-		return // TODO remove return
 	}
 	// println(res)
 	// println('C OUTPUT:')
@@ -388,7 +387,6 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
 		panic(err)
-		return // TODO remove return
 	}
 	println(res)
 } 
