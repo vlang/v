@@ -155,22 +155,18 @@ pub fn (req &Request) do() Response {
 
 pub fn unescape_url(s string) string {
 	panic('http.unescape_url() was replaced with urllib.query_unescape()') 
-	return '' 
 }
 
 pub fn escape_url(s string) string {
 	panic('http.escape_url() was replaced with urllib.query_escape()') 
-	return '' 
 }
 
 pub fn unescape(s string) string {
 	panic('http.unescape() was replaced with http.unescape_url()') 
-	return '' 
 }
 
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()') 
-	return '' 
 }
 
 type wsfn fn (s string, ptr voidptr)

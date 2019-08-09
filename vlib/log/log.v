@@ -39,7 +39,6 @@ fn (l Log) log_file(s string, e string) {
     filename := l.output
     f := os.open_append(l.output) or {
         panic('error reading file $filename')
-        return
     }
     timestamp := time.now().format_ss()
     f.writeln('$timestamp [$e] $s')

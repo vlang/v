@@ -272,7 +272,7 @@ pub fn (ctx &GG) draw_rect2(x, y, w, h f32, c gx.Color) {
 fn todo_remove_me(cfg Cfg, scale int) { 
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
-		return &GG{} 
+		return
 	}
 	mut width := cfg.width * scale
 	mut height := cfg.height * scale
