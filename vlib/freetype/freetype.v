@@ -152,17 +152,20 @@ pub fn new_context(cfg gg.Cfg, scale int) *Context {
 	println('ERROR::FREETYPE: Could not init FreeType Library')
 	// Load font as face
 	// face := FT_Face{}
-	mut font_path := 'RobotoMono-Regular.ttf'
+	mut font_path := cfg.font_path
+	if font_path == '' {
+		font_path = 'RobotoMono-Regular.ttf'
+	}
 	if !os.file_exists(font_path) {
 		exe_path := os.executable()
 		exe_dir := os.basedir(exe_path)
-		println('Trying to load from $exe_dir')
-		font_path = '$exe_dir/RobotoMono-Regular.ttf'
+		font_path = '$exe_dir/$font_path'
 	}
 	if !os.file_exists(font_path) {
-		println('failed to load RobotoMono-Regular.ttf')
+		println('failed to load $font_path')
 		return 0
 	}
+	println('Trying to load font from $font_path')
 	# FT_Face face;
 	# if (FT_New_Face(ft, font_path.str, 0, &face))
 	// # if (FT_New_Face(ft, "/Library/Fonts/Courier New.ttf", 0, &face))
