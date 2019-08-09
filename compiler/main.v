@@ -197,15 +197,8 @@ fn main() {
 	}
   
 	if 'run' in args {
-		vsource := v.dir
-		vtarget := final_target_out_name( v.out_name )
-    
-		// 1) A REPL source may change very fast, especially when piping, so it is best to always recompile
-		// 2) When there is no executable, it should be created by a compilation
-		// 3) Normally 'v run file.v', after file.v was changed, has to recompile as well
-		if v.pref.is_repl || !os.file_exists(vtarget) || (os.file_last_mod_unix(vsource) > os.file_last_mod_unix(vtarget)) {
-			v.compile()
-		}      
+		// always recompile for now, too error prone to skip recompilation otherwise
+		v.compile() 
 		v.run_compiled_executable_and_exit()
 	}
   
