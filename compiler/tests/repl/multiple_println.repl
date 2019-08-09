@@ -1,0 +1,7 @@
+println('Hello World')
+println('Foo Bar')
+println('dlroW olleH')
+===output===
+Hello World
+Foo Bar
+dlroW olleH
