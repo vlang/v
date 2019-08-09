@@ -13,7 +13,8 @@ import (
 	gl
 ) 
 
-#flag darwin -I/usr/local/Cellar/freetype/2.10.0/include/freetype2 
+#flag darwin -I/usr/local/include/freetype2
+#flag darwin -I/opt/local/include/freetype2
 #flag -lfreetype 
 
 //#flag -I @VROOT/thirdparty/freetype 
