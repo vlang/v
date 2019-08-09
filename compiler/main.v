@@ -197,13 +197,9 @@ fn main() {
 	}
   
 	if 'run' in args {
-		vsource := v.dir
-		vtarget := final_target_out_name( v.out_name )
-		if os.file_exists(vtarget) && ( os.file_last_mod_unix(vsource) <= os.file_last_mod_unix(vtarget) ) {
-			//println('ALREADY BUILD FROM vsource: $vsource | vtarget: $vtarget')
-			v.run_compiled_executable_and_exit()
-		}
-		v.compile()
+		// always recompile for now, too error prone to skip recompilation otherwise
+		// for example for -repl usage, especially when piping lines to v
+		v.compile() 
 		v.run_compiled_executable_and_exit()
 	}
   
@@ -646,6 +642,7 @@ fn final_target_out_name(out_name string) string {
 	$if windows {
 		cmd = out_name
 		cmd = cmd.replace('/', '\\')
+		cmd += '.exe'
 	}
 	return cmd
 }
@@ -654,7 +651,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============') 
 	}	  
-	mut cmd := final_target_out_name(v.out_name)
+	mut cmd := final_target_out_name(v.out_name).replace('.exe','')
 	if os.args.len > 3 {
 		cmd += ' ' + os.args.right(3).join(' ')
 	}
