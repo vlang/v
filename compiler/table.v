@@ -761,8 +761,9 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	}
 	switch typ {
 	case 'string': return '%.*s'
+	//case 'bool': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'byte', 'int', 'char', 'byte', 'bool', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
+	case 'byte', 'bool', 'int', 'char', 'byte', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
 	case 'f64', 'f32': return '%f'
 	case 'i64', 'u64': return '%lld'
 	case 'byte*', 'byteptr': return '%s'

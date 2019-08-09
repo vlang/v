@@ -82,6 +82,7 @@ mut:
 	is_alloc   bool // Whether current expression resulted in an allocation 
 	cur_gen_type string // "App" to replace "T" in current generic function 
 	is_vweb bool 
+	is_sql bool 
 }
 
 const (
@@ -1360,7 +1361,16 @@ fn (p mut Parser) bool_expression() string {
 			got_or = true 
 			if got_and { p.error(and_or_error) } 
 		} 
-		p.gen(' ${p.tok.str()} ')
+		if p.is_sql {
+			if p.tok == .and {
+				p.gen(' and ') 
+			} 
+			else if p.tok == .logical_or {
+				p.gen(' or ') 
+			} 
+		} else { 
+			p.gen(' ${p.tok.str()} ')
+		} 
 		p.check_space(p.tok) 
 		p.check_types(p.bterm(), typ)
 	}
@@ -1377,21 +1387,24 @@ fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
 	mut typ := p.expression()
 	p.expected_type = typ 
-	is_str := typ=='string' 
+	is_str := typ=='string'  &&   !p.is_sql 
 	tok := p.tok
 	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
-	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
+	if tok == .eq || (tok == .assign && p.is_sql) || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
 		p.fgen(' ${p.tok.str()} ')
 		if is_str {
 			p.gen(',')
 		}
+		else if p.is_sql && tok == .eq {
+			p.gen('=') 
+		} 
 		else {
 			p.gen(tok.str())
 		}
 		p.next()
 		p.check_types(p.expression(), typ)
 		typ = 'bool'
-		if is_str {
+		if is_str { //&& !p.is_sql { 
 			p.gen(')')
 			switch tok {
 			case Token.eq: p.cgen.set_placeholder(ph, 'string_eq(')
@@ -1679,7 +1692,6 @@ fn (p mut Parser) var_expr(v Var) string {
 		p.gen(')')
 		typ = T.func.typ
 	}
-	// users[0] before dot so that we can have
 	// users[0].name
 	if p.tok == .lsbr {
 		typ = p.index_expr(typ, fn_ph)
@@ -1687,6 +1699,15 @@ fn (p mut Parser) var_expr(v Var) string {
 	// a.b.c().d chain
 	// mut dc := 0
 	for p.tok ==.dot {
+		if p.peek() == .key_select {
+			p.next() 
+			return p.select_query(fn_ph) 
+		} 
+		if typ == 'pg__DB' && !p.fileis('pg.v') {
+			p.next() 
+			 p.insert_query(fn_ph) 
+return 'void' 
+		} 
 		// println('dot #$dc')
 		typ = p.dot(typ, fn_ph)
 		p.log('typ after dot=$typ')
@@ -1740,6 +1761,9 @@ fn (p &Parser) fileis(s string) bool {
 // user.name => `str_typ` is `User`
 // user.company.name => `str_typ` is `Company`
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
+	//if p.fileis('orm_test') { 
+		//println('ORM dot $str_typ') 
+	//} 
 	p.check(.dot)
 	typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
@@ -1949,7 +1973,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	// TODO move this from index_expr() 
 	// TODO if p.tok in ...
 	// if p.tok in [.assign, .plus_assign, .minus_assign]
-	if p.tok == .assign || p.tok == .plus_assign || p.tok == .minus_assign ||
+	if (p.tok == .assign && !p.is_sql) || p.tok == .plus_assign || p.tok == .minus_assign ||
 	p.tok == .mult_assign || p.tok == .div_assign || p.tok == .xor_assign || p.tok == .mod_assign ||
 	p.tok == .or_assign || p.tok == .and_assign || p.tok == .righ_shift_assign ||
 	p.tok == .left_shift_assign {
@@ -2285,6 +2309,9 @@ fn (p mut Parser) factor() string {
 		if p.lit == 'json' && p.peek() == .dot {
 			return p.js_decode()
 		}
+		//if p.fileis('orm_test') { 
+			//println('ORM name: $p.lit') 
+		//} 
 		typ = p.name_expr()
 		return typ
 	case Token.key_default: 
@@ -2414,6 +2441,9 @@ fn (p mut Parser) string_expr() {
 		if p.calling_c || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
 		}
+		else if p.is_sql {
+			p.gen('\'$str\'') 
+		} 
 		else {
 			p.gen('tos2((byte*)"$f")') 
 		}
@@ -2457,6 +2487,9 @@ fn (p mut Parser) string_expr() {
 		if typ == 'ustring' {
 			args += '.len, ${val}.s.str'
 		}
+		if typ == 'bool' { 
+			//args += '.len, ${val}.str'
+		} 
 		// Custom format? ${t.hour:02d}
 		custom := p.tok == .colon
 		if custom {
@@ -2910,9 +2943,9 @@ fn os_name_to_ifdef(name string) string {
 
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {
-		if p.fileis('if_expr') {
-			println('IF EXPR')
-		}
+		//if p.fileis('if_expr') {
+			//println('IF EXPR')
+		//}
 		p.inside_if_expr = true
 		p.gen('(')
 	}
@@ -3207,7 +3240,7 @@ fn (p mut Parser) switch_statement() {
 			if got_comma {
 				p.gen(') ||  ')
 			}
-			if typ == 'string' {
+			if typ == 'string' { 
 				p.gen('string_eq($expr, ')
 			}
 			else {

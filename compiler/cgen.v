@@ -143,26 +143,6 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 	// g.genln('')
 }
 
-fn (g mut CGen) add_placeholder2() int {
-	if g.is_tmp {
-		println('tmp in addp2')
-		exit(1)
-	}
-	g.lines << ''
-	return g.lines.len - 1
-}
-
-fn (g mut CGen) set_placeholder2(pos int, val string) {
-	if g.nogen || g.pass != .main {
-		return
-	}
-	if g.is_tmp {
-		println('tmp in setp2')
-		exit(1)
-	}
-	g.lines[pos] = val
-}
-
 fn (g mut CGen) insert_before(val string) {
 	prev := g.lines[g.lines.len - 1] 
 	g.lines[g.lines.len - 1] = '$prev \n $val \n' 
@@ -240,7 +220,6 @@ fn (p mut Parser) gen_type_alias(s string) {
 }
 
 fn (g mut CGen) add_to_main(s string) {
-	println('add to main')
 	g.fn_main = g.fn_main + s
 }
 

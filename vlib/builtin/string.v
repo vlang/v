@@ -533,17 +533,16 @@ pub fn (ar []int) contains(val int) bool {
 	return false
 }
 
-/*
+/* 
 pub fn (a []string) to_c() voidptr {
-	char ** res = malloc(sizeof(char*) * a.len);
+	mut res := malloc(sizeof(byteptr) * a.len) 
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		# res[i] = val.str;
+		res[i] = val.str 
 	}
-	return res;
-	return 0
+	return res 
 }
-*/
+*/ 
 
 fn is_space(c byte) bool {
 	return C.isspace(c)
@@ -557,7 +556,6 @@ pub fn (s string) trim_space() string {
 	if s == '' {
 		return ''
 	}
-	// println('TRIM SPACE "$s"')
 	mut i := 0
 	for i < s.len && is_space(s[i]) {
 		i++
