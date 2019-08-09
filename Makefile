@@ -6,10 +6,10 @@ VC ?= 0.1.17
 all: v
 	$(info V has been successfully built)
 
-v: v.c.out
+v: v.c.out compiler/*.v vlib/**/*.v
 	./v.c.out -o v compiler
 
-v-release: v.c
+v-release:
 	./v -cflags '${CFLAGS}' -o v compiler
 	strip v
 
