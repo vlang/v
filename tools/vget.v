@@ -23,37 +23,43 @@ fn main() {
 		println('usage: vget module [module] [module] [...]')
 		return
 	} 
-	home := os.home_dir() 
-        if !os.dir_exists(home + '/.vmodules') {
-	println('Creating vmodules directory...') 
-	os.chdir(home) 
-	os.mkdir('.vmodules') 
-	println('Done.') 
-	} 
-	_ := os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url ' + mod.name.replace('.', '/')) or {
-		panic(err)
-	}
 
 	home := os.home_dir()
-	if !os.dir_exists(home + '/.vmodules') {
-		println('Creating $home/.vmodules/ ...')
-		os.chdir(home)
-		os.mkdir('.vmodules')
-		println('Done.')
+	home_vmodules := '${home}.vmodules'
+	if !os.dir_exists( home_vmodules ) {
+		println('Creating $home_vmodules/ ...')
+		os.mkdir(home_vmodules)
 	}
+	os.chdir(home_vmodules)
 
+	mut errors := 0
 	names := os.args.slice(1, os.args.len)
 	for name in names {
 		s := http.get_text(url + '/jsmod/$name')
 		mod := json.decode(Mod, s) or {
+			errors++
 			println('Error. Make sure you are online.')
-			return
+			continue
+		}
+		
+		if( '' == mod.url || '' == mod.name ){
+			errors++
+			// a possible 404 error, which means a missing module?
+			println('Skipping module "$name", since it does not exist.')
+			continue
 		}
 
-		println('Installing module $name...')
-		_ := os.exec('git -C $home/.vmodules clone --depth=1 $mod.url ' + mod.name.replace('.', '/')) or {
-			panic(err)
+		final_module_path := '$home_vmodules/' + mod.name.replace('.', '/')
+
+		println('Installing module "$name" from $mod.url to $final_module_path ...')
+		_ := os.exec('git clone --depth=1 $mod.url $final_module_path') or {
+			errors++
+			println('Could not install module "$name" to "$final_module_path" .')
+			println('Error details: $err')
+			continue
 		}
-		println(s)
+	}
+	if errors > 0 {
+		exit(1)
 	}
 }
