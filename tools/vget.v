@@ -23,24 +23,14 @@ fn main() {
 		println('usage: vget module [module] [module] [...]')
 		return
 	} 
-	home := os.home_dir() 
-        if !os.dir_exists(home + '/.vmodules') {
-	println('Creating vmodules directory...') 
-	os.chdir(home) 
-	os.mkdir('.vmodules') 
-	println('Done.') 
-	} 
-	_ := os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url ' + mod.name.replace('.', '/')) or {
-		panic(err)
-	}
 
-	home := os.home_dir()
+	home := os.home_dir() 
 	if !os.dir_exists(home + '/.vmodules') {
-		println('Creating $home/.vmodules/ ...')
-		os.chdir(home)
-		os.mkdir('.vmodules')
-		println('Done.')
-	}
+		println('Creating vmodules directory...') 
+		os.chdir(home) 
+		os.mkdir('.vmodules') 
+		println('Done.') 
+	} 
 
 	names := os.args.slice(1, os.args.len)
 	for name in names {
@@ -49,8 +39,8 @@ fn main() {
 			println('Error. Make sure you are online.')
 			return
 		}
-
-		println('Installing module $name...')
+		
+		println('Installing module ${name}...')
 		_ := os.exec('git -C $home/.vmodules clone --depth=1 $mod.url ' + mod.name.replace('.', '/')) or {
 			panic(err)
 		}
