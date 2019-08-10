@@ -22,6 +22,16 @@ fn main() {
 	if os.args.len <= 1 {
 		println('usage: vget module [module] [module] [...]')
 		return
+	} 
+	home := os.home_dir() 
+        if !os.dir_exists(home + '/.vmodules') {
+	println('Creating vmodules directory...') 
+	os.chdir(home) 
+	os.mkdir('.vmodules') 
+	println('Done.') 
+	} 
+	_ := os.exec('git -C "$home/.vmodules" clone --depth=1 $mod.url ' + mod.name.replace('.', '/')) or {
+		panic(err)
 	}
 
 	home := os.home_dir()
