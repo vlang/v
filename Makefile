@@ -17,7 +17,7 @@ v.c.out: v.${VC}.c
 	${CC} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
 
 v.${VC}.c:
-	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
+	#curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
 	curl -o v.${VC}.c -LsSf https://raw.githubusercontent.com/vlang/vc/master/v.c
 
 test: v
