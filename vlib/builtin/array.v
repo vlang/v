@@ -77,7 +77,6 @@ pub fn (a mut array) sort_with_compare(compare voidptr) {
 pub fn (a mut array) insert(i int, val voidptr) {
 	if i >= a.len {
 		panic('array.insert: index larger than length')
-		return
 	}
 	a._push(val)
 	size := a.element_size

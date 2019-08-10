@@ -17,13 +17,11 @@ pub fn compile_template(path string) string {
 	//lines := os.read_lines(path)
 	mut html := os.read_file(path) or {
 		panic('html failed')
-		return ''
 	} 
 	mut	header := ''
 	if os.file_exists('header.html') { 
 		h := os.read_file('header.html') or {
 			panic('html failed')
-			return ''
 		} 
 		header = h.replace('\'', '"') 
 	} 

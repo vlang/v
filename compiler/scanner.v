@@ -33,7 +33,6 @@ fn new_scanner(file_path string) *Scanner {
 
 	mut raw_text := os.read_file(file_path) or {
 		panic('scanner: failed to open "$file_path"')
-		return &Scanner{}
 	}
 
 	// BOM check

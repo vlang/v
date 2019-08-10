@@ -139,14 +139,12 @@ fn main() {
 			vexec := os.args[0] 
 			_ := os.exec('$vexec vget.v') or {
 				panic(err)
-				return // TODO remove return
 			}
 			//println('Done.') 
 		}
 		println('Installing module ${mod}...') 
 		_ := os.exec('$vget $mod') or {
 			panic(err)
-			return // TODO remove return
 		}
 		return 
 	} 
@@ -891,7 +889,6 @@ mut args := ''
 		}
 		panic('C error. This should never happen. ' +
 			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
-		return // TODO remove return
 	}
 	diff := time.ticks() - ticks 
 	// Print the C command
@@ -914,7 +911,6 @@ mut args := ''
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
 			panic(err)
-			return // TODO remove return
 		}
 		println(ress)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
@@ -1226,7 +1222,7 @@ fn new_v(args[]string) *V {
  
 	}  else {
 		println('vlib not found. It should be next to the V executable. ')  
-		println('Go to https://vlang.io to install V.') 
+		println('Go to https://vlang.io to install V.')
 		exit(1) 
 	} 
 	mut out_name_c := out_name.all_after('/') + '.c'
@@ -1327,7 +1323,6 @@ fn run_repl() []string {
 			os.write_file(file, source_code)
 			s := os.exec('$vexe run $file -repl') or {
 				panic(err)
-				break // TODO remove break
 			}
 			vals := s.split('\n')
 			for i:=0; i < vals.len; i++ {
@@ -1345,7 +1340,6 @@ fn run_repl() []string {
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('$vexe run $temp_file -repl') or {
 				panic(err)
-				break // TODO remove break
 			}
 			lines << line
 			vals := s.split('\n')
@@ -1411,20 +1405,17 @@ fn update_v() {
 	vroot := os.dir(os.executable()) 
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
 		panic(err)
-		return // TODO remove return
 	}
 	println(s) 
 	$if windows { 
 		os.mv('$vroot/v.exe', '$vroot/v_old.exe') 
 		s2 := os.exec('$vroot/make.bat') or {
 			panic(err)
-			return // TODO remove return
 		}
 		println(s2) 
 	} $else { 
 		s2 := os.exec('make -C "$vroot"') or {
 			panic(err)
-			return // TODO remove return
 		}
 		println(s2) 
 	} 

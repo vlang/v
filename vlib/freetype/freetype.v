@@ -84,7 +84,8 @@ struct Cfg {
 fn ft_load_char(_face Face, code i64) Character {
 	// #FT_Face face = *(FT_Face*)(_face); FT_ULong code = *(FT_ULong*)(code);
 	# FT_Face face = *((FT_Face*)_face.cobj);
-	# if (FT_Load_Char(face, code, FT_LOAD_RENDER))
+	# int condition = FT_Load_Char(face, code, FT_LOAD_RENDER);
+	if (C.condition != 0)
 	{
 		println('freetype: Failed to load Glyph')
 		exit(1)
@@ -170,7 +171,8 @@ pub fn new_context(cfg gg.Cfg) *Context {
 	}
 	println('Trying to load font from $font_path')
 	# FT_Face face;
-	# if (FT_New_Face(ft, font_path.str, 0, &face))
+	# int condition = FT_New_Face(ft, font_path.str, 0, &face);
+	if (C.condition != 0)
 	// # if (FT_New_Face(ft, "/Library/Fonts/Courier New.ttf", 0, &face))
 	// # if (FT_New_Face(ft, "/System/Library/Fonts/Apple Color Emoji.ttc", 0, &face))
 	{

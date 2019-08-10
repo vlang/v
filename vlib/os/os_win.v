@@ -40,6 +40,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
             return error('Cannot get file name from handle.')
         }
     }
+    panic('this should be unreachable') // TODO remove unreachable after loop
 }
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-formatmessagea#parameters

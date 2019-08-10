@@ -85,13 +85,12 @@ $html
 
 pub fn run<T>(port int) { 
 	println('Running vweb app on http://localhost:$port ...') 
-	l := net.listen(port) or { panic('failed to listen') return } 
+	l := net.listen(port) or { panic('failed to listen') } 
 	mut app := T{} 
 	app.init() 
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
-			return 
 		} 
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line() 
