@@ -29,8 +29,8 @@ fn C.PQerrorMessage(voidptr) byteptr
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
 
-pub fn connect(dbname, user string) DB {
-	conninfo := 'host=localhost user=$user dbname=$dbname'
+pub fn connect(host string, port int, dbname, user string) DB {
+	conninfo := 'host=$host port=$port user=$user dbname=$dbname'
 	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	if status != CONNECTION_OK { 

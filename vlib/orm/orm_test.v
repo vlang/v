@@ -9,7 +9,7 @@ struct Mod {
 
 fn test_orm() {
 /* 
-	db := pg.connect('vpm', 'alex')
+	db := pg.connect('localhost', 5432, 'vpm', 'alex')
 	nr_modules := select count from db.modules 
 	mod := select from db.modules where id = 1 limit 1 
 	println(mod.name) 
