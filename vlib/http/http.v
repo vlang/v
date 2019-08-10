@@ -163,7 +163,7 @@ fn build_request_headers(user_agent, method, host_name, path string) string {
 	ua := if user_agent == '' { 'v' } else { user_agent }
 	return '$method $path HTTP/1.1\r\n' + 
 		   'Host: $host_name\r\n' + 
-	       'User-Agent: $ua\r\n' +
+		   'User-Agent: $ua\r\n' +
 		   'Connection: close\r\n\r\n'
 }
 
