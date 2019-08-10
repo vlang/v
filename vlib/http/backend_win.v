@@ -22,7 +22,7 @@ fn init_module() {}
 fn ssl_do(method, host_name, path string) Response { 
 	C.vschannel_init()
 	// TODO: joe-c
-	// dynamically increase in vschannle if needed
+	// dynamically increase in vschannel if needed
 	mut buff := malloc(80000)
 	
 	mut p := if path == '' { '/' } else { path }
