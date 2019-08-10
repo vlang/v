@@ -7,6 +7,10 @@ import (
 	http 
 ) 
 
+const (
+	methods_with_form = ['POST', 'PUT', 'PATCH']
+)
+
 struct Context {
 	static_files map[string]string
 	static_mime_types map[string]string
@@ -142,7 +146,7 @@ pub fn run<T>(port int) {
 			static_mime_types: map[string]string{}
 		} 
 		//} 
-		if req.method == 'POST' {
+		if req.method in methods_with_form {
 			app.vweb.parse_form(s) 
 		} 
 		if vals.len < 2 {
@@ -171,7 +175,7 @@ Content-Type: text/plain
 
 
 fn (ctx mut Context) parse_form(s string) { 
-	if ctx.req.method != 'POST' {
+	if !(ctx.req.method in methods_with_form) {
 		return 
 	} 
 	pos := s.index('\r\n\r\n')
