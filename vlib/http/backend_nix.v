@@ -61,7 +61,6 @@ fn ssl_do(method, host_name, path string) Response {
 	if res != 1 {
 	} 
 	res = C.SSL_set_tlsext_host_name(ssl, host_name.str) 
-	out := C.BIO_new_fp(stdout, C.BIO_NOCLOSE) 
 	res = C.BIO_do_connect(web) 
 	res = C.BIO_do_handshake(web) 
 	cert := C.SSL_get_peer_certificate(ssl) 
@@ -69,7 +68,6 @@ fn ssl_do(method, host_name, path string) Response {
 	///////
 	s := build_request_headers('', method, host_name, path)
 	C.BIO_puts(web, s.str) 
-	C.BIO_puts(out, '\n') 
 	mut sb := strings.new_builder(100) 
 	for {
 		buff := [1536]byte 
@@ -80,9 +78,6 @@ fn ssl_do(method, host_name, path string) Response {
 		else {
 			break 
 		} 
-	} 
-	if !isnil(out) { 
-		C.BIO_free(out) 
 	} 
 	if !isnil(web) { 
 		C.BIO_free_all(web)
