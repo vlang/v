@@ -45,9 +45,9 @@ debug: clean v thirdparty
 release: CFLAGS += -pie
 release: clean v-release thirdparty-release
 
-install: uninstall
+install: uninstall all
 	mkdir -p ${PREFIX}/lib/vlang ${PREFIX}/bin
-	cp -r v vlib thirdparty ${PREFIX}/lib/vlang
+	cp -r {v,vlib,thirdparty} ${PREFIX}/lib/vlang  
 	ln -sf ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
 
 uninstall:
