@@ -7,13 +7,17 @@ import (
 	http 
 ) 
 
+const (
+	methods_with_form = ['POST', 'PUT', 'PATCH']
+)
+
 struct Context {
 	static_files map[string]string
 	static_mime_types map[string]string
 pub: 
 	req http.Request 
 	conn net.Socket 
-	post_form map[string]string 
+	form map[string]string 
 	// TODO Response 
 	headers []string  // response headers 
 } 
@@ -136,12 +140,12 @@ pub fn run<T>(port int) {
 		app.vweb = Context{
 			req: req 
 			conn: conn 
-			post_form: map[string]string{} 
+			form: map[string]string{} 
 			static_files: map[string]string{} 
 			static_mime_types: map[string]string{}
 		} 
 		//} 
-		if req.method == 'POST' {
+		if req.method in methods_with_form {
 			app.vweb.parse_form(s) 
 		} 
 		if vals.len < 2 {
@@ -170,7 +174,7 @@ Content-Type: text/plain
 
 
 fn (ctx mut Context) parse_form(s string) { 
-	if ctx.req.method != 'POST' {
+	if !(ctx.req.method in methods_with_form) {
 		return 
 	} 
 	pos := s.index('\r\n\r\n')
@@ -185,7 +189,7 @@ fn (ctx mut Context) parse_form(s string) {
 			key := keyval[0]
 			val := http.unescape_url(keyval[1]) 
 			println('http form "$key" => "$val"') 
-			ctx.post_form[key] = val 
+			ctx.form[key] = val 
 		}
 	}
 } 
