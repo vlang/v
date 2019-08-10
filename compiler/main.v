@@ -140,14 +140,11 @@ fn main() {
 			vexec := os.args[0] 
 			_ := os.exec('$vexec vget.v') or {
 				panic(err)
-				return // TODO remove return
 			}
-			//println('Done.') 
 		}
 
 		_ := os.exec('$vget ' + names.join(' ')) or {
 				panic(err)
-				return // TODO remove return
 		}
 		return
 	} 
