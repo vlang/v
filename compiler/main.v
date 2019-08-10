@@ -133,16 +133,16 @@ fn main() {
 		} 
 		vroot := os.dir(os.executable()) 
 		vget := '$vroot/tools/vget' 
-		if !os.file_exists(vget) {
-			println('Building vget...') 
+		if true {
+			//println('Building vget...') 
 			os.chdir(vroot + '/tools') 
 			vexec := os.args[0] 
 			_ := os.exec('$vexec vget.v') or {
 				panic(err)
 				return // TODO remove return
 			}
-			println('Done.') 
-		} 
+			//println('Done.') 
+		}
 		println('Installing module ${mod}...') 
 		_ := os.exec('$vget $mod') or {
 			panic(err)
