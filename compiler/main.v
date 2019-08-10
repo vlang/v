@@ -126,11 +126,12 @@ fn main() {
 		return 
 	} 
 	if 'install' in args {
-		mod := args.last() 
-		if args.len != 3 || mod.len < 2 {
-			println('usage: v install [module]')	 
+		if args.len <= 3 {
+			println('usage: v install [module] [module] [...]')
 			return 
-		} 
+		}
+
+		names := args.slice(2, args.len)
 		vroot := os.dir(os.executable()) 
 		vget := '$vroot/tools/vget' 
 		if true {
@@ -140,13 +141,12 @@ fn main() {
 			_ := os.exec('$vexec vget.v') or {
 				panic(err)
 			}
-			//println('Done.') 
 		}
-		println('Installing module ${mod}...') 
-		_ := os.exec('$vget $mod') or {
-			panic(err)
+
+		_ := os.exec('$vget ' + names.join(' ')) or {
+				panic(err)
 		}
-		return 
+		return
 	} 
 	// TODO quit if the compiler is too old 
 	// u := os.file_last_mod_unix('v')
