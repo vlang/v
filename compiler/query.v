@@ -1,3 +1,7 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module main 
 
 import strings 
@@ -29,7 +33,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	} 
 	for field in typ.fields {
 		//println('registering sql field var $field.name') 
-		p.cur_fn.register_var({ field | is_used:true}) 
+		p.cur_fn.register_var({ field | is_used:true })  
 	} 
 	q += table_name 
 	// `where` statement 

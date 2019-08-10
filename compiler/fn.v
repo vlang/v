@@ -794,8 +794,15 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// If `arg` is mutable, the caller needs to provide `mut`: 
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
-			if p.tok != .key_mut {
-				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name(...mut a...)`')
+			if p.tok != .key_mut && p.tok == .name {
+				mut dots_example :=  'mut $p.lit' 
+				if i > 0 {
+					dots_example = '.., ' + dots_example 
+				} 
+				if i < f.args.len - 1 {
+					dots_example = dots_example + ',..' 
+				} 
+				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name($dots_example)`')	
 			}
 			if p.peek() != .name {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
@@ -831,6 +838,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			}
 			// Make sure this type has a `str()` method
 			if !T.has_method('str') {
+				// Arrays have automatic `str()` methods 
+				if T.name.starts_with('array_') {
+					p.gen_array_str(mut T) 
+					p.cgen.set_placeholder(ph, '${typ}_str(')
+					p.gen(')')
+					continue 
+				} 
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				if T.fields.len > 0 {
 					mut index := p.cgen.cur_line.len - 1

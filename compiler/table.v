@@ -60,6 +60,7 @@ mut:
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
 	is_placeholder bool
+	gen_str	       bool  // needs `.str()` method generation 
 }
 
 // For debugging types
@@ -434,7 +435,7 @@ fn (t mut Type) add_gen_type(type_name string) {
 }
 */ 
 
-fn (p &Parser) find_type(name string) *Type {
+fn (p &Parser) find_type(name string) &Type {
 	typ := p.table.find_type(name)
 	if typ.name.len == 0 {
 		return p.table.find_type(p.prepend_mod(name))

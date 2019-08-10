@@ -793,7 +793,7 @@ fn (p mut Parser) error(s string) {
 	p.cgen.save()
 	// V git pull hint
 	cur_path := os.getwd()
-	if !p.pref.is_repl && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
+	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.') 
 		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
@@ -1102,7 +1102,7 @@ fn (p mut Parser) vh_genln(s string) {
 }
 
 fn (p mut Parser) statement(add_semi bool) string {
-	if(p.returns) {
+	if p.returns { //&& !p.is_vweb {
 		p.error('unreachable code')
 	}
 	p.cgen.is_tmp = false
@@ -1780,7 +1780,12 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}') 
 	//}
 	has_field := p.table.type_has_field(typ, field_name)
-	has_method := p.table.type_has_method(typ, field_name)
+	mut has_method := p.table.type_has_method(typ, field_name)
+	// generate `.str()` 
+	if !has_method && field_name == 'str' && typ.name.starts_with('array_') { 
+		p.gen_array_str(mut typ) 
+		has_method = true 
+	} 
 	if !typ.is_c && !has_field && !has_method && !p.first_pass() {
 		if typ.name.starts_with('Option_') {
 			opt_type := typ.name.right(7) 

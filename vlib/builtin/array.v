@@ -4,6 +4,8 @@
 
 module builtin
 
+import strings 
+
 struct array {
 pub:
 	// Using a void pointer allows to implement arrays without generics and without generating
@@ -206,31 +208,6 @@ pub fn (a array) reverse() array {
 	return arr
 }
 
-pub fn (a []int) str() string {
-	mut res := '['
-	for i := 0; i < a.len; i++ {
-		val := a[i]
-		res += '$val'
-		if i < a.len - 1 {
-			res += ', '
-		}
-	}
-	res += ']'
-	return res
-}
-
-pub fn (a []u64) str() string {
-	mut res := '['
-	for i := 0; i < a.len; i++ {
-		val := a[i]
-		res += '$val'
-		if i < a.len - 1 {
-			res += ', '
-		}
-	}
-	res += ']'
-	return res
-}
 //pub fn (a []int) free() {
 pub fn (a array) free() {
 	//if a.is_slice {
@@ -239,19 +216,19 @@ pub fn (a array) free() {
 	C.free(a.data)
 }
 
-// TODO generic
 // "[ 'a', 'b', 'c' ]"
 pub fn (a []string) str() string {
-	mut res := '['
+	mut sb := strings.new_builder(a.len * 3) 
+	sb.write('[') 
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		res += '"$val"'
+		sb.write('"$val"') 
 		if i < a.len - 1 {
-			res += ', '
+			sb.write(', ') 
 		}
 	}
-	res += ']'
-	return res
+	sb.write(']') 
+	return sb.str() 
 }
 
 pub fn (b []byte) hex() string {

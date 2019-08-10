@@ -1,14 +1,14 @@
-fn foo(a mut []int) {
+fn foo(b int, a mut []int) {
 	a[0] = 7 
 	a << 4 
 } 
 
 // TODO 
 fn test_mut() {
-	mut a := [1,2,3] 
-	foo(mut a) 
+	mut numbers := [1,2,3] 
+	foo(7, numbers) 
 	//assert a.len == 4 
-	assert a[0] == 7 
+	assert numbers[0] == 7 
 	//assert a[3] == 4 
 
 	n := 1 

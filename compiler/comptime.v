@@ -236,3 +236,30 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	} 
 } 
 
+fn (p mut Parser) gen_array_str(typ mut Type) {
+	typ.add_method(Fn{
+		name: 'str',
+		typ: 'string'
+		args: [Var{typ: typ.name, is_arg:true}] 
+		is_method: true 
+		receiver_typ: typ.name 
+	}) 
+	t := typ.name 
+	elm_type := t.right(6) 
+	p.cgen.fns << '
+string ${t}_str($t a) {
+	strings__Builder sb = strings__new_builder(a.len * 3); 
+	strings__Builder_write(&sb, tos2("[")) ; 
+	for (int i = 0; i < a.len; i++) {
+		strings__Builder_write(&sb, ${elm_type}_str( (($elm_type *) a.data)[i])); 
+
+	if (i < a.len - 1) {
+		strings__Builder_write(&sb, tos2(", ")) ; 
+		 
+	} 
+} 
+strings__Builder_write(&sb, tos2("]")) ; 
+return strings__Builder_str(sb); 
+} ' 
+} 
+
