@@ -49,11 +49,11 @@ pub fn (ctx Context) get_cookie(key string) string {
 		} 
 	} 
 	return '' 
-/* 
+	/*
 	cookie := ctx.req.headers['Cookie']
 	println('get cookie $key : "$cookie"') 
 	return cookie.find_between('$key=', ';')
-*/ 
+	*/
 } 
 
 fn (ctx mut Context) set_header(key, val string) {
@@ -79,8 +79,7 @@ pub fn run<T>(port int) {
 		} 
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
-		if(s == '')
-		{
+		if s == '' {
 			conn.write('HTTP/1.1 500 Not Found \nContent-Type: text/plain \n\n500')
 			conn.close()
 			continue
@@ -89,19 +88,19 @@ pub fn run<T>(port int) {
 		 lines := s.split_into_lines()
 		 mut headers := []string //map[string]string{}
 		 for i, line in lines {
-				 if i == 0 {
-						 continue
-				 }
-				 words := line.split(':')
-				 if words.len != 2 {
-						 continue
-				 }
+			if i == 0 {
+				continue
+			}
+			words := line.split(':')
+			if words.len != 2 {
+				continue
+			}
 			headers << line 
-/* 
-				 key := words[0]
-				 val := words[1]
-				 headers[key] = val
-*/ 
+			/*
+			key := words[0]
+			val := words[1]
+			headers[key] = val
+			*/
 		} 
 		// Parse the first line
 		// "GET / HTTP/1.1"
