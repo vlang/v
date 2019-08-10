@@ -18,6 +18,7 @@ v.c.out: v.${VC}.c
 
 v.${VC}.c:
 	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
+	curl -o v.${VC}.c -LsSf https://raw.githubusercontent.com/vlang/vc/master/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
