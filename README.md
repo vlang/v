@@ -140,20 +140,23 @@ In order to build Tetris and anything else using the graphics module, you will n
 v install glfw
 ```
 
-If you plan to use the http package, you also need to install libcurl.
+If you plan to use the http package, you also need to install openssl on non-Windows systems.
 
 ```
 macOS:
-brew install glfw freetype curl
+brew install glfw freetype openssl
 
-Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
+Debian/Ubuntu:
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev
 
-Arch:
-sudo pacman -S glfw-x11 curl freetype2
+Arch/Manjaro:
+sudo pacman -S glfw-x11 freetype2
+
+Fedora:
+sudo dnf install glfw glfw-devel freetype-devel
 ```
 
-glfw and libcurl dependencies will be removed soon.
+glfw dependency will be removed soon.
 
 ## Code structure
 

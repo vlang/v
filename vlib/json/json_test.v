@@ -9,7 +9,6 @@ fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3]}'
 	u := json.decode(User, s) or {
 		exit(1) 
-		return
 	}
 	assert u.age == 10
 	assert u.nums.len == 3

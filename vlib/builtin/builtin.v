@@ -18,7 +18,9 @@ fn on_panic(f fn (int) int) {
 }
 
 pub fn print_backtrace() {
-	return
+	if true {
+		return // TODO
+	}
 	$if mac {
 		buffer := [100]voidptr
 		nr_ptrs := C.backtrace(buffer, 100)

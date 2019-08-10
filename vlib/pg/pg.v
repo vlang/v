@@ -30,7 +30,8 @@ fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
 
 pub fn connect(dbname, user string) DB {
-	conninfo := 'host=localhost user=$user dbname=$dbname'
+	//conninfo := 'host=localhost user=$user dbname=$dbname'
+	conninfo := 'host=127.0.0.1 user=$user dbname=$dbname'
 	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	if status != CONNECTION_OK { 
@@ -99,6 +100,21 @@ pub fn (db DB) exec(query string) []pg.Row {
 	return res_to_rows(res)
 }
 
+pub fn (db DB) exec_one(query string) pg.Row {
+	res := C.PQexec(db.conn, query.str)
+	e := string(C.PQerrorMessage(db.conn))
+	if e != '' {
+		println('pg exec error:')
+		println(e)
+		return Row{} 
+	}
+	rows := res_to_rows(res)
+	if rows.len == 0 {
+		return Row{} 
+	} 
+	return rows[0] 
+}
+
 
 // 
 pub fn (db DB) exec_param2(query string, param, param2 string) []pg.Row {
@@ -121,4 +137,5 @@ pub fn (db DB) exec_param(query string, param string) []pg.Row {
 	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)  
 	return res_to_rows(res)
 }
+
 

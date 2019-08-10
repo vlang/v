@@ -739,8 +739,7 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		} 
 	} 
-	panic('function $fn_name not found') // TODO panic or return []?
-	return []string // TODO remove return
+	panic('function $fn_name not found')
 } 
 
 // `foo<Bar>()`
@@ -762,8 +761,9 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	}
 	switch typ {
 	case 'string': return '%.*s'
+	//case 'bool': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'byte', 'int', 'char', 'byte', 'bool', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
+	case 'byte', 'bool', 'int', 'char', 'byte', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
 	case 'f64', 'f32': return '%f'
 	case 'i64', 'u64': return '%lld'
 	case 'byte*', 'byteptr': return '%s'
@@ -830,7 +830,6 @@ fn (fit mut FileImportTable) register_import(mod string) {
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports { 
 		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
-		return 
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')

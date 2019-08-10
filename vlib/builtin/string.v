@@ -40,7 +40,6 @@ pub fn tos(s byteptr, len int) string {
 pub fn tos_clone(s byteptr) string {
 	if isnil(s) {
 		panic('tos: nil string')
-		return string{}
 	}
 	len := strlen(s)
 	res := tos(s, len)
@@ -52,7 +51,6 @@ pub fn tos_clone(s byteptr) string {
 fn tos2(s byteptr) string {
 	if isnil(s) {
 		panic('tos2: nil string')
-		return string{}
 	}
 	len := C.strlen(s)
 	res := tos(s, len)
@@ -337,7 +335,6 @@ pub fn (s string) right(n int) string {
 pub fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
-		return ''
 	}
 	len := end - start
 
@@ -536,17 +533,16 @@ pub fn (ar []int) contains(val int) bool {
 	return false
 }
 
-/*
+/* 
 pub fn (a []string) to_c() voidptr {
-	char ** res = malloc(sizeof(char*) * a.len);
+	mut res := malloc(sizeof(byteptr) * a.len) 
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		# res[i] = val.str;
+		res[i] = val.str 
 	}
-	return res;
-	return 0
+	return res 
 }
-*/
+*/ 
 
 fn is_space(c byte) bool {
 	return C.isspace(c)
@@ -560,7 +556,6 @@ pub fn (s string) trim_space() string {
 	if s == '' {
 		return ''
 	}
-	// println('TRIM SPACE "$s"')
 	mut i := 0
 	for i < s.len && is_space(s[i]) {
 		i++

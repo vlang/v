@@ -94,8 +94,7 @@ fn (n & Node) find(key string, out voidptr, element_size int) bool{
 		}  else { 
 			return n.right.find(key, out, element_size) 
 		} 
-	} 
-	return false 
+	}
 } 
 
 // same as `find`, but doesn't return a value. Used by `exists` 
@@ -116,8 +115,7 @@ fn (n & Node) find2(key string, element_size int) bool{
 		}  else { 
 			return n.right.find2(key, element_size) 
 		} 
-	} 
-	return false 
+	}
 } 
 
 fn (m mut map) _set(key string, val voidptr) {
@@ -215,7 +213,6 @@ pub fn (m mut map) delete(key string) {
 
 pub fn (m map) exists(key string) bool {
 	panic('map.exists(key) was removed from the language. Use `key in map` instead.') 
-	return false 
 }
 
 fn (m map) _exists(key string) bool {

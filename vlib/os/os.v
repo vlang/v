@@ -870,6 +870,7 @@ pub fn fork() int {
 		pid := C.fork()
 		return pid
 	}
+	panic('os.fork not supported in windows') // TODO
 }
 
 pub fn wait() int {
@@ -877,6 +878,7 @@ pub fn wait() int {
 		pid := C.wait(0)
 		return pid
 	}
+	panic('os.wait not supported in windows') // TODO
 }
 
 pub fn file_last_mod_unix(path string) int {

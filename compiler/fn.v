@@ -124,6 +124,7 @@ fn (p mut Parser) fn_decl() {
 		p.next()
 	}
 	p.returns = false
+		p.gen('/* returns $p.returns */')
 	p.next()
 	mut f := new_fn(p.mod, is_pub)
 	// Method receiver

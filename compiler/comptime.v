@@ -39,6 +39,20 @@ fn (p mut Parser) comp_time() {
 			println(SupportedPlatforms)
 			p.error('unknown platform `$name`')
 		}
+		if_returns := p.returns
+		p.returns = false
+		p.gen('/* returns $p.returns */')
+		if p.tok == .dollar && p.peek() == .key_else {
+			p.next()
+			p.next()
+			p.check(.lcbr)
+			p.genln('#else')
+			p.statements_no_rcbr()
+			p.genln('#endif')
+			else_returns := p.returns
+			p.returns = if_returns && else_returns
+		p.gen('/* returns $p.returns */')
+		}
 	}
 	else if p.tok == .key_for {
 		p.next()
@@ -64,13 +78,6 @@ fn (p mut Parser) comp_time() {
 		println(val)
 		p.check(.rcbr)
 		// }
-	}
-	else if p.tok == .key_else {
-		p.next()
-		p.check(.lcbr)
-		p.genln('#else')
-		p.statements_no_rcbr()
-		p.genln('#endif')
 	}
 	// $vweb.html() 
 	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
