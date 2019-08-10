@@ -7,6 +7,7 @@ module http
 import strings
 import net.urllib
 
+
 #flag windows -I @VROOT/thirdparty/vschannel
 #flag -l ws2_32
 #flag -l crypt32
