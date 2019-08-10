@@ -42,7 +42,6 @@ static SECURITY_STATUS client_handshake_loop(
 static SECURITY_STATUS https_make_request(
 	SOCKET Socket, PCredHandle phCreds,
 	CtxtHandle *phContext, CHAR *req, CHAR *out, int *length);
-	// CtxtHandle *phContext, CHAR *path);
 
 static DWORD verify_server_certificate(
 	PCCERT_CONTEXT  pServerCert, PSTR host, DWORD dwCertFlags);

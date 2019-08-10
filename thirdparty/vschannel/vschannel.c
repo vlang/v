@@ -950,8 +950,8 @@ static SECURITY_STATUS https_make_request(SOCKET Socket, PCredHandle phCreds, Ct
 		}
 
 		// Copy the decrypted data to our output buffer
-		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
+		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		out += (int)pDataBuffer->cbBuffer;
 		
 		// Move any "extra" data to the input buffer.
