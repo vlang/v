@@ -457,6 +457,10 @@ fn (p mut Parser) const_decl() {
 fn (p mut Parser) type_decl() {
 	p.check(.key_type)
 	name := p.check_name()
+	// V used to have 'type Foo struct', many Go users might use this syntax
+	if p.tok == .key_struct {
+		p.error('use `struct $name {` instead of `type $name struct {`')
+	}
 	parent := p.get_type()
 	nt_pair := p.table.cgen_name_type_pair(name, parent)
 	// TODO dirty C typedef hacks for DOOM
@@ -542,10 +546,6 @@ fn (p mut Parser) struct_decl() {
 			p.gen_typedef('typedef $kind $name $name;')
 			p.gen_type('$kind $name {')
 		}
-	}
-	// V used to have 'type Foo struct', many Go users might use this syntax
-	if !is_c && p.tok == .key_struct {
-		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
 	// Register the type
 	mut typ := p.table.find_type(name)
