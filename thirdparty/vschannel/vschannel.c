@@ -24,6 +24,26 @@ HMODULE g_hsecurity = NULL;
 // SSPI
 PSecurityFunctionTable sspi;
 
+struct TlsContext tls_ctx;
+
+struct TlsContext {
+	SOCKET  Socket;
+	WSADATA WsaData;
+	CredHandle hClientCreds;
+	CtxtHandle hContext;
+	BOOL fCredsInitialized;
+	BOOL fContextInitialized;
+	PCCERT_CONTEXT pRemoteCertContext;
+};
+
+struct TlsContext new_tls_context() {
+	return (struct TlsContext) {
+		.Socket = INVALID_SOCKET,
+		.fCredsInitialized = FALSE,
+		.fContextInitialized = FALSE,
+		.pRemoteCertContext = NULL
+	};
+};
 
 BOOL load_security_library(void) {
 	INIT_SECURITY_INTERFACE pInitSecurityInterface;
@@ -58,21 +78,67 @@ void unload_security_library(void) {
 	g_hsecurity = NULL;
 }
 
+void vschannel_cleanup() {
+	// Free the server certificate context.
+	if(tls_ctx.pRemoteCertContext) {
+		CertFreeCertificateContext(tls_ctx.pRemoteCertContext);
+		tls_ctx.pRemoteCertContext = NULL;
+	}
+
+	// Free SSPI context handle.
+	if(tls_ctx.fContextInitialized) {
+		sspi->DeleteSecurityContext(&tls_ctx.hContext);
+		tls_ctx.fContextInitialized = FALSE;
+	}
+
+	// Free SSPI credentials handle.
+	if(tls_ctx.fCredsInitialized) {
+		sspi->FreeCredentialsHandle(&tls_ctx.hClientCreds);
+		tls_ctx.fCredsInitialized = FALSE;
+	}
+	
+	// Close socket.
+	if(tls_ctx.Socket != INVALID_SOCKET) {
+		closesocket(tls_ctx.Socket);
+	}
+
+	// Shutdown WinSock subsystem.
+	WSACleanup();
+	
+	// Close "MY" certificate store.
+	if(cert_store) {
+		CertCloseStore(cert_store, 0);
+	}
+
+	unload_security_library();
+}
+
+void vschannel_init() {
+	tls_ctx = new_tls_context();
+
+	if(!load_security_library()) {
+		printf("Error initializing the security library\n");
+		vschannel_cleanup();
+	}
+
+	// Initialize the WinSock subsystem.
+	if(WSAStartup(0x0101, &tls_ctx.WsaData) == SOCKET_ERROR) {
+		printf("Error %d returned by WSAStartup\n", GetLastError());
+		vschannel_cleanup();
+	}
+
+	// Create credentials.
+	if(create_credentials(&tls_ctx.hClientCreds)) {
+		printf("Error creating credentials\n");
+		vschannel_cleanup();
+	}
+	tls_ctx.fCredsInitialized = TRUE;
+}
 
 INT request(CHAR *host, CHAR *req, CHAR *out)
 {
-	WSADATA WsaData;
-	SOCKET  Socket = INVALID_SOCKET;
-
-	CredHandle hClientCreds;
-	CtxtHandle hContext;
-	BOOL fCredsInitialized = FALSE;
-	BOOL fContextInitialized = FALSE;
-
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
-
-	PCCERT_CONTEXT pRemoteCertContext = NULL;
 
 	INT i;
 	INT iOption;
@@ -80,57 +146,37 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 
 	INT resp_length = 0;
 
-	// protocol = SP_PROT_PCT1;
-	// protocol = SP_PROT_SSL2;
-	// protocol = SP_PROT_SSL3;
 	protocol = SP_PROT_TLS1_2_CLIENT;
 
-
-	if(!load_security_library()) {
-		printf("Error initializing the security library\n");
-		goto cleanup;
-	}
-
-	// Initialize the WinSock subsystem.
-	if(WSAStartup(0x0101, &WsaData) == SOCKET_ERROR) {
-		printf("Error %d returned by WSAStartup\n", GetLastError());
-		goto cleanup;
-	}
-
-	// Create credentials.
-	if(create_credentials(&hClientCreds)) {
-		printf("Error creating credentials\n");
-		goto cleanup;
-	}
-	fCredsInitialized = TRUE;
-
 	// Connect to server.
-	if(connect_to_server(host, port_number, &Socket)) {
+	if(connect_to_server(host, port_number, &tls_ctx.Socket)) {
 		printf("Error connecting to server\n");
-		goto cleanup;
+		vschannel_cleanup();
+		return resp_length;
 	}
-
 
 	// Perform handshake
-	if(perform_client_handshake(Socket, &hClientCreds, host, &hContext, &ExtraData)) {
+	if(perform_client_handshake(tls_ctx.Socket, &tls_ctx.hClientCreds, host, &tls_ctx.hContext, &ExtraData)) {
 		printf("Error performing handshake\n");
-		goto cleanup;
+		vschannel_cleanup();
+		return resp_length;
 	}
-	fContextInitialized = TRUE;
+	tls_ctx.fContextInitialized = TRUE;
 
 	// Authenticate server's credentials.
 
 	// Get server's certificate.
-	Status = sspi->QueryContextAttributes(&hContext,
+	Status = sspi->QueryContextAttributes(&tls_ctx.hContext,
 											 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-											 (PVOID)&pRemoteCertContext);
+											 (PVOID)&tls_ctx.pRemoteCertContext);
 	if(Status != SEC_E_OK) {
 		printf("Error 0x%x querying remote certificate\n", Status);
-		goto cleanup;
+		vschannel_cleanup();
+		return resp_length;
 	}
 
 	// Attempt to validate server certificate.
-	Status = verify_server_certificate(pRemoteCertContext, host,0);
+	Status = verify_server_certificate(tls_ctx.pRemoteCertContext, host,0);
 	if(Status) {
 		// The server certificate did not validate correctly. At this
 		// point, we cannot tell if we are connecting to the correct 
@@ -140,62 +186,30 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 		// It is therefore best if we abort the connection.
 
 		printf("Error 0x%x authenticating server credentials!\n", Status);
-		// goto cleanup;
+		vschannel_cleanup();
+		return resp_length;
 	}
 
 	// Free the server certificate context.
-	CertFreeCertificateContext(pRemoteCertContext);
-	pRemoteCertContext = NULL;
+	CertFreeCertificateContext(tls_ctx.pRemoteCertContext);
+	tls_ctx.pRemoteCertContext = NULL;
 
 	// Request from server
-	if(https_make_request(Socket, &hClientCreds, &hContext,  req, out, &resp_length)) {
-		goto cleanup;
-	} else 
-
+	if(https_make_request(tls_ctx.Socket, &tls_ctx.hClientCreds, &tls_ctx.hContext,  req, out, &resp_length)) {
+		vschannel_cleanup();
+		return resp_length;
+	}
+	
+	
 	// Send a close_notify alert to the server and
 	// close down the connection.
-	if(disconnect_from_server(Socket, &hClientCreds, &hContext)) {
+	if(disconnect_from_server(tls_ctx.Socket, &tls_ctx.hClientCreds, &tls_ctx.hContext)) {
 		printf("Error disconnecting from server\n");
-		goto cleanup;
+		vschannel_cleanup();
+		return resp_length;
 	}
-	fContextInitialized = FALSE;
-	Socket = INVALID_SOCKET;
-
-
-cleanup:
-
-	// Free the server certificate context.
-	if(pRemoteCertContext) {
-		CertFreeCertificateContext(pRemoteCertContext);
-		pRemoteCertContext = NULL;
-	}
-
-	// Free SSPI context handle.
-	if(fContextInitialized) {
-		sspi->DeleteSecurityContext(&hContext);
-		fContextInitialized = FALSE;
-	}
-
-	// Free SSPI credentials handle.
-	if(fCredsInitialized) {
-		sspi->FreeCredentialsHandle(&hClientCreds);
-		fCredsInitialized = FALSE;
-	}
-
-	// Close socket.
-	if(Socket != INVALID_SOCKET) {
-		closesocket(Socket);
-	}
-
-	// Shutdown WinSock subsystem.
-	WSACleanup();
-
-	// Close "MY" certificate store.
-	if(cert_store) {
-		CertCloseStore(cert_store, 0);
-	}
-
-	unload_security_library();
+	tls_ctx.fContextInitialized = FALSE;
+	tls_ctx.Socket = INVALID_SOCKET;
 
 	return resp_length;
 }
@@ -936,8 +950,8 @@ static SECURITY_STATUS https_make_request(SOCKET Socket, PCredHandle phCreds, Ct
 		}
 
 		// Copy the decrypted data to our output buffer
-		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
+		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		out += (int)pDataBuffer->cbBuffer;
 		
 		// Move any "extra" data to the input buffer.

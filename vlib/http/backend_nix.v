@@ -31,7 +31,7 @@ fn init_module() {
 	//C.OPENSSL_config(0) 
 }
 
-fn ssl_do(method, host_name, path string) string { 
+fn ssl_do(method, host_name, path string) Response { 
 	//ssl_method := C.SSLv23_method() 
 	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 
@@ -66,10 +66,8 @@ fn ssl_do(method, host_name, path string) string {
 	res = C.BIO_do_handshake(web) 
 	cert := C.SSL_get_peer_certificate(ssl) 
 	res = C.SSL_get_verify_result(ssl) 
-	/////// 
-	s := '$method $path HTTP/1.1\r\n' + 
-	     'Host: $host_name\r\n' + 
-	     'Connection: close\r\n\r\n' 
+	///////
+	s := build_request_headers('', method, host_name, path)
 	C.BIO_puts(web, s.str) 
 	C.BIO_puts(out, '\n') 
 	mut sb := strings.new_builder(100) 
@@ -91,6 +89,7 @@ fn ssl_do(method, host_name, path string) string {
 	} 
 	if !isnil(ctx) { 
 		C.SSL_CTX_free(ctx) 
-	} 
-	return sb.str() 
+	}
+
+	return parse_response(sb.str() )
 }

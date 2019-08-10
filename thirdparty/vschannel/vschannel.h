@@ -19,7 +19,13 @@
 #define SP_PROT_TLS1_2_CLIENT 0x00000800
 
 
-INT request(CHAR *host, CHAR *req, CHAR *out);
+static struct TlsContext new_tls_context();
+
+static void vschannel_init();
+
+static void vschannel_cleanup();
+
+static INT request(CHAR *host, CHAR *req, CHAR *out);
 
 static SECURITY_STATUS create_credentials(PCredHandle phCreds);
 
@@ -36,7 +42,6 @@ static SECURITY_STATUS client_handshake_loop(
 static SECURITY_STATUS https_make_request(
 	SOCKET Socket, PCredHandle phCreds,
 	CtxtHandle *phContext, CHAR *req, CHAR *out, int *length);
-	// CtxtHandle *phContext, CHAR *path);
 
 static DWORD verify_server_certificate(
 	PCCERT_CONTEXT  pServerCert, PSTR host, DWORD dwCertFlags);
