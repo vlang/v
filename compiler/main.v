@@ -1292,8 +1292,6 @@ fn new_v(args[]string) *V {
 }
 
 fn run_repl() []string {
-	println('REPL is temporarily disabled, sorry') 
-	exit(1) 
 	println('V $Version')
 	println('Use Ctrl-C or `exit` to exit')
 	file := '.vrepl.v'
