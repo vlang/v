@@ -15,30 +15,31 @@ struct TlsContext tls_ctx;
 // TODO: joe-c
 // socket / tls ctx
 struct TlsContext {
-	// Cred store
-	HCERTSTORE      cert_store;
-	SCHANNEL_CRED   schannel_cred;
-	// Loaded sec lib
-	HMODULE g_hsecurity;
 	// SSPI
 	PSecurityFunctionTable sspi;
-	SOCKET  Socket;
-	WSADATA WsaData;
-	CredHandle hClientCreds;
-	CtxtHandle hContext;
-	BOOL fCredsInitialized;
-	BOOL fContextInitialized;
-	PCCERT_CONTEXT pRemoteCertContext;
+	// Cred store
+	HCERTSTORE             cert_store;
+	SCHANNEL_CRED          schannel_cred;
+	// Loaded sec lib
+	HMODULE                g_hsecurity;
+	// Socket
+	SOCKET                 socket;
+	WSADATA                wsa_data;
+	CredHandle             h_client_creds;
+	CtxtHandle             hContext;
+	BOOL                   creds_initialized;
+	BOOL                   context_initialized;
+	PCCERT_CONTEXT         p_pemote_cert_context;
 };
 
 struct TlsContext new_tls_context() {
 	return (struct TlsContext) {
 		.cert_store = NULL,
 		.g_hsecurity = NULL,
-		.Socket = INVALID_SOCKET,
-		.fCredsInitialized = FALSE,
-		.fContextInitialized = FALSE,
-		.pRemoteCertContext = NULL
+		.socket = INVALID_SOCKET,
+		.creds_initialized = FALSE,
+		.context_initialized = FALSE,
+		.p_pemote_cert_context = NULL
 	};
 };
 
@@ -77,26 +78,26 @@ void unload_security_library(void) {
 
 void vschannel_cleanup() {
 	// Free the server certificate context.
-	if(tls_ctx.pRemoteCertContext) {
-		CertFreeCertificateContext(tls_ctx.pRemoteCertContext);
-		tls_ctx.pRemoteCertContext = NULL;
+	if(tls_ctx.p_pemote_cert_context) {
+		CertFreeCertificateContext(tls_ctx.p_pemote_cert_context);
+		tls_ctx.p_pemote_cert_context = NULL;
 	}
 
 	// Free SSPI context handle.
-	if(tls_ctx.fContextInitialized) {
+	if(tls_ctx.context_initialized) {
 		tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.hContext);
-		tls_ctx.fContextInitialized = FALSE;
+		tls_ctx.context_initialized = FALSE;
 	}
 
 	// Free SSPI credentials handle.
-	if(tls_ctx.fCredsInitialized) {
-		tls_ctx.sspi->FreeCredentialsHandle(&tls_ctx.hClientCreds);
-		tls_ctx.fCredsInitialized = FALSE;
+	if(tls_ctx.creds_initialized) {
+		tls_ctx.sspi->FreeCredentialsHandle(&tls_ctx.h_client_creds);
+		tls_ctx.creds_initialized = FALSE;
 	}
 	
 	// Close socket.
-	if(tls_ctx.Socket != INVALID_SOCKET) {
-		closesocket(tls_ctx.Socket);
+	if(tls_ctx.socket != INVALID_SOCKET) {
+		closesocket(tls_ctx.socket);
 	}
 
 	// Shutdown WinSock subsystem.
@@ -119,7 +120,7 @@ void vschannel_init() {
 	}
 
 	// Initialize the WinSock subsystem.
-	if(WSAStartup(0x0101, &tls_ctx.WsaData) == SOCKET_ERROR) {
+	if(WSAStartup(0x0101, &tls_ctx.wsa_data) == SOCKET_ERROR) {
 		printf("Error %d returned by WSAStartup\n", GetLastError());
 		vschannel_cleanup();
 	}
@@ -129,7 +130,7 @@ void vschannel_init() {
 		printf("Error creating credentials\n");
 		vschannel_cleanup();
 	}
-	tls_ctx.fCredsInitialized = TRUE;
+	tls_ctx.creds_initialized = TRUE;
 }
 
 INT request(CHAR *host, CHAR *req, CHAR *out)
@@ -158,14 +159,14 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 		vschannel_cleanup();
 		return resp_length;
 	}
-	tls_ctx.fContextInitialized = TRUE;
+	tls_ctx.context_initialized = TRUE;
 
 	// Authenticate server's credentials.
 
 	// Get server's certificate.
 	Status = tls_ctx.sspi->QueryContextAttributes(&tls_ctx.hContext,
 											 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-											 (PVOID)&tls_ctx.pRemoteCertContext);
+											 (PVOID)&tls_ctx.p_pemote_cert_context);
 	if(Status != SEC_E_OK) {
 		printf("Error 0x%x querying remote certificate\n", Status);
 		vschannel_cleanup();
@@ -173,7 +174,7 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 	}
 
 	// Attempt to validate server certificate.
-	Status = verify_server_certificate(tls_ctx.pRemoteCertContext, host,0);
+	Status = verify_server_certificate(tls_ctx.p_pemote_cert_context, host,0);
 	if(Status) {
 		// The server certificate did not validate correctly. At this
 		// point, we cannot tell if we are connecting to the correct 
@@ -188,8 +189,8 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 	}
 
 	// Free the server certificate context.
-	CertFreeCertificateContext(tls_ctx.pRemoteCertContext);
-	tls_ctx.pRemoteCertContext = NULL;
+	CertFreeCertificateContext(tls_ctx.p_pemote_cert_context);
+	tls_ctx.p_pemote_cert_context = NULL;
 
 	// Request from server
 	if(https_make_request(req, out, &resp_length)) {
@@ -205,8 +206,8 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 		vschannel_cleanup();
 		return resp_length;
 	}
-	tls_ctx.fContextInitialized = FALSE;
-	tls_ctx.Socket = INVALID_SOCKET;
+	tls_ctx.context_initialized = FALSE;
+	tls_ctx.socket = INVALID_SOCKET;
 
 	return resp_length;
 }
@@ -281,7 +282,7 @@ static SECURITY_STATUS create_credentials() {
 						&tls_ctx.schannel_cred,          // Package specific data
 						NULL,                   // Pointer to GetKey() func
 						NULL,                   // Value to pass to GetKey()
-						&tls_ctx.hClientCreds,                // (out) Cred Handle
+						&tls_ctx.h_client_creds,                // (out) Cred Handle
 						&tsExpiry);             // (out) Lifetime (optional)
 	if(Status != SEC_E_OK) {
 		printf("Error 0x%x returned by AcquireCredentialsHandle\n", Status);
@@ -378,7 +379,7 @@ static INT connect_to_server(CHAR *host, INT port_number) {
 		// should continue to receive until CR LF CR LF is received
 	}
 
-	tls_ctx.Socket = Socket;
+	tls_ctx.socket = Socket;
 
 	return SEC_E_OK;
 }
@@ -434,7 +435,7 @@ static LONG disconnect_from_server() {
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
 	Status = tls_ctx.sspi->InitializeSecurityContext(
-		&tls_ctx.hClientCreds, &tls_ctx.hContext, NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
+		&tls_ctx.h_client_creds, &tls_ctx.hContext, NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
 		NULL, 0, &tls_ctx.hContext, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
 	if(FAILED(Status))  {
@@ -448,7 +449,7 @@ static LONG disconnect_from_server() {
 	// Send the close notify message to the server.
 
 	if(pbMessage != NULL && cbMessage != 0) {
-		cbData = send(tls_ctx.Socket, pbMessage, cbMessage, 0);
+		cbData = send(tls_ctx.socket, pbMessage, cbMessage, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			Status = WSAGetLastError();
 			printf("Error %d sending close notify\n", Status);
@@ -466,7 +467,7 @@ cleanup:
 	tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.hContext);
 
 	// Close the socket.
-	closesocket(tls_ctx.Socket);
+	closesocket(tls_ctx.socket);
 
 	return Status;
 }
@@ -501,7 +502,7 @@ static SECURITY_STATUS perform_client_handshake(CHAR *host, SecBuffer *pExtraDat
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
 	scRet = tls_ctx.sspi->InitializeSecurityContext(
-					&tls_ctx.hClientCreds,
+					&tls_ctx.h_client_creds,
 					NULL,
 					host,
 					dwSSPIFlags,
@@ -523,7 +524,7 @@ static SECURITY_STATUS perform_client_handshake(CHAR *host, SecBuffer *pExtraDat
 	// Send response to server if there is one.
 	if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL)
 	{
-		cbData = send(tls_ctx.Socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
+		cbData = send(tls_ctx.socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			printf("Error %d sending data to server (1)\n", WSAGetLastError());
 			tls_ctx.sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
@@ -591,7 +592,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 		// Read data from server.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			if(fDoRead) {
-				cbData = recv(tls_ctx.Socket, 
+				cbData = recv(tls_ctx.socket, 
 							  IoBuffer + cbIoBuffer, 
 							  IO_BUFFER_SIZE - cbIoBuffer, 
 							  0);
@@ -645,7 +646,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 		// Call InitializeSecurityContext.
 
 		scRet = tls_ctx.sspi->InitializeSecurityContext(
-			&tls_ctx.hClientCreds, &tls_ctx.hContext,	NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
+			&tls_ctx.h_client_creds, &tls_ctx.hContext,	NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
 			&InBuffer, 0, NULL, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
 		// If InitializeSecurityContext was successful (or if the error was 
@@ -656,7 +657,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 		   scRet == SEC_I_CONTINUE_NEEDED ||
 		   FAILED(scRet) && (dwSSPIOutFlags & ISC_RET_EXTENDED_ERROR)) {
 			if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL) {
-				cbData = send(tls_ctx.Socket,
+				cbData = send(tls_ctx.socket,
 							  OutBuffers[0].pvBuffer,
 							  OutBuffers[0].cbBuffer,
 							  0);
@@ -848,7 +849,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 	}
 
 	// Send the encrypted data to the server.
-	cbData = send(tls_ctx.Socket, pbIoBuffer, Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer, 0);
+	cbData = send(tls_ctx.socket, pbIoBuffer, Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer, 0);
 	if(cbData == SOCKET_ERROR || cbData == 0) {
 		printf("Error %d sending data to server (3)\n",  WSAGetLastError());
 		tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.hContext);
@@ -860,7 +861,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 	while(TRUE){
 		// Read some data.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
-			cbData = recv(tls_ctx.Socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
+			cbData = recv(tls_ctx.socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
 			if(cbData == SOCKET_ERROR) {
 				printf("Error %d reading data from server\n", WSAGetLastError());
 				scRet = SEC_E_INTERNAL_ERROR;
@@ -1130,9 +1131,9 @@ static void get_new_client_credentials() {
 		}
 
 		// Destroy the old credentials.
-		tls_ctx.sspi->FreeCredentialsHandle(&tls_ctx.hClientCreds);
+		tls_ctx.sspi->FreeCredentialsHandle(&tls_ctx.h_client_creds);
 
-		tls_ctx.hClientCreds = hCreds;
+		tls_ctx.h_client_creds = hCreds;
 
 		//
 		// As you can see, this sample code maintains a single credential
