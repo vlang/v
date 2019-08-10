@@ -18,6 +18,7 @@ v.c.out: v.${VC}.c
 
 v.${VC}.c:
 	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
+	curl -o v.${VC}.c -LsSf https://raw.githubusercontent.com/vlang/vc/master/v.c
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
@@ -25,6 +26,7 @@ test: v
 	find . -name '*_test.v' -print0 | xargs -0 -n1 ./v
 	echo "Building V examples..."
 	find examples -name '*.v' -print0 | xargs -0 -n1 ./v
+	bash ./compiler/tests/repl/repl.sh
 
 clean:
 	-rm -f v.c v*.c v.c.out v vprod thirdparty/**/*.o

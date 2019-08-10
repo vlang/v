@@ -53,6 +53,7 @@ pub:
 	window_user_ptr voidptr 
 	window_title string 
 	always_on_top bool 
+	scale int 
 }
 
 struct GG {

@@ -21,6 +21,14 @@ const (
 	TimerPeriod = 250 // ms
 )
 
+const ( 
+	text_cfg = gx.TextCfg{
+		align:gx.ALIGN_LEFT
+		size:12
+		color:gx.rgb(0, 0, 170)
+	}
+) 
+
 const (
 	// Tetros' 4 possible states are encoded in binaries
 	BTetros = [
@@ -105,8 +113,7 @@ struct Game {
 	gg          *gg.GG
 	// ft context for font drawing
 	ft          *freetype.Context
-	// gx text config for font drawing
-	tcfg        *gx.TextCfg
+	font_loaded bool 
 }
 
 fn main() {
@@ -121,7 +128,6 @@ fn main() {
 			window_user_ptr: game
 		})
 		ft: 0
-		tcfg: 0
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
 	game.init_game()
@@ -134,15 +140,9 @@ fn main() {
 			height: WinHeight
 			use_ortho: true
 			font_size: 18
-		}, 1)
-	if game.ft != 0 {
-	        // if font loaded, define default font color etc..
-		game.tcfg = &gx.TextCfg{
-			align:gx.ALIGN_LEFT
-			size:12
-			color:gx.rgb(0, 0, 170)
-		}
-	}
+			scale: 2
+	}) 
+	game.font_loaded = (game.ft != 0 ) 
 	for {
 		gg.clear(gx.White)
 		game.draw_scene()
@@ -309,8 +309,8 @@ fn (g &Game) draw_field() {
 }
 
 fn (g &Game) draw_score() {
-	if g.tcfg != 0 {
-		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), g.tcfg)
+	if g.font_loaded { 
+		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg) 
 	}
 }
 
