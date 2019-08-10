@@ -47,8 +47,8 @@ release: clean v-release thirdparty-release
 
 install: uninstall
 	mkdir -p ${PREFIX}/lib/vlang ${PREFIX}/bin
-	cp -r {v,vlib,thirdparty} ${PREFIX}/lib/vlang
-	ln -s ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
+	cp -r v vlib thirdparty ${PREFIX}/lib/vlang
+	ln -sf ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
 
 uninstall:
 	rm -rf ${PREFIX}/{bin/v,lib/vlang}
