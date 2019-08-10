@@ -32,7 +32,7 @@ test: v
 	bash ./compiler/tests/repl/repl.sh
 
 clean:
-	-rm -f v.c v*.c v.c.out v vprod thirdparty/**/*.o
+	-rm -f v.c v*.c v.c.out v vprod thirdparty/**/*.o tools/vget
 	find . -name '.*.c' -print0 | xargs -0 -n1 rm -f
 
 SOURCES = $(wildcard thirdparty/**/*.c)
