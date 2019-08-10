@@ -3,13 +3,13 @@ CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
 VC ?= 0.1.17
 
-all: v
+all: v tools/vget
 	$(info V has been successfully built)
 
 v: v.c.out compiler/*.v vlib/**/*.v
 	./v.c.out -o v compiler
 
-v-release:
+v-release: v
 	./v -cflags '${CFLAGS}' -o v compiler
 	strip v
 
@@ -19,6 +19,9 @@ v.c.out: v.${VC}.c
 v.${VC}.c:
 	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
 	curl -o v.${VC}.c -LsSf https://raw.githubusercontent.com/vlang/vc/master/v.c
+
+tools/vget: v
+	./v tools/vget.v
 
 test: v
 	./v -prod -o vprod compiler # Test prod build
@@ -35,9 +38,9 @@ clean:
 SOURCES = $(wildcard thirdparty/**/*.c)
 OBJECTS := ${SOURCES:.c=.o} 
 
-thirdparty: ${OBJECTS}
+thirdparty: v ${OBJECTS}
 
-thirdparty-release: ${OBJECTS}
+thirdparty-release: v ${OBJECTS}
 	strip ${OBJECTS}
 
 debug: clean v thirdparty
@@ -47,11 +50,13 @@ release: clean v-release thirdparty-release
 
 install: uninstall all
 	mkdir -p ${PREFIX}/lib/vlang ${PREFIX}/bin
-	cp -r {v,vlib,thirdparty} ${PREFIX}/lib/vlang
+	cp -r {v,tools,vlib,thirdparty} ${PREFIX}/lib/vlang
 	ln -sf ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
+	ln -sf ${PREFIX}/lib/vlang/tools/vget ${PREFIX}/bin/vget
 
 uninstall:
-	rm -rf ${PREFIX}/{bin/v,lib/vlang}
+	rm -rf ${PREFIX}/{bin/v,bin/vget,lib/vlang}
 
-symlink:
+symlink: v tools/vget
 	ln -sf `pwd`/v ${PREFIX}/bin/v
+	ln -sf `pwd`/tools/vget ${PREFIX}/bin/vget
