@@ -34,11 +34,11 @@ struct TlsContext {
 
 struct TlsContext new_tls_context() {
 	return (struct TlsContext) {
-		.cert_store = NULL,
-		.g_hsecurity = NULL,
-		.socket = INVALID_SOCKET,
-		.creds_initialized = FALSE,
-		.context_initialized = FALSE,
+		.cert_store            = NULL,
+		.g_hsecurity           = NULL,
+		.socket                = INVALID_SOCKET,
+		.creds_initialized     = FALSE,
+		.context_initialized   = FALSE,
 		.p_pemote_cert_context = NULL
 	};
 };
