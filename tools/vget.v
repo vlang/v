@@ -40,7 +40,7 @@ fn main() {
 			return
 		}
 
-		println('Installing module $name: git -C $home/.vmodules clone --depth=1 $mod.url ' + mod.name.replace('.', '/'))
+		println('Installing module $name...')
 		_ := os.exec('git -C $home/.vmodules clone --depth=1 $mod.url ' + mod.name.replace('.', '/')) or {
 			panic(err)
 		}
