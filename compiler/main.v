@@ -131,19 +131,19 @@ fn main() {
 			return 
 		}
 		names := args.slice(2, args.len)
-		vroot := os.dir(os.executable()) 
-		vget := '$vroot/tools/vget' 
+		vroot := os.dir(os.executable())
+		vget := '$vroot/tools/vget'
 		if !os.file_exists( vget ) {
-			//println('Building vget...') 
-			os.chdir(vroot + '/tools') 
+			//println('Building vget...')
+			os.chdir(vroot + '/tools')
 			vexec := os.executable()
 			_ := os.exec('$vexec vget.v') or {
-				panic(err)      
+				panic(err)
 			}
 		}
 		_ := os.exec('$vget ' + names.join(' ')) or {
-			panic(err)    
-    }
+			panic(err)
+		}
 		return
 	} 
 	// TODO quit if the compiler is too old 
