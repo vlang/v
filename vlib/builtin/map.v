@@ -9,8 +9,6 @@ import strings
 struct map {
 	element_size int
 	root      *Node 
-	_keys []string // used by `keys()` TODO remove this from map struct, 
-	key_i int      // store in a separate var 
 pub: 
 	size int 
 }
@@ -154,27 +152,29 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 }
 */ 
 
-fn (m mut map) preorder_keys(node &Node) { 
+fn preorder_keys(node &Node, keys mut []string, key_i int) int { 
+	mut i := key_i
 	if !node.is_empty {
-	m._keys[m.key_i] = node.key 
-	m.key_i++ 
-	} 
+		mut a := *keys
+		a[i] = node.key
+		i++
+	}
 	if !isnil(node.left) { 
-		m.preorder_keys(node.left) 
+		i = preorder_keys(node.left, mut keys, i)
 	} 
 	if !isnil(node.right) { 
-		m.preorder_keys(node.right) 
-	} 
+		i = preorder_keys(node.right, mut keys, i)
+	}
+	return i
 } 
 
 pub fn (m mut map) keys() []string {
-	m._keys = [''; m.size] 
-	m.key_i = 0 
+	mut keys := [''; m.size]
 	if isnil(m.root) {
-		return m._keys
-	} 
-	m.preorder_keys(m.root) 
-	return m._keys
+		return keys
+	}
+	preorder_keys(m.root, mut keys, 0)
+	return keys
 }
 
 fn (m map) get(key string, out voidptr) bool {
