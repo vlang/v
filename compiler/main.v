@@ -137,9 +137,13 @@ fn main() {
 			//println('Building vget...') 
 			os.chdir(vroot + '/tools') 
 			vexec := os.executable()
-			os.system('$vexec vget.v')
+			_ := os.exec('$vexec vget.v') or {
+				panic(err)      
+			}
 		}
-		os.system('$vget ' + names.join(' '))
+		_ := os.exec('$vget ' + names.join(' ')) or {
+			panic(err)    
+    }
 		return
 	} 
 	// TODO quit if the compiler is too old 
