@@ -6,7 +6,7 @@ fn foo(b int, a mut []int) {
 // TODO 
 fn test_mut() {
 	mut numbers := [1,2,3] 
-	foo(7, numbers) 
+	foo(7, mut numbers) 
 	//assert a.len == 4 
 	assert numbers[0] == 7 
 	//assert a[3] == 4 
