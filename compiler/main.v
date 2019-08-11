@@ -126,19 +126,19 @@ fn main() {
 		return 
 	} 
 	if 'install' in args {
-		if args.len <= 3 {
+		if args.len < 3 {
 			println('usage: v install [module] [module] [...]')
 			return 
 		}
 
 		names := args.slice(2, args.len)
-		vroot := os.dir(os.executable()) 
-		vget := '$vroot/tools/vget' 
+		vexec := os.executable()
+		vroot := os.dir(vexec)
+		vget := '$vroot/tools/vget'
 		if true {
 			//println('Building vget...') 
-			os.chdir(vroot + '/tools') 
-			vexec := os.args[0] 
-			_ := os.exec('$vexec vget.v') or {
+			os.chdir(vroot + '/tools')
+			_ := os.exec('$vexec -o $vget vget.v') or {
 				panic(err)
 			}
 		}
