@@ -126,26 +126,20 @@ fn main() {
 		return 
 	} 
 	if 'install' in args {
-		if args.len <= 3 {
+		if args.len < 3 {
 			println('usage: v install [module] [module] [...]')
 			return 
 		}
-
 		names := args.slice(2, args.len)
 		vroot := os.dir(os.executable()) 
 		vget := '$vroot/tools/vget' 
-		if true {
+		if !os.file_exists( vget ) {
 			//println('Building vget...') 
 			os.chdir(vroot + '/tools') 
-			vexec := os.args[0] 
-			_ := os.exec('$vexec vget.v') or {
-				panic(err)
-			}
+			vexec := os.executable()
+			os.system('$vexec vget.v')
 		}
-
-		_ := os.exec('$vget ' + names.join(' ')) or {
-				panic(err)
-		}
+		os.system('$vget ' + names.join(' '))
 		return
 	} 
 	// TODO quit if the compiler is too old 

@@ -49,14 +49,14 @@ release: CFLAGS += -pie
 release: clean v-release thirdparty-release
 
 install: uninstall all
-	mkdir -p ${PREFIX}/lib/vlang ${PREFIX}/bin
-	cp -r {v,tools,vlib,thirdparty} ${PREFIX}/lib/vlang
-	ln -sf ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
-	ln -sf ${PREFIX}/lib/vlang/tools/vget ${PREFIX}/bin/vget
+	sudo mkdir -p ${PREFIX}/lib/vlang ${PREFIX}/bin
+	sudo cp -r {v,tools,vlib,thirdparty} ${PREFIX}/lib/vlang
+	sudo ln -sf ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
+	sudo ln -sf ${PREFIX}/lib/vlang/tools/vget ${PREFIX}/bin/vget
 
 uninstall:
-	rm -rf ${PREFIX}/{bin/v,bin/vget,lib/vlang}
+	sudo rm -rf ${PREFIX}/{bin/v,bin/vget,lib/vlang}
 
 symlink: v tools/vget
-	ln -sf `pwd`/v ${PREFIX}/bin/v
-	ln -sf `pwd`/tools/vget ${PREFIX}/bin/vget
+	sudo ln -sf `pwd`/v ${PREFIX}/bin/v
+	sudo ln -sf `pwd`/tools/vget ${PREFIX}/bin/vget
