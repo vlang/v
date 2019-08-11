@@ -147,14 +147,14 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('int')
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
-	t.register_type_with_parent('u8', 'int')
+	t.register_type_with_parent('u8', 'u32')
 	t.register_type_with_parent('i16', 'int')
-	t.register_type_with_parent('u16', 'int')
+	t.register_type_with_parent('u16', 'u32')
 	t.register_type_with_parent('i32', 'int')
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('i64', 'int')
-	t.register_type_with_parent('u64', 'int')
+	t.register_type_with_parent('u64', 'u32')
 	t.register_type('byteptr')
 	t.register_type('intptr')
 	t.register_type('f32')
@@ -764,9 +764,11 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	case 'string': return '%.*s'
 	//case 'bool': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'byte', 'bool', 'int', 'char', 'byte', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
+	case 'byte', 'bool', 'int', 'char', 'byte', 'i32', 'i16', 'i8': return '%d'
+	case 'u8', 'u16', 'u32': return '%u'
 	case 'f64', 'f32': return '%f'
-	case 'i64', 'u64': return '%lld'
+	case 'i64': return '%lld'
+	case 'u64': return '%llu'
 	case 'byte*', 'byteptr': return '%s'
 		// case 'array_string': return '%s'
 		// case 'array_int': return '%s'
