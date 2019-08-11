@@ -27,26 +27,22 @@ static void vschannel_cleanup();
 
 static INT request(CHAR *host, CHAR *req, CHAR *out);
 
-static SECURITY_STATUS create_credentials(PCredHandle phCreds);
+static SECURITY_STATUS https_make_request(
+	CHAR *req, CHAR *out, int *length);
 
-static INT connect_to_server(CHAR *host, INT port_number, SOCKET *pSocket);
+static INT connect_to_server(CHAR *host, INT port_number);
+
+static LONG disconnect_from_server();
 
 static SECURITY_STATUS perform_client_handshake(
-	SOCKET Socket, PCredHandle phCreds, CHAR *host,
-	CtxtHandle *phContext, SecBuffer *pExtraData);
+	CHAR *host, SecBuffer *pExtraData);
 
 static SECURITY_STATUS client_handshake_loop(
-	SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext,
 	BOOL fDoInitialRead, SecBuffer *pExtraData);
-
-static SECURITY_STATUS https_make_request(
-	SOCKET Socket, PCredHandle phCreds,
-	CtxtHandle *phContext, CHAR *req, CHAR *out, int *length);
 
 static DWORD verify_server_certificate(
 	PCCERT_CONTEXT  pServerCert, PSTR host, DWORD dwCertFlags);
 
-static LONG disconnect_from_server(
-	SOCKET Socket, PCredHandle phCreds, CtxtHandle *phContext);
+static SECURITY_STATUS create_credentials();
 
-static void get_new_client_credentials(CredHandle *phCreds, CtxtHandle *phContext);
+static void get_new_client_credentials();
