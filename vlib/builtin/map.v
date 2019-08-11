@@ -152,26 +152,25 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 }
 */ 
 
-fn preorder_keys(node &Node, key_i mut int, keys mut []string) { 
+fn preorder_keys(node &Node, keys mut []string) { 
 	if !node.is_empty {
-		keys[*key_i] = node.key
-		*key_i = *key_i + 1
+		keys << node.key
 	} 
 	if !isnil(node.left) { 
-		preorder_keys(node.left, mut key_i, mut keys)
+		preorder_keys(node.left, mut keys)
 	} 
 	if !isnil(node.right) { 
-		preorder_keys(node.right, mut key_i, mut keys)
+		preorder_keys(node.right, mut keys)
 	} 
 } 
 
 pub fn (m mut map) keys() []string {
-	mut keys := [''; m.size] 
+	mut keys := _make(0, m.size, m.element_size) 
 	mut key_i := 0 
 	if isnil(m.root) {
 		return keys
 	} 
-	preorder_keys(m.root, mut key_i, mut keys)
+	preorder_keys(m.root, mut keys)
 	return keys
 }
 
