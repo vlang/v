@@ -1102,7 +1102,7 @@ fn (p mut Parser) vh_genln(s string) {
 }
 
 fn (p mut Parser) statement(add_semi bool) string {
-	if p.returns { //&& !p.is_vweb {
+	if p.returns && !p.is_vweb {
 		p.error('unreachable code')
 	}
 	p.cgen.is_tmp = false
