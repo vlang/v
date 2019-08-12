@@ -104,11 +104,11 @@ fn (a array) _get(i int) voidptr {
 	return a.data + i * a.element_size
 }
 
-pub fn (a array) first() voidptr {
+pub fn (a []T) first<T>() T {
 	if a.len == 0 {
 		panic('array.first: empty array')
 	}
-	return a.data + 0
+	return a[0]
 }
 
 pub fn (a array) last() voidptr {
