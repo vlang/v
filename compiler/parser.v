@@ -1703,10 +1703,10 @@ fn (p mut Parser) var_expr(v Var) string {
 			p.next() 
 			return p.select_query(fn_ph) 
 		} 
-		if typ == 'pg__DB' && !p.fileis('pg.v') {
+		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
 			p.next() 
-			 p.insert_query(fn_ph) 
-return 'void' 
+			p.insert_query(fn_ph) 
+			return 'void' 
 		} 
 		// println('dot #$dc')
 		typ = p.dot(typ, fn_ph)
