@@ -11,7 +11,7 @@ for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio
 REM set up a devcmd
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-  "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64
+  call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64
 ) else (
   goto :nomsvc
 )
