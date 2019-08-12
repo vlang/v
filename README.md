@@ -15,10 +15,10 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in half an hour, less if you already know Go
+- Simplicity: the language can be learned in less than an hour
 - Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
 - Easy to develop: V compiles itself in less than a second
-- Performance: within 5% of C
+- Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
@@ -58,34 +58,25 @@ That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo
 
 ### C compiler
 
-You'll need Clang or GCC.
+You'll need Clang or GCC. If you are doing development, you most likely already have it installed.
 
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
+On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
 
 On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-### Building without make
-```bash
-# Download the V compiler's source translated to C
-curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
-cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
-./v -o v compiler              # Use the resulting V binary to build V from V source
-```
-(These instructions won't work on Windows, use `make.bat` instead).
 
 ### Symlinking and updates
 
-You can create a symlink so that it's globally available:
+You can create a `/usr/local/bin/v` symlink so that V is globally available:
 
 ```
-sudo ln -s [path to V repo]/v /usr/local/bin/v
+sudo make symlink
 ```
 
 V is being constantly updated. To update V, simply run
 
 ```
-git pull origin master
-make
+v up
 ```
 
 ## Docker
@@ -100,13 +91,15 @@ v
 
 
 
-### Testing
+### Testing and running the examples
+
+Make sure V can compile itself:
 
 ```
-$ cd examples
-$ v run hello_world.v
-hello world
+v -o v compiler
+```
 
+```
 $ v
 V 0.1.x
 Use Ctrl-D to exit
@@ -116,12 +109,9 @@ hello world
 >>>
 ```
 
-Now if you want, you can start tinkering with the compiler. If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-
-### Running the examples
 
 ```
+cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
 
@@ -135,22 +125,34 @@ v run tetris/tetris.v
 
 In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
 
-If you plan to use the http package, you also need to install libcurl.
+```
+v install glfw
+```
+
+If you plan to use the http package, you also need to install openssl on non-Windows systems.
 
 ```
 macOS:
-brew install glfw freetype curl
+brew install glfw freetype openssl
 
-Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
+Debian/Ubuntu:
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
 
-Arch:
-sudo pacman -S glfw-x11 curl freetype2
+Arch/Manjaro:
+sudo pacman -S glfw-x11 freetype2
+
+Fedora:
+sudo dnf install glfw glfw-devel freetype-devel
 ```
 
-glfw and libcurl dependencies will be removed soon.
+glfw dependency will be removed soon.
 
-## Code structure
+## Contributing
+
+Code structure:
 
 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
+If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
+
 

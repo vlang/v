@@ -160,3 +160,42 @@ fn test_reverse() {
 		assert d[i] == b[b.len-i-1]
 	}
 }
+
+const (
+	N = 5
+) 
+
+fn test_fixed() {
+	mut nums := [4]int 
+	assert nums[0] == 0 
+	assert nums[1] == 0 
+	assert nums[2] == 0 
+	assert nums[3] == 0 
+	nums[1] = 7 
+	assert nums[1] == 7 
+	///////
+	nums2 := [N]int 
+	assert nums2[N - 1] == 0 
+} 
+
+fn modify (numbers mut []int) {
+        numbers[0] = 777
+}
+
+fn test_mut_slice() { 
+	mut n := [1,2,3]
+	modify(mut n.left(2)) 
+	assert n[0] == 777 
+	modify(mut n.right(2)) 
+	assert n[2] == 777 
+	println(n)
+}
+
+fn test_clone() {
+	nums := [1, 2, 3, 4, 100] 
+	nums2 := nums.clone()  
+	assert nums2.len == 5 
+	assert nums2.str() == '[1, 2, 3, 4, 100]' 
+	assert nums.slice(1, 3).str() == '[2, 3]' 
+} 
+ 

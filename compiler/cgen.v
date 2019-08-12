@@ -20,11 +20,11 @@ struct CGen {
 	fns          []string
 	so_fns       []string
 	consts_init  []string
-	lines        []string
 	//buf          strings.Builder 
 	is_user      bool
 mut:
-	run             Pass
+	lines        []string
+	pass         Pass
 	nogen           bool
 	tmp_line        string
 	cur_line        string
@@ -53,7 +53,7 @@ fn new_cgen(out_name_c string) *CGen {
 }
 
 fn (g mut CGen) genln(s string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -72,7 +72,7 @@ fn (g mut CGen) genln(s string) {
 }
 
 fn (g mut CGen) gen(s string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -84,7 +84,7 @@ fn (g mut CGen) gen(s string) {
 }
 
 fn (g mut CGen) resetln(s string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	if g.is_tmp {
@@ -127,7 +127,7 @@ fn (g mut CGen) add_placeholder() int {
 }
 
 fn (g mut CGen) set_placeholder(pos int, val string) {
-	if g.nogen || g.run != .main {
+	if g.nogen || g.pass != .main {
 		return
 	}
 	// g.lines.set(pos, val)
@@ -141,26 +141,6 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 	right := g.cur_line.right(pos)
 	g.cur_line = '${left}${val}${right}'
 	// g.genln('')
-}
-
-fn (g mut CGen) add_placeholder2() int {
-	if g.is_tmp {
-		println('tmp in addp2')
-		exit(1)
-	}
-	g.lines << ''
-	return g.lines.len - 1
-}
-
-fn (g mut CGen) set_placeholder2(pos int, val string) {
-	if g.nogen || g.run != .main {
-		return
-	}
-	if g.is_tmp {
-		println('tmp in setp2')
-		exit(1)
-	}
-	g.lines[pos] = val
 }
 
 fn (g mut CGen) insert_before(val string) {
@@ -219,28 +199,27 @@ fn (p mut Parser) print_prof_counters() string {
 }
 
 fn (p mut Parser) gen_type(s string) {
-	if !p.first_run() {
+	if !p.first_pass() {
 		return
 	}
 	p.cgen.types << s
 }
 
 fn (p mut Parser) gen_typedef(s string) {
-	if !p.first_run() {
+	if !p.first_pass() {
 		return
 	}
 	p.cgen.typedefs << s
 }
 
 fn (p mut Parser) gen_type_alias(s string) {
-	if !p.first_run() {
+	if !p.first_pass() {
 		return
 	}
 	p.cgen.type_aliases << s
 }
 
 fn (g mut CGen) add_to_main(s string) {
-	println('add to main')
 	g.fn_main = g.fn_main + s
 }
 
@@ -261,7 +240,9 @@ fn build_thirdparty_obj_file(flag string) {
 		} 
 	} 
 	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows  
-	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') 
+	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') or {
+		panic(err)
+	}
 	println(res) 
 } 
 

@@ -4,6 +4,8 @@
 
 module builtin
 
+import strings 
+
 struct array {
 pub:
 	// Using a void pointer allows to implement arrays without generics and without generating
@@ -77,7 +79,6 @@ pub fn (a mut array) sort_with_compare(compare voidptr) {
 pub fn (a mut array) insert(i int, val voidptr) {
 	if i >= a.len {
 		panic('array.insert: index larger than length')
-		return
 	}
 	a._push(val)
 	size := a.element_size
@@ -207,18 +208,16 @@ pub fn (a array) reverse() array {
 	return arr
 }
 
-pub fn (a []int) str() string {
-	mut res := '['
-	for i := 0; i < a.len; i++ {
-		val := a[i]
-		res += '$val'
-		if i < a.len - 1 {
-			res += ', '
-		}
+pub fn (a array) clone() array {
+	arr := array {
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: malloc(a.cap * a.element_size)
 	}
-	res += ']'
-	return res
-}
+	C.memcpy(arr.data, a.data, a.cap * a.element_size) 
+	return arr 
+} 
 
 //pub fn (a []int) free() {
 pub fn (a array) free() {
@@ -228,26 +227,36 @@ pub fn (a array) free() {
 	C.free(a.data)
 }
 
-// TODO generic
 // "[ 'a', 'b', 'c' ]"
 pub fn (a []string) str() string {
-	mut res := '['
+	mut sb := strings.new_builder(a.len * 3) 
+	sb.write('[') 
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		res += '"$val"'
+		sb.write('"$val"') 
 		if i < a.len - 1 {
-			res += ', '
+			sb.write(', ') 
 		}
 	}
-	res += ']'
-	return res
+	sb.write(']') 
+	return sb.str() 
 }
 
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len*2+1)
 	mut ptr := &hex[0]
 	for i := 0; i < b.len ; i++ {
-		ptr += C.sprintf(ptr, '%02X', b[i])
+		ptr += C.sprintf(ptr, '%02x', b[i])
 	}
 	return string(hex)
+}
+
+// TODO: implement for all types
+pub fn copy(dst, src []byte) int {
+	if dst.len > 0 && src.len > 0 {
+		min := if dst.len < src.len { dst.len } else { src.len }
+		C.memcpy(dst.data, src.left(min).data, dst.element_size*min)
+		return min
+	}
+	return 0
 }

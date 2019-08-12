@@ -22,13 +22,13 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	if t == 'int' || t == 'string' || t == 'bool' {
 		return
 	}
-	if p.first_run() {
+	if p.first_pass() {
 		return
 	}
 	// println('gen_json_for_type( $typ.name )')
 	// Register decoder fn
 	mut dec_fn := Fn {
-		pkg: p.mod
+		mod: p.mod
 		typ: 'Option_$typ.name'
 		name: js_dec_name(t)
 	}
@@ -45,7 +45,7 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	p.table.register_fn(dec_fn)
 	// Register encoder fn
 	mut enc_fn := Fn {
-		pkg: p.mod
+		mod: p.mod
 		typ: 'cJSON*'
 		name: js_enc_name(t)
 	}
@@ -115,8 +115,8 @@ fn is_js_prim(typ string) bool {
 	typ == 'i8' || typ == 'i16' || typ == 'i32' || typ == 'i64'
 }
 
-fn (p mut Parser) decode_array(typ string) string {
-	typ = typ.replace('array_', '')
+fn (p mut Parser) decode_array(array_type string) string {
+	typ := array_type.replace('array_', '')
 	t := p.table.find_type(typ)
 	fn_name := js_dec_name(typ)
 	// If we have `[]Profile`, have to register a Profile en(de)coder first
@@ -149,8 +149,8 @@ fn js_dec_name(typ string) string {
 	return name
 }
 
-fn (p &Parser) encode_array(typ string) string {
-	typ = typ.replace('array_', '')
+fn (p &Parser) encode_array(array_type string) string {
+	typ := array_type.replace('array_', '')
 	fn_name := js_enc_name(typ)
 	return '
 o = cJSON_CreateArray();

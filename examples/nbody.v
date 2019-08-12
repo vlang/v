@@ -68,7 +68,7 @@ fn advance(sys System, dt f64) {
     }
 }
 
-fn offsetmomentum(sys System) {
+fn offsetmomentum(sys mut System) {
     mut px := f64(0)
     mut py := f64(0)
     mut pz := f64(0)
@@ -121,7 +121,7 @@ pub fn arr_position() []Position {
 fn main() {
 
 sys := &System {arr_momentum(), arr_position()}
-offsetmomentum(sys)
+offsetmomentum(mut sys)
 
 println('${energy(sys):.9f}')  //-0.169075164
 for i := 0; i < 50000000; i++ {

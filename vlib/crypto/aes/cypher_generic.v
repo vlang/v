@@ -13,10 +13,10 @@ import (
 // this is the generiv v version, no arch optimisations
 fn new_cipher_generic(key []byte) AesCipher {
 	n := key.len + 28
-	c := AesCipher{
+	mut c := AesCipher{
 		enc: [u32(0); n]
 		dec: [u32(0); n]
 	}
-	expand_key_generic(key, c.enc, c.dec)
+	expand_key_generic(key, mut c.enc, mut c.dec)
 	return c
 }

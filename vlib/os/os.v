@@ -162,29 +162,42 @@ pub fn mv(old, new string) {
 // TODO return `?[]string` TODO implement `?[]` support
 pub fn read_lines(path string) []string {
 	mut res := []string
-	mut buf := [1000]byte
+	mut buf_len := 1024
+	mut buf := malloc(buf_len)
+
 	mode := 'rb'
 	mut fp := &C.FILE{}
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		cpath := path.str
-		fp = C.fopen(cpath, mode.str) 
+		fp = C.fopen(path.str, mode.str) 
 	}
 	if isnil(fp) {
 		// TODO
 		// return error('failed to open file "$path"')
 		return res
 	}
-	for C.fgets(buf, 1000, fp) != 0 {
-		mut val := ''
-		buf[C.strlen(buf) - 1] = `\0` // eat the newline fgets() stores
-		$if windows {
-			if buf[strlen(buf)-2] == 13 {
-				buf[strlen(buf) - 2] = `\0`
+
+	mut buf_index := 0
+	for C.fgets(buf + buf_index, buf_len - buf_index, fp) != 0 {
+		len := C.strlen(buf)
+		if len == buf_len - 1 && buf[len - 1] != 10 {
+			buf_len *= 2
+			buf = C.realloc(buf, buf_len)
+			if isnil(buf) {
+				panic('Could not reallocate the read buffer')
 			}
+			buf_index = len
+			continue
+		}
+		if buf[len - 1] == 10 || buf[len - 1] == 13 {
+			buf[len - 1] = `\0`
+		}
+		if len > 1 && buf[len - 2] == 13 {
+			buf[len - 2] = `\0`
 		}
 		res << tos_clone(buf)
+		buf_index = 0
 	}
 	C.fclose(fp)
 	return res
@@ -323,21 +336,33 @@ fn popen(path string) *FILE {
 	}
 }
 
+fn pclose(f *FILE) int {
+	$if windows {
+		return C._pclose(f)
+	}
+	$else {
+		return C.pclose(f)
+	}
+}
+
 // exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) string {
-	cmd = '$cmd 2>&1'
+pub fn exec(_cmd string) ?string {
+	cmd := '$_cmd 2>&1'
 	f := popen(cmd)
 	if isnil(f) {
-		// TODO optional or error code 
-		println('popen $cmd failed')
-		return '' 
+		return error('popen $cmd failed')
 	}
 	buf := [1000]byte 
 	mut res := ''
 	for C.fgets(buf, 1000, f) != 0 { 
 		res += tos(buf, strlen(buf)) 
 	}
-	return res.trim_space()
+	res = res.trim_space()
+	status_code := pclose(f)/256
+	if status_code != 0 {
+		return error(res)
+	}
+	return res
 }
 
 // `getenv` returns the value of the environment variable named by the key.
@@ -384,19 +409,19 @@ pub fn unsetenv(name string) int {
 }
 
 // `file_exists` returns true if `path` exists.
-pub fn file_exists(path string) bool {
+pub fn file_exists(_path string) bool {
 	$if windows {
-		path = path.replace('/', '\\')
-		return C._waccess( path.to_wide(), 0 ) != -1
+		path := _path.replace('/', '\\')
+		return C._waccess(path.to_wide(), 0) != -1
 	} $else {
-		return C.access( path.str, 0 ) != -1
+		return C.access(_path.str, 0 ) != -1
 	}
 }
 
 pub fn dir_exists(path string) bool {
 	$if windows {
-		path = path.replace('/', '\\')
-		attr := int(C.GetFileAttributes(path.to_wide()))
+		_path := path.replace('/', '\\')
+		attr := int(C.GetFileAttributes(_path.to_wide()))
 		if attr == INVALID_FILE_ATTRIBUTES {
 			return false
 		}
@@ -418,13 +443,13 @@ pub fn dir_exists(path string) bool {
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) {
 	$if windows {
-		path = path.replace('/', '\\')
+		_path := path.replace('/', '\\')
 		// Windows doesnt recursively create the folders
 		// so we need to help it out here
-		if path.last_index('\\') != -1 {
-			mkdir(path.all_before_last('\\'))
+		if _path.last_index('\\') != -1 {
+			mkdir(_path.all_before_last('\\'))
 		}
-		C.CreateDirectory(path.to_wide(), 0)
+		C.CreateDirectory(_path.to_wide(), 0)
 	}
 	$else {
 		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
@@ -470,6 +495,9 @@ pub fn ext(path string) string {
 
 // dir returns all but the last element of path, typically the path's directory.  
 pub fn dir(path string) string {
+	if path == '.' {
+		return getwd() 
+	} 
 	mut pos := -1
 	// TODO PathSeparator defined in os_win.v doesn't work when building V, 
 	// because v.c is generated for a nix system. 
@@ -509,11 +537,12 @@ pub fn filename(path string) string {
 // get_line returns a one-line string from stdin 
 pub fn get_line() string {
     str := get_raw_line()
-    if str[str.len - 1] == `\n` {
-        return str.substr(0, str.len - 1)
-    }
-
-    return str
+		$if windows {
+			return str.trim_right('\r\n')
+		}
+		$else {
+			return str.trim_right('\n')
+		}
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
@@ -675,9 +704,9 @@ pub fn executable() string {
 	}
 	$if freebsd {
 		mut result := malloc(MAX_PATH)
-		mut mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]!! 
+		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1] 
 		size := MAX_PATH 
-		C.sysctl(mib, 4, result, &size, 0, 0) 
+		C.sysctl(mib.data, 4, result, &size, 0, 0) 
 		return string(result) 
 	} 
 	$if openbsd {
@@ -717,7 +746,8 @@ pub fn is_dir(path string) bool {
 		if C.stat(cstr, &statbuf) != 0 {
 			return false
 		}
-		return statbuf.st_mode & S_IFMT == S_IFDIR
+		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
+		return (statbuf.st_mode & S_IFMT) == S_IFDIR
 	} 
 }
 
@@ -840,6 +870,7 @@ pub fn fork() int {
 		pid := C.fork()
 		return pid
 	}
+	panic('os.fork not supported in windows') // TODO
 }
 
 pub fn wait() int {
@@ -847,6 +878,7 @@ pub fn wait() int {
 		pid := C.wait(0)
 		return pid
 	}
+	panic('os.wait not supported in windows') // TODO
 }
 
 pub fn file_last_mod_unix(path string) int {

@@ -5,13 +5,15 @@
 // Package sha512 implements the SHA-384, SHA-512, SHA-512/224, and SHA-512/256
 // hash algorithms as defined in FIPS 180-4.
 
-// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha512
+// Based off:   https://github.com/golang/go/tree/master/src/crypto/sha512
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 
 module sha512
 
-import math
-import crypto
-import encoding.binary
+import (
+	crypto
+	encoding.binary
+)
 
 const (
 	// Size is the size, in bytes, of a SHA-512 checksum.
@@ -78,41 +80,41 @@ fn (d mut Digest) reset() {
 	d.x = [byte(0); Chunk]
 	switch d.function {
 	case crypto.Hash.SHA384:
-		d.h[0] = u64(Init0_384)
-		d.h[1] = u64(Init1_384)
-		d.h[2] = u64(Init2_384)
-		d.h[3] = u64(Init3_384)
-		d.h[4] = u64(Init4_384)
-		d.h[5] = u64(Init5_384)
-		d.h[6] = u64(Init6_384)
-		d.h[7] = u64(Init7_384)
+		d.h[0] = Init0_384
+		d.h[1] = Init1_384
+		d.h[2] = Init2_384
+		d.h[3] = Init3_384
+		d.h[4] = Init4_384
+		d.h[5] = Init5_384
+		d.h[6] = Init6_384
+		d.h[7] = Init7_384
 	case crypto.Hash.SHA512_224:
-		d.h[0] = u64(Init0_224)
-		d.h[1] = u64(Init1_224)
-		d.h[2] = u64(Init2_224)
-		d.h[3] = u64(Init3_224)
-		d.h[4] = u64(Init4_224)
-		d.h[5] = u64(Init5_224)
-		d.h[6] = u64(Init6_224)
-		d.h[7] = u64(Init7_224)
+		d.h[0] = Init0_224
+		d.h[1] = Init1_224
+		d.h[2] = Init2_224
+		d.h[3] = Init3_224
+		d.h[4] = Init4_224
+		d.h[5] = Init5_224
+		d.h[6] = Init6_224
+		d.h[7] = Init7_224
 	case crypto.Hash.SHA512_256:
-		d.h[0] = u64(Init0_256)
-		d.h[1] = u64(Init1_256)
-		d.h[2] = u64(Init2_256)
-		d.h[3] = u64(Init3_256)
-		d.h[4] = u64(Init4_256)
-		d.h[5] = u64(Init5_256)
-		d.h[6] = u64(Init6_256)
-		d.h[7] = u64(Init7_256)
+		d.h[0] = Init0_256
+		d.h[1] = Init1_256
+		d.h[2] = Init2_256
+		d.h[3] = Init3_256
+		d.h[4] = Init4_256
+		d.h[5] = Init5_256
+		d.h[6] = Init6_256
+		d.h[7] = Init7_256
 	default:
-		d.h[0] = u64(Init0)
-		d.h[1] = u64(Init1)
-		d.h[2] = u64(Init2)
-		d.h[3] = u64(Init3)
-		d.h[4] = u64(Init4)
-		d.h[5] = u64(Init5)
-		d.h[6] = u64(Init6)
-		d.h[7] = u64(Init7)
+		d.h[0] = Init0
+		d.h[1] = Init1
+		d.h[2] = Init2
+		d.h[3] = Init3
+		d.h[4] = Init4
+		d.h[5] = Init5
+		d.h[6] = Init6
+		d.h[7] = Init7
 	}
 	d.nx = 0
 	d.len = u64(0)
@@ -144,17 +146,15 @@ fn new384() *Digest {
 	return _new(crypto.Hash.SHA384)
 }
 
-fn (d mut Digest) write(p []byte) ?int {
+fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
-			block(d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -165,7 +165,7 @@ fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= Chunk {
 		n := p.len &~ (Chunk - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -173,10 +173,7 @@ fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
@@ -221,8 +218,8 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= u64(3)
 
-	binary.big_endian_put_u64(tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
-	binary.big_endian_put_u64(tmp.right(8), len)
+	binary.big_endian_put_u64(mut tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
+	binary.big_endian_put_u64(mut tmp.right(8), len)
 	d.write(tmp.left(16))
 
 	if d.nx != 0 {
@@ -231,15 +228,15 @@ fn (d mut Digest) checksum() []byte {
 
 	mut digest := [byte(0); Size]
 	
-	binary.big_endian_put_u64(digest, d.h[0])
-	binary.big_endian_put_u64(digest.right(8), d.h[1])
-	binary.big_endian_put_u64(digest.right(16), d.h[2])
-	binary.big_endian_put_u64(digest.right(24), d.h[3])
-	binary.big_endian_put_u64(digest.right(32), d.h[4])
-	binary.big_endian_put_u64(digest.right(40), d.h[5])
+	binary.big_endian_put_u64(mut digest, d.h[0])
+	binary.big_endian_put_u64(mut digest.right(8), d.h[1])
+	binary.big_endian_put_u64(mut digest.right(16), d.h[2])
+	binary.big_endian_put_u64(mut digest.right(24), d.h[3])
+	binary.big_endian_put_u64(mut digest.right(32), d.h[4])
+	binary.big_endian_put_u64(mut digest.right(40), d.h[5])
 	if d.function != crypto.Hash.SHA384 {
-		binary.big_endian_put_u64(digest.right(48), d.h[6])
-		binary.big_endian_put_u64(digest.right(56), d.h[7])
+		binary.big_endian_put_u64(mut digest.right(48), d.h[6])
+		binary.big_endian_put_u64(mut digest.right(56), d.h[7])
 	}
 
 	return digest
@@ -257,7 +254,8 @@ pub fn sum384(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA384)
 	d.write(data)
 	sum := d.checksum()
-	sum384 := sum.left(Size384)
+	mut sum384 := [byte(0); Size384]
+	copy(sum384, sum.left(Size384))
 	return sum384
 }
 
@@ -266,7 +264,8 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_224)
 	d.write(data)
 	sum := d.checksum()
-	sum224 := sum.left(Size224)
+	mut sum224 := [byte(0); Size224]
+	copy(sum224, sum.left(Size224))
 	return sum224
 }
 
@@ -275,14 +274,15 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_256)
 	d.write(data)
 	sum := d.checksum()
-	sum256 := sum.left(Size256)
+	mut sum256 := [byte(0); Size256]
+	copy(sum256, sum.left(Size256))
 	return sum256
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(dig mut Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-	block_generic(dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int {

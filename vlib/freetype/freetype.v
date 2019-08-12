@@ -2,15 +2,24 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module ft 
+module freetype 
 
-import stbi
-import glm
-import gl
+import (
+	os 
+	gx 
+	gg 
+	stbi
+	glm
+	gl
+) 
 
-#flag -I @VROOT/thirdparty/freetype 
+#flag darwin -I/usr/local/include/freetype2
+#flag darwin -I/opt/local/include/freetype2
+#flag -lfreetype 
 
-#flag @VROOT/thirdparty/freetype/libfreetype.a 
+//#flag -I @VROOT/thirdparty/freetype 
+
+//#flag @VROOT/thirdparty/freetype/libfreetype.a 
 #flag darwin -lpng -lbz2 -lz 
 
 
@@ -21,38 +30,62 @@ import gl
 #include "ft2build.h"
 #include FT_FREETYPE_H
 
-struct GG {
+const (
+	DEFAULT_FONT_SIZE = 12
+)
+
+struct Character {
+	texture_id u32
+	size       gg.Vec2
+	bearing    gg.Vec2
+	advance    u32
+}
+
+struct Face {
+	cobj voidptr
+}
+
+struct Context {
 	shader    gl.Shader
 	// use_ortho bool
 	width     int
 	height    int
-	VAO       u32
+	vao       u32
 	rect_vao  u32
 	rect_vbo  u32
 	line_vao  u32
 	line_vbo  u32
-	VBO       u32
-	chars     []gg.Character
+	vbo       u32
+	chars     []Character
 	utf_runes []string
-	utf_chars []gg.Character
-	text_ctx  *GG
+	utf_chars []Character
 	face      Face
 	scale     int // retina = 2 , normal = 1
 }
 
-struct Character {
-	texture_id u32
-	size       Vec2
-	bearing    Vec2
-	advance    u32
+/* 
+struct Cfg {
+	width     int
+	height    int
+	use_ortho bool 
+	retina    bool
+	scale int 
+	font_size int
+	create_window bool 
+	window_user_ptr voidptr 
+	window_title string 
+	always_on_top bool 
 }
+*/ 
+
 
 // jfn ft_load_char(face FT_Face, code FT_ULong) Character {
 // fn ft_load_char(_face voidptr, _code voidptr) Character {
 fn ft_load_char(_face Face, code i64) Character {
 	// #FT_Face face = *(FT_Face*)(_face); FT_ULong code = *(FT_ULong*)(code);
 	# FT_Face face = *((FT_Face*)_face.cobj);
-	# if (FT_Load_Char(face, code, FT_LOAD_RENDER))
+	# int condition = FT_Load_Char(face, code, FT_LOAD_RENDER);
+	if (C.condition != 0)
 	{
 		println('freetype: Failed to load Glyph')
 		exit(1)
@@ -86,10 +119,11 @@ fn ft_load_char(_face Face, code i64) Character {
 	return ch
 }
 
-pub fn new_context_text(cfg Cfg, scale int) *GG {
+pub fn new_context(cfg gg.Cfg) *Context {
+	scale := cfg.scale 
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
-		return &GG{text_ctx: 0}
+		return &Context{} 
 	}
 	mut width := cfg.width * scale
 	mut height := cfg.height * scale
@@ -106,7 +140,7 @@ pub fn new_context_text(cfg Cfg, scale int) *GG {
 */
 	// gl.enable(GL_CULL_FACE) // TODO NEED CULL?  
 	gl.enable(GL_BLEND)
-return &GG{} 
+//return &GG{} 
 	// return &GG{}
 	# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	shader := gl.new_shader('text')
@@ -122,19 +156,23 @@ return &GG{}
 	println('ERROR::FREETYPE: Could not init FreeType Library')
 	// Load font as face
 	// face := FT_Face{}
-	mut font_path := 'RobotoMono-Regular.ttf'
-	if !os.file_exists(font_path) {
-		exePath := os.getexepath()
-		exeDir := os.basedir(exePath)
-		println('Trying to load from $exeDir')
-		font_path = '${exeDir}/RobotoMono-Regular.ttf'
+	mut font_path := cfg.font_path
+	if font_path == '' {
+		font_path = 'RobotoMono-Regular.ttf'
 	}
 	if !os.file_exists(font_path) {
-		println('failed to load RobotoMono-Regular.ttf')
-		exit(1)
+		exe_path := os.executable()
+		exe_dir := os.basedir(exe_path)
+		font_path = '$exe_dir/$font_path'
 	}
+	if !os.file_exists(font_path) {
+		println('failed to load $font_path')
+		return 0
+	}
+	println('Trying to load font from $font_path')
 	# FT_Face face;
-	# if (FT_New_Face(ft, font_path.str, 0, &face))
+	# int condition = FT_New_Face(ft, font_path.str, 0, &face);
+	if (C.condition != 0)
 	// # if (FT_New_Face(ft, "/Library/Fonts/Courier New.ttf", 0, &face))
 	// # if (FT_New_Face(ft, "/System/Library/Fonts/Apple Color Emoji.ttc", 0, &face))
 	{
@@ -147,7 +185,7 @@ return &GG{}
 	# glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	// Gen texture
 	// Load first 128 characters of ASCII set
-	mut chars := []gg.Character{}
+	mut chars := []Character{}
 	f := Face {
 		cobj: 0
 	}
@@ -175,27 +213,26 @@ return &GG{}
 	// # ch = gg__ft_load_char(f, 128169);
 	// chars.push(ch)
 	// Configure VAO
-	VAO := gl.gen_vertex_array()
-	println('new gg text context VAO=$VAO')
-	VBO := gl.gen_buffer()
-	gl.bind_vao(VAO)
-	gl.bind_buffer(GL_ARRAY_BUFFER, VBO)
+	vao := gl.gen_vertex_array()
+	println('new gg text context vao=$vao')
+	vbo := gl.gen_buffer()
+	gl.bind_vao(vao)
+	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
 	// # glBufferData(GL_ARRAY_BUFFER, sizeof(GLf32) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
 	gl.enable_vertex_attrib_array(0)
 	gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
 	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLf32), 0);
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
 	// # glBindVertexArray(0);
-	mut ctx := &GG {
+	mut ctx := &Context {
 		shader: shader,
 		width: width,
 		height: height,
 		scale: scale
-		VAO: VAO,
-		VBO: VBO,
+		vao: vao,
+		vbo: vbo,
 		chars: chars,
 		face: f
-		text_ctx: 0
 	}
 	ctx.init_utf8_runes()
 	return ctx
@@ -203,7 +240,7 @@ return &GG{}
 
 // A dirty hack to implement rendering of cyrillic letters.
 // All UTF-8 must be supported. 
-fn (ctx mut GG) init_utf8_runes() {
+fn (ctx mut Context) init_utf8_runes() {
 	s := '≈йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
 	println(s)
 	us := s.ustring()
@@ -217,34 +254,23 @@ fn (ctx mut GG) init_utf8_runes() {
 }
 
 // fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
-pub fn (ctx &GG) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-	// dont draw non ascii for now
-	/* 
-	for i := 0; i < text.len; i++ {
-		c := text[i]
-		if int(c) > 128 {
-			// ctx.text_ctx._draw_text(_x, _y, '[NON ASCII]', cfg)
-			// return
-		}
-	}
-*/
-	// # glScissor(0,0,300,300);
+pub fn (ctx &Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	utext := text.ustring_tmp()
 	// utext := text.ustring()
-	ctx.text_ctx._draw_text(_x, _y, utext, cfg)
+	ctx._draw_text(_x, _y, utext, cfg)
 	// utext.free()
 	// # glScissor(0,0,ctx->width*2,ctx->height*2);
 	// gl.disable(GL_SCISSOR_TEST)// TODO
 	// #free(text.str);
 }
 
-fn (ctx &GG) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
-	ctx.text_ctx._draw_text(_x, _y, text, cfg)
+fn (ctx &Context) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
+	ctx._draw_text(_x, _y, text, cfg)
 }
 
 // TODO  HACK with second text context
 // fn (ctx &GG) _draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
+fn (ctx &Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	/* 
 	if utext.s.contains('on_seg') {
 		println('\nat(0)')
@@ -256,22 +282,24 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		}
 	}
 */
+	mut x := f32(_x) 
+	mut y := f32(_y) 
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		width := utext.len * 7
-		_x -= width + 10
+		x -= width + 10
 	}
-	x := f32(_x) * ctx.scale// f32(2)
+	x *= ctx.scale// f32(2)
 	// println('y=$_y height=$ctx.height')
 	// _y = _y * int(ctx.scale) //+ 26
-	_y = _y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y := f32(ctx.height - _y)
+	y = y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
+	y = f32(ctx.height) - y 
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()
 	ctx.shader.set_color('textColor', color)
 	# glActiveTexture(GL_TEXTURE0);
-	gl.bind_vao(ctx.VAO)
+	gl.bind_vao(ctx.vao)
 	// Iterate through all characters
 	// utext := text.ustring()
 	for i := 0; i < utext.len; i++ {
@@ -323,7 +351,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		// t1 := glfw.get_time()
 		# glBindTexture(GL_TEXTURE_2D, ch.texture_id);
 		// Update content of VBO memory
-		gl.bind_buffer(GL_ARRAY_BUFFER, ctx.VBO)
+		gl.bind_buffer(GL_ARRAY_BUFFER, ctx.vbo)
 		// t2 := glfw.get_time()
 		// # glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
 		# glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
@@ -348,7 +376,7 @@ fn (ctx &GG) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	// #free(runes.data);
 }
 
-pub fn (ctx &GG) draw_text_def(x, y int, text string) {
+pub fn (ctx &Context) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.Black,
 		size: DEFAULT_FONT_SIZE,

@@ -7,6 +7,7 @@ module strings
 struct Builder {
 mut: 
 	buf []byte
+pub:
 	len int
 }
 
@@ -30,10 +31,10 @@ pub fn (b mut Builder) writeln(s string) {
 }
 
 pub fn (b Builder) str() string {
-	return tos(b.buf.data, b.len)
+	return string(b.buf, b.len)
 }
 
-pub fn (b Builder) cut(n int) {
+pub fn (b mut Builder) cut(n int) {
 	b.len -= n
 }
 

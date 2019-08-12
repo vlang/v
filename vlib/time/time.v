@@ -46,20 +46,116 @@ pub fn now() Time {
 }
 
 pub fn random() Time {
-	return Time {
-		year: rand.next(2) + 201
-		month: rand.next(12) + 1
-		day: rand.next(30) + 1
-		hour: rand.next(24)
-		minute: rand.next(60)
-		second: rand.next(60)
-	}
+	now_unix := now().uni
+	rand_unix := rand.next(now_unix)
+
+	return time.unix(rand_unix)
 }
 
-pub fn unix(u int) Time {
-	mut t := &C.tm{!}
-	t = C.localtime(&u)
-	return convert_ctime(t)
+const (
+// The unsigned zero year for internal calculations.
+	// Must be 1 mod 400, and times before it will not compute correctly,
+	// but otherwise can be changed at will.
+	absoluteZeroYear = i64(-292277022399) 
+
+	secondsPerMinute = 60
+	secondsPerHour   = 60 * secondsPerMinute
+	secondsPerDay    = 24 * secondsPerHour
+	secondsPerWeek   = 7 * secondsPerDay
+	daysPer400Years  = 365*400 + 97
+	daysPer100Years  = 365*100 + 24
+	daysPer4Years    = 365*4 + 1
+
+ daysBefore = [ 
+	0,
+	31,
+	31 + 28,
+	31 + 28 + 31,
+	31 + 28 + 31 + 30,
+	31 + 28 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+] 
+ 
+)
+ 
+
+// Based on Go's time package. 
+// Copyright 2009 The Go Authors. 
+pub fn unix(abs int) Time {
+	// Split into time and day.
+	mut d := abs / secondsPerDay
+
+	// Account for 400 year cycles.
+	mut n := d / daysPer400Years
+	mut y := 400 * n
+	d -= daysPer400Years * n
+
+	// Cut off 100-year cycles.
+	// The last cycle has one extra leap year, so on the last day
+	// of that year, day / daysPer100Years will be 4 instead of 3.
+	// Cut it back down to 3 by subtracting n>>2.
+	n = d / daysPer100Years
+	n -= n >> 2
+	y += 100 * n
+	d -= daysPer100Years * n
+
+	// Cut off 4-year cycles.
+	// The last cycle has a missing leap year, which does not
+	// affect the computation.
+	n = d / daysPer4Years
+	y += 4 * n
+	d -= daysPer4Years * n
+
+	// Cut off years within a 4-year cycle.
+	// The last year is a leap year, so on the last day of that year,
+	// day / 365 will be 4 instead of 3. Cut it back down to 3
+	// by subtracting n>>2.
+	n = d / 365
+	n -= n >> 2
+	y += n
+	d -= 365 * n
+
+	yday := int(d)
+	mut day := yday 
+
+	year := abs / int(3.154e+7) + 1970 //int(i64(y) + absoluteZeroYear)
+	hour := int(abs%secondsPerDay) / secondsPerHour 
+	minute := int(abs % secondsPerHour) / secondsPerMinute 
+	second := int(abs % secondsPerMinute) 
+	 
+	if is_leap_year(year) {
+		// Leap year
+		if day > 31+29-1 { 
+			// After leap day; pretend it wasn't there.
+			day--
+		} 		else if day == 31+29-1 { 
+			// Leap day.
+			day = 29
+			return Time{year:year, month:2, day:day, hour:hour, minute: minute, second: second} 
+		} 
+	}
+
+	// Estimate month on assumption that every month has 31 days.
+	// The estimate may be too low by at most one month, so adjust.
+	mut month := day / 31 
+	mut begin := 0 
+	end := int(daysBefore[month+1])
+	if day >= end {
+		month++
+		begin = end
+	} else {
+		begin = int(daysBefore[month])
+	}
+
+	month++ // because January is 1
+	day = day - begin + 1
+	return Time{year:year, month: month, day:day, hour:hour, minute: minute, second: second} 
 }
 
 pub fn convert_ctime(t tm) Time {

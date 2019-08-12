@@ -30,6 +30,26 @@ fn test_ortho() {
 	assert cmp(projection.data[14], 0.000000)
 	assert cmp(projection.data[15], 1.000000)
 	// f := gg.ortho(1,2,3,4)
+
+		/* 
+		// for debugging broken tetris in gg.o
+		# projection.data[0]=0.010000;
+		# projection.data[1]=0.000000;
+		# projection.data[2]=0.000000;
+		# projection.data[3]=0.000000;
+		# projection.data[4]=0.000000;
+		# projection.data[5]=-0.005000;
+		# projection.data[6]=0.000000;
+		# projection.data[7]=0.000000;
+		# projection.data[8]=0.000000;
+		# projection.data[9]=0.000000;
+		# projection.data[10]=1.000000;
+		# projection.data[11]=0.000000;
+		# projection.data[12]=-1.000000;
+		# projection.data[13]=1.000000;
+		# projection.data[14]=0.000000;
+		# projection.data[15]=1.000000;
+*/
 }
 
 fn test_rotate() {

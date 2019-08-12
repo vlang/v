@@ -49,6 +49,7 @@ module flag
 struct Flag {
 pub:
   name     string // name as it appears on command line
+  abbr     byte   // shortcut
   usage    string // help message
   val_desc string // something like '<arg>' that appears in usage
 }
@@ -62,11 +63,15 @@ pub mut:
   application_name        string
   application_version     string
   application_description string
+
+  min_free_args int
+  max_free_args int
 }
 
 // create a new flag set for parsing command line arguments
+// TODO use INT_MAX some how
 pub fn new_flag_parser(args []string) &FlagParser {
-  return &FlagParser{args:args}
+  return &FlagParser{args:args, max_free_args: 4048}
 }
 
 // change the application name to be used in 'usage' output
@@ -90,10 +95,11 @@ pub fn (fs mut FlagParser) skip_executable() {
 }
 
 // private helper to register a flag
-fn (fs mut FlagParser) add_flag(n, u, vd string) {
+fn (fs mut FlagParser) add_flag(n string, a byte, u, vd string) {
   fs.flags << Flag{
     name: n,
-    usage: u
+    abbr: a,
+    usage: u,
     val_desc: vd
   }
 }
@@ -107,10 +113,10 @@ fn (fs mut FlagParser) add_flag(n, u, vd string) {
 //
 //  - the name, usage are registered
 //  - found arguments and corresponding values are removed from args list
-fn (fs mut FlagParser) parse_value(n string) ?string {
+fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
   c := '--$n'
   for i, a in fs.args {
-    if a == c {
+    if a == c || (a.len == 2 && a[1] == ab) {
       if fs.args.len > i+1 && fs.args[i+1].left(2) != '--' {
         val := fs.args[i+1]
         fs.args.delete(i+1)
@@ -134,10 +140,10 @@ fn (fs mut FlagParser) parse_value(n string) ?string {
 // special: it is allowed to define bool flags without value
 // -> '--flag' is parsed as true
 // -> '--flag' is equal to '--flag=true'
-fn (fs mut FlagParser) parse_bool_value(n string) ?string {
+fn (fs mut FlagParser) parse_bool_value(n string, ab byte) ?string {
   c := '--$n'
   for i, a in fs.args {
-    if a == c {
+    if a == c || (a.len == 2 && a[1] == ab) {
       if fs.args.len > i+1 && (fs.args[i+1] in ['true', 'false'])  {
         val := fs.args[i+1]
         fs.args.delete(i+1)
@@ -162,13 +168,39 @@ fn (fs mut FlagParser) parse_bool_value(n string) ?string {
 //      the value is returned (true/false)
 //  else 
 //      the default value is returned
+// version with abbreviation
 //TODO error handling for invalid string to bool conversion
-pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
-  fs.add_flag(n, u, '')
-  parsed := fs.parse_bool_value(n) or {
+pub fn (fs mut FlagParser) bool_(n string, a byte, v bool, u string) bool {
+  fs.add_flag(n, a, u, '')
+  parsed := fs.parse_bool_value(n, a) or {
     return v
   }
   return parsed == 'true'
+}
+
+// defining and parsing a bool flag 
+//  if defined 
+//      the value is returned (true/false)
+//  else 
+//      the default value is returned
+//TODO error handling for invalid string to bool conversion
+pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
+  return fs.bool_(n, `\0`, v, u)
+}
+
+// defining and parsing an int flag 
+//  if defined 
+//      the value is returned (int)
+//  else 
+//      the default value is returned
+// version with abbreviation
+//TODO error handling for invalid string to int conversion
+pub fn (fs mut FlagParser) int_(n string, a byte, i int, u string) int {
+  fs.add_flag(n, a, u, '<int>')
+  parsed := fs.parse_value(n, a) or {
+    return i
+  }
+  return parsed.int()
 }
 
 // defining and parsing an int flag 
@@ -178,11 +210,22 @@ pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
 //      the default value is returned
 //TODO error handling for invalid string to int conversion
 pub fn (fs mut FlagParser) int(n string, i int, u string) int {
-  fs.add_flag(n, u, '<int>')
-  parsed := fs.parse_value(n) or {
-    return i
+  return fs.int_(n, `\0`, i, u)
+}
+
+// defining and parsing a flaot flag 
+//  if defined 
+//      the value is returned (float)
+//  else 
+//      the default value is returned
+// version with abbreviation
+//TODO error handling for invalid string to float conversion
+pub fn (fs mut FlagParser) float_(n string, a byte, f f32, u string) f32 {
+  fs.add_flag(n, a, u, '<float>')
+  parsed := fs.parse_value(n, a) or {
+    return f
   }
-  return parsed.int()
+  return parsed.f32()
 }
 
 // defining and parsing a flaot flag 
@@ -192,11 +235,21 @@ pub fn (fs mut FlagParser) int(n string, i int, u string) int {
 //      the default value is returned
 //TODO error handling for invalid string to float conversion
 pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
-  fs.add_flag(n, u, '<float>')
-  parsed := fs.parse_value(n) or {
-    return f
+  return fs.float_(n, `\0`, f, u)
+}
+
+// defining and parsing a string flag 
+//  if defined 
+//      the value is returned (string)
+//  else 
+//      the default value is returned
+// version with abbreviation
+pub fn (fs mut FlagParser) string_(n string, a byte, v, u string) string {
+  fs.add_flag(n, a, u, '<arg>')
+  parsed := fs.parse_value(n, a) or {
+    return v
   }
-  return parsed.f32()
+  return parsed
 }
 
 // defining and parsing a string flag 
@@ -205,11 +258,17 @@ pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
 //  else 
 //      the default value is returned
 pub fn (fs mut FlagParser) string(n, v, u string) string {
-  fs.add_flag(n, u, '<arg>')
-  parsed := fs.parse_value(n) or {
-    return v
+  return fs.string_(n, `\0`, v, u)
+}
+
+// this will cause an error in finalize() if free args are out of range
+// (min, ..., max)
+pub fn (fs mut FlagParser) limit_free_args(min, max int) {
+  if min > max {
+    panic('flag.limit_free_args expect min < max, got $min >= $max')
   }
-  return parsed
+  fs.min_free_args = min
+  fs.max_free_args = max
 }
 
 const (
@@ -232,7 +291,8 @@ pub fn (fs FlagParser) usage() string {
       } else {
         SPACE.right(flag_desc.len)
       }
-      use += '$flag_desc$space$f.usage\n'
+      abbr_desc := if f.abbr == `\0` { '' } else { '  -${tos(f.abbr, 1)}\n' }
+      use += '$abbr_desc$flag_desc$space$f.usage\n'
     }
   }
 
@@ -259,5 +319,16 @@ pub fn (fs FlagParser) finalize() ?[]string {
       return error('Unknown argument \'${a.right(2)}\'')
     }
   }
+  if fs.args.len < fs.min_free_args {
+    return error('Expect at least ${fs.min_free_args} arguments')
+  }
+  if fs.args.len >= fs.max_free_args {
+    if fs.max_free_args > 0 {
+      return error('Expect at most ${fs.max_free_args} arguments')
+    } else {
+      return error('Expect no arguments')
+    }
+  }
   return fs.args
 }
+

@@ -5,16 +5,16 @@ import os
 #flag windows -l shell32
 
 struct MsvcResult {
-    exe_path string
+	exe_path string
 
-    um_lib_path string
-    ucrt_lib_path string
-    vs_lib_path string
+	um_lib_path string
+	ucrt_lib_path string
+	vs_lib_path string
 
-    um_include_path string
-    ucrt_include_path string
-    vs_include_path string
-    shared_include_path string
+	um_include_path string
+	ucrt_include_path string
+	vs_include_path string
+	shared_include_path string
 }
 
 // Mimics a HKEY
@@ -28,37 +28,42 @@ const (
 	KEY_ENUMERATE_SUB_KEYS = (0x0008)
 )
 
-// Given a root key look for the subkey 'version' and get the path 
-fn find_windows_kit_internal(key RegKey, version string) ?string {
-	required_bytes := 0 // TODO mut 
-	result := C.RegQueryValueExW(key, version.to_wide(), 0, 0, 0, &required_bytes)
+// Given a root key look for one of the subkeys in 'versions' and get the path 
+fn find_windows_kit_internal(key RegKey, versions []string) ?string {
+	$if windows {
+		for version in versions {
+			required_bytes := 0 // TODO mut
+			result := C.RegQueryValueExW(key, version.to_wide(), 0, 0, 0, &required_bytes)
 
-	length := required_bytes / 2
+			length := required_bytes / 2
 
-	if result != 0 {
-		return error('')
+			if result != 0 {
+				continue
+			}
+
+			alloc_length := (required_bytes + 2)
+
+			mut value := &u16(malloc(alloc_length))
+			if !value {
+				continue
+			}
+
+			result2 := C.RegQueryValueExW(key, version.to_wide(), 0, 0, value, &alloc_length)
+
+			if result2 != 0 {
+				continue
+			}
+
+			// We might need to manually null terminate this thing
+			// So just make sure that we do that
+			if (value[length - 1] != u16(0)) {
+				value[length] = u16(0)
+			}
+
+			return string_from_wide(value)
+		}
 	}
-
-	alloc_length := (required_bytes + 2)
-
-	mut value := &u16(malloc(alloc_length))
-	if !value {
-		return error('')
-	}
-
-	result2 := C.RegQueryValueExW(key, version.to_wide(), 0, 0, value, &alloc_length)
-
-	if result2 != 0 {
-		return error('')
-	}
-
-	// We might need to manually null terminate this thing
-	// So just make sure that we do that
-	if (value[length - 1] != u16(0)) {
-		value[length] = u16(0)
-	}
-
-	return string_from_wide(value)
+	return error('windows kit not found')
 }
 
 struct WindowsKit {
@@ -72,55 +77,53 @@ struct WindowsKit {
 
 // Try and find the root key for installed windows kits
 fn find_windows_kit_root() ?WindowsKit {
-	root_key := RegKey(0)
-	rc := C.RegOpenKeyExA(
-		HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots', 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
-	
-	defer {C.RegCloseKey(root_key)}
+	$if windows {
+		root_key := RegKey(0)
+		rc := C.RegOpenKeyExA(
+			HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots', 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
 
-	if rc != 0 {
-		return error('Unable to open root key')
-	}
-	// Try and find win10 kit
-	kit_root := find_windows_kit_internal(root_key, 'KitsRoot10') or {
-		// Fallback to windows 8
-		k := find_windows_kit_internal(root_key, 'KitsRoot81') or {
-			println('Unable to find windows sdk')
+		defer {C.RegCloseKey(root_key)}
+
+		if rc != 0 {
+			return error('Unable to open root key')
+		}
+		// Try and find win10 kit
+		kit_root := find_windows_kit_internal(root_key, ['KitsRoot10', 'KitsRoot81']) or {
 			return error('Unable to find a windows kit')
 		}
-		k
-	}
 
-	kit_lib := kit_root + 'Lib'
+		kit_lib := kit_root + 'Lib'
 
-	// println(kit_lib)
+		// println(kit_lib)
 
-	files := os.ls(kit_lib)
-	mut highest_path := ''
-	mut highest_int := 0
-	for f in files {
-		no_dot := f.replace('.', '')
-		v_int := no_dot.int()
+		files := os.ls(kit_lib)
+		mut highest_path := ''
+		mut highest_int := 0
+		for f in files {
+			no_dot := f.replace('.', '')
+			v_int := no_dot.int()
 
-		if v_int > highest_int {
-			highest_int = v_int
-			highest_path = f
+			if v_int > highest_int {
+				highest_int = v_int
+				highest_path = f
+			}
+		}
+
+		kit_lib_highest := kit_lib + '\\$highest_path'
+		kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
+
+		// println('$kit_lib_highest $kit_include_highest')
+
+		return WindowsKit {
+			um_lib_path: kit_lib_highest + '\\um\\x64'
+			ucrt_lib_path: kit_lib_highest + '\\ucrt\\x64'
+
+			um_include_path: kit_include_highest + '\\um'
+			ucrt_include_path: kit_include_highest + '\\ucrt'
+			shared_include_path: kit_include_highest + '\\shared'
 		}
 	}
-
-	kit_lib_highest := kit_lib + '\\$highest_path'
-	kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
-
-	// println('$kit_lib_highest $kit_include_highest')
-
-	return WindowsKit {
-		um_lib_path: kit_lib_highest + '\\um\\x64'
-		ucrt_lib_path: kit_lib_highest + '\\ucrt\\x64'
-
-		um_include_path: kit_include_highest + '\\um'
-		ucrt_include_path: kit_include_highest + '\\ucrt'
-		shared_include_path: kit_include_highest + '\\shared'
-	}
+	return error('Host OS does not support funding a windows kit')
 }
 
 struct VsInstallation {
@@ -130,11 +133,16 @@ struct VsInstallation {
 }
 
 fn find_vs() ?VsInstallation {
+	$if !windows {
+		return error('Host OS does not support finding a Vs installation')
+	}
 	// Emily:
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio 
 	// installation!
-	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"')
+	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
+		return error(err)
+	}
 	// println('res: "$res"')
 
 	version := os.read_file('$res\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
@@ -192,23 +200,28 @@ fn find_msvc() ?MsvcResult {
 		}
 	}
 	$else {
-		panic('Cannot find msvc on this platform')
+		panic('Cannot find msvc on this OS')
 	}
 }
 
-pub fn cc_msvc(v *V) {
+pub fn (v mut V) cc_msvc() { 
 	r := find_msvc() or {
-		println('Could not find MSVC')
-		
 		// TODO: code reuse
 		if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-			os.rm('.$v.out_name_c') 
+			os.rm('.$v.out_name_c')
 		}
-		return
+		panic('Cannot find MSVC on this OS.')
 	}
 
+	out_name_obj := v.out_name_c + '.obj'
+
 	// Default arguments
-	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE']
+
+	// volatile:ms enables atomic volatile (gcc _Atomic)
+	// -w: no warnings
+	// 2 unicode defines
+	// /Fo sets the object file name - needed so we can clean up after ourselves properly
+	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE', '/Fo$out_name_obj']
 
 	if v.pref.is_prod {
 		a << '/O2'
@@ -219,7 +232,6 @@ pub fn cc_msvc(v *V) {
 	}
 
 	if v.pref.is_so {
-		// Dont think we have to do anything for this
 		if !v.out_name.ends_with('.dll') {
 			v.out_name = v.out_name + '.dll'
 		}
@@ -258,6 +270,9 @@ pub fn cc_msvc(v *V) {
 	//a << '"$TmpPath/$v.out_name_c"'
 	a << '".$v.out_name_c"'
 
+	// Emily:
+	// Not all of these are needed (but the compiler should discard them if they are not used)
+	// these are the defaults used by msbuild and visual studio
 	mut real_libs :=  [
 		'kernel32.lib',
 		'user32.lib',
@@ -287,6 +302,10 @@ pub fn cc_msvc(v *V) {
 		if f.starts_with('-l') {
 			lib_base := f.right(2).trim_space()
 
+			if lib_base.ends_with('.dll') {
+				panic('MSVC cannot link against a dll (`#flag -l $lib_base`)')
+			}
+
 			// MSVC has no method of linking against a .dll
 			// TODO: we should look for .defs aswell
 			lib_lib := lib_base + '.lib'
@@ -307,11 +326,9 @@ pub fn cc_msvc(v *V) {
 	// Include the base paths
 	a << '-I "$r.ucrt_include_path" -I "$r.vs_include_path" -I "$r.um_include_path" -I "$r.shared_include_path"'
 
-	// Msvc also doesnt have atomic
-	// TODO: dont rely on gcc's _Atomic semantics!
 	a << other_flags
 
-	// TODO: libs will need to be actually handled properly
+	// Libs are passed to cl.exe which passes them to the linker
 	a << real_libs.join(' ')
 
 	a << '/link'
@@ -341,17 +358,17 @@ pub fn cc_msvc(v *V) {
 
 	// println('$cmd')
 
-	res := os.exec(cmd)
-	// println(res)
-	// println('C OUTPUT:')
-	if res.contains('error') {
-		println(res)
+	_ := os.exec(cmd) or {
+		println(err)
 		panic('msvc error')
 	}
+	// println(res)
+	// println('C OUTPUT:')
 
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm('.$v.out_name_c') 
-	} 
+		os.rm('.$v.out_name_c')
+		os.rm('$out_name_obj')
+	}
 
 }
 
@@ -386,7 +403,9 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 
 	println('$cfiles')
 
-	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"')
+	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
+		panic(err)
+	}
 	println(res)
-} 
+}
 

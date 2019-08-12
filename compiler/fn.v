@@ -14,7 +14,7 @@ struct Fn {
 	// addr int
 mut:
 	name          string
-	pkg           string
+	mod           string
 	local_vars    []Var
 	var_idx       int
 	args          []Var
@@ -29,7 +29,8 @@ mut:
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
-	defer_text    string
+	defer_text    []string
+	//gen_types []string 
 }
 
 fn (f &Fn) find_var(name string) Var {
@@ -43,7 +44,13 @@ fn (f &Fn) find_var(name string) Var {
 
 
 fn (f mut Fn) open_scope() {
+	f.defer_text << ''
 	f.scope_level++
+}
+
+fn (f mut Fn) close_scope() {
+	f.scope_level--
+	f.defer_text = f.defer_text.left(f.scope_level + 1)
 }
 
 fn (f &Fn) mark_var_used(v Var) {
@@ -96,9 +103,9 @@ fn (p mut Parser) is_sig() bool {
 	(p.file_path.contains(ModPath))
 }
 
-fn new_fn(pkg string, is_public bool) *Fn {
+fn new_fn(mod string, is_public bool) *Fn {
 	return &Fn {
-		pkg: pkg
+		mod: mod
 		local_vars: [Var{}		; MaxLocalVars]
 		is_public: is_public
 	}
@@ -110,13 +117,14 @@ fn (p mut Parser) fn_decl() {
 	defer { p.fgenln('\n') } 
 	is_pub := p.tok == .key_pub 
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live 
-	if p.attr == 'live' &&  p.first_run() && !p.pref.is_live && !p.pref.is_so { 
+	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so { 
 		println('INFO: run `v -live program.v` if you want to use [live] functions') 
 	} 
 	if is_pub {
 		p.next()
 	}
 	p.returns = false
+		p.gen('/* returns $p.returns */')
 	p.next()
 	mut f := new_fn(p.mod, is_pub)
 	// Method receiver
@@ -136,13 +144,13 @@ fn (p mut Parser) fn_decl() {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module
-		if !p.first_run() && !p.builtin_pkg && T.mod != p.mod {
+		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod {
 			println('T.mod=$T.mod')
 			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
 		}
 		// (a *Foo) instead of (a mut Foo) is a common mistake
-		if !p.builtin_pkg && receiver_typ.contains('*') {
+		if !p.builtin_mod && receiver_typ.contains('*') {
 			t := receiver_typ.replace('*', '')
 			p.error('use `($receiver_name mut $t)` instead of `($receiver_name *$t)`')
 		}
@@ -174,10 +182,10 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot 
 	// Just fn signature? only builtin.v + default build mode
-	// is_sig := p.builtin_pkg && p.pref.build_mode == default_mode
-	// is_sig := p.pref.build_mode == default_mode && (p.builtin_pkg || p.file.contains(LANG_TMP))
+	// is_sig := p.builtin_mod && p.pref.build_mode == default_mode
+	// is_sig := p.pref.build_mode == default_mode && (p.builtin_mod || p.file.contains(LANG_TMP))
 	is_sig := p.is_sig()
-	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_pkg')
+	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_mod')
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -198,12 +206,12 @@ fn (p mut Parser) fn_decl() {
 	if receiver_typ != '' {
 		// f.name = '${receiver_typ}_${f.name}'
 	}
-	// full pkg function name
+	// full mod function name
 	// os.exit ==> os__exit()
-	if !is_c && !p.builtin_pkg && p.mod != 'main' && receiver_typ.len == 0 {
-		f.name = p.prepend_pkg(f.name)
+	if !is_c && !p.builtin_mod && p.mod != 'main' && receiver_typ.len == 0 {
+		f.name = p.prepend_mod(f.name)
 	}
-	if p.first_run() && p.table.known_fn(f.name) && receiver_typ.len == 0 {
+	if p.first_pass() && p.table.known_fn(f.name) && receiver_typ.len == 0 {
 		existing_fn := p.table.find_fn(f.name)
 		// This existing function could be defined as C decl before (no body), then we don't need to throw an erro
 		if !existing_fn.is_decl {
@@ -213,13 +221,19 @@ fn (p mut Parser) fn_decl() {
 	// Generic?
 	mut is_generic := false
 	if p.tok == .lt {
+		is_generic = true
 		p.next()
 		gen_type := p.check_name()
 		if gen_type != 'T' {
 			p.error('only `T` is allowed as a generic type for now')
 		}
 		p.check(.gt)
-		is_generic = true
+		if p.first_pass() { 
+			p.table.register_generic_fn(f.name) 
+		}  else { 
+			//gen_types := p.table.fn_gen_types(f.name) 
+			//println(gen_types) 
+		} 
 	}
 	// Args (...)
 	p.fn_args(mut f)
@@ -247,14 +261,13 @@ fn (p mut Parser) fn_decl() {
 		p.fgen(' ')
 		p.check(.lcbr)
 	}
-	// Register option ? type
+	// Register ?option type
 	if typ.starts_with('Option_') {
 		p.cgen.typedefs << 'typedef Option $typ;'
 	}
 	// Register function
 	f.typ = typ
 	mut str_args := f.str_args(p.table)
-	// println('FN .decL $f.name typ=$f.typ str_args="$str_args"')
 	// Special case for main() args
 	if f.name == 'main' && !has_receiver {
 		if str_args != '' || typ != 'void' {
@@ -263,21 +276,16 @@ fn (p mut Parser) fn_decl() {
 		typ = 'int'
 		str_args = 'int argc, char** argv'
 	}
-
-	mut dll_export_linkage := ''
-
-	if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
-		dll_export_linkage = '__declspec(dllexport) '
-	}
-
-	// Only in C code generate User_register() instead of register()
+	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+		'__declspec(dllexport) '
+	} else {
+		'' 
+	} 
+	if !p.is_vweb { 
+		p.cur_fn = f
+	} 
+	// Generate `User_register()` instead of `register()` 
 	// Internally it's still stored as "register" in type User
-	// mut fn_name_cgen := f.name
-	// if receiver_typ != '' {
-	// fn_name_cgen = '${receiver_typ}_$f.name'
-	// fn_name_cgen = fn_name_cgen.replace(' ', '')
-	// fn_name_cgen = fn_name_cgen.replace('*', '')
-	// }
 	mut fn_name_cgen := p.table.cgen_name(f)
 	// Start generation of the function body
 	skip_main_in_test := f.name == 'main' && p.pref.is_test
@@ -285,7 +293,27 @@ fn (p mut Parser) fn_decl() {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
 		}
-		p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
+		// Generate this function's body for all generic types 
+		if is_generic { 
+			gen_types := p.table.fn_gen_types(f.name) 
+			// Remember current scanner position, go back here for each type
+			// TODO remove this once tokens are cached in `new_parser()` 
+			cur_pos := p.scanner.pos 
+			cur_tok := p.tok 
+			cur_lit := p.lit 
+			for gen_type in gen_types {
+				p.genln('$dll_export_linkage$typ ${fn_name_cgen}_$gen_type($str_args) {')  
+				p.genln('// T start $p.pass ${p.strtok()}') 
+				p.cur_gen_type = gen_type // TODO support more than T 
+				p.statements()
+				p.scanner.pos = cur_pos 
+				p.tok  = cur_tok 
+				p.lit = cur_lit 
+			} 
+		} 
+		else { 
+			p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
+		} 
 	}
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
@@ -294,13 +322,12 @@ fn (p mut Parser) fn_decl() {
 	if is_c {
 		p.fgenln('\n')
 	}
-	p.cur_fn = f
 	// Register the method
 	if receiver_typ != '' {
 		mut receiver_t := p.table.find_type(receiver_typ)
 		// No such type yet? It could be defined later. Create a new type.
 		// struct declaration later will modify it instead of creating a new one.
-		if p.first_run() && receiver_t.name == '' {
+		if p.first_pass() && receiver_t.name == '' {
 			// println('fn decl !!!!!!! REG PH $receiver_typ')
 			p.table.register_type2(Type { 
 				name: receiver_typ.replace('*', '')
@@ -315,8 +342,9 @@ fn (p mut Parser) fn_decl() {
 		// println('register_fn typ=$typ isg=$is_generic')
 		p.table.register_fn(f)
 	}
-	if is_sig || p.first_run() || is_live || is_fn_header || skip_main_in_test {
-		// First pass? Skip the body for now [BIG]
+	if is_sig || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
+		// First pass? Skip the body for now 
+		// Look for generic calls. 
 		if !is_sig && !is_fn_header {
 			mut opened_scopes := 0
 			mut closed_scopes := 0
@@ -328,10 +356,25 @@ fn (p mut Parser) fn_decl() {
 					closed_scopes++
 				}
 				p.next()
+				// find `foo<Bar>()` in function bodies and register generic types 
+				// TODO remove this once tokens are cached 
+				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
+					p.scanner.text[p.scanner.pos-1] != `T` { 
+					p.scanner.pos -= 3 
+					for p.scanner.pos > 0 && (is_name_char(p.scanner.text[p.scanner.pos]) || 
+						p.scanner.text[p.scanner.pos] == `.`  ||
+						p.scanner.text[p.scanner.pos] == `<` ) { 
+						p.scanner.pos--  
+					} 
+					p.scanner.pos-- 
+					p.next() 
+					// Run the function in the firt pass to register the generic type 
+					p.name_expr() 
+				} 
 				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
 					break
 				}
-				//fn body ended, and a new fn attribute declaration like [live] is starting?
+				// fn body ended, and a new fn attribute declaration like [live] is starting?
 				if closed_scopes > opened_scopes && p.prev_tok == .rcbr {
 					if p.tok == .lsbr {
 						break
@@ -340,18 +383,18 @@ fn (p mut Parser) fn_decl() {
 			}
 		}
 		// Live code reloading? Load all fns from .so
-		if is_live && p.first_run() && p.mod == 'main' {
+		if is_live && p.first_pass() && p.mod == 'main' {
 			//println('ADDING SO FN $fn_name_cgen') 
 			p.cgen.so_fns << fn_name_cgen
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
-		// Actual fn declaration!
+		// Function definition that goes to the top of the C file. 
 		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen($str_args)'
 		if p.pref.obfuscate {
-			fn_decl += '; // ${f.name}'
+			fn_decl += '; // $f.name'
 		}
 		// Add function definition to the top
-		if !is_c && f.name != 'main' && p.first_run() {
+		if !is_c && f.name != 'main' && p.first_pass() {
 			// TODO hack to make Volt compile without -embed_vlib
 			if f.name == 'darwin__nsstring' && p.pref.build_mode == .default_mode {
 				return
@@ -360,12 +403,10 @@ fn (p mut Parser) fn_decl() {
 		}
 		return
 	}
-
 	if p.attr == 'live' && p.pref.is_so {
 		//p.genln('// live_function body start')
 		p.genln('pthread_mutex_lock(&live_fn_mutex);')
 	}
-
 	if f.name == 'main' || f.name == 'WinMain' {
 		p.genln('init_consts();')
 		if p.table.imports.contains('os') {
@@ -404,28 +445,31 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		// println('IS SIG .key_returnING tok=${p.strtok()}')
 		return
 	}
-	// We are in profile mode? Start counting at the beginning of the function (save current time).
+	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
-		f.defer_text = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+		f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 	}
+	if is_generic { 
+		// Don't need to generate body for the actual generic definition 
+		p.cgen.nogen = true 
+	} 
 	p.statements_no_rcbr()
+	p.cgen.nogen = false 
 	// Print counting result after all statements in main
 	if p.pref.is_prof && f.name == 'main' {
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer_text)
+	p.genln(f.defer_text[f.scope_level])
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
-	
 	if p.attr == 'live' && p.pref.is_so {
 		//p.genln('// live_function body end')
 		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
 	}
-	
 	// {} closed correctly? scope_level should be 0
 	if p.mod == 'main' {
 		// println(p.cur_fn.scope_level)
@@ -434,14 +478,18 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		// p.error('unclosed {')
 	}
 	// Make sure all vars in this function are used (only in main for now)
-	// if p.builtin_pkg || p.mod == 'os' ||p.mod=='http'{
+	// if p.builtin_mod || p.mod == 'os' ||p.mod=='http'{
 	if p.mod != 'main' {
-		p.genln('}')
+		if !is_generic { 
+			p.genln('}')
+		} 
 		return
 	}
 	p.check_unused_variables()
 	p.cur_fn = EmptyFn
-	p.genln('}')
+	if !is_generic { 
+		p.genln('}')
+	} 
 }
 
 fn (p mut Parser) check_unused_variables() {
@@ -471,8 +519,8 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Normal function => just its name, method => TYPE_FN.name
 	mut fn_name := f.name
 	if f.is_method {
-		receiver_type = receiver_type.replace('*', '')
-		fn_name = '${receiver_type}_${f.name}'
+		fn_name = receiver_type.replace('*', '') + '_' + f.name 
+		//fn_name = '${receiver_type}_${f.name}'
 	}
 	// Generate tmp struct with args
 	arg_struct_name := 'thread_arg_$fn_name'
@@ -539,18 +587,35 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 }
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.pkg != p.mod  { 
+	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  { 
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
-	if f.is_c && !p.builtin_pkg {
+	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
 			p.error('use `free()` instead of `C.free()`') 
 		} else if f.name == 'malloc' {
 			p.error('use `malloc()` instead of `C.malloc()`') 
 		} 
 	} 
-	cgen_name := p.table.cgen_name(f)
+	mut cgen_name := p.table.cgen_name(f)
+	p.next()
+	mut gen_type := '' 
+	if p.tok == .lt {
+		p.check(.lt)
+		gen_type = p.check_name() 
+		// `foo<Bar>()` 
+		// If we are in the first pass, we need to add `Bar` type to the generic function `foo`, 
+		// so that generic `foo`s body can be generated for each type in the second pass. 
+		if p.first_pass() {
+			//println('registering $gen_type in $f.name') 
+			p.table.register_generic_fn_type(f.name, gen_type) 
+			// Function bodies are skipped in the first passed, we only need to register the generic type here. 
+			return 
+		} 
+		cgen_name += '_' + gen_type 
+		p.check(.gt)
+	} 
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name
 	// }
@@ -567,7 +632,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		receiver := f.args.first()
 		if receiver.is_mut && !p.expr_var.is_mut {
 			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
-			p.error('`$p.expr_var.name` is immutable')
+			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 		} 
 		if !p.expr_var.is_changed {
 			p.cur_fn.mark_var_changed(p.expr_var) 
@@ -590,8 +655,8 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		}
 		p.cgen.set_placeholder(method_ph, '$cast $method_call')
 	}
-	p.next()
-	p.fn_call_args(f)
+	// foo<Bar>() 
+	p.fn_call_args(mut f)
 	p.gen(')')
 	p.calling_c = false
 	// println('end of fn call typ=$f.typ')
@@ -608,6 +673,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		}
 		f.args << int_arg
 	}
+	// `(int, string, int)` 
 	// Just register fn arg types
 	types_only := p.tok == .mul || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
 	if types_only {
@@ -626,12 +692,12 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			}
 		}
 	}
-	// (a int, b,c string) syntax
+	// `(a int, b, c string)` syntax
 	for p.tok != .rpar {
 		mut names := [
 		p.check_name()
 		]
-		// a,b,c int syntax
+		// `a,b,c int` syntax
 		for p.tok == .comma {
 			p.check(.comma)
 			p.fspace()
@@ -648,7 +714,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`') 
 		} 
 		for name in names {
-			if !p.first_run() && !p.table.known_type(typ) { 
+			if !p.first_pass() && !p.table.known_type(typ) { 
 				p.error('fn_args: unknown type $typ')
 			}
 			if is_mut { 
@@ -678,7 +744,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 }
 
 // foo *(1, 2, 3, mut bar)* 
-fn (p mut Parser) fn_call_args(f *Fn) *Fn {
+fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 	// p.gen('(')
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
@@ -694,6 +760,16 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		}
 		p.check(.rpar)
 		return f
+	}
+	// add debug information to panic when -debug arg is passed
+	if p.v.pref.is_debug && f.name == 'panic' {
+		mod_name := p.mod.replace('_dot_', '.')
+		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
+		file_path := p.file_path.replace('\\', '\\\\') // escape \
+		p.cgen.resetln(p.cgen.cur_line.replace(
+			'v_panic (',
+			'_panic_debug ($p.scanner.line_nr, tos2("$file_path"), tos2("$mod_name"), tos2("$fn_name"), '
+		))
 	}
 	// Receiver - first arg
 	for i, arg in f.args {
@@ -718,17 +794,24 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		// If `arg` is mutable, the caller needs to provide `mut`: 
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
-			if p.tok != .key_mut {
-				p.error('`$arg.name` is a key_mut argument, you need to provide `mut`: `$f.name(...mut a...)`')
+			if p.tok != .key_mut && p.tok == .name {
+				mut dots_example :=  'mut $p.lit' 
+				if i > 0 {
+					dots_example = '.., ' + dots_example 
+				} 
+				if i < f.args.len - 1 {
+					dots_example = dots_example + ',..' 
+				} 
+				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name($dots_example)`')	
 			}
 			if p.peek() != .name {
-				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
 			var_name := p.lit 
 			v := p.cur_fn.find_var(var_name) 
 			if v.name == '' { 
-				p.error('`$arg.name` is a key_mut argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			} 
 			if !v.is_changed {
 				p.cur_fn.mark_var_changed(v) 
@@ -741,11 +824,13 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 		// (If we don't check for void, then V will compile `println(func())`) 
 		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
 			T := p.table.find_type(typ)
-			fmt := p.typ_to_fmt(typ, 0) 
-			if fmt != '' { 
-				p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
-				continue 
-			}  
+			$if !windows {
+				fmt := p.typ_to_fmt(typ, 0)
+				if fmt != '' {
+					p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+					continue 
+				}
+			}
 			if typ.ends_with('*') {
 				p.cgen.set_placeholder(ph, 'ptr_str(')
 				p.gen(')')
@@ -753,6 +838,13 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			}
 			// Make sure this type has a `str()` method
 			if !T.has_method('str') {
+				// Arrays have automatic `str()` methods 
+				if T.name.starts_with('array_') {
+					p.gen_array_str(mut T) 
+					p.cgen.set_placeholder(ph, '${typ}_str(')
+					p.gen(')')
+					continue 
+				} 
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				if T.fields.len > 0 {
 					mut index := p.cgen.cur_line.len - 1
@@ -762,10 +854,10 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 						p.error(error_msg) 
 					}
 					p.cgen.resetln(p.cgen.cur_line.left(index))
-					p.create_type_string(T, name)
+					p.scanner.create_type_string(T, name)
 					p.cgen.cur_line.replace(typ, '')
 					p.next()
-					return p.fn_call_args(f)
+					return p.fn_call_args(mut f)
 				}
 				p.error(error_msg) 
 			}
@@ -782,7 +874,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			p.error(err)
 		}
 		is_interface := p.table.is_interface(arg.typ)
-		// Add & or * before arg?
+		// Add `&` or `*` before an argument?
 		if !is_interface {
 			// Dereference
 			if got.contains('*') && !expected.contains('*') {
@@ -791,11 +883,19 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
 			if !got.contains('*') && expected.contains('*') && got != 'voidptr' {
+				// Special case for mutable arrays. We can't `&` function results,
+				// have to use `(array[]){ expr }` hack. 
+				if expected.starts_with('array_') && expected.ends_with('*') { 
+					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){') 
+					p.gen('} ') 
+				} 
 				// println('\ne:"$expected" got:"$got"')
-				if ! (expected == 'void*' && got == 'int') &&
+				else if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
-				! (expected == 'byte*' && got == 'string') {
-					p.cgen.set_placeholder(ph, '& /*11 EXP:"$expected" GOT:"$got" */') 
+				! (expected == 'byte*' && got == 'string') &&
+				//! (expected == 'void*' && got == 'array_int') { 
+				! (expected == 'byte*' && got == 'byteptr') { 
+					p.cgen.set_placeholder(ph, '& /*112 EXP:"$expected" GOT:"$got" */') 
 				}
 			}
 		}
@@ -844,17 +944,7 @@ fn (p mut Parser) fn_call_args(f *Fn) *Fn {
 	}
 	p.check(.rpar)
 	// p.gen(')')
-}
-
-fn contains_capital(s string) bool {
-	// for c in s {
-	for i := 0; i < s.len; i++ {
-		c := s[i]
-		if c >= `A` && c <= `Z` {
-			return true
-		}
-	}
-	return false
+	return f // TODO is return f right?
 }
 
 // "fn (int, string) int"

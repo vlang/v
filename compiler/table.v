@@ -5,19 +5,27 @@
 module main
 
 import math 
+import strings 
 
 struct Table {
 mut:
-	types     []Type
-	consts    []Var
-	fns       map[string]Fn 
-	obf_ids   map[string]int // obf_ids['myfunction'] == 23
-	packages  []string // List of all modules registered by the application
-	imports   []string // List of all imports
-	flags     []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt    int atomic
-	obfuscate bool
+	types        []Type
+	consts       []Var
+	fns          map[string]Fn 
+	generic_fns  []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum'] 
+	obf_ids      map[string]int // obf_ids['myfunction'] == 23
+	modules      []string // List of all modules registered by the application
+	imports      []string // List of all imports
+	file_imports []FileImportTable // List of imports for file
+	flags        []string //  ['-framework Cocoa', '-lglfw3']
+	fn_cnt       int atomic
+	obfuscate    bool
 }
+
+struct GenTable {
+	fn_name string 
+	types []string 
+} 
 
 // Holds import information scoped to the parsed file
 struct FileImportTable {
@@ -28,11 +36,11 @@ mut:
 }
 
 enum AccessMod {
-	private        // private imkey_mut
-	private_mut     // private key_mut
-	public         // public immkey_mut (readonly)
-	public_mut     // public, but key_mut only in this module
-	public_mut_mut // public and key_mut both inside and outside (not recommended to use, that's why it's so verbose)
+	private        // private immutable 
+	private_mut    // private mutable 
+	public         // public immutable (readonly)
+	public_mut     // public, but mutable only in this module
+	public_mut_mut // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
 struct Type {
@@ -47,10 +55,12 @@ mut:
 	is_interface   bool
 	is_enum        bool
 	enum_vals []string 
+	gen_types []string 
 	// This field is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
 	is_placeholder bool
+	gen_str	       bool  // needs `.str()` method generation 
 }
 
 // For debugging types
@@ -98,19 +108,27 @@ fn (f Fn) str() string {
 	return '$f.name($str_args) $f.typ'
 }
 
+fn (t &Table) debug_fns() string {
+	mut s := strings.new_builder(1000) 
+	for _, f in t.fns {
+		s.writeln(f.name) 
+	} 
+	return s.str() 
+} 
+
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	NUMBER_TYPES = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
-	FLOAT_TYPES  = ['f32', 'f64']
+	number_types = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
+	float_types  = ['f32', 'f64']
 )
 
 fn is_number_type(typ string) bool {
-	return NUMBER_TYPES.contains(typ)
+	return typ in number_types 
 }
 
 fn is_float_type(typ string) bool {
-	return FLOAT_TYPES.contains(typ)
+	return typ in float_types 
 }
 
 fn is_primitive_type(typ string) bool {
@@ -121,19 +139,22 @@ fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
 		obf_ids: map[string]int{}
 		fns: map[string]Fn{}
+		//generic_fns: map[string]GenTable{} 
+		generic_fns: []GenTable 
 		obfuscate: obfuscate
+		file_imports: []FileImportTable
 	}
 	t.register_type('int')
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
-	t.register_type_with_parent('u8', 'int')
+	t.register_type_with_parent('u8', 'u32')
 	t.register_type_with_parent('i16', 'int')
-	t.register_type_with_parent('u16', 'int')
+	t.register_type_with_parent('u16', 'u32')
 	t.register_type_with_parent('i32', 'int')
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('i64', 'int')
-	t.register_type_with_parent('u64', 'int')
+	t.register_type_with_parent('u64', 'u32')
 	t.register_type('byteptr')
 	t.register_type('intptr')
 	t.register_type('f32')
@@ -142,6 +163,7 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('bool')
 	t.register_type('void')
 	t.register_type('voidptr')
+	t.register_type('T')
 	t.register_type('va_list')
 	t.register_const('stdin', 'int', 'main', false)
 	t.register_const('stdout', 'int', 'main', false)
@@ -162,15 +184,37 @@ fn (t mut Table) var_cgen_name(name string) string {
 	}
 }
 
-fn (t mut Table) register_package(pkg string) {
-	if t.packages.contains(pkg) {
+fn (t mut Table) register_module(mod string) {
+	if t.modules.contains(mod) {
 		return
 	}
-	t.packages << pkg
+	t.modules << mod
 }
 
-fn (table &Table) known_pkg(pkg string) bool {
-	return pkg in table.packages
+fn (p mut Parser) register_array(typ string) {
+	if typ.contains('*') {
+		println('bad arr $typ')
+		return
+	}
+	if !p.table.known_type(typ) {
+		p.register_type_with_parent(typ, 'array')
+		p.cgen.typedefs << 'typedef array $typ;'
+	}
+}
+
+fn (p mut Parser) register_map(typ string) {
+	if typ.contains('*') {
+		println('bad map $typ')
+		return
+	}
+	if !p.table.known_type(typ) {
+		p.register_type_with_parent(typ, 'map')
+		p.cgen.typedefs << 'typedef map $typ;'
+	}
+}
+
+fn (table &Table) known_mod(mod string) bool {
+	return mod in table.modules
 }
 
 fn (t mut Table) register_const(name, typ, mod string, is_imported bool) {
@@ -191,6 +235,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		is_const: true
 		is_global: true
 		mod: p.mod 
+		is_mut: true 
 	}
 }
 
@@ -198,7 +243,8 @@ fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn 
 }
 
-fn (table &Table) known_type(typ string) bool {
+fn (table &Table) known_type(typ_ string) bool {
+	mut typ := typ_ 
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ.left(typ.len - 1)
@@ -267,9 +313,9 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 		}
 	}
 	/*
-mut pkg := ''
+mut mod := ''
 if parent == 'array' {
-pkg = 'builtin'
+mod = 'builtin'
 }
 */
 	t.types << Type { 
@@ -389,15 +435,16 @@ fn (t mut Type) add_gen_type(type_name string) {
 }
 */ 
 
-fn (p &Parser) find_type(name string) *Type {
+fn (p &Parser) find_type(name string) &Type {
 	typ := p.table.find_type(name)
 	if typ.name.len == 0 {
-		return p.table.find_type(p.prepend_pkg(name))
+		return p.table.find_type(p.prepend_mod(name))
 	}
 	return typ
 }
 
-fn (t &Table) find_type(name string) *Type {
+fn (t &Table) find_type(name_ string) *Type {
+	mut name := name_ 
 	if name.ends_with('*') && !name.contains(' ') {
 		name = name.left(name.len - 1)
 	}
@@ -410,7 +457,9 @@ fn (t &Table) find_type(name string) *Type {
 	return &Type{}
 }
 
-fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
+fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
+	mut got := got_ 
+	mut expected := expected_ 
 	p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
@@ -440,7 +489,7 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	}
 	// Todo void* allows everything right now
 	if got=='void*' || expected=='void*' {
-		// if !p.builtin_pkg {
+		// if !p.builtin_mod {
 		if p.pref.is_play {
 			return false
 		}
@@ -460,6 +509,9 @@ fn (p mut Parser) _check_types(got, expected string, throw bool) bool {
 	if got=='int' && expected=='byte*' {
 		return true
 	}
+	//if got=='int' && expected=='voidptr*' {
+		//return true 
+	//} 
 	// byteptr += int
 	if got=='int' && expected=='byteptr' {
 		return true
@@ -535,8 +587,7 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 
 fn type_default(typ string) string {
 	if typ.starts_with('array_') {
-		typ = typ.right(6)
-		return 'new_array(0, 1, sizeof($typ))'
+		return 'new_array(0, 1, sizeof( ${typ.right(6)} ))'
 	}
 	// Always set pointers to 0
 	if typ.ends_with('*') {
@@ -611,14 +662,14 @@ fn (table mut Table) cgen_name(f &Fn) string {
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate b_abs(), b_print()
 	// TODO duplicate functionality
-	if f.pkg == 'builtin' && CReserved.contains(f.name) {
+	if f.mod == 'builtin' && CReserved.contains(f.name) {
 		return 'v_$name'
 	}
 	// Obfuscate but skip certain names
 	// TODO ugly, fix
-	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.pkg != 'builtin' && !f.is_c &&
-	f.pkg != 'darwin' && f.pkg != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
-	f.name != 'build_token_str' && f.name != 'build_keys' && f.pkg != 'json' &&
+	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.mod != 'builtin' && !f.is_c &&
+	f.mod != 'darwin' && f.mod != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
+	f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'json' &&
 	!name.ends_with('_str') && !name.contains('contains') {
 		mut idx := table.obf_ids[name]
 		// No such function yet, register it
@@ -679,6 +730,76 @@ fn is_valid_int_const(val, typ string) bool {
 	return true 
 }
 
+fn (t mut Table) register_generic_fn(fn_name string) { 
+	t.generic_fns << GenTable{fn_name, []string} 
+} 
+
+fn (t mut Table) fn_gen_types(fn_name string) []string { 
+	for _, f in t.generic_fns {
+		if f.fn_name == fn_name {
+			return f.types
+		} 
+	} 
+	panic('function $fn_name not found')
+} 
+
+// `foo<Bar>()`
+// fn_name == 'foo'
+// typ == 'Bar' 
+fn (t mut Table) register_generic_fn_type(fn_name, typ string) { 
+	for i, f in t.generic_fns {
+		if f.fn_name == fn_name {
+			t.generic_fns[i].types << typ 
+			return 
+		} 
+	} 
+} 
+
+fn (p mut Parser) typ_to_fmt(typ string, level int) string {
+	t := p.table.find_type(typ)
+	if t.is_enum { 
+		return '%d'
+	}
+	switch typ {
+	case 'string': return '%.*s'
+	//case 'bool': return '%.*s'
+	case 'ustring': return '%.*s'
+	case 'byte', 'bool', 'int', 'char', 'byte', 'i32', 'i16', 'i8': return '%d'
+	case 'u8', 'u16', 'u32': return '%u'
+	case 'f64', 'f32': return '%f'
+	case 'i64': return '%lld'
+	case 'u64': return '%llu'
+	case 'byte*', 'byteptr': return '%s'
+		// case 'array_string': return '%s'
+		// case 'array_int': return '%s'
+	case 'void': p.error('cannot interpolate this value')
+	default:
+		if typ.ends_with('*') {
+			return '%p' 
+		} 
+	}
+	if t.parent != '' && level == 0 { 
+		return p.typ_to_fmt(t.parent, level+1) 
+	} 
+	return ''
+}
+
+fn is_compile_time_const(s_ string) bool {
+	s := s_.trim_space()
+	if s == '' {
+		return false
+	}
+	if s.contains('\'') {
+		return true
+	}
+	for c in s {
+		if ! ((c >= `0` && c <= `9`) || c == `.`) {
+			return false
+		}
+	}
+	return true
+}
+
 // Once we have a module format we can read from module file instead
 // this is not optimal
 fn (table &Table) qualify_module(mod string, file_path string) string {
@@ -712,7 +833,6 @@ fn (fit mut FileImportTable) register_import(mod string) {
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports { 
 		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
-		return 
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')

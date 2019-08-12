@@ -4,11 +4,11 @@
 
 module builtin
 
+import strings 
+
 struct map {
 	element_size int
 	root      *Node 
-	_keys []string // used by `keys()` TODO remove this from map struct, 
-	key_i int      // store in a separate var 
 pub: 
 	size int 
 }
@@ -16,6 +16,7 @@ pub:
 struct Node {
 	left *Node
 	right *Node 
+	is_empty bool 
 	key string
 	val voidptr
 }
@@ -27,6 +28,18 @@ fn new_map(cap, elm_size int) map {
 	}
 	return res
 }
+
+// `m := { 'one': 1, 'two': 2 }` 
+fn new_map_init(cap, elm_size int, keys *string, vals voidptr) map {
+	mut res := map {
+		element_size: elm_size
+		root: 0 
+	}
+	for i in 0 .. cap {
+		res._set(keys[i], vals + i * elm_size) 
+	} 
+	return res
+} 
 
 fn new_node(key string, val voidptr, element_size int) *Node {
 	new_e := &Node {
@@ -79,8 +92,7 @@ fn (n & Node) find(key string, out voidptr, element_size int) bool{
 		}  else { 
 			return n.right.find(key, out, element_size) 
 		} 
-	} 
-	return false 
+	}
 } 
 
 // same as `find`, but doesn't return a value. Used by `exists` 
@@ -101,8 +113,7 @@ fn (n & Node) find2(key string, element_size int) bool{
 		}  else { 
 			return n.right.find2(key, element_size) 
 		} 
-	} 
-	return false 
+	}
 } 
 
 fn (m mut map) _set(key string, val voidptr) {
@@ -141,25 +152,29 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 }
 */ 
 
-fn (m mut map) preorder_keys(node &Node) { 
-	m._keys[m.key_i] = node.key 
-	m.key_i++ 
+fn preorder_keys(node &Node, keys mut []string, key_i int) int { 
+	mut i := key_i
+	if !node.is_empty {
+		mut a := *keys
+		a[i] = node.key
+		i++
+	}
 	if !isnil(node.left) { 
-		m.preorder_keys(node.left) 
+		i = preorder_keys(node.left, mut keys, i)
 	} 
 	if !isnil(node.right) { 
-		m.preorder_keys(node.right) 
-	} 
+		i = preorder_keys(node.right, mut keys, i)
+	}
+	return i
 } 
 
 pub fn (m mut map) keys() []string {
-	m._keys = [''; m.size] 
-	m.key_i = 0 
+	mut keys := [''; m.size]
 	if isnil(m.root) {
-		return m._keys
-	} 
-	m.preorder_keys(m.root) 
-	return m._keys
+		return keys
+	}
+	preorder_keys(m.root, mut keys, 0)
+	return keys
 }
 
 fn (m map) get(key string, out voidptr) bool {
@@ -169,9 +184,35 @@ fn (m map) get(key string, out voidptr) bool {
 	return m.root.find(key, out, m.element_size) 
 }
 
+pub fn (n mut Node) delete(key string, element_size int) { 
+	if n.key == key {
+		C.memset(n.val, 0, element_size)
+		n.is_empty = true 
+		return 
+	} 
+	else if n.key > key {
+		if isnil(n.left) {
+			return 
+		}  else { 
+			n.left.delete(key, element_size) 
+		} 
+	} 
+	else {
+		if isnil(n.right) {
+			return 
+		}  else { 
+			n.right.delete(key, element_size) 
+		} 
+	} 
+} 
+
+pub fn (m mut map) delete(key string) { 
+	m.root.delete(key, m.element_size) 
+	m.size-- 
+} 
+
 pub fn (m map) exists(key string) bool {
 	panic('map.exists(key) was removed from the language. Use `key in map` instead.') 
-	return false 
 }
 
 fn (m map) _exists(key string) bool {
@@ -201,16 +242,14 @@ pub fn (m map) free() {
 }
 
 pub fn (m map_string) str() string {
-	// return 'not impl'
 	if m.size == 0 {
 		return '{}'
 	}
-	// TODO use bytes buffer
-	mut s := '{\n'
-	//for key, val  in m { 
-		//val := m[entry.key]
-		//s += '  "$entry.key" => "$val"\n'
-	//}
-	s += '}'
-	return s
+	mut sb := strings.new_builder(50)
+	sb.writeln('{') 
+	for key, val  in m { 
+		sb.writeln('  "$key" => "$val"') 
+	}
+	sb.writeln('}') 
+	return sb.str() 
 }

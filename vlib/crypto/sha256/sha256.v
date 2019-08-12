@@ -5,11 +5,11 @@
 // Package sha256 implements the SHA224 and SHA256 hash algorithms as defined
 // in FIPS 180-4.
 
-// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha256
+// Based off:   https://github.com/golang/go/tree/master/src/crypto/sha256
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 
 module sha256
 
-import math
 import encoding.binary
 
 const (
@@ -51,7 +51,7 @@ mut:
 	is224 bool // mark if this digest is SHA-224
 }
 
-fn (d &Digest) reset() {
+fn (d mut Digest) reset() {
 	d.h = [u32(0); 8]
 	d.x = [byte(0); Chunk]
 	if !d.is224 {
@@ -92,17 +92,15 @@ pub fn new224() *Digest {
 	return d
 }
 
-fn (d mut Digest) write(p []byte) ?int {
+fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
-			block(d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -113,7 +111,7 @@ fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= Chunk {
 		n := p.len &~ (Chunk - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -121,10 +119,7 @@ fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
@@ -158,7 +153,7 @@ fn (d mut Digest) checksum() []byte {
 
 	// Length in bits.
 	len <<= u64(3)
-	binary.big_endian_put_u64(tmp, len)
+	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp.left(8))
 
 	if d.nx != 0 {
@@ -167,15 +162,15 @@ fn (d mut Digest) checksum() []byte {
 
 	digest := [byte(0); Size]
 
-	binary.big_endian_put_u32(digest, d.h[0])
-	binary.big_endian_put_u32(digest.right(4), d.h[1])
-	binary.big_endian_put_u32(digest.right(8), d.h[2])
-	binary.big_endian_put_u32(digest.right(12), d.h[3])
-	binary.big_endian_put_u32(digest.right(16), d.h[4])
-	binary.big_endian_put_u32(digest.right(20), d.h[5])
-	binary.big_endian_put_u32(digest.right(24), d.h[6])
+	binary.big_endian_put_u32(mut digest, d.h[0])
+	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
+	binary.big_endian_put_u32(mut digest.right(8), d.h[2])
+	binary.big_endian_put_u32(mut digest.right(12), d.h[3])
+	binary.big_endian_put_u32(mut digest.right(16), d.h[4])
+	binary.big_endian_put_u32(mut digest.right(20), d.h[5])
+	binary.big_endian_put_u32(mut digest.right(24), d.h[6])
 	if !d.is224 {
-		binary.big_endian_put_u32(digest.right(28), d.h[7])
+		binary.big_endian_put_u32(mut digest.right(28), d.h[7])
 	}
 
 	return digest
@@ -198,14 +193,15 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data)
 	sum := d.checksum()
-	sum224 := sum.left(Size224)
+	mut sum224 := [byte(0); Size224]
+	copy(sum224, sum.left(Size224))
 	return sum224
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(dig mut Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
-	block_generic(dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int {

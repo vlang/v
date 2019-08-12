@@ -5,8 +5,8 @@
 module builtin
 
 struct string {
-mut:
-	hash_cache int 
+//mut:
+	//hash_cache int 
 pub:
 	str byteptr
 	len int
@@ -40,7 +40,6 @@ pub fn tos(s byteptr, len int) string {
 pub fn tos_clone(s byteptr) string {
 	if isnil(s) {
 		panic('tos: nil string')
-		return string{}
 	}
 	len := strlen(s)
 	res := tos(s, len)
@@ -52,7 +51,6 @@ pub fn tos_clone(s byteptr) string {
 fn tos2(s byteptr) string {
 	if isnil(s) {
 		panic('tos2: nil string')
-		return string{}
 	}
 	len := C.strlen(s)
 	res := tos(s, len)
@@ -238,8 +236,6 @@ pub fn (s string) split(delim string) []string {
 	}
 	if delim.len == 1 {
 		return s.split_single(delim[0])
-		// println('split 1 only')
-		// os.exit()
 	}
 	mut i := 0
 	mut start := 0// - 1
@@ -283,15 +279,15 @@ pub fn (s string) split_single(delim byte) []string {
 	mut i := 0
 	mut start := 0
 	for i < s.len {
-		a := s[i] == delim
-		b := i == s.len - 1
-		if a || b {
-			if i == s.len - 1 {
+		is_delim := s[i] == delim
+		last := i == s.len - 1
+		if is_delim || last {
+			if !is_delim && i == s.len - 1 {
 				i++
 			}
 			val := s.substr(start, i)
 			if val.len > 0 {
-				res << val.trim_space()
+				res << val 
 			}
 			start = i + 1
 		}
@@ -337,19 +333,11 @@ pub fn (s string) right(n int) string {
 
 // substr 
 pub fn (s string) substr(start, end int) string {
-	/*
-	if start > end || start >= s.len || end > s.len || start < 0 || end < 0 {
+	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
-		return ''
-	}
-*/
-	if start >= s.len {
-		return ''
 	}
 	len := end - start
 
-	// Copy instead of pointing, like in Java and C#. 
-	// Much easier to free such strings. 
 	mut res := string {
 		len: len
 		str: malloc(len + 1)
@@ -358,14 +346,14 @@ pub fn (s string) substr(start, end int) string {
 		res.str[i] = s.str[start + i]
 	}
 	res.str[len] = `\0`
-	return res 
+
 /* 
 	res := string {
 		str: s.str + start
 		len: len
 	}
-	return res
 */ 
+	return res
 }
 
 // KMP search
@@ -398,6 +386,16 @@ pub fn (s string) index(p string) int {
 		}
 	}
 	prefix.free()
+	return -1
+}
+
+pub fn (s string) index_any(chars string) int {
+	for c in chars {
+		index := s.index(c.str())
+		if index != -1 {
+			return index
+		}
+	}
 	return -1
 }
 
@@ -444,6 +442,24 @@ pub fn (s string) index_after(p string, start int) int {
 		i++
 	}
 	return -1
+}
+
+// counts occurrences of substr in s
+pub fn (s string) count(substr string) int {
+	if s.len == 0 || substr.len == 0 {
+		return 0
+	}
+	mut n := 0
+	mut i := 0
+	for {
+		i = s.index_after(substr, i)
+		if i == -1 {
+			return n
+		}
+		i += substr.len
+		n++
+	}
+	return 0 // TODO can never get here - v doesn't know that
 }
 
 pub fn (s string) contains(p string) bool {
@@ -517,17 +533,16 @@ pub fn (ar []int) contains(val int) bool {
 	return false
 }
 
-/*
+/* 
 pub fn (a []string) to_c() voidptr {
-	char ** res = malloc(sizeof(char*) * a.len);
+	mut res := malloc(sizeof(byteptr) * a.len) 
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		# res[i] = val.str;
+		res[i] = val.str 
 	}
-	return res;
-	return 0
+	return res 
 }
-*/
+*/ 
 
 fn is_space(c byte) bool {
 	return C.isspace(c)
@@ -541,7 +556,6 @@ pub fn (s string) trim_space() string {
 	if s == '' {
 		return ''
 	}
-	// println('TRIM SPACE "$s"')
 	mut i := 0
 	for i < s.len && is_space(s[i]) {
 		i++
@@ -551,6 +565,9 @@ pub fn (s string) trim_space() string {
 		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
+if i > end + 1 {
+return s 
+} 
 	res := s.substr(i, end + 1)
 	// println('after SPACE "$res"')
 	return res
@@ -673,13 +690,13 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-pub fn (u ustring) substr(start, end int) string {
-	start = u.runes[start]
-	if end >= u.runes.len {
-		end = u.s.len
+pub fn (u ustring) substr(_start, _end int) string {
+	start := u.runes[_start]
+	end := if _end >= u.runes.len {
+		u.s.len
 	}
 	else {
-		end = u.runes[end]
+		u.runes[_end]
 	}
 	return u.s.substr(start, end)
 }
@@ -839,7 +856,8 @@ pub fn (c byte) is_white() bool {
 
 
 pub fn (s string) hash() int {
-	mut h := s.hash_cache 
+	//mut h := s.hash_cache 
+	mut h := 0 
 	if h == 0 && s.len > 0 { 
 		for c in s { 
 			h = h * 31 + int(c) 

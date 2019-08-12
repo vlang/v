@@ -4,6 +4,12 @@
 
 module builtin
 
+#include <float.h>
+
+import const (
+	DBL_EPSILON
+)
+
 pub fn (d double) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
@@ -28,6 +34,11 @@ pub fn ptr_str(ptr voidptr) string {
 	return tos(buf, strlen(buf))
 }
 
+// compare floats using C epsilon
+pub fn (a f64) eq(b f64) bool {
+	return C.fabs(a - b) <= DBL_EPSILON	
+}
+
 // fn (nn i32) str() string {
 // return i
 // }
@@ -50,6 +61,34 @@ pub fn (nn int) str() string {
 		buf[max - len - 1] = d + int(`0`)
 		len++
 		n = n / 10
+	}
+	// Prepend - if it's negative
+	if is_neg {
+		buf[max - len - 1] = `-`
+		len++
+	}
+	return tos(buf + max - len, len)
+}
+
+pub fn (nn u32) str() string {
+	 mut n := nn
+	if n == u32(0) {
+		return '0'
+	}
+	max := 16
+	mut buf := malloc(max)
+	mut len := 0
+	mut is_neg := false
+	if n < u32(0) {
+		n = -n
+		is_neg = true
+	}
+	// Fill the string from the end
+	for n > u32(0) {
+		d := n % u32(10)
+		buf[max - len - 1] = d + u32(`0`)
+		len++
+		n = n / u32(10)
 	}
 	// Prepend - if it's negative
 	if is_neg {
@@ -106,6 +145,34 @@ pub fn (nn i64) str() string {
 		buf[max - len - 1] = d + int(`0`)
 		len++
 		n = n / i64(10)
+	}
+	// Prepend - if it's negative
+	if is_neg {
+		buf[max - len - 1] = `-`
+		len++
+	}
+	return tos(buf + max - len, len)
+}
+
+pub fn (nn u64) str() string {
+	 mut n := nn
+	if n == u64(0) {
+		return '0'
+	}
+	max := 32
+	mut buf := malloc(max)
+	mut len := 0
+	mut is_neg := false
+	if n < u64(0) {
+		n = -n
+		is_neg = true
+	}
+	// Fill the string from the end
+	for n > u64(0) {
+		d := n % u64(10)
+		buf[max - len - 1] = d + u64(`0`)
+		len++
+		n = n / u64(10)
 	}
 	// Prepend - if it's negative
 	if is_neg {
@@ -176,6 +243,10 @@ pub fn (c byte) str() string {
 	str.str[1] = `\0`
 	return str
 }
+
+pub fn (c byte) is_capital() bool {
+	return c >= `A` && c <= `Z` 
+} 
 
 pub fn (b []byte) clone() []byte {
 	mut res := [byte(0); b.len] 

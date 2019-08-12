@@ -33,7 +33,6 @@ fn new_scanner(file_path string) *Scanner {
 
 	mut raw_text := os.read_file(file_path) or {
 		panic('scanner: failed to open "$file_path"')
-		return &Scanner{}
 	}
 
 	// BOM check
@@ -128,7 +127,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 
 	// scan integer part
-	for s.text[s.pos].is_digit() {
+	for s.pos < s.text.len && s.text[s.pos].is_digit() {
 		s.pos++
 	}
 
@@ -141,9 +140,9 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 
 	// scan fractional part
-	if s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
-		for s.text[s.pos].is_digit() {
+		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
 	}
@@ -152,7 +151,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	mut has_exponential_part := false
 	if s.expect('e+', s.pos) || s.expect('e-', s.pos) {
 		exp_start_pos := s.pos += 2
-		for s.text[s.pos].is_digit() {
+		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
 		if exp_start_pos == s.pos {
@@ -162,7 +161,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 
 	// error check: 1.23.4, 123.e+3.4
-	if s.text[s.pos] == `.` {
+	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		if has_exponential_part {
 			s.error('exponential part should be integer')
 		}
@@ -282,7 +281,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.name, name)
 	}
 	// `123`, `.123`
-	else if c.is_digit() || c == `.` && nextc.is_digit() {
+	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 		num := s.ident_number()
 		return scan_res(.number, num)
 	}
@@ -438,6 +437,22 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.gt, '')
 		}
+	case 0xE2:
+		//case `≠`:
+		if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
+			s.pos += 2
+			return scan_res(.ne, '')
+		}
+		// ⩽
+		else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
+			s.pos += 2
+			return scan_res(.le, '')
+		}
+		// ⩾
+		else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
+			s.pos += 2
+			return scan_res(.ge, '')
+		}
 	case `<`:
 		if nextc == `=` {
 			s.pos++
@@ -550,8 +565,7 @@ fn (s mut Scanner) scan() ScanRes {
 
 fn (s &Scanner) error(msg string) {
 	file := s.file_path.all_after('/')
-	println('panic: $file:${s.line_nr + 1}')
-	println(msg)
+	println('$file:${s.line_nr + 1} $msg')
 	exit(1)
 }
 
@@ -758,3 +772,30 @@ fn (s mut Scanner) create_type_string(T Type, name string) {
 	s.line_nr = line
 	s.inside_string = inside_string
 }
+
+fn contains_capital(s string) bool {
+	// for c in s {
+	for i := 0; i < s.len; i++ {
+		c := s[i]
+		if c >= `A` && c <= `Z` {
+			return true
+		}
+	}
+	return false
+}
+
+// HTTPRequest  bad
+// HttpRequest  good 
+fn good_type_name(s string) bool {
+	if s.len < 4 {
+		return true 
+	} 
+	for i in 2 .. s.len { 
+		if s[i].is_capital() && s[i-1].is_capital() && s[i-2].is_capital() {
+			return false 
+		} 
+	} 
+	return true 
+} 
+
+
