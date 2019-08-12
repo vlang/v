@@ -50,7 +50,7 @@ release: clean v-release thirdparty-release
 
 install: uninstall all
 	mkdir -p ${PREFIX}/lib/vlang ${PREFIX}/bin
-	cp -r {v,tools,vlib,thirdparty} ${PREFIX}/lib/vlang
+	cp -r v tools vlib thirdparty ${PREFIX}/lib/vlang
 	ln -sf ${PREFIX}/lib/vlang/v ${PREFIX}/bin/v
 	ln -sf ${PREFIX}/lib/vlang/tools/vget ${PREFIX}/bin/vget
 
