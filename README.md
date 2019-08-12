@@ -77,10 +77,10 @@ cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
 
 ### Symlinking and updates
 
-You can create a symlink so that it's globally available:
+You can create a `/usr/local/bin/v` symlink so that V is globally available:
 
 ```
-sudo ln -s [path to V repo]/v /usr/local/bin/v
+sudo make symlink
 ```
 
 V is being constantly updated. To update V, simply run
