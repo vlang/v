@@ -15,10 +15,10 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in half an hour, less if you already know Go
+- Simplicity: the language can be learned in less than an hour
 - Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
 - Easy to develop: V compiles itself in less than a second
-- Performance: within 5% of C
+- Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
@@ -111,6 +111,7 @@ hello world
 
 
 ```
+cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
 
