@@ -9,6 +9,9 @@ import (
 
 const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
+	HEADER_SERVER = 'Server: VWeb\r\n' // TODO add to the headers
+	HTTP_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found'
+	HTTP_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n500 Internal Server Error'
 )
 
 struct Context {
@@ -19,30 +22,30 @@ pub:
 	conn net.Socket 
 	form map[string]string 
 	// TODO Response 
-	headers []string  // response headers 
+	headers []string // response headers 
 } 
 
 pub fn (ctx Context) text(s string) {
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/plain\n$h\n$s') 
-} 
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$h\r\n\r\n$s')
+}
 
 pub fn (ctx Context) json(s string) {
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: application/json\n$h\n$s') 
-} 
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$h\r\n\r\n$s') 
+}
 
 pub fn (ctx Context) redirect(url string) {
         h := ctx.headers.join('\n')
-        ctx.conn.write('HTTP/1.1 302 Found\nLocation: $url\n$h') 
-} 
+        ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$h') 
+}
 
 pub fn (ctx Context) not_found(s string) {
-        ctx.conn.write('HTTP/1.1 404 Not Found') 
-} 
+        ctx.conn.write(HTTP_404)
+}
 
 pub fn (ctx mut Context) set_cookie(key, val string) {
-	ctx.set_header('Set-Cookie', '$key=$val') 
+	ctx.set_header('Set-Cookie', '$key=$val')
 } 
 
 pub fn (ctx Context) get_cookie(key string) string { 
@@ -67,7 +70,7 @@ fn (ctx mut Context) set_header(key, val string) {
 
 pub fn (ctx Context) html(html string) { 
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/html\n$h\n\n$html')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$h\r\n\r\n$html')
 	 
 } 
 
@@ -83,13 +86,13 @@ pub fn run<T>(port int) {
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
-			conn.write('HTTP/1.1 500 Not Found \nContent-Type: text/plain \n\n500')
+			conn.write(HTTP_500)
 			conn.close()
 			continue
 		}
 		 // Parse request headers
 		 lines := s.split_into_lines()
-		 mut headers := []string //map[string]string{}
+		 mut headers := map[string]string{}
 		 for i, line in lines {
 			if i == 0 {
 				continue
@@ -98,12 +101,7 @@ pub fn run<T>(port int) {
 			if words.len != 2 {
 				continue
 			}
-			headers << line 
-			/*
-			key := words[0]
-			val := words[1]
-			headers[key] = val
-			*/
+			headers[words[0]] = words[1]
 		} 
 		// Parse the first line
 		// "GET / HTTP/1.1"
@@ -151,7 +149,7 @@ pub fn run<T>(port int) {
 
 		// Call the right action 
 		app.$action() or { 
-			conn.write('HTTP/1.1 404 Not Found \nContent-Type: text/plain \n\n404 not found') 
+			conn.write(HTTP_404) 
 		}
 		conn.close()
 	}
@@ -231,7 +229,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' { 
 		data := os.read_file(static_file) or { return false }  
-		ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: $mime_type\n\n$data')
+		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data')
 		return true 
 	} 
 	return false 
