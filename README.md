@@ -147,7 +147,7 @@ macOS:
 brew install glfw freetype openssl
 
 Debian/Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
 
 Arch/Manjaro:
 sudo pacman -S glfw-x11 freetype2
