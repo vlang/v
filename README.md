@@ -58,22 +58,12 @@ That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo
 
 ### C compiler
 
-You'll need Clang or GCC.
+You'll need Clang or GCC. If you are doing development, you most likely already have it installed.
 
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
+On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
 
 On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-### Building without make
-```bash
-git clone https://github.com/vlang/v
-cd v
-# Download the V compiler's source translated to C
-curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
-cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
-./v -o v compiler              # Use the resulting V binary to build V from V source
-```
-(These instructions won't work on Windows, use `make.bat` instead).
 
 ### Symlinking and updates
 
@@ -101,13 +91,15 @@ v
 
 
 
-### Testing
+### Testing and running the examples
+
+Make sure V can compile itself:
 
 ```
-$ cd examples
-$ v run hello_world.v
-hello world
+v -o v compiler
+```
 
+```
 $ v
 V 0.1.x
 Use Ctrl-D to exit
@@ -117,10 +109,6 @@ hello world
 >>>
 ```
 
-Now if you want, you can start tinkering with the compiler. If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-
-### Running the examples
 
 ```
 v hello_world.v && ./hello_world    # or simply
@@ -158,7 +146,12 @@ sudo dnf install glfw glfw-devel freetype-devel
 
 glfw dependency will be removed soon.
 
-## Code structure
+## Contributing
+
+Code structure:
 
 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
+If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
+
 
