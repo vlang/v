@@ -1349,7 +1349,7 @@ fn run_repl() []string {
 			}
 			lines << line
 			vals := s.split('\n')
-			for i:=0; i<vals.len-1; i++ {
+			for i:=0; i<vals.len; i++ {
 				println(vals[i])
 			}
 		}

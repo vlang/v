@@ -1,0 +1,7 @@
+num := 1
+string := 'Hello'
+num
+string
+===output===
+1
+Hello
