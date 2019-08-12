@@ -91,7 +91,7 @@ ${obj_gen.str()}
 			p.cgen.insert_before('
 
 array_pg__Row rows = pg__DB_exec(db, tos2("$q"));
-printf("ROWS LEN=%d\\n", rows.len); 
+//printf("ROWS LEN=%d\\n", rows.len); 
 // TODO preallocate 
 array arr_$tmp = new_array(0, 0, sizeof($table_name));  
 for (int i = 0; i < rows.len; i++) { 
