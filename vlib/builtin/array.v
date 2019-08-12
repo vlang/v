@@ -208,6 +208,17 @@ pub fn (a array) reverse() array {
 	return arr
 }
 
+pub fn (a array) clone() array {
+	arr := array {
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: malloc(a.cap * a.element_size)
+	}
+	C.memcpy(arr.data, a.data, a.cap * a.element_size) 
+	return arr 
+} 
+
 //pub fn (a []int) free() {
 pub fn (a array) free() {
 	//if a.is_slice {
