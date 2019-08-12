@@ -3,8 +3,11 @@ CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
 VC ?= e0c9a84
 
-all: v tools/vget
+all: updatevc v tools/vget
 	$(info V has been successfully built)
+
+updatevc:
+	sed -i "s/^VC ?= .*$$/VC ?= $(shell git ls-remote https://github.com/vlang/vc.git --tags master | awk '{print $$1;}')/g" Makefile
 
 v: v.c.out compiler/*.v vlib/**/*.v
 	./v.c.out -o v compiler
