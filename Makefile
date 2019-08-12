@@ -14,7 +14,7 @@ v-release: v
 	strip v
 
 v.c.out: v.${VC}.c
-	${CC} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
+	${CC} ${CFLAGS} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
 
 v.${VC}.c:
 	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
