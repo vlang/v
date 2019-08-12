@@ -1,5 +1,10 @@
 @echo off
 
+echo Cleanup
+del v.exe
+del v.c
+del v2.exe
+
 echo fetch v.c
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
 if %ERRORLEVEL% NEQ 0 goto :fail
@@ -13,12 +18,16 @@ echo build v using vc
 vc.exe -o v.exe compiler
 if %ERRORLEVEL% NEQ 0 goto :fail
 
-echo build v.msvc using v
-v.exe -os msvc -o v.msvc.exe compiler
+echo build vc.msvc using vc
+vc.exe -o -os msvc v.msvc.exe compiler
 if %ERRORLEVEL% NEQ 0 goto :fail
 
-echo build v.msvc.2 using v.msvc
-v.msvc.exe -os msvc -o v.msvc.2.exe compiler
+echo build v.msvc.3 using v
+v.exe -os msvc -o v.msvc.2.exe compiler
+if %ERRORLEVEL% NEQ 0 goto :fail
+
+echo build v.msvc.3 using v.msvc
+v.msvc.exe -os msvc -o v.msvc.3.exe compiler
 if %ERRORLEVEL% NEQ 0 goto :fail
 
 echo build v.gcc using v.msvc
