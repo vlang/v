@@ -5,6 +5,7 @@ import (
 	strings 
 	net 
 	http 
+	net.urllib 
 ) 
 
 const (
@@ -172,7 +173,9 @@ fn (ctx mut Context) parse_form(s string) {
 			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
-			val := http.unescape_url(keyval[1]) 
+			val := urllib.query_unescape(keyval[1]) or {
+				continue 
+			} 
 			println('http form "$key" => "$val"') 
 			ctx.form[key] = val 
 		}
