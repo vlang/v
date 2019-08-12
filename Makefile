@@ -1,7 +1,7 @@
 CC ?= cc
 CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
-VC ?= 0.1.17
+VC ?= e0c9a84
 
 all: v tools/vget
 	$(info V has been successfully built)
@@ -17,8 +17,7 @@ v.c.out: v.${VC}.c
 	${CC} -std=gnu11 -w -o v.c.out v.${VC}.c -lm
 
 v.${VC}.c:
-	#curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
-	curl -o v.${VC}.c -LsSf https://raw.githubusercontent.com/vlang/vc/master/v.c
+	curl -o v.${VC}.c -LsSf https://github.com/vlang/vc/raw/${VC}/v.c
 
 tools/vget: v
 	./v tools/vget.v
@@ -32,7 +31,7 @@ test: v
 	bash ./compiler/tests/repl/repl.sh
 
 clean:
-	-rm -f v.c v*.c v.c.out v vprod thirdparty/**/*.o tools/vget
+	-rm -f v.c v.*.c v.c.out v vprod thirdparty/**/*.o tools/vget
 	find . -name '.*.c' -print0 | xargs -0 -n1 rm -f
 
 SOURCES = $(wildcard thirdparty/**/*.c)
