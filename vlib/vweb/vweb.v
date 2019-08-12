@@ -22,26 +22,34 @@ pub:
 	conn net.Socket 
 	form map[string]string 
 	// TODO Response 
-	headers []string // response headers 
+	headers map[string]string // response headers 
 } 
 
+pub fn (ctx Context) parse_headers() {
+	headers := ''
+	for k, v in ctx.headers {
+		headers += '$k: $v'
+	}
+	return headers
+}
+
 pub fn (ctx Context) text(s string) {
-	h := ctx.headers.join('\n')
+	h := ctx.parse_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$h\r\n\r\n$s')
 }
 
 pub fn (ctx Context) json(s string) {
-	h := ctx.headers.join('\n')
+	h := ctx.parse_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$h\r\n\r\n$s') 
 }
 
 pub fn (ctx Context) redirect(url string) {
-        h := ctx.headers.join('\n')
-        ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$h') 
+	h := ctx.parse_headers()
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$h') 
 }
 
 pub fn (ctx Context) not_found(s string) {
-        ctx.conn.write(HTTP_404)
+	ctx.conn.write(HTTP_404)
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) {
@@ -65,7 +73,7 @@ pub fn (ctx Context) get_cookie(key string) string {
 
 fn (ctx mut Context) set_header(key, val string) {
 	// ctx.resp.headers[key] = val
-	ctx.headers << '$key: $val'
+	ctx.headers[key] = val
 }
 
 pub fn (ctx Context) html(html string) { 
@@ -115,12 +123,12 @@ pub fn run<T>(port int) {
 			action = 'index' 
 		} 
 		req := http.Request{
-				headers: map[string]string{} 
-			headers2: headers 
-				ws_func: 0
-				user_ptr: 0
-				method: vals[0]
-				url: vals[1] 
+			headers: map[string]string{} 
+			headers2: headers //TODO remove?
+			ws_func: 0
+			user_ptr: 0
+			method: vals[0]
+			url: vals[1] 
 		} 
 		println('vweb action = "$action"') 
 		//mut app := T{
