@@ -25,8 +25,8 @@ pub:
 	headers map[string]string // response headers 
 } 
 
-pub fn (ctx Context) parse_headers() {
-	headers := ''
+pub fn (ctx Context) parse_headers() string {
+	mut headers := ''
 	for k, v in ctx.headers {
 		headers += '$k: $v'
 	}
@@ -56,14 +56,17 @@ pub fn (ctx mut Context) set_cookie(key, val string) {
 	ctx.set_header('Set-Cookie', '$key=$val')
 } 
 
-pub fn (ctx Context) get_cookie(key string) string { 
-	for h in ctx.req.headers2 {
-		if h.starts_with('Cookie:') ||	h.starts_with('cookie:') {
-			cookie := h.right(7) 
-			return cookie.find_between(' $key=', ';')
-		} 
-	} 
-	return '' 
+pub fn (ctx Context) get_cookie(key string) ?string { 
+	for k, v in ctx.req.headers {
+		if k.eq('Cookie') || k.eq('cookie') {
+			cookie := v.split('; ')
+			if cookie.len == 2 && key.eq(cookie[0]) { // TODO repace with key.eq(cookie[0])
+				return cookie[1]
+			}
+			return v
+		}
+	}
+	return error('Cookie not found')
 	/*
 	cookie := ctx.req.headers['Cookie']
 	println('get cookie $key : "$cookie"') 
@@ -77,7 +80,7 @@ fn (ctx mut Context) set_header(key, val string) {
 }
 
 pub fn (ctx Context) html(html string) { 
-	h := ctx.headers.join('\n')
+	h := ctx.parse_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$h\r\n\r\n$html')
 	 
 } 
@@ -105,7 +108,7 @@ pub fn run<T>(port int) {
 			if i == 0 {
 				continue
 			}
-			words := line.split(':')
+			words := line.split(': ')
 			if words.len != 2 {
 				continue
 			}
@@ -124,7 +127,6 @@ pub fn run<T>(port int) {
 		} 
 		req := http.Request{
 			headers: map[string]string{} 
-			headers2: headers //TODO remove?
 			ws_func: 0
 			user_ptr: 0
 			method: vals[0]

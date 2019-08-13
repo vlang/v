@@ -9,7 +9,6 @@ import http.chunked
 
 struct Request {
 pub:
-	headers2  []string
 	headers  map[string]string 
 	method   string
 	// cookies map[string]string
