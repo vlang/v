@@ -28,8 +28,12 @@ pub fn compile_template(path string) string {
 	lines := html.split_into_lines() 
 	mut s := strings.new_builder(1000) 
 	base := path.all_after('/').replace('.html', '')
-	// this line will get removed becase only function body is embedded 
-	s.writeln('module main import strings fn ${base}_view() string {\nmut sb := strings.new_builder(${lines.len * 30})\nheader := $header\n_ := header')
+	s.writeln('module main import strings fn ${base}_view() string {   // this line will get removed becase only function body is embedded 
+mut sb := strings.new_builder(${lines.len * 30})
+header := \'$header\' 
+_ := header 
+//footer := \'footer\' 
+') 
 	s.writeln(STR_START)
 	mut in_css :=true// false 
 	for _line in lines {
