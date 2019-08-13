@@ -33,7 +33,8 @@ test: v
 
 clean:
 	-rm -f v.c v*.c v.c.out v vprod thirdparty/**/*.o tools/vget
-	find . -name '.*.c' -print0 | xargs -0 -n1 rm -f
+	find . -name '.*.c' -type f -print0 | xargs -0 -n1 rm -f
+	find . -name '*.dSYM' -type d -print0 | xargs -0 -n1 rm -rf
 
 SOURCES = $(wildcard thirdparty/**/*.c)
 OBJECTS := ${SOURCES:.c=.o} 
