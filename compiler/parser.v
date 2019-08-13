@@ -83,6 +83,8 @@ mut:
 	cur_gen_type string // "App" to replace "T" in current generic function 
 	is_vweb bool 
 	is_sql bool 
+	sql_i int  // $1 $2 $3  
+	sql_params string // ("select * from users where id = $1", ***"100"***) 
 }
 
 const (
@@ -93,17 +95,6 @@ const (
 const (
 	MaxModuleDepth = 4
 ) 
-
-fn platform_postfix_to_ifdefguard(name string) string {
-  switch name {
-    case '.v': return '' // no guard needed
-    case '_win.v': return '#ifdef _WIN32'
-    case '_nix.v': return '#ifndef _WIN32'
-    case '_lin.v': return '#ifdef __linux__'
-    case '_mac.v': return '#ifdef __APPLE__'
-  }
-  panic('bad platform_postfix "$name"')
-}
 
 fn (v mut V) new_parser(path string, pass Pass) Parser {
 	v.log('new_parser("$path")')
@@ -185,7 +176,7 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod == 'freetype' || 	p.mod == 'glfw'  || p.mod=='glfw2' || p.mod=='ui' // TODO tmp remove
+	p.can_chash = p.mod == 'freetype' || p.mod=='ui' // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
@@ -1403,7 +1394,17 @@ fn (p mut Parser) bterm() string {
 			p.gen(tok.str())
 		}
 		p.next()
-		p.check_types(p.expression(), typ)
+		// `id == user.id` => `id == $1`, `user.id` 
+		if p.is_sql {
+			p.sql_i++ 
+			p.gen('$' + p.sql_i.str()) 
+			p.cgen.start_cut() 
+			p.check_types(p.expression(), typ)
+			p.sql_params = p.sql_params + p.cgen.cut() + ',' 
+			//println('sql params = "$p.sql_params"') 
+		}  else { 
+			p.check_types(p.expression(), typ)
+		} 
 		typ = 'bool'
 		if is_str { //&& !p.is_sql { 
 			p.gen(')')
@@ -2950,20 +2951,6 @@ fn (p mut Parser) get_tmp_counter() int {
 	p.tmp_cnt++
 	return p.tmp_cnt
 }
-
-fn os_name_to_ifdef(name string) string { 
-	switch name {
-		case 'windows': return '_WIN32'
-		case 'mac': return '__APPLE__'
-		case 'linux': return '__linux__' 
-		case 'freebsd': return '__FreeBSD__' 
-		case 'openbsd': return '__OpenBSD__' 
-		case 'netbsd': return '__NetBSD__' 
-		case 'dragonfly': return '__DragonFly__' 
-		case 'msvc': return '_MSC_VER' 
-	} 
-	panic('bad os ifdef name "$name"') 
-} 
 
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {

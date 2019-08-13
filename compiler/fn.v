@@ -606,11 +606,15 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 	if p.tok == .lt {
 		p.check(.lt)
 		gen_type = p.check_name() 
+		// run<T> => run_App 
+		if gen_type == 'T' && p.cur_gen_type != '' {
+			gen_type = p.cur_gen_type 
+		} 
 		// `foo<Bar>()` 
 		// If we are in the first pass, we need to add `Bar` type to the generic function `foo`, 
 		// so that generic `foo`s body can be generated for each type in the second pass. 
 		if p.first_pass() {
-			//println('registering $gen_type in $f.name') 
+			println('registering $gen_type in $f.name fname=$f.name') 
 			p.table.register_generic_fn_type(f.name, gen_type) 
 			// Function bodies are skipped in the first passed, we only need to register the generic type here. 
 			return 
