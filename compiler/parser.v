@@ -2920,6 +2920,9 @@ fn (p mut Parser) cast(typ string) string {
 			p.error('cannot cast `$expr_typ` to `$typ`') 
 		} 
 	}
+	else if typ == 'byte' && expr_typ == 'string' {
+		p.error('cannot cast `$expr_typ` to `$typ`, use backquotes `` to create a `$typ` or access the value of an index of `$expr_typ` using []')
+	}
 	else {
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
