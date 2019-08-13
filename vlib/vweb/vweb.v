@@ -128,6 +128,11 @@ pub fn run<T>(port int) {
 		// "GET / HTTP/1.1"
 		first_line := s.all_before('\n')
 		vals := first_line.split(' ')
+		if vals.len < 2 {
+			println('no vals for http')
+			conn.close()
+			continue
+		}
 		mut action := vals[1].right(1).all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
@@ -154,11 +159,6 @@ pub fn run<T>(port int) {
 		//}
 		if req.method in methods_with_form {
 			app.vweb.parse_form(s)
-		}
-		if vals.len < 2 {
-			println('no vals for http')
-			conn.close()
-			continue
 		}
 		// Serve a static file if it's one
 		// if app.vweb.handle_static() {
