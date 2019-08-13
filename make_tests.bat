@@ -19,10 +19,8 @@ vc.exe -o v.exe compiler
 if %ERRORLEVEL% NEQ 0 goto :fail
 
 echo build vc.msvc using vc
-vc.exe -o -os msvc v.msvc.exe compiler
+vc.exe -os msvc -o v.msvc.exe compiler
 if %ERRORLEVEL% NEQ 0 goto :fail
-
-dir
 
 echo build v.msvc.3 using v
 v.exe -os msvc -o v.msvc.2.exe compiler
