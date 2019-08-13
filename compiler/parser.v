@@ -1251,8 +1251,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		println('allowing option asss')
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
+		typ := expr_type.replace('Option_', '') 
 		//p.cgen.cur_line = left + 'opt_ok($expr)'
-		p.cgen.resetln(left + 'opt_ok($expr, sizeof($expr_type))')
+		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.scanner.line_nr--
@@ -3315,10 +3316,10 @@ fn (p mut Parser) return_st() {
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
-
-				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($expr_type)($ret);'
+				typ := expr_type.replace('Option_', '') 
+				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($typ)($ret);'
 				p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
-				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
+				p.gen('return opt_ok(&$tmp, sizeof($typ))')
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)

@@ -35,14 +35,14 @@ _ := header
 //footer := \'footer\' 
 ') 
 	s.writeln(STR_START)
-	mut in_css := false 
+	mut in_css :=true// false 
 	for _line in lines {
 		line := _line.trim_space() 
 		if line == '<style>' {
 			in_css = true 
 		} 
 		else if line == '</style>' {
-			in_css = false 
+			//in_css = false 
 		} 
 		if line.contains('@if ') {
 			s.writeln(STR_END)
