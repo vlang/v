@@ -39,7 +39,7 @@ pub:
 	headers map[string]string // response headers 
 } 
 
-pub fn parse_headers(lines string) map[string]string{} {
+pub fn parse_headers(lines []string) map[string]string {
 	mut headers := map[string]string{}
 	for i, line in lines {
 		if i == 0 {
@@ -49,7 +49,7 @@ pub fn parse_headers(lines string) map[string]string{} {
 		if words.len != 2 {
 			continue
 		}
-		headers[words[0]] = words[1] 
+		headers[words[0]] = words[1]
 	}
 	return headers
 }
@@ -113,7 +113,7 @@ pub fn run<T>(port int) {
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
-		} 
+		}
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
@@ -121,9 +121,6 @@ pub fn run<T>(port int) {
 			conn.close()
 			continue
 		}
-		// Parse request headers
-		lines := s.split_into_lines()
-		mut headers := parse_headers(lines)
 		// Parse the first line
 		// "GET / HTTP/1.1"
 		first_line := s.all_before('\n')
@@ -141,7 +138,7 @@ pub fn run<T>(port int) {
 			action = 'index'
 		}
 		req := http.Request{
-			headers: map[string]string{}
+			headers: parse_headers(s.split_into_lines())
 			ws_func: 0
 			user_ptr: 0
 			method: vals[0]
@@ -155,16 +152,17 @@ pub fn run<T>(port int) {
 			form: map[string]string{}
 			static_files: map[string]string{}
 			static_mime_types: map[string]string{}
+			headers: map[string]string{}
 		}
 		//}
 		if req.method in methods_with_form {
 			app.vweb.parse_form(s)
 		}
 		// Serve a static file if it's one
-		// if app.vweb.handle_static() {
-		// 	conn.close()
-		// 	continue 
-		// } 
+		//if app.vweb.handle_static() {
+		//	conn.close()
+		//	continue 
+		//} 
 
 		// Call the right action
 		app.$action() or {
@@ -175,9 +173,6 @@ pub fn run<T>(port int) {
 }
 
 fn (ctx mut Context) parse_form(s string) {
-	if !(ctx.req.method in methods_with_form) {
-		return 
-	} 
 	pos := s.index('\r\n\r\n')
 	if pos > -1 {
 		mut str_form := s.substr(pos, s.len)
