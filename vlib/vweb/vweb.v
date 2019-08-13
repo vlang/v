@@ -55,25 +55,18 @@ pub fn (ctx Context) not_found(s string) {
 
 pub fn (ctx mut Context) set_cookie(key, val string) {
 	ctx.set_header('Set-Cookie', '$key=$val')
-} 
+}
 
-pub fn (ctx Context) get_cookie(key string) ?string { 
-	for k, v in ctx.req.headers {
-		if k.eq('Cookie') || k.eq('cookie') {
-			cookie := v.split('; ')
-			if cookie.len == 2 && key.eq(cookie[0]) { // TODO repace with key.eq(cookie[0])
-				return cookie[1]
-			}
-			return v
+pub fn (ctx Context) get_cookie(key string) ?string {
+	cookie_header := ctx.req.headers['Cookie']
+	for cookie_key_value in cookie_header.split('; ') {
+		cookie := cookie_key_value.split('=')
+		if cookie.len == 2 && key == cookie[0] {
+			return cookie[1]
 		}
 	}
 	return error('Cookie not found')
-	/*
-	cookie := ctx.req.headers['Cookie']
-	println('get cookie $key : "$cookie"') 
-	return cookie.find_between('$key=', ';')
-	*/
-} 
+}
 
 fn (ctx mut Context) set_header(key, val string) {
 	// ctx.resp.headers[key] = val
@@ -83,14 +76,13 @@ fn (ctx mut Context) set_header(key, val string) {
 pub fn (ctx Context) html(html string) { 
 	h := ctx.parse_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$h\r\n\r\n$html')
-	 
-} 
+}
 
-pub fn run<T>(port int) { 
-	println('Running vweb app on http://localhost:$port ...') 
-	l := net.listen(port) or { panic('failed to listen') } 
-	mut app := T{} 
-	app.init() 
+pub fn run<T>(port int) {
+	println('Running vweb app on http://localhost:$port ...')
+	l := net.listen(port) or { panic('failed to listen') }
+	mut app := T{}
+	app.init()
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
@@ -102,11 +94,13 @@ pub fn run<T>(port int) {
 			conn.close()
 			continue
 		}
-		 // Parse request headers
-		 lines := s.split_into_lines()
-		 mut headers := map[string]string{}
+		// Parse request headers
+		lines := s.split_into_lines()
+		mut headers := map[string]string{}
+		mut first_line := ''
 		 for i, line in lines {
 			if i == 0 {
+				first_line = line
 				continue
 			}
 			words := line.split(': ')
@@ -114,11 +108,15 @@ pub fn run<T>(port int) {
 				continue
 			}
 			headers[words[0]] = words[1]
-		} 
+		}
 		// Parse the first line
 		// "GET / HTTP/1.1"
-		first_line := s.all_before('\n')
-		vals := first_line.split(' ') 
+		vals := first_line.split(' ')
+		if vals.len < 2 {
+			println('no vals for http') 
+			conn.close()
+			continue 
+		}
 		mut action := vals[1].right(1).all_before('/') 
 		if action.contains('?') {
 			action = action.all_before('?') 
@@ -127,31 +125,23 @@ pub fn run<T>(port int) {
 			action = 'index' 
 		} 
 		req := http.Request{
-			headers: map[string]string{} 
+			headers: map[string]string{}
 			ws_func: 0
 			user_ptr: 0
 			method: vals[0]
-			url: vals[1] 
+			url: vals[1]
 		} 
-		println('vweb action = "$action"') 
-		//mut app := T{
+		println('vweb action = "$action"')
 		app.vweb = Context{
 			req: req 
 			conn: conn 
 			form: map[string]string{} 
 			static_files: map[string]string{} 
 			static_mime_types: map[string]string{}
-		} 
-		//} 
+		}
 		if req.method in methods_with_form {
 			app.vweb.parse_form(s) 
-		} 
-		if vals.len < 2 {
-			println('no vals for http') 
-			conn.close()
-			continue 
-		} 
-
+		}
 		// Serve a static file if it's one 
 		// if app.vweb.handle_static() {
 		// 	conn.close()
@@ -165,7 +155,6 @@ pub fn run<T>(port int) {
 		conn.close()
 	}
 } 
-
 
 fn (ctx mut Context) parse_form(s string) { 
 	if !(ctx.req.method in methods_with_form) {
