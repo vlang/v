@@ -21,18 +21,36 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	if typ.name == '' {
 		p.error('unknown type `$table_name`') 
 	} 
+	//fields := typ.fields.filter(typ == 'string' || typ == 'int') 
+	// get only string and int fields 
+	mut fields := []Var 
+	for i, field in typ.fields {
+		if field.typ != 'string' && field.typ != 'int' { 
+			continue
+		} 
+		fields << field 
+	} 
+	if fields.len == 0 {
+		p.error('V orm: select: empty fields in `$table_name`') 
+	} 
+	if fields[0].name != 'id' {
+		p.error('V orm: `id int` must be the first field in `$table_name`') 
+	} 
 	// 'select id, name, age from...' 
 	if n == 'from' {
-		for i, field in typ.fields {
+		for i, field in fields {
 			q += field.name  
-			if i < typ.fields.len - 1 {
+			if i < fields.len - 1 {
 				q += ', ' 
 			} 
 		} 
 		q += ' from ' 
 	} 
-	for field in typ.fields {
+	for field in fields {
 		//println('registering sql field var $field.name') 
+		if field.typ != 'string' && field.typ != 'int' { 
+			continue
+		} 
 		p.cur_fn.register_var({ field | is_used:true })  
 	} 
 	q += table_name 
@@ -60,7 +78,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			query_one = true 
 		} 
 	} 
-	//println('sql query="$q"') 
+	println('sql query="$q"') 
 	if n == 'count' {
 		p.cgen.set_placeholder(fn_ph, 'pg__DB_q_int(')
 		p.gen(', tos2("$q"))') 
@@ -68,7 +86,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		// Build an object, assign each field. 
 		tmp := p.get_tmp() 
 		mut obj_gen := strings.new_builder(100) 
-		for i, field in typ.fields {
+		for i, field in fields {
 			mut cast := '' 
 			if field.typ == 'int' {
 				cast = 'string_int' 
@@ -123,16 +141,29 @@ fn (p mut Parser) insert_query(fn_ph int) {
 	p.check(.rpar) 
 	var := p.cur_fn.find_var(var_name) 
 	typ := p.table.find_type(var.typ) 
+	mut fields := []Var 
+	for i, field in typ.fields {
+		if field.typ != 'string' && field.typ != 'int' { 
+			continue
+		} 
+		fields << field 
+	} 
+	if fields.len == 0 {
+		p.error('V orm: insert: empty fields in `$var.typ`') 
+	} 
+	if fields[0].name != 'id' {
+		p.error('V orm: `id int` must be the first field in `$var.typ`') 
+	} 
 	table_name := var.typ 
-	mut fields := ''  // 'name, city, country' 
+	mut sfields := ''  // 'name, city, country' 
 	mut params := '' // params[0] = 'bob'; params[1] = 'Vienna'; 
 	mut vals := ''  // $1, $2, $3... 
 	mut nr_vals := 0 
-	for i, field in typ.fields {
+	for i, field in fields {
 		if field.name == 'id' {
 			continue 
 		} 
-		fields += field.name 
+		sfields += field.name 
 		vals += '$' + i.str() 
 		nr_vals++ 
 		params += 'params[${i-1}] = '
@@ -143,14 +174,14 @@ fn (p mut Parser) insert_query(fn_ph int) {
 		} else {
 			p.error('V ORM: unsupported type `$field.typ`') 
 		} 
-		if i < typ.fields.len - 1 { 
-			fields += ', ' 
+		if i < fields.len - 1 { 
+			sfields += ', ' 
 			vals += ', ' 
 		} 
 	} 
 	p.cgen.insert_before('char* params[$nr_vals];' + params) 
 	p.cgen.set_placeholder(fn_ph, 'PQexecParams( ')
-	p.genln('.conn, "insert into $table_name ($fields) values ($vals)", $nr_vals,
+	p.genln('.conn, "insert into $table_name ($sfields) values ($vals)", $nr_vals,
 0, params, 0, 0, 0)') 
 } 
 

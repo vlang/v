@@ -6,6 +6,13 @@ module http
 
 import strings 
 
+// On linux, prefer a localy build openssl, because it is
+// much more likely for it to be newer, than the system
+// openssl from libssl-dev. If there is no local openssl,
+// the next flag is harmless, since it will still use the
+// (older) system openssl.
+#flag linux -I/usr/local/include/openssl -L/usr/local/lib
+
 #flag windows -I @VROOT/thirdparty/openssl/include 
 #flag darwin -I @VROOT/thirdparty/openssl/include 
 #flag -l ssl -l crypto

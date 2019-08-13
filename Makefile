@@ -3,7 +3,7 @@ CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
 VC ?= 0.1.17
 
-all: v tools/vget
+all: v
 	$(info V has been successfully built)
 
 v: v.c.out compiler/*.v vlib/**/*.v
@@ -59,4 +59,3 @@ uninstall:
 
 symlink: v tools/vget
 	ln -sf `pwd`/v ${PREFIX}/bin/v
-	ln -sf `pwd`/tools/vget ${PREFIX}/bin/vget

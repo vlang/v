@@ -742,13 +742,6 @@ fn (u ustring) free() {
 	u.runes.free()
 }
 
-fn abs(a int) int {
-	if a >= 0 {
-		return a
-	}
-	return -a
-}
-
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
