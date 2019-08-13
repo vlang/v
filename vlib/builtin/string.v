@@ -482,7 +482,7 @@ pub fn (s string) ends_with(p string) bool {
 
 // TODO only works with ASCII
 pub fn (s string) to_lower() string {
-	mut b := malloc(s.len)// TODO + 1 ??
+	mut b := malloc(s.len + 1)
 	for i := 0; i < s.len; i++ {
 		b[i] = C.tolower(s.str[i])
 	}
@@ -490,11 +490,29 @@ pub fn (s string) to_lower() string {
 }
 
 pub fn (s string) to_upper() string {
-	mut b := malloc(s.len)// TODO + 1 ??
+	mut b := malloc(s.len + 1)
 	for i := 0; i < s.len; i++ {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
+}
+
+pub fn (s string) is_upper() bool {
+	for i := 0; i < s.len; i++ {
+		if !(s[i] >= `A` && s[i] <= `Z`) {
+			return false
+		}
+	}
+	return true
+}
+
+pub fn (s string) is_lower() bool {
+	for i := 0; i < s.len; i++ {
+		if !(s[i] >= `a` && s[i] <= `z`) {
+			return false
+		}
+	}
+	return true
 }
 
 // 'hey [man] how you doin'

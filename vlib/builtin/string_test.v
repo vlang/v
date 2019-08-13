@@ -234,6 +234,23 @@ fn test_lower() {
 	assert s.to_lower() == 'have a nice day!'
 	s = 'hi'
 	assert s.to_lower() == 'hi'
+	assert s.is_lower() == true
+}
+
+fn test_upper() {
+	mut s := 'a'
+	assert s.to_upper() == 'A'
+	assert s.to_upper().len == 1
+	s = 'hello'
+	assert s.to_upper() == 'HELLO'
+	assert s.to_upper().len == 5
+	s = 'Aloha'
+	assert s.to_upper() == 'ALOHA'
+	s = 'have a nice day!'
+	assert s.to_upper() == 'HAVE A NICE DAY!'
+	s = 'hi'
+	assert s.to_upper() == 'HI'
+	assert s.is_lower() == true
 }
 
 fn test_left_right() {
