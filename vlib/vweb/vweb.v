@@ -13,6 +13,19 @@ const (
 	HEADER_SERVER = 'Server: VWeb\r\n' // TODO add to the headers
 	HTTP_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found'
 	HTTP_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n500 Internal Server Error'
+	mime_types = {
+		'.css': 'text/css; charset=utf-8',
+		'.gif': 'image/gif',
+		'.htm': 'text/html; charset=utf-8',
+		'.html': 'text/html; charset=utf-8',
+		'.jpg': 'image/jpeg',
+		'.js': 'application/javascript',
+		'.wasm': 'application/wasm',
+		'.pdf': 'application/pdf',
+		'.png': 'image/png',
+		'.svg': 'image/svg+xml',
+		'.xml': 'text/xml; charset=utf-8'
+	}
 )
 
 struct Context {
@@ -26,7 +39,22 @@ pub:
 	headers map[string]string // response headers 
 } 
 
-pub fn (ctx Context) parse_headers() string {
+pub fn parse_headers(lines string) map[string]string{} {
+	mut headers := map[string]string{}
+	for i, line in lines {
+		if i == 0 {
+			continue
+		}
+		words := line.split(': ')
+		if words.len != 2 {
+			continue
+		}
+		headers[words[0]] = words[1] 
+	}
+	return headers
+}
+
+pub fn (ctx Context) join_headers() string {
 	mut headers := ''
 	for k, v in ctx.headers {
 		headers += '$k: $v'
@@ -35,17 +63,17 @@ pub fn (ctx Context) parse_headers() string {
 }
 
 pub fn (ctx Context) text(s string) {
-	h := ctx.parse_headers()
+	h := ctx.join_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$h\r\n\r\n$s')
 }
 
 pub fn (ctx Context) json(s string) {
-	h := ctx.parse_headers()
+	h := ctx.join_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$h\r\n\r\n$s') 
 }
 
 pub fn (ctx Context) redirect(url string) {
-	h := ctx.parse_headers()
+	h := ctx.join_headers()
 	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$h') 
 }
 
@@ -53,7 +81,7 @@ pub fn (ctx Context) not_found(s string) {
 	ctx.conn.write(HTTP_404)
 }
 
-pub fn (ctx mut Context) set_cookie(key, val string) {
+pub fn (ctx mut Context) set_cookie(key, val string) { // TODO refactor
 	ctx.set_header('Set-Cookie', '$key=$val')
 }
 
@@ -69,12 +97,11 @@ pub fn (ctx Context) get_cookie(key string) ?string {
 }
 
 fn (ctx mut Context) set_header(key, val string) {
-	// ctx.resp.headers[key] = val
 	ctx.headers[key] = val
 }
 
-pub fn (ctx Context) html(html string) { 
-	h := ctx.parse_headers()
+pub fn (ctx Context) html(html string) {
+	h := ctx.join_headers()
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$h\r\n\r\n$html')
 }
 
@@ -96,67 +123,58 @@ pub fn run<T>(port int) {
 		}
 		// Parse request headers
 		lines := s.split_into_lines()
-		mut headers := map[string]string{}
-		mut first_line := ''
-		 for i, line in lines {
-			if i == 0 {
-				first_line = line
-				continue
-			}
-			words := line.split(': ')
-			if words.len != 2 {
-				continue
-			}
-			headers[words[0]] = words[1]
-		}
+		mut headers := parse_headers(lines)
 		// Parse the first line
 		// "GET / HTTP/1.1"
+		first_line := s.all_before('\n')
 		vals := first_line.split(' ')
-		if vals.len < 2 {
-			println('no vals for http') 
-			conn.close()
-			continue 
-		}
-		mut action := vals[1].right(1).all_before('/') 
+		mut action := vals[1].right(1).all_before('/')
 		if action.contains('?') {
-			action = action.all_before('?') 
-		} 
+			action = action.all_before('?')
+		}
 		if action == '' {
-			action = 'index' 
-		} 
+			action = 'index'
+		}
 		req := http.Request{
 			headers: map[string]string{}
 			ws_func: 0
 			user_ptr: 0
 			method: vals[0]
 			url: vals[1]
-		} 
+		}
 		println('vweb action = "$action"')
+		//mut app := T{
 		app.vweb = Context{
-			req: req 
-			conn: conn 
-			form: map[string]string{} 
-			static_files: map[string]string{} 
+			req: req
+			conn: conn
+			form: map[string]string{}
+			static_files: map[string]string{}
 			static_mime_types: map[string]string{}
 		}
+		//}
 		if req.method in methods_with_form {
-			app.vweb.parse_form(s) 
+			app.vweb.parse_form(s)
 		}
-		// Serve a static file if it's one 
+		if vals.len < 2 {
+			println('no vals for http')
+			conn.close()
+			continue
+		}
+		// Serve a static file if it's one
 		// if app.vweb.handle_static() {
 		// 	conn.close()
 		// 	continue 
 		// } 
 
-		// Call the right action 
-		app.$action() or { 
-			conn.write(HTTP_404) 
+		// Call the right action
+		app.$action() or {
+			conn.write(HTTP_404)
 		}
 		conn.close()
 	}
-} 
+}
 
-fn (ctx mut Context) parse_form(s string) { 
+fn (ctx mut Context) parse_form(s string) {
 	if !(ctx.req.method in methods_with_form) {
 		return 
 	} 
@@ -166,38 +184,23 @@ fn (ctx mut Context) parse_form(s string) {
 		str_form = str_form.replace('+', ' ')
 		words := str_form.split('&')
 		for word in words {
-			println('parse form keyval="$word"') 
-			keyval := word.trim_space().split('=') 
+			println('parse form keyval="$word"')
+			keyval := word.trim_space().split('=')
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
 			val := urllib.query_unescape(keyval[1]) or {
-				continue 
-			} 
+				continue
+			}
 			println('http form "$key" => "$val"') 
 			ctx.form[key] = val 
 		}
 	}
-} 
-const ( 
-	mime_types = {
-		'.css': 'text/css; charset=utf-8', 
-		'.gif': 'image/gif', 
-		'.htm': 'text/html; charset=utf-8', 
-		'.html': 'text/html; charset=utf-8', 
-		'.jpg': 'image/jpeg', 
-		'.js': 'application/javascript', 
-		'.wasm': 'application/wasm', 
-		'.pdf': 'application/pdf', 
-		'.png': 'image/png', 
-		'.svg': 'image/svg+xml', 
-		'.xml': 'text/xml; charset=utf-8' 
-	} 
-) 
+}
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 	files := os.ls(directory_path)
 	if files.len > 0 {
-		for file in files {			
+		for file in files {
 			mut ext := ''
 			mut i := file.len
 			mut flag := true
@@ -211,22 +214,21 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 				}
 			}
 
-			// todo: os.is_dir is broken now
-			//       so we expect that file is dir it has no extension
+			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
 			if flag {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else {
-				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file 
+				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file
 				ctx.static_mime_types[mount_path + '/' + file] = mime_types[ext]
 			}
 		}
 	}
 }
 
-pub fn (ctx mut Context) handle_static(directory_path string) bool { 
+pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	ctx.scan_static_directory(directory_path, '')
 
-	static_file := ctx.static_files[ctx.req.url] 
+	static_file := ctx.static_files[ctx.req.url]
 	mime_type := ctx.static_mime_types[ctx.req.url]
 
 	if static_file != '' { 
@@ -237,7 +239,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	return false 
 } 
 
-pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) { 
+pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path 
 	ctx.static_mime_types[url] = mime_type
 }
