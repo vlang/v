@@ -1969,7 +1969,11 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			}
 		}
 		else {
-			p.expression()
+			T := p.table.find_type(p.expression())
+			// TODO: Get the key type of the map instead of only string.
+			if is_map && T.parent != 'string' {
+				p.check_types(T.name, 'string')
+			}
 		}
 		p.check(.rsbr)
 		// if (is_str && p.builtin_mod) || is_ptr || is_fixed_arr && ! (is_ptr && is_arr) {
