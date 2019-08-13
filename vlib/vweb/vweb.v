@@ -5,6 +5,7 @@ import (
 	strings 
 	net 
 	http 
+	net.urllib 
 ) 
 
 const (
@@ -180,30 +181,32 @@ fn (ctx mut Context) parse_form(s string) {
 			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
-			val := http.unescape_url(keyval[1]) 
+			val := urllib.query_unescape(keyval[1]) or {
+				continue 
+			} 
 			println('http form "$key" => "$val"') 
 			ctx.form[key] = val 
 		}
 	}
 } 
+const ( 
+	mime_types = {
+		'.css': 'text/css; charset=utf-8', 
+		'.gif': 'image/gif', 
+		'.htm': 'text/html; charset=utf-8', 
+		'.html': 'text/html; charset=utf-8', 
+		'.jpg': 'image/jpeg', 
+		'.js': 'application/javascript', 
+		'.wasm': 'application/wasm', 
+		'.pdf': 'application/pdf', 
+		'.png': 'image/png', 
+		'.svg': 'image/svg+xml', 
+		'.xml': 'text/xml; charset=utf-8' 
+	} 
+) 
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
-	// mime types
-	mut mime_types := map[string]string{}
-	mime_types['.css'] = 'text/css; charset=utf-8'
-	mime_types['.gif'] = 'image/gif'
-	mime_types['.htm'] = 'text/html; charset=utf-8'
-	mime_types['.html'] = 'text/html; charset=utf-8'
-	mime_types['.jpg'] = 'image/jpeg'
-	mime_types['.js'] = 'application/javascript'
-	mime_types['.wasm'] = 'application/wasm'
-	mime_types['.pdf'] = 'application/pdf'
-	mime_types['.png'] = 'image/png'
-	mime_types['.svg'] = 'image/svg+xml'
-	mime_types['.xml'] = 'text/xml; charset=utf-8'
-
 	files := os.ls(directory_path)
-
 	if files.len > 0 {
 		for file in files {			
 			mut ext := ''

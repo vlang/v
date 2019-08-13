@@ -114,7 +114,7 @@ fn new_fn(mod string, is_public bool) *Fn {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.fgen('fn ')
-	defer { p.fgenln('\n') } 
+	//defer { p.fgenln('\n') } 
 	is_pub := p.tok == .key_pub 
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live 
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so { 
@@ -462,7 +462,9 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer_text[f.scope_level])
+	if !p.is_vweb { 
+		p.genln(f.defer_text[f.scope_level])
+	} 
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
