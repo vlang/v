@@ -32,3 +32,10 @@ pub fn (app mut App) index() {
 pub fn (app mut App) text() {
 	app.vweb.text('hello world')
 }
+
+pub fn (app mut App) cookie() {
+	app.vweb.text('Headers:')
+	app.vweb.set_cookie('cookie', 'test')
+	app.vweb.text(app.vweb.headers)
+	app.vweb.text('Text: hello world')
+}

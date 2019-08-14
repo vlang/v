@@ -29,74 +29,60 @@ const (
 )
 
 struct Context {
-	static_files map[string]string
-	static_mime_types map[string]string
-pub: 
-	req http.Request 
-	conn net.Socket 
-	form map[string]string 
-	// TODO Response 
-	headers map[string]string // response headers 
-} 
+		static_files map[string]string
+		static_mime_types map[string]string
+	pub:
+		req http.Request 
+		conn net.Socket 
+		form map[string]string 
+		// TODO Response 
+	mut:
+		headers string // response headers 
+}
 
-pub fn (ctx Context) join_headers() string {
-	mut headers := ''
-	for k, v in ctx.headers {
-		headers += '$k: $v'
-	}
-	return headers
+pub fn (ctx Context) html(html string) {
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
 }
 
 pub fn (ctx Context) text(s string) {
-	h := ctx.join_headers()
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$h\r\n\r\n$s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s')
 }
 
 pub fn (ctx Context) json(s string) {
-	h := ctx.join_headers()
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$h\r\n\r\n$s') 
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') 
 }
 
 pub fn (ctx Context) redirect(url string) {
-	h := ctx.join_headers()
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$h') 
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') 
 }
 
 pub fn (ctx Context) not_found(s string) {
 	ctx.conn.write(HTTP_404)
 }
 
-pub fn (ctx mut Context) set_cookie(key, val string) { // TODO assing more than one cookie in the same header
-	if ctx.headers['Set-Cookie'] == '' {
-		ctx.headers['Set-Cookie'] = '$key=$val'
-	}
-	else {
-		ctx.headers['Set-Cookie'] = ctx.headers['Set-Cookie'] + ' $key=$val'
-	}
+pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
+	ctx.add_header('Set-Cookie', '$key=$val')
 }
 
-pub fn (ctx Context) get_cookie(key string) ?string { // TODO refactor
-	cookie_header := ctx.req.headers['Cookie']
-	for cookie_key_value in cookie_header.split(';') {
-		cookie := cookie_key_value.split('=')
-		if cookie.len == 2 && key == cookie[0] {
-			return cookie[1]
-		}
+pub fn (ctx mut Context) get_cookie(key string) ?string { // TODO refactor
+	cookie_header := ctx.get_header('Cookie')
+	cookie := if cookie_header.contains(';') {
+		cookie_header.find_between('$key=', ';')
+	} else {
+		cookie_header
+	}
+	if cookie != '' {
+		return cookie
 	}
 	return error('Cookie not found')
 }
 
-fn (ctx mut Context) set_header(key, val string) {
-	ctx.headers[key] = val
+fn (ctx mut Context) add_header(key, val string) {
+	ctx.headers = ctx.headers + if ctx.headers == '' { '$key: val' } else { '\r\n$key: val' }
 }
 
 fn (ctx mut Context) get_header(key string) string {
-	return ctx.headers[key]
-}
-
-pub fn (ctx Context) html(html string) {
-	h := ctx.join_headers()
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$h\r\n\r\n$html')
+	return ctx.headers.find_between('\r\n$key: ', '\r\n')
 }
 
 pub fn run<T>(port int) {
@@ -146,7 +132,7 @@ pub fn run<T>(port int) {
 			form: map[string]string{}
 			static_files: map[string]string{}
 			static_mime_types: map[string]string{}
-			headers: map[string]string{}
+			headers: ''
 		}
 		//}
 		if req.method in methods_with_form {
