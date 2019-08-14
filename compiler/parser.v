@@ -2822,6 +2822,16 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			if !p.builtin_mod && field_typ.ends_with('*') && field_typ.contains('Cfg') {
 				p.error('pointer field `${typ}.${field.name}` must be initialized')
 			}
+			// init map fields
+			if field_typ.starts_with('map_') {
+				p.gen('.$field.name = new_map(1, sizeof( ${field_typ.right(4)} ))')
+				inited_fields << field.name
+				if i != t.fields.len - 1 {
+					p.gen(',')
+				}
+				did_gen_something = true
+				continue
+			}
 			def_val := type_default(field_typ)
 			if def_val != '' && def_val != 'STRUCT_DEFAULT_VALUE' {
 				p.gen('.$field.name = $def_val')
