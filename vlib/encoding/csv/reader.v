@@ -110,6 +110,10 @@ fn (r mut Reader) read_record() ?[]string {
 		// not quoted
 		if line[0] != `"` {
 			i = line.index(r.delimiter.str())
+			if i == -1 {
+				// last
+				break
+			}
 			fields << line.left(i)
 			line = line.right(i+1)
 			continue
