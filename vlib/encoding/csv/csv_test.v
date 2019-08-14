@@ -19,6 +19,8 @@ fn test_encoding_csv() {
 		}
 		if row_count == 3 {
 			assert row[0] == 'sam'
+			// quoted field
+			assert row[3] == 'test quoted field'
 		}
 		if row_count == 4 {
 			assert row[0] == 'mike'
