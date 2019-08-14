@@ -94,8 +94,17 @@ fn (r mut Reader) read_record() ?[]string {
 	if r.delimiter == r.comment {
 		return err_comment_is_delim
 	}
-	mut line := r.read_line() or {
-		return error(err)
+	mut line := ''
+	for {
+		l := r.read_line() or {
+			return error(err)
+		}
+		line = l
+		// skip commented lines
+		if line[0] == r.comment {
+			continue
+		}
+		break
 	}
 	mut fields := []string
 	mut i := -1
