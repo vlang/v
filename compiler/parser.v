@@ -654,6 +654,9 @@ fn (p mut Parser) struct_decl() {
 			attr = p.check_name()
 			p.check(.rsbr)
 		}
+		if attr == 'raw' && field_type != 'string' {
+			p.error('struct field with attribute "raw" should be of type "string" but got "$field_type"')
+		}
 		did_gen_something = true
 
 		typ.add_field(field_name, field_type, is_mut, attr, access_mod)

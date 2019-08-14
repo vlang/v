@@ -85,22 +85,33 @@ string res = tos2("");
 		if field.attr == 'skip' {
 			continue
 		}
+		
 		field_type := p.table.find_type(field.typ)
-		// Now generate decoders for all field types in this struct
-		// need to do it here so that these functions are generated first
-		p.gen_json_for_type(field_type)
 		name := field.name
 		_typ := field.typ.replace('*', '')
+
 		enc_name := js_enc_name(_typ)
-		dec_name := js_dec_name(_typ)
-		if is_js_prim(_typ) {
-			dec += ' /*prim*/ res->$name = $dec_name(js_get(root, "$field.name"))'
-			// dec += '.data'
+
+		if field.attr == 'raw' {
+			dec += ' /*prim*/ res->$name = tos2(cJSON_PrintUnformatted(js_get(root, "$field.name")));\n'
+			
+		} else {
+			// Now generate decoders for all field types in this struct
+			// need to do it here so that these functions are generated first
+			p.gen_json_for_type(field_type)
+	
+			dec_name := js_dec_name(_typ)
+
+			if is_js_prim(_typ) {
+				dec += ' /*prim*/ res->$name = $dec_name(js_get(root, "$field.name"))'
+				// dec += '.data'
+			}
+			else {
+				dec += ' /*!!*/ $dec_name(js_get(root, "$field.name"), & (res->$name))'
+			}
+			dec += ';\n'
 		}
-		else {
-			dec += ' /*!!*/ $dec_name(js_get(root, "$field.name"), & (res->$name))'
-		}
-		dec += ';\n'
+
 		enc += '  cJSON_AddItemToObject(o,  "$name", $enc_name(val.$name)); \n'
 	}
 	// cJSON_delete
