@@ -19,7 +19,6 @@ fn err_call(ok bool) ?int {
 fn test_option_for_base_type_without_variable() {
 	val := err_call(true) or {
 		panic(err)
-		return
 	}
 	assert val == 42
 }

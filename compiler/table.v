@@ -60,6 +60,7 @@ mut:
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
 	is_placeholder bool
+	gen_str	       bool  // needs `.str()` method generation 
 }
 
 // For debugging types
@@ -146,14 +147,14 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('int')
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
-	t.register_type_with_parent('u8', 'int')
+	t.register_type_with_parent('u8', 'u32')
 	t.register_type_with_parent('i16', 'int')
-	t.register_type_with_parent('u16', 'int')
+	t.register_type_with_parent('u16', 'u32')
 	t.register_type_with_parent('i32', 'int')
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('i64', 'int')
-	t.register_type_with_parent('u64', 'int')
+	t.register_type_with_parent('u64', 'u32')
 	t.register_type('byteptr')
 	t.register_type('intptr')
 	t.register_type('f32')
@@ -434,7 +435,7 @@ fn (t mut Type) add_gen_type(type_name string) {
 }
 */ 
 
-fn (p &Parser) find_type(name string) *Type {
+fn (p &Parser) find_type(name string) &Type {
 	typ := p.table.find_type(name)
 	if typ.name.len == 0 {
 		return p.table.find_type(p.prepend_mod(name))
@@ -739,8 +740,7 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		} 
 	} 
-	panic('function $fn_name not found') // TODO panic or return []?
-	return []string // TODO remove return
+	panic('function $fn_name not found')
 } 
 
 // `foo<Bar>()`
@@ -762,10 +762,13 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	}
 	switch typ {
 	case 'string': return '%.*s'
+	//case 'bool': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'byte', 'int', 'char', 'byte', 'bool', 'u32', 'i32', 'i16', 'u16', 'i8', 'u8': return '%d'
+	case 'byte', 'bool', 'int', 'char', 'byte', 'i32', 'i16', 'i8': return '%d'
+	case 'u8', 'u16', 'u32': return '%u'
 	case 'f64', 'f32': return '%f'
-	case 'i64', 'u64': return '%lld'
+	case 'i64': return '%lld'
+	case 'u64': return '%llu'
 	case 'byte*', 'byteptr': return '%s'
 		// case 'array_string': return '%s'
 		// case 'array_int': return '%s'
@@ -830,7 +833,6 @@ fn (fit mut FileImportTable) register_import(mod string) {
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports { 
 		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
-		return 
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')

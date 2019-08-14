@@ -82,6 +82,7 @@ mut:
 	is_alloc   bool // Whether current expression resulted in an allocation 
 	cur_gen_type string // "App" to replace "T" in current generic function 
 	is_vweb bool 
+	is_sql bool 
 }
 
 const (
@@ -102,7 +103,6 @@ fn platform_postfix_to_ifdefguard(name string) string {
     case '_mac.v': return '#ifdef __APPLE__'
   }
   panic('bad platform_postfix "$name"')
-  return ''
 }
 
 fn (v mut V) new_parser(path string, pass Pass) Parser {
@@ -296,7 +296,6 @@ fn (p mut Parser) parse() {
 			if false && !p.first_pass() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v') or {
 					panic('failed to create fmt.v') 
-					return 
 				} 
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
@@ -459,6 +458,10 @@ fn (p mut Parser) const_decl() {
 fn (p mut Parser) type_decl() {
 	p.check(.key_type)
 	name := p.check_name()
+	// V used to have 'type Foo struct', many Go users might use this syntax
+	if p.tok == .key_struct {
+		p.error('use `struct $name {` instead of `type $name struct {`')
+	}
 	parent := p.get_type()
 	nt_pair := p.table.cgen_name_type_pair(name, parent)
 	// TODO dirty C typedef hacks for DOOM
@@ -544,10 +547,6 @@ fn (p mut Parser) struct_decl() {
 			p.gen_typedef('typedef $kind $name $name;')
 			p.gen_type('$kind $name {')
 		}
-	}
-	// V used to have 'type Foo struct', many Go users might use this syntax
-	if !is_c && p.tok == .key_struct {
-		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
 	// Register the type
 	mut typ := p.table.find_type(name)
@@ -794,7 +793,7 @@ fn (p mut Parser) error(s string) {
 	p.cgen.save()
 	// V git pull hint
 	cur_path := os.getwd()
-	if !p.pref.is_repl && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
+	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.') 
 		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
@@ -1103,6 +1102,9 @@ fn (p mut Parser) vh_genln(s string) {
 }
 
 fn (p mut Parser) statement(add_semi bool) string {
+	if p.returns && !p.is_vweb {
+		p.error('unreachable code')
+	}
 	p.cgen.is_tmp = false
 	tok := p.tok
 	mut q := ''
@@ -1249,8 +1251,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		println('allowing option asss')
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
+		typ := expr_type.replace('Option_', '') 
 		//p.cgen.cur_line = left + 'opt_ok($expr)'
-		p.cgen.resetln(left + 'opt_ok($expr, sizeof($expr_type))')
+		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.scanner.line_nr--
@@ -1321,6 +1324,7 @@ fn (p mut Parser) var_decl() {
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
 			p.error('`or` block must return/continue/break/panic')
 		}
+		p.returns = false
 	}
 	p.register_var(Var {
 		name: name
@@ -1358,7 +1362,16 @@ fn (p mut Parser) bool_expression() string {
 			got_or = true 
 			if got_and { p.error(and_or_error) } 
 		} 
-		p.gen(' ${p.tok.str()} ')
+		if p.is_sql {
+			if p.tok == .and {
+				p.gen(' and ') 
+			} 
+			else if p.tok == .logical_or {
+				p.gen(' or ') 
+			} 
+		} else { 
+			p.gen(' ${p.tok.str()} ')
+		} 
 		p.check_space(p.tok) 
 		p.check_types(p.bterm(), typ)
 	}
@@ -1375,21 +1388,24 @@ fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
 	mut typ := p.expression()
 	p.expected_type = typ 
-	is_str := typ=='string' 
+	is_str := typ=='string'  &&   !p.is_sql 
 	tok := p.tok
 	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
-	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
+	if tok == .eq || (tok == .assign && p.is_sql) || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
 		p.fgen(' ${p.tok.str()} ')
 		if is_str {
 			p.gen(',')
 		}
+		else if p.is_sql && tok == .eq {
+			p.gen('=') 
+		} 
 		else {
 			p.gen(tok.str())
 		}
 		p.next()
 		p.check_types(p.expression(), typ)
 		typ = 'bool'
-		if is_str {
+		if is_str { //&& !p.is_sql { 
 			p.gen(')')
 			switch tok {
 			case Token.eq: p.cgen.set_placeholder(ph, 'string_eq(')
@@ -1677,7 +1693,6 @@ fn (p mut Parser) var_expr(v Var) string {
 		p.gen(')')
 		typ = T.func.typ
 	}
-	// users[0] before dot so that we can have
 	// users[0].name
 	if p.tok == .lsbr {
 		typ = p.index_expr(typ, fn_ph)
@@ -1685,6 +1700,15 @@ fn (p mut Parser) var_expr(v Var) string {
 	// a.b.c().d chain
 	// mut dc := 0
 	for p.tok ==.dot {
+		if p.peek() == .key_select {
+			p.next() 
+			return p.select_query(fn_ph) 
+		} 
+		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
+			p.next() 
+			p.insert_query(fn_ph) 
+			return 'void' 
+		} 
 		// println('dot #$dc')
 		typ = p.dot(typ, fn_ph)
 		p.log('typ after dot=$typ')
@@ -1738,6 +1762,9 @@ fn (p &Parser) fileis(s string) bool {
 // user.name => `str_typ` is `User`
 // user.company.name => `str_typ` is `Company`
 fn (p mut Parser) dot(str_typ string, method_ph int) string {
+	//if p.fileis('orm_test') { 
+		//println('ORM dot $str_typ') 
+	//} 
 	p.check(.dot)
 	typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
@@ -1754,7 +1781,12 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}') 
 	//}
 	has_field := p.table.type_has_field(typ, field_name)
-	has_method := p.table.type_has_method(typ, field_name)
+	mut has_method := p.table.type_has_method(typ, field_name)
+	// generate `.str()` 
+	if !has_method && field_name == 'str' && typ.name.starts_with('array_') { 
+		p.gen_array_str(mut typ) 
+		has_method = true 
+	} 
 	if !typ.is_c && !has_field && !has_method && !p.first_pass() {
 		if typ.name.starts_with('Option_') {
 			opt_type := typ.name.right(7) 
@@ -1931,7 +1963,8 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// expression inside [ ]
 		if is_arr {
 			T := p.table.find_type(p.expression())
-			if T.parent != 'int' {
+			// Allows only i8-64 and u8-64 to be used when accessing an array
+			if T.parent != 'int' && T.parent != 'u32' {
 				p.check_types(T.name, 'int')
 			}
 		}
@@ -1947,7 +1980,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	// TODO move this from index_expr() 
 	// TODO if p.tok in ...
 	// if p.tok in [.assign, .plus_assign, .minus_assign]
-	if p.tok == .assign || p.tok == .plus_assign || p.tok == .minus_assign ||
+	if (p.tok == .assign && !p.is_sql) || p.tok == .plus_assign || p.tok == .minus_assign ||
 	p.tok == .mult_assign || p.tok == .div_assign || p.tok == .xor_assign || p.tok == .mod_assign ||
 	p.tok == .or_assign || p.tok == .and_assign || p.tok == .righ_shift_assign ||
 	p.tok == .left_shift_assign {
@@ -1983,7 +2016,6 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.cgen.insert_before('$typ $tmp = $tmp_val;')
 		}
 		return typ
-		return 'void'
 	}
 	// else if p.pref.is_verbose && p.assigned_var != '' {
 	// p.error('didnt assign')
@@ -2201,7 +2233,7 @@ fn (p mut Parser) term() string {
 		p.next()
 		p.gen(tok.str())// + ' /*op2*/ ')
 		p.fgen(' ' + tok.str() + ' ')
-		if is_div && p.tok == .number && p.lit == '0' {
+		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division by zero')
 		}
 		if is_mod && (is_float_type(typ) || !is_number_type(typ)) {
@@ -2284,6 +2316,9 @@ fn (p mut Parser) factor() string {
 		if p.lit == 'json' && p.peek() == .dot {
 			return p.js_decode()
 		}
+		//if p.fileis('orm_test') { 
+			//println('ORM name: $p.lit') 
+		//} 
 		typ = p.name_expr()
 		return typ
 	case Token.key_default: 
@@ -2413,6 +2448,9 @@ fn (p mut Parser) string_expr() {
 		if p.calling_c || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
 		}
+		else if p.is_sql {
+			p.gen('\'$str\'') 
+		} 
 		else {
 			p.gen('tos2((byte*)"$f")') 
 		}
@@ -2456,6 +2494,9 @@ fn (p mut Parser) string_expr() {
 		if typ == 'ustring' {
 			args += '.len, ${val}.s.str'
 		}
+		if typ == 'bool' { 
+			//args += '.len, ${val}.str'
+		} 
 		// Custom format? ${t.hour:02d}
 		custom := p.tok == .colon
 		if custom {
@@ -2905,14 +2946,13 @@ fn os_name_to_ifdef(name string) string {
 		case 'msvc': return '_MSC_VER' 
 	} 
 	panic('bad os ifdef name "$name"') 
-	return '' 
 } 
 
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {
-		if p.fileis('if_expr') {
-			println('IF EXPR')
-		}
+		//if p.fileis('if_expr') {
+			//println('IF EXPR')
+		//}
 		p.inside_if_expr = true
 		p.gen('(')
 	}
@@ -3167,6 +3207,7 @@ fn (p mut Parser) for_st() {
 	p.statements()
 	p.close_scope()
 	p.for_expr_cnt--
+	p.returns = false // TODO handle loops that are guaranteed to return
 }
 
 fn (p mut Parser) switch_statement() {
@@ -3180,7 +3221,9 @@ fn (p mut Parser) switch_statement() {
 	expr := p.cgen.end_tmp()
 	p.check(.lcbr)
 	mut i := 0
+	mut all_cases_return := true
 	for p.tok == .key_case || p.tok == .key_default || p.peek() == .arrow || p.tok == .key_else { 
+		p.returns = false
 		if p.tok == .key_default || p.tok == .key_else { 
 			p.genln('else  { // default:')
 			if p.tok == .key_default { 
@@ -3191,7 +3234,8 @@ fn (p mut Parser) switch_statement() {
 				p.check(.arrow)
 			} 
 			p.statements()
-			break
+			p.returns = all_cases_return && p.returns
+			return
 		}
 		if i > 0 {
 			p.gen('else ')
@@ -3203,7 +3247,7 @@ fn (p mut Parser) switch_statement() {
 			if got_comma {
 				p.gen(') ||  ')
 			}
-			if typ == 'string' {
+			if typ == 'string' { 
 				p.gen('string_eq($expr, ')
 			}
 			else {
@@ -3228,8 +3272,10 @@ fn (p mut Parser) switch_statement() {
 		p.gen(')) {')
 		p.genln('/* case */')
 		p.statements()
+		all_cases_return = all_cases_return && p.returns
 		i++
 	}
+	p.returns = false // only get here when no default, so return is not guaranteed
 }
 
 fn (p mut Parser) assert_statement() {
@@ -3270,10 +3316,10 @@ fn (p mut Parser) return_st() {
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
-
-				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($expr_type)($ret);'
+				typ := expr_type.replace('Option_', '') 
+				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($typ)($ret);'
 				p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
-				p.gen('return opt_ok(&$tmp, sizeof($expr_type))')
+				p.gen('return opt_ok(&$tmp, sizeof($typ))')
 			}
 			else {
 				ret := p.cgen.cur_line.right(ph)

@@ -10,6 +10,26 @@ fn test_const() {
 	assert u == u64(1) 
 } 
 
+fn test_str_methods() {
+	assert i8(1).str() == '1'
+	assert i8(-1).str() == '-1'
+	assert i16(1).str() == '1'
+	assert i16(-1).str() == '-1'
+	assert i32(1).str() == '1'
+	assert i32(-1).str() == '-1'
+	assert i64(1).str() == '1'
+	assert i64(-1).str() == '-1'
+
+	assert u8(1).str() == '1'
+	assert u8(-1).str() == '255'
+	assert u16(1).str() == '1'
+	assert u16(-1).str() == '65535'
+	assert u32(1).str() == '1'
+	assert u32(-1).str() == '4294967295'
+	assert u64(1).str() == '1'
+	assert u64(-1).str() == '18446744073709551615'
+}
+
 /*
 fn test_cmp() {
 	assert 1 ≠ 2

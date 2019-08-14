@@ -93,7 +93,6 @@ pub fn (req mut Request) add_header(key, val string) {
 }
 
 pub fn (req &Request) do() Response {
-	mut headers := map[string]string{}
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
 	}
@@ -108,9 +107,13 @@ pub fn (req &Request) do() Response {
 	if !is_ssl {
 		panic('non https requests are not supported right now') 
 	}
-	s := ssl_do(req.typ, url.host, url.path)
-	// s := ssl_do(req.typ, url.host, url.path) 
-	first_header := s.all_before('\n') 
+	
+	return ssl_do(req.typ, url.hostname(), url.path)
+}
+
+fn parse_response(resp string) Response {
+	mut headers := map[string]string{}
+	first_header := resp.all_before('\n') 
 	mut status_code := 0 
 	if first_header.contains('HTTP/') {
 		val := first_header.find_between(' ', ' ')
@@ -122,14 +125,14 @@ pub fn (req &Request) do() Response {
 	mut i := 1 
 	for { 
 		old_pos := nl_pos 
-		nl_pos = s.index_after('\n', nl_pos+1) 
+		nl_pos = resp.index_after('\n', nl_pos+1) 
 		if nl_pos == -1 {
 			break 
 		} 
-		h := s.substr(old_pos + 1, nl_pos) 
+		h := resp.substr(old_pos + 1, nl_pos) 
 		// End of headers 
 		if h.len <= 1 {
-			text = s.right(nl_pos + 1) 
+			text = resp.right(nl_pos + 1) 
 			break 
 		} 
 		i++ 
@@ -144,34 +147,40 @@ pub fn (req &Request) do() Response {
 		val := h.right(pos + 2)
 		headers[key] = val.trim_space()
 	}
+	
 	if headers['Transfer-Encoding'] == 'chunked' {
 		text = chunked.decode( text )
 	}
+
 	return Response {
 		status_code: status_code 
 		headers: headers
 		text: text 
-	} 
+	}
+}
+
+fn build_request_headers(user_agent, method, host_name, path string) string {
+	ua := if user_agent == '' { 'v' } else { user_agent }
+	return '$method $path HTTP/1.1\r\n' + 
+		   'Host: $host_name\r\n' + 
+		   'User-Agent: $ua\r\n' +
+		   'Connection: close\r\n\r\n'
 }
 
 pub fn unescape_url(s string) string {
 	panic('http.unescape_url() was replaced with urllib.query_unescape()') 
-	return '' 
 }
 
 pub fn escape_url(s string) string {
 	panic('http.escape_url() was replaced with urllib.query_escape()') 
-	return '' 
 }
 
 pub fn unescape(s string) string {
 	panic('http.unescape() was replaced with http.unescape_url()') 
-	return '' 
 }
 
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()') 
-	return '' 
 }
 
 type wsfn fn (s string, ptr voidptr)

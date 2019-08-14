@@ -5,7 +5,12 @@ import (
 	strings 
 	net 
 	http 
+	net.urllib 
 ) 
+
+const (
+	methods_with_form = ['POST', 'PUT', 'PATCH']
+)
 
 struct Context {
 	static_files map[string]string
@@ -13,35 +18,24 @@ struct Context {
 pub: 
 	req http.Request 
 	conn net.Socket 
-	post_form map[string]string 
+	form map[string]string 
 	// TODO Response 
 	headers []string  // response headers 
 } 
 
 pub fn (ctx Context) text(s string) {
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: text/plain 
-$h
-$s 
-') 
+	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/plain\n$h\n$s') 
 } 
 
 pub fn (ctx Context) json(s string) {
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: application/json 
-$h
-$s 
-') 
+	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: application/json\n$h\n$s') 
 } 
 
 pub fn (ctx Context) redirect(url string) {
         h := ctx.headers.join('\n')
-        ctx.conn.write('HTTP/1.1 302 Found
-Location: $url
-$h
-') 
+        ctx.conn.write('HTTP/1.1 302 Found\nLocation: $url\n$h') 
 } 
 
 pub fn (ctx Context) not_found(s string) {
@@ -60,11 +54,11 @@ pub fn (ctx Context) get_cookie(key string) string {
 		} 
 	} 
 	return '' 
-/* 
+	/*
 	cookie := ctx.req.headers['Cookie']
 	println('get cookie $key : "$cookie"') 
 	return cookie.find_between('$key=', ';')
-*/ 
+	*/
 } 
 
 fn (ctx mut Context) set_header(key, val string) {
@@ -74,44 +68,43 @@ fn (ctx mut Context) set_header(key, val string) {
 
 pub fn (ctx Context) html(html string) { 
 	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK
-Content-Type: text/html
-$h
-
-$html
-')
+	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/html\n$h\n\n$html')
 	 
 } 
 
 pub fn run<T>(port int) { 
 	println('Running vweb app on http://localhost:$port ...') 
-	l := net.listen(port) or { panic('failed to listen') return } 
+	l := net.listen(port) or { panic('failed to listen') } 
 	mut app := T{} 
 	app.init() 
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
-			return 
 		} 
 		// TODO move this to handle_conn<T>(conn, app)
-		s := conn.read_line() 
+		s := conn.read_line()
+		if s == '' {
+			conn.write('HTTP/1.1 500 Not Found \nContent-Type: text/plain \n\n500')
+			conn.close()
+			continue
+		}
 		 // Parse request headers
 		 lines := s.split_into_lines()
 		 mut headers := []string //map[string]string{}
 		 for i, line in lines {
-		         if i == 0 {
-		                 continue
-		         }
-		         words := line.split(':')
-		         if words.len != 2 {
-		                 continue
-		         }
+			if i == 0 {
+				continue
+			}
+			words := line.split(':')
+			if words.len != 2 {
+				continue
+			}
 			headers << line 
-/* 
-		         key := words[0]
-		         val := words[1]
-		         headers[key] = val
-*/ 
+			/*
+			key := words[0]
+			val := words[1]
+			headers[key] = val
+			*/
 		} 
 		// Parse the first line
 		// "GET / HTTP/1.1"
@@ -125,24 +118,24 @@ pub fn run<T>(port int) {
 			action = 'index' 
 		} 
 		req := http.Request{
-		        headers: map[string]string{} 
+				headers: map[string]string{} 
 			headers2: headers 
-		        ws_func: 0
-		        user_ptr: 0
-		        method: vals[0]
-		        url: vals[1] 
+				ws_func: 0
+				user_ptr: 0
+				method: vals[0]
+				url: vals[1] 
 		} 
 		println('vweb action = "$action"') 
 		//mut app := T{
 		app.vweb = Context{
 			req: req 
 			conn: conn 
-			post_form: map[string]string{} 
+			form: map[string]string{} 
 			static_files: map[string]string{} 
 			static_mime_types: map[string]string{}
 		} 
 		//} 
-		if req.method == 'POST' {
+		if req.method in methods_with_form {
 			app.vweb.parse_form(s) 
 		} 
 		if vals.len < 2 {
@@ -159,19 +152,15 @@ pub fn run<T>(port int) {
 
 		// Call the right action 
 		app.$action() or { 
-			conn.write('HTTP/1.1 404 Not Found 
-Content-Type: text/plain 
-
-404 not found
-') 
-		} 
+			conn.write('HTTP/1.1 404 Not Found \nContent-Type: text/plain \n\n404 not found') 
+		}
 		conn.close()
 	}
 } 
 
 
 fn (ctx mut Context) parse_form(s string) { 
-	if ctx.req.method != 'POST' {
+	if !(ctx.req.method in methods_with_form) {
 		return 
 	} 
 	pos := s.index('\r\n\r\n')
@@ -184,30 +173,32 @@ fn (ctx mut Context) parse_form(s string) {
 			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
-			val := http.unescape_url(keyval[1]) 
+			val := urllib.query_unescape(keyval[1]) or {
+				continue 
+			} 
 			println('http form "$key" => "$val"') 
-			ctx.post_form[key] = val 
+			ctx.form[key] = val 
 		}
 	}
 } 
+const ( 
+	mime_types = {
+		'.css': 'text/css; charset=utf-8', 
+		'.gif': 'image/gif', 
+		'.htm': 'text/html; charset=utf-8', 
+		'.html': 'text/html; charset=utf-8', 
+		'.jpg': 'image/jpeg', 
+		'.js': 'application/javascript', 
+		'.wasm': 'application/wasm', 
+		'.pdf': 'application/pdf', 
+		'.png': 'image/png', 
+		'.svg': 'image/svg+xml', 
+		'.xml': 'text/xml; charset=utf-8' 
+	} 
+) 
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
-	// mime types
-	mut mime_types := map[string]string{}
-	mime_types['.css'] = 'text/css; charset=utf-8'
-	mime_types['.gif'] = 'image/gif'
-	mime_types['.htm'] = 'text/html; charset=utf-8'
-	mime_types['.html'] = 'text/html; charset=utf-8'
-	mime_types['.jpg'] = 'image/jpeg'
-	mime_types['.js'] = 'application/javascript'
-	mime_types['.wasm'] = 'application/wasm'
-	mime_types['.pdf'] = 'application/pdf'
-	mime_types['.png'] = 'image/png'
-	mime_types['.svg'] = 'image/svg+xml'
-	mime_types['.xml'] = 'text/xml; charset=utf-8'
-
 	files := os.ls(directory_path)
-
 	if files.len > 0 {
 		for file in files {			
 			mut ext := ''
@@ -243,11 +234,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' { 
 		data := os.read_file(static_file) or { return false }  
-		ctx.conn.write('HTTP/1.1 200 OK 
-Content-Type: $mime_type
-
-$data 
-')
+		ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: $mime_type\n\n$data')
 		return true 
 	} 
 	return false 
@@ -256,6 +243,4 @@ $data
 pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) { 
 	ctx.static_files[url] = file_path 
 	ctx.static_mime_types[url] = mime_type
-} 
-
-
+}

@@ -6,6 +6,8 @@
 /v.*.c
 /v.c.out
 /v.exe
+/tools/vget
+/tools/vget.exe
 *.exe
 *.o
 .*.c

@@ -17,13 +17,11 @@ pub fn compile_template(path string) string {
 	//lines := os.read_lines(path)
 	mut html := os.read_file(path) or {
 		panic('html failed')
-		return ''
 	} 
 	mut	header := ''
 	if os.file_exists('header.html') { 
 		h := os.read_file('header.html') or {
 			panic('html failed')
-			return ''
 		} 
 		header = h.replace('\'', '"') 
 	} 
@@ -37,14 +35,14 @@ _ := header
 //footer := \'footer\' 
 ') 
 	s.writeln(STR_START)
-	mut in_css := false 
+	mut in_css :=true// false 
 	for _line in lines {
 		line := _line.trim_space() 
 		if line == '<style>' {
 			in_css = true 
 		} 
 		else if line == '</style>' {
-			in_css = false 
+			//in_css = false 
 		} 
 		if line.contains('@if ') {
 			s.writeln(STR_END)

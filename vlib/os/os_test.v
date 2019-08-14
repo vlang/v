@@ -27,7 +27,6 @@ fn test_write_and_read_string_to_file() {
   
   read_hello := os.read_file(filename) or {
     panic('error reading file $filename')
-    return
   }
   assert hello == read_hello
 

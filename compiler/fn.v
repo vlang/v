@@ -114,7 +114,7 @@ fn new_fn(mod string, is_public bool) *Fn {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.fgen('fn ')
-	defer { p.fgenln('\n') } 
+	//defer { p.fgenln('\n') } 
 	is_pub := p.tok == .key_pub 
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live 
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so { 
@@ -124,6 +124,7 @@ fn (p mut Parser) fn_decl() {
 		p.next()
 	}
 	p.returns = false
+		p.gen('/* returns $p.returns */')
 	p.next()
 	mut f := new_fn(p.mod, is_pub)
 	// Method receiver
@@ -461,7 +462,9 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	p.genln(f.defer_text[f.scope_level])
+	if !p.is_vweb { 
+		p.genln(f.defer_text[f.scope_level])
+	} 
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
 	}
@@ -793,8 +796,15 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// If `arg` is mutable, the caller needs to provide `mut`: 
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
-			if p.tok != .key_mut {
-				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name(...mut a...)`')
+			if p.tok != .key_mut && p.tok == .name {
+				mut dots_example :=  'mut $p.lit' 
+				if i > 0 {
+					dots_example = '.., ' + dots_example 
+				} 
+				if i < f.args.len - 1 {
+					dots_example = dots_example + ',..' 
+				} 
+				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name($dots_example)`')	
 			}
 			if p.peek() != .name {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
@@ -830,6 +840,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			}
 			// Make sure this type has a `str()` method
 			if !T.has_method('str') {
+				// Arrays have automatic `str()` methods 
+				if T.name.starts_with('array_') {
+					p.gen_array_str(mut T) 
+					p.cgen.set_placeholder(ph, '${typ}_str(')
+					p.gen(')')
+					continue 
+				} 
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				if T.fields.len > 0 {
 					mut index := p.cgen.cur_line.len - 1

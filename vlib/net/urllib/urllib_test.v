@@ -4,7 +4,7 @@
 
 import net.urllib
 
-fn test_new_urllib() {
+fn test_net_urllib() {
 	test_query := 'Hellö Wörld@vlang'
 	assert urllib.query_escape(test_query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
 

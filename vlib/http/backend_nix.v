@@ -6,6 +6,13 @@ module http
 
 import strings 
 
+// On linux, prefer a localy build openssl, because it is
+// much more likely for it to be newer, than the system
+// openssl from libssl-dev. If there is no local openssl,
+// the next flag is harmless, since it will still use the
+// (older) system openssl.
+#flag linux -I/usr/local/include/openssl -L/usr/local/lib
+
 #flag windows -I @VROOT/thirdparty/openssl/include 
 #flag darwin -I @VROOT/thirdparty/openssl/include 
 #flag -l ssl -l crypto
@@ -31,7 +38,7 @@ fn init_module() {
 	//C.OPENSSL_config(0) 
 }
 
-fn ssl_do(method, host_name, path string) string { 
+fn ssl_do(method, host_name, path string) Response { 
 	//ssl_method := C.SSLv23_method() 
 	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 
@@ -61,17 +68,13 @@ fn ssl_do(method, host_name, path string) string {
 	if res != 1 {
 	} 
 	res = C.SSL_set_tlsext_host_name(ssl, host_name.str) 
-	out := C.BIO_new_fp(stdout, C.BIO_NOCLOSE) 
 	res = C.BIO_do_connect(web) 
 	res = C.BIO_do_handshake(web) 
 	cert := C.SSL_get_peer_certificate(ssl) 
 	res = C.SSL_get_verify_result(ssl) 
-	/////// 
-	s := '$method $path HTTP/1.1\r\n' + 
-	     'Host: $host_name\r\n' + 
-	     'Connection: close\r\n\r\n' 
+	///////
+	s := build_request_headers('', method, host_name, path)
 	C.BIO_puts(web, s.str) 
-	C.BIO_puts(out, '\n') 
 	mut sb := strings.new_builder(100) 
 	for {
 		buff := [1536]byte 
@@ -83,14 +86,12 @@ fn ssl_do(method, host_name, path string) string {
 			break 
 		} 
 	} 
-	if !isnil(out) { 
-		C.BIO_free(out) 
-	} 
 	if !isnil(web) { 
 		C.BIO_free_all(web)
 	} 
 	if !isnil(ctx) { 
 		C.SSL_CTX_free(ctx) 
-	} 
-	return sb.str() 
+	}
+
+	return parse_response(sb.str() )
 }

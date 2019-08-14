@@ -39,6 +39,20 @@ fn (p mut Parser) comp_time() {
 			println(SupportedPlatforms)
 			p.error('unknown platform `$name`')
 		}
+		if_returns := p.returns
+		p.returns = false
+		p.gen('/* returns $p.returns */')
+		if p.tok == .dollar && p.peek() == .key_else {
+			p.next()
+			p.next()
+			p.check(.lcbr)
+			p.genln('#else')
+			p.statements_no_rcbr()
+			p.genln('#endif')
+			else_returns := p.returns
+			p.returns = if_returns && else_returns
+		p.gen('/* returns $p.returns */')
+		}
 	}
 	else if p.tok == .key_for {
 		p.next()
@@ -64,13 +78,6 @@ fn (p mut Parser) comp_time() {
 		println(val)
 		p.check(.rcbr)
 		// }
-	}
-	else if p.tok == .key_else {
-		p.next()
-		p.check(.lcbr)
-		p.genln('#else')
-		p.statements_no_rcbr()
-		p.genln('#endif')
 	}
 	// $vweb.html() 
 	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
@@ -227,5 +234,32 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 		p.check(.lcbr)
 		p.statements() 
 	} 
+} 
+
+fn (p mut Parser) gen_array_str(typ mut Type) {
+	typ.add_method(Fn{
+		name: 'str',
+		typ: 'string'
+		args: [Var{typ: typ.name, is_arg:true}] 
+		is_method: true 
+		receiver_typ: typ.name 
+	}) 
+	t := typ.name 
+	elm_type := t.right(6) 
+	p.cgen.fns << '
+string ${t}_str($t a) {
+	strings__Builder sb = strings__new_builder(a.len * 3); 
+	strings__Builder_write(&sb, tos2("[")) ; 
+	for (int i = 0; i < a.len; i++) {
+		strings__Builder_write(&sb, ${elm_type}_str( (($elm_type *) a.data)[i])); 
+
+	if (i < a.len - 1) {
+		strings__Builder_write(&sb, tos2(", ")) ; 
+		 
+	} 
+} 
+strings__Builder_write(&sb, tos2("]")) ; 
+return strings__Builder_str(sb); 
+} ' 
 } 
 
