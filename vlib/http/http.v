@@ -91,6 +91,21 @@ pub fn (req mut Request) add_header(key, val string) {
 	// req.h = h
 }
 
+pub fn parse_headers(lines []string) map[string]string {
+	mut headers := map[string]string{}
+	for i, line in lines {
+		if i == 0 {
+			continue
+		}
+		words := line.split(': ')
+		if words.len != 2 {
+			continue
+		}
+		headers[words[0]] = words[1]
+	}
+	return headers
+}
+
 pub fn (req &Request) do() Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'

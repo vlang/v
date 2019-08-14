@@ -39,21 +39,6 @@ pub:
 	headers map[string]string // response headers 
 } 
 
-pub fn parse_headers(lines []string) map[string]string {
-	mut headers := map[string]string{}
-	for i, line in lines {
-		if i == 0 {
-			continue
-		}
-		words := line.split(': ')
-		if words.len != 2 {
-			continue
-		}
-		headers[words[0]] = words[1]
-	}
-	return headers
-}
-
 pub fn (ctx Context) join_headers() string {
 	mut headers := ''
 	for k, v in ctx.headers {
@@ -81,13 +66,18 @@ pub fn (ctx Context) not_found(s string) {
 	ctx.conn.write(HTTP_404)
 }
 
-pub fn (ctx mut Context) set_cookie(key, val string) { // TODO refactor
-	ctx.set_header('Set-Cookie', '$key=$val')
+pub fn (ctx mut Context) set_cookie(key, val string) { // TODO assing more than one cookie in the same header
+	if ctx.headers['Set-Cookie'] == '' {
+		ctx.headers['Set-Cookie'] = '$key=$val'
+	}
+	else {
+		ctx.headers['Set-Cookie'] = ctx.headers['Set-Cookie'] + ' $key=$val'
+	}
 }
 
-pub fn (ctx Context) get_cookie(key string) ?string {
+pub fn (ctx Context) get_cookie(key string) ?string { // TODO refactor
 	cookie_header := ctx.req.headers['Cookie']
-	for cookie_key_value in cookie_header.split('; ') {
+	for cookie_key_value in cookie_header.split(';') {
 		cookie := cookie_key_value.split('=')
 		if cookie.len == 2 && key == cookie[0] {
 			return cookie[1]
@@ -98,6 +88,10 @@ pub fn (ctx Context) get_cookie(key string) ?string {
 
 fn (ctx mut Context) set_header(key, val string) {
 	ctx.headers[key] = val
+}
+
+fn (ctx mut Context) get_header(key string) string {
+	return ctx.headers[key]
 }
 
 pub fn (ctx Context) html(html string) {
@@ -114,62 +108,66 @@ pub fn run<T>(port int) {
 		conn := l.accept() or {
 			panic('accept() failed') 
 		}
-		// TODO move this to handle_conn<T>(conn, app)
-		s := conn.read_line()
-		if s == '' {
-			conn.write(HTTP_500)
-			conn.close()
-			continue
-		}
-		// Parse the first line
-		// "GET / HTTP/1.1"
-		first_line := s.all_before('\n')
-		vals := first_line.split(' ')
-		if vals.len < 2 {
-			println('no vals for http')
-			conn.close()
-			continue
-		}
-		mut action := vals[1].right(1).all_before('/')
-		if action.contains('?') {
-			action = action.all_before('?')
-		}
-		if action == '' {
-			action = 'index'
-		}
-		req := http.Request{
-			headers: parse_headers(s.split_into_lines())
-			ws_func: 0
-			user_ptr: 0
-			method: vals[0]
-			url: vals[1]
-		}
-		println('vweb action = "$action"')
-		//mut app := T{
-		app.vweb = Context{
-			req: req
-			conn: conn
-			form: map[string]string{}
-			static_files: map[string]string{}
-			static_mime_types: map[string]string{}
-			headers: map[string]string{}
-		}
-		//}
-		if req.method in methods_with_form {
-			app.vweb.parse_form(s)
-		}
-		// Serve a static file if it's one
-		//if app.vweb.handle_static() {
-		//	conn.close()
-		//	continue 
-		//} 
-
-		// Call the right action
-		app.$action() or {
-			conn.write(HTTP_404)
-		}
-		conn.close()
+		handle_conn(conn, app)
 	}
+}
+
+fn handle_conn<T>(conn net.Socket, app T) {
+	s := conn.read_line()
+	if s == '' {
+		conn.write(HTTP_500)
+		conn.close()
+		return
+	}
+	// Parse the first line
+	// "GET / HTTP/1.1"
+	first_line := s.all_before('\n')
+	vals := first_line.split(' ')
+	if vals.len < 2 {
+		println('no vals for http')
+		conn.write(HTTP_500)
+		conn.close()
+		return
+	}
+	mut action := vals[1].right(1).all_before('/')
+	if action.contains('?') {
+		action = action.all_before('?')
+	}
+	if action == '' {
+		action = 'index'
+	}
+	req := http.Request{
+		headers: http.parse_headers(s.split_into_lines())
+		ws_func: 0
+		user_ptr: 0
+		method: vals[0]
+		url: vals[1]
+	}
+	println('vweb action = "$action"')
+	//mut app := T{
+	app.vweb = Context{
+		req: req
+		conn: conn
+		form: map[string]string{}
+		static_files: map[string]string{}
+		static_mime_types: map[string]string{}
+		headers: map[string]string{}
+	}
+	//}
+	if req.method in methods_with_form {
+		app.vweb.parse_form(s)
+	}
+	// Serve a static file if it's one
+	//if app.vweb.handle_static() {
+	//	conn.close()
+	//	continue 
+	//} 
+
+	// Call the right action
+	app.$action() or {
+		conn.write(HTTP_404)
+	}
+	conn.close()
 }
 
 fn (ctx mut Context) parse_form(s string) {
