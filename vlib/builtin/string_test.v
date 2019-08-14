@@ -365,3 +365,25 @@ fn test_count() {
 	assert 'aabbaa'.count('aa') == 2
 	assert 'bbaabb'.count('aa') == 1
 }
+
+fn test_is_num() {
+	mut s := '1212'
+	assert s.is_num() == true
+	s = '1243 ab'
+	assert s[0].is_digit() == true
+	assert s[4].is_digit() == false
+    s = '123'
+	assert s.is_num() == true
+}
+
+fn test_is_alpha() {
+	mut s := 'hello'
+	assert s.is_alpha() == true
+	s = 'name 12'
+	assert s.is_alpha() == false
+	s = 'test'
+	assert s.is_alpha() == true
+	s.to_upper()
+	assert s.is_alpha() == true
+
+}

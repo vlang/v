@@ -515,6 +515,24 @@ pub fn (s string) is_lower() bool {
 	return true
 }
 
+pub fn (s string) is_num() bool {
+	for i := 0; i < s.len; i++ {
+		if !(s[i] >= `0` && s[i] <= `9`) {
+			return false
+		}
+	}
+	return true
+}
+
+pub fn (s string) is_alpha() bool {
+	for i := 0; i < s.len; i++ {
+		if !((s[i] >= `A` && s[i] <= `Z`) || (s[i] >= `a` && s[i] <= `z`)) {
+			return false
+		}
+	}
+	return true
+}
+
 // 'hey [man] how you doin'
 // find_between('[', ']') == 'man'
 pub fn (s string) find_between(start, end string) string {
