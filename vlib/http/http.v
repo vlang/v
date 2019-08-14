@@ -108,7 +108,13 @@ pub fn (req &Request) do() Response {
 		panic('non https requests are not supported right now') 
 	}
 	
-	return ssl_do(req.typ, url.hostname(), url.path)
+	mut u := url.path
+	// add params to url
+	p := url.query()
+	if u == '' { u = '$u/' }
+	if p.size > 0 { u = '$u&${p.encode()}' }
+
+	return ssl_do(req.typ, url.hostname(), u)
 }
 
 fn parse_response(resp string) Response {
