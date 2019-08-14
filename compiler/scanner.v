@@ -584,6 +584,7 @@ fn (s mut Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
+		prevprevc := if s.pos > 1 { s.text[s.pos - 2] } else { `\0` }
 		// end of string
 		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
@@ -601,14 +602,14 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
-		if c == `{` && prevc == `$` {
+		if c == `{` && prevc == `$` && prevprevc != `$` {
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` {
+		if (c.is_letter() || c == `_`) && prevc == `$` && prevprevc != `$` {
 			s.inside_string = true
 			s.dollar_start = true
 			s.pos -= 2
