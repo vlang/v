@@ -5,8 +5,8 @@ module csv
 // that can be found in the LICENSE file.
 
 // Once interfaces are further along the idea would be to have something similar to
-// go's io.reader & bufio.reader rather than reading the whole file into string. 
-// I designed it this way to be easily adapted later.
+// go's io.reader & bufio.reader rather than reading the whole file into string, this
+// would then satisfy that interface. I designed it this way to be easily adapted.
 
 const (
 	err_comment_is_delim = error('encoding.csv: comment cannot be the same as delimiter')
