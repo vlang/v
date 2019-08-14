@@ -78,8 +78,6 @@ fn (r mut Reader) read_line() ?string {
 				return err_invalid_le
 			}
 		}
-		// last record
-		// i = r.data.len
 	}
 	mut line := r.data.substr(r.row_pos, i)
 	r.row_pos = i+1
