@@ -613,14 +613,14 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
-		if c == `{` && s.count_symbol_before(s.pos-1, `$`) % 2 == 1 {
+		if c == `{` && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && s.count_symbol_before(s.pos-1, `$`) % 2 == 1 {
+		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
 			s.dollar_start = true
 			s.pos -= 2
