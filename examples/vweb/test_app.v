@@ -7,8 +7,8 @@ const (
 )
 
 struct App {
-	pub mut:
-		vweb vweb.Context // TODO embed
+pub mut:
+	vweb vweb.Context // TODO embed
 }
 
 fn main() {
