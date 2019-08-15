@@ -125,7 +125,7 @@ pub fn (s Socket) listen() ?int {
 	if res < 0 {
 		return error('socket: listen failed')
 	}
-println('liisten res = $res') 
+println('listen res = $res') 
 	return res 
 }
 
