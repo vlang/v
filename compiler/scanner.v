@@ -264,7 +264,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// at the next ', skip it
 		if s.inside_string {
 			if next_char == `\'` {
-				s.pos++
+				s.dollar_end = true
 				s.dollar_start = false
 				s.inside_string = false
 			}
