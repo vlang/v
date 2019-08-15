@@ -111,8 +111,7 @@ pub fn (req &Request) do() Response {
 	mut u := url.path
 	// add params to url
 	p := url.query()
-	if !u.ends_with('/') { u = '$u/' }
-	if p.size > 0 { u = '$u&${p.encode()}' }
+	if p.size > 0 { u = '$u?${p.encode()}' }
 	
 	return ssl_do(req.typ, url.hostname(), u)
 }
