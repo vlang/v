@@ -20,15 +20,15 @@ struct dirent {
 } 
 */ 
 
+struct C.dirent {
+	d_name byteptr 
+} 
+
+fn C.readdir(voidptr) C.dirent 
+
 const (
 	args = []string
 	MAX_PATH = 4096
-)
-
-// Windows 
-import const (
-	FILE_ATTRIBUTE_DIRECTORY
-	INVALID_FILE_ATTRIBUTES
 )
 
 struct C.FILE {
@@ -418,10 +418,10 @@ pub fn dir_exists(path string) bool {
 	$if windows {
 		_path := path.replace('/', '\\')
 		attr := int(C.GetFileAttributes(_path.to_wide()))
-		if attr == INVALID_FILE_ATTRIBUTES {
+		if attr == C.INVALID_FILE_ATTRIBUTES {
 			return false
 		}
-		if (attr & FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		if (attr & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
 			return true
 		}
 		return false

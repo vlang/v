@@ -7,12 +7,6 @@ const (
 	PathSeparator = '/' 
 )
 
-struct C.dirent {
-	d_name byteptr 
-} 
-
-fn C.readdir(voidptr) C.dirent 
-
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
