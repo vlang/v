@@ -88,14 +88,15 @@ struct Block {
 	y int
 }
 
+enum GameState {
+        paused running gameover
+}
 struct Game {
 	mut:
 	// Score of the current game
 	score        int
-	// Is the current game over ?
-	game_over    bool
-	// Is the current game paused ?
-	game_paused    bool
+	// State of the current game
+	state    GameState
 	// Position of the current tetro
 	pos_x        int
 	pos_y        int
@@ -178,8 +179,7 @@ fn (g mut Game) init_game() {
 		last_row[j] = - 1
 	}
 	g.score = 0
-	g.game_over = false
-	g.game_paused = false
+	g.state = GameState.running
 }
 
 fn (g mut Game) parse_tetros() {
@@ -194,7 +194,7 @@ fn (g mut Game) parse_tetros() {
 
 fn (g mut Game) run() {
 	for {
-		if !g.game_over && !g.game_paused {
+		if g.state == GameState.running {
 			g.move_tetro()
 			g.delete_completed_lines()
 		}
@@ -215,7 +215,7 @@ fn (g mut Game) move_tetro() {
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game
 			if g.pos_y < 2 {
-				g.game_over = true
+				g.state = GameState.gameover
 				return
 			}
 			// Drop it and generate a new one
@@ -320,13 +320,12 @@ fn (g &Game) draw_field() {
 fn (g &Game) draw_score() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
-		if g.game_over {
+		if g.state == GameState.gameover {
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', text_cfg)
-			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'Hit F5 to restart', text_cfg)
-		}
-		if g.game_paused {
+			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to restart', text_cfg)
+		} else if g.state == GameState.paused {
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Paused', text_cfg)
-			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'Press SPACE..', text_cfg)
+			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
 		}
 	}
 }
@@ -375,12 +374,17 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	switch key {
 	case glfw.KEY_ESCAPE:
 		glfw.set_should_close(wnd, true)
-	case GLFW_KEY_F5:
-		game.init_game()
 	case GLFW_KEY_SPACE:
-		game.game_paused = !game.game_paused
+		if game.state == GameState.running {
+			game.state = GameState.paused
+		} else if game.state == GameState.paused {
+			game.state = GameState.running
+		} else if game.state == GameState.gameover {
+			game.init_game()
+			game.state = GameState.running
+		}
 	}
-	if game.game_over || game.game_paused{
+	if game.state != GameState.running {
 		return
 	}
 	// keys while game is running
