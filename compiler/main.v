@@ -875,7 +875,7 @@ mut args := ''
 	//'$fast_clang $args'
 	//}
 	//else {
-	mut cmd := 'cc $args'
+	mut cmd := ('cc $args') // TODO fix $if after 'string'
 	//}
 	$if windows {
 		cmd = 'gcc $args' 
