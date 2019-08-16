@@ -179,7 +179,7 @@ fn (g mut Game) init_game() {
 		last_row[j] = - 1
 	}
 	g.score = 0
-	g.state = GameState.running
+	g.state = .running
 }
 
 fn (g mut Game) parse_tetros() {
@@ -194,7 +194,7 @@ fn (g mut Game) parse_tetros() {
 
 fn (g mut Game) run() {
 	for {
-		if g.state == GameState.running {
+		if g.state == .running {
 			g.move_tetro()
 			g.delete_completed_lines()
 		}
@@ -215,7 +215,7 @@ fn (g mut Game) move_tetro() {
 		if row[x] != 0 {
 			// The new tetro has no space to drop => end of the game
 			if g.pos_y < 2 {
-				g.state = GameState.gameover
+				g.state = .gameover
 				return
 			}
 			// Drop it and generate a new one
@@ -320,10 +320,10 @@ fn (g &Game) draw_field() {
 fn (g &Game) draw_score() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
-		if g.state == GameState.gameover {
+		if g.state == .gameover {
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to restart', text_cfg)
-		} else if g.state == GameState.paused {
+		} else if g.state == .paused {
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Paused', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
 		}
@@ -375,16 +375,16 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	case glfw.KEY_ESCAPE:
 		glfw.set_should_close(wnd, true)
 	case GLFW_KEY_SPACE:
-		if game.state == GameState.running {
-			game.state = GameState.paused
-		} else if game.state == GameState.paused {
-			game.state = GameState.running
-		} else if game.state == GameState.gameover {
+		if game.state == .running {
+			game.state = .paused
+		} else if game.state == .paused {
+			game.state = .running
+		} else if game.state == .gameover {
 			game.init_game()
-			game.state = GameState.running
+			game.state = .running
 		}
 	}
-	if game.state != GameState.running {
+	if game.state != .running {
 		return
 	}
 	// keys while game is running
