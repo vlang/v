@@ -818,6 +818,29 @@ fn (p mut Parser) get_type() string {
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
+	// `(int, int)` tuple 
+	if p.tok == .lpar {
+		println(' #785 MULTI')
+		// println('TUPLE') 
+		// if p.inside_tuple {
+		// 	p.error('unexpected (') 
+		// } 
+		// p.inside_tuple = true 
+		p.check(.lpar) 
+		mut types := []string 
+		for {
+			types << p.get_type() 
+			if p.tok != .comma {
+				break 
+			} 
+			p.check(.comma) 
+		}
+		p.check(.rpar) 
+		println('#TYPES')
+		println(types)
+		// p.inside_tuple = false 
+		return types.join(',') 
+	}
 	// fn type
 	if p.tok == .func {
 		if debug {
@@ -1282,63 +1305,71 @@ fn (p mut Parser) var_decl() {
 		p.fspace()
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
-	name := p.check_name()
-	p.var_decl_name = name 
-	// Don't allow declaring a variable with the same name. Even in a child scope
-	// (shadowing is not allowed)
-	if !p.builtin_mod && p.cur_fn.known_var(name) {
-		v := p.cur_fn.find_var(name)
-		p.error('redefinition of `$name`')
+	n := p.check_name()
+	mut names := []string
+	if n.contains(',') {
+		names = n.split(',')
+	} else {
+		names << n
 	}
-	if name.len > 1 && contains_capital(name) {
-		p.error('variable names cannot contain uppercase letters, use snake_case instead')
-	}
-	p.check_space(.decl_assign) // := 
-	// Generate expression to tmp because we need its type first
-	// [TYP .name =] bool_expression()
-	pos := p.cgen.add_placeholder()
-	mut typ := p.bool_expression()
-	// Option check ? or {
-	or_else := p.tok == .key_orelse 
-	tmp := p.get_tmp()
-	if or_else {
-		// Option_User tmp = get_user(1);
-		// if (!tmp.ok) { or_statement }
-		// User user = *(User*)tmp.data;
-		// p.assigned_var = ''
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
+	for name in names {
+		p.var_decl_name = name 
+		// Don't allow declaring a variable with the same name. Even in a child scope
+		// (shadowing is not allowed)
+		if !p.builtin_mod && p.cur_fn.known_var(name) {
+			v := p.cur_fn.find_var(name)
+			p.error('redefinition of `$name`')
+		}
+		if name.len > 1 && contains_capital(name) {
+			p.error('variable names cannot contain uppercase letters, use snake_case instead')
+		}
+		p.check_space(.decl_assign) // := 
+		// Generate expression to tmp because we need its type first
+		// [TYP .name =] bool_expression()
+		pos := p.cgen.add_placeholder()
+		mut typ := p.bool_expression()
+		// Option check ? or {
+		or_else := p.tok == .key_orelse 
+		tmp := p.get_tmp()
+		if or_else {
+			// Option_User tmp = get_user(1);
+			// if (!tmp.ok) { or_statement }
+			// User user = *(User*)tmp.data;
+			// p.assigned_var = ''
+			p.cgen.set_placeholder(pos, '$typ $tmp = ')
+			p.genln(';')
+			typ = typ.replace('Option_', '')
+			p.next()
+			p.check(.lcbr)
+			p.genln('if (!$tmp .ok) {')
+			p.register_var(Var {
+				name: 'err'
+				typ: 'string'
+				is_mut: false
+				is_used: true
+			})
+			p.genln('string err = $tmp . error;')
+			p.statements()
+			p.genln('$typ $name = *($typ*) $tmp . data;')
+			if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
+				p.error('`or` block must return/continue/break/panic')
+			}
+			p.returns = false
+		}
 		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
+			name: name
+			typ: typ
+			is_mut: is_mut
+			is_alloc: p.is_alloc 
 		})
-		p.genln('string err = $tmp . error;')
-		p.statements()
-		p.genln('$typ $name = *($typ*) $tmp . data;')
-		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-			p.error('`or` block must return/continue/break/panic')
+		if !or_else {
+			gen_name := p.table.var_cgen_name(name)
+			mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ) + '='
+			if is_static {
+				nt_gen = 'static $nt_gen'
+			}
+			p.cgen.set_placeholder(pos, nt_gen)
 		}
-		p.returns = false
-	}
-	p.register_var(Var {
-		name: name
-		typ: typ
-		is_mut: is_mut
-		is_alloc: p.is_alloc 
-	})
-	if !or_else {
-		gen_name := p.table.var_cgen_name(name)
-		mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ) + '='
-		if is_static {
-			nt_gen = 'static $nt_gen'
-		}
-		p.cgen.set_placeholder(pos, nt_gen)
 	}
 	p.var_decl_name = '' 
 }
