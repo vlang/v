@@ -348,6 +348,7 @@ fn (p mut Parser) fn_decl() {
 		if !is_sig && !is_fn_header {
 			mut opened_scopes := 0
 			mut closed_scopes := 0
+			mut temp_scanner_pos := 0
 			for {
 				if p.tok == .lcbr {
 					opened_scopes++
@@ -359,7 +360,8 @@ fn (p mut Parser) fn_decl() {
 				// find `foo<Bar>()` in function bodies and register generic types 
 				// TODO remove this once tokens are cached 
 				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
-					p.scanner.text[p.scanner.pos-1] != `T` { 
+					p.scanner.text[p.scanner.pos-1] != `T` {
+					temp_scanner_pos = p.scanner.pos
 					p.scanner.pos -= 3 
 					for p.scanner.pos > 0 && (is_name_char(p.scanner.text[p.scanner.pos]) || 
 						p.scanner.text[p.scanner.pos] == `.`  ||
@@ -370,6 +372,7 @@ fn (p mut Parser) fn_decl() {
 					p.next() 
 					// Run the function in the firt pass to register the generic type 
 					p.name_expr() 
+					p.scanner.pos = temp_scanner_pos
 				} 
 				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
 					break
@@ -606,11 +609,15 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 	if p.tok == .lt {
 		p.check(.lt)
 		gen_type = p.check_name() 
+		// run<T> => run_App 
+		if gen_type == 'T' && p.cur_gen_type != '' {
+			gen_type = p.cur_gen_type 
+		} 
 		// `foo<Bar>()` 
 		// If we are in the first pass, we need to add `Bar` type to the generic function `foo`, 
 		// so that generic `foo`s body can be generated for each type in the second pass. 
 		if p.first_pass() {
-			//println('registering $gen_type in $f.name') 
+			println('registering $gen_type in $f.name fname=$f.name') 
 			p.table.register_generic_fn_type(f.name, gen_type) 
 			// Function bodies are skipped in the first passed, we only need to register the generic type here. 
 			return 

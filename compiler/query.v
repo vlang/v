@@ -102,14 +102,23 @@ $table_name $tmp;
 ${obj_gen.str()} 
 
 ')
-		p.cgen.resetln(tmp) 
-} 
+			p.cgen.resetln(tmp) 
+		} 
 		// Array 
 		else {
-			p.cgen.insert_before('
+		q += ' order by id' 
+		mut params_gen := '' 
+		params := p.sql_params.split(',') 
+		for i, param in params {
+			params_gen += 'params[$i] = int_str($param).str;'  
+		} 
 
-array_pg__Row rows = pg__DB_exec(db, tos2("$q"));
-//printf("ROWS LEN=%d\\n", rows.len); 
+		p.cgen.insert_before('char* params[$p.sql_i];
+$params_gen 
+
+void* res = PQexecParams(db.conn, "$q", $p.sql_i, 0, params, 0, 0, 0)  ; 
+array_pg__Row rows = pg__res_to_rows(res); 
+
 // TODO preallocate 
 array arr_$tmp = new_array(0, 0, sizeof($table_name));  
 for (int i = 0; i < rows.len; i++) { 

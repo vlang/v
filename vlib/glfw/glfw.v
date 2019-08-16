@@ -98,7 +98,6 @@ const (
 	KeyDown  = 264
 )
 
-// TODO COPY PASTA
 struct WinCfg {
 	width      int
 	height     int
@@ -136,10 +135,10 @@ type clickpubfn fn (window voidptr, button, action, mods int)
 
 pub fn init() {
 	C.glfwInit()
-	# glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	# glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	# glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	# glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MAJOR, 3) 
+	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MINOR, 3) 
+	C.glfwWindowHint(C.GLFW_OPENGL_FORWARD_COMPAT, C.GL_TRUE)  
+	C.glfwWindowHint(C.GLFW_OPENGL_PROFILE, C.GLFW_OPENGL_CORE_PROFILE) 
 }
 
 pub fn (w &Window) destroy() {
@@ -172,12 +171,8 @@ pub fn create_window(c WinCfg) *Window {
 		println('failed to create glfw window')
 		C.glfwTerminate()
 	}
-	// # glfwSetCursorPosCallback(cwindow, glfw__mouse_move) ;
-	// C.glfwSetCursorPosCallback(cwindow, mouse_move)
 	C.printf('create window wnd=%p ptr==%p\n', cwindow, c.ptr)
 	C.glfwSetWindowUserPointer(cwindow, c.ptr)
-	// # void *a =glfwGetWindowUserPointer(cwindow);
-	// # printf("aaaaaa=%p d=%d\n", a,a);
 	window := &Window {
 		data: cwindow,
 		title: c.title,
@@ -190,9 +185,6 @@ pub fn (w &Window) set_title(title string) {
 }
 
 pub fn (w &Window) make_context_current() {
-	// ChatsRepo
-	kkk := 0
-	// println('making context current' )
 	C.glfwMakeContextCurrent(w.data)
 }
 
@@ -213,7 +205,6 @@ pub fn set_should_close(w voidptr, close bool) {
 }
 
 pub fn (w &Window) should_close() bool {
-	// ChatsRepo
 	return C.glfwWindowShouldClose(w.data)
 }
 
@@ -258,12 +249,10 @@ pub fn get_time() f64 {
 }
 
 pub fn key_pressed(wnd voidptr, key int) bool {
-	# return glfwGetKey(wnd, key) == GLFW_PRESS;
-	return false
+	return int(C.glfwGetKey(wnd, key)) == C.GLFW_PRESS 
 }
 
-// TODO not mut
-pub fn (w mut Window) get_clipboard_text() string {
+pub fn (w &Window) get_clipboard_text() string {
 	return string(byteptr(C.glfwGetClipboardString(w.data)))
 }
 
@@ -289,18 +278,17 @@ pub fn (w &Window) set_user_ptr(ptr voidptr) {
 	C.glfwSetWindowUserPointer(w.data, ptr)
 }
 
-pub fn C.glfwGetVideoMode() C.GLFWvideoMode
+struct C.GLFWvidmode {
+	width int
+	height int 
+} 
+
+pub fn C.glfwGetVideoMode() *C.GLFWvidmode
 
 pub fn get_monitor_size() Size {
-	# GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-	// window_width = mode->width;
-	// window_height = mode->height;
-	// monitor := C.glfwGetPrimaryMonitor()
-	res := Size{}
-	# res.width=mode->width;
-	# res.height=mode->height;
-	// C.glfwGetMonitorPhysicalSize(monitor, &res.width, &res.height)
-	return res
+	//# GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+	mode := C.glfwGetVideoMode(C.glfwGetPrimaryMonitor()) 
+	return Size{mode.width, mode.height} 
 }
 
 pub fn (size Size) str() string {

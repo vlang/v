@@ -81,6 +81,7 @@ pub fn run<T>(port int) {
 		conn := l.accept() or {
 			panic('accept() failed') 
 		} 
+		//foobar<T>() 
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
@@ -158,6 +159,9 @@ pub fn run<T>(port int) {
 	}
 } 
 
+
+pub fn foobar<T>() { 
+} 
 
 fn (ctx mut Context) parse_form(s string) { 
 	if !(ctx.req.method in methods_with_form) {

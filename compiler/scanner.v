@@ -569,6 +569,18 @@ fn (s &Scanner) error(msg string) {
 	exit(1)
 }
 
+
+fn (s Scanner) count_symbol_before(p int, sym byte) int {
+  mut count := 0
+  for i:=p; i>=0; i-- {
+    if s.text[i] != sym {
+      break
+    }
+    count++
+  }
+  return count
+}
+
 // println('array out of bounds $idx len=$a.len')
 // This is really bad. It needs a major clean up
 fn (s mut Scanner) ident_string() string {
@@ -601,14 +613,14 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
-		if c == `{` && prevc == `$` {
+		if c == `{` && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` {
+		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
 			s.dollar_start = true
 			s.pos -= 2
