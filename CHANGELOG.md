@@ -2,7 +2,7 @@
 *16 Aug 2019* 
 
 - Built-in ORM (`uk_customers = db.select from Customer where country == 'uk' && nr_orders > 0`) 
-- Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘kek’ }`  
+- Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘foo’ }`  
 - `map.delete(key)`. 
 - `libcurl` dependency was removed from the `http` module. 
 - All function arguments are now immutable by default (previously they could be 
@@ -25,15 +25,6 @@
 - Maps now support array values. 
 - `json` functions can no longer be used if the `json` module is not imported. 
  
-
-
- 
-
-
-
-
-
-
 
 
 ## V 0.1.17 

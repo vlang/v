@@ -1434,10 +1434,11 @@ fn update_v() {
 } 
 
 fn test_v() {
+	vexe := os.args[0] 
 	test_files := os.walk_ext('.', '_test.v') 
 	for file in test_files {
 		print(file + ' ') 
-		if os.system('v $file') != 0 {
+		if os.system('$vexe $file') != 0 {
 			println('failed') 
 			exit(1) 
 		} else { 
@@ -1448,7 +1449,7 @@ fn test_v() {
 	examples := os.walk_ext('examples', '.v') 
 	for file in examples {
 		print(file + ' ') 
-		if os.system('v $file') != 0 {
+		if os.system('$vexe $file') != 0 {
 			println('failed') 
 			exit(1) 
 		} else { 
