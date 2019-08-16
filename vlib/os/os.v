@@ -20,10 +20,6 @@ struct dirent {
 } 
 */ 
 
-struct C.dirent {
-	d_name byteptr 
-} 
-
 const (
 	args = []string
 	MAX_PATH = 4096
@@ -804,62 +800,28 @@ mut:
   	wFinderFlags u16
 }
 
-pub fn ls(path string) []string {
-	$if windows {
-		mut find_file_data := win32finddata{}
-		mut dir_files := []string
-		// We can also check if the handle is valid. but using dir_exists instead
-		// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
-		// if (INVALID_HANDLE_VALUE == h_find_dir) {
-		//     return dir_files
-		// }
-		// C.FindClose(h_find_dir)
-		if !dir_exists(path) {
-			println('ls() couldnt open dir "$path" (does not exist).')
-			return dir_files
-		}
-		// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
-		// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-		path_files := '$path\\*' 
-		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
-		// we should use FindFirstFileW and FindNextFileW
-		h_find_files := C.FindFirstFile(path_files.to_wide(), &find_file_data)
-		first_filename := string_from_wide(&u16(find_file_data.cFileName))
-		if first_filename != '.' && first_filename != '..' {
-			dir_files << first_filename
-		}
-		for C.FindNextFile(h_find_files, &find_file_data) {
-			filename := string_from_wide(&u16(find_file_data.cFileName))
-			if filename != '.' && filename != '..' {
-				dir_files << filename.clone()
-			}
-		}
-		C.FindClose(h_find_files)
-		return dir_files
+
+// walk_ext returns a recursive list of all file paths ending with `ext`. 
+pub fn walk_ext(path, ext string) []string {
+	if !os.is_dir(path) { 
+		return []string 
 	} 
-	$else { 
-		mut res := []string
-		dir := C.opendir(path.str) 
-		if isnil(dir) {
-			println('ls() couldnt open dir "$path"')
-			print_c_errno()
-			return res
-		}
-		mut ent := &C.dirent{!}
-		for {
-			ent = C.readdir(dir)
-			if isnil(ent) {
-				break
-			}
-			name := tos_clone(ent.d_name)
-			if name != '.' && name != '..' && name != '' {
-				res << name
-			}
-		}
-		C.closedir(dir)
-		return res
+	mut files := os.ls(path) 
+	mut res := []string 
+	for i, file in files {
+		if file.starts_with('.') {
+			continue 
+		} 
+		p := path + '/' + file 
+		if os.is_dir(p) { 
+			res << walk_ext(p, ext) 
+		} 
+		else if file.ends_with(ext) {
+			res << p 
+		} 
 	} 
-}
+	return res 
+} 
 
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)

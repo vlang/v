@@ -1434,6 +1434,26 @@ fn update_v() {
 } 
 
 fn test_v() {
- 
+	test_files := os.walk_ext('.', '_test.v') 
+	for file in test_files {
+		print(file + ' ') 
+		if os.system('v $file') != 0 {
+			println('failed') 
+			exit(1) 
+		} else { 
+			println('OK') 
+		} 
+	} 
+	println('\nBuilding examples...') 
+	examples := os.walk_ext('examples', '.v') 
+	for file in examples {
+		print(file + ' ') 
+		if os.system('v $file') != 0 {
+			println('failed') 
+			exit(1) 
+		} else { 
+			println('OK') 
+		} 
+	} 
 } 
 

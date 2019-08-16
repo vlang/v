@@ -48,7 +48,7 @@ script:
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
       make
       ./v install glfw
-      make test
+      ./v test v 
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
