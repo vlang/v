@@ -1119,9 +1119,6 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.log('var decl')
 			p.var_decl()
 		}
-		else if p.lit == 'jsdecode' {
-			p.js_decode()
-		}
 		else {
 			// panic and exit count as returns since they stop the function
 			if p.lit == 'panic' || p.lit == 'exit' {
@@ -2319,6 +2316,9 @@ fn (p mut Parser) factor() string {
 			return p.map_init()
 		}
 		if p.lit == 'json' && p.peek() == .dot {
+			if !('json' in p.table.imports) {
+				p.error('undefined: `json`, use `import json`') 
+			} 
 			return p.js_decode()
 		}
 		//if p.fileis('orm_test') { 
