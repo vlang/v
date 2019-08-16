@@ -61,7 +61,7 @@ pub fn new_request(typ, _url, _data string) ?Request {
 		data: data
 		ws_func: 0
 		user_ptr: 0
-		headers: map[string]string{} 
+		headers: map[string]string
 	}
 }
 
@@ -112,7 +112,7 @@ pub fn (req &Request) do() Response {
 }
 
 fn parse_response(resp string) Response {
-	mut headers := map[string]string{}
+	mut headers := map[string]string
 	first_header := resp.all_before('\n') 
 	mut status_code := 0 
 	if first_header.contains('HTTP/') {
