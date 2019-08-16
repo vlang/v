@@ -34,6 +34,12 @@ fn (p mut Parser) comp_time() {
 				p.genln('#endif')
 			}
 		}
+		else if name == 'debug' {
+			p.genln('#ifdef VDEBUG')
+			p.check(.lcbr)
+			p.statements_no_rcbr()
+			p.genln('#endif')
+		}
 		else {
 			println('Supported platforms:')
 			println(SupportedPlatforms)
@@ -51,7 +57,7 @@ fn (p mut Parser) comp_time() {
 			p.genln('#endif')
 			else_returns := p.returns
 			p.returns = if_returns && else_returns
-		p.gen('/* returns $p.returns */')
+			p.gen('/* returns $p.returns */')
 		}
 	}
 	else if p.tok == .key_for {

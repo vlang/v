@@ -232,6 +232,9 @@ fn (v mut V) compile() {
 	if v.pref.is_play {
 		cgen.genln('#define VPLAY (1) ')
 	}
+	if v.pref.is_debug {
+		cgen.genln('#define VDEBUG (1) ')
+	}
 	cgen.genln('   
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually 
 #include <stdlib.h>
