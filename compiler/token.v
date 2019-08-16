@@ -114,7 +114,7 @@ enum Token {
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
 fn build_keys() map[string]int {
-	mut res := map[string]int{}
+	mut res := map[string]int 
 	for t := int(Token.keyword_beg) + 1; t < int(Token.keyword_end); t++ {
 		key := TokenStr[t]
 		res[key] = int(t)
@@ -127,11 +127,11 @@ fn build_token_str() []string {
 	mut s := [''; NrTokens]
 	s[Token.keyword_beg] = ''
 	s[Token.keyword_end] = ''
-	s[Token.eof] = '.eof'
-	s[Token.name] = '.name'
-	s[Token.number] = '.number'
+	s[Token.eof] = 'eof'
+	s[Token.name] = 'name'
+	s[Token.number] = 'number'
 	s[Token.str] = 'STR'
-	s[Token.chartoken] = '.chartoken'
+	s[Token.chartoken] = 'char'
 	s[Token.plus] = '+'
 	s[Token.minus] = '-'
 	s[Token.mul] = '*'
@@ -198,7 +198,6 @@ fn build_token_str() []string {
 	s[Token.key_type] = 'type'
 	s[Token.key_for] = 'for'
 	s[Token.key_switch] = 'switch'
-	//Tokens[MATCH] = 'match'
 	s[Token.key_case] = 'case'
 	s[Token.func] = 'fn'
 	s[Token.key_true] = 'true'
@@ -207,7 +206,7 @@ fn build_token_str() []string {
 	s[Token.key_break] = 'break'
 	s[Token.key_import] = 'import'
 	s[Token.key_embed] = 'embed'
-	//Tokens[TYP.eof] = 'typeof'
+	//Tokens[key_typeof] = 'typeof'
 	s[Token.key_default] = 'default'
 	s[Token.key_enum] = 'enum'
 	s[Token.key_interface] = 'interface'

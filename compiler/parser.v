@@ -883,8 +883,8 @@ fn (p mut Parser) get_type() string {
 			p.error('maps only support string keys for now') 
 		} 
 		p.check(.rsbr) 
-		val_type := p.check_name() 
-		typ= 'map_$val_type' 
+		val_type := p.get_type()// p.check_name() 
+		typ = 'map_$val_type' 
 		p.register_map(typ)
 		return typ 
 	} 
@@ -2603,15 +2603,19 @@ fn (p mut Parser) map_init() string {
 		p.error('only string key maps allowed for now')
 	}
 	p.check(.rsbr)
-	val_type = p.check_name()
-	if !p.table.known_type(val_type) {
-		p.error('map init unknown type "$val_type"')
-	}
+	val_type = p.get_type()/// p.check_name()
+	//if !p.table.known_type(val_type) {
+		//p.error('map init unknown type "$val_type"')
+	//}
 	typ := 'map_$val_type'
 	p.register_map(typ)
 	p.gen('new_map(1, sizeof($val_type))')
-	p.check(.lcbr)
-	p.check(.rcbr)
+	if p.tok == .lcbr {
+		p.check(.lcbr)
+		p.check(.rcbr)
+		println('warning: $p.file_name:$p.scanner.line_nr ' +
+		 'initializaing maps no longer requires `{}`') 
+	} 
 	return typ
 }
 
