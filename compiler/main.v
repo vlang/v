@@ -125,12 +125,15 @@ fn main() {
 		println('use `v install` to install modules from vpm.vlang.io') 
 		return 
 	} 
+	if args.join(' ').contains(' test v') {
+		test_v() 
+		return 
+	} 
 	if 'install' in args {
 		if args.len < 3 {
 			println('usage: v install [module] [module] [...]')
 			return 
 		}
-
 		names := args.slice(2, args.len)
 		vexec := os.executable()
 		vroot := os.dir(vexec)
@@ -1428,5 +1431,9 @@ fn update_v() {
 		}
 		println(s2) 
 	} 
+} 
+
+fn test_v() {
+ 
 } 
 
