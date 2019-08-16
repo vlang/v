@@ -17,7 +17,7 @@ fn main() {
 		println('failed to open $path')
 		return
 	}
-	mut m := map[string]int{}
+	mut m := map[string]int
 	for word in contents.to_lower().split(' ') {
 		key := filter_word(word)
 		if key == '' {
