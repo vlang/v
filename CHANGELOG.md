@@ -1,9 +1,38 @@
 ## V 0.1.18
+*16 Aug 2019* 
 
+- Built-in ORM (`uk_customers = db.select from Customer where country == 'uk' && nr_orders > 0`) 
 - Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘kek’ }`  
-- `libcurl` dependency was removed from `http` module. 
+- `map.delete(key)`. 
+- `libcurl` dependency was removed from the `http` module. 
 - All function arguments are now immutable by default (previously they could be 
   modifed inside the function). 
+- `http` functions now return optionals. 
+- `sync.WaitGroup`. 
+- `vweb` static files serving. 
+- `crypto.rand` module. 
+- `v up` to update V. 
+- SChannel support on Windows. 
+- `net.urllib` module. 
+- vpm package manager, `v install`. 
+- `()` are now required in complex bool expressions: `(a && b) || c` instead of `a && b || c 
+- All arrays now have a default `.str()` method. 
+- Bootstrapping V with MSVC. 
+- Experimental `≠` etc support.
+- `encoding.csv` module. 
+- `$if debug {` for running code in debug mode only. 
+- Map struct fields are now initialized automatically, just like arrays. 
+- Maps now support array values. 
+- `json` functions can no longer be used if the `json` module is not imported. 
+ 
+
+
+ 
+
+
+
+
+
 
 
 
