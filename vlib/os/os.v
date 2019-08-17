@@ -494,15 +494,7 @@ pub fn dir(path string) string {
 	if path == '.' {
 		return getwd() 
 	} 
-	mut pos := -1
-	// TODO PathSeparator defined in os_win.v doesn't work when building V, 
-	// because v.c is generated for a nix system. 
-	$if windows { 
-		pos = path.last_index('\\') 
-	} 
-	$else { 
-		pos = path.last_index(PathSeparator) 
-	} 
+	pos := path.last_index(PathSeparator) 
 	if pos == -1 {
 		return '.' 
 	} 
