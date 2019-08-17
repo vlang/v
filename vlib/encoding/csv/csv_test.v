@@ -1,7 +1,6 @@
 import encoding.csv
 
-fn test_encoding_csv() {
-	// test reading
+fn test_encoding_csv_reader() {
 	data := 'name,email,phone,other\njoe,joe@blow.com,0400000000,test\nsam,sam@likesham.com,0433000000,"test quoted field"\n#chris,chris@nomail.com,94444444,"commented row"\nmike,mike@mikesbikes.com,98888888,"bike store"\n'
 	mut csv_reader := csv.new_reader(data)
 
@@ -28,6 +27,14 @@ fn test_encoding_csv() {
 	}
 
 	assert row_count == 4
+}
 
-	// test writing to come
+fn test_encoding_csv_writer() {
+	mut csv_writer := csv.new_writer()
+
+	csv_writer.write(['name', 'email', 'phone', 'other'])
+	csv_writer.write(['joe', 'joe@blow.com', '0400000000', 'test'])
+	csv_writer.write(['sam', 'sam@likesham.com', '0433000000', 'needs, quoting'])
+
+	assert csv_writer.str() == 'name,email,phone,other\njoe,joe@blow.com,0400000000,test\nsam,sam@likesham.com,0433000000,"needs, quoting"\n'
 }
