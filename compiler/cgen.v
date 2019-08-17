@@ -261,7 +261,7 @@ fn build_thirdparty_obj_file(flag string) {
 	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') or {
 		panic(err)
 	}
-	println(res) 
+	println(res.output) 
 } 
 
 fn os_name_to_ifdef(name string) string { 

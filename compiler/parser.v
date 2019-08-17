@@ -2385,9 +2385,11 @@ fn (p mut Parser) factor() string {
 		typ = p.if_st(true, 0)
 		return typ
 	default:
-		next := p.peek()
-		println('PREV=${p.prev_tok.str()}')
-		println('.neXT=${next.str()}')
+		if p.pref.is_verbose || p.pref.is_debug { 
+			next := p.peek()
+			println('prev=${p.prev_tok.str()}')
+			println('next=${next.str()}')
+		} 
 		p.error('unexpected token: `${p.tok.str()}`')
 	}
 	p.next()// TODO everything should next()

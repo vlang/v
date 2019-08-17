@@ -924,7 +924,7 @@ mut args := ''
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
 			panic(err)
 		}
-		println(ress)
+		println(ress.output)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
@@ -1336,7 +1336,7 @@ fn run_repl() []string {
 			s := os.exec('$vexe run $file -repl') or {
 				panic(err)
 			}
-			vals := s.split('\n')
+			vals := s.output.split('\n')
 			for i:=0; i < vals.len; i++ {
 				println(vals[i])
 			}
@@ -1354,7 +1354,7 @@ fn run_repl() []string {
 				panic(err)
 			}
 			lines << line
-			vals := s.split('\n')
+			vals := s.output.split('\n')
 			for i:=0; i<vals.len; i++ {
 				println(vals[i])
 			}
@@ -1418,18 +1418,18 @@ fn update_v() {
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
 		panic(err)
 	}
-	println(s) 
+	println(s.output) 
 	$if windows { 
 		os.mv('$vroot/v.exe', '$vroot/v_old.exe') 
 		s2 := os.exec('$vroot/make.bat') or {
 			panic(err)
 		}
-		println(s2) 
+		println(s2.output) 
 	} $else { 
 		s2 := os.exec('make -C "$vroot"') or {
 			panic(err)
 		}
-		println(s2) 
+		println(s2.output) 
 	} 
 } 
 

@@ -307,18 +307,6 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-pub fn system(cmd string) int {
-	mut ret := int(0)
-	$if windows {
-		ret = C._wsystem(cmd.to_wide())
-	} $else {
-		ret = C.system(cmd.str) 
-	}
-	if ret == -1 {
-		os.print_c_errno()
-	}
-	return ret
-}
 
 fn popen(path string) *FILE {
 	$if windows {
@@ -341,12 +329,19 @@ fn pclose(f *FILE) int {
 	}
 }
 
+struct Result {
+pub: 
+	exit_code int 
+	output string
+	//stderr string // TODO 
+} 
+
 // exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(_cmd string) ?string {
-	cmd := '$_cmd 2>&1'
-	f := popen(cmd)
+pub fn exec(cmd string) ?Result {
+	pcmd := '$cmd 2>&1'
+	f := popen(pcmd)
 	if isnil(f) {
-		return error('popen $cmd failed')
+		return error('exec("$cmd") failed')
 	}
 	buf := [1000]byte 
 	mut res := ''
@@ -354,11 +349,27 @@ pub fn exec(_cmd string) ?string {
 		res += tos(buf, strlen(buf)) 
 	}
 	res = res.trim_space()
-	status_code := pclose(f)/256
-	if status_code != 0 {
-		return error(res)
+	exit_code := pclose(f)/256
+	//if exit_code != 0 {
+		//return error(res)
+	//}
+	return Result {
+		output: res
+		exit_code: exit_code 
+	} 
+}
+
+pub fn system(cmd string) int {
+	mut ret := int(0)
+	$if windows {
+		ret = C._wsystem(cmd.to_wide())
+	} $else {
+		ret = C.system(cmd.str) 
 	}
-	return res
+	if ret == -1 {
+		os.print_c_errno()
+	}
+	return ret
 }
 
 // `getenv` returns the value of the environment variable named by the key.
