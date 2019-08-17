@@ -404,51 +404,13 @@ pub fn unsetenv(name string) int {
 	} 
 }
 
-// `file_exists` returns true if `path` exists.
+// file_exists returns true if `path` exists.
 pub fn file_exists(_path string) bool {
 	$if windows {
 		path := _path.replace('/', '\\')
 		return C._waccess(path.to_wide(), 0) != -1
 	} $else {
 		return C.access(_path.str, 0 ) != -1
-	}
-}
-
-pub fn dir_exists(path string) bool {
-	$if windows {
-		_path := path.replace('/', '\\')
-		attr := int(C.GetFileAttributes(_path.to_wide()))
-		if attr == C.INVALID_FILE_ATTRIBUTES {
-			return false
-		}
-		if (attr & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-			return true
-		}
-		return false
-	} 
-	$else { 
-		dir := C.opendir(path.str)
-		res := !isnil(dir)
-		if res {
-			C.closedir(dir)
-		}
-		return res
-	} 
-}
-
-// mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) {
-	$if windows {
-		_path := path.replace('/', '\\')
-		// Windows doesnt recursively create the folders
-		// so we need to help it out here
-		if _path.last_index('\\') != -1 {
-			mkdir(_path.all_before_last('\\'))
-		}
-		C.CreateDirectory(_path.to_wide(), 0)
-	}
-	$else {
-		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
 	}
 }
 
@@ -765,33 +727,6 @@ pub fn getwd() string {
 		return string(buf)
 	}
 }
-
-// win: FILETIME
-// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
-struct filetime {
-  dwLowDateTime u32
-  dwHighDateTime u32
-}
-
-// win: WIN32_FIND_DATA
-// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
-struct win32finddata {
-mut:
-    dwFileAttributes u32
-    ftCreationTime filetime
-  	ftLastAccessTime filetime
-  	ftLastWriteTime filetime
-	nFileSizeHigh u32
-	nFileSizeLow u32
-	dwReserved0 u32
-	dwReserved1 u32
-	cFileName [260]u16 // MAX_PATH = 260 
-	cAlternateFileName [14]u16 // 14
-  	dwFileType u32
-  	dwCreatorType u32
-  	wFinderFlags u16
-}
-
 
 // walk_ext returns a recursive list of all file paths ending with `ext`. 
 pub fn walk_ext(path, ext string) []string {

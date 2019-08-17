@@ -39,3 +39,19 @@ pub fn ls(path string) []string {
 	C.closedir(dir)
 	return res
 }
+
+pub fn dir_exists(path string) bool {
+	dir := C.opendir(path.str)
+	res := !isnil(dir)
+	if res {
+		C.closedir(dir)
+	}
+	return res
+}
+
+// mkdir creates a new directory with the specified path.
+pub fn mkdir(path string) {
+	C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
+}
+
+

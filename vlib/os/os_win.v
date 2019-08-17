@@ -11,6 +11,34 @@ const (
 // A handle to an object.
 type HANDLE voidptr
 
+// win: FILETIME
+// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
+struct filetime {
+  dwLowDateTime u32
+  dwHighDateTime u32
+}
+
+// win: WIN32_FIND_DATA
+// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
+struct win32finddata {
+mut:
+    dwFileAttributes u32
+    ftCreationTime filetime
+  	ftLastAccessTime filetime
+  	ftLastWriteTime filetime
+	nFileSizeHigh u32
+	nFileSizeLow u32
+	dwReserved0 u32
+	dwReserved1 u32
+	cFileName [260]u16 // MAX_PATH = 260 
+	cAlternateFileName [14]u16 // 14
+  	dwFileType u32
+  	dwCreatorType u32
+  	wFinderFlags u16
+}
+
+
+
 pub fn ls(path string) []string {
 	mut find_file_data := win32finddata{}
 	mut dir_files := []string
@@ -42,6 +70,29 @@ pub fn ls(path string) []string {
 	}
 	C.FindClose(h_find_files)
 	return dir_files
+} 
+
+pub fn dir_exists(path string) bool {
+	_path := path.replace('/', '\\')
+	attr := int(C.GetFileAttributes(_path.to_wide()))
+	if attr == C.INVALID_FILE_ATTRIBUTES {
+		return false
+	}
+	if (attr & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		return true
+	}
+	return false
+} 
+
+// mkdir creates a new directory with the specified path.
+pub fn mkdir(path string) {
+	_path := path.replace('/', '\\')
+	// Windows doesnt recursively create the folders
+	// so we need to help it out here
+	if _path.last_index('\\') != -1 {
+		mkdir(_path.all_before_last('\\'))
+	}
+	C.CreateDirectory(_path.to_wide(), 0)
 } 
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
