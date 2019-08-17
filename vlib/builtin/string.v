@@ -560,14 +560,12 @@ pub fn (s string) trim_space() string {
 	}
 	mut end := s.len - 1
 	for end >= 0 && is_space(s[end]) {
-		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
-if i > end + 1 {
-return s 
-} 
+	if i > end + 1 {
+		return s 
+	} 
 	res := s.substr(i, end + 1)
-	// println('after SPACE "$res"')
 	return res
 }
 
@@ -600,11 +598,14 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 pub fn (s string) trim_right(cutset string) string {
-	pos := s.last_index(cutset)
-	if pos == -1 {
-		return s
-	}
-	return s.left(pos)
+	if s.len == 0 {
+		return s 
+	} 
+	mut pos := s.len - 1 
+	for s[pos] == cutset[0] {
+		pos-- 
+	} 
+	return s.left(pos+1)
 }
 
 // fn print_cur_thread() {

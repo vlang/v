@@ -294,6 +294,13 @@ fn test_trim_left() {
 	assert s.trim_left(' ') == 'module main'
 }
 
+fn test_trim_right() {
+	mut s := 'module main'
+	assert s.trim_right(' ') == 'module main'
+	s = 'module main '
+	assert s.trim_right(' ') == 'module main'
+}
+
 fn test_all_after() {
 	s := 'fn hello'
 	q := s.all_after('fn ')
