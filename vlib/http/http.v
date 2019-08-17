@@ -113,11 +113,12 @@ pub fn (req &Request) do() Response {
 	}
 
 	// first request
-	mut u := if url.query().size > 0 { '$url.path?${url.query().encode()}' } else { url.path }
+	mut p := url.path.trim_left('/')
+	mut u := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut resp := ssl_do(req.typ, url.hostname(), u)
 	// follow any redirects
 	mut no_redirects := 0
-	for resp.status_code in [301, 302, 303, 307 ,308] {
+	for resp.status_code in [301, 302, 303, 307, 308] {
 		if no_redirects == max_redirects {
 			panic('http.request.do: maximum number of redirects reached ($max_redirects)')
 		}
@@ -125,7 +126,8 @@ pub fn (req &Request) do() Response {
 		r_url := urllib.parse(h_loc) or { 
 			panic('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
 		}
-		u = if r_url.query().size > 0 { '$r_url.path?${r_url.query().encode()}' } else { r_url.path }
+		p = r_url.path.trim_left('/')
+		u = if r_url.query().size > 0 { '/$p?${r_url.query().encode()}' } else { '/$p' }
 		resp = ssl_do(req.typ, r_url.hostname(), u)
 		no_redirects++
 	}
