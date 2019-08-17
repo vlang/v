@@ -7,6 +7,10 @@ module http
 import net.urllib
 import http.chunked
 
+const (
+	max_redirects = 4
+)
+
 struct Request {
 pub:
 	headers2  []string
@@ -100,15 +104,33 @@ pub fn (req &Request) do() Response {
 		//h := '$key: $val'
 	}
 	url := urllib.parse(req.url) or {
-		// panic('http.request.do: invalid URL $req.url'
-		return Response{} //error('ff')}
+		panic('http.request.do: invalid URL $req.url')
+		// return Response{} //error('ff')}
 	}
 	is_ssl := url.scheme == 'https'
 	if !is_ssl {
 		panic('non https requests are not supported right now') 
 	}
-	
-	return ssl_do(req.typ, url.hostname(), url.path)
+
+	// first request
+	mut u := if url.query().size > 0 { '$url.path?${url.query().encode()}' } else { url.path }
+	mut resp := ssl_do(req.typ, url.hostname(), u)
+	// follow any redirects
+	mut no_redirects := 0
+	for resp.status_code in [301, 302, 303, 307 ,308] {
+		if no_redirects == max_redirects {
+			panic('http.request.do: maximum number of redirects reached ($max_redirects)')
+		}
+		h_loc := resp.headers['Location']
+		r_url := urllib.parse(h_loc) or { 
+			panic('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
+		}
+		u = if r_url.query().size > 0 { '$r_url.path?${r_url.query().encode()}' } else { r_url.path }
+		resp = ssl_do(req.typ, r_url.hostname(), u)
+		no_redirects++
+	}
+
+	return resp
 }
 
 fn parse_response(resp string) Response {
