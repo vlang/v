@@ -1,12 +1,11 @@
 CC ?= cc
-CFLAGS ?= -O2 -fPIC
 PREFIX ?= /usr/local
 
 all: 
-	curl -o v.c -LsSf https://raw.githubusercontent.com/vlang/vc/master/v.c
-	${CC} -std=gnu11 -w -o v v.c -lm
+	git clone --depth 1 --quiet https://github.com/vlang/vc
+	${CC} -std=gnu11 -w -o v vc/v.c -lm
 	./v -o v compiler
-	rm v.c
+	rm -rf vc
 	@echo "V has been successfully built"
 
 symlink: v
