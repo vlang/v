@@ -121,7 +121,7 @@ pub fn (req &Request) do() Response {
 		&& no_redirects <= max_redirects {
 		h_loc := resp.headers['Location']
 		r_url := urllib.parse(h_loc) or { 
-			panic('http.request.do: cannot follow redirect, invalid header Location $h_loc')
+			panic('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
 		}
 		u = if r_url.query().size > 0 { '$r_url.path?${r_url.query().encode()}' } else { r_url.path }
 		resp = ssl_do(req.typ, r_url.hostname(), u)
