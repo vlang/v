@@ -245,7 +245,7 @@ fn (p mut Parser) fn_decl() {
 	// Returns a type?
 	mut typ := 'void'
 	if p.tok == .name || p.tok == .mul || p.tok == .amp || p.tok == .lsbr ||
-	p.tok == .question {
+	p.tok == .question || p.tok == .lpar {
 		p.fgen(' ')
 		// TODO In
 		// if p.tok in [ .name, .mul, .amp, .lsbr ] {

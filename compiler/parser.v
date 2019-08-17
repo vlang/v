@@ -1138,7 +1138,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			return ''
 		}
 		// `a := 777` 
-		else if p.peek() == .decl_assign {
+		else if p.peek() == .decl_assign || p.peek() == .comma {
 			p.log('var decl')
 			p.var_decl()
 		}
@@ -1296,14 +1296,26 @@ fn (p mut Parser) var_decl() {
 		p.fspace()
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
-	n := p.check_name()
+	
 	mut names := []string
-	if n.contains(',') {
-		names = n.split(',')
-	} else {
-		names << n
+	names << p.check_name()
+	for p.tok == .comma {
+		p.check(.comma)
+		names << p.check_name()
 	}
-	for name in names {
+	println('names:')
+	println(names)
+	p.check_space(.decl_assign) // :=
+	pos := p.cgen.add_placeholder()
+	t := p.bool_expression()
+	mut types := []string
+	if t.contains(',') {
+		types = t.split(',')
+	} else {
+		types << t
+	}
+	for i,name in names {
+		mut typ := types[i]
 		p.var_decl_name = name 
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
@@ -1314,11 +1326,11 @@ fn (p mut Parser) var_decl() {
 		if name.len > 1 && contains_capital(name) {
 			p.error('variable names cannot contain uppercase letters, use snake_case instead')
 		}
-		p.check_space(.decl_assign) // := 
 		// Generate expression to tmp because we need its type first
 		// [TYP .name =] bool_expression()
-		pos := p.cgen.add_placeholder()
-		mut typ := p.bool_expression()
+		// pos := p.cgen.add_placeholder()
+		// mut typ := p.bool_expression()
+		println('bool exp type: $typ')
 		// Option check ? or {
 		or_else := p.tok == .key_orelse 
 		tmp := p.get_tmp()
@@ -3346,7 +3358,17 @@ fn (p mut Parser) return_st() {
 		}
 		else {
 			ph := p.cgen.add_placeholder()
-			expr_type := p.bool_expression()
+			mut expr_type := p.bool_expression()
+			mut types := []string
+			types << expr_type
+			for p.tok == .comma {
+				p.check(.comma)
+				types << p.bool_expression()
+			}
+			if types.len > 1 {
+				expr_type = types.join(',')
+			}
+			println('3362: $expr_type')
 			// Automatically wrap an object inside an option if the function returns an option
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()
