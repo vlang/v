@@ -93,6 +93,9 @@ fn (r mut Reader) read_record() ?[]string {
 	if r.delimiter == r.comment {
 		return err_comment_is_delim
 	}
+	if !valid_delim(r.delimiter) {
+		return err_invalid_delim
+	}
 	mut line := ''
 	for {
 		l := r.read_line() or {
