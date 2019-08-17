@@ -96,7 +96,7 @@ pub fn (req mut Request) add_header(key, val string) {
 	// req.h = h
 }
 
-pub fn (req &Request) do() Response {
+pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
 	}
@@ -104,12 +104,12 @@ pub fn (req &Request) do() Response {
 		//h := '$key: $val'
 	}
 	url := urllib.parse(req.url) or {
-		panic('http.request.do: invalid URL $req.url')
+		return error('http.request.do: invalid URL $req.url')
 		// return Response{} //error('ff')}
 	}
 	is_ssl := url.scheme == 'https'
 	if !is_ssl {
-		panic('non https requests are not supported right now') 
+		return error('non https requests are not supported right now') 
 	}
 
 	// first request
@@ -120,11 +120,11 @@ pub fn (req &Request) do() Response {
 	mut no_redirects := 0
 	for resp.status_code in [301, 302, 303, 307, 308] {
 		if no_redirects == max_redirects {
-			panic('http.request.do: maximum number of redirects reached ($max_redirects)')
+			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
 		}
 		h_loc := resp.headers['Location']
 		r_url := urllib.parse(h_loc) or { 
-			panic('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
+			return error('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
 		}
 		p = r_url.path.trim_left('/')
 		u = if r_url.query().size > 0 { '/$p?${r_url.query().encode()}' } else { '/$p' }
