@@ -890,12 +890,13 @@ mut args := ''
 		println(cmd)
 	}
 	ticks := time.ticks()
-	_ := os.exec(cmd) or {
+	res := os.exec(cmd) or { panic(err) }
+	if res.exit_code != 0 {
 		if v.pref.is_debug {
-			println(err)
+			println(res.output)
 		} else {
-			print(err.limit(200))
-			if err.len > 200 {
+			print(res.output.limit(200))
+			if res.output.len > 200 {
 				println('...\n(Use `v -debug` to print the entire error message)\n')
 			}
 		}
