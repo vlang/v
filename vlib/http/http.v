@@ -117,8 +117,10 @@ pub fn (req &Request) do() Response {
 	mut resp := ssl_do(req.typ, url.hostname(), u)
 	// follow any redirects
 	mut no_redirects := 0
-	for resp.status_code in [301, 302, 303, 307 ,308]
-		&& no_redirects <= max_redirects {
+	for resp.status_code in [301, 302, 303, 307 ,308] {
+		if no_redirects == max_redirects {
+			panic('http.request.do: maximum number of redirects reached ($max_redirects)')
+		}
 		h_loc := resp.headers['Location']
 		r_url := urllib.parse(h_loc) or { 
 			panic('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
