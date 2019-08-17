@@ -906,8 +906,8 @@ fn (p mut Parser) get_type() string {
 			p.error('maps only support string keys for now') 
 		} 
 		p.check(.rsbr) 
-		val_type := p.check_name() 
-		typ= 'map_$val_type' 
+		val_type := p.get_type()// p.check_name() 
+		typ = 'map_$val_type' 
 		p.register_map(typ)
 		return typ 
 	} 
@@ -1141,9 +1141,6 @@ fn (p mut Parser) statement(add_semi bool) string {
 		else if p.peek() == .decl_assign || p.peek() == .comma {
 			p.log('var decl')
 			p.var_decl()
-		}
-		else if p.lit == 'jsdecode' {
-			p.js_decode()
 		}
 		else {
 			// panic and exit count as returns since they stop the function
@@ -2362,6 +2359,9 @@ fn (p mut Parser) factor() string {
 			return p.map_init()
 		}
 		if p.lit == 'json' && p.peek() == .dot {
+			if !('json' in p.table.imports) {
+				p.error('undefined: `json`, use `import json`') 
+			} 
 			return p.js_decode()
 		}
 		//if p.fileis('orm_test') { 
@@ -2646,15 +2646,19 @@ fn (p mut Parser) map_init() string {
 		p.error('only string key maps allowed for now')
 	}
 	p.check(.rsbr)
-	val_type = p.check_name()
-	if !p.table.known_type(val_type) {
-		p.error('map init unknown type "$val_type"')
-	}
+	val_type = p.get_type()/// p.check_name()
+	//if !p.table.known_type(val_type) {
+		//p.error('map init unknown type "$val_type"')
+	//}
 	typ := 'map_$val_type'
 	p.register_map(typ)
 	p.gen('new_map(1, sizeof($val_type))')
-	p.check(.lcbr)
-	p.check(.rcbr)
+	if p.tok == .lcbr {
+		p.check(.lcbr)
+		p.check(.rcbr)
+		println('warning: $p.file_name:$p.scanner.line_nr ' +
+		 'initializaing maps no longer requires `{}`') 
+	} 
 	return typ
 }
 

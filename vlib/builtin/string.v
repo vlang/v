@@ -41,9 +41,7 @@ pub fn tos_clone(s byteptr) string {
 	if isnil(s) {
 		panic('tos: nil string')
 	}
-	len := strlen(s)
-	res := tos(s, len)
-	return res.clone()
+	return tos2(s).clone()
 }
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts. 

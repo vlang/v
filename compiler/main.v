@@ -9,7 +9,7 @@ import time
 import strings
 
 const (
-	Version = '0.1.17'  
+	Version = '0.1.18'  
 )
 
 enum BuildMode {
@@ -875,7 +875,7 @@ mut args := ''
 	//'$fast_clang $args'
 	//}
 	//else {
-	mut cmd := 'cc $args'
+	mut cmd := ('cc $args') // TODO fix $if after 'string'
 	//}
 	$if windows {
 		cmd = 'gcc $args' 
@@ -1434,6 +1434,27 @@ fn update_v() {
 } 
 
 fn test_v() {
- 
+	vexe := os.args[0] 
+	test_files := os.walk_ext('.', '_test.v') 
+	for file in test_files {
+		print(file + ' ') 
+		if os.system('$vexe $file') != 0 {
+			println('failed') 
+			exit(1) 
+		} else { 
+			println('OK') 
+		} 
+	} 
+	println('\nBuilding examples...') 
+	examples := os.walk_ext('examples', '.v') 
+	for file in examples {
+		print(file + ' ') 
+		if os.system('$vexe $file') != 0 {
+			println('failed') 
+			exit(1) 
+		} else { 
+			println('OK') 
+		} 
+	} 
 } 
 

@@ -119,7 +119,7 @@ pub fn run<T>(port int) {
 			action = 'index' 
 		} 
 		req := http.Request{
-				headers: map[string]string{} 
+				headers: map[string]string
 			headers2: headers 
 				ws_func: 0
 				user_ptr: 0
@@ -131,9 +131,9 @@ pub fn run<T>(port int) {
 		app.vweb = Context{
 			req: req 
 			conn: conn 
-			form: map[string]string{} 
-			static_files: map[string]string{} 
-			static_mime_types: map[string]string{}
+			form: map[string]string
+			static_files: map[string]string
+			static_mime_types: map[string]string
 		} 
 		//} 
 		if req.method in methods_with_form {

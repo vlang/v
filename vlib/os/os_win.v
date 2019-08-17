@@ -11,6 +11,39 @@ const (
 // A handle to an object.
 type HANDLE voidptr
 
+pub fn ls(path string) []string {
+	mut find_file_data := win32finddata{}
+	mut dir_files := []string
+	// We can also check if the handle is valid. but using dir_exists instead
+	// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
+	// if (INVALID_HANDLE_VALUE == h_find_dir) {
+	//     return dir_files
+	// }
+	// C.FindClose(h_find_dir)
+	if !dir_exists(path) {
+		println('ls() couldnt open dir "$path" (does not exist).')
+		return dir_files
+	}
+	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
+	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
+	path_files := '$path\\*' 
+	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
+	// we should use FindFirstFileW and FindNextFileW
+	h_find_files := C.FindFirstFile(path_files.to_wide(), &find_file_data)
+	first_filename := string_from_wide(&u16(find_file_data.cFileName))
+	if first_filename != '.' && first_filename != '..' {
+		dir_files << first_filename
+	}
+	for C.FindNextFile(h_find_files, &find_file_data) {
+		filename := string_from_wide(&u16(find_file_data.cFileName))
+		if filename != '.' && filename != '..' {
+			dir_files << filename.clone()
+		}
+	}
+	C.FindClose(h_find_files)
+	return dir_files
+} 
+
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {

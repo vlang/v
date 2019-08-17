@@ -137,8 +137,8 @@ fn is_primitive_type(typ string) bool {
 
 fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
-		obf_ids: map[string]int{}
-		fns: map[string]Fn{}
+		obf_ids: map[string]int 
+		fns: map[string]Fn 
 		//generic_fns: map[string]GenTable{} 
 		generic_fns: []GenTable 
 		obfuscate: obfuscate
@@ -818,7 +818,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 fn new_file_import_table(file_path string) *FileImportTable {
 	return &FileImportTable{
 		file_path: file_path
-		imports:   map[string]string{}
+		imports:   map[string]string 
 	}
 }
 
