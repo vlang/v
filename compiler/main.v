@@ -892,6 +892,17 @@ mut args := ''
 	ticks := time.ticks()
 	res := os.exec(cmd) or { panic(err) }
 	if res.exit_code != 0 {
+
+		if res.exit_code == 127 {
+			// the command could not be found by the system
+			panic('C compiler error, while attempting to run: \n' +
+				'-----------------------------------------------------------\n' +
+				'$cmd\n' +
+				'-----------------------------------------------------------\n' +
+				'Probably your C compiler is missing. \n' +
+				'Please reinstall it, or make it available in your PATH.')
+		}
+
 		if v.pref.is_debug {
 			println(res.output)
 		} else {
