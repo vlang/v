@@ -3352,7 +3352,11 @@ fn (p mut Parser) return_st() {
 				}
 
 				if total_text == '' || expr_type == 'void*' {
-					p.cgen.resetln('return $ret')
+					if expr_type == '${p.cur_fn.typ}*' {
+						p.cgen.resetln('return *$ret')
+					} else {
+						p.cgen.resetln('return $ret')
+					}
 				}  else {
 					tmp := p.get_tmp()
 					p.cgen.resetln('$expr_type $tmp = $ret;\n')
