@@ -1375,7 +1375,9 @@ fn run_repl() []string {
 			s := os.exec('$vexe run $temp_file -repl') or {
 				panic(err)
 			}
-			lines << line
+			if !s.exit_code {
+				lines << line
+			}
 			vals := s.output.split('\n')
 			for i:=0; i<vals.len; i++ {
 				println(vals[i])
