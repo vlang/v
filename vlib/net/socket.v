@@ -125,7 +125,9 @@ pub fn (s Socket) listen() ?int {
 	if res < 0 {
 		return error('socket: listen failed')
 	}
-println('listen res = $res') 
+	$if debug {
+		println('listen res = $res')
+	}
 	return res 
 }
 
@@ -144,7 +146,9 @@ pub fn (s Socket) listen_backlog(backlog int) ?int {
 
 // helper method to create, bind, and listen given port number
 pub fn listen(port int) ?Socket {
-println('net.listen($port)') 
+	$if debug {
+		println('net.listen($port)')
+	}
 	s := socket(AF_INET, SOCK_STREAM, 0) or {
 		return error(err)
 	}
@@ -159,7 +163,9 @@ println('net.listen($port)')
 
 // accept first connection request from socket queue
 pub fn (s Socket) accept() ?Socket {
-println('accept()') 
+	$if debug {
+		println('accept()')
+	}
 	addr := C.sockaddr_storage{}
 	size := 128 // sizeof(sockaddr_storage)
 	sockfd := C.accept(s.sockfd, &addr, &size)
@@ -265,12 +271,18 @@ pub fn (s Socket) write(str string) {
 pub fn (s Socket) read_line() string {
         mut res := ''
         for {
-                println('.')
+                $if debug {
+					println('.')
+				}
                 mut buf := malloc(MAX_READ)
                 n := int(C.recv(s.sockfd, buf, MAX_READ-1, 0))
-                println('numbytes=$n')
+				$if debug {
+					println('numbytes=$n')
+				}
                 if n == -1 {
-                        println('recv failed')
+						$if debug {
+							println('recv failed')
+						}
                         // TODO
                         return ''
                 }
