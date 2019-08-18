@@ -93,7 +93,9 @@ pub fn run<T>(port int) {
 	for {
 		conn := l.accept() or {
 			panic('accept() failed') 
-		}
+		} 
+		//foobar<T>() 
+		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
 			conn.write(HTTP_500)
@@ -118,23 +120,22 @@ pub fn run<T>(port int) {
 			action = 'index'
 		}
 		req := http.Request{
-			headers: http.parse_headers(s.split_into_lines())
-			ws_func: 0
-			user_ptr: 0
-			method: vals[0]
-			url: vals[1]
-		}
-		//println('vweb action = "$action"')
+				headers: http.parse_headers(s.split_into_lines())
+				ws_func: 0
+				user_ptr: 0
+				method: vals[0]
+				url: vals[1] 
+		} 
+		println('vweb action = "$action"') 
 		//mut app := T{
 		app.vweb = Context{
-			req: req
-			conn: conn
-			form: map[string]string{}
-			static_files: map[string]string{}
-			static_mime_types: map[string]string{}
-			headers: ''
-		}
-		//}
+			req: req 
+			conn: conn 
+			form: map[string]string
+			static_files: map[string]string
+			static_mime_types: map[string]string
+		} 
+		//} 
 		if req.method in methods_with_form {
 			app.vweb.parse_form(s)
 		}
@@ -152,7 +153,14 @@ pub fn run<T>(port int) {
 	}
 }
 
-fn (ctx mut Context) parse_form(s string) {
+
+pub fn foobar<T>() { 
+} 
+
+fn (ctx mut Context) parse_form(s string) { 
+	if !(ctx.req.method in methods_with_form) {
+		return 
+	} 
 	pos := s.index('\r\n\r\n')
 	if pos > -1 {
 		mut str_form := s.substr(pos, s.len)

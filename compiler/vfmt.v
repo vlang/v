@@ -2,13 +2,13 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module main 
+module main
 
-import strings 
+import strings
 
 // fmt helpers
 fn (scanner mut Scanner) fgen(s_ string) {
-	mut s := s_ 
+	mut s := s_
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
@@ -17,7 +17,7 @@ fn (scanner mut Scanner) fgen(s_ string) {
 }
 
 fn (scanner mut Scanner) fgenln(s_ string) {
-	mut s := s_ 
+	mut s := s_
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}

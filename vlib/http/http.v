@@ -7,6 +7,10 @@ module http
 import net.urllib
 import http.chunked
 
+const (
+	max_redirects = 4
+)
+
 struct Request {
 pub:
 	headers  map[string]string 
@@ -60,7 +64,7 @@ pub fn new_request(typ, _url, _data string) ?Request {
 		data: data
 		ws_func: 0
 		user_ptr: 0
-		headers: map[string]string{} 
+		headers: map[string]string
 	}
 }
 
@@ -106,7 +110,7 @@ pub fn parse_headers(lines []string) map[string]string {
 	return headers
 }
 
-pub fn (req &Request) do() Response {
+pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
 	}
@@ -114,19 +118,39 @@ pub fn (req &Request) do() Response {
 		//h := '$key: $val'
 	}
 	url := urllib.parse(req.url) or {
-		// panic('http.request.do: invalid URL $req.url'
-		return Response{} //error('ff')}
+		return error('http.request.do: invalid URL $req.url')
+		// return Response{} //error('ff')}
 	}
 	is_ssl := url.scheme == 'https'
 	if !is_ssl {
-		panic('non https requests are not supported right now') 
+		return error('non https requests are not supported right now') 
 	}
-	
-	return ssl_do(req.typ, url.hostname(), url.path)
+
+	// first request
+	mut p := url.path.trim_left('/')
+	mut u := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
+	mut resp := ssl_do(req.typ, url.hostname(), u)
+	// follow any redirects
+	mut no_redirects := 0
+	for resp.status_code in [301, 302, 303, 307, 308] {
+		if no_redirects == max_redirects {
+			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
+		}
+		h_loc := resp.headers['Location']
+		r_url := urllib.parse(h_loc) or { 
+			return error('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
+		}
+		p = r_url.path.trim_left('/')
+		u = if r_url.query().size > 0 { '/$p?${r_url.query().encode()}' } else { '/$p' }
+		resp = ssl_do(req.typ, r_url.hostname(), u)
+		no_redirects++
+	}
+
+	return resp
 }
 
 fn parse_response(resp string) Response {
-	mut headers := map[string]string{}
+	mut headers := map[string]string
 	first_header := resp.all_before('\n') 
 	mut status_code := 0 
 	if first_header.contains('HTTP/') {

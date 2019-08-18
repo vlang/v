@@ -241,7 +241,7 @@ pub fn new_context(cfg gg.Cfg) *Context {
 // A dirty hack to implement rendering of cyrillic letters.
 // All UTF-8 must be supported. 
 fn (ctx mut Context) init_utf8_runes() {
-	s := '≈йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
+	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
 	println(s)
 	us := s.ustring()
 	for i := 0; i < us.len; i++ {
