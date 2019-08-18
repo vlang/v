@@ -14,7 +14,7 @@ fn (a mut A) set(key string, val int) {
 }
 
 fn test_map() {
-	mut m := map[string]int{}
+	mut m := map[string]int
 	assert m.size == 0 
 	m['hi'] = 80
 	m['hello'] = 101 
@@ -43,13 +43,13 @@ fn test_map() {
 	assert m.keys().len == 1 
 	assert m.keys()[0] == 'hello' 
 	//// 
-	mut users := map[string]User{} 
+	mut users := map[string]User 
 	users['1'] = User{'Peter'} 
 	peter := users['1']
 	assert  peter.name == 'Peter' 
 	mut a := A{
-		m: map[string]int{} 
-		users: map[string]User{} 
+		m: map[string]int 
+		users: map[string]User 
 	}
 	a.users['Bob'] = User{'Bob'} 
 	q := a.users['Bob'] 
@@ -73,7 +73,7 @@ fn test_string_map() {
 
 fn test_large_map() { 
 	//ticks := time.ticks() 
-	mut nums := map[string]int{} 
+	mut nums := map[string]int 
 	N := 30 * 1000
 	for i := 0; i < N; i++ {
 	        key := i.str()
@@ -86,71 +86,80 @@ fn test_large_map() {
 } 
 
 fn test_various_map_value() {
-	mut m1 := map[string]int{}
+	mut m1 := map[string]int
 	m1['test'] = 1
 	assert m1['test'] == 1
 	
-	mut m2 := map[string]string{}
+	mut m2 := map[string]string
 	m2['test'] = 'test'
 	assert m2['test'] == 'test'
 	
-	mut m3 := map[string]i8{}
+	mut m3 := map[string]i8
 	m3['test'] = i8(0)
 	assert m3['test'] == i8(0)
 	
-	mut m4 := map[string]i16{}
+	mut m4 := map[string]i16
 	m4['test'] = i16(0)
 	assert m4['test'] == i16(0)
 	
-	mut m5 := map[string]i32{}
+	mut m5 := map[string]i32
 	m5['test'] = i32(0)
 	assert m5['test'] == i32(0)
 	
-	mut m6 := map[string]u8{}
+	mut m6 := map[string]u8
 	m6['test'] = u8(0)
 	assert m6['test'] == u8(0)
 	
-	mut m7 := map[string]u16{}
+	mut m7 := map[string]u16
 	m7['test'] = u16(0)
 	assert m7['test'] == u16(0)
 	
-	mut m8 := map[string]u32{}
+	mut m8 := map[string]u32
 	m8['test'] = u32(0)
 	assert m8['test'] == u32(0)
 	
-	mut m9 := map[string]bool{}
+	mut m9 := map[string]bool
 	m9['test'] = true
 	assert m9['test'] == true
 	
-	mut m10 := map[string]byte{}
+	mut m10 := map[string]byte
 	m10['test'] = byte(0)
 	assert m10['test'] == byte(0)
 	
-	mut m11 := map[string]f32{}
+	mut m11 := map[string]f32
 	m11['test'] = f32(0.0)
 	assert m11['test'] == f32(0.0)
 	
-	mut m12 := map[string]f64{}
+	mut m12 := map[string]f64
 	m12['test'] = f64(0.0)
 	assert m12['test'] == f64(0.0)
 
-	mut m13 := map[string]rune{}
+	mut m13 := map[string]rune
 	m13['test'] = rune(0)
 	assert m13['test'] == rune(0)
 
-	mut m14 := map[string]voidptr{}
-	m14['test'] = voidptr(0)
-	assert m14['test'] == voidptr(0)
+	//mut m14 := map[string]voidptr
+	//m14['test'] = voidptr(0)
+	//assert m14['test'] == voidptr(0)
 
-	mut m15 := map[string]byteptr{}
-	m15['test'] = byteptr(0)
-	assert m15['test'] == byteptr(0)
+	//mut m15 := map[string]byteptr
+	//m15['test'] = byteptr(0)
+	//assert m15['test'] == byteptr(0)
 
-	mut m16 := map[string]i64{}
+	mut m16 := map[string]i64
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)
 
-	mut m17 := map[string]u64{}
+	mut m17 := map[string]u64
 	m17['test'] = u64(0)
 	assert m17['test'] == u64(0)
 }
+
+
+fn test_string_arr() {
+	mut m := map[string][]string  
+	m['a'] = ['one', 'two'] 
+	assert m['a'].len == 2 
+	assert m['a'][0] == 'one' 
+	assert m['a'][1] == 'two' 
+} 

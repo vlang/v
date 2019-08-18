@@ -67,8 +67,8 @@ pub fn(graph mut ModDepGraph) add(mod string, deps []string) {
 }
 
 pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
-	mut node_names := map[string]ModDepGraphNode{}
-	mut node_deps := map[string]DepSet{}
+	mut node_names := map[string]ModDepGraphNode 
+	mut node_deps := map[string]DepSet 
 
 	for _, node in graph.nodes {
 		node_names[node.name] = node

@@ -27,7 +27,7 @@ mut:
 // values.encode() will return the encoded data
 pub fn new_values() Values {
 	return Values{
-		data: map[string]Value{}
+		data: map[string]Value
 	}
 }
 

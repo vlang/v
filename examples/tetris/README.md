@@ -6,7 +6,10 @@ Tetris has a temporary dependency on GLFW.
 `brew install glfw` 
  
 ## Ubuntu 
-sudo apt install libglfw3 libglfw3-dev 
+`sudo apt install libglfw3 libglfw3-dev`
+
+## Arch (and Manjaro)
+`sudo pacman -S glfw-x11` 
 
 ## Windows 
 Copy `thirdparty/glfw/glfw3.dll` to this directory. 

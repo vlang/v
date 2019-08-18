@@ -145,7 +145,7 @@ fn find_vs() ?VsInstallation {
 	}
 	// println('res: "$res"')
 
-	version := os.read_file('$res\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
+	version := os.read_file('$res.output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
@@ -158,11 +158,11 @@ fn find_vs() ?VsInstallation {
 		version
 	}
 
-	lib_path := '$res\\VC\\Tools\\MSVC\\$v\\lib\\x64'
-	include_path := '$res\\VC\\Tools\\MSVC\\$v\\include'
+	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\x64'
+	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 
 	if os.file_exists('$lib_path\\vcruntime.lib') {
-		p := '$res\\VC\\Tools\\MSVC\\$v\\bin\\Hostx64\\x64'
+		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Hostx64\\x64'
 
 		// println('$lib_path $include_path')
 
@@ -406,6 +406,6 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
 		panic(err)
 	}
-	println(res)
+	println(res.output)
 }
 

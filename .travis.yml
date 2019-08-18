@@ -38,15 +38,16 @@ script:
     fi    
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      choco install openssl.light
+      echo "Testing msvc bootstrapping"
+      ./make_msvc.bat
       echo "Running make_tests.bat..."
       ./make_tests.bat
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
       make
-      ./v install glfw
-      make test
+      #./v install glfw
+      ./v test v 
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then

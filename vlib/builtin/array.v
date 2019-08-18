@@ -14,7 +14,6 @@ pub:
 	len          int
 	cap          int
 	element_size int
-	 
 }
 
 // Private function, used by V (`nums := []int`)

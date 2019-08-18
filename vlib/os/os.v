@@ -24,15 +24,11 @@ struct C.dirent {
 	d_name byteptr 
 } 
 
+fn C.readdir(voidptr) C.dirent 
+
 const (
 	args = []string
 	MAX_PATH = 4096
-)
-
-// Windows 
-import const (
-	FILE_ATTRIBUTE_DIRECTORY
-	INVALID_FILE_ATTRIBUTES
 )
 
 struct C.FILE {
@@ -311,18 +307,6 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-pub fn system(cmd string) int {
-	mut ret := int(0)
-	$if windows {
-		ret = C._wsystem(cmd.to_wide())
-	} $else {
-		ret = C.system(cmd.str) 
-	}
-	if ret == -1 {
-		os.print_c_errno()
-	}
-	return ret
-}
 
 fn popen(path string) *FILE {
 	$if windows {
@@ -345,12 +329,19 @@ fn pclose(f *FILE) int {
 	}
 }
 
+struct Result {
+pub: 
+	exit_code int 
+	output string
+	//stderr string // TODO 
+} 
+
 // exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(_cmd string) ?string {
-	cmd := '$_cmd 2>&1'
-	f := popen(cmd)
+pub fn exec(cmd string) ?Result {
+	pcmd := '$cmd 2>&1'
+	f := popen(pcmd)
 	if isnil(f) {
-		return error('popen $cmd failed')
+		return error('exec("$cmd") failed')
 	}
 	buf := [1000]byte 
 	mut res := ''
@@ -358,11 +349,27 @@ pub fn exec(_cmd string) ?string {
 		res += tos(buf, strlen(buf)) 
 	}
 	res = res.trim_space()
-	status_code := pclose(f)/256
-	if status_code != 0 {
-		return error(res)
+	exit_code := pclose(f)/256
+	//if exit_code != 0 {
+		//return error(res)
+	//}
+	return Result {
+		output: res
+		exit_code: exit_code 
+	} 
+}
+
+pub fn system(cmd string) int {
+	mut ret := int(0)
+	$if windows {
+		ret = C._wsystem(cmd.to_wide())
+	} $else {
+		ret = C.system(cmd.str) 
 	}
-	return res
+	if ret == -1 {
+		os.print_c_errno()
+	}
+	return ret
 }
 
 // `getenv` returns the value of the environment variable named by the key.
@@ -408,51 +415,13 @@ pub fn unsetenv(name string) int {
 	} 
 }
 
-// `file_exists` returns true if `path` exists.
+// file_exists returns true if `path` exists.
 pub fn file_exists(_path string) bool {
 	$if windows {
 		path := _path.replace('/', '\\')
 		return C._waccess(path.to_wide(), 0) != -1
 	} $else {
 		return C.access(_path.str, 0 ) != -1
-	}
-}
-
-pub fn dir_exists(path string) bool {
-	$if windows {
-		_path := path.replace('/', '\\')
-		attr := int(C.GetFileAttributes(_path.to_wide()))
-		if attr == INVALID_FILE_ATTRIBUTES {
-			return false
-		}
-		if (attr & FILE_ATTRIBUTE_DIRECTORY) != 0 {
-			return true
-		}
-		return false
-	} 
-	$else { 
-		dir := C.opendir(path.str)
-		res := !isnil(dir)
-		if res {
-			C.closedir(dir)
-		}
-		return res
-	} 
-}
-
-// mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) {
-	$if windows {
-		_path := path.replace('/', '\\')
-		// Windows doesnt recursively create the folders
-		// so we need to help it out here
-		if _path.last_index('\\') != -1 {
-			mkdir(_path.all_before_last('\\'))
-		}
-		C.CreateDirectory(_path.to_wide(), 0)
-	}
-	$else {
-		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
 	}
 }
 
@@ -498,15 +467,7 @@ pub fn dir(path string) string {
 	if path == '.' {
 		return getwd() 
 	} 
-	mut pos := -1
-	// TODO PathSeparator defined in os_win.v doesn't work when building V, 
-	// because v.c is generated for a nix system. 
-	$if windows { 
-		pos = path.last_index('\\') 
-	} 
-	$else { 
-		pos = path.last_index(PathSeparator) 
-	} 
+	pos := path.last_index(PathSeparator) 
 	if pos == -1 {
 		return '.' 
 	} 
@@ -778,88 +739,27 @@ pub fn getwd() string {
 	}
 }
 
-// win: FILETIME
-// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
-struct filetime {
-  dwLowDateTime u32
-  dwHighDateTime u32
-}
-
-// win: WIN32_FIND_DATA
-// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
-struct win32finddata {
-mut:
-    dwFileAttributes u32
-    ftCreationTime filetime
-  	ftLastAccessTime filetime
-  	ftLastWriteTime filetime
-	nFileSizeHigh u32
-	nFileSizeLow u32
-	dwReserved0 u32
-	dwReserved1 u32
-	cFileName [260]u16 // MAX_PATH = 260 
-	cAlternateFileName [14]u16 // 14
-  	dwFileType u32
-  	dwCreatorType u32
-  	wFinderFlags u16
-}
-
-pub fn ls(path string) []string {
-	$if windows {
-		mut find_file_data := win32finddata{}
-		mut dir_files := []string
-		// We can also check if the handle is valid. but using dir_exists instead
-		// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
-		// if (INVALID_HANDLE_VALUE == h_find_dir) {
-		//     return dir_files
-		// }
-		// C.FindClose(h_find_dir)
-		if !dir_exists(path) {
-			println('ls() couldnt open dir "$path" (does not exist).')
-			return dir_files
-		}
-		// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
-		// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-		path_files := '$path\\*' 
-		// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
-		// we should use FindFirstFileW and FindNextFileW
-		h_find_files := C.FindFirstFile(path_files.to_wide(), &find_file_data)
-		first_filename := string_from_wide(&u16(find_file_data.cFileName))
-		if first_filename != '.' && first_filename != '..' {
-			dir_files << first_filename
-		}
-		for C.FindNextFile(h_find_files, &find_file_data) {
-			filename := string_from_wide(&u16(find_file_data.cFileName))
-			if filename != '.' && filename != '..' {
-				dir_files << filename.clone()
-			}
-		}
-		C.FindClose(h_find_files)
-		return dir_files
+// walk_ext returns a recursive list of all file paths ending with `ext`. 
+pub fn walk_ext(path, ext string) []string {
+	if !os.is_dir(path) { 
+		return []string 
 	} 
-	$else { 
-		mut res := []string
-		dir := C.opendir(path.str) 
-		if isnil(dir) {
-			println('ls() couldnt open dir "$path"')
-			print_c_errno()
-			return res
-		}
-		mut ent := &C.dirent{!}
-		for {
-			ent = C.readdir(dir)
-			if isnil(ent) {
-				break
-			}
-			name := tos_clone(ent.d_name)
-			if name != '.' && name != '..' && name != '' {
-				res << name
-			}
-		}
-		C.closedir(dir)
-		return res
+	mut files := os.ls(path) 
+	mut res := []string 
+	for i, file in files {
+		if file.starts_with('.') {
+			continue 
+		} 
+		p := path + '/' + file 
+		if os.is_dir(p) { 
+			res << walk_ext(p, ext) 
+		} 
+		else if file.ends_with(ext) {
+			res << p 
+		} 
 	} 
-}
+	return res 
+} 
 
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
