@@ -96,7 +96,7 @@ pub fn (req mut Request) add_header(key, val string) {
 }
 
 pub fn parse_headers(lines []string) map[string]string {
-	mut headers := map[string]string{}
+	mut headers := map[string]string
 	for i, line in lines {
 		if i == 0 {
 			continue
