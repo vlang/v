@@ -8,9 +8,14 @@ fn test_repl() {
       assert false
       break
     }
-    input := content.all_before('===output===\n').replace('$', '\\$')
+    input_temporary_filename := 'input_temporary_filename.txt'
+    input := content.all_before('===output===\n')
     output := content.all_after('===output===\n')
-    r := os.exec('echo "$input" | ./v') or {
+    os.write_file(input_temporary_filename, input)
+    defer {
+      os.rm(input_temporary_filename)
+    }
+    r := os.exec('./v < $input_temporary_filename') or {
       assert false
       break
     }
