@@ -95,9 +95,9 @@ mut:
 	is_debug       bool // keep compiled C files
 	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
-	                     // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
-	                     // You could pass several -cflags XXX arguments. They will be merged with each other.
-	                     // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
+						 // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
+						 // You could pass several -cflags XXX arguments. They will be merged with each other.
+						 // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
 }
 
 
@@ -427,9 +427,14 @@ void init_consts();')
 		}
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
-#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT);
+#ifdef _WIN32
+#ifndef _BOOTSTRAP_NO_UNICODE_STREAM
+_setmode(_fileno(stdout), _O_U8TEXT);
 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
-// ENABLE_VIRTUAL_TERMINAL_PROCESSING\n#endif\n g_str_buf=malloc(1000);
+// ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#endif
+#endif
+g_str_buf=malloc(1000);
 $consts_init_body
 }')
 		// _STR function can't be defined in vlib
@@ -684,71 +689,70 @@ fn (v V) run_compiled_executable_and_exit() {
 }
 
 fn (c mut V) cc_windows_cross() {
-       if !c.out_name.ends_with('.exe') {
-               c.out_name = c.out_name + '.exe'
-       }
-       mut args := '-o $c.out_name -w -L. '
-       // -I flags
-       for flag in c.table.flags {
-               if !flag.starts_with('-l') {
-                       args += flag
-                       args += ' '
-               }
-       }
-       mut libs := ''
-       if c.pref.build_mode == .default_mode {
-               libs = '"$ModPath/vlib/builtin.o"'
-               if !os.file_exists(libs) {
-                       println('`builtin.o` not found')
-                       exit(1)
-               }
-               for imp in c.table.imports {
-                       libs += ' "$ModPath/vlib/${imp}.o"'
-               }
-       }
-       args += ' $c.out_name_c '
-       // -l flags (libs)
-       for flag in c.table.flags {
-               if flag.starts_with('-l') {
-                       args += flag
-                       args += ' '
-               }
-       }
-               println('Cross compiling for Windows...')
-               winroot := '$ModPath/winroot'
+	if !c.out_name.ends_with('.exe') {
+		c.out_name = c.out_name + '.exe'
+	}
+	mut args := '-o $c.out_name -w -L. '
+	// -I flags
+	for flag in c.table.flags {
+		if !flag.starts_with('-l') {
+				args += flag
+				args += ' '
+		}
+	}
+	mut libs := ''
+	if c.pref.build_mode == .default_mode {
+		libs = '"$ModPath/vlib/builtin.o"'
+		if !os.file_exists(libs) {
+				println('`builtin.o` not found')
+				exit(1)
+		}
+		for imp in c.table.imports {
+				libs += ' "$ModPath/vlib/${imp}.o"'
+		}
+	}
+	args += ' $c.out_name_c '
+	// -l flags (libs)
+	for flag in c.table.flags {
+			if flag.starts_with('-l') {
+					args += flag
+					args += ' '
+			}
+	}
+	println('Cross compiling for Windows...')
+	winroot := '$ModPath/winroot'
 	if !os.dir_exists(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
 		println('"$winroot" not found. Download it from $winroot_url and save in $ModPath')
+		exit(1)	
+	}
+	mut obj_name := c.out_name
+	obj_name = obj_name.replace('.exe', '')
+	obj_name = obj_name.replace('.o.o', '.o')
+	include := '-I $winroot/include '
+	cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
+	if c.pref.show_c_cmd {
+			println(cmd)
+	}
+	if os.system(cmd) != 0 {
+		println('Cross compilation for Windows failed. Make sure you have clang installed.')
 		exit(1)
-
-}
-               mut obj_name := c.out_name
-               obj_name = obj_name.replace('.exe', '')
-               obj_name = obj_name.replace('.o.o', '.o')
-               include := '-I $winroot/include '
-               cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
-               if c.pref.show_c_cmd {
-                       println(cmd)
-               }
-               if os.system(cmd) != 0 {
-			println('Cross compilation for Windows failed. Make sure you have clang installed.')
-                       exit(1)
-               }
-               if c.pref.build_mode != .build {
-                       link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' +
-                       '$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' +
-                       '$winroot/lib/uuid.lib'
-               if c.pref.show_c_cmd {
-		println(link_cmd)
+	}
+	if c.pref.build_mode != .build {
+		link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' +
+		'$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' +
+		'$winroot/lib/uuid.lib'
+		if c.pref.show_c_cmd {
+			println(link_cmd)
 		}
 
-                if  os.system(link_cmd)  != 0 {
+		if os.system(link_cmd)  != 0 {
 			println('Cross compilation for Windows failed. Make sure you have lld linker installed.')
-                       exit(1)
-}
-                       // os.rm(obj_name)
-               }
-               println('Done!')
+			exit(1)
+		}
+		// os.rm(obj_name)
+	}
+	println('Done!')
 }
 
 fn (v mut V) cc() {
@@ -1414,13 +1418,13 @@ fn env_vflags_and_os_args() []string {
    mut args := []string
    vflags := os.getenv('VFLAGS')
    if '' != vflags {
-     args << os.args[0]
-     args << vflags.split(' ')
-     if os.args.len > 1 {
-       args << os.args.right(1)
-     }
+	 args << os.args[0]
+	 args << vflags.split(' ')
+	 if os.args.len > 1 {
+	   args << os.args.right(1)
+	 }
    }else{
-     args << os.args
+	 args << os.args
    }
    return args
 }
@@ -1448,11 +1452,20 @@ fn update_v() {
 
 fn test_v() {
 	vexe := os.args[0]
+	// Emily: pass args from the invocation to the test
+	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
+	mut joined_args := os.args.right(1).join(' ')
+	joined_args = joined_args.left(joined_args.last_index('test'))
+	println('$joined_args')
+
 	test_files := os.walk_ext('.', '_test.v')
 	for file in test_files {
 		print(file + ' ')
-		if os.system('$vexe $file') != 0 {
-			println('failed')
+		r := os.exec('$vexe $joined_args -debug $file') or {
+			panic('failed on $file')
+		}
+		if r.exit_code != 0 {
+			println('failed `$file` (\n$r.output\n)')
 			exit(1)
 		} else {
 			println('OK')
@@ -1462,8 +1475,11 @@ fn test_v() {
 	examples := os.walk_ext('examples', '.v')
 	for file in examples {
 		print(file + ' ')
-		if os.system('$vexe $file') != 0 {
-			println('failed')
+		r := os.exec('$vexe $joined_args -debug $file') or {
+			panic('failed on $file')
+		}
+		if r.exit_code != 0 {
+			println('failed `$file` (\n$r.output\n)')
 			exit(1)
 		} else {
 			println('OK')
