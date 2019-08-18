@@ -29,6 +29,10 @@ if %ERRORLEVEL% GEQ 1 (
 echo rebuild from source
 v2.exe -os msvc -o v.exe compiler
 
+if %ERRORLEVEL% GEQ 1 (
+   goto :compileerror
+)
+
 del .v_win.c.obj
 del v_win.c
 del v2.exe
