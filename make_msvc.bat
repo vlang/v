@@ -37,6 +37,8 @@ del .v_win.c.obj
 del v_win.c
 del v2.exe
 
+echo Success
+
 exit
 
 :nomsvc

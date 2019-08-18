@@ -1461,8 +1461,11 @@ fn test_v() {
 	test_files := os.walk_ext('.', '_test.v')
 	for file in test_files {
 		print(file + ' ')
-		if os.system('$vexe $joined_args $file') != 0 {
-			println('failed')
+		r := os.exec('$vexe $joined_args -debug $file') or {
+			panic('failed on $file')
+		}
+		if r.exit_code != 0 {
+			println('failed `$file` (\n$r.output\n)')
 			exit(1)
 		} else {
 			println('OK')
@@ -1472,8 +1475,11 @@ fn test_v() {
 	examples := os.walk_ext('examples', '.v')
 	for file in examples {
 		print(file + ' ')
-		if os.system('$vexe $joined_args $file') != 0 {
-			println('failed')
+		r := os.exec('$vexe $joined_args -debug $file') or {
+			panic('failed on $file')
+		}
+		if r.exit_code != 0 {
+			println('failed `$file` (\n$r.output\n)')
 			exit(1)
 		} else {
 			println('OK')
