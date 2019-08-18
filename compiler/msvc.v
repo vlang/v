@@ -417,9 +417,10 @@ pub fn (v mut V) cc_msvc() {
 
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm('.$v.out_name_c')
-		os.rm('$out_name_obj')
 	}
 
+	// Always remove the object file - it is completely unnecessary
+	os.rm('$out_name_obj')
 }
 
 fn build_thirdparty_obj_file_with_msvc(flag string) {
