@@ -70,7 +70,7 @@ On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-co
 You can create a `/usr/local/bin/v` symlink so that V is globally available:
 
 ```
-sudo make symlink
+sudo ln -sf `pwd`/v /usr/local/bin/v
 ```
 
 V is being constantly updated. To update V, simply run
