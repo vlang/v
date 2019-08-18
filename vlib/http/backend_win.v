@@ -22,9 +22,9 @@ fn ssl_do(method, host_name, path string) Response {
 	// dynamically increase in vschannel.c if needed
 	mut buff := malloc(44000)
 	
-	p := if path == '' { '/' } else { path }
-	req := build_request_headers('', method, host_name, p)
+	req := build_request_headers('', method, host_name, path)
 	length := int(C.request(host_name.str, req.str, buff))
 	
+	C.vschannel_cleanup()
 	return parse_response(string(buff, length))
 }
