@@ -22,7 +22,7 @@ pub fn reg_key_vid() {
   #EventTypeSpec eventType;
   #eventType.eventClass = kEventClassKeyboard;
   #eventType.eventKind = kEventHotKeyPressed;
-  #InstallApplicationEventHandler(&focus_app, 1, &eventType, NULL, NULL);
+  #InstallApplicationEventHandler(&ui__focus_app, 1, &eventType, NULL, NULL);
   #gMyHotKeyID.signature = 'rml1';
   #gMyHotKeyID.id = 1;
   #RegisterEventHotKey(kVK_ANSI_1, cmdKey, gMyHotKeyID,
