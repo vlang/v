@@ -427,9 +427,14 @@ void init_consts();')
 		}
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
-#ifdef _WIN32\n _setmode(_fileno(stdout), _O_U8TEXT);
+#ifdef _WIN32
+#ifndef _BOOTSTRAP_NO_UNICODE_STREAM
+_setmode(_fileno(stdout), _O_U8TEXT);
 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
-// ENABLE_VIRTUAL_TERMINAL_PROCESSING\n#endif\n g_str_buf=malloc(1000);
+// ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#endif
+#endif
+g_str_buf=malloc(1000);
 $consts_init_body
 }')
 		// _STR function can't be defined in vlib
@@ -1447,10 +1452,16 @@ fn update_v() {
 
 fn test_v() {
 	vexe := os.args[0]
+	// Emily: pass args from the invocation to the test
+	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
+	mut joined_args := os.args.right(1).join(' ')
+	joined_args = joined_args.left(joined_args.last_index('test'))
+	println('$joined_args')
+
 	test_files := os.walk_ext('.', '_test.v')
 	for file in test_files {
 		print(file + ' ')
-		if os.system('$vexe $file') != 0 {
+		if os.system('$vexe $joined_args $file') != 0 {
 			println('failed')
 			exit(1)
 		} else {
@@ -1461,7 +1472,7 @@ fn test_v() {
 	examples := os.walk_ext('examples', '.v')
 	for file in examples {
 		print(file + ' ')
-		if os.system('$vexe $file') != 0 {
+		if os.system('$vexe $joined_args $file') != 0 {
 			println('failed')
 			exit(1)
 		} else {

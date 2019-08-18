@@ -36,27 +36,20 @@ if %ERRORLEVEL% NEQ 0 goto :fail
 
 setlocal EnableDelayedExpansion
 echo testing v
-for /r . %%x in (*_test.v) do (
-  v -o test.exe -debug %%x
-  if !ERRORLEVEL! NEQ 0 goto :fail
-)
+v test v
+if %ERRORLEVEL% NEQ 0 goto :fail
+
 echo testing v.msvc
-for /r . %%x in (*_test.v) do (
-  v.msvc.exe -o test.exe -debug %%x
-  if !ERRORLEVEL! NEQ 0 goto :fail
-)
+v.msvc.exe test v
+if %ERRORLEVEL% NEQ 0 goto :fail
 
 echo testing v -os msvc
-for /r . %%x in (*_test.v) do (
-  v -os msvc -o test.exe -debug %%x
-  if !ERRORLEVEL! NEQ 0 goto :fail
-)
+v -os msvc test v
+if %ERRORLEVEL% NEQ 0 goto :fail
 
 echo testing v.msvc -os msvc
-for /r . %%x in (*_test.v) do (
-  v.msvc.exe -os msvc -o test.exe -debug %%x
-  if !ERRORLEVEL! NEQ 0 goto :fail
-)
+v.msvc.exe -os msvc test v
+if %ERRORLEVEL% NEQ 0 goto :fail
 
 goto :done
 
