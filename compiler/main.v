@@ -841,10 +841,14 @@ mut args := ''
 	if os.dir_exists(v.out_name) {
 		panic('\'$v.out_name\' is a directory')
 	}
+	if v.os == .mac {
+		a << '-x objective-c'
+	}
 	// The C file we are compiling
-	//a << '"$TmpPath/$v.out_name_c"'
 	a << '".$v.out_name_c"'
-	// }
+	if v.os == .mac {
+		a << '-x none'
+	}
 	// Min macos version is mandatory I think?
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
@@ -852,9 +856,6 @@ mut args := ''
 	a << flags
 	a << libs
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.os == .mac {
-		a << '-x objective-c'
-	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if v.pref.build_mode != .build && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
