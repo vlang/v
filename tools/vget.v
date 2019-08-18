@@ -35,17 +35,32 @@ fn main() {
 	mut errors := 0
 	names := os.args.slice(1, os.args.len)
 	for name in names {
-		s := http.get_text(url + '/jsmod/$name')
+		modurl := url + '/jsmod/$name'
+		r := http.get(modurl) or { panic(err) }
+		
+		if r.status_code == 404 {
+			println('Skipping module "$name", since $url reported that "$name" does not exist.')
+			errors++
+			continue
+        }
+		
+        if r.status_code != 200 {
+			println('Skipping module "$name", since $url responded with $r.status_code http status code. Please try again later.')
+			errors++
+			continue
+		}
+		
+		s := r.text
 		mod := json.decode(Mod, s) or {
 			errors++
-			println('Error. Make sure you are online.')
+			println('Skipping module "$name", since its information is not in json format.')
 			continue
 		}
 		
 		if( '' == mod.url || '' == mod.name ){
 			errors++
 			// a possible 404 error, which means a missing module?
-			println('Skipping module "$name", since it does not exist.')
+			println('Skipping module "$name", since it is missing name or url information.')
 			continue
 		}
 
