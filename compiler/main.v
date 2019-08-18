@@ -141,13 +141,18 @@ fn main() {
 		if true {
 			//println('Building vget...')
 			os.chdir(vroot + '/tools')
-			_ := os.exec('$vexec -o $vget vget.v') or {
+			vgetcompilation := os.exec('$vexec -o $vget vget.v') or {
 				panic(err)
 			}
+			if vgetcompilation.exit_code != 0 {
+				panic( vgetcompilation.output )
+			}
 		}
-
-		_ := os.exec('$vget ' + names.join(' ')) or {
-				panic(err)
+		vgetresult := os.exec('$vget ' + names.join(' ')) or {
+			panic(err)
+		}
+		if vgetresult.exit_code != 0 {
+			panic( vgetresult.output )
 		}
 		return
 	}
