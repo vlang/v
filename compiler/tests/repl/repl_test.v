@@ -14,7 +14,7 @@ fn test_repl() {
       assert false
       break
     }
-    result := r.output.replace('>>> ', '').replace('>>>', '').all_after('Use Ctrl-C or `exit` to exit\n')
+    result := r.output.replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n')
     assert result == output
     if result != output {
       println(file)

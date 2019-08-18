@@ -1323,69 +1323,6 @@ fn new_v(args[]string) *V {
 	}
 }
 
-fn run_repl() []string {
-	println('V $Version')
-	println('Use Ctrl-C or `exit` to exit')
-	file := '.vrepl.v'
-	temp_file := '.vrepl_temp.v'
-	defer {
-		os.rm(file)
-		os.rm(temp_file)
-		os.rm(file.left(file.len - 2))
-		os.rm(temp_file.left(temp_file.len - 2))
-	}
-	mut lines := []string
-	vexe := os.args[0]
-	for {
-		print('>>> ')
-		mut line := os.get_raw_line()
-		if line.trim_space() == '' && line.ends_with('\n') {
-			continue
-		}
-		line = line.trim_space()
-		if line.len == -1 || line == '' || line == 'exit' {
-			break
-		}
-		if line == '\n' {
-			continue
-		}
-		// Save the source only if the user is printing something,
-		// but don't add this print call to the `lines` array,
-		// so that it doesn't get called during the next print.
-		if line.starts_with('print') {
-			source_code := lines.join('\n') + '\n' + line
-			os.write_file(file, source_code)
-			s := os.exec('$vexe run $file -repl') or {
-				panic(err)
-			}
-			vals := s.output.split('\n')
-			for i:=0; i < vals.len; i++ {
-				println(vals[i])
-			}
-		}
-		else {
-			mut temp_line := line
-			mut temp_flag := false
-			if !(line.contains(' ') || line.contains(':') || line.contains('=') || line.contains(',') ){
-				temp_line = 'println($line)'
-				temp_flag = true
-			}
-			temp_source_code := lines.join('\n') + '\n' + temp_line
-			os.write_file(temp_file, temp_source_code)
-			s := os.exec('$vexe run $temp_file -repl') or {
-				panic(err)
-			}
-			if !s.exit_code {
-				lines << line
-			}
-			vals := s.output.split('\n')
-			for i:=0; i<vals.len; i++ {
-				println(vals[i])
-			}
-		}
-	}
-	return lines
-}
 
 const (
 	HelpText = '
