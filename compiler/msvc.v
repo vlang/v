@@ -345,6 +345,8 @@ pub fn (v mut V) cc_msvc() {
 
 	if !v.pref.is_prod {
 		a << '/DEBUG:FULL'
+	} else {
+		a << '/DEBUG:NONE'
 	}
 
 	args := a.join(' ')

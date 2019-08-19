@@ -241,7 +241,7 @@ pub fn new_context(cfg gg.Cfg) *Context {
 // A dirty hack to implement rendering of cyrillic letters.
 // All UTF-8 must be supported. 
 fn (ctx mut Context) init_utf8_runes() {
-	s := '≈йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
+	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
 	println(s)
 	us := s.ustring()
 	for i := 0; i < us.len; i++ {
@@ -255,8 +255,8 @@ fn (ctx mut Context) init_utf8_runes() {
 
 // fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
 pub fn (ctx &Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-	utext := text.ustring_tmp()
-	// utext := text.ustring()
+	//utext := text.ustring_tmp()
+	utext := text.ustring()
 	ctx._draw_text(_x, _y, utext, cfg)
 	// utext.free()
 	// # glScissor(0,0,ctx->width*2,ctx->height*2);

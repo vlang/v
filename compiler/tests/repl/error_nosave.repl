@@ -1,0 +1,5 @@
+a
+33
+===output===
+.vrepl_temp.v:2 undefined: `a`
+33

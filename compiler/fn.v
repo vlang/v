@@ -278,6 +278,8 @@ fn (p mut Parser) fn_decl() {
 	}
 	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
+	} else if p.attr == 'inline' {
+		'static inline '
 	} else {
 		''
 	}
