@@ -1302,11 +1302,12 @@ fn new_v(args[]string) *V {
 		build_mode: build_mode
 		cflags: cflags
 	}
-
+	if pref.is_play {
+		println('Playground')
+	}
 	if pref.is_so {
 		out_name_c = out_name.all_after('/') + '_shared_lib.c'
 	}
-
 	return &V {
 		os: _os
 		out_name: out_name

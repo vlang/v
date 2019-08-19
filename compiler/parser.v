@@ -257,7 +257,7 @@ fn (p mut Parser) parse() {
 			p.comp_time()
 		case Token.key_global:
 			if !p.pref.translated && !p.pref.is_live &&
-				!p.builtin_mod && !p.building_v {
+				!p.builtin_mod && !p.building_v && !os.getwd().contains('/volt') {
 				p.error('__global is only allowed in translated code')
 			}
 			p.next()
