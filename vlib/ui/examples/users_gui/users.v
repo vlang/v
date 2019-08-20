@@ -19,7 +19,7 @@ struct Context {
 	last_name  ui.TextBox
 	age        ui.TextBox
 	users      []User
-	window     *ui.Window
+	window     &ui.Window
 	txt_pos    int
 }
 

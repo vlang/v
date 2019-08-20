@@ -43,17 +43,26 @@ enum AccessMod {
 	public_mut_mut // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
+enum TypeCategory {
+	struct_
+	func
+	interface_ // 2
+	enum_
+	union_
+	c_struct // 5
+	c_typedef
+}
+
 struct Type {
 mut:
 	mod            string
 	name           string
+	cat            TypeCategory
 	fields         []Var
 	methods        []Fn
 	parent         string
 	func           Fn // For cat == FN (type myfn fn())
-	is_c           bool // C.FI.le
-	is_interface   bool
-	is_enum        bool
+	is_c           bool // `C.FILE`
 	enum_vals []string
 	gen_types []string
 	// This field is used for types that are not defined yet but are known to exist.
@@ -488,7 +497,7 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Todo void* allows everything right now
-	if got=='void*' || expected=='void*' {
+	if got=='void*' || expected=='void*' {// || got == 'cvoid' || expected == 'cvoid' {
 		// if !p.builtin_mod {
 		if p.pref.is_play {
 			return false
@@ -623,7 +632,7 @@ fn type_default(typ string) string {
 // TODO PERF O(n)
 fn (t &Table) is_interface(name string) bool {
 	for typ in t.types {
-		if typ.is_interface && typ.name == name {
+		if typ.cat == .interface_ && typ.name == name {
 			return true
 		}
 	}
@@ -757,7 +766,7 @@ fn (t mut Table) register_generic_fn_type(fn_name, typ string) {
 
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	t := p.table.find_type(typ)
-	if t.is_enum {
+	if t.cat == .enum_ {
 		return '%d'
 	}
 	switch typ {

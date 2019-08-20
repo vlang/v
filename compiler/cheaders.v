@@ -13,7 +13,7 @@ CommonCHeaders = '
 
 #define STRUCT_DEFAULT_VALUE {}
 #define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INIT
+#define EMPTY_STRUCT_INIT 0
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32

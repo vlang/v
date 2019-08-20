@@ -74,6 +74,8 @@ mut:
 	returns        bool
 	vroot          string
 	is_c_struct_init bool
+	is_empty_c_struct_init bool
+	is_c_fn_call bool
 	can_chash bool
 	attr string
 	v_script bool // "V bash", import all os functions into global space
@@ -177,7 +179,7 @@ fn (p mut Parser) parse() {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod == 'freetype' || p.mod=='ui' // TODO tmp remove
+	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
@@ -199,7 +201,7 @@ fn (p mut Parser) parse() {
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
 		switch p.tok {
-		case Token.key_import:
+		case .key_import:
 			if p.peek() == .key_const {
 				p.const_decl()
 			}
@@ -483,26 +485,27 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	return method
 }
 
+fn key_to_type_cat(tok Token) TypeCategory {
+	switch tok {
+	case Token.key_interface:  return TypeCategory.interface_
+	case Token.key_struct: return TypeCategory.struct_
+	case Token.key_union: return TypeCategory.union_
+	//Token.key_ => return .interface_
+	}
+	panic('')
+}
+
 // also unions and interfaces
 fn (p mut Parser) struct_decl() {
-	// Attribute before type?
-	mut objc_parent := ''
-	mut is_objc := false// V can generate Objective C for integration with Cocoa
-	// [attr]
-	if p.tok == .lsbr {
-		p.check(.lsbr)
-		// `[interface:ParentInterface]`
-		is_objc = p.tok == .key_interface
-		p.next()
-		if is_objc {
-			p.check(.colon)
-			objc_parent = p.check_name()
-		}
-		p.check(.rsbr)
-	}
+	// V can generate Objective C for integration with Cocoa
+	// `[interface:ParentInterface]`
+	is_objc := p.attr.starts_with('interface')
+	objc_parent := if is_objc { p.attr.right(10) } else { '' }
+	// interface, union, struct
 	is_interface := p.tok == .key_interface
 	is_union := p.tok == .key_union
 	is_struct := p.tok == .key_struct
+	mut cat := key_to_type_cat(p.tok)
 	p.fgen(p.tok.str() + ' ')
 	// Get type name
 	p.next()
@@ -517,6 +520,10 @@ fn (p mut Parser) struct_decl() {
 	if is_c {
 		p.check(.dot)
 		name = p.check_name()
+		cat = .c_struct
+		if p.attr == 'typedef' {
+			cat = .c_typedef
+		}
 	}
 	if !is_c && !good_type_name(name) {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')
@@ -549,13 +556,14 @@ fn (p mut Parser) struct_decl() {
 		typ.mod = p.mod
 		typ.is_c = is_c
 		typ.is_placeholder = false
+		typ.cat = cat
 	}
 	else {
 		typ = &Type {
 			name: name
 			mod: p.mod
 			is_c: is_c
-			is_interface: is_interface
+			cat: cat
 		}
 	}
 	// Struct `C.Foo` declaration, no body
@@ -706,7 +714,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
-		is_enum: true
+		cat: TypeCategory.enum_
 		enum_vals: fields
 	})
 	p.check(.rcbr)
@@ -905,7 +913,8 @@ fn (p mut Parser) get_type() string {
 	}
 	typ += p.lit
 	if !p.is_struct_init {
-		// Otherwise we get `foo := FooFoo{` because `Foo` was already generated in name_expr()
+		// Otherwise we get `foo := FooFoo{` because `Foo` was already
+		// generated in name_expr()
 		p.fgen(p.lit)
 	}
 	// C.Struct import
@@ -1120,7 +1129,6 @@ fn (p mut Parser) statement(add_semi bool) string {
 		}
 		// `a := 777`
 		else if p.peek() == .decl_assign {
-			p.log('var decl')
 			p.var_decl()
 		}
 		else {
@@ -1128,7 +1136,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			if p.lit == 'panic' || p.lit == 'exit' {
 				p.returns = true
 			}
-			// `a + 3`, `a(7)` or maybe just `a`
+			// `a + 3`, `a(7)`, or just `a`
 			q = p.bool_expression()
 		}
 	case Token.key_goto:
@@ -1220,7 +1228,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	is_str := v.typ == 'string'
 	switch tok {
 	case Token.assign:
-		if !is_map {
+		if !is_map && !p.is_empty_c_struct_init {
 			p.gen(' = ')
 		}
 	case Token.plus_assign:
@@ -1326,13 +1334,18 @@ fn (p mut Parser) var_decl() {
 	})
 	if !or_else {
 		gen_name := p.table.var_cgen_name(name)
-		mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ) + '='
+		mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ)
+		// `foo := C.Foo{}` => `Foo foo;`
+		if !p.is_empty_c_struct_init {
+			nt_gen += '='
+		}
 		if is_static {
 			nt_gen = 'static $nt_gen'
 		}
 		p.cgen.set_placeholder(pos, nt_gen)
 	}
 	p.var_decl_name = ''
+	p.is_empty_c_struct_init = false
 }
 
 const (
@@ -1383,7 +1396,7 @@ fn (p mut Parser) bterm() string {
 	is_str := typ=='string'  &&   !p.is_sql
 	tok := p.tok
 	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
-	if tok == .eq || (tok == .assign && p.is_sql) || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
+	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
 		p.fgen(' ${p.tok.str()} ')
 		if is_str {
 			p.gen(',')
@@ -1466,7 +1479,7 @@ fn (p mut Parser) name_expr() string {
 	if p.tok == .dot {
 		//println('got enum dot val $p.left_type pass=$p.pass $p.scanner.line_nr left=$p.left_type')
 		T := p.find_type(p.expected_type)
-		if T.is_enum {
+		if T.cat == .enum_ {
 			p.check(.dot)
 			val := p.check_name()
 			// Make sure this enum value exists
@@ -1552,7 +1565,7 @@ fn (p mut Parser) name_expr() string {
 		// Color.green
 		else if p.peek() == .dot {
 			enum_type := p.table.find_type(name)
-			if !enum_type.is_enum {
+			if enum_type.cat != .enum_ {
 				p.error('`$name` is not an enum')
 			}
 			p.next()
@@ -1563,19 +1576,8 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return enum_type.name
 		}
+		// struct initialization
 		else if p.peek() == .lcbr {
-			// go back to name start (mod.name)
-/*
-			p.scanner.pos = hack_pos
-			p.tok = hack_tok
-			p.lit = hack_lit
-*/
-			// TODO hack. If it's a C type, we may need to add struct before declaration:
-			// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
-			if is_c_struct_init {
-				p.is_c_struct_init = true
-				p.cgen.insert_before('struct /*c struct init*/')
-			}
 			if ptr {
 			        name += '*'  // `&User{}` => type `User*`
 			}
@@ -1597,12 +1599,15 @@ fn (p mut Parser) name_expr() string {
 			name: name// .replace('c_', '')
 			is_c: true
 		}
+		p.is_c_fn_call = true
 		p.fn_call(f, 0, '', '')
+		p.is_c_fn_call = false
 		// Try looking it up. Maybe its defined with "C.fn_name() fn_type",
 		// then we know what type it returns
 		cfn := p.table.find_fn(name)
 		// Not Found? Return 'void*'
 		if cfn.name == '' {
+			//return 'cvoid' //'void*'
 			return 'void*'
 		}
 		return cfn.typ
@@ -1791,7 +1796,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		p.gen_array_str(mut typ)
 		has_method = true
 	}
-	if !typ.is_c && !has_field && !has_method && !p.first_pass() {
+	if !typ.is_c && !p.is_c_fn_call && !has_field && !has_method && !p.first_pass() {
 		if typ.name.starts_with('Option_') {
 			opt_type := typ.name.right(7)
 			p.error('unhandled option type: $opt_type?')
@@ -1809,7 +1814,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		p.error('type `$typ.name` has no field or method `$field_name`')
 	}
 	mut dot := '.'
-	if str_typ.contains('*') {
+	if str_typ.ends_with('*') || str_typ == 'FT_Face' { // TODO fix C ptr typedefs
 		dot = '->'
 	}
 	// field
@@ -2113,7 +2118,7 @@ fn (p mut Parser) expression() string {
 			p.check_space(.left_shift)
 			// Get the value we are pushing
 			p.gen(', (')
-			// Imkey_mut? Can we push?
+			// Immutable? Can we push?
 			if !p.expr_var.is_mut && !p.pref.translated {
 				p.error('`$p.expr_var.name` is immutable (can\'t <<)')
 			}
@@ -2130,7 +2135,7 @@ fn (p mut Parser) expression() string {
 				p.check_types(expr_type, tmp_typ)
 				// Pass tmp var info to the _PUSH macro
 				// Prepend tmp initialisation and push call
-				// Don't dereference if it's already a key_mut array argument  (`fn foo(mut []int)`)
+				// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
 				push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 				p.cgen.set_placeholder(ph, push_call)
 				p.gen('), $tmp, $tmp_typ)')
@@ -2791,18 +2796,32 @@ fn (p mut Parser) array_init() string {
 
 fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	p.is_struct_init = true
+	t := p.table.find_type(typ)
+	// TODO hack. If it's a C type, we may need to add struct before declaration:
+	// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
+	if is_c_struct_init { // && t.cat != .c_typedef {
+		p.is_c_struct_init = true
+		if t.cat != .c_typedef {
+			p.cgen.insert_before('struct /*c struct init*/')
+		}
+	}
 	p.next()
 	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
 	// TODO tm struct struct bug
 	if typ == 'tm' {
 		p.cgen.lines[p.cgen.lines.len-1] = ''
-		p.cgen.lines[p.cgen.lines.len-2] = ''
 	}
 	p.check(.lcbr)
-	// tmp := p.get_tmp()
+	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
 	if !ptr {
 		if p.is_c_struct_init {
+			// `face := C.FT_Face{}` => `FT_Face face;`
+			if p.tok == .rcbr {
+				p.is_empty_c_struct_init = true
+				p.check(.rcbr)
+				return typ
+			}
 			p.gen('(struct $typ) {')
 			p.is_c_struct_init = false
 		}
@@ -2829,7 +2848,6 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	mut inited_fields := []string
 	peek := p.peek()
 	if peek == .colon || p.tok == .rcbr {
-		t := p.table.find_type(typ)
 		for p.tok != .rcbr {
 			field := p.check_name()
 			if !t.has_field(field) {
@@ -2942,6 +2960,9 @@ fn (p mut Parser) cast(typ string) string {
 	p.check(.lpar)
 	p.expected_type = typ
 	expr_typ := p.bool_expression()
+	// `face := FT_Face(cobj)` => `FT_Face face = *((FT_Face*)cobj);`
+	casting_voidptr_to_value :=  expr_typ == 'void*' && typ != 'int' &&
+		typ != 'byteptr' &&		!typ.ends_with('*')
 	p.expected_type = ''
 	// `string(buffer)` => `tos2(buffer)`
 	// `string(buffer, len)` => `tos(buffer, len)`
@@ -2975,6 +2996,9 @@ fn (p mut Parser) cast(typ string) string {
 	}
 	else if typ == 'byte' && expr_typ == 'string' {
 		p.error('cannot cast `$expr_typ` to `$typ`, use backquotes `` to create a `$typ` or access the value of an index of `$expr_typ` using []')
+	}
+	else if casting_voidptr_to_value {
+		p.cgen.set_placeholder(pos, '*($typ*)(')
 	}
 	else {
 		p.cgen.set_placeholder(pos, '($typ)(')
@@ -3524,7 +3548,13 @@ fn (p &Parser) building_v() bool {
 
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)
-	p.attr = p.check_name()
+	if p.tok == .key_interface {
+		p.check(.key_interface)
+		p.check(.colon)
+		p.attr = 'interface:' + p.check_name()
+	} else {
+		p.attr = p.check_name()
+	}
 	p.check(.rsbr)
 	if p.tok == .func {
 		p.fn_decl()
