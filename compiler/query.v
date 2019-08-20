@@ -164,8 +164,11 @@ for (int i = 0; i < ${qprefix}rows.len; i++) {
 	} 
 	if n == 'count' {
 		return 'int' 
-	}	else if query_one {
-		return 'Option_$table_name'
+	}	else if query_one {		
+		opt_type := 'Option_$table_name'		
+		p.cgen.typedefs << 'typedef Option $opt_type;'
+		p.table.register_type( opt_type )
+		return opt_type
 	}  else {
 		p.register_array('array_$table_name') 
 		return 'array_$table_name' 

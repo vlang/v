@@ -36,8 +36,9 @@ fn main() {
 	println(existing)
 	
 	println('------------------------------------------------------------------------')
+  q := Customer{}
 	for {
-		anon := db.select from Customer where id = 12345 && nr_orders > q.nr_orders limit 1 or { eprintln(err) break }
+		anon := db.select from Customer where id = 12345 && nr_orders > q.nr_orders limit 1 or { eprintln('No such customer. Error: $err') break }
 		println('Non existing customer name: $anon.name')
 		break
 	}
