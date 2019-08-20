@@ -26,6 +26,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Powerful UI and graphics libraries
 - Easy cross compilation
 - REPL
+- Built-in ORM
 
 V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
 
