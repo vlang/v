@@ -38,7 +38,7 @@ fn main() {
 	println('------------------------------------------------------------------------')
   q := Customer{}
 	for {
-		anon := db.select from Customer where id = 12345 && nr_orders > q.nr_orders limit 1 or { eprintln('No such customer. Error: $err') break }
+		anon := db.select from Customer where id = 12345 && name = q.name && nr_orders > q.nr_orders limit 1 or { eprintln('No such customer. Error: $err') break }
 		println('Non existing customer name: $anon.name')
 		break
 	}
@@ -51,5 +51,6 @@ fn main() {
 	}
 	db.insert(nc)
   */
+  
   
 }
