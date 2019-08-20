@@ -48,7 +48,7 @@ pub fn (nn int) str() string {
 		return '0'
 	}
 	max := 16
-	mut buf := malloc(max)
+	mut buf := calloc(max)
 	mut len := 0
 	mut is_neg := false
 	if n < 0 {
