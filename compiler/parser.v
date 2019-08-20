@@ -84,7 +84,7 @@ mut:
 	is_vweb bool
 	is_sql bool
 	sql_i int  // $1 $2 $3
-	sql_params string // ("select * from users where id = $1", ***"100"***)
+	sql_params []string // ("select * from users where id = $1", ***"100"***)
 }
 
 const (
@@ -1400,7 +1400,7 @@ fn (p mut Parser) bterm() string {
 			p.gen('$' + p.sql_i.str())
 			p.cgen.start_cut()
 			p.check_types(p.expression(), typ)
-			p.sql_params = p.sql_params + p.cgen.cut() + ','
+			p.sql_params << p.cgen.cut()
 			//println('sql params = "$p.sql_params"')
 		}  else {
 			p.check_types(p.expression(), typ)
