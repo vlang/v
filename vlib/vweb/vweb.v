@@ -92,7 +92,7 @@ pub fn run<T>(port int) {
 	app.init()
 	for {
 		conn := l.accept() or {
-			panic('accept() failed') 
+			panic('accept() failed')
 		} 
 		//foobar<T>() 
 		// TODO move this to handle_conn<T>(conn, app)
