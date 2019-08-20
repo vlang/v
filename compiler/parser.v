@@ -85,6 +85,7 @@ mut:
 	is_sql bool
 	sql_i int  // $1 $2 $3
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
+	sql_types []string // int, string and so on; see sql_params
 }
 
 const (
@@ -1400,8 +1401,10 @@ fn (p mut Parser) bterm() string {
 			p.gen('$' + p.sql_i.str())
 			p.cgen.start_cut()
 			p.check_types(p.expression(), typ)
-			p.sql_params << p.cgen.cut()
-			//println('sql params = "$p.sql_params"')
+			sql_param := p.cgen.cut()
+			p.sql_params << sql_param
+			p.sql_types  << typ
+			//println('*** sql type: $typ | param: $sql_param')
 		}  else {
 			p.check_types(p.expression(), typ)
 		}
