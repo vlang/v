@@ -24,14 +24,20 @@ import const (
 
 struct C.PGResult { }
 
+struct Config {
+pub:
+  host string
+  user string
+  password string
+}
+
 fn C.PQconnectdb(a byteptr) *C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
 
-pub fn connect(dbname, user string) DB {
-	//conninfo := 'host=localhost user=$user dbname=$dbname'
-	conninfo := 'host=127.0.0.1 user=$user dbname=$dbname'
+pub fn connect(config pg.Config) DB {
+	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname'
 	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	if status != CONNECTION_OK { 
