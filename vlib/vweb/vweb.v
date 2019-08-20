@@ -73,9 +73,7 @@ pub fn (ctx Context) html(html string) {
 } 
 
 pub fn run<T>(port int) {
-	$if debug {
-		println('Running vweb app on http://localhost:$port ...') 
-	}
+	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') } 
 	mut app := T{} 
 	app.init() 

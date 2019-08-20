@@ -276,13 +276,13 @@ pub fn (s Socket) read_line() string {
 				}
                 mut buf := malloc(MAX_READ)
                 n := int(C.recv(s.sockfd, buf, MAX_READ-1, 0))
-				$if debug {
-					println('numbytes=$n')
-				}
+			$if debug {
+				println('numbytes=$n')
+			}
                 if n == -1 {
-						$if debug {
-							println('recv failed')
-						}
+			$if debug {
+				println('recv failed')
+			}
                         // TODO
                         return ''
                 }
