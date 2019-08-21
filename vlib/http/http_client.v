@@ -12,7 +12,7 @@ fn http_do(port int, method, host_name, path string) ?Response {
 	client := net.dial( host_name, port) or { return error(err) }
 	client.send( s.str, s.len )
 	for {
-		readbytes := client.cread( rbuffer, bufsize )
+		readbytes := client.crecv( rbuffer, bufsize )
 		if readbytes  < 0 { return error('http_do error reading response. readbytes: $readbytes') }
 		if readbytes == 0 { break }
 		sb.write( tos(rbuffer, readbytes) )

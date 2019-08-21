@@ -133,7 +133,7 @@ void vschannel_init() {
 	tls_ctx.creds_initialized = TRUE;
 }
 
-INT request(CHAR *host, CHAR *req, CHAR *out)
+INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
 {
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
@@ -145,6 +145,8 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 	INT resp_length = 0;
 
 	protocol = SP_PROT_TLS1_2_CLIENT;
+
+	port_number = iport;
 
 	// Connect to server.
 	if(connect_to_server(host, port_number)) {

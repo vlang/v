@@ -133,8 +133,10 @@ fn method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
 	}
 	//println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
+		//println('ssl_do( $nport, $method, $host_name, $path )')
 		return ssl_do( nport, method, host_name, path )
 	} else if scheme == 'http' {
+		//println('http_do( $nport, $method, $host_name, $path )')
 		return http_do( nport, method, host_name, path )
 	}
 	return error('http.request.do: unsupported scheme: $scheme')
