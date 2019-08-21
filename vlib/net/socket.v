@@ -231,6 +231,14 @@ pub fn (s Socket) recv(bufsize int) byteptr {
 	return buf
 }
 
+// TODO: remove cread/2 and crecv/2 when the Go net interface is done
+pub fn (s Socket) cread( buffer byteptr, buffersize int ) int {
+	return int( C.read(s.sockfd, buffer, buffersize) )
+}
+pub fn (s Socket) crecv( buffer byteptr, buffersize int ) int {
+	return int( C.recv(s.sockfd, buffer, buffersize, 0) )
+}
+
 // shutdown and close socket
 pub fn (s Socket) close() ?int {
 	mut shutdown_res := 0

@@ -25,7 +25,7 @@ static void vschannel_init();
 
 static void vschannel_cleanup();
 
-static INT request(CHAR *host, CHAR *req, CHAR *out);
+static INT request(INT iport, CHAR *host, CHAR *req, CHAR *out);
 
 static SECURITY_STATUS https_make_request(
 	CHAR *req, CHAR *out, int *length);
