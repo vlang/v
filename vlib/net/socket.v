@@ -231,6 +231,10 @@ pub fn (s Socket) recv(bufsize int) byteptr {
 	return buf
 }
 
+pub fn (s Socket) cread( buffer byteptr, buffersize int ) int {
+	return int( C.read(s.sockfd, buffer, buffersize) )
+}
+
 // shutdown and close socket
 pub fn (s Socket) close() ?int {
 	mut shutdown_res := 0
