@@ -17,6 +17,6 @@ fn http_do(port int, method, host_name, path string) ?Response {
 		if readbytes == 0 { break }
 		sb.write( tos(rbuffer, readbytes) )
 	}
-	
+	client.close()	
 	return parse_response(sb.str())
 }
