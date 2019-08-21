@@ -65,6 +65,7 @@ mut:
 	builtin_mod    bool
 	vh_lines       []string
 	inside_if_expr bool
+	inside_unwrapping_match_statement bool
 	is_struct_init bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
@@ -1013,7 +1014,14 @@ fn (p mut Parser) statements() string {
 }
 
 fn (p mut Parser) statements_no_rcbr() string {
-	p.cur_fn.open_scope()
+	// Dont create scope if match is going to be unwrapped
+	is_inside_unwrapping_match_statement := p.inside_unwrapping_match_statement
+	if !is_inside_unwrapping_match_statement{
+		p.cur_fn.open_scope()
+	} else {
+		p.inside_unwrapping_match_statement = false
+	}
+
 	if !p.inside_if_expr {
 		p.genln('')
 	}
@@ -1044,7 +1052,11 @@ fn (p mut Parser) statements_no_rcbr() string {
 	}
 	//p.fmt_dec()
 	// println('close scope line=$p.scanner.line_nr')
-	p.close_scope()
+
+	// Dont create scope if match is going to be unwrapped
+	if !is_inside_unwrapping_match_statement{
+		p.close_scope()
+	}
 	return last_st_typ
 }
 
@@ -3307,9 +3319,9 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	typ := p.bool_expression()
 	expr := p.cgen.end_tmp()
 
-	// TODO: introduce new variable to store result. We don't need to recalculate expression
-	// tmp_var := p.get_tmp()
-	// p.gen('$typ $tmp_var = $expr;')
+	// is it safe to use p.cgen.insert_before ???
+	tmp_var := p.get_tmp()
+	p.cgen.insert_before('$typ $tmp_var = $expr;')
 
 	p.check(.lcbr)
 	mut i := 0
@@ -3332,7 +3344,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				if is_expr {
 					// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 
-					// allow braces not to confuse anyone
+					// allow braces is else
 					got_brace := p.tok == .lcbr
 					if got_brace {
 						p.check(.lcbr)
@@ -3344,15 +3356,14 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 					p.gen(' )')
 
-					// allow braces not to confuse anyone
+					// allow braces in else
 					if got_brace {
 						p.check(.rcbr)
 					}
 
 					return res_typ
 				} else {
-					p.genln('if ($expr) {')
-					p.statements()
+					p.match_parse_statement_branch(false)
 					p.returns = all_cases_return && p.returns
 					return ''
 				}
@@ -3362,14 +3373,25 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 				p.gen(':(')
 
+				// allow braces is else
+				got_brace := p.tok == .lcbr
+				if got_brace {
+					p.check(.lcbr)
+				}
+
 				p.check_types(p.bool_expression(), res_typ)
+
+				// allow braces in else
+				if got_brace {
+					p.check(.rcbr)
+				}
 				
 				p.gen(strings.repeat(`)`, i+1))
 
 				return res_typ
 			} else {
-				p.genln('else  { // default:')
-				p.statements()
+				p.genln('else // default:')
+				p.match_parse_statement_branch(true)
 				p.returns = all_cases_return && p.returns
 				return ''
 			}
@@ -3402,12 +3424,12 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			if typ == 'string' { 
 				// TODO: use tmp variable
 				// p.gen('string_eq($tmp_var, ')
-				p.gen('string_eq($expr, ')
+				p.gen('string_eq($tmp_var, ')
 			}
 			else {
 				// TODO: use tmp variable
 				// p.gen('($tmp_var == ')
-				p.gen('($expr == ')
+				p.gen('($tmp_var == ')
 			}
 
 			p.expected_type = typ
@@ -3426,15 +3448,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		
 		// statements are dissallowed (if match is expression) so user cant declare variables there and so on	
 		if is_expr {
-			p.gen('? ')
-			p.gen('(')
+			p.gen('? (')
 
-			got_brace := p.tok == .lcbr
-
-			// allow braces not to confuse anyone
-			if got_brace {
-				p.check(.lcbr)
-			}
+			// braces are required for now
+			p.check(.lcbr)
 			
 			if i == 0 {
 				// on the first iteration we set value of res_typ
@@ -3444,41 +3461,42 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.check_types(p.bool_expression(), res_typ)
 			}
 
-			// allow braces not to confuse anyone
-			if got_brace {
-				p.check(.rcbr)
-			}
+			// braces are required for now
+			p.check(.rcbr)
 
 			p.gen(')')
 		}
 		else {
-			p.match_parse_statement_branch()
+			p.match_parse_statement_branch(true)
 			// p.gen(')')
 		}
 
 		all_cases_return = all_cases_return && p.returns
 		i++
 	}
+
 	if is_expr {
 		// we get here if no else found, ternary requires "else" branch
 		p.error('Match expession requires "else"')
 	}
+
 	p.returns = false // only get here when no default, so return is not guaranteed
 
 	return ''
 }
 
-fn (p mut Parser) match_parse_statement_branch(){
-	p.genln('{ ')
-	if p.tok == .lcbr {
-		p.next()
+fn (p mut Parser) match_parse_statement_branch(create_scope bool){
+	p.check(.lcbr)
+	
+	if create_scope {
+		p.genln('{ ')
 		p.statements()
 	} else {
-		p.cur_fn.open_scope()
-		p.statement(true)
-		p.cur_fn.close_scope()
-		p.genln('} ')
+		p.inside_unwrapping_match_statement = true
+		p.statements_no_rcbr()
 	}
+
+	
 }
 
 fn (p mut Parser) assert_statement() {
