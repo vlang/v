@@ -145,7 +145,7 @@ fn find_vs() ?VsInstallation {
 	}
 	// println('res: "$res"')
 
-	version := os.read_file('$res\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
+	version := os.read_file('$res.output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
@@ -158,11 +158,11 @@ fn find_vs() ?VsInstallation {
 		version
 	}
 
-	lib_path := '$res\\VC\\Tools\\MSVC\\$v\\lib\\x64'
-	include_path := '$res\\VC\\Tools\\MSVC\\$v\\include'
+	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\x64'
+	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 
 	if os.file_exists('$lib_path\\vcruntime.lib') {
-		p := '$res\\VC\\Tools\\MSVC\\$v\\bin\\Hostx64\\x64'
+		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Hostx64\\x64'
 
 		// println('$lib_path $include_path')
 
@@ -202,6 +202,11 @@ fn find_msvc() ?MsvcResult {
 	$else {
 		panic('Cannot find msvc on this OS')
 	}
+}
+
+struct ParsedFlag {
+	f string
+	arg string
 }
 
 pub fn (v mut V) cc_msvc() { 
@@ -296,31 +301,74 @@ pub fn (v mut V) cc_msvc() {
 	// this is a hack to try and support -l -L and object files
 	// passed on the command line
 	for f in v.table.flags {
-		// We need to see if the flag contains -l
-		// -l isnt recognised and these libs will be passed straight to the linker
-		// by the compiler
-		if f.starts_with('-l') {
-			lib_base := f.right(2).trim_space()
+		// People like to put multiple flags per line (which really complicates things)
+		// ...so we need to handle that
+		mut rest := f
 
-			if lib_base.ends_with('.dll') {
-				panic('MSVC cannot link against a dll (`#flag -l $lib_base`)')
+		mut flags := []ParsedFlag{}
+		for {
+			mut base := rest
+
+			fl := if rest.starts_with('-') {
+				base = rest.right(2).trim_space()
+				rest.left(2)
+			} else {
+				''
 			}
 
-			// MSVC has no method of linking against a .dll
-			// TODO: we should look for .defs aswell
-			lib_lib := lib_base + '.lib'
-			real_libs << lib_lib
-		} 
-		else if f.starts_with('-L') {
-			lib_paths << f.right(2).trim_space()
+			// Which ever one of these is lowest we use
+			// TODO: we really shouldnt support all of these cmon
+			mut lowest := base.index('-')
+			for x in [base.index(' '), base.index(',')] {
+				if (x < lowest && x != -1) || lowest == -1 {
+					lowest = x
+				}
+			}
+			arg := if lowest != -1 {
+				rest = base.right(lowest).trim_space().trim(`,`)
+				base.left(lowest).trim_space().trim(`,`)
+			} else {
+				rest = ''
+				base.trim_space()
+			}
+
+			flags << ParsedFlag {
+				fl, arg
+			}
+
+			if rest.len == 0 {
+				break
+			}
 		}
-		else if f.ends_with('.o') {
-			// msvc expects .obj not .o
-			other_flags << f + 'bj'
-		} 
-		else {
-			other_flags << f
+
+		for flag in flags {
+			fl := flag.f
+			arg := flag.arg
+			// We need to see if the flag contains -l
+			// -l isnt recognised and these libs will be passed straight to the linker
+			// by the compiler
+			if fl == '-l' {
+				if arg.ends_with('.dll') {
+					panic('MSVC cannot link against a dll (`#flag -l $arg`)')
+				}
+
+				// MSVC has no method of linking against a .dll
+				// TODO: we should look for .defs aswell
+				lib_lib := arg + '.lib'
+				real_libs << lib_lib
+			} 
+			else if fl == '-L' {
+				lib_paths << f.right(2).trim_space()
+			}
+			else if arg.ends_with('.o') {
+				// msvc expects .obj not .o
+				other_flags << arg + 'bj'
+			} 
+			else {
+				other_flags << arg
+			}
 		}
+		
 	}
 
 	// Include the base paths
@@ -345,6 +393,8 @@ pub fn (v mut V) cc_msvc() {
 
 	if !v.pref.is_prod {
 		a << '/DEBUG:FULL'
+	} else {
+		a << '/DEBUG:NONE'
 	}
 
 	args := a.join(' ')
@@ -367,9 +417,10 @@ pub fn (v mut V) cc_msvc() {
 
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm('.$v.out_name_c')
-		os.rm('$out_name_obj')
 	}
 
+	// Always remove the object file - it is completely unnecessary
+	os.rm('$out_name_obj')
 }
 
 fn build_thirdparty_obj_file_with_msvc(flag string) {
@@ -406,6 +457,6 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
 		panic(err)
 	}
-	println(res)
+	println(res.output)
 }
 

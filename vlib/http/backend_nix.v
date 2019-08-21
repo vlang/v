@@ -93,5 +93,5 @@ fn ssl_do(method, host_name, path string) Response {
 		C.SSL_CTX_free(ctx) 
 	}
 
-	return parse_response(sb.str() )
+	return parse_response(sb.str())
 }

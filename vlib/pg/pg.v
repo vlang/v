@@ -24,14 +24,21 @@ import const (
 
 struct C.PGResult { }
 
+struct Config {
+pub:
+  host string
+  user string
+  password string
+  dbname string
+}
+
 fn C.PQconnectdb(a byteptr) *C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
 
-pub fn connect(dbname, user string) DB {
-	//conninfo := 'host=localhost user=$user dbname=$dbname'
-	conninfo := 'host=127.0.0.1 user=$user dbname=$dbname'
+pub fn connect(config pg.Config) DB {
+	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname'
 	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
 	if status != CONNECTION_OK { 
@@ -100,21 +107,22 @@ pub fn (db DB) exec(query string) []pg.Row {
 	return res_to_rows(res)
 }
 
-pub fn (db DB) exec_one(query string) pg.Row {
+fn rows_first_or_empty(rows []pg.Row) pg.Row? {
+	if rows.len == 0 {
+		return error('no row')
+	} 
+	return rows[0]
+}
+            
+pub fn (db DB) exec_one(query string) pg.Row? {
 	res := C.PQexec(db.conn, query.str)
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
-		println('pg exec error:')
-		println(e)
-		return Row{} 
+		return error('pg exec error: "$e"')
 	}
-	rows := res_to_rows(res)
-	if rows.len == 0 {
-		return Row{} 
-	} 
-	return rows[0] 
+	row := rows_first_or_empty( res_to_rows(res) )
+	return row
 }
-
 
 // 
 pub fn (db DB) exec_param2(query string, param, param2 string) []pg.Row {

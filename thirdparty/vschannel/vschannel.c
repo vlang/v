@@ -11,7 +11,6 @@ DWORD   protocol        = 0;
 ALG_ID  aid_key_exch    = 0;
 
 
-struct TlsContext tls_ctx;
 // TODO: joe-c
 // socket / tls ctx
 struct TlsContext {
@@ -31,6 +30,8 @@ struct TlsContext {
 	BOOL                   context_initialized;
 	PCCERT_CONTEXT         p_pemote_cert_context;
 };
+
+struct TlsContext tls_ctx;
 
 struct TlsContext new_tls_context() {
 	return (struct TlsContext) {

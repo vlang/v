@@ -72,7 +72,7 @@ pub fn (ctx Context) html(html string) {
 	 
 } 
 
-pub fn run<T>(port int) { 
+pub fn run<T>(port int) {
 	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') } 
 	mut app := T{} 
@@ -81,6 +81,7 @@ pub fn run<T>(port int) {
 		conn := l.accept() or {
 			panic('accept() failed') 
 		} 
+		//foobar<T>() 
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
@@ -118,28 +119,32 @@ pub fn run<T>(port int) {
 			action = 'index' 
 		} 
 		req := http.Request{
-				headers: map[string]string{} 
+				headers: map[string]string
 			headers2: headers 
 				ws_func: 0
 				user_ptr: 0
 				method: vals[0]
 				url: vals[1] 
 		} 
-		println('vweb action = "$action"') 
+		$if debug {
+			println('vweb action = "$action"')
+		}
 		//mut app := T{
 		app.vweb = Context{
 			req: req 
 			conn: conn 
-			form: map[string]string{} 
-			static_files: map[string]string{} 
-			static_mime_types: map[string]string{}
+			form: map[string]string
+			static_files: map[string]string
+			static_mime_types: map[string]string
 		} 
 		//} 
 		if req.method in methods_with_form {
 			app.vweb.parse_form(s) 
 		} 
 		if vals.len < 2 {
-			println('no vals for http') 
+			$if debug {
+				println('no vals for http')
+			}
 			conn.close()
 			continue 
 		} 
@@ -159,6 +164,9 @@ pub fn run<T>(port int) {
 } 
 
 
+pub fn foobar<T>() { 
+} 
+
 fn (ctx mut Context) parse_form(s string) { 
 	if !(ctx.req.method in methods_with_form) {
 		return 
@@ -169,14 +177,18 @@ fn (ctx mut Context) parse_form(s string) {
 		str_form = str_form.replace('+', ' ')
 		words := str_form.split('&')
 		for word in words {
-			println('parse form keyval="$word"') 
+			$if debug {
+				println('parse form keyval="$word"') 
+			}
 			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
 			val := urllib.query_unescape(keyval[1]) or {
 				continue 
-			} 
-			println('http form "$key" => "$val"') 
+			}
+			$if debug { 
+				println('http form "$key" => "$val"') 
+			}
 			ctx.form[key] = val 
 		}
 	}

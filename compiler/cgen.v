@@ -35,6 +35,7 @@ mut:
 	file            string
 	line            int
 	line_directives bool
+	cut_pos int 
 }
 
 fn new_cgen(out_name_c string) *CGen {
@@ -125,6 +126,23 @@ fn (g mut CGen) add_placeholder() int {
 	}
 	return g.cur_line.len
 }
+
+fn (g mut CGen) start_cut() {
+	g.cut_pos = g.add_placeholder() 
+} 
+
+fn (g mut CGen) cut() string {
+	pos := g.cut_pos 
+	g.cut_pos = 0 
+	if g.is_tmp {
+		res := g.tmp_line.right(pos) 
+		g.tmp_line = g.tmp_line.left(pos) 
+		return res 
+	}
+	res := g.cur_line.right(pos) 
+	g.cur_line = g.cur_line.left(pos) 
+	return res 
+} 
 
 fn (g mut CGen) set_placeholder(pos int, val string) {
 	if g.nogen || g.pass != .main {
@@ -243,6 +261,31 @@ fn build_thirdparty_obj_file(flag string) {
 	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') or {
 		panic(err)
 	}
-	println(res) 
+	println(res.output) 
 } 
+
+fn os_name_to_ifdef(name string) string { 
+	switch name {
+		case 'windows': return '_WIN32'
+		case 'mac': return '__APPLE__'
+		case 'linux': return '__linux__' 
+		case 'freebsd': return '__FreeBSD__' 
+		case 'openbsd': return '__OpenBSD__' 
+		case 'netbsd': return '__NetBSD__' 
+		case 'dragonfly': return '__DragonFly__' 
+		case 'msvc': return '_MSC_VER' 
+	} 
+	panic('bad os ifdef name "$name"') 
+} 
+
+fn platform_postfix_to_ifdefguard(name string) string {
+  switch name {
+    case '.v': return '' // no guard needed
+    case '_win.v': return '#ifdef _WIN32'
+    case '_nix.v': return '#ifndef _WIN32'
+    case '_lin.v': return '#ifdef __linux__'
+    case '_mac.v': return '#ifdef __APPLE__'
+  }
+  panic('bad platform_postfix "$name"')
+}
 

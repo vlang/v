@@ -56,7 +56,7 @@ fn test_ge() {
 	assert b>=(a)
 	assert c>=(b)
 	assert d>=(c)
-	assert !(c>=d) 
+	assert !(c>=d)
 	assert e>=(a)
 }
 
@@ -108,11 +108,11 @@ fn test_split() {
 	assert vals[2]== 'blue'
 	// /////////
 	s = 'lalala'
-	vals = s.split('a') 
-	assert vals.len == 3 
-	assert vals[0] == 'l' 
-	assert vals[1] == 'l' 
-	assert vals[2] == 'l' 
+	vals = s.split('a')
+	assert vals.len == 3
+	assert vals[0] == 'l'
+	assert vals[1] == 'l'
+	assert vals[2] == 'l'
 }
 
 fn test_trim_space() {
@@ -137,7 +137,7 @@ fn test_join() {
 	assert s == 'a b c'
 	strings = ['one
 two ',
-	'three! 
+	'three!
 four!']
 	s = strings.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
@@ -294,6 +294,13 @@ fn test_trim_left() {
 	assert s.trim_left(' ') == 'module main'
 }
 
+fn test_trim_right() {
+	mut s := 'module main'
+	assert s.trim_right(' ') == 'module main'
+	s = 'module main '
+	assert s.trim_right(' ') == 'module main'
+}
+
 fn test_all_after() {
 	s := 'fn hello'
 	q := s.all_after('fn ')
@@ -309,35 +316,35 @@ fn test_reverse() {
 
 
 struct Foo {
-	bar int 
-} 
+	bar int
+}
 
 fn (f Foo) baz() string {
-	return 'baz' 
-} 
+	return 'baz'
+}
 
 fn test_interpolation() {
-	num := 7 
-	mut s := 'number=$num' 
-	assert s == 'number=7' 
-	foo := Foo{} 
-	s = 'baz=${foo.baz()}' 
-	assert s == 'baz=baz' 
- 
-} 
+	num := 7
+	mut s := 'number=$num'
+	assert s == 'number=7'
+	foo := Foo{}
+	s = 'baz=${foo.baz()}'
+	assert s == 'baz=baz'
+
+}
 
 fn test_bytes_to_string() {
 	mut buf := calloc(10)
-	buf[0] = `h` 
-	buf[1] = `e` 
-	buf[2] = `l` 
-	buf[3] = `l` 
-	buf[4] = `o` 
-	assert string(buf) == 'hello' 
-	assert string(buf, 2) == 'he' 
-	bytes := [`h`, `e`, `l`, `l`, `o`] 
-	assert string(bytes, 5) == 'hello' 
-} 
+	buf[0] = `h`
+	buf[1] = `e`
+	buf[2] = `l`
+	buf[3] = `l`
+	buf[4] = `o`
+	assert string(buf) == 'hello'
+	assert string(buf, 2) == 'he'
+	bytes := [`h`, `e`, `l`, `l`, `o`]
+	assert string(bytes, 5) == 'hello'
+}
 
 fn test_count() {
 	assert ''.count('') == 0
