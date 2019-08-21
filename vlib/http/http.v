@@ -131,7 +131,7 @@ fn method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
 		if scheme == 'http'  { nport = 80  }
 		if scheme == 'https' { nport = 443 }
 	}
-	println('fetch $method, $scheme, $host_name, $nport, $path ')
+	//println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
 		return ssl_do( nport, method, host_name, path )
 	} else if scheme == 'http' {
