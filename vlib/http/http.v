@@ -107,10 +107,6 @@ pub fn (req &Request) do() ?Response {
 		return error('http.request.do: invalid URL $req.url')
 		// return Response{} //error('ff')}
 	}
-	is_ssl := url.scheme == 'https'
-	if !is_ssl {
-		return error('non https requests are not supported right now') 
-	}
 
 	// first request
 	mut p := url.path.trim_left('/')
