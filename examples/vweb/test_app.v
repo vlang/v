@@ -16,7 +16,7 @@ fn main() {
 }
 
 pub fn (app mut App) init() {
-	app.vweb.handle_static('.')
+	// app.vweb.handle_static('.')
 }
 
 pub fn (app mut App) json_endpoint() {
