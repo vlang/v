@@ -1,41 +1,62 @@
+## V 0.1.19
+*XX Aug 2019*
+
+- New `mysql` module.
+- Better error format that is supported by all major editors (go to error).
+- Raw json fields via the `[raw]` attribute.
+- `import const` was removed from the language.
+- All C code was removed from the `freetype` module.
+- `[typedef] attribute for imported C struct typedefs.
+- Support of Objective C interfaces (primarily for using Cocoa).
+- REPL: clear command and custom functions.
+- Syntax bug fixed: `foo[0] += 10` is now possible.
+- http: support plain HTTP protocol and follow redirects.
+- net: basic UDP support.
+- Functions can now be inlined via the `[inline]` attribute.
+
+
+
+
+
+
 ## V 0.1.18
-*16 Aug 2019* 
+*16 Aug 2019*
 
-- Built-in ORM (`uk_customers = db.select from Customer where country == 'uk' && nr_orders > 0`) 
-- Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘foo’ }`  
-- `map.delete(key)`. 
-- `libcurl` dependency was removed from the `http` module. 
-- All function arguments are now immutable by default (previously they could be 
-  modifed inside the function). 
-- `http` functions now return optionals. 
-- `sync.WaitGroup`. 
-- `vweb` static files serving. 
-- `crypto.rand` module. 
-- `v up` to update V. 
-- SChannel support on Windows. 
-- `net.urllib` module. 
-- vpm package manager, `v install`. 
-- `()` are now required in complex bool expressions: `(a && b) || c` instead of `a && b || c 
-- All arrays now have a default `.str()` method. 
-- Bootstrapping V with MSVC. 
+- Built-in ORM (`uk_customers = db.select from Customer where country == 'uk' && nr_orders > 0`)
+- Map initialization syntax: `m := { ‘foo’: ‘bar’, ‘baz’: ‘foo’ }`
+- `map.delete(key)`.
+- `libcurl` dependency was removed from the `http` module.
+- All function arguments are now immutable by default (previously they could be
+  modifed inside the function).
+- `http` functions now return optionals.
+- `sync.WaitGroup`.
+- `vweb` static files serving.
+- `crypto.rand` module.
+- `v up` to update V.
+- SChannel support on Windows.
+- `net.urllib` module.
+- vpm package manager, `v install`.
+- `()` are now required in complex bool expressions: `(a && b) || c` instead of `a && b || c
+- All arrays now have a default `.str()` method.
+- Bootstrapping V with MSVC.
 - Experimental `≠` etc support.
-- `encoding.csv` module. 
-- `$if debug {` for running code in debug mode only. 
-- Map struct fields are now initialized automatically, just like arrays. 
-- Maps now support array values. 
-- `json` functions can no longer be used if the `json` module is not imported. 
- 
+- `encoding.csv` module.
+- `$if debug {` for running code in debug mode only.
+- Map struct fields are now initialized automatically, just like arrays.
+- Maps now support array values.
+- `json` functions can no longer be used if the `json` module is not imported.
 
 
-## V 0.1.17 
-*29 Jul 2019* 
-- `vweb` module for developing web apps in V. 
-- vtalk, open source V forum software. 
-- Generics (very limited right now, but they will be gradually improved).  
-- Comptime codegen (`foo.$method()` where `method` is a string). 
-- @ for escaping keywords (e.g. `struct Foo { @type string }`). 
-- Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows). 
-- Fix mutable args bugs + don't allow primitive arguments to be modified.  
+
+## V 0.1.17
+*29 Jul 2019*
+- `vweb` module for developing web apps in V.
+- vtalk, open source V forum software.
+- Generics (very limited right now, but they will be gradually improved).
+- Comptime codegen (`foo.$method()` where `method` is a string).
+- @ for escaping keywords (e.g. `struct Foo { @type string }`).
+- Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows).
+- Fix mutable args bugs + don't allow primitive arguments to be modified.
 - Declaring a mutable variable and never modifying it results in a compilation error.
 - Interactive debugging support.
 - `sync` module for Windows.
@@ -48,53 +69,53 @@
 
 
 
-## V 0.1.16 
-*23 Jul 2019* 
-- V can now be used with Visual Studio! 
-- Hot code reloading now works with graphical applications (e.g. graph.v, bounce.v).  
-- Compile time memory management for arrays. 
-- High order functions. 
-- `match` expression (replacing `switch`). 
-- Import cycle detection. 
+## V 0.1.16
+*23 Jul 2019*
+- V can now be used with Visual Studio!
+- Hot code reloading now works with graphical applications (e.g. graph.v, bounce.v).
+- Compile time memory management for arrays.
+- High order functions.
+- `match` expression (replacing `switch`).
+- Import cycle detection.
 - `crypto/md5`, `crypto/sha256`, and `crypro/sha512` modules.
-- `os.executable()` - a cross platform function that returns full path to current executable. 
-- `~/.vlang` and `VROOT` were removed entirely. The installation is a lot cleaner now. 
-- V can now be packaged for all Linux distros. 
-- Arch Linux package. 
-- `string(bytes_buffer, len)`, `string(bytes_array)` casts. 
-- Multiple `defer`s. 
-- `key in map` syntax (replacing `map.exists(key)`). 
+- `os.executable()` - a cross platform function that returns full path to current executable.
+- `~/.vlang` and `VROOT` were removed entirely. The installation is a lot cleaner now.
+- V can now be packaged for all Linux distros.
+- Arch Linux package.
+- `string(bytes_buffer, len)`, `string(bytes_array)` casts.
+- Multiple `defer`s.
+- `key in map` syntax (replacing `map.exists(key)`).
 
 
 
-## V 0.1.15 
-*15 Jul 2019* 
-- FreeBSD, OpenBSD, NetBSD, DragonFly support. 
-- Hot code reloading now works with graphical applications: [bounce.v](https://github.com/vlang/v/blob/master/examples/hot_code_reloading/bounce.v) 
-- VROOT was removed, the installation process is now much simpler. 
+## V 0.1.15
+*15 Jul 2019*
+- FreeBSD, OpenBSD, NetBSD, DragonFly support.
+- Hot code reloading now works with graphical applications: [bounce.v](https://github.com/vlang/v/blob/master/examples/hot_code_reloading/bounce.v)
+- VROOT was removed, the installation process is now much simpler.
 - `defer` statement.
 - map.v was re-written. It's now much faster.
-- `for key, val in map` syntax. 
-- `flag` module for parsing command line arguments. 
-- `zip` module. 
-- `crypto/sha1` module. 
-- Submodules and module aliases (`import encoding.base64 as b64`). 
+- `for key, val in map` syntax.
+- `flag` module for parsing command line arguments.
+- `zip` module.
+- `crypto/sha1` module.
+- Submodules and module aliases (`import encoding.base64 as b64`).
 
 
 
 
-## V 0.1.14 
-*12 Jul 2019* 
-- `gg` module Windows support, V Tetris runs on Windows. 
+## V 0.1.14
+*12 Jul 2019*
+- `gg` module Windows support, V Tetris runs on Windows.
 - `glad` and `cJSON` are now compiled only once, this makes compilation of programs using `gg` and `json
-  a bit faster. 
-- `v.c` has been cleaned up and minimized (~16k => ~10k lines of code). 
-- `type` aliases can now have methods.  
-- Const overflow check during compilation (`byte(1000)` will no longer compile) 
+  a bit faster.
+- `v.c` has been cleaned up and minimized (~16k => ~10k lines of code).
+- `type` aliases can now have methods.
+- Const overflow check during compilation (`byte(1000)` will no longer compile)
 
 
 ## V 0.1.13
-*10 Jul 2019* 
+*10 Jul 2019*
 - New enum syntax (`token == .name`), enum values are no longer global consts.
 - Submodules (`import encoding.base64`).
 - Hot code reloading.
@@ -107,17 +128,17 @@
 
 
 ## V 0.1.12
-*4 Jul 2019* 
+*4 Jul 2019*
 - V can finally compile itself on Windows. (https://github.com/vlang/v#mingw-w64)
 - `os` module now uses optionals in all functions that return `File`. Lots of  bugs with optionals fixed.
 - `println` was optimized. It no longer results in allocations. Now it also works correctly with all integer types.
-- Lots of `vfmt` fixes, it will be enabled tomorrow. 
+- Lots of `vfmt` fixes, it will be enabled tomorrow.
 - New `strings` module.
-- Lots of other fixes and improvements, thanks to all the contributors. 
+- Lots of other fixes and improvements, thanks to all the contributors.
 
 
 ## V 0.1.11
-*1 Jul 2019* 
+*1 Jul 2019*
 - Cross compilation for Windows!
 - Lots of Windows fixes
 - socket.v
@@ -125,20 +146,20 @@
 
 
 ## 0.1.9 - 0.1.10
-*29 Jun 2019* 
+*29 Jun 2019*
 - Windows support via MinGW-w64. Pre-built Windows binary.
 - File structure has been simplified: all vlib modules were moved to the vlib/ directory,
   makefile was moved to the root.
-- One single archive with pre-built binaries for all operating systems. 
+- One single archive with pre-built binaries for all operating systems.
 - `mut var := val` was fixed (previously `mut var = val` was allowed as well).
 
 ## 0.1.8
-*28 Jun 2019* 
+*28 Jun 2019*
 - Single file programs without `fn main` now work as expected.
 - REPL has been fixed: it now supports imports, consts, function definitions, etc.
 
 ## 0.1.7
-*27 Jun 2019* 
+*27 Jun 2019*
 - All C code in the compiler and vlib has been replaced with V.
 - `#` syntax for embedding C code has been removed.
 - Exported functions now need to be marked with `pub`, all public vlib functions have been updated.

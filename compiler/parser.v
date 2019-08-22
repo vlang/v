@@ -2774,10 +2774,10 @@ fn (p mut Parser) array_init() string {
 	}
 	p.gen(' })')
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
-	// TODO why need !first_pass()?? Otherwise it goes to the very top of the out.c file
+	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
 		if i == 0 {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) {EMPTY_STRUCT_INIT ')
+			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { 0 ')
 		} else {
 			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
 		}
@@ -2926,11 +2926,9 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 		}
 		did_gen_something = true
 	}
-
 	if !did_gen_something {
-		p.gen('EMPTY_STRUCT_INIT')
+		p.gen('0')
 	}
-
 	p.gen('}')
 	if ptr {
 		p.gen(')')
