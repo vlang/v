@@ -248,6 +248,7 @@ fn (p mut Parser) gen_array_str(typ mut Type) {
 		typ: 'string'
 		args: [Var{typ: typ.name, is_arg:true}] 
 		is_method: true 
+		is_public: true
 		receiver_typ: typ.name 
 	}) 
 	t := typ.name 
