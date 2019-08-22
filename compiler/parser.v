@@ -1014,13 +1014,7 @@ fn (p mut Parser) statements() string {
 }
 
 fn (p mut Parser) statements_no_rcbr() string {
-	// Dont create scope if match is going to be unwrapped
-	is_inside_unwrapping_match_statement := p.inside_unwrapping_match_statement
-	if !is_inside_unwrapping_match_statement{
-		p.cur_fn.open_scope()
-	} else {
-		p.inside_unwrapping_match_statement = false
-	}
+	p.cur_fn.open_scope()
 
 	if !p.inside_if_expr {
 		p.genln('')
@@ -1053,10 +1047,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	//p.fmt_dec()
 	// println('close scope line=$p.scanner.line_nr')
 
-	// Dont create scope if match is going to be unwrapped
-	if !is_inside_unwrapping_match_statement{
-		p.close_scope()
-	}
+	p.close_scope()
 	return last_st_typ
 }
 
@@ -3363,7 +3354,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 					return res_typ
 				} else {
-					p.match_parse_statement_branch(false)
+					p.match_parse_statement_branch()
 					p.returns = all_cases_return && p.returns
 					return ''
 				}
@@ -3391,7 +3382,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				return res_typ
 			} else {
 				p.genln('else // default:')
-				p.match_parse_statement_branch(true)
+				p.match_parse_statement_branch()
 				p.returns = all_cases_return && p.returns
 				return ''
 			}
@@ -3467,7 +3458,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.gen(')')
 		}
 		else {
-			p.match_parse_statement_branch(true)
+			p.match_parse_statement_branch()
 			// p.gen(')')
 		}
 
@@ -3485,18 +3476,11 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	return ''
 }
 
-fn (p mut Parser) match_parse_statement_branch(create_scope bool){
+fn (p mut Parser) match_parse_statement_branch(){
 	p.check(.lcbr)
 	
-	if create_scope {
-		p.genln('{ ')
-		p.statements()
-	} else {
-		p.inside_unwrapping_match_statement = true
-		p.statements_no_rcbr()
-	}
-
-	
+	p.genln('{ ')
+	p.statements()
 }
 
 fn (p mut Parser) assert_statement() {

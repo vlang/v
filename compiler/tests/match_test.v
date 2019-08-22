@@ -86,14 +86,3 @@ fn test_match_enums(){
     }
     assert b == .blue
 }
-
-fn test_match_unwrapped_statements() {
-    match 1 {
-        else => {
-            a := 1
-            b := 2
-        }
-    }
-    println(a)
-    println(b)
-}
