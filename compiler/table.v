@@ -174,10 +174,10 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('voidptr')
 	t.register_type('T')
 	t.register_type('va_list')
-	t.register_const('stdin', 'int', 'main', false)
-	t.register_const('stdout', 'int', 'main', false)
-	t.register_const('stderr', 'int', 'main', false)
-	t.register_const('errno', 'int', 'main', false)
+	t.register_const('stdin', 'int', 'main')
+	t.register_const('stdout', 'int', 'main')
+	t.register_const('stderr', 'int', 'main')
+	t.register_const('errno', 'int', 'main')
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -226,12 +226,11 @@ fn (table &Table) known_mod(mod string) bool {
 	return mod in table.modules
 }
 
-fn (t mut Table) register_const(name, typ, mod string, is_imported bool) {
+fn (t mut Table) register_const(name, typ, mod string) {
 	t.consts << Var {
 		name: name
 		typ: typ
 		is_const: true
-		is_import_const: is_imported
 		mod: mod
 	}
 }

@@ -6,10 +6,6 @@ module builtin
 
 #include <float.h>
 
-import const (
-	DBL_EPSILON
-)
-
 pub fn (d double) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
@@ -36,7 +32,7 @@ pub fn ptr_str(ptr voidptr) string {
 
 // compare floats using C epsilon
 pub fn (a f64) eq(b f64) bool {
-	return C.fabs(a - b) <= DBL_EPSILON	
+	return C.fabs(a - b) <= C.DBL_EPSILON	
 }
 
 // fn (nn i32) str() string {

@@ -16,7 +16,6 @@ mut:
 	name            string
 	is_arg          bool
 	is_const        bool
-	is_import_const bool // TODO remove import consts entirely
 	args            []Var // function args
 	attr            string //  [json] etc
 	is_mut          bool
@@ -390,11 +389,11 @@ fn (p mut Parser) import_statement() {
 }
 
 fn (p mut Parser) const_decl() {
-	is_import := p.tok == .key_import
-	p.inside_const = true
-	if is_import {
-		p.next()
+	if p.tok == .key_import {
+		p.error('`import const` was removed from the language, ' +
+			'use `foo(C.CONST_NAME)` instead')
 	}
+	p.inside_const = true
 	p.check(.key_const)
 	p.fspace()
 	p.check(.lpar)
@@ -406,20 +405,14 @@ fn (p mut Parser) const_decl() {
 		//if ! (name[0] >= `A` && name[0] <= `Z`) {
 			//p.error('const name must be capitalized')
 		//}
-		// Imported consts (like GL_TRIANG.leS) dont need mod prepended (gl__GL_TRIANG.leS)
-		if !is_import {
-			name = p.prepend_mod(name)
-		}
-		mut typ := 'int'
-		if !is_import {
-			p.check_space(.assign)
-			typ = p.expression()
-		}
-		if p.first_pass() && !is_import && p.table.known_const(name) {
+		name = p.prepend_mod(name)
+		p.check_space(.assign)
+		typ := p.expression()
+		if p.first_pass()  && p.table.known_const(name) {
 			p.error('redefinition of `$name`')
 		}
-		p.table.register_const(name, typ, p.mod, is_import)
-		if p.pass == .main && !is_import {
+		p.table.register_const(name, typ, p.mod)
+		if p.pass == .main {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
 			// output a #define so that we don't pollute the binary with unnecessary global vars
@@ -707,7 +700,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		if p.tok == .comma {
 			p.next()
 		}
-		p.table.register_const(name, enum_name, p.mod, false)
+		p.table.register_const(name, enum_name, p.mod)
 		val++
 	}
 	p.table.register_type2(&Type {
