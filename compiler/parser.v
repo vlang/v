@@ -645,6 +645,10 @@ fn (p mut Parser) struct_decl() {
 		if p.tok == .lsbr {
 			p.next()
 			attr = p.check_name()
+			if p.tok == .colon {
+				p.check(.colon)
+				attr += ':' + p.check_name()
+			}
 			p.check(.rsbr)
 		}
 		if attr == 'raw' && field_type != 'string' {

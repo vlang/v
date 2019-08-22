@@ -1,20 +1,22 @@
-import json 
+import json
 
 struct User {
-	age  int
-	nums []int
+	age       int
+	nums      []int
+	last_name string [json:lastName]
 }
 
 fn test_parse_user() {
-	s := '{"age": 10, "nums": [1,2,3]}'
+	s := '{"age": 10, "nums": [1,2,3], "lastName": "Johnson"}'
 	u := json.decode(User, s) or {
-		exit(1) 
+		exit(1)
 	}
 	assert u.age == 10
+	assert u.last_name == 'Johnson'
 	assert u.nums.len == 3
-	assert u.nums[0] == 1 
-	assert u.nums[1] == 2 
-	assert u.nums[2] == 3 
+	assert u.nums[0] == 1
+	assert u.nums[1] == 2
+	assert u.nums[2] == 3
 }
 
 struct Color {
