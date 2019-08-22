@@ -327,7 +327,7 @@ fn pclose(f *FILE) int {
 		return C._pclose(f)
 	}
 	$else {
-		return C.pclose(f)
+		return C.pclose(f) / 256 // WEXITSTATUS()
 	}
 }
 
