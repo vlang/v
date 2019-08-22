@@ -18,10 +18,6 @@ pub:
 	vals []string
 }
 
-import const (
-	CONNECTION_OK
-) 
-
 struct C.PGResult { }
 
 struct Config {
@@ -41,7 +37,7 @@ pub fn connect(config pg.Config) DB {
 	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname'
 	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
-	if status != CONNECTION_OK { 
+	if status != C.CONNECTION_OK { 
 		error_msg := C.PQerrorMessage(conn) 
 		eprintln('Connection to a PG database failed: ' + string(error_msg)) 
 		exit(1) 

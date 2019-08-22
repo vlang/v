@@ -111,9 +111,9 @@ fn ft_load_char(_face Face, code i64) Character {
 	C.glTexImage2D(C.GL_TEXTURE_2D, 0, C.GL_RED, fgwidth,  fgrows,
 		0, C.GL_RED, C.GL_UNSIGNED_BYTE, face.glyph.bitmap.buffer)
 	// Set texture options
-	C.glTexParameteri(GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
-	C.glTexParameteri(GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
-	C.glTexParameteri(GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
 	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MAG_FILTER, C.GL_LINEAR)
 	fgleft := face.glyph.bitmap_left
 	fgtop := face.glyph.bitmap_top
@@ -146,7 +146,7 @@ pub fn new_context(cfg gg.Cfg) *Context {
 	gl.viewport(0, 0, width, height)
 */
 	// gl.enable(GL_CULL_FACE) // TODO NEED CULL?
-	gl.enable(GL_BLEND)
+	gl.enable(C.GL_BLEND)
 	C.glBlendFunc(C.GL_SRC_ALPHA, C.GL_ONE_MINUS_SRC_ALPHA)
 	shader := gl.new_shader('text')
 	shader.use()
@@ -209,10 +209,10 @@ pub fn new_context(cfg gg.Cfg) *Context {
 	println('new gg text context vao=$vao')
 	vbo := gl.gen_buffer()
 	gl.bind_vao(vao)
-	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
+	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
 	// # glBufferData(GL_ARRAY_BUFFER, sizeof(GLf32) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
 	gl.enable_vertex_attrib_array(0)
-	gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
+	gl.vertex_attrib_pointer(0, 4, C.GL_FLOAT, false, 4, 0)
 	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLf32), 0);
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
 	// # glBindVertexArray(0);
@@ -336,11 +336,11 @@ fn (ctx mut Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		// Render glyph texture over quad
 		C.glBindTexture(C.GL_TEXTURE_2D, ch.texture_id)
 		// Update content of VBO memory
-		gl.bind_buffer(GL_ARRAY_BUFFER, ctx.vbo)
+		gl.bind_buffer(C.GL_ARRAY_BUFFER, ctx.vbo)
 		// glBufferSubData(..)
-		C.glBufferData(GL_ARRAY_BUFFER, 96, vertices.data, C.GL_DYNAMIC_DRAW)
+		C.glBufferData(C.GL_ARRAY_BUFFER, 96, vertices.data, C.GL_DYNAMIC_DRAW)
 		// Render quad
-		gl.draw_arrays(GL_TRIANGLES, 0, 6)
+		gl.draw_arrays(C.GL_TRIANGLES, 0, 6)
 		// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
 		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
 		x += ch.advance >> u32(6)

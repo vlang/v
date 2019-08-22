@@ -135,7 +135,7 @@ fn main() {
 		})
 		ft: 0
 	}
-	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
+	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
@@ -374,7 +374,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	switch key {
 	case glfw.KEY_ESCAPE:
 		glfw.set_should_close(wnd, true)
-	case GLFW_KEY_SPACE:
+	case glfw.key_space:
 		if game.state == .running {
 			game.state = .paused
 		} else if game.state == .paused {
