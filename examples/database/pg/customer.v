@@ -17,20 +17,20 @@ fn main() {
 	
 	// V syntax can be used to build queries
 	println('------------------------------------------------------------------------')
-	bg_customers := db.select from Customer where country = 'Bulgaria' && id != 2
+	bg_customers := db.select from Customer where country == 'Bulgaria' && id != 2
 	for customer in bg_customers {
 		println('$customer.country | $customer.id - $customer.name')
 	}
 	
 	println('------------------------------------------------------------------------')
-	ru_customers := db.select from Customer where country = 'Russia'
+	ru_customers := db.select from Customer where country == 'Russia'
 	for customer in ru_customers {
 		println('$customer.country | $customer.id - $customer.name')
 	}
 	
 	// by adding `limit 1` we tell V that there will be only one object
 	println('------------------------------------------------------------------------')	
-	existing := db.select from Customer where id = 1 limit 1 or { panic(err) }	
+	existing := db.select from Customer where id == 1 limit 1 or { panic(err) }	
 	println('Existing customer name: $existing.name')
 	println('Existing customer full information:')
 	println(existing)
@@ -38,7 +38,7 @@ fn main() {
 	println('------------------------------------------------------------------------')
   q := Customer{}
 	for {
-		anon := db.select from Customer where id = 12345 && name = q.name && nr_orders > q.nr_orders limit 1 or { eprintln('No such customer. Error: $err') break }
+		anon := db.select from Customer where id == 12345 && name == q.name && nr_orders > q.nr_orders limit 1 or { eprintln('No such customer. Error: $err') break }
 		println('Non existing customer name: $anon.name')
 		break
 	}
@@ -51,6 +51,6 @@ fn main() {
 	}
 	db.insert(nc)
   */
-  
-  
+
+
 }
