@@ -351,7 +351,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, strlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)/256
+	exit_code := pclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}
