@@ -5,6 +5,7 @@
 module main
 
 import os
+import term
 
 struct Repl {
 mut:
@@ -49,6 +50,15 @@ fn (r mut Repl) function_call(line string) bool {
 	return false
 }
 
+fn repl_help() {
+println('
+V $Version
+  help                   Displays this information.
+  Ctrl-C, Ctrl-D, exit   Exits the REPL.
+  clear                  Clears the screen.
+')
+}
+
 fn run_repl() []string {
 	println('V $Version')
 	println('Use Ctrl-C or `exit` to exit')
@@ -78,6 +88,14 @@ fn run_repl() []string {
 			break
 		}
 		if line == '\n' {
+			continue
+		}
+		if line == 'clear' {
+			term.erase_display('2')
+			continue
+		}
+		if line == 'help' {
+			repl_help()
 			continue
 		}
 		if line.starts_with('fn') {
