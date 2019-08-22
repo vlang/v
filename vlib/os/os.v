@@ -753,7 +753,9 @@ pub fn realpath(fpath string) string {
 	$else{
 		res = int( C.realpath( fpath.str, fullpath ) )
 	}
-	if res != 0 { return tos(fullpath, strlen(fullpath)) }
+	if res != 0 {
+		return tos(fullpath, strlen(fullpath)).clone()
+	}
 	return fpath
 }
 
