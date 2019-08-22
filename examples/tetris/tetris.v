@@ -317,7 +317,7 @@ fn (g &Game) draw_field() {
 	}
 }
 
-fn (g &Game) draw_score() {
+fn (g mut Game) draw_score() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
 		if g.state == .gameover {
@@ -330,7 +330,7 @@ fn (g &Game) draw_score() {
 	}
 }
 
-fn (g &Game) draw_scene() {
+fn (g mut Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
 	g.draw_score()
