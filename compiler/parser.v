@@ -2057,10 +2057,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		tmp_ok := p.get_tmp()
 		if is_map {
 			p.gen('$tmp')
-			mut def := type_default(typ)
-			if def == 'STRUCT_DEFAULT_VALUE' {
-				def = '{0}'
-			}
+			def := type_default(typ)
 			p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
 		}
 		else if is_arr {
@@ -2689,7 +2686,7 @@ fn (p mut Parser) array_init() string {
 					name := p.check_name()
 					if p.table.known_type(name) {
 						p.cgen.resetln('')
-						p.gen('STRUCT_DEFAULT_VALUE')
+						p.gen('{0}')
 						if is_const_len {
 							return '[${p.mod}__$lit]$name'
 						}
@@ -2887,7 +2884,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 				continue
 			}
 			def_val := type_default(field_typ)
-			if def_val != '' && def_val != 'STRUCT_DEFAULT_VALUE' {
+			if def_val != '' && def_val != '{0}' {
 				p.gen('.$field.name = $def_val')
 				if i != t.fields.len - 1 {
 					p.gen(',')
@@ -3185,10 +3182,7 @@ fn (p mut Parser) for_st() {
 			p.genln('for (int l = 0; l < keys_$tmp .len; l++) {')
 			p.genln('  string $i = ((string*)keys_$tmp .data)[l];')
 			//p.genln('  string $i = *(string*) ( array__get(keys_$tmp, l) );')
-			mut def := type_default(typ)
-			if def == 'STRUCT_DEFAULT_VALUE' {
-				def = '{0}'
-			}
+			def := type_default(typ)
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`)
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);')
