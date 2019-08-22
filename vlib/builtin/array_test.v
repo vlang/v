@@ -199,3 +199,10 @@ fn test_clone() {
 	assert nums.slice(1, 3).str() == '[2, 3]' 
 } 
  
+fn test_doubling() {
+	mut nums := [1, 2, 3, 4, 5]
+	for i := 0; i < nums.len; i++ {
+		nums[i] *= 2
+	}
+	assert nums.str() == '[2, 4, 6, 8, 10]'
+}
