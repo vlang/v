@@ -17,4 +17,17 @@ fn test_parse_user() {
 	assert u.nums[2] == 3 
 }
 
+struct Color {
+    space string
+    point string [raw]
+}
+
+fn test_raw_json_field() {
+    color := json.decode(Color, '{"space": "YCbCr", "point": {"Y": 123}}') or {
+        println('text')
+        return
+    }
+    assert color.point == '{"Y":123}'
+    assert color.space == 'YCbCr'
+}
 
