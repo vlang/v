@@ -15,7 +15,7 @@ fn test_repl() {
     defer {
       os.rm(input_temporary_filename)
     }
-    vexec := os.executable()
+    vexec := os.realpath('v')
     r := os.exec('$vexec < $input_temporary_filename') or {
       assert false
       break
