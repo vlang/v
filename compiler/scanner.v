@@ -332,7 +332,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// TODO allow double quotes
 		// case QUOTE:
 		// return scan_res(.str, s.ident_string())
-	case `\``:
+	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
 	case `(`:
 		return scan_res(.lpar, '')
@@ -563,9 +563,26 @@ fn (s mut Scanner) scan() ScanRes {
 	return scan_res(.eof, '')
 }
 
+fn (s &Scanner) find_current_line_start_position() int {
+  mut linestart := s.pos
+  for {
+    if linestart <= 0 {break}
+    if s.text[linestart] == 10 || s.text[linestart] == 13 { break }
+    linestart--
+  }
+  return linestart
+}
+
 fn (s &Scanner) error(msg string) {
-	file := s.file_path.all_after('/')
-	println('$file:${s.line_nr + 1} $msg')
+	fullpath := os.realpath( s.file_path )
+	column := s.pos - s.find_current_line_start_position()
+	// The filepath:line:col: format is the default C compiler
+	// error output format. It allows editors and IDE's like
+	// emacs to quickly find the errors in the output
+	// and jump to their source with a keyboard shortcut.
+	// Using only the filename leads to inability of IDE/editors
+	// to find the source file, when it is in another folder.
+	println('${fullpath}:${s.line_nr + 1}:$column: $msg')
 	exit(1)
 }
 
@@ -655,7 +672,7 @@ fn (s mut Scanner) ident_char() string {
 			len++
 		}
 		double_slash := s.expect('\\\\', s.pos - 2)
-		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) {
+		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) { // ` // apostrophe balance comment. do not remove
 			if double_slash {
 				len++
 			}
@@ -754,7 +771,7 @@ fn (s mut Scanner) get_opening_bracket() int {
 		if s.text[pos] == `(` && !inside_string {
 			parentheses--
 		}
-		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` {
+		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` { // ` // apostrophe balance comment. do not remove
 			inside_string = !inside_string
 		}
 		if parentheses == 0 {

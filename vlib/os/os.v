@@ -739,6 +739,26 @@ pub fn getwd() string {
 	}
 }
 
+// Returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
+// See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
+// Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
+//  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
+// NB: this particular rabbit hole is *deep* ...
+pub fn realpath(fpath string) string {
+	mut fullpath := malloc( MAX_PATH )
+	mut res := 0
+	$if windows {
+		res = int( C._fullpath( fullpath, fpath.str, MAX_PATH ) )
+	}
+	$else{
+		res = int( C.realpath( fpath.str, fullpath ) )
+	}
+	if res != 0 {
+		return string(fullpath, strlen(fullpath))
+	}
+	return fpath
+}
+
 // walk_ext returns a recursive list of all file paths ending with `ext`. 
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) { 
