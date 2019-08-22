@@ -206,3 +206,37 @@ fn test_doubling() {
 	}
 	assert nums.str() == '[2, 4, 6, 8, 10]'
 }
+
+struct Test2 {
+	one int
+	two int
+}
+
+struct Test {
+	a string
+	b []Test2
+}
+
+fn (t Test2) str() string {
+	return '{$t.one $t.two}'
+}
+
+fn (t Test) str() string {
+	return '{$t.a $t.b}'
+}
+
+fn test_struct_print() {
+	mut a := Test {
+		a: 'Test',
+		b: []Test2
+	}
+	b := Test2 {
+		one: 1,
+		two: 2
+	}
+	a.b << b
+	a.b << b
+	assert a.str() == '{Test [{1 2}, {1 2}] }'
+	assert b.str() == '{1 2}'
+	assert a.b.str() == '[{1 2}, {1 2}]'
+}

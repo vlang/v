@@ -2547,7 +2547,18 @@ fn (p mut Parser) string_expr() {
 		else {
 			f := p.typ_to_fmt(typ, 0)
 			if f == '' {
-				p.error('unhandled sprintf format "$typ" ')
+				is_array := typ.starts_with('array_')
+				has_str_method := p.table.type_has_method(p.table.find_type(typ), 'str')
+				if is_array || has_str_method {
+					if is_array && !has_str_method {
+						p.gen_array_str(mut p.table.find_type(typ))
+					}
+					args = args.all_before_last(val) + '${typ}_str(${val}).len, ${typ}_str(${val}).str'
+					format += '%.*s '
+				}
+				else {
+					p.error('unhandled sprintf format "$typ" ')
+				}
 			}
 			format += f
 		}
