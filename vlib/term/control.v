@@ -18,7 +18,7 @@ module term
 // x is the x coordinate
 // y is the y coordinate
 pub fn set_cursor_position(x int,y int) {
-    print('\x1b[$y;$x;H')
+    print('\x1b[$y;$x'+'H')
 }
 
 // n is number of cells
