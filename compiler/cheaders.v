@@ -16,6 +16,11 @@ CommonCHeaders = '
 #include <locale.h> // tolower
 #endif
 
+#ifdef __APPLE__
+#include <execinfo.h> // for backtrace and backtrace_symbols_fd
+#endif
+
+
 #define EMPTY_STRUCT_DECLARATION
 #define OPTION_CAST(x) (x)
 

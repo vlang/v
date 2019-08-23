@@ -5,6 +5,7 @@
 module builtin
 
 #include <float.h>
+#include <math.h>
 
 pub fn (d double) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO

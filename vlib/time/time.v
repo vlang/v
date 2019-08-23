@@ -12,6 +12,7 @@ const (
 )
 
 #include <time.h>
+#include <unistd.h> // sleep
 
 $if !windows {
 #include <sys/time.h>
