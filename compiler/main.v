@@ -758,7 +758,7 @@ fn new_v(args[]string) *V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
-	mut out_name_c := out_name.all_after('/') + '.tmp.c'
+	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
 	mut files := []string
 	// Add builtin files
 	if !out_name.contains('builtin.o') {
@@ -896,16 +896,20 @@ fn update_v() {
 }
 
 fn test_v() {
-	vexe := os.args[0]
+	args := env_vflags_and_os_args()
+	vexe := args[0]
 	// Emily: pass args from the invocation to the test
 	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
-	mut joined_args := os.args.right(1).join(' ')
+	mut joined_args := env_vflags_and_os_args().right(1).join(' ')
 	joined_args = joined_args.left(joined_args.last_index('test'))
 	println('$joined_args')
 
 	test_files := os.walk_ext('.', '_test.v')
-	for file in test_files {
-		print(file + ' ')
+	for dot_relative_file in test_files {
+		relative_file := dot_relative_file.replace('./', '')
+		file := os.realpath( relative_file )
+		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
+		print(relative_file + ' ')    
 		r := os.exec('$vexe $joined_args -debug $file') or {
 			panic('failed on $file')
 		}
@@ -915,11 +919,14 @@ fn test_v() {
 		} else {
 			println('OK')
 		}
+		os.rm( tmpcfilepath )
 	}
 	println('\nBuilding examples...')
 	examples := os.walk_ext('examples', '.v')
-	for file in examples {
-		print(file + ' ')
+	for relative_file in examples {
+		file := os.realpath( relative_file )
+		tmpcfilepath := file.replace('.v', '.tmp.c')
+		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
 			panic('failed on $file')
 		}
@@ -929,6 +936,7 @@ fn test_v() {
 		} else {
 			println('OK')
 		}
+		os.rm( tmpcfilepath )
 	}
 }
 
