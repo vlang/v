@@ -517,6 +517,7 @@ pub fn (s string) title() string {
 
 	return title	
 }
+
 // 'hey [man] how you doin'
 // find_between('[', ']') == 'man'
 pub fn (s string) find_between(start, end string) string {

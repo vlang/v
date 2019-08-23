@@ -2,6 +2,8 @@ module stats
 
 import math
 
+// TODO: Implement all of them with generics 
+
 // This module defines the following statistical operations on f64 array 
 //  ---------------------------
 // |   Summary of Functions    |
