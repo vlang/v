@@ -94,6 +94,7 @@ mut:
 						 // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 						 // You could pass several -cflags XXX arguments. They will be merged with each other.
 						 // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
+	ccompiler  string // the name of the used C compiler
 }
 
 
@@ -604,7 +605,7 @@ mut args := ''
 		a << '-x objective-c'
 	}
 	// The C file we are compiling
-	a << '".$v.out_name_c"'
+	a << '"$v.out_name_c"'
 	if v.os == .mac {
 		a << '-x none'
 	}
@@ -628,20 +629,10 @@ mut args := ''
 	if v.os == .windows {
 		a << '-DUNICODE -D_UNICODE'
 	}
-	// Find clang executable
-	//fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
 	args := a.join(' ')
-	//mut cmd := if os.file_exists(fast_clang) {
-	//'$fast_clang $args'
-	//}
-	//else {
-	mut cmd := ('cc $args') // TODO fix $if after 'string'
-	//}
-	$if windows {
-		cmd = 'gcc $args'
-	}
+	cmd := '${v.pref.ccompiler} $args'
 	if v.out_name.ends_with('.c') {
-		os.mv( '.$v.out_name_c', v.out_name )
+		os.mv( v.out_name_c, v.out_name )
 		exit(0)
 	}
 	// Run
@@ -677,7 +668,7 @@ mut args := ''
 	diff := time.ticks() - ticks
 	// Print the C command
 	if v.pref.show_c_cmd || v.pref.is_verbose {
-		println('cc took $diff ms')
+		println('${v.pref.ccompiler} took $diff ms')
 		println('=========\n')
 	}
 	// Link it if we are cross compiling and need an executable
@@ -700,7 +691,7 @@ mut args := ''
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm('.$v.out_name_c')
+		os.rm(v.out_name_c)
 	}
 }
 
@@ -1009,7 +1000,7 @@ fn new_v(args[]string) *V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
-	mut out_name_c := out_name.all_after('/') + '.c'
+	mut out_name_c := out_name.all_after('/') + '.tmp.c'
 	mut files := []string
 	// Add builtin files
 	if !out_name.contains('builtin.o') {
@@ -1051,6 +1042,7 @@ fn new_v(args[]string) *V {
 		is_repl: args.contains('-repl')
 		build_mode: build_mode
 		cflags: cflags
+		ccompiler: find_c_compiler()
 	}
 	if pref.is_play {
 		println('Playground')
@@ -1182,3 +1174,23 @@ fn test_v() {
 	}
 }
 
+fn find_c_compiler() string {
+	args := env_vflags_and_os_args().join(' ')
+	defaultcc := find_c_compiler_default()
+	return get_arg( args, 'cc', defaultcc )
+}  
+
+fn find_c_compiler_default() string {
+	//fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
+	//if os.file_exists(fast_clang) {
+	//	return fast_clang
+	//}
+	// TODO fix $if after 'string'
+	$if windows {	return 'gcc' }
+	return 'cc'
+}
+
+fn find_c_compiler_thirdparty_options() string {
+	$if windows {	return '' }
+	return '-fPIC'
+}
