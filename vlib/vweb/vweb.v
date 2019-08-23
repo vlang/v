@@ -86,10 +86,10 @@ fn (ctx mut Context) get_header(key string) string {
 }
 
 pub fn run<T>(port int) {
-	println('Running vweb app on http://localhost:$port ...')
-	l := net.listen(port) or { panic('failed to listen') }
-	mut app := T{}
-	app.init()
+	println('Running vweb app on http://localhost:$port ...') 
+	l := net.listen(port) or { panic('failed to listen') } 
+	mut app := T{} 
+	app.init() 
 	for {
 		conn := l.accept() or {
 			panic('accept() failed')
@@ -126,7 +126,9 @@ pub fn run<T>(port int) {
 				method: vals[0]
 				url: vals[1] 
 		} 
-		println('vweb action = "$action"') 
+		$if debug {
+			println('vweb action = "$action"')
+		}
 		//mut app := T{
 		app.vweb = Context{
 			req: req 
@@ -137,13 +139,21 @@ pub fn run<T>(port int) {
 		} 
 		//} 
 		if req.method in methods_with_form {
-			app.vweb.parse_form(s)
-		}
-		// Serve a static file if it's one
-		//if app.vweb.handle_static() {
-		//	conn.close()
-		//	continue 
-		//} 
+			app.vweb.parse_form(s) 
+		} 
+		if vals.len < 2 {
+			$if debug {
+				println('no vals for http')
+			}
+			conn.close()
+			continue 
+		} 
+
+		// Serve a static file if it's one 
+		// if app.vweb.handle_static() {
+		// 	conn.close()
+		// 	continue 
+		// }
 
 		// Call the right action
 		app.$action() or {
@@ -167,14 +177,18 @@ fn (ctx mut Context) parse_form(s string) {
 		str_form = str_form.replace('+', ' ')
 		words := str_form.split('&')
 		for word in words {
-			println('parse form keyval="$word"')
-			keyval := word.trim_space().split('=')
+			$if debug {
+				println('parse form keyval="$word"') 
+			}
+			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
 			val := urllib.query_unescape(keyval[1]) or {
-				continue
+				continue 
 			}
-			println('http form "$key" => "$val"') 
+			$if debug { 
+				println('http form "$key" => "$val"') 
+			}
 			ctx.form[key] = val 
 		}
 	}

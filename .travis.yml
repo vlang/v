@@ -52,5 +52,5 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       git clone https://github.com/vlang/vid
-      cd vid && ../v .
+      cd vid && ../v -debug -o vid . 
     fi    

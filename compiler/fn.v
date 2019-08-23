@@ -140,7 +140,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		receiver_typ = p.get_type()
 		T := p.table.find_type(receiver_typ)
-		if T.is_interface {
+		if T.cat == .interface_ {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module

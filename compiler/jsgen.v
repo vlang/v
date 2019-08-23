@@ -85,15 +85,17 @@ string res = tos2("");
 		if field.attr == 'skip' {
 			continue
 		}
-		
+		name := if field.attr.starts_with('json:') {
+			field.attr.right(5)
+		} else {
+			field.name
+		}
 		field_type := p.table.find_type(field.typ)
-		name := field.name
 		_typ := field.typ.replace('*', '')
-
 		enc_name := js_enc_name(_typ)
-
 		if field.attr == 'raw' {
-			dec += ' /*prim*/ res->$name = tos2(cJSON_PrintUnformatted(js_get(root, "$field.name")));\n'
+			dec += ' res->$field.name = tos2(cJSON_PrintUnformatted(' +
+				'js_get(root, "$name")));\n'
 			
 		} else {
 			// Now generate decoders for all field types in this struct
@@ -103,16 +105,15 @@ string res = tos2("");
 			dec_name := js_dec_name(_typ)
 
 			if is_js_prim(_typ) {
-				dec += ' /*prim*/ res->$name = $dec_name(js_get(root, "$field.name"))'
-				// dec += '.data'
+				dec += ' res->$field.name = $dec_name(js_get(' +
+					'root, "$name"))'
 			}
 			else {
-				dec += ' /*!!*/ $dec_name(js_get(root, "$field.name"), & (res->$name))'
+				dec += ' $dec_name(js_get(root, "$name"), & (res->$name))'
 			}
 			dec += ';\n'
 		}
-
-		enc += '  cJSON_AddItemToObject(o,  "$name", $enc_name(val.$name)); \n'
+		enc += '  cJSON_AddItemToObject(o,  "$name",$enc_name(val.$field.name)); \n'
 	}
 	// cJSON_delete
 	//p.cgen.fns << '$dec return opt_ok(res); \n}'

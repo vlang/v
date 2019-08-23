@@ -43,17 +43,26 @@ enum AccessMod {
 	public_mut_mut // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
+enum TypeCategory {
+	struct_
+	func
+	interface_ // 2
+	enum_
+	union_
+	c_struct // 5
+	c_typedef
+}
+
 struct Type {
 mut:
 	mod            string
 	name           string
+	cat            TypeCategory
 	fields         []Var
 	methods        []Fn
 	parent         string
 	func           Fn // For cat == FN (type myfn fn())
-	is_c           bool // C.FI.le
-	is_interface   bool
-	is_enum        bool
+	is_c           bool // `C.FILE`
 	enum_vals []string
 	gen_types []string
 	// This field is used for types that are not defined yet but are known to exist.
@@ -165,10 +174,10 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('voidptr')
 	t.register_type('T')
 	t.register_type('va_list')
-	t.register_const('stdin', 'int', 'main', false)
-	t.register_const('stdout', 'int', 'main', false)
-	t.register_const('stderr', 'int', 'main', false)
-	t.register_const('errno', 'int', 'main', false)
+	t.register_const('stdin', 'int', 'main')
+	t.register_const('stdout', 'int', 'main')
+	t.register_const('stderr', 'int', 'main')
+	t.register_const('errno', 'int', 'main')
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -217,12 +226,11 @@ fn (table &Table) known_mod(mod string) bool {
 	return mod in table.modules
 }
 
-fn (t mut Table) register_const(name, typ, mod string, is_imported bool) {
+fn (t mut Table) register_const(name, typ, mod string) {
 	t.consts << Var {
 		name: name
 		typ: typ
 		is_const: true
-		is_import_const: is_imported
 		mod: mod
 	}
 }
@@ -488,7 +496,7 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Todo void* allows everything right now
-	if got=='void*' || expected=='void*' {
+	if got=='void*' || expected=='void*' {// || got == 'cvoid' || expected == 'cvoid' {
 		// if !p.builtin_mod {
 		if p.pref.is_play {
 			return false
@@ -595,7 +603,7 @@ fn type_default(typ string) string {
 	}
 	// User struct defined in another module.
 	if typ.contains('__') {
-		return 'STRUCT_DEFAULT_VALUE'
+		return '{0}'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
@@ -617,13 +625,13 @@ fn type_default(typ string) string {
 	case 'byteptr': return '0'
 	case 'voidptr': return '0'
 	}
-	return 'STRUCT_DEFAULT_VALUE'
+	return '{0}'
 }
 
 // TODO PERF O(n)
 fn (t &Table) is_interface(name string) bool {
 	for typ in t.types {
-		if typ.is_interface && typ.name == name {
+		if typ.cat == .interface_ && typ.name == name {
 			return true
 		}
 	}
@@ -757,7 +765,7 @@ fn (t mut Table) register_generic_fn_type(fn_name, typ string) {
 
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	t := p.table.find_type(typ)
-	if t.is_enum {
+	if t.cat == .enum_ {
 		return '%d'
 	}
 	switch typ {

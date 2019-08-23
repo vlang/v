@@ -6,8 +6,8 @@ module glfw
 
 import gl
 
-#flag -I @VROOT/thirdparty/glfw 
-#flag -L @VROOT/thirdparty/glfw 
+#flag -I @VROOT/thirdparty/glfw
+#flag -L @VROOT/thirdparty/glfw
 
 // Debugging a custom build
 //-#flag darwin -L/var/tmp/glfw/src/
@@ -17,7 +17,7 @@ import gl
 
 #flag darwin -lglfw
 #flag linux -lglfw
-#flag windows -lglfw3 
+#flag windows -lglfw3
 #include <GLFW/glfw3.h>
 // #flag darwin -framework Carbon
 // #flag darwin -framework Cocoa
@@ -28,65 +28,9 @@ const (
 	DECORATED = 2
 )
 
-import const (
-	GLFW_RESIZABLE
-	GLFW_DECORATED
-	GLFW_FLOATING 
-)
-
-import const (
-	GLFW_KEY_SPACE
-	GLFW_KEY_A
-	GLFW_KEY_B
-	GLFW_KEY_P
-	GLFW_KEY_F
-	GLFW_KEY_M
-	GLFW_KEY_L
-	GLFW_KEY_V
-	GLFW_KEY_R
-	GLFW_KEY_D
-	GLFW_KEY_7
-	GLFW_KEY_Z
-	GLFW_KEY_UP
-	GLFW_KEY_DOWN
-	GLFW_KEY_LEFT
-	GLFW_KEY_RIGHT
-	GLFW_KEY_BACKSPACE
-	GLFW_KEY_ENTER
-	GLFW_KEY_ESCAPE
-	GLFW_KEY_N
-	GLFW_KEY_PERIOD
-	GLFW_KEY_SLASH
-	GLFW_KEY_F5
-	GLFW_KEY_F6
-	GLFW_KEY_MINUS
-	GLFW_KEY_EQUAL
-	GLFW_KEY_C
-	GLFW_KEY_G
-	GLFW_KEY_I
-	GLFW_KEY_J
-	GLFW_KEY_E
-	GLFW_KEY_K
-	GLFW_KEY_O
-	GLFW_KEY_T
-	GLFW_KEY_H
-	GLFW_KEY_L
-	GLFW_KEY_N
-	GLFW_KEY_U
-	GLFW_KEY_X
-	GLFW_KEY_W
-	GLFW_KEY_Y
-	GLFW_KEY_Q
-	GLFW_KEY_RIGHT_BRACKET
-	GLFW_KEY_LEFT_BRACKET
-	GLFW_KEY_8
-	GLFW_KEY_TAB
-	GLFW_KEY_COMMA
-	GLFW_KEY_QUESTION
-)
-
 const (
 	KEY_ESCAPE     = 256
+	key_space     = 32
 	KEY_LEFT_SUPER = 343
 )
 
@@ -106,7 +50,7 @@ struct WinCfg {
 	is_modal   int
 	is_browser bool
 	url        string
-	always_on_top     bool 
+	always_on_top     bool
 }
 
 // data  *C.GLFWwindow
@@ -134,10 +78,10 @@ type clickpubfn fn (window voidptr, button, action, mods int)
 
 pub fn init() {
 	C.glfwInit()
-	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MAJOR, 3) 
-	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MINOR, 3) 
-	C.glfwWindowHint(C.GLFW_OPENGL_FORWARD_COMPAT, C.GL_TRUE)  
-	C.glfwWindowHint(C.GLFW_OPENGL_PROFILE, C.GLFW_OPENGL_CORE_PROFILE) 
+	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MAJOR, 3)
+	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MINOR, 3)
+	C.glfwWindowHint(C.GLFW_OPENGL_FORWARD_COMPAT, C.GL_TRUE)
+	C.glfwWindowHint(C.GLFW_OPENGL_PROFILE, C.GLFW_OPENGL_CORE_PROFILE)
 }
 
 pub fn (w &Window) destroy() {
@@ -159,14 +103,14 @@ pub fn window_hint(key, val int) {
 
 pub fn create_window(c WinCfg) *Window {
 	if c.borderless {
-		window_hint(GLFW_RESIZABLE, 0)
-		window_hint(GLFW_DECORATED, 0)
+		window_hint(C.GLFW_RESIZABLE, 0)
+		window_hint(C.GLFW_DECORATED, 0)
 	}
 	if c.always_on_top {
-		window_hint(GLFW_FLOATING, 1) 
-	} 
+		window_hint(C.GLFW_FLOATING, 1)
+	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
-	if isnil(cwindow) { 
+	if isnil(cwindow) {
 		println('failed to create glfw window')
 		C.glfwTerminate()
 	}
@@ -248,7 +192,7 @@ pub fn get_time() f64 {
 }
 
 pub fn key_pressed(wnd voidptr, key int) bool {
-	return int(C.glfwGetKey(wnd, key)) == C.GLFW_PRESS 
+	return int(C.glfwGetKey(wnd, key)) == C.GLFW_PRESS
 }
 
 pub fn (w &Window) get_clipboard_text() string {
@@ -279,15 +223,15 @@ pub fn (w &Window) set_user_ptr(ptr voidptr) {
 
 struct C.GLFWvidmode {
 	width int
-	height int 
-} 
+	height int
+}
 
 pub fn C.glfwGetVideoMode() *C.GLFWvidmode
 
 pub fn get_monitor_size() Size {
 	//# GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-	mode := C.glfwGetVideoMode(C.glfwGetPrimaryMonitor()) 
-	return Size{mode.width, mode.height} 
+	mode := C.glfwGetVideoMode(C.glfwGetPrimaryMonitor())
+	return Size{mode.width, mode.height}
 }
 
 pub fn (size Size) str() string {

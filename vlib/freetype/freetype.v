@@ -2,25 +2,25 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module freetype 
+module freetype
 
 import (
-	os 
-	gx 
-	gg 
+	os
+	gx
+	gg
 	stbi
 	glm
 	gl
-) 
+)
 
 #flag darwin -I/usr/local/include/freetype2
 #flag darwin -I/opt/local/include/freetype2
-#flag -lfreetype 
+#flag -lfreetype
 
-//#flag -I @VROOT/thirdparty/freetype 
+//#flag -I @VROOT/thirdparty/freetype
 
-//#flag @VROOT/thirdparty/freetype/libfreetype.a 
-#flag darwin -lpng -lbz2 -lz 
+//#flag @VROOT/thirdparty/freetype/libfreetype.a
+#flag darwin -lpng -lbz2 -lz
 
 
 #flag linux 	-I/usr/include/freetype2
@@ -29,6 +29,8 @@ import (
 
 #include "ft2build.h"
 #include FT_FREETYPE_H
+
+
 
 const (
 	DEFAULT_FONT_SIZE = 12
@@ -43,6 +45,11 @@ struct Character {
 
 struct Face {
 	cobj voidptr
+}
+
+[typedef]
+struct C.FT_Library {
+	
 }
 
 struct Context {
@@ -63,67 +70,67 @@ struct Context {
 	scale     int // retina = 2 , normal = 1
 }
 
-/* 
-struct Cfg {
-	width     int
-	height    int
-	use_ortho bool 
-	retina    bool
-	scale int 
-	font_size int
-	create_window bool 
-	window_user_ptr voidptr 
-	window_title string 
-	always_on_top bool 
+struct C.Bitmap {
+	width int
+	rows int
+	buffer int
 }
-*/ 
 
+struct C.Advance {
+	x int
+}
+	
+struct C.Glyph {
+	bitmap Bitmap
+	bitmap_left int
+	bitmap_top int
+	advance Advance
+}
 
-// jfn ft_load_char(face FT_Face, code FT_ULong) Character {
-// fn ft_load_char(_face voidptr, _code voidptr) Character {
+[typedef]
+struct C.FT_Face {
+	glyph *Glyph
+}
+
 fn ft_load_char(_face Face, code i64) Character {
-	// #FT_Face face = *(FT_Face*)(_face); FT_ULong code = *(FT_ULong*)(code);
-	# FT_Face face = *((FT_Face*)_face.cobj);
-	# int condition = FT_Load_Char(face, code, FT_LOAD_RENDER);
-	if (C.condition != 0)
-	{
-		println('freetype: Failed to load Glyph')
-		exit(1)
+	//println('ftload_char( code=$code)')
+	//C.printf('face=%p\n', _face)
+	face := FT_Face(_face.cobj)
+	ret := int(C.FT_Load_Char(face, code, C.FT_LOAD_RENDER))
+	if ret != 0 {
+		println('freetype: failed to load glyph (utf32 code=$code, ' +
+			'error code=$ret)')
+		return Character{}
 	}
 	// Generate texture
-	# GLuint texture;
-	# glGenTextures(1, &texture);
-	# glBindTexture(GL_TEXTURE_2D, texture);
-	# glTexImage2D(
-	# GL_TEXTURE_2D,
-	# 0,
-	# GL_RED,
-	# face->glyph->bitmap.width,
-	# face->glyph->bitmap.rows,
-	# 0,
-	# GL_RED,
-	# GL_UNSIGNED_BYTE,
-	# face->glyph->bitmap.buffer
-	# );
+	mut texture := 0
+	C.glGenTextures(1, &texture)
+	C.glBindTexture(C.GL_TEXTURE_2D, texture)
+	fgwidth := face.glyph.bitmap.width
+	fgrows  := face.glyph.bitmap.rows
+	C.glTexImage2D(C.GL_TEXTURE_2D, 0, C.GL_RED, fgwidth,  fgrows,
+		0, C.GL_RED, C.GL_UNSIGNED_BYTE, face.glyph.bitmap.buffer)
 	// Set texture options
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// Now store character for later use
-	ch := Character{}
-	# ch.texture_id=texture ;
-	# ch.size  = gg__vec2(face->glyph->bitmap.width, face->glyph->bitmap.rows);
-	# ch.bearing = gg__vec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
-	# ch.advance = face->glyph->advance.x;
-	return ch
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
+	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MAG_FILTER, C.GL_LINEAR)
+	fgleft := face.glyph.bitmap_left
+	fgtop := face.glyph.bitmap_top
+	// Create the character
+	return Character {
+		texture_id: u32(texture)
+		size:    gg.vec2(int(u32(fgwidth)), int(u32(fgrows)))
+		bearing: gg.vec2(int(u32(fgleft)), int(u32(fgtop)))
+		advance: (u32(face.glyph.advance.x))
+	}
 }
 
 pub fn new_context(cfg gg.Cfg) *Context {
-	scale := cfg.scale 
+	scale := cfg.scale
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
-		return &Context{} 
+		return &Context{}
 	}
 	mut width := cfg.width * scale
 	mut height := cfg.height * scale
@@ -135,27 +142,25 @@ pub fn new_context(cfg gg.Cfg) *Context {
 	// height = height * 2// scale// 2
 	// font_size *= scale// 2
 	// }
-	/* 
+	/*
 	gl.viewport(0, 0, width, height)
 */
-	// gl.enable(GL_CULL_FACE) // TODO NEED CULL?  
-	gl.enable(GL_BLEND)
-//return &GG{} 
-	// return &GG{}
-	# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// gl.enable(GL_CULL_FACE) // TODO NEED CULL?
+	gl.enable(C.GL_BLEND)
+	C.glBlendFunc(C.GL_SRC_ALPHA, C.GL_ONE_MINUS_SRC_ALPHA)
 	shader := gl.new_shader('text')
 	shader.use()
 	projection := glm.ortho(0, width, 0, height)// 0 at BOT
-	// projection_new := ortho(0, width, 0, height)// 0 at BOT
-	// projection := gl.ortho(0, width,height,0)  // 0 at TOP
 	shader.set_mat4('projection', projection)
 	// FREETYPE
-	# FT_Library ft;
-	// All functions return a value different than 0 whenever an error occurred
-	# if (FT_Init_FreeType(&ft))
-	println('ERROR::FREETYPE: Could not init FreeType Library')
+	ft := FT_Library{}
+	// All functions return a value different than 0 whenever
+	// an error occurred
+	mut ret := C.FT_Init_FreeType(&ft)
+	if ret != 0 {
+		panic('freetype: Could not init FreeType Library')
+	}
 	// Load font as face
-	// face := FT_Face{}
 	mut font_path := cfg.font_path
 	if font_path == '' {
 		font_path = 'RobotoMono-Regular.ttf'
@@ -170,37 +175,27 @@ pub fn new_context(cfg gg.Cfg) *Context {
 		return 0
 	}
 	println('Trying to load font from $font_path')
-	# FT_Face face;
-	# int condition = FT_New_Face(ft, font_path.str, 0, &face);
-	if (C.condition != 0)
-	// # if (FT_New_Face(ft, "/Library/Fonts/Courier New.ttf", 0, &face))
-	// # if (FT_New_Face(ft, "/System/Library/Fonts/Apple Color Emoji.ttc", 0, &face))
-	{
-		println('freetyp: Failed to load font')
+	face := C.FT_Face{}
+	ret = int(C.FT_New_Face(ft, font_path.str, 0, &face))
+	if ret != 0	{
+		println('freetype: failed to load the font (error=$ret)')
 		exit(1)
 	}
 	// Set size to load glyphs as
-	# FT_Set_Pixel_Sizes(face, 0, font_size) ;
+	C.FT_Set_Pixel_Sizes(face, 0, font_size)
 	// Disable byte-alignment restriction
-	# glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	C.glPixelStorei(C.GL_UNPACK_ALIGNMENT, 1)
 	// Gen texture
 	// Load first 128 characters of ASCII set
 	mut chars := []Character{}
 	f := Face {
-		cobj: 0
+		cobj: &face
 	}
-	# f.cobj = &face;
-	// # for (GLubyte c = 0; c < 128; c++)
 	for c := 0; c < 128; c++ {
-		// ch := Character{}
-		// ch:=ft_load_char(face, c)
-		// # ch =gg__ft_load_char(&face, &c);
-		// ////////////////////////////////
 		mut ch := ft_load_char(f, i64(c))
 		// s := utf32_to_str(uint(0x043f))
 		// s := 'п'
 		// ch = ft_load_char(f, s.utf32_code())
-		// # ch = gg__ft_load_char(f, 0x043f); // RUS P
 		// # unsigned long c = FT_Get_Char_Index(face,              0x043f );
 		// # printf("!!!!!!!!! %lu\n", c);
 		// # c = FT_Get_Char_Index(face,              0xd0bf );
@@ -209,29 +204,26 @@ pub fn new_context(cfg gg.Cfg) *Context {
 		chars << ch
 	}
 	ch := Character{}
-	// # ch = gg__ft_load_char(f, 0x0000043f);
-	// # ch = gg__ft_load_char(f, 128169);
-	// chars.push(ch)
 	// Configure VAO
 	vao := gl.gen_vertex_array()
 	println('new gg text context vao=$vao')
 	vbo := gl.gen_buffer()
 	gl.bind_vao(vao)
-	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
+	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
 	// # glBufferData(GL_ARRAY_BUFFER, sizeof(GLf32) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
 	gl.enable_vertex_attrib_array(0)
-	gl.vertex_attrib_pointer(0, 4, GL_FLOAT, false, 4, 0)
+	gl.vertex_attrib_pointer(0, 4, C.GL_FLOAT, false, 4, 0)
 	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLf32), 0);
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
 	// # glBindVertexArray(0);
 	mut ctx := &Context {
-		shader: shader,
-		width: width,
-		height: height,
+		shader: shader
+		width: width
+		height: height
 		scale: scale
-		vao: vao,
-		vbo: vbo,
-		chars: chars,
+		vao: vao
+		vbo: vbo
+		chars: chars
 		face: f
 	}
 	ctx.init_utf8_runes()
@@ -239,10 +231,11 @@ pub fn new_context(cfg gg.Cfg) *Context {
 }
 
 // A dirty hack to implement rendering of cyrillic letters.
-// All UTF-8 must be supported. 
+// All UTF-8 must be supported.
 fn (ctx mut Context) init_utf8_runes() {
 	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
-	println(s)
+	print('init utf8 runes: ')
+	//println(s)
 	us := s.ustring()
 	for i := 0; i < us.len; i++ {
 		_rune := us.at(i)
@@ -253,25 +246,18 @@ fn (ctx mut Context) init_utf8_runes() {
 	}
 }
 
-// fn (ctx &GG) render_text(text string, x, y, scale f32, color gx.Color) {
-pub fn (ctx &Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-	utext := text.ustring_tmp()
-	// utext := text.ustring()
+pub fn (ctx mut Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
+	//utext := text.ustring_tmp()
+	utext := text.ustring()
 	ctx._draw_text(_x, _y, utext, cfg)
-	// utext.free()
-	// # glScissor(0,0,ctx->width*2,ctx->height*2);
-	// gl.disable(GL_SCISSOR_TEST)// TODO
-	// #free(text.str);
 }
 
-fn (ctx &Context) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
+fn (ctx mut Context) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
 	ctx._draw_text(_x, _y, text, cfg)
 }
 
-// TODO  HACK with second text context
-// fn (ctx &GG) _draw_text(_x, _y int, text string, cfg gx.TextCfg) {
-fn (ctx &Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
-	/* 
+fn (ctx mut Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
+	/*
 	if utext.s.contains('on_seg') {
 		println('\nat(0)')
 		println(utext.runes)
@@ -282,8 +268,8 @@ fn (ctx &Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		}
 	}
 */
-	mut x := f32(_x) 
-	mut y := f32(_y) 
+	mut x := f32(_x)
+	mut y := f32(_y)
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		width := utext.len * 7
@@ -293,12 +279,12 @@ fn (ctx &Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	// println('y=$_y height=$ctx.height')
 	// _y = _y * int(ctx.scale) //+ 26
 	y = y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y = f32(ctx.height) - y 
+	y = f32(ctx.height) - y
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()
 	ctx.shader.set_color('textColor', color)
-	# glActiveTexture(GL_TEXTURE0);
+	C.glActiveTexture(C.GL_TEXTURE0)
 	gl.bind_vao(ctx.vao)
 	// Iterate through all characters
 	// utext := text.ustring()
@@ -318,65 +304,52 @@ fn (ctx &Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 			// TODO O(1) use map
 			for j := 0; j < ctx.utf_runes.len; j++ {
 				rune_j := ctx.utf_runes[j]
-				// if string_eq(ctx.utf_runes[j], rune) {
 				if rune_j==_rune {
 					ch = ctx.utf_chars[j]
 					break
 				}
 			}
 		}
-		if ch.size.x == 0 {
+		if ch.size.x == 0 && _rune.len > 1{
+			c := _rune[0]
+			println('cant draw rune "$_rune" code=$c, loading')
+			continue
+			ch = ft_load_char(ctx.face, _rune.utf32_code())
+			println('done loading')
+			ctx.utf_runes << _rune
+			ctx.utf_chars << ch
 			// continue
 		}
-		// mut c := int(text[i])
-		// c = 128
-		// s := 'A'
-		// c := int(s[0])
-		// ch := ctx.chars[c]
 		xpos := x + f32(ch.bearing.x) * 1
 		ypos := y - f32(ch.size.y - ch.bearing.y) * 1
 		w := f32(ch.size.x) * 1
 		h := f32(ch.size.y) * 1
 		// Update VBO for each character
-		# GLfloat vertices[6][4] = {
-		# { xpos,     ypos + h,   0.0, 0.0 },
-		# { xpos,     ypos,       0.0, 1.0 },
-		# { xpos + w, ypos,       1.0, 1.0 },
-		# { xpos,     ypos + h,   0.0, 0.0 },
-		# { xpos + w, ypos,       1.0, 1.0 },
-		# { xpos + w, ypos + h,   1.0, 0.0 }
-		# };
-		// t := glfw.get_time()
+		vertices :=	[
+		 xpos,     ypos + h,   0.0, 0.0 ,
+		 xpos,     ypos,       0.0, 1.0 ,
+		 xpos + w, ypos,       1.0, 1.0 ,
+		 xpos,     ypos + h,   0.0, 0.0 ,
+		 xpos + w, ypos,       1.0, 1.0 ,
+		 xpos + w, ypos + h,   1.0, 0.0
+		]
 		// Render glyph texture over quad
-		// t1 := glfw.get_time()
-		# glBindTexture(GL_TEXTURE_2D, ch.texture_id);
+		C.glBindTexture(C.GL_TEXTURE_2D, ch.texture_id)
 		// Update content of VBO memory
-		gl.bind_buffer(GL_ARRAY_BUFFER, ctx.vbo)
-		// t2 := glfw.get_time()
-		// # glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
-		# glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-		// t3 := glfw.get_time()
-		// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
-		// t4 := glfw.get_time()
+		gl.bind_buffer(C.GL_ARRAY_BUFFER, ctx.vbo)
+		// glBufferSubData(..)
+		C.glBufferData(C.GL_ARRAY_BUFFER, 96, vertices.data, C.GL_DYNAMIC_DRAW)
 		// Render quad
-		gl.draw_arrays(GL_TRIANGLES, 0, 6)
-		// t5 := glfw.get_time()
-		// # if (glfw__get_time() - t > 0.001)
-		// {
-		// # printf("do_text = %f '%s' \n", glfw__get_time() - t, text.str);
-		// # printf("t1=%f, t2=%f, t3=%f, t4=%f, t5=%f\n\n\n", t1-t, t2-t1, t3-t2, t4-t3, t5-t4);
-		// }
+		gl.draw_arrays(C.GL_TRIANGLES, 0, 6)
 		// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
 		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
-		# x += (ch.advance >> 6) * 1;
+		x += ch.advance >> u32(6)
 	}
 	gl.bind_vao(u32(0))
-	# glBindTexture(GL_TEXTURE_2D, 0);
-	// runes.free()
-	// #free(runes.data);
+	C.glBindTexture(C.GL_TEXTURE_2D, 0)
 }
 
-pub fn (ctx &Context) draw_text_def(x, y int, text string) {
+pub fn (ctx mut Context) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.Black,
 		size: DEFAULT_FONT_SIZE,

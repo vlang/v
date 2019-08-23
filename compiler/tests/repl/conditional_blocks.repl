@@ -1,0 +1,18 @@
+if true {
+  println('foo')
+}
+for i := 0; i < 4; i++ {
+  println(i)
+}
+if false {
+  println('foo')
+} else {
+  println('bar')
+}
+===output===
+foo
+0
+1
+2
+3
+bar
