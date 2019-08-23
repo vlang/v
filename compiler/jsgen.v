@@ -109,7 +109,7 @@ string res = tos2("");
 					'root, "$name"))'
 			}
 			else {
-				dec += ' $dec_name(js_get(root, "$name"), & (res->$name))'
+				dec += ' $dec_name(js_get(root, "$name"), & (res->$field.name))'
 			}
 			dec += ';\n'
 		}
