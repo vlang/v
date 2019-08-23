@@ -905,7 +905,8 @@ fn test_v() {
 	println('$joined_args')
 
 	test_files := os.walk_ext('.', '_test.v')
-	for relativefile in test_files {
+	for dot_relativefile in test_files {
+		relativefile := dot_relativefile.replace('./', '')
 		file := os.realpath( relativefile )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
 		print(relativefile + ' ')    
