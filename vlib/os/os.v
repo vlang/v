@@ -8,7 +8,10 @@ module os
 #include <signal.h>
 #include <errno.h>
 
-//#include <execinfo.h> // for backtrace_symbols_fd
+$if mac {
+	#include <execinfo.h> // for backtrace and backtrace_symbols_fd
+	#include <libproc.h> // proc_pidpath
+}
 
 /*
 struct dirent {

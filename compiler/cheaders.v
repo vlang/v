@@ -11,6 +11,11 @@ CommonCHeaders = '
 #include <inttypes.h>  // int64_t etc
 #include <string.h> // memcpy
 
+#ifndef _WIN32
+#include <ctype.h>
+#include <locale.h> // tolower
+#endif
+
 #define EMPTY_STRUCT_DECLARATION
 #define OPTION_CAST(x) (x)
 
