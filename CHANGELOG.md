@@ -2,17 +2,19 @@
 *XX Aug 2019*
 
 - New `mysql` module.
+- Custom json field names: `struct User { last_name string [json:lastName] }`.
 - Better error format that is supported by all major editors (go to error).
 - Raw json fields via the `[raw]` attribute.
 - `import const` was removed from the language.
 - All C code was removed from the `freetype` module.
-- `[typedef] attribute for imported C struct typedefs.
+- `[typedef]` attribute for imported C struct typedefs.
 - Support of Objective C interfaces (primarily for using Cocoa).
 - REPL: clear command and custom functions.
 - Syntax bug fixed: `foo[0] += 10` is now possible.
 - http: support plain HTTP protocol and follow redirects.
 - net: basic UDP support.
 - Functions can now be inlined via the `[inline]` attribute.
+
 
 
 
@@ -145,7 +147,7 @@
 - maps fixed
 
 
-## 0.1.9 - 0.1.10
+## V 0.1.9 - 0.1.10
 *29 Jun 2019*
 - Windows support via MinGW-w64. Pre-built Windows binary.
 - File structure has been simplified: all vlib modules were moved to the vlib/ directory,
@@ -153,12 +155,12 @@
 - One single archive with pre-built binaries for all operating systems.
 - `mut var := val` was fixed (previously `mut var = val` was allowed as well).
 
-## 0.1.8
+## V 0.1.8
 *28 Jun 2019*
 - Single file programs without `fn main` now work as expected.
 - REPL has been fixed: it now supports imports, consts, function definitions, etc.
 
-## 0.1.7
+## V 0.1.7
 *27 Jun 2019*
 - All C code in the compiler and vlib has been replaced with V.
 - `#` syntax for embedding C code has been removed.

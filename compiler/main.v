@@ -24,13 +24,9 @@ enum BuildMode {
 	build //TODO a better name would be smth like `.build_module` I think
 }
 
-fn modules_path() string {
-	return os.home_dir() + '/.vmodules/'
-}
-
 const (
 	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'msvc']
-	ModPath            = modules_path()
+	ModPath            = os.home_dir() + '/.vmodules/'
 )
 
 enum OS {
@@ -243,11 +239,11 @@ fn (v mut V) compile() {
 	if v.pref.is_debug {
 		cgen.genln('#define VDEBUG (1) ')
 	}
-  
+
 	cgen.genln(CommonCHeaders)
 	
   v.generate_hotcode_reloading_declarations()
-  
+
 	imports_json := v.table.imports.contains('json')
 	// TODO remove global UI hack
 	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && v.table.imports.contains('ui')) ||
@@ -310,11 +306,11 @@ fn (v mut V) compile() {
 	}
 	dd := d.str()
 	cgen.lines.set(defs_pos, dd)// TODO `def.str()` doesn't compile
-  
+
   v.generate_main()
-  
+
   v.generate_hotcode_reloading_code()
-  
+
   cgen.save()
 	if v.pref.is_verbose {
 		v.log('flags=')
@@ -325,7 +321,7 @@ fn (v mut V) compile() {
 
 fn (v mut V) generate_main() {
 	mut cgen := v.cgen
-  
+
 	// if v.build_mode in [.default, .embed_vlib] {
 	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
 		mut consts_init_body := cgen.consts_init.join_lines()
@@ -548,11 +544,11 @@ fn (v mut V) cc() {
 	else {
 		a << '-g'
 	}
-  
+
 	for f in v.generate_hotcode_reloading_compiler_flags() {
 		a << f
 	}
-  
+
 	mut libs := ''// builtin.o os.o http.o etc
 	if v.pref.build_mode == .build {
 		a << '-c'
