@@ -6,7 +6,6 @@ module time
 
 import rand
 
-// https://en.wikipedia.org/wiki/Month#Julian_and_Gregorian_calendars
 const (
 	MonthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 )

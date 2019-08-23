@@ -8,10 +8,6 @@ module os
 #include <signal.h>
 #include <errno.h>
 
-$if mac {
-	#include <libproc.h> // proc_pidpath
-}
-
 /*
 struct dirent {
                d_ino int
