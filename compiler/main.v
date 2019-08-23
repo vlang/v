@@ -905,11 +905,11 @@ fn test_v() {
 	println('$joined_args')
 
 	test_files := os.walk_ext('.', '_test.v')
-	for dot_relativefile in test_files {
-		relativefile := dot_relativefile.replace('./', '')
-		file := os.realpath( relativefile )
+	for dot_relative_file in test_files {
+		relative_file := dot_relative_file.replace('./', '')
+		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
-		print(relativefile + ' ')    
+		print(relative_file + ' ')    
 		r := os.exec('$vexe $joined_args -debug $file') or {
 			panic('failed on $file')
 		}
@@ -923,10 +923,10 @@ fn test_v() {
 	}
 	println('\nBuilding examples...')
 	examples := os.walk_ext('examples', '.v')
-	for relativefile in examples {
-		file := os.realpath( relativefile )
+	for relative_file in examples {
+		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('.v', '.tmp.c')
-		print(relativefile + ' ')
+		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
 			panic('failed on $file')
 		}
