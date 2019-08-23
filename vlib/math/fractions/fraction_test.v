@@ -28,12 +28,16 @@ fn test_fraction_add() {
 	f1 = fractions.fraction(9,3)
 	f2 = fractions.fraction(1,3)
 	sum = f1 + f2
-	println(sum.f64())
+	$if debug {
+		println(sum.f64())
+	}
 	assert sum.str().eq('10/3')
 	f1 = fractions.fraction(3,7)
 	f2 = fractions.fraction(1,4)
 	sum = f1 + f2
-	println(sum.f64())
+	$if debug {
+		println(sum.f64())
+	}
 	assert sum.str().eq('19/28')
 }
 
@@ -51,12 +55,16 @@ fn test_fraction_subtract() {
 	f1 = fractions.fraction(9,3)
 	f2 = fractions.fraction(1,3)
 	diff = f1 - f2
-	println(diff.f64())
+	$if debug {
+		println(diff.f64())
+	}
 	assert diff.str().eq('8/3')
 	f1 = fractions.fraction(3,7)
 	f2 = fractions.fraction(1,4)
 	diff = f1 - f2
-	println(diff.f64())
+	$if debug {
+		println(diff.f64())
+	}
 	assert diff.str().eq('5/28')
 }
 
@@ -79,7 +87,9 @@ fn test_fraction_multiply() {
 	f1 = fractions.fraction(3,7)
 	f2 = fractions.fraction(1,4)
 	product = f1.multiply(f2)
-	println(product.f64())
+	$if debug {
+		println(product.f64())
+	}
 	assert product.str().eq('3/28')
 }
 
@@ -102,7 +112,9 @@ fn test_fraction_divide() {
 	f1 = fractions.fraction(3,7)
 	f2 = fractions.fraction(1,4)
 	re = f1.divide(f2)
-	println(re.f64())
+	$if debug {
+		println(re.f64())
+	}
 	assert re.str().eq('12/7')
 }
 

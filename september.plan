@@ -1,0 +1,26 @@
++ release vid
+- bring back forum/blog and vpm
++ bring back playground
+- wrap up orm
+- fix vorum, migrate to orm
+- wrap up memory management
+- fix child <T> function calls
+- fix non-ascii rendering in gg (ä, å, etc)
+- cache all tokens once
+- enable vfmt
+- fix openssl on older linux distros
+- chat.vlang.io
+- rewrite objective c code in v (ui_mac.m)
+- v ui for macos
+- v ui for windows
+- v ui for linux
+- doom.v
+- tcc backend
+- fix all c warnings with -pedantic
+- set up pvs
+- ui/orm demo: a simple gui client for postgres/mysql/sqlite
+- ui demo: calculator
+- declarative ui with hot reload (similar to swiftui)
+- "building a simple blog with vweb" tutorial + youtube video
+
+

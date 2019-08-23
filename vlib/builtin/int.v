@@ -6,10 +6,6 @@ module builtin
 
 #include <float.h>
 
-import const (
-	DBL_EPSILON
-)
-
 pub fn (d double) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
 	C.sprintf(buf, '%f', d)
@@ -36,7 +32,7 @@ pub fn ptr_str(ptr voidptr) string {
 
 // compare floats using C epsilon
 pub fn (a f64) eq(b f64) bool {
-	return C.fabs(a - b) <= DBL_EPSILON	
+	return C.fabs(a - b) <= C.DBL_EPSILON	
 }
 
 // fn (nn i32) str() string {
@@ -48,7 +44,7 @@ pub fn (nn int) str() string {
 		return '0'
 	}
 	max := 16
-	mut buf := malloc(max)
+	mut buf := calloc(max)
 	mut len := 0
 	mut is_neg := false
 	if n < 0 {
@@ -195,7 +191,7 @@ pub fn (n int) hex() string {
 	} else {
 		11
 	}
-	hex := malloc(len) // 0x + \n 
+	hex := malloc(len) // 0x + \n
 	count := int(C.sprintf(hex, '0x%x', n))
 	return tos(hex, count)
 }
@@ -245,14 +241,14 @@ pub fn (c byte) str() string {
 }
 
 pub fn (c byte) is_capital() bool {
-	return c >= `A` && c <= `Z` 
-} 
+	return c >= `A` && c <= `Z`
+}
 
 pub fn (b []byte) clone() []byte {
-	mut res := [byte(0); b.len] 
+	mut res := [byte(0); b.len]
 	for i := 0; i < b.len; i++ {
-		res[i] = b[i] 
-	} 
-	return res 
-} 
+		res[i] = b[i]
+	}
+	return res
+}
 

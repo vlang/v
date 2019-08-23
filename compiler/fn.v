@@ -140,7 +140,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		receiver_typ = p.get_type()
 		T := p.table.find_type(receiver_typ)
-		if T.is_interface {
+		if T.cat == .interface_ {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module
@@ -278,6 +278,8 @@ fn (p mut Parser) fn_decl() {
 	}
 	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
+	} else if p.attr == 'inline' {
+		'static inline '
 	} else {
 		''
 	}

@@ -11,7 +11,6 @@ DWORD   protocol        = 0;
 ALG_ID  aid_key_exch    = 0;
 
 
-struct TlsContext tls_ctx;
 // TODO: joe-c
 // socket / tls ctx
 struct TlsContext {
@@ -31,6 +30,8 @@ struct TlsContext {
 	BOOL                   context_initialized;
 	PCCERT_CONTEXT         p_pemote_cert_context;
 };
+
+struct TlsContext tls_ctx;
 
 struct TlsContext new_tls_context() {
 	return (struct TlsContext) {
@@ -133,7 +134,7 @@ void vschannel_init() {
 	tls_ctx.creds_initialized = TRUE;
 }
 
-INT request(CHAR *host, CHAR *req, CHAR *out)
+INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
 {
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
@@ -145,6 +146,8 @@ INT request(CHAR *host, CHAR *req, CHAR *out)
 	INT resp_length = 0;
 
 	protocol = SP_PROT_TLS1_2_CLIENT;
+
+	port_number = iport;
 
 	// Connect to server.
 	if(connect_to_server(host, port_number)) {
