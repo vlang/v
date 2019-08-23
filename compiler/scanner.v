@@ -564,9 +564,12 @@ fn (s mut Scanner) scan() ScanRes {
 }
 
 fn (s &Scanner) find_current_line_start_position() int {
+	if s.pos >= s.text.len {
+		return s.pos
+	}
   mut linestart := s.pos
   for {
-    if linestart <= 0 {break}
+    if linestart <= 0  {break}
     if s.text[linestart] == 10 || s.text[linestart] == 13 { break }
     linestart--
   }
