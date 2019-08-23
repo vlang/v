@@ -2052,8 +2052,14 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// Erase var name we generated earlier:	"int a = m, 0"
 		// "m, 0" gets killed since we need to start from scratch. It's messy.
 		// "m, 0" is an index expression, save it before deleting and insert later in map_get()
-		index_expr := p.cgen.cur_line.right(fn_ph)
-		p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
+		mut index_expr := ''
+		if p.cgen.is_tmp {
+			index_expr = p.cgen.tmp_line.right(fn_ph)
+			p.cgen.resetln(p.cgen.tmp_line.left(fn_ph))
+		} else {
+			index_expr = p.cgen.cur_line.right(fn_ph)
+			p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
+		}
 		// Can't pass integer literal, because map_get() requires a void*
 		tmp := p.get_tmp()
 		tmp_ok := p.get_tmp()
