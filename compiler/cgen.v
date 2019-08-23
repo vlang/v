@@ -257,8 +257,9 @@ fn build_thirdparty_obj_file(flag string) {
 			cfiles += parent + '/' + file + ' ' 
 		} 
 	} 
-	cc := find_c_compiler() 
-	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') or {
+	cc := find_c_compiler()
+	cc_thirdparty_options := find_c_compiler_thirdparty_options()
+	res := os.exec('$cc $cc_thirdparty_options -c -o $obj_path $cfiles') or {
 		panic(err)
 	}
 	println(res.output) 

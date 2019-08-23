@@ -1189,3 +1189,8 @@ fn find_c_compiler_default() string {
 	$if windows {	return 'gcc' }
 	return 'cc'
 }
+
+fn find_c_compiler_thirdparty_options() string {
+	$if windows {	return '' }
+	return '-fPIC'
+}
