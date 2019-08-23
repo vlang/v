@@ -98,10 +98,8 @@ const (
 	MaxModuleDepth = 4
 )
 
-fn (v mut V) new_parser(path string, pass Pass) Parser {
-	v.log('new_parser("$path")')
-	v.cgen.pass = pass
-	
+fn (v mut V) new_parser(path string) Parser {
+	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
 	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v'] {
@@ -126,7 +124,6 @@ fn (v mut V) new_parser(path string, pass Pass) Parser {
 		is_script: (v.pref.is_script && path == v.dir)
 		pref: v.pref
 		os: v.os
-		pass: pass
 		vroot: v.vroot
 		building_v: !v.pref.is_repl && (path.contains('compiler/')  ||
 			path.contains('v/vlib'))
@@ -159,7 +156,8 @@ fn (p &Parser) log(s string) {
 */
 }
 
-fn (p mut Parser) parse() {
+fn (p mut Parser) parse(pass Pass) {
+	p.pass = pass
 	p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
 	// `module main` is not required if it's a single file program
 	if p.is_script || p.pref.is_test {
@@ -3527,13 +3525,6 @@ fn (p mut Parser) js_decode() string {
 	}
 	return ''
 }
-
-/*
-fn (p &Parser) building_v() bool {
-	cur_dir := os.getwd()
-	return p.file_path.contains('v/compiler') || cur_dir.contains('v/compiler')
-}
-*/
 
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)
