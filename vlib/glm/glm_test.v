@@ -12,7 +12,9 @@ fn cmp(a, b f32) bool {
 
 fn test_ortho() {
 	projection := glm.ortho(0, 200, 400, 0)
-	println(projection.data[0])
+	$if debug {
+		println(projection.data[0])
+	}
 	assert cmp(projection.data[0], 0.01)
 	assert cmp(projection.data[1], 0.000000)
 	assert cmp(projection.data[2], 0.000000)
@@ -53,18 +55,26 @@ fn test_ortho() {
 }
 
 fn test_rotate() {
-	println('rotate')
+	$if debug {
+		println('rotate')
+	}
 	mut m := glm.identity()
 	m = glm.scale(m, glm.vec3(2, 2, 2))
-	println(m)
+	$if debug {
+		println(m)
+	}
 	m = glm.rotate_z(m, 1)
-	println(m)
+	$if debug {
+		println(m)
+	}
 }
 
 fn test_translate() {
 	mut m := glm.identity()
 	m = glm.translate(m, glm.vec3(0, 0, - 0.5))
-	println(m)
+	$if debug {
+		println(m)
+	}
 	// TODO 
 	// mat4x4((1.000000, 0.000000, 0.000000, 0.000000),
 	// (0.000000, 1.000000, 0.000000, 0.000000),

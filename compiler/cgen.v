@@ -39,7 +39,7 @@ mut:
 }
 
 fn new_cgen(out_name_c string) *CGen {
-	path:='.$out_name_c'
+	path := out_name_c
 	out := os.create(path) or {
 		println('failed to create $path') 
 		return &CGen{} 
@@ -257,8 +257,9 @@ fn build_thirdparty_obj_file(flag string) {
 			cfiles += parent + '/' + file + ' ' 
 		} 
 	} 
-	cc := if os.user_os() == 'windows' { 'gcc' } else { 'cc' } // TODO clang support on Windows  
-	res := os.exec('$cc -fPIC -c -o $obj_path $cfiles') or {
+	cc := find_c_compiler()
+	cc_thirdparty_options := find_c_compiler_thirdparty_options()
+	res := os.exec('$cc $cc_thirdparty_options -c -o $obj_path $cfiles') or {
 		panic(err)
 	}
 	println(res.output) 

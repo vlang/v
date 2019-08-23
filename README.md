@@ -1,6 +1,7 @@
 # The V Programming Language 0.1.x
 
 [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
+<a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 
 https://vlang.io
 
@@ -25,6 +26,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Powerful UI and graphics libraries
 - Easy cross compilation
 - REPL
+- Built-in ORM
 
 V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
 

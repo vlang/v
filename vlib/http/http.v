@@ -103,36 +103,43 @@ pub fn (req &Request) do() ?Response {
 	for key, val in req.headers {
 		//h := '$key: $val'
 	}
-	url := urllib.parse(req.url) or {
-		return error('http.request.do: invalid URL $req.url')
-		// return Response{} //error('ff')}
-	}
-	is_ssl := url.scheme == 'https'
-	if !is_ssl {
-		return error('non https requests are not supported right now') 
-	}
-
-	// first request
-	mut p := url.path.trim_left('/')
-	mut u := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
-	mut resp := ssl_do(req.typ, url.hostname(), u)
-	// follow any redirects
+	url := urllib.parse(req.url) or { return error('http.request.do: invalid URL $req.url') }
+	mut rurl := url
+	mut resp := Response{}
 	mut no_redirects := 0
-	for resp.status_code in [301, 302, 303, 307, 308] {
-		if no_redirects == max_redirects {
-			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
-		}
-		h_loc := resp.headers['Location']
-		r_url := urllib.parse(h_loc) or { 
-			return error('http.request.do: cannot follow redirect, location header has invalid url $h_loc')
-		}
-		p = r_url.path.trim_left('/')
-		u = if r_url.query().size > 0 { '/$p?${r_url.query().encode()}' } else { '/$p' }
-		resp = ssl_do(req.typ, r_url.hostname(), u)
+	for {
+		if no_redirects == max_redirects { return error('http.request.do: maximum number of redirects reached ($max_redirects)') }
+		qresp := method_and_url_to_response( req.typ, rurl ) or {	return error(err) }
+		resp = qresp
+		if ! (resp.status_code in [301, 302, 303, 307, 308]) { break }
+		// follow any redirects
+		redirect_url := resp.headers['Location']
+		qrurl := urllib.parse( redirect_url ) or { return error('http.request.do: invalid URL in redirect $redirect_url') }
+		rurl = qrurl
 		no_redirects++
 	}
-
 	return resp
+}
+
+fn method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
+  host_name := url.hostname()
+  scheme := url.scheme
+	mut p := url.path.trim_left('/')
+	mut path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
+	mut nport := url.port().int()
+	if nport == 0 {
+		if scheme == 'http'  { nport = 80  }
+		if scheme == 'https' { nport = 443 }
+	}
+	//println('fetch $method, $scheme, $host_name, $nport, $path ')
+	if scheme == 'https' {
+		//println('ssl_do( $nport, $method, $host_name, $path )')
+		return ssl_do( nport, method, host_name, path )
+	} else if scheme == 'http' {
+		//println('http_do( $nport, $method, $host_name, $path )')
+		return http_do( nport, method, host_name, path )
+	}
+	return error('http.request.do: unsupported scheme: $scheme')
 }
 
 fn parse_response(resp string) Response {
