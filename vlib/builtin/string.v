@@ -323,13 +323,13 @@ pub fn (s string) left(n int) string {
 	}
 	return s.substr(0, n)
 }
-// 'hello'.right(2) => 'lo'
+// 'hello'.right(2) => 'llo'
 pub fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
 	}
 	return s.substr(n, s.len)
-}
+} 
 
 // substr 
 pub fn (s string) substr(start, end int) string {
@@ -840,10 +840,6 @@ pub fn (s []string) join_lines() string {
 }
 
 pub fn (s string) reverse() string {
-	if s == '' {
-		return ''
-	}
-	
 	mut res := string {
 		len: s.len
 		str: malloc(s.len)

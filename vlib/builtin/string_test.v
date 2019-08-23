@@ -39,12 +39,12 @@ fn test_lt() {
 	d := 'b'
 	e := 'aa'
 	f := 'ab'
-	assert a<(b)
-	assert !(b<c)
-	assert c<(d)
-	assert !(d<e)
-	assert c<(e)
-	assert e<(f)
+	assert a < (b)
+	assert !(b < c)
+	assert c < (d)
+	assert !(d < e)
+	assert c < (e)
+	assert e < (f)
 }
 
 fn test_ge() {
@@ -53,19 +53,11 @@ fn test_ge() {
 	c := 'ab'
 	d := 'abc'
 	e := 'aaa'
-<<<<<<< HEAD
 	assert b >= (a)
 	assert c >= (b)
 	assert d >= (c)
 	assert !(c >= d) 
 	assert e >= (a)
-=======
-	assert b>=(a)
-	assert c>=(b)
-	assert d>=(c)
-	assert !(c>=d)
-	assert e>=(a)
->>>>>>> e96b29b3b04836d5a31fd33a20e6d5c089440f8a
 }
 
 fn test_compare_strings() {
@@ -242,7 +234,6 @@ fn test_lower() {
 	assert s.to_lower() == 'have a nice day!'
 	s = 'hi'
 	assert s.to_lower() == 'hi'
-	assert s.is_lower() == true
 }
 
 fn test_upper() {
@@ -258,7 +249,7 @@ fn test_upper() {
 	assert s.to_upper() == 'HAVE A NICE DAY!'
 	s = 'hi'
 	assert s.to_upper() == 'HI'
-	assert s.is_lower() == true
+
 }
 
 fn test_left_right() {
