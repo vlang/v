@@ -605,7 +605,7 @@ mut args := ''
 		a << '-x objective-c'
 	}
 	// The C file we are compiling
-	a << '".$v.out_name_c"'
+	a << '"$v.out_name_c"'
 	if v.os == .mac {
 		a << '-x none'
 	}
@@ -632,7 +632,7 @@ mut args := ''
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
 	if v.out_name.ends_with('.c') {
-		os.mv( '.$v.out_name_c', v.out_name )
+		os.mv( v.out_name_c, v.out_name )
 		exit(0)
 	}
 	// Run
@@ -691,7 +691,7 @@ mut args := ''
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm('.$v.out_name_c')
+		os.rm(v.out_name_c)
 	}
 }
 
@@ -1000,7 +1000,7 @@ fn new_v(args[]string) *V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
-	mut out_name_c := out_name.all_after('/') + '.c'
+	mut out_name_c := out_name.all_after('/') + '.tmp.c'
 	mut files := []string
 	// Add builtin files
 	if !out_name.contains('builtin.o') {
