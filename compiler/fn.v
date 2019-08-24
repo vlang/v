@@ -898,7 +898,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 				// have to use `(array[]){ expr }` hack.
 				if expected.starts_with('array_') && expected.ends_with('*') {
 					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){')
-					p.gen('} ')
+					p.gen('}[0] ')
 				}
 				// println('\ne:"$expected" got:"$got"')
 				else if ! (expected == 'void*' && got == 'int') &&
