@@ -2088,7 +2088,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// TODO what about user types?
 		if is_map && typ == 'string' {
 			// p.cgen.insert_before('if (!${tmp}.str) $tmp = tos("", 0);')
-			p.cgen.insert_before('if (!$tmp_ok) $tmp = tos("", 0);')
+			p.cgen.insert_before('if (!$tmp_ok) $tmp = tos((byte *)"", 0);')
 		}
 	}
 	// else if is_arr && is_indexer{}
@@ -2608,7 +2608,7 @@ fn (p mut Parser) map_init() string {
 		mut i := 0
 		for {
 			key := p.lit
-			keys_gen += 'tos2("$key"), '
+			keys_gen += 'tos2((byte*)"$key"), '
 			p.check(.str)
 			p.check(.colon)
 			p.cgen.start_tmp()
@@ -2974,7 +2974,7 @@ fn (p mut Parser) cast(typ string) string {
 		if is_byteptr || is_bytearr {
 			if p.tok == .comma {
 				p.check(.comma)
-				p.cgen.set_placeholder(pos, 'tos(')
+				p.cgen.set_placeholder(pos, 'tos((byte *)')
 				if is_bytearr {
 					p.gen('.data')
 				}
@@ -2984,7 +2984,7 @@ fn (p mut Parser) cast(typ string) string {
 				if is_bytearr {
 					p.gen('.data')
 				}
-				p.cgen.set_placeholder(pos, 'tos2(')
+				p.cgen.set_placeholder(pos, 'tos2((byte *)')
 			}
 		}
 		// `string(234)` => error
@@ -3359,7 +3359,7 @@ fn (p mut Parser) assert_statement() {
 	filename := p.file_path.replace('\\', '\\\\')
 	p.genln(';\n
 if (!$tmp) {
-  println(tos2("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
+  println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
 g_test_ok = 0 ;
 	// TODO
 	// Maybe print all vars in a test function if it fails?
