@@ -198,6 +198,9 @@ fn (req &Request) build_request_headers(method, host_name, path string) string {
 	for key, val in req.headers {	
 		uheaders << '${key}: ${val}\r\n' 
 	}
+	if req.data.len > 0 {
+		uheaders << 'Content-Length: ${req.data.len}\r\n'
+	}
 	return '$method $path HTTP/1.1\r\n' + 
 		'Host: $host_name\r\n' + 
 		'User-Agent: $ua\r\n' +
