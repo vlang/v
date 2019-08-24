@@ -2782,9 +2782,13 @@ fn (p mut Parser) array_init() string {
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
 		//if i == 0 {
-			//////p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[$i]) { 0 ')
+			//p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { 0 ')
 		//} else {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[$i]) { ')
+		// Due to a tcc bug, the length needs to be specified.
+		// GCC crashes if it is.
+		cast := if p.pref.ccompiler == 'tcc' { '($typ[$i])' } else { '($typ[])' }
+		p.cgen.set_placeholder(new_arr_ph, 
+			'$new_arr($i, $i, sizeof($typ), $cast { ')
 		//}
 	}
 	typ = 'array_$typ'
