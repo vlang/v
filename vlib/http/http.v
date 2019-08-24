@@ -25,6 +25,7 @@ pub:
 	ws_func  voidptr
 	user_ptr voidptr
 	verbose  bool
+	user_agent string
 }
 
 struct Response {
@@ -66,6 +67,7 @@ pub fn new_request(typ, _url, _data string) ?Request {
 		ws_func: 0
 		user_ptr: 0
 		headers: map[string]string
+		user_agent: 'v'
 	}
 }
 
@@ -109,7 +111,7 @@ pub fn (req &Request) do() ?Response {
 	mut no_redirects := 0
 	for {
 		if no_redirects == max_redirects { return error('http.request.do: maximum number of redirects reached ($max_redirects)') }
-		qresp := method_and_url_to_response( req.typ, rurl ) or {	return error(err) }
+		qresp := req.method_and_url_to_response( req.typ, rurl ) or {	return error(err) }
 		resp = qresp
 		if ! (resp.status_code in [301, 302, 303, 307, 308]) { break }
 		// follow any redirects
@@ -121,9 +123,9 @@ pub fn (req &Request) do() ?Response {
 	return resp
 }
 
-fn method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
-  host_name := url.hostname()
-  scheme := url.scheme
+fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
+	host_name := url.hostname()
+	scheme := url.scheme
 	mut p := url.path.trim_left('/')
 	mut path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut nport := url.port().int()
@@ -134,10 +136,10 @@ fn method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
 	//println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
 		//println('ssl_do( $nport, $method, $host_name, $path )')
-		return ssl_do( nport, method, host_name, path )
+		return req.ssl_do( nport, method, host_name, path )
 	} else if scheme == 'http' {
 		//println('http_do( $nport, $method, $host_name, $path )')
-		return http_do( nport, method, host_name, path )
+		return req.http_do(nport, method, host_name, path )
 	}
 	return error('http.request.do: unsupported scheme: $scheme')
 }
@@ -190,12 +192,21 @@ fn parse_response(resp string) Response {
 	}
 }
 
-fn build_request_headers(user_agent, method, host_name, path string) string {
-	ua := if user_agent == '' { 'v' } else { user_agent }
+fn (req &Request) build_request_headers(method, host_name, path string) string {
+	ua := req.user_agent
+	mut uheaders := []string
+	for key, val in req.headers {	
+		uheaders << '${key}: ${val}\r\n' 
+	}
+	if req.data.len > 0 {
+		uheaders << 'Content-Length: ${req.data.len}\r\n'
+	}
 	return '$method $path HTTP/1.1\r\n' + 
-		   'Host: $host_name\r\n' + 
-		   'User-Agent: $ua\r\n' +
-		   'Connection: close\r\n\r\n'
+		'Host: $host_name\r\n' + 
+		'User-Agent: $ua\r\n' +
+		uheaders.join('') +
+		'Connection: close\r\n\r\n' + 
+		req.data
 }
 
 pub fn unescape_url(s string) string {
