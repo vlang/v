@@ -38,7 +38,7 @@ fn init_module() {
 	//C.OPENSSL_config(0) 
 }
 
-fn ssl_do(port int, method, host_name, path string) Response {
+fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
 	//ssl_method := C.SSLv23_method() 
 	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 
@@ -73,7 +73,7 @@ fn ssl_do(port int, method, host_name, path string) Response {
 	cert := C.SSL_get_peer_certificate(ssl) 
 	res = C.SSL_get_verify_result(ssl) 
 	///////
-	s := build_request_headers('', method, host_name, path)
+	s := req.build_request_headers(method, host_name, path)
 	C.BIO_puts(web, s.str) 
 	mut sb := strings.new_builder(100) 
 	for {
