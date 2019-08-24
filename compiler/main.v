@@ -909,7 +909,7 @@ fn test_v() {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
-		print(relative_file + ' ')    
+		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
 			panic('failed on $file')
 		}

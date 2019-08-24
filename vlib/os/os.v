@@ -114,7 +114,7 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
-	mut fp := &C.FILE{}
+	mut fp := &C.FILE{!}
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -162,7 +162,7 @@ pub fn read_lines(path string) []string {
 	mut buf := malloc(buf_len)
 
 	mode := 'rb'
-	mut fp := &C.FILE{}
+	mut fp := &C.FILE{!}
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
