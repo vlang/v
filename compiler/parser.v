@@ -2778,14 +2778,14 @@ fn (p mut Parser) array_init() string {
 		new_arr += '_no_alloc'
 	}
 	p.gen(' })')
-	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
+	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[$vals.len]) $c_arr );')
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
-		if i == 0 {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { 0 ')
-		} else {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
-		}
+		//if i == 0 {
+			//////p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[$i]) { 0 ')
+		//} else {
+			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[$i]) { ')
+		//}
 	}
 	typ = 'array_$typ'
 	p.register_array(typ)
@@ -2811,6 +2811,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 		p.cgen.lines[p.cgen.lines.len-1] = ''
 	}
 	p.check(.lcbr)
+	no_star := typ.replace('*', '')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
 	if !ptr {
 		if p.is_c_struct_init {
@@ -2836,8 +2837,8 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.check(.rcbr)
 			return typ
 		}
-		no_star := typ.replace('*', '')
-		p.gen('ALLOC_INIT($no_star, {')
+		//p.gen('ALLOC_INIT($no_star, {')
+p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	}
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
@@ -2936,7 +2937,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	}
 	p.gen('}')
 	if ptr {
-		p.gen(')')
+		p.gen(', sizeof($no_star))')
 	}
 	p.check(.rcbr)
 	p.is_struct_init = false

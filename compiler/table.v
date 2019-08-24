@@ -18,7 +18,7 @@ mut:
 	imports      []string // List of all imports
 	file_imports []FileImportTable // List of imports for file
 	flags        []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt       int atomic
+	fn_cnt       int //atomic
 	obfuscate    bool
 }
 
