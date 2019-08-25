@@ -24,8 +24,8 @@ fn C.strlen(s byteptr) int
 
 fn todo() { } 
 
-// Converts a C string to a V string. 
-// String data is reused, not copied. 
+// Converts a C string to a V string.
+// String data is reused, not copied.
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if isnil(s) {
@@ -41,9 +41,7 @@ pub fn tos_clone(s byteptr) string {
 	if isnil(s) {
 		panic('tos: nil string')
 	}
-	len := strlen(s)
-	res := tos(s, len)
-	return res.clone()
+	return tos2(s).clone()
 }
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts. 
@@ -586,9 +584,9 @@ pub fn (s string) trim_space() string {
 		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
-if i > end + 1 {
-return s 
-} 
+    if i > end + 1 {
+       return s 
+	} 
 	res := s.substr(i, end + 1)
 	// println('after SPACE "$res"')
 	return res
@@ -623,11 +621,14 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 pub fn (s string) trim_right(cutset string) string {
-	pos := s.last_index(cutset)
-	if pos == -1 {
-		return s
-	}
-	return s.left(pos)
+    if s.len == 0 {
+        return s
+    }
+    mut pos := s.len - 1
+    for s[pos] == cutset[0] {
+        pos--
+    }
+    return s.left(pos+1)
 }
 
 // fn print_cur_thread() {
