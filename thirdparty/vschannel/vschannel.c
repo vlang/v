@@ -134,7 +134,7 @@ void vschannel_init() {
 	tls_ctx.creds_initialized = TRUE;
 }
 
-INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
+INT request(INT iport, CHAR *host, CHAR *req, CHAR **out)
 {
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
@@ -201,6 +201,7 @@ INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
 		return resp_length;
 	}
 	
+	printf(out);
 	
 	// Send a close_notify alert to the server and
 	// close down the connection.
@@ -774,7 +775,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 }
 
 
-static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
+static SECURITY_STATUS https_make_request(CHAR *req, CHAR **out, int *length) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
 	SecBufferDesc   Message;
@@ -860,6 +861,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 	}
 
 	// Read data from server until done.
+	INT buff_size = vsc_init_resp_buff_size;
 	cbIoBuffer = 0;
 	while(TRUE){
 		// Read some data.
@@ -936,10 +938,20 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 			}
 		}
 
+		// increase buffer size if we need
+		int req_length = *length+(int)pDataBuffer->cbBuffer;
+		if( req_length > buff_size ) {
+			CHAR *a = realloc(*out, req_length);
+			if( a == NULL ) {
+				scRet = SEC_E_INTERNAL_ERROR;
+				return scRet;
+			}
+			*out = a;
+			buff_size = req_length;
+		}
 		// Copy the decrypted data to our output buffer
+		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
-		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
-		out += (int)pDataBuffer->cbBuffer;
 		
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
@@ -966,7 +978,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 			}
 		}
 	}
-
+	
 	return SEC_E_OK;
 }
 
