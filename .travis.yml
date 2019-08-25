@@ -41,7 +41,7 @@ script:
       echo "Testing msvc bootstrapping"
       #./make_msvc.bat
       echo "Running make_tests.bat..."
-      #./make_tests.bat
+      ./make_tests.bat
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
