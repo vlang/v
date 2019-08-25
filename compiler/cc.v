@@ -39,6 +39,9 @@ fn (v mut V) cc() {
 	else {
 		a << '-g'
 	}
+	if v.os != .msvc {
+		a << '-Werror=implicit-function-declaration'
+	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {
 		a << f

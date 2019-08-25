@@ -1,10 +1,10 @@
-module os 
+module os
 
 #include <dirent.h>
 #include <unistd.h>
 
 const (
-	PathSeparator = '/' 
+	PathSeparator = '/'
 )
 
 
@@ -19,7 +19,7 @@ pub fn get_error_msg(code int) string {
 
 pub fn ls(path string) []string {
 	mut res := []string
-	dir := C.opendir(path.str) 
+	dir := C.opendir(path.str)
 	if isnil(dir) {
 		println('ls() couldnt open dir "$path"')
 		print_c_errno()

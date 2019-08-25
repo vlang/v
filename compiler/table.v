@@ -18,7 +18,7 @@ mut:
 	imports      []string // List of all imports
 	file_imports []FileImportTable // List of imports for file
 	flags        []string //  ['-framework Cocoa', '-lglfw3']
-	fn_cnt       int atomic
+	fn_cnt       int //atomic
 	obfuscate    bool
 }
 
@@ -608,7 +608,7 @@ fn type_default(typ string) string {
 	// Default values for other types are not needed because of mandatory initialization
 	switch typ {
 	case 'bool': return '0'
-	case 'string': return 'tos("", 0)'
+	case 'string': return 'tos((byte *)"", 0)'
 	case 'i8': return '0'
 	case 'i16': return '0'
 	case 'i32': return '0'

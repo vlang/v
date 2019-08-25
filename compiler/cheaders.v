@@ -11,6 +11,17 @@ CommonCHeaders = '
 #include <inttypes.h>  // int64_t etc
 #include <string.h> // memcpy
 
+#ifndef _WIN32
+#include <ctype.h>
+#include <locale.h> // tolower
+#endif
+
+#ifdef __APPLE__
+#include <libproc.h> // proc_pidpath
+#include <execinfo.h> // backtrace and backtrace_symbols_fd
+#endif
+
+
 #define EMPTY_STRUCT_DECLARATION
 #define OPTION_CAST(x) (x)
 
