@@ -939,15 +939,15 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR **out, int *length) {
 		}
 
 		// increase buffer size if we need
-		int req_length = *length+(int)pDataBuffer->cbBuffer;
-		if( req_length > buff_size ) {
-			CHAR *a = realloc(*out, req_length);
+		int required_length = *length+(int)pDataBuffer->cbBuffer;
+		if( required_length > buff_size ) {
+			CHAR *a = realloc(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
 				return scRet;
 			}
 			*out = a;
-			buff_size = req_length;
+			buff_size = required_length;
 		}
 		// Copy the decrypted data to our output buffer
 		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
