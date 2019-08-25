@@ -554,7 +554,7 @@ pub fn (ar []int) contains(val int) bool {
 
 /*
 pub fn (a []string) to_c() voidptr {
-	mut res := malloc(sizeof(byteptr) * a.len) 
+	mut res := malloc(sizeof(byteptr) * a.len)
 	for i := 0; i < a.len; i++ {
 		val := a[i]
 		res[i] = val.str
@@ -583,9 +583,9 @@ pub fn (s string) trim_space() string {
 	for end >= 0 && is_space(s[end]) {
 		end--
 	}
-    if i > end + 1 {
-       return s 
-	} 
+	if i > end + 1 {
+		return s
+	}
 	res := s.substr(i, end + 1)
 	return res
 }
@@ -764,14 +764,14 @@ pub fn (s string) free() {
 	free(s.str)
 }
 
-/* 
+/*
 fn (arr []string) free() {
 	for s in arr {
 		s.free()
 	}
 	C.free(arr.data)
 }
-*/ 
+*/
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
@@ -869,7 +869,7 @@ pub fn (c byte) is_white() bool {
 
 
 pub fn (s string) hash() int {
-	//mut h := s.hash_cache 
+	//mut h := s.hash_cache
 	mut h := 0
 	if h == 0 && s.len > 0 {
 		for c in s {
