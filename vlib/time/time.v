@@ -6,12 +6,18 @@ module time
 
 import rand
 
-// https://en.wikipedia.org/wiki/Month#Julian_and_Gregorian_calendars
 const (
 	MonthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 )
 
 #include <time.h>
+#include <unistd.h> // sleep
+
+$if !windows {
+#include <sys/time.h>
+#include <sys/wait.h>
+}
+
 struct Time {
 pub:
 	year   int
@@ -26,7 +32,7 @@ pub:
 
 fn C.localtime(int) *C.tm
 
-fn remove_me_when_c_bug_is_fixed() { // TODO 
+fn remove_me_when_c_bug_is_fixed() { // TODO
 }
 
 struct C.tm {
@@ -56,7 +62,7 @@ const (
 // The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
-	absoluteZeroYear = i64(-292277022399) 
+	absoluteZeroYear = i64(-292277022399)
 
 	secondsPerMinute = 60
 	secondsPerHour   = 60 * secondsPerMinute
@@ -66,7 +72,7 @@ const (
 	daysPer100Years  = 365*100 + 24
 	daysPer4Years    = 365*4 + 1
 
- daysBefore = [ 
+ daysBefore = [
 	0,
 	31,
 	31 + 28,
@@ -80,13 +86,13 @@ const (
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-] 
- 
-)
- 
+]
 
-// Based on Go's time package. 
-// Copyright 2009 The Go Authors. 
+)
+
+
+// Based on Go's time package.
+// Copyright 2009 The Go Authors.
 pub fn unix(abs int) Time {
 	// Split into time and day.
 	mut d := abs / secondsPerDay
@@ -122,29 +128,29 @@ pub fn unix(abs int) Time {
 	d -= 365 * n
 
 	yday := int(d)
-	mut day := yday 
+	mut day := yday
 
 	year := abs / int(3.154e+7) + 1970 //int(i64(y) + absoluteZeroYear)
-	hour := int(abs%secondsPerDay) / secondsPerHour 
-	minute := int(abs % secondsPerHour) / secondsPerMinute 
-	second := int(abs % secondsPerMinute) 
-	 
+	hour := int(abs%secondsPerDay) / secondsPerHour
+	minute := int(abs % secondsPerHour) / secondsPerMinute
+	second := int(abs % secondsPerMinute)
+	
 	if is_leap_year(year) {
 		// Leap year
-		if day > 31+29-1 { 
+		if day > 31+29-1 {
 			// After leap day; pretend it wasn't there.
 			day--
-		} 		else if day == 31+29-1 { 
+		} 		else if day == 31+29-1 {
 			// Leap day.
 			day = 29
-			return Time{year:year, month:2, day:day, hour:hour, minute: minute, second: second} 
-		} 
+			return Time{year:year, month:2, day:day, hour:hour, minute: minute, second: second}
+		}
 	}
 
 	// Estimate month on assumption that every month has 31 days.
 	// The estimate may be too low by at most one month, so adjust.
-	mut month := day / 31 
-	mut begin := 0 
+	mut month := day / 31
+	mut begin := 0
 	end := int(daysBefore[month+1])
 	if day >= end {
 		month++
@@ -155,7 +161,7 @@ pub fn unix(abs int) Time {
 
 	month++ // because January is 1
 	day = day - begin + 1
-	return Time{year:year, month: month, day:day, hour:hour, minute: minute, second: second} 
+	return Time{year:year, month: month, day:day, hour:hour, minute: minute, second: second}
 }
 
 pub fn convert_ctime(t tm) Time {
@@ -166,7 +172,7 @@ pub fn convert_ctime(t tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		uni: C.mktime(&t) 
+		uni: C.mktime(&t)
 	}
 }
 
@@ -377,52 +383,52 @@ pub fn (t Time) weekday_str() string {
 
 struct C.timeval  {
 	tv_sec int
-	tv_usec int 
-} 
+	tv_usec int
+}
 
 // in ms
-pub fn ticks() i64 { 
-	$if windows { 
+pub fn ticks() i64 {
+	$if windows {
 		return C.GetTickCount()
-	} 
+	}
 	$else {
-		ts := C.timeval{} 
-		C.gettimeofday(&ts,0) 
-		return ts.tv_sec * 1000 + (ts.tv_usec / 1000) 
+		ts := C.timeval{}
+		C.gettimeofday(&ts,0)
+		return ts.tv_sec * 1000 + (ts.tv_usec / 1000)
 	}
 
-/* 
+/*
 	t := i64(C.mach_absolute_time())
 	# Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
 	# return (double)(* (uint64_t *) &elapsedNano) / 1000000;
-*/ 
+*/
 }
 
 pub fn sleep(seconds int) {
-	$if windows { 
+	$if windows {
 		C._sleep(seconds * 1000)
 	}
 	$else {
 		C.sleep(seconds)
-	} 
+	}
 }
 
 pub fn usleep(n int) {
-$if windows { 
+$if windows {
 	//C._usleep(n)
 }
-$else { 
+$else {
 	C.usleep(n)
-} 
+}
 }
 
 pub fn sleep_ms(n int) {
-	$if windows { 
+	$if windows {
 		C.Sleep(n)
 	}
-	$else { 
+	$else {
 		C.usleep(n * 1000)
-	} 
+	}
 }
 
 // Determine whether a year is a leap year.
@@ -436,6 +442,6 @@ pub fn days_in_month(month, year int) ?int {
 		return error('Invalid month: $month')
 	}
 	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
-	res := MonthDays[month-1] + extra 
-	return res 
+	res := MonthDays[month-1] + extra
+	return res
 }

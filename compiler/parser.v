@@ -2052,8 +2052,14 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// Erase var name we generated earlier:	"int a = m, 0"
 		// "m, 0" gets killed since we need to start from scratch. It's messy.
 		// "m, 0" is an index expression, save it before deleting and insert later in map_get()
-		index_expr := p.cgen.cur_line.right(fn_ph)
-		p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
+		mut index_expr := ''
+		if p.cgen.is_tmp {
+			index_expr = p.cgen.tmp_line.right(fn_ph)
+			p.cgen.resetln(p.cgen.tmp_line.left(fn_ph))
+		} else {
+			index_expr = p.cgen.cur_line.right(fn_ph)
+			p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
+		}
 		// Can't pass integer literal, because map_get() requires a void*
 		tmp := p.get_tmp()
 		tmp_ok := p.get_tmp()
@@ -2082,7 +2088,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// TODO what about user types?
 		if is_map && typ == 'string' {
 			// p.cgen.insert_before('if (!${tmp}.str) $tmp = tos("", 0);')
-			p.cgen.insert_before('if (!$tmp_ok) $tmp = tos("", 0);')
+			p.cgen.insert_before('if (!$tmp_ok) $tmp = tos((byte *)"", 0);')
 		}
 	}
 	// else if is_arr && is_indexer{}
@@ -2602,7 +2608,7 @@ fn (p mut Parser) map_init() string {
 		mut i := 0
 		for {
 			key := p.lit
-			keys_gen += 'tos2("$key"), '
+			keys_gen += 'tos2((byte*)"$key"), '
 			p.check(.str)
 			p.check(.colon)
 			p.cgen.start_tmp()
@@ -2772,14 +2778,18 @@ fn (p mut Parser) array_init() string {
 		new_arr += '_no_alloc'
 	}
 	p.gen(' })')
-	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[]) $c_arr );')
+	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[$vals.len]) $c_arr );')
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
-		if i == 0 {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { 0 ')
-		} else {
-			p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { ')
-		}
+		//if i == 0 {
+			//p.cgen.set_placeholder(new_arr_ph, '$new_arr($i, $i, sizeof($typ), ($typ[]) { 0 ')
+		//} else {
+		// Due to a tcc bug, the length needs to be specified.
+		// GCC crashes if it is.
+		cast := if p.pref.ccompiler == 'tcc' { '($typ[$i])' } else { '($typ[])' }
+		p.cgen.set_placeholder(new_arr_ph, 
+			'$new_arr($i, $i, sizeof($typ), $cast { ')
+		//}
 	}
 	typ = 'array_$typ'
 	p.register_array(typ)
@@ -2805,6 +2815,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 		p.cgen.lines[p.cgen.lines.len-1] = ''
 	}
 	p.check(.lcbr)
+	no_star := typ.replace('*', '')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
 	if !ptr {
 		if p.is_c_struct_init {
@@ -2830,8 +2841,8 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.check(.rcbr)
 			return typ
 		}
-		no_star := typ.replace('*', '')
-		p.gen('ALLOC_INIT($no_star, {')
+		//p.gen('ALLOC_INIT($no_star, {')
+p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	}
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
@@ -2930,7 +2941,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	}
 	p.gen('}')
 	if ptr {
-		p.gen(')')
+		p.gen(', sizeof($no_star))')
 	}
 	p.check(.rcbr)
 	p.is_struct_init = false
@@ -2963,7 +2974,7 @@ fn (p mut Parser) cast(typ string) string {
 		if is_byteptr || is_bytearr {
 			if p.tok == .comma {
 				p.check(.comma)
-				p.cgen.set_placeholder(pos, 'tos(')
+				p.cgen.set_placeholder(pos, 'tos((byte *)')
 				if is_bytearr {
 					p.gen('.data')
 				}
@@ -2973,7 +2984,7 @@ fn (p mut Parser) cast(typ string) string {
 				if is_bytearr {
 					p.gen('.data')
 				}
-				p.cgen.set_placeholder(pos, 'tos2(')
+				p.cgen.set_placeholder(pos, 'tos2((byte *)')
 			}
 		}
 		// `string(234)` => error
@@ -3348,7 +3359,7 @@ fn (p mut Parser) assert_statement() {
 	filename := p.file_path.replace('\\', '\\\\')
 	p.genln(';\n
 if (!$tmp) {
-  println(tos2("\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
+  println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
 g_test_ok = 0 ;
 	// TODO
 	// Maybe print all vars in a test function if it fails?
