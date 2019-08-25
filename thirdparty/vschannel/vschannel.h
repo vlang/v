@@ -11,6 +11,8 @@
 #include <security.h>
 #include <sspi.h>
 
+#define vsc_init_resp_buff_size 44000
+
 #define IO_BUFFER_SIZE  0x10000
 
 #define TLS_MAX_BUFSIZ      32768
@@ -25,10 +27,10 @@ static void vschannel_init();
 
 static void vschannel_cleanup();
 
-static INT request(INT iport, CHAR *host, CHAR *req, CHAR *out);
+static INT request(INT iport, CHAR *host, CHAR *req, CHAR **out);
 
 static SECURITY_STATUS https_make_request(
-	CHAR *req, CHAR *out, int *length);
+	CHAR *req, CHAR **out, int *length);
 
 static INT connect_to_server(CHAR *host, INT port_number);
 
