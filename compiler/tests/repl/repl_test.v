@@ -2,7 +2,7 @@ import os
 
 fn test_repl() {
 	test_files := os.walk_ext('.', '.repl')
-	wd := os.getwd() + '/'  
+	wd := os.getwd() + os.PathSeparator
   for file in test_files {
     content := os.read_file(file) or {
       assert false
@@ -20,12 +20,14 @@ fn test_repl() {
       assert false
       break
     }
-    result := r.output.replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace( wd, '' )
+    result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace( wd, '' )
     assert result == output
     if result != output {
       println(file)
       println('Got : $result')
       println('Expected : $output')
+    } else {
+      println('Repl file $file is OK')
     }
   }
 }
