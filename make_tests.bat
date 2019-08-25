@@ -18,18 +18,19 @@ echo build v using vc
 vc.exe -o v.exe compiler
 if %ERRORLEVEL% NEQ 0 goto :fail
 
-echo build vc.msvc using vc
-vc.exe -os msvc -o v.msvc.exe compiler
-if %ERRORLEVEL% NEQ 0 goto :fail
 
 setlocal EnableDelayedExpansion
 echo testing v
 v test v
 if %ERRORLEVEL% NEQ 0 goto :fail
 
-echo testing v.msvc -os msvc
-v.msvc.exe -os msvc test v
-if %ERRORLEVEL% NEQ 0 goto :fail
+echo skipping build vc.msvc using vc
+REM vc.exe -os msvc -o v.msvc.exe compiler
+REM if %ERRORLEVEL% NEQ 0 goto :fail
+
+echo skipping testing v.msvc -os msvc
+REM v.msvc.exe -os msvc test v
+REM if %ERRORLEVEL% NEQ 0 goto :fail
 
 goto :done
 

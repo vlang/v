@@ -38,8 +38,8 @@ del v_win.c
 del v2.exe
 
 echo Success
+goto :done
 
-exit
 
 :nomsvc
 echo Cannot find an msvc installation
@@ -49,6 +49,11 @@ goto :error
 echo Failed to compile - Create an issue at 'https://github.com/vlang' and tag '@emily33901'!
 goto :error
 
+
 :error
-echo Exiting from error
+echo fail
 exit /b 1
+
+
+:done
+echo pass
