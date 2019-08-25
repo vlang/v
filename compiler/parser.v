@@ -511,7 +511,8 @@ fn (p mut Parser) struct_decl() {
 	if !is_c && !p.builtin_mod && p.mod != 'main' {
 		name = p.prepend_mod(name)
 	}
-	if p.pass == .decl && p.table.known_type(name) {
+	mut typ := p.table.find_type(name)
+	if p.pass == .decl && p.table.known_type_fast(typ) {
 		p.error('`$name` redeclared')
 	}
 	if !is_c {
@@ -519,7 +520,6 @@ fn (p mut Parser) struct_decl() {
 		p.gen_typedef('typedef $kind $name $name;')
 	}
 	// Register the type
-	mut typ := p.table.find_type(name)
 	mut is_ph := false
 	if typ.is_placeholder {
 		// Update the placeholder
@@ -1472,8 +1472,8 @@ fn (p mut Parser) name_expr() string {
 	}
 	// //////////////////////////
 	// module ?
-	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
+	// (Allow shadowing `gg = gg.newcontext(); gg.draw_triangle();` )
+	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
 		&& !p.cur_fn.known_var(name) && !is_c {
 		mut mod := name
 		// must be aliased module
