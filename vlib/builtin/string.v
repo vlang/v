@@ -6,7 +6,7 @@ module builtin
 
 struct string {
 //mut:
-	//hash_cache int 
+	//hash_cache int
 pub:
 	str byteptr
 	len int
@@ -22,7 +22,7 @@ pub:
 // For C strings only
 fn C.strlen(s byteptr) int
 
-fn todo() { } 
+fn todo() { }
 
 // Converts a C string to a V string.
 // String data is reused, not copied.
@@ -45,7 +45,7 @@ pub fn tos_clone(s byteptr) string {
 }
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts. 
-// Used only internally. 
+// Used only internally.
 fn tos2(s byteptr) string {
 	if isnil(s) {
 		panic('tos2: nil string')
@@ -67,12 +67,12 @@ pub fn (a string) clone() string {
 	return b
 }
 
-/* 
+/*
 pub fn (s string) cstr() byteptr {
 	clone := s.clone()
 	return clone.str
 }
-*/ 
+*/
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
@@ -285,7 +285,7 @@ pub fn (s string) split_single(delim byte) []string {
 			}
 			val := s.substr(start, i)
 			if val.len > 0 {
-				res << val 
+				res << val
 			}
 			start = i + 1
 		}
@@ -327,9 +327,9 @@ pub fn (s string) right(n int) string {
 		return ''
 	}
 	return s.substr(n, s.len)
-} 
+}
 
-// substr 
+// substr
 pub fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
@@ -552,16 +552,16 @@ pub fn (ar []int) contains(val int) bool {
 	return false
 }
 
-/* 
+/*
 pub fn (a []string) to_c() voidptr {
 	mut res := malloc(sizeof(byteptr) * a.len) 
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		res[i] = val.str 
+		res[i] = val.str
 	}
-	return res 
+	return res
 }
-*/ 
+*/
 
 fn is_space(c byte) bool {
 	return C.isspace(c)
@@ -581,14 +581,12 @@ pub fn (s string) trim_space() string {
 	}
 	mut end := s.len - 1
 	for end >= 0 && is_space(s[end]) {
-		// C.printf('end=%d c=%d %c\n', end, res.str[end])
 		end--
 	}
     if i > end + 1 {
        return s 
 	} 
 	res := s.substr(i, end + 1)
-	// println('after SPACE "$res"')
 	return res
 }
 
@@ -872,13 +870,13 @@ pub fn (c byte) is_white() bool {
 
 pub fn (s string) hash() int {
 	//mut h := s.hash_cache 
-	mut h := 0 
-	if h == 0 && s.len > 0 { 
-		for c in s { 
-			h = h * 31 + int(c) 
+	mut h := 0
+	if h == 0 && s.len > 0 {
+		for c in s {
+			h = h * 31 + int(c)
 		}
-	} 
-	return h 
+	}
+	return h
 }
 
 pub fn (s string) bytes() []byte {
