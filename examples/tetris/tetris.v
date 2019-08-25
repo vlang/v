@@ -9,7 +9,9 @@ import gl
 import gg
 import glfw
 import math
-import freetype
+
+// TODO:WIN
+//import freetype
 
 const (
 	BlockSize = 20 // pixels
@@ -118,7 +120,7 @@ struct Game {
 	// gg context for drawing
 	gg          *gg.GG
 	// ft context for font drawing
-	ft          *freetype.Context
+	// TODO:WIN ft          *freetype.Context
 	font_loaded bool
 }
 
@@ -133,13 +135,16 @@ fn main() {
 			window_title: 'V Tetris'
 			window_user_ptr: game
 		})
-		ft: 0
+		// TODO:WIN ft: 0
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
 	gg.clear(gx.White)
+	
+	// TODO:WIN
+	/*
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
 			width: WinWidth
@@ -149,6 +154,7 @@ fn main() {
 			scale: 2
 	})
 	game.font_loaded = (game.ft != 0 )
+*/
 	for {
 		gg.clear(gx.White)
 		game.draw_scene()
@@ -318,6 +324,11 @@ fn (g &Game) draw_field() {
 }
 
 fn (g mut Game) draw_score() {
+	// TODO:WIN
+	$if windows {
+		return
+	}
+	/*
 	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
 		if g.state == .gameover {
@@ -328,6 +339,7 @@ fn (g mut Game) draw_score() {
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
 		}
 	}
+    */
 }
 
 fn (g mut Game) draw_scene() {
