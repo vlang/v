@@ -373,7 +373,7 @@ pub fn day_of_week(y, m, d int) int {
 	if (m < 3) {
 		sy = sy - 1
 	}
-    return ( sy + sy/4 - sy/100 + sy/400 + t[m-1] + d - 1) % 7
+    return ( sy + sy/4 - sy/100 + sy/400 + t[m-1] + d - 1) % 7 + 1
 }
 
 pub fn (t Time) day_of_week() int {
