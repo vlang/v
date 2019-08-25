@@ -509,18 +509,11 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-		max := 256 // MAX_PATH
-		buf := malloc(max)
-		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-		if h_input == INVALID_HANDLE_VALUE {
-			panic('get_raw_line() error getting input handle.')
-		}
-		mut nr_chars := 0
-		C.ReadFile(h_input, buf, max, &nr_chars, 0)
-		if nr_chars == 0 {
-			return ''
-		}
-		return string(buf, nr_chars)
+		maxlinechars := 256
+		buf := malloc(maxlinechars)
+		res := int( C.fgets(buf, maxlinechars, C.stdin ) )
+		if 0 != res { return string( buf, strlen(buf) ) }
+		return ''
 	}
 	$else {
 		//u64 is used because C.getline needs a size_t as second argument
