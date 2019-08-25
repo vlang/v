@@ -2856,6 +2856,9 @@ p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 			if !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
+			if inited_fields.contains(field) {
+				p.error('already initialized field `$field` in `$t.name`')
+			}
 			f := t.find_field(field)
 			inited_fields << field
 			p.gen('.$field = ')
