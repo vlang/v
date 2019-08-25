@@ -3,11 +3,11 @@ module http
 import net
 import strings
 
-fn http_do(port int, method, host_name, path string) ?Response {
+fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
 	bufsize := 512
 	rbuffer := [512]byte
 	mut sb := strings.new_builder(100)
-	s := build_request_headers('', method, host_name, path)
+	s := req.build_request_headers(method, host_name, path)
 	
 	client := net.dial( host_name, port) or { return error(err) }
 	client.send( s.str, s.len )

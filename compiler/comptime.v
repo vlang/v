@@ -47,7 +47,7 @@ fn (p mut Parser) comp_time() {
 		}
 		if_returns := p.returns
 		p.returns = false
-		p.gen('/* returns $p.returns */')
+		//p.gen('/* returns $p.returns */')
 		if p.tok == .dollar && p.peek() == .key_else {
 			p.next()
 			p.next()
@@ -57,7 +57,7 @@ fn (p mut Parser) comp_time() {
 			p.genln('#endif')
 			else_returns := p.returns
 			p.returns = if_returns && else_returns
-			p.gen('/* returns $p.returns */')
+			//p.gen('/* returns $p.returns */')
 		}
 	}
 	else if p.tok == .key_for {

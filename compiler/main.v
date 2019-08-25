@@ -357,7 +357,7 @@ string _STR(const char *fmt, ...) {
 	va_end(argptr);
 	byte* buf = malloc(len);
 	va_start(argptr, fmt);
-	vsprintf(buf, fmt, argptr);
+	vsprintf((char *)buf, fmt, argptr);
 	va_end(argptr);
 #ifdef DEBUG_ALLOC
 	puts("_STR:");
@@ -369,10 +369,10 @@ string _STR(const char *fmt, ...) {
 string _STR_TMP(const char *fmt, ...) {
 	va_list argptr;
 	va_start(argptr, fmt);
-	size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
+	//size_t len = vsnprintf(0, 0, fmt, argptr) + 1;
 	va_end(argptr);
 	va_start(argptr, fmt);
-	vsprintf(g_str_buf, fmt, argptr);
+	vsprintf((char *)g_str_buf, fmt, argptr);
 	va_end(argptr);
 #ifdef DEBUG_ALLOC
 	//puts("_STR_TMP:");
@@ -801,6 +801,9 @@ fn new_v(args[]string) *V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
+	}
+	if pref.is_verbose || pref.is_debug {
+		println('C compiler=$pref.ccompiler')
 	}
 	if pref.is_play {
 		println('Playground')
