@@ -44,7 +44,7 @@ pub fn tos_clone(s byteptr) string {
 	return tos2(s).clone()
 }
 
-// Same as `tos`, but calculates the length. Called by `string(bytes)` casts. 
+// Same as `tos`, but calculates the length. Called by `string(bytes)` casts.
 // Used only internally.
 fn tos2(s byteptr) string {
 	if isnil(s) {
@@ -345,12 +345,12 @@ pub fn (s string) substr(start, end int) string {
 	}
 	res.str[len] = `\0`
 
-/* 
+/*
 	res := string {
 		str: s.str + start
 		len: len
 	}
-*/ 
+*/
 	return res
 }
 
@@ -619,14 +619,14 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 pub fn (s string) trim_right(cutset string) string {
-    if s.len == 0 {
-        return s
-    }
-    mut pos := s.len - 1
-    for s[pos] == cutset[0] {
-        pos--
-    }
-    return s.left(pos+1)
+	if s.len == 0 {
+		return s
+	}
+	mut pos := s.len - 1
+	for s[pos] == cutset[0] {
+		pos--
+	}
+	return s.left(pos+1)
 }
 
 // fn print_cur_thread() {
