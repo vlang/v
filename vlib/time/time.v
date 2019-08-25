@@ -15,7 +15,6 @@ const (
 
 $if !windows {
 #include <sys/time.h>
-#include <sys/wait.h>
 }
 
 struct Time {
