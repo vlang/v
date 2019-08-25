@@ -201,8 +201,6 @@ INT request(INT iport, CHAR *host, CHAR *req, CHAR **out)
 		return resp_length;
 	}
 	
-	printf(out);
-	
 	// Send a close_notify alert to the server and
 	// close down the connection.
 	if(disconnect_from_server()) {
@@ -978,7 +976,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR **out, int *length) {
 			}
 		}
 	}
-	
+
 	return SEC_E_OK;
 }
 
