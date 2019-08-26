@@ -49,6 +49,34 @@ fn jsdecode_i64(root *C.cJSON) i64 {
 	return i64(root.valuedouble) //i64 is double in C
 }
 
+fn jsdecode_u8(root *C.cJSON) u8 {
+	if isnil(root) {
+		return u8(0)
+	}
+	return u8(root.valueint)
+}
+
+fn jsdecode_u16(root *C.cJSON) u16 {
+	if isnil(root) {
+		return u16(0)
+	}
+	return u16(root.valueint)
+}
+
+fn jsdecode_u32(root *C.cJSON) u32 {
+	if isnil(root) {
+		return u32(0)
+	}
+	return u32(root.valueint)
+}
+
+fn jsdecode_u64(root *C.cJSON) u64 {
+	if isnil(root) {
+		return u64(0)
+	}
+	return u64(root.valueint)
+}
+
 fn jsdecode_f32(root *C.cJSON) f32 {
 	if isnil(root) {
 		return f32(0)
@@ -95,11 +123,28 @@ fn jsencode_i8(val i8) *C.cJSON {
 fn jsencode_i16(val i16) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
+
 fn jsencode_i32(val i32) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
 fn jsencode_i64(val i64) *C.cJSON {
+	return C.cJSON_CreateNumber(val)
+}
+
+fn jsencode_u8(val u8) *C.cJSON {
+	return C.cJSON_CreateNumber(val)
+}
+
+fn jsencode_u16(val u16) *C.cJSON {
+	return C.cJSON_CreateNumber(val)
+}
+
+fn jsencode_u32(val u32) *C.cJSON {
+	return C.cJSON_CreateNumber(val)
+}
+
+fn jsencode_u64(val u64) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
