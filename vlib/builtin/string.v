@@ -608,22 +608,24 @@ pub fn (s string) trim(c byte) string {
 }
 
 pub fn (s string) trim_left(cutset string) string {
-	mut start := s.index(cutset)
-	if start != 0 {
+	if s.len == 0 || cutset.len == 0 {
 		return s
 	}
-	for start < s.len - 1 && s[start] == cutset[0] {
-		start++
+	mut pos := 0
+	cs_arr := cutset.bytes()
+	for s[pos] in cs_arr {
+		pos++
 	}
-	return s.right(start)
+	return s.right(pos)
 }
 
 pub fn (s string) trim_right(cutset string) string {
-	if s.len == 0 {
+	if s.len == 0 || cutset.len == 0 {
 		return s
 	}
 	mut pos := s.len - 1
-	for s[pos] == cutset[0] {
+	cs_arr := cutset.bytes()
+	for s[pos] in cs_arr {
 		pos--
 	}
 	return s.left(pos+1)

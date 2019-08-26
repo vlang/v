@@ -307,6 +307,9 @@ fn test_trim_left() {
 	assert s.trim_left(' ') == 'module main'
 	s = ' module main'
 	assert s.trim_left(' ') == 'module main'
+	// test cutset
+	s = 'banana'
+	assert s.trim_left('ba') == 'nana'
 }
 
 fn test_trim_right() {
@@ -314,6 +317,9 @@ fn test_trim_right() {
 	assert s.trim_right(' ') == 'module main'
 	s = 'module main '
 	assert s.trim_right(' ') == 'module main'
+	// test cutset
+	s = 'banana'
+	assert s.trim_right('na') == 'b'
 }
 
 fn test_all_after() {
