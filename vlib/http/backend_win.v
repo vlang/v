@@ -18,12 +18,10 @@ fn init_module() {}
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
 	C.vschannel_init()
-	// TODO: joe-c
-	// dynamically increase in vschannel.c if needed
-	mut buff := malloc(44000)
+	mut buff := malloc(C.vsc_init_resp_buff_size)
 	addr := host_name
 	sdata := req.build_request_headers(method, host_name, path)
-	length := int(C.request(port, addr.str, sdata.str, buff))
+	length := int(C.request(port, addr.str, sdata.str, &buff))
 
 	C.vschannel_cleanup()
 	return parse_response(string(buff, length))
