@@ -818,7 +818,6 @@ fn new_v(args[]string) *V {
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)
-		out_name: out_name
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
 		vroot: vroot

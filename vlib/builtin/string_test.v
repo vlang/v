@@ -39,12 +39,12 @@ fn test_lt() {
 	d := 'b'
 	e := 'aa'
 	f := 'ab'
-	assert a<(b)
-	assert !(b<c)
-	assert c<(d)
-	assert !(d<e)
-	assert c<(e)
-	assert e<(f)
+	assert a < (b)
+	assert !(b < c)
+	assert c < (d)
+	assert !(d < e)
+	assert c < (e)
+	assert e < (f)
 }
 
 fn test_ge() {
@@ -53,11 +53,11 @@ fn test_ge() {
 	c := 'ab'
 	d := 'abc'
 	e := 'aaa'
-	assert b>=(a)
-	assert c>=(b)
-	assert d>=(c)
-	assert !(c>=d)
-	assert e>=(a)
+	assert b >= (a)
+	assert c >= (b)
+	assert d >= (c)
+	assert !(c >= d) 
+	assert e >= (a)
 }
 
 fn test_compare_strings() {
@@ -91,15 +91,15 @@ fn test_split() {
 	mut s := 'volt/twitch.v:34'
 	mut vals := s.split(':')
 	assert vals.len == 2
-	assert vals[0]== 'volt/twitch.v'
-	assert vals[1]== '34'
-	// /////////
+	assert vals[0] == 'volt/twitch.v'
+	assert vals[1] == '34'
+	// /////////	
 	s = '2018-01-01z13:01:02'
 	vals = s.split('z')
 	assert vals.len == 2
-	assert vals[0]=='2018-01-01'
-	assert vals[1]== '13:01:02'
-	// /////////////
+	assert vals[0] =='2018-01-01'
+	assert vals[1] == '13:01:02'
+	// //////////
 	s = '4627a862c3dec29fb3182a06b8965e0025759e18___1530207969___blue'
 	vals = s.split('___')
 	assert vals.len == 3
@@ -214,7 +214,6 @@ fn test_runes() {
 	assert u.substr(1, 2) == 'р'
 	assert s2.ustring().at(1) == 'r'
 	assert u.at(1) == 'р'
-	// ///////
 	first := u.at(0)
 	last := u.at(u.len - 1)
 	assert first.len == 2
@@ -234,6 +233,22 @@ fn test_lower() {
 	assert s.to_lower() == 'have a nice day!'
 	s = 'hi'
 	assert s.to_lower() == 'hi'
+}
+
+fn test_upper() {
+	mut s := 'a'
+	assert s.to_upper() == 'A'
+	assert s.to_upper().len == 1
+	s = 'hello'
+	assert s.to_upper() == 'HELLO'
+	assert s.to_upper().len == 5
+	s = 'Aloha'
+	assert s.to_upper() == 'ALOHA'
+	s = 'have a nice day!'
+	assert s.to_upper() == 'HAVE A NICE DAY!'
+	s = 'hi'
+	assert s.to_upper() == 'HI'
+
 }
 
 fn test_left_right() {
@@ -355,3 +370,21 @@ fn test_count() {
 	assert 'aabbaa'.count('aa') == 2
 	assert 'bbaabb'.count('aa') == 1
 }
+
+fn test_capitalize() {
+	mut s := 'hello'
+	assert s.capitalize() == 'Hello'
+	s = 'test'
+	assert s.capitalize() == 'Test'
+    s = 'i am ray'
+	assert s.capitalize() == 'I am ray'
+}
+
+fn test_title() {
+	mut s := 'hello world'
+	assert s.title() == 'Hello World'
+	s.to_upper()
+	assert s.title() == 'Hello World'
+	s.to_lower()
+	assert s.title() == 'Hello World' 
+} 
