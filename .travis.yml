@@ -38,7 +38,7 @@ script:
     fi    
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  ./thirdparty/freetype/
+      git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
       ##echo "Just running ./make.bat to produce v.exe"
       ##./make.bat
       ##echo "Running only the repl tests directly"
