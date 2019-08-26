@@ -15,6 +15,8 @@ const (
 
 $if !windows {
 #include <sys/time.h>
+//#include <sys/wait.h>
+/// ^^^^ including this makes the windows build fail.
 }
 
 struct Time {
