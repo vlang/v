@@ -779,6 +779,10 @@ if p.scanner.line_comment != '' {
 }
 }
 
+fn (p mut Parser) warn(s string) {
+	println('warning: $p.file_name:$p.scanner.line_nr ' + s)
+}
+
 fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
@@ -2796,7 +2800,7 @@ fn (p mut Parser) array_init() string {
 		// Due to a tcc bug, the length needs to be specified.
 		// GCC crashes if it is.
 		cast := if p.pref.ccompiler == 'tcc' { '($typ[$i])' } else { '($typ[])' }
-		p.cgen.set_placeholder(new_arr_ph, 
+		p.cgen.set_placeholder(new_arr_ph,
 			'$new_arr($i, $i, sizeof($typ), $cast { ')
 		//}
 	}
@@ -3292,6 +3296,7 @@ fn (p mut Parser) for_st() {
 
 fn (p mut Parser) switch_statement() {
 	if p.tok == .key_switch {
+		//p.warn('`switch` was replaced `match`, it will be removed soon')
 		p.check(.key_switch)
 	} else {
 		p.check(.key_match)
@@ -3358,7 +3363,7 @@ fn (p mut Parser) switch_statement() {
 	p.returns = false // only get here when no default, so return is not guaranteed
 }
 
-// Returns typ if used as expession 
+// Returns typ if used as expession
 fn (p mut Parser) match_statement(is_expr bool) string {
 	p.check(.key_match)
 	p.cgen.start_tmp()
@@ -3373,7 +3378,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	mut i := 0
 	mut all_cases_return := true
 
-	// stores typ of resulting variable 
+	// stores typ of resulting variable
 	mut res_typ := ''
 
 	defer {
@@ -3381,8 +3386,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	}
 
 	for p.tok != .rcbr {
-		if p.tok == .key_else { 
-			p.check(.key_else) 
+		if p.tok == .key_else {
+			p.check(.key_else)
 			p.check(.arrow)
 
 			// unwrap match if there is only else
@@ -3467,7 +3472,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.gen(') || (')
 			}
 
-			if typ == 'string' { 
+			if typ == 'string' {
 				// TODO: use tmp variable
 				// p.gen('string_eq($tmp_var, ')
 				p.gen('string_eq($tmp_var, ')

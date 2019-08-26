@@ -727,15 +727,16 @@ fn new_v(args[]string) *V {
 		}
 	}
 	else {
-		switch target_os {
-		case 'linux': _os = .linux
-		case 'windows': _os = .windows
-		case 'mac': _os = .mac
-		case 'freebsd': _os = .freebsd
-		case 'openbsd': _os = .openbsd
-		case 'netbsd': _os = .netbsd
-		case 'dragonfly': _os = .dragonfly
-		case 'msvc': _os = .msvc
+		_os = match target_os {
+		 'linux' => { OS.linux }
+		 'windows' => { OS.windows }
+		 'mac' => { OS.mac }
+		 'freebsd' => { OS.freebsd }
+		 'openbsd' => { OS.openbsd }
+		 'netbsd' =>  { OS.netbsd }
+		 'dragonfly' => { OS.dragonfly }
+		 'msvc' => { OS.msvc }
+		 else => { OS.linux }
 		}
 	}
 	builtins := [
