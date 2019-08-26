@@ -13,6 +13,9 @@ import (
 	gl
 )
 
+#flag windows -I @VROOT/thirdparty/freetype/include
+#flag windows -L @VROOT/thirdparty/freetype/win64
+
 #flag darwin -I/usr/local/include/freetype2
 #flag darwin -I/opt/local/include/freetype2
 #flag -lfreetype
