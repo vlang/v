@@ -686,7 +686,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		enum_name = p.prepend_mod(enum_name)
 	}
 	// Skip empty enums
-	if enum_name != 'int' {
+	if enum_name != 'int' && !p.first_pass() {
 		p.cgen.typedefs << 'typedef int $enum_name;'
 	}
 	p.check(.lcbr)
