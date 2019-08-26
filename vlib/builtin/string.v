@@ -448,7 +448,7 @@ pub fn (s string) count(substr string) int {
 		return 0
 	}
 	if substr.len > s.len {
-		return -1
+		return 0
 	}
 	mut n := 0
 	mut i := 0

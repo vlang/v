@@ -91,19 +91,22 @@ fn test_split() {
 	mut s := 'volt/twitch.v:34'
 	mut vals := s.split(':')
 	assert vals.len == 2
-	assert vals[0]== 'volt/twitch.v'
-	assert vals[1]== '34'	
+	assert vals[0] == 'volt/twitch.v'
+	assert vals[1] == '34'
+	// /////////	
 	s = '2018-01-01z13:01:02'
 	vals = s.split('z')
 	assert vals.len == 2
-	assert vals[0]=='2018-01-01'
-	assert vals[1]== '13:01:02'
+	assert vals[0] =='2018-01-01'
+	assert vals[1] == '13:01:02'
+	// //////////
 	s = '4627a862c3dec29fb3182a06b8965e0025759e18___1530207969___blue'
 	vals = s.split('___')
 	assert vals.len == 3
 	assert vals[0]== '4627a862c3dec29fb3182a06b8965e0025759e18'
 	assert vals[1]=='1530207969'
 	assert vals[2]== 'blue'
+	// /////////
 	s = 'lalala'
 	vals = s.split('a')
 	assert vals.len == 3
