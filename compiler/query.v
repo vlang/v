@@ -124,7 +124,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		for i, field in fields {
 			mut cast := '' 
 			if field.typ == 'int' {
-				cast = 'string_int' 
+				cast = 'v_string_int' 
 			} 
 			obj_gen.writeln('${qprefix}$tmp . $field.name = $cast( *(string*)array__get(${qprefix}row.vals, $i) );')
 		} 
