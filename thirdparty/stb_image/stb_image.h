@@ -315,6 +315,9 @@ RECENT REVISION HISTORY:
 //     want the zlib decoder to be available, #define STBI_SUPPORT_ZLIB
 //
 
+#ifdef __TINYC__
+#define STBI_NO_SIMD
+#endif
 
 #ifndef STBI_NO_STDIO
 #include <stdio.h>
