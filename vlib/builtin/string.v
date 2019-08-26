@@ -591,7 +591,8 @@ pub fn (s string) trim_left(cutset string) string {
 		return s
 	}
 	mut pos := 0
-	for s[pos] in cutset.bytes() {
+	cs_arr := cutset.bytes()
+	for s[pos] in cs_arr {
 		pos++
 	}
 	return s.right(pos)
@@ -602,7 +603,8 @@ pub fn (s string) trim_right(cutset string) string {
 		return s
 	}
 	mut pos := s.len - 1
-	for s[pos] in cutset.bytes() {
+	cs_arr := cutset.bytes()
+	for s[pos] in cs_arr {
 		pos--
 	}
 	return s.left(pos+1)
