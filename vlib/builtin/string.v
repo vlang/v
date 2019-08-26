@@ -321,7 +321,7 @@ pub fn (s string) left(n int) string {
 	}
 	return s.substr(0, n)
 }
-
+// 'hello'.right(2) => 'llo'
 pub fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
@@ -447,6 +447,9 @@ pub fn (s string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
 		return 0
 	}
+	if substr.len > s.len {
+		return 0
+	}
 	mut n := 0
 	mut i := 0
 	for {
@@ -480,7 +483,7 @@ pub fn (s string) ends_with(p string) bool {
 
 // TODO only works with ASCII
 pub fn (s string) to_lower() string {
-	mut b := malloc(s.len)// TODO + 1 ??
+	mut b := malloc(s.len + 1)
 	for i := 0; i < s.len; i++ {
 		b[i] = C.tolower(s.str[i])
 	}
@@ -488,11 +491,29 @@ pub fn (s string) to_lower() string {
 }
 
 pub fn (s string) to_upper() string {
-	mut b := malloc(s.len)// TODO + 1 ??
+	mut b := malloc(s.len + 1)
 	for i := 0; i < s.len; i++ {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
+}
+
+pub fn (s string) capitalize() string {
+	sl := s.to_lower()
+    cap := sl[0].str().to_upper() + sl.right(1)
+	return cap 
+}
+
+pub fn (s string) title() string {
+	 words := s.split(' ')
+	 mut tit := []string
+
+	for word in words {
+		tit << word.capitalize()
+	}
+	title := tit.join(' ')
+
+	return title	
 }
 
 // 'hey [man] how you doin'
