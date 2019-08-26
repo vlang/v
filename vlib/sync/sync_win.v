@@ -18,7 +18,7 @@ mut:
     cycle_wait   i64     // waiting cycles (implemented only with atomic)
     cycle_woken  i64     // woken cycles    ^
     reader_sem   u32     // reader semarphone
-    writer_sem   u32     // writer semaphones 
+    writer_sem   u32     // writer semaphones
 }
 
 
@@ -64,9 +64,9 @@ pub fn (m mut Mutex) lock() {
     //     m.cycle_wait++
     // }
     match state {
-        WAIT_FAILED    => m.wstate = BROKEN
-        WAIT_ABANDONED => m.wstate = ABOND
-        WAIT_OBJECT_0  => m.wstate = WAIT & u32(0xff)
+        WAIT_FAILED    => { m.wstate = BROKEN }
+        WAIT_ABANDONED => { m.wstate = ABOND }
+        WAIT_OBJECT_0  => { m.wstate = WAIT & u32(0xff) }
     }
     // todo implement atomic counter
 }
