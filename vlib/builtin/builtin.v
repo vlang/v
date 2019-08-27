@@ -50,7 +50,7 @@ fn _panic_debug(line_no int, file,  mod, fn_name, s string) {
 	println('     line: ' + line_no.str())
 	println('  message: $s')
 	println('=========================================')
-	print_backtrace_skipping_top_frames(2)
+	print_backtrace_skipping_top_frames(1)
 	C.exit(1)
 }
 
