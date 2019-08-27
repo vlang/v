@@ -56,7 +56,7 @@ fn _panic_debug(line_no int, file,  mod, fn_name, s string) {
 
 pub fn panic(s string) {
 	println('V panic: $s')
-	//print_backtrace()
+	print_backtrace()
 	C.exit(1)
 }
 
