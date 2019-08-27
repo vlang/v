@@ -17,7 +17,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
+- Fast compilation: ~100k - 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
@@ -81,7 +81,7 @@ V is being constantly updated. To update V, simply run
 v up
 ```
 
-## Docker
+### Docker
 
 ```bash
 git clone https://github.com/vlang/v
@@ -131,7 +131,7 @@ In order to build Tetris and anything else using the graphics module, you will n
 v install glfw
 ```
 
-If you plan to use the http package, you also need to install openssl on non-Windows systems.
+If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
