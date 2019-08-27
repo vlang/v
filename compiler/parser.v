@@ -1458,11 +1458,6 @@ fn (p mut Parser) name_expr() string {
 	if ptr || deref {
 		p.next()
 	}
-	if deref {
-		if p.pref.is_play && !p.builtin_mod {
-			p.error('dereferencing is temporarily disabled on the playground, will be fixed soon')
-		}
-	}
 	mut name := p.lit
 	p.fgen(name)
 	// known_type := p.table.known_type(name)
@@ -1840,7 +1835,6 @@ struct $typ.name {
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
-		// if p.pref.is_play && field.access_mod ==.private && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `arr.data`
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')

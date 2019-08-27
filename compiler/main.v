@@ -83,7 +83,6 @@ mut:
 	is_prod        bool // use "-O2"
 	is_verbose     bool // print extra information with `v.log()`
 	obfuscate      bool // `v -obf program.v`, renames functions to "f_XXX"
-	is_play        bool // playground mode
 	is_repl        bool
 	is_run         bool
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
@@ -239,9 +238,6 @@ fn (v mut V) compile() {
 	}
 	// Main pass
 	cgen.pass = Pass.main
-	if v.pref.is_play {
-		cgen.genln('#define VPLAY (1) ')
-	}
 	if v.pref.is_debug {
 		cgen.genln('#define VDEBUG (1) ')
 	}
@@ -785,7 +781,6 @@ fn new_v(args[]string) *V {
 		is_test: is_test
 		is_script: is_script
 		is_so: args.contains('-shared')
-		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
 		is_debuggable: args.contains('-g') // -debuggable implys debug
@@ -805,9 +800,6 @@ fn new_v(args[]string) *V {
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
-	}
-	if pref.is_play {
-		println('Playground')
 	}
 	if pref.is_so {
 		out_name_c = out_name.all_after('/') + '_shared_lib.c'
