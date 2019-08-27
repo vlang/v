@@ -302,6 +302,12 @@ fn test_hash() {
 	assert s5.hash() % ((1 << 20) -1) == 592861
 }
 
+fn test_trim() {
+	assert 'banana'.trim('bna') == ''
+	assert 'abc'.trim('ac') == 'b'
+	assert 'aaabccc'.trim('ac') == 'b'
+}
+
 fn test_trim_left() {
 	mut s := 'module main'
 	assert s.trim_left(' ') == 'module main'
