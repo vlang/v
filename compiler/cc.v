@@ -39,7 +39,7 @@ fn (v mut V) cc() {
 	else {
 		a << '-g'
 	}
-	if v.os != .msvc {
+	if v.os != .msvc && v.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
 
