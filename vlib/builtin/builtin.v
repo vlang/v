@@ -18,13 +18,18 @@ fn on_panic(f fn (int) int) {
 }
 
 pub fn print_backtrace() {
-	if true {
-		return // TODO
-	}
 	$if mac {
 		buffer := [100]voidptr
 		nr_ptrs := C.backtrace(buffer, 100)
 		C.backtrace_symbols_fd(buffer, nr_ptrs, 1)
+	}
+	$if linux {
+		buffer := [100]voidptr
+		nr_ptrs := C.backtrace(buffer, 100)
+		C.backtrace_symbols_fd(buffer, nr_ptrs, 1)
+	}
+	if true {
+		return // TODO
 	}
 }
 
@@ -43,7 +48,7 @@ fn _panic_debug(line_no int, file,  mod, fn_name, s string) {
 
 pub fn panic(s string) {
 	println('V panic: $s')
-	print_backtrace()
+	//print_backtrace()
 	C.exit(1)
 }
 
