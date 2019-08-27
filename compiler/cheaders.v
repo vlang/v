@@ -21,6 +21,15 @@ CommonCHeaders = '
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
 #endif
 
+#ifdef __linux__
+#include <execinfo.h> // backtrace and backtrace_symbols_fd
+#endif
+
+#ifdef __linux__
+#include <sys/types.h>
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 
 #define EMPTY_STRUCT_DECLARATION
 #define OPTION_CAST(x) (x)
