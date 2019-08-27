@@ -39,6 +39,11 @@ fn (v mut V) cc() {
 	else {
 		a << '-g'
 	}
+
+	if v.pref.is_debug {
+		a << ' -rdynamic ' // needed for nicer symbolic backtraces
+	}
+
 	if v.os != .msvc && v.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
