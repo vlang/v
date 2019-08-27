@@ -17,20 +17,28 @@ fn on_panic(f fn (int) int) {
 	// TODO
 }
 
-pub fn print_backtrace() {
+pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if mac {
 		buffer := [100]voidptr
 		nr_ptrs := C.backtrace(buffer, 100)
-		C.backtrace_symbols_fd(buffer, nr_ptrs, 1)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
+		return
 	}
 	$if linux {
 		buffer := [100]voidptr
 		nr_ptrs := C.backtrace(buffer, 100)
-		C.backtrace_symbols_fd(buffer, nr_ptrs, 1)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
+		return
 	}
-	if true {
-		return // TODO
-	}
+	C.printf('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
+}
+pub fn print_backtrace(){
+	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
+	// 1 frame for print_backtrace_skipping_top_frames
+	// 1 frame for print_backtrace itself
+	// ... print the rest of the backtrace frames ...
+	// => top 2 frames should be skipped, since they will not be informative to the developer
+	print_backtrace_skipping_top_frames(2)
 }
 
 // replaces panic when -debug arg is passed
@@ -42,7 +50,7 @@ fn _panic_debug(line_no int, file,  mod, fn_name, s string) {
 	println('     line: ' + line_no.str())
 	println('  message: $s')
 	println('=========================================')
-	print_backtrace()
+	print_backtrace_skipping_top_frames(2)
 	C.exit(1)
 }
 
