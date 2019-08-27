@@ -9,12 +9,12 @@ import strings
 fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string) string {
 	mut params_gen := ''
 	for i, mparam in sql_params {
-		param := mparam.trim(` `)
+		param := mparam.trim_space()
 		paramtype := sql_types[ i ]
 		if param[0].is_digit() {
 			params_gen += '${qprefix}params[$i] = int_str($param).str;\n'
 		}else if param[0] == `\'` {
-			sparam := param.trim(`\'`)
+			sparam := param.trim('\'')
 			params_gen += '${qprefix}params[$i] = "$sparam";\n'
 		} else {
 			// A variable like q.nr_orders
