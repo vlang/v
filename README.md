@@ -59,7 +59,7 @@ That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo
 
 ### Dependencies
 
-You'll need `make`, `git`, `libc-dev`, and a C compiler. If you are doing development, you most likely already have it installed.
+You'll need `make`, `git`, `libc-dev`, `binutils`, and a C compiler. If you are doing development, you most likely already have it installed.
 
 On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
 
