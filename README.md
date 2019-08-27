@@ -46,7 +46,6 @@ The compilation is temporarily slower for this release:
 
 ## Installing V from source
 
-
 ### Linux, macOS, Windows, *BSD, WSL, Android, Raspbian
 
 
