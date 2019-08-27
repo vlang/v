@@ -65,7 +65,7 @@ On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
 
 On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-On Android install [Termux](https://termux.com/)
+On Android install [Termux](https://termux.com/).
 
 ### Symlinking and updates
 
