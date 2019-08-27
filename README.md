@@ -32,8 +32,6 @@ V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
 ## Notes
 
-GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn't support the language yet.
-
 The compilation is temporarily slower for this release:
 
 - Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
