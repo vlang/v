@@ -122,6 +122,10 @@ fn main() {
 		println('use `v install` to install modules from vpm.vlang.io')
 		return
 	}
+	if 'symlink' in args {
+		create_symlink()
+		return
+	}
 	if args.join(' ').contains(' test v') {
 		test_v()
 		return
@@ -932,5 +936,12 @@ fn test_v() {
 		}
 		os.rm( tmpcfilepath )
 	}
+}
+
+fn create_symlink() {
+	vexe := os.executable()
+	link_path := '/usr/local/bin/v'
+	os.system('ln -sf $vexe $link_path')
+	println('symlink "$link_path" has been created')
 }
 

@@ -28,7 +28,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - REPL
 - Built-in ORM
 
-V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
+V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
 ## Notes
 
@@ -72,7 +72,7 @@ On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-co
 You can create a `/usr/local/bin/v` symlink so that V is globally available:
 
 ```
-sudo make symlink
+sudo v symlink
 ```
 
 V is being constantly updated. To update V, simply run
