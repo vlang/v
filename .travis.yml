@@ -39,14 +39,15 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
       git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
-      ##echo "Just running ./make.bat to produce v.exe"
-      ##./make.bat
+      echo "Just running ./make.bat to produce v.exe"
+      ./make.bat
+      ls -la v.exe
+      echo "Running v test v..."
+      ./v.exe test v
       ##echo "Running only the repl tests directly"
       ##./v.exe ./compiler/tests/repl/repl_test.v
       echo "Testing msvc bootstrapping"
       ./make_msvc.bat
-      echo "Running v test v..."
-      v.exe test v
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then

@@ -616,7 +616,11 @@ fn (v mut V) add_v_files_to_compile() {
 }
 
 fn get_arg(joined_args, arg, def string) string {
-	key := '-$arg '
+	return get_all_after(joined_args, '-$arg', def)
+}
+
+fn get_all_after(joined_args, arg, def string) string {
+	key := '$arg '
 	mut pos := joined_args.index(key)
 	if pos == -1 {
 		return def
@@ -648,17 +652,18 @@ fn (v &V) log(s string) {
 }
 
 fn new_v(args[]string) *V {
-	mut dir := args.last()
-	if args.contains('run') {
-		dir = args[2]
-	}
-	// println('new compiler "$dir"')
-	if args.len < 2 {
-		dir = ''
-	}
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
+  
+	mut dir := args.last()
+	if args.contains('run') {
+		dir = get_all_after(joined_args, 'run', '')
+	}
+	if args.len < 2 {
+		dir = ''
+	}
+	// println('new compiler "$dir"')
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''
