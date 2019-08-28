@@ -23,6 +23,8 @@ CommonCHeaders = '
 
 #ifdef __linux__
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
+#pragma weak backtrace
+#pragma weak backtrace_symbols_fd
 #endif
 
 #ifdef __linux__
