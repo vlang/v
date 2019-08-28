@@ -10,28 +10,6 @@ import (
 	strings
 )
 
-struct Var {
-mut:
-	typ             string
-	name            string
-	is_arg          bool
-	is_const        bool
-	args            []Var // function args
-	attr            string //  [json] etc
-	is_mut          bool
-	is_alloc        bool
-	ptr             bool
-	ref             bool
-	parent_fn       string // Variables can only be defined in functions
-	mod             string // module where this var is stored
-	line_nr         int
-	access_mod      AccessMod
-	is_global       bool // __global (translated from C only)
-	is_used         bool
-	is_changed      bool
-	scope_level     int
-}
-
 struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
