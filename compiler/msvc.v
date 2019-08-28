@@ -226,7 +226,7 @@ pub fn (v mut V) cc_msvc() {
 	// -w: no warnings
 	// 2 unicode defines
 	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE', '/Fo$out_name_obj']
+	mut a := ['-w', '/we4013', '/volatile:ms', '/D_UNICODE', '/DUNICODE', '/Fo$out_name_obj']
 
 	if v.pref.is_prod {
 		a << '/O2'
