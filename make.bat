@@ -97,6 +97,7 @@ echo Exiting from error
 exit /b 1
 
 :success
+dir
 if exist "v.exe" (
 	echo V has been successfully built
     exit
