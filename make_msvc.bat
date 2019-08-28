@@ -27,7 +27,7 @@ if %ERRORLEVEL% GEQ 1 (
 )
 
 echo rebuild from source
-v2.exe -os msvc -o v.exe compiler
+v2.exe -o v.exe compiler
 if %ERRORLEVEL% GEQ 1 (
    goto :compileerror
 )
