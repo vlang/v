@@ -25,10 +25,15 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 		return
 	}
 	$if linux {
-		buffer := [100]voidptr
-		nr_ptrs := C.backtrace(buffer, 100)
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
-		return
+		if C.backtrace_symbols_fd != 0 {
+			buffer := [100]voidptr
+			nr_ptrs := C.backtrace(buffer, 100)
+			C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
+			return
+		}else{
+			C.printf('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
+			C.printf('Some libc implementations like musl simply do not provide it.\n')
+		}
 	}
 	C.printf('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
 }
