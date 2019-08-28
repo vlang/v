@@ -22,6 +22,7 @@
 - ui demo: calculator
 - declarative ui with hot reload (similar to swiftui)
 - "building a simple blog with vweb" tutorial + youtube video
-- new playground built with WebAssembly
+- JavaScript backend
+- new playground with a V compiler running in the browser
 
 
