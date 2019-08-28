@@ -4,27 +4,33 @@ set exiterror=0
 echo Building V for Windows...
 
 if exist "vc" (
-rd /s /q vc
+	rd /s /q vc
 )
 
 git version
 git clone --depth 1 --quiet https://github.com/vlang/vc
 
-gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o v2.exe vc/v_win.c
+echo Building v.c...
+gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o v2.exe vc/v_win.c 2>&1
 if %ERRORLEVEL% GEQ 1 (
-   goto :compileerror
+	echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
+   exit /b 1
 )
 
+echo Building v.v...
 v2.exe -o v.exe compiler
-del v2.exe
+if %ERRORLEVEL% GEQ 1 (
+	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
+   exit /b 1
+)
+
+echo Cleaning up...
+rem del v2.exe
 rd /s /q vc
 
-
-:compileerror
-echo Failed to compile - Create an issue at 'https://github.com/vlang'
-goto :error
-
-
-:error
-echo fail
-exit /b 1
+if exist "v.exe" (
+	echo V has been successfully built
+) else (
+	echo v.exe was not generated - Create an issue at 'https://github.com/vlang'
+	exit /b 1
+)
