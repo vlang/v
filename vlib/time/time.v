@@ -11,9 +11,9 @@ const (
 )
 
 #include <time.h>
-#include <unistd.h> // sleep
 
 $if !windows {
+#include <unistd.h> // sleep	
 #include <sys/time.h>
 //#include <sys/wait.h>
 /// ^^^^ including this makes the windows build fail.

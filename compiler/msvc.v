@@ -408,9 +408,12 @@ pub fn (v mut V) cc_msvc() {
 
 	// println('$cmd')
 
-	_ := os.exec(cmd) or {
+	res := os.exec(cmd) or {
 		println(err)
 		panic('msvc error')
+	}
+	if res.exit_code != 0 {
+		panic(res.output)
 	}
 	// println(res)
 	// println('C OUTPUT:')
