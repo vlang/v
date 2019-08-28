@@ -33,6 +33,7 @@ if %ERRORLEVEL% GEQ 1 (
     exit /b 1
 )
 
+echo Building v.v...
 v2.exe -o v.exe compiler
 if %ERRORLEVEL% GEQ 1 (
 	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
