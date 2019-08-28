@@ -20,7 +20,7 @@ echo fetch v_win.c
 curl -O https://raw.githubusercontent.com/vlang/vc/master/v_win.c
 
 echo build v_win.c with msvc
-cl.exe /w /volatile:ms /D_UNICODE /DUNICODE /D_BOOTSTRAP_NO_UNICODE_STREAM /Fo.v_win.c.obj /O2 /MD v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /DEBUG:NONE /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+cl.exe /w /we4013 /volatile:ms /D_UNICODE /DUNICODE /D_BOOTSTRAP_NO_UNICODE_STREAM /Fo.v_win.c.obj /O2 /MD v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /DEBUG:NONE /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
 
 if %ERRORLEVEL% GEQ 1 (
    goto :compileerror
