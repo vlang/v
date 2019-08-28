@@ -491,8 +491,8 @@ fn key_to_type_cat(tok Token) TypeCategory {
 fn (p mut Parser) struct_decl() {
 	// V can generate Objective C for integration with Cocoa
 	// `[interface:ParentInterface]`
-	is_objc := p.attr.starts_with('interface')
-	objc_parent := if is_objc { p.attr.right(10) } else { '' }
+	//is_objc := p.attr.starts_with('interface')
+	//objc_parent := if is_objc { p.attr.right(10) } else { '' }
 	// interface, union, struct
 	is_interface := p.tok == .key_interface
 	is_union := p.tok == .key_union
@@ -527,17 +527,9 @@ fn (p mut Parser) struct_decl() {
 	if p.pass == .decl && p.table.known_type(name) {
 		p.error('`$name` redeclared')
 	}
-	// Generate type definitions
-	if is_objc {
-		p.gen_type('@interface $name : $objc_parent { @public')
-	}
-	else {
-		// type alias is generated later
-		if !is_c {
-			kind := if is_union {'union'} else {'struct'}
-			p.gen_typedef('typedef $kind $name $name;')
-			p.gen_type('$kind $name {')
-		}
+	if !is_c {
+		kind := if is_union {'union'} else {'struct'}
+		p.gen_typedef('typedef $kind $name $name;')
 	}
 	// Register the type
 	mut typ := p.table.find_type(name)
@@ -634,10 +626,6 @@ fn (p mut Parser) struct_decl() {
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {
 			p.next()
-			p.gen_type('_Atomic ')
-		}
-		if !is_c {
-			p.gen_type(p.table.cgen_name_type_pair(field_name, field_type) + ';')
 		}
 		// [ATTR]
 		mut attr := ''
@@ -665,17 +653,6 @@ fn (p mut Parser) struct_decl() {
 	}
 
 	p.check(.rcbr)
-	if !is_c {
-		if !did_gen_something {
-			p.gen_type('EMPTY_STRUCT_DECLARATION };')
-			p.fgenln('')
-		} else {
-			p.gen_type('}; ')
-		}
-	}
-	if is_objc {
-		p.gen_type('@end')
-	}
 	p.fgenln('\n')
 }
 
@@ -2790,7 +2767,7 @@ fn (p mut Parser) array_init() string {
 		// Due to a tcc bug, the length needs to be specified.
 		// GCC crashes if it is.
 		cast := if p.pref.ccompiler == 'tcc' { '($typ[$i])' } else { '($typ[])' }
-		p.cgen.set_placeholder(new_arr_ph, 
+		p.cgen.set_placeholder(new_arr_ph,
 			'$new_arr($i, $i, sizeof($typ), $cast { ')
 		//}
 	}
@@ -3352,7 +3329,7 @@ fn (p mut Parser) switch_statement() {
 	p.returns = false // only get here when no default, so return is not guaranteed
 }
 
-// Returns typ if used as expession 
+// Returns typ if used as expession
 fn (p mut Parser) match_statement(is_expr bool) string {
 	p.check(.key_match)
 	p.cgen.start_tmp()
@@ -3367,7 +3344,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	mut i := 0
 	mut all_cases_return := true
 
-	// stores typ of resulting variable 
+	// stores typ of resulting variable
 	mut res_typ := ''
 
 	defer {
@@ -3375,8 +3352,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	}
 
 	for p.tok != .rcbr {
-		if p.tok == .key_else { 
-			p.check(.key_else) 
+		if p.tok == .key_else {
+			p.check(.key_else)
 			p.check(.arrow)
 
 			// unwrap match if there is only else
@@ -3461,7 +3438,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.gen(') || (')
 			}
 
-			if typ == 'string' { 
+			if typ == 'string' {
 				// TODO: use tmp variable
 				// p.gen('string_eq($tmp_var, ')
 				p.gen('string_eq($tmp_var, ')

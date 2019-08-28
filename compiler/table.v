@@ -44,6 +44,7 @@ enum AccessMod {
 }
 
 enum TypeCategory {
+	builtin
 	struct_
 	func
 	interface_ // 2
@@ -900,4 +901,13 @@ fn (fit &FileImportTable) is_aliased(mod string) bool {
 
 fn (fit &FileImportTable) resolve_alias(alias string) string {
 	return fit.imports[alias]
+}
+
+fn (t &Type) contains_field_type(typ string) bool {
+	for field in t.fields {
+		if field.typ == typ {
+			return true
+		}
+	}
+	return false
 }

@@ -256,12 +256,6 @@ fn (v mut V) compile() {
 	(v.pref.build_mode == .build && v.dir.contains('/ui'))) {
 		cgen.genln('id defaultFont = 0; // main.v')
 	}
-	// TODO remove ugly .c include once V has its own json parser
-	// Embed cjson either in embedvlib or in json.o
-	if (imports_json && v.pref.build_mode == .embed_vlib) ||
-	(v.pref.build_mode == .build && v.out_name.contains('json.o')) {
-		//cgen.genln('#include "cJSON.c" ')
-	}
 	// We need the cjson header for all the json decoding user will do in default mode
 	if v.pref.build_mode == .default_mode {
 		if imports_json {
@@ -300,7 +294,8 @@ fn (v mut V) compile() {
 	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
 	d.writeln(cgen.includes.join_lines())
 	d.writeln(cgen.typedefs.join_lines())
-	d.writeln(cgen.types.join_lines())
+	//d.writeln(cgen.types.join_lines())
+	d.writeln(v.c_type_definitions())
 	d.writeln('\nstring _STR(const char*, ...);\n')
 	d.writeln('\nstring _STR_TMP(const char*, ...);\n')
 	d.writeln(cgen.fns.join_lines())
@@ -655,7 +650,7 @@ fn new_v(args[]string) *V {
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
-  
+
 	mut dir := args.last()
 	if args.contains('run') {
 		dir = get_all_after(joined_args, 'run', '')
