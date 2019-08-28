@@ -325,7 +325,7 @@ fn pclose(f *FILE) int {
 		return C._pclose(f)
 	}
 	$else {
-		return C.pclose(f)
+		return C.pclose(f) / 256 // WEXITSTATUS()
 	}
 }
 
@@ -349,7 +349,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, strlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)/256
+	exit_code := pclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}
@@ -509,19 +509,13 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(malloc(max*2))
-		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-		if h_input == INVALID_HANDLE_VALUE {
-			panic('get_raw_line() error getting input handle.')
-		}
-		mut nr_chars := 0
-		C.ReadConsole(h_input, buf, max, &nr_chars, 0)
-		if nr_chars == 0 {
-			return ''
-		}
-		return string_from_wide2(buf, nr_chars)
-	}
+        maxlinechars := 256
+        buf := &u16(malloc(maxlinechars*2))
+        res := int( C.fgetws(buf, maxlinechars, C.stdin ) )
+        len := int(  C.wcslen(buf) )
+        if 0 != res { return string_from_wide2( buf, len ) }
+        return ''
+    }
 	$else {
 		//u64 is used because C.getline needs a size_t as second argument
 		//Otherwise, it would cause a valgrind warning and may be dangerous

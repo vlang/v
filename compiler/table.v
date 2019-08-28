@@ -102,10 +102,44 @@ const (
 		'error',
 		'malloc',
 		'calloc',
-		'char',
 		'free',
 		'panic',
-		'register'
+
+		// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
+		'auto',
+		'break',
+		'case',
+		'char',
+		'const',
+		'continue',
+		'default',
+		'do',
+		'double',
+		'else',
+		'enum',
+		'extern',
+		'float',
+		'for',
+		'goto',
+		'if',
+		'inline',
+		'int',
+		'long',
+		'register',
+		'restrict',
+		'return',
+		'short',
+		'signed',
+		'sizeof',
+		'static',
+		'struct',
+		'switch',
+		'typedef',
+		'union',
+		'unsigned',
+		'void',
+		'volatile',
+		'while',
 	]
 
 )
@@ -497,10 +531,6 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	}
 	// Todo void* allows everything right now
 	if got=='void*' || expected=='void*' {// || got == 'cvoid' || expected == 'cvoid' {
-		// if !p.builtin_mod {
-		if p.pref.is_play {
-			return false
-		}
 		return true
 	}
 	// TODO only allow numeric consts to be assigned to bytes, and
@@ -536,20 +566,18 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// NsColor* return 0
-	if !p.pref.is_play {
-		if expected.ends_with('*') && got == 'int' {
-			return true
-		}
-		// if got == 'T' || got.contains('<T>') {
-		// return true
-		// }
-		// if expected == 'T' || expected.contains('<T>') {
-		// return true
-		// }
-		// Allow pointer arithmetic
-		if expected=='void*' && got=='int' {
-			return true
-		}
+	if expected.ends_with('*') && got == 'int' {
+		return true
+	}
+	// if got == 'T' || got.contains('<T>') {
+	// return true
+	// }
+	// if expected == 'T' || expected.contains('<T>') {
+	// return true
+	// }
+	// Allow pointer arithmetic
+	if expected=='void*' && got=='int' {
+		return true
 	}
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')

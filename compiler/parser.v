@@ -64,6 +64,7 @@ mut:
 	builtin_mod    bool
 	vh_lines       []string
 	inside_if_expr bool
+	inside_unwrapping_match_statement bool
 	is_struct_init bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
@@ -685,7 +686,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		enum_name = p.prepend_mod(enum_name)
 	}
 	// Skip empty enums
-	if enum_name != 'int' {
+	if enum_name != 'int' && !p.first_pass() {
 		p.cgen.typedefs << 'typedef int $enum_name;'
 	}
 	p.check(.lcbr)
@@ -1019,6 +1020,7 @@ fn (p mut Parser) statements() string {
 
 fn (p mut Parser) statements_no_rcbr() string {
 	p.cur_fn.open_scope()
+
 	if !p.inside_if_expr {
 		p.genln('')
 	}
@@ -1049,6 +1051,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	}
 	//p.fmt_dec()
 	// println('close scope line=$p.scanner.line_nr')
+
 	p.close_scope()
 	return last_st_typ
 }
@@ -1152,8 +1155,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 		p.if_st(false, 0)
 	case Token.key_for:
 		p.for_st()
-	case Token.key_switch, Token.key_match:
+	case Token.key_switch:
 		p.switch_statement()
+	case Token.key_match:
+		p.match_statement(false)
 	case Token.key_mut, Token.key_static:
 		p.var_decl()
 	case Token.key_return:
@@ -1448,11 +1453,6 @@ fn (p mut Parser) name_expr() string {
 	deref := p.tok == .mul
 	if ptr || deref {
 		p.next()
-	}
-	if deref {
-		if p.pref.is_play && !p.builtin_mod {
-			p.error('dereferencing is temporarily disabled on the playground, will be fixed soon')
-		}
 	}
 	mut name := p.lit
 	p.fgen(name)
@@ -1831,7 +1831,6 @@ struct $typ.name {
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
-		// if p.pref.is_play && field.access_mod ==.private && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `arr.data`
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
@@ -2409,6 +2408,9 @@ fn (p mut Parser) factor() string {
 	case Token.key_if:
 		typ = p.if_st(true, 0)
 		return typ
+	case Token.key_match:
+		typ = p.match_statement(true)
+		return typ
 	default:
 		if p.pref.is_verbose || p.pref.is_debug {
 			next := p.peek()
@@ -2635,6 +2637,7 @@ fn (p mut Parser) map_init() string {
 		p.gen('new_map_init($i, sizeof($val_type), ' +
 			'(string[]){ $keys_gen }, ($val_type []){ $vals_gen } )')
 		typ := 'map_$val_type'
+		p.register_map(typ)
 		return typ
 	}
 	p.next()
@@ -3347,6 +3350,186 @@ fn (p mut Parser) switch_statement() {
 		i++
 	}
 	p.returns = false // only get here when no default, so return is not guaranteed
+}
+
+// Returns typ if used as expession 
+fn (p mut Parser) match_statement(is_expr bool) string {
+	p.check(.key_match)
+	p.cgen.start_tmp()
+	typ := p.bool_expression()
+	expr := p.cgen.end_tmp()
+
+	// is it safe to use p.cgen.insert_before ???
+	tmp_var := p.get_tmp()
+	p.cgen.insert_before('$typ $tmp_var = $expr;')
+
+	p.check(.lcbr)
+	mut i := 0
+	mut all_cases_return := true
+
+	// stores typ of resulting variable 
+	mut res_typ := ''
+
+	defer {
+		p.check(.rcbr)
+	}
+
+	for p.tok != .rcbr {
+		if p.tok == .key_else { 
+			p.check(.key_else) 
+			p.check(.arrow)
+
+			// unwrap match if there is only else
+			if i == 0 {
+				if is_expr {
+					// statements are dissallowed (if match is expression) so user cant declare variables there and so on
+
+					// allow braces is else
+					got_brace := p.tok == .lcbr
+					if got_brace {
+						p.check(.lcbr)
+					}
+
+					p.gen('( ')
+
+					res_typ = p.bool_expression()
+
+					p.gen(' )')
+
+					// allow braces in else
+					if got_brace {
+						p.check(.rcbr)
+					}
+
+					return res_typ
+				} else {
+					p.match_parse_statement_branch()
+					p.returns = all_cases_return && p.returns
+					return ''
+				}
+			}
+
+			if is_expr {
+				// statements are dissallowed (if match is expression) so user cant declare variables there and so on
+				p.gen(':(')
+
+				// allow braces is else
+				got_brace := p.tok == .lcbr
+				if got_brace {
+					p.check(.lcbr)
+				}
+
+				p.check_types(p.bool_expression(), res_typ)
+
+				// allow braces in else
+				if got_brace {
+					p.check(.rcbr)
+				}
+				
+				p.gen(strings.repeat(`)`, i+1))
+
+				return res_typ
+			} else {
+				p.genln('else // default:')
+				p.match_parse_statement_branch()
+				p.returns = all_cases_return && p.returns
+				return ''
+			}
+		}
+
+		if i > 0 {
+			if is_expr {
+				p.gen(': (')
+			} else {
+				p.gen('else ')
+			}
+		} else if is_expr {
+			p.gen('(')
+		}
+
+		if is_expr {
+			p.gen('(')
+		} else {
+			p.gen('if (')
+		}
+		
+		// Multiple checks separated by comma
+		mut got_comma := false
+
+		for {
+			if got_comma {
+				p.gen(') || (')
+			}
+
+			if typ == 'string' { 
+				// TODO: use tmp variable
+				// p.gen('string_eq($tmp_var, ')
+				p.gen('string_eq($tmp_var, ')
+			}
+			else {
+				// TODO: use tmp variable
+				// p.gen('($tmp_var == ')
+				p.gen('($tmp_var == ')
+			}
+
+			p.expected_type = typ
+			p.check_types(p.bool_expression(), typ)
+			p.expected_type = ''
+
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+			got_comma = true
+		}
+		p.gen(') )')
+		
+		p.check(.arrow)
+		
+		// statements are dissallowed (if match is expression) so user cant declare variables there and so on	
+		if is_expr {
+			p.gen('? (')
+
+			// braces are required for now
+			p.check(.lcbr)
+			
+			if i == 0 {
+				// on the first iteration we set value of res_typ
+				res_typ = p.bool_expression()
+			} else {
+				// later on we check that the value is of res_typ type
+				p.check_types(p.bool_expression(), res_typ)
+			}
+
+			// braces are required for now
+			p.check(.rcbr)
+
+			p.gen(')')
+		}
+		else {
+			p.match_parse_statement_branch()
+			// p.gen(')')
+		}
+
+		all_cases_return = all_cases_return && p.returns
+		i++
+	}
+
+	if is_expr {
+		// we get here if no else found, ternary requires "else" branch
+		p.error('Match expession requires "else"')
+	}
+
+	p.returns = false // only get here when no default, so return is not guaranteed
+
+	return ''
+}
+
+fn (p mut Parser) match_parse_statement_branch(){
+	p.check(.lcbr)
+	
+	p.genln('{ ')
+	p.statements()
 }
 
 fn (p mut Parser) assert_statement() {

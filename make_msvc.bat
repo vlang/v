@@ -28,18 +28,19 @@ if %ERRORLEVEL% GEQ 1 (
 
 echo rebuild from source
 v2.exe -os msvc -o v.exe compiler
-
 if %ERRORLEVEL% GEQ 1 (
    goto :compileerror
 )
+
+dir v_win.c v2.exe v.exe
 
 del .v_win.c.obj
 del v_win.c
 del v2.exe
 
 echo Success
+goto :done
 
-exit
 
 :nomsvc
 echo Cannot find an msvc installation
@@ -49,6 +50,11 @@ goto :error
 echo Failed to compile - Create an issue at 'https://github.com/vlang' and tag '@emily33901'!
 goto :error
 
+
 :error
-echo Exiting from error
+echo fail
 exit /b 1
+
+
+:done
+echo pass

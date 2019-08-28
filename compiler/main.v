@@ -83,7 +83,6 @@ mut:
 	is_prod        bool // use "-O2"
 	is_verbose     bool // print extra information with `v.log()`
 	obfuscate      bool // `v -obf program.v`, renames functions to "f_XXX"
-	is_play        bool // playground mode
 	is_repl        bool
 	is_run         bool
 	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
@@ -121,6 +120,10 @@ fn main() {
 	}
 	if 'get' in args {
 		println('use `v install` to install modules from vpm.vlang.io')
+		return
+	}
+	if 'symlink' in args {
+		create_symlink()
 		return
 	}
 	if args.join(' ').contains(' test v') {
@@ -239,9 +242,6 @@ fn (v mut V) compile() {
 	}
 	// Main pass
 	cgen.pass = Pass.main
-	if v.pref.is_play {
-		cgen.genln('#define VPLAY (1) ')
-	}
 	if v.pref.is_debug {
 		cgen.genln('#define VDEBUG (1) ')
 	}
@@ -616,7 +616,11 @@ fn (v mut V) add_v_files_to_compile() {
 }
 
 fn get_arg(joined_args, arg, def string) string {
-	key := '-$arg '
+	return get_all_after(joined_args, '-$arg', def)
+}
+
+fn get_all_after(joined_args, arg, def string) string {
+	key := '$arg '
 	mut pos := joined_args.index(key)
 	if pos == -1 {
 		return def
@@ -648,17 +652,18 @@ fn (v &V) log(s string) {
 }
 
 fn new_v(args[]string) *V {
-	mut dir := args.last()
-	if args.contains('run') {
-		dir = args[2]
-	}
-	// println('new compiler "$dir"')
-	if args.len < 2 {
-		dir = ''
-	}
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
+  
+	mut dir := args.last()
+	if args.contains('run') {
+		dir = get_all_after(joined_args, 'run', '')
+	}
+	if args.len < 2 {
+		dir = ''
+	}
+	// println('new compiler "$dir"')
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''
@@ -784,7 +789,6 @@ fn new_v(args[]string) *V {
 		is_test: is_test
 		is_script: is_script
 		is_so: args.contains('-shared')
-		is_play: args.contains('play')
 		is_prod: args.contains('-prod')
 		is_verbose: args.contains('-verbose')
 		is_debuggable: args.contains('-g') // -debuggable implys debug
@@ -804,9 +808,6 @@ fn new_v(args[]string) *V {
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
-	}
-	if pref.is_play {
-		println('Playground')
 	}
 	if pref.is_so {
 		out_name_c = out_name.all_after('/') + '_shared_lib.c'
@@ -940,5 +941,12 @@ fn test_v() {
 		}
 		os.rm( tmpcfilepath )
 	}
+}
+
+fn create_symlink() {
+	vexe := os.executable()
+	link_path := '/usr/local/bin/v'
+	os.system('ln -sf $vexe $link_path')
+	println('symlink "$link_path" has been created')
 }
 

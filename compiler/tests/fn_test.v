@@ -76,6 +76,7 @@ fn test_mut_array() {
 	mut nums := [1, 2, 3] 
 	modify_array(mut nums) 
 	//assert nums.len == 4 
+	println(nums)
 	assert nums[0] == 20 
 	assert nums[1] == 4
 	assert nums[2] == 6 

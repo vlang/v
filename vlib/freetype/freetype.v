@@ -13,6 +13,9 @@ import (
 	gl
 )
 
+#flag windows -I @VROOT/thirdparty/freetype/include
+#flag windows -L @VROOT/thirdparty/freetype/win64
+
 #flag darwin -I/usr/local/include/freetype2
 #flag darwin -I/opt/local/include/freetype2
 #flag -lfreetype
@@ -43,10 +46,6 @@ struct Character {
 	advance    u32
 }
 
-struct Face {
-	cobj voidptr
-}
-
 [typedef]
 struct C.FT_Library {
 	
@@ -66,7 +65,7 @@ struct Context {
 	chars     []Character
 	utf_runes []string
 	utf_chars []Character
-	face      Face
+	face      C.FT_Face
 	scale     int // retina = 2 , normal = 1
 }
 
@@ -92,11 +91,14 @@ struct C.FT_Face {
 	glyph *Glyph
 }
 
-fn ft_load_char(_face Face, code i64) Character {
-	//println('ftload_char( code=$code)')
-	//C.printf('face=%p\n', _face)
-	face := FT_Face(_face.cobj)
-	ret := int(C.FT_Load_Char(face, code, C.FT_LOAD_RENDER))
+fn C.FT_Load_Char(voidptr, i64, int) int
+
+fn ft_load_char(face C.FT_Face, code i64) Character {
+	//println('\nftload_char( code=$code)')
+	//C.printf('face=%p\n', face)
+	//C.printf('cobj=%p\n', _face.cobj)
+	ret := C.FT_Load_Char(face, code, C.FT_LOAD_RENDER)
+	//println('ret=$ret')
 	if ret != 0 {
 		println('freetype: failed to load glyph (utf32 code=$code, ' +
 			'error code=$ret)')
@@ -188,11 +190,8 @@ pub fn new_context(cfg gg.Cfg) *Context {
 	// Gen texture
 	// Load first 128 characters of ASCII set
 	mut chars := []Character{}
-	f := Face {
-		cobj: &face
-	}
 	for c := 0; c < 128; c++ {
-		mut ch := ft_load_char(f, i64(c))
+		mut ch := ft_load_char(face, i64(c))
 		// s := utf32_to_str(uint(0x043f))
 		// s := 'п'
 		// ch = ft_load_char(f, s.utf32_code())
@@ -224,14 +223,15 @@ pub fn new_context(cfg gg.Cfg) *Context {
 		vao: vao
 		vbo: vbo
 		chars: chars
-		face: f
+		face: face
 	}
-	ctx.init_utf8_runes()
+	//ctx.init_utf8_runes()
 	return ctx
 }
 
+/*
 // A dirty hack to implement rendering of cyrillic letters.
-// All UTF-8 must be supported.
+// All UTF-8 must be supported. update: no longer needed
 fn (ctx mut Context) init_utf8_runes() {
 	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
 	print('init utf8 runes: ')
@@ -245,6 +245,7 @@ fn (ctx mut Context) init_utf8_runes() {
 		ctx.utf_chars << ch
 	}
 }
+*/
 
 pub fn (ctx mut Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	//utext := text.ustring_tmp()
@@ -292,12 +293,14 @@ fn (ctx mut Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 		_rune := utext.at(i)
 		// println('$i => $_rune')
 		mut ch := Character{}
+		mut found := false
 		if _rune.len == 1 {
 			idx := _rune[0]
 			if idx < 0 || idx >= ctx.chars.len {
 				println('BADE RUNE $_rune')
 				continue
 			}
+			found = true
 			ch = ctx.chars[_rune[0]]
 		}
 		else if _rune.len > 1 {
@@ -306,18 +309,21 @@ fn (ctx mut Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 				rune_j := ctx.utf_runes[j]
 				if rune_j==_rune {
 					ch = ctx.utf_chars[j]
+					found = true
 					break
 				}
 			}
 		}
-		if ch.size.x == 0 && _rune.len > 1{
+		// A new Unicode character. Load it and cache it.
+		if !found && _rune.len > 0 && _rune[0] > 32 {
 			c := _rune[0]
-			println('cant draw rune "$_rune" code=$c, loading')
-			continue
+			//println('cant draw rune "$_rune" code=$c, loading')
+			//continue
 			ch = ft_load_char(ctx.face, _rune.utf32_code())
-			println('done loading')
+			//println('done loading')
 			ctx.utf_runes << _rune
 			ctx.utf_chars << ch
+			//exit(1)
 			// continue
 		}
 		xpos := x + f32(ch.bearing.x) * 1

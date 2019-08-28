@@ -27,6 +27,7 @@ fn (f mut Fetcher) fetch() {
 	for {
 		f.mu.lock()
 		if f.cursor >= f.ids.len {
+			f.mu.unlock()
 			return
 		}
 		id := f.ids[f.cursor]

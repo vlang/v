@@ -28,8 +28,8 @@ fn test_flag_parsing() {
 			}
 		}
 		arg := if lowest != -1 {
-			rest = base.right(lowest).trim_space().trim(`,`)
-			base.left(lowest).trim_space().trim(`,`)
+			rest = base.right(lowest).trim_space().trim(',')
+			base.left(lowest).trim_space().trim(',')
 		} else {
 			rest = ''
 			base.trim_space()

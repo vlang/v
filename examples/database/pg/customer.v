@@ -1,3 +1,5 @@
+/*
+
 module main
 
 import pg
@@ -52,5 +54,6 @@ fn main() {
 	db.insert(nc)
   */
 
-
 }
+
+*/
