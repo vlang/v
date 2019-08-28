@@ -40,7 +40,7 @@ fn (v mut V) cc() {
 		a << '-g'
 	}
 
-	if v.pref.is_debug {
+	if v.pref.is_debug && os.user_os() != 'windows'{
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 
