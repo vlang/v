@@ -233,7 +233,11 @@ fn (c mut V) cc_windows_cross() {
 	winroot := '$ModPath/winroot'
 	if !os.dir_exists(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
-		println('"$winroot" not found. Download it from $winroot_url and save in $ModPath')
+		println('"$winroot" not found.')
+		println('Download it from $winroot_url and save it in $ModPath')
+		println('Unzip it afterwards.\n')
+		println('winroot.zip contains all library and header files needed '+
+			'to cross-compile for Windows.')
 		exit(1)	
 	}
 	mut obj_name := c.out_name
