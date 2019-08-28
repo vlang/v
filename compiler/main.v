@@ -4,9 +4,11 @@
 
 module main
 
-import os
-import time
-import strings
+import (
+	os
+	time
+	strings
+)
 
 const (
 	Version = '0.1.18'
@@ -298,7 +300,6 @@ fn (v mut V) compile() {
 	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
 	d.writeln(cgen.includes.join_lines())
 	d.writeln(cgen.typedefs.join_lines())
-	//d.writeln(cgen.types.join_lines())
 	d.writeln(v.c_type_definitions())
 	d.writeln('\nstring _STR(const char*, ...);\n')
 	d.writeln('\nstring _STR_TMP(const char*, ...);\n')
