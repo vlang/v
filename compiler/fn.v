@@ -834,12 +834,12 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls. `println(777)` => `printf("%d\n", 777)`
 		// (If we don't check for void, then V will compile `println(func())`)
-		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
+		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'void' {
 			T := p.table.find_type(typ)
 			$if !windows {
 				fmt := p.typ_to_fmt(typ, 0)
 				if fmt != '' {
-					p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '\\n", '))
 					continue
 				}
 			}

@@ -132,7 +132,7 @@ const (
 	CReserved = [
 		'exit',
 		'unix',
-		'print',
+		//'print',
 		// 'ok',
 		'error',
 		'malloc',
