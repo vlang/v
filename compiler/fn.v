@@ -860,7 +860,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				if T.fields.len > 0 {
 					mut index := p.cgen.cur_line.len - 1
-					for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
+					for index > 0 && p.cgen.cur_line[index - 1] != `(` { index-- }
 					name := p.cgen.cur_line.right(index + 1)
 					if name == '}' {
 						p.error(error_msg)
