@@ -101,7 +101,7 @@ mut args := ''
 	// else {
 	a << '-o $v.out_name'
 	if os.dir_exists(v.out_name) {
-		panic('\'$v.out_name\' is a directory')
+		cerror('\'$v.out_name\' is a directory')
 	}
 	if v.os == .mac {
 		a << '-x objective-c'
@@ -143,12 +143,12 @@ mut args := ''
 		println(cmd)
 	}
 	ticks := time.ticks()
-	res := os.exec(cmd) or { panic(err) }
+	res := os.exec(cmd) or { cerror(err) return }
 	if res.exit_code != 0 {
 
 		if res.exit_code == 127 {
 			// the command could not be found by the system
-			panic('C compiler error, while attempting to run: \n' +
+			cerror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
 				'-----------------------------------------------------------\n' +
@@ -159,12 +159,15 @@ mut args := ''
 		if v.pref.is_debug {
 			println(res.output)
 		} else {
-			print(res.output.limit(200))
-			if res.output.len > 200 {
+			partial_output := res.output.limit(200).trim_right('\r\n')
+			print(partial_output)
+			if res.output.len > partial_output.len {
 				println('...\n(Use `v -debug` to print the entire error message)\n')
+			}else{
+				println('')
 			}
 		}
-		panic('C error. This should never happen. ' +
+		cerror('C error. This should never happen. ' +
 			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	diff := time.ticks() - ticks
@@ -187,7 +190,8 @@ mut args := ''
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			panic(err)
+			cerror(err)
+			return
 		}
 		println(ress.output)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')

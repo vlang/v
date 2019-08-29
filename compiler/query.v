@@ -23,7 +23,7 @@ fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string
 			}else if paramtype == 'string' {
 				params_gen += '${qprefix}params[$i] = ${param}.str;\n'
 			}else{
-				panic('orm: only int and string variable types are supported in queries')
+				cerror('orm: only int and string variable types are supported in queries')
 			}
 		}
 	}
