@@ -800,7 +800,8 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		}
 	}
-	panic('function $fn_name not found')
+	cerror('function $fn_name not found')
+	return []string
 }
 
 // `foo<Bar>()`
@@ -892,7 +893,7 @@ fn (fit mut FileImportTable) register_import(mod string) {
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports {
-		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -903,7 +904,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			panic('module $mod can only be imported internally by libs.')
+			cerror('module $mod can only be imported internally by libs.')
 		}
 	}
 	fit.imports[alias] = mod

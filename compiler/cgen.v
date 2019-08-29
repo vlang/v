@@ -263,7 +263,8 @@ fn build_thirdparty_obj_file(flag string) {
 	cc := find_c_compiler()
 	cc_thirdparty_options := find_c_compiler_thirdparty_options()
 	res := os.exec('$cc $cc_thirdparty_options -c -o $obj_path $cfiles') or {
-		panic(err)
+		cerror(err)
+		return
 	}
 	println(res.output)
 }
@@ -279,7 +280,8 @@ fn os_name_to_ifdef(name string) string {
 		case 'dragonfly': return '__DragonFly__'
 		case 'msvc': return '_MSC_VER'
 	}
-	panic('bad os ifdef name "$name"')
+	cerror('bad os ifdef name "$name"')
+	return ''
 }
 
 fn platform_postfix_to_ifdefguard(name string) string {
@@ -290,7 +292,8 @@ fn platform_postfix_to_ifdefguard(name string) string {
     case '_lin.v': return '#ifdef __linux__'
     case '_mac.v': return '#ifdef __APPLE__'
   }
-  panic('bad platform_postfix "$name"')
+  cerror('bad platform_postfix "$name"')
+  return ''
 }
 
 // C struct definitions, ordered

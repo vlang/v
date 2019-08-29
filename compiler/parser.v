@@ -265,7 +265,8 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v') or {
-					panic('failed to create fmt.v')
+					cerror('failed to create fmt.v')
+					return
 				}
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
@@ -462,7 +463,8 @@ fn key_to_type_cat(tok Token) TypeCategory {
 	case Token.key_union: return TypeCategory.union_
 	//Token.key_ => return .interface_
 	}
-	panic('')
+	cerror('Unknown token: $tok')
+	return TypeCategory.builtin
 }
 
 // also unions and interfaces

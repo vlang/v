@@ -143,17 +143,21 @@ fn main() {
 			//println('Building vget...')
 			os.chdir(vroot + '/tools')
 			vgetcompilation := os.exec('$vexec -o $vget vget.v') or {
-				panic(err)
+				cerror(err)
+				return
 			}
 			if vgetcompilation.exit_code != 0 {
-				panic( vgetcompilation.output )
+				cerror( vgetcompilation.output )
+				return
 			}
 		}
 		vgetresult := os.exec('$vget ' + names.join(' ')) or {
-			panic(err)
+			cerror(err)
+			return
 		}
 		if vgetresult.exit_code != 0 {
-			panic( vgetresult.output )
+			cerror( vgetresult.output )
+			return
 		}
 		return
 	}
@@ -221,7 +225,7 @@ fn main() {
 fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
 	if os.user_os() != 'windows' && v.os == .msvc {
-		panic('Cannot build with msvc on ${os.user_os()}')
+		cerror('Cannot build with msvc on ${os.user_os()}')
 	}
 
 	mut cgen := v.cgen
@@ -451,9 +455,9 @@ fn (v V) run_compiled_executable_and_exit() {
 fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		panic('$dir doesn\'t exist')
+		cerror('$dir doesn\'t exist')
 	} else if !os.dir_exists(dir) {
-		panic('$dir isn\'t a directory')
+		cerror('$dir isn\'t a directory')
 	}
 	mut files := os.ls(dir)
 	if v.pref.is_verbose {
@@ -541,7 +545,7 @@ fn (v mut V) add_v_files_to_compile() {
 			import_path := '$ModPath/vlib/$mod_path'
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				panic('cannot import module $mod (no .v files in "$import_path").')
+				cerror('cannot import module $mod (no .v files in "$import_path").')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -559,7 +563,7 @@ fn (v mut V) add_v_files_to_compile() {
 		import_path := v.find_module_path(mod)
 		vfiles := v.v_files_from_dir(import_path)
 		if vfiles.len == 0 {
-			panic('cannot import module $mod (no .v files in "$import_path").')
+			cerror('cannot import module $mod (no .v files in "$import_path").')
 		}
 		// Add all imports referenced by these libs
 		for file in vfiles {
@@ -577,7 +581,7 @@ fn (v mut V) add_v_files_to_compile() {
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
-		panic('Import cycle detected.')
+		cerror('Import cycle detected.')
 	}
 	// add imports in correct order
 	for mod in deps_resolved.imports() {
@@ -876,18 +880,21 @@ fn update_v() {
 	println('Updating V...')
 	vroot := os.dir(os.executable())
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
-		panic(err)
+		cerror(err)
+		return
 	}
 	println(s.output)
 	$if windows {
 		os.mv('$vroot/v.exe', '$vroot/v_old.exe')
 		s2 := os.exec('$vroot/make.bat') or {
-			panic(err)
+			cerror(err)
+			return
 		}
 		println(s2.output)
 	} $else {
 		s2 := os.exec('make -C "$vroot"') or {
-			panic(err)
+			cerror(err)
+			return
 		}
 		println(s2.output)
 	}
@@ -909,7 +916,8 @@ fn test_v() {
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
 		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
-			panic('failed on $file')
+			cerror('failed on $file')
+			return
 		}
 		if r.exit_code != 0 {
 			println('failed `$file` (\n$r.output\n)')
@@ -926,7 +934,8 @@ fn test_v() {
 		tmpcfilepath := file.replace('.v', '.tmp.c')
 		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
-			panic('failed on $file')
+			cerror('failed on $file')
+			return
 		}
 		if r.exit_code != 0 {
 			println('failed `$file` (\n$r.output\n)')
@@ -945,3 +954,8 @@ fn create_symlink() {
 	println('symlink "$link_path" has been created')
 }
 
+pub fn cerror(s string) {
+	println('V error: $s')
+	os.flush_stdout()
+	exit(1)
+}

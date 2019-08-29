@@ -28,11 +28,12 @@ mut:
 
 fn new_scanner(file_path string) *Scanner {
 	if !os.file_exists(file_path) {
-		panic('"$file_path" doesn\'t exist')
+		cerror('"$file_path" doesn\'t exist')
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		panic('scanner: failed to open "$file_path"')
+		cerror('scanner: failed to open "$file_path"')
+		return 0
 	}
 
 	// BOM check
