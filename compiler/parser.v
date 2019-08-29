@@ -584,8 +584,9 @@ fn (p mut Parser) struct_decl() {
 		// if p.tok == .plus {
 		// p.next()
 		// }
+		// Check if reserved name
+		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 		// Check dups
-		field_name := p.check_name()
 		if field_name in names {
 			p.error('duplicate field `$field_name`')
 		}
@@ -1741,7 +1742,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}')
 	//}
-	has_field := p.table.type_has_field(typ, field_name)
+	has_field := p.table.type_has_field(typ, p.table.var_cgen_name(field_name))
 	mut has_method := p.table.type_has_method(typ, field_name)
 	// generate `.str()`
 	if !has_method && field_name == 'str' && typ.name.starts_with('array_') {
@@ -1771,18 +1772,19 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	}
 	// field
 	if has_field {
-		field := p.table.find_field(typ, field_name)
+		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
+		field := p.table.find_field(typ, struct_field)
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec
 		is_vi := p.fileis('vid')
 		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
-			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)\n' +
+			p.error('cannot modify immutable field `$struct_field` (type `$typ.name`)\n' +
 				'declare the field with `mut:`
 
 struct $typ.name {
   mut:
-	$field_name $field.typ
+	$struct_field $field.typ
 }
 ')
 		}
@@ -1792,16 +1794,16 @@ struct $typ.name {
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
-			p.error('cannot refer to unexported field `$field_name` (type `$typ.name`)')
+			p.error('cannot refer to unexported field `$struct_field` (type `$typ.name`)')
 		}
 		// if field.access_mod ==.public && p.peek() == .assign && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `str.len = 0`
 		if field.access_mod == .public && !p.builtin_mod && p.mod != typ.mod {
 			if !field.is_mut && !p.pref.translated && modifying {
-				p.error('cannot modify public immutable field `$field_name` (type `$typ.name`)')
+				p.error('cannot modify public immutable field `$struct_field` (type `$typ.name`)')
 			}
 		}
-		p.gen(dot + field_name)
+		p.gen(dot + struct_field)
 		p.next()
 		return field.typ
 	}
@@ -2811,7 +2813,7 @@ p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	peek := p.peek()
 	if peek == .colon || p.tok == .rcbr {
 		for p.tok != .rcbr {
-			field := p.check_name()
+			field := if typ != 'Option' { p.table.var_cgen_name( p.check_name() ) } else { p.check_name() }
 			if !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
