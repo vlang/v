@@ -4,9 +4,6 @@
 
 module http
 
-import strings
-import net.urllib
-
 
 #flag windows -I @VROOT/thirdparty/vschannel
 #flag -l ws2_32
@@ -14,15 +11,19 @@ import net.urllib
  
 #include "vschannel.c"
 
+fn C.new_tls_context() C.TlsContext
+
 fn init_module() {}
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
-	C.vschannel_init()
+	mut ctx := C.new_tls_context()
+	C.vschannel_init(&ctx)
+
 	mut buff := malloc(C.vsc_init_resp_buff_size)
 	addr := host_name
 	sdata := req.build_request_headers(method, host_name, path)
-	length := int(C.request(port, addr.str, sdata.str, &buff))
+	length := int(C.request(&ctx, port, addr.str, sdata.str, &buff))
 
-	C.vschannel_cleanup()
+	C.vschannel_cleanup(&ctx)
 	return parse_response(string(buff, length))
 }
