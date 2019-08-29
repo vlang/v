@@ -10,15 +10,15 @@ type MHANDLE voidptr
 
 struct Mutex {
 mut:
-	mx           MHANDLE // mutex handle
-	state        State   // mutex state
-	cycle_wait   i64     // waiting cycles (implemented only with atomic)
-	cycle_woken  i64     // woken cycles    ^
-	reader_sem   u32     // reader semarphone
-	writer_sem   u32     // writer semaphones
+	mx           MHANDLE    // mutex handle
+	state        MutexState // mutex state
+	cycle_wait   i64        // waiting cycles (implemented only with atomic)
+	cycle_woken  i64        // woken cycles    ^
+	reader_sem   u32        // reader semarphone
+	writer_sem   u32        // writer semaphones
 }
 
-enum State {
+enum MutexState {
 	broken
 	waiting
 	released
@@ -50,9 +50,9 @@ pub fn (m mut Mutex) lock() {
 	}
 	state := C.WaitForSingleObject(m.mx, INFINITE) // infinite wait
 	m.state = match state {
-		WAIT_ABANDONED => { State.abandoned }
-		WAIT_OBJECT_0  => { State.waiting }
-		else           => { State.broken }
+		WAIT_ABANDONED => { MutexState.abandoned }
+		WAIT_OBJECT_0  => { MutexState.waiting }
+		else           => { MutexState.broken }
 	}
 }
 
