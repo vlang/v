@@ -2536,8 +2536,7 @@ fn (p mut Parser) string_expr() {
 	// println: don't allocate a new string, just print	it.
 	$if !windows {
 		cur_line := p.cgen.cur_line.trim_space()
-		if cur_line.contains('println (') && p.tok != .plus &&
-			!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
+		if cur_line == 'println (' && p.tok != .plus {
 			p.cgen.resetln(cur_line.replace('println (', 'printf('))
 			p.gen('$format\\n$args')
 			return
