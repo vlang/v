@@ -3125,7 +3125,7 @@ fn (p mut Parser) for_st() {
 		expr := p.cgen.end_tmp()
 		p.genln('$typ $tmp = $expr ;')
 		pad := if is_arr { 6 } else  { 4 }
-		var_typ := typ.right(pad)
+		var_typ := if is_str { 'byte' } else { typ.right(pad) }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		// Register temp var
 		val_var := Var {
@@ -3134,7 +3134,7 @@ fn (p mut Parser) for_st() {
 			ptr: typ.contains('*')
 		}
 		p.register_var(val_var)
-		if is_arr || is_str {
+		if is_arr {
 			i_var := Var {
 				name: i
 				typ: 'int'
@@ -3162,6 +3162,18 @@ fn (p mut Parser) for_st() {
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`)
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);')
+		}
+		else if is_str {
+			i_var := Var {
+				name: i
+				typ: 'byte'
+				is_mut: true
+				is_changed: true
+			}
+			p.register_var(i_var)
+			p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
+			p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
+			p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
 		}
 	}
 	// `for val in vals`
