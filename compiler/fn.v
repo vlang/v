@@ -494,6 +494,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	}
 	p.check_unused_variables()
 	p.cur_fn = EmptyFn
+	p.returns = false
 	if !is_generic {
 		p.genln('}')
 	}
