@@ -12,12 +12,6 @@ const (
 
 #include <time.h>
 
-$if !windows {
-#include <unistd.h> // sleep	
-//#include <sys/wait.h>
-/// ^^^^ including this makes the windows build fail.
-}
-
 struct Time {
 pub:
 	year   int
