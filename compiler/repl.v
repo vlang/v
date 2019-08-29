@@ -22,7 +22,7 @@ fn (r mut Repl) checks(line string) bool {
 	was_indent := r.indent > 0
 
 	for i := 0; i < line.len; i++ {
-		if line[i] == `\'` && (i != 0 && line[i - 1] != `\\`) {
+		if line[i] == `\'` && (i == 0 || line[i - 1] != `\\`) {
 			in_string = !in_string
 		}
 		if line[i] == `{` && !in_string {
