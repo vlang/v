@@ -2750,7 +2750,7 @@ fn (p mut Parser) array_init() string {
 		// GCC crashes if it is.
 		cast := if p.pref.ccompiler == 'tcc' { '($typ[$i])' } else { '($typ[])' }
 		p.cgen.set_placeholder(new_arr_ph,
-			'$new_arr($i, $i, sizeof($typ), $cast { 0 ')
+			'$new_arr($i, $i, sizeof($typ), $cast { ')
 		//}
 	}
 	typ = 'array_$typ'
