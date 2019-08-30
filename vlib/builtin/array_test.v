@@ -214,6 +214,7 @@ struct Test2 {
 
 struct Test {
 	a string
+mut:
 	b []Test2
 }
 

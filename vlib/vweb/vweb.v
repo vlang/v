@@ -20,6 +20,7 @@ pub:
 	conn net.Socket 
 	form map[string]string 
 	// TODO Response 
+mut:
 	headers []string  // response headers 
 } 
 
