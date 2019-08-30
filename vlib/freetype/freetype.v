@@ -63,10 +63,11 @@ struct Context {
 	line_vbo  u32
 	vbo       u32
 	chars     []Character
-	utf_runes []string
-	utf_chars []Character
 	face      C.FT_Face
 	scale     int // retina = 2 , normal = 1
+mut:
+	utf_runes []string
+	utf_chars []Character
 }
 
 struct C.Bitmap {
