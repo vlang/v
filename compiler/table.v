@@ -47,6 +47,7 @@ mut:
 
 struct GenTable {
 	fn_name string
+mut:
 	types []string
 }
 
@@ -412,6 +413,7 @@ fn (t mut Type) add_field(name, typ string, is_mut bool, attr string, access_mod
 		typ: typ
 		is_mut: is_mut
 		attr: attr
+		parent_fn: t.name   // Name of the parent type
 		access_mod: access_mod
 	}
 	t.fields << v

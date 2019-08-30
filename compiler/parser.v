@@ -34,6 +34,7 @@ mut:
 	mod            string
 	inside_const   bool
 	expr_var       Var
+	fields         []Var
 	assigned_type  string
 	expected_type  string
 	tmp_cnt        int
@@ -1404,6 +1405,7 @@ fn (p mut Parser) bterm() string {
 
 // also called on *, &, @, . (enum)
 fn (p mut Parser) name_expr() string {
+	defer { p.fields = []Var }
 	ph := p.cgen.add_placeholder()
 	// amp
 	ptr := p.tok == .amp
@@ -1772,19 +1774,25 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	// field
 	if has_field {
 		field := p.table.find_field(typ, field_name)
+		p.fields << field
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
-		modifying := next.is_assign() || next == .inc || next == .dec
+		modifying := next.is_assign() || next == .inc || next == .dec ||
+			(field.typ.starts_with('array_') && next == .left_shift)
 		is_vi := p.fileis('vid')
-		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
-			p.error('cannot modify immutable field `$field_name` (type `$typ.name`)\n' +
-				'declare the field with `mut:`
+		if !p.builtin_mod && !p.pref.translated && modifying && !is_vi {
+			for _, f in p.fields {
+				if !f.is_mut {
+					p.error('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
+							'declare the field with `mut:`
 
-struct $typ.name {
+struct $f.parent_fn {
   mut:
-	$field_name $field.typ
+	$f.name $f.typ
 }
 ')
+				}
+			}
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
@@ -1796,9 +1804,11 @@ struct $typ.name {
 		}
 		// if field.access_mod ==.public && p.peek() == .assign && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `str.len = 0`
-		if field.access_mod == .public && !p.builtin_mod && p.mod != typ.mod {
-			if !field.is_mut && !p.pref.translated && modifying {
-				p.error('cannot modify public immutable field `$field_name` (type `$typ.name`)')
+		if !p.pref.translated && modifying && !p.builtin_mod && p.mod != typ.mod {
+			for _, f in p.fields {
+				if !f.is_mut && f.access_mod == .public {
+					p.error('cannot modify public immutable field `$f.name` (type `$f.parent_fn`)')
+				}
 			}
 		}
 		p.gen(dot + field_name)

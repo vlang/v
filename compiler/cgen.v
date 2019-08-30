@@ -11,20 +11,20 @@ import time
 struct CGen {
 	out          os.File
 	out_path     string
-	typedefs     []string
-	type_aliases []string
-	includes     []string
 	//types        []string
-	thread_args  []string
 	thread_fns   []string
-	consts       []string
-	fns          []string
-	so_fns       []string
-	consts_init  []string
 	//buf          strings.Builder
 	is_user      bool
 mut:
 	lines        []string
+	typedefs     []string
+	type_aliases []string
+	includes     []string
+	thread_args  []string
+	consts       []string
+	fns          []string
+	so_fns       []string
+	consts_init  []string
 	pass         Pass
 	nogen           bool
 	tmp_line        string
