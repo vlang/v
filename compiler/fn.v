@@ -494,6 +494,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	}
 	p.check_unused_variables()
 	p.cur_fn = EmptyFn
+	p.returns = false
 	if !is_generic {
 		p.genln('}')
 	}
@@ -833,12 +834,12 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls. `println(777)` => `printf("%d\n", 777)`
 		// (If we don't check for void, then V will compile `println(func())`)
-		if i == 0 && f.name == 'println' && typ != 'string' && typ != 'void' {
+		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'void' {
 			T := p.table.find_type(typ)
 			$if !windows {
 				fmt := p.typ_to_fmt(typ, 0)
 				if fmt != '' {
-					p.cgen.resetln(p.cgen.cur_line.replace('println (', '/*opt*/printf ("' + fmt + '\\n", '))
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '\\n", '))
 					continue
 				}
 			}
@@ -859,7 +860,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				if T.fields.len > 0 {
 					mut index := p.cgen.cur_line.len - 1
-					for index > 0 && p.cgen.cur_line[index] != ` ` { index-- }
+					for index > 0 && p.cgen.cur_line[index - 1] != `(` { index-- }
 					name := p.cgen.cur_line.right(index + 1)
 					if name == '}' {
 						p.error(error_msg)

@@ -585,8 +585,9 @@ fn (p mut Parser) struct_decl() {
 		// if p.tok == .plus {
 		// p.next()
 		// }
+		// Check if reserved name
+		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 		// Check dups
-		field_name := p.check_name()
 		if field_name in names {
 			p.error('duplicate field `$field_name`')
 		}
@@ -1743,7 +1744,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}')
 	//}
-	has_field := p.table.type_has_field(typ, field_name)
+	has_field := p.table.type_has_field(typ, p.table.var_cgen_name(field_name))
 	mut has_method := p.table.type_has_method(typ, field_name)
 	// generate `.str()`
 	if !has_method && field_name == 'str' && typ.name.starts_with('array_') {
@@ -1773,7 +1774,8 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	}
 	// field
 	if has_field {
-		field := p.table.find_field(typ, field_name)
+		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
+		field := p.table.find_field(typ, struct_field)
 		p.fields << field
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
@@ -1800,7 +1802,7 @@ struct $f.parent_fn {
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
-			p.error('cannot refer to unexported field `$field_name` (type `$typ.name`)')
+			p.error('cannot refer to unexported field `$struct_field` (type `$typ.name`)')
 		}
 		// if field.access_mod ==.public && p.peek() == .assign && !p.builtin_mod && p.mod != typ.mod {
 		// Don't allow `str.len = 0`
@@ -1811,7 +1813,7 @@ struct $f.parent_fn {
 				}
 			}
 		}
-		p.gen(dot + field_name)
+		p.gen(dot + struct_field)
 		p.next()
 		return field.typ
 	}
@@ -2546,8 +2548,7 @@ fn (p mut Parser) string_expr() {
 	// println: don't allocate a new string, just print	it.
 	$if !windows {
 		cur_line := p.cgen.cur_line.trim_space()
-		if cur_line.contains('println (') && p.tok != .plus &&
-			!cur_line.contains('string_add') && !cur_line.contains('eprintln') {
+		if cur_line == 'println (' && p.tok != .plus {
 			p.cgen.resetln(cur_line.replace('println (', 'printf('))
 			p.gen('$format\\n$args')
 			return
@@ -2822,7 +2823,7 @@ p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	peek := p.peek()
 	if peek == .colon || p.tok == .rcbr {
 		for p.tok != .rcbr {
-			field := p.check_name()
+			field := if typ != 'Option' { p.table.var_cgen_name( p.check_name() ) } else { p.check_name() }
 			if !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
@@ -3135,7 +3136,7 @@ fn (p mut Parser) for_st() {
 		expr := p.cgen.end_tmp()
 		p.genln('$typ $tmp = $expr ;')
 		pad := if is_arr { 6 } else  { 4 }
-		var_typ := typ.right(pad)
+		var_typ := if is_str { 'byte' } else { typ.right(pad) }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		// Register temp var
 		val_var := Var {
@@ -3144,7 +3145,7 @@ fn (p mut Parser) for_st() {
 			ptr: typ.contains('*')
 		}
 		p.register_var(val_var)
-		if is_arr || is_str {
+		if is_arr {
 			i_var := Var {
 				name: i
 				typ: 'int'
@@ -3172,6 +3173,18 @@ fn (p mut Parser) for_st() {
 			// TODO don't call map_get() for each key, fetch values while traversing
 			// the tree (replace `map_keys()` above with `map_key_vals()`)
 			p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);')
+		}
+		else if is_str {
+			i_var := Var {
+				name: i
+				typ: 'byte'
+				is_mut: true
+				is_changed: true
+			}
+			p.register_var(i_var)
+			p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
+			p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
+			p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
 		}
 	}
 	// `for val in vals`

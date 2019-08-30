@@ -217,15 +217,6 @@ fn (p mut Parser) print_prof_counters() string {
 	return res.join(';\n')
 }
 
-/*
-fn (p mut Parser) gen_type(s string) {
-	if !p.first_pass() {
-		return
-	}
-	p.cgen.types << s
-}
-*/
-
 fn (p mut Parser) gen_typedef(s string) {
 	if !p.first_pass() {
 		return
@@ -297,24 +288,38 @@ fn platform_postfix_to_ifdefguard(name string) string {
 }
 
 // C struct definitions, ordered
+// Sort the types, make sure types that are referenced by other types
+// are added before them.
 fn (v mut V) c_type_definitions() string {
-	mut types := v.table.types
-	// Sort the types, make sure types that are referenced by other types
-	// are added before them.
-	for i in 0 .. types.len {
-		for j in 0 .. i {
-			t := types[i]
-			if types[j].contains_field_type(t.name) {
-				types[i] = types[j]
-				types[j] = t
-				continue
-			}
-			
-		}
-	}
-	// Generate C code
-	mut sb := strings.new_builder(10)
+	mut types := []Type // structs that need to be sorted
+	mut top_types := []Type // builtin types and types that only have primitive fields
 	for t in v.table.types {
+		if !t.name[0].is_capital() {
+			top_types << t
+			continue
+		}
+		mut only_builtin_fields := true
+		for field in t.fields {
+			if field.typ[0].is_capital() {
+				only_builtin_fields = false
+				break
+			}
+		}
+		if only_builtin_fields {
+			top_types << t
+			continue
+		}
+		types << t
+	}
+	sort_structs(mut types)
+	// Generate C code
+	return types_to_c(top_types, v.table) + '\n/*----*/\n' +
+		types_to_c(types, v.table)
+}
+	
+fn types_to_c(types []Type, table &Table) string {
+	mut sb := strings.new_builder(10)
+	for t in types {
 		if t.cat != .union_ && t.cat != .struct_ {
 			continue
 		}
@@ -327,14 +332,38 @@ fn (v mut V) c_type_definitions() string {
 		kind := if t.cat == .union_ {'union'} else {'struct'}
 		sb.writeln('$kind $t.name {')
 		for field in t.fields {
-			sb.writeln(v.table.cgen_name_type_pair(field.name,
+			sb.writeln(table.cgen_name_type_pair(field.name,
 				field.typ) + ';')
 		}
 		sb.writeln('};\n')
 		//if is_objc {
-			//p.gen_type('@end')
+			//sb.writeln('@end')
 		//}
 	}
 	return sb.str()
+}
+
+// pretty inefficient algo, works fine with N < 1000 (TODO optimize)
+fn sort_structs(types mut []Type) {
+	mut cnt := 0
+	for i := 0; i < types.len; i++ {
+		for j in 0 .. i {
+			t := types[i]
+			//t2 := types[j]
+			// check if any of the types before `t` reference `t`
+			if types[j].contains_field_type(t.name) {
+				//println('moving up: $t.name len=$types.len')
+				types.insert(j, t)
+				types.delete(i+1)
+				i = 0 // Start from scratch
+				cnt++
+				if cnt > 500 {
+					println('infinite type loop (perhaps you have a recursive struct `$t.name`?)')
+					exit(1)
+				}
+				continue
+			}
+		}
+	}
 }
 

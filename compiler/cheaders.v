@@ -14,6 +14,8 @@ CommonCHeaders = '
 #ifndef _WIN32
 #include <ctype.h>
 #include <locale.h> // tolower
+#include <sys/time.h>
+#include <unistd.h> // sleep	
 #endif
 
 #ifdef __APPLE__

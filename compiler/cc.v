@@ -10,6 +10,11 @@ import (
 )
 
 fn (v mut V) cc() {
+	// Just create a c file and exit
+	if v.out_name.ends_with('.c') {
+		os.mv(v.out_name_c, v.out_name)
+		exit(0)
+	}
 	// Cross compiling for Windows
 	if v.os == .windows {
 		$if !windows {
@@ -133,10 +138,6 @@ mut args := ''
 	}
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
-	if v.out_name.ends_with('.c') {
-		os.mv( v.out_name_c, v.out_name )
-		exit(0)
-	}
 	// Run
 	if v.pref.show_c_cmd || v.pref.is_verbose {
 		println('\n==========')

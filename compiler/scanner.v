@@ -146,6 +146,9 @@ fn (s mut Scanner) ident_dec_number() string {
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
+		if !s.inside_string && s.pos < s.text.len && s.text[s.pos] == `f` {
+			s.error('no `f` is needed for floats')
+		}
 	}
 
 	// scan exponential part
