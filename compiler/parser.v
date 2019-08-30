@@ -1944,6 +1944,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if close_bracket {
 			p.gen(']/*r$typ $v.is_mut*/')
 		}
+		p.expr_var = v
 	}
 	// TODO move this from index_expr()
 	// TODO if p.tok in ...

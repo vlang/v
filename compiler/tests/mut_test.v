@@ -1,3 +1,13 @@
+struct A {
+pub mut:
+	v []int
+}
+
+struct B {
+pub mut:
+	a []A
+}
+
 fn foo(b int, a mut []int) {
 	a[0] = 7 
 	a << 4 
@@ -17,4 +27,26 @@ fn test_mut() {
 
 	//mut b := mut a
 	//b = 10 
+}
+
+fn test_mut_2() {
+	zero := 0
+
+	mut b := B{}
+	b.a << A{}
+
+	b.a[0].v = [9, 8, 7]
+
+	b.a[0].v << 6
+	b.a[zero].v << 5
+
+	b.a[0].v[zero] = 3
+	b.a[0].v[b.a[zero].v[zero]] += 1b.a[0].v[b.a[0].v[zero]] += 1
+
+	assert b.a[0].v.len == 5
+	assert b.a[0].v[0] == 3
+	assert b.a[0].v[1] == 8
+	assert b.a[0].v[2] == 7
+	assert b.a[0].v[3] == 8
+	assert b.a[0].v[4] == 5
 } 

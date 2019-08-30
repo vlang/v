@@ -53,7 +53,7 @@ fn (f mut Fn) close_scope() {
 	f.defer_text = f.defer_text.left(f.scope_level + 1)
 }
 
-fn (f &Fn) mark_var_used(v Var) {
+fn (f mut Fn) mark_var_used(v Var) {
 	for i, vv in f.local_vars {
 		if vv.name == v.name {
 			//mut ptr := &f.local_vars[i]
@@ -64,7 +64,7 @@ fn (f &Fn) mark_var_used(v Var) {
 	}
 }
 
-fn (f &Fn) mark_var_changed(v Var) {
+fn (f mut Fn) mark_var_changed(v Var) {
 	for i, vv in f.local_vars {
 		if vv.name == v.name {
 			//mut ptr := &f.local_vars[i]
@@ -75,7 +75,7 @@ fn (f &Fn) mark_var_changed(v Var) {
 	}
 }
 
-fn (f &Fn) known_var(name string) bool {
+fn (f mut Fn) known_var(name string) bool {
 	v := f.find_var(name)
 	return v.name.len > 0
 }
