@@ -944,7 +944,7 @@ fn test_v() {
 		} else {
 			println('OK')
 		}
-		os.rm( tmpcfilepath )
+		os.rm(tmpcfilepath)
 	}
 }
 
