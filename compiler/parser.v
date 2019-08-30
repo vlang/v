@@ -2715,6 +2715,7 @@ fn (p mut Parser) array_init() string {
 	if no_alloc {
 		p.next()
 	}
+
 	// [1,2,3]!! => [3]int{1,2,3}
 	is_fixed_size := p.tok == .not
 	if is_fixed_size {
@@ -2724,10 +2725,10 @@ fn (p mut Parser) array_init() string {
 			// If we are defining a const array, we don't need to specify the type:
 			// `a = {1,2,3}`, not `a = (int[]) {1,2,3}`
 			if p.inside_const {
-				p.cgen.set_placeholder(new_arr_ph, '{ 0 ')
+				p.cgen.set_placeholder(new_arr_ph, '{')
 			}
 			else {
-				p.cgen.set_placeholder(new_arr_ph, '($typ[]) { 0 ')
+				p.cgen.set_placeholder(new_arr_ph, '($typ[]) {')
 			}
 		}
 		return '[$i]$typ'
@@ -2739,7 +2740,13 @@ fn (p mut Parser) array_init() string {
 	if no_alloc {
 		new_arr += '_no_alloc'
 	}
-	p.gen(' })')
+
+	if i == 0 {
+		p.gen(' 0 })')
+	} else {
+		p.gen(' })')
+	}
+
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[$vals.len]) $c_arr );')
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
