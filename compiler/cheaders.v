@@ -115,7 +115,6 @@ typedef map map_string;
 //#define ALLOC_INIT(type, ...) (type *)memdup((type[]){ __VA_ARGS__ }, sizeof(type))
 
 //================================== GLOBALS =================================*/
-//int V_ZERO = 0;
 byteptr g_str_buf;
 int load_so(byteptr);
 void reload_so();

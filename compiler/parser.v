@@ -2686,17 +2686,8 @@ fn (p mut Parser) array_init() string {
 		if i == 1 && p.tok == .semicolon {
 			p.check_space(.semicolon)
 			val := p.cgen.cur_line.right(pos)
-			// p.cgen.cur_line = ''
 			p.cgen.resetln(p.cgen.cur_line.left(pos))
-			// Special case for zero
-			if false && val.trim_space() == '0' {
-				p.gen('array_repeat( & V_ZERO, ')
-			}
-			else {
-				tmp := p.get_tmp()
-				p.cgen.insert_before('$typ $tmp = $val;')
-				p.gen('array_repeat(&$tmp, ')
-			}
+			p.gen('array_repeat(& ($typ[]){ $val }, ')
 			p.check_types(p.bool_expression(), 'int')
 			p.gen(', sizeof($typ) )')
 			p.check(.rsbr)
