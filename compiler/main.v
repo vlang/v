@@ -311,7 +311,7 @@ fn (v mut V) compile() {
 		d.writeln(v.prof_counters())
 	}
 	dd := d.str()
-	cgen.lines.set(defs_pos, dd)// TODO `def.str()` doesn't compile
+	cgen.lines[defs_pos] = dd// TODO `def.str()` doesn't compile
 
   v.generate_main()
 
