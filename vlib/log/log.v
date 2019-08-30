@@ -54,7 +54,7 @@ pub fn (l Log) error(s string){
         case 'terminal':
             f := term.red('E')
             t := time.now()
-            println('[$f ${t.format()}] $s')
+            println('[$f ${t.format_ss()}] $s')
 
         default:
             l.log_file(s, 'E')
@@ -68,7 +68,7 @@ pub fn (l Log) warn(s string){
         case 'terminal':
             f := term.yellow('W')
             t := time.now()
-            println('[$f ${t.format()}] $s')
+            println('[$f ${t.format_ss()}] $s')
 
         default:
             l.log_file(s, 'W')
@@ -82,7 +82,7 @@ pub fn (l Log) info(s string){
         case 'terminal':
             f := term.white('I')
             t := time.now()
-            println('[$f ${t.format()}] $s')
+            println('[$f ${t.format_ss()}] $s')
 
         default:
             l.log_file(s, 'I')
@@ -96,7 +96,7 @@ pub fn (l Log) debug(s string){
         case 'terminal':
             f := term.blue('D')
             t := time.now()
-            println('[$f ${t.format()}] $s')
+            println('[$f ${t.format_ss()}] $s')
 
         default:
             l.log_file(s, 'D')
