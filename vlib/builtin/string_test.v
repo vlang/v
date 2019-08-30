@@ -400,3 +400,21 @@ fn test_title() {
 	s.to_lower()
 	assert s.title() == 'Hello World' 
 } 
+
+fn test_for_loop() {
+	mut i := 0
+	s := 'abcd'
+
+	for c in s {
+		assert c == s[i]
+		i++
+	}
+}
+
+fn test_for_loop_two() {
+	s := 'abcd'
+
+	for i, c in s {
+		assert c == s[i]
+	}
+}

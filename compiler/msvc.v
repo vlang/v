@@ -200,7 +200,8 @@ fn find_msvc() ?MsvcResult {
 		}
 	}
 	$else {
-		panic('Cannot find msvc on this OS')
+		cerror('Cannot find msvc on this OS')
+		return error('msvc not found')
 	}
 }
 
@@ -215,7 +216,8 @@ pub fn (v mut V) cc_msvc() {
 		if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 			os.rm('.$v.out_name_c')
 		}
-		panic('Cannot find MSVC on this OS.')
+		cerror('Cannot find MSVC on this OS.')
+		return
 	}
 
 	out_name_obj := v.out_name_c + '.obj'
@@ -226,7 +228,7 @@ pub fn (v mut V) cc_msvc() {
 	// -w: no warnings
 	// 2 unicode defines
 	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	mut a := ['-w', '/volatile:ms', '/D_UNICODE', '/DUNICODE', '/Fo$out_name_obj']
+	mut a := ['-w', '/we4013', '/volatile:ms', '/D_UNICODE', '/DUNICODE', '/Fo$out_name_obj']
 
 	if v.pref.is_prod {
 		a << '/O2'
@@ -349,7 +351,7 @@ pub fn (v mut V) cc_msvc() {
 			// by the compiler
 			if fl == '-l' {
 				if arg.ends_with('.dll') {
-					panic('MSVC cannot link against a dll (`#flag -l $arg`)')
+					cerror('MSVC cannot link against a dll (`#flag -l $arg`)')
 				}
 
 				// MSVC has no method of linking against a .dll
@@ -408,9 +410,13 @@ pub fn (v mut V) cc_msvc() {
 
 	// println('$cmd')
 
-	_ := os.exec(cmd) or {
+	res := os.exec(cmd) or {
 		println(err)
-		panic('msvc error')
+		cerror('msvc error')
+		return
+	}
+	if res.exit_code != 0 {
+		cerror(res.output)
 	}
 	// println(res)
 	// println('C OUTPUT:')
@@ -455,7 +461,8 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 	println('$cfiles')
 
 	res := os.exec('""$msvc.exe_path\\cl.exe" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path" /D_UNICODE /DUNICODE"') or {
-		panic(err)
+		cerror(err)
+		return
 	}
 	println(res.output)
 }

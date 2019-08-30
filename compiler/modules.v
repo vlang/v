@@ -164,7 +164,7 @@ fn (v &V) find_module_path(mod string) string {
 	if !os.dir_exists(import_path) {
 		import_path = '$ModPath/$mod_path'
 		if !os.dir_exists(import_path){
-			panic('module "$mod" not found')
+			cerror('module "$mod" not found')
 		} 
 	}
 	return import_path 

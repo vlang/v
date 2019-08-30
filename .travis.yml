@@ -46,8 +46,8 @@ script:
       ./v.exe test v
       ##echo "Running only the repl tests directly"
       ##./v.exe ./compiler/tests/repl/repl_test.v
-      echo "Testing msvc bootstrapping"
-      ./make_msvc.bat
+      echo "Testing gcc bootstrapping"
+      ./make.bat -gcc
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then

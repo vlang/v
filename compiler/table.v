@@ -22,6 +22,9 @@ mut:
 	obfuscate    bool
 }
 
+
+
+
 struct GenTable {
 	fn_name string
 	types []string
@@ -44,6 +47,7 @@ enum AccessMod {
 }
 
 enum TypeCategory {
+	builtin
 	struct_
 	func
 	interface_ // 2
@@ -52,6 +56,30 @@ enum TypeCategory {
 	c_struct // 5
 	c_typedef
 }
+
+struct Var {
+mut:
+	typ             string
+	name            string
+	is_arg          bool
+	is_const        bool
+	args            []Var // function args
+	attr            string //  [json] etc
+	is_mut          bool
+	is_alloc        bool
+	ptr             bool
+	ref             bool
+	parent_fn       string // Variables can only be defined in functions
+	mod             string // module where this var is stored
+	line_nr         int
+	access_mod      AccessMod
+	is_global       bool // __global (translated from C only)
+	is_used         bool
+	is_changed      bool
+	scope_level     int
+}
+
+
 
 struct Type {
 mut:
@@ -71,6 +99,13 @@ mut:
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
 }
+
+struct TypeNode {
+	mut:
+	next &TypeNode
+	typ Type
+}
+
 
 // For debugging types
 fn (t Type) str() string {
@@ -97,7 +132,7 @@ const (
 	CReserved = [
 		'exit',
 		'unix',
-		'print',
+		//'print',
 		// 'ok',
 		'error',
 		'malloc',
@@ -776,7 +811,8 @@ fn (t mut Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		}
 	}
-	panic('function $fn_name not found')
+	cerror('function $fn_name not found')
+	return []string
 }
 
 // `foo<Bar>()`
@@ -868,7 +904,7 @@ fn (fit mut FileImportTable) register_import(mod string) {
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	if alias in fit.imports {
-		panic('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -879,7 +915,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			panic('module $mod can only be imported internally by libs.')
+			cerror('module $mod can only be imported internally by libs.')
 		}
 	}
 	fit.imports[alias] = mod
@@ -900,4 +936,16 @@ fn (fit &FileImportTable) is_aliased(mod string) bool {
 
 fn (fit &FileImportTable) resolve_alias(alias string) string {
 	return fit.imports[alias]
+}
+
+fn (t &Type) contains_field_type(typ string) bool {
+	if !t.name[0].is_capital() {
+		return false
+	}
+	for field in t.fields {
+		if field.typ == typ {
+			return true
+		}
+	}
+	return false
 }

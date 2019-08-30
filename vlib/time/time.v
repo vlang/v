@@ -11,13 +11,6 @@ const (
 )
 
 #include <time.h>
-#include <unistd.h> // sleep
-
-$if !windows {
-#include <sys/time.h>
-//#include <sys/wait.h>
-/// ^^^^ including this makes the windows build fail.
-}
 
 struct Time {
 pub:
@@ -367,10 +360,10 @@ pub fn (t Time) relative() string {
 }
 
 pub fn day_of_week(y, m, d int) int {
-	// Sakomotho's algorithm is explained here: 
+	// Sakomotho's algorithm is explained here:
 	// https://stackoverflow.com/a/6385934
 	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
-	mut sy := y 
+	mut sy := y
 	if (m < 3) {
 		sy = sy - 1
 	}

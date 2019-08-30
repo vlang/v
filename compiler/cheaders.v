@@ -14,6 +14,8 @@ CommonCHeaders = '
 #ifndef _WIN32
 #include <ctype.h>
 #include <locale.h> // tolower
+#include <sys/time.h>
+#include <unistd.h> // sleep	
 #endif
 
 #ifdef __APPLE__
@@ -23,6 +25,8 @@ CommonCHeaders = '
 
 #ifdef __linux__
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
+#pragma weak backtrace
+#pragma weak backtrace_symbols_fd
 #endif
 
 #ifdef __linux__
