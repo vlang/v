@@ -2724,10 +2724,10 @@ fn (p mut Parser) array_init() string {
 			// If we are defining a const array, we don't need to specify the type:
 			// `a = {1,2,3}`, not `a = (int[]) {1,2,3}`
 			if p.inside_const {
-				p.cgen.set_placeholder(new_arr_ph, '{ ')
+				p.cgen.set_placeholder(new_arr_ph, '{ 0 ')
 			}
 			else {
-				p.cgen.set_placeholder(new_arr_ph, '($typ[]) { ')
+				p.cgen.set_placeholder(new_arr_ph, '($typ[]) { 0 ')
 			}
 		}
 		return '[$i]$typ'
@@ -2750,7 +2750,7 @@ fn (p mut Parser) array_init() string {
 		// GCC crashes if it is.
 		cast := if p.pref.ccompiler == 'tcc' { '($typ[$i])' } else { '($typ[])' }
 		p.cgen.set_placeholder(new_arr_ph,
-			'$new_arr($i, $i, sizeof($typ), $cast { ')
+			'$new_arr($i, $i, sizeof($typ), $cast { 0 ')
 		//}
 	}
 	typ = 'array_$typ'
