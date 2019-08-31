@@ -130,13 +130,26 @@ fn (r Readline) analyse_control() Action {
   switch c {
     case `[`:
       sequence := r.read_char()
-      println('seq: $sequence')
       switch sequence {
         case `C`: return Action.move_cursor_right
         case `D`: return Action.move_cursor_left
         case `E`: return Action.history_next
         case `F`: return Action.history_previous
-        // TODO : CTRL+Left and CTRL+Right
+        case `1`: return r.analyse_extended_control()
+      }
+  }
+  return Action.nothing
+}
+
+fn (r Readline) analyse_extended_control() Action {
+  r.read_char() // Removes ;
+  c := r.read_char()
+  switch c {
+    case `5`:
+      direction := r.read_char()
+      switch direction {
+        case `C`: return Action.move_cursor_word_right
+        case `D`: return Action.move_cursor_word_left
       }
   }
   return Action.nothing
@@ -148,6 +161,12 @@ fn (r mut Readline) execute(a Action, c byte) bool {
     case Action.insert_character: r.insert_character(c)
     case Action.commit_line: return r.commit_line()
     case Action.delete_left: r.delete_character()
+    case Action.move_cursor_left: r.move_cursor_left()
+    case Action.move_cursor_right: r.move_cursor_right()
+    case Action.move_cursor_begining: r.move_cursor_begining()
+    case Action.move_cursor_end: r.move_cursor_end()
+    case Action.move_cursor_word_left: r.move_cursor_word_left()
+    case Action.move_cursor_word_right: r.move_cursor_word_right()
   }
   return false
 }
@@ -178,7 +197,7 @@ fn (r mut Readline) insert_character(c byte) {
   if r.cursor == r.current.len {
     print(c.str())
   } else {
-    //
+    r.refresh_line()
   }
 }
 
@@ -194,6 +213,59 @@ fn (r mut Readline) delete_character() {
 
 // Add a line break then stops the main loop
 fn (r mut Readline) commit_line() bool {
-  r.insert_character(`\n`)
+  r.current = r.current + '\n'
   return true
+}
+
+// TODO: Support multiline wrapping
+fn (r mut Readline) move_cursor_left() {
+  if r.cursor > 0 {
+    term.cursor_back(1)
+    r.cursor--
+  }
+}
+
+// TODO: Support multiline wrapping
+fn (r mut Readline) move_cursor_right() {
+  if r.cursor < r.current.len {
+    term.cursor_forward(1)
+    r.cursor++
+  }
+}
+
+// TODO: Support multiline wrapping
+fn (r mut Readline) move_cursor_begining() {
+  term.cursor_back(r.cursor)
+  r.cursor = 0
+}
+
+// TODO: Support multiline wrapping
+fn (r mut Readline) move_cursor_end() {
+  term.cursor_forward(r.current.len - r.cursor)
+  r.cursor = r.current.len
+}
+
+fn (r Readline) is_break_character(c byte) bool {
+  break_characters := ' \t\v\f\a\b\r\n`~!@#$%^&*()-=+[{]}\\|;:\'",<.>/?'
+  return break_characters.contains(c.str())
+}
+
+// TODO: Support multiline wrapping
+fn (r mut Readline) move_cursor_word_left() {
+  if r.cursor > 0 {
+    initial := r.cursor
+    for ; r.cursor > 0 && r.is_break_character(r.current[r.cursor - 1]); r.cursor-- {}
+    for ; r.cursor > 0 && !r.is_break_character(r.current[r.cursor - 1]); r.cursor-- {}
+    term.cursor_back(initial - r.cursor)
+  }
+}
+
+// TODO: Support multiline wrapping
+fn (r mut Readline) move_cursor_word_right() {
+  if r.cursor < r.current.len {
+    initial := r.cursor
+    for ; r.cursor < r.current.len && r.is_break_character(r.current[r.cursor]); r.cursor++ {}
+    for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor]); r.cursor++ {}
+    term.cursor_forward(r.cursor - initial)
+  }
 }
