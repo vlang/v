@@ -8,6 +8,8 @@
 
 module readline
 
+import term
+
 #include <termios.h>
 
 struct termios {
@@ -20,9 +22,31 @@ mut:
 }
 
 struct Readline {
-pub mut:
+mut:
   is_raw bool
   orig_termios termios
+  current string // Line being edited
+  cursor int // Cursor position
+  overwrite bool
+}
+
+// Defines actions to execute
+enum Action {
+  eof
+  nothing
+  insert_character
+  commit_line
+  delete_left
+  delete_right
+  move_cursor_left
+  move_cursor_right
+  move_cursor_begining
+  move_cursor_end
+  move_cursor_word_left
+  move_cursor_word_right
+  history_previous
+  history_next
+  overwrite
 }
 
 // Toggle raw mode of the terminal by changing its attributes
@@ -62,44 +86,114 @@ pub fn (r Readline) disable_raw_mode() {
 }
 
 // Read single char
+// TODO: Maybe handle UNICODE
 fn (r Readline) read_char() byte {
   return C.getchar()
 }
 
-// Delete character in the string and in the terminal
-fn (r Readline) delete_character(s string, cursor int) string {
-  print('\b \b')
-  return s.left(cursor - 1) + s.right(cursor)
-} 
+// Main function of the readline module
+// Will loop and ingest characters until EOF or Enter
+// Returns the completed line
+pub fn (r mut Readline) read_line() string {
+  r.current = ''
+  r.cursor = 0
 
-pub fn (r Readline) read_line() string {
-  mut s := ''
-  mut cursor := 0
-  
   for {
     c := r.read_char()
-    // Check if ending string
-    if c == `\0` || c == 0x3 || c == 0x4 || c == 255 {
+    a := r.analyse(c)
+    if r.execute(a, c) {
       break
-    }
-    // Check if backspace
-    if c == `\b` || c == 127 {
-      if cursor > 0 {
-        s = r.delete_character(s, cursor)
-        cursor--
-      }
-    } else {
-      // Add new character according to cursor position
-      s = s.left(cursor) + c.str() + s.right(cursor)
-      cursor++
-    }
-    // Check if enter
-    if c == `\n` || c == `\r` {
-      println('')
-      break
-    } else {
-      print(c.str())
     }
   }
-  return s
+  return r.current
+}
+
+fn (r Readline) analyse(c byte) Action {
+  switch c {
+    case `\0`: return Action.eof
+    case 0x3 : return Action.eof // End of Text
+    case 0x4 : return Action.eof // End of Transmission
+    case 255 : return Action.eof
+    case `\n`: return Action.commit_line
+    case `\r`: return Action.commit_line
+    case `\b`: return Action.delete_left // Backspace
+    case 127 : return Action.delete_left // DEL
+    case 27  : return r.analyse_control() // ESC
+    case 1   : return Action.move_cursor_begining // ^A
+    case 5   : return Action.move_cursor_end // ^E
+    default  : return Action.insert_character
+  }
+}
+
+fn (r Readline) analyse_control() Action {
+  c := r.read_char()
+  switch c {
+    case `[`:
+      sequence := r.read_char()
+      println('seq: $sequence')
+      switch sequence {
+        case `C`: return Action.move_cursor_right
+        case `D`: return Action.move_cursor_left
+        case `E`: return Action.history_next
+        case `F`: return Action.history_previous
+        // TODO : CTRL+Left and CTRL+Right
+      }
+  }
+  return Action.nothing
+}
+
+fn (r mut Readline) execute(a Action, c byte) bool {
+  switch a {
+    case Action.eof: return true
+    case Action.insert_character: r.insert_character(c)
+    case Action.commit_line: return r.commit_line()
+    case Action.delete_left: r.delete_character()
+  }
+  return false
+}
+
+// Will redraw the line
+// TODO: Refreshing on wrapped line
+fn (r Readline) refresh_line() {
+  term.cursor_back(r.cursor)
+  term.erase_toend()
+  print(r.current)
+  term.cursor_back(r.current.len - r.cursor)
+}
+
+fn (r mut Readline) insert_character(c byte) {
+  // Small ASCII, to expand
+  if c >= 127 {
+    return
+  }
+  // TODO: Add character if overwrite at end
+  if !r.overwrite {
+    r.current = r.current.left(r.cursor) + c.str() + r.current.right(r.cursor)
+  } else {
+    // Overwriting
+  }
+  r.cursor++
+  // Simply print new character if at end of line
+  // Otherwise refresh the line if cursor != r.current.len
+  if r.cursor == r.current.len {
+    print(c.str())
+  } else {
+    //
+  }
+}
+
+// Removes the character behind cursor.
+fn (r mut Readline) delete_character() {
+  if r.cursor <= 0 {
+    return
+  }
+  r.current = r.current.left(r.cursor - 1) + r.current.right(r.cursor)
+  r.refresh_line()
+  r.cursor--
+}
+
+// Add a line break then stops the main loop
+fn (r mut Readline) commit_line() bool {
+  r.insert_character(`\n`)
+  return true
 }
