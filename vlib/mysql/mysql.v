@@ -1,5 +1,7 @@
 module mysql
 
+#flag linux -I/usr/include/mysql
+
 #flag -lmysqlclient
 #include <mysql.h>
 
