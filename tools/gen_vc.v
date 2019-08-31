@@ -208,7 +208,7 @@ fn (gen_vc mut GenVC) generate() {
 	// cd to gen_vc dir
 	os.chdir(gen_vc.options.work_dir)
 	
-	// if we are running not running in serve (webhook) mode
+	// if we are not running with the --serve flag (webhook server)
 	// rather than deleting and re-downloading the repo each time
 	// first check to see if the local v repo is behind master
 	// if it isn't behind theres no point continuing further
