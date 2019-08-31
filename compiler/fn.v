@@ -185,7 +185,7 @@ fn (p mut Parser) fn_decl() {
 	// is_sig := p.builtin_mod && p.pref.build_mode == default_mode
 	// is_sig := p.pref.build_mode == default_mode && (p.builtin_mod || p.file.contains(LANG_TMP))
 	is_sig := p.is_sig()
-	// println('\n\nfn decl !!is_sig=$is_sig name=$f.name $p.builtin_mod')
+	// println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ')
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -330,15 +330,15 @@ fn (p mut Parser) fn_decl() {
 		// No such type yet? It could be defined later. Create a new type.
 		// struct declaration later will modify it instead of creating a new one.
 		if p.first_pass() && receiver_t.name == '' {
-			// println('fn decl !!!!!!! REG PH $receiver_typ')
-			p.table.register_type2(Type {
+			//println('fn decl ! registering placeholder $receiver_typ')
+			receiver_t = Type {
 				name: receiver_typ.replace('*', '')
 				mod: p.mod
 				is_placeholder: true
-			})
+			}
+			p.table.register_type2(receiver_t)
 		}
-		// f.idx = p.table.fn_cnt
-		receiver_t.add_method(f)
+		p.table.add_method(receiver_t.name, f)
 	}
 	else {
 		// println('register_fn typ=$typ isg=$is_generic')
@@ -852,7 +852,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
 			if !T.has_method('str') {
 				// Arrays have automatic `str()` methods
 				if T.name.starts_with('array_') {
-					p.gen_array_str(mut T)
+					p.gen_array_str(T)
 					p.cgen.set_placeholder(ph, '${typ}_str(')
 					p.gen(')')
 					continue

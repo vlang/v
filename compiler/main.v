@@ -812,7 +812,7 @@ fn new_v(args[]string) *V {
 	if pref.is_so {
 		out_name_c = out_name.all_after('/') + '_shared_lib.c'
 	}
-	return &V {
+	return &V{
 		os: _os
 		out_name: out_name
 		files: files
@@ -951,8 +951,13 @@ fn test_v() {
 fn create_symlink() {
 	vexe := os.executable()
 	link_path := '/usr/local/bin/v'
-	os.system('ln -sf $vexe $link_path')
-	println('symlink "$link_path" has been created')
+	ret := os.system('ln -sf $vexe $link_path')
+	if ret == 0 {
+		println('symlink "$link_path" has been created')
+	} else {
+		println('failed to create symlink "$link_path", '+
+			'make sure you run with sudo')
+	}
 }
 
 pub fn cerror(s string) {

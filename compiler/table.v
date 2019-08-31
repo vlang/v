@@ -50,11 +50,11 @@ enum AccessMod {
 enum TypeCategory {
 	builtin
 	struct_
-	func
-	interface_ // 2
+	func // 2
+	interface_
 	enum_
-	union_
-	c_struct // 5
+	union_ // 5
+	c_struct
 	c_typedef
 }
 
@@ -415,7 +415,42 @@ fn (t mut Table) register_type2(typ Type) {
 	t.types << typ
 }
 
-fn (t mut Type) add_field(name, typ string, is_mut bool, attr string, access_mod AccessMod) {
+fn (t mut Table) rewrite_type(typ Type) {
+	if typ.name.len == 0 {
+		return
+	}
+	for i, typ2 in t.types {
+		if typ2.name == typ.name {
+			t.types[i] = typ
+			return
+		}
+	}
+}
+
+fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
+	if type_name == '' {
+		print_backtrace()
+		cerror('add_field: empty type')
+	}
+	for i, typ in table.types {
+		if typ.name == type_name {
+			table.types[i].fields << Var {
+				name: field_name
+				typ: field_type
+				is_mut: is_mut
+				attr: attr
+				parent_fn: type_name   // Name of the parent type
+				access_mod: access_mod
+			}
+			return
+		}
+	}
+	print_backtrace()
+	cerror('failed to add_field `$field_name` to type `$type_name`')
+}
+
+/*
+fn adf(name, typ string, is_mut bool, attr string, access_mod AccessMod) {
 	// if t.name == 'Parser' {
 	// println('adding field $name')
 	// }
@@ -429,6 +464,7 @@ fn (t mut Type) add_field(name, typ string, is_mut bool, attr string, access_mod
 	}
 	t.fields << v
 }
+*/
 
 fn (t &Type) has_field(name string) bool {
 	field := t.find_field(name)
@@ -462,12 +498,19 @@ fn (table &Table) find_field(typ &Type, name string) Var {
 	return field
 }
 
-fn (t mut Type) add_method(f Fn) {
-	// if t.name.contains('Parser') {
-	// println('!!!add_method() $f.name to $t.name len=$t.methods.len cap=$t.methods.cap')
-	// }
-	t.methods << f
-	// println('end add_method()')
+fn (table mut Table) add_method(type_name string, f Fn) {
+	if type_name == '' {
+		print_backtrace()
+		cerror('add_method: empty type')
+	}
+	for i, typ in table.types {
+		if typ.name == type_name {
+				table.types[i].methods << f
+				return
+		}
+	}
+	print_backtrace()
+	cerror('failed to add_method `$f.name` to type `$type_name`')
 }
 
 fn (t &Type) has_method(name string) bool {
@@ -505,7 +548,8 @@ fn (t &Type) find_method(name string) Fn {
 }
 
 /*
-fn (t mut Type) add_gen_type(type_name string) {
+// TODO
+fn (t mutt Type) add_gen_type(type_name string) {
 	// println('add_gen_type($s)')
 	if t.gen_types.contains(type_name) {
 		return
@@ -514,26 +558,36 @@ fn (t mut Type) add_gen_type(type_name string) {
 }
 */
 
-fn (p &Parser) find_type(name string) &Type {
+fn (p &Parser) find_type(name string) Type {
 	typ := p.table.find_type(name)
-	if typ.name.len == 0 {
+	if typ.name == '' {
 		return p.table.find_type(p.prepend_mod(name))
 	}
 	return typ
 }
 
-fn (t &Table) find_type(name_ string) &Type {
+fn (t &Table) find_type(name_ string) Type {
 	mut name := name_
+	debug := name.starts_with('V') && name.len < 3
+	if debug {
+	//println('find_type("$name)"')
+	}
 	if name.ends_with('*') && !name.contains(' ') {
 		name = name.left(name.len - 1)
 	}
 	// TODO PERF use map
 	for i, typ in t.types {
+		if debug {
+			//println('^^ "$typ.name"')
+			}
 		if typ.name == name {
-			return &t.types[i]
+			return t.types[i]
 		}
 	}
-	return &Type{}
+	if debug {
+	//println('NOT FOUND')
+	}
+	return Type{}
 }
 
 fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
@@ -637,6 +691,7 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 
 // throw by default
 fn (p mut Parser) check_types(got, expected string) bool {
+	if p.first_pass() { return true }
 	return p._check_types(got, expected, true)
 }
 

@@ -517,15 +517,17 @@ fn (p mut Parser) struct_decl() {
 	mut typ := p.table.find_type(name)
 	mut is_ph := false
 	if typ.is_placeholder {
+		// Update the placeholder
 		is_ph = true
 		typ.name = name
 		typ.mod = p.mod
 		typ.is_c = is_c
 		typ.is_placeholder = false
 		typ.cat = cat
+		p.table.rewrite_type(typ)
 	}
 	else {
-		typ = &Type {
+		typ = Type {
 			name: name
 			mod: p.mod
 			is_c: is_c
@@ -552,6 +554,12 @@ fn (p mut Parser) struct_decl() {
 	}
 	println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
 */
+
+	if !is_ph && p.first_pass() {
+		p.table.register_type2(typ)
+		//println('registering 1 nrfields=$typ.fields.len')
+	}
+	
 	mut did_gen_something := false
 	for p.tok != .rcbr {
 		if p.tok == .key_pub {
@@ -598,8 +606,8 @@ fn (p mut Parser) struct_decl() {
 		names << field_name
 		// We are in an interface?
 		// `run() string` => run is a method, not a struct field
-		if is_interface {
-			typ.add_method(p.interface_method(field_name, name))
+		if is_interface { //&& p.first_pass() {
+			p.table.add_method(typ.name, p.interface_method(field_name, name))
 			continue
 		}
 		// `pub` access mod
@@ -625,16 +633,11 @@ fn (p mut Parser) struct_decl() {
 			p.error('struct field with attribute "raw" should be of type "string" but got "$field_type"')
 		}
 		did_gen_something = true
-
-		typ.add_field(field_name, field_type, is_mut, attr, access_mod)
+		if p.first_pass() {
+			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
+		}
 		p.fgenln('')
 	}
-
-	if !is_ph && p.first_pass() {
-		p.table.register_type2(typ)
-		//println('registering 1 nrfields=$typ.fields.len')
-	}
-
 	p.check(.rcbr)
 	p.fgenln('\n')
 }
@@ -666,7 +669,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		p.table.register_const(name, enum_name, p.mod)
 		val++
 	}
-	p.table.register_type2(&Type {
+	p.table.register_type2(Type {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
@@ -743,7 +746,6 @@ fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
-		// os.write_to_file('/var/tmp/lang.vars', q.J(p.table.vars))
 		os.write_file('fns.txt', p.table.debug_fns())
 	}
 	if p.pref.is_verbose || p.pref.is_debug {
@@ -755,12 +757,15 @@ fn (p mut Parser) error(s string) {
 	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.')
-		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
+		println('If you didn\'t modify V\'s code, most likely there was a change that ')
 		println('lead to this error.')
-		println('\nRun `git pull && make`, that will most likely fix it.')
+		println('\nRun `v up`, that will most likely fix it.')
 		//println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
 		println('\nIf this doesn\'t help, please create a GitHub issue.')
 		println('=========================\n')
+	}
+	if p.pref.is_debug {
+		print_backtrace()
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
@@ -1750,7 +1755,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	mut has_method := p.table.type_has_method(typ, field_name)
 	// generate `.str()`
 	if !has_method && field_name == 'str' && typ.name.starts_with('array_') {
-		p.gen_array_str(mut typ)
+		p.gen_array_str(typ)
 		has_method = true
 	}
 	if !typ.is_c && !p.is_c_fn_call && !has_field && !has_method && !p.first_pass() {
@@ -2512,10 +2517,11 @@ fn (p mut Parser) string_expr() {
 			f := p.typ_to_fmt(typ, 0)
 			if f == '' {
 				is_array := typ.starts_with('array_')
-				has_str_method := p.table.type_has_method(p.table.find_type(typ), 'str')
+				typ2 := p.table.find_type(typ)
+				has_str_method := p.table.type_has_method(typ2, 'str')
 				if is_array || has_str_method {
 					if is_array && !has_str_method {
-						p.gen_array_str(mut p.table.find_type(typ))
+						p.gen_array_str(typ2)
 					}
 					args = args.all_before_last(val) + '${typ}_str(${val}).len, ${typ}_str(${val}).str'
 					format += '%.*s '
@@ -2758,9 +2764,9 @@ fn (p mut Parser) array_init() string {
 fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	p.is_struct_init = true
 	t := p.table.find_type(typ)
-	// TODO hack. If it's a C type, we may need to add struct before declaration:
+	// TODO hack. If it's a C type, we may need to add "struct" before declaration:
 	// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
-	if is_c_struct_init { // && t.cat != .c_typedef {
+	if is_c_struct_init {
 		p.is_c_struct_init = true
 		if t.cat != .c_typedef {
 			p.cgen.insert_before('struct /*c struct init*/')
@@ -2800,8 +2806,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.check(.rcbr)
 			return typ
 		}
-		//p.gen('ALLOC_INIT($no_star, {')
-p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
+		p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	}
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
@@ -2812,7 +2817,7 @@ p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	if peek == .colon || p.tok == .rcbr {
 		for p.tok != .rcbr {
 			field := if typ != 'Option' { p.table.var_cgen_name( p.check_name() ) } else { p.check_name() }
-			if !t.has_field(field) {
+			if !p.first_pass() && !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
 			if inited_fields.contains(field) {
