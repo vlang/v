@@ -1,3 +1,17 @@
+// This tool regenerates V's bootstrap .c files
+// every time the V master branch is updated.
+
+// if run with the --serve flag it will run in webhook
+// server mode awaiting a request to http://host:port/genhook
+
+// available command line flags:
+// --work-dir     gen_vc's working directory
+// --serve        run in webhook server mode
+// --server-port  port for http server to listen on
+// --log-file     path to log file used when --log-to is 'file'
+// --log-to       either 'file' or 'terminal'
+// --dry-run      dont push anything to remote repo
+
 module main
 
 import (
@@ -182,8 +196,8 @@ fn (gen_vc mut GenVC) generate() {
 	// cd to gen_vc dir
 	os.chdir(gen_vc.options.work_dir)
 	
-	// if we are running in run mode and not webhook mode
-	// rathen than deleting and re-downloading the repo each time
+	// if we are running not running in serve (webhook) mode
+	// rather than deleting and re-downloading the repo each time
 	// first check to see if the local v repo is behind master
 	// if it isn't behind theres no point continuing further
 	if !gen_vc.options.serve && os.dir_exists(git_repo_dir_v) {
