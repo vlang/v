@@ -2656,17 +2656,17 @@ fn (p mut Parser) array_init() string {
 				// Make sure there's no space in `[10]byte`
 				if !nextc.is_space() {
 					p.check(.rsbr)
-					name := p.check_name()
-					if p.table.known_type(name) {
+					array_elem_typ := p.get_type()
+					if p.table.known_type(array_elem_typ) {
 						p.cgen.resetln('')
 						p.gen('{0}')
 						if is_const_len {
-							return '[${p.mod}__$lit]$name'
+							return '[${p.mod}__$lit]$array_elem_typ'
 						}
-						return '[$lit]$name'
+						return '[$lit]$array_elem_typ'
 					}
 					else {
-						p.error('bad type `$name`')
+						p.error('bad type `$array_elem_typ`')
 					}
 				}
 			}
