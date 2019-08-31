@@ -6,6 +6,7 @@
 
 // available command line flags:
 // --work-dir  gen_vc's working directory
+// --purge     purge the local repositories
 // --serve     run in webhook server mode
 // --port      port for http server to listen on
 // --log-to    either 'file' or 'terminal'
@@ -59,7 +60,7 @@ const(
 // default options (overridden by flags)
 const(
 	// gen_vc working directory
-	work_dir = '/home/user/dev/gen_vc'
+	work_dir = '/tmp/gen_vc'
 	// dont push anything to remote repo
 	dry_run = false
 	// server port
@@ -98,6 +99,7 @@ pub mut:
 // storage for flag options
 struct FlagOptions {
 	work_dir string
+	purge    bool
 	serve    bool
 	port     int
 	log_to   string
@@ -120,7 +122,7 @@ fn main() {
  		println(fp.usage())
  		return
  	}
-	
+
 	// webhook server mode
 	if flag_options.serve {
 		vweb.run<WebhookServer>(flag_options.port)
@@ -128,6 +130,7 @@ fn main() {
 	// cmd mode
 	else {
 		mut gen_vc := new_gen_vc(flag_options)
+		gen_vc.init()
 		gen_vc.generate()
 	}
 }
@@ -151,6 +154,7 @@ pub fn (ws mut WebhookServer) init() {
 	mut fp := flag.new_flag_parser(os.args.clone())
 	flag_options := parse_flags(mut fp)
 	ws.gen_vc = new_gen_vc(flag_options)
+	ws.gen_vc.init()
 }
 
 // gen webhook
@@ -169,10 +173,19 @@ fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 	return FlagOptions{
 		serve    : fp.bool('serve', false, 'run as a server for webhook when passed')
 		work_dir : fp.string('work-dir', work_dir, 'gen_vc working directory')
+		purge    : fp.bool('purge', false, 'purge the local repisitories')
 		port     : fp.int('port', int(server_port), 'port for web server to listen on')
 		log_to   : fp.string('log-to', log_to, 'log to is \'file\' or \'termainl\'')
 		log_file : fp.string('log_file', log_file, 'log file to use when log-to is \'file\'')
 		dry_run  : fp.bool('dry-run', dry_run, 'when specified dont push anything to remote repo')
+	}
+}
+
+// init
+fn (gen_vc mut GenVC) init() {
+	// purge repos if flag is passed
+	if gen_vc.options.purge {
+		gen_vc.purge_repos()
 	}
 }
 
@@ -212,7 +225,7 @@ fn (gen_vc mut GenVC) generate() {
 	}
 
 	// delete repos
-	gen_vc.delete_repos()
+	gen_vc.purge_repos()
 	
 	// clone repos
 	gen_vc.cmd_exec('git clone --depth 1 https://$git_repo_v $git_repo_dir_v')
@@ -308,7 +321,7 @@ fn (gen_vc mut GenVC) command_execute(cmd string, dry bool) string {
 		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" could not start.')
 		gen_vc.logger.error( err )
 		// something went wrong, better start fresh next time
-		gen_vc.delete_repos()
+		gen_vc.purge_repos()
 		gen_vc.gen_error = true
 		return ''
 	}
@@ -316,7 +329,7 @@ fn (gen_vc mut GenVC) command_execute(cmd string, dry bool) string {
 		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" failed.')
 		gen_vc.logger.error(r.output)
 		// something went wrong, better start fresh next time
-		gen_vc.delete_repos()
+		gen_vc.purge_repos()
 		gen_vc.gen_error = true
 		return ''
 	}
@@ -330,10 +343,18 @@ fn (gen_vc mut GenVC) command_execute_dry(cmd string) string {
 }
 
 // delete repo directories
-fn (gen_vc mut GenVC) delete_repos() {
+fn (gen_vc mut GenVC) purge_repos() {
 	// delete old repos (better to be fully explicit here, since these are destructive operations)
-	gen_vc.cmd_exec('rm -rf $gen_vc.options.work_dir/$git_repo_dir_v/')
-	gen_vc.cmd_exec('rm -rf $gen_vc.options.work_dir/$git_repo_dir_vc/')
+	mut repo_dir := '$gen_vc.options.work_dir/$git_repo_dir_v'
+	if os.dir_exists(repo_dir) {
+		gen_vc.logger.info('purging local repo: "$repo_dir"')
+		gen_vc.cmd_exec('rm -rf $repo_dir')
+	}
+	repo_dir = '$gen_vc.options.work_dir/$git_repo_dir_vc'
+	if os.dir_exists(repo_dir) {
+		gen_vc.logger.info('purging local repo: "$repo_dir"')
+		gen_vc.cmd_exec('rm -rf $repo_dir')
+	}
 }
 
 // check if file size is too short
