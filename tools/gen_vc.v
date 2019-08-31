@@ -8,8 +8,8 @@
 // --work-dir     gen_vc's working directory
 // --serve        run in webhook server mode
 // --server-port  port for http server to listen on
-// --log-file     path to log file used when --log-to is 'file'
 // --log-to       either 'file' or 'terminal'
+// --log-file     path to log file used when --log-to is 'file'
 // --dry-run      dont push anything to remote repo
 
 module main
