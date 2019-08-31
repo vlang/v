@@ -522,7 +522,7 @@ fn (p &Parser) find_type(name string) &Type {
 	return typ
 }
 
-fn (t &Table) find_type(name_ string) *Type {
+fn (t &Table) find_type(name_ string) &Type {
 	mut name := name_
 	if name.ends_with('*') && !name.contains(' ') {
 		name = name.left(name.len - 1)
