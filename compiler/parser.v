@@ -1023,7 +1023,7 @@ fn (p mut Parser) close_scope() {
 	mut i := p.cur_fn.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.cur_fn.local_vars[i]
-		if v.scope_level != p.cur_fn.scope_level {
+		if v.scope_level ≠ p.cur_fn.scope_level {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
@@ -1962,47 +1962,42 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.error('strings are immutable')
 		}
 		assign_pos := p.cgen.cur_line.len
-		is_cao := p.tok != .assign
+		is_cao := p.tok ≠ .assign
 		p.assigned_type = typ
 		p.expected_type = typ
 		p.assign_statement(v, fn_ph, is_indexer && (is_map || is_arr))
 		// m[key] = val
 		if is_indexer && (is_map || is_arr) {
-			// a[0] = 7
-			// curline right now: "a , 0  =  7"
-			// println('222 "$p.cgen.cur_line"')
-			// Cant have &7, so need a tmp
-			tmp := p.get_tmp()
-			tmp_val := p.cgen.cur_line.right(assign_pos)
+			// `a[0] = 7`
+			// curline right now: `a , 0  =  7`
+			mut val := p.cgen.cur_line.right(assign_pos)
 			p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
-			// val := p.cgen.end_tmp()
 			mut cao_tmp := p.cgen.cur_line
+			mut func := ''
 			if is_map {
-				p.cgen.set_placeholder(fn_ph, 'map__set(&')
+				func = 'map__set(&'
 				// CAO on map is a bit more complicated as it loads
 				// the value inside a pointer instead of returning it.
 			}
 			else {
 				if is_ptr {
-					p.cgen.set_placeholder(fn_ph, 'array_set(')
+					func = 'array_set('
 					if is_cao {
 						cao_tmp = '*($p.expected_type *) array__get(*$cao_tmp)'
 					}
 				}
 				else {
-					p.cgen.set_placeholder(fn_ph, 'array_set(&/*q*/')
+					func = 'array_set(&/*q*/'
 					if is_cao {
 						cao_tmp = '*($p.expected_type *) array__get($cao_tmp)'
 					}
 				}
 			}
-			p.gen(', & $tmp)')
-			if !is_cao {
-				p.cgen.insert_before('$typ $tmp = $tmp_val;')
+			p.cgen.set_placeholder(fn_ph, func)
+			if is_cao {
+				val = cao_tmp + val.all_before('=') +	val.all_after('=')
 			}
-			else {
-				p.cgen.insert_before('$typ $tmp = $cao_tmp ' + tmp_val.all_before('=') + tmp_val.all_after('=') + ';')
-			}
+			p.gen(', & ($typ []) { $val })')
 		}
 		return typ
 	}
