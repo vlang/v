@@ -11,7 +11,7 @@ git clone --depth 1 --quiet https://github.com/vlang/vc
 
 REM option to force msvc or gcc
 if "%~1"=="-gcc" goto :gccstrap
-if "%~1"=="-msvc" goto :gccstrap
+if "%~1"=="-msvc" goto :msvcstrap
 
 goto :msvcstrap
 
@@ -67,7 +67,7 @@ if %ERRORLEVEL% GEQ 1 (
 )
 
 echo rebuild from source
-v2.exe -o v.exe compiler
+v2.exe -os msvc -o v.exe compiler
 if %ERRORLEVEL% GEQ 1 (
     echo V failed to build itself
     goto :compileerror
