@@ -173,7 +173,7 @@ fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 	return FlagOptions{
 		serve    : fp.bool('serve', false, 'run as a server for webhook when passed')
 		work_dir : fp.string('work-dir', work_dir, 'gen_vc working directory')
-		purge    : fp.bool('purge', false, 'purge the local repisitories')
+		purge    : fp.bool('purge', false, 'purge the local repositories')
 		port     : fp.int('port', int(server_port), 'port for web server to listen on')
 		log_to   : fp.string('log-to', log_to, 'log to is \'file\' or \'termainl\'')
 		log_file : fp.string('log_file', log_file, 'log file to use when log-to is \'file\'')
