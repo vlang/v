@@ -122,7 +122,6 @@ fn main() {
  		println(fp.usage())
  		return
  	}
-
 	// webhook server mode
 	if flag_options.serve {
 		vweb.run<WebhookServer>(flag_options.port)
