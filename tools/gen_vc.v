@@ -140,8 +140,8 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
 		// options
 		options: flag_options
 		// logger
-		logger: if log_to == 'file' {
-			&log.Log{log.DEBUG, log_file}
+		logger: if flag_options.log_to == 'file' {
+			&log.Log{log.DEBUG, flag_options.log_file}
 		} else {
 			&log.Log{log.DEBUG, 'terminal'}
 		}
