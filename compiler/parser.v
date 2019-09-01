@@ -899,6 +899,9 @@ fn (p mut Parser) get_type() string {
 			typ += '__$p.lit'
 		}
 		mut t := p.table.find_type(typ)
+		if typ == 'V' {
+			//println('QQ V res=$t.name')
+			}
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {

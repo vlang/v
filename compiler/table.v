@@ -9,7 +9,7 @@ import strings
 
 struct Table {
 mut:
-	types        []Type
+	typesmap     map[string]Type
 	consts       []Var
 	fns          map[string]Fn
 	generic_fns  []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum']
@@ -21,9 +21,6 @@ mut:
 	fn_cnt       int //atomic
 	obfuscate    bool
 }
-
-
-
 
 struct GenTable {
 	fn_name string
@@ -216,12 +213,7 @@ fn is_primitive_type(typ string) bool {
 
 fn new_table(obfuscate bool) *Table {
 	mut t := &Table {
-		obf_ids: map[string]int
-		fns: map[string]Fn
-		//generic_fns: map[string]GenTable{}
-		generic_fns: []GenTable
 		obfuscate: obfuscate
-		file_imports: []FileImportTable
 	}
 	t.register_type('int')
 	t.register_type('size_t')
@@ -327,12 +319,8 @@ fn (table &Table) known_type(typ_ string) bool {
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ.left(typ.len - 1)
 	}
-	for t in table.types {
-		if t.name == typ && !t.is_placeholder {
-			return true
-		}
-	}
-	return false
+	t := table.typesmap[typ]
+	return t.name.len > 0 && !t.is_placeholder
 }
 
 fn (t &Table) find_fn(name string) Fn {
@@ -358,17 +346,10 @@ fn (t mut Table) register_type(typ string) {
 	if typ.len == 0 {
 		return
 	}
-	for typ2 in t.types {
-		if typ2.name == typ {
-			return
+	if typ in t.typesmap {
+		return
 		}
-	}
-	// if t.types.filter( _.name == typ.name).len > 0 {
-	// return
-	// }
-	t.types << Type {
-		name: typ
-	}
+	t.typesmap[typ] = Type{name:typ}
 }
 
 fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
@@ -384,19 +365,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 	if typ.len == 0 {
 		return
 	}
-	// if t.types.filter(_.name == typ) > 0
-	for typ2 in t.types {
-		if typ2.name == typ {
-			return
-		}
-	}
-	/*
-mut mod := ''
-if parent == 'array' {
-mod = 'builtin'
-}
-*/
-	t.types << Type {
+	t.typesmap[typ] = Type {
 		name: typ
 		parent: parent
 		//mod: mod
@@ -407,24 +376,14 @@ fn (t mut Table) register_type2(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}
-	for typ2 in t.types {
-		if typ2.name == typ.name {
-			return
-		}
-	}
-	t.types << typ
+	t.typesmap[typ.name] = typ
 }
 
 fn (t mut Table) rewrite_type(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}
-	for i, typ2 in t.types {
-		if typ2.name == typ.name {
-			t.types[i] = typ
-			return
-		}
-	}
+	t.typesmap[typ.name]  = typ
 }
 
 fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
@@ -432,39 +391,17 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 		print_backtrace()
 		cerror('add_field: empty type')
 	}
-	for i, typ in table.types {
-		if typ.name == type_name {
-			table.types[i].fields << Var {
-				name: field_name
-				typ: field_type
-				is_mut: is_mut
-				attr: attr
-				parent_fn: type_name   // Name of the parent type
-				access_mod: access_mod
-			}
-			return
-		}
-	}
-	print_backtrace()
-	cerror('failed to add_field `$field_name` to type `$type_name`')
-}
-
-/*
-fn adf(name, typ string, is_mut bool, attr string, access_mod AccessMod) {
-	// if t.name == 'Parser' {
-	// println('adding field $name')
-	// }
-	v := Var {
-		name: name
-		typ: typ
+	mut t := table.typesmap[type_name]
+	t.fields << Var {
+		name: field_name
+		typ: field_type
 		is_mut: is_mut
 		attr: attr
-		parent_fn: t.name   // Name of the parent type
+		parent_fn: type_name   // Name of the parent type
 		access_mod: access_mod
 	}
-	t.fields << v
+	table.typesmap[type_name] = t
 }
-*/
 
 fn (t &Type) has_field(name string) bool {
 	field := t.find_field(name)
@@ -503,14 +440,9 @@ fn (table mut Table) add_method(type_name string, f Fn) {
 		print_backtrace()
 		cerror('add_method: empty type')
 	}
-	for i, typ in table.types {
-		if typ.name == type_name {
-				table.types[i].methods << f
-				return
-		}
-	}
-	print_backtrace()
-	cerror('failed to add_method `$f.name` to type `$type_name`')
+	mut t := table.typesmap[type_name]
+	t.methods << f
+	table.typesmap[type_name] = t
 }
 
 fn (t &Type) has_method(name string) bool {
@@ -568,26 +500,13 @@ fn (p &Parser) find_type(name string) Type {
 
 fn (t &Table) find_type(name_ string) Type {
 	mut name := name_
-	debug := name.starts_with('V') && name.len < 3
-	if debug {
-	//println('find_type("$name)"')
-	}
 	if name.ends_with('*') && !name.contains(' ') {
 		name = name.left(name.len - 1)
 	}
-	// TODO PERF use map
-	for i, typ in t.types {
-		if debug {
-			//println('^^ "$typ.name"')
-			}
-		if typ.name == name {
-			return t.types[i]
-		}
+	if !(name in t.typesmap) {
+		return Type{}
 	}
-	if debug {
-	//println('NOT FOUND')
-	}
-	return Type{}
+	return t.typesmap[name]
 }
 
 fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
@@ -748,14 +667,12 @@ fn type_default(typ string) string {
 	return '{0}'
 }
 
-// TODO PERF O(n)
-fn (t &Table) is_interface(name string) bool {
-	for typ in t.types {
-		if typ.cat == .interface_ && typ.name == name {
-			return true
-		}
+fn (table &Table) is_interface(name string) bool {
+	if !(name in table.typesmap) {
+		return false
 	}
-	return false
+	t := table.typesmap[name]
+	return t.cat == .interface_
 }
 
 // Do we have fn main()?

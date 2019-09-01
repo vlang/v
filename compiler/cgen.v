@@ -184,6 +184,7 @@ fn (c mut V) prof_counters() string {
 		//res << 'double ${c.table.cgen_name(f)}_time;'
 	//}
 	// Methods
+	/*
 	for typ in c.table.types {
 		// println('')
 		for f in typ.methods {
@@ -192,6 +193,7 @@ fn (c mut V) prof_counters() string {
 			// println(f.cgen_name())
 		}
 	}
+	*/
 	return res.join(';\n')
 }
 
@@ -203,6 +205,7 @@ fn (p mut Parser) print_prof_counters() string {
 		//res << 'if ($counter) printf("%%f : $f.name \\n", $counter);'
 	//}
 	// Methods
+	/*
 	for typ in p.table.types {
 		// println('')
 		for f in typ.methods {
@@ -214,6 +217,7 @@ fn (p mut Parser) print_prof_counters() string {
 			// println(f.cgen_name())
 		}
 	}
+	*/
 	return res.join(';\n')
 }
 
@@ -293,14 +297,24 @@ fn platform_postfix_to_ifdefguard(name string) string {
 fn (v mut V) c_type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut top_types := []Type // builtin types and types that only have primitive fields
-	for t in v.table.types {
+	mut builtin_types := []Type
+	// builtin types need to be on top
+	builtins := ['string', 'array', 'map', 'Option']
+	for builtin in builtins {
+		typ := v.table.typesmap[builtin]
+		builtin_types << typ
+		v.table.typesmap.delete(builtin)
+	}
+	// split all types
+	for _, t in v.table.typesmap {
 		if !t.name[0].is_capital() {
 			top_types << t
 			continue
 		}
 		mut only_builtin_fields := true
 		for field in t.fields {
-			if field.typ[0].is_capital() {
+			// user types start with a capital or contain __ (defined in another module)
+			if field.typ[0].is_capital() || field.typ.contains('__') {
 				only_builtin_fields = false
 				break
 			}
@@ -311,10 +325,12 @@ fn (v mut V) c_type_definitions() string {
 		}
 		types << t
 	}
+	sort_structs(mut top_types)
 	sort_structs(mut types)
 	// Generate C code
-	return types_to_c(top_types, v.table) + '\n/*----*/\n' +
-		types_to_c(types, v.table)
+	return types_to_c(builtin_types,v.table) + '\n//----\n' +
+			types_to_c(top_types, v.table) + '\n/*----*/\n' +
+			types_to_c(types, v.table)
 }
 	
 fn types_to_c(types []Type, table &Table) string {
