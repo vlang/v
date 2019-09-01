@@ -25,5 +25,6 @@
 - WebAssembly backend (via Emscripten)
 - JavaScript backend
 - new playground with a V compiler running in the browser
++ O(n) type lookup
 
 
