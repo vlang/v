@@ -11,7 +11,9 @@ module readline
 import term
 
 #include <termios.h>
+#include <sys/ioctl.h>
 
+// Used to change the terminal options
 struct termios {
 mut:
   c_iflag int
@@ -21,6 +23,14 @@ mut:
   c_cc [12]int //NCCS == 12. Cant use the defined value here
 }
 
+// Used to collect the screen informations
+struct winsize {
+  ws_row u16
+  ws_col u16
+  ws_xpixel u16
+  ws_ypixel u16
+}
+
 struct Readline {
 mut:
   is_raw bool
@@ -28,7 +38,9 @@ mut:
   current string // Line being edited
   cursor int // Cursor position
   overwrite bool
+  cursor_row_offset int
 }
+
 
 // Defines actions to execute
 enum Action {
@@ -171,13 +183,60 @@ fn (r mut Readline) execute(a Action, c byte) bool {
   return false
 }
 
+fn get_screen_columns() int {
+  ws := winsize{}
+  cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { ws.ws_col }
+  return int(cols)
+}
+
+fn shift_cursor(xpos int, yoffset int) {
+  if yoffset != 0 {
+    if yoffset > 0 {
+      term.cursor_down(yoffset)
+    }
+    else {
+      term.cursor_up(- yoffset)
+    }
+  }
+  // Absolute X position
+  print('\x1b[${xpos + 1}G')
+}
+
+fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count int, out mut []int) {
+  mut x := x_in
+  mut y := y_in
+  out[0] = x
+  out[1] = y
+  for chars_remaining := char_count; chars_remaining > 0; {
+    chars_this_row := if ( (x + chars_remaining) < screen_columns) { chars_remaining } else { screen_columns - x }
+    out[0] = x + chars_this_row
+    out[1] = y
+    chars_remaining -= chars_this_row
+    x = 0
+    y++
+  }
+  if out[0] == screen_columns {
+    out[0] = 0
+    out[1]++
+  }
+}
+
 // Will redraw the line
-// TODO: Refreshing on wrapped line
-fn (r Readline) refresh_line() {
-  term.cursor_back(r.cursor)
+fn (r mut Readline) refresh_line() {
+  mut end_of_input := [0, 0]
+  calculate_screen_position(0, 0, get_screen_columns(), r.current.len, mut end_of_input)
+  end_of_input[1] += r.current.count('\n')
+  mut cursor_pos := [0, 0]
+  calculate_screen_position(0, 0, get_screen_columns(), r.cursor, mut cursor_pos)
+
+  shift_cursor(0, -r.cursor_row_offset)
   term.erase_toend()
   print(r.current)
-  term.cursor_back(r.current.len - r.cursor)
+  if end_of_input[0] == 0 && end_of_input[1] > 0 {
+    print('\n')
+  }
+  shift_cursor(cursor_pos[0], - (end_of_input[1] - cursor_pos[1]))
+  r.cursor_row_offset = cursor_pos[1]
 }
 
 fn (r mut Readline) insert_character(c byte) {
@@ -194,7 +253,7 @@ fn (r mut Readline) insert_character(c byte) {
   r.cursor++
   // Simply print new character if at end of line
   // Otherwise refresh the line if cursor != r.current.len
-  if r.cursor == r.current.len {
+  if r.cursor == r.current.len && r.current.len < get_screen_columns() {
     print(c.str())
   } else {
     r.refresh_line()
@@ -206,9 +265,9 @@ fn (r mut Readline) delete_character() {
   if r.cursor <= 0 {
     return
   }
-  r.current = r.current.left(r.cursor - 1) + r.current.right(r.cursor)
-  r.refresh_line()
   r.cursor--
+  r.current = r.current.left(r.cursor) + r.current.right(r.cursor + 1)
+  r.refresh_line()
 }
 
 // Add a line break then stops the main loop
@@ -217,55 +276,48 @@ fn (r mut Readline) commit_line() bool {
   return true
 }
 
-// TODO: Support multiline wrapping
 fn (r mut Readline) move_cursor_left() {
   if r.cursor > 0 {
-    term.cursor_back(1)
     r.cursor--
+    r.refresh_line()
   }
 }
 
-// TODO: Support multiline wrapping
 fn (r mut Readline) move_cursor_right() {
   if r.cursor < r.current.len {
-    term.cursor_forward(1)
     r.cursor++
+    r.refresh_line()
   }
 }
 
-// TODO: Support multiline wrapping
 fn (r mut Readline) move_cursor_begining() {
-  term.cursor_back(r.cursor)
   r.cursor = 0
+  r.refresh_line()
 }
 
-// TODO: Support multiline wrapping
 fn (r mut Readline) move_cursor_end() {
-  term.cursor_forward(r.current.len - r.cursor)
   r.cursor = r.current.len
+  r.refresh_line()
 }
 
+// Check if the character is considered as a word-breaking character
 fn (r Readline) is_break_character(c byte) bool {
   break_characters := ' \t\v\f\a\b\r\n`~!@#$%^&*()-=+[{]}\\|;:\'",<.>/?'
   return break_characters.contains(c.str())
 }
 
-// TODO: Support multiline wrapping
 fn (r mut Readline) move_cursor_word_left() {
   if r.cursor > 0 {
-    initial := r.cursor
     for ; r.cursor > 0 && r.is_break_character(r.current[r.cursor - 1]); r.cursor-- {}
     for ; r.cursor > 0 && !r.is_break_character(r.current[r.cursor - 1]); r.cursor-- {}
-    term.cursor_back(initial - r.cursor)
+    r.refresh_line()
   }
 }
 
-// TODO: Support multiline wrapping
 fn (r mut Readline) move_cursor_word_right() {
   if r.cursor < r.current.len {
-    initial := r.cursor
     for ; r.cursor < r.current.len && r.is_break_character(r.current[r.cursor]); r.cursor++ {}
     for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor]); r.cursor++ {}
-    term.cursor_forward(r.cursor - initial)
+    r.refresh_line()
   }
 }
