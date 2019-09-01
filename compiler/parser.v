@@ -742,6 +742,10 @@ if p.scanner.line_comment != '' {
 }
 }
 
+fn (p mut Parser) warn(s string) {
+	println('$p.scanner.file_path:${p.scanner.line_nr+1}: $s')
+}
+
 fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
@@ -863,6 +867,7 @@ fn (p mut Parser) get_type() string {
 	}
 	//
 	for p.tok == .mul {
+		p.warn('use `&Foo` instead of `*Foo`')
 		mul = true
 		nr_muls++
 		p.check(.mul)
