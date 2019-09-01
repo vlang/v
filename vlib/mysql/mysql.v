@@ -14,7 +14,7 @@ struct Result {
 }
 
 struct Row {
-pub:
+pub mut:
 	vals []string
 }
 
