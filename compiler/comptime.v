@@ -242,8 +242,9 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	}
 }
 
-fn (p mut Parser) gen_array_str(typ mut Type) {
-	typ.add_method(Fn{
+fn (p mut Parser) gen_array_str(typ Type) {
+	//println('gen array str "$typ.name"')
+	p.table.add_method(typ.name, Fn{
 		name: 'str',
 		typ: 'string'
 		args: [Var{typ: typ.name, is_arg:true}]
@@ -251,9 +252,17 @@ fn (p mut Parser) gen_array_str(typ mut Type) {
 		is_public: true
 		receiver_typ: typ.name
 	})
+	/*
+	tt := p.table.find_type(typ.name)
+	for m in tt.methods {
+		println(m.name + ' ' + m.typ)
+		}
+		*/
 	t := typ.name
 	elm_type := t.right(6)
-	if p.typ_to_fmt(elm_type, 0) == '' && !p.table.type_has_method(p.table.find_type(elm_type), 'str') {
+	elm_type2 := p.table.find_type(elm_type)
+	if p.typ_to_fmt(elm_type, 0) == '' &&
+		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
 	p.cgen.fns << '

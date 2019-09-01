@@ -69,6 +69,7 @@ pub:
 }
 
 struct Pos {
+pub:
 	x int
 	y int
 }

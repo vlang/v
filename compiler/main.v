@@ -311,7 +311,7 @@ fn (v mut V) compile() {
 		d.writeln(v.prof_counters())
 	}
 	dd := d.str()
-	cgen.lines.set(defs_pos, dd)// TODO `def.str()` doesn't compile
+	cgen.lines[defs_pos] = dd// TODO `def.str()` doesn't compile
 
   v.generate_main()
 
@@ -812,7 +812,7 @@ fn new_v(args[]string) *V {
 	if pref.is_so {
 		out_name_c = out_name.all_after('/') + '_shared_lib.c'
 	}
-	return &V {
+	return &V{
 		os: _os
 		out_name: out_name
 		files: files
@@ -909,7 +909,7 @@ fn test_v() {
 	mut joined_args := env_vflags_and_os_args().right(1).join(' ')
 	joined_args = joined_args.left(joined_args.last_index('test'))
 	println('$joined_args')
-
+	mut failed := false
 	test_files := os.walk_ext('.', '_test.v')
 	for dot_relative_file in test_files {
 		relative_file := dot_relative_file.replace('./', '')
@@ -917,12 +917,13 @@ fn test_v() {
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
 		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
-			cerror('failed on $file')
-			return
+			failed = true
+			println('FAIL')
+			continue
 		}
 		if r.exit_code != 0 {
-			println('failed `$file` (\n$r.output\n)')
-			exit(1)
+			println('FAIL `$file` (\n$r.output\n)')
+			failed = true
 		} else {
 			println('OK')
 		}
@@ -935,24 +936,33 @@ fn test_v() {
 		tmpcfilepath := file.replace('.v', '.tmp.c')
 		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
-			cerror('failed on $file')
-			return
+			failed = true
+			println('FAIL')
+			continue
 		}
 		if r.exit_code != 0 {
-			println('failed `$file` (\n$r.output\n)')
-			exit(1)
+			println('FAIL `$file` (\n$r.output\n)')
+			failed = true
 		} else {
 			println('OK')
 		}
 		os.rm(tmpcfilepath)
+	}
+	if failed {
+		exit(1)
 	}
 }
 
 fn create_symlink() {
 	vexe := os.executable()
 	link_path := '/usr/local/bin/v'
-	os.system('ln -sf $vexe $link_path')
-	println('symlink "$link_path" has been created')
+	ret := os.system('ln -sf $vexe $link_path')
+	if ret == 0 {
+		println('symlink "$link_path" has been created')
+	} else {
+		println('failed to create symlink "$link_path", '+
+			'make sure you run with sudo')
+	}
 }
 
 pub fn cerror(s string) {

@@ -275,7 +275,7 @@ pub fn (v mut V) cc_msvc() {
 
 	// The C file we are compiling
 	//a << '"$TmpPath/$v.out_name_c"'
-	a << '".$v.out_name_c"'
+	a << '"$v.out_name_c"'
 
 	// Emily:
 	// Not all of these are needed (but the compiler should discard them if they are not used)
@@ -407,6 +407,11 @@ pub fn (v mut V) cc_msvc() {
 	escaped_path := r.exe_path
 
 	cmd := '""$escaped_path\\cl.exe" $args"'
+
+	if v.pref.show_c_cmd || v.pref.is_verbose {
+		println('\n==========')
+		println(cmd)
+	}
 
 	// println('$cmd')
 

@@ -34,6 +34,8 @@ mut:
 	mod            string
 	inside_const   bool
 	expr_var       Var
+	has_immutable_field bool
+	first_immutable_field Var
 	assigned_type  string
 	expected_type  string
 	tmp_cnt        int
@@ -515,15 +517,17 @@ fn (p mut Parser) struct_decl() {
 	mut typ := p.table.find_type(name)
 	mut is_ph := false
 	if typ.is_placeholder {
+		// Update the placeholder
 		is_ph = true
 		typ.name = name
 		typ.mod = p.mod
 		typ.is_c = is_c
 		typ.is_placeholder = false
 		typ.cat = cat
+		p.table.rewrite_type(typ)
 	}
 	else {
-		typ = &Type {
+		typ = Type {
 			name: name
 			mod: p.mod
 			is_c: is_c
@@ -550,6 +554,12 @@ fn (p mut Parser) struct_decl() {
 	}
 	println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
 */
+
+	if !is_ph && p.first_pass() {
+		p.table.register_type2(typ)
+		//println('registering 1 nrfields=$typ.fields.len')
+	}
+	
 	mut did_gen_something := false
 	for p.tok != .rcbr {
 		if p.tok == .key_pub {
@@ -596,8 +606,8 @@ fn (p mut Parser) struct_decl() {
 		names << field_name
 		// We are in an interface?
 		// `run() string` => run is a method, not a struct field
-		if is_interface {
-			typ.add_method(p.interface_method(field_name, name))
+		if is_interface { //&& p.first_pass() {
+			p.table.add_method(typ.name, p.interface_method(field_name, name))
 			continue
 		}
 		// `pub` access mod
@@ -623,16 +633,11 @@ fn (p mut Parser) struct_decl() {
 			p.error('struct field with attribute "raw" should be of type "string" but got "$field_type"')
 		}
 		did_gen_something = true
-
-		typ.add_field(field_name, field_type, is_mut, attr, access_mod)
+		if p.first_pass() {
+			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
+		}
 		p.fgenln('')
 	}
-
-	if !is_ph && p.first_pass() {
-		p.table.register_type2(typ)
-		//println('registering 1 nrfields=$typ.fields.len')
-	}
-
 	p.check(.rcbr)
 	p.fgenln('\n')
 }
@@ -664,7 +669,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		p.table.register_const(name, enum_name, p.mod)
 		val++
 	}
-	p.table.register_type2(&Type {
+	p.table.register_type2(Type {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
@@ -741,7 +746,6 @@ fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
-		// os.write_to_file('/var/tmp/lang.vars', q.J(p.table.vars))
 		os.write_file('fns.txt', p.table.debug_fns())
 	}
 	if p.pref.is_verbose || p.pref.is_debug {
@@ -753,12 +757,15 @@ fn (p mut Parser) error(s string) {
 	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.')
-		println('If you didn\'t modify the compiler\'s code, most likely there was a change that ')
+		println('If you didn\'t modify V\'s code, most likely there was a change that ')
 		println('lead to this error.')
-		println('\nRun `git pull && make`, that will most likely fix it.')
+		println('\nRun `v up`, that will most likely fix it.')
 		//println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
 		println('\nIf this doesn\'t help, please create a GitHub issue.')
 		println('=========================\n')
+	}
+	if p.pref.is_debug {
+		print_backtrace()
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
@@ -1021,7 +1028,7 @@ fn (p mut Parser) close_scope() {
 	mut i := p.cur_fn.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.cur_fn.local_vars[i]
-		if v.scope_level != p.cur_fn.scope_level {
+		if v.scope_level ≠ p.cur_fn.scope_level {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
@@ -1405,6 +1412,7 @@ fn (p mut Parser) bterm() string {
 
 // also called on *, &, @, . (enum)
 fn (p mut Parser) name_expr() string {
+	p.has_immutable_field = false
 	ph := p.cgen.add_placeholder()
 	// amp
 	ptr := p.tok == .amp
@@ -1646,9 +1654,10 @@ fn (p mut Parser) var_expr(v Var) string {
 	p.next()
 	mut typ := v.typ
 	// Function pointer?
-	if typ.starts_with('fn ') {
-		//println('CALLING FN PTR')
-		//p.print_tok()
+
+	//println('CALLING FN PTR')
+	//p.print_tok()
+	if typ.starts_with('fn ') && p.tok == .lpar {
 		T := p.table.find_type(typ)
 		p.gen('(')
 		p.fn_call_args(mut T.func)
@@ -1746,7 +1755,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	mut has_method := p.table.type_has_method(typ, field_name)
 	// generate `.str()`
 	if !has_method && field_name == 'str' && typ.name.starts_with('array_') {
-		p.gen_array_str(mut typ)
+		p.gen_array_str(typ)
 		has_method = true
 	}
 	if !typ.is_c && !p.is_c_fn_call && !has_field && !has_method && !p.first_pass() {
@@ -1774,17 +1783,24 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	if has_field {
 		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
 		field := p.table.find_field(typ, struct_field)
+		if !field.is_mut && !p.has_immutable_field {
+			p.has_immutable_field = true
+			p.first_immutable_field = field
+		}
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
-		modifying := next.is_assign() || next == .inc || next == .dec
+		modifying := next.is_assign() || next == .inc || next == .dec ||
+			(field.typ.starts_with('array_') && next == .left_shift)
 		is_vi := p.fileis('vid')
-		if !p.builtin_mod && !p.pref.translated && modifying && !field.is_mut && !is_vi {
-			p.error('cannot modify immutable field `$struct_field` (type `$typ.name`)\n' +
-				'declare the field with `mut:`
+		if !p.builtin_mod && !p.pref.translated && modifying && !is_vi
+			&& p.has_immutable_field {
+			f := p.first_immutable_field
+			p.error('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
+					'declare the field with `mut:`
 
-struct $typ.name {
+struct $f.parent_fn {
   mut:
-	$struct_field $field.typ
+	$f.name $f.typ
 }
 ')
 		}
@@ -1795,13 +1811,6 @@ struct $typ.name {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
 			p.error('cannot refer to unexported field `$struct_field` (type `$typ.name`)')
-		}
-		// if field.access_mod ==.public && p.peek() == .assign && !p.builtin_mod && p.mod != typ.mod {
-		// Don't allow `str.len = 0`
-		if field.access_mod == .public && !p.builtin_mod && p.mod != typ.mod {
-			if !field.is_mut && !p.pref.translated && modifying {
-				p.error('cannot modify public immutable field `$struct_field` (type `$typ.name`)')
-			}
 		}
 		p.gen(dot + struct_field)
 		p.next()
@@ -1959,47 +1968,42 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.error('strings are immutable')
 		}
 		assign_pos := p.cgen.cur_line.len
-		is_cao := p.tok != .assign
+		is_cao := p.tok ≠ .assign
 		p.assigned_type = typ
 		p.expected_type = typ
 		p.assign_statement(v, fn_ph, is_indexer && (is_map || is_arr))
 		// m[key] = val
 		if is_indexer && (is_map || is_arr) {
-			// a[0] = 7
-			// curline right now: "a , 0  =  7"
-			// println('222 "$p.cgen.cur_line"')
-			// Cant have &7, so need a tmp
-			tmp := p.get_tmp()
-			tmp_val := p.cgen.cur_line.right(assign_pos)
+			// `a[0] = 7`
+			// curline right now: `a , 0  =  7`
+			mut val := p.cgen.cur_line.right(assign_pos)
 			p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
-			// val := p.cgen.end_tmp()
 			mut cao_tmp := p.cgen.cur_line
+			mut func := ''
 			if is_map {
-				p.cgen.set_placeholder(fn_ph, 'map__set(&')
+				func = 'map__set(&'
 				// CAO on map is a bit more complicated as it loads
 				// the value inside a pointer instead of returning it.
 			}
 			else {
 				if is_ptr {
-					p.cgen.set_placeholder(fn_ph, 'array_set(')
+					func = 'array_set('
 					if is_cao {
 						cao_tmp = '*($p.expected_type *) array__get(*$cao_tmp)'
 					}
 				}
 				else {
-					p.cgen.set_placeholder(fn_ph, 'array_set(&/*q*/')
+					func = 'array_set(&/*q*/'
 					if is_cao {
 						cao_tmp = '*($p.expected_type *) array__get($cao_tmp)'
 					}
 				}
 			}
-			p.gen(', & $tmp)')
-			if !is_cao {
-				p.cgen.insert_before('$typ $tmp = $tmp_val;')
+			p.cgen.set_placeholder(fn_ph, func)
+			if is_cao {
+				val = cao_tmp + val.all_before('=') +	val.all_after('=')
 			}
-			else {
-				p.cgen.insert_before('$typ $tmp = $cao_tmp ' + tmp_val.all_before('=') + tmp_val.all_after('=') + ';')
-			}
+			p.gen(', & ($typ []) { $val })')
 		}
 		return typ
 	}
@@ -2513,10 +2517,11 @@ fn (p mut Parser) string_expr() {
 			f := p.typ_to_fmt(typ, 0)
 			if f == '' {
 				is_array := typ.starts_with('array_')
-				has_str_method := p.table.type_has_method(p.table.find_type(typ), 'str')
+				typ2 := p.table.find_type(typ)
+				has_str_method := p.table.type_has_method(typ2, 'str')
 				if is_array || has_str_method {
 					if is_array && !has_str_method {
-						p.gen_array_str(mut p.table.find_type(typ))
+						p.gen_array_str(typ2)
 					}
 					args = args.all_before_last(val) + '${typ}_str(${val}).len, ${typ}_str(${val}).str'
 					format += '%.*s '
@@ -2653,17 +2658,17 @@ fn (p mut Parser) array_init() string {
 				// Make sure there's no space in `[10]byte`
 				if !nextc.is_space() {
 					p.check(.rsbr)
-					name := p.check_name()
-					if p.table.known_type(name) {
+					array_elem_typ := p.get_type()
+					if p.table.known_type(array_elem_typ) {
 						p.cgen.resetln('')
 						p.gen('{0}')
 						if is_const_len {
-							return '[${p.mod}__$lit]$name'
+							return '[${p.mod}__$lit]$array_elem_typ'
 						}
-						return '[$lit]$name'
+						return '[$lit]$array_elem_typ'
 					}
 					else {
-						p.error('bad type `$name`')
+						p.error('bad type `$array_elem_typ`')
 					}
 				}
 			}
@@ -2683,17 +2688,8 @@ fn (p mut Parser) array_init() string {
 		if i == 1 && p.tok == .semicolon {
 			p.check_space(.semicolon)
 			val := p.cgen.cur_line.right(pos)
-			// p.cgen.cur_line = ''
 			p.cgen.resetln(p.cgen.cur_line.left(pos))
-			// Special case for zero
-			if false && val.trim_space() == '0' {
-				p.gen('array_repeat( & V_ZERO, ')
-			}
-			else {
-				tmp := p.get_tmp()
-				p.cgen.insert_before('$typ $tmp = $val;')
-				p.gen('array_repeat(&$tmp, ')
-			}
+			p.gen('array_repeat(& ($typ[]){ $val }, ')
 			p.check_types(p.bool_expression(), 'int')
 			p.gen(', sizeof($typ) )')
 			p.check(.rsbr)
@@ -2715,6 +2711,7 @@ fn (p mut Parser) array_init() string {
 	if no_alloc {
 		p.next()
 	}
+
 	// [1,2,3]!! => [3]int{1,2,3}
 	is_fixed_size := p.tok == .not
 	if is_fixed_size {
@@ -2724,10 +2721,10 @@ fn (p mut Parser) array_init() string {
 			// If we are defining a const array, we don't need to specify the type:
 			// `a = {1,2,3}`, not `a = (int[]) {1,2,3}`
 			if p.inside_const {
-				p.cgen.set_placeholder(new_arr_ph, '{ ')
+				p.cgen.set_placeholder(new_arr_ph, '{')
 			}
 			else {
-				p.cgen.set_placeholder(new_arr_ph, '($typ[]) { ')
+				p.cgen.set_placeholder(new_arr_ph, '($typ[]) {')
 			}
 		}
 		return '[$i]$typ'
@@ -2739,7 +2736,13 @@ fn (p mut Parser) array_init() string {
 	if no_alloc {
 		new_arr += '_no_alloc'
 	}
-	p.gen(' })')
+
+	if i == 0 && p.pref.ccompiler != 'tcc' {
+		p.gen(' 0 })')
+	} else {
+		p.gen(' })')
+	}
+
 	// p.gen('$new_arr($vals.len, $vals.len, sizeof($typ), ($typ[$vals.len]) $c_arr );')
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
@@ -2761,9 +2764,9 @@ fn (p mut Parser) array_init() string {
 fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	p.is_struct_init = true
 	t := p.table.find_type(typ)
-	// TODO hack. If it's a C type, we may need to add struct before declaration:
+	// TODO hack. If it's a C type, we may need to add "struct" before declaration:
 	// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
-	if is_c_struct_init { // && t.cat != .c_typedef {
+	if is_c_struct_init {
 		p.is_c_struct_init = true
 		if t.cat != .c_typedef {
 			p.cgen.insert_before('struct /*c struct init*/')
@@ -2803,8 +2806,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.check(.rcbr)
 			return typ
 		}
-		//p.gen('ALLOC_INIT($no_star, {')
-p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
+		p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	}
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
@@ -2815,7 +2817,7 @@ p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
 	if peek == .colon || p.tok == .rcbr {
 		for p.tok != .rcbr {
 			field := if typ != 'Option' { p.table.var_cgen_name( p.check_name() ) } else { p.check_name() }
-			if !t.has_field(field) {
+			if !p.first_pass() && !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
 			if inited_fields.contains(field) {
