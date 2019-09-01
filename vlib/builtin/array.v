@@ -259,3 +259,17 @@ pub fn copy(dst, src []byte) int {
 	}
 	return 0
 }
+
+fn compare_ints(a, b *int) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+pub fn (a mut []int) sort() {
+	a.sort_with_compare(compare_ints)
+}
