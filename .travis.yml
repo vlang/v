@@ -16,6 +16,7 @@ matrix:
             - libglfw3-dev
             - libfreetype6-dev
             - libssl-dev
+            - tcc
     - os: windows
       language: sh
       filter_secrets: false
@@ -54,6 +55,13 @@ script:
       make
       #./v install glfw
       ./v test v
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      echo "Ensure that v can build itself with tcc too ..."
+      /usr/bin/tcc -version
+      ./v -cc /usr/bin/tcc -o vtcc compiler/
+      ls -la vtcc
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
