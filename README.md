@@ -52,9 +52,11 @@ v up
 
 ### C compiler
 
-You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have it installed.
+You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
 
 On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
+
+On Debian/Ubuntu run `sudo apt install build-essential`.
 
 On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
