@@ -52,7 +52,7 @@ v up
 
 ### C compiler
 
-You'll need Clang or GCC. If you are doing development, you most likely already have it installed.
+You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have it installed.
 
 On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
 

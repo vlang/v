@@ -22,9 +22,9 @@
 - ui demo: calculator
 - declarative ui with hot reload (similar to swiftui)
 - "building a simple blog with vweb" tutorial + youtube video
-- WebAssembly backend (via Emscripten)
-- JavaScript backend
+- webassembly backend (via emscripten)
+- javascript backend
 - new playground with a V compiler running in the browser
-+ O(n) type lookup
++ O(log n) type lookup
 
 
