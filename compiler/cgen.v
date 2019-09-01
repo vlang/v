@@ -39,7 +39,7 @@ mut:
 	cut_pos int
 }
 
-fn new_cgen(out_name_c string) *CGen {
+fn new_cgen(out_name_c string) &CGen {
 	path := out_name_c
 	out := os.create(path) or {
 		println('failed to create $path')

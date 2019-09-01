@@ -8,14 +8,14 @@ import strings
 
 struct map {
 	element_size int
-	root      *mapnode
+	root      &mapnode
 pub:
 	size int
 }
 
 struct mapnode {
-	left *mapnode
-	right *mapnode
+	left &mapnode
+	right &mapnode
 	is_empty bool
 	key string
 	val voidptr
@@ -30,7 +30,7 @@ fn new_map(cap, elm_size int) map {
 }
 
 // `m := { 'one': 1, 'two': 2 }`
-fn new_map_init(cap, elm_size int, keys *string, vals voidptr) map {
+fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
 	mut res := map {
 		element_size: elm_size
 		root: 0
@@ -41,7 +41,7 @@ fn new_map_init(cap, elm_size int, keys *string, vals voidptr) map {
 	return res
 }
 
-fn new_node(key string, val voidptr, element_size int) *mapnode {
+fn new_node(key string, val voidptr, element_size int) &mapnode {
 	new_e := &mapnode {
 		key: key
 		val: malloc(element_size)

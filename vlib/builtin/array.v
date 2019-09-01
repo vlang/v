@@ -260,7 +260,7 @@ pub fn copy(dst, src []byte) int {
 	return 0
 }
 
-fn compare_ints(a, b *int) int {
+fn compare_ints(a, b &int) int {
 	if a < b {
 		return -1
 	}

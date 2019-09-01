@@ -639,7 +639,7 @@ pub fn (s string) trim_right(cutset string) string {
 // fn print_cur_thread() {
 // //C.printf("tid = %08x \n", pthread_self());
 // }
-fn compare_strings(a, b *string) int {
+fn compare_strings(a, b &string) int {
 	if a.lt(b) {
 		return -1
 	}
@@ -649,7 +649,7 @@ fn compare_strings(a, b *string) int {
 	return 0
 }
 
-fn compare_strings_by_len(a, b *string) int {
+fn compare_strings_by_len(a, b &string) int {
 	if a.len < b.len {
 		return -1
 	}
@@ -659,7 +659,7 @@ fn compare_strings_by_len(a, b *string) int {
 	return 0
 }
 
-fn compare_lower_strings(a, b *string) int {
+fn compare_lower_strings(a, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
 	return compare_strings(aa, bb)

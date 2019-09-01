@@ -4,7 +4,7 @@
 
 module main
 
-import os 
+import os
 
 struct ModDepGraphNode  {
 mut:
@@ -21,7 +21,7 @@ pub:
 }
 
 struct DepSet {
-	mut: 
+	mut:
 	items []string
 }
 
@@ -43,7 +43,7 @@ pub fn(dset &DepSet) size() int {
 	return dset.items.len
 }
 
-pub fn new_mod_dep_graph() *ModDepGraph {
+pub fn new_mod_dep_graph() &ModDepGraph {
 	return &ModDepGraph{
 		acyclic: true
 	}
@@ -66,9 +66,9 @@ pub fn(graph mut ModDepGraph) add(mod string, deps []string) {
 	}
 }
 
-pub fn(graph &ModDepGraph) resolve() *ModDepGraph {
-	mut node_names := map[string]ModDepGraphNode 
-	mut node_deps := map[string]DepSet 
+pub fn(graph &ModDepGraph) resolve() &ModDepGraph {
+	mut node_names := map[string]ModDepGraphNode
+	mut node_deps := map[string]DepSet
 
 	for _, node in graph.nodes {
 		node_names[node.name] = node
@@ -148,24 +148,24 @@ pub fn(graph &ModDepGraph) display() {
 	}
 }
 
-// 'strings' => 'VROOT/vlib/strings' 
-// 'installed_mod' => '~/.vmodules/installed_mod' 
-// 'local_mod' => '/path/to/current/dir/local_mod' 
+// 'strings' => 'VROOT/vlib/strings'
+// 'installed_mod' => '~/.vmodules/installed_mod'
+// 'local_mod' => '/path/to/current/dir/local_mod'
 fn (v &V) find_module_path(mod string) string {
 	mod_path := v.module_path(mod)
-	// First check for local modules in the same directory 
+	// First check for local modules in the same directory
 	mut import_path := os.getwd() + '/$mod_path'
-	// Now search in vlib/ 
+	// Now search in vlib/
 	if !os.dir_exists(import_path) {
 		import_path = '$v.lang_dir/vlib/$mod_path'
-	} 
-	//println('ip=$import_path') 
-	// Finally try modules installed with vpm (~/.vmodules) 
+	}
+	//println('ip=$import_path')
+	// Finally try modules installed with vpm (~/.vmodules)
 	if !os.dir_exists(import_path) {
 		import_path = '$ModPath/$mod_path'
 		if !os.dir_exists(import_path){
 			cerror('module "$mod" not found')
-		} 
+		}
 	}
-	return import_path 
-} 
+	return import_path
+}

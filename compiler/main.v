@@ -62,9 +62,9 @@ mut:
 	out_name_c string // name of the temporary C file
 	files      []string // all V files that need to be parsed and compiled
 	dir        string // directory (or file) being compiled (TODO rename to path?)
-	table      *Table // table with types, vars, functions etc
-	cgen       *CGen // C code generator
-	pref       *Preferences // all the prefrences and settings extracted to a struct for reusability
+	table      &Table // table with types, vars, functions etc
+	cgen       &CGen // C code generator
+	pref       &Preferences // all the prefrences and settings extracted to a struct for reusability
 	lang_dir   string // "~/code/v"
 	out_name   string // "program.exe"
 	vroot      string
@@ -651,7 +651,7 @@ fn (v &V) log(s string) {
 	println(s)
 }
 
-fn new_v(args[]string) *V {
+fn new_v(args[]string) &V {
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')

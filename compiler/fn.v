@@ -103,7 +103,7 @@ fn (p mut Parser) is_sig() bool {
 	(p.file_path.contains(ModPath))
 }
 
-fn new_fn(mod string, is_public bool) *Fn {
+fn new_fn(mod string, is_public bool) &Fn {
 	return &Fn {
 		mod: mod
 		local_vars: [Var{}		; MaxLocalVars]
@@ -756,7 +756,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 }
 
 // foo *(1, 2, 3, mut bar)*
-fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
+fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	// p.gen('(')
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
@@ -977,7 +977,7 @@ fn (f Fn) typ_str() string {
 }
 
 // f.args => "int a, string b"
-fn (f &Fn) str_args(table *Table) string {
+fn (f &Fn) str_args(table &Table) string {
 	mut s := ''
 	for i, arg in f.args {
 		// Interfaces are a special case. We need to pass the object + pointers

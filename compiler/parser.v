@@ -18,17 +18,17 @@ struct Parser {
 	                      // C ifdef guard clause that must be put before
 	                      // the #include directives in the parsed .v file
 mut:
-	v              *V
-	scanner        *Scanner
+	v              &V
+	scanner        &Scanner
 	// tokens         []Token // TODO cache all tokens, right now they have to be scanned twice
 	token_idx      int
 	tok            Token
 	prev_tok       Token
 	prev_tok2      Token // TODO remove these once the tokens are cached
 	lit            string
-	cgen           *CGen
-	table          *Table
-	import_table   *FileImportTable // Holds imports for just the file being parsed
+	cgen           &CGen
+	table          &Table
+	import_table   &FileImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
 	mod            string
@@ -40,7 +40,7 @@ mut:
 	expected_type  string
 	tmp_cnt        int
 	is_script      bool
-	pref           *Preferences // Setting and Preferences shared from V struct
+	pref           &Preferences // Setting and Preferences shared from V struct
 	builtin_mod    bool
 	vh_lines       []string
 	inside_if_expr bool
@@ -50,7 +50,7 @@ mut:
 	for_expr_cnt   int // to detect whether `continue` can be used
 	ptr_cast       bool
 	calling_c      bool
-	cur_fn         *Fn
+	cur_fn         &Fn
 	returns        bool
 	vroot          string
 	is_c_struct_init bool
@@ -867,7 +867,9 @@ fn (p mut Parser) get_type() string {
 	}
 	//
 	for p.tok == .mul {
-		p.warn('use `&Foo` instead of `*Foo`')
+		if p.first_pass() {
+			p.warn('use `&Foo` instead of `*Foo`')
+		}
 		mul = true
 		nr_muls++
 		p.check(.mul)

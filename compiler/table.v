@@ -211,7 +211,7 @@ fn is_primitive_type(typ string) bool {
 	return is_number_type(typ) || typ == 'string'
 }
 
-fn new_table(obfuscate bool) *Table {
+fn new_table(obfuscate bool) &Table {
 	mut t := &Table {
 		obfuscate: obfuscate
 	}
@@ -857,7 +857,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn new_file_import_table(file_path string) *FileImportTable {
+fn new_file_import_table(file_path string) &FileImportTable {
 	return &FileImportTable{
 		file_path: file_path
 		imports:   map[string]string
