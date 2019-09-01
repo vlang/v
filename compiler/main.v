@@ -909,7 +909,7 @@ fn test_v() {
 	mut joined_args := env_vflags_and_os_args().right(1).join(' ')
 	joined_args = joined_args.left(joined_args.last_index('test'))
 	println('$joined_args')
-
+	mut failed := false
 	test_files := os.walk_ext('.', '_test.v')
 	for dot_relative_file in test_files {
 		relative_file := dot_relative_file.replace('./', '')
@@ -917,12 +917,13 @@ fn test_v() {
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
 		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
-			cerror('failed on $file')
-			return
+			failed = true
+			println('FAIL')
+			continue
 		}
 		if r.exit_code != 0 {
-			println('failed `$file` (\n$r.output\n)')
-			exit(1)
+			println('FAIL `$file` (\n$r.output\n)')
+			failed = true
 		} else {
 			println('OK')
 		}
@@ -935,16 +936,20 @@ fn test_v() {
 		tmpcfilepath := file.replace('.v', '.tmp.c')
 		print(relative_file + ' ')
 		r := os.exec('$vexe $joined_args -debug $file') or {
-			cerror('failed on $file')
-			return
+			failed = true
+			println('FAIL')
+			continue
 		}
 		if r.exit_code != 0 {
-			println('failed `$file` (\n$r.output\n)')
-			exit(1)
+			println('FAIL `$file` (\n$r.output\n)')
+			failed = true
 		} else {
 			println('OK')
 		}
 		os.rm(tmpcfilepath)
+	}
+	if failed {
+		exit(1)
 	}
 }
 
