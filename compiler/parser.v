@@ -2737,7 +2737,7 @@ fn (p mut Parser) array_init() string {
 		new_arr += '_no_alloc'
 	}
 
-	if i == 0 {
+	if i == 0 && p.pref.ccompiler != 'tcc' {
 		p.gen(' 0 })')
 	} else {
 		p.gen(' })')
