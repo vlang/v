@@ -56,14 +56,6 @@ script:
       ./v test v
     fi
   - |
-## tcc on ubuntu is 0.9.26, while v can compile with 0.9.27
-##    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-##      echo "Ensure that v can build itself with tcc too ..."
-##      /usr/bin/tcc -version
-##      ./v -cc /usr/bin/tcc -o vtcc compiler/
-##      ls -la vtcc
-##    fi
-##  - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
