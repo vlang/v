@@ -5,12 +5,12 @@
 module json
 
 #flag -I @VROOT/thirdparty/cJSON
-#flag @VROOT/thirdparty/cJSON/cJSON.o 
+#flag @VROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 
 struct C.cJSON {
 	valueint    int
-	valuedouble f32 
+	valuedouble f32
 	valuestring byteptr
 }
 
@@ -35,13 +35,6 @@ fn jsdecode_i16(root *C.cJSON) i16 {
 	return i16(root.valueint)
 }
 
-fn jsdecode_i32(root *C.cJSON) i32 {
-	if isnil(root) {
-		return i32(0)
-	}
-	return i32(root.valueint)
-}
-
 fn jsdecode_i64(root *C.cJSON) i64 {
 	if isnil(root) {
 		return i64(0)
@@ -49,11 +42,11 @@ fn jsdecode_i64(root *C.cJSON) i64 {
 	return i64(root.valuedouble) //i64 is double in C
 }
 
-fn jsdecode_u8(root *C.cJSON) u8 {
+fn jsdecode_byte(root *C.cJSON) byte {
 	if isnil(root) {
-		return u8(0)
+		return byte(0)
 	}
-	return u8(root.valueint)
+	return byte(root.valueint)
 }
 
 fn jsdecode_u16(root *C.cJSON) u16 {
@@ -124,15 +117,11 @@ fn jsencode_i16(val i16) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_i32(val i32) *C.cJSON {
-	return C.cJSON_CreateNumber(val)
-}
-
 fn jsencode_i64(val i64) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-fn jsencode_u8(val u8) *C.cJSON {
+fn jsencode_byte(val byte) *C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 

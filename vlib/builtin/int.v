@@ -80,6 +80,7 @@ pub fn (nn u32) str() string {
 	return tos(buf + max - len, len)
 }
 
+/*
 pub fn (nn u8) str() string {
 	 mut n := nn
 	if n == u8(0) {
@@ -97,6 +98,7 @@ pub fn (nn u8) str() string {
 	}
 	return tos(buf + max - len, len)
 }
+*/
 
 pub fn (nn i64) str() string {
 	mut n := nn

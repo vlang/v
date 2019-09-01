@@ -195,7 +195,7 @@ fn (t &Table) debug_fns() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	number_types = ['number', 'int', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
+	number_types = ['number', 'int', 'i8', 'i16', 'u16', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
 	float_types  = ['f32', 'f64']
 )
 
@@ -218,12 +218,10 @@ fn new_table(obfuscate bool) *Table {
 	t.register_type('int')
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
-	t.register_type_with_parent('u8', 'u32')
+	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('i16', 'int')
 	t.register_type_with_parent('u16', 'u32')
-	t.register_type_with_parent('i32', 'int')
 	t.register_type_with_parent('u32', 'int')
-	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('i64', 'int')
 	t.register_type_with_parent('u64', 'u32')
 	t.register_type('byteptr')
@@ -650,9 +648,7 @@ fn type_default(typ string) string {
 	case 'string': return 'tos((byte *)"", 0)'
 	case 'i8': return '0'
 	case 'i16': return '0'
-	case 'i32': return '0'
 	case 'i64': return '0'
-	case 'u8': return '0'
 	case 'u16': return '0'
 	case 'u32': return '0'
 	case 'u64': return '0'
@@ -760,14 +756,14 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
 	switch typ {
-	case 'byte', 'u8': return 0 <= x && x <= math.MaxU8
+	case 'u8': return 0 <= x && x <= math.MaxU8
 	case 'u16': return 0 <= x && x <= math.MaxU16
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
 	case 'i8': return math.MinI8 <= x && x <= math.MaxI8
 	case 'i16': return math.MinI16 <= x && x <= math.MaxI16
-	case 'int', 'i32': return math.MinI32 <= x && x <= math.MaxI32
+	case 'int': return math.MinI32 <= x && x <= math.MaxI32
 	//case 'i64':
 		//x64 := val.i64()
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
@@ -810,8 +806,8 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	case 'string': return '%.*s'
 	//case 'bool': return '%.*s'
 	case 'ustring': return '%.*s'
-	case 'byte', 'bool', 'int', 'char', 'byte', 'i32', 'i16', 'i8': return '%d'
-	case 'u8', 'u16', 'u32': return '%u'
+	case 'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8': return '%d'
+	case 'u16', 'u32': return '%u'
 	case 'f64', 'f32': return '%f'
 	case 'i64': return '%lld'
 	case 'u64': return '%llu'

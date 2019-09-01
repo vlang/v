@@ -132,9 +132,6 @@ pub fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
-pub fn (s string) i32() i32 {
-	return C.atol(s.str)
-}
 
 pub fn (s string) i64() i64 {
 	return C.atoll(s.str)
@@ -501,7 +498,7 @@ pub fn (s string) to_upper() string {
 pub fn (s string) capitalize() string {
 	sl := s.to_lower()
     cap := sl[0].str().to_upper() + sl.right(1)
-	return cap 
+	return cap
 }
 
 pub fn (s string) title() string {
