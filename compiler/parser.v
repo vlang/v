@@ -1611,6 +1611,12 @@ fn (p mut Parser) name_expr() string {
 					p.error('undefined: `$name`')
 				}
 				else {
+					if orig_name == 'i32' {
+						println('`i32` alias was removed, use `int` instead')
+					}
+					if orig_name == 'u8' {
+						println('`u8` alias was removed, use `byte` instead')
+					}
 					p.error('undefined: `$orig_name`')
 				}
 			}
