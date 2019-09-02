@@ -148,6 +148,7 @@ fn (r Readline) analyse_control() Action {
         case `E`: return Action.history_next
         case `F`: return Action.history_previous
         case `1`: return r.analyse_extended_control()
+        case `3`: return r.analyse_extended_control_no_eat()
       }
   }
   return Action.nothing
@@ -167,12 +168,21 @@ fn (r Readline) analyse_extended_control() Action {
   return Action.nothing
 }
 
+fn (r Readline) analyse_extended_control_no_eat() Action {
+  c := r.read_char()
+  switch c {
+    case `~`: return Action.delete_right // Suppr key
+  }
+  return Action.nothing
+}
+
 fn (r mut Readline) execute(a Action, c byte) bool {
   switch a {
     case Action.eof: return true
     case Action.insert_character: r.insert_character(c)
     case Action.commit_line: return r.commit_line()
     case Action.delete_left: r.delete_character()
+    case Action.delete_right: r.suppr_character()
     case Action.move_cursor_left: r.move_cursor_left()
     case Action.move_cursor_right: r.move_cursor_right()
     case Action.move_cursor_begining: r.move_cursor_begining()
@@ -266,6 +276,15 @@ fn (r mut Readline) delete_character() {
     return
   }
   r.cursor--
+  r.current = r.current.left(r.cursor) + r.current.right(r.cursor + 1)
+  r.refresh_line()
+}
+
+// Removes the character in front of cursor.
+fn (r mut Readline) suppr_character() {
+  if r.cursor > r.current.len {
+    return
+  }
   r.current = r.current.left(r.cursor) + r.current.right(r.cursor + 1)
   r.refresh_line()
 }
