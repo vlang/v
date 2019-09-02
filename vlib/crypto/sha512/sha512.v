@@ -299,3 +299,8 @@ pub fn (d &Digest) size() int {
 }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum512(s.bytes()).hex() }
+pub fn hexhash_384(s string) string { return sum384(s.bytes()).hex() }
+pub fn hexhash_512_224(s string) string { return sum512_224(s.bytes()).hex() }
+pub fn hexhash_512_256(s string) string { return sum512_256(s.bytes()).hex() }

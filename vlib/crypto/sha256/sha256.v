@@ -212,3 +212,6 @@ pub fn (d &Digest) size() int {
 }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum256(s.bytes()).hex() }
+pub fn hexhash_224(s string) string { return sum224(s.bytes()).hex() }

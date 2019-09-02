@@ -141,3 +141,5 @@ fn block(dig mut Digest, p []byte) {
 pub fn (d &Digest) size() int { return Size }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum(s.bytes()).hex() }
