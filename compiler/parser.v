@@ -429,14 +429,19 @@ fn (p mut Parser) type_decl() {
 	if p.tok == .key_struct {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
-	parent := p.get_type()
-	nt_pair := p.table.cgen_name_type_pair(name, parent)
+	parent := p.get_type2()
+	nt_pair := p.table.cgen_name_type_pair(name, parent.name)
 	// TODO dirty C typedef hacks for DOOM
 	// Unknown type probably means it's a struct, and it's used before the struct is defined,
 	// so specify "struct"
-	_struct := if !parent.contains('[') && !parent.starts_with('fn ') && !p.table.known_type(parent){'struct'} else { ''}
-	p.gen_typedef('typedef $_struct $nt_pair; // type alias name="$name" parent="$parent"')
-	p.register_type_with_parent(name, parent)
+	_struct := if parent.cat != .array && parent.cat != .func &&
+		!p.table.known_type(parent.name) {
+		'struct'
+	} else {
+		''
+	}
+	p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
+	p.register_type_with_parent(name, parent.name)
 }
 
 fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
@@ -743,7 +748,7 @@ if p.scanner.line_comment != '' {
 }
 
 fn (p mut Parser) warn(s string) {
-	println('$p.scanner.file_path:${p.scanner.line_nr+1}: $s')
+	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
 }
 
 fn (p mut Parser) error(s string) {
@@ -782,24 +787,17 @@ fn (p &Parser) first_pass() bool {
 
 // TODO return Type instead of string?
 fn (p mut Parser) get_type() string {
-	debug := p.fileis('fn_test') && false
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
 	// fn type
 	if p.tok == .func {
-		if debug {
-			println('\nget_type() .key_goT FN TYP line=$p.scanner.line_nr')
-		}
 		mut f := Fn{name: '_', mod: p.mod}
 		p.next()
 		line_nr := p.scanner.line_nr
 		p.fn_args(mut f)
 		// Same line, it's a return type
 		if p.scanner.line_nr == line_nr {
-			if debug {
-				println('same line getting type')
-			}
 			if p.tok == .name {
 				f.typ = p.get_type()
 			}

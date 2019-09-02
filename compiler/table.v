@@ -53,6 +53,7 @@ enum TypeCategory {
 	union_ // 5
 	c_struct
 	c_typedef
+	array
 }
 
 struct Var {
@@ -96,6 +97,7 @@ mut:
 	// This information is needed in the first pass.
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
+	
 }
 
 struct TypeNode {
