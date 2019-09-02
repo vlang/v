@@ -59,6 +59,7 @@ enum Action {
   history_previous
   history_next
   overwrite
+  clear_screen
 }
 
 // Toggle raw mode of the terminal by changing its attributes
@@ -128,6 +129,7 @@ fn (r Readline) analyse(c byte) Action {
     case 255 : return Action.eof
     case `\n`: return Action.commit_line
     case `\r`: return Action.commit_line
+    case `\f`: return Action.clear_screen // CTRL + L
     case `\b`: return Action.delete_left // Backspace
     case 127 : return Action.delete_left // DEL
     case 27  : return r.analyse_control() // ESC
@@ -189,6 +191,7 @@ fn (r mut Readline) execute(a Action, c byte) bool {
     case Action.move_cursor_end: r.move_cursor_end()
     case Action.move_cursor_word_left: r.move_cursor_word_left()
     case Action.move_cursor_word_right: r.move_cursor_word_right()
+    case Action.clear_screen: r.clear_screen()
   }
   return false
 }
@@ -339,4 +342,10 @@ fn (r mut Readline) move_cursor_word_right() {
     for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor]); r.cursor++ {}
     r.refresh_line()
   }
+}
+
+fn (r mut Readline) clear_screen() {
+  term.set_cursor_position(1, 1)
+  term.erase_clear()
+  r.refresh_line()
 }
