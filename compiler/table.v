@@ -758,7 +758,7 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
 	switch typ {
-	case 'u8': return 0 <= x && x <= math.MaxU8
+	case 'byte': return 0 <= x && x <= math.MaxU8
 	case 'u16': return 0 <= x && x <= math.MaxU16
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64

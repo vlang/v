@@ -1619,8 +1619,8 @@ fn (p mut Parser) name_expr() string {
 					if orig_name == 'i32' {
 						println('`i32` alias was removed, use `int` instead')
 					}
-					if orig_name == 'u8' {
-						println('`u8` alias was removed, use `byte` instead')
+					if orig_name == 'byte' {
+						println('`byte` alias was removed, use `byte` instead')
 					}
 					p.error('undefined: `$orig_name`')
 				}
@@ -1949,7 +1949,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_arr {
 			index_pos := p.cgen.cur_line.len
 			T := p.table.find_type(p.expression())
-			// Allows only i8-64 and u8-64 to be used when accessing an array
+			// Allows only i8-64 and byte-64 to be used when accessing an array
 			if T.parent != 'int' && T.parent != 'u32' {
 				p.check_types(T.name, 'int')
 			}

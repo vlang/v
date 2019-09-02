@@ -20,8 +20,8 @@ fn test_str_methods() {
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
 
-	assert u8(1).str() == '1'
-	assert u8(-1).str() == '255'
+	assert byte(1).str() == '1'
+	assert byte(-1).str() == '255'
 	assert u16(1).str() == '1'
 	assert u16(-1).str() == '65535'
 	assert u32(1).str() == '1'
