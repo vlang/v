@@ -39,6 +39,7 @@ mut:
   cursor int // Cursor position
   overwrite bool
   cursor_row_offset int
+  prompt string
 }
 
 
@@ -107,10 +108,12 @@ fn (r Readline) read_char() byte {
 // Main function of the readline module
 // Will loop and ingest characters until EOF or Enter
 // Returns the completed line
-pub fn (r mut Readline) read_line() string {
+pub fn (r mut Readline) read_line(prompt string) string {
   r.current = ''
   r.cursor = 0
+  r.prompt = prompt
 
+  print(r.prompt)
   for {
     c := r.read_char()
     a := r.analyse(c)
@@ -235,15 +238,17 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
 }
 
 // Will redraw the line
+// TODO: Fix if prompt is longer than terminal columns
 fn (r mut Readline) refresh_line() {
   mut end_of_input := [0, 0]
-  calculate_screen_position(0, 0, get_screen_columns(), r.current.len, mut end_of_input)
+  calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len, mut end_of_input)
   end_of_input[1] += r.current.count('\n')
   mut cursor_pos := [0, 0]
-  calculate_screen_position(0, 0, get_screen_columns(), r.cursor, mut cursor_pos)
+  calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor, mut cursor_pos)
 
   shift_cursor(0, -r.cursor_row_offset)
   term.erase_toend()
+  print(r.prompt)
   print(r.current)
   if end_of_input[0] == 0 && end_of_input[1] > 0 {
     print('\n')
@@ -264,13 +269,8 @@ fn (r mut Readline) insert_character(c byte) {
     // Overwriting
   }
   r.cursor++
-  // Simply print new character if at end of line
-  // Otherwise refresh the line if cursor != r.current.len
-  if r.cursor == r.current.len && r.current.len < get_screen_columns() {
-    print(c.str())
-  } else {
-    r.refresh_line()
-  }
+  // Refresh the line to add the new character
+  r.refresh_line()
 }
 
 // Removes the character behind cursor.
