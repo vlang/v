@@ -632,6 +632,7 @@ fn (p mut Parser) struct_decl() {
 		if attr == 'raw' && field_type != 'string' {
 			p.error('struct field with attribute "raw" should be of type "string" but got "$field_type"')
 		}
+
 		did_gen_something = true
 		if p.first_pass() {
 			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
@@ -639,6 +640,13 @@ fn (p mut Parser) struct_decl() {
 		p.fgenln('')
 	}
 	p.check(.rcbr)
+	if !is_c {
+		if !did_gen_something {
+			if p.first_pass() {
+				p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
+			}
+		}
+	}
 	p.fgenln('\n')
 }
 
