@@ -78,14 +78,14 @@ fn (d mut Digest) reset() {
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.
-pub fn new() *Digest {
+pub fn new() &Digest {
 	mut d := &Digest{}
 	d.reset()
 	return d
 }
 
 // new224 returns a new Digest (implementing hash.Hash) computing the SHA224 checksum.
-pub fn new224() *Digest {
+pub fn new224() &Digest {
 	mut d := &Digest{}
 	d.is224 = true
 	d.reset()

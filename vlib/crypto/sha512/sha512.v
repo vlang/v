@@ -120,29 +120,29 @@ fn (d mut Digest) reset() {
 	d.len = u64(0)
 }
 
-fn _new(hash crypto.Hash) *Digest {
+fn _new(hash crypto.Hash) &Digest {
 	mut d := &Digest{function: hash}
 	d.reset()
 	return d
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA-512 checksum.
-pub fn new() *Digest {
+pub fn new() &Digest {
 	return _new(crypto.Hash.SHA512)
 }
 
 // new512_224 returns a new Digest (implementing hash.Hash) computing the SHA-512/224 checksum.
-fn new512_224() *Digest {
+fn new512_224() &Digest {
 	return _new(crypto.Hash.SHA512_224)
 }
 
 // new512_256 returns a new Digest (implementing hash.Hash) computing the SHA-512/256 checksum.
-fn new512_256() *Digest {
+fn new512_256() &Digest {
 	return _new(crypto.Hash.SHA512_256)
 }
 
 // new384 returns a new Digest (implementing hash.Hash) computing the SHA-384 checksum.
-fn new384() *Digest {
+fn new384() &Digest {
 	return _new(crypto.Hash.SHA384)
 }
 
