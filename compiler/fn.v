@@ -358,7 +358,6 @@ fn (p mut Parser) fn_decl() {
 				if p.tok == .rcbr {
 					closed_scopes++
 				}
-				p.next()
 				// find `foo<Bar>()` in function bodies and register generic types
 				// TODO remove this once tokens are cached
 				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
@@ -376,7 +375,7 @@ fn (p mut Parser) fn_decl() {
 					p.name_expr()
 					p.scanner.pos = temp_scanner_pos
 				}
-				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
+				if p.tok.is_decl() {
 					break
 				}
 				// fn body ended, and a new fn attribute declaration like [live] is starting?
@@ -385,6 +384,7 @@ fn (p mut Parser) fn_decl() {
 						break
 					}
 				}
+				p.next()
 			}
 		}
 		// Live code reloading? Load all fns from .so
@@ -485,7 +485,6 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		// p.error('unclosed {')
 	}
 	// Make sure all vars in this function are used (only in main for now)
-	// if p.builtin_mod || p.mod == 'os' ||p.mod=='http'{
 	if p.mod != 'main' {
 		if !is_generic {
 			p.genln('}')
