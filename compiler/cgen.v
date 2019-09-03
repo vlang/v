@@ -360,24 +360,39 @@ fn types_to_c(types []Type, table &Table) string {
 	return sb.str()
 }
 
-// pretty inefficient algo, works fine with N < 1000 (TODO optimize)
+// sort structs by dependant fields
 fn sort_structs(types mut []Type) {
-	mut cnt := 0
+	mut graph := new_dep_graph()
+	// types list
+	mut type_names := []string
 	for i := 0; i < types.len; i++ {
-		for j in 0 .. i {
-			t := types[i]
-			//t2 := types[j]
-			// check if any of the types before `t` reference `t`
-			if types[j].contains_field_type(t.name) {
-				//println('moving up: $t.name len=$types.len')
-				types.insert(j, t)
-				types.delete(i+1)
-				i = 0 // Start from scratch
-				cnt++
-				if cnt > 500 {
-					println('infinite type loop (perhaps you have a recursive struct `$t.name`?)')
-					exit(1)
-				}
+		type_names << types[i].name
+	}
+	// loop over types
+	for i := 0; i < types.len; i++ {
+		t := types[i]
+		// create list of deps
+		mut field_types := []string
+		for field in t.fields {
+			// skip if not in types list
+			if !(field.typ in type_names) {
+				continue
+			}
+			field_types << field.typ
+		}
+		// add type and dependant types to graph
+		graph.add(t.name, field_types)
+	}
+	// sort
+	sorted := graph.resolve()
+	// reorder types
+	old_types := types.clone()
+	for i:=0; i<sorted.nodes.len; i++ {
+		node := sorted.nodes[i]
+		for j := 0; j < old_types.len; j++ {
+			t := old_types[j]
+			if t.name == node.name {
+				types[i] = t
 				continue
 			}
 		}
