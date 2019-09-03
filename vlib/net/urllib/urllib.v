@@ -313,7 +313,7 @@ struct URL {
 pub: mut:
 	scheme      string
 	opaque      string    // encoded opaque data
-	user        *Userinfo // username and password information
+	user        &Userinfo // username and password information
 	host        string    // host or host:port
 	path        string    // path (relative paths may omit leading slash)
 	raw_path    string    // encoded path hint (see escaped_path method)
@@ -324,7 +324,7 @@ pub: mut:
 
 // user returns a Userinfo containing the provided username
 // and no password set.
-pub fn user(username string) *Userinfo {
+pub fn user(username string) &Userinfo {
 	return &Userinfo{
 		username: username,
 		password: '',
@@ -340,7 +340,7 @@ pub fn user(username string) *Userinfo {
 // ``is NOT RECOMMENDED, because the passing of authentication
 // information in clear text (such as URI) has proven to be a
 // security risk in almost every case where it has been used.''
-fn user_password(username, password string) *Userinfo {
+fn user_password(username, password string) &Userinfo {
 	return &Userinfo{username, password, true}
 }
 
