@@ -458,7 +458,9 @@ fn (table &Table) type_has_method(typ &Type, name string) bool {
 // TODO use `?Fn`
 fn (table &Table) find_method(typ &Type, name string) Fn {
 	// println('TYPE HAS METHOD $name')
-	method := typ.find_method(name)
+	// method := typ.find_method(name)
+	t := table.typesmap[typ.name]
+	method := t.find_method(name)
 	if method.name.len == 0 && typ.parent.len > 0 {
 		parent := table.find_type(typ.parent)
 		return parent.find_method(name)

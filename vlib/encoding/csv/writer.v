@@ -14,7 +14,7 @@ mut:
 	delimiter byte
 }
 
-pub fn new_writer() *Writer {
+pub fn new_writer() &Writer {
 	return &Writer{
 		delimiter: `,`,
 		sb: strings.new_builder(200)

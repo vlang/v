@@ -611,8 +611,11 @@ fn (p mut Parser) struct_decl() {
 		names << field_name
 		// We are in an interface?
 		// `run() string` => run is a method, not a struct field
-		if is_interface { //&& p.first_pass() {
-			p.table.add_method(typ.name, p.interface_method(field_name, name))
+		if is_interface {
+			f := p.interface_method(field_name, name)
+			if p.first_pass() {
+				p.table.add_method(typ.name, f)
+			}
 			continue
 		}
 		// `pub` access mod
