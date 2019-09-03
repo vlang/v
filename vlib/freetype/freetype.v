@@ -89,7 +89,7 @@ struct C.Glyph {
 
 [typedef]
 struct C.FT_Face {
-	glyph *Glyph
+	glyph &Glyph
 }
 
 fn C.FT_Load_Char(voidptr, i64, int) int
@@ -129,7 +129,7 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 	}
 }
 
-pub fn new_context(cfg gg.Cfg) *Context {
+pub fn new_context(cfg gg.Cfg) &Context {
 	scale := cfg.scale
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {

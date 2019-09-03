@@ -102,7 +102,7 @@ pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
-pub fn create_window(c WinCfg) *Window {
+pub fn create_window(c WinCfg) &Window {
 	if c.borderless {
 		window_hint(C.GLFW_RESIZABLE, 0)
 		window_hint(C.GLFW_DECORATED, 0)
@@ -227,7 +227,7 @@ struct C.GLFWvidmode {
 	height int
 }
 
-pub fn C.glfwGetVideoMode() *C.GLFWvidmode
+pub fn C.glfwGetVideoMode() &C.GLFWvidmode
 
 pub fn get_monitor_size() Size {
 	//# GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());

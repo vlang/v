@@ -116,9 +116,9 @@ struct Game {
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          *gg.GG
+	gg          &gg.GG
 	// ft context for font drawing
-	ft          *freetype.Context
+	ft          &freetype.Context
 	font_loaded bool
 }
 
