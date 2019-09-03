@@ -366,8 +366,7 @@ fn sort_structs(types mut []Type) {
 	// types list
 	mut type_names := []string
 	for i := 0; i < types.len; i++ {
-		t := types[i]
-		type_names << t.name
+		type_names << types[i].name
 	}
 	// create list of deps
 	for i := 0; i < types.len; i++ {
@@ -378,7 +377,6 @@ fn sort_structs(types mut []Type) {
 			if !(field.typ in type_names) {
 				continue
 			}
-			// add type to deps
 			field_types << field.typ
 		}
 		// add type and dependant types to graph
@@ -394,6 +392,7 @@ fn sort_structs(types mut []Type) {
 			t := old_types[j]
 			if t.name == node.name {
 				types[i] = t
+				continue
 			}
 		}
 	}
