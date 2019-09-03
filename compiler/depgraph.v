@@ -7,18 +7,18 @@
 
 module main
 
-struct DepDagNode  {
+struct DepGraphNode  {
 mut:
 	name string
 	deps []string
 	last_cycle string
 }
 
-struct DepDag {
+struct DepGraph {
 pub:
 	mut:
 	acyclic bool
-	nodes   []DepDagNode
+	nodes   []DepGraphNode
 }
 
 struct DepSet {
@@ -44,22 +44,22 @@ pub fn(dset &DepSet) size() int {
 	return dset.items.len
 }
 
-pub fn new_dep_dag() &DepDag {
-	return &DepDag{
+pub fn new_dep_graph() &DepGraph {
+	return &DepGraph{
 		acyclic: true
 	}
 }
 
 
-pub fn(graph mut DepDag) add(mod string, deps []string) {
-	graph.nodes << DepDagNode{
+pub fn(graph mut DepGraph) add(mod string, deps []string) {
+	graph.nodes << DepGraphNode{
 		name: mod,
 		deps: deps
 	}
 }
 
-pub fn(graph &DepDag) resolve() &DepDag {
-	mut node_names := map[string]DepDagNode
+pub fn(graph &DepGraph) resolve() &DepGraph {
+	mut node_names := map[string]DepGraphNode
 	mut node_deps := map[string]DepSet
 
 	for _, node in graph.nodes {
@@ -72,7 +72,7 @@ pub fn(graph &DepDag) resolve() &DepDag {
 		node_deps[node.name] = dep_set
 	}
 
-	mut resolved := new_dep_dag()
+	mut resolved := new_dep_graph()
 	for node_deps.size != 0 {
 		mut ready_set := DepSet{}
 		for name, deps in node_deps {
@@ -82,7 +82,7 @@ pub fn(graph &DepDag) resolve() &DepDag {
 		}
 
 		if ready_set.size() == 0 {
-			mut g := new_dep_dag()
+			mut g := new_dep_graph()
 			g.acyclic = false
 			ndk := node_deps.keys()
 			for name, _ in node_deps {				
@@ -108,15 +108,15 @@ pub fn(graph &DepDag) resolve() &DepDag {
 	return resolved
 }
 
-pub fn(graph &DepDag) last_node() DepDagNode {
+pub fn(graph &DepGraph) last_node() DepGraphNode {
 	return graph.nodes[graph.nodes.len-1]
 }
 
-pub fn(graph &DepDag) last_cycle() string {
+pub fn(graph &DepGraph) last_cycle() string {
 	return graph.last_node().last_cycle
 }
 
-pub fn(graph &DepDag) display() {
+pub fn(graph &DepGraph) display() {
 	for i:=0; i<graph.nodes.len; i++ {
 		node := graph.nodes[i]
 		for dep in node.deps {

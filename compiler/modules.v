@@ -7,7 +7,7 @@ module main
 import os
 
 // add a module and its deps (module speficic dag method)
-pub fn(graph mut DepDag) from_import_tables(import_tables []FileImportTable) {
+pub fn(graph mut DepGraph) from_import_tables(import_tables []FileImportTable) {
 	for fit in import_tables {
 		mut deps := []string
 		for _, m in fit.imports {
@@ -18,7 +18,7 @@ pub fn(graph mut DepDag) from_import_tables(import_tables []FileImportTable) {
 }
 
 // get ordered imports (module speficic dag method)
-pub fn(graph &DepDag) imports() []string {
+pub fn(graph &DepGraph) imports() []string {
 	mut mods := []string
 	for node in graph.nodes {
 		if node.name == 'main' {
