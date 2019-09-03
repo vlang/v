@@ -171,6 +171,8 @@ fn (p mut Parser) chash() {
 		p.log('adding flag "$flag"')
 		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it
 		if (has_vroot || has_vmod) && flag.contains('.o') {
+			flag = os.realpath( flag )
+			//println( 'absolute filepath to objectfile is now: $flag | os is: $p.os ')
 			if p.os == .msvc {
 				build_thirdparty_obj_file_with_msvc(flag)
 			}
