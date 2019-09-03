@@ -32,7 +32,16 @@ fn (v mut V) cc() {
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
-	flags := v.table.flags.join(' ')
+
+	mut seenflags := map[string]int
+	mut uniqueflags := []string
+	for f in v.table.flags {
+		seenflags[ f ] = seenflags[ f ] + 1
+		if seenflags[ f ] > 1 { continue }
+		uniqueflags << f
+	}
+	flags := uniqueflags.join(' ')
+
 	//mut shared := ''
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
