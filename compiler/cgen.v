@@ -368,9 +368,10 @@ fn sort_structs(types mut []Type) {
 	for i := 0; i < types.len; i++ {
 		type_names << types[i].name
 	}
-	// create list of deps
+	// loop over types
 	for i := 0; i < types.len; i++ {
 		t := types[i]
+		// create list of deps
 		mut field_types := []string
 		for field in t.fields {
 			// skip if not in types list
