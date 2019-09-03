@@ -6,7 +6,7 @@ import crypto.rand
 
 fn test_crypto_rand() {
 	no_bytes := 100
-	min_percentage_diff := 80
+	max_percentage_diff := 20
 
 	r1 := rand.read(no_bytes) or {
 		assert false
@@ -24,7 +24,7 @@ fn test_crypto_rand() {
 		difference += if r1[i] == r2[i] {0} else {1}
 	}
 	
-	diff_percentage := no_bytes/difference*100
-	
-	assert diff_percentage >= min_percentage_diff
+	diff_percentage := 100 - (no_bytes/difference*100)
+
+	assert diff_percentage <= max_percentage_diff
 }
