@@ -22,7 +22,7 @@ fn new_array(mylen, cap, elm_size int) array {
 		len: mylen
 		cap: cap
 		element_size: elm_size
-		data: malloc(cap * elm_size)
+		data: calloc(cap * elm_size)
 	}
 	return arr
 }
