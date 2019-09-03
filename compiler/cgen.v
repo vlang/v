@@ -362,7 +362,7 @@ fn types_to_c(types []Type, table &Table) string {
 
 // sort structs by dependant fields
 fn sort_structs(types mut []Type) {
-	mut graph := new_dag()
+	mut graph := new_dep_dag()
 	// types list
 	mut type_names := []string
 	for i := 0; i < types.len; i++ {

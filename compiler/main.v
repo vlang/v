@@ -577,7 +577,7 @@ fn (v mut V) add_v_files_to_compile() {
 		println(v.table.imports)
 	}
 	// graph deps
-	mut dep_graph := new_dag()
+	mut dep_graph := new_dep_dag()
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
