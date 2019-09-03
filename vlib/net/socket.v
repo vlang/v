@@ -84,7 +84,7 @@ pub fn socket_udp() ?Socket {
 }
 
 // set socket options
-pub fn (s Socket) setsockopt(level int, optname int, optvalue *int) ?int {
+pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
 	res := C.setsockopt(s.sockfd, level, optname, optvalue, C.sizeof(optvalue))
 	if res < 0 {
 		return error('socket: setsockopt failed')
