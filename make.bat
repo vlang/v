@@ -55,12 +55,12 @@ for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio
 )
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64
+    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo
 ) else (
     goto :nocompiler
 )
 
-cl.exe /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+cl.exe /nologo /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
 
 if %ERRORLEVEL% GEQ 1 (
     echo cl.exe failed to build V
@@ -98,11 +98,3 @@ echo Exiting from error
 exit /b 1
 
 :success
-dir
-if exist "v.exe" (
-    echo V has been successfully built
-    exit
-) else (
-    echo v.exe was not generated - Create an issue at 'https://github.com/vlang'
-    exit /b 1
-)
