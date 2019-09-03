@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 
 // Directed acyclic graph
+// this implementation is specifically suited to ordering dependencies
 
 module main
 
