@@ -35,7 +35,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 			C.printf('Some libc implementations like musl simply do not provide it.\n')
 		}
 	}
-	C.printf('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
+	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
 }
 pub fn print_backtrace(){
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
