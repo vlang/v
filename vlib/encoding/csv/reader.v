@@ -29,7 +29,7 @@ mut:
 	row_pos           int
 }
 
-pub fn new_reader(data string) *Reader {
+pub fn new_reader(data string) &Reader {
 	return &Reader{
 		delimiter: `,`,
 		comment: `#`,
