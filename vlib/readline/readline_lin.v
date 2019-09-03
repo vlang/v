@@ -40,6 +40,8 @@ mut:
   overwrite bool
   cursor_row_offset int
   prompt string
+  previous_lines []string
+  search_index int
 }
 
 
@@ -112,6 +114,14 @@ pub fn (r mut Readline) read_line(prompt string) string {
   r.current = ''
   r.cursor = 0
   r.prompt = prompt
+  r.search_index = 0
+  if r.previous_lines.len <= 1 {
+    r.previous_lines << ''
+    r.previous_lines << ''
+  }
+  else {
+    r.previous_lines[0] = ''
+  }
 
   print(r.prompt)
   for {
@@ -121,6 +131,8 @@ pub fn (r mut Readline) read_line(prompt string) string {
       break
     }
   }
+  r.previous_lines[0] = ''
+  r.search_index = 0
   return r.current
 }
 
@@ -150,8 +162,8 @@ fn (r Readline) analyse_control() Action {
       switch sequence {
         case `C`: return Action.move_cursor_right
         case `D`: return Action.move_cursor_left
-        case `E`: return Action.history_next
-        case `F`: return Action.history_previous
+        case `B`: return Action.history_next
+        case `A`: return Action.history_previous
         case `1`: return r.analyse_extended_control()
         case `3`: return r.analyse_extended_control_no_eat()
       }
@@ -194,6 +206,8 @@ fn (r mut Readline) execute(a Action, c byte) bool {
     case Action.move_cursor_end: r.move_cursor_end()
     case Action.move_cursor_word_left: r.move_cursor_word_left()
     case Action.move_cursor_word_right: r.move_cursor_word_right()
+    case Action.history_previous: r.history_previous()
+    case Action.history_next: r.history_next()
     case Action.clear_screen: r.clear_screen()
   }
   return false
@@ -294,7 +308,9 @@ fn (r mut Readline) suppr_character() {
 
 // Add a line break then stops the main loop
 fn (r mut Readline) commit_line() bool {
+  r.previous_lines.insert(1, r.current)
   r.current = r.current + '\n'
+  println('')
   return true
 }
 
@@ -347,5 +363,28 @@ fn (r mut Readline) move_cursor_word_right() {
 fn (r mut Readline) clear_screen() {
   term.set_cursor_position(1, 1)
   term.erase_clear()
+  r.refresh_line()
+}
+
+fn (r mut Readline) history_previous() {
+  if r.search_index + 2 >= r.previous_lines.len {
+    return
+  }
+  if r.search_index == 0 {
+    r.previous_lines[0] = r.current
+  }
+  r.search_index++
+  r.current = r.previous_lines[r.search_index]
+  r.cursor = r.current.len
+  r.refresh_line()
+}
+
+fn (r mut Readline) history_next() {
+  if r.search_index <= 0 {
+    return
+  }
+  r.search_index--
+  r.current = r.previous_lines[r.search_index]
+  r.cursor = r.current.len
   r.refresh_line()
 }

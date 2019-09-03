@@ -246,18 +246,19 @@ fn build_thirdparty_obj_file(flag string) {
 		return
 	}
 	println('$obj_path not found, building it...')
-	parent := obj_path.all_before_last('/').trim_space()
+	parent := os.dir( obj_path )
 	files := os.ls(parent)
-	//files := os.ls(parent).filter(_.ends_with('.c'))  TODO
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += parent + '/' + file + ' '
+			cfiles += '"' + os.realpath( parent + os.PathSeparator + file ) + '" '
 		}
 	}
 	cc := find_c_compiler()
 	cc_thirdparty_options := find_c_compiler_thirdparty_options()
-	res := os.exec('$cc $cc_thirdparty_options -c -o $obj_path $cfiles') or {
+	cmd := '$cc $cc_thirdparty_options -c -o "$obj_path" $cfiles'
+	res := os.exec(cmd) or {
+		println('failed thirdparty object build cmd: $cmd')
 		cerror(err)
 		return
 	}
