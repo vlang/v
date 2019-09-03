@@ -34,35 +34,30 @@
 ===output===
 .vrepl_temp.v:8:14: cannot modify immutable field `len` (type `string`)
 declare the field with `mut:`
-
 struct string {
   mut:
 	len int
 }
 .vrepl_temp.v:9:14: cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
-
 struct B {
   mut:
 	a A
 }
 .vrepl_temp.v:9:12: cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
-
 struct B {
   mut:
 	a A
 }
 .vrepl_temp.v:12:14: cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
-
 struct B {
   mut:
 	a A
 }
 .vrepl_temp.v:12:16: cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
-
 struct B {
   mut:
 	a A
@@ -70,14 +65,12 @@ struct B {
 .vrepl_temp.v:13:15: `c2` is immutable.
 .vrepl_temp.v:16:12: cannot modify immutable field `e` (type `F`)
 declare the field with `mut:`
-
 struct F {
   mut:
 	e []E
 }
 .vrepl_temp.v:16:17: cannot modify immutable field `e` (type `F`)
 declare the field with `mut:`
-
 struct F {
   mut:
 	e []E

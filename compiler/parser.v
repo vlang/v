@@ -1822,7 +1822,6 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 			f := p.first_immutable_field
 			p.error('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
 					'declare the field with `mut:`
-
 struct $f.parent_fn {
   mut:
 	$f.name $f.typ
