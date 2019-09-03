@@ -23,8 +23,8 @@ fn test_crypto_rand() {
 	for i, _ in r1 {
 		difference += if r1[i] == r2[i] {0} else {1}
 	}
-	
-	diff_percentage := 100 - (no_bytes/difference*100)
+
+	diff_percentage := f32(100) - (f32(difference)/f32(no_bytes)*100)
 
 	assert diff_percentage <= max_percentage_diff
 }
