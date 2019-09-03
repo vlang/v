@@ -54,7 +54,7 @@ fn test_the_v_repl() {
 			assert false
 			break
 		}
-		result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace( wd, '' )
+		result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
 		assert result == output
 		if result != output {
 			println(file)
