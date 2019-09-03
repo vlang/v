@@ -378,7 +378,7 @@ fn sort_structs(types mut []Type) {
 			if !(field.typ in type_names) {
 				continue
 			}
-			// add typ to deps
+			// add type to deps
 			field_types << field.typ
 		}
 		// add type and dependant types to graph
