@@ -150,7 +150,7 @@ pub fn (s string) u32() u32 {
 }
 
 pub fn (s string) u64() u64 {
-	return C.strtoull(s.str, 0, 0)
+	return C.atoll(s.str)
 }
 
 // ==
