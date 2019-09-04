@@ -7,6 +7,15 @@ module main
 import os
 import strings
 
+struct ScannerState {
+mut:
+	pos int
+	line int
+	inside_string bool
+	dollar_start bool
+	dollar_end bool
+}
+
 struct Scanner {
 mut:
 	file_path      string
@@ -711,6 +720,24 @@ fn (s mut Scanner) ident_char() string {
 		}
 	}
 	return c
+}
+
+fn (s mut Scanner) save_scan_state() ScannerState {
+	mut ss := ScannerState{}
+	ss.pos = s.pos
+	ss.line = s.line_nr
+	ss.inside_string = s.inside_string
+	ss.dollar_start = s.dollar_start
+	ss.dollar_end = s.dollar_end
+	return ss
+}
+
+fn (s mut Scanner) restore_scan_state(ss ScannerState) {
+	s.pos = ss.pos
+	s.line_nr = ss.line
+	s.inside_string = ss.inside_string
+	s.dollar_start = ss.dollar_start
+	s.dollar_end = ss.dollar_end
 }
 
 fn (s mut Scanner) peek() Token {
