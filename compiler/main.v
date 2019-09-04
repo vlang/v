@@ -836,7 +836,6 @@ Options:
   -                 Read from stdin (Default; Interactive mode if in a tty)
   -h, help          Display this information.
   -v, version       Display compiler version.
-  -lib              Generate object file.
   -prod             Build an optimized executable.
   -o <file>         Place output into <file>.
   -obf              Obfuscate the resulting binary.
@@ -846,6 +845,7 @@ Options:
   fmt               Run vfmt to format the source code.
   up                Update V.
   run               Build and execute a V program. You can add arguments after the file name.
+  build module      Compile a module into an object file.
 
 
 Files:
