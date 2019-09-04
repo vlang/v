@@ -1,4 +1,5 @@
 struct Dog {
+	breed string
 }
 
 fn (d Dog) speak() {
