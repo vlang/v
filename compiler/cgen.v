@@ -305,15 +305,15 @@ fn (v mut V) c_type_definitions() string {
 	}
 	// structs that need to be sorted
 	mut types := []Type
-	for _, t in v.table.typesmap {
-		if t.name in builtins {
+	for t_name, t in v.table.typesmap {
+		if t_name in builtins {
 			continue
 		}
 		types << t
 	}
 	// Generate C code
 	return types_to_c(builtin_types,v.table) + '\n//----\n' +
-		  types_to_c(sort_structs(types), v.table)
+			types_to_c(sort_structs(types), v.table)
 }
 	
 fn types_to_c(types []Type, table &Table) string {
@@ -367,7 +367,7 @@ fn sort_structs(types []Type) []Type {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe.conigliaro')
+		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []Type
