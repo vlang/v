@@ -296,42 +296,24 @@ fn platform_postfix_to_ifdefguard(name string) string {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (v mut V) c_type_definitions() string {
-	mut types := []Type // structs that need to be sorted
-	mut top_types := []Type // builtin types and types that only have primitive fields
 	mut builtin_types := []Type
 	// builtin types need to be on top
 	builtins := ['string', 'array', 'map', 'Option']
 	for builtin in builtins {
 		typ := v.table.typesmap[builtin]
 		builtin_types << typ
-		v.table.typesmap.delete(builtin)
 	}
-	// split all types
+	// structs that need to be sorted
+	mut types := []Type
 	for _, t in v.table.typesmap {
-		if !t.name[0].is_capital() {
-			top_types << t
-			continue
-		}
-		mut only_builtin_fields := true
-		for field in t.fields {
-			// user types start with a capital or contain __ (defined in another module)
-			if field.typ[0].is_capital() || field.typ.contains('__') {
-				only_builtin_fields = false
-				break
-			}
-		}
-		if only_builtin_fields {
-			top_types << t
+		if t.name in builtins {
 			continue
 		}
 		types << t
 	}
-	sort_structs(mut top_types)
-	sort_structs(mut types)
 	// Generate C code
 	return types_to_c(builtin_types,v.table) + '\n//----\n' +
-			types_to_c(top_types, v.table) + '\n/*----*/\n' +
-			types_to_c(types, v.table)
+		  types_to_c(sort_structs(types), v.table)
 }
 	
 fn types_to_c(types []Type, table &Table) string {
@@ -361,41 +343,42 @@ fn types_to_c(types []Type, table &Table) string {
 }
 
 // sort structs by dependant fields
-fn sort_structs(types mut []Type) {
-	mut graph := new_dep_graph()
-	// types list
+fn sort_structs(types []Type) []Type {
+	mut dep_graph := new_dep_graph()
+	// types name list
 	mut type_names := []string
-	for i := 0; i < types.len; i++ {
-		type_names << types[i].name
+	for t in types {
+		type_names << t.name
 	}
 	// loop over types
-	for i := 0; i < types.len; i++ {
-		t := types[i]
+	for t in types {
 		// create list of deps
-		mut field_types := []string
+		mut field_deps := []string
 		for field in t.fields {
-			// skip if not in types list
-			if !(field.typ in type_names) {
+			// skip if not in types list or already in deps
+			if !(field.typ in type_names) || field.typ in field_deps {
 				continue
 			}
-			field_types << field.typ
+			field_deps << field.typ
 		}
 		// add type and dependant types to graph
-		graph.add(t.name, field_types)
+		dep_graph.add(t.name, field_deps)
 	}
-	// sort
-	sorted := graph.resolve()
-	// reorder types
-	old_types := types.clone()
-	for i:=0; i<sorted.nodes.len; i++ {
-		node := sorted.nodes[i]
-		for j := 0; j < old_types.len; j++ {
-			t := old_types[j]
+	// sort graph
+	dep_graph_sorted := dep_graph.resolve()
+	if !dep_graph_sorted.acyclic {
+		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe.conigliaro')
+	}
+	// sort types
+	mut types_sorted := []Type
+	for node in dep_graph_sorted.nodes {
+		for t in types {
 			if t.name == node.name {
-				types[i] = t
+				types_sorted << t
 				continue
 			}
 		}
 	}
+	return types_sorted
 }
 
