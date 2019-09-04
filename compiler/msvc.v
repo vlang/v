@@ -330,6 +330,10 @@ pub fn (v mut V) cc_msvc() {
 			// Which ever one of these is lowest we use
 			// TODO: we really shouldnt support all of these cmon
 			mut lowest := base.index('-')
+			// dont break paths with hyphens
+			if lowest != 0  {
+				lowest = -1
+			}
 			for x in [base.index(' '), base.index(',')] {
 				if (x < lowest && x != -1) || lowest == -1 {
 					lowest = x
