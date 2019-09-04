@@ -165,7 +165,8 @@ fn (r Readline) analyse_control() Action {
         case `B`: return Action.history_next
         case `A`: return Action.history_previous
         case `1`: return r.analyse_extended_control()
-        case `3`: return r.analyse_extended_control_no_eat()
+        case `2`: return r.analyse_extended_control_no_eat(sequence)
+        case `3`: return r.analyse_extended_control_no_eat(sequence)
       }
   }
   return Action.nothing
@@ -185,17 +186,21 @@ fn (r Readline) analyse_extended_control() Action {
   return Action.nothing
 }
 
-fn (r Readline) analyse_extended_control_no_eat() Action {
+fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
   c := r.read_char()
   switch c {
-    case `~`: return Action.delete_right // Suppr key
+    case `~`:
+      switch last_c {
+        case `3`: return Action.delete_right // Suppr key
+        case `2`: return Action.overwrite
+      }
   }
   return Action.nothing
 }
 
 fn (r mut Readline) execute(a Action, c byte) bool {
   switch a {
-    case Action.eof: return true
+    case Action.eof: return r.eof()
     case Action.insert_character: r.insert_character(c)
     case Action.commit_line: return r.commit_line()
     case Action.delete_left: r.delete_character()
@@ -208,6 +213,7 @@ fn (r mut Readline) execute(a Action, c byte) bool {
     case Action.move_cursor_word_right: r.move_cursor_word_right()
     case Action.history_previous: r.history_previous()
     case Action.history_next: r.history_next()
+    case Action.overwrite: r.switch_overwrite()
     case Action.clear_screen: r.clear_screen()
   }
   return false
@@ -271,16 +277,22 @@ fn (r mut Readline) refresh_line() {
   r.cursor_row_offset = cursor_pos[1]
 }
 
+// End the line without a newline
+fn (r mut Readline) eof() bool {
+  r.previous_lines.insert(1, r.current)
+  return true
+}
+
 fn (r mut Readline) insert_character(c byte) {
   // Small ASCII, to expand
   if c >= 127 {
     return
   }
   // TODO: Add character if overwrite at end
-  if !r.overwrite {
+  if !r.overwrite || r.cursor == r.current.len {
     r.current = r.current.left(r.cursor) + c.str() + r.current.right(r.cursor)
   } else {
-    // Overwriting
+    r.current = r.current.left(r.cursor) + c.str() + r.current.right(r.cursor + 1)
   }
   r.cursor++
   // Refresh the line to add the new character
@@ -358,6 +370,10 @@ fn (r mut Readline) move_cursor_word_right() {
     for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor]); r.cursor++ {}
     r.refresh_line()
   }
+}
+
+fn (r mut Readline) switch_overwrite() {
+  r.overwrite = !r.overwrite
 }
 
 fn (r mut Readline) clear_screen() {
