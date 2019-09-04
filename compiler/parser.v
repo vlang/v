@@ -3073,9 +3073,11 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		}
 		p.check(.lcbr)
 		// statements() returns the type of the last statement
+		first_typ := typ
 		typ = p.statements()
 		p.inside_if_expr = false
 		if is_expr {
+			p.check_types(first_typ, typ)
 			p.gen(strings.repeat(`)`, elif_depth + 1))
 		}
 		else_returns := p.returns
