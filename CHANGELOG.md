@@ -14,6 +14,7 @@
 - http: support plain HTTP protocol and follow redirects.
 - net: basic UDP support.
 - Functions can now be inlined via the `[inline]` attribute.
+- `gg` module can now render all Unicode characters.
 
 
 

@@ -26,13 +26,14 @@ mut:
 	prev_tok Token
 }
 
-fn new_scanner(file_path string) *Scanner {
+fn new_scanner(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
-		panic('"$file_path" doesn\'t exist')
+		cerror('"$file_path" doesn\'t exist')
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		panic('scanner: failed to open "$file_path"')
+		cerror('scanner: failed to open "$file_path"')
+		return 0
 	}
 
 	// BOM check
@@ -144,6 +145,9 @@ fn (s mut Scanner) ident_dec_number() string {
 		s.pos++
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
+		}
+		if !s.inside_string && s.pos < s.text.len && s.text[s.pos] == `f` {
+			s.error('no `f` is needed for floats')
 		}
 	}
 

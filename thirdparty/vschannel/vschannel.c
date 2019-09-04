@@ -1,5 +1,6 @@
 #include <vschannel.h>
 
+
 // Proxy
 CHAR *  psz_proxy_server  = "proxy";
 INT     i_proxy_port      = 80;
@@ -26,14 +27,12 @@ struct TlsContext {
 	WSADATA                wsa_data;
 	CredHandle             h_client_creds;
 	CtxtHandle             h_context;
+	PCCERT_CONTEXT         p_pemote_cert_context;
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
-	PCCERT_CONTEXT         p_pemote_cert_context;
 };
 
-struct TlsContext tls_ctx;
-
-struct TlsContext new_tls_context() {
+TlsContext new_tls_context() {
 	return (struct TlsContext) {
 		.cert_store            = NULL,
 		.g_hsecurity           = NULL,
@@ -44,26 +43,26 @@ struct TlsContext new_tls_context() {
 	};
 };
 
-BOOL load_security_library(void) {
+BOOL load_security_library(TlsContext *tls_ctx) {
 	INIT_SECURITY_INTERFACE pInitSecurityInterface;
 
 	//  Load Security DLL
-	tls_ctx.g_hsecurity = LoadLibraryA("schannel.dll");
-	if(tls_ctx.g_hsecurity == NULL) {
+	tls_ctx->g_hsecurity = LoadLibraryA("schannel.dll");
+	if(tls_ctx->g_hsecurity == NULL) {
 		printf("Error 0x%x loading %s.\n", GetLastError(), "schannel.dll");
 		return FALSE;
 	}
 
-	pInitSecurityInterface = (INIT_SECURITY_INTERFACE)GetProcAddress(tls_ctx.g_hsecurity, "InitSecurityInterfaceA");
+	pInitSecurityInterface = (INIT_SECURITY_INTERFACE)GetProcAddress(tls_ctx->g_hsecurity, "InitSecurityInterfaceA");
 	
 	if(pInitSecurityInterface == NULL) {
 		printf("Error 0x%x reading InitSecurityInterface entry point.\n", GetLastError());
 		return FALSE;
 	}
 
-	tls_ctx.sspi = pInitSecurityInterface();
+	tls_ctx->sspi = pInitSecurityInterface();
 
-	if(tls_ctx.sspi == NULL) {
+	if(tls_ctx->sspi == NULL) {
 		printf("Error 0x%x reading security interface.\n",
 			   GetLastError());
 		return FALSE;
@@ -72,69 +71,67 @@ BOOL load_security_library(void) {
 	return TRUE;
 }
 
-void unload_security_library(void) {
-	FreeLibrary(tls_ctx.g_hsecurity);
-	tls_ctx.g_hsecurity = NULL;
+void unload_security_library(TlsContext *tls_ctx) {
+	FreeLibrary(tls_ctx->g_hsecurity);
+	tls_ctx->g_hsecurity = NULL;
 }
 
-void vschannel_cleanup() {
+void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Free the server certificate context.
-	if(tls_ctx.p_pemote_cert_context) {
-		CertFreeCertificateContext(tls_ctx.p_pemote_cert_context);
-		tls_ctx.p_pemote_cert_context = NULL;
+	if(tls_ctx->p_pemote_cert_context) {
+		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
+		tls_ctx->p_pemote_cert_context = NULL;
 	}
 
 	// Free SSPI context handle.
-	if(tls_ctx.context_initialized) {
-		tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.h_context);
-		tls_ctx.context_initialized = FALSE;
+	if(tls_ctx->context_initialized) {
+		tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
+		tls_ctx->context_initialized = FALSE;
 	}
 
 	// Free SSPI credentials handle.
-	if(tls_ctx.creds_initialized) {
-		tls_ctx.sspi->FreeCredentialsHandle(&tls_ctx.h_client_creds);
-		tls_ctx.creds_initialized = FALSE;
+	if(tls_ctx->creds_initialized) {
+		tls_ctx->sspi->FreeCredentialsHandle(&tls_ctx->h_client_creds);
+		tls_ctx->creds_initialized = FALSE;
 	}
 	
 	// Close socket.
-	if(tls_ctx.socket != INVALID_SOCKET) {
-		closesocket(tls_ctx.socket);
+	if(tls_ctx->socket != INVALID_SOCKET) {
+		closesocket(tls_ctx->socket);
 	}
 
 	// Shutdown WinSock subsystem.
 	WSACleanup();
 	
 	// Close "MY" certificate store.
-	if(tls_ctx.cert_store) {
-		CertCloseStore(tls_ctx.cert_store, 0);
+	if(tls_ctx->cert_store) {
+		CertCloseStore(tls_ctx->cert_store, 0);
 	}
 
-	unload_security_library();
+	unload_security_library(tls_ctx);
 }
 
-void vschannel_init() {
-	tls_ctx = new_tls_context();
-
-	if(!load_security_library()) {
+void vschannel_init(TlsContext *tls_ctx) {
+	if(!load_security_library(tls_ctx)) {
 		printf("Error initializing the security library\n");
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 	}
 
 	// Initialize the WinSock subsystem.
-	if(WSAStartup(0x0101, &tls_ctx.wsa_data) == SOCKET_ERROR) {
+	if(WSAStartup(0x0101, &tls_ctx->wsa_data) == SOCKET_ERROR) {
 		printf("Error %d returned by WSAStartup\n", GetLastError());
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 	}
 
 	// Create credentials.
-	if(create_credentials()) {
+	if(create_credentials(tls_ctx)) {
 		printf("Error creating credentials\n");
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 	}
-	tls_ctx.creds_initialized = TRUE;
+	tls_ctx->creds_initialized = TRUE;
 }
 
-INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
+INT request(TlsContext *tls_ctx, INT iport, CHAR *host, CHAR *req, CHAR **out)
 {
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
@@ -150,34 +147,34 @@ INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
 	port_number = iport;
 
 	// Connect to server.
-	if(connect_to_server(host, port_number)) {
+	if(connect_to_server(tls_ctx, host, port_number)) {
 		printf("Error connecting to server\n");
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 
 	// Perform handshake
-	if(perform_client_handshake(host, &ExtraData)) {
+	if(perform_client_handshake(tls_ctx, host, &ExtraData)) {
 		printf("Error performing handshake\n");
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
-	tls_ctx.context_initialized = TRUE;
+	tls_ctx->context_initialized = TRUE;
 
 	// Authenticate server's credentials.
 
 	// Get server's certificate.
-	Status = tls_ctx.sspi->QueryContextAttributes(&tls_ctx.h_context,
+	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
 											 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-											 (PVOID)&tls_ctx.p_pemote_cert_context);
+											 (PVOID)&tls_ctx->p_pemote_cert_context);
 	if(Status != SEC_E_OK) {
 		printf("Error 0x%x querying remote certificate\n", Status);
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 
 	// Attempt to validate server certificate.
-	Status = verify_server_certificate(tls_ctx.p_pemote_cert_context, host,0);
+	Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
 	if(Status) {
 		// The server certificate did not validate correctly. At this
 		// point, we cannot tell if we are connecting to the correct 
@@ -187,36 +184,35 @@ INT request(INT iport, CHAR *host, CHAR *req, CHAR *out)
 		// It is therefore best if we abort the connection.
 
 		printf("Error 0x%x authenticating server credentials!\n", Status);
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 
 	// Free the server certificate context.
-	CertFreeCertificateContext(tls_ctx.p_pemote_cert_context);
-	tls_ctx.p_pemote_cert_context = NULL;
+	CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
+	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
-	if(https_make_request(req, out, &resp_length)) {
-		vschannel_cleanup();
+	if(https_make_request(tls_ctx, req, out, &resp_length)) {
+		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
-	
 	
 	// Send a close_notify alert to the server and
 	// close down the connection.
-	if(disconnect_from_server()) {
+	if(disconnect_from_server(tls_ctx)) {
 		printf("Error disconnecting from server\n");
-		vschannel_cleanup();
+		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
-	tls_ctx.context_initialized = FALSE;
-	tls_ctx.socket = INVALID_SOCKET;
+	tls_ctx->context_initialized = FALSE;
+	tls_ctx->socket = INVALID_SOCKET;
 
 	return resp_length;
 }
 
 
-static SECURITY_STATUS create_credentials() {
+static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	TimeStamp       tsExpiry;
 	SECURITY_STATUS Status;
 
@@ -227,10 +223,10 @@ static SECURITY_STATUS create_credentials() {
 
 	// Open the "MY" certificate store, which is where Internet Explorer
 	// stores its client certificates.
-	if(tls_ctx.cert_store == NULL) {
-		tls_ctx.cert_store = CertOpenSystemStore(0, "MY");
+	if(tls_ctx->cert_store == NULL) {
+		tls_ctx->cert_store = CertOpenSystemStore(0, "MY");
 
-		if(!tls_ctx.cert_store) {
+		if(!tls_ctx->cert_store) {
 			printf("Error 0x%x returned by CertOpenSystemStore\n", 
 			GetLastError());
 			return SEC_E_NO_CREDENTIALS;
@@ -242,16 +238,16 @@ static SECURITY_STATUS create_credentials() {
 	// of course). Real applications may wish to specify other parameters 
 	// as well.
 
-	ZeroMemory(&tls_ctx.schannel_cred, sizeof(tls_ctx.schannel_cred));
+	ZeroMemory(&tls_ctx->schannel_cred, sizeof(tls_ctx->schannel_cred));
 
-	tls_ctx.schannel_cred.dwVersion  = SCHANNEL_CRED_VERSION;
+	tls_ctx->schannel_cred.dwVersion  = SCHANNEL_CRED_VERSION;
 	if(pCertContext)
 	{
-		tls_ctx.schannel_cred.cCreds     = 1;
-		tls_ctx.schannel_cred.paCred     = &pCertContext;
+		tls_ctx->schannel_cred.cCreds     = 1;
+		tls_ctx->schannel_cred.paCred     = &pCertContext;
 	}
 
-	tls_ctx.schannel_cred.grbitEnabledProtocols = protocol;
+	tls_ctx->schannel_cred.grbitEnabledProtocols = protocol;
 
 	if(aid_key_exch)
 	{
@@ -260,11 +256,11 @@ static SECURITY_STATUS create_credentials() {
 
 	if(cSupportedAlgs)
 	{
-		tls_ctx.schannel_cred.cSupportedAlgs    = cSupportedAlgs;
-		tls_ctx.schannel_cred.palgSupportedAlgs = rgbSupportedAlgs;
+		tls_ctx->schannel_cred.cSupportedAlgs    = cSupportedAlgs;
+		tls_ctx->schannel_cred.palgSupportedAlgs = rgbSupportedAlgs;
 	}
 
-	tls_ctx.schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
 
 	// The SCH_CRED_MANUAL_CRED_VALIDATION flag is specified because
 	// this sample verifies the server certificate manually. 
@@ -273,19 +269,19 @@ static SECURITY_STATUS create_credentials() {
 	// certificate. Applications running on newer versions of Windows can
 	// leave off this flag, in which case the InitializeSecurityContext
 	// function will validate the server certificate automatically.
-	// tls_ctx.schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+	// tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
 
 	// Create an SSPI credential.
 
-	Status = tls_ctx.sspi->AcquireCredentialsHandle(
+	Status = tls_ctx->sspi->AcquireCredentialsHandle(
 						NULL,                   // Name of principal    
 						UNISP_NAME_A,           // Name of package
 						SECPKG_CRED_OUTBOUND,   // Flags indicating use
 						NULL,                   // Pointer to logon ID
-						&tls_ctx.schannel_cred,          // Package specific data
+						&tls_ctx->schannel_cred,          // Package specific data
 						NULL,                   // Pointer to GetKey() func
 						NULL,                   // Value to pass to GetKey()
-						&tls_ctx.h_client_creds,                // (out) Cred Handle
+						&tls_ctx->h_client_creds,                // (out) Cred Handle
 						&tsExpiry);             // (out) Lifetime (optional)
 	if(Status != SEC_E_OK) {
 		printf("Error 0x%x returned by AcquireCredentialsHandle\n", Status);
@@ -305,7 +301,7 @@ cleanup:
 }
 
 
-static INT connect_to_server(CHAR *host, INT port_number) {
+static INT connect_to_server(TlsContext *tls_ctx, CHAR *host, INT port_number) {
 	SOCKET Socket;
 	struct sockaddr_in sin;
 	struct hostent *hp;
@@ -382,13 +378,13 @@ static INT connect_to_server(CHAR *host, INT port_number) {
 		// should continue to receive until CR LF CR LF is received
 	}
 
-	tls_ctx.socket = Socket;
+	tls_ctx->socket = Socket;
 
 	return SEC_E_OK;
 }
 
 
-static LONG disconnect_from_server() {
+static LONG disconnect_from_server(TlsContext *tls_ctx) {
 	DWORD           dwType;
 	PBYTE           pbMessage;
 	DWORD           cbMessage;
@@ -413,7 +409,7 @@ static LONG disconnect_from_server() {
 	OutBuffer.pBuffers  = OutBuffers;
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
-	Status = tls_ctx.sspi->ApplyControlToken(&tls_ctx.h_context, &OutBuffer);
+	Status = tls_ctx->sspi->ApplyControlToken(&tls_ctx->h_context, &OutBuffer);
 
 	if(FAILED(Status)) {
 		printf("Error 0x%x returned by ApplyControlToken\n", Status);
@@ -437,9 +433,9 @@ static LONG disconnect_from_server() {
 	OutBuffer.pBuffers  = OutBuffers;
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
-	Status = tls_ctx.sspi->InitializeSecurityContext(
-		&tls_ctx.h_client_creds, &tls_ctx.h_context, NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
-		NULL, 0, &tls_ctx.h_context, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
+	Status = tls_ctx->sspi->InitializeSecurityContext(
+		&tls_ctx->h_client_creds, &tls_ctx->h_context, NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
+		NULL, 0, &tls_ctx->h_context, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
 	if(FAILED(Status))  {
 		printf("Error 0x%x returned by InitializeSecurityContext\n", Status);
@@ -452,7 +448,7 @@ static LONG disconnect_from_server() {
 	// Send the close notify message to the server.
 
 	if(pbMessage != NULL && cbMessage != 0) {
-		cbData = send(tls_ctx.socket, pbMessage, cbMessage, 0);
+		cbData = send(tls_ctx->socket, pbMessage, cbMessage, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			Status = WSAGetLastError();
 			printf("Error %d sending close notify\n", Status);
@@ -460,23 +456,23 @@ static LONG disconnect_from_server() {
 		}
 
 		// Free output buffer.
-		tls_ctx.sspi->FreeContextBuffer(pbMessage);
+		tls_ctx->sspi->FreeContextBuffer(pbMessage);
 	}
 	
 
 cleanup:
 
 	// Free the security context.
-	tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.h_context);
+	tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 
 	// Close the socket.
-	closesocket(tls_ctx.socket);
+	closesocket(tls_ctx->socket);
 
 	return Status;
 }
 
 
-static SECURITY_STATUS perform_client_handshake(CHAR *host, SecBuffer *pExtraData) {
+static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, CHAR *host, SecBuffer *pExtraData) {
 	SecBufferDesc   OutBuffer;
 	SecBuffer       OutBuffers[1];
 	DWORD           dwSSPIFlags;
@@ -504,8 +500,8 @@ static SECURITY_STATUS perform_client_handshake(CHAR *host, SecBuffer *pExtraDat
 	OutBuffer.pBuffers = OutBuffers;
 	OutBuffer.ulVersion = SECBUFFER_VERSION;
 
-	scRet = tls_ctx.sspi->InitializeSecurityContext(
-					&tls_ctx.h_client_creds,
+	scRet = tls_ctx->sspi->InitializeSecurityContext(
+					&tls_ctx->h_client_creds,
 					NULL,
 					host,
 					dwSSPIFlags,
@@ -513,7 +509,7 @@ static SECURITY_STATUS perform_client_handshake(CHAR *host, SecBuffer *pExtraDat
 					SECURITY_NATIVE_DREP,
 					NULL,
 					0,
-					&tls_ctx.h_context,
+					&tls_ctx->h_context,
 					&OutBuffer,
 					&dwSSPIOutFlags,
 					&tsExpiry);
@@ -527,24 +523,24 @@ static SECURITY_STATUS perform_client_handshake(CHAR *host, SecBuffer *pExtraDat
 	// Send response to server if there is one.
 	if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL)
 	{
-		cbData = send(tls_ctx.socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
+		cbData = send(tls_ctx->socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			printf("Error %d sending data to server (1)\n", WSAGetLastError());
-			tls_ctx.sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
-			tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.h_context);
+			tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
+			tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 			return SEC_E_INTERNAL_ERROR;
 		}
 
 		// Free output buffer.
-		tls_ctx.sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
+		tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 		OutBuffers[0].pvBuffer = NULL;
 	}
 
-	return client_handshake_loop(TRUE, pExtraData);
+	return client_handshake_loop(tls_ctx, TRUE, pExtraData);
 }
 
 
-static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pExtraData) {
+static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitialRead, SecBuffer *pExtraData) {
 	SecBufferDesc   InBuffer;
 	SecBuffer       InBuffers[2];
 	SecBufferDesc   OutBuffer;
@@ -595,7 +591,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 		// Read data from server.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			if(fDoRead) {
-				cbData = recv(tls_ctx.socket, 
+				cbData = recv(tls_ctx->socket, 
 							  IoBuffer + cbIoBuffer, 
 							  IO_BUFFER_SIZE - cbIoBuffer, 
 							  0);
@@ -648,8 +644,8 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 
 		// Call InitializeSecurityContext.
 
-		scRet = tls_ctx.sspi->InitializeSecurityContext(
-			&tls_ctx.h_client_creds, &tls_ctx.h_context,	NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
+		scRet = tls_ctx->sspi->InitializeSecurityContext(
+			&tls_ctx->h_client_creds, &tls_ctx->h_context,	NULL, dwSSPIFlags, 0, SECURITY_NATIVE_DREP,
 			&InBuffer, 0, NULL, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
 		// If InitializeSecurityContext was successful (or if the error was 
@@ -660,20 +656,20 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 		   scRet == SEC_I_CONTINUE_NEEDED ||
 		   FAILED(scRet) && (dwSSPIOutFlags & ISC_RET_EXTENDED_ERROR)) {
 			if(OutBuffers[0].cbBuffer != 0 && OutBuffers[0].pvBuffer != NULL) {
-				cbData = send(tls_ctx.socket,
+				cbData = send(tls_ctx->socket,
 							  OutBuffers[0].pvBuffer,
 							  OutBuffers[0].cbBuffer,
 							  0);
 				if(cbData == SOCKET_ERROR || cbData == 0) {
 					printf("Error %d sending data to server (2)\n", 
 						WSAGetLastError());
-					tls_ctx.sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
-					tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.h_context);
+					tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
+					tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 					return SEC_E_INTERNAL_ERROR;
 				}
 
 				// Free output buffer.
-				tls_ctx.sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
+				tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 				OutBuffers[0].pvBuffer = NULL;
 			}
 		}
@@ -740,7 +736,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 			// we will attempt to connect anonymously (using our current
 			// credentials).
 			
-			get_new_client_credentials();
+			get_new_client_credentials(tls_ctx);
 
 			// Go around again.
 			fDoRead = FALSE;
@@ -765,7 +761,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 
 	// Delete the security context in the case of a fatal error.
 	if(FAILED(scRet)) {
-		tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.h_context);
+		tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 	}
 
 	LocalFree(IoBuffer);
@@ -774,7 +770,7 @@ static SECURITY_STATUS client_handshake_loop(BOOL fDoInitialRead, SecBuffer *pEx
 }
 
 
-static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
+static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR **out, int *length) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
 	SecBufferDesc   Message;
@@ -794,7 +790,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 
 
 	// Read stream encryption properties.
-	scRet = tls_ctx.sspi->QueryContextAttributes(&tls_ctx.h_context, SECPKG_ATTR_STREAM_SIZES, &Sizes);
+	scRet = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context, SECPKG_ATTR_STREAM_SIZES, &Sizes);
 	if(scRet != SEC_E_OK) {
 		printf("Error 0x%x reading SECPKG_ATTR_STREAM_SIZES\n", scRet);
 		return scRet;
@@ -844,7 +840,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 	Message.cBuffers        = 4;
 	Message.pBuffers        = Buffers;
 
-	scRet = tls_ctx.sspi->EncryptMessage(&tls_ctx.h_context, 0, &Message, 0);
+	scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
 
 	if(FAILED(scRet)) {
 		printf("Error 0x%x returned by EncryptMessage\n", scRet);
@@ -852,19 +848,20 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 	}
 
 	// Send the encrypted data to the server.
-	cbData = send(tls_ctx.socket, pbIoBuffer, Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer, 0);
+	cbData = send(tls_ctx->socket, pbIoBuffer, Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer, 0);
 	if(cbData == SOCKET_ERROR || cbData == 0) {
 		printf("Error %d sending data to server (3)\n",  WSAGetLastError());
-		tls_ctx.sspi->DeleteSecurityContext(&tls_ctx.h_context);
+		tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 		return SEC_E_INTERNAL_ERROR;
 	}
 
 	// Read data from server until done.
+	INT buff_size = vsc_init_resp_buff_size;
 	cbIoBuffer = 0;
 	while(TRUE){
 		// Read some data.
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
-			cbData = recv(tls_ctx.socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
+			cbData = recv(tls_ctx->socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
 			if(cbData == SOCKET_ERROR) {
 				printf("Error %d reading data from server\n", WSAGetLastError());
 				scRet = SEC_E_INTERNAL_ERROR;
@@ -899,7 +896,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 		Message.cBuffers        = 4;
 		Message.pBuffers        = Buffers;
 
-		scRet = tls_ctx.sspi->DecryptMessage(&tls_ctx.h_context, &Message, 0, NULL);
+		scRet = tls_ctx->sspi->DecryptMessage(&tls_ctx->h_context, &Message, 0, NULL);
 
 		if(scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			// The input buffer contains only a fragment of an
@@ -936,10 +933,20 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 			}
 		}
 
+		// increase buffer size if we need
+		int required_length = *length+(int)pDataBuffer->cbBuffer;
+		if( required_length > buff_size ) {
+			CHAR *a = realloc(*out, required_length);
+			if( a == NULL ) {
+				scRet = SEC_E_INTERNAL_ERROR;
+				return scRet;
+			}
+			*out = a;
+			buff_size = required_length;
+		}
 		// Copy the decrypted data to our output buffer
+		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
-		memcpy(out, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
-		out += (int)pDataBuffer->cbBuffer;
 		
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
@@ -953,7 +960,7 @@ static SECURITY_STATUS https_make_request(CHAR *req, CHAR *out, int *length) {
 		if(scRet == SEC_I_RENEGOTIATE)
 		{
 			// The server wants to perform another handshake sequence.
-			scRet = client_handshake_loop(FALSE, &ExtraBuffer);
+			scRet = client_handshake_loop(tls_ctx, FALSE, &ExtraBuffer);
 			if(scRet != SEC_E_OK) {
 				return scRet;
 			}
@@ -1069,7 +1076,7 @@ cleanup:
 }
 
 
-static void get_new_client_credentials() {
+static void get_new_client_credentials(TlsContext *tls_ctx) {
 	CredHandle hCreds;
 	SecPkgContext_IssuerListInfoEx IssuerListInfo;
 	PCCERT_CHAIN_CONTEXT pChainContext;
@@ -1079,7 +1086,7 @@ static void get_new_client_credentials() {
 	SECURITY_STATUS Status;
 
 	// Read list of trusted issuers from schannel.
-	Status = tls_ctx.sspi->QueryContextAttributes(&tls_ctx.h_context, SECPKG_ATTR_ISSUER_LIST_EX, (PVOID)&IssuerListInfo);
+	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context, SECPKG_ATTR_ISSUER_LIST_EX, (PVOID)&IssuerListInfo);
 	if(Status != SEC_E_OK) {
 		printf("Error 0x%x querying issuer list info\n", Status);
 		return;
@@ -1099,7 +1106,7 @@ static void get_new_client_credentials() {
 
 	while(TRUE) {
 		// Find a certificate chain.
-		pChainContext = CertFindChainInStore(tls_ctx.cert_store,
+		pChainContext = CertFindChainInStore(tls_ctx->cert_store,
 											 X509_ASN_ENCODING,
 											 0,
 											 CERT_CHAIN_FIND_BY_ISSUER,
@@ -1114,16 +1121,16 @@ static void get_new_client_credentials() {
 		pCertContext = pChainContext->rgpChain[0]->rgpElement[0]->pCertContext;
 
 		// Create schannel credential.
-		tls_ctx.schannel_cred.dwVersion = SCHANNEL_CRED_VERSION;
-		tls_ctx.schannel_cred.cCreds = 1;
-		tls_ctx.schannel_cred.paCred = &pCertContext;
+		tls_ctx->schannel_cred.dwVersion = SCHANNEL_CRED_VERSION;
+		tls_ctx->schannel_cred.cCreds = 1;
+		tls_ctx->schannel_cred.paCred = &pCertContext;
 
-		Status = tls_ctx.sspi->AcquireCredentialsHandle(
+		Status = tls_ctx->sspi->AcquireCredentialsHandle(
 							NULL,                   // Name of principal
 							UNISP_NAME_A,           // Name of package
 							SECPKG_CRED_OUTBOUND,   // Flags indicating use
 							NULL,                   // Pointer to logon ID
-							&tls_ctx.schannel_cred,          // Package specific data
+							&tls_ctx->schannel_cred,          // Package specific data
 							NULL,                   // Pointer to GetKey() func
 							NULL,                   // Value to pass to GetKey()
 							&hCreds,                // (out) Cred Handle
@@ -1134,9 +1141,9 @@ static void get_new_client_credentials() {
 		}
 
 		// Destroy the old credentials.
-		tls_ctx.sspi->FreeCredentialsHandle(&tls_ctx.h_client_creds);
+		tls_ctx->sspi->FreeCredentialsHandle(&tls_ctx->h_client_creds);
 
-		tls_ctx.h_client_creds = hCreds;
+		tls_ctx->h_client_creds = hCreds;
 
 		//
 		// As you can see, this sample code maintains a single credential

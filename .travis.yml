@@ -12,9 +12,9 @@ matrix:
             - gcc-5
             - g++-5
             - make
-            - libglfw3 
+            - libglfw3
             - libglfw3-dev
-            - libfreetype6-dev 
+            - libfreetype6-dev
             - libssl-dev
     - os: windows
       language: sh
@@ -35,22 +35,32 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/opt/openssl/lib/
-    fi    
+    fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      echo "Testing msvc bootstrapping"
-      ./make_msvc.bat
-      echo "Running make_tests.bat..."
-      ./make_tests.bat
+      set -e
+      git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
+      echo "Just running ./make.bat to produce v.exe"
+      ./make.bat
+      ls -la v.exe
+      echo "Running v test v..."
+      ./v.exe test v
+      echo "Running v -os msvc test v..."
+      ./v -os msvc test v
+      ##echo "Running only the repl tests directly"
+      ##./v.exe ./compiler/tests/repl/repl_test.v
+      echo "Testing gcc bootstrapping"
+      ./make.bat -gcc
+      set +e
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
       make
       #./v install glfw
-      ./v test v 
+      ./v test v
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       git clone https://github.com/vlang/vid
-      cd vid && ../v -debug -o vid . 
-    fi    
+      cd vid && ../v -debug -o vid .
+    fi

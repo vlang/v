@@ -25,14 +25,14 @@ mut:
 
 fn (f mut Fetcher) fetch() {
 	for {
-		f.mu.lock()
 		if f.cursor >= f.ids.len {
 			return
 		}
 		id := f.ids[f.cursor]
+		f.mu.lock()
 		f.cursor++
-		cursor := f.cursor
 		f.mu.unlock()
+		cursor := f.cursor
 		resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 			println('failed to fetch data from /v0/item/${id}.json')
 			exit(1)
@@ -41,8 +41,8 @@ fn (f mut Fetcher) fetch() {
 			println('failed to decode a story')
 			exit(1)
 		}
-		f.wg.done()
 		println('#$cursor) $story.title | $story.url')
+		f.wg.done()
 	}
 }
 

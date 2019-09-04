@@ -9,12 +9,12 @@ import strings
 fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string) string {
 	mut params_gen := ''
 	for i, mparam in sql_params {
-		param := mparam.trim(` `)
+		param := mparam.trim_space()
 		paramtype := sql_types[ i ]
 		if param[0].is_digit() {
 			params_gen += '${qprefix}params[$i] = int_str($param).str;\n'
 		}else if param[0] == `\'` {
-			sparam := param.trim(`\'`)
+			sparam := param.trim('\'')
 			params_gen += '${qprefix}params[$i] = "$sparam";\n'
 		} else {
 			// A variable like q.nr_orders
@@ -23,7 +23,7 @@ fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string
 			}else if paramtype == 'string' {
 				params_gen += '${qprefix}params[$i] = ${param}.str;\n'
 			}else{
-				panic('orm: only int and string variable types are supported in queries')
+				cerror('orm: only int and string variable types are supported in queries')
 			}
 		}
 	}
@@ -124,7 +124,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		for i, field in fields {
 			mut cast := '' 
 			if field.typ == 'int' {
-				cast = 'string_int' 
+				cast = 'v_string_int' 
 			} 
 			obj_gen.writeln('${qprefix}$tmp . $field.name = $cast( *(string*)array__get(${qprefix}row.vals, $i) );')
 		} 

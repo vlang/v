@@ -109,7 +109,7 @@ string res = tos2("");
 					'root, "$name"))'
 			}
 			else {
-				dec += ' $dec_name(js_get(root, "$name"), & (res->$name))'
+				dec += ' $dec_name(js_get(root, "$name"), & (res->$field.name))'
 			}
 			dec += ';\n'
 		}
@@ -124,7 +124,8 @@ string res = tos2("");
 fn is_js_prim(typ string) bool {
 	return typ == 'int' || typ == 'string' ||
 	typ == 'bool' || typ == 'f32' || typ == 'f64' ||
-	typ == 'i8' || typ == 'i16' || typ == 'i32' || typ == 'i64'
+	typ == 'i8' || typ == 'i16' || typ == 'i64' ||
+	typ == 'u16' || typ == 'u32' || typ == 'u64'
 }
 
 fn (p mut Parser) decode_array(array_type string) string {

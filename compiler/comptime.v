@@ -47,7 +47,7 @@ fn (p mut Parser) comp_time() {
 		}
 		if_returns := p.returns
 		p.returns = false
-		p.gen('/* returns $p.returns */')
+		//p.gen('/* returns $p.returns */')
 		if p.tok == .dollar && p.peek() == .key_else {
 			p.next()
 			p.next()
@@ -57,7 +57,7 @@ fn (p mut Parser) comp_time() {
 			p.genln('#endif')
 			else_returns := p.returns
 			p.returns = if_returns && else_returns
-			p.gen('/* returns $p.returns */')
+			//p.gen('/* returns $p.returns */')
 		}
 	}
 	else if p.tok == .key_for {
@@ -171,6 +171,8 @@ fn (p mut Parser) chash() {
 		p.log('adding flag "$flag"')
 		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it
 		if (has_vroot || has_vmod) && flag.contains('.o') {
+			flag = os.realpath( flag )
+			//println( 'absolute filepath to objectfile is now: $flag | os is: $p.os ')
 			if p.os == .msvc {
 				build_thirdparty_obj_file_with_msvc(flag)
 			}
@@ -242,8 +244,9 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	}
 }
 
-fn (p mut Parser) gen_array_str(typ mut Type) {
-	typ.add_method(Fn{
+fn (p mut Parser) gen_array_str(typ Type) {
+	//println('gen array str "$typ.name"')
+	p.table.add_method(typ.name, Fn{
 		name: 'str',
 		typ: 'string'
 		args: [Var{typ: typ.name, is_arg:true}]
@@ -251,9 +254,17 @@ fn (p mut Parser) gen_array_str(typ mut Type) {
 		is_public: true
 		receiver_typ: typ.name
 	})
+	/*
+	tt := p.table.find_type(typ.name)
+	for m in tt.methods {
+		println(m.name + ' ' + m.typ)
+		}
+		*/
 	t := typ.name
 	elm_type := t.right(6)
-	if p.typ_to_fmt(elm_type, 0) == '' && !p.table.type_has_method(p.table.find_type(elm_type), 'str') {
+	elm_type2 := p.table.find_type(elm_type)
+	if p.typ_to_fmt(elm_type, 0) == '' &&
+		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
 	p.cgen.fns << '

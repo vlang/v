@@ -5,12 +5,7 @@
 module builtin
 
 #include <float.h>
-
-pub fn (d double) str() string {
-	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, strlen(buf))
-}
+#include <math.h>
 
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
@@ -32,7 +27,8 @@ pub fn ptr_str(ptr voidptr) string {
 
 // compare floats using C epsilon
 pub fn (a f64) eq(b f64) bool {
-	return C.fabs(a - b) <= C.DBL_EPSILON	
+	//return C.fabs(a - b) <= C.DBL_EPSILON	
+	return (a - b) <= C.DBL_EPSILON	
 }
 
 // fn (nn i32) str() string {
@@ -74,11 +70,6 @@ pub fn (nn u32) str() string {
 	max := 16
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg := false
-	if n < u32(0) {
-		n = -n
-		is_neg = true
-	}
 	// Fill the string from the end
 	for n > u32(0) {
 		d := n % u32(10)
@@ -86,41 +77,28 @@ pub fn (nn u32) str() string {
 		len++
 		n = n / u32(10)
 	}
-	// Prepend - if it's negative
-	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
-	}
 	return tos(buf + max - len, len)
 }
 
-pub fn (nn u8) str() string {
+/*
+pub fn (nn byte) str() string {
 	 mut n := nn
-	if n == u8(0) {
+	if n == byte(0) {
 		return '0'
 	}
 	max := 5
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg := false
-	if n < u8(0) {
-		n = -n
-		is_neg = true
-	}
 	// Fill the string from the end
-	for n > u8(0) {
-		d := n % u8(10)
-		buf[max - len - 1] = d + u8(`0`)
+	for n > byte(0) {
+		d := n % byte(10)
+		buf[max - len - 1] = d + byte(`0`)
 		len++
-		n = n / u8(10)
-	}
-	// Prepend - if it's negative
-	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
+		n = n / byte(10)
 	}
 	return tos(buf + max - len, len)
 }
+*/
 
 pub fn (nn i64) str() string {
 	mut n := nn
@@ -158,22 +136,12 @@ pub fn (nn u64) str() string {
 	max := 32
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg := false
-	if n < u64(0) {
-		n = -n
-		is_neg = true
-	}
 	// Fill the string from the end
 	for n > u64(0) {
 		d := n % u64(10)
 		buf[max - len - 1] = d + u64(`0`)
 		len++
 		n = n / u64(10)
-	}
-	// Prepend - if it's negative
-	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
 	}
 	return tos(buf + max - len, len)
 }

@@ -17,7 +17,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
+- Fast compilation: ~100k - 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
@@ -28,21 +28,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - REPL
 - Built-in ORM
 
-V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
-
-## Notes
-
-GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn't support the language yet.
-
-The compilation is temporarily slower for this release:
-
-- Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
-- vlib is recompiled with every program you build.
-- The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
-
-
-
-
+V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -57,31 +43,34 @@ make
 
 That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
-
-### C compiler
-
-You'll need Clang or GCC. If you are doing development, you most likely already have it installed.
-
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
-
-On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
-
-
-### Symlinking and updates
-
-You can create a `/usr/local/bin/v` symlink so that V is globally available:
-
-```
-sudo make symlink
-```
-
 V is being constantly updated. To update V, simply run
 
 ```
 v up
 ```
 
-## Docker
+
+### C compiler
+
+You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
+
+On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
+
+On Debian/Ubuntu run `sudo apt install build-essential`.
+
+On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+
+
+### Symlinking
+
+You can create a `/usr/local/bin/v` symlink so that V is globally available:
+
+```
+sudo v symlink
+```
+
+
+### Docker
 
 ```bash
 git clone https://github.com/vlang/v
@@ -131,7 +120,7 @@ In order to build Tetris and anything else using the graphics module, you will n
 v install glfw
 ```
 
-If you plan to use the http package, you also need to install openssl on non-Windows systems.
+If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:

@@ -10,6 +10,11 @@ import (
 )
 
 fn (v mut V) cc() {
+	// Just create a c file and exit
+	if v.out_name.ends_with('.c') {
+		os.mv(v.out_name_c, v.out_name)
+		exit(0)
+	}
 	// Cross compiling for Windows
 	if v.os == .windows {
 		$if !windows {
@@ -27,7 +32,16 @@ fn (v mut V) cc() {
 	linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
-	flags := v.table.flags.join(' ')
+
+	mut seenflags := map[string]int
+	mut uniqueflags := []string
+	for f in v.table.flags {
+		seenflags[ f ] = seenflags[ f ] + 1
+		if seenflags[ f ] > 1 { continue }
+		uniqueflags << f
+	}
+	flags := uniqueflags.join(' ')
+
 	//mut shared := ''
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
@@ -38,6 +52,14 @@ fn (v mut V) cc() {
 	}
 	else {
 		a << '-g'
+	}
+
+	if v.pref.is_debug && os.user_os() != 'windows'{
+		a << ' -rdynamic ' // needed for nicer symbolic backtraces
+	}
+
+	if v.os != .msvc && v.os != .freebsd {
+		a << '-Werror=implicit-function-declaration'
 	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {
@@ -93,7 +115,7 @@ mut args := ''
 	// else {
 	a << '-o $v.out_name'
 	if os.dir_exists(v.out_name) {
-		panic('\'$v.out_name\' is a directory')
+		cerror('\'$v.out_name\' is a directory')
 	}
 	if v.os == .mac {
 		a << '-x objective-c'
@@ -125,22 +147,18 @@ mut args := ''
 	}
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
-	if v.out_name.ends_with('.c') {
-		os.mv( v.out_name_c, v.out_name )
-		exit(0)
-	}
 	// Run
 	if v.pref.show_c_cmd || v.pref.is_verbose {
 		println('\n==========')
 		println(cmd)
 	}
 	ticks := time.ticks()
-	res := os.exec(cmd) or { panic(err) }
+	res := os.exec(cmd) or { cerror(err) return }
 	if res.exit_code != 0 {
 
 		if res.exit_code == 127 {
 			// the command could not be found by the system
-			panic('C compiler error, while attempting to run: \n' +
+			cerror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
 				'-----------------------------------------------------------\n' +
@@ -151,12 +169,15 @@ mut args := ''
 		if v.pref.is_debug {
 			println(res.output)
 		} else {
-			print(res.output.limit(200))
-			if res.output.len > 200 {
+			partial_output := res.output.limit(200).trim_right('\r\n')
+			print(partial_output)
+			if res.output.len > partial_output.len {
 				println('...\n(Use `v -debug` to print the entire error message)\n')
+			}else{
+				println('')
 			}
 		}
-		panic('C error. This should never happen. ' +
+		cerror('C error. This should never happen. ' +
 			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	diff := time.ticks() - ticks
@@ -179,7 +200,8 @@ mut args := ''
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			panic(err)
+			cerror(err)
+			return
 		}
 		println(ress.output)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
@@ -225,7 +247,11 @@ fn (c mut V) cc_windows_cross() {
 	winroot := '$ModPath/winroot'
 	if !os.dir_exists(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
-		println('"$winroot" not found. Download it from $winroot_url and save in $ModPath')
+		println('"$winroot" not found.')
+		println('Download it from $winroot_url and save it in $ModPath')
+		println('Unzip it afterwards.\n')
+		println('winroot.zip contains all library and header files needed '+
+			'to cross-compile for Windows.')
 		exit(1)	
 	}
 	mut obj_name := c.out_name

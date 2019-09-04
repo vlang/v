@@ -8,8 +8,6 @@ module os
 #include <signal.h>
 #include <errno.h>
 
-//#include <execinfo.h> // for backtrace_symbols_fd
-
 /*
 struct dirent {
                d_ino int
@@ -36,29 +34,13 @@ struct C.FILE {
 }
 
 struct File {
-	cfile *FILE
+	cfile &FILE
 }
 
 struct FileInfo {
 	name string
 	size int
 }
-
-/*
-import const (
-	SEEK_SET
-	SEEK_END
-	SA_SIGINFO
-	S_IFMT
-	S_IFDIR
-	SIGABRT
-	SIGFPE
-	SIGILL
-	SIGINT
-	SIGSEGV
-	SIGTERM
-)
-*/
 
 struct C.stat {
 	st_size int
@@ -87,9 +69,7 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
-fn todo_remove(){}
-
-fn init_os_args(argc int, argv *byteptr) []string {
+fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	$if windows {
 		mut args_list := &voidptr(0)
@@ -116,7 +96,7 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
-	mut fp := &C.FILE{}
+	mut fp := &C.FILE{!}
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -164,7 +144,7 @@ pub fn read_lines(path string) []string {
 	mut buf := malloc(buf_len)
 
 	mode := 'rb'
-	mut fp := &C.FILE{}
+	mut fp := &C.FILE{!}
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -310,7 +290,7 @@ pub fn (f File) close() {
 
 // system starts the specified command, waits for it to complete, and returns its code.
 
-fn popen(path string) *FILE {
+fn popen(path string) &FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -322,12 +302,12 @@ fn popen(path string) *FILE {
 	}
 }
 
-fn pclose(f *FILE) int {
+fn pclose(f &FILE) int {
 	$if windows {
 		return C._pclose(f)
 	}
 	$else {
-		return C.pclose(f)
+		return C.pclose(f) / 256 // WEXITSTATUS()
 	}
 }
 
@@ -351,7 +331,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, strlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)/256
+	exit_code := pclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}
@@ -511,19 +491,13 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(malloc(max*2))
-		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-		if h_input == INVALID_HANDLE_VALUE {
-			panic('get_raw_line() error getting input handle.')
-		}
-		mut nr_chars := 0
-		C.ReadConsole(h_input, buf, max, &nr_chars, 0)
-		if nr_chars == 0 {
-			return ''
-		}
-		return string_from_wide2(buf, nr_chars)
-	}
+        maxlinechars := 256
+        buf := &u16(malloc(maxlinechars*2))
+        res := int( C.fgetws(buf, maxlinechars, C.stdin ) )
+        len := int(  C.wcslen(buf) )
+        if 0 != res { return string_from_wide2( buf, len ) }
+        return ''
+    }
 	$else {
 		//u64 is used because C.getline needs a size_t as second argument
 		//Otherwise, it would cause a valgrind warning and may be dangerous

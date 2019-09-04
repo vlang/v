@@ -8,7 +8,7 @@
 // it deviates for compatibility reasons.
 
 // Based off:   https://github.com/golang/go/blob/master/src/net/url/url.go
-// Last commit: https://github.com/golang/go/commit/a326bc6df27309815e4a2ae005adef233cfb9ea9
+// Last commit: https://github.com/golang/go/commit/61bb56ad63992a3199acc55b2537c8355ef887b6
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -313,7 +313,7 @@ struct URL {
 pub: mut:
 	scheme      string
 	opaque      string    // encoded opaque data
-	user        *Userinfo // username and password information
+	user        &Userinfo // username and password information
 	host        string    // host or host:port
 	path        string    // path (relative paths may omit leading slash)
 	raw_path    string    // encoded path hint (see escaped_path method)
@@ -324,7 +324,7 @@ pub: mut:
 
 // user returns a Userinfo containing the provided username
 // and no password set.
-pub fn user(username string) *Userinfo {
+pub fn user(username string) &Userinfo {
 	return &Userinfo{
 		username: username,
 		password: '',
@@ -340,7 +340,7 @@ pub fn user(username string) *Userinfo {
 // ``is NOT RECOMMENDED, because the passing of authentication
 // information in clear text (such as URI) has proven to be a
 // security risk in almost every case where it has been used.''
-fn user_password(username, password string) *Userinfo {
+fn user_password(username, password string) &Userinfo {
 	return &Userinfo{username, password, true}
 }
 
@@ -596,13 +596,13 @@ fn parse_host(host string) ?string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		i := host.last_index(']')
+		mut i := host.last_index(']')
 		if i < 0 {
 			return error(error_msg('missing \']\' in host', ''))
 		}
-		colonport := host.right(i+1)
-		if !valid_optional_port(colonport) {
-			return error(error_msg('invalid port $colonport after host ', ''))
+		mut colon_port := host.right(i+1)
+		if !valid_optional_port(colon_port) {
+			return error(error_msg('invalid port $colon_port after host ', ''))
 		}
 
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
@@ -623,6 +623,14 @@ fn parse_host(host string) ?string {
 				return err
 			}
 			return host1 + host2 + host3
+		} else {
+			i = host.last_index(':')
+			if i != -1 {
+				colon_port = host.right(i)
+				if !valid_optional_port(colon_port) {
+					return error(error_msg('invalid port $colon_port after host ', '')) 
+				}
+			}
 		}
 	}
 
@@ -1007,46 +1015,40 @@ pub fn (u &URL) request_uri() string {
 	return result
 }
 
-// hostname returns u.host, without any port number.
+// hostname returns u.host, stripping any valid port number if present.
 //
-// If host is an IPv6 literal with a port number, hostname returns the
-// IPv6 literal without the square brackets. IPv6 literals may include
-// a zone identifier.
+// If the result is enclosed in square brackets, as literal IPv6 addresses are,
+// the square brackets are removed from the result.
 pub fn (u &URL) hostname() string {
-	return strip_port(u.host)
+	host_port := split_host_port(u.host)
+	return host_port[0]
 }
 
 // port returns the port part of u.host, without the leading colon.
 // If u.host doesn't contain a port, port returns an empty string.
 pub fn (u &URL) port() string {
-	return port_only(u.host)
+	host_port := split_host_port(u.host)
+	return host_port[1]
 }
 
-pub fn strip_port(hostport string) string {
-	colon := hostport.index(':')
-	if colon == -1 {
-		return hostport
+// split_host_port separates host and port. If the port is not valid, it returns
+// the entire input as host, and it doesn't check the validity of the host.
+// Per RFC 3986, it requires ports to be numeric.
+fn split_host_port(hostport string) []string {
+	mut host := hostport
+	mut port := ''
+	
+	colon := host.last_index(':')
+	if colon != -1 && valid_optional_port(host.right(colon)) {
+		port = host.right(colon+1)
+		host = host.left(colon)
 	}
-	i := hostport.index(']')
-	if i != -1 {
-		return hostport.left(i).trim_left('[')
-	}
-	return hostport.left(colon)
-}
 
-pub fn port_only(hostport string) string {
-	colon := hostport.index(':')
-	if colon == -1 {
-		return ''
+	if host.starts_with('[') && host.ends_with(']') {
+		host = host.substr(1, host.len-1)
 	}
-	i := hostport.index(']:')
-	if i != -1 {
-		return hostport.right(i+(']:'.len))
-	}
-	if hostport.contains(']') {
-		return ''
-	}
-	return hostport.right(colon+(':'.len))
+
+	return [host, port]
 }
 
 // valid_userinfo reports whether s is a valid userinfo string per RFC 3986

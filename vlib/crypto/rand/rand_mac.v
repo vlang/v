@@ -4,6 +4,8 @@
 
 module rand
 
+#include <Security/SecRandom.h>
+
 #flag darwin -framework Security
 
 pub fn read(bytes_needed int) ?[]byte {
