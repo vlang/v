@@ -193,11 +193,6 @@ fn main() {
 			os.mkdir(ModPath)
 		}
 	}
-	// No args? REPL
-	if args.len < 2 || (args.len == 2 && args[1] == '-') {
-		run_repl()
-		return
-	}
 	// Construct the V object from command line arguments
 	mut v := new_v(args)
 	if v.pref.is_verbose {
@@ -214,6 +209,12 @@ fn main() {
 		// for example for -repl usage, especially when piping lines to v
 		v.compile()
 		v.run_compiled_executable_and_exit()
+	}
+
+	// No args? REPL
+	if args.len < 2 || (args.len == 2 && args[1] == '-') || 'runrepl' in args {
+		run_repl()
+		return
 	}
 
 	v.compile()
