@@ -46,7 +46,7 @@ script:
       echo "Running v test v..."
       ./v.exe test v
       echo "Running v -os msvc test v..."
-      #./v -os msvc test v
+      ./v -os msvc test v
       ##echo "Running only the repl tests directly"
       ##./v.exe ./compiler/tests/repl/repl_test.v
       echo "Testing gcc bootstrapping"
