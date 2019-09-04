@@ -50,7 +50,7 @@ fn test_the_v_repl() {
 		input_temporary_filename := 'input_temporary_filename.txt'
 		os.write_file(input_temporary_filename, input)
 		defer { os.rm(input_temporary_filename) }		
-		r := os.exec('$vexec < $input_temporary_filename') or {
+		r := os.exec('$vexec runrepl < $input_temporary_filename') or {
 			assert false
 			break
 		}
