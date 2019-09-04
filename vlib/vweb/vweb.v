@@ -94,7 +94,7 @@ pub fn run<T>(port int) {
 		conn := l.accept() or {
 			panic('accept() failed')
 		} 
-		//foobar<T>() 
+		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
