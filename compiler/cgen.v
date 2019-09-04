@@ -296,24 +296,26 @@ fn platform_postfix_to_ifdefguard(name string) string {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (v mut V) c_type_definitions() string {
-	mut builtin_types := []Type
+	mut types := []Type // structs that need to be sorted
+	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top
 	builtins := ['string', 'array', 'map', 'Option']
 	for builtin in builtins {
 		typ := v.table.typesmap[builtin]
 		builtin_types << typ
 	}
-	// structs that need to be sorted
-	mut types := []Type
-	for _, t in v.table.typesmap {
-		if t.name in builtins {
+	// everything except builtin will get sorted
+	for t_name, t in v.table.typesmap {
+		if t_name in builtins {
 			continue
 		}
 		types << t
 	}
+	// sort structs
+	types_sorted := sort_structs(types)
 	// Generate C code
 	return types_to_c(builtin_types,v.table) + '\n//----\n' +
-		  types_to_c(sort_structs(types), v.table)
+			types_to_c(types_sorted, v.table)
 }
 	
 fn types_to_c(types []Type, table &Table) string {
@@ -367,7 +369,7 @@ fn sort_structs(types []Type) []Type {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe.conigliaro')
+		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []Type
