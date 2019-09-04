@@ -1,6 +1,6 @@
 CC ?= cc
 
-_SYS:=$(shell uname -o)
+_SYS:=$(shell uname)
 ifeq ($(_SYS),Msys)
 WIN32:=1
 endif
