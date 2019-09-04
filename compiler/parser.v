@@ -3474,6 +3474,9 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.expected_type = ''
 
 			if p.tok != .comma {
+				if got_comma {
+					p.gen(') ')
+				}
 				break
 			}
 			p.check(.comma)
