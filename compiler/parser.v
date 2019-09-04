@@ -3400,7 +3400,11 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 					return res_typ
 				} else {
-					p.match_parse_statement_branch()
+					p.returns = false
+					p.check(.lcbr)
+					
+					p.genln('{ ')
+					p.statements()
 					p.returns = all_cases_return && p.returns
 					return ''
 				}
@@ -3427,8 +3431,14 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 				return res_typ
 			} else {
+				p.returns = false
 				p.genln('else // default:')
-				p.match_parse_statement_branch()
+
+				p.check(.lcbr)
+				
+				p.genln('{ ')
+				p.statements()
+
 				p.returns = all_cases_return && p.returns
 				return ''
 			}
@@ -3507,11 +3517,15 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.gen(')')
 		}
 		else {
-			p.match_parse_statement_branch()
+			p.returns = false
+			p.check(.lcbr)
+			
+			p.genln('{ ')
+			p.statements()
+
+			all_cases_return = all_cases_return && p.returns
 			// p.gen(')')
 		}
-
-		all_cases_return = all_cases_return && p.returns
 		i++
 	}
 
@@ -3523,13 +3537,6 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	p.returns = false // only get here when no default, so return is not guaranteed
 
 	return ''
-}
-
-fn (p mut Parser) match_parse_statement_branch(){
-	p.check(.lcbr)
-	
-	p.genln('{ ')
-	p.statements()
 }
 
 fn (p mut Parser) assert_statement() {
