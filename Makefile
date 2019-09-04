@@ -1,7 +1,10 @@
 CC ?= cc
 
-_SYS:=$(shell uname)
-ifeq ($(_SYS),Msys)
+_SYS := $(shell uname)
+_SYS := $(patsubst MSYS%,Msys,$(_SYS))
+_SYS := $(patsubst MINGW%,MinGW,$(_SYS))
+
+ifeq (,$(findstring _SYS,Msys,Mingw))
 WIN32:=1
 endif
 
