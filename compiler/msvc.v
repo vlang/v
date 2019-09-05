@@ -330,8 +330,8 @@ pub fn (v mut V) cc_msvc() {
 			// Which ever one of these is lowest we use
 			// TODO: we really shouldnt support all of these cmon
 			mut lowest := base.index('-')
-			// make sure hyphen comes before I|l|L to not break paths with hyphens
-			if lowest != -1 && lowest < base.len-2 && !(base[lowest+1] in [`I`, `l`, `L`]) {
+			// dont break paths with hyphens
+			if lowest != 0  {
 				lowest = -1
 			}
 			for x in [base.index(' '), base.index(',')] {
@@ -346,7 +346,7 @@ pub fn (v mut V) cc_msvc() {
 				rest = ''
 				base.trim_space()
 			}
-
+			println('arg: $arg')
 			flags << ParsedFlag {
 				fl, arg
 			}
