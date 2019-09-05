@@ -346,7 +346,7 @@ pub fn (v mut V) cc_msvc() {
 				rest = ''
 				base.trim_space()
 			}
-			println('arg: $arg')
+
 			flags << ParsedFlag {
 				fl, arg
 			}
