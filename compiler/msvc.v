@@ -331,7 +331,7 @@ pub fn (v mut V) cc_msvc() {
 			// TODO: we really shouldnt support all of these cmon
 			mut lowest := base.index('-')
 			// make sure hyphen comes before I|l|L to not break paths with hyphens
-			if lowest < base.len-2 && !(base[lowest+1] in [`I`, `l`, `L`]) {
+			if lowest != -1 && lowest < base.len-2 && !(base[lowest+1] in [`I`, `l`, `L`]) {
 				lowest = -1
 			}
 			for x in [base.index(' '), base.index(',')] {
