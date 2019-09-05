@@ -207,11 +207,6 @@ fn find_msvc() ?MsvcResult {
 	}
 }
 
-struct ParsedFlag {
-	f string
-	arg string
-}
-
 pub fn (v mut V) cc_msvc() { 
 	r := find_msvc() or {
 		// TODO: code reuse
@@ -305,99 +300,45 @@ pub fn (v mut V) cc_msvc() {
 	mut lib_paths := []string{}
 	mut other_flags := []string{}
 
-	// Emily:
-	// this is a hack to try and support -l -L and object files
-	// passed on the command line
-	mut seenflags := map[string]int // no need to add the same flags more than once
-	for f in v.table.flags {
-		seenflags[ f ] = seenflags[ f ] + 1
-		if seenflags[ f ] > 1 { continue }
-		// People like to put multiple flags per line (which really complicates things)
-		// ...so we need to handle that
-		mut rest := f
-
-		mut flags := []ParsedFlag{}
-		for {
-			mut base := rest
-
-			fl := if rest.starts_with('-') {
-				base = rest.right(2).trim_space()
-				rest.left(2)
-			} else {
-				''
-			}
-
-			// Which ever one of these is lowest we use
-			// TODO: we really shouldnt support all of these cmon
-			mut lowest := base.index('-')
-			// dont break paths with hyphens
-			if lowest != 0  {
-				lowest = -1
-			}
-			for x in [base.index(' '), base.index(',')] {
-				if (x < lowest && x != -1) || lowest == -1 {
-					lowest = x
-				}
-			}
-			arg := if lowest != -1 {
-				rest = base.right(lowest).trim_space().trim(',')
-				base.left(lowest).trim_space().trim(',')
-			} else {
-				rest = ''
-				base.trim_space()
-			}
-
-			flags << ParsedFlag {
-				fl, arg
-			}
-
-			if rest.len == 0 {
-				break
-			}
+	for flag in parse_flags(v.table.flags) {
+		mut arg := flag.value
+		if flag.name == '-I' || flag.name == '-L' {
+			arg = os.realpath( arg )
 		}
+		//println('fl: $flag.name | flag arg: $arg')
 
-		for flag in flags {
-			fl := flag.f
-			mut arg := flag.arg
-			if fl == '-I' || fl == '-L' {
-				arg = os.realpath( arg )
+		// We need to see if the flag contains -l
+		// -l isnt recognised and these libs will be passed straight to the linker
+		// by the compiler
+		if flag.name == '-l' {
+			if arg.ends_with('.dll') {
+				cerror('MSVC cannot link against a dll (`#flag -l $arg`)')
 			}
-			//println('fl: $fl | flag arg: $arg')
-
-			// We need to see if the flag contains -l
-			// -l isnt recognised and these libs will be passed straight to the linker
-			// by the compiler
-			if fl == '-l' {
-				if arg.ends_with('.dll') {
-					cerror('MSVC cannot link against a dll (`#flag -l $arg`)')
-				}
-				// MSVC has no method of linking against a .dll
-				// TODO: we should look for .defs aswell
-				lib_lib := arg + '.lib'
-				real_libs << lib_lib
-			}
-			else if fl == '-I' {
-				inc_paths << ' -I "$arg" '
-			}
-			else if fl == '-L' {
-				lpath := f.right(2).trim_space()
-				lib_paths << lpath
-				lib_paths << lpath + os.PathSeparator + 'msvc'
-				// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
-				// where gcc will NOT find them, but cl will do...
-				// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
-				// When both a msvc .lib file and .dll file are present in the same folder,
-				// as for example for glfw3, compilation with gcc would fail.
-			}
-			else if arg.ends_with('.o') {
-				// msvc expects .obj not .o
-				other_flags << arg + 'bj'
-			} 
-			else {
-				other_flags << arg
-			}
+			// MSVC has no method of linking against a .dll
+			// TODO: we should look for .defs aswell
+			lib_lib := arg + '.lib'
+			real_libs << lib_lib
 		}
-		
+		else if flag.name == '-I' {
+			inc_paths << ' -I "$arg" '
+		}
+		else if flag.name == '-L' {
+			lpath := flag.value
+			lib_paths << '"' + lpath + '"'
+			lib_paths << '"' + lpath + os.PathSeparator + 'msvc' + '"'
+			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
+			// where gcc will NOT find them, but cl will do...
+			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
+			// When both a msvc .lib file and .dll file are present in the same folder,
+			// as for example for glfw3, compilation with gcc would fail.
+		}
+		else if arg.ends_with('.o') {
+			// msvc expects .obj not .o
+			other_flags << '"' + os.realpath(arg+'bj') + '"'
+		} 
+		else {
+			other_flags << arg
+		}
 	}
 
 	// Include the base paths
@@ -469,11 +410,11 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 		return
 	}
 
-	mut obj_path := flag.all_after(' ')
+	mut obj_path := flag.trim_space()
 
 	if obj_path.ends_with('.o') {
 		// msvc expects .obj not .o
-		obj_path = obj_path + 'bj'
+		obj_path = os.realpath(obj_path + 'bj')
 	}
 
 	if os.file_exists(obj_path) {

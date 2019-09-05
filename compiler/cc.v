@@ -33,15 +33,8 @@ fn (v mut V) cc() {
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
 
-	mut seenflags := map[string]int
-	mut uniqueflags := []string
-	for f in v.table.flags {
-		seenflags[ f ] = seenflags[ f ] + 1
-		if seenflags[ f ] > 1 { continue }
-		uniqueflags << f
-	}
-	flags := uniqueflags.join(' ')
 
+	flags := parse_flags(v.table.flags)
 	//mut shared := ''
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
@@ -129,7 +122,15 @@ mut args := ''
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
-	a << flags
+	for flag in flags {
+		flag_name := if flag.name != '' { '$flag.name ' } else { '' }
+		flag_value := if flag.name == '-I' || flag.name == '-L' || flag.value.ends_with('.o') {
+			'"' + os.realpath(flag.value) + '"'
+		} else {
+			flag.value
+		}
+		a << flag_name+flag_value
+	}
 	a << libs
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	// Without these libs compilation will fail on Linux
@@ -303,7 +304,3 @@ fn find_c_compiler_thirdparty_options() string {
 	$if windows {	return '' }
 	return '-fPIC'
 }
-
-
-
-

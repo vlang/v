@@ -241,12 +241,12 @@ fn (g mut CGen) add_to_main(s string) {
 
 
 fn build_thirdparty_obj_file(flag string) {
-	obj_path := flag.all_after(' ')
+	obj_path := flag.trim_space()
 	if os.file_exists(obj_path) {
 		return
 	}
 	println('$obj_path not found, building it...')
-	parent := os.dir( obj_path )
+	parent := os.dir(obj_path)
 	files := os.ls(parent)
 	mut cfiles := ''
 	for file in files {
@@ -384,3 +384,57 @@ fn sort_structs(types []Type) []Type {
 	return types_sorted
 }
 
+// compiler flag
+struct CompilerFlag{
+	name  string // -I
+	value string // /include/path
+}
+
+// parse the flags to []CompilerFlag
+fn parse_flags(flags []string) []CompilerFlag {
+	mut compiler_flags := []CompilerFlag{}
+	for f in flags {
+		mut flag := f.trim_space()
+		mut name := ''
+		for {
+			mut value := ''
+			if flag[0] == `-` {
+				name = flag.left(2)
+				flag = flag.right(2).trim_space()
+			}
+			mut index := flag.index(' ')
+			if index == -1 {
+				index = flag.index(',')
+			}
+			if index != -1 && (flag[index+1] == `-` && flag[index+2] in [`I`,`l`,`L`]) {
+				value = flag.left(index).trim_space()
+				flag = flag.right(index).trim_space()
+			}
+			else if index != -1 && flag[index] == `,` {
+				value = flag.left(index).trim_space()
+				flag = flag.right(index+1).trim_space()
+			} else {
+				value = flag.trim_space()
+				index = -1
+			}
+			mut exists := false
+			for cf in compiler_flags {
+				if name == cf.name && value == cf.value {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				compiler_flags << CompilerFlag{
+					name:  name,
+					value: value
+				}
+			}
+			if index == -1 {
+				break
+			}
+		}
+	}
+
+	return compiler_flags
+}

@@ -433,7 +433,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}	
-	mut cmd := final_target_out_name(v.out_name).replace('.exe','')
+	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
 	if os.args.len > 3 {
 		cmd += ' ' + os.args.right(3).join(' ')
 	}
@@ -757,9 +757,7 @@ fn new_v(args[]string) &V {
 	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
-	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
-
-	}  else {
+	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
 		println('vlib not found. It should be next to the V executable. ')
 		println('Go to https://vlang.io to install V.')
 		exit(1)
