@@ -1646,9 +1646,16 @@ fn (p mut Parser) name_expr() string {
 	// TODO verify this and handle errors
 	peek := p.peek()
 	if peek != .lpar && peek != .lt {
+		// Register anon fn type
+		fn_typ := Type {
+			name: f.typ_str()// 'fn (int, int) string'
+			mod: p.mod
+			func: f
+		}
+		p.table.register_type2(fn_typ)
 		p.gen(p.table.cgen_name(f))
 		p.next()
-		return 'void*'
+		return f.typ_str() //'void*'
 	}
 	// TODO bring back
 	if f.typ == 'void' && !p.inside_if_expr {
