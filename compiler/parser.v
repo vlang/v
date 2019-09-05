@@ -10,6 +10,14 @@ import (
 	strings
 )
 
+struct ParserState {
+	prev_tok2   Token
+	prev_tok    Token
+	tok         Token
+	lit         string
+	scanstate   ScannerState
+}
+
 struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
@@ -1700,6 +1708,8 @@ fn (p mut Parser) name_expr() string {
 	return f.typ
 }
 
+
+
 fn (p mut Parser) var_expr(v Var) string {
 	p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
@@ -1727,15 +1737,25 @@ fn (p mut Parser) var_expr(v Var) string {
 	// a.b.c().d chain
 	// mut dc := 0
 	for p.tok ==.dot {
-		if p.peek() == .key_select {
-			p.next()
-			return p.select_query(fn_ph)
+		
+		if typ.ends_with('__DB') {
+			db_name := p.lit
+			if p.peek() == .name {
+				
+				ps := p.save_parsing_state()
+				p.check(.dot)
+				potential_orm_keyword := p.check_name()
+				p.restore_parsing_state( ps )				
+				//println( 'potential_orm_keyword: $potential_orm_keyword' )
+				switch potential_orm_keyword {
+				case 'select': p.check(.dot) p.next() return p.select_query(fn_ph, typ, db_name)
+				case 'insert': p.check(.dot) p.next() return p.insert_query(fn_ph, typ, db_name)
+				case 'update': p.check(.dot) p.next() return p.update_query(fn_ph, typ, db_name)
+				case 'delete': p.check(.dot) p.next() return p.delete_query(fn_ph, typ, db_name)
+				}
+			}
 		}
-		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
-			p.next()
-			p.insert_query(fn_ph)
-			return 'void'
-		}
+		
 		// println('dot #$dc')
 		typ = p.dot(typ, fn_ph)
 		p.log('typ after dot=$typ')
@@ -3823,3 +3843,22 @@ fn (p mut Parser) defer_st() {
 	p.cgen.resetln('')
 }
 
+/////////////////////////////////////////////////////////////
+
+fn (p mut Parser) save_parsing_state() ParserState {
+	return ParserState{
+		prev_tok2: p.prev_tok2
+		prev_tok: p.prev_tok
+		tok: p.tok
+		lit: p.lit
+		scanstate: p.scanner.save_scan_state()
+	}
+}
+
+fn (p mut Parser) restore_parsing_state(ps ParserState){
+	p.scanner.restore_scan_state(ps.scanstate)
+	p.prev_tok2 = ps.prev_tok2
+	p.prev_tok = ps.prev_tok
+	p.tok = ps.tok
+	p.lit = ps.lit
+}
