@@ -237,6 +237,10 @@ fn (v mut V) compile() {
 	for i, file in v.files {
 	//        v.parsers << v.new_parser(file)
 	}
+	if v.pref.is_verbose {
+		println('all .v files before:')
+		println(v.files)
+	}
 	v.add_v_files_to_compile()
 	if v.pref.is_verbose {
 		println('all .v files:')
@@ -512,7 +516,7 @@ fn (v mut V) add_v_files_to_compile() {
 		dir = dir.all_before('/')
 	}
 	else {
-		// Add files from the dir user is compiling (only .v files)
+		// Add .v files from the directory being compied
 		files := v.v_files_from_dir(dir)
 		for file in files {
 			user_files << file
@@ -602,17 +606,30 @@ fn (v mut V) add_v_files_to_compile() {
 */
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
-			if !file in v.files {
+			if !(file in v.files) {
 				v.files << file
 			}
 		}
 	}
-	// add remaining files (not modules)
-	for fit in v.table.file_imports {
-		//println('fit $fit.file_path')
-		if !fit.file_path in v.files {
-			v.files << fit.file_path
+	// Add remaining user files
+	mut j := 0
+	mut len := -1
+	for i, fit in v.table.file_imports {
+		// Don't add a duplicate; builtin files are always there
+		if fit.file_path in v.files || fit.module_name == 'builtin' {
+			continue
 		}
+		if len == -1 {
+			len = i
+		}
+		j++
+		// TODO remove this once imports work with .build
+		if v.pref.build_mode == .build && j >= len / 2{
+			break
+		}
+		//println(fit)
+		//println('fit $fit.file_path')
+		v.files << fit.file_path
 	}
 }
 
@@ -672,9 +689,11 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build
 		// v -lib ~/v/os => os.o
-		mod = os.dir(dir)
-		mod = mod.all_after('/')
-		println('Building module  "${mod}" dir="$dir"...')
+		//mod = os.dir(dir)
+		if dir.contains('/') {
+			mod = dir.all_after('/')
+		}
+		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
 		// Cross compiling? Use separate dirs for each os
@@ -762,10 +781,11 @@ fn new_v(args[]string) &V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
+	//println('out_name:$out_name')
 	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
 	mut files := []string
 	// Add builtin files
-	if !out_name.contains('builtin.o') {
+	//if !out_name.contains('builtin.o') {
 		for builtin in builtins {
 			mut f := '$vroot/vlib/builtin/$builtin'
 			// In default mode we use precompiled vlib.o, point to .vh files with signatures
@@ -774,7 +794,7 @@ fn new_v(args[]string) &V {
 			}
 			files << f
 		}
-	}
+	//}
 
 	mut cflags := ''
 	for ci, cv in args {

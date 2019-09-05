@@ -13,7 +13,6 @@ const (
 
 struct Request {
 pub:
-	headers2  []string
 	headers  map[string]string 
 	method   string
 	// cookies map[string]string
@@ -96,6 +95,21 @@ pub fn (req mut Request) add_header(key, val string) {
 	// mut h := req.h
 	// h += ' -H "${key}: ${val}" '
 	// req.h = h
+}
+
+pub fn parse_headers(lines []string) map[string]string {
+	mut headers := map[string]string
+	for i, line in lines {
+		if i == 0 {
+			continue
+		}
+		words := line.split(': ')
+		if words.len != 2 {
+			continue
+		}
+		headers[words[0]] = words[1]
+	}
+	return headers
 }
 
 pub fn (req &Request) do() ?Response {
