@@ -330,7 +330,7 @@ pub fn (v mut V) cc_msvc() {
 			// Which ever one of these is lowest we use
 			// TODO: we really shouldnt support all of these cmon
 			mut lowest := base.index('-')
-			// make sure hyphen comes before I|l|L incase there is hyphen in a path
+			// make sure hyphen comes before I|l|L to not break paths with hyphens
 			if lowest < base.len-2 && !(base[lowest+1] in [`I`, `l`, `L`]) {
 				lowest = -1
 			}
