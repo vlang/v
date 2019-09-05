@@ -63,6 +63,7 @@ enum Action {
   history_next
   overwrite
   clear_screen
+  suspend
 }
 
 // Toggle raw mode of the terminal by changing its attributes
@@ -150,7 +151,8 @@ fn (r Readline) analyse(c byte) Action {
     case 27  : return r.analyse_control() // ESC
     case 1   : return Action.move_cursor_begining // ^A
     case 5   : return Action.move_cursor_end // ^E
-    default  : return Action.insert_character
+    case 26  : return Action.suspend // CTRL + Z, SUB
+    default  : return if c >= ` ` { Action.insert_character } else { Action.nothing }
   }
 }
 
@@ -215,6 +217,7 @@ fn (r mut Readline) execute(a Action, c byte) bool {
     case Action.history_next: r.history_next()
     case Action.overwrite: r.switch_overwrite()
     case Action.clear_screen: r.clear_screen()
+    case Action.suspend: r.suspend()
   }
   return false
 }
@@ -402,5 +405,10 @@ fn (r mut Readline) history_next() {
   r.search_index--
   r.current = r.previous_lines[r.search_index]
   r.cursor = r.current.len
+  r.refresh_line()
+}
+
+fn (r mut Readline) suspend() {
+  C.raise(C.SIGSTOP)
   r.refresh_line()
 }
