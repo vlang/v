@@ -686,7 +686,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	}
 	// `(int, string, int)`
 	// Just register fn arg types
-	types_only := p.tok == .mul || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
+	types_only := p.tok == .mul || p.tok == .amp || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
