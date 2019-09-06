@@ -386,27 +386,46 @@ fn sort_structs(types []Type) []Type {
 
 // compiler flag
 struct CompilerFlag{
-	name  string // -I
-	value string // /include/path
+	name  string // eg. -I
+	value string // eg. /path/to/incude
 }
 
 // parse the flags to []CompilerFlag
+// Note: clean up big time (joe-c)
 fn parse_flags(flags []string) []CompilerFlag {
+	allowed_flags := [
+		'library', 'I', 'l', 'L', 
+	]
 	mut compiler_flags := []CompilerFlag{}
 	for f in flags {
 		mut flag := f.trim_space()
 		mut name := ''
 		for {
+			mut index := -1
 			mut value := ''
 			if flag[0] == `-` {
-				name = flag.left(2)
-				flag = flag.right(2).trim_space()
+				for f in allowed_flags {
+					i := 1+f.len
+					if i < flag.len && flag.substr(1,i) == f {
+						name = flag.left(i).trim_space()
+						flag = flag.right(i).trim_space()
+						break
+					}
+				}
 			}
-			mut index := flag.index(' ')
-			if index == -1 {
-				index = flag.index(',')
+			for i in [flag.index(' '), flag.index(',')] {
+				if index == -1 || (i != -1 && i < index) {
+					index = i
+				}
 			}
-			if index != -1 && (flag[index+1] == `-` && flag[index+2] in [`I`,`l`,`L`]) {
+			if index != -1 && flag[index+1] == `-` {
+				for f in allowed_flags {
+					i := index+f.len
+					if f == flag.substr(index, i) {
+						index = i
+						break
+					}
+				}
 				value = flag.left(index).trim_space()
 				flag = flag.right(index).trim_space()
 			}
@@ -435,6 +454,5 @@ fn parse_flags(flags []string) []CompilerFlag {
 			}
 		}
 	}
-
 	return compiler_flags
 }
