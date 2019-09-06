@@ -13,6 +13,7 @@ struct CFlag{
 	value string // eg. /path/to/incude
 }
 
+// check if cflag is in table
 fn (table &Table) has_cflag(cflag CFlag) bool {
 	for cf in table.cflags {
 		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
@@ -20,6 +21,30 @@ fn (table &Table) has_cflag(cflag CFlag) bool {
 		}
 	}
 	return false
+}
+
+// get flags for current os
+fn (v V) get_os_cflags() []CFlag {
+	mut flags := []CFlag
+	for flag in v.table.cflags {
+		if flag.os == ''
+		|| (flag.os == 'linux' && v.os == .linux)
+		|| (flag.os == 'darwin' && v.os == .mac)
+		|| (flag.os == 'windows' && (v.os == .windows || v.os == .msvc)) {
+			flags << flag
+		}
+	}
+	return flags
+}
+
+// format flag
+fn (cf &CFlag) format() string {
+	mut value := cf.value
+	// convert to absolute path
+	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
+		value = '"'+os.realpath(value)+'"'
+	}
+	return '$cf.name $value'.trim_space()
 }
 
 // parse the flags to []CFlag
@@ -87,32 +112,4 @@ fn (table mut Table) parse_cflag(cflag string) {
 			break
 		}
 	}
-}
-
-fn (v V) get_os_cflags() []CFlag {
-	mut flags := []CFlag
-	for flag in v.table.cflags {
-		if flag.os == ''
-		|| (flag.os == 'linux' && v.os == .linux)
-		|| (flag.os == 'darwin' && v.os == .mac)
-		|| (flag.os == 'windows' && (v.os == .windows || v.os == .msvc)) {
-			flags << flag
-		}
-	}
-	return flags
-}
-
-fn (cf &CFlag) tos() string {
-	mut value := cf.value
-	// convert to absolute path
-	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
-		// msvc expects .obj not .o
-		$if msvc {
-			if value.ends_with('.o') {
-				value = '${value}bj'
-			}
-		}
-		value = '"'+os.realpath(value)+'"'
-	}
-	return '$cf.name $cf.value'.trim_space()
 }

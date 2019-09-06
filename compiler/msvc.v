@@ -317,7 +317,7 @@ pub fn (v mut V) cc_msvc() {
 			real_libs << lib_lib
 		}
 		else if flag.name == '-I' {
-			inc_paths << ' ' + flag.tos() + ' '
+			inc_paths << ' ' + flag.format() + ' '
 		}
 		else if flag.name == '-L' {
 			lpath := flag.value
@@ -328,6 +328,9 @@ pub fn (v mut V) cc_msvc() {
 			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
+		}
+		else if flag.value.ends_with('.o') {
+			other_flags << flag.format().replace('.o', '.obj')
 		}
 		else {
 			other_flags << arg
@@ -397,12 +400,16 @@ pub fn (v mut V) cc_msvc() {
 	os.rm(out_name_obj)
 }
 
-fn build_thirdparty_obj_file_with_msvc(obj_path string) {
+fn build_thirdparty_obj_file_with_msvc(path string) {
 	msvc := find_msvc() or {
 		println('Could not find visual studio')
 		return
 	}
 
+	// msvc expects .obj not .o
+	mut obj_path := '${path}bj'
+
+	obj_path = os.realpath(obj_path)
 
 	if os.file_exists(obj_path) {
 		println('$obj_path already build.')
@@ -417,7 +424,7 @@ fn build_thirdparty_obj_file_with_msvc(obj_path string) {
 	for file in files {
 		if file.ends_with('.c') { 
 			cfiles += '"' + os.realpath( parent + os.PathSeparator + file )  + '" '
-		} 
+		}
 	}
 
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'

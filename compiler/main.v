@@ -326,7 +326,7 @@ fn (v mut V) compile() {
 	if v.pref.is_verbose {
 		v.log('flags=')
 		for flag in v.get_os_cflags() {
-			println(' * ' + flag.tos())
+			println(' * ' + flag.format())
 		}
 	}
 	v.cc()

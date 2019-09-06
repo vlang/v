@@ -128,7 +128,7 @@ mut args := ''
 		a << '-mmacosx-version-min=10.7'
 	}
 	for flag in v.get_os_cflags() {
-		a << flag.tos()
+		a << flag.format()
 	}
 	a << libs
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
@@ -222,7 +222,7 @@ fn (c mut V) cc_windows_cross() {
 	// -I flags
 	for flag in c.get_os_cflags() {
 		if flag.name != '-l' {
-				args += flag.tos()
+				args += flag.format()
 				args += ' '
 		}
 	}
@@ -241,7 +241,7 @@ fn (c mut V) cc_windows_cross() {
 	// -l flags (libs)
 	for flag in c.get_os_cflags() {
 			if flag.name == '-l' {
-					args += flag.tos()
+					args += flag.format()
 					args += ' '
 			}
 	}
@@ -287,7 +287,7 @@ fn (c mut V) cc_windows_cross() {
 
 fn (c V) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
-		if flag.value.contains('.o') {
+		if flag.value.ends_with('.o') {
 			if c.os == .msvc {
 				build_thirdparty_obj_file_with_msvc(flag.value)
 			}
@@ -315,6 +315,6 @@ fn find_c_compiler_default() string {
 }
 
 fn find_c_compiler_thirdparty_options() string {
-	$if windows {	return '' }
+	$if windows { return '' }
 	return '-fPIC'
 }

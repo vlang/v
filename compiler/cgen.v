@@ -240,7 +240,8 @@ fn (g mut CGen) add_to_main(s string) {
 }
 
 
-fn build_thirdparty_obj_file(obj_path string) {
+fn build_thirdparty_obj_file(path string) {
+	obj_path := os.realpath(path)
 	if os.file_exists(obj_path) {
 		return
 	}
