@@ -281,15 +281,15 @@ fn os_name_to_ifdef(name string) string {
 }
 
 fn platform_postfix_to_ifdefguard(name string) string {
-  switch name {
-    case '.v': return '' // no guard needed
-    case '_win.v': return '#ifdef _WIN32'
-    case '_nix.v': return '#ifndef _WIN32'
-    case '_lin.v': return '#ifdef __linux__'
-    case '_mac.v': return '#ifdef __APPLE__'
-  }
-  cerror('bad platform_postfix "$name"')
-  return ''
+	switch name {
+		case '.v': return '' // no guard needed
+		case '_win.v': return '#ifdef _WIN32'
+		case '_nix.v': return '#ifndef _WIN32'
+		case '_lin.v': return '#ifdef __linux__'
+		case '_mac.v': return '#ifdef __APPLE__'
+	}
+	cerror('bad platform_postfix "$name"')
+	return ''
 }
 
 // C struct definitions, ordered
@@ -406,7 +406,7 @@ fn parse_cflags(flags []string) []CFlag {
 		for {
 			mut index := -1
 			mut value := ''
-            if flag[0] == `-` {
+			if flag[0] == `-` {
 				for f in allowed_flags {
 					i := 1+f.len
 					if i < flag.len && f == flag.substr(1,i) {
@@ -416,7 +416,7 @@ fn parse_cflags(flags []string) []CFlag {
 					}
 				}
 			}
-            for i in [flag.index(' '), flag.index(',')] {
+			for i in [flag.index(' '), flag.index(',')] {
 				if index == -1 || (i != -1 && i < index) {
 					index = i
 				}
@@ -431,7 +431,7 @@ fn parse_cflags(flags []string) []CFlag {
 				value = flag.left(index).trim_space()
 				flag = flag.right(index).trim_space()
 			} else if index != -1 && index < flag.len-2 && flag[index] == `,` {
-                value = flag.left(index).trim_space()
+				value = flag.left(index).trim_space()
 				flag = flag.right(index+1).trim_space()
 			} else {
 				value = flag.trim_space()
