@@ -85,14 +85,14 @@ fn (v mut V) cc() {
 	}
 	// -I flags
 	/*
-mut args := ''
+	mut args := ''
 	for flag in v.get_os_cflags() {
 		if !flag.starts_with('-l') {
-			args += flag
+			args += flag.value
 			args += ' '
 		}
 	}
-*/
+	*/
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
@@ -127,6 +127,7 @@ mut args := ''
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
+	// add all flags
 	for flag in v.get_os_cflags() {
 		a << flag.format()
 	}
