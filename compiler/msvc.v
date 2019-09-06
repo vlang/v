@@ -300,7 +300,7 @@ pub fn (v mut V) cc_msvc() {
 	mut lib_paths := []string{}
 	mut other_flags := []string{}
 
-	for flag in parse_flags(v.table.flags) {
+	for flag in parse_cflags(v.table.flags) {
 		mut arg := flag.value
 		if flag.name == '-I' || flag.name == '-L' {
 			arg = os.realpath( arg )

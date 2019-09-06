@@ -384,53 +384,60 @@ fn sort_structs(types []Type) []Type {
 	return types_sorted
 }
 
-// compiler flag
-struct CompilerFlag{
+// C flag
+struct CFlag{
 	name  string // eg. -I
 	value string // eg. /path/to/incude
 }
 
-// parse the flags to []CompilerFlag
+// C flag
+struct CFlag{
+	name  string // eg. -I
+	value string // eg. /path/to/incude
+}
+
+// parse the flags to []CFlag
 // Note: clean up big time (joe-c)
-fn parse_flags(flags []string) []CompilerFlag {
+fn parse_cflags(flags []string) []CFlag {
 	allowed_flags := [
 		'library', 'I', 'l', 'L', 
 	]
-	mut compiler_flags := []CompilerFlag{}
+	mut compiler_flags := []CFlag{}
 	for f in flags {
 		mut flag := f.trim_space()
+		if flag == '' {
+			continue
+		}
 		mut name := ''
 		for {
 			mut index := -1
 			mut value := ''
-			if flag[0] == `-` {
+            if flag[0] == `-` {
 				for f in allowed_flags {
 					i := 1+f.len
-					if i < flag.len && flag.substr(1,i) == f {
+					if i < flag.len && f == flag.substr(1,i) {
 						name = flag.left(i).trim_space()
 						flag = flag.right(i).trim_space()
 						break
 					}
 				}
 			}
-			for i in [flag.index(' '), flag.index(',')] {
+            for i in [flag.index(' '), flag.index(',')] {
 				if index == -1 || (i != -1 && i < index) {
 					index = i
 				}
-			}
-			if index != -1 && flag[index+1] == `-` {
+			} if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
 				for f in allowed_flags {
 					i := index+f.len
-					if f == flag.substr(index, i) {
+					if i < flag.len && f == flag.substr(index, i) {
 						index = i
 						break
 					}
 				}
 				value = flag.left(index).trim_space()
 				flag = flag.right(index).trim_space()
-			}
-			else if index != -1 && flag[index] == `,` {
-				value = flag.left(index).trim_space()
+			} else if index != -1 && index < flag.len-2 && flag[index] == `,` {
+                value = flag.left(index).trim_space()
 				flag = flag.right(index+1).trim_space()
 			} else {
 				value = flag.trim_space()
@@ -444,7 +451,9 @@ fn parse_flags(flags []string) []CompilerFlag {
 				}
 			}
 			if !exists {
-				compiler_flags << CompilerFlag{
+				println(' # name: $name')
+				println(' # value: $value')
+				compiler_flags << CFlag{
 					name:  name,
 					value: value
 				}

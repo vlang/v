@@ -33,7 +33,7 @@ fn (v mut V) cc() {
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
 
-	flags := parse_flags(v.table.flags)
+	flags := parse_cflags(v.table.flags)
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
