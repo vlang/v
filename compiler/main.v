@@ -942,7 +942,9 @@ fn test_v() {
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
 		print(relative_file + ' ')
-		r := os.exec('$vexe $joined_args -debug $file') or {
+		mut cmd := '"$vexe" $joined_args -debug "$file"'
+		if os.user_os() == 'windows' { cmd = '"$cmd"' }
+		r := os.exec(cmd) or {
 			failed = true
 			println('FAIL')
 			continue
@@ -961,7 +963,9 @@ fn test_v() {
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('.v', '.tmp.c')
 		print(relative_file + ' ')
-		r := os.exec('$vexe $joined_args -debug $file') or {
+		mut cmd := '"$vexe" $joined_args -debug "$file"'
+		if os.user_os() == 'windows' { cmd = '"$cmd"' }
+		r := os.exec(cmd) or {
 			failed = true
 			println('FAIL')
 			continue
