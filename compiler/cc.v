@@ -111,7 +111,7 @@ mut args := ''
 	// Cross compiling windows
 	//
 	// Output executable name
-	a << '-o $v.out_name'
+	a << '-o "$v.out_name"'
 	if os.dir_exists(v.out_name) {
 		cerror('\'$v.out_name\' is a directory')
 	}
