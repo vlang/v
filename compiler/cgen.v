@@ -390,12 +390,6 @@ struct CFlag{
 	value string // eg. /path/to/incude
 }
 
-// C flag
-struct CFlag{
-	name  string // eg. -I
-	value string // eg. /path/to/incude
-}
-
 // parse the flags to []CFlag
 // Note: clean up big time (joe-c)
 fn parse_cflags(flags []string) []CFlag {
@@ -451,8 +445,6 @@ fn parse_cflags(flags []string) []CFlag {
 				}
 			}
 			if !exists {
-				println(' # name: $name')
-				println(' # value: $value')
 				compiler_flags << CFlag{
 					name:  name,
 					value: value
