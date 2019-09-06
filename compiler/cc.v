@@ -10,6 +10,9 @@ import (
 )
 
 fn (v mut V) cc() {
+	// build any thirdparty obj files
+	v.build_thirdparty_obj_files()
+
 	// Just create a c file and exit
 	if v.out_name.ends_with('.c') {
 		os.mv(v.out_name_c, v.out_name)
@@ -33,7 +36,6 @@ fn (v mut V) cc() {
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
 
-	flags := parse_cflags(v.table.flags)
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
@@ -84,7 +86,7 @@ fn (v mut V) cc() {
 	// -I flags
 	/*
 mut args := ''
-	for flag in v.table.flags {
+	for flag in v.get_os_cflags() {
 		if !flag.starts_with('-l') {
 			args += flag
 			args += ' '
@@ -125,14 +127,8 @@ mut args := ''
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
-	for flag in flags {
-		flag_name := if flag.name != '' { '$flag.name ' } else { '' }
-		flag_value := if flag.name == '-I' || flag.name == '-L' || flag.value.ends_with('.o') {
-			'"' + os.realpath(flag.value) + '"'
-		} else {
-			flag.value
-		}
-		a << flag_name+flag_value
+	for flag in v.get_os_cflags() {
+		a << flag.tos()
 	}
 	a << libs
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
@@ -224,9 +220,9 @@ fn (c mut V) cc_windows_cross() {
 	}
 	mut args := '-o $c.out_name -w -L. '
 	// -I flags
-	for flag in c.table.flags {
-		if !flag.starts_with('-l') {
-				args += flag
+	for flag in c.get_os_cflags() {
+		if flag.name != '-l' {
+				args += flag.tos()
 				args += ' '
 		}
 	}
@@ -243,9 +239,9 @@ fn (c mut V) cc_windows_cross() {
 	}
 	args += ' $c.out_name_c '
 	// -l flags (libs)
-	for flag in c.table.flags {
-			if flag.starts_with('-l') {
-					args += flag
+	for flag in c.get_os_cflags() {
+			if flag.name == '-l' {
+					args += flag.tos()
 					args += ' '
 			}
 	}
@@ -287,6 +283,19 @@ fn (c mut V) cc_windows_cross() {
 		// os.rm(obj_name)
 	}
 	println('Done!')
+}
+
+fn (c V) build_thirdparty_obj_files() {
+	for flag in c.get_os_cflags() {
+		if flag.value.contains('.o') {
+			if c.os == .msvc {
+				build_thirdparty_obj_file_with_msvc(flag.value)
+			}
+			else {
+				build_thirdparty_obj_file(flag.value)
+			}
+		}
+	}
 }
 
 fn find_c_compiler() string {

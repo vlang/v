@@ -300,11 +300,8 @@ pub fn (v mut V) cc_msvc() {
 	mut lib_paths := []string{}
 	mut other_flags := []string{}
 
-	for flag in parse_cflags(v.table.flags) {
+	for flag in v.get_os_cflags() {
 		mut arg := flag.value
-		if flag.name == '-I' || flag.name == '-L' {
-			arg = os.realpath( arg )
-		}
 		//println('fl: $flag.name | flag arg: $arg')
 
 		// We need to see if the flag contains -l
@@ -320,7 +317,7 @@ pub fn (v mut V) cc_msvc() {
 			real_libs << lib_lib
 		}
 		else if flag.name == '-I' {
-			inc_paths << ' -I "$arg" '
+			inc_paths << ' ' + flag.tos() + ' '
 		}
 		else if flag.name == '-L' {
 			lpath := flag.value
@@ -332,10 +329,6 @@ pub fn (v mut V) cc_msvc() {
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
 		}
-		else if arg.ends_with('.o') {
-			// msvc expects .obj not .o
-			other_flags << '"' + os.realpath(arg+'bj') + '"'
-		} 
 		else {
 			other_flags << arg
 		}
@@ -404,18 +397,12 @@ pub fn (v mut V) cc_msvc() {
 	os.rm(out_name_obj)
 }
 
-fn build_thirdparty_obj_file_with_msvc(flag string) {
+fn build_thirdparty_obj_file_with_msvc(obj_path string) {
 	msvc := find_msvc() or {
 		println('Could not find visual studio')
 		return
 	}
 
-	mut obj_path := flag.trim_space()
-
-	if obj_path.ends_with('.o') {
-		// msvc expects .obj not .o
-		obj_path = os.realpath(obj_path + 'bj')
-	}
 
 	if os.file_exists(obj_path) {
 		println('$obj_path already build.')
@@ -423,7 +410,7 @@ fn build_thirdparty_obj_file_with_msvc(flag string) {
 	} 
 
 	println('$obj_path not found, building it (with msvc)...') 
-	parent := os.dir( obj_path )
+	parent := os.dir(obj_path)
 	files := os.ls(parent)
 
 	mut cfiles := '' 

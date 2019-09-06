@@ -325,7 +325,9 @@ fn (v mut V) compile() {
   cgen.save()
 	if v.pref.is_verbose {
 		v.log('flags=')
-		println(v.table.flags)
+		for flag in v.get_os_cflags() {
+			println(' * ' + flag.tos())
+		}
 	}
 	v.cc()
 }
