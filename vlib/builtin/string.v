@@ -574,7 +574,7 @@ pub fn (s string) trim_space() string {
 }
 
 pub fn (s string) trim(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -599,7 +599,7 @@ pub fn (s string) trim(cutset string) string {
 }
 
 pub fn (s string) trim_left(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -611,7 +611,7 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 pub fn (s string) trim_right(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
