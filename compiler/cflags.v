@@ -6,21 +6,11 @@ module main
 
 import os
 
-// C flag
+// parsed cflag
 struct CFlag{
 	os    string // eg. windows | darwin | linux
 	name  string // eg. -I
-	value string // eg. /path/to/incude
-}
-
-// check if cflag is in table
-fn (table &Table) has_cflag(cflag CFlag) bool {
-	for cf in table.cflags {
-		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
-			return true
-		}
-	}
-	return false
+	value string // eg. /path/to/include
 }
 
 // get flags for current os
@@ -47,7 +37,17 @@ fn (cf &CFlag) format() string {
 	return '$cf.name $value'.trim_space()
 }
 
-// parse the flags to []CFlag
+// check if cflag is in table
+fn (table &Table) has_cflag(cflag CFlag) bool {
+	for cf in table.cflags {
+		if cf.os == cflag.os && cf.name == cflag.name && cf.value == cflag.value {
+			return true
+		}
+	}
+	return false
+}
+
+// parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
 fn (table mut Table) parse_cflag(cflag string) {
 	allowed_flags := [
