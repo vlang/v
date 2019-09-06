@@ -240,13 +240,13 @@ fn (g mut CGen) add_to_main(s string) {
 }
 
 
-fn build_thirdparty_obj_file(flag string) {
-	obj_path := flag.all_after(' ')
+fn build_thirdparty_obj_file(path string) {
+	obj_path := os.realpath(path)
 	if os.file_exists(obj_path) {
 		return
 	}
 	println('$obj_path not found, building it...')
-	parent := os.dir( obj_path )
+	parent := os.dir(obj_path)
 	files := os.ls(parent)
 	mut cfiles := ''
 	for file in files {
@@ -281,15 +281,15 @@ fn os_name_to_ifdef(name string) string {
 }
 
 fn platform_postfix_to_ifdefguard(name string) string {
-  switch name {
-    case '.v': return '' // no guard needed
-    case '_win.v': return '#ifdef _WIN32'
-    case '_nix.v': return '#ifndef _WIN32'
-    case '_lin.v': return '#ifdef __linux__'
-    case '_mac.v': return '#ifdef __APPLE__'
-  }
-  cerror('bad platform_postfix "$name"')
-  return ''
+	switch name {
+		case '.v': return '' // no guard needed
+		case '_win.v': return '#ifdef _WIN32'
+		case '_nix.v': return '#ifndef _WIN32'
+		case '_lin.v': return '#ifdef __linux__'
+		case '_mac.v': return '#ifdef __APPLE__'
+	}
+	cerror('bad platform_postfix "$name"')
+	return ''
 }
 
 // C struct definitions, ordered
@@ -383,4 +383,3 @@ fn sort_structs(types []Type) []Type {
 	}
 	return types_sorted
 }
-
