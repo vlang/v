@@ -119,6 +119,11 @@ fn (v mut V) new_parser(path string) Parser {
 	return p
 }
 
+fn (p mut Parser) set_current_fn(f &Fn) {
+	p.cur_fn = f
+	p.scanner.fn_name = '${f.mod}.${f.name}'
+}
+
 fn (p mut Parser) next() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
@@ -262,7 +267,7 @@ fn (p mut Parser) parse(pass Pass) {
 		case Token.eof:
 			p.log('end of parse()')
 			if p.is_script && !p.pref.is_test {
-				p.cur_fn = MainFn
+				p.set_current_fn( MainFn )
 				p.check_unused_variables()
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
@@ -281,12 +286,12 @@ fn (p mut Parser) parse(pass Pass) {
 				// we need to set it to save and find variables
 				if p.first_pass() {
 					if p.cur_fn.name == '' {
-						p.cur_fn = MainFn
+						p.set_current_fn( MainFn )
 					}
 					return
 				}
 				if p.cur_fn.name == '' {
-					p.cur_fn = MainFn
+					p.set_current_fn( MainFn )
 					if p.pref.is_repl {
 						p.cur_fn.clear_vars()
 					}

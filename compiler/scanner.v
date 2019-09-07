@@ -24,6 +24,7 @@ mut:
 	fmt_indent     int
 	fmt_line_empty bool
 	prev_tok Token
+	fn_name string // needed for @FN
 }
 
 fn new_scanner(file_path string) &Scanner {
@@ -394,12 +395,17 @@ fn (s mut Scanner) scan() ScanRes {
 	case `@`:
 		s.pos++
 		name := s.ident_name()
-		// @LINE => will be substituted with a string containing the current V line number
-		// @FILE => will be substituted with a string containing the path of the current V source file
-		// This allows things like this: `println( 'file: ' + @FILE + ' | line: ' + @LINE)`
-		// which is useful while debugging/tracing
-		if name == 'LINE' { return scan_res(.str, (s.line_nr+1).str()) }
+		// @FN => will be substituted with the name of the current V function
+		// @FILE => will be substituted with the path of the V source file
+		// @LINE => will be substituted with the V line number where it appears (as a string).
+		// @COLUMN => will be substituted with the column where it appears (as a string).
+		// This allows things like this: 
+		// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
+		// ... which is useful while debugging/tracing
+		if name == 'FN' { return scan_res(.str, s.fn_name) }
 		if name == 'FILE' { return scan_res(.str, os.realpath(s.file_path)) }
+		if name == 'LINE' { return scan_res(.str, (s.line_nr+1).str()) }
+		if name == 'COLUMN' { return scan_res(.str, (s.current_column()).str()) }
 		if !is_key(name) {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
@@ -586,9 +592,13 @@ fn (s &Scanner) find_current_line_start_position() int {
   return linestart
 }
 
+fn (s &Scanner) current_column() int {
+	return s.pos - s.find_current_line_start_position()
+}
+
 fn (s &Scanner) error(msg string) {
 	fullpath := os.realpath( s.file_path )
-	column := s.pos - s.find_current_line_start_position()
+	column := s.current_column()
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output

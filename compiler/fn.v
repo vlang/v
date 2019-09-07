@@ -284,7 +284,7 @@ fn (p mut Parser) fn_decl() {
 		''
 	}
 	if !p.is_vweb {
-		p.cur_fn = f
+		p.set_current_fn( f )
 	}
 	// Generate `User_register()` instead of `register()`
 	// Internally it's still stored as "register" in type User
@@ -492,7 +492,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		return
 	}
 	p.check_unused_variables()
-	p.cur_fn = EmptyFn
+	p.set_current_fn( EmptyFn )
 	p.returns = false
 	if !is_generic {
 		p.genln('}')
