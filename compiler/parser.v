@@ -119,6 +119,11 @@ fn (v mut V) new_parser(path string) Parser {
 	return p
 }
 
+fn (p mut Parser) set_current_fn(f &Fn) {
+	p.cur_fn = f
+	p.scanner.fn_name = '${f.mod}.${f.name}'
+}
+
 fn (p mut Parser) next() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
@@ -262,7 +267,7 @@ fn (p mut Parser) parse(pass Pass) {
 		case Token.eof:
 			p.log('end of parse()')
 			if p.is_script && !p.pref.is_test {
-				p.cur_fn = MainFn
+				p.set_current_fn( MainFn )
 				p.check_unused_variables()
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
@@ -281,12 +286,12 @@ fn (p mut Parser) parse(pass Pass) {
 				// we need to set it to save and find variables
 				if p.first_pass() {
 					if p.cur_fn.name == '' {
-						p.cur_fn = MainFn
+						p.set_current_fn( MainFn )
 					}
 					return
 				}
 				if p.cur_fn.name == '' {
-					p.cur_fn = MainFn
+					p.set_current_fn( MainFn )
 					if p.pref.is_repl {
 						p.cur_fn.clear_vars()
 					}
@@ -2532,16 +2537,28 @@ fn (p mut Parser) string_expr() {
 		// Custom format? ${t.hour:02d}
 		custom := p.tok == .colon
 		if custom {
-			format += '%'
+			mut cformat := ''
 			p.next()
 			if p.tok == .dot {
-				format += '.'
+				cformat += '.'
 				p.next()
 			}
-			format += p.lit// 02
+			if p.tok == .minus { // support for left aligned formatting
+				cformat += '-'
+				p.next()
+			}
+			cformat += p.lit// 02
 			p.next()
-			format += p.lit// f
-			// println('custom str F=$format')
+			fspec := p.lit // f
+			cformat += fspec
+			if fspec == 's' {
+				//println('custom str F=$cformat | format_specifier: "$fspec" | typ: $typ ')
+				if typ != 'string' {
+					p.error('only v strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}.')
+				}
+				args = args.all_before_last('${val}.len, ${val}.str') + '${val}.str'
+			}
+			format += '%$cformat'
 			p.next()
 		}
 		else {
@@ -2563,6 +2580,7 @@ fn (p mut Parser) string_expr() {
 			}
 			format += f
 		}
+		//println('interpolation format is: |${format}| args are: |${args}| ')
 	}
 	if complex_inter {
 		p.fgen('}')
