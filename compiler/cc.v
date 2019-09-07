@@ -83,16 +83,6 @@ fn (v mut V) cc() {
 			libs += ' "$ModPath/vlib/${imp}.o"'
 		}
 	}
-	// -I flags
-	/*
-	mut args := ''
-	for flag in v.get_os_cflags() {
-		if !flag.starts_with('-l') {
-			args += flag.value
-			args += ' '
-		}
-	}
-	*/
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
@@ -127,11 +117,6 @@ fn (v mut V) cc() {
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
-	// add all flags
-	for flag in v.get_os_cflags() {
-		a << flag.format()
-	}
-	a << libs
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
@@ -145,6 +130,19 @@ fn (v mut V) cc() {
 	}
 	if v.os == .windows {
 		a << '-DUNICODE -D_UNICODE'
+	}
+	a << libs
+	// add all flags (-I -L -l etc) besides .o files
+	for flag in v.get_os_cflags() {
+		if !flag.value.ends_with('.o') {
+			a << flag.format()
+		}
+	}
+	// add .o files 
+	for flag in v.get_os_cflags() {
+		if flag.value.ends_with('.o') {
+			a << flag.format()
+		}
 	}
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
