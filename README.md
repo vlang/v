@@ -17,7 +17,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ~100k - 1.2 million loc/s
+- Fast compilation: ≈100k — 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
@@ -27,6 +27,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy cross compilation
 - REPL
 - Built-in ORM
+- C and JavaScript backends
 
 V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
@@ -58,7 +59,7 @@ On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
 
 On Debian/Ubuntu run `sudo apt install build-essential`.
 
-On CentOS/RHEL run 'sudo yum groupinstall "Development Tools"`.
+On CentOS/RHEL run `sudo yum groupinstall "Development Tools"`.
 
 On Fedora run `sudo dnf install @development-tools`.
 
