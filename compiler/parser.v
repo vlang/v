@@ -695,7 +695,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		mod: p.mod
 		parent: 'int'
 		cat: TypeCategory.enum_
-		enum_vals: fields
+		enum_vals: fields.clone()
 	})
 	p.check(.rcbr)
 	p.fgenln('\n')
@@ -1056,12 +1056,12 @@ fn (p mut Parser) close_scope() {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
-		if false && !p.building_v && !v.is_mut && v.is_alloc {
+		if p.building_v && v.is_alloc {
 			if v.typ.starts_with('array_') {
 				p.genln('v_array_free($v.name); // close_scope free')
 			}
 			else if v.typ == 'string' {
-				p.genln('v_string_free($v.name); // close_scope free')
+				//p.genln('v_string_free($v.name); // close_scope free')
 			}
 			else if v.ptr {
 				//p.genln('free($v.name); // close_scope free')
