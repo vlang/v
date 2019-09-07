@@ -2537,20 +2537,28 @@ fn (p mut Parser) string_expr() {
 		// Custom format? ${t.hour:02d}
 		custom := p.tok == .colon
 		if custom {
-			format += '%'
+			mut cformat := ''
 			p.next()
 			if p.tok == .dot {
-				format += '.'
+				cformat += '.'
 				p.next()
 			}
 			if p.tok == .minus { // support for left aligned formatting
-				format += '-'
+				cformat += '-'
 				p.next()
 			}
-			format += p.lit// 02
+			cformat += p.lit// 02
 			p.next()
-			format += p.lit// f
-			// println('custom str F=$format')
+			fspec := p.lit // f
+			cformat += fspec
+			if fspec == 's' {
+				//println('custom str F=$cformat | format_specifier: "$fspec" | typ: $typ ')
+				if typ != 'string' {
+					p.error('only v strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}.')
+				}
+				args = args.all_before_last('${val}.len, ${val}.str') + '${val}.str'
+			}
+			format += '%$cformat'
 			p.next()
 		}
 		else {
@@ -2572,6 +2580,7 @@ fn (p mut Parser) string_expr() {
 			}
 			format += f
 		}
+		//println('interpolation format is: |${format}| args are: |${args}| ')
 	}
 	if complex_inter {
 		p.fgen('}')
