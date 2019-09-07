@@ -394,6 +394,12 @@ fn (s mut Scanner) scan() ScanRes {
 	case `@`:
 		s.pos++
 		name := s.ident_name()
+		// @LINE => will be substituted with a string containing the current V line number
+		// @FILE => will be substituted with a string containing the path of the current V source file
+		// This allows things like this: `println( 'file: ' + @FILE + ' | line: ' + @LINE)`
+		// which is useful while debugging/tracing
+		if name == 'LINE' { return scan_res(.str, (s.line_nr+1).str()) }
+		if name == 'FILE' { return scan_res(.str, os.realpath(s.file_path)) }
 		if !is_key(name) {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
