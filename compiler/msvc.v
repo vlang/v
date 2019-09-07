@@ -320,9 +320,8 @@ pub fn (v mut V) cc_msvc() {
 			inc_paths << ' ' + flag.format() + ' '
 		}
 		else if flag.name == '-L' {
-			lpath := flag.value
-			lib_paths << '"' + lpath + '"'
-			lib_paths << '"' + lpath + os.PathSeparator + 'msvc' + '"'
+			lib_paths << flag.value
+			lib_paths << flag.value + os.PathSeparator + 'msvc'
 			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
 			// where gcc will NOT find them, but cl will do...
 			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
