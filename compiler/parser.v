@@ -1747,12 +1747,14 @@ fn (p mut Parser) var_expr(v Var) string {
 				p.restore_parsing_state( ps )				
 				//println( 'potential_orm_keyword: $potential_orm_keyword' )
 				if potential_orm_keyword in ['select','insert','update','delete'] {
-					println('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
+					//println('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
+					p.check(.dot)
+					p.next() 
 					switch potential_orm_keyword {
-					case 'select': p.check(.dot) p.next() return p.select_query(fn_ph, typ, v.name)
-					case 'insert': p.check(.dot) p.next() return p.insert_query(fn_ph, typ, v.name)
-					case 'update': p.check(.dot) p.next() return p.update_query(fn_ph, typ, v.name)
-					case 'delete': p.check(.dot) p.next() return p.delete_query(fn_ph, typ, v.name)
+					case 'select': return p.select_query(fn_ph, typ, v.name)
+					case 'insert': return p.insert_query(fn_ph, typ, v.name)
+					case 'update': return p.update_query(fn_ph, typ, v.name)
+					case 'delete': return p.delete_query(fn_ph, typ, v.name)
 					}
 				}
 			}
