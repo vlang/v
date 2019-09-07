@@ -83,7 +83,8 @@ fn (table mut Table) parse_cflag(cflag string) {
 			if index == -1 || (i != -1 && i < index) {
 				index = i
 			}
-		} if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
+		}
+		if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
 			for f in allowed_flags {
 				i := index+f.len
 				if i < flag.len && f == flag.substr(index, i) {
@@ -93,10 +94,12 @@ fn (table mut Table) parse_cflag(cflag string) {
 			}
 			value = flag.left(index).trim_space()
 			flag = flag.right(index).trim_space()
-		} else if index != -1 && index < flag.len-2 && flag[index] == `,` {
+		}
+		else if index != -1 && index < flag.len-2 && flag[index] == `,` {
 			value = flag.left(index).trim_space()
 			flag = flag.right(index+1).trim_space()
-		} else {
+		}
+		else {
 			value = flag.trim_space()
 			index = -1
 		}

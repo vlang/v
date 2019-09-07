@@ -83,16 +83,6 @@ fn (v mut V) cc() {
 			libs += ' "$ModPath/vlib/${imp}.o"'
 		}
 	}
-	// -I flags
-	/*
-	mut args := ''
-	for flag in v.get_os_cflags() {
-		if !flag.starts_with('-l') {
-			args += flag.value
-			args += ' '
-		}
-	}
-	*/
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
@@ -115,6 +105,7 @@ fn (v mut V) cc() {
 	if os.dir_exists(v.out_name) {
 		cerror('\'$v.out_name\' is a directory')
 	}
+	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.os == .mac {
 		a << '-x objective-c'
 	}
@@ -127,12 +118,17 @@ fn (v mut V) cc() {
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
-	// add all flags
+	// add all flags (-I -l -L etc) not .o files
 	for flag in v.get_os_cflags() {
+		if flag.value.ends_with('.o') { continue }
+		a << flag.format()
+	}
+	// add .o files
+	for flag in v.get_os_cflags() {
+		if !flag.value.ends_with('.o') { continue }
 		a << flag.format()
 	}
 	a << libs
-	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if v.pref.build_mode != .build && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
