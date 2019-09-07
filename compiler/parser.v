@@ -2538,6 +2538,10 @@ fn (p mut Parser) string_expr() {
 				format += '.'
 				p.next()
 			}
+			if p.tok == .minus { // support for left aligned formatting
+				format += '-'
+				p.next()
+			}
 			format += p.lit// 02
 			p.next()
 			format += p.lit// f
