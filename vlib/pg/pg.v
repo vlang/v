@@ -1,7 +1,5 @@
 module pg
 
-import os
-import time
 import orm
 
 #flag -lpq
@@ -76,6 +74,7 @@ pub fn (db DB) q_strings(query string) []orm.Row {
 
 pub fn (db DB) exec(query string) []orm.Row {
 	res := C.PQexec(db.conn, query.str)
+	defer { C.PQclear( res ) }
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
 		println('pg exec error:')
@@ -91,6 +90,7 @@ pub fn (db DB) exec_param2(query string, param, param2 string) []orm.Row {
 	param_vals[0] = param.str
 	param_vals[1] = param2.str
 	res := C.PQexecParams(db.conn, query.str, 2, 0, param_vals, 0, 0, 0)
+	defer { C.PQclear( res ) }
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
 		println('pg exec2 error:')
@@ -104,11 +104,13 @@ pub fn (db DB) exec_param(query string, param string) []orm.Row {
 	mut param_vals := [1]byteptr
 	param_vals[0] = param.str
 	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)
+	defer { C.PQclear( res ) }
 	return db.res_to_rows(res)
 }
 
 pub fn (db &DB) exec_to_row(query string) orm.Row? {
 	res := C.PQexec(db.conn, query.str)
+	defer { C.PQclear( res ) }
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' { return error('pg exec error: "$e"') }
 	return orm.rows_first_or_empty( db.res_to_rows(res) )
@@ -126,19 +128,17 @@ pub fn (db &DB) res_to_rows(res voidptr) []orm.Row {
 		}
 		rows << row
 	}
-	C.PQclear( res )
 	return rows
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// The next functions are the public API that the ORM generator *needs* to be implemented
-// NB: these will be called by the generated C code.
+//Needed for the ORM to work:
 //////////////////////////////////////////////////////////////////////////////////////////
 
-//ORM
 //Execute a parametrized query with N parameters. Return array of the result rows:
 pub fn (db &DB) pquery(cquery voidptr, nparams int, arr_params voidptr) []orm.Row {
 	res := C.PQexecParams(db.conn, cquery, nparams, 0, arr_params, 0, 0, 0)
+	defer { C.PQclear( res ) }
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
 		println('pg exec2 error:')
