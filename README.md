@@ -55,15 +55,11 @@ v up
 
 You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
 
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
+Otherwise follow these instructions:
 
-On Debian/Ubuntu run `sudo apt install build-essential`.
+[https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
 
-On CentOS/RHEL run `sudo yum groupinstall "Development Tools"`.
-
-On Fedora run `sudo dnf install @development-tools`.
-
-On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 
 ### Symlinking
