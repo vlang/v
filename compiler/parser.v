@@ -1736,22 +1736,24 @@ fn (p mut Parser) var_expr(v Var) string {
 	}
 	// a.b.c().d chain
 	// mut dc := 0
+	mut chain_depth := 0
 	for p.tok ==.dot {
-		
-		if typ.ends_with('__DB') {
-			db_name := p.lit
+		chain_depth++		
+		if chain_depth == 1 && typ.ends_with('__DB') {
 			if p.peek() == .name {
-				
 				ps := p.save_parsing_state()
 				p.check(.dot)
 				potential_orm_keyword := p.check_name()
 				p.restore_parsing_state( ps )				
 				//println( 'potential_orm_keyword: $potential_orm_keyword' )
-				switch potential_orm_keyword {
-				case 'select': p.check(.dot) p.next() return p.select_query(fn_ph, typ, db_name)
-				case 'insert': p.check(.dot) p.next() return p.insert_query(fn_ph, typ, db_name)
-				case 'update': p.check(.dot) p.next() return p.update_query(fn_ph, typ, db_name)
-				case 'delete': p.check(.dot) p.next() return p.delete_query(fn_ph, typ, db_name)
+				if potential_orm_keyword in ['select','insert','update','delete'] {
+					println('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
+					switch potential_orm_keyword {
+					case 'select': p.check(.dot) p.next() return p.select_query(fn_ph, typ, v.name)
+					case 'insert': p.check(.dot) p.next() return p.insert_query(fn_ph, typ, v.name)
+					case 'update': p.check(.dot) p.next() return p.update_query(fn_ph, typ, v.name)
+					case 'delete': p.check(.dot) p.next() return p.delete_query(fn_ph, typ, v.name)
+					}
 				}
 			}
 		}
