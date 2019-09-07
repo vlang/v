@@ -24,7 +24,8 @@
 - "building a simple blog with vweb" tutorial + youtube video
 - webassembly backend (via emscripten)
 - javascript backend
-- new playground with a V compiler running in the browser
-+ O(log n) type lookup
-
+- new playground with a v compiler running in the browser
++ o(log n) type lookup
+- remove all compiler memory leaks
+- optimize the parser (reduce map lookups)
 
