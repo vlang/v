@@ -4,6 +4,8 @@
 
 module toml
 
+import os
+
 #flag -I @VROOT/thirdparty/tomlc99
 #flag @VROOT/thirdparty/tomlc99/toml.o
 #include "toml.h"
@@ -18,6 +20,19 @@ struct &C.toml{
 	table		&C.toml.toml_table_t
 	array		&C.toml.toml_array_t
 	time_stamp	&C.toml.toml_timestamp_t
+	load_stream	&C.toml.toml_load
+	load_file	&C.toml.toml_parse_file
+	free		&C.toml.toml_free
+}
+
+fn toml_load(root &C.toml) &C.toml.table{
+	rtn := root.load_stream(buff,buff_size)
+	return root.free(rtn)
+}
+
+fn toml_load_file(root &C.toml,file string) &C.toml.table{
+	rtn := root.load_file(file,buff_buff_size)
+	return root.free(rtn)
 }
 
 fn tomldecode_str (root &C.toml) string{

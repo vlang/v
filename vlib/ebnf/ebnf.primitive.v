@@ -1,0 +1,5 @@
+module ebnf
+
+struct Scanner {
+    
+}
