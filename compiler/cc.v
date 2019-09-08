@@ -118,13 +118,14 @@ fn (v mut V) cc() {
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
+	cflags := v.get_os_cflags()
 	// add all flags (-I -l -L etc) not .o files
-	for flag in v.get_os_cflags() {
+	for flag in cflags {
 		if flag.value.ends_with('.o') { continue }
 		a << flag.format()
 	}
 	// add .o files
-	for flag in v.get_os_cflags() {
+	for flag in cflags {
 		if !flag.value.ends_with('.o') { continue }
 		a << flag.format()
 	}
@@ -216,8 +217,9 @@ fn (c mut V) cc_windows_cross() {
 		c.out_name = c.out_name + '.exe'
 	}
 	mut args := '-o $c.out_name -w -L. '
+	cflags := c.get_os_cflags()
 	// -I flags
-	for flag in c.get_os_cflags() {
+	for flag in cflags {
 		if flag.name != '-l' {
 				args += flag.format()
 				args += ' '
@@ -236,11 +238,11 @@ fn (c mut V) cc_windows_cross() {
 	}
 	args += ' $c.out_name_c '
 	// -l flags (libs)
-	for flag in c.get_os_cflags() {
-			if flag.name == '-l' {
-					args += flag.format()
-					args += ' '
-			}
+	for flag in cflags {
+		if flag.name == '-l' {
+				args += flag.format()
+				args += ' '
+		}
 	}
 	println('Cross compiling for Windows...')
 	winroot := '$ModPath/winroot'
