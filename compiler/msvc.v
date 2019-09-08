@@ -337,10 +337,10 @@ pub fn (v mut V) cc_msvc() {
 	}
 
 	// Include the base paths
-	a << ' -I "$r.ucrt_include_path" '
-	a << ' -I "$r.vs_include_path" '
-	a << ' -I "$r.um_include_path" '
-	a << ' -I "$r.shared_include_path" '
+	a << '-I "$r.ucrt_include_path"'
+	a << '-I "$r.vs_include_path"'
+	a << '-I "$r.um_include_path"'
+	a << '-I "$r.shared_include_path"'
 
 	a << inc_paths
 
