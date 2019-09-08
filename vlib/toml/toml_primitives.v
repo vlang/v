@@ -19,28 +19,23 @@ struct &C.toml{
 	raw_ts		&C.toml.toml_rtots
 	table		&C.toml.toml_table_t
 	array		&C.toml.toml_array_t
+	key			&C.toml.toml_key_array
 	time_stamp	&C.toml.toml_timestamp_t
 	load_stream	&C.toml.toml_load
 	load_file	&C.toml.toml_parse_file
 	free		&C.toml.toml_free
 }
 
-fn toml_load(root &C.toml) &C.toml.table{
-	rtn := root.load_stream(buff,buff_size)
-	return root.free(rtn)
-}
-
-fn toml_load_file(root &C.toml,file string) &C.toml.table{
-	rtn := root.load_file(file,buff_buff_size)
-	return root.free(rtn)
-}
-
-fn tomldecode_str (root &C.toml) string{
+fn tomldecode_str (root &C.toml,file string) string{
 	// error check.
-	err := root.str(root,rtn)
+	temp := root.load_stream(file)
+	rtn := ''
+	err := temp.str(temp,rtn)
 	if err = -1 {
-		return ""
+		return ''
 	}
+
+	temp.free()
 	return rtn
 }
 
@@ -75,7 +70,7 @@ fn tomldecode_i8 (root &C.toml) i8{
 	if err = -1 {
 		return 0
 	}
-	return rtn
+	return i8(rtn)
 }
 
 fn tomldecode_i16 (root &C.toml) i16{
@@ -85,7 +80,7 @@ fn tomldecode_i16 (root &C.toml) i16{
 		return 0
 	}
 
-	return rtn
+	return i16(rtn)
 }
 
 fn tomldecode_i64 (root &C.toml) i64{
@@ -95,7 +90,7 @@ fn tomldecode_i64 (root &C.toml) i64{
 		return 0
 	}
 
-	return rtn
+	return i64(rtn)
 }
 
 // Time Stamp Decode.
