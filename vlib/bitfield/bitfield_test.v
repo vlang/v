@@ -1,4 +1,4 @@
-import bf
+import bitfield
 
 import rand
 import time
