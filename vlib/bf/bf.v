@@ -486,7 +486,7 @@ pub fn (instance mut BitField) resize(size int) {
 	for i := 0; i < old_bitnslots && i < new_bitnslots; i++ {
 		field[i] = instance.field[i]
 	}
-	instance.field = field
+	instance.field = field.clone()
 	instance.size = size
 	if size < old_size && size % SLOT_SIZE != 0 {
 		cleartail(mut instance)
