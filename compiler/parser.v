@@ -1044,8 +1044,9 @@ fn (p mut Parser) statements_no_rcbr() string {
 
 fn (p mut Parser) close_scope() {
 	// println('close_scope level=$f.scope_level var_idx=$f.var_idx')
-	// Move back `var_idx` (pointer to the end of the array) till we reach the previous scope level.
-	// This effectivly deletes (closes) current scope.
+	// Move back `var_idx` (pointer to the end of the array) till we reach
+	// the previous scope level.  This effectivly deletes (closes) current
+	// scope.
 	mut i := p.cur_fn.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.cur_fn.local_vars[i]
@@ -1055,7 +1056,12 @@ fn (p mut Parser) close_scope() {
 		}
 		if p.pref.building_v && v.is_alloc {
 			if v.typ.starts_with('array_') {
-				p.genln('v_array_free($v.name); // close_scope free')
+				if false && p.returns {
+					prev_line := p.cgen.lines[p.cgen.lines.len-2]
+					p.cgen.lines[p.cgen.lines.len-2] = 'v_array_free($v.name); /*close_scope free */' + prev_line
+				} else {
+					p.genln('v_array_free($v.name); // close_scope free')
+				}
 			}
 			else if v.typ == 'string' {
 				//p.genln('v_string_free($v.name); // close_scope free')
