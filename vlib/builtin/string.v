@@ -562,7 +562,7 @@ pub fn (a []string) to_c() voidptr {
 */
 
 fn is_space(c byte) bool {
-	return C.isspace(c)
+	return c in [` `,`\n`,`\t`,`\v`,`\f`,`\r`]
 }
 
 pub fn (c byte) is_space() bool {
@@ -570,26 +570,11 @@ pub fn (c byte) is_space() bool {
 }
 
 pub fn (s string) trim_space() string {
-	if s == '' {
-		return ''
-	}
-	mut i := 0
-	for i < s.len && is_space(s[i]) {
-		i++
-	}
-	mut end := s.len - 1
-	for end >= 0 && is_space(s[end]) {
-		end--
-	}
-	if i > end + 1 {
-		return s
-	}
-	res := s.substr(i, end + 1)
-	return res
+	return s.trim(' \n\t\v\f\r')
 }
 
 pub fn (s string) trim(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -614,7 +599,7 @@ pub fn (s string) trim(cutset string) string {
 }
 
 pub fn (s string) trim_left(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -626,7 +611,7 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 pub fn (s string) trim_right(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()

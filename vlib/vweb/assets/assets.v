@@ -34,7 +34,7 @@ pub fn new_manager() *AssetManager {
 	return &AssetManager{}
 }
 
-// add_js adds a css asset
+// add_css adds a css asset
 pub fn (am mut AssetManager) add_css(file string) bool {
 	return am.add('css', file)
 }

@@ -17,7 +17,7 @@ mut:
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
 	file_imports []FileImportTable // List of imports for file
-	flags        []string //  ['-framework Cocoa', '-lglfw3']
+	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
 }
@@ -78,8 +78,6 @@ mut:
 	scope_level     int
 }
 
-
-
 struct Type {
 mut:
 	mod            string
@@ -105,7 +103,6 @@ struct TypeNode {
 	next &TypeNode
 	typ Type
 }
-
 
 // For debugging types
 fn (t Type) str() string {
@@ -323,6 +320,10 @@ fn (table &Table) known_type(typ_ string) bool {
 	return t.name.len > 0 && !t.is_placeholder
 }
 
+fn (table &Table) known_type_fast(t &Type) bool {
+	return t.name.len > 0 && !t.is_placeholder
+}
+
 fn (t &Table) find_fn(name string) Fn {
 	f := t.fns[name]
 	if !isnil(f.name.str) {
@@ -348,7 +349,7 @@ fn (t mut Table) register_type(typ string) {
 	}
 	if typ in t.typesmap {
 		return
-		}
+	}
 	t.typesmap[typ] = Type{name:typ}
 }
 
@@ -687,6 +688,7 @@ fn (t &Table) main_exists() bool {
 
 // TODO use `?Var`
 fn (t &Table) find_const(name string) Var {
+	//println('find const l=$t.consts.len')
 	for c in t.consts {
 		if c.name == name {
 			return c

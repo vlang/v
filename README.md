@@ -17,7 +17,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ~100k - 1.2 million loc/s
+- Fast compilation: ≈100k — 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
@@ -27,6 +27,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy cross compilation
 - REPL
 - Built-in ORM
+- C and JavaScript backends
 
 V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
@@ -54,11 +55,11 @@ v up
 
 You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
 
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
+Otherwise follow these instructions:
 
-On Debian/Ubuntu run `sudo apt install build-essential`.
+[https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
 
-On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 
 ### Symlinking

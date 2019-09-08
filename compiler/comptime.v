@@ -115,7 +115,7 @@ fn (p mut Parser) comp_time() {
 			os.rm('.vwebtmpl.v')
 		}
 		pp.is_vweb = true
-		pp.cur_fn = p.cur_fn // give access too all variables in current function
+		pp.set_current_fn( p.cur_fn ) // give access too all variables in current function
 		pp.parse(.main)
 		tmpl_fn_body := p.cgen.lines.slice(pos + 2, p.cgen.lines.len).join('\n').clone()
 		end_pos := tmpl_fn_body.last_index('Builder_str( sb )')  + 19 // TODO
@@ -141,46 +141,11 @@ fn (p mut Parser) chash() {
 	is_sig := p.is_sig()
 	if hash.starts_with('flag ') {
 		mut flag := hash.right(5)
-		// No the right os? Skip!
-		// mut ok := true
-		if hash.contains('linux') && p.os != .linux {
-			return
-		}
-		else if hash.contains('darwin') && p.os != .mac {
-			return
-		}
-		else if hash.contains('windows') && (p.os != .windows && p.os != .msvc) {
-			return
-		}
-		// Remove "linux" etc from flag
-		if flag.contains('linux') || flag.contains('darwin') || flag.contains('windows') {
-			pos := flag.index(' ')
-			flag = flag.right(pos)
-		}
-		has_vroot := flag.contains('@VROOT')
-		flag = flag.trim_space().replace('@VROOT', p.vroot)
-		if p.table.flags.contains(flag) {
-			return
-		}
-		// expand `@VMOD/pg/pg.o` to absolute path
-		has_vmod := flag.contains('@VMOD')
-		flag = flag.trim_space().replace('@VMOD', ModPath)
-		if p.table.flags.contains(flag) {
-			return
-		}
+		// expand `@VROOT` `@VMOD` to absolute path
+		flag = flag.replace('@VROOT', p.vroot)
+		flag = flag.replace('@VMOD', ModPath)
 		p.log('adding flag "$flag"')
-		// `@VROOT/thirdparty/glad/glad.o`, make sure it exists, otherwise build it
-		if (has_vroot || has_vmod) && flag.contains('.o') {
-			flag = os.realpath( flag )
-			//println( 'absolute filepath to objectfile is now: $flag | os is: $p.os ')
-			if p.os == .msvc {
-				build_thirdparty_obj_file_with_msvc(flag)
-			}
-			else {
-				build_thirdparty_obj_file(flag)
-			}
-		}
-		p.table.flags << flag
+		p.table.parse_cflag(flag)
 		return
 	}
 	if hash.starts_with('include') {

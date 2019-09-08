@@ -193,11 +193,6 @@ fn main() {
 			os.mkdir(ModPath)
 		}
 	}
-	// No args? REPL
-	if args.len < 2 || (args.len == 2 && args[1] == '-') {
-		run_repl()
-		return
-	}
 	// Construct the V object from command line arguments
 	mut v := new_v(args)
 	if v.pref.is_verbose {
@@ -214,6 +209,12 @@ fn main() {
 		// for example for -repl usage, especially when piping lines to v
 		v.compile()
 		v.run_compiled_executable_and_exit()
+	}
+
+	// No args? REPL
+	if args.len < 2 || (args.len == 2 && args[1] == '-') || 'runrepl' in args {
+		run_repl()
+		return
 	}
 
 	v.compile()
@@ -235,6 +236,10 @@ fn (v mut V) compile() {
 	// Add builtin parsers
 	for i, file in v.files {
 	//        v.parsers << v.new_parser(file)
+	}
+	if v.pref.is_verbose {
+		println('all .v files before:')
+		println(v.files)
 	}
 	v.add_v_files_to_compile()
 	if v.pref.is_verbose {
@@ -320,7 +325,9 @@ fn (v mut V) compile() {
   cgen.save()
 	if v.pref.is_verbose {
 		v.log('flags=')
-		println(v.table.flags)
+		for flag in v.get_os_cflags() {
+			println(' * ' + flag.format())
+		}
 	}
 	v.cc()
 }
@@ -432,7 +439,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}	
-	mut cmd := final_target_out_name(v.out_name).replace('.exe','')
+	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
 	if os.args.len > 3 {
 		cmd += ' ' + os.args.right(3).join(' ')
 	}
@@ -511,7 +518,7 @@ fn (v mut V) add_v_files_to_compile() {
 		dir = dir.all_before('/')
 	}
 	else {
-		// Add files from the dir user is compiling (only .v files)
+		// Add .v files from the directory being compied
 		files := v.v_files_from_dir(dir)
 		for file in files {
 			user_files << file
@@ -601,17 +608,30 @@ fn (v mut V) add_v_files_to_compile() {
 */
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
-			if !file in v.files {
+			if !(file in v.files) {
 				v.files << file
 			}
 		}
 	}
-	// add remaining files (not modules)
-	for fit in v.table.file_imports {
-		//println('fit $fit.file_path')
-		if !fit.file_path in v.files {
-			v.files << fit.file_path
+	// Add remaining user files
+	mut j := 0
+	mut len := -1
+	for i, fit in v.table.file_imports {
+		// Don't add a duplicate; builtin files are always there
+		if fit.file_path in v.files || fit.module_name == 'builtin' {
+			continue
 		}
+		if len == -1 {
+			len = i
+		}
+		j++
+		// TODO remove this once imports work with .build
+		if v.pref.build_mode == .build && j >= len / 2{
+			break
+		}
+		//println(fit)
+		//println('fit $fit.file_path')
+		v.files << fit.file_path
 	}
 }
 
@@ -660,6 +680,9 @@ fn new_v(args[]string) &V {
 	if args.contains('run') {
 		dir = get_all_after(joined_args, 'run', '')
 	}
+	if dir.ends_with('/') {
+		dir = dir.all_before_last('/')
+	}
 	if args.len < 2 {
 		dir = ''
 	}
@@ -671,9 +694,13 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build
 		// v -lib ~/v/os => os.o
-		mod = os.dir(dir)
-		mod = mod.all_after('/')
-		println('Building module  "${mod}" dir="$dir"...')
+		//mod = os.dir(dir)
+		mod = if dir.contains('/') {
+			dir.all_after('/')
+		} else {
+			dir
+		}
+		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
 		// Cross compiling? Use separate dirs for each os
@@ -756,17 +783,16 @@ fn new_v(args[]string) &V {
 	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
-	if os.dir_exists(vroot) && os.dir_exists(vroot + '/vlib/builtin') {
-
-	}  else {
+	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
 		println('vlib not found. It should be next to the V executable. ')
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
+	//println('out_name:$out_name')
 	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
 	mut files := []string
 	// Add builtin files
-	if !out_name.contains('builtin.o') {
+	//if !out_name.contains('builtin.o') {
 		for builtin in builtins {
 			mut f := '$vroot/vlib/builtin/$builtin'
 			// In default mode we use precompiled vlib.o, point to .vh files with signatures
@@ -775,7 +801,7 @@ fn new_v(args[]string) &V {
 			}
 			files << f
 		}
-	}
+	//}
 
 	mut cflags := ''
 	for ci, cv in args {
@@ -836,7 +862,6 @@ Options:
   -                 Read from stdin (Default; Interactive mode if in a tty)
   -h, help          Display this information.
   -v, version       Display compiler version.
-  -lib              Generate object file.
   -prod             Build an optimized executable.
   -o <file>         Place output into <file>.
   -obf              Obfuscate the resulting binary.
@@ -846,6 +871,7 @@ Options:
   fmt               Run vfmt to format the source code.
   up                Update V.
   run               Build and execute a V program. You can add arguments after the file name.
+  build module      Compile a module into an object file.
 
 
 Files:
@@ -916,7 +942,9 @@ fn test_v() {
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
 		print(relative_file + ' ')
-		r := os.exec('$vexe $joined_args -debug $file') or {
+		mut cmd := '"$vexe" $joined_args -debug "$file"'
+		if os.user_os() == 'windows' { cmd = '"$cmd"' }
+		r := os.exec(cmd) or {
 			failed = true
 			println('FAIL')
 			continue
@@ -935,7 +963,9 @@ fn test_v() {
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('.v', '.tmp.c')
 		print(relative_file + ' ')
-		r := os.exec('$vexe $joined_args -debug $file') or {
+		mut cmd := '"$vexe" $joined_args -debug "$file"'
+		if os.user_os() == 'windows' { cmd = '"$cmd"' }
+		r := os.exec(cmd) or {
 			failed = true
 			println('FAIL')
 			continue

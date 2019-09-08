@@ -58,7 +58,7 @@ fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
 		return
 	}
 	if n.key > key {
-		if isnil(n.left) {
+		if n.left == 0 {
 			n.left = new_node(key, val, m.element_size)
 			m.size++
 		}  else {
@@ -66,7 +66,7 @@ fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
 		}
 		return
 	}
-	if isnil(n.right) {
+	if n.right == 0 {
 		n.right = new_node(key, val, m.element_size)
 		m.size++
 	}  else {
@@ -80,14 +80,14 @@ fn (n & mapnode) find(key string, out voidptr, element_size int) bool{
 		return true
 	}
 	else if n.key > key {
-		if isnil(n.left) {
+		if n.left == 0 {
 			return false
 		}  else {
 			return n.left.find(key, out, element_size)
 		}
 	}
 	else {
-		if isnil(n.right) {
+		if n.right == 0 {
 			return false
 		}  else {
 			return n.right.find(key, out, element_size)
@@ -178,7 +178,7 @@ pub fn (m mut map) keys() []string {
 }
 
 fn (m map) get(key string, out voidptr) bool {
-	if isnil(m.root) {
+	if m.root == 0 {
 		return false
 	}
 	return m.root.find(key, out, m.element_size)

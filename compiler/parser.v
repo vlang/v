@@ -119,6 +119,11 @@ fn (v mut V) new_parser(path string) Parser {
 	return p
 }
 
+fn (p mut Parser) set_current_fn(f &Fn) {
+	p.cur_fn = f
+	p.scanner.fn_name = '${f.mod}.${f.name}'
+}
+
 fn (p mut Parser) next() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
@@ -262,7 +267,7 @@ fn (p mut Parser) parse(pass Pass) {
 		case Token.eof:
 			p.log('end of parse()')
 			if p.is_script && !p.pref.is_test {
-				p.cur_fn = MainFn
+				p.set_current_fn( MainFn )
 				p.check_unused_variables()
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
@@ -281,12 +286,12 @@ fn (p mut Parser) parse(pass Pass) {
 				// we need to set it to save and find variables
 				if p.first_pass() {
 					if p.cur_fn.name == '' {
-						p.cur_fn = MainFn
+						p.set_current_fn( MainFn )
 					}
 					return
 				}
 				if p.cur_fn.name == '' {
-					p.cur_fn = MainFn
+					p.set_current_fn( MainFn )
 					if p.pref.is_repl {
 						p.cur_fn.clear_vars()
 					}
@@ -511,7 +516,8 @@ fn (p mut Parser) struct_decl() {
 	if !is_c && !p.builtin_mod && p.mod != 'main' {
 		name = p.prepend_mod(name)
 	}
-	if p.pass == .decl && p.table.known_type(name) {
+	mut typ := p.table.find_type(name)
+	if p.pass == .decl && p.table.known_type_fast(typ) {
 		p.error('`$name` redeclared')
 	}
 	if !is_c {
@@ -519,7 +525,6 @@ fn (p mut Parser) struct_decl() {
 		p.gen_typedef('typedef $kind $name $name;')
 	}
 	// Register the type
-	mut typ := p.table.find_type(name)
 	mut is_ph := false
 	if typ.is_placeholder {
 		// Update the placeholder
@@ -1472,8 +1477,8 @@ fn (p mut Parser) name_expr() string {
 	}
 	// //////////////////////////
 	// module ?
-	// Allow shadowing (gg = gg.newcontext(); gg.draw_triangle())
-	if ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
+	// (Allow shadowing `gg = gg.newcontext(); gg.draw_triangle();` )
+	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
 		&& !p.cur_fn.known_var(name) && !is_c {
 		mut mod := name
 		// must be aliased module
@@ -1646,9 +1651,16 @@ fn (p mut Parser) name_expr() string {
 	// TODO verify this and handle errors
 	peek := p.peek()
 	if peek != .lpar && peek != .lt {
+		// Register anon fn type
+		fn_typ := Type {
+			name: f.typ_str()// 'fn (int, int) string'
+			mod: p.mod
+			func: f
+		}
+		p.table.register_type2(fn_typ)
 		p.gen(p.table.cgen_name(f))
 		p.next()
-		return 'void*'
+		return f.typ_str() //'void*'
 	}
 	// TODO bring back
 	if f.typ == 'void' && !p.inside_if_expr {
@@ -2525,16 +2537,28 @@ fn (p mut Parser) string_expr() {
 		// Custom format? ${t.hour:02d}
 		custom := p.tok == .colon
 		if custom {
-			format += '%'
+			mut cformat := ''
 			p.next()
 			if p.tok == .dot {
-				format += '.'
+				cformat += '.'
 				p.next()
 			}
-			format += p.lit// 02
+			if p.tok == .minus { // support for left aligned formatting
+				cformat += '-'
+				p.next()
+			}
+			cformat += p.lit// 02
 			p.next()
-			format += p.lit// f
-			// println('custom str F=$format')
+			fspec := p.lit // f
+			cformat += fspec
+			if fspec == 's' {
+				//println('custom str F=$cformat | format_specifier: "$fspec" | typ: $typ ')
+				if typ != 'string' {
+					p.error('only v strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}.')
+				}
+				args = args.all_before_last('${val}.len, ${val}.str') + '${val}.str'
+			}
+			format += '%$cformat'
 			p.next()
 		}
 		else {
@@ -2556,6 +2580,7 @@ fn (p mut Parser) string_expr() {
 			}
 			format += f
 		}
+		//println('interpolation format is: |${format}| args are: |${args}| ')
 	}
 	if complex_inter {
 		p.fgen('}')
@@ -3073,9 +3098,11 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		}
 		p.check(.lcbr)
 		// statements() returns the type of the last statement
+		first_typ := typ
 		typ = p.statements()
 		p.inside_if_expr = false
 		if is_expr {
+			p.check_types(first_typ, typ)
 			p.gen(strings.repeat(`)`, elif_depth + 1))
 		}
 		else_returns := p.returns
@@ -3400,7 +3427,11 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 					return res_typ
 				} else {
-					p.match_parse_statement_branch()
+					p.returns = false
+					p.check(.lcbr)
+					
+					p.genln('{ ')
+					p.statements()
 					p.returns = all_cases_return && p.returns
 					return ''
 				}
@@ -3427,8 +3458,14 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 				return res_typ
 			} else {
+				p.returns = false
 				p.genln('else // default:')
-				p.match_parse_statement_branch()
+
+				p.check(.lcbr)
+				
+				p.genln('{ ')
+				p.statements()
+
 				p.returns = all_cases_return && p.returns
 				return ''
 			}
@@ -3474,6 +3511,9 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.expected_type = ''
 
 			if p.tok != .comma {
+				if got_comma {
+					p.gen(') ')
+				}
 				break
 			}
 			p.check(.comma)
@@ -3504,11 +3544,15 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.gen(')')
 		}
 		else {
-			p.match_parse_statement_branch()
+			p.returns = false
+			p.check(.lcbr)
+			
+			p.genln('{ ')
+			p.statements()
+
+			all_cases_return = all_cases_return && p.returns
 			// p.gen(')')
 		}
-
-		all_cases_return = all_cases_return && p.returns
 		i++
 	}
 
@@ -3520,13 +3564,6 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	p.returns = false // only get here when no default, so return is not guaranteed
 
 	return ''
-}
-
-fn (p mut Parser) match_parse_statement_branch(){
-	p.check(.lcbr)
-	
-	p.genln('{ ')
-	p.statements()
 }
 
 fn (p mut Parser) assert_statement() {

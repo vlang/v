@@ -19,7 +19,6 @@ fn test_http_get() {
 */
 }
 
-
 fn test_http_get_from_vlang_utc_now() {
 	/*
 	urls := ['http://vlang.io/utc_now', 'https://vlang.io/utc_now']
