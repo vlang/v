@@ -301,23 +301,22 @@ pub fn (v mut V) cc_msvc() {
 	mut other_flags := []string{}
 
 	for flag in v.get_os_cflags() {
-		mut arg := flag.value
-		//println('fl: $flag.name | flag arg: $arg')
+		//println('fl: $flag.name | flag arg: $flag.value')
 
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler
 		if flag.name == '-l' {
-			if arg.ends_with('.dll') {
-				cerror('MSVC cannot link against a dll (`#flag -l $arg`)')
+			if flag.value.ends_with('.dll') {
+				cerror('MSVC cannot link against a dll (`#flag -l $flag.value`)')
 			}
 			// MSVC has no method of linking against a .dll
 			// TODO: we should look for .defs aswell
-			lib_lib := arg + '.lib'
+			lib_lib := flag.value + '.lib'
 			real_libs << lib_lib
 		}
 		else if flag.name == '-I' {
-			inc_paths << ' ' + flag.format() + ' '
+			inc_paths << flag.format()
 		}
 		else if flag.name == '-L' {
 			lib_paths << flag.value
@@ -329,10 +328,11 @@ pub fn (v mut V) cc_msvc() {
 			// as for example for glfw3, compilation with gcc would fail.
 		}
 		else if flag.value.ends_with('.o') {
-			other_flags << flag.format().replace('.o', '.obj')
+			// msvc expects .obj not .o
+			other_flags << '"${flag.value}bj"'
 		}
 		else {
-			other_flags << arg
+			other_flags << flag.value
 		}
 	}
 
