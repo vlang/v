@@ -16,7 +16,7 @@ It has only 8 files (soon to be 7):
 
 2. `parser.v` The core of the compiler. This is the largest file (~3.5k loc). `parse()` method asks the scanner to generate a list of tokens for the file it needs to parse. Then it simply goes through all the tokens one by one.
 
-   In V objects can be used before declaration, so there are 2 passes. During the first pass, it only looks at declarations and skips function bodies. It memorizes all function signatures, types, consts, etc. During the second pass it looks at function bodies and generates C (e.g. `cgen('if ($expr) {'`) or machine code (e.g. `gen.mov(EDI, 1)`).
+   In V, objects can be used before declaration, so there are 2 passes. During the first pass, it only looks at declarations and skips function bodies. It memorizes all function signatures, types, consts, etc. During the second pass it looks at function bodies and generates C (e.g. `cgen('if ($expr) {'`) or machine code (e.g. `gen.mov(EDI, 1)`).
 
    The formatter is embedded in the parser. Correctly formatted tokens are emitted as they are parsed. This allowed to simplify the compiler and avoid duplication, but slowed it down a bit. In the future this will be fixed with build flags and separate binaries for C generation, machine code generation, and formatting. This way there will be no unnecessary branching and function calls.
    
