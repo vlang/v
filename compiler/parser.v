@@ -60,7 +60,6 @@ mut:
 	attr string
 	v_script bool // "V bash", import all os functions into global space
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization
-	building_v bool
 	is_alloc   bool // Whether current expression resulted in an allocation
 	cur_gen_type string // "App" to replace "T" in current generic function
 	is_vweb bool
@@ -106,8 +105,6 @@ fn (v mut V) new_parser(path string) Parser {
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
-		building_v: !v.pref.is_repl && (path.contains('compiler/')  ||
-			path.contains('v/vlib'))
 			
 	}
 
@@ -243,7 +240,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.comp_time()
 		case Token.key_global:
 			if !p.pref.translated && !p.pref.is_live &&
-				!p.builtin_mod && !p.building_v && !os.getwd().contains('/volt') {
+				!p.builtin_mod && !p.pref.building_v && !os.getwd().contains('/volt') {
 				p.error('__global is only allowed in translated code')
 			}
 			p.next()
@@ -1056,7 +1053,7 @@ fn (p mut Parser) close_scope() {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
-		if p.building_v && v.is_alloc {
+		if p.pref.building_v && v.is_alloc {
 			if v.typ.starts_with('array_') {
 				p.genln('v_array_free($v.name); // close_scope free')
 			}

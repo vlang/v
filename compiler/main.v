@@ -97,6 +97,7 @@ mut:
 						 // You could pass several -cflags XXX arguments. They will be merged with each other.
 						 // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
 	ccompiler  string // the name of the used C compiler
+	building_v bool
 }
 
 
@@ -811,6 +812,7 @@ fn new_v(args[]string) &V {
 	}
 
 	obfuscate := args.contains('-obf')
+	is_repl:=args.contains('-repl')
 	pref := &Preferences {
 		is_test: is_test
 		is_script: is_script
@@ -827,10 +829,12 @@ fn new_v(args[]string) &V {
 		show_c_cmd: args.contains('-show_c_cmd')
 		translated: args.contains('translated')
 		is_run: args.contains('run')
-		is_repl: args.contains('-repl')
+		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
+		building_v: !is_repl && (dir == 'compiler'  ||
+			dir.contains('v/vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
