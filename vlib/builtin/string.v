@@ -377,11 +377,9 @@ pub fn (s string) index(p string) int {
 			j++
 		}
 		if j == p.len {
-			prefix.free()
 			return i - p.len + 1
 		}
 	}
-	prefix.free()
 	return -1
 }
 

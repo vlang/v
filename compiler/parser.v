@@ -45,6 +45,7 @@ mut:
 	vh_lines       []string
 	inside_if_expr bool
 	inside_unwrapping_match_statement bool
+	inside_return_expr bool
 	is_struct_init bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
@@ -1054,11 +1055,16 @@ fn (p mut Parser) close_scope() {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
+		// Clean up memory, only do this for V compiler for now
 		if p.pref.building_v && v.is_alloc {
 			if v.typ.starts_with('array_') {
-				if false && p.returns {
-					prev_line := p.cgen.lines[p.cgen.lines.len-2]
-					p.cgen.lines[p.cgen.lines.len-2] = 'v_array_free($v.name); /*close_scope free */' + prev_line
+				//if false && p.returns {
+				if p.returns {
+					if !v.is_returned {
+						prev_line := p.cgen.lines[p.cgen.lines.len-2]
+						p.cgen.lines[p.cgen.lines.len-2] =
+							'v_array_free($v.name); /* :) close_scope free */' + prev_line
+					}
 				} else {
 					p.genln('v_array_free($v.name); // close_scope free')
 				}
@@ -1200,7 +1206,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 // is_map: are we in map assignment? (m[key] = val) if yes, dont generate '='
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
-	p.log('assign_statement() name=$v.name tok=')
+	//p.log('assign_statement() name=$v.name tok=')
 	is_vid := p.fileis('vid') // TODO remove
 	tok := p.tok
 	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
@@ -1238,6 +1244,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	p.next()
 	pos := p.cgen.cur_line.len
 	expr_type := p.bool_expression()
+	//if p.expected_type.starts_with('array_') {
+		//p.warn('expecting array got $expr_type')
+	//}	
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') && expr_type == p.assigned_type.right('Option_'.len) {
 		println('allowing option asss')
@@ -1529,6 +1538,13 @@ fn (p mut Parser) name_expr() string {
 		else if ptr {
 			typ += '*'
 		}
+		if p.inside_return_expr {
+			//println('marking $v.name returned')
+			p.cur_fn.mark_var_returned(v)
+			// v.is_returned = true // TODO modifying a local variable
+			// that's not used afterwards, this should be a compilation
+			// error
+		}	
 		return typ
 	}
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
@@ -3602,7 +3618,9 @@ fn (p mut Parser) return_st() {
 		}
 		else {
 			ph := p.cgen.add_placeholder()
+			p.inside_return_expr = true
 			expr_type := p.bool_expression()
+			p.inside_return_expr = false
 			// Automatically wrap an object inside an option if the function returns an option
 			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()
