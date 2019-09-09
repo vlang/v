@@ -1,16 +1,16 @@
 import ebnf
 
-test_patten :=
-'	`Program = .`,
+// Test Code from Go Source.
+// https://github.com/golang/exp/blob/master/ebnf/ebnf_test.go
 
-	`Program = foo .
-	 foo = "foo" .`,
+good_pattern := []string{
+	'Program = .',
+	'Program = foo .
+	 foo = "foo" .',
+	'Program = "a" | "b" "c" .',
+	'Program = "a" … "z" .',
 
-	`Program = "a" | "b" "c" .`,
-
-	`Program = "a" … "z" .`,
-
-	`Program = Song .
+	'Program = Song .
 	 Song = { Note } .
 	 Note = Do | (Re | Mi | Fa | So | La) | Ti .
 	 Do = "c" .
@@ -20,13 +20,33 @@ test_patten :=
 	 So = "g" .
 	 La = "a" .
 	 Ti = ti .
-	 ti = "b" .`,
-}'
+	 ti = "b" .',
+}
+ 
+bad_pattern := []string{
+	'Program = | .',
+	'Program = | b .',
+	'Program = a … b .',
+	'Program = "a" … .',
+	'Program = … "b" .',
+	'Program = () .',
+	'Program = [] .',
+	'Program = {} .',
+}
 
-fn good_program(){
+fn check_good(src string){
+	grammer
+}
+
+fn check_bad(src string){
 
 }
 
-fn bad_program(){
-    
+fn test_grammars(){
+	for src in good_pattern{
+		check_good(src)
+	}
+	for src in bad_pattern{
+		check_bad(src)
+	}
 }
