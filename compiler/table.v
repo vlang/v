@@ -77,6 +77,7 @@ mut:
 	is_used         bool
 	is_changed      bool
 	scope_level     int
+	is_c            bool // todo remove once `typ` is `Type`, not string
 }
 
 struct Type {
@@ -442,6 +443,7 @@ fn (table mut Table) add_method(type_name string, f Fn) {
 		print_backtrace()
 		cerror('add_method: empty type')
 	}
+	// TODO table.typesmap[type_name].methods << f
 	mut t := table.typesmap[type_name]
 	t.methods << f
 	table.typesmap[type_name] = t
