@@ -1056,7 +1056,7 @@ fn (p mut Parser) close_scope() {
 			break
 		}
 		// Clean up memory, only do this for V compiler for now
-		if p.pref.building_v && v.is_alloc {
+		if p.pref.building_v && v.is_alloc && !p.pref.is_test {
 			if v.typ.starts_with('array_') {
 				//if false && p.returns {
 				if p.returns {
