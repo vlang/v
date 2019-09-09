@@ -1,7 +1,19 @@
 module ebnf
 
-struct Scanner {
-    
+enum Token {
+    nil
+    expression
+    alternative
+    term
+    group
+    option_tok
+    repetion
 }
 
-fn parse
+struct Scanner {
+    tree Token
+}
+
+fn parse() {
+
+}
