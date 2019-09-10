@@ -790,6 +790,9 @@ fn new_v(args[]string) &V {
 		}
 	}
 
+	rdir := os.realpath( dir )
+	rdir_name := os.filename( rdir )
+
 	obfuscate := args.contains('-obf')
 	is_repl:=args.contains('-repl')
 	pref := &Preferences {
@@ -812,7 +815,7 @@ fn new_v(args[]string) &V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (dir == 'compiler'  ||
+		building_v: !is_repl && (rdir_name == 'compiler'  ||
 			dir.contains('v/vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
