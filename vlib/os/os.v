@@ -466,7 +466,7 @@ fn path_sans_ext(path string) string {
 
 
 pub fn basedir(path string) string {
-	pos := path.last_index('/')
+	pos := path.last_index(PathSeparator)
 	if pos == -1 {
 		return path
 	}
@@ -474,7 +474,7 @@ pub fn basedir(path string) string {
 }
 
 pub fn filename(path string) string {
-	return path.all_after('/')
+	return path.all_after(PathSeparator)
 }
 
 // get_line returns a one-line string from stdin
@@ -582,7 +582,7 @@ pub fn home_dir() string {
 		}
 		home += homepath
 	}
-	home += '/'
+	home += PathSeparator
 	return home
 }
 
@@ -746,7 +746,7 @@ pub fn walk_ext(path, ext string) []string {
 		if file.starts_with('.') {
 			continue
 		}
-		p := path + '/' + file
+		p := path + PathSeparator + file
 		if os.is_dir(p) {
 			res << walk_ext(p, ext)
 		}
