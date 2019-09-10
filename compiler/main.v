@@ -367,7 +367,7 @@ string _STR_TMP(const char *fmt, ...) {
 
 	// Make sure the main function exists
 	// Obviously we don't need it in libraries
-	if v.pref.build_mode != .build {
+	if v.pref.build_mode != .build_module {
 		if !v.table.main_exists() && !v.pref.is_test {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
@@ -666,7 +666,7 @@ fn new_v(args[]string) &V {
 	mut mod := ''
 	//if args.contains('-lib') {
 	if joined_args.contains('build module ') {
-		build_mode = .build
+		build_mode = .build_module
 		// v -lib ~/v/os => os.o
 		//mod = os.dir(dir)
 		mod = if dir.contains('/') {
