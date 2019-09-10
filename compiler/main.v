@@ -100,13 +100,13 @@ mut:
 	building_v bool
 }
 
-
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := env_vflags_and_os_args()
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
-		println('V $Version')
+		versionhash := vhash()
+		println('V $Version $versionhash')
 		return
 	}
 	if '-h' in args || '--help' in args || 'help' in args {
@@ -231,8 +231,14 @@ fn (v mut V) compile() {
 		cgen.genln('#define VDEBUG (1) ')
 	}
 
-	cgen.genln(CommonCHeaders)
+	if v.pref.building_v {
+		cgen.genln('#ifndef V_COMMIT_HASH')
+		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
+		cgen.genln('#endif')
+	}
 	
+	cgen.genln(CommonCHeaders)
+		
 	v.generate_hotcode_reloading_declarations()
 
 	imports_json := v.table.imports.contains('json')
@@ -1007,4 +1013,15 @@ pub fn cerror(s string) {
 	println('V error: $s')
 	os.flush_stdout()
 	exit(1)
+}
+
+// TODO: this must be uncommented on stage 2, after V_COMMIT_HASH is always present and preserved
+fn vhash() string {
+	/*
+	mut buf := [50]byte
+	buf[0] = 0
+	C.snprintf(buf, 50, '%s', C.V_COMMIT_HASH )
+	return tos_clone(buf)
+	*/
+	return '0000000'
 }
