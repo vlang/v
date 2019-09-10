@@ -108,7 +108,7 @@ fn (f mut Fn) clear_vars() {
 
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
-	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build) &&
+	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build_module) &&
 	(p.file_path.contains(ModPath))
 }
 

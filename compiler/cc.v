@@ -40,7 +40,7 @@ fn (v mut V) cc() {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
 	}
-	if v.pref.build_mode == .build {
+	if v.pref.build_mode == .build_module {
 		v.out_name = ModPath + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
@@ -64,7 +64,7 @@ fn (v mut V) cc() {
 	}
 
 	mut libs := ''// builtin.o os.o http.o etc
-	if v.pref.build_mode == .build {
+	if v.pref.build_mode == .build_module {
 		a << '-c'
 	}
 	else if v.pref.build_mode == .embed_vlib {
