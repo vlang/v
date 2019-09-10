@@ -25,6 +25,7 @@ mut:
 	fmt_line_empty bool
 	prev_tok Token
 	fn_name string // needed for @FN
+	should_print_line_on_error bool
 }
 
 fn new_scanner(file_path string) &Scanner {
@@ -54,6 +55,7 @@ fn new_scanner(file_path string) &Scanner {
 		file_path: file_path
 		text: text
 		fmt_out: strings.new_builder(1000)
+		should_print_line_on_error: true
 	}
 
 	return scanner
@@ -621,16 +623,18 @@ fn (s &Scanner) error(msg string) {
 	lineend := s.find_current_line_end_position()
 	column := s.pos - linestart
 	//println('pos: $s.pos |  linestart: $linestart | lineend  : $lineend')
-	line := s.text.substr( linestart, lineend )
-	pointerline := line.clone()
-	mut pl := pointerline.str
-	for i,c in line {
-		pl[i] = ` `
-		if i == column { pl[i] = `^` continue }
-		else if c.is_space() { pl[i] = c  }
+	if s.should_print_line_on_error {
+		line := s.text.substr( linestart, lineend )
+		pointerline := line.clone()
+		mut pl := pointerline.str
+		for i,c in line {
+			pl[i] = ` `
+			if i == column { pl[i] = `^` continue }
+			else if c.is_space() { pl[i] = c  }
+		}
+		println(line)
+		println(pointerline)
 	}
-	println(line)
-	println(pointerline)
 	fullpath := os.realpath( s.file_path )
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
