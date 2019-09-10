@@ -1,0 +1,3 @@
+struct Encoder struct{
+    
+}
