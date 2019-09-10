@@ -109,6 +109,10 @@ fn (v mut V) new_parser(path string) Parser {
 			
 	}
 
+	if p.pref.is_repl {
+		p.scanner.should_print_line_on_error = false
+	}
+	
 	v.cgen.line_directives = v.pref.is_debuggable
 	v.cgen.file = path
 
