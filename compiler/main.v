@@ -148,7 +148,7 @@ fn main() {
 */
 	// Just fmt and exit
 	if 'fmt' in args {
-		fmt_v(args)
+		vmft(args)
 		return
 	}
 	// v get sqlite
@@ -895,7 +895,7 @@ fn update_v() {
 	}
 }
 
-fn fmt_v(args[]string) {
+fn vmft(args[]string) {
 	file := args.last()
 	if !os.file_exists(file) {
 		println('"$file" does not exist')
