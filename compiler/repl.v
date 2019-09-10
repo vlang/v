@@ -51,9 +51,9 @@ fn (r mut Repl) function_call(line string) bool {
 }
 
 fn repl_help() {
-versionhash := vhash()
+version_hash := vhash()
 println('
-V $Version $versionhash
+V $Version $version_hash
   help                   Displays this information.
   Ctrl-C, Ctrl-D, exit   Exits the REPL.
   clear                  Clears the screen.
@@ -61,8 +61,8 @@ V $Version $versionhash
 }
 
 fn run_repl() []string {
-	versionhash := vhash()
-	println('V $Version $versionhash')
+	version_hash := vhash()
+	println('V $Version $version_hash')
 	println('Use Ctrl-C or `exit` to exit')
 	file := '.vrepl.v'
 	temp_file := '.vrepl_temp.v'
