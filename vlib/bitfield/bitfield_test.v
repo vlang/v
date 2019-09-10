@@ -1,15 +1,15 @@
-import bf
+import bitfield
 
 import rand
 import time
 
 fn test_bf_new_size() {
-	instance := bf.new(75)
+	instance := bitfield.new(75)
 	assert instance.getsize() == 75
 }
 
 fn test_bf_set_clear_toggle_get() {
-	mut instance := bf.new(75)
+	mut instance := bitfield.new(75)
 	instance.setbit(47)
 	assert instance.getbit(47) == 1
 	instance.clearbit(47)
@@ -21,8 +21,8 @@ fn test_bf_set_clear_toggle_get() {
 fn test_bf_and_not_or_xor() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input1 := bf.new(len)
-	mut input2 := bf.new(len)
+	mut input1 := bitfield.new(len)
+	mut input2 := bitfield.new(len)
 	mut i := 0
 	for i < len {
 		if rand.next(2) == 1 {
@@ -33,11 +33,11 @@ fn test_bf_and_not_or_xor() {
 		}
 		i++
 	}
-	output1 := bf.bfxor(input1, input2)
-	bfand := bf.bfand(input1, input2)
-	bfor := bf.bfor(input1, input2)
-	bfnot := bf.bfnot(bfand)
-	output2 := bf.bfand(bfor, bfnot)
+	output1 := bitfield.bfxor(input1, input2)
+	bfand := bitfield.bfand(input1, input2)
+	bfor := bitfield.bfor(input1, input2)
+	bfnot := bitfield.bfnot(bfand)
+	output2 := bitfield.bfand(bfor, bfnot)
 	mut result := 1
 	for i < len {
 		if output1.getbit(i) != output2.getbit(i) {result = 0}
@@ -48,21 +48,21 @@ fn test_bf_and_not_or_xor() {
 fn test_clone_cmp() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		if rand.next(2) == 1 {
 			input.setbit(i)
 		}
 	}
-	output := bf.clone(input)
+	output := bitfield.clone(input)
 	assert output.getsize() == len
-	assert bf.cmp(input, output) == true
+	assert bitfield.cmp(input, output) == true
 }
 
 fn test_slice_join() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		if rand.next(2) == 1 {
 			input.setbit(i)
@@ -74,8 +74,8 @@ fn test_slice_join() {
 		chunk1 := input.slice(0, point)
 		chunk2 := input.slice(point, input.getsize())
 		// concatenate them back into one and compare to the original
-		output := bf.join(chunk1, chunk2)
-		if !bf.cmp(input, output) {
+		output := bitfield.join(chunk1, chunk2)
+		if !bitfield.cmp(input, output) {
 			result = 0
 		}
 	}
@@ -86,7 +86,7 @@ fn test_popcount() {
 	rand.seed(time.now().uni)
 	len := 80
 	mut count0 := 0
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		if rand.next(2) == 1 {
 			input.setbit(i)
@@ -101,8 +101,8 @@ fn test_hamming() {
 	rand.seed(time.now().uni)
 	len := 80
 	mut count := 0
-	mut input1 := bf.new(len)
-	mut input2 := bf.new(len)
+	mut input1 := bitfield.new(len)
+	mut input2 := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		switch rand.next(4) {
 			case 0:
@@ -117,7 +117,7 @@ fn test_hamming() {
 				input2.setbit(i)
 		}
 	}
-	assert count == bf.hamming(input1, input2)
+	assert count == bitfield.hamming(input1, input2)
 }
 
 fn test_bf_str2bf() {
@@ -132,7 +132,7 @@ fn test_bf_str2bf() {
 			input = input + '0'
 		}
 	}
-	output := bf.str2bf(input)
+	output := bitfield.str2bf(input)
 	mut result := 1
 	for i := 0; i < len; i++ {
 		if input[i] != output.getbit(i) + 48 {
@@ -145,7 +145,7 @@ fn test_bf_str2bf() {
 fn test_bf_bf2str() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		if rand.next(2) == 1 {
 			input.setbit(i)
@@ -173,7 +173,7 @@ fn test_bf_bf2str() {
 fn test_bf_setall() {
 		rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	input.setall()
 	mut result := 1
 	for i := 0; i < len; i++ {
@@ -187,7 +187,7 @@ fn test_bf_setall() {
 fn test_bf_clearall() {
 		rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		if rand.next(2) == 1 {
 			input.setbit(i)
@@ -206,13 +206,13 @@ fn test_bf_clearall() {
 fn test_bf_reverse() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(len)
+	mut input := bitfield.new(len)
 	for i := 0; i < len; i++ {
 		if rand.next(2) == 1 {
 			input.setbit(i)
 		}
 	}
-	check := bf.clone(input)
+	check := bitfield.clone(input)
 	output := input.reverse()
 	mut result := 1
 	for i := 0; i < len; i++ {
@@ -226,7 +226,7 @@ fn test_bf_reverse() {
 fn test_bf_resize() {
 	rand.seed(time.now().uni)
 	len := 80
-	mut input := bf.new(rand.next(len) + 1)
+	mut input := bitfield.new(rand.next(len) + 1)
 	for i := 0; i < 100; i++ {
 		input.resize(rand.next(len) + 1)
 		input.setbit(input.getsize() - 1)
@@ -248,7 +248,7 @@ fn test_bf_pos() {
 	for i := 1; i < len; i++ {	// needle size
 		for j := 0; j < len - i; j++ {	// needle position in the haystack
 			// create the needle
-			mut needle := bf.new(i)
+			mut needle := bitfield.new(i)
 
 			// fill the needle with random values
 			for k := 0; k < i; k++ {
@@ -262,19 +262,19 @@ fn test_bf_pos() {
 			needle.setbit(r)
 
 			// create the haystack, make sure it contains the needle
-			mut haystack := bf.clone(needle)
+			mut haystack := bitfield.clone(needle)
 
 			// if there is space between the start of the haystack and the sought needle, fill it with zeroes
 			if j > 0 {
-				start := bf.new(j)
-				tmp := bf.join(start, haystack)
+				start := bitfield.new(j)
+				tmp := bitfield.join(start, haystack)
 				haystack = tmp
 			}
 
 			// if there is space between the sought needle and the end of haystack, fill it with zeroes
 			if j + i < len {
-				end := bf.new(len - j - i)
-				tmp2 := bf.join(haystack, end)
+				end := bitfield.new(len - j - i)
+				tmp2 := bitfield.join(haystack, end)
 				haystack = tmp2
 			}
 
@@ -292,10 +292,10 @@ fn test_bf_rotate() {
 	mut result := 1
 	len := 80
 	for i := 1; i < 80 && result == 1; i++ {
-		mut chunk1 := bf.new(i)
-		chunk2 := bf.new(len - i)
+		mut chunk1 := bitfield.new(i)
+		chunk2 := bitfield.new(len - i)
 		chunk1.setall()
-		input := bf.join(chunk1, chunk2)
+		input := bitfield.join(chunk1, chunk2)
 		output := input.rotate(i)
 		if output.getbit(len - i - 1) != 0 || output.getbit(len - i) != 1 {
 			result = 0

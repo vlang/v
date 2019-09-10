@@ -53,7 +53,7 @@ fn (table mut Table) parse_cflag(cflag string) {
 	allowed_flags := [
 		'framework',
 		'library',
-		'I', 'l', 'L', 
+		'I', 'l', 'L',
 	]
 	mut flag := cflag.trim_space()
 	if flag == '' {

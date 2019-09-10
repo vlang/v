@@ -1,10 +1,6 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// urllib parses URLs and implements query escaping.
 
-// Package url parses URLs and implements query escaping.
-
-// See RFC 3986. This package generally follows RFC 3986, except where
+// See RFC 3986. This module generally follows RFC 3986, except where
 // it deviates for compatibility reasons.
 
 // Based off:   https://github.com/golang/go/blob/master/src/net/url/url.go
@@ -143,7 +139,7 @@ pub fn path_unescape(s string) ?string {
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
 fn unescape(s_ string, mode EncodingMode) ?string {
-	mut s := s_ 
+	mut s := s_
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
@@ -153,7 +149,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		case `%`:
 			if s == '' {
 				break
-			} 
+			}
 			n++
 			if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
 				s = s.right(i)
@@ -554,7 +550,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	} else {
 		h := parse_host(authority.right(i+1)) or {
 			return error(err)
-		} 
+		}
 		host = h
 	}
 	if i < 0 {
@@ -628,7 +624,7 @@ fn parse_host(host string) ?string {
 			if i != -1 {
 				colon_port = host.right(i)
 				if !valid_optional_port(colon_port) {
-					return error(error_msg('invalid port $colon_port after host ', '')) 
+					return error(error_msg('invalid port $colon_port after host ', ''))
 				}
 			}
 		}
@@ -637,7 +633,7 @@ fn parse_host(host string) ?string {
 	h := unescape(host, .encode_host) or {
 		return err
 	}
-	return h 
+	return h
 	//host = h
 	//return host
 }
@@ -694,7 +690,7 @@ fn valid_encoded_path(s string) bool {
 		// should_escape is not quite compliant with the RFC,
 		// so we check the sub-delims ourselves and let
 		// should_escape handle the others.
-		x := s[i] 
+		x := s[i]
 		switch x {
 		case `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@`:
 			// ok
@@ -823,7 +819,7 @@ pub fn parse_query(query string) ?Values {
 }
 
 // parse_query_silent is the same as parse_query
-// but any errors will be silent 
+// but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
 	_ := _parse_query(mut m, query)

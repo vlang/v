@@ -54,7 +54,7 @@ pub fn new_dep_graph() &DepGraph {
 pub fn(graph mut DepGraph) add(mod string, deps []string) {
 	graph.nodes << DepGraphNode{
 		name: mod,
-		deps: deps
+		deps: deps.clone()
 	}
 }
 

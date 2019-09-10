@@ -112,7 +112,7 @@ pub fn create_window(c WinCfg) &Window {
 	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	if isnil(cwindow) {
-		println('failed to create glfw window')
+		println('failed to create a glfw window, make sure you have a GPU driver installed')
 		C.glfwTerminate()
 	}
 	C.printf('create window wnd=%p ptr==%p\n', cwindow, c.ptr)

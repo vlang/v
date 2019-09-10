@@ -28,4 +28,5 @@
 + o(log n) type lookup
 - remove all compiler memory leaks
 - optimize the parser (reduce map lookups)
+- prebuilt binaries for all platforms
 

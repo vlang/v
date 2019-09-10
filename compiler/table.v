@@ -66,6 +66,7 @@ mut:
 	attr            string //  [json] etc
 	is_mut          bool
 	is_alloc        bool
+	is_returned     bool
 	ptr             bool
 	ref             bool
 	parent_fn       string // Variables can only be defined in functions
