@@ -622,14 +622,13 @@ fn (s &Scanner) error(msg string) {
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
 	column := s.pos - linestart
-	//println('pos: $s.pos |  linestart: $linestart | lineend  : $lineend')
 	if s.should_print_line_on_error {
 		line := s.text.substr( linestart, lineend )
 		pointerline := line.clone()
 		mut pl := pointerline.str
 		for i,c in line {
 			pl[i] = ` `
-			if i == column { pl[i] = `^` continue }
+			if i == column { pl[i] = `^` }
 			else if c.is_space() { pl[i] = c  }
 		}
 		println(line)
