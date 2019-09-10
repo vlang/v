@@ -134,34 +134,7 @@ fn main() {
 		return
 	}
 	if 'install' in args {
-		if args.len < 3 {
-			println('usage: v install [module] [module] [...]')
-			return
-		}
-		names := args.slice(2, args.len)
-		vexec := os.executable()
-		vroot := os.dir(vexec)
-		vget := '$vroot/tools/vget'
-		if true {
-			//println('Building vget...')
-			os.chdir(vroot + '/tools')
-			vgetcompilation := os.exec('$vexec -o $vget vget.v') or {
-				cerror(err)
-				return
-			}
-			if vgetcompilation.exit_code != 0 {
-				cerror( vgetcompilation.output )
-				return
-			}
-		}
-		vgetresult := os.exec('$vget ' + names.join(' ')) or {
-			cerror(err)
-			return
-		}
-		if vgetresult.exit_code != 0 {
-			cerror( vgetresult.output )
-			return
-		}
+		install_v(args)
 		return
 	}
 	// TODO quit if the compiler is too old
@@ -928,6 +901,37 @@ fn update_v() {
 			return
 		}
 		println(s2.output)
+	}
+}
+
+fn install_v(args[]string) {
+	if args.len < 3 {
+		println('usage: v install [module] [module] [...]')
+		return
+	}
+	names := args.slice(2, args.len)
+	vexec := os.executable()
+	vroot := os.dir(vexec)
+	vget := '$vroot/tools/vget'
+	if true {
+		//println('Building vget...')
+		os.chdir(vroot + '/tools')
+		vgetcompilation := os.exec('$vexec -o $vget vget.v') or {
+			cerror(err)
+			return
+		}
+		if vgetcompilation.exit_code != 0 {
+			cerror( vgetcompilation.output )
+			return
+		}
+	}
+	vgetresult := os.exec('$vget ' + names.join(' ')) or {
+		cerror(err)
+		return
+	}
+	if vgetresult.exit_code != 0 {
+		cerror( vgetresult.output )
+		return
 	}
 }
 
