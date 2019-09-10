@@ -624,6 +624,10 @@ fn (s &Scanner) error(msg string) {
 	column := s.pos - linestart
 	if s.should_print_line_on_error {
 		line := s.text.substr( linestart, lineend )
+		// The pointerline should have the same spaces/tabs as the offending
+		// line, so that it prints the ^ character exactly on the *same spot*
+		// where it is needed. That is the reason we can not just
+		// use strings.repeat(` `, column) to form it.
 		pointerline := line.clone()
 		mut pl := pointerline.str
 		for i,c in line {
