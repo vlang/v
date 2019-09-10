@@ -148,16 +148,7 @@ fn main() {
 */
 	// Just fmt and exit
 	if 'fmt' in args {
-		file := args.last()
-		if !os.file_exists(file) {
-			println('"$file" does not exist')
-			exit(1)
-		}
-		if !file.ends_with('.v') {
-			println('v fmt can only be used on .v files')
-			exit(1)
-		}
-		println('vfmt is temporarily disabled')
+		fmt_v(args)
 		return
 	}
 	// v get sqlite
@@ -902,6 +893,19 @@ fn update_v() {
 		}
 		println(s2.output)
 	}
+}
+
+fn fmt_v(args[]string) {
+	file := args.last()
+	if !os.file_exists(file) {
+		println('"$file" does not exist')
+		exit(1)
+	}
+	if !file.ends_with('.v') {
+		println('v fmt can only be used on .v files')
+		exit(1)
+	}
+	println('vfmt is temporarily disabled')
 }
 
 fn install_v(args[]string) {
