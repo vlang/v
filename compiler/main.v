@@ -105,8 +105,8 @@ fn main() {
 	args := env_vflags_and_os_args()
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
-		versionhash := vhash()
-		println('V $Version $versionhash')
+		version_hash := vhash()
+		println('V $Version $version_hash')
 		return
 	}
 	if '-h' in args || '--help' in args || 'help' in args {
@@ -1018,13 +1018,9 @@ pub fn cerror(s string) {
 	exit(1)
 }
 
-// TODO: this must be uncommented on stage 2, after V_COMMIT_HASH is always present and preserved
 fn vhash() string {
-	/*
 	mut buf := [50]byte
 	buf[0] = 0
 	C.snprintf(buf, 50, '%s', C.V_COMMIT_HASH )
-	return tos_clone(buf)
-	*/
-	return '0000000'
+	return tos_clone(buf)  
 }
