@@ -529,7 +529,7 @@ pub fn (s string) find_between(start, end string) string {
 }
 
 // TODO generic
-pub fn (ar []string) contains(val string) bool {
+fn (ar []string) contains(val string) bool {
 	for s in ar {
 		if s == val {
 			return true
@@ -539,7 +539,7 @@ pub fn (ar []string) contains(val string) bool {
 }
 
 // TODO generic
-pub fn (ar []int) contains(val int) bool {
+fn (ar []int) contains(val int) bool {
 	for i, s in ar {
 		if s == val {
 			return true

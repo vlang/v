@@ -232,10 +232,11 @@ fn (v mut V) compile() {
 		
 	v.generate_hotcode_reloading_declarations()
 
-	imports_json := v.table.imports.contains('json')
+	imports_json := 'json' in v.table.imports
 	// TODO remove global UI hack
-	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && v.table.imports.contains('ui')) ||
-	(v.pref.build_mode == .build_module && v.dir.contains('/ui'))) {
+	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && 'ui' in 
+		v.table.imports) || (v.pref.build_mode == .build_module && 
+		v.dir.contains('/ui'))) {
 		cgen.genln('id defaultFont = 0; // main.v')
 	}
 	// We need the cjson header for all the json decoding user will do in default mode
@@ -250,13 +251,13 @@ fn (v mut V) compile() {
 		// TODO
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		cgen.genln('int g_test_ok = 1; ')
-		if v.table.imports.contains('json') {
+		if 'json' in v.table.imports {
 			cgen.genln('
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 ')
 		}
 	}
-	if os.args.contains('-debug_alloc') {
+	if '-debug_alloc' in os.args {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
 	cgen.genln('/*================================== FNS =================================*/')
@@ -648,7 +649,7 @@ fn new_v(args[]string) &V {
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
 
 	mut dir := args.last()
-	if args.contains('run') {
+	if 'run' in args {
 		dir = get_all_after(joined_args, 'run', '')
 	}
 	if dir.ends_with('/') {
@@ -685,7 +686,7 @@ fn new_v(args[]string) &V {
 */
 	}
 	// TODO embed_vlib is temporarily the default mode. It's much slower.
-	else if !args.contains('-embed_vlib') {
+	else if !('-embed_vlib' in args) {
 		build_mode = .embed_vlib
 	}
 	//
@@ -784,24 +785,24 @@ fn new_v(args[]string) &V {
 	rdir := os.realpath( dir )
 	rdir_name := os.filename( rdir )
 
-	obfuscate := args.contains('-obf')
-	is_repl:=args.contains('-repl')
+	obfuscate := '-obf' in args
+	is_repl := '-repl' in args
 	pref := &Preferences {
 		is_test: is_test
 		is_script: is_script
-		is_so: args.contains('-shared')
-		is_prod: args.contains('-prod')
-		is_verbose: args.contains('-verbose')
-		is_debuggable: args.contains('-g') // -debuggable implys debug
-		is_debug: args.contains('-debug') || args.contains('-g')
+		is_so: '-shared' in args
+		is_prod: '-prod' in args
+		is_verbose: '-verbose' in args
+		is_debuggable: '-g' in args
+		is_debug: '-debug' in args || '-g' in args
 		obfuscate: obfuscate
-		is_prof: args.contains('-prof')
-		is_live: args.contains('-live')
-		sanitize: args.contains('-sanitize')
-		nofmt: args.contains('-nofmt')
-		show_c_cmd: args.contains('-show_c_cmd')
-		translated: args.contains('translated')
-		is_run: args.contains('run')
+		is_prof: '-prof' in args
+		is_live: '-live' in args
+		sanitize: '-sanitize' in args
+		nofmt: '-nofmt' in args
+		show_c_cmd: '-show_c_cmd' in args
+		translated: 'translated' in args
+		is_run: 'run' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
