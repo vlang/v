@@ -401,6 +401,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// @FILE => will be substituted with the path of the V source file
 		// @LINE => will be substituted with the V line number where it appears (as a string).
 		// @COLUMN => will be substituted with the column where it appears (as a string).
+		// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
 		// This allows things like this: 
 		// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 		// ... which is useful while debugging/tracing
@@ -408,6 +409,7 @@ fn (s mut Scanner) scan() ScanRes {
 		if name == 'FILE' { return scan_res(.str, os.realpath(s.file_path)) }
 		if name == 'LINE' { return scan_res(.str, (s.line_nr+1).str()) }
 		if name == 'COLUMN' { return scan_res(.str, (s.current_column()).str()) }
+		if name == 'VHASH' { return scan_res(.str, vhash()) }
 		if !is_key(name) {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
@@ -750,7 +752,8 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
-	return c
+	// Escapes a `'` character
+	return if c == '\'' { '\\' + c } else { c }
 }
 
 fn (s mut Scanner) peek() Token {

@@ -125,7 +125,6 @@ fn (v mut V) cc() {
 		if !flag.value.ends_with('.o') { continue }
 		a << flag.format()
 	}
-
 	// add all flags (-I -l -L etc) not .o files
 	for flag in cflags {
 		if flag.value.ends_with('.o') { continue }

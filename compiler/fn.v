@@ -423,7 +423,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	if f.name == 'main' || f.name == 'WinMain' {
 		p.genln('init_consts();')
-		if p.table.imports.contains('os') {
+		if 'os' in p.table.imports {
 			if f.name == 'main' {
 				p.genln('os__args = os__init_os_args(argc, argv);')
 			}
@@ -604,6 +604,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
+		if f.name == 'contains' {
+			println('use `value in numbers` instead of `numbers.contains(value)`')
+		}
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c

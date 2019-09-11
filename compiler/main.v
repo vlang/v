@@ -100,13 +100,13 @@ mut:
 	building_v bool
 }
 
-
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := env_vflags_and_os_args()
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
-		println('V $Version')
+		version_hash := vhash()
+		println('V $Version $version_hash')
 		return
 	}
 	if '-h' in args || '--help' in args || 'help' in args {
@@ -122,7 +122,7 @@ fn main() {
 		return
 	}
 	if 'get' in args {
-		println('use `v install` to install modules from vpm.vlang.io')
+		println('use `v install` to install modules from vpm.vlang.io ')
 		return
 	}
 	if 'symlink' in args {
@@ -148,16 +148,7 @@ fn main() {
 */
 	// Just fmt and exit
 	if 'fmt' in args {
-		file := args.last()
-		if !os.file_exists(file) {
-			println('"$file" does not exist')
-			exit(1)
-		}
-		if !file.ends_with('.v') {
-			println('v fmt can only be used on .v files')
-			exit(1)
-		}
-		println('vfmt is temporarily disabled')
+		vfmt(args)
 		return
 	}
 	// v get sqlite
@@ -231,14 +222,21 @@ fn (v mut V) compile() {
 		cgen.genln('#define VDEBUG (1) ')
 	}
 
-	cgen.genln(CommonCHeaders)
+	if v.pref.building_v {
+		cgen.genln('#ifndef V_COMMIT_HASH')
+		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
+		cgen.genln('#endif')
+	}
 	
+	cgen.genln(CommonCHeaders)
+		
 	v.generate_hotcode_reloading_declarations()
 
-	imports_json := v.table.imports.contains('json')
+	imports_json := 'json' in v.table.imports
 	// TODO remove global UI hack
-	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && v.table.imports.contains('ui')) ||
-	(v.pref.build_mode == .build_module && v.dir.contains('/ui'))) {
+	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && 'ui' in 
+		v.table.imports) || (v.pref.build_mode == .build_module && 
+		v.dir.contains('/ui'))) {
 		cgen.genln('id defaultFont = 0; // main.v')
 	}
 	// We need the cjson header for all the json decoding user will do in default mode
@@ -253,13 +251,13 @@ fn (v mut V) compile() {
 		// TODO
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		cgen.genln('int g_test_ok = 1; ')
-		if v.table.imports.contains('json') {
+		if 'json' in v.table.imports {
 			cgen.genln('
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 ')
 		}
 	}
-	if os.args.contains('-debug_alloc') {
+	if '-debug_alloc' in os.args {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
 	cgen.genln('/*================================== FNS =================================*/')
@@ -651,7 +649,7 @@ fn new_v(args[]string) &V {
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
 
 	mut dir := args.last()
-	if args.contains('run') {
+	if 'run' in args {
 		dir = get_all_after(joined_args, 'run', '')
 	}
 	if dir.ends_with('/') {
@@ -688,7 +686,7 @@ fn new_v(args[]string) &V {
 */
 	}
 	// TODO embed_vlib is temporarily the default mode. It's much slower.
-	else if !args.contains('-embed_vlib') {
+	else if !('-embed_vlib' in args) {
 		build_mode = .embed_vlib
 	}
 	//
@@ -784,29 +782,32 @@ fn new_v(args[]string) &V {
 		}
 	}
 
-	obfuscate := args.contains('-obf')
-	is_repl:=args.contains('-repl')
+	rdir := os.realpath( dir )
+	rdir_name := os.filename( rdir )
+
+	obfuscate := '-obf' in args
+	is_repl := '-repl' in args
 	pref := &Preferences {
 		is_test: is_test
 		is_script: is_script
-		is_so: args.contains('-shared')
-		is_prod: args.contains('-prod')
-		is_verbose: args.contains('-verbose')
-		is_debuggable: args.contains('-g') // -debuggable implys debug
-		is_debug: args.contains('-debug') || args.contains('-g')
+		is_so: '-shared' in args
+		is_prod: '-prod' in args
+		is_verbose: '-verbose' in args
+		is_debuggable: '-g' in args
+		is_debug: '-debug' in args || '-g' in args
 		obfuscate: obfuscate
-		is_prof: args.contains('-prof')
-		is_live: args.contains('-live')
-		sanitize: args.contains('-sanitize')
-		nofmt: args.contains('-nofmt')
-		show_c_cmd: args.contains('-show_c_cmd')
-		translated: args.contains('translated')
-		is_run: args.contains('run')
+		is_prof: '-prof' in args
+		is_live: '-live' in args
+		sanitize: '-sanitize' in args
+		nofmt: '-nofmt' in args
+		show_c_cmd: '-show_c_cmd' in args
+		translated: 'translated' in args
+		is_run: 'run' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (dir == 'compiler'  ||
+		building_v: !is_repl && (rdir_name == 'compiler'  ||
 			dir.contains('v/vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
@@ -829,41 +830,6 @@ fn new_v(args[]string) &V {
 		mod: mod
 	}
 }
-
-
-const (
-	HelpText = '
-Usage: v [options] [file | directory]
-
-Options:
-  -                 Read from stdin (Default; Interactive mode if in a tty)
-  -h, help          Display this information.
-  -v, version       Display compiler version.
-  -prod             Build an optimized executable.
-  -o <file>         Place output into <file>.
-  -obf              Obfuscate the resulting binary.
-  -show_c_cmd       Print the full C compilation command and how much time it took.
-  -debug            Leave a C file for debugging in .program.c.
-  -live             Enable hot code reloading (required by functions marked with [live]).
-  fmt               Run vfmt to format the source code.
-  up                Update V.
-  run               Build and execute a V program. You can add arguments after the file name.
-  build module      Compile a module into an object file.
-
-
-Files:
-  <file>_test.v     Test file.
-'
-)
-
-/*
-- To disable automatic formatting:
-v -nofmt file.v
-
-- To build a program with an embedded vlib  (use this if you do not have prebuilt vlib libraries or if you
-are working on vlib)
-v -embed_vlib file.v
-*/
 
 fn env_vflags_and_os_args() []string {
    mut args := []string
@@ -902,6 +868,19 @@ fn update_v() {
 		}
 		println(s2.output)
 	}
+}
+
+fn vfmt(args[]string) {
+	file := args.last()
+	if !os.file_exists(file) {
+		println('"$file" does not exist')
+		exit(1)
+	}
+	if !file.ends_with('.v') {
+		println('v fmt can only be used on .v files')
+		exit(1)
+	}
+	println('vfmt is temporarily disabled')
 }
 
 fn install_v(args[]string) {
@@ -1007,4 +986,11 @@ pub fn cerror(s string) {
 	println('V error: $s')
 	os.flush_stdout()
 	exit(1)
+}
+
+fn vhash() string {
+	mut buf := [50]byte
+	buf[0] = 0
+	C.snprintf(buf, 50, '%s', C.V_COMMIT_HASH )
+	return tos_clone(buf)  
 }
