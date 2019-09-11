@@ -18,16 +18,20 @@ CommonCHeaders = '
 #include <unistd.h> // sleep	
 #endif
 
+
 #ifdef __APPLE__
 #include <libproc.h> // proc_pidpath
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
 #endif
 
 #ifdef __linux__
+#ifndef __BIONIC__
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
+#endif
 #pragma weak backtrace
 #pragma weak backtrace_symbols_fd
 #endif
+
 
 #ifdef __linux__
 #include <sys/types.h>
