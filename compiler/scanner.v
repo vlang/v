@@ -406,7 +406,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 		// ... which is useful while debugging/tracing
 		if name == 'FN' { return scan_res(.str, s.fn_name) }
-		if name == 'FILE' { return scan_res(.str, os.realpath(s.file_path)) }
+		if name == 'FILE' { return scan_res(.str, os.realpath(s.file_path).replace('\\', '\\\\')) } // escape \
 		if name == 'LINE' { return scan_res(.str, (s.line_nr+1).str()) }
 		if name == 'COLUMN' { return scan_res(.str, (s.current_column()).str()) }
 		if name == 'VHASH' { return scan_res(.str, vhash()) }
