@@ -3,16 +3,18 @@ module main
 const (
 	HelpText = 'Usage: v [options/subcommands] [file.v | directory]
 
-   When V is run without any options/subcommands and files given, it is a shorthand for `v runrepl`.
 
-   When V is given just a vprogram.v file, it will compile it, and will produce an executable named vprogram.
+
+   When V is run without any arguments, it is a shorthand for `v runrepl`.
+
+   When given a .v file, it will be compiled. The output executable will have the same name as the input .v file.
    You can use -o to specify a different output name.
 
-   When V is given a directory name, it will compile all *.v files in the directory, as being part of a single main module. 
-   It will produce an executable named a.out by default.
+   When given a directory, all the .v files contained in it, will be compiled as part of a single main module. 
+   By default the executable will be named a.out.
 
-   When V is given a file ending with _test.v, V will compile and run *every* function in it that is named test_xxxxx . 
-   Use `assert false` inside the test functions to validate the test results.
+   Any file ending in _test.v, will be treated as a test. 
+   It will be compiled and run, evaluating the assert statements in every function named test_xxx.
 
    You can put common options inside an environment variable named VFLAGS, so that you do not repeat them. 
    You can set it like this: `export VFLAGS="-cc clang -debug"` on unix, `set VFLAGS=-os msvc` on windows.
