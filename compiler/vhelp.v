@@ -36,7 +36,7 @@ Debugging options:
   -cflags flags     Pass additional C flags to the C backend compiler.
                     Example: -cflags `sdl2-config --cflags`
                     
-  -debug            Keep the generatd C file for debugging in program.tmp.c even after compilation.
+  -debug            Keep the generated C file for debugging in program.tmp.c even after compilation.
   -g                Show v line numbers in backtraces. Implies -debug.  
   -o <file>         Place output into <file>. If file has a .c suffix, produce C source, and do not compile it further.
   -obf              Obfuscate the resulting binary.
@@ -47,13 +47,13 @@ Subcommands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.
   run <file.v>      Build and execute the V program in file.v . You can add arguments for the V program *after* the file name.
   build module      Compile a module into an object file.
-  runrepl           Run the V REPL. If V is running in a tty terminal, the repl is interactive, otherwise it just reads from stdin.
+  runrepl           Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
   symlink           Useful on unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
-  install module    Install an user module from https://vpm.vlang.io/ .
+  install module    Install a user module from https://vpm.vlang.io/ .
   test v            Run all V test files, and compile all V examples.
 
   fmt               Run vfmt to format the source code. [wip]
-  doc               Run vdoc over the source code and produce documenation. [wip]
+  doc               Run vdoc over the source code and produce documentation. [wip]
   translate         Translates C to V. [wip, will be available in V 0.3]  
 '
 )
