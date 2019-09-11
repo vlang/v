@@ -64,7 +64,7 @@ mut:
 	dir        string // directory (or file) being compiled (TODO rename to path?)
 	table      &Table // table with types, vars, functions etc
 	cgen       &CGen // C code generator
-	pref       &Preferences // all the prefrences and settings extracted to a struct for reusability
+	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
 	lang_dir   string // "~/code/v"
 	out_name   string // "program.exe"
 	vroot      string
