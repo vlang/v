@@ -14,6 +14,9 @@ const (
    When V is given a file ending with _test.v, V will compile and run *every* function in it that is named test_xxxxx . 
    Use `assert false` inside the test functions to validate the test results.
 
+   You can put common options inside an environment variable named VFLAGS, so that you do not repeat them. 
+   You can set it like this: `export VFLAGS="-cc clang -debug"` on unix, `set VFLAGS=-os msvc` on windows.
+   
 Options:  
   -                 Shorthand for `v runrepl` .
   -h, help          Display this information.
