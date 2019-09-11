@@ -122,7 +122,7 @@ fn main() {
 		return
 	}
 	if 'get' in args {
-		println('use `v install` to install modules from vpm.vlang.io')
+		println('use `v install` to install modules from vpm.vlang.io ')
 		return
 	}
 	if 'symlink' in args {
@@ -829,41 +829,6 @@ fn new_v(args[]string) &V {
 		mod: mod
 	}
 }
-
-
-const (
-	HelpText = '
-Usage: v [options] [file | directory]
-
-Options:
-  -                 Read from stdin (Default; Interactive mode if in a tty)
-  -h, help          Display this information.
-  -v, version       Display compiler version.
-  -prod             Build an optimized executable.
-  -o <file>         Place output into <file>.
-  -obf              Obfuscate the resulting binary.
-  -show_c_cmd       Print the full C compilation command and how much time it took.
-  -debug            Leave a C file for debugging in .program.c.
-  -live             Enable hot code reloading (required by functions marked with [live]).
-  fmt               Run vfmt to format the source code.
-  up                Update V.
-  run               Build and execute a V program. You can add arguments after the file name.
-  build module      Compile a module into an object file.
-
-
-Files:
-  <file>_test.v     Test file.
-'
-)
-
-/*
-- To disable automatic formatting:
-v -nofmt file.v
-
-- To build a program with an embedded vlib  (use this if you do not have prebuilt vlib libraries or if you
-are working on vlib)
-v -embed_vlib file.v
-*/
 
 fn env_vflags_and_os_args() []string {
    mut args := []string
