@@ -418,3 +418,8 @@ fn test_for_loop_two() {
 		assert c == s[i]
 	}
 }
+
+fn test_quote() {
+	a := `'`
+	assert a.str() == '\''
+}

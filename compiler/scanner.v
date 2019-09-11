@@ -752,7 +752,8 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
-	return c
+	// Escapes a `'` character
+	return if c == '\'' { '\\' + c } else { c }
 }
 
 fn (s mut Scanner) peek() Token {
