@@ -259,6 +259,9 @@ fn (p mut Parser) fn_decl() {
 		// TODO In
 		// if p.tok in [ .name, .mul, .amp, .lsbr ] {
 		typ = p.get_type()
+		if p.table.is_interface(typ) {
+			p.error('functions can\'t return interfaces')
+		}
 	}
 	// Translated C code can have empty functions (just definitions)
 	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
