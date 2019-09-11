@@ -119,16 +119,17 @@ fn (v mut V) cc() {
 		a << '-mmacosx-version-min=10.7'
 	}
 	cflags := v.get_os_cflags()
-	// add all flags (-I -l -L etc) not .o files
-	for flag in cflags {
-		if flag.value.ends_with('.o') { continue }
-		a << flag.format()
-	}
 	// add .o files
 	for flag in cflags {
 		if !flag.value.ends_with('.o') { continue }
 		a << flag.format()
 	}
+	// add all flags (-I -l -L etc) not .o files
+	for flag in cflags {
+		if flag.value.ends_with('.o') { continue }
+		a << flag.format()
+	}
+	
 	a << libs
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
