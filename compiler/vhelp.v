@@ -47,7 +47,7 @@ Subcommands:
   build module      Compile a module into an object file.
   runrepl           Run the V REPL. If V is running in a tty terminal, the repl is interactive, otherwise it just reads from stdin.
   symlink           Useful on unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
-  install module    Install an user module from https://vpm.best/ .
+  install module    Install an user module from https://vpm.vlang.io/ .
   test v            Run all V test files, and compile all V examples.
 
   fmt               Run vfmt to format the source code. [wip]

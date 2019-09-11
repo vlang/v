@@ -122,7 +122,7 @@ fn main() {
 		return
 	}
 	if 'get' in args {
-		println('use `v install` to install modules from vpm.best ')
+		println('use `v install` to install modules from vpm.vlang.io ')
 		return
 	}
 	if 'symlink' in args {
