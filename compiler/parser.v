@@ -2348,11 +2348,7 @@ fn (p mut Parser) factor() string {
 		p.fgen('sizeof(')
 		p.next()
 		p.check(.lpar)
-		mut sizeof_typ := p.get_type()
-		if sizeof_typ.ends_with('*') {
-			// Move * from the end to the beginning, as C requires
-			sizeof_typ = '*' + sizeof_typ.left(sizeof_typ.len - 1)
-		}
+		mut sizeof_typ := p.get_type()		
 		p.check(.rpar)
 		p.gen('$sizeof_typ)')
 		p.fgen('$sizeof_typ)')
