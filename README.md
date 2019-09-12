@@ -17,7 +17,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ~100k - 1.2 million loc/s
+- Fast compilation: ≈100k — 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
@@ -27,20 +27,9 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 - Easy cross compilation
 - REPL
 - Built-in ORM
+- C and JavaScript backends
 
 V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
-
-## Notes
-
-The compilation is temporarily slower for this release:
-
-- Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
-- vlib is recompiled with every program you build.
-- The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
-
-
-
-
 
 ## Installing V from source
 
@@ -55,29 +44,32 @@ make
 
 That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
-
-### C compiler
-
-You'll need Clang or GCC. If you are doing development, you most likely already have it installed.
-
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools.
-
-On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
-
-
-### Symlinking and updates
-
-You can create a `/usr/local/bin/v` symlink so that V is globally available:
-
-```
-sudo v symlink
-```
-
 V is being constantly updated. To update V, simply run
 
 ```
 v up
 ```
+
+
+### C compiler
+
+You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
+
+Otherwise follow these instructions:
+
+[https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
+
+[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+
+
+### Symlinking
+
+You can create a `/usr/local/bin/v` symlink so that V is globally available:
+
+```
+sudo ./v symlink
+```
+
 
 ### Docker
 
@@ -146,6 +138,36 @@ sudo dnf install glfw glfw-devel freetype-devel
 ```
 
 glfw dependency will be removed soon.
+
+
+## Troubleshooting:
+
+You can see how V invokes the C backend compiler with `v -show_c_cmd file.v` .
+
+You can produce a .c file, *without* compiling it further with `v -o file.c file.v` . 
+That is useful, if you want to integrate v as a transpiler into the build system (probably using a Makefile) of an existing large C code base, or if you just want to read the produced C code.
+
+You can prevent v from deleting the intermediate .c file (which is useful if you want to use a debugger like gdb or msvc) by: `v -debug file.v` .
+
+You can pass `-g`, which has the effect of -debug, and in addition will make the debugger information to have V line numbers, instead of C ones (NB: this will make the intermediate .c file harder to read).
+
+
+You can also set the VFLAGS environment variable to pass one or more flags to v, so that you do not have to type them manually everytime.
+Windows (cmd): `set VFLAGS=-debug -show_c_cmd`
+Windows (PowerShell): `$env:VFLAGS="-debug -show_c_cmd"`
+Unix (bash): export VFLAGS="-debug -show_c_cmd"
+
+Windows:
+If you get this error while running the V REPL, and you are using msvc:
+`'gcc' is not recognized as an internal or external command, operable program or batch file.`
+
+... please try:
+```shell
+set VFLAGS=-os msvc
+v.exe runrepl
+
+```
+
 
 ## Contributing
 

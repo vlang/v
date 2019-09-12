@@ -61,13 +61,13 @@ struct GG {
 	vbo       u32
 	scale     int // retina = 2 , normal = 1
 pub mut:
-	window *glfw.Window
+	window &glfw.Window
 	render_fn fn()
 }
 
 
 // fn new_context(width, height int, use_ortho bool, font_size int) *GG {
-pub fn new_context(cfg Cfg) *GG {
+pub fn new_context(cfg Cfg) &GG {
 	mut window := &glfw.Window{!}
 	if cfg.create_window {
 		window = glfw.create_window(glfw.WinCfg{

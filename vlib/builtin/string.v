@@ -132,9 +132,6 @@ pub fn (s string) int() int {
 	return C.atoi(s.str)
 }
 
-pub fn (s string) i32() i32 {
-	return C.atol(s.str)
-}
 
 pub fn (s string) i64() i64 {
 	return C.atoll(s.str)
@@ -154,6 +151,7 @@ pub fn (s string) u32() u32 {
 
 pub fn (s string) u64() u64 {
 	return C.strtoull(s.str, 0, 0)
+	//return C.atoll(s.str) // temporary fix for tcc on windows.
 }
 
 // ==
@@ -379,11 +377,9 @@ pub fn (s string) index(p string) int {
 			j++
 		}
 		if j == p.len {
-			prefix.free()
 			return i - p.len + 1
 		}
 	}
-	prefix.free()
 	return -1
 }
 
@@ -501,7 +497,7 @@ pub fn (s string) to_upper() string {
 pub fn (s string) capitalize() string {
 	sl := s.to_lower()
     cap := sl[0].str().to_upper() + sl.right(1)
-	return cap 
+	return cap
 }
 
 pub fn (s string) title() string {
@@ -533,7 +529,7 @@ pub fn (s string) find_between(start, end string) string {
 }
 
 // TODO generic
-pub fn (ar []string) contains(val string) bool {
+fn (ar []string) contains(val string) bool {
 	for s in ar {
 		if s == val {
 			return true
@@ -543,7 +539,7 @@ pub fn (ar []string) contains(val string) bool {
 }
 
 // TODO generic
-pub fn (ar []int) contains(val int) bool {
+fn (ar []int) contains(val int) bool {
 	for i, s in ar {
 		if s == val {
 			return true
@@ -564,7 +560,7 @@ pub fn (a []string) to_c() voidptr {
 */
 
 fn is_space(c byte) bool {
-	return C.isspace(c)
+	return c in [` `,`\n`,`\t`,`\v`,`\f`,`\r`]
 }
 
 pub fn (c byte) is_space() bool {
@@ -572,26 +568,11 @@ pub fn (c byte) is_space() bool {
 }
 
 pub fn (s string) trim_space() string {
-	if s == '' {
-		return ''
-	}
-	mut i := 0
-	for i < s.len && is_space(s[i]) {
-		i++
-	}
-	mut end := s.len - 1
-	for end >= 0 && is_space(s[end]) {
-		end--
-	}
-	if i > end + 1 {
-		return s
-	}
-	res := s.substr(i, end + 1)
-	return res
+	return s.trim(' \n\t\v\f\r')
 }
 
 pub fn (s string) trim(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -616,7 +597,7 @@ pub fn (s string) trim(cutset string) string {
 }
 
 pub fn (s string) trim_left(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -628,7 +609,7 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 pub fn (s string) trim_right(cutset string) string {
-	if s.len == 0 || cutset.len == 0 {
+	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
 	cs_arr := cutset.bytes()
@@ -642,7 +623,7 @@ pub fn (s string) trim_right(cutset string) string {
 // fn print_cur_thread() {
 // //C.printf("tid = %08x \n", pthread_self());
 // }
-fn compare_strings(a, b *string) int {
+fn compare_strings(a, b &string) int {
 	if a.lt(b) {
 		return -1
 	}
@@ -652,7 +633,7 @@ fn compare_strings(a, b *string) int {
 	return 0
 }
 
-fn compare_strings_by_len(a, b *string) int {
+fn compare_strings_by_len(a, b &string) int {
 	if a.len < b.len {
 		return -1
 	}
@@ -662,7 +643,7 @@ fn compare_strings_by_len(a, b *string) int {
 	return 0
 }
 
-fn compare_lower_strings(a, b *string) int {
+fn compare_lower_strings(a, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
 	return compare_strings(aa, bb)

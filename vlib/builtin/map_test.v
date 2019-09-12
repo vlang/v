@@ -102,14 +102,6 @@ fn test_various_map_value() {
 	m4['test'] = i16(0)
 	assert m4['test'] == i16(0)
 	
-	mut m5 := map[string]i32
-	m5['test'] = i32(0)
-	assert m5['test'] == i32(0)
-	
-	mut m6 := map[string]u8
-	m6['test'] = u8(0)
-	assert m6['test'] == u8(0)
-	
 	mut m7 := map[string]u16
 	m7['test'] = u16(0)
 	assert m7['test'] == u16(0)

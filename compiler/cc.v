@@ -10,6 +10,9 @@ import (
 )
 
 fn (v mut V) cc() {
+	// build any thirdparty obj files
+	v.build_thirdparty_obj_files()
+
 	// Just create a c file and exit
 	if v.out_name.ends_with('.c') {
 		os.mv(v.out_name_c, v.out_name)
@@ -29,14 +32,17 @@ fn (v mut V) cc() {
 		}
 	}
 	
-	linux_host := os.user_os() == 'linux'
+	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
-	flags := v.table.flags.join(' ')
-	//mut shared := ''
+
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
+	}
+	if v.pref.build_mode == .build_module {
+		v.out_name = ModPath + v.dir + '.o' //v.out_name
+		println('Building ${v.out_name}...')
 	}
 	if v.pref.is_prod {
 		a << '-O2'
@@ -58,16 +64,16 @@ fn (v mut V) cc() {
 	}
 
 	mut libs := ''// builtin.o os.o http.o etc
-	if v.pref.build_mode == .build {
+	if v.pref.build_mode == .build_module {
 		a << '-c'
 	}
 	else if v.pref.build_mode == .embed_vlib {
 		//
 	}
 	else if v.pref.build_mode == .default_mode {
-		libs = '"$ModPath/vlib/builtin.o"'
+		libs = '$ModPath/vlib/builtin.o'
 		if !os.file_exists(libs) {
-			println('`builtin.o` not found')
+			println('object file `$libs` not found')
 			exit(1)
 		}
 		for imp in v.table.imports {
@@ -77,20 +83,11 @@ fn (v mut V) cc() {
 			libs += ' "$ModPath/vlib/${imp}.o"'
 		}
 	}
-	// -I flags
-	/*
-mut args := ''
-	for flag in v.table.flags {
-		if !flag.starts_with('-l') {
-			args += flag
-			args += ' '
-		}
-	}
-*/
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
-	// Cross compiling linux
+	// Cross compiling linux TODO
+	/*
 	sysroot := '/Users/alex/tmp/lld/linuxroot/'
 	if v.os == .linux && !linux_host {
 		// Build file.o
@@ -100,14 +97,15 @@ mut args := ''
 			v.out_name = v.out_name + '.o'
 		}
 	}
+	*/
 	// Cross compiling windows
-	// sysroot := '/Users/alex/tmp/lld/linuxroot/'
+	//
 	// Output executable name
-	// else {
-	a << '-o $v.out_name'
+	a << '-o "$v.out_name"'
 	if os.dir_exists(v.out_name) {
 		cerror('\'$v.out_name\' is a directory')
 	}
+	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.os == .mac {
 		a << '-x objective-c'
 	}
@@ -120,12 +118,23 @@ mut args := ''
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
-	a << flags
+	cflags := v.get_os_cflags()
+
+	// add .o files
+	for flag in cflags {
+		if !flag.value.ends_with('.o') { continue }
+		a << flag.format()
+	}
+	// add all flags (-I -l -L etc) not .o files
+	for flag in cflags {
+		if flag.value.ends_with('.o') { continue }
+		a << flag.format()
+	}
+	
 	a << libs
-	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
-	if v.pref.build_mode != .build && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
+	if v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
 		v.os == .netbsd || v.os == .dragonfly) {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -178,6 +187,7 @@ mut args := ''
 		println('=========\n')
 	}
 	// Link it if we are cross compiling and need an executable
+	/*
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
 		v.out_name = v.out_name.replace('.o', '')
 		obj_file := v.out_name + '.o'
@@ -197,6 +207,7 @@ mut args := ''
 		println(ress.output)
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
+	*/
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm(v.out_name_c)
 	}
@@ -208,10 +219,11 @@ fn (c mut V) cc_windows_cross() {
 		c.out_name = c.out_name + '.exe'
 	}
 	mut args := '-o $c.out_name -w -L. '
+	cflags := c.get_os_cflags()
 	// -I flags
-	for flag in c.table.flags {
-		if !flag.starts_with('-l') {
-				args += flag
+	for flag in cflags {
+		if flag.name != '-l' {
+				args += flag.format()
 				args += ' '
 		}
 	}
@@ -219,7 +231,7 @@ fn (c mut V) cc_windows_cross() {
 	if c.pref.build_mode == .default_mode {
 		libs = '"$ModPath/vlib/builtin.o"'
 		if !os.file_exists(libs) {
-				println('`builtin.o` not found')
+				println('`$libs` not found')
 				exit(1)
 		}
 		for imp in c.table.imports {
@@ -228,11 +240,11 @@ fn (c mut V) cc_windows_cross() {
 	}
 	args += ' $c.out_name_c '
 	// -l flags (libs)
-	for flag in c.table.flags {
-			if flag.starts_with('-l') {
-					args += flag
-					args += ' '
-			}
+	for flag in cflags {
+		if flag.name == '-l' {
+				args += flag.format()
+				args += ' '
+		}
 	}
 	println('Cross compiling for Windows...')
 	winroot := '$ModPath/winroot'
@@ -257,7 +269,7 @@ fn (c mut V) cc_windows_cross() {
 		println('Cross compilation for Windows failed. Make sure you have clang installed.')
 		exit(1)
 	}
-	if c.pref.build_mode != .build {
+	if c.pref.build_mode != .build_module {
 		link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' +
 		'$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' +
 		'$winroot/lib/uuid.lib'
@@ -272,6 +284,19 @@ fn (c mut V) cc_windows_cross() {
 		// os.rm(obj_name)
 	}
 	println('Done!')
+}
+
+fn (c V) build_thirdparty_obj_files() {
+	for flag in c.get_os_cflags() {
+		if flag.value.ends_with('.o') {
+			if c.os == .msvc {
+				build_thirdparty_obj_file_with_msvc(flag.value)
+			}
+			else {
+				build_thirdparty_obj_file(flag.value)
+			}
+		}
+	}
 }
 
 fn find_c_compiler() string {
@@ -291,10 +316,17 @@ fn find_c_compiler_default() string {
 }
 
 fn find_c_compiler_thirdparty_options() string {
-	$if windows {	return '' }
-	return '-fPIC'
+	if '-m32' in os.args{
+		$if windows {
+			return '-m32'
+		}$else{
+			return '-fPIC -m32'
+		}
+	}else{
+		$if windows {
+			return ''
+		}$else{
+			return '-fPIC'
+		}
+	}
 }
-
-
-
-

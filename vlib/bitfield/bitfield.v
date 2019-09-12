@@ -1,7 +1,7 @@
-module bf
+module bitfield
 
 /*
-bf (BitField) is a module (shared library for V programming language) for
+bitfield is a module for
 manipulating arrays of bits, i.e. series of zeroes and ones spread across an
 array of storage units (unsigned 32-bit integers).
 
@@ -20,7 +20,7 @@ mut:
 	field []u32
 }
 
-// helper functions  
+// helper functions
 const (
 	SLOT_SIZE = 32
 )
@@ -63,19 +63,19 @@ fn min(input1 int, input2 int) int {
 
 fn bitnslots(length int) int {
 	return (length - 1) / SLOT_SIZE + 1
-} 
+}
 
 fn cleartail(instance mut BitField) {
 	tail := instance.size % SLOT_SIZE
 	if tail != 0 {
-		// create a mask for the tail 
+		// create a mask for the tail
 		mask := u32((1 << tail) - 1)
-		// clear the extra bits 
+		// clear the extra bits
 		instance.field[bitnslots(instance.size) - 1] = instance.field[bitnslots(instance.size) - 1] & mask
 	}
 }
 
-// public functions 
+// public functions
 
 // str2bf() converts a string of characters ('0' and '1') to a bit
 // array. Any character different from '0' is treated as '1'.
@@ -110,7 +110,7 @@ pub fn (input BitField) string() string {
 
 pub fn new(size int) BitField {
 	output := BitField{
-		size: size 
+		size: size
 		//field: *u32(calloc(bitnslots(size) * SLOT_SIZE / 8))
 		field: [u32(0); bitnslots(size)]
 	}
@@ -383,7 +383,7 @@ pub fn (haystack BitField) pos(needle BitField) int {
 	return -1
 }
 
-// slice() return a sub-array of bits between 'start_bit_nr' (included) and 
+// slice() return a sub-array of bits between 'start_bit_nr' (included) and
 // 'end_bit_nr' (excluded)
 
 pub fn (input BitField) slice(_start int, _end int) BitField {
@@ -476,19 +476,18 @@ pub fn (instance mut BitField) reverse() BitField {
 	return output
 }
 
-// resize() changes the size of the bit array to 'new_size'
-
-pub fn (instance mut BitField) resize(size int) {
-	new_bitnslots := bitnslots(size)
+// resize changes the size of the bit array to 'new_size'
+pub fn (instance mut BitField) resize(new_size int) {
+	new_bitnslots := bitnslots(new_size)
 	old_size := instance.size
 	old_bitnslots := bitnslots(old_size)
 	mut field := [u32(0); new_bitnslots]
 	for i := 0; i < old_bitnslots && i < new_bitnslots; i++ {
 		field[i] = instance.field[i]
 	}
-	instance.field = field
-	instance.size = size
-	if size < old_size && size % SLOT_SIZE != 0 {
+	instance.field = field.clone()
+	instance.size = new_size
+	if new_size < old_size && new_size % SLOT_SIZE != 0 {
 		cleartail(mut instance)
 	}
 }

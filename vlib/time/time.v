@@ -24,7 +24,7 @@ pub:
 }
 
 
-fn C.localtime(int) *C.tm
+fn C.localtime(int) &C.tm
 
 fn remove_me_when_c_bug_is_fixed() { // TODO
 }

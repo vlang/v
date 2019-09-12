@@ -22,7 +22,7 @@ fn new_array(mylen, cap, elm_size int) array {
 		len: mylen
 		cap: cap
 		element_size: elm_size
-		data: malloc(cap * elm_size)
+		data: calloc(cap * elm_size)
 	}
 	return arr
 }
@@ -258,4 +258,18 @@ pub fn copy(dst, src []byte) int {
 		return min
 	}
 	return 0
+}
+
+fn compare_ints(a, b &int) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+pub fn (a mut []int) sort() {
+	a.sort_with_compare(compare_ints)
 }

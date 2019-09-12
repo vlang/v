@@ -102,7 +102,7 @@ pub fn window_hint(key, val int) {
 	C.glfwWindowHint(key, val)
 }
 
-pub fn create_window(c WinCfg) *Window {
+pub fn create_window(c WinCfg) &Window {
 	if c.borderless {
 		window_hint(C.GLFW_RESIZABLE, 0)
 		window_hint(C.GLFW_DECORATED, 0)
@@ -112,7 +112,7 @@ pub fn create_window(c WinCfg) *Window {
 	}
 	cwindow := C.glfwCreateWindow(c.width, c.height, c.title.str, 0, 0)
 	if isnil(cwindow) {
-		println('failed to create glfw window')
+		println('failed to create a glfw window, make sure you have a GPU driver installed')
 		C.glfwTerminate()
 	}
 	C.printf('create window wnd=%p ptr==%p\n', cwindow, c.ptr)
@@ -227,7 +227,7 @@ struct C.GLFWvidmode {
 	height int
 }
 
-pub fn C.glfwGetVideoMode() *C.GLFWvidmode
+pub fn C.glfwGetVideoMode() &C.GLFWvidmode
 
 pub fn get_monitor_size() Size {
 	//# GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());

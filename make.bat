@@ -7,17 +7,18 @@ if exist "vc" (
 )
 
 git version
+
+echo Downloading v.c...
 git clone --depth 1 --quiet https://github.com/vlang/vc
 
 REM option to force msvc or gcc
 if "%~1"=="-gcc" goto :gccstrap
 if "%~1"=="-msvc" goto :msvcstrap
 
-goto :msvcstrap
 
 :gccstrap
 
-echo attempting to bootstrap with GCC
+echo Attempting to build v.c with GCC...
 
 for /f "usebackq tokens=*" %%i in (`where gcc`) do (
   set gccpath=%%i
@@ -36,7 +37,7 @@ if %ERRORLEVEL% GEQ 1 (
 echo Building v.v...
 v2.exe -o v.exe compiler
 if %ERRORLEVEL% GEQ 1 (
-	echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
+    echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
     exit /b 1
 )
 
@@ -47,19 +48,19 @@ goto :success
 
 
 :msvcstrap
-echo Attempting to bootstrap with MSVC
+echo Attempting to build v.c  with MSVC...
 
 for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
   set InstallDir=%%i
 )
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64
+    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo
 ) else (
     goto :nocompiler
 )
 
-cl.exe /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+cl.exe /nologo /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
 
 if %ERRORLEVEL% GEQ 1 (
     echo cl.exe failed to build V
@@ -97,11 +98,3 @@ echo Exiting from error
 exit /b 1
 
 :success
-dir
-if exist "v.exe" (
-	echo V has been successfully built
-    exit
-) else (
-	echo v.exe was not generated - Create an issue at 'https://github.com/vlang'
-	exit /b 1
-)

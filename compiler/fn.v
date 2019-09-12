@@ -64,6 +64,15 @@ fn (f mut Fn) mark_var_used(v Var) {
 	}
 }
 
+fn (f mut Fn) mark_var_returned(v Var) {
+	for i, vv in f.local_vars {
+		if vv.name == v.name {
+			f.local_vars[i].is_returned = true
+			return
+		}
+	}
+}
+
 fn (f mut Fn) mark_var_changed(v Var) {
 	for i, vv in f.local_vars {
 		if vv.name == v.name {
@@ -99,11 +108,11 @@ fn (f mut Fn) clear_vars() {
 
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
-	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build) &&
+	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build_module) &&
 	(p.file_path.contains(ModPath))
 }
 
-fn new_fn(mod string, is_public bool) *Fn {
+fn new_fn(mod string, is_public bool) &Fn {
 	return &Fn {
 		mod: mod
 		local_vars: [Var{}		; MaxLocalVars]
@@ -284,7 +293,7 @@ fn (p mut Parser) fn_decl() {
 		''
 	}
 	if !p.is_vweb {
-		p.cur_fn = f
+		p.set_current_fn( f )
 	}
 	// Generate `User_register()` instead of `register()`
 	// Internally it's still stored as "register" in type User
@@ -358,7 +367,6 @@ fn (p mut Parser) fn_decl() {
 				if p.tok == .rcbr {
 					closed_scopes++
 				}
-				p.next()
 				// find `foo<Bar>()` in function bodies and register generic types
 				// TODO remove this once tokens are cached
 				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
@@ -376,7 +384,7 @@ fn (p mut Parser) fn_decl() {
 					p.name_expr()
 					p.scanner.pos = temp_scanner_pos
 				}
-				if p.tok.is_decl() && !(p.prev_tok == .dot && p.tok == .key_type) {
+				if p.tok.is_decl() {
 					break
 				}
 				// fn body ended, and a new fn attribute declaration like [live] is starting?
@@ -385,6 +393,7 @@ fn (p mut Parser) fn_decl() {
 						break
 					}
 				}
+				p.next()
 			}
 		}
 		// Live code reloading? Load all fns from .so
@@ -414,7 +423,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	if f.name == 'main' || f.name == 'WinMain' {
 		p.genln('init_consts();')
-		if p.table.imports.contains('os') {
+		if 'os' in p.table.imports {
 			if f.name == 'main' {
 				p.genln('os__args = os__init_os_args(argc, argv);')
 			}
@@ -485,7 +494,6 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		// p.error('unclosed {')
 	}
 	// Make sure all vars in this function are used (only in main for now)
-	// if p.builtin_mod || p.mod == 'os' ||p.mod=='http'{
 	if p.mod != 'main' {
 		if !is_generic {
 			p.genln('}')
@@ -493,7 +501,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		return
 	}
 	p.check_unused_variables()
-	p.cur_fn = EmptyFn
+	p.set_current_fn( EmptyFn )
 	p.returns = false
 	if !is_generic {
 		p.genln('}')
@@ -596,6 +604,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
+		if f.name == 'contains' {
+			println('use `value in numbers` instead of `numbers.contains(value)`')
+		}
 		p.error('function `$f.name` is private')
 	}
 	p.calling_c = f.is_c
@@ -687,7 +698,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	}
 	// `(int, string, int)`
 	// Just register fn arg types
-	types_only := p.tok == .mul || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
+	types_only := p.tok == .mul || p.tok == .amp || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar// (int, string)
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
@@ -756,7 +767,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 }
 
 // foo *(1, 2, 3, mut bar)*
-fn (p mut Parser) fn_call_args(f mut Fn) *Fn {
+fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	// p.gen('(')
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
@@ -977,7 +988,7 @@ fn (f Fn) typ_str() string {
 }
 
 // f.args => "int a, string b"
-fn (f &Fn) str_args(table *Table) string {
+fn (f &Fn) str_args(table &Table) string {
 	mut s := ''
 	for i, arg in f.args {
 		// Interfaces are a special case. We need to pass the object + pointers

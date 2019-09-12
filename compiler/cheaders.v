@@ -18,16 +18,20 @@ CommonCHeaders = '
 #include <unistd.h> // sleep	
 #endif
 
+
 #ifdef __APPLE__
 #include <libproc.h> // proc_pidpath
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
 #endif
 
 #ifdef __linux__
+#ifndef __BIONIC__
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
+#endif
 #pragma weak backtrace
 #pragma weak backtrace_symbols_fd
 #endif
+
 
 #ifdef __linux__
 #include <sys/types.h>
@@ -43,7 +47,9 @@ CommonCHeaders = '
 #include <windows.h>
 
 // must be included after <windows.h>
+#ifndef __TINYC__
 #include <shellapi.h>
+#endif
 
 #include <io.h> // _waccess
 #include <fcntl.h> // _O_U8TEXT
@@ -54,8 +60,8 @@ CommonCHeaders = '
 #define _Atomic volatile
 
 // MSVC cannot parse some things properly
-#undef EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_DECLARATION void *____dummy_variable;
+//#undef EMPTY_STRUCT_DECLARATION
+//#define EMPTY_STRUCT_DECLARATION void *____dummy_variable
 #undef OPTION_CAST
 #define OPTION_CAST(x)
 #endif
@@ -73,16 +79,13 @@ void pthread_mutex_unlock(HANDLE *m) {
 
 //================================== TYPEDEFS ================================*/
 
-typedef unsigned char byte;
-typedef unsigned int uint;
 typedef int64_t i64;
-typedef int32_t i32;
 typedef int16_t i16;
 typedef int8_t i8;
 typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint16_t u16;
-typedef uint8_t u8;
+typedef uint8_t byte;
 typedef uint32_t rune;
 typedef float f32;
 typedef double f64;
@@ -94,8 +97,6 @@ typedef struct map map;
 typedef array array_string;
 typedef array array_int;
 typedef array array_byte;
-typedef array array_uint;
-typedef array array_float;
 typedef array array_f32;
 typedef array array_f64;
 typedef map map_int;

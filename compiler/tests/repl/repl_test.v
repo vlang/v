@@ -50,11 +50,11 @@ fn test_the_v_repl() {
 		input_temporary_filename := 'input_temporary_filename.txt'
 		os.write_file(input_temporary_filename, input)
 		defer { os.rm(input_temporary_filename) }		
-		r := os.exec('$vexec < $input_temporary_filename') or {
+		r := os.exec('$vexec runrepl < $input_temporary_filename') or {
 			assert false
 			break
 		}
-		result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace( wd, '' )
+		result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
 		assert result == output
 		if result != output {
 			println(file)
