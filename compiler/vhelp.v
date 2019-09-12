@@ -3,8 +3,6 @@ module main
 const (
 	HelpText = 'Usage: v [options/subcommands] [file.v | directory]
 
-
-
    When V is run without any arguments, it is a shorthand for `v runrepl`.
 
    When given a .v file, it will be compiled. The output executable will have the same name as the input .v file.
