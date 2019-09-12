@@ -201,17 +201,9 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 			mut ext := ''
 			mut i := file.len
 			mut flag := true
-			for i > 0 {
-		 		i--
-				if flag {
-					ext = file.substr(i, i + 1) + ext
-				}
-				if file.substr(i, i + 1) == '.' {
-					flag = false
-				}
-			}
+                        // todo: os.is_dir is broken on some systems
+                        flag = os.is_dir(file)
 
-			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
 			if flag {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else {
