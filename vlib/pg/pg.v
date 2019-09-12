@@ -10,11 +10,11 @@ import time
 
 struct DB {
 mut:
-	conn *C.PGconn
+	conn &C.PGconn
 }
 
 struct Row {
-pub:
+pub mut:
 	vals []string
 }
 
@@ -28,7 +28,7 @@ pub:
   dbname string
 }
 
-fn C.PQconnectdb(a byteptr) *C.PGconn
+fn C.PQconnectdb(a byteptr) &C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
