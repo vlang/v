@@ -2501,7 +2501,11 @@ fn (p mut Parser) string_expr() {
 		p.fgen('\'$str\'')
 		f := format_str(str)
 		// `C.puts('hi')` => `puts("hi");`
-		if p.calling_c || (p.pref.translated && p.mod == 'main') {
+		/*
+		Calling a C function sometimes requires a call to a string method
+		C.fun('ssss'.to_wide()) =>  fun(string_to_wide(tos2((byte*)('ssss'))))
+		*/
+		if (p.calling_c && p.peek() != .dot) || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
 		}
 		else if p.is_sql {
