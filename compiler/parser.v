@@ -109,6 +109,10 @@ fn (v mut V) new_parser(path string) Parser {
 			
 	}
 
+	if p.pref.is_repl {
+		p.scanner.should_print_line_on_error = false
+	}
+	
 	v.cgen.line_directives = v.pref.is_debuggable
 	v.cgen.file = path
 
@@ -172,7 +176,7 @@ fn (p mut Parser) parse(pass Pass) {
 		for p.tok == .key_import && p.peek() != .key_const {
 			p.imports()
 		}
-		if p.table.imports.contains('builtin') {
+		if 'builtin' in p.table.imports {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
@@ -361,7 +365,7 @@ fn (p mut Parser) import_statement() {
 	// add import to file scope import table
 	p.import_table.register_alias(mod_alias, mod)
 	// Make sure there are no duplicate imports
-	if p.table.imports.contains(mod) {
+	if mod in p.table.imports {
 		return
 	}
 	p.log('adding import $mod')
@@ -2344,11 +2348,7 @@ fn (p mut Parser) factor() string {
 		p.fgen('sizeof(')
 		p.next()
 		p.check(.lpar)
-		mut sizeof_typ := p.get_type()
-		if sizeof_typ.ends_with('*') {
-			// Move * from the end to the beginning, as C requires
-			sizeof_typ = '*' + sizeof_typ.left(sizeof_typ.len - 1)
-		}
+		mut sizeof_typ := p.get_type()		
 		p.check(.rpar)
 		p.gen('$sizeof_typ)')
 		p.fgen('$sizeof_typ)')
@@ -2888,7 +2888,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			if !p.first_pass() && !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
-			if inited_fields.contains(field) {
+			if field in inited_fields {
 				p.error('already initialized field `$field` in `$t.name`')
 			}
 			f := t.find_field(field)
@@ -2914,7 +2914,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 		for i, field in t.fields {
 			// println('### field.name')
 			// Skip if this field has already been assigned to
-			if inited_fields.contains(field.name) {
+			if field.name in inited_fields {
 				continue
 			}
 			field_typ := field.typ

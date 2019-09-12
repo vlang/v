@@ -40,7 +40,7 @@ fn (v mut V) cc() {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
 	}
-	if v.pref.build_mode == .build {
+	if v.pref.build_mode == .build_module {
 		v.out_name = ModPath + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
@@ -64,7 +64,7 @@ fn (v mut V) cc() {
 	}
 
 	mut libs := ''// builtin.o os.o http.o etc
-	if v.pref.build_mode == .build {
+	if v.pref.build_mode == .build_module {
 		a << '-c'
 	}
 	else if v.pref.build_mode == .embed_vlib {
@@ -119,20 +119,22 @@ fn (v mut V) cc() {
 		a << '-mmacosx-version-min=10.7'
 	}
 	cflags := v.get_os_cflags()
-	// add all flags (-I -l -L etc) not .o files
-	for flag in cflags {
-		if flag.value.ends_with('.o') { continue }
-		a << flag.format()
-	}
+
 	// add .o files
 	for flag in cflags {
 		if !flag.value.ends_with('.o') { continue }
 		a << flag.format()
 	}
+	// add all flags (-I -l -L etc) not .o files
+	for flag in cflags {
+		if flag.value.ends_with('.o') { continue }
+		a << flag.format()
+	}
+	
 	a << libs
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
-	if v.pref.build_mode != .build && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
+	if v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
 		v.os == .netbsd || v.os == .dragonfly) {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -267,7 +269,7 @@ fn (c mut V) cc_windows_cross() {
 		println('Cross compilation for Windows failed. Make sure you have clang installed.')
 		exit(1)
 	}
-	if c.pref.build_mode != .build {
+	if c.pref.build_mode != .build_module {
 		link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' +
 		'$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' +
 		'$winroot/lib/uuid.lib'
@@ -314,6 +316,17 @@ fn find_c_compiler_default() string {
 }
 
 fn find_c_compiler_thirdparty_options() string {
-	$if windows { return '' }
-	return '-fPIC'
+	if '-m32' in os.args{
+		$if windows {
+			return '-m32'
+		}$else{
+			return '-fPIC -m32'
+		}
+	}else{
+		$if windows {
+			return ''
+		}$else{
+			return '-fPIC'
+		}
+	}
 }

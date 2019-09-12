@@ -245,7 +245,7 @@ fn new_table(obfuscate bool) &Table {
 
 // If `name` is a reserved C keyword, returns `v_name` instead.
 fn (t mut Table) var_cgen_name(name string) string {
-	if CReserved.contains(name) {
+	if name in CReserved {
 		return 'v_$name'
 	}
 	else {
@@ -254,7 +254,7 @@ fn (t mut Table) var_cgen_name(name string) string {
 }
 
 fn (t mut Table) register_module(mod string) {
-	if t.modules.contains(mod) {
+	if mod in t.modules {
 		return
 	}
 	t.modules << mod
@@ -710,7 +710,7 @@ fn (table mut Table) cgen_name(f &Fn) string {
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate b_abs(), b_print()
 	// TODO duplicate functionality
-	if f.mod == 'builtin' && CReserved.contains(f.name) {
+	if f.mod == 'builtin' && f.name in CReserved {
 		return 'v_$name'
 	}
 	// Obfuscate but skip certain names
