@@ -10,7 +10,6 @@
 - Error messages now point to the actual place where the error happened.
 - Custom json field names: `struct User { last_name string [json:lastName] }`.
 - Raw json fields via the `[raw]` attribute.
-- `import const` was removed from the language.
 - All C code was removed from the `freetype` module.
 - `gg` module can now render all Unicode characters.
 - `[typedef]` attribute for imported C struct typedefs.
