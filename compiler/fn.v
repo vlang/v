@@ -10,6 +10,10 @@ const (
 	MaxLocalVars = 50
 )
 
+const (
+	max_varaidic_args = 12
+)
+
 struct Fn {
 	// addr int
 mut:
@@ -18,6 +22,7 @@ mut:
 	local_vars    []Var
 	var_idx       int
 	args          []Var
+	is_variadic   bool
 	is_interface  bool
 	// called_fns    []string
 	// idx           int
@@ -31,6 +36,7 @@ mut:
 	is_decl       bool // type myfn fn(int, int)
 	defer_text    []string
 	//gen_types []string
+	vargs_ph      map[string]int  // varargs placeholders
 }
 
 fn (f &Fn) find_var(name string) Var {
@@ -188,6 +194,10 @@ fn (p mut Parser) fn_decl() {
 	else {
 		f.name = p.check_name()
 	}
+	// remove
+	if f.is_variadic {
+		f.vargs_ph['${f.name}_caller_decl'] = p.cgen.add_placeholder()
+	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -246,6 +256,11 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Args (...)
 	p.fn_args(mut f)
+	// vargs struct - dont generate for C definitions
+	if !p.first_pass() && f.is_variadic && !f.is_c {
+		p.cgen.typedefs << 'typedef struct FnVargs_$f.name FnVargs_$f.name;'
+		p.cgen.genln('struct FnVargs_${f.name} {int len;};')
+	}
 	// Returns an error?
 	if p.tok == .not {
 		p.next()
@@ -731,13 +746,22 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if is_mut {
 			p.next()
 		}
-		mut typ := p.get_type()
+		mut typ := ''
+		if p.tok == .ellipsis {
+			p.check(.ellipsis)
+			if p.tok == .rpar {
+				cerror('you must provide a type for vargs: eg `...string`. any type `...` is not supported yet.')
+			}
+			f.is_variadic = true
+			typ = '...'
+		}
+		typ += p.get_type()
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')
 		}
 		for name in names {
-			if !p.first_pass() && !p.table.known_type(typ) {
+			if !p.first_pass() && !p.table.known_type(typ) && !typ.starts_with('...') {
 				p.error('fn_args: unknown type $typ')
 			}
 			if is_mut {
@@ -757,9 +781,14 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if p.tok == .comma {
 			p.next()
 		}
-		if p.tok == .dotdot {
+		// unnamed (C definition)
+		if p.tok == .ellipsis {
+			if !f.is_c {
+				cerror('variadic argument syntax must be `argname ...type` eg `argname ...string`.')
+			}
 			f.args << Var {
-				name: '..'
+				// name: '...'
+				typ: '...'
 			}
 			p.next()
 		}
@@ -805,7 +834,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			continue
 		}
 		// Reached the final vararg? Quit
-		if i == f.args.len - 1 && arg.name == '..' {
+		if i == f.args.len - 1 && arg.typ.starts_with('...') {
 			break
 		}
 		ph := p.cgen.add_placeholder()
@@ -936,8 +965,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
-			is_vararg := i == f.args.len - 2 && f.args[i + 1].name == '..'
-			if p.tok != .comma && !is_vararg {
+			is_vararg := i == f.args.len - 2 && f.args[i + 1].typ.starts_with('...')
+			if p.tok != .comma && !is_vararg && !f.is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
 			if p.tok == .comma {
@@ -950,24 +979,67 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		}
 	}
 	// varargs
-	if f.args.len > 0 {
-		last_arg := f.args.last()
-		if last_arg.name == '..' {
-			for p.tok != .rpar {
-				if p.tok == .comma {
-					p.gen(',')
-					p.check(.comma)
-				}
-				p.bool_expression()
-			}
-		}
+	if !p.first_pass() && f.is_variadic {
+		p.fn_gen_caller_vargs(mut f)
 	}
+
 	if p.tok == .comma {
 		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
 	}
 	p.check(.rpar)
 	// p.gen(')')
 	return f // TODO is return f right?
+}
+
+fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
+	last_arg := f.args.last()
+	varg_def_type := last_arg.typ.right(3)
+	mut vargs_struct_fields := ''
+	mut no_vargs := 0
+	for p.tok != .rpar {
+		if p.tok == .comma {
+			p.check(.comma)
+		}
+		no_vargs++
+		if no_vargs > max_varaidic_args {
+			cerror('variadic arguments are limited to ${max_varaidic_args}.')
+		}
+		if no_vargs > 1 {
+			vargs_struct_fields += ','
+		}
+		p.cgen.start_tmp()
+		arg_type := p.bool_expression()
+		arg_value := p.cgen.end_tmp()
+		p.check_types(last_arg.typ, arg_type)
+		// struct
+		// vargs_struct_fields += '\n\t.arg_${no_vargs}=$arg_value'
+		// array
+		// if is_str_lit || is_num_lit {
+		// 	vargs_struct_fields += '&($arg_type){$arg_value}'
+		// } else {
+		// 	vargs_struct_fields += '&$arg_value'
+		// }
+		vargs_struct_fields += '$arg_value'
+	}
+	// struct only
+	// mut vargs_struct := 'struct FnVargs_$f.name {\n\tint len;\n'
+	// for i in 1..max_varaidic_args+1 {
+	// 	vargs_struct += '\t$varg_def_type arg_$i;\n'
+	// }
+	// vargs_struct += '};\n'
+	// array
+	// vargs_struct := 'struct FnVargs_$f.name {\n\tint len;\n\t$varg_def_type *args[$no_vargs]\n}\n;'
+	vargs_struct := 'struct FnVargs_$f.name {\n\tint len;\n\t$varg_def_type args[$no_vargs]\n}\n;'
+	for i, l in p.cgen.lines {
+		line := l.trim_space()
+		if line == 'struct FnVargs_${f.name} {int len;};' {
+			p.cgen.lines[i] = vargs_struct
+			continue
+		}
+	}
+	// p.cgen.set_placeholder(f.vargs_ph['${f.name}_caller_decl'], 'FnVargs_$f.name fn_vargs_$f.name = (FnVargs_$f.name) {\n\t.len=$no_vargs$vargs_struct_fields\n};\n')
+	p.cgen.set_placeholder(f.vargs_ph['${f.name}_caller_decl'], 'FnVargs_$f.name fn_vargs_$f.name = (FnVargs_$f.name) {\n\t.len=$no_vargs,\n\t.args={$vargs_struct_fields}\n};\n')
+	p.cgen.gen(',&fn_vargs_$f.name')
 }
 
 // "fn (int, string) int"
@@ -1010,8 +1082,8 @@ fn (f &Fn) str_args(table &Table) string {
 				s += ')'
 			}
 		}
-		else if arg.name == '..' {
-			s += '...'
+		else if arg.typ.starts_with('...') {
+			s += 'FnVargs_$f.name *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'
