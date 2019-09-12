@@ -35,12 +35,12 @@ struct Readline {
 mut:
   is_raw bool
   orig_termios termios
-  current string // Line being edited
+  current ustring // Line being edited
   cursor int // Cursor position
   overwrite bool
   cursor_row_offset int
   prompt string
-  previous_lines []string
+  previous_lines []ustring
   search_index int
 }
 
@@ -103,25 +103,24 @@ pub fn (r Readline) disable_raw_mode() {
 }
 
 // Read single char
-// TODO: Maybe handle UNICODE
-fn (r Readline) read_char() byte {
-  return C.getchar()
+fn (r Readline) read_char() int {
+  return utf8_getchar()
 }
 
 // Main function of the readline module
 // Will loop and ingest characters until EOF or Enter
 // Returns the completed line
-pub fn (r mut Readline) read_line(prompt string) string {
-  r.current = ''
+pub fn (r mut Readline) read_line_utf8(prompt string) ustring {
+  r.current = ''.ustring()
   r.cursor = 0
   r.prompt = prompt
   r.search_index = 0
   if r.previous_lines.len <= 1 {
-    r.previous_lines << ''
-    r.previous_lines << ''
+    r.previous_lines << ''.ustring()
+    r.previous_lines << ''.ustring()
   }
   else {
-    r.previous_lines[0] = ''
+    r.previous_lines[0] = ''.ustring()
   }
 
   print(r.prompt)
@@ -132,9 +131,13 @@ pub fn (r mut Readline) read_line(prompt string) string {
       break
     }
   }
-  r.previous_lines[0] = ''
+  r.previous_lines[0] = ''.ustring()
   r.search_index = 0
   return r.current
+}
+
+pub fn (r mut Readline) read_line(prompt string) string {
+  return r.read_line_utf8(prompt).s
 }
 
 fn (r Readline) analyse(c byte) Action {
@@ -200,7 +203,7 @@ fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
   return Action.nothing
 }
 
-fn (r mut Readline) execute(a Action, c byte) bool {
+fn (r mut Readline) execute(a Action, c int) bool {
   switch a {
     case Action.eof: return r.eof()
     case Action.insert_character: r.insert_character(c)
@@ -224,8 +227,8 @@ fn (r mut Readline) execute(a Action, c byte) bool {
 
 fn get_screen_columns() int {
   ws := winsize{}
-  cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { ws.ws_col }
-  return int(cols)
+  cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { int(ws.ws_col) }
+  return cols
 }
 
 fn shift_cursor(xpos int, yoffset int) {
@@ -261,11 +264,10 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
 }
 
 // Will redraw the line
-// TODO: Fix if prompt is longer than terminal columns
 fn (r mut Readline) refresh_line() {
   mut end_of_input := [0, 0]
   calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len, mut end_of_input)
-  end_of_input[1] += r.current.count('\n')
+  end_of_input[1] += r.current.count('\n'.ustring())
   mut cursor_pos := [0, 0]
   calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor, mut cursor_pos)
 
@@ -283,19 +285,16 @@ fn (r mut Readline) refresh_line() {
 // End the line without a newline
 fn (r mut Readline) eof() bool {
   r.previous_lines.insert(1, r.current)
+  r.cursor = r.current.len
+  r.refresh_line()
   return true
 }
 
-fn (r mut Readline) insert_character(c byte) {
-  // Small ASCII, to expand
-  if c >= 127 {
-    return
-  }
-  // TODO: Add character if overwrite at end
+fn (r mut Readline) insert_character(c int) {
   if !r.overwrite || r.cursor == r.current.len {
-    r.current = r.current.left(r.cursor) + c.str() + r.current.right(r.cursor)
+    r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() + r.current.right(r.cursor).ustring()
   } else {
-    r.current = r.current.left(r.cursor) + c.str() + r.current.right(r.cursor + 1)
+    r.current = r.current.left(r.cursor).ustring() + utf32_to_str(u32(c)).ustring() + r.current.right(r.cursor + 1).ustring()
   }
   r.cursor++
   // Refresh the line to add the new character
@@ -308,7 +307,7 @@ fn (r mut Readline) delete_character() {
     return
   }
   r.cursor--
-  r.current = r.current.left(r.cursor) + r.current.right(r.cursor + 1)
+  r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
   r.refresh_line()
 }
 
@@ -317,14 +316,17 @@ fn (r mut Readline) suppr_character() {
   if r.cursor > r.current.len {
     return
   }
-  r.current = r.current.left(r.cursor) + r.current.right(r.cursor + 1)
+  r.current = r.current.left(r.cursor).ustring() + r.current.right(r.cursor + 1).ustring()
   r.refresh_line()
 }
 
 // Add a line break then stops the main loop
 fn (r mut Readline) commit_line() bool {
   r.previous_lines.insert(1, r.current)
-  r.current = r.current + '\n'
+  a := '\n'.ustring()
+  r.current = r.current + a
+  r.cursor = r.current.len
+  r.refresh_line()
   println('')
   return true
 }
@@ -354,23 +356,23 @@ fn (r mut Readline) move_cursor_end() {
 }
 
 // Check if the character is considered as a word-breaking character
-fn (r Readline) is_break_character(c byte) bool {
+fn (r Readline) is_break_character(c string) bool {
   break_characters := ' \t\v\f\a\b\r\n`~!@#$%^&*()-=+[{]}\\|;:\'",<.>/?'
-  return break_characters.contains(c.str())
+  return break_characters.contains(c)
 }
 
 fn (r mut Readline) move_cursor_word_left() {
   if r.cursor > 0 {
-    for ; r.cursor > 0 && r.is_break_character(r.current[r.cursor - 1]); r.cursor-- {}
-    for ; r.cursor > 0 && !r.is_break_character(r.current[r.cursor - 1]); r.cursor-- {}
+    for ; r.cursor > 0 && r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {}
+    for ; r.cursor > 0 && !r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {}
     r.refresh_line()
   }
 }
 
 fn (r mut Readline) move_cursor_word_right() {
   if r.cursor < r.current.len {
-    for ; r.cursor < r.current.len && r.is_break_character(r.current[r.cursor]); r.cursor++ {}
-    for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor]); r.cursor++ {}
+    for ; r.cursor < r.current.len && r.is_break_character(r.current.at(r.cursor)); r.cursor++ {}
+    for ; r.cursor < r.current.len && !r.is_break_character(r.current.at(r.cursor)); r.cursor++ {}
     r.refresh_line()
   }
 }
