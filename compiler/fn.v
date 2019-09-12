@@ -10,9 +10,10 @@ const (
 	MaxLocalVars = 50
 )
 
-const (
-	max_varaidic_args = 12
-)
+// no limit if using array not struct
+// const (
+// 	max_varaidic_args = 12
+// )
 
 struct Fn {
 	// addr int
@@ -965,14 +966,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
-			is_vararg := i == f.args.len - 2 && f.args[i + 1].typ.starts_with('...')
-			if p.tok != .comma && !is_vararg && !f.is_variadic {
+			if p.tok != .comma && !f.is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
 			if p.tok == .comma {
 				p.fgen(', ')
 			}
-			if !is_vararg {
+			if !f.is_variadic {
 				p.next()
 				p.gen(',')
 			}
@@ -1001,9 +1001,10 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 			p.check(.comma)
 		}
 		no_vargs++
-		if no_vargs > max_varaidic_args {
-			cerror('variadic arguments are limited to ${max_varaidic_args}.')
-		}
+		// no limit with array
+		// if no_vargs > max_varaidic_args {
+		// 	cerror('variadic arguments are limited to ${max_varaidic_args}.')
+		// }
 		if no_vargs > 1 {
 			vargs_struct_fields += ','
 		}
@@ -1034,7 +1035,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		line := l.trim_space()
 		if line == 'struct FnVargs_${f.name} {int len;};' {
 			p.cgen.lines[i] = vargs_struct
-			continue
+			break
 		}
 	}
 	// p.cgen.set_placeholder(f.vargs_ph['${f.name}_caller_decl'], 'FnVargs_$f.name fn_vargs_$f.name = (FnVargs_$f.name) {\n\t.len=$no_vargs$vargs_struct_fields\n};\n')
