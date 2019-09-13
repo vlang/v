@@ -1025,19 +1025,20 @@ fn (f &Fn) str_args(table &Table) string {
 }
 
 // find local function variable with closest name to `name`
-fn (f &Fn) find_misspelled_local_var(name string, min_match_percent f64) string {
+fn (f &Fn) find_misspelled_local_var(name string, min_match f64) string {
 	mut closest := f64(0)
 	mut closest_var := ''
 	for var in f.local_vars {
 		n := '${f.mod}.$var.name'
-		if !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
-		p := strings.levenshtein_distance_percentage(name, n)
+		if var.name == '' || !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
+		p := strings.dice_coefficient(name, n)
+		println(' ## $name - $n: $p')
 		if p > closest {
 			closest = p
 			closest_var = n
 		}
 	}
-	if closest >= min_match_percent {
+	if closest >= min_match {
 		return closest_var
 	}
 	return ''
