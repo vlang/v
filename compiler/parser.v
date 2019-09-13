@@ -1648,6 +1648,11 @@ fn (p mut Parser) name_expr() string {
 				f = p.table.find_fn(name)
 			}
 			if f.name == '' {
+				// check for misspelled function / variable / module
+				suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
+				if suggested != '' {
+					p.error('undefined: `$name`. did you mean:$suggested')
+				}
 				// If orig_name is a mod, then printing undefined: `mod` tells us nothing
 				// if p.table.known_mod(orig_name) {
 				if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
