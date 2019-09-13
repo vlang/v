@@ -927,7 +927,7 @@ fn (t &Type) contains_field_type(typ string) bool {
 	return false
 }
 
-// check for a typo or function / variable / module
+// check for a function / variable / module typo in `name`
 fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
