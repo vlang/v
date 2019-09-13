@@ -768,6 +768,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	p.check(.lpar)
 	if f.is_c {
 		for p.tok != .rpar {
+			//If the parameter calls a function or method that is not C,
+			//the value of p.calling_c is changed
+			p.calling_c = true
 			p.bool_expression()
 			if p.tok == .comma {
 				p.gen(', ')
