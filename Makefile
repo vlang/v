@@ -16,7 +16,6 @@ ifdef WIN32
 	./v0.exe -o v.exe compiler
 else
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
-	./v -o v compiler
 endif
 	rm -rf vc/
 	@echo "V has been successfully built"
