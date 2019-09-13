@@ -168,6 +168,9 @@ v.exe runrepl
 
 ```
 
+Freebsd:
+Please, use GNU's make ( gmake ) instead of make for bootstrapping V.
+
 
 ## Contributing
 
