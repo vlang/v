@@ -934,17 +934,17 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_closest_fn(name_orig)
+	mut n := table.find_misspelled_fn(name_orig)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = current_fn.find_closest_local_var(name_orig)
+	n = current_fn.find_misspelled_local_var(name_orig)
 	if n != '' {
 		output += '\n  * variable: `$n`'
 	}
 	// check imported modules
-	n = table.find_closest_imported_mod(name_orig, fit)
+	n = table.find_misspelled_imported_mod(name_orig, fit)
 	if n != '' {
 		output += '\n  * module: `$n`'
 	}
@@ -952,7 +952,7 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 }
 
 // find function with closest name to `name`
-fn (table &Table) find_closest_fn(name string) string {
+fn (table &Table) find_misspelled_fn(name string) string {
 	mut closest := f64(0)
 	mut last_name := ''
 	for f_name, f in table.fns {
@@ -973,7 +973,7 @@ fn (table &Table) find_closest_fn(name string) string {
 }
 
 // find imported module with closest name to `name`
-fn (table &Table) find_closest_imported_mod(name string, fit &FileImportTable) string {
+fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable) string {
 	mut closest := f64(0)
 	mut last_alias := ''
 	mut last_mod := ''

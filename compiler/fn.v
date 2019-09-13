@@ -1025,7 +1025,7 @@ fn (f &Fn) str_args(table &Table) string {
 }
 
 // find local function variable with closest name to `name`
-fn (f &Fn) find_closest_local_var(name string) string {
+fn (f &Fn) find_misspelled_local_var(name string) string {
 	mut closest := f64(0)
 	mut last_name := ''
 	for _, var in f.local_vars {
