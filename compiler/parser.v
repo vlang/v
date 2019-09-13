@@ -1648,7 +1648,7 @@ fn (p mut Parser) name_expr() string {
 				f = p.table.find_fn(name)
 			}
 			if f.name == '' {
-				// check for mispelled function / variable / module
+				// check for misspelled function / variable / module
 				suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
 				if suggested != '' {
 					p.error('undefined: `$name`. did you mean:$suggested')
