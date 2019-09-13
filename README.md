@@ -31,7 +31,7 @@ Installing V: https://github.com/vlang/v#installing-v-from-source
 
 V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
-## Installing V from source
+## Installing V
 
 ### Linux, macOS, Windows, *BSD, WSL, Android, Raspbian
 
@@ -41,6 +41,8 @@ git clone https://github.com/vlang/v
 cd v
 make
 ```
+
+Note: make is supposed to run once during installation, not for compile V.
 
 That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
