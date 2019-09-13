@@ -960,7 +960,6 @@ fn (table &Table) find_misspelled_fn(name string, min_match f64) string {
 		n := '${f.mod}.$f.name'
 		if !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
 		p := strings.dice_coefficient(name, n)
-		println(' ## $name - $n: $p')
 		if p > closest {
 			closest = p
 			closest_fn = n
