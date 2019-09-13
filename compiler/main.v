@@ -630,7 +630,7 @@ fn get_all_after(joined_args, arg, def string) string {
 fn (v &V) module_path(mod string) string {
 	// submodule support
 	if mod.contains('.') {
-		//return mod.replace('.', path_sep)
+		//return mod.replace('.', os.PathSeparator)
 		return mod.replace('.', '/')
 	}
 	return mod
@@ -652,8 +652,8 @@ fn new_v(args[]string) &V {
 	if 'run' in args {
 		dir = get_all_after(joined_args, 'run', '')
 	}
-	if dir.ends_with('/') {
-		dir = dir.all_before_last('/')
+	if dir.ends_with(os.PathSeparator) {
+		dir = dir.all_before_last(os.PathSeparator)
 	}
 	if args.len < 2 {
 		dir = ''
@@ -667,8 +667,8 @@ fn new_v(args[]string) &V {
 		build_mode = .build_module
 		// v -lib ~/v/os => os.o
 		//mod = os.dir(dir)
-		mod = if dir.contains('/') {
-			dir.all_after('/')
+		mod = if dir.contains(os.PathSeparator) {
+			dir.all_after(os.PathSeparator)
 		} else {
 			dir
 		}
@@ -702,7 +702,7 @@ fn new_v(args[]string) &V {
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
 	if dir == '.' && out_name == 'a.out' {
-		base := os.getwd().all_after('/')
+		base := os.getwd().all_after(os.PathSeparator)
 		out_name = base.trim_space()
 	}
 	mut _os := OS.mac
@@ -807,14 +807,13 @@ fn new_v(args[]string) &V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (rdir_name == 'compiler'  ||
-			dir.contains('v/vlib'))
+		building_v: !is_repl && (rdir_name == 'compiler'  || dir.contains('vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
 	}
 	if pref.is_so {
-		out_name_c = out_name.all_after('/') + '_shared_lib.c'
+		out_name_c = out_name.all_after(os.PathSeparator) + '_shared_lib.c'
 	}
 	return &V{
 		os: _os
