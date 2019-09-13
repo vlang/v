@@ -156,7 +156,7 @@ pub fn (s string) u64() u64 {
 
 // ==
 fn (s string) eq(a string) bool {
-	if isnil(s.str) {
+	if isnil(s.str) { // should never happen
 		panic('string.eq(): nil string')
 	}
 	if s.len != a.len {

@@ -99,14 +99,14 @@ pub fn print(s string) {
 }
 
 __global total_m i64 = 0
-//__global nr_mallocs int = 0 
+//__global nr_mallocs int = 0
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
-	//nr_mallocs++ 
-/* 
-TODO 
+	//nr_mallocs++
+/*
+TODO
 #ifdef VPLAY
 	if n > 10000 {
 		panic('allocating more than 10 KB is not allowed in the playground')
@@ -117,7 +117,7 @@ TODO
 	println('\n\n\nmalloc($n) total=$total_m')
 	print_backtrace()
 #endif
-*/ 
+*/
 	ptr := C.malloc(n)
 	if isnil(ptr) {
 		panic('malloc($n) failed')
@@ -140,6 +140,10 @@ fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
+
+fn v_ptr_free(ptr voidptr) {
+	C.free(ptr)
+}	
 
 
 

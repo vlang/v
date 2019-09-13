@@ -236,7 +236,24 @@ pub fn (m map) print() {
 	println('>>>>>>>>>>')
 }
 
-pub fn (m map) free() {
+fn (n mut mapnode) free() {
+	if n.val != 0 {
+		free(n.val)
+	}	
+	if n.left != 0 {
+		n.left.free()
+	}	
+	if n.right != 0 {
+		n.right.free()
+	}	
+	free(n)
+}
+
+pub fn (m mut map) free() {
+	if m.root == 0 {
+		return
+	}	
+	m.root.free()
 	// C.free(m.table)
 	// C.free(m.keys_table)
 }

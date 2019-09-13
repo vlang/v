@@ -40,7 +40,7 @@ mut:
 	expected_type  string
 	tmp_cnt        int
 	is_script      bool
-	pref           &Preferences // Setting and Preferences shared from V struct
+	pref           &Preferences // Preferences shared from V struct
 	builtin_mod    bool
 	vh_lines       []string
 	inside_if_expr bool
@@ -51,7 +51,7 @@ mut:
 	for_expr_cnt   int // to detect whether `continue` can be used
 	ptr_cast       bool
 	calling_c      bool
-	cur_fn         &Fn
+	cur_fn         Fn
 	returns        bool
 	vroot          string
 	is_c_struct_init bool
@@ -71,8 +71,8 @@ mut:
 }
 
 const (
-	EmptyFn = &Fn { }
-	MainFn= &Fn{name:'main'}
+	EmptyFn = Fn { }
+	MainFn= Fn{name:'main'}
 )
 
 const (
@@ -121,8 +121,9 @@ fn (v mut V) new_parser(path string) Parser {
 	return p
 }
 
-fn (p mut Parser) set_current_fn(f &Fn) {
+fn (p mut Parser) set_current_fn(f Fn) {
 	p.cur_fn = f
+	//p.cur_fn = p.table.fns[f.name]
 	p.scanner.fn_name = '${f.mod}.${f.name}'
 }
 
@@ -882,9 +883,10 @@ fn (p mut Parser) get_type() string {
 		return typ
 	}
 	//
+	mut warn := false
 	for p.tok == .mul {
 		if p.first_pass() {
-			p.warn('use `&Foo` instead of `*Foo`')
+			warn = true
 		}
 		mul = true
 		nr_muls++
@@ -908,6 +910,9 @@ fn (p mut Parser) get_type() string {
 		typ = p.lit
 	}
 	else {
+		if warn {
+			p.warn('use `&Foo` instead of `*Foo`')
+		}
 		// Module specified? (e.g. gx.Image)
 		if p.peek() == .dot {
 			// try resolve full submodule
@@ -1010,7 +1015,7 @@ fn (p mut Parser) statements() string {
 }
 
 fn (p mut Parser) statements_no_rcbr() string {
-	p.cur_fn.open_scope()
+	p.open_scope()
 
 	if !p.inside_if_expr {
 		p.genln('')
@@ -1055,39 +1060,47 @@ fn (p mut Parser) close_scope() {
 	mut i := p.cur_fn.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.cur_fn.local_vars[i]
+		//if p.cur_fn.name == 'main' {
+			//println('var in main $v.name $v.typ $v.is_alloc ptr=$v.ptr')
+		//}	
 		if v.scope_level ≠ p.cur_fn.scope_level {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
 		// Clean up memory, only do this for V compiler for now
+		$if !windows {
 		if p.pref.building_v && v.is_alloc && !p.pref.is_test {
+			mut free_fn := 'free'
 			if v.typ.starts_with('array_') {
-				//if false && p.returns {
-				if p.returns {
-					if !v.is_returned {
-						prev_line := p.cgen.lines[p.cgen.lines.len-2]
-						p.cgen.lines[p.cgen.lines.len-2] =
-							'v_array_free($v.name); /* :) close_scope free */' + prev_line
-					}
-				} else {
-					p.genln('v_array_free($v.name); // close_scope free')
+				free_fn = 'v_array_free'
+			} else if v.typ == 'string' {
+				free_fn = 'v_string_free'
+				continue
+			}	else if v.ptr || v.typ.ends_with('*') {
+				free_fn = 'v_ptr_free'
+				//continue
+			}	 else {
+				continue
+			}	
+			//if false && p.returns {
+			if p.returns {
+				if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
+					prev_line := p.cgen.lines[p.cgen.lines.len-2]
+					p.cgen.lines[p.cgen.lines.len-2] =
+						'$free_fn($v.name); /* :) close_scope free $v.typ */' + prev_line
 				}
-			}
-			else if v.typ == 'string' {
-				//p.genln('v_string_free($v.name); // close_scope free')
-			}
-			else if v.ptr {
-				//p.genln('free($v.name); // close_scope free')
+			} else {
+				p.genln('$free_fn($v.name); // close_scope free')
 			}
 		}
+		}
 	}
-
 	if p.cur_fn.defer_text.last() != '' {
 		p.genln(p.cur_fn.defer_text.last())
 		//p.cur_fn.defer_text[f] = ''
 	}
-	
-	p.cur_fn.close_scope()
+	p.cur_fn.scope_level--
+	p.cur_fn.defer_text = p.cur_fn.defer_text.left(p.cur_fn.scope_level + 1)
 	p.cur_fn.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
 }
@@ -1225,7 +1238,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.error('`$v.name` is immutable.')
 	}
 	if !v.is_changed {
-		p.cur_fn.mark_var_changed(v)
+		p.mark_var_changed(v)
 	}
 	is_str := v.typ == 'string'
 	switch tok {
@@ -1270,7 +1283,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	// p.assigned_var = ''
 	p.assigned_type = ''
 	if !v.is_used {
-		p.cur_fn.mark_var_used(v)
+		p.mark_var_used(v)
 	}
 }
 
@@ -1337,6 +1350,7 @@ fn (p mut Parser) var_decl() {
 		is_mut: is_mut
 		is_alloc: p.is_alloc
 	})
+	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	if !or_else {
 		gen_name := p.table.var_cgen_name(name)
 		mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ)
@@ -1544,7 +1558,7 @@ fn (p mut Parser) name_expr() string {
 		}
 		if p.inside_return_expr {
 			//println('marking $v.name returned')
-			p.cur_fn.mark_var_returned(v)
+			p.mark_var_returned(v)
 			// v.is_returned = true // TODO modifying a local variable
 			// that's not used afterwards, this should be a compilation
 			// error
@@ -1648,6 +1662,11 @@ fn (p mut Parser) name_expr() string {
 				f = p.table.find_fn(name)
 			}
 			if f.name == '' {
+				// check for misspelled function / variable / module
+				suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
+				if suggested != '' {
+					p.error('undefined: `$name`. did you mean:$suggested')
+				}
 				// If orig_name is a mod, then printing undefined: `mod` tells us nothing
 				// if p.table.known_mod(orig_name) {
 				if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
@@ -1701,13 +1720,17 @@ fn (p mut Parser) name_expr() string {
 		return typ
 	}
 	p.log('end of name_expr')
+	
+	if f.typ.ends_with('*') {
+		p.is_alloc = true
+	}	
 	return f.typ
 }
 
 fn (p mut Parser) var_expr(v Var) string {
 	p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
-	p.cur_fn.mark_var_used(v)
+	p.mark_var_used(v)
 	fn_ph := p.cgen.add_placeholder()
 	p.expr_var = v
 	p.gen(p.table.var_cgen_name(v.name))
@@ -1756,7 +1779,7 @@ fn (p mut Parser) var_expr(v Var) string {
 			p.error('`$v.name` is immutable')
 		}
 		if !v.is_changed {
-			p.cur_fn.mark_var_changed(v)
+			p.mark_var_changed(v)
 		}
 		if typ != 'int' {
 			if !p.pref.translated && !is_number_type(typ) {
@@ -1890,6 +1913,9 @@ struct $f.parent_fn {
 		// if is_indexer {
 		//return p.index_expr(method.typ, method_ph)
 	//}
+	if method.typ.ends_with('*') {
+		p.is_alloc = true
+	}	
 	return method.typ
 }
 
@@ -2143,7 +2169,7 @@ fn (p mut Parser) expression() string {
 				p.error('`$p.expr_var.name` is immutable (can\'t <<)')
 			}
 			if !p.expr_var.is_changed {
-				p.cur_fn.mark_var_changed(p.expr_var)
+				p.mark_var_changed(p.expr_var)
 			}
 			expr_type := p.expression()
 			// Two arrays of the same type?
@@ -2878,7 +2904,9 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.check(.rcbr)
 			return typ
 		}
-		p.gen('($no_star*)memdup(&($no_star)  {') //sizeof(Node));
+		p.gen('($no_star*)memdup(&($no_star)  {')
+		p.is_alloc = true
+		//println('setting is_alloc=true (ret $typ)')
 	}
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
@@ -3145,7 +3173,7 @@ fn (p mut Parser) for_st() {
 	p.for_expr_cnt++
 	next_tok := p.peek()
 	//debug := p.scanner.file_path.contains('r_draw')
-	p.cur_fn.open_scope()
+	p.open_scope()
 	if p.tok == .lcbr {
 		// Infinite loop
 		p.gen('while (1) {')
@@ -3698,7 +3726,7 @@ fn (p mut Parser) go_statement() {
 	if p.peek() == .dot {
 		var_name := p.lit
 		v := p.cur_fn.find_var(var_name)
-		p.cur_fn.mark_var_used(v)
+		p.mark_var_used(v)
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)

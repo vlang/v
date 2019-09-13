@@ -289,8 +289,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-
-fn popen(path string) &FILE {
+fn popen(path string) *C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -302,7 +301,7 @@ fn popen(path string) &FILE {
 	}
 }
 
-fn pclose(f &FILE) int {
+fn pclose(f *C.FILE) int {
 	$if windows {
 		return C._pclose(f)
 	}

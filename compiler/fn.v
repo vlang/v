@@ -43,43 +43,31 @@ fn (f &Fn) find_var(name string) Var {
 }
 
 
-fn (f mut Fn) open_scope() {
-	f.defer_text << ''
-	f.scope_level++
+fn (p mut Parser) open_scope() {
+	p.cur_fn.defer_text << ''
+	p.cur_fn.scope_level++
 }
 
-fn (f mut Fn) close_scope() {
-	f.scope_level--
-	f.defer_text = f.defer_text.left(f.scope_level + 1)
-}
-
-fn (f mut Fn) mark_var_used(v Var) {
-	for i, vv in f.local_vars {
+fn (p mut Parser) mark_var_used(v Var) {
+	for i, vv in p.cur_fn.local_vars {
 		if vv.name == v.name {
-			//mut ptr := &f.local_vars[i]
-			//ptr.is_used = true
-			f.local_vars[i].is_used = true
-			return
+			p.cur_fn.local_vars[i].is_used = true
 		}
 	}
 }
 
-fn (f mut Fn) mark_var_returned(v Var) {
-	for i, vv in f.local_vars {
+fn (p mut Parser) mark_var_returned(v Var) {
+	for i, vv in p.cur_fn.local_vars {
 		if vv.name == v.name {
-			f.local_vars[i].is_returned = true
-			return
+			p.cur_fn.local_vars[i].is_returned = true
 		}
 	}
 }
 
-fn (f mut Fn) mark_var_changed(v Var) {
-	for i, vv in f.local_vars {
+fn (p mut Parser) mark_var_changed(v Var) {
+	for i, vv in p.cur_fn.local_vars {
 		if vv.name == v.name {
-			//mut ptr := &f.local_vars[i]
-			//ptr.is_used = true
-			f.local_vars[i].is_changed = true
-			// return
+			p.cur_fn.local_vars[i].is_changed = true
 		}
 	}
 }
@@ -112,8 +100,8 @@ fn (p mut Parser) is_sig() bool {
 	(p.file_path.contains(ModPath))
 }
 
-fn new_fn(mod string, is_public bool) &Fn {
-	return &Fn {
+fn new_fn(mod string, is_public bool) Fn {
+	return Fn {
 		mod: mod
 		local_vars: [Var{}		; MaxLocalVars]
 		is_public: is_public
@@ -158,8 +146,9 @@ fn (p mut Parser) fn_decl() {
 			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
 		}
-		// (a *Foo) instead of (a mut Foo) is a common mistake
-		if !p.builtin_mod && receiver_typ.contains('*') {
+		// `(f *Foo)` instead of `(f mut Foo)` is a common mistake
+		//if !p.builtin_mod && receiver_typ.contains('*') {
+		if receiver_typ.contains('*') {
 			t := receiver_typ.replace('*', '')
 			p.error('use `($receiver_name mut $t)` instead of `($receiver_name *$t)`')
 		}
@@ -463,7 +452,9 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.cgen_name(f)
+		if f.defer_text.len > f.scope_level {
 		f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+		}
 	}
 	if is_generic {
 		// Don't need to generate body for the actual generic definition
@@ -477,7 +468,9 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	}
 	// Counting or not, always need to add defer before the end
 	if !p.is_vweb {
+		if f.defer_text.len > f.scope_level {
 		p.genln(f.defer_text[f.scope_level])
+		}
 	}
 	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
 		p.error('$f.name must return "$typ"')
@@ -658,7 +651,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 		}
 		if !p.expr_var.is_changed {
-			p.cur_fn.mark_var_changed(p.expr_var)
+			p.mark_var_changed(p.expr_var)
 		}
 		// if receiver is key_mut or a ref (&), generate & for the first arg
 		if receiver.ref || (receiver.is_mut && !receiver_type.contains('*')) {
@@ -837,7 +830,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			if !v.is_changed {
-				p.cur_fn.mark_var_changed(v)
+				p.mark_var_changed(v)
 			}
 		}
 		p.expected_type = arg.typ
@@ -1022,4 +1015,20 @@ fn (f &Fn) str_args(table &Table) string {
 		}
 	}
 	return s
+}
+
+// find local function variable with closest name to `name`
+fn (f &Fn) find_misspelled_local_var(name string, min_match f32) string {
+	mut closest := f32(0)
+	mut closest_var := ''
+	for var in f.local_vars {
+		n := '${f.mod}.$var.name'
+		if var.name == '' || !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
+		p := strings.dice_coefficient(name, n)
+		if p > closest {
+			closest = p
+			closest_var = n
+		}
+	}
+	return if closest >= min_match { closest_var } else { '' }
 }

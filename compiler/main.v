@@ -64,7 +64,7 @@ mut:
 	dir        string // directory (or file) being compiled (TODO rename to path?)
 	table      &Table // table with types, vars, functions etc
 	cgen       &CGen // C code generator
-	pref       &Preferences // all the prefrences and settings extracted to a struct for reusability
+	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
 	lang_dir   string // "~/code/v"
 	out_name   string // "program.exe"
 	vroot      string
@@ -187,7 +187,7 @@ fn main() {
 	if v.pref.is_test {
 		v.run_compiled_executable_and_exit()
 	}
-
+	
 }
 
 fn (v mut V) compile() {
@@ -234,8 +234,8 @@ fn (v mut V) compile() {
 
 	imports_json := 'json' in v.table.imports
 	// TODO remove global UI hack
-	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && 'ui' in 
-		v.table.imports) || (v.pref.build_mode == .build_module && 
+	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && 'ui' in
+		v.table.imports) || (v.pref.build_mode == .build_module &&
 		v.dir.contains('/ui'))) {
 		cgen.genln('id defaultFont = 0; // main.v')
 	}
@@ -992,5 +992,5 @@ fn vhash() string {
 	mut buf := [50]byte
 	buf[0] = 0
 	C.snprintf(buf, 50, '%s', C.V_COMMIT_HASH )
-	return tos_clone(buf)  
+	return tos_clone(buf)
 }

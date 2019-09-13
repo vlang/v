@@ -77,6 +77,7 @@ mut:
 	is_used         bool
 	is_changed      bool
 	scope_level     int
+	is_c            bool // todo remove once `typ` is `Type`, not string
 }
 
 struct Type {
@@ -442,6 +443,7 @@ fn (table mut Table) add_method(type_name string, f Fn) {
 		print_backtrace()
 		cerror('add_method: empty type')
 	}
+	// TODO table.typesmap[type_name].methods << f
 	mut t := table.typesmap[type_name]
 	t.methods << f
 	table.typesmap[type_name] = t
@@ -925,4 +927,61 @@ fn (t &Type) contains_field_type(typ string) bool {
 		}
 	}
 	return false
+}
+
+// check for a function / variable / module typo in `name`
+fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
+	// dont check if so short
+	if name.len < 2 { return '' }
+	min_match := 0.8 // for dice coefficient between 0.0 - 1.0
+	name_orig := name.replace('__', '.').replace('_dot_', '.')
+	mut output := ''
+	// check functions
+	mut n := table.find_misspelled_fn(name_orig, min_match)
+	if n != '' {
+		output += '\n  * function: `$n`'
+	}
+	// check function local variables
+	n = current_fn.find_misspelled_local_var(name_orig, min_match)
+	if n != '' {
+		output += '\n  * variable: `$n`'
+	}
+	// check imported modules
+	n = table.find_misspelled_imported_mod(name_orig, fit, min_match)
+	if n != '' {
+		output += '\n  * module: `$n`'
+	}
+	return output
+}
+
+// find function with closest name to `name`
+fn (table &Table) find_misspelled_fn(name string, min_match f32) string {
+	mut closest := f32(0)
+	mut closest_fn := ''
+	for _, f in table.fns {
+		n := '${f.mod}.$f.name'
+		if !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
+		p := strings.dice_coefficient(name, n)
+		if p > closest {
+			closest = p
+			closest_fn = n
+		}
+	}
+	return if closest >= min_match { closest_fn } else { '' }
+}
+
+// find imported module with closest name to `name`
+fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f32) string {
+	mut closest := f32(0)
+	mut closest_mod := ''
+	for alias, mod in fit.imports {
+		n := '${fit.module_name}.$alias'
+		if !name.starts_with(fit.module_name) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
+		p := strings.dice_coefficient(name, n)
+		if p > closest {
+			closest = p
+			closest_mod = '$alias ($mod)'
+		}
+	}
+	return if closest >= min_match { closest_mod } else { '' }
 }
