@@ -28,20 +28,12 @@ if not exist "%gccpath%" (
     goto:msvcstrap
 )
 
-gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o v2.exe vc\v_win.c
+gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o v.exe vc\v_win.c
 if %ERRORLEVEL% GEQ 1 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
     exit /b 1
 )
 
-echo Building v.v...
-v2.exe -o v.exe compiler
-if %ERRORLEVEL% GEQ 1 (
-    echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
-    exit /b 1
-)
-
-del v2.exe
 rd /s /q vc
 
 goto :success
@@ -60,21 +52,13 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
     goto :nocompiler
 )
 
-cl.exe /nologo /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+cl.exe /nologo /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v.exe /INCREMENTAL:NO
 
 if %ERRORLEVEL% GEQ 1 (
     echo cl.exe failed to build V
     goto :compileerror
 )
 
-echo rebuild from source
-v2.exe -os msvc -o v.exe compiler
-if %ERRORLEVEL% GEQ 1 (
-    echo V failed to build itself
-    goto :compileerror
-)
-
-del v2.exe
 rd /s /q vc
 
 goto :success
