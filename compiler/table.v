@@ -974,7 +974,7 @@ fn (table &Table) find_closest_fn(name string) string {
 
 // find imported module with closest name to `name`
 fn (table &Table) find_closest_imported_mod(name string, fit &FileImportTable) string {
-	mut max := f64(0)
+	mut closest := f64(0)
 	mut last_alias := ''
 	mut last_mod := ''
 	for alias, mod in fit.imports {
@@ -983,13 +983,13 @@ fn (table &Table) find_closest_imported_mod(name string, fit &FileImportTable) s
 			continue
 		}
 		p := strings.levenshtein_distance_percentage(name, m)
-		if p > max {
-			max = p
+		if p > closest {
+			closest = p
 			last_alias = alias
 			last_mod = mod
 		}
 	}
-	if max > 80 {
+	if closest > 80 {
 		return '$last_alias ($last_mod)'
 	}
 	return ''
