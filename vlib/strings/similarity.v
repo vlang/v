@@ -32,7 +32,7 @@ pub fn levenshtein_distance_percentage(a, b string) f64 {
 }
 
 // implementation of Sørensen–Dice coefficient.
-// finds the gauge the similarity between two strings.
+// find the similarity between two strings.
 // returns f64 between 0.0 (not similar) and 1.0 (exact match).
 pub fn dice_coefficient(s1, s2 string) f64 {
 	if s1.len == 0 || s2.len == 0 { return 0.0 }
