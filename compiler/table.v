@@ -938,7 +938,7 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
-	// check fucntion local variables
+	// check function local variables
 	n = current_fn.find_closest_local_var(name_orig)
 	if n != '' {
 		output += '\n  * variable: `$n`'
