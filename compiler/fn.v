@@ -1027,19 +1027,18 @@ fn (f &Fn) str_args(table &Table) string {
 // find local function variable with closest name to `name`
 fn (f &Fn) find_misspelled_local_var(name string, min_match_percent f64) string {
 	mut closest := f64(0)
-	mut last_name := ''
+	mut closest_var := ''
 	for var in f.local_vars {
-		if !name.starts_with(f.mod) { continue }
-		full_name := '${f.mod}.$var.name'
-		if full_name.len - name.len > 3 || name.len - full_name.len > 3 { continue }
-		p := strings.levenshtein_distance_percentage(name, full_name)
+		n := '${f.mod}.$var.name'
+		if !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
+		p := strings.levenshtein_distance_percentage(name, n)
 		if p > closest {
 			closest = p
-			last_name = full_name
+			closest_var = n
 		}
 	}
 	if closest >= min_match_percent {
-		return last_name
+		return closest_var
 	}
 	return ''
 }
