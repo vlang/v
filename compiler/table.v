@@ -927,76 +927,70 @@ fn (t &Type) contains_field_type(typ string) bool {
 	return false
 }
 
-fn (table &Table) find_misspelled_fn(name string) string {
-	mut max := f64(0)
+// check for a typo or function / variable / module
+fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
+	// dont check if so short
+	if name.len < 2 { return '' }
+	name_orig := name.replace('__', '.').replace('_dot_', '.')
+	mut output := ''
+	// check functions
+	mut n := table.find_closest_fn(name_orig)
+	if n != '' {
+		output += '\n  * function: `$n`'
+	}
+	// check fucntion local variables
+	n = current_fn.find_closest_local_var(name_orig)
+	if n != '' {
+		output += '\n  * variable: `$n`'
+	}
+	// check imported modules
+	n = table.find_closest_imported_mod(name_orig, fit)
+	if n != '' {
+		output += '\n  * module: `$n`'
+	}
+	return output
+}
+
+// find function with closest name to `name`
+fn (table &Table) find_closest_fn(name string) string {
+	mut closest := f64(0)
 	mut last_name := ''
 	for f_name, f in table.fns {
 		full_name := '${f.mod}.$f_name'
-		if full_name.len - name.len > 3 || name.len - full_name.len > 3{
+		if full_name.len - name.len > 3 || name.len - full_name.len > 3 {
 			continue
 		}
-		p := compute_levenshtein_percentage(name, full_name)
-		if p > max {
-			max = p
+		p := strings.levenshtein_distance_percentage(name, full_name)
+		if p > closest {
+			closest = p
 			last_name = full_name
 		}
 	}
-	if max > 80 {
+	if closest > 80 {
 		return last_name
 	}
 	return ''
 }
 
-
-fn (table &Table) find_misspelled_var(name string) string {
+// find imported module with closest name to `name`
+fn (table &Table) find_closest_imported_mod(name string, fit &FileImportTable) string {
 	mut max := f64(0)
-	mut last_name := ''
-	for f_name, f in table.fns {
-		full_name := '${f.mod}.$f_name'
-		if full_name.len - name.len > 3 || name.len - full_name.len > 3{
+	mut last_alias := ''
+	mut last_mod := ''
+	for alias, mod in fit.imports {
+		m := '${fit.module_name}.$alias'
+		if m.len - name.len > 3 || name.len - m.len > 3 {
 			continue
 		}
-		p := compute_levenshtein_percentage(name, full_name)
+		p := strings.levenshtein_distance_percentage(name, m)
 		if p > max {
 			max = p
-			last_name = f_name
+			last_alias = alias
+			last_mod = mod
 		}
 	}
 	if max > 80 {
-		return last_name
+		return '$last_alias ($last_mod)'
 	}
 	return ''
-}
-
-// catulate distance between two words
-fn compute_levenshtein_value(a, b string) int {
-	mut f := [int(0); b.len+1]
-	for j in f {
-		f[j] = j
-	}
-	for _, ca in a {
-		mut j := 1
-		mut fj1 := f[0]
-		f[0]++
-		for _, cb in b {
-			mut mn := if f[j]+1 <= f[j-1]+1 { f[j]+1 } else { f[j-1]+1 }
-			if cb != ca {
-				mn = if mn <= fj1+1 { mn } else { fj1+1 }
-			} else {
-				mn = if mn <= fj1 { mn } else { fj1 }
-			}
-
-			fj1 = f[j]
-			f[j] = mn
-			j++
-		}
-	}
-	return f[f.len-1]
-}
-
-// calculate percentage of a match
-fn compute_levenshtein_percentage(a, b string) f64 {
-	d := compute_levenshtein_value(a, b)
-	l := if a.len >= b.len { a.len } else { b.len }
-	return (1.00 - f64(d)/f64(l)) * 100.00
 }

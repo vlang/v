@@ -1023,3 +1023,24 @@ fn (f &Fn) str_args(table &Table) string {
 	}
 	return s
 }
+
+// find local function variable with closest name to `name`
+fn (f &Fn) find_closest_local_var(name string) string {
+	mut closest := f64(0)
+	mut last_name := ''
+	for _, var in f.local_vars {
+		full_name := '${f.mod}.$var.name'
+		if full_name.len - name.len > 3 || name.len - full_name.len > 3 {
+			continue
+		}
+		p := strings.levenshtein_distance_percentage(name, full_name)
+		if p > closest {
+			closest = p
+			last_name = full_name
+		}
+	}
+	if closest > 80 {
+		return last_name
+	}
+	return ''
+}
