@@ -931,20 +931,21 @@ fn (t &Type) contains_field_type(typ string) bool {
 fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
+	min_match_percent := 80 // at least 80% similar
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_misspelled_fn(name_orig)
+	mut n := table.find_misspelled_fn(name_orig, min_match_percent)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = current_fn.find_misspelled_local_var(name_orig)
+	n = current_fn.find_misspelled_local_var(name_orig, min_match_percent)
 	if n != '' {
 		output += '\n  * variable: `$n`'
 	}
 	// check imported modules
-	n = table.find_misspelled_imported_mod(name_orig, fit)
+	n = table.find_misspelled_imported_mod(name_orig, fit, min_match_percent)
 	if n != '' {
 		output += '\n  * module: `$n`'
 	}
@@ -952,36 +953,34 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 }
 
 // find function with closest name to `name`
-fn (table &Table) find_misspelled_fn(name string) string {
+fn (table &Table) find_misspelled_fn(name string, min_match_percent f64) string {
 	mut closest := f64(0)
 	mut last_name := ''
-	for f_name, f in table.fns {
-		full_name := '${f.mod}.$f_name'
-		if full_name.len - name.len > 3 || name.len - full_name.len > 3 {
-			continue
-		}
+	for _, f in table.fns {
+		if !name.starts_with(f.mod) { continue }
+		full_name := '${f.mod}.$f.name'
+		if full_name.len - name.len > 3 || name.len - full_name.len > 3 { continue }
 		p := strings.levenshtein_distance_percentage(name, full_name)
 		if p > closest {
 			closest = p
 			last_name = full_name
 		}
 	}
-	if closest > 80 {
+	if closest >= min_match_percent {
 		return last_name
 	}
 	return ''
 }
 
 // find imported module with closest name to `name`
-fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable) string {
+fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match_percent f64) string {
 	mut closest := f64(0)
 	mut last_alias := ''
 	mut last_mod := ''
 	for alias, mod in fit.imports {
+		if !name.starts_with(fit.module_name) { continue }
 		m := '${fit.module_name}.$alias'
-		if m.len - name.len > 3 || name.len - m.len > 3 {
-			continue
-		}
+		if m.len - name.len > 3 || name.len - m.len > 3 { continue }
 		p := strings.levenshtein_distance_percentage(name, m)
 		if p > closest {
 			closest = p
@@ -989,7 +988,7 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 			last_mod = mod
 		}
 	}
-	if closest > 80 {
+	if closest >= min_match_percent {
 		return '$last_alias ($last_mod)'
 	}
 	return ''
