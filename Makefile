@@ -13,8 +13,7 @@ all:
 	rm -rf vc/
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 ifdef WIN32
-	$(CC) -std=gnu11 -DUNICODE -D_UNICODE -w -o v0.exe vc/v_win.c
-	./v0.exe -o v.exe compiler
+	$(CC) -std=gnu11 -DUNICODE -D_UNICODE -w -o v.exe vc/v_win.c
 else
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
 endif
