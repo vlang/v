@@ -1028,7 +1028,7 @@ fn (f &Fn) str_args(table &Table) string {
 fn (f &Fn) find_misspelled_local_var(name string, min_match_percent f64) string {
 	mut closest := f64(0)
 	mut last_name := ''
-	for _, var in f.local_vars {
+	for var in f.local_vars {
 		if !name.starts_with(f.mod) { continue }
 		full_name := '${f.mod}.$var.name'
 		if full_name.len - name.len > 3 || name.len - full_name.len > 3 { continue }

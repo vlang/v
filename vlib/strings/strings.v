@@ -17,14 +17,11 @@ pub fn repeat(c byte, n int) string {
 // the distance between between two strings (lower is closer)
 pub fn levenshtein_distance(a, b string) int {
 	mut f := [int(0); b.len+1]
-	for j in f {
-		f[j] = j
-	}
-	for _, ca in a {
+	for ca in a {
 		mut j := 1
 		mut fj1 := f[0]
 		f[0]++
-		for _, cb in b {
+		for cb in b {
 			mut mn := if f[j]+1 <= f[j-1]+1 { f[j]+1 } else { f[j-1]+1 }
 			if cb != ca {
 				mn = if mn <= fj1+1 { mn } else { fj1+1 }
