@@ -52,8 +52,7 @@ pub fn dice_coefficient(s1, s2 string) f64 {
 		bigram := (a+b).str()
 		count := if bigram in first_bigrams { first_bigrams[bigram] } else { 0 }
 		if count > 0 {
-			first_bigrams[bigram] = count - 1
-			intersection_size = intersection_size + 1
+			intersection_size++
 		}
 	}
 	return (2.0 * intersection_size) / (f64(s1.len) + f64(s2.len) - 2)
