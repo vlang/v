@@ -37,8 +37,8 @@ pub fn levenshtein_distance_percentage(a, b string) f64 {
 pub fn dice_coefficient(s1, s2 string) f64 {
 	if s1.len == 0 || s2.len == 0 { return 0.0 }
 	if s1 == s2 { return 1.0 }
-    if s1.len < 2 || s2.len < 2 { return 0.0 }
-    mut first_bigrams := map[string]int
+	if s1.len < 2 || s2.len < 2 { return 0.0 }
+	mut first_bigrams := map[string]int
 	for i := 0; i < s1.len-1; i++ {
 		a := s1[i]
 		b := s1[i+1]
