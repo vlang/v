@@ -53,6 +53,7 @@ Subcommands:
   fmt               Run vfmt to format the source code. [wip]
   doc               Run vdoc over the source code and produce documentation. [wip]
   translate         Translates C to V. [wip, will be available in V 0.3]
+  version           Display compiler version and git hash of the compiler source.
 '
 )
 
