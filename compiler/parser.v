@@ -1068,6 +1068,7 @@ fn (p mut Parser) close_scope() {
 			break
 		}
 		// Clean up memory, only do this for V compiler for now
+		$if !windows {
 		if p.pref.building_v && v.is_alloc && !p.pref.is_test {
 			mut free_fn := 'free'
 			if v.typ.starts_with('array_') {
@@ -1091,6 +1092,7 @@ fn (p mut Parser) close_scope() {
 			} else {
 				p.genln('$free_fn($v.name); // close_scope free')
 			}
+		}
 		}
 	}
 	if p.cur_fn.defer_text.last() != '' {
