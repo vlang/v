@@ -955,8 +955,8 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 }
 
 // find function with closest name to `name`
-fn (table &Table) find_misspelled_fn(name string, min_match f64) string {
-	mut closest := f64(0)
+fn (table &Table) find_misspelled_fn(name string, min_match f32) string {
+	mut closest := f32(0)
 	mut closest_fn := ''
 	for _, f in table.fns {
 		n := '${f.mod}.$f.name'
@@ -967,15 +967,12 @@ fn (table &Table) find_misspelled_fn(name string, min_match f64) string {
 			closest_fn = n
 		}
 	}
-	if closest >= min_match {
-		return closest_fn
-	}
-	return ''
+	return if closest >= min_match { closest_fn } else { '' }
 }
 
 // find imported module with closest name to `name`
-fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f64) string {
-	mut closest := f64(0)
+fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f32) string {
+	mut closest := f32(0)
 	mut closest_mod := ''
 	for alias, mod in fit.imports {
 		n := '${fit.module_name}.$alias'
@@ -986,8 +983,5 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 			closest_mod = '$alias ($mod)'
 		}
 	}
-	if closest >= min_match {
-		return closest_mod
-	}
-	return ''
+	return if closest >= min_match { closest_mod } else { '' }
 }
