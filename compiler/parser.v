@@ -2888,11 +2888,11 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 				p.check(.rcbr)
 				return typ
 			}
-			p.gen('(struct $typ) {')
+			p.gen('((struct $typ) {')
 			p.is_c_struct_init = false
 		}
 		else {
-			p.gen('($typ) {')
+			p.gen('(($typ) {')
 		}
 	}
 	else {
@@ -2904,7 +2904,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 			p.check(.rcbr)
 			return typ
 		}
-		p.gen('($no_star*)memdup(&($no_star)  {')
+		p.gen('($no_star*)memdup(&(($no_star)  {')
 		p.is_alloc = true
 		//println('setting is_alloc=true (ret $typ)')
 	}
@@ -3006,7 +3006,7 @@ fn (p mut Parser) struct_init(typ string, is_c_struct_init bool) string {
 	if !did_gen_something {
 		p.gen('0')
 	}
-	p.gen('}')
+	p.gen('})')
 	if ptr {
 		p.gen(', sizeof($no_star))')
 	}
