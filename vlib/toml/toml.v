@@ -6,24 +6,66 @@ module toml
 
 import ebnf
 
+const (
+	INT = 1
+	BIN = 2
+	HEX = 3
+	OCT = 4
+)
+
+// bison
 #include "toml.tab.h"
+// yacc
+#include "y.tab.h"
 
 fn compile(){
-	// flex compile for C
-	system('flex -d toml.l')
-	// bison compile for C
-	system('bison toml.y')
+	// lex or flex compile for C
+	lex := system('flex -d toml.l') or system('lex -d toml.l') or eprintln('Please Install lex/flex.')
+	// yacc or bison compile for C
+	yacc := system('bison toml.y') or system('yacc toml.y') or eprintln('Please Install yacc/bison.')
+}
+
+fn C.yyparse()
+
+fn load(){
+	&C.yyparse()
 }
 
 struct KeyVal{
 	key string
-	val string
+	val TOMLVal
+}
+
+fn toml_parse(){
+	// compile yacc(bison)/lex(flex) file.
+	compile()
 }
 
 struct Array{
-	key string
-	kind int
-	value_type int
+	name 			string
+	mut:
+		val 			[]TOMLVal
+		kind 			int
+		value_type 		int
+}
+
+struct Table{
+	name		string
+	mut:
+		key 		[]KeyVal
+		kind 		int
+		value_type 	int
+		table		[]Table
+}
+
+// TOML's Valiable
+struct TOMLVal{
+	pub mut:
+		integer		string
+		binary_int  string
+		octical_int string
+		hexical_int string
+		arr			Array
 }
 
 struct TimeStamp{
