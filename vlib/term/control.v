@@ -46,8 +46,8 @@ pub fn cursor_back(n int) {
     move(n,'D')
 }
 
-// type: 0 -> current cursor postion to end of the screen
-// type: 1 -> current cursor postion to beginning of the screen
+// type: 0 -> current cursor position to end of the screen
+// type: 1 -> current cursor position to beginning of the screen
 // type: 2 -> clears entire screen
 // type: 3 -> clears entire screen and also delete scrollback buffer
 pub fn erase_display(t string) {
@@ -74,8 +74,8 @@ pub fn erase_del_clear()
     erase_display('3')
 }
 
-// type: 0 -> current cursor postion to end of the line
-// type: 1 -> current cursor postion to beginning of the line
+// type: 0 -> current cursor position to end of the line
+// type: 1 -> current cursor position to beginning of the line
 // type: 2 -> clears entire line
 // Note: Cursor position does not change
 pub fn erase_line(t string) {

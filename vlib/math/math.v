@@ -51,22 +51,22 @@ pub fn abs(a f64) f64 {
 	return a
 }
 
-// acos calculates inversed cosine (arccosine).
+// acos calculates inverse cosine (arccosine).
 pub fn acos(a f64) f64 {
 	return C.acos(a)
 }
 
-// asin calculates inversed sine (arcsine).
+// asin calculates inverse sine (arcsine).
 pub fn asin(a f64) f64 {
 	return C.asin(a)
 }
 
-// atan calculates inversed tangent (arctangent).
+// atan calculates inverse tangent (arctangent).
 pub fn atan(a f64) f64 {
 	return C.atan(a)
 }
 
-// atan2 calculates inversed tangent with two arguments, returns angle between the X axis and the point.
+// atan2 calculates inverse tangent with two arguments, returns the angle between the X axis and the point.
 pub fn atan2(a, b f64) f64 {
 	return C.atan2(a, b)
 }
@@ -96,7 +96,7 @@ pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / Pi)
 }
 
-// exp calculates exponement of the number (math.pow(math.E, a)).
+// exp calculates exponent of the number (math.pow(math.E, a)).
 pub fn exp(a f64) f64 {
 	return C.exp(a)
 }
@@ -117,12 +117,12 @@ pub fn digits(_n, base int) []int {
 	return res
 }
 
-// erf computes the error funtion value
+// erf computes the error function value
 pub fn erf(a f64) f64 {
 	return C.erf(a)
 }
 
-// erfc computes the complimentary error function value
+// erfc computes the complementary error function value
 pub fn erfc(a f64) f64 {
 	return C.erfc(a)
 }

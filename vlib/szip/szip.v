@@ -210,13 +210,13 @@ pub fn (zentry mut zip_ptr) create_entry(name string) bool {
 /**
  * read_entry extracts the current zip entry into output buffer.
  *
- * The function allocates sufficient memory for a output buffer.
+ * The function allocates sufficient memory for an output buffer.
  *
  * @param zip zip archive handler.
  * @param buf output buffer.
  * @param bufsize output buffer size (in bytes).
  *
- * @note remember to release memory allocated for a output buffer.
+ * @note remember to release the memory allocated for an output buffer.
  *       for large entries, please take a look at zip_entry_extract function.
  *
  * @return the return code - the number of bytes actually read on success.
