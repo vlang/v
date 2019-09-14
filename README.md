@@ -41,6 +41,7 @@ git clone https://github.com/vlang/v
 cd v
 make
 ```
+Note: make is supposed to run once during installation, not for compile V.
 
 That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
