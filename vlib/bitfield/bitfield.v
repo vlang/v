@@ -262,10 +262,10 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	 * options:
 	 * (a) nr of slots in output is the sum of inputs' slots. In this
 	 * case, the nr of bits in the last slot of output is less than the
-	 * nr of bits in second input (i.e. ), OR
+	 * nr of bits in the second input (i.e. ), OR
 	 * (b) nr of slots of output is the sum of inputs' slots less one
 	 * (i.e. less iterations needed). In this case, the nr of bits in
-	 * the last slot of output is greater than the nr of bits in second
+	 * the last slot of output is greater than the nr of bits in the second
 	 * input.
 	 * If offset_bit is zero, no additional copies needed.
 	 */
