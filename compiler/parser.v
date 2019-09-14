@@ -2760,6 +2760,7 @@ fn (p mut Parser) array_init() string {
 					if p.table.known_type(array_elem_typ) {
 						p.cgen.resetln('')
 						p.gen('{0}')
+						p.is_alloc = false
 						if is_const_len {
 							return '[${p.mod}__$lit]$array_elem_typ'
 						}
