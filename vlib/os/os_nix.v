@@ -7,6 +7,14 @@ const (
 	PathSeparator = '/'
 )
 
+fn init_os_args(argc int, argv &byteptr) []string {
+	mut args := []string
+	for i := 0; i < argc; i++ {
+		args << string(argv[i])
+	}		
+	return args
+}
+
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {

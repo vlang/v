@@ -58,7 +58,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function, used by V  (`[0; 100]`)
-fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
+fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
 	arr := array {
 		len: nr_repeats
 		cap: nr_repeats
@@ -67,6 +67,35 @@ fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	}
 	for i := 0; i < nr_repeats; i++ {
 		C.memcpy(arr.data + i * elm_size, val, elm_size)
+	}
+	return arr
+}
+
+pub fn (a array) repeat(nr_repeats int) array {
+	arr := array {
+		len: nr_repeats
+		cap: nr_repeats
+		element_size: a.element_size
+		data: malloc(nr_repeats * a.element_size)
+	}
+	val := a.data + 0 //nr_repeats * a.element_size
+	for i := 0; i < nr_repeats; i++ {
+		C.memcpy(arr.data + i * a.element_size, val, a.element_size)
+	}
+	return arr
+}
+
+// TODO remove
+pub fn (a array) repeat2(nr_repeats int) array {
+	arr := array {
+		len: nr_repeats
+		cap: nr_repeats
+		element_size: a.element_size
+		data: malloc(nr_repeats * a.element_size)
+	}
+	val := a.data + 0 //nr_repeats * a.element_size
+	for i := 0; i < nr_repeats; i++ {
+		C.memcpy(arr.data + i * a.element_size, val, a.element_size)
 	}
 	return arr
 }
@@ -232,7 +261,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		sb.write('"$val"')
+		sb.write('"')
+		sb.write(val)
+		sb.write('"')
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

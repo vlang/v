@@ -123,4 +123,33 @@ void init_consts();
 
 '
 
+js_headers = '
+
+class array_string {}
+class array_byte {}
+class array_int {}
+class byte {}
+class double {}
+class int {}
+class f64 {}
+class f32 {}
+class i64 {}
+class i32 {}
+class i16 {}
+class u64 {}
+class u32 {}
+class u16 {}
+class i8 {}
+class u8 {}
+class bool {}
+class rune {}
+class map_string {}
+class map_int {}
+
+function init_consts() {
+	
+}	
+
+'
+
 )

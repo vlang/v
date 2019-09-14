@@ -6,7 +6,6 @@ module main
 
 import os
 import strings
-import time
 
 struct CGen {
 	out          os.File
@@ -275,6 +274,7 @@ fn os_name_to_ifdef(name string) string {
 		case 'netbsd': return '__NetBSD__'
 		case 'dragonfly': return '__DragonFly__'
 		case 'msvc': return '_MSC_VER'
+		case 'js': return '_VJS'
 	}
 	cerror('bad os ifdef name "$name"')
 	return ''
@@ -295,7 +295,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 // C struct definitions, ordered
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
-fn (v mut V) c_type_definitions() string {
+fn (v mut V) type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top
@@ -318,32 +318,6 @@ fn (v mut V) c_type_definitions() string {
 			types_to_c(types_sorted, v.table)
 }
 	
-fn types_to_c(types []Type, table &Table) string {
-	mut sb := strings.new_builder(10)
-	for t in types {
-		if t.cat != .union_ && t.cat != .struct_ {
-			continue
-		}
-		//if is_objc {
-			//sb.writeln('@interface $name : $objc_parent { @public')
-		//}
-		//if is_atomic {
-			//sb.write('_Atomic ')
-		//}
-		kind := if t.cat == .union_ {'union'} else {'struct'}
-		sb.writeln('$kind $t.name {')
-		for field in t.fields {
-			sb.writeln(table.cgen_name_type_pair(field.name,
-				field.typ) + ';')
-		}
-		sb.writeln('};\n')
-		//if is_objc {
-			//sb.writeln('@end')
-		//}
-	}
-	return sb.str()
-}
-
 // sort structs by dependant fields
 fn sort_structs(types []Type) []Type {
 	mut dep_graph := new_dep_graph()

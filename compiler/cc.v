@@ -12,9 +12,30 @@ import (
 fn (v mut V) cc() {
 	// build any thirdparty obj files
 	v.build_thirdparty_obj_files()
-
-	// Just create a c file and exit
-	if v.out_name.ends_with('.c') {
+	// Just create a C/JavaScript file and exit
+	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
+		// Translating V code to JS by launching vjs
+		$if !js {
+			if v.out_name.ends_with('.js') {
+				vexe := os.executable()
+				vjs_path := vexe + 'js'
+				dir := os.dir(vexe)
+				if !os.file_exists(vjs_path) {
+					println('V.js compiler not found, building...')
+					ret := os.system('$vexe -o $vjs_path -os js $dir/compiler')
+					if ret == 0 {
+						println('Done.')
+					} else {
+						println('Failed.')
+						exit(1)
+					}	
+				}	
+				ret := os.system('$vjs_path -o $v.out_name $v.dir')
+				if ret == 0 {
+					println('Done. Run it with `node $v.out_name`')
+				}	
+			}
+		}
 		os.mv(v.out_name_c, v.out_name)
 		exit(0)
 	}

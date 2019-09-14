@@ -169,7 +169,7 @@ fn preorder_keys(node &mapnode, keys mut []string, key_i int) int {
 }
 
 pub fn (m mut map) keys() []string {
-	mut keys := [''; m.size]
+	mut keys := [''].repeat2(m.size)
 	if isnil(m.root) {
 		return keys
 	}

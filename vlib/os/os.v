@@ -69,25 +69,6 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
-fn init_os_args(argc int, argv &byteptr) []string {
-	mut args := []string
-	$if windows {
-		mut args_list := &voidptr(0)
-		mut args_count := 0
-		args_list = C.CommandLineToArgvW(C.GetCommandLine(), &args_count)
-		for i := 0; i < args_count; i++ {
-			args << string_from_wide(&u16(args_list[i]))
-		}
-
-		C.LocalFree(args_list)
-	} $else {
-		for i := 0; i < argc; i++ {
-			args << string(argv[i])
-		}		
-	}
-	return args
-}
-
 fn parse_windows_cmd_line(cmd byteptr) []string {
 	s := string(cmd)
 	return s.split(' ')
@@ -100,8 +81,7 @@ pub fn read_file(path string) ?string {
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		cpath := path.str
-		fp = C.fopen(cpath, mode.str)
+		fp = C.fopen(path.str, mode.str)
 	}
 	if isnil(fp) {
 		return error('failed to open file "$path"')

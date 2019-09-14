@@ -27,7 +27,8 @@ enum BuildMode {
 }
 
 const (
-	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'msvc']
+	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
+		'netbsd', 'dragonfly', 'msvc', 'js']
 	ModPath            = os.home_dir() + '/.vmodules/'
 )
 
@@ -40,6 +41,7 @@ enum OS {
 	netbsd
 	dragonfly
 	msvc
+	js
 }
 
 enum Pass {
@@ -208,7 +210,7 @@ fn (v mut V) compile() {
 		println(v.files)
 	}
 	v.add_v_files_to_compile()
-	if v.pref.is_verbose {
+	if v.pref.is_verbose || v.pref.is_debug {
 		println('all .v files:')
 		println(v.files)
 	}
@@ -220,7 +222,14 @@ fn (v mut V) compile() {
 	// Main pass
 	cgen.pass = Pass.main
 	if v.pref.is_debug {
-		cgen.genln('#define VDEBUG (1) ')
+		$if js {
+			cgen.genln('const VDEBUG = 1;\n')
+		}	$else {
+			cgen.genln('#define VDEBUG (1)')
+		}
+	}
+	if v.os == .js {
+		cgen.genln('#define _VJS (1) ')
 	}
 
 	if v.pref.building_v {
@@ -228,9 +237,13 @@ fn (v mut V) compile() {
 		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
 		cgen.genln('#endif')
 	}
-	
-	cgen.genln(CommonCHeaders)
 		
+	$if js {
+		cgen.genln(js_headers)
+	} $else {
+		cgen.genln(CommonCHeaders)
+	}
+	
 	v.generate_hotcode_reloading_declarations()
 
 	imports_json := 'json' in v.table.imports
@@ -251,7 +264,9 @@ fn (v mut V) compile() {
 		// `/usr/bin/ld: multiple definition of 'total_m'`
 		// TODO
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
-		cgen.genln('int g_test_ok = 1; ')
+		if v.pref.is_test {
+			cgen.genln('int g_test_ok = 1; ')
+		}
 		if 'json' in v.table.imports {
 			cgen.genln('
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
@@ -261,7 +276,7 @@ fn (v mut V) compile() {
 	if '-debug_alloc' in os.args {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
-	cgen.genln('/*================================== FNS =================================*/')
+	//cgen.genln('/*================================== FNS =================================*/')
 	cgen.genln('this line will be replaced with definitions')
 	defs_pos := cgen.lines.len - 1
 	for file in v.files {
@@ -276,12 +291,16 @@ fn (v mut V) compile() {
 	v.log('Done parsing.')
 	// Write everything
 	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
-	d.writeln(cgen.includes.join_lines())
-	d.writeln(cgen.typedefs.join_lines())
-	d.writeln(v.c_type_definitions())
-	d.writeln('\nstring _STR(const char*, ...);\n')
-	d.writeln('\nstring _STR_TMP(const char*, ...);\n')
-	d.writeln(cgen.fns.join_lines())
+	$if !js {
+		d.writeln(cgen.includes.join_lines())
+		d.writeln(cgen.typedefs.join_lines())
+		d.writeln(v.type_definitions())
+		d.writeln('\nstring _STR(const char*, ...);\n')
+		d.writeln('\nstring _STR_TMP(const char*, ...);\n')
+		d.writeln(cgen.fns.join_lines()) // fn definitions
+	} $else {
+		d.writeln(v.type_definitions())
+	}
 	d.writeln(cgen.consts.join_lines())
 	d.writeln(cgen.thread_args.join_lines())
 	if v.pref.is_prof {
@@ -290,23 +309,24 @@ fn (v mut V) compile() {
 	}
 	dd := d.str()
 	cgen.lines[defs_pos] = dd// TODO `def.str()` doesn't compile
-
-  v.generate_main()
-
-  v.generate_hotcode_reloading_code()
-
-  cgen.save()
+	v.generate_main()
+	v.generate_hot_reload_code()
 	if v.pref.is_verbose {
 		v.log('flags=')
 		for flag in v.get_os_cflags() {
 			println(' * ' + flag.format())
 		}
 	}
+	$if js {
+		cgen.genln('main();')
+	}	
+	cgen.save()
 	v.cc()
 }
 
 fn (v mut V) generate_main() {
 	mut cgen := v.cgen
+	$if js { return }
 
 	// if v.build_mode in [.default, .embed_vlib] {
 	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
@@ -461,7 +481,16 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac {
 			continue
 		}
+		if file.ends_with('_js.v') {
+			continue
+		}
 		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
+			continue
+		}
+		if file.ends_with('_js.v') && v.os != .js {
+			continue
+		}
+		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
 		res << '$dir/$file'
@@ -491,7 +520,7 @@ fn (v mut V) add_v_files_to_compile() {
 		dir = dir.all_before('/')
 	}
 	else {
-		// Add .v files from the directory being compied
+		// Add .v files from the directory being compiled
 		files := v.v_files_from_dir(dir)
 		for file in files {
 			user_files << file
@@ -579,6 +608,7 @@ fn (v mut V) add_v_files_to_compile() {
 			module_path = '$ModPath/vlib/$mod_p'
 		}
 */
+		if mod == 'builtin' { continue } // builtin files were already added
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			if !(file in v.files) {
@@ -666,7 +696,7 @@ fn new_v(args[]string) &V {
 	//if args.contains('-lib') {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
-		// v -lib ~/v/os => os.o
+		// v build module ~/v/os => os.o
 		//mod = os.dir(dir)
 		mod = if dir.contains(os.PathSeparator) {
 			dir.all_after(os.PathSeparator)
@@ -741,8 +771,11 @@ fn new_v(args[]string) &V {
 		case 'netbsd': _os = .netbsd
 		case 'dragonfly': _os = .dragonfly
 		case 'msvc': _os = .msvc
+		case 'js': _os = .js
 		}
 	}
+	//println('OS=$_os')
+	builtin := 'builtin.v'
 	builtins := [
 	'array.v',
 	'string.v',
@@ -752,6 +785,7 @@ fn new_v(args[]string) &V {
 	'map.v',
 	'option.v',
 	]
+	//println(builtins)
 	// Location of all vlib files
 	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
@@ -768,13 +802,16 @@ fn new_v(args[]string) &V {
 	//if !out_name.contains('builtin.o') {
 		for builtin in builtins {
 			mut f := '$vroot/vlib/builtin/$builtin'
+			__ := 1
+			$if js {
+				f = '$vroot/vlib/builtin/js/$builtin'
+			}
 			// In default mode we use precompiled vlib.o, point to .vh files with signatures
 			if build_mode == .default_mode || build_mode == .build_module {
 				//f = '$TmpPath/vlib/builtin/${builtin}h'
 			}
 			files << f
 		}
-	//}
 
 	mut cflags := ''
 	for ci, cv in args {

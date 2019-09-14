@@ -129,6 +129,7 @@ fn (t Type) str() string {
 
 const (
 	CReserved = [
+		'delete',
 		'exit',
 		'unix',
 		//'print',
@@ -141,32 +142,21 @@ const (
 
 		// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 		'auto',
-		'break',
-		'case',
 		'char',
-		'const',
-		'continue',
 		'default',
 		'do',
 		'double',
-		'else',
-		'enum',
 		'extern',
 		'float',
-		'for',
-		'goto',
-		'if',
 		'inline',
 		'int',
 		'long',
 		'register',
 		'restrict',
-		'return',
 		'short',
 		'signed',
 		'sizeof',
 		'static',
-		'struct',
 		'switch',
 		'typedef',
 		'union',
@@ -461,7 +451,6 @@ fn (table &Table) type_has_method(typ &Type, name string) bool {
 
 // TODO use `?Fn`
 fn (table &Table) find_method(typ &Type, name string) Fn {
-	// println('TYPE HAS METHOD $name')
 	// method := typ.find_method(name)
 	t := table.typesmap[typ.name]
 	method := t.find_method(name)
@@ -638,38 +627,6 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 	return true
 }
 
-fn type_default(typ string) string {
-	if typ.starts_with('array_') {
-		return 'new_array(0, 1, sizeof( ${typ.right(6)} ))'
-	}
-	// Always set pointers to 0
-	if typ.ends_with('*') {
-		return '0'
-	}
-	// User struct defined in another module.
-	if typ.contains('__') {
-		return '{0}'
-	}
-	// Default values for other types are not needed because of mandatory initialization
-	switch typ {
-	case 'bool': return '0'
-	case 'string': return 'tos((byte *)"", 0)'
-	case 'i8': return '0'
-	case 'i16': return '0'
-	case 'i64': return '0'
-	case 'u16': return '0'
-	case 'u32': return '0'
-	case 'u64': return '0'
-	case 'byte': return '0'
-	case 'int': return '0'
-	case 'rune': return '0'
-	case 'f32': return '0.0'
-	case 'f64': return '0.0'
-	case 'byteptr': return '0'
-	case 'voidptr': return '0'
-	}
-	return '{0}'
-}
 
 fn (table &Table) is_interface(name string) bool {
 	if !(name in table.typesmap) {
@@ -698,41 +655,6 @@ fn (t &Table) find_const(name string) Var {
 		}
 	}
 	return Var{}
-}
-
-fn (table mut Table) cgen_name(f &Fn) string {
-	mut name := f.name
-	if f.is_method {
-		name = '${f.receiver_typ}_$f.name'
-		name = name.replace(' ', '')
-		name = name.replace('*', '')
-		name = name.replace('+', 'plus')
-		name = name.replace('-', 'minus')
-	}
-	// Avoid name conflicts (with things like abs(), print() etc).
-	// Generate b_abs(), b_print()
-	// TODO duplicate functionality
-	if f.mod == 'builtin' && f.name in CReserved {
-		return 'v_$name'
-	}
-	// Obfuscate but skip certain names
-	// TODO ugly, fix
-	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.mod != 'builtin' && !f.is_c &&
-	f.mod != 'darwin' && f.mod != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
-	f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'json' &&
-	!name.ends_with('_str') && !name.contains('contains') {
-		mut idx := table.obf_ids[name]
-		// No such function yet, register it
-		if idx == 0 {
-			table.fn_cnt++
-			table.obf_ids[name] = table.fn_cnt
-			idx = table.fn_cnt
-		}
-		old := name
-		name = 'f_$idx'
-		println('$old ==> $name')
-	}
-	return name
 }
 
 // ('s', 'string') => 'string s'
