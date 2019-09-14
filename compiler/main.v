@@ -98,6 +98,7 @@ mut:
 						 // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
 	ccompiler  string // the name of the used C compiler
 	building_v bool
+	autofree   bool
 }
 
 fn main() {
@@ -803,6 +804,7 @@ fn new_v(args[]string) &V {
 		show_c_cmd: '-show_c_cmd' in args
 		translated: 'translated' in args
 		is_run: 'run' in args
+		autofree: 'autofree' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags

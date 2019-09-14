@@ -1067,9 +1067,8 @@ fn (p mut Parser) close_scope() {
 			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
-		// Clean up memory, only do this for V compiler for now
-		//if p.os != .windows {
-		if p.pref.building_v && v.is_alloc && !p.pref.is_test {
+		// Clean up memory, only do this if -autofree was passed for now
+		if p.pref.autofree && v.is_alloc && !p.pref.is_test {
 			mut free_fn := 'free'
 			if v.typ.starts_with('array_') {
 				free_fn = 'v_array_free'
@@ -1092,7 +1091,6 @@ fn (p mut Parser) close_scope() {
 			} else {
 				p.genln('$free_fn($v.name); // close_scope free')
 			}
-		//}
 		}
 	}
 	if p.cur_fn.defer_text.last() != '' {
