@@ -87,7 +87,7 @@ pub fn new_context(cfg Cfg) &GG {
 		shader.set_mat4('projection', projection)
 	}
 	else {
-		// TODO move to function (allow volt functions to return arrrays without allocations)
+		// TODO move to function (allow volt functions to return arrays without allocations)
 		// i := glm.identity3()
 		shader.set_mat4('projection', glm.identity())
 	}
@@ -200,7 +200,7 @@ pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	// wrong order
 	// // ctx.draw_triangle(x, y, x + w, y, x + w, y + h, c)
 	// // ctx.draw_triangle(x, y, x, y + h, x + w, y + h, c)
-	// good order. counter clock wise
+	// good order. counter clockwise
 	// ctx.draw_triangle(x, y, x, y + h, x + w, y + h, c)
 	// ctx.draw_triangle(x, y, x + w, y + h, x + w, y, c)
 	ctx.draw_rect2(x, y, w, h, c)
