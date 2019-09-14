@@ -31,6 +31,9 @@ fn (v V) get_os_cflags() []CFlag {
 fn (cf &CFlag) format() string {
 	mut value := cf.value
 	// convert to absolute path
+	if cf.name == '-l' && value.len>0 {
+		return '${cf.name}${value}'.trim_space()
+	}
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
 		value = '"'+os.realpath(value)+'"'
 	}
