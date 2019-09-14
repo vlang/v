@@ -1068,7 +1068,7 @@ fn (p mut Parser) close_scope() {
 			break
 		}
 		// Clean up memory, only do this for V compiler for now
-		$if !windows {
+		if p.os != .windows {
 		if p.pref.building_v && v.is_alloc && !p.pref.is_test {
 			mut free_fn := 'free'
 			if v.typ.starts_with('array_') {
