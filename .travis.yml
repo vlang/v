@@ -20,7 +20,7 @@ matrix:
       language: sh
       filter_secrets: false
     - os: osx
-      osx_image: xcode10.2
+      osx_image: xcode10.3
       addons:
         homebrew:
           packages:
