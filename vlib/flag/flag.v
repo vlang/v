@@ -3,7 +3,7 @@
 //
 // - parsing flags like '--flag' or '--stuff=things' or '--things stuff'
 // - handles bool, int, float and string args
-// - is able to pring usage
+// - is able to print usage
 // - handled unknown arguments as error 
 // 
 // Usage example:
