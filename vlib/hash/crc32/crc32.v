@@ -50,7 +50,7 @@ pub fn(c &Crc32) checksum(b []byte) u32 {
 }
 
 // pass the polinomial to use
-pub fn new(poly int) *Crc32 {
+pub fn new(poly int) &Crc32 {
 	mut c := &Crc32{}
 	c.generate_table(poly)
 	return c
