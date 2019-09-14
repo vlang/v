@@ -46,7 +46,7 @@ pub fn (app App) post() {
 
 `$vweb.html()` compiles an HTML template into V during compilation, and embeds the resulting code in current action.
 
-That means that the template automatically has access to that action's entire environemnt.
+That means that the template automatically has access to that action's entire environment.
 
 
 ### Deploying vweb apps
