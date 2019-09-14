@@ -23,7 +23,7 @@ mut:
   c_cc [12]int //NCCS == 12. Cant use the defined value here
 }
 
-// Used to collect the screen informations
+// Used to collect the screen information
 struct winsize {
   ws_row u16
   ws_col u16
