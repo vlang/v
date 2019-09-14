@@ -1,3 +1,4 @@
+# Note: make is supposed to run once during installation, not for compile V.
 CC ?= cc
 
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -13,7 +14,9 @@ all:
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 ifdef WIN32
 	$(CC) -std=gnu11 -DUNICODE -D_UNICODE -w -o v0.exe vc/v_win.c
+	# `./v0.exe -o v.exe compiler` is still needed on Windows.
 	./v0.exe -o v.exe compiler
+	# v.c is regenerated after every commit, it is no longer needed to run `v -o v compiler`
 else
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
 endif
