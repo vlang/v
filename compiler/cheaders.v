@@ -40,6 +40,10 @@ CommonCHeaders = '
 
 
 #define EMPTY_STRUCT_DECLARATION
+#ifdef _MSC_VER
+#define EMPTY_STRUCT_DECLARATION int:0
+#endif
+
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
