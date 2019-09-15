@@ -19,9 +19,11 @@ matrix:
     - os: windows
       language: bash
       filter_secrets: false
+      name: "windows_gcc"
     - os: windows
-      language: c
+      language: bash
       filter_secrets: false
+      name: "windows_msvc"
     - os: osx
       osx_image: xcode10.3
       addons:
@@ -40,7 +42,10 @@ script:
       export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/opt/openssl/lib/
     fi
   - |
+    set 
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
+      ### show ALL environment variables in the instance
+      set
       set -e
       git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
       echo "Just running ./make.bat to produce v.exe"
