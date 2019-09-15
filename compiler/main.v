@@ -264,9 +264,9 @@ fn (v mut V) compile() {
 		// `/usr/bin/ld: multiple definition of 'total_m'`
 		// TODO
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
-		if v.pref.is_test {
+		//if v.pref.is_test {
 			cgen.genln('int g_test_ok = 1; ')
-		}
+		//}
 		if 'json' in v.table.imports {
 			cgen.genln('
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
