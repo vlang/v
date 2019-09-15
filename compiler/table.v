@@ -881,8 +881,7 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
-	is_main_fn := name.starts_with('main__')
-	n1 := if is_main_fn { name.right(6) } else { name }
+	n1 := if name.starts_with('main__') { name.right(6) } else { name }
 	for _, f in table.fns {
 		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
 		if !(f.mod in ['', 'main', 'builtin']) {
