@@ -856,11 +856,11 @@ fn (t &Type) contains_field_type(typ string) bool {
 fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
-	min_match := 0.8 // for dice coefficient between 0.0 - 1.0
+	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_misspelled_fn(name_orig, min_match)
+	mut n := table.find_misspelled_fn(name, fit, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
@@ -878,16 +878,27 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 }
 
 // find function with closest name to `name`
-fn (table &Table) find_misspelled_fn(name string, min_match f32) string {
+fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
+	is_main_fn := name.starts_with('main__')
+	n1 := if is_main_fn { name.right(6) } else { name }
 	for _, f in table.fns {
-		n := '${f.mod}.$f.name'
-		if !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
-		p := strings.dice_coefficient(name, n)
+		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
+		if !(f.mod in ['', 'main', 'builtin']) {
+			mut mod_imported := false
+			for _, m in fit.imports {
+				if f.mod == m {
+					mod_imported = true
+					break
+				}
+			}
+			if !mod_imported { continue }
+		}
+		p := strings.dice_coefficient(n1, f.name)
 		if p > closest {
 			closest = p
-			closest_fn = n
+			closest_fn = f.name
 		}
 	}
 	return if closest >= min_match { closest_fn } else { '' }
@@ -899,7 +910,7 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 	mut closest_mod := ''
 	for alias, mod in fit.imports {
 		n := '${fit.module_name}.$alias'
-		if !name.starts_with(fit.module_name) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
+		if !name.starts_with(fit.module_name) || (n.len - name.len > 2 || name.len - n.len > 2) { continue }
 		p := strings.dice_coefficient(name, n)
 		if p > closest {
 			closest = p

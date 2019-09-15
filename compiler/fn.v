@@ -1015,12 +1015,12 @@ fn (f &Fn) find_misspelled_local_var(name string, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_var := ''
 	for var in f.local_vars {
-		n := '${f.mod}.$var.name'
-		if var.name == '' || !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
-		p := strings.dice_coefficient(name, n)
+		n := name.all_after('.')
+		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
+		p := strings.dice_coefficient(var.name, n)
 		if p > closest {
 			closest = p
-			closest_var = n
+			closest_var = var.name
 		}
 	}
 	return if closest >= min_match { closest_var } else { '' }
