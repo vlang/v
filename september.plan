@@ -23,7 +23,7 @@
 - declarative ui with hot reload (similar to swiftui)
 - "building a simple blog with vweb" tutorial + youtube video
 - webassembly backend (via emscripten)
-- javascript backend
++ javascript backend
 - new playground with a v compiler running in the browser
 + o(log n) type lookup
 - remove all compiler memory leaks

@@ -31,7 +31,7 @@
 - A bug with struct ordering was fixed, now structs can be declared in any order.
 - V modules can now be built with `v build module`.
 - `@FILE, @LINE, @FN, @COLUMN` for debugging.
-- JavaScript backend! (big project, WIP until Sep 13)
+- JavaScript backend!
 
 
 
