@@ -15,7 +15,7 @@ ifdef WIN32
 	$(CC) -std=gnu11 -DUNICODE -D_UNICODE -w -o v0.exe vc/v_win.c
 	./v0.exe -o v.exe compiler
 else
-	$(CC) -std=gnu11 -w -o v vc/v.c -lm
+	$(CC) -std=gnu11 -o v vc/v.c -lm
 endif
 	rm -rf vc/
 	@echo "V has been successfully built"

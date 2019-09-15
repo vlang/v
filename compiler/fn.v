@@ -746,14 +746,17 @@ fn (p mut Parser) fn_args(f mut Fn) {
 
 // foo *(1, 2, 3, mut bar)*
 fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
-	// p.gen('(')
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
-	// if f.name.starts_with('c_') {
 	p.check(.lpar)
 	if f.is_c {
 		for p.tok != .rpar {
-			p.bool_expression()
+			ph := p.cgen.add_placeholder()
+			typ := p.bool_expression()
+			// Cast V byteptr to C char* (byte is unsigned in V, that led to C warnings)
+			if typ == 'byte*' {
+				p.cgen.set_placeholder(ph, '(char*)')
+			}	
 			if p.tok == .comma {
 				p.gen(', ')
 				p.check(.comma)

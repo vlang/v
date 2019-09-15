@@ -39,7 +39,7 @@ pub fn ls(path string) []string {
 		if isnil(ent) {
 			break
 		}
-		name := tos_clone(ent.d_name)
+		name := tos_clone(byteptr(ent.d_name))
 		if name != '.' && name != '..' && name != '' {
 			res << name
 		}

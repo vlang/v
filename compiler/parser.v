@@ -2052,7 +2052,6 @@ fn (p mut Parser) expression() string {
 		println('expression() pass=$p.pass tok=')
 		p.print_tok()
 	}
-	p.cgen('/* expr start*/')
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
 	is_str := typ=='string'
@@ -2123,10 +2122,14 @@ fn (p mut Parser) expression() string {
 			typ = p.dot(typ, ph)
 		}
 	}
-	// + - |
-	for p.tok == .plus || p.tok == .minus || p.tok == .pipe || p.tok == .amp || p.tok == .xor {
+	// + - | ^
+	for p.tok == .plus || p.tok == .minus || p.tok == .pipe || p.tok == .amp ||
+		 p.tok == .xor {
 		// for p.tok in [.plus, .minus, .pipe, .amp, .xor] {
 		tok_op := p.tok
+		if typ == 'bool' {
+			p.error('operator ${p.tok.str()} not defined on bool ')
+		}	
 		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
@@ -3171,6 +3174,7 @@ fn (p mut Parser) switch_statement() {
 	}
 	p.cgen.start_tmp()
 	typ := p.bool_expression()
+	is_str := typ == 'string'
 	expr := p.cgen.end_tmp()
 	p.check(.lcbr)
 	mut i := 0
@@ -3198,13 +3202,16 @@ fn (p mut Parser) switch_statement() {
 		mut got_comma := false
 		for {
 			if got_comma {
-				p.gen(') ||  ')
+				if is_str {
+					p.gen(')')
+				}	
+				p.gen(' || ')
 			}
 			if typ == 'string' {
 				p.gen('string_eq($expr, ')
 			}
 			else {
-				p.gen('($expr == ')
+				p.gen('$expr == ')
 			}
 			if p.tok == .key_case || p.tok == .key_default {
 				p.check(p.tok)
@@ -3222,7 +3229,10 @@ fn (p mut Parser) switch_statement() {
 		else {
 			p.check(.arrow)
 		}
-		p.gen(')) {')
+		if is_str {
+			p.gen(')')
+		}
+		p.gen(') {')
 		p.genln('/* case */')
 		p.statements()
 		all_cases_return = all_cases_return && p.returns
