@@ -38,12 +38,8 @@ CommonCHeaders = '
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
-
 #define EMPTY_STRUCT_DECLARATION
-#ifdef _MSC_VER
-#define EMPTY_STRUCT_DECLARATION int:0
-#endif
-
+#define EMPTY_STRUCT_INITIALIZATION
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
@@ -65,9 +61,11 @@ CommonCHeaders = '
 
 // MSVC cannot parse some things properly
 #undef EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_DECLARATION void *____dummy_variable
-
+#undef EMPTY_STRUCT_INITIALIZATION
 #undef OPTION_CAST
+
+#define EMPTY_STRUCT_DECLARATION int ____dummy_variable
+#define EMPTY_STRUCT_INITIALIZATION 0
 #define OPTION_CAST(x)
 #endif
 
