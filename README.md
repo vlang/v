@@ -138,6 +138,22 @@ git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [pat
 
 glfw dependency will be removed soon.
 
+## JavaScript backend
+
+```
+fn main() {
+        for i := 0; i < 3; i++ {
+                println('Hello from V.js')
+        }
+}
+```
+
+```bash
+v -o hi.js hi.v && node hi.js
+Hello from V.js
+Hello from V.js
+Hello from V.js
+```
 
 ## Troubleshooting:
 
