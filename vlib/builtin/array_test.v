@@ -46,7 +46,7 @@ fn test_short() {
 }
 
 fn test_large() {
-	mut a := [0]
+	mut a := [0].repeat(0)
 	for i := 0; i < 10000; i++ {
 		a << i
 	}

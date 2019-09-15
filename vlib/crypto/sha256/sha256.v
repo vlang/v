@@ -193,7 +193,7 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data)
 	sum := d.checksum()
-	mut sum224 := [byte(0)].repeat(SHA224)
+	mut sum224 := [byte(0)].repeat(Size224)
 	copy(sum224, sum.left(Size224))
 	return sum224
 }
