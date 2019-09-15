@@ -423,3 +423,36 @@ fn test_quote() {
 	a := `'`
 	assert a.str() == '\''
 }
+
+fn test_ustring_comparisons() {
+	assert ('h€llô !'.ustring() == 'h€llô !'.ustring()) == true
+	assert ('h€llô !'.ustring() == 'h€llô'.ustring()) == false
+	assert ('h€llô !'.ustring() == 'h€llo !'.ustring()) == false
+
+	assert ('h€llô !'.ustring() != 'h€llô !'.ustring()) == false
+	assert ('h€llô !'.ustring() != 'h€llô'.ustring()) == true
+
+	assert ('h€llô'.ustring() < 'h€llô!'.ustring()) == true
+	assert ('h€llô'.ustring() < 'h€llo'.ustring()) == false
+	assert ('h€llo'.ustring() < 'h€llô'.ustring()) == true
+
+	assert ('h€llô'.ustring() <= 'h€llô!'.ustring()) == true
+	assert ('h€llô'.ustring() <= 'h€llô'.ustring()) == true
+	assert ('h€llô!'.ustring() <= 'h€llô'.ustring()) == false
+
+	assert ('h€llô!'.ustring() > 'h€llô'.ustring()) == true
+	assert ('h€llô'.ustring() > 'h€llô'.ustring()) == false
+
+	assert ('h€llô!'.ustring() >= 'h€llô'.ustring()) == true
+	assert ('h€llô'.ustring() >= 'h€llô'.ustring()) == true
+	assert ('h€llô'.ustring() >= 'h€llô!'.ustring()) == false
+}
+
+fn test_ustring_count() {
+	a := 'h€llôﷰ h€llô ﷰ'.ustring()
+	assert (a.count('l'.ustring())) == 4
+	assert (a.count('€'.ustring())) == 2
+	assert (a.count('h€llô'.ustring())) == 2
+	assert (a.count('ﷰ'.ustring())) == 2
+	assert (a.count('a'.ustring())) == 0
+}

@@ -1243,6 +1243,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.mark_var_changed(v)
 	}
 	is_str := v.typ == 'string'
+	is_ustr := v.typ == 'ustring'
 	switch tok {
 	case Token.assign:
 		if !is_map && !p.is_empty_c_struct_init {
@@ -1251,6 +1252,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	case Token.plus_assign:
 		if is_str && !p.is_js {
 			p.gen('= string_add($v.name, ')// TODO can't do `foo.bar += '!'`
+		}
+		else if is_ustr {
+			p.gen('= ustring_add($v.name, ')
 		}
 		else {
 			p.gen(' += ')
@@ -1279,7 +1283,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.scanner.line_nr--
 		p.error('cannot use type `$expr_type` as type `$p.assigned_type` in assignment')
 	}
-	if is_str && tok == .plus_assign && !p.is_js {
+	if (is_str || is_ustr) && tok == .plus_assign && !p.is_js {
 		p.gen(')')
 	}
 	// p.assigned_var = ''
@@ -1372,11 +1376,12 @@ fn (p mut Parser) bterm() string {
 	mut typ := p.expression()
 	p.expected_type = typ
 	is_str := typ=='string'  &&   !p.is_sql
+	is_ustr := typ=='ustring'
 	tok := p.tok
 	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
 	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
 		p.fgen(' ${p.tok.str()} ')
-		if is_str && !p.is_js {
+		if (is_str || is_ustr) && !p.is_js {
 			p.gen(',')
 		}
 		else if p.is_sql && tok == .eq {
@@ -1418,6 +1423,17 @@ fn (p mut Parser) bterm() string {
 			 Token.gt => p.cgen.set_placeholder(ph, 'string_gt(')
 			 Token.lt => p.cgen.set_placeholder(ph, 'string_lt(')
 */
+		}
+		if is_ustr {
+			p.gen(')')
+			switch tok {
+			case Token.eq: p.cgen.set_placeholder(ph, 'ustring_eq(')
+			case Token.ne: p.cgen.set_placeholder(ph, 'ustring_ne(')
+			case Token.le: p.cgen.set_placeholder(ph, 'ustring_le(')
+			case Token.ge: p.cgen.set_placeholder(ph, 'ustring_ge(')
+			case Token.gt: p.cgen.set_placeholder(ph, 'ustring_gt(')
+			case Token.lt: p.cgen.set_placeholder(ph, 'ustring_lt(')
+			}
 		}
 	}
 	return typ
@@ -2056,6 +2072,7 @@ fn (p mut Parser) expression() string {
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
 	is_str := typ=='string'
+	is_ustr := typ=='ustring'
 	// `a << b` ==> `array_push(&a, b)`
 	if p.tok == .left_shift {
 		if typ.contains('array_') {
@@ -2133,6 +2150,10 @@ fn (p mut Parser) expression() string {
 			p.cgen.set_placeholder(ph, 'string_add(')
 			p.gen(',')
 		}
+		else if is_ustr && tok_op == .plus {
+			p.cgen.set_placeholder(ph, 'ustring_add(')
+			p.gen(',')
+		}
 		// 3 + 4
 		else if is_num || p.is_js {
 			if typ == 'void*' {
@@ -2152,11 +2173,11 @@ fn (p mut Parser) expression() string {
 			}
 		}
 		p.check_types(p.term(), typ)
-		if is_str && tok_op == .plus && !p.is_js {
+		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
 			p.gen(')')
 		}
 		// Make sure operators are used with correct types
-		if !p.pref.translated && !is_str && !is_num {
+		if !p.pref.translated && !is_str && !is_ustr && !is_num {
 			T := p.table.find_type(typ)
 			if tok_op == .plus {
 				if T.has_method('+') {
