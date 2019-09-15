@@ -908,10 +908,10 @@ fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_matc
 fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_mod := ''
+	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
-		n := '${fit.module_name}.$alias'
-		if !name.starts_with(fit.module_name) || (n.len - name.len > 2 || name.len - n.len > 2) { continue }
-		p := strings.dice_coefficient(name, n)
+		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+		p := strings.dice_coefficient(n1, alias)
 		if p > closest {
 			closest = p
 			closest_mod = '$alias ($mod)'
