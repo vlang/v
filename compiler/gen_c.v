@@ -329,6 +329,9 @@ fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
 		}
 		else {
 			p.gen('($typ) {')
+			if t.fields.len == 1 && t.fields[0].name == '' && t.fields[0].typ.starts_with('EMPTY_STRUCT_DECLARATION') {
+				p.gen(' 0 /* v empty struct initialization */ ')
+			}
 		}
 	}
 	else {
