@@ -4,8 +4,8 @@
 
 module builtin
 
-pub fn utf8_char_len(b byte) int { 
-	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1 
+pub fn utf8_char_len(b byte) int {
+	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
 // Convert utf32 to utf8
@@ -157,12 +157,11 @@ fn utf8_len(c byte) int {
 pub fn utf8_getchar() int {
   c := int(C.getchar())
   len := utf8_len(~c)
-
   if c < 0 {
     return 0
-  } else if (len == 0) {
+  } else if len == 0 {
     return c
-  } else if (len == 1) {
+  } else if len == 1 {
     return -1
   } else {
     mut uc := int(c & ((1 << (7 - len)) - 1))
@@ -171,7 +170,7 @@ pub fn utf8_getchar() int {
       if c2 != -1 && (c2 >> 6) == 2 {
         uc <<= 6
         uc |= int((c2 & 63))
-      }  else if (c2 == -1) {
+      }  else if c2 == -1 {
         return 0
       } else {
         return -1

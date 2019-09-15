@@ -9,20 +9,20 @@ module builtin
 
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, strlen(buf))
+	C.sprintf(*char(buf), '%f', d)
+	return tos(buf, vstrlen(buf))
 }
 
 pub fn (d f32) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, strlen(buf))
+	C.sprintf(*char(buf), '%f', d)
+	return tos(buf, vstrlen(buf))
 }
 
 pub fn ptr_str(ptr voidptr) string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%p', ptr)
-	return tos(buf, strlen(buf))
+	C.sprintf(*char(buf), '%p', ptr)
+	return tos(buf, vstrlen(buf))
 }
 
 // compare floats using C epsilon
@@ -160,7 +160,7 @@ pub fn (n int) hex() string {
 		11
 	}
 	hex := malloc(len) // 0x + \n
-	count := int(C.sprintf(hex, '0x%x', n))
+	count := int(C.sprintf(*char(hex), '0x%x', n))
 	return tos(hex, count)
 }
 
@@ -171,7 +171,7 @@ pub fn (n i64) hex() string {
 		19
 	}
 	hex := malloc(len)
-	count := int(C.sprintf(hex, '0x%x', n))
+	count := int(C.sprintf(*char(hex), '0x%llx', n))
 	return tos(hex, count)
 }
 

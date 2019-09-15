@@ -45,7 +45,7 @@ fn new_scanner(file_path string) &Scanner {
 		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
 			// skip three BOM bytes
 			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], C.strlen(c_text) - offset_from_begin)
+			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
 		}
 	}
 

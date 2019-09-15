@@ -22,6 +22,10 @@ pub:
 // For C strings only
 fn C.strlen(s byteptr) int
 
+pub fn vstrlen(s byteptr) int {
+	return C.strlen(*char(s))
+}	
+
 fn todo() { }
 
 // Converts a C string to a V string.
@@ -50,7 +54,7 @@ fn tos2(s byteptr) string {
 	if isnil(s) {
 		panic('tos2: nil string')
 	}
-	len := C.strlen(s)
+	len := vstrlen(s)
 	res := tos(s, len)
 	return res
 }

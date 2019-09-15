@@ -22,7 +22,7 @@ pub fn get_error_msg(code int) string {
 	if _ptr_text == 0 {
 		return ''
 	}
-	return tos(_ptr_text, C.strlen(_ptr_text))
+	return tos(_ptr_text, vstrlen(_ptr_text))
 }
 
 pub fn ls(path string) []string {

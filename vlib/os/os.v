@@ -138,7 +138,7 @@ pub fn read_lines(path string) []string {
 
 	mut buf_index := 0
 	for C.fgets(buf + buf_index, buf_len - buf_index, fp) != 0 {
-		len := C.strlen(buf)
+		len := vstrlen(buf)
 		if len == buf_len - 1 && buf[len - 1] != 10 {
 			buf_len *= 2
 			buf = C.realloc(buf, buf_len)
@@ -307,7 +307,7 @@ pub fn exec(cmd string) ?Result {
 	buf := [1000]byte
 	mut res := ''
 	for C.fgets(buf, 1000, f) != 0 {
-		res += tos(buf, strlen(buf))
+		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
 	exit_code := pclose(f)
@@ -709,7 +709,7 @@ pub fn realpath(fpath string) string {
 		res = int( C.realpath( fpath.str, fullpath ) )
 	}
 	if res != 0 {
-		return string(fullpath, strlen(fullpath))
+		return string(fullpath, vstrlen(fullpath))
 	}
 	return fpath
 }
