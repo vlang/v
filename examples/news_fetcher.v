@@ -58,7 +58,7 @@ fn main() {
 	}
 	if ids.len > 10 {
 		// ids = ids[:10]
-		mut tmp := [0 ; 10]
+		mut tmp := [0].repeat(10)
 		for i := 0 ; i < 10 ; i++ {
 			tmp[i] = ids[i]
 		}

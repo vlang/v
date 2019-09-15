@@ -76,8 +76,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.h = [u64(0); 8]
-	d.x = [byte(0); Chunk]
+	d.h = [u64(0)].repeat(8)
+	d.x = [byte(0)].repeat(Chunk)
 	switch d.function {
 	case crypto.Hash.SHA384:
 		d.h[0] = Init0_384
@@ -206,7 +206,7 @@ fn (d mut Digest) sum(b_in mut []byte) []byte {
 fn (d mut Digest) checksum() []byte {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
-	mut tmp := [byte(0); 128]
+	mut tmp := [byte(0)].repeat(128)
 	tmp[0] = 0x80
 
 	if int(len)%128 < 112 {
@@ -226,7 +226,7 @@ fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-	mut digest := [byte(0); Size]
+	mut digest := [byte(0)].repeat(Size)
 	
 	binary.big_endian_put_u64(mut digest, d.h[0])
 	binary.big_endian_put_u64(mut digest.right(8), d.h[1])
@@ -254,7 +254,7 @@ pub fn sum384(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA384)
 	d.write(data)
 	sum := d.checksum()
-	mut sum384 := [byte(0); Size384]
+	mut sum384 := [byte(0)].repeat(Size384)
 	copy(sum384, sum.left(Size384))
 	return sum384
 }
@@ -264,7 +264,7 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_224)
 	d.write(data)
 	sum := d.checksum()
-	mut sum224 := [byte(0); Size224]
+	mut sum224 := [byte(0)].repeat(Size224)
 	copy(sum224, sum.left(Size224))
 	return sum224
 }
@@ -274,7 +274,7 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_256)
 	d.write(data)
 	sum := d.checksum()
-	mut sum256 := [byte(0); Size256]
+	mut sum256 := [byte(0)].repeat(Size256)
 	copy(sum256, sum.left(Size256))
 	return sum256
 }

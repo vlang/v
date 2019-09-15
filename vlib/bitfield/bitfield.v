@@ -481,7 +481,7 @@ pub fn (instance mut BitField) resize(new_size int) {
 	new_bitnslots := bitnslots(new_size)
 	old_size := instance.size
 	old_bitnslots := bitnslots(old_size)
-	mut field := [u32(0); new_bitnslots]
+	mut field := [u32(0)].repeat(new_bitnslots)
 	for i := 0; i < old_bitnslots && i < new_bitnslots; i++ {
 		field[i] = instance.field[i]
 	}
