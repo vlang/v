@@ -3171,6 +3171,7 @@ fn (p mut Parser) switch_statement() {
 	}
 	p.cgen.start_tmp()
 	typ := p.bool_expression()
+	is_str := typ == 'string'
 	expr := p.cgen.end_tmp()
 	p.check(.lcbr)
 	mut i := 0
@@ -3198,13 +3199,16 @@ fn (p mut Parser) switch_statement() {
 		mut got_comma := false
 		for {
 			if got_comma {
-				p.gen(') ||  ')
+				if is_str {
+					p.gen(')')
+				}	
+				p.gen(' || ')
 			}
 			if typ == 'string' {
 				p.gen('string_eq($expr, ')
 			}
 			else {
-				p.gen('($expr == ')
+				p.gen('$expr == ')
 			}
 			if p.tok == .key_case || p.tok == .key_default {
 				p.check(p.tok)
@@ -3222,7 +3226,10 @@ fn (p mut Parser) switch_statement() {
 		else {
 			p.check(.arrow)
 		}
-		p.gen(')) {')
+		if is_str {
+			p.gen(')')
+		}
+		p.gen(') {')
 		p.genln('/* case */')
 		p.statements()
 		all_cases_return = all_cases_return && p.returns

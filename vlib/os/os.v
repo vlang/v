@@ -77,12 +77,7 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
-	mut fp := &C.FILE{!}
-	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
-	} $else {
-		fp = C.fopen(path.str, mode.str)
-	}
+	mut fp := vfopen(path, mode)
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
@@ -103,7 +98,7 @@ pub fn file_size(path string) int {
 	$if windows {
 		C._wstat(path.to_wide(), &s)
 	} $else {
-		C.stat(path.str, &s)
+		C.stat(*char(path.str), &s)
 	}
 	return s.st_size
 }
@@ -112,9 +107,17 @@ pub fn mv(old, new string) {
 	$if windows {
 		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
-		C.rename(old.str, new.str)
+		C.rename(*char(old.str), *char(new.str))
 	}
 }
+
+fn vfopen(path, mode string) *C.FILE {
+	$if windows {
+		return C._wfopen(path.to_wide(), mode.to_wide())
+	} $else {
+		return C.fopen(*char(path.str), *char(mode.str))
+	}
+}	
 
 // read_lines reads the file in `path` into an array of lines.
 // TODO return `?[]string` TODO implement `?[]` support
@@ -124,12 +127,7 @@ pub fn read_lines(path string) []string {
 	mut buf := malloc(buf_len)
 
 	mode := 'rb'
-	mut fp := &C.FILE{!}
-	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
-	} $else {
-		fp = C.fopen(path.str, mode.str)
-	}
+	mut fp := vfopen(path, mode)
 	if isnil(fp) {
 		// TODO
 		// return error('failed to open file "$path"')
@@ -183,7 +181,7 @@ pub fn open(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(cpath, 'rb')
+			cfile: C.fopen(*char(cpath), 'rb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -204,7 +202,7 @@ pub fn create(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(cpath, 'wb')
+			cfile: C.fopen(*char(cpath), 'wb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -224,7 +222,7 @@ pub fn open_append(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(cpath, 'ab')
+			cfile: C.fopen(*char(cpath), 'ab')
 		}
 	}
 	if isnil(file.cfile) {
@@ -306,7 +304,7 @@ pub fn exec(cmd string) ?Result {
 	}
 	buf := [1000]byte
 	mut res := ''
-	for C.fgets(buf, 1000, f) != 0 {
+	for C.fgets(*char(buf), 1000, f) != 0 {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
@@ -342,7 +340,7 @@ pub fn getenv(key string) string {
 		}
 		return string_from_wide(s)
 	} $else {
-		s := C.getenv(key.str)
+		s := *byte(C.getenv(key.str))
 		if isnil(s) {
 			return ''
 		}
