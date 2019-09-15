@@ -154,13 +154,6 @@ fn main() {
 		vfmt(args)
 		return
 	}
-	// v get sqlite
-	if 'get' in args {
-		// Create the modules directory if it's not there.
-		if !os.file_exists(ModPath)  {
-			os.mkdir(ModPath)
-		}
-	}
 	// Construct the V object from command line arguments
 	mut v := new_v(args)
 	if v.pref.is_verbose {
