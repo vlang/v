@@ -53,12 +53,12 @@ script:
       if [[ "${TRAVIS_JOB_NAME}" == "windows_gcc" ]]; then
         echo "Building V with GCC"
         export VFLAGS="-os windows"
-        make.bat -gcc
+        ./make.bat -gcc
       fi
       if [[ "${TRAVIS_JOB_NAME}" == "windows_msvc" ]]; then
         echo "Building V with MSVC"
         export VFLAGS="-os msvc"
-        make.bat -msvc
+        ./make.bat -msvc
       fi
       ./v.exe -o v2.exe compiler
       ./v2.exe -o v3.exe compiler
