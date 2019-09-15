@@ -36,7 +36,7 @@ fn test_struct_levels() {
 	assert c.nums[0] == 4 
 	c.b.a.val = 34 
 	assert c.b.a.val == 34 
-	c.b.a.nums = [0;0] 
+	c.b.a.nums = [0]
 	c.b.a.nums << 0 
 	c.b.a.nums << 2 
 	assert c.b.a.nums.len == 2 

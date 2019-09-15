@@ -46,7 +46,7 @@ fn test_short() {
 }
 
 fn test_large() {
-	mut a := [0; 0]
+	mut a := [0]
 	for i := 0; i < 10000; i++ {
 		a << i
 	}
@@ -88,28 +88,28 @@ fn test_strings() {
 }
 
 fn test_repeat() {
-	a := [0; 5]
+	a := [0].repeat(5)
 	assert a.len == 5
 	assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
 
-	b := [7; 3]
+	b := [7].repeat(3)
 	assert b.len == 3
 	assert b[0] == 7 && b[1] == 7 && b[2] == 7
 	{
-		mut aa := [1.1 ; 10]
+		mut aa := [1.1].repeat(10)
 		// FIXME: assert aa[0] == 1.1 will fail, need fix
 		assert aa[0] == f32(1.1)
 		assert aa[5] == f32(1.1)
 		assert aa[9] == f32(1.1)
 	}
 	{
-		mut aa := [f32(1.1) ; 10]
+		mut aa := [f32(1.1)].repeat(10)
 		assert aa[0] == f32(1.1)
 		assert aa[5] == f32(1.1)
 		assert aa[9] == f32(1.1)
 	}
 	{
-		aa := [f64(1.1) ; 10]
+		aa := [f64(1.1)].repeat(10)
 		assert aa[0] == f64(1.1)
 		assert aa[5] == f64(1.1)
 		assert aa[9] == f64(1.1)
