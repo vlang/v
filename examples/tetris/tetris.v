@@ -338,7 +338,7 @@ fn (g mut Game) draw_scene() {
 
 fn parse_binary_tetro(t_ int) []Block {
 	mut t := t_
-	res := [Block{} ; 4]
+	res := [Block{}].repeat(4)
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
 	for i := 0; i <= 3; i++ {

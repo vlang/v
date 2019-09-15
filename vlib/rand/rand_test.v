@@ -1,7 +1,7 @@
 import rand
 
 fn gen_randoms(seed int) []int {
-	mut randoms := [0; 20]
+	mut randoms := [0].repeat(20)
 	rand.seed(seed)
 	for i in 0..20 {
 		randoms[i] = rand.next(100)

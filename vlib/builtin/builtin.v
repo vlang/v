@@ -17,17 +17,19 @@ fn on_panic(f fn (int) int) {
 	// TODO
 }
 
+fn C.backtrace(voidptr, int) int
+
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if mac {
 		buffer := [100]byteptr
-		nr_ptrs := C.backtrace(buffer, 100)
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
+		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
+		C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
 		return
 	}
 	$if linux {
 		if C.backtrace_symbols_fd != 0 {
 			buffer := [100]byteptr
-			nr_ptrs := C.backtrace(buffer, 100)
+			nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 			C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
 			return
 		}else{

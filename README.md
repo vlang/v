@@ -114,12 +114,7 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
-
-```
-v install glfw
-```
+In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
@@ -135,10 +130,30 @@ sudo pacman -S glfw-x11 freetype2
 
 Fedora:
 sudo dnf install glfw glfw-devel freetype-devel
+
+Windows:
+git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
+
 ```
 
 glfw dependency will be removed soon.
 
+## JavaScript backend
+
+```
+fn main() {
+        for i := 0; i < 3; i++ {
+                println('Hello from V.js')
+        }
+}
+```
+
+```bash
+v -o hi.js hi.v && node hi.js
+Hello from V.js
+Hello from V.js
+Hello from V.js
+```
 
 ## Troubleshooting:
 

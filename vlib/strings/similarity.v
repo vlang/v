@@ -1,9 +1,11 @@
 module strings
 
+#-js
+
 // use levenshtein distance algorithm to calculate
 // the distance between between two strings (lower is closer)
 pub fn levenshtein_distance(a, b string) int {
-	mut f := [int(0); b.len+1]
+	mut f := [0].repeat2(b.len+1)
 	for ca in a {
 		mut j := 1
 		mut fj1 := f[0]
@@ -38,22 +40,21 @@ pub fn dice_coefficient(s1, s2 string) f32 {
 	if s1.len == 0 || s2.len == 0 { return 0.0 }
 	if s1 == s2 { return 1.0 }
 	if s1.len < 2 || s2.len < 2 { return 0.0 }
+	a := if s1.len > s2.len { s1 } else { s2 }
+	b := if a == s1 { s2 } else { s1 }
 	mut first_bigrams := map[string]int
-	for i := 0; i < s1.len-1; i++ {
-		a := s1[i]
-		b := s1[i+1]
-		bigram := (a+b).str()
+	for i := 0; i < a.len-1; i++ {
+		bigram := a.substr(i, i+2)
 		first_bigrams[bigram] = if bigram in first_bigrams { first_bigrams[bigram]+1 } else { 1 }
 	}
 	mut intersection_size := 0
-	for i := 0; i < s2.len-1; i++ {
-		a := s2[i]
-		b := s2[i+1]
-		bigram := (a+b).str()
-		count := if bigram in first_bigrams { first_bigrams[bigram] } else { 0 }
+	for i := 0; i < b.len-1; i++ {
+		bigram := b.substr(i, i+2)
+		count := if bigram in first_bigrams { first_bigrams[bigram] } else { 0 } 
 		if count > 0 {
+			first_bigrams[bigram] = count - 1
 			intersection_size++
 		}
 	}
-	return (2.0 * intersection_size) / (f32(s1.len) + f32(s2.len) - 2)
+	return (2.0 * intersection_size) / (f32(a.len) + f32(b.len) - 2)
 }

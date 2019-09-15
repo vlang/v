@@ -35,9 +35,9 @@ fn (v mut V) generate_hotcode_reloading_declarations() {
 	}
 }
 
-fn (v mut V) generate_hotcode_reloading_code() {
+fn (v mut V) generate_hot_reload_code() {
   mut cgen := v.cgen
-     
+
 	// Hot code reloading
 	if v.pref.is_live {
 		file := v.dir

@@ -103,7 +103,7 @@ fn (p mut Parser) is_sig() bool {
 fn new_fn(mod string, is_public bool) Fn {
 	return Fn {
 		mod: mod
-		local_vars: [Var{}		; MaxLocalVars]
+		local_vars: [Var{}].repeat2(MaxLocalVars)
 		is_public: is_public
 	}
 }
@@ -286,7 +286,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Generate `User_register()` instead of `register()`
 	// Internally it's still stored as "register" in type User
-	mut fn_name_cgen := p.table.cgen_name(f)
+	mut fn_name_cgen := p.table.fn_gen_name(f)
 	// Start generation of the function body
 	skip_main_in_test := f.name == 'main' && p.pref.is_test
 	if !is_c && !is_live && !is_sig && !is_fn_header && !skip_main_in_test {
@@ -312,7 +312,7 @@ fn (p mut Parser) fn_decl() {
 			}
 		}
 		else {
-			p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
+			p.gen_fn_decl(f, typ, str_args)
 		}
 	}
 	if is_fn_header {
@@ -451,9 +451,9 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
-		cgen_name := p.table.cgen_name(f)
+		cgen_name := p.table.fn_gen_name(f)
 		if f.defer_text.len > f.scope_level {
-		f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
+			f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 		}
 	}
 	if is_generic {
@@ -544,16 +544,16 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	mut did_gen_something := false
 	for i, arg in f.args {
 		arg_struct += '$arg.typ $arg.name ;'// Add another field (arg) to the tmp struct definition
-		str_args += 'arg->$arg.name'
+		str_args += 'arg $dot_ptr $arg.name'
 		if i == 0 && f.is_method {
-			p.genln('$tmp_struct -> $arg.name =  $receiver_var ;')
+			p.genln('$tmp_struct $dot_ptr $arg.name =  $receiver_var ;')
 			if i < f.args.len - 1 {
 				str_args += ','
 			}
 			continue
 		}
 		// Set the struct values (args)
-		p.genln('$tmp_struct -> $arg.name =  ')
+		p.genln('$tmp_struct $dot_ptr $arg.name =  ')
 		p.expression()
 		p.genln(';')
 		if i < f.args.len - 1 {
@@ -570,7 +570,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 
 	arg_struct += '} $arg_struct_name ;'
 	// Also register the wrapper, so we can use the original function without modifying it
-	fn_name = p.table.cgen_name(f)
+	fn_name = p.table.fn_gen_name(f)
 	wrapper_name := '${fn_name}_thread_wrapper'
 	wrapper_text := 'void* $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args );  }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
@@ -595,6 +595,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	p.check(.rpar)
 }
 
+// p.tok == fn_name
 fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
 		if f.name == 'contains' {
@@ -610,7 +611,7 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 			p.error('use `malloc()` instead of `C.malloc()`')
 		}
 	}
-	mut cgen_name := p.table.cgen_name(f)
+	mut cgen_name := p.table.fn_gen_name(f)
 	p.next()
 	mut gen_type := ''
 	if p.tok == .lt {
@@ -644,32 +645,16 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
 	else {
-		mut method_call := '${cgen_name}('
 		receiver := f.args.first()
+		//println('r=$receiver.typ RT=$receiver_type')
 		if receiver.is_mut && !p.expr_var.is_mut {
-			println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
+			//println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
 			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 		}
 		if !p.expr_var.is_changed {
 			p.mark_var_changed(p.expr_var)
 		}
-		// if receiver is key_mut or a ref (&), generate & for the first arg
-		if receiver.ref || (receiver.is_mut && !receiver_type.contains('*')) {
-			method_call += '& /* ? */'
-		}
-		// generate deref (TODO copy pasta later in fn_call_args)
-		if !receiver.is_mut && receiver_type.contains('*') {
-			method_call += '*'
-		}
-		mut cast := ''
-		// Method returns (void*) => cast it to int, string, user etc
-		// number := *(int*)numbers.first()
-		if f.typ == 'void*' {
-			// array_int => int
-			cast = receiver_type.all_after('_')
-			cast = '*($cast*) '
-		}
-		p.cgen.set_placeholder(method_ph, '$cast $method_call')
+		p.gen_method_call(receiver_type, f.typ, cgen_name, receiver, method_ph)
 	}
 	// foo<Bar>()
 	p.fn_call_args(mut f)
@@ -761,17 +746,20 @@ fn (p mut Parser) fn_args(f mut Fn) {
 
 // foo *(1, 2, 3, mut bar)*
 fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
-	// p.gen('(')
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
-	// if f.name.starts_with('c_') {
 	p.check(.lpar)
 	if f.is_c {
 		for p.tok != .rpar {
 			//If the parameter calls a function or method that is not C,
 			//the value of p.calling_c is changed
 			p.calling_c = true
-			p.bool_expression()
+			ph := p.cgen.add_placeholder()
+			typ := p.bool_expression()
+			// Cast V byteptr to C char* (byte is unsigned in V, that led to C warnings)
+			if typ == 'byte*' {
+				p.cgen.set_placeholder(ph, '(char*)')
+			}	
 			if p.tok == .comma {
 				p.gen(', ')
 				p.check(.comma)
@@ -781,7 +769,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		return f
 	}
 	// add debug information to panic when -debug arg is passed
-	if p.v.pref.is_debug && f.name == 'panic' {
+	if p.v.pref.is_debug && f.name == 'panic' && !p.is_js {
 		mod_name := p.mod.replace('_dot_', '.')
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
 		file_path := p.file_path.replace('\\', '\\\\') // escape \
@@ -795,7 +783,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// println('$i) arg=$arg.name')
 		// Skip receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
-			if f.args.len > 1 {
+			if f.args.len > 1 && !p.is_js {
 				p.gen(',')
 			}
 			continue
@@ -839,16 +827,19 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		p.expected_type = arg.typ
 		typ := p.bool_expression()
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
-		// function calls. `println(777)` => `printf("%d\n", 777)`
+		// function calls.
+		// `println(777)` => `printf("%d\n", 777)`
 		// (If we don't check for void, then V will compile `println(func())`)
 		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'void' {
 			T := p.table.find_type(typ)
 			$if !windows {
+			$if !js {
 				fmt := p.typ_to_fmt(typ, 0)
 				if fmt != '' {
 					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '\\n", '))
 					continue
 				}
+			}
 			}
 			if typ.ends_with('*') {
 				p.cgen.set_placeholder(ph, 'ptr_str(')
@@ -856,6 +847,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 				continue
 			}
 			// Make sure this type has a `str()` method
+			$if !js {
 			if !T.has_method('str') {
 				// Arrays have automatic `str()` methods
 				if T.name.starts_with('array_') {
@@ -882,6 +874,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			}
 			p.cgen.set_placeholder(ph, '${typ}_str(')
 			p.gen(')')
+			}
 			continue
 		}
 		got := typ
@@ -1025,12 +1018,12 @@ fn (f &Fn) find_misspelled_local_var(name string, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_var := ''
 	for var in f.local_vars {
-		n := '${f.mod}.$var.name'
-		if var.name == '' || !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
-		p := strings.dice_coefficient(name, n)
+		n := name.all_after('.')
+		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
+		p := strings.dice_coefficient(var.name, n)
 		if p > closest {
 			closest = p
-			closest_var = n
+			closest_var = var.name
 		}
 	}
 	return if closest >= min_match { closest_var } else { '' }

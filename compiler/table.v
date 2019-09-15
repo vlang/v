@@ -129,6 +129,7 @@ fn (t Type) str() string {
 
 const (
 	CReserved = [
+		'delete',
 		'exit',
 		'unix',
 		//'print',
@@ -141,32 +142,21 @@ const (
 
 		// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
 		'auto',
-		'break',
-		'case',
 		'char',
-		'const',
-		'continue',
 		'default',
 		'do',
 		'double',
-		'else',
-		'enum',
 		'extern',
 		'float',
-		'for',
-		'goto',
-		'if',
 		'inline',
 		'int',
 		'long',
 		'register',
 		'restrict',
-		'return',
 		'short',
 		'signed',
 		'sizeof',
 		'static',
-		'struct',
 		'switch',
 		'typedef',
 		'union',
@@ -220,6 +210,7 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
 	t.register_type_with_parent('byte', 'int')
+	t.register_type_with_parent('char', 'int') // for C functinos only, to avoid warnings
 	t.register_type_with_parent('i16', 'int')
 	t.register_type_with_parent('u16', 'u32')
 	t.register_type_with_parent('u32', 'int')
@@ -461,7 +452,6 @@ fn (table &Table) type_has_method(typ &Type, name string) bool {
 
 // TODO use `?Fn`
 fn (table &Table) find_method(typ &Type, name string) Fn {
-	// println('TYPE HAS METHOD $name')
 	// method := typ.find_method(name)
 	t := table.typesmap[typ.name]
 	method := t.find_method(name)
@@ -638,38 +628,6 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 	return true
 }
 
-fn type_default(typ string) string {
-	if typ.starts_with('array_') {
-		return 'new_array(0, 1, sizeof( ${typ.right(6)} ))'
-	}
-	// Always set pointers to 0
-	if typ.ends_with('*') {
-		return '0'
-	}
-	// User struct defined in another module.
-	if typ.contains('__') {
-		return '{0}'
-	}
-	// Default values for other types are not needed because of mandatory initialization
-	switch typ {
-	case 'bool': return '0'
-	case 'string': return 'tos((byte *)"", 0)'
-	case 'i8': return '0'
-	case 'i16': return '0'
-	case 'i64': return '0'
-	case 'u16': return '0'
-	case 'u32': return '0'
-	case 'u64': return '0'
-	case 'byte': return '0'
-	case 'int': return '0'
-	case 'rune': return '0'
-	case 'f32': return '0.0'
-	case 'f64': return '0.0'
-	case 'byteptr': return '0'
-	case 'voidptr': return '0'
-	}
-	return '{0}'
-}
 
 fn (table &Table) is_interface(name string) bool {
 	if !(name in table.typesmap) {
@@ -698,41 +656,6 @@ fn (t &Table) find_const(name string) Var {
 		}
 	}
 	return Var{}
-}
-
-fn (table mut Table) cgen_name(f &Fn) string {
-	mut name := f.name
-	if f.is_method {
-		name = '${f.receiver_typ}_$f.name'
-		name = name.replace(' ', '')
-		name = name.replace('*', '')
-		name = name.replace('+', 'plus')
-		name = name.replace('-', 'minus')
-	}
-	// Avoid name conflicts (with things like abs(), print() etc).
-	// Generate b_abs(), b_print()
-	// TODO duplicate functionality
-	if f.mod == 'builtin' && f.name in CReserved {
-		return 'v_$name'
-	}
-	// Obfuscate but skip certain names
-	// TODO ugly, fix
-	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.mod != 'builtin' && !f.is_c &&
-	f.mod != 'darwin' && f.mod != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
-	f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'json' &&
-	!name.ends_with('_str') && !name.contains('contains') {
-		mut idx := table.obf_ids[name]
-		// No such function yet, register it
-		if idx == 0 {
-			table.fn_cnt++
-			table.obf_ids[name] = table.fn_cnt
-			idx = table.fn_cnt
-		}
-		old := name
-		name = 'f_$idx'
-		println('$old ==> $name')
-	}
-	return name
 }
 
 // ('s', 'string') => 'string s'
@@ -933,11 +856,11 @@ fn (t &Type) contains_field_type(typ string) bool {
 fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
-	min_match := 0.8 // for dice coefficient between 0.0 - 1.0
+	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_misspelled_fn(name_orig, min_match)
+	mut n := table.find_misspelled_fn(name, fit, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
@@ -955,16 +878,26 @@ fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTabl
 }
 
 // find function with closest name to `name`
-fn (table &Table) find_misspelled_fn(name string, min_match f32) string {
+fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
+	n1 := if name.starts_with('main__') { name.right(6) } else { name }
 	for _, f in table.fns {
-		n := '${f.mod}.$f.name'
-		if !name.starts_with(f.mod) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
-		p := strings.dice_coefficient(name, n)
+		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
+		if !(f.mod in ['', 'main', 'builtin']) {
+			mut mod_imported := false
+			for _, m in fit.imports {
+				if f.mod == m {
+					mod_imported = true
+					break
+				}
+			}
+			if !mod_imported { continue }
+		}
+		p := strings.dice_coefficient(n1, f.name)
 		if p > closest {
 			closest = p
-			closest_fn = n
+			closest_fn = f.name
 		}
 	}
 	return if closest >= min_match { closest_fn } else { '' }
@@ -974,10 +907,10 @@ fn (table &Table) find_misspelled_fn(name string, min_match f32) string {
 fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_mod := ''
+	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
-		n := '${fit.module_name}.$alias'
-		if !name.starts_with(fit.module_name) || (n.len - name.len > 3 || name.len - n.len > 3) { continue }
-		p := strings.dice_coefficient(name, n)
+		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+		p := strings.dice_coefficient(n1, alias)
 		if p > closest {
 			closest = p
 			closest_mod = '$alias ($mod)'

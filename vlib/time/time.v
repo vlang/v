@@ -38,6 +38,8 @@ struct C.tm {
 	tm_sec  int
 }
 
+fn C.time(int) i64
+
 pub fn now() Time {
 	t := C.time(0)
 	mut now := &C.tm{!}

@@ -247,14 +247,14 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 
-	mut buf := [byte(0); 64]
+	mut buf := [byte(0)].repeat(64)
 	mut t := []byte
 
 	required := s.len + 2*hex_count
 	if required <= buf.len {
 		t = buf.left(required)
 	} else {
-		t = [byte(0); required]
+		t = [byte(0)].repeat(required)
 	}
 
 	if hex_count == 0 {

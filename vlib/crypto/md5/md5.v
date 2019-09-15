@@ -38,8 +38,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.s = [u32(0); 4]
-	d.x = [byte(0); BlockSize]
+	d.s = [u32(0)].repeat(4)
+	d.x = [byte(0)].repeat(BlockSize)
     d.s[0] = u32(Init0)
 	d.s[1] = u32(Init1)
 	d.s[2] = u32(Init2)
@@ -116,7 +116,7 @@ pub fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0); Size]
+    digest := [byte(0)].repeat(Size)
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
