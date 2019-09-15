@@ -9,7 +9,7 @@ const (
    same name as the input .v file: `v foo.v` produces `./foo` on *nix systems,
   `foo.exe` on Windows.
 
-   You can use -o to specify a different output executable's name.
+   You can use -o to specify a different output executable\'s name.
 
    When given a directory, all .v files contained in it will be compiled as
    part of a single main module.
