@@ -2052,7 +2052,6 @@ fn (p mut Parser) expression() string {
 		println('expression() pass=$p.pass tok=')
 		p.print_tok()
 	}
-	p.cgen('/* expr start*/')
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
 	is_str := typ=='string'
@@ -2123,10 +2122,14 @@ fn (p mut Parser) expression() string {
 			typ = p.dot(typ, ph)
 		}
 	}
-	// + - |
-	for p.tok == .plus || p.tok == .minus || p.tok == .pipe || p.tok == .amp || p.tok == .xor {
+	// + - | ^
+	for p.tok == .plus || p.tok == .minus || p.tok == .pipe || p.tok == .amp ||
+		 p.tok == .xor {
 		// for p.tok in [.plus, .minus, .pipe, .amp, .xor] {
 		tok_op := p.tok
+		if typ == 'bool' {
+			p.error('operator ${p.tok.str()} not defined on bool ')
+		}	
 		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {

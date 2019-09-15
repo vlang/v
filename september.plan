@@ -16,7 +16,7 @@
 - v ui for linux
 - doom.v
 + tcc backend
-- fix all c warnings with -pedantic
++ fix all c warnings with -pedantic
 + set up pvs
 - ui/orm demo: a simple gui client for postgres/mysql/sqlite
 - ui demo: calculator

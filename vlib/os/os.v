@@ -457,12 +457,12 @@ pub fn filename(path string) string {
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
     str := get_raw_line()
-		$if windows {
-			return str.trim_right('\r\n')
-		}
-		$else {
-			return str.trim_right('\n')
-		}
+	$if windows {
+		return str.trim_right('\r\n')
+	}
+	$else {
+		return str.trim_right('\n')
+	}
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
@@ -476,16 +476,13 @@ pub fn get_raw_line() string {
         return ''
     }
 	$else {
-		//u64 is used because C.getline needs a size_t as second argument
-		//Otherwise, it would cause a valgrind warning and may be dangerous
-		//Malloc takes an int as argument so a cast has to be made
-		max := u64(256)
-		buf := malloc(int(max))
+		max := size_t(256)
+		buf := *char(malloc(int(max)))
 		nr_chars := C.getline(&buf, &max, stdin)
 		if nr_chars == 0 {
 			return ''
 		}
-		return string(buf, nr_chars)
+		return string(byteptr(buf), nr_chars)
 	}
 }
 
@@ -590,6 +587,9 @@ fn on_segfault(f voidptr) {
 		C.sigaction(C.SIGSEGV, &sa, 0)
 	}
 }
+
+fn C.getpid() int
+fn C.proc_pidpath (int, byteptr, int) int
 
 pub fn executable() string {
 	$if linux {
@@ -737,6 +737,10 @@ pub fn walk_ext(path, ext string) []string {
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
 }
+
+
+fn C.fork() int
+fn C.wait() int
 
 pub fn fork() int {
 	$if !windows {
