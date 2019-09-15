@@ -893,7 +893,11 @@ fn update_v() {
 	}
 	println(s.output)
 	$if windows {
-		os.mv('$vroot/v.exe', '$vroot/v_old.exe')
+		v_backup_file := '$vroot/v_old.exe'
+		if os.file_exists( v_backup_file ) {
+			os.rm( v_backup_file )
+		}
+		os.mv('$vroot/v.exe', v_backup_file)
 		s2 := os.exec('$vroot/make.bat') or {
 			cerror(err)
 			return
