@@ -56,7 +56,6 @@ script:
         ./make.bat -gcc
       fi
       if [[ "${TRAVIS_JOB_NAME}" == "windows_msvc" ]]; then
-        exit
         echo "Building V with MSVC"
         export VFLAGS="-os msvc"
         ./make.bat -msvc
