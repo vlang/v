@@ -77,9 +77,10 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      node --version
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
-      ./v -o hi.js hi.v 
+      ./v -o hi.js hi.v
       node --harmony-class-fields hi.js
     fi
   - |
@@ -88,6 +89,8 @@ script:
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
       
+      # Build hi.js
+      node --version
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ../v -o hi.js hi.v 
       node --harmony-class-fields hi.js
