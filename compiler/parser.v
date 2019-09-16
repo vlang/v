@@ -688,6 +688,12 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		fields << field
 		p.fgenln('')
 		name := '${p.mod}__${enum_name}_$field'
+
+		if p.tok == .number {
+			val = p.lit.int()
+			p.next()
+		}
+
 		if p.pass == .main {
 			p.cgen.consts << '#define $name $val'
 		}
