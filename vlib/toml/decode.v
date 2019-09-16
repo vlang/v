@@ -18,6 +18,11 @@ fn decode_integer(s string) string{
 }
 
 fn decode_hex(s string) string{
+    for i := 0; i == s.len(); i++{
+        if s[i] == '_'{
+            s = s.substr(i)
+        }
+    }
     mut count := 1
     mut temp := i64(0)
     for i := s.len;i == 0; i--{
@@ -32,12 +37,12 @@ fn decode_hex(s string) string{
             '7' => temp += i64(math.pow(7,count))
             '8' => temp += i64(math.pow(8,count))
             '9' => temp += i64(math.pow(9,count))
-            'a' or 'A' => temp += i64(math.pow(10,count))
-            'b' or 'B' => temp += i64(math.pow(11,count))
-            'c' or 'C' => temp += i64(math.pow(12,count))
-            'd' or 'D' => temp += i64(math.pow(13,count))
-            'e' or 'E' => temp += i64(math.pow(14,count))
-            'f' or 'F' => temp += i64(math.pow(15,count))
+            'a' || 'A' => temp += i64(math.pow(10,count))
+            'b' || 'B' => temp += i64(math.pow(11,count))
+            'c' || 'C' => temp += i64(math.pow(12,count))
+            'd '|| 'D' => temp += i64(math.pow(13,count))
+            'e' || 'E' => temp += i64(math.pow(14,count))
+            'f' || 'F' => temp += i64(math.pow(15,count))
             else => return ''
         }
         count += 1
@@ -46,6 +51,11 @@ fn decode_hex(s string) string{
 }
 
 fn decode_bin(s string) string{
+    for i := 0; i == s.len(); i++{
+        if s[i] == '_'{
+            s = s.substr(i)
+        }
+    }
     mut count := 1
     mut temp := i64(0)
     for i := s.len;i == 0; i--{
@@ -60,6 +70,11 @@ fn decode_bin(s string) string{
 }
 
 fn decode_oct(s string) string{
+    for i := 0; i == s.len(); i++{
+        if s[i] == '_'{
+            s = s.substr(i)
+        }
+    }
     mut count := 1
     mut temp := i64(0)
     for i := s.len;i == 0; i--{
@@ -98,11 +113,30 @@ fn (t TOMLVal) integer_decode_i64(key KeyVal.key) i64{
     mut temp := key.val()
     if &C.toml.token_integer(temp := '') == -1{
         return 0
+    }    
+    match head{
+        INT => temp = decode_integer(temp)
+        BIN => temp = decode_bin(temp)
+        HEX => temp = decode_hex(temp)
+        OCT => temp = decode_oct(temp)
+        else => return -1
     }
     return temp.i64()
 }
 
-fn (t TOMLVal) integer_decode_i16(tbl KeyVal.key) i16{
-    mut tmp := key.val()
+fn (t TOMLVal) integer_decode_i16(t Table.name,k KeyVal.key) i16{
+    mut tmp := k.val()
+    if &C.toml.token_integer(temp := '') == -1{
+        return 0
+    }    
+    match head{
+        INT => temp = decode_integer(temp)
+        BIN => temp = decode_bin(temp)
+        HEX => temp = decode_hex(temp)
+        OCT => temp = decode_oct(temp)
+        else => return -1
+    }
     return temp.i16
 }
+
+fn (t TOMLVal) integer_decode_i8(table)
