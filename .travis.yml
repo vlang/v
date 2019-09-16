@@ -80,13 +80,13 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-      alias node=/snap/node/current/bin/node
+      alias node="snap run node"
       echo "Nodejs version:"
       node --version      
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
-      node --harmony-class-fields hi.js
+      node hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
@@ -95,7 +95,7 @@ script:
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v 
-      node --harmony-class-fields hi.js
+      node hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
