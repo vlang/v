@@ -82,5 +82,5 @@ script:
 
       # Build hi.js
       echo "println('Hello from V.js')" > hi.js
-      v -o hi.js hi.v && node hi.js
+      ./v -o hi.js hi.v && node hi.js
     fi
