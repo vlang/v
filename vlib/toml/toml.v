@@ -27,7 +27,7 @@ fn compile(){
 
 fn C.yyparse()
 
-fn load(){
+fn load_parse(){
 	&C.yyparse()
 }
 
@@ -39,6 +39,7 @@ struct KeyVal{
 fn toml_parse(){
 	// compile yacc(bison)/lex(flex) file.
 	compile()
+	load_parse()
 }
 
 struct Array{
@@ -47,6 +48,7 @@ struct Array{
 		val 			[]TOMLVal
 		kind 			int
 		value_type 		int
+		arr 			[]Array
 }
 
 struct Table{
@@ -65,6 +67,7 @@ struct TOMLVal{
 		binary_int  string
 		octical_int string
 		hexical_int string
+		str 		string
 		arr			Array
 }
 
