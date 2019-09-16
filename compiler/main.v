@@ -258,8 +258,9 @@ fn (v mut V) compile() {
 		// TODO
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		//if v.pref.is_test {
+		$if !js {
 			cgen.genln('int g_test_ok = 1; ')
-		//}
+		}
 		if 'json' in v.table.imports {
 			cgen.genln('
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
@@ -474,7 +475,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac {
 			continue
 		}
-		if file.ends_with('_js.v') {
+		if file.ends_with('_js.v') && v.os != .js {
 			continue
 		}
 		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {

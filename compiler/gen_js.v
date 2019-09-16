@@ -46,6 +46,11 @@ fn types_to_c(types []Type, table &Table) string {
 			sb.write(field.name)
 			sb.writeln('; // $field.typ')
 		}
+		sb.writeln('
+constructor(obj) {
+    obj && Object.assign(this, obj);
+}
+')
 		sb.writeln('}\n')
 	}
 	return sb.str()
