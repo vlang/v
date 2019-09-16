@@ -15,7 +15,7 @@ const (
 
 // bison
 #include "toml.tab.h"
-// yacc
+// Original yacc
 #include "y.tab.h"
 
 fn compile(){
@@ -31,15 +31,26 @@ fn load_parse(){
 	&C.yyparse()
 }
 
+struct TOML{
+	pub mut:
+		tbl 	[]Table
+		arr		[]Array
+}
+
+fn (t TOML) toml_parse(){
+	// compile yacc(bison)/lex(flex) file.
+	compile()
+	// Parse Start.
+	load_parse()
+}
+
 struct KeyVal{
 	key string
 	val TOMLVal
 }
 
-fn toml_parse(){
-	// compile yacc(bison)/lex(flex) file.
-	compile()
-	load_parse()
+fn (k KeyVal) key_name() string{
+
 }
 
 struct Array{
@@ -49,6 +60,7 @@ struct Array{
 		kind 			int
 		value_type 		int
 		arr 			[]Array
+		tbl				[]Table
 }
 
 struct Table{
@@ -57,18 +69,19 @@ struct Table{
 		key 		[]KeyVal
 		kind 		int
 		value_type 	int
-		table		[]Table
+		tbl			[]Table
 }
 
-// TOML's Valiable
-struct TOMLVal{
-	pub mut:
-		integer		string
-		binary_int  string
-		octical_int string
-		hexical_int string
-		str 		string
-		arr			Array
+// TOML's Value.
+union TOMLVal{
+	integer		string
+	binary_int  string
+	octical_int string
+	hexical_int string
+	str 		string
+	boolean 	bool
+	TimeStamp	TimeStamp
+	arr			Array
 }
 
 struct TimeStamp{
