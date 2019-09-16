@@ -29,18 +29,18 @@ const (
 )
 
 const (
-        MaxI8   = (1<<7) - 1
-        MinI8   = -1 << 7
-        MaxI16  = (1<<15) - 1
-        MinI16  = -1 << 15
-        MaxI32  = (1<<31) - 1
-        MinI32  = -1 << 31
+        MaxI8   = 127
+        MinI8   = -128
+        MaxI16  = 32767
+        MinI16  = -32768
+        MaxI32  = 2147483647
+        MinI32  = -2147483648
 //        MaxI64  = ((1<<63) - 1)
 //        MinI64  = (-(1 << 63) )
-        MaxU8  = (1<<8) - 1
-        MaxU16 = (1<<16) - 1
-        MaxU32 = (1<<32) - 1
-        MaxU64 = (1<<64) - 1
+        MaxU8  = 255
+        MaxU16 = 65535
+        MaxU32 = 4294967295
+        MaxU64 = 18446744073709551615
 )
 
 // Returns the absolute value.
@@ -103,7 +103,7 @@ pub fn exp(a f64) f64 {
 
 // digits returns an array of the digits of n in the given base.
 pub fn digits(_n, base int) []int {
-	mut n := _n 
+	mut n := _n
 	mut sign := 1
 	if n < 0 {
 		sign = -1
@@ -133,8 +133,8 @@ pub fn exp2(a f64) f64 {
 }
 
 // factorial calculates the factorial of the provided value.
-// TODO bring back once multiple value functions are implemented 
-/* 
+// TODO bring back once multiple value functions are implemented
+/*
 fn recursive_product( n int, current_number_ptr &int) int{
     mut m := n / 2
     if (m == 0){
@@ -175,7 +175,7 @@ pub fn factorial(n int) i64 {
     }
     return i64((r << shift))
 }
-*/ 
+*/
 
 // floor returns the nearest integer lower or equal of the provided value.
 pub fn floor(a f64) f64 {
@@ -194,8 +194,8 @@ pub fn gamma(a f64) f64 {
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
 pub fn gcd(a_, b_ i64) i64 {
-	mut a := a_ 
-	mut b := b_ 
+	mut a := a_
+	mut b := b_
 	if a < 0 {
 		a = -a
 	}

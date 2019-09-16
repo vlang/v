@@ -414,7 +414,7 @@ fn (p mut Parser) fn_decl() {
 		p.genln('init_consts();')
 		if 'os' in p.table.imports {
 			if f.name == 'main' {
-				p.genln('os__args = os__init_os_args(argc, argv);')
+				p.genln('os__args = os__init_os_args(argc, (byteptr*)argv);')
 			}
 			else if f.name == 'WinMain' {
 				p.genln('os__args = os__parse_windows_cmd_line(pCmdLine);')

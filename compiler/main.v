@@ -960,9 +960,9 @@ fn (v &V) test_v() {
 	//	println('$joined_args')
 	mut failed := false
 	test_files := os.walk_ext('.', '_test.v')
-  
+
 	println('Testing...')
-	mut tmark := benchmark.new_benchmark()  
+	mut tmark := benchmark.new_benchmark()
 	for dot_relative_file in test_files {		
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
@@ -1045,6 +1045,6 @@ pub fn cerror(s string) {
 fn vhash() string {
 	mut buf := [50]byte
 	buf[0] = 0
-	C.snprintf(buf, 50, '%s', C.V_COMMIT_HASH )
+	C.snprintf(*char(buf), 50, '%s', C.V_COMMIT_HASH )
 	return tos_clone(buf)
 }
