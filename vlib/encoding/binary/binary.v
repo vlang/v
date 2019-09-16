@@ -31,7 +31,7 @@ pub fn little_endian_put_u32(b mut []byte, v u32) {
 	b[3] = byte(v >> u32(24))
 }
 
-pub fn little_endian_u64(b mut []byte) u64 {
+pub fn little_endian_u64(b []byte) u64 {
 	_ := b[7] // bounds check
 	return u64(b[0]) | u64(u64(b[1])<<u64(8)) | u64(u64(b[2])<<u64(16)) | u64(u64(b[3])<<u64(24)) |
 		u64(u64(b[4])<<u64(32)) | u64(u64(b[5])<<u64(40)) | u64(u64(b[6])<<u64(48)) | u64(u64(b[7])<<u64(56))
@@ -61,7 +61,7 @@ pub fn big_endian_put_u16(b mut []byte, v u16) {
 	b[1] = byte(v)
 }
 
-pub fn big_endian_u32(b  []byte) u32 {
+pub fn big_endian_u32(b []byte) u32 {
 	_ := b[3] // bounds check
 	return u32(b[3]) | u32(u32(b[2])<<u32(8)) | u32(u32(b[1])<<u32(16)) | u32(u32(b[0])<<u32(24))
 }
