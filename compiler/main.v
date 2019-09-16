@@ -962,7 +962,6 @@ fn (v &V) test_v() {
   
 	println('Testing...')
 	mut tmark := benchmark.new_benchmark()  
-	tmark.verbose = v.pref.is_verbose
 	for dot_relative_file in test_files {		
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
@@ -994,7 +993,6 @@ fn (v &V) test_v() {
 	println('\nBuilding examples...')
 	examples := os.walk_ext('examples', '.v')
 	mut bmark := benchmark.new_benchmark()
-	bmark.verbose = v.pref.is_verbose
 	for relative_file in examples {
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('.v', '.tmp.c')

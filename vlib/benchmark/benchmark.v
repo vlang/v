@@ -44,10 +44,6 @@ pub fn new_benchmark() Benchmark{
 	}
 }
 
-pub fn now() i64 {
-	return time.ticks()
-}
-
 pub fn (b mut Benchmark) stop() {
 	b.bench_end_time = benchmark.now()
 }
@@ -89,3 +85,8 @@ fn (b mut Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {
 	}
 	return s
 }
+
+fn now() i64 {
+	return time.ticks()
+}
+
