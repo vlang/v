@@ -6,6 +6,10 @@ matrix:
       dist: xenial
       sudo: required
       addons:
+        snaps:
+          - name: node
+            channel: latest/edge
+            confinement: classic
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -17,7 +21,6 @@ matrix:
             - libglfw3-dev
             - libfreetype6-dev
             - libssl-dev
-            - nodejs
     - os: windows
       name: "windows_gcc"
       language: bash
@@ -77,7 +80,9 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-      node --version
+      alias node=/snap/node/current/bin/node
+      echo "Nodejs version:"
+      node --version      
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
@@ -85,13 +90,16 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      echo "Nodejs version:"
+      node --version      
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v 
+      node --harmony-class-fields hi.js
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       # Build Vid
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
-      
-      # Build hi.js
-      node --version
-      echo "fn main(){ println('Hello from V.js') }" > hi.v
-      ../v -o hi.js hi.v 
-      node --harmony-class-fields hi.js
     fi
