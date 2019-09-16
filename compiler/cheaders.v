@@ -40,6 +40,11 @@ CommonCHeaders = '
 
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
+#ifdef __TINYC__
+#undef EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_INITIALIZATION
+#endif
+
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
@@ -48,8 +53,6 @@ CommonCHeaders = '
 
 // must be included after <windows.h>
 #ifndef __TINYC__
-#undef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_INITIALIZATION
 #include <shellapi.h>
 #endif
 
