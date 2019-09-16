@@ -33,6 +33,7 @@ fn (v mut V) cc() {
 				ret := os.system('$vjs_path -o $v.out_name $v.dir')
 				if ret == 0 {
 					println('Done. Run it with `node $v.out_name`')
+					println('JS backend is at a very early stage.')
 				}	
 			}
 		}
