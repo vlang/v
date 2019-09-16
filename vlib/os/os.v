@@ -539,6 +539,9 @@ pub fn user_os() string {
 	$if msvc {
 		return 'windows'
 	}
+	$if android{
+		return 'android'
+	}
 	return 'unknown'
 }
 
