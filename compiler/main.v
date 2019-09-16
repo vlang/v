@@ -333,7 +333,6 @@ fn (v mut V) generate_main() {
 		cgen.genln('void init_consts() {
 #ifdef _WIN32
 #ifndef _BOOTSTRAP_NO_UNICODE_STREAM
-_setmode(_fileno(stdin), _O_U16TEXT);
 _setmode(_fileno(stdout), _O_U8TEXT);
 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
 // ENABLE_VIRTUAL_TERMINAL_PROCESSING
