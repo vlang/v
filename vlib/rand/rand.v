@@ -14,6 +14,13 @@ pub fn next(max int) int {
 
 fn C.rand() int
 
+/**
+ * rand_r - reentrant pseudo-random number generator
+ *
+ * @param seed byref reentrant seed, holding current state
+ *
+ * @return a value between 0 and C.RAND_MAX (inclusive)
+ */
 pub fn rand_r(seed &int) int {
 	mut rs := seed
 	ns := ( *rs * 1103515245 + 12345 )
