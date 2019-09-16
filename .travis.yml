@@ -94,7 +94,8 @@ script:
       node --version      
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
-      ./v -o hi.js hi.v 
+      ./v -o hi.js hi.v
+      ## the node on osx requires --harmony-class-fields for now
       node --harmony-class-fields hi.js
     fi
   - |
