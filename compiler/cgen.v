@@ -274,7 +274,6 @@ fn os_name_to_ifdef(name string) string {
 		case 'netbsd': return '__NetBSD__'
 		case 'dragonfly': return '__DragonFly__'
 		case 'msvc': return '_MSC_VER'
-		case 'android': return '__BIONIC__'
 		case 'js': return '_VJS'
 	}
 	cerror('bad os ifdef name "$name"')
