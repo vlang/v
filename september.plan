@@ -30,4 +30,5 @@
 - optimize the parser (reduce map lookups)
 - prebuilt binaries for all platforms
 - cache vlib (right now it's re-compiled every time)
+- fix interfaces
 
