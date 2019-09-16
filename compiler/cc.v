@@ -169,10 +169,8 @@ fn (v mut V) cc() {
 		}
 	}
 
-	if v.os == .js && ( v.out_name.ends_with('v2js') || v.out_name.ends_with('v2js.exe') ) {
-		if os.user_os() == 'linux' {
-			a << '-lm'
-		}
+	if v.os == .js && os.user_os() == 'linux' {
+		a << '-lm'
 	}
 	
 	if v.os == .windows {
