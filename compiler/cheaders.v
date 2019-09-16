@@ -43,6 +43,8 @@ CommonCHeaders = '
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
+#undef EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_INITIALIZATION 0
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -61,11 +63,9 @@ CommonCHeaders = '
 
 // MSVC cannot parse some things properly
 #undef EMPTY_STRUCT_DECLARATION
-#undef EMPTY_STRUCT_INITIALIZATION
 #undef OPTION_CAST
 
 #define EMPTY_STRUCT_DECLARATION int ____dummy_variable
-#define EMPTY_STRUCT_INITIALIZATION 0
 #define OPTION_CAST(x)
 #endif
 

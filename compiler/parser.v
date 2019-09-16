@@ -2835,8 +2835,8 @@ fn (p mut Parser) struct_init(typ string) string {
 				if i != t.fields.len - 1 {
 					p.gen(',')
 				}
+				did_gen_something = true
 			}
-			did_gen_something = true
 		}
 	}
 	// Point{3,4} syntax
@@ -2870,7 +2870,7 @@ fn (p mut Parser) struct_init(typ string) string {
 		did_gen_something = true
 	}
 	if !did_gen_something {
-		p.gen('0')
+		p.gen('EMPTY_STRUCT_INITIALIZATION')
 	}
 	p.gen('}')
 	if ptr && !p.is_js {
