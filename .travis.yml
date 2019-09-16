@@ -76,11 +76,11 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
-      # Build Vid
-      git clone https://github.com/vlang/vid
-      cd vid && ../v -debug -o vid .
-
       # Build hi.js
       echo "println('Hello from V.js')" > hi.js
       ./v -o hi.js hi.v && node hi.js
+      
+      # Build Vid
+      git clone https://github.com/vlang/vid
+      cd vid && ../v -debug -o vid .
     fi
