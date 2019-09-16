@@ -95,7 +95,7 @@ script:
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v 
-      node hi.js
+      node --harmony-class-fields hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
