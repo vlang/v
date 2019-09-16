@@ -752,6 +752,10 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	p.check(.lpar)
 	if f.is_c {
 		for p.tok != .rpar {
+			//C.func(var1, var2.method())
+			//If the parameter calls a function or method that is not C,
+			//the value of p.calling_c is changed
+			p.calling_c = true
 			ph := p.cgen.add_placeholder()
 			typ := p.bool_expression()
 			// Cast V byteptr to C char* (byte is unsigned in V, that led to C warnings)
