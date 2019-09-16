@@ -550,6 +550,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 			if i < f.args.len - 1 {
 				str_args += ','
 			}
+			did_gen_something = true
 			continue
 		}
 		// Set the struct values (args)
