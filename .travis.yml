@@ -17,6 +17,7 @@ matrix:
             - libglfw3-dev
             - libfreetype6-dev
             - libssl-dev
+            - nodejs
     - os: windows
       name: "windows_gcc"
       language: bash
@@ -73,6 +74,13 @@ script:
       make
       ./v -o v compiler
       ./v test v
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v 
+      node --harmony-class-fields hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
