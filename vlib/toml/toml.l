@@ -12,7 +12,7 @@ letter      [a-zA-Z]
 binary      [0-9a-fA-F]
 
 /* Example:1999-05-28T14:21:00.000000*/
-timestamp  
+timestamp  [[1-2][0-9]{1,3}][\-][0-1][0-9][\-][0-3][0-9][T][0-2][0-9][:][0-5][0-9][:][0-5][0-9][.][0-9]{0,6}
 
 %%
     "\""        return QUOTE;
@@ -36,6 +36,7 @@ timestamp
     integer     return INTEGER;
     binary      return BINARY;
     floating    return FLOAT;
+    timestamp   return TIMESTAMP;
 
     "\"[^\"]"* {
         if(yytext[yyleng-2] == '\\'){
@@ -50,7 +51,7 @@ timestamp
     }
 
     /*Multi Line String,.*/
-    "\"\"\"[^\"\"\"]"*{
+    "\"\"\"[\"\"\"]"*{
         if(yytext[yyleng-2] == '\\'){
             yymore();
         }
