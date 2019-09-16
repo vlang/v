@@ -6,8 +6,8 @@ module main
 
 import (
 	os
-	time
 	strings
+	benchmark
 )
 
 const (
@@ -132,10 +132,6 @@ fn main() {
 		create_symlink()
 		return
 	}
-	if args.join(' ').contains(' test v') {
-		test_v()
-		return
-	}
 	if 'install' in args {
 		install_v(args)
 		return
@@ -156,6 +152,10 @@ fn main() {
 	}
 	// Construct the V object from command line arguments
 	mut v := new_v(args)
+	if args.join(' ').contains(' test v') {
+		v.test_v()
+		return
+	}
 	if v.pref.is_verbose {
 		println(args)
 	}
@@ -823,7 +823,7 @@ fn new_v(args[]string) &V {
 		is_script: is_script
 		is_so: '-shared' in args
 		is_prod: '-prod' in args
-		is_verbose: '-verbose' in args
+		is_verbose: '-verbose' in args || '--verbose' in args
 		is_debuggable: '-g' in args
 		is_debug: '-debug' in args || '-g' in args
 		obfuscate: obfuscate
@@ -949,57 +949,77 @@ fn install_v(args[]string) {
 	}
 }
 
-fn test_v() {
+fn (v &V) test_v() {
 	args := env_vflags_and_os_args()
 	vexe := args[0]
 	// Emily: pass args from the invocation to the test
 	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
-	mut joined_args := env_vflags_and_os_args().right(1).join(' ')
+	mut joined_args := args.right(1).join(' ')
 	joined_args = joined_args.left(joined_args.last_index('test'))
-	println('$joined_args')
+	//	println('$joined_args')
 	mut failed := false
 	test_files := os.walk_ext('.', '_test.v')
-	for dot_relative_file in test_files {
+  
+	println('Testing...')
+	mut tmark := benchmark.new_benchmark()  
+	tmark.verbose = v.pref.is_verbose
+	for dot_relative_file in test_files {		
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
-		print(relative_file + ' ')
+		
 		mut cmd := '"$vexe" $joined_args -debug "$file"'
 		if os.user_os() == 'windows' { cmd = '"$cmd"' }
+		
+		tmark.step()
 		r := os.exec(cmd) or {
+			tmark.fail()
 			failed = true
-			println('FAIL')
+			println(tmark.step_message('$relative_file FAIL'))
 			continue
 		}
 		if r.exit_code != 0 {
-			println('FAIL `$file` (\n$r.output\n)')
 			failed = true
+			tmark.fail()
+			println(tmark.step_message('$relative_file FAIL \n`$file`\n (\n$r.output\n)'))
 		} else {
-			println('OK')
+			tmark.ok()
+			println(tmark.step_message('$relative_file OK'))
 		}
 		os.rm( tmpcfilepath )
 	}
+	tmark.stop()
+	println( tmark.total_message('running V tests') )
+
 	println('\nBuilding examples...')
 	examples := os.walk_ext('examples', '.v')
+	mut bmark := benchmark.new_benchmark()
+	bmark.verbose = v.pref.is_verbose
 	for relative_file in examples {
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('.v', '.tmp.c')
-		print(relative_file + ' ')
 		mut cmd := '"$vexe" $joined_args -debug "$file"'
 		if os.user_os() == 'windows' { cmd = '"$cmd"' }
+		bmark.step()
 		r := os.exec(cmd) or {
 			failed = true
-			println('FAIL')
+			bmark.fail()
+			println(bmark.step_message('$relative_file FAIL'))
 			continue
 		}
 		if r.exit_code != 0 {
-			println('FAIL `$file` (\n$r.output\n)')
 			failed = true
+			bmark.fail()
+			println(bmark.step_message('$relative_file FAIL \n`$file`\n (\n$r.output\n)'))
 		} else {
-			println('OK')
+			bmark.ok()
+			println(bmark.step_message('$relative_file OK'))
 		}
 		os.rm(tmpcfilepath)
 	}
+	bmark.stop()
+	println( bmark.total_message('building examples') )
+	
 	if failed {
 		exit(1)
 	}
