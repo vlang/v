@@ -56,18 +56,10 @@ script:
         ./make.bat -gcc
       fi
       if [[ "${TRAVIS_JOB_NAME}" == "windows_msvc" ]]; then
-        exit
         echo "Building V with MSVC"
         export VFLAGS="-os msvc"
         ./make.bat -msvc
       fi
-      ./v.exe -o v2.exe compiler
-      ./v2.exe -o v3.exe compiler
-      ./v3.exe -o v4.exe compiler
-      ls -la v.exe
-      ls -la v2.exe
-      ls -la v3.exe
-      ls -la v4.exe
       
       ### running just repl_test.v produces failing results earlier and is easier to read
       echo "Running only the repl tests directly..."
