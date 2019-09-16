@@ -1,7 +1,6 @@
 module runner
 
 import os
-import time
 
 struct RunnerOptions {
 pub:
@@ -69,15 +68,5 @@ pub fn new_options() RunnerOptions {
 		vexec: vexec
 		files: files
 	}
-}
-
-pub fn now() i64 {
-	return time.ticks()
-}
-
-pub fn tdiff_in_ms(s string, sticks i64) string {
-	eticks := time.ticks()
-	tdiff := (eticks - sticks)
-	return '${tdiff:6d} ms | $s'
 }
 
