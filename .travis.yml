@@ -6,6 +6,10 @@ matrix:
       dist: xenial
       sudo: required
       addons:
+        snaps:
+          - name: node
+            channel: latest/edge
+            confinement: classic
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -75,11 +79,27 @@ script:
       ./v test v
     fi
   - |
-    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      ## aliases do not work for some reason in travis, just use full commands :-|
+      echo "Nodejs version:"
+      snap run node --version      
       # Build hi.js
-      echo "println('Hello from V.js')" > hi.js
-      ./v -o hi.js hi.v && node hi.js
-      
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v
+      snap run node hi.js
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      echo "Nodejs version:"
+      node --version      
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v
+      ## the node on osx requires --harmony-class-fields for now
+      node --harmony-class-fields hi.js
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       # Build Vid
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
