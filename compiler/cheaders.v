@@ -39,17 +39,17 @@ CommonCHeaders = '
 #endif
 
 #define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_INITIALIZATION 0
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
-#undef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_INITIALIZATION 0
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 // must be included after <windows.h>
 #ifndef __TINYC__
+#undef EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_INITIALIZATION
 #include <shellapi.h>
 #endif
 
