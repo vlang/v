@@ -80,13 +80,13 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-      alias node="snap run node"
+      ## aliases do not work for some reason in travis, just use full commands :-|
       echo "Nodejs version:"
-      node --version      
+      snap run node --version      
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
-      node hi.js
+      snap run node hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
