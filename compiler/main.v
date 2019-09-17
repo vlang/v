@@ -333,8 +333,6 @@ fn (v mut V) generate_main() {
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
 #ifdef _WIN32
-#define _UNICODE
-#define UNICODE
 _setmode(_fileno(stdout), _O_U8TEXT);
 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
 // ENABLE_VIRTUAL_TERMINAL_PROCESSING

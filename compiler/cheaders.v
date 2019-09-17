@@ -49,6 +49,8 @@ CommonCHeaders = '
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#define _UNICODE
+#define UNICODE
 #include <windows.h>
 
 // must be included after <windows.h>
