@@ -1267,12 +1267,11 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		//p.warn('expecting array got $expr_type')
 	//}	
 	// Allow `num = 4` where `num` is an `?int`
-	if p.assigned_type.starts_with('Option_') && expr_type == p.assigned_type.right('Option_'.len) {
-		println('allowing option asss')
+	if p.assigned_type.starts_with('Option_') &&
+		expr_type == p.assigned_type.right('Option_'.len) {
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
 		typ := expr_type.replace('Option_', '')
-		//p.cgen.cur_line = left + 'opt_ok($expr)'
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
@@ -1319,7 +1318,7 @@ fn (p mut Parser) var_decl() {
 		name: name
 		typ: typ
 		is_mut: is_mut
-		is_alloc: p.is_alloc
+		is_alloc: p.is_alloc || typ.starts_with('array_')
 	})
 	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	p.var_decl_name = ''
@@ -1486,44 +1485,37 @@ fn (p mut Parser) name_expr() string {
 		name = p.prepend_mod(name)
 	}
 	// Variable
-	mut v := p.cur_fn.find_var(name)
-	// A hack to allow `newvar := Foo{ field: newvar }`
-	// Declare the variable so that it can be used in the initialization
-	if name == 'main__' + p.var_decl_name {
-		v.name = p.var_decl_name
-		v.typ = 'voidptr'
-		v.is_mut = true
+	for { // TODO remove
+	mut v := p.find_var_check_new_var(name) or { break }
+	if ptr {
+		p.gen('& /*vvar*/ ')
 	}
-	if v.name.len != 0 {
-		if ptr {
-			p.gen('& /*vvar*/ ')
-		}
-		else if deref {
-			p.gen('*')
-		}
-		mut typ := p.var_expr(v)
-		// *var
-		if deref {
-			if !typ.contains('*') && !typ.ends_with('ptr') {
-				println('name="$name", t=$v.typ')
-				p.error('dereferencing requires a pointer, but got `$typ`')
-			}
-			typ = typ.replace('ptr', '')// TODO
-			typ = typ.replace('*', '')// TODO
-		}
-		// &var
-		else if ptr {
-			typ += '*'
-		}
-		if p.inside_return_expr {
-			//println('marking $v.name returned')
-			p.mark_var_returned(v)
-			// v.is_returned = true // TODO modifying a local variable
-			// that's not used afterwards, this should be a compilation
-			// error
-		}	
-		return typ
+	else if deref {
+		p.gen('*')
 	}
+	mut typ := p.var_expr(v)
+	// *var
+	if deref {
+		if !typ.contains('*') && !typ.ends_with('ptr') {
+			println('name="$name", t=$v.typ')
+			p.error('dereferencing requires a pointer, but got `$typ`')
+		}
+		typ = typ.replace('ptr', '')// TODO
+		typ = typ.replace('*', '')// TODO
+	}
+	// &var
+	else if ptr {
+		typ += '*'
+	}
+	if p.inside_return_expr {
+		//println('marking $v.name returned')
+		p.mark_var_returned(v)
+		// v.is_returned = true // TODO modifying a local variable
+		// that's not used afterwards, this should be a compilation
+		// error
+	}	
+	return typ
+	} // TODO REMOVE for{}
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
@@ -1881,7 +1873,7 @@ struct $f.parent_fn {
 }
 
 enum IndexType {
-	none
+	noindex
 	str
 	map
 	array
@@ -1898,7 +1890,7 @@ fn get_index_type(typ string) IndexType {
 		return IndexType.ptr
 	}
 	if typ[0] == `[` { return IndexType.fixed_array }
-	return IndexType.none
+	return IndexType.noindex
 }
 
 fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
@@ -2239,7 +2231,14 @@ fn (p mut Parser) factor() string {
 	mut typ := ''
 	tok := p.tok
 	switch tok {
-	case .number:
+	case .key_none:
+		if !p.expected_type.starts_with('Option_') {
+			p.error('need "$p.expected_type" got none')
+		}	
+		p.gen('opt_none()')
+		p.check(.key_none)
+		return p.expected_type
+	case Token.number:
 		typ = 'int'
 		// Check if float (`1.0`, `1e+3`) but not if is hexa
 		if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) &&
@@ -2367,10 +2366,10 @@ fn (p mut Parser) assoc() string {
 	// println('assoc()')
 	p.next()
 	name := p.check_name()
-	if !p.cur_fn.known_var(name) {
+	var := p.cur_fn.find_var(name) or {
 		p.error('unknown variable `$name`')
-	}
-	var := p.cur_fn.find_var(name)
+		exit(1)
+	}	
 	p.check(.pipe)
 	p.gen('($var.typ){')
 	mut fields := []string// track the fields user is setting, the rest will be copied from the old object
@@ -3463,10 +3462,14 @@ fn (p mut Parser) return_st() {
 		else {
 			ph := p.cgen.add_placeholder()
 			p.inside_return_expr = true
+			is_none := p.tok == .key_none
+			p.expected_type = p.cur_fn.typ
 			expr_type := p.bool_expression()
 			p.inside_return_expr = false
-			// Automatically wrap an object inside an option if the function returns an option
-			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
+			// Automatically wrap an object inside an option if the function
+			// returns an option
+			if p.cur_fn.typ.ends_with(expr_type) && !is_none &&
+				p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 				typ := expr_type.replace('Option_', '')
@@ -3537,7 +3540,7 @@ fn (p mut Parser) go_statement() {
 	// Method
 	if p.peek() == .dot {
 		var_name := p.lit
-		v := p.cur_fn.find_var(var_name)
+		v := p.cur_fn.find_var(var_name) or { return }
 		p.mark_var_used(v)
 		p.next()
 		p.check(.dot)

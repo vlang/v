@@ -78,6 +78,7 @@ mut:
 	is_changed      bool
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
+	moved           bool
 }
 
 struct Type {
@@ -322,6 +323,7 @@ fn (t &Table) find_fn(name string) Fn {
 	if !isnil(f.name.str) {
 		return f
 	}
+	//println('ret find fn')
 	return Fn{}
 }
 
@@ -412,6 +414,7 @@ fn (t &Type) find_field(name string) Var {
 			return field
 		}
 	}
+	//println('ret Var{}')
 	return Var{}
 }
 
@@ -455,11 +458,16 @@ fn (table &Table) find_method(typ &Type, name string) Fn {
 	// method := typ.find_method(name)
 	t := table.typesmap[typ.name]
 	method := t.find_method(name)
-	if method.name.len == 0 && typ.parent.len > 0 {
+	
+	for method in t.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	
+	if typ.parent != '' {
 		parent := table.find_type(typ.parent)
 		return parent.find_method(name)
-		// println('parent = $parent.name $res')
-		// return res
 	}
 	return method
 }
@@ -472,7 +480,9 @@ fn (t &Type) find_method(name string) Fn {
 			return method
 		}
 	}
+	//println('ret Fn{}')
 	return Fn{}
+	//return none
 }
 
 /*

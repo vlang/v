@@ -315,8 +315,9 @@ fn (v &V) type_definitions() string {
 	// sort structs
 	types_sorted := sort_structs(types)
 	// Generate C code
-	return types_to_c(builtin_types,v.table) + '\n//----\n' +
+	res := types_to_c(builtin_types,v.table) + '\n//----\n' +
 			types_to_c(types_sorted, v.table)
+	return res
 }
 	
 // sort structs by dependant fields
