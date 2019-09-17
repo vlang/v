@@ -466,7 +466,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && (v.os != .windows && v.os != .msvc) {
+		if file.ends_with('_win.v') && (v.os != .windows && v.os != .msvc && os.user_os() != 'windows') {
 			continue
 		}
 		if file.ends_with('_lin.v') && v.os != .linux {
@@ -478,7 +478,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_js.v') && v.os != .js {
 			continue
 		}
-		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
+		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc || os.user_os()=='windows') {
 			continue
 		}
 		if file.ends_with('_js.v') && v.os != .js {
