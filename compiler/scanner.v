@@ -752,6 +752,9 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
+	if c == '\\`' {
+		return '`'
+	}	
 	// Escapes a `'` character
 	return if c == '\'' { '\\' + c } else { c }
 }
@@ -776,7 +779,7 @@ fn (s mut Scanner) peek() Token {
 	return tok
 }
 
-fn (s mut Scanner) expect(want string, start_pos int) bool {
+fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
@@ -825,7 +828,7 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s mut Scanner) get_opening_bracket() int {
+fn (s &Scanner) get_opening_bracket() int {
 	mut pos := s.pos
 	mut parentheses := 0
 	mut inside_string := false

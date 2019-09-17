@@ -120,7 +120,7 @@ fn (g mut CGen) end_tmp() string {
 	return res
 }
 
-fn (g mut CGen) add_placeholder() int {
+fn (g &CGen) add_placeholder() int {
 	if g.is_tmp {
 		return g.tmp_line.len
 	}
@@ -176,7 +176,7 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 	g.thread_args << wrapper_text
 }
 
-fn (c mut V) prof_counters() string {
+fn (v &V) prof_counters() string {
 	mut res := []string
 	// Global fns
 	//for f in c.table.fns {
@@ -196,7 +196,7 @@ fn (c mut V) prof_counters() string {
 	return res.join(';\n')
 }
 
-fn (p mut Parser) print_prof_counters() string {
+fn (p &Parser) print_prof_counters() string {
 	mut res := []string
 	// Global fns
 	//for f in p.table.fns {
@@ -296,7 +296,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 // C struct definitions, ordered
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
-fn (v mut V) type_definitions() string {
+fn (v &V) type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top

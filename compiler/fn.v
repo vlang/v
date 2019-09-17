@@ -510,7 +510,8 @@ fn (p mut Parser) check_unused_variables() {
 			p.scanner.line_nr = var.line_nr - 1
 			p.error('`$var.name` declared and not used')
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
+	if !var.is_changed && var.is_mut && !p.pref.is_repl &&
+ !p.pref.translated && var.name != '_' {
 			p.scanner.line_nr = var.line_nr - 1
 			p.error('`$var.name` is declared as mutable, but it was never changed')
 		}

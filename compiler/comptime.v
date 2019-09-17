@@ -263,9 +263,6 @@ return strings__Builder_str(sb);
 } '
 }
 
-fn (p mut Parser) parse_t() {
-
-}
 
 
 

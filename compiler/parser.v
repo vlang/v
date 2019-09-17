@@ -770,7 +770,7 @@ if p.scanner.line_comment != '' {
 }
 }
 
-fn (p mut Parser) warn(s string) {
+fn (p &Parser) warn(s string) {
 	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
 }
 

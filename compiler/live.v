@@ -2,7 +2,7 @@ module main
 
 import os
 
-fn (v mut V) generate_hotcode_reloading_compiler_flags() []string {
+fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
   mut a := []string
 	if v.pref.is_live || v.pref.is_so {
 		// See 'man dlopen', and test running a GUI program compiled with -live
@@ -16,7 +16,7 @@ fn (v mut V) generate_hotcode_reloading_compiler_flags() []string {
   return a
 }
 
-fn (v mut V) generate_hotcode_reloading_declarations() {
+fn (v &V) generate_hotcode_reloading_declarations() {
   mut cgen := v.cgen
 	if v.os != .windows && v.os != .msvc {
 		if v.pref.is_so {

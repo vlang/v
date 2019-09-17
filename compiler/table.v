@@ -236,7 +236,7 @@ fn new_table(obfuscate bool) &Table {
 }
 
 // If `name` is a reserved C keyword, returns `v_name` instead.
-fn (t mut Table) var_cgen_name(name string) string {
+fn (t &Table) var_cgen_name(name string) string {
 	if name in CReserved {
 		return 'v_$name'
 	}
@@ -707,7 +707,7 @@ fn (t mut Table) register_generic_fn(fn_name string) {
 	t.generic_fns << GenTable{fn_name, []string}
 }
 
-fn (t mut Table) fn_gen_types(fn_name string) []string {
+fn (t &Table) fn_gen_types(fn_name string) []string {
 	for _, f in t.generic_fns {
 		if f.fn_name == fn_name {
 			return f.types
