@@ -2091,7 +2091,7 @@ fn (p mut Parser) expression() string {
 		p.fgen(' ')
 		p.check(.key_in)
 		p.fgen(' ')
-		p.gen(', ')
+		p.gen('), ')
 		arr_typ := p.expression()
 		is_map := arr_typ.starts_with('map_')
 		if !arr_typ.starts_with('array_') && !is_map {
@@ -2103,10 +2103,10 @@ fn (p mut Parser) expression() string {
 		}
 		// `typ` is element's type
 		if is_map {
-			p.cgen.set_placeholder(ph, '_IN_MAP( ')
+			p.cgen.set_placeholder(ph, '_IN_MAP( (')
 		}
 		else {
-			p.cgen.set_placeholder(ph, '_IN($typ, ')
+			p.cgen.set_placeholder(ph, '_IN($typ, (')
 		}
 		p.gen(')')
 		return 'bool'
