@@ -4,7 +4,7 @@
 
 import crypto.rand
 
-fn test_crypto_rand() {
+fn test_crypto_rand_read() {
 	no_bytes := 100
 	max_percentage_diff := 20
 
@@ -27,4 +27,17 @@ fn test_crypto_rand() {
 	diff_percentage := f32(100) - (f32(difference)/f32(no_bytes)*100)
 
 	assert diff_percentage <= max_percentage_diff
+}
+
+fn test_crypto_rand_read_i64() {
+	max := u64(200)
+	r1 := rand.read_i64(max) or {
+		assert false
+		return
+	}
+	r2 := rand.read_i64(max) or {
+		assert false
+		return
+	}
+	assert r1 > u64(0) && r2 > u64(0) && r1 < max && r2 < max
 }
