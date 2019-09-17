@@ -235,6 +235,11 @@ fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
 }
 
+fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
+	p.genln(';\nfor (int $i = $tmp; $i < $range_end; $i++) {')
+	p.genln('$var_type $val = $i;')
+}
+
 fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	def := type_default(typ)
 	p.genln('array_string keys_$tmp = map_keys(& $tmp ); ')

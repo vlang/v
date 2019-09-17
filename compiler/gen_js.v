@@ -34,7 +34,6 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 }
 
 fn types_to_c(types []Type, table &Table) string {
-	println('js typ to code ')
 	mut sb := strings.new_builder(10)
 	for t in types {
 		if t.cat != .union_ && t.cat != .struct_ {
@@ -94,6 +93,11 @@ fn (p mut Parser) gen_array_at(typ string, is_arr0 bool, fn_ph int) {
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < ${tmp}.length; $i++) {')
 	p.genln('var $val = $tmp [$i];')
+}
+
+fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
+	p.genln(';\nfor (var $i = $tmp; $i < $range_end; $i++) {')
+	p.genln('var /*$var_type*/ $val = $i;')
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {

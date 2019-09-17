@@ -2983,7 +2983,6 @@ fn (p mut Parser) for_st() {
 	next_tok := p.peek()
 	//debug := p.scanner.file_path.contains('r_draw')
 	p.open_scope()
-	i_type := if p.is_js { 'var' } else { 'int' }
 	if p.tok == .lcbr {
 		// Infinite loop
 		p.gen('while (1) {')
@@ -3147,9 +3146,8 @@ fn (p mut Parser) for_st() {
 		else if is_str {
 			p.gen_for_str_header(i, tmp, var_type, val)
 		}
-		else if is_range && !p.is_js {
-			p.genln(';\nfor ($i_type $i = $tmp; $i < $range_end; $i++) {')
-			p.genln('$var_type $val = $i;')
+		else if is_range {
+			p.gen_for_range_header(i, range_end, tmp, var_type, val)
 		}
 	}	else {
 		// `for a < b {`
