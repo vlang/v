@@ -29,13 +29,13 @@ fn test_crypto_rand_read() {
 	assert diff_percentage <= max_percentage_diff
 }
 
-fn test_crypto_rand_read_i64() {
+fn test_crypto_rand_read_u64() {
 	max := u64(200)
-	r1 := rand.read_i64(max) or {
+	r1 := rand.read_u64(max) or {
 		assert false
 		return
 	}
-	r2 := rand.read_i64(max) or {
+	r2 := rand.read_u64(max) or {
 		assert false
 		return
 	}

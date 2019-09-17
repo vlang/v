@@ -9,9 +9,9 @@ import(
 	encoding.binary
 )
 
-pub fn read_i64(max u64) u64? {
+pub fn read_u64(max u64) u64? {
 	if max <= u64(0) {
-		return error('crypto.rand: argument to read_i64 is <= 0')
+		return error('crypto.rand: argument to read_u64 is <= 0')
 	}
 	// bitlen := int(math.floor(math.log2(f64(max))+1))
 	bitlen := int(math.floor(math.log(f64(max))/math.log(2)) + 1)
