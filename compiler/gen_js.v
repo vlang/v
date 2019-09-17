@@ -60,7 +60,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 	p.cgen.cur_line = p.cgen.cur_line.replace(',', '[') + ']'
 }
 
-fn (table mut Table) fn_gen_name(f &Fn) string {
+fn (table &Table) fn_gen_name(f &Fn) string {
 	mut name := f.name
 	if f.is_method {
 		name = name.replace(' ', '')

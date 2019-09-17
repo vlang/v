@@ -166,6 +166,7 @@ const (
 )
 
 fn test_fixed() {
+	/*
 	mut nums := [4]int
 	assert nums[0] == 0
 	assert nums[1] == 0
@@ -173,9 +174,9 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	///////
 	nums2 := [N]int
 	assert nums2[N - 1] == 0
+	*/
 }
 
 fn modify (numbers mut []int) {

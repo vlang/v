@@ -282,7 +282,8 @@ fn (g mut Game) get_tetro() {
 	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize)
 }
 
-fn (g mut Game) drop_tetro() {
+// TODO mut
+fn (g &Game) drop_tetro() {
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
