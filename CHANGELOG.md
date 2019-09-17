@@ -1,5 +1,5 @@
 ## V 0.1.20
-*XX Sep 2019*
+*17 Sep 2019*
 
 - JavaScript backend!
 - Hundreds of C warnings were fixed. `gcc v.c` now builds without
@@ -7,7 +7,7 @@ any warnings.
 - The mutability check now applies to function args (mutable
 receivers that are not modified result in a compilation error).
 - V tests now show how long each test took.
-- Official Android support.
+- Official Android support (only console applications via Termux for now).
 - Typo check. If a variable/function/module etc is misspelled,
 V will suggest the correct name.
 - Lots of Microsoft C fixes, and a separate Travis instance for
