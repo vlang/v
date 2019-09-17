@@ -173,6 +173,10 @@ fn (v mut V) cc() {
 		a << '-lm'
 	}
 	
+	if v.os == .js && os.user_os() == 'windows' {
+		a << '-DUNICODE -D_UNICODE'
+	}
+	
 	if v.os == .windows {
 		a << '-DUNICODE -D_UNICODE'
 	}
