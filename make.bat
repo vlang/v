@@ -28,7 +28,7 @@ if not exist "%gccpath%" (
     goto:msvcstrap
 )
 
-gcc -std=gnu11 -DUNICODE -D_UNICODE -w -o v2.exe vc\v_win.c
+gcc -std=gnu11 -w -o v2.exe vc\v_win.c
 if %ERRORLEVEL% GEQ 1 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
     exit /b 1
@@ -60,7 +60,7 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
     goto :nocompiler
 )
 
-cl.exe /nologo /w /volatile:ms /D_UNICODE /DUNICODE /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+cl.exe /nologo /w /volatile:ms /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
 
 if %ERRORLEVEL% GEQ 1 (
     echo cl.exe failed to build V

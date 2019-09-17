@@ -173,9 +173,6 @@ fn (v mut V) cc() {
 		a << '-lm'
 	}
 	
-	if v.os == .windows {
-		a << '-DUNICODE -D_UNICODE'
-	}
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
@@ -292,7 +289,7 @@ fn (c mut V) cc_windows_cross() {
 	obj_name = obj_name.replace('.exe', '')
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
-	cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
+	cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
 	if c.pref.show_c_cmd {
 			println(cmd)
 	}
