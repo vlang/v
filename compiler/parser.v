@@ -1488,7 +1488,7 @@ fn (p mut Parser) name_expr() string {
 	for { // TODO remove
 	mut v := p.find_var_check_new_var(name) or { break }
 	if ptr {
-		p.gen('& /*vvar*/ ')
+		p.gen('& /*v*/ ')
 	}
 	else if deref {
 		p.gen('*')
@@ -1569,9 +1569,9 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return 'int'
 		}
-		// C fn
+		// C function
 		f := Fn {
-			name: name// .replace('c_', '')
+			name: name
 			is_c: true
 		}
 		p.is_c_fn_call = true
@@ -1579,9 +1579,8 @@ fn (p mut Parser) name_expr() string {
 		p.is_c_fn_call = false
 		// Try looking it up. Maybe its defined with "C.fn_name() fn_type",
 		// then we know what type it returns
-		cfn := p.table.find_fn(name)
-		// Not Found? Return 'void*'
-		if cfn.name == '' {
+		cfn := p.table.find_fn(name) or {
+			// Not Found? Return 'void*'
 			//return 'cvoid' //'void*'
 			return 'void*'
 		}
@@ -1605,42 +1604,41 @@ fn (p mut Parser) name_expr() string {
 		return typ
 	}
 	// Function (not method btw, methods are handled in dot())
-	mut f := p.table.find_fn(name)
-	if f.name == '' {
-		// We are in a second pass, that means this function was not defined, throw an error.
+	mut f := p.table.find_fn(name) or {
+		// We are in the second pass, that means this function was not defined, throw an error.
 		if !p.first_pass() {
 			// V script? Try os module.
+			// TODO
 			if p.v_script {
-				name = name.replace('main__', 'os__')
-				f = p.table.find_fn(name)
+				//name = name.replace('main__', 'os__')
+				//f = p.table.find_fn(name)
 			}
-			if f.name == '' {
-				// check for misspelled function / variable / module
-				suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
-				if suggested != '' {
-					p.error('undefined: `$name`. did you mean:$suggested')
+			// check for misspelled function / variable / module
+			suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
+			if suggested != '' {
+				p.error('undefined: `$name`. did you mean:$suggested')
+			}
+			// If orig_name is a mod, then printing undefined: `mod` tells us nothing
+			// if p.table.known_mod(orig_name) {
+			if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
+				name = name.replace('__', '.').replace('_dot_', '.')
+				p.error('undefined: `$name`')
+			}
+			else {
+				if orig_name == 'i32' {
+					println('`i32` alias was removed, use `int` instead')
 				}
-				// If orig_name is a mod, then printing undefined: `mod` tells us nothing
-				// if p.table.known_mod(orig_name) {
-				if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-					name = name.replace('__', '.').replace('_dot_', '.')
-					p.error('undefined: `$name`')
+				if orig_name == 'u8' {
+					println('`u8` alias was removed, use `byte` instead')
 				}
-				else {
-					if orig_name == 'i32' {
-						println('`i32` alias was removed, use `int` instead')
-					}
-					if orig_name == 'u8' {
-						println('`u8` alias was removed, use `byte` instead')
-					}
-					p.error('undefined: `$orig_name`')
-				}
+				p.error('undefined: `$orig_name`')
 			}
 		} else {
 			p.next()
 			// First pass, the function can be defined later.
 			return 'void'
 		}
+		return 'void'
 	}
 	// no () after func, so func is an argument, just gen its name
 	// TODO verify this and handle errors
@@ -3550,11 +3548,10 @@ fn (p mut Parser) go_statement() {
 	}
 	// Normal function
 	else {
-		f := p.table.find_fn(p.lit)
+		f := p.table.find_fn(p.lit) or { panic('fn') }
 		if f.name == 'println' {
 			p.error('`go` cannot be used with `println`')
 		}
-		// println(f.name)
 		p.async_fn_call(f, 0, '', '')
 	}
 }

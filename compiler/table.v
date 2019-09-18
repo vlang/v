@@ -169,7 +169,7 @@ const (
 
 )
 
-// This is used in generated C code
+// This is used for debugging only
 fn (f Fn) str() string {
 	t := Table{}
 	str_args := f.str_args(t)
@@ -318,18 +318,17 @@ fn (table &Table) known_type_fast(t &Type) bool {
 	return t.name.len > 0 && !t.is_placeholder
 }
 
-fn (t &Table) find_fn(name string) Fn {
+fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
 	if !isnil(f.name.str) {
 		return f
 	}
-	//println('ret find fn')
-	return Fn{}
+	return none
 }
 
 fn (t &Table) known_fn(name string) bool {
-	f := t.find_fn(name)
-	return f.name != ''
+	_ := t.find_fn(name) or { return false }
+	return true
 }
 
 fn (t &Table) known_const(name string) bool {

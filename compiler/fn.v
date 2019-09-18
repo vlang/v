@@ -238,11 +238,14 @@ fn (p mut Parser) fn_decl() {
 	if !is_c && !p.builtin_mod && p.mod != 'main' && receiver_typ.len == 0 {
 		f.name = p.prepend_mod(f.name)
 	}
-	if p.first_pass() && p.table.known_fn(f.name) && receiver_typ.len == 0 {
-		existing_fn := p.table.find_fn(f.name)
+	if p.first_pass() && receiver_typ.len == 0 {
+		for {
+		existing_fn := p.table.find_fn(f.name) or { break }
 		// This existing function could be defined as C decl before (no body), then we don't need to throw an erro
 		if !existing_fn.is_decl {
 			p.error('redefinition of `$f.name`')
+		}
+		break
 		}
 	}
 	// Generic?
