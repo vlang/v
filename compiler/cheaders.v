@@ -116,13 +116,10 @@ typedef map map_string;
 #endif
 
 //============================== HELPER C MACROS =============================*/
-
 #define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push(arr, &tmp);}
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map__exists(m, val)
-//#define ALLOC_INIT(type, ...) (type *)memdup((type[]){ __VA_ARGS__ }, sizeof(type))
-
 //================================== GLOBALS =================================*/
 byteptr g_str_buf;
 int load_so(byteptr);

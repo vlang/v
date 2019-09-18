@@ -1267,12 +1267,11 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		//p.warn('expecting array got $expr_type')
 	//}	
 	// Allow `num = 4` where `num` is an `?int`
-	if p.assigned_type.starts_with('Option_') && expr_type == p.assigned_type.right('Option_'.len) {
-		println('allowing option asss')
+	if p.assigned_type.starts_with('Option_') &&
+		expr_type == p.assigned_type.right('Option_'.len) {
 		expr := p.cgen.cur_line.right(pos)
 		left := p.cgen.cur_line.left(pos)
 		typ := expr_type.replace('Option_', '')
-		//p.cgen.cur_line = left + 'opt_ok($expr)'
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
@@ -1319,7 +1318,7 @@ fn (p mut Parser) var_decl() {
 		name: name
 		typ: typ
 		is_mut: is_mut
-		is_alloc: p.is_alloc
+		is_alloc: p.is_alloc || typ.starts_with('array_')
 	})
 	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	p.var_decl_name = ''
@@ -1486,44 +1485,37 @@ fn (p mut Parser) name_expr() string {
 		name = p.prepend_mod(name)
 	}
 	// Variable
-	mut v := p.cur_fn.find_var(name)
-	// A hack to allow `newvar := Foo{ field: newvar }`
-	// Declare the variable so that it can be used in the initialization
-	if name == 'main__' + p.var_decl_name {
-		v.name = p.var_decl_name
-		v.typ = 'voidptr'
-		v.is_mut = true
+	for { // TODO remove
+	mut v := p.find_var_check_new_var(name) or { break }
+	if ptr {
+		p.gen('& /*v*/ ')
 	}
-	if v.name.len != 0 {
-		if ptr {
-			p.gen('& /*vvar*/ ')
-		}
-		else if deref {
-			p.gen('*')
-		}
-		mut typ := p.var_expr(v)
-		// *var
-		if deref {
-			if !typ.contains('*') && !typ.ends_with('ptr') {
-				println('name="$name", t=$v.typ')
-				p.error('dereferencing requires a pointer, but got `$typ`')
-			}
-			typ = typ.replace('ptr', '')// TODO
-			typ = typ.replace('*', '')// TODO
-		}
-		// &var
-		else if ptr {
-			typ += '*'
-		}
-		if p.inside_return_expr {
-			//println('marking $v.name returned')
-			p.mark_var_returned(v)
-			// v.is_returned = true // TODO modifying a local variable
-			// that's not used afterwards, this should be a compilation
-			// error
-		}	
-		return typ
+	else if deref {
+		p.gen('*')
 	}
+	mut typ := p.var_expr(v)
+	// *var
+	if deref {
+		if !typ.contains('*') && !typ.ends_with('ptr') {
+			println('name="$name", t=$v.typ')
+			p.error('dereferencing requires a pointer, but got `$typ`')
+		}
+		typ = typ.replace('ptr', '')// TODO
+		typ = typ.replace('*', '')// TODO
+	}
+	// &var
+	else if ptr {
+		typ += '*'
+	}
+	if p.inside_return_expr {
+		//println('marking $v.name returned')
+		p.mark_var_returned(v)
+		// v.is_returned = true // TODO modifying a local variable
+		// that's not used afterwards, this should be a compilation
+		// error
+	}	
+	return typ
+	} // TODO REMOVE for{}
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
@@ -1577,9 +1569,9 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return 'int'
 		}
-		// C fn
+		// C function
 		f := Fn {
-			name: name// .replace('c_', '')
+			name: name
 			is_c: true
 		}
 		p.is_c_fn_call = true
@@ -1587,9 +1579,8 @@ fn (p mut Parser) name_expr() string {
 		p.is_c_fn_call = false
 		// Try looking it up. Maybe its defined with "C.fn_name() fn_type",
 		// then we know what type it returns
-		cfn := p.table.find_fn(name)
-		// Not Found? Return 'void*'
-		if cfn.name == '' {
+		cfn := p.table.find_fn(name) or {
+			// Not Found? Return 'void*'
 			//return 'cvoid' //'void*'
 			return 'void*'
 		}
@@ -1613,42 +1604,41 @@ fn (p mut Parser) name_expr() string {
 		return typ
 	}
 	// Function (not method btw, methods are handled in dot())
-	mut f := p.table.find_fn(name)
-	if f.name == '' {
-		// We are in a second pass, that means this function was not defined, throw an error.
+	mut f := p.table.find_fn(name) or {
+		// We are in the second pass, that means this function was not defined, throw an error.
 		if !p.first_pass() {
 			// V script? Try os module.
+			// TODO
 			if p.v_script {
-				name = name.replace('main__', 'os__')
-				f = p.table.find_fn(name)
+				//name = name.replace('main__', 'os__')
+				//f = p.table.find_fn(name)
 			}
-			if f.name == '' {
-				// check for misspelled function / variable / module
-				suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
-				if suggested != '' {
-					p.error('undefined: `$name`. did you mean:$suggested')
+			// check for misspelled function / variable / module
+			suggested := p.table.identify_typo(name, p.cur_fn, p.import_table)
+			if suggested != '' {
+				p.error('undefined: `$name`. did you mean:$suggested')
+			}
+			// If orig_name is a mod, then printing undefined: `mod` tells us nothing
+			// if p.table.known_mod(orig_name) {
+			if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
+				name = name.replace('__', '.').replace('_dot_', '.')
+				p.error('undefined: `$name`')
+			}
+			else {
+				if orig_name == 'i32' {
+					println('`i32` alias was removed, use `int` instead')
 				}
-				// If orig_name is a mod, then printing undefined: `mod` tells us nothing
-				// if p.table.known_mod(orig_name) {
-				if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-					name = name.replace('__', '.').replace('_dot_', '.')
-					p.error('undefined: `$name`')
+				if orig_name == 'u8' {
+					println('`u8` alias was removed, use `byte` instead')
 				}
-				else {
-					if orig_name == 'i32' {
-						println('`i32` alias was removed, use `int` instead')
-					}
-					if orig_name == 'u8' {
-						println('`u8` alias was removed, use `byte` instead')
-					}
-					p.error('undefined: `$orig_name`')
-				}
+				p.error('undefined: `$orig_name`')
 			}
 		} else {
 			p.next()
 			// First pass, the function can be defined later.
 			return 'void'
 		}
+		return 'void'
 	}
 	// no () after func, so func is an argument, just gen its name
 	// TODO verify this and handle errors
@@ -1840,7 +1830,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	// field
 	if has_field {
 		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
-		field := p.table.find_field(typ, struct_field)
+		field := p.table.find_field(typ, struct_field) or { panic('field') }
 		if !field.is_mut && !p.has_immutable_field {
 			p.has_immutable_field = true
 			p.first_immutable_field = field
@@ -1895,7 +1885,7 @@ struct $f.parent_fn {
 }
 
 enum IndexType {
-	none
+	noindex
 	str
 	map
 	array
@@ -1912,7 +1902,7 @@ fn get_index_type(typ string) IndexType {
 		return IndexType.ptr
 	}
 	if typ[0] == `[` { return IndexType.fixed_array }
-	return IndexType.none
+	return IndexType.noindex
 }
 
 fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
@@ -2125,7 +2115,7 @@ fn (p mut Parser) expression() string {
 		p.fgen(' ')
 		p.check(.key_in)
 		p.fgen(' ')
-		p.gen(', ')
+		p.gen('), ')
 		arr_typ := p.expression()
 		is_map := arr_typ.starts_with('map_')
 		if !arr_typ.starts_with('array_') && !is_map {
@@ -2137,10 +2127,10 @@ fn (p mut Parser) expression() string {
 		}
 		// `typ` is element's type
 		if is_map {
-			p.cgen.set_placeholder(ph, '_IN_MAP( ')
+			p.cgen.set_placeholder(ph, '_IN_MAP( (')
 		}
 		else {
-			p.cgen.set_placeholder(ph, '_IN($typ, ')
+			p.cgen.set_placeholder(ph, '_IN($typ, (')
 		}
 		p.gen(')')
 		return 'bool'
@@ -2273,7 +2263,14 @@ fn (p mut Parser) factor() string {
 	mut typ := ''
 	tok := p.tok
 	switch tok {
-	case .number:
+	case .key_none:
+		if !p.expected_type.starts_with('Option_') {
+			p.error('need "$p.expected_type" got none')
+		}	
+		p.gen('opt_none()')
+		p.check(.key_none)
+		return p.expected_type
+	case Token.number:
 		typ = 'int'
 		// Check if float (`1.0`, `1e+3`) but not if is hexa
 		if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) &&
@@ -2401,10 +2398,10 @@ fn (p mut Parser) assoc() string {
 	// println('assoc()')
 	p.next()
 	name := p.check_name()
-	if !p.cur_fn.known_var(name) {
+	var := p.cur_fn.find_var(name) or {
 		p.error('unknown variable `$name`')
-	}
-	var := p.cur_fn.find_var(name)
+		exit(1)
+	}	
 	p.check(.pipe)
 	p.gen('($var.typ){')
 	mut fields := []string// track the fields user is setting, the rest will be copied from the old object
@@ -2821,7 +2818,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			if field in inited_fields {
 				p.error('already initialized field `$field` in `$t.name`')
 			}
-			f := t.find_field(field)
+			f := t.find_field(field) or { panic('field') }
 			inited_fields << field
 			p.gen_struct_field_init(field)
 			p.check(.colon)
@@ -3497,10 +3494,14 @@ fn (p mut Parser) return_st() {
 		else {
 			ph := p.cgen.add_placeholder()
 			p.inside_return_expr = true
+			is_none := p.tok == .key_none
+			p.expected_type = p.cur_fn.typ
 			expr_type := p.bool_expression()
 			p.inside_return_expr = false
-			// Automatically wrap an object inside an option if the function returns an option
-			if p.cur_fn.typ.ends_with(expr_type) && p.cur_fn.typ.starts_with('Option_') {
+			// Automatically wrap an object inside an option if the function
+			// returns an option
+			if p.cur_fn.typ.ends_with(expr_type) && !is_none &&
+				p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 				typ := expr_type.replace('Option_', '')
@@ -3571,7 +3572,7 @@ fn (p mut Parser) go_statement() {
 	// Method
 	if p.peek() == .dot {
 		var_name := p.lit
-		v := p.cur_fn.find_var(var_name)
+		v := p.cur_fn.find_var(var_name) or { return }
 		p.mark_var_used(v)
 		p.next()
 		p.check(.dot)
@@ -3581,11 +3582,10 @@ fn (p mut Parser) go_statement() {
 	}
 	// Normal function
 	else {
-		f := p.table.find_fn(p.lit)
+		f := p.table.find_fn(p.lit) or { panic('fn') }
 		if f.name == 'println' {
 			p.error('`go` cannot be used with `println`')
 		}
-		// println(f.name)
 		p.async_fn_call(f, 0, '', '')
 	}
 }
@@ -3666,7 +3666,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.check_name()
 	}
 	p.check(.rsbr)
-	if p.tok == .func {
+	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
 		p.fn_decl()
 		p.attr = ''
 		return

@@ -40,7 +40,34 @@ mut:
 	vargs_ph      map[string]int  // varargs placeholders
 }
 
-fn (f &Fn) find_var(name string) Var {
+fn (f &Fn) find_var(name string) ?Var {
+	for i in 0 .. f.var_idx {
+		if f.local_vars[i].name == name {
+			return f.local_vars[i]
+		}
+	}
+	return none
+}
+
+fn (p &Parser) find_var_check_new_var(name string) ?Var {
+	for i in 0 .. p.cur_fn.var_idx {
+		if p.cur_fn.local_vars[i].name == name {
+			return p.cur_fn.local_vars[i]
+		}
+	}
+	// A hack to allow `newvar := Foo{ field: newvar }`
+	// Declare the variable so that it can be used in the initialization
+	if name == 'main__' + p.var_decl_name {
+		return Var{
+			name : p.var_decl_name
+			typ : 'voidptr'
+			is_mut : true
+		}
+	}
+	return none
+}
+
+fn (f &Fn) find_var2(name string) Var {
 	for i in 0 .. f.var_idx {
 		if f.local_vars[i].name == name {
 			return f.local_vars[i]
@@ -80,8 +107,10 @@ fn (p mut Parser) mark_var_changed(v Var) {
 }
 
 fn (f mut Fn) known_var(name string) bool {
-	v := f.find_var(name)
-	return v.name.len > 0
+	_ := f.find_var(name) or {
+		return false
+	}	
+	return true
 }
 
 fn (f mut Fn) register_var(v Var) {
@@ -220,11 +249,14 @@ fn (p mut Parser) fn_decl() {
 	if !is_c && !p.builtin_mod && p.mod != 'main' && receiver_typ.len == 0 {
 		f.name = p.prepend_mod(f.name)
 	}
-	if p.first_pass() && p.table.known_fn(f.name) && receiver_typ.len == 0 {
-		existing_fn := p.table.find_fn(f.name)
+	if p.first_pass() && receiver_typ.len == 0 {
+		for {
+		existing_fn := p.table.find_fn(f.name) or { break }
 		// This existing function could be defined as C decl before (no body), then we don't need to throw an erro
 		if !existing_fn.is_decl {
 			p.error('redefinition of `$f.name`')
+		}
+		break
 		}
 	}
 	// Generic?
@@ -849,9 +881,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			}
 			p.check(.key_mut)
 			var_name := p.lit
-			v := p.cur_fn.find_var(var_name)
-			if v.name == '' {
+			v := p.cur_fn.find_var(var_name) or {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				exit(1)
 			}
 			if !v.is_changed {
 				p.mark_var_changed(v)

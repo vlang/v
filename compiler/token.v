@@ -97,6 +97,7 @@ enum Token {
 	key_match
 	key_module
 	key_mut
+	key_none
 	key_return
 	key_select
 	key_sizeof
@@ -224,6 +225,7 @@ fn build_token_str() []string {
 	s[Token.key_defer] = 'defer'
 	s[Token.key_match] = 'match'
 	s[Token.key_select] = 'select'
+	s[Token.key_none] = 'none'
 	return s
 }
 

@@ -184,6 +184,17 @@ fn main() {
 		v.run_compiled_executable_and_exit()
 	}
 	
+	// TODO remove
+	if v.pref.autofree {
+		println('started freeing v struct')
+		v.table.fns.free()
+		v.table.typesmap.free()
+		v.table.obf_ids.free()
+		v.cgen.lines.free()
+		free(v.cgen)
+		free(v.table)
+		println('done!')
+	}	
 }
 
 fn (v mut V) compile() {
@@ -833,7 +844,7 @@ fn new_v(args[]string) &V {
 		show_c_cmd: '-show_c_cmd' in args
 		translated: 'translated' in args
 		is_run: 'run' in args
-		autofree: 'autofree' in args
+		autofree: '-autofree' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
@@ -949,6 +960,10 @@ fn install_v(args[]string) {
 }
 
 fn (v &V) test_v() {
+	if !os.dir_exists('vlib') {
+		println('run "v test v" next to the vlib/ directory')
+		exit(1)
+	}	
 	args := env_vflags_and_os_args()
 	vexe := args[0]
 	// Emily: pass args from the invocation to the test

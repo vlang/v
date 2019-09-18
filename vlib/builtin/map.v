@@ -155,8 +155,7 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 fn preorder_keys(node &mapnode, keys mut []string, key_i int) int {
 	mut i := key_i
 	if !node.is_empty {
-		mut a := *keys
-		a[i] = node.key
+		keys[i] = node.key
 		i++
 	}
 	if !isnil(node.left) {

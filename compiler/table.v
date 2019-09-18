@@ -78,6 +78,7 @@ mut:
 	is_changed      bool
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
+	moved           bool
 }
 
 struct Type {
@@ -168,7 +169,7 @@ const (
 
 )
 
-// This is used in generated C code
+// This is used for debugging only
 fn (f Fn) str() string {
 	t := Table{}
 	str_args := f.str_args(t)
@@ -321,17 +322,17 @@ fn (table &Table) known_type_fast(t &Type) bool {
 	return t.name.len > 0 && !t.is_placeholder
 }
 
-fn (t &Table) find_fn(name string) Fn {
+fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
 	if !isnil(f.name.str) {
 		return f
 	}
-	return Fn{}
+	return none
 }
 
 fn (t &Table) known_fn(name string) bool {
-	f := t.find_fn(name)
-	return f.name != ''
+	_ := t.find_fn(name) or { return false }
+	return true
 }
 
 fn (t &Table) known_const(name string) bool {
@@ -402,35 +403,43 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 }
 
 fn (t &Type) has_field(name string) bool {
-	field := t.find_field(name)
-	return (field.name != '')
+	_ := t.find_field(name) or { return false }
+	return true
 }
 
 fn (t &Type) has_enum_val(name string) bool {
 	return name in t.enum_vals
 }
 
-fn (t &Type) find_field(name string) Var {
+fn (t &Type) find_field(name string) ?Var {
 	for field in t.fields {
 		if field.name == name {
 			return field
 		}
 	}
-	return Var{}
+	return none
 }
 
 fn (table &Table) type_has_field(typ &Type, name string) bool {
-	field := table.find_field(typ, name)
-	return (field.name != '')
+	_ := table.find_field(typ, name) or { return false }
+	return true
 }
 
-fn (table &Table) find_field(typ &Type, name string) Var {
-	field := typ.find_field(name)
-	if field.name.len == 0 && typ.parent.len > 0 {
-		parent := table.find_type(typ.parent)
-		return parent.find_field(name)
+fn (table &Table) find_field(typ &Type, name string) ?Var {
+	for field in typ.fields {
+		if field.name == name {
+			return field
+		}
 	}
-	return field
+	if typ.parent != '' {
+		parent := table.find_type(typ.parent)
+		for field in parent.fields {
+			if field.name == name {
+				return field
+			}
+		}
+	}
+	return none
 }
 
 fn (table mut Table) add_method(type_name string, f Fn) {
@@ -459,11 +468,16 @@ fn (table &Table) find_method(typ &Type, name string) Fn {
 	// method := typ.find_method(name)
 	t := table.typesmap[typ.name]
 	method := t.find_method(name)
-	if method.name.len == 0 && typ.parent.len > 0 {
+	
+	for method in t.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	
+	if typ.parent != '' {
 		parent := table.find_type(typ.parent)
 		return parent.find_method(name)
-		// println('parent = $parent.name $res')
-		// return res
 	}
 	return method
 }
@@ -476,7 +490,9 @@ fn (t &Type) find_method(name string) Fn {
 			return method
 		}
 	}
+	//println('ret Fn{}')
 	return Fn{}
+	//return none
 }
 
 /*
