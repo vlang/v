@@ -10,6 +10,7 @@ module bits
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
 // This function's execution time does not depend on the inputs.
+[inline]
 pub fn rotate_left_8(x byte, k int) byte {
 	n := byte(8)
 	s := byte(k) & byte(n - byte(1))
@@ -20,6 +21,7 @@ pub fn rotate_left_8(x byte, k int) byte {
 // To rotate x right by k bits, call rotate_left_16(x, -k).
 //
 // This function's execution time does not depend on the inputs.
+[inline]
 pub fn rotate_left_16(x u16, k int) u16 {
 	n := u16(16)
 	s := u16(k) & (n - u16(1))
@@ -30,6 +32,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 // To rotate x right by k bits, call rotate_left_32(x, -k).
 //
 // This function's execution time does not depend on the inputs.
+[inline]
 pub fn rotate_left_32(x u32, k int) u32 {
 	n := u32(32)
 	s := u32(k) & (n - u32(1))
@@ -40,6 +43,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 // To rotate x right by k bits, call rotate_left_64(x, -k).
 //
 // This function's execution time does not depend on the inputs.
+[inline]
 pub fn rotate_left_64(x u64, k int) u64 {
 	n := u64(64)
 	s := u64(k) & (n - u64(1))
