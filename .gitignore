@@ -16,3 +16,12 @@
 *.obj
 
 *.pdb
+
+#
+# macOS.gitignore
+#
+# General
+.DS_Store
+
+# Thumbnails
+._*

@@ -40,8 +40,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.x = [byte(0); Chunk]
-	d.h = [u32(0); 5]
+	d.x = [byte(0)].repeat(Chunk)
+	d.h = [u32(0)].repeat(5)
 	d.h[0] = u32(Init0)
 	d.h[1] = u32(Init1)
 	d.h[2] = u32(Init2)
@@ -104,7 +104,7 @@ pub fn (d &Digest) sum(b_in mut []byte) []byte {
 fn (d mut Digest) checksum() []byte {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
-	mut tmp := [byte(0); 64]
+	mut tmp := [byte(0)].repeat(64)
 
 	tmp[0] = 0x80
 
@@ -119,7 +119,7 @@ fn (d mut Digest) checksum() []byte {
 	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp.left(8))
 
-	mut digest := [byte(0); Size]
+	mut digest := [byte(0)].repeat(Size)
 
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest.right(4), d.h[1])

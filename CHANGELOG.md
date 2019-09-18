@@ -1,3 +1,23 @@
+## V 0.1.20
+*17 Sep 2019*
+
+- JavaScript backend!
+- Hundreds of C warnings were fixed. `gcc v.c` now builds without
+any warnings.
+- The mutability check now applies to function args (mutable
+receivers that are not modified result in a compilation error).
+- V tests now show how long each test took.
+- Official Android support (only console applications via Termux for now).
+- Typo check. If a variable/function/module etc is misspelled,
+V will suggest the correct name.
+- Lots of Microsoft C fixes, and a separate Travis instance for
+this backend.
+- Bitwise operators `|`, `^`, `&` no longer work with booleans.
+
+
+
+
+
 ## V 0.1.19
 *12 Sep 2019*
 
@@ -10,7 +30,6 @@
 - Error messages now point to the actual place where the error happened.
 - Custom json field names: `struct User { last_name string [json:lastName] }`.
 - Raw json fields via the `[raw]` attribute.
-- `import const` was removed from the language.
 - All C code was removed from the `freetype` module.
 - `gg` module can now render all Unicode characters.
 - `[typedef]` attribute for imported C struct typedefs.
@@ -32,7 +51,6 @@
 - A bug with struct ordering was fixed, now structs can be declared in any order.
 - V modules can now be built with `v build module`.
 - `@FILE, @LINE, @FN, @COLUMN` for debugging.
-- JavaScript backend! (big project, WIP until Sep 13)
 
 
 

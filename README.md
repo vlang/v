@@ -1,4 +1,4 @@
-# The V Programming Language 0.1.x
+# The V Programming Language
 
 [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
@@ -6,6 +6,8 @@
 https://vlang.io
 
 Documentation: https://vlang.io/docs
+
+Changelog: [Master Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Releases (with changelogs)](https://github.com/vlang/v/releases)
 
 Twitter: https://twitter.com/v_language
 
@@ -114,12 +116,7 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
-
-```
-v install glfw
-```
+In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
@@ -135,10 +132,30 @@ sudo pacman -S glfw-x11 freetype2
 
 Fedora:
 sudo dnf install glfw glfw-devel freetype-devel
+
+Windows:
+git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
+
 ```
 
 glfw dependency will be removed soon.
 
+## JavaScript backend
+
+```
+fn main() {
+        for i := 0; i < 3; i++ {
+                println('Hello from V.js')
+        }
+}
+```
+
+```bash
+v -o hi.js hi.v && node hi.js
+Hello from V.js
+Hello from V.js
+Hello from V.js
+```
 
 ## Troubleshooting:
 

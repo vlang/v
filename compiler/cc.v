@@ -12,9 +12,31 @@ import (
 fn (v mut V) cc() {
 	// build any thirdparty obj files
 	v.build_thirdparty_obj_files()
-
-	// Just create a c file and exit
-	if v.out_name.ends_with('.c') {
+	// Just create a C/JavaScript file and exit
+	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
+		// Translating V code to JS by launching vjs
+		$if !js {
+			if v.out_name.ends_with('.js') {
+				vexe := os.executable()
+				vjs_path := vexe + 'js'
+				dir := os.dir(vexe)
+				if !os.file_exists(vjs_path) {
+					println('V.js compiler not found, building...')
+					ret := os.system('$vexe -o $vjs_path -os js $dir/compiler')
+					if ret == 0 {
+						println('Done.')
+					} else {
+						println('Failed.')
+						exit(1)
+					}	
+				}	
+				ret := os.system('$vjs_path -o $v.out_name $v.dir')
+				if ret == 0 {
+					println('Done. Run it with `node $v.out_name`')
+					println('JS backend is at a very early stage.')
+				}	
+			}
+		}
 		os.mv(v.out_name_c, v.out_name)
 		exit(0)
 	}
@@ -41,6 +63,10 @@ fn (v mut V) cc() {
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.build_mode == .build_module {
+		// Create the modules directory if it's not there.
+		if !os.file_exists(ModPath)  {
+			os.mkdir(ModPath)
+		}
 		v.out_name = ModPath + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
@@ -142,9 +168,11 @@ fn (v mut V) cc() {
 			a << ' -ldl '
 		}
 	}
-	if v.os == .windows {
-		a << '-DUNICODE -D_UNICODE'
+
+	if v.os == .js && os.user_os() == 'linux' {
+		a << '-lm'
 	}
+	
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
@@ -261,7 +289,7 @@ fn (c mut V) cc_windows_cross() {
 	obj_name = obj_name.replace('.exe', '')
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
-	cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
+	cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
 	if c.pref.show_c_cmd {
 			println(cmd)
 	}

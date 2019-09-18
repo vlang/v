@@ -2,9 +2,14 @@ language: c
 matrix:
   include:
     - os: linux
+      name: "linux"
       dist: xenial
       sudo: required
       addons:
+        snaps:
+          - name: node
+            channel: latest/edge
+            confinement: classic
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -17,10 +22,16 @@ matrix:
             - libfreetype6-dev
             - libssl-dev
     - os: windows
-      language: sh
+      name: "windows_gcc"
+      language: bash
+      filter_secrets: false
+    - os: windows
+      name: "windows_msvc"
+      language: bash
       filter_secrets: false
     - os: osx
-      osx_image: xcode10.2
+      name: "osx"
+      osx_image: xcode10.3
       addons:
         homebrew:
           packages:
@@ -38,29 +49,58 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
+      ### troubleshooting and diagnostics: show ALL environment variables in the instance
+      #set
       set -e
       git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
-      echo "Just running ./make.bat to produce v.exe"
-      ./make.bat
-      ls -la v.exe
-      echo "Running v test v..."
+
+      if [[ "${TRAVIS_JOB_NAME}" == "windows_gcc" ]]; then
+        echo "Building V with GCC"
+        export VFLAGS="-os windows"
+        ./make.bat -gcc
+      fi
+      if [[ "${TRAVIS_JOB_NAME}" == "windows_msvc" ]]; then
+        echo "Building V with MSVC"
+        export VFLAGS="-os msvc"
+        ./make.bat -msvc
+      fi
+
+      ### running just repl_test.v produces failing results earlier and is easier to read
+      echo "Running only the repl tests directly..."
+      ./v.exe ./compiler/tests/repl/repl_test.v
+      echo "Running ALL tests..."
       ./v.exe test v
-      echo "Running v -os msvc test v..."
-      #./v -os msvc test v
-      ##echo "Running only the repl tests directly"
-      ##./v.exe ./compiler/tests/repl/repl_test.v
-      echo "Testing gcc bootstrapping"
-      ./make.bat -gcc
       set +e
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
       make
-      #./v install glfw
+      ./v -o v compiler
       ./v test v
     fi
   - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      ## aliases do not work for some reason in travis, just use full commands :-|
+      echo "Nodejs version:"
+      snap run node --version      
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v
+      snap run node hi.js
+    fi
+  - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      echo "Nodejs version:"
+      node --version      
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v
+      ## the node on osx requires --harmony-class-fields for now
+      node --harmony-class-fields hi.js
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      # Build Vid
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
     fi

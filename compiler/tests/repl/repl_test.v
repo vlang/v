@@ -1,24 +1,10 @@
 import os
-
-fn full_path_to_v() string {
-	vname  := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vexec := os.dir(os.dir(os.dir(os.dir( os.executable() )))) + os.PathSeparator + vname
-	return vexec
-}
+import compiler.tests.repl.runner
+import benchmark
 
 fn test_the_v_compiler_can_be_invoked() {
-	vexec := full_path_to_v()
+	vexec := runner.full_path_to_v()
 	println('vexecutable: $vexec')
-	/*
-	args := os.args
-	vreal  := os.realpath('v')
-	myself := os.realpath( os.executable() )
-	wd := os.getwd() + os.PathSeparator
-	println('args are: $args')
-	println('vreal   : $vreal')
-	println('myself  : $myself')
-	println('wd      : $wd')
-    */
 	assert vexec != ''
 
 	vcmd := '$vexec --version'
@@ -33,35 +19,22 @@ fn test_the_v_compiler_can_be_invoked() {
 	assert r_error.output == '`nonexisting.v` does not exist'
 }
 
-fn test_the_v_repl() {
-	test_files := os.walk_ext('.', '.repl')
-	wd := os.getwd() + os.PathSeparator
-	vexec := full_path_to_v()
-	
-	for file in test_files {
-		fcontent := os.read_file(file) or {
+fn test_all_v_repl_files() {
+	options := runner.new_options()
+	mut bmark := benchmark.new_benchmark()
+	for file in options.files {
+		bmark.step()
+		fres := runner.run_repl_file(options.wd, options.vexec, file) or {
+			bmark.fail()
+			eprintln( bmark.step_message(err) )
 			assert false
-			break
+			continue
 		}
-		content := fcontent.replace('\r', '')		
-		input := content.all_before('===output===\n')
-		output := content.all_after('===output===\n')
-		
-		input_temporary_filename := 'input_temporary_filename.txt'
-		os.write_file(input_temporary_filename, input)
-		defer { os.rm(input_temporary_filename) }		
-		r := os.exec('$vexec runrepl < $input_temporary_filename') or {
-			assert false
-			break
-		}
-		result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
-		assert result == output
-		if result != output {
-			println(file)
-			println('Got : |$result|')
-			println('Expected : |$output|')
-		} else {
-			println('Repl file $file is OK')
-		}
+		bmark.ok()
+		println( bmark.step_message(fres) )
+		assert true
 	}
+	bmark.stop()
+	println( bmark.total_message('total time spent running REPL files') )
 }
+

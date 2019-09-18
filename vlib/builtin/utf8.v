@@ -4,8 +4,8 @@
 
 module builtin
 
-pub fn utf8_char_len(b byte) int { 
-	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1 
+pub fn utf8_char_len(b byte) int {
+	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
 // Convert utf32 to utf8
@@ -130,4 +130,52 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
     } $else {
         return ''
     }
+}
+
+// Calculate length to read from the first byte
+fn utf8_len(c byte) int {
+  mut b := 0
+  mut x := c
+
+  if ((x & 240) != 0) { //0xF0
+    x >>= 4
+  } else {
+    b += 4
+  }
+  if ((x & 12) != 0) { //0x0C
+    x >>= 2
+  } else {
+    b += 2
+  }
+  if ((x & 2) == 0) { //0x02
+    b++
+  }
+  return b
+}
+
+// Reads an utf8 character from standard input
+pub fn utf8_getchar() int {
+  c := int(C.getchar())
+  len := utf8_len(~c)
+  if c < 0 {
+    return 0
+  } else if len == 0 {
+    return c
+  } else if len == 1 {
+    return -1
+  } else {
+    mut uc := int(c & ((1 << (7 - len)) - 1))
+    for i := 0; i + 1 < len; i++ {
+      c2 := int(C.getchar())
+      if c2 != -1 && (c2 >> 6) == 2 {
+        uc <<= 6
+        uc |= int((c2 & 63))
+      }  else if c2 == -1 {
+        return 0
+      } else {
+        return -1
+      }
+    }
+    return uc
+  }
 }
