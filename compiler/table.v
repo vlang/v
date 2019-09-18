@@ -438,29 +438,38 @@ fn (table &Table) find_field(typ &Type, name string) ?Var {
 	return none
 }
 
-fn (table mut Table) add_method(type_name string, f Fn) {
+fn (p mut Parser) add_method(type_name string, f Fn) {
+	if !p.first_pass() && f.name != 'str' {
+		return
+	}
 	if type_name == '' {
 		print_backtrace()
 		cerror('add_method: empty type')
 	}
 	// TODO table.typesmap[type_name].methods << f
-	mut t := table.typesmap[type_name]
+	mut t := p.table.typesmap[type_name]
+	if type_name == 'str' {
+		println(t.methods.len)
+	}	
+	
 	t.methods << f
-	table.typesmap[type_name] = t
+	if type_name == 'str' {
+		println(t.methods.len)
+	}	
+	p.table.typesmap[type_name] = t
 }
 
 fn (t &Type) has_method(name string) bool {
-	method := t.find_method(name)
-	return (method.name != '')
+	_ := t.find_method(name) or { return false }
+	return true
 }
 
 fn (table &Table) type_has_method(typ &Type, name string) bool {
-	method := table.find_method(typ, name)
-	return (method.name != '')
+	_ := table.find_method(typ, name) or { return false }
+	return true
 }
 
-// TODO use `?Fn`
-fn (table &Table) find_method(typ &Type, name string) Fn {
+fn (table &Table) find_method(typ &Type, name string) ?Fn {
 	t := table.typesmap[typ.name]
 	for method in t.methods {
 		if method.name == name {
@@ -469,12 +478,17 @@ fn (table &Table) find_method(typ &Type, name string) Fn {
 	}
 	if typ.parent != '' {
 		parent := table.find_type(typ.parent)
-		return parent.find_method(name)
+		for method in parent.methods {
+			if method.name == name {
+				return method
+			}
+		}
+		return none
 	}
-	return Fn{}
+	return none
 }
 
-fn (t &Type) find_method(name string) Fn {
+fn (t &Type) find_method(name string) ?Fn {
 	// println('$t.name find_method($name) methods.len=$t.methods.len')
 	for method in t.methods {
 		// println('method=$method.name')
@@ -482,9 +496,7 @@ fn (t &Type) find_method(name string) Fn {
 			return method
 		}
 	}
-	//println('ret Fn{}')
-	return Fn{}
-	//return none
+	return none
 }
 
 /*
@@ -512,6 +524,7 @@ fn (t &Table) find_type(name_ string) Type {
 		name = name.left(name.len - 1)
 	}
 	if !(name in t.typesmap) {
+		//println('ret Type')
 		return Type{}
 	}
 	return t.typesmap[name]
@@ -520,7 +533,7 @@ fn (t &Table) find_type(name_ string) Type {
 fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	mut got := got_
 	mut expected := expected_
-	p.log('check types got="$got" exp="$expected"  ')
+	//p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
 	}

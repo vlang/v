@@ -626,7 +626,7 @@ fn (p mut Parser) struct_decl() {
 		if is_interface {
 			f := p.interface_method(field_name, name)
 			if p.first_pass() {
-				p.table.add_method(typ.name, f)
+				p.add_method(typ.name, f)
 			}
 			continue
 		}
@@ -1771,7 +1771,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 		//println('ORM dot $str_typ')
 	//}
 	p.check(.dot)
-	typ := p.find_type(str_typ)
+	mut typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
 	}
@@ -1781,7 +1781,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	}
 	field_name := p.lit
 	p.fgen(field_name)
-	p.log('dot() field_name=$field_name typ=$str_typ')
+	//p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}')
 	//}
@@ -1795,7 +1795,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	if !typ.is_c && !p.is_c_fn_call && !has_field && !has_method && !p.first_pass() {
 		if typ.name.starts_with('Option_') {
 			opt_type := typ.name.right(7)
-			p.error('unhandled option type: $opt_type?')
+			p.error('unhandled option type: `?$opt_type`')
 		}
 		//println('error in dot():')
 		//println('fields:')
@@ -1850,7 +1850,10 @@ struct $f.parent_fn {
 		return field.typ
 	}
 	// method
-	method := p.table.find_method(typ, field_name)
+	method := p.table.find_method(typ, field_name) or {
+		p.error('could not find method `$field_name`') // should never happen
+		exit(1)
+	}
 	p.fn_call(method, method_ph, '', str_typ)
 	// Methods returning `array` should return `array_string`
 	if method.typ == 'array' && typ.name.starts_with('array_') {
@@ -3543,7 +3546,7 @@ fn (p mut Parser) go_statement() {
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
-		method := p.table.find_method(typ, p.lit)
+		method := p.table.find_method(typ, p.lit) or { panic('go method') }
 		p.async_fn_call(method, 0, var_name, v.typ)
 	}
 	// Normal function

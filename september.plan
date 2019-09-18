@@ -9,6 +9,7 @@
 + fix non-ascii rendering in gg (ä, å, etc)
 - cache all tokens once
 - enable vfmt
+- bring back vdoc and regenerate all module docs
 - optimize the parser (reduce map lookups)
 - cache vlib (right now it's re-compiled every time)
 - fix openssl on older linux distros
@@ -31,4 +32,6 @@
 + o(log n) type lookup
 - prebuilt binaries for all platforms
 - fix interfaces
+- `none` keyword for optionals
+- table: migrate all find*** functions to optionals
 

@@ -368,7 +368,7 @@ fn (p mut Parser) fn_decl() {
 			}
 			p.table.register_type2(receiver_t)
 		}
-		p.table.add_method(receiver_t.name, f)
+		p.add_method(receiver_t.name, f)
 	}
 	else {
 		// println('register_fn typ=$typ isg=$is_generic')
