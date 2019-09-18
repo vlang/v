@@ -1818,7 +1818,7 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	// field
 	if has_field {
 		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
-		field := p.table.find_field(typ, struct_field)
+		field := p.table.find_field(typ, struct_field) or { panic('field') }
 		if !field.is_mut && !p.has_immutable_field {
 			p.has_immutable_field = true
 			p.first_immutable_field = field
@@ -2786,7 +2786,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			if field in inited_fields {
 				p.error('already initialized field `$field` in `$t.name`')
 			}
-			f := t.find_field(field)
+			f := t.find_field(field) or { panic('field') }
 			inited_fields << field
 			p.gen_struct_field_init(field)
 			p.check(.colon)
