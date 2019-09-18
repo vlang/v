@@ -2,12 +2,12 @@
     #include <stdio.h>
     #include <stdlib.h>
 
-    #define INT 1
-    #define BIN 2
-    #define HEX 3
-    #define OCT 4
-
-    #define integer_t 1
+    #define STRING 1
+    #define DEC_INT 2
+    #define BIN_INT 3
+    #define HEX_INT 4
+    #define OCT_INT 5
+    #define FLOAT_NUM 6
 %}
 
 %start TOML
@@ -15,7 +15,7 @@
 %%
     TOML: TABLE | ARRAY ;
     DATA: [INT_KEY | BIN_KEY | HEX_KEY | OCT_KEY | STRING_KEY];
-    INT_KEY: INTEGER;
+    DEC_KEY: INTEGER;
     BIN_KEY: BIN_HEADER | BINARY;
     HEX_KEY: HEX_HEADER | BINARY;
     OCT_KEY: OCT_HEADER | BINARY;
@@ -44,11 +44,26 @@
        | DATA
        {
            int type;
+
+           // Key Type Select.
            switch(DATA){
-                case INT_KEY:
-                    type = integer_t;
+                case STRING_KEY:
+                    type = STRING
+                    break;
+                case DEC_KEY:
+                    type = DEC_INT;
                     break;
                 case BIN_KEY:
+                    type = BIN_INT;
+                    break;
+                case HEX_KEY:
+                    type = HEX_INT;
+                    break;
+                case OCT_KEY:
+                    type = OCT_INT;
+                    break;
+                case FLOAT_KEY:
+                    type = FLOAT;
                     break;
            }
            char temp;
@@ -65,11 +80,24 @@ int yyerror(const char* str){
     return 0;
 }
 
-int parse_array(){
+struct toml_key_t{
+    int val_type;
+};
+
+struct table_t{
+    const char* key;
+    int num_keyval;
+};
+
+struct array_t{
+    const char* key;
+};
+
+int parse_array(const char* key_name,array_t rtn){
 
 }
 
-int parse_table(){
+int parse_table(const char* tbl_name,table_t rtn){
 
 }
 

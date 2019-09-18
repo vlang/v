@@ -2,13 +2,15 @@ import toml
 import math
 
 const (
-    INT = 1
-    BIN = 2
-    HEX = 3
-    OCT = 4
+    STR = 1
+    DEC_INT = 2
+    BIN_INT = 3
+    HEX_INT = 4
+    OCT_INT = 5
+    FLOAT = 6
 )
 
-fn decode_integer(s string) string{
+fn decode_demical(s string) string{
     for i := 0; i == s.len(); i++{
         if s[i] == '_'{
             s = s.substr(i)
@@ -94,49 +96,78 @@ fn decode_oct(s string) string{
     return temp.str()
 }
 
-fn (t TOMLVal) integer_decode_int(key KeyVal.key) int{
+fn string_decode(root &TOML,t Table.key){
+    if &C.toml.token_load(root.key.name, root.Table.name,mut temp := '',mut head := 0) == -1{
+        return 0
+    }
+    if head != STR{
+        return ''
+    }
+    else {
+
+    }
+}
+
+fn integer_decode_int(root &TOML) int {
     // return -1 is null.
-    if &C.toml.token_integer(key,head := 0,temp := '') == -1{
+    if &C.toml.token_load(root.key.name, root.Table.name,mut temp := '',mut head := 0) == -1{
         return 0
     }
     match head{
-        INT => temp = decode_integer(temp)
-        BIN => temp = decode_bin(temp)
-        HEX => temp = decode_hex(temp)
-        OCT => temp = decode_oct(temp)
+        DEC_INT => temp = decode_demical(temp)
+        BIN_INT => temp = decode_bin(temp)
+        HEX_INT => temp = decode_hex(temp)
+        OCT_INT => temp = decode_oct(temp)
         else => return -1
     }
     return temp.int()
 }
 
-fn (t TOMLVal) integer_decode_i64(key KeyVal.key) i64{
-    mut temp := key.val()
-    if &C.toml.token_integer(temp := '') == -1{
+fn integer_decode_i64(root &TOML,t Table.key) i64{     
+    if &C.toml.token_load(root.Key.name,root.Table.name,mut temp := '',mut head := 0)  == -1{
         return 0
-    }    
+    }
+
     match head{
-        INT => temp = decode_integer(temp)
-        BIN => temp = decode_bin(temp)
-        HEX => temp = decode_hex(temp)
-        OCT => temp = decode_oct(temp)
+        DEC_INT => temp = decode_demical(temp)
+        BIN_INT => temp = decode_bin(temp)
+        HEX_INT => temp = decode_hex(temp)
+        OCT_INT => temp = decode_oct(temp)
         else => return -1
     }
+    // TOML Data Writing.
+    root.Table. = temp.i64()
     return temp.i64()
 }
 
-fn (t TOMLVal) integer_decode_i16(t Table.name,k KeyVal.key) i16{
-    mut tmp := k.val()
-    if &C.toml.token_integer(temp := '') == -1{
+fn integer_decode_i16(root &TOML,t Table.key) i16{
+    if &C.toml.token_load(t.key.name(),t.name(),mut temp = '',mut head := 0) == -1{
         return 0
     }    
     match head{
-        INT => temp = decode_integer(temp)
-        BIN => temp = decode_bin(temp)
-        HEX => temp = decode_hex(temp)
-        OCT => temp = decode_oct(temp)
+        DEC_INT => temp = decode_integer(temp)
+        BIN_INT => temp = decode_bin(temp)
+        HEX_INT => temp = decode_hex(temp)
+        OCT_INT => temp = decode_oct(temp)
         else => return -1
     }
-    return temp.i16
+    // TOML Data Writing.
+    root.Table.key.val.integer = temp.i64()
+    return temp.i16()
 }
 
-fn (t TOMLVal) integer_decode_i8(table)
+fn integer_decode_i8(root &TOML,t Table.key) i8{
+    if &C.toml.token_load(root.Key.name, root.name,mut temp = '',mut head := 0) == -1{
+        return 0
+    }    
+    match head{
+        DEC_INT => temp = decode_integer(temp)
+        BIN_INT => temp = decode_bin(temp)
+        HEX_INT => temp = decode_hex(temp)
+        OCT_INT => temp = decode_oct(temp)
+        else => return -1
+    }    
+    // TOML Data Writing.
+    root.Table.key.val.integer = temp.i64()
+    return temp.i8()
+}

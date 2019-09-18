@@ -7,7 +7,7 @@ module toml
 import ebnf
 
 const (
-	INT = 1
+	DEC = 1
 	BIN = 2
 	HEX = 3
 	OCT = 4
@@ -27,57 +27,84 @@ fn compile(){
 
 fn C.yyparse()
 
-fn load_parse(){
-	&C.yyparse()
-}
-
 struct TOML{
 	pub mut:
 		tbl 	[]Table
 		arr		[]Array
 }
 
+
 fn (t TOML) toml_parse(){
 	// compile yacc(bison)/lex(flex) file.
 	compile()
 	// Parse Start.
 	load_parse()
+	// Data Writing.
+	writing_data()
+}
+
+fn writing_data(){
+
 }
 
 struct KeyVal{
-	key string
-	val TOMLVal
+	name	string
+	mut:
+		val TOMLVal
 }
 
-fn (k KeyVal) key_name() string{
+fn (k KeyVal) name() string{
+	return k.name
+}
 
+fn (k KeyVal) search(s string) {
+	k.name == s or {
+		panic('Invaild Key Name!')
+	}
 }
 
 struct Array{
 	name 			string
 	mut:
 		val 			[]TOMLVal
-		kind 			int
 		value_type 		int
 		arr 			[]Array
 		tbl				[]Table
+}
+
+fn (a Array) name() string{
+	return a.name
+}
+
+fn (a Array) search(s string){
+	a.name == s or{
+		panic('Invaild Array Name!')
+	}
 }
 
 struct Table{
 	name		string
 	mut:
 		key 		[]KeyVal
-		kind 		int
-		value_type 	int
 		tbl			[]Table
+		arr			[]Array
+}
+
+fn (t Table) name() string{
+	return t.name
+}
+
+struct TOMLInt{
+	val 	i64
+	str_val	string
+	enum IntType{
+		demical binary octal hex
+	}
 }
 
 // TOML's Value.
-union TOMLVal{
-	integer		string
-	binary_int  string
-	octical_int string
-	hexical_int string
+struct TOMLVal{
+	integer		TOMLInt
 	str 		string
 	boolean 	bool
 	TimeStamp	TimeStamp
