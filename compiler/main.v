@@ -960,6 +960,10 @@ fn install_v(args[]string) {
 }
 
 fn (v &V) test_v() {
+	if !os.dir_exists('vlib') {
+		println('run "v test v" next to the vlib/ directory')
+		exit(1)
+	}	
 	args := env_vflags_and_os_args()
 	vexe := args[0]
 	// Emily: pass args from the invocation to the test
