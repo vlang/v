@@ -65,10 +65,6 @@ script:
         ./make.bat -msvc
       fi
 
-      ### running just repl_test.v produces failing results earlier and is easier to read
-      echo "Running only the repl tests directly..."
-      ./v.exe ./compiler/tests/repl/repl_test.v
-      echo "Running ALL tests..."
       ./v.exe test v
       set +e
     fi
