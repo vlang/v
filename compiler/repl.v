@@ -11,6 +11,8 @@ struct Repl {
 mut:
 	indent         int
 	in_func        bool
+	cur_line       int
+	cur_func       int
 	lines          []string
 	temp_lines     []string
 	functions_name []string
@@ -86,22 +88,10 @@ fn run_repl() []string {
 			continue
 		}
 		line = line.trim_space()
-		if line.len == -1 || line == '' || line == 'exit' {
-			break
-		}
-		if line == '\n' {
-			continue
-		}
-		if line == 'clear' {
-			term.erase_display('2')
-			continue
-		}
-		if line == 'help' {
-			repl_help()
-			continue
-		}
 		if line.starts_with('fn') {
 			r.in_func = true
+			r.cur_line = r.lines.len
+			r.cur_func = r.functions_name.len
 			r.functions_name << line.all_after('fn').all_before('(').trim_space()
 		}
 		was_func := r.in_func
@@ -117,6 +107,19 @@ fn run_repl() []string {
 			}
 			line = ''
 		}
+		// check other command
+		if line == 'exit' {
+			break
+		}
+		if line == 'clear' {
+			term.erase_display('2')
+			continue
+		}
+		if line == 'help' {
+			repl_help()
+			continue
+		}
+
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
@@ -134,11 +137,11 @@ fn run_repl() []string {
 		}
 		else {
 			mut temp_line := line
-			mut temp_flag := false
+			mut temp_flag := 1
 			func_call := r.function_call(line)
-			if !(line.contains(' ') || line.contains(':') || line.contains('=') || line.contains(',') || line == '') && !func_call {
+			if !(line.contains(':') || line.contains('=') || line.contains(',') || line == '') && !func_call {
 				temp_line = 'println($line)'
-				temp_flag = true
+				temp_flag = 0
 			}
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
@@ -146,7 +149,15 @@ fn run_repl() []string {
 				cerror(err)
 				return []string
 			}
-			if !func_call && !s.exit_code {
+			// error happens in the function
+			// remove functions from r.functions_name and r.function
+			if line == '' && s.exit_code == 1 {
+				for r.functions.len >= r.cur_line {
+					r.functions.delete(r.functions.len-1)
+				}
+				r.functions_name.delete(r.functions_name.len-1)
+			}
+			if !func_call && !s.exit_code && temp_flag {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]
