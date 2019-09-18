@@ -16,9 +16,21 @@ fn err_call(ok bool) ?int {
 	return 42
 }
 
+fn ret_none() ?int {
+	//return error('wtf') //none
+	return none
+}	
+
 fn test_option_for_base_type_without_variable() {
 	val := err_call(true) or {
 		panic(err)
 	}
 	assert val == 42
+	println('hm')
+	val2 := ret_none() or {
+		println('yep')
+		return
+	}	
+	println('nice')
+	println(val2)
 }

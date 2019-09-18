@@ -3,7 +3,7 @@
 //
 // - parsing flags like '--flag' or '--stuff=things' or '--things stuff'
 // - handles bool, int, float and string args
-// - is able to pring usage
+// - is able to print usage
 // - handled unknown arguments as error 
 // 
 // Usage example:
@@ -45,7 +45,7 @@
 
 module flag
 
-// data object storing informations about a defined flag
+// data object storing information about a defined flag
 struct Flag {
 pub:
   name     string // name as it appears on command line
@@ -105,7 +105,7 @@ fn (fs mut FlagParser) add_flag(n string, a byte, u, vd string) {
 }
 
 // private: general parsing a single argument 
-//  - search args for existance
+//  - search args for existence
 //    if true
 //      extract the defined value as string
 //    else 
@@ -213,7 +213,7 @@ pub fn (fs mut FlagParser) int(n string, i int, u string) int {
   return fs.int_(n, `\0`, i, u)
 }
 
-// defining and parsing a flaot flag 
+// defining and parsing a float flag 
 //  if defined 
 //      the value is returned (float)
 //  else 
@@ -228,7 +228,7 @@ pub fn (fs mut FlagParser) float_(n string, a byte, f f32, u string) f32 {
   return parsed.f32()
 }
 
-// defining and parsing a flaot flag 
+// defining and parsing a float flag 
 //  if defined 
 //      the value is returned (float)
 //  else 
@@ -309,7 +309,7 @@ pub fn (fs FlagParser) usage() string {
 // finalize argument parsing -> call after all arguments are defined
 //
 // all remaining arguments are returned in the same order they are defined on
-// commandline
+// command line
 //
 // if additional flag are found (things starting with '--') an error is returned 
 // error handling is up to the application developer

@@ -175,9 +175,23 @@ fn (p mut Parser) chash() {
 		println('v script')
 		//p.v_script = true
 	}
+	// Don't parse a non-JS V file (`#-js` flag)
+	else if hash == '-js'  {
+		$if js {
+			for p.tok != .eof {
+				p.next()
+			}	
+		} $else {
+			p.next()
+		}	
+	}
 	else {
-		if !p.can_chash {
-			p.error('bad token `#` (embedding C code is no longer supported)')
+		$if !js {
+			if !p.can_chash {
+				println('hash="$hash"')
+				println(hash.starts_with('include'))
+				p.error('bad token `#` (embedding C code is no longer supported)')
+			}
 		}
 		p.genln(hash)
 	}
@@ -249,9 +263,6 @@ return strings__Builder_str(sb);
 } '
 }
 
-fn (p mut Parser) parse_t() {
-
-}
 
 
 

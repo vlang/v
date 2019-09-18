@@ -45,7 +45,7 @@ fn new_scanner(file_path string) &Scanner {
 		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
 			// skip three BOM bytes
 			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], C.strlen(c_text) - offset_from_begin)
+			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
 		}
 	}
 
@@ -402,7 +402,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// @LINE => will be substituted with the V line number where it appears (as a string).
 		// @COLUMN => will be substituted with the column where it appears (as a string).
 		// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
-		// This allows things like this: 
+		// This allows things like this:
 		// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 		// ... which is useful while debugging/tracing
 		if name == 'FN' { return scan_res(.str, s.fn_name) }
@@ -624,7 +624,7 @@ fn (s &Scanner) error(msg string) {
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
 	column := s.pos - linestart
-	if s.should_print_line_on_error {
+	if s.should_print_line_on_error && lineend > linestart {
 		line := s.text.substr( linestart, lineend )
 		// The pointerline should have the same spaces/tabs as the offending
 		// line, so that it prints the ^ character exactly on the *same spot*
@@ -752,6 +752,9 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
+	if c == '\\`' {
+		return '`'
+	}	
 	// Escapes a `'` character
 	return if c == '\'' { '\\' + c } else { c }
 }
@@ -776,7 +779,7 @@ fn (s mut Scanner) peek() Token {
 	return tok
 }
 
-fn (s mut Scanner) expect(want string, start_pos int) bool {
+fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
@@ -825,7 +828,7 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s mut Scanner) get_opening_bracket() int {
+fn (s &Scanner) get_opening_bracket() int {
 	mut pos := s.pos
 	mut parentheses := 0
 	mut inside_string := false
