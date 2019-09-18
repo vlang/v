@@ -9,10 +9,7 @@ import(
 	encoding.binary
 )
 
-pub fn read_u64(max u64) u64? {
-	if max <= u64(0) {
-		return error('crypto.rand: argument to read_u64 is <= 0')
-	}
+pub fn rand_u64(max u64) u64? {
 	// bitlen := int(math.floor(math.log2(f64(max))+1))
 	bitlen := int(math.floor(math.log(f64(max))/math.log(2)) + 1)
 	if bitlen == 0 {
@@ -31,12 +28,10 @@ pub fn read_u64(max u64) u64? {
 		bytes[0] &= byte(int(u64(1)<<b) - 1)
 		x := bytes_to_u64(bytes)
 		n = x[0]
-		if x.len > 1 {
-			n = u64(u32(x[1])<<u32(32)) | n
-		}
-		if int(n) < 0 {
-			n = -n
-		}
+		// NOTE: maybe until we have bigint we could use fn to return big str? how to req size?
+		// if x.len > 1 {
+		// 	n = u64(u32(x[1])<<u32(32)) | n
+		// }
 		if n < max {
 			return n
 		}
