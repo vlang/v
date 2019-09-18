@@ -3635,7 +3635,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.check_name()
 	}
 	p.check(.rsbr)
-	if p.tok == .func {
+	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
 		p.fn_decl()
 		p.attr = ''
 		return
