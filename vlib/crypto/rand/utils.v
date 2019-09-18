@@ -9,7 +9,7 @@ import(
 	encoding.binary
 )
 
-pub fn rand_u64(max u64) u64? {
+pub fn int_u64(max u64) u64? {
 	// bitlen := int(math.floor(math.log2(f64(max))+1))
 	bitlen := int(math.floor(math.log(f64(max))/math.log(2)) + 1)
 	if bitlen == 0 {
@@ -28,7 +28,7 @@ pub fn rand_u64(max u64) u64? {
 		bytes[0] &= byte(int(u64(1)<<b) - 1)
 		x := bytes_to_u64(bytes)
 		n = x[0]
-		// NOTE: maybe until we have bigint we could use fn to return big str? how to req size?
+		// NOTE: maybe until we have bigint could do it another way?
 		// if x.len > 1 {
 		// 	n = u64(u32(x[1])<<u32(32)) | n
 		// }
@@ -40,11 +40,12 @@ pub fn rand_u64(max u64) u64? {
 }
 
 fn bytes_to_u64(b []byte) []u64 {   
-	mut z := [u64(0)].repeat((b.len + 8 - 1) / 8)
+	ws := 64/8
+	mut z := [u64(0)].repeat((b.len + ws - 1) / ws)
 	mut i := b.len
-	for k := 0; i >= 8; k++ {
-		z[k] = binary.big_endian_u64(b.slice(i-8, i))
-		i -= 8
+	for k := 0; i >= ws; k++ {
+		z[k] = binary.big_endian_u64(b.slice(i-ws, i))
+		i -= ws
 	}
 	if i > 0 {
 		mut d := u64(0)
