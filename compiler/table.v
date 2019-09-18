@@ -461,21 +461,17 @@ fn (table &Table) type_has_method(typ &Type, name string) bool {
 
 // TODO use `?Fn`
 fn (table &Table) find_method(typ &Type, name string) Fn {
-	// method := typ.find_method(name)
 	t := table.typesmap[typ.name]
-	method := t.find_method(name)
-	
 	for method in t.methods {
 		if method.name == name {
 			return method
 		}
 	}
-	
 	if typ.parent != '' {
 		parent := table.find_type(typ.parent)
 		return parent.find_method(name)
 	}
-	return method
+	return Fn{}
 }
 
 fn (t &Type) find_method(name string) Fn {
