@@ -193,6 +193,9 @@ fn main() {
 		v.cgen.lines.free()
 		free(v.cgen)
 		free(v.table)
+		//for p in parsers {
+			
+		//}	
 		println('done!')
 	}	
 }

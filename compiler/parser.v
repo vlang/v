@@ -1078,7 +1078,7 @@ fn (p mut Parser) close_scope() {
 				free_fn = 'v_array_free'
 			} else if v.typ == 'string' {
 				free_fn = 'v_string_free'
-				continue
+				//continue
 			}	else if v.ptr || v.typ.ends_with('*') {
 				free_fn = 'v_ptr_free'
 				//continue
