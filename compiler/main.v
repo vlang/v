@@ -901,7 +901,7 @@ fn update_v() {
 			os.rm( v_backup_file )
 		}
 		os.mv('$vroot/v.exe', v_backup_file)
-		s2 := os.exec('$vroot/make.bat') or {
+		s2 := os.exec('"$vroot/make.bat"') or {
 			cerror(err)
 			return
 		}
