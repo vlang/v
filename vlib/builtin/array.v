@@ -86,21 +86,6 @@ pub fn (a array) repeat(nr_repeats int) array {
 	return arr
 }
 
-// TODO remove
-pub fn (a array) repeat2(nr_repeats int) array {
-	arr := array {
-		len: nr_repeats
-		cap: nr_repeats
-		element_size: a.element_size
-		data: malloc(nr_repeats * a.element_size)
-	}
-	val := a.data + 0 //nr_repeats * a.element_size
-	for i := 0; i < nr_repeats; i++ {
-		C.memcpy(arr.data + i * a.element_size, val, a.element_size)
-	}
-	return arr
-}
-
 pub fn (a mut array) sort_with_compare(compare voidptr) {
 	C.qsort(a.data, a.len, a.element_size, compare)
 }

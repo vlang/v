@@ -380,7 +380,7 @@ pub fn (s string) index(p string) int {
         if p.len > s.len {
                 return -1
         }
-        mut prefix := [0].repeat2(p.len)
+        mut prefix := [0].repeat(p.len)
         mut j := 0
         for i := 1; i < p.len; i++ {
                 for p[j] != p[i] && j > 0 {
@@ -898,7 +898,7 @@ pub fn (s string) bytes() []byte {
 	if s.len == 0 {
 		return []byte
 	}
-	mut buf := [byte(0)].repeat2(s.len)
+	mut buf := [byte(0)].repeat(s.len)
 	C.memcpy(buf.data, s.str, s.len)
 	return buf
 }

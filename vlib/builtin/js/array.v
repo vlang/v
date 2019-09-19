@@ -37,7 +37,7 @@ fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	return val
 }
 
-pub fn (a array) repeat2(nr_repeats int) array {
+pub fn (a array) repeat(nr_repeats int) array {
 	#return Array(a[0]).fill(nr_repeats)
 	return a
 }

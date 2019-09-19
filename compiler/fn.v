@@ -132,7 +132,7 @@ fn (p mut Parser) is_sig() bool {
 fn new_fn(mod string, is_public bool) Fn {
 	return Fn {
 		mod: mod
-		local_vars: [Var{}].repeat2(MaxLocalVars)
+		local_vars: [Var{}].repeat(MaxLocalVars)
 		is_public: is_public
 	}
 }

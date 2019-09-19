@@ -5,7 +5,7 @@ module strings
 // use levenshtein distance algorithm to calculate
 // the distance between between two strings (lower is closer)
 pub fn levenshtein_distance(a, b string) int {
-	mut f := [0].repeat2(b.len+1)
+	mut f := [0].repeat(b.len+1)
 	for ca in a {
 		mut j := 1
 		mut fj1 := f[0]
@@ -50,7 +50,7 @@ pub fn dice_coefficient(s1, s2 string) f32 {
 	mut intersection_size := 0
 	for i := 0; i < b.len-1; i++ {
 		bigram := b.substr(i, i+2)
-		count := if bigram in first_bigrams { first_bigrams[bigram] } else { 0 } 
+		count := if bigram in first_bigrams { first_bigrams[bigram] } else { 0 }
 		if count > 0 {
 			first_bigrams[bigram] = count - 1
 			intersection_size++
