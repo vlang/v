@@ -6,32 +6,26 @@ module sync
 
 struct WaitGroup {
 mut:
-    mu Mutex
-    finished Mutex
-    active int
+	mu Mutex
+	active int
 }
 
 pub fn (wg mut WaitGroup) add(delta int) {
-    wg.mu.lock()
-    if wg.active == 0 {
-        wg.finished.lock()
-    }
-    wg.active += delta
-    if wg.active < 0 {
-        panic('Negative number of jobs in waitgroup')
-    }
-    if wg.active == 0 {
-        wg.finished.unlock()
-    }
-    wg.mu.unlock()
+	wg.mu.lock()
+	wg.active += delta
+	wg.mu.unlock()
+	if wg.active < 0 {
+		panic('Negative number of jobs in waitgroup')
+	}
 }
 
 pub fn (wg mut WaitGroup) done() {
-    wg.add(-1)
+	wg.add(-1)
 }
 
 pub fn (wg mut WaitGroup) wait() {
-    wg.finished.lock()
-    wg.finished.unlock()
+	for wg.active > 0 {
+		// waiting
+	}
 }
 

@@ -5,38 +5,30 @@
 module builtin
 
 #include <float.h>
-
-import const (
-	DBL_EPSILON
-)
-
-pub fn (d double) str() string {
-	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, strlen(buf))
-}
+#include <math.h>
 
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, strlen(buf))
+	C.sprintf(*char(buf), '%f', d)
+	return tos(buf, vstrlen(buf))
 }
 
 pub fn (d f32) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%f', d)
-	return tos(buf, strlen(buf))
+	C.sprintf(*char(buf), '%f', d)
+	return tos(buf, vstrlen(buf))
 }
 
 pub fn ptr_str(ptr voidptr) string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(buf, '%p', ptr)
-	return tos(buf, strlen(buf))
+	C.sprintf(*char(buf), '%p', ptr)
+	return tos(buf, vstrlen(buf))
 }
 
 // compare floats using C epsilon
 pub fn (a f64) eq(b f64) bool {
-	return C.fabs(a - b) <= DBL_EPSILON	
+	//return C.fabs(a - b) <= C.DBL_EPSILON	
+	return (a - b) <= C.DBL_EPSILON	
 }
 
 // fn (nn i32) str() string {
@@ -48,7 +40,7 @@ pub fn (nn int) str() string {
 		return '0'
 	}
 	max := 16
-	mut buf := malloc(max)
+	mut buf := calloc(max)
 	mut len := 0
 	mut is_neg := false
 	if n < 0 {
@@ -78,11 +70,6 @@ pub fn (nn u32) str() string {
 	max := 16
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg := false
-	if n < u32(0) {
-		n = -n
-		is_neg = true
-	}
 	// Fill the string from the end
 	for n > u32(0) {
 		d := n % u32(10)
@@ -90,41 +77,28 @@ pub fn (nn u32) str() string {
 		len++
 		n = n / u32(10)
 	}
-	// Prepend - if it's negative
-	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
-	}
 	return tos(buf + max - len, len)
 }
 
-pub fn (nn u8) str() string {
+/*
+pub fn (nn byte) str() string {
 	 mut n := nn
-	if n == u8(0) {
+	if n == byte(0) {
 		return '0'
 	}
 	max := 5
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg := false
-	if n < u8(0) {
-		n = -n
-		is_neg = true
-	}
 	// Fill the string from the end
-	for n > u8(0) {
-		d := n % u8(10)
-		buf[max - len - 1] = d + u8(`0`)
+	for n > byte(0) {
+		d := n % byte(10)
+		buf[max - len - 1] = d + byte(`0`)
 		len++
-		n = n / u8(10)
-	}
-	// Prepend - if it's negative
-	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
+		n = n / byte(10)
 	}
 	return tos(buf + max - len, len)
 }
+*/
 
 pub fn (nn i64) str() string {
 	mut n := nn
@@ -162,22 +136,12 @@ pub fn (nn u64) str() string {
 	max := 32
 	mut buf := malloc(max)
 	mut len := 0
-	mut is_neg := false
-	if n < u64(0) {
-		n = -n
-		is_neg = true
-	}
 	// Fill the string from the end
 	for n > u64(0) {
 		d := n % u64(10)
 		buf[max - len - 1] = d + u64(`0`)
 		len++
 		n = n / u64(10)
-	}
-	// Prepend - if it's negative
-	if is_neg {
-		buf[max - len - 1] = `-`
-		len++
 	}
 	return tos(buf + max - len, len)
 }
@@ -195,8 +159,8 @@ pub fn (n int) hex() string {
 	} else {
 		11
 	}
-	hex := malloc(len) // 0x + \n 
-	count := int(C.sprintf(hex, '0x%x', n))
+	hex := malloc(len) // 0x + \n
+	count := int(C.sprintf(*char(hex), '0x%x', n))
 	return tos(hex, count)
 }
 
@@ -207,7 +171,7 @@ pub fn (n i64) hex() string {
 		19
 	}
 	hex := malloc(len)
-	count := int(C.sprintf(hex, '0x%x', n))
+	count := int(C.sprintf(*char(hex), '0x%llx', n))
 	return tos(hex, count)
 }
 
@@ -245,14 +209,14 @@ pub fn (c byte) str() string {
 }
 
 pub fn (c byte) is_capital() bool {
-	return c >= `A` && c <= `Z` 
-} 
+	return c >= `A` && c <= `Z`
+}
 
 pub fn (b []byte) clone() []byte {
-	mut res := [byte(0); b.len] 
+	mut res := [byte(0)].repeat(b.len)
 	for i := 0; i < b.len; i++ {
-		res[i] = b[i] 
-	} 
-	return res 
-} 
+		res[i] = b[i]
+	}
+	return res
+}
 

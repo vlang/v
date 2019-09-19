@@ -1,8 +1,8 @@
-module csv
-
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
+module csv
 
 // Once interfaces are further along the idea would be to have something similar to
 // go's io.reader & bufio.reader rather than reading the whole file into string, this
@@ -21,6 +21,7 @@ struct Reader  {
 	// has_header        bool
 	// headings          []string
 	data              string
+pub:
 mut:
 	delimiter         byte
 	comment           byte
@@ -28,7 +29,7 @@ mut:
 	row_pos           int
 }
 
-pub fn new_reader(data string) *Reader {
+pub fn new_reader(data string) &Reader {
 	return &Reader{
 		delimiter: `,`,
 		comment: `#`,
@@ -92,6 +93,9 @@ fn (r mut Reader) read_record() ?[]string {
 	if r.delimiter == r.comment {
 		return err_comment_is_delim
 	}
+	if !valid_delim(r.delimiter) {
+		return err_invalid_delim
+	}
 	mut line := ''
 	for {
 		l := r.read_line() or {
@@ -122,16 +126,18 @@ fn (r mut Reader) read_record() ?[]string {
 		else {
 			line = line.right(1)
 			i = line.index('"')
-			if i+1 == line.len {
-				// last record
-				fields << line.left(i)
-				break
-			}
-			next := line[i+1]
-			if next == r.delimiter {
-				fields << line.left(i)
-				line = line.right(i)
-				continue
+			if i != -1 {
+				if i+1 == line.len {
+					// last record
+					fields << line.left(i)
+					break
+				}
+				next := line[i+1]
+				if next == r.delimiter {
+					fields << line.left(i)
+					line = line.right(i)
+					continue
+				}
 			}
 			line = line.right(1)
 		}
@@ -141,4 +147,11 @@ fn (r mut Reader) read_record() ?[]string {
 	}
 	
 	return fields
+}
+
+fn valid_delim(b byte) bool {
+	return b != 0 &&
+		   b != `"` &&
+		   b != `\r` &&
+		   b != `\n`
 }

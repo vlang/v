@@ -6,35 +6,35 @@ module main
 
 enum Token {
 	eof
-	name        // user 
-	number      // 123 
-	str         // 'foo' 
-	str_inter   // 'name=$user.name' 
-	chartoken   // `A` 
+	name        // user
+	number      // 123
+	str         // 'foo'
+	str_inter   // 'name=$user.name'
+	chartoken   // `A`
 	plus
 	minus
 	mul
 	div
 	mod
-	xor // ^ 
-	pipe // | 
-	inc // ++ 
-	dec // -- 
-	and // && 
-	logical_or 
-	not 
+	xor // ^
+	pipe // |
+	inc // ++
+	dec // --
+	and // &&
+	logical_or
+	not
 	bit_not
 	question
 	comma
 	semicolon
 	colon
-	arrow // => 
+	arrow // =>
 	amp
 	hash
 	dollar
 	left_shift
 	righ_shift
-	//at // @ 
+	//at // @
 	// = := += -=
 	assign
 	decl_assign
@@ -63,10 +63,10 @@ enum Token {
 	ge
 	le
 	// comments
-	//line_com 
-	//mline_com 
-	nl 
-	dot 
+	//line_com
+	//mline_com
+	nl
+	dot
 	dotdot
 	// keywords
 	keyword_beg
@@ -77,8 +77,8 @@ enum Token {
 	key_case
 	key_const
 	key_continue
-	key_default 
-	key_defer 
+	key_default
+	key_defer
 	key_else
 	key_embed
 	key_enum
@@ -87,26 +87,27 @@ enum Token {
 	func
 	key_global
 	key_go
-	key_goto 
-	key_if 
+	key_goto
+	key_if
 	key_import
-	key_import_const 
-	key_in 
-	key_interface 
-	key_match 
+	key_import_const
+	key_in
+	key_interface
+	key_match
 	key_module
 	key_mut
+	key_none
 	key_return
-	key_select 
+	key_select
 	key_sizeof
 	key_struct
-	key_switch 
+	key_switch
 	key_true
-	key_type 
-	//typeof 
+	key_type
+	//typeof
 	key_orelse
 	key_union
-	key_pub 
+	key_pub
 	key_static
 	keyword_end
 }
@@ -114,7 +115,7 @@ enum Token {
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
 fn build_keys() map[string]int {
-	mut res := map[string]int 
+	mut res := map[string]int
 	for t := int(Token.keyword_beg) + 1; t < int(Token.keyword_end); t++ {
 		key := TokenStr[t]
 		res[key] = int(t)
@@ -122,9 +123,9 @@ fn build_keys() map[string]int {
 	return res
 }
 
-// TODO remove once we have `enum Token { name('name') if('if') ... }` 
+// TODO remove once we have `enum Token { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := [''; NrTokens]
+	mut s := [''].repeat(NrTokens)
 	s[Token.keyword_beg] = ''
 	s[Token.keyword_end] = ''
 	s[Token.eof] = 'eof'
@@ -222,6 +223,7 @@ fn build_token_str() []string {
 	s[Token.key_defer] = 'defer'
 	s[Token.key_match] = 'match'
 	s[Token.key_select] = 'select'
+	s[Token.key_none] = 'none'
 	return s
 }
 
@@ -246,9 +248,9 @@ fn (t Token) str() string {
 
 fn (t Token) is_decl() bool {
 	// TODO i
-	//return t in [.key_enum, .key_interface, .func, .typ, .key_const,  
+	//return t in [.key_enum, .key_interface, .func, .typ, .key_const,
 		//.key_import_const, .key_struct, .key_pub, .eof]
-	return t == .key_enum || t == .key_interface || t == .func || 
+	return t == .key_enum || t == .key_interface || t == .func ||
 	t == .key_struct || t == .key_type ||
 	t == .key_const || t == .key_import_const || t == .key_pub || t == .eof
 }
@@ -256,7 +258,7 @@ fn (t Token) is_decl() bool {
 const (
 	AssignTokens = [
 		Token.assign, Token.plus_assign, Token.minus_assign,
-		Token.mult_assign, Token.div_assign, Token.xor_assign, 
+		Token.mult_assign, Token.div_assign, Token.xor_assign,
 		Token.mod_assign,
 		Token.or_assign, Token.and_assign, Token.righ_shift_assign,
 		Token.left_shift_assign

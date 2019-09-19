@@ -1,0 +1,9 @@
+'abc'
+'abc'+'xyz'
+'{'
+'}'
+===output===
+abc
+abcxyz
+{
+}

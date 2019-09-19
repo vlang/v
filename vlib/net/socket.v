@@ -8,22 +8,6 @@ pub:
 	proto int
 }
 
-import const (
-	AF_INET
-	AF_INET6
-	AF_UNSPEC
-	SOCK_STREAM
-	SOL_SOCKET
-	SO_REUSEADDR
-	SO_REUSEPORT
-	INADDR_ANY
-	AI_PASSIVE
-	SHUT_RD
-	SHUT_WR
-	SHUT_RDWR
-	SD_BOTH
-)
-
 struct C.WSAData {
 mut:
 	wVersion u16
@@ -79,10 +63,10 @@ pub fn socket(family int, _type int, proto int) ?Socket {
 	}
 
 	sockfd := C.socket(family, _type, proto)
-	one:=1 
-	// This is needed so that there are no problems with reusing the 
-	// same port after the application exits. 
-	C.setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int))  
+	one:=1
+	// This is needed so that there are no problems with reusing the
+	// same port after the application exits.
+	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, sizeof(int))
 	if sockfd == 0 {
 		return error('socket: init failed')
 	}
@@ -95,8 +79,12 @@ pub fn socket(family int, _type int, proto int) ?Socket {
 	return s
 }
 
+pub fn socket_udp() ?Socket {
+	return socket(C.AF_INET, C.SOCK_DGRAM, C.IPPROTO_UDP)
+}
+
 // set socket options
-pub fn (s Socket) setsockopt(level int, optname int, optvalue *int) ?int {
+pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
 	res := C.setsockopt(s.sockfd, level, optname, optvalue, C.sizeof(optvalue))
 	if res < 0 {
 		return error('socket: setsockopt failed')
@@ -109,24 +97,26 @@ pub fn (s Socket) bind(port int) ?int {
 	mut addr := C.sockaddr_in{}
 	addr.sin_family = s.family
 	addr.sin_port = C.htons(port)
-	addr.sin_addr.s_addr = C.htonl(INADDR_ANY)
+	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
-	res := C.bind(s.sockfd, &addr, size)
+	res := int(C.bind(s.sockfd, &addr, size))
 	if res < 0 {
 		return error('socket: bind failed')
 	}
-	return int(res)
+	return res
 }
 
 // put socket into passive mode and wait to receive
 pub fn (s Socket) listen() ?int {
 	backlog := 128
-	res := int(C.listen(s.sockfd, backlog)) 
+	res := int(C.listen(s.sockfd, backlog))
 	if res < 0 {
 		return error('socket: listen failed')
 	}
-println('listen res = $res') 
-	return res 
+	$if debug {
+		println('listen res = $res')
+	}
+	return res
 }
 
 // put socket into passive mode with user specified backlog and wait to receive
@@ -144,8 +134,10 @@ pub fn (s Socket) listen_backlog(backlog int) ?int {
 
 // helper method to create, bind, and listen given port number
 pub fn listen(port int) ?Socket {
-println('net.listen($port)') 
-	s := socket(AF_INET, SOCK_STREAM, 0) or {
+	$if debug {
+		println('net.listen($port)')
+	}
+	s := socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
 	bind_res := s.bind(port) or {
@@ -159,7 +151,9 @@ println('net.listen($port)')
 
 // accept first connection request from socket queue
 pub fn (s Socket) accept() ?Socket {
-println('accept()') 
+	$if debug {
+		println('accept()')
+	}
 	addr := C.sockaddr_storage{}
 	size := 128 // sizeof(sockaddr_storage)
 	sockfd := C.accept(s.sockfd, &addr, &size)
@@ -178,9 +172,9 @@ println('accept()')
 // connect to given addrress and port
 pub fn (s Socket) connect(address string, port int) ?int {
 	mut hints := C.addrinfo{}
-	hints.ai_family = AF_UNSPEC
-	hints.ai_socktype = SOCK_STREAM
-	hints.ai_flags = AI_PASSIVE
+	hints.ai_family = C.AF_UNSPEC
+	hints.ai_socktype = C.SOCK_STREAM
+	hints.ai_flags = C.AI_PASSIVE
 
 	info := &C.addrinfo{!}
 	sport := '$port'
@@ -197,7 +191,7 @@ pub fn (s Socket) connect(address string, port int) ?int {
 
 // helper method to create socket and connect
 pub fn dial(address string, port int) ?Socket {
-	s := socket(AF_INET, SOCK_STREAM, 0) or {
+	s := socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
 	res := s.connect(address, port) or {
@@ -225,14 +219,24 @@ pub fn (s Socket) recv(bufsize int) byteptr {
 	return buf
 }
 
+// TODO: remove cread/2 and crecv/2 when the Go net interface is done
+pub fn (s Socket) cread( buffer byteptr, buffersize int ) int {
+	return int( C.read(s.sockfd, buffer, buffersize) )
+}
+// Receive a message from the socket, and place it in a preallocated buffer buf,
+// with maximum message size bufsize. Returns the length of the received message.
+pub fn (s Socket) crecv( buffer byteptr, buffersize int ) int {
+	return int( C.recv(s.sockfd, buffer, buffersize, 0) )
+}
+
 // shutdown and close socket
 pub fn (s Socket) close() ?int {
 	mut shutdown_res := 0
 	$if windows {
-		shutdown_res = C.shutdown(s.sockfd, SD_BOTH)
+		shutdown_res = C.shutdown(s.sockfd, C.SD_BOTH)
 	}
 	$else {
-		shutdown_res = C.shutdown(s.sockfd, SHUT_RDWR)
+		shutdown_res = C.shutdown(s.sockfd, C.SHUT_RDWR)
 	}
 	// TODO: should shutdown throw an error? close will
 	// continue even if shutdown failed
@@ -254,23 +258,29 @@ pub fn (s Socket) close() ?int {
 	return 0
 }
 
-const ( 
+const (
         MAX_READ = 400
-) 
+)
 pub fn (s Socket) write(str string) {
         line := '$str\r\n'
         C.write(s.sockfd, line.str, line.len)
 }
- 
+
 pub fn (s Socket) read_line() string {
         mut res := ''
         for {
-                println('.')
+                $if debug {
+					println('.')
+				}
                 mut buf := malloc(MAX_READ)
                 n := int(C.recv(s.sockfd, buf, MAX_READ-1, 0))
-                println('numbytes=$n')
+			$if debug {
+				println('numbytes=$n')
+			}
                 if n == -1 {
-                        println('recv failed')
+			$if debug {
+				println('recv failed')
+			}
                         // TODO
                         return ''
                 }
@@ -279,7 +289,7 @@ pub fn (s Socket) read_line() string {
                 }
                 // println('resp len=$numbytes')
                 buf[n] = `\0`
-		//  C.printf('!!buf= "%s" n=%d\n', buf,n) 
+		//  C.printf('!!buf= "%s" n=%d\n', buf,n)
                 line := string(buf)
                 res += line
                 // Reached a newline. That's an end of an IRC message
@@ -296,4 +306,4 @@ pub fn (s Socket) read_line() string {
         return res
 }
 
- 
+

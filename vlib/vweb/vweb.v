@@ -10,123 +10,125 @@ import (
 
 const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
+	HEADER_SERVER = 'Server: VWeb\r\n' // TODO add to the headers
+	HTTP_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found'
+	HTTP_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n500 Internal Server Error'
+	mime_types = {
+		'.css': 'text/css; charset=utf-8',
+		'.gif': 'image/gif',
+		'.htm': 'text/html; charset=utf-8',
+		'.html': 'text/html; charset=utf-8',
+		'.jpg': 'image/jpeg',
+		'.js': 'application/javascript',
+		'.wasm': 'application/wasm',
+		'.pdf': 'application/pdf',
+		'.png': 'image/png',
+		'.svg': 'image/svg+xml',
+		'.xml': 'text/xml; charset=utf-8'
+	}
 )
 
 struct Context {
-	static_files map[string]string
-	static_mime_types map[string]string
-pub: 
-	req http.Request 
-	conn net.Socket 
-	form map[string]string 
-	// TODO Response 
-	headers []string  // response headers 
-} 
-
-pub fn (ctx Context) text(s string) {
-	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/plain\n$h\n$s') 
-} 
-
-pub fn (ctx Context) json(s string) {
-	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: application/json\n$h\n$s') 
-} 
-
-pub fn (ctx Context) redirect(url string) {
-        h := ctx.headers.join('\n')
-        ctx.conn.write('HTTP/1.1 302 Found\nLocation: $url\n$h') 
-} 
-
-pub fn (ctx Context) not_found(s string) {
-        ctx.conn.write('HTTP/1.1 404 Not Found') 
-} 
-
-pub fn (ctx mut Context) set_cookie(key, val string) {
-	ctx.set_header('Set-Cookie', '$key=$val') 
-} 
-
-pub fn (ctx Context) get_cookie(key string) string { 
-	for h in ctx.req.headers2 {
-		if h.starts_with('Cookie:') ||	h.starts_with('cookie:') {
-			cookie := h.right(7) 
-			return cookie.find_between(' $key=', ';')
-		} 
-	} 
-	return '' 
-	/*
-	cookie := ctx.req.headers['Cookie']
-	println('get cookie $key : "$cookie"') 
-	return cookie.find_between('$key=', ';')
-	*/
-} 
-
-fn (ctx mut Context) set_header(key, val string) {
-	// ctx.resp.headers[key] = val
-	ctx.headers << '$key: $val'
+		static_files map[string]string
+		static_mime_types map[string]string
+	pub:
+		req http.Request 
+		conn net.Socket 
+		form map[string]string 
+		// TODO Response 
+	mut:
+		headers string // response headers 
 }
 
-pub fn (ctx Context) html(html string) { 
-	h := ctx.headers.join('\n')
-	ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: text/html\n$h\n\n$html')
-	 
-} 
+pub fn (ctx Context) html(html string) {
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
+}
 
-pub fn run<T>(port int) { 
+pub fn (ctx Context) text(s string) {
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s')
+}
+
+pub fn (ctx Context) json(s string) {
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') 
+}
+
+pub fn (ctx Context) redirect(url string) {
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') 
+}
+
+pub fn (ctx Context) not_found(s string) {
+	ctx.conn.write(HTTP_404)
+}
+
+pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
+	ctx.add_header('Set-Cookie', '$key=$val')
+}
+
+pub fn (ctx mut Context) get_cookie(key string) ?string { // TODO refactor
+	cookie_header := ctx.get_header('Cookie')
+	cookie := if cookie_header.contains(';') {
+		cookie_header.find_between('$key=', ';')
+	} else {
+		cookie_header
+	}
+	if cookie != '' {
+		return cookie
+	}
+	return error('Cookie not found')
+}
+
+fn (ctx mut Context) add_header(key, val string) {
+	ctx.headers = ctx.headers + if ctx.headers == '' { '$key: val' } else { '\r\n$key: val' }
+}
+
+fn (ctx mut Context) get_header(key string) string {
+	return ctx.headers.find_between('\r\n$key: ', '\r\n')
+}
+
+pub fn run<T>(port int) {
 	println('Running vweb app on http://localhost:$port ...') 
 	l := net.listen(port) or { panic('failed to listen') } 
 	mut app := T{} 
 	app.init() 
 	for {
 		conn := l.accept() or {
-			panic('accept() failed') 
+			panic('accept() failed')
 		} 
-		//foobar<T>() 
+		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
-			conn.write('HTTP/1.1 500 Not Found \nContent-Type: text/plain \n\n500')
+			conn.write(HTTP_500)
 			conn.close()
-			continue
+			return
 		}
-		 // Parse request headers
-		 lines := s.split_into_lines()
-		 mut headers := []string //map[string]string{}
-		 for i, line in lines {
-			if i == 0 {
-				continue
-			}
-			words := line.split(':')
-			if words.len != 2 {
-				continue
-			}
-			headers << line 
-			/*
-			key := words[0]
-			val := words[1]
-			headers[key] = val
-			*/
-		} 
 		// Parse the first line
 		// "GET / HTTP/1.1"
 		first_line := s.all_before('\n')
-		vals := first_line.split(' ') 
-		mut action := vals[1].right(1).all_before('/') 
+		vals := first_line.split(' ')
+		if vals.len < 2 {
+			println('no vals for http')
+			conn.write(HTTP_500)
+			conn.close()
+			return
+		}
+		mut action := vals[1].right(1).all_before('/')
 		if action.contains('?') {
-			action = action.all_before('?') 
-		} 
+			action = action.all_before('?')
+		}
 		if action == '' {
-			action = 'index' 
-		} 
+			action = 'index'
+		}
 		req := http.Request{
-				headers: map[string]string
-			headers2: headers 
+				headers: http.parse_headers(s.split_into_lines())
 				ws_func: 0
 				user_ptr: 0
 				method: vals[0]
 				url: vals[1] 
 		} 
-		println('vweb action = "$action"') 
+		$if debug {
+			println('vweb action = "$action"')
+		}
 		//mut app := T{
 		app.vweb = Context{
 			req: req 
@@ -140,7 +142,9 @@ pub fn run<T>(port int) {
 			app.vweb.parse_form(s) 
 		} 
 		if vals.len < 2 {
-			println('no vals for http') 
+			$if debug {
+				println('no vals for http')
+			}
 			conn.close()
 			continue 
 		} 
@@ -149,15 +153,15 @@ pub fn run<T>(port int) {
 		// if app.vweb.handle_static() {
 		// 	conn.close()
 		// 	continue 
-		// } 
+		// }
 
-		// Call the right action 
-		app.$action() or { 
-			conn.write('HTTP/1.1 404 Not Found \nContent-Type: text/plain \n\n404 not found') 
+		// Call the right action
+		app.$action() or {
+			conn.write(HTTP_404)
 		}
 		conn.close()
 	}
-} 
+}
 
 
 pub fn foobar<T>() { 
@@ -173,38 +177,27 @@ fn (ctx mut Context) parse_form(s string) {
 		str_form = str_form.replace('+', ' ')
 		words := str_form.split('&')
 		for word in words {
-			println('parse form keyval="$word"') 
+			$if debug {
+				println('parse form keyval="$word"') 
+			}
 			keyval := word.trim_space().split('=') 
 			if keyval.len != 2 { continue } 
 			key := keyval[0]
 			val := urllib.query_unescape(keyval[1]) or {
 				continue 
-			} 
-			println('http form "$key" => "$val"') 
+			}
+			$if debug { 
+				println('http form "$key" => "$val"') 
+			}
 			ctx.form[key] = val 
 		}
 	}
-} 
-const ( 
-	mime_types = {
-		'.css': 'text/css; charset=utf-8', 
-		'.gif': 'image/gif', 
-		'.htm': 'text/html; charset=utf-8', 
-		'.html': 'text/html; charset=utf-8', 
-		'.jpg': 'image/jpeg', 
-		'.js': 'application/javascript', 
-		'.wasm': 'application/wasm', 
-		'.pdf': 'application/pdf', 
-		'.png': 'image/png', 
-		'.svg': 'image/svg+xml', 
-		'.xml': 'text/xml; charset=utf-8' 
-	} 
-) 
+}
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 	files := os.ls(directory_path)
 	if files.len > 0 {
-		for file in files {			
+		for file in files {
 			mut ext := ''
 			mut i := file.len
 			mut flag := true
@@ -218,33 +211,32 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 				}
 			}
 
-			// todo: os.is_dir is broken now
-			//       so we expect that file is dir it has no extension
+			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
 			if flag {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else {
-				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file 
+				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file
 				ctx.static_mime_types[mount_path + '/' + file] = mime_types[ext]
 			}
 		}
 	}
 }
 
-pub fn (ctx mut Context) handle_static(directory_path string) bool { 
+pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	ctx.scan_static_directory(directory_path, '')
 
-	static_file := ctx.static_files[ctx.req.url] 
+	static_file := ctx.static_files[ctx.req.url]
 	mime_type := ctx.static_mime_types[ctx.req.url]
 
 	if static_file != '' { 
 		data := os.read_file(static_file) or { return false }  
-		ctx.conn.write('HTTP/1.1 200 OK\nContent-Type: $mime_type\n\n$data')
+		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data')
 		return true 
 	} 
 	return false 
 } 
 
-pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) { 
+pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path 
 	ctx.static_mime_types[url] = mime_type
 }

@@ -38,8 +38,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.s = [u32(0); 4]
-	d.x = [byte(0); BlockSize]
+	d.s = [u32(0)].repeat(4)
+	d.x = [byte(0)].repeat(BlockSize)
     d.s[0] = u32(Init0)
 	d.s[1] = u32(Init1)
 	d.s[2] = u32(Init2)
@@ -49,7 +49,7 @@ fn (d mut Digest) reset() {
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
-pub fn new() *Digest {
+pub fn new() &Digest {
 	mut d := &Digest{}
 	d.reset()
 	return d
@@ -116,7 +116,7 @@ pub fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0); Size]
+    digest := [byte(0)].repeat(Size)
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
@@ -141,3 +141,5 @@ fn block(dig mut Digest, p []byte) {
 pub fn (d &Digest) size() int { return Size }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum(s.bytes()).hex() }

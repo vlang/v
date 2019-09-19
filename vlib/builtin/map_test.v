@@ -1,12 +1,12 @@
-import time 
- 
+import time
+
 struct User {
-	name string 
-} 
+	name string
+}
 
 struct A {
-	m map[string]int 
-	users map[string]User 
+	m map[string]int
+	users map[string]User
 }
 
 fn (a mut A) set(key string, val int) {
@@ -15,45 +15,45 @@ fn (a mut A) set(key string, val int) {
 
 fn test_map() {
 	mut m := map[string]int
-	assert m.size == 0 
+	assert m.size == 0
 	m['hi'] = 80
-	m['hello'] = 101 
+	m['hello'] = 101
 	assert m['hi'] == 80
-	assert m['hello'] == 101 
-	assert m.size == 2 
-	assert 'hi' in m 
+	assert m['hello'] == 101
+	assert m.size == 2
+	assert 'hi' in m
 	mut sum := 0
-	mut key_sum := '' 
-	// Test `for in` 
+	mut key_sum := ''
+	// Test `for in`
 	for key, val in m {
-		sum += val 
-		key_sum += key 
-	} 
-	assert sum == 80 + 101 
-	assert key_sum == 'hihello' 
-	// Test `.keys()` 
-	keys := m.keys() 
-	assert keys.len == 2 
+		sum += val
+		key_sum += key
+	}
+	assert sum == 80 + 101
+	assert key_sum == 'hihello'
+	// Test `.keys()`
+	keys := m.keys()
+	assert keys.len == 2
 	assert keys[0] == 'hi'
-	assert keys[1] == 'hello' 
-	m.delete('hi') 
-	assert m.size == 1 
+	assert keys[1] == 'hello'
+	m.delete('hi')
+	assert m.size == 1
 
 	assert m['hi'] == 0
-	assert m.keys().len == 1 
-	assert m.keys()[0] == 'hello' 
-	//// 
-	mut users := map[string]User 
-	users['1'] = User{'Peter'} 
+	assert m.keys().len == 1
+	assert m.keys()[0] == 'hello'
+	////
+	mut users := map[string]User
+	users['1'] = User{'Peter'}
 	peter := users['1']
-	assert  peter.name == 'Peter' 
+	assert  peter.name == 'Peter'
 	mut a := A{
-		m: map[string]int 
-		users: map[string]User 
+		m: map[string]int
+		users: map[string]User
 	}
-	a.users['Bob'] = User{'Bob'} 
-	q := a.users['Bob'] 
-	assert q.name == 'Bob' 
+	a.users['Bob'] = User{'Bob'}
+	q := a.users['Bob']
+	assert q.name == 'Bob'
 	a.m['one'] = 1
 	a.set('two', 2)
 	assert a.m['one'] == 1
@@ -61,29 +61,29 @@ fn test_map() {
 }
 
 fn test_map_init() {
-	m := { 'one': 1, 'two': 2 } 
-	assert m['one'] == 1 
-	assert m['two'] == 2 
-	assert m['three'] == 0 
-} 
+	m := { 'one': 1, 'two': 2 }
+	assert m['one'] == 1
+	assert m['two'] == 2
+	assert m['three'] == 0
+}
 
 fn test_string_map() {
 	//m := map[string]Fn
-} 
+}
 
-fn test_large_map() { 
-	//ticks := time.ticks() 
-	mut nums := map[string]int 
+fn test_large_map() {
+	//ticks := time.ticks()
+	mut nums := map[string]int
 	N := 30 * 1000
 	for i := 0; i < N; i++ {
 	        key := i.str()
 	        nums[key] = i
 	}
-	assert nums['1'] == 1 
-	assert nums['999'] == 999 
-	assert nums['1000000'] == 0 
-	//println(time.ticks() - ticks) 
-} 
+	assert nums['1'] == 1
+	assert nums['999'] == 999
+	assert nums['1000000'] == 0
+	//println(time.ticks() - ticks)
+}
 
 fn test_various_map_value() {
 	mut m1 := map[string]int
@@ -101,14 +101,6 @@ fn test_various_map_value() {
 	mut m4 := map[string]i16
 	m4['test'] = i16(0)
 	assert m4['test'] == i16(0)
-	
-	mut m5 := map[string]i32
-	m5['test'] = i32(0)
-	assert m5['test'] == i32(0)
-	
-	mut m6 := map[string]u8
-	m6['test'] = u8(0)
-	assert m6['test'] == u8(0)
 	
 	mut m7 := map[string]u16
 	m7['test'] = u16(0)
@@ -157,9 +149,20 @@ fn test_various_map_value() {
 
 
 fn test_string_arr() {
-	mut m := map[string][]string  
-	m['a'] = ['one', 'two'] 
-	assert m['a'].len == 2 
-	assert m['a'][0] == 'one' 
-	assert m['a'][1] == 'two' 
-} 
+	mut m := map[string][]string
+	m['a'] = ['one', 'two']
+	assert m['a'].len == 2
+	assert m['a'][0] == 'one'
+	assert m['a'][1] == 'two'
+}
+
+/*
+fn test_ref() {
+	m := { 'one': 1 }
+	// TODO "cannot take the address of m['one']"
+	mut one := &m['one']
+	one++
+	println(*one)
+	
+}
+*/

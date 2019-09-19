@@ -4,9 +4,6 @@
 
 module http
 
-import strings
-import net.urllib
-
 
 #flag windows -I @VROOT/thirdparty/vschannel
 #flag -l ws2_32
@@ -14,34 +11,19 @@ import net.urllib
  
 #include "vschannel.c"
 
-const (
-	max_redirects = 4
-)
+fn C.new_tls_context() C.TlsContext
 
 fn init_module() {}
 
-fn ssl_do(method, host_name, path string) Response { 
-	C.vschannel_init()
-	// TODO: joe-c
-	// dynamically increase in vschannel.c if needed
-	mut buff := malloc(44000)
-	
-	mut p := if path == '' { '/' } else { path }
-	mut req := build_request_headers('', method, host_name, p)
-	mut length := int(C.request(host_name.str, req.str, buff))
-	mut resp := parse_response(string(buff, length))
-	
-	mut no_redirects := 0
-	for resp.status_code == 301 && no_redirects <= max_redirects {
-		u := urllib.parse(resp.headers['Location']) or { break }
-		p = if u.path == '' { '/' } else { u.path }
-		req = build_request_headers('', method, u.hostname(), p)
-		length = int(C.request(u.hostname().str, req.str, buff))
-		resp = parse_response(string(buff, length))
-		no_redirects++
-	}
+fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
+	mut ctx := C.new_tls_context()
+	C.vschannel_init(&ctx)
 
-	free(buff)
-	C.vschannel_cleanup()
-	return resp
+	mut buff := malloc(C.vsc_init_resp_buff_size)
+	addr := host_name
+	sdata := req.build_request_headers(method, host_name, path)
+	length := int(C.request(&ctx, port, addr.str, sdata.str, &buff))
+
+	C.vschannel_cleanup(&ctx)
+	return parse_response(string(buff, length))
 }

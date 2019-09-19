@@ -11,7 +11,17 @@
 *.exe
 *.o
 .*.c
+*.tmp.c
 
 *.obj
 
 *.pdb
+
+#
+# macOS.gitignore
+#
+# General
+.DS_Store
+
+# Thumbnails
+._*

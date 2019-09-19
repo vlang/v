@@ -13,7 +13,7 @@ const (
 )
 
 struct Context {
-	gg *gg.GG
+	gg &gg.GG
 }
 
 fn main() {

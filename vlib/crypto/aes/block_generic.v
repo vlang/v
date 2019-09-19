@@ -64,10 +64,10 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	mut t2 := u32(0)
 	mut t3 := u32(0)
 	for r := 0; r < nr; r++ {
-		t0 = xk[u32(k+0)] ^ u32(Te0[u8(s0>>u32(24))]) ^ u32(Te1[u8(s1>>u32(16))]) ^ u32(Te2[u8(s2>>u32(8))]) ^ u32(Te3[u8(s3)])
-		t1 = xk[u32(k+1)] ^ u32(Te0[u8(s1>>u32(24))]) ^ u32(Te1[u8(s2>>u32(16))]) ^ u32(Te2[u8(s3>>u32(8))]) ^ u32(Te3[u8(s0)])
-		t2 = xk[u32(k+2)] ^ u32(Te0[u8(s2>>u32(24))]) ^ u32(Te1[u8(s3>>u32(16))]) ^ u32(Te2[u8(s0>>u32(8))]) ^ u32(Te3[u8(s1)])
-		t3 = xk[u32(k+3)] ^ u32(Te0[u8(s3>>u32(24))]) ^ u32(Te1[u8(s0>>u32(16))]) ^ u32(Te2[u8(s1>>u32(8))]) ^ u32(Te3[u8(s2)])
+		t0 = xk[u32(k+0)] ^ u32(Te0[byte(s0>>u32(24))]) ^ u32(Te1[byte(s1>>u32(16))]) ^ u32(Te2[byte(s2>>u32(8))]) ^ u32(Te3[byte(s3)])
+		t1 = xk[u32(k+1)] ^ u32(Te0[byte(s1>>u32(24))]) ^ u32(Te1[byte(s2>>u32(16))]) ^ u32(Te2[byte(s3>>u32(8))]) ^ u32(Te3[byte(s0)])
+		t2 = xk[u32(k+2)] ^ u32(Te0[byte(s2>>u32(24))]) ^ u32(Te1[byte(s3>>u32(16))]) ^ u32(Te2[byte(s0>>u32(8))]) ^ u32(Te3[byte(s1)])
+		t3 = xk[u32(k+3)] ^ u32(Te0[byte(s3>>u32(24))]) ^ u32(Te1[byte(s0>>u32(16))]) ^ u32(Te2[byte(s1>>u32(8))]) ^ u32(Te3[byte(s2)])
 		k += 4
 		s0 = t0
 		s1 = t1
@@ -117,10 +117,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	mut t3 := u32(0)
 	for r := 0; r < nr; r++ {
 		// println('### 1')
-		t0 = xk[u32(k+0)] ^ u32(Td0[u8(s0>>u32(24))]) ^ u32(Td1[u8(s3>>u32(16))]) ^ u32(Td2[u8(s2>>u32(8))]) ^ u32(Td3[u8(s1)])
-		t1 = xk[u32(k+1)] ^ u32(Td0[u8(s1>>u32(24))]) ^ u32(Td1[u8(s0>>u32(16))]) ^ u32(Td2[u8(s3>>u32(8))]) ^ u32(Td3[u8(s2)])
-		t2 = xk[u32(k+2)] ^ u32(Td0[u8(s2>>u32(24))]) ^ u32(Td1[u8(s1>>u32(16))]) ^ u32(Td2[u8(s0>>u32(8))]) ^ u32(Td3[u8(s3)])
-		t3 = xk[u32(k+3)] ^ u32(Td0[u8(s3>>u32(24))]) ^ u32(Td1[u8(s2>>u32(16))]) ^ u32(Td2[u8(s1>>u32(8))]) ^ u32(Td3[u8(s0)])
+		t0 = xk[u32(k+0)] ^ u32(Td0[byte(s0>>u32(24))]) ^ u32(Td1[byte(s3>>u32(16))]) ^ u32(Td2[byte(s2>>u32(8))]) ^ u32(Td3[byte(s1)])
+		t1 = xk[u32(k+1)] ^ u32(Td0[byte(s1>>u32(24))]) ^ u32(Td1[byte(s0>>u32(16))]) ^ u32(Td2[byte(s3>>u32(8))]) ^ u32(Td3[byte(s2)])
+		t2 = xk[u32(k+2)] ^ u32(Td0[byte(s2>>u32(24))]) ^ u32(Td1[byte(s1>>u32(16))]) ^ u32(Td2[byte(s0>>u32(8))]) ^ u32(Td3[byte(s3)])
+		t3 = xk[u32(k+3)] ^ u32(Td0[byte(s3>>u32(24))]) ^ u32(Td1[byte(s2>>u32(16))]) ^ u32(Td2[byte(s1>>u32(8))]) ^ u32(Td3[byte(s0)])
 		// println('### 1 end')
 		k += 4
 		s0 = t0

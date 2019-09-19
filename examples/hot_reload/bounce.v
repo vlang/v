@@ -10,14 +10,14 @@ import time
 
 struct Game {
 mut: 
-	gg       *gg.GG
+	gg       &gg.GG
 	x        int
 	y        int
 	dy       int
 	dx       int
 	height   int
 	width    int
-	main_wnd *glfw.Window
+	main_wnd &glfw.Window
 	draw_fn  voidptr
 }
 

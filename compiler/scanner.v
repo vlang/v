@@ -23,16 +23,19 @@ mut:
 	fmt_out        strings.Builder
 	fmt_indent     int
 	fmt_line_empty bool
-	prev_tok Token 
+	prev_tok Token
+	fn_name string // needed for @FN
+	should_print_line_on_error bool
 }
 
-fn new_scanner(file_path string) *Scanner {
+fn new_scanner(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
-		panic('"$file_path" doesn\'t exist')
+		cerror('"$file_path" doesn\'t exist')
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		panic('scanner: failed to open "$file_path"')
+		cerror('scanner: failed to open "$file_path"')
+		return 0
 	}
 
 	// BOM check
@@ -42,7 +45,7 @@ fn new_scanner(file_path string) *Scanner {
 		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
 			// skip three BOM bytes
 			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], C.strlen(c_text) - offset_from_begin)
+			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
 		}
 	}
 
@@ -52,6 +55,7 @@ fn new_scanner(file_path string) *Scanner {
 		file_path: file_path
 		text: text
 		fmt_out: strings.new_builder(1000)
+		should_print_line_on_error: true
 	}
 
 	return scanner
@@ -145,6 +149,9 @@ fn (s mut Scanner) ident_dec_number() string {
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			s.pos++
 		}
+		if !s.inside_string && s.pos < s.text.len && s.text[s.pos] == `f` {
+			s.error('no `f` is needed for floats')
+		}
 	}
 
 	// scan exponential part
@@ -207,7 +214,7 @@ fn (s Scanner) has_gone_over_line_end() bool {
 
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
-		// Count \r\n as one line 
+		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.line_nr++
 		}
@@ -216,10 +223,10 @@ fn (s mut Scanner) skip_whitespace() {
 }
 
 fn (s mut Scanner) scan() ScanRes {
-	if s.line_comment != '' { 
+	if s.line_comment != '' {
 		//s.fgenln('// LOL "$s.line_comment"')
-		//s.line_comment = '' 
-	} 
+		//s.line_comment = ''
+	}
 	if s.started {
 		s.pos++
 	}
@@ -332,7 +339,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// TODO allow double quotes
 		// case QUOTE:
 		// return scan_res(.str, s.ident_string())
-	case `\``:
+	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
 	case `(`:
 		return scan_res(.lpar, '')
@@ -388,11 +395,24 @@ fn (s mut Scanner) scan() ScanRes {
 	case `,`:
 		return scan_res(.comma, '')
 	case `@`:
-		s.pos++ 
+		s.pos++
 		name := s.ident_name()
+		// @FN => will be substituted with the name of the current V function
+		// @FILE => will be substituted with the path of the V source file
+		// @LINE => will be substituted with the V line number where it appears (as a string).
+		// @COLUMN => will be substituted with the column where it appears (as a string).
+		// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
+		// This allows things like this:
+		// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
+		// ... which is useful while debugging/tracing
+		if name == 'FN' { return scan_res(.str, s.fn_name) }
+		if name == 'FILE' { return scan_res(.str, os.realpath(s.file_path).replace('\\', '\\\\')) } // escape \
+		if name == 'LINE' { return scan_res(.str, (s.line_nr+1).str()) }
+		if name == 'COLUMN' { return scan_res(.str, (s.current_column()).str()) }
+		if name == 'VHASH' { return scan_res(.str, vhash()) }
 		if !is_key(name) {
-			s.error('@ must be used before keywords (e.g. `@type string`)') 
-		} 
+			s.error('@ must be used before keywords (e.g. `@type string`)')
+		}
 		return scan_res(.name, name)
 	case `\r`:
 		if nextc == `\n` {
@@ -477,7 +497,7 @@ fn (s mut Scanner) scan() ScanRes {
 		else if nextc == `>` {
 			s.pos++
 			return scan_res(.arrow, '')
-		} 
+		}
 		else {
 			return scan_res(.assign, '')
 		}
@@ -515,7 +535,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.line_comment = s.text.substr(start + 1, s.pos)
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
-			// Skip the comment (return the next token) 
+			// Skip the comment (return the next token)
 			return s.scan()
 		}
 		// Multiline comments
@@ -553,19 +573,81 @@ fn (s mut Scanner) scan() ScanRes {
 	$if windows {
 		if c == `\0` {
 			return scan_res(.eof, '')
-		} 
-	} 
-	mut msg := 'invalid character `${c.str()}`' 
+		}
+	}
+	mut msg := 'invalid character `${c.str()}`'
 	if c == `"` {
-		msg += ', use \' to denote strings' 
-	} 
-	s.error(msg) 
+		msg += ', use \' to denote strings'
+	}
+	s.error(msg)
 	return scan_res(.eof, '')
 }
 
+fn (s &Scanner) find_current_line_start_position() int {
+	if s.pos >= s.text.len { return s.pos }
+	mut linestart := s.pos
+	for {
+		if linestart <= 0  {
+			linestart = 1
+			break
+		}
+		if s.text[linestart] == 10 || s.text[linestart] == 13 {
+			linestart++
+			break
+		}
+		linestart--
+	}
+	return linestart
+}
+
+fn (s &Scanner) find_current_line_end_position() int {
+	if s.pos >= s.text.len { return s.pos }
+	mut lineend := s.pos
+	for {
+		if lineend >= s.text.len {
+			lineend = s.text.len
+			break
+		}
+		if s.text[lineend] == 10 || s.text[lineend] == 13 {
+			break
+		}
+		lineend++
+	}
+	return lineend
+}
+
+fn (s &Scanner) current_column() int {
+	return s.pos - s.find_current_line_start_position()
+}
+
 fn (s &Scanner) error(msg string) {
-	file := s.file_path.all_after('/')
-	println('$file:${s.line_nr + 1} $msg')
+	linestart := s.find_current_line_start_position()
+	lineend := s.find_current_line_end_position()
+	column := s.pos - linestart
+	if s.should_print_line_on_error && lineend > linestart {
+		line := s.text.substr( linestart, lineend )
+		// The pointerline should have the same spaces/tabs as the offending
+		// line, so that it prints the ^ character exactly on the *same spot*
+		// where it is needed. That is the reason we can not just
+		// use strings.repeat(` `, column) to form it.
+		pointerline := line.clone()
+		mut pl := pointerline.str
+		for i,c in line {
+			pl[i] = ` `
+			if i == column { pl[i] = `^` }
+			else if c.is_space() { pl[i] = c  }
+		}
+		println(line)
+		println(pointerline)
+	}
+	fullpath := os.realpath( s.file_path )
+	// The filepath:line:col: format is the default C compiler
+	// error output format. It allows editors and IDE's like
+	// emacs to quickly find the errors in the output
+	// and jump to their source with a keyboard shortcut.
+	// Using only the filename leads to inability of IDE/editors
+	// to find the source file, when it is in another folder.
+	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
 	exit(1)
 }
 
@@ -655,7 +737,7 @@ fn (s mut Scanner) ident_char() string {
 			len++
 		}
 		double_slash := s.expect('\\\\', s.pos - 2)
-		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) {
+		if s.text[s.pos] == `\`` && (s.text[s.pos - 1] != slash || double_slash) { // ` // apostrophe balance comment. do not remove
 			if double_slash {
 				len++
 			}
@@ -670,7 +752,11 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
-	return c
+	if c == '\\`' {
+		return '`'
+	}	
+	// Escapes a `'` character
+	return if c == '\'' { '\\' + c } else { c }
 }
 
 fn (s mut Scanner) peek() Token {
@@ -693,7 +779,7 @@ fn (s mut Scanner) peek() Token {
 	return tok
 }
 
-fn (s mut Scanner) expect(want string, start_pos int) bool {
+fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
@@ -742,7 +828,7 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s mut Scanner) get_opening_bracket() int {
+fn (s &Scanner) get_opening_bracket() int {
 	mut pos := s.pos
 	mut parentheses := 0
 	mut inside_string := false
@@ -754,7 +840,7 @@ fn (s mut Scanner) get_opening_bracket() int {
 		if s.text[pos] == `(` && !inside_string {
 			parentheses--
 		}
-		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` {
+		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` { // ` // apostrophe balance comment. do not remove
 			inside_string = !inside_string
 		}
 		if parentheses == 0 {
@@ -797,17 +883,17 @@ fn contains_capital(s string) bool {
 }
 
 // HTTPRequest  bad
-// HttpRequest  good 
+// HttpRequest  good
 fn good_type_name(s string) bool {
 	if s.len < 4 {
-		return true 
-	} 
-	for i in 2 .. s.len { 
+		return true
+	}
+	for i in 2 .. s.len {
 		if s[i].is_capital() && s[i-1].is_capital() && s[i-2].is_capital() {
-			return false 
-		} 
-	} 
-	return true 
-} 
+			return false
+		}
+	}
+	return true
+}
 
 

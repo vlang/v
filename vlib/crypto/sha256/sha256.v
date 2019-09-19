@@ -52,8 +52,8 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.h = [u32(0); 8]
-	d.x = [byte(0); Chunk]
+	d.h = [u32(0)].repeat(8)
+	d.x = [byte(0)].repeat(Chunk)
 	if !d.is224 {
 		d.h[0] = u32(Init0)
 		d.h[1] = u32(Init1)
@@ -78,14 +78,14 @@ fn (d mut Digest) reset() {
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.
-pub fn new() *Digest {
+pub fn new() &Digest {
 	mut d := &Digest{}
 	d.reset()
 	return d
 }
 
 // new224 returns a new Digest (implementing hash.Hash) computing the SHA224 checksum.
-pub fn new224() *Digest {
+pub fn new224() &Digest {
 	mut d := &Digest{}
 	d.is224 = true
 	d.reset()
@@ -143,7 +143,7 @@ fn (d &Digest) sum(b_in mut []byte) []byte {
 fn (d mut Digest) checksum() []byte {
 	mut len := d.len
 	// Padding. Add a 1 bit and 0 bits until 56 bytes mod 64.
-	mut tmp := [byte(0); 64]
+	mut tmp := [byte(0)].repeat(64)
 	tmp[0] = 0x80
 	if int(len)%64 < 56 {
 		d.write(tmp.left(56-int(len)%64))
@@ -160,7 +160,7 @@ fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-	digest := [byte(0); Size]
+	digest := [byte(0)].repeat(Size)
 
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
@@ -193,7 +193,7 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data)
 	sum := d.checksum()
-	mut sum224 := [byte(0); Size224]
+	mut sum224 := [byte(0)].repeat(Size224)
 	copy(sum224, sum.left(Size224))
 	return sum224
 }
@@ -212,3 +212,6 @@ pub fn (d &Digest) size() int {
 }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum256(s.bytes()).hex() }
+pub fn hexhash_224(s string) string { return sum224(s.bytes()).hex() }

@@ -116,9 +116,9 @@ struct Game {
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          *gg.GG
+	gg          &gg.GG
 	// ft context for font drawing
-	ft          *freetype.Context
+	ft          &freetype.Context
 	font_loaded bool
 }
 
@@ -135,7 +135,7 @@ fn main() {
 		})
 		ft: 0
 	}
-	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works 
+	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
@@ -167,7 +167,7 @@ fn (g mut Game) init_game() {
 	g.field = []array_int // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
 	for i := 0; i < FieldHeight + 2; i++ {
-		mut row := [0; FieldWidth + 2]
+		mut row := [0].repeat(FieldWidth + 2)
 		row[0] = - 1
 		row[FieldWidth + 1] = - 1
 		g.field << row
@@ -282,7 +282,8 @@ fn (g mut Game) get_tetro() {
 	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize)
 }
 
-fn (g mut Game) drop_tetro() {
+// TODO mut
+fn (g &Game) drop_tetro() {
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
@@ -317,7 +318,7 @@ fn (g &Game) draw_field() {
 	}
 }
 
-fn (g &Game) draw_score() {
+fn (g mut Game) draw_score() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
 		if g.state == .gameover {
@@ -330,7 +331,7 @@ fn (g &Game) draw_score() {
 	}
 }
 
-fn (g &Game) draw_scene() {
+fn (g mut Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
 	g.draw_score()
@@ -338,7 +339,7 @@ fn (g &Game) draw_scene() {
 
 fn parse_binary_tetro(t_ int) []Block {
 	mut t := t_
-	res := [Block{} ; 4]
+	res := [Block{}].repeat(4)
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
 	for i := 0; i <= 3; i++ {
@@ -374,7 +375,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	switch key {
 	case glfw.KEY_ESCAPE:
 		glfw.set_should_close(wnd, true)
-	case GLFW_KEY_SPACE:
+	case glfw.key_space:
 		if game.state == .running {
 			game.state = .paused
 		} else if game.state == .paused {
