@@ -130,26 +130,26 @@ void init_consts();
 
 js_headers = '
 
-class array_string {}
-class array_byte {}
-class array_int {}
-class byte {}
-class double {}
-class int {}
-class f64 {}
-class f32 {}
-class i64 {}
-class i32 {}
-class i16 {}
-class u64 {}
-class u32 {}
-class u16 {}
-class i8 {}
-class u8 {}
-class bool {}
-class rune {}
-class map_string {}
-class map_int {}
+var array_string = function() {}
+var array_byte = function() {}
+var array_int = function() {}
+var byte = function() {}
+var double = function() {}
+var int = function() {}
+var f64 = function() {}
+var f32 = function() {}
+var i64 = function() {}
+var i32 = function() {}
+var i16 = function() {}
+var u64 = function() {}
+var u32 = function() {}
+var u16 = function() {}
+var i8 = function() {}
+var u8 = function() {}
+var bool = function() {}
+var rune = function() {}
+var map_string = function() {}
+var map_int = function() {}
 
 function init_consts() {
 	

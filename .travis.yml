@@ -6,17 +6,9 @@ matrix:
       dist: xenial
       sudo: required
       addons:
-        snaps:
-          - name: node
-            channel: latest/edge
-            confinement: classic
         apt:
-          sources:
-            - ubuntu-toolchain-r-test
           packages:
-            - gcc-5
-            - g++-5
-            - make
+            - build-essential
             - libglfw3
             - libglfw3-dev
             - libfreetype6-dev
@@ -40,10 +32,6 @@ matrix:
             - openssl
 script:
   - |
-    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-      sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
-    fi
-  - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/opt/openssl/lib/
     fi
@@ -65,10 +53,6 @@ script:
         ./make.bat -msvc
       fi
 
-      ### running just repl_test.v produces failing results earlier and is easier to read
-      echo "Running only the repl tests directly..."
-      ./v.exe ./compiler/tests/repl/repl_test.v
-      echo "Running ALL tests..."
       ./v.exe test v
       set +e
     fi
@@ -82,11 +66,11 @@ script:
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
       ## aliases do not work for some reason in travis, just use full commands :-|
       echo "Nodejs version:"
-      snap run node --version      
+      node --version      
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
-      snap run node hi.js
+      node hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
@@ -95,8 +79,7 @@ script:
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
-      ## the node on osx requires --harmony-class-fields for now
-      node --harmony-class-fields hi.js
+      node hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
