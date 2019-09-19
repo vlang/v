@@ -540,7 +540,11 @@ fn (p mut Parser) check_unused_variables() {
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
 			p.scanner.line_nr = var.line_nr - 1
-			p.error('`$var.name` declared and not used')
+			if p.pref.is_prod {
+				p.error('`$var.name` declared and not used')
+			} else {
+				p.warn('`$var.name` declared and not used')
+			}
 		}
 	if !var.is_changed && var.is_mut && !p.pref.is_repl &&
  !p.pref.translated && var.name != '_' {
