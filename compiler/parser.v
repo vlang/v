@@ -1591,16 +1591,14 @@ fn (p mut Parser) name_expr() string {
 		return cfn.typ
 	}
 	// Constant
-	c := p.table.find_const(name)
-	if c.name != '' && ptr && !c.is_global {
-		p.error('cannot take the address of constant `$c.name`')
-	}
-	if c.name.len != 0 {
-		if ptr {
+	for {
+		c := p.table.find_const(name) or { break }
+		if ptr && !c.is_global {
+			p.error('cannot take the address of constant `$c.name`')
+		} else if ptr && c.is_global {
 			// c.ptr = true
 			p.gen('& /*const*/ ')
 		}
-		p.log('calling var expr')
 		mut typ := p.var_expr(c)
 		if ptr {
 			typ += '*'
@@ -2636,11 +2634,19 @@ fn (p mut Parser) array_init() string {
 	mut is_integer := p.tok == .number  // for `[10]int`
 	// fixed length arrays with a const len: `nums := [N]int`, same as `[10]int` basically
 	mut is_const_len := false
-	if p.tok == .name {
-		c := p.table.find_const(p.prepend_mod(p.lit))
-		if c.name != '' && c.typ == 'int' && p.peek() == .rsbr && !p.inside_const {
-			is_integer = true
-			is_const_len = true
+	if p.tok == .name && !p.inside_const {
+		const_name := p.prepend_mod(p.lit)
+		if p.table.known_const(const_name) {
+			c := p.table.find_const(const_name) or {
+				//p.error('unknown const `$p.lit`')
+				exit(1)
+			}	
+			if c.typ == 'int' && p.peek() == .rsbr { //&& !p.inside_const {
+				is_integer = true
+				is_const_len = true
+			} else {
+				p.error('bad fixed size array const `$p.lit`')
+			}	
 		}
 	}
 	lit := p.lit

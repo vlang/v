@@ -332,9 +332,8 @@ fn (t &Table) known_fn(name string) bool {
 }
 
 fn (t &Table) known_const(name string) bool {
-	v := t.find_const(name)
-	// TODO use optional
-	return v.name.len > 0
+	_ := t.find_const(name) or { return false }
+	return true
 }
 
 fn (t mut Table) register_type(typ string) {
@@ -672,15 +671,14 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
-// TODO use `?Var`
-fn (t &Table) find_const(name string) Var {
+fn (t &Table) find_const(name string) ?Var {
 	//println('find const l=$t.consts.len')
 	for c in t.consts {
 		if c.name == name {
 			return c
 		}
 	}
-	return Var{}
+	return none
 }
 
 // ('s', 'string') => 'string s'
