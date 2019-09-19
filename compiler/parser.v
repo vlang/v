@@ -1582,6 +1582,10 @@ fn (p mut Parser) name_expr() string {
 		cfn := p.table.find_fn(name) or {
 			// Not Found? Return 'void*'
 			//return 'cvoid' //'void*'
+			if false {
+			p.warn('\ndefine imported C function with ' +
+				'`fn C.$name([args]) [return_type]`\n')
+			}
 			return 'void*'
 		}
 		return cfn.typ

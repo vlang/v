@@ -33,6 +33,7 @@ pub fn _make(len, cap, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	arr := array {

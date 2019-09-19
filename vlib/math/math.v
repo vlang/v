@@ -4,8 +4,6 @@
 
 module math
 
-#include <math.h>
-
 // NOTE
 // When adding a new function, please make sure it's in the right place.
 // All functions are sorted alphabetically.
@@ -50,6 +48,8 @@ pub fn abs(a f64) f64 {
 	}
 	return a
 }
+
+fn C.acos(a f64) f64
 
 // acos calculates inverse cosine (arccosine).
 pub fn acos(a f64) f64 {
