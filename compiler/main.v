@@ -101,6 +101,7 @@ mut:
 	ccompiler  string // the name of the used C compiler
 	building_v bool
 	autofree   bool
+	compress   bool
 }
 
 fn main() {
@@ -848,6 +849,7 @@ fn new_v(args[]string) &V {
 		translated: 'translated' in args
 		is_run: 'run' in args
 		autofree: '-autofree' in args
+		compress: '-compress' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
