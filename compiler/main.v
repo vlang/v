@@ -907,11 +907,19 @@ fn update_v() {
 		}
 		println(s2.output)
 	} $else {
-		s2 := os.exec('make -C "$vroot"') or {
-			cerror(err)
-			return
+		$if freebsd {
+			s2 := os.exec('gmake -C "$vroot"') or {
+				cerror(err)
+				return
+			}
+			println(s2.output)
+		} $else {
+			s2 := os.exec('make -C "$vroot"') or {
+				cerror(err)
+				return
+			}
+			println(s2.output)
 		}
-		println(s2.output)
 	}
 }
 
