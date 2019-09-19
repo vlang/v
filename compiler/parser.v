@@ -17,8 +17,9 @@ struct Parser {
 	file_pcguard   string // When p.file_pcguard != '', it contains a
 	                      // C ifdef guard clause that must be put before
 	                      // the #include directives in the parsed .v file
-mut:
 	v              &V
+	pref           &Preferences // Preferences shared from V struct
+mut:
 	scanner        &Scanner
 	// tokens         []Token // TODO cache all tokens, right now they have to be scanned twice
 	token_idx      int
@@ -40,7 +41,6 @@ mut:
 	expected_type  string
 	tmp_cnt        int
 	is_script      bool
-	pref           &Preferences // Preferences shared from V struct
 	builtin_mod    bool
 	vh_lines       []string
 	inside_if_expr bool
@@ -1078,7 +1078,7 @@ fn (p mut Parser) close_scope() {
 				free_fn = 'v_array_free'
 			} else if v.typ == 'string' {
 				free_fn = 'v_string_free'
-				//continue
+				continue
 			}	else if v.ptr || v.typ.ends_with('*') {
 				free_fn = 'v_ptr_free'
 				//continue
@@ -3562,7 +3562,7 @@ fn (p mut Parser) go_statement() {
 	// Normal function
 	else {
 		f := p.table.find_fn(p.lit) or { panic('fn') }
-		if f.name == 'println' {
+		if f.name == 'println' || f.name == 'print' {
 			p.error('`go` cannot be used with `println`')
 		}
 		p.async_fn_call(f, 0, '', '')

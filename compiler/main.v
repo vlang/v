@@ -188,11 +188,16 @@ fn main() {
 	// TODO remove
 	if v.pref.autofree {
 		println('started freeing v struct')
-		v.table.fns.free()
 		v.table.typesmap.free()
 		v.table.obf_ids.free()
 		v.cgen.lines.free()
 		free(v.cgen)
+		for _, f in v.table.fns {
+			f.local_vars.free()
+			f.args.free()
+			//f.defer_text.free()
+		}	
+		v.table.fns.free()
 		free(v.table)
 		//for p in parsers {
 			
@@ -226,6 +231,8 @@ fn (v mut V) compile() {
 	for file in v.files {
 		mut p := v.new_parser(file)
 		p.parse(.decl)
+		
+		
 	}
 	// Main pass
 	cgen.pass = Pass.main
