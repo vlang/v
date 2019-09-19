@@ -240,6 +240,10 @@ fn (v mut V) cc() {
 		os.rm(v.out_name_c)
 	}
 	if v.pref.compress {
+		$if windows {
+			println('-compress does not work on Windows for now')
+			return
+		}	
 		ret := os.system('strip $v.out_name')
 		if ret != 0 {
 			println('strip failed')
