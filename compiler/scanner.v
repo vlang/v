@@ -4,8 +4,15 @@
 
 module main
 
-import os
-import strings
+import (
+	os
+	strings
+)
+
+const (
+	single_quote = `\'`
+	double_quote = `"`
+)
 
 struct Scanner {
 mut:
@@ -71,10 +78,10 @@ fn (s ScannerPos) str() string {
 	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} }'
 }
 fn (s &Scanner) get_scanner_pos() ScannerPos {
-	return ScannerPos{ pos: s.pos line_nr: s.line_nr } 
+	return ScannerPos{ pos: s.pos line_nr: s.line_nr }
 }
 fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
-	s.pos = scp.pos 
+	s.pos = scp.pos
 	s.line_nr = scp.line_nr
 }
 
@@ -352,11 +359,10 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case `\'`:
+	case single_quote:
 		return scan_res(.str, s.ident_string())
-		// TODO allow double quotes
-		// case QUOTE:
-		// return scan_res(.str, s.ident_string())
+	case double_quote:
+		return scan_res(.str, s.ident_string())
 	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
 	case `(`:
