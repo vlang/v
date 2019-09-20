@@ -30,10 +30,10 @@ const(
 
 // --- LeadingZeros ---
 
-// LeadingZeros8 returns the number of leading zero bits in x; the result is 8 for x == 0.
+// leading_zeros8 returns the number of leading zero bits in x; the result is 8 for x == 0.
 pub fn leading_zeros8(x byte) int { return 8 - len8(x) }
 
-// LeadingZeros16 returns the number of leading zero bits in x; the result is 16 for x == 0.
+// leading_zeros16 returns the number of leading zero bits in x; the result is 16 for x == 0.
 pub fn leading_zeros16(x u16) int { return 16 - len16(x) }
 
 // leading_zeros32 returns the number of leading zero bits in x; the result is 32 for x == 0.
@@ -54,7 +54,7 @@ pub fn trailing_zeros16(x u16) int {
 	if x == u16(0) {
 		return 16
 	}
-	// see comment in TrailingZeros64
+	// see comment in trailing_zeros64
 	return int(de_bruijn32tab[u32(x&-x)*de_bruijn32>>u32(32-5)])
 }
 
@@ -63,7 +63,7 @@ pub fn trailing_zeros32(x u32) int {
 	if x == u32(0) {
 		return 32
 	}
-	// see comment in TrailingZeros64
+	// see comment in trailing_zeros64
 	return int(de_bruijn32tab[(x&-x)*de_bruijn32>>u32(32-5)])
 }
 
@@ -133,8 +133,6 @@ pub fn ones_count64(x u64) int {
 	y += u64(y >> u64(32))
 	return int(y) & ((1<<7) - 1)
 }
-
-// --- RotateLeft ---
 
 // --- RotateLeft ---
 
