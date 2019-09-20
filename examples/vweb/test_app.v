@@ -24,11 +24,13 @@ pub fn (app mut App) json_endpoint() {
 	app.vweb.json('{"a": 3}')
 }
 
+/*
 pub fn (app mut App) index() {
 	app.cnt ++
 	
 	$vweb.html()
 }
+*/
 
 pub fn (app mut App) text() {
 	app.vweb.text('hello world')

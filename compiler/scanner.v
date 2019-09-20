@@ -21,8 +21,8 @@ mut:
 	pos            int
 	line_nr        int
 	inside_string  bool
-	dollar_start   bool // for hacky string interpolation TODO simplify
-	dollar_end     bool
+	inter_start   bool // for hacky string interpolation TODO simplify
+	inter_end     bool
 	debug          bool
 	line_comment   string
 	started        bool
@@ -264,12 +264,12 @@ fn (s mut Scanner) scan() ScanRes {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
-	if s.dollar_end {
+	if s.inter_end {
 		if s.text[s.pos] == `\'` {
-			s.dollar_end = false
+			s.inter_end = false
 			return scan_res(.str, '')
 		}
-		s.dollar_end = false
+		s.inter_end = false
 		return scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
@@ -296,14 +296,14 @@ fn (s mut Scanner) scan() ScanRes {
 		// at the next ', skip it
 		if s.inside_string {
 			if next_char == `\'` {
-				s.dollar_end = true
-				s.dollar_start = false
+				s.inter_end = true
+				s.inter_start = false
 				s.inside_string = false
 			}
 		}
-		if s.dollar_start && next_char != `.` {
-			s.dollar_end = true
-			s.dollar_start = false
+		if s.inter_start && next_char != `.` {
+			s.inter_end = true
+			s.inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
 			s.pos++
@@ -386,7 +386,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
-			// TODO UN.neEDED?
+			// TODO UNNEEDED?
 			if s.text[s.pos] == `\'` {
 				s.inside_string = false
 				return scan_res(.str, '')
@@ -728,7 +728,7 @@ fn (s mut Scanner) ident_string() string {
 		// $var
 		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
-			s.dollar_start = true
+			s.inter_start = true
 			s.pos -= 2
 			break
 		}
@@ -788,8 +788,8 @@ fn (s mut Scanner) peek() Token {
 	pos := s.pos
 	line := s.line_nr
 	inside_string := s.inside_string
-	dollar_start := s.dollar_start
-	dollar_end := s.dollar_end
+	inter_start := s.inter_start
+	inter_end := s.inter_end
 
 	res := s.scan()
 	tok := res.tok
@@ -798,8 +798,8 @@ fn (s mut Scanner) peek() Token {
 	s.pos = pos
 	s.line_nr = line
 	s.inside_string = inside_string
-	s.dollar_start = dollar_start
-	s.dollar_end = dollar_end
+	s.inter_start = inter_start
+	s.inter_end = inter_end
 	return tok
 }
 
