@@ -372,6 +372,7 @@ _setmode(_fileno(stdin), mode);
 _setmode(_fileno(stdout), _O_U8TEXT);
 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
 // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+setbuf(stdout,0);
 #endif
 g_str_buf=malloc(1000);
 $consts_init_body
