@@ -71,7 +71,7 @@ mut:
 	out_name   string // "program.exe"
 	vroot      string
 	mod        string  // module being built with -lib
-	//parsers    []Parser
+	parsers    []Parser
 }
 
 struct Preferences {
@@ -205,6 +205,16 @@ fn main() {
 		println('done!')
 	}	
 }
+
+fn (v mut V) add_parser(parser Parser) {
+       for p in v.parsers {
+               if p.file_path == parser.file_path {
+                       return
+               }
+       }
+       v.parsers << parser
+}
+
 
 fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
