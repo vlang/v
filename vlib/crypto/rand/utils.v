@@ -5,13 +5,12 @@
 module rand
 
 import(
-	math
+	math.bits
 	encoding.binary
 )
 
 pub fn int_u64(max u64) u64? {
-	// bitlen := int(math.floor(math.log2(f64(max))+1))
-	bitlen := int(math.floor(math.log(f64(max))/math.log(2)) + 1)
+	bitlen := bits.len64(max)
 	if bitlen == 0 {
 		return u64(0)
 	}
