@@ -540,11 +540,15 @@ fn (p mut Parser) check_unused_variables() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
-			p.scanner.goto_scanner_position( var.scanner_pos )
 			if p.pref.is_prod {
+				p.scanner.goto_scanner_position( var.scanner_pos )
 				p.error('`$var.name` declared and not used')
 			} else {
+				// on a warning, restore the scanner state after printing the warning:
+				cpos := p.scanner.get_scanner_pos()
+				p.scanner.goto_scanner_position( var.scanner_pos )
 				p.warn('`$var.name` declared and not used')
+				p.scanner.goto_scanner_position( cpos )
 			}
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
