@@ -53,6 +53,7 @@ jobs:
     - uses: actions/checkout@v1
     - name: Build and test
       run: |
+        set -e
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         set VFLAGS="-os windows"
         ./make.bat -gcc
@@ -66,6 +67,7 @@ jobs:
     - uses: actions/checkout@v1
     - name: Build and test
       run: |
+        set -e
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         set VFLAGS="-os msvc"
         ./make.bat -msvc
