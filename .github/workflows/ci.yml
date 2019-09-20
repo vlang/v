@@ -1,14 +1,72 @@
 name: CI
 on: [push, pull_request]
 jobs:
-  build:
+  build-osx:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-18.04, windows-2019, macOS-10.14]
+        os: [macOS-10.14]
+        node-version: [8.x, 12.x]
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Build and test
+      run: |
+        brew install freetype glfw openssl
+        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+        make
+        ./v -o v compiler
+        ./v test v
+        echo "fn main(){ println('Hello from V.js') }" > hi.v
+        ./v -o hi.js hi.v
+        node hi.js
+        git clone --depth 1 https://github.com/vlang/vid.git
+        cd vid && ../v -debug -o vid .
+  build-ubuntu:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-16.04, ubuntu-18.04]
+        node-version: [8.x, 12.x]
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Build and test
+      run: |
+        make
+        ./v -o v compiler
+        ./v test v
+        echo "fn main(){ println('Hello from V.js') }" > hi.v
+        ./v -o hi.js hi.v
+        node hi.js
+  build-windows-gcc:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-2016, windows-2019]
     steps:
     - uses: actions/checkout@v1
     - name: Build and test
       run: |
-        make
-        echo done
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        export VFLAGS="-os windows"
+        ./make.bat -gcc
+        ./v.exe test v
+  build-windows-msvc:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-2016, windows-2019]
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build and test
+      run: |
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        export VFLAGS="-os msvc"
+        ./make.bat -msvc
+        ./v.exe test v
+        
