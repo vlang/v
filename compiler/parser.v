@@ -1324,26 +1324,46 @@ fn (p mut Parser) var_decl() {
 		p.check(.key_static)
 		p.fspace()
 	}
-	// println('var decl tok=${p.strtok()} ismut=$is_mut')
-	name := p.check_name()
-	p.var_decl_name = name
-	// Don't allow declaring a variable with the same name. Even in a child scope
-	// (shadowing is not allowed)
-	if !p.builtin_mod && p.cur_fn.known_var(name) {
-		v := p.cur_fn.find_var(name)
-		p.error('redefinition of `$name`')
+
+	mut names := []string
+	names << p.check_name()
+	for p.tok == .comma {
+		p.check(.comma)
+		names << p.check_name()
 	}
-	if name.len > 1 && contains_capital(name) {
-		p.error('variable names cannot contain uppercase letters, use snake_case instead')
-	}
+	println('names:')
+	println(names)
 	p.check_space(.decl_assign) // :=
-	typ := p.gen_var_decl(name, is_static)
-	p.register_var(Var {
-		name: name
-		typ: typ
-		is_mut: is_mut
-		is_alloc: p.is_alloc || typ.starts_with('array_')
-	})
+	t := p.bool_expression()
+	mut types := []string
+	if t.contains(',') {
+		types = t.split(',')
+	} else {
+		types << t
+	}
+	for _, name in names {
+		// mut typ := types[i]
+		// println('var decl tok=${p.strtok()} ismut=$is_mut')
+		// name := p.check_name()
+		p.var_decl_name = name
+		// Don't allow declaring a variable with the same name. Even in a child scope
+		// (shadowing is not allowed)
+		if !p.builtin_mod && p.cur_fn.known_var(name) {
+			v := p.cur_fn.find_var(name)
+			p.error('redefinition of `$name`')
+		}
+		if name.len > 1 && contains_capital(name) {
+			p.error('variable names cannot contain uppercase letters, use snake_case instead')
+		}
+		// p.check_space(.decl_assign) // :=
+		typ := p.gen_var_decl(name, is_static)
+		p.register_var(Var {
+			name: name
+			typ: typ
+			is_mut: is_mut
+			is_alloc: p.is_alloc || typ.starts_with('array_')
+		})
+	}
 	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	p.var_decl_name = ''
 	p.is_empty_c_struct_init = false
@@ -3493,7 +3513,7 @@ fn (p mut Parser) return_st() {
 			p.inside_return_expr = true
 			is_none := p.tok == .key_none
 			p.expected_type = p.cur_fn.typ
-			expr_type := p.bool_expression()
+			// expr_type := p.bool_expression()
 
 			mut expr_type := p.bool_expression()
 			mut types := []string
