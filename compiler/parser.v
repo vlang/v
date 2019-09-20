@@ -774,6 +774,25 @@ fn (p &Parser) warn(s string) {
 	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
 }
 
+
+fn (p mut Parser) error_with_position(e string, sp ScannerPos) {
+	p.scanner.goto_scanner_position( sp )
+	p.error( e )
+}
+
+fn (p mut Parser) production_error(e string, sp ScannerPos) {
+	if p.pref.is_prod {
+		p.scanner.goto_scanner_position( sp )
+		p.error( e )
+	}else {
+		// on a warning, restore the scanner state after printing the warning:
+		cpos := p.scanner.get_scanner_pos()
+		p.scanner.goto_scanner_position( sp )
+		p.warn(e)
+		p.scanner.goto_scanner_position( cpos )
+	}
+}
+
 fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
@@ -1301,6 +1320,7 @@ fn (p mut Parser) var_decl() {
 		p.fspace()
 	}
 	// println('var decl tok=${p.strtok()} ismut=$is_mut')
+	var_scanner_pos := p.scanner.get_scanner_pos()
 	name := p.check_name()
 	p.var_decl_name = name
 	// Don't allow declaring a variable with the same name. Even in a child scope
@@ -1319,6 +1339,8 @@ fn (p mut Parser) var_decl() {
 		typ: typ
 		is_mut: is_mut
 		is_alloc: p.is_alloc || typ.starts_with('array_')
+		scanner_pos: var_scanner_pos
+		line_nr: var_scanner_pos.line_nr
 	})
 	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	p.var_decl_name = ''
@@ -3571,8 +3593,8 @@ fn (p mut Parser) go_statement() {
 
 fn (p mut Parser) register_var(v Var) {
 	if v.line_nr == 0 {
-		//v.line_nr = p.scanner.line_nr
-		p.cur_fn.register_var({ v | line_nr: p.scanner.line_nr })
+		spos := p.scanner.get_scanner_pos()
+		p.cur_fn.register_var({ v | scanner_pos: spos, line_nr: spos.line_nr })
 	} else {
 		p.cur_fn.register_var(v)
 	}

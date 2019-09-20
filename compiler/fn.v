@@ -195,6 +195,7 @@ fn (p mut Parser) fn_decl() {
 			ref: is_amp
 			ptr: is_mut
 			line_nr: p.scanner.line_nr
+			scanner_pos: p.scanner.get_scanner_pos()
 		}
 		f.args << receiver
 		f.register_var(receiver)
@@ -539,17 +540,11 @@ fn (p mut Parser) check_unused_variables() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
-			p.scanner.line_nr = var.line_nr - 1
-			if p.pref.is_prod {
-				p.error('`$var.name` declared and not used')
-			} else {
-				p.warn('`$var.name` declared and not used')
-			}
+			p.production_error('`$var.name` declared and not used', var.scanner_pos )
 		}
-	if !var.is_changed && var.is_mut && !p.pref.is_repl &&
- !p.pref.translated && var.name != '_' {
-			p.scanner.line_nr = var.line_nr - 1
-			p.error('`$var.name` is declared as mutable, but it was never changed')
+		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
+			!p.pref.translated && var.name != '_' {
+			p.error_with_position( '`$var.name` is declared as mutable, but it was never changed', var.scanner_pos )
 		}
 	}
 }
@@ -723,6 +718,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_arg: true
 				// is_mut: is_mut
 				line_nr: p.scanner.line_nr
+				scanner_pos: p.scanner.get_scanner_pos()        
 			}
 			// f.register_var(v)
 			f.args << v
@@ -766,6 +762,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_mut: is_mut
 				ptr: is_mut
 				line_nr: p.scanner.line_nr
+				scanner_pos: p.scanner.get_scanner_pos()        
 			}
 			f.register_var(v)
 			f.args << v
