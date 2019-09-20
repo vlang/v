@@ -1,4 +1,4 @@
-CC = cc
+CC ?= cc
 
 all:
 	rm -rf vc/
