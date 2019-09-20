@@ -89,12 +89,18 @@ fn (p mut Parser) comp_time() {
 	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
 	// that returns an html string
 	else if p.tok == .name && p.lit == 'vweb' {
-		path := p.cur_fn.name + '.html'
+		mut path := p.cur_fn.name + '.html'
 		if p.pref.is_debug {
 			println('compiling tmpl $path')
 		}
 		if !os.file_exists(path) {
-			p.error('vweb HTML template "$path" not found')
+			// Can't find the template file in current directory,
+			// try looking next to the vweb program, in case it's run with
+			// v path/to/vweb_app.v
+			path = os.dir(p.scanner.file_path) + '/' + path
+			if !os.file_exists(path) {
+				p.error('vweb HTML template "$path" not found')
+			}
 		}
 		p.check(.name)  // skip `vweb.html()` TODO
 		p.check(.dot)
