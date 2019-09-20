@@ -540,21 +540,11 @@ fn (p mut Parser) check_unused_variables() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
-			if p.pref.is_prod {
-				p.scanner.goto_scanner_position( var.scanner_pos )
-				p.error('`$var.name` declared and not used')
-			} else {
-				// on a warning, restore the scanner state after printing the warning:
-				cpos := p.scanner.get_scanner_pos()
-				p.scanner.goto_scanner_position( var.scanner_pos )
-				p.warn('`$var.name` declared and not used')
-				p.scanner.goto_scanner_position( cpos )
-			}
+			p.production_error('`$var.name` declared and not used', var.scanner_pos )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
 			!p.pref.translated && var.name != '_' {
-			p.scanner.goto_scanner_position( var.scanner_pos )
-			p.error('`$var.name` is declared as mutable, but it was never changed')
+			p.error_with_position( '`$var.name` is declared as mutable, but it was never changed', var.scanner_pos )
 		}
 	}
 }

@@ -774,6 +774,25 @@ fn (p &Parser) warn(s string) {
 	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
 }
 
+
+fn (p mut Parser) error_with_position(e string, sp ScannerPos) {
+	p.scanner.goto_scanner_position( sp )
+	p.error( e )
+}
+
+fn (p mut Parser) production_error(e string, sp ScannerPos) {
+	if p.pref.is_prod {
+		p.scanner.goto_scanner_position( sp )
+		p.error( e )
+	}else {
+		// on a warning, restore the scanner state after printing the warning:
+		cpos := p.scanner.get_scanner_pos()
+		p.scanner.goto_scanner_position( sp )
+		p.warn(e)
+		p.scanner.goto_scanner_position( cpos )
+	}
+}
+
 fn (p mut Parser) error(s string) {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
