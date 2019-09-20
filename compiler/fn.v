@@ -1057,6 +1057,9 @@ fn (f &Fn) find_misspelled_local_var(name string, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_var := ''
 	for var in f.local_vars {
+		if var.scope_level > f.scope_level {
+			continue
+		}
 		n := name.all_after('.')
 		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
 		p := strings.dice_coefficient(var.name, n)
