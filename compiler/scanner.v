@@ -61,6 +61,24 @@ fn new_scanner(file_path string) &Scanner {
 	return scanner
 }
 
+
+struct ScannerPos {
+mut:
+   pos int
+   line_nr int
+}
+fn (s ScannerPos) str() string {
+	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} }'
+}
+fn (s &Scanner) get_scanner_pos() ScannerPos {
+	return ScannerPos{ pos: s.pos line_nr: s.line_nr } 
+}
+fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
+	s.pos = scp.pos 
+	s.line_nr = scp.line_nr
+}
+
+
 // TODO remove once multiple return values are implemented
 struct ScanRes {
 	tok Token
