@@ -861,12 +861,18 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			}
 		}
 		p.expected_type = arg.typ
-		typ := p.bool_expression()
+		mut typ := p.bool_expression()
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls.
 		// `println(777)` => `printf("%d\n", 777)`
 		// (If we don't check for void, then V will compile `println(func())`)
-		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'void' {
+		if i == 0 && (f.name == 'println' || f.name == 'print') && typ == 'ustring' {
+			if typ == 'ustring' {
+				p.gen('.s')
+			}
+			typ = 'string'
+		}
+		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'ustring' && typ != 'void' {
 			T := p.table.find_type(typ)
 			$if !windows {
 			$if !js {
