@@ -1,0 +1,14 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, windows-2019, macOS-10.14]
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build and test
+      run: |
+        make
+        echo done
