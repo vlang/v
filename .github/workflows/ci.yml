@@ -37,7 +37,7 @@ jobs:
         node-version: ${{ matrix.node-version }}
     - name: Build and test
       run: |
-        apt-get update && apt-get install -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+        sudo apt-get update && sudo apt-get install -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
         make
         ./v -o v compiler
         ./v test v
@@ -53,7 +53,6 @@ jobs:
     - uses: actions/checkout@v1
     - name: Build and test
       run: |
-        set -e
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         set VFLAGS="-os windows"
         ./make.bat -gcc
@@ -67,7 +66,6 @@ jobs:
     - uses: actions/checkout@v1
     - name: Build and test
       run: |
-        set -e
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         set VFLAGS="-os msvc"
         ./make.bat -msvc
