@@ -63,16 +63,6 @@ fn (p &Parser) find_var_check_new_var(name string) ?Var {
 	return none
 }
 
-fn (f &Fn) find_var2(name string) Var {
-	for i in 0 .. f.var_idx {
-		if f.local_vars[i].name == name {
-			return f.local_vars[i]
-		}
-	}
-	return Var{}
-}
-
-
 fn (p mut Parser) open_scope() {
 	p.cur_fn.defer_text << ''
 	p.cur_fn.scope_level++
@@ -736,7 +726,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_arg: true
 				// is_mut: is_mut
 				line_nr: p.scanner.line_nr
-				scanner_pos: p.scanner.get_scanner_pos()        
+				scanner_pos: p.scanner.get_scanner_pos()
 			}
 			// f.register_var(v)
 			f.args << v
@@ -781,7 +771,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_mut: is_mut
 				ptr: is_mut
 				line_nr: p.scanner.line_nr
-				scanner_pos: p.scanner.get_scanner_pos()        
+				scanner_pos: p.scanner.get_scanner_pos()
 			}
 			f.register_var(v)
 			f.args << v

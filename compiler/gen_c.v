@@ -71,26 +71,28 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
-		if t.cat != .union_ && t.cat != .struct_ {
+		if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
 			continue
 		}
-		//if is_objc {
-			//sb.writeln('@interface $name : $objc_parent { @public')
-		//}
 		//if is_atomic {
 			//sb.write('_Atomic ')
 		//}
-		kind := if t.cat == .union_ {'union'} else {'struct'}
-		sb.writeln('$kind $t.name {')
+		if t.cat ==  .objc_interface {
+			sb.writeln('@interface $t.name : $t.parent { @public')
+		}
+		else {
+			kind := if t.cat == .union_ {'union'} else {'struct'}
+			sb.writeln('$kind $t.name {')
+		}
 		for field in t.fields {
 			sb.write('\t')
 			sb.writeln(table.cgen_name_type_pair(field.name,
 				field.typ) + ';')
 		}
 		sb.writeln('};\n')
-		//if is_objc {
-			//sb.writeln('@end')
-		//}
+		if t.cat ==  .objc_interface {
+			sb.writeln('@end')
+		}
 	}
 	return sb.str()
 }

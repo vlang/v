@@ -54,6 +54,7 @@ enum TypeCategory {
 	union_ // 5
 	c_struct
 	c_typedef
+	objc_interface // 8 Objective C @interface
 	array
 }
 
@@ -607,6 +608,11 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	// if expected == 'T' || expected.contains('<T>') {
 	// return true
 	// }
+	// TODO fn hack
+	if got.starts_with('fn ') && (expected.ends_with('fn') ||
+	expected.ends_with('Fn')) {
+		return true
+	}	
 	// Allow pointer arithmetic
 	if expected=='void*' && got=='int' {
 		return true

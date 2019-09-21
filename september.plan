@@ -32,6 +32,6 @@
 + o(log n) type lookup
 - prebuilt binaries for all platforms
 - fix interfaces
-- `none` keyword for optionals
-- table: migrate all find*** functions to optionals
++ `none` keyword for optionals
++ table: migrate all find*** functions to optionals
 

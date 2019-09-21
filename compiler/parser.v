@@ -492,14 +492,17 @@ fn key_to_type_cat(tok Token) TypeCategory {
 // also unions and interfaces
 fn (p mut Parser) struct_decl() {
 	// V can generate Objective C for integration with Cocoa
-	// `[interface:ParentInterface]`
-	//is_objc := p.attr.starts_with('interface')
-	//objc_parent := if is_objc { p.attr.right(10) } else { '' }
+	// `[objc_interface:ParentInterface]`
+	is_objc := p.attr.starts_with('objc_interface')
+	objc_parent := if is_objc { p.attr.right(15) } else { '' }
 	// interface, union, struct
 	is_interface := p.tok == .key_interface
 	is_union := p.tok == .key_union
 	is_struct := p.tok == .key_struct
 	mut cat := key_to_type_cat(p.tok)
+	if is_objc {
+		cat = .objc_interface
+	}	
 	p.fgen(p.tok.str() + ' ')
 	// Get type name
 	p.next()
@@ -530,7 +533,11 @@ fn (p mut Parser) struct_decl() {
 	if p.pass == .decl && p.table.known_type_fast(typ) {
 		p.error('`$name` redeclared')
 	}
-	if !is_c {
+	if is_objc {
+		// Forward declaration of an Objective-C interface with `@class` :)
+		p.gen_typedef('@class $name;')
+	}	
+	else if !is_c {
 		kind := if is_union {'union'} else {'struct'}
 		p.gen_typedef('typedef $kind $name $name;')
 	}
@@ -544,6 +551,7 @@ fn (p mut Parser) struct_decl() {
 		typ.is_c = is_c
 		typ.is_placeholder = false
 		typ.cat = cat
+		typ.parent = objc_parent
 		p.table.rewrite_type(typ)
 	}
 	else {
@@ -552,6 +560,7 @@ fn (p mut Parser) struct_decl() {
 			mod: p.mod
 			is_c: is_c
 			cat: cat
+			parent: objc_parent
 		}
 	}
 	// Struct `C.Foo` declaration, no body
@@ -1715,12 +1724,6 @@ fn (p mut Parser) name_expr() string {
 				p.error('undefined: `$name`')
 			}
 			else {
-				if orig_name == 'i32' {
-					println('`i32` alias was removed, use `int` instead')
-				}
-				if orig_name == 'u8' {
-					println('`u8` alias was removed, use `byte` instead')
-				}
 				p.error('undefined: `$orig_name`')
 			}
 		} else {
@@ -2852,42 +2855,11 @@ fn (p mut Parser) array_init() string {
 }
 
 fn (p mut Parser) struct_init(typ string) string {
-	//p.gen('/* struct init */')
 	p.is_struct_init = true
 	t := p.table.find_type(typ)
 	if p.gen_struct_init(typ, t) { return typ }
 	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
-	/*
-	if !ptr {
-		if p.is_c_struct_init {
-			// `face := C.FT_Face{}` => `FT_Face face;`
-			if p.tok == .rcbr {
-				p.is_empty_c_struct_init = true
-				p.check(.rcbr)
-				return typ
-			}
-			p.gen('(struct $typ) {')
-			p.is_c_struct_init = false
-		}
-		else {
-			p.gen('($typ /*str init */) {')
-		}
-	}
-	else {
-		// TODO tmp hack for 0 pointers init
-		// &User{!} ==> 0
-		if p.tok == .not {
-			p.next()
-			p.gen('0')
-			p.check(.rcbr)
-			return typ
-		}
-		p.is_alloc = true
-		//println('setting is_alloc=true (ret $typ)')
-		p.gen('($t.name*)memdup(&($t.name)  {')
-	}
-	*/
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
 	// u := User{age:20, name:'bob'}
@@ -3763,13 +3735,11 @@ fn (p mut Parser) js_decode() string {
 
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)
-	if p.tok == .key_interface {
-		p.check(.key_interface)
+	p.attr = p.check_name()
+	if p.tok == .colon {
 		p.check(.colon)
-		p.attr = 'interface:' + p.check_name()
-	} else {
-		p.attr = p.check_name()
-	}
+		p.attr = p.attr + ':' + p.check_name()
+	}	
 	p.check(.rsbr)
 	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
 		p.fn_decl()
