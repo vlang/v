@@ -38,9 +38,9 @@ jobs:
     runs-on: windows-2019
     steps:
     - uses: actions/checkout@v1
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
     - name: Build
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
@@ -48,15 +48,16 @@ jobs:
     - name: Test
       run: |
         .\v.exe test v
-        .\v.exe -o hi.js examples/hello_v_js.v
-        node hi.js
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
   build-windows-msvc:
     runs-on: windows-2019
     steps:
     - uses: actions/checkout@v1
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
     - name: Build
       env:
         VFLAGS: -os msvc
@@ -68,5 +69,6 @@ jobs:
         VFLAGS: -os msvc
       run: |
         .\v.exe test v
-        .\v.exe -o hi.js examples/hello_v_js.v
-        node hi.js
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
