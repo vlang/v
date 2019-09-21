@@ -143,7 +143,7 @@ glfw dependency will be removed soon.
 
 ## JavaScript backend
 
-examples/hello_v_js.v:
+[examples/hello_v_js.v](examples/hello_v_js.v):
 
 ```
 fn main() {
