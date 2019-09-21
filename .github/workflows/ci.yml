@@ -55,8 +55,8 @@ jobs:
       shell: powershell
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make.bat -gcc
-        ./v.exe test v
+        .\make.bat -gcc
+        .\v.exe test v
   build-windows-msvc:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -70,5 +70,5 @@ jobs:
         VFLAGS: -os msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make.bat -msvc
-        ./v.exe test v
+        .\make.bat -msvc
+        .\v.exe test v
