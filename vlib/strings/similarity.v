@@ -35,7 +35,7 @@ pub fn levenshtein_distance_percentage(a, b string) f32 {
 
 // implementation of Sørensen–Dice coefficient.
 // find the similarity between two strings.
-// returns percentage between 0.0 (not similar) and 1.0 (exact match).
+// returns coefficient between 0.0 (not similar) and 1.0 (exact match).
 pub fn dice_coefficient(s1, s2 string) f32 {
 	if s1.len == 0 || s2.len == 0 { return 0.0 }
 	if s1 == s2 { return 1.0 }
