@@ -33,6 +33,7 @@ mut:
 	prev_tok Token
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
+	quote byte // which quote is used to denote current string: ' or "
 }
 
 fn new_scanner(file_path string) &Scanner {
@@ -359,9 +360,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case single_quote:
-		return scan_res(.str, s.ident_string())
-	case double_quote:
+	case single_quote, double_quote:
 		return scan_res(.str, s.ident_string())
 	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
@@ -690,8 +689,14 @@ fn (s Scanner) count_symbol_before(p int, sym byte) int {
 // println('array out of bounds $idx len=$a.len')
 // This is really bad. It needs a major clean up
 fn (s mut Scanner) ident_string() string {
-	// println("\nidentString() at char=", string(s.text[s.pos]),
-	// "chard=", s.text[s.pos], " pos=", s.pos, "txt=", s.text[s.pos:s.pos+7])
+	q := s.text[s.pos]
+	if (q == single_quote || q == double_quote) &&	!s.inside_string{
+		s.quote = q
+	}
+	//if s.file_path.contains('string_test') {
+	//println('\nident_string() at char=${s.text[s.pos].str()}')
+	//println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
+	//}
 	mut start := s.pos
 	s.inside_string = false
 	slash := `\\`
@@ -703,7 +708,7 @@ fn (s mut Scanner) ident_string() string {
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
@@ -734,7 +739,7 @@ fn (s mut Scanner) ident_string() string {
 		}
 	}
 	mut lit := ''
-	if s.text[start] == `\'` {
+	if s.text[start] == s.quote {
 		start++
 	}
 	mut end := s.pos
