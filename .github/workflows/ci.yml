@@ -47,6 +47,8 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         make -gcc
+    - name: Test
+      run: |
         ./v.exe test v
         echo "fn main(){ println('Hello from V.js') }" > hi.v
         ./v.exe -o hi.js hi.v
@@ -68,7 +70,7 @@ jobs:
       env:
         VFLAGS: -os msvc
       run: |
+        ./v.exe test v
         echo "fn main(){ println('Hello from V.js') }" > hi.v
-        .\v.exe -o hi.js hi.v
+        ./v.exe -o hi.js hi.v
         node hi.js
-        .\v.exe test v
