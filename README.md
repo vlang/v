@@ -143,6 +143,8 @@ glfw dependency will be removed soon.
 
 ## JavaScript backend
 
+[examples/hello_v_js.v](examples/hello_v_js.v):
+
 ```
 fn main() {
         for i := 0; i < 3; i++ {
@@ -152,7 +154,7 @@ fn main() {
 ```
 
 ```bash
-v -o hi.js hi.v && node hi.js
+v -o hi.js examples/hello_v_js.v && node hi.js
 Hello from V.js
 Hello from V.js
 Hello from V.js

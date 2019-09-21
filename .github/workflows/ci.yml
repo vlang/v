@@ -2,16 +2,12 @@ name: CI
 on: [push, pull_request]
 jobs:
   build-osx:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macOS-10.14]
-        node-version: [12.x]
+    runs-on: macOS-10.14
     steps:
     - uses: actions/checkout@v1
     - uses: actions/setup-node@v1
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: 12.x
     - name: Build and test
       run: |
         brew install freetype glfw openssl
@@ -19,54 +15,60 @@ jobs:
         make
         ./v -o v compiler
         ./v test v
-        echo "fn main(){ println('Hello from V.js') }" > hi.v
-        ./v -o hi.js hi.v
+        ./v -o hi.js examples/hello_v_js.v
         node hi.js
         git clone --depth 1 https://github.com/vlang/vid.git
         cd vid && ../v -debug -o vid .
   build-ubuntu:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-18.04]
-        node-version: [12.x]
+    runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@v1
     - uses: actions/setup-node@v1
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: 12.x
     - name: Build and test
       run: |
         sudo apt-get update && sudo apt-get install -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
         make
         ./v -o v compiler
         ./v test v
-        echo "fn main(){ println('Hello from V.js') }" > hi.v
-        ./v -o hi.js hi.v
+        ./v -o hi.js examples/hello_v_js.v
         node hi.js
   build-windows-gcc:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-2019]
+    runs-on: windows-2019
     steps:
     - uses: actions/checkout@v1
-    - name: Build and test
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make -gcc
-        ./v.exe test v
+        .\make.bat -gcc
+    - name: Test
+      run: |
+        .\v.exe test v
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
   build-windows-msvc:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-2019]
+    runs-on: windows-2019
     steps:
     - uses: actions/checkout@v1
-    - name: Build and test
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
       env:
         VFLAGS: -os msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make -msvc
-        ./v.exe test v
+        .\make.bat -msvc
+    - name: Test
+      env:
+        VFLAGS: -os msvc
+      run: |
+        .\v.exe test v
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
