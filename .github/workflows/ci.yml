@@ -58,13 +58,17 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
-    - name: Build and test
+    - name: Build
       env:
         VFLAGS: -os msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         make -msvc
-        .\v.exe test v
+    - name: Test
+      env:
+        VFLAGS: -os msvc
+      run: |
         echo "fn main(){ println('Hello from V.js') }" > hi.v
         .\v.exe -o hi.js hi.v
         node hi.js
+        .\v.exe test v
