@@ -44,7 +44,7 @@ jobs:
     - name: Build
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make -gcc
+        .\make.bat -gcc
     - name: Test
       run: |
         .\v.exe test v
@@ -62,7 +62,7 @@ jobs:
         VFLAGS: -os msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make -msvc
+        .\make.bat -msvc
     - name: Test
       env:
         VFLAGS: -os msvc
