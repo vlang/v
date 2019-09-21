@@ -71,7 +71,6 @@ mut:
 	ref             bool
 	parent_fn       string // Variables can only be defined in functions
 	mod             string // module where this var is stored
-	line_nr         int
 	access_mod      AccessMod
 	is_global       bool // __global (translated from C only)
 	is_used         bool
@@ -79,6 +78,8 @@ mut:
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
 	moved           bool
+	scanner_pos     ScannerPos // TODO: use only scanner_pos, remove line_nr
+	line_nr         int
 }
 
 struct Type {
@@ -332,9 +333,8 @@ fn (t &Table) known_fn(name string) bool {
 }
 
 fn (t &Table) known_const(name string) bool {
-	v := t.find_const(name)
-	// TODO use optional
-	return v.name.len > 0
+	_ := t.find_const(name) or { return false }
+	return true
 }
 
 fn (t mut Table) register_type(typ string) {
@@ -672,15 +672,14 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
-// TODO use `?Var`
-fn (t &Table) find_const(name string) Var {
+fn (t &Table) find_const(name string) ?Var {
 	//println('find const l=$t.consts.len')
 	for c in t.consts {
 		if c.name == name {
 			return c
 		}
 	}
-	return Var{}
+	return none
 }
 
 // ('s', 'string') => 'string s'

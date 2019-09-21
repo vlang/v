@@ -239,6 +239,31 @@ fn (v mut V) cc() {
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm(v.out_name_c)
 	}
+	if v.pref.compress {
+		$if windows {
+			println('-compress does not work on Windows for now')
+			return
+		}	
+		ret := os.system('strip $v.out_name')
+		if ret != 0 {
+			println('strip failed')
+			return
+		}
+		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		if ret2 != 0 {
+			println('upx failed')
+			$if mac {
+				println('install upx with `brew install upx`')
+			}	
+			$if linux {
+				println('install upx\n' +
+					'for example, on Debian/Ubuntu run `sudo apt install upx`')
+			}	
+			$if windows {
+				// :)
+			}	
+		}
+	}	
 }
 
 

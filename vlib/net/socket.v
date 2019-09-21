@@ -45,9 +45,10 @@ mut:
 	ai_socktype int
 	ai_flags int
 	ai_protocol int
-	ai_addrlen int
-	ai_next voidptr
+	ai_addrlen int	
 	ai_addr voidptr
+	ai_canonname voidptr
+	ai_next voidptr
 }
 
 struct C.sockaddr_storage {}
@@ -175,6 +176,10 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	hints.ai_family = C.AF_UNSPEC
 	hints.ai_socktype = C.SOCK_STREAM
 	hints.ai_flags = C.AI_PASSIVE
+	hints.ai_addrlen = 0
+	hints.ai_canonname = C.NULL
+	hints.ai_addr = C.NULL
+	
 
 	info := &C.addrinfo{!}
 	sport := '$port'
@@ -263,7 +268,7 @@ const (
 )
 pub fn (s Socket) write(str string) {
         line := '$str\r\n'
-        C.write(s.sockfd, line.str, line.len)
+        C.send(s.sockfd, line.str, line.len, 0)
 }
 
 pub fn (s Socket) read_line() string {
@@ -304,6 +309,13 @@ pub fn (s Socket) read_line() string {
                 }
         }
         return res
+}
+
+pub fn (s Socket) get_port() int {
+	mut addr := C.sockaddr_in {}
+	size := 16 // sizeof(sockaddr_in)
+	sockname_res := C.getsockname(s.sockfd, &addr, &size)
+	return int(C.ntohs(addr.sin_port))
 }
 
 

@@ -9,6 +9,7 @@ const (
 struct App {
 pub mut:
 	vweb vweb.Context // TODO embed
+	cnt int
 }
 
 fn main() {
@@ -25,7 +26,9 @@ pub fn (app mut App) json_endpoint() {
 
 /*
 pub fn (app mut App) index() {
-	$vweb.html() 
+	app.cnt ++
+	
+	$vweb.html()
 }
 */
 
