@@ -47,8 +47,8 @@ jobs:
         make -gcc
     - name: Test
       run: |
-        ./v.exe test v
-        ./v.exe -o hi.js examples/hello_world.v
+        .\v.exe test v
+        .\v.exe -o hi.js examples/hello_world.v
         node hi.js
   build-windows-msvc:
     runs-on: windows-2019
@@ -67,6 +67,6 @@ jobs:
       env:
         VFLAGS: -os msvc
       run: |
-        ./v.exe test v
-        ./v.exe -o hi.js examples/hello_world.v
+        .\v.exe test v
+        .\v.exe -o hi.js examples/hello_world.v
         node hi.js
