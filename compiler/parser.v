@@ -1358,17 +1358,20 @@ fn (p mut Parser) var_decl() {
 	println(names)
 	p.check_space(.decl_assign) // :=
 	t := p.bool_expression()
+	// t := p.gen_var_decl(name, is_static)
+	println(' # t: $t')
 	mut types := []string
 	if t.contains(',') {
 		types = t.split(',')
 	} else {
 		types << t
 	}
-	for _, name in names {
-		// mut typ := types[i]
+	println('LIT: $p.lit')
+	for i, name in names {
+		mut typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
-		name := p.check_name()
+		// name := p.check_name()
 		p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
@@ -1377,10 +1380,10 @@ fn (p mut Parser) var_decl() {
 			p.error('redefinition of `$name`')
 		}
 		if name.len > 1 && contains_capital(name) {
-			p.error('variable names cannot contain uppercase letters, use snake_case instead')=
+			p.error('variable names cannot contain uppercase letters, use snake_case instead')
 		}
 		// p.check_space(.decl_assign) // :=
-		typ := p.gen_var_decl(name, is_static)
+		// typ := p.gen_var_decl(name, is_static)
 		p.register_var(Var {
 			name: name
 			typ: typ
