@@ -41,12 +41,13 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
-    - name: Build
+    - name: Build and test
+      env:
+        VFLAGS: -os gcc
+      shell: powershell
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         make -gcc
-    - name: Test
-      run: |
         .\v.exe test v
         .\v.exe -o hi.js examples/hello_v_js.v
         node hi.js
@@ -57,16 +58,13 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
-    - name: Build
+    - name: Build and test
       env:
         VFLAGS: -os msvc
+      shell: powershell
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         make -msvc
-    - name: Test
-      env:
-        VFLAGS: -os msvc
-      run: |
         .\v.exe test v
         .\v.exe -o hi.js examples/hello_v_js.v
         node hi.js
