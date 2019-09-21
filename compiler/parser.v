@@ -1357,8 +1357,8 @@ fn (p mut Parser) var_decl() {
 	println('names:')
 	println(names)
 	p.check_space(.decl_assign) // :=
-	t := p.bool_expression()
-	// t := p.gen_var_decl(name, is_static)
+	// t := p.bool_expression()
+	t := p.gen_var_decl(names[0], is_static)
 	println(' # t: $t')
 	mut types := []string
 	if t.contains(',') {
@@ -1376,7 +1376,7 @@ fn (p mut Parser) var_decl() {
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
 		if !p.builtin_mod && p.cur_fn.known_var(name) {
-			v := p.cur_fn.find_var(name)
+			// v := p.cur_fn.find_var(name)
 			p.error('redefinition of `$name`')
 		}
 		if name.len > 1 && contains_capital(name) {
@@ -3576,6 +3576,9 @@ fn (p mut Parser) return_st() {
 			}
 			if types.len > 1 {
 				expr_type = types.join(',')
+				// tmp := p.get_tmp()
+				// p.cgen.resetln('/* JOE BOP */')
+				p.gen('/* MULTI JOE */')
 			}
 			println('3362: $expr_type')
 
