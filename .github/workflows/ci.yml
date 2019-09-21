@@ -6,7 +6,7 @@ jobs:
     strategy:
       matrix:
         os: [macOS-10.14]
-        node-version: [8.x, 12.x]
+        node-version: [12.x]
     steps:
     - uses: actions/checkout@v1
     - uses: actions/setup-node@v1
@@ -28,8 +28,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-16.04, ubuntu-18.04]
-        node-version: [8.x, 12.x]
+        os: [ubuntu-18.04]
+        node-version: [12.x]
     steps:
     - uses: actions/checkout@v1
     - uses: actions/setup-node@v1
@@ -44,15 +44,29 @@ jobs:
         echo "fn main(){ println('Hello from V.js') }" > hi.v
         ./v -o hi.js hi.v
         node hi.js
-  build-windows:
+  build-windows-gcc:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-2016, windows-2019]
+        os: [windows-2019]
     steps:
     - uses: actions/checkout@v1
     - name: Build and test
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        make
+        make -gcc
+        ./v.exe test v
+  build-windows-msvc:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-2019]
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build and test
+      env:
+        VFLAGS: -os msvc
+      run: |
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        make -msvc
         ./v.exe test v
