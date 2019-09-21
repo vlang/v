@@ -2079,6 +2079,44 @@ struct IndexCfg {
 	
 }
 
+// in and dot have higher priority than `!`
+fn (p mut Parser) indot_expr() string {
+	ph := p.cgen.add_placeholder()
+	mut typ := p.term()
+	if p.tok == .dot  {
+		for p.tok == .dot {
+			typ = p.dot(typ, ph)
+		}
+	}
+	// `a in [1, 2, 3]`
+	// `key in map`
+	if p.tok == .key_in {
+		p.fgen(' ')
+		p.check(.key_in)
+		p.fgen(' ')
+		p.gen('), ')
+		arr_typ := p.expression()
+		is_map := arr_typ.starts_with('map_')
+		if !arr_typ.starts_with('array_') && !is_map {
+			p.error('`in` requires an array/map')
+		}
+		T := p.table.find_type(arr_typ)
+		if !is_map && !T.has_method('contains') {
+			p.error('$arr_typ has no method `contains`')
+		}
+		// `typ` is element's type
+		if is_map {
+			p.cgen.set_placeholder(ph, '_IN_MAP( (')
+		}
+		else {
+			p.cgen.set_placeholder(ph, '_IN($typ, (')
+		}
+		p.gen(')')
+		return 'bool'
+	}
+	return typ
+}
+
 // returns resulting type
 fn (p mut Parser) expression() string {
 	if p.scanner.file_path.contains('test_test') {
@@ -2086,7 +2124,7 @@ fn (p mut Parser) expression() string {
 		p.print_tok()
 	}
 	ph := p.cgen.add_placeholder()
-	mut typ := p.term()
+	mut typ := p.indot_expr()
 	is_str := typ=='string'
 	is_ustr := typ=='ustring'
 	// `a << b` ==> `array_push(&a, b)`
@@ -2119,42 +2157,11 @@ fn (p mut Parser) expression() string {
 			return 'int'
 		}
 	}
-	// `a in [1, 2, 3]`
-	// `key in map`
-	if p.tok == .key_in {
-		p.fgen(' ')
-		p.check(.key_in)
-		p.fgen(' ')
-		p.gen('), ')
-		arr_typ := p.expression()
-		is_map := arr_typ.starts_with('map_')
-		if !arr_typ.starts_with('array_') && !is_map {
-			p.error('`in` requires an array/map')
-		}
-		T := p.table.find_type(arr_typ)
-		if !is_map && !T.has_method('contains') {
-			p.error('$arr_typ has no method `contains`')
-		}
-		// `typ` is element's type
-		if is_map {
-			p.cgen.set_placeholder(ph, '_IN_MAP( (')
-		}
-		else {
-			p.cgen.set_placeholder(ph, '_IN($typ, (')
-		}
-		p.gen(')')
-		return 'bool'
-	}
 	if p.tok == .righ_shift {
 		p.next()
 		p.gen(' >> ')
 		p.check_types(p.expression(), typ)
 		return 'int'
-	}
-	if p.tok == .dot  {
-		for p.tok == .dot {
-			typ = p.dot(typ, ph)
-		}
 	}
 	// + - | ^
 	for p.tok == .plus || p.tok == .minus || p.tok == .pipe || p.tok == .amp ||
@@ -2261,8 +2268,12 @@ fn (p mut Parser) unary() string {
 	case Token.not:
 		p.gen('!')
 		p.check(.not)
-		typ = 'bool'
-		p.bool_expression()
+		// typ should be bool type
+		typ = p.indot_expr()
+		if typ != 'bool' {
+			p.error('operator ! requires bool type, not `$typ`')
+		}
+
 	case Token.bit_not:
 		p.gen('~')
 		p.check(.bit_not)
@@ -2313,7 +2324,7 @@ fn (p mut Parser) factor() string {
 		p.fgen('sizeof(')
 		p.next()
 		p.check(.lpar)
-		mut sizeof_typ := p.get_type()		
+		mut sizeof_typ := p.get_type()
 		p.check(.rpar)
 		p.gen('$sizeof_typ)')
 		p.fgen('$sizeof_typ)')
