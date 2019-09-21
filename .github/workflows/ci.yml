@@ -55,7 +55,7 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         make -gcc
-        ./v.exe test v
+        v.exe test v
         echo "Done"
   build-windows-msvc:
     runs-on: ${{ matrix.os }}
@@ -70,5 +70,5 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         make -msvc
-        ./v.exe test v
+        v.exe test v
         echo "Done"
