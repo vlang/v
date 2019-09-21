@@ -15,7 +15,7 @@ jobs:
         make
         ./v -o v compiler
         ./v test v
-        ./v -o hi.js examples/hello_world.v
+        ./v -o hi.js examples/hello_v_js.v
         node hi.js
         git clone --depth 1 https://github.com/vlang/vid.git
         cd vid && ../v -debug -o vid .
@@ -32,7 +32,7 @@ jobs:
         make
         ./v -o v compiler
         ./v test v
-        ./v -o hi.js examples/hello_world.v
+        ./v -o hi.js examples/hello_v_js.v
         node hi.js
   build-windows-gcc:
     runs-on: windows-2019
@@ -48,7 +48,7 @@ jobs:
     - name: Test
       run: |
         .\v.exe test v
-        .\v.exe -o hi.js examples/hello_world.v
+        .\v.exe -o hi.js examples/hello_v_js.v
         node hi.js
   build-windows-msvc:
     runs-on: windows-2019
@@ -68,5 +68,5 @@ jobs:
         VFLAGS: -os msvc
       run: |
         .\v.exe test v
-        .\v.exe -o hi.js examples/hello_world.v
+        .\v.exe -o hi.js examples/hello_v_js.v
         node hi.js
