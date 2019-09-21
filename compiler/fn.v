@@ -4,7 +4,10 @@
 
 module main
 
-import strings
+import(
+	os
+	strings
+)
 
 const (
 	MaxLocalVars = 50
@@ -455,7 +458,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// We are in live code reload mode, call the .so loader in bg
 		if p.pref.is_live {
-			file_base := p.file_path.replace('.v', '')
+			file_base := os.filename(p.file_path).replace('.v', '')
 			if p.os != .windows && p.os != .msvc {
 				so_name := file_base + '.so'
 				p.genln('
