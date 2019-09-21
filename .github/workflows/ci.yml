@@ -15,8 +15,7 @@ jobs:
         make
         ./v -o v compiler
         ./v test v
-        echo "fn main(){ println('Hello from V.js') }" > hi.v
-        ./v -o hi.js hi.v
+        ./v -o hi.js examples/hello_world.v
         node hi.js
         git clone --depth 1 https://github.com/vlang/vid.git
         cd vid && ../v -debug -o vid .
@@ -33,8 +32,7 @@ jobs:
         make
         ./v -o v compiler
         ./v test v
-        echo "fn main(){ println('Hello from V.js') }" > hi.v
-        ./v -o hi.js hi.v
+        ./v -o hi.js examples/hello_world.v
         node hi.js
   build-windows-gcc:
     runs-on: windows-2019
@@ -50,8 +48,7 @@ jobs:
     - name: Test
       run: |
         ./v.exe test v
-        echo "fn main(){ println('Hello from V.js') }" > hi.v
-        ./v.exe -o hi.js hi.v
+        ./v.exe -o hi.js examples/hello_world.v
         node hi.js
   build-windows-msvc:
     runs-on: windows-2019
@@ -71,6 +68,5 @@ jobs:
         VFLAGS: -os msvc
       run: |
         ./v.exe test v
-        echo "fn main(){ println('Hello from V.js') }" > hi.v
-        ./v.exe -o hi.js hi.v
+        ./v.exe -o hi.js examples/hello_world.v
         node hi.js
