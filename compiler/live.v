@@ -40,7 +40,7 @@ fn (v &V) generate_hot_reload_code() {
 
 	// Hot code reloading
 	if v.pref.is_live {
-		file := os.filename(v.dir)
+		file := v.dir
 		file_base := file.replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
