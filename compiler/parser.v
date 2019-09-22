@@ -6,7 +6,6 @@ module main
 
 import (
 	os
-	rand
 	strings
 )
 
@@ -29,7 +28,7 @@ mut:
 	lit            string
 	cgen           &CGen
 	table          &Table
-	import_table   &FileImportTable // Holds imports for just the file being parsed
+	import_table   FileImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
 	mod            string
@@ -100,7 +99,7 @@ fn (v mut V) new_parser(path string) Parser {
 		file_pcguard: path_pcguard
 		scanner: new_scanner(path)
 		table: v.table
-		import_table: new_file_import_table(path)
+		import_table: v.table.get_file_import_table(path)
 		cur_fn: EmptyFn
 		cgen: v.cgen
 		is_script: (v.pref.is_script && path == v.dir)
@@ -185,7 +184,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
-		p.table.file_imports << *p.import_table
+		p.table.file_imports << p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -284,6 +283,15 @@ fn (p mut Parser) parse(pass Pass) {
 				}
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
+			}
+			if !p.first_pass() {
+				// check for unused modules
+				for alias, mod in p.import_table.imports {
+					if !p.import_table.is_used_import(alias) {
+						mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
+						cerror('$p.file_path: module $mod_alias was imported but never used.')
+					}
+				}
 			}
 			return
 		default:
@@ -1509,6 +1517,7 @@ fn (p mut Parser) name_expr() string {
 		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
+			p.import_table.register_used_import(name)
 			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
 			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
