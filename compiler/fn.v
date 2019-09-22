@@ -152,6 +152,7 @@ fn (p mut Parser) fn_decl() {
 	if is_pub {
 		p.next()
 	}
+	multi_ret_ph := p.cgen.add_placeholder()
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
 	p.next()
@@ -284,6 +285,20 @@ fn (p mut Parser) fn_decl() {
 		// TODO In
 		// if p.tok in [ .name, .mul, .amp, .lsbr ] {
 		typ = p.get_type()
+	}
+	// multiple retuens
+	if typ.contains('MultiReturn_') {
+		mut mr_struct_name := typ
+		mut multi_ret_struct := 'struct $mr_struct_name {\n'
+		for i, t in typ.replace('MultiReturn_', '').split('_') {
+			multi_ret_struct += '\t$t var_$i;\n'
+		}
+		multi_ret_struct += '};\n'
+		// typ = mr_struct_name
+		p.cgen.set_placeholder(multi_ret_ph, multi_ret_struct)
+		p.cgen.typedefs << 'typedef struct $mr_struct_name $mr_struct_name;'
+		println(' #### FN TYPE: $typ')
+
 	}
 	// Translated C code can have empty functions (just definitions)
 	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr

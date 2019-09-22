@@ -853,7 +853,7 @@ fn (p mut Parser) get_type() string {
 		println('#TYPES')
 		println(types)
 		// p.inside_tuple = false 
-		return types.join(',') 
+		return 'MultiReturn_' + types.join('_') 
 	}
 	// fn type
 	if p.tok == .func {
@@ -1347,28 +1347,31 @@ fn (p mut Parser) var_decl() {
 		p.check(.key_static)
 		p.fspace()
 	}
-
+	
 	mut names := []string
 	names << p.check_name()
 	for p.tok == .comma {
 		p.check(.comma)
 		names << p.check_name()
 	}
-	println('names:')
-	println(names)
+	var_name := if names.len > 1 { 'ret' } else { names[0] }
+	// println('names:')
+	// println(names)
 	p.check_space(.decl_assign) // :=
 	// t := p.bool_expression()
-	t := p.gen_var_decl(names[0], is_static)
-	println(' # t: $t')
-	mut types := []string
-	if t.contains(',') {
-		types = t.split(',')
-	} else {
-		types << t
+	t := p.gen_var_decl(var_name, is_static)
+
+	mut types := [t]
+	if names.len > 1 {
+		types = t.replace('MultiReturn_', '').split('_')
 	}
-	println('LIT: $p.lit')
+
 	for i, name in names {
-		mut typ := types[i]
+		typ := types[0]
+		if names.len > 1 {
+			p.gen(';\n')
+			p.gen('$typ $name = ret.var_$i')
+		}
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
 		// name := p.check_name()
@@ -3586,9 +3589,11 @@ fn (p mut Parser) return_st() {
 				types << p.bool_expression()
 			}
 			if types.len > 1 {
-				expr_type = types.join(',')
-				// tmp := p.get_tmp()
-				// p.cgen.resetln('/* JOE BOP */')
+				expr_type = 'MultiReturn_' + types.join('_')
+				tmp := p.get_tmp()
+				ret := p.cgen.cur_line.right(ph)
+				rets := ret.split(' ').join(',')
+				p.cgen.resetln('($expr_type){$rets}')
 				p.gen('/* MULTI JOE */')
 			}
 			println('3362: $expr_type')
