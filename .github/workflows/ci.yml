@@ -8,15 +8,18 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
-    - name: Build and test
+    - name: Install dependencies
       run: |
         brew install freetype glfw openssl
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-        make
-        ./v -o v compiler
-        ./v test v
-        ./v -o hi.js examples/hello_v_js.v
-        node hi.js
+    - name: Build v
+      run:  make && ./v -o v compiler
+    - name: Test v->c
+      run: ./v test v
+    - name: Test v->js
+      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Test vid
+      run: |
         git clone --depth 1 https://github.com/vlang/vid.git
         cd vid && ../v -debug -o vid .
   build-ubuntu:
@@ -26,14 +29,14 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
-    - name: Build and test
-      run: |
-        sudo apt-get update && sudo apt-get install -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
-        make
-        ./v -o v compiler
-        ./v test v
-        ./v -o hi.js examples/hello_v_js.v
-        node hi.js
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+    - name: Build v
+      run: make && ./v -o v compiler
+    - name: Test v->c
+      run: ./v test v
+    - name: Test v->js
+      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
   build-windows-gcc:
     runs-on: windows-2019
     steps:
