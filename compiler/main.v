@@ -849,12 +849,7 @@ fn new_v(args[]string) &V {
 			files << f
 		}
 
-	mut cflags := ''
-	for ci, cv in args {
-		if cv == '-cflags' {
-			cflags += args[ci+1] + ' '
-		}
-	}
+	cflags := get_cmdline_cflags(args)
 
 	rdir := os.realpath( dir )
 	rdir_name := os.filename( rdir )
