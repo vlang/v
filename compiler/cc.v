@@ -323,7 +323,7 @@ fn (c mut V) cc_windows_cross() {
 	println('Done!')
 }
 
-fn (c V) build_thirdparty_obj_files() {
+fn (c &V) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {			
 			rest_of_module_flags := c.get_rest_of_module_cflags( flag )
