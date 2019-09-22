@@ -720,6 +720,10 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 fn (p mut Parser) check_name() string {
 	name := p.lit
 	p.check(.name)
+	// if it's an import then register as used
+	if p.import_table.known_alias(name) {
+		p.import_table.register_used_import(name)
+	}
 	return name
 }
 
@@ -1517,7 +1521,6 @@ fn (p mut Parser) name_expr() string {
 		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
-			p.import_table.register_used_import(name)
 			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
 			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
@@ -2350,7 +2353,6 @@ fn (p mut Parser) factor() string {
 			if !('json' in p.table.imports) {
 				p.error('undefined: `json`, use `import json`')
 			}
-			p.import_table.register_used_import('json')
 			return p.js_decode()
 		}
 		//if p.fileis('orm_test') {
