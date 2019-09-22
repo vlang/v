@@ -48,7 +48,7 @@ struct Character {
 
 [typedef]
 struct C.FT_Library {
-	
+	_z int
 }
 
 struct Context {
@@ -156,7 +156,7 @@ pub fn new_context(cfg gg.Cfg) &Context {
 	projection := glm.ortho(0, width, 0, height)// 0 at BOT
 	shader.set_mat4('projection', projection)
 	// FREETYPE
-	ft := FT_Library{}
+	ft := FT_Library{0}
 	// All functions return a value different than 0 whenever
 	// an error occurred
 	mut ret := C.FT_Init_FreeType(&ft)
