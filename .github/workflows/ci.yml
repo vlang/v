@@ -35,14 +35,14 @@ jobs:
       run: make && ./v -cflags -mtune=native -cflags -march=native -prod -o v compiler
     - name: Test v->c
       run: ./v test v
+    - name: Test v->js
+      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test v->c with tcc
       env:
         VFLAGS: -cc tcc
       run: |
         tcc -version
         ./v test v
-    - name: Test v->js
-      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
   build-windows-gcc:
     runs-on: windows-2019
     steps:
