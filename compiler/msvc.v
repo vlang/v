@@ -45,7 +45,7 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 			alloc_length := (required_bytes + 2)
 
 			mut value := &u16(malloc(alloc_length))
-			if !value {
+			if isnil(value) {
 				continue
 			}
 
@@ -292,8 +292,7 @@ pub fn (v mut V) cc_msvc() {
 		'oleaut32.lib',
 		'uuid.lib',
 		'odbc32.lib',
-		'odbccp32.lib',
-		'vcruntime.lib',
+		'odbccp32.lib'
 	]
 
 	mut inc_paths := []string{}

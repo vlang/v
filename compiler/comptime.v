@@ -89,12 +89,18 @@ fn (p mut Parser) comp_time() {
 	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
 	// that returns an html string
 	else if p.tok == .name && p.lit == 'vweb' {
-		path := p.cur_fn.name + '.html'
+		mut path := p.cur_fn.name + '.html'
 		if p.pref.is_debug {
 			println('compiling tmpl $path')
 		}
 		if !os.file_exists(path) {
-			p.error('vweb HTML template "$path" not found')
+			// Can't find the template file in current directory,
+			// try looking next to the vweb program, in case it's run with
+			// v path/to/vweb_app.v
+			path = os.dir(p.scanner.file_path) + '/' + path
+			if !os.file_exists(path) {
+				p.error('vweb HTML template "$path" not found')
+			}
 		}
 		p.check(.name)  // skip `vweb.html()` TODO
 		p.check(.dot)
@@ -224,30 +230,22 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 }
 
 fn (p mut Parser) gen_array_str(typ Type) {
-	//println('gen array str "$typ.name"')
-	p.table.add_method(typ.name, Fn{
-		name: 'str',
+	p.add_method(typ.name, Fn{
+		name: 'str'
 		typ: 'string'
 		args: [Var{typ: typ.name, is_arg:true}]
 		is_method: true
 		is_public: true
 		receiver_typ: typ.name
 	})
-	/*
-	tt := p.table.find_type(typ.name)
-	for m in tt.methods {
-		println(m.name + ' ' + m.typ)
-		}
-		*/
-	t := typ.name
-	elm_type := t.right(6)
+	elm_type := typ.name.right(6)
 	elm_type2 := p.table.find_type(elm_type)
 	if p.typ_to_fmt(elm_type, 0) == '' &&
 		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
 	p.cgen.fns << '
-string ${t}_str($t a) {
+string ${typ.name}_str($typ.name a) {
 	strings__Builder sb = strings__new_builder(a.len * 3);
 	strings__Builder_write(&sb, tos2("[")) ;
 	for (int i = 0; i < a.len; i++) {

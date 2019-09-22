@@ -33,13 +33,14 @@ pub fn _make(len, cap, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	arr := array {
 		len: len
 		cap: cap
 		element_size: elm_size
-		data: malloc(cap * elm_size)
+		data: calloc(cap * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
 	C.memcpy(arr.data, c_array, len * elm_size)
@@ -63,7 +64,7 @@ fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
 		len: nr_repeats
 		cap: nr_repeats
 		element_size: elm_size
-		data: malloc(nr_repeats * elm_size)
+		data: calloc(nr_repeats * elm_size)
 	}
 	for i := 0; i < nr_repeats; i++ {
 		C.memcpy(arr.data + i * elm_size, val, elm_size)
@@ -76,22 +77,7 @@ pub fn (a array) repeat(nr_repeats int) array {
 		len: nr_repeats
 		cap: nr_repeats
 		element_size: a.element_size
-		data: malloc(nr_repeats * a.element_size)
-	}
-	val := a.data + 0 //nr_repeats * a.element_size
-	for i := 0; i < nr_repeats; i++ {
-		C.memcpy(arr.data + i * a.element_size, val, a.element_size)
-	}
-	return arr
-}
-
-// TODO remove
-pub fn (a array) repeat2(nr_repeats int) array {
-	arr := array {
-		len: nr_repeats
-		cap: nr_repeats
-		element_size: a.element_size
-		data: malloc(nr_repeats * a.element_size)
+		data: calloc(nr_repeats * a.element_size)
 	}
 	val := a.data + 0 //nr_repeats * a.element_size
 	for i := 0; i < nr_repeats; i++ {
@@ -194,7 +180,7 @@ fn (arr mut array) _push(val voidptr) {
 		cap := (arr.len + 1) * 2
 		// println('_push: realloc, new cap=$cap')
 		if arr.cap == 0 {
-			arr.data = malloc(cap * arr.element_size)
+			arr.data = calloc(cap * arr.element_size)
 		}
 		else {
 			arr.data = C.realloc(arr.data, cap * arr.element_size)
@@ -212,7 +198,7 @@ pub fn (arr mut array) _push_many(val voidptr, size int) {
 		cap := (arr.len + size) * 2
 		// println('_push: realloc, new cap=$cap')
 		if arr.cap == 0 {
-			arr.data = malloc(cap * arr.element_size)
+			arr.data = calloc(cap * arr.element_size)
 		}
 		else {
 			arr.data = C.realloc(arr.data, cap * arr.element_size)
@@ -228,7 +214,7 @@ pub fn (a array) reverse() array {
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: malloc(a.cap * a.element_size)
+		data: calloc(a.cap * a.element_size)
 	}
 	for i := 0; i < a.len; i++ {
 		C.memcpy(arr.data + i * arr.element_size, &a[a.len-1-i], arr.element_size)
@@ -241,7 +227,7 @@ pub fn (a array) clone() array {
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: malloc(a.cap * a.element_size)
+		data: calloc(a.cap * a.element_size)
 	}
 	C.memcpy(arr.data, a.data, a.cap * a.element_size)
 	return arr

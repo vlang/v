@@ -71,7 +71,6 @@ mut:
 	ref             bool
 	parent_fn       string // Variables can only be defined in functions
 	mod             string // module where this var is stored
-	line_nr         int
 	access_mod      AccessMod
 	is_global       bool // __global (translated from C only)
 	is_used         bool
@@ -79,6 +78,8 @@ mut:
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
 	moved           bool
+	scanner_pos     ScannerPos // TODO: use only scanner_pos, remove line_nr
+	line_nr         int
 }
 
 struct Type {
@@ -332,9 +333,8 @@ fn (t &Table) known_fn(name string) bool {
 }
 
 fn (t &Table) known_const(name string) bool {
-	v := t.find_const(name)
-	// TODO use optional
-	return v.name.len > 0
+	_ := t.find_const(name) or { return false }
+	return true
 }
 
 fn (t mut Table) register_type(typ string) {
@@ -438,47 +438,57 @@ fn (table &Table) find_field(typ &Type, name string) ?Var {
 	return none
 }
 
-fn (table mut Table) add_method(type_name string, f Fn) {
+fn (p mut Parser) add_method(type_name string, f Fn) {
+	if !p.first_pass() && f.name != 'str' {
+		return
+	}
 	if type_name == '' {
 		print_backtrace()
 		cerror('add_method: empty type')
 	}
 	// TODO table.typesmap[type_name].methods << f
-	mut t := table.typesmap[type_name]
+	mut t := p.table.typesmap[type_name]
+	if type_name == 'str' {
+		println(t.methods.len)
+	}	
+	
 	t.methods << f
-	table.typesmap[type_name] = t
+	if type_name == 'str' {
+		println(t.methods.len)
+	}	
+	p.table.typesmap[type_name] = t
 }
 
 fn (t &Type) has_method(name string) bool {
-	method := t.find_method(name)
-	return (method.name != '')
+	_ := t.find_method(name) or { return false }
+	return true
 }
 
 fn (table &Table) type_has_method(typ &Type, name string) bool {
-	method := table.find_method(typ, name)
-	return (method.name != '')
+	_ := table.find_method(typ, name) or { return false }
+	return true
 }
 
-// TODO use `?Fn`
-fn (table &Table) find_method(typ &Type, name string) Fn {
-	// method := typ.find_method(name)
+fn (table &Table) find_method(typ &Type, name string) ?Fn {
 	t := table.typesmap[typ.name]
-	method := t.find_method(name)
-	
 	for method in t.methods {
 		if method.name == name {
 			return method
 		}
 	}
-	
 	if typ.parent != '' {
 		parent := table.find_type(typ.parent)
-		return parent.find_method(name)
+		for method in parent.methods {
+			if method.name == name {
+				return method
+			}
+		}
+		return none
 	}
-	return method
+	return none
 }
 
-fn (t &Type) find_method(name string) Fn {
+fn (t &Type) find_method(name string) ?Fn {
 	// println('$t.name find_method($name) methods.len=$t.methods.len')
 	for method in t.methods {
 		// println('method=$method.name')
@@ -486,9 +496,7 @@ fn (t &Type) find_method(name string) Fn {
 			return method
 		}
 	}
-	//println('ret Fn{}')
-	return Fn{}
-	//return none
+	return none
 }
 
 /*
@@ -516,6 +524,7 @@ fn (t &Table) find_type(name_ string) Type {
 		name = name.left(name.len - 1)
 	}
 	if !(name in t.typesmap) {
+		//println('ret Type')
 		return Type{}
 	}
 	return t.typesmap[name]
@@ -524,7 +533,7 @@ fn (t &Table) find_type(name_ string) Type {
 fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	mut got := got_
 	mut expected := expected_
-	p.log('check types got="$got" exp="$expected"  ')
+	//p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
 	}
@@ -663,15 +672,23 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
-// TODO use `?Var`
-fn (t &Table) find_const(name string) Var {
+fn (t &Table) has_at_least_one_test_fn() bool {
+	for _, f in t.fns {
+		if f.name.starts_with('test_') {
+			return true
+		}	
+	}
+	return false
+}
+
+fn (t &Table) find_const(name string) ?Var {
 	//println('find const l=$t.consts.len')
 	for c in t.consts {
 		if c.name == name {
 			return c
 		}
 	}
-	return Var{}
+	return none
 }
 
 // ('s', 'string') => 'string s'

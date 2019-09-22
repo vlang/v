@@ -20,16 +20,16 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	mut str_args := ''
 	for i, arg in f.args   {
-		str_args += arg.name + ' /* $arg.typ */ '
+		str_args += ' /** @type { $arg.typ } **/ ' + arg.name
 		if i < f.args.len - 1 {
 			str_args += ', '
 		}
 	}
 	name := p.table.fn_gen_name(f)
 	if f.is_method {
-		p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args)/* $typ */ {')
+		p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args) {')
 	}	 else {
-		p.genln('\nfunction $name($str_args) /* $typ */ {')
+		p.genln('/** @return { $typ } **/\nfunction $name($str_args) {')
 	}
 }
 
@@ -39,18 +39,14 @@ fn types_to_c(types []Type, table &Table) string {
 		if t.cat != .union_ && t.cat != .struct_ {
 			continue
 		}
-		sb.writeln('class $t.name {')
+		sb.write('\n/**\n')
+		sb.write('* @typedef { object } $t.name' + 'Type\n')
 		for field in t.fields {
-			sb.write('\t')
-			sb.write(field.name)
-			sb.writeln('; // $field.typ')
+			sb.writeln('* @property { $field.typ' + '= } $field.name')
 		}
-		sb.writeln('
-constructor(obj) {
-    obj && Object.assign(this, obj);
-}
-')
-		sb.writeln('}\n')
+		sb.writeln('**/\n')
+		sb.writeln('/** @type { function & $t.name' + 'Type } **/')
+		sb.writeln('var $t.name = function() {}')
 	}
 	return sb.str()
 }

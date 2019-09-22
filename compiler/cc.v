@@ -239,6 +239,31 @@ fn (v mut V) cc() {
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm(v.out_name_c)
 	}
+	if v.pref.compress {
+		$if windows {
+			println('-compress does not work on Windows for now')
+			return
+		}	
+		ret := os.system('strip $v.out_name')
+		if ret != 0 {
+			println('strip failed')
+			return
+		}
+		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		if ret2 != 0 {
+			println('upx failed')
+			$if mac {
+				println('install upx with `brew install upx`')
+			}	
+			$if linux {
+				println('install upx\n' +
+					'for example, on Debian/Ubuntu run `sudo apt install upx`')
+			}	
+			$if windows {
+				// :)
+			}	
+		}
+	}	
 }
 
 
@@ -344,17 +369,23 @@ fn find_c_compiler_default() string {
 }
 
 fn find_c_compiler_thirdparty_options() string {
-	if '-m32' in os.args{
-		$if windows {
-			return '-m32'
-		}$else{
-			return '-fPIC -m32'
-		}
-	}else{
-		$if windows {
-			return ''
-		}$else{
-			return '-fPIC'
+	fullargs := env_vflags_and_os_args()
+	mut cflags := get_cmdline_cflags( fullargs )
+	$if !windows {
+		cflags += ' -fPIC'
+	}
+	if '-m32' in fullargs {
+		cflags += ' -m32'
+	}
+	return cflags
+}
+
+fn get_cmdline_cflags(args []string) string {
+	mut cflags := ''
+	for ci, cv in args {
+		if cv == '-cflags' {
+			cflags += args[ci+1] + ' '
 		}
 	}
+	return cflags
 }

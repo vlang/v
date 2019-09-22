@@ -37,7 +37,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-			p.error('`or` block must return/continue/break/panic')
+			p.error('`or` block must return/exit/continue/break/panic')
 		}
 		p.returns = false
 		return typ
@@ -150,7 +150,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 		name = name.replace('-', 'minus')
 	}
 	// Avoid name conflicts (with things like abs(), print() etc).
-	// Generate b_abs(), b_print()
+	// Generate v_abs(), v_print()
 	// TODO duplicate functionality
 	if f.mod == 'builtin' && f.name in CReserved {
 		return 'v_$name'
@@ -461,7 +461,11 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, tmp_typ string) {
 		// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
-		p.gen('), $tmp, $tmp_typ)')
+		if tmp_typ.ends_with('*') {
+			p.gen('), $tmp, ${tmp_typ.left(tmp_typ.len - 1)})')
+		} else {
+			p.gen('), $tmp, $tmp_typ)')
+		}
 	}
 }
 

@@ -4,7 +4,10 @@
 
 module main
 
-import strings
+import(
+	os
+	strings
+)
 
 const (
 	MaxLocalVars = 50
@@ -132,7 +135,7 @@ fn (p mut Parser) is_sig() bool {
 fn new_fn(mod string, is_public bool) Fn {
 	return Fn {
 		mod: mod
-		local_vars: [Var{}].repeat2(MaxLocalVars)
+		local_vars: [Var{}].repeat(MaxLocalVars)
 		is_public: is_public
 	}
 }
@@ -195,6 +198,7 @@ fn (p mut Parser) fn_decl() {
 			ref: is_amp
 			ptr: is_mut
 			line_nr: p.scanner.line_nr
+			scanner_pos: p.scanner.get_scanner_pos()
 		}
 		f.args << receiver
 		f.register_var(receiver)
@@ -368,7 +372,7 @@ fn (p mut Parser) fn_decl() {
 			}
 			p.table.register_type2(receiver_t)
 		}
-		p.table.add_method(receiver_t.name, f)
+		p.add_method(receiver_t.name, f)
 	}
 	else {
 		// println('register_fn typ=$typ isg=$is_generic')
@@ -454,7 +458,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// We are in live code reload mode, call the .so loader in bg
 		if p.pref.is_live {
-			file_base := p.file_path.replace('.v', '')
+			file_base := os.filename(p.file_path).replace('.v', '')
 			if p.os != .windows && p.os != .msvc {
 				so_name := file_base + '.so'
 				p.genln('
@@ -539,13 +543,11 @@ fn (p mut Parser) check_unused_variables() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
-			p.scanner.line_nr = var.line_nr - 1
-			p.error('`$var.name` declared and not used')
+			p.production_error('`$var.name` declared and not used', var.scanner_pos )
 		}
-	if !var.is_changed && var.is_mut && !p.pref.is_repl &&
- !p.pref.translated && var.name != '_' {
-			p.scanner.line_nr = var.line_nr - 1
-			p.error('`$var.name` is declared as mutable, but it was never changed')
+		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
+			!p.pref.translated && var.name != '_' {
+			p.error_with_position( '`$var.name` is declared as mutable, but it was never changed', var.scanner_pos )
 		}
 	}
 }
@@ -719,6 +721,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_arg: true
 				// is_mut: is_mut
 				line_nr: p.scanner.line_nr
+				scanner_pos: p.scanner.get_scanner_pos()        
 			}
 			// f.register_var(v)
 			f.args << v
@@ -762,6 +765,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_mut: is_mut
 				ptr: is_mut
 				line_nr: p.scanner.line_nr
+				scanner_pos: p.scanner.get_scanner_pos()        
 			}
 			f.register_var(v)
 			f.args << v
@@ -860,12 +864,18 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			}
 		}
 		p.expected_type = arg.typ
-		typ := p.bool_expression()
+		mut typ := p.bool_expression()
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls.
 		// `println(777)` => `printf("%d\n", 777)`
 		// (If we don't check for void, then V will compile `println(func())`)
-		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'void' {
+		if i == 0 && (f.name == 'println' || f.name == 'print') && typ == 'ustring' {
+			if typ == 'ustring' {
+				p.gen('.s')
+			}
+			typ = 'string'
+		}
+		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'ustring' && typ != 'void' {
 			T := p.table.find_type(typ)
 			$if !windows {
 			$if !js {
@@ -1053,6 +1063,9 @@ fn (f &Fn) find_misspelled_local_var(name string, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_var := ''
 	for var in f.local_vars {
+		if var.scope_level > f.scope_level {
+			continue
+		}
 		n := name.all_after('.')
 		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
 		p := strings.dice_coefficient(var.name, n)

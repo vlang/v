@@ -71,7 +71,7 @@ mut:
 	out_name   string // "program.exe"
 	vroot      string
 	mod        string  // module being built with -lib
-	//parsers    []Parser
+	parsers    []Parser
 }
 
 struct Preferences {
@@ -101,6 +101,7 @@ mut:
 	ccompiler  string // the name of the used C compiler
 	building_v bool
 	autofree   bool
+	compress   bool
 }
 
 fn main() {
@@ -187,15 +188,33 @@ fn main() {
 	// TODO remove
 	if v.pref.autofree {
 		println('started freeing v struct')
-		v.table.fns.free()
 		v.table.typesmap.free()
 		v.table.obf_ids.free()
 		v.cgen.lines.free()
 		free(v.cgen)
+		for _, f in v.table.fns {
+			f.local_vars.free()
+			f.args.free()
+			//f.defer_text.free()
+		}	
+		v.table.fns.free()
 		free(v.table)
+		//for p in parsers {
+			
+		//}	
 		println('done!')
 	}	
 }
+
+fn (v mut V) add_parser(parser Parser) {
+       for p in v.parsers {
+               if p.file_path == parser.file_path {
+                       return
+               }
+       }
+       v.parsers << parser
+}
+
 
 fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
@@ -222,6 +241,8 @@ fn (v mut V) compile() {
 	for file in v.files {
 		mut p := v.new_parser(file)
 		p.parse(.decl)
+		
+		
 	}
 	// Main pass
 	cgen.pass = Pass.main
@@ -344,9 +365,14 @@ fn (v mut V) generate_main() {
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
 #ifdef _WIN32
+DWORD consoleMode;
+BOOL isConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &consoleMode);
+int mode = isConsole ? _O_U16TEXT : _O_U8TEXT;
+_setmode(_fileno(stdin), mode);
 _setmode(_fileno(stdout), _O_U8TEXT);
 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
 // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+setbuf(stdout,0);
 #endif
 g_str_buf=malloc(1000);
 $consts_init_body
@@ -403,8 +429,15 @@ string _STR_TMP(const char *fmt, ...) {
 				exit(1)
 			}
 		}
-		// Generate `main` which calls every single test function
 		else if v.pref.is_test {
+			if v.table.main_exists() {
+				cerror('test files cannot have function `main`')
+			}	
+			// make sure there's at least on test function
+			if !v.table.has_at_least_one_test_fn() {
+				cerror('test files need to have at least one test function')
+			}	
+			// Generate `main` which calls every single test function
 			cgen.genln('int main() { init_consts();')
 			for _, f in v.table.fns {
 				if f.name.starts_with('test_') {
@@ -816,12 +849,7 @@ fn new_v(args[]string) &V {
 			files << f
 		}
 
-	mut cflags := ''
-	for ci, cv in args {
-		if cv == '-cflags' {
-			cflags += args[ci+1] + ' '
-		}
-	}
+	cflags := get_cmdline_cflags(args)
 
 	rdir := os.realpath( dir )
 	rdir_name := os.filename( rdir )
@@ -845,6 +873,7 @@ fn new_v(args[]string) &V {
 		translated: 'translated' in args
 		is_run: 'run' in args
 		autofree: '-autofree' in args
+		compress: '-compress' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
@@ -901,7 +930,7 @@ fn update_v() {
 			os.rm( v_backup_file )
 		}
 		os.mv('$vroot/v.exe', v_backup_file)
-		s2 := os.exec('$vroot/make.bat') or {
+		s2 := os.exec('"$vroot/make.bat"') or {
 			cerror(err)
 			return
 		}

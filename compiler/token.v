@@ -125,7 +125,7 @@ fn build_keys() map[string]int {
 
 // TODO remove once we have `enum Token { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := [''].repeat2(NrTokens)
+	mut s := [''].repeat(NrTokens)
 	s[Token.keyword_beg] = ''
 	s[Token.keyword_end] = ''
 	s[Token.eof] = 'eof'
