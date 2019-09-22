@@ -295,13 +295,131 @@ pub fn (v mut V) cc_msvc() {
 		'odbccp32.lib'
 	]
 
-	mut inc_paths := []string{}
-	mut lib_paths := []string{}
-	mut other_flags := []string{}
+	sflags := v.get_os_cflags().msvc_string_flags()
+	real_libs   << sflags.real_libs
+	inc_paths   := sflags.inc_paths
+	lib_paths   := sflags.lib_paths
+	other_flags := sflags.other_flags
 
-	for flag in v.get_os_cflags() {
-		//println('fl: $flag.name | flag arg: $flag.value')
+	// Include the base paths
+	a << '-I "$r.ucrt_include_path"'
+	a << '-I "$r.vs_include_path"'
+	a << '-I "$r.um_include_path"'
+	a << '-I "$r.shared_include_path"'
 
+	a << inc_paths
+
+	a << other_flags
+
+	// Libs are passed to cl.exe which passes them to the linker
+	a << real_libs.join(' ')
+
+	a << '/link'
+	a << '/NOLOGO'
+	a << '/OUT:"$v.out_name"'
+	a << '/LIBPATH:"$r.ucrt_lib_path"'
+	a << '/LIBPATH:"$r.um_lib_path"'
+	a << '/LIBPATH:"$r.vs_lib_path"'
+	a << '/INCREMENTAL:NO' // Disable incremental linking
+
+	if !v.pref.is_prod {
+		a << '/DEBUG:FULL'
+	} else {
+		a << '/DEBUG:NONE'
+	}
+
+	a << lib_paths
+	
+	args := a.join(' ')
+
+	cmd := '""$r.full_cl_exe_path" $args"' 
+	// It is hard to see it at first, but the quotes above ARE balanced :-| ... 
+	// Also the double quotes at the start ARE needed.
+	if v.pref.show_c_cmd || v.pref.is_verbose {
+		println('\n========== cl cmd line:')
+		println(cmd)
+		println('==========\n')
+	}
+
+	// println('$cmd')
+
+	res := os.exec(cmd) or {
+		println(err)
+		cerror('msvc error')
+		return
+	}
+	if res.exit_code != 0 {
+		cerror(res.output)
+	}
+	// println(res)
+	// println('C OUTPUT:')
+
+	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
+		os.rm(v.out_name_c)
+	}
+
+	// Always remove the object file - it is completely unnecessary
+	os.rm(out_name_obj)
+}
+fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
+	msvc := find_msvc() or {
+		println('Could not find visual studio')
+		return
+	}
+
+	// msvc expects .obj not .o
+	mut obj_path := '${path}bj'
+
+	obj_path = os.realpath(obj_path)
+
+	if os.file_exists(obj_path) {
+		println('$obj_path already build.')
+		return 
+	} 
+
+	println('$obj_path not found, building it (with msvc)...') 
+	parent := os.dir(obj_path)
+	files := os.ls(parent)
+
+	mut cfiles := '' 
+	for file in files {
+		if file.ends_with('.c') { 
+			cfiles += '"' + os.realpath( parent + os.PathSeparator + file )  + '" '
+		}
+	}
+
+	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
+
+	//println('cfiles: $cfiles')
+
+	btarget := moduleflags.c_options_before_target()
+	atarget := moduleflags.c_options_after_target()
+	cmd := '""$msvc.full_cl_exe_path" /volatile:ms /Z7 $include_string /c $btarget $cfiles $atarget /Fo"$obj_path""'
+	//NB: the quotes above ARE balanced.
+	println('thirdparty cmd line: $cmd')
+	res := os.exec(cmd) or {
+		cerror(err)
+		return
+	}
+	println(res.output)
+}
+
+
+struct MsvcStringFlags {
+mut:
+	real_libs []string
+	inc_paths []string
+	lib_paths []string
+	other_flags []string
+}
+
+fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
+	mut real_libs := []string
+	mut inc_paths := []string
+	mut lib_paths := []string
+	mut other_flags := []string	
+	for flag in cflags {
+		//println('fl: $flag.name | flag arg: $flag.value')		
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler
@@ -335,107 +453,10 @@ pub fn (v mut V) cc_msvc() {
 		}
 	}
 
-	// Include the base paths
-	a << '-I "$r.ucrt_include_path"'
-	a << '-I "$r.vs_include_path"'
-	a << '-I "$r.um_include_path"'
-	a << '-I "$r.shared_include_path"'
-
-	a << inc_paths
-
-	a << other_flags
-
-	// Libs are passed to cl.exe which passes them to the linker
-	a << real_libs.join(' ')
-
-	a << '/link'
-	a << '/NOLOGO'
-	a << '/OUT:"$v.out_name"'
-	a << '/LIBPATH:"$r.ucrt_lib_path"'
-	a << '/LIBPATH:"$r.um_lib_path"'
-	a << '/LIBPATH:"$r.vs_lib_path"'
-	a << '/INCREMENTAL:NO' // Disable incremental linking
-
+	mut lpaths := []string
 	for l in lib_paths {
-		a << '/LIBPATH:"' + os.realpath(l) + '"'
+		lpaths << '/LIBPATH:"' + os.realpath(l) + '"'
 	}
 
-	if !v.pref.is_prod {
-		a << '/DEBUG:FULL'
-	} else {
-		a << '/DEBUG:NONE'
-	}
-
-	args := a.join(' ')
-
-	cmd := '""$r.full_cl_exe_path" $args"' 
-	// It is hard to see it at first, but the quotes above ARE balanced :-| ... 
-	// Also the double quotes at the start ARE needed.
-	if v.pref.show_c_cmd || v.pref.is_verbose {
-		println('\n========== cl cmd line:')
-		println(cmd)
-		println('==========\n')
-	}
-
-	// println('$cmd')
-
-	res := os.exec(cmd) or {
-		println(err)
-		cerror('msvc error')
-		return
-	}
-	if res.exit_code != 0 {
-		cerror(res.output)
-	}
-	// println(res)
-	// println('C OUTPUT:')
-
-	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm(v.out_name_c)
-	}
-
-	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj)
+	return MsvcStringFlags{ real_libs, inc_paths, lpaths, other_flags }
 }
-
-fn build_thirdparty_obj_file_with_msvc(path string) {
-	msvc := find_msvc() or {
-		println('Could not find visual studio')
-		return
-	}
-
-	// msvc expects .obj not .o
-	mut obj_path := '${path}bj'
-
-	obj_path = os.realpath(obj_path)
-
-	if os.file_exists(obj_path) {
-		println('$obj_path already build.')
-		return 
-	} 
-
-	println('$obj_path not found, building it (with msvc)...') 
-	parent := os.dir(obj_path)
-	files := os.ls(parent)
-
-	mut cfiles := '' 
-	for file in files {
-		if file.ends_with('.c') { 
-			cfiles += '"' + os.realpath( parent + os.PathSeparator + file )  + '" '
-		}
-	}
-
-	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
-
-	//println('cfiles: $cfiles')
-
-	cmd := '""$msvc.full_cl_exe_path" /volatile:ms /Z7 $include_string /c $cfiles /Fo"$obj_path""'
-	//NB: the quotes above ARE balanced.
-	println('thirdparty cmd line: $cmd')
-	res := os.exec(cmd) or {
-		cerror(err)
-		return
-	}
-	println(res.output)
-}
-
