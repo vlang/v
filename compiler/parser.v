@@ -2350,6 +2350,7 @@ fn (p mut Parser) factor() string {
 			if !('json' in p.table.imports) {
 				p.error('undefined: `json`, use `import json`')
 			}
+			p.import_table.register_used_import('json')
 			return p.js_decode()
 		}
 		//if p.fileis('orm_test') {
