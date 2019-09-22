@@ -1,20 +1,19 @@
 # The V Programming Language
 
-[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/actions)
-[![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
+[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 
 https://vlang.io
 
-Documentation: https://vlang.io/docs
+Documentation: [vlang.io/docs](https://vlang.io/docs)
 
-Changelog: [Master Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Releases (with changelogs)](https://github.com/vlang/v/releases)
+Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
 
-Twitter: https://twitter.com/v_language
+Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
-Discord (primary community): https://discord.gg/n7c74HM
+Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
 
-Installing V: https://github.com/vlang/v#installing-v-from-source
+Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
 
 ## Key Features of V
