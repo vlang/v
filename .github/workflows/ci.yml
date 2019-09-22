@@ -14,7 +14,7 @@ jobs:
         brew install freetype glfw openssl
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build v
-      run:  make && ./v -prod -o v compiler
+      run:  make && ./v -o v compiler
     - name: Test v->c
       run: ./v test v
     - name: Test v->js
@@ -34,7 +34,7 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
-      run: make && ./v -cflags -mtune=native -cflags -march=native -prod -o v compiler
+      run: make && ./v -o v compiler
     - name: Test v->c
       run: ./v test v
     - name: Test v->js
@@ -47,7 +47,7 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
-      run: make && ./v -cflags -mtune=native -cflags -march=native -prod -o v compiler
+      run: make && ./v -o v compiler
     - name: Test v->c with tcc
       env:
         VFLAGS: -cc tcc
