@@ -18,8 +18,6 @@ pub fn new_pcg32(initstate u64, initseq u64) Pcg32 {
 	mut rng := Pcg32{}
 	rng.state = u64(0)
 	rng.inc = u64( u64(initseq << u64(1)) | u64(1) )
-	////
-	rng.inc++
 	rng.next()
 	rng.state += initstate
 	rng.next()
