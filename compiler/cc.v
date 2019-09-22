@@ -369,17 +369,23 @@ fn find_c_compiler_default() string {
 }
 
 fn find_c_compiler_thirdparty_options() string {
-	if '-m32' in os.args{
-		$if windows {
-			return '-m32'
-		}$else{
-			return '-fPIC -m32'
-		}
-	}else{
-		$if windows {
-			return ''
-		}$else{
-			return '-fPIC'
+	fullargs := env_vflags_and_os_args()
+	mut cflags := get_cmdline_cflags( fullargs )
+	$if !windows {
+		cflags += ' -fPIC'
+	}
+	if '-m32' in fullargs {
+		cflags += ' -m32'
+	}
+	return cflags
+}
+
+fn get_cmdline_cflags(args []string) string {
+	mut cflags := ''
+	for ci, cv in args {
+		if cv == '-cflags' {
+			cflags += args[ci+1] + ' '
 		}
 	}
+	return cflags
 }
