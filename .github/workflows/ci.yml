@@ -38,7 +38,9 @@ jobs:
     - name: Test v->c with tcc
       env:
         VFLAGS: -cc tcc
-      run: ./v test v
+      run: |
+        tcc -version
+        ./v test v
     - name: Test v->js
       run: ./v -o hi.js examples/hello_v_js.v && node hi.js
   build-windows-gcc:
