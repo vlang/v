@@ -1,6 +1,7 @@
 name: CI
 on: [push, pull_request]
 jobs:
+
   build-osx:
     runs-on: macOS-10.14
     steps:
@@ -22,6 +23,7 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/vlang/vid.git
         cd vid && ../v -debug -o vid .
+
   build-ubuntu:
     runs-on: ubuntu-18.04
     steps:
@@ -30,19 +32,29 @@ jobs:
       with:
         node-version: 12.x
     - name: Install dependencies
-      run: sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+      run: sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
       run: make && ./v -cflags -mtune=native -cflags -march=native -prod -o v compiler
     - name: Test v->c
       run: ./v test v
     - name: Test v->js
       run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+
+  build-ubuntu-tcc:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install dependencies
+      run: sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+    - name: Build v
+      run: make && ./v -cflags -mtune=native -cflags -march=native -prod -o v compiler
     - name: Test v->c with tcc
       env:
         VFLAGS: -cc tcc
       run: |
         tcc -version
         ./v test v
+
   build-windows-gcc:
     runs-on: windows-2019
     steps:
@@ -60,6 +72,7 @@ jobs:
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
+
   build-windows-msvc:
     runs-on: windows-2019
     steps:
