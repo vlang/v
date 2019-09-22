@@ -56,7 +56,7 @@ fn test_ge() {
 	assert b >= (a)
 	assert c >= (b)
 	assert d >= (c)
-	assert !(c >= d) 
+	assert !(c >= d)
 	assert e >= (a)
 }
 
@@ -398,8 +398,8 @@ fn test_title() {
 	s.to_upper()
 	assert s.title() == 'Hello World'
 	s.to_lower()
-	assert s.title() == 'Hello World' 
-} 
+	assert s.title() == 'Hello World'
+}
 
 fn test_for_loop() {
 	mut i := 0
@@ -421,6 +421,9 @@ fn test_for_loop_two() {
 
 fn test_quote() {
 	a := `'`
+	println("testing double quotes")
+	b := "hi"
+	assert b == 'hi'
 	assert a.str() == '\''
 }
 

@@ -35,13 +35,13 @@ fn (v &V) generate_hotcode_reloading_declarations() {
 	}
 }
 
-fn (v mut V) generate_hot_reload_code() {
+fn (v &V) generate_hot_reload_code() {
   mut cgen := v.cgen
 
 	// Hot code reloading
 	if v.pref.is_live {
-		file := v.dir
-		file_base := v.dir.replace('.v', '')
+		mut file := os.realpath(v.dir)
+		file_base := os.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.
@@ -49,6 +49,7 @@ fn (v mut V) generate_hot_reload_code() {
 
 		if os.user_os() == 'windows' {
 			vexe = vexe.replace('\\', '\\\\')
+			file = file.replace('\\', '\\\\')
 		}
 
 		mut msvc := ''

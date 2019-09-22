@@ -10,7 +10,7 @@ module gl
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()
-	if !ok {
+	if isnil(ok) {
 		println('Failed to initialize glad OpenGL context')
 		exit(1)
 	}

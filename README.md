@@ -1,6 +1,6 @@
 # The V Programming Language
 
-[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/workflows/CI)
+[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/actions)
 [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 
@@ -143,6 +143,8 @@ glfw dependency will be removed soon.
 
 ## JavaScript backend
 
+[examples/hello_v_js.v](examples/hello_v_js.v):
+
 ```
 fn main() {
         for i := 0; i < 3; i++ {
@@ -152,7 +154,7 @@ fn main() {
 ```
 
 ```bash
-v -o hi.js hi.v && node hi.js
+v -o hi.js examples/hello_v_js.v && node hi.js
 Hello from V.js
 Hello from V.js
 Hello from V.js
