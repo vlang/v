@@ -2653,7 +2653,7 @@ fn (p mut Parser) map_init() string {
 			}
 		}
 		p.gen('new_map_init($i, sizeof($val_type), ' +
-			'(string[]){ $keys_gen }, ($val_type []){ $vals_gen } )')
+			'(string[$i]){ $keys_gen }, ($val_type [$i]){ $vals_gen } )')
 		typ := 'map_$val_type'
 		p.register_map(typ)
 		return typ
