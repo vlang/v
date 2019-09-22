@@ -429,8 +429,15 @@ string _STR_TMP(const char *fmt, ...) {
 				exit(1)
 			}
 		}
-		// Generate `main` which calls every single test function
 		else if v.pref.is_test {
+			if v.table.main_exists() {
+				cerror('test files cannot have function `main`')
+			}	
+			// make sure there's at least on test function
+			if !v.table.has_at_least_one_test_fn() {
+				cerror('test files need to have at least one test function')
+			}	
+			// Generate `main` which calls every single test function
 			cgen.genln('int main() { init_consts();')
 			for _, f in v.table.fns {
 				if f.name.starts_with('test_') {

@@ -672,6 +672,15 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
+fn (t &Table) has_at_least_one_test_fn() bool {
+	for _, f in t.fns {
+		if f.name.starts_with('test_') {
+			return true
+		}	
+	}
+	return false
+}
+
 fn (t &Table) find_const(name string) ?Var {
 	//println('find const l=$t.consts.len')
 	for c in t.consts {
