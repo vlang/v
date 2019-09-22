@@ -832,10 +832,8 @@ fn (p mut Parser) get_type() string {
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
-	// `(int, int)` tuple 
+	// multiple returns
 	if p.tok == .lpar {
-		println(' #785 MULTI')
-		// println('TUPLE') 
 		// if p.inside_tuple {
 		// 	p.error('unexpected (') 
 		// } 
@@ -850,10 +848,8 @@ fn (p mut Parser) get_type() string {
 			p.check(.comma) 
 		}
 		p.check(.rpar) 
-		println('#TYPES')
-		println(types)
 		// p.inside_tuple = false 
-		return 'MultiReturn_' + types.join('_') 
+		return 'MultiReturn_' + types.join('_').replace('*', '0ptr0')
 	}
 	// fn type
 	if p.tok == .func {
@@ -1354,23 +1350,28 @@ fn (p mut Parser) var_decl() {
 		p.check(.comma)
 		names << p.check_name()
 	}
-	var_name := if names.len > 1 { 'ret' } else { names[0] }
-	// println('names:')
-	// println(names)
+	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
 	p.check_space(.decl_assign) // :=
 	// t := p.bool_expression()
-	t := p.gen_var_decl(var_name, is_static)
+	t := p.gen_var_decl(mr_var_name, is_static)
 
 	mut types := [t]
+	// multiple returns
 	if names.len > 1 {
-		types = t.replace('MultiReturn_', '').split('_')
+		// ret_var := Var {
+		// 	name: mr_var_name
+		// 	typ: t
+		// 	// parent_fn: p.cur_fn
+		// 	is_mut: false
+		// }
+		// p.cur_fn.register_var(ret_var)
+		types = t.replace('MultiReturn_', '').replace('0ptr0', '*').split('_')
 	}
-
 	for i, name in names {
-		typ := types[0]
+		typ := types[i]
 		if names.len > 1 {
 			p.gen(';\n')
-			p.gen('$typ $name = ret.var_$i')
+			p.gen('$typ $name = ${mr_var_name}.var_$i')
 		}
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
@@ -3580,7 +3581,6 @@ fn (p mut Parser) return_st() {
 			is_none := p.tok == .key_none
 			p.expected_type = p.cur_fn.typ
 			// expr_type := p.bool_expression()
-
 			mut expr_type := p.bool_expression()
 			mut types := []string
 			types << expr_type
@@ -3588,16 +3588,19 @@ fn (p mut Parser) return_st() {
 				p.check(.comma)
 				types << p.bool_expression()
 			}
+			// multiple returns
 			if types.len > 1 {
-				expr_type = 'MultiReturn_' + types.join('_')
-				tmp := p.get_tmp()
-				ret := p.cgen.cur_line.right(ph)
-				rets := ret.split(' ').join(',')
-				p.cgen.resetln('($expr_type){$rets}')
-				p.gen('/* MULTI JOE */')
+				expr_type = 'MultiReturn_' + types.join('_').replace('*', '0ptr0')
+				ret_vals := p.cgen.cur_line.right(ph)
+				mut ret_fields := ''
+				for ret_val_idx, ret_val in ret_vals.split(' ') {
+					if ret_val_idx > 0 {
+						ret_fields += ','
+					}
+					ret_fields += '.var_$ret_val_idx=$ret_val'
+				}
+				p.cgen.resetln('($expr_type){$ret_fields}')
 			}
-			println('3362: $expr_type')
-
 			p.inside_return_expr = false
 			// Automatically wrap an object inside an option if the function
 			// returns an option
