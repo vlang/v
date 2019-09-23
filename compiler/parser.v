@@ -642,6 +642,7 @@ fn (p mut Parser) struct_decl() {
 		access_mod := if is_pub{AccessMod.public} else { AccessMod.private}
 		p.fgen(' ')
 		field_type := p.get_type()
+		p.check_and_register_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {
 			p.next()
@@ -720,10 +721,6 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 fn (p mut Parser) check_name() string {
 	name := p.lit
 	p.check(.name)
-	// if it's an import then register as used
-	if p.import_table.known_alias(name) {
-		p.import_table.register_used_import(name)
-	}
 	return name
 }
 
@@ -1521,6 +1518,7 @@ fn (p mut Parser) name_expr() string {
 		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
+			p.import_table.register_used_import(name)
 			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
 			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
@@ -2353,6 +2351,7 @@ fn (p mut Parser) factor() string {
 			if !('json' in p.table.imports) {
 				p.error('undefined: `json`, use `import json`')
 			}
+			p.import_table.register_used_import('json')
 			return p.js_decode()
 		}
 		//if p.fileis('orm_test') {
@@ -3746,3 +3745,12 @@ fn (p mut Parser) defer_st() {
 	p.cgen.resetln('')
 }
 
+fn (p mut Parser) check_and_register_imported_type(typ_name string) {
+	us_idx := typ_name.index('__')
+	if us_idx != -1 {
+		arg_mod := typ_name.left(us_idx)
+		if p.import_table.known_alias(arg_mod) {
+			p.import_table.register_used_import(arg_mod)
+		}
+	}
+}
