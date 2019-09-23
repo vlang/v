@@ -835,12 +835,10 @@ fn (table &Table) get_file_import_table(file_path string) FileImportTable {
 	// 	return table.file_imports[file_path.clone()]
 	// }
 	// just get imports. memory error when recycling import table
-	mut imports := map[string]string
+	mut fit := new_file_import_table(file_path)
 	if file_path in table.file_imports {
-		imports = table.file_imports[file_path].imports
+		fit.imports = table.file_imports[file_path].imports
 	}
-	mut fit := new_file_import_table(file_path.clone())
-	fit.imports = imports
 	return fit
 }
 
