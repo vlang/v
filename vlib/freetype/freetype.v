@@ -8,7 +8,6 @@ import (
 	os
 	gx
 	gg
-	stbi
 	glm
 	gl
 )

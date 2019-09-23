@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-import os
-import gl
+// might need special case for this
+// import gl
 import glm
 
 fn cmp(a, b f32) bool {

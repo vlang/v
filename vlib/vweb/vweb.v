@@ -2,7 +2,6 @@ module vweb
 
 import (
 	os
-	strings 
 	net 
 	http 
 	net.urllib 

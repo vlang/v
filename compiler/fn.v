@@ -730,6 +730,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
+			p.check_and_register_used_imported_type(typ)
 			v := Var {
 				typ: typ
 				is_arg: true
@@ -761,6 +762,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			p.next()
 		}
 		mut typ := p.get_type()
+		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')

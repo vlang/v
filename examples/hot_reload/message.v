@@ -3,7 +3,6 @@
 module main
 
 import time
-import os
 
 [live] 
 fn print_message() {

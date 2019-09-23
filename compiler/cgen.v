@@ -5,7 +5,6 @@
 module main
 
 import os
-import strings
 
 struct CGen {
 	out          os.File

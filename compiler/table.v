@@ -16,7 +16,7 @@ mut:
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
-	file_imports []FileImportTable // List of imports for file
+	file_imports map[string]FileImportTable // List of imports for file
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
@@ -31,9 +31,10 @@ mut:
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
-	module_name string
-	file_path   string
-	imports     map[string]string
+	module_name  string
+	file_path    string
+	imports      map[string]string // alias => module
+	used_imports []string          // alias
 }
 
 enum AccessMod {
@@ -829,8 +830,22 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn new_file_import_table(file_path string) &FileImportTable {
-	return &FileImportTable{
+fn (table &Table) get_file_import_table(file_path string) FileImportTable {
+	// if file_path.clone() in table.file_imports {
+	// 	return table.file_imports[file_path.clone()]
+	// }
+	// just get imports. memory error when recycling import table
+	mut imports := map[string]string
+	if file_path in table.file_imports {
+		imports = table.file_imports[file_path].imports
+	}
+	mut fit := new_file_import_table(file_path.clone())
+	fit.imports = imports
+	return fit
+}
+
+fn new_file_import_table(file_path string) FileImportTable {
+	return FileImportTable{
 		file_path: file_path
 		imports:   map[string]string
 	}
@@ -845,7 +860,9 @@ fn (fit mut FileImportTable) register_import(mod string) {
 }
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
-	if alias in fit.imports {
+	// NOTE: come back here
+	// if alias in fit.imports && fit.imports[alias] == mod {}
+	if alias in fit.imports && fit.imports[alias] != mod {
 		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 	}
 	if mod.contains('.internal.') {
@@ -878,6 +895,16 @@ fn (fit &FileImportTable) is_aliased(mod string) bool {
 
 fn (fit &FileImportTable) resolve_alias(alias string) string {
 	return fit.imports[alias]
+}
+
+fn (fit mut FileImportTable) register_used_import(alias string) {
+	if !(alias in fit.used_imports) {
+		fit.used_imports << alias
+	}
+}
+
+fn (fit &FileImportTable) is_used_import(alias string) bool {
+	return alias in fit.used_imports
 }
 
 fn (t &Type) contains_field_type(typ string) bool {

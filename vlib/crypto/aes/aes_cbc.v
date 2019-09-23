@@ -31,7 +31,7 @@ fn _new_cbc(b AesCipher, iv []byte) AesCbc {
 		b:          b,
 		block_size: b.block_size(),
 		iv:         iv.clone(),
-		tmp:        [byte(0); b.block_size()],
+		tmp:        [byte(0)].repeat(b.block_size()),
 	}
 }
 
