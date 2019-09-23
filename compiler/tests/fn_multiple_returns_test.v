@@ -2,7 +2,7 @@ struct UserData {
 	test string
 }
 
-fn main() {
+fn test_fn_multiple_returns() {
 	name, age, groups, data := fn_mr_get_user()
 	assert name == 'joe'
 	assert age == 34
