@@ -653,11 +653,13 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 	}
 	// Add remaining user files
+	mut i := 0
 	mut j := 0
 	mut len := -1
-	for i, fit in v.table.file_imports {
+	for _, fit in v.table.file_imports {
 		// Don't add a duplicate; builtin files are always there
 		if fit.file_path in v.files || fit.module_name == 'builtin' {
+			i++
 			continue
 		}
 		if len == -1 {
@@ -671,6 +673,7 @@ fn (v mut V) add_v_files_to_compile() {
 		//println(fit)
 		//println('fit $fit.file_path')
 		v.files << fit.file_path
+		i++
 	}
 }
 

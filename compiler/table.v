@@ -16,7 +16,7 @@ mut:
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
-	file_imports []FileImportTable // List of imports for file
+	file_imports map[string]FileImportTable // List of imports for file
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
@@ -824,10 +824,8 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 }
 
 fn (table &Table) get_file_import_table(file_path string) FileImportTable {
-	for fit in table.file_imports {
-		if fit.file_path == file_path {
-			return fit
-		}
+	if file_path in table.file_imports  {
+		return table.file_imports[file_path]
 	}
 	return new_file_import_table(file_path)
 }

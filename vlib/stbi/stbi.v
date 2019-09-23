@@ -4,7 +4,8 @@
 
 module stbi
 
-import gl
+// note we might need special case for this
+// import gl
 
 #flag   -I @VROOT/thirdparty/stb_image
 
