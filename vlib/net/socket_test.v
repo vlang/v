@@ -17,9 +17,13 @@ fn test_socket() {
 	
 	message := 'Hello World'
 	socket.send(message.str, message.len)	
+	$if debug {	println('message send: $message')	}
+	$if debug {	println('send socket: $socket.sockfd')	}
 
-	bytes := client.recv(1024)
-	received := tos(bytes, message.len)
+	bytes, blen := client.recv(1024) 
+	received := tos(bytes, blen)
+	$if debug {	println('message received: $received')	}
+	$if debug {	println('client: $client.sockfd')	}
 
 	assert message == received
 
