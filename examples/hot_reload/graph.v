@@ -12,6 +12,11 @@ const (
 	Scale  = 50.0 
 )
 
+// joe-c: fix & remove
+struct TmpGlImportHack2 {
+	hack gl.TmpGlImportHack
+}
+
 struct Context {
 	gg &gg.GG
 }
