@@ -1,6 +1,7 @@
 module main
 
 import gx
+import gl
 import gg
 import time
 import glfw
