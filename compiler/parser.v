@@ -28,7 +28,7 @@ mut:
 	lit            string
 	cgen           &CGen
 	table          &Table
-	import_table   &FileImportTable // Holds imports for just the file being parsed
+	import_table   FileImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
 	mod            string
