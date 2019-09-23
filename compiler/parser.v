@@ -186,9 +186,6 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		// save file import table
 		p.table.file_imports[p.file_path] = p.import_table
-		// if p.file_path in p.table.file_imports {
-		// 	p.table.file_imports.delete(p.file_path)
-		// }
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -646,7 +643,7 @@ fn (p mut Parser) struct_decl() {
 		access_mod := if is_pub{AccessMod.public} else { AccessMod.private}
 		p.fgen(' ')
 		field_type := p.get_type()
-		p.check_and_register_imported_type(field_type)
+		p.check_and_register_used_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {
 			p.next()
@@ -3817,7 +3814,7 @@ fn (p mut Parser) defer_st() {
 	p.cgen.resetln('')
 }
 
-fn (p mut Parser) check_and_register_imported_type(typ_name string) {
+fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 	us_idx := typ_name.index('__')
 	if us_idx != -1 {
 		arg_mod := typ_name.left(us_idx)
