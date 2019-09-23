@@ -1,17 +1,20 @@
-# The V Programming Language 0.1.x
+# The V Programming Language
 
+[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
 [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 
 https://vlang.io
 
-Documentation: https://vlang.io/docs
+Documentation: [vlang.io/docs](https://vlang.io/docs)
 
-Twitter: https://twitter.com/v_language
+Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
 
-Discord (primary community): https://discord.gg/n7c74HM
+Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
-Installing V: https://github.com/vlang/v#installing-v-from-source
+Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
+
+Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
 
 ## Key Features of V
@@ -114,12 +117,7 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
-
-```
-v install glfw
-```
+In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
@@ -135,10 +133,32 @@ sudo pacman -S glfw-x11 freetype2
 
 Fedora:
 sudo dnf install glfw glfw-devel freetype-devel
+
+Windows:
+git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
+
 ```
 
 glfw dependency will be removed soon.
 
+## JavaScript backend
+
+[examples/hello_v_js.v](examples/hello_v_js.v):
+
+```
+fn main() {
+        for i := 0; i < 3; i++ {
+                println('Hello from V.js')
+        }
+}
+```
+
+```bash
+v -o hi.js examples/hello_v_js.v && node hi.js
+Hello from V.js
+Hello from V.js
+Hello from V.js
+```
 
 ## Troubleshooting:
 

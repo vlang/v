@@ -41,7 +41,7 @@ fn (r mut Repl) checks(line string) bool {
 	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0
 }
 
-fn (r mut Repl) function_call(line string) bool {
+fn (r &Repl) function_call(line string) bool {
 	for function in r.functions_name {
 		if line.starts_with(function) {
 			return true
@@ -146,7 +146,7 @@ fn run_repl() []string {
 				cerror(err)
 				return []string
 			}
-			if !func_call && !s.exit_code {
+			if !func_call && s.exit_code == 0 {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]

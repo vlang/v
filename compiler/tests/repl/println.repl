@@ -1,3 +1,7 @@
-println('hello world')
+println('Hello, world!')
+println('Привет, мир!')
+println('你好世界')
 ===output===
-hello world
+Hello, world!
+Привет, мир!
+你好世界

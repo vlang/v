@@ -23,7 +23,7 @@ mut:
   c_cc [12]int //NCCS == 12. Cant use the defined value here
 }
 
-// Used to collect the screen informations
+// Used to collect the screen information
 struct winsize {
   ws_row u16
   ws_col u16
@@ -42,6 +42,7 @@ mut:
   prompt string
   previous_lines []ustring
   search_index int
+  is_tty bool
 }
 
 
@@ -69,7 +70,8 @@ enum Action {
 // Toggle raw mode of the terminal by changing its attributes
 pub fn (r mut Readline) enable_raw_mode() {
   if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
-    panic('No tty')
+    r.is_tty = false
+    return
   }
   mut raw := r.orig_termios
   raw.c_iflag &= ~( C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON )
@@ -79,12 +81,14 @@ pub fn (r mut Readline) enable_raw_mode() {
   raw.c_cc[C.VTIME] = 0
   C.tcsetattr(0, C.TCSADRAIN, &raw)
   r.is_raw = true
+  r.is_tty = true
 }
 
 // Not catching the SIGUSER (CTRL+C) Signal
-pub fn (r Readline) enable_raw_mode2() {
+pub fn (r mut Readline) enable_raw_mode2() {
   if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
-    panic('No tty')
+    r.is_tty = false
+    return
   }
   mut raw := r.orig_termios
   raw.c_iflag &= ~( C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON )
@@ -93,6 +97,8 @@ pub fn (r Readline) enable_raw_mode2() {
   raw.c_cc[C.VMIN] = 1
   raw.c_cc[C.VTIME] = 0
   C.tcsetattr(0, C.TCSADRAIN, &raw)
+  r.is_raw = true
+  r.is_tty = true
 }
 
 // Reset back the terminal to its default value
@@ -298,7 +304,9 @@ fn (r mut Readline) insert_character(c int) {
   }
   r.cursor++
   // Refresh the line to add the new character
-  r.refresh_line()
+  if r.is_tty {
+    r.refresh_line()
+  }
 }
 
 // Removes the character behind cursor.
@@ -327,7 +335,9 @@ fn (r mut Readline) commit_line() bool {
   r.current = r.current + a
   r.cursor = r.current.len
   r.refresh_line()
-  println('')
+  if r.is_tty {
+    println('')
+  }
   return true
 }
 

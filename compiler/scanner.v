@@ -4,8 +4,15 @@
 
 module main
 
-import os
-import strings
+import (
+	os
+	strings
+)
+
+const (
+	single_quote = `\'`
+	double_quote = `"`
+)
 
 struct Scanner {
 mut:
@@ -14,8 +21,8 @@ mut:
 	pos            int
 	line_nr        int
 	inside_string  bool
-	dollar_start   bool // for hacky string interpolation TODO simplify
-	dollar_end     bool
+	inter_start   bool // for hacky string interpolation TODO simplify
+	inter_end     bool
 	debug          bool
 	line_comment   string
 	started        bool
@@ -26,6 +33,7 @@ mut:
 	prev_tok Token
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
+	quote byte // which quote is used to denote current string: ' or "
 }
 
 fn new_scanner(file_path string) &Scanner {
@@ -45,7 +53,7 @@ fn new_scanner(file_path string) &Scanner {
 		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
 			// skip three BOM bytes
 			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], C.strlen(c_text) - offset_from_begin)
+			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
 		}
 	}
 
@@ -60,6 +68,24 @@ fn new_scanner(file_path string) &Scanner {
 
 	return scanner
 }
+
+
+struct ScannerPos {
+mut:
+   pos int
+   line_nr int
+}
+fn (s ScannerPos) str() string {
+	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} }'
+}
+fn (s &Scanner) get_scanner_pos() ScannerPos {
+	return ScannerPos{ pos: s.pos line_nr: s.line_nr }
+}
+fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
+	s.pos = scp.pos
+	s.line_nr = scp.line_nr
+}
+
 
 // TODO remove once multiple return values are implemented
 struct ScanRes {
@@ -239,12 +265,12 @@ fn (s mut Scanner) scan() ScanRes {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
-	if s.dollar_end {
+	if s.inter_end {
 		if s.text[s.pos] == `\'` {
-			s.dollar_end = false
+			s.inter_end = false
 			return scan_res(.str, '')
 		}
-		s.dollar_end = false
+		s.inter_end = false
 		return scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
@@ -271,14 +297,14 @@ fn (s mut Scanner) scan() ScanRes {
 		// at the next ', skip it
 		if s.inside_string {
 			if next_char == `\'` {
-				s.dollar_end = true
-				s.dollar_start = false
+				s.inter_end = true
+				s.inter_start = false
 				s.inside_string = false
 			}
 		}
-		if s.dollar_start && next_char != `.` {
-			s.dollar_end = true
-			s.dollar_start = false
+		if s.inter_start && next_char != `.` {
+			s.inter_end = true
+			s.inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
 			s.pos++
@@ -334,11 +360,8 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case `\'`:
+	case single_quote, double_quote:
 		return scan_res(.str, s.ident_string())
-		// TODO allow double quotes
-		// case QUOTE:
-		// return scan_res(.str, s.ident_string())
 	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
 	case `(`:
@@ -362,7 +385,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
-			// TODO UN.neEDED?
+			// TODO UNNEEDED?
 			if s.text[s.pos] == `\'` {
 				s.inside_string = false
 				return scan_res(.str, '')
@@ -402,7 +425,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// @LINE => will be substituted with the V line number where it appears (as a string).
 		// @COLUMN => will be substituted with the column where it appears (as a string).
 		// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
-		// This allows things like this: 
+		// This allows things like this:
 		// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 		// ... which is useful while debugging/tracing
 		if name == 'FN' { return scan_res(.str, s.fn_name) }
@@ -624,7 +647,7 @@ fn (s &Scanner) error(msg string) {
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
 	column := s.pos - linestart
-	if s.should_print_line_on_error {
+	if s.should_print_line_on_error && lineend > linestart {
 		line := s.text.substr( linestart, lineend )
 		// The pointerline should have the same spaces/tabs as the offending
 		// line, so that it prints the ^ character exactly on the *same spot*
@@ -666,8 +689,14 @@ fn (s Scanner) count_symbol_before(p int, sym byte) int {
 // println('array out of bounds $idx len=$a.len')
 // This is really bad. It needs a major clean up
 fn (s mut Scanner) ident_string() string {
-	// println("\nidentString() at char=", string(s.text[s.pos]),
-	// "chard=", s.text[s.pos], " pos=", s.pos, "txt=", s.text[s.pos:s.pos+7])
+	q := s.text[s.pos]
+	if (q == single_quote || q == double_quote) &&	!s.inside_string{
+		s.quote = q
+	}
+	//if s.file_path.contains('string_test') {
+	//println('\nident_string() at char=${s.text[s.pos].str()}')
+	//println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
+	//}
 	mut start := s.pos
 	s.inside_string = false
 	slash := `\\`
@@ -679,7 +708,7 @@ fn (s mut Scanner) ident_string() string {
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
@@ -704,13 +733,13 @@ fn (s mut Scanner) ident_string() string {
 		// $var
 		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
-			s.dollar_start = true
+			s.inter_start = true
 			s.pos -= 2
 			break
 		}
 	}
 	mut lit := ''
-	if s.text[start] == `\'` {
+	if s.text[start] == s.quote {
 		start++
 	}
 	mut end := s.pos
@@ -752,6 +781,9 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
+	if c == '\\`' {
+		return '`'
+	}	
 	// Escapes a `'` character
 	return if c == '\'' { '\\' + c } else { c }
 }
@@ -761,8 +793,8 @@ fn (s mut Scanner) peek() Token {
 	pos := s.pos
 	line := s.line_nr
 	inside_string := s.inside_string
-	dollar_start := s.dollar_start
-	dollar_end := s.dollar_end
+	inter_start := s.inter_start
+	inter_end := s.inter_end
 
 	res := s.scan()
 	tok := res.tok
@@ -771,12 +803,12 @@ fn (s mut Scanner) peek() Token {
 	s.pos = pos
 	s.line_nr = line
 	s.inside_string = inside_string
-	s.dollar_start = dollar_start
-	s.dollar_end = dollar_end
+	s.inter_start = inter_start
+	s.inter_end = inter_end
 	return tok
 }
 
-fn (s mut Scanner) expect(want string, start_pos int) bool {
+fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
@@ -825,7 +857,7 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s mut Scanner) get_opening_bracket() int {
+fn (s &Scanner) get_opening_bracket() int {
 	mut pos := s.pos
 	mut parentheses := 0
 	mut inside_string := false

@@ -97,7 +97,7 @@ const(
 fn block_generic(dig mut Digest, p_ []byte) {
 	mut p := p_
 	
-	mut w := [u64(0); 80]
+	mut w := [u64(0)].repeat(80)
 	
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]

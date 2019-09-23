@@ -4,7 +4,7 @@ I tried making the code of the compiler and vlib as simple and readable as possi
 
 The compiler itself is located in `compiler/`
 
-It has only 8 files (soon to be 7):
+The main files are:
 
 1. `main.v` The entry point.
 - V figures out the build mode.
@@ -19,7 +19,7 @@ It has only 8 files (soon to be 7):
    In V, objects can be used before declaration, so there are 2 passes. During the first pass, it only looks at declarations and skips function bodies. It memorizes all function signatures, types, consts, etc. During the second pass it looks at function bodies and generates C (e.g. `cgen('if ($expr) {'`) or machine code (e.g. `gen.mov(EDI, 1)`).
 
    The formatter is embedded in the parser. Correctly formatted tokens are emitted as they are parsed. This allowed to simplify the compiler and avoid duplication, but slowed it down a bit. In the future this will be fixed with build flags and separate binaries for C generation, machine code generation, and formatting. This way there will be no unnecessary branching and function calls.
-   
+
 3. `scanner.v` The scanner's job is to parse a list of characters and convert them to tokens. It also takes care of string interpolation, which is a mess at the moment.
 
 4. `token.v` This is simply a list of all tokens, their string values, and a couple of helper functions.

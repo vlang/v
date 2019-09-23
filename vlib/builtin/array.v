@@ -33,13 +33,14 @@ pub fn _make(len, cap, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	arr := array {
 		len: len
 		cap: cap
 		element_size: elm_size
-		data: malloc(cap * elm_size)
+		data: calloc(cap * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
 	C.memcpy(arr.data, c_array, len * elm_size)
@@ -58,15 +59,29 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function, used by V  (`[0; 100]`)
-fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
+fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
 	arr := array {
 		len: nr_repeats
 		cap: nr_repeats
 		element_size: elm_size
-		data: malloc(nr_repeats * elm_size)
+		data: calloc(nr_repeats * elm_size)
 	}
 	for i := 0; i < nr_repeats; i++ {
 		C.memcpy(arr.data + i * elm_size, val, elm_size)
+	}
+	return arr
+}
+
+pub fn (a array) repeat(nr_repeats int) array {
+	arr := array {
+		len: nr_repeats
+		cap: nr_repeats
+		element_size: a.element_size
+		data: calloc(nr_repeats * a.element_size)
+	}
+	val := a.data + 0 //nr_repeats * a.element_size
+	for i := 0; i < nr_repeats; i++ {
+		C.memcpy(arr.data + i * a.element_size, val, a.element_size)
 	}
 	return arr
 }
@@ -165,7 +180,7 @@ fn (arr mut array) _push(val voidptr) {
 		cap := (arr.len + 1) * 2
 		// println('_push: realloc, new cap=$cap')
 		if arr.cap == 0 {
-			arr.data = malloc(cap * arr.element_size)
+			arr.data = calloc(cap * arr.element_size)
 		}
 		else {
 			arr.data = C.realloc(arr.data, cap * arr.element_size)
@@ -183,7 +198,7 @@ pub fn (arr mut array) _push_many(val voidptr, size int) {
 		cap := (arr.len + size) * 2
 		// println('_push: realloc, new cap=$cap')
 		if arr.cap == 0 {
-			arr.data = malloc(cap * arr.element_size)
+			arr.data = calloc(cap * arr.element_size)
 		}
 		else {
 			arr.data = C.realloc(arr.data, cap * arr.element_size)
@@ -199,7 +214,7 @@ pub fn (a array) reverse() array {
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: malloc(a.cap * a.element_size)
+		data: calloc(a.cap * a.element_size)
 	}
 	for i := 0; i < a.len; i++ {
 		C.memcpy(arr.data + i * arr.element_size, &a[a.len-1-i], arr.element_size)
@@ -212,7 +227,7 @@ pub fn (a array) clone() array {
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: malloc(a.cap * a.element_size)
+		data: calloc(a.cap * a.element_size)
 	}
 	C.memcpy(arr.data, a.data, a.cap * a.element_size)
 	return arr
@@ -232,7 +247,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i := 0; i < a.len; i++ {
 		val := a[i]
-		sb.write('"$val"')
+		sb.write('"')
+		sb.write(val)
+		sb.write('"')
 		if i < a.len - 1 {
 			sb.write(', ')
 		}
@@ -245,7 +262,7 @@ pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len*2+1)
 	mut ptr := &hex[0]
 	for i := 0; i < b.len ; i++ {
-		ptr += C.sprintf(ptr, '%02x', b[i])
+		ptr += C.sprintf(*char(ptr), '%02x', b[i])
 	}
 	return string(hex)
 }

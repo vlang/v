@@ -262,10 +262,10 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	 * options:
 	 * (a) nr of slots in output is the sum of inputs' slots. In this
 	 * case, the nr of bits in the last slot of output is less than the
-	 * nr of bits in second input (i.e. ), OR
+	 * nr of bits in the second input (i.e. ), OR
 	 * (b) nr of slots of output is the sum of inputs' slots less one
 	 * (i.e. less iterations needed). In this case, the nr of bits in
-	 * the last slot of output is greater than the nr of bits in second
+	 * the last slot of output is greater than the nr of bits in the second
 	 * input.
 	 * If offset_bit is zero, no additional copies needed.
 	 */
@@ -481,7 +481,7 @@ pub fn (instance mut BitField) resize(new_size int) {
 	new_bitnslots := bitnslots(new_size)
 	old_size := instance.size
 	old_bitnslots := bitnslots(old_size)
-	mut field := [u32(0); new_bitnslots]
+	mut field := [u32(0)].repeat(new_bitnslots)
 	for i := 0; i < old_bitnslots && i < new_bitnslots; i++ {
 		field[i] = instance.field[i]
 	}

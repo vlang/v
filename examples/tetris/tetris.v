@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
+module main
+
 import rand
 import time
 import gx
@@ -167,7 +169,7 @@ fn (g mut Game) init_game() {
 	g.field = []array_int // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
 	for i := 0; i < FieldHeight + 2; i++ {
-		mut row := [0; FieldWidth + 2]
+		mut row := [0].repeat(FieldWidth + 2)
 		row[0] = - 1
 		row[FieldWidth + 1] = - 1
 		g.field << row
@@ -282,7 +284,8 @@ fn (g mut Game) get_tetro() {
 	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize)
 }
 
-fn (g mut Game) drop_tetro() {
+// TODO mut
+fn (g &Game) drop_tetro() {
 	for i := 0; i < TetroSize; i++ {
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
@@ -338,7 +341,7 @@ fn (g mut Game) draw_scene() {
 
 fn parse_binary_tetro(t_ int) []Block {
 	mut t := t_
-	res := [Block{} ; 4]
+	res := [Block{}].repeat(4)
 	mut cnt := 0
 	horizontal := t == 9// special case for the horizontal line
 	for i := 0; i <= 3; i++ {
