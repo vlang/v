@@ -1,5 +1,5 @@
 // import net.urllib
-import http
+// import http
 
 fn test_escape_unescape() {
 /*
