@@ -1353,18 +1353,13 @@ fn (p mut Parser) var_decl() {
 	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
 	p.check_space(.decl_assign) // :=
 	// t := p.bool_expression()
+	p.var_decl_name = mr_var_name
 	t := p.gen_var_decl(mr_var_name, is_static)
 
 	mut types := [t]
 	// multiple returns
 	if names.len > 1 {
-		// ret_var := Var {
-		// 	name: mr_var_name
-		// 	typ: t
-		// 	// parent_fn: p.cur_fn
-		// 	is_mut: false
-		// }
-		// p.cur_fn.register_var(ret_var)
+		// should we register __ret var?
 		types = t.replace('MultiReturn_', '').replace('0ptr0', '*').split('_')
 	}
 	for i, name in names {
@@ -1376,7 +1371,7 @@ fn (p mut Parser) var_decl() {
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
 		// name := p.check_name()
-		p.var_decl_name = name
+		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
 		if !p.builtin_mod && p.cur_fn.known_var(name) {
