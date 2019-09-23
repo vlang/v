@@ -835,14 +835,16 @@ fn (p mut Parser) get_type() string {
 	mut typ := ''
 	// multiple returns
 	if p.tok == .lpar {
-		// if p.inside_tuple {
-		// 	p.error('unexpected (') 
-		// } 
+		// if p.inside_tuple {p.error('unexpected (')}
 		// p.inside_tuple = true 
 		p.check(.lpar) 
 		mut types := []string 
 		for {
-			types << p.get_type() 
+			t := p.get_type()
+			if t.starts_with('array') || t.starts_with('map') {
+				cerror('sorry, multiple return does not with with arrays/maps yet. :(')
+			}
+			types << t
 			if p.tok != .comma {
 				break 
 			} 
