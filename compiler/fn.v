@@ -293,7 +293,7 @@ fn (p mut Parser) fn_decl() {
 				name: typ,
 				mod: p.mod
 			})
-			for i, t in typ.replace('MultiReturn_', '').replace('0ptr0', '*').split('_') {
+			for i, t in typ.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_') {
 				p.table.add_field(typ, 'var_$i', t, false, '', .public)
 			}
 			p.cgen.typedefs << 'typedef struct $typ $typ;'
