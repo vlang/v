@@ -1,7 +1,6 @@
 module main
 
 import gx
-import gl
 import gg
 import time
 import glfw
@@ -11,11 +10,6 @@ const (
 	Size  = 700
 	Scale  = 50.0 
 )
-
-// joe-c: fix & remove
-struct TmpGlImportHack2 {
-	hack gl.TmpGlImportHack
-}
 
 struct Context {
 	gg &gg.GG

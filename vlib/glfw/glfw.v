@@ -4,8 +4,9 @@
 
 module glfw
 
-// note: we might need speial case for this
-// import gl
+// note: we might need special case for this
+// see TmpGlImportHack below (joe-c)
+import gl
 
 #flag -I @VROOT/thirdparty/glfw
 #flag -L @VROOT/thirdparty/glfw
@@ -41,6 +42,11 @@ const (
 	KeyRight = 262
 	KeyDown  = 264
 )
+
+// joe-c: fix & remove
+struct TmpGlImportHack {
+	hack gl.TmpGlImportHack
+}
 
 struct WinCfg {
 	width      int

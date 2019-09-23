@@ -8,11 +8,6 @@ import gg
 import glfw
 import time
 
-// joe-c: fix & remove
-struct TmpGlImportHack {
-	hack gl.TmpGlImportHack
-}
-
 struct Game {
 mut: 
 	gg       &gg.GG
