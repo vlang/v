@@ -154,7 +154,7 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.pass = pass
-	p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
+	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
 	// `module main` is not required if it's a single file program
 	if p.is_script || p.pref.is_test {
 		p.mod = 'main'
@@ -275,7 +275,7 @@ fn (p mut Parser) parse(pass Pass) {
 			g += '; // global'
 			p.cgen.consts << g
 		case Token.eof:
-			p.log('end of parse()')
+			//p.log('end of parse()')
 			if p.is_script && !p.pref.is_test {
 				p.set_current_fn( MainFn )
 				p.check_unused_variables()
@@ -379,7 +379,7 @@ fn (p mut Parser) import_statement() {
 	if mod in p.table.imports {
 		return
 	}
-	p.log('adding import $mod')
+	//p.log('adding import $mod')
 	p.table.imports << mod
 	p.table.register_module(mod)
 	
@@ -469,7 +469,7 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 		is_method: true
 		receiver_typ: receiver
 	}
-	p.log('is interface. field=$field_name run=$p.pass')
+	//p.log('is interface. field=$field_name run=$p.pass')
 	p.fn_args(mut method)
 	if p.scanner.has_gone_over_line_end() {
 		method.typ = 'void'
@@ -1056,7 +1056,7 @@ fn (p &Parser) print_tok() {
 
 // statements() returns the type of the last statement
 fn (p mut Parser) statements() string {
-	p.log('statements()')
+	//p.log('statements()')
 	typ := p.statements_no_rcbr()
 	if !p.inside_if_expr {
 		p.genln('}')
@@ -1193,7 +1193,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 		}
 		// `a := 777`
 		else if p.peek() == .decl_assign || p.peek() == .comma {
-			p.log('var decl')
+			//p.log('var decl')
 			p.var_decl()
 		}
 		else {
@@ -1752,7 +1752,7 @@ fn (p mut Parser) name_expr() string {
 	if f.typ == 'void' && !p.inside_if_expr {
 		// p.error('`$f.name` used as value')
 	}
-	p.log('calling function')
+	//p.log('calling function')
 	p.fn_call(f, 0, '', '')
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {
@@ -1763,7 +1763,7 @@ fn (p mut Parser) name_expr() string {
 		}
 		return typ
 	}
-	p.log('end of name_expr')
+	//p.log('end of name_expr')
 	
 	if f.typ.ends_with('*') {
 		p.is_alloc = true
@@ -1772,7 +1772,7 @@ fn (p mut Parser) name_expr() string {
 }
 
 fn (p mut Parser) var_expr(v Var) string {
-	p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
+	//p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
 	if !v.is_const {
 		p.mark_var_used(v)
@@ -1811,7 +1811,7 @@ fn (p mut Parser) var_expr(v Var) string {
 		}
 		// println('dot #$dc')
 		typ = p.dot(typ, fn_ph)
-		p.log('typ after dot=$typ')
+		//p.log('typ after dot=$typ')
 		// print('tok after dot()')
 		// p.print_tok()
 		// dc++
