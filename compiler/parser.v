@@ -835,14 +835,12 @@ fn (p mut Parser) get_type() string {
 	mut typ := ''
 	// multiple returns
 	if p.tok == .lpar {
-		// if p.inside_tuple {
-		// 	p.error('unexpected (') 
-		// } 
+		// if p.inside_tuple {p.error('unexpected (')}
 		// p.inside_tuple = true 
 		p.check(.lpar) 
 		mut types := []string 
 		for {
-			types << p.get_type() 
+			types << p.get_type()
 			if p.tok != .comma {
 				break 
 			} 
@@ -850,7 +848,7 @@ fn (p mut Parser) get_type() string {
 		}
 		p.check(.rpar) 
 		// p.inside_tuple = false 
-		return 'MultiReturn_' + types.join('_').replace('*', '0ptr0')
+		return 'MultiReturn_' + types.join('_Z_').replace('*', '_ZptrZ_')
 	}
 	// fn type
 	if p.tok == .func {
@@ -1361,7 +1359,7 @@ fn (p mut Parser) var_decl() {
 	// multiple returns
 	if names.len > 1 {
 		// should we register __ret var?
-		types = t.replace('MultiReturn_', '').replace('0ptr0', '*').split('_')
+		types = t.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_')
 	}
 	for i, name in names {
 		typ := types[i]
@@ -3588,7 +3586,7 @@ fn (p mut Parser) return_st() {
 			}
 			// multiple returns
 			if types.len > 1 {
-				expr_type = 'MultiReturn_' + types.join('_').replace('*', '0ptr0')
+				expr_type = 'MultiReturn_' + types.join('_Z_').replace('*', '_ZptrZ_')
 				ret_vals := p.cgen.cur_line.right(ph)
 				mut ret_fields := ''
 				for ret_val_idx, ret_val in ret_vals.split(' ') {
