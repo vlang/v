@@ -238,7 +238,7 @@ fn (g mut CGen) add_to_main(s string) {
 }
 
 
-fn build_thirdparty_obj_file(path string) {
+fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
 	if os.file_exists(obj_path) {
 		return
@@ -254,7 +254,9 @@ fn build_thirdparty_obj_file(path string) {
 	}
 	cc := find_c_compiler()
 	cc_thirdparty_options := find_c_compiler_thirdparty_options()
-	cmd := '$cc $cc_thirdparty_options -c -o "$obj_path" $cfiles'
+	btarget := moduleflags.c_options_before_target()
+	atarget := moduleflags.c_options_after_target()
+	cmd := '$cc $cc_thirdparty_options $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		cerror(err)

@@ -279,11 +279,25 @@ fn (p mut Parser) fn_decl() {
 	// Returns a type?
 	mut typ := 'void'
 	if p.tok == .name || p.tok == .mul || p.tok == .amp || p.tok == .lsbr ||
-	p.tok == .question {
+	p.tok == .question || p.tok == .lpar {
 		p.fgen(' ')
 		// TODO In
 		// if p.tok in [ .name, .mul, .amp, .lsbr ] {
 		typ = p.get_type()
+	}
+	// multiple returns
+	if typ.starts_with('MultiReturn_') {
+		if !p.first_pass() && !p.table.known_type(typ) {
+			p.table.register_type2(Type{
+				cat: TypeCategory.struct_, 
+				name: typ,
+				mod: p.mod
+			})
+			for i, t in typ.replace('MultiReturn_', '').replace('0ptr0', '*').split('_') {
+				p.table.add_field(typ, 'var_$i', t, false, '', .public)
+			}
+			p.cgen.typedefs << 'typedef struct $typ $typ;'
+		}
 	}
 	// Translated C code can have empty functions (just definitions)
 	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
