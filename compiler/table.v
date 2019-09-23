@@ -950,10 +950,11 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
 		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
 		p := strings.dice_coefficient(n1, alias)
 		if p > closest {
 			closest = p
-			closest_mod = '$alias ($mod)'
+			closest_mod = '$mod_alias'
 		}
 	}
 	return if closest >= min_match { closest_mod } else { '' }
