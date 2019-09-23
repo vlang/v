@@ -193,7 +193,7 @@ fn main() {
 		v.cgen.lines.free()
 		free(v.cgen)
 		for _, f in v.table.fns {
-			f.local_vars.free()
+			//f.local_vars.free()
 			f.args.free()
 			//f.defer_text.free()
 		}	

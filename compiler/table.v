@@ -924,24 +924,24 @@ fn (t &Type) contains_field_type(typ string) bool {
 }
 
 // check for a function / variable / module typo in `name`
-fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
+fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_misspelled_fn(name, fit, min_match)
+	mut n := p.table.find_misspelled_fn(name, fit, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = current_fn.find_misspelled_local_var(name_orig, min_match)
+	n = p.find_misspelled_local_var(name_orig, min_match)
 	if n != '' {
 		output += '\n  * variable: `$n`'
 	}
 	// check imported modules
-	n = table.find_misspelled_imported_mod(name_orig, fit, min_match)
+	n = p.table.find_misspelled_imported_mod(name_orig, fit, min_match)
 	if n != '' {
 		output += '\n  * module: `$n`'
 	}

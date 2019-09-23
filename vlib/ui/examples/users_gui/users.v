@@ -1,5 +1,7 @@
-import ui
-import gx
+import (
+	ui
+	gx
+)
 
 const (
 	NR_COLS     = 3
@@ -25,12 +27,13 @@ struct Context {
 }
 
 /*
+// Current V
 struct Window {
 	width: 500
 	height: 300
 	title: 'Users'
-	content: Layout {
-		[
+	body: Layout {
+		body: [
 			TextBox {
 				placeholder: 'First name'
 			},
@@ -46,9 +49,30 @@ struct Window {
 			},
 		]
 	}	
+}	
+
+// Improved V
+struct Window {
+	width: 500
+	height: 300
+	title: 'Users'
 	
-	draw: {
-		
+	Layout {
+	[
+		TextBox {
+			placeholder: 'First name'
+		}
+		TextBox {
+			placeholder: 'Last name'
+		}
+		TextBox {
+			placeholder: 'Age'
+		}
+		Button {
+			title: 'Add user'
+			onclick: btn_click
+		}
+	]
 	}	
 }	
 
@@ -102,6 +126,7 @@ fn main() {
 
 // TODO replace with `fn (ctx mut Context) btn_click() {`
 fn btn_click(_ctx &Context) {
+	println('users.v: button click')
 	mut ctx := _ctx// TODO hack
 	ctx.users << User {
 		first_name: ctx.first_name.text()
