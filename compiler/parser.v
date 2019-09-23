@@ -1022,12 +1022,9 @@ fn (p mut Parser) get_type() string {
 		p.register_array(typ)
 	}
 	p.next()
-	if p.tok == .question || is_question {
+	if is_question {
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
-		if p.tok == .question {
-			p.next()
-		}
 	}
 	// Because the code uses * to see if it's a pointer
 	if typ == 'byteptr' {

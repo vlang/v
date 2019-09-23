@@ -206,7 +206,7 @@ pub fn dial(address string, port int) ?Socket {
 }
 
 // send string data to socket
-pub fn (s Socket) send(buf byteptr, len int) int? {
+pub fn (s Socket) send(buf byteptr, len int) ?int {
 	res := int( C.send(s.sockfd, buf, len, 0) )
 	if res < 0 {
 		return error('socket: send failed')

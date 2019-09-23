@@ -1,10 +1,10 @@
-import net 
+import net
 
 fn test_socket() {
 	mut server := net.listen(0) or {
 		println(err)
 		return
-	}    
+	}
 	server_port := server.get_port()
 	mut client := net.dial('127.0.0.1', server_port) or {
 		println(err)
@@ -20,7 +20,7 @@ fn test_socket() {
 	$if debug {	println('message send: $message')	}
 	$if debug {	println('send socket: $socket.sockfd')	}
 
-	bytes, blen := client.recv(1024) 
+	bytes, blen := client.recv(1024)
 	received := tos(bytes, blen)
 	$if debug {	println('message received: $received')	}
 	$if debug {	println('client: $client.sockfd')	}
@@ -30,4 +30,4 @@ fn test_socket() {
 	server.close()
 	client.close()
 	socket.close()
-} 
+}
