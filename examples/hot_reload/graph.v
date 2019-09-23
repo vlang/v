@@ -2,10 +2,10 @@ module main
 
 import gx
 import gg
-import time 
-import glfw 
-import math 
-	
+import time
+import glfw
+// import math
+
 const (
 	Size  = 700
 	Scale  = 50.0 
