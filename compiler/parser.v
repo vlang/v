@@ -840,11 +840,7 @@ fn (p mut Parser) get_type() string {
 		p.check(.lpar) 
 		mut types := []string 
 		for {
-			t := p.get_type()
-			// if t.starts_with('array') || t.starts_with('map') {
-			// 	cerror('sorry, multiple return does not with with arrays/maps yet. :(')
-			// }
-			types << t
+			types << p.get_type()
 			if p.tok != .comma {
 				break 
 			} 
