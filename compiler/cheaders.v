@@ -61,6 +61,10 @@ CommonCHeaders = '
 #include <io.h> // _waccess
 #include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
+#ifndef _O_U8TEXT
+#define _O_U16TEXT      0x20000 /* file mode is UTF16 no BOM (translated) */
+#define _O_U8TEXT       0x40000 /* file mode is UTF8  no BOM (translated) */
+#endif
 //#include <WinSock2.h>
 #ifdef _MSC_VER
 // On MSVC these are the same (as long as /volatile:ms is passed)
