@@ -935,12 +935,12 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// Add `&` or `*` before an argument?
 		if !is_interface {
 			// Dereference
-			if got.contains('*') && !expected.contains('*') {
+			if got.ends_with('*') && !expected.ends_with('*') {
 				p.cgen.set_placeholder(ph, '*')
 			}
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
-			if !got.contains('*') && expected.contains('*') && got != 'voidptr' {
+			if !got.ends_with('*') && expected.ends_with('*') && got != 'voidptr' {
 				// Special case for mutable arrays. We can't `&` function results,
 				// have to use `(array[]){ expr }` hack.
 				if expected.starts_with('array_') && expected.ends_with('*') {

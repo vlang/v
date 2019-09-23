@@ -389,7 +389,7 @@ fn (t mut Table) rewrite_type(typ Type) {
 fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
 	if type_name == '' {
 		print_backtrace()
-		cerror('add_field: empty type')
+		verror('add_field: empty type')
 	}
 	mut t := table.typesmap[type_name]
 	t.fields << Var {
@@ -449,7 +449,7 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 	}
 	if type_name == '' {
 		print_backtrace()
-		cerror('add_method: empty type')
+		verror('add_method: empty type')
 	}
 	// TODO table.typesmap[type_name].methods << f
 	mut t := p.table.typesmap[type_name]
@@ -763,7 +763,7 @@ fn (t &Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		}
 	}
-	cerror('function $fn_name not found')
+	verror('function $fn_name not found')
 	return []string
 }
 
@@ -870,7 +870,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	// NOTE: come back here
 	// if alias in fit.imports && fit.imports[alias] == mod {}
 	if alias in fit.imports && fit.imports[alias] != mod {
-		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -881,7 +881,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			cerror('module $mod can only be imported internally by libs.')
+			verror('module $mod can only be imported internally by libs.')
 		}
 	}
 	fit.imports[alias] = mod

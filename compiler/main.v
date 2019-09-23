@@ -219,7 +219,7 @@ fn (v mut V) add_parser(parser Parser) {
 fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
 	if os.user_os() != 'windows' && v.os == .msvc {
-		cerror('Cannot build with msvc on ${os.user_os()}')
+		verror('Cannot build with msvc on ${os.user_os()}')
 	}
 
 	mut cgen := v.cgen
@@ -431,11 +431,11 @@ string _STR_TMP(const char *fmt, ...) {
 		}
 		else if v.pref.is_test {
 			if v.table.main_exists() {
-				cerror('test files cannot have function `main`')
+				verror('test files cannot have function `main`')
 			}	
 			// make sure there's at least on test function
 			if !v.table.has_at_least_one_test_fn() {
-				cerror('test files need to have at least one test function')
+				verror('test files need to have at least one test function')
 			}	
 			// Generate `main` which calls every single test function
 			cgen.genln('int main() { init_consts();')
@@ -492,9 +492,9 @@ fn (v V) run_compiled_executable_and_exit() {
 fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		cerror('$dir doesn\'t exist')
+		verror('$dir doesn\'t exist')
 	} else if !os.dir_exists(dir) {
-		cerror('$dir isn\'t a directory')
+		verror('$dir isn\'t a directory')
 	}
 	mut files := os.ls(dir)
 	if v.pref.is_verbose {
@@ -593,7 +593,7 @@ fn (v mut V) add_v_files_to_compile() {
 			import_path := '$ModPath/vlib/$mod_path'
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				cerror('cannot import module $mod (no .v files in "$import_path").')
+				verror('cannot import module $mod (no .v files in "$import_path").')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -613,7 +613,7 @@ fn (v mut V) add_v_files_to_compile() {
 		import_path := v.find_module_path(mod)
 		vfiles := v.v_files_from_dir(import_path)
 		if vfiles.len == 0 {
-			cerror('cannot import module $mod (no .v files in "$import_path").')
+			verror('cannot import module $mod (no .v files in "$import_path").')
 		}
 		// Add all imports referenced by these libs
 		for file in vfiles {
@@ -632,7 +632,7 @@ fn (v mut V) add_v_files_to_compile() {
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
-		cerror('Import cycle detected.')
+		verror('Import cycle detected.')
 	}
 	// add imports in correct order
 	for mod in deps_resolved.imports() {
@@ -928,7 +928,7 @@ fn update_v() {
 	println('Updating V...')
 	vroot := os.dir(os.executable())
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
-		cerror(err)
+		verror(err)
 		return
 	}
 	println(s.output)
@@ -939,13 +939,13 @@ fn update_v() {
 		}
 		os.mv('$vroot/v.exe', v_backup_file)
 		s2 := os.exec('"$vroot/make.bat"') or {
-			cerror(err)
+			verror(err)
 			return
 		}
 		println(s2.output)
 	} $else {
 		s2 := os.exec('make -C "$vroot"') or {
-			cerror(err)
+			verror(err)
 			return
 		}
 		println(s2.output)
@@ -978,20 +978,20 @@ fn install_v(args[]string) {
 		//println('Building vget...')
 		os.chdir(vroot + '/tools')
 		vgetcompilation := os.exec('$vexec -o $vget vget.v') or {
-			cerror(err)
+			verror(err)
 			return
 		}
 		if vgetcompilation.exit_code != 0 {
-			cerror( vgetcompilation.output )
+			verror( vgetcompilation.output )
 			return
 		}
 	}
 	vgetresult := os.exec('$vget ' + names.join(' ')) or {
-		cerror(err)
+		verror(err)
 		return
 	}
 	if vgetresult.exit_code != 0 {
-		cerror( vgetresult.output )
+		verror( vgetresult.output )
 		return
 	}
 }
@@ -1086,7 +1086,7 @@ fn create_symlink() {
 	}
 }
 
-pub fn cerror(s string) {
+pub fn verror(s string) {
 	println('V error: $s')
 	os.flush_stdout()
 	exit(1)

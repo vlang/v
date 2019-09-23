@@ -259,7 +259,7 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	cmd := '$cc $cc_thirdparty_options $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
-		cerror(err)
+		verror(err)
 		return
 	}
 	println(res.output)
@@ -278,7 +278,7 @@ fn os_name_to_ifdef(name string) string {
 		case 'android': return '__BIONIC__'
 		case 'js': return '_VJS'
 	}
-	cerror('bad os ifdef name "$name"')
+	verror('bad os ifdef name "$name"')
 	return ''
 }
 
@@ -290,7 +290,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		case '_lin.v': return '#ifdef __linux__'
 		case '_mac.v': return '#ifdef __APPLE__'
 	}
-	cerror('bad platform_postfix "$name"')
+	verror('bad platform_postfix "$name"')
 	return ''
 }
 
@@ -346,7 +346,7 @@ fn sort_structs(types []Type) []Type {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
+		verror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []Type

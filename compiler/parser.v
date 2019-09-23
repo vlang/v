@@ -287,7 +287,7 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v') or {
-					cerror('failed to create fmt.v')
+					verror('failed to create fmt.v')
 					return
 				}
 				out.writeln(p.scanner.fmt_out.str())
@@ -490,7 +490,7 @@ fn key_to_type_cat(tok Token) TypeCategory {
 	case Token.key_union: return TypeCategory.union_
 	//Token.key_ => return .interface_
 	}
-	cerror('Unknown token: $tok')
+	verror('Unknown token: $tok')
 	return TypeCategory.builtin
 }
 
@@ -1115,11 +1115,7 @@ fn (p mut Parser) close_scope() {
 	mut i := p.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.local_vars[i]
-		//if p.cur_fn.name == 'main' {
-			//println('var in main $v.name $v.typ $v.is_alloc ptr=$v.ptr')
-		//}	
 		if v.scope_level ≠ p.cur_fn.scope_level {
-			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
 		// Clean up memory, only do this if -autofree was passed for now
@@ -1129,14 +1125,16 @@ fn (p mut Parser) close_scope() {
 				free_fn = 'v_array_free'
 			} else if v.typ == 'string' {
 				free_fn = 'v_string_free'
-				continue
+				//if p.fileis('str.v') {
+					//println('freeing str $v.name')
+				//}
+				//continue
 			}	else if v.ptr || v.typ.ends_with('*') {
 				free_fn = 'v_ptr_free'
 				//continue
 			}	 else {
 				continue
 			}	
-			//if false && p.returns {
 			if p.returns {
 				if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
 					prev_line := p.cgen.lines[p.cgen.lines.len-2]
@@ -1407,8 +1405,10 @@ fn (p mut Parser) var_decl() {
 			scanner_pos: var_scanner_pos
 			line_nr: var_scanner_pos.line_nr
 		})
+		//if p.fileis('str.v') {
+			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
+		//}
 	}
-	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	p.var_decl_name = ''
 	p.is_empty_c_struct_init = false
 }
@@ -2673,7 +2673,7 @@ fn (p mut Parser) string_expr() {
 		p.gen('_STR_TMP($format$args)')
 	}
 	else {
-		// Otherwise do ugly len counting + allocation + sprintf
+		// Otherwise do len counting + allocation + sprintf
 		p.gen('_STR($format$args)')
 	}
 }
@@ -3808,7 +3808,7 @@ fn (p mut Parser) check_unused_imports() {
 	if output == '' { return }
 	output = '$p.file_path: the following imports were never used:$output'
 	if p.pref.is_prod {
-		cerror(output)
+		verror(output)
 	} else {
 		println('warning: $output')
 	}
