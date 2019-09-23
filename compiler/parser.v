@@ -185,7 +185,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
-		p.table.file_imports[p.file_path] = *p.import_table
+		p.table.file_imports[p.file_path] = p.import_table
 		// if p.file_path in p.table.file_imports {
 		// 	p.table.file_imports.delete(p.file_path)
 		// }
