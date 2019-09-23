@@ -96,7 +96,7 @@ v -o v compiler
 ```
 $ v
 V 0.1.x
-Use Ctrl-D to exit
+Use Ctrl-C or `exit` to exit
 
 >>> println('hello world')
 hello world
