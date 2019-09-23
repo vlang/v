@@ -43,43 +43,36 @@ fn (t TOML) toml_parse(){
 	writing_data()
 }
 
-fn writing_data(){
-
-}
-
 struct KeyVal{
 	name	string
 	mut:
 		val TOMLVal
 }
 
-fn (k KeyVal) name() string{
-	return k.name
-}
-
-fn (k KeyVal) search(s string) {
-	k.name == s or {
-		panic('Invaild Key Name!')
-	}
-}
-
 struct Array{
 	name 			string
+	value_type 		ArrayType
 	mut:
 		val 			[]TOMLVal
-		value_type 		int
 		arr 			[]Array
 		tbl				[]Table
-}
 
-fn (a Array) name() string{
-	return a.name
-}
-
-fn (a Array) search(s string){
-	a.name == s or{
-		panic('Invaild Array Name!')
+	enum ArrayType{
+		integer str muitl_str float time_stamp
 	}
+}
+
+fn (a Array) val (i int) TOMLVal{
+	return a.val[i]
+}
+
+fn (a Array) array_of_table(s string) ?Table{
+	for table in a.tbl.key{
+		if s == table.name{
+			return table
+		}
+	}
+	return error('Array:$a.name of Table:$a.tbl.name \'s Key:$s is Not Found.')
 }
 
 struct Table{
@@ -90,13 +83,21 @@ struct Table{
 		arr			[]Array
 }
 
-fn (t Table) name() string{
-	return t.name
+fn (t Table) key(s string) ?KeyVal{
+	// Key Search.
+	for table in t.key{
+		if s == table.name{
+			return table.name
+		}			
+	}
+	return error('Key:$s is Not Found.')
 }
 
 struct TOMLInt{
-	val 	i64
-	str_val	string
+	int_type IntType
+	mut:
+		val 	i64
+		str_val	string
 	enum IntType{
 		demical binary octal hex
 	}
@@ -104,11 +105,20 @@ struct TOMLInt{
 
 // TOML's Value.
 struct TOMLVal{
-	integer		TOMLInt
-	str 		string
-	boolean 	bool
-	TimeStamp	TimeStamp
-	arr			Array
+	mut:
+		integer		TOMLInt
+		str 		string
+		boolean 	bool
+		time_stamp	TimeStamp
+		arr			Array
+}
+
+fn (t TOMLInt) int_val(){
+	return t.val
+}
+
+fn (t TOMLInt) str_val(){
+	return t.str_val
 }
 
 struct TimeStamp{
@@ -118,5 +128,6 @@ struct TimeStamp{
 	hour   		int
 	minute 		int
 	second 		int
-	millsecond 	int	
+	millsecond 	int
+	total		int
 }
