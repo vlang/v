@@ -276,6 +276,9 @@ fn (p mut Parser) parse(pass Pass) {
 			if p.is_script && !p.pref.is_test {
 				p.set_current_fn( MainFn )
 				p.check_unused_variables()
+				if !p.first_pass() && !p.pref.is_repl {
+					p.check_unused_imports()
+				}
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v') or {
@@ -284,15 +287,6 @@ fn (p mut Parser) parse(pass Pass) {
 				}
 				out.writeln(p.scanner.fmt_out.str())
 				out.close()
-			}
-			if !p.first_pass() {
-				// check for unused modules
-				for alias, mod in p.import_table.imports {
-					if !p.import_table.is_used_import(alias) {
-						mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-						cerror('$p.file_path: module $mod_alias was imported but never used.')
-					}
-				}
 			}
 			return
 		default:
@@ -3821,5 +3815,22 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 		if p.import_table.known_alias(arg_mod) {
 			p.import_table.register_used_import(arg_mod)
 		}
+	}
+}
+
+fn (p mut Parser) check_unused_imports() {
+	mut output := ''
+	for alias, mod in p.import_table.imports {
+		if !p.import_table.is_used_import(alias) {
+			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
+			output += '\n * $mod_alias'
+		}
+	}
+	if output == '' { return }
+	output = '$p.file_path: the following imports were never used:$output'
+	if p.pref.is_prod {
+		cerror(output)
+	} else {
+		println('warning: $output')
 	}
 }
