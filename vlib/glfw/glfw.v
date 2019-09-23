@@ -4,7 +4,8 @@
 
 module glfw
 
-import gl
+// note: we might need speial case for this
+// import gl
 
 #flag -I @VROOT/thirdparty/glfw
 #flag -L @VROOT/thirdparty/glfw
