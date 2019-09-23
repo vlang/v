@@ -277,7 +277,7 @@ fn (p mut Parser) parse(pass Pass) {
 				p.set_current_fn( MainFn )
 				p.check_unused_variables()
 			}
-			if !p.first_pass() && !p.pref.is_test && !p.pref.is_repl {
+			if !p.first_pass() && !p.pref.is_repl {
 				p.check_unused_imports()
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
