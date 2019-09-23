@@ -830,13 +830,6 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn (table &Table) get_file_import_table(file_path string) FileImportTable {
-	if file_path in table.file_imports  {
-		return table.file_imports[file_path]
-	}
-	return new_file_import_table(file_path)
-}
-
 fn new_file_import_table(file_path string) FileImportTable {
 	return FileImportTable{
 		file_path: file_path

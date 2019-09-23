@@ -92,6 +92,12 @@ fn (v mut V) new_parser(path string) Parser {
 		}		
 	}
 	
+	import_table := if path in v.table.file_imports {
+		v.table.file_imports[path]
+	} else {
+		new_file_import_table(path)
+	}
+
 	mut p := Parser {
 		v: v
 		file_path: path
@@ -100,7 +106,7 @@ fn (v mut V) new_parser(path string) Parser {
 		file_pcguard: path_pcguard
 		scanner: new_scanner(path)
 		table: v.table
-		import_table: v.table.get_file_import_table(path)
+		import_table: import_table
 		cur_fn: EmptyFn
 		cgen: v.cgen
 		is_script: (v.pref.is_script && path == v.dir)
