@@ -1777,7 +1777,9 @@ fn (p mut Parser) name_expr() string {
 fn (p mut Parser) var_expr(v Var) string {
 	p.log('\nvar_expr() v.name="$v.name" v.typ="$v.typ"')
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
-	p.mark_var_used(v)
+	if !v.is_const {
+		p.mark_var_used(v)
+	}
 	fn_ph := p.cgen.add_placeholder()
 	p.expr_var = v
 	p.gen(p.table.var_cgen_name(v.name))

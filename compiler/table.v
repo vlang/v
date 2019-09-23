@@ -62,6 +62,7 @@ struct Var {
 mut:
 	typ             string
 	name            string
+	idx             int // index in the local_vars array
 	is_arg          bool
 	is_const        bool
 	args            []Var // function args
@@ -288,6 +289,7 @@ fn (t mut Table) register_const(name, typ, mod string) {
 		typ: typ
 		is_const: true
 		mod: mod
+		idx: -1
 	}
 }
 
@@ -300,6 +302,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		is_global: true
 		mod: p.mod
 		is_mut: true
+		idx: -1
 	}
 }
 

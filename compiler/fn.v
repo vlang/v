@@ -69,27 +69,24 @@ fn (p mut Parser) open_scope() {
 }
 
 fn (p mut Parser) mark_var_used(v Var) {
-	for i, vv in p.local_vars {
-		if vv.name == v.name {
-			p.local_vars[i].is_used = true
-		}
-	}
+	if v.idx == -1 {
+		return
+	}	
+	p.local_vars[v.idx].is_used = true
 }
 
 fn (p mut Parser) mark_var_returned(v Var) {
-	for i, vv in p.local_vars {
-		if vv.name == v.name {
-			p.local_vars[i].is_returned = true
-		}
-	}
+	if v.idx == -1 || v.idx >= p.local_vars.len {
+		return
+	}	
+	p.local_vars[v.idx].is_returned = true
 }
 
 fn (p mut Parser) mark_var_changed(v Var) {
-	for i, vv in p.local_vars {
-		if vv.name == v.name {
-			p.local_vars[i].is_changed = true
-		}
-	}
+	if v.idx == -1 || v.idx >= p.local_vars.len {
+		return
+	}	
+	p.local_vars[v.idx].is_changed = true
 }
 
 fn (p mut Parser) known_var(name string) bool {
@@ -100,7 +97,7 @@ fn (p mut Parser) known_var(name string) bool {
 }
 
 fn (p mut Parser) register_var(v Var) {
-	mut new_var := {v | scope_level: p.cur_fn.scope_level}
+	mut new_var := {v | idx: p.var_idx, scope_level: p.cur_fn.scope_level}
 	if v.line_nr == 0 {
 		spos := p.scanner.get_scanner_pos()
 		new_var.scanner_pos = spos
