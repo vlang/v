@@ -62,6 +62,7 @@ mut:
 	v_script bool // "V bash", import all os functions into global space
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization
 	is_alloc   bool // Whether current expression resulted in an allocation
+	is_const_literal bool // `1`, `2.0` etc, so that `u64 == 0` works
 	cur_gen_type string // "App" to replace "T" in current generic function
 	is_vweb bool
 	is_sql bool
@@ -1509,6 +1510,7 @@ fn (p mut Parser) bterm() string {
 // also called on *, &, @, . (enum)
 fn (p mut Parser) name_expr() string {
 	p.has_immutable_field = false
+	p.is_const_literal = false
 	ph := p.cgen.add_placeholder()
 	// amp
 	ptr := p.tok == .amp
@@ -2165,10 +2167,11 @@ fn (p mut Parser) indot_expr() string {
 
 // returns resulting type
 fn (p mut Parser) expression() string {
-	if p.scanner.file_path.contains('test_test') {
-		println('expression() pass=$p.pass tok=')
-		p.print_tok()
-	}
+	p.is_const_literal = true
+	//if p.scanner.file_path.contains('test_test') {
+		//println('expression() pass=$p.pass tok=')
+		//p.print_tok()
+	//}
 	ph := p.cgen.add_placeholder()
 	mut typ := p.indot_expr()
 	is_str := typ=='string'

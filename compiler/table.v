@@ -610,6 +610,13 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	if expected=='void*' && got=='int' {
 		return true
 	}
+	// Allow `myu64 == 1`
+	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
+		//p.warn('got=$got exp=$expected $p.is_const_literal')
+	//}
+	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
+		return true
+	}	
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
