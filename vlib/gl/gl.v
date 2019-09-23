@@ -8,6 +8,9 @@ module gl
 #include "glad.h"
 #flag @VROOT/thirdparty/glad/glad.o
 
+// joe-c: fix & remove
+enum TmpGlImportHack{}
+
 pub fn init_glad() {
 	ok := C.gladLoadGL()
 	if isnil(ok) {

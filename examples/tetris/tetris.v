@@ -6,6 +6,7 @@ module main
 
 import rand
 import time
+import gl
 import gx
 import gg
 import glfw
@@ -81,6 +82,12 @@ const (
 		gx.rgb(0, 170, 170),    // unused ?
 	]
 )
+
+// joe-c: fix & remove
+struct TmpGlImportHack {
+	hack gl.TmpGlImportHack
+}
+
 
 // TODO: type Tetro [TetroSize]struct{ x, y int }
 struct Block {
