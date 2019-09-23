@@ -730,7 +730,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
-			// p.check_and_register_imported_type(typ)
+			p.check_and_register_imported_type(typ)
 			v := Var {
 				typ: typ
 				is_arg: true

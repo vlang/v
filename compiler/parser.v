@@ -28,7 +28,7 @@ mut:
 	lit            string
 	cgen           &CGen
 	table          &Table
-	import_table   FileImportTable // Holds imports for just the file being parsed
+	import_table   &FileImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
 	mod            string
@@ -91,12 +91,6 @@ fn (v mut V) new_parser(path string) Parser {
 			break
 		}		
 	}
-	
-	import_table := if path in v.table.file_imports {
-		v.table.file_imports[path]
-	} else {
-		new_file_import_table(path)
-	}
 
 	mut p := Parser {
 		v: v
@@ -106,7 +100,7 @@ fn (v mut V) new_parser(path string) Parser {
 		file_pcguard: path_pcguard
 		scanner: new_scanner(path)
 		table: v.table
-		import_table: import_table
+		import_table: v.table.get_file_import_table(path)
 		cur_fn: EmptyFn
 		cgen: v.cgen
 		is_script: (v.pref.is_script && path == v.dir)
@@ -191,10 +185,10 @@ fn (p mut Parser) parse(pass Pass) {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
+		p.table.file_imports[p.file_path] = *p.import_table
 		// if p.file_path in p.table.file_imports {
 		// 	p.table.file_imports.delete(p.file_path)
 		// }
-		p.table.file_imports[p.file_path] = p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -296,12 +290,12 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			if !p.first_pass() {
 				// check for unused modules
-				// for alias, mod in p.import_table.imports {
-				// 	if !p.import_table.is_used_import(alias) {
-				// 		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-				// 		cerror('$p.file_path: module $mod_alias was imported but never used.')
-				// 	}
-				// }
+				for alias, mod in p.import_table.imports {
+					if !p.import_table.is_used_import(alias) {
+						mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
+						cerror('$p.file_path: module $mod_alias was imported but never used.')
+					}
+				}
 			}
 			return
 		default:
@@ -652,7 +646,7 @@ fn (p mut Parser) struct_decl() {
 		access_mod := if is_pub{AccessMod.public} else { AccessMod.private}
 		p.fgen(' ')
 		field_type := p.get_type()
-		// p.check_and_register_imported_type(field_type)
+		p.check_and_register_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {
 			p.next()
@@ -1575,7 +1569,7 @@ fn (p mut Parser) name_expr() string {
 		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
-			// p.import_table.register_used_import(name)
+			p.import_table.register_used_import(name)
 			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
 			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
@@ -2409,7 +2403,7 @@ fn (p mut Parser) factor() string {
 			if !('json' in p.table.imports) {
 				p.error('undefined: `json`, use `import json`')
 			}
-			// p.import_table.register_used_import('json')
+			p.import_table.register_used_import('json')
 			return p.js_decode()
 		}
 		//if p.fileis('orm_test') {
