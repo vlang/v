@@ -57,16 +57,12 @@ fn new_scanner(file_path string) &Scanner {
 		}
 	}
 
-	text := raw_text
-
-	scanner := &Scanner {
+	return &Scanner {
 		file_path: file_path
-		text: text
+		text: raw_text
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 	}
-
-	return scanner
 }
 
 
@@ -670,6 +666,7 @@ fn (s &Scanner) error(msg string) {
 	// and jump to their source with a keyboard shortcut.
 	// Using only the filename leads to inability of IDE/editors
 	// to find the source file, when it is in another folder.
+	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
 	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
 	exit(1)
 }

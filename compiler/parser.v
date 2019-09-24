@@ -13,9 +13,10 @@ struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
-	file_pcguard   string // When p.file_pcguard != '', it contains a
-	                      // C ifdef guard clause that must be put before
-	                      // the #include directives in the parsed .v file
+	// When p.file_pcguard != '', it contains a
+	// C ifdef guard clause that must be put before
+	// the #include directives in the parsed .v file
+	file_pcguard   string
 	v              &V
 	pref           &Preferences // Preferences shared from V struct
 mut:
@@ -36,7 +37,7 @@ mut:
 	expr_var       Var
 	has_immutable_field bool
 	first_immutable_field Var
-	assigned_type  string
+	assigned_type  string // non-empty if we are in an assignment expression
 	expected_type  string
 	tmp_cnt        int
 	is_script      bool
@@ -74,7 +75,7 @@ mut:
 }
 
 const (
-	EmptyFn = Fn { }
+	EmptyFn = Fn{}
 	MainFn= Fn{name:'main'}
 )
 
@@ -712,6 +713,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		if p.tok == .comma {
 			p.next()
 		}
+		// !!!! NAME free
 		p.table.register_const(name, enum_name, p.mod)
 		val++
 	}
@@ -968,7 +970,7 @@ fn (p mut Parser) get_type() string {
 		typ = p.lit
 	}
 	else {
-		if warn {
+		if warn && p.mod != 'ui' {
 			p.warn('use `&Foo` instead of `*Foo`')
 		}
 		// Module specified? (e.g. gx.Image)
@@ -1119,7 +1121,7 @@ fn (p mut Parser) close_scope() {
 			break
 		}
 		// Clean up memory, only do this if -autofree was passed for now
-		if p.pref.autofree && v.is_alloc && !p.pref.is_test {
+		if p.pref.autofree && v.is_alloc { // && !p.pref.is_test {
 			mut free_fn := 'free'
 			if v.typ.starts_with('array_') {
 				free_fn = 'v_array_free'
@@ -1136,6 +1138,7 @@ fn (p mut Parser) close_scope() {
 				continue
 			}	
 			if p.returns {
+				// Don't free a variable that's being returned
 				if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
 					prev_line := p.cgen.lines[p.cgen.lines.len-2]
 					p.cgen.lines[p.cgen.lines.len-2] =
@@ -1608,6 +1611,11 @@ fn (p mut Parser) name_expr() string {
 	else if deref {
 		p.gen('*')
 	}
+	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
+		p.assigned_type == 'string' {
+		p.warn('setting moved ' + v.typ)
+		p.mark_arg_moved(v)
+	}	
 	mut typ := p.var_expr(v)
 	// *var
 	if deref {
@@ -2108,11 +2116,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	}
 	// TODO move this from index_expr()
 	// TODO if p.tok in ...
-	// if p.tok in [.assign, .plus_assign, .minus_assign]
-	if (p.tok == .assign && !p.is_sql) || p.tok == .plus_assign || p.tok == .minus_assign ||
-	p.tok == .mult_assign || p.tok == .div_assign || p.tok == .xor_assign || p.tok == .mod_assign ||
-	p.tok == .or_assign || p.tok == .and_assign || p.tok == .righ_shift_assign ||
-	p.tok == .left_shift_assign {
+	if (p.tok == .assign && !p.is_sql) || p.tok.is_assign() {
 		if is_indexer && is_str && !p.builtin_mod {
 			p.error('strings are immutable')
 		}
@@ -2219,8 +2223,14 @@ fn (p mut Parser) expression() string {
 			if !p.expr_var.is_changed {
 				p.mark_var_changed(p.expr_var)
 			}
+			p.gen('/*typ = $typ   tmp_typ=$tmp_typ*/')
+			ph_clone := p.cgen.add_placeholder()
 			expr_type := p.expression()
-			// Two arrays of the same type?
+			// Need to clone the string when appending it to an array?
+			if p.pref.autofree && typ == 'array_string' && expr_type == 'string' {
+				p.cgen.set_placeholder(ph_clone, 'string_clone(')
+				p.gen(')')
+			}	
 			p.gen_array_push(ph, typ, expr_type, tmp, tmp_typ)
 			return 'void'
 		}

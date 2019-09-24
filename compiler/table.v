@@ -80,7 +80,7 @@ mut:
 	is_changed      bool
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
-	moved           bool
+	is_moved        bool
 	scanner_pos     ScannerPos // TODO: use only scanner_pos, remove line_nr
 	line_nr         int
 }
@@ -321,7 +321,8 @@ fn (table &Table) known_type(typ_ string) bool {
 }
 
 fn (table &Table) known_type_fast(t &Type) bool {
-	return t.name.len > 0 && !t.is_placeholder
+	return t.name != '' && !t.is_placeholder
+	
 }
 
 fn (t &Table) find_fn(name string) ?Fn {

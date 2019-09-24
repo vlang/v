@@ -479,22 +479,23 @@ fn type_default(typ string) string {
 	return '{0}'
 }
 
-fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, tmp_typ string) {
+fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
+	// Two arrays of the same type?
 	push_array := typ == expr_type
 	if push_array {
 		p.cgen.set_placeholder(ph, '_PUSH_MANY(&' )
 		p.gen('), $tmp, $typ)')
-	}  else {
-		p.check_types(expr_type, tmp_typ)
+	} else {
+		p.check_types(expr_type, elm_type)
 		// Pass tmp var info to the _PUSH macro
 		// Prepend tmp initialisation and push call
 		// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
-		if tmp_typ.ends_with('*') {
-			p.gen('), $tmp, ${tmp_typ.left(tmp_typ.len - 1)})')
+		if elm_type.ends_with('*') {
+			p.gen('), $tmp, ${elm_type.left(elm_type.len - 1)})')
 		} else {
-			p.gen('), $tmp, $tmp_typ)')
+			p.gen('), $tmp, $elm_type)')
 		}
 	}
 }
