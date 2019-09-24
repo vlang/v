@@ -275,18 +275,16 @@ fn (p mut Parser) fn_decl() {
 		typ = p.get_type()
 	}
 	// multiple returns
-	if typ.starts_with('_V_MulRet_') {
-		if p.first_pass() && !p.table.known_type(typ) {
-			p.table.register_type2(Type{
-				cat: TypeCategory.struct_,
-				name: typ,
-				mod: p.mod
-			})
-			for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
-				p.table.add_field(typ, 'var_$i', t, false, '', .public)
-			}
-			p.cgen.typedefs << 'typedef struct $typ $typ;'
+	if typ.starts_with('_V_MulRet_') && p.first_pass() && !p.table.known_type(typ) {
+		p.table.register_type2(Type{
+			cat: TypeCategory.struct_,
+			name: typ,
+			mod: p.mod
+		})
+		for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
+			p.table.add_field(typ, 'var_$i', t, false, '', .public)
 		}
+		p.cgen.typedefs << 'typedef struct $typ $typ;'
 	}
 	// Translated C code can have empty functions (just definitions)
 	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
