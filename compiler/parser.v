@@ -276,10 +276,10 @@ fn (p mut Parser) parse(pass Pass) {
 			p.cgen.consts << g
 		case Token.eof:
 			//p.log('end of parse()')
-			if p.is_script && !p.pref.is_test {
-				p.set_current_fn( MainFn )
-				p.check_unused_variables()
-			}
+			// if p.is_script && !p.pref.is_test {
+			// 	p.set_current_fn( MainFn )
+			// 	p.check_unused_variables()
+			// }
 			if !p.first_pass() && !p.pref.is_repl {
 				p.check_unused_imports()
 			}
