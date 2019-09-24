@@ -850,8 +850,6 @@ fn (p mut Parser) get_type() string {
 	mut typ := ''
 	// multiple returns
 	if p.tok == .lpar {
-		// if p.inside_tuple {p.error('unexpected (')}
-		// p.inside_tuple = true
 		p.check(.lpar)
 		mut types := []string
 		for {
@@ -862,8 +860,7 @@ fn (p mut Parser) get_type() string {
 			p.check(.comma)
 		}
 		p.check(.rpar)
-		// p.inside_tuple = false
-		return 'MultiReturn_' + types.join('_Z_').replace('*', '_ZptrZ_')
+		return '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
 	}
 	// fn type
 	if p.tok == .func {
@@ -1366,12 +1363,11 @@ fn (p mut Parser) var_decl() {
 	// t := p.bool_expression()
 	p.var_decl_name = mr_var_name
 	t := p.gen_var_decl(mr_var_name, is_static)
-
 	mut types := [t]
 	// multiple returns
 	if names.len > 1 {
 		// should we register __ret var?
-		types = t.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_')
+		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
 	}
 	for i, name in names {
 		typ := types[i]
@@ -3563,9 +3559,11 @@ fn (p mut Parser) return_st() {
 				p.check(.comma)
 				types << p.bool_expression()
 			}
+			mut cur_fn_typ_chk := p.cur_fn.typ
 			// multiple returns
 			if types.len > 1 {
-				expr_type = 'MultiReturn_' + types.join('_Z_').replace('*', '_ZptrZ_')
+				expr_type = types.join(',')
+				cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
 				ret_vals := p.cgen.cur_line.right(ph)
 				mut ret_fields := ''
 				for ret_val_idx, ret_val in ret_vals.split(' ') {
@@ -3574,7 +3572,7 @@ fn (p mut Parser) return_st() {
 					}
 					ret_fields += '.var_$ret_val_idx=$ret_val'
 				}
-				p.cgen.resetln('($expr_type){$ret_fields}')
+				p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
 			}
 			p.inside_return_expr = false
 			// Automatically wrap an object inside an option if the function
@@ -3618,7 +3616,7 @@ fn (p mut Parser) return_st() {
 					p.genln('return $tmp;')
 				}
 			}
-			p.check_types(expr_type, p.cur_fn.typ)
+			p.check_types(expr_type, cur_fn_typ_chk)
 		}
 	}
 	else {

@@ -275,14 +275,14 @@ fn (p mut Parser) fn_decl() {
 		typ = p.get_type()
 	}
 	// multiple returns
-	if typ.starts_with('MultiReturn_') {
-		if !p.first_pass() && !p.table.known_type(typ) {
+	if typ.starts_with('_V_MulRet_') {
+		if p.first_pass() && !p.table.known_type(typ) {
 			p.table.register_type2(Type{
 				cat: TypeCategory.struct_,
 				name: typ,
 				mod: p.mod
 			})
-			for i, t in typ.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_') {
+			for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
 				p.table.add_field(typ, 'var_$i', t, false, '', .public)
 			}
 			p.cgen.typedefs << 'typedef struct $typ $typ;'
