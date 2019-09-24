@@ -18,8 +18,8 @@ struct Fn {
 mut:
 	name          string
 	mod           string
-	local_vars    []Var
-	var_idx       int
+	//local_vars    []Var
+	//var_idx       int
 	args          []Var
 	is_interface  bool
 	// called_fns    []string
@@ -36,19 +36,19 @@ mut:
 	//gen_types []string
 }
 
-fn (f &Fn) find_var(name string) ?Var {
-	for i in 0 .. f.var_idx {
-		if f.local_vars[i].name == name {
-			return f.local_vars[i]
+fn (p &Parser) find_var(name string) ?Var {
+	for i in 0 .. p.var_idx {
+		if p.local_vars[i].name == name {
+			return p.local_vars[i]
 		}
 	}
 	return none
 }
 
 fn (p &Parser) find_var_check_new_var(name string) ?Var {
-	for i in 0 .. p.cur_fn.var_idx {
-		if p.cur_fn.local_vars[i].name == name {
-			return p.cur_fn.local_vars[i]
+	for i in 0 .. p.var_idx {
+		if p.local_vars[i].name == name {
+			return p.local_vars[i]
 		}
 	}
 	// A hack to allow `newvar := Foo{ field: newvar }`
@@ -63,67 +63,61 @@ fn (p &Parser) find_var_check_new_var(name string) ?Var {
 	return none
 }
 
-fn (f &Fn) find_var2(name string) Var {
-	for i in 0 .. f.var_idx {
-		if f.local_vars[i].name == name {
-			return f.local_vars[i]
-		}
-	}
-	return Var{}
-}
-
-
 fn (p mut Parser) open_scope() {
 	p.cur_fn.defer_text << ''
 	p.cur_fn.scope_level++
 }
 
 fn (p mut Parser) mark_var_used(v Var) {
-	for i, vv in p.cur_fn.local_vars {
-		if vv.name == v.name {
-			p.cur_fn.local_vars[i].is_used = true
-		}
-	}
+	if v.idx == -1 || v.idx >= p.local_vars.len {
+		return
+	}	
+	p.local_vars[v.idx].is_used = true
 }
 
 fn (p mut Parser) mark_var_returned(v Var) {
-	for i, vv in p.cur_fn.local_vars {
-		if vv.name == v.name {
-			p.cur_fn.local_vars[i].is_returned = true
-		}
-	}
+	if v.idx == -1 || v.idx >= p.local_vars.len {
+		return
+	}	
+	p.local_vars[v.idx].is_returned = true
 }
 
 fn (p mut Parser) mark_var_changed(v Var) {
-	for i, vv in p.cur_fn.local_vars {
-		if vv.name == v.name {
-			p.cur_fn.local_vars[i].is_changed = true
-		}
-	}
+	if v.idx == -1 || v.idx >= p.local_vars.len {
+		return
+	}	
+	p.local_vars[v.idx].is_changed = true
 }
 
-fn (f mut Fn) known_var(name string) bool {
-	_ := f.find_var(name) or {
+fn (p mut Parser) known_var(name string) bool {
+	_ := p.find_var(name) or {
 		return false
 	}	
 	return true
 }
 
-fn (f mut Fn) register_var(v Var) {
-	new_var := {v | scope_level: f.scope_level}
+fn (p mut Parser) register_var(v Var) {
+	mut new_var := {v | idx: p.var_idx, scope_level: p.cur_fn.scope_level}
+	if v.line_nr == 0 {
+		spos := p.scanner.get_scanner_pos()
+		new_var.scanner_pos = spos
+		new_var.line_nr = spos.line_nr
+	}
 	// Expand the array
-	if f.var_idx >= f.local_vars.len {
-		f.local_vars << new_var
+	if p.var_idx >= p.local_vars.len {
+		p.local_vars << new_var
 	}
 	else {
-		f.local_vars[f.var_idx] = new_var
+		p.local_vars[p.var_idx] = new_var
 	}
-	f.var_idx++
+	p.var_idx++
 }
 
-fn (f mut Fn) clear_vars() {
-	f.var_idx = 0
-	f.local_vars = []Var
+fn (p mut Parser) clear_vars() {
+	// shared a := [1, 2, 3]
+	p.var_idx = 0
+	p.local_vars.free()
+	p.local_vars = []Var
 }
 
 // vlib header file?
@@ -132,30 +126,25 @@ fn (p mut Parser) is_sig() bool {
 	(p.file_path.contains(ModPath))
 }
 
-fn new_fn(mod string, is_public bool) Fn {
-	return Fn {
-		mod: mod
-		local_vars: [Var{}].repeat(MaxLocalVars)
-		is_public: is_public
-	}
-}
-
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
+	p.clear_vars() // clear local vars every time a new fn is started
 	p.fgen('fn ')
 	//defer { p.fgenln('\n') }
-	is_pub := p.tok == .key_pub
+	mut f := Fn {
+		mod: p.mod
+		is_public: p.tok == .key_pub
+	}
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
 		println('INFO: run `v -live program.v` if you want to use [live] functions')
 	}
-	if is_pub {
+	if f.is_public {
 		p.next()
 	}
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
 	p.next()
-	mut f := new_fn(p.mod, is_pub)
 	// Method receiver
 	mut receiver_typ := ''
 	if p.tok == .lpar {
@@ -201,7 +190,7 @@ fn (p mut Parser) fn_decl() {
 			scanner_pos: p.scanner.get_scanner_pos()
 		}
 		f.args << receiver
-		f.register_var(receiver)
+		p.register_var(receiver)
 	}
 	if p.tok == .plus || p.tok == .minus || p.tok == .mul {
 		f.name = p.tok.str()
@@ -279,11 +268,25 @@ fn (p mut Parser) fn_decl() {
 	// Returns a type?
 	mut typ := 'void'
 	if p.tok == .name || p.tok == .mul || p.tok == .amp || p.tok == .lsbr ||
-	p.tok == .question {
+	p.tok == .question || p.tok == .lpar {
 		p.fgen(' ')
 		// TODO In
 		// if p.tok in [ .name, .mul, .amp, .lsbr ] {
 		typ = p.get_type()
+	}
+	// multiple returns
+	if typ.starts_with('MultiReturn_') {
+		if !p.first_pass() && !p.table.known_type(typ) {
+			p.table.register_type2(Type{
+				cat: TypeCategory.struct_,
+				name: typ,
+				mod: p.mod
+			})
+			for i, t in typ.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_') {
+				p.table.add_field(typ, 'var_$i', t, false, '', .public)
+			}
+			p.cgen.typedefs << 'typedef struct $typ $typ;'
+		}
 	}
 	// Translated C code can have empty functions (just definitions)
 	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
@@ -538,7 +541,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 }
 
 fn (p mut Parser) check_unused_variables() {
-	for var in p.cur_fn.local_vars {
+	for var in p.local_vars {
 		if var.name == '' {
 			break
 		}
@@ -716,12 +719,13 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
+			p.check_and_register_used_imported_type(typ)
 			v := Var {
 				typ: typ
 				is_arg: true
 				// is_mut: is_mut
 				line_nr: p.scanner.line_nr
-				scanner_pos: p.scanner.get_scanner_pos()        
+				scanner_pos: p.scanner.get_scanner_pos()
 			}
 			// f.register_var(v)
 			f.args << v
@@ -732,9 +736,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	}
 	// `(a int, b, c string)` syntax
 	for p.tok != .rpar {
-		mut names := [
-		p.check_name()
-		]
+		mut names := [	p.check_name()	]
 		// `a,b,c int` syntax
 		for p.tok == .comma {
 			p.check(.comma)
@@ -747,6 +749,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			p.next()
 		}
 		mut typ := p.get_type()
+		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')
@@ -765,9 +768,9 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_mut: is_mut
 				ptr: is_mut
 				line_nr: p.scanner.line_nr
-				scanner_pos: p.scanner.get_scanner_pos()        
+				scanner_pos: p.scanner.get_scanner_pos()
 			}
-			f.register_var(v)
+			p.register_var(v)
 			f.args << v
 		}
 		if p.tok == .comma {
@@ -855,7 +858,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			}
 			p.check(.key_mut)
 			var_name := p.lit
-			v := p.cur_fn.find_var(var_name) or {
+			v := p.find_var(var_name) or {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 				exit(1)
 			}
@@ -1059,18 +1062,18 @@ fn (f &Fn) str_args(table &Table) string {
 }
 
 // find local function variable with closest name to `name`
-fn (f &Fn) find_misspelled_local_var(name string, min_match f32) string {
+fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_var := ''
-	for var in f.local_vars {
-		if var.scope_level > f.scope_level {
+	for var in p.local_vars {
+		if var.scope_level > p.cur_fn.scope_level {
 			continue
 		}
 		n := name.all_after('.')
 		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
-		p := strings.dice_coefficient(var.name, n)
-		if p > closest {
-			closest = p
+		coeff := strings.dice_coefficient(var.name, n)
+		if coeff > closest {
+			closest = coeff
 			closest_var = var.name
 		}
 	}

@@ -16,7 +16,7 @@ mut:
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
-	file_imports []FileImportTable // List of imports for file
+	file_imports map[string]FileImportTable // List of imports for file
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
@@ -31,9 +31,10 @@ mut:
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
-	module_name string
-	file_path   string
-	imports     map[string]string
+	module_name  string
+	file_path    string
+	imports      map[string]string // alias => module
+	used_imports []string          // alias
 }
 
 enum AccessMod {
@@ -53,6 +54,7 @@ enum TypeCategory {
 	union_ // 5
 	c_struct
 	c_typedef
+	objc_interface // 8 Objective C @interface
 	array
 }
 
@@ -60,6 +62,7 @@ struct Var {
 mut:
 	typ             string
 	name            string
+	idx             int // index in the local_vars array
 	is_arg          bool
 	is_const        bool
 	args            []Var // function args
@@ -286,6 +289,7 @@ fn (t mut Table) register_const(name, typ, mod string) {
 		typ: typ
 		is_const: true
 		mod: mod
+		idx: -1
 	}
 }
 
@@ -298,6 +302,7 @@ fn (p mut Parser) register_global(name, typ string) {
 		is_global: true
 		mod: p.mod
 		is_mut: true
+		idx: -1
 	}
 }
 
@@ -606,10 +611,22 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	// if expected == 'T' || expected.contains('<T>') {
 	// return true
 	// }
+	// TODO fn hack
+	if got.starts_with('fn ') && (expected.ends_with('fn') ||
+	expected.ends_with('Fn')) {
+		return true
+	}	
 	// Allow pointer arithmetic
 	if expected=='void*' && got=='int' {
 		return true
 	}
+	// Allow `myu64 == 1`
+	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
+		//p.warn('got=$got exp=$expected $p.is_const_literal')
+	//}
+	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
+		return true
+	}	
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
@@ -822,8 +839,20 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn new_file_import_table(file_path string) &FileImportTable {
-	return &FileImportTable{
+fn (table &Table) get_file_import_table(file_path string) FileImportTable {
+	// if file_path.clone() in table.file_imports {
+	// 	return table.file_imports[file_path.clone()]
+	// }
+	// just get imports. memory error when recycling import table
+	mut fit := new_file_import_table(file_path)
+	if file_path in table.file_imports {
+		fit.imports = table.file_imports[file_path].imports
+	}
+	return fit
+}
+
+fn new_file_import_table(file_path string) FileImportTable {
+	return FileImportTable{
 		file_path: file_path
 		imports:   map[string]string
 	}
@@ -838,7 +867,9 @@ fn (fit mut FileImportTable) register_import(mod string) {
 }
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
-	if alias in fit.imports {
+	// NOTE: come back here
+	// if alias in fit.imports && fit.imports[alias] == mod {}
+	if alias in fit.imports && fit.imports[alias] != mod {
 		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
 	}
 	if mod.contains('.internal.') {
@@ -873,6 +904,16 @@ fn (fit &FileImportTable) resolve_alias(alias string) string {
 	return fit.imports[alias]
 }
 
+fn (fit mut FileImportTable) register_used_import(alias string) {
+	if !(alias in fit.used_imports) {
+		fit.used_imports << alias
+	}
+}
+
+fn (fit &FileImportTable) is_used_import(alias string) bool {
+	return alias in fit.used_imports
+}
+
 fn (t &Type) contains_field_type(typ string) bool {
 	if !t.name[0].is_capital() {
 		return false
@@ -886,24 +927,24 @@ fn (t &Type) contains_field_type(typ string) bool {
 }
 
 // check for a function / variable / module typo in `name`
-fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
+fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_misspelled_fn(name, fit, min_match)
+	mut n := p.table.find_misspelled_fn(name, fit, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = current_fn.find_misspelled_local_var(name_orig, min_match)
+	n = p.find_misspelled_local_var(name_orig, min_match)
 	if n != '' {
 		output += '\n  * variable: `$n`'
 	}
 	// check imported modules
-	n = table.find_misspelled_imported_mod(name_orig, fit, min_match)
+	n = p.table.find_misspelled_imported_mod(name_orig, fit, min_match)
 	if n != '' {
 		output += '\n  * module: `$n`'
 	}
@@ -943,10 +984,11 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
 		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
 		p := strings.dice_coefficient(n1, alias)
 		if p > closest {
 			closest = p
-			closest_mod = '$alias ($mod)'
+			closest_mod = '$mod_alias'
 		}
 	}
 	return if closest >= min_match { closest_mod } else { '' }

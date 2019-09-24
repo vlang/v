@@ -1,5 +1,3 @@
-import os
-
 const (
 	q = [1, 2, 3]
 	A = 8

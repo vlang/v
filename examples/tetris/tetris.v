@@ -7,7 +7,6 @@ module main
 import rand
 import time
 import gx
-import gl
 import gg
 import glfw
 import math

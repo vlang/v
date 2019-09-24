@@ -193,7 +193,7 @@ fn main() {
 		v.cgen.lines.free()
 		free(v.cgen)
 		for _, f in v.table.fns {
-			f.local_vars.free()
+			//f.local_vars.free()
 			f.args.free()
 			//f.defer_text.free()
 		}	
@@ -241,8 +241,7 @@ fn (v mut V) compile() {
 	for file in v.files {
 		mut p := v.new_parser(file)
 		p.parse(.decl)
-		
-		
+		if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Main pass
 	cgen.pass = Pass.main
@@ -308,6 +307,7 @@ fn (v mut V) compile() {
 	for file in v.files {
 		mut p := v.new_parser(file)
 		p.parse(.main)
+		if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		// p.g.gen_x64()
 		// Format all files (don't format automatically generated vlib headers)
 		if !v.pref.nofmt && !file.contains('/vlib/') {
@@ -574,11 +574,13 @@ fn (v mut V) add_v_files_to_compile() {
 	for file in v.files {
 		mut p := v.new_parser(file)
 		p.parse(.imports)
+		if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse user imports
 	for file in user_files {
 		mut p := v.new_parser(file)
 		p.parse(.imports)
+		if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse lib imports
 /*
@@ -597,6 +599,8 @@ fn (v mut V) add_v_files_to_compile() {
 			for file in vfiles {
 				mut p := v.new_parser(file, Pass.imports)
 				p.parse()
+				
+	if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 			}
 		}
 	}
@@ -615,6 +619,7 @@ fn (v mut V) add_v_files_to_compile() {
 		for file in vfiles {
 			mut p := v.new_parser(file)
 			p.parse(.imports)
+			if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		}
 	}
 	if v.pref.is_verbose {
@@ -653,11 +658,13 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 	}
 	// Add remaining user files
+	mut i := 0
 	mut j := 0
 	mut len := -1
-	for i, fit in v.table.file_imports {
+	for _, fit in v.table.file_imports {
 		// Don't add a duplicate; builtin files are always there
 		if fit.file_path in v.files || fit.module_name == 'builtin' {
+			i++
 			continue
 		}
 		if len == -1 {
@@ -671,6 +678,7 @@ fn (v mut V) add_v_files_to_compile() {
 		//println(fit)
 		//println('fit $fit.file_path')
 		v.files << fit.file_path
+		i++
 	}
 }
 

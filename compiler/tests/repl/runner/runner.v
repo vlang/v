@@ -25,7 +25,7 @@ pub fn full_path_to_v() string {
 	return vexec
 }
 
-pub fn run_repl_file(wd string, vexec string, file string) string? {
+pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	fcontent := os.read_file(file) or {	return error('Could not read file $file') }
 	content := fcontent.replace('\r', '')		
 	input := content.all_before('===output===\n')

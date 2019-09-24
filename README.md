@@ -1,6 +1,7 @@
 # The V Programming Language
 
 [![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
+[![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 
 https://vlang.io
@@ -96,7 +97,7 @@ v -o v compiler
 ```
 $ v
 V 0.1.x
-Use Ctrl-D to exit
+Use Ctrl-C or `exit` to exit
 
 >>> println('hello world')
 hello world

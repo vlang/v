@@ -150,8 +150,8 @@ fn (p mut Parser) chash() {
 		// expand `@VROOT` `@VMOD` to absolute path
 		flag = flag.replace('@VROOT', p.vroot)
 		flag = flag.replace('@VMOD', ModPath)
-		p.log('adding flag "$flag"')
-		p.table.parse_cflag(flag)
+		//p.log('adding flag "$flag"')
+		p.table.parse_cflag(flag, p.mod)
 		return
 	}
 	if hash.starts_with('include') {

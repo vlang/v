@@ -206,22 +206,19 @@ pub fn dial(address string, port int) ?Socket {
 }
 
 // send string data to socket
-pub fn (s Socket) send(buf byteptr, len int) int {
-	res := C.send(s.sockfd, buf, len, 0)
-//	if res < 0 {
-//		return error('socket: send failed')
-//	}
+pub fn (s Socket) send(buf byteptr, len int) ?int {
+	res := int( C.send(s.sockfd, buf, len, 0) )
+	if res < 0 {
+		return error('socket: send failed')
+	}
 	return res
 }
 
 // receive string data from socket
-pub fn (s Socket) recv(bufsize int) byteptr {
+pub fn (s Socket) recv(bufsize int) (byteptr, int) {
 	buf := malloc(bufsize)
-	res := C.recv(s.sockfd, buf, bufsize, 0)
-//	if res < 0 {
-//		return error('socket: recv failed')
-//	}
-	return buf
+	res := int( C.recv(s.sockfd, buf, bufsize, 0) )
+	return buf, res
 }
 
 // TODO: remove cread/2 and crecv/2 when the Go net interface is done

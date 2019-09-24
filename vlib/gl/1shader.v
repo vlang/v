@@ -4,7 +4,7 @@
 
 module gl
 
-import os
+// import os
 import gx
 import glm
 

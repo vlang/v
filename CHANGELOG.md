@@ -3,7 +3,7 @@
 
 - `none` keyword for optionals.
 - All table lookup functions now use `none`.
-- Double quotes (`"`) can now be used to denote strings.
+- Double quotes (`"`) can now also be used to denote strings.
 - GitHub Actions CI in addition to Travis.
 - `-compress` option. The V binary built with `-compress` is only ~90 KB!
 - More memory management.
