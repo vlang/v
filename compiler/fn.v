@@ -69,7 +69,7 @@ fn (p mut Parser) open_scope() {
 }
 
 fn (p mut Parser) mark_var_used(v Var) {
-	if v.idx == -1 {
+	if v.idx == -1 || v.idx >= p.local_vars.len {
 		return
 	}	
 	p.local_vars[v.idx].is_used = true
