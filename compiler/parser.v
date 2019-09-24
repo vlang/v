@@ -276,6 +276,8 @@ fn (p mut Parser) parse(pass Pass) {
 			p.cgen.consts << g
 		case Token.eof:
 			//p.log('end of parse()')
+			// check why this was added? everything seems to work
+			// without it, and it's already happening in fn_decl
 			// if p.is_script && !p.pref.is_test {
 			// 	p.set_current_fn( MainFn )
 			// 	p.check_unused_variables()
@@ -1375,11 +1377,10 @@ fn (p mut Parser) var_decl() {
 	for i, name in names {
 		typ := types[i]
 		if names.len > 1 {
-			// check all returned valued are assigned to a variable
-			// if names.len != types.len {
-			// 	mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-			// 	p.error('function `$mr_fn` returns $types.len values but you only assigned ${names.len} of them.')
-			// }
+			if names.len != types.len {
+				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values.')
+			}
 			p.gen(';\n')
 			p.gen('$typ $name = ${mr_var_name}.var_$i')
 		}
