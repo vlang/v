@@ -1375,11 +1375,11 @@ fn (p mut Parser) var_decl() {
 	for i, name in names {
 		typ := types[i]
 		if names.len > 1 {
-			// maybe we could allow the user to only use what they need?
-			if names.len != types.len {
-				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error('function `$mr_fn` returns $types.len values but you only assigned ${names.len} of them.')
-			}
+			// check all returned valued are assigned to a variable
+			// if names.len != types.len {
+			// 	mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+			// 	p.error('function `$mr_fn` returns $types.len values but you only assigned ${names.len} of them.')
+			// }
 			p.gen(';\n')
 			p.gen('$typ $name = ${mr_var_name}.var_$i')
 		}
