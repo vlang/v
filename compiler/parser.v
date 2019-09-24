@@ -276,7 +276,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.cgen.consts << g
 		case Token.eof:
 			//p.log('end of parse()')
-			// check why this was added? everything seems to work
+			// TODO: check why this was added? everything seems to work
 			// without it, and it's already happening in fn_decl
 			// if p.is_script && !p.pref.is_test {
 			// 	p.set_current_fn( MainFn )
