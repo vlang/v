@@ -333,12 +333,12 @@ fn (t &Table) find_fn(name string) ?Fn {
 }
 
 fn (t &Table) known_fn(name string) bool {
-	_ := t.find_fn(name) or { return false }
+	_ = t.find_fn(name) or { return false }
 	return true
 }
 
 fn (t &Table) known_const(name string) bool {
-	_ := t.find_const(name) or { return false }
+	_ = t.find_const(name) or { return false }
 	return true
 }
 
@@ -404,7 +404,7 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 }
 
 fn (t &Type) has_field(name string) bool {
-	_ := t.find_field(name) or { return false }
+	_ = t.find_field(name) or { return false }
 	return true
 }
 
@@ -422,7 +422,7 @@ fn (t &Type) find_field(name string) ?Var {
 }
 
 fn (table &Table) type_has_field(typ &Type, name string) bool {
-	_ := table.find_field(typ, name) or { return false }
+	_ = table.find_field(typ, name) or { return false }
 	return true
 }
 
@@ -465,12 +465,12 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 }
 
 fn (t &Type) has_method(name string) bool {
-	_ := t.find_method(name) or { return false }
+	_ = t.find_method(name) or { return false }
 	return true
 }
 
 fn (table &Table) type_has_method(typ &Type, name string) bool {
-	_ := table.find_method(typ, name) or { return false }
+	_ = table.find_method(typ, name) or { return false }
 	return true
 }
 
