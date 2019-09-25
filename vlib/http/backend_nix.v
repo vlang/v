@@ -27,7 +27,7 @@ struct C.SSL {
  
 } 
 
-fn init_module() {
+fn init() int {
 	$if mac { 
 		C.SSL_library_init() 
 	} 
@@ -36,6 +36,7 @@ fn init_module() {
 	} 
 	//C.SSL_load_error_strings() 
 	//C.OPENSSL_config(0) 
+	return 1
 }
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) Response {

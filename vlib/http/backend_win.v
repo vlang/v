@@ -13,7 +13,7 @@ module http
 
 fn C.new_tls_context() C.TlsContext
 
-fn init_module() {}
+fn init() int { return 1 }
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
 	mut ctx := C.new_tls_context()
