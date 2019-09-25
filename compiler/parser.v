@@ -1378,9 +1378,9 @@ fn (p mut Parser) var_decl() {
 	}
 	for i, name in names {
 		if name == '_' {
-			// if names.len == 1 {
-			// 	p.error('no new variables on left side of :=')
-			// }
+			if names.len == 1 {
+				p.error('no new variables on left side of :=')
+			}
 			continue
 		}
 		typ := types[i]
