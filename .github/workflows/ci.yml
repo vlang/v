@@ -32,7 +32,7 @@ jobs:
       with:
         node-version: 12.x
     - name: Install dependencies
-      run: sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+      run: sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
       run: make && ./v -o v compiler
     - name: Test v->c
@@ -45,7 +45,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install dependencies
-      run: sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+      run: sudo apt-get update; sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
       run: make && ./v -o v compiler
     - name: Test v->c with tcc
