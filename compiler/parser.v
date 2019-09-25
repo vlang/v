@@ -354,7 +354,7 @@ fn (p mut Parser) import_statement() {
 		p.error('bad import format')
 	}
 	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
-		p.error('bad import format. module/submodule names cannot begin with a number.')
+		p.error('bad import format. module/submodule names cannot begin with a number')
 	}
 	mut mod := p.check_name().trim_space()
 	mut mod_alias := mod
@@ -1291,7 +1291,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 ')
 			}
 		}
-		p.error('`$v.name` is immutable.')
+		p.error('`$v.name` is immutable')
 	}
 	if !v.is_changed {
 		p.mark_var_changed(v)
@@ -1379,7 +1379,7 @@ fn (p mut Parser) var_decl() {
 	for i, name in names {
 		if name == '_' {
 			if names.len == 1 {
-				p.error('no new variables on left side of :=')
+				p.error('no new variables on left side of `:=`')
 			}
 			continue
 		}
@@ -1400,7 +1400,7 @@ fn (p mut Parser) var_decl() {
 		if names.len > 1 {
 			if names.len != types.len {
 				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values.')
+				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values')
 			}
 			p.gen(';\n')
 			p.gen('$typ $name = ${mr_var_name}.var_$i')
@@ -1599,7 +1599,7 @@ fn (p mut Parser) name_expr() string {
 	// Variable
 	for { // TODO remove
 	if name == '_' {
-		p.error('cannot use `_` as value.')
+		p.error('cannot use `_` as value')
 	}
 	mut v := p.find_var_check_new_var(name) or { break }
 	if ptr {
@@ -2634,7 +2634,7 @@ fn (p mut Parser) string_expr() {
 			if fspec == 's' {
 				//println('custom str F=$cformat | format_specifier: "$fspec" | typ: $typ ')
 				if typ != 'string' {
-					p.error('only V strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}.')
+					p.error('only V strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}')
 				}
 				args = args.all_before_last('${val}.len, ${val}.str') + '${val}.str'
 			}
@@ -3137,6 +3137,9 @@ fn (p mut Parser) for_st() {
 		i := p.check_name()
 		p.check(.comma)
 		val := p.check_name()
+		if i == '_' && val == '_' {
+			p.error('no new variables on the left side of `in`')
+		}
 		p.fgen(' ')
 		p.check(.key_in)
 		p.fgen(' ')

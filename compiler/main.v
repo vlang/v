@@ -593,7 +593,7 @@ fn (v mut V) add_v_files_to_compile() {
 			import_path := '$ModPath/vlib/$mod_path'
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				verror('cannot import module $mod (no .v files in "$import_path").')
+				verror('cannot import module $mod (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -613,7 +613,7 @@ fn (v mut V) add_v_files_to_compile() {
 		import_path := v.find_module_path(mod)
 		vfiles := v.v_files_from_dir(import_path)
 		if vfiles.len == 0 {
-			verror('cannot import module $mod (no .v files in "$import_path").')
+			verror('cannot import module $mod (no .v files in "$import_path")')
 		}
 		// Add all imports referenced by these libs
 		for file in vfiles {
@@ -632,7 +632,7 @@ fn (v mut V) add_v_files_to_compile() {
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
-		verror('Import cycle detected.')
+		verror('Import cycle detected')
 	}
 	// add imports in correct order
 	for mod in deps_resolved.imports() {
