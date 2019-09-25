@@ -357,11 +357,6 @@ fn (v mut V) generate_main() {
 	// if v.build_mode in [.default, .embed_vlib] {
 	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
 		mut consts_init_body := cgen.consts_init.join_lines()
-		for imp in v.table.imports {
-			if imp == 'http' {
-				consts_init_body += '\n http__init_module();'
-			}
-		}
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
 #ifdef _WIN32
