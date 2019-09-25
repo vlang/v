@@ -68,6 +68,34 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
+// blank identifer assignment `_ = 111` 
+fn (p mut Parser) gen_blank_identifier_assign() {
+	p.next()
+	p.check(.assign)
+	pos := p.cgen.add_placeholder()
+	mut typ := p.bool_expression()
+	tmp := p.get_tmp()
+	// handle or
+	if p.tok == .key_orelse {
+		p.cgen.set_placeholder(pos, '$typ $tmp = ')
+		p.genln(';')
+		typ = typ.replace('Option_', '')
+		p.next()
+		p.check(.lcbr)
+		p.genln('if (!$tmp .ok) {')
+		p.register_var(Var {
+			name: 'err'
+			typ: 'string'
+			is_mut: false
+			is_used: true
+		})
+		p.genln('string err = $tmp . error;')
+		p.statements()
+		p.returns = false
+	}
+	p.gen(';')
+}
+
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {

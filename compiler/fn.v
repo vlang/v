@@ -90,7 +90,7 @@ fn (p mut Parser) mark_var_changed(v Var) {
 }
 
 fn (p mut Parser) known_var(name string) bool {
-	_ := p.find_var(name) or {
+	_ = p.find_var(name) or {
 		return false
 	}	
 	return true
