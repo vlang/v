@@ -9,7 +9,7 @@ import http.chunked
 
 const (
 	max_redirects = 4
-	started = http.init()
+	_ = http.init()
 )
 
 struct Request {
