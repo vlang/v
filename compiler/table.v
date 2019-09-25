@@ -870,7 +870,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	// NOTE: come back here
 	// if alias in fit.imports && fit.imports[alias] == mod {}
 	if alias in fit.imports && fit.imports[alias] != mod {
-		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}"')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -881,7 +881,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			verror('module $mod can only be imported internally by libs.')
+			verror('module $mod can only be imported internally by libs')
 		}
 	}
 	fit.imports[alias] = mod

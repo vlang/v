@@ -213,7 +213,7 @@ pub fn (v mut V) cc_msvc() {
 		if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 			os.rm(v.out_name_c)
 		}
-		verror('Cannot find MSVC on this OS.')
+		verror('Cannot find MSVC on this OS')
 		return
 	}
 

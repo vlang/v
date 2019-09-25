@@ -5,7 +5,7 @@
 module rand
 
 const (
-	ReadError = error('crypro.rand.read() error reading random bytes.')
+	ReadError = error('crypro.rand.read() error reading random bytes')
 )
 
 // NOTE: temp until we have []bytes(buff)
