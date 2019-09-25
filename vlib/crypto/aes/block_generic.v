@@ -43,7 +43,7 @@ import (
 
 // Encrypt one block from src into dst, using the expanded key xk.
 fn encrypt_block_generic(xk []u32, dst, src []byte) {
-	mut _ = src[15] // early bounds check
+	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src.left(4))
 	mut s1 := binary.big_endian_u32(src.slice(4, 8))
 	mut s2 := binary.big_endian_u32(src.slice(8, 12))
@@ -95,7 +95,7 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 
 // Decrypt one block from src into dst, using the expanded key xk.
 fn decrypt_block_generic(xk []u32, dst, src []byte) {
-	mut _ = src[15] // early bounds check
+	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src.left(4))
 	mut s1 := binary.big_endian_u32(src.slice(4, 8))
 	mut s2 := binary.big_endian_u32(src.slice(8, 12))
