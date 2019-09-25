@@ -53,6 +53,7 @@ mut:
 	cur_fn         Fn
 	local_vars     []Var // local function variables
 	var_idx       int
+	blank_ident_idx int
 	returns        bool
 	vroot          string
 	is_c_struct_init bool
@@ -1374,21 +1375,13 @@ fn (p mut Parser) var_decl() {
 	}
 	for i, name in names {
 		typ := types[i]
-		if names.len > 1 {
-			if names.len != types.len {
-				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values.')
-			}
-			p.gen(';\n')
-			p.gen('$typ $name = ${mr_var_name}.var_$i')
-		}
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
 		// name := p.check_name()
 		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
-		if !p.builtin_mod && p.known_var(name) {
+		if !p.builtin_mod && name != '_' && p.known_var(name) {
 			// v := p.cur_fn.find_var(name)
 			p.error('redefinition of `$name`')
 		}
@@ -1408,6 +1401,15 @@ fn (p mut Parser) var_decl() {
 		//if p.fileis('str.v') {
 			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 		//}
+		if names.len > 1 {
+			if names.len != types.len {
+				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values.')
+			}
+			vn := if name == '_' { p.blank_ident_name() } else { name }
+			p.gen(';\n')
+			p.gen('$typ $vn = ${mr_var_name}.var_$i')
+		}
 	}
 	p.var_decl_name = ''
 	p.is_empty_c_struct_init = false

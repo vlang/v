@@ -37,8 +37,9 @@ mut:
 }
 
 fn (p &Parser) find_var(name string) ?Var {
+	var_name := if name == '_' { p.blank_ident_name() } else { name }
 	for i in 0 .. p.var_idx {
-		if p.local_vars[i].name == name {
+		if p.local_vars[i].name == var_name {
 			return p.local_vars[i]
 		}
 	}
@@ -46,8 +47,9 @@ fn (p &Parser) find_var(name string) ?Var {
 }
 
 fn (p &Parser) find_var_check_new_var(name string) ?Var {
+	var_name := if name == '_' { p.blank_ident_name() } else { name }
 	for i in 0 .. p.var_idx {
-		if p.local_vars[i].name == name {
+		if p.local_vars[i].name == var_name {
 			return p.local_vars[i]
 		}
 	}
@@ -61,6 +63,10 @@ fn (p &Parser) find_var_check_new_var(name string) ?Var {
 		}
 	}
 	return none
+}
+
+fn (p &Parser) blank_ident_name() string {
+	return '_V_blank_ident_$p.blank_ident_idx'
 }
 
 fn (p mut Parser) open_scope() {
@@ -98,6 +104,10 @@ fn (p mut Parser) known_var(name string) bool {
 
 fn (p mut Parser) register_var(v Var) {
 	mut new_var := {v | idx: p.var_idx, scope_level: p.cur_fn.scope_level}
+	if new_var.name == '_' {
+		p.blank_ident_idx = p.var_idx
+		new_var.name = p.blank_ident_name()
+	}
 	if v.line_nr == 0 {
 		spos := p.scanner.get_scanner_pos()
 		new_var.scanner_pos = spos
@@ -543,11 +553,11 @@ fn (p mut Parser) check_unused_variables() {
 		if var.name == '' {
 			break
 		}
-		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
+		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && !var.name.starts_with('_V_blank_ident_') {
 			p.production_error('`$var.name` declared and not used', var.scanner_pos )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
-			!p.pref.translated && var.name != '_' {
+			!p.pref.translated && !var.name.starts_with('_V_blank_ident_') {
 			p.error_with_position( '`$var.name` is declared as mutable, but it was never changed', var.scanner_pos )
 		}
 	}
