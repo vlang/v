@@ -1196,6 +1196,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 			//p.log('var decl')
 			p.var_decl()
 		}
+		// `_ = 777`
+		else if p.lit == '_' && p.peek() == .assign {
+			p.gen_blank_identifier_assign()
+		}
 		else {
 			// panic and exit count as returns since they stop the function
 			if p.lit == 'panic' || p.lit == 'exit' {
@@ -1373,15 +1377,13 @@ fn (p mut Parser) var_decl() {
 		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
 	}
 	for i, name in names {
-		typ := types[i]
-		if names.len > 1 {
-			if names.len != types.len {
-				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values.')
-			}
-			p.gen(';\n')
-			p.gen('$typ $name = ${mr_var_name}.var_$i')
+		if name == '_' {
+			// if names.len == 1 {
+			// 	p.error('no new variables on left side of :=')
+			// }
+			continue
 		}
+		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
 		// name := p.check_name()
@@ -1394,6 +1396,14 @@ fn (p mut Parser) var_decl() {
 		}
 		if name.len > 1 && contains_capital(name) {
 			p.error('variable names cannot contain uppercase letters, use snake_case instead')
+		}
+		if names.len > 1 {
+			if names.len != types.len {
+				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values.')
+			}
+			p.gen(';\n')
+			p.gen('$typ $name = ${mr_var_name}.var_$i')
 		}
 		// p.check_space(.decl_assign) // :=
 		// typ := p.gen_var_decl(name, is_static)
@@ -1588,6 +1598,9 @@ fn (p mut Parser) name_expr() string {
 	}
 	// Variable
 	for { // TODO remove
+	if name == '_' {
+		p.error('cannot use `_` as value.')
+	}
 	mut v := p.find_var_check_new_var(name) or { break }
 	if ptr {
 		p.gen('& /*v*/ ')
