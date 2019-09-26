@@ -38,11 +38,11 @@ mut:
 
 fn new_scanner(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
-		verror('"$file_path" doesn\'t exist')
+		verror("$file_path doesn't exist")
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		verror('scanner: failed to open "$file_path"')
+		verror('scanner: failed to open $file_path')
 		return 0
 	}
 
@@ -660,14 +660,15 @@ fn (s &Scanner) error(msg string) {
 		println(pointerline)
 	}
 	fullpath := os.realpath( s.file_path )
+	_ = fullpath
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output
 	// and jump to their source with a keyboard shortcut.
 	// Using only the filename leads to inability of IDE/editors
 	// to find the source file, when it is in another folder.
-	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
-	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
+	println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
+	//println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
 	exit(1)
 }
 
@@ -834,53 +835,8 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s &Scanner) get_opening_bracket() int {
-	mut pos := s.pos
-	mut parentheses := 0
-	mut inside_string := false
-
-	for pos > 0 && s.text[pos] != `\n` {
-		if s.text[pos] == `)` && !inside_string {
-			parentheses++
-		}
-		if s.text[pos] == `(` && !inside_string {
-			parentheses--
-		}
-		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` { // ` // apostrophe balance comment. do not remove
-			inside_string = !inside_string
-		}
-		if parentheses == 0 {
-			break
-		}
-		pos--
-	}
-	return pos
-}
-
-// Foo { bar: 3, baz: 'hi' } => '{ bar: 3, baz: "hi" }'
-fn (s mut Scanner) create_type_string(T Type, name string) {
-	line := s.line_nr
-	inside_string := s.inside_string
-	mut newtext := '\'{ '
-	start := s.get_opening_bracket() + 1
-	end := s.pos
-	for i, field in T.fields {
-		if i != 0 {
-			newtext += ', '
-		}
-		newtext += '$field.name: ' + '$${name}.${field.name}'
-	}
-	newtext += ' }\''
-	s.text = s.text.substr(0, start) + newtext + s.text.substr(end, s.text.len)
-	s.pos = start - 2
-	s.line_nr = line
-	s.inside_string = inside_string
-}
-
 fn contains_capital(s string) bool {
-	// for c in s {
-	for i := 0; i < s.len; i++ {
-		c := s[i]
+	for c in s {
 		if c >= `A` && c <= `Z` {
 			return true
 		}

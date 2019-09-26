@@ -7,7 +7,7 @@
 - remove all compiler memory leaks
 - fix child <T> function calls
 + fix non-ascii rendering in gg (ä, å, etc)
-- cache all tokens once
++ cache all tokens once
 - enable vfmt
 - bring back vdoc and regenerate all module docs
 - optimize the parser (reduce map lookups)

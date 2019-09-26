@@ -9,12 +9,17 @@ import (
 	strings
 )
 
+const (
+	vgen_file_name = 'vgen.tmp'
+)
+
 // TODO rename to Token
 // TODO rename enum Token to TokenType
 struct Tok {
-       tok Token
-       lit string
-       line_nr int
+	tok      Token
+	lit      string
+	line_nr  int
+	name_idx int // name table index for O(1) lookup
 //       col int
 }
 
@@ -103,6 +108,8 @@ fn (v mut V) new_parser(path string) Parser {
 			break
 		}		
 	}
+	
+	//vgen_file := os.open_append(vgen_file_name) or { panic(err) }
 
 	mut p := Parser {
 		v: v
@@ -120,7 +127,6 @@ fn (v mut V) new_parser(path string) Parser {
 		os: v.os
 		vroot: v.vroot
 		local_vars: [Var{}].repeat(MaxLocalVars)
-			
 	}
 	$if js {
 		p.is_js = true
@@ -144,7 +150,15 @@ fn (v mut V) new_parser(path string) Parser {
 	                break
 	        }
 	}
-
+	
+	v.add_parser(p)
+	/*
+	if !(p in v.parsers) {
+		v.parsers << p
+		
+	}	
+	*/
+	
 	//p.next()
 	//p.scanner.debug_tokens()
 	return p
@@ -202,6 +216,7 @@ fn (p & Parser) peek() Token {
 
 
 
+/*
 fn (p mut Parser) next_old() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
@@ -210,6 +225,7 @@ fn (p mut Parser) next_old() {
 	p.tok = res.tok
 	p.lit = res.lit
 }
+*/
 
 fn (p &Parser) log(s string) {
 /*
@@ -423,7 +439,7 @@ fn (p mut Parser) import_statement() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
-	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
+	if p.peek() == .number { // && p.scanner.text[p.scanner.pos + 1] == `.` {
 		p.error('bad import format. module/submodule names cannot begin with a number')
 	}
 	mut mod := p.check_name().trim_space()
@@ -842,15 +858,18 @@ fn (p mut Parser) check(expected Token) {
 		print_backtrace()
 		p.error(s)
 	}
+	/*
 	if expected == .rcbr {
 		p.fmt_dec()
 	}
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
+	// TODO
 	if expected == .lcbr && p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
 		p.fgenln('')
 		p.fmt_inc()
 	}
+	*/
 	p.next()
 
 if p.scanner.line_comment != '' {
@@ -3896,6 +3915,10 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 }
 
 fn (p mut Parser) check_unused_imports() {
+	// Don't run in the generated V file with `.str()`
+	if p.fileis(vgen_file_name) {
+		return
+	}	
 	mut output := ''
 	for alias, mod in p.import_table.imports {
 		if !p.import_table.is_used_import(alias) {
