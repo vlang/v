@@ -631,8 +631,8 @@ pub fn executable() string {
 		// lol
 		return os.args[0]
 	}
-	$if solaris {
-	}
+	//$if solaris {
+	//}
 	$if netbsd {
 		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
