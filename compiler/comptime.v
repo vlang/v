@@ -20,7 +20,7 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
-		if name in SupportedPlatforms {
+		if name in supported_platforms {
 			ifdef_name := os_name_to_ifdef(name)
 			if not {
 				p.genln('#ifndef $ifdef_name')
@@ -42,7 +42,7 @@ fn (p mut Parser) comp_time() {
 		}
 		else {
 			println('Supported platforms:')
-			println(SupportedPlatforms)
+			println(supported_platforms)
 			p.error('unknown platform `$name`')
 		}
 		if_returns := p.returns
