@@ -1,28 +1,28 @@
 module main
 
 import (
-	http 
-	os 
+	http
+	os
 	json
-) 
+)
 
 const (
-	//url = 'http://localhost:8089' 
-	url = 'https://vpm.best' 
-) 
+	//url = 'http://localhost:8089'
+	url = 'https://vpm.best'
+)
 
 struct Mod {
-	id int 
-	name string 
+	id int
+	name string
 	url string
-	nr_downloads int 
+	nr_downloads int
 }
 
 fn main() {
 	if os.args.len <= 1 {
 		println('usage: vget module [module] [module] [...]')
 		return
-	} 
+	}
 
 	home := os.home_dir()
 	home_vmodules := '${home}.vmodules'
@@ -37,26 +37,26 @@ fn main() {
 	for name in names {
 		modurl := url + '/jsmod/$name'
 		r := http.get(modurl) or { panic(err) }
-		
+
 		if r.status_code == 404 {
 			println('Skipping module "$name", since $url reported that "$name" does not exist.')
 			errors++
 			continue
         	}
-		
+
         	if r.status_code != 200 {
 			println('Skipping module "$name", since $url responded with $r.status_code http status code. Please try again later.')
 			errors++
 			continue
 		}
-		
+
 		s := r.text
 		mod := json.decode(Mod, s) or {
 			errors++
 			println('Skipping module "$name", since its information is not in json format.')
 			continue
 		}
-		
+
 		if( '' == mod.url || '' == mod.name ){
 			errors++
 			// a possible 404 error, which means a missing module?
