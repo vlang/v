@@ -70,11 +70,27 @@ fn (v mut V) cc() {
 		v.out_name = ModPath + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
+  
+	mut debug_options := '-g'
+	mut optimization_options := '-O2'
+	if v.pref.ccompiler.contains('clang') {
+		if v.pref.is_debug {
+			debug_options = '-g -O0'
+		}
+		optimization_options = '-O3 -flto'
+	}
+	if v.pref.ccompiler.contains('gcc') {
+		if v.pref.is_debug {
+			debug_options = '-g3'
+		}
+		optimization_options = '-O3 -fno-strict-aliasing -flto'
+	}
+
 	if v.pref.is_prod {
-		a << '-O2'
+		a << optimization_options
 	}
 	else {
-		a << '-g'
+		a << debug_options
 	}
 
 	if v.pref.is_debug && os.user_os() != 'windows'{
