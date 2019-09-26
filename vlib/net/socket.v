@@ -8,24 +8,6 @@ pub:
 	proto int
 }
 
-struct C.WSAData {
-mut:
-	wVersion u16
-	wHighVersion u16	
-	szDescription [257]byte
-	szSystemStatus [129]byte
-	iMaxSockets u16
-	iMaxUdpDg u16
-	lpVendorInfo byteptr
-}
-
-const (
-    WSA_V1  = 0x100 // C.MAKEWORD(1, 0)
-    WSA_V11 = 0x101 // C.MAKEWORD(1, 1)
-    WSA_V2  = 0x200 // C.MAKEWORD(2, 0)
-    WSA_V21 = 0x201 // C.MAKEWORD(2, 1)
-    WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
-)
 
 struct C.in_addr {
 mut:
@@ -55,13 +37,6 @@ struct C.sockaddr_storage {}
 
 // create socket
 pub fn socket(family int, _type int, proto int) ?Socket {
-	$if windows {
-		mut wsadata := C.WSAData{}
-		res := C.WSAStartup(WSA_V22, &wsadata)
-		if res != 0 {
-			return error('socket: WSAStartup failed')
-		}
-	}
 
 	sockfd := C.socket(family, _type, proto)
 	one:=1
@@ -316,5 +291,3 @@ pub fn (s Socket) get_port() int {
 	sockname_res := C.getsockname(s.sockfd, &addr, &size)
 	return int(C.ntohs(addr.sin_port))
 }
-
-

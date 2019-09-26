@@ -4,3 +4,5 @@ module net
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netdb.h>
+
+fn init() int { return 1 }
