@@ -1,46 +1,48 @@
 %{
     #include <stdio.h>
     #include <stdlib.h>
-
-    #define STR_DATA 1
-    #define DEC_INT 2
-    #define BIN_INT 3
-    #define HEX_INT 4
-    #define OCT_INT 5
-    #define FLOAT_NUM 6
-    #define TIME_STAMP 7
+    #define YYDEBUG 1
+    struct toml_key_t;
+    struct table_t;
+    struct array_t;
+    // 
+    int parse_int(int head,int data);
+    int parse_array(const char* key_name,array_t rtn);
+    int parse_table(const char* tbl_name,table_t rtn);
+    int load_key(const char* key_name,const char* tbl_name,const char* rtn_key,int* val_type)
 %}
 
+%token TABLE DATA
 %start TOML
 
 %%
     TOML: TABLE | ARRAY ;
-    DATA: [INT_KEY | BIN_KEY | HEX_KEY | OCT_KEY | STRING_KEY];
+    DATA: [INT_KEY | BIN_KEY | HEX_KEY | OCT_KEY | STRING_KEY | FLOAT];
     DEC_KEY: 
-           |INTEGER;
+           | INTEGER;
            {
-              parse_int(1,INTEGER); 
+                parse_int(1,INTEGER); 
            }
     BIN_KEY:
            | BIN_HEADER 
            | BINARY;
            {
-               parse_int(2,BINARY)
+                parse_int(2,BINARY);
            }
     HEX_KEY:
            | HEX_HEADER 
            | BINARY;
            {
-               parse_int(3,BINARY)
+                parse_int(3,BINARY);
            }
     OCT_KEY:
            | OCT_HEADER 
            | BINARY;
            {
-               parse_int(4,BINARY)
+                parse_int(4,BINARY);
            }
     STRING_KEY: 
-              | [STRING | MULTI_LINE_STRING];
+              | STRING;
     FLOAT_KEY: FLOAT;
     TABLE_OF_ARRAY:LBRACKET|LBRACKET|TABLE_NAME|RBRACKET|RBRACKET ;
     TABLE_NAME:
