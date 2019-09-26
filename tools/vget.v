@@ -21,7 +21,7 @@ struct Mod {
 fn main() {
 	if os.args.len <= 1 {
 		println('usage: vget module [module] [module] [...]')
-		return
+		exit(2)
 	}
 
 	home := os.home_dir()
