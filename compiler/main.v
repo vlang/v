@@ -458,7 +458,7 @@ string _STR_TMP(const char *fmt, ...) {
 			// Generate `main` which calls every single test function
 			v.gen_main_start()
 			for _, f in v.table.fns {
-				if f.name.starts_with('test_') {
+				if f.name.starts_with('main__test_') {
 					cgen.genln('$f.name();')
 				}
 			}
