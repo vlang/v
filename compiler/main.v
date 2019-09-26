@@ -28,7 +28,7 @@ enum BuildMode {
 
 const (
 	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'msvc', 'android', 'js']
+		'netbsd', 'dragonfly', 'msvc', 'android', 'js', 'solaris']
 	ModPath            = os.home_dir() + '/.vmodules/'
 )
 
@@ -42,6 +42,8 @@ enum OS {
 	dragonfly
 	msvc
 	js
+	android
+	solaris
 }
 
 enum Pass {
@@ -799,6 +801,9 @@ fn new_v(args[]string) &V {
 		$if dragonfly {
 			_os = .dragonfly
 		}
+		$if solaris {
+			_os = .solaris
+		}
 	}
 	else {
 		switch target_os {
@@ -811,6 +816,7 @@ fn new_v(args[]string) &V {
 		case 'dragonfly': _os = .dragonfly
 		case 'msvc': _os = .msvc
 		case 'js': _os = .js
+		case 'solaris': _os = .solaris
 		}
 	}
 	//println('OS=$_os')
