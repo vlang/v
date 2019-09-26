@@ -2037,7 +2037,10 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	// field
 	if has_field {
 		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
-		field := p.table.find_field(typ, struct_field) or { panic('field') }
+		field := p.table.find_field(typ, struct_field) or {
+			p.error('missing field: $struct_field in type $typ.name')
+			exit(1)
+		}
 		if !field.is_mut && !p.has_immutable_field {
 			p.has_immutable_field = true
 			p.first_immutable_field = field
@@ -3008,7 +3011,10 @@ fn (p mut Parser) struct_init(typ string) string {
 			if field in inited_fields {
 				p.error('already initialized field `$field` in `$t.name`')
 			}
-			f := t.find_field(field) or { panic('field') }
+			f := t.find_field(field) or {
+				p.error('no such field: "$field" in type $typ')
+				break
+			}
 			inited_fields << field
 			p.gen_struct_field_init(field)
 			p.check(.colon)
@@ -3784,23 +3790,35 @@ fn (p &Parser) prepend_mod(name string) string {
 
 fn (p mut Parser) go_statement() {
 	p.check(.key_go)
+	mut gopos := p.scanner.get_scanner_pos()
 	// TODO copypasta of name_expr() ?
-	// Method
 	if p.peek() == .dot {
+		// Method
 		var_name := p.lit
-		v := p.find_var(var_name) or { return }
+		v := p.find_var(var_name) or {
+			return
+		}
 		p.mark_var_used(v)
+		gopos = p.scanner.get_scanner_pos()
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
-		method := p.table.find_method(typ, p.lit) or { panic('go method') }
+		method := p.table.find_method(typ, p.lit) or {
+			p.error_with_position('go method missing $var_name', gopos)
+			return
+		}
 		p.async_fn_call(method, 0, var_name, v.typ)
 	}
-	// Normal function
 	else {
-		f := p.table.find_fn(p.lit) or { panic('fn') }
+		f_name := p.lit
+		// Normal function
+		f := p.table.find_fn(p.prepend_mod(f_name)) or {
+			println( p.table.debug_fns() )
+			p.error_with_position('can not find function $f_name', gopos)
+			return
+		}
 		if f.name == 'println' || f.name == 'print' {
-			p.error('`go` cannot be used with `println`')
+			p.error_with_position('`go` cannot be used with `println`', gopos)
 		}
 		p.async_fn_call(f, 0, '', '')
 	}
