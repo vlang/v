@@ -42,9 +42,9 @@ fn main() {
 			println('Skipping module "$name", since $url reported that "$name" does not exist.')
 			errors++
 			continue
-        	}
+		}
 
-        	if r.status_code != 200 {
+		if r.status_code != 200 {
 			println('Skipping module "$name", since $url responded with $r.status_code http status code. Please try again later.')
 			errors++
 			continue
