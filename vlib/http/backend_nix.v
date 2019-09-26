@@ -28,14 +28,7 @@ struct C.SSL {
 } 
 
 fn init() int {
-	$if mac { 
-		C.SSL_library_init() 
-	} 
-	$if linux { 
-		C.SSL_library_init() 
-	} 
-	//C.SSL_load_error_strings() 
-	//C.OPENSSL_config(0) 
+	C.SSL_library_init() 
 	return 1
 }
 
