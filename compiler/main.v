@@ -368,7 +368,7 @@ fn (v mut V) compile() {
 		}
 	}
 	$if js {
-		cgen.genln('main();')
+		cgen.genln('main__main();')
 	}	
 	cgen.save()
 	v.cc()
