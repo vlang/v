@@ -13,12 +13,12 @@ import strings
 // (older) system openssl.
 #flag linux -I/usr/local/include/openssl -L/usr/local/lib
 
-#flag windows -I @VROOT/thirdparty/openssl/include 
-#flag darwin -I @VROOT/thirdparty/openssl/include 
 #flag -l ssl -l crypto
 // MacPorts
+#flag darwin -I/opt/local/include
 #flag darwin -L/opt/local/lib
 // Brew
+#flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
 #include <openssl/ssl.h>
