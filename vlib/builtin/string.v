@@ -1009,3 +1009,17 @@ pub fn (s string) bytes() []byte {
 	C.memcpy(buf.data, s.str, s.len)
 	return buf
 }
+
+// Returns a new string with a specified number of copies of the string it was called on.
+pub fn (s string) repeat(count int) string {
+	if count <= 1 {
+		return s
+	}
+	ret := malloc(s.len * count + count)
+	C.strcpy(ret, s.str)
+	for count > 1 {
+		C.strcat(ret, s.str)
+		count--
+	}
+	return string(ret)
+}
