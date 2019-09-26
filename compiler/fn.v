@@ -5,7 +5,6 @@
 module main
 
 import(
-	os
 	strings
 )
 
@@ -34,6 +33,7 @@ mut:
 	is_decl       bool // type myfn fn(int, int)
 	defer_text    []string
 	//gen_types []string
+	fn_name_sp    ScannerPos
 }
 
 fn (p &Parser) find_var(name string) ?Var {
@@ -215,6 +215,7 @@ fn (p mut Parser) fn_decl() {
 	else {
 		f.name = p.check_name()
 	}
+	f.fn_name_sp = p.scanner.get_scanner_pos()
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -244,7 +245,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// full mod function name
 	// os.exit ==> os__exit()
-	if !is_c && !p.builtin_mod && p.mod != 'main' && receiver_typ.len == 0 {
+	if !is_c && !p.builtin_mod && receiver_typ.len == 0 {
 		f.name = p.prepend_mod(f.name)
 	}
 	if p.first_pass() && receiver_typ.len == 0 {
@@ -318,14 +319,12 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Register function
 	f.typ = typ
-	mut str_args := f.str_args(p.table)
+	str_args := f.str_args(p.table)
 	// Special case for main() args
-	if f.name == 'main' && !has_receiver {
+	if f.name == 'main__main' && !has_receiver {
 		if str_args != '' || typ != 'void' {
-			p.error('fn main must have no arguments and no return values')
+			p.error_with_position('fn main must have no arguments and no return values', f.fn_name_sp)
 		}
-		typ = 'int'
-		str_args = 'int argc, char** argv'
 	}
 	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
@@ -341,7 +340,7 @@ fn (p mut Parser) fn_decl() {
 	// Internally it's still stored as "register" in type User
 	mut fn_name_cgen := p.table.fn_gen_name(f)
 	// Start generation of the function body
-	skip_main_in_test := f.name == 'main' && p.pref.is_test
+	skip_main_in_test := false
 	if !is_c && !is_live && !is_sig && !is_fn_header && !skip_main_in_test {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
@@ -434,7 +433,7 @@ fn (p mut Parser) fn_decl() {
 			fn_decl += '; // $f.name'
 		}
 		// Add function definition to the top
-		if !is_c && f.name != 'main' && p.first_pass() {
+		if !is_c && p.first_pass() {
 			// TODO hack to make Volt compile without -embed_vlib
 			if f.name == 'darwin__nsstring' && p.pref.build_mode == .default_mode {
 				return
@@ -447,37 +446,10 @@ fn (p mut Parser) fn_decl() {
 		//p.genln('// live_function body start')
 		p.genln('pthread_mutex_lock(&live_fn_mutex);')
 	}
-	if f.name == 'main' || f.name == 'WinMain' {
-		p.genln('init_consts();')
-		if 'os' in p.table.imports {
-			if f.name == 'main' {
-				p.genln('os__args = os__init_os_args(argc, (byteptr*)argv);')
-			}
-			else if f.name == 'WinMain' {
-				p.genln('os__args = os__parse_windows_cmd_line(pCmdLine);')
-			}
-		}
-		// We are in live code reload mode, call the .so loader in bg
-		if p.pref.is_live {
-			file_base := os.filename(p.file_path).replace('.v', '')
-			if p.os != .windows && p.os != .msvc {
-				so_name := file_base + '.so'
-				p.genln('
-load_so("$so_name");
-pthread_t _thread_so;
-pthread_create(&_thread_so , NULL, &reload_so, NULL); ')
-			} else {
-				so_name := file_base + if p.os == .msvc {'.dll'} else {'.so'}
-				p.genln('
-live_fn_mutex = CreateMutexA(0, 0, 0);
-load_so("$so_name");
-unsigned long _thread_so;
-_thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
-				')
-			}
-		}
+
+	if f.name == 'main__main' || f.name == 'main' || f.name == 'WinMain' {
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
-			p.error('tests cannot have function `main`')
+			p.error_with_position('tests cannot have function `main`', f.fn_name_sp)
 		}
 	}
 	// println('is_c=$is_c name=$f.name')
@@ -486,7 +458,7 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		return
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
-	if p.pref.is_prof && f.name != 'main' && f.name != 'time__ticks' {
+	if p.pref.is_prof && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.fn_gen_name(f)
 		if f.defer_text.len > f.scope_level {
@@ -509,8 +481,8 @@ _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);
 		p.genln(f.defer_text[f.scope_level])
 		}
 	}
-	if typ != 'void' && !p.returns && f.name != 'main' && f.name != 'WinMain' {
-		p.error('$f.name must return "$typ"')
+	if typ != 'void' && !p.returns {
+		p.error_with_position('$f.name must return "$typ"', f.fn_name_sp)
 	}
 	if p.attr == 'live' && p.pref.is_so {
 		//p.genln('// live_function body end')

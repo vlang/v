@@ -439,33 +439,52 @@ string _STR_TMP(const char *fmt, ...) {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
 				//println('Generating main()...')
-				cgen.genln('int main() { init_consts();')
+				v.gen_main_start()
 				cgen.genln('$cgen.fn_main;')
-				cgen.genln('return 0; }')
+				v.gen_main_end('return 0')
 			}
 			else {
-				println('panic: function `main` is undeclared in the main module')
-				exit(1)
+				verror('function `main` is not declared in the main module')
 			}
 		}
 		else if v.pref.is_test {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
-			}	
+			}
 			// make sure there's at least on test function
 			if !v.table.has_at_least_one_test_fn() {
 				verror('test files need to have at least one test function')
-			}	
+			}
 			// Generate `main` which calls every single test function
-			cgen.genln('int main() { init_consts();')
+			v.gen_main_start()
 			for _, f in v.table.fns {
 				if f.name.starts_with('test_') {
 					cgen.genln('$f.name();')
 				}
 			}
-			cgen.genln('return g_test_ok == 0; }')
+			v.gen_main_end('return g_test_ok == 0')
+		}
+		else if v.table.main_exists() {
+			v.gen_main_start()
+			cgen.genln('  main__main();')
+			v.gen_main_end('return 0')
 		}
 	}
+}
+
+fn (v mut V) gen_main_start(){
+	v.cgen.genln('int main(int argc, char** argv) { ')
+	v.cgen.genln('  init_consts();')
+	if 'os' in v.table.imports {
+		v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
+	}
+	v.generate_hotcode_reloading_main_caller()
+	v.cgen.genln('')
+}
+fn (v mut V) gen_main_end(return_statement string){
+	v.cgen.genln('')
+	v.cgen.genln('  $return_statement;')
+	v.cgen.genln('}')
 }
 
 fn final_target_out_name(out_name string) string {

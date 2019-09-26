@@ -643,6 +643,17 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	column := col-1
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
+  
+	fullpath := os.realpath( s.file_path )	
+	// The filepath:line:col: format is the default C compiler
+	// error output format. It allows editors and IDE's like
+	// emacs to quickly find the errors in the output
+	// and jump to their source with a keyboard shortcut.
+	// Using only the filename leads to inability of IDE/editors
+	// to find the source file, when it is in another folder.
+	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
+	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
+
 	if s.should_print_line_on_error && lineend > linestart {
 		line := s.text.substr( linestart, lineend )
 		// The pointerline should have the same spaces/tabs as the offending
@@ -659,16 +670,7 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 		println(line)
 		println(pointerline)
 	}
-	fullpath := os.realpath( s.file_path )
-	_ = fullpath
-	// The filepath:line:col: format is the default C compiler
-	// error output format. It allows editors and IDE's like
-	// emacs to quickly find the errors in the output
-	// and jump to their source with a keyboard shortcut.
-	// Using only the filename leads to inability of IDE/editors
-	// to find the source file, when it is in another folder.
-	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
-	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
+
 	exit(1)
 }
 

@@ -698,7 +698,7 @@ fn (table &Table) is_interface(name string) bool {
 // Do we have fn main()?
 fn (t &Table) main_exists() bool {
 	for _, f in t.fns {
-		if f.name == 'main' {
+		if f.name == 'main__main' {
 			return true
 		}
 	}
