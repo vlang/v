@@ -68,6 +68,34 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
+// blank identifer assignment `_ = 111` 
+fn (p mut Parser) gen_blank_identifier_assign() {
+	p.next()
+	p.check(.assign)
+	pos := p.cgen.add_placeholder()
+	mut typ := p.bool_expression()
+	tmp := p.get_tmp()
+	// handle or
+	if p.tok == .key_orelse {
+		p.cgen.set_placeholder(pos, '$typ $tmp = ')
+		p.genln(';')
+		typ = typ.replace('Option_', '')
+		p.next()
+		p.check(.lcbr)
+		p.genln('if (!$tmp .ok) {')
+		p.register_var(Var {
+			name: 'err'
+			typ: 'string'
+			is_mut: false
+			is_used: true
+		})
+		p.genln('string err = $tmp . error;')
+		p.statements()
+		p.returns = false
+	}
+	p.gen(';')
+}
+
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
@@ -451,22 +479,23 @@ fn type_default(typ string) string {
 	return '{0}'
 }
 
-fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, tmp_typ string) {
+fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
+	// Two arrays of the same type?
 	push_array := typ == expr_type
 	if push_array {
 		p.cgen.set_placeholder(ph, '_PUSH_MANY(&' )
 		p.gen('), $tmp, $typ)')
-	}  else {
-		p.check_types(expr_type, tmp_typ)
+	} else {
+		p.check_types(expr_type, elm_type)
 		// Pass tmp var info to the _PUSH macro
 		// Prepend tmp initialisation and push call
 		// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
-		if tmp_typ.ends_with('*') {
-			p.gen('), $tmp, ${tmp_typ.left(tmp_typ.len - 1)})')
+		if elm_type.ends_with('*') {
+			p.gen('), $tmp, ${elm_type.left(elm_type.len - 1)})')
 		} else {
-			p.gen('), $tmp, $tmp_typ)')
+			p.gen('), $tmp, $elm_type)')
 		}
 	}
 }

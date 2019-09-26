@@ -80,7 +80,7 @@ mut:
 	is_changed      bool
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
-	moved           bool
+	is_moved        bool
 	scanner_pos     ScannerPos // TODO: use only scanner_pos, remove line_nr
 	line_nr         int
 }
@@ -321,7 +321,8 @@ fn (table &Table) known_type(typ_ string) bool {
 }
 
 fn (table &Table) known_type_fast(t &Type) bool {
-	return t.name.len > 0 && !t.is_placeholder
+	return t.name != '' && !t.is_placeholder
+	
 }
 
 fn (t &Table) find_fn(name string) ?Fn {
@@ -333,12 +334,12 @@ fn (t &Table) find_fn(name string) ?Fn {
 }
 
 fn (t &Table) known_fn(name string) bool {
-	_ := t.find_fn(name) or { return false }
+	_ = t.find_fn(name) or { return false }
 	return true
 }
 
 fn (t &Table) known_const(name string) bool {
-	_ := t.find_const(name) or { return false }
+	_ = t.find_const(name) or { return false }
 	return true
 }
 
@@ -389,7 +390,7 @@ fn (t mut Table) rewrite_type(typ Type) {
 fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
 	if type_name == '' {
 		print_backtrace()
-		cerror('add_field: empty type')
+		verror('add_field: empty type')
 	}
 	mut t := table.typesmap[type_name]
 	t.fields << Var {
@@ -404,7 +405,7 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 }
 
 fn (t &Type) has_field(name string) bool {
-	_ := t.find_field(name) or { return false }
+	_ = t.find_field(name) or { return false }
 	return true
 }
 
@@ -422,7 +423,7 @@ fn (t &Type) find_field(name string) ?Var {
 }
 
 fn (table &Table) type_has_field(typ &Type, name string) bool {
-	_ := table.find_field(typ, name) or { return false }
+	_ = table.find_field(typ, name) or { return false }
 	return true
 }
 
@@ -449,7 +450,7 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 	}
 	if type_name == '' {
 		print_backtrace()
-		cerror('add_method: empty type')
+		verror('add_method: empty type')
 	}
 	// TODO table.typesmap[type_name].methods << f
 	mut t := p.table.typesmap[type_name]
@@ -465,12 +466,12 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 }
 
 fn (t &Type) has_method(name string) bool {
-	_ := t.find_method(name) or { return false }
+	_ = t.find_method(name) or { return false }
 	return true
 }
 
 fn (table &Table) type_has_method(typ &Type, name string) bool {
-	_ := table.find_method(typ, name) or { return false }
+	_ = table.find_method(typ, name) or { return false }
 	return true
 }
 
@@ -763,7 +764,7 @@ fn (t &Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		}
 	}
-	cerror('function $fn_name not found')
+	verror('function $fn_name not found')
 	return []string
 }
 
@@ -870,7 +871,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 	// NOTE: come back here
 	// if alias in fit.imports && fit.imports[alias] == mod {}
 	if alias in fit.imports && fit.imports[alias] != mod {
-		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}"')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -881,7 +882,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			cerror('module $mod can only be imported internally by libs.')
+			verror('module $mod can only be imported internally by libs')
 		}
 	}
 	fit.imports[alias] = mod

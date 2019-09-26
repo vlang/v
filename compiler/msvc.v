@@ -202,7 +202,7 @@ fn find_msvc() ?MsvcResult {
 		}
 	}
 	$else {
-		cerror('Cannot find msvc on this OS')
+		verror('Cannot find msvc on this OS')
 		return error('msvc not found')
 	}
 }
@@ -213,7 +213,7 @@ pub fn (v mut V) cc_msvc() {
 		if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 			os.rm(v.out_name_c)
 		}
-		cerror('Cannot find MSVC on this OS.')
+		verror('Cannot find MSVC on this OS')
 		return
 	}
 
@@ -345,11 +345,11 @@ pub fn (v mut V) cc_msvc() {
 
 	res := os.exec(cmd) or {
 		println(err)
-		cerror('msvc error')
+		verror('msvc error')
 		return
 	}
 	if res.exit_code != 0 {
-		cerror(res.output)
+		verror(res.output)
 	}
 	// println(res)
 	// println('C OUTPUT:')
@@ -398,7 +398,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	//NB: the quotes above ARE balanced.
 	println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {
-		cerror(err)
+		verror(err)
 		return
 	}
 	println(res.output)
@@ -425,7 +425,7 @@ fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 		// by the compiler
 		if flag.name == '-l' {
 			if flag.value.ends_with('.dll') {
-				cerror('MSVC cannot link against a dll (`#flag -l $flag.value`)')
+				verror('MSVC cannot link against a dll (`#flag -l $flag.value`)')
 			}
 			// MSVC has no method of linking against a .dll
 			// TODO: we should look for .defs aswell

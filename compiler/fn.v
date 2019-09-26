@@ -89,8 +89,19 @@ fn (p mut Parser) mark_var_changed(v Var) {
 	p.local_vars[v.idx].is_changed = true
 }
 
+fn (p mut Parser) mark_arg_moved(v Var) {
+	for i, arg in p.cur_fn.args {
+		if arg.name == v.name {
+			//println('setting f $p.cur_fn.name arg $arg.name to is_mut')
+			p.cur_fn.args[i].is_moved = true
+			break
+		}	
+	}	
+	p.table.fns[p.cur_fn.name] = p.cur_fn
+}
+
 fn (p mut Parser) known_var(name string) bool {
-	_ := p.find_var(name) or {
+	_ = p.find_var(name) or {
 		return false
 	}	
 	return true
@@ -275,18 +286,16 @@ fn (p mut Parser) fn_decl() {
 		typ = p.get_type()
 	}
 	// multiple returns
-	if typ.starts_with('MultiReturn_') {
-		if !p.first_pass() && !p.table.known_type(typ) {
-			p.table.register_type2(Type{
-				cat: TypeCategory.struct_,
-				name: typ,
-				mod: p.mod
-			})
-			for i, t in typ.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_') {
-				p.table.add_field(typ, 'var_$i', t, false, '', .public)
-			}
-			p.cgen.typedefs << 'typedef struct $typ $typ;'
+	if typ.starts_with('_V_MulRet_') && p.first_pass() && !p.table.known_type(typ) {
+		p.table.register_type2(Type{
+			cat: TypeCategory.struct_,
+			name: typ,
+			mod: p.mod
+		})
+		for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
+			p.table.add_field(typ, 'var_$i', t, false, '', .public)
 		}
+		p.cgen.typedefs << 'typedef struct $typ $typ;'
 	}
 	// Translated C code can have empty functions (just definitions)
 	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
@@ -761,7 +770,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			if is_mut {
 				typ += '*'
 			}
-			v := Var {
+			v := Var{
 				name: name
 				typ: typ
 				is_arg: true
@@ -777,7 +786,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			p.next()
 		}
 		if p.tok == .dotdot {
-			f.args << Var {
+			f.args << Var{
 				name: '..'
 			}
 			p.next()
@@ -820,10 +829,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			'_panic_debug ($p.scanner.line_nr, tos2((byte *)"$file_path"), tos2((byte *)"$mod_name"), tos2((byte *)"$fn_name"), '
 		))
 	}
-	// Receiver - first arg
 	for i, arg in f.args {
-		// println('$i) arg=$arg.name')
-		// Skip receiver, because it was already generated in the expression
+		// Receiver is the first arg
+		// Skip the receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
 			if f.args.len > 1 && !p.is_js {
 				p.gen(',')
@@ -867,7 +875,14 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			}
 		}
 		p.expected_type = arg.typ
+		clone := p.pref.autofree && arg.typ == 'string' && arg.is_moved && p.mod != 'builtin'
+		if clone {
+			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
+		}	
 		mut typ := p.bool_expression()
+		if clone {
+			p.gen(')')
+		}
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls.
 		// `println(777)` => `printf("%d\n", 777)`
@@ -929,20 +944,31 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		expected := arg.typ
 		// println('fn arg got="$got" exp="$expected"')
 		if !p.check_types_no_throw(got, expected) {
-			mut err := 'Fn "$f.name" wrong arg #${i+1}. '
-			err += 'Expected "$arg.typ" ($arg.name)  but got "$typ"'
-			p.error(err)
+			mut j := i
+			if f.is_method {
+				j--
+			}	
+			mut nr := '${i+1}th'
+			if j == 0 {
+				nr = 'first'
+			} else if j == 1 {
+				nr = 'second'
+			}	 else if j == 2 {
+				nr = 'third'
+			}	
+			p.error('cannot use type `$typ` as type `$arg.typ` in $nr ' +
+				'argument to `$f.name()`')
 		}
 		is_interface := p.table.is_interface(arg.typ)
 		// Add `&` or `*` before an argument?
 		if !is_interface {
 			// Dereference
-			if got.contains('*') && !expected.contains('*') {
+			if got.ends_with('*') && !expected.ends_with('*') {
 				p.cgen.set_placeholder(ph, '*')
 			}
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
-			if !got.contains('*') && expected.contains('*') && got != 'voidptr' {
+			if !got.ends_with('*') && expected.ends_with('*') && got != 'voidptr' {
 				// Special case for mutable arrays. We can't `&` function results,
 				// have to use `(array[]){ expr }` hack.
 				if expected.starts_with('array_') && expected.ends_with('*') {

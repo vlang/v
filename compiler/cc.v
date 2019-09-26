@@ -129,7 +129,7 @@ fn (v mut V) cc() {
 	// Output executable name
 	a << '-o "$v.out_name"'
 	if os.dir_exists(v.out_name) {
-		cerror('\'$v.out_name\' is a directory')
+		verror('\'$v.out_name\' is a directory')
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.os == .mac {
@@ -176,12 +176,12 @@ fn (v mut V) cc() {
 		println(cmd)
 	}
 	ticks := time.ticks()
-	res := os.exec(cmd) or { cerror(err) return }
+	res := os.exec(cmd) or { verror(err) return }
 	if res.exit_code != 0 {
 
 		if res.exit_code == 127 {
 			// the command could not be found by the system
-			cerror('C compiler error, while attempting to run: \n' +
+			verror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
 				'-----------------------------------------------------------\n' +
@@ -200,7 +200,7 @@ fn (v mut V) cc() {
 				println('')
 			}
 		}
-		cerror('C error. This should never happen. ' +
+		verror('C error. This should never happen. ' +
 			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	diff := time.ticks() - ticks
@@ -224,7 +224,7 @@ fn (v mut V) cc() {
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			cerror(err)
+			verror(err)
 			return
 		}
 		println(ress.output)

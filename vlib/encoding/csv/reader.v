@@ -12,7 +12,7 @@ const (
 	err_comment_is_delim = error('encoding.csv: comment cannot be the same as delimiter')
 	err_invalid_delim    = error('encoding.csv: invalid delimiter')
 	err_eof              = error('encoding.csv: end of file')
-	err_invalid_le       = error('encoding.csv: could not find any valid line endings.')
+	err_invalid_le       = error('encoding.csv: could not find any valid line endings')
 )
 
 

@@ -13,9 +13,10 @@ struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
-	file_pcguard   string // When p.file_pcguard != '', it contains a
-	                      // C ifdef guard clause that must be put before
-	                      // the #include directives in the parsed .v file
+	// When p.file_pcguard != '', it contains a
+	// C ifdef guard clause that must be put before
+	// the #include directives in the parsed .v file
+	file_pcguard   string
 	v              &V
 	pref           &Preferences // Preferences shared from V struct
 mut:
@@ -36,7 +37,7 @@ mut:
 	expr_var       Var
 	has_immutable_field bool
 	first_immutable_field Var
-	assigned_type  string
+	assigned_type  string // non-empty if we are in an assignment expression
 	expected_type  string
 	tmp_cnt        int
 	is_script      bool
@@ -74,7 +75,7 @@ mut:
 }
 
 const (
-	EmptyFn = Fn { }
+	EmptyFn = Fn{}
 	MainFn= Fn{name:'main'}
 )
 
@@ -276,6 +277,8 @@ fn (p mut Parser) parse(pass Pass) {
 			p.cgen.consts << g
 		case Token.eof:
 			//p.log('end of parse()')
+			// TODO: check why this was added? everything seems to work
+			// without it, and it's already happening in fn_decl
 			// if p.is_script && !p.pref.is_test {
 			// 	p.set_current_fn( MainFn )
 			// 	p.check_unused_variables()
@@ -285,7 +288,7 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			if false && !p.first_pass() && p.fileis('main.v') {
 				out := os.create('/var/tmp/fmt.v') or {
-					cerror('failed to create fmt.v')
+					verror('failed to create fmt.v')
 					return
 				}
 				out.writeln(p.scanner.fmt_out.str())
@@ -352,7 +355,7 @@ fn (p mut Parser) import_statement() {
 		p.error('bad import format')
 	}
 	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
-		p.error('bad import format. module/submodule names cannot begin with a number.')
+		p.error('bad import format. module/submodule names cannot begin with a number')
 	}
 	mut mod := p.check_name().trim_space()
 	mut mod_alias := mod
@@ -488,7 +491,7 @@ fn key_to_type_cat(tok Token) TypeCategory {
 	case Token.key_union: return TypeCategory.union_
 	//Token.key_ => return .interface_
 	}
-	cerror('Unknown token: $tok')
+	verror('Unknown token: $tok')
 	return TypeCategory.builtin
 }
 
@@ -710,6 +713,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		if p.tok == .comma {
 			p.next()
 		}
+		// !!!! NAME free
 		p.table.register_const(name, enum_name, p.mod)
 		val++
 	}
@@ -863,7 +867,7 @@ fn (p mut Parser) get_type() string {
 		}
 		p.check(.rpar)
 		// p.inside_tuple = false
-		return 'MultiReturn_' + types.join('_Z_').replace('*', '_ZptrZ_')
+		return '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
 	}
 	// fn type
 	if p.tok == .func {
@@ -966,7 +970,7 @@ fn (p mut Parser) get_type() string {
 		typ = p.lit
 	}
 	else {
-		if warn {
+		if warn && p.mod != 'ui' {
 			p.warn('use `&Foo` instead of `*Foo`')
 		}
 		// Module specified? (e.g. gx.Image)
@@ -1113,29 +1117,28 @@ fn (p mut Parser) close_scope() {
 	mut i := p.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.local_vars[i]
-		//if p.cur_fn.name == 'main' {
-			//println('var in main $v.name $v.typ $v.is_alloc ptr=$v.ptr')
-		//}	
 		if v.scope_level ≠ p.cur_fn.scope_level {
-			// println('breaking. "$v.name" v.scope_level=$v.scope_level')
 			break
 		}
 		// Clean up memory, only do this if -autofree was passed for now
-		if p.pref.autofree && v.is_alloc && !p.pref.is_test {
+		if p.pref.autofree && v.is_alloc { // && !p.pref.is_test {
 			mut free_fn := 'free'
 			if v.typ.starts_with('array_') {
 				free_fn = 'v_array_free'
 			} else if v.typ == 'string' {
 				free_fn = 'v_string_free'
-				continue
+				//if p.fileis('str.v') {
+					//println('freeing str $v.name')
+				//}
+				//continue
 			}	else if v.ptr || v.typ.ends_with('*') {
 				free_fn = 'v_ptr_free'
 				//continue
 			}	 else {
 				continue
 			}	
-			//if false && p.returns {
 			if p.returns {
+				// Don't free a variable that's being returned
 				if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
 					prev_line := p.cgen.lines[p.cgen.lines.len-2]
 					p.cgen.lines[p.cgen.lines.len-2] =
@@ -1195,6 +1198,10 @@ fn (p mut Parser) statement(add_semi bool) string {
 		else if p.peek() == .decl_assign || p.peek() == .comma {
 			//p.log('var decl')
 			p.var_decl()
+		}
+		// `_ = 777`
+		else if p.lit == '_' && p.peek() == .assign {
+			p.gen_blank_identifier_assign()
 		}
 		else {
 			// panic and exit count as returns since they stop the function
@@ -1287,7 +1294,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 ')
 			}
 		}
-		p.error('`$v.name` is immutable.')
+		p.error('`$v.name` is immutable')
 	}
 	if !v.is_changed {
 		p.mark_var_changed(v)
@@ -1366,19 +1373,20 @@ fn (p mut Parser) var_decl() {
 	// t := p.bool_expression()
 	p.var_decl_name = mr_var_name
 	t := p.gen_var_decl(mr_var_name, is_static)
-
 	mut types := [t]
 	// multiple returns
 	if names.len > 1 {
 		// should we register __ret var?
-		types = t.replace('MultiReturn_', '').replace('_ZptrZ_', '*').split('_Z_')
+		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
 	}
 	for i, name in names {
-		typ := types[i]
-		if names.len > 1 {
-			p.gen(';\n')
-			p.gen('$typ $name = ${mr_var_name}.var_$i')
+		if name == '_' {
+			if names.len == 1 {
+				p.error('no new variables on left side of `:=`')
+			}
+			continue
 		}
+		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
 		var_scanner_pos := p.scanner.get_scanner_pos()
 		// name := p.check_name()
@@ -1392,6 +1400,14 @@ fn (p mut Parser) var_decl() {
 		if name.len > 1 && contains_capital(name) {
 			p.error('variable names cannot contain uppercase letters, use snake_case instead')
 		}
+		if names.len > 1 {
+			if names.len != types.len {
+				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values')
+			}
+			p.gen(';\n')
+			p.gen('$typ $name = ${mr_var_name}.var_$i')
+		}
 		// p.check_space(.decl_assign) // :=
 		// typ := p.gen_var_decl(name, is_static)
 		p.register_var(Var {
@@ -1402,8 +1418,10 @@ fn (p mut Parser) var_decl() {
 			scanner_pos: var_scanner_pos
 			line_nr: var_scanner_pos.line_nr
 		})
+		//if p.fileis('str.v') {
+			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
+		//}
 	}
-	//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 	p.var_decl_name = ''
 	p.is_empty_c_struct_init = false
 }
@@ -1583,6 +1601,9 @@ fn (p mut Parser) name_expr() string {
 	}
 	// Variable
 	for { // TODO remove
+	if name == '_' {
+		p.error('cannot use `_` as value')
+	}
 	mut v := p.find_var_check_new_var(name) or { break }
 	if ptr {
 		p.gen('& /*v*/ ')
@@ -1590,6 +1611,11 @@ fn (p mut Parser) name_expr() string {
 	else if deref {
 		p.gen('*')
 	}
+	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
+		p.assigned_type == 'string' {
+		p.warn('setting moved ' + v.typ)
+		p.mark_arg_moved(v)
+	}	
 	mut typ := p.var_expr(v)
 	// *var
 	if deref {
@@ -2090,11 +2116,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	}
 	// TODO move this from index_expr()
 	// TODO if p.tok in ...
-	// if p.tok in [.assign, .plus_assign, .minus_assign]
-	if (p.tok == .assign && !p.is_sql) || p.tok == .plus_assign || p.tok == .minus_assign ||
-	p.tok == .mult_assign || p.tok == .div_assign || p.tok == .xor_assign || p.tok == .mod_assign ||
-	p.tok == .or_assign || p.tok == .and_assign || p.tok == .righ_shift_assign ||
-	p.tok == .left_shift_assign {
+	if (p.tok == .assign && !p.is_sql) || p.tok.is_assign() {
 		if is_indexer && is_str && !p.builtin_mod {
 			p.error('strings are immutable')
 		}
@@ -2201,8 +2223,14 @@ fn (p mut Parser) expression() string {
 			if !p.expr_var.is_changed {
 				p.mark_var_changed(p.expr_var)
 			}
+			p.gen('/*typ = $typ   tmp_typ=$tmp_typ*/')
+			ph_clone := p.cgen.add_placeholder()
 			expr_type := p.expression()
-			// Two arrays of the same type?
+			// Need to clone the string when appending it to an array?
+			if p.pref.autofree && typ == 'array_string' && expr_type == 'string' {
+				p.cgen.set_placeholder(ph_clone, 'string_clone(')
+				p.gen(')')
+			}	
 			p.gen_array_push(ph, typ, expr_type, tmp, tmp_typ)
 			return 'void'
 		}
@@ -2616,7 +2644,7 @@ fn (p mut Parser) string_expr() {
 			if fspec == 's' {
 				//println('custom str F=$cformat | format_specifier: "$fspec" | typ: $typ ')
 				if typ != 'string' {
-					p.error('only V strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}.')
+					p.error('only V strings can be formatted with a :${cformat} format, but you have given "${val}", which has type ${typ}')
 				}
 				args = args.all_before_last('${val}.len, ${val}.str') + '${val}.str'
 			}
@@ -2668,7 +2696,7 @@ fn (p mut Parser) string_expr() {
 		p.gen('_STR_TMP($format$args)')
 	}
 	else {
-		// Otherwise do ugly len counting + allocation + sprintf
+		// Otherwise do len counting + allocation + sprintf
 		p.gen('_STR($format$args)')
 	}
 }
@@ -3119,6 +3147,9 @@ fn (p mut Parser) for_st() {
 		i := p.check_name()
 		p.check(.comma)
 		val := p.check_name()
+		if i == '_' && val == '_' {
+			p.error('no new variables on the left side of `in`')
+		}
 		p.fgen(' ')
 		p.check(.key_in)
 		p.fgen(' ')
@@ -3563,9 +3594,11 @@ fn (p mut Parser) return_st() {
 				p.check(.comma)
 				types << p.bool_expression()
 			}
+			mut cur_fn_typ_chk := p.cur_fn.typ
 			// multiple returns
 			if types.len > 1 {
-				expr_type = 'MultiReturn_' + types.join('_Z_').replace('*', '_ZptrZ_')
+				expr_type = types.join(',')
+				cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
 				ret_vals := p.cgen.cur_line.right(ph)
 				mut ret_fields := ''
 				for ret_val_idx, ret_val in ret_vals.split(' ') {
@@ -3574,7 +3607,7 @@ fn (p mut Parser) return_st() {
 					}
 					ret_fields += '.var_$ret_val_idx=$ret_val'
 				}
-				p.cgen.resetln('($expr_type){$ret_fields}')
+				p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
 			}
 			p.inside_return_expr = false
 			// Automatically wrap an object inside an option if the function
@@ -3618,7 +3651,7 @@ fn (p mut Parser) return_st() {
 					p.genln('return $tmp;')
 				}
 			}
-			p.check_types(expr_type, p.cur_fn.typ)
+			p.check_types(expr_type, cur_fn_typ_chk)
 		}
 	}
 	else {
@@ -3801,7 +3834,7 @@ fn (p mut Parser) check_unused_imports() {
 	if output == '' { return }
 	output = '$p.file_path: the following imports were never used:$output'
 	if p.pref.is_prod {
-		cerror(output)
+		verror(output)
 	} else {
 		println('warning: $output')
 	}

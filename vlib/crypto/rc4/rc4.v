@@ -68,7 +68,7 @@ pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	}
 	mut i := c.i
 	mut j := c.j
-	_ := dst[src.len-1]
+	_ = dst[src.len-1]
 	*dst = dst.left(src.len) // eliminate bounds check from loop
 	for k, v in src {
 		i += byte(1)
