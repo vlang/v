@@ -277,6 +277,7 @@ fn os_name_to_ifdef(name string) string {
 		case 'msvc': return '_MSC_VER'
 		case 'android': return '__BIONIC__'
 		case 'js': return '_VJS'
+		case 'solaris': return '__sun'
 	}
 	verror('bad os ifdef name "$name"')
 	return ''
@@ -289,6 +290,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		case '_nix.v': return '#ifndef _WIN32'
 		case '_lin.v': return '#ifdef __linux__'
 		case '_mac.v': return '#ifdef __APPLE__'
+		case '_solaris.v': return '#ifdef __sun'
 	}
 	verror('bad platform_postfix "$name"')
 	return ''
