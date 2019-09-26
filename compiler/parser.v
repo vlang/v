@@ -9,15 +9,6 @@ import (
 	strings
 )
 
-// TODO rename to Token
-// TODO rename enum Token to TokenType
-struct Tok {
-       tok Token
-       lit string
-       line_nr int
-//       col int
-}
-
 struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
@@ -30,7 +21,7 @@ struct Parser {
 	pref           &Preferences // Preferences shared from V struct
 mut:
 	scanner        &Scanner
-	tokens         []Tok
+	// tokens         []Token // TODO cache all tokens, right now they have to be scanned twice
 	token_idx      int
 	tok            Token
 	prev_tok       Token
@@ -133,20 +124,8 @@ fn (v mut V) new_parser(path string) Parser {
 	v.cgen.line_directives = v.pref.is_debuggable
 	v.cgen.file = path
 
-	for {
-	       res := p.scanner.scan()
-	       p.tokens << Tok {
-	               tok: res.tok
-	               lit: res.lit
-	               line_nr: p.scanner.line_nr
-	       }
-	        if res.tok == .eof {
-	                break
-	        }
-	}
-
-	//p.next()
-	//p.scanner.debug_tokens()
+	p.next()
+	// p.scanner.debug_tokens()
 	return p
 }
 
@@ -157,52 +136,6 @@ fn (p mut Parser) set_current_fn(f Fn) {
 }
 
 fn (p mut Parser) next() {
-	 p.prev_tok2 = p.prev_tok
-	 p.prev_tok = p.tok
-	 p.scanner.prev_tok = p.tok
-	 if p.token_idx >= p.tokens.len {
-	         p.tok = Token.eof
-	         p.lit = ''
-	         return
-	 }
-	 res := p.tokens[p.token_idx]
-	 p.token_idx++
-	 p.tok = res.tok
-	 p.lit = res.lit
-	 p.scanner.line_nr = res.line_nr
- }
-
-
-fn (p & Parser) peek() Token {
-	if p.token_idx >= p.tokens.len - 2 {
-		return Token.eof
-	}
-	tok := p.tokens[p.token_idx]
-	return tok.tok
-/*
-	// save scanner state
-	pos := s.pos
-	line := s.line_nr
-	inside_string := s.inside_string
-	inter_start := s.inter_start
-	inter_end := s.inter_end
-
-	res := s.scan()
-	tok := res.tok
-
-	// restore scanner state
-	s.pos = pos
-	s.line_nr = line
-	s.inside_string = inside_string
-	s.inter_start = inter_start
-	s.inter_end = inter_end
-	return tok
-	*/
-}
-
-
-
-fn (p mut Parser) next_old() {
 	p.prev_tok2 = p.prev_tok
 	p.prev_tok = p.tok
 	p.scanner.prev_tok = p.tok
@@ -222,8 +155,6 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.pass = pass
-	p.token_idx = 0
-	p.next()
 	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
 	// `module main` is not required if it's a single file program
 	if p.is_script || p.pref.is_test {
@@ -1648,16 +1579,14 @@ fn (p mut Parser) name_expr() string {
 	}
 	// //////////////////////////
 	// module ?
-	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) ||
-		p.import_table.known_alias(name))	&& !is_c &&
-		!p.known_var(name)	// Allow shadowing (`gg = gg.newcontext(); gg.foo()`)
-	{
+	// (Allow shadowing `gg = gg.newcontext(); gg.draw_triangle();` )
+	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
+		&& !p.known_var(name) && !is_c {
 		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
 			p.import_table.register_used_import(name)
-			// we replaced "." with "_dot_" in p.mod for C variable names,
-			// do same here.
+			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
 			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
 		p.next()
@@ -1667,8 +1596,7 @@ fn (p mut Parser) name_expr() string {
 		name = prepend_mod(mod, name)
 	}
 	else if !p.table.known_type(name) && !p.known_var(name) &&
-		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
-	{
+	!p.table.known_fn(name) && !p.table.known_const(name) && !is_c {
 		name = p.prepend_mod(name)
 	}
 	// Variable
@@ -2872,10 +2800,10 @@ fn (p mut Parser) array_init() string {
 			typ = val_typ
 			// fixed width array initialization? (`arr := [20]byte`)
 			if is_integer && p.tok == .rsbr && p.peek() == .name {
-				//nextc := p.scanner.text[p.scanner.pos + 1]
+				nextc := p.scanner.text[p.scanner.pos + 1]
 				// TODO whitespace hack
 				// Make sure there's no space in `[10]byte`
-				//if !nextc.is_space() {
+				if !nextc.is_space() {
 					p.check(.rsbr)
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
@@ -2888,7 +2816,7 @@ fn (p mut Parser) array_init() string {
 						return '[${p.mod}__$lit]$array_elem_typ'
 					}
 					return '[$lit]$array_elem_typ'
-				//}
+				}
 			}
 		}
 		if val_typ != typ {

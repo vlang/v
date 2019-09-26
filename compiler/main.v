@@ -27,7 +27,7 @@ enum BuildMode {
 }
 
 const (
-	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
+	SupportedPlatforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'msvc', 'android', 'js']
 	ModPath            = os.home_dir() + '/.vmodules/'
 )
