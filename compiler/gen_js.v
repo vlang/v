@@ -36,7 +36,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
-	typ := p.bool_expression()
+	p.bool_expression()
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
