@@ -37,7 +37,7 @@ mut:
 	quote byte // which quote is used to denote current string: ' or "
 }
 
-fn new_scanner(file_path string) &Scanner {
+fn new_scanner_file(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -46,7 +46,7 @@ fn new_scanner(file_path string) &Scanner {
 		verror('scanner: failed to open $file_path')
 		return 0
 	}
-
+		
 	// BOM check
 	if raw_text.len >= 3 {
 		c_text := raw_text.str
@@ -58,9 +58,16 @@ fn new_scanner(file_path string) &Scanner {
 		}
 	}
 
+	mut s := new_scanner(raw_text)
+	s.file_path = file_path
+
+	return s
+}
+
+fn new_scanner(s string) &Scanner {
 	return &Scanner {
-		file_path: file_path
-		text: raw_text
+		// file_path: file_path
+		text: s
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 	}

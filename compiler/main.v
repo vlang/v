@@ -74,7 +74,9 @@ mut:
 	vroot      string
 	mod        string  // module being built with -lib
 	parsers    []Parser
-	vgen_file  os.File
+	// vgen_file  os.File
+	// vgen_file  os.File
+	vgen_buf   strings.Builder
 }
 
 struct Preferences {
@@ -213,7 +215,7 @@ fn main() {
 
 fn (v mut V) add_parser(parser Parser) {
        for p in v.parsers {
-               if p.file_path == parser.file_path {
+               if p.id == parser.id {
                        return
                }
        }
@@ -334,9 +336,10 @@ fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		}
 	}
-	// Close the file with generated V code (str() methods etc) and parse it
-	v.vgen_file.close()
-	mut vgen_parser := v.new_parser(vgen_file_name)
+	// parse generated V code (str() methods etc)
+	mut vgen_parser := v.new_parser_string(v.vgen_buf.str())
+	// Close the string builder which held the generated methods
+	v.vgen_buf.free()
 	vgen_parser.parse(.main)
 	v.log('Done parsing.')
 	// Write everything
@@ -590,13 +593,13 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	// Parse builtin imports
 	for file in v.files {
-		mut p := v.new_parser(file)
+		mut p := v.new_parser_file(file)
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse user imports
 	for file in user_files {
-		mut p := v.new_parser(file)
+		mut p := v.new_parser_file(file)
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
@@ -615,7 +618,7 @@ fn (v mut V) add_v_files_to_compile() {
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
-				mut p := v.new_parser(file, Pass.imports)
+				mut p := v.new_parser_file(file, Pass.imports)
 				p.parse()
 				
 	if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
@@ -635,7 +638,7 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 		// Add all imports referenced by these libs
 		for file in vfiles {
-			mut p := v.new_parser(file)
+			mut p := v.new_parser_file(file)
 			p.parse(.imports)
 			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		}
@@ -737,9 +740,8 @@ fn (v &V) log(s string) {
 }
 
 fn new_v(args[]string) &V {
-	os.rm(vgen_file_name)
-	vgen_file := os.open_append(vgen_file_name) or { panic(err) }
-	vgen_file.writeln('module main\nimport strings')
+	mut vgen_buf := strings.new_builder(1000)
+	vgen_buf.writeln('module main\nimport strings')
 	
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
@@ -932,7 +934,7 @@ fn new_v(args[]string) &V {
 		vroot: vroot
 		pref: pref
 		mod: mod
-		vgen_file: vgen_file
+		vgen_buf: vgen_buf
 	}
 }
 
