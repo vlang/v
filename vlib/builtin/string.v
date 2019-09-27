@@ -1016,7 +1016,7 @@ pub fn (s string) repeat(count int) string {
 		return s
 	}
 	ret := malloc(s.len * count + 1)
-	for _ in 1..count {
+	for _ in 0..count {
 		C.strcat(ret, s.str)
 	}
 	return string(ret)
