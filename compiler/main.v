@@ -74,8 +74,6 @@ mut:
 	vroot      string
 	mod        string  // module being built with -lib
 	parsers    []Parser
-	// vgen_file  os.File
-	// vgen_file  os.File
 	vgen_buf   strings.Builder
 }
 
@@ -337,7 +335,7 @@ fn (v mut V) compile() {
 		}
 	}
 	// parse generated V code (str() methods etc)
-	mut vgen_parser := v.new_parser_string_id(v.vgen_buf.str(),'vgen')
+	mut vgen_parser := v.new_parser_string_id(v.vgen_buf.str(), 'vgen')
 	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)

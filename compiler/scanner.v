@@ -66,10 +66,9 @@ fn new_scanner_file(file_path string) &Scanner {
 }
 
 // new scanner from string.
-fn new_scanner(s string) &Scanner {
+fn new_scanner(text string) &Scanner {
 	return &Scanner {
-		// file_path: file_path
-		text: s
+		text: text
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 	}

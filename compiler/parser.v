@@ -21,7 +21,7 @@ struct Tok {
 }
 
 struct Parser {
-	id             string
+	id             string // unique id. if parsing file will be same as file_path
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
@@ -96,15 +96,15 @@ const (
 )
 
 // new parser from string. parser id will be hash of s
-fn (v mut V) new_parser_string(s string) Parser {
-	return v.new_parser_string_id(s, sha1.hexhash(s))
+fn (v mut V) new_parser_string(text string) Parser {
+	return v.new_parser_string_id(text, sha1.hexhash(text))
 }
 
 // new parser from string. with id specified in `id`
-fn (v mut V) new_parser_string_id(s string, id string) Parser {
+fn (v mut V) new_parser_string_id(text string, id string) Parser {
 	mut p := v.new_parser(id)
 	p = { p|
-		scanner: new_scanner(s),
+		scanner: new_scanner(text),
 		import_table: v.table.get_file_import_table(id),
 		
 	}
