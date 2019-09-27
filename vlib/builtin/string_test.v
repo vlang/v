@@ -459,3 +459,8 @@ fn test_ustring_count() {
 	assert (a.count('ﷰ'.ustring())) == 2
 	assert (a.count('a'.ustring())) == 0
 }
+
+fn test_repeat() {
+	s := 'V! '
+	assert s.repeat(5) == 'V! V! V! V! V! '
+}

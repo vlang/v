@@ -51,10 +51,10 @@ pub fn new_cipher(key []byte) ?Cipher {
 // the process's memory.
 pub fn (c mut Cipher) reset() {
 	for i in c.s {
-		c.s[i] = u32(0)
+		c.s[i] = 0
 	}
-	c.i = byte(0)
-	c.j = byte(0)
+	c.i = 0
+	c.j = 0
 }
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.

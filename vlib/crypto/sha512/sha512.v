@@ -117,7 +117,7 @@ fn (d mut Digest) reset() {
 		d.h[7] = Init7
 	}
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
 fn _new(hash crypto.Hash) &Digest {

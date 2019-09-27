@@ -127,8 +127,12 @@ fn (p mut Parser) register_var(v Var) {
 fn (p mut Parser) clear_vars() {
 	// shared a := [1, 2, 3]
 	p.var_idx = 0
-	p.local_vars.free()
-	p.local_vars = []Var
+	if p.local_vars.len > 0 {
+		if p.pref.autofree {
+			p.local_vars.free()
+		}
+		p.local_vars = []Var
+	}
 }
 
 // vlib header file?
@@ -173,7 +177,8 @@ fn (p mut Parser) fn_decl() {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module
-		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod {
+		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod &&
+			!p.fileis(vgen_file_name) { // allow .str() on builtin arrays
 			println('T.mod=$T.mod')
 			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
@@ -918,21 +923,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 					p.cgen.set_placeholder(ph, '${typ}_str(')
 					p.gen(')')
 					continue
-				}
+				} else if T.cat == .struct_ {
+					p.gen_struct_str(T)
+					p.cgen.set_placeholder(ph, '${typ}_str(')
+					p.gen(')')
+					continue
+				}	
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
-				if T.fields.len > 0 {
-					mut index := p.cgen.cur_line.len - 1
-					for index > 0 && p.cgen.cur_line[index - 1] != `(` { index-- }
-					name := p.cgen.cur_line.right(index + 1)
-					if name == '}' {
-						p.error(error_msg)
-					}
-					p.cgen.resetln(p.cgen.cur_line.left(index))
-					p.scanner.create_type_string(T, name)
-					p.cgen.cur_line.replace(typ, '')
-					p.next()
-					return p.fn_call_args(mut f)
-				}
 				p.error(error_msg)
 			}
 			p.cgen.set_placeholder(ph, '${typ}_str(')
@@ -1029,7 +1026,6 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
 	}
 	p.check(.rpar)
-	// p.gen(')')
 	return f // TODO is return f right?
 }
 

@@ -7,6 +7,7 @@ module main
 import (
 	vweb.tmpl  // for `$vweb_html()`
 	os
+	strings
 )
 
 fn (p mut Parser) comp_time() {
@@ -20,7 +21,7 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
-		if name in SupportedPlatforms {
+		if name in supported_platforms {
 			ifdef_name := os_name_to_ifdef(name)
 			if not {
 				p.genln('#ifndef $ifdef_name')
@@ -42,7 +43,7 @@ fn (p mut Parser) comp_time() {
 		}
 		else {
 			println('Supported platforms:')
-			println(SupportedPlatforms)
+			println(supported_platforms)
 			p.error('unknown platform `$name`')
 		}
 		if_returns := p.returns
@@ -244,21 +245,47 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
-	p.cgen.fns << '
-string ${typ.name}_str($typ.name a) {
-	strings__Builder sb = strings__new_builder(a.len * 3);
-	strings__Builder_write(&sb, tos2("[")) ;
-	for (int i = 0; i < a.len; i++) {
-		strings__Builder_write(&sb, ${elm_type}_str( (($elm_type *) a.data)[i]));
-
-	if (i < a.len - 1) {
-		strings__Builder_write(&sb, tos2(", ")) ;
-		
+	p.v.vgen_file.writeln('
+fn (a $typ.name) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write("[")
+	for i, elm in a {
+		sb.write(elm.str())
+		if i < a.len - 1 {
+			sb.write(", ")
+		}
 	}
+	sb.write("]")
+	return sb.str()
 }
-strings__Builder_write(&sb, tos2("]")) ;
-return strings__Builder_str(sb);
-} '
+	')
+	p.cgen.fns << 'string ${typ.name}_str();'
+}
+
+// `Foo { bar: 3, baz: 'hi' }` => '{ bar: 3, baz: "hi" }'
+fn (p mut Parser) gen_struct_str(typ Type) {
+	p.add_method(typ.name, Fn{
+		name: 'str'
+		typ: 'string'
+		args: [Var{typ: typ.name, is_arg:true}]
+		is_method: true
+		is_public: true
+		receiver_typ: typ.name
+	})
+	
+	mut sb := strings.new_builder(typ.fields.len * 20)
+	sb.writeln('fn (a $typ.name) str() string {\nreturn')
+	sb.writeln("'{")
+	for field in typ.fields {
+		sb.writeln('\t$field.name: \$a.${field.name}')
+	}
+	sb.writeln("\n}'")
+	sb.writeln('}')
+	p.v.vgen_file.writeln(sb.str())
+	// Need to manually add the definition to `fns` so that it stays
+	// at the top of the file.
+	// This function will get parsee by V after the main pass.
+	p.cgen.fns << 'string ${typ.name}_str();'
 }
 
 

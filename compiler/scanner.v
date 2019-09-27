@@ -20,6 +20,7 @@ mut:
 	text           string
 	pos            int
 	line_nr        int
+	last_nl_pos    int // for calculating column
 	inside_string  bool
 	inter_start   bool // for hacky string interpolation TODO simplify
 	inter_end     bool
@@ -38,11 +39,11 @@ mut:
 
 fn new_scanner(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
-		verror('"$file_path" doesn\'t exist')
+		verror("$file_path doesn't exist")
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		verror('scanner: failed to open "$file_path"')
+		verror('scanner: failed to open $file_path')
 		return 0
 	}
 
@@ -238,6 +239,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
+			s.last_nl_pos = s.pos
 			s.line_nr++
 		}
 		s.pos++
@@ -640,9 +642,13 @@ fn (s &Scanner) current_column() int {
 }
 
 fn (s &Scanner) error(msg string) {
+	s.error_with_col(msg, 0)
+}
+
+fn (s &Scanner) error_with_col(msg string, col int) {
+	column := col-1
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
-	column := s.pos - linestart
 	if s.should_print_line_on_error && lineend > linestart {
 		line := s.text.substr( linestart, lineend )
 		// The pointerline should have the same spaces/tabs as the offending
@@ -660,6 +666,7 @@ fn (s &Scanner) error(msg string) {
 		println(pointerline)
 	}
 	fullpath := os.realpath( s.file_path )
+	_ = fullpath
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output
@@ -785,26 +792,6 @@ fn (s mut Scanner) ident_char() string {
 	return if c == '\'' { '\\' + c } else { c }
 }
 
-fn (s mut Scanner) peek() Token {
-	// save scanner state
-	pos := s.pos
-	line := s.line_nr
-	inside_string := s.inside_string
-	inter_start := s.inter_start
-	inter_end := s.inter_end
-
-	res := s.scan()
-	tok := res.tok
-
-	// restore scanner state
-	s.pos = pos
-	s.line_nr = line
-	s.inside_string = inside_string
-	s.inter_start = inter_start
-	s.inter_end = inter_end
-	return tok
-}
-
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
@@ -854,53 +841,8 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s &Scanner) get_opening_bracket() int {
-	mut pos := s.pos
-	mut parentheses := 0
-	mut inside_string := false
-
-	for pos > 0 && s.text[pos] != `\n` {
-		if s.text[pos] == `)` && !inside_string {
-			parentheses++
-		}
-		if s.text[pos] == `(` && !inside_string {
-			parentheses--
-		}
-		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` { // ` // apostrophe balance comment. do not remove
-			inside_string = !inside_string
-		}
-		if parentheses == 0 {
-			break
-		}
-		pos--
-	}
-	return pos
-}
-
-// Foo { bar: 3, baz: 'hi' } => '{ bar: 3, baz: "hi" }'
-fn (s mut Scanner) create_type_string(T Type, name string) {
-	line := s.line_nr
-	inside_string := s.inside_string
-	mut newtext := '\'{ '
-	start := s.get_opening_bracket() + 1
-	end := s.pos
-	for i, field in T.fields {
-		if i != 0 {
-			newtext += ', '
-		}
-		newtext += '$field.name: ' + '$${name}.${field.name}'
-	}
-	newtext += ' }\''
-	s.text = s.text.substr(0, start) + newtext + s.text.substr(end, s.text.len)
-	s.pos = start - 2
-	s.line_nr = line
-	s.inside_string = inside_string
-}
-
 fn contains_capital(s string) bool {
-	// for c in s {
-	for i := 0; i < s.len; i++ {
-		c := s[i]
+	for c in s {
 		if c >= `A` && c <= `Z` {
 			return true
 		}

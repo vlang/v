@@ -70,11 +70,27 @@ fn (v mut V) cc() {
 		v.out_name = ModPath + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
+  
+	mut debug_options := '-g'
+	mut optimization_options := '-O2'
+	if v.pref.ccompiler.contains('clang') {
+		if v.pref.is_debug {
+			debug_options = '-g -O0'
+		}
+		optimization_options = '-O3 -flto'
+	}
+	if v.pref.ccompiler.contains('gcc') {
+		if v.pref.is_debug {
+			debug_options = '-g3'
+		}
+		optimization_options = '-O3 -fno-strict-aliasing -flto'
+	}
+
 	if v.pref.is_prod {
-		a << '-O2'
+		a << optimization_options
 	}
 	else {
-		a << '-g'
+		a << debug_options
 	}
 
 	if v.pref.is_debug && os.user_os() != 'windows'{
@@ -156,7 +172,7 @@ fn (v mut V) cc() {
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
-		v.os == .netbsd || v.os == .dragonfly) {
+		v.os == .netbsd || v.os == .dragonfly || v.os == .solaris) {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
 		if v.os == .linux {

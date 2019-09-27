@@ -20,7 +20,22 @@ mut:
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
+	//names        []Name
 }
+
+
+/*
+enum NameCategory {
+	constant
+	mod
+	var
+	typ
+}
+
+struct Name {
+	cat NameCategory
+}	
+*/
 
 struct GenTable {
 	fn_name string
