@@ -1,5 +1,7 @@
-import ui
-import gx
+import (
+	ui
+	gx
+)
 
 const (
 	NR_COLS     = 3
@@ -15,6 +17,7 @@ struct User {
 }
 
 struct Context {
+	mut:
 	first_name ui.TextBox
 	last_name  ui.TextBox
 	age        ui.TextBox
@@ -22,6 +25,83 @@ struct Context {
 	window     &ui.Window
 	txt_pos    int
 }
+
+/*
+// Current V
+struct Window {
+	width: 500
+	height: 300
+	title: 'Users'
+	body: Layout {
+		body: [
+			TextBox {
+				placeholder: 'First name'
+			},
+			TextBox {
+				placeholder: 'Last name'
+			},
+			TextBox {
+				placeholder: 'Age'
+			},
+			Button {
+				title: 'Add user'
+				onclick: btn_click
+			},
+		]
+	}	
+}	
+
+// Improved V
+struct Window {
+	width: 500
+	height: 300
+	title: 'Users'
+	
+	Layout {
+	[
+		TextBox {
+			placeholder: 'First name'
+		}
+		TextBox {
+			placeholder: 'Last name'
+		}
+		TextBox {
+			placeholder: 'Age'
+		}
+		Button {
+			title: 'Add user'
+			onclick: btn_click
+		}
+	]
+	}	
+}	
+
+/*
+
+Window {
+	width: 500
+	height: 300
+	title: 'Users'
+	VLayout {
+		TextBox {
+			placeholder: 'First name'
+		}
+		TextBox {
+			placeholder: 'Last name'
+		}
+		TextBox {
+			placeholder: 'Age'
+		}
+		Button {
+			title: 'Add user'
+			onclick: btn_click
+		}
+	}	
+	
+	draw: draw_fn
+}	
+*/
+*/
 
 fn main() {
 	mut ctx := &Context {
@@ -45,30 +125,31 @@ fn main() {
 }
 
 // TODO replace with `fn (ctx mut Context) btn_click() {`
-fn btn_click(_ctx *Context) {
-	mut ctx = _ctx// TODO hack
+fn btn_click(_ctx &Context) {
+	println('users.v: button click')
+	mut ctx := _ctx// TODO hack
 	ctx.users << User {
 		first_name: ctx.first_name.text()
 		last_name: ctx.last_name.text()
-		age: ctx.age.text().to_i()
+		age: ctx.age.text().int()
 	}
 	ctx.window.refresh()
 }
 
 // TODO replace with `fn (ctx mut Context) draw() {`
-fn draw(ctx *Context) {
+fn draw(ctx &Context) {
 	for i, user in ctx.users {
 		x := 10
 		y := 10 + i * CELL_HEIGHT
 		// Outer border
-		gx.draw_empty_rect(x, y, TABLE_WIDTH, CELL_HEIGHT, gx.GRAY)
+		ui.draw_empty_rect(x, y, TABLE_WIDTH, CELL_HEIGHT, gx.Gray)
 		// Vertical separators
-		gx.draw_line(x + CELL_WIDTH, y, x + CELL_WIDTH, y + CELL_HEIGHT)
-		gx.draw_line(x + CELL_WIDTH * 2, y, x + CELL_WIDTH * 2, y + CELL_HEIGHT)
+		ui.draw_line(x + CELL_WIDTH, y, x + CELL_WIDTH, y + CELL_HEIGHT, gx.Gray)
+		ui.draw_line(x + CELL_WIDTH * 2, y, x + CELL_WIDTH * 2, y + CELL_HEIGHT, gx.Gray)
 		// Text values
-		gx.draw_text_def(x + 5, y + 5, user.first_name)
-		gx.draw_text_def(x + 5 + CELL_WIDTH, y + 5, user.last_name)
-		gx.draw_text_def(x + 5 + CELL_WIDTH * 2, y + 5, user.age.str())
+		ui.draw_text_def(x + 5, y + 5, user.first_name)
+		ui.draw_text_def(x + 5 + CELL_WIDTH, y + 5, user.last_name)
+		ui.draw_text_def(x + 5 + CELL_WIDTH * 2, y + 5, user.age.str())
 	}
 }
 

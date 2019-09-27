@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 
 module sync
-import os
 
 // Mutex HANDLE
 type MHANDLE voidptr

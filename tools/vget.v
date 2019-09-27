@@ -67,7 +67,7 @@ fn main() {
 		final_module_path := '$home_vmodules/' + mod.name.replace('.', '/')
 
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
-		_ := os.exec('git clone --depth=1 $mod.url $final_module_path') or {
+		_ = os.exec('git clone --depth=1 $mod.url $final_module_path') or {
 			errors++
 			println('Could not install module "$name" to "$final_module_path" .')
 			println('Error details: $err')

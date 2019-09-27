@@ -33,6 +33,7 @@ fn (v mut V) cc() {
 				ret := os.system('$vjs_path -o $v.out_name $v.dir')
 				if ret == 0 {
 					println('Done. Run it with `node $v.out_name`')
+					println('JS backend is at a very early stage.')
 				}	
 			}
 		}
@@ -69,11 +70,27 @@ fn (v mut V) cc() {
 		v.out_name = ModPath + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
+  
+	mut debug_options := '-g'
+	mut optimization_options := '-O2'
+	if v.pref.ccompiler.contains('clang') {
+		if v.pref.is_debug {
+			debug_options = '-g -O0'
+		}
+		optimization_options = '-O3 -flto'
+	}
+	if v.pref.ccompiler.contains('gcc') {
+		if v.pref.is_debug {
+			debug_options = '-g3'
+		}
+		optimization_options = '-O3 -fno-strict-aliasing -flto'
+	}
+
 	if v.pref.is_prod {
-		a << '-O2'
+		a << optimization_options
 	}
 	else {
-		a << '-g'
+		a << debug_options
 	}
 
 	if v.pref.is_debug && os.user_os() != 'windows'{
@@ -128,7 +145,7 @@ fn (v mut V) cc() {
 	// Output executable name
 	a << '-o "$v.out_name"'
 	if os.dir_exists(v.out_name) {
-		cerror('\'$v.out_name\' is a directory')
+		verror('\'$v.out_name\' is a directory')
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.os == .mac {
@@ -146,30 +163,27 @@ fn (v mut V) cc() {
 	cflags := v.get_os_cflags()
 
 	// add .o files
-	for flag in cflags {
-		if !flag.value.ends_with('.o') { continue }
-		a << flag.format()
-	}
+	a << cflags.c_options_only_object_files()
+	
 	// add all flags (-I -l -L etc) not .o files
-	for flag in cflags {
-		if flag.value.ends_with('.o') { continue }
-		a << flag.format()
-	}
+	a << cflags.c_options_without_object_files()
 	
 	a << libs
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
-		v.os == .netbsd || v.os == .dragonfly) {
+		v.os == .netbsd || v.os == .dragonfly || v.os == .solaris) {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
 		if v.os == .linux {
 			a << ' -ldl '
 		}
 	}
-	if v.os == .windows {
-		a << '-DUNICODE -D_UNICODE'
+
+	if v.os == .js && os.user_os() == 'linux' {
+		a << '-lm'
 	}
+	
 	args := a.join(' ')
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
@@ -178,12 +192,12 @@ fn (v mut V) cc() {
 		println(cmd)
 	}
 	ticks := time.ticks()
-	res := os.exec(cmd) or { cerror(err) return }
+	res := os.exec(cmd) or { verror(err) return }
 	if res.exit_code != 0 {
 
 		if res.exit_code == 127 {
 			// the command could not be found by the system
-			cerror('C compiler error, while attempting to run: \n' +
+			verror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
 				'-----------------------------------------------------------\n' +
@@ -202,7 +216,7 @@ fn (v mut V) cc() {
 				println('')
 			}
 		}
-		cerror('C error. This should never happen. ' +
+		verror('C error. This should never happen. ' +
 			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	diff := time.ticks() - ticks
@@ -226,7 +240,7 @@ fn (v mut V) cc() {
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			cerror(err)
+			verror(err)
 			return
 		}
 		println(ress.output)
@@ -236,6 +250,31 @@ fn (v mut V) cc() {
 	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
 		os.rm(v.out_name_c)
 	}
+	if v.pref.compress {
+		$if windows {
+			println('-compress does not work on Windows for now')
+			return
+		}	
+		ret := os.system('strip $v.out_name')
+		if ret != 0 {
+			println('strip failed')
+			return
+		}
+		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		if ret2 != 0 {
+			println('upx failed')
+			$if mac {
+				println('install upx with `brew install upx`')
+			}	
+			$if linux {
+				println('install upx\n' +
+					'for example, on Debian/Ubuntu run `sudo apt install upx`')
+			}	
+			$if windows {
+				// :)
+			}	
+		}
+	}	
 }
 
 
@@ -246,12 +285,7 @@ fn (c mut V) cc_windows_cross() {
 	mut args := '-o $c.out_name -w -L. '
 	cflags := c.get_os_cflags()
 	// -I flags
-	for flag in cflags {
-		if flag.name != '-l' {
-				args += flag.format()
-				args += ' '
-		}
-	}
+	args += cflags.c_options_before_target()
 	mut libs := ''
 	if c.pref.build_mode == .default_mode {
 		libs = '"$ModPath/vlib/builtin.o"'
@@ -264,13 +298,7 @@ fn (c mut V) cc_windows_cross() {
 		}
 	}
 	args += ' $c.out_name_c '
-	// -l flags (libs)
-	for flag in cflags {
-		if flag.name == '-l' {
-				args += flag.format()
-				args += ' '
-		}
-	}
+	args += cflags.c_options_after_target()
 	println('Cross compiling for Windows...')
 	winroot := '$ModPath/winroot'
 	if !os.dir_exists(winroot) {
@@ -286,7 +314,7 @@ fn (c mut V) cc_windows_cross() {
 	obj_name = obj_name.replace('.exe', '')
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
-	cmd := 'clang -o $obj_name -w $include -DUNICODE -D_UNICODE -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
+	cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
 	if c.pref.show_c_cmd {
 			println(cmd)
 	}
@@ -311,14 +339,15 @@ fn (c mut V) cc_windows_cross() {
 	println('Done!')
 }
 
-fn (c V) build_thirdparty_obj_files() {
+fn (c &V) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
-		if flag.value.ends_with('.o') {
+		if flag.value.ends_with('.o') {			
+			rest_of_module_flags := c.get_rest_of_module_cflags( flag )
 			if c.os == .msvc {
-				build_thirdparty_obj_file_with_msvc(flag.value)
+				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			}
 			else {
-				build_thirdparty_obj_file(flag.value)
+				build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
 		}
 	}
@@ -341,17 +370,23 @@ fn find_c_compiler_default() string {
 }
 
 fn find_c_compiler_thirdparty_options() string {
-	if '-m32' in os.args{
-		$if windows {
-			return '-m32'
-		}$else{
-			return '-fPIC -m32'
-		}
-	}else{
-		$if windows {
-			return ''
-		}$else{
-			return '-fPIC'
+	fullargs := env_vflags_and_os_args()
+	mut cflags := get_cmdline_cflags( fullargs )
+	$if !windows {
+		cflags += ' -fPIC'
+	}
+	if '-m32' in fullargs {
+		cflags += ' -m32'
+	}
+	return cflags
+}
+
+fn get_cmdline_cflags(args []string) string {
+	mut cflags := ''
+	for ci, cv in args {
+		if cv == '-cflags' {
+			cflags += args[ci+1] + ' '
 		}
 	}
+	return cflags
 }

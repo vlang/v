@@ -4,8 +4,15 @@
 
 module main
 
-import os
-import strings
+import (
+	os
+	strings
+)
+
+const (
+	single_quote = `\'`
+	double_quote = `"`
+)
 
 struct Scanner {
 mut:
@@ -13,9 +20,10 @@ mut:
 	text           string
 	pos            int
 	line_nr        int
+	last_nl_pos    int // for calculating column
 	inside_string  bool
-	dollar_start   bool // for hacky string interpolation TODO simplify
-	dollar_end     bool
+	inter_start   bool // for hacky string interpolation TODO simplify
+	inter_end     bool
 	debug          bool
 	line_comment   string
 	started        bool
@@ -26,15 +34,16 @@ mut:
 	prev_tok Token
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
+	quote byte // which quote is used to denote current string: ' or "
 }
 
 fn new_scanner(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
-		cerror('"$file_path" doesn\'t exist')
+		verror("$file_path doesn't exist")
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		cerror('scanner: failed to open "$file_path"')
+		verror('scanner: failed to open $file_path')
 		return 0
 	}
 
@@ -49,17 +58,31 @@ fn new_scanner(file_path string) &Scanner {
 		}
 	}
 
-	text := raw_text
-
-	scanner := &Scanner {
+	return &Scanner {
 		file_path: file_path
-		text: text
+		text: raw_text
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 	}
-
-	return scanner
 }
+
+
+struct ScannerPos {
+mut:
+   pos int
+   line_nr int
+}
+fn (s ScannerPos) str() string {
+	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} }'
+}
+fn (s &Scanner) get_scanner_pos() ScannerPos {
+	return ScannerPos{ pos: s.pos line_nr: s.line_nr }
+}
+fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
+	s.pos = scp.pos
+	s.line_nr = scp.line_nr
+}
+
 
 // TODO remove once multiple return values are implemented
 struct ScanRes {
@@ -216,6 +239,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
+			s.last_nl_pos = s.pos
 			s.line_nr++
 		}
 		s.pos++
@@ -239,12 +263,12 @@ fn (s mut Scanner) scan() ScanRes {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
-	if s.dollar_end {
+	if s.inter_end {
 		if s.text[s.pos] == `\'` {
-			s.dollar_end = false
+			s.inter_end = false
 			return scan_res(.str, '')
 		}
-		s.dollar_end = false
+		s.inter_end = false
 		return scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
@@ -271,14 +295,14 @@ fn (s mut Scanner) scan() ScanRes {
 		// at the next ', skip it
 		if s.inside_string {
 			if next_char == `\'` {
-				s.dollar_end = true
-				s.dollar_start = false
+				s.inter_end = true
+				s.inter_start = false
 				s.inside_string = false
 			}
 		}
-		if s.dollar_start && next_char != `.` {
-			s.dollar_end = true
-			s.dollar_start = false
+		if s.inter_start && next_char != `.` {
+			s.inter_end = true
+			s.inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
 			s.pos++
@@ -334,11 +358,8 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case `\'`:
+	case single_quote, double_quote:
 		return scan_res(.str, s.ident_string())
-		// TODO allow double quotes
-		// case QUOTE:
-		// return scan_res(.str, s.ident_string())
 	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
 	case `(`:
@@ -362,7 +383,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
-			// TODO UN.neEDED?
+			// TODO UNNEEDED?
 			if s.text[s.pos] == `\'` {
 				s.inside_string = false
 				return scan_res(.str, '')
@@ -621,9 +642,13 @@ fn (s &Scanner) current_column() int {
 }
 
 fn (s &Scanner) error(msg string) {
+	s.error_with_col(msg, 0)
+}
+
+fn (s &Scanner) error_with_col(msg string, col int) {
+	column := col-1
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
-	column := s.pos - linestart
 	if s.should_print_line_on_error && lineend > linestart {
 		line := s.text.substr( linestart, lineend )
 		// The pointerline should have the same spaces/tabs as the offending
@@ -641,12 +666,14 @@ fn (s &Scanner) error(msg string) {
 		println(pointerline)
 	}
 	fullpath := os.realpath( s.file_path )
+	_ = fullpath
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output
 	// and jump to their source with a keyboard shortcut.
 	// Using only the filename leads to inability of IDE/editors
 	// to find the source file, when it is in another folder.
+	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
 	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
 	exit(1)
 }
@@ -666,8 +693,14 @@ fn (s Scanner) count_symbol_before(p int, sym byte) int {
 // println('array out of bounds $idx len=$a.len')
 // This is really bad. It needs a major clean up
 fn (s mut Scanner) ident_string() string {
-	// println("\nidentString() at char=", string(s.text[s.pos]),
-	// "chard=", s.text[s.pos], " pos=", s.pos, "txt=", s.text[s.pos:s.pos+7])
+	q := s.text[s.pos]
+	if (q == single_quote || q == double_quote) &&	!s.inside_string{
+		s.quote = q
+	}
+	//if s.file_path.contains('string_test') {
+	//println('\nident_string() at char=${s.text[s.pos].str()}')
+	//println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
+	//}
 	mut start := s.pos
 	s.inside_string = false
 	slash := `\\`
@@ -679,7 +712,7 @@ fn (s mut Scanner) ident_string() string {
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
@@ -704,13 +737,13 @@ fn (s mut Scanner) ident_string() string {
 		// $var
 		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
-			s.dollar_start = true
+			s.inter_start = true
 			s.pos -= 2
 			break
 		}
 	}
 	mut lit := ''
-	if s.text[start] == `\'` {
+	if s.text[start] == s.quote {
 		start++
 	}
 	mut end := s.pos
@@ -752,31 +785,14 @@ fn (s mut Scanner) ident_char() string {
 			s.error('invalid character literal (more than one character: $len)')
 		}
 	}
+	if c == '\\`' {
+		return '`'
+	}	
 	// Escapes a `'` character
 	return if c == '\'' { '\\' + c } else { c }
 }
 
-fn (s mut Scanner) peek() Token {
-	// save scanner state
-	pos := s.pos
-	line := s.line_nr
-	inside_string := s.inside_string
-	dollar_start := s.dollar_start
-	dollar_end := s.dollar_end
-
-	res := s.scan()
-	tok := res.tok
-
-	// restore scanner state
-	s.pos = pos
-	s.line_nr = line
-	s.inside_string = inside_string
-	s.dollar_start = dollar_start
-	s.dollar_end = dollar_end
-	return tok
-}
-
-fn (s mut Scanner) expect(want string, start_pos int) bool {
+fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
@@ -825,53 +841,8 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s mut Scanner) get_opening_bracket() int {
-	mut pos := s.pos
-	mut parentheses := 0
-	mut inside_string := false
-
-	for pos > 0 && s.text[pos] != `\n` {
-		if s.text[pos] == `)` && !inside_string {
-			parentheses++
-		}
-		if s.text[pos] == `(` && !inside_string {
-			parentheses--
-		}
-		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` { // ` // apostrophe balance comment. do not remove
-			inside_string = !inside_string
-		}
-		if parentheses == 0 {
-			break
-		}
-		pos--
-	}
-	return pos
-}
-
-// Foo { bar: 3, baz: 'hi' } => '{ bar: 3, baz: "hi" }'
-fn (s mut Scanner) create_type_string(T Type, name string) {
-	line := s.line_nr
-	inside_string := s.inside_string
-	mut newtext := '\'{ '
-	start := s.get_opening_bracket() + 1
-	end := s.pos
-	for i, field in T.fields {
-		if i != 0 {
-			newtext += ', '
-		}
-		newtext += '$field.name: ' + '$${name}.${field.name}'
-	}
-	newtext += ' }\''
-	s.text = s.text.substr(0, start) + newtext + s.text.substr(end, s.text.len)
-	s.pos = start - 2
-	s.line_nr = line
-	s.inside_string = inside_string
-}
-
 fn contains_capital(s string) bool {
-	// for c in s {
-	for i := 0; i < s.len; i++ {
-		c := s[i]
+	for c in s {
 		if c >= `A` && c <= `Z` {
 			return true
 		}

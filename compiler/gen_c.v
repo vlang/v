@@ -37,7 +37,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-			p.error('`or` block must return/continue/break/panic')
+			p.error('`or` block must return/exit/continue/break/panic')
 		}
 		p.returns = false
 		return typ
@@ -68,29 +68,59 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
+// blank identifer assignment `_ = 111` 
+fn (p mut Parser) gen_blank_identifier_assign() {
+	p.check_name()
+	p.check_space(.assign)
+	pos := p.cgen.add_placeholder()
+	mut typ := p.bool_expression()
+	tmp := p.get_tmp()
+	// handle or
+	if p.tok == .key_orelse {
+		p.cgen.set_placeholder(pos, '$typ $tmp = ')
+		p.genln(';')
+		typ = typ.replace('Option_', '')
+		p.next()
+		p.check(.lcbr)
+		p.genln('if (!$tmp .ok) {')
+		p.register_var(Var {
+			name: 'err'
+			typ: 'string'
+			is_mut: false
+			is_used: true
+		})
+		p.genln('string err = $tmp . error;')
+		p.statements()
+		p.returns = false
+	}
+	p.gen(';')
+}
+
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
-		if t.cat != .union_ && t.cat != .struct_ {
+		if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
 			continue
 		}
-		//if is_objc {
-			//sb.writeln('@interface $name : $objc_parent { @public')
-		//}
 		//if is_atomic {
 			//sb.write('_Atomic ')
 		//}
-		kind := if t.cat == .union_ {'union'} else {'struct'}
-		sb.writeln('$kind $t.name {')
+		if t.cat ==  .objc_interface {
+			sb.writeln('@interface $t.name : $t.parent { @public')
+		}
+		else {
+			kind := if t.cat == .union_ {'union'} else {'struct'}
+			sb.writeln('$kind $t.name {')
+		}
 		for field in t.fields {
 			sb.write('\t')
 			sb.writeln(table.cgen_name_type_pair(field.name,
 				field.typ) + ';')
 		}
 		sb.writeln('};\n')
-		//if is_objc {
-			//sb.writeln('@end')
-		//}
+		if t.cat ==  .objc_interface {
+			sb.writeln('@end')
+		}
 	}
 	return sb.str()
 }
@@ -150,7 +180,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 		name = name.replace('-', 'minus')
 	}
 	// Avoid name conflicts (with things like abs(), print() etc).
-	// Generate b_abs(), b_print()
+	// Generate v_abs(), v_print()
 	// TODO duplicate functionality
 	if f.mod == 'builtin' && f.name in CReserved {
 		return 'v_$name'
@@ -233,6 +263,11 @@ fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
 	p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
 	p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
+}
+
+fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
+	p.genln(';\nfor (int $i = $tmp; $i < $range_end; $i++) {')
+	p.genln('$var_type $val = $i;')
 }
 
 fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
@@ -329,9 +364,6 @@ fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
 		}
 		else {
 			p.gen('($typ) {')
-			if t.fields.len == 1 && t.fields[0].name == '' && t.fields[0].typ.starts_with('EMPTY_STRUCT_DECLARATION') {
-				p.gen(' 0 /* v empty struct initialization */ ')
-			}
 		}
 	}
 	else {
@@ -447,19 +479,24 @@ fn type_default(typ string) string {
 	return '{0}'
 }
 
-fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, tmp_typ string) {
+fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
+	// Two arrays of the same type?
 	push_array := typ == expr_type
 	if push_array {
 		p.cgen.set_placeholder(ph, '_PUSH_MANY(&' )
 		p.gen('), $tmp, $typ)')
-	}  else {
-		p.check_types(expr_type, tmp_typ)
+	} else {
+		p.check_types(expr_type, elm_type)
 		// Pass tmp var info to the _PUSH macro
 		// Prepend tmp initialisation and push call
 		// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
-		p.gen('), $tmp, $tmp_typ)')
+		if elm_type.ends_with('*') {
+			p.gen('), $tmp, ${elm_type.left(elm_type.len - 1)})')
+		} else {
+			p.gen('), $tmp, $elm_type)')
+		}
 	}
 }
 

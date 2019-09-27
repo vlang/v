@@ -1,7 +1,6 @@
 module runner
 
 import os
-import time
 
 struct RunnerOptions {
 pub:
@@ -26,7 +25,21 @@ pub fn full_path_to_v() string {
 	return vexec
 }
 
-pub fn run_repl_file(wd string, vexec string, file string) string? {
+fn find_working_diff_command() ?string {
+	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
+		p := os.exec('$diffcmd --version') or { continue }
+		if p.exit_code == 0 { return diffcmd }
+	}
+	return error('no working diff command found')
+}
+
+fn diff_files( file_result, file_expected string ) string {
+	diffcmd := find_working_diff_command() or { return err }
+	diff := os.exec('$diffcmd   --minimal  --text   --unified=2  $file_result  $file_expected') or { return 'found diff command "$diffcmd" does not work' }
+	return diff.output
+}
+
+pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	fcontent := os.read_file(file) or {	return error('Could not read file $file') }
 	content := fcontent.replace('\r', '')		
 	input := content.all_before('===output===\n')
@@ -44,11 +57,18 @@ pub fn run_repl_file(wd string, vexec string, file string) string? {
 	result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
 
 	if result != output {
+		file_result   := '${file}.result.txt'
+		file_expected := '${file}.expected.txt'
+		os.write_file( file_result, result )
+		os.write_file( file_expected, output )
+		diff := diff_files( file_result, file_expected )
 		return error('Difference found in REPL file: $file
 ====> Got      :
 |$result|
 ====> Expected :
 |$output|
+====> Diff     :
+$diff
 		')
 	} else {
 		return 'Repl file $file is OK'
@@ -69,15 +89,5 @@ pub fn new_options() RunnerOptions {
 		vexec: vexec
 		files: files
 	}
-}
-
-pub fn now() i64 {
-	return time.ticks()
-}
-
-pub fn tdiff_in_ms(s string, sticks i64) string {
-	eticks := time.ticks()
-	tdiff := (eticks - sticks)
-	return '${tdiff:6d} ms | $s'
 }
 

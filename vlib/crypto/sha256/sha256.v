@@ -74,7 +74,7 @@ fn (d mut Digest) reset() {
 		d.h[7] = u32(Init7_224)
 	}
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.

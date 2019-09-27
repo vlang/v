@@ -309,10 +309,5 @@ pub fn (s string) hash() int {
 }
 
 pub fn (s string) bytes() []byte {
-	if s.len == 0 {
-		return []byte
-	}
-	mut buf := [byte(0)].repeat2(s.len)
-	C.memcpy(buf.data, s.str, s.len)
-	return buf
+	return []byte
 }

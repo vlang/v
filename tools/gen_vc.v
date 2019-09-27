@@ -117,7 +117,7 @@ fn main() {
 
 	flag_options := parse_flags(mut fp)
 
- 	_ := fp.finalize() or {
+ 	_ = fp.finalize() or {
  		eprintln(err)
  		println(fp.usage())
  		return

@@ -154,17 +154,13 @@ fn (p mut Parser) get_type2() Type {
 	}
 	else if is_arr {
 		typ = 'array_$typ'
-		// p.log('ARR TYPE="$typ" run=$p.pass')
 		// We come across "[]User" etc ?
 		p.register_array(typ)
 	}
 	p.next()
-	if p.tok == .question || is_question {
+	if is_question {
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
-		if p.tok == .question {
-			p.next()
-		}
 	}
 	if typ.last_index('__') > typ.index('__') {
 		p.error('2 __ in gettype(): typ="$typ"')

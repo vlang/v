@@ -1,5 +1,6 @@
 import os
 import compiler.tests.repl.runner
+import benchmark
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v()
@@ -20,17 +21,20 @@ fn test_the_v_compiler_can_be_invoked() {
 
 fn test_all_v_repl_files() {
 	options := runner.new_options()
-	global_start_time := runner.now()	
+	mut bmark := benchmark.new_benchmark()
 	for file in options.files {
-		sticks := runner.now()
+		bmark.step()
 		fres := runner.run_repl_file(options.wd, options.vexec, file) or {
+			bmark.fail()
+			eprintln( bmark.step_message(err) )
 			assert false
-			eprintln( runner.tdiff_in_ms(err, sticks) )
 			continue
 		}
+		bmark.ok()
+		println( bmark.step_message(fres) )
 		assert true
-		println( runner.tdiff_in_ms(fres, sticks) )
 	}
-	println( runner.tdiff_in_ms('<=== total time spent running REPL files', global_start_time) )
+	bmark.stop()
+	println( bmark.total_message('total time spent running REPL files') )
 }
 

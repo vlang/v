@@ -5,7 +5,6 @@
 module main
 
 import os
-import strings
 
 struct CGen {
 	out          os.File
@@ -120,7 +119,7 @@ fn (g mut CGen) end_tmp() string {
 	return res
 }
 
-fn (g mut CGen) add_placeholder() int {
+fn (g &CGen) add_placeholder() int {
 	if g.is_tmp {
 		return g.tmp_line.len
 	}
@@ -176,7 +175,7 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 	g.thread_args << wrapper_text
 }
 
-fn (c mut V) prof_counters() string {
+fn (v &V) prof_counters() string {
 	mut res := []string
 	// Global fns
 	//for f in c.table.fns {
@@ -196,7 +195,7 @@ fn (c mut V) prof_counters() string {
 	return res.join(';\n')
 }
 
-fn (p mut Parser) print_prof_counters() string {
+fn (p &Parser) print_prof_counters() string {
 	mut res := []string
 	// Global fns
 	//for f in p.table.fns {
@@ -239,7 +238,7 @@ fn (g mut CGen) add_to_main(s string) {
 }
 
 
-fn build_thirdparty_obj_file(path string) {
+fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
 	if os.file_exists(obj_path) {
 		return
@@ -255,10 +254,12 @@ fn build_thirdparty_obj_file(path string) {
 	}
 	cc := find_c_compiler()
 	cc_thirdparty_options := find_c_compiler_thirdparty_options()
-	cmd := '$cc $cc_thirdparty_options -c -o "$obj_path" $cfiles'
+	btarget := moduleflags.c_options_before_target()
+	atarget := moduleflags.c_options_after_target()
+	cmd := '$cc $cc_thirdparty_options $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
-		cerror(err)
+		verror(err)
 		return
 	}
 	println(res.output)
@@ -274,9 +275,11 @@ fn os_name_to_ifdef(name string) string {
 		case 'netbsd': return '__NetBSD__'
 		case 'dragonfly': return '__DragonFly__'
 		case 'msvc': return '_MSC_VER'
+		case 'android': return '__BIONIC__'
 		case 'js': return '_VJS'
+		case 'solaris': return '__sun'
 	}
-	cerror('bad os ifdef name "$name"')
+	verror('bad os ifdef name "$name"')
 	return ''
 }
 
@@ -287,15 +290,16 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		case '_nix.v': return '#ifndef _WIN32'
 		case '_lin.v': return '#ifdef __linux__'
 		case '_mac.v': return '#ifdef __APPLE__'
+		case '_solaris.v': return '#ifdef __sun'
 	}
-	cerror('bad platform_postfix "$name"')
+	verror('bad platform_postfix "$name"')
 	return ''
 }
 
 // C struct definitions, ordered
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
-fn (v mut V) type_definitions() string {
+fn (v &V) type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top
@@ -314,8 +318,9 @@ fn (v mut V) type_definitions() string {
 	// sort structs
 	types_sorted := sort_structs(types)
 	// Generate C code
-	return types_to_c(builtin_types,v.table) + '\n//----\n' +
+	res := types_to_c(builtin_types,v.table) + '\n//----\n' +
 			types_to_c(types_sorted, v.table)
+	return res
 }
 	
 // sort structs by dependant fields
@@ -343,7 +348,7 @@ fn sort_structs(types []Type) []Type {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		cerror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
+		verror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []Type

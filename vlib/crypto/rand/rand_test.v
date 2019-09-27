@@ -4,7 +4,7 @@
 
 import crypto.rand
 
-fn test_crypto_rand() {
+fn test_crypto_rand_read() {
 	no_bytes := 100
 	max_percentage_diff := 20
 
@@ -27,4 +27,24 @@ fn test_crypto_rand() {
 	diff_percentage := f32(100) - (f32(difference)/f32(no_bytes)*100)
 
 	assert diff_percentage <= max_percentage_diff
+}
+
+fn test_crypto_rand_int_u64() {
+	max := u64(160)
+	mut unique := []int
+	for _ in 0..80 {
+		r := rand.int_u64(max) or {
+			assert false
+			return
+		}
+		if r >= max {
+			assert false
+			return
+		}
+		n := int(r)
+		if !(n in unique) {
+			unique << n
+		}
+	}
+	assert unique.len >= 40
 }

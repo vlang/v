@@ -20,33 +20,44 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	mut str_args := ''
 	for i, arg in f.args   {
-		str_args += arg.name + ' /* $arg.typ */ '
+		str_args += ' /** @type { $arg.typ } **/ ' + arg.name
 		if i < f.args.len - 1 {
 			str_args += ', '
 		}
 	}
 	name := p.table.fn_gen_name(f)
 	if f.is_method {
-		p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args)/* $typ */ {')
+		p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args) {')
 	}	 else {
-		p.genln('\nfunction $name($str_args) /* $typ */ {')
+		p.genln('/** @return { $typ } **/\nfunction $name($str_args) {')
+	}
+}
+
+fn (p mut Parser) gen_blank_identifier_assign() {
+	p.check_name()
+	p.check_space(.assign)
+	typ := p.bool_expression()
+	or_else := p.tok == .key_orelse
+	//tmp := p.get_tmp()
+	if or_else {
+		//panic('optionals todo')
 	}
 }
 
 fn types_to_c(types []Type, table &Table) string {
-	println('js typ to code ')
 	mut sb := strings.new_builder(10)
 	for t in types {
 		if t.cat != .union_ && t.cat != .struct_ {
 			continue
 		}
-		sb.writeln('class $t.name {')
+		sb.write('\n/**\n')
+		sb.write('* @typedef { object } $t.name' + 'Type\n')
 		for field in t.fields {
-			sb.write('\t')
-			sb.write(field.name)
-			sb.writeln('; // $field.typ')
+			sb.writeln('* @property { $field.typ' + '= } $field.name')
 		}
-		sb.writeln('}\n')
+		sb.writeln('**/\n')
+		sb.writeln('/** @type { function & $t.name' + 'Type } **/')
+		sb.writeln('var $t.name = function() {}')
 	}
 	return sb.str()
 }
@@ -55,7 +66,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 	p.cgen.cur_line = p.cgen.cur_line.replace(',', '[') + ']'
 }
 
-fn (table mut Table) fn_gen_name(f &Fn) string {
+fn (table &Table) fn_gen_name(f &Fn) string {
 	mut name := f.name
 	if f.is_method {
 		name = name.replace(' ', '')
@@ -89,6 +100,11 @@ fn (p mut Parser) gen_array_at(typ string, is_arr0 bool, fn_ph int) {
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < ${tmp}.length; $i++) {')
 	p.genln('var $val = $tmp [$i];')
+}
+
+fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
+	p.genln(';\nfor (var $i = $tmp; $i < $range_end; $i++) {')
+	p.genln('var /*$var_type*/ $val = $i;')
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {

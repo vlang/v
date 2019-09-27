@@ -37,6 +37,7 @@ fn (p mut Parser) fgenln(s string) {
 	p.scanner.fgenln(s)
 }
 
+/*
 fn (p mut Parser) peek() Token {
 	for {
 		p.cgen.line = p.scanner.line_nr + 1
@@ -47,6 +48,7 @@ fn (p mut Parser) peek() Token {
 	}
 	return .eof // TODO can never get here - v doesn't know that
 }
+*/
 
 fn (p mut Parser) fmt_inc() {
 	p.scanner.fmt_indent++
