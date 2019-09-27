@@ -102,12 +102,8 @@ fn (v mut V) new_parser_string(text string) Parser {
 
 // new parser from string. with id specified in `id`
 fn (v mut V) new_parser_string_id(text string, id string) Parser {
-	mut p := v.new_parser(id)
-	p = { p|
-		scanner: new_scanner(text),
-		import_table: v.table.get_file_import_table(id),
-		
-	}
+	mut p := v.new_parser(new_scanner(text), id)
+	p.import_table = v.table.get_file_import_table(id)
 	p.scan_tokens()
 	v.add_parser(p)
 	return p
@@ -126,9 +122,8 @@ fn (v mut V) new_parser_file(path string) Parser {
 		}		
 	}
 
-	mut p := v.new_parser(path)
+	mut p := v.new_parser(new_scanner_file(path), path)
 	p = { p|
-		scanner: new_scanner_file(path),
 		file_path: path,
 		file_name: path.all_after('/'),
 		file_platform: path_platform,
@@ -144,9 +139,10 @@ fn (v mut V) new_parser_file(path string) Parser {
 	return p
 }
 
-fn (v mut V) new_parser(parser_id string) Parser {
+fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	mut p := Parser {
-		id: parser_id,
+		id: id
+		scanner: scanner
 		v: v
 		table: v.table
 		cur_fn: EmptyFn
