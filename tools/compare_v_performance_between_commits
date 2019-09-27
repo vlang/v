@@ -78,7 +78,7 @@ compare_v_performance() {
     CMD="$1"
     msg "---------------------------------------------------------------------------------"
     msg "Compare '$CMD'"
-    hyperfine --warmup=3 "cd $B/; $CMD "  "cd $A/; $CMD "
+    hyperfine --warmup=3 "cd '$B/' && $CMD "  "cd '$A/' && $CMD "
     msg
 }
 
