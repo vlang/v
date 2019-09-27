@@ -20,7 +20,7 @@ struct Tok {
 	lit      string
 	line_nr  int
 	name_idx int // name table index for O(1) lookup
-//       col int
+	col      int
 }
 
 struct Parser {
@@ -131,35 +131,24 @@ fn (v mut V) new_parser(path string) Parser {
 	$if js {
 		p.is_js = true
 	}
-
 	if p.pref.is_repl {
 		p.scanner.should_print_line_on_error = false
 	}
-	
 	v.cgen.line_directives = v.pref.is_debuggable
 	v.cgen.file = path
-
 	for {
 	       res := p.scanner.scan()
 	       p.tokens << Tok {
 	               tok: res.tok
 	               lit: res.lit
 	               line_nr: p.scanner.line_nr
+	              col: p.scanner.pos - p.scanner.last_nl_pos
 	       }
 	        if res.tok == .eof {
 	                break
 	        }
 	}
-	
 	v.add_parser(p)
-	/*
-	if !(p in v.parsers) {
-		v.parsers << p
-		
-	}	
-	*/
-	
-	//p.next()
 	//p.scanner.debug_tokens()
 	return p
 }
@@ -184,8 +173,7 @@ fn (p mut Parser) next() {
 	 p.tok = res.tok
 	 p.lit = res.lit
 	 p.scanner.line_nr = res.line_nr
- }
-
+}
 
 fn (p & Parser) peek() Token {
 	if p.token_idx >= p.tokens.len - 2 {
@@ -193,39 +181,7 @@ fn (p & Parser) peek() Token {
 	}
 	tok := p.tokens[p.token_idx]
 	return tok.tok
-/*
-	// save scanner state
-	pos := s.pos
-	line := s.line_nr
-	inside_string := s.inside_string
-	inter_start := s.inter_start
-	inter_end := s.inter_end
-
-	res := s.scan()
-	tok := res.tok
-
-	// restore scanner state
-	s.pos = pos
-	s.line_nr = line
-	s.inside_string = inside_string
-	s.inter_start = inter_start
-	s.inter_end = inter_end
-	return tok
-	*/
 }
-
-
-
-/*
-fn (p mut Parser) next_old() {
-	p.prev_tok2 = p.prev_tok
-	p.prev_tok = p.tok
-	p.scanner.prev_tok = p.tok
-	res := p.scanner.scan()
-	p.tok = res.tok
-	p.lit = res.lit
-}
-*/
 
 fn (p &Parser) log(s string) {
 /*
@@ -911,7 +867,7 @@ fn (p mut Parser) error(s string) {
 		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
 	}
 	p.cgen.save()
-	// V git pull hint
+	// V up hint
 	cur_path := os.getwd()
 	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
@@ -928,7 +884,11 @@ fn (p mut Parser) error(s string) {
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
-	p.scanner.error(s.replace('array_', '[]').replace('__', '.').replace('Option_', '?'))
+	e := s.replace('array_', '[]')
+		.replace('__', '.')
+		.replace('Option_', '?')
+		.replace('main.', '')
+	p.scanner.error_with_col(e, p.tokens[p.token_idx-1].col)
 }
 
 fn (p &Parser) first_pass() bool {

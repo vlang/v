@@ -20,6 +20,7 @@ mut:
 	text           string
 	pos            int
 	line_nr        int
+	last_nl_pos    int // for calculating column
 	inside_string  bool
 	inter_start   bool // for hacky string interpolation TODO simplify
 	inter_end     bool
@@ -238,6 +239,7 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
+			s.last_nl_pos = s.pos
 			s.line_nr++
 		}
 		s.pos++
@@ -640,9 +642,13 @@ fn (s &Scanner) current_column() int {
 }
 
 fn (s &Scanner) error(msg string) {
+	s.error_with_col(msg, 0)
+}
+
+fn (s &Scanner) error_with_col(msg string, col int) {
+	column := col-1
 	linestart := s.find_current_line_start_position()
 	lineend := s.find_current_line_end_position()
-	column := s.pos - linestart
 	if s.should_print_line_on_error && lineend > linestart {
 		line := s.text.substr( linestart, lineend )
 		// The pointerline should have the same spaces/tabs as the offending
@@ -667,8 +673,8 @@ fn (s &Scanner) error(msg string) {
 	// and jump to their source with a keyboard shortcut.
 	// Using only the filename leads to inability of IDE/editors
 	// to find the source file, when it is in another folder.
-	println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
-	//println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
+	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
+	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
 	exit(1)
 }
 
