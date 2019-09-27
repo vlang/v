@@ -1200,7 +1200,7 @@ fn (p mut Parser) close_scope() {
 	mut i := p.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.local_vars[i]
-		if v.scope_level ≠ p.cur_fn.scope_level {
+		if v.scope_level != p.cur_fn.scope_level {
 			break
 		}
 		// Clean up memory, only do this if -autofree was passed for now
@@ -2209,7 +2209,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		p.assigned_type = typ
 		p.expected_type = typ
 		assign_pos := p.cgen.cur_line.len
-		is_cao := p.tok ≠ .assign
+		is_cao := p.tok != .assign
 		p.assign_statement(v, fn_ph, is_indexer && (is_map || is_arr))
 		// `m[key] = val`
 		if is_indexer && (is_map || is_arr) {
