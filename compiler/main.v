@@ -337,8 +337,8 @@ fn (v mut V) compile() {
 		}
 	}
 	// parse generated V code (str() methods etc)
-	mut vgen_parser := v.new_parser_string(v.vgen_buf.str())
-	// Close the string builder which held the generated methods
+	mut vgen_parser := v.new_parser_string_id(v.vgen_buf.str(),'vgen')
+	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
 	v.log('Done parsing.')

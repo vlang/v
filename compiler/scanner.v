@@ -37,6 +37,7 @@ mut:
 	quote byte // which quote is used to denote current string: ' or "
 }
 
+// new scanner from file.
 fn new_scanner_file(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
 		verror("$file_path doesn't exist")
@@ -64,6 +65,7 @@ fn new_scanner_file(file_path string) &Scanner {
 	return s
 }
 
+// new scanner from string.
 fn new_scanner(s string) &Scanner {
 	return &Scanner {
 		// file_path: file_path
@@ -72,7 +74,6 @@ fn new_scanner(s string) &Scanner {
 		should_print_line_on_error: true
 	}
 }
-
 
 struct ScannerPos {
 mut:
@@ -689,10 +690,10 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 fn (s Scanner) count_symbol_before(p int, sym byte) int {
   mut count := 0
   for i:=p; i>=0; i-- {
-    if s.text[i] != sym {
-      break
-    }
-    count++
+	if s.text[i] != sym {
+	  break
+	}
+	count++
   }
   return count
 }
@@ -870,5 +871,3 @@ fn good_type_name(s string) bool {
 	}
 	return true
 }
-
-

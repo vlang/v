@@ -7,11 +7,7 @@ module main
 import (
 	os
 	strings
-	crypto.md5
-)
-
-const (
-	vgen_file_name = 'vgen.tmp'
+	crypto.sha1
 )
 
 // TODO rename to Token
@@ -99,17 +95,17 @@ const (
 	MaxModuleDepth = 4
 )
 
+// new parser from string. parser id will be hash of s
 fn (v mut V) new_parser_string(s string) Parser {
-	parser_id := md5.hexhash(s)
+	return v.new_parser_string_id(s, sha1.hexhash(s))
+}
 
-	mut p := v.new_parser(parser_id)
-	path := vgen_file_name
+// new parser from string. with id specified in `id`
+fn (v mut V) new_parser_string_id(s string, id string) Parser {
+	mut p := v.new_parser(id)
 	p = { p|
 		scanner: new_scanner(s),
-		file_path: path,
-		file_name: path.all_after('/'),
-		file_platform: '.v',
-		import_table: v.table.get_file_import_table(path),
+		import_table: v.table.get_file_import_table(id),
 		
 	}
 	p.scan_tokens()
@@ -117,6 +113,7 @@ fn (v mut V) new_parser_string(s string) Parser {
 	return p
 }
 
+// new parser from file.
 fn (v mut V) new_parser_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
@@ -197,9 +194,9 @@ fn (p mut Parser) next() {
 	 p.prev_tok = p.tok
 	 p.scanner.prev_tok = p.tok
 	 if p.token_idx >= p.tokens.len {
-	         p.tok = Token.eof
-	         p.lit = ''
-	         return
+			 p.tok = Token.eof
+			 p.lit = ''
+			 return
 	 }
 	 res := p.tokens[p.token_idx]
 	 p.token_idx++
@@ -271,7 +268,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
-		p.table.file_imports[p.file_path] = p.import_table
+		p.table.file_imports[p.id] = p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -1769,7 +1766,7 @@ fn (p mut Parser) name_expr() string {
 		// struct initialization
 		else if p.peek() == .lcbr {
 			if ptr {
-			        name += '*'  // `&User{}` => type `User*`
+					name += '*'  // `&User{}` => type `User*`
 			}
 			if name == 'T' {
 				name = p.cur_gen_type
@@ -2167,7 +2164,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_arr {
 			if is_arr0 {
 				typ = typ.right(6)
-               }
+			   }
 			p.gen_array_at(typ, is_arr0, fn_ph)
 		}
 		// map is tricky
@@ -3918,10 +3915,7 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 
 fn (p mut Parser) check_unused_imports() {
 	// Don't run in the generated V file with `.str()`
-	if p.fileis(vgen_file_name) {
-		return
-	}
-	if p.scanner.file_path == '' {
+	if p.id == 'vgen' {
 		return
 	}
 	mut output := ''
