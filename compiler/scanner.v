@@ -228,20 +228,6 @@ fn (s mut Scanner) ident_number() string {
 	return s.ident_dec_number()
 }
 
-fn (s Scanner) has_gone_over_line_end() bool {
-	mut i := s.pos-1
-	for i >= 0 && !s.text[i].is_white() {
-		i--
-	}
-	for i >= 0 && s.text[i].is_white() {
-		if is_nl(s.text[i]) {
-			return true
-		}
-		i--
-	}
-	return false
-}
-
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line

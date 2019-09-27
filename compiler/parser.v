@@ -209,6 +209,15 @@ fn (p & Parser) peek() Token {
 	return tok.tok
 }
 
+// TODO remove dups
+fn (p &Parser) prev_token() Tok {
+	return p.tokens[p.token_idx - 2]
+}	
+
+fn (p &Parser) cur_tok() Tok {
+	return p.tokens[p.token_idx - 1]
+}	
+
 fn (p &Parser) peek_token() Tok {
 	if p.token_idx >= p.tokens.len - 2 {
 		return Tok{tok:Token.eof}
@@ -540,6 +549,7 @@ fn (p mut Parser) type_decl() {
 	p.register_type_with_parent(name, parent.name)
 }
 
+// current token is `(`
 fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	mut method := &Fn {
 		name: field_name
@@ -549,8 +559,10 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	}
 	//p.log('is interface. field=$field_name run=$p.pass')
 	p.fn_args(mut method)
-	if p.scanner.has_gone_over_line_end() {
-	//if p.prev_tok.line_nr != p.tok.line_nr {
+	prev_tok := p.prev_token()
+	cur_tok := p.cur_tok()
+	// No type on the same line, this method doesn't return a type, process next
+	if prev_tok.line_nr != cur_tok.line_nr {
 		method.typ = 'void'
 	} else {
 		method.typ = p.get_type()// method return type
