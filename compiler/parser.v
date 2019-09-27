@@ -103,8 +103,14 @@ fn (v mut V) new_parser_string(s string) Parser {
 	parser_id := md5.hexhash(s)
 
 	mut p := v.new_parser(parser_id)
+	path := vgen_file_name
 	p = { p|
-		scanner: new_scanner(s)
+		scanner: new_scanner(s),
+		file_path: path,
+		file_name: path.all_after('/'),
+		file_platform: '.v',
+		import_table: v.table.get_file_import_table(path),
+		
 	}
 	p.scan_tokens()
 	v.add_parser(p)
