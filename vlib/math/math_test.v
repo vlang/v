@@ -51,4 +51,5 @@ fn test_gamma() {
 
 fn test_robust_equal() {
 	assert math.robust_equal(1.0000000000000000, 0.9999999999999999)
+	assert !math.robust_equal(1.0000, 0.9999)
 }
