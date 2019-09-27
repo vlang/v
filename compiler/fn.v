@@ -178,7 +178,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod &&
-			!p.fileis(vgen_file_name) { // allow .str() on builtin arrays
+			p.id != 'vgen' { // allow .str() on builtin arrays
 			println('T.mod=$T.mod')
 			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
