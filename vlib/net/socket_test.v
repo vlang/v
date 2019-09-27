@@ -2,17 +2,14 @@ import net
 
 fn test_socket() {
 	mut server := net.listen(0) or {
-		println(err)
-		return
+		panic(err)
 	}
 	server_port := server.get_port()
 	mut client := net.dial('127.0.0.1', server_port) or {
-		println(err)
-		return
+		panic(err)
 	}
 	mut socket := server.accept() or {
-		println(err)
-		return
+		panic(err)
 	}
 	
 	message := 'Hello World'

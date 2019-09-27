@@ -9,6 +9,20 @@ import (
 	strings
 )
 
+const (
+	vgen_file_name = 'vgen.tmp'
+)
+
+// TODO rename to Token
+// TODO rename enum Token to TokenType
+struct Tok {
+	tok      Token
+	lit      string
+	line_nr  int
+	name_idx int // name table index for O(1) lookup
+	col      int
+}
+
 struct Parser {
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
@@ -21,7 +35,7 @@ struct Parser {
 	pref           &Preferences // Preferences shared from V struct
 mut:
 	scanner        &Scanner
-	// tokens         []Token // TODO cache all tokens, right now they have to be scanned twice
+	tokens         []Tok
 	token_idx      int
 	tok            Token
 	prev_tok       Token
@@ -94,6 +108,8 @@ fn (v mut V) new_parser(path string) Parser {
 			break
 		}		
 	}
+	
+	//vgen_file := os.open_append(vgen_file_name) or { panic(err) }
 
 	mut p := Parser {
 		v: v
@@ -111,21 +127,29 @@ fn (v mut V) new_parser(path string) Parser {
 		os: v.os
 		vroot: v.vroot
 		local_vars: [Var{}].repeat(MaxLocalVars)
-			
 	}
 	$if js {
 		p.is_js = true
 	}
-
 	if p.pref.is_repl {
 		p.scanner.should_print_line_on_error = false
 	}
-	
 	v.cgen.line_directives = v.pref.is_debuggable
 	v.cgen.file = path
-
-	p.next()
-	// p.scanner.debug_tokens()
+	for {
+	       res := p.scanner.scan()
+	       p.tokens << Tok {
+	               tok: res.tok
+	               lit: res.lit
+	               line_nr: p.scanner.line_nr
+	              col: p.scanner.pos - p.scanner.last_nl_pos
+	       }
+	        if res.tok == .eof {
+	                break
+	        }
+	}
+	v.add_parser(p)
+	//p.scanner.debug_tokens()
 	return p
 }
 
@@ -136,12 +160,35 @@ fn (p mut Parser) set_current_fn(f Fn) {
 }
 
 fn (p mut Parser) next() {
-	p.prev_tok2 = p.prev_tok
-	p.prev_tok = p.tok
-	p.scanner.prev_tok = p.tok
-	res := p.scanner.scan()
-	p.tok = res.tok
-	p.lit = res.lit
+	 p.prev_tok2 = p.prev_tok
+	 p.prev_tok = p.tok
+	 p.scanner.prev_tok = p.tok
+	 if p.token_idx >= p.tokens.len {
+	         p.tok = Token.eof
+	         p.lit = ''
+	         return
+	 }
+	 res := p.tokens[p.token_idx]
+	 p.token_idx++
+	 p.tok = res.tok
+	 p.lit = res.lit
+	 p.scanner.line_nr = res.line_nr
+}
+
+fn (p & Parser) peek() Token {
+	if p.token_idx >= p.tokens.len - 2 {
+		return Token.eof
+	}
+	tok := p.tokens[p.token_idx]
+	return tok.tok
+}
+
+fn (p &Parser) peek_token() Tok {
+	if p.token_idx >= p.tokens.len - 2 {
+		return Tok{tok:Token.eof}
+	}
+	tok := p.tokens[p.token_idx]
+	return tok
 }
 
 fn (p &Parser) log(s string) {
@@ -155,6 +202,8 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.pass = pass
+	p.token_idx = 0
+	p.next()
 	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
 	// `module main` is not required if it's a single file program
 	if p.is_script || p.pref.is_test {
@@ -354,7 +403,7 @@ fn (p mut Parser) import_statement() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
-	if p.peek() == .number && p.scanner.text[p.scanner.pos + 1] == `.` {
+	if p.peek() == .number { // && p.scanner.text[p.scanner.pos + 1] == `.` {
 		p.error('bad import format. module/submodule names cannot begin with a number')
 	}
 	mut mod := p.check_name().trim_space()
@@ -475,6 +524,7 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	//p.log('is interface. field=$field_name run=$p.pass')
 	p.fn_args(mut method)
 	if p.scanner.has_gone_over_line_end() {
+	//if p.prev_tok.line_nr != p.tok.line_nr {
 		method.typ = 'void'
 	} else {
 		method.typ = p.get_type()// method return type
@@ -773,15 +823,18 @@ fn (p mut Parser) check(expected Token) {
 		print_backtrace()
 		p.error(s)
 	}
+	/*
 	if expected == .rcbr {
 		p.fmt_dec()
 	}
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
+	// TODO
 	if expected == .lcbr && p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
 		p.fgenln('')
 		p.fmt_inc()
 	}
+	*/
 	p.next()
 
 if p.scanner.line_comment != '' {
@@ -823,7 +876,7 @@ fn (p mut Parser) error(s string) {
 		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
 	}
 	p.cgen.save()
-	// V git pull hint
+	// V up hint
 	cur_path := os.getwd()
 	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
@@ -840,7 +893,11 @@ fn (p mut Parser) error(s string) {
 	}
 	// p.scanner.debug_tokens()
 	// Print `[]int` instead of `array_int` in errors
-	p.scanner.error(s.replace('array_', '[]').replace('__', '.').replace('Option_', '?'))
+	e := s.replace('array_', '[]')
+		.replace('__', '.')
+		.replace('Option_', '?')
+		.replace('main.', '')
+	p.scanner.error_with_col(e, p.tokens[p.token_idx-1].col)
 }
 
 fn (p &Parser) first_pass() bool {
@@ -1579,14 +1636,16 @@ fn (p mut Parser) name_expr() string {
 	}
 	// //////////////////////////
 	// module ?
-	// (Allow shadowing `gg = gg.newcontext(); gg.draw_triangle();` )
-	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) || p.import_table.known_alias(name))
-		&& !p.known_var(name) && !is_c {
+	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) ||
+		p.import_table.known_alias(name))	&& !is_c &&
+		!p.known_var(name)	// Allow shadowing (`gg = gg.newcontext(); gg.foo()`)
+	{
 		mut mod := name
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
 			p.import_table.register_used_import(name)
-			// we replaced "." with "_dot_" in p.mod for C variable names, do same here.
+			// we replaced "." with "_dot_" in p.mod for C variable names,
+			// do same here.
 			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
 		}
 		p.next()
@@ -1596,7 +1655,8 @@ fn (p mut Parser) name_expr() string {
 		name = prepend_mod(mod, name)
 	}
 	else if !p.table.known_type(name) && !p.known_var(name) &&
-	!p.table.known_fn(name) && !p.table.known_const(name) && !is_c {
+		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
+	{
 		name = p.prepend_mod(name)
 	}
 	// Variable
@@ -2800,10 +2860,10 @@ fn (p mut Parser) array_init() string {
 			typ = val_typ
 			// fixed width array initialization? (`arr := [20]byte`)
 			if is_integer && p.tok == .rsbr && p.peek() == .name {
-				nextc := p.scanner.text[p.scanner.pos + 1]
+				//nextc := p.scanner.text[p.scanner.pos + 1]
 				// TODO whitespace hack
 				// Make sure there's no space in `[10]byte`
-				if !nextc.is_space() {
+				//if !nextc.is_space() {
 					p.check(.rsbr)
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
@@ -2816,7 +2876,7 @@ fn (p mut Parser) array_init() string {
 						return '[${p.mod}__$lit]$array_elem_typ'
 					}
 					return '[$lit]$array_elem_typ'
-				}
+				//}
 			}
 		}
 		if val_typ != typ {
@@ -3824,6 +3884,10 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 }
 
 fn (p mut Parser) check_unused_imports() {
+	// Don't run in the generated V file with `.str()`
+	if p.fileis(vgen_file_name) {
+		return
+	}	
 	mut output := ''
 	for alias, mod in p.import_table.imports {
 		if !p.import_table.is_used_import(alias) {

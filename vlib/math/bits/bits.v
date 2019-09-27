@@ -51,25 +51,25 @@ pub fn trailing_zeros8(x byte) int {
 
 // trailing_zeros16 returns the number of trailing zero bits in x; the result is 16 for x == 0.
 pub fn trailing_zeros16(x u16) int {
-	if x == u16(0) {
+	if x == 0 {
 		return 16
 	}
 	// see comment in trailing_zeros64
-	return int(de_bruijn32tab[u32(x&-x)*de_bruijn32>>u32(32-5)])
+	return int(de_bruijn32tab[u32(x&-x)*de_bruijn32>>(32-5)])
 }
 
 // trailing_zeros32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
 pub fn trailing_zeros32(x u32) int {
-	if x == u32(0) {
+	if x == 0 {
 		return 32
 	}
 	// see comment in trailing_zeros64
-	return int(de_bruijn32tab[(x&-x)*de_bruijn32>>u32(32-5)])
+	return int(de_bruijn32tab[(x&-x)*de_bruijn32>>(32-5)])
 }
 
 // trailing_zeros64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
 pub fn trailing_zeros64(x u64) int {
-	if x == u64(0) {
+	if x == 0 {
 		return 64
 	}
 	// If popcount is fast, replace code below with return popcount(^x & (x - 1)).
@@ -83,7 +83,7 @@ pub fn trailing_zeros64(x u64) int {
 	// find by how many bits it was shifted by looking at which six bit
 	// substring ended up at the top of the word.
 	// (Knuth, volume 4, section 7.3.1)
-	return int(de_bruijn64tab[(x&-x)*de_bruijn64>>u64(64-6)])
+	return int(de_bruijn64tab[(x&-x)*de_bruijn64>>(64-6)])
 }
 
 // --- OnesCount ---
@@ -95,12 +95,12 @@ pub fn ones_count8(x byte) int {
 
 // ones_count16 returns the number of one bits ("population count") in x.
 pub fn ones_count16(x u16) int {
-	return int(pop8_tab[x>>u16(8)] + pop8_tab[x&u16(0xff)])
+	return int(pop8_tab[x>>8] + pop8_tab[x&u16(0xff)])
 }
 
 // ones_count32 returns the number of one bits ("population count") in x.
 pub fn ones_count32(x u32) int {
-	return int(pop8_tab[x>>u32(24)] + pop8_tab[x>>u32(16)&u32(0xff)] + pop8_tab[x>>u32(8)&u32(0xff)] + pop8_tab[x&u32(0xff)])
+	return int(pop8_tab[x>>24] + pop8_tab[x>>16&0xff] + pop8_tab[x>>8&0xff] + pop8_tab[x&u32(0xff)])
 }
 
 // ones_count64 returns the number of one bits ("population count") in x.
@@ -124,13 +124,13 @@ pub fn ones_count64(x u64) int {
 	// Per "Hacker's Delight", the first line can be simplified
 	// more, but it saves at best one instruction, so we leave
 	// it alone for clarity.
-	m := u64(u64(1<<64) - u64(1))
+	m := u64(1<<64) - 1
 	mut y := u64(x>>u64(1)&(m0&m)) + u64(x&(m0&m))
 	y = u64(y>>u64(2)&(m1&m)) + u64(y&(m1&m))
-	y = u64(u64(y>>u64(4)) + y) & (m2 & m)
-	y += u64(y >> u64(8))
-	y += u64(y >> u64(16))
-	y += u64(y >> u64(32))
+	y = u64(u64(y>>4) + y) & (m2 & m)
+	y += y >> 8
+	y += y >> 16
+	y += y >> 32
 	return int(y) & ((1<<7) - 1)
 }
 
@@ -191,26 +191,26 @@ pub fn reverse8(x byte) byte {
 // reverse16 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse16(x u16) u16 {
-	return u16(u16(rev8_tab[x>>u16(8)]) | u16(u16(rev8_tab[x&u16(0xff)])<<u16(8)))
+	return u16(rev8_tab[x>>8]) | u16(u16(rev8_tab[x&u16(0xff)])<<8)
 }
 
 // reverse32 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse32(x u32) u32 {
-	m := u64(u64(1<<32) - u64(1))
-	mut y := u32(u32(x>>u32(1)&u32(m0&m)) | u32(u32(x&u32(m0&m))<<u32(1)))
-	y = u32(u32(y>>u32(2)&u32(m1&m)) | u32(u32(y&u32(m1&m))<<u32(2)))
-	y = u32(u32(y>>u32(4)&u32(m2&m)) | u32(u32(y&u32(m2&m))<<u32(4)))
+	m := u64(1<<32) - 1
+	mut y := u32(x>>u32(1)&u32(m0&m) | u32(u32(x&u32(m0&m))<<1))
+	y = u32(y>>u32(2)&u32(m1&m) | u32(u32(y&u32(m1&m))<<u32(2)))
+	y = u32(y>>u32(4)&u32(m2&m) | u32(u32(y&u32(m2&m))<<u32(4)))
 	return reverse_bytes32(y)
 }
 
 // reverse64 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse64(x u64) u64 {
-	m := u64(u64(1<<64) - u64(1))
-	mut y := u64(u64(x>>u64(1)&(m0&m)) | u64(u64(x&(m0&m))<<u64(1)))
-	y = u64(u64(y>>u64(2)&(m1&m)) | u64(u64(y&(m1&m))<<u64(2)))
-	y = u64(u64(y>>u64(4)&(m2&m)) | u64(u64(y&(m2&m))<<u64(4)))
+	m := u64(1<<64) - 1
+	mut y := u64(x>>u64(1)&(m0&m) | u64(u64(x&(m0&m))<<1))
+	y = u64(y>>u64(2)&(m1&m) | u64(u64(y&(m1&m))<<2))
+	y = u64(y>>u64(4)&(m2&m) | u64(u64(y&(m2&m))<<4))
 	return reverse_bytes64(y)
 }
 
@@ -221,7 +221,7 @@ pub fn reverse64(x u64) u64 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn reverse_bytes16(x u16) u16 {
-	return u16(x>>u16(8)) | u16(x<<u16(8))
+	return u16(x>>8) | u16(x<<8)
 }
 
 // reverse_bytes32 returns the value of x with its bytes in reversed order.
@@ -229,9 +229,9 @@ pub fn reverse_bytes16(x u16) u16 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn reverse_bytes32(x u32) u32 {
-	m := u64(u64(1<<32) - u64(1))
-	y := u32(u32(x>>u32(8)&u32(m3&m)) | u32(u32(x&u32(m3&m))<<u32(8)))
-	return u32(y>>u32(16)) | u32(y<<u32(16))
+	m := u64(1<<32) - 1
+	y := u32(x>>u32(8)&u32(m3&m) | u32(u32(x&u32(m3&m))<<u32(8)))
+	return u32(y>>16) | u32(y<<16)
 }
 
 // reverse_bytes64 returns the value of x with its bytes in reversed order.
@@ -239,10 +239,10 @@ pub fn reverse_bytes32(x u32) u32 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn reverse_bytes64(x u64) u64 {
-	m := u64(u64(1<<64) - u64(1))
-	mut y := u64(u64(x>>u64(8)&(m3&m)) | u64(u64(x&(m3&m))<<u64(8)))
-	y = u64(u64(y>>u64(16)&(m4&m)) | u64(u64(y&(m4&m))<<u64(16)))
-	return u64(y>>u64(32)) | u64(y<<u64(32))
+	m := u64(1<<64) - 1
+	mut y := u64(x>>u64(8)&(m3&m) | u64(u64(x&(m3&m))<<u64(8)))
+	y = u64(y>>u64(16)&(m4&m) | u64(u64(y&(m4&m))<<u64(16)))
+	return u64(y>>32) | u64(y<<32)
 }
 
 // --- Len ---
@@ -256,8 +256,8 @@ pub fn len8(x byte) int {
 pub fn len16(x u16) int {
 	mut y := x
 	mut n := 0
-	if y >= u16(u16(1)<<u16(8)) {
-		y >>= u16(8)
+	if y >= 1<<8 {
+		y >>= 8
 		n = 8
 	}
 	return n + int(len8_tab[y])
@@ -267,12 +267,12 @@ pub fn len16(x u16) int {
 pub fn len32(x u32) int {
 	mut y := x
 	mut n := 0
-	if y >= u32(u32(1)<<u32(16)) {
-		y >>= u32(16)
+	if y >= 1<<16 {
+		y >>= 16
 		n = 16
 	}
-	if y >= u32(u32(1)<<u32(8)) {
-		y >>= u32(8)
+	if y >= 1<<8 {
+		y >>= 8
 		n += 8
 	}
 	return n + int(len8_tab[y])
@@ -282,16 +282,16 @@ pub fn len32(x u32) int {
 pub fn len64(x u64) int {
 	mut y := x
 	mut n := 0
-	if y >= u64(u64(1)<<u64(32)) {
-		y >>= u64(32)
+	if y >= u64(1)<<u64(32) {
+		y >>= 32
 		n = 32
 	}
-	if y >= u64(u64(1)<<u64(16)) {
-		y >>= u64(16)
+	if y >= u64(1)<<u64(16) {
+		y >>= 16
 		n += 16
 	}
-	if y >= u64(u64(1)<<u64(8)) {
-		y >>= u64(8)
+	if y >= u64(1)<<u64(8) {
+		y >>= 8
 		n += 8
 	}
 	return n + int(len8_tab[y])

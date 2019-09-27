@@ -70,8 +70,8 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 
 // blank identifer assignment `_ = 111` 
 fn (p mut Parser) gen_blank_identifier_assign() {
-	p.next()
-	p.check(.assign)
+	p.check_name()
+	p.check_space(.assign)
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
 	tmp := p.get_tmp()
