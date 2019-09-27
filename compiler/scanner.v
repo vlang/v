@@ -434,6 +434,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.nl, '')
 		}
 	case `\n`:
+		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
 	case `.`:
 		if nextc == `.` {

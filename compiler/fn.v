@@ -401,7 +401,6 @@ fn (p mut Parser) fn_decl() {
 		if !is_sig && !is_fn_header {
 			mut opened_scopes := 0
 			mut closed_scopes := 0
-			mut temp_scanner_pos := 0
 			for {
 				if p.tok == .lcbr {
 					opened_scopes++
@@ -410,22 +409,7 @@ fn (p mut Parser) fn_decl() {
 					closed_scopes++
 				}
 				// find `foo<Bar>()` in function bodies and register generic types
-				// TODO remove this once tokens are cached
-				if p.tok == .gt && p.prev_tok == .name  && p.prev_tok2 == .lt &&
-					p.scanner.text[p.scanner.pos-1] != `T` {
-					temp_scanner_pos = p.scanner.pos
-					p.scanner.pos -= 3
-					for p.scanner.pos > 0 && (is_name_char(p.scanner.text[p.scanner.pos]) ||
-						p.scanner.text[p.scanner.pos] == `.`  ||
-						p.scanner.text[p.scanner.pos] == `<` ) {
-						p.scanner.pos--
-					}
-					p.scanner.pos--
-					p.next()
-					// Run the function in the firt pass to register the generic type
-					p.name_expr()
-					p.scanner.pos = temp_scanner_pos
-				}
+				// TODO
 				if p.tok.is_decl() {
 					break
 				}
