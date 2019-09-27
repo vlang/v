@@ -1015,11 +1015,9 @@ pub fn (s string) repeat(count int) string {
 	if count <= 1 {
 		return s
 	}
-	ret := malloc(s.len * count + count)
-	C.strcpy(ret, s.str)
-	for count > 1 {
+	ret := malloc(s.len * count + 1)
+	for _ in 1..count {
 		C.strcat(ret, s.str)
-		count--
 	}
 	return string(ret)
 }
