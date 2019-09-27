@@ -183,6 +183,14 @@ fn (p & Parser) peek() Token {
 	return tok.tok
 }
 
+fn (p &Parser) peek_token() Tok {
+	if p.token_idx >= p.tokens.len - 2 {
+		return Tok{tok:Token.eof}
+	}
+	tok := p.tokens[p.token_idx]
+	return tok
+}
+
 fn (p &Parser) log(s string) {
 /*
 	if !p.pref.is_verbose {
@@ -516,6 +524,7 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	//p.log('is interface. field=$field_name run=$p.pass')
 	p.fn_args(mut method)
 	if p.scanner.has_gone_over_line_end() {
+	//if p.prev_tok.line_nr != p.tok.line_nr {
 		method.typ = 'void'
 	} else {
 		method.typ = p.get_type()// method return type
