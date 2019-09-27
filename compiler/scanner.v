@@ -785,26 +785,6 @@ fn (s mut Scanner) ident_char() string {
 	return if c == '\'' { '\\' + c } else { c }
 }
 
-fn (s mut Scanner) peek() Token {
-	// save scanner state
-	pos := s.pos
-	line := s.line_nr
-	inside_string := s.inside_string
-	inter_start := s.inter_start
-	inter_end := s.inter_end
-
-	res := s.scan()
-	tok := res.tok
-
-	// restore scanner state
-	s.pos = pos
-	s.line_nr = line
-	s.inside_string = inside_string
-	s.inter_start = inter_start
-	s.inter_end = inter_end
-	return tok
-}
-
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
