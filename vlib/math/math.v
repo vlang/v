@@ -24,6 +24,7 @@ const (
 	Log2E  = 1.0 / Ln2
 	Ln10   = 2.30258509299404568401799145468436420760110148862877297603332790
 	Log10E = 1.0 / Ln10
+	F64Epsilon = 2.2204460492503131e-16
 )
 
 const (
@@ -313,4 +314,9 @@ pub fn tanh(a f64) f64 {
 // larger in magnitude than a.
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
+}
+
+// equality considering machine epsilon.
+pub fn robust_equal(a, b f64) bool {
+	return abs(a - b) <= F64Epsilon * max(abs(a), abs(b))
 }
