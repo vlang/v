@@ -29,7 +29,7 @@ NB: A V string should be/is immutable from the point of view of
          
       b) where strlen(s) is needed, you can just pass s.len, 
          without having to constantly recompute the length of s 
-         *over and over again* like some C programs do. That is because
+         *over and over again* like some C programs do. This is because
          V strings are immutable and so their length does not change.
 
     Ordinary V code *does not need* to be concerned with the 
