@@ -607,7 +607,7 @@ fn (p mut Parser) struct_decl() {
 		p.error('type names cannot contain `_`')
 	}
 	if !p.builtin_mod && !name[0].is_capital() {
-		p.error('struct names must be capitalized: `struct Foo {`, not `struct foo {`')
+		p.error('struct names must be capitalized: use `struct ${name.capitalize()}`')
 	}	
 	if is_interface && !name.ends_with('er') {
 		p.error('interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)')

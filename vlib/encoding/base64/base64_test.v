@@ -1,6 +1,6 @@
 import encoding.base64
 
-struct testpair {
+struct TestPair {
 	decoded string
 	encoded string
 }
@@ -8,28 +8,28 @@ struct testpair {
 const (
 	pairs = [
 		// RFC 3548 examples
-		testpair{'\x14\xfb\x9c\x03\xd9\x7e', 'FPucA9l+'},
-		testpair{'\x14\xfb\x9c\x03\xd9', 'FPucA9k='},
-		testpair{'\x14\xfb\x9c\x03', 'FPucAw=='},
+		TestPair{'\x14\xfb\x9c\x03\xd9\x7e', 'FPucA9l+'},
+		TestPair{'\x14\xfb\x9c\x03\xd9', 'FPucA9k='},
+		TestPair{'\x14\xfb\x9c\x03', 'FPucAw=='},
 
 		// RFC 4648 examples
-		testpair{'', ''},
-		testpair{'f', 'Zg=='},
-		testpair{'fo', 'Zm8='},
-		testpair{'foo', 'Zm9v'},
-		testpair{'foob', 'Zm9vYg=='},
-		testpair{'fooba', 'Zm9vYmE='},
-		testpair{'foobar', 'Zm9vYmFy'},
+		TestPair{'', ''},
+		TestPair{'f', 'Zg=='},
+		TestPair{'fo', 'Zm8='},
+		TestPair{'foo', 'Zm9v'},
+		TestPair{'foob', 'Zm9vYg=='},
+		TestPair{'fooba', 'Zm9vYmE='},
+		TestPair{'foobar', 'Zm9vYmFy'},
 
 		// Wikipedia examples
-		testpair{'sure.', 'c3VyZS4='},
-		testpair{'sure', 'c3VyZQ=='},
-		testpair{'sur', 'c3Vy'},
-		testpair{'su', 'c3U='},
-		testpair{'leasure.', 'bGVhc3VyZS4='},
-		testpair{'easure.', 'ZWFzdXJlLg=='},
-		testpair{'asure.', 'YXN1cmUu'},
-		testpair{'sure.', 'c3VyZS4='},
+		TestPair{'sure.', 'c3VyZS4='},
+		TestPair{'sure', 'c3VyZQ=='},
+		TestPair{'sur', 'c3Vy'},
+		TestPair{'su', 'c3U='},
+		TestPair{'leasure.', 'bGVhc3VyZS4='},
+		TestPair{'easure.', 'ZWFzdXJlLg=='},
+		TestPair{'asure.', 'YXN1cmUu'},
+		TestPair{'sure.', 'c3VyZS4='},
 	]
 )
 
