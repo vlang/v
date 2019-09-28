@@ -87,10 +87,3 @@ script:
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
     fi
-  - |
-    if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
-      v install nedpals.args
-      # ensure nedpals.args is installed
-      [[ -d ~/.vmodules/nedpals/args]]
-      git remote -v | grep 'https://github.com/nedpals/v-args (fetch)'
-    fi

@@ -1023,6 +1023,19 @@ fn install_v(args[]string) {
 	}
 }
 
+fn (v &V) test_vget() {
+	ret := os.system('v install nedpals.args')
+	if ret != 0 {
+		println('failed to run v install')
+		exit(1)
+	}	
+	if !os.file_exists(ModPath + '/nedpals/args') {
+		println('v failed to install a test module')
+		exit(1)
+	}	
+	println('vget is OK')
+}
+
 fn (v &V) test_v() {
 	if !os.dir_exists('vlib') {
 		println('run "v test v" next to the vlib/ directory')
@@ -1101,6 +1114,8 @@ fn (v &V) test_v() {
 	}
 	bmark.stop()
 	println( bmark.total_message('building examples') )
+	
+	v.test_vget()
 	
 	if failed {
 		exit(1)
