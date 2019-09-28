@@ -1057,9 +1057,6 @@ fn (v &V) test_v() {
 	println('Testing...')
 	mut tmark := benchmark.new_benchmark()
 	for dot_relative_file in test_files {		
-		if dot_relative_file.contains('repl_test.v') {
-			continue
-		}
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
 		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')

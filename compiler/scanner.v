@@ -74,20 +74,28 @@ fn new_scanner(text string) &Scanner {
 	}
 }
 
+
+// The goal of ScannerPos is to track the current scanning position,
+// so that if there is an error found later, v could show a more accurate 
+// position about where the error initially was.
+// NB: The fields of ScannerPos *should be kept synchronized* with the 
+// corresponding fields in Scanner.
 struct ScannerPos {
 mut:
    pos int
    line_nr int
+   last_nl_pos int
 }
 fn (s ScannerPos) str() string {
-	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} }'
+	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} , ${s.last_nl_pos:5d} }'
 }
 fn (s &Scanner) get_scanner_pos() ScannerPos {
-	return ScannerPos{ pos: s.pos line_nr: s.line_nr }
+	return ScannerPos{ pos: s.pos line_nr: s.line_nr last_nl_pos: s.last_nl_pos }
 }
 fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 	s.pos = scp.pos
 	s.line_nr = scp.line_nr
+	s.last_nl_pos = scp.last_nl_pos
 }
 
 
@@ -231,9 +239,8 @@ fn (s mut Scanner) ident_number() string {
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
-		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
-			s.last_nl_pos = s.pos
-			s.line_nr++
+		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {  
+			s.inc_line_number()
 		}
 		s.pos++
 	}
@@ -431,6 +438,7 @@ fn (s mut Scanner) scan() ScanRes {
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
+			s.last_nl_pos = s.pos
 			return scan_res(.nl, '')
 		}
 	case `\n`:
@@ -444,10 +452,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.dot, '')
 	case `#`:
 		start := s.pos + 1
-		for s.pos < s.text.len && s.text[s.pos] != `\n` {
-			s.pos++
-		}
-		s.line_nr++
+		s.ignore_line()
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
 			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
@@ -543,10 +548,7 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		if nextc == `/` {
 			start := s.pos + 1
-			for s.pos < s.text.len && s.text[s.pos] != `\n`{
-				s.pos++
-			}
-			s.line_nr++
+			s.ignore_line()
 			s.line_comment = s.text.substr(start + 1, s.pos)
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
@@ -565,7 +567,7 @@ fn (s mut Scanner) scan() ScanRes {
 					s.error('comment not terminated')
 				}
 				if s.text[s.pos] == `\n` {
-					s.line_nr++
+					s.inc_line_number()
 					continue
 				}
 				if s.expect('/*', s.pos) {
@@ -711,7 +713,7 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		if c == `\n` {
-			s.line_nr++
+			s.inc_line_number()
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == `\\` {
@@ -825,6 +827,23 @@ fn (s mut Scanner) debug_tokens() {
 			break
 		}
 	}
+}
+
+
+fn (s mut Scanner) ignore_line() {
+	s.eat_to_end_of_line()
+	s.inc_line_number()
+}
+
+fn (s mut Scanner) eat_to_end_of_line(){
+	for s.pos < s.text.len && s.text[s.pos] != `\n` {
+		s.pos++
+	}
+}
+
+fn (s mut Scanner) inc_line_number() {
+	s.last_nl_pos = s.pos
+	s.line_nr++
 }
 
 fn is_name_char(c byte) bool {

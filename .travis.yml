@@ -43,6 +43,7 @@ script:
       git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
 
       if [[ "${TRAVIS_JOB_NAME}" == "windows_gcc" ]]; then
+        gcc --version
         echo "Building V with GCC"
         export VFLAGS="-os windows"
         ./make.bat -gcc
