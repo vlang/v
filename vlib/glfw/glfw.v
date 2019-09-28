@@ -18,6 +18,8 @@ import gl
 #flag darwin -L/opt/local/lib
 
 #flag darwin -lglfw
+#flag freebsd -I/usr/local/include
+#flag freebsd -Wl,-L/usr/local/lib,-lglfw
 #flag linux -lglfw
 #flag windows -lglfw3
 #include <GLFW/glfw3.h>
