@@ -4,12 +4,49 @@
 
 module builtin
 
+/*
+NB: A V string should be/is immutable from the point of view of 
+    V user programs after it is first created. A V string is 
+    also slightly larger than the equivalent C string because 
+    the V string also has an integer length attached.
+    
+    This tradeoff is made, since V strings are created just *once*,
+    but potentially used *many times* over their lifetime.
+    
+    The V string implementation uses a struct, that has a .str field,
+    which points to a C style 0 terminated memory block. Although not
+    strictly necessary from the V point of view, that additional 0 
+    is *very useful for C interoperability*.
+    
+    The V string implementation also has an integer .len field, 
+    containing the length of the .str field, excluding the 
+    terminating 0 (just like the C's strlen(s) would do).
+    
+    The 0 ending of .str, and the .len field, mean that in practice:
+      a) a V string s can be used very easily, wherever a
+         C string is needed, just by passing s.str,
+         without a need for further conversion/copying.
+         
+      b) where strlen(s) is needed, you can just pass s.len, 
+         without having to constantly recompute the length of s 
+         *over and over again* like some C programs do. This is because
+         V strings are immutable and so their length does not change.
+
+    Ordinary V code *does not need* to be concerned with the 
+    additional 0 in the .str field. The 0 *must* be put there by the 
+    low level string creating functions inside this module.
+    
+    Failing to do this will lead to programs that work most of the 
+    time, when used with pure V functions, but fail in strange ways, 
+    when used with modules using C functions (for example os and so on).
+*/
+
 struct string {
 //mut:
 	//hash_cache int
 pub:
-	str byteptr
-	len int
+	str byteptr // points to a C style 0 terminated string of bytes.
+	len int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 }
 
 struct ustring {
