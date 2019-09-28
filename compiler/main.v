@@ -238,6 +238,7 @@ fn (v mut V) compile() {
 		println('all .v files:')
 		println(v.files)
 	}
+	/*
 	if v.pref.is_debug {
 		println('\nparsers:')
 		for q in v.parsers {
@@ -248,6 +249,7 @@ fn (v mut V) compile() {
 			println(q)
 		}	
 	}
+	*/
 	// First pass (declarations)
 	for file in v.files {
 		for i, p in v.parsers {
