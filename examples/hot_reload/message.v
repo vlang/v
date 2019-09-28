@@ -2,6 +2,7 @@
 // v -live message.v
 module main
 
+import os
 import time
 
 [live]
@@ -10,6 +11,7 @@ fn print_message() {
 }
 
 fn main() {
+	os.clear()
 	for {
 		print_message()
 		time.sleep_ms(500)
