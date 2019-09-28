@@ -846,18 +846,14 @@ fn (s mut Scanner) inc_line_number() {
 	s.line_nr++
 }
 
-// The next functions are usually called in tight loops, so mark them to help the C compiler:
-[inline]
 fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
 
-[inline]
 fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-[inline]
 fn contains_capital(s string) bool {
 	for c in s {
 		if c >= `A` && c <= `Z` {
