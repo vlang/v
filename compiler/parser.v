@@ -3275,7 +3275,6 @@ fn (p mut Parser) for_st() {
 		pad := if is_arr { 6 } else  { 4 }
 		var_typ := if is_str { 'byte' } else { typ.right(pad) }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
-		// Register temp var
 		mut i_var_type := 'int'
 		if is_arr {
 			p.gen_for_header(i, tmp, var_typ, val)
@@ -3296,6 +3295,7 @@ fn (p mut Parser) for_st() {
 				is_changed: true
 			})
 		}
+		// Register temp var
 		if val != '_' {
 			p.register_var(Var {
 				name: val
