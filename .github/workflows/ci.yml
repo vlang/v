@@ -64,6 +64,7 @@ jobs:
     #    node-version: 12.x
     - name: Build
       run: |
+        gcc --version
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -gcc
     - name: Test
