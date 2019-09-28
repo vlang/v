@@ -9,6 +9,8 @@
 
 module sha512
 
+import math.bits
+
 const(
 	_K = [
 		0x428a2f98d728ae22,
@@ -97,7 +99,7 @@ const(
 fn block_generic(dig mut Digest, p_ []byte) {
 	mut p := p_
 	
-	mut w := [u64(0); 80]
+	mut w := [u64(0)].repeat(80)
 	
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]
@@ -111,14 +113,14 @@ fn block_generic(dig mut Digest, p_ []byte) {
 	for p.len >= Chunk {
 		for i := 0; i < 16; i++ {
 			j := i * 8
-			w[i] = u64(u64(u64(p[j])<<u64(56)) | u64(u64(p[j+1])<<u64(48)) | u64(u64(p[j+2])<<u64(40)) | u64(u64(p[j+3])<<u64(32)) |
-				u64(u64(p[j+4])<<u64(24)) | u64(u64(p[j+5])<<u64(16)) | u64(u64(p[j+6])<<u64(8)) | u64(p[j+7]))
+			w[i] = u64(u64(u64(p[j])<<56) | u64(u64(p[j+1])<<48) | u64(u64(p[j+2])<<40) | u64(u64(p[j+3])<<32) |
+				u64(u64(p[j+4])<<24) | u64(u64(p[j+5])<<16) | u64(u64(p[j+6])<<8) | u64(p[j+7]))
 		}
 		for i := 16; i < 80; i++ {
 			v1 := w[i-2]
-			t1 := (u64(v1>>u64(19)) | u64(v1<<u64(64-19))) ^ u64(u64(v1>>u64(61)) | u64(v1<<u64(64-61))) ^ u64(v1 >> u64(6))
+			t1 := bits.rotate_left_64(v1, -19) ^ bits.rotate_left_64(v1, -61) ^ (v1 >> 6)
 			v2 := w[i-15]
-			t2 := (u64(v2>>u64(1)) | u64(v2<<u64(64-1))) ^ u64(u64(v2>>u64(8)) | u64(v2<<u64(64-8))) ^ u64(v2 >> u64(7))
+			t2 := bits.rotate_left_64(v2, -1) ^ bits.rotate_left_64(v2, -8) ^ (v2 >> 7)
 
 			w[i] = t1 + w[i-7] + t2 + w[i-16]
 		}
@@ -133,8 +135,9 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		mut h := h7
 
 		for i := 0; i < 80; i++ {
-			t1 := h + (u64(u64(e>>u64(14)) | u64(e<<u64(64-14))) ^ u64(u64(e>>u64(18)) | u64(e<<u64(64-18))) ^ u64(u64(e>>u64(41)) | u64(e<<u64(64-41)))) + ((e & f) ^ (~e & g)) + _K[i] + w[i]
-			t2 := (u64(u64(a>>u64(28)) | u64(a<<u64(64-28))) ^ u64(u64(a>>u64(34)) | u64(a<<u64(64-34))) ^ u64(u64(a>>u64(39)) | u64(a<<u64(64-39)))) + ((a & b) ^ (a & c) ^ (b & c))
+			t1 := h + (bits.rotate_left_64(e, -14) ^ bits.rotate_left_64(e, -18) ^ bits.rotate_left_64(e, -41)) + ((e & f) ^ (~e & g)) + _K[i] + w[i]
+			t2 := (bits.rotate_left_64(a, -28) ^ bits.rotate_left_64(a, -34) ^ bits.rotate_left_64(a, -39)) + ((a & b) ^ (a & c) ^ (b & c))
+			
 			h = g
 			g = f
 			f = e

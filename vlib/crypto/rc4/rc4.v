@@ -30,7 +30,7 @@ pub fn new_cipher(key []byte) ?Cipher {
 		return error('crypto.rc4: invalid key size ' + key.len.str())
 	}
 	mut c := Cipher{
-		s: [u32(0); 256]
+		s: [u32(0)].repeat(256)
 	}
 	for i := 0; i < 256; i++ {
 		c.s[i] = u32(i)
@@ -51,10 +51,10 @@ pub fn new_cipher(key []byte) ?Cipher {
 // the process's memory.
 pub fn (c mut Cipher) reset() {
 	for i in c.s {
-		c.s[i] = u32(0)
+		c.s[i] = 0
 	}
-	c.i = byte(0)
-	c.j = byte(0)
+	c.i = 0
+	c.j = 0
 }
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.
@@ -68,7 +68,7 @@ pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	}
 	mut i := c.i
 	mut j := c.j
-	_ := dst[src.len-1]
+	_ = dst[src.len-1]
 	*dst = dst.left(src.len) // eliminate bounds check from loop
 	for k, v in src {
 		i += byte(1)

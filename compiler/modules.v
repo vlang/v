@@ -7,8 +7,8 @@ module main
 import os
 
 // add a module and its deps (module speficic dag method)
-pub fn(graph mut DepGraph) from_import_tables(import_tables []FileImportTable) {
-	for fit in import_tables {
+pub fn(graph mut DepGraph) from_import_tables(import_tables map[string]FileImportTable) {
+	for _, fit in import_tables {
 		mut deps := []string
 		for _, m in fit.imports {
 			deps << m
@@ -45,7 +45,7 @@ fn (v &V) find_module_path(mod string) string {
 	if !os.dir_exists(import_path) {
 		import_path = '$ModPath/$mod_path'
 		if !os.dir_exists(import_path){
-			cerror('module "$mod" not found')
+			verror('module "$mod" not found')
 		}
 	}
 	return import_path

@@ -4,8 +4,6 @@
 
 module term
 
-import os
-
 fn _format(msg, open, close string) string {
 	return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
 }

@@ -28,5 +28,3 @@ pub fn reg_key_vid() {
   #RegisterEventHotKey(kVK_ANSI_1, cmdKey, gMyHotKeyID,
                       #GetApplicationEventTarget(), 0, &gMyHotKeyRef);
 }
-
-

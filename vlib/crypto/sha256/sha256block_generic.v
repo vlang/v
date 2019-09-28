@@ -83,7 +83,7 @@ const (
 fn block_generic(dig mut Digest, p_ []byte) {
 	mut p := p_
 
-	mut w := [u32(0); 64]
+	mut w := [u32(0)].repeat(64)
 	
 	mut h0 := dig.h[0]
 	mut h1 := dig.h[1]
@@ -99,13 +99,13 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		// rounds below if needed for speed.
 		for i := 0; i < 16; i++ {
 			j := i * 4
-			w[i] = u32(u32(p[j])<<u32(24)) | u32(u32(p[j+1])<<u32(16)) | u32(u32(p[j+2])<<u32(8)) | u32(p[j+3])
+			w[i] = u32(p[j]<<24) | u32(p[j+1]<<16) | u32(p[j+2]<<8) | u32(p[j+3])
 		}
 		for i := 16; i < 64; i++ {
 			v1 := w[i-2]
-			t1 := (bits.rotate_left_32(v1, -17)) ^ (bits.rotate_left_32(v1, -19)) ^ u32((v1 >> u32(10)))
+			t1 := (bits.rotate_left_32(v1, -17)) ^ (bits.rotate_left_32(v1, -19)) ^ (v1 >> 10)
 			v2 := w[i-15]
-			t2 := (bits.rotate_left_32(v2, -7)) ^ (bits.rotate_left_32(v2, -18)) ^ u32((v2 >> u32(3)))
+			t2 := (bits.rotate_left_32(v2, -7)) ^ (bits.rotate_left_32(v2, -18)) ^ (v2 >> 3)
 			w[i] = t1 + w[i-7] + t2 + w[i-16]
 		}
 
@@ -120,7 +120,6 @@ fn block_generic(dig mut Digest, p_ []byte) {
 
 		for i := 0; i < 64; i++ {
 			t1 := h + ((bits.rotate_left_32(e, -6)) ^ (bits.rotate_left_32(e, -11)) ^ (bits.rotate_left_32(e, -25))) + ((e & f) ^ (~e & g)) + u32(_K[i]) + w[i]
-
 			t2 := ((bits.rotate_left_32(a, -2)) ^ (bits.rotate_left_32(a, -13)) ^ (bits.rotate_left_32(a, -22))) + ((a & b) ^ (a & c) ^ (b & c))
 
 			h = g

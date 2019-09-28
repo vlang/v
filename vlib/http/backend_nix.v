@@ -13,12 +13,12 @@ import strings
 // (older) system openssl.
 #flag linux -I/usr/local/include/openssl -L/usr/local/lib
 
-#flag windows -I @VROOT/thirdparty/openssl/include 
-#flag darwin -I @VROOT/thirdparty/openssl/include 
 #flag -l ssl -l crypto
 // MacPorts
+#flag darwin -I/opt/local/include
 #flag darwin -L/opt/local/lib
 // Brew
+#flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
 #include <openssl/ssl.h>
@@ -27,15 +27,9 @@ struct C.SSL {
  
 } 
 
-fn init_module() {
-	$if mac { 
-		C.SSL_library_init() 
-	} 
-	$if linux { 
-		C.SSL_library_init() 
-	} 
-	//C.SSL_load_error_strings() 
-	//C.OPENSSL_config(0) 
+fn init() int {
+	C.SSL_library_init() 
+	return 1
 }
 
 fn (req &Request) ssl_do(port int, method, host_name, path string) Response {

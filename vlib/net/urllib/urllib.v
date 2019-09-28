@@ -247,14 +247,14 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 
-	mut buf := [byte(0); 64]
+	mut buf := [byte(0)].repeat(64)
 	mut t := []byte
 
 	required := s.len + 2*hex_count
 	if required <= buf.len {
 		t = buf.left(required)
 	} else {
-		t = [byte(0); required]
+		t = [byte(0)].repeat(required)
 	}
 
 	if hex_count == 0 {
@@ -513,7 +513,7 @@ fn _parse(rawurl string, via_request bool) ?URL {
 		}
 	}
 
-	if (url.scheme != '' || !via_request && !rest.starts_with('///')) && rest.starts_with('//') {
+	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
 		parts := split(rest.right(2), '/', false)
 		authority := parts[0]
 		rest = parts[1]
@@ -527,7 +527,7 @@ fn _parse(rawurl string, via_request bool) ?URL {
 	// raw_path is a hint of the encoding of path. We don't want to set it if
 	// the default escaping of path is equivalent, to help make sure that people
 	// don't rely on it in general.
-	_ := url.set_path(rest) or {
+	_ = url.set_path(rest) or {
 		return error(err)
 	}
 	return url
@@ -812,7 +812,7 @@ pub fn (u &URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	_ := _parse_query(mut m, query) or {
+	_ = _parse_query(mut m, query) or {
 		return error(err)
 	}
 	return m
@@ -822,7 +822,7 @@ pub fn parse_query(query string) ?Values {
 // but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	_ := _parse_query(mut m, query)
+	_ = _parse_query(mut m, query)
 	return m
 }
 

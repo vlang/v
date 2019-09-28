@@ -69,25 +69,6 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
-fn init_os_args(argc int, argv &byteptr) []string {
-	mut args := []string
-	$if windows {
-		mut args_list := &voidptr(0)
-		mut args_count := 0
-		args_list = C.CommandLineToArgvW(C.GetCommandLine(), &args_count)
-		for i := 0; i < args_count; i++ {
-			args << string_from_wide(&u16(args_list[i]))
-		}
-
-		C.LocalFree(args_list)
-	} $else {
-		for i := 0; i < argc; i++ {
-			args << string(argv[i])
-		}		
-	}
-	return args
-}
-
 fn parse_windows_cmd_line(cmd byteptr) []string {
 	s := string(cmd)
 	return s.split(' ')
@@ -96,13 +77,7 @@ fn parse_windows_cmd_line(cmd byteptr) []string {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
-	mut fp := &C.FILE{!}
-	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
-	} $else {
-		cpath := path.str
-		fp = C.fopen(cpath, mode.str)
-	}
+	mut fp := vfopen(path, mode)
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
@@ -123,7 +98,7 @@ pub fn file_size(path string) int {
 	$if windows {
 		C._wstat(path.to_wide(), &s)
 	} $else {
-		C.stat(path.str, &s)
+		C.stat(*char(path.str), &s)
 	}
 	return s.st_size
 }
@@ -132,9 +107,17 @@ pub fn mv(old, new string) {
 	$if windows {
 		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
-		C.rename(old.str, new.str)
+		C.rename(*char(old.str), *char(new.str))
 	}
 }
+
+fn vfopen(path, mode string) *C.FILE {
+	$if windows {
+		return C._wfopen(path.to_wide(), mode.to_wide())
+	} $else {
+		return C.fopen(*char(path.str), *char(mode.str))
+	}
+}	
 
 // read_lines reads the file in `path` into an array of lines.
 // TODO return `?[]string` TODO implement `?[]` support
@@ -144,12 +127,7 @@ pub fn read_lines(path string) []string {
 	mut buf := malloc(buf_len)
 
 	mode := 'rb'
-	mut fp := &C.FILE{!}
-	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
-	} $else {
-		fp = C.fopen(path.str, mode.str)
-	}
+	mut fp := vfopen(path, mode)
 	if isnil(fp) {
 		// TODO
 		// return error('failed to open file "$path"')
@@ -158,7 +136,7 @@ pub fn read_lines(path string) []string {
 
 	mut buf_index := 0
 	for C.fgets(buf + buf_index, buf_len - buf_index, fp) != 0 {
-		len := C.strlen(buf)
+		len := vstrlen(buf)
 		if len == buf_len - 1 && buf[len - 1] != 10 {
 			buf_len *= 2
 			buf = C.realloc(buf, buf_len)
@@ -203,7 +181,7 @@ pub fn open(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(cpath, 'rb')
+			cfile: C.fopen(*char(cpath), 'rb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -224,7 +202,7 @@ pub fn create(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(cpath, 'wb')
+			cfile: C.fopen(*char(cpath), 'wb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -244,7 +222,7 @@ pub fn open_append(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(cpath, 'ab')
+			cfile: C.fopen(*char(cpath), 'ab')
 		}
 	}
 	if isnil(file.cfile) {
@@ -289,8 +267,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-
-fn popen(path string) &FILE {
+fn popen(path string) *C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -302,7 +279,7 @@ fn popen(path string) &FILE {
 	}
 }
 
-fn pclose(f &FILE) int {
+fn pclose(f *C.FILE) int {
 	$if windows {
 		return C._pclose(f)
 	}
@@ -327,8 +304,8 @@ pub fn exec(cmd string) ?Result {
 	}
 	buf := [1000]byte
 	mut res := ''
-	for C.fgets(buf, 1000, f) != 0 {
-		res += tos(buf, strlen(buf))
+	for C.fgets(*char(buf), 1000, f) != 0 {
+		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
 	exit_code := pclose(f)
@@ -363,7 +340,7 @@ pub fn getenv(key string) string {
 		}
 		return string_from_wide(s)
 	} $else {
-		s := C.getenv(key.str)
+		s := *byte(C.getenv(key.str))
 		if isnil(s) {
 			return ''
 		}
@@ -480,35 +457,32 @@ pub fn filename(path string) string {
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
     str := get_raw_line()
-		$if windows {
-			return str.trim_right('\r\n')
-		}
-		$else {
-			return str.trim_right('\n')
-		}
+	$if windows {
+		return str.trim_right('\r\n')
+	}
+	$else {
+		return str.trim_right('\n')
+	}
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
         maxlinechars := 256
-        buf := &u16(malloc(maxlinechars*2))
+        buf := &byte(malloc(maxlinechars*2))
         res := int( C.fgetws(buf, maxlinechars, C.stdin ) )
-        len := int(  C.wcslen(buf) )
-        if 0 != res { return string_from_wide2( buf, len ) }
+        len := int(  C.wcslen(&u16(buf)) )
+        if 0 != res { return string_from_wide2( &u16(buf), len ) }
         return ''
     }
 	$else {
-		//u64 is used because C.getline needs a size_t as second argument
-		//Otherwise, it would cause a valgrind warning and may be dangerous
-		//Malloc takes an int as argument so a cast has to be made
-		max := u64(256)
-		buf := malloc(int(max))
+		max := size_t(256)
+		buf := *char(malloc(int(max)))
 		nr_chars := C.getline(&buf, &max, stdin)
 		if nr_chars == 0 {
 			return ''
 		}
-		return string(buf, nr_chars)
+		return string(byteptr(buf), nr_chars)
 	}
 }
 
@@ -565,6 +539,12 @@ pub fn user_os() string {
 	$if msvc {
 		return 'windows'
 	}
+	$if android{
+		return 'android'
+	}
+	$if solaris {
+		return 'solaris'
+	}
 	return 'unknown'
 }
 
@@ -614,6 +594,9 @@ fn on_segfault(f voidptr) {
 	}
 }
 
+fn C.getpid() int
+fn C.proc_pidpath (int, byteptr, int) int
+
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
@@ -651,6 +634,8 @@ pub fn executable() string {
 		// lol
 		return os.args[0]
 	}
+	$if solaris {
+	}
 	$if netbsd {
 		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
@@ -667,7 +652,7 @@ pub fn executable() string {
 		}
 		return string(result, count)
 	}
-	return '.'
+	return os.args[0]
 }
 
 pub fn is_dir(path string) bool {
@@ -730,7 +715,7 @@ pub fn realpath(fpath string) string {
 		res = int( C.realpath( fpath.str, fullpath ) )
 	}
 	if res != 0 {
-		return string(fullpath, strlen(fullpath))
+		return string(fullpath, vstrlen(fullpath))
 	}
 	return fpath
 }
@@ -761,6 +746,10 @@ pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
 }
 
+
+fn C.fork() int
+fn C.wait() int
+
 pub fn fork() int {
 	$if !windows {
 		pid := C.fork()
@@ -787,7 +776,8 @@ pub fn file_last_mod_unix(path string) int {
 }
 
 
-fn log(s string) {
+pub fn log(s string) {
+	println('os.log: ' + s)
 }
 
 pub fn flush_stdout() {

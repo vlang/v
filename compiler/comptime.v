@@ -7,6 +7,7 @@ module main
 import (
 	vweb.tmpl  // for `$vweb_html()`
 	os
+	strings
 )
 
 fn (p mut Parser) comp_time() {
@@ -20,7 +21,7 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
-		if name in SupportedPlatforms {
+		if name in supported_platforms {
 			ifdef_name := os_name_to_ifdef(name)
 			if not {
 				p.genln('#ifndef $ifdef_name')
@@ -42,7 +43,7 @@ fn (p mut Parser) comp_time() {
 		}
 		else {
 			println('Supported platforms:')
-			println(SupportedPlatforms)
+			println(supported_platforms)
 			p.error('unknown platform `$name`')
 		}
 		if_returns := p.returns
@@ -89,12 +90,18 @@ fn (p mut Parser) comp_time() {
 	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
 	// that returns an html string
 	else if p.tok == .name && p.lit == 'vweb' {
-		path := p.cur_fn.name + '.html'
+		mut path := p.cur_fn.name + '.html'
 		if p.pref.is_debug {
 			println('compiling tmpl $path')
 		}
 		if !os.file_exists(path) {
-			p.error('vweb HTML template "$path" not found')
+			// Can't find the template file in current directory,
+			// try looking next to the vweb program, in case it's run with
+			// v path/to/vweb_app.v
+			path = os.dir(p.scanner.file_path) + '/' + path
+			if !os.file_exists(path) {
+				p.error('vweb HTML template "$path" not found')
+			}
 		}
 		p.check(.name)  // skip `vweb.html()` TODO
 		p.check(.dot)
@@ -110,7 +117,7 @@ fn (p mut Parser) comp_time() {
 		// Parse the function and embed resulting C code in current function so that
 		// all variables are available.
 		pos := p.cgen.lines.len - 1
-		mut pp := p.v.new_parser('.vwebtmpl.v')
+		mut pp := p.v.new_parser_file('.vwebtmpl.v')
 		if !p.pref.is_debug {
 			os.rm('.vwebtmpl.v')
 		}
@@ -144,8 +151,8 @@ fn (p mut Parser) chash() {
 		// expand `@VROOT` `@VMOD` to absolute path
 		flag = flag.replace('@VROOT', p.vroot)
 		flag = flag.replace('@VMOD', ModPath)
-		p.log('adding flag "$flag"')
-		p.table.parse_cflag(flag)
+		//p.log('adding flag "$flag"')
+		p.table.parse_cflag(flag, p.mod)
 		return
 	}
 	if hash.starts_with('include') {
@@ -175,9 +182,23 @@ fn (p mut Parser) chash() {
 		println('v script')
 		//p.v_script = true
 	}
+	// Don't parse a non-JS V file (`#-js` flag)
+	else if hash == '-js'  {
+		$if js {
+			for p.tok != .eof {
+				p.next()
+			}	
+		} $else {
+			p.next()
+		}	
+	}
 	else {
-		if !p.can_chash {
-			p.error('bad token `#` (embedding C code is no longer supported)')
+		$if !js {
+			if !p.can_chash {
+				println('hash="$hash"')
+				println(hash.starts_with('include'))
+				p.error('bad token `#` (embedding C code is no longer supported)')
+			}
 		}
 		p.genln(hash)
 	}
@@ -210,48 +231,63 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 }
 
 fn (p mut Parser) gen_array_str(typ Type) {
-	//println('gen array str "$typ.name"')
-	p.table.add_method(typ.name, Fn{
-		name: 'str',
+	p.add_method(typ.name, Fn{
+		name: 'str'
 		typ: 'string'
 		args: [Var{typ: typ.name, is_arg:true}]
 		is_method: true
 		is_public: true
 		receiver_typ: typ.name
 	})
-	/*
-	tt := p.table.find_type(typ.name)
-	for m in tt.methods {
-		println(m.name + ' ' + m.typ)
-		}
-		*/
-	t := typ.name
-	elm_type := t.right(6)
+	elm_type := typ.name.right(6)
 	elm_type2 := p.table.find_type(elm_type)
 	if p.typ_to_fmt(elm_type, 0) == '' &&
 		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
-	p.cgen.fns << '
-string ${t}_str($t a) {
-	strings__Builder sb = strings__new_builder(a.len * 3);
-	strings__Builder_write(&sb, tos2("[")) ;
-	for (int i = 0; i < a.len; i++) {
-		strings__Builder_write(&sb, ${elm_type}_str( (($elm_type *) a.data)[i]));
-
-	if (i < a.len - 1) {
-		strings__Builder_write(&sb, tos2(", ")) ;
-		
+	p.v.vgen_buf.writeln('
+fn (a $typ.name) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write("[")
+	for i, elm in a {
+		sb.write(elm.str())
+		if i < a.len - 1 {
+			sb.write(", ")
+		}
 	}
+	sb.write("]")
+	return sb.str()
 }
-strings__Builder_write(&sb, tos2("]")) ;
-return strings__Builder_str(sb);
-} '
+	')
+	p.cgen.fns << 'string ${typ.name}_str();'
 }
 
-fn (p mut Parser) parse_t() {
-
+// `Foo { bar: 3, baz: 'hi' }` => '{ bar: 3, baz: "hi" }'
+fn (p mut Parser) gen_struct_str(typ Type) {
+	p.add_method(typ.name, Fn{
+		name: 'str'
+		typ: 'string'
+		args: [Var{typ: typ.name, is_arg:true}]
+		is_method: true
+		is_public: true
+		receiver_typ: typ.name
+	})
+	
+	mut sb := strings.new_builder(typ.fields.len * 20)
+	sb.writeln('fn (a $typ.name) str() string {\nreturn')
+	sb.writeln("'{")
+	for field in typ.fields {
+		sb.writeln('\t$field.name: \$a.${field.name}')
+	}
+	sb.writeln("\n}'")
+	sb.writeln('}')
+	p.v.vgen_buf.writeln(sb.str())
+	// Need to manually add the definition to `fns` so that it stays
+	// at the top of the file.
+	// This function will get parsee by V after the main pass.
+	p.cgen.fns << 'string ${typ.name}_str();'
 }
+
 
 
 

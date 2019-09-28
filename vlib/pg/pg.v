@@ -10,11 +10,11 @@ import time
 
 struct DB {
 mut:
-	conn *C.PGconn
+	conn &C.PGconn
 }
 
 struct Row {
-pub:
+pub mut:
 	vals []string
 }
 
@@ -28,7 +28,7 @@ pub:
   dbname string
 }
 
-fn C.PQconnectdb(a byteptr) *C.PGconn
+fn C.PQconnectdb(a byteptr) &C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
@@ -103,14 +103,14 @@ pub fn (db DB) exec(query string) []pg.Row {
 	return res_to_rows(res)
 }
 
-fn rows_first_or_empty(rows []pg.Row) pg.Row? {
+fn rows_first_or_empty(rows []pg.Row) ?pg.Row {
 	if rows.len == 0 {
 		return error('no row')
 	} 
 	return rows[0]
 }
             
-pub fn (db DB) exec_one(query string) pg.Row? {
+pub fn (db DB) exec_one(query string) ?pg.Row {
 	res := C.PQexec(db.conn, query.str)
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
