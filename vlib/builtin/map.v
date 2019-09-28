@@ -210,6 +210,7 @@ pub fn (m mut map) delete(key string) {
 	m.size--
 }
 
+[deprecated]
 pub fn (m map) exists(key string) {
 	panic('map.exists(key) was removed from the language. Use `key in map` instead.')
 }
