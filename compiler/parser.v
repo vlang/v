@@ -1401,6 +1401,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 // is_map: are we in map assignment? (m[key] = val) if yes, dont generate '='
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
+	errtok := p.cur_tok()
 	//p.log('assign_statement() name=$v.name tok=')
 	is_vid := p.fileis('vid') // TODO remove
 	tok := p.tok
@@ -1455,8 +1456,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
-		p.scanner.line_nr--
-		p.error('cannot use type `$expr_type` as type `$p.assigned_type` in assignment')
+		p.error_with_tok( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
 	if (is_str || is_ustr) && tok == .plus_assign && !p.is_js {
 		p.gen(')')
