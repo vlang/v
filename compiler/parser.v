@@ -17,7 +17,6 @@ struct Tok {
 	line_nr  int // the line number in the source where the token occured
 	name_idx int // name table index for O(1) lookup
 	col      int // the column where the token ends
-	sp       ScannerPos // used while reporting errors
 }
 
 struct Parser {
@@ -169,7 +168,6 @@ fn (p mut Parser) scan_tokens() {
 				lit: res.lit
 				line_nr: p.scanner.line_nr
 				col: p.scanner.pos - p.scanner.last_nl_pos        
-				sp: p.scanner.get_scanner_pos()
 		}
 		if res.tok == .eof {
 				break
@@ -218,7 +216,7 @@ fn (p &Parser) cur_tok() Tok {
 
 fn (p &Parser) peek_token() Tok {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Tok{ tok:Token.eof sp: p.scanner.get_scanner_pos() }
+		return Tok{ tok:Token.eof }
 	}
 	tok := p.tokens[p.token_idx]
 	return tok
@@ -953,7 +951,7 @@ fn (p mut Parser) production_error(e string, sp ScannerPos) {
 }
 
 fn (p mut Parser) error_with_tok(s string, tok Tok) {
-	p.error_with_position(s, tok.sp )
+	p.error_with_position(s, p.scanner.get_scanner_pos_of_token(tok) )
 }
 
 fn (p mut Parser) error(s string) {
