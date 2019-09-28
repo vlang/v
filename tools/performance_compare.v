@@ -111,9 +111,9 @@ fn (c Context) normalized_workpath_for_commit( commit string ) string {
 }
 
 fn validate_commit_exists( commit string ){
-	cmd := 'git cat-file -t ' + '"' + commit + '"'
+	cmd := 'git cat-file -t ' + "'" + commit + "'"
 	if !command_exits_with_zero_status(cmd) {
-		eprintln('Commit: "' +  commit + '" does not exist in the current repository.')
+		eprintln("Commit: '" +  commit + "' does not exist in the current repository.")
 		exit(3)
 	}
 }

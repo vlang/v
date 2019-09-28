@@ -7,13 +7,13 @@ msg() {
 }
 
 if [ $# -ne 2 ]; then
-	msg "Usage: compare_v_to_c_performance COMMIT_BEFORE COMMIT_AFTER"
+    msg "Usage: compare_v_to_c_performance COMMIT_BEFORE COMMIT_AFTER"
     exit 1
 fi
 
 depend_on() { 
     type "$1" >/dev/null 2>&1 || {
-        printf 'ERR: missing tool "$1"\n' >&2; exit 1;
+        printf 'ERR: missing tool "%s"\n' "$1" >&2; exit 1;
     } 
 }
 

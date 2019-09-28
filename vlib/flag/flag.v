@@ -73,7 +73,7 @@ const (
   // used for formating usage message
   SPACE = '                            '
   UNDERLINE = '-----------------------------------------------'
-  MAX_ARGS_NUMBER = 9999
+  MAX_ARGS_NUMBER = 4048
 )
 
 // create a new flag set for parsing command line arguments
