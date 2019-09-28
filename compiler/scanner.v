@@ -37,7 +37,8 @@ mut:
 	quote byte // which quote is used to denote current string: ' or "
 }
 
-fn new_scanner(file_path string) &Scanner {
+// new scanner from file.
+fn new_scanner_file(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -46,7 +47,7 @@ fn new_scanner(file_path string) &Scanner {
 		verror('scanner: failed to open $file_path')
 		return 0
 	}
-
+		
 	// BOM check
 	if raw_text.len >= 3 {
 		c_text := raw_text.str
@@ -58,14 +59,20 @@ fn new_scanner(file_path string) &Scanner {
 		}
 	}
 
+	mut s := new_scanner(raw_text)
+	s.file_path = file_path
+
+	return s
+}
+
+// new scanner from string.
+fn new_scanner(text string) &Scanner {
 	return &Scanner {
-		file_path: file_path
-		text: raw_text
+		text: text
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 	}
 }
-
 
 struct ScannerPos {
 mut:
@@ -219,20 +226,6 @@ fn (s mut Scanner) ident_number() string {
 	}
 
 	return s.ident_dec_number()
-}
-
-fn (s Scanner) has_gone_over_line_end() bool {
-	mut i := s.pos-1
-	for i >= 0 && !s.text[i].is_white() {
-		i--
-	}
-	for i >= 0 && s.text[i].is_white() {
-		if is_nl(s.text[i]) {
-			return true
-		}
-		i--
-	}
-	return false
 }
 
 fn (s mut Scanner) skip_whitespace() {
@@ -441,6 +434,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.nl, '')
 		}
 	case `\n`:
+		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
 	case `.`:
 		if nextc == `.` {
@@ -682,10 +676,10 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 fn (s Scanner) count_symbol_before(p int, sym byte) int {
   mut count := 0
   for i:=p; i>=0; i-- {
-    if s.text[i] != sym {
-      break
-    }
-    count++
+	if s.text[i] != sym {
+	  break
+	}
+	count++
   }
   return count
 }
@@ -863,5 +857,3 @@ fn good_type_name(s string) bool {
 	}
 	return true
 }
-
-

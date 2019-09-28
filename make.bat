@@ -43,6 +43,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 del v2.exe
+del v3.exe
 rd /s /q vc
 
 goto :success

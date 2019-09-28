@@ -9,10 +9,6 @@ import (
 	strings
 )
 
-const (
-	vgen_file_name = 'vgen.tmp'
-)
-
 // TODO rename to Token
 // TODO rename enum Token to TokenType
 struct Tok {
@@ -24,6 +20,7 @@ struct Tok {
 }
 
 struct Parser {
+	id             string // unique id. if parsing file will be same as file_path
 	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
@@ -97,7 +94,17 @@ const (
 	MaxModuleDepth = 4
 )
 
-fn (v mut V) new_parser(path string) Parser {
+// new parser from string. unique id specified in `id`.
+// tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
+fn (v mut V) new_parser_string(text string, id string) Parser {
+	mut p := v.new_parser(new_scanner(text), id)
+	p.scan_tokens()
+	v.add_parser(p)
+	return p
+}
+
+// new parser from file.
+fn (v mut V) new_parser_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
@@ -108,25 +115,39 @@ fn (v mut V) new_parser(path string) Parser {
 			break
 		}		
 	}
-	
-	//vgen_file := os.open_append(vgen_file_name) or { panic(err) }
 
+	mut p := v.new_parser(new_scanner_file(path), path)
+	p = { p|
+		file_path: path,
+		file_name: path.all_after('/'),
+		file_platform: path_platform,
+		file_pcguard: path_pcguard,
+		is_script: (v.pref.is_script && path == v.dir)
+	}
+	v.cgen.file = path
+	p.scan_tokens()
+	//p.scanner.debug_tokens()
+	v.add_parser(p)
+
+	return p
+}
+
+// creates a new parser. most likely you will want to use
+// `new_parser_file` or `new_parser_string` instead.
+fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	mut p := Parser {
+		id: id
+		scanner: scanner
 		v: v
-		file_path: path
-		file_name: path.all_after('/')
-		file_platform: path_platform
-		file_pcguard: path_pcguard
-		scanner: new_scanner(path)
 		table: v.table
-		import_table: v.table.get_file_import_table(path)
 		cur_fn: EmptyFn
 		cgen: v.cgen
-		is_script: (v.pref.is_script && path == v.dir)
+		is_script: false
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
 		local_vars: [Var{}].repeat(MaxLocalVars)
+		import_table: v.table.get_file_import_table(id)
 	}
 	$if js {
 		p.is_js = true
@@ -135,22 +156,23 @@ fn (v mut V) new_parser(path string) Parser {
 		p.scanner.should_print_line_on_error = false
 	}
 	v.cgen.line_directives = v.pref.is_debuggable
-	v.cgen.file = path
-	for {
-	       res := p.scanner.scan()
-	       p.tokens << Tok {
-	               tok: res.tok
-	               lit: res.lit
-	               line_nr: p.scanner.line_nr
-	              col: p.scanner.pos - p.scanner.last_nl_pos
-	       }
-	        if res.tok == .eof {
-	                break
-	        }
-	}
-	v.add_parser(p)
-	//p.scanner.debug_tokens()
+	// v.cgen.file = path
 	return p
+}
+
+fn (p mut Parser) scan_tokens() {
+	for {
+		res := p.scanner.scan()
+		p.tokens << Tok {
+				tok: res.tok
+				lit: res.lit
+				line_nr: p.scanner.line_nr
+				col: p.scanner.pos - p.scanner.last_nl_pos
+		}
+		if res.tok == .eof {
+				break
+		}
+	}
 }
 
 fn (p mut Parser) set_current_fn(f Fn) {
@@ -164,9 +186,9 @@ fn (p mut Parser) next() {
 	 p.prev_tok = p.tok
 	 p.scanner.prev_tok = p.tok
 	 if p.token_idx >= p.tokens.len {
-	         p.tok = Token.eof
-	         p.lit = ''
-	         return
+			 p.tok = Token.eof
+			 p.lit = ''
+			 return
 	 }
 	 res := p.tokens[p.token_idx]
 	 p.token_idx++
@@ -182,6 +204,15 @@ fn (p & Parser) peek() Token {
 	tok := p.tokens[p.token_idx]
 	return tok.tok
 }
+
+// TODO remove dups
+fn (p &Parser) prev_token() Tok {
+	return p.tokens[p.token_idx - 2]
+}	
+
+fn (p &Parser) cur_tok() Tok {
+	return p.tokens[p.token_idx - 1]
+}	
 
 fn (p &Parser) peek_token() Tok {
 	if p.token_idx >= p.tokens.len - 2 {
@@ -238,7 +269,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
-		p.table.file_imports[p.file_path] = p.import_table
+		p.table.file_imports[p.id] = p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -514,6 +545,7 @@ fn (p mut Parser) type_decl() {
 	p.register_type_with_parent(name, parent.name)
 }
 
+// current token is `(`
 fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	mut method := &Fn {
 		name: field_name
@@ -523,8 +555,10 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	}
 	//p.log('is interface. field=$field_name run=$p.pass')
 	p.fn_args(mut method)
-	if p.scanner.has_gone_over_line_end() {
-	//if p.prev_tok.line_nr != p.tok.line_nr {
+	prev_tok := p.prev_token()
+	cur_tok := p.cur_tok()
+	// No type on the same line, this method doesn't return a type, process next
+	if prev_tok.line_nr != cur_tok.line_nr {
 		method.typ = 'void'
 	} else {
 		method.typ = p.get_type()// method return type
@@ -1174,7 +1208,7 @@ fn (p mut Parser) close_scope() {
 	mut i := p.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.local_vars[i]
-		if v.scope_level ≠ p.cur_fn.scope_level {
+		if v.scope_level != p.cur_fn.scope_level {
 			break
 		}
 		// Clean up memory, only do this if -autofree was passed for now
@@ -1736,7 +1770,7 @@ fn (p mut Parser) name_expr() string {
 		// struct initialization
 		else if p.peek() == .lcbr {
 			if ptr {
-			        name += '*'  // `&User{}` => type `User*`
+					name += '*'  // `&User{}` => type `User*`
 			}
 			if name == 'T' {
 				name = p.cur_gen_type
@@ -2134,7 +2168,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_arr {
 			if is_arr0 {
 				typ = typ.right(6)
-               }
+			   }
 			p.gen_array_at(typ, is_arr0, fn_ph)
 		}
 		// map is tricky
@@ -2183,7 +2217,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		p.assigned_type = typ
 		p.expected_type = typ
 		assign_pos := p.cgen.cur_line.len
-		is_cao := p.tok ≠ .assign
+		is_cao := p.tok != .assign
 		p.assign_statement(v, fn_ph, is_indexer && (is_map || is_arr))
 		// `m[key] = val`
 		if is_indexer && (is_map || is_arr) {
@@ -3885,9 +3919,9 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 
 fn (p mut Parser) check_unused_imports() {
 	// Don't run in the generated V file with `.str()`
-	if p.fileis(vgen_file_name) {
+	if p.id == 'vgen' {
 		return
-	}	
+	}
 	mut output := ''
 	for alias, mod in p.import_table.imports {
 		if !p.import_table.is_used_import(alias) {

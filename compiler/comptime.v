@@ -117,7 +117,7 @@ fn (p mut Parser) comp_time() {
 		// Parse the function and embed resulting C code in current function so that
 		// all variables are available.
 		pos := p.cgen.lines.len - 1
-		mut pp := p.v.new_parser('.vwebtmpl.v')
+		mut pp := p.v.new_parser_file('.vwebtmpl.v')
 		if !p.pref.is_debug {
 			os.rm('.vwebtmpl.v')
 		}
@@ -245,7 +245,7 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
-	p.v.vgen_file.writeln('
+	p.v.vgen_buf.writeln('
 fn (a $typ.name) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write("[")
@@ -281,7 +281,7 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	}
 	sb.writeln("\n}'")
 	sb.writeln('}')
-	p.v.vgen_file.writeln(sb.str())
+	p.v.vgen_buf.writeln(sb.str())
 	// Need to manually add the definition to `fns` so that it stays
 	// at the top of the file.
 	// This function will get parsee by V after the main pass.
