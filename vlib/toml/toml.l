@@ -6,10 +6,12 @@
     // Bison
     #include "toml.tab.h"
     int yywarp(void) {return 1;}
+    void increment_line_num(void){}
     #define TRUE 1
     #define FALSE 0
     void toml_string_literal_open(void);
     void toml_string_literal_add(int letter);
+    void toml_string_literal_buffer(void);
     static char* string_literal_buffer = NULL;
     static int string_literal_buffer_size = 0;
     static int string_literal_buffer_alloc_size = 0; 
@@ -26,35 +28,40 @@ time        [0-2][0-9][:][0-5][0-9][:][0-5][0-9][.][0-9]{0,6}
 timestamp  date?[T]time?
 
 %%
-<INITIAL>#           BEGIN COMMENT;
-<INITIAL>"\""        return QUOTE;
-<INITIAL>"\f"        return FORM_FEED;
-<INITIAL>"\'"        return DOUBLEQUOTE;
-<INITIAL>"\0"        return NUL;
-<INITIAL>"."         return DOT;
-<INITIAL>","         return COMMA;
-<INITIAL>"="         return EQUAL;
-<INITIAL>"{"         return LBRACE;
-<INITIAL>"}"         return RBRACE;
-<INITIAL>"\n"        return NEWLINE;
-<INITIAL>"["         return LBRACKERT;
-<INITIAL>"]"         return RBRACKERT;
-<INITIAL>"-"         return HYPHEN;
-<INITIAL>":"         return CORON;
-<INITIAL>"0b"        return BIN_HEADER;
-<INITIAL>"0x"        return HEX_HEADER;
-<INITIAL>"0o"        return OCT_HEADER;
-<INITIAL>"true"        return BOOL_TRUE;
-<INITIAL>"false"       return BOOL_FALSE;
-<INITIAL>integer     return INTEGER;
-<INITIAL>binary      return BINARY;
-<INITIAL>floating    return FLOAT;
-<INITIAL>timestamp   return TIMESTAMP;
+<INITIAL>#              BEGIN COMMENT;
+<INITIAL>"\""           return QUOTE;
+<INITIAL>"\f"           return FORM_FEED;
+<INITIAL>"\'"           return DOUBLEQUOTE;
+<INITIAL>"\0"           return NUL;
+<INITIAL>"."            return DOT;
+<INITIAL>","            return COMMA;
+<INITIAL>"="            return EQUAL;
+<INITIAL>"{"            return LBRACE;
+<INITIAL>"}"            return RBRACE;
+<INITIAL>"\r"           BEGIN CRETURN
+<INITIAL>"\n"           return NEWLINE;
+<INITIAL>"["            return LBRACKERT;
+<INITIAL>"]"            return RBRACKERT;
+<INITIAL>"-"            return HYPHEN;
+<INITIAL>":"            return CORON;
+<INITIAL>"0b"           return BIN_HEADER;
+<INITIAL>"0x"           return HEX_HEADER;
+<INITIAL>"0o"           return OCT_HEADER;
+<INITIAL>"true"         return BOOL_TRUE;
+<INITIAL>"false"        return BOOL_FALSE;
+<INITIAL>integer        return INTEGER;
+<INITIAL>binary         return BINARY;
+<INITIAL>floating       return DOUBLE;
+<INITIAL>timestamp      return TIMESTAMP;
+<INITIAL>\"             BEGIN WQUOTE_STRING;
+<INITIAL>\'             BEGIN QUOTE_STRING;
+<INITIAL>\"\"\"         BEGIN WQUOTE_MULTI_LINE;
+<INITIAL>\'\'\'         BEGIN QUOTE_MULTI_LINE;
 
-<INITIAL>\"     BEGIN WQUOTE_STRING;
-<INITIAL>\'     BEGIN QUOTE_STRING;
-<INITIAL>\"\"\" BEGIN WQUOTE_MULTI_LINE;
-<INITIAL>\'\'\' BEGIN QUOTE_MULTI_LINE;
+<CRETURN>\n {
+    return NEWLINE;
+    BEGIN INITIAL;
+}
 
 <COMMENT>"\n" BEGIN INITIAL;
 <COMMENT>. ;
@@ -73,5 +80,9 @@ void toml_string_literal_open(){
 }
 
 void toml_string_literal_add(int letter){
+
+}
+
+void toml_string_literal_buffer(){
 
 }
