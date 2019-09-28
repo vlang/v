@@ -1021,5 +1021,6 @@ pub fn (s string) repeat(count int) string {
 			ret[i*s.len + j] = s[j]
 		}
 	}
+	ret[s.len * count] = `\0`
 	return string(ret)
 }
