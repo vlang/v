@@ -25,6 +25,7 @@ fn (v &V) get_os_cflags() []CFlag {
 		if flag.os == ''
 		|| (flag.os == 'linux' && v.os == .linux)
 		|| (flag.os == 'darwin' && v.os == .mac)
+		|| (flag.os == 'freebsd' && v.os == .freebsd)
 		|| (flag.os == 'windows' && (v.os == .windows || v.os == .msvc)) {
 			flags << flag
 		}
@@ -81,7 +82,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 	}
 	mut fos := ''
 	mut name := ''
-	if flag.starts_with('linux') || flag.starts_with('darwin') || flag.starts_with('windows') {
+	if flag.starts_with('linux') || flag.starts_with('darwin') || flag.starts_with('freebsd') || flag.starts_with('windows') {
 		pos := flag.index(' ')
 		fos = flag.left(pos).trim_space()
 		flag = flag.right(pos).trim_space()

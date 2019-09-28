@@ -145,6 +145,7 @@ fn test_finalize_returns_error_for_unknown_flags() {
 
 fn test_allow_to_build_usage_message() {
   mut fp := flag.new_flag_parser([]string)
+  fp.limit_free_args(1, 4)
   fp.application('flag_tool')
   fp.version('v0.0.0')
   fp.description('some short information about this tool')
@@ -158,13 +159,14 @@ fn test_allow_to_build_usage_message() {
   usage := fp.usage()
   mut all_strings_found := true
   for s in ['flag_tool', 'v0.0.0', 
-            'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>', 'a_string <arg>', 
+            'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>', 'a_string <string>:not_stuff',
             'some int to define',
             'some bool to define',
             'this should appear on the next line',
             'some float as well',
             'your credit card number',
-            'usage', 'options:', 'description:',
+            'The arguments should be at least 1 and at most 4 in number.',
+            'Usage', 'Options:', 'Description:',
             'some short information about this tool'] {
     if !usage.contains(s) {
       eprintln(' missing \'$s\' in usage message')
@@ -181,7 +183,7 @@ fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
 
   fp.bool('a_bool', false, '')
   
-  assert !fp.usage().contains('description:')
+  assert !fp.usage().contains('Description:')
 }
 
 fn test_if_no_options_given_usage_message_does_not_contain_options() {
@@ -189,7 +191,7 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
   fp.application('flag_tool')
   fp.version('v0.0.0')
   
-  assert !fp.usage().contains('options:')
+  assert !fp.usage().contains('Options:')
 }
 
 fn test_free_args_could_be_limited() {
@@ -206,7 +208,7 @@ fn test_error_for_to_few_free_args() {
   mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
   fp1.limit_free_args(5, 6)
   args := fp1.finalize() or {
-    assert err == 'Expect at least 5 arguments'
+    assert err.starts_with('Expected at least 5 arguments')
     return
   }
   assert args.len < 0 // expect an error and need to use args 
@@ -216,7 +218,7 @@ fn test_error_for_to_much_free_args() {
   mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
   fp1.limit_free_args(1, 2)
   args := fp1.finalize() or {
-    assert err == 'Expect at most 2 arguments'
+    assert err.starts_with('Expected at most 2 arguments')
     return
   }
   assert args.len < 0 // expect an error and need to use args 
@@ -226,7 +228,7 @@ fn test_could_expect_no_free_args() {
   mut fp1 := flag.new_flag_parser(['a'])
   fp1.limit_free_args(0, 0)
   args := fp1.finalize() or {
-    assert err == 'Expect no arguments'
+    assert err.starts_with('Expected no arguments')
     return
   }
   assert args.len < 0 // expect an error and need to use args 

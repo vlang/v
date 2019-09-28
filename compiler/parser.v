@@ -481,6 +481,12 @@ fn (p mut Parser) const_decl() {
 	p.fgenln('')
 	p.fmt_inc()
 	for p.tok == .name {
+		if p.lit == '_' && p.peek() == .assign {
+			p.gen_blank_identifier_assign()
+			p.cgen.consts_init << p.cgen.cur_line.trim_space()
+			p.cgen.resetln('')
+			continue
+		}
 		// `Age = 20`
 		mut name := p.check_name()
 		//if ! (name[0] >= `A` && name[0] <= `Z`) {
@@ -2893,11 +2899,10 @@ fn (p mut Parser) array_init() string {
 		if i == 0 {
 			typ = val_typ
 			// fixed width array initialization? (`arr := [20]byte`)
-			if is_integer && p.tok == .rsbr && p.peek() == .name {
-				//nextc := p.scanner.text[p.scanner.pos + 1]
-				// TODO whitespace hack
-				// Make sure there's no space in `[10]byte`
-				//if !nextc.is_space() {
+			if is_integer && p.tok == .rsbr && p.peek() == .name &&
+				p.cur_tok().line_nr == p.peek_token().line_nr {
+				// there is no space between `[10]` and `byte`
+				if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
 					p.check(.rsbr)
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
@@ -2910,7 +2915,11 @@ fn (p mut Parser) array_init() string {
 						return '[${p.mod}__$lit]$array_elem_typ'
 					}
 					return '[$lit]$array_elem_typ'
-				//}
+				} else {
+					p.check(.rsbr)
+					typ = p.get_type()
+					p.error('no space allowed between [$lit] and $typ')
+				}
 			}
 		}
 		if val_typ != typ {
@@ -3020,9 +3029,10 @@ fn (p mut Parser) struct_init(typ string) string {
 		}
 		// Zero values: init all fields (ints to 0, strings to '' etc)
 		for i, field in t.fields {
+			sanitized_name := if typ != 'Option' { p.table.var_cgen_name( field.name ) } else { field.name }
 			// println('### field.name')
 			// Skip if this field has already been assigned to
-			if field.name in inited_fields {
+			if sanitized_name in inited_fields {
 				continue
 			}
 			field_typ := field.typ
@@ -3031,9 +3041,9 @@ fn (p mut Parser) struct_init(typ string) string {
 			}
 			// init map fields
 			if field_typ.starts_with('map_') {
-				p.gen_struct_field_init(field.name)
+				p.gen_struct_field_init(sanitized_name)
 				p.gen_empty_map(field_typ.right(4))
-				inited_fields << field.name
+				inited_fields << sanitized_name
 				if i != t.fields.len - 1 {
 					p.gen(',')
 				}
@@ -3042,7 +3052,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			}
 			def_val := type_default(field_typ)
 			if def_val != '' && def_val != '{0}' {
-				p.gen_struct_field_init(field.name)
+				p.gen_struct_field_init(sanitized_name)
 				p.gen(def_val)
 				if i != t.fields.len - 1 {
 					p.gen(',')
