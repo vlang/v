@@ -3298,12 +3298,11 @@ fn (p mut Parser) for_st() {
 			})
 		}
 		if val != '_' {
-			val_var := Var {
+			p.register_var(Var {
 				name: val
 				typ: var_typ
 				ptr: typ.contains('*')
-			}
-			p.register_var(val_var)
+			})
 		}
 	}
 	// `for val in vals`
