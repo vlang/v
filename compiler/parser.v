@@ -95,7 +95,7 @@ const (
 )
 
 // new parser from string. unique id specified in `id`.
-// tip: use a hashing function to `auto` generate id from `text` eg. sha1.hexhash(text)
+// tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
 fn (v mut V) new_parser_string(text string, id string) Parser {
 	mut p := v.new_parser(new_scanner(text), id)
 	p.scan_tokens()
