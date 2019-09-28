@@ -1024,6 +1024,7 @@ fn install_v(args[]string) {
 }
 
 fn (v &V) test_vget() {
+	return
 	vexe := os.executable()
 	ret := os.system('$vexe install nedpals.args')
 	if ret != 0 {
