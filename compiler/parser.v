@@ -481,6 +481,12 @@ fn (p mut Parser) const_decl() {
 	p.fgenln('')
 	p.fmt_inc()
 	for p.tok == .name {
+		if p.lit == '_' && p.peek() == .assign {
+			p.gen_blank_identifier_assign()
+			p.cgen.consts_init << p.cgen.cur_line.trim_space()
+			p.cgen.resetln('')
+			continue
+		}
 		// `Age = 20`
 		mut name := p.check_name()
 		//if ! (name[0] >= `A` && name[0] <= `Z`) {
