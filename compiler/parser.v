@@ -2893,11 +2893,10 @@ fn (p mut Parser) array_init() string {
 		if i == 0 {
 			typ = val_typ
 			// fixed width array initialization? (`arr := [20]byte`)
-			if is_integer && p.tok == .rsbr && p.peek() == .name {
-				//nextc := p.scanner.text[p.scanner.pos + 1]
-				// TODO whitespace hack
-				// Make sure there's no space in `[10]byte`
-				//if !nextc.is_space() {
+			if is_integer && p.tok == .rsbr && p.peek() == .name &&
+				p.cur_tok().line_nr == p.peek_token().line_nr {
+				// there is no space between `[10]` and `byte`
+				if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
 					p.check(.rsbr)
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
@@ -2910,7 +2909,11 @@ fn (p mut Parser) array_init() string {
 						return '[${p.mod}__$lit]$array_elem_typ'
 					}
 					return '[$lit]$array_elem_typ'
-				//}
+				} else {
+					p.check(.rsbr)
+					typ = p.get_type()
+					p.error('no space allowed between [$lit] and $typ')
+				}
 			}
 		}
 		if val_typ != typ {
