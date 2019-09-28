@@ -2556,8 +2556,13 @@ fn (p mut Parser) factor() string {
 		typ = 'byte'
 		return typ
 	case Token.str:
+		ph := p.cgen.add_placeholder()
 		p.string_expr()
 		typ = 'string'
+		if p.tok == .lsbr {
+			typ = 'byte'
+			p.index_expr('string', ph)
+		}
 		return typ
 	case Token.key_false:
 		typ = 'bool'
