@@ -3282,8 +3282,7 @@ fn (p mut Parser) for_st() {
 		}
 		else if is_map {
 			i_var_type = 'string'
-			i_name := if i == '_' { '_V_map_idx' } else { i }
-			p.gen_for_map_header(i_name, tmp, var_typ, val, typ)
+			p.gen_for_map_header(i, tmp, var_typ, val, typ)
 		}
 		else if is_str {
 			i_var_type = 'byte'
