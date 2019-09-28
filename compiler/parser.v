@@ -132,8 +132,8 @@ fn (v mut V) new_parser_file(path string) Parser {
 	return p
 }
 
-// creates a new parser. .mos likely you will want to use
-// `new_parser_file` or
+// creates a new parser. most likely you will want to use
+// `new_parser_file` or `new_parser_string` instead.
 fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	mut p := Parser {
 		id: id
