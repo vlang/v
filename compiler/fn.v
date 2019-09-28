@@ -146,7 +146,18 @@ fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
 	p.fgen('fn ')
 	//defer { p.fgenln('\n') }
-	mut f := Fn {
+	// If we are in the first pass, create a new function.
+	// In the second pass fetch the one we created.
+	/*
+	mut f := if p.first_pass {
+		Fn{
+			mod: p.mod
+			is_public: p.tok == .key_pub
+		}
+	else {
+	}	
+	*/
+	mut f := Fn{
 		mod: p.mod
 		is_public: p.tok == .key_pub
 	}
@@ -185,7 +196,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// `(f *Foo)` instead of `(f mut Foo)` is a common mistake
 		//if !p.builtin_mod && receiver_typ.contains('*') {
-		if receiver_typ.contains('*') {
+		if receiver_typ.ends_with('*') {
 			t := receiver_typ.replace('*', '')
 			p.error('use `($receiver_name mut $t)` instead of `($receiver_name *$t)`')
 		}
@@ -208,6 +219,7 @@ fn (p mut Parser) fn_decl() {
 		f.args << receiver
 		p.register_var(receiver)
 	}
+	// +-/* methods
 	if p.tok == .plus || p.tok == .minus || p.tok == .mul {
 		f.name = p.tok.str()
 		p.next()
@@ -398,28 +410,7 @@ fn (p mut Parser) fn_decl() {
 		// First pass? Skip the body for now
 		// Look for generic calls.
 		if !is_sig && !is_fn_header {
-			mut opened_scopes := 0
-			mut closed_scopes := 0
-			for {
-				if p.tok == .lcbr {
-					opened_scopes++
-				}
-				if p.tok == .rcbr {
-					closed_scopes++
-				}
-				// find `foo<Bar>()` in function bodies and register generic types
-				// TODO
-				if p.tok.is_decl() {
-					break
-				}
-				// fn body ended, and a new fn attribute declaration like [live] is starting?
-				if closed_scopes > opened_scopes && p.prev_tok == .rcbr {
-					if p.tok == .lsbr {
-						break
-					}
-				}
-				p.next()
-			}
+			p.skip_fn_body()
 		}
 		// Live code reloading? Load all fns from .so
 		if is_live && p.first_pass() && p.mod == 'main' {
@@ -507,6 +498,35 @@ fn (p mut Parser) fn_decl() {
 	p.returns = false
 	if !is_generic {
 		p.genln('}')
+	}
+}
+
+[inline]
+// Skips the entire function's body in the first pass.
+fn (p mut Parser) skip_fn_body() {
+	mut opened_scopes := 0
+	mut closed_scopes := 0
+	for {
+		if p.tok == .lcbr {
+			opened_scopes++
+		}
+		if p.tok == .rcbr {
+			closed_scopes++
+		}
+		// find `foo<Bar>()` in function bodies and register generic types
+		// TODO
+		// ...
+		// Reached a declaration token? (fn, struct, const etc) Stop.
+		if p.tok.is_decl() {
+			break
+		}
+		// fn body ended, and a new fn attribute declaration like [live] is starting?
+		if closed_scopes > opened_scopes && p.prev_tok == .rcbr {
+			if p.tok == .lsbr {
+				break
+			}
+		}
+		p.next()
 	}
 }
 
@@ -894,6 +914,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		}
 		got := typ
 		expected := arg.typ
+		got_ptr := got.ends_with('*')
+		exp_ptr := expected.ends_with('*')
 		// println('fn arg got="$got" exp="$expected"')
 		if !p.check_types_no_throw(got, expected) {
 			mut j := i
@@ -912,18 +934,23 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 				'argument to `$f.name()`')
 		}
 		is_interface := p.table.is_interface(arg.typ)
-		// Add `&` or `*` before an argument?
+		// Automatically add `&` or `*` before an argument.
+		// V, unlike C and Go, simplifies this aspect:
+		// `foo(bar)` is allowed where `foo(&bar)` is expected.
+		// The argument is not mutable, so it won't be changed by the function.
+		// It doesn't matter whether it's passed by referencee or by value
+		// to the end user.
 		if !is_interface {
 			// Dereference
-			if got.ends_with('*') && !expected.ends_with('*') {
+			if got_ptr && !exp_ptr {
 				p.cgen.set_placeholder(ph, '*')
 			}
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
-			if !got.ends_with('*') && expected.ends_with('*') && got != 'voidptr' {
+			if !got_ptr && exp_ptr && got != 'voidptr' {
 				// Special case for mutable arrays. We can't `&` function results,
 				// have to use `(array[]){ expr }` hack.
-				if expected.starts_with('array_') && expected.ends_with('*') {
+				if expected.starts_with('array_') && exp_ptr {
 					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){')
 					p.gen('}[0] ')
 				}
@@ -937,9 +964,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 				}
 			}
 		}
-		// interface?
-		if is_interface {
-			if !got.contains('*') {
+		else if is_interface {
+			if !got_ptr {
 				p.cgen.set_placeholder(ph, '&')
 			}
 			// Pass all interface methods
@@ -985,7 +1011,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 }
 
 // "fn (int, string) int"
-fn (f Fn) typ_str() string {
+fn (f &Fn) typ_str() string {
 	mut sb := strings.new_builder(50)
 	sb.write('fn (')
 	for i, arg in f.args {
@@ -999,6 +1025,10 @@ fn (f Fn) typ_str() string {
 		sb.write(' $f.typ')
 	}
 	return sb.str()
+}
+
+fn (f &Fn) v_definition() string {
+	return 'todo'
 }
 
 // f.args => "int a, string b"
@@ -1056,3 +1086,12 @@ fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 	}
 	return if closest >= min_match { closest_var } else { '' }
 }
+
+fn (fns []Fn) contains(f Fn) bool {
+	for ff in fns {
+		if ff.name == f.name {
+			return true
+		}	
+	}	
+	return false
+}	
