@@ -27,8 +27,7 @@ pub fn ptr_str(ptr voidptr) string {
 
 // compare floats using C epsilon
 pub fn (a f64) eq(b f64) bool {
-	//return C.fabs(a - b) <= C.DBL_EPSILON	
-	return (a - b) <= C.DBL_EPSILON	
+	return C.fabs(a - b) <= C.DBL_EPSILON	
 }
 
 // fn (nn i32) str() string {

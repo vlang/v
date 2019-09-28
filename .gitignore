@@ -8,6 +8,8 @@
 /v.exe
 /tools/vget
 /tools/vget.exe
+/tools/performance_compare
+/tools/performance_compare.exe
 *.exe
 *.o
 .*.c

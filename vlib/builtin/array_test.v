@@ -240,3 +240,12 @@ fn test_struct_print() {
 	assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
 }
+
+fn test_single_element() {
+	mut a := [1]
+	a << 2
+	assert a.len == 2
+	assert a[0] == 1
+	assert a[1] == 2
+	println(a)
+}	
