@@ -7,7 +7,6 @@ module main
 import (
 	os
 	strings
-	crypto.sha1
 )
 
 // TODO rename to Token
@@ -95,15 +94,10 @@ const (
 	MaxModuleDepth = 4
 )
 
-// new parser from string. parser id will be hash of s
-fn (v mut V) new_parser_string(text string) Parser {
-	return v.new_parser_string_id(text, sha1.hexhash(text))
-}
-
-// new parser from string. with id specified in `id`
-fn (v mut V) new_parser_string_id(text string, id string) Parser {
+// new parser from string. unique id specified in `id`.
+// tip: use a hashing function to `auto` generate id from `text` eg. sha1.hexhash(text)
+fn (v mut V) new_parser_string(text string, id string) Parser {
 	mut p := v.new_parser(new_scanner(text), id)
-	p.import_table = v.table.get_file_import_table(id)
 	p.scan_tokens()
 	v.add_parser(p)
 	return p
@@ -128,7 +122,6 @@ fn (v mut V) new_parser_file(path string) Parser {
 		file_name: path.all_after('/'),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		import_table: v.table.get_file_import_table(path),
 		is_script: (v.pref.is_script && path == v.dir)
 	}
 	v.cgen.file = path
@@ -139,6 +132,8 @@ fn (v mut V) new_parser_file(path string) Parser {
 	return p
 }
 
+// creates a new parser. .mos likely you will want to use
+// `new_parser_file` or
 fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	mut p := Parser {
 		id: id
@@ -152,6 +147,7 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 		os: v.os
 		vroot: v.vroot
 		local_vars: [Var{}].repeat(MaxLocalVars)
+		import_table: v.table.get_file_import_table(id)
 	}
 	$if js {
 		p.is_js = true
