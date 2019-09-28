@@ -12,11 +12,12 @@ import (
 // TODO rename to Token
 // TODO rename enum Token to TokenType
 struct Tok {
-	tok      Token
-	lit      string
-	line_nr  int
+	tok      Token  // the token number/enum; for quick comparisons
+	lit      string // literal representation of the token
+	line_nr  int // the line number in the source where the token occured
 	name_idx int // name table index for O(1) lookup
-	col      int
+	col      int // the column where the token ends
+	sp       ScannerPos // used while reporting errors
 }
 
 struct Parser {
@@ -163,11 +164,12 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 fn (p mut Parser) scan_tokens() {
 	for {
 		res := p.scanner.scan()
-		p.tokens << Tok {
+		p.tokens << Tok{
 				tok: res.tok
 				lit: res.lit
 				line_nr: p.scanner.line_nr
-				col: p.scanner.pos - p.scanner.last_nl_pos
+				col: p.scanner.pos - p.scanner.last_nl_pos        
+				sp: p.scanner.get_scanner_pos()
 		}
 		if res.tok == .eof {
 				break
@@ -216,7 +218,7 @@ fn (p &Parser) cur_tok() Tok {
 
 fn (p &Parser) peek_token() Tok {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Tok{tok:Token.eof}
+		return Tok{ tok:Token.eof sp: p.scanner.get_scanner_pos() }
 	}
 	tok := p.tokens[p.token_idx]
 	return tok
@@ -886,30 +888,12 @@ if p.scanner.line_comment != '' {
 }
 }
 
+/////////////////////////////////////////////////////////////////
 fn (p &Parser) warn(s string) {
 	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
 }
 
-
-fn (p mut Parser) error_with_position(e string, sp ScannerPos) {
-	p.scanner.goto_scanner_position( sp )
-	p.error( e )
-}
-
-fn (p mut Parser) production_error(e string, sp ScannerPos) {
-	if p.pref.is_prod {
-		p.scanner.goto_scanner_position( sp )
-		p.error( e )
-	}else {
-		// on a warning, restore the scanner state after printing the warning:
-		cpos := p.scanner.get_scanner_pos()
-		p.scanner.goto_scanner_position( sp )
-		p.warn(e)
-		p.scanner.goto_scanner_position( cpos )
-	}
-}
-
-fn (p mut Parser) error(s string) {
+fn (p mut Parser) print_error_context(){
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
@@ -935,13 +919,48 @@ fn (p mut Parser) error(s string) {
 		print_backtrace()
 	}
 	// p.scanner.debug_tokens()
-	// Print `[]int` instead of `array_int` in errors
-	e := s.replace('array_', '[]')
-		.replace('__', '.')
-		.replace('Option_', '?')
-		.replace('main.', '')
-	p.scanner.error_with_col(e, p.tokens[p.token_idx-1].col)
 }
+
+fn normalized_error( s string ) string {
+	// Print `[]int` instead of `array_int` in errors
+	return s.replace('array_', '[]')
+	.replace('__', '.')
+	.replace('Option_', '?')
+	.replace('main.', '')
+}
+
+fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
+	p.print_error_context()
+	e := normalized_error( s )
+	p.scanner.goto_scanner_position( sp )
+	p.scanner.error_with_col(e, sp.pos - sp.last_nl_pos)
+}
+
+fn (p mut Parser) warn_with_position(e string, sp ScannerPos) {
+	// on a warning, restore the scanner state after printing the warning:
+	cpos := p.scanner.get_scanner_pos()
+	p.scanner.goto_scanner_position( sp )
+	p.warn(e)
+	p.scanner.goto_scanner_position( cpos )
+}
+
+fn (p mut Parser) production_error(e string, sp ScannerPos) {
+	if p.pref.is_prod {
+		p.error_with_position( e, sp )
+	}else {
+		p.warn_with_position( e, sp )
+	}
+}
+
+fn (p mut Parser) error_with_tok(s string, tok Tok) {
+	p.error_with_position(s, tok.sp )
+}
+
+fn (p mut Parser) error(s string) {
+	// no positioning info, so just assume that the last token was the culprit:
+	p.error_with_tok(s, p.tokens[p.token_idx-1] )
+}
+/////////////////////////////////////////////////////////////////
 
 fn (p &Parser) first_pass() bool {
 	return p.pass == .decl
