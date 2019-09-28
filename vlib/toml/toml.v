@@ -1,7 +1,7 @@
 // (c) 2019 keito940 All Rights Reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-// Thanks from TOMLC99 and Nett.
+// Thanks: Nett,tomlc99.
 
 module toml
 const (
