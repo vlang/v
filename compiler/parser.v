@@ -3275,44 +3275,33 @@ fn (p mut Parser) for_st() {
 		pad := if is_arr { 6 } else  { 4 }
 		var_typ := if is_str { 'byte' } else { typ.right(pad) }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
-		// Register temp var
-		val_var := Var {
-			name: val
-			typ: var_typ
-			ptr: typ.contains('*')
-		}
-		p.register_var(val_var)
+		mut i_var_type := 'int'
 		if is_arr {
-			i_var := Var {
-				name: i
-				typ: 'int'
-				// parent_fn: p.cur_fn
-				is_mut: true
-				is_changed: true
-			}
-			//p.genln(';\nfor ($i_type $i = 0; $i < $tmp .len; $i ++) {')
 			p.gen_for_header(i, tmp, var_typ, val)
-			p.register_var(i_var)
 		}
 		else if is_map {
-			i_var := Var {
-				name: i
-				typ: 'string'
-				is_mut: true
-				is_changed: true
-			}
-			p.register_var(i_var)
+			i_var_type = 'string'
 			p.gen_for_map_header(i, tmp, var_typ, val, typ)
 		}
 		else if is_str {
-			i_var := Var {
+			i_var_type = 'byte'
+			p.gen_for_str_header(i, tmp, var_typ, val)
+		}
+		// Register temp vars
+		if i != '_' {
+			p.register_var(Var {
 				name: i
-				typ: 'byte'
+				typ: i_var_type
 				is_mut: true
 				is_changed: true
-			}
-			p.register_var(i_var)
-			p.gen_for_str_header(i, tmp, var_typ, val)
+			})
+		}
+		if val != '_' {
+			p.register_var(Var {
+				name: val
+				typ: var_typ
+				ptr: typ.contains('*')
+			})
 		}
 	}
 	// `for val in vals`
@@ -3357,13 +3346,14 @@ fn (p mut Parser) for_st() {
 		}
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
-		val_var := Var {
-			name: val
-			typ: var_type
-			ptr: typ.contains('*')
-			is_changed: true
+		if val != '_' {
+			p.register_var(Var {
+				name: val
+				typ: var_type
+				ptr: typ.contains('*')
+				is_changed: true
+			})
 		}
-		p.register_var(val_var)
 		i := p.get_tmp()
 		if is_arr {
 			p.gen_for_header(i, tmp, var_type, val)
@@ -3374,7 +3364,7 @@ fn (p mut Parser) for_st() {
 		else if is_range {
 			p.gen_for_range_header(i, range_end, tmp, var_type, val)
 		}
-	}	else {
+	} else {
 		// `for a < b {`
 		p.gen('while (')
 		p.check_types(p.bool_expression(), 'bool')

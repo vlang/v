@@ -256,17 +256,20 @@ fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
 
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (int $i = 0; $i < ${tmp}.len; $i++) {')
+	if val == '_' { return }
 	p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
 	p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
+	if val == '_' { return }
 	p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
 }
 
 fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
 	p.genln(';\nfor (int $i = $tmp; $i < $range_end; $i++) {')
+	if val == '_' { return }
 	p.genln('$var_type $val = $i;')
 }
 
@@ -277,6 +280,7 @@ fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	p.genln('string $i = ((string*)keys_$tmp .data)[l];')
 	// TODO don't call map_get() for each key, fetch values while traversing
 	// the tree (replace `map_keys()` above with `map_key_vals()`)
+	if val == '_' { return }
 	p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);')
 }
 

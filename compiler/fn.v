@@ -543,11 +543,10 @@ fn (p mut Parser) check_unused_variables() {
 		if var.name == '' {
 			break
 		}
-		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != '_' {
+		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
 			p.production_error('`$var.name` declared and not used', var.scanner_pos )
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
-			!p.pref.translated && var.name != '_' {
+		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
 			p.error_with_position( '`$var.name` is declared as mutable, but it was never changed', var.scanner_pos )
 		}
 	}
