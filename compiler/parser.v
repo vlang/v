@@ -3287,6 +3287,7 @@ fn (p mut Parser) for_st() {
 			i_var_type = 'byte'
 			p.gen_for_str_header(i, tmp, var_typ, val)
 		}
+		// Register temp vars
 		if i != '_' {
 			p.register_var(Var {
 				name: i
@@ -3295,7 +3296,6 @@ fn (p mut Parser) for_st() {
 				is_changed: true
 			})
 		}
-		// Register temp var
 		if val != '_' {
 			p.register_var(Var {
 				name: val
