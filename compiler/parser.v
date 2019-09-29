@@ -168,7 +168,7 @@ fn (p mut Parser) scan_tokens() {
 				tok: res.tok
 				lit: res.lit
 				line_nr: p.scanner.line_nr
-				col: p.scanner.pos - p.scanner.last_nl_pos        
+				col: p.scanner.pos - p.scanner.last_nl_pos
 		}
 		if res.tok == .eof {
 				break
@@ -1487,6 +1487,7 @@ fn (p mut Parser) var_decl() {
 	
 	mut names := []string
 	names << p.check_name()
+	p.scanner.validate_var_name(names[0])
 	for p.tok == .comma {
 		p.check(.comma)
 		names << p.check_name()

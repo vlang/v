@@ -468,9 +468,9 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-        maxlinechars := 256
-        buf := &byte(malloc(maxlinechars*2))
-        res := int( C.fgetws(buf, maxlinechars, C.stdin ) )
+        max_line_chars := 256
+        buf := &byte(malloc(max_line_chars*2))
+        res := int( C.fgetws(buf, max_line_chars, C.stdin ) )
         len := int(  C.wcslen(&u16(buf)) )
         if 0 != res { return string_from_wide2( &u16(buf), len ) }
         return ''

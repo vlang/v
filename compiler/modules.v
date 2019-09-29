@@ -43,7 +43,7 @@ fn (v &V) find_module_path(mod string) string {
 	//println('ip=$import_path')
 	// Finally try modules installed with vpm (~/.vmodules)
 	if !os.dir_exists(import_path) {
-		import_path = '$ModPath/$mod_path'
+		import_path = '$v_modules_path/$mod_path'
 		if !os.dir_exists(import_path){
 			verror('module "$mod" not found')
 		}

@@ -150,7 +150,7 @@ fn (p mut Parser) chash() {
 		mut flag := hash.right(5)
 		// expand `@VROOT` `@VMOD` to absolute path
 		flag = flag.replace('@VROOT', p.vroot)
-		flag = flag.replace('@VMOD', ModPath)
+		flag = flag.replace('@VMOD', v_modules_path)
 		//p.log('adding flag "$flag"')
 		p.table.parse_cflag(flag, p.mod)
 		return

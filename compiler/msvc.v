@@ -255,7 +255,7 @@ pub fn (v mut V) cc_msvc() {
 		// 
 	}
 	else if v.pref.build_mode == .default_mode {
-		b := os.realpath( '$ModPath/vlib/builtin.obj' )
+		b := os.realpath( '$v_modules_path/vlib/builtin.obj' )
 		alibs << '"$b"'
 		if !os.file_exists(b) {
 			println('`builtin.obj` not found')
@@ -265,7 +265,7 @@ pub fn (v mut V) cc_msvc() {
 			if imp == 'webview' {
 				continue
 			}
-			alibs << '"' + os.realpath( '$ModPath/vlib/${imp}.obj' ) + '"'
+			alibs << '"' + os.realpath( '$v_modules_path/vlib/${imp}.obj' ) + '"'
 		}
 	}
 

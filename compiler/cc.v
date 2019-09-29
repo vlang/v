@@ -64,13 +64,13 @@ fn (v mut V) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules directory if it's not there.
-		if !os.file_exists(ModPath)  {
-			os.mkdir(ModPath)
+		if !os.file_exists(v_modules_path)  {
+			os.mkdir(v_modules_path)
 		}
-		v.out_name = ModPath + v.dir + '.o' //v.out_name
+		v.out_name = v_modules_path + v.dir + '.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
-  
+
 	mut debug_options := '-g'
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
@@ -113,7 +113,7 @@ fn (v mut V) cc() {
 		//
 	}
 	else if v.pref.build_mode == .default_mode {
-		libs = '$ModPath/vlib/builtin.o'
+		libs = '$v_modules_path/vlib/builtin.o'
 		if !os.file_exists(libs) {
 			println('object file `$libs` not found')
 			exit(1)
@@ -122,7 +122,7 @@ fn (v mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			libs += ' "$ModPath/vlib/${imp}.o"'
+			libs += ' "$v_modules_path/vlib/${imp}.o"'
 		}
 	}
 	if v.pref.sanitize {
@@ -130,7 +130,7 @@ fn (v mut V) cc() {
 	}
 	// Cross compiling linux TODO
 	/*
-	sysroot := '/Users/alex/tmp/lld/linuxroot/'
+	sysroot := '/tmp/lld/linuxroot/'
 	if v.os == .linux && !linux_host {
 		// Build file.o
 		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
@@ -288,23 +288,23 @@ fn (c mut V) cc_windows_cross() {
 	args += cflags.c_options_before_target()
 	mut libs := ''
 	if c.pref.build_mode == .default_mode {
-		libs = '"$ModPath/vlib/builtin.o"'
+		libs = '"$v_modules_path/vlib/builtin.o"'
 		if !os.file_exists(libs) {
 				println('`$libs` not found')
 				exit(1)
 		}
 		for imp in c.table.imports {
-				libs += ' "$ModPath/vlib/${imp}.o"'
+				libs += ' "$v_modules_path/vlib/${imp}.o"'
 		}
 	}
 	args += ' $c.out_name_c '
 	args += cflags.c_options_after_target()
 	println('Cross compiling for Windows...')
-	winroot := '$ModPath/winroot'
+	winroot := '$v_modules_path/winroot'
 	if !os.dir_exists(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
 		println('"$winroot" not found.')
-		println('Download it from $winroot_url and save it in $ModPath')
+		println('Download it from $winroot_url and save it in $v_modules_path')
 		println('Unzip it afterwards.\n')
 		println('winroot.zip contains all library and header files needed '+
 			'to cross-compile for Windows.')
@@ -314,7 +314,7 @@ fn (c mut V) cc_windows_cross() {
 	obj_name = obj_name.replace('.exe', '')
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
-	cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $ModPath/$c.out_name_c'
+	cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
 	if c.pref.show_c_cmd {
 			println(cmd)
 	}

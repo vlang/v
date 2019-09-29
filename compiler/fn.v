@@ -137,7 +137,7 @@ fn (p mut Parser) clear_vars() {
 // vlib header file?
 fn (p mut Parser) is_sig() bool {
 	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build_module) &&
-	(p.file_path.contains(ModPath))
+	(p.file_path.contains(v_modules_path))
 }
 
 // Function signatures are added to the top of the .c file in the first run.
@@ -1027,8 +1027,9 @@ fn (f &Fn) typ_str() string {
 	return sb.str()
 }
 
+// "fn foo(a int) stirng", for .vh module headers
 fn (f &Fn) v_definition() string {
-	return 'todo'
+	return 'fn '//$f.name(${f.str_args()})'
 }
 
 // f.args => "int a, string b"

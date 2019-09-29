@@ -82,9 +82,9 @@ fn new_scanner(text string) &Scanner {
 
 
 // The goal of ScannerPos is to track the current scanning position,
-// so that if there is an error found later, v could show a more accurate 
+// so that if there is an error found later, v could show a more accurate
 // position about where the error initially was.
-// NB: The fields of ScannerPos *should be kept synchronized* with the 
+// NB: The fields of ScannerPos *should be kept synchronized* with the
 // corresponding fields in Scanner.
 struct ScannerPos {
 mut:
@@ -123,7 +123,7 @@ fn (s mut Scanner) get_scanner_pos_of_token(t Tok) ScannerPos {
 	s.file_lines = []string
 	mut prevlinepos := 0
 	for {
-		prevlinepos = s.pos 
+		prevlinepos = s.pos
 		if s.pos >= s.text.len { break }		
 		if s.line_nr > tline + 10 { break }
 		////////////////////////////////////////
@@ -287,7 +287,7 @@ fn (s mut Scanner) ident_number() string {
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
-		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {  
+		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -899,3 +899,16 @@ fn good_type_name(s string) bool {
 	}
 	return true
 }
+
+// registration_date good
+// registrationdate  bad
+fn (s &Scanner) validate_var_name(name string) {
+	if name.len > 11 && !name.contains('_') {
+		s.error('bad variable name `$name`\n' +
+'looks like you have a multi-word name without separating them with `_`' +
+'\nfor example, use `registration_date` instead of `registrationdate` ')
+		
+	}	
+}
+
+
