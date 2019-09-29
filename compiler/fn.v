@@ -948,9 +948,10 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			// Reference
 			// TODO ptr hacks. DOOM hacks, fix please.
 			if !got_ptr && exp_ptr && got != 'voidptr' {
-				// Special case for mutable arrays. We can't `&` function results,
+				// Special case for mutable arrays. We can't `&` function
+				// results,
 				// have to use `(array[]){ expr }` hack.
-				if expected.starts_with('array_') && exp_ptr {
+				if expected.starts_with('array_') && exp_ptr { //&& !arg.is_mut{
 					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){')
 					p.gen('}[0] ')
 				}

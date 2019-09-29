@@ -2350,6 +2350,10 @@ fn (p mut Parser) expression() string {
 			if !p.expr_var.is_mut && !p.pref.translated {
 				p.error('`$p.expr_var.name` is immutable (can\'t <<)')
 			}
+			if p.expr_var.is_arg && p.expr_var.typ.starts_with('array_') {
+				p.error("for now it's not possible to append an element to "+
+					'a mutable array argument `$p.expr_var.name`')
+			}	
 			if !p.expr_var.is_changed {
 				p.mark_var_changed(p.expr_var)
 			}
