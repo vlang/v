@@ -207,20 +207,18 @@ fn (p & Parser) peek() Token {
 }
 
 // TODO remove dups
-fn (p &Parser) prev_token() Tok {
+[inline] fn (p &Parser) prev_token() Tok {
 	return p.tokens[p.token_idx - 2]
 }	
 
-fn (p &Parser) cur_tok() Tok {
+[inline] fn (p &Parser) cur_tok() Tok {
 	return p.tokens[p.token_idx - 1]
 }	
-
-fn (p &Parser) peek_token() Tok {
+[inline] fn (p &Parser) peek_token() Tok {
 	if p.token_idx >= p.tokens.len - 2 {
 		return Tok{ tok:Token.eof }
 	}
-	tok := p.tokens[p.token_idx]
-	return tok
+	return p.tokens[p.token_idx]
 }
 
 fn (p &Parser) log(s string) {
@@ -1327,7 +1325,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 // is_map: are we in map assignment? (m[key] = val) if yes, dont generate '='
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
-	errtok := p.cur_tok()
+	errtok := p.cur_tok_index()
 	//p.log('assign_statement() name=$v.name tok=')
 	is_vid := p.fileis('vid') // TODO remove
 	tok := p.tok
@@ -1382,7 +1380,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
-		p.error_with_token( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
+		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
 	if (is_str || is_ustr) && tok == .plus_assign && !p.is_js {
 		p.gen(')')
@@ -1408,14 +1406,14 @@ fn (p mut Parser) var_decl() {
 	}
 	
 	mut names := []string
-	mut vtokens := []Tok
+	mut vtoken_idxs := []int
 	
-	vtokens << p.cur_tok()
+	vtoken_idxs << p.cur_tok_index()
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
 	for p.tok == .comma {
 		p.check(.comma)
-		vtokens << p.cur_tok()
+		vtoken_idxs << p.cur_tok_index()
 		names << p.check_name()
 	}
 	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
@@ -1430,9 +1428,9 @@ fn (p mut Parser) var_decl() {
 		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
 	}
 	for i, name in names {
-		var_token := vtokens[i]
+		var_token_idx := vtoken_idxs[i]
 		if name == '_' && names.len == 1 {
-			p.error_with_token('no new variables on left side of `:=`', var_token)
+			p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
 			continue
 		}
 		typ := types[i]
@@ -1443,15 +1441,15 @@ fn (p mut Parser) var_decl() {
 		// (shadowing is not allowed)
 		if !p.builtin_mod && p.known_var(name) {
 			// v := p.cur_fn.find_var(name)
-			p.error_with_token('redefinition of `$name`', var_token)
+			p.error_with_token_index('redefinition of `$name`', var_token_idx)
 		}
 		if name.len > 1 && contains_capital(name) {
-			p.error_with_token('variable names cannot contain uppercase letters, use snake_case instead', var_token)
+			p.error_with_token_index('variable names cannot contain uppercase letters, use snake_case instead', var_token_idx)
 		}
 		if names.len > 1 {
 			if names.len != types.len {
 				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error_with_token('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token)
+				p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
 			}
 			p.gen(';\n')
 			p.gen('$typ $name = ${mr_var_name}.var_$i')
@@ -1463,8 +1461,8 @@ fn (p mut Parser) var_decl() {
 			typ: typ
 			is_mut: is_mut
 			is_alloc: p.is_alloc || typ.starts_with('array_')
-			line_nr: var_token.line_nr
-			token: var_token
+			line_nr: p.tokens[ var_token_idx ].line_nr
+			token_idx: var_token_idx
 		})
 		//if p.fileis('str.v') {
 			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
@@ -3719,7 +3717,7 @@ fn (p mut Parser) return_st() {
 	else {
 		// Don't allow `return val` in functions that don't return anything
 		if !p.is_vweb && (p.tok == .name || p.tok == .number || p.tok == .str) {
-			p.error('function `$p.cur_fn.name` should not return a value')
+			p.error_with_token_index('function `$p.cur_fn.name` should not return a value', p.cur_fn.fn_name_token_idx)
 		}
 
 		if p.cur_fn.name == 'main' {
@@ -3742,7 +3740,7 @@ fn (p &Parser) prepend_mod(name string) string {
 
 fn (p mut Parser) go_statement() {
 	p.check(.key_go)
-	mut gotoken := p.cur_tok()
+	mut gotoken_idx := p.cur_tok_index()
 	// TODO copypasta of name_expr() ?
 	if p.peek() == .dot {
 		// Method
@@ -3751,12 +3749,12 @@ fn (p mut Parser) go_statement() {
 			return
 		}
 		p.mark_var_used(v)
-		gotoken = p.cur_tok()
+		gotoken_idx = p.cur_tok_index()
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
 		method := p.table.find_method(typ, p.lit) or {
-			p.error_with_token('go method missing $var_name', gotoken)
+			p.error_with_token_index('go method missing $var_name', gotoken_idx)
 			return
 		}
 		p.async_fn_call(method, 0, var_name, v.typ)
@@ -3766,11 +3764,11 @@ fn (p mut Parser) go_statement() {
 		// Normal function
 		f := p.table.find_fn(p.prepend_mod(f_name)) or {
 			println( p.table.debug_fns() )
-			p.error_with_token('can not find function $f_name', gotoken)
+			p.error_with_token_index('can not find function $f_name', gotoken_idx)
 			return
 		}
 		if f.name == 'println' || f.name == 'print' {
-			p.error_with_token('`go` cannot be used with `println`', gotoken)
+			p.error_with_token_index('`go` cannot be used with `println`', gotoken_idx)
 		}
 		p.async_fn_call(f, 0, '', '')
 	}
@@ -3792,6 +3790,7 @@ fn (p mut Parser) js_decode() string {
 	p.check(.name)// json
 	p.check(.dot)
 	op := p.check_name()
+	op_token_idx := p.cur_tok_index()	
 	if op == 'decode' {
 		// User tmp2; tmp2.foo = 0; tmp2.bar = 0;// I forgot to zero vals before => huge bug
 		// Option_User tmp3 =  jsdecode_User(json_parse( s), &tmp2); ;
@@ -3839,7 +3838,7 @@ fn (p mut Parser) js_decode() string {
 		return 'string'
 	}
 	else {
-		p.error('bad json op "$op"')
+		p.error_with_token_index('bad json op "$op"', op_token_idx)
 	}
 	return ''
 }
@@ -3847,6 +3846,7 @@ fn (p mut Parser) js_decode() string {
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)
 	p.attr = p.check_name()
+	attr_token_idx := p.cur_tok_index()
 	if p.tok == .colon {
 		p.check(.colon)
 		p.attr = p.attr + ':' + p.check_name()
@@ -3862,7 +3862,7 @@ fn (p mut Parser) attribute() {
 		p.attr = ''
 		return
 	}
-	p.error('bad attribute usage')
+	p.error_with_token_index('bad attribute usage', attr_token_idx)
 }
 
 fn (p mut Parser) defer_st() {
@@ -3910,10 +3910,6 @@ fn (p mut Parser) check_unused_imports() {
 		}
 	}
 	if output == '' { return }
-	output = '$p.file_path: the following imports were never used:$output'
-	if p.pref.is_prod {
-		verror(output)
-	} else {
-		println('warning: $output')
-	}
+	 // the imports are usually at the start of the file
+	p.production_error_with_token_index( 'the following imports were never used: $output', 0 )
 }

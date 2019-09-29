@@ -12,39 +12,39 @@ import (
 // The functions in each of the layers, also have more details about the warn/error situation,
 // so they can display more informative message, so please call the lowest level variant you can.
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// TLDR: If you have a token, call:
-//     p.error_with_token(msg, token)
+// TLDR: If you have a token index, call:
+//     p.error_with_token_index(msg, token_index)
 // ... not just :
 //     p.error(msg)
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn (p mut Parser) error(s string) {
 	// no positioning info, so just assume that the last token was the culprit:
-	p.error_with_token(s, p.tokens[p.token_idx-1] )
+	p.error_with_token_index(s, p.token_idx-1 )
 }
 
 fn (p mut Parser) warn(s string) {
-	p.warn_with_token(s, p.tokens[p.token_idx-1] )
+	p.warn_with_token_index(s, p.token_idx-1 )
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn (p mut Parser) production_error_with_token(e string, tok Tok) {
+fn (p mut Parser) production_error_with_token_index(e string, tokenindex int) {
 	if p.pref.is_prod {
-		p.error_with_token( e, tok )
+		p.error_with_token_index( e, tokenindex )
 	}else {
-		p.warn_with_token( e, tok )
+		p.warn_with_token_index( e, tokenindex )
 	}
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn (p mut Parser) error_with_token(s string, tok Tok) {
-	p.error_with_position(s, p.scanner.get_scanner_pos_of_token(tok) )
+fn (p mut Parser) error_with_token_index(s string, tokenindex int) {
+	p.error_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
 }
 
-fn (p mut Parser) warn_with_token(s string, tok Tok) {
-	p.warn_with_position(s, p.scanner.get_scanner_pos_of_token(tok) )
+fn (p mut Parser) warn_with_token_index(s string, tokenindex int) {
+	p.warn_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -94,7 +94,7 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	// and jump to their source with a keyboard shortcut.
 	// Using only the filename leads to inability of IDE/editors
 	// to find the source file, when it is in another folder.
-	eprintln('error: ${fullpath}:${s.line_nr + 1}:${col}: $final_message')
+	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
 	
 	if s.should_print_line_on_error && s.file_lines.len > 0 {
 		context_start_line := imax(0,                (s.line_nr - error_context_before + 1 ))
@@ -128,8 +128,9 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 
 /// Misc error helper functions, can be called by any of the functions above
 
-fn imax(a,b int) int { 	return if a > b { a } else { b } }
-fn imin(a,b int) int { 	return if a < b { a } else { b } }
+[inline] fn (p &Parser) cur_tok_index() int { return p.token_idx - 1 }
+[inline] fn imax(a,b int) int { 	return if a > b { a } else { b } }
+[inline] fn imin(a,b int) int { 	return if a < b { a } else { b } }
 
 fn (s &Scanner) is_color_output_on() bool {
 	return s.should_print_errors_in_color && term.can_show_color_on_stderr()	
@@ -201,7 +202,7 @@ fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 }
 
 // get_scanner_pos_of_token rescans *the whole source* till it reaches {t.line_nr, t.col} .
-fn (s mut Scanner) get_scanner_pos_of_token(t Tok) ScannerPos {
+fn (s mut Scanner) get_scanner_pos_of_token(t &Tok) ScannerPos {
 	// This rescanning is done just once on error, so it is fine for now.
 	// Be careful for the performance implications, if you want to
 	// do it more frequently. The alternative would be to store
