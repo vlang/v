@@ -1597,11 +1597,12 @@ fn (p mut Parser) bterm() string {
 	p.expected_type = typ
 	is_str := typ=='string'  &&   !p.is_sql
 	is_ustr := typ=='ustring'
+	is_f64 := typ=='f64'
 	tok := p.tok
 	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
 	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
 		p.fgen(' ${p.tok.str()} ')
-		if (is_str || is_ustr) && !p.is_js {
+		if ((is_f64 && tok == .eq) || (is_str || is_ustr)) && !p.is_js {
 			p.gen(',')
 		}
 		else if p.is_sql && tok == .eq {
@@ -1654,6 +1655,10 @@ fn (p mut Parser) bterm() string {
 			case Token.gt: p.cgen.set_placeholder(ph, 'ustring_gt(')
 			case Token.lt: p.cgen.set_placeholder(ph, 'ustring_lt(')
 			}
+		}
+		if is_f64 && tok == .eq {
+			p.gen(')')
+			p.cgen.set_placeholder(ph, 'f64_eq(')
 		}
 	}
 	return typ
