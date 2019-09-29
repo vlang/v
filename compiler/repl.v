@@ -124,7 +124,7 @@ fn run_repl() []string {
 			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + line
 			os.write_file(file, source_code)
 			s := os.exec('$vexe run $file -repl') or {
-				cerror(err)
+				verror(err)
 				return []string
 			}
 			vals := s.output.split('\n')
@@ -143,10 +143,10 @@ fn run_repl() []string {
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('$vexe run $temp_file -repl') or {
-				cerror(err)
+				verror(err)
 				return []string
 			}
-			if !func_call && !s.exit_code {
+			if !func_call && s.exit_code == 0 {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]

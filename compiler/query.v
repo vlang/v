@@ -23,7 +23,7 @@ fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string
 			}else if paramtype == 'string' {
 				params_gen += '${qprefix}params[$i] = ${param}.str;\n'
 			}else{
-				cerror('orm: only int and string variable types are supported in queries')
+				verror('orm: only int and string variable types are supported in queries')
 			}
 		}
 	}
@@ -84,7 +84,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		if field.typ != 'string' && field.typ != 'int' {
 			continue
 		}
-		p.cur_fn.register_var({ field | is_used:true })
+		p.register_var({ field | is_used:true })
 	}
 	q += table_name
 	// `where` statement
@@ -194,7 +194,7 @@ fn (p mut Parser) insert_query(fn_ph int) {
 	p.check(.lpar)
 	var_name := p.check_name()
 	p.check(.rpar)
-	var := p.cur_fn.find_var(var_name)  or { return }
+	var := p.find_var(var_name)  or { return }
 	typ := p.table.find_type(var.typ)
 	mut fields := []Var
 	for i, field in typ.fields {

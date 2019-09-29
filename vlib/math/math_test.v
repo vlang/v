@@ -46,5 +46,5 @@ fn test_erf() {
 fn test_gamma() {
 	assert math.gamma(1) == 1
 	assert math.gamma(5) == 24
-	assert math.log_gamma(4.5) == math.log(math.gamma(4.5))
+	assert math.log_gamma(4.5).eq(math.log(math.gamma(4.5)))
 }

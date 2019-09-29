@@ -1,4 +1,4 @@
-import time
+// import time
 
 struct User {
 	name string

@@ -16,11 +16,26 @@ mut:
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
-	file_imports []FileImportTable // List of imports for file
+	file_imports map[string]FileImportTable // List of imports for file
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
+	//names        []Name
 }
+
+
+/*
+enum NameCategory {
+	constant
+	mod
+	var
+	typ
+}
+
+struct Name {
+	cat NameCategory
+}	
+*/
 
 struct GenTable {
 	fn_name string
@@ -31,9 +46,10 @@ mut:
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
-	module_name string
-	file_path   string
-	imports     map[string]string
+	module_name  string
+	file_path    string
+	imports      map[string]string // alias => module
+	used_imports []string          // alias
 }
 
 enum AccessMod {
@@ -53,6 +69,7 @@ enum TypeCategory {
 	union_ // 5
 	c_struct
 	c_typedef
+	objc_interface // 8 Objective C @interface
 	array
 }
 
@@ -60,6 +77,7 @@ struct Var {
 mut:
 	typ             string
 	name            string
+	idx             int // index in the local_vars array
 	is_arg          bool
 	is_const        bool
 	args            []Var // function args
@@ -71,14 +89,15 @@ mut:
 	ref             bool
 	parent_fn       string // Variables can only be defined in functions
 	mod             string // module where this var is stored
-	line_nr         int
 	access_mod      AccessMod
 	is_global       bool // __global (translated from C only)
 	is_used         bool
 	is_changed      bool
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
-	moved           bool
+	is_moved        bool
+	line_nr         int
+	token           Tok // TODO: use only var.token.line_nr, remove var.line_nr
 }
 
 struct Type {
@@ -107,6 +126,7 @@ struct TypeNode {
 	typ Type
 }
 
+/*
 // For debugging types
 fn (t Type) str() string {
 	mut s := 'type "$t.name" {'
@@ -127,6 +147,7 @@ fn (t Type) str() string {
 	s += '}\n'
 	return s
 }
+*/
 
 const (
 	CReserved = [
@@ -285,6 +306,7 @@ fn (t mut Table) register_const(name, typ, mod string) {
 		typ: typ
 		is_const: true
 		mod: mod
+		idx: -1
 	}
 }
 
@@ -297,9 +319,12 @@ fn (p mut Parser) register_global(name, typ string) {
 		is_global: true
 		mod: p.mod
 		is_mut: true
+		idx: -1
 	}
 }
 
+// Only for module functions, not methods.
+// That's why searching by fn name works.
 fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
@@ -319,7 +344,8 @@ fn (table &Table) known_type(typ_ string) bool {
 }
 
 fn (table &Table) known_type_fast(t &Type) bool {
-	return t.name.len > 0 && !t.is_placeholder
+	return t.name != '' && !t.is_placeholder
+	
 }
 
 fn (t &Table) find_fn(name string) ?Fn {
@@ -331,14 +357,13 @@ fn (t &Table) find_fn(name string) ?Fn {
 }
 
 fn (t &Table) known_fn(name string) bool {
-	_ := t.find_fn(name) or { return false }
+	_ = t.find_fn(name) or { return false }
 	return true
 }
 
 fn (t &Table) known_const(name string) bool {
-	v := t.find_const(name)
-	// TODO use optional
-	return v.name.len > 0
+	_ = t.find_const(name) or { return false }
+	return true
 }
 
 fn (t mut Table) register_type(typ string) {
@@ -388,7 +413,7 @@ fn (t mut Table) rewrite_type(typ Type) {
 fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
 	if type_name == '' {
 		print_backtrace()
-		cerror('add_field: empty type')
+		verror('add_field: empty type')
 	}
 	mut t := table.typesmap[type_name]
 	t.fields << Var {
@@ -403,7 +428,7 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 }
 
 fn (t &Type) has_field(name string) bool {
-	_ := t.find_field(name) or { return false }
+	_ = t.find_field(name) or { return false }
 	return true
 }
 
@@ -421,7 +446,7 @@ fn (t &Type) find_field(name string) ?Var {
 }
 
 fn (table &Table) type_has_field(typ &Type, name string) bool {
-	_ := table.find_field(typ, name) or { return false }
+	_ = table.find_field(typ, name) or { return false }
 	return true
 }
 
@@ -442,29 +467,34 @@ fn (table &Table) find_field(typ &Type, name string) ?Var {
 	return none
 }
 
-fn (table mut Table) add_method(type_name string, f Fn) {
+fn (p mut Parser) add_method(type_name string, f Fn) {
+	if !p.first_pass() && f.name != 'str' {
+		return
+	}
 	if type_name == '' {
 		print_backtrace()
-		cerror('add_method: empty type')
+		verror('add_method: empty type')
 	}
 	// TODO table.typesmap[type_name].methods << f
-	mut t := table.typesmap[type_name]
+	mut t := p.table.typesmap[type_name]
+	if f.name != 'str' && f in t.methods  {
+		p.error('redefinition of method `${type_name}.$f.name`')
+	}
 	t.methods << f
-	table.typesmap[type_name] = t
+	p.table.typesmap[type_name] = t
 }
 
 fn (t &Type) has_method(name string) bool {
-	method := t.find_method(name)
-	return (method.name != '')
+	_ = t.find_method(name) or { return false }
+	return true
 }
 
 fn (table &Table) type_has_method(typ &Type, name string) bool {
-	method := table.find_method(typ, name)
-	return (method.name != '')
+	_ = table.find_method(typ, name) or { return false }
+	return true
 }
 
-// TODO use `?Fn`
-fn (table &Table) find_method(typ &Type, name string) Fn {
+fn (table &Table) find_method(typ &Type, name string) ?Fn {
 	t := table.typesmap[typ.name]
 	for method in t.methods {
 		if method.name == name {
@@ -473,12 +503,17 @@ fn (table &Table) find_method(typ &Type, name string) Fn {
 	}
 	if typ.parent != '' {
 		parent := table.find_type(typ.parent)
-		return parent.find_method(name)
+		for method in parent.methods {
+			if method.name == name {
+				return method
+			}
+		}
+		return none
 	}
-	return Fn{}
+	return none
 }
 
-fn (t &Type) find_method(name string) Fn {
+fn (t &Type) find_method(name string) ?Fn {
 	// println('$t.name find_method($name) methods.len=$t.methods.len')
 	for method in t.methods {
 		// println('method=$method.name')
@@ -486,9 +521,7 @@ fn (t &Type) find_method(name string) Fn {
 			return method
 		}
 	}
-	//println('ret Fn{}')
-	return Fn{}
-	//return none
+	return none
 }
 
 /*
@@ -516,6 +549,7 @@ fn (t &Table) find_type(name_ string) Type {
 		name = name.left(name.len - 1)
 	}
 	if !(name in t.typesmap) {
+		//println('ret Type')
 		return Type{}
 	}
 	return t.typesmap[name]
@@ -524,7 +558,7 @@ fn (t &Table) find_type(name_ string) Type {
 fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	mut got := got_
 	mut expected := expected_
-	p.log('check types got="$got" exp="$expected"  ')
+	//p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
 	}
@@ -604,10 +638,22 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	// if expected == 'T' || expected.contains('<T>') {
 	// return true
 	// }
+	// TODO fn hack
+	if got.starts_with('fn ') && (expected.ends_with('fn') ||
+	expected.ends_with('Fn')) {
+		return true
+	}	
 	// Allow pointer arithmetic
 	if expected=='void*' && got=='int' {
 		return true
 	}
+	// Allow `myu64 == 1`
+	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
+		//p.warn('got=$got exp=$expected $p.is_const_literal')
+	//}
+	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
+		return true
+	}	
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
@@ -663,22 +709,30 @@ fn (table &Table) is_interface(name string) bool {
 // Do we have fn main()?
 fn (t &Table) main_exists() bool {
 	for _, f in t.fns {
-		if f.name == 'main' {
+		if f.name == 'main__main' {
 			return true
 		}
 	}
 	return false
 }
 
-// TODO use `?Var`
-fn (t &Table) find_const(name string) Var {
+fn (t &Table) has_at_least_one_test_fn() bool {
+	for _, f in t.fns {
+		if f.name.starts_with('main__test_') {
+			return true
+		}	
+	}
+	return false
+}
+
+fn (t &Table) find_const(name string) ?Var {
 	//println('find const l=$t.consts.len')
 	for c in t.consts {
 		if c.name == name {
 			return c
 		}
 	}
-	return Var{}
+	return none
 }
 
 // ('s', 'string') => 'string s'
@@ -736,7 +790,7 @@ fn (t &Table) fn_gen_types(fn_name string) []string {
 			return f.types
 		}
 	}
-	cerror('function $fn_name not found')
+	verror('function $fn_name not found')
 	return []string
 }
 
@@ -812,8 +866,20 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn new_file_import_table(file_path string) &FileImportTable {
-	return &FileImportTable{
+fn (table &Table) get_file_import_table(id string) FileImportTable {
+	// if file_path.clone() in table.file_imports {
+	// 	return table.file_imports[file_path.clone()]
+	// }
+	// just get imports. memory error when recycling import table
+	mut fit := new_file_import_table(id)
+	if id in table.file_imports {
+		fit.imports = table.file_imports[id].imports
+	}
+	return fit
+}
+
+fn new_file_import_table(file_path string) FileImportTable {
+	return FileImportTable{
 		file_path: file_path
 		imports:   map[string]string
 	}
@@ -828,8 +894,10 @@ fn (fit mut FileImportTable) register_import(mod string) {
 }
 
 fn (fit mut FileImportTable) register_alias(alias string, mod string) {
-	if alias in fit.imports {
-		cerror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}".')
+	// NOTE: come back here
+	// if alias in fit.imports && fit.imports[alias] == mod {}
+	if alias in fit.imports && fit.imports[alias] != mod {
+		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}"')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -840,7 +908,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 		internal_parent := internal_mod_parts.join('.')
 		if !fit.module_name.starts_with(internal_parent) {
-			cerror('module $mod can only be imported internally by libs.')
+			verror('module $mod can only be imported internally by libs')
 		}
 	}
 	fit.imports[alias] = mod
@@ -863,6 +931,16 @@ fn (fit &FileImportTable) resolve_alias(alias string) string {
 	return fit.imports[alias]
 }
 
+fn (fit mut FileImportTable) register_used_import(alias string) {
+	if !(alias in fit.used_imports) {
+		fit.used_imports << alias
+	}
+}
+
+fn (fit &FileImportTable) is_used_import(alias string) bool {
+	return alias in fit.used_imports
+}
+
 fn (t &Type) contains_field_type(typ string) bool {
 	if !t.name[0].is_capital() {
 		return false
@@ -876,24 +954,24 @@ fn (t &Type) contains_field_type(typ string) bool {
 }
 
 // check for a function / variable / module typo in `name`
-fn (table &Table) identify_typo(name string, current_fn &Fn, fit &FileImportTable) string {
+fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	name_orig := name.replace('__', '.').replace('_dot_', '.')
 	mut output := ''
 	// check functions
-	mut n := table.find_misspelled_fn(name, fit, min_match)
+	mut n := p.table.find_misspelled_fn(name, fit, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = current_fn.find_misspelled_local_var(name_orig, min_match)
+	n = p.find_misspelled_local_var(name_orig, min_match)
 	if n != '' {
 		output += '\n  * variable: `$n`'
 	}
 	// check imported modules
-	n = table.find_misspelled_imported_mod(name_orig, fit, min_match)
+	n = p.table.find_misspelled_imported_mod(name_orig, fit, min_match)
 	if n != '' {
 		output += '\n  * module: `$n`'
 	}
@@ -933,10 +1011,11 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
 		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
 		p := strings.dice_coefficient(n1, alias)
 		if p > closest {
 			closest = p
-			closest_mod = '$alias ($mod)'
+			closest_mod = '$mod_alias'
 		}
 	}
 	return if closest >= min_match { closest_mod } else { '' }

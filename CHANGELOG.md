@@ -1,3 +1,16 @@
+## V 0.1.21
+*XX Sep 2019*
+
+- `none` keyword for optionals.
+- All table lookup functions now use `none`.
+- Double quotes (`"`) can now also be used to denote strings.
+- GitHub Actions CI in addition to Travis.
+- `-compress` option. The V binary built with `-compress` is only ~90 KB!
+- More memory management.
+- "Unused variable" error is now a warning in non-production builds.
+
+
+
 ## V 0.1.20
 *17 Sep 2019*
 

@@ -28,19 +28,19 @@ static void vschannel_init(TlsContext *tls_ctx);
 
 static void vschannel_cleanup(TlsContext *tls_ctx);
 
-static INT request(TlsContext *tls_ctx, INT iport, CHAR *host, CHAR *req, CHAR **out);
+static INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out);
 
 static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR **out, int *length);
 
-static INT connect_to_server(TlsContext *tls_ctx, CHAR *host, INT port_number);
+static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number);
 
 static LONG disconnect_from_server(TlsContext *tls_ctx);
 
-static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, CHAR *host, SecBuffer *pExtraData);
+static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, LPWSTR host, SecBuffer *pExtraData);
 
 static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitialRead, SecBuffer *pExtraData);
 
-static DWORD verify_server_certificate(PCCERT_CONTEXT  pServerCert, PSTR host, DWORD dwCertFlags);
+static DWORD verify_server_certificate(PCCERT_CONTEXT  pServerCert, LPWSTR host, DWORD dwCertFlags);
 
 static SECURITY_STATUS create_credentials(TlsContext *tls_ctx);
 

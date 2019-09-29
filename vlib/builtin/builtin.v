@@ -4,6 +4,12 @@
 
 module builtin
 
+fn C.memcpy(byteptr, byteptr, int)
+fn C.memmove(byteptr, byteptr, int)
+//fn C.malloc(int) byteptr
+fn C.realloc(byteptr, int) byteptr
+
+
 pub fn exit(code int) {
 	C.exit(code)
 }
@@ -85,14 +91,19 @@ pub fn println(s string) {
 pub fn eprintln(s string) {
 	if isnil(s.str) {
 		panic('eprintln(NIL)')
-	}
+	}  
 	$if mac {
 		C.fprintf(stderr, '%.*s\n', s.len, s.str)
-	}
+		C.fflush(stderr)
+		return 
+	} 
+	$if linux {
+		C.fprintf(stderr, '%.*s\n', s.len, s.str)
+		C.fflush(stderr)
+		return
+	}  
 	// TODO issues with stderr and cross compiling for Linux
-	$else {
-		println(s)
-	}
+	println(s)
 }
 
 pub fn print(s string) {

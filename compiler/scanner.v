@@ -4,8 +4,18 @@
 
 module main
 
-import os
-import strings
+import (
+	os
+	strings
+	term
+)
+
+const (
+	single_quote = `\'`
+	double_quote = `"`
+	error_context_before = 2 // how many lines of source context to print before the pointer line
+	error_context_after = 2  // ^^^ same, but after
+)
 
 struct Scanner {
 mut:
@@ -13,9 +23,10 @@ mut:
 	text           string
 	pos            int
 	line_nr        int
+	last_nl_pos    int // for calculating column
 	inside_string  bool
-	dollar_start   bool // for hacky string interpolation TODO simplify
-	dollar_end     bool
+	inter_start   bool // for hacky string interpolation TODO simplify
+	inter_end     bool
 	debug          bool
 	line_comment   string
 	started        bool
@@ -26,18 +37,22 @@ mut:
 	prev_tok Token
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
+	should_print_errors_in_color bool
+	quote byte // which quote is used to denote current string: ' or "
+	file_lines   []string // filled *only on error* by rescanning the source till the error (and several lines more)
 }
 
-fn new_scanner(file_path string) &Scanner {
+// new scanner from file.
+fn new_scanner_file(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
-		cerror('"$file_path" doesn\'t exist')
+		verror("$file_path doesn't exist")
 	}
 
 	mut raw_text := os.read_file(file_path) or {
-		cerror('scanner: failed to open "$file_path"')
+		verror('scanner: failed to open $file_path')
 		return 0
 	}
-
+		
 	// BOM check
 	if raw_text.len >= 3 {
 		c_text := raw_text.str
@@ -49,17 +64,88 @@ fn new_scanner(file_path string) &Scanner {
 		}
 	}
 
-	text := raw_text
+	mut s := new_scanner(raw_text)
+	s.file_path = file_path
 
-	scanner := &Scanner {
-		file_path: file_path
+	return s
+}
+
+// new scanner from string.
+fn new_scanner(text string) &Scanner {
+	return &Scanner {
 		text: text
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
+		should_print_errors_in_color: true
 	}
-
-	return scanner
 }
+
+
+// The goal of ScannerPos is to track the current scanning position,
+// so that if there is an error found later, v could show a more accurate
+// position about where the error initially was.
+// NB: The fields of ScannerPos *should be kept synchronized* with the
+// corresponding fields in Scanner.
+struct ScannerPos {
+mut:
+   pos int
+   line_nr int
+   last_nl_pos int
+}
+fn (s ScannerPos) str() string {
+	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} , ${s.last_nl_pos:5d} }'
+}
+fn (s &Scanner) get_scanner_pos() ScannerPos {
+	return ScannerPos{ pos: s.pos line_nr: s.line_nr last_nl_pos: s.last_nl_pos }
+}
+fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
+	s.pos = scp.pos
+	s.line_nr = scp.line_nr
+	s.last_nl_pos = scp.last_nl_pos
+}
+
+// get_scanner_pos_of_token rescans *the whole source* till it reaches {t.line_nr, t.col} .
+fn (s mut Scanner) get_scanner_pos_of_token(t Tok) ScannerPos {
+	// This rescanning is done just once on error, so it is fine for now.
+	// Be careful for the performance implications, if you want to
+	// do it more frequently. The alternative would be to store
+	// the scanpos (12 bytes) for each token, and there are potentially many tokens.
+	tline := t.line_nr
+	tcol  := if t.line_nr == 0 { t.col + 1 } else { t.col - 1 }
+	// save the current scanner position, it will be restored later
+	cpos := s.get_scanner_pos()
+	mut sptoken := ScannerPos{}
+	// Starting from the start, scan the source lines
+	// till the desired tline is reached, then
+	// s.pos + tcol would be the proper position
+	// of the token. Continue scanning for some more lines of context too.
+	s.goto_scanner_position(ScannerPos{})
+	s.file_lines = []string
+	mut prevlinepos := 0
+	for {
+		prevlinepos = s.pos
+		if s.pos >= s.text.len { break }		
+		if s.line_nr > tline + 10 { break }
+		////////////////////////////////////////
+		if tline == s.line_nr {
+			sptoken = s.get_scanner_pos()
+			sptoken.pos += tcol
+		}
+		s.ignore_line() s.eat_single_newline()
+		sline := s.text.substr( prevlinepos, s.pos ).trim_right('\r\n')
+		s.file_lines << sline
+	}
+	//////////////////////////////////////////////////
+	s.goto_scanner_position(cpos)
+	return sptoken
+}
+fn (s mut Scanner) eat_single_newline(){
+	if s.pos >= s.text.len { return }
+	if s.expect('\r\n', s.pos) { s.pos += 2 return }
+	if s.text[ s.pos ] == `\n` { s.pos ++ return }
+	if s.text[ s.pos ] == `\r` { s.pos ++ return }
+}
+
 
 // TODO remove once multiple return values are implemented
 struct ScanRes {
@@ -198,25 +284,11 @@ fn (s mut Scanner) ident_number() string {
 	return s.ident_dec_number()
 }
 
-fn (s Scanner) has_gone_over_line_end() bool {
-	mut i := s.pos-1
-	for i >= 0 && !s.text[i].is_white() {
-		i--
-	}
-	for i >= 0 && s.text[i].is_white() {
-		if is_nl(s.text[i]) {
-			return true
-		}
-		i--
-	}
-	return false
-}
-
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
-			s.line_nr++
+			s.inc_line_number()
 		}
 		s.pos++
 	}
@@ -239,12 +311,12 @@ fn (s mut Scanner) scan() ScanRes {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
-	if s.dollar_end {
+	if s.inter_end {
 		if s.text[s.pos] == `\'` {
-			s.dollar_end = false
+			s.inter_end = false
 			return scan_res(.str, '')
 		}
-		s.dollar_end = false
+		s.inter_end = false
 		return scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
@@ -271,14 +343,14 @@ fn (s mut Scanner) scan() ScanRes {
 		// at the next ', skip it
 		if s.inside_string {
 			if next_char == `\'` {
-				s.dollar_end = true
-				s.dollar_start = false
+				s.inter_end = true
+				s.inter_start = false
 				s.inside_string = false
 			}
 		}
-		if s.dollar_start && next_char != `.` {
-			s.dollar_end = true
-			s.dollar_start = false
+		if s.inter_start && next_char != `.` {
+			s.inter_end = true
+			s.inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
 			s.pos++
@@ -334,11 +406,8 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.mod, '')
 	case `?`:
 		return scan_res(.question, '')
-	case `\'`:
+	case single_quote, double_quote:
 		return scan_res(.str, s.ident_string())
-		// TODO allow double quotes
-		// case QUOTE:
-		// return scan_res(.str, s.ident_string())
 	case `\``: // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
 	case `(`:
@@ -362,7 +431,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
-			// TODO UN.neEDED?
+			// TODO UNNEEDED?
 			if s.text[s.pos] == `\'` {
 				s.inside_string = false
 				return scan_res(.str, '')
@@ -417,9 +486,11 @@ fn (s mut Scanner) scan() ScanRes {
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
+			s.last_nl_pos = s.pos
 			return scan_res(.nl, '')
 		}
 	case `\n`:
+		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
 	case `.`:
 		if nextc == `.` {
@@ -433,10 +504,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.dot, '')
 	case `#`:
 		start := s.pos + 1
-		for s.pos < s.text.len && s.text[s.pos] != `\n` {
-			s.pos++
-		}
-		s.line_nr++
+		s.ignore_line()
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
 			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
@@ -532,10 +600,7 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		if nextc == `/` {
 			start := s.pos + 1
-			for s.pos < s.text.len && s.text[s.pos] != `\n`{
-				s.pos++
-			}
-			s.line_nr++
+			s.ignore_line()
 			s.line_comment = s.text.substr(start + 1, s.pos)
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
@@ -554,7 +619,7 @@ fn (s mut Scanner) scan() ScanRes {
 					s.error('comment not terminated')
 				}
 				if s.text[s.pos] == `\n` {
-					s.line_nr++
+					s.inc_line_number()
 					continue
 				}
 				if s.expect('/*', s.pos) {
@@ -587,82 +652,63 @@ fn (s mut Scanner) scan() ScanRes {
 	return scan_res(.eof, '')
 }
 
-fn (s &Scanner) find_current_line_start_position() int {
-	if s.pos >= s.text.len { return s.pos }
-	mut linestart := s.pos
-	for {
-		if linestart <= 0  {
-			linestart = 1
-			break
-		}
-		if s.text[linestart] == 10 || s.text[linestart] == 13 {
-			linestart++
-			break
-		}
-		linestart--
-	}
-	return linestart
-}
-
-fn (s &Scanner) find_current_line_end_position() int {
-	if s.pos >= s.text.len { return s.pos }
-	mut lineend := s.pos
-	for {
-		if lineend >= s.text.len {
-			lineend = s.text.len
-			break
-		}
-		if s.text[lineend] == 10 || s.text[lineend] == 13 {
-			break
-		}
-		lineend++
-	}
-	return lineend
-}
-
 fn (s &Scanner) current_column() int {
-	return s.pos - s.find_current_line_start_position()
+	return s.pos - s.last_nl_pos
 }
 
+fn imax(a,b int) int { 	return if a > b { a } else { b } }
+fn imin(a,b int) int { 	return if a < b { a } else { b } }
 fn (s &Scanner) error(msg string) {
-	linestart := s.find_current_line_start_position()
-	lineend := s.find_current_line_end_position()
-	column := s.pos - linestart
-	if s.should_print_line_on_error && lineend > linestart {
-		line := s.text.substr( linestart, lineend )
-		// The pointerline should have the same spaces/tabs as the offending
-		// line, so that it prints the ^ character exactly on the *same spot*
-		// where it is needed. That is the reason we can not just
-		// use strings.repeat(` `, column) to form it.
-		pointerline := line.clone()
-		mut pl := pointerline.str
-		for i,c in line {
-			pl[i] = ` `
-			if i == column { pl[i] = `^` }
-			else if c.is_space() { pl[i] = c  }
-		}
-		println(line)
-		println(pointerline)
-	}
+	s.error_with_col(msg, 0)
+}
+
+fn (s &Scanner) error_with_col(msg string, col int) {
 	fullpath := os.realpath( s.file_path )
+	color_on := s.should_print_errors_in_color && term.can_show_color()
+	final_message := if color_on { term.red( term.bold( msg ) ) } else { msg }
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output
 	// and jump to their source with a keyboard shortcut.
 	// Using only the filename leads to inability of IDE/editors
 	// to find the source file, when it is in another folder.
-	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
+	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
+	
+	if s.should_print_line_on_error && s.file_lines.len > 0 {
+		context_start_line := imax(0,                (s.line_nr - error_context_before + 1 ))
+		context_end_line   := imin(s.file_lines.len, (s.line_nr + error_context_after + 1 ))
+		for cline := context_start_line; cline < context_end_line; cline++ {
+			line := '${(cline+1):5d}| ' + s.file_lines[ cline ]
+			coloredline := if cline == s.line_nr && color_on { term.red(line) } else { line }
+			println( coloredline )
+			if cline != s.line_nr { continue }
+			// The pointerline should have the same spaces/tabs as the offending
+			// line, so that it prints the ^ character exactly on the *same spot*
+			// where it is needed. That is the reason we can not just
+			// use strings.repeat(` `, col) to form it.
+			mut pointerline := []string		
+			for i , c in line {
+				if i < col {
+					x := if c.is_space() { c } else { ` ` }
+					pointerline << x.str()
+					continue
+				}
+				pointerline << if color_on { term.bold( term.blue('^') ) } else { '^' }
+				break
+			}
+			println( '      ' + pointerline.join('') )
+		}
+	}
 	exit(1)
 }
-
 
 fn (s Scanner) count_symbol_before(p int, sym byte) int {
   mut count := 0
   for i:=p; i>=0; i-- {
-    if s.text[i] != sym {
-      break
-    }
-    count++
+	if s.text[i] != sym {
+	  break
+	}
+	count++
   }
   return count
 }
@@ -670,8 +716,14 @@ fn (s Scanner) count_symbol_before(p int, sym byte) int {
 // println('array out of bounds $idx len=$a.len')
 // This is really bad. It needs a major clean up
 fn (s mut Scanner) ident_string() string {
-	// println("\nidentString() at char=", string(s.text[s.pos]),
-	// "chard=", s.text[s.pos], " pos=", s.pos, "txt=", s.text[s.pos:s.pos+7])
+	q := s.text[s.pos]
+	if (q == single_quote || q == double_quote) &&	!s.inside_string{
+		s.quote = q
+	}
+	//if s.file_path.contains('string_test') {
+	//println('\nident_string() at char=${s.text[s.pos].str()}')
+	//println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
+	//}
 	mut start := s.pos
 	s.inside_string = false
 	slash := `\\`
@@ -683,12 +735,12 @@ fn (s mut Scanner) ident_string() string {
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
 		// end of string
-		if c == `\'` && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
+		if c == s.quote && (prevc != slash || (prevc == slash && s.text[s.pos - 2] == slash)) {
 			// handle '123\\'  slash at the end
 			break
 		}
 		if c == `\n` {
-			s.line_nr++
+			s.inc_line_number()
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == `\\` {
@@ -708,13 +760,13 @@ fn (s mut Scanner) ident_string() string {
 		// $var
 		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
 			s.inside_string = true
-			s.dollar_start = true
+			s.inter_start = true
 			s.pos -= 2
 			break
 		}
 	}
 	mut lit := ''
-	if s.text[start] == `\'` {
+	if s.text[start] == s.quote {
 		start++
 	}
 	mut end := s.pos
@@ -763,26 +815,6 @@ fn (s mut Scanner) ident_char() string {
 	return if c == '\'' { '\\' + c } else { c }
 }
 
-fn (s mut Scanner) peek() Token {
-	// save scanner state
-	pos := s.pos
-	line := s.line_nr
-	inside_string := s.inside_string
-	dollar_start := s.dollar_start
-	dollar_end := s.dollar_end
-
-	res := s.scan()
-	tok := res.tok
-
-	// restore scanner state
-	s.pos = pos
-	s.line_nr = line
-	s.inside_string = inside_string
-	s.dollar_start = dollar_start
-	s.dollar_end = dollar_end
-	return tok
-}
-
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
@@ -824,6 +856,23 @@ fn (s mut Scanner) debug_tokens() {
 	}
 }
 
+
+fn (s mut Scanner) ignore_line() {
+	s.eat_to_end_of_line()
+	s.inc_line_number()
+}
+
+fn (s mut Scanner) eat_to_end_of_line(){
+	for s.pos < s.text.len && s.text[s.pos] != `\n` {
+		s.pos++
+	}
+}
+
+fn (s mut Scanner) inc_line_number() {
+	s.last_nl_pos = s.pos
+	s.line_nr++
+}
+
 fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
@@ -832,53 +881,8 @@ fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
 
-fn (s &Scanner) get_opening_bracket() int {
-	mut pos := s.pos
-	mut parentheses := 0
-	mut inside_string := false
-
-	for pos > 0 && s.text[pos] != `\n` {
-		if s.text[pos] == `)` && !inside_string {
-			parentheses++
-		}
-		if s.text[pos] == `(` && !inside_string {
-			parentheses--
-		}
-		if s.text[pos] == `\'` && s.text[pos - 1] != `\\` && s.text[pos - 1] != `\`` { // ` // apostrophe balance comment. do not remove
-			inside_string = !inside_string
-		}
-		if parentheses == 0 {
-			break
-		}
-		pos--
-	}
-	return pos
-}
-
-// Foo { bar: 3, baz: 'hi' } => '{ bar: 3, baz: "hi" }'
-fn (s mut Scanner) create_type_string(T Type, name string) {
-	line := s.line_nr
-	inside_string := s.inside_string
-	mut newtext := '\'{ '
-	start := s.get_opening_bracket() + 1
-	end := s.pos
-	for i, field in T.fields {
-		if i != 0 {
-			newtext += ', '
-		}
-		newtext += '$field.name: ' + '$${name}.${field.name}'
-	}
-	newtext += ' }\''
-	s.text = s.text.substr(0, start) + newtext + s.text.substr(end, s.text.len)
-	s.pos = start - 2
-	s.line_nr = line
-	s.inside_string = inside_string
-}
-
 fn contains_capital(s string) bool {
-	// for c in s {
-	for i := 0; i < s.len; i++ {
-		c := s[i]
+	for c in s {
 		if c >= `A` && c <= `Z` {
 			return true
 		}
@@ -898,6 +902,17 @@ fn good_type_name(s string) bool {
 		}
 	}
 	return true
+}
+
+// registration_date good
+// registrationdate  bad
+fn (s &Scanner) validate_var_name(name string) {
+	if name.len > 11 && !name.contains('_') {
+		s.error('bad variable name `$name`\n' +
+'looks like you have a multi-word name without separating them with `_`' +
+'\nfor example, use `registration_date` instead of `registrationdate` ')
+		
+	}	
 }
 
 

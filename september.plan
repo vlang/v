@@ -7,11 +7,12 @@
 - remove all compiler memory leaks
 - fix child <T> function calls
 + fix non-ascii rendering in gg (ä, å, etc)
-- cache all tokens once
++ cache all tokens once
 - enable vfmt
+- bring back vdoc and regenerate all module docs
 - optimize the parser (reduce map lookups)
 - cache vlib (right now it's re-compiled every time)
-- fix openssl on older linux distros
++ fix openssl on older linux distros
 - chat.vlang.io
 - rewrite objective c code in v (ui_mac.m)
 - v ui for macos
@@ -25,10 +26,11 @@
 - ui demo: calculator
 - declarative ui with hot reload (similar to swiftui)
 - "building a simple blog with vweb" tutorial + youtube video
-- webassembly backend (via emscripten)
 + javascript backend
 - new playground with a v compiler running in the browser
 + o(log n) type lookup
 - prebuilt binaries for all platforms
 - fix interfaces
++ `none` keyword for optionals
++ table: migrate all find*** functions to optionals
 

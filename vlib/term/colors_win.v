@@ -4,8 +4,6 @@
 
 module term
 
-import os
-
 pub fn format(msg, open, close string) string {
 	return _format(msg, open, close)
 }

@@ -5,8 +5,8 @@
 module aes
 
 import (
-	crypto.cipher
-	crypto.internal.subtle
+	// crypto.cipher
+	// crypto.internal.subtle
 )
 
 // new_cipher_generic creates and returns a new cipher.Block

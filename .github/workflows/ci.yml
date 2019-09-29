@@ -1,0 +1,97 @@
+name: CI
+on: [push, pull_request]
+jobs:
+
+  build-osx:
+    runs-on: macOS-10.14
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+        brew install freetype glfw openssl
+        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+    - name: Build v
+      run:  make && ./v -o v compiler
+    - name: Test v->c
+      run: ./v test v
+    - name: Test v->js
+      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Test vid
+      run: |
+        git clone --depth 1 https://github.com/vlang/vid.git
+        cd vid && ../v -debug -o vid .
+
+  build-ubuntu:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+    - name: Build v
+      run: make && ./v -o v compiler
+    - name: Test v->c
+      run: ./v test v
+    - name: Test v->js
+      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+
+  build-ubuntu-tcc:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install dependencies
+      run: sudo apt-get update; sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+    - name: Build v
+      run: make && ./v -o v compiler
+    - name: Test v->c with tcc
+      env:
+        VFLAGS: -cc tcc
+      run: |
+        tcc -version
+        ./v test v
+
+  build-windows-gcc:
+    runs-on: windows-2019
+    steps:
+    - uses: actions/checkout@v1
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      run: |
+        gcc --version
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        .\make.bat -gcc
+    - name: Test
+      run: |
+        .\v.exe test v
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
+
+  build-windows-msvc:
+    runs-on: windows-2019
+    steps:
+    - uses: actions/checkout@v1
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      env:
+        VFLAGS: -os msvc
+      run: |
+        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
+        .\make.bat -msvc
+    - name: Test
+      env:
+        VFLAGS: -os msvc
+      run: |
+        .\v.exe test v
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js

@@ -33,6 +33,17 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	}
 }
 
+fn (p mut Parser) gen_blank_identifier_assign() {
+	p.check_name()
+	p.check_space(.assign)
+	p.bool_expression()
+	or_else := p.tok == .key_orelse
+	//tmp := p.get_tmp()
+	if or_else {
+		//panic('optionals todo')
+	}
+}
+
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
@@ -88,21 +99,25 @@ fn (p mut Parser) gen_array_at(typ string, is_arr0 bool, fn_ph int) {
 
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < ${tmp}.length; $i++) {')
+	if val == '_' { return }
 	p.genln('var $val = $tmp [$i];')
 }
 
 fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
 	p.genln(';\nfor (var $i = $tmp; $i < $range_end; $i++) {')
+	if val == '_' { return }
 	p.genln('var /*$var_type*/ $val = $i;')
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < $tmp .length; $i ++) {')
+	if val == '_' { return }
 	p.genln('var $val = $tmp[$i];')
 }
 
 fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	p.genln('for (var $i in $tmp) {')
+	if val == '_' { return }
 	p.genln('var $val = $tmp[$i];')
 }
 

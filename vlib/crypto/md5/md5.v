@@ -45,7 +45,7 @@ fn (d mut Digest) reset() {
 	d.s[2] = u32(Init2)
 	d.s[3] = u32(Init3)
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
@@ -104,10 +104,10 @@ pub fn (d mut Digest) checksum() []byte {
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
 	// tmp := [1 + 63 + 8]byte{0x80}
-    mut tmp := [byte(0); 1 + 63 + 8]
+    mut tmp := [byte(0)].repeat(1 + 63 + 8)
 	tmp[0] = 0x80
-	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
-	binary.little_endian_put_u64(mut tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
+	pad := int((55 - int(d.len)) % u64(64)) // calculate number of padding bytes
+	binary.little_endian_put_u64(mut tmp.right(1+pad), d.len<<u64(3)) // append length in bits
     d.write(tmp.left(1+pad+8))
 
 	// The previous write ensures that a whole number of

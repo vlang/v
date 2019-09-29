@@ -8,7 +8,7 @@ import (
 	crypto.sha512 as s5
 )
 
-pub fn main() {
+fn test_import() {
 	assert os.SUCCESS == os.SUCCESS &&
 		t.MonthDays[0] == t.MonthDays[0] &&
 		s2.Size == s2.Size &&

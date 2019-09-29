@@ -62,7 +62,7 @@ struct B {
   mut:
 	a A
 }
-.vrepl_temp.v:13:15: `c2` is immutable.
+.vrepl_temp.v:13:15: `c2` is immutable
 .vrepl_temp.v:16:12: cannot modify immutable field `e` (type `F`)
 declare the field with `mut:`
 struct F {

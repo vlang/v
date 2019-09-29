@@ -30,14 +30,21 @@ fn test_crypto_rand_read() {
 }
 
 fn test_crypto_rand_int_u64() {
-	max := u64(200)
-	r1 := rand.int_u64(max) or {
-		assert false
-		return
+	max := u64(160)
+	mut unique := []int
+	for _ in 0..80 {
+		r := rand.int_u64(max) or {
+			assert false
+			return
+		}
+		if r >= max {
+			assert false
+			return
+		}
+		n := int(r)
+		if !(n in unique) {
+			unique << n
+		}
 	}
-	r2 := rand.int_u64(max) or {
-		assert false
-		return
-	}
-	assert r1 > u64(0) && r2 > u64(0) && r1 < max && r2 < max
+	assert unique.len >= 40
 }

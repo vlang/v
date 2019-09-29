@@ -1,9 +1,10 @@
 module main
 
 import os
+import time
 
 fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
-  mut a := []string
+	mut a := []string
 	if v.pref.is_live || v.pref.is_so {
 		// See 'man dlopen', and test running a GUI program compiled with -live
 		if (v.os == .linux || os.user_os() == 'linux'){
@@ -13,11 +14,11 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 			a << '-flat_namespace'
 		}
 	}
-  return a
+	return a
 }
 
 fn (v &V) generate_hotcode_reloading_declarations() {
-  mut cgen := v.cgen
+	mut cgen := v.cgen
 	if v.os != .windows && v.os != .msvc {
 		if v.pref.is_so {
 			cgen.genln('pthread_mutex_t live_fn_mutex;')
@@ -35,34 +36,68 @@ fn (v &V) generate_hotcode_reloading_declarations() {
 	}
 }
 
-fn (v mut V) generate_hot_reload_code() {
-  mut cgen := v.cgen
+fn (v &V) generate_hotcode_reloading_main_caller() {
+	if !v.pref.is_live { return }
+	// We are in live code reload mode, so start the .so loader in the background
+	mut cgen := v.cgen
+	cgen.genln('')
+	file_base := os.filename(v.dir).replace('.v', '')
+	if !(v.os == .windows || v.os == .msvc) {
+		// unix:
+		so_name := file_base + '.so'
+		cgen.genln('  char *live_library_name = "$so_name";')
+		cgen.genln('  load_so(live_library_name);')
+		cgen.genln('  pthread_t _thread_so;')
+		cgen.genln('  pthread_create(&_thread_so , NULL, &reload_so, live_library_name);')
+	} else {
+		// windows:
+		so_name := file_base + if v.os == .msvc {'.dll'} else {'.so'}
+		cgen.genln('  char *live_library_name = "$so_name";')
+		cgen.genln('  live_fn_mutex = CreateMutexA(0, 0, 0);')
+		cgen.genln('  load_so(live_library_name);')
+		cgen.genln('  unsigned long _thread_so;')
+		cgen.genln('  _thread_so = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&reload_so, 0, 0, 0);')
+	}
+}
 
+fn (v &V) generate_hot_reload_code() {
+	mut cgen := v.cgen
+	
 	// Hot code reloading
 	if v.pref.is_live {
-		file := v.dir
-		file_base := v.dir.replace('.v', '')
+		mut file := os.realpath(v.dir)
+		file_base := os.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.
 		mut vexe := os.args[0]
-
+		
 		if os.user_os() == 'windows' {
 			vexe = vexe.replace('\\', '\\\\')
+			file = file.replace('\\', '\\\\')
 		}
-
+		
 		mut msvc := ''
 		if v.os == .msvc {
 			msvc = '-os msvc'
 		}
-
+		
 		mut debug := ''
-
+		
 		if v.pref.is_debug {
 			debug = '-debug'
 		}
-
-		os.system('$vexe $msvc $debug -o $file_base -shared $file')
+		
+		cmd_compile_shared_library := '$vexe $msvc $debug -o $file_base -shared $file'
+		if v.pref.show_c_cmd {
+			println(cmd_compile_shared_library)
+		}
+		ticks := time.ticks()
+		os.system(cmd_compile_shared_library)
+		diff := time.ticks() - ticks
+		println('compiling shared library took $diff ms')
+		println('=========\n')
+		
 		cgen.genln('
 
 void lfnmutex_print(char *s){

@@ -43,6 +43,7 @@ script:
       git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
 
       if [[ "${TRAVIS_JOB_NAME}" == "windows_gcc" ]]; then
+        gcc --version
         echo "Building V with GCC"
         export VFLAGS="-os windows"
         ./make.bat -gcc
@@ -66,7 +67,7 @@ script:
     if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
       ## aliases do not work for some reason in travis, just use full commands :-|
       echo "Nodejs version:"
-      node --version      
+      node --version
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
@@ -75,7 +76,7 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       echo "Nodejs version:"
-      node --version      
+      node --version
       # Build hi.js
       echo "fn main(){ println('Hello from V.js') }" > hi.v
       ./v -o hi.js hi.v
@@ -83,7 +84,7 @@ script:
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
-      # Build Vid
+    # Build Vid
       git clone https://github.com/vlang/vid
       cd vid && ../v -debug -o vid .
     fi

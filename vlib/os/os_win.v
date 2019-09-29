@@ -13,19 +13,19 @@ type HANDLE voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
-struct filetime {
+struct Filetime {
   dwLowDateTime u32
   dwHighDateTime u32
 }
 
 // win: WIN32_FIND_DATA
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
-struct win32finddata {
+struct Win32finddata {
 mut:
     dwFileAttributes u32
-    ftCreationTime filetime
-  	ftLastAccessTime filetime
-  	ftLastWriteTime filetime
+    ftCreationTime Filetime
+  	ftLastAccessTime Filetime
+  	ftLastWriteTime Filetime
 	nFileSizeHigh u32
 	nFileSizeLow u32
 	dwReserved0 u32
@@ -52,7 +52,7 @@ fn init_os_args(argc int, argv &byteptr) []string {
 
 
 pub fn ls(path string) []string {
-	mut find_file_data := win32finddata{}
+	mut find_file_data := Win32finddata{}
 	mut dir_files := []string
 	// We can also check if the handle is valid. but using dir_exists instead
 	// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
@@ -133,7 +133,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
             return _filename
         default:
             // Must handled with GetLastError and converted by FormatMessage
-            return error('Cannot get file name from handle.')
+            return error('Cannot get file name from handle')
         }
     }
     panic('this should be unreachable') // TODO remove unreachable after loop

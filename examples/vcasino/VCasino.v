@@ -10,7 +10,7 @@ const (GDesc = '  The object of Roulette is to pick the number where the spinnin
    Otherwise, you will lose your bet.\n')
 const (Odd = 'Red' Even = 'Black')
 
-struct options {
+struct Options {
     long_opt string
     short_opt string
 }
@@ -20,7 +20,7 @@ fn display_help() {
 }
 
 fn option_parser() bool {
-    help := options{'--help', '-h'}
+    help := Options{'--help', '-h'}
     for i := 0; i < os.args.len; i++ {
         if os.args[i]== help.long_opt || os.args[i]== help.short_opt {
             display_help()
@@ -88,7 +88,7 @@ fn get_bet(money int) int {
 }
 
 fn run_wheel(bet_nbr int, _bet int) int {
-	mut bet := _bet 
+	mut bet := _bet
     rand.seed(time.now().uni)
     winning_nbr := rand.next(50)
     print('Roulette Wheel spinning... and stops on the number $winning_nbr which is a ')
@@ -115,7 +115,7 @@ fn is_broke(money int) bool {
         println('You\'broke, the game is over..')
         return false
     } else {
-        quit := options{'yes', 'y'}
+        quit := Options{'yes', 'y'}
         println('You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)')
    	    line := os.get_line().trim_space().to_lower()
         if line== quit.long_opt || line== quit.short_opt {

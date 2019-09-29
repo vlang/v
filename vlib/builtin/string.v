@@ -4,12 +4,49 @@
 
 module builtin
 
+/*
+NB: A V string should be/is immutable from the point of view of 
+    V user programs after it is first created. A V string is 
+    also slightly larger than the equivalent C string because 
+    the V string also has an integer length attached.
+    
+    This tradeoff is made, since V strings are created just *once*,
+    but potentially used *many times* over their lifetime.
+    
+    The V string implementation uses a struct, that has a .str field,
+    which points to a C style 0 terminated memory block. Although not
+    strictly necessary from the V point of view, that additional 0 
+    is *very useful for C interoperability*.
+    
+    The V string implementation also has an integer .len field, 
+    containing the length of the .str field, excluding the 
+    terminating 0 (just like the C's strlen(s) would do).
+    
+    The 0 ending of .str, and the .len field, mean that in practice:
+      a) a V string s can be used very easily, wherever a
+         C string is needed, just by passing s.str,
+         without a need for further conversion/copying.
+         
+      b) where strlen(s) is needed, you can just pass s.len, 
+         without having to constantly recompute the length of s 
+         *over and over again* like some C programs do. This is because
+         V strings are immutable and so their length does not change.
+
+    Ordinary V code *does not need* to be concerned with the 
+    additional 0 in the .str field. The 0 *must* be put there by the 
+    low level string creating functions inside this module.
+    
+    Failing to do this will lead to programs that work most of the 
+    time, when used with pure V functions, but fail in strange ways, 
+    when used with modules using C functions (for example os and so on).
+*/
+
 struct string {
 //mut:
 	//hash_cache int
 pub:
-	str byteptr
-	len int
+	str byteptr // points to a C style 0 terminated string of bytes.
+	len int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 }
 
 struct ustring {
@@ -355,20 +392,18 @@ pub fn (s string) substr(start, end int) string {
 	return res
 }
 
-pub fn (s string) index_old(p string) int {
+pub fn (s string) index(p string) int {
 	if p.len > s.len {
 		return -1
 	}
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		mut ii := i
-		for j < p.len && s[ii] == p[j] {
+		for j < p.len && s[i + j] == p[j] {
 			j++
-			ii++
 		}
 		if j == p.len {
-			return i - p.len + 1
+			return i
 		}
 		i++
 	}
@@ -376,11 +411,11 @@ pub fn (s string) index_old(p string) int {
 }
 
 // KMP search
-pub fn (s string) index(p string) int {
+pub fn (s string) index_kmp(p string) int {
         if p.len > s.len {
                 return -1
         }
-        mut prefix := [0].repeat2(p.len)
+        mut prefix := [0].repeat(p.len)
         mut j := 0
         for i := 1; i < p.len; i++ {
                 for p[j] != p[i] && j > 0 {
@@ -725,22 +760,128 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
+fn (u ustring) eq(a ustring) bool {
+	if u.len != a.len || u.s != a.s {
+		return false
+	}
+	return true
+}
+
+fn (u ustring) ne(a ustring) bool {
+	return !u.eq(a)
+}
+
+fn (u ustring) lt(a ustring) bool {
+	return u.s < a.s
+}
+
+fn (u ustring) le(a ustring) bool {
+	return u.lt(a) || u.eq(a)
+}
+
+fn (u ustring) gt(a ustring) bool {
+	return !u.le(a)
+}
+
+fn (u ustring) ge(a ustring) bool {
+	return !u.lt(a)
+}
+
+fn (u ustring) add(a ustring) ustring {
+	mut res := ustring {
+		s: u.s + a.s
+		runes: new_array(0, u.s.len + a.s.len, sizeof(int))
+	}
+	mut j := 0
+	for i := 0; i < u.s.len; i++ {
+		char_len := utf8_char_len(u.s.str[i])
+		res.runes << j
+		i += char_len - 1
+		j += char_len
+		res.len++
+	}
+	for i := 0; i < a.s.len; i++ {
+		char_len := utf8_char_len(a.s.str[i])
+		res.runes << j
+		i += char_len - 1
+		j += char_len
+		res.len++
+	}
+	return res
+}
+
+pub fn (u ustring) index_after(p ustring, start int) int {
+	if p.len > u.len {
+		return -1
+	}
+	mut strt := start
+	if start < 0 {
+		strt = 0
+	}
+	if start > u.len {
+		return -1
+	}
+	mut i := strt
+	for i < u.len {
+		mut j := 0
+		mut ii := i
+		for j < p.len && u.at(ii) == p.at(j) {
+			j++
+			ii++
+		}
+		if j == p.len {
+			return i
+		}
+		i++
+	}
+	return -1
+}
+
+// counts occurrences of substr in s
+pub fn (u ustring) count(substr ustring) int {
+	if u.len == 0 || substr.len == 0 {
+		return 0
+	}
+	if substr.len > u.len {
+		return 0
+	}
+	mut n := 0
+	mut i := 0
+	for {
+		i = u.index_after(substr, i)
+		if i == -1 {
+			return n
+		}
+		i += substr.len
+		n++
+	}
+	return 0 // TODO can never get here - v doesn't know that
+}
+
 pub fn (u ustring) substr(_start, _end int) string {
-	start := u.runes[_start]
-	end := if _end >= u.runes.len {
+	if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
+		panic('substr($_start, $_end) out of bounds (len=$u.len)')
+	}
+	end := if _end >= u.len {
 		u.s.len
 	}
 	else {
 		u.runes[_end]
 	}
-	return u.s.substr(start, end)
+	return u.s.substr(u.runes[_start], end)
 }
 
 pub fn (u ustring) left(pos int) string {
+	if pos >= u.len {
+		return u.s
+	}
 	return u.substr(0, pos)
 }
 
 pub fn (u ustring) right(pos int) string {
+	if pos >= u.len {
+		return ''
+	}
 	return u.substr(pos, u.len)
 }
 
@@ -752,6 +893,9 @@ fn (s string) at(idx int) byte {
 }
 
 pub fn (u ustring) at(idx int) string {
+	if idx < 0 || idx >= u.len {
+		panic('string index out of range: $idx / $u.runes.len')
+	}
 	return u.substr(idx, idx + 1)
 }
 
@@ -898,7 +1042,22 @@ pub fn (s string) bytes() []byte {
 	if s.len == 0 {
 		return []byte
 	}
-	mut buf := [byte(0)].repeat2(s.len)
+	mut buf := [byte(0)].repeat(s.len)
 	C.memcpy(buf.data, s.str, s.len)
 	return buf
+}
+
+// Returns a new string with a specified number of copies of the string it was called on.
+pub fn (s string) repeat(count int) string {
+	if count <= 1 {
+		return s
+	}
+	mut ret := malloc(s.len * count + 1)
+	for i in 0..count {
+		for j in 0..s.len {
+			ret[i*s.len + j] = s[j]
+		}
+	}
+	ret[s.len * count] = 0
+	return string(ret)
 }

@@ -31,7 +31,7 @@ pub fn compile_template(path string) string {
 	s.writeln('module main import strings fn ${base}_view() string {   // this line will get removed becase only function body is embedded 
 mut sb := strings.new_builder(${lines.len * 30})
 header := \'$header\' 
-_ := header 
+_ = header 
 //footer := \'footer\' 
 ') 
 	s.writeln(STR_START)

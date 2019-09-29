@@ -468,11 +468,11 @@ pub fn get_line() string {
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
 	$if windows {
-        maxlinechars := 256
-        buf := &u16(malloc(maxlinechars*2))
-        res := int( C.fgetws(buf, maxlinechars, C.stdin ) )
-        len := int(  C.wcslen(buf) )
-        if 0 != res { return string_from_wide2( buf, len ) }
+        max_line_chars := 256
+        buf := &byte(malloc(max_line_chars*2))
+        res := int( C.fgetws(buf, max_line_chars, C.stdin ) )
+        len := int(  C.wcslen(&u16(buf)) )
+        if 0 != res { return string_from_wide2( &u16(buf), len ) }
         return ''
     }
 	$else {
@@ -541,6 +541,9 @@ pub fn user_os() string {
 	}
 	$if android{
 		return 'android'
+	}
+	$if solaris {
+		return 'solaris'
 	}
 	return 'unknown'
 }
@@ -631,6 +634,8 @@ pub fn executable() string {
 		// lol
 		return os.args[0]
 	}
+	$if solaris {
+	}
 	$if netbsd {
 		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
@@ -647,7 +652,7 @@ pub fn executable() string {
 		}
 		return string(result, count)
 	}
-	return '.'
+	return os.args[0]
 }
 
 pub fn is_dir(path string) bool {
@@ -771,7 +776,8 @@ pub fn file_last_mod_unix(path string) int {
 }
 
 
-fn log(s string) {
+pub fn log(s string) {
+	println('os.log: ' + s)
 }
 
 pub fn flush_stdout() {
