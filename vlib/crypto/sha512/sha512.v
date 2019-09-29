@@ -178,29 +178,30 @@ fn (d mut Digest) write(p_ []byte) ?int {
 	return nn
 }
 
-fn (d mut Digest) sum(b_in mut []byte) []byte {
+fn (d mut Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
+	mut b_out := b_in.clone()
 	switch d0.function {
 	case crypto.Hash.SHA384:
 		for b in hash.left(Size384) {
-			b_in << b
+			b_out << b
 		}
 	case crypto.Hash.SHA512_224:
 		for b in hash.left(Size224) {
-			b_in << b
+			b_out << b
 		}
 	case crypto.Hash.SHA512_256:
 		for b in hash.left(Size256) {
-			b_in << b
+			b_out << b
 		}
 	default:
 		for b in hash {
-			b_in << b
+			b_out << b
 		}
 	}
-	return *b_in
+	return b_out
 }
 
 fn (d mut Digest) checksum() []byte {
