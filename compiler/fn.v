@@ -296,8 +296,8 @@ fn (p mut Parser) fn_decl() {
 	p.fn_args(mut f)
 	// vargs struct - dont generate for C definitions
 	// if !p.first_pass() && f.is_variadic && !f.is_c {
-	// 	p.cgen.typedefs << 'typedef struct FnVargs_$f.name FnVargs_$f.name;'
-	// 	p.cgen.genln('struct FnVargs_${f.name} {int len;};')
+	// 	p.cgen.typedefs << 'typedef struct _V_FnVargs_$f.name _V_FnVargs_$f.name;'
+	// 	p.cgen.genln('struct _V_FnVargs_${f.name} {int len;};')
 	// }
 	// Returns an error?
 	if p.tok == .not {
@@ -756,8 +756,20 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			}
 			f.is_variadic = true
 			typ = '...'
+			p.table.register_type2(Type{
+				cat: TypeCategory.struct_,
+				name: '_V_FnVargs_$f.name',
+				mod: p.mod
+			})
+			t := p.get_type()
+			p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
+			p.table.add_field(vargs_struct, 'args[$no_vargs]', t, false, '', .public)
+			p.cgen.typedefs << 'typedef struct _V_FnVargs_$f.name _V_FnVargs_$f.name;\n'
+			typ += t
+		} else {
+			typ = p.get_type()
 		}
-		typ += p.get_type()
+		
 		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
@@ -1029,9 +1041,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	last_arg := f.args.last()
 	varg_def_type := last_arg.typ.right(3)
+	println(' ## varg_def_type: $varg_def_type')
 	mut vargs_struct_fields := ''
 	mut no_vargs := 0
-	mut temp_args := []string
 	for p.tok != .rpar {
 		if p.tok == .comma {
 			p.check(.comma)
@@ -1039,13 +1051,14 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		no_vargs++
 		// no limit with array
 		// if no_vargs > max_varaidic_args {
-		// 	cerror('variadic arguments are limited to ${max_varaidic_args}.')
+		// 	p.error('variadic arguments are limited to ${max_varaidic_args}.')
 		// }
 		if no_vargs > 1 {
 			vargs_struct_fields += ','
 		}
 		p.cgen.start_tmp()
 		arg_type := p.bool_expression()
+		println('arg type: $arg_type')
 		arg_value := p.cgen.end_tmp()
 		p.check_types(last_arg.typ, arg_type)
 		// struct
@@ -1056,37 +1069,24 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		// } else {
 		// 	vargs_struct_fields += '&$arg_value'
 		// }
-		temp_args << arg_value
 		vargs_struct_fields += '$arg_value'
 	}
 	// struct only
-	// mut vargs_struct := 'struct FnVargs_$f.name {\n\tint len;\n'
+	// mut vargs_struct := 'struct _V_FnVargs_$f.name {\n\tint len;\n'
 	// for i in 1..max_varaidic_args+1 {
 	// 	vargs_struct += '\t$varg_def_type arg_$i;\n'
 	// }
 	// vargs_struct += '};\n'
 	// array
-	// vargs_struct := 'struct FnVargs_$f.name {\n\tint len;\n\t$varg_def_type *args[$no_vargs]\n}\n;'
-	vargs_struct_t := 'FnVargs_$f.name'
-	vargs_struct := 'struct FnVargs_$f.name {\n\tint len;\n\t$varg_def_type args[$no_vargs]\n}\n;'
-	for i, l in p.cgen.lines {
-		line := l.trim_space()
-		if line == 'struct FnVargs_${f.name} {int len;};' {
-			p.cgen.lines[i] = vargs_struct
-			break
-		}
-	}
-	p.table.register_type2(Type{
+	vargs_struct := '_V_FnVargs_$f.name'
+	p.table.rewrite_type(Type{
 		cat: TypeCategory.struct_,
-		name: vargs_struct_t,
+		name: vargs_struct,
 		mod: p.mod
 	})
-	p.table.add_field(vargs_struct_t, 'len', 'int', false, '', .public)
-	p.table.add_field(vargs_struct_t, 'args', varg_def_type, false, '', .public)
-	p.cgen.typedefs << 'typedef struct FnVargs_$f.name FnVargs_$f.name;\n'
-	// p.cgen.set_placeholder(f.vargs_ph['${f.name}_caller_decl'], 'FnVargs_$f.name fn_vargs_$f.name = (FnVargs_$f.name) {\n\t.len=$no_vargs$vargs_struct_fields\n};\n')
-	// p.cgen.set_placeholder(f.vargs_ph['${f.name}_caller_decl'], 'FnVargs_$f.name fn_vargs_$f.name = (FnVargs_$f.name) {\n\t.len=$no_vargs,\n\t.args={$vargs_struct_fields}\n};\n')
-	p.cgen.gen(',&fn_vargs_$f.name')
+	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
+	p.table.add_field(vargs_struct, 'args[$no_vargs]', varg_def_type, false, '', .public)
+	p.cgen.gen(',&(_V_FnVargs_$f.name){.len=$no_vargs,.args={$vargs_struct_fields}}')
 }
 
 // "fn (int, string) int"
@@ -1135,7 +1135,7 @@ fn (f &Fn) str_args(table &Table) string {
 			}
 		}
 		else if arg.typ.starts_with('...') {
-			s += 'FnVargs_$f.name *$arg.name'
+			s += '_V_FnVargs_$f.name *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'

@@ -2207,7 +2207,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.gen('[')
 			close_bracket = true
 		}
-		else if is_ptr {
+		else if is_ptr  && !is_variadic_arg {
 			// typ = 'byte'
 			typ = typ.replace('*', '')
 			// modify(mut []string) fix
