@@ -645,19 +645,34 @@ fn (v mut V) add_v_files_to_compile() {
 */
 	// strange ( for mod in v.table.imports ) dosent loop all items
 	// for mod in v.table.imports {
-	for i := 0; i < v.table.imports.len; i++ {
-		mod := v.table.imports[i]
-		import_path := v.find_module_path(mod)
-		vfiles := v.v_files_from_dir(import_path)
-		if vfiles.len == 0 {
-			verror('cannot import module $mod (no .v files in "$import_path")')
+	mut parsed_mods := []string
+	mut it_len := v.table.file_imports.size
+	for {
+		for _, fit in v.table.file_imports {
+			for _, mod in fit.imports {
+				if mod in parsed_mods { continue }
+				import_path := v.find_module_path(mod)
+				vfiles := v.v_files_from_dir(import_path)
+				if vfiles.len == 0 {
+					// for p in v.parsers {
+					// 	if p.id == fit.file_path {
+					// 		// @spytheman this is the parser you want
+					// 		break
+					// 	}
+					// }
+					verror('cannot import module $mod (no .v files in "$import_path")')
+				}
+				// Add all imports referenced by these libs
+				for file in vfiles {
+					mut p := v.new_parser_file(file)
+					p.parse(.imports)
+					//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+				}
+				parsed_mods << mod
+			}
 		}
-		// Add all imports referenced by these libs
-		for file in vfiles {
-			mut p := v.new_parser_file(file)
-			p.parse(.imports)
-			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-		}
+		if v.table.file_imports.size == it_len { break }
+		it_len = v.table.file_imports.size
 	}
 	if v.pref.is_verbose {
 		v.log('imports:')
