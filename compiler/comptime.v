@@ -117,7 +117,7 @@ fn (p mut Parser) comp_time() {
 		// Parse the function and embed resulting C code in current function so that
 		// all variables are available.
 		pos := p.cgen.lines.len - 1
-		mut pp := p.v.new_parser_file('.vwebtmpl.v')
+		mut pp := p.v.new_parser_from_file('.vwebtmpl.v')
 		if !p.pref.is_debug {
 			os.rm('.vwebtmpl.v')
 		}
@@ -279,7 +279,7 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	for field in typ.fields {
 		sb.writeln('\t$field.name: \$a.${field.name}')
 	}
-	sb.writeln("\n}'")
+	sb.writeln("}'")
 	sb.writeln('}')
 	p.v.vgen_buf.writeln(sb.str())
 	// Need to manually add the definition to `fns` so that it stays

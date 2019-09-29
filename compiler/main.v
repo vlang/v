@@ -29,7 +29,6 @@ enum BuildMode {
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'msvc', 'android', 'js', 'solaris']
-	v_modules_path            = os.home_dir() + '/.vmodules/'
 )
 
 enum OS {
@@ -72,7 +71,7 @@ mut:
 	lang_dir   string // "~/code/v"
 	out_name   string // "program.exe"
 	vroot      string
-	mod        string  // module being built with -lib
+	mod        string  // module being built with `v build module`
 	parsers    []Parser
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
 }
@@ -218,6 +217,16 @@ fn (v mut V) add_parser(parser Parser) {
        v.parsers << parser
 }
 
+fn (v mut V) parse(file string, pass Pass) {
+	//println('parse($file, $pass)')
+	for i, p in v.parsers {
+		if p.file_path == file {
+			v.parsers[i].parse(pass)
+			return
+		}	
+	}	
+}
+
 
 fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
@@ -250,12 +259,7 @@ fn (v mut V) compile() {
 	*/
 	// First pass (declarations)
 	for file in v.files {
-		for i, p in v.parsers {
-			if p.file_path == file {
-				v.parsers[i].parse(.decl)
-				break
-			}	
-		}	
+		v.parse(file, .decl)
 	}
 	// Main pass
 	cgen.pass = Pass.main
@@ -321,12 +325,7 @@ fn (v mut V) compile() {
 	cgen.genln('this line will be replaced with definitions')
 	defs_pos := cgen.lines.len - 1
 	for file in v.files {
-		for i, p in v.parsers {
-			if p.file_path == file {
-				v.parsers[i].parse(.main)
-				break
-			}	
-		}	
+		v.parse(file, .main)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		// p.g.gen_x64()
 		// Format all files (don't format automatically generated vlib headers)
@@ -334,8 +333,12 @@ fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		}
 	}
+	// Generate .vh if we are building a module
+	if v.pref.build_mode == .build_module {
+		v.generate_vh()
+	}
 	// parse generated V code (str() methods etc)
-	mut vgen_parser := v.new_parser_string(v.vgen_buf.str(), 'vgen')
+	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str(), 'vgen')
 	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
@@ -609,13 +612,13 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	// Parse builtin imports
 	for file in v.files {
-		mut p := v.new_parser_file(file)
+		mut p := v.new_parser_from_file(file)
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse user imports
 	for file in user_files {
-		mut p := v.new_parser_file(file)
+		mut p := v.new_parser_from_file(file)
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
@@ -643,7 +646,7 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	else {
 */
-	// strange ( for mod in v.table.imports ) dosent loop all items
+	// TODO ` for mod in v.table.imports ` crashes
 	// for mod in v.table.imports {
 	for i := 0; i < v.table.imports.len; i++ {
 		mod := v.table.imports[i]
@@ -654,7 +657,7 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 		// Add all imports referenced by these libs
 		for file in vfiles {
-			mut p := v.new_parser_file(file)
+			mut p := v.new_parser_from_file(file)
 			p.parse(.imports)
 			if p.import_table.module_name != mod {
 				verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
@@ -666,13 +669,14 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('imports:')
 		println(v.table.imports)
 	}
+	
 	// graph deps
 	mut dep_graph := new_dep_graph()
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
-		verror('Import cycle detected')
+		verror('import cycle detected')
 	}
 	// add imports in correct order
 	for mod in deps_resolved.imports() {
@@ -680,7 +684,23 @@ fn (v mut V) add_v_files_to_compile() {
 		if mod == v.mod {
 			continue
 		}
+		if mod == 'builtin' { continue } // builtin files were already added
+		
+		// Cached module
+		vh_path := '$v_modules_path/${mod}.vh'
+		if os.file_exists(vh_path) {
+			continue
+			/*
+			println(':) got vh=' + vh_path)
+			if !(vh_path in v.files) {
+				v.files << vh_path
+			}
+			continue
+			*/
+		}
+	
 		mod_path := v.find_module_path(mod)
+		println('mod_path="$mod_path" mod="$mod"')
 		// If we are in default mode, we don't parse vlib .v files, but
 		// header .vh files in
 		// TmpPath/vlib
@@ -690,10 +710,10 @@ fn (v mut V) add_v_files_to_compile() {
 			module_path = '$v_modules_path/vlib/$mod_p'
 		}
 */
-		if mod == 'builtin' { continue } // builtin files were already added
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			if !(file in v.files) {
+				println('adding $file')
 				v.files << file
 			}
 		}
@@ -703,7 +723,9 @@ fn (v mut V) add_v_files_to_compile() {
 	mut j := 0
 	mut len := -1
 	for _, fit in v.table.file_imports {
+		
 		// Don't add a duplicate; builtin files are always there
+		println('fit $fit.file_path')
 		if fit.file_path in v.files || fit.module_name == 'builtin' {
 			i++
 			continue
@@ -715,6 +737,13 @@ fn (v mut V) add_v_files_to_compile() {
 		// TODO remove this once imports work with .build
 		if v.pref.build_mode == .build_module && j >= len / 2{
 			break
+		}
+		
+		vh_path := '$v_modules_path/${fit.module_name}.vh'
+		if os.file_exists(vh_path) {
+			println('GGGG $vh_path')
+			v.files << fit.file_path
+			continue
 		}
 		//println(fit)
 		//println('fit $fit.file_path')
@@ -741,15 +770,6 @@ fn get_all_after(joined_args, arg, def string) string {
 	res := joined_args.substr(pos, space)
 	// println('get_arg($arg) = "$res"')
 	return res
-}
-
-fn (v &V) module_path(mod string) string {
-	// submodule support
-	if mod.contains('.') {
-		//return mod.replace('.', os.PathSeparator)
-		return mod.replace('.', '/')
-	}
-	return mod
 }
 
 fn (v &V) log(s string) {
