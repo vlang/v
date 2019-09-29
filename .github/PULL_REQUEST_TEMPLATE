@@ -1,4 +1,4 @@
-Please, delete this in your PR, after reading it.
+**Please delete this information after reading it.*
 
 Please title your PR as follows: `time: fix foo bar`. Always start with the thing you are fixing, then describe the fix.
 Don't use past tense (e.g. "fixed foo bar").
@@ -17,6 +17,8 @@ fn test_foo() {
     ...
 }
 ```
+
+If you are fixing a bug, please add a test that covers it.
 
 Before submitting a PR, please run the tests with `make test`, and make sure V can still compile itself. Run this twice:
 
