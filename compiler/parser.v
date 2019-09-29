@@ -12,11 +12,11 @@ import (
 // TODO rename to Token
 // TODO rename enum Token to TokenType
 struct Tok {
-	tok      Token
-	lit      string
-	line_nr  int
+	tok      Token  // the token number/enum; for quick comparisons
+	lit      string // literal representation of the token
+	line_nr  int // the line number in the source where the token occured
 	name_idx int // name table index for O(1) lookup
-	col      int
+	col      int // the column where the token ends
 }
 
 struct Parser {
@@ -154,6 +154,7 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	}
 	if p.pref.is_repl {
 		p.scanner.should_print_line_on_error = false
+		p.scanner.should_print_errors_in_color = false
 	}
 	v.cgen.line_directives = v.pref.is_debuggable
 	// v.cgen.file = path
@@ -163,11 +164,11 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 fn (p mut Parser) scan_tokens() {
 	for {
 		res := p.scanner.scan()
-		p.tokens << Tok {
+		p.tokens << Tok{
 				tok: res.tok
 				lit: res.lit
 				line_nr: p.scanner.line_nr
-				col: p.scanner.pos - p.scanner.last_nl_pos
+				col: p.scanner.pos - p.scanner.last_nl_pos        
 		}
 		if res.tok == .eof {
 				break
@@ -216,7 +217,7 @@ fn (p &Parser) cur_tok() Tok {
 
 fn (p &Parser) peek_token() Tok {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Tok{tok:Token.eof}
+		return Tok{ tok:Token.eof }
 	}
 	tok := p.tokens[p.token_idx]
 	return tok
@@ -886,30 +887,13 @@ if p.scanner.line_comment != '' {
 }
 }
 
+/////////////////////////////////////////////////////////////////
 fn (p &Parser) warn(s string) {
-	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
+	e := normalized_error( s )
+	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $e')
 }
 
-
-fn (p mut Parser) error_with_position(e string, sp ScannerPos) {
-	p.scanner.goto_scanner_position( sp )
-	p.error( e )
-}
-
-fn (p mut Parser) production_error(e string, sp ScannerPos) {
-	if p.pref.is_prod {
-		p.scanner.goto_scanner_position( sp )
-		p.error( e )
-	}else {
-		// on a warning, restore the scanner state after printing the warning:
-		cpos := p.scanner.get_scanner_pos()
-		p.scanner.goto_scanner_position( sp )
-		p.warn(e)
-		p.scanner.goto_scanner_position( cpos )
-	}
-}
-
-fn (p mut Parser) error(s string) {
+fn (p mut Parser) print_error_context(){
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
@@ -935,13 +919,52 @@ fn (p mut Parser) error(s string) {
 		print_backtrace()
 	}
 	// p.scanner.debug_tokens()
-	// Print `[]int` instead of `array_int` in errors
-	e := s.replace('array_', '[]')
-		.replace('__', '.')
-		.replace('Option_', '?')
-		.replace('main.', '')
-	p.scanner.error_with_col(e, p.tokens[p.token_idx-1].col)
 }
+
+fn normalized_error( s string ) string {
+	// Print `[]int` instead of `array_int` in errors
+	return s.replace('array_', '[]')
+	.replace('__', '.')
+	.replace('Option_', '?')
+	.replace('main.', '')
+}
+
+fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
+	p.print_error_context()
+	e := normalized_error( s )
+	p.scanner.goto_scanner_position( sp )
+	p.scanner.error_with_col(e, sp.pos - sp.last_nl_pos)
+}
+
+fn (p mut Parser) warn_with_position(e string, sp ScannerPos) {
+	// on a warning, restore the scanner state after printing the warning:
+	cpos := p.scanner.get_scanner_pos()
+	p.scanner.goto_scanner_position( sp )
+	p.warn(e)
+	p.scanner.goto_scanner_position( cpos )
+}
+
+fn (p mut Parser) production_error_with_token(e string, tok Tok) {
+	if p.pref.is_prod {
+		p.error_with_tok( e, tok )
+	}else {
+		p.warn_with_token( e, tok )
+	}
+}
+
+fn (p &Parser) warn_with_token(s string, tok Tok) {
+	e := normalized_error( s )
+	println('warning: $p.scanner.file_path:${tok.line_nr+1}:${tok.col}: $e')
+}
+fn (p mut Parser) error_with_tok(s string, tok Tok) {
+	p.error_with_position(s, p.scanner.get_scanner_pos_of_token(tok) )
+}
+
+fn (p mut Parser) error(s string) {
+	// no positioning info, so just assume that the last token was the culprit:
+	p.error_with_tok(s, p.tokens[p.token_idx-1] )
+}
+/////////////////////////////////////////////////////////////////
 
 fn (p &Parser) first_pass() bool {
 	return p.pass == .decl
@@ -1382,6 +1405,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 // is_map: are we in map assignment? (m[key] = val) if yes, dont generate '='
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
+	errtok := p.cur_tok()
 	//p.log('assign_statement() name=$v.name tok=')
 	is_vid := p.fileis('vid') // TODO remove
 	tok := p.tok
@@ -1436,8 +1460,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
-		p.scanner.line_nr--
-		p.error('cannot use type `$expr_type` as type `$p.assigned_type` in assignment')
+		p.error_with_tok( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
 	if (is_str || is_ustr) && tok == .plus_assign && !p.is_js {
 		p.gen(')')
@@ -1488,7 +1511,7 @@ fn (p mut Parser) var_decl() {
 		}
 		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
-		var_scanner_pos := p.scanner.get_scanner_pos()
+		var_token := p.cur_tok()
 		// name := p.check_name()
 		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
@@ -1515,8 +1538,8 @@ fn (p mut Parser) var_decl() {
 			typ: typ
 			is_mut: is_mut
 			is_alloc: p.is_alloc || typ.starts_with('array_')
-			scanner_pos: var_scanner_pos
-			line_nr: var_scanner_pos.line_nr
+			line_nr: var_token.line_nr
+			token: var_token
 		})
 		//if p.fileis('str.v') {
 			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
@@ -3783,7 +3806,7 @@ fn (p &Parser) prepend_mod(name string) string {
 
 fn (p mut Parser) go_statement() {
 	p.check(.key_go)
-	mut gopos := p.scanner.get_scanner_pos()
+	mut gotoken := p.cur_tok()
 	// TODO copypasta of name_expr() ?
 	if p.peek() == .dot {
 		// Method
@@ -3792,12 +3815,12 @@ fn (p mut Parser) go_statement() {
 			return
 		}
 		p.mark_var_used(v)
-		gopos = p.scanner.get_scanner_pos()
+		gotoken = p.cur_tok()
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
 		method := p.table.find_method(typ, p.lit) or {
-			p.error_with_position('go method missing $var_name', gopos)
+			p.error_with_tok('go method missing $var_name', gotoken)
 			return
 		}
 		p.async_fn_call(method, 0, var_name, v.typ)
@@ -3807,11 +3830,11 @@ fn (p mut Parser) go_statement() {
 		// Normal function
 		f := p.table.find_fn(p.prepend_mod(f_name)) or {
 			println( p.table.debug_fns() )
-			p.error_with_position('can not find function $f_name', gopos)
+			p.error_with_tok('can not find function $f_name', gotoken)
 			return
 		}
 		if f.name == 'println' || f.name == 'print' {
-			p.error_with_position('`go` cannot be used with `println`', gopos)
+			p.error_with_tok('`go` cannot be used with `println`', gotoken)
 		}
 		p.async_fn_call(f, 0, '', '')
 	}

@@ -96,8 +96,8 @@ mut:
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
 	is_moved        bool
-	scanner_pos     ScannerPos // TODO: use only scanner_pos, remove line_nr
 	line_nr         int
+	token           Tok // TODO: use only var.token.line_nr, remove var.line_nr
 }
 
 struct Type {
