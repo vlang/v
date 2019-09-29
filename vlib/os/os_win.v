@@ -23,9 +23,9 @@ struct Filetime {
 struct Win32finddata {
 mut:
     dwFileAttributes u32
-    ftCreationTime filetime
-  	ftLastAccessTime filetime
-  	ftLastWriteTime filetime
+    ftCreationTime Filetime
+  	ftLastAccessTime Filetime
+  	ftLastWriteTime Filetime
 	nFileSizeHigh u32
 	nFileSizeLow u32
 	dwReserved0 u32
