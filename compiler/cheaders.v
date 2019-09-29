@@ -122,7 +122,6 @@ typedef map map_string;
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map__exists(m, val)
-#define DEFAULT_EQUAL(a, b) (a == b)
 //================================== GLOBALS =================================*/
 byteptr g_str_buf;
 int load_so(byteptr);
