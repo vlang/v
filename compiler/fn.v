@@ -334,7 +334,7 @@ fn (p mut Parser) fn_decl() {
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
 		if str_args != '' || typ != 'void' {
-			p.error_with_tok('fn main must have no arguments and no return values', f.fn_name_token)
+			p.error_with_token('fn main must have no arguments and no return values', f.fn_name_token)
 		}
 	}
 	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
@@ -439,7 +439,7 @@ fn (p mut Parser) fn_decl() {
 
 	if f.name == 'main__main' || f.name == 'main' || f.name == 'WinMain' {
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
-			p.error_with_tok('tests cannot have function `main`', f.fn_name_token)
+			p.error_with_token('tests cannot have function `main`', f.fn_name_token)
 		}
 	}
 	// println('is_c=$is_c name=$f.name')
@@ -472,7 +472,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	if typ != 'void' && !p.returns {
-		p.error_with_tok('$f.name must return "$typ"', f.fn_name_token)
+		p.error_with_token('$f.name must return "$typ"', f.fn_name_token)
 	}
 	if p.attr == 'live' && p.pref.is_so {
 		//p.genln('// live_function body end')
@@ -538,7 +538,7 @@ fn (p mut Parser) check_unused_variables() {
 			p.production_error_with_token('`$var.name` declared and not used', var.token )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
-			p.error_with_tok( '`$var.name` is declared as mutable, but it was never changed', var.token )
+			p.error_with_token( '`$var.name` is declared as mutable, but it was never changed', var.token )
 		}
 	}
 }

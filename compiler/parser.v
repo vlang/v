@@ -887,84 +887,6 @@ if p.scanner.line_comment != '' {
 }
 }
 
-/////////////////////////////////////////////////////////////////
-fn (p &Parser) warn(s string) {
-	e := normalized_error( s )
-	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $e')
-}
-
-fn (p mut Parser) print_error_context(){
-	// Dump all vars and types for debugging
-	if p.pref.is_debug {
-		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
-		os.write_file('fns.txt', p.table.debug_fns())
-	}
-	if p.pref.is_verbose || p.pref.is_debug {
-		println('pass=$p.pass fn=`$p.cur_fn.name`\n')
-	}
-	p.cgen.save()
-	// V up hint
-	cur_path := os.getwd()
-	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
-		println('\n=========================')
-		println('It looks like you are building V. It is being frequently updated every day.')
-		println('If you didn\'t modify V\'s code, most likely there was a change that ')
-		println('lead to this error.')
-		println('\nRun `v up`, that will most likely fix it.')
-		//println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
-		println('\nIf this doesn\'t help, please create a GitHub issue.')
-		println('=========================\n')
-	}
-	if p.pref.is_debug {
-		print_backtrace()
-	}
-	// p.scanner.debug_tokens()
-}
-
-fn normalized_error( s string ) string {
-	// Print `[]int` instead of `array_int` in errors
-	return s.replace('array_', '[]')
-	.replace('__', '.')
-	.replace('Option_', '?')
-	.replace('main.', '')
-}
-
-fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
-	p.print_error_context()
-	e := normalized_error( s )
-	p.scanner.goto_scanner_position( sp )
-	p.scanner.error_with_col(e, sp.pos - sp.last_nl_pos)
-}
-
-fn (p mut Parser) warn_with_position(e string, sp ScannerPos) {
-	// on a warning, restore the scanner state after printing the warning:
-	cpos := p.scanner.get_scanner_pos()
-	p.scanner.goto_scanner_position( sp )
-	p.warn(e)
-	p.scanner.goto_scanner_position( cpos )
-}
-
-fn (p mut Parser) production_error_with_token(e string, tok Tok) {
-	if p.pref.is_prod {
-		p.error_with_tok( e, tok )
-	}else {
-		p.warn_with_token( e, tok )
-	}
-}
-
-fn (p &Parser) warn_with_token(s string, tok Tok) {
-	e := normalized_error( s )
-	println('warning: $p.scanner.file_path:${tok.line_nr+1}:${tok.col}: $e')
-}
-fn (p mut Parser) error_with_tok(s string, tok Tok) {
-	p.error_with_position(s, p.scanner.get_scanner_pos_of_token(tok) )
-}
-
-fn (p mut Parser) error(s string) {
-	// no positioning info, so just assume that the last token was the culprit:
-	p.error_with_tok(s, p.tokens[p.token_idx-1] )
-}
-/////////////////////////////////////////////////////////////////
 
 fn (p &Parser) first_pass() bool {
 	return p.pass == .decl
@@ -1460,7 +1382,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
-		p.error_with_tok( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
+		p.error_with_token( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
 	if (is_str || is_ustr) && tok == .plus_assign && !p.is_js {
 		p.gen(')')
@@ -1509,10 +1431,8 @@ fn (p mut Parser) var_decl() {
 	}
 	for i, name in names {
 		var_token := vtokens[i]
-		if name == '_' {
-			if names.len == 1 {
-				p.error('no new variables on left side of `:=`')
-			}
+		if name == '_' && names.len == 1 {
+			p.error_with_token('no new variables on left side of `:=`', var_token)
 			continue
 		}
 		typ := types[i]
@@ -1523,15 +1443,15 @@ fn (p mut Parser) var_decl() {
 		// (shadowing is not allowed)
 		if !p.builtin_mod && p.known_var(name) {
 			// v := p.cur_fn.find_var(name)
-			p.error('redefinition of `$name`')
+			p.error_with_token('redefinition of `$name`', var_token)
 		}
 		if name.len > 1 && contains_capital(name) {
-			p.error('variable names cannot contain uppercase letters, use snake_case instead')
+			p.error_with_token('variable names cannot contain uppercase letters, use snake_case instead', var_token)
 		}
 		if names.len > 1 {
 			if names.len != types.len {
 				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values')
+				p.error_with_token('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token)
 			}
 			p.gen(';\n')
 			p.gen('$typ $name = ${mr_var_name}.var_$i')
@@ -3836,7 +3756,7 @@ fn (p mut Parser) go_statement() {
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
 		method := p.table.find_method(typ, p.lit) or {
-			p.error_with_tok('go method missing $var_name', gotoken)
+			p.error_with_token('go method missing $var_name', gotoken)
 			return
 		}
 		p.async_fn_call(method, 0, var_name, v.typ)
@@ -3846,11 +3766,11 @@ fn (p mut Parser) go_statement() {
 		// Normal function
 		f := p.table.find_fn(p.prepend_mod(f_name)) or {
 			println( p.table.debug_fns() )
-			p.error_with_tok('can not find function $f_name', gotoken)
+			p.error_with_token('can not find function $f_name', gotoken)
 			return
 		}
 		if f.name == 'println' || f.name == 'print' {
-			p.error_with_tok('`go` cannot be used with `println`', gotoken)
+			p.error_with_token('`go` cannot be used with `println`', gotoken)
 		}
 		p.async_fn_call(f, 0, '', '')
 	}
