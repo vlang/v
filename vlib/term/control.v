@@ -4,21 +4,6 @@
 
 module term
 
-import os
-
-fn C.isatty(int) int
-
-pub fn can_show_color() bool {
-	if os.getenv('TERM') == 'dumb' { return false }
-	cos := os.user_os()
-	if 'windows' != cos {
-		if C.isatty(1) != 0 { return true }
-	}
-	// TODO: make windows check for the terminal mode too
-	// (there is no isatty there ... because that would be too easy :-( )
-	return false
-}
-
 // Sources for ANSI Control Sequences
 // https://github.com/RajeshPatkarInstitute/Panim
 // https://www.gnu.org/software/screen/manual/html_node/Control-Sequences.html
