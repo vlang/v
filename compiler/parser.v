@@ -154,6 +154,7 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	}
 	if p.pref.is_repl {
 		p.scanner.should_print_line_on_error = false
+		p.scanner.should_print_errors_in_color = false
 	}
 	v.cgen.line_directives = v.pref.is_debuggable
 	// v.cgen.file = path
@@ -888,7 +889,8 @@ if p.scanner.line_comment != '' {
 
 /////////////////////////////////////////////////////////////////
 fn (p &Parser) warn(s string) {
-	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $s')
+	e := normalized_error( s )
+	println('warning: $p.scanner.file_path:${p.scanner.line_nr+1}: $e')
 }
 
 fn (p mut Parser) print_error_context(){
@@ -942,14 +944,18 @@ fn (p mut Parser) warn_with_position(e string, sp ScannerPos) {
 	p.scanner.goto_scanner_position( cpos )
 }
 
-fn (p mut Parser) production_error(e string, sp ScannerPos) {
+fn (p mut Parser) production_error_with_token(e string, tok Tok) {
 	if p.pref.is_prod {
-		p.error_with_position( e, sp )
+		p.error_with_tok( e, tok )
 	}else {
-		p.warn_with_position( e, sp )
+		p.warn_with_token( e, tok )
 	}
 }
 
+fn (p &Parser) warn_with_token(s string, tok Tok) {
+	e := normalized_error( s )
+	println('warning: $p.scanner.file_path:${tok.line_nr+1}:${tok.col}: $e')
+}
 fn (p mut Parser) error_with_tok(s string, tok Tok) {
 	p.error_with_position(s, p.scanner.get_scanner_pos_of_token(tok) )
 }
@@ -1505,7 +1511,7 @@ fn (p mut Parser) var_decl() {
 		}
 		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
-		var_scanner_pos := p.scanner.get_scanner_pos()
+		var_token := p.cur_tok()
 		// name := p.check_name()
 		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
@@ -1532,8 +1538,8 @@ fn (p mut Parser) var_decl() {
 			typ: typ
 			is_mut: is_mut
 			is_alloc: p.is_alloc || typ.starts_with('array_')
-			scanner_pos: var_scanner_pos
-			line_nr: var_scanner_pos.line_nr
+			line_nr: var_token.line_nr
+			token: var_token
 		})
 		//if p.fileis('str.v') {
 			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
@@ -3800,7 +3806,7 @@ fn (p &Parser) prepend_mod(name string) string {
 
 fn (p mut Parser) go_statement() {
 	p.check(.key_go)
-	mut gopos := p.scanner.get_scanner_pos()
+	mut gotoken := p.cur_tok()
 	// TODO copypasta of name_expr() ?
 	if p.peek() == .dot {
 		// Method
@@ -3809,12 +3815,12 @@ fn (p mut Parser) go_statement() {
 			return
 		}
 		p.mark_var_used(v)
-		gopos = p.scanner.get_scanner_pos()
+		gotoken = p.cur_tok()
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
 		method := p.table.find_method(typ, p.lit) or {
-			p.error_with_position('go method missing $var_name', gopos)
+			p.error_with_tok('go method missing $var_name', gotoken)
 			return
 		}
 		p.async_fn_call(method, 0, var_name, v.typ)
@@ -3824,11 +3830,11 @@ fn (p mut Parser) go_statement() {
 		// Normal function
 		f := p.table.find_fn(p.prepend_mod(f_name)) or {
 			println( p.table.debug_fns() )
-			p.error_with_position('can not find function $f_name', gopos)
+			p.error_with_tok('can not find function $f_name', gotoken)
 			return
 		}
 		if f.name == 'println' || f.name == 'print' {
-			p.error_with_position('`go` cannot be used with `println`', gopos)
+			p.error_with_tok('`go` cannot be used with `println`', gotoken)
 		}
 		p.async_fn_call(f, 0, '', '')
 	}
