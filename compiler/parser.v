@@ -1486,10 +1486,14 @@ fn (p mut Parser) var_decl() {
 	}
 	
 	mut names := []string
+	mut vtokens := []Tok
+	
+	vtokens << p.cur_tok()
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
 	for p.tok == .comma {
 		p.check(.comma)
+		vtokens << p.cur_tok()
 		names << p.check_name()
 	}
 	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
@@ -1504,6 +1508,7 @@ fn (p mut Parser) var_decl() {
 		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
 	}
 	for i, name in names {
+		var_token := vtokens[i]
 		if name == '_' {
 			if names.len == 1 {
 				p.error('no new variables on left side of `:=`')
@@ -1512,7 +1517,6 @@ fn (p mut Parser) var_decl() {
 		}
 		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
-		var_token := p.cur_tok()
 		// name := p.check_name()
 		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
