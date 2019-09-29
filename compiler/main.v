@@ -649,7 +649,6 @@ fn (v mut V) add_v_files_to_compile() {
 	mut it_len := v.table.file_imports.size
 	for {
 		for _, fit in v.table.file_imports {
-			if fit.module_name == 'builtin' { continue }
 			for _, mod in fit.imports {
 				if mod in parsed_mods { continue }
 				import_path := v.find_module_path(mod)
@@ -665,18 +664,12 @@ fn (v mut V) add_v_files_to_compile() {
 				}
 				// Add all imports referenced by these libs
 				for file in vfiles {
-					if !file in v.files {
-						v.files << file
-					}
 					mut p := v.new_parser_file(file)
 					p.parse(.imports)
 					//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 				}
 				parsed_mods << mod
 			}
-			// if fit.module_name != 'builtin' {
-			// 	v.files << fit.file_path
-			// }
 		}
 		if v.table.file_imports.size == it_len { break }
 		it_len = v.table.file_imports.size
