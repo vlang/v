@@ -94,6 +94,7 @@ fn (c &Context) prepare_v( cdir string, commit string ) {
 	show_sizes_of_files(["$cdir/v",     "$cdir/v_stripped",      "$cdir/v_stripped_upxed"])
 	show_sizes_of_files(["$cdir/vprod", "$cdir/vprod_stripped",  "$cdir/vprod_stripped_upxed"])
 	println("V version is: " + run("$cdir/v --version") + " , local source commit: " + run("git rev-parse --short  --verify HEAD") )
+	println('Source lines in compiler/ ' + run('wc compiler/*.v | tail -n -1') )
 }
 
 
@@ -119,7 +120,7 @@ fn validate_commit_exists( commit string ){
 }
 
 fn main(){
-	used_tools_must_exist(['cp','rm','strip','make','git','upx','cc','hyperfine'])
+	used_tools_must_exist(['cp','rm','strip','make','git','upx','cc','wc','tail','hyperfine'])
 	mut context := new_context()  
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.filename(os.executable()))
