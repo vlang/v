@@ -37,14 +37,14 @@ fn test_factorial() {
 
 fn test_erf() {
 	assert math.erf(0) == 0
-	assert (math.erf(1.5) + math.erf(-1.5)).eq(0)
+	assert math.erf(1.5) + math.erf(-1.5) == 0
 	assert math.erfc(0) == 1
-	assert (math.erf(2.5) + math.erfc(2.5)).eq(1)
-	assert (math.erfc(3.6) + math.erfc(-3.6)).eq(2)
+	assert math.erf(2.5) + math.erfc(2.5) == 1
+	assert math.erfc(3.6) + math.erfc(-3.6) == 2
 }
 
 fn test_gamma() {
 	assert math.gamma(1) == 1
 	assert math.gamma(5) == 24
-	assert math.log_gamma(4.5).eq(math.log(math.gamma(4.5)))
+	assert math.log_gamma(4.5) == math.log(math.gamma(4.5))
 }
