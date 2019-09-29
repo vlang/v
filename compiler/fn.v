@@ -33,7 +33,7 @@ mut:
 	is_decl       bool // type myfn fn(int, int)
 	defer_text    []string
 	//gen_types []string
-	fn_name_token Tok
+	fn_name_token_idx int // used by error reporting
 }
 
 fn (p &Parser) find_var(name string) ?Var {
@@ -110,8 +110,8 @@ fn (p mut Parser) known_var(name string) bool {
 fn (p mut Parser) register_var(v Var) {
 	mut new_var := {v | idx: p.var_idx, scope_level: p.cur_fn.scope_level}
 	if v.line_nr == 0 {
-		new_var.token = p.cur_tok()
-		new_var.line_nr = new_var.token.line_nr
+		new_var.token_idx = p.cur_tok_index()
+		new_var.line_nr = p.cur_tok().line_nr
 	}
 	// Expand the array
 	if p.var_idx >= p.local_vars.len {
@@ -213,7 +213,7 @@ fn (p mut Parser) fn_decl() {
 			ref: is_amp
 			ptr: is_mut
 			line_nr: p.scanner.line_nr
-			token: p.cur_tok()
+			token_idx: p.cur_tok_index()
 		}
 		f.args << receiver
 		p.register_var(receiver)
@@ -226,7 +226,7 @@ fn (p mut Parser) fn_decl() {
 	else {
 		f.name = p.check_name()
 	}
-	f.fn_name_token = p.cur_tok()
+	f.fn_name_token_idx = p.cur_tok_index()
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -334,7 +334,7 @@ fn (p mut Parser) fn_decl() {
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
 		if str_args != '' || typ != 'void' {
-			p.error_with_tok('fn main must have no arguments and no return values', f.fn_name_token)
+			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
 	}
 	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
@@ -439,7 +439,7 @@ fn (p mut Parser) fn_decl() {
 
 	if f.name == 'main__main' || f.name == 'main' || f.name == 'WinMain' {
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
-			p.error_with_tok('tests cannot have function `main`', f.fn_name_token)
+			p.error_with_token_index('tests cannot have function `main`', f.fn_name_token_idx)
 		}
 	}
 	// println('is_c=$is_c name=$f.name')
@@ -472,7 +472,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	if typ != 'void' && !p.returns {
-		p.error_with_tok('$f.name must return "$typ"', f.fn_name_token)
+		p.error_with_token_index('$f.name must return "$typ"', f.fn_name_token_idx)
 	}
 	if p.attr == 'live' && p.pref.is_so {
 		//p.genln('// live_function body end')
@@ -535,10 +535,10 @@ fn (p mut Parser) check_unused_variables() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
-			p.production_error_with_token('`$var.name` declared and not used', var.token )
+			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
-			p.error_with_tok( '`$var.name` is declared as mutable, but it was never changed', var.token )
+			p.error_with_token_index( '`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
 	}
 }
@@ -698,7 +698,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if f.is_interface {
 		int_arg := Var {
 			typ: f.receiver_typ
-			token: p.cur_tok()
+			token_idx: p.cur_tok_index()
 		}
 		f.args << int_arg
 	}
@@ -714,7 +714,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_arg: true
 				// is_mut: is_mut
 				line_nr: p.scanner.line_nr
-				token: p.cur_tok()
+				token_idx: p.cur_tok_index()
 			}
 			// f.register_var(v)
 			f.args << v
@@ -757,7 +757,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_mut: is_mut
 				ptr: is_mut
 				line_nr: p.scanner.line_nr
-				token: p.cur_tok()
+				token_idx: p.cur_tok_index()
 			}
 			p.register_var(v)
 			f.args << v

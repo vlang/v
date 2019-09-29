@@ -97,7 +97,7 @@ mut:
 	is_c            bool // todo remove once `typ` is `Type`, not string
 	is_moved        bool
 	line_nr         int
-	token           Tok // TODO: use only var.token.line_nr, remove var.line_nr
+	token_idx       int // this is a token index, which will be used by error reporting
 }
 
 struct Type {
