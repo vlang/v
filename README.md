@@ -8,7 +8,7 @@ https://vlang.io
 
 Documentation: [vlang.io/docs](https://vlang.io/docs)
 
-Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
+Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md)
 
 Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
@@ -16,14 +16,13 @@ Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
 
 Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
-
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
 - Fast compilation: ≈100k — 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
 - Performance: within 3% of C
-- Safety: no null, no globals, no undefined behavior, immutability by default
+- Safety: no null, no globals, no undefined behavior, and immutability by default
 - C to V translation
 - Hot code reloading
 - Powerful UI and graphics libraries
@@ -38,8 +37,7 @@ V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian
 
-
-```bash
+```shell
 git clone https://github.com/vlang/v
 cd v
 make
@@ -49,10 +47,9 @@ That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo
 
 V is being constantly updated. To update V, simply run
 
-```
+```shell
 v up
 ```
-
 
 ### C compiler
 
@@ -60,23 +57,23 @@ You'll need Clang or GCC or Visual Studio. If you are doing development, you mos
 
 Otherwise follow these instructions:
 
-[https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
+👉 [Installing a C compiler on Linux and macOS
+](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
 
-[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
-
+👉 [Installing a C compiler on Windows
+](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 ### Symlinking
 
 You can create a `/usr/local/bin/v` symlink so that V is globally available:
 
-```
+```shell
 sudo ./v symlink
 ```
 
-
 ### Docker
 
-```bash
+```shell
 git clone https://github.com/vlang/v
 cd v
 docker build -t vlang .
@@ -84,17 +81,15 @@ docker run --rm -it vlang:latest
 v
 ```
 
-
-
 ### Testing and running the examples
 
 Make sure V can compile itself:
 
-```
+```shell
 v -o v compiler
 ```
 
-```
+```shell
 $ v
 V 0.1.x
 Use Ctrl-C or `exit` to exit
@@ -104,8 +99,7 @@ hello world
 >>>
 ```
 
-
-```
+```shell
 cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
@@ -121,7 +115,7 @@ In order to build Tetris and anything else using the graphics module, you will n
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
-```
+```shell
 macOS:
 brew install glfw freetype openssl
 
@@ -145,7 +139,7 @@ glfw dependency will be removed soon.
 
 [examples/hello_v_js.v](examples/hello_v_js.v):
 
-```
+```go
 fn main() {
         for i := 0; i < 3; i++ {
                 println('Hello from V.js')
@@ -162,15 +156,12 @@ Hello from V.js
 
 ## Troubleshooting:
 
-https://github.com/vlang/v/wiki/Troubleshooting
-
+👉 https://github.com/vlang/v/wiki/Troubleshooting
 
 ## Contributing
 
 Code structure:
 
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+👉 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-
