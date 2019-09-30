@@ -1954,10 +1954,8 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	mut str_typ := str_typ_
 	p.check(.dot)
 	is_variadic_arg := str_typ.starts_with('...') 
-	if is_variadic_arg {
-		str_typ = str_typ.right(3)
-	}
-	typ := p.find_type(str_typ)
+	if is_variadic_arg { str_typ = str_typ.right(3) }
+	mut typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
 	}
@@ -1973,10 +1971,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	//}
 	has_field := p.table.type_has_field(typ, p.table.var_cgen_name(field_name))
 	mut has_method := p.table.type_has_method(typ, field_name)
-	if is_variadic_arg {
-		if field_name != 'len' {
-			p.error('the only field you can access on variadic args is `.len`')
-		}
+	if is_variadic_arg && field_name == 'len' {
 		p.gen('->$field_name')
 		p.next()
 		return 'int'
@@ -2192,25 +2187,23 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		p.expr_var = v
 	}
 	// accessing variadiac args
-	if !p.first_pass() && is_variadic_arg {
-		typ = typ.right(3)
-		if p.calling_c {
-			p.error('you cannot currently pass varg to a C function.')
+	if is_variadic_arg {
+		// TODO: why was this here?
+		// if p.calling_c {
+		// 	p.error('you cannot currently pass varg to a C function.')
+		// }
+		if is_indexer {
+			l := p.cgen.cur_line.trim_space()
+			index_val := l.right(l.last_index(' ')).trim_space()
+			p.cgen.resetln(l.left(fn_ph))
+			p.table.varg_access << VargAccess{
+				fn_name: p.cur_fn.name,
+				tok_idx: p.token_idx,
+				index: index_val.int()
+			}
+			p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')
+			return typ
 		}
-		if !is_indexer {
-			p.error('You must use array access syntax for variadic arguments.')
-		}
-		varg_type := typ.right(3)
-		l := p.cgen.cur_line.trim_space()
-		index_val := l.right(l.last_index(' ')).trim_space()
-		p.cgen.resetln(l.left(fn_ph))
-		p.table.varg_access << VargAccess{
-			fn_name: p.cur_fn.name,
-			tok_idx: p.token_idx,
-			index: index_val.int()
-		}
-		p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')
-		return typ
 	}
 	// TODO move this from index_expr()
 	// TODO if p.tok in ...
@@ -3264,21 +3257,27 @@ fn (p mut Parser) for_st() {
 		p.fgen(' ')
 		tmp := p.get_tmp()
 		p.cgen.start_tmp()
-		typ := p.bool_expression()
+		mut typ := p.bool_expression()
 		is_arr := typ.starts_with('array_')
 		is_map := typ.starts_with('map_')
 		is_str := typ == 'string'
-		if !is_arr && !is_str && !is_map {
+		is_variadic_arg :=  typ.starts_with('...')
+		if is_variadic_arg { typ = typ.right(3) }
+		if !is_arr && !is_str && !is_map && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
 		expr := p.cgen.end_tmp()
-		if p.is_js {
-			p.genln('var $tmp = $expr;')
-		} else {
-			p.genln('$typ $tmp = $expr;')
-		}	
+		if !is_variadic_arg {
+			if p.is_js {
+				p.genln('var $tmp = $expr;')
+			} else {
+				p.genln('$typ $tmp = $expr;')
+			}
+		}
 		pad := if is_arr { 6 } else  { 4 }
-		var_typ := if is_str { 'byte' } else { typ.right(pad) }
+		var_typ := if is_str { 'byte' }
+			else if is_variadic_arg { typ }
+			else { typ.right(pad) }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		mut i_var_type := 'int'
 		if is_arr {
@@ -3291,6 +3290,9 @@ fn (p mut Parser) for_st() {
 		else if is_str {
 			i_var_type = 'byte'
 			p.gen_for_str_header(i, tmp, var_typ, val)
+		}
+		else if is_variadic_arg {
+			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		// Register temp vars
 		if i != '_' {
@@ -3317,9 +3319,11 @@ fn (p mut Parser) for_st() {
 		p.fspace()
 		tmp := p.get_tmp()
 		p.cgen.start_tmp()
-		typ := p.bool_expression()
+		mut typ := p.bool_expression()
 		expr := p.cgen.end_tmp()
 		is_range := p.tok == .dotdot
+		is_variadic_arg :=  typ.starts_with('...')
+		if is_variadic_arg { typ = typ.right(3) }
 		mut range_end := ''
 		if is_range {
 			p.check_types(typ, 'int')
@@ -3330,24 +3334,32 @@ fn (p mut Parser) for_st() {
 		}
 		is_arr := typ.contains('array')
 		is_str := typ == 'string'
-		if !is_arr && !is_str && !is_range {
+		if !is_arr && !is_str && !is_range && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
-		if p.is_js {
-			p.genln('var $tmp = $expr;')
-		} else {
-			p.genln('$typ $tmp = $expr;')
+		if !is_variadic_arg {
+			if p.is_js {
+				p.genln('var $tmp = $expr;')
+			} else {
+				p.genln('$typ $tmp = $expr;')
+			}
 		}
 		// TODO var_type := if...
-		mut var_type := ''
+		i := p.get_tmp()
+		mut var_type := typ
 		if is_arr {
 			var_type = typ.right(6)// all after `array_`
+			p.gen_for_header(i, tmp, var_type, val)
 		}
 		else if is_str {
 			var_type = 'byte'
+			p.gen_for_str_header(i, tmp, var_type, val)
 		}
 		else if is_range {
 			var_type = 'int'
+			p.gen_for_range_header(i, range_end, tmp, var_type, val)
+		} else if is_variadic_arg {
+			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
@@ -3358,16 +3370,6 @@ fn (p mut Parser) for_st() {
 				ptr: typ.contains('*')
 				is_changed: true
 			})
-		}
-		i := p.get_tmp()
-		if is_arr {
-			p.gen_for_header(i, tmp, var_type, val)
-		}
-		else if is_str {
-			p.gen_for_str_header(i, tmp, var_type, val)
-		}
-		else if is_range {
-			p.gen_for_range_header(i, range_end, tmp, var_type, val)
 		}
 	} else {
 		// `for a < b {`

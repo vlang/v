@@ -12,6 +12,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// `[typ] [name] = bool_expression();`
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
+	if typ.starts_with('...') { typ = typ.right(3) }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
@@ -282,6 +283,12 @@ fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	// the tree (replace `map_keys()` above with `map_key_vals()`)
 	if val == '_' { return }
 	p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);')
+}
+
+fn (p mut Parser) gen_for_varg_header(i, varg, var_typ, val string) {
+	p.genln('for (int $i = 0; $i < ${varg}->len; $i++) {')
+	if val == '_' { return }
+	p.genln('$var_typ $val = (($var_typ *) $varg->args)[$i];')
 }
 
 fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_elems int) {

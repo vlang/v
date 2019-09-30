@@ -8,7 +8,8 @@ const (
 
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	p.gen('var $name /* typ */ = ')
-	typ := p.bool_expression()
+	mut typ := p.bool_expression()
+	if typ.starts_with('...') { typ = typ.right(3) }
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
@@ -119,6 +120,12 @@ fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	p.genln('for (var $i in $tmp) {')
 	if val == '_' { return }
 	p.genln('var $val = $tmp[$i];')
+}
+
+fn (p mut Parser) gen_for_varg_header(i, varg, var_typ, val string) {
+	p.genln('for (var $i = 0; $i < ${varg}.len; $i++) {')
+	if val == '_' { return }
+	p.genln('var $val = $varg.args[$i];')
 }
 
 fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_elems int) {
