@@ -762,8 +762,8 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				mod: p.mod
 			})
 			t := p.get_type()
-			p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
-			p.table.add_field(vargs_struct, 'args[$no_vargs]', t, false, '', .public)
+			p.table.add_field('_V_FnVargs_$f.name', 'len', 'int', false, '', .public)
+			p.table.add_field('_V_FnVargs_$f.name', 'args[0]', t, false, '', .public)
 			p.cgen.typedefs << 'typedef struct _V_FnVargs_$f.name _V_FnVargs_$f.name;\n'
 			typ += t
 		} else {
@@ -1042,7 +1042,6 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	last_arg := f.args.last()
 	varg_def_type := last_arg.typ.right(3)
-	println(' ## varg_def_type: $varg_def_type')
 	mut vargs_struct_fields := ''
 	mut no_vargs := 0
 	for p.tok != .rpar {
@@ -1059,9 +1058,15 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		}
 		p.cgen.start_tmp()
 		arg_type := p.bool_expression()
-		println('arg type: $arg_type')
 		arg_value := p.cgen.end_tmp()
 		p.check_types(last_arg.typ, arg_type)
+		mut ref_deref := ''
+		if last_arg.typ.ends_with('*') && !arg_type.ends_with('*') {
+			ref_deref = '&'
+		}
+		if !last_arg.typ.ends_with('*') && arg_type.ends_with('*') {
+			ref_deref = '*'
+		}
 		// struct
 		// vargs_struct_fields += '\n\t.arg_${no_vargs}=$arg_value'
 		// array
@@ -1070,7 +1075,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		// } else {
 		// 	vargs_struct_fields += '&$arg_value'
 		// }
-		vargs_struct_fields += '$arg_value'
+		vargs_struct_fields += '$ref_deref$arg_value'
 	}
 	// struct only
 	// mut vargs_struct := 'struct _V_FnVargs_$f.name {\n\tint len;\n'
@@ -1088,6 +1093,12 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$no_vargs]', varg_def_type, false, '', .public)
 	p.cgen.gen(',&(_V_FnVargs_$f.name){.len=$no_vargs,.args={$vargs_struct_fields}}')
+	for va in p.table.varg_access {
+		if va.fn_name != f.name { continue }
+		if va.index >= no_vargs {
+			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
+		}
+	}
 }
 
 // "fn (int, string) int"

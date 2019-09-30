@@ -1950,7 +1950,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	mut str_typ := str_typ_
 	p.check(.dot)
 	mut is_variadic_arg := false
-	if str_typ.starts_with('...') {
+	if str_typ.starts_with('...') || str_typ.starts_with('_VaFnVargs_') {
 		is_variadic_arg = true
 		str_typ = str_typ.right(3)
 	}
@@ -2096,7 +2096,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		//println('index expr typ=$typ')
 		//println(v.name)
 	//}
-	is_variadic_arg := typ.starts_with('...')
+	is_variadic_arg := typ.starts_with('...') || typ.starts_with('_VaFnVargs_')
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
 	is_arr0 := typ.starts_with('array_')
@@ -2189,7 +2189,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		p.expr_var = v
 	}
 	// accessing variadiac args
-	if is_variadic_arg {
+	if !p.first_pass() && is_variadic_arg {
 		typ = typ.right(3)
 		if p.calling_c {
 			p.error('you cannot currently pass varg to a C function.')
@@ -2197,6 +2197,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if !is_indexer {
 			p.error('You must use array access syntax for variadic arguments.')
 		}
+		varg_type := typ.right(3)
 		l := p.cgen.cur_line.trim_space()
 		index_val := l.right(l.last_index(' ')).trim_space()
 		p.cgen.resetln(l.left(fn_ph))
@@ -2204,6 +2205,11 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// p.cgen.set_placeholder(fn_ph, '$v.name->arg_$index_val')
 		// array
 		// p.cgen.set_placeholder(fn_ph, '*${v.name}[$index_val]')
+		p.table.varg_access << VargAccess{
+			fn_name: p.cur_fn.name,
+			tok_idx: p.token_idx,
+			index: index_val.int()
+		}
 		p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')
 		return typ
 	}

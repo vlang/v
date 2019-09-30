@@ -20,9 +20,15 @@ mut:
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
+	varg_access  []VargAccess
 	//names        []Name
 }
 
+struct VargAccess {
+	fn_name string
+	tok_idx int
+	index   int
+}
 
 /*
 enum NameCategory {
@@ -563,11 +569,14 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// variadic
+	mut is_variadic := false
 	if expected.starts_with('...') {
 		expected = expected.right(3)
+		is_variadic = true
 	}
 	if got.starts_with('...') {
 		got = got.right(3)
+		is_variadic = true
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
