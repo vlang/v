@@ -886,6 +886,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}	
 		mut typ := p.bool_expression()
+		if typ.starts_with('...') { typ = typ.right(3) }
 		if clone {
 			p.gen(')')
 		}
