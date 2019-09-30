@@ -25,7 +25,6 @@ mut:
 	//local_vars    []Var
 	//var_idx       int
 	args          []Var
-	is_variadic   bool
 	is_interface  bool
 	// called_fns    []string
 	// idx           int
@@ -294,11 +293,6 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Args (...)
 	p.fn_args(mut f)
-	// vargs struct - dont generate for C definitions
-	// if !p.first_pass() && f.is_variadic && !f.is_c {
-	// 	p.cgen.typedefs << 'typedef struct _V_FnVargs_$f.name _V_FnVargs_$f.name;'
-	// 	p.cgen.genln('struct _V_FnVargs_${f.name} {int len;};')
-	// }
 	// Returns an error?
 	if p.tok == .not {
 		p.next()
@@ -749,19 +743,20 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			p.next()
 		}
 		mut typ := ''
+		// variadic arg
 		if p.tok == .ellipsis {
 			p.check(.ellipsis)
 			if p.tok == .rpar {
-				p.error('you must provide a type for vargs: eg `...string`. any type `...` is not supported yet.')
+				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
 			}
-			f.is_variadic = true
+			t := p.get_type()
 			vargs_struct := '_V_FnVargs_$f.name'
+			// register varg struct, incase function is never called
 			p.table.register_type2(Type{
 				cat: TypeCategory.struct_,
 				name: vargs_struct,
 				mod: p.mod
 			})
-			t := p.get_type()
 			p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 			p.table.add_field(vargs_struct, 'args[0]', t, false, '', .public)
 			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
@@ -816,6 +811,11 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
 	p.check(.lpar)
+	mut is_variadic := false
+	if f.args.len > 0 {
+		last_arg := f.args.last()
+		is_variadic = last_arg.typ.starts_with('...')
+	}
 	if f.is_c {
 		for p.tok != .rpar {
 			//C.func(var1, var2.method())
@@ -1015,20 +1015,20 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
-			if p.tok != .comma && !f.is_variadic {
+			if p.tok != .comma && !is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
 			if p.tok == .comma {
 				p.fgen(', ')
 			}
-			if !f.is_variadic {
+			if !is_variadic {
 				p.next()
 				p.gen(',')
 			}
 		}
 	}
 	// varargs
-	if !p.first_pass() && f.is_variadic {
+	if !p.first_pass() && is_variadic {
 		p.fn_gen_caller_vargs(mut f)
 	}
 
@@ -1057,6 +1057,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		varg_values << '$ref_deref$varg_value'
 	}
 	vargs_struct := '_V_FnVargs_$f.name'
+	// now we know the amount of vargs, override the previous struct 
 	p.table.rewrite_type(Type{
 		cat: TypeCategory.struct_,
 		name: vargs_struct,

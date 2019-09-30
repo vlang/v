@@ -569,14 +569,11 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// variadic
-	mut is_variadic := false
 	if expected.starts_with('...') {
 		expected = expected.right(3)
-		is_variadic = true
 	}
 	if got.starts_with('...') {
 		got = got.right(3)
-		is_variadic = true
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
