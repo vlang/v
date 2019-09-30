@@ -1062,19 +1062,20 @@ fn (v &V) test_vget() {
 }
 
 fn (v &V) test_v() {
-	if !os.dir_exists('vlib') {
-		println('run "v test v" next to the vlib/ directory')
+	args := env_vflags_and_os_args()
+	vexe := os.executable()
+	parent_dir := os.dir(vexe)
+	if !os.dir_exists(parent_dir + '/vlib') {
+		println('run vlib/ is missing, it must be next to the V executable')
 		exit(1)
 	}	
-	args := env_vflags_and_os_args()
-	vexe := args[0]
 	// Emily: pass args from the invocation to the test
 	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
 	mut joined_args := args.right(1).join(' ')
 	joined_args = joined_args.left(joined_args.last_index('test'))
 	//	println('$joined_args')
 	mut failed := false
-	test_files := os.walk_ext('.', '_test.v')
+	test_files := os.walk_ext(parent_dir, '_test.v')
 
 	println('Testing...')
 	mut tmark := benchmark.new_benchmark()
