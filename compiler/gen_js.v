@@ -125,7 +125,7 @@ fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 fn (p mut Parser) gen_for_varg_header(i, varg, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < ${varg}.len; $i++) {')
 	if val == '_' { return }
-	p.genln('var $val = $varg.args[$i];')
+	p.genln('var $val = ${varg}.args[$i];')
 }
 
 fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_elems int) {
