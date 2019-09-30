@@ -12,11 +12,6 @@ const (
 	MaxLocalVars = 50
 )
 
-// no limit if using array not struct
-// const (
-// 	max_varaidic_args = 12
-// )
-
 struct Fn {
 	// addr int
 mut:
@@ -771,7 +766,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')
 		}
 		for name in names {
-			if !p.first_pass() && !p.table.known_type(typ) && !typ.starts_with('...') {
+			if !p.first_pass() && !p.table.known_type(typ) {
 				p.error('fn_args: unknown type $typ')
 			}
 			if is_mut {
