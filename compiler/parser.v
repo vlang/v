@@ -744,6 +744,9 @@ fn (p mut Parser) struct_decl() {
 		access_mod := if is_pub{AccessMod.public} else { AccessMod.private}
 		p.fgen(' ')
 		field_type := p.get_type()
+		if field_type == name {
+			p.error('you cannot embed struct `$name` in itself.')
+		}
 		p.check_and_register_used_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {
