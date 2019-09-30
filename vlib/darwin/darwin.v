@@ -32,7 +32,7 @@ pub fn resource_path() string {
 	buffer[0] = 0
 	conv_result := C.CFURLGetFileSystemRepresentation(resource_dir_url, true, buffer, buffer_size)
 	assert conv_result
-	result := tos_clone(buffer)
+	result := string(buffer)
 	C.CFRelease(resource_dir_url)
 	free(buffer)
 	return result
