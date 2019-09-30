@@ -21,7 +21,7 @@ pub fn nsstring(s string) *C.NSString {
 
 // returns absolute path to folder where your resources should / will reside
 // for .app packages: .../my.app/Contents/Resources
-// for cli: .../parent_folder/my.exe/Resources
+// for cli: .../parent_folder/Resources
 pub fn resource_path() string {
 
 	main_bundle := C.CFBundleGetMainBundle()
