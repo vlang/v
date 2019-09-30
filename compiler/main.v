@@ -429,13 +429,6 @@ string _STR_TMP(const char *fmt, ...) {
 	return tos2(g_str_buf);
 }
 
-int varg_index_check(i, len) {
-	if( i < 0 || i > 2 ) {
-		println ( tos2((byte*)"error: varg index out of range") ) ;
-		v_exit(1);
-	}
-	return i;
-}
 ')
 	}
 
