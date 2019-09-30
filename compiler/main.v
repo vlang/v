@@ -875,6 +875,7 @@ fn new_v(args[]string) &V {
 	'int.v',
 	'utf8.v',
 	'map.v',
+	'hashmap.v',
 	'option.v',
 	]
 	//println(builtins)
