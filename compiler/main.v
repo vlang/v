@@ -620,44 +620,15 @@ fn (v mut V) add_v_files_to_compile() {
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse lib imports
-/*
-	if v.pref.build_mode == .default_mode {
-		// strange ( for mod in v.table.imports ) dosent loop all items
-		// for mod in v.table.imports {
-		for i := 0; i < v.table.imports.len; i++ {
-			mod := v.table.imports[i]
-			mod_path := v.module_path(mod)
-			import_path := '$v_modules_path/vlib/$mod_path'
-			vfiles := v.v_files_from_dir(import_path)
-			if vfiles.len == 0 {
-				verror('cannot import module $mod (no .v files in "$import_path")')
-			}
-			// Add all imports referenced by these libs
-			for file in vfiles {
-				mut p := v.new_parser_file(file, Pass.imports)
-				p.parse()
-				
-	if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-			}
+	mut done_fits := []string
+	for {
+		mut last_len := v.table.file_imports.size
+		for _, fit in v.table.file_imports {
+			if fit.file_path in done_fits { continue }
+			v.parse_file_imports(fit)
+			done_fits << fit.file_path
 		}
-	}
-	else {
-*/
-	// strange ( for mod in v.table.imports ) dosent loop all items
-	// for mod in v.table.imports {
-	for i := 0; i < v.table.imports.len; i++ {
-		mod := v.table.imports[i]
-		import_path := v.find_module_path(mod)
-		vfiles := v.v_files_from_dir(import_path)
-		if vfiles.len == 0 {
-			verror('cannot import module $mod (no .v files in "$import_path")')
-		}
-		// Add all imports referenced by these libs
-		for file in vfiles {
-			mut p := v.new_parser_file(file)
-			p.parse(.imports)
-			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-		}
+		if v.table.file_imports.size == done_fits.len { break}
 	}
 	if v.pref.is_verbose {
 		v.log('imports:')
@@ -677,6 +648,7 @@ fn (v mut V) add_v_files_to_compile() {
 		if mod == v.mod {
 			continue
 		}
+		if mod == 'main' { continue }
 		mod_path := v.find_module_path(mod)
 		// If we are in default mode, we don't parse vlib .v files, but
 		// header .vh files in
@@ -687,7 +659,7 @@ fn (v mut V) add_v_files_to_compile() {
 			module_path = '$v_modules_path/vlib/$mod_p'
 		}
 */
-		if mod == 'builtin' { continue } // builtin files were already added
+		// if mod == 'builtin' { continue } // builtin files were already added
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			if !(file in v.files) {
@@ -695,29 +667,34 @@ fn (v mut V) add_v_files_to_compile() {
 			}
 		}
 	}
-	// Add remaining user files
-	mut i := 0
-	mut j := 0
-	mut len := -1
+	// Add remaining main files
 	for _, fit in v.table.file_imports {
-		// Don't add a duplicate; builtin files are always there
-		if fit.file_path in v.files || fit.module_name == 'builtin' {
-			i++
+		if fit.module_name != 'main' {
 			continue
 		}
-		if len == -1 {
-			len = i
+		if fit.file_path in v.files {
+			println('existing: $fit.file_path')
+			continue
 		}
-		j++
-		// TODO remove this once imports work with .build
-		if v.pref.build_mode == .build_module && j >= len / 2{
-			break
-		}
-		//println(fit)
-		//println('fit $fit.file_path')
 		v.files << fit.file_path
-		i++
 	}
+}
+
+fn (v mut V) parse_file_imports(fit &FileImportTable) {
+	for _, mod in fit.imports {
+		import_path := v.find_module_path(mod)
+		vfiles := v.v_files_from_dir(import_path)
+		if vfiles.len == 0 {
+			verror('cannot import module $mod (no .v files in "$import_path")')
+		}
+		// Add all imports referenced by these libs
+		for file in vfiles {
+			mut p := v.new_parser_file(file)
+			p.parse(.imports)
+			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+		}
+	}
+
 }
 
 fn get_arg(joined_args, arg, def string) string {
