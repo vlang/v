@@ -19,6 +19,9 @@ pub fn nsstring(s string) *C.NSString {
 		//encoding: NSUTF8StringEncoding,		freeWhenDone: false)
 }
 
+// returns the absolute path to the folder where your resources should / will be located
+// for .app packages: .../my.app/Contents/Resources
+// for command line: if your exe is at .../parent_folder/my.exe, the result will be .../parent_folder/Resources
 pub fn resource_path() string {
 	main_bundle := C.CFBundleGetMainBundle()
 	resource_dir_url := C.CFBundleCopyResourcesDirectoryURL(main_bundle)
