@@ -10,6 +10,6 @@ fn variadic_test_a(name string, groups ...VaTestGroup) {
 
 fn test_fn_variadic() {
 	group1 := VaTestGroup{name: 'users'}
-    group2 := VaTestGroup{name: 'admins'}
-    variadic_test_a('joe', group1, group2)
+	group2 := VaTestGroup{name: 'admins'}
+	variadic_test_a('joe', group1, group2)
 }
