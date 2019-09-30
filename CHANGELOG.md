@@ -17,7 +17,7 @@
 - Lots of fixes in automatic `.str()` method generation for structs and arrays.
 - ~30% faster parser (files are no longer parsed separately for each pass).
 - `_` is no longer a variable, but an actual syntax construct to skip unused values, like in Go.
-- Multiple returns (`fn foo() (int, strnig) {`).
+- Multiple returns (`fn foo() (int, string) {`).
 - `!` can now only be used with booleans.
 
 
