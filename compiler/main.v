@@ -656,6 +656,9 @@ fn (v mut V) add_v_files_to_compile() {
 		for file in vfiles {
 			mut p := v.new_parser_file(file)
 			p.parse(.imports)
+			if p.import_table.module_name != mod {
+				verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
+			}
 			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		}
 	}
