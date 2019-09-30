@@ -1947,12 +1947,17 @@ fn (p &Parser) fileis(s string) bool {
 
 // user.name => `str_typ` is `User`
 // user.company.name => `str_typ` is `Company`
-fn (p mut Parser) dot(str_typ string, method_ph int) string {
+fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	//if p.fileis('orm_test') {
 		//println('ORM dot $str_typ')
 	//}
+	mut str_typ := str_typ_
 	p.check(.dot)
-	mut typ := p.find_type(str_typ)
+	is_variadic_arg := str_typ.starts_with('...') 
+	if is_variadic_arg {
+		str_typ = str_typ.right(3)
+	}
+	typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
 	}
@@ -1968,6 +1973,14 @@ fn (p mut Parser) dot(str_typ string, method_ph int) string {
 	//}
 	has_field := p.table.type_has_field(typ, p.table.var_cgen_name(field_name))
 	mut has_method := p.table.type_has_method(typ, field_name)
+	if is_variadic_arg {
+		if field_name != 'len' {
+			p.error('the only field you can access on variadic args is `.len`')
+		}
+		p.gen('->$field_name')
+		p.next()
+		return 'int'
+	}
 	// generate `.str()`
 	if !has_method && field_name == 'str' && typ.name.starts_with('array_') {
 		p.gen_array_str(typ)
@@ -2086,6 +2099,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		//println('index expr typ=$typ')
 		//println(v.name)
 	//}
+	is_variadic_arg := typ.starts_with('...')
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
 	is_arr0 := typ.starts_with('array_')
@@ -2095,7 +2109,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	mut close_bracket := false
 	if is_indexer {
 		is_fixed_arr := typ[0] == `[`
-		if !is_str && !is_arr && !is_map && !is_ptr && !is_fixed_arr {
+		if !is_str && !is_arr && !is_map && !is_ptr && !is_fixed_arr && !is_variadic_arg {
 			p.error('Cant [] non-array/string/map. Got type "$typ"')
 		}
 		p.check(.lsbr)
@@ -2125,7 +2139,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.gen('[')
 			close_bracket = true
 		}
-		else if is_ptr {
+		else if is_ptr  && !is_variadic_arg {
 			// typ = 'byte'
 			typ = typ.replace('*', '')
 			// modify(mut []string) fix
@@ -2176,6 +2190,27 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.gen(']/*r$typ $v.is_mut*/')
 		}
 		p.expr_var = v
+	}
+	// accessing variadiac args
+	if !p.first_pass() && is_variadic_arg {
+		typ = typ.right(3)
+		if p.calling_c {
+			p.error('you cannot currently pass varg to a C function.')
+		}
+		if !is_indexer {
+			p.error('You must use array access syntax for variadic arguments.')
+		}
+		varg_type := typ.right(3)
+		l := p.cgen.cur_line.trim_space()
+		index_val := l.right(l.last_index(' ')).trim_space()
+		p.cgen.resetln(l.left(fn_ph))
+		p.table.varg_access << VargAccess{
+			fn_name: p.cur_fn.name,
+			tok_idx: p.token_idx,
+			index: index_val.int()
+		}
+		p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')
+		return typ
 	}
 	// TODO move this from index_expr()
 	// TODO if p.tok in ...

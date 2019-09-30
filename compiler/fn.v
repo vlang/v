@@ -737,7 +737,23 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if is_mut {
 			p.next()
 		}
-		mut typ := p.get_type()
+		mut typ := ''
+		// variadic arg
+		if p.tok == .ellipsis {
+			p.check(.ellipsis)
+			if p.tok == .rpar {
+				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
+			}
+			t := p.get_type()
+			vargs_struct := '_V_FnVargs_$f.name'
+			// register varg struct, incase function is never called
+			p.fn_define_vargs_stuct(f, t, []string)
+			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			typ = '...$t'
+		} else {
+			typ = p.get_type()
+		}
+		
 		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
@@ -765,9 +781,14 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if p.tok == .comma {
 			p.next()
 		}
-		if p.tok == .dotdot {
-			f.args << Var{
-				name: '..'
+		// unnamed (C definition)
+		if p.tok == .ellipsis {
+			if !f.is_c {
+				p.error('variadic argument syntax must be `arg_name ...type` eg `argname ...string`.')
+			}
+			f.args << Var {
+				// name: '...'
+				typ: '...'
 			}
 			p.next()
 		}
@@ -779,6 +800,11 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
 	p.check(.lpar)
+	mut is_variadic := false
+	if f.args.len > 0 {
+		last_arg := f.args.last()
+		is_variadic = last_arg.typ.starts_with('...')
+	}
 	if f.is_c {
 		for p.tok != .rpar {
 			//C.func(var1, var2.method())
@@ -819,7 +845,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			continue
 		}
 		// Reached the final vararg? Quit
-		if i == f.args.len - 1 && arg.name == '..' {
+		if i == f.args.len - 1 && arg.typ.starts_with('...') {
 			break
 		}
 		ph := p.cgen.add_placeholder()
@@ -978,37 +1004,71 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
-			is_vararg := i == f.args.len - 2 && f.args[i + 1].name == '..'
-			if p.tok != .comma && !is_vararg {
+			if p.tok != .comma && !is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
 			if p.tok == .comma {
 				p.fgen(', ')
 			}
-			if !is_vararg {
+			if !is_variadic {
 				p.next()
 				p.gen(',')
 			}
 		}
 	}
 	// varargs
-	if f.args.len > 0 {
-		last_arg := f.args.last()
-		if last_arg.name == '..' {
-			for p.tok != .rpar {
-				if p.tok == .comma {
-					p.gen(',')
-					p.check(.comma)
-				}
-				p.bool_expression()
-			}
-		}
+	if !p.first_pass() && is_variadic {
+		p.fn_gen_caller_vargs(mut f)
 	}
+
 	if p.tok == .comma {
 		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
 	}
 	p.check(.rpar)
 	return f // TODO is return f right?
+}
+
+fn (p mut Parser) fn_define_vargs_stuct(f &Fn, typ string, values []string) {
+	vargs_struct := '_V_FnVargs_$f.name'
+	varg_type := Type{
+		cat: TypeCategory.struct_,
+		name: vargs_struct,
+		mod: p.mod
+	}
+	if values.len > 0 {
+		p.table.rewrite_type(varg_type)
+		p.cgen.gen(',&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	} else {
+		p.table.register_type2(varg_type)
+	}
+	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
+	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	for va in p.table.varg_access {
+		if va.fn_name != f.name { continue }
+		if va.index >= values.len {
+			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
+		}
+	}
+}
+
+fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
+	last_arg := f.args.last()
+	varg_def_type := last_arg.typ.right(3)
+	mut varg_values := []string
+	for p.tok != .rpar {
+		if p.tok == .comma {
+			p.check(.comma)
+		}
+		p.cgen.start_tmp()
+		varg_type := p.bool_expression()
+		varg_value := p.cgen.end_tmp()
+		p.check_types(last_arg.typ, varg_type)
+		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
+			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
+			else { '' }
+		varg_values << '$ref_deref$varg_value'
+	}
+	p.fn_define_vargs_stuct(f, varg_def_type, varg_values)
 }
 
 // "fn (int, string) int"
@@ -1056,8 +1116,8 @@ fn (f &Fn) str_args(table &Table) string {
 				s += ')'
 			}
 		}
-		else if arg.name == '..' {
-			s += '...'
+		else if arg.typ.starts_with('...') {
+			s += '_V_FnVargs_$f.name *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'

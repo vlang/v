@@ -428,6 +428,10 @@ fn (s mut Scanner) scan() ScanRes {
 	case `.`:
 		if nextc == `.` {
 			s.pos++
+			if s.text[s.pos+1] == `.` {
+				s.pos++
+				return scan_res(.ellipsis, '')
+			}
 			return scan_res(.dotdot, '')
 		}
 		return scan_res(.dot, '')

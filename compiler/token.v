@@ -68,6 +68,7 @@ enum Token {
 	nl
 	dot
 	dotdot
+	ellipsis
 	// keywords
 	keyword_beg
 	key_as
@@ -150,6 +151,7 @@ fn build_token_str() []string {
 	s[Token.not] = '!'
 	s[Token.dot] = '.'
 	s[Token.dotdot] = '..'
+	s[Token.ellipsis] = '...'
 	s[Token.comma] = ','
 	//s[Token.at] = '@'
 	s[Token.semicolon] = ';'

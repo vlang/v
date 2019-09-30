@@ -56,13 +56,6 @@ type actionf_p1 fn (voidptr)
 
 type actionf_p2 fn (voidptr, voidptr)
 
-fn myprint(s string, ..) {
-	println('my print')
-	println('// comment')
-	println('/* comment */')
-	println('/* /* comment */ */')
-}
-
 // TODO
 fn modify_array(a mut []int) {
 	a[0] = 10
