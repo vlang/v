@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Version = '0.1.20'
+	Version = '0.1.21'
 )
 
 enum BuildMode {
@@ -1066,7 +1066,7 @@ fn (v &V) test_v() {
 	vexe := os.executable()
 	parent_dir := os.dir(vexe)
 	if !os.dir_exists(parent_dir + '/vlib') {
-		println('run vlib/ is missing, it must be next to the V executable')
+		println('vlib/ is missing, it must be next to the V executable')
 		exit(1)
 	}	
 	// Emily: pass args from the invocation to the test
@@ -1108,7 +1108,7 @@ fn (v &V) test_v() {
 	println( tmark.total_message('running V tests') )
 
 	println('\nBuilding examples...')
-	examples := os.walk_ext('examples', '.v')
+	examples := os.walk_ext(parent_dir + '/examples', '.v')
 	mut bmark := benchmark.new_benchmark()
 	for relative_file in examples {
 		if relative_file.contains('vweb') {
@@ -1137,9 +1137,7 @@ fn (v &V) test_v() {
 	}
 	bmark.stop()
 	println( bmark.total_message('building examples') )
-	
 	v.test_vget()
-	
 	if failed {
 		exit(1)
 	}

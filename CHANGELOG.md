@@ -1,14 +1,24 @@
 ## V 0.1.21
-*XX Sep 2019*
+*30 Sep 2019*
 
 - `none` keyword for optionals.
+- Solaris support.
 - All table lookup functions now use `none`.
+- varargs: `fn foo(bar int, params ...string) {`
 - Double quotes (`"`) can now also be used to denote strings.
 - GitHub Actions CI in addition to Travis.
 - `-compress` option. The V binary built with `-compress` is only ~90 KB!
 - More memory management.
-- "Unused variable" error is now a warning in non-production builds.
-
+- Unused modules result in an error.
+- "Unused variable/module" errors are now warnings in non-production builds.
+- Duplicate methods with the same name can no longer be defined.
+- Struct names must be capitalized, variable/function names must use snake_case.
+- Error messages are now even nicer!
+- Lots of fixes in automatic `.str()` method generation for structs and arrays.
+- ~30% faster parser (files are no longer parsed separately for each pass).
+- `_` is no longer a variable, but an actual syntax construct to skip unused values, like in Go.
+- Multiple returns (`fn foo() (int, strnig) {`).
+- `!` can now only be used with booleans.
 
 
 ## V 0.1.20
