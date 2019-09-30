@@ -1,6 +1,8 @@
 module darwin
 
 #include <Cocoa/Cocoa.h>
+#include <CoreFoundation/CoreFoundation.h>
+
 #flag -framework Cocoa
 
 struct C.NSString { }
@@ -17,3 +19,17 @@ pub fn nsstring(s string) *C.NSString {
 		//encoding: NSUTF8StringEncoding,		freeWhenDone: false)
 }
 
+pub fn resource_path() string {
+	main_bundle := C.CFBundleGetMainBundle()
+	resource_dir_url := C.CFBundleCopyResourcesDirectoryURL(main_bundle)
+	assert !isnil(resource_dir_url)
+	buffer_size := 4096
+	mut buffer := malloc(buffer_size)
+	buffer[0] = 0
+	conv_result := C.CFURLGetFileSystemRepresentation(resource_dir_url, true, buffer, buffer_size)
+	assert conv_result
+	result := tos_clone(buffer)
+	C.CFRelease(resource_dir_url)
+	free(buffer)
+	return result
+}
