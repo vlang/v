@@ -722,6 +722,7 @@ fn (p mut Parser) struct_decl() {
 		// p.next()
 		// }
 		// Check if reserved name
+		field_name_token_idx := p.cur_tok_index()
 		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 		// Check dups
 		if field_name in names {
@@ -745,7 +746,7 @@ fn (p mut Parser) struct_decl() {
 		p.fgen(' ')
 		field_type := p.get_type()
 		if field_type == name {
-			p.error('you cannot embed struct `$name` in itself.')
+			p.error_with_token_index( 'cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
 		}
 		p.check_and_register_used_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
