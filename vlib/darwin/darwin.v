@@ -34,7 +34,6 @@ pub fn resource_path() string {
 	assert conv_result
 	result := string(buffer)
 	C.CFRelease(resource_dir_url)
-	free(buffer)
 	return result
 }
 
