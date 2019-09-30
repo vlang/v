@@ -50,11 +50,11 @@ fn C.atoi(byteptr) int
 fn foo() {
 }
 
-type actionf_v fn () 
+type actionf_v fn ()
 
-type actionf_p1 fn (voidptr) 
+type actionf_p1 fn (voidptr)
 
-type actionf_p2 fn (voidptr, voidptr)  
+type actionf_p2 fn (voidptr, voidptr)
 
 fn myprint(s string, ..) {
 	println('my print')
@@ -63,58 +63,58 @@ fn myprint(s string, ..) {
 	println('/* /* comment */ */')
 }
 
-// TODO 
+// TODO
 fn modify_array(a mut []int) {
-	a[0] = 10 
+	a[0] = 10
 	for i in 0..a.len {
 		a[i] = a[i] * 2
 	}
-	a << 888 
-} 
+	//a << 888
+}
 
 fn test_mut_array() {
-	mut nums := [1, 2, 3] 
-	modify_array(mut nums) 
-	//assert nums.len == 4 
+	mut nums := [1, 2, 3]
+	modify_array(mut nums)
+	//assert nums.len == 4
 	// println(nums)
-	assert nums[0] == 20 
+	assert nums[0] == 20
 	assert nums[1] == 4
-	assert nums[2] == 6 
+	assert nums[2] == 6
 	//assert nums[3] == 888
 	// workaround for // [91, 32, -33686272] windows bug
 	println(nums.clone())
-} 
+}
 
 fn mod_struct(user mut User) {
-	user.age++ 
+	user.age++
 }
 
 struct User {
-mut: 
-	age int 
-} 
+mut:
+	age int
+}
 
 fn test_mut_struct() {
-	mut user := User{18} 
-	mod_struct(mut user) 
-	assert user.age == 19 
-} 
+	mut user := User{18}
+	mod_struct(mut user)
+	assert user.age == 19
+}
 
 fn mod_ptr(buf mut byteptr) {
-	buf[0] = 77 
-} 
+	buf[0] = 77
+}
 
 fn test_mut_ptr() {
-	buf := malloc(10) 
-	mod_ptr(mut buf) 
-	assert buf[0] == 77 
-} 
+	buf := malloc(10)
+	mod_ptr(mut buf)
+	assert buf[0] == 77
+}
 
 fn high_fn(f fn(int) int) {
- 
-} 
+
+}
 
 fn test_fns() {
-	// no asserts for now, just test function declarations above 
-} 
+	// no asserts for now, just test function declarations above
+}
 

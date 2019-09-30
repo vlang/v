@@ -7,7 +7,6 @@ module main
 import (
 	os
 	strings
-	term
 )
 
 const (
@@ -78,72 +77,6 @@ fn new_scanner(text string) &Scanner {
 		should_print_line_on_error: true
 		should_print_errors_in_color: true
 	}
-}
-
-
-// The goal of ScannerPos is to track the current scanning position,
-// so that if there is an error found later, v could show a more accurate
-// position about where the error initially was.
-// NB: The fields of ScannerPos *should be kept synchronized* with the
-// corresponding fields in Scanner.
-struct ScannerPos {
-mut:
-   pos int
-   line_nr int
-   last_nl_pos int
-}
-fn (s ScannerPos) str() string {
-	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} , ${s.last_nl_pos:5d} }'
-}
-fn (s &Scanner) get_scanner_pos() ScannerPos {
-	return ScannerPos{ pos: s.pos line_nr: s.line_nr last_nl_pos: s.last_nl_pos }
-}
-fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
-	s.pos = scp.pos
-	s.line_nr = scp.line_nr
-	s.last_nl_pos = scp.last_nl_pos
-}
-
-// get_scanner_pos_of_token rescans *the whole source* till it reaches {t.line_nr, t.col} .
-fn (s mut Scanner) get_scanner_pos_of_token(t Tok) ScannerPos {
-	// This rescanning is done just once on error, so it is fine for now.
-	// Be careful for the performance implications, if you want to
-	// do it more frequently. The alternative would be to store
-	// the scanpos (12 bytes) for each token, and there are potentially many tokens.
-	tline := t.line_nr
-	tcol  := if t.line_nr == 0 { t.col + 1 } else { t.col - 1 }
-	// save the current scanner position, it will be restored later
-	cpos := s.get_scanner_pos()
-	mut sptoken := ScannerPos{}
-	// Starting from the start, scan the source lines
-	// till the desired tline is reached, then
-	// s.pos + tcol would be the proper position
-	// of the token. Continue scanning for some more lines of context too.
-	s.goto_scanner_position(ScannerPos{})
-	s.file_lines = []string
-	mut prevlinepos := 0
-	for {
-		prevlinepos = s.pos
-		if s.pos >= s.text.len { break }		
-		if s.line_nr > tline + 10 { break }
-		////////////////////////////////////////
-		if tline == s.line_nr {
-			sptoken = s.get_scanner_pos()
-			sptoken.pos += tcol
-		}
-		s.ignore_line() s.eat_single_newline()
-		sline := s.text.substr( prevlinepos, s.pos ).trim_right('\r\n')
-		s.file_lines << sline
-	}
-	//////////////////////////////////////////////////
-	s.goto_scanner_position(cpos)
-	return sptoken
-}
-fn (s mut Scanner) eat_single_newline(){
-	if s.pos >= s.text.len { return }
-	if s.expect('\r\n', s.pos) { s.pos += 2 return }
-	if s.text[ s.pos ] == `\n` { s.pos ++ return }
-	if s.text[ s.pos ] == `\r` { s.pos ++ return }
 }
 
 
@@ -654,52 +587,6 @@ fn (s mut Scanner) scan() ScanRes {
 
 fn (s &Scanner) current_column() int {
 	return s.pos - s.last_nl_pos
-}
-
-fn imax(a,b int) int { 	return if a > b { a } else { b } }
-fn imin(a,b int) int { 	return if a < b { a } else { b } }
-fn (s &Scanner) error(msg string) {
-	s.error_with_col(msg, 0)
-}
-
-fn (s &Scanner) error_with_col(msg string, col int) {
-	fullpath := os.realpath( s.file_path )
-	color_on := s.should_print_errors_in_color && term.can_show_color()
-	final_message := if color_on { term.red( term.bold( msg ) ) } else { msg }
-	// The filepath:line:col: format is the default C compiler
-	// error output format. It allows editors and IDE's like
-	// emacs to quickly find the errors in the output
-	// and jump to their source with a keyboard shortcut.
-	// Using only the filename leads to inability of IDE/editors
-	// to find the source file, when it is in another folder.
-	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
-	
-	if s.should_print_line_on_error && s.file_lines.len > 0 {
-		context_start_line := imax(0,                (s.line_nr - error_context_before + 1 ))
-		context_end_line   := imin(s.file_lines.len, (s.line_nr + error_context_after + 1 ))
-		for cline := context_start_line; cline < context_end_line; cline++ {
-			line := '${(cline+1):5d}| ' + s.file_lines[ cline ]
-			coloredline := if cline == s.line_nr && color_on { term.red(line) } else { line }
-			println( coloredline )
-			if cline != s.line_nr { continue }
-			// The pointerline should have the same spaces/tabs as the offending
-			// line, so that it prints the ^ character exactly on the *same spot*
-			// where it is needed. That is the reason we can not just
-			// use strings.repeat(` `, col) to form it.
-			mut pointerline := []string		
-			for i , c in line {
-				if i < col {
-					x := if c.is_space() { c } else { ` ` }
-					pointerline << x.str()
-					continue
-				}
-				pointerline << if color_on { term.bold( term.blue('^') ) } else { '^' }
-				break
-			}
-			println( '      ' + pointerline.join('') )
-		}
-	}
-	exit(1)
 }
 
 fn (s Scanner) count_symbol_before(p int, sym byte) int {
