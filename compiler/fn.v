@@ -790,7 +790,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		// unnamed (C definition)
 		if p.tok == .ellipsis {
 			if !f.is_c {
-				p.error('variadic argument syntax must be `argname ...type` eg `argname ...string`.')
+				p.error('variadic argument syntax must be `arg_name ...type` eg `argname ...string`.')
 			}
 			f.args << Var {
 				// name: '...'
