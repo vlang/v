@@ -1949,9 +1949,8 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	//}
 	mut str_typ := str_typ_
 	p.check(.dot)
-	mut is_variadic_arg := false
-	if str_typ.starts_with('...') || str_typ.starts_with('_VaFnVargs_') {
-		is_variadic_arg = true
+	is_variadic_arg := str_typ.starts_with('...') 
+	if is_variadic_arg {
 		str_typ = str_typ.right(3)
 	}
 	typ := p.find_type(str_typ)
@@ -1972,7 +1971,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	mut has_method := p.table.type_has_method(typ, field_name)
 	if is_variadic_arg {
 		if field_name != 'len' {
-			p.error('you can only access vararg.len')
+			p.error('the only field you can access on variadic args is `.len`')
 		}
 		p.gen('->$field_name')
 		p.next()
@@ -2201,10 +2200,6 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		l := p.cgen.cur_line.trim_space()
 		index_val := l.right(l.last_index(' ')).trim_space()
 		p.cgen.resetln(l.left(fn_ph))
-		// struct only
-		// p.cgen.set_placeholder(fn_ph, '$v.name->arg_$index_val')
-		// array
-		// p.cgen.set_placeholder(fn_ph, '*${v.name}[$index_val]')
 		p.table.varg_access << VargAccess{
 			fn_name: p.cur_fn.name,
 			tok_idx: p.token_idx,

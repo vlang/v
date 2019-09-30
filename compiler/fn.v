@@ -755,17 +755,17 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				p.error('you must provide a type for vargs: eg `...string`. any type `...` is not supported yet.')
 			}
 			f.is_variadic = true
-			typ = '...'
+			vargs_struct := '_V_FnVargs_$f.name'
 			p.table.register_type2(Type{
 				cat: TypeCategory.struct_,
-				name: '_V_FnVargs_$f.name',
+				name: vargs_struct,
 				mod: p.mod
 			})
 			t := p.get_type()
-			p.table.add_field('_V_FnVargs_$f.name', 'len', 'int', false, '', .public)
-			p.table.add_field('_V_FnVargs_$f.name', 'args[0]', t, false, '', .public)
-			p.cgen.typedefs << 'typedef struct _V_FnVargs_$f.name _V_FnVargs_$f.name;\n'
-			typ += t
+			p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
+			p.table.add_field(vargs_struct, 'args[0]', t, false, '', .public)
+			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			typ = '...$t'
 		} else {
 			typ = p.get_type()
 		}
@@ -1042,48 +1042,20 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	last_arg := f.args.last()
 	varg_def_type := last_arg.typ.right(3)
-	mut vargs_struct_fields := ''
-	mut no_vargs := 0
+	mut varg_values := []string
 	for p.tok != .rpar {
 		if p.tok == .comma {
 			p.check(.comma)
 		}
-		no_vargs++
-		// no limit with array
-		// if no_vargs > max_varaidic_args {
-		// 	p.error('variadic arguments are limited to ${max_varaidic_args}.')
-		// }
-		if no_vargs > 1 {
-			vargs_struct_fields += ','
-		}
 		p.cgen.start_tmp()
-		arg_type := p.bool_expression()
-		arg_value := p.cgen.end_tmp()
-		p.check_types(last_arg.typ, arg_type)
-		mut ref_deref := ''
-		if last_arg.typ.ends_with('*') && !arg_type.ends_with('*') {
-			ref_deref = '&'
-		}
-		if !last_arg.typ.ends_with('*') && arg_type.ends_with('*') {
-			ref_deref = '*'
-		}
-		// struct
-		// vargs_struct_fields += '\n\t.arg_${no_vargs}=$arg_value'
-		// array
-		// if is_str_lit || is_num_lit {
-		// 	vargs_struct_fields += '&($arg_type){$arg_value}'
-		// } else {
-		// 	vargs_struct_fields += '&$arg_value'
-		// }
-		vargs_struct_fields += '$ref_deref$arg_value'
+		varg_type := p.bool_expression()
+		varg_value := p.cgen.end_tmp()
+		p.check_types(last_arg.typ, varg_type)
+		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
+			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
+			else { '' }
+		varg_values << '$ref_deref$varg_value'
 	}
-	// struct only
-	// mut vargs_struct := 'struct _V_FnVargs_$f.name {\n\tint len;\n'
-	// for i in 1..max_varaidic_args+1 {
-	// 	vargs_struct += '\t$varg_def_type arg_$i;\n'
-	// }
-	// vargs_struct += '};\n'
-	// array
 	vargs_struct := '_V_FnVargs_$f.name'
 	p.table.rewrite_type(Type{
 		cat: TypeCategory.struct_,
@@ -1091,11 +1063,11 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		mod: p.mod
 	})
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
-	p.table.add_field(vargs_struct, 'args[$no_vargs]', varg_def_type, false, '', .public)
-	p.cgen.gen(',&(_V_FnVargs_$f.name){.len=$no_vargs,.args={$vargs_struct_fields}}')
+	p.table.add_field(vargs_struct, 'args[$varg_values.len]', varg_def_type, false, '', .public)
+	p.cgen.gen(',&($vargs_struct){.len=$varg_values.len,.args={'+varg_values.join(',')+'}}')
 	for va in p.table.varg_access {
 		if va.fn_name != f.name { continue }
-		if va.index >= no_vargs {
+		if va.index >= varg_values.len {
 			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
 		}
 	}
