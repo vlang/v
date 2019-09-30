@@ -747,13 +747,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			t := p.get_type()
 			vargs_struct := '_V_FnVargs_$f.name'
 			// register varg struct, incase function is never called
-			p.table.register_type2(Type{
-				cat: TypeCategory.struct_,
-				name: vargs_struct,
-				mod: p.mod
-			})
-			p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
-			p.table.add_field(vargs_struct, 'args[0]', t, false, '', .public)
+			p.fn_define_vargs_stuct(f, t, []string)
 			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 			typ = '...$t'
 		} else {
@@ -1034,6 +1028,29 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	return f // TODO is return f right?
 }
 
+fn (p mut Parser) fn_define_vargs_stuct(f &Fn, typ string, values []string) {
+	vargs_struct := '_V_FnVargs_$f.name'
+	varg_type := Type{
+		cat: TypeCategory.struct_,
+		name: vargs_struct,
+		mod: p.mod
+	}
+	if values.len > 0 {
+		p.table.rewrite_type(varg_type)
+		p.cgen.gen(',&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	} else {
+		p.table.register_type2(varg_type)
+	}
+	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
+	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	for va in p.table.varg_access {
+		if va.fn_name != f.name { continue }
+		if va.index >= values.len {
+			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
+		}
+	}
+}
+
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	last_arg := f.args.last()
 	varg_def_type := last_arg.typ.right(3)
@@ -1051,22 +1068,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 			else { '' }
 		varg_values << '$ref_deref$varg_value'
 	}
-	vargs_struct := '_V_FnVargs_$f.name'
-	// now we know the amount of vargs, override the previous struct 
-	p.table.rewrite_type(Type{
-		cat: TypeCategory.struct_,
-		name: vargs_struct,
-		mod: p.mod
-	})
-	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
-	p.table.add_field(vargs_struct, 'args[$varg_values.len]', varg_def_type, false, '', .public)
-	p.cgen.gen(',&($vargs_struct){.len=$varg_values.len,.args={'+varg_values.join(',')+'}}')
-	for va in p.table.varg_access {
-		if va.fn_name != f.name { continue }
-		if va.index >= varg_values.len {
-			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
-		}
-	}
+	p.fn_define_vargs_stuct(f, varg_def_type, varg_values)
 }
 
 // "fn (int, string) int"
