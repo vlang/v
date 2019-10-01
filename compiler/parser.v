@@ -3689,24 +3689,25 @@ fn (p mut Parser) return_st() {
 			p.expected_type = p.cur_fn.typ
 			mut expr_type := p.bool_expression()
 			mut types := []string
+			mut mr_values := [p.cgen.cur_line.right(ph).trim_space()]
 			types << expr_type
 			for p.tok == .comma {
-				p.gen(',')
 				p.check(.comma)
+				p.cgen.start_tmp()
 				types << p.bool_expression()
+				mr_values << p.cgen.end_tmp().trim_space()
 			}
 			mut cur_fn_typ_chk := p.cur_fn.typ
 			// multiple returns
 			if types.len > 1 {
 				expr_type = types.join(',')
 				cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
-				ret_vals := p.cgen.cur_line.right(ph)
 				mut ret_fields := ''
-				for ret_val_idx, ret_val in ret_vals.split(',') {
+				for ret_val_idx, ret_val in mr_values {
 					if ret_val_idx > 0 {
 						ret_fields += ','
 					}
-					ret_fields += '.var_$ret_val_idx=${ret_val.trim_space()}'
+					ret_fields += '.var_$ret_val_idx=${ret_val}'
 				}
 				p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
 			}
