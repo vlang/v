@@ -249,3 +249,11 @@ fn test_single_element() {
 	assert a[1] == 2
 	println(a)
 }	
+
+fn test_find_element() {
+	a := ['v', 'is', 'great']
+	assert a.len == 3
+	assert a.find('v') == 0
+	assert a.find('is') == 1
+	assert a.find('gre')  == -1
+}
