@@ -42,7 +42,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	is_indexer := p.peek() == .lsbr
 	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
 	if !is_indexer && !is_fn_call {
-		p.warn_with_token_index('assigning `$expr` to `_` is redundant, consider removing it', assign_error_tok_idx)
+		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
 	}
 	p.bool_expression()
 	or_else := p.tok == .key_orelse
