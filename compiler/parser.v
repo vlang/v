@@ -473,10 +473,10 @@ fn (p mut Parser) import_statement() {
 }
 
 fn (p mut Parser) const_decl() {
-	if p.tok == .key_import {    
+	if p.tok == .key_import {
 		p.error_with_token_index(
 			'`import const` was removed from the language, ' +
-			'because predeclaring C constants is not needed anymore. ' + 
+			'because predeclaring C constants is not needed anymore. ' +
 			'You can use them directly with C.CONST_NAME',
 			p.cur_tok_index()
 		)
@@ -1651,39 +1651,15 @@ fn (p mut Parser) name_expr() string {
 		}
 		return p.expected_type
 	}
-	// //////////////////////////
-	// module ?
-	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) ||
-		p.import_table.known_alias(name))	&& !is_c &&
-		!p.known_var(name)	// Allow shadowing (`gg = gg.newcontext(); gg.foo()`)
-	{
-		mut mod := name
-		// must be aliased module
-		if name != p.mod && p.import_table.known_alias(name) {
-			p.import_table.register_used_import(name)
-			// we replaced "." with "_dot_" in p.mod for C variable names,
-			// do same here.
-			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
-		}
-		p.next()
-		p.check(.dot)
-		name = p.lit
-		p.fgen(name)
-		name = prepend_mod(mod, name)
-	}
-	else if !p.table.known_type(name) && !p.known_var(name) &&
-		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
-	{
-		name = p.prepend_mod(name)
-	}
-	// Variable
+	// Variable, checked before modules, so module shadowing is allowed.
+	// (`gg = gg.newcontext(); gg.draw_rect(...)`)
 	for { // TODO remove
+	mut v := p.find_var_check_new_var(name) or { break }
 	if name == '_' {
 		p.error('cannot use `_` as value')
 	}
-	mut v := p.find_var_check_new_var(name) or { break }
 	if ptr {
-		p.gen('& /*v*/ ')
+		p.gen('&')
 	}
 	else if deref {
 		p.gen('*')
@@ -1716,6 +1692,73 @@ fn (p mut Parser) name_expr() string {
 	}	
 	return typ
 	} // TODO REMOVE for{}
+	// Module?
+	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) ||
+		p.import_table.known_alias(name))	&& !is_c {
+		mut mod := name
+		// must be aliased module
+		if name != p.mod && p.import_table.known_alias(name) {
+			p.import_table.register_used_import(name)
+			// we replaced "." with "_dot_" in p.mod for C variable names,
+			// do same here.
+			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
+		}
+		p.next()
+		p.check(.dot)
+		name = p.lit
+		p.fgen(name)
+		name = prepend_mod(mod, name)
+	}
+	// Unknown name, try prepending the module name to it
+	// TODO perf
+	else if !p.table.known_type(name) &&
+		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
+	{
+		name = p.prepend_mod(name)
+	}
+	
+	// Variable, checked before modules, so module shadowing is allowed.
+	// (`gg = gg.newcontext(); gg.draw_rect(...)`)
+	for { // TODO remove
+	mut v := p.find_var_check_new_var(name) or { break }
+	if name == '_' {
+		p.error('cannot use `_` as value')
+	}
+	if ptr {
+		p.gen('&')
+	}
+	else if deref {
+		p.gen('*')
+	}
+	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
+		p.assigned_type == 'string' {
+		p.warn('setting moved ' + v.typ)
+		p.mark_arg_moved(v)
+	}	
+	mut typ := p.var_expr(v)
+	// *var
+	if deref {
+		if !typ.contains('*') && !typ.ends_with('ptr') {
+			println('name="$name", t=$v.typ')
+			p.error('dereferencing requires a pointer, but got `$typ`')
+		}
+		typ = typ.replace('ptr', '')// TODO
+		typ = typ.replace('*', '')// TODO
+	}
+	// &var
+	else if ptr {
+		typ += '*'
+	}
+	if p.inside_return_expr {
+		//println('marking $v.name returned')
+		p.mark_var_returned(v)
+		// v.is_returned = true // TODO modifying a local variable
+		// that's not used afterwards, this should be a compilation
+		// error
+	}	
+	return typ
+	} // TODO REMOVE for{}
+	
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
@@ -1970,7 +2013,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	//}
 	mut str_typ := str_typ_
 	p.check(.dot)
-	is_variadic_arg := str_typ.starts_with('...') 
+	is_variadic_arg := str_typ.starts_with('...')
 	if is_variadic_arg { str_typ = str_typ.right(3) }
 	mut typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
@@ -3133,6 +3176,14 @@ fn (p mut Parser) get_tmp_counter() int {
 	return p.tmp_cnt
 }
 
+// returns expression's type, and entire expression's string representation)
+fn (p mut Parser) tmp_expr() (string, string) {
+		p.cgen.start_tmp()
+		typ := p.bool_expression()
+		val := p.cgen.end_tmp()
+		return typ, val
+}
+
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {
 		//if p.fileis('if_expr') {
@@ -3146,7 +3197,36 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		p.fgen('if ')
 	}
 	p.next()
-	p.check_types(p.bool_expression(), 'bool')
+	// `if a := opt() { }` syntax
+	if p.tok == .name && p.peek() == .decl_assign {
+		option_tmp := p.get_tmp()
+		var_name := p.lit
+		p.next()
+		p.check(.decl_assign)
+		option_type, expr := p.tmp_expr()// := p.bool_expression()
+		typ := option_type.right(7)
+		// Option_User tmp = get_user(1);
+		// if (tmp.ok) {
+		//   User user = *(User*)tmp.data;
+		//   [statements]
+		// }
+		p.cgen.insert_before('$option_type $option_tmp = $expr; ')
+		p.check(.lcbr)
+		p.genln(option_tmp + '.ok) {')
+		p.genln('$typ $var_name = *($typ*) $option_tmp . data;')
+		p.register_var(Var {
+			name: var_name
+			typ: typ
+			is_mut: false // TODO
+			//is_alloc: p.is_alloc || typ.starts_with('array_')
+			//line_nr: p.tokens[ var_token_idx ].line_nr
+			//token_idx: var_token_idx
+		})
+		p.statements()
+		return 'void'
+	}	else {
+		p.check_types(p.bool_expression(), 'bool')
+	}
 	if is_expr {
 		p.gen(') ? (')
 	}
@@ -3731,7 +3811,8 @@ fn (p mut Parser) return_st() {
 			}
 			p.inside_return_expr = false
 			// Automatically wrap an object inside an option if the function
-			// returns an option
+			// returns an option:
+			// `return val` => `return opt_ok(val)`
 			if p.cur_fn.typ.ends_with(expr_type) && !is_none &&
 				p.cur_fn.typ.starts_with('Option_') {
 				tmp := p.get_tmp()

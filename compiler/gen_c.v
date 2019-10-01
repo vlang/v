@@ -6,6 +6,11 @@ const (
 	dot_ptr = '->'
 )
 
+/*
+fn (p mut Parser) gen_or_else(pos int) string {
+}
+*/
+
 // returns the type of the new variable
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// Generate expression to tmp because we need its type first
@@ -69,7 +74,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
-// blank identifer assignment `_ = 111` 
+// blank identifer assignment `_ = 111`
 fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
 	p.check_name()

@@ -8,6 +8,10 @@ module builtin
 	This is work in progress.
 	A very early test version of the hashmap with a fixed size.
 	Only works with string keys and int values for now.
+	
+	I added this to improve performance of the V compiler,
+	which uses lots of O(log n) map get's. Turned out with N < 10 000
+	the performance gains are basically non-existent.
 */
 
 import math

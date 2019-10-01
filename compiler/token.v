@@ -35,11 +35,10 @@ enum Token {
 	left_shift
 	righ_shift
 	//at // @
-	// = := += -=
-	assign
-	decl_assign
-	plus_assign
-	minus_assign
+	assign // =
+	decl_assign // :=
+	plus_assign // +=
+	minus_assign // -=
 	div_assign
 	mult_assign
 	xor_assign

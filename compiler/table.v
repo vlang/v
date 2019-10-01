@@ -351,12 +351,11 @@ fn (table &Table) known_type(typ_ string) bool {
 
 fn (table &Table) known_type_fast(t &Type) bool {
 	return t.name != '' && !t.is_placeholder
-	
 }
 
 fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
-	if !isnil(f.name.str) {
+	if f.name.str != 0 { // TODO
 		return f
 	}
 	return none
