@@ -124,6 +124,9 @@ fn (v mut V) new_parser_file(path string) Parser {
 		file_pcguard: path_pcguard,
 		is_script: (v.pref.is_script && path == v.dir)
 	}
+	if p.pref.building_v {
+		p.scanner.should_print_relative_paths_on_error = false
+	}
 	v.cgen.file = path
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
@@ -155,6 +158,7 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	if p.pref.is_repl {
 		p.scanner.should_print_line_on_error = false
 		p.scanner.should_print_errors_in_color = false
+		p.scanner.should_print_relative_paths_on_error = true
 	}
 	v.cgen.line_directives = v.pref.is_debuggable
 	// v.cgen.file = path
