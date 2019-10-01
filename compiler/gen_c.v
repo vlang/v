@@ -73,9 +73,15 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
+	is_indexer := p.peek() == .lsbr
+	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	expr := p.lit
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
 	tmp := p.get_tmp()
+	if !is_indexer && !is_fn_call {
+		p.warn('assigning `$expr` to `_` is redundant, consider removing it')
+	}
 	// handle or
 	if p.tok == .key_orelse {
 		p.cgen.set_placeholder(pos, '$typ $tmp = ')
@@ -93,8 +99,9 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.genln('string err = $tmp . error;')
 		p.statements()
 		p.returns = false
+	} else {
+		p.cgen.resetln('{$typ _ = $p.cgen.cur_line;}')
 	}
-	p.gen(';')
 }
 
 fn types_to_c(types []Type, table &Table) string {

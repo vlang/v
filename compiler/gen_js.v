@@ -37,7 +37,13 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
+	is_indexer := p.peek() == .lsbr
+	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	expr := p.lit
 	p.bool_expression()
+	if !is_indexer && !is_fn_call {
+		p.warn('assigning `$expr` to `_` is redundant, consider removing it')
+	}
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
