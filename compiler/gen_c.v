@@ -71,8 +71,15 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 
 // blank identifer assignment `_ = 111` 
 fn (p mut Parser) gen_blank_identifier_assign() {
+	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
+	expr := p.lit
+	is_indexer := p.peek() == .lsbr
+	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	if !is_indexer && !is_fn_call {
+		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+	}
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
 	tmp := p.get_tmp()
@@ -93,8 +100,13 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.genln('string err = $tmp . error;')
 		p.statements()
 		p.returns = false
+	} else {
+		if is_fn_call {
+			p.gen(';')
+		} else {
+			p.cgen.resetln('{$typ _ = $p.cgen.cur_line;}')
+		}
 	}
-	p.gen(';')
 }
 
 fn types_to_c(types []Type, table &Table) string {

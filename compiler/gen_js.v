@@ -35,8 +35,15 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 }
 
 fn (p mut Parser) gen_blank_identifier_assign() {
+	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
+	expr := p.lit
+	is_indexer := p.peek() == .lsbr
+	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	if !is_indexer && !is_fn_call {
+		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+	}
 	p.bool_expression()
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
