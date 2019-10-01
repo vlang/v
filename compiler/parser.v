@@ -3687,11 +3687,11 @@ fn (p mut Parser) return_st() {
 			p.inside_return_expr = true
 			is_none := p.tok == .key_none
 			p.expected_type = p.cur_fn.typ
-			// expr_type := p.bool_expression()
 			mut expr_type := p.bool_expression()
 			mut types := []string
 			types << expr_type
 			for p.tok == .comma {
+				p.gen(',')
 				p.check(.comma)
 				types << p.bool_expression()
 			}
@@ -3702,11 +3702,11 @@ fn (p mut Parser) return_st() {
 				cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
 				ret_vals := p.cgen.cur_line.right(ph)
 				mut ret_fields := ''
-				for ret_val_idx, ret_val in ret_vals.split(' ') {
+				for ret_val_idx, ret_val in ret_vals.split(',') {
 					if ret_val_idx > 0 {
 						ret_fields += ','
 					}
-					ret_fields += '.var_$ret_val_idx=$ret_val'
+					ret_fields += '.var_$ret_val_idx=${ret_val.trim_space()}'
 				}
 				p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
 			}
