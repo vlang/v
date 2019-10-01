@@ -1597,12 +1597,12 @@ fn (p mut Parser) bterm() string {
 		if is_float && tok == .eq {
 			p.gen(')')
 			switch tok {
-			case Token.eq: p.cgen.set_placeholder(ph, '${expr_typ}_eq(')
-			case Token.ne: p.cgen.set_placeholder(ph, '${expr_typ}_ne(')
-			case Token.le: p.cgen.set_placeholder(ph, '${expr_typ}_le(')
-			case Token.ge: p.cgen.set_placeholder(ph, '${expr_typ}_ge(')
-			case Token.gt: p.cgen.set_placeholder(ph, '${expr_typ}_gt(')
-			case Token.lt: p.cgen.set_placeholder(ph, '${expr_typ}_ll(')
+			case Token.eq: p.cgen.set_placeholder(ph, '${expr_type}_eq(')
+			case Token.ne: p.cgen.set_placeholder(ph, '${expr_type}_ne(')
+			case Token.le: p.cgen.set_placeholder(ph, '${expr_type}_le(')
+			case Token.ge: p.cgen.set_placeholder(ph, '${expr_type}_ge(')
+			case Token.gt: p.cgen.set_placeholder(ph, '${expr_type}_gt(')
+			case Token.lt: p.cgen.set_placeholder(ph, '${expr_type}_lt(')
 			}
 		}
 	}
