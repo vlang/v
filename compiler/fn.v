@@ -1044,12 +1044,6 @@ fn (p mut Parser) fn_define_vargs_stuct(f &Fn, typ string, values []string) {
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
-	for va in p.table.varg_access {
-		if va.fn_name != f.name { continue }
-		if va.index >= values.len {
-			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
-		}
-	}
 }
 
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
@@ -1068,6 +1062,12 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
 			else { '' }
 		varg_values << '$ref_deref$varg_value'
+	}
+	for va in p.table.varg_access {
+		if va.fn_name != f.name { continue }
+		if va.index >= varg_values.len {
+			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
+		}
 	}
 	p.fn_define_vargs_stuct(f, varg_def_type, varg_values)
 }
