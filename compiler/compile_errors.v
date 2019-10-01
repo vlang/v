@@ -76,24 +76,23 @@ fn (s &Scanner) warn(msg string) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (s &Scanner) warn_with_col(msg string, col int) {
-	fullpath := os.realpath( s.file_path )
+	fullpath := s.get_error_filepath()		
 	color_on := s.is_color_output_on()
 	final_message := if color_on { term.bold(term.bright_blue( msg )) } else { msg }
 	eprintln('warning: ${fullpath}:${s.line_nr+1}:${col}: $final_message')
 }
 
 fn (s &Scanner) error_with_col(msg string, col int) {
-	fullpath := os.realpath( s.file_path )
+	fullpath := s.get_error_filepath()		
 	color_on := s.is_color_output_on()
 	final_message := if color_on { term.red( term.bold( msg ) ) } else { msg }
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output
 	// and jump to their source with a keyboard shortcut.
-	// Using only the filename leads to inability of IDE/editors
-	// to find the source file, when it is in another folder.
+	// NB: using only the filename may lead to inability of IDE/editors
+	// to find the source file, when the IDE has a different working folder than v itself.
 	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
 	
 	if s.should_print_line_on_error && s.file_lines.len > 0 {
@@ -131,6 +130,13 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 [inline] fn (p &Parser) cur_tok_index() int { return p.token_idx - 1 }
 [inline] fn imax(a,b int) int { 	return if a > b { a } else { b } }
 [inline] fn imin(a,b int) int { 	return if a < b { a } else { b } }
+
+fn (s &Scanner) get_error_filepath() string {
+	if s.should_print_relative_paths_on_error {
+		return s.file_path
+	}
+	return os.realpath( s.file_path )
+}
 
 fn (s &Scanner) is_color_output_on() bool {
 	return s.should_print_errors_in_color && term.can_show_color_on_stderr()	

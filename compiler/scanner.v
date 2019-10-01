@@ -37,6 +37,7 @@ mut:
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
 	should_print_errors_in_color bool
+	should_print_relative_paths_on_error bool
 	quote byte // which quote is used to denote current string: ' or "
 	file_lines   []string // filled *only on error* by rescanning the source till the error (and several lines more)
 }
@@ -76,6 +77,7 @@ fn new_scanner(text string) &Scanner {
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 		should_print_errors_in_color: true
+		should_print_relative_paths_on_error: true
 	}
 }
 
