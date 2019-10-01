@@ -1594,7 +1594,7 @@ fn (p mut Parser) bterm() string {
 			case Token.lt: p.cgen.set_placeholder(ph, 'ustring_lt(')
 			}
 		}
-		if is_float && tok == .eq {
+		if is_float {
 			p.gen(')')
 			switch tok {
 			case Token.eq: p.cgen.set_placeholder(ph, '${expr_type}_eq(')
