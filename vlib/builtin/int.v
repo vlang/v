@@ -179,7 +179,7 @@ pub fn (n i64) hex() string {
 		19
 	}
 	hex := malloc(len)
-	count := int(C.sprintf(*char(hex), '0x%llx', n))
+	count := int(C.sprintf(*char(hex), '0x%lx', n))
 	return tos(hex, count)
 }
 
