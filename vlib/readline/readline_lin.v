@@ -4,7 +4,7 @@
 
 // Linux version
 // Will serve as more advanced input method
-// Based on the work of https://github.com/AmokHuginnsson/replxx 
+// Based on the work of https://github.com/AmokHuginnsson/replxx
 
 module readline
 
@@ -14,7 +14,7 @@ import term
 #include <sys/ioctl.h>
 
 // Used to change the terminal options
-struct termios {
+struct Termios {
 mut:
   c_iflag int
   c_oflag int
@@ -24,7 +24,7 @@ mut:
 }
 
 // Used to collect the screen information
-struct winsize {
+struct Winsize {
   ws_row u16
   ws_col u16
   ws_xpixel u16
@@ -34,7 +34,7 @@ struct winsize {
 struct Readline {
 mut:
   is_raw bool
-  orig_termios termios
+  orig_termios Termios
   current ustring // Line being edited
   cursor int // Cursor position
   overwrite bool
@@ -232,7 +232,7 @@ fn (r mut Readline) execute(a Action, c int) bool {
 }
 
 fn get_screen_columns() int {
-  ws := winsize{}
+  ws := Winsize{}
   cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { int(ws.ws_col) }
   return cols
 }
