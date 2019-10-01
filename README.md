@@ -57,10 +57,10 @@ You'll need Clang or GCC or Visual Studio. If you are doing development, you mos
 
 Otherwise follow these instructions:
 
-👉 [Installing a C compiler on Linux and macOS
+[Installing a C compiler on Linux and macOS
 ](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
 
-👉 [Installing a C compiler on Windows
+[Installing a C compiler on Windows
 ](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 ### Symlinking
@@ -156,12 +156,12 @@ Hello from V.js
 
 ## Troubleshooting:
 
-👉 https://github.com/vlang/v/wiki/Troubleshooting
+https://github.com/vlang/v/wiki/Troubleshooting
 
 ## Contributing
 
 Code structure:
 
-👉 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
