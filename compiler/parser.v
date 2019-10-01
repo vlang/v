@@ -1437,8 +1437,10 @@ fn (p mut Parser) var_decl() {
 	}
 	for i, name in names {
 		var_token_idx := vtoken_idxs[i]
-		if name == '_' && names.len == 1 {
-			p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
+		if name == '_' {
+			if names.len == 1 {
+				p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
+			}
 			continue
 		}
 		typ := types[i]
