@@ -290,3 +290,13 @@ fn compare_ints(a, b &int) int {
 pub fn (a mut []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
+
+pub fn (a []string) find(v string) int {
+	mut j := -1
+	for i := 0; i < a.len && j == -1; i++ {
+		if a[i] == v {
+			j = i
+		}
+	}
+	return j
+}
