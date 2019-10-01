@@ -1066,7 +1066,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	for va in p.table.varg_access {
 		if va.fn_name != f.name { continue }
 		if va.index >= varg_values.len {
-			p.error_with_token_index('error accessing variadic arg, index `$va.index` out of range.', va.tok_idx)
+			p.error_with_token_index('variadic arg index out of range: $va.index/${varg_values.len-1}, vargs are 0 indexed', va.tok_idx)
 		}
 	}
 	p.fn_define_vargs_stuct(f, varg_def_type, varg_values)

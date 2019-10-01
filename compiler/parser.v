@@ -2102,6 +2102,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	is_ptr := typ == 'byte*' || typ == 'byteptr' || typ.contains('*')
 	is_indexer := p.tok == .lsbr
 	mut close_bracket := false
+	index_error_pos := p.token_idx
 	if is_indexer {
 		is_fixed_arr := typ[0] == `[`
 		if !is_str && !is_arr && !is_map && !is_ptr && !is_fixed_arr && !is_variadic_arg {
@@ -2198,7 +2199,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.cgen.resetln(l.left(fn_ph))
 			p.table.varg_access << VargAccess{
 				fn_name: p.cur_fn.name,
-				tok_idx: p.token_idx,
+				tok_idx: index_error_pos,
 				index: index_val.int()
 			}
 			p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')
