@@ -469,9 +469,13 @@ fn (p mut Parser) import_statement() {
 }
 
 fn (p mut Parser) const_decl() {
-	if p.tok == .key_import {
-		p.error('`import const` was removed from the language, ' +
-			'use `foo(C.CONST_NAME)` instead')
+	if p.tok == .key_import {    
+		p.error_with_token_index(
+			'`import const` was removed from the language, ' +
+			'because predeclaring C constants is not needed anymore. ' + 
+			'You can use them directly with C.CONST_NAME',
+			p.cur_tok_index()
+		)
 	}
 	p.inside_const = true
 	p.check(.key_const)
@@ -1433,8 +1437,10 @@ fn (p mut Parser) var_decl() {
 	}
 	for i, name in names {
 		var_token_idx := vtoken_idxs[i]
-		if name == '_' && names.len == 1 {
-			p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
+		if name == '_' {
+			if names.len == 1 {
+				p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
+			}
 			continue
 		}
 		typ := types[i]
@@ -2102,6 +2108,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	is_ptr := typ == 'byte*' || typ == 'byteptr' || typ.contains('*')
 	is_indexer := p.tok == .lsbr
 	mut close_bracket := false
+	index_error_tok_pos := p.token_idx
 	if is_indexer {
 		is_fixed_arr := typ[0] == `[`
 		if !is_str && !is_arr && !is_map && !is_ptr && !is_fixed_arr && !is_variadic_arg {
@@ -2198,7 +2205,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.cgen.resetln(l.left(fn_ph))
 			p.table.varg_access << VargAccess{
 				fn_name: p.cur_fn.name,
-				tok_idx: p.token_idx,
+				tok_idx: index_error_tok_pos,
 				index: index_val.int()
 			}
 			p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')
@@ -3687,26 +3694,27 @@ fn (p mut Parser) return_st() {
 			p.inside_return_expr = true
 			is_none := p.tok == .key_none
 			p.expected_type = p.cur_fn.typ
-			// expr_type := p.bool_expression()
 			mut expr_type := p.bool_expression()
 			mut types := []string
+			mut mr_values := [p.cgen.cur_line.right(ph).trim_space()]
 			types << expr_type
 			for p.tok == .comma {
 				p.check(.comma)
+				p.cgen.start_tmp()
 				types << p.bool_expression()
+				mr_values << p.cgen.end_tmp().trim_space()
 			}
 			mut cur_fn_typ_chk := p.cur_fn.typ
 			// multiple returns
 			if types.len > 1 {
 				expr_type = types.join(',')
 				cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
-				ret_vals := p.cgen.cur_line.right(ph)
 				mut ret_fields := ''
-				for ret_val_idx, ret_val in ret_vals.split(' ') {
+				for ret_val_idx, ret_val in mr_values {
 					if ret_val_idx > 0 {
 						ret_fields += ','
 					}
-					ret_fields += '.var_$ret_val_idx=$ret_val'
+					ret_fields += '.var_$ret_val_idx=${ret_val}'
 				}
 				p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
 			}
