@@ -471,11 +471,11 @@ fn (p mut Parser) import_statement() {
 fn (p mut Parser) const_decl() {
 	if p.tok == .key_import {    
 		p.error_with_token_index(
-    '`import const` was removed from the language, ' +
-    'because predeclaring C constants is not needed anymore. ' + 
-    'You can use them directly with C.CONST_NAME',
-    p.cur_tok_index() 
-    )
+			'`import const` was removed from the language, ' +
+			'because predeclaring C constants is not needed anymore. ' + 
+			'You can use them directly with C.CONST_NAME',
+			p.cur_tok_index()
+		)
 	}
 	p.inside_const = true
 	p.check(.key_const)
