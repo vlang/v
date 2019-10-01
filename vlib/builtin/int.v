@@ -39,6 +39,48 @@ pub fn (a f32) eqbit(b f32) bool {
 	return C.DEFAULT_EQUAL(a, b)
 }
 
+// !=
+fn (a f64) ne(b f64) bool {
+	return !a.eq(b)
+}
+fn (a f32) ne(b f32) bool {
+	return !a.eq(b)
+}
+
+// a < b
+fn (a f64) lt(b f64) bool {
+	return a.ne(b) && C.DEFAULT_LT(a, b)
+}
+fn (a f32) lt(b f32) bool {
+	return a.ne(b) && C.DEFAULT_LT(a, b)
+}
+
+// a <= b
+fn (a f64) le(b f64) bool {
+	return a.ne(b) && C.DEFAULT_LE(a, b)
+}
+fn (a f32) le(b f32) bool {
+	return a.ne(b) && C.DEFAULT_LE(a, b)
+}
+
+// a > b
+fn (a f64) gt(b f64) bool {
+	return a.ne(b) && C.DEFAULT_GT(a, b)
+}
+fn (a f32) gt(b f32) bool {
+	return a.ne(b) && C.DEFAULT_GT(a, b)
+}
+
+// a >= b
+fn (a f64) ge(b f64) bool {
+	return !a.lt(b)
+}
+fn (a f32) ge(b f32) bool {
+	return !a.lt(b)
+}
+
+
+
 // fn (nn i32) str() string {
 // return i
 // }
