@@ -74,15 +74,15 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
+	expr := p.lit
 	is_indexer := p.peek() == .lsbr
 	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
-	expr := p.lit
-	pos := p.cgen.add_placeholder()
-	mut typ := p.bool_expression()
-	tmp := p.get_tmp()
 	if !is_indexer && !is_fn_call {
 		p.warn_with_token_index('assigning `$expr` to `_` is redundant, consider removing it', assign_error_tok_idx)
 	}
+	pos := p.cgen.add_placeholder()
+	mut typ := p.bool_expression()
+	tmp := p.get_tmp()
 	// handle or
 	if p.tok == .key_orelse {
 		p.cgen.set_placeholder(pos, '$typ $tmp = ')
