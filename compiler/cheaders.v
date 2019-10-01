@@ -124,7 +124,7 @@ typedef map map_string;
 #define _IN_MAP(val, m) map__exists(m, val)
 #define DEFAULT_EQUAL(a, b) (a == b)
 #define DEFAULT_NOT_EQUAL(a, b) (a != b)
-#define DEFAULT_LT(a, b) (a > b)
+#define DEFAULT_LT(a, b) (a < b)
 #define DEFAULT_LE(a, b) (a <= b)
 #define DEFAULT_GT(a, b) (a > b)
 #define DEFAULT_GE(a, b) (a >= b)
