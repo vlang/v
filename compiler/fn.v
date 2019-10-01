@@ -747,7 +747,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			t := p.get_type()
 			vargs_struct := '_V_FnVargs_$f.name'
 			// register varg struct, incase function is never called
-			p.fn_define_vargs_stuct(f, t, []string)
+			p.fn_register_vargs_stuct(f, t, []string)
 			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 			typ = '...$t'
 		} else {
@@ -1029,7 +1029,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	return f // TODO is return f right?
 }
 
-fn (p mut Parser) fn_define_vargs_stuct(f &Fn, typ string, values []string) {
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
 	vargs_struct := '_V_FnVargs_$f.name'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
@@ -1038,7 +1038,6 @@ fn (p mut Parser) fn_define_vargs_stuct(f &Fn, typ string, values []string) {
 	}
 	if values.len > 0 {
 		p.table.rewrite_type(varg_type)
-		p.cgen.gen(',&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
 	} else {
 		p.table.register_type2(varg_type)
 	}
@@ -1049,7 +1048,7 @@ fn (p mut Parser) fn_define_vargs_stuct(f &Fn, typ string, values []string) {
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	last_arg := f.args.last()
 	varg_def_type := last_arg.typ.right(3)
-	mut varg_values := []string
+	mut values := []string
 	for p.tok != .rpar {
 		if p.tok == .comma {
 			p.check(.comma)
@@ -1061,15 +1060,19 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
 			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
 			else { '' }
-		varg_values << '$ref_deref$varg_value'
+		values << '$ref_deref$varg_value'
 	}
 	for va in p.table.varg_access {
 		if va.fn_name != f.name { continue }
-		if va.index >= varg_values.len {
-			p.error_with_token_index('variadic arg index out of range: $va.index/${varg_values.len-1}, vargs are 0 indexed', va.tok_idx)
+		if va.index >= values.len {
+			p.error_with_token_index('variadic arg index out of range: $va.index/${values.len-1}, vargs are 0 indexed', va.tok_idx)
 		}
 	}
-	p.fn_define_vargs_stuct(f, varg_def_type, varg_values)
+	if f.args.len > 1 {
+		p.cgen.gen(',')
+	}
+	p.cgen.gen('&(_V_FnVargs_$f.name){.len=$values.len,.args={'+values.join(',')+'}}')
+	p.fn_register_vargs_stuct(f, varg_def_type, values)
 }
 
 // "fn (int, string) int"
