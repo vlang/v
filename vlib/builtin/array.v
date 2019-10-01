@@ -291,6 +291,9 @@ pub fn (a mut []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
+// Looking for an array index based on value. 
+// If there is, it will return the index and if not, it will return `-1`
+// TODO: Implement for all types
 pub fn (a []string) find(v string) int {
 	mut j := -1
 	for i := 0; i < a.len && j == -1; i++ {
