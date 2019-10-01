@@ -101,7 +101,9 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.statements()
 		p.returns = false
 	} else {
-		if !is_fn_call {
+		if is_fn_call {
+			p.gen(';')
+		} else {
 			p.cgen.resetln('{$typ _ = $p.cgen.cur_line;}')
 		}
 	}
