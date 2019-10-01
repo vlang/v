@@ -19,7 +19,6 @@ pub:
 // Private function, used by V (`nums := []int`)
 fn new_array(mylen, cap, elm_size int) array {
 	a := 3
-	_ = a
 	//println(a)
 	arr := array {
 		len: mylen
