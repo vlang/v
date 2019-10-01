@@ -17,12 +17,33 @@ fn test_float_equal_operator() {
 	a -= 0.000001
 	assert a == 1
 	assert !a.eqbit(1)
+	assert !(a != 1)
+	assert a.nebit(1)
+	a += 0.000001
+	assert !(a < 1)
+	assert !a.ltbit(1)
+	assert !(a <= 1)
+	assert !a.lebit(1)
+	assert a > 1
+	assert a.gtbit(1)
+	assert a >= 1
+	assert a.gebit(1)
 
 	a = f64(1)
 	a += 0.000001
 	a -= 0.000001
 	assert a == 1
 	assert !a.eqbit(1)
+	assert !(a != 1)
+	a += 0.000001
+	assert !(a < 1)
+	assert !a.ltbit(1)
+	assert !(a <= 1)
+	assert !a.lebit(1)
+	assert a > 1
+	assert a.gtbit(1)
+	assert a >= 1
+	assert a.gebit(1)
 }
 
 fn test_str_methods() {

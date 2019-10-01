@@ -1540,7 +1540,7 @@ fn (p mut Parser) bterm() string {
 	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
 	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
 		p.fgen(' ${p.tok.str()} ')
-		if ((is_float && tok == .eq) || (is_str || is_ustr)) && !p.is_js {
+		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
 		}
 		else if p.is_sql && tok == .eq {
@@ -1594,9 +1594,16 @@ fn (p mut Parser) bterm() string {
 			case Token.lt: p.cgen.set_placeholder(ph, 'ustring_lt(')
 			}
 		}
-		if is_float && tok == .eq {
+		if is_float {
 			p.gen(')')
-			p.cgen.set_placeholder(ph, '${expr_type}_eq(')
+			switch tok {
+			case Token.eq: p.cgen.set_placeholder(ph, '${expr_type}_eq(')
+			case Token.ne: p.cgen.set_placeholder(ph, '${expr_type}_ne(')
+			case Token.le: p.cgen.set_placeholder(ph, '${expr_type}_le(')
+			case Token.ge: p.cgen.set_placeholder(ph, '${expr_type}_ge(')
+			case Token.gt: p.cgen.set_placeholder(ph, '${expr_type}_gt(')
+			case Token.lt: p.cgen.set_placeholder(ph, '${expr_type}_lt(')
+			}
 		}
 	}
 	return typ
