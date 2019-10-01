@@ -47,10 +47,10 @@ fn (a f64) ne(b f64) bool {
 fn (a f32) ne(b f32) bool {
 	return !a.eq(b)
 }
-pub fn (a f64) neqbit(b f64) bool {
+pub fn (a f64) nebit(b f64) bool {
 	return C.DEFAULT_NOT_EQUAL(a, b)
 }
-pub fn (a f32) neqbit(b f32) bool {
+pub fn (a f32) nebit(b f32) bool {
 	return C.DEFAULT_NOT_EQUAL(a, b)
 }
 
