@@ -1185,7 +1185,7 @@ fn (p mut Parser) close_scope() {
 				//if p.fileis('str.v') {
 					//println('freeing str $v.name')
 				//}
-				//continue
+				continue
 			}	else if v.ptr || v.typ.ends_with('*') {
 				free_fn = 'v_ptr_free'
 				//continue
