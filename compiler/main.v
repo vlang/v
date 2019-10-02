@@ -623,13 +623,10 @@ fn (v mut V) add_v_files_to_compile() {
 
 // get builtin files
 fn (v &V) get_builtin_files() []string {
-	mut dir := '$v.vroot/vlib/builtin/'
-	__ := [0]
-	_ = __[0]
 	$if js {
-		dir = '$v.vroot/vlib/builtin/js/'
+		return v.v_files_from_dir('$v.vroot/vlib/builtin/js/')
 	}
-	return v.v_files_from_dir(dir)
+	return v.v_files_from_dir('$v.vroot/vlib/builtin/')
 }
 
 // get user files
