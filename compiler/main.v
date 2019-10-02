@@ -618,6 +618,10 @@ fn (v mut V) add_v_files_to_compile() {
 
 // get builtin files
 fn (v &V) get_builtin_files() []string {
+	// In default mode we use precompiled vlib.o, point to .vh files with signatures	
+	if build_mode == .default_mode || build_mode == .build_module {	
+		// return v.v_files_from_dir('$TmpPath/vlib/builtin/')
+	}	
 	$if js {
 		return v.v_files_from_dir('$v.vroot/vlib/builtin/js/')
 	}
@@ -812,14 +816,30 @@ fn new_v(args[]string) &V {
 	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
-		$if linux     { _os = .linux }
-		$if mac       { _os = .mac }
-		$if windows   { _os = .windows }
-		$if freebsd   { _os = .freebsd }
-		$if openbsd   { _os = .openbsd }
-		$if netbsd    { _os = .netbsd }
-		$if dragonfly { _os = .dragonfly }
-		$if solaris   { _os = .solaris }
+		$if linux {
+			_os = .linux
+		}
+		$if mac {
+			_os = .mac
+		}
+		$if windows {
+			_os = .windows
+		}
+		$if freebsd {
+			_os = .freebsd
+		}
+		$if openbsd {
+			_os = .openbsd
+		}
+		$if netbsd {
+			_os = .netbsd
+		}
+		$if dragonfly {
+			_os = .dragonfly
+		}
+		$if solaris {
+			_os = .solaris
+		}
 	}
 	else {
 		switch target_os {
