@@ -208,12 +208,12 @@ fn main() {
 }
 
 fn (v mut V) add_parser(parser Parser) {
-       for p in v.parsers {
-               if p.id == parser.id {
-                       return
-               }
-       }
-       v.parsers << parser
+	   for p in v.parsers {
+			   if p.id == parser.id {
+					   return
+			   }
+	   }
+	   v.parsers << parser
 }
 
 fn (v mut V) compile() {
