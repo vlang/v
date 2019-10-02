@@ -1716,6 +1716,49 @@ fn (p mut Parser) name_expr() string {
 	{
 		name = p.prepend_mod(name)
 	}
+	
+	// Variable, checked before modules, so module shadowing is allowed.
+	// (`gg = gg.newcontext(); gg.draw_rect(...)`)
+	for { // TODO remove
+	mut v := p.find_var_check_new_var(name) or { break }
+	if name == '_' {
+		p.error('cannot use `_` as value')
+	}
+	if ptr {
+		p.gen('&')
+	}
+	else if deref {
+		p.gen('*')
+	}
+	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
+		p.assigned_type == 'string' {
+		p.warn('setting moved ' + v.typ)
+		p.mark_arg_moved(v)
+	}	
+	mut typ := p.var_expr(v)
+	// *var
+	if deref {
+		if !typ.contains('*') && !typ.ends_with('ptr') {
+			println('name="$name", t=$v.typ')
+			p.error('dereferencing requires a pointer, but got `$typ`')
+		}
+		typ = typ.replace('ptr', '')// TODO
+		typ = typ.replace('*', '')// TODO
+	}
+	// &var
+	else if ptr {
+		typ += '*'
+	}
+	if p.inside_return_expr {
+		//println('marking $v.name returned')
+		p.mark_var_returned(v)
+		// v.is_returned = true // TODO modifying a local variable
+		// that's not used afterwards, this should be a compilation
+		// error
+	}	
+	return typ
+	} // TODO REMOVE for{}
+	
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {

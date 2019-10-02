@@ -92,7 +92,7 @@ fn (p mut Parser) mark_var_changed(v Var) {
 fn (p mut Parser) mark_arg_moved(v Var) {
 	for i, arg in p.cur_fn.args {
 		if arg.name == v.name {
-			println('setting f=$p.cur_fn.name arg=$arg.name to is_mut')
+			//println('setting f $p.cur_fn.name arg $arg.name to is_mut')
 			p.cur_fn.args[i].is_moved = true
 			break
 		}	
