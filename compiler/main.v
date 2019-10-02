@@ -619,7 +619,7 @@ fn (v mut V) add_v_files_to_compile() {
 // get builtin files
 fn (v &V) get_builtin_files() []string {
 	// In default mode we use precompiled vlib.o, point to .vh files with signatures	
-	if build_mode == .default_mode || build_mode == .build_module {	
+	if v.pref.build_mode == .default_mode || v.pref.build_mode == .build_module {	
 		// return v.v_files_from_dir('$TmpPath/vlib/builtin/')
 	}	
 	$if js {
