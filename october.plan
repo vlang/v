@@ -1,0 +1,22 @@
+- bring back forum/blog and vpm
+- wrap up orm
+- fix vorum, migrate to orm
+- wrap up memory management
+- remove all compiler memory leaks
+- fix child <T> function calls
+- enable vfmt
+- bring back vdoc and regenerate all module docs
+- optimize the parser (reduce map lookups)
+- chat.vlang.io
+- rewrite objective c code in v (ui_mac.m)
+- v ui for macos
+- v ui for windows
+- v ui for linux
+- doom.v
+- ui/orm demo: a simple gui client for postgres/mysql/sqlite
+- ui demo: calculator
+- declarative ui with hot reload (similar to swiftui)
+- "building a simple blog with vweb" tutorial + youtube video
+- new playground with a v compiler running in the browser
+- fix interfaces
+

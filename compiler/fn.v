@@ -33,7 +33,7 @@ mut:
 	is_decl       bool // type myfn fn(int, int)
 	defer_text    []string
 	//gen_types []string
-	fn_name_token Tok
+	fn_name_token_idx int // used by error reporting
 }
 
 fn (p &Parser) find_var(name string) ?Var {
@@ -110,8 +110,8 @@ fn (p mut Parser) known_var(name string) bool {
 fn (p mut Parser) register_var(v Var) {
 	mut new_var := {v | idx: p.var_idx, scope_level: p.cur_fn.scope_level}
 	if v.line_nr == 0 {
-		new_var.token = p.cur_tok()
-		new_var.line_nr = new_var.token.line_nr
+		new_var.token_idx = p.cur_tok_index()
+		new_var.line_nr = p.cur_tok().line_nr
 	}
 	// Expand the array
 	if p.var_idx >= p.local_vars.len {
@@ -213,7 +213,7 @@ fn (p mut Parser) fn_decl() {
 			ref: is_amp
 			ptr: is_mut
 			line_nr: p.scanner.line_nr
-			token: p.cur_tok()
+			token_idx: p.cur_tok_index()
 		}
 		f.args << receiver
 		p.register_var(receiver)
@@ -226,7 +226,7 @@ fn (p mut Parser) fn_decl() {
 	else {
 		f.name = p.check_name()
 	}
-	f.fn_name_token = p.cur_tok()
+	f.fn_name_token_idx = p.cur_tok_index()
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -334,7 +334,7 @@ fn (p mut Parser) fn_decl() {
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
 		if str_args != '' || typ != 'void' {
-			p.error_with_tok('fn main must have no arguments and no return values', f.fn_name_token)
+			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
 	}
 	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
@@ -439,7 +439,7 @@ fn (p mut Parser) fn_decl() {
 
 	if f.name == 'main__main' || f.name == 'main' || f.name == 'WinMain' {
 		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
-			p.error_with_tok('tests cannot have function `main`', f.fn_name_token)
+			p.error_with_token_index('tests cannot have function `main`', f.fn_name_token_idx)
 		}
 	}
 	// println('is_c=$is_c name=$f.name')
@@ -472,7 +472,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	if typ != 'void' && !p.returns {
-		p.error_with_tok('$f.name must return "$typ"', f.fn_name_token)
+		p.error_with_token_index('$f.name must return "$typ"', f.fn_name_token_idx)
 	}
 	if p.attr == 'live' && p.pref.is_so {
 		//p.genln('// live_function body end')
@@ -535,10 +535,10 @@ fn (p mut Parser) check_unused_variables() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
-			p.production_error_with_token('`$var.name` declared and not used', var.token )
+			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
-			p.error_with_tok( '`$var.name` is declared as mutable, but it was never changed', var.token )
+			p.error_with_token_index( '`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
 	}
 }
@@ -698,7 +698,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if f.is_interface {
 		int_arg := Var {
 			typ: f.receiver_typ
-			token: p.cur_tok()
+			token_idx: p.cur_tok_index()
 		}
 		f.args << int_arg
 	}
@@ -714,7 +714,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_arg: true
 				// is_mut: is_mut
 				line_nr: p.scanner.line_nr
-				token: p.cur_tok()
+				token_idx: p.cur_tok_index()
 			}
 			// f.register_var(v)
 			f.args << v
@@ -737,7 +737,23 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if is_mut {
 			p.next()
 		}
-		mut typ := p.get_type()
+		mut typ := ''
+		// variadic arg
+		if p.tok == .ellipsis {
+			p.check(.ellipsis)
+			if p.tok == .rpar {
+				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
+			}
+			t := p.get_type()
+			vargs_struct := '_V_FnVargs_$f.name'
+			// register varg struct, incase function is never called
+			p.fn_register_vargs_stuct(f, t, []string)
+			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			typ = '...$t'
+		} else {
+			typ = p.get_type()
+		}
+		
 		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
@@ -757,7 +773,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				is_mut: is_mut
 				ptr: is_mut
 				line_nr: p.scanner.line_nr
-				token: p.cur_tok()
+				token_idx: p.cur_tok_index()
 			}
 			p.register_var(v)
 			f.args << v
@@ -765,9 +781,14 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if p.tok == .comma {
 			p.next()
 		}
-		if p.tok == .dotdot {
-			f.args << Var{
-				name: '..'
+		// unnamed (C definition)
+		if p.tok == .ellipsis {
+			if !f.is_c {
+				p.error('variadic argument syntax must be `arg_name ...type` eg `argname ...string`.')
+			}
+			f.args << Var {
+				// name: '...'
+				typ: '...'
 			}
 			p.next()
 		}
@@ -779,6 +800,11 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
 	p.check(.lpar)
+	mut is_variadic := false
+	if f.args.len > 0 {
+		last_arg := f.args.last()
+		is_variadic = last_arg.typ.starts_with('...')
+	}
 	if f.is_c {
 		for p.tok != .rpar {
 			//C.func(var1, var2.method())
@@ -819,7 +845,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			continue
 		}
 		// Reached the final vararg? Quit
-		if i == f.args.len - 1 && arg.name == '..' {
+		if i == f.args.len - 1 && arg.typ.starts_with('...') {
 			break
 		}
 		ph := p.cgen.add_placeholder()
@@ -860,6 +886,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}	
 		mut typ := p.bool_expression()
+		if typ.starts_with('...') { typ = typ.right(3) }
 		if clone {
 			p.gen(')')
 		}
@@ -978,37 +1005,74 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
-			is_vararg := i == f.args.len - 2 && f.args[i + 1].name == '..'
-			if p.tok != .comma && !is_vararg {
+			if p.tok != .comma && !is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
 			if p.tok == .comma {
 				p.fgen(', ')
 			}
-			if !is_vararg {
+			if !is_variadic {
 				p.next()
 				p.gen(',')
 			}
 		}
 	}
 	// varargs
-	if f.args.len > 0 {
-		last_arg := f.args.last()
-		if last_arg.name == '..' {
-			for p.tok != .rpar {
-				if p.tok == .comma {
-					p.gen(',')
-					p.check(.comma)
-				}
-				p.bool_expression()
-			}
-		}
+	if !p.first_pass() && is_variadic {
+		p.fn_gen_caller_vargs(mut f)
 	}
+
 	if p.tok == .comma {
 		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
 	}
 	p.check(.rpar)
 	return f // TODO is return f right?
+}
+
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
+	vargs_struct := '_V_FnVargs_$f.name'
+	varg_type := Type{
+		cat: TypeCategory.struct_,
+		name: vargs_struct,
+		mod: p.mod
+	}
+	if values.len > 0 {
+		p.table.rewrite_type(varg_type)
+	} else {
+		p.table.register_type2(varg_type)
+	}
+	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
+	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+}
+
+fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
+	last_arg := f.args.last()
+	varg_def_type := last_arg.typ.right(3)
+	mut values := []string
+	for p.tok != .rpar {
+		if p.tok == .comma {
+			p.check(.comma)
+		}
+		p.cgen.start_tmp()
+		varg_type := p.bool_expression()
+		varg_value := p.cgen.end_tmp()
+		p.check_types(last_arg.typ, varg_type)
+		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
+			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
+			else { '' }
+		values << '$ref_deref$varg_value'
+	}
+	for va in p.table.varg_access {
+		if va.fn_name != f.name { continue }
+		if va.index >= values.len {
+			p.error_with_token_index('variadic arg index out of range: $va.index/${values.len-1}, vargs are 0 indexed', va.tok_idx)
+		}
+	}
+	if f.args.len > 1 {
+		p.cgen.gen(',')
+	}
+	p.cgen.gen('&(_V_FnVargs_$f.name){.len=$values.len,.args={'+values.join(',')+'}}')
+	p.fn_register_vargs_stuct(f, varg_def_type, values)
 }
 
 // "fn (int, string) int"
@@ -1056,8 +1120,8 @@ fn (f &Fn) str_args(table &Table) string {
 				s += ')'
 			}
 		}
-		else if arg.name == '..' {
-			s += '...'
+		else if arg.typ.starts_with('...') {
+			s += '_V_FnVargs_$f.name *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'

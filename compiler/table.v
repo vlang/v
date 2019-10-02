@@ -20,9 +20,15 @@ mut:
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
+	varg_access  []VargAccess
 	//names        []Name
 }
 
+struct VargAccess {
+	fn_name string
+	tok_idx int
+	index   int
+}
 
 /*
 enum NameCategory {
@@ -97,7 +103,7 @@ mut:
 	is_c            bool // todo remove once `typ` is `Type`, not string
 	is_moved        bool
 	line_nr         int
-	token           Tok // TODO: use only var.token.line_nr, remove var.line_nr
+	token_idx       int // this is a token index, which will be used by error reporting
 }
 
 struct Type {
@@ -232,7 +238,7 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
 	t.register_type_with_parent('byte', 'int')
-	t.register_type_with_parent('char', 'int') // for C functinos only, to avoid warnings
+	t.register_type_with_parent('char', 'int') // for C functions only, to avoid warnings
 	t.register_type_with_parent('i16', 'int')
 	t.register_type_with_parent('u16', 'u32')
 	t.register_type_with_parent('u32', 'int')
@@ -331,6 +337,10 @@ fn (t mut Table) register_fn(new_fn Fn) {
 
 fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
+	// vararg
+	if typ.starts_with('...') && typ.len > 3 {
+		typ = typ.right(3)
+	}
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ.left(typ.len - 1)
@@ -341,12 +351,11 @@ fn (table &Table) known_type(typ_ string) bool {
 
 fn (table &Table) known_type_fast(t &Type) bool {
 	return t.name != '' && !t.is_placeholder
-	
 }
 
 fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
-	if !isnil(f.name.str) {
+	if f.name.str != 0 { // TODO
 		return f
 	}
 	return none
@@ -557,6 +566,13 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	//p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
+	}
+	// variadic
+	if expected.starts_with('...') {
+		expected = expected.right(3)
+	}
+	if got.starts_with('...') {
+		got = got.right(3)
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {

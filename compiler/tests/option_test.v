@@ -34,3 +34,11 @@ fn test_option_for_base_type_without_variable() {
 	println('nice')
 	println(val2)
 }
+
+fn test_if_opt() {
+	if val := err_call(false) {
+		assert val == 42
+	}	
+	assert 1 == 1
+	println('nice')
+}	
