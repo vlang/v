@@ -21,9 +21,6 @@ pub fn(graph mut DepGraph) from_import_tables(import_tables map[string]FileImpor
 pub fn(graph &DepGraph) imports() []string {
 	mut mods := []string
 	for node in graph.nodes {
-		// if node.name == 'main' {
-		// 	continue
-		// }
 		mods << node.name
 	}
 	return mods
