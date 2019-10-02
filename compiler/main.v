@@ -575,7 +575,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 fn (v mut V) add_v_files_to_compile() {
 	// Parse builtin imports
 	for file in v.get_builtin_files() {
-		// add builtins to v.files first
+		// add builtins first
 		v.files << file
 		mut p := v.new_parser_file(file)
 		p.parse(.imports)
@@ -598,10 +598,6 @@ fn (v mut V) add_v_files_to_compile() {
 	for mod in v.resolve_deps().imports() {
 		if mod == v.mod { continue }     // Building this module? Skip. TODO it's a hack.
 		if mod == 'main' { continue }    // main files will getg added last
-		if mod == 'builtin' { 
-			println(' ####### continuing')
-			continue
-		} // builtin files were already added
 		mod_path := v.find_module_path(mod)
 		// If we are in default mode, we don't parse vlib .v files, but
 		// header .vh files in TmpPath/vlib
@@ -613,11 +609,8 @@ fn (v mut V) add_v_files_to_compile() {
 		*/
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
-			if !(file in v.files) {
-				v.files << file
-			} else {
-				println('!!!!!!!!!!!!!!! $file')
-			}
+			if file in v.files { continue }
+			v.files << file
 		}
 
 	}
@@ -629,32 +622,15 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 }
 
-fn (v V) get_builtin_files() []string {
-	builtins := [
-		'array.v',
-		'string.v',
-		'builtin.v',
-		'int.v',
-		'utf8.v',
-		'map.v',
-		'hashmap.v',
-		'option.v',
-	]
-	mut files := []string
-	for builtin in builtins {
-		mut f := '$v.vroot/vlib/builtin/$builtin'
-		__ := ['string']
-		_ = __[0]
-		$if js {
-			f = '$v.vroot/vlib/builtin/js/$builtin'
-		}
-		// In default mode we use precompiled vlib.o, point to .vh files with signatures
-		if v.pref.build_mode == .default_mode || v.pref.build_mode == .build_module {
-			//f = '$TmpPath/vlib/builtin/${builtin}h'
-		}
-		files << f
+// get builtin files
+fn (v &V) get_builtin_files() []string {
+	mut dir := '$v.vroot/vlib/builtin/'
+	__ := [0]
+	_ = __[0]
+	$if js {
+		dir = '$v.vroot/vlib/builtin/js/'
 	}
-	return files
+	return v.v_files_from_dir(dir)
 }
 
 // get user files
