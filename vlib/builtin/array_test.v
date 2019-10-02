@@ -268,4 +268,10 @@ fn test_find_element() {
 	assert c.find(0x22) == 0
 	assert c.find(0x55) == 2
 	assert c.find(0x99) == -1
+
+	// char
+	d := [`a`, `b`, `c`]
+	assert d.find(`b`) == 1
+	assert d.find(`c`) == 2
+	assert d.find(`u`) == -1
 }
