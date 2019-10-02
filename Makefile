@@ -13,10 +13,10 @@ all:
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 ifdef WIN32
 	$(CC) -std=gnu11 -w -o v0.exe vc/v_win.c
-	./v0.exe -o v.exe compiler
 else
-	$(CC) -std=gnu11 -w -o v vc/v.c -lm
+	$(CC) -std=gnu11 -w -o v0 vc/v.c -lm
 endif
-	rm -rf vc/
+	./v0 -o v compiler
+	rm -rf v0 vc/
 	@echo "V has been successfully built"
 
