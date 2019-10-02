@@ -873,6 +873,7 @@ fn new_v(args[]string) &V {
 	'string.v',
 	'builtin.v',
 	'int.v',
+	'float.v',
 	'utf8.v',
 	'map.v',
 	'hashmap.v',
