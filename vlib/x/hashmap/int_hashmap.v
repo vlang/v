@@ -50,9 +50,9 @@ mut:
     _size int
     mask u32
 
-    keys []int
-    values []voidptr
-    used []bool
+    _keys []int
+    _values []voidptr
+    _used []bool
 }
 
 const (
@@ -71,9 +71,9 @@ pub fn new_int_hashmap_options(size int, fill_factor f32) IntHashMap {
     hashmap.mask = u32(capacity - 1)
     hashmap.fill_factor = fill_factor
 
-    hashmap.keys = [0].repeat(capacity)
-    hashmap.values = [voidptr(0)].repeat(capacity)
-    hashmap.used = [false].repeat(capacity)   
+    hashmap._keys = [0].repeat(capacity)
+    hashmap._values = [voidptr(0)].repeat(capacity)
+    hashmap._used = [false].repeat(capacity)   
     hashmap.threshold = int(f32(capacity) * f32(fill_factor))
 
     return hashmap
@@ -83,7 +83,7 @@ pub fn (hashmap &IntHashMap) get(key int) voidptr {
     idx := hashmap._read_index(key)
 
     if idx != -1 { // unsafe!
-        return C.array__get(hashmap.values, idx)
+        return C.array__get(hashmap._values, idx)
     } else {
         return 0
     }
@@ -98,22 +98,22 @@ pub fn (hashmap mut IntHashMap) put(key int, value voidptr) {
     mut idx := hashmap._put_index(key)
     if idx < 0 {
         //println('no space, rehashing')
-        hashmap._rehash(hashmap.keys.len * 2)
+        hashmap._rehash(hashmap._keys.len * 2)
         idx = hashmap._put_index(key)
     }
 
-    if !hashmap.used[idx] {
-        hashmap.keys[idx] = key
-        hashmap.values[idx] = value
-        hashmap.used[idx] = true
+    if !hashmap._used[idx] {
+        hashmap._keys[idx] = key
+        hashmap._values[idx] = value
+        hashmap._used[idx] = true
         hashmap._size++
 
         if hashmap._size >= hashmap.threshold {
             //println('hit hashmap threshold, rehashing')
-            hashmap._rehash(hashmap.keys.len * 2)
+            hashmap._rehash(hashmap._keys.len * 2)
         }
     } else {
-        hashmap.values[idx] = value
+        hashmap._values[idx] = value
     }
 }
 
@@ -126,9 +126,9 @@ pub fn (hashmap &IntHashMap) keys() []int {
     mut keys := [0].repeat(hashmap._size)
     mut kidx := 0
 
-    for idx := 0; idx < hashmap.keys.len; idx++ {
-        if hashmap.used[idx] {
-            keys[kidx] = hashmap.keys[idx]
+    for idx := 0; idx < hashmap._keys.len; idx++ {
+        if hashmap._used[idx] {
+            keys[kidx] = hashmap._keys[idx]
             kidx++
         }
     }
@@ -144,15 +144,15 @@ pub fn (hashmap mut IntHashMap) remove(key int) voidptr {
         return 0
     }
 
-    res := C.array__get(hashmap.values, idx)
+    res := C.array__get(hashmap._values, idx)
     hashmap._size--
     hashmap._shift_keys(idx)
     return res
 }
 
 pub fn (hashmap mut IntHashMap) clear() {
-    for idx := 0; idx < hashmap.keys.len; idx++ {
-        if hashmap.used[idx] {
+    for idx := 0; idx < hashmap._keys.len; idx++ {
+        if hashmap._used[idx] {
             hashmap._size--
             hashmap._shift_keys(idx)
         }    
@@ -173,11 +173,11 @@ fn (hashmap &IntHashMap) _next_index(key int) int {
 fn (hashmap &IntHashMap) _read_index(key int) int {
     mut idx := hashmap._start_index(key)
 
-    if !hashmap.used[idx] {
+    if !hashmap._used[idx] {
         return -1
     }
 
-    if hashmap.keys[idx] == key && hashmap.used[idx] {
+    if hashmap._keys[idx] == key && hashmap._used[idx] {
         return idx
     }
 
@@ -185,11 +185,11 @@ fn (hashmap &IntHashMap) _read_index(key int) int {
     for {
         idx = hashmap._next_index(idx)
 
-        if idx == start_idx || !hashmap.used[idx] {
+        if idx == start_idx || !hashmap._used[idx] {
             return -1
         }
 
-        if hashmap.keys[idx] == key && hashmap.used[idx] {
+        if hashmap._keys[idx] == key && hashmap._used[idx] {
             return idx
         }
     }
@@ -208,7 +208,7 @@ fn (hashmap &IntHashMap) _put_index(key int) int {
     mut idx := start_idx
 
     for {
-        if !hashmap.used[idx] {
+        if !hashmap._used[idx] {
             break
         }
 
@@ -225,15 +225,15 @@ fn (hashmap mut IntHashMap) _rehash(new_capacity int) {
     hashmap.threshold = int(f32(new_capacity) * f32(hashmap.fill_factor))
     hashmap.mask = u32(new_capacity - 1)
 
-    old_capacity := hashmap.keys.len
-    old_keys := hashmap.keys
-    old_values := hashmap.values
-    old_used := hashmap.used
+    old_capacity := hashmap._keys.len
+    old_keys := hashmap._keys
+    old_values := hashmap._values
+    old_used := hashmap._used
     //println('rehash $old_capacity -> $new_capacity')
     
-    hashmap.keys = [0].repeat(new_capacity)
-    hashmap.values = [voidptr(0)].repeat(new_capacity)
-    hashmap.used = [false].repeat(new_capacity)   
+    hashmap._keys = [0].repeat(new_capacity)
+    hashmap._values = [voidptr(0)].repeat(new_capacity)
+    hashmap._used = [false].repeat(new_capacity)   
     hashmap._size = 0
 
     for i := old_capacity; i > 0; i-- {
@@ -253,11 +253,11 @@ fn (hashmap mut IntHashMap) _shift_keys(_pos int) int {
         pos = hashmap._next_index(pos)
 
         for {
-            k = hashmap.keys[pos]
-            if !hashmap.used[pos] {
-                hashmap.keys[last] = 0
-                hashmap.values[last] = voidptr(0)
-                hashmap.used[last] = false
+            k = hashmap._keys[pos]
+            if !hashmap._used[pos] {
+                hashmap._keys[last] = 0
+                hashmap._values[last] = voidptr(0)
+                hashmap._used[last] = false
 
                 return last
             }
@@ -277,9 +277,9 @@ fn (hashmap mut IntHashMap) _shift_keys(_pos int) int {
             pos = hashmap._next_index(pos)
         }
 
-        hashmap.keys[last] = k
-        hashmap.values[last] = hashmap.values[pos]
-        hashmap.used[last] = hashmap.used[pos]
+        hashmap._keys[last] = k
+        hashmap._values[last] = hashmap._values[pos]
+        hashmap._used[last] = hashmap._used[pos]
     }
 
     return -1

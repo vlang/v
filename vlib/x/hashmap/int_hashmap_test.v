@@ -1,3 +1,5 @@
+import x.hashmap
+
 fn test_int2int() {
     // TODO: implement V syntax for the hashmap
     //
@@ -9,7 +11,7 @@ fn test_int2int() {
     // assert hmap[3] == 5434
     // assert hmap.len == 2
 
-    mut hmap := new_int_hashmap()
+    mut hmap := hashmap.new_int_hashmap()
 
     hmap.put(3, voidptr(5432))
     hmap.put(5, voidptr(5433))
@@ -24,11 +26,11 @@ fn test_int2int() {
     // is the map size still correct?
     assert hmap.size() == 2
     // is an existing value correct?
-    assert int(hmap.get(5)) == 5432
+    assert hmap.get(5) == 5432
     // is an overriden value correct?
-    assert int(hmap.get(3)) == 5434
+    assert hmap.get(3) == 5434
     // is an non-existing value null?
-    assert int(hmap.get(1)) == 0
+    assert hmap.get(1) == 0
 
     keys := hmap.keys()
 
@@ -36,7 +38,7 @@ fn test_int2int() {
     assert hmap.size() == keys.len
 
     // remove an existing element and compare it's value
-    assert int(hmap.remove(3)) == 5434
+    assert hmap.remove(3) == 5434
     // is the map size correct?
     assert hmap.size() == 1
 
