@@ -303,3 +303,23 @@ pub fn (a []string) find(v string) int {
 	}
 	return j
 }
+
+pub fn (a []int) find(v int) int {
+	mut j := -1
+	for i := 0; i < a.len && j == -1; i++ {
+		if a[i] == v {
+			j = i
+		}
+	}
+	return j
+}
+
+pub fn (a []byte) find(v byte) int {
+	mut j := -1
+	for i := 0; i < a.len && j == -1; i++ {
+		if a[i] == v {
+			j = i
+		}
+	}
+	return j
+}
