@@ -147,7 +147,7 @@ fn test_push_many() {
 }
 
 fn test_reverse() {
-  	mut a := [1, 2, 3, 4]
+  mut a := [1, 2, 3, 4]
 	mut b := ['test', 'array', 'reverse']
 	c := a.reverse()
 	d := b.reverse()
@@ -251,9 +251,21 @@ fn test_single_element() {
 }	
 
 fn test_find_element() {
+	// string
 	a := ['v', 'is', 'great']
-	assert a.len == 3
 	assert a.find('v') == 0
 	assert a.find('is') == 1
 	assert a.find('gre')  == -1
+
+	// int
+	b := [1, 2, 3, 4]
+	assert b.find(1) == 0
+	assert b.find(4) == 3
+	assert b.find(5) == -1
+
+	// byte
+	c := [0x22, 0x33, 0x55]
+	assert c.find(0x22) == 0
+	assert c.find(0x55) == 2
+	assert c.find(0x99) == -1
 }
