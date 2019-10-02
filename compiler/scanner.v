@@ -247,7 +247,7 @@ fn (s mut Scanner) scan() ScanRes {
 	}
 	// End of $var, start next string
 	if s.inter_end {
-		if s.text[s.pos] == single_quote {
+		if s.text[s.pos] == s.quote { //single_quote {
 			s.inter_end = false
 			return scan_res(.str, '')
 		}
@@ -277,7 +277,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
 		if s.inside_string {
-			if next_char == single_quote {
+			if next_char == s.quote {
 				s.inter_end = true
 				s.inter_start = false
 				s.inside_string = false
