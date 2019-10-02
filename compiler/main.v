@@ -526,7 +526,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	exit(0)
 }
 
-fn (v &V) v_files_from_dir(dir string) []string {
+fn v_files_from_dir(dir string, _os OS) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
 		verror('$dir doesn\'t exist')
@@ -534,9 +534,11 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		verror('$dir isn\'t a directory')
 	}
 	mut files := os.ls(dir)
+	/*
 	if v.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
+	*/
 	files.sort()
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
@@ -545,25 +547,25 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && (v.os != .windows && v.os != .msvc) {
+		if file.ends_with('_win.v') && (_os != .windows && _os != .msvc) {
 			continue
 		}
-		if file.ends_with('_lin.v') && v.os != .linux {
+		if file.ends_with('_lin.v') && _os != .linux {
 			continue
 		}
-		if file.ends_with('_mac.v') && v.os != .mac {
+		if file.ends_with('_mac.v') && _os != .mac {
 			continue
 		}
-		if file.ends_with('_js.v') && v.os != .js {
+		if file.ends_with('_js.v') && _os != .js {
 			continue
 		}
-		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
+		if file.ends_with('_nix.v') && (_os == .windows || _os == .msvc) {
 			continue
 		}
-		if file.ends_with('_js.v') && v.os != .js {
+		if file.ends_with('_js.v') && _os != .js {
 			continue
 		}
-		if file.ends_with('_c.v') && v.os == .js {
+		if file.ends_with('_c.v') && _os == .js {
 			continue
 		}
 		res << '$dir/$file'
@@ -594,7 +596,7 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	else {
 		// Add .v files from the directory being compiled
-		files := v.v_files_from_dir(dir)
+		files := v_files_from_dir(dir, v.os)
 		for file in files {
 			user_files << file
 		}
@@ -648,7 +650,7 @@ fn (v mut V) add_v_files_to_compile() {
 	for i := 0; i < v.table.imports.len; i++ {
 		mod := v.table.imports[i]
 		import_path := v.find_module_path(mod)
-		vfiles := v.v_files_from_dir(import_path)
+		vfiles := v_files_from_dir(import_path, v.os)
 		if vfiles.len == 0 {
 			verror('cannot import module $mod (no .v files in "$import_path")')
 		}
@@ -691,7 +693,7 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 */
 		if mod == 'builtin' { continue } // builtin files were already added
-		vfiles := v.v_files_from_dir(mod_path)
+		vfiles := v_files_from_dir(mod_path, v.os)
 		for file in vfiles {
 			if !(file in v.files) {
 				v.files << file
@@ -867,21 +869,12 @@ fn new_v(args[]string) &V {
 		}
 	}
 	//println('OS=$_os')
-	builtin := 'builtin.v'
-	builtins := [
-	'array.v',
-	'string.v',
-	'builtin.v',
-	'int.v',
-	'float.v',
-	'utf8.v',
-	'map.v',
-	'hashmap.v',
-	'option.v',
-	]
+	vroot := os.dir(os.executable())
+	builtin_path := vroot + '/vlib/builtin'
+	js_builtins := v_files_from_dir(builtin_path + '/js', _os)
+	builtins := v_files_from_dir(builtin_path, _os)
 	//println(builtins)
 	// Location of all vlib files
-	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
@@ -899,21 +892,10 @@ fn new_v(args[]string) &V {
 	}
 	//println('out_name:$out_name')
 	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
-	mut files := []string
-	// Add builtin files
-	//if !out_name.contains('builtin.o') {
-		for builtin in builtins {
-			mut f := '$vroot/vlib/builtin/$builtin'
-			__ := 1
-			$if js {
-				f = '$vroot/vlib/builtin/js/$builtin'
-			}
-			// In default mode we use precompiled vlib.o, point to .vh files with signatures
-			if build_mode == .default_mode || build_mode == .build_module {
-				//f = '$TmpPath/vlib/builtin/${builtin}h'
-			}
-			files << f
-		}
+	mut files := builtins
+	$if js {
+		files = js_builtins
+	}
 
 	cflags := get_cmdline_cflags(args)
 
