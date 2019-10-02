@@ -29,7 +29,7 @@ enum BuildMode {
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'msvc', 'android', 'js', 'solaris']
-	v_modules_path            = os.home_dir() + '/.vmodules/'
+	v_modules_path = os.home_dir() + '/.vmodules/'
 )
 
 enum OS {
@@ -41,7 +41,7 @@ enum OS {
 	netbsd
 	dragonfly
 	msvc // TODO not an OS
-	js // TODO
+	js   // TODO
 	android
 	solaris
 }
@@ -202,9 +202,7 @@ fn main() {
 		}	
 		v.table.fns.free()
 		free(v.table)
-		//for p in parsers {
-			
-		//}	
+		//for p in parsers {}	
 		println('done!')
 	}	
 }
@@ -589,7 +587,6 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 	// Parse lib imports
 	v.parse_lib_imports()
-
 	if v.pref.is_verbose {
 		v.log('imports:')
 		println(v.table.imports)
@@ -785,14 +782,14 @@ fn new_v(args[]string) &V {
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
 		// Cross compiling? Use separate dirs for each os
-/*
+		/*
 		if target_os != os.user_os() {
 			os.mkdir('$TmpPath/vlib/$target_os')
 			out_name = '$TmpPath/vlib/$target_os/${base}.o'
 			println('target_os=$target_os user_os=${os.user_os()}')
 			println('!Cross compiling $out_name')
 		}
-*/
+		*/
 	}
 	// TODO embed_vlib is temporarily the default mode. It's much slower.
 	else if !('-embed_vlib' in args) {
@@ -817,30 +814,14 @@ fn new_v(args[]string) &V {
 	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
-		$if linux {
-			_os = .linux
-		}
-		$if mac {
-			_os = .mac
-		}
-		$if windows {
-			_os = .windows
-		}
-		$if freebsd {
-			_os = .freebsd
-		}
-		$if openbsd {
-			_os = .openbsd
-		}
-		$if netbsd {
-			_os = .netbsd
-		}
-		$if dragonfly {
-			_os = .dragonfly
-		}
-		$if solaris {
-			_os = .solaris
-		}
+		$if linux     { _os = .linux }
+		$if mac       { _os = .mac }
+		$if windows   { _os = .windows }
+		$if freebsd   { _os = .freebsd }
+		$if openbsd   { _os = .openbsd }
+		$if netbsd    { _os = .netbsd }
+		$if dragonfly { _os = .dragonfly }
+		$if solaris   { _os = .solaris }
 	}
 	else {
 		switch target_os {
@@ -918,7 +899,6 @@ fn new_v(args[]string) &V {
 	return &V{
 		os: _os
 		out_name: out_name
-		// files: files
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)
