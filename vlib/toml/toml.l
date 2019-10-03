@@ -6,17 +6,15 @@
     // Bison
     #include "toml.tab.h"
     int yywarp(void) {return 1;}
-    void increment_line_num(void){}
     #define TRUE 1
     #define FALSE 0
-    void toml_string_literal_open(void);
-    void toml_string_literal_add(int letter);
-    void toml_string_literal_buffer(void);
-    static char* string_literal_buffer = NULL;
-    static int string_literal_buffer_size = 0;
-    static int string_literal_buffer_alloc_size = 0; 
-    static int multi_line = FALSE;
+    static char* buf[255];
+    static char* string_literal;
+    void string_free(void){
+        string_literal = 0;
+    }
 %}
+
 digit       [0-9]+[_]*;
 integer     [+-\-]?digit;
 floating    [+-\-]digit\.[e]?[];
@@ -53,36 +51,56 @@ timestamp  date?[T]time?
 <INITIAL>binary         return BINARY;
 <INITIAL>floating       return DOUBLE;
 <INITIAL>timestamp      return TIMESTAMP;
-<INITIAL>\"             BEGIN WQUOTE_STRING;
-<INITIAL>\'             BEGIN QUOTE_STRING;
-<INITIAL>\"\"\"         BEGIN WQUOTE_MULTI_LINE;
-<INITIAL>\'\'\'         BEGIN QUOTE_MULTI_LINE;
+<INITIAL>\"             {
+    BEGIN WQUOTE_STRING;
+    string_literal = buf;
+}
+<INITIAL>\'             {
+    BEGIN QUOTE_STRING;
+    string_literal = buf;
+}
+<INITIAL>\"\"\"         {
+    BEGIN WQUOTE_MULTI_LINE;
+    string_literal = buf;
+}
+<INITIAL>\'\'\'         { 
+    BEGIN QUOTE_MULTI_LINE;
+    string_literal = buf;
+}
 
 <CRETURN>\n {
     return NEWLINE;
     BEGIN INITIAL;
 }
-
+ // Comment Rule
 <COMMENT>"\n" BEGIN INITIAL;
+<COMMENT>"\r\n" BEGIN INITIAL;
 <COMMENT>. ;
+
 <WQUOTE_STRING>\" {
+    string_free()
     BEGIN INITIAL;
     return STRING;
 }
+<WQUOTE_STRING>\' string_literal++ = *yytext[0];
+<WQUOTE_STRING>. string_literal++ = *yytext[0];
+<WQUOTE_STRING>\\\r string_literal++ = '\r'
+<WQUOTE_STRING>\\\n string_literal++ = '\n'
+<WQUOTE_STRING>\\\" string_literal++ = '\"'
+
+<QUOTE_STRING>\\\r string_literal++ = '\r'
+<QUOTE_STRING>\\\n string_literal++ = '\n'
+<QUOTE_STRING>\\\' string_literal++ = 
 <QUOTE_STRING>\' {
+    string_free()
     BEGIN INITIAL;
     return STRING;
 }
+<QUOTE_STRING>. string_literal++ = *yytext[0];
+
+<WQUOTE_MULTI_LINE>\"\"\" {
+    string_free()
+    BEGIN INITIAL;
+    return STRING;
+} 
 %%
-
-void toml_string_literal_open(){
-    
-}
-
-void toml_string_literal_add(int letter){
-
-}
-
-void toml_string_literal_buffer(){
-
-}

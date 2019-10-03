@@ -111,11 +111,11 @@ struct TOMLVal{
 		arr			Array
 }
 
-fn (t TOMLInt) int_val(){
+fn (t TOMLInt) int_val() i64 {
 	return t.val
 }
 
-fn (t TOMLInt) str_val(){
+fn (t TOMLInt) str_val() string{
 	return t.str_val
 }
 

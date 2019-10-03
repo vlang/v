@@ -7,7 +7,7 @@
     struct toml_array_t;
     struct toml_timestamp_t;
     // 's'tring,'d'emical,'b'inary,'h'exical,'o'ctial,do'u'ble,'t'imestamp,'n'one
-    static int parse_data(int val_type,int data);
+    static int parse_data(int val_type,char* data);
     int parse_int(char* rtn,int val_type);
     int parse_array(const char* key_name,array_t rtn);
     int parse_table(const char* tbl_name,table_t rtn);
@@ -149,15 +149,17 @@ struct toml_array_t{
     toml_table_t tab;
 };
 
+int parse_data(int val_type,char* data){
+
+}
+
 int parse_int(char* rtn_key,int val_type){
 
 }
 
 int parse_string(){
 
-}
-
-int 
+} 
 
 int parse_array(const char* key_name,array_t rtn){
 
