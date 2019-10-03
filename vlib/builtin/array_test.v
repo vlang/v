@@ -253,25 +253,25 @@ fn test_single_element() {
 fn test_find_element() {
 	// string
 	a := ['v', 'is', 'great']
-	assert a.find('v') == 0
-	assert a.find('is') == 1
-	assert a.find('gre')  == -1
+	assert a.index('v') == 0
+	assert a.index('is') == 1
+	assert a.index('gre')  == -1
 
 	// int
 	b := [1, 2, 3, 4]
-	assert b.find(1) == 0
-	assert b.find(4) == 3
-	assert b.find(5) == -1
+	assert b.index(1) == 0
+	assert b.index(4) == 3
+	assert b.index(5) == -1
 
 	// byte
 	c := [0x22, 0x33, 0x55]
-	assert c.find(0x22) == 0
-	assert c.find(0x55) == 2
-	assert c.find(0x99) == -1
+	assert c.index(0x22) == 0
+	assert c.index(0x55) == 2
+	assert c.index(0x99) == -1
 
 	// char
 	d := [`a`, `b`, `c`]
-	assert d.find(`b`) == 1
-	assert d.find(`c`) == 2
-	assert d.find(`u`) == -1
+	assert d.index(`b`) == 1
+	assert d.index(`c`) == 2
+	assert d.index(`u`) == -1
 }

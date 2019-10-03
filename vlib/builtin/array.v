@@ -294,7 +294,7 @@ pub fn (a mut []int) sort() {
 // Looking for an array index based on value. 
 // If there is, it will return the index and if not, it will return `-1`
 // TODO: Implement for all types
-pub fn (a []string) find(v string) int {
+pub fn (a []string) index(v string) int {
 	mut j := -1
 	for i := 0; i < a.len && j == -1; i++ {
 		if a[i] == v {
@@ -304,7 +304,7 @@ pub fn (a []string) find(v string) int {
 	return j
 }
 
-pub fn (a []int) find(v int) int {
+pub fn (a []int) index(v int) int {
 	mut j := -1
 	for i := 0; i < a.len && j == -1; i++ {
 		if a[i] == v {
@@ -314,7 +314,7 @@ pub fn (a []int) find(v int) int {
 	return j
 }
 
-pub fn (a []byte) find(v byte) int {
+pub fn (a []byte) index(v byte) int {
 	mut j := -1
 	for i := 0; i < a.len && j == -1; i++ {
 		if a[i] == v {
@@ -324,7 +324,7 @@ pub fn (a []byte) find(v byte) int {
 	return j
 }
 
-pub fn (a []char) find(v char) int {
+pub fn (a []char) index(v char) int {
 	mut j := -1
 	for i := 0; i < a.len && j == -1; i++ {
 		if a[i] == v {
