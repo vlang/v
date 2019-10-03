@@ -3,15 +3,6 @@
 
 import TOML
 
-const (
-    STR = 1
-    DEC_INT = 2
-    BIN_INT = 3
-    HEX_INT = 4
-    OCT_INT = 5
-    FLOAT = 6
-)
-
 fn load_parse(){
 	&C.yyparse()
 }
@@ -29,7 +20,7 @@ struct C.table_t{
 }
 
 fn writing_data(){
-    
+
 }
 
 fn integer_writing(){
