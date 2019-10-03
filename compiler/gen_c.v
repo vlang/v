@@ -238,9 +238,13 @@ fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, 
 	// Method returns (void*) => cast it to int, string, user etc
 	// number := *(int*)numbers.first()
 	if ftyp == 'void*' {
-		// array_int => int
-		cast = receiver_type.all_after('_')
-		cast = '*($cast*) '
+		if receiver_type.starts_with('array_') {
+			// array_int => int
+			cast = receiver_type.all_after('_')
+			cast = '*($cast*) '
+		}else{
+			cast = '(voidptr) '
+		}
 	}
 	p.cgen.set_placeholder(method_ph, '$cast $method_call')
 	//return method_call

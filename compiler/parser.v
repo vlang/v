@@ -1042,9 +1042,6 @@ fn (p mut Parser) get_type() string {
 			typ += '__$p.lit'
 		}
 		mut t := p.table.find_type(typ)
-		if typ == 'V' {
-			//println('QQ V res=$t.name')
-			}
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
@@ -1185,7 +1182,7 @@ fn (p mut Parser) close_scope() {
 				//if p.fileis('str.v') {
 					//println('freeing str $v.name')
 				//}
-				//continue
+				continue
 			}	else if v.ptr || v.typ.ends_with('*') {
 				free_fn = 'v_ptr_free'
 				//continue
