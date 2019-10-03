@@ -14,7 +14,7 @@
 *.o
 .*.c
 *.tmp.c
-
+vjs
 *.obj
 
 *.pdb
