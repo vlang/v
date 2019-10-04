@@ -12,6 +12,9 @@ pub:
 }
 
 pub fn new_builder(initial_size int) Builder {
+	$if js {
+		return Builder {}
+	}
 	return Builder {
 		buf: _make(0, initial_size, sizeof(byte))
 	}
