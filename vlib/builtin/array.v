@@ -295,41 +295,37 @@ pub fn (a mut []int) sort() {
 // If there is, it will return the index and if not, it will return `-1`
 // TODO: Implement for all types
 pub fn (a []string) index(v string) int {
-	mut j := -1
-	for i := 0; i < a.len && j == -1; i++ {
+	for i := 0; i < a.len; i++ {
 		if a[i] == v {
-			j = i
+			return i
 		}
 	}
-	return j
+	return -1
 }
 
 pub fn (a []int) index(v int) int {
-	mut j := -1
-	for i := 0; i < a.len && j == -1; i++ {
+	for i := 0; i < a.len; i++ {
 		if a[i] == v {
-			j = i
+			return i
 		}
 	}
-	return j
+	return -1
 }
 
 pub fn (a []byte) index(v byte) int {
-	mut j := -1
-	for i := 0; i < a.len && j == -1; i++ {
+	for i := 0; i < a.len; i++ {
 		if a[i] == v {
-			j = i
+			return i
 		}
 	}
-	return j
+	return -1
 }
 
 pub fn (a []char) index(v char) int {
-	mut j := -1
-	for i := 0; i < a.len && j == -1; i++ {
+	for i := 0; i < a.len; i++ {
 		if a[i] == v {
-			j = i
+			return i
 		}
 	}
-	return j
+	return -1
 }
