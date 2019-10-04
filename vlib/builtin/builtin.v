@@ -9,11 +9,6 @@ fn C.memmove(byteptr, byteptr, int)
 //fn C.malloc(int) byteptr
 fn C.realloc(byteptr, int) byteptr
 
-const (
-MYKEK = 45
-)
-
-
 pub fn exit(code int) {
 	C.exit(code)
 }

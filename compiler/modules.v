@@ -44,14 +44,6 @@ fn (v &V) module_path(mod string) string {
 // 'local_mod' => '/path/to/current/dir/local_mod'
 fn (v &V) find_module_path(mod string) string {
 	mod_path := v.module_path(mod)
-	// Cached module
-	/*
-	vh_path := '$v_modules_path/${mod}.vh'
-	if os.file_exists(vh_path) {
-	println('got vh=' + vh_path)
-	}
-	*/
-	
 	// First check for local modules in the same directory
 	mut import_path := os.getwd() + '/$mod_path'
 	// Now search in vlib/

@@ -85,7 +85,11 @@ fn v_type_str(typ_ string) string {
 
 fn (v &V) generate_vh() {
 	println('Generating a V header file for module `$v.mod`')
-	path := v_modules_path + v.mod + '.vh'
+	dir := v_modules_path + v.mod
+	path := dir + '.vh'
+	if !os.dir_exists(dir) {
+		os.mkdir(dir)
+	}
 	println(path)
 	
 	file := os.create(path) or { panic(err) }

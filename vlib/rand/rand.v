@@ -4,10 +4,6 @@
 
 module rand
 
-const(
-	RANDCONSTTODOREMOVE=3
-)
-
 pub fn seed(s int) {
 	C.srand(s)
 }
