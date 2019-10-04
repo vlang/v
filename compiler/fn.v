@@ -144,6 +144,7 @@ fn (p mut Parser) is_sig() bool {
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
 	p.fgen('fn ')
+	
 	//defer { p.fgenln('\n') }
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
@@ -426,10 +427,17 @@ fn (p mut Parser) fn_decl() {
 		if !is_c && p.first_pass() {
 			// TODO hack to make Volt compile without -embed_vlib
 			if f.name == 'darwin__nsstring' && p.pref.build_mode == .default_mode {
-				return
+				
+			} else {
+				p.cgen.fns << fn_decl + ';'
 			}
-			p.cgen.fns << fn_decl + ';'
 		}
+		// Generate .vh header files when building a module
+		/*
+		if p.pref.build_mode == .build_module {
+			p.vh_genln(f.v_definition())
+		}
+		*/
 		return
 	}
 	if p.attr == 'live' && p.pref.is_so {
@@ -1090,11 +1098,6 @@ fn (f &Fn) typ_str() string {
 		sb.write(' $f.typ')
 	}
 	return sb.str()
-}
-
-// "fn foo(a int) stirng", for .vh module headers
-fn (f &Fn) v_definition() string {
-	return 'fn '//$f.name(${f.str_args()})'
 }
 
 // f.args => "int a, string b"

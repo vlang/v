@@ -13,7 +13,7 @@ pub:
 
 pub fn new_builder(initial_size int) Builder {
 	return Builder {
-		//buf: _make(0, initial_size, sizeof(byte))
+		// buf: _make(0, initial_size, sizeof(byte))
 	}
 }
 

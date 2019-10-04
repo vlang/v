@@ -96,7 +96,7 @@ const (
 
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
-fn (v mut V) new_parser_string(text string, id string) Parser {
+fn (v mut V) new_parser_from_string(text string, id string) Parser {
 	mut p := v.new_parser(new_scanner(text), id)
 	p.scan_tokens()
 	v.add_parser(p)
@@ -104,7 +104,7 @@ fn (v mut V) new_parser_string(text string, id string) Parser {
 }
 
 // new parser from file.
-fn (v mut V) new_parser_file(path string) Parser {
+fn (v mut V) new_parser_from_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
@@ -505,7 +505,9 @@ fn (p mut Parser) const_decl() {
 		if p.first_pass()  && p.table.known_const(name) {
 			p.error('redefinition of `$name`')
 		}
-		p.table.register_const(name, typ, p.mod)
+		if p.first_pass() {
+			p.table.register_const(name, typ, p.mod)
+		}
 		if p.pass == .main {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
@@ -898,6 +900,7 @@ if p.scanner.line_comment != '' {
 }
 
 
+[inline]
 fn (p &Parser) first_pass() bool {
 	return p.pass == .decl
 }
@@ -1221,6 +1224,7 @@ fn (p mut Parser) gen(s string) {
 
 // Generate V header from V source
 fn (p mut Parser) vh_genln(s string) {
+	//println('vh $s')
 	p.vh_lines << s
 }
 

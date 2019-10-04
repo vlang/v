@@ -6,6 +6,10 @@ module main
 
 import os
 
+const (
+	v_modules_path = os.home_dir() + '/.vmodules/'
+)
+
 // add a module and its deps (module speficic dag method)
 pub fn(graph mut DepGraph) from_import_tables(import_tables map[string]FileImportTable) {
 	for _, fit in import_tables {
@@ -21,12 +25,18 @@ pub fn(graph mut DepGraph) from_import_tables(import_tables map[string]FileImpor
 pub fn(graph &DepGraph) imports() []string {
 	mut mods := []string
 	for node in graph.nodes {
-		if node.name == 'main' {
-			continue
-		}
 		mods << node.name
 	}
 	return mods
+}
+
+fn (v &V) module_path(mod string) string {
+	// submodule support
+	if mod.contains('.') {
+		//return mod.replace('.', os.PathSeparator)
+		return mod.replace('.', '/')
+	}
+	return mod
 }
 
 // 'strings' => 'VROOT/vlib/strings'
