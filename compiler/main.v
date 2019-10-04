@@ -598,10 +598,8 @@ fn (v mut V) add_v_files_to_compile() {
 		// if mod == v.mod { continue }  // Building this module? Skip. TODO it's a hack.
 		if mod == 'main' { continue } // main files will get added last
 
-
 		vh_path := '$v_modules_path/${mod}.vh'
 		if os.file_exists(vh_path) {
-			println('## Using $vh_path')
 			v.files << vh_path
 			continue
 		}
@@ -685,19 +683,6 @@ fn (v mut V) parse_lib_imports() {
 	for {
 		for _, fit in v.table.file_imports {
 			if fit.file_path in done_fits { continue }
-		
-			// vh_path := '$v_modules_path/${fit.module_name}.vh'
-			// if os.file_exists(vh_path) {
-			// 	println('GGGG $vh_path')
-			// 	v.files << fit.file_path
-			// 	done_fits << fit.file_path
-			// 	continue
-			// }
-
-			// if fit.file_path in v.files }
-			// 	done_fits << fit.file_path
-			// 	continue 
-			// }
 			v.parse_file_imports(fit)
 			done_fits << fit.file_path
 		}
