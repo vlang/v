@@ -36,3 +36,22 @@ The main files are:
 9. `x64/` is the directory with all the machine code generation logic. It will be available in early July. Obviously this is the most complex part of the compiler. It defines a set of functions that translates assembly instructions to machine code, it builds complicated binaries from scratch byte by byte. It manually builds all headers, segments, sections, symtable, relocations, etc. Right now it only has basic support of the x64 platform/Mach-O format, and it can only generate `.o` files, which then have to be linked with `lld`.
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps), `time/`, `os/`, etc. Their documentation is pretty clear.
+
+## Example Workflow for Contributing
+##### (provided by [@spytheman](https://github.com/spytheman))
+
+1. Clone https://github.com/vlang/v in a folder, say nv (`git clone https://github.com/vlang/v nv`)
+1. `cd nv`
+1. `git remote add pullrequest git@github.com:spytheman/v.git`  # (NOTE: this is my own forked repo of: https://github.com/vlang/v - After this, I just do normal git operations such as: `git pull` and so on.)
+1. When finished with a feature/bugfix, you can: `git checkout -b fix_alabala`
+1. `git push pullrequest`  # (NOTE: the pullrequest remote was setup on step 3)
+1. On Github's web interface, I go to: https://github.com/vlang/v/pulls  Here the UI shows a nice dialog with a button to make a new pull request based on the new pushed branch. (Example dialogue: https://url4e.com/gyazo/images/364edc04.png)
+1. After making your pullrequest (aka, PR), you can continue to work on the branch... just do step #5 when you have more commits.
+1. If there are merge conflicts, or a branch lags too much behind V's master, you can do the following:
+   1. `git checkout master`
+   1. `git pull`
+   1. `git checkout fix_alabala`
+   1. `git rebase master`  # solve conflicts and do git rebase --continue
+   1. `git push pullrequest -f`
+
+The point of doing the above steps to never directly push to the main V repository, only to your own fork. Since your local master branch tracks the main V repository's master, then `git checkout master; git pull --rebase origin master` work as expected (this is actually used by `v up`) and it can always do so cleanly.  I'm not a Git guru, and Git is very flexible, so there may be simpler/easier ways to accomplish the same thing.
