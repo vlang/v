@@ -250,7 +250,7 @@ fn test_single_element() {
 	println(a)
 }	
 
-fn test_find_element() {
+fn test_find_index() {
 	// string
 	a := ['v', 'is', 'great']
 	assert a.index('v') == 0
