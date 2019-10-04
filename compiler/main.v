@@ -40,7 +40,7 @@ enum OS {
 	netbsd
 	dragonfly
 	msvc // TODO not an OS
-	js // TODO
+	js   // TODO
 	android
 	solaris
 }
@@ -61,54 +61,54 @@ enum Pass {
 
 struct V {
 mut:
-	os         OS // the OS to build for
-	out_name_c string // name of the temporary C file
-	files      []string // all V files that need to be parsed and compiled
-	dir        string // directory (or file) being compiled (TODO rename to path?)
-	table      &Table // table with types, vars, functions etc
-	cgen       &CGen // C code generator
+	os         OS           // the OS to build for
+	out_name_c string       // name of the temporary C file
+	files      []string     // all V files that need to be parsed and compiled
+	dir        string       // directory (or file) being compiled (TODO rename to path?)
+	table      &Table       // table with types, vars, functions etc
+	cgen       &CGen        // C code generator
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
-	lang_dir   string // "~/code/v"
-	out_name   string // "program.exe"
+	lang_dir   string       // "~/code/v"
+	out_name   string       // "program.exe"
 	vroot      string
-	mod        string  // module being built with `v build module`
+	mod        string       // module being built with -lib
 	parsers    []Parser
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
 }
 
 struct Preferences {
 mut:
-	build_mode     BuildMode
-	nofmt          bool // disable vfmt
-	is_test        bool // `v test string_test.v`
-	is_script      bool // single file mode (`v program.v`), main function can be skipped
-	is_live        bool // for hot code reloading
-	is_so          bool
-	is_prof        bool // benchmark every function
-	translated     bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod        bool // use "-O2"
-	is_verbose     bool // print extra information with `v.log()`
-	obfuscate      bool // `v -obf program.v`, renames functions to "f_XXX"
-	is_repl        bool
-	is_run         bool
-	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
-	sanitize       bool // use Clang's new "-fsanitize" option
-	is_debuggable  bool
-	is_debug       bool // keep compiled C files
-	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
+	build_mode    BuildMode
+	nofmt         bool   // disable vfmt
+	is_test       bool   // `v test string_test.v`
+	is_script     bool   // single file mode (`v program.v`), main function can be skipped
+	is_live       bool   // for hot code reloading
+	is_so         bool
+	is_prof       bool   // benchmark every function
+	translated    bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod       bool   // use "-O2"
+	is_verbose    bool   // print extra information with `v.log()`
+	obfuscate     bool   // `v -obf program.v`, renames functions to "f_XXX"
+	is_repl       bool
+	is_run        bool
+	show_c_cmd    bool   // `v -show_c_cmd` prints the C command to build program.v.c
+	sanitize      bool   // use Clang's new "-fsanitize" option
+	is_debuggable bool
+	is_debug      bool   // keep compiled C files
+	no_auto_free  bool   // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
 						 // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 						 // You could pass several -cflags XXX arguments. They will be merged with each other.
 						 // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
-	ccompiler  string // the name of the used C compiler
-	building_v bool
-	autofree   bool
-	compress   bool
-	// Skips re-compilation of the builtin module
-	// to increase compilation time.
-	// This is on by default, since a vast majority of users do not
-	// work on the builtin module itself.
-	skip_builtin bool
+	ccompiler     string // the name of the used C compiler
+	building_v    bool
+	autofree      bool
+	compress      bool
+	skip_builtin  bool   // Skips re-compilation of the builtin module
+						 // to increase compilation time.
+						 // This is on by default, since a vast majority of users do not
+						 // work on the builtin module itself.
+	
 }
 
 fn main() {
@@ -201,20 +201,18 @@ fn main() {
 		}	
 		v.table.fns.free()
 		free(v.table)
-		//for p in parsers {
-			
-		//}	
+		//for p in parsers {}	
 		println('done!')
 	}	
 }
 
 fn (v mut V) add_parser(parser Parser) {
-       for p in v.parsers {
-               if p.id == parser.id {
-                       return
-               }
-       }
-       v.parsers << parser
+	   for p in v.parsers {
+			   if p.id == parser.id {
+					   return
+			   }
+	   }
+	   v.parsers << parser
 }
 
 fn (v mut V) parse(file string, pass Pass) {
@@ -233,7 +231,6 @@ fn (v mut V) compile() {
 	if os.user_os() != 'windows' && v.os == .msvc {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
-	
 	mut cgen := v.cgen
 	cgen.genln('// Generated by V')
 	if v.pref.is_verbose {
@@ -576,8 +573,78 @@ fn (v &V) v_files_from_dir(dir string) []string {
 
 // Parses imports, adds necessary libs, and then user files
 fn (v mut V) add_v_files_to_compile() {
+	// Parse builtin imports
+	for file in v.get_builtin_files() {
+		// add builtins first
+		v.files << file
+		mut p := v.new_parser_from_file(file)
+		p.parse(.imports)
+		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+	}
+	// Parse user imports
+	for file in v.get_user_files() {
+		mut p := v.new_parser_from_file(file)
+		// p.import_table.register_import('builtin')
+		p.parse(.imports)
+		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+	}
+	// Parse lib imports
+	v.parse_lib_imports()
+	if v.pref.is_verbose {
+		v.log('imports:')
+		println(v.table.imports)
+	}
+	// resolve deps & add imports in correct order
+	for mod in v.resolve_deps().imports() {
+		// if mod == v.mod { continue }  // Building this module? Skip. TODO it's a hack.
+		if mod == 'main' { continue } // main files will get added last
+
+
+		vh_path := '$v_modules_path/${mod}.vh'
+		if os.file_exists(vh_path) {
+			println('## Using $vh_path')
+			v.files << vh_path
+			continue
+		}
+
+		mod_path := v.find_module_path(mod)
+		// If we are in default mode, we don't parse vlib .v files, but
+		// header .vh files in TmpPath/vlib. These were generated by vfmt
+		/*
+		if v.pref.build_mode == .default_mode || v.pref.build_mode == .build_module {
+			module_path = '$v_modules_path/vlib/$mod_p'
+		}
+		*/
+		vfiles := v.v_files_from_dir(mod_path)
+		for file in vfiles {
+			if file in v.files { continue }
+			v.files << file
+		}
+	}
+	// add remaining main files last
+	for _, fit in v.table.file_imports {
+		if fit.module_name != 'main' { continue }
+		if fit.file_path in v.files { continue }
+		v.files << fit.file_path
+	}
+}
+
+// get builtin files
+fn (v &V) get_builtin_files() []string {
+	// In default mode we use precompiled vlib.o, point to .vh files with signatures	
+	if v.pref.build_mode == .default_mode || v.pref.build_mode == .build_module {	
+		// return v.v_files_from_dir('$TmpPath/vlib/builtin/')
+	}	
+	$if js {
+		return v.v_files_from_dir('$v.vroot/vlib/builtin/js/')
+	}
+	return v.v_files_from_dir('$v.vroot/vlib/builtin/')
+}
+
+// get user files
+fn (v &V)  get_user_files() []string {
 	mut dir := v.dir
-	v.log('add_v_files($dir)')
+	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
 	mut user_files := []string
@@ -610,46 +677,38 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('user_files:')
 		println(user_files)
 	}
-	// Parse builtin imports
-	for file in v.files {
-		mut p := v.new_parser_from_file(file)
-		p.parse(.imports)
-		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-	}
-	// Parse user imports
-	for file in user_files {
-		mut p := v.new_parser_from_file(file)
-		p.parse(.imports)
-		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-	}
-	// Parse lib imports
-/*
-	if v.pref.build_mode == .default_mode {
-		// strange ( for mod in v.table.imports ) dosent loop all items
-		// for mod in v.table.imports {
-		for i := 0; i < v.table.imports.len; i++ {
-			mod := v.table.imports[i]
-			mod_path := v.module_path(mod)
-			import_path := '$v_modules_path/vlib/$mod_path'
-			vfiles := v.v_files_from_dir(import_path)
-			if vfiles.len == 0 {
-				verror('cannot import module $mod (no .v files in "$import_path")')
-			}
-			// Add all imports referenced by these libs
-			for file in vfiles {
-				mut p := v.new_parser_file(file, Pass.imports)
-				p.parse()
-				
-	if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-			}
+	return user_files
+}
+
+// parse deps from already parsed builtin/user files
+fn (v mut V) parse_lib_imports() {
+	mut done_fits := []string
+	for {
+		for _, fit in v.table.file_imports {
+			if fit.file_path in done_fits { continue }
+		
+			// vh_path := '$v_modules_path/${fit.module_name}.vh'
+			// if os.file_exists(vh_path) {
+			// 	println('GGGG $vh_path')
+			// 	v.files << fit.file_path
+			// 	done_fits << fit.file_path
+			// 	continue
+			// }
+
+			// if fit.file_path in v.files }
+			// 	done_fits << fit.file_path
+			// 	continue 
+			// }
+			v.parse_file_imports(fit)
+			done_fits << fit.file_path
 		}
+		if v.table.file_imports.size == done_fits.len { break}
 	}
-	else {
-*/
-	// TODO ` for mod in v.table.imports ` crashes
-	// for mod in v.table.imports {
-	for i := 0; i < v.table.imports.len; i++ {
-		mod := v.table.imports[i]
+}
+
+// parse imports from file import table
+fn (v mut V) parse_file_imports(fit &FileImportTable) {
+	for _, mod in fit.imports {
 		import_path := v.find_module_path(mod)
 		vfiles := v.v_files_from_dir(import_path)
 		if vfiles.len == 0 {
@@ -665,12 +724,10 @@ fn (v mut V) add_v_files_to_compile() {
 			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		}
 	}
-	if v.pref.is_verbose {
-		v.log('imports:')
-		println(v.table.imports)
-	}
-	
-	// graph deps
+}
+
+// return resolved dep graph (order deps)
+fn (v &V) resolve_deps() &DepGraph {
 	mut dep_graph := new_dep_graph()
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
@@ -678,78 +735,7 @@ fn (v mut V) add_v_files_to_compile() {
 		deps_resolved.display()
 		verror('import cycle detected')
 	}
-	// add imports in correct order
-	for mod in deps_resolved.imports() {
-		// Building this module? Skip. TODO it's a hack.
-		if mod == v.mod {
-			continue
-		}
-		if mod == 'builtin' { continue } // builtin files were already added
-		
-		// Cached module
-		vh_path := '$v_modules_path/${mod}.vh'
-		if os.file_exists(vh_path) {
-			continue
-			/*
-			println(':) got vh=' + vh_path)
-			if !(vh_path in v.files) {
-				v.files << vh_path
-			}
-			continue
-			*/
-		}
-	
-		mod_path := v.find_module_path(mod)
-		println('mod_path="$mod_path" mod="$mod"')
-		// If we are in default mode, we don't parse vlib .v files, but
-		// header .vh files in
-		// TmpPath/vlib
-		// These were generated by vfmt
-/*
-		if v.pref.build_mode == .default_mode || v.pref.build_mode == .build_module {
-			module_path = '$v_modules_path/vlib/$mod_p'
-		}
-*/
-		vfiles := v.v_files_from_dir(mod_path)
-		for file in vfiles {
-			if !(file in v.files) {
-				println('adding $file')
-				v.files << file
-			}
-		}
-	}
-	// Add remaining user files
-	mut i := 0
-	mut j := 0
-	mut len := -1
-	for _, fit in v.table.file_imports {
-		
-		// Don't add a duplicate; builtin files are always there
-		println('fit $fit.file_path')
-		if fit.file_path in v.files || fit.module_name == 'builtin' {
-			i++
-			continue
-		}
-		if len == -1 {
-			len = i
-		}
-		j++
-		// TODO remove this once imports work with .build
-		if v.pref.build_mode == .build_module && j >= len / 2{
-			break
-		}
-		
-		vh_path := '$v_modules_path/${fit.module_name}.vh'
-		if os.file_exists(vh_path) {
-			println('GGGG $vh_path')
-			v.files << fit.file_path
-			continue
-		}
-		//println(fit)
-		//println('fit $fit.file_path')
-		v.files << fit.file_path
-		i++
-	}
+	return deps_resolved
 }
 
 fn get_arg(joined_args, arg, def string) string {
@@ -815,14 +801,14 @@ fn new_v(args[]string) &V {
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
 		// Cross compiling? Use separate dirs for each os
-/*
+		/*
 		if target_os != os.user_os() {
 			os.mkdir('$TmpPath/vlib/$target_os')
 			out_name = '$TmpPath/vlib/$target_os/${base}.o'
 			println('target_os=$target_os user_os=${os.user_os()}')
 			println('!Cross compiling $out_name')
 		}
-*/
+		*/
 	}
 	// TODO embed_vlib is temporarily the default mode. It's much slower.
 	else if !('-embed_vlib' in args) {
@@ -887,18 +873,7 @@ fn new_v(args[]string) &V {
 		}
 	}
 	//println('OS=$_os')
-	builtin := 'builtin.v'
-	builtins := [
-	'array.v',
-	'string.v',
-	'builtin.v',
-	'int.v',
-	'utf8.v',
-	'map.v',
-	'hashmap.v',
-	'option.v',
-	]
-	//println(builtins)
+
 	// Location of all vlib files
 	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
@@ -918,21 +893,6 @@ fn new_v(args[]string) &V {
 	}
 	//println('out_name:$out_name')
 	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
-	mut files := []string
-	// Add builtin files
-	//if !out_name.contains('builtin.o') {
-		for builtin in builtins {
-			mut f := '$vroot/vlib/builtin/$builtin'
-			__ := 1
-			$if js {
-				f = '$vroot/vlib/builtin/js/$builtin'
-			}
-			// In default mode we use precompiled vlib.o, point to .vh files with signatures
-			if build_mode == .default_mode || build_mode == .build_module {
-				//f = '$TmpPath/vlib/builtin/${builtin}h'
-			}
-			files << f
-		}
 
 	cflags := get_cmdline_cflags(args)
 
@@ -974,7 +934,6 @@ fn new_v(args[]string) &V {
 	return &V{
 		os: _os
 		out_name: out_name
-		files: files
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)
