@@ -16,8 +16,10 @@
 *.tmp.c
 vjs
 *.obj
-
+*.ilk
 *.pdb
+*.lib
+*.exp
 
 #
 # macOS.gitignore
