@@ -1078,6 +1078,19 @@ fn (v &V) test_v() {
 		println('vlib/ is missing, it must be next to the V executable')
 		exit(1)
 	}	
+	if !os.dir_exists(parent_dir + '/compiler') {
+		println('compiler/ is missing, it must be next to the V executable')
+		exit(1)
+	}	
+        // Make sure v.c can be compiled without warnings
+	$if mac {
+		os.system('$vexe -o v.c compiler')
+		if os.system('cc -Werror v.c') != 0 {
+			println('cc failed to build v.c without warnings')
+			exit(1)
+		}
+		println('v.c can be compiled without warnings. This is good :)')
+	}
 	// Emily: pass args from the invocation to the test
 	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
 	mut joined_args := args.right(1).join(' ')

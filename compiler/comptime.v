@@ -277,7 +277,7 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	sb.writeln('fn (a $typ.name) str() string {\nreturn')
 	sb.writeln("'{")
 	for field in typ.fields {
-		sb.writeln('\t$field.name: \$a.${field.name}')
+		sb.writeln('\t$field.name: $' + 'a.${field.name}')
 	}
 	sb.writeln("\n}'")
 	sb.writeln('}')
