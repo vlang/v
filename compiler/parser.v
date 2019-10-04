@@ -1424,10 +1424,18 @@ fn (p mut Parser) var_decl() {
 	vtoken_idxs << p.cur_tok_index()
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
+	mut new_vars := 0 
 	for p.tok == .comma {
 		p.check(.comma)
 		vtoken_idxs << p.cur_tok_index()
-		names << p.check_name()
+		name := p.check_name()
+		names << name
+		if !p.known_var(name) {
+			new_vars++
+		}
+	}
+	if names.len > 1 && new_vars == 0 {
+		p.error('no new variables on left side of `:=`')
 	}
 	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
 	p.check_space(.decl_assign) // :=
@@ -1443,9 +1451,6 @@ fn (p mut Parser) var_decl() {
 	for i, name in names {
 		var_token_idx := vtoken_idxs[i]
 		if name == '_' {
-			if names.len == 1 {
-				p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
-			}
 			continue
 		}
 		typ := types[i]
@@ -1454,19 +1459,31 @@ fn (p mut Parser) var_decl() {
 		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
-		if !p.builtin_mod && p.known_var(name) {
-			// v := p.cur_fn.find_var(name)
+		known_var := p.known_var(name)
+		if names.len == 1 && !p.builtin_mod && known_var {
 			p.error_with_token_index('redefinition of `$name`', var_token_idx)
 		}
 		if name.len > 1 && contains_capital(name) {
 			p.error_with_token_index('variable names cannot contain uppercase letters, use snake_case instead', var_token_idx)
 		}
+		if names.len != types.len {
+			mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+			p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
+		}
 		if names.len > 1 {
-			if names.len != types.len {
-				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
-			}
 			p.gen(';\n')
+			if !p.builtin_mod && known_var {
+				v := p.find_var(name) or {
+					p.error_with_token_index('cannot find `$name`', var_token_idx)
+					continue
+				}
+				if !v.is_mut {
+					p.error_with_token_index('`$v.name` is immutable', var_token_idx)
+				}
+				p.mark_var_changed(v)
+				p.gen('$name = ${mr_var_name}.var_$i')
+				continue
+			}
 			p.gen('$typ $name = ${mr_var_name}.var_$i')
 		}
 		// p.check_space(.decl_assign) // :=
