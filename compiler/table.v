@@ -872,15 +872,10 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 }
 
 fn (table &Table) get_file_import_table(id string) FileImportTable {
-	// if file_path.clone() in table.file_imports {
-	// 	return table.file_imports[file_path.clone()]
-	// }
-	// just get imports. memory error when recycling import table
-	mut fit := new_file_import_table(id)
 	if id in table.file_imports {
-		fit.imports = table.file_imports[id].imports
+		return table.file_imports[id]
 	}
-	return fit
+	return new_file_import_table(id)
 }
 
 fn new_file_import_table(file_path string) FileImportTable {
