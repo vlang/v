@@ -6,7 +6,7 @@ const (
 	tool_version = '0.0.3'
 	tool_description = '' +
 		'  Compares V executable size and performance,\n' +
-		'  between 2 commits from V\'s local git history.\n' + 
+		'  between 2 commits from V\'s local git history.\n' +
 		'  When only one commit is given, it is compared to master.'
 )
 
@@ -44,7 +44,7 @@ fn tool_must_exist(toolcmd string) {
 }
 
 fn used_tools_must_exist(tools []string) {
-	for t in tools { 
+	for t in tools {
 		tool_must_exist(t)
 	}
 }
@@ -55,11 +55,11 @@ fn (c Context) compare_versions() {
 	//Cleanup artifacts from previous runs of this tool:
 	os.chdir( c.workdir )
 	run('rm -rf "$c.a" "$c.b" ')
-	
+
 	println('Comparing v compiler performance of commit $c.commit_before (before) vs commit $c.commit_after (after) ...')
 	c.prepare_v( c.b , c.commit_before )
 	c.prepare_v( c.a , c.commit_after  )
-	
+
 	os.chdir( c.workdir )
 	c.compare_v_performance( 'v     -o source.c compiler' )
 	c.compare_v_performance( 'vprod -o source.c compiler' )
@@ -79,7 +79,7 @@ fn (c &Context) prepare_v( cdir string, commit string ) {
 	os.system('git clone --quiet \'$c.cwd\' \'$cdir\' ')
 	os.chdir( cdir )
 	os.system('git checkout --quiet \'$commit\' ')
-	
+
 	println('Making v and vprod compilers in $cdir')
 	run('make')
 	run('./v       -o v     compiler/ ')
@@ -121,7 +121,7 @@ fn validate_commit_exists( commit string ){
 
 fn main(){
 	used_tools_must_exist(['cp','rm','strip','make','git','upx','cc','wc','tail','hyperfine'])
-	mut context := new_context()  
+	mut context := new_context()
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.filename(os.executable()))
 	fp.version( tool_version )
@@ -139,21 +139,21 @@ fn main(){
 		eprintln('Error: ' + err)
 		exit(1)
 	}
-	
+
 	context.commit_before = commits[0]
 	if commits.len > 1 { context.commit_after = commits[1] }
-	
+
 	validate_commit_exists( context.commit_before )
 	validate_commit_exists( context.commit_after )
-	
+
 	context.b = context.normalized_workpath_for_commit( context.commit_before )
 	context.a = context.normalized_workpath_for_commit( context.commit_after )
-    
+
 	if !os.is_dir( context.workdir ) {
 		msg := 'Work folder: ' + context.workdir + ' , does not exist.'
 		eprintln(msg)
 		exit(2)
 	}
-	
+
 	context.compare_versions()
 }
