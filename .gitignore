@@ -16,7 +16,8 @@
 *.tmp.c
 vjs
 *.obj
-
+*.exp
+*.ilk
 *.pdb
 
 #
