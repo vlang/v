@@ -584,7 +584,6 @@ fn (v mut V) add_v_files_to_compile() {
 	// Parse user imports
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
-		// p.import_table.register_import('builtin')
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
