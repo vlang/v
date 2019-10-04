@@ -61,9 +61,9 @@ fn (c Context) compare_versions() {
 	c.prepare_v( c.a , c.commit_after  )
 
 	os.chdir( c.workdir )
-	c.compare_v_performance( 'v     -o source.c compiler' )
+	c.compare_v_performance( 'v		-o source.c compiler' )
 	c.compare_v_performance( 'vprod -o source.c compiler' )
-	c.compare_v_performance( 'vprod -o binary   compiler' )
+	c.compare_v_performance( 'vprod -o binary	compiler' )
 }
 
 fn show_sizes_of_files(files []string) {
@@ -81,18 +81,22 @@ fn (c &Context) prepare_v( cdir string, commit string ) {
 	os.system('git checkout --quiet \'$commit\' ')
 
 	println('Making v and vprod compilers in $cdir')
+
 	run('make')
-	run('./v       -o v     compiler/ ')
+	run('./v	   -o v		compiler/ ')
 	run('./v -prod -o vprod compiler/ ')
-	run('cp v     v_stripped')
+
+	run('cp v	  v_stripped')
 	run('cp vprod vprod_stripped')
 	run('strip *_stripped')
-	run('cp v_stripped      v_stripped_upxed')
-	run('cp vprod_stripped  vprod_stripped_upxed')
+
+	run('cp v_stripped		v_stripped_upxed')
+	run('cp vprod_stripped	vprod_stripped_upxed')
 	run('upx -qqq --lzma v_stripped_upxed')
 	run('upx -qqq --lzma vprod_stripped_upxed')
-	show_sizes_of_files(["$cdir/v",     "$cdir/v_stripped",      "$cdir/v_stripped_upxed"])
-	show_sizes_of_files(["$cdir/vprod", "$cdir/vprod_stripped",  "$cdir/vprod_stripped_upxed"])
+
+	show_sizes_of_files(["$cdir/v",     "$cdir/v_stripped",     "$cdir/v_stripped_upxed"])
+	show_sizes_of_files(["$cdir/vprod", "$cdir/vprod_stripped", "$cdir/vprod_stripped_upxed"])
 	println("V version is: " + run("$cdir/v --version") + " , local source commit: " + run("git rev-parse --short  --verify HEAD") )
 	println('Source lines in compiler/ ' + run('wc compiler/*.v | tail -n -1') )
 }
@@ -114,7 +118,7 @@ fn (c Context) normalized_workpath_for_commit( commit string ) string {
 fn validate_commit_exists( commit string ){
 	cmd := 'git cat-file -t ' + "'" + commit + "'"
 	if !command_exits_with_zero_status(cmd) {
-		eprintln("Commit: '" +  commit + "' does not exist in the current repository.")
+		eprintln("Commit: '" + commit + "' does not exist in the current repository.")
 		exit(3)
 	}
 }
@@ -129,7 +133,7 @@ fn main(){
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
 	fp.limit_free_args(1,2)
-	show_help:=fp.bool('help',  false, 'Show this help screen')
+	show_help:=fp.bool('help', false, 'Show this help screen')
 	context.workdir = os.realpath( fp.string('workdir', '/tmp', 'A writable folder, where the comparison will be done.') )
 	if( show_help ){
 		println( fp.usage() )
