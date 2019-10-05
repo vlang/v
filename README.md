@@ -58,7 +58,7 @@ v up
 
 You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
 
-Otherwise follow these instructions:
+Otherwise, follow these instructions:
 
 [https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
 
