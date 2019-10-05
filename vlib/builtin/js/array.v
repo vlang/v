@@ -33,6 +33,11 @@ pub fn _make(len, cap, elm_size int) array {
 
 
 */
+
+pub fn _make(len, cap, elm_size int) array {
+	return array{}
+}
+
 fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	return val
 }
