@@ -579,12 +579,14 @@ fn (v mut V) add_v_files_to_compile() {
 	for file in v.get_builtin_files() {
 		// add builtins first
 		v.files << file
-		v.parse(file, .imports)
+		mut p := v.new_parser_from_file(file)
+		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse user imports
 	for file in v.get_user_files() {
-		v.parse(file, .imports)
+		mut p := v.new_parser_from_file(file)
+		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse lib imports
