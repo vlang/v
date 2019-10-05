@@ -275,3 +275,15 @@ fn test_find_index() {
 	assert d.index(`c`) == 2
 	assert d.index(`u`) == -1
 }
+
+fn test_multi() {
+	a := [[1,2,3],[4,5,6]]
+	assert a.len == 2
+	assert a[0].len == 3
+	assert a[0][0] == 1
+	assert a[0][2] == 3
+	assert a[1][2] == 6
+	// TODO
+	//b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
+	//assert b[0][0][0] == 1
+}	

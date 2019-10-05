@@ -40,9 +40,17 @@ CommonCHeaders = '
 
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
+// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
+#define TCCSKIP(x) x
+
 #ifdef __TINYC__
 #undef EMPTY_STRUCT_INITIALIZATION
 #define EMPTY_STRUCT_INITIALIZATION
+#undef EMPTY_ARRAY_OF_ELEMS
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef TCCSKIP
+#define TCCSKIP(x)
 #endif
 
 #define OPTION_CAST(x) (x)

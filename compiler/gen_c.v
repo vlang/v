@@ -317,18 +317,15 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 	if no_alloc {
 		new_arr += '_no_alloc'
 	}
-	if nr_elems == 0 && p.pref.ccompiler != 'tcc' {
-		p.gen(' 0 })')
+	if nr_elems == 0 {
+		p.gen(' TCCSKIP(0) })')
 	} else {
 		p.gen(' })')
 	}
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
-	if !p.first_pass() {
-		// Due to a tcc bug, the length needs to be specified.
-		// GCC crashes if it is.
-		cast := if p.pref.ccompiler == 'tcc' { '($typ[$nr_elems])' } else { '($typ[])' }
-		p.cgen.set_placeholder(new_arr_ph,		
-			'$new_arr($nr_elems, $nr_elems, sizeof($typ), $cast { ')
+	if !p.first_pass() {		
+		p.cgen.set_placeholder(new_arr_ph,
+			'$new_arr($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
 	}
 }	
 
