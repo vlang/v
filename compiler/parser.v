@@ -1419,20 +1419,41 @@ fn (p mut Parser) var_decl() {
 	mut vtoken_idxs := []int
 	
 	vtoken_idxs << p.cur_tok_index()
+	// first variable
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
+	mut new_vars := 0 
+	if names[0] != '_' && !p.known_var(names[0]) {
+		new_vars++
+	}
+	// more than 1 vars (multiple returns)
 	for p.tok == .comma {
 		p.check(.comma)
 		vtoken_idxs << p.cur_tok_index()
-		names << p.check_name()
+		name := p.check_name()
+		names << name
+		p.scanner.validate_var_name(name)
+		if name != '_' && !p.known_var(name) {
+			new_vars++
+		}
 	}
-	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
-	p.check_space(.decl_assign) // :=
-	// t := p.bool_expression()
-	p.var_decl_name = mr_var_name
-	t := p.gen_var_decl(mr_var_name, is_static)
+	is_assign := p.tok == .assign
+	is_decl_assign := p.tok == .decl_assign
+	if is_assign {
+		p.check_space(.assign) // =
+	} else if is_decl_assign {
+		p.check_space(.decl_assign) // :=
+	} else {
+		p.error('expected `=` or `:=`')
+	}
+	// all vars on left of `:=` already defined
+	if is_decl_assign && names.len > 1 && new_vars == 0 {
+		p.error('no new variables on left side of `:=`')
+	}
+	p.var_decl_name = if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
+	t := p.gen_var_decl(p.var_decl_name, is_static)
 	mut types := [t]
-	// multiple returns
+	// multiple returns types
 	if names.len > 1 {
 		// should we register __ret var?
 		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
@@ -1440,34 +1461,53 @@ fn (p mut Parser) var_decl() {
 	for i, name in names {
 		var_token_idx := vtoken_idxs[i]
 		if name == '_' {
-			if names.len == 1 {
-				p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
-			}
 			continue
 		}
 		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
-		// name := p.check_name()
-		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
-		if !p.builtin_mod && p.known_var(name) {
-			// v := p.cur_fn.find_var(name)
+		known_var := p.known_var(name)
+		// single var decl, already exists
+		if names.len == 1 && !p.builtin_mod && known_var {
 			p.error_with_token_index('redefinition of `$name`', var_token_idx)
+		}
+		// assignment, but var does not exist
+		if names.len > 1 && is_assign && !known_var {
+			suggested := p.find_misspelled_local_var(name, 50)
+			if suggested != '' {
+				p.error_with_token_index('undefined: `$name`. did you mean:$suggested', var_token_idx)
+			}
+			p.error_with_token_index('undefined: `$name`.', var_token_idx)
 		}
 		if name.len > 1 && contains_capital(name) {
 			p.error_with_token_index('variable names cannot contain uppercase letters, use snake_case instead', var_token_idx)
 		}
-		if names.len > 1 {
-			if names.len != types.len {
-				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
-			}
-			p.gen(';\n')
-			p.gen('$typ $name = ${mr_var_name}.var_$i')
+		// mismatched number of return & assignment vars
+		if names.len != types.len {
+			mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+			p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
 		}
-		// p.check_space(.decl_assign) // :=
-		// typ := p.gen_var_decl(name, is_static)
+		// multiple return
+		if names.len > 1 {
+			p.gen(';\n')
+			// assigment
+			if !p.builtin_mod && known_var {
+				v := p.find_var(name) or {
+					p.error_with_token_index('cannot find `$name`', var_token_idx)
+					break
+				}
+				p.check_types_with_token_index(typ, v.typ, var_token_idx)
+				if !v.is_mut {
+					p.error_with_token_index('`$v.name` is immutable', var_token_idx)
+				}
+				p.mark_var_changed(v)
+				p.gen('$name = ${p.var_decl_name}.var_$i')
+				continue
+			}
+			// decleration
+			p.gen('$typ $name = ${p.var_decl_name}.var_$i')
+		}
 		p.register_var(Var {
 			name: name
 			typ: typ
