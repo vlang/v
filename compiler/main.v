@@ -65,7 +65,6 @@ mut:
 	out_name_c string       // name of the temporary C file
 	files      []string     // all V files that need to be parsed and compiled
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
-	rdir       string       // abs dir
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
@@ -580,14 +579,12 @@ fn (v mut V) add_v_files_to_compile() {
 	for file in v.get_builtin_files() {
 		// add builtins first
 		v.files << file
-		mut p := v.new_parser_from_file(file)
-		p.parse(.imports)
+		v.parse(file, .imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse user imports
 	for file in v.get_user_files() {
-		mut p := v.new_parser_from_file(file)
-		p.parse(.imports)
+		v.parse(file, .imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 	}
 	// Parse lib imports
@@ -632,7 +629,7 @@ fn (v &V) get_builtin_files() []string {
 
 // get user files
 fn (v &V)  get_user_files() []string {
-	mut dir := v.rdir
+	mut dir := v.dir
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
@@ -909,7 +906,6 @@ fn new_v(args[]string) &V {
 	return &V{
 		os: _os
 		out_name: out_name
-		rdir: rdir
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)
