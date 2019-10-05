@@ -160,7 +160,6 @@ fn main() {
 		v.test_v()
 		return
 	}
-	println(os.args)
 	if v.pref.is_verbose {
 		println(args)
 	}
@@ -219,12 +218,14 @@ fn (v mut V) add_parser(parser Parser) {
 
 fn (v mut V) parse(file string, pass Pass) {
 	//println('parse($file, $pass)')
-	// find existing parser for file
 	for i, p in v.parsers {
-		if p.file_path == file {
+		if os.realpath(p.file_path) == os.realpath(file) {
 			v.parsers[i].parse(pass)
+			return
 		}	
 	}
+	mut p := v.new_parser_from_file(file)
+	p.parse(pass)
 }
 
 
@@ -684,12 +685,11 @@ fn (v mut V) parse_lib_imports() {
 			// Add all imports referenced by these libs
 			for file in vfiles {
 				if file in done_imports { continue }
-				mut p := v.new_parser_from_file(file)
-				p.parse(.imports)
+				v.parse(file, .imports)
 				done_imports << file
-				if p.import_table.module_name != mod {
-					verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
-				}
+				// if p.import_table.module_name != mod {
+				// 	verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
+				// }
 				//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 			}
 		}
@@ -745,19 +745,19 @@ fn new_v(args[]string) &V {
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
-
-	mut dir := args.last().replace('.$os.PathSeparator', '').trim(os.PathSeparator)
-	println('dir: $dir')
-	$if windows { dir = dir.replace('/', '\\') }
-	rdir := os.realpath( dir )
-	dir_name := os.filename( rdir )
 	
+	mut dir := args.last()
 	if 'run' in args {
 		dir = get_all_after(joined_args, 'run', '')
 	}
+	if dir.ends_with(os.PathSeparator) {
+		dir = dir.all_before_last(os.PathSeparator)
+	}
+	adir := os.realpath(dir)
 	if args.len < 2 {
 		dir = ''
 	}
+	
 	// println('new compiler "$dir"')
 	// build mode
 	mut build_mode := BuildMode.default_mode
@@ -766,10 +766,15 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o
-		mod = dir_name
+		mod = if adir.contains(os.PathSeparator) {
+			adir.all_after(os.PathSeparator)
+		} else {
+			adir
+		}
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
+		println('$out_name')
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
@@ -866,6 +871,9 @@ fn new_v(args[]string) &V {
 
 	cflags := get_cmdline_cflags(args)
 
+	rdir := os.realpath( dir )
+	rdir_name := os.filename( rdir )
+
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
 	pref := &Preferences {
@@ -890,7 +898,7 @@ fn new_v(args[]string) &V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (dir_name == 'compiler'  || dir.contains('vlib'))
+		building_v: !is_repl && (rdir_name == 'compiler'  || dir.contains('vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
@@ -923,7 +931,7 @@ fn env_vflags_and_os_args() []string {
 	 if os.args.len > 1 {
 	   args << os.args.right(1)
 	 }
-   }else{
+   } else{
 	 args << os.args
    }
    return args

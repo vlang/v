@@ -122,7 +122,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		file_name: path.all_after(os.PathSeparator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		is_script: (v.pref.is_script && path == v.rdir)
+		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path))
 	}
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = false
