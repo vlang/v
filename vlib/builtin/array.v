@@ -290,3 +290,42 @@ fn compare_ints(a, b &int) int {
 pub fn (a mut []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
+
+// Looking for an array index based on value. 
+// If there is, it will return the index and if not, it will return `-1`
+// TODO: Implement for all types
+pub fn (a []string) index(v string) int {
+	for i := 0; i < a.len; i++ {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (a []int) index(v int) int {
+	for i := 0; i < a.len; i++ {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (a []byte) index(v byte) int {
+	for i := 0; i < a.len; i++ {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (a []char) index(v char) int {
+	for i := 0; i < a.len; i++ {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}

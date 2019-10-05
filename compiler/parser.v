@@ -96,15 +96,14 @@ const (
 
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
-fn (v mut V) new_parser_string(text string, id string) Parser {
+fn (v mut V) new_parser_from_string(text string, id string) Parser {
 	mut p := v.new_parser(new_scanner(text), id)
 	p.scan_tokens()
-	v.add_parser(p)
 	return p
 }
 
 // new parser from file.
-fn (v mut V) new_parser_file(path string) Parser {
+fn (v mut V) new_parser_from_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
@@ -119,10 +118,10 @@ fn (v mut V) new_parser_file(path string) Parser {
 	mut p := v.new_parser(new_scanner_file(path), path)
 	p = { p|
 		file_path: path,
-		file_name: path.all_after('/'),
+		file_name: path.all_after(os.PathSeparator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		is_script: (v.pref.is_script && path == v.dir)
+		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path))
 	}
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = false
@@ -130,8 +129,6 @@ fn (v mut V) new_parser_file(path string) Parser {
 	v.cgen.file = path
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
-	v.add_parser(p)
-
 	return p
 }
 
@@ -505,7 +502,9 @@ fn (p mut Parser) const_decl() {
 		if p.first_pass()  && p.table.known_const(name) {
 			p.error('redefinition of `$name`')
 		}
-		p.table.register_const(name, typ, p.mod)
+		if p.first_pass() {
+			p.table.register_const(name, typ, p.mod)
+		}
 		if p.pass == .main {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
@@ -898,6 +897,7 @@ if p.scanner.line_comment != '' {
 }
 
 
+[inline]
 fn (p &Parser) first_pass() bool {
 	return p.pass == .decl
 }
@@ -1221,6 +1221,7 @@ fn (p mut Parser) gen(s string) {
 
 // Generate V header from V source
 fn (p mut Parser) vh_genln(s string) {
+	//println('vh $s')
 	p.vh_lines << s
 }
 

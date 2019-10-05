@@ -63,11 +63,12 @@ fn (v mut V) cc() {
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.build_mode == .build_module {
-		// Create the modules directory if it's not there.
-		if !os.file_exists(v_modules_path)  {
-			os.mkdir(v_modules_path)
+		// Create the modules & out directory if it's not there.
+		out_dir := '$v_modules_path${os.PathSeparator}$v.dir'
+		if !os.dir_exists(out_dir) {
+			os.mkdir(out_dir)
 		}
-		v.out_name = v_modules_path + v.dir + '.o' //v.out_name
+		v.out_name = '${out_dir}.o' //v.out_name
 		println('Building ${v.out_name}...')
 	}
 

@@ -724,7 +724,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.debug = true
 
-	fname := s.file_path.all_after('/')
+	fname := s.file_path.all_after(os.PathSeparator)
 	println('\n===DEBUG TOKENS $fname===')
 
 	for {
