@@ -219,11 +219,11 @@ fn (v mut V) parse(file string, pass Pass) int {
 			return i
 		}	
 	}
-	mut p := v.new_parser_from_file(file)
-	p.parse(pass)
-	if p.pref.autofree { p.scanner.text.free() free(p.scanner) }
-	v.add_parser(p)
-	return v.parsers.len-1
+	v.new_parser_from_file(file)
+	pid := v.parsers.len-1
+	v.parsers[pid].parse(pass)
+	if v.parsers[pid].pref.autofree { v.parsers[pid].scanner.text.free() free(v.parsers[pid].scanner) }
+	return pid
 }
 
 
@@ -580,16 +580,12 @@ fn (v mut V) add_v_files_to_compile() {
 		// add builtins first
 		v.files << file
 		mut p := v.new_parser_from_file(file)
-		p.parse(.imports)
-		//if p.pref.autofree { p.scanner.text.free() free(p.scanner) }
-		v.add_parser(p)
+		v.parse(file, .imports)
 	}
 	// Parse user imports
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
-		p.parse(.imports)
-		//if p.pref.autofree { p.scanner.text.free() free(p.scanner) }
-		v.add_parser(p)
+		v.parse(file, .imports)
 	}
 	// Parse lib imports
 	v.parse_lib_imports()
