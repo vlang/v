@@ -65,6 +65,7 @@ mut:
 	out_name_c string       // name of the temporary C file
 	files      []string     // all V files that need to be parsed and compiled
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
+	rdir       string       // abs dir
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
@@ -159,6 +160,7 @@ fn main() {
 		v.test_v()
 		return
 	}
+	println(os.args)
 	if v.pref.is_verbose {
 		println(args)
 	}
@@ -217,12 +219,12 @@ fn (v mut V) add_parser(parser Parser) {
 
 fn (v mut V) parse(file string, pass Pass) {
 	//println('parse($file, $pass)')
+	// find existing parser for file
 	for i, p in v.parsers {
 		if p.file_path == file {
 			v.parsers[i].parse(pass)
-			return
 		}	
-	}	
+	}
 }
 
 
@@ -566,7 +568,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
-		res << '$dir/$file'
+		res << '$dir${os.PathSeparator}$file'
 	}
 	return res
 }
@@ -596,15 +598,16 @@ fn (v mut V) add_v_files_to_compile() {
 	// resolve deps & add imports in correct order
 	for mod in v.resolve_deps().imports() {
 		// if mod == v.mod { continue }  // Building this module? Skip. TODO it's a hack.
-		if mod == 'main' { continue } // main files will get added last
+		if mod == 'builtin' { continue } // builtin already added
+		if mod == 'main' { continue }    // main files will get added last
 		
 		// use cached built module if exists
-		vh_path := '$v_modules_path/${mod}.vh'
-		if os.file_exists(vh_path) {
-			println('using cached module `$mod`: $vh_path')
-			v.files << vh_path
-			continue
-		}
+		// vh_path := '$v_modules_path/${mod}.vh'
+		// if os.file_exists(vh_path) {
+		// 	println('using cached module `$mod`: $vh_path')
+		// 	v.files << vh_path
+		// 	continue
+		// }
 		// standard module
 		vfiles := v.v_files_from_dir(v.find_module_path(mod))
 		for file in vfiles {
@@ -621,14 +624,14 @@ fn (v mut V) add_v_files_to_compile() {
 // get builtin files
 fn (v &V) get_builtin_files() []string {
 	$if js {
-		return v.v_files_from_dir('$v.vroot/vlib/builtin/js/')
+		return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin${os.PathSeparator}js')
 	}
-	return v.v_files_from_dir('$v.vroot/vlib/builtin/')
+	return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin')
 }
 
 // get user files
 fn (v &V)  get_user_files() []string {
-	mut dir := v.dir
+	mut dir := v.rdir
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
@@ -636,16 +639,16 @@ fn (v &V)  get_user_files() []string {
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
-	(dir.contains('/volt') || dir.contains('/c2volt'))// TODO
+	(dir.contains('${os.PathSeparator}volt') || dir.contains('${os.PathSeparator}c2volt'))// TODO
 	if is_test_with_imports {
 		user_files << dir
-		pos := dir.last_index('/')
-		dir = dir.left(pos) + '/'// TODO WHY IS THIS .neEDED?
+		pos := dir.last_index(os.PathSeparator)
+		dir = dir.left(pos) + os.PathSeparator// TODO WHY IS THIS .neEDED?
 	}
 	if dir.ends_with('.v') {
 		// Just compile one file and get parent dir
 		user_files << dir
-		dir = dir.all_before('/')
+		dir = dir.all_before('${os.PathSeparator}')
 	}
 	else {
 		// Add .v files from the directory being compiled
@@ -668,33 +671,31 @@ fn (v &V)  get_user_files() []string {
 // parse deps from already parsed builtin/user files
 fn (v mut V) parse_lib_imports() {
 	mut done_fits := []string
+	mut done_imports := []string
 	for {
-		for _, fit in v.table.file_imports {
-			if fit.file_path in done_fits { continue }
-			v.parse_file_imports(fit)
-			done_fits << fit.file_path
-		}
-		if v.table.file_imports.size == done_fits.len { break}
-	}
-}
-
-// parse imports from file import table
-fn (v mut V) parse_file_imports(fit &FileImportTable) {
-	for _, mod in fit.imports {
-		import_path := v.find_module_path(mod)
-		vfiles := v.v_files_from_dir(import_path)
-		if vfiles.len == 0 {
-			verror('cannot import module $mod (no .v files in "$import_path")')
-		}
-		// Add all imports referenced by these libs
-		for file in vfiles {
-			mut p := v.new_parser_from_file(file)
-			p.parse(.imports)
-			if p.import_table.module_name != mod {
-				verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
+	for _, fit in v.table.file_imports {
+		if fit.file_path in done_fits { continue }
+		for _, mod in fit.imports {
+			import_path := v.find_module_path(mod)
+			vfiles := v.v_files_from_dir(import_path)
+			if vfiles.len == 0 {
+				verror('cannot import module $mod (no .v files in "$import_path")')
 			}
-			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+			// Add all imports referenced by these libs
+			for file in vfiles {
+				if file in done_imports { continue }
+				mut p := v.new_parser_from_file(file)
+				p.parse(.imports)
+				done_imports << file
+				if p.import_table.module_name != mod {
+					verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
+				}
+				//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+			}
 		}
+		done_fits << fit.file_path
+	}
+	if v.table.file_imports.size == done_fits.len { break}
 	}
 }
 
@@ -745,12 +746,14 @@ fn new_v(args[]string) &V {
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
 
-	mut dir := args.last()
+	mut dir := args.last().replace('.$os.PathSeparator', '').trim(os.PathSeparator)
+	println('dir: $dir')
+	$if windows { dir = dir.replace('/', '\\') }
+	rdir := os.realpath( dir )
+	dir_name := os.filename( rdir )
+	
 	if 'run' in args {
 		dir = get_all_after(joined_args, 'run', '')
-	}
-	if dir.ends_with(os.PathSeparator) {
-		dir = dir.all_before_last(os.PathSeparator)
 	}
 	if args.len < 2 {
 		dir = ''
@@ -763,12 +766,7 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o
-		//mod = os.dir(dir)
-		mod = if dir.contains(os.PathSeparator) {
-			dir.all_after(os.PathSeparator)
-		} else {
-			dir
-		}
+		mod = dir_name
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
@@ -864,12 +862,9 @@ fn new_v(args[]string) &V {
 		//exit(1)
 	}
 	//println('out_name:$out_name')
-	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
+	mut out_name_c := os.realpath('${out_name}.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
-
-	rdir := os.realpath( dir )
-	rdir_name := os.filename( rdir )
 
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
@@ -895,7 +890,7 @@ fn new_v(args[]string) &V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (rdir_name == 'compiler'  || dir.contains('vlib'))
+		building_v: !is_repl && (dir_name == 'compiler'  || dir.contains('vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
@@ -906,6 +901,7 @@ fn new_v(args[]string) &V {
 	return &V{
 		os: _os
 		out_name: out_name
+		rdir: rdir
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)

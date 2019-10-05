@@ -7,7 +7,7 @@ module main
 import os
 
 const (
-	v_modules_path = os.home_dir() + '/.vmodules/'
+	v_modules_path = os.home_dir() + '.vmodules'
 )
 
 // add a module and its deps (module speficic dag method)
@@ -33,8 +33,8 @@ pub fn(graph &DepGraph) imports() []string {
 fn (v &V) module_path(mod string) string {
 	// submodule support
 	if mod.contains('.') {
-		//return mod.replace('.', os.PathSeparator)
-		return mod.replace('.', '/')
+		return mod.replace('.', os.PathSeparator)
+		// return mod.replace('.', '/')
 	}
 	return mod
 }
@@ -45,15 +45,15 @@ fn (v &V) module_path(mod string) string {
 fn (v &V) find_module_path(mod string) string {
 	mod_path := v.module_path(mod)
 	// First check for local modules in the same directory
-	mut import_path := os.getwd() + '/$mod_path'
+	mut import_path := os.getwd() + '${os.PathSeparator}$mod_path'
 	// Now search in vlib/
 	if !os.dir_exists(import_path) {
-		import_path = '$v.lang_dir/vlib/$mod_path'
+		import_path = '$v.lang_dir${os.PathSeparator}vlib${os.PathSeparator}$mod_path'
 	}
 	//println('ip=$import_path')
 	// Finally try modules installed with vpm (~/.vmodules)
 	if !os.dir_exists(import_path) {
-		import_path = '$v_modules_path/$mod_path'
+		import_path = '$v_modules_path${os.PathSeparator}$mod_path'
 		if !os.dir_exists(import_path){
 			verror('module "$mod" not found')
 		}
