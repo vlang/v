@@ -99,7 +99,6 @@ const (
 fn (v mut V) new_parser_from_string(text string, id string) Parser {
 	mut p := v.new_parser(new_scanner(text), id)
 	p.scan_tokens()
-	v.add_parser(p)
 	return p
 }
 
@@ -130,8 +129,6 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	v.cgen.file = path
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
-	v.add_parser(p)
-
 	return p
 }
 

@@ -65,7 +65,6 @@ mut:
 	out_name_c string       // name of the temporary C file
 	files      []string     // all V files that need to be parsed and compiled
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
-	rdir       string       // abs dir
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
@@ -208,24 +207,24 @@ fn main() {
 }
 
 fn (v mut V) add_parser(parser Parser) {
-	   for p in v.parsers {
-			   if p.id == parser.id {
-					   return
-			   }
-	   }
 	   v.parsers << parser
 }
 
-fn (v mut V) parse(file string, pass Pass) {
+// find existing parser or create new one. returns v.parsers index
+fn (v mut V) parse(file string, pass Pass) int {
 	//println('parse($file, $pass)')
 	for i, p in v.parsers {
 		if os.realpath(p.file_path) == os.realpath(file) {
 			v.parsers[i].parse(pass)
-			return
+			//if v.parsers[i].pref.autofree {	v.parsers[i].scanner.text.free()	free(v.parsers[i].scanner)	}
+			return i
 		}	
 	}
 	mut p := v.new_parser_from_file(file)
 	p.parse(pass)
+	//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+	v.add_parser(p)
+	return v.parsers.len-1
 }
 
 
@@ -342,6 +341,7 @@ fn (v mut V) compile() {
 	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
+	// v.parsers.add(vgen_parser)
 	v.log('Done parsing.')
 	// Write everything
 	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
@@ -583,12 +583,14 @@ fn (v mut V) add_v_files_to_compile() {
 		mut p := v.new_parser_from_file(file)
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+		v.add_parser(p)
 	}
 	// Parse user imports
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+		v.add_parser(p)
 	}
 	// Parse lib imports
 	v.parse_lib_imports()
@@ -632,7 +634,7 @@ fn (v &V) get_builtin_files() []string {
 
 // get user files
 fn (v &V)  get_user_files() []string {
-	mut dir := v.rdir
+	mut dir := v.dir
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
@@ -685,12 +687,12 @@ fn (v mut V) parse_lib_imports() {
 			// Add all imports referenced by these libs
 			for file in vfiles {
 				if file in done_imports { continue }
-				v.parse(file, .imports)
+				pid := v.parse(file, .imports)
 				done_imports << file
-				// if p.import_table.module_name != mod {
-				// 	verror('bad module name: $file was imported as `$mod` but it is defined as module `$p.import_table.module_name`')
-				// }
-				//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+				p_mod := v.parsers[pid].import_table.module_name
+				if p_mod != mod {
+					verror('bad module name: $file was imported as `$mod` but it is defined as module `$p_mod`')
+				}
 			}
 		}
 		done_fits << fit.file_path
@@ -909,7 +911,6 @@ fn new_v(args[]string) &V {
 	return &V{
 		os: _os
 		out_name: out_name
-		rdir: rdir
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)
