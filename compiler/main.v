@@ -340,7 +340,7 @@ fn (v mut V) compile() {
 	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
-	// v.add_parser(vgen_parser)
+	v.add_parser(vgen_parser)
 	v.log('Done parsing.')
 	// Write everything
 	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
