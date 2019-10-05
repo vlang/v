@@ -1389,6 +1389,17 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		typ := expr_type.replace('Option_', '')
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
+	else if expr_type[0]==`[` { 
+		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!`
+		expr := p.cgen.cur_line.right(pos).all_after('{').all_before('}')
+		left := p.cgen.cur_line.left(pos).all_before('=')
+		cline_pos := p.cgen.cur_line.right(pos)
+		etype := cline_pos.all_before(' {')
+		if p.assigned_type != p.expected_type {
+			p.error_with_token_index( 'incompatible types: $p.assigned_type != $p.expected_type', errtok)
+		}
+		p.cgen.resetln('memcpy(& $left, $etype{$expr}, sizeof( $left ) );')
+	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
@@ -2062,6 +2073,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		return 'void'
 	}
 	field_name := p.lit
+	fname_tidx := p.cur_tok_index()
 	p.fgen(field_name)
 	//p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
@@ -2094,7 +2106,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 			//println(field.name)
 		//}
 		//println('str_typ=="$str_typ"')
-		p.error('type `$typ.name` has no field or method `$field_name`')
+		p.error_with_token_index('type `$typ.name` has no field or method `$field_name`', fname_tidx)
 	}
 	mut dot := '.'
 	if str_typ.ends_with('*') || str_typ == 'FT_Face' { // TODO fix C ptr typedefs
@@ -2104,7 +2116,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	if has_field {
 		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
 		field := p.table.find_field(typ, struct_field) or {
-			p.error('missing field: $struct_field in type $typ.name')
+			p.error_with_token_index('missing field: $struct_field in type $typ.name', fname_tidx)
 			exit(1)
 		}
 		if !field.is_mut && !p.has_immutable_field {
@@ -2119,13 +2131,13 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		if !p.builtin_mod && !p.pref.translated && modifying && !is_vi
 			&& p.has_immutable_field {
 			f := p.first_immutable_field
-			p.error('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
+			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
 					'declare the field with `mut:`
 struct $f.parent_fn {
   mut:
 	$f.name $f.typ
 }
-')
+', fname_tidx)
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
@@ -2133,7 +2145,7 @@ struct $f.parent_fn {
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
-			p.error('cannot refer to unexported field `$struct_field` (type `$typ.name`)')
+			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)', fname_tidx)
 		}
 		p.gen(dot + struct_field)
 		p.next()
@@ -2141,7 +2153,7 @@ struct $f.parent_fn {
 	}
 	// method
 	method := p.table.find_method(typ, field_name) or {
-		p.error('could not find method `$field_name`') // should never happen
+		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
 	p.fn_call(method, method_ph, '', str_typ)

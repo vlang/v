@@ -53,7 +53,15 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// `foo := C.Foo{}` => `Foo foo;`
 	if !p.is_empty_c_struct_init && !typ.starts_with('['){
 		nt_gen += '='
+	} else if typ.starts_with('[') && typ[ typ.len-1 ] != `*` {
+		// a fixed_array initializer, like `v := [1.1, 2.2]!!`
+		// ... should translate to the following in C `f32 v[2] = {1.1, 2.2};`
+		initializer := p.cgen.cur_line.right(pos)
+		if initializer.len > 0 {
+			p.cgen.resetln(' = {' + initializer.all_after('{') )
+		}
 	}
+
 	if is_static {
 		nt_gen = 'static $nt_gen'
 	}
