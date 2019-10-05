@@ -1488,6 +1488,7 @@ fn (p mut Parser) var_decl() {
 			mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
 			p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
 		}
+		// multiple return
 		if names.len > 1 {
 			p.gen(';\n')
 			// assigment
@@ -1496,10 +1497,10 @@ fn (p mut Parser) var_decl() {
 					p.error_with_token_index('cannot find `$name`', var_token_idx)
 					break
 				}
+				p.check_types_with_token_index(typ, v.typ, var_token_idx)
 				if !v.is_mut {
 					p.error_with_token_index('`$v.name` is immutable', var_token_idx)
 				}
-				p.check_types_with_token_index(typ, v.typ, var_token_idx)
 				p.mark_var_changed(v)
 				p.gen('$name = ${p.var_decl_name}.var_$i')
 				continue
