@@ -557,9 +557,6 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac {
 			continue
 		}
-		if file.ends_with('_js.v') && v.os != .js {
-			continue
-		}
 		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
 			continue
 		}
