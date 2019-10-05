@@ -13,8 +13,10 @@ jobs:
       run: |
         brew install freetype glfw openssl
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-    - name: Build v
+    - name: Build V
       run:  make && ./v -o v compiler
+    - name: Build V using V
+      run:  ./v -o v2 compiler && ./v2 -o v3 compiler
     - name: Test v->c
       run: ./v test v
     - name: Test v->js
@@ -64,6 +66,7 @@ jobs:
     #    node-version: 12.x
     - name: Build
       run: |
+        gcc --version
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -gcc
     - name: Test

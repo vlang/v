@@ -40,9 +40,17 @@ CommonCHeaders = '
 
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
+// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
+#define TCCSKIP(x) x
+
 #ifdef __TINYC__
 #undef EMPTY_STRUCT_INITIALIZATION
 #define EMPTY_STRUCT_INITIALIZATION
+#undef EMPTY_ARRAY_OF_ELEMS
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef TCCSKIP
+#define TCCSKIP(x)
 #endif
 
 #define OPTION_CAST(x) (x)
@@ -122,6 +130,12 @@ typedef map map_string;
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map__exists(m, val)
+#define DEFAULT_EQUAL(a, b) (a == b)
+#define DEFAULT_NOT_EQUAL(a, b) (a != b)
+#define DEFAULT_LT(a, b) (a < b)
+#define DEFAULT_LE(a, b) (a <= b)
+#define DEFAULT_GT(a, b) (a > b)
+#define DEFAULT_GE(a, b) (a >= b)
 //================================== GLOBALS =================================*/
 byteptr g_str_buf;
 int load_so(byteptr);

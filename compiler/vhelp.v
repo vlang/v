@@ -45,6 +45,7 @@ Options/commands:
   -cflags <flags>   Pass additional C flags to the C backend compiler.
                     Example: -cflags `sdl2-config --cflags`
   -debug            Keep the generated C file for debugging in program.tmp.c even after compilation.
+  -shared           Build a shared library.
   -g                Show v line numbers in backtraces. Implies -debug.
   -obf              Obfuscate the resulting binary.
   -show_c_cmd       Print the full C compilation command and how much time it took.

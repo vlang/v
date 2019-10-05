@@ -6,12 +6,18 @@ const (
 	dot_ptr = '->'
 )
 
+/*
+fn (p mut Parser) gen_or_else(pos int) string {
+}
+*/
+
 // returns the type of the new variable
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// Generate expression to tmp because we need its type first
 	// `[typ] [name] = bool_expression();`
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
+	if typ.starts_with('...') { typ = typ.right(3) }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
@@ -68,10 +74,17 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
-// blank identifer assignment `_ = 111` 
+// blank identifer assignment `_ = 111`
 fn (p mut Parser) gen_blank_identifier_assign() {
+	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
+	expr := p.lit
+	is_indexer := p.peek() == .lsbr
+	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	if !is_indexer && !is_fn_call {
+		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+	}
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
 	tmp := p.get_tmp()
@@ -92,8 +105,13 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.genln('string err = $tmp . error;')
 		p.statements()
 		p.returns = false
+	} else {
+		if is_fn_call {
+			p.gen(';')
+		} else {
+			p.cgen.resetln('{$typ _ = $p.cgen.cur_line;}')
+		}
 	}
-	p.gen(';')
 }
 
 fn types_to_c(types []Type, table &Table) string {
@@ -220,9 +238,13 @@ fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, 
 	// Method returns (void*) => cast it to int, string, user etc
 	// number := *(int*)numbers.first()
 	if ftyp == 'void*' {
-		// array_int => int
-		cast = receiver_type.all_after('_')
-		cast = '*($cast*) '
+		if receiver_type.starts_with('array_') {
+			// array_int => int
+			cast = receiver_type.all_after('_')
+			cast = '*($cast*) '
+		}else{
+			cast = '(voidptr) '
+		}
 	}
 	p.cgen.set_placeholder(method_ph, '$cast $method_call')
 	//return method_call
@@ -256,17 +278,20 @@ fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
 
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (int $i = 0; $i < ${tmp}.len; $i++) {')
+	if val == '_' { return }
 	p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
 	p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
+	if val == '_' { return }
 	p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
 }
 
 fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
 	p.genln(';\nfor (int $i = $tmp; $i < $range_end; $i++) {')
+	if val == '_' { return }
 	p.genln('$var_type $val = $i;')
 }
 
@@ -277,7 +302,14 @@ fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	p.genln('string $i = ((string*)keys_$tmp .data)[l];')
 	// TODO don't call map_get() for each key, fetch values while traversing
 	// the tree (replace `map_keys()` above with `map_key_vals()`)
+	if val == '_' { return }
 	p.genln('$var_typ $val = $def; map_get($tmp, $i, & $val);')
+}
+
+fn (p mut Parser) gen_for_varg_header(i, varg, var_typ, val string) {
+	p.genln('for (int $i = 0; $i < ${varg}->len; $i++) {')
+	if val == '_' { return }
+	p.genln('$var_typ $val = (($var_typ *) $varg->args)[$i];')
 }
 
 fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_elems int) {
@@ -285,18 +317,15 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 	if no_alloc {
 		new_arr += '_no_alloc'
 	}
-	if nr_elems == 0 && p.pref.ccompiler != 'tcc' {
-		p.gen(' 0 })')
+	if nr_elems == 0 {
+		p.gen(' TCCSKIP(0) })')
 	} else {
 		p.gen(' })')
 	}
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
-	if !p.first_pass() {
-		// Due to a tcc bug, the length needs to be specified.
-		// GCC crashes if it is.
-		cast := if p.pref.ccompiler == 'tcc' { '($typ[$nr_elems])' } else { '($typ[])' }
-		p.cgen.set_placeholder(new_arr_ph,		
-			'$new_arr($nr_elems, $nr_elems, sizeof($typ), $cast { ')
+	if !p.first_pass() {		
+		p.cgen.set_placeholder(new_arr_ph,
+			'$new_arr($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
 	}
 }	
 

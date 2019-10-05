@@ -8,7 +8,8 @@ const (
 
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	p.gen('var $name /* typ */ = ')
-	typ := p.bool_expression()
+	mut typ := p.bool_expression()
+	if typ.starts_with('...') { typ = typ.right(3) }
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
@@ -34,9 +35,16 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 }
 
 fn (p mut Parser) gen_blank_identifier_assign() {
+	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
-	typ := p.bool_expression()
+	expr := p.lit
+	is_indexer := p.peek() == .lsbr
+	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	if !is_indexer && !is_fn_call {
+		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+	}
+	p.bool_expression()
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
@@ -99,22 +107,32 @@ fn (p mut Parser) gen_array_at(typ string, is_arr0 bool, fn_ph int) {
 
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < ${tmp}.length; $i++) {')
+	if val == '_' { return }
 	p.genln('var $val = $tmp [$i];')
 }
 
 fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
 	p.genln(';\nfor (var $i = $tmp; $i < $range_end; $i++) {')
+	if val == '_' { return }
 	p.genln('var /*$var_type*/ $val = $i;')
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	p.genln('for (var $i = 0; $i < $tmp .length; $i ++) {')
+	if val == '_' { return }
 	p.genln('var $val = $tmp[$i];')
 }
 
 fn (p mut Parser) gen_for_map_header(i, tmp, var_typ, val, typ string) {
 	p.genln('for (var $i in $tmp) {')
+	if val == '_' { return }
 	p.genln('var $val = $tmp[$i];')
+}
+
+fn (p mut Parser) gen_for_varg_header(i, varg, var_typ, val string) {
+	p.genln('for (var $i = 0; $i < ${varg}.len; $i++) {')
+	if val == '_' { return }
+	p.genln('var $val = ${varg}.args[$i];')
 }
 
 fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_elems int) {

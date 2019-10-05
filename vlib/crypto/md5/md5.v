@@ -87,14 +87,15 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 	return nn
 }
 
-pub fn (d &Digest) sum(b_in mut []byte) []byte {
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
+	mut b_out := b_in.clone()
 	for b in hash {
-		b_in << b
+		b_out << b
 	}
-	return *b_in
+	return b_out
 }
 
 pub fn (d mut Digest) checksum() []byte {
@@ -106,7 +107,7 @@ pub fn (d mut Digest) checksum() []byte {
 	// tmp := [1 + 63 + 8]byte{0x80}
     mut tmp := [byte(0)].repeat(1 + 63 + 8)
 	tmp[0] = 0x80
-	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
+	pad := int((55 - int(d.len)) % u64(64)) // calculate number of padding bytes
 	binary.little_endian_put_u64(mut tmp.right(1+pad), d.len<<u64(3)) // append length in bits
     d.write(tmp.left(1+pad+8))
 

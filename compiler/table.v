@@ -4,6 +4,7 @@
 
 module main
 
+import os
 import math
 import strings
 
@@ -20,9 +21,15 @@ mut:
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
+	varg_access  []VargAccess
 	//names        []Name
 }
 
+struct VargAccess {
+	fn_name string
+	tok_idx int
+	index   int
+}
 
 /*
 enum NameCategory {
@@ -96,8 +103,8 @@ mut:
 	scope_level     int
 	is_c            bool // todo remove once `typ` is `Type`, not string
 	is_moved        bool
-	scanner_pos     ScannerPos // TODO: use only scanner_pos, remove line_nr
 	line_nr         int
+	token_idx       int // this is a token index, which will be used by error reporting
 }
 
 struct Type {
@@ -126,6 +133,7 @@ struct TypeNode {
 	typ Type
 }
 
+/*
 // For debugging types
 fn (t Type) str() string {
 	mut s := 'type "$t.name" {'
@@ -146,6 +154,7 @@ fn (t Type) str() string {
 	s += '}\n'
 	return s
 }
+*/
 
 const (
 	CReserved = [
@@ -230,7 +239,7 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type('size_t')
 	t.register_type_with_parent('i8', 'int')
 	t.register_type_with_parent('byte', 'int')
-	t.register_type_with_parent('char', 'int') // for C functinos only, to avoid warnings
+	t.register_type_with_parent('char', 'int') // for C functions only, to avoid warnings
 	t.register_type_with_parent('i16', 'int')
 	t.register_type_with_parent('u16', 'u32')
 	t.register_type_with_parent('u32', 'int')
@@ -321,12 +330,18 @@ fn (p mut Parser) register_global(name, typ string) {
 	}
 }
 
+// Only for module functions, not methods.
+// That's why searching by fn name works.
 fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
 fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
+	// vararg
+	if typ.starts_with('...') && typ.len > 3 {
+		typ = typ.right(3)
+	}
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ.left(typ.len - 1)
@@ -337,12 +352,11 @@ fn (table &Table) known_type(typ_ string) bool {
 
 fn (table &Table) known_type_fast(t &Type) bool {
 	return t.name != '' && !t.is_placeholder
-	
 }
 
 fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
-	if !isnil(f.name.str) {
+	if f.name.str != 0 { // TODO
 		return f
 	}
 	return none
@@ -469,14 +483,10 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 	}
 	// TODO table.typesmap[type_name].methods << f
 	mut t := p.table.typesmap[type_name]
-	if type_name == 'str' {
-		println(t.methods.len)
-	}	
-	
+	if f.name != 'str' && f in t.methods  {
+		p.error('redefinition of method `${type_name}.$f.name`')
+	}
 	t.methods << f
-	if type_name == 'str' {
-		println(t.methods.len)
-	}	
 	p.table.typesmap[type_name] = t
 }
 
@@ -557,6 +567,13 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 	//p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
+	}
+	// variadic
+	if expected.starts_with('...') {
+		expected = expected.right(3)
+	}
+	if got.starts_with('...') {
+		got = got.right(3)
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
@@ -698,7 +715,7 @@ fn (table &Table) is_interface(name string) bool {
 // Do we have fn main()?
 fn (t &Table) main_exists() bool {
 	for _, f in t.fns {
-		if f.name == 'main' {
+		if f.name == 'main__main' {
 			return true
 		}
 	}
@@ -707,7 +724,7 @@ fn (t &Table) main_exists() bool {
 
 fn (t &Table) has_at_least_one_test_fn() bool {
 	for _, f in t.fns {
-		if f.name.starts_with('test_') {
+		if f.name.starts_with('main__test_') {
 			return true
 		}	
 	}
@@ -846,7 +863,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
-			m_path := m_parts.join('/')
+			m_path := m_parts.join(os.PathSeparator)
 			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
 				return m
 			}
@@ -855,16 +872,11 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn (table &Table) get_file_import_table(file_path string) FileImportTable {
-	// if file_path.clone() in table.file_imports {
-	// 	return table.file_imports[file_path.clone()]
-	// }
-	// just get imports. memory error when recycling import table
-	mut fit := new_file_import_table(file_path)
-	if file_path in table.file_imports {
-		fit.imports = table.file_imports[file_path].imports
+fn (table &Table) get_file_import_table(id string) FileImportTable {
+	if id in table.file_imports {
+		return table.file_imports[id]
 	}
-	return fit
+	return new_file_import_table(id)
 }
 
 fn new_file_import_table(file_path string) FileImportTable {

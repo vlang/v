@@ -8,13 +8,16 @@
 /v.exe
 /tools/vget
 /tools/vget.exe
+/tools/performance_compare
+/tools/performance_compare.exe
 *.exe
 *.o
 .*.c
 *.tmp.c
-
+vjs
 *.obj
-
+*.exp
+*.ilk
 *.pdb
 
 #
@@ -25,3 +28,4 @@
 
 # Thumbnails
 ._*
+.vrepl_temp.v

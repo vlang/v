@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Version = '0.1.20'
+	Version = '0.1.21'
 )
 
 enum BuildMode {
@@ -29,7 +29,6 @@ enum BuildMode {
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'msvc', 'android', 'js', 'solaris']
-	ModPath            = os.home_dir() + '/.vmodules/'
 )
 
 enum OS {
@@ -40,8 +39,8 @@ enum OS {
 	openbsd
 	netbsd
 	dragonfly
-	msvc
-	js
+	msvc // TODO not an OS
+	js   // TODO
 	android
 	solaris
 }
@@ -62,49 +61,54 @@ enum Pass {
 
 struct V {
 mut:
-	os         OS // the OS to build for
-	out_name_c string // name of the temporary C file
-	files      []string // all V files that need to be parsed and compiled
-	dir        string // directory (or file) being compiled (TODO rename to path?)
-	table      &Table // table with types, vars, functions etc
-	cgen       &CGen // C code generator
+	os         OS           // the OS to build for
+	out_name_c string       // name of the temporary C file
+	files      []string     // all V files that need to be parsed and compiled
+	dir        string       // directory (or file) being compiled (TODO rename to path?)
+	table      &Table       // table with types, vars, functions etc
+	cgen       &CGen        // C code generator
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
-	lang_dir   string // "~/code/v"
-	out_name   string // "program.exe"
+	lang_dir   string       // "~/code/v"
+	out_name   string       // "program.exe"
 	vroot      string
-	mod        string  // module being built with -lib
+	mod        string       // module being built with -lib
 	parsers    []Parser
-	vgen_file  os.File
+	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
 }
 
 struct Preferences {
 mut:
-	build_mode     BuildMode
-	nofmt          bool // disable vfmt
-	is_test        bool // `v test string_test.v`
-	is_script      bool // single file mode (`v program.v`), main function can be skipped
-	is_live        bool // for hot code reloading
-	is_so          bool
-	is_prof        bool // benchmark every function
-	translated     bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod        bool // use "-O2"
-	is_verbose     bool // print extra information with `v.log()`
-	obfuscate      bool // `v -obf program.v`, renames functions to "f_XXX"
-	is_repl        bool
-	is_run         bool
-	show_c_cmd     bool // `v -show_c_cmd` prints the C command to build program.v.c
-	sanitize       bool // use Clang's new "-fsanitize" option
-	is_debuggable  bool
-	is_debug       bool // keep compiled C files
-	no_auto_free   bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
+	build_mode    BuildMode
+	nofmt         bool   // disable vfmt
+	is_test       bool   // `v test string_test.v`
+	is_script     bool   // single file mode (`v program.v`), main function can be skipped
+	is_live       bool   // for hot code reloading
+	is_so         bool
+	is_prof       bool   // benchmark every function
+	translated    bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod       bool   // use "-O2"
+	is_verbose    bool   // print extra information with `v.log()`
+	obfuscate     bool   // `v -obf program.v`, renames functions to "f_XXX"
+	is_repl       bool
+	is_run        bool
+	show_c_cmd    bool   // `v -show_c_cmd` prints the C command to build program.v.c
+	sanitize      bool   // use Clang's new "-fsanitize" option
+	is_debuggable bool
+	is_debug      bool   // keep compiled C files
+	no_auto_free  bool   // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
 						 // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 						 // You could pass several -cflags XXX arguments. They will be merged with each other.
 						 // You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
-	ccompiler  string // the name of the used C compiler
-	building_v bool
-	autofree   bool
-	compress   bool
+	ccompiler     string // the name of the used C compiler
+	building_v    bool
+	autofree      bool
+	compress      bool
+	skip_builtin  bool   // Skips re-compilation of the builtin module
+						 // to increase compilation time.
+						 // This is on by default, since a vast majority of users do not
+						 // work on the builtin module itself.
+	
 }
 
 fn main() {
@@ -143,19 +147,12 @@ fn main() {
 	// TODO quit if the compiler is too old
 	// u := os.file_last_mod_unix('v')
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
-	// Copy the `vlib` directory to the tmp path.
-/*
-	// TODO
-	if !os.file_exists(TmpPath) && os.file_exists('vlib') {
-	}
-*/
+	//
 	// Just fmt and exit
 	if 'fmt' in args {
 		vfmt(args)
 		return
 	}
-	
-
 	// Construct the V object from command line arguments
 	mut v := new_v(args)
 	if args.join(' ').contains(' test v') {
@@ -204,20 +201,30 @@ fn main() {
 		}	
 		v.table.fns.free()
 		free(v.table)
-		//for p in parsers {
-			
-		//}	
+		//for p in parsers {}	
 		println('done!')
 	}	
 }
 
 fn (v mut V) add_parser(parser Parser) {
-       for p in v.parsers {
-               if p.file_path == parser.file_path {
-                       return
-               }
-       }
-       v.parsers << parser
+	   v.parsers << parser
+}
+
+// find existing parser or create new one. returns v.parsers index
+fn (v mut V) parse(file string, pass Pass) int {
+	//println('parse($file, $pass)')
+	for i, p in v.parsers {
+		if os.realpath(p.file_path) == os.realpath(file) {
+			v.parsers[i].parse(pass)
+			//if v.parsers[i].pref.autofree {	v.parsers[i].scanner.text.free()	free(v.parsers[i].scanner)	}
+			return i
+		}	
+	}
+	mut p := v.new_parser_from_file(file)
+	p.parse(pass)
+	//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+	v.add_parser(p)
+	return v.parsers.len-1
 }
 
 
@@ -226,7 +233,6 @@ fn (v mut V) compile() {
 	if os.user_os() != 'windows' && v.os == .msvc {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
-	
 	mut cgen := v.cgen
 	cgen.genln('// Generated by V')
 	if v.pref.is_verbose {
@@ -238,6 +244,7 @@ fn (v mut V) compile() {
 		println('all .v files:')
 		println(v.files)
 	}
+	/*
 	if v.pref.is_debug {
 		println('\nparsers:')
 		for q in v.parsers {
@@ -248,14 +255,10 @@ fn (v mut V) compile() {
 			println(q)
 		}	
 	}
+	*/
 	// First pass (declarations)
 	for file in v.files {
-		for i, p in v.parsers {
-			if p.file_path == file {
-				v.parsers[i].parse(.decl)
-				break
-			}	
-		}	
+		v.parse(file, .decl)
 	}
 	// Main pass
 	cgen.pass = Pass.main
@@ -321,12 +324,7 @@ fn (v mut V) compile() {
 	cgen.genln('this line will be replaced with definitions')
 	defs_pos := cgen.lines.len - 1
 	for file in v.files {
-		for i, p in v.parsers {
-			if p.file_path == file {
-				v.parsers[i].parse(.main)
-				break
-			}	
-		}	
+		v.parse(file, .main)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		// p.g.gen_x64()
 		// Format all files (don't format automatically generated vlib headers)
@@ -334,10 +332,16 @@ fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		}
 	}
-	// Close the file with generated V code (str() methods etc) and parse it
-	v.vgen_file.close()
-	mut vgen_parser := v.new_parser(vgen_file_name)
+	// Generate .vh if we are building a module
+	if v.pref.build_mode == .build_module {
+		v.generate_vh()
+	}
+	// parse generated V code (str() methods etc)
+	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str(), 'vgen')
+	// free the string builder which held the generated methods
+	v.vgen_buf.free()
 	vgen_parser.parse(.main)
+	// v.parsers.add(vgen_parser)
 	v.log('Done parsing.')
 	// Write everything
 	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
@@ -367,7 +371,7 @@ fn (v mut V) compile() {
 		}
 	}
 	$if js {
-		cgen.genln('main();')
+		cgen.genln('main__main();')
 	}	
 	cgen.save()
 	v.cc()
@@ -438,33 +442,51 @@ string _STR_TMP(const char *fmt, ...) {
 			// It can be skipped in single file programs
 			if v.pref.is_script {
 				//println('Generating main()...')
-				cgen.genln('int main() { init_consts();')
+				v.gen_main_start(true)
 				cgen.genln('$cgen.fn_main;')
-				cgen.genln('return 0; }')
+				v.gen_main_end('return 0')
 			}
 			else {
-				println('panic: function `main` is undeclared in the main module')
-				exit(1)
+				verror('function `main` is not declared in the main module')
 			}
 		}
 		else if v.pref.is_test {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
-			}	
-			// make sure there's at least on test function
+			}
 			if !v.table.has_at_least_one_test_fn() {
 				verror('test files need to have at least one test function')
-			}	
-			// Generate `main` which calls every single test function
-			cgen.genln('int main() { init_consts();')
+			}
+			// Generate a C `main`, which calls every single test function
+			v.gen_main_start(false)
 			for _, f in v.table.fns {
-				if f.name.starts_with('test_') {
+				if f.name.starts_with('main__test_') {
 					cgen.genln('$f.name();')
 				}
 			}
-			cgen.genln('return g_test_ok == 0; }')
+			v.gen_main_end('return g_test_ok == 0')
+		}
+		else if v.table.main_exists() {
+			v.gen_main_start(true)
+			cgen.genln('  main__main();')
+			v.gen_main_end('return 0')
 		}
 	}
+}
+
+fn (v mut V) gen_main_start(add_os_args bool){
+	v.cgen.genln('int main(int argc, char** argv) { ')
+	v.cgen.genln('  init_consts();')
+	if add_os_args && 'os' in v.table.imports {
+		v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
+	}
+	v.generate_hotcode_reloading_main_caller()
+	v.cgen.genln('')
+}
+fn (v mut V) gen_main_end(return_statement string){
+	v.cgen.genln('')
+	v.cgen.genln('  $return_statement;')
+	v.cgen.genln('}')
 }
 
 fn final_target_out_name(out_name string) string {
@@ -535,9 +557,6 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac {
 			continue
 		}
-		if file.ends_with('_js.v') && v.os != .js {
-			continue
-		}
 		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
 			continue
 		}
@@ -547,31 +566,89 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
-		res << '$dir/$file'
+		res << '$dir${os.PathSeparator}$file'
 	}
 	return res
 }
 
 // Parses imports, adds necessary libs, and then user files
 fn (v mut V) add_v_files_to_compile() {
+	// Parse builtin imports
+	for file in v.get_builtin_files() {
+		// add builtins first
+		v.files << file
+		mut p := v.new_parser_from_file(file)
+		p.parse(.imports)
+		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+		v.add_parser(p)
+	}
+	// Parse user imports
+	for file in v.get_user_files() {
+		mut p := v.new_parser_from_file(file)
+		p.parse(.imports)
+		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+		v.add_parser(p)
+	}
+	// Parse lib imports
+	v.parse_lib_imports()
+	if v.pref.is_verbose {
+		v.log('imports:')
+		println(v.table.imports)
+	}
+	// resolve deps & add imports in correct order
+	for mod in v.resolve_deps().imports() {
+		// if mod == v.mod { continue }  // Building this module? Skip. TODO it's a hack.
+		if mod == 'builtin' { continue } // builtin already added
+		if mod == 'main' { continue }    // main files will get added last
+		
+		// use cached built module if exists
+		// vh_path := '$v_modules_path/${mod}.vh'
+		// if os.file_exists(vh_path) {
+		// 	println('using cached module `$mod`: $vh_path')
+		// 	v.files << vh_path
+		// 	continue
+		// }
+		// standard module
+		vfiles := v.v_files_from_dir(v.find_module_path(mod))
+		for file in vfiles {
+			v.files << file
+		}
+	}
+	// add remaining main files last
+	for _, fit in v.table.file_imports {
+		if fit.module_name != 'main' { continue }
+		v.files << fit.file_path
+	}
+}
+
+// get builtin files
+fn (v &V) get_builtin_files() []string {
+	$if js {
+		return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin${os.PathSeparator}js')
+	}
+	return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin')
+}
+
+// get user files
+fn (v &V)  get_user_files() []string {
 	mut dir := v.dir
-	v.log('add_v_files($dir)')
+	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
 	mut user_files := []string
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
-	(dir.contains('/volt') || dir.contains('/c2volt'))// TODO
+	(dir.contains('${os.PathSeparator}volt') || dir.contains('${os.PathSeparator}c2volt'))// TODO
 	if is_test_with_imports {
 		user_files << dir
-		pos := dir.last_index('/')
-		dir = dir.left(pos) + '/'// TODO WHY IS THIS .neEDED?
+		pos := dir.last_index(os.PathSeparator)
+		dir = dir.left(pos) + os.PathSeparator// TODO WHY IS THIS .neEDED?
 	}
 	if dir.ends_with('.v') {
 		// Just compile one file and get parent dir
 		user_files << dir
-		dir = dir.all_before('/')
+		dir = dir.all_before('${os.PathSeparator}')
 	}
 	else {
 		// Add .v files from the directory being compiled
@@ -588,116 +665,49 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('user_files:')
 		println(user_files)
 	}
-	// Parse builtin imports
-	for file in v.files {
-		mut p := v.new_parser(file)
-		p.parse(.imports)
-		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-	}
-	// Parse user imports
-	for file in user_files {
-		mut p := v.new_parser(file)
-		p.parse(.imports)
-		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-	}
-	// Parse lib imports
-/*
-	if v.pref.build_mode == .default_mode {
-		// strange ( for mod in v.table.imports ) dosent loop all items
-		// for mod in v.table.imports {
-		for i := 0; i < v.table.imports.len; i++ {
-			mod := v.table.imports[i]
-			mod_path := v.module_path(mod)
-			import_path := '$ModPath/vlib/$mod_path'
+	return user_files
+}
+
+// parse deps from already parsed builtin/user files
+fn (v mut V) parse_lib_imports() {
+	mut done_fits := []string
+	mut done_imports := []string
+	for {
+	for _, fit in v.table.file_imports {
+		if fit.file_path in done_fits { continue }
+		for _, mod in fit.imports {
+			import_path := v.find_module_path(mod)
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
 				verror('cannot import module $mod (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
-				mut p := v.new_parser(file, Pass.imports)
-				p.parse()
-				
-	if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+				if file in done_imports { continue }
+				pid := v.parse(file, .imports)
+				done_imports << file
+				p_mod := v.parsers[pid].import_table.module_name
+				if p_mod != mod {
+					verror('bad module name: $file was imported as `$mod` but it is defined as module `$p_mod`')
+				}
 			}
 		}
+		done_fits << fit.file_path
 	}
-	else {
-*/
-	// strange ( for mod in v.table.imports ) dosent loop all items
-	// for mod in v.table.imports {
-	for i := 0; i < v.table.imports.len; i++ {
-		mod := v.table.imports[i]
-		import_path := v.find_module_path(mod)
-		vfiles := v.v_files_from_dir(import_path)
-		if vfiles.len == 0 {
-			verror('cannot import module $mod (no .v files in "$import_path")')
-		}
-		// Add all imports referenced by these libs
-		for file in vfiles {
-			mut p := v.new_parser(file)
-			p.parse(.imports)
-			//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-		}
+	if v.table.file_imports.size == done_fits.len { break}
 	}
-	if v.pref.is_verbose {
-		v.log('imports:')
-		println(v.table.imports)
-	}
-	// graph deps
+}
+
+// return resolved dep graph (order deps)
+fn (v &V) resolve_deps() &DepGraph {
 	mut dep_graph := new_dep_graph()
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
 		deps_resolved.display()
-		verror('Import cycle detected')
+		verror('import cycle detected')
 	}
-	// add imports in correct order
-	for mod in deps_resolved.imports() {
-		// Building this module? Skip. TODO it's a hack.
-		if mod == v.mod {
-			continue
-		}
-		mod_path := v.find_module_path(mod)
-		// If we are in default mode, we don't parse vlib .v files, but header .vh files in
-		// TmpPath/vlib
-		// These were generated by vfmt
-/*
-		if v.pref.build_mode == .default_mode || v.pref.build_mode == .build_module {
-			module_path = '$ModPath/vlib/$mod_p'
-		}
-*/
-		if mod == 'builtin' { continue } // builtin files were already added
-		vfiles := v.v_files_from_dir(mod_path)
-		for file in vfiles {
-			if !(file in v.files) {
-				v.files << file
-			}
-		}
-	}
-	// Add remaining user files
-	mut i := 0
-	mut j := 0
-	mut len := -1
-	for _, fit in v.table.file_imports {
-		// Don't add a duplicate; builtin files are always there
-		if fit.file_path in v.files || fit.module_name == 'builtin' {
-			i++
-			continue
-		}
-		if len == -1 {
-			len = i
-		}
-		j++
-		// TODO remove this once imports work with .build
-		if v.pref.build_mode == .build_module && j >= len / 2{
-			break
-		}
-		//println(fit)
-		//println('fit $fit.file_path')
-		v.files << fit.file_path
-		i++
-	}
+	return deps_resolved
 }
 
 fn get_arg(joined_args, arg, def string) string {
@@ -720,15 +730,6 @@ fn get_all_after(joined_args, arg, def string) string {
 	return res
 }
 
-fn (v &V) module_path(mod string) string {
-	// submodule support
-	if mod.contains('.') {
-		//return mod.replace('.', os.PathSeparator)
-		return mod.replace('.', '/')
-	}
-	return mod
-}
-
 fn (v &V) log(s string) {
 	if !v.pref.is_verbose {
 		return
@@ -737,14 +738,13 @@ fn (v &V) log(s string) {
 }
 
 fn new_v(args[]string) &V {
-	os.rm(vgen_file_name)
-	vgen_file := os.open_append(vgen_file_name) or { panic(err) }
-	vgen_file.writeln('module main\nimport strings')
+	mut vgen_buf := strings.new_builder(1000)
+	vgen_buf.writeln('module main\nimport strings')
 	
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
-
+	
 	mut dir := args.last()
 	if 'run' in args {
 		dir = get_all_after(joined_args, 'run', '')
@@ -752,9 +752,11 @@ fn new_v(args[]string) &V {
 	if dir.ends_with(os.PathSeparator) {
 		dir = dir.all_before_last(os.PathSeparator)
 	}
+	adir := os.realpath(dir)
 	if args.len < 2 {
 		dir = ''
 	}
+	
 	// println('new compiler "$dir"')
 	// build mode
 	mut build_mode := BuildMode.default_mode
@@ -763,24 +765,24 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o
-		//mod = os.dir(dir)
-		mod = if dir.contains(os.PathSeparator) {
-			dir.all_after(os.PathSeparator)
+		mod = if adir.contains(os.PathSeparator) {
+			adir.all_after(os.PathSeparator)
 		} else {
-			dir
+			adir
 		}
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod + '.o'
+		println('$out_name')
 		// Cross compiling? Use separate dirs for each os
-/*
+		/*
 		if target_os != os.user_os() {
 			os.mkdir('$TmpPath/vlib/$target_os')
 			out_name = '$TmpPath/vlib/$target_os/${base}.o'
 			println('target_os=$target_os user_os=${os.user_os()}')
 			println('!Cross compiling $out_name')
 		}
-*/
+		*/
 	}
 	// TODO embed_vlib is temporarily the default mode. It's much slower.
 	else if !('-embed_vlib' in args) {
@@ -845,43 +847,26 @@ fn new_v(args[]string) &V {
 		}
 	}
 	//println('OS=$_os')
-	builtin := 'builtin.v'
-	builtins := [
-	'array.v',
-	'string.v',
-	'builtin.v',
-	'int.v',
-	'utf8.v',
-	'map.v',
-	'option.v',
-	]
-	//println(builtins)
+
 	// Location of all vlib files
 	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
-		println('vlib not found. It should be next to the V executable. ')
-		println('Go to https://vlang.io to install V.')
-		exit(1)
+		println('vlib not found, downloading it...')
+		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
+		if ret != 0 {
+			println('failed to `git clone` vlib')
+			println('make sure you are online and have git installed')
+			exit(1)
+		}
+
+		//println('vlib not found. It should be next to the V executable. ')
+		//println('Go to https://vlang.io to install V.')
+		//exit(1)
 	}
 	//println('out_name:$out_name')
-	mut out_name_c := os.realpath( out_name ) + '.tmp.c'
-	mut files := []string
-	// Add builtin files
-	//if !out_name.contains('builtin.o') {
-		for builtin in builtins {
-			mut f := '$vroot/vlib/builtin/$builtin'
-			__ := 1
-			$if js {
-				f = '$vroot/vlib/builtin/js/$builtin'
-			}
-			// In default mode we use precompiled vlib.o, point to .vh files with signatures
-			if build_mode == .default_mode || build_mode == .build_module {
-				//f = '$TmpPath/vlib/builtin/${builtin}h'
-			}
-			files << f
-		}
+	mut out_name_c := os.realpath('${out_name}.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
 
@@ -923,7 +908,6 @@ fn new_v(args[]string) &V {
 	return &V{
 		os: _os
 		out_name: out_name
-		files: files
 		dir: dir
 		lang_dir: vroot
 		table: new_table(obfuscate)
@@ -932,7 +916,7 @@ fn new_v(args[]string) &V {
 		vroot: vroot
 		pref: pref
 		mod: mod
-		vgen_file: vgen_file
+		vgen_buf: vgen_buf
 	}
 }
 
@@ -945,7 +929,7 @@ fn env_vflags_and_os_args() []string {
 	 if os.args.len > 1 {
 	   args << os.args.right(1)
 	 }
-   }else{
+   } else{
 	 args << os.args
    }
    return args
@@ -1004,12 +988,12 @@ fn install_v(args[]string) {
 	if true {
 		//println('Building vget...')
 		os.chdir(vroot + '/tools')
-		vgetcompilation := os.exec('$vexec -o $vget vget.v') or {
+		vget_compilation := os.exec('$vexec -o $vget vget.v') or {
 			verror(err)
 			return
 		}
-		if vgetcompilation.exit_code != 0 {
-			verror( vgetcompilation.output )
+		if vget_compilation.exit_code != 0 {
+			verror( vget_compilation.output )
 			return
 		}
 	}
@@ -1023,27 +1007,57 @@ fn install_v(args[]string) {
 	}
 }
 
-fn (v &V) test_v() {
-	if !os.dir_exists('vlib') {
-		println('run "v test v" next to the vlib/ directory')
+fn (v &V) test_vget() {
+	/*
+	vexe := os.executable()
+	ret := os.system('$vexe install nedpals.args')
+	if ret != 0 {
+		println('failed to run v install')
 		exit(1)
 	}	
+	if !os.file_exists(v_modules_path + '/nedpals/args') {
+		println('v failed to install a test module')
+		exit(1)
+	}	
+	println('vget is OK')
+	*/
+}
+
+fn (v &V) test_v() {
 	args := env_vflags_and_os_args()
-	vexe := args[0]
+	vexe := os.executable()
+	parent_dir := os.dir(vexe)
+	if !os.dir_exists(parent_dir + '/vlib') {
+		println('vlib/ is missing, it must be next to the V executable')
+		exit(1)
+	}	
+	if !os.dir_exists(parent_dir + '/compiler') {
+		println('compiler/ is missing, it must be next to the V executable')
+		exit(1)
+	}	
+        // Make sure v.c can be compiled without warnings
+	$if mac {
+		os.system('$vexe -o v.c compiler')
+		if os.system('cc -Werror v.c') != 0 {
+			println('cc failed to build v.c without warnings')
+			exit(1)
+		}
+		println('v.c can be compiled without warnings. This is good :)')
+	}
 	// Emily: pass args from the invocation to the test
 	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
 	mut joined_args := args.right(1).join(' ')
 	joined_args = joined_args.left(joined_args.last_index('test'))
 	//	println('$joined_args')
 	mut failed := false
-	test_files := os.walk_ext('.', '_test.v')
+	test_files := os.walk_ext(parent_dir, '_test.v')
 
 	println('Testing...')
 	mut tmark := benchmark.new_benchmark()
 	for dot_relative_file in test_files {		
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
-		tmpcfilepath := file.replace('_test.v', '_test.tmp.c')
+		tmpc_filepath := file.replace('_test.v', '_test.tmp.c')
 		
 		mut cmd := '"$vexe" $joined_args -debug "$file"'
 		if os.user_os() == 'windows' { cmd = '"$cmd"' }
@@ -1063,17 +1077,20 @@ fn (v &V) test_v() {
 			tmark.ok()
 			println(tmark.step_message('$relative_file OK'))
 		}
-		os.rm( tmpcfilepath )
+		os.rm( tmpc_filepath )
 	}
 	tmark.stop()
 	println( tmark.total_message('running V tests') )
 
 	println('\nBuilding examples...')
-	examples := os.walk_ext('examples', '.v')
+	examples := os.walk_ext(parent_dir + '/examples', '.v')
 	mut bmark := benchmark.new_benchmark()
 	for relative_file in examples {
+		if relative_file.contains('vweb') {
+			continue
+		}	
 		file := os.realpath( relative_file )
-		tmpcfilepath := file.replace('.v', '.tmp.c')
+		tmpc_filepath := file.replace('.v', '.tmp.c')
 		mut cmd := '"$vexe" $joined_args -debug "$file"'
 		if os.user_os() == 'windows' { cmd = '"$cmd"' }
 		bmark.step()
@@ -1091,11 +1108,11 @@ fn (v &V) test_v() {
 			bmark.ok()
 			println(bmark.step_message('$relative_file OK'))
 		}
-		os.rm(tmpcfilepath)
+		os.rm(tmpc_filepath)
 	}
 	bmark.stop()
 	println( bmark.total_message('building examples') )
-	
+	v.test_vget()
 	if failed {
 		exit(1)
 	}

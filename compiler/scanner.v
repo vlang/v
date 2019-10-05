@@ -12,6 +12,8 @@ import (
 const (
 	single_quote = `\'`
 	double_quote = `"`
+	error_context_before = 2 // how many lines of source context to print before the pointer line
+	error_context_after = 2  // ^^^ same, but after
 )
 
 struct Scanner {
@@ -34,10 +36,14 @@ mut:
 	prev_tok Token
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
+	should_print_errors_in_color bool
+	should_print_relative_paths_on_error bool
 	quote byte // which quote is used to denote current string: ' or "
+	file_lines   []string // filled *only on error* by rescanning the source till the error (and several lines more)
 }
 
-fn new_scanner(file_path string) &Scanner {
+// new scanner from file.
+fn new_scanner_file(file_path string) &Scanner {
 	if !os.file_exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -46,7 +52,7 @@ fn new_scanner(file_path string) &Scanner {
 		verror('scanner: failed to open $file_path')
 		return 0
 	}
-
+		
 	// BOM check
 	if raw_text.len >= 3 {
 		c_text := raw_text.str
@@ -58,29 +64,21 @@ fn new_scanner(file_path string) &Scanner {
 		}
 	}
 
+	mut s := new_scanner(raw_text)
+	s.file_path = file_path
+
+	return s
+}
+
+// new scanner from string.
+fn new_scanner(text string) &Scanner {
 	return &Scanner {
-		file_path: file_path
-		text: raw_text
+		text: text
 		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
+		should_print_errors_in_color: true
+		should_print_relative_paths_on_error: true
 	}
-}
-
-
-struct ScannerPos {
-mut:
-   pos int
-   line_nr int
-}
-fn (s ScannerPos) str() string {
-	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} }'
-}
-fn (s &Scanner) get_scanner_pos() ScannerPos {
-	return ScannerPos{ pos: s.pos line_nr: s.line_nr }
-}
-fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
-	s.pos = scp.pos
-	s.line_nr = scp.line_nr
 }
 
 
@@ -221,26 +219,11 @@ fn (s mut Scanner) ident_number() string {
 	return s.ident_dec_number()
 }
 
-fn (s Scanner) has_gone_over_line_end() bool {
-	mut i := s.pos-1
-	for i >= 0 && !s.text[i].is_white() {
-		i--
-	}
-	for i >= 0 && s.text[i].is_white() {
-		if is_nl(s.text[i]) {
-			return true
-		}
-		i--
-	}
-	return false
-}
-
 fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
-			s.last_nl_pos = s.pos
-			s.line_nr++
+			s.inc_line_number()
 		}
 		s.pos++
 	}
@@ -264,7 +247,7 @@ fn (s mut Scanner) scan() ScanRes {
 	}
 	// End of $var, start next string
 	if s.inter_end {
-		if s.text[s.pos] == `\'` {
+		if s.text[s.pos] == s.quote { //single_quote {
 			s.inter_end = false
 			return scan_res(.str, '')
 		}
@@ -294,7 +277,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
 		if s.inside_string {
-			if next_char == `\'` {
+			if next_char == s.quote {
 				s.inter_end = true
 				s.inter_start = false
 				s.inside_string = false
@@ -384,7 +367,7 @@ fn (s mut Scanner) scan() ScanRes {
 		if s.inside_string {
 			s.pos++
 			// TODO UNNEEDED?
-			if s.text[s.pos] == `\'` {
+			if s.text[s.pos] == single_quote {
 				s.inside_string = false
 				return scan_res(.str, '')
 			}
@@ -438,22 +421,25 @@ fn (s mut Scanner) scan() ScanRes {
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
+			s.last_nl_pos = s.pos
 			return scan_res(.nl, '')
 		}
 	case `\n`:
+		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
 	case `.`:
 		if nextc == `.` {
 			s.pos++
+			if s.text[s.pos+1] == `.` {
+				s.pos++
+				return scan_res(.ellipsis, '')
+			}
 			return scan_res(.dotdot, '')
 		}
 		return scan_res(.dot, '')
 	case `#`:
 		start := s.pos + 1
-		for s.pos < s.text.len && s.text[s.pos] != `\n` {
-			s.pos++
-		}
-		s.line_nr++
+		s.ignore_line()
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
 			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
@@ -549,10 +535,7 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		if nextc == `/` {
 			start := s.pos + 1
-			for s.pos < s.text.len && s.text[s.pos] != `\n`{
-				s.pos++
-			}
-			s.line_nr++
+			s.ignore_line()
 			s.line_comment = s.text.substr(start + 1, s.pos)
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
@@ -571,7 +554,7 @@ fn (s mut Scanner) scan() ScanRes {
 					s.error('comment not terminated')
 				}
 				if s.text[s.pos] == `\n` {
-					s.line_nr++
+					s.inc_line_number()
 					continue
 				}
 				if s.expect('/*', s.pos) {
@@ -604,88 +587,17 @@ fn (s mut Scanner) scan() ScanRes {
 	return scan_res(.eof, '')
 }
 
-fn (s &Scanner) find_current_line_start_position() int {
-	if s.pos >= s.text.len { return s.pos }
-	mut linestart := s.pos
-	for {
-		if linestart <= 0  {
-			linestart = 1
-			break
-		}
-		if s.text[linestart] == 10 || s.text[linestart] == 13 {
-			linestart++
-			break
-		}
-		linestart--
-	}
-	return linestart
-}
-
-fn (s &Scanner) find_current_line_end_position() int {
-	if s.pos >= s.text.len { return s.pos }
-	mut lineend := s.pos
-	for {
-		if lineend >= s.text.len {
-			lineend = s.text.len
-			break
-		}
-		if s.text[lineend] == 10 || s.text[lineend] == 13 {
-			break
-		}
-		lineend++
-	}
-	return lineend
-}
-
 fn (s &Scanner) current_column() int {
-	return s.pos - s.find_current_line_start_position()
+	return s.pos - s.last_nl_pos
 }
-
-fn (s &Scanner) error(msg string) {
-	s.error_with_col(msg, 0)
-}
-
-fn (s &Scanner) error_with_col(msg string, col int) {
-	column := col-1
-	linestart := s.find_current_line_start_position()
-	lineend := s.find_current_line_end_position()
-	if s.should_print_line_on_error && lineend > linestart {
-		line := s.text.substr( linestart, lineend )
-		// The pointerline should have the same spaces/tabs as the offending
-		// line, so that it prints the ^ character exactly on the *same spot*
-		// where it is needed. That is the reason we can not just
-		// use strings.repeat(` `, column) to form it.
-		pointerline := line.clone()
-		mut pl := pointerline.str
-		for i,c in line {
-			pl[i] = ` `
-			if i == column { pl[i] = `^` }
-			else if c.is_space() { pl[i] = c  }
-		}
-		println(line)
-		println(pointerline)
-	}
-	fullpath := os.realpath( s.file_path )
-	_ = fullpath
-	// The filepath:line:col: format is the default C compiler
-	// error output format. It allows editors and IDE's like
-	// emacs to quickly find the errors in the output
-	// and jump to their source with a keyboard shortcut.
-	// Using only the filename leads to inability of IDE/editors
-	// to find the source file, when it is in another folder.
-	//println('${s.file_path}:${s.line_nr + 1}:${column+1}: $msg')
-	println('${fullpath}:${s.line_nr + 1}:${column+1}: $msg')
-	exit(1)
-}
-
 
 fn (s Scanner) count_symbol_before(p int, sym byte) int {
   mut count := 0
   for i:=p; i>=0; i-- {
-    if s.text[i] != sym {
-      break
-    }
-    count++
+	if s.text[i] != sym {
+	  break
+	}
+	count++
   }
   return count
 }
@@ -717,7 +629,7 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		if c == `\n` {
-			s.line_nr++
+			s.inc_line_number()
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == `\\` {
@@ -812,7 +724,7 @@ fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
 	s.debug = true
 
-	fname := s.file_path.all_after('/')
+	fname := s.file_path.all_after(os.PathSeparator)
 	println('\n===DEBUG TOKENS $fname===')
 
 	for {
@@ -831,6 +743,23 @@ fn (s mut Scanner) debug_tokens() {
 			break
 		}
 	}
+}
+
+
+fn (s mut Scanner) ignore_line() {
+	s.eat_to_end_of_line()
+	s.inc_line_number()
+}
+
+fn (s mut Scanner) eat_to_end_of_line(){
+	for s.pos < s.text.len && s.text[s.pos] != `\n` {
+		s.pos++
+	}
+}
+
+fn (s mut Scanner) inc_line_number() {
+	s.last_nl_pos = s.pos
+	s.line_nr++
 }
 
 fn is_name_char(c byte) bool {
@@ -862,6 +791,17 @@ fn good_type_name(s string) bool {
 		}
 	}
 	return true
+}
+
+// registration_date good
+// registrationdate  bad
+fn (s &Scanner) validate_var_name(name string) {
+	if name.len > 11 && !name.contains('_') {
+		s.error('bad variable name `$name`\n' +
+'looks like you have a multi-word name without separating them with `_`' +
+'\nfor example, use `registration_date` instead of `registrationdate` ')
+		
+	}	
 }
 
 

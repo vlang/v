@@ -230,8 +230,10 @@ pub fn (v mut V) cc_msvc() {
 	if v.pref.is_prod {
 		a << '/O2'
 		a << '/MD'
+		a << '/Zi'
+		a << '/DNDEBUG'
 	} else {
-		a << '/Z7'
+		a << '/Zi'
 		a << '/MDd'
 	}
 
@@ -255,7 +257,7 @@ pub fn (v mut V) cc_msvc() {
 		// 
 	}
 	else if v.pref.build_mode == .default_mode {
-		b := os.realpath( '$ModPath/vlib/builtin.obj' )
+		b := os.realpath( '$v_modules_path/vlib/builtin.obj' )
 		alibs << '"$b"'
 		if !os.file_exists(b) {
 			println('`builtin.obj` not found')
@@ -265,7 +267,7 @@ pub fn (v mut V) cc_msvc() {
 			if imp == 'webview' {
 				continue
 			}
-			alibs << '"' + os.realpath( '$ModPath/vlib/${imp}.obj' ) + '"'
+			alibs << '"' + os.realpath( '$v_modules_path/vlib/${imp}.obj' ) + '"'
 		}
 	}
 
@@ -320,12 +322,12 @@ pub fn (v mut V) cc_msvc() {
 	a << '/LIBPATH:"$r.ucrt_lib_path"'
 	a << '/LIBPATH:"$r.um_lib_path"'
 	a << '/LIBPATH:"$r.vs_lib_path"'
-	a << '/INCREMENTAL:NO' // Disable incremental linking
+	a << '/DEBUG:FULL' // required for prod builds to generate PDB
 
-	if !v.pref.is_prod {
-		a << '/DEBUG:FULL'
-	} else {
-		a << '/DEBUG:NONE'
+	if v.pref.is_prod {
+		a << '/INCREMENTAL:NO' // Disable incremental linking
+		a << '/OPT:REF'
+		a << '/OPT:ICF'
 	}
 
 	a << lib_paths
@@ -394,7 +396,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cmd := '""$msvc.full_cl_exe_path" /volatile:ms /Z7 $include_string /c $btarget $cfiles $atarget /Fo"$obj_path""'
+	cmd := '""$msvc.full_cl_exe_path" /volatile:ms /Zi /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path""'
 	//NB: the quotes above ARE balanced.
 	println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {

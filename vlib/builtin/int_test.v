@@ -11,6 +11,41 @@ fn test_const() {
 	assert u == 1 // make sure this works without the cast
 }
 
+fn test_float_equal_operator() {
+	mut a := f32(1)
+	a += 0.000001
+	a -= 0.000001
+	assert a == 1
+	assert !a.eqbit(1)
+	assert !(a != 1)
+	assert a.nebit(1)
+	a += 0.000001
+	assert !(a < 1)
+	assert !a.ltbit(1)
+	assert !(a <= 1)
+	assert !a.lebit(1)
+	assert a > 1
+	assert a.gtbit(1)
+	assert a >= 1
+	assert a.gebit(1)
+
+	a = f64(1)
+	a += 0.000001
+	a -= 0.000001
+	assert a == 1
+	assert !a.eqbit(1)
+	assert !(a != 1)
+	a += 0.000001
+	assert !(a < 1)
+	assert !a.ltbit(1)
+	assert !(a <= 1)
+	assert !a.lebit(1)
+	assert a > 1
+	assert a.gtbit(1)
+	assert a >= 1
+	assert a.gebit(1)
+}
+
 fn test_str_methods() {
 	assert i8(1).str() == '1'
 	assert i8(-1).str() == '-1'

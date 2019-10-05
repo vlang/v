@@ -4,12 +4,49 @@
 
 module builtin
 
+/*
+NB: A V string should be/is immutable from the point of view of
+    V user programs after it is first created. A V string is
+    also slightly larger than the equivalent C string because
+    the V string also has an integer length attached.
+
+    This tradeoff is made, since V strings are created just *once*,
+    but potentially used *many times* over their lifetime.
+
+    The V string implementation uses a struct, that has a .str field,
+    which points to a C style 0 terminated memory block. Although not
+    strictly necessary from the V point of view, that additional 0
+    is *very useful for C interoperability*.
+
+    The V string implementation also has an integer .len field,
+    containing the length of the .str field, excluding the
+    terminating 0 (just like the C's strlen(s) would do).
+
+    The 0 ending of .str, and the .len field, mean that in practice:
+      a) a V string s can be used very easily, wherever a
+         C string is needed, just by passing s.str,
+         without a need for further conversion/copying.
+
+      b) where strlen(s) is needed, you can just pass s.len,
+         without having to constantly recompute the length of s
+         *over and over again* like some C programs do. This is because
+         V strings are immutable and so their length does not change.
+
+    Ordinary V code *does not need* to be concerned with the
+    additional 0 in the .str field. The 0 *must* be put there by the
+    low level string creating functions inside this module.
+
+    Failing to do this will lead to programs that work most of the
+    time, when used with pure V functions, but fail in strange ways,
+    when used with modules using C functions (for example os and so on).
+*/
+
 struct string {
 //mut:
 	//hash_cache int
 pub:
-	str byteptr
-	len int
+	str byteptr // points to a C style 0 terminated string of bytes.
+	len int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 }
 
 struct ustring {
@@ -32,7 +69,7 @@ fn todo() { }
 // String data is reused, not copied.
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
-	if isnil(s) {
+	if s == 0 {
 		panic('tos(): nil string')
 	}
 	return string {
@@ -42,7 +79,7 @@ pub fn tos(s byteptr, len int) string {
 }
 
 pub fn tos_clone(s byteptr) string {
-	if isnil(s) {
+	if s == 0 {
 		panic('tos: nil string')
 	}
 	return tos2(s).clone()
@@ -51,12 +88,23 @@ pub fn tos_clone(s byteptr) string {
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts.
 // Used only internally.
 fn tos2(s byteptr) string {
-	if isnil(s) {
+	if s == 0 {
 		panic('tos2: nil string')
 	}
-	len := vstrlen(s)
-	res := tos(s, len)
-	return res
+	return string {
+		str: s
+		len: vstrlen(s)
+	}
+}
+
+fn tos3(s *C.char) string {
+	if s == 0 {
+		panic('tos3: nil string')
+	}
+	return string {
+		str: byteptr(s)
+		len: C.strlen(s)
+	}
 }
 
 pub fn (a string) clone() string {
@@ -1015,11 +1063,12 @@ pub fn (s string) repeat(count int) string {
 	if count <= 1 {
 		return s
 	}
-	ret := malloc(s.len * count + count)
-	C.strcpy(ret, s.str)
-	for count > 1 {
-		C.strcat(ret, s.str)
-		count--
+	mut ret := malloc(s.len * count + 1)
+	for i in 0..count {
+		for j in 0..s.len {
+			ret[i*s.len + j] = s[j]
+		}
 	}
+	ret[s.len * count] = 0
 	return string(ret)
 }
