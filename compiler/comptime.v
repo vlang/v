@@ -124,6 +124,7 @@ fn (p mut Parser) comp_time() {
 		pp.is_vweb = true
 		pp.set_current_fn( p.cur_fn ) // give access too all variables in current function
 		pp.parse(.main)
+		pp.v.add_parser(pp)
 		tmpl_fn_body := p.cgen.lines.slice(pos + 2, p.cgen.lines.len).join('\n').clone()
 		end_pos := tmpl_fn_body.last_index('Builder_str( sb )')  + 19 // TODO
 		p.cgen.lines = p.cgen.lines.left(pos)
@@ -287,7 +288,3 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	// This function will get parsee by V after the main pass.
 	p.cgen.fns << 'string ${typ.name}_str();'
 }
-
-
-
-
