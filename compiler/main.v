@@ -220,7 +220,6 @@ fn (v mut V) parse(file string, pass Pass) int {
 			return i
 		}	
 	}
-	println('new parser: $file')
 	mut p := v.new_parser_from_file(file)
 	p.parse(pass)
 	//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
