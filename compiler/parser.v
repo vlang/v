@@ -131,6 +131,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
 	v.add_parser(p)
+
 	return p
 }
 

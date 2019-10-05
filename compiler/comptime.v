@@ -287,7 +287,3 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	// This function will get parsee by V after the main pass.
 	p.cgen.fns << 'string ${typ.name}_str();'
 }
-
-
-
-
