@@ -1419,13 +1419,14 @@ fn (p mut Parser) var_decl() {
 	mut vtoken_idxs := []int
 	
 	vtoken_idxs << p.cur_tok_index()
-	// variable names, could be multiple return
+	// first variable
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
 	mut new_vars := 0 
 	if names[0] != '_' && !p.known_var(names[0]) {
 		new_vars++
 	}
+	// more than 1 vars (multiple returns)
 	for p.tok == .comma {
 		p.check(.comma)
 		vtoken_idxs << p.cur_tok_index()
@@ -1452,7 +1453,7 @@ fn (p mut Parser) var_decl() {
 	p.var_decl_name = if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
 	mut types := [t]
-	// multiple returns
+	// multiple returns types
 	if names.len > 1 {
 		// should we register __ret var?
 		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
@@ -1498,6 +1499,7 @@ fn (p mut Parser) var_decl() {
 				if !v.is_mut {
 					p.error_with_token_index('`$v.name` is immutable', var_token_idx)
 				}
+				p.check_types_with_token_index(typ, v.typ, var_token_idx)
 				p.mark_var_changed(v)
 				p.gen('$name = ${p.var_decl_name}.var_$i')
 				continue
