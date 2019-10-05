@@ -1,32 +1,45 @@
-**Please delete this information after reading it.*
+**Problem that you are trying to solve:**
 
-Please title your PR as follows: `time: fix foo bar`. Always start with the thing you are fixing, then describe the fix.
-Don't use past tense (e.g. "fixed foo bar").
+**What you did:**
 
-Explain what your PR does and why.
+======Please delete the message past this point after reading it======
 
-If you are adding a new function, please document it and add tests:
+Please title your PR as follows: `time: fix foo bar`.
+Always start with the thing you are fixing, then describe the fix.
+Use a verb's base form and never use past tense (Use "fix foo bar" instead of "fixed foo bar").
 
+Fill in the questions above the line.
+Refer to the GitHub issue if you were fixing an issue that is already reported. (Use the issue's ID like so: #1234)
+The what you did part should contain what you did from a higher-level stand point.
+Instead of mentioning that you used a linked list and flattened them, it's much more useful to say that you are using some algorithm.
+If it's a complex and uncommon, a link to the algorithm's Wikipedia page would be much appreciated to help understand the aim of your code.
+
+If you are adding a new function, please add documentation comments and add tests similar to the example below:
 ```
-// foo does foo and bar
-fn foo() {
+// foo creates bar, interacts with foo and returns bar.
+fn foo(a, b int) {
 
-// file_test.v
+// inside file_test.v
 fn test_foo() {
-    assert foo() == ...
-    ...
+	// Try to add as much edge cases as you can think of.
+	// This makes sure no one breaks your implementation in the future.
+	assert foo(0, 0) == ...
+	assert foo(0, 100) == ...
+	...
 }
 ```
 
 If you are fixing a bug, please add a test that covers it.
 
-Before submitting a PR, please run the tests with `make test`, and make sure V can still compile itself. Run this twice:
+Before submitting a PR, please run the builds and tests with `make all`, and make sure V can still compile itself by building it twice.
+Specifically run the following in the V's repository root:
+```
+$ ./v -o v compiler
+$ ./v -o v compiler
+```
 
-./v -o v compiler
-./v -o v compiler
+PRs are reviewed as soon as possible and should be handled within 24 hours unless there's a high load of them.
 
-I try to process PRs as soon as possible. They should be handled within 24 hours.
+Please don't add labels to PR. It's unnecessary for now.
 
-Applying labels to PRs is not needed.
-
-Thanks a lot for your contribution!
+Thanks a lot for your contribution towards V!
