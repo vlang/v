@@ -64,7 +64,7 @@ fn (v mut V) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		out_dir := v_modules_path + v.dir
+		out_dir := '$v_modules_path${os.PathSeparator}$v.dir'
 		if !os.dir_exists(out_dir) {
 			os.mkdir(out_dir)
 		}

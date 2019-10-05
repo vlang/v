@@ -119,10 +119,10 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	mut p := v.new_parser(new_scanner_file(path), path)
 	p = { p|
 		file_path: path,
-		file_name: path.all_after('/'),
+		file_name: path.all_after(os.PathSeparator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		is_script: (v.pref.is_script && path == v.dir)
+		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path))
 	}
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = false
