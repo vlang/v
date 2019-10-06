@@ -689,6 +689,12 @@ fn (p mut Parser) check_types_no_throw(got, expected string) bool {
 	return p._check_types(got, expected, false)
 }
 
+fn (p mut Parser) check_types_with_token_index(got, expected string, var_token_idx int) {
+	if !p._check_types(got, expected, false) {
+		p.error_with_token_index('expected type `$expected`, but got `$got`', var_token_idx)
+	}
+}
+
 fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) bool {
 	int_typ := p.table.find_type(interface_name)
 	typ := p.table.find_type(_typ)

@@ -1389,6 +1389,17 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		typ := expr_type.replace('Option_', '')
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
+	else if expr_type[0]==`[` {
+		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!`
+		expr := p.cgen.cur_line.right(pos).all_after('{').all_before('}')
+		left := p.cgen.cur_line.left(pos).all_before('=')
+		cline_pos := p.cgen.cur_line.right(pos)
+		etype := cline_pos.all_before(' {')
+		if p.assigned_type != p.expected_type {
+			p.error_with_token_index( 'incompatible types: $p.assigned_type != $p.expected_type', errtok)
+		}
+		p.cgen.resetln('memcpy(& $left, $etype{$expr}, sizeof( $left ) );')
+	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
@@ -1419,20 +1430,41 @@ fn (p mut Parser) var_decl() {
 	mut vtoken_idxs := []int
 	
 	vtoken_idxs << p.cur_tok_index()
+	// first variable
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
+	mut new_vars := 0
+	if names[0] != '_' && !p.known_var(names[0]) {
+		new_vars++
+	}
+	// more than 1 vars (multiple returns)
 	for p.tok == .comma {
 		p.check(.comma)
 		vtoken_idxs << p.cur_tok_index()
-		names << p.check_name()
+		name := p.check_name()
+		names << name
+		p.scanner.validate_var_name(name)
+		if name != '_' && !p.known_var(name) {
+			new_vars++
+		}
 	}
-	mr_var_name := if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
-	p.check_space(.decl_assign) // :=
-	// t := p.bool_expression()
-	p.var_decl_name = mr_var_name
-	t := p.gen_var_decl(mr_var_name, is_static)
+	is_assign := p.tok == .assign
+	is_decl_assign := p.tok == .decl_assign
+	if is_assign {
+		p.check_space(.assign) // =
+	} else if is_decl_assign {
+		p.check_space(.decl_assign) // :=
+	} else {
+		p.error('expected `=` or `:=`')
+	}
+	// all vars on left of `:=` already defined
+	if is_decl_assign && names.len > 1 && new_vars == 0 {
+		p.error('no new variables on left side of `:=`')
+	}
+	p.var_decl_name = if names.len > 1 { '__ret_'+names.join('_') } else { names[0] }
+	t := p.gen_var_decl(p.var_decl_name, is_static)
 	mut types := [t]
-	// multiple returns
+	// multiple returns types
 	if names.len > 1 {
 		// should we register __ret var?
 		types = t.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
@@ -1440,34 +1472,53 @@ fn (p mut Parser) var_decl() {
 	for i, name in names {
 		var_token_idx := vtoken_idxs[i]
 		if name == '_' {
-			if names.len == 1 {
-				p.error_with_token_index('no new variables on left side of `:=`', var_token_idx)
-			}
 			continue
 		}
 		typ := types[i]
 		// println('var decl tok=${p.strtok()} ismut=$is_mut')
-		// name := p.check_name()
-		// p.var_decl_name = name
 		// Don't allow declaring a variable with the same name. Even in a child scope
 		// (shadowing is not allowed)
-		if !p.builtin_mod && p.known_var(name) {
-			// v := p.cur_fn.find_var(name)
+		known_var := p.known_var(name)
+		// single var decl, already exists
+		if names.len == 1 && !p.builtin_mod && known_var {
 			p.error_with_token_index('redefinition of `$name`', var_token_idx)
+		}
+		// assignment, but var does not exist
+		if names.len > 1 && is_assign && !known_var {
+			suggested := p.find_misspelled_local_var(name, 50)
+			if suggested != '' {
+				p.error_with_token_index('undefined: `$name`. did you mean:$suggested', var_token_idx)
+			}
+			p.error_with_token_index('undefined: `$name`.', var_token_idx)
 		}
 		if name.len > 1 && contains_capital(name) {
 			p.error_with_token_index('variable names cannot contain uppercase letters, use snake_case instead', var_token_idx)
 		}
-		if names.len > 1 {
-			if names.len != types.len {
-				mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
-				p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
-			}
-			p.gen(';\n')
-			p.gen('$typ $name = ${mr_var_name}.var_$i')
+		// mismatched number of return & assignment vars
+		if names.len != types.len {
+			mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
+			p.error_with_token_index('assignment mismatch: ${names.len} variables but `$mr_fn` returns $types.len values', var_token_idx)
 		}
-		// p.check_space(.decl_assign) // :=
-		// typ := p.gen_var_decl(name, is_static)
+		// multiple return
+		if names.len > 1 {
+			p.gen(';\n')
+			// assigment
+			if !p.builtin_mod && known_var {
+				v := p.find_var(name) or {
+					p.error_with_token_index('cannot find `$name`', var_token_idx)
+					break
+				}
+				p.check_types_with_token_index(typ, v.typ, var_token_idx)
+				if !v.is_mut {
+					p.error_with_token_index('`$v.name` is immutable', var_token_idx)
+				}
+				p.mark_var_changed(v)
+				p.gen('$name = ${p.var_decl_name}.var_$i')
+				continue
+			}
+			// decleration
+			p.gen('$typ $name = ${p.var_decl_name}.var_$i')
+		}
 		p.register_var(Var {
 			name: name
 			typ: typ
@@ -1619,6 +1670,11 @@ fn (p mut Parser) name_expr() string {
 		p.next()
 	}
 	mut name := p.lit
+	// Raw string (`s := r'hello \n ')
+	if name == 'r' && p.peek() == .str {
+		p.string_expr()
+		return 'string'
+	}	
 	p.fgen(name)
 	// known_type := p.table.known_type(name)
 	orig_name := name
@@ -2022,6 +2078,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		return 'void'
 	}
 	field_name := p.lit
+	fname_tidx := p.cur_tok_index()
 	p.fgen(field_name)
 	//p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
@@ -2054,7 +2111,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 			//println(field.name)
 		//}
 		//println('str_typ=="$str_typ"')
-		p.error('type `$typ.name` has no field or method `$field_name`')
+		p.error_with_token_index('type `$typ.name` has no field or method `$field_name`', fname_tidx)
 	}
 	mut dot := '.'
 	if str_typ.ends_with('*') || str_typ == 'FT_Face' { // TODO fix C ptr typedefs
@@ -2064,7 +2121,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	if has_field {
 		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
 		field := p.table.find_field(typ, struct_field) or {
-			p.error('missing field: $struct_field in type $typ.name')
+			p.error_with_token_index('missing field: $struct_field in type $typ.name', fname_tidx)
 			exit(1)
 		}
 		if !field.is_mut && !p.has_immutable_field {
@@ -2079,13 +2136,13 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		if !p.builtin_mod && !p.pref.translated && modifying && !is_vi
 			&& p.has_immutable_field {
 			f := p.first_immutable_field
-			p.error('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
+			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
 					'declare the field with `mut:`
 struct $f.parent_fn {
   mut:
 	$f.name $f.typ
 }
-')
+', fname_tidx)
 		}
 		if !p.builtin_mod && p.mod != typ.mod {
 		}
@@ -2093,7 +2150,7 @@ struct $f.parent_fn {
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
-			p.error('cannot refer to unexported field `$struct_field` (type `$typ.name`)')
+			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)', fname_tidx)
 		}
 		p.gen(dot + struct_field)
 		p.next()
@@ -2101,7 +2158,7 @@ struct $f.parent_fn {
 	}
 	// method
 	method := p.table.find_method(typ, field_name) or {
-		p.error('could not find method `$field_name`') // should never happen
+		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
 	p.fn_call(method, method_ph, '', str_typ)
@@ -2134,14 +2191,14 @@ enum IndexType {
 }
 
 fn get_index_type(typ string) IndexType {
-	if typ.starts_with('map_') { return IndexType.map }
-	if typ == 'string' { return IndexType.str }
-	if typ.starts_with('array_')	|| typ == 'array' { return IndexType.array }
+	if typ.starts_with('map_') { return .map }
+	if typ == 'string' { return .str }
+	if typ.starts_with('array_')	|| typ == 'array' { return .array }
 	if typ == 'byte*' || typ == 'byteptr' || typ.contains('*') {
-		return IndexType.ptr
+		return .ptr
 	}
-	if typ[0] == `[` { return IndexType.fixed_array }
-	return IndexType.noindex
+	if typ[0] == `[` { return .fixed_array }
+	return .noindex
 }
 
 fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
@@ -2265,7 +2322,6 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		}
 	}
 	// TODO move this from index_expr()
-	// TODO if p.tok in ...
 	if (p.tok == .assign && !p.is_sql) || p.tok.is_assign() {
 		if is_indexer && is_str && !p.builtin_mod {
 			p.error('strings are immutable')
@@ -2320,6 +2376,13 @@ fn (p mut Parser) indot_expr() string {
 	if p.tok == .key_in {
 		p.fgen(' ')
 		p.check(.key_in)
+		//if p.pref.is_debug && p.tok == .lsbr {
+		if p.tok == .lsbr {
+			// a in [1,2,3] optimization => `a == 1 || a == 2 || a == 3`
+			// avoids an allocation
+			p.in_optimization(typ, ph)
+			return 'bool'
+		}	
 		p.fgen(' ')
 		p.gen('), ')
 		arr_typ := p.expression()
@@ -2710,11 +2773,15 @@ fn format_str(_str string) string {
 }
 
 fn (p mut Parser) string_expr() {
+	is_raw := p.tok == .name && p.lit == 'r'
+	if is_raw {
+		p.next()
+	}	
 	str := p.lit
 	// No ${}, just return a simple string
-	if p.peek() != .dollar {
-		p.fgen('\'$str\'')
-		f := format_str(str)
+	if p.peek() != .dollar || is_raw {
+		p.fgen("'$str'")
+		f := if is_raw { str.replace('\\', '\\\\') } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
@@ -2724,7 +2791,7 @@ fn (p mut Parser) string_expr() {
 			p.gen('"$f"')
 		}
 		else if p.is_sql {
-			p.gen('\'$str\'')
+			p.gen("'$str'")
 		}
 		else if p.is_js {
 			p.gen('"$f"')
@@ -2738,7 +2805,6 @@ fn (p mut Parser) string_expr() {
 	$if js {
 		p.error('js backend does not support string formatting yet')
 	}	
-	// tmp := p.get_tmp()
 	p.is_alloc = true // $ interpolation means there's allocation
 	mut args := '"'
 	mut format := '"'
