@@ -1,1 +1,0 @@
-Be nice and respectful.
