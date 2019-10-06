@@ -95,6 +95,7 @@ mut:
 	sanitize      bool   // use Clang's new "-fsanitize" option
 	is_debuggable bool
 	is_debug      bool   // keep compiled C files
+	is_stats      bool   // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free  bool   // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
 						 // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
@@ -108,7 +109,6 @@ mut:
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
-	
 }
 
 fn main() {
@@ -461,7 +461,9 @@ string _STR_TMP(const char *fmt, ...) {
 			v.gen_main_start(false)
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
-					cgen.genln('$f.name();')
+					if v.pref.is_stats { cgen.genln('eprintln(tos3("$f.name"));') }
+					cgen.genln('$f.name();')					
+					if v.pref.is_stats { cgen.genln('eprintln(tos3("$f.name OK"));') }
 				}
 			}
 			v.gen_main_end('return g_test_ok == 0')
@@ -883,6 +885,7 @@ fn new_v(args[]string) &V {
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_debuggable: '-g' in args
 		is_debug: '-debug' in args || '-g' in args
+		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args
 		is_live: '-live' in args
