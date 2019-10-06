@@ -464,3 +464,10 @@ fn test_repeat() {
 	s := 'V! '
 	assert s.repeat(5) == 'V! V! V! V! V! '
 }
+
+fn test_raw() {
+	raw := r'raw\nstring'
+	lines := raw.split('\n')
+	assert lines.len == 1
+	println('raw string: "$raw"')
+}	

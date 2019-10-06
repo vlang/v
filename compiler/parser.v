@@ -1670,6 +1670,11 @@ fn (p mut Parser) name_expr() string {
 		p.next()
 	}
 	mut name := p.lit
+	// Raw string (`s := r'hello \n ')
+	if name == 'r' && p.peek() == .str {
+		p.string_expr()
+		return 'string'
+	}	
 	p.fgen(name)
 	// known_type := p.table.known_type(name)
 	orig_name := name
@@ -2186,14 +2191,14 @@ enum IndexType {
 }
 
 fn get_index_type(typ string) IndexType {
-	if typ.starts_with('map_') { return IndexType.map }
-	if typ == 'string' { return IndexType.str }
-	if typ.starts_with('array_')	|| typ == 'array' { return IndexType.array }
+	if typ.starts_with('map_') { return .map }
+	if typ == 'string' { return .str }
+	if typ.starts_with('array_')	|| typ == 'array' { return .array }
 	if typ == 'byte*' || typ == 'byteptr' || typ.contains('*') {
-		return IndexType.ptr
+		return .ptr
 	}
-	if typ[0] == `[` { return IndexType.fixed_array }
-	return IndexType.noindex
+	if typ[0] == `[` { return .fixed_array }
+	return .noindex
 }
 
 fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
@@ -2762,11 +2767,15 @@ fn format_str(_str string) string {
 }
 
 fn (p mut Parser) string_expr() {
+	is_raw := p.tok == .name && p.lit == 'r'
+	if is_raw {
+		p.next()
+	}	
 	str := p.lit
 	// No ${}, just return a simple string
-	if p.peek() != .dollar {
-		p.fgen('\'$str\'')
-		f := format_str(str)
+	if p.peek() != .dollar || is_raw {
+		p.fgen("'$str'")
+		f := if is_raw { str.replace('\\', '\\\\') } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
@@ -2776,7 +2785,7 @@ fn (p mut Parser) string_expr() {
 			p.gen('"$f"')
 		}
 		else if p.is_sql {
-			p.gen('\'$str\'')
+			p.gen("'$str'")
 		}
 		else if p.is_js {
 			p.gen('"$f"')
@@ -2790,7 +2799,6 @@ fn (p mut Parser) string_expr() {
 	$if js {
 		p.error('js backend does not support string formatting yet')
 	}	
-	// tmp := p.get_tmp()
 	p.is_alloc = true // $ interpolation means there's allocation
 	mut args := '"'
 	mut format := '"'
