@@ -1584,10 +1584,8 @@ fn (p mut Parser) bterm() string {
 	is_ustr := typ=='ustring'
 	is_float := typ=='f64' || typ=='f32'
 	expr_type := typ
-
 	tok := p.tok
-	// if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
-	if tok == .eq || tok == .gt || tok == .lt || tok == .le || tok == .ge || tok == .ne {
+	if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
 		p.fgen(' ${p.tok.str()} ')
 		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
@@ -2465,9 +2463,7 @@ fn (p mut Parser) expression() string {
 		return 'int'
 	}
 	// + - | ^
-	for p.tok == .plus || p.tok == .minus || p.tok == .pipe || p.tok == .amp ||
-		 p.tok == .xor {
-		// for p.tok in [.plus, .minus, .pipe, .amp, .xor] {
+	for p.tok in [Token.plus, .minus, .pipe, .amp, .xor] {
 		tok_op := p.tok
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
