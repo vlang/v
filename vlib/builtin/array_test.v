@@ -287,3 +287,12 @@ fn test_multi() {
 	//b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
 	//assert b[0][0][0] == 1
 }	
+
+fn test_in() {
+	a := [1,2,3]
+	assert 1 in a
+	assert 2 in a
+	assert 3 in a
+	assert !(4 in a)
+	assert !(0 in a)
+}	

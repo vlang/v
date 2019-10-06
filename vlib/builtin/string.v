@@ -629,12 +629,8 @@ pub fn (a []string) to_c() voidptr {
 }
 */
 
-fn is_space(c byte) bool {
-	return c in [` `,`\n`,`\t`,`\v`,`\f`,`\r`]
-}
-
 pub fn (c byte) is_space() bool {
-	return is_space(c)
+	return c in [` `,`\n`,`\t`,`\v`,`\f`,`\r`]
 }
 
 pub fn (s string) trim_space() string {

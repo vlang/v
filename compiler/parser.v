@@ -1389,7 +1389,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		typ := expr_type.replace('Option_', '')
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
-	else if expr_type[0]==`[` { 
+	else if expr_type[0]==`[` {
 		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!`
 		expr := p.cgen.cur_line.right(pos).all_after('{').all_before('}')
 		left := p.cgen.cur_line.left(pos).all_before('=')
@@ -1433,7 +1433,7 @@ fn (p mut Parser) var_decl() {
 	// first variable
 	names << p.check_name()
 	p.scanner.validate_var_name(names[0])
-	mut new_vars := 0 
+	mut new_vars := 0
 	if names[0] != '_' && !p.known_var(names[0]) {
 		new_vars++
 	}
@@ -2322,7 +2322,6 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		}
 	}
 	// TODO move this from index_expr()
-	// TODO if p.tok in ...
 	if (p.tok == .assign && !p.is_sql) || p.tok.is_assign() {
 		if is_indexer && is_str && !p.builtin_mod {
 			p.error('strings are immutable')
@@ -2377,6 +2376,13 @@ fn (p mut Parser) indot_expr() string {
 	if p.tok == .key_in {
 		p.fgen(' ')
 		p.check(.key_in)
+		//if p.pref.is_debug && p.tok == .lsbr {
+		if p.tok == .lsbr {
+			// a in [1,2,3] optimization => `a == 1 || a == 2 || a == 3`
+			// avoids an allocation
+			p.in_optimization(typ, ph)
+			return 'bool'
+		}	
 		p.fgen(' ')
 		p.gen('), ')
 		arr_typ := p.expression()
