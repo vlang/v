@@ -64,6 +64,22 @@ pub fn (b mut Benchmark) ok() {
 	b.nok++
 }
 
+pub fn (b mut Benchmark) fail_many(n int) {
+	b.step_end_time = benchmark.now()
+	b.ntotal+=n
+	b.nfail+=n
+}
+
+pub fn (b mut Benchmark) ok_many(n int) {
+	b.step_end_time = benchmark.now()
+	b.ntotal+=n
+	b.nok+=n
+}
+
+pub fn (b mut Benchmark) neither_fail_nor_ok() {
+	b.step_end_time = benchmark.now()
+}
+
 pub fn (b mut Benchmark) step_message(msg string) string {
 	return b.tdiff_in_ms(msg, b.step_start_time, b.step_end_time)
 }
@@ -76,6 +92,9 @@ pub fn (b mut Benchmark) total_message(msg string) string {
 	return b.tdiff_in_ms(tmsg, b.bench_start_time, b.bench_end_time)
 }
 
+pub fn (b mut Benchmark) total_duration() i64 {
+	return (b.bench_end_time - b.bench_start_time)
+}
 ////////////////////////////////////////////////////////////////////
 
 fn (b mut Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {

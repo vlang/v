@@ -181,7 +181,12 @@ fn main() {
 		return
 	}
 
-	v.compile()
+	mut tmark := benchmark.new_benchmark()
+	v.compile()	
+	if v.pref.is_stats {
+		tmark.stop()
+		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
+	}
 
 	if v.pref.is_test {
 		v.run_compiled_executable_and_exit()
@@ -309,7 +314,8 @@ fn (v mut V) compile() {
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		//if v.pref.is_test {
 		$if !js {
-			cgen.genln('int g_test_ok = 1; ')
+			cgen.genln('int g_test_oks = 0;')
+			cgen.genln('int g_test_fails = 0;')
 		}
 		if imports_json {
 			cgen.genln('
@@ -466,12 +472,12 @@ string _STR_TMP(const char *fmt, ...) {
 				if f.name.starts_with('main__test_') {
 					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
 					cgen.genln('$f.name();')					
-					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt, tos3("$f.name"));') }
+					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
 				}
 			}
 			if v.pref.is_stats { cgen.genln('BenchedTests_end_testing(&bt);') }
 			
-			v.gen_main_end('return g_test_ok == 0')
+			v.gen_main_end('return g_test_fails == 0')
 		}
 		else if v.table.main_exists() {
 			v.gen_main_start(true)
