@@ -1118,16 +1118,16 @@ fn (v &V) test_v() {
 		r := os.exec(cmd) or {
 			failed = true
 			bmark.fail()
-			println(bmark.step_message('$relative_file FAIL'))
+			println(bmark.step_message('$relative_file $fail'))
 			continue
 		}
 		if r.exit_code != 0 {
 			failed = true
 			bmark.fail()
-			println(bmark.step_message('$relative_file FAIL \n`$file`\n (\n$r.output\n)'))
+			println(bmark.step_message('$relative_file $fail \n`$file`\n (\n$r.output\n)'))
 		} else {
 			bmark.ok()
-			println(bmark.step_message('$relative_file OK'))
+			println(bmark.step_message('$relative_file $ok'))
 		}
 		os.rm(tmpc_filepath)
 	}
