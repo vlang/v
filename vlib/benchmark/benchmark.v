@@ -88,7 +88,7 @@ pub fn (b mut Benchmark) step_message(msg string) string {
 pub fn (b mut Benchmark) total_message(msg string) string {
 	mut tmsg := '$msg \n ok, fail, total = ' +
 		term.ok_message('${b.nok:5d}') + ', ' +
-		term.fail_message('${b.nfail:5d}') + ', ' +
+		if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' +
 		'${b.ntotal:5d}'
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
