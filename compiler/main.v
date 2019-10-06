@@ -459,13 +459,18 @@ string _STR_TMP(const char *fmt, ...) {
 			}
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
+			
+			if v.pref.is_stats { cgen.genln('BenchedTests bt = main__start_testing();') }
+			
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
-					if v.pref.is_stats { cgen.genln('eprintln(tos3("$f.name"));') }
+					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
 					cgen.genln('$f.name();')					
-					if v.pref.is_stats { cgen.genln('eprintln(tos3("$f.name OK"));') }
+					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt, tos3("$f.name"));') }
 				}
 			}
+			if v.pref.is_stats { cgen.genln('BenchedTests_end_testing(&bt);') }
+			
 			v.gen_main_end('return g_test_ok == 0')
 		}
 		else if v.table.main_exists() {
@@ -638,6 +643,11 @@ fn (v &V)  get_user_files() []string {
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
 	mut user_files := []string
+
+	if v.pref.is_test && v.pref.is_stats {
+		user_files << '/v/nv/vlib/benchmark/tests/always_imported.v'
+	}
+	
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
