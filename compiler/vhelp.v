@@ -70,8 +70,4 @@ Options/commands:
 /*
 - To disable automatic formatting:
 v -nofmt file.v
-
-- To build a program with an embedded vlib  (use this if you do not have prebuilt vlib libraries or if you
-are working on vlib)
-v -embed_vlib file.v
 */

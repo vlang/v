@@ -254,7 +254,7 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 			sptoken.pos += tcol
 		}
 		s.ignore_line() s.eat_single_newline()
-		sline := s.text.substr( prevlinepos, s.pos ).trim_right('\r\n')
+		sline := s.text.substr( prevlinepos, s.pos )//.trim_right('\r\n')
 		s.file_lines << sline
 	}
 	//////////////////////////////////////////////////

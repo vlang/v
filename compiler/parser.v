@@ -51,7 +51,6 @@ mut:
 	tmp_cnt        int
 	is_script      bool
 	builtin_mod    bool
-	vh_lines       []string
 	inside_if_expr bool
 	inside_unwrapping_match_statement bool
 	inside_return_expr bool
@@ -73,7 +72,7 @@ mut:
 	v_script bool // "V bash", import all os functions into global space
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization
 	is_alloc   bool // Whether current expression resulted in an allocation
-	is_const_literal bool // `1`, `2.0` etc, so that `u64 == 0` works
+	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
 	cur_gen_type string // "App" to replace "T" in current generic function
 	is_vweb bool
 	is_sql bool
@@ -81,6 +80,7 @@ mut:
 	sql_i int  // $1 $2 $3
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
+	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
 }
 
 const (
@@ -100,7 +100,6 @@ fn (v mut V) new_parser_from_string(text string, id string) Parser {
 	return p
 }
 
-// new parser from file.
 fn (v mut V) new_parser_from_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
@@ -119,7 +118,8 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		file_name: path.all_after(os.PathSeparator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path))
+		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path)),
+		is_vh: path.ends_with('.vh')
 	}
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = false
@@ -249,6 +249,14 @@ fn (p mut Parser) parse(pass Pass) {
 		p.fspace()
 		p.mod = p.check_name()
 	}
+	//
+	
+	p.cgen.nogen = false
+	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
+		//println('skipping $p.mod (v.mod = $p.v.mod)')
+		p.cgen.nogen = true
+		//defer { p.cgen.nogen = false }
+	}	
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
@@ -343,16 +351,15 @@ fn (p mut Parser) parse(pass Pass) {
 			mut g := p.table.cgen_name_type_pair(name, typ)
 			if p.tok == .assign {
 				p.next()
-				// p.gen(' = ')
 				g += ' = '
-				p.cgen.start_tmp()
-				p.bool_expression()
-				// g += '<<< ' + p.cgen.end_tmp() + '>>>'
-				g += p.cgen.end_tmp()
+				_, expr := p.tmp_expr()
+				g += expr
 			}
 			// p.genln('; // global')
 			g += '; // global'
-			p.cgen.consts << g
+			if !p.cgen.nogen {
+				p.cgen.consts << g
+			}
 		case TokenKind.eof:
 			//p.log('end of parse()')
 			// TODO: check why this was added? everything seems to work
@@ -484,27 +491,36 @@ fn (p mut Parser) const_decl() {
 	p.fgenln('')
 	p.fmt_inc()
 	for p.tok == .name {
-		if p.lit == '_' && p.peek() == .assign {
+		if p.lit == '_' && p.peek() == .assign && !p.cgen.nogen {
 			p.gen_blank_identifier_assign()
+			//if !p.cgen.nogen {
 			p.cgen.consts_init << p.cgen.cur_line.trim_space()
 			p.cgen.resetln('')
+			//}
 			continue
 		}
-		// `Age = 20`
-		mut name := p.check_name()
+		mut name := p.check_name()		// `Age = 20`
 		//if ! (name[0] >= `A` && name[0] <= `Z`) {
 			//p.error('const name must be capitalized')
 		//}
 		name = p.prepend_mod(name)
-		p.check_space(.assign)
-		typ := p.expression()
+		mut typ := ''
+		if p.is_vh {
+			// .vh files don't have const values, just types: `const (a int)`
+			typ = p.get_type()
+			p.table.register_const(name, typ, p.mod)
+			continue // Don't generate C code when building a .vh file
+		} else {
+			p.check_space(.assign)
+			typ = p.expression()
+		}	
 		if p.first_pass()  && p.table.known_const(name) {
 			p.error('redefinition of `$name`')
 		}
 		if p.first_pass() {
 			p.table.register_const(name, typ, p.mod)
 		}
-		if p.pass == .main {
+		if p.pass == .main && !p.cgen.nogen {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
 			// output a #define so that we don't pollute the binary with unnecessary global vars
@@ -1219,11 +1235,6 @@ fn (p mut Parser) gen(s string) {
 }
 
 // Generate V header from V source
-fn (p mut Parser) vh_genln(s string) {
-	//println('vh $s')
-	p.vh_lines << s
-}
-
 fn (p mut Parser) statement(add_semi bool) string {
 	if p.returns && !p.is_vweb {
 		p.error('unreachable code')
@@ -2806,7 +2817,7 @@ fn (p mut Parser) string_expr() {
 			p.gen('"$f"')
 		}
 		else {
-			p.gen('tos2((byte*)"$f")')
+			p.gen('tos3("$f")')
 		}
 		p.next()
 		return

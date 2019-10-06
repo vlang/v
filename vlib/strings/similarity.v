@@ -45,7 +45,8 @@ pub fn dice_coefficient(s1, s2 string) f32 {
 	mut first_bigrams := map[string]int
 	for i := 0; i < a.len-1; i++ {
 		bigram := a.substr(i, i+2)
-		first_bigrams[bigram] = if bigram in first_bigrams { first_bigrams[bigram]+1 } else { 1 }
+		q := if bigram in first_bigrams { first_bigrams[bigram]+1 } else { 1 }
+		first_bigrams[bigram] = q
 	}
 	mut intersection_size := 0
 	for i := 0; i < b.len-1; i++ {

@@ -18,9 +18,6 @@ enum BuildMode {
 	// `v program.v'
 	// Build user code only, and add pre-compiled vlib (`cc program.o builtin.o os.o...`)
 	default_mode
-	// `v -embed_vlib program.v`
-	// vlib + user code in one file (slower compilation, but easier when working on vlib and cross-compiling)
-	embed_vlib
 	// `v -lib ~/v/os`
 	// build any module (generate os.o + os.vh)
 	build_module
@@ -290,36 +287,25 @@ fn (v mut V) compile() {
 		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
 		cgen.genln('#endif')
 	}
-		
+	q := cgen.nogen // TODO hack
+	cgen.nogen = false
 	$if js {
 		cgen.genln(js_headers)
 	} $else {
 		cgen.genln(CommonCHeaders)
 	}
-	
 	v.generate_hotcode_reloading_declarations()
-
-	imports_json := 'json' in v.table.imports
-	// TODO remove global UI hack
-	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && 'ui' in
-		v.table.imports) || (v.pref.build_mode == .build_module &&
-		v.dir.contains('/ui'))) {
-		cgen.genln('id defaultFont = 0; // main.v')
-	}
 	// We need the cjson header for all the json decoding that will be done in
 	// default mode
+	imports_json := 'json' in v.table.imports
 	if v.pref.build_mode == .default_mode {
 		if imports_json {
 			cgen.genln('#include "cJSON.h"')
 		}
 	}
-	if v.pref.build_mode == .embed_vlib || v.pref.build_mode == .default_mode {
-	//if v.pref.build_mode in [.embed_vlib, .default_mode] {
+	if v.pref.build_mode == .default_mode {
 		// If we declare these for all modes, then when running `v a.v` we'll get
 		// `/usr/bin/ld: multiple definition of 'total_m'`
-		// TODO
-		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
-		//if v.pref.is_test {
 		$if !js {
 			cgen.genln('int g_test_oks = 0;')
 			cgen.genln('int g_test_fails = 0;')
@@ -335,11 +321,14 @@ fn (v mut V) compile() {
 	}
 	//cgen.genln('/*================================== FNS =================================*/')
 	cgen.genln('this line will be replaced with definitions')
-	defs_pos := cgen.lines.len - 1
+	mut defs_pos := cgen.lines.len - 1
+	if defs_pos == -1 {
+		defs_pos = 0
+	}	
+	cgen.nogen = q
 	for file in v.files {
 		v.parse(file, .main)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-		// p.g.gen_x64()
 		// Format all files (don't format automatically generated vlib headers)
 		if !v.pref.nofmt && !file.contains('/vlib/') {
 			// new vfmt is not ready yet
@@ -356,25 +345,25 @@ fn (v mut V) compile() {
 	vgen_parser.parse(.main)
 	// v.parsers.add(vgen_parser)
 	v.log('Done parsing.')
-	// Write everything
-	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
+	// All definitions
+	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
 	$if !js {
-		d.writeln(cgen.includes.join_lines())
-		d.writeln(cgen.typedefs.join_lines())
-		d.writeln(v.type_definitions())
-		d.writeln('\nstring _STR(const char*, ...);\n')
-		d.writeln('\nstring _STR_TMP(const char*, ...);\n')
-		d.writeln(cgen.fns.join_lines()) // fn definitions
+		def.writeln(cgen.includes.join_lines())
+		def.writeln(cgen.typedefs.join_lines())
+		def.writeln(v.type_definitions())
+		def.writeln('\nstring _STR(const char*, ...);\n')
+		def.writeln('\nstring _STR_TMP(const char*, ...);\n')
+		def.writeln(cgen.fns.join_lines()) // fn definitions
 	} $else {
-		d.writeln(v.type_definitions())
+		def.writeln(v.type_definitions())
 	}
-	d.writeln(cgen.consts.join_lines())
-	d.writeln(cgen.thread_args.join_lines())
+	def.writeln(cgen.consts.join_lines())
+	def.writeln(cgen.thread_args.join_lines())
 	if v.pref.is_prof {
-		d.writeln('; // Prof counters:')
-		d.writeln(v.prof_counters())
+		def.writeln('; // Prof counters:')
+		def.writeln(v.prof_counters())
 	}
-	cgen.lines[defs_pos] = d.str()
+	cgen.lines[defs_pos] = def.str()
 	v.generate_main()
 	v.generate_hot_reload_code()
 	if v.pref.is_verbose {
@@ -394,8 +383,7 @@ fn (v mut V) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
 
-	// if v.build_mode in [.default, .embed_vlib] {
-	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
+	if v.pref.build_mode == .default_mode {
 		mut consts_init_body := cgen.consts_init.join_lines()
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
@@ -591,8 +579,14 @@ fn (v &V) v_files_from_dir(dir string) []string {
 
 // Parses imports, adds necessary libs, and then user files
 fn (v mut V) add_v_files_to_compile() {
+	mut builtin_files := v.get_builtin_files()
+	// Builtin cache exists? Use it.
+	builtin_vh := '$v_modules_path/builtin.vh'
+	if v.pref.is_debug && os.file_exists(builtin_vh) {
+		builtin_files = [builtin_vh]
+	}
 	// Parse builtin imports
-	for file in v.get_builtin_files() {
+	for file in builtin_files {
 		// add builtins first
 		v.files << file
 		mut p := v.new_parser_from_file(file)
@@ -613,19 +607,25 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('imports:')
 		println(v.table.imports)
 	}
-	// resolve deps & add imports in correct order
-	for mod in v.resolve_deps().imports() {
-		// if mod == v.mod { continue }  // Building this module? Skip. TODO it's a hack.
-		if mod == 'builtin' { continue } // builtin already added
-		if mod == 'main' { continue }    // main files will get added last
+	// resolve deps and add imports in correct order
+	imported_mods := v.resolve_deps().imports()
+	for mod in imported_mods {
+		if mod == 'builtin' || mod == 'main' {
+			// builtin already added
+			// main files will get added last
+			continue
+		}
 		
 		// use cached built module if exists
-		// vh_path := '$v_modules_path/${mod}.vh'
-		// if os.file_exists(vh_path) {
-		// 	println('using cached module `$mod`: $vh_path')
-		// 	v.files << vh_path
-		// 	continue
-		// }
+		if v.pref.build_mode != .build_module {
+			vh_path := '$v_modules_path/${mod}.vh'
+			//println(vh_path)
+			if v.pref.is_debug && os.file_exists(vh_path) {
+				println('using cached module `$mod`: $vh_path')
+				v.files << vh_path
+				continue
+			}
+		}
 		// standard module
 		mod_path := v.find_module_path(mod) or { verror(err) break }
 		vfiles := v.v_files_from_dir(mod_path)
@@ -640,8 +640,9 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 }
 
-// get builtin files
 fn (v &V) get_builtin_files() []string {
+	// .vh cache exists? Use it
+	
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin${os.PathSeparator}js')
 	}
@@ -812,11 +813,6 @@ fn new_v(args[]string) &V {
 		}
 		*/
 	}
-	// TODO embed_vlib is temporarily the default mode. It's much slower.
-	else if !('-embed_vlib' in args) {
-		build_mode = .embed_vlib
-	}
-	//
 	is_test := dir.ends_with('_test.v')
 	is_script := dir.ends_with('.v')
 	if is_script && !os.file_exists(dir) {

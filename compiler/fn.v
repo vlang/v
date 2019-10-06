@@ -134,12 +134,6 @@ fn (p mut Parser) clear_vars() {
 	}
 }
 
-// vlib header file?
-fn (p mut Parser) is_sig() bool {
-	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build_module) &&
-	(p.file_path.contains(v_modules_path))
-}
-
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
@@ -231,10 +225,9 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	// is_sig := p.builtin_mod && p.pref.build_mode == default_mode
-	// is_sig := p.pref.build_mode == default_mode && (p.builtin_mod || p.file.contains(LANG_TMP))
-	is_sig := p.is_sig()
-	// println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ')
+	if p.pref.build_mode == .build_module {
+		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -312,13 +305,15 @@ fn (p mut Parser) fn_decl() {
 		}
 		p.cgen.typedefs << 'typedef struct $typ $typ;'
 	}
-	// Translated C code can have empty functions (just definitions)
-	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
+	// Translated C code and .vh can have empty functions (just definitions)
+	is_fn_header := !is_c && !p.is_vh &&
+		(p.pref.translated || p.pref.is_test || p.is_vh) &&
+		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
 	}
 	// { required only in normal function declarations
-	if !is_c && !is_sig && !is_fn_header {
+	if !is_c && !p.is_vh && !is_fn_header {
 		p.fgen(' ')
 		p.check(.lcbr)
 	}
@@ -350,7 +345,7 @@ fn (p mut Parser) fn_decl() {
 	mut fn_name_cgen := p.table.fn_gen_name(f)
 	// Start generation of the function body
 	skip_main_in_test := false
-	if !is_c && !is_live && !is_sig && !is_fn_header && !skip_main_in_test {
+	if !is_c && !is_live && !p.is_vh && !is_fn_header && !skip_main_in_test {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
 		}
@@ -403,10 +398,10 @@ fn (p mut Parser) fn_decl() {
 		// println('register_fn typ=$typ isg=$is_generic')
 		p.table.register_fn(f)
 	}
-	if is_sig || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
+	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now
 		// Look for generic calls.
-		if !is_sig && !is_fn_header {
+		if !p.is_vh && !is_fn_header {
 			p.skip_fn_body()
 		}
 		// Live code reloading? Load all fns from .so
@@ -422,19 +417,8 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Add function definition to the top
 		if !is_c && p.first_pass() {
-			// TODO hack to make Volt compile without -embed_vlib
-			if f.name == 'darwin__nsstring' && p.pref.build_mode == .default_mode {
-				
-			} else {
-				p.cgen.fns << fn_decl + ';'
-			}
+			p.cgen.fns << fn_decl + ';'
 		}
-		// Generate .vh header files when building a module
-		/*
-		if p.pref.build_mode == .build_module {
-			p.vh_genln(f.v_definition())
-		}
-		*/
 		return
 	}
 	if p.attr == 'live' && p.pref.is_so {
@@ -448,8 +432,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	// println('is_c=$is_c name=$f.name')
-	if is_c || is_sig || is_fn_header {
-		// println('IS SIG .key_returnING tok=${p.strtok()}')
+	if is_c || p.is_vh || is_fn_header {
 		return
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
@@ -465,7 +448,7 @@ fn (p mut Parser) fn_decl() {
 		p.cgen.nogen = true
 	}
 	p.statements_no_rcbr()
-	p.cgen.nogen = false
+	//p.cgen.nogen = false
 	// Print counting result after all statements in main
 	if p.pref.is_prof && f.name == 'main' {
 		p.genln(p.print_prof_counters())

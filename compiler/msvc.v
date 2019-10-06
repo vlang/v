@@ -29,7 +29,7 @@ const (
 	KEY_ENUMERATE_SUB_KEYS = (0x0008)
 )
 
-// Given a root key look for one of the subkeys in 'versions' and get the path 
+// Given a root key look for one of the subkeys in 'versions' and get the path
 fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
 		for version in versions {
@@ -139,7 +139,7 @@ fn find_vs() ?VsInstallation {
 	}
 	// Emily:
 	// VSWhere is guaranteed to be installed at this location now
-	// If its not there then end user needs to update their visual studio 
+	// If its not there then end user needs to update their visual studio
 	// installation!
 	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
 		return error(err)
@@ -207,7 +207,7 @@ fn find_msvc() ?MsvcResult {
 	}
 }
 
-pub fn (v mut V) cc_msvc() { 
+pub fn (v mut V) cc_msvc() {
 	r := find_msvc() or {
 		// TODO: code reuse
 		if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
@@ -252,9 +252,6 @@ pub fn (v mut V) cc_msvc() {
 
 	mut alibs := []string // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
-	}
-	else if v.pref.build_mode == .embed_vlib {
-		// 
 	}
 	else if v.pref.build_mode == .default_mode {
 		b := os.realpath( '$v_modules_path/vlib/builtin.obj' )
@@ -334,8 +331,8 @@ pub fn (v mut V) cc_msvc() {
 	
 	args := a.join(' ')
 
-	cmd := '""$r.full_cl_exe_path" $args"' 
-	// It is hard to see it at first, but the quotes above ARE balanced :-| ... 
+	cmd := '""$r.full_cl_exe_path" $args"'
+	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	if v.pref.show_c_cmd || v.pref.is_verbose {
 		println('\n========== cl cmd line:')
@@ -376,16 +373,16 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	if os.file_exists(obj_path) {
 		println('$obj_path already build.')
-		return 
-	} 
+		return
+	}
 
-	println('$obj_path not found, building it (with msvc)...') 
+	println('$obj_path not found, building it (with msvc)...')
 	parent := os.dir(obj_path)
 	files := os.ls(parent)
 
-	mut cfiles := '' 
+	mut cfiles := ''
 	for file in files {
-		if file.ends_with('.c') { 
+		if file.ends_with('.c') {
 			cfiles += '"' + os.realpath( parent + os.PathSeparator + file )  + '" '
 		}
 	}
