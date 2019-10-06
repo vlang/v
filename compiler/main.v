@@ -651,7 +651,7 @@ fn (v &V)  get_user_files() []string {
 	mut user_files := []string
 
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << '/v/nv/vlib/benchmark/tests/always_imported.v'
+		user_files << [v.vroot, 'vlib', 'benchmark', 'tests', 'always_imported.v'].join( os.PathSeparator )
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
