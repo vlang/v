@@ -1235,9 +1235,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 	switch tok {
 	case .name:
 		next := p.peek()
-		if p.pref.is_verbose {
-			println(next.str())
-		}
+		//if p.pref.is_verbose {
+			//println(next.str())
+		//}
 		// goto_label:
 		if p.peek() == .colon {
 			p.fmt_dec()
@@ -2760,6 +2760,7 @@ fn (p mut Parser) char_expr() {
 
 
 fn format_str(_str string) string {
+	// TODO don't call replace 3 times for every string, do this in scanner.v
 	mut str := _str.replace('"', '\\"')
 	$if windows {
 		str = str.replace('\r\n', '\\n')
