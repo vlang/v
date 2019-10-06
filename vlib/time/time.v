@@ -227,6 +227,11 @@ pub fn (t Time) ymmdd() string {
 	return '${t.year}-${t.month:02d}-${t.day:02d}'
 }
 
+// 05.02.2012
+pub fn (t Time) ddmmy() string {
+	return '${t.day:02d}.${t.month:02d}.${t.year}'
+}
+
 // Jul 3
 pub fn (t Time) md() string {
 	// jl := t.smonth()
