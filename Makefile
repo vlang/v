@@ -12,7 +12,7 @@ all:
 	rm -rf vc/
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 ifdef WIN32
-	$(CC) -std=gnu11 -w -o v0.exe vc/v_win.c
+	$(CC) -std=c99 -w -o v0.exe vc/v_win.c
 	./v0.exe -o v.exe compiler
 	rm -f v0.exe
 else
