@@ -1,7 +1,6 @@
 module main
 
 import os
-//import time
 import benchmark
 import term
 
@@ -14,29 +13,8 @@ mut:
 	bench benchmark.Benchmark
 }
 
-fn nasserts(n int) string {
-	if n==0 { return '${n:2d} asserts | ' }
-	if n==1 { return '${n:2d} assert  | ' }
-	return '${n:2d} asserts | '
-}
+/////////////////////////////////////////////////////////////////////
 
-fn ok_text(s string) string {
-	if term.can_show_color_on_stdout() {
-		return term.bold(term.green('${s:5s}'))
-	}
-	return s
-}
-fn fail_text(s string) string {
-	if term.can_show_color_on_stdout() {
-		return term.bold(term.red('${s:5s}'))
-	}
-	return s
-}
-
-fn (b BenchedTests) str() string {
-	return 'BenchedTests{ bench: ' + ptr_str(&b.bench) + ' }'
-}
-////////////////////////////////////////////////////////////////
 fn start_testing() BenchedTests {	
 	mut b := BenchedTests{ bench: benchmark.new_benchmark() }
 	b.test_suit_file = os.executable() + '.v'
@@ -50,30 +28,56 @@ fn (b mut BenchedTests) testing_step_start(stepfunc string) {
 	b.fails = C.g_test_fails
 	b.bench.step()
 }
+
 fn (b mut BenchedTests) testing_step_end() {
 	ok_diff   := C.g_test_oks - b.oks
 	fail_diff := C.g_test_fails - b.fails
 	//////////////////////////////////////////////////////////////////
 	if ok_diff == 0 && fail_diff == 0 {
 		b.bench.neither_fail_nor_ok()
-		println('     ' + b.bench.step_message('NO asserts | ') + 'fn: ' + b.step_func_name)
+		println('     ' + b.bench.step_message('NO asserts | ') + b.fn_name() )
 		return
 	}	
 	//////////////////////////////////////////////////////////////////
-	if ok_diff   > 0 { b.bench.ok_many(ok_diff) }
-	if fail_diff > 0 { b.bench.fail_many(fail_diff) }
+	if ok_diff   > 0 {
+		b.bench.ok_many(ok_diff)
+	}
+	if fail_diff > 0 {
+		b.bench.fail_many(fail_diff)
+	}
 	//////////////////////////////////////////////////////////////////	
 	if ok_diff   > 0 && fail_diff == 0 {
-		println(ok_text('OK') + b.bench.step_message(nasserts(ok_diff)) + 'fn: ' + b.step_func_name )
+		println(ok_text('OK') + b.bench.step_message(nasserts(ok_diff)) + b.fn_name() )
 		return
 	}
 	if fail_diff > 0 {	
-		println(fail_text('FAIL') + b.bench.step_message(nasserts(fail_diff)) + 'fn: ' + b.step_func_name )
+		println(fail_text('FAIL') + b.bench.step_message(nasserts(fail_diff)) + b.fn_name()  )
 		return
 	}
 }
 
+fn (b &BenchedTests) fn_name() string {
+	return b.step_func_name + '()'
+}
+
 fn (b mut BenchedTests) end_testing() {
 	b.bench.stop()
-	println( '     ' + b.bench.total_message('running V tests in $b.test_suit_file') )
+	println( '     ' + b.bench.total_message('running V tests in "' + os.filename(b.test_suit_file) + '"' ) )
 }
+
+/////////////////////////////////////////////////////////////////////
+
+fn nasserts(n int) string {
+	if n==0 { return '${n:2d} asserts | ' }
+	if n==1 { return '${n:2d} assert  | ' }
+	return '${n:2d} asserts | '
+}
+
+fn ok_text(s string) string {
+	return term.ok_message('${s:5s}')
+}
+
+fn fail_text(s string) string {
+	return term.fail_message('${s:5s}')
+}
+

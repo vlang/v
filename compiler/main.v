@@ -8,6 +8,7 @@ import (
 	os
 	strings
 	benchmark
+	term
 )
 
 const (
@@ -476,8 +477,7 @@ string _STR_TMP(const char *fmt, ...) {
 				}
 			}
 			if v.pref.is_stats { cgen.genln('BenchedTests_end_testing(&bt);') }
-			
-			v.gen_main_end('return g_test_fails == 0')
+			v.gen_main_end('return g_test_fails > 0')
 		}
 		else if v.table.main_exists() {
 			v.gen_main_start(true)
@@ -1071,6 +1071,8 @@ fn (v &V) test_v() {
 	mut failed := false
 	test_files := os.walk_ext(parent_dir, '_test.v')
 
+	ok   := term.ok_message('OK')
+	fail := term.fail_message('FAIL')
 	println('Testing...')
 	mut tmark := benchmark.new_benchmark()
 	for dot_relative_file in test_files {		
@@ -1085,16 +1087,16 @@ fn (v &V) test_v() {
 		r := os.exec(cmd) or {
 			tmark.fail()
 			failed = true
-			println(tmark.step_message('$relative_file FAIL'))
+			println(tmark.step_message('$relative_file $fail'))
 			continue
 		}
 		if r.exit_code != 0 {
 			failed = true
 			tmark.fail()
-			println(tmark.step_message('$relative_file FAIL \n`$file`\n (\n$r.output\n)'))
+			println(tmark.step_message('$relative_file $fail\n`$file`\n (\n$r.output\n)'))
 		} else {
 			tmark.ok()
-			println(tmark.step_message('$relative_file OK'))
+			println(tmark.step_message('$relative_file $ok'))
 		}
 		os.rm( tmpc_filepath )
 	}
