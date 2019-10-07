@@ -28,7 +28,7 @@ if not exist "%gccpath%" (
     goto:msvcstrap
 )
 
-gcc -std=gnu11 -w -o v2.exe vc\v_win.c
+gcc -std=c99 -w -o v2.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
     exit /b 1
