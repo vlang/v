@@ -542,9 +542,8 @@ fn (v V) run_compiled_executable_and_exit() {
 		ret := os.system(cmd)
 		// TODO: make the runner wrapping as transparent as possible
 		// (i.e. use execve when implemented). For now though, the runner
-		// just returns the same exit code as the child process
-		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
-		exit( ret >> 8 )
+		// just returns the same exit code as the child process.
+		exit( ret )
 	}
 	exit(0)
 }
