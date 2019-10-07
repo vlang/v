@@ -622,7 +622,8 @@ fn (v mut V) add_v_files_to_compile() {
 		// 	continue
 		// }
 		// standard module
-		vfiles := v.v_files_from_dir(v.find_module_path(mod))
+		mod_path := v.find_module_path(mod) or { verror(err) break }
+		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			v.files << file
 		}
@@ -694,10 +695,13 @@ fn (v mut V) parse_lib_imports() {
 	for _, fit in v.table.file_imports {
 		if fit.file_path in done_fits { continue }
 		for _, mod in fit.imports {
-			import_path := v.find_module_path(mod)
+			import_path := v.find_module_path(mod) or {
+				verror('$fit.file_path cannot import module "$mod" (not found)')
+				break
+			}
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				verror('cannot import module $mod (no .v files in "$import_path")')
+				verror('$fit.file_path cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -706,7 +710,7 @@ fn (v mut V) parse_lib_imports() {
 				done_imports << file
 				p_mod := v.parsers[pid].import_table.module_name
 				if p_mod != mod {
-					verror('bad module name: $file was imported as `$mod` but it is defined as module `$p_mod`')
+					verror('$fit.file_path imports module "$mod" but $file is defined as module `$p_mod`')
 				}
 			}
 		}
