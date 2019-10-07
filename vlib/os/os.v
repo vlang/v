@@ -530,23 +530,28 @@ pub fn get_line() string {
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-	$if windows {
+    $if windows {
         max_line_chars := 256
         buf := &byte(malloc(max_line_chars*2))
+        if C.isConsole > 0 {
+            h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+            mut nr_chars := 0
+            C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
+            return string_from_wide2(&u16(buf), nr_chars)
+        }
         res := int( C.fgetws(buf, max_line_chars, C.stdin ) )
         len := int(  C.wcslen(&u16(buf)) )
         if 0 != res { return string_from_wide2( &u16(buf), len ) }
         return ''
+    } $else {
+        max := size_t(256)
+        buf := *char(malloc(int(max)))
+        nr_chars := C.getline(&buf, &max, stdin)
+        if nr_chars == 0 {
+            return ''
+        }
+        return string(byteptr(buf), nr_chars)
     }
-	$else {
-		max := size_t(256)
-		buf := *char(malloc(int(max)))
-		nr_chars := C.getline(&buf, &max, stdin)
-		if nr_chars == 0 {
-			return ''
-		}
-		return string(byteptr(buf), nr_chars)
-	}
 }
 
 pub fn get_lines() []string {
