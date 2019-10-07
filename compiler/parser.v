@@ -3821,16 +3821,20 @@ fn (p mut Parser) assert_statement() {
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
 	filename := p.file_path.replace('\\', '\\\\')
-	p.genln(';\n
+	p.genln(';
+\n
+
 if (!$tmp) {
   println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
-g_test_ok = 0 ;
-	// TODO
-	// Maybe print all vars in a test function if it fails?
+  g_test_fails++;
+  // TODO
+  // Maybe print all vars in a test function if it fails?
+} else {
+  g_test_oks++;
+  //println(tos2((byte *)"\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m"));
 }
-else {
-  //puts("\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m");
-}')
+
+')
 }
 
 fn (p mut Parser) return_st() {
