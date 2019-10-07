@@ -437,6 +437,7 @@ fn (p mut Parser) import_statement() {
 	if p.peek() == .number { // && p.scanner.text[p.scanner.pos + 1] == `.` {
 		p.error('bad import format. module/submodule names cannot begin with a number')
 	}
+	import_tok_idx := p.token_idx-1
 	mut mod := p.check_name().trim_space()
 	mut mod_alias := mod
 	// submodule support
@@ -457,7 +458,7 @@ fn (p mut Parser) import_statement() {
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
-	p.import_table.register_alias(mod_alias, mod)
+	p.import_table.register_alias(mod_alias, mod, import_tok_idx)
 	// Make sure there are no duplicate imports
 	if mod in p.table.imports {
 		return
