@@ -930,7 +930,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 	CHAR *rgszUsages[] = {  szOID_PKIX_KP_SERVER_AUTH,
 							szOID_SERVER_GATED_CRYPTO,
 							szOID_SGC_NETSCAPE };
-	DWORD cUsages = sizeof(rgszUsages) / sizeof(CHAR);
+	DWORD cUsages = sizeof(rgszUsages) / sizeof(LPSTR);
 
 	PWSTR   pwszServerName = NULL;
 	DWORD   cchServerName;
