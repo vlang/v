@@ -329,3 +329,28 @@ pub fn (a []char) index(v char) int {
 	}
 	return -1
 }
+
+////////////// FILTER //////////////
+
+// Creates a new array with all elements that pass the test implemented by the provided function.
+pub fn (a  []string) filter(predicate fn(p_val string, p_i int, p_arr []string) bool) []string
+{
+	mut res := []string
+	for i := 0; i < a.len; i++  {
+		if predicate(a[i], i, a) {
+			res << a[i]
+		}
+	}
+	return res
+}
+
+pub fn (a []int) filter(predicate fn(p_val int, p_i int, p_arr []int) bool) []int
+{
+	mut res := []int
+	for i := 0; i < a.len; i++  {
+		if predicate(a[i], i, a) {
+			res << a[i]
+		}
+	}
+	return res
+}

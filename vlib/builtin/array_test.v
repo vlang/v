@@ -286,7 +286,7 @@ fn test_multi() {
 	// TODO
 	//b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
 	//assert b[0][0][0] == 1
-}	
+} 
 
 fn test_in() {
 	a := [1,2,3]
@@ -295,4 +295,24 @@ fn test_in() {
 	assert 3 in a
 	assert !(4 in a)
 	assert !(0 in a)
-}	
+} 
+
+fn callback_1(val int, index int, arr []int) bool {
+	return val >= 2
+}
+
+fn callback_2(val string, index int, arr []string) bool {
+	return val.len >= 2
+}
+
+fn test_filter() {
+	a := [1, 2, 3, 4, 5, 6]
+	b := a.filter(callback_1)
+	assert b[0] == 2
+	assert b[1] == 3
+
+	c := ['v', 'is', 'awesome']
+	d := c.filter(callback_2)
+	assert d[0] == 'is'
+	assert d[1] == 'awesome'
+}
