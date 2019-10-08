@@ -402,7 +402,7 @@ fn (v mut V) generate_main() {
 		cgen.genln('void init_consts() {
 #ifdef _WIN32
 DWORD consoleMode;
-BOOL isConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &consoleMode);
+isConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &consoleMode);
 int mode = isConsole ? _O_U16TEXT : _O_U8TEXT;
 _setmode(_fileno(stdin), mode);
 _setmode(_fileno(stdout), _O_U8TEXT);
