@@ -1,11 +1,13 @@
 module term
 
+import os
+
 pub fn can_show_color_on_stdout() bool {
-	return can_show_color_on_fd(1)
+	return is_atty(1) && os.getenv('TERM') != 'dumb'
 }
 
 pub fn can_show_color_on_stderr() bool {
-	return can_show_color_on_fd(2)
+	return is_atty(2) && os.getenv('TERM') != 'dumb'
 }
 
 //////////////////////////////////////////////
