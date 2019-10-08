@@ -296,7 +296,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Returns a type?
 	mut typ := 'void'
-	if p.tok in [Token.name, .mul, .amp, .lsbr, .question, .lpar] {
+	if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
 		p.fgen(' ')
 		typ = p.get_type()
 	}

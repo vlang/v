@@ -208,7 +208,7 @@ fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 }
 
 // get_scanner_pos_of_token rescans *the whole source* till it reaches {t.line_nr, t.col} .
-fn (s mut Scanner) get_scanner_pos_of_token(t &Tok) ScannerPos {
+fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	// This rescanning is done just once on error, so it is fine for now.
 	// Be careful for the performance implications, if you want to
 	// do it more frequently. The alternative would be to store
