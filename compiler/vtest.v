@@ -124,6 +124,9 @@ fn stable_example(example string, index int, arr []string) bool {
 fn v_test_v(args_before_test string){
 	vexe := os.executable()
 	parent_dir := os.dir(vexe)
+	// Changing the current directory is needed for some of the compiler tests,
+	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
+	os.chdir( parent_dir )
 	if !os.dir_exists(parent_dir + '/vlib') {
 		println('vlib/ is missing, it must be next to the V executable')
 		exit(1)
