@@ -911,7 +911,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			$if !js {
 				fmt := p.typ_to_fmt(typ, 0)
 				if fmt != '' {
-					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '\\n", '))
+					nl := if f.name == 'println' { '\\n' } else { '' }
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '$nl", '))
 					continue
 				}
 			}
