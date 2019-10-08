@@ -8,7 +8,6 @@ import (
 	os
 	strings
 	benchmark
-	term
 )
 
 const (
@@ -155,7 +154,7 @@ fn main() {
 		return
 	}
 	if 'test' in args {
-		test_v(args)
+		test_v()
 		return
 	}
 	// Construct the V object from command line arguments
@@ -741,10 +740,10 @@ fn (v &V) resolve_deps() &DepGraph {
 }
 
 fn get_arg(joined_args, arg, def string) string {
-	return get_all_after(joined_args, '-$arg', def)
+	return get_param_after(joined_args, '-$arg', def)
 }
 
-fn get_all_after(joined_args, arg, def string) string {
+fn get_param_after(joined_args, arg, def string) string {
 	key := '$arg '
 	mut pos := joined_args.index(key)
 	if pos == -1 {
@@ -756,7 +755,6 @@ fn get_all_after(joined_args, arg, def string) string {
 		space = joined_args.len
 	}
 	res := joined_args.substr(pos, space)
-	// println('get_arg($arg) = "$res"')
 	return res
 }
 
@@ -777,7 +775,7 @@ fn new_v(args[]string) &V {
 	
 	mut dir := args.last()
 	if 'run' in args {
-		dir = get_all_after(joined_args, 'run', '')
+		dir = get_param_after(joined_args, 'run', '')
 	}
 	if dir.ends_with(os.PathSeparator) {
 		dir = dir.all_before_last(os.PathSeparator)
@@ -1035,142 +1033,6 @@ fn install_v(args[]string) {
 	if vgetresult.exit_code != 0 {
 		verror( vgetresult.output )
 		return
-	}
-}
-
-fn test_vget() {
-	/*
-	vexe := os.executable()
-	ret := os.system('$vexe install nedpals.args')
-	if ret != 0 {
-		println('failed to run v install')
-		exit(1)
-	}	
-	if !os.file_exists(v_modules_path + '/nedpals/args') {
-		println('v failed to install a test module')
-		exit(1)
-	}	
-	println('vget is OK')
-	*/
-}
-
-fn test_v(args[]string) {
-	if args.len < 3 {
-		println('Usage:')
-		println('   A)')
-		println('      v test v  : run all v tests and build all the examples')
-		println('   B)')
-		println('      v test folder/ : run all v tests in the given folder.')
-		println('      v -stats test folder/ : the same, but print more stats.')
-		println('   C)')
-		println('      v test file_test.v : run test functions in a given test file.')
-		println('      v -stats test file_test.v : as above, but with more stats.')
-		println('   NB: you can also give many and mixed folder/ file_test.v arguments after test.')
-		println('')
-		return
-	}
-	testargs := get_all_after(args.join(' '), 'test', '')
-	if testargs == 'v' {
-		v_test_v()
-		return
-	}
-	println('testargs: $testargs')
-}
-
-fn v_test_v(){	
-	args := env_vflags_and_os_args()
-	vexe := os.executable()
-	parent_dir := os.dir(vexe)
-	if !os.dir_exists(parent_dir + '/vlib') {
-		println('vlib/ is missing, it must be next to the V executable')
-		exit(1)
-	}	
-	if !os.dir_exists(parent_dir + '/compiler') {
-		println('compiler/ is missing, it must be next to the V executable')
-		exit(1)
-	}	
-        // Make sure v.c can be compiled without warnings
-	$if mac {
-		os.system('$vexe -o v.c compiler')
-		if os.system('cc -Werror v.c') != 0 {
-			println('cc failed to build v.c without warnings')
-			exit(1)
-		}
-		println('v.c can be compiled without warnings. This is good :)')
-	}
-	// Emily: pass args from the invocation to the test
-	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
-	mut joined_args := args.right(1).join(' ')
-	joined_args = joined_args.left(joined_args.last_index('test'))
-	//	println('$joined_args')
-	mut failed := false
-	test_files := os.walk_ext(parent_dir, '_test.v')
-
-	ok   := term.ok_message('OK')
-	fail := term.fail_message('FAIL')
-	println('Testing...')
-	mut tmark := benchmark.new_benchmark()
-	for dot_relative_file in test_files {		
-		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath( relative_file )
-		tmpc_filepath := file.replace('_test.v', '_test.tmp.c')
-		
-		mut cmd := '"$vexe" $joined_args -debug "$file"'
-		if os.user_os() == 'windows' { cmd = '"$cmd"' }
-		
-		tmark.step()
-		r := os.exec(cmd) or {
-			tmark.fail()
-			failed = true
-			println(tmark.step_message('$relative_file $fail'))
-			continue
-		}
-		if r.exit_code != 0 {
-			failed = true
-			tmark.fail()
-			println(tmark.step_message('$relative_file $fail\n`$file`\n (\n$r.output\n)'))
-		} else {
-			tmark.ok()
-			println(tmark.step_message('$relative_file $ok'))
-		}
-		os.rm( tmpc_filepath )
-	}
-	tmark.stop()
-	println( tmark.total_message('running V tests') )
-
-	println('\nBuilding examples...')
-	examples := os.walk_ext(parent_dir + '/examples', '.v')
-	mut bmark := benchmark.new_benchmark()
-	for relative_file in examples {
-		if relative_file.contains('vweb') {
-			continue
-		}	
-		file := os.realpath( relative_file )
-		tmpc_filepath := file.replace('.v', '.tmp.c')
-		mut cmd := '"$vexe" $joined_args -debug "$file"'
-		if os.user_os() == 'windows' { cmd = '"$cmd"' }
-		bmark.step()
-		r := os.exec(cmd) or {
-			failed = true
-			bmark.fail()
-			println(bmark.step_message('$relative_file $fail'))
-			continue
-		}
-		if r.exit_code != 0 {
-			failed = true
-			bmark.fail()
-			println(bmark.step_message('$relative_file $fail \n`$file`\n (\n$r.output\n)'))
-		} else {
-			bmark.ok()
-			println(bmark.step_message('$relative_file $ok'))
-		}
-		os.rm(tmpc_filepath)
-	}
-	bmark.stop()
-	println( bmark.total_message('building examples') )
-	test_vget()
-	if failed {
-		exit(1)
 	}
 }
 

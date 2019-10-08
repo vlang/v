@@ -224,7 +224,26 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	// of the token. Continue scanning for some more lines of context too.
 	s.goto_scanner_position(ScannerPos{})
 	s.file_lines = []string
+  
 	mut prevlinepos := 0
+	// NB: TCC BUG workaround: removing the `mut ate:=0 ate++` line
+	// below causes a bug in v, when v is compiled with tcc, and v
+	// wants to report the error: 'the following imports were never used:'
+	//
+	// This can be reproduced, if you follow the steps:
+	// a) ./v -cc tcc -o v compiler ;
+	// b) ./v vlib/builtin/hashmap_test.v'
+	//
+	// In this case, prevlinepos gets a random value on each run.
+	// Any kind of operation may be used seemingly, as long as
+	// there is a new stack allocation that will 'protect' prevlinepos.
+	//////////////////////////////////////////////////////////////////
+	mut ate:=0 ate++ // This var will be smashed by TCC, instead of
+	/////////////////// prevlinepos. The cause is the call to
+	/////////////////// s.get_scanner_pos()
+	/////////////////// which just returns a struct, and that works
+	/////////////////// in gcc and clang, but causes the TCC problem.
+	
 	for {
 		prevlinepos = s.pos
 		if s.pos >= s.text.len { break }		
