@@ -1432,10 +1432,10 @@ fn (p mut Parser) var_decl() {
 	mut var_names := [p.check_name()] // add first variable
 	
 	p.scanner.validate_var_name(var_names[0])
-	// mut new_vars := 0
-	// if var_names[0] != '_' && !p.known_var(var_names[0]) {
-	// 	new_vars++
-	// }
+	mut new_vars := 0
+	if var_names[0] != '_' && !p.known_var(var_names[0]) {
+		new_vars++
+	}
 	// more than 1 vars (multiple returns)
 	for p.tok == .comma {
 		p.check(.comma)
@@ -1448,9 +1448,9 @@ fn (p mut Parser) var_decl() {
 		var_token_idxs << p.cur_tok_index()
 		var_name := p.check_name()
 		p.scanner.validate_var_name(var_name)
-		// if var_name != '_' && !p.known_var(var_name) {
-		// 	new_vars++
-		// }
+		if var_name != '_' && !p.known_var(var_name) {
+			new_vars++
+		}
 		var_names << var_name
 	}
 	is_assign := p.tok == .assign
@@ -1462,10 +1462,10 @@ fn (p mut Parser) var_decl() {
 	} else {
 		p.error('expected `=` or `:=`')
 	}
-	// all vars on left of `:=` already defined
-	// if is_decl_assign && var_names.len > 1 && new_vars == 0 {
-	// 	p.error_with_token_index('no new variables on left side of `:=`', var_token_idxs.last())
-	// }
+	// all vars on left of `:=` already defined (or `_`)
+	if is_decl_assign && /*var_names.len > 1 &&*/ new_vars == 0 {
+		p.error_with_token_index('no new variables on left side of `:=`', var_token_idxs.last())
+	}
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_'+var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
 	mut var_types := [t]
@@ -1480,12 +1480,15 @@ fn (p mut Parser) var_decl() {
 	}
 	for i, var_name in var_names {
 		var_token_idx := var_token_idxs[i]
-		if var_name == '_' {
-			continue
-		}
 		var_is_mut := var_mut[i]
 		var_type := var_types[i]
 		known_var := p.known_var(var_name)
+		if var_name == '_' {
+			if var_is_mut {
+				p.error_with_token_index('`mut` has no effect here', var_token_idx-1)
+			}
+			continue
+		}
 		// println('var decl tok=${p.strtok()} name=type=$var_name type=$var_type ismut=$var_is_mut')
 		// var decl, already exists (shadowing is not allowed)
 		// Don't allow declaring a variable with the same name. Even in a child scope
