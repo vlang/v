@@ -29,3 +29,4 @@ vjs
 # Thumbnails
 ._*
 .vrepl_temp.v
+a.out
