@@ -154,12 +154,12 @@ fn main() {
 		vfmt(args)
 		return
 	}
-	// Construct the V object from command line arguments
-	mut v := new_v(args)
-	if args.join(' ').contains(' test v') {
-		v.test_v()
+	if 'test' in args {
+		test_v(args)
 		return
 	}
+	// Construct the V object from command line arguments
+	mut v := new_v(args)
 	if v.pref.is_verbose {
 		println(args)
 	}
@@ -1038,7 +1038,7 @@ fn install_v(args[]string) {
 	}
 }
 
-fn (v &V) test_vget() {
+fn test_vget() {
 	/*
 	vexe := os.executable()
 	ret := os.system('$vexe install nedpals.args')
@@ -1054,7 +1054,30 @@ fn (v &V) test_vget() {
 	*/
 }
 
-fn (v &V) test_v() {
+fn test_v(args[]string) {
+	if args.len < 3 {
+		println('Usage:')
+		println('   A)')
+		println('      v test v  : run all v tests and build all the examples')
+		println('   B)')
+		println('      v test folder/ : run all v tests in the given folder.')
+		println('      v -stats test folder/ : the same, but print more stats.')
+		println('   C)')
+		println('      v test file_test.v : run test functions in a given test file.')
+		println('      v -stats test file_test.v : as above, but with more stats.')
+		println('   NB: you can also give many and mixed folder/ file_test.v arguments after test.')
+		println('')
+		return
+	}
+	testargs := get_all_after(args.join(' '), 'test', '')
+	if testargs == 'v' {
+		v_test_v()
+		return
+	}
+	println('testargs: $testargs')
+}
+
+fn v_test_v(){	
 	args := env_vflags_and_os_args()
 	vexe := os.executable()
 	parent_dir := os.dir(vexe)
@@ -1145,7 +1168,7 @@ fn (v &V) test_v() {
 	}
 	bmark.stop()
 	println( bmark.total_message('building examples') )
-	v.test_vget()
+	test_vget()
 	if failed {
 		exit(1)
 	}
