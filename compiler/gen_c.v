@@ -213,10 +213,20 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	}
 	// Obfuscate but skip certain names
 	// TODO ugly, fix
-	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.mod != 'builtin' && !f.is_c &&
-	f.mod != 'darwin' && f.mod != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
-	f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'json' &&
-	!name.ends_with('_str') && !name.contains('contains') {
+	// NB: the order here is from faster to potentially slower checks
+	if table.obfuscate && 
+		!f.is_c &&
+		f.name != 'main' && f.name != 'WinMain' && f.name != 'main__main' && 
+		f.name != 'gg__vec2' &&
+		f.name != 'build_token_str' && 
+		f.name != 'build_keys' && 
+		f.mod != 'builtin' && 
+		f.mod != 'darwin' && 
+		f.mod != 'os' && 
+		f.mod != 'json' &&
+		!f.name.contains('window_proc') && 
+		!name.ends_with('_str') && 
+		!name.contains('contains') {
 		mut idx := table.obf_ids[name]
 		// No such function yet, register it
 		if idx == 0 {

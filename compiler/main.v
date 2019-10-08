@@ -8,6 +8,7 @@ import (
 	os
 	strings
 	benchmark
+	term
 )
 
 const (
@@ -95,6 +96,7 @@ mut:
 	sanitize      bool   // use Clang's new "-fsanitize" option
 	is_debuggable bool
 	is_debug      bool   // keep compiled C files
+	is_stats      bool   // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free  bool   // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
 						 // For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
@@ -108,7 +110,6 @@ mut:
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
-	
 }
 
 fn main() {
@@ -181,7 +182,12 @@ fn main() {
 		return
 	}
 
-	v.compile()
+	mut tmark := benchmark.new_benchmark()
+	v.compile()	
+	if v.pref.is_stats {
+		tmark.stop()
+		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
+	}
 
 	if v.pref.is_test {
 		v.run_compiled_executable_and_exit()
@@ -210,21 +216,28 @@ fn (v mut V) add_parser(parser Parser) {
 	   v.parsers << parser
 }
 
-// find existing parser or create new one. returns v.parsers index
-fn (v mut V) parse(file string, pass Pass) int {
-	//println('parse($file, $pass)')
+fn (v &V) get_file_parser_index(file string) ?int {
 	for i, p in v.parsers {
 		if os.realpath(p.file_path) == os.realpath(file) {
-			v.parsers[i].parse(pass)
-			//if v.parsers[i].pref.autofree {	v.parsers[i].scanner.text.free()	free(v.parsers[i].scanner)	}
 			return i
 		}	
 	}
-	mut p := v.new_parser_from_file(file)
-	p.parse(pass)
-	//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-	v.add_parser(p)
-	return v.parsers.len-1
+	return error('parser for "$file" not found')
+}
+
+// find existing parser or create new one. returns v.parsers index
+fn (v mut V) parse(file string, pass Pass) int {
+	//println('parse($file, $pass)')
+	pidx := v.get_file_parser_index(file) or {
+		mut p := v.new_parser_from_file(file)
+		p.parse(pass)
+		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
+		v.add_parser(p)
+		return v.parsers.len-1
+	}
+	v.parsers[pidx].parse(pass)
+	//if v.parsers[i].pref.autofree {	v.parsers[i].scanner.text.free()	free(v.parsers[i].scanner)	}
+	return pidx
 }
 
 
@@ -309,7 +322,8 @@ fn (v mut V) compile() {
 		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
 		//if v.pref.is_test {
 		$if !js {
-			cgen.genln('int g_test_ok = 1; ')
+			cgen.genln('int g_test_oks = 0;')
+			cgen.genln('int g_test_fails = 0;')
 		}
 		if imports_json {
 			cgen.genln('
@@ -388,7 +402,7 @@ fn (v mut V) generate_main() {
 		cgen.genln('void init_consts() {
 #ifdef _WIN32
 DWORD consoleMode;
-BOOL isConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &consoleMode);
+isConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &consoleMode);
 int mode = isConsole ? _O_U16TEXT : _O_U8TEXT;
 _setmode(_fileno(stdin), mode);
 _setmode(_fileno(stdout), _O_U8TEXT);
@@ -459,12 +473,18 @@ string _STR_TMP(const char *fmt, ...) {
 			}
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
+			
+			if v.pref.is_stats { cgen.genln('BenchedTests bt = main__start_testing();') }
+			
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
-					cgen.genln('$f.name();')
+					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
+					cgen.genln('$f.name();')					
+					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
 				}
 			}
-			v.gen_main_end('return g_test_ok == 0')
+			if v.pref.is_stats { cgen.genln('BenchedTests_end_testing(&bt);') }
+			v.gen_main_end('return g_test_fails > 0')
 		}
 		else if v.table.main_exists() {
 			v.gen_main_start(true)
@@ -522,9 +542,8 @@ fn (v V) run_compiled_executable_and_exit() {
 		ret := os.system(cmd)
 		// TODO: make the runner wrapping as transparent as possible
 		// (i.e. use execve when implemented). For now though, the runner
-		// just returns the same exit code as the child process
-		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
-		exit( ret >> 8 )
+		// just returns the same exit code as the child process.
+		exit( ret )
 	}
 	exit(0)
 }
@@ -609,7 +628,8 @@ fn (v mut V) add_v_files_to_compile() {
 		// 	continue
 		// }
 		// standard module
-		vfiles := v.v_files_from_dir(v.find_module_path(mod))
+		mod_path := v.find_module_path(mod) or { verror(err) break }
+		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			v.files << file
 		}
@@ -636,6 +656,11 @@ fn (v &V)  get_user_files() []string {
 	// Need to store user files separately, because they have to be added after libs, but we dont know
 	// which libs need to be added yet
 	mut user_files := []string
+
+	if v.pref.is_test && v.pref.is_stats {
+		user_files << [v.vroot, 'vlib', 'benchmark', 'tests', 'always_imported.v'].join( os.PathSeparator )
+	}
+	
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
@@ -676,10 +701,15 @@ fn (v mut V) parse_lib_imports() {
 	for _, fit in v.table.file_imports {
 		if fit.file_path in done_fits { continue }
 		for _, mod in fit.imports {
-			import_path := v.find_module_path(mod)
+			import_path := v.find_module_path(mod) or {
+				pidx := v.get_file_parser_index(fit.file_path) or { verror(err) break }
+				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (not found)', fit.get_import_tok_idx(mod))
+				break
+			}
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				verror('cannot import module $mod (no .v files in "$import_path")')
+				pidx := v.get_file_parser_index(fit.file_path) or { verror(err) break }
+				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', fit.get_import_tok_idx(mod))
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
@@ -688,7 +718,7 @@ fn (v mut V) parse_lib_imports() {
 				done_imports << file
 				p_mod := v.parsers[pid].import_table.module_name
 				if p_mod != mod {
-					verror('bad module name: $file was imported as `$mod` but it is defined as module `$p_mod`')
+					v.parsers[pid].error_with_token_index('bad module definition: $fit.file_path imports module "$mod" but $file is defined as module `$p_mod`', 1)
 				}
 			}
 		}
@@ -883,6 +913,7 @@ fn new_v(args[]string) &V {
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_debuggable: '-g' in args
 		is_debug: '-debug' in args || '-g' in args
+		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args
 		is_live: '-live' in args
@@ -1052,6 +1083,8 @@ fn (v &V) test_v() {
 	mut failed := false
 	test_files := os.walk_ext(parent_dir, '_test.v')
 
+	ok   := term.ok_message('OK')
+	fail := term.fail_message('FAIL')
 	println('Testing...')
 	mut tmark := benchmark.new_benchmark()
 	for dot_relative_file in test_files {		
@@ -1066,16 +1099,16 @@ fn (v &V) test_v() {
 		r := os.exec(cmd) or {
 			tmark.fail()
 			failed = true
-			println(tmark.step_message('$relative_file FAIL'))
+			println(tmark.step_message('$relative_file $fail'))
 			continue
 		}
 		if r.exit_code != 0 {
 			failed = true
 			tmark.fail()
-			println(tmark.step_message('$relative_file FAIL \n`$file`\n (\n$r.output\n)'))
+			println(tmark.step_message('$relative_file $fail\n`$file`\n (\n$r.output\n)'))
 		} else {
 			tmark.ok()
-			println(tmark.step_message('$relative_file OK'))
+			println(tmark.step_message('$relative_file $ok'))
 		}
 		os.rm( tmpc_filepath )
 	}
@@ -1097,16 +1130,16 @@ fn (v &V) test_v() {
 		r := os.exec(cmd) or {
 			failed = true
 			bmark.fail()
-			println(bmark.step_message('$relative_file FAIL'))
+			println(bmark.step_message('$relative_file $fail'))
 			continue
 		}
 		if r.exit_code != 0 {
 			failed = true
 			bmark.fail()
-			println(bmark.step_message('$relative_file FAIL \n`$file`\n (\n$r.output\n)'))
+			println(bmark.step_message('$relative_file $fail \n`$file`\n (\n$r.output\n)'))
 		} else {
 			bmark.ok()
-			println(bmark.step_message('$relative_file OK'))
+			println(bmark.step_message('$relative_file $ok'))
 		}
 		os.rm(tmpc_filepath)
 	}

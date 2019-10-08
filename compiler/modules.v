@@ -42,7 +42,7 @@ fn (v &V) module_path(mod string) string {
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-fn (v &V) find_module_path(mod string) string {
+fn (v &V) find_module_path(mod string) ?string {
 	mod_path := v.module_path(mod)
 	// First check for local modules in the same directory
 	mut import_path := os.getwd() + '${os.PathSeparator}$mod_path'
@@ -55,7 +55,7 @@ fn (v &V) find_module_path(mod string) string {
 	if !os.dir_exists(import_path) {
 		import_path = '$v_modules_path${os.PathSeparator}$mod_path'
 		if !os.dir_exists(import_path){
-			verror('module "$mod" not found')
+			return error('module "$mod" not found')
 		}
 	}
 	return import_path

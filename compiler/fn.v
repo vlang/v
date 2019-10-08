@@ -296,11 +296,8 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Returns a type?
 	mut typ := 'void'
-	if p.tok == .name || p.tok == .mul || p.tok == .amp || p.tok == .lsbr ||
-	p.tok == .question || p.tok == .lpar {
+	if p.tok in [Token.name, .mul, .amp, .lsbr, .question, .lpar] {
 		p.fgen(' ')
-		// TODO In
-		// if p.tok in [ .name, .mul, .amp, .lsbr ] {
 		typ = p.get_type()
 	}
 	// multiple returns
@@ -914,7 +911,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			$if !js {
 				fmt := p.typ_to_fmt(typ, 0)
 				if fmt != '' {
-					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '\\n", '))
+					nl := if f.name == 'println' { '\\n' } else { '' }
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '$nl", '))
 					continue
 				}
 			}

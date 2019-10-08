@@ -11,34 +11,42 @@ struct Repl {
 mut:
 	indent         int
 	in_func        bool
+	line           string
 	lines          []string
 	temp_lines     []string
 	functions_name []string
 	functions      []string
 }
 
-fn (r mut Repl) checks(line string) bool {
+fn (r mut Repl) checks() bool {
 	mut in_string := false
+	mut is_cut := false
 	was_indent := r.indent > 0
 
-	for i := 0; i < line.len; i++ {
-		if line[i] == `\'` && (i == 0 || line[i - 1] != `\\`) {
+	for i := 0; i < r.line.len; i++ {
+		if r.line[i] == `\'` && (i == 0 || r.line[i - 1] != `\\`) {
 			in_string = !in_string
 		}
-		if line[i] == `{` && !in_string {
+		if r.line[i] == `{` && !in_string {
+			r.line = r.line.left(i + 1) + '\n' + r.line.right(i + 1)
+			is_cut = true
+			i++
 			r.indent++
 		}
-		if line[i] == `}` && !in_string {
+		if r.line[i] == `}` && !in_string {
+			r.line = r.line.left(i) + '\n' + r.line.right(i)
+			is_cut = true
+			i++
 			r.indent--
 			if r.indent == 0 {
 				r.in_func = false
 			}
 		}
-		if i + 2 < line.len && r.indent == 0 && line[i + 1] == `f` && line[i + 2] == `n` {
+		if i + 2 < r.line.len && r.indent == 0 && r.line[i + 1] == `f` && r.line[i + 2] == `n` {
 			r.in_func = true
 		}
 	}
-	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0
+	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0 || is_cut
 }
 
 fn (r &Repl) function_call(line string) bool {
@@ -81,47 +89,49 @@ fn run_repl() []string {
 		else {
 			print('... ')
 		}
-		mut line := os.get_raw_line()
-		if line.trim_space() == '' && line.ends_with('\n') {
+		r.line = os.get_raw_line()
+		if r.line.trim_space() == '' && r.line.ends_with('\n') {
 			continue
 		}
-		line = line.trim_space()
-		if line.len == -1 || line == '' || line == 'exit' {
+		r.line = r.line.trim_space()
+		if r.line.len == -1 || r.line == '' || r.line == 'exit' {
 			break
 		}
-		if line == '\n' {
+		if r.line == '\n' {
 			continue
 		}
-		if line == 'clear' {
+		if r.line == 'clear' {
 			term.erase_display('2')
 			continue
 		}
-		if line == 'help' {
+		if r.line == 'help' {
 			repl_help()
 			continue
 		}
-		if line.starts_with('fn') {
+		if r.line.starts_with('fn') {
 			r.in_func = true
-			r.functions_name << line.all_after('fn').all_before('(').trim_space()
+			r.functions_name << r.line.all_after('fn').all_before('(').trim_space()
 		}
 		was_func := r.in_func
-		if r.checks(line) {
-			if r.in_func || was_func {
-				r.functions << line
-			}
-			else {
-				r.temp_lines << line
+		if r.checks() {
+			for line in r.line.split('\n') {
+				if r.in_func || was_func {
+					r.functions << line
+				}
+				else {
+					r.temp_lines << line
+				}
 			}
 			if r.indent > 0 {
 				continue
 			}
-			line = ''
+			r.line = ''
 		}
 		// Save the source only if the user is printing something,
 		// but don't add this print call to the `lines` array,
 		// so that it doesn't get called during the next print.
-		if line.starts_with('print') {
-			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + line
+		if r.line.starts_with('print') {
+			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
 			os.write_file(file, source_code)
 			s := os.exec('$vexe run $file -repl') or {
 				verror(err)
@@ -133,27 +143,27 @@ fn run_repl() []string {
 			}
 		}
 		else {
-			mut temp_line := line
+			mut temp_line := r.line
 			mut temp_flag := false
-			func_call := r.function_call(line)
-			if !(line.contains(' ') || line.contains(':') || line.contains('=') || line.contains(',') || line == '') && !func_call {
-				temp_line = 'println($line)'
+			func_call := r.function_call(r.line)
+			if !(r.line.contains(' ') || r.line.contains(':') || r.line.contains('=') || r.line.contains(',') || r.line == '') && !func_call {
+				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
-			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + r.temp_lines.join('\n') + '\n' + temp_line
+			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('$vexe run $temp_file -repl') or {
 				verror(err)
 				return []string
 			}
-			if !func_call && s.exit_code == 0 {
+			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]
 					}
 					r.temp_lines.delete(0)
 				}
-				r.lines << line
+				r.lines << r.line
 			}
 			else {
 				for r.temp_lines.len > 0 {

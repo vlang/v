@@ -28,7 +28,7 @@ if not exist "%gccpath%" (
     goto:msvcstrap
 )
 
-gcc -std=gnu11 -w -o v2.exe vc\v_win.c
+gcc -std=c99 -w -o v2.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
     exit /b 1
@@ -52,7 +52,7 @@ goto :success
 :msvcstrap
 echo Attempting to build v.c  with MSVC...
 
-for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
   set InstallDir=%%i
 )
 

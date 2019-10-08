@@ -53,10 +53,11 @@ mut:
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
-	module_name  string
-	file_path    string
-	imports      map[string]string // alias => module
-	used_imports []string          // alias
+	module_name    string
+	file_path      string
+	imports        map[string]string // alias => module
+	used_imports   []string          // alias
+	import_tok_idx map[string]int    // module => idx
 }
 
 enum AccessMod {
@@ -896,11 +897,11 @@ fn (fit &FileImportTable) known_import(mod string) bool {
 	return mod in fit.imports || fit.is_aliased(mod)
 }
 
-fn (fit mut FileImportTable) register_import(mod string) {
-	fit.register_alias(mod, mod)
+fn (fit mut FileImportTable) register_import(mod string, tok_idx int) {
+	fit.register_alias(mod, mod, tok_idx)
 }
 
-fn (fit mut FileImportTable) register_alias(alias string, mod string) {
+fn (fit mut FileImportTable) register_alias(alias string, mod string, tok_idx int) {
 	// NOTE: come back here
 	// if alias in fit.imports && fit.imports[alias] == mod {}
 	if alias in fit.imports && fit.imports[alias] != mod {
@@ -919,6 +920,11 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string) {
 		}
 	}
 	fit.imports[alias] = mod
+	fit.import_tok_idx[mod] = tok_idx
+}
+
+fn (fit &FileImportTable) get_import_tok_idx(mod string) int {
+	return fit.import_tok_idx[mod]
 }
 
 fn (fit &FileImportTable) known_alias(alias string) bool {
