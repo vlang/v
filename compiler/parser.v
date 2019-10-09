@@ -947,7 +947,7 @@ fn (p mut Parser) get_type() string {
 		p.fn_args(mut f)
 		// Same line, it's a return type
 		if p.scanner.line_nr == line_nr {
-			if p.tok == .name {
+			if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
 				f.typ = p.get_type()
 			}
 			else {
