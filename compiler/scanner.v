@@ -33,7 +33,7 @@ mut:
 	fmt_out        strings.Builder
 	fmt_indent     int
 	fmt_line_empty bool
-	prev_tok Token
+	prev_tok TokenKind
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
 	should_print_errors_in_color bool
@@ -84,11 +84,11 @@ fn new_scanner(text string) &Scanner {
 
 // TODO remove once multiple return values are implemented
 struct ScanRes {
-	tok Token
+	tok TokenKind
 	lit string
 }
 
-fn scan_res(tok Token, lit string) ScanRes {
+fn scan_res(tok TokenKind, lit string) ScanRes {
 	return ScanRes{tok, lit}
 }
 

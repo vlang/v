@@ -106,14 +106,13 @@ fn (v mut V) cc() {
 		a << f
 	}
 
-	mut libs := ''// builtin.o os.o http.o etc
+	libs := ''// builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
 		a << '-c'
 	}
-	else if v.pref.build_mode == .embed_vlib {
-		//
-	}
 	else if v.pref.build_mode == .default_mode {
+		/*
+		// TODO
 		libs = '$v_modules_path/vlib/builtin.o'
 		if !os.file_exists(libs) {
 			println('object file `$libs` not found')
@@ -125,6 +124,7 @@ fn (v mut V) cc() {
 			}
 			libs += ' "$v_modules_path/vlib/${imp}.o"'
 		}
+		*/
 	}
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
@@ -248,7 +248,7 @@ fn (v mut V) cc() {
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	*/
-	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
+	if !v.pref.is_debug && v.out_name_c != 'v.c' {
 		os.rm(v.out_name_c)
 	}
 	if v.pref.compress {

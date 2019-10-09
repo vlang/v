@@ -161,6 +161,9 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 }
 
 fn (g mut CGen) insert_before(val string) {
+	if g.nogen {
+		return
+	}	
 	prev := g.lines[g.lines.len - 1]
 	g.lines[g.lines.len - 1] = '$prev \n $val \n'
 }

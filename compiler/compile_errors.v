@@ -208,7 +208,7 @@ fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 }
 
 // get_scanner_pos_of_token rescans *the whole source* till it reaches {t.line_nr, t.col} .
-fn (s mut Scanner) get_scanner_pos_of_token(t &Tok) ScannerPos {
+fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	// This rescanning is done just once on error, so it is fine for now.
 	// Be careful for the performance implications, if you want to
 	// do it more frequently. The alternative would be to store
@@ -224,7 +224,26 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Tok) ScannerPos {
 	// of the token. Continue scanning for some more lines of context too.
 	s.goto_scanner_position(ScannerPos{})
 	s.file_lines = []string
+  
 	mut prevlinepos := 0
+	// NB: TCC BUG workaround: removing the `mut ate:=0 ate++` line
+	// below causes a bug in v, when v is compiled with tcc, and v
+	// wants to report the error: 'the following imports were never used:'
+	//
+	// This can be reproduced, if you follow the steps:
+	// a) ./v -cc tcc -o v compiler ;
+	// b) ./v vlib/builtin/hashmap_test.v'
+	//
+	// In this case, prevlinepos gets a random value on each run.
+	// Any kind of operation may be used seemingly, as long as
+	// there is a new stack allocation that will 'protect' prevlinepos.
+	//////////////////////////////////////////////////////////////////
+	mut ate:=0 ate++ // This var will be smashed by TCC, instead of
+	/////////////////// prevlinepos. The cause is the call to
+	/////////////////// s.get_scanner_pos()
+	/////////////////// which just returns a struct, and that works
+	/////////////////// in gcc and clang, but causes the TCC problem.
+	
 	for {
 		prevlinepos = s.pos
 		if s.pos >= s.text.len { break }		
@@ -235,7 +254,7 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Tok) ScannerPos {
 			sptoken.pos += tcol
 		}
 		s.ignore_line() s.eat_single_newline()
-		sline := s.text.substr( prevlinepos, s.pos ).trim_right('\r\n')
+		sline := s.text.substr( prevlinepos, s.pos )//.trim_right('\r\n')
 		s.file_lines << sline
 	}
 	//////////////////////////////////////////////////

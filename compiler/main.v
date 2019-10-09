@@ -8,7 +8,6 @@ import (
 	os
 	strings
 	benchmark
-	term
 )
 
 const (
@@ -19,9 +18,6 @@ enum BuildMode {
 	// `v program.v'
 	// Build user code only, and add pre-compiled vlib (`cc program.o builtin.o os.o...`)
 	default_mode
-	// `v -embed_vlib program.v`
-	// vlib + user code in one file (slower compilation, but easier when working on vlib and cross-compiling)
-	embed_vlib
 	// `v -lib ~/v/os`
 	// build any module (generate os.o + os.vh)
 	build_module
@@ -154,12 +150,12 @@ fn main() {
 		vfmt(args)
 		return
 	}
-	// Construct the V object from command line arguments
-	mut v := new_v(args)
-	if args.join(' ').contains(' test v') {
-		v.test_v()
+	if 'test' in args {
+		test_v()
 		return
 	}
+	// Construct the V object from command line arguments
+	mut v := new_v(args)
 	if v.pref.is_verbose {
 		println(args)
 	}
@@ -291,36 +287,25 @@ fn (v mut V) compile() {
 		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
 		cgen.genln('#endif')
 	}
-		
+	q := cgen.nogen // TODO hack
+	cgen.nogen = false
 	$if js {
 		cgen.genln(js_headers)
 	} $else {
 		cgen.genln(CommonCHeaders)
 	}
-	
 	v.generate_hotcode_reloading_declarations()
-
-	imports_json := 'json' in v.table.imports
-	// TODO remove global UI hack
-	if v.os == .mac && ((v.pref.build_mode == .embed_vlib && 'ui' in
-		v.table.imports) || (v.pref.build_mode == .build_module &&
-		v.dir.contains('/ui'))) {
-		cgen.genln('id defaultFont = 0; // main.v')
-	}
 	// We need the cjson header for all the json decoding that will be done in
 	// default mode
+	imports_json := 'json' in v.table.imports
 	if v.pref.build_mode == .default_mode {
 		if imports_json {
 			cgen.genln('#include "cJSON.h"')
 		}
 	}
-	if v.pref.build_mode == .embed_vlib || v.pref.build_mode == .default_mode {
-	//if v.pref.build_mode in [.embed_vlib, .default_mode] {
+	if v.pref.build_mode == .default_mode {
 		// If we declare these for all modes, then when running `v a.v` we'll get
 		// `/usr/bin/ld: multiple definition of 'total_m'`
-		// TODO
-		//cgen.genln('i64 total_m = 0; // For counting total RAM allocated')
-		//if v.pref.is_test {
 		$if !js {
 			cgen.genln('int g_test_oks = 0;')
 			cgen.genln('int g_test_fails = 0;')
@@ -336,11 +321,14 @@ fn (v mut V) compile() {
 	}
 	//cgen.genln('/*================================== FNS =================================*/')
 	cgen.genln('this line will be replaced with definitions')
-	defs_pos := cgen.lines.len - 1
+	mut defs_pos := cgen.lines.len - 1
+	if defs_pos == -1 {
+		defs_pos = 0
+	}	
+	cgen.nogen = q
 	for file in v.files {
 		v.parse(file, .main)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-		// p.g.gen_x64()
 		// Format all files (don't format automatically generated vlib headers)
 		if !v.pref.nofmt && !file.contains('/vlib/') {
 			// new vfmt is not ready yet
@@ -357,25 +345,25 @@ fn (v mut V) compile() {
 	vgen_parser.parse(.main)
 	// v.parsers.add(vgen_parser)
 	v.log('Done parsing.')
-	// Write everything
-	mut d := strings.new_builder(10000)// Avoid unnecessary allocations
+	// All definitions
+	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
 	$if !js {
-		d.writeln(cgen.includes.join_lines())
-		d.writeln(cgen.typedefs.join_lines())
-		d.writeln(v.type_definitions())
-		d.writeln('\nstring _STR(const char*, ...);\n')
-		d.writeln('\nstring _STR_TMP(const char*, ...);\n')
-		d.writeln(cgen.fns.join_lines()) // fn definitions
+		def.writeln(cgen.includes.join_lines())
+		def.writeln(cgen.typedefs.join_lines())
+		def.writeln(v.type_definitions())
+		def.writeln('\nstring _STR(const char*, ...);\n')
+		def.writeln('\nstring _STR_TMP(const char*, ...);\n')
+		def.writeln(cgen.fns.join_lines()) // fn definitions
 	} $else {
-		d.writeln(v.type_definitions())
+		def.writeln(v.type_definitions())
 	}
-	d.writeln(cgen.consts.join_lines())
-	d.writeln(cgen.thread_args.join_lines())
+	def.writeln(cgen.consts.join_lines())
+	def.writeln(cgen.thread_args.join_lines())
 	if v.pref.is_prof {
-		d.writeln('; // Prof counters:')
-		d.writeln(v.prof_counters())
+		def.writeln('; // Prof counters:')
+		def.writeln(v.prof_counters())
 	}
-	cgen.lines[defs_pos] = d.str()
+	cgen.lines[defs_pos] = def.str()
 	v.generate_main()
 	v.generate_hot_reload_code()
 	if v.pref.is_verbose {
@@ -395,8 +383,7 @@ fn (v mut V) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
 
-	// if v.build_mode in [.default, .embed_vlib] {
-	if v.pref.build_mode == .default_mode || v.pref.build_mode == .embed_vlib {
+	if v.pref.build_mode == .default_mode {
 		mut consts_init_body := cgen.consts_init.join_lines()
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
@@ -592,8 +579,14 @@ fn (v &V) v_files_from_dir(dir string) []string {
 
 // Parses imports, adds necessary libs, and then user files
 fn (v mut V) add_v_files_to_compile() {
+	mut builtin_files := v.get_builtin_files()
+	// Builtin cache exists? Use it.
+	builtin_vh := '$v_modules_path/builtin.vh'
+	if v.pref.is_debug && os.file_exists(builtin_vh) {
+		builtin_files = [builtin_vh]
+	}
 	// Parse builtin imports
-	for file in v.get_builtin_files() {
+	for file in builtin_files {
 		// add builtins first
 		v.files << file
 		mut p := v.new_parser_from_file(file)
@@ -614,19 +607,25 @@ fn (v mut V) add_v_files_to_compile() {
 		v.log('imports:')
 		println(v.table.imports)
 	}
-	// resolve deps & add imports in correct order
-	for mod in v.resolve_deps().imports() {
-		// if mod == v.mod { continue }  // Building this module? Skip. TODO it's a hack.
-		if mod == 'builtin' { continue } // builtin already added
-		if mod == 'main' { continue }    // main files will get added last
+	// resolve deps and add imports in correct order
+	imported_mods := v.resolve_deps().imports()
+	for mod in imported_mods {
+		if mod == 'builtin' || mod == 'main' {
+			// builtin already added
+			// main files will get added last
+			continue
+		}
 		
 		// use cached built module if exists
-		// vh_path := '$v_modules_path/${mod}.vh'
-		// if os.file_exists(vh_path) {
-		// 	println('using cached module `$mod`: $vh_path')
-		// 	v.files << vh_path
-		// 	continue
-		// }
+		if v.pref.build_mode != .build_module {
+			vh_path := '$v_modules_path/${mod}.vh'
+			//println(vh_path)
+			if v.pref.is_debug && os.file_exists(vh_path) {
+				println('using cached module `$mod`: $vh_path')
+				v.files << vh_path
+				continue
+			}
+		}
 		// standard module
 		mod_path := v.find_module_path(mod) or { verror(err) break }
 		vfiles := v.v_files_from_dir(mod_path)
@@ -641,8 +640,9 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 }
 
-// get builtin files
 fn (v &V) get_builtin_files() []string {
+	// .vh cache exists? Use it
+	
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin${os.PathSeparator}js')
 	}
@@ -741,10 +741,10 @@ fn (v &V) resolve_deps() &DepGraph {
 }
 
 fn get_arg(joined_args, arg, def string) string {
-	return get_all_after(joined_args, '-$arg', def)
+	return get_param_after(joined_args, '-$arg', def)
 }
 
-fn get_all_after(joined_args, arg, def string) string {
+fn get_param_after(joined_args, arg, def string) string {
 	key := '$arg '
 	mut pos := joined_args.index(key)
 	if pos == -1 {
@@ -756,7 +756,6 @@ fn get_all_after(joined_args, arg, def string) string {
 		space = joined_args.len
 	}
 	res := joined_args.substr(pos, space)
-	// println('get_arg($arg) = "$res"')
 	return res
 }
 
@@ -777,7 +776,7 @@ fn new_v(args[]string) &V {
 	
 	mut dir := args.last()
 	if 'run' in args {
-		dir = get_all_after(joined_args, 'run', '')
+		dir = get_param_after(joined_args, 'run', '')
 	}
 	if dir.ends_with(os.PathSeparator) {
 		dir = dir.all_before_last(os.PathSeparator)
@@ -814,11 +813,6 @@ fn new_v(args[]string) &V {
 		}
 		*/
 	}
-	// TODO embed_vlib is temporarily the default mode. It's much slower.
-	else if !('-embed_vlib' in args) {
-		build_mode = .embed_vlib
-	}
-	//
 	is_test := dir.ends_with('_test.v')
 	is_script := dir.ends_with('.v')
 	if is_script && !os.file_exists(dir) {
@@ -1035,119 +1029,6 @@ fn install_v(args[]string) {
 	if vgetresult.exit_code != 0 {
 		verror( vgetresult.output )
 		return
-	}
-}
-
-fn (v &V) test_vget() {
-	/*
-	vexe := os.executable()
-	ret := os.system('$vexe install nedpals.args')
-	if ret != 0 {
-		println('failed to run v install')
-		exit(1)
-	}	
-	if !os.file_exists(v_modules_path + '/nedpals/args') {
-		println('v failed to install a test module')
-		exit(1)
-	}	
-	println('vget is OK')
-	*/
-}
-
-fn (v &V) test_v() {
-	args := env_vflags_and_os_args()
-	vexe := os.executable()
-	parent_dir := os.dir(vexe)
-	if !os.dir_exists(parent_dir + '/vlib') {
-		println('vlib/ is missing, it must be next to the V executable')
-		exit(1)
-	}	
-	if !os.dir_exists(parent_dir + '/compiler') {
-		println('compiler/ is missing, it must be next to the V executable')
-		exit(1)
-	}	
-        // Make sure v.c can be compiled without warnings
-	$if mac {
-		os.system('$vexe -o v.c compiler')
-		if os.system('cc -Werror v.c') != 0 {
-			println('cc failed to build v.c without warnings')
-			exit(1)
-		}
-		println('v.c can be compiled without warnings. This is good :)')
-	}
-	// Emily: pass args from the invocation to the test
-	// e.g. `v -g -os msvc test v` -> `$vexe -g -os msvc $file`
-	mut joined_args := args.right(1).join(' ')
-	joined_args = joined_args.left(joined_args.last_index('test'))
-	//	println('$joined_args')
-	mut failed := false
-	test_files := os.walk_ext(parent_dir, '_test.v')
-
-	ok   := term.ok_message('OK')
-	fail := term.fail_message('FAIL')
-	println('Testing...')
-	mut tmark := benchmark.new_benchmark()
-	for dot_relative_file in test_files {		
-		relative_file := dot_relative_file.replace('./', '')
-		file := os.realpath( relative_file )
-		tmpc_filepath := file.replace('_test.v', '_test.tmp.c')
-		
-		mut cmd := '"$vexe" $joined_args -debug "$file"'
-		if os.user_os() == 'windows' { cmd = '"$cmd"' }
-		
-		tmark.step()
-		r := os.exec(cmd) or {
-			tmark.fail()
-			failed = true
-			println(tmark.step_message('$relative_file $fail'))
-			continue
-		}
-		if r.exit_code != 0 {
-			failed = true
-			tmark.fail()
-			println(tmark.step_message('$relative_file $fail\n`$file`\n (\n$r.output\n)'))
-		} else {
-			tmark.ok()
-			println(tmark.step_message('$relative_file $ok'))
-		}
-		os.rm( tmpc_filepath )
-	}
-	tmark.stop()
-	println( tmark.total_message('running V tests') )
-
-	println('\nBuilding examples...')
-	examples := os.walk_ext(parent_dir + '/examples', '.v')
-	mut bmark := benchmark.new_benchmark()
-	for relative_file in examples {
-		if relative_file.contains('vweb') {
-			continue
-		}	
-		file := os.realpath( relative_file )
-		tmpc_filepath := file.replace('.v', '.tmp.c')
-		mut cmd := '"$vexe" $joined_args -debug "$file"'
-		if os.user_os() == 'windows' { cmd = '"$cmd"' }
-		bmark.step()
-		r := os.exec(cmd) or {
-			failed = true
-			bmark.fail()
-			println(bmark.step_message('$relative_file $fail'))
-			continue
-		}
-		if r.exit_code != 0 {
-			failed = true
-			bmark.fail()
-			println(bmark.step_message('$relative_file $fail \n`$file`\n (\n$r.output\n)'))
-		} else {
-			bmark.ok()
-			println(bmark.step_message('$relative_file $ok'))
-		}
-		os.rm(tmpc_filepath)
-	}
-	bmark.stop()
-	println( bmark.total_message('building examples') )
-	v.test_vget()
-	if failed {
-		exit(1)
 	}
 }
 

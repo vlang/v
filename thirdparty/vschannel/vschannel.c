@@ -263,8 +263,8 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	SOCKADDR_STORAGE local_address = { 0 };
 	SOCKADDR_STORAGE remote_address = { 0 };
 
-	DWORD local_address_length;
-	DWORD remote_address_length;
+	DWORD local_address_length =  sizeof(local_address);
+	DWORD remote_address_length = sizeof(remote_address);
 
 	struct timeval tv;
 	tv.tv_sec = 60;
@@ -281,8 +281,8 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
 
-	if(WSAConnectByName(Socket,connect_name, service_name, local_address_length, 
-		&local_address, remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
+	if(WSAConnectByName(Socket,connect_name, service_name, &local_address_length, 
+		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
 		wprintf(L"Error %d connecting to \"%s\" (%s)\n", 
 			WSAGetLastError(),
 			connect_name, 
@@ -930,7 +930,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 	CHAR *rgszUsages[] = {  szOID_PKIX_KP_SERVER_AUTH,
 							szOID_SERVER_GATED_CRYPTO,
 							szOID_SGC_NETSCAPE };
-	DWORD cUsages = sizeof(rgszUsages) / sizeof(CHAR);
+	DWORD cUsages = sizeof(rgszUsages) / sizeof(CHAR*);
 
 	PWSTR   pwszServerName = NULL;
 	DWORD   cchServerName;
