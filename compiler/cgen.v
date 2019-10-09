@@ -47,7 +47,7 @@ fn new_cgen(out_name_c string) &CGen {
 		out_path: path
 		out: out
 		//buf: strings.new_builder(10000)
-		lines: _make(0, 1000, sizeof(string))
+		lines: make(0, 1000, sizeof(string))
 	}
 	return gen
 }

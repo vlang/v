@@ -122,7 +122,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		is_vh: path.ends_with('.vh')
 	}
 	if p.pref.building_v {
-		p.scanner.should_print_relative_paths_on_error = false
+		p.scanner.should_print_relative_paths_on_error = true
 	}
 	v.cgen.file = path
 	p.scan_tokens()

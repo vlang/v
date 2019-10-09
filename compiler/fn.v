@@ -214,7 +214,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok == .plus || p.tok == .minus || p.tok == .mul {
+	if p.tok in [TokenKind.plus, .minus, .mul] {
 		f.name = p.tok.str()
 		p.next()
 	}
@@ -226,17 +226,21 @@ fn (p mut Parser) fn_decl() {
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
 	if p.pref.build_mode == .build_module {
-		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
 	}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
 		f.is_c = true
 	}
-	else if !p.pref.translated && !p.file_path.contains('view.v') {
+	else if !p.pref.translated {
 		if contains_capital(f.name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
+		if f.name[0] == `_` {
+			// TODO error
+			p.warn('function names cannot start with `_`')
+		}	
 		if f.name.contains('__') {
 			p.error('function names cannot contain double underscores, use single underscores instead')
 		}
@@ -382,8 +386,9 @@ fn (p mut Parser) fn_decl() {
 		}
 		p.add_method(receiver_t.name, f)
 	}
-	else {
-		// println('register_fn typ=$typ isg=$is_generic')
+	else if p.first_pass(){
+		// println('register_fn $f.name typ=$typ isg=$is_generic pass=$p.pass ' +
+//'$p.file_name')
 		p.table.register_fn(f)
 	}
 	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
@@ -807,7 +812,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		file_path := p.file_path.replace('\\', '\\\\') // escape \
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
-			'_panic_debug ($p.scanner.line_nr, tos2((byte *)"$file_path"), tos2((byte *)"$mod_name"), tos2((byte *)"$fn_name"), '
+			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '
 		))
 	}
 	for i, arg in f.args {

@@ -29,7 +29,7 @@ fn new_array(mylen, cap, elm_size int) array {
 
 
 // TODO
-pub fn _make(len, cap, elm_size int) array {
+pub fn make(len, cap, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
@@ -111,6 +111,13 @@ pub fn (a mut array) delete(idx int) {
 	a.cap--
 }
 
+fn (a array) get(i int) voidptr {
+	if i < 0 || i >= a.len {
+		panic('array index out of range: $i/$a.len')
+	}
+	return a.data + i * a.element_size
+}
+
 fn (a array) _get(i int) voidptr {
 	if i < 0 || i >= a.len {
 		panic('array index out of range: $i/$a.len')
@@ -175,6 +182,22 @@ fn (a mut array) set(idx int, val voidptr) {
 	C.memcpy(a.data + a.element_size * idx, val, a.element_size)
 }
 
+fn (arr mut array) push(val voidptr) {
+	if arr.len >= arr.cap - 1 {
+		cap := (arr.len + 1) * 2
+		// println('_push: realloc, new cap=$cap')
+		if arr.cap == 0 {
+			arr.data = calloc(cap * arr.element_size)
+		}
+		else {
+			arr.data = C.realloc(arr.data, cap * arr.element_size)
+		}
+		arr.cap = cap
+	}
+	C.memcpy(arr.data + arr.element_size * arr.len, val, arr.element_size)
+	arr.len++
+}
+
 fn (arr mut array) _push(val voidptr) {
 	if arr.len >= arr.cap - 1 {
 		cap := (arr.len + 1) * 2
@@ -194,6 +217,24 @@ fn (arr mut array) _push(val voidptr) {
 // `val` is array.data
 // TODO make private, right now it's used by strings.Builder
 pub fn (arr mut array) _push_many(val voidptr, size int) {
+	if arr.len >= arr.cap - size {
+		cap := (arr.len + size) * 2
+		// println('_push: realloc, new cap=$cap')
+		if arr.cap == 0 {
+			arr.data = calloc(cap * arr.element_size)
+		}
+		else {
+			arr.data = C.realloc(arr.data, cap * arr.element_size)
+		}
+		arr.cap = cap
+	}
+	C.memcpy(arr.data + arr.element_size * arr.len, val, arr.element_size * size)
+	arr.len += size
+}
+
+// `val` is array.data
+// TODO make private, right now it's used by strings.Builder
+pub fn (arr mut array) push_many(val voidptr, size int) {
 	if arr.len >= arr.cap - size {
 		cap := (arr.len + size) * 2
 		// println('_push: realloc, new cap=$cap')
@@ -291,7 +332,7 @@ pub fn (a mut []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
-// Looking for an array index based on value. 
+// Looking for an array index based on value.
 // If there is, it will return the index and if not, it will return `-1`
 // TODO: Implement for all types
 pub fn (a []string) index(v string) int {
