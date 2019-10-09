@@ -1472,8 +1472,9 @@ fn (p mut Parser) var_decl() {
 		p.error('expected `=` or `:=`')
 	}
 	// all vars on left of `:=` already defined (or `_`)
-	if is_decl_assign && /*var_names.len > 1 &&*/ new_vars == 0 {
-		p.error_with_token_index('no new variables on left side of `:=`', var_token_idxs.last())
+	if is_decl_assign && new_vars == 0 && 
+		(var_names.len > 1 || (var_names.len == 1 && var_names[0] == '_')) {
+		p.error_with_token_index('only new variables can go on the left side of `:=`', var_token_idxs.last())
 	}
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_'+var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
