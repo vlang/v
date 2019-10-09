@@ -36,7 +36,7 @@ fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
 		root: 0
 	}
 	for i in 0 .. cap {
-		res._set(keys[i], vals + i * elm_size)
+		res.set(keys[i], vals + i * elm_size)
 	}
 	return res
 }
@@ -114,15 +114,6 @@ fn (n & mapnode) find2(key string, element_size int) bool{
 			return n.right.find2(key, element_size)
 		}
 	}
-}
-
-fn (m mut map) _set(key string, val voidptr) {
-	if isnil(m.root) {
-		m.root = new_node(key, val, m.element_size)
-		m.size++
-		return
-	}
-	m.insert(mut m.root, key, val)
 }
 
 fn (m mut map) set(key string, val voidptr) {
@@ -220,10 +211,6 @@ pub fn (m mut map) delete(key string) {
 }
 
 fn (m map) exists(key string) bool {
-	return !isnil(m.root) && m.root.find2(key, m.element_size)
-}
-
-fn (m map) _exists(key string) bool {
 	return !isnil(m.root) && m.root.find2(key, m.element_size)
 }
 
