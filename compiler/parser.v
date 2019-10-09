@@ -509,6 +509,8 @@ fn (p mut Parser) const_decl() {
 			// .vh files don't have const values, just types: `const (a int)`
 			typ = p.get_type()
 			p.table.register_const(name, typ, p.mod)
+			p.cgen.consts << ('extern ' +
+				p.table.cgen_name_type_pair(name, typ)) + ';'
 			continue // Don't generate C code when building a .vh file
 		} else {
 			p.check_space(.assign)
@@ -524,7 +526,9 @@ fn (p mut Parser) const_decl() {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
 			// output a #define so that we don't pollute the binary with unnecessary global vars
-			if is_compile_time_const(p.cgen.cur_line) {
+			// Do not do this when building a module, otherwise the consts
+			// will not be accessible.
+			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
 				p.cgen.consts << '#define $name $p.cgen.cur_line'
 				p.cgen.resetln('')
 				p.fgenln('')
