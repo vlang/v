@@ -254,6 +254,7 @@ pub fn (v mut V) cc_msvc() {
 	if v.pref.build_mode == .build_module {
 	}
 	else if v.pref.build_mode == .default_mode {
+		/*
 		b := os.realpath( '$v_modules_path/vlib/builtin.obj' )
 		alibs << '"$b"'
 		if !os.file_exists(b) {
@@ -266,6 +267,7 @@ pub fn (v mut V) cc_msvc() {
 			}
 			alibs << '"' + os.realpath( '$v_modules_path/vlib/${imp}.obj' ) + '"'
 		}
+		*/
 	}
 
 	if v.pref.sanitize {
