@@ -224,7 +224,7 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	// of the token. Continue scanning for some more lines of context too.
 	s.goto_scanner_position(ScannerPos{})
 	s.file_lines = []string
-  
+
 	mut prevlinepos := 0
 	// NB: TCC BUG workaround: removing the `mut ate:=0 ate++` line
 	// below causes a bug in v, when v is compiled with tcc, and v

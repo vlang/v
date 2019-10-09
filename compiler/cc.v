@@ -10,9 +10,9 @@ import (
 )
 
 fn (v mut V) cc() {
-	// build any thirdparty obj files
 	v.build_thirdparty_obj_files()
 	// Just create a C/JavaScript file and exit
+	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
 		// Translating V code to JS by launching vjs
 		$if !js {

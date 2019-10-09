@@ -125,6 +125,15 @@ fn (m mut map) _set(key string, val voidptr) {
 	m.insert(mut m.root, key, val)
 }
 
+fn (m mut map) set(key string, val voidptr) {
+	if isnil(m.root) {
+		m.root = new_node(key, val, m.element_size)
+		m.size++
+		return
+	}
+	m.insert(mut m.root, key, val)
+}
+
 /*
 fn (m map) bs(query string, start, end int, out voidptr) {
 	// println('bs "$query" $start -> $end')
@@ -210,8 +219,8 @@ pub fn (m mut map) delete(key string) {
 	m.size--
 }
 
-pub fn (m map) exists(key string) {
-	panic('map.exists(key) was removed from the language. Use `key in map` instead.')
+fn (m map) exists(key string) bool {
+	return !isnil(m.root) && m.root.find2(key, m.element_size)
 }
 
 fn (m map) _exists(key string) bool {

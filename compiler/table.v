@@ -562,7 +562,7 @@ fn (t &Table) find_type(name_ string) Type {
 	return t.typesmap[name]
 }
 
-fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
+fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	mut got := got_
 	mut expected := expected_
 	//p.log('check types got="$got" exp="$expected"  ')

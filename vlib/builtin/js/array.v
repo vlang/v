@@ -34,7 +34,7 @@ pub fn _make(len, cap, elm_size int) array {
 
 */
 
-pub fn _make(len, cap, elm_size int) array {
+pub fn make(len, cap, elm_size int) array {
 	return array{}
 }
 
