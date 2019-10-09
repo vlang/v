@@ -59,7 +59,9 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 		initializer := p.cgen.cur_line.right(pos)
 		if initializer.len > 0 {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
-		}
+		} else if initializer.len == 0 {
+			p.cgen.resetln(' = { 0 }')
+		}	
 	}
 
 	if is_static {
