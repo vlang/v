@@ -937,8 +937,7 @@ fn (p mut Parser) get_type() string {
 		}
 		p.check(.rpar)
 		// p.inside_tuple = false
-		typ = '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
-		p.register_multi_return_stuct(typ)
+		typ = p.register_multi_return_stuct(types)
 		return typ
 	}
 	// fn type

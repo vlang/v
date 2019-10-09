@@ -721,9 +721,8 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
 			}
 			t := p.get_type()
-			vargs_struct := '_V_FnVargs_$f.name'
 			// register varg struct, incase function is never called
-			p.fn_register_vargs_stuct(f, t, []string)
+			vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
 			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 			typ = '...$t'
 		} else {
@@ -1006,7 +1005,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	return f // TODO is return f right?
 }
 
-fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) string {
 	vargs_struct := '_V_FnVargs_$f.name'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
@@ -1020,6 +1019,7 @@ fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	return vargs_struct
 }
 
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
@@ -1048,12 +1048,14 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	if f.args.len > 1 {
 		p.cgen.gen(',')
 	}
-	p.cgen.gen('&(_V_FnVargs_$f.name){.len=$values.len,.args={'+values.join(',')+'}}')
-	p.fn_register_vargs_stuct(f, varg_def_type, values)
+	vargs_struct := p.fn_register_vargs_stuct(f, varg_def_type, values)
+	p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	
 }
 
-fn (p mut Parser) register_multi_return_stuct(typ string) {
-	if p.table.known_type(typ) { return }
+fn (p mut Parser) register_multi_return_stuct(types []string) string {
+	typ := '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
+	if p.table.known_type(typ) { return typ }
 	p.table.register_type2(Type{
 		cat: TypeCategory.struct_,
 		name: typ,
@@ -1063,6 +1065,7 @@ fn (p mut Parser) register_multi_return_stuct(typ string) {
 		p.table.add_field(typ, 'var_$i', t, false, '', .public)
 	}
 	p.cgen.typedefs << 'typedef struct $typ $typ;'
+	return typ
 }
 
 // "fn (int, string) int"
