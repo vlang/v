@@ -195,6 +195,7 @@ fn (p mut Parser) next() {
 	 p.tok = res.tok
 	 p.lit = res.lit
 	 p.scanner.line_nr = res.line_nr
+	 p.cgen.line = res.line_nr
 }
 
 fn (p & Parser) peek() TokenKind {
@@ -230,6 +231,9 @@ fn (p &Parser) log(s string) {
 }
 
 fn (p mut Parser) parse(pass Pass) {
+	p.cgen.file = p.file_path
+	p.cgen.line = 0
+	/////////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0
 	p.next()
