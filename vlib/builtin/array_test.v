@@ -314,3 +314,17 @@ fn test_filter() {
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
 }
+
+fn sum(prev int, curr int, index int, arr []int) int {
+	return prev + curr
+}
+
+fn test_reduce() {
+	a := [1, 2, 3, 4, 5]
+	b := a.reduce(sum, 0)
+	c := a.reduce(sum, 5)
+	d := a.reduce(sum, -1)
+	assert b == 15
+	assert c == 20
+	assert d == 15
+}
