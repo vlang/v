@@ -94,7 +94,7 @@ pub fn (a mut array) insert(i int, val voidptr) {
 	if i >= a.len {
 		panic('array.insert: index larger than length')
 	}
-	a._push(val)
+	a.push(val)
 	size := a.element_size
 	C.memmove(a.data + (i + 1) * size, a.data + i * size, (a.len - i) * size)
 	a.set(i, val)
@@ -112,13 +112,6 @@ pub fn (a mut array) delete(idx int) {
 }
 
 fn (a array) get(i int) voidptr {
-	if i < 0 || i >= a.len {
-		panic('array index out of range: $i/$a.len')
-	}
-	return a.data + i * a.element_size
-}
-
-fn (a array) _get(i int) voidptr {
 	if i < 0 || i >= a.len {
 		panic('array index out of range: $i/$a.len')
 	}
@@ -196,40 +189,6 @@ fn (arr mut array) push(val voidptr) {
 	}
 	C.memcpy(arr.data + arr.element_size * arr.len, val, arr.element_size)
 	arr.len++
-}
-
-fn (arr mut array) _push(val voidptr) {
-	if arr.len >= arr.cap - 1 {
-		cap := (arr.len + 1) * 2
-		// println('_push: realloc, new cap=$cap')
-		if arr.cap == 0 {
-			arr.data = calloc(cap * arr.element_size)
-		}
-		else {
-			arr.data = C.realloc(arr.data, cap * arr.element_size)
-		}
-		arr.cap = cap
-	}
-	C.memcpy(arr.data + arr.element_size * arr.len, val, arr.element_size)
-	arr.len++
-}
-
-// `val` is array.data
-// TODO make private, right now it's used by strings.Builder
-pub fn (arr mut array) _push_many(val voidptr, size int) {
-	if arr.len >= arr.cap - size {
-		cap := (arr.len + size) * 2
-		// println('_push: realloc, new cap=$cap')
-		if arr.cap == 0 {
-			arr.data = calloc(cap * arr.element_size)
-		}
-		else {
-			arr.data = C.realloc(arr.data, cap * arr.element_size)
-		}
-		arr.cap = cap
-	}
-	C.memcpy(arr.data + arr.element_size * arr.len, val, arr.element_size * size)
-	arr.len += size
 }
 
 // `val` is array.data
