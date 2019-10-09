@@ -1,4 +1,4 @@
-import os2
+//import os2
 
 fn test_open() {
 	/*
