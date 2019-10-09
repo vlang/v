@@ -360,14 +360,14 @@ pub fn (a []int) filter(predicate fn(p_val int, p_i int, p_arr []int) bool) []in
 // method executes a reducer function (that you provide) on each element of the array, 
 // resulting in a single output value.
 pub fn (a []int) reduce(
-	iter fn (accum int, curr int, index int, src []int) int,
+	iter fn (accum int, curr int) int,
 	accum_start int
 ) int
 {
 	mut _accum := 0
-	if accum_start > 0 && a.len > 1 {	_accum = accum_start }
+	_accum = accum_start
 	for i := 0; i < a.len; i++ {
-		_accum = iter(_accum, a[i], i, a)
+		_accum = iter(_accum, a[i])
 	}
 	return _accum
 }
