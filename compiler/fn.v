@@ -293,18 +293,6 @@ fn (p mut Parser) fn_decl() {
 		p.fgen(' ')
 		typ = p.get_type()
 	}
-	// multiple returns
-	if typ.starts_with('_V_MulRet_') && p.first_pass() && !p.table.known_type(typ) {
-		p.table.register_type2(Type{
-			cat: TypeCategory.struct_,
-			name: typ,
-			mod: p.mod
-		})
-		for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
-			p.table.add_field(typ, 'var_$i', t, false, '', .public)
-		}
-		p.cgen.typedefs << 'typedef struct $typ $typ;'
-	}
 	// Translated C code and .vh can have empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&
 		(p.pref.translated || p.pref.is_test || p.is_vh) &&
@@ -1062,6 +1050,19 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	}
 	p.cgen.gen('&(_V_FnVargs_$f.name){.len=$values.len,.args={'+values.join(',')+'}}')
 	p.fn_register_vargs_stuct(f, varg_def_type, values)
+}
+
+fn (p mut Parser) register_multi_return_stuct(typ string) {
+	if p.table.known_type(typ) { return }
+	p.table.register_type2(Type{
+		cat: TypeCategory.struct_,
+		name: typ,
+		mod: p.mod
+	})
+	for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
+		p.table.add_field(typ, 'var_$i', t, false, '', .public)
+	}
+	p.cgen.typedefs << 'typedef struct $typ $typ;'
 }
 
 // "fn (int, string) int"
