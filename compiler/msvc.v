@@ -250,7 +250,7 @@ pub fn (v mut V) cc_msvc() {
 
 	v.out_name = os.realpath( v.out_name )
 
-	mut alibs := []string // builtin.o os.o http.o etc
+	alibs := []string // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
 	}
 	else if v.pref.build_mode == .default_mode {
