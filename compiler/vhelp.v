@@ -46,6 +46,7 @@ Options/commands:
                     Example: -cflags `sdl2-config --cflags`
   -debug            Keep the generated C file for debugging in program.tmp.c even after compilation.
   -shared           Build a shared library.
+  -stats            Show additional stats when compiling/running tests. Try `v -stats test .`
   -g                Show v line numbers in backtraces. Implies -debug.
   -obf              Obfuscate the resulting binary.
   -show_c_cmd       Print the full C compilation command and how much time it took.
@@ -58,6 +59,7 @@ Options/commands:
   symlink           Useful on unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
   install <module>  Install a user module from https://vpm.vlang.io/.
   test v            Run all V test files, and compile all V examples.
+  test folder/      Run all V test files located in the folder and its subfolders. You can also pass individual _test.v files too.
   fmt               Run vfmt to format the source code. [wip]
   doc               Run vdoc over the source code and produce documentation. [wip]
   translate         Translates C to V. [wip, will be available in V 0.3]
