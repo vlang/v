@@ -113,7 +113,7 @@ fn (v mut V) cc() {
 	else if v.pref.is_debug {
 		builtin_o_path := '$v_modules_path/vlib/builtin.o'
 		if os.file_exists(builtin_o_path) {
-			libs = '$v_modules_path/vlib/builtin.o'
+			libs = builtin_o_path
 		} else {
 			println('$builtin_o_path not found... build module builtin')
 		}
