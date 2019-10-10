@@ -74,11 +74,11 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 					for C.fgets(buf, 1000, f) != 0 {
 						output += tos(buf, vstrlen(buf)) 
 					}
-					output = output.trim_space()
+					output = output.trim_space()+':'
 					if 0 != int(C.pclose(f)) {
 						println(sframe) continue
 					}
-					println( '${output:40s} | $sframe')
+					println( '${output:-45s} | $sframe')
 				}
 				//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 				return
