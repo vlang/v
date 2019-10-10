@@ -55,6 +55,7 @@ jobs:
         VFLAGS: -cc tcc
       run: |
         tcc -version
+        ./v -o v2 compiler # Make sure vtcc can build itself
         ./v test v
 
   build-windows-gcc:

@@ -857,24 +857,23 @@ fn new_v(args[]string) &V {
 		case 'solaris': _os = .solaris
 		}
 	}
-	//println('OS=$_os')
-
 	// Location of all vlib files
 	vroot := os.dir(os.executable())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
 		println('vlib not found, downloading it...')
+		/*
 		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
 		if ret != 0 {
 			println('failed to `git clone` vlib')
 			println('make sure you are online and have git installed')
 			exit(1)
 		}
-
-		//println('vlib not found. It should be next to the V executable. ')
-		//println('Go to https://vlang.io to install V.')
-		//exit(1)
+		*/
+		println('vlib not found. It should be next to the V executable. ')
+		println('Go to https://vlang.io to install V.')
+		exit(1)
 	}
 	//println('out_name:$out_name')
 	mut out_name_c := os.realpath('${out_name}.tmp.c')
