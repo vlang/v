@@ -120,6 +120,7 @@ fn (d mut Digest) reset() {
 	d.len = 0
 }
 
+// internal
 fn new_digest(hash crypto.Hash) &Digest {
 	mut d := &Digest{function: hash}
 	d.reset()
