@@ -8,6 +8,9 @@
     struct toml_timestamp_t;
     // 's'tring,'d'emical,'b'inary,'h'exical,'o'ctial,do'u'ble,'t'imestamp,'n'one
     static int parse_data(int val_type,char* data);
+    int yyerror(const char* str);
+    int parse_string(char* rtn,int val_type);
+    int parse_double(char* rtn,int val_type);
     int parse_int(char* rtn,int val_type);
     int parse_array(const char* key_name,array_t rtn);
     int parse_table(const char* tbl_name,table_t rtn);
@@ -19,53 +22,58 @@
 %start TOML
 
 %%
-    TOML: TABLE | ARRAY ;
+    TOML: TABLE 
+        | ARRAY 
+        ;
     DATA: [INT_KEY | BIN_KEY | HEX_KEY | OCT_KEY | STRING_KEY | DOUBLE];
     DEC_KEY: 
            | INTEGER;
            {
                 parse_data('d',INTEGER); 
            }
-    BIN_KEY:
-           | BIN_HEADER 
+           ;
+    BIN_KEY: BIN_HEADER 
            | BINARY;
            {
                 parse_data('b',BINARY);
            }
-    HEX_KEY:
-           | HEX_HEADER 
+           ;
+    HEX_KEY: HEX_HEADER 
            | BINARY;
            {
                 parse_data('h',BINARY);
            }
+           ;
     OCT_KEY:
            | OCT_HEADER 
            | BINARY;
            {
                 parse_data('o',BINARY);
            }
-    STRING_KEY: 
-              | STRING;
+           ;
+    STRING_KEY: STRING;
               {
                     parse_data('s',STRING);
               }
-    DOUBLE_KEY: 
-              | DOUBLE;
+              ;
+    DOUBLE_KEY: DOUBLE;
               {
                     parse_data('u',DOUBLE);
               }
+              ;
     TABLE_OF_ARRAY:LBRACKET|LBRACKET|TABLE_NAME|RBRACKET|RBRACKET ;
-    TABLE_NAME:
-              | [LETTER | STRING] 
+    TABLE_NAME: [LETTER | STRING] 
               | [DOT] 
-              | [LETTER | STRING];
+              | [LETTER | STRING]
+              ;
     TABLE: LBRACKET 
          | TABLE_NAME 
          | RBRACKET 
          | NEWLINE 
          | [KEY]+
          {
-            parse_table(TABLE_NAME);
+            toml_table_t = temp;
+            parse_table(TABLE_NAME,temp);
          }
          ;
     ARRAY: LBRACKET 
@@ -73,6 +81,7 @@
          | [COMMA | DATA]+ 
          | RBRACKET
          {
+            toml_array_t = temp
             parse_array();
          }
          ;
@@ -80,7 +89,7 @@
        | EQUAL 
        | DATA
        {
-        int type
+        int type = 0;
            // Key Type Select.
            switch(DATA){
                 case STRING_KEY:
@@ -108,8 +117,10 @@
            load_key(NAME,TABLE_NAME,temp,type);
        }
        ;
-
-    INLINE_TABLE: LBRACE | KEY | RBRACE;
+    INLINE_TABLE: LBRACE 
+                | KEY 
+                | RBRACE
+                ;
 %%
 
 int yyerror(const char* str){
@@ -123,6 +134,11 @@ struct toml_key_t{
     const char* val;
 } toml_key;
 
+struct toml_timestamp_t{
+    int year,month,day;
+    int hour,minute,second,millsecond;
+} toml_timestamp;
+
 struct toml_table_t{
     const char* key;
     int         kind;
@@ -134,7 +150,7 @@ struct toml_table_t{
         array_t** arr;
         table_t** tab;
     } u;
-};
+} toml_table;
 
 struct toml_array_t{
     const char* key;

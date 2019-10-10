@@ -87,50 +87,65 @@ fn decode_octal(s string) string{
     return temp.str()
 }
 
-fn string_decode(root &TOML){
-
+fn string_decode(root &TOML) ?string{
+    if root.str == '' {
+        return root.str
+    }
+    return error('This Key is not string type.')
 }
 
-fn integer_decode_int(root &TOMLInt) int {
+fn integer_decode_int(root &TOMLInt) ?int {
     mut temp := root.str_val
-    switch int_type{
-        demical => temp = decode_demical()
-        hex     => temp = decode_hex()
-        binary  => temp = decode_binary()
-        octal   => temp = decode_octal()
+    if temp == '' {
+        match int_type {
+            demical => temp = decode_demical()
+            hex     => temp = decode_hex()
+            binary  => temp = decode_binary()
+            octal   => temp = decode_octal()
+        }
+        return temp.int()
     }
-    return temp.int()
+    return error('This Key is not integer type.')
 }
 
-fn integer_decode_i64(root &TOMLInt) i64{     
+fn integer_decode_i64(root &TOMLInt) ?i64{     
     mut temp := root.str_val
-    switch int_type{
-        demical => temp = decode_demical()
-        hex     => temp = decode_hex()
-        binary  => temp = decode_binary()
-        octal   => temp = decode_octal()
+    if temp == '' {
+        match int_type {
+            demical => temp = decode_demical()
+            hex     => temp = decode_hex()
+            binary  => temp = decode_binary()
+            octal   => temp = decode_octal()
+        }
+        return temp.i64()
     }
-    return temp.i64()
+    return error('This Key is not integer type.')
 }
 
-fn integer_decode_i16(root &TOMLInt) i16{
+fn integer_decode_i16(root &TOMLInt) ?i16{
     mut temp := root.str_val
-    switch int_type{
-        demical => temp = decode_demical()
-        hex     => temp = decode_hex()
-        binary  => temp = decode_binary()
-        octal   => temp = decode_octal()
+    if temp == '' {
+        match int_type{
+            demical => temp = decode_demical()
+            hex     => temp = decode_hex()
+            binary  => temp = decode_binary()
+            octal   => temp = decode_octal()
+        }
+        return temp.i16()
     }
-    return temp.i16()
+    return error('This Key is not integer type.')
 }
 
-fn integer_decode_i8(root &TOML) i8{
+fn integer_decode_i8(root &TOML) ?i8{
     mut temp := root.str_val
-    switch int_type{
-        demical => temp = decode_demical()
-        hex     => temp = decode_hex()
-        binary  => temp = decode_binary()
-        octal   => temp = decode_octal()
+    if temp == '' {
+        match int_type{
+            demical => temp = decode_demical()
+            hex     => temp = decode_hex()
+            binary  => temp = decode_binary()
+            octal   => temp = decode_octal()
+        }
+        return temp.i8()
     }
-    return temp.i8()
+    return error('This Key is not integer type.')
 }
