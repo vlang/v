@@ -148,10 +148,10 @@ pub fn (s Socket) accept() ?Socket {
 // connect to given addrress and port
 pub fn (s Socket) connect(address string, port int) ?int {
 	mut hints := C.addrinfo{}
-	hints.ai_family = C.AF_UNSPEC
-	hints.ai_socktype = C.SOCK_STREAM
+	hints.ai_family = s.family
+	hints.ai_socktype = s._type
 	hints.ai_flags = C.AI_PASSIVE
-	hints.ai_protocol = 0
+	hints.ai_protocol = s.proto
 	hints.ai_addrlen = 0
 	hints.ai_canonname = C.NULL
 	hints.ai_addr = C.NULL
