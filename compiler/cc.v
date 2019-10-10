@@ -72,10 +72,10 @@ fn (v mut V) cc() {
 		println('Building ${v.out_name}...')
 	}
 
-	mut debug_options := '-g'
+	mut debug_options := ''
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
-		if v.pref.is_debug {
+		if v.pref.is_debuggable {
 			debug_options = '-g -O0'
 		}
 		optimization_options = '-O3 -flto'
@@ -94,7 +94,7 @@ fn (v mut V) cc() {
 		a << debug_options
 	}
 
-	if v.pref.is_debug && os.user_os() != 'windows'{
+	if v.pref.is_debuggable && os.user_os() != 'windows'{
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 
