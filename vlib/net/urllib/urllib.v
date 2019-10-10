@@ -482,7 +482,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		url.force_query = true
 		rest = rest.left(rest.len-1)
 	} else {
-		_, raw_query := split(rest, `?`, true)
+		r, raw_query := split(rest, `?`, true)
+		rest = r
 		url.raw_query = raw_query
 	}
 
@@ -511,7 +512,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	}
 
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
-		authority, _ := split(rest.right(2), `/`, false)
+		authority, r := split(rest.right(2), `/`, false)
+		rest = r
 		a := parse_authority(authority) or {
 			return error(err)
 		}
@@ -805,7 +807,7 @@ pub fn (u &URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	_ = _parse_query(mut m, query) or {
+	_ = parse_query_values(mut m, query) or {
 		return error(err)
 	}
 	return m
@@ -815,11 +817,11 @@ pub fn parse_query(query string) ?Values {
 // but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	_ = _parse_query(mut m, query)
+	_ = parse_query_values(mut m, query)
 	return m
 }
 
-fn _parse_query(m mut Values, query string) ?bool {
+fn parse_query_values(m mut Values, query string) ?bool {
 	mut had_error := false
 	mut q := query
 	for q != '' {
@@ -1009,21 +1011,21 @@ pub fn (u &URL) request_uri() string {
 // If the result is enclosed in square brackets, as literal IPv6 addresses are,
 // the square brackets are removed from the result.
 pub fn (u &URL) hostname() string {
-	host_port := split_host_port(u.host)
-	return host_port[0]
+	host, _ := split_host_port(u.host)
+	return host
 }
 
 // port returns the port part of u.host, without the leading colon.
 // If u.host doesn't contain a port, port returns an empty string.
 pub fn (u &URL) port() string {
-	host_port := split_host_port(u.host)
-	return host_port[1]
+	_, port := split_host_port(u.host)
+	return port
 }
 
 // split_host_port separates host and port. If the port is not valid, it returns
 // the entire input as host, and it doesn't check the validity of the host.
 // Per RFC 3986, it requires ports to be numeric.
-fn split_host_port(hostport string) []string {
+fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	
@@ -1037,7 +1039,7 @@ fn split_host_port(hostport string) []string {
 		host = host.substr(1, host.len-1)
 	}
 
-	return [host, port]
+	return host, port
 }
 
 // valid_userinfo reports whether s is a valid userinfo string per RFC 3986
