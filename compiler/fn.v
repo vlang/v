@@ -419,8 +419,8 @@ fn (p mut Parser) fn_decl() {
 		p.genln('pthread_mutex_lock(&live_fn_mutex);')
 	}
 
-	if f.name == 'main__main' || f.name == 'main' || f.name == 'WinMain' {
-		if p.pref.is_test && !p.scanner.file_path.contains('/volt') {
+	if f.name in ['main__main', 'main', 'WinMain'] {
+		if p.pref.is_test {
 			p.error_with_token_index('tests cannot have function `main`', f.fn_name_token_idx)
 		}
 	}
