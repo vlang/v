@@ -29,3 +29,7 @@ fn init() int {
 	return 1
 }
 
+fn error_code() int {
+	return C.WSAGetLastError()
+}
+

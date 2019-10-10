@@ -32,7 +32,7 @@ fn init() int {
 	return 1
 }
 
-fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
+fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	//ssl_method := C.SSLv23_method() 
 	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 
