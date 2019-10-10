@@ -333,6 +333,7 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
+// `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
 	mut ret := int(0)
 	$if windows {

@@ -1686,6 +1686,7 @@ fn (p mut Parser) bterm() string {
 
 // also called on *, &, @, . (enum)
 fn (p mut Parser) name_expr() string {
+	//println('n')
 	p.has_immutable_field = false
 	p.is_const_literal = false
 	ph := p.cgen.add_placeholder()
@@ -2958,7 +2959,7 @@ fn (p mut Parser) map_init() string {
 		mut i := 0
 		for {
 			key := p.lit
-			keys_gen += 'tos2((byte*)"$key"), '
+			keys_gen += 'tos3("$key"), '
 			p.check(.str)
 			p.check(.colon)
 			p.cgen.start_tmp()

@@ -111,20 +111,14 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_debug {
+		vexe := os.executable()
 		builtin_o_path := '$v_modules_path/vlib/builtin.o'
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
-			println('$builtin_o_path not found... build module builtin')
+			println('$builtin_o_path not found... building module builtin')
+			os.system('$vexe build module vlib/builtin')
 		}
-		// '$v_modules_path/vlib/strings.o '+
-		// '$v_modules_path/vlib/math.o '
-		/*
-		if !os.file_exists(libs) {
-			println('object file `$libs` not found')
-			exit(1)
-		}
-		*/
 		for imp in v.table.imports {
 			if imp == 'webview' {
 				continue
@@ -134,7 +128,8 @@ fn (v mut V) cc() {
 			if os.file_exists(path) {
 				libs += ' ' + path
 			} else {
-				println('$path not found... build module $imp')
+				println('$path not found... building module $imp')
+				os.system('$vexe build module vlib/$imp')
 			}	
 		}
 	}
