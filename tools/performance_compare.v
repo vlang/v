@@ -3,7 +3,7 @@ import os
 import flag
 
 const (
-	tool_version = '0.0.3'
+	tool_version = '0.0.4'
 	tool_description = '' +
 		'  Compares V executable size and performance,\n' +
 		'  between 2 commits from V\'s local git history.\n' +
@@ -13,15 +13,19 @@ const (
 struct Context {
 	cwd           string // current working folder
 mut:
+	vc_repo_url   string // the url of the vc repository. It can be a local folder path, which is usefull to eliminate network operations...
 	workdir       string // the working folder (typically /tmp), where the tool will write
 	a             string // the full path to the 'after' folder inside workdir
 	b             string // the full path to the 'before' folder inside workdir
 	vc            string // the full path to the vc folder inside workdir. It is used during bootstrapping v from the C source.
 	commit_before string // the git commit for the 'before' state
 	commit_after  string // the git commit for the 'after' state
+	warmups       int    // how many times to execute a command before gathering stats
+	verbose       bool   // whether to print even more stuff
+	hyperfineopts string // use for additional CLI options that will be given to the hyperfine command
 }
 fn new_context() Context {
-	return Context{ cwd: os.getwd(), commit_after: 'master' }
+	return Context{ cwd: os.getwd(), commit_after: 'master', warmups: 4 }
 }
 
 ////// The stuff in this block may be reusable for other v cli tools? /////////////////
@@ -57,16 +61,33 @@ fn (c Context) compare_versions() {
 	os.chdir( c.workdir )
 	run('rm -rf "$c.a" "$c.b" "$c.vc" ')
 	// clone the VC source *just once per comparison*, and reuse it:
-	run('git clone --quiet https://github.com/vlang/vc	\'$c.vc\' ')
+	run('git clone --quiet \'$c.vc_repo_url\'	\'$c.vc\' ')
 
 	println('Comparing v compiler performance of commit $c.commit_before (before) vs commit $c.commit_after (after) ...')
 	c.prepare_v( c.b , c.commit_before )
 	c.prepare_v( c.a , c.commit_after  )
 
 	os.chdir( c.workdir )
-	c.compare_v_performance( 'v		-o source.c compiler' )
-	c.compare_v_performance( 'vprod -o source.c compiler' )
-	c.compare_v_performance( 'vprod -o binary	compiler' )
+	c.compare_v_performance([
+			//The first is the baseline, against which all the others will be compared.
+			//It is the fastest, since hello_world.v has only a single println in it,	
+			'vprod -debug -o source.c examples/hello_world.v',
+			'vprod        -o source.c examples/hello_world.v',      
+			'vprod -debug -o source.c compiler',
+			'vprod        -o source.c compiler',      
+			'vprod        -o hello    examples/hello_world.v',
+			'vprod        -o binary   compiler',           
+
+			/////////////////////////////////////////////////////////
+			
+			'v     -debug -o source.c examples/hello_world.v',
+			'v            -o source.c examples/hello_world.v',      
+			'v     -debug -o source.c compiler',
+			'v            -o source.c compiler',      
+			'v            -o hello    examples/hello_world.v',
+			'v            -o binary   compiler',           
+	])
+
 }
 
 fn show_sizes_of_files(files []string) {
@@ -143,11 +164,24 @@ fn (c &Context) prepare_v( cdir string, commit string ) {
 }
 
 
-fn (c Context) compare_v_performance( cmd string ) {
+fn (c Context) compare_v_performance( commands []string ) {
 	println('---------------------------------------------------------------------------------')
-	println('Compare \'$cmd\'')
-	comparison_cmd := 'hyperfine --warmup=3 \'cd $c.b ; ./$cmd \' \'cd $c.a ; ./$cmd \' '
+	println('Compare v performance when doing the following commands:')
+	mut hyperfine_commands_arguments := []string
+	for cmd in commands { println(cmd) }
+	for cmd in commands { hyperfine_commands_arguments << ' \'cd ${c.b:30s} ; ./$cmd \' ' }
+	for cmd in commands { hyperfine_commands_arguments << ' \'cd ${c.a:30s} ; ./$cmd \' ' }
+	///////////////////////////////////////////////////////////////////////////////
+	cmd_stats_file := os.realpath([ c.workdir, 'v_performance_stats.json'].join(os.PathSeparator))
+	comparison_cmd := 'hyperfine $c.hyperfineopts '+
+		'--export-json ${cmd_stats_file} '+
+		'--time-unit millisecond '+
+		'--style full --warmup $c.warmups ' +
+		hyperfine_commands_arguments.join(' ')
+	///////////////////////////////////////////////////////////////////////////////
+	if c.verbose { println( comparison_cmd ) }
 	os.system( comparison_cmd )
+	println('The detailed performance comparison report was saved to: $cmd_stats_file .')
 	println('')
 }
 
@@ -174,7 +208,23 @@ fn main(){
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
 	fp.limit_free_args(1,2)
-	show_help:=fp.bool('help', false, 'Show this help screen')
+	show_help:=fp.bool('help', false, 'Show this help screen\n')
+	
+	context.vc_repo_url = fp.string('vcrepo', 'https://github.com/vlang/vc',
+		'' +
+			'The url of the vc repository. You can clone it \n'+
+			flag.SPACE+'beforehand, and then just give the local folder \n'+
+			flag.SPACE+'path here. That will eliminate the network ops  \n'+
+			flag.SPACE+'done by this tool, which is useful, if you want \n'+
+			flag.SPACE+'to script it/run it in a restrictive vps/docker.\n')
+	
+	context.verbose = fp.bool('verbose', false, 'Be more verbose\n')
+	context.hyperfineopts = fp.string('hyperfine_options', '',
+		'' +
+			'Additional options passed to hyperfine.\n'+
+			flag.SPACE+'For example on linux, you may want to pass:\n'+
+			flag.SPACE+'   --hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'" \n')
+				
 	context.workdir = os.realpath( fp.string('workdir', '/tmp', 'A writable folder, where the comparison will be done.') )
 	if( show_help ){
 		println( fp.usage() )
