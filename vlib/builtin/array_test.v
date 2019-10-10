@@ -335,6 +335,6 @@ fn test_reduce() {
 	e := [1, 2, 3]
 	f := e.reduce(sub, 0)
 	g := e.reduce(sub, -1)
-	assert f == -5
-	assert g == -6
+	assert f == -6
+	assert g == -7
 }
