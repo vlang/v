@@ -19,7 +19,7 @@ import math
 // # glm__Vec3 myglm_normalize(glm__Vec3);
 struct Mat4 {
 pub:
-	data *f32
+	data &f32
 }
 
 struct Vec2 {
@@ -42,7 +42,7 @@ pub fn vec3(x, y, z f32) Vec3 {
 	return res
 }
 
-fn mat4(f *f32) Mat4 {
+fn mat4(f &f32) Mat4 {
 	res := Mat4 {
 		data: f
 	}
@@ -130,7 +130,7 @@ fn rotate(m Mat4, angle f32, vec Vec3) Mat4 {
 }
 */
 
-fn f32_calloc(n int) *f32 {
+fn f32_calloc(n int) &f32 {
 	return *f32(calloc(n * sizeof(f32)))
 }
 // fn translate(vec Vec3) *f32 {
@@ -250,7 +250,7 @@ pub fn identity() Mat4 {
 }
 
 // returns *f32 without allocation
-pub fn identity2(res *f32) {
+pub fn identity2(res mut &f32) {
 	res[0] = 1
 	res[5] = 1
 	res[10] = 1
@@ -271,7 +271,7 @@ pub fn identity3() []f32 {
 }
 
 // https://github.com/toji/gl-matrix/blob/1549cf21dfa14a2bc845993485343d519cf064fe/src/gl-matrix/mat4.js
-fn ortho_js(left, right, bottom, top f32) *f32 {
+fn ortho_js(left, right, bottom, top f32) &f32 {
 	mynear := 1
 	myfar := 1
 	lr := 1.0 / (left - right)

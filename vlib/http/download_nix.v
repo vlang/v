@@ -4,34 +4,38 @@
 
 module http
 
-import os
-
 type downloadfn fn (written int)
 type download_finished_fn fn () 
 
+/* 
 struct DownloadStruct {
 mut: 
 	stream  voidptr
 	written int
 	cb      downloadfn
 }
+*/ 
 
-fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) int {
+fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr)  { 
+/* 
 	mut data := &DownloadStruct(userp)
 	written := C.fwrite(ptr, size, nmemb, data.stream) 
 	data.written += written 
-	#data->cb(data->written); // TODO 
+	data.cb(data.written) 
+	//#data->cb(data->written); // TODO 
 	return written 
+*/ 
 }
 
-fn download_file_with_progress(url, out string, cb downloadfn, cb_finished download_finished_fn) {   
+fn download_file_with_progress(url, out string, cb downloadfn, cb_finished fn()) {   
+/* 
 	curl := C.curl_easy_init()
 	if isnil(curl) {
 		return
 	}
-	cout := out.cstr() 
+	cout := out.str 
 	fp := C.fopen(cout, 'wb') 
-	C.curl_easy_setopt(curl, CURLOPT_URL, url.cstr()) 
+	C.curl_easy_setopt(curl, CURLOPT_URL, url.str) 
 	C.curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, download_cb)
 	data := &DownloadStruct {
 		stream:fp
@@ -43,11 +47,12 @@ fn download_file_with_progress(url, out string, cb downloadfn, cb_finished downl
 	C.curl_easy_perform(curl) 
 	C.curl_easy_cleanup(curl) 
 	C.fclose(fp) 
-	#cb_finished(); // TODO 
+	cb_finished() 
+*/ 
 }
 
 fn download_file(url, out string) {
-	download_file_with_progress(url, out, empty, empty) 
+	//download_file_with_progress(url, out, empty, empty) 
 }
 
 fn empty() {

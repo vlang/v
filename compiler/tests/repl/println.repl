@@ -1,0 +1,7 @@
+println('Hello, world!')
+println('Привет, мир!')
+println('你好世界')
+===output===
+Hello, world!
+Привет, мир!
+你好世界

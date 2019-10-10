@@ -39,12 +39,12 @@ fn test_lt() {
 	d := 'b'
 	e := 'aa'
 	f := 'ab'
-	assert a<(b)
-	assert !(b<c)
-	assert c<(d)
-	assert !(d<e)
-	assert c<(e)
-	assert e<(f)
+	assert a < (b)
+	assert !(b < c)
+	assert c < (d)
+	assert !(d < e)
+	assert c < (e)
+	assert e < (f)
 }
 
 fn test_ge() {
@@ -53,11 +53,11 @@ fn test_ge() {
 	c := 'ab'
 	d := 'abc'
 	e := 'aaa'
-	assert b>=(a)
-	assert c>=(b)
-	assert d>=(c)
-	assert !(c>=d) 
-	assert e>=(a)
+	assert b >= (a)
+	assert c >= (b)
+	assert d >= (c)
+	assert !(c >= d)
+	assert e >= (a)
 }
 
 fn test_compare_strings() {
@@ -91,21 +91,28 @@ fn test_split() {
 	mut s := 'volt/twitch.v:34'
 	mut vals := s.split(':')
 	assert vals.len == 2
-	assert vals[0]== 'volt/twitch.v'
-	assert vals[1]== '34'
-	// /////////
+	assert vals[0] == 'volt/twitch.v'
+	assert vals[1] == '34'
+	// /////////	
 	s = '2018-01-01z13:01:02'
 	vals = s.split('z')
 	assert vals.len == 2
-	assert vals[0]=='2018-01-01'
-	assert vals[1]== '13:01:02'
-	// /////////////
+	assert vals[0] =='2018-01-01'
+	assert vals[1] == '13:01:02'
+	// //////////
 	s = '4627a862c3dec29fb3182a06b8965e0025759e18___1530207969___blue'
 	vals = s.split('___')
 	assert vals.len == 3
 	assert vals[0]== '4627a862c3dec29fb3182a06b8965e0025759e18'
 	assert vals[1]=='1530207969'
 	assert vals[2]== 'blue'
+	// /////////
+	s = 'lalala'
+	vals = s.split('a')
+	assert vals.len == 3
+	assert vals[0] == 'l'
+	assert vals[1] == 'l'
+	assert vals[2] == 'l'
 }
 
 fn test_trim_space() {
@@ -130,7 +137,7 @@ fn test_join() {
 	assert s == 'a b c'
 	strings = ['one
 two ',
-	'three! 
+	'three!
 four!']
 	s = strings.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
@@ -140,8 +147,8 @@ fn test_clone() {
 	mut a := 'a'
 	a += 'a'
 	a += 'a'
-	mut b := a
-	mut c := a.clone()
+	b := a
+	c := a.clone()
 	assert c == a
 	assert c == 'aaa'
 	assert b == 'aaa'
@@ -207,7 +214,6 @@ fn test_runes() {
 	assert u.substr(1, 2) == 'р'
 	assert s2.ustring().at(1) == 'r'
 	assert u.at(1) == 'р'
-	// ///////
 	first := u.at(0)
 	last := u.at(u.len - 1)
 	assert first.len == 2
@@ -227,6 +233,22 @@ fn test_lower() {
 	assert s.to_lower() == 'have a nice day!'
 	s = 'hi'
 	assert s.to_lower() == 'hi'
+}
+
+fn test_upper() {
+	mut s := 'a'
+	assert s.to_upper() == 'A'
+	assert s.to_upper().len == 1
+	s = 'hello'
+	assert s.to_upper() == 'HELLO'
+	assert s.to_upper().len == 5
+	s = 'Aloha'
+	assert s.to_upper() == 'ALOHA'
+	s = 'have a nice day!'
+	assert s.to_upper() == 'HAVE A NICE DAY!'
+	s = 'hi'
+	assert s.to_upper() == 'HI'
+
 }
 
 fn test_left_right() {
@@ -280,11 +302,30 @@ fn test_hash() {
 	assert s5.hash() % ((1 << 20) -1) == 592861
 }
 
+fn test_trim() {
+	assert 'banana'.trim('bna') == ''
+	assert 'abc'.trim('ac') == 'b'
+	assert 'aaabccc'.trim('ac') == 'b'
+}
+
 fn test_trim_left() {
 	mut s := 'module main'
 	assert s.trim_left(' ') == 'module main'
 	s = ' module main'
 	assert s.trim_left(' ') == 'module main'
+	// test cutset
+	s = 'banana'
+	assert s.trim_left('ba') == 'nana'
+}
+
+fn test_trim_right() {
+	mut s := 'module main'
+	assert s.trim_right(' ') == 'module main'
+	s = 'module main '
+	assert s.trim_right(' ') == 'module main'
+	// test cutset
+	s = 'banana'
+	assert s.trim_right('na') == 'b'
 }
 
 fn test_all_after() {
@@ -302,19 +343,137 @@ fn test_reverse() {
 
 
 struct Foo {
-	bar int 
-} 
+	bar int
+}
 
 fn (f Foo) baz() string {
-	return 'baz' 
-} 
+	return 'baz'
+}
 
 fn test_interpolation() {
-	num := 7 
-	mut s := 'number=$num' 
-	assert s == 'number=7' 
-	foo := Foo{} 
-	s = 'baz=${foo.baz()}' 
-	assert s == 'baz=baz' 
- 
-} 
+	num := 7
+	mut s := 'number=$num'
+	assert s == 'number=7'
+	foo := Foo{}
+	s = 'baz=${foo.baz()}'
+	assert s == 'baz=baz'
+
+}
+
+fn test_bytes_to_string() {
+	mut buf := calloc(10)
+	buf[0] = `h`
+	buf[1] = `e`
+	buf[2] = `l`
+	buf[3] = `l`
+	buf[4] = `o`
+	assert string(buf) == 'hello'
+	assert string(buf, 2) == 'he'
+	bytes := [`h`, `e`, `l`, `l`, `o`]
+	assert string(bytes, 5) == 'hello'
+}
+
+fn test_count() {
+	assert ''.count('') == 0
+	assert ''.count('a') == 0
+	assert 'a'.count('') == 0
+	assert 'aa'.count('a') == 2
+	assert 'aa'.count('aa') == 1
+	assert 'aabbaa'.count('aa') == 2
+	assert 'bbaabb'.count('aa') == 1
+}
+
+fn test_capitalize() {
+	mut s := 'hello'
+	assert s.capitalize() == 'Hello'
+	s = 'test'
+	assert s.capitalize() == 'Test'
+    s = 'i am ray'
+	assert s.capitalize() == 'I am ray'
+}
+
+fn test_title() {
+	mut s := 'hello world'
+	assert s.title() == 'Hello World'
+	s.to_upper()
+	assert s.title() == 'Hello World'
+	s.to_lower()
+	assert s.title() == 'Hello World'
+}
+
+fn test_for_loop() {
+	mut i := 0
+	s := 'abcd'
+
+	for c in s {
+		assert c == s[i]
+		i++
+	}
+}
+
+fn test_for_loop_two() {
+	s := 'abcd'
+
+	for i, c in s {
+		assert c == s[i]
+	}
+}
+
+fn test_quote() {
+	a := `'`
+	println("testing double quotes")
+	b := "hi"
+	assert b == 'hi'
+	assert a.str() == '\''
+}
+
+fn test_ustring_comparisons() {
+	assert ('h€llô !'.ustring() == 'h€llô !'.ustring()) == true
+	assert ('h€llô !'.ustring() == 'h€llô'.ustring()) == false
+	assert ('h€llô !'.ustring() == 'h€llo !'.ustring()) == false
+
+	assert ('h€llô !'.ustring() != 'h€llô !'.ustring()) == false
+	assert ('h€llô !'.ustring() != 'h€llô'.ustring()) == true
+
+	assert ('h€llô'.ustring() < 'h€llô!'.ustring()) == true
+	assert ('h€llô'.ustring() < 'h€llo'.ustring()) == false
+	assert ('h€llo'.ustring() < 'h€llô'.ustring()) == true
+
+	assert ('h€llô'.ustring() <= 'h€llô!'.ustring()) == true
+	assert ('h€llô'.ustring() <= 'h€llô'.ustring()) == true
+	assert ('h€llô!'.ustring() <= 'h€llô'.ustring()) == false
+
+	assert ('h€llô!'.ustring() > 'h€llô'.ustring()) == true
+	assert ('h€llô'.ustring() > 'h€llô'.ustring()) == false
+
+	assert ('h€llô!'.ustring() >= 'h€llô'.ustring()) == true
+	assert ('h€llô'.ustring() >= 'h€llô'.ustring()) == true
+	assert ('h€llô'.ustring() >= 'h€llô!'.ustring()) == false
+}
+
+fn test_ustring_count() {
+	a := 'h€llôﷰ h€llô ﷰ'.ustring()
+	assert (a.count('l'.ustring())) == 4
+	assert (a.count('€'.ustring())) == 2
+	assert (a.count('h€llô'.ustring())) == 2
+	assert (a.count('ﷰ'.ustring())) == 2
+	assert (a.count('a'.ustring())) == 0
+}
+
+fn test_repeat() {
+	s := 'V! '
+	assert s.repeat(5) == 'V! V! V! V! V! '
+}
+
+fn test_raw() {
+	raw := r'raw\nstring'
+	lines := raw.split('\n')
+	assert lines.len == 1
+	println('raw string: "$raw"')
+}	
+
+fn test_escape() {
+	// TODO
+	//a := 10
+	//println("\"$a")
+}	

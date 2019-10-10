@@ -4,30 +4,16 @@
 
 module gl
 
-import const (
-	GL_TEXTURE_2D
-	GL_TEXTURE0
-	GL_FLOAT
-	GL_VERTEX_SHADER
-	GL_ELEMENT_ARRAY_BUFFER
-	GL_DEPTH_TEST
-	GL_COLOR_BUFFER_BIT
-	GL_DEPTH_BUFFER_BIT
-	GL_STENCIL_BUFFER_BIT
-	GL_COMPILE_STATUS
-	GL_LINK_STATUS
-	GL_ARRAY_BUFFER
-)
-
 #flag  -I @VROOT/thirdparty/glad
-
 #include "glad.h"
-#flag @VROOT/thirdparty/glad/glad.o 
-//#include "glad.c"  
+#flag @VROOT/thirdparty/glad/glad.o
+
+// joe-c: fix & remove
+enum TmpGlImportHack{}
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()
-	if !ok {
+	if isnil(ok) {
 		println('Failed to initialize glad OpenGL context')
 		exit(1)
 	}
@@ -42,7 +28,7 @@ pub fn clear_color(r, g, b, a int) {
 }
 
 pub fn clear() {
-	C.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
+	C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT | C.GL_STENCIL_BUFFER_BIT)
 }
 
 pub fn create_shader(typ int) int {
@@ -63,7 +49,7 @@ pub fn compile_shader(shader int) {
 
 pub fn shader_compile_status(shader int) int {
 	success := 0
-	C.glGetShaderiv(shader, GL_COMPILE_STATUS, &success)
+	C.glGetShaderiv(shader, C.GL_COMPILE_STATUS, &success)
 	return success
 }
 
@@ -78,7 +64,7 @@ pub fn link_program(program int) {
 
 pub fn get_program_link_status(program int) int {
 	success := 0
-	C.glGetProgramiv(program, GL_LINK_STATUS, &success)
+	C.glGetProgramiv(program, C.GL_LINK_STATUS, &success)
 	return success
 }
 
@@ -117,7 +103,7 @@ pub fn active_texture(t int) {
 }
 
 pub fn bind_2d_texture(texture u32) {
-	C.glBindTexture(GL_TEXTURE_2D, texture)
+	C.glBindTexture(C.GL_TEXTURE_2D, texture)
 }
 
 pub fn delete_texture(texture u32) {
@@ -139,14 +125,14 @@ pub fn buffer_data_f32(typ int, vertices []f32, draw_typ int) {
 }
 
 pub fn set_vbo(vbo u32, vertices []f32, draw_typ int) {
-	gl.bind_buffer(GL_ARRAY_BUFFER, vbo)
-	gl.buffer_data_f32(GL_ARRAY_BUFFER, vertices, draw_typ)
+	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
+	gl.buffer_data_f32(C.GL_ARRAY_BUFFER, vertices, draw_typ)
 }
 
 pub fn set_ebo(ebo u32, indices []int, draw_typ int) {
-	gl.bind_buffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
+	gl.bind_buffer(C.GL_ELEMENT_ARRAY_BUFFER, ebo)
 	// gl.buffer_data_int(GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
-	gl.buffer_data_int(GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
+	gl.buffer_data_int(C.GL_ELEMENT_ARRAY_BUFFER, indices, draw_typ)
 }
 
 // /////////////////////
@@ -168,7 +154,7 @@ pub fn use_program(program int) {
 pub fn gen_vertex_array() u32 {
 	vao := u32(0)
 	C.glGenVertexArrays(1, &vao)
-	return vao 
+	return vao
 }
 
 pub fn enable_vertex_attrib_array(n int) {
@@ -178,11 +164,13 @@ pub fn enable_vertex_attrib_array(n int) {
 pub fn gen_buffer() u32 {
 	vbo := u32(0)
 	C.glGenBuffers(1, &vbo)
-	return vbo 
+	return vbo
 }
 
-pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, stride int, ptr int) {
-	if typ == GL_FLOAT {
+pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, _stride int, _ptr int) {
+	mut stride := _stride
+	mut ptr := _ptr
+	if typ == C.GL_FLOAT {
 		stride *= sizeof(f32)
 		ptr *= sizeof(f32)
 	}
@@ -190,7 +178,7 @@ pub fn vertex_attrib_pointer(index, size int, typ int, normalized bool, stride i
 }
 
 pub fn tex_param(key, val int) {
-	C.glTexParameteri(GL_TEXTURE_2D, key, val)
+	C.glTexParameteri(C.GL_TEXTURE_2D, key, val)
 }
 
 pub fn enable(val int) {

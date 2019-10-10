@@ -6,12 +6,12 @@ module time
 
 import rand
 
-// https://en.wikipedia.org/wiki/Month#Julian_and_Gregorian_calendars
 const (
 	MonthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 )
 
 #include <time.h>
+
 struct Time {
 pub:
 	year   int
@@ -24,10 +24,12 @@ pub:
 }
 
 
-fn C.localtime(int) *C.tm
+fn C.localtime(int) &C.tm
 
-fn remove_me_when_c_bug_is_fixed() { // TODO 
+fn remove_me_when_c_bug_is_fixed() { // TODO
 }
+
+struct C.time_t {}
 
 struct C.tm {
 	tm_year int
@@ -38,6 +40,8 @@ struct C.tm {
 	tm_sec  int
 }
 
+fn C.time(int) C.time_t
+
 pub fn now() Time {
 	t := C.time(0)
 	mut now := &C.tm{!}
@@ -46,20 +50,116 @@ pub fn now() Time {
 }
 
 pub fn random() Time {
-	return Time {
-		year: rand.next(2) + 201
-		month: rand.next(12) + 1
-		day: rand.next(30) + 1
-		hour: rand.next(24)
-		minute: rand.next(60)
-		second: rand.next(60)
-	}
+	now_unix := now().uni
+	rand_unix := rand.next(now_unix)
+
+	return time.unix(rand_unix)
 }
 
-pub fn unix(u int) Time {
-	mut t := &C.tm{!}
-	t = C.localtime(&u)
-	return convert_ctime(t)
+const (
+// The unsigned zero year for internal calculations.
+	// Must be 1 mod 400, and times before it will not compute correctly,
+	// but otherwise can be changed at will.
+	absoluteZeroYear = i64(-292277022399)
+
+	secondsPerMinute = 60
+	secondsPerHour   = 60 * secondsPerMinute
+	secondsPerDay    = 24 * secondsPerHour
+	secondsPerWeek   = 7 * secondsPerDay
+	daysPer400Years  = 365*400 + 97
+	daysPer100Years  = 365*100 + 24
+	daysPer4Years    = 365*4 + 1
+
+ daysBefore = [
+	0,
+	31,
+	31 + 28,
+	31 + 28 + 31,
+	31 + 28 + 31 + 30,
+	31 + 28 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+]
+
+)
+
+
+// Based on Go's time package.
+// Copyright 2009 The Go Authors.
+pub fn unix(abs int) Time {
+	// Split into time and day.
+	mut d := abs / secondsPerDay
+
+	// Account for 400 year cycles.
+	mut n := d / daysPer400Years
+	mut y := 400 * n
+	d -= daysPer400Years * n
+
+	// Cut off 100-year cycles.
+	// The last cycle has one extra leap year, so on the last day
+	// of that year, day / daysPer100Years will be 4 instead of 3.
+	// Cut it back down to 3 by subtracting n>>2.
+	n = d / daysPer100Years
+	n -= n >> 2
+	y += 100 * n
+	d -= daysPer100Years * n
+
+	// Cut off 4-year cycles.
+	// The last cycle has a missing leap year, which does not
+	// affect the computation.
+	n = d / daysPer4Years
+	y += 4 * n
+	d -= daysPer4Years * n
+
+	// Cut off years within a 4-year cycle.
+	// The last year is a leap year, so on the last day of that year,
+	// day / 365 will be 4 instead of 3. Cut it back down to 3
+	// by subtracting n>>2.
+	n = d / 365
+	n -= n >> 2
+	y += n
+	d -= 365 * n
+
+	yday := int(d)
+	mut day := yday
+
+	year := abs / int(3.154e+7) + 1970 //int(i64(y) + absoluteZeroYear)
+	hour := int(abs%secondsPerDay) / secondsPerHour
+	minute := int(abs % secondsPerHour) / secondsPerMinute
+	second := int(abs % secondsPerMinute)
+	
+	if is_leap_year(year) {
+		// Leap year
+		if day > 31+29-1 {
+			// After leap day; pretend it wasn't there.
+			day--
+		} 		else if day == 31+29-1 {
+			// Leap day.
+			day = 29
+			return Time{year:year, month:2, day:day, hour:hour, minute: minute, second: second}
+		}
+	}
+
+	// Estimate month on assumption that every month has 31 days.
+	// The estimate may be too low by at most one month, so adjust.
+	mut month := day / 31
+	mut begin := 0
+	end := int(daysBefore[month+1])
+	if day >= end {
+		month++
+		begin = end
+	} else {
+		begin = int(daysBefore[month])
+	}
+
+	month++ // because January is 1
+	day = day - begin + 1
+	return Time{year:year, month: month, day:day, hour:hour, minute: minute, second: second}
 }
 
 pub fn convert_ctime(t tm) Time {
@@ -70,7 +170,7 @@ pub fn convert_ctime(t tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		uni: C.mktime(&t) 
+		uni: C.mktime(&t)
 	}
 }
 
@@ -127,6 +227,11 @@ pub fn (t Time) hhmmss() string {
 // 2012-01-05
 pub fn (t Time) ymmdd() string {
 	return '${t.year}-${t.month:02d}-${t.day:02d}'
+}
+
+// 05.02.2012
+pub fn (t Time) ddmmy() string {
+	return '${t.day:02d}.${t.month:02d}.${t.year}'
 }
 
 // Jul 3
@@ -264,9 +369,14 @@ pub fn (t Time) relative() string {
 }
 
 pub fn day_of_week(y, m, d int) int {
-	// TODO please no
-	//# return  (d += m < 3 ? y-- : y - 2, 23*m/9 + d + 4 + y/4- y/100 + y/400)%7;
-	return 0
+	// Sakomotho's algorithm is explained here:
+	// https://stackoverflow.com/a/6385934
+	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+	mut sy := y
+	if (m < 3) {
+		sy = sy - 1
+	}
+    return ( sy + sy/4 - sy/100 + sy/400 + t[m-1] + d - 1) % 7 + 1
 }
 
 pub fn (t Time) day_of_week() int {
@@ -281,49 +391,52 @@ pub fn (t Time) weekday_str() string {
 
 struct C.timeval  {
 	tv_sec int
-	tv_usec int 
-} 
+	tv_usec int
+}
 
 // in ms
-pub fn ticks() i64 { 
-	$if windows { 
+pub fn ticks() i64 {
+	$if windows {
 		return C.GetTickCount()
-	} 
-	ts := C.timeval{} 
-	C.gettimeofday(&ts,0) 
-	return ts.tv_sec * 1000 + (ts.tv_usec / 1000) 
-/* 
+	}
+	$else {
+		ts := C.timeval{}
+		C.gettimeofday(&ts,0)
+		return ts.tv_sec * 1000 + (ts.tv_usec / 1000)
+	}
+
+/*
 	t := i64(C.mach_absolute_time())
 	# Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
 	# return (double)(* (uint64_t *) &elapsedNano) / 1000000;
-*/ 
+*/
 }
 
 pub fn sleep(seconds int) {
-	$if windows { 
+	$if windows {
 		C._sleep(seconds * 1000)
 	}
 	$else {
 		C.sleep(seconds)
-	} 
+	}
 }
 
 pub fn usleep(n int) {
-$if windows { 
+$if windows {
 	//C._usleep(n)
 }
-$else { 
+$else {
 	C.usleep(n)
-} 
+}
 }
 
 pub fn sleep_ms(n int) {
-	$if windows { 
+	$if windows {
 		C.Sleep(n)
 	}
-	$else { 
+	$else {
 		C.usleep(n * 1000)
-	} 
+	}
 }
 
 // Determine whether a year is a leap year.
@@ -337,6 +450,6 @@ pub fn days_in_month(month, year int) ?int {
 		return error('Invalid month: $month')
 	}
 	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
-	res := MonthDays[month-1] + extra 
-	return res 
+	res := MonthDays[month-1] + extra
+	return res
 }

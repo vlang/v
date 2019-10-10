@@ -5,13 +5,15 @@
 // Package sha512 implements the SHA-384, SHA-512, SHA-512/224, and SHA-512/256
 // hash algorithms as defined in FIPS 180-4.
 
-// Adaped from https://github.com/golang/go/tree/master/src/crypto/sha256
+// Based off:   https://github.com/golang/go/tree/master/src/crypto/sha512
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 
 module sha512
 
-import math
-import crypto
-import encoding.binary
+import (
+	crypto
+	encoding.binary
+)
 
 const (
 	// Size is the size, in bytes, of a SHA-512 checksum.
@@ -65,8 +67,6 @@ const (
 
 // digest represents the partial evaluation of a checksum.
 struct Digest {
-	// h        [8]uint64
-	// x        [chunk]byte
 mut:
 	h        []u64
 	x        []byte
@@ -75,135 +75,86 @@ mut:
 	function crypto.Hash
 }
 
-// Note: when u64 const is working uncomment this and remove reset() below
-// fn (d mut Digest) reset() {
-//     d.h = [u64(0); 8]
-//     d.x = [byte(0); Chunk]
-// 	switch d.function {
-// 	case crypto.Hash.SHA384:
-// 		d.h[0] = u64(Init0_384)
-// 		d.h[1] = u64(Init1_384)
-// 		d.h[2] = u64(Init2_384)
-// 		d.h[3] = u64(Init3_384)
-// 		d.h[4] = u64(Init4_384)
-// 		d.h[5] = u64(Init5_384)
-// 		d.h[6] = u64(Init6_384)
-// 		d.h[7] = u64(Init7_384)
-// 	case crypto.Hash.SHA512_224:
-// 		d.h[0] = u64(Init0_224)
-// 		d.h[1] = u64(Init1_224)
-// 		d.h[2] = u64(Init2_224)
-// 		d.h[3] = u64(Init3_224)
-// 		d.h[4] = u64(Init4_224)
-// 		d.h[5] = u64(Init5_224)
-// 		d.h[6] = u64(Init6_224)
-// 		d.h[7] = u64(Init7_224)
-// 	case crypto.Hash.SHA512_256:
-// 		d.h[0] = u64(Init0_256)
-// 		d.h[1] = u64(Init1_256)
-// 		d.h[2] = u64(Init2_256)
-// 		d.h[3] = u64(Init3_256)
-// 		d.h[4] = u64(Init4_256)
-// 		d.h[5] = u64(Init5_256)
-// 		d.h[6] = u64(Init6_256)
-// 		d.h[7] = u64(Init7_256)
-// 	default:
-// 		d.h[0] = u64(Init0)
-// 		d.h[1] = u64(Init1)
-// 		d.h[2] = u64(Init2)
-// 		d.h[3] = u64(Init3)
-// 		d.h[4] = u64(Init4)
-// 		d.h[5] = u64(Init5)
-// 		d.h[6] = u64(Init6)
-// 		d.h[7] = u64(Init7)
-// 	}
-// 	d.nx = 0
-// 	d.len = u64(0)
-// }
-
-// Note: when u64 const is working remove this and uncomment above
 fn (d mut Digest) reset() {
-    d.h = [u64(0); 8]
-    d.x = [byte(0); Chunk]
+	d.h = [u64(0)].repeat(8)
+	d.x = [byte(0)].repeat(Chunk)
 	switch d.function {
 	case crypto.Hash.SHA384:
-		d.h[0] = u64(0xcbbb9d5dc1059ed8)
-		d.h[1] = u64(0x629a292a367cd507)
-		d.h[2] = u64(0x9159015a3070dd17)
-		d.h[3] = u64(0x152fecd8f70e5939)
-		d.h[4] = u64(0x67332667ffc00b31)
-		d.h[5] = u64(0x8eb44a8768581511)
-		d.h[6] = u64(0xdb0c2e0d64f98fa7)
-		d.h[7] = u64(0x47b5481dbefa4fa4)
+		d.h[0] = Init0_384
+		d.h[1] = Init1_384
+		d.h[2] = Init2_384
+		d.h[3] = Init3_384
+		d.h[4] = Init4_384
+		d.h[5] = Init5_384
+		d.h[6] = Init6_384
+		d.h[7] = Init7_384
 	case crypto.Hash.SHA512_224:
-		d.h[0] = u64(0x8c3d37c819544da2)
-		d.h[1] = u64(0x73e1996689dcd4d6)
-		d.h[2] = u64(0x1dfab7ae32ff9c82)
-		d.h[3] = u64(0x679dd514582f9fcf)
-		d.h[4] = u64(0x0f6d2b697bd44da8)
-		d.h[5] = u64(0x77e36f7304c48942)
-		d.h[6] = u64(0x3f9d85a86a1d36c8)
-		d.h[7] = u64(0x1112e6ad91d692a1)
+		d.h[0] = Init0_224
+		d.h[1] = Init1_224
+		d.h[2] = Init2_224
+		d.h[3] = Init3_224
+		d.h[4] = Init4_224
+		d.h[5] = Init5_224
+		d.h[6] = Init6_224
+		d.h[7] = Init7_224
 	case crypto.Hash.SHA512_256:
-		d.h[0] = u64(0x22312194fc2bf72c)
-		d.h[1] = u64(0x9f555fa3c84c64c2)
-		d.h[2] = u64(0x2393b86b6f53b151)
-		d.h[3] = u64(0x963877195940eabd)
-		d.h[4] = u64(0x96283ee2a88effe3)
-		d.h[5] = u64(0xbe5e1e2553863992)
-		d.h[6] = u64(0x2b0199fc2c85b8aa)
-		d.h[7] = u64(0x0eb72ddc81c52ca2)
+		d.h[0] = Init0_256
+		d.h[1] = Init1_256
+		d.h[2] = Init2_256
+		d.h[3] = Init3_256
+		d.h[4] = Init4_256
+		d.h[5] = Init5_256
+		d.h[6] = Init6_256
+		d.h[7] = Init7_256
 	default:
-        d.h[0] = u64(0x6a09e667f3bcc908)
-        d.h[1] = u64(0xbb67ae8584caa73b)
-        d.h[2] = u64(0x3c6ef372fe94f82b)
-        d.h[3] = u64(0xa54ff53a5f1d36f1)
-        d.h[4] = u64(0x510e527fade682d1)
-        d.h[5] = u64(0x9b05688c2b3e6c1f)
-        d.h[6] = u64(0x1f83d9abfb41bd6b)
-        d.h[7] = u64(0x5be0cd19137e2179)
+		d.h[0] = Init0
+		d.h[1] = Init1
+		d.h[2] = Init2
+		d.h[3] = Init3
+		d.h[4] = Init4
+		d.h[5] = Init5
+		d.h[6] = Init6
+		d.h[7] = Init7
 	}
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
-fn _new(hash crypto.Hash) *Digest {
+fn _new(hash crypto.Hash) &Digest {
 	mut d := &Digest{function: hash}
 	d.reset()
 	return d
 }
 
-// new returns a new hash.Hash computing the SHA-512 checksum.
-pub fn new() *Digest {
+// new returns a new Digest (implementing hash.Hash) computing the SHA-512 checksum.
+pub fn new() &Digest {
 	return _new(crypto.Hash.SHA512)
 }
 
-// new512_224 returns a new hash.Hash computing the SHA-512/224 checksum.
-fn new512_224() *Digest {
+// new512_224 returns a new Digest (implementing hash.Hash) computing the SHA-512/224 checksum.
+fn new512_224() &Digest {
 	return _new(crypto.Hash.SHA512_224)
 }
 
-// new512_256 returns a new hash.Hash computing the SHA-512/256 checksum.
-fn new512_256() *Digest {
+// new512_256 returns a new Digest (implementing hash.Hash) computing the SHA-512/256 checksum.
+fn new512_256() &Digest {
 	return _new(crypto.Hash.SHA512_256)
 }
 
-// new384 returns a new hash.Hash computing the SHA-384 checksum.
-fn new384() *Digest {
+// new384 returns a new Digest (implementing hash.Hash) computing the SHA-384 checksum.
+fn new384() &Digest {
 	return _new(crypto.Hash.SHA384)
 }
 
-fn (d mut Digest) write(p []byte) ?int {
+fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
-			block(d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -214,7 +165,7 @@ fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= Chunk {
 		n := p.len &~ (Chunk - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -222,47 +173,45 @@ fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
 
-fn (d mut Digest) sum(b_in mut []byte) []byte {
+fn (d mut Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
+	mut b_out := b_in.clone()
 	switch d0.function {
 	case crypto.Hash.SHA384:
 		for b in hash.left(Size384) {
-            b_in << b
-        }
+			b_out << b
+		}
 	case crypto.Hash.SHA512_224:
 		for b in hash.left(Size224) {
-            b_in << b
-        }
+			b_out << b
+		}
 	case crypto.Hash.SHA512_256:
 		for b in hash.left(Size256) {
-            b_in << b
-        }
+			b_out << b
+		}
 	default:
 		for b in hash {
-            b_in << b
-        }
+			b_out << b
+		}
 	}
-    return *b_in
+	return b_out
 }
 
 fn (d mut Digest) checksum() []byte {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
-	mut tmp := [byte(0); 128]
+	mut tmp := [byte(0)].repeat(128)
 	tmp[0] = 0x80
 
-    if int(len)%128 < 112 {
-        d.write(tmp.left(112-int(len)%128))
+	if int(len)%128 < 112 {
+		d.write(tmp.left(112-int(len)%128))
 	} else {
 		d.write(tmp.left(128+112-int(len)%128))
 	}
@@ -270,25 +219,25 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= u64(3)
 
-	binary.big_endian_put_u64(tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
-    binary.big_endian_put_u64(tmp.right(8), len)
+	binary.big_endian_put_u64(mut tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
+	binary.big_endian_put_u64(mut tmp.right(8), len)
 	d.write(tmp.left(16))
 
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
 
-	mut digest := [byte(0); Size]
+	mut digest := [byte(0)].repeat(Size)
 	
-    binary.big_endian_put_u64(digest, d.h[0])
-	binary.big_endian_put_u64(digest.right(8), d.h[1])
-	binary.big_endian_put_u64(digest.right(16), d.h[2])
-	binary.big_endian_put_u64(digest.right(24), d.h[3])
-	binary.big_endian_put_u64(digest.right(32), d.h[4])
-	binary.big_endian_put_u64(digest.right(40), d.h[5])
+	binary.big_endian_put_u64(mut digest, d.h[0])
+	binary.big_endian_put_u64(mut digest.right(8), d.h[1])
+	binary.big_endian_put_u64(mut digest.right(16), d.h[2])
+	binary.big_endian_put_u64(mut digest.right(24), d.h[3])
+	binary.big_endian_put_u64(mut digest.right(32), d.h[4])
+	binary.big_endian_put_u64(mut digest.right(40), d.h[5])
 	if d.function != crypto.Hash.SHA384 {
-		binary.big_endian_put_u64(digest.right(48), d.h[6])
-		binary.big_endian_put_u64(digest.right(56), d.h[7])
+		binary.big_endian_put_u64(mut digest.right(48), d.h[6])
+		binary.big_endian_put_u64(mut digest.right(56), d.h[7])
 	}
 
 	return digest
@@ -306,7 +255,8 @@ pub fn sum384(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA384)
 	d.write(data)
 	sum := d.checksum()
-    sum384 := sum.left(Size384)
+	mut sum384 := [byte(0)].repeat(Size384)
+	copy(sum384, sum.left(Size384))
 	return sum384
 }
 
@@ -315,7 +265,8 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_224)
 	d.write(data)
 	sum := d.checksum()
-    sum224 := sum.left(Size224)
+	mut sum224 := [byte(0)].repeat(Size224)
+	copy(sum224, sum.left(Size224))
 	return sum224
 }
 
@@ -324,14 +275,15 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := _new(crypto.Hash.SHA512_256)
 	d.write(data)
 	sum := d.checksum()
-    sum256 := sum.left(Size256)
+	mut sum256 := [byte(0)].repeat(Size256)
+	copy(sum256, sum.left(Size256))
 	return sum256
 }
 
-fn block(dig &Digest, p []byte) {
-    // For now just use block_generic until we have specific
+fn block(dig mut Digest, p []byte) {
+	// For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int {
@@ -348,3 +300,8 @@ pub fn (d &Digest) size() int {
 }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum512(s.bytes()).hex() }
+pub fn hexhash_384(s string) string { return sum384(s.bytes()).hex() }
+pub fn hexhash_512_224(s string) string { return sum512_224(s.bytes()).hex() }
+pub fn hexhash_512_256(s string) string { return sum512_256(s.bytes()).hex() }

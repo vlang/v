@@ -22,13 +22,13 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	if t == 'int' || t == 'string' || t == 'bool' {
 		return
 	}
-	if p.first_run() {
+	if p.first_pass() {
 		return
 	}
 	// println('gen_json_for_type( $typ.name )')
 	// Register decoder fn
 	mut dec_fn := Fn {
-		pkg: p.mod
+		mod: p.mod
 		typ: 'Option_$typ.name'
 		name: js_dec_name(t)
 	}
@@ -45,7 +45,7 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	p.table.register_fn(dec_fn)
 	// Register encoder fn
 	mut enc_fn := Fn {
-		pkg: p.mod
+		mod: p.mod
 		typ: 'cJSON*'
 		name: js_enc_name(t)
 	}
@@ -57,23 +57,23 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	p.table.register_fn(enc_fn)
 	// Code gen decoder
 	dec += '
-//$t $dec_fn.name(cJSON* root) {  
-Option $dec_fn.name(cJSON* root, $t* res) {  
-//  $t res; 
+//$t $dec_fn.name(cJSON* root) {
+Option $dec_fn.name(cJSON* root, $t* res) {
+//  $t res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
     if (error_ptr != NULL)	{
       fprintf(stderr, "Error in decode() for $t error_ptr=: %%s\\n", error_ptr);
-//      printf("\\nbad js=%%s\\n", js.str); 
+//      printf("\\nbad js=%%s\\n", js.str);
       return v_error(tos2(error_ptr));
     }
   }
 '
 	// Code gen encoder
 	enc += '
-cJSON* $enc_fn.name($t val) {  
+cJSON* $enc_fn.name($t val) {
 cJSON *o = cJSON_CreateObject();
-string res = tos2(""); 
+string res = tos2("");
 '
 	// Handle arrays
 	if t.starts_with('array_') {
@@ -85,23 +85,35 @@ string res = tos2("");
 		if field.attr == 'skip' {
 			continue
 		}
+		name := if field.attr.starts_with('json:') {
+			field.attr.right(5)
+		} else {
+			field.name
+		}
 		field_type := p.table.find_type(field.typ)
-		// Now generate decoders for all field types in this struct
-		// need to do it here so that these functions are generated first
-		p.gen_json_for_type(field_type)
-		name := field.name
 		_typ := field.typ.replace('*', '')
 		enc_name := js_enc_name(_typ)
-		dec_name := js_dec_name(_typ)
-		if is_js_prim(_typ) {
-			dec += ' /*prim*/ res->$name = $dec_name(js_get(root, "$field.name"))'
-			// dec += '.data'
+		if field.attr == 'raw' {
+			dec += ' res->$field.name = tos2(cJSON_PrintUnformatted(' +
+				'js_get(root, "$name")));\n'
+			
+		} else {
+			// Now generate decoders for all field types in this struct
+			// need to do it here so that these functions are generated first
+			p.gen_json_for_type(field_type)
+	
+			dec_name := js_dec_name(_typ)
+
+			if is_js_prim(_typ) {
+				dec += ' res->$field.name = $dec_name(js_get(' +
+					'root, "$name"))'
+			}
+			else {
+				dec += ' $dec_name(js_get(root, "$name"), & (res->$field.name))'
+			}
+			dec += ';\n'
 		}
-		else {
-			dec += ' /*!!*/ $dec_name(js_get(root, "$field.name"), & (res->$name))'
-		}
-		dec += ';\n'
-		enc += '  cJSON_AddItemToObject(o,  "$name", $enc_name(val.$name)); \n'
+		enc += '  cJSON_AddItemToObject(o,  "$name",$enc_name(val.$field.name)); \n'
 	}
 	// cJSON_delete
 	//p.cgen.fns << '$dec return opt_ok(res); \n}'
@@ -112,11 +124,12 @@ string res = tos2("");
 fn is_js_prim(typ string) bool {
 	return typ == 'int' || typ == 'string' ||
 	typ == 'bool' || typ == 'f32' || typ == 'f64' ||
-	typ == 'i8' || typ == 'i16' || typ == 'i32' || typ == 'i64'
+	typ == 'i8' || typ == 'i16' || typ == 'i64' ||
+	typ == 'u16' || typ == 'u32' || typ == 'u64'
 }
 
-fn (p mut Parser) decode_array(typ string) string {
-	typ = typ.replace('array_', '')
+fn (p mut Parser) decode_array(array_type string) string {
+	typ := array_type.replace('array_', '')
 	t := p.table.find_type(typ)
 	fn_name := js_dec_name(typ)
 	// If we have `[]Profile`, have to register a Profile en(de)coder first
@@ -133,8 +146,8 @@ fn (p mut Parser) decode_array(typ string) string {
 const cJSON *jsval = NULL;
 cJSON_ArrayForEach(jsval, root)
 {
-$s 
-  array__push(res, &val);
+$s
+  array_push(res, &val);
 }
 '
 }
@@ -149,14 +162,14 @@ fn js_dec_name(typ string) string {
 	return name
 }
 
-fn (p &Parser) encode_array(typ string) string {
-	typ = typ.replace('array_', '')
+fn (p &Parser) encode_array(array_type string) string {
+	typ := array_type.replace('array_', '')
 	fn_name := js_enc_name(typ)
 	return '
 o = cJSON_CreateArray();
 for (int i = 0; i < val.len; i++){
   cJSON_AddItemToArray(o, $fn_name(  (($typ*)val.data)[i]  ));
-} 
+}
 '
 }
 

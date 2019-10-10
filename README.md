@@ -1,51 +1,42 @@
-# The V Programming Language 0.1.x
+# The V Programming Language
 
-[![Build Status](https://dev.azure.com/alexander0785/vlang/_apis/build/status/vlang-CI?branchName=master)](https://dev.azure.com/alexander0785/vlang/_build/latest?definitionId=1&branchName=master) [![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
+[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
+[![Build Status](https://travis-ci.org/vlang/v.svg?branch=master)](https://travis-ci.org/vlang/v)
+<a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
 
 https://vlang.io
 
-Documentation: https://vlang.io/docs
+Documentation: [vlang.io/docs](https://vlang.io/docs)
 
-Twitter: https://twitter.com/v_language
+Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
 
-Discord (primary community): https://discord.gg/n7c74HM
+Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
-Installing V: https://github.com/vlang/v#installing-v-from-source
+Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
+
+Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in half an hour, less if you already know Go
-- Fast compilation: ~100k loc/s right now, ~1.2 million loc/s once x64 generation is mature enough
+- Simplicity: the language can be learned in less than an hour
+- Fast compilation: ≈100k — 1.2 million loc/s
 - Easy to develop: V compiles itself in less than a second
-- Performance: within 5% of C
+- Performance: within 3% of C
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
 - Powerful UI and graphics libraries
 - Easy cross compilation
 - REPL
+- Built-in ORM
+- C and JavaScript backends
 
-V 1.0 release is planned for December 2019. Right now V is in an alpha stage. 
-
-## Notes
-
-GitHub marks V's code as written in Go. It's actually written in V, GitHub doesn't support the language yet.
-
-The compilation is temporarily slower for this release:
-
-- Debug builds are used (use `./v -prod -o v compiler` to get faster compilation).
-- vlib is recompiled with every program you build.
-- The new formatter runs on every single token and slows the compiler down by ~20%. This will be taken care of.
-
-
-## Code structure
-
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
 ## Installing V from source
 
-### Linux, macOS, Windows, WSL, Android, Raspberry Pi
+### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian
 
 
 ```bash
@@ -56,88 +47,130 @@ make
 
 That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
-
-### C compiler
-
-You'll need Clang or GCC.
-
-On macOS run `xcode-select --install` if you don't have XCode or XCode tools installed.
-
-On Windows follow these instructions: [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
-
-### Building without make
-```bash
-# Download the V compiler's source translated to C
-curl -O https://raw.githubusercontent.com/vlang/vc/master/v.c
-cc -std=gnu11 -w -o v v.c -lm  # Build it with Clang or GCC
-./v -o v compiler              # Use the resulting V binary to build V from V source
-```
-(These instructions won't work on Windows, use `make.bat` instead).
-
-### Symlinking and updates
-
-You can create a symlink so that it's globally available:
-
-```
-sudo ln -s [path to V repo]/v /usr/local/bin/v
-```
-
 V is being constantly updated. To update V, simply run
 
 ```
-git pull origin master
-make
+v up
+```
+
+
+### C compiler
+
+You'll need Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
+
+Otherwise, follow these instructions:
+
+[https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-macOS)
+
+[github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
+
+
+### Symlinking
+
+You can create a `/usr/local/bin/v` symlink so that V is globally available:
+
+```
+sudo ./v symlink
+```
+
+
+### Docker
+
+```bash
+git clone https://github.com/vlang/v
+cd v
+docker build -t vlang .
+docker run --rm -it vlang:latest
+v
 ```
 
 
 
+### Testing and running the examples
 
-### Testing
+Make sure V can compile itself:
 
 ```
-$ cd examples
-$ v run hello_world.v
-hello world
+v -o v compiler
+```
 
+```
 $ v
 V 0.1.x
-Use Ctrl-D to exit
+Use Ctrl-C or `exit` to exit
 
 >>> println('hello world')
 hello world
 >>>
 ```
 
-Now if you want, you can start tinkering with the compiler. If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-
-### Running the examples
 
 ```
+cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
 
 v word_counter.v && ./word_counter cinderella.txt
 v run news_fetcher.v
-v run tetris.v
+v run tetris/tetris.v
 ```
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
+In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
 
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype.
-
-If you plan to use the http package, you also need to install libcurl.
+If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
-brew install glfw freetype curl
+brew install glfw freetype openssl
 
-Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libcurl3-dev
+Debian/Ubuntu:
+sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
 
-Arch:
-sudo pacman -S glfw-x11 curl freetype2
+Arch/Manjaro:
+sudo pacman -S glfw-x11 freetype2
+
+Fedora:
+sudo dnf install glfw glfw-devel freetype-devel
+
+Windows:
+git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
+
 ```
 
-glfw and libcurl dependencies will be removed soon.
+glfw dependency will be removed soon.
+
+## JavaScript backend
+
+[examples/hello_v_js.v](examples/hello_v_js.v):
+
+```
+fn main() {
+        for i := 0; i < 3; i++ {
+                println('Hello from V.js')
+        }
+}
+```
+
+```bash
+v -o hi.js examples/hello_v_js.v && node hi.js
+Hello from V.js
+Hello from V.js
+Hello from V.js
+```
+
+## Troubleshooting:
+
+https://github.com/vlang/v/wiki/Troubleshooting
+
+
+## Contributing
+
+Code structure:
+
+https://github.com/vlang/v/blob/master/CONTRIBUTING.md
+
+If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
+
+

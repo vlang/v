@@ -7,11 +7,11 @@
 // SHA-1 is cryptographically broken and should not be used for secure
 // applications.
 
-// Adapted from: https://github.com/golang/go/blob/master/src/crypto/sha1
+// Based off:   https://github.com/golang/go/blob/master/src/crypto/sha1
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01 
 
 module sha1
 
-import math
 import encoding.binary
 
 const(
@@ -40,15 +40,15 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.x = [byte(0); Chunk]
-	d.h = [u32(0); 5]
+	d.x = [byte(0)].repeat(Chunk)
+	d.h = [u32(0)].repeat(5)
 	d.h[0] = u32(Init0)
 	d.h[1] = u32(Init1)
 	d.h[2] = u32(Init2)
 	d.h[3] = u32(Init3)
 	d.h[4] = u32(Init4)
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA1 checksum.
@@ -58,15 +58,13 @@ pub fn new() &Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p []byte) ?int {
+pub fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == Chunk {
 			block(d, d.x)
@@ -88,28 +86,26 @@ pub fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
 
-pub fn (d &Digest) sum(b_in mut []byte) []byte {
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
+	mut b_out := b_in.clone()
 	for b in hash {
-		b_in << b
+		b_out << b
 	}
-	return *b_in
+	return b_out
 }
 
 fn (d mut Digest) checksum() []byte {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
-	mut tmp := [byte(0); 64]
+	mut tmp := [byte(0)].repeat(64)
 
 	tmp[0] = 0x80
 
@@ -120,17 +116,17 @@ fn (d mut Digest) checksum() []byte {
 	}
 
 	// Length in bits.
-	len <<= u64(3)
-	binary.big_endian_put_u64(tmp, len)
+	len <<= 3
+	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp.left(8))
 
-	mut digest := [byte(0); Size]
+	mut digest := [byte(0)].repeat(Size)
 
-	binary.big_endian_put_u32(digest, d.h[0])
-	binary.big_endian_put_u32(digest.right(4), d.h[1])
-	binary.big_endian_put_u32(digest.right(8), d.h[2])
-	binary.big_endian_put_u32(digest.right(12), d.h[3])
-	binary.big_endian_put_u32(digest.right(16), d.h[4])
+	binary.big_endian_put_u32(mut digest, d.h[0])
+	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
+	binary.big_endian_put_u32(mut digest.right(8), d.h[2])
+	binary.big_endian_put_u32(mut digest.right(12), d.h[3])
+	binary.big_endian_put_u32(mut digest.right(16), d.h[4])
 
 	return digest
 }
@@ -143,11 +139,13 @@ pub fn sum(data []byte) []byte {
 }
 
 fn block(dig &Digest, p []byte) {
-    // For now just use block_generic until we have specific
+	// For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(dig, p)
+	block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int { return Size }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum(s.bytes()).hex() }

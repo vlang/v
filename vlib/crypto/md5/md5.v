@@ -7,11 +7,11 @@
 // MD5 is cryptographically broken and should not be used for secure
 // applications.
 
-// Adapted from: https://github.com/golang/go/blob/master/src/crypto/md5
+// Based off:   https://github.com/golang/go/blob/master/src/crypto/md5
+// Last commit: https://github.com/golang/go/commit/ed7f323c8f4f6bc61a75146bf34f5b8f73063a17
 
 module md5
 
-import math
 import encoding.binary
 
 const (
@@ -38,34 +38,32 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.s = [u32(0); 4]
-	d.x = [byte(0); BlockSize]
+	d.s = [u32(0)].repeat(4)
+	d.x = [byte(0)].repeat(BlockSize)
     d.s[0] = u32(Init0)
 	d.s[1] = u32(Init1)
 	d.s[2] = u32(Init2)
 	d.s[3] = u32(Init3)
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
-// new returns a new hash.Hash computing the MD5 checksum.
-pub fn new() *Digest {
+// new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
+pub fn new() &Digest {
 	mut d := &Digest{}
 	d.reset()
 	return d
 }
 
-pub fn (d mut Digest) write(p []byte) ?int {
+pub fn (d mut Digest) write(p_ []byte) ?int {
+	mut p := p_
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<n; i++ {
-			d.x.set(i+d.nx, p[i])
-		}
+		n := copy(d.x.right(d.nx), p)
 		d.nx += n
 		if d.nx == BlockSize {
-            block(d, d.x)
+            block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -76,7 +74,7 @@ pub fn (d mut Digest) write(p []byte) ?int {
 	}
 	if p.len >= BlockSize {
 		n := p.len &~ (BlockSize - 1)
-		block(d, p.left(n))
+		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
 		} else {
@@ -84,22 +82,20 @@ pub fn (d mut Digest) write(p []byte) ?int {
 		}
 	}
 	if p.len > 0 {
-		d.nx = int(math.min(f64(d.x.len), f64(p.len)))
-		for i:=0; i<d.nx; i++ {
-			d.x.set(i, p[i])
-		}
+		d.nx = copy(d.x, p)
 	}
 	return nn
 }
 
-pub fn (d &Digest) sum(b_in mut []byte) []byte {
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
+	mut b_out := b_in.clone()
 	for b in hash {
-		b_in << b
+		b_out << b
 	}
-	return *b_in
+	return b_out
 }
 
 pub fn (d mut Digest) checksum() []byte {
@@ -109,10 +105,10 @@ pub fn (d mut Digest) checksum() []byte {
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
 	// tmp := [1 + 63 + 8]byte{0x80}
-    mut tmp := [byte(0); 1 + 63 + 8]
+    mut tmp := [byte(0)].repeat(1 + 63 + 8)
 	tmp[0] = 0x80
-	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
-	binary.little_endian_put_u64(tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
+	pad := int((55 - int(d.len)) % u64(64)) // calculate number of padding bytes
+	binary.little_endian_put_u64(mut tmp.right(1+pad), d.len<<u64(3)) // append length in bits
     d.write(tmp.left(1+pad+8))
 
 	// The previous write ensures that a whole number of
@@ -121,12 +117,12 @@ pub fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0); Size]
+    digest := [byte(0)].repeat(Size)
 
-	binary.little_endian_put_u32(digest, d.s[0])
-	binary.little_endian_put_u32(digest.right(4), d.s[1])
-	binary.little_endian_put_u32(digest.right(8), d.s[2])
-	binary.little_endian_put_u32(digest.right(12), d.s[3])
+	binary.little_endian_put_u32(mut digest, d.s[0])
+	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
+	binary.little_endian_put_u32(mut digest.right(8), d.s[2])
+	binary.little_endian_put_u32(mut digest.right(12), d.s[3])
 	return digest
 }
 
@@ -137,12 +133,14 @@ pub fn sum(data []byte) []byte {
 	return d.checksum()
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(dig mut Digest, p []byte) {
     // For now just use block_generic until we have specific
 	// architecture optimized versions
-    block_generic(dig, p)
+    block_generic(mut dig, p)
 }
 
 pub fn (d &Digest) size() int { return Size }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum(s.bytes()).hex() }

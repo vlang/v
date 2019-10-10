@@ -37,28 +37,27 @@ fn(c mut Crc32) generate_table(poly int) {
 	}
 }
  
-fn(c &Crc32) sum32(s string) u32 {
+fn(c &Crc32) sum32(b []byte) u32 {
 	mut crc := ~u32(0)
-	for i := 0; i < s.len; i++ {
-		crc = c.table[byte(crc)^s[i]] ^ u32(crc >> u32(8))
+	for i := 0; i < b.len; i++ {
+		crc = c.table[byte(crc)^b[i]] ^ u32(crc >> u32(8))
 	}
 	return ~crc
 }
 
-pub fn(c &Crc32) checksum(s string) u32 {
-	return c.sum32(s)
+pub fn(c &Crc32) checksum(b []byte) u32 {
+	return c.sum32(b)
 }
 
 // pass the polinomial to use
-pub fn new(poly int) *Crc32 {
+pub fn new(poly int) &Crc32 {
 	mut c := &Crc32{}
 	c.generate_table(poly)
 	return c
 }
 
 // calculate crc32 using IEEE
-pub fn sum(s string) u32 {
+pub fn sum(b []byte) u32 {
 	mut c := new(IEEE)
-	return c.sum32(s)
+	return c.sum32(b)
 }
-
