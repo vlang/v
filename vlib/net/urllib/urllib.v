@@ -4,7 +4,7 @@
 // it deviates for compatibility reasons.
 
 // Based off:   https://github.com/golang/go/blob/master/src/net/url/url.go
-// Last commit: https://github.com/golang/go/commit/61bb56ad63992a3199acc55b2537c8355ef887b6
+// Last commit: https://github.com/golang/go/commit/fe2ed5054176935d4adcf13e891715ccf2ee3cce
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -267,7 +267,7 @@ fn escape(s string, mode EncodingMode) string {
 		return string(t)
 	}
 
-	ctab := '0123456789ABCDEF'
+	upperhex := '0123456789ABCDEF'
 	mut j := 0
 	for i := 0; i < s.len; i++ {
 		c1 := s[i]
@@ -276,8 +276,8 @@ fn escape(s string, mode EncodingMode) string {
 			j++
 		} else if should_escape(c1, mode) {
 			t[j] = `%`
-			t[j+1] = ctab[c1>>4]
-			t[j+2] = ctab[c1&15]
+			t[j+1] = upperhex[c1>>4]
+			t[j+2] = upperhex[c1&15]
 			j += 3
 		} else {
 			t[j] = s[i]
@@ -404,18 +404,18 @@ fn get_scheme(rawurl string) ?string {
 	return split[0]
 }
 
-// Maybe s is of the form t c u.
-// If so, return t, c u (or t, u if cutc == true).
-// If not, return s, ''.
-fn split(s string, c string, cutc bool) []string {
-	i := s.index(c)
+// split slices s into two substrings separated by the first occurence of
+// sep. If cutc is true then sep is included with the second substring.
+// If sep does not occur in s then s and the empty string is returned.
+fn split(s string, sep byte, cutc bool) (string, string) {
+	i := s.index_byte(sep)
 	if i < 0 {
-		return [s, '']
+		return s, ''
 	}
 	if cutc {
-		return [s.left(i), s.right(i+c.len)]
+		return s.left(i), s.right(i+1)
 	}
-	return [s.left(i), s.right(i)]
+	return s.left(i), s.right(i)
 }
 
 // parse parses rawurl into a URL structure.
@@ -426,10 +426,8 @@ fn split(s string, c string, cutc bool) []string {
 // error, due to parsing ambiguities.
 pub fn parse(rawurl string) ?URL {
 	// Cut off #frag
-	p := split(rawurl, '#', true)
-	u := p[0]
-	frag := p[1]
-	mut url := _parse(u, false) or {
+	u, frag := split(rawurl, `#`, true)
+	mut url := parse_url(u, false) or {
 		return error(error_msg(err_msg_parse, u))
 	}
 	if frag == '' {
@@ -448,14 +446,14 @@ pub fn parse(rawurl string) ?URL {
 // The string rawurl is assumed not to have a #fragment suffix.
 // (Web browsers strip #fragment before sending the URL to a web server.)
 fn parse_request_uri(rawurl string) ?URL {
-	return _parse(rawurl, true)
+	return parse_url(rawurl, true)
 }
 
-// _parse parses a URL from a string in one of two contexts. If
+// parse_url parses a URL from a string in one of two contexts. If
 // via_request is true, the URL is assumed to have arrived via an HTTP request,
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If via_request is false, all forms of relative URLs are allowed.
-fn _parse(rawurl string, via_request bool) ?URL {
+fn parse_url(rawurl string, via_request bool) ?URL {
 	if string_contains_ctl_byte(rawurl) {
 		return error(error_msg('invalid control character in URL', rawurl))
 	}
@@ -480,13 +478,13 @@ fn _parse(rawurl string, via_request bool) ?URL {
 	url.scheme = url.scheme.to_lower()
 
 	// if rest.ends_with('?') && strings.count(rest, '?') == 1 {
-	if rest.ends_with('?') && !rest.trim_right('?').contains('?') {
+	if rest.ends_with('?') && !rest.left(1).contains('?') {
 		url.force_query = true
 		rest = rest.left(rest.len-1)
 	} else {
-		parts := split(rest, '?', true)
-		rest = parts[0]
-		url.raw_query = parts[1]
+		r, raw_query := split(rest, `?`, true)
+		rest = r
+		url.raw_query = raw_query
 	}
 
 	if !rest.starts_with('/') {
@@ -514,9 +512,8 @@ fn _parse(rawurl string, via_request bool) ?URL {
 	}
 
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
-		parts := split(rest.right(2), '/', false)
-		authority := parts[0]
-		rest = parts[1]
+		authority, r := split(rest.right(2), `/`, false)
+		rest = r
 		a := parse_authority(authority) or {
 			return error(err)
 		}
@@ -567,9 +564,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		userinfo = u
 		user = user(userinfo)
 	} else {
-		parts := split(userinfo, ':', true)
-		mut username := parts[0]
-		mut password := parts[1]
+		mut username, mut password := split(userinfo, `:`, true)
 		u := unescape(username, .encode_user_password) or {
 			return error(err)
 		}
@@ -777,8 +772,8 @@ pub fn (u &URL) str() string {
 			// it would be mistaken for a scheme name. Such a segment must be
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
-			i := path.index(':')
-			if i > -1 && path.left(i).index('/') == -1 {
+			i := path.index_byte(`:`)
+			if i > -1 && path.left(i).index_byte(`/`) == -1 {
 				buf.write('./')
 			}
 		}
@@ -812,7 +807,7 @@ pub fn (u &URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	_ = _parse_query(mut m, query) or {
+	_ = parse_query_values(mut m, query) or {
 		return error(err)
 	}
 	return m
@@ -822,11 +817,11 @@ pub fn parse_query(query string) ?Values {
 // but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	_ = _parse_query(mut m, query)
+	_ = parse_query_values(mut m, query)
 	return m
 }
 
-fn _parse_query(m mut Values, query string) ?bool {
+fn parse_query_values(m mut Values, query string) ?bool {
 	mut had_error := false
 	mut q := query
 	for q != '' {
@@ -1016,25 +1011,25 @@ pub fn (u &URL) request_uri() string {
 // If the result is enclosed in square brackets, as literal IPv6 addresses are,
 // the square brackets are removed from the result.
 pub fn (u &URL) hostname() string {
-	host_port := split_host_port(u.host)
-	return host_port[0]
+	host, _ := split_host_port(u.host)
+	return host
 }
 
 // port returns the port part of u.host, without the leading colon.
 // If u.host doesn't contain a port, port returns an empty string.
 pub fn (u &URL) port() string {
-	host_port := split_host_port(u.host)
-	return host_port[1]
+	_, port := split_host_port(u.host)
+	return port
 }
 
 // split_host_port separates host and port. If the port is not valid, it returns
 // the entire input as host, and it doesn't check the validity of the host.
 // Per RFC 3986, it requires ports to be numeric.
-fn split_host_port(hostport string) []string {
+fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	
-	colon := host.last_index(':')
+	colon := host.last_index_byte(`:`)
 	if colon != -1 && valid_optional_port(host.right(colon)) {
 		port = host.right(colon+1)
 		host = host.left(colon)
@@ -1044,7 +1039,7 @@ fn split_host_port(hostport string) []string {
 		host = host.substr(1, host.len-1)
 	}
 
-	return [host, port]
+	return host, port
 }
 
 // valid_userinfo reports whether s is a valid userinfo string per RFC 3986
