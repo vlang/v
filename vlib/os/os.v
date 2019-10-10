@@ -69,11 +69,6 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
-fn parse_windows_cmd_line(cmd byteptr) []string {
-	s := string(cmd)
-	return s.split(' ')
-}
-
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
@@ -533,7 +528,7 @@ pub fn get_raw_line() string {
     $if windows {
         max_line_chars := 256
         buf := &byte(malloc(max_line_chars*2))
-        if C.isConsole > 0 {
+        if is_atty(0) {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := 0
             C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
@@ -861,3 +856,4 @@ pub fn print_backtrace() {
 	# backtrace_symbols_fd(buffer, nptrs, STDOUT_FILENO) ;
 */
 }
+
