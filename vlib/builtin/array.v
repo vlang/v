@@ -367,9 +367,7 @@ pub fn (a []int) reduce(
 	mut _accum := 0
 	_accum = accum_start
 	for i := 0; i < a.len; i++ {
-		if i in a {
 			_accum = iter(_accum, a[i])
-		}
 	}
 	return _accum
 }
