@@ -151,9 +151,6 @@ byteptr g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void init_consts();
-#ifdef _WIN32
-BOOL isConsole;
-#endif
 '
 
 js_headers = '

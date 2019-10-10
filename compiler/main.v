@@ -387,16 +387,6 @@ fn (v mut V) generate_main() {
 		mut consts_init_body := cgen.consts_init.join_lines()
 		// vlib can't have `init_consts()`
 		cgen.genln('void init_consts() {
-#ifdef _WIN32
-DWORD consoleMode;
-isConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &consoleMode);
-int mode = isConsole ? _O_U16TEXT : _O_U8TEXT;
-_setmode(_fileno(stdin), mode);
-_setmode(_fileno(stdout), _O_U8TEXT);
-SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_PROCESSED_OUTPUT | 0x0004);
-// ENABLE_VIRTUAL_TERMINAL_PROCESSING
-setbuf(stdout,0);
-#endif
 g_str_buf=malloc(1000);
 $consts_init_body
 }')
