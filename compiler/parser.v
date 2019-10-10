@@ -3855,6 +3855,7 @@ fn (p mut Parser) assert_statement() {
 if (!$tmp) {
   println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
   g_test_fails++;
+  return;
   // TODO
   // Maybe print all vars in a test function if it fails?
 } else {

@@ -1,5 +1,7 @@
 module net
 
+import os
+
 struct Socket {
 pub:
 	sockfd int
@@ -162,11 +164,13 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	sport := '$port'
 	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
-		return error('socket: connect failed')
+		error_message := os.get_error_msg(net.error_code())
+		return error('socket: getaddrinfo failed ($error_message)')
 	}
 	res := int(C.connect(s.sockfd, info.ai_addr, info.ai_addrlen))
 	if res < 0 {
-		return error('socket: connect failed')
+		error_message := os.get_error_msg(net.error_code())
+		return error('socket: connect failed ($error_message)')
 	}
 	return int(res)
 }
