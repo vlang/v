@@ -315,8 +315,12 @@ fn test_filter() {
 	assert d[1] == 'awesome'
 }
 
-fn sum(prev int, curr int, index int, arr []int) int {
+fn sum(prev int, curr int) int {
 	return prev + curr
+}
+
+fn sub(prev int, curr int) int {
+	return prev - curr
 }
 
 fn test_reduce() {
@@ -326,5 +330,11 @@ fn test_reduce() {
 	d := a.reduce(sum, -1)
 	assert b == 15
 	assert c == 20
-	assert d == 15
+	assert d == 14
+
+	e := [1, 2, 3]
+	f := e.reduce(sub, 0)
+	g := e.reduce(sub, -1)
+	assert f == -5
+	assert g == -6
 }
