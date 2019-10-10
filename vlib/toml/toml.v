@@ -101,6 +101,12 @@ struct TOMLInt{
 	}
 }
 
+struct TOMLDouble{
+	mut:
+		val f64
+		str_val string
+}
+
 // TOML's Value.
 struct TOMLVal{
 	mut:
@@ -120,12 +126,8 @@ fn (t TOMLInt) str_val() string{
 }
 
 struct TimeStamp{
-	year   		int
-	month  		int
-	date   		int
-	hour   		int
-	minute 		int
-	second 		int
-	millsecond 	int
-	total		int
+	// Calender
+	year,month,date   					int
+	// Clock
+	hour,minute,second,millsecond  		int
 }

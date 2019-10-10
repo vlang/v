@@ -6,24 +6,19 @@
     // Bison
     #include "toml.tab.h"
     int yywarp(void) {return 1;}
-    #define TRUE 1
-    #define FALSE 0
-    static char* buf[255];
-    static char* string_literal;
-    void string_free(void){
-        string_literal = 0;
-    }
+    char* buffer;
+    extern FILE* yyin;
 %}
 
 digit       [0-9]+[_]*;
 integer     [+-\-]?digit;
-floating    [+-\-]digit\.[e]?[];
-letter      [a-zA-Z]
-binary      [0-9a-fA-F]
-date        [[0-9][0-9]{1,4}][\-][0-1][0-9][\-][0-3][0-9]
-time        [0-2][0-9][:][0-5][0-9][:][0-5][0-9][.][0-9]{0,6}
+floating    [+-\-]digit\.[e]?[+-\-]?[digit];
+letter      [a-zA-Z];
+binary      [0-9a-fA-F];
+date        [0-9]+[\-][0-1][0-9][\-][0-3][0-9];
+time        [0-2][0-9][:][0-5][0-9][:][0-5][0-9][.][0-9]{0,6};
 /* Example:1999-05-28T14:21:00.000000*/
-timestamp  date?[T]time?
+timestamp  date?[T]time?;
 
 %%
 <INITIAL>#              BEGIN COMMENT;
@@ -51,23 +46,10 @@ timestamp  date?[T]time?
 <INITIAL>binary         return BINARY;
 <INITIAL>floating       return DOUBLE;
 <INITIAL>timestamp      return TIMESTAMP;
-<INITIAL>\"             {
-    BEGIN WQUOTE_STRING;
-    string_literal = buf;
-}
-<INITIAL>\'             {
-    BEGIN QUOTE_STRING;
-    string_literal = buf;
-}
-<INITIAL>\"\"\"         {
-    BEGIN WQUOTE_MULTI_LINE;
-    string_literal = buf;
-}
-<INITIAL>\'\'\'         { 
-    BEGIN QUOTE_MULTI_LINE;
-    string_literal = buf;
-}
-
+<INITIAL>\"             BEGIN WQUOTE_STRING;
+<INITIAL>\'             BEGIN QUOTE_STRING;
+<INITIAL>\"\"\"         BEGIN WQUOTE_MULTI_LINE;
+<INITIAL>\'\'\'         BEGIN QUOTE_MULTI_LINE;
 <CRETURN>\n {
     return NEWLINE;
     BEGIN INITIAL;
@@ -78,28 +60,38 @@ timestamp  date?[T]time?
 <COMMENT>. ;
 
 <WQUOTE_STRING>\" {
-    string_free()
     BEGIN INITIAL;
     return STRING;
 }
-<WQUOTE_STRING>\' string_literal++ = *yytext[0];
-<WQUOTE_STRING>. string_literal++ = *yytext[0];
-<WQUOTE_STRING>\\\r string_literal++ = '\r'
-<WQUOTE_STRING>\\\n string_literal++ = '\n'
-<WQUOTE_STRING>\\\" string_literal++ = '\"'
+<WQUOTE_STRING>\' yy_scan_buffer("\'");
+<WQUOTE_STRING>. yy_scan_buffer(*yytext[0]);
+<WQUOTE_STRING>\n yyerror("Error: Invalid String.");
+<WQUOTE_STRING>\\\r yy_scan_buffer("\r");
+<WQUOTE_STRING>\\\n yy_scan_buffer("\n");
+<WQUOTE_STRING>\\\" yy_scan_buffer("\"");
+<WQUOTE_STRING>\\\\ yy_scan_buffer("\\");
+<WQUOTE_STRING>\" {
+    BEGIN INITIAL;
+    return STRING;
+}
 
-<QUOTE_STRING>\\\r string_literal++ = '\r'
-<QUOTE_STRING>\\\n string_literal++ = '\n'
-<QUOTE_STRING>\\\' string_literal++ = 
+<QUOTE_STRING>\"  yy_scan_buffer("\"");
+<QUOTE_STRING>\n yyerror("Error: Invalid String.")
+<QUOTE_STRING>. yy_scan_buffer(*yytext[0]);
+<QUOTE_STRING>\\\r yy_scan_buffer("\r");
+<QUOTE_STRING>\\\n yy_scan_buffer("\n");
+<QUOTE_STRING>\\\' yy_scan_buffer("\'"):
+<QUOTE_STRING>\\\\ yy_scan_buffer("\\")
 <QUOTE_STRING>\' {
-    string_free()
     BEGIN INITIAL;
     return STRING;
 }
-<QUOTE_STRING>. string_literal++ = *yytext[0];
 
+<QUOTE_MULTI_LINE>\'\'\' {
+    BEGIN INITIAL;
+    return STRING;
+}
 <WQUOTE_MULTI_LINE>\"\"\" {
-    string_free()
     BEGIN INITIAL;
     return STRING;
 } 
