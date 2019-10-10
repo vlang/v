@@ -111,9 +111,9 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_debug {
-		libs = '$v_modules_path/vlib/builtin.o ' +
-		 '$v_modules_path/vlib/strings.o '+
-		 '$v_modules_path/vlib/math.o '
+		libs = '$v_modules_path/vlib/builtin.o '
+		// '$v_modules_path/vlib/strings.o '+
+		// '$v_modules_path/vlib/math.o '
 		/*
 		if !os.file_exists(libs) {
 			println('object file `$libs` not found')
@@ -124,10 +124,13 @@ fn (v mut V) cc() {
 			if imp == 'webview' {
 				continue
 			}
-			path := 	'"$v_modules_path/vlib/${imp}.o"'
+			path := 	'$v_modules_path/vlib/${imp}.o'
+			println('adding ${imp}.o')
 			if os.file_exists(path) {
 				libs += ' ' + path
-			}
+			} else {
+				println('$path not found... build module $imp')
+			}	
 		}
 	}
 	if v.pref.sanitize {
