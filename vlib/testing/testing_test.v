@@ -1,12 +1,12 @@
 import testing
 
 fn test_is_same_int(){
-        ok_assert := testing.is(int(42), int(42), "should match same int")
+        ok_assert := testing.is(42, 40+2, "should add numbers together")
         assert ok_assert == true
 }
 
 fn test_is_different_int(){
-        ok_assert := testing.is(int(42), int(12), "should match same int")
+        ok_assert := testing.is(42, 12, "should match same int")
         assert ok_assert == false
 }
 
