@@ -508,6 +508,24 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
+pub fn (s string) index_byte(c byte) int {
+	for i:=0; i<s.len; i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (s string) last_index_byte(c byte) int {
+	for i:=s.len-1; i>=0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
 // counts occurrences of substr in s
 pub fn (s string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
