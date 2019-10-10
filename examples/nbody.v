@@ -32,7 +32,7 @@ pub mut:
       s []Position
 }
 
-fn advance(sys System, dt f64) {
+fn advance(sys mut System, dt f64) {
     for i := 0; i < N - 1; i++ {
         mut _vx := sys.v[i].x
         mut _vy := sys.v[i].y
@@ -125,7 +125,7 @@ offsetmomentum(mut sys)
 
 println('${energy(sys):.9f}')  //-0.169075164
 for i := 0; i < 50000000; i++ {
-    advance(sys, 0.01)
+    advance(mut sys, 0.01)
 }
 println('${energy(sys):.9f}') //-0.169059907
 

@@ -56,7 +56,7 @@ pub fn open(name string, level int, mode string) ?zip_ptr {
     /* struct zip_t* */_p_zip := zip_ptr(C.zip_open(name.str, 
                                  _nlevel, mode.str))
     if _p_zip == zip_ptr(0) {
-        return error('szip: cannot open/create/append new zip archive.')
+        return error('szip: cannot open/create/append new zip archive')
     }
     return _p_zip
 }
@@ -130,7 +130,7 @@ pub fn (zentry mut zip_ptr) name() string {
 pub fn (zentry mut zip_ptr) index() ?int {
     _index := int(C.zip_entry_index(zentry))
     if _index == -1 {
-        return error('szip: cannot get current index of zip entry.')
+        return error('szip: cannot get current index of zip entry')
     }
     return _index // must be check for INVALID_VALUE
 }
@@ -146,7 +146,7 @@ pub fn (zentry mut zip_ptr) index() ?int {
 pub fn (zentry mut zip_ptr) isdir() ?bool {
     _isdir := C.zip_entry_isdir(zentry)
     if _isdir == -1 {
-        return error('szip: cannot check entry type.')
+        return error('szip: cannot check entry type')
     }
     dir := bool(_isdir) // wtf V , unary lvalue
     return dir
@@ -210,13 +210,13 @@ pub fn (zentry mut zip_ptr) create_entry(name string) bool {
 /**
  * read_entry extracts the current zip entry into output buffer.
  *
- * The function allocates sufficient memory for a output buffer.
+ * The function allocates sufficient memory for an output buffer.
  *
  * @param zip zip archive handler.
  * @param buf output buffer.
  * @param bufsize output buffer size (in bytes).
  *
- * @note remember to release memory allocated for a output buffer.
+ * @note remember to release the memory allocated for an output buffer.
  *       for large entries, please take a look at zip_entry_extract function.
  *
  * @return the return code - the number of bytes actually read on success.
@@ -227,7 +227,7 @@ pub fn (zentry mut zip_ptr) read_entry() ?voidptr {
     mut _bsize := i64(0)
     res := C.zip_entry_read(zentry, &_buf, &_bsize)
     if res == -1 {
-        return error('szip: cannot read properly data from entry.')
+        return error('szip: cannot read properly data from entry')
     }
     return _buf
 }
@@ -279,7 +279,7 @@ pub fn (zentry mut zip_ptr) extract_entry(path string) /*?*/bool {
 pub fn (zentry mut zip_ptr) total() ?int {
     _tentry := int(C.zip_total_entries(zentry))
     if _tentry == -1 {
-        return error('szip: cannot count total entries.')
+        return error('szip: cannot count total entries')
     }
     return _tentry
 } 

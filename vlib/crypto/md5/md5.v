@@ -38,18 +38,18 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.s = [u32(0); 4]
-	d.x = [byte(0); BlockSize]
+	d.s = [u32(0)].repeat(4)
+	d.x = [byte(0)].repeat(BlockSize)
     d.s[0] = u32(Init0)
 	d.s[1] = u32(Init1)
 	d.s[2] = u32(Init2)
 	d.s[3] = u32(Init3)
 	d.nx = 0
-	d.len = u64(0)
+	d.len = 0
 }
 
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
-pub fn new() *Digest {
+pub fn new() &Digest {
 	mut d := &Digest{}
 	d.reset()
 	return d
@@ -87,14 +87,15 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 	return nn
 }
 
-pub fn (d &Digest) sum(b_in mut []byte) []byte {
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
+	mut b_out := b_in.clone()
 	for b in hash {
-		b_in << b
+		b_out << b
 	}
-	return *b_in
+	return b_out
 }
 
 pub fn (d mut Digest) checksum() []byte {
@@ -104,10 +105,10 @@ pub fn (d mut Digest) checksum() []byte {
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
 	// tmp := [1 + 63 + 8]byte{0x80}
-    mut tmp := [byte(0); 1 + 63 + 8]
+    mut tmp := [byte(0)].repeat(1 + 63 + 8)
 	tmp[0] = 0x80
-	pad := (55 - int(d.len)) % 64 // calculate number of padding bytes
-	binary.little_endian_put_u64(mut tmp.right(1+pad), u64(d.len<<u64(3))) // append length in bits
+	pad := int((55 - int(d.len)) % u64(64)) // calculate number of padding bytes
+	binary.little_endian_put_u64(mut tmp.right(1+pad), d.len<<u64(3)) // append length in bits
     d.write(tmp.left(1+pad+8))
 
 	// The previous write ensures that a whole number of
@@ -116,7 +117,7 @@ pub fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0); Size]
+    digest := [byte(0)].repeat(Size)
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
@@ -141,3 +142,5 @@ fn block(dig mut Digest, p []byte) {
 pub fn (d &Digest) size() int { return Size }
 
 pub fn (d &Digest) block_size() int { return BlockSize }
+
+pub fn hexhash(s string) string { return sum(s.bytes()).hex() }

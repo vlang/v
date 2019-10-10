@@ -4,8 +4,6 @@
 
 module http
 
-import os
-
 type downloadfn fn (written int)
 type download_finished_fn fn () 
 

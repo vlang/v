@@ -8,7 +8,6 @@
 module aes
 
 import (
-	crypto.cipher
 	crypto.internal.subtle
 )
 

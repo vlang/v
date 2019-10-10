@@ -34,7 +34,7 @@ pub fn new_manager() *AssetManager {
 	return &AssetManager{}
 }
 
-// add_js adds a css asset
+// add_css adds a css asset
 pub fn (am mut AssetManager) add_css(file string) bool {
 	return am.add('css', file)
 }
@@ -154,7 +154,7 @@ fn (am mut AssetManager) include(asset_type string, combine bool) string {
 // fn (am mut AssetManager) add(asset_type, file string) ?bool {
 fn (am mut AssetManager) add(asset_type, file string) bool {
 	if !os.file_exists(file) {
-		// return error('vweb.assets: cannot add asset $file, it does not exist.')
+		// return error('vweb.assets: cannot add asset $file, it does not exist')
 		return false
 	}
 	asset := Asset{

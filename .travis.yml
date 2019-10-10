@@ -2,25 +2,28 @@ language: c
 matrix:
   include:
     - os: linux
+      name: "linux"
       dist: xenial
       sudo: required
       addons:
         apt:
-          sources:
-            - ubuntu-toolchain-r-test
           packages:
-            - gcc-5
-            - g++-5
-            - make
-            - libglfw3 
+            - build-essential
+            - libglfw3
             - libglfw3-dev
-            - libfreetype6-dev 
+            - libfreetype6-dev
             - libssl-dev
     - os: windows
-      language: sh
+      name: "windows_gcc"
+      language: bash
+      filter_secrets: false
+    - os: windows
+      name: "windows_msvc"
+      language: bash
       filter_secrets: false
     - os: osx
-      osx_image: xcode10.2
+      name: "osx"
+      osx_image: xcode11
       addons:
         homebrew:
           packages:
@@ -29,28 +32,59 @@ matrix:
             - openssl
 script:
   - |
-    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-      sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-5 /usr/bin/gcc
-    fi
-  - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
       export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/opt/openssl/lib/
-    fi    
+    fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "windows" ]]; then
-      echo "Testing msvc bootstrapping"
-      ./make_msvc.bat
-      echo "Running make_tests.bat..."
-      ./make_tests.bat
+      ### troubleshooting and diagnostics: show ALL environment variables in the instance
+      #set
+      set -e
+      git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries  thirdparty/freetype/
+
+      if [[ "${TRAVIS_JOB_NAME}" == "windows_gcc" ]]; then
+        gcc --version
+        echo "Building V with GCC"
+        export VFLAGS="-os windows"
+        ./make.bat -gcc
+      fi
+      if [[ "${TRAVIS_JOB_NAME}" == "windows_msvc" ]]; then
+        echo "Building V with MSVC"
+        export VFLAGS="-os msvc"
+        ./make.bat -msvc
+      fi
+
+      ./v.exe test v
+      set +e
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
       make
-      #./v install glfw
-      ./v test v 
+      ./v -o v compiler
+      ./v test v
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      ## aliases do not work for some reason in travis, just use full commands :-|
+      echo "Nodejs version:"
+      node --version
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v
+      node hi.js
     fi
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      echo "Nodejs version:"
+      node --version
+      # Build hi.js
+      echo "fn main(){ println('Hello from V.js') }" > hi.v
+      ./v -o hi.js hi.v
+      node hi.js
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+    # Build Vid
       git clone https://github.com/vlang/vid
-      cd vid && ../v .
-    fi    
+      cd vid && ../v -o vid .
+    fi

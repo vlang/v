@@ -4,20 +4,11 @@
 
 module gl
 
-import os
+// import os
 import gx
 import glm
 
 // import darwin
-import const (
-	GL_VERTEX_SHADER
-	GL_FRAGMENT_SHADER
-	GL_ARRAY_BUFFER
-	GL_TRIANGLES
-	GL_CULL_FACE
-	GL_BLEND
-	GL_LINES
-)
 
 struct Shader {
 	program_id int
@@ -43,7 +34,7 @@ uniform sampler2D text;
 uniform vec3 textColor;
 
 void main()
-{    
+{
     vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
     color = vec4(textColor, 1.0) * sampled;
 }  '
@@ -51,11 +42,11 @@ void main()
 
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aColor;
-layout (location = 2) in vec2 aTexCoord; 
+layout (location = 2) in vec2 aTexCoord;
 
 
 out vec3 ourColor;
-out vec2 TexCoord; 
+out vec2 TexCoord;
 
 uniform mat4 projection;
 
@@ -64,8 +55,8 @@ void main() {
 //    gl_Position = vec4(aPos, 1.0);
 
  ourColor = aColor;
-//TexCoord = vec2(aTexCoord.x, aTexCoord.y); 
-    TexCoord = aTexCoord; 
+//TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+    TexCoord = aTexCoord;
 }
 '
 	SIMPLE_FRAG = '#version 330 core
@@ -73,30 +64,30 @@ void main() {
 out vec4 FragColor;
 uniform vec3 color;
 
-uniform bool has_texture; 
+uniform bool has_texture;
 
 in vec3 ourColor;
 in vec2 TexCoord;
 
 uniform sampler2D ourTexture;
- 
+
 
 void main()     {
 //    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
 //    FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);
-if (has_texture) { 
+if (has_texture) {
     FragColor = texture(ourTexture, TexCoord);
- 
-}  else { 
+
+}  else {
     FragColor = vec4(color, 1.0f);
-} 
+}
 }
 '
 )
 
 pub fn new_shader(name string) Shader {
-	// TODO This is not used, remove 
-	mut dir := '' 
+	// TODO This is not used, remove
+	mut dir := ''
 	// Already have absolute path
 	if name.starts_with('/') {
 		dir = ''
@@ -118,7 +109,7 @@ pub fn new_shader(name string) Shader {
 		fragment_src = SIMPLE_FRAG
 	}
 	// ////////////////////////////////////////
-	vertex_shader := gl.create_shader(GL_VERTEX_SHADER)
+	vertex_shader := gl.create_shader(C.GL_VERTEX_SHADER)
 	gl.shader_source(vertex_shader, 1, vertex_src, 0)
 	gl.compile_shader(vertex_shader)
 	if gl.shader_compile_status(vertex_shader) == 0 {
@@ -130,7 +121,7 @@ pub fn new_shader(name string) Shader {
 	}
 	// fragment shader
 	// fragment_src := os.read_file(fragment_path.trim_space())
-	fragment_shader := gl.create_shader(GL_FRAGMENT_SHADER)
+	fragment_shader := gl.create_shader(C.GL_FRAGMENT_SHADER)
 	gl.shader_source(fragment_shader, 1, fragment_src, 0)
 	gl.compile_shader(fragment_shader)
 	if gl.shader_compile_status(fragment_shader) == 0 {

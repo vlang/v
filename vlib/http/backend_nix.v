@@ -13,12 +13,12 @@ import strings
 // (older) system openssl.
 #flag linux -I/usr/local/include/openssl -L/usr/local/lib
 
-#flag windows -I @VROOT/thirdparty/openssl/include 
-#flag darwin -I @VROOT/thirdparty/openssl/include 
 #flag -l ssl -l crypto
 // MacPorts
+#flag darwin -I/opt/local/include
 #flag darwin -L/opt/local/lib
 // Brew
+#flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
 #include <openssl/ssl.h>
@@ -27,18 +27,12 @@ struct C.SSL {
  
 } 
 
-fn init_module() {
-	$if mac { 
-		C.SSL_library_init() 
-	} 
-	$if linux { 
-		C.SSL_library_init() 
-	} 
-	//C.SSL_load_error_strings() 
-	//C.OPENSSL_config(0) 
+fn init() int {
+	C.SSL_library_init() 
+	return 1
 }
 
-fn ssl_do(method, host_name, path string) Response { 
+fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
 	//ssl_method := C.SSLv23_method() 
 	ssl_method := C.TLSv1_2_method() 
 	if isnil(method) { 
@@ -55,7 +49,7 @@ fn ssl_do(method, host_name, path string) Response {
 	web := C.BIO_new_ssl_connect(ctx) 
 	if isnil(ctx) { 
 	} 
-	addr := host_name + ':443' 
+	addr := host_name + ':' + port.str()
 	res = C.BIO_set_conn_hostname(web, addr.str) 
 	if res != 1 {
 	} 
@@ -73,7 +67,7 @@ fn ssl_do(method, host_name, path string) Response {
 	cert := C.SSL_get_peer_certificate(ssl) 
 	res = C.SSL_get_verify_result(ssl) 
 	///////
-	s := build_request_headers('', method, host_name, path)
+	s := req.build_request_headers(method, host_name, path)
 	C.BIO_puts(web, s.str) 
 	mut sb := strings.new_builder(100) 
 	for {
@@ -93,5 +87,5 @@ fn ssl_do(method, host_name, path string) Response {
 		C.SSL_CTX_free(ctx) 
 	}
 
-	return parse_response(sb.str() )
+	return parse_response(sb.str())
 }

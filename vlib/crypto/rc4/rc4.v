@@ -19,8 +19,8 @@ import crypto.internal.subtle
 struct Cipher {
 mut:
 	s []u32
-	i u8
-	j u8
+	i byte
+	j byte
 }
 
 // new_cipher creates and returns a new Cipher. The key argument should be the
@@ -30,14 +30,14 @@ pub fn new_cipher(key []byte) ?Cipher {
 		return error('crypto.rc4: invalid key size ' + key.len.str())
 	}
 	mut c := Cipher{
-		s: [u32(0); 256]
+		s: [u32(0)].repeat(256)
 	}
 	for i := 0; i < 256; i++ {
 		c.s[i] = u32(i)
 	}
-	mut j := u8(0)
+	mut j := byte(0)
 	for i := 0; i < 256; i++ {
-		j += u8(c.s[i]) + u8(key[i%key.len])
+		j += byte(c.s[i]) + byte(key[i%key.len])
 		tmp := c.s[i]
 		c.s[i] = c.s[j]
 		c.s[j] = tmp
@@ -51,10 +51,10 @@ pub fn new_cipher(key []byte) ?Cipher {
 // the process's memory.
 pub fn (c mut Cipher) reset() {
 	for i in c.s {
-		c.s[i] = u32(0)
+		c.s[i] = 0
 	}
-	c.i = u8(0)
-	c.j = u8(0)
+	c.i = 0
+	c.j = 0
 }
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.
@@ -68,16 +68,16 @@ pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	}
 	mut i := c.i
 	mut j := c.j
-	_ := dst[src.len-1]
+	_ = dst[src.len-1]
 	*dst = dst.left(src.len) // eliminate bounds check from loop
 	for k, v in src {
-		i += u8(1)
+		i += byte(1)
 		x := c.s[i]
-		j += u8(x)
+		j += byte(x)
 		y := c.s[j]
 		c.s[i] = y
 		c.s[j] = x
-		dst[k] = v ^ byte(c.s[u8(x+y)])
+		dst[k] = v ^ byte(c.s[byte(x+y)])
 	}
 	c.i = i
 	c.j = j

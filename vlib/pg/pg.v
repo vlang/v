@@ -1,8 +1,5 @@
 module pg
 
-import os
-import time
-
 #flag -lpq
 #flag linux -I/usr/include/postgresql
 #flag darwin -I/opt/local/include/postgresql11
@@ -10,31 +7,34 @@ import time
 
 struct DB {
 mut:
-	conn *C.PGconn
+	conn &C.PGconn
 }
 
 struct Row {
-pub:
+pub mut:
 	vals []string
 }
 
-import const (
-	CONNECTION_OK
-) 
-
 struct C.PGResult { }
 
-fn C.PQconnectdb(a byteptr) *C.PGconn
+struct Config {
+pub:
+  host string
+  user string
+  password string
+  dbname string
+}
+
+fn C.PQconnectdb(a byteptr) &C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr 
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int 
 
-pub fn connect(dbname, user string) DB {
-	//conninfo := 'host=localhost user=$user dbname=$dbname'
-	conninfo := 'host=127.0.0.1 user=$user dbname=$dbname'
+pub fn connect(config pg.Config) DB {
+	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname'
 	conn:=C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
-	if status != CONNECTION_OK { 
+	if status != C.CONNECTION_OK { 
 		error_msg := C.PQerrorMessage(conn) 
 		eprintln('Connection to a PG database failed: ' + string(error_msg)) 
 		exit(1) 
@@ -100,21 +100,22 @@ pub fn (db DB) exec(query string) []pg.Row {
 	return res_to_rows(res)
 }
 
-pub fn (db DB) exec_one(query string) pg.Row {
+fn rows_first_or_empty(rows []pg.Row) ?pg.Row {
+	if rows.len == 0 {
+		return error('no row')
+	} 
+	return rows[0]
+}
+            
+pub fn (db DB) exec_one(query string) ?pg.Row {
 	res := C.PQexec(db.conn, query.str)
 	e := string(C.PQerrorMessage(db.conn))
 	if e != '' {
-		println('pg exec error:')
-		println(e)
-		return Row{} 
+		return error('pg exec error: "$e"')
 	}
-	rows := res_to_rows(res)
-	if rows.len == 0 {
-		return Row{} 
-	} 
-	return rows[0] 
+	row := rows_first_or_empty( res_to_rows(res) )
+	return row
 }
-
 
 // 
 pub fn (db DB) exec_param2(query string, param, param2 string) []pg.Row {

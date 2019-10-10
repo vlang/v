@@ -1,14 +1,10 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// urllib parses URLs and implements query escaping.
 
-// Package url parses URLs and implements query escaping.
-
-// See RFC 3986. This package generally follows RFC 3986, except where
+// See RFC 3986. This module generally follows RFC 3986, except where
 // it deviates for compatibility reasons.
 
 // Based off:   https://github.com/golang/go/blob/master/src/net/url/url.go
-// Last commit: https://github.com/golang/go/commit/a326bc6df27309815e4a2ae005adef233cfb9ea9
+// Last commit: https://github.com/golang/go/commit/61bb56ad63992a3199acc55b2537c8355ef887b6
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -143,7 +139,7 @@ pub fn path_unescape(s string) ?string {
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
 fn unescape(s_ string, mode EncodingMode) ?string {
-	mut s := s_ 
+	mut s := s_
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
@@ -153,7 +149,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		case `%`:
 			if s == '' {
 				break
-			} 
+			}
 			n++
 			if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
 				s = s.right(i)
@@ -251,14 +247,14 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 
-	mut buf := [byte(0); 64]
+	mut buf := [byte(0)].repeat(64)
 	mut t := []byte
 
 	required := s.len + 2*hex_count
 	if required <= buf.len {
 		t = buf.left(required)
 	} else {
-		t = [byte(0); required]
+		t = [byte(0)].repeat(required)
 	}
 
 	if hex_count == 0 {
@@ -313,7 +309,7 @@ struct URL {
 pub: mut:
 	scheme      string
 	opaque      string    // encoded opaque data
-	user        *Userinfo // username and password information
+	user        &Userinfo // username and password information
 	host        string    // host or host:port
 	path        string    // path (relative paths may omit leading slash)
 	raw_path    string    // encoded path hint (see escaped_path method)
@@ -324,7 +320,7 @@ pub: mut:
 
 // user returns a Userinfo containing the provided username
 // and no password set.
-pub fn user(username string) *Userinfo {
+pub fn user(username string) &Userinfo {
 	return &Userinfo{
 		username: username,
 		password: '',
@@ -340,7 +336,7 @@ pub fn user(username string) *Userinfo {
 // ``is NOT RECOMMENDED, because the passing of authentication
 // information in clear text (such as URI) has proven to be a
 // security risk in almost every case where it has been used.''
-fn user_password(username, password string) *Userinfo {
+fn user_password(username, password string) &Userinfo {
 	return &Userinfo{username, password, true}
 }
 
@@ -517,7 +513,7 @@ fn _parse(rawurl string, via_request bool) ?URL {
 		}
 	}
 
-	if (url.scheme != '' || !via_request && !rest.starts_with('///')) && rest.starts_with('//') {
+	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
 		parts := split(rest.right(2), '/', false)
 		authority := parts[0]
 		rest = parts[1]
@@ -531,7 +527,7 @@ fn _parse(rawurl string, via_request bool) ?URL {
 	// raw_path is a hint of the encoding of path. We don't want to set it if
 	// the default escaping of path is equivalent, to help make sure that people
 	// don't rely on it in general.
-	_ := url.set_path(rest) or {
+	_ = url.set_path(rest) or {
 		return error(err)
 	}
 	return url
@@ -554,7 +550,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	} else {
 		h := parse_host(authority.right(i+1)) or {
 			return error(err)
-		} 
+		}
 		host = h
 	}
 	if i < 0 {
@@ -596,13 +592,13 @@ fn parse_host(host string) ?string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		i := host.last_index(']')
+		mut i := host.last_index(']')
 		if i < 0 {
 			return error(error_msg('missing \']\' in host', ''))
 		}
-		colonport := host.right(i+1)
-		if !valid_optional_port(colonport) {
-			return error(error_msg('invalid port $colonport after host ', ''))
+		mut colon_port := host.right(i+1)
+		if !valid_optional_port(colon_port) {
+			return error(error_msg('invalid port $colon_port after host ', ''))
 		}
 
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
@@ -623,13 +619,21 @@ fn parse_host(host string) ?string {
 				return err
 			}
 			return host1 + host2 + host3
+		} else {
+			i = host.last_index(':')
+			if i != -1 {
+				colon_port = host.right(i)
+				if !valid_optional_port(colon_port) {
+					return error(error_msg('invalid port $colon_port after host ', ''))
+				}
+			}
 		}
 	}
 
 	h := unescape(host, .encode_host) or {
 		return err
 	}
-	return h 
+	return h
 	//host = h
 	//return host
 }
@@ -686,7 +690,7 @@ fn valid_encoded_path(s string) bool {
 		// should_escape is not quite compliant with the RFC,
 		// so we check the sub-delims ourselves and let
 		// should_escape handle the others.
-		x := s[i] 
+		x := s[i]
 		switch x {
 		case `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@`:
 			// ok
@@ -808,17 +812,17 @@ pub fn (u &URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	_ := _parse_query(mut m, query) or {
+	_ = _parse_query(mut m, query) or {
 		return error(err)
 	}
 	return m
 }
 
 // parse_query_silent is the same as parse_query
-// but any errors will be silent 
+// but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	_ := _parse_query(mut m, query)
+	_ = _parse_query(mut m, query)
 	return m
 }
 
@@ -1007,46 +1011,40 @@ pub fn (u &URL) request_uri() string {
 	return result
 }
 
-// hostname returns u.host, without any port number.
+// hostname returns u.host, stripping any valid port number if present.
 //
-// If host is an IPv6 literal with a port number, hostname returns the
-// IPv6 literal without the square brackets. IPv6 literals may include
-// a zone identifier.
+// If the result is enclosed in square brackets, as literal IPv6 addresses are,
+// the square brackets are removed from the result.
 pub fn (u &URL) hostname() string {
-	return strip_port(u.host)
+	host_port := split_host_port(u.host)
+	return host_port[0]
 }
 
 // port returns the port part of u.host, without the leading colon.
 // If u.host doesn't contain a port, port returns an empty string.
 pub fn (u &URL) port() string {
-	return port_only(u.host)
+	host_port := split_host_port(u.host)
+	return host_port[1]
 }
 
-pub fn strip_port(hostport string) string {
-	colon := hostport.index(':')
-	if colon == -1 {
-		return hostport
+// split_host_port separates host and port. If the port is not valid, it returns
+// the entire input as host, and it doesn't check the validity of the host.
+// Per RFC 3986, it requires ports to be numeric.
+fn split_host_port(hostport string) []string {
+	mut host := hostport
+	mut port := ''
+	
+	colon := host.last_index(':')
+	if colon != -1 && valid_optional_port(host.right(colon)) {
+		port = host.right(colon+1)
+		host = host.left(colon)
 	}
-	i := hostport.index(']')
-	if i != -1 {
-		return hostport.left(i).trim_left('[')
-	}
-	return hostport.left(colon)
-}
 
-pub fn port_only(hostport string) string {
-	colon := hostport.index(':')
-	if colon == -1 {
-		return ''
+	if host.starts_with('[') && host.ends_with(']') {
+		host = host.substr(1, host.len-1)
 	}
-	i := hostport.index(']:')
-	if i != -1 {
-		return hostport.right(i+(']:'.len))
-	}
-	if hostport.contains(']') {
-		return ''
-	}
-	return hostport.right(colon+(':'.len))
+
+	return [host, port]
 }
 
 // valid_userinfo reports whether s is a valid userinfo string per RFC 3986

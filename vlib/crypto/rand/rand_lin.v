@@ -8,10 +8,6 @@ import math
 
 #include <sys/syscall.h>
 
-import const(
-	SYS_getrandom
-)
-
 // const (
 // 	SYS_getrandom = 278 // AArch65
 // 	SYS_getrandom = 384 // ARM
@@ -47,5 +43,5 @@ fn _getrandom(bytes_needed int, buffer voidptr) int {
 	if bytes_needed > ReadBatchSize {
 		panic('_getrandom() dont request more thane $ReadBatchSize bytes at once.')
 	}
-	return C.syscall(SYS_getrandom, buffer, bytes_needed, 0)
+	return C.syscall(C.SYS_getrandom, buffer, bytes_needed, 0)
 }

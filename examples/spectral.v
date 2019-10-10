@@ -39,7 +39,7 @@ fn (v mut []f64) times_trans(u []f64) {
 }
 
 fn (v mut []f64) a_times_transp(u []f64) {
-    mut x := [f64(0); u.len]
+    mut x := [f64(0)].repeat(u.len)
     x.times(u)
     v.times_trans(x)
 } 
@@ -55,8 +55,8 @@ fn main() {
     else {
         n = 0 
     }
-    mut u := [f64(1.0);n]
-    mut v := [f64(1.0);n]
+    mut u := [f64(1.0)].repeat(n)
+    mut v := [f64(1.0)].repeat(n)
 
     for i := 0; i< 10; i++ {
         v.a_times_transp(u)
