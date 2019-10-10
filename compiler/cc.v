@@ -111,7 +111,12 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_debug {
-		libs = '$v_modules_path/vlib/builtin.o '
+		builtin_o_path := '$v_modules_path/vlib/builtin.o'
+		if os.file_exists(builtin_o_path) {
+			libs = builtin_o_path
+		} else {
+			println('$builtin_o_path not found... build module builtin')
+		}
 		// '$v_modules_path/vlib/strings.o '+
 		// '$v_modules_path/vlib/math.o '
 		/*
