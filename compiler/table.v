@@ -562,7 +562,7 @@ fn (t &Table) find_type(name_ string) Type {
 	return t.typesmap[name]
 }
 
-fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
+fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	mut got := got_
 	mut expected := expected_
 	//p.log('check types got="$got" exp="$expected"  ')
@@ -683,15 +683,15 @@ fn (p mut Parser) _check_types(got_, expected_ string, throw bool) bool {
 // throw by default
 fn (p mut Parser) check_types(got, expected string) bool {
 	if p.first_pass() { return true }
-	return p._check_types(got, expected, true)
+	return p.check_types2(got, expected, true)
 }
 
 fn (p mut Parser) check_types_no_throw(got, expected string) bool {
-	return p._check_types(got, expected, false)
+	return p.check_types2(got, expected, false)
 }
 
 fn (p mut Parser) check_types_with_token_index(got, expected string, var_token_idx int) {
-	if !p._check_types(got, expected, false) {
+	if !p.check_types2(got, expected, false) {
 		p.error_with_token_index('expected type `$expected`, but got `$got`', var_token_idx)
 	}
 }

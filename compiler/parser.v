@@ -122,7 +122,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		is_vh: path.ends_with('.vh')
 	}
 	if p.pref.building_v {
-		p.scanner.should_print_relative_paths_on_error = false
+		p.scanner.should_print_relative_paths_on_error = true
 	}
 	v.cgen.file = path
 	p.scan_tokens()
@@ -509,6 +509,8 @@ fn (p mut Parser) const_decl() {
 			// .vh files don't have const values, just types: `const (a int)`
 			typ = p.get_type()
 			p.table.register_const(name, typ, p.mod)
+			p.cgen.consts << ('extern ' +
+				p.table.cgen_name_type_pair(name, typ)) + ';'
 			continue // Don't generate C code when building a .vh file
 		} else {
 			p.check_space(.assign)
@@ -524,7 +526,9 @@ fn (p mut Parser) const_decl() {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
 			// output a #define so that we don't pollute the binary with unnecessary global vars
-			if is_compile_time_const(p.cgen.cur_line) {
+			// Do not do this when building a module, otherwise the consts
+			// will not be accessible.
+			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
 				p.cgen.consts << '#define $name $p.cgen.cur_line'
 				p.cgen.resetln('')
 				p.fgenln('')
@@ -937,7 +941,8 @@ fn (p mut Parser) get_type() string {
 		}
 		p.check(.rpar)
 		// p.inside_tuple = false
-		return '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
+		typ = p.register_multi_return_stuct(types)
+		return typ
 	}
 	// fn type
 	if p.tok == .func {
@@ -1472,8 +1477,8 @@ fn (p mut Parser) var_decl() {
 		p.error('expected `=` or `:=`')
 	}
 	// all vars on left of `:=` already defined (or `_`)
-	if is_decl_assign && /*var_names.len > 1 &&*/ new_vars == 0 {
-		p.error_with_token_index('no new variables on left side of `:=`', var_token_idxs.last())
+	if is_decl_assign && var_names.len == 1 && var_names[0] == '_' {
+		p.error_with_token_index('use `=` instead of `:=`', var_token_idxs.last())
 	}
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_'+var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)

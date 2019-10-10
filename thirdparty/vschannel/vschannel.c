@@ -10,7 +10,6 @@ INT     port_number     = 443;
 BOOL    use_proxy       = FALSE;
 DWORD   protocol        = 0;
 ALG_ID  aid_key_exch    = 0;
-WSADATA wsa_data;
 
 // TODO: joe-c
 // socket / tls ctx
@@ -70,7 +69,6 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 }
 
 void vschannel_init(TlsContext *tls_ctx) {
-	WSAStartup(0x202, &wsa_data);
 	tls_ctx->sspi = InitSecurityInterface();
 
 	if(tls_ctx->sspi == NULL) {

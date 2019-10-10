@@ -785,12 +785,9 @@ fn new_v(args[]string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
-	
-	// println('new compiler "$dir"')
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''
-	//if args.contains('-lib') {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o

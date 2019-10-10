@@ -29,7 +29,7 @@ fn new_array(mylen, cap, elm_size int) array {
 
 
 // TODO
-pub fn _make(len, cap, elm_size int) array {
+pub fn make(len, cap, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
@@ -94,7 +94,7 @@ pub fn (a mut array) insert(i int, val voidptr) {
 	if i >= a.len {
 		panic('array.insert: index larger than length')
 	}
-	a._push(val)
+	a.push(val)
 	size := a.element_size
 	C.memmove(a.data + (i + 1) * size, a.data + i * size, (a.len - i) * size)
 	a.set(i, val)
@@ -111,7 +111,7 @@ pub fn (a mut array) delete(idx int) {
 	a.cap--
 }
 
-fn (a array) _get(i int) voidptr {
+fn (a array) get(i int) voidptr {
 	if i < 0 || i >= a.len {
 		panic('array index out of range: $i/$a.len')
 	}
@@ -175,7 +175,7 @@ fn (a mut array) set(idx int, val voidptr) {
 	C.memcpy(a.data + a.element_size * idx, val, a.element_size)
 }
 
-fn (arr mut array) _push(val voidptr) {
+fn (arr mut array) push(val voidptr) {
 	if arr.len >= arr.cap - 1 {
 		cap := (arr.len + 1) * 2
 		// println('_push: realloc, new cap=$cap')
@@ -193,7 +193,7 @@ fn (arr mut array) _push(val voidptr) {
 
 // `val` is array.data
 // TODO make private, right now it's used by strings.Builder
-pub fn (arr mut array) _push_many(val voidptr, size int) {
+pub fn (arr mut array) push_many(val voidptr, size int) {
 	if arr.len >= arr.cap - size {
 		cap := (arr.len + size) * 2
 		// println('_push: realloc, new cap=$cap')
@@ -291,7 +291,7 @@ pub fn (a mut []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
-// Looking for an array index based on value. 
+// Looking for an array index based on value.
 // If there is, it will return the index and if not, it will return `-1`
 // TODO: Implement for all types
 pub fn (a []string) index(v string) int {

@@ -147,7 +147,7 @@ const cJSON *jsval = NULL;
 cJSON_ArrayForEach(jsval, root)
 {
 $s
-  array__push(res, &val);
+  array_push(res, &val);
 }
 '
 }

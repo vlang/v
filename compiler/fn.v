@@ -214,7 +214,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok == .plus || p.tok == .minus || p.tok == .mul {
+	if p.tok in [TokenKind.plus, .minus, .mul] {
 		f.name = p.tok.str()
 		p.next()
 	}
@@ -226,17 +226,21 @@ fn (p mut Parser) fn_decl() {
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
 	if p.pref.build_mode == .build_module {
-		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
 	}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
 		f.is_c = true
 	}
-	else if !p.pref.translated && !p.file_path.contains('view.v') {
-		if contains_capital(f.name) {
+	else if !p.pref.translated {
+		if contains_capital(f.name) && !p.fileis('view.v') {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
+		if f.name[0] == `_` {
+			// TODO error
+			p.warn('function names cannot start with `_`')
+		}	
 		if f.name.contains('__') {
 			p.error('function names cannot contain double underscores, use single underscores instead')
 		}
@@ -292,18 +296,6 @@ fn (p mut Parser) fn_decl() {
 	if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
 		p.fgen(' ')
 		typ = p.get_type()
-	}
-	// multiple returns
-	if typ.starts_with('_V_MulRet_') && p.first_pass() && !p.table.known_type(typ) {
-		p.table.register_type2(Type{
-			cat: TypeCategory.struct_,
-			name: typ,
-			mod: p.mod
-		})
-		for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
-			p.table.add_field(typ, 'var_$i', t, false, '', .public)
-		}
-		p.cgen.typedefs << 'typedef struct $typ $typ;'
 	}
 	// Translated C code and .vh can have empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&
@@ -394,8 +386,9 @@ fn (p mut Parser) fn_decl() {
 		}
 		p.add_method(receiver_t.name, f)
 	}
-	else {
-		// println('register_fn typ=$typ isg=$is_generic')
+	else if p.first_pass(){
+		// println('register_fn $f.name typ=$typ isg=$is_generic pass=$p.pass ' +
+//'$p.file_name')
 		p.table.register_fn(f)
 	}
 	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
@@ -733,9 +726,8 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
 			}
 			t := p.get_type()
-			vargs_struct := '_V_FnVargs_$f.name'
 			// register varg struct, incase function is never called
-			p.fn_register_vargs_stuct(f, t, []string)
+			vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
 			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 			typ = '...$t'
 		} else {
@@ -820,7 +812,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		file_path := p.file_path.replace('\\', '\\\\') // escape \
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
-			'_panic_debug ($p.scanner.line_nr, tos2((byte *)"$file_path"), tos2((byte *)"$mod_name"), tos2((byte *)"$fn_name"), '
+			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '
 		))
 	}
 	for i, arg in f.args {
@@ -1018,7 +1010,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	return f // TODO is return f right?
 }
 
-fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) string {
 	vargs_struct := '_V_FnVargs_$f.name'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
@@ -1032,6 +1024,7 @@ fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	return vargs_struct
 }
 
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
@@ -1060,8 +1053,24 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	if f.args.len > 1 {
 		p.cgen.gen(',')
 	}
-	p.cgen.gen('&(_V_FnVargs_$f.name){.len=$values.len,.args={'+values.join(',')+'}}')
-	p.fn_register_vargs_stuct(f, varg_def_type, values)
+	vargs_struct := p.fn_register_vargs_stuct(f, varg_def_type, values)
+	p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	
+}
+
+fn (p mut Parser) register_multi_return_stuct(types []string) string {
+	typ := '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
+	if p.table.known_type(typ) { return typ }
+	p.table.register_type2(Type{
+		cat: TypeCategory.struct_,
+		name: typ,
+		mod: p.mod
+	})
+	for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
+		p.table.add_field(typ, 'var_$i', t, false, '', .public)
+	}
+	p.cgen.typedefs << 'typedef struct $typ $typ;'
+	return typ
 }
 
 // "fn (int, string) int"

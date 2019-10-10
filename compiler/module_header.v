@@ -11,7 +11,7 @@ import (
 
 /*
 	.vh generation logic.
-	.vh files contains only function signatures, consts, and types.
+	.vh files contain only function signatures, consts, and types.
 	They are used together with pre-compiled modules.
 */
 
@@ -72,6 +72,18 @@ fn v_type_str(typ_ string) string {
 		typ_
 	}	
 	typ = typ.replace('Option_', '?')
+	if typ.contains('_V_MulRet') {
+		words := typ.replace('_V_MulRet_', '').split('_V_')
+		typ = '('
+		for i in 0 .. words.len {
+			typ += words[i]
+			if i != words.len - 1 {
+				typ += ','
+			}	
+		}	
+		typ += ')'
+		return typ
+	}	
 	//println('"$typ"')
 	if typ == '*void' {
 		return 'voidptr'
@@ -83,7 +95,11 @@ fn v_type_str(typ_ string) string {
 		return '[]' + typ.right(6)
 	}	
 	if typ.contains('__') {
-		return typ.all_after('__')
+		opt := typ.starts_with('?')
+		typ = typ.all_after('__')
+		if opt {
+			typ = '?' + typ
+		}	
 	}	
 	return typ
 }	
@@ -132,11 +148,14 @@ fn (v &V) generate_vh() {
 		file.writeln('\n')
 	}
 	// Types
-	file.writeln('// Types2')
+	file.writeln('// Types')
 	for _, typ in v.table.typesmap {
 		//println(typ.name)
 		if typ.mod != v.mod && typ.mod != ''{ // int, string etc mod == ''
 			//println('skipping type "$typ.name"')
+			continue
+		}	
+		if typ.name.contains('_V_MulRet') {
 			continue
 		}	
 		mut name := typ.name
@@ -179,7 +198,7 @@ fn (v &V) generate_vh() {
 		if f.mod == v.mod || f.mod == ''{
 			fns << f
 		}	 else {
-			println('skipping fn $f.name mod=$f.mod')
+			//println('skipping fn $f.name mod=$f.mod')
 		}	
 	}
 	for _, f in fns {
@@ -198,7 +217,7 @@ fn (v &V) generate_vh() {
 	// Methods
 	file.writeln('\n// Methods //////////////////')
 	for _, typ in v.table.typesmap {
-		if typ.mod != v.mod { //&& typ.mod != '' {
+		if typ.mod != v.mod && !(v.mod == 'builtin' && typ.mod == '') {
 			println('skipping method typ $typ.name mod=$typ.mod')
 			continue
 		}	

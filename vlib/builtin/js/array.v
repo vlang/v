@@ -34,7 +34,7 @@ pub fn _make(len, cap, elm_size int) array {
 
 */
 
-pub fn _make(len, cap, elm_size int) array {
+pub fn make(len, cap, elm_size int) array {
 	return array{}
 }
 
@@ -126,7 +126,7 @@ pub fn (b []byte) hex() string {
 	return 'sdf'
 }
 
-pub fn (arr mut array) _push_many(val voidptr, size int) {
+pub fn (arr mut array) push_many(val voidptr, size int) {
 }
 
 pub fn free(voidptr) {
