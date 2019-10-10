@@ -38,6 +38,11 @@ CommonCHeaders = '
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
@@ -126,10 +131,10 @@ typedef map map_string;
 #endif
 
 //============================== HELPER C MACROS =============================*/
-#define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push(arr, &tmp);}
-#define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array__push_many(arr, tmp.data, tmp.len);}
+#define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push(arr, &tmp);}
+#define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
-#define _IN_MAP(val, m) map__exists(m, val)
+#define _IN_MAP(val, m) map_exists(m, val)
 #define DEFAULT_EQUAL(a, b) (a == b)
 #define DEFAULT_NOT_EQUAL(a, b) (a != b)
 #define DEFAULT_LT(a, b) (a < b)
@@ -141,7 +146,9 @@ byteptr g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void init_consts();
-
+#ifdef _WIN32
+BOOL isConsole;
+#endif
 '
 
 js_headers = '

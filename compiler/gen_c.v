@@ -59,7 +59,9 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 		initializer := p.cgen.cur_line.right(pos)
 		if initializer.len > 0 {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
-		}
+		} else if initializer.len == 0 {
+			p.cgen.resetln(' = { 0 }')
+		}	
 	}
 
 	if is_static {
@@ -169,7 +171,8 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 	if cfg.is_map {
 		p.gen('$tmp')
 		def := type_default(typ)
-		p.cgen.insert_before('$typ $tmp = $def; bool $tmp_ok = map_get($index_expr, & $tmp);')
+		p.cgen.insert_before('$typ $tmp = $def; ' +
+			'bool $tmp_ok = map_get(/*$p.file_name : $p.scanner.line_nr*/$index_expr, & $tmp);')
 	}
 	else if cfg.is_arr {
 		if p.pref.translated && !p.builtin_mod {
@@ -177,9 +180,9 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 		}
 		else {
 			if cfg.is_ptr {
-				p.gen('( *($typ*) array__get(* $index_expr) )')
+				p.gen('( *($typ*) array_get(* $index_expr) )')
 			}  else {
-				p.gen('( *($typ*) array__get($index_expr) )')
+				p.gen('( *($typ*) array_get($index_expr) )')
 			}
 		}
 	}
@@ -213,10 +216,20 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	}
 	// Obfuscate but skip certain names
 	// TODO ugly, fix
-	if table.obfuscate && f.name != 'main' && f.name != 'WinMain' && f.mod != 'builtin' && !f.is_c &&
-	f.mod != 'darwin' && f.mod != 'os' && !f.name.contains('window_proc') && f.name != 'gg__vec2' &&
-	f.name != 'build_token_str' && f.name != 'build_keys' && f.mod != 'json' &&
-	!name.ends_with('_str') && !name.contains('contains') {
+	// NB: the order here is from faster to potentially slower checks
+	if table.obfuscate &&
+		!f.is_c &&
+		f.name != 'main' && f.name != 'WinMain' && f.name != 'main__main' &&
+		f.name != 'gg__vec2' &&
+		f.name != 'build_token_str' &&
+		f.name != 'build_keys' &&
+		f.mod != 'builtin' &&
+		f.mod != 'darwin' &&
+		f.mod != 'os' &&
+		f.mod != 'json' &&
+		!f.name.contains('window_proc') &&
+		!name.ends_with('_str') &&
+		!name.contains('contains') {
 		mut idx := table.obf_ids[name]
 		// No such function yet, register it
 		if idx == 0 {
@@ -345,7 +358,7 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_po
 	mut cao_tmp := p.cgen.cur_line
 	mut func := ''
 	if is_map {
-		func = 'map__set(&'
+		func = 'map_set(&'
 		// CAO on map is a bit more complicated as it loads
 		// the value inside a pointer instead of returning it.
 	}
@@ -353,13 +366,13 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_po
 		if is_ptr {
 			func = 'array_set('
 			if is_cao {
-				cao_tmp = '*($p.expected_type *) array__get(*$cao_tmp)'
+				cao_tmp = '*($p.expected_type *) array_get(*$cao_tmp)'
 			}
 		}
 		else {
 			func = 'array_set(&/*q*/'
 			if is_cao {
-				cao_tmp = '*($p.expected_type *) array__get($cao_tmp)'
+				cao_tmp = '*($p.expected_type *) array_get($cao_tmp)'
 			}
 		}
 	}

@@ -10,9 +10,9 @@ import (
 )
 
 fn (v mut V) cc() {
-	// build any thirdparty obj files
 	v.build_thirdparty_obj_files()
 	// Just create a C/JavaScript file and exit
+	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
 		// Translating V code to JS by launching vjs
 		$if !js {
@@ -72,10 +72,10 @@ fn (v mut V) cc() {
 		println('Building ${v.out_name}...')
 	}
 
-	mut debug_options := '-g'
+	mut debug_options := ''
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
-		if v.pref.is_debug {
+		if v.pref.is_debuggable {
 			debug_options = '-g -O0'
 		}
 		optimization_options = '-O3 -flto'
@@ -94,7 +94,7 @@ fn (v mut V) cc() {
 		a << debug_options
 	}
 
-	if v.pref.is_debug && os.user_os() != 'windows'{
+	if v.pref.is_debuggable && os.user_os() != 'windows'{
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 
@@ -110,20 +110,32 @@ fn (v mut V) cc() {
 	if v.pref.build_mode == .build_module {
 		a << '-c'
 	}
-	else if v.pref.build_mode == .embed_vlib {
-		//
-	}
-	else if v.pref.build_mode == .default_mode {
-		libs = '$v_modules_path/vlib/builtin.o'
+	else if v.pref.is_debug {
+		builtin_o_path := '$v_modules_path/vlib/builtin.o'
+		if os.file_exists(builtin_o_path) {
+			libs = builtin_o_path
+		} else {
+			println('$builtin_o_path not found... build module builtin')
+		}
+		// '$v_modules_path/vlib/strings.o '+
+		// '$v_modules_path/vlib/math.o '
+		/*
 		if !os.file_exists(libs) {
 			println('object file `$libs` not found')
 			exit(1)
 		}
+		*/
 		for imp in v.table.imports {
 			if imp == 'webview' {
 				continue
 			}
-			libs += ' "$v_modules_path/vlib/${imp}.o"'
+			path := 	'$v_modules_path/vlib/${imp}.o'
+			println('adding ${imp}.o')
+			if os.file_exists(path) {
+				libs += ' ' + path
+			} else {
+				println('$path not found... build module $imp')
+			}	
 		}
 	}
 	if v.pref.sanitize {
@@ -248,7 +260,7 @@ fn (v mut V) cc() {
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	*/
-	if !v.pref.is_debug && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
+	if !v.pref.is_debug && v.out_name_c != 'v.c' {
 		os.rm(v.out_name_c)
 	}
 	if v.pref.compress {

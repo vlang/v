@@ -24,7 +24,7 @@ jobs:
     - name: Test vid
       run: |
         git clone --depth 1 https://github.com/vlang/vid.git
-        cd vid && ../v -debug -o vid .
+        cd vid && ../v -o vid .
 
   build-ubuntu:
     runs-on: ubuntu-18.04

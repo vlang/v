@@ -47,7 +47,7 @@ fn new_hashmap(planned_nr_items int) hashmap {
 	return hashmap{
 		cap: cap
 		elm_size: 4
-		table: _make(cap, cap, sizeof(hashmapentry))
+		table: make(cap, cap, sizeof(hashmapentry))
 	}	
 }	
 

@@ -57,7 +57,7 @@ pub fn print_backtrace(){
 }
 
 // replaces panic when -debug arg is passed
-fn _panic_debug(line_no int, file,  mod, fn_name, s string) {
+fn panic_debug(line_no int, file,  mod, fn_name, s string) {
 	println('================ V panic ================')
 	println('   module: $mod')
 	println(' function: ${fn_name}()')

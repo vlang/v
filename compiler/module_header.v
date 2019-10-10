@@ -9,9 +9,10 @@ import (
 	os
 )
 
-/* .vh generation logic.
- .vh files contains only function signatures, consts, and types.
- They are used together with pre-compiled modules.
+/*
+	.vh generation logic.
+	.vh files contain only function signatures, consts, and types.
+	They are used together with pre-compiled modules.
 */
 
 // "fn foo(a int) string"
@@ -27,7 +28,7 @@ fn (f &Fn) v_definition() string {
 	}	
 	if f.is_method {
 		recv := f.args[0]
-		typ := v_type_str(recv.typ)
+		typ := v_type_str(recv.typ).replace('*', '')
 		mut mu := if recv.is_mut { 'mut' } else { '' }
 		if recv.ref {
 			mu = '&'
@@ -40,6 +41,9 @@ fn (f &Fn) v_definition() string {
 		sb.write('$f.name(')
 	}
 	for i, arg in f.args {
+		if i == 0 && f.is_method { // skip the receiver
+			continue
+		}	
 		typ := v_type_str(arg.typ)
 		if arg.name == '' {
 			sb.write(typ)
@@ -62,10 +66,23 @@ fn (f &Fn) v_definition() string {
 }
 
 fn v_type_str(typ_ string) string {
-	typ := if typ_.ends_with('*') {
+	mut typ := if typ_.ends_with('*') {
 		'*' + typ_.left(typ_.len - 1)
 	} else {
 		typ_
+	}	
+	typ = typ.replace('Option_', '?')
+	if typ.contains('_V_MulRet') {
+		words := typ.replace('_V_MulRet_', '').split('_V_')
+		typ = '('
+		for i in 0 .. words.len {
+			typ += words[i]
+			if i != words.len - 1 {
+				typ += ','
+			}	
+		}	
+		typ += ')'
+		return typ
 	}	
 	//println('"$typ"')
 	if typ == '*void' {
@@ -78,13 +95,17 @@ fn v_type_str(typ_ string) string {
 		return '[]' + typ.right(6)
 	}	
 	if typ.contains('__') {
-		return typ.all_after('__')
+		opt := typ.starts_with('?')
+		typ = typ.all_after('__')
+		if opt {
+			typ = '?' + typ
+		}	
 	}	
-	return typ.replace('Option_', '?')
+	return typ
 }	
 
 fn (v &V) generate_vh() {
-	println('Generating a V header file for module `$v.mod`')
+	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
 	dir := '$v_modules_path${os.PathSeparator}$v.mod'
 	path := dir + '.vh'
 	if !os.dir_exists(dir) {
@@ -95,6 +116,7 @@ fn (v &V) generate_vh() {
 	file := os.create(path) or { panic(err) }
 	// Consts
 	file.writeln('// $v.mod module header \n')
+	file.writeln('module $v.mod')
 	file.writeln('// Consts')
 	if v.table.consts.len > 0 {
 		file.writeln('const (')
@@ -128,14 +150,21 @@ fn (v &V) generate_vh() {
 	// Types
 	file.writeln('// Types')
 	for _, typ in v.table.typesmap {
-		if typ.mod != v.mod {
+		//println(typ.name)
+		if typ.mod != v.mod && typ.mod != ''{ // int, string etc mod == ''
+			//println('skipping type "$typ.name"')
 			continue
 		}	
+		if typ.name.contains('_V_MulRet') {
+			continue
+		}	
+		mut name := typ.name
 		if typ.name.contains('__') {
-			continue
+			name = typ.name.all_after('__')
 		}	
-		if typ.cat == .struct_ {
-			file.writeln('struct $typ.name {')
+		if typ.cat in [TypeCategory.struct_, .c_struct] {
+			c := if typ.is_c { 'C.' } else { '' }
+			file.writeln('struct ${c}$name {')
 			// Private fields
 			for field in typ.fields {
 				if field.access_mod == .public {
@@ -144,13 +173,18 @@ fn (v &V) generate_vh() {
 				field_type := v_type_str(field.typ)
 				file.writeln('\t$field.name $field_type')
 			}	
-			file.writeln('pub:')
+			//file.writeln('pub:')
+			mut public_str := ''
 			for field in typ.fields {
 				if field.access_mod == .private {
 					continue
 				}	
 				field_type := v_type_str(field.typ)
-				file.writeln('\t$field.name $field_type')
+				public_str += '\t$field.name $field_type\n'
+				//file.writeln('\t$field.name $field_type')
+			}	
+			if public_str != '' {
+				file.writeln('pub:' + public_str)
 			}	
 			file.writeln('}\n')
 		}
@@ -161,8 +195,10 @@ fn (v &V) generate_vh() {
 	mut fns := []Fn
 	// TODO fns := v.table.fns.filter(.mod == v.mod)
 	for _, f in v.table.fns {
-		if f.mod == v.mod {
+		if f.mod == v.mod || f.mod == ''{
 			fns << f
+		}	 else {
+			//println('skipping fn $f.name mod=$f.mod')
 		}	
 	}
 	for _, f in fns {
@@ -181,7 +217,8 @@ fn (v &V) generate_vh() {
 	// Methods
 	file.writeln('\n// Methods //////////////////')
 	for _, typ in v.table.typesmap {
-		if typ.mod != v.mod {
+		if typ.mod != v.mod && !(v.mod == 'builtin' && typ.mod == '') {
+			println('skipping method typ $typ.name mod=$typ.mod')
 			continue
 		}	
 		for method in typ.methods {

@@ -279,12 +279,32 @@ fn popen(path string) *C.FILE {
 	}
 }
 
-fn pclose(f *C.FILE) int {
+fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	$if windows {
-		return C._pclose(f)
+		return waitret, false
 	}
 	$else {
-		return C.pclose(f) / 256 // WEXITSTATUS()
+		mut ret := 0
+		mut is_signaled := true
+		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
+		if C.WIFEXITED( waitret ) {
+			ret = C.WEXITSTATUS( waitret )
+			is_signaled = false
+		} else if C.WIFSIGNALED( waitret ){		
+			ret = C.WTERMSIG( waitret )
+			is_signaled = true
+		}
+		return ret , is_signaled
+	}
+}
+
+fn pclose(f *C.FILE) int {
+	$if windows {
+		return int( C._pclose(f) )
+	}
+	$else {
+		ret , _ := posix_wait4_to_exit_status( int( C.pclose(f) ) )
+		return ret
 	}
 }
 
@@ -326,9 +346,52 @@ pub fn system(cmd string) int {
 		ret = C.system(cmd.str)
 	}
 	if ret == -1 {
-		os.print_c_errno()
+		print_c_errno()
+	}
+
+	$if !windows {
+		pret , is_signaled := posix_wait4_to_exit_status( ret )
+		if is_signaled {
+			println('Terminated by signal ${ret:2d} (' + sigint_to_signal_name(pret) + ')' )
+		}
+		ret = pret
 	}
 	return ret
+}
+
+pub fn sigint_to_signal_name(si int) string {
+	// POSIX signals:
+	switch si {
+	case  1: return 'SIGHUP'
+	case  2: return 'SIGINT'
+	case  3: return 'SIGQUIT'
+	case  4: return 'SIGILL'
+	case  6: return 'SIGABRT'
+	case  8: return 'SIGFPE'
+	case  9: return 'SIGKILL'
+	case 11: return 'SIGSEGV'
+	case 13: return 'SIGPIPE'
+	case 14: return 'SIGALRM'
+	case 15: return 'SIGTERM'
+	}
+	///////////////////////////////////
+	$if linux {
+		// From `man 7 signal` on linux:
+		switch si {
+		case 30,10,16: return 'SIGUSR1'
+		case 31,12,17: return 'SIGUSR2'
+		case 20,17,18: return 'SIGCHLD'
+		case 19,18,25: return 'SIGCONT'
+		case 17,19,23: return 'SIGSTOP'
+		case 18,20,24: return 'SIGTSTP'
+		case 21,21,26: return 'SIGTTIN'
+		case 22,22,27: return 'SIGTTOU'
+		///////////////////////////////
+		case 5: return 'SIGTRAP'
+		case 7: return 'SIGBUS'		
+		}
+	}
+	return 'unknown'
 }
 
 // `getenv` returns the value of the environment variable named by the key.
@@ -408,7 +471,7 @@ pub fn rmdir(path string) {
 
 
 fn print_c_errno() {
-	//C.printf('errno=%d err="%s"\n', errno, C.strerror(errno))
+	//C.printf('errno=%d err="%s"\n', C.errno, C.strerror(C.errno))
 }
 
 
@@ -467,23 +530,28 @@ pub fn get_line() string {
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-	$if windows {
+    $if windows {
         max_line_chars := 256
         buf := &byte(malloc(max_line_chars*2))
+        if C.isConsole > 0 {
+            h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+            mut nr_chars := 0
+            C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
+            return string_from_wide2(&u16(buf), nr_chars)
+        }
         res := int( C.fgetws(buf, max_line_chars, C.stdin ) )
         len := int(  C.wcslen(&u16(buf)) )
         if 0 != res { return string_from_wide2( &u16(buf), len ) }
         return ''
+    } $else {
+        max := size_t(256)
+        buf := *char(malloc(int(max)))
+        nr_chars := C.getline(&buf, &max, stdin)
+        if nr_chars == 0 {
+            return ''
+        }
+        return string(byteptr(buf), nr_chars)
     }
-	$else {
-		max := size_t(256)
-		buf := *char(malloc(int(max)))
-		nr_chars := C.getline(&buf, &max, stdin)
-		if nr_chars == 0 {
-			return ''
-		}
-		return string(byteptr(buf), nr_chars)
-	}
 }
 
 pub fn get_lines() []string {

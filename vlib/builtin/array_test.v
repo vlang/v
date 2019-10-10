@@ -164,7 +164,6 @@ const (
 )
 
 fn test_fixed() {
-	/*
 	mut nums := [4]int
 	assert nums[0] == 0
 	assert nums[1] == 0
@@ -174,7 +173,6 @@ fn test_fixed() {
 	assert nums[1] == 7
 	nums2 := [N]int
 	assert nums2[N - 1] == 0
-	*/
 }
 
 fn modify (numbers mut []int) {
@@ -286,7 +284,7 @@ fn test_multi() {
 	// TODO
 	//b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
 	//assert b[0][0][0] == 1
-}	
+}
 
 fn test_in() {
 	a := [1,2,3]
@@ -295,4 +293,24 @@ fn test_in() {
 	assert 3 in a
 	assert !(4 in a)
 	assert !(0 in a)
-}	
+}
+
+fn callback_1(val int, index int, arr []int) bool {
+	return val >= 2
+}
+
+fn callback_2(val string, index int, arr []string) bool {
+	return val.len >= 2
+}
+
+fn test_filter() {
+	a := [1, 2, 3, 4, 5, 6]
+	b := a.filter(callback_1)
+	assert b[0] == 2
+	assert b[1] == 3
+
+	c := ['v', 'is', 'awesome']
+	d := c.filter(callback_2)
+	assert d[0] == 'is'
+	assert d[1] == 'awesome'
+}

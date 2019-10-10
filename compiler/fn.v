@@ -134,12 +134,6 @@ fn (p mut Parser) clear_vars() {
 	}
 }
 
-// vlib header file?
-fn (p mut Parser) is_sig() bool {
-	return (p.pref.build_mode == .default_mode || p.pref.build_mode == .build_module) &&
-	(p.file_path.contains(v_modules_path))
-}
-
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
@@ -220,7 +214,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok == .plus || p.tok == .minus || p.tok == .mul {
+	if p.tok in [TokenKind.plus, .minus, .mul] {
 		f.name = p.tok.str()
 		p.next()
 	}
@@ -231,19 +225,22 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	// is_sig := p.builtin_mod && p.pref.build_mode == default_mode
-	// is_sig := p.pref.build_mode == default_mode && (p.builtin_mod || p.file.contains(LANG_TMP))
-	is_sig := p.is_sig()
-	// println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ')
+	if p.pref.build_mode == .build_module {
+		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
 		f.is_c = true
 	}
-	else if !p.pref.translated && !p.file_path.contains('view.v') {
-		if contains_capital(f.name) {
+	else if !p.pref.translated {
+		if contains_capital(f.name) && !p.fileis('view.v') {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
+		if f.name[0] == `_` {
+			// TODO error
+			p.warn('function names cannot start with `_`')
+		}	
 		if f.name.contains('__') {
 			p.error('function names cannot contain double underscores, use single underscores instead')
 		}
@@ -296,32 +293,19 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Returns a type?
 	mut typ := 'void'
-	if p.tok == .name || p.tok == .mul || p.tok == .amp || p.tok == .lsbr ||
-	p.tok == .question || p.tok == .lpar {
+	if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
 		p.fgen(' ')
-		// TODO In
-		// if p.tok in [ .name, .mul, .amp, .lsbr ] {
 		typ = p.get_type()
 	}
-	// multiple returns
-	if typ.starts_with('_V_MulRet_') && p.first_pass() && !p.table.known_type(typ) {
-		p.table.register_type2(Type{
-			cat: TypeCategory.struct_,
-			name: typ,
-			mod: p.mod
-		})
-		for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
-			p.table.add_field(typ, 'var_$i', t, false, '', .public)
-		}
-		p.cgen.typedefs << 'typedef struct $typ $typ;'
-	}
-	// Translated C code can have empty functions (just definitions)
-	is_fn_header := !is_c && !is_sig && (p.pref.translated || p.pref.is_test) &&	p.tok != .lcbr
+	// Translated C code and .vh can have empty functions (just definitions)
+	is_fn_header := !is_c && !p.is_vh &&
+		(p.pref.translated || p.pref.is_test || p.is_vh) &&
+		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
 	}
 	// { required only in normal function declarations
-	if !is_c && !is_sig && !is_fn_header {
+	if !is_c && !p.is_vh && !is_fn_header {
 		p.fgen(' ')
 		p.check(.lcbr)
 	}
@@ -353,7 +337,7 @@ fn (p mut Parser) fn_decl() {
 	mut fn_name_cgen := p.table.fn_gen_name(f)
 	// Start generation of the function body
 	skip_main_in_test := false
-	if !is_c && !is_live && !is_sig && !is_fn_header && !skip_main_in_test {
+	if !is_c && !is_live && !p.is_vh && !is_fn_header && !skip_main_in_test {
 		if p.pref.obfuscate {
 			p.genln('; // $f.name')
 		}
@@ -402,14 +386,15 @@ fn (p mut Parser) fn_decl() {
 		}
 		p.add_method(receiver_t.name, f)
 	}
-	else {
-		// println('register_fn typ=$typ isg=$is_generic')
+	else if p.first_pass(){
+		// println('register_fn $f.name typ=$typ isg=$is_generic pass=$p.pass ' +
+//'$p.file_name')
 		p.table.register_fn(f)
 	}
-	if is_sig || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
+	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now
 		// Look for generic calls.
-		if !is_sig && !is_fn_header {
+		if !p.is_vh && !is_fn_header {
 			p.skip_fn_body()
 		}
 		// Live code reloading? Load all fns from .so
@@ -425,19 +410,8 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Add function definition to the top
 		if !is_c && p.first_pass() {
-			// TODO hack to make Volt compile without -embed_vlib
-			if f.name == 'darwin__nsstring' && p.pref.build_mode == .default_mode {
-				
-			} else {
-				p.cgen.fns << fn_decl + ';'
-			}
+			p.cgen.fns << fn_decl + ';'
 		}
-		// Generate .vh header files when building a module
-		/*
-		if p.pref.build_mode == .build_module {
-			p.vh_genln(f.v_definition())
-		}
-		*/
 		return
 	}
 	if p.attr == 'live' && p.pref.is_so {
@@ -451,8 +425,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	// println('is_c=$is_c name=$f.name')
-	if is_c || is_sig || is_fn_header {
-		// println('IS SIG .key_returnING tok=${p.strtok()}')
+	if is_c || p.is_vh || is_fn_header {
 		return
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
@@ -468,7 +441,7 @@ fn (p mut Parser) fn_decl() {
 		p.cgen.nogen = true
 	}
 	p.statements_no_rcbr()
-	p.cgen.nogen = false
+	//p.cgen.nogen = false
 	// Print counting result after all statements in main
 	if p.pref.is_prof && f.name == 'main' {
 		p.genln(p.print_prof_counters())
@@ -753,9 +726,8 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
 			}
 			t := p.get_type()
-			vargs_struct := '_V_FnVargs_$f.name'
 			// register varg struct, incase function is never called
-			p.fn_register_vargs_stuct(f, t, []string)
+			vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
 			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 			typ = '...$t'
 		} else {
@@ -840,7 +812,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		file_path := p.file_path.replace('\\', '\\\\') // escape \
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
-			'_panic_debug ($p.scanner.line_nr, tos2((byte *)"$file_path"), tos2((byte *)"$mod_name"), tos2((byte *)"$fn_name"), '
+			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '
 		))
 	}
 	for i, arg in f.args {
@@ -914,7 +886,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 			$if !js {
 				fmt := p.typ_to_fmt(typ, 0)
 				if fmt != '' {
-					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '\\n", '))
+					nl := if f.name == 'println' { '\\n' } else { '' }
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '$nl", '))
 					continue
 				}
 			}
@@ -1037,7 +1010,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	return f // TODO is return f right?
 }
 
-fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) string {
 	vargs_struct := '_V_FnVargs_$f.name'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
@@ -1051,6 +1024,7 @@ fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) {
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	return vargs_struct
 }
 
 fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
@@ -1079,8 +1053,24 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	if f.args.len > 1 {
 		p.cgen.gen(',')
 	}
-	p.cgen.gen('&(_V_FnVargs_$f.name){.len=$values.len,.args={'+values.join(',')+'}}')
-	p.fn_register_vargs_stuct(f, varg_def_type, values)
+	vargs_struct := p.fn_register_vargs_stuct(f, varg_def_type, values)
+	p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	
+}
+
+fn (p mut Parser) register_multi_return_stuct(types []string) string {
+	typ := '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
+	if p.table.known_type(typ) { return typ }
+	p.table.register_type2(Type{
+		cat: TypeCategory.struct_,
+		name: typ,
+		mod: p.mod
+	})
+	for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
+		p.table.add_field(typ, 'var_$i', t, false, '', .public)
+	}
+	p.cgen.typedefs << 'typedef struct $typ $typ;'
+	return typ
 }
 
 // "fn (int, string) int"

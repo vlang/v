@@ -126,7 +126,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			if field.typ == 'int' {
 				cast = 'v_string_int'
 			}
-			obj_gen.writeln('${qprefix}$tmp . $field.name = $cast( *(string*)array__get(${qprefix}row.vals, $i) );')
+			obj_gen.writeln('${qprefix}$tmp . $field.name = $cast( *(string*)array_get(${qprefix}row.vals, $i) );')
 		}
 		// One object
 		if query_one {
@@ -165,7 +165,7 @@ array_pg__Row ${qprefix}rows = pg__res_to_rows(${qprefix}res);
 // TODO preallocate
 array ${qprefix}arr_$tmp = new_array(0, 0, sizeof($table_name));
 for (int i = 0; i < ${qprefix}rows.len; i++) {
-    pg__Row ${qprefix}row = *(pg__Row*)array__get(${qprefix}rows, i);
+    pg__Row ${qprefix}row = *(pg__Row*)array_get(${qprefix}rows, i);
     $table_name ${qprefix}$tmp;
     ${obj_gen.str()}
     _PUSH(&${qprefix}arr_$tmp, ${qprefix}$tmp, ${tmp}2, $table_name);

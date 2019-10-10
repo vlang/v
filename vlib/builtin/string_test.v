@@ -471,3 +471,9 @@ fn test_raw() {
 	assert lines.len == 1
 	println('raw string: "$raw"')
 }	
+
+fn test_escape() {
+	// TODO
+	//a := 10
+	//println("\"$a")
+}	

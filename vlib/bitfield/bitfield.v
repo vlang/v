@@ -112,7 +112,7 @@ pub fn new(size int) BitField {
 	output := BitField{
 		size: size
 		//field: *u32(calloc(bitnslots(size) * SLOT_SIZE / 8))
-		field: [u32(0); bitnslots(size)]
+		field: [u32(0)].repeat(bitnslots(size))
 	}
 	return output
 }
