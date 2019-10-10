@@ -72,24 +72,21 @@ fn (c Context) compare_versions() {
 			//The first is the baseline, against which all the others will be compared.
 			//It is the fastest, since hello_world.v has only a single println in it,	
 			'vprod -debug -o source.c examples/hello_world.v',
-			'vprod        -o source.c examples/hello_world.v',
-      
+			'vprod        -o source.c examples/hello_world.v',      
 			'vprod -debug -o source.c compiler',
-			'vprod        -o source.c compiler',
-      
+			'vprod        -o source.c compiler',      
 			'vprod        -o hello    examples/hello_world.v',
-			'vprod        -o binary   compiler',
+			'vprod        -o binary   compiler',           
 
-
-			'vprod -debug -o source.c examples/hello_world.v',
-			'vprod        -o source.c examples/hello_world.v',
-      
-			'vprod -debug -o source.c compiler',
-			'vprod        -o source.c compiler',
-      
-			'vprod        -o hello    examples/hello_world.v',
-			'vprod        -o binary   compiler',
-		])
+			/////////////////////////////////////////////////////////
+			
+			'v     -debug -o source.c examples/hello_world.v',
+			'v            -o source.c examples/hello_world.v',      
+			'v     -debug -o source.c compiler',
+			'v            -o source.c compiler',      
+			'v            -o hello    examples/hello_world.v',
+			'v            -o binary   compiler',           
+	])
 
 }
 
