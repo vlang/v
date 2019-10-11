@@ -248,10 +248,10 @@ fn (p mut Parser) parse(pass Pass) {
 		p.check(.key_module)
 		p.fspace()
 		// setting mod manually for mod init parsers
-		if p.mod == '' {
-			p.mod = p.check_name()
-		} else {
+		if p.mod != '' {
 			p.check_name()
+		} else {
+			p.mod = p.check_name()
 		}
 	}
 	//
@@ -267,7 +267,9 @@ fn (p mut Parser) parse(pass Pass) {
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	
+	println('qualify module: $p.mod - $p.file_path')
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
+	println('fq_mod: $fq_mod')
 	p.import_table.module_name = fq_mod
 	p.table.register_module(fq_mod)
 	// replace "." with "_dot_" in module name for C variable names

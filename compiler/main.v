@@ -652,6 +652,10 @@ fn (v mut V) add_v_files_to_compile() {
 	// Parse user imports
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
+		// set mod so we dont have to resolve submodule
+		if v.pref.build_mode == .build_module && file.contains(v.mod.replace('.', os.PathSeparator)) {
+			p.mod = v.mod
+		}
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
@@ -672,8 +676,9 @@ fn (v mut V) add_v_files_to_compile() {
 		}
 		
 		// use cached built module if exists
-		if v.pref.build_mode != .build_module {
-			vh_path := '$v_modules_path/${mod}.vh'
+		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
+			mod_path := mod.replace('.', os.PathSeparator)
+			vh_path := '$v_modules_path/${mod_path}.vh'
 			//println(vh_path)
 			if v.pref.is_debug && os.file_exists(vh_path) {
 				println('using cached module `$mod`: $vh_path')
@@ -683,7 +688,9 @@ fn (v mut V) add_v_files_to_compile() {
 			}
 		}
 		// standard module
+		println('HERE A')
 		mod_path := v.find_module_path(mod) or { verror(err) break }
+		println('HERE B')
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			v.files << file
@@ -847,15 +854,18 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o
-		mod = if adir.contains(os.PathSeparator) {
+		mod_path := if adir.contains('vlib') {
+			adir.all_after('vlib'+os.PathSeparator)
+		}
+		else if adir.contains(os.PathSeparator) {
 			adir.all_after(os.PathSeparator)
 		} else {
 			adir
 		}
+		mod = mod_path.replace(os.PathSeparator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
-		out_name = mod + '.o'
-		println('$out_name')
+		out_name = mod
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
