@@ -63,7 +63,9 @@ fn (g mut CGen) genln(s string) {
 	g.cur_line = '$g.cur_line $s'
 	if g.cur_line != '' {
 		if g.line_directives && g.cur_line.trim_space() != '' {
-			g.lines << '\n#line $g.line "$g.file"'
+			if g.file.len > 0 && g.line > 0 {
+				g.lines << '\n#line $g.line "$g.file"'
+			}
 		}
 		g.lines << g.cur_line
 		g.prev_line = g.cur_line

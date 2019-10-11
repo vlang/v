@@ -73,8 +73,8 @@ fn (v &V) generate_hot_reload_code() {
 		mut vexe := os.args[0]
 		
 		if os.user_os() == 'windows' {
-			vexe = vexe.replace('\\', '\\\\')
-			file = file.replace('\\', '\\\\')
+			vexe = cescaped_path(vexe)
+			file = cescaped_path(file)
 		}
 		
 		mut msvc := ''
