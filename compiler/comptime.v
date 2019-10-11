@@ -30,7 +30,31 @@ fn (p mut Parser) comp_time() {
 				p.genln('#ifdef $ifdef_name')
 			}
 			p.check(.lcbr)
-			p.statements_no_rcbr()
+			os := os_from_string(name)
+			if p.fileis('runtime.v') && os != p.os {
+				// `$if os {` for a different target, skip everything inside
+				// to avoid compilation errors (like including <windows.h>
+				// on non-Windows systems)
+				mut stack := 1
+				for {
+					if p.tok == .lcbr {
+						stack++
+					} else if p.tok == .rcbr {
+						stack--
+					}	
+					if p.tok == .eof {
+						break
+					}	
+					if stack <= 0 && p.tok == .rcbr {
+						//p.warn('exiting $stack')
+						p.next()
+						break
+					}	
+					p.next()
+				}	
+			}	 else {
+				p.statements_no_rcbr()
+			}
 			if ! (p.tok == .dollar && p.peek() == .key_else) {
 				p.genln('#endif')
 			}
