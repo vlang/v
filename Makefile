@@ -16,13 +16,9 @@ ifdef WIN32
 	./v0.exe -o v.exe compiler
 	rm -f v0.exe
 else
-	$(CC) -std=gnu11 -w -o v vc/v.c -lm
-	@(VC_V=`./v version | cut -f 3 -d " "`; \
-	V_V=`git rev-parse --short HEAD`; \
-	if [ $$VC_V != $$V_V ]; then \
-		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		./v -o v compiler; \
-	fi)
+	$(CC) -std=gnu11 -w -o v vc/v.c -lm && \
+	./v -o v2 compiler && \
+	mv -f v2 v
 endif
 	rm -rf vc/
 	@echo "V has been successfully built"
