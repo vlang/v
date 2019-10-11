@@ -274,10 +274,10 @@ fn (v mut V) compile() {
 	// generate missing module init's 
 	init_parsers := v.module_gen_init_parsers()
 	// run decl pass
-	for i in 0..init_parsers.len {
-		mut ip := init_parsers[i]
-		ip.parse(.decl)
-	}
+	// for i in 0..init_parsers.len {
+	// 	mut ip := init_parsers[i]
+	// 	ip.parse(.decl)
+	// }
 
 	// Main pass
 	cgen.pass = Pass.main
@@ -345,10 +345,10 @@ fn (v mut V) compile() {
 		}
 	}
 	// run main parser on the init parsers
-	for i in 0..init_parsers.len {
-		mut ip := init_parsers[i]
-		ip.parse(.main)
-	}
+	// for i in 0..init_parsers.len {
+	// 	mut ip := init_parsers[i]
+	// 	ip.parse(.main)
+	// }
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		v.generate_vh()
@@ -437,7 +437,6 @@ fn (v mut V) generate_init() {
 		v.cgen.nogen = false
 		consts_init_body := v.cgen.consts_init.join_lines()
 		init_fn_name := mod_gen_name(v.mod) + '__init_consts'
-		println('generating init for $v.mod: $init_fn_name')
 		v.cgen.genln('void ${init_fn_name}() {\n$consts_init_body\n}')
 		v.cgen.nogen = nogen
 	}
@@ -446,7 +445,9 @@ fn (v mut V) generate_init() {
 		mut call_mod_init_consts := ''
 		for mod in v.table.imports {
 			init_fn_name := mod_gen_name(mod) + '__init'
-			call_mod_init += '${init_fn_name}();\n'
+			if v.table.known_fn(init_fn_name) {
+				call_mod_init += '${init_fn_name}();\n'
+			}
 			if mod in v.cached_mods {
 				call_mod_init_consts += '${init_fn_name}_consts();\n'
 			}
@@ -655,7 +656,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	// Builtin cache exists? Use it.
-	builtin_vh := '$v_modules_path/builtin.vh'
+	builtin_vh := '$v_modules_path${os.PathSeparator}builtin.vh'
 	if v.pref.is_debug && os.file_exists(builtin_vh) {
 		builtin_files = [builtin_vh]
 	}
@@ -672,7 +673,8 @@ fn (v mut V) add_v_files_to_compile() {
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
 		// set mod so we dont have to resolve submodule
-		if v.pref.build_mode == .build_module && file.contains(v.mod.replace('.', os.PathSeparator)) {
+		if v.pref.build_mode == .build_module && 
+			file.contains(v.mod.replace('.', os.PathSeparator)) {
 			p.mod = v.mod
 		}
 		p.parse(.imports)
