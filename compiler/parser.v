@@ -247,7 +247,12 @@ fn (p mut Parser) parse(pass Pass) {
 	else {
 		p.check(.key_module)
 		p.fspace()
-		p.mod = p.check_name()
+		// setting mod manually for mod init parsers
+		if p.mod == '' {
+			p.mod = p.check_name()
+		} else {
+			p.check_name()
+		}
 	}
 	//
 	
@@ -261,12 +266,13 @@ fn (p mut Parser) parse(pass Pass) {
 	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
-	// fully qualify the module name, eg base64 to encoding.base64
+	
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
 	p.import_table.module_name = fq_mod
 	p.table.register_module(fq_mod)
 	// replace "." with "_dot_" in module name for C variable names
-	p.mod = fq_mod.replace('.', '_dot_')
+	p.mod = mod_gen_name(fq_mod)
+
 	if p.pass == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
 			p.imports()
@@ -1054,7 +1060,7 @@ fn (p mut Parser) get_type() string {
 			if !p.builtin_mod && p.import_table.known_alias(typ) {
 				mod := p.import_table.resolve_alias(typ)
 				if mod.contains('.') {
-					typ = mod.replace('.', '_dot_')
+					typ = mod_gen_name(mod)
 				}
 			}
 			p.next()
@@ -1782,7 +1788,7 @@ fn (p mut Parser) name_expr() string {
 			p.import_table.register_used_import(name)
 			// we replaced "." with "_dot_" in p.mod for C variable names,
 			// do same here.
-			mod = p.import_table.resolve_alias(name).replace('.', '_dot_')
+			mod = mod_gen_name(p.import_table.resolve_alias(name))
 		}
 		p.next()
 		p.check(.dot)
@@ -1947,7 +1953,7 @@ fn (p mut Parser) name_expr() string {
 			// If orig_name is a mod, then printing undefined: `mod` tells us nothing
 			// if p.table.known_mod(orig_name) {
 			if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-				name = name.replace('__', '.').replace('_dot_', '.')
+				name = mod_gen_name_rev(name.replace('__', '.'))
 				p.error('undefined: `$name`')
 			}
 			else {

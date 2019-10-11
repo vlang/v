@@ -71,6 +71,7 @@ mut:
 	mod        string       // module being built with -lib
 	parsers    []Parser
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
+	cached_mods []string
 }
 
 struct Preferences {
@@ -269,6 +270,15 @@ fn (v mut V) compile() {
 	for file in v.files {
 		v.parse(file, .decl)
 	}
+
+	// gparserto generate missing module init's 
+	init_parsers := v.module_gen_init_parsers()
+	// run decl pass
+	for i in 0..init_parsers.len {
+		mut ip := init_parsers[i]
+		ip.parse(.decl)
+	}
+
 	// Main pass
 	cgen.pass = Pass.main
 	if v.pref.is_debug {
@@ -334,6 +344,11 @@ fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		}
 	}
+	// run main parser on the init parsers
+	for i in 0..init_parsers.len {
+		mut ip := init_parsers[i]
+		ip.parse(.main)
+	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		v.generate_vh()
@@ -344,9 +359,13 @@ fn (v mut V) compile() {
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
 	// v.parsers.add(vgen_parser)
-	v.log('Done parsing.')
+	
 	// All definitions
 	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
+	if v.pref.build_mode == .build_module {
+		init_fn_name := v.mod.replace('.', '__') + '__init_consts'
+		def.writeln('void $init_fn_name();')
+	}
 	$if !js {
 		def.writeln(cgen.includes.join_lines())
 		def.writeln(cgen.typedefs.join_lines())
@@ -364,6 +383,7 @@ fn (v mut V) compile() {
 		def.writeln(v.prof_counters())
 	}
 	cgen.lines[defs_pos] = def.str()
+	v.generate_init()
 	v.generate_main()
 	v.generate_hot_reload_code()
 	if v.pref.is_verbose {
@@ -379,19 +399,59 @@ fn (v mut V) compile() {
 	v.cc()
 }
 
-fn (v mut V) generate_main() {
-	mut cgen := v.cgen
-	$if js { return }
+fn (v mut V) module_gen_init_parsers() []Parser  {
+	mut parsers := []Parser
+	if v.pref.build_mode == .build_module {
+		init_fn_name := mod_gen_name(v.mod) + '__init'
+		if !v.table.known_fn(init_fn_name) {
+			p_mod := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
+			fn_v := 'module $p_mod\n\nfn init() { /*println(\'$p_mod module init\')*/ }'
+			mut p := v.new_parser_from_string(fn_v, 'init_gen_$v.mod')
+			p.mod = v.mod
+			parsers << p
+		}
+	} else if v.pref.build_mode == .default_mode {
+		for mod in v.table.imports {
+			if mod in v.cached_mods { continue }
+			init_fn_name := mod_gen_name(mod) + '__init'
+			if !v.table.known_fn(init_fn_name) {
+				p_mod := if mod.contains('.') { mod.all_after('.') } else { mod }
+				fn_v := 'module $p_mod\n\nfn init() { /*println(\'$p_mod module init\')*/ }'
+				mut p := v.new_parser_from_string(fn_v, 'init_gen_$mod')
+				p.mod = mod
+				parsers << p
+			}
+		}
+	}
+	return parsers
+}
 
+fn (v mut V) generate_init() {
+	$if js { return }
+	if v.pref.build_mode == .build_module {
+		nogen := v.cgen.nogen
+		v.cgen.nogen = false
+		consts_init_body := v.cgen.consts_init.join_lines()
+		init_fn_name := mod_gen_name(v.mod) + '__init_consts'
+		println('generating init for $v.mod: $init_fn_name')
+		v.cgen.genln('void ${init_fn_name}() {\n$consts_init_body\n}')
+		v.cgen.nogen = nogen
+	}
 	if v.pref.build_mode == .default_mode {
-		mut consts_init_body := cgen.consts_init.join_lines()
+		mut call_mod_init := ''
+		for mod in v.table.imports {
+			init_fn_name := mod_gen_name(mod) + '__init'
+			call_mod_init += '${init_fn_name}();\n'
+		}
+		consts_init_body := v.cgen.consts_init.join_lines()
 		// vlib can't have `init_consts()`
-		cgen.genln('void init_consts() {
+		v.cgen.genln('void init() {
 g_str_buf=malloc(1000);
+$call_mod_init
 $consts_init_body
 }')
 		// _STR function can't be defined in vlib
-		cgen.genln('
+		v.cgen.genln('
 string _STR(const char *fmt, ...) {
 	va_list argptr;
 	va_start(argptr, fmt);
@@ -425,6 +485,11 @@ string _STR_TMP(const char *fmt, ...) {
 
 ')
 	}
+}
+
+fn (v mut V) generate_main() {
+	mut cgen := v.cgen
+	$if js { return }
 
 	// Make sure the main function exists
 	// Obviously we don't need it in libraries
@@ -473,7 +538,7 @@ string _STR_TMP(const char *fmt, ...) {
 
 fn (v mut V) gen_main_start(add_os_args bool){
 	v.cgen.genln('int main(int argc, char** argv) { ')
-	v.cgen.genln('  init_consts();')
+	v.cgen.genln('  init();')
 	if add_os_args && 'os' in v.table.imports {
 		v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
@@ -612,6 +677,7 @@ fn (v mut V) add_v_files_to_compile() {
 			//println(vh_path)
 			if v.pref.is_debug && os.file_exists(vh_path) {
 				println('using cached module `$mod`: $vh_path')
+				v.cached_mods << mod
 				v.files << vh_path
 				continue
 			}

@@ -254,7 +254,8 @@ fn (p mut Parser) fn_decl() {
 	}
 	// full mod function name
 	// os.exit ==> os__exit()
-	if !is_c && !p.builtin_mod && receiver_typ.len == 0 {
+	// if !is_c && !p.builtin_mod && receiver_typ.len == 0 {
+	if !is_c && receiver_typ.len == 0 && (!p.builtin_mod || (p.builtin_mod && f.name == 'init')) {
 		f.name = p.prepend_mod(f.name)
 	}
 	if p.first_pass() && receiver_typ.len == 0 {
@@ -363,6 +364,12 @@ fn (p mut Parser) fn_decl() {
 			p.gen_fn_decl(f, typ, str_args)
 		}
 	}
+	// init module consts
+	if !p.first_pass() && (f.name == '${f.mod}__init' || (f.mod == 'builtin' && f.name == 'init')) &&
+		p.v.mod == f.mod && p.v.pref.build_mode == .build_module {
+		p.genln('${f.mod}__init_consts();')
+	}
+
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
 		p.fgenln('')
