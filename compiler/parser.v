@@ -2816,7 +2816,7 @@ fn (p mut Parser) string_expr() {
 	// No ${}, just return a simple string
 	if p.peek() != .dollar || is_raw {
 		p.fgen("'$str'")
-		f := if is_raw { str.replace('\\', '\\\\') } else { format_str(str) }
+		f := if is_raw { cescaped_path(str) } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
@@ -3858,7 +3858,7 @@ fn (p mut Parser) assert_statement() {
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
-	filename := p.file_path.replace('\\', '\\\\')
+	filename := cescaped_path(p.file_path)
 	p.genln(';
 \n
 
