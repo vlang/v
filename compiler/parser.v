@@ -100,7 +100,14 @@ fn (v mut V) new_parser_from_string(text string, id string) Parser {
 	return p
 }
 
+fn (v mut V) reset_cgen_file_line_parameters(){
+	v.cgen.line = 0
+	v.cgen.file = ''
+	v.cgen.line_directives = v.pref.is_debuggable
+}
+
 fn (v mut V) new_parser_from_file(path string) Parser {
+	v.reset_cgen_file_line_parameters()
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
@@ -124,7 +131,6 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = true
 	}
-	v.cgen.file = path
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
 	return p
@@ -133,6 +139,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 // creates a new parser. most likely you will want to use
 // `new_parser_file` or `new_parser_string` instead.
 fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
+	v.reset_cgen_file_line_parameters()
 	mut p := Parser {
 		id: id
 		scanner: scanner
@@ -155,8 +162,6 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 		p.scanner.should_print_errors_in_color = false
 		p.scanner.should_print_relative_paths_on_error = true
 	}
-	v.cgen.line_directives = v.pref.is_debuggable
-	// v.cgen.file = path
 	return p
 }
 
@@ -195,6 +200,7 @@ fn (p mut Parser) next() {
 	 p.tok = res.tok
 	 p.lit = res.lit
 	 p.scanner.line_nr = res.line_nr
+	 p.cgen.line = res.line_nr
 }
 
 fn (p & Parser) peek() TokenKind {
@@ -229,7 +235,10 @@ fn (p &Parser) log(s string) {
 */
 }
 
-fn (p mut Parser) parse(pass Pass) {
+fn (p mut Parser) parse(pass Pass) {	
+	p.cgen.line = 0
+	p.cgen.file = cescaped_path(os.realpath(p.file_path))
+	/////////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0
 	p.next()
@@ -2816,7 +2825,7 @@ fn (p mut Parser) string_expr() {
 	// No ${}, just return a simple string
 	if p.peek() != .dollar || is_raw {
 		p.fgen("'$str'")
-		f := if is_raw { str.replace('\\', '\\\\') } else { format_str(str) }
+		f := if is_raw { cescaped_path(str) } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
@@ -3858,7 +3867,7 @@ fn (p mut Parser) assert_statement() {
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
-	filename := p.file_path.replace('\\', '\\\\')
+	filename := cescaped_path(p.file_path)
 	p.genln(';
 \n
 

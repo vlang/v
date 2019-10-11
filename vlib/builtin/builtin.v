@@ -50,7 +50,32 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 			if C.backtrace_symbols_fd != 0 {
 				buffer := [100]byteptr
 				nr_ptrs := C.backtrace(*voidptr(buffer), 100)
-				C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
+				nr_actual_frames := nr_ptrs-skipframes
+				mut sframes := []string
+				csymbols := *byteptr(C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames))
+				for i in 0..nr_actual_frames {  sframes << tos2(csymbols[i]) }
+				for sframe in sframes {
+					executable := sframe.all_before('(')
+					addr := sframe.all_after('[').all_before(']')
+					cmd := 'addr2line -e $executable $addr'
+
+					// taken from os, to avoid depending on the os module inside builtin.v
+					f := byteptr(C.popen(cmd.str, 'r'))
+					if isnil(f) {
+						println(sframe) continue
+					}
+					buf := [1000]byte
+					mut output := ''
+					for C.fgets(buf, 1000, f) != 0 {
+						output += tos(buf, vstrlen(buf)) 
+					}
+					output = output.trim_space()+':'
+					if 0 != int(C.pclose(f)) {
+						println(sframe) continue
+					}
+					println( '${output:-45s} | $sframe')
+				}
+				//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 				return
 			}else{
 				C.printf('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')

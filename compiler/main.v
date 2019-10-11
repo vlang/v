@@ -353,6 +353,7 @@ fn (v mut V) compile() {
 	if v.pref.build_mode == .build_module {
 		v.generate_vh()
 	}
+
 	// parse generated V code (str() methods etc)
 	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str(), 'vgen')
 	// free the string builder which held the generated methods
@@ -498,6 +499,15 @@ string _STR_TMP(const char *fmt, ...) {
 fn (v mut V) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
+
+	///// After this point, the v files are compiled.
+	///// The rest is auto generated code, which will not have
+	///// different .v source file/line numbers.
+	lines_so_far := cgen.lines.join('\n').count('\n') + 5
+	cgen.genln('')
+	cgen.genln('////////////////// Reset the file/line numbers //////////')
+	cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
+	cgen.genln('')
 
 	// Make sure the main function exists
 	// Obviously we don't need it in libraries
@@ -1122,4 +1132,8 @@ fn vhash() string {
 	buf[0] = 0
 	C.snprintf(*char(buf), 50, '%s', C.V_COMMIT_HASH )
 	return tos_clone(buf)
+}
+
+fn cescaped_path(s string) string {
+  return s.replace('\\','\\\\')
 }
