@@ -237,7 +237,7 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse(pass Pass) {	
 	p.cgen.line = 0
-	p.cgen.file = os.realpath(p.file_path).replace( '\\' , '\\\\' )
+	p.cgen.file = 'CGENFILE=' + os.realpath(p.file_path).replace( '\\' , '\\\\' )
 	/////////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0
