@@ -404,8 +404,8 @@ fn (v mut V) module_gen_init_parsers() []Parser  {
 	if v.pref.build_mode == .build_module {
 		init_fn_name := mod_gen_name(v.mod) + '__init'
 		if !v.table.known_fn(init_fn_name) {
-			p_mod := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
-			fn_v := 'module $p_mod\n\nfn init() { /*println(\'$p_mod module init\')*/ }'
+			mod_def := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
+			fn_v := 'module $mod_def\n\nfn init() { /*println(\'$v.mod module init\')*/ }'
 			mut p := v.new_parser_from_string(fn_v, 'init_gen_$v.mod')
 			p.mod = v.mod
 			parsers << p
@@ -415,8 +415,8 @@ fn (v mut V) module_gen_init_parsers() []Parser  {
 			if mod in v.cached_mods { continue }
 			init_fn_name := mod_gen_name(mod) + '__init'
 			if !v.table.known_fn(init_fn_name) {
-				p_mod := if mod.contains('.') { mod.all_after('.') } else { mod }
-				fn_v := 'module $p_mod\n\nfn init() { /*println(\'$p_mod module init\')*/ }'
+				mod_def := if mod.contains('.') { mod.all_after('.') } else { mod }
+				fn_v := 'module $mod_def\n\nfn init() { /*println(\'$v.mod module init\')*/ }'
 				mut p := v.new_parser_from_string(fn_v, 'init_gen_$mod')
 				p.mod = mod
 				parsers << p

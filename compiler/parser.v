@@ -236,22 +236,25 @@ fn (p mut Parser) parse(pass Pass) {
 	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
 	// `module main` is not required if it's a single file program
 	if p.is_script || p.pref.is_test {
-		p.mod = 'main'
 		// User may still specify `module main`
 		if p.tok == .key_module {
 			p.next()
 			p.fgen('module ')
-			p.mod = p.check_name()
+			mod := p.check_name()
+			if p.mod == '' {
+				p.mod = mod
+			}
+		} else {
+			p.mod = 'main'
 		}
 	}
 	else {
 		p.check(.key_module)
 		p.fspace()
 		// setting mod manually for mod init parsers
-		if p.mod != '' {
-			p.check_name()
-		} else {
-			p.mod = p.check_name()
+		mod := p.check_name()
+		if p.mod == '' {
+			p.mod = mod
 		}
 	}
 	//
