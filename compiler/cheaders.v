@@ -150,7 +150,6 @@ typedef map map_string;
 byteptr g_str_buf;
 int load_so(byteptr);
 void reload_so();
-void init_consts();
 '
 
 js_headers = '
@@ -176,10 +175,5 @@ var rune = function() {}
 var map_string = function() {}
 var map_int = function() {}
 
-function init_consts() {
-	
-}	
-
 '
-
 )
