@@ -1694,7 +1694,7 @@ fn (p mut Parser) bterm() string {
 
 // also called on *, &, @, . (enum)
 fn (p mut Parser) name_expr() string {
-	//println('n')
+//println('n')
 	p.has_immutable_field = false
 	p.is_const_literal = false
 	ph := p.cgen.add_placeholder()

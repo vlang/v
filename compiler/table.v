@@ -31,7 +31,6 @@ struct VargAccess {
 	index   int
 }
 
-/*
 enum NameCategory {
 	constant
 	mod
@@ -41,8 +40,8 @@ enum NameCategory {
 
 struct Name {
 	cat NameCategory
+	idx int // e.g. typ := types[name.idx]
 }	
-*/
 
 struct GenTable {
 	fn_name string
