@@ -227,6 +227,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 		f.mod != 'darwin' &&
 		f.mod != 'os' &&
 		f.mod != 'json' &&
+		!f.name.ends_with('_init') &&
 		!f.name.contains('window_proc') &&
 		!name.ends_with('_str') &&
 		!name.contains('contains') {

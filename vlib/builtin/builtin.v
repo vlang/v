@@ -4,7 +4,7 @@
 
 module builtin
 
-fn builtin_init() int {
+fn init() {
 	$if windows {	
 		if is_atty(0) {
 			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
@@ -15,12 +15,7 @@ fn builtin_init() int {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
 		C.setbuf(C.stdout,0)
 	}
-	return 1
 }
-
-const (
-	_ = builtin_init()
-)
 
 fn C.memcpy(byteptr, byteptr, int)
 fn C.memmove(byteptr, byteptr, int)

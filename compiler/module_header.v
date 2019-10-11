@@ -106,17 +106,27 @@ fn v_type_str(typ_ string) string {
 
 fn (v &V) generate_vh() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
-	dir := '$v_modules_path${os.PathSeparator}$v.mod'
+	mod_path := v.mod.replace('.', os.PathSeparator)
+	dir := '$v_modules_path${os.PathSeparator}$mod_path'
 	path := dir + '.vh'
 	if !os.dir_exists(dir) {
-		os.mkdir(dir)
+		// create recursive
+		mut mkpath := v_modules_path
+		for subdir in mod_path.split(os.PathSeparator) {
+			mkpath += os.PathSeparator + subdir
+			if !os.dir_exists(mkpath) {
+				os.mkdir(mkpath)
+			}
+		}
+		// os.mkdir(os.realpath(dir))
 	}
 	println(path)
 	
 	file := os.create(path) or { panic(err) }
 	// Consts
+	mod_def := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
 	file.writeln('// $v.mod module header \n')
-	file.writeln('module $v.mod')
+	file.writeln('module $mod_def')
 	file.writeln('// Consts')
 	if v.table.consts.len > 0 {
 		file.writeln('const (')

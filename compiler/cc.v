@@ -66,7 +66,15 @@ fn (v mut V) cc() {
 		// Create the modules & out directory if it's not there.
 		out_dir := '$v_modules_path${os.PathSeparator}$v.dir'
 		if !os.dir_exists(out_dir) {
-			os.mkdir(out_dir)
+			// create recursive
+			mut mkpath := v_modules_path
+			for subdir in v.dir.split(os.PathSeparator) {
+				mkpath += os.PathSeparator + subdir
+				if !os.dir_exists(mkpath) {
+					os.mkdir(mkpath)
+				}
+			}
+			//os.mkdir(out_dir)
 		}
 		v.out_name = '${out_dir}.o' //v.out_name
 		println('Building ${v.out_name}...')
@@ -120,16 +128,17 @@ fn (v mut V) cc() {
 			os.system('$vexe build module vlib/builtin')
 		}
 		for imp in v.table.imports {
-			if imp == 'webview' {
-				continue
-			}
-			path := 	'$v_modules_path/vlib/${imp}.o'
-			println('adding ${imp}.o')
+			if imp.contains('vweb') { continue } // not working
+			if imp == 'webview' { continue }
+			
+			imp_path := imp.replace('.', os.PathSeparator)
+			path := 	'$v_modules_path/vlib/${imp_path}.o'
+			println('adding ${imp_path}.o')
 			if os.file_exists(path) {
 				libs += ' ' + path
 			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib/$imp')
+				os.system('$vexe build module vlib/$imp_path')
 			}	
 		}
 	}
