@@ -265,7 +265,7 @@ fn (v mut V) cc() {
 	}
 	*/
 	if !v.pref.is_debug && v.out_name_c != 'v.c' {
-		// os.rm(v.out_name_c)
+		os.rm(v.out_name_c)
 	}
 	if v.pref.compress {
 		$if windows {

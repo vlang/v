@@ -403,34 +403,27 @@ fn (v mut V) module_gen_init_parsers() []Parser  {
 	mut parsers := []Parser
 	if v.pref.build_mode == .build_module {
 		init_fn_name := mod_gen_name(v.mod) + '__init'
-		mod_def := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
-		mut fn_v := 'module $mod_def\n\n'
 		if !v.table.known_fn(init_fn_name) {
+			mod_def := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
+			mut fn_v := 'module $mod_def\n\n'
 			fn_v += 'fn init() { /*println(\'$v.mod module init\')*/ }'
 			mut p := v.new_parser_from_string(fn_v, 'init_gen_$v.mod')
 			p.mod = v.mod
 			parsers << p
 		}
-		// if !v.table.known_fn('${init_fn_name}_consts') {
-		// 	fn_v += 'fn init_consts() { /*println(\'$v.mod module init\')*/ }'
-		// }
-
-	} else if v.pref.build_mode == .default_mode {
+	}
+	else if v.pref.build_mode == .default_mode {
 		for mod in v.table.imports {
 			if mod in v.cached_mods { continue }
 			init_fn_name := mod_gen_name(mod) + '__init'
-			mod_def := if mod.contains('.') { mod.all_after('.') } else { mod }
-			mut fn_v := 'module $mod_def\n\n'
 			if !v.table.known_fn(init_fn_name) {
+				mod_def := if mod.contains('.') { mod.all_after('.') } else { mod }
+				mut fn_v := 'module $mod_def\n\n'
 				fn_v += 'fn init() { /*println(\'$v.mod module init\')*/ }'
 				mut p := v.new_parser_from_string(fn_v, 'init_gen_$mod')
 				p.mod = mod
 				parsers << p
 			}
-			// if !v.table.known_fn('${init_fn_name}_consts') {
-			// 	fn_v += 'fn init_consts() { /*println(\'$v.mod module init\')*/ }'
-			// }
-
 		}
 	}
 	return parsers
