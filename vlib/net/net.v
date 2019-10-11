@@ -1,9 +1,5 @@
 module net
 
-const (
-	_ = net.init()
-)
-
 // hostname returns the host name reported by the kernel. 
 pub fn hostname() ?string {
   	mut name := [256]byte
