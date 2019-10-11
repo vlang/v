@@ -177,7 +177,7 @@ pub fn (m &map) keys() []string {
 }
 
 fn (m map) get(key string, out voidptr) bool {
-	println('g')
+	//println('g')
 	if m.root == 0 {
 		return false
 	}
