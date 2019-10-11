@@ -457,6 +457,7 @@ fn (v mut V) generate_init() {
 g_str_buf=malloc(1000);
 $call_mod_init_consts
 $consts_init_body
+builtin__init();
 $call_mod_init
 }')
 		// _STR function can't be defined in vlib
