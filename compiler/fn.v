@@ -364,11 +364,6 @@ fn (p mut Parser) fn_decl() {
 			p.gen_fn_decl(f, typ, str_args)
 		}
 	}
-	// // init module consts
-	// if !p.first_pass() && f.name == '${f.mod}__init' &&
-	// 	p.v.mod == f.mod && p.v.pref.build_mode == .build_module {
-	// 	p.genln('${f.mod}__init_consts();')
-	// }
 
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
