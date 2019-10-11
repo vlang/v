@@ -3913,7 +3913,6 @@ fn (p mut Parser) return_st() {
 				tmp := p.get_tmp()
 				ret := p.cgen.cur_line.right(ph)
 				typ := expr_type.replace('Option_', '')
-				p.cgen.cur_line = '$expr_type $tmp = OPTION_CAST($typ)($ret);'
 				p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
 				p.gen('return opt_ok(&$tmp, sizeof($typ))')
 			}
