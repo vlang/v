@@ -271,7 +271,7 @@ fn (v mut V) compile() {
 		v.parse(file, .decl)
 	}
 
-	// gparserto generate missing module init's 
+	// generate missing module init's 
 	init_parsers := v.module_gen_init_parsers()
 	// run decl pass
 	for i in 0..init_parsers.len {
