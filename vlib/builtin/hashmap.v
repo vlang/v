@@ -35,7 +35,7 @@ const (
 )
 
 fn new_hashmap(planned_nr_items int) hashmap {
-	mut cap := planned_nr_items * 3
+	mut cap := planned_nr_items * 5
 	if cap < min_cap {
 		cap = min_cap
 	}	
