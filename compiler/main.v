@@ -390,7 +390,7 @@ fn (v mut V) generate_main() {
 	lines_so_far := cgen.lines.join('\n').count('\n') + 5
 	cgen.genln('')
 	cgen.genln('////////////////// Reset the file/line numbers //////////')
-	cgen.lines << '#line $lines_so_far "$cgen.out_path"'
+	cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
 	cgen.genln('')
 	
 	if v.pref.build_mode == .default_mode {
@@ -1051,4 +1051,8 @@ fn vhash() string {
 	buf[0] = 0
 	C.snprintf(*char(buf), 50, '%s', C.V_COMMIT_HASH )
 	return tos_clone(buf)
+}
+
+fn cescaped_path(s string) string {
+  return s.replace('\\','\\\\')
 }
