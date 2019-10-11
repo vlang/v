@@ -41,6 +41,12 @@ fn (p mut Parser) comp_time() {
 			p.statements_no_rcbr()
 			p.genln('#endif')
 		}
+		else if name == 'tinyc' {
+			p.genln('#ifdef __TINYC__')
+			p.check(.lcbr)
+			p.statements_no_rcbr()
+			p.genln('#endif')
+		}
 		else {
 			println('Supported platforms:')
 			println(supported_platforms)

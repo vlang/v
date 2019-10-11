@@ -4,6 +4,9 @@ import os
 
 #flag windows -l shell32
 
+// RegOpenKeyExA etc
+#flag windows -l advapi32
+
 struct MsvcResult {
 	full_cl_exe_path string
 	exe_path string
