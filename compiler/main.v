@@ -679,7 +679,6 @@ fn (v mut V) add_v_files_to_compile() {
 		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', os.PathSeparator)
 			vh_path := '$v_modules_path/${mod_path}.vh'
-			//println(vh_path)
 			if v.pref.is_debug && os.file_exists(vh_path) {
 				println('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
@@ -688,9 +687,7 @@ fn (v mut V) add_v_files_to_compile() {
 			}
 		}
 		// standard module
-		println('HERE A')
 		mod_path := v.find_module_path(mod) or { verror(err) break }
-		println('HERE B')
 		vfiles := v.v_files_from_dir(mod_path)
 		for file in vfiles {
 			v.files << file
