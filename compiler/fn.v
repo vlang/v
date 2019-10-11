@@ -365,7 +365,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	// init module consts
-	if !p.first_pass() && (f.name == '${f.mod}__init' || (f.mod == 'builtin' && f.name == 'init')) &&
+	if !p.first_pass() && f.name == '${f.mod}__init' &&
 		p.v.mod == f.mod && p.v.pref.build_mode == .build_module {
 		p.genln('${f.mod}__init_consts();')
 	}
