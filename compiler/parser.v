@@ -195,12 +195,12 @@ fn (p mut Parser) next() {
 			 p.lit = ''
 			 return
 	 }
-	 p.cgen.line = p.tokens[ p.token_idx ].line_nr
 	 res := p.tokens[p.token_idx]
 	 p.token_idx++
 	 p.tok = res.tok
 	 p.lit = res.lit
 	 p.scanner.line_nr = res.line_nr
+	 p.cgen.line = res.line_nr
 }
 
 fn (p & Parser) peek() TokenKind {
