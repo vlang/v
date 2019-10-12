@@ -71,6 +71,17 @@ fn v_type_str(typ_ string) string {
 	} else {
 		typ_
 	}
+	// fn parent/alias?
+	if typ.starts_with('fn ') {
+		mut types := []string
+		fi_lpar := typ.index_byte(`(`)
+		li_rpar := typ.last_index_byte(`)`)
+		ret_type := typ.right(li_rpar+1)
+		for t in typ.substr(fi_lpar+1, li_rpar).split(',') {
+			types << v_type_str(t)
+		}
+		return 'fn (' + types.join(', ') + ')$ret_type'
+	}
 	typ = typ.replace('Option_', '?')
 	// multiple return
 	if typ.contains('_V_MulRet') {
@@ -103,22 +114,7 @@ fn v_type_str(typ_ string) string {
 		}	
 	}	
 	return typ
-}
-
-fn v_type_alias_str(typ string) string {
-	// fn type alias
-	if typ.starts_with('fn ') {
-		mut types := []string
-		fi_lpar := typ.index_byte(`(`)
-		li_rpar := typ.last_index_byte(`)`)
-		ret_type := typ.right(li_rpar+1)
-		for t in typ.substr(fi_lpar+1, li_rpar).split(',') {
-			types << v_type_str(t)
-		}
-		return 'fn (' + types.join(', ') + ')$ret_type'
-	}
-	return v_type_str(typ)
-}
+}	
 
 fn (v &V) generate_vh() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
@@ -186,7 +182,7 @@ fn (v &V) generate_vh() {
 		}	
 		// type alias
 		if typ.parent != '' && typ.cat == .alias {
-			parent := v_type_alias_str(typ.parent)
+			parent := v_type_str(typ.parent)
 			file.writeln('type $typ.name $parent')
 		}
 		if typ.cat in [TypeCategory.struct_, .c_struct] {
