@@ -4,7 +4,6 @@ module os
 #include <winsock2.h>
 
 const (
-	PathSeparator = '\\'
 	path_separator = '\\'
 )
 

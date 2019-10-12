@@ -106,14 +106,14 @@ fn v_type_str(typ_ string) string {
 
 fn (v &V) generate_vh() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
-	mod_path := v.mod.replace('.', os.PathSeparator)
+	mod_path := v.mod.replace('.', os.path_separator)
 	dir := if v.dir.starts_with('vlib') {
-		'$v_modules_path${os.PathSeparator}$v.dir'
+		'$v_modules_path${os.path_separator}$v.dir'
 	} else {
-		'$v_modules_path${os.PathSeparator}$mod_path'
+		'$v_modules_path${os.path_separator}$mod_path'
 	}
 	path := dir + '.vh'
-	pdir := dir.all_before_last(os.PathSeparator)
+	pdir := dir.all_before_last(os.path_separator)
 	if !os.dir_exists(pdir) {
 		os.mkdir_all(pdir)
 		// os.mkdir(os.realpath(dir))

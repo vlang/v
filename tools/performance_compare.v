@@ -172,7 +172,7 @@ fn (c Context) compare_v_performance( commands []string ) {
 	for cmd in commands { hyperfine_commands_arguments << ' \'cd ${c.b:30s} ; ./$cmd \' ' }
 	for cmd in commands { hyperfine_commands_arguments << ' \'cd ${c.a:30s} ; ./$cmd \' ' }
 	///////////////////////////////////////////////////////////////////////////////
-	cmd_stats_file := os.realpath([ c.workdir, 'v_performance_stats.json'].join(os.PathSeparator))
+	cmd_stats_file := os.realpath([ c.workdir, 'v_performance_stats.json'].join(os.path_separator))
 	comparison_cmd := 'hyperfine $c.hyperfineopts '+
 		'--export-json ${cmd_stats_file} '+
 		'--time-unit millisecond '+
@@ -187,7 +187,7 @@ fn (c Context) compare_v_performance( commands []string ) {
 
 fn (c Context) normalized_workpath_for_commit( commit string ) string {
 	nc := 'v_at_' + commit.replace('^','_').replace('-','_').replace('/','_')
-	return os.realpath( c.workdir + os.PathSeparator + nc )
+	return os.realpath( c.workdir + os.path_separator + nc )
 }
 
 fn validate_commit_exists( commit string ){

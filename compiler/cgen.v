@@ -254,7 +254,7 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath( parent + os.PathSeparator + file ) + '" '
+			cfiles += '"' + os.realpath( parent + os.path_separator + file ) + '" '
 		}
 	}
 	cc := find_c_compiler()

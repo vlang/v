@@ -4,7 +4,6 @@ module os
 #include <unistd.h>
 
 const (
-	PathSeparator = '/'
 	path_separator = '/'
 )
 

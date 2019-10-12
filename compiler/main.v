@@ -610,7 +610,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
-		res << '$dir${os.PathSeparator}$file'
+		res << '$dir${os.path_separator}$file'
 	}
 	return res
 }
@@ -619,7 +619,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	// Builtin cache exists? Use it.
-	builtin_vh := '$v_modules_path${os.PathSeparator}vlib${os.PathSeparator}builtin.vh'
+	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
 	if v.pref.is_cache && os.file_exists(builtin_vh) {
 		v.cached_mods << 'builtin'
 		builtin_files = [builtin_vh]
@@ -638,7 +638,7 @@ fn (v mut V) add_v_files_to_compile() {
 		mut p := v.new_parser_from_file(file)
 		// set mod so we dont have to resolve submodule
 		if v.pref.build_mode == .build_module &&
-			file.contains(v.mod.replace('.', os.PathSeparator)) {
+			file.contains(v.mod.replace('.', os.path_separator)) {
 			p.mod = v.mod
 		}
 		p.parse(.imports)
@@ -662,8 +662,8 @@ fn (v mut V) add_v_files_to_compile() {
 		
 		// use cached built module if exists
 		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
-			mod_path := mod.replace('.', os.PathSeparator)
-			vh_path := '$v_modules_path${os.PathSeparator}vlib${os.PathSeparator}${mod_path}.vh'
+			mod_path := mod.replace('.', os.path_separator)
+			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.file_exists(vh_path) {
 				println('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
@@ -689,9 +689,9 @@ fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
 	
 	$if js {
-		return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin${os.PathSeparator}js')
+		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
 	}
-	return v.v_files_from_dir('$v.vroot${os.PathSeparator}vlib${os.PathSeparator}builtin')
+	return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin')
 }
 
 // get user files
@@ -703,22 +703,22 @@ fn (v &V)  get_user_files() []string {
 	mut user_files := []string
 
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << [v.vroot, 'vlib', 'benchmark', 'tests', 'always_imported.v'].join( os.PathSeparator )
+		user_files << [v.vroot, 'vlib', 'benchmark', 'tests', 'always_imported.v'].join( os.path_separator )
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
-	(dir.contains('${os.PathSeparator}volt') || dir.contains('${os.PathSeparator}c2volt'))// TODO
+	(dir.contains('${os.path_separator}volt') || dir.contains('${os.path_separator}c2volt'))// TODO
 	if is_test_with_imports {
 		user_files << dir
-		pos := dir.last_index(os.PathSeparator)
-		dir = dir.left(pos) + os.PathSeparator// TODO WHY IS THIS .neEDED?
+		pos := dir.last_index(os.path_separator)
+		dir = dir.left(pos) + os.path_separator// TODO WHY IS THIS .neEDED?
 	}
 	if dir.ends_with('.v') {
 		// Just compile one file and get parent dir
 		user_files << dir
-		dir = dir.all_before('${os.PathSeparator}')
+		dir = dir.all_before('${os.path_separator}')
 	}
 	else {
 		// Add .v files from the directory being compiled
@@ -815,7 +815,7 @@ fn new_v(args[]string) &V {
 	// Create modules dirs if they are missing
 	if !os.dir_exists(v_modules_path) {
 		os.mkdir(v_modules_path)
-		os.mkdir('$v_modules_path${os.PathSeparator}cache')
+		os.mkdir('$v_modules_path${os.path_separator}cache')
 	}
 	
 	mut vgen_buf := strings.new_builder(1000)
@@ -829,10 +829,10 @@ fn new_v(args[]string) &V {
 	if 'run' in args {
 		dir = get_param_after(joined_args, 'run', '')
 	}
-	if dir.ends_with(os.PathSeparator) {
-		dir = dir.all_before_last(os.PathSeparator)
+	if dir.ends_with(os.path_separator) {
+		dir = dir.all_before_last(os.path_separator)
 	}
-	if dir.starts_with('.$os.PathSeparator') {
+	if dir.starts_with('.$os.path_separator') {
 		dir = dir.right(2)
 	}
 	if args.len < 2 {
@@ -845,17 +845,17 @@ fn new_v(args[]string) &V {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o
 		mod_path := if dir.contains('vlib') {
-			dir.all_after('vlib'+os.PathSeparator)
+			dir.all_after('vlib'+os.path_separator)
 		}
 		else if dir.starts_with('.\\') || dir.starts_with('./') {
 			dir.right(2)
 		}
-		else if dir.starts_with(os.PathSeparator) {
-			dir.all_after(os.PathSeparator)
+		else if dir.starts_with(os.path_separator) {
+			dir.all_after(os.path_separator)
 		} else {
 			dir
 		}
-		mod = mod_path.replace(os.PathSeparator, '.')
+		mod = mod_path.replace(os.path_separator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
 		out_name = mod
@@ -881,7 +881,7 @@ fn new_v(args[]string) &V {
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
 	if dir == '.' && out_name == 'a.out' {
-		base := os.getwd().all_after(os.PathSeparator)
+		base := os.getwd().all_after(os.path_separator)
 		out_name = base.trim_space()
 	}
 	mut _os := OS.mac
@@ -976,7 +976,7 @@ fn new_v(args[]string) &V {
 		println('C compiler=$pref.ccompiler')
 	}
 	if pref.is_so {
-		out_name_c = out_name.all_after(os.PathSeparator) + '_shared_lib.c'
+		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
 	}
 	return &V{
 		os: _os

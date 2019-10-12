@@ -191,7 +191,7 @@ fn find_msvc() ?MsvcResult {
 		}
 
 		return MsvcResult {
-			full_cl_exe_path: os.realpath( vs.exe_path + os.PathSeparator + 'cl.exe' )
+			full_cl_exe_path: os.realpath( vs.exe_path + os.path_separator + 'cl.exe' )
 			exe_path: vs.exe_path,
 
 			um_lib_path: wk.um_lib_path,
@@ -388,7 +388,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	mut cfiles := ''
 	for file in files {
 		if file.ends_with('.c') {
-			cfiles += '"' + os.realpath( parent + os.PathSeparator + file )  + '" '
+			cfiles += '"' + os.realpath( parent + os.path_separator + file )  + '" '
 		}
 	}
 
@@ -441,7 +441,7 @@ fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 		}
 		else if flag.name == '-L' {
 			lib_paths << flag.value
-			lib_paths << flag.value + os.PathSeparator + 'msvc'
+			lib_paths << flag.value + os.path_separator + 'msvc'
 			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
 			// where gcc will NOT find them, but cl will do...
 			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.

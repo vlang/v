@@ -122,7 +122,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	mut p := v.new_parser(new_scanner_file(path), path)
 	p = { p|
 		file_path: path,
-		file_name: path.all_after(os.PathSeparator),
+		file_name: path.all_after(os.path_separator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
 		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path)),
@@ -518,8 +518,8 @@ fn (p mut Parser) const_decl() {
 			continue
 		}
 		mut name := p.check_name()		// `Age = 20`
-		if p.mod != 'os' && contains_capital(name) {
-			//p.warn('const names cannot contain uppercase letters, use snake_case instead')
+		if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
+			p.warn('const names cannot contain uppercase letters, use snake_case instead')
 		}
 		name = p.prepend_mod(name)
 		mut typ := ''

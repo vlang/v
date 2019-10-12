@@ -56,7 +56,7 @@ fn test_v() {
 		}
 		if os.dir_exists(targ) {
 
-			ts.files << os.walk_ext( targ.trim_right(os.PathSeparator), '_test.v')
+			ts.files << os.walk_ext( targ.trim_right(os.path_separator), '_test.v')
 			continue
 		}
 		println('Unrecognized test file $targ .')
