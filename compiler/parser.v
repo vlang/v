@@ -103,7 +103,7 @@ fn (v mut V) new_parser_from_string(text string, id string) Parser {
 fn (v mut V) reset_cgen_file_line_parameters(){
 	v.cgen.line = 0
 	v.cgen.file = ''
-	v.cgen.line_directives = v.pref.is_debuggable
+	v.cgen.line_directives = v.pref.is_vlines
 }
 
 fn (v mut V) new_parser_from_file(path string) Parser {

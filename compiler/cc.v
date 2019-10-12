@@ -77,29 +77,30 @@ fn (v mut V) cc() {
 		println('Building ${v.out_name}...')
 	}
 
-	mut debug_options := ''
+	debug_mode := v.pref.is_debug
+	mut debug_options := '-g'
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
-		if v.pref.is_debuggable {
+		if debug_mode {
 			debug_options = '-g -O0'
 		}
 		optimization_options = '-O3 -flto'
 	}
 	if v.pref.ccompiler.contains('gcc') {
-		if v.pref.is_debug {
+		if debug_mode {
 			debug_options = '-g3'
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
-
+	
+	if debug_mode {
+		a << debug_options
+	}
 	if v.pref.is_prod {
 		a << optimization_options
 	}
-	else {
-		a << debug_options
-	}
-
-	if v.pref.is_debuggable && os.user_os() != 'windows'{
+	
+	if debug_mode && os.user_os() != 'windows'{
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 
@@ -115,7 +116,7 @@ fn (v mut V) cc() {
 	if v.pref.build_mode == .build_module {
 		a << '-c'
 	}
-	else if v.pref.is_debug {
+	else if v.pref.is_cache {
 		vexe := os.executable()
 		builtin_o_path := '$v_modules_path${os.PathSeparator}cache${os.PathSeparator}vlib${os.PathSeparator}builtin.o'
 		if os.file_exists(builtin_o_path) {
@@ -225,7 +226,7 @@ fn (v mut V) cc() {
 			partial_output := res.output.limit(200).trim_right('\r\n')
 			print(partial_output)
 			if res.output.len > partial_output.len {
-				println('...\n(Use `v -debug` to print the entire error message)\n')
+				println('...\n(Use `v -g` to print the entire error message)\n')
 			}else{
 				println('')
 			}
@@ -261,7 +262,7 @@ fn (v mut V) cc() {
 		println('linux cross compilation done. resulting binary: "$v.out_name"')
 	}
 	*/
-	if !v.pref.is_debug && v.out_name_c != 'v.c' {
+	if !v.pref.is_keep_c && v.out_name_c != 'v.c' {
 		os.rm(v.out_name_c)
 	}
 	if v.pref.compress {
