@@ -4,10 +4,3 @@
 
 module runtime
 
-#include <sys/sysinfo.h>
-
-fn C.get_nprocs() int
-
-pub fn nr_cpus() int {
-	return C.get_nprocs()
-}
