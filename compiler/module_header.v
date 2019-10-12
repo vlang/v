@@ -106,8 +106,12 @@ fn v_type_str(typ_ string) string {
 
 fn (v &V) generate_vh() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
-	// mod_path := v.mod.replace('.', os.PathSeparator)
-	dir := '$v_modules_path${os.PathSeparator}$v.dir'
+	mod_path := v.mod.replace('.', os.PathSeparator)
+	dir := if v.dir.starts_with('vlib') {
+		'$v_modules_path${os.PathSeparator}$v.dir'
+	} else {
+		'$v_modules_path${os.PathSeparator}$mod_path'
+	}
 	path := dir + '.vh'
 	pdir := dir.all_before_last(os.PathSeparator)
 	if !os.dir_exists(pdir) {
