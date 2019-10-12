@@ -78,6 +78,7 @@ enum TypeCategory {
 	c_typedef
 	objc_interface // 8 Objective C @interface
 	array
+	alias // `type myint int`
 }
 
 struct Var {
