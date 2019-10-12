@@ -109,7 +109,7 @@ mut:
 	building_v    bool
 	autofree      bool
 	compress      bool
-	skip_builtin  bool   // Skips re-compilation of the builtin module
+	//skip_builtin  bool   // Skips re-compilation of the builtin module
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.

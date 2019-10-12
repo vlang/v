@@ -229,7 +229,7 @@ fn (v &V) generate_vh() {
 	file.writeln('\n// Methods //////////////////')
 	for _, typ in v.table.typesmap {
 		if typ.mod != v.mod && !(v.mod == 'builtin' && typ.mod == '') {
-			println('skipping method typ $typ.name mod=$typ.mod')
+			//println('skipping method typ $typ.name mod=$typ.mod')
 			continue
 		}	
 		for method in typ.methods {
