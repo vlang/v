@@ -466,14 +466,16 @@ fn (v mut V) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
 
-	///// After this point, the v files are compiled.
-	///// The rest is auto generated code, which will not have
-	///// different .v source file/line numbers.
-	lines_so_far := cgen.lines.join('\n').count('\n') + 5
-	cgen.genln('')
-	cgen.genln('////////////////// Reset the file/line numbers //////////')
-	cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
-	cgen.genln('')
+	if v.pref.is_vlines {
+		///// After this point, the v files are compiled.
+		///// The rest is auto generated code, which will not have
+		///// different .v source file/line numbers.
+		lines_so_far := cgen.lines.join('\n').count('\n') + 5
+		cgen.genln('')
+		cgen.genln('////////////////// Reset the file/line numbers //////////')
+		cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
+		cgen.genln('')
+	}
 
 	// Make sure the main function exists
 	// Obviously we don't need it in libraries
