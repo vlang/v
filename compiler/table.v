@@ -971,7 +971,7 @@ fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
-	name_orig := name.replace('__', '.').replace('_dot_', '.')
+	name_orig := mod_gen_name_rev(name.replace('__', '.'))
 	mut output := ''
 	// check functions
 	mut n := p.table.find_misspelled_fn(name, fit, min_match)
