@@ -29,6 +29,9 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 		// p.assigned_var = ''
 		p.cgen.set_placeholder(pos, '$typ $tmp = ')
 		p.genln(';')
+		if !typ.starts_with('Option_') {
+			p.error('`or` block cannot be applied to non-optional type')
+		}
 		typ = typ.replace('Option_', '')
 		p.next()
 		p.check(.lcbr)
@@ -61,7 +64,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
 		} else if initializer.len == 0 {
 			p.cgen.resetln(' = { 0 }')
-		}	
+		}
 	}
 
 	if is_static {
@@ -196,7 +199,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 		// p.cgen.insert_before('if (!${tmp}.str) $tmp = tos("", 0);')
 		p.cgen.insert_before('if (!$tmp_ok) $tmp = tos((byte *)"", 0);')
 	}
-	
+
 }
 
 fn (table mut Table) fn_gen_name(f &Fn) string {
@@ -296,7 +299,7 @@ fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
 	else {
 		p.gen(',')
 	}
-}	
+}
 
 fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('for (int $i = 0; $i < ${tmp}.len; $i++) {')
@@ -345,11 +348,11 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 		p.gen(' })')
 	}
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
-	if !p.first_pass() {		
+	if !p.first_pass() {
 		p.cgen.set_placeholder(new_arr_ph,
 			'$new_arr($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
 	}
-}	
+}
 
 fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_pos int, is_cao bool) {
 	// `a[0] = 7`
