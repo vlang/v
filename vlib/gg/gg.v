@@ -25,8 +25,8 @@ pub fn vec2(x, y int) Vec2 {
 	return res
 }
 
-pub fn init() {
-	glfw.init()
+pub fn init_gg() {
+	glfw.init_glfw()
 	println(gl.TEXT_VERT)
 	gl.init_glad()
 }
@@ -78,7 +78,7 @@ pub fn new_context(cfg Cfg) &GG {
 			always_on_top: cfg.always_on_top
 		})
 		window.make_context_current()
-		init()
+		init_gg()
 	}
 	shader := gl.new_shader('simple')
 	shader.use()
