@@ -39,19 +39,28 @@ Options/commands:
   -os <OS>          Produce an executable for the selected OS.
                     OS can be linux, mac, windows, msvc.
                     Use msvc if you want to use the MSVC compiler on Windows.
+  -shared           Build a shared library.
+  -stats            Show additional stats when compiling/running tests. Try `v -stats test .`
+
+  -cache            Turn on usage of the precompiled module cache. 
+                    It very significantly speeds up secondary compilations.
+
+  -obf              Obfuscate the resulting binary.
+  -                 Shorthand for `v runrepl`.
+
+Options for debugging/troubleshooting v programs:
+  -g                Generate debugging information in the backtraces. Add *V* line numbers to the generated executable.
+  -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
+  -keep_c           Do NOT remove the generated .tmp.c files after compilation. 
+                    It is useful when using debuggers like gdb/visual studio, when given after -g / -cg .
+  -show_c_cmd       Print the full C compilation command and how much time it took.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
                     The C backend compiler should be able to handle C99 compatible C code.
                     Common C compilers are gcc, clang, tcc, icc, cl...
   -cflags <flags>   Pass additional C flags to the C backend compiler.
                     Example: -cflags `sdl2-config --cflags`
-  -debug            Keep the generated C file for debugging in program.tmp.c even after compilation.
-  -shared           Build a shared library.
-  -stats            Show additional stats when compiling/running tests. Try `v -stats test .`
-  -g                Show v line numbers in backtraces. Implies -debug.
-  -obf              Obfuscate the resulting binary.
-  -show_c_cmd       Print the full C compilation command and how much time it took.
-  -                 Shorthand for `v runrepl`.
 
+Commands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.
   run <file.v>      Build and execute the V program in file.v. You can add arguments for the V program *after* the file name.
   build <module>    Compile a module into an object file.

@@ -91,8 +91,14 @@ mut:
 	is_run        bool
 	show_c_cmd    bool   // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize      bool   // use Clang's new "-fsanitize" option
-	is_debuggable bool
-	is_debug      bool   // keep compiled C files
+	
+	is_debug      bool   // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_vlines     bool   // turned on by -g, false by default (it slows down .tmp.c generation slightly).
+	is_keep_c     bool   // -keep_c , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
+	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
+	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
+	is_cache      bool   // turns on v usage of the module cache to speed up compilation.
+	
 	is_stats      bool   // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free  bool   // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
@@ -460,14 +466,16 @@ fn (v mut V) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
 
-	///// After this point, the v files are compiled.
-	///// The rest is auto generated code, which will not have
-	///// different .v source file/line numbers.
-	lines_so_far := cgen.lines.join('\n').count('\n') + 5
-	cgen.genln('')
-	cgen.genln('////////////////// Reset the file/line numbers //////////')
-	cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
-	cgen.genln('')
+	if v.pref.is_vlines {
+		///// After this point, the v files are compiled.
+		///// The rest is auto generated code, which will not have
+		///// different .v source file/line numbers.
+		lines_so_far := cgen.lines.join('\n').count('\n') + 5
+		cgen.genln('')
+		cgen.genln('////////////////// Reset the file/line numbers //////////')
+		cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
+		cgen.genln('')
+	}
 
 	// Make sure the main function exists
 	// Obviously we don't need it in libraries
@@ -612,7 +620,7 @@ fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	// Builtin cache exists? Use it.
 	builtin_vh := '$v_modules_path${os.PathSeparator}vlib${os.PathSeparator}builtin.vh'
-	if v.pref.is_debug && os.file_exists(builtin_vh) {
+	if v.pref.is_cache && os.file_exists(builtin_vh) {
 		v.cached_mods << 'builtin'
 		builtin_files = [builtin_vh]
 	}
@@ -656,7 +664,7 @@ fn (v mut V) add_v_files_to_compile() {
 		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', os.PathSeparator)
 			vh_path := '$v_modules_path${os.PathSeparator}vlib${os.PathSeparator}${mod_path}.vh'
-			if v.pref.is_debug && os.file_exists(vh_path) {
+			if v.pref.is_cache && os.file_exists(vh_path) {
 				println('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
 				v.files << vh_path
@@ -941,8 +949,12 @@ fn new_v(args[]string) &V {
 		is_so: '-shared' in args
 		is_prod: '-prod' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
-		is_debuggable: '-g' in args
-		is_debug: '-debug' in args || '-g' in args
+
+		is_debug:      '-g' in args || '-cg' in args
+		is_vlines:     '-g' in args && !('-cg' in args)
+		is_keep_c:     '-keep_c' in args
+		is_cache:      '-cache' in args
+				
 		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args

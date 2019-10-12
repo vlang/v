@@ -82,13 +82,8 @@ fn (v &V) generate_hot_reload_code() {
 			msvc = '-os msvc'
 		}
 		
-		mut debug := ''
-		
-		if v.pref.is_debug {
-			debug = '-debug'
-		}
-		
-		cmd_compile_shared_library := '$vexe $msvc $debug -o $file_base -shared $file'
+		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }		
+		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -shared $file'
 		if v.pref.show_c_cmd {
 			println(cmd_compile_shared_library)
 		}

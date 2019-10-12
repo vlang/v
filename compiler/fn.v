@@ -807,7 +807,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 		p.check(.rpar)
 		return f
 	}
-	// add debug information to panic when -debug arg is passed
+	// add debug information to panic when -g arg is passed
 	if p.v.pref.is_debug && f.name == 'panic' && !p.is_js {
 		mod_name := p.mod.replace('_dot_', '.')
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
