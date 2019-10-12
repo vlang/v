@@ -529,18 +529,15 @@ fn (v mut V) gen_main_end(return_statement string){
 }
 
 fn final_target_out_name(out_name string) string {
-	mut cmd := if out_name.starts_with('/') {
+	$if windows {
+		return out_name.replace('/', '\\') + '.exe'
+	}
+	return if out_name.starts_with('/') {
 		out_name
 	}
 	else {
 		'./' + out_name
 	}
-	$if windows {
-		cmd = out_name
-		cmd = cmd.replace('/', '\\')
-		cmd += '.exe'
-	}
-	return cmd
 }
 
 fn (v V) run_compiled_executable_and_exit() {
@@ -895,18 +892,7 @@ fn new_v(args[]string) &V {
 		}
 	}
 	else {
-		switch target_os {
-		case 'linux': _os = .linux
-		case 'windows': _os = .windows
-		case 'mac': _os = .mac
-		case 'freebsd': _os = .freebsd
-		case 'openbsd': _os = .openbsd
-		case 'netbsd': _os = .netbsd
-		case 'dragonfly': _os = .dragonfly
-		case 'msvc': _os = .msvc
-		case 'js': _os = .js
-		case 'solaris': _os = .solaris
-		}
+		_os = os_from_string(target_os)
 	}
 	// Location of all vlib files
 	vroot := os.dir(os.executable())
@@ -1096,4 +1082,22 @@ fn vhash() string {
 
 fn cescaped_path(s string) string {
   return s.replace('\\','\\\\')
+}
+
+fn os_from_string(os string) OS {
+	switch os {
+		case 'linux': return .linux
+		case 'windows': return .windows
+		case 'mac': return .mac
+		case 'freebsd': return .freebsd
+		case 'openbsd': return .openbsd
+		case 'netbsd': return .netbsd
+		case 'dragonfly': return .dragonfly
+		case 'msvc': return .msvc
+		case 'js': return .js
+		case 'solaris': return .solaris
+		case 'android': return .android
+		}
+	println('bad os $os') // todo panic?
+	return .linux
 }

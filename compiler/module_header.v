@@ -172,6 +172,11 @@ fn (v &V) generate_vh() {
 		if typ.name.contains('__') {
 			name = typ.name.all_after('__')
 		}	
+		// type alias
+		if typ.parent != '' && typ.cat == .alias {
+			parent := v_type_str(typ.parent)
+			file.writeln('type $typ.name $parent')
+		}
 		if typ.cat in [TypeCategory.struct_, .c_struct] {
 			c := if typ.is_c { 'C.' } else { '' }
 			file.writeln('struct ${c}$name {')

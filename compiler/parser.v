@@ -591,7 +591,12 @@ fn (p mut Parser) type_decl() {
 		''
 	}
 	p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
-	p.register_type_with_parent(name, parent.name)
+	p.table.register_type2(Type{
+		name: name
+		parent: parent.name
+		mod: p.mod
+		cat: TypeCategory.alias
+	})
 }
 
 // current token is `(`
