@@ -722,6 +722,7 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 
 fn (s mut Scanner) debug_tokens() {
 	s.pos = 0
+	s.started = false
 	s.debug = true
 
 	fname := s.file_path.all_after(os.PathSeparator)
