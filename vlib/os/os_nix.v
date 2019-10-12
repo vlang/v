@@ -5,6 +5,7 @@ module os
 
 const (
 	PathSeparator = '/'
+	path_separator = '/'
 )
 
 fn init_os_args(argc int, argv &byteptr) []string {
