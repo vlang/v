@@ -2814,9 +2814,7 @@ fn (p mut Parser) char_expr() {
 fn format_str(_str string) string {
 	// TODO don't call replace 3 times for every string, do this in scanner.v
 	mut str := _str.replace('"', '\\"')
-	$if windows {
-		str = str.replace('\r\n', '\\n')
-	}
+	str = str.replace('\r\n', '\\n')
 	str = str.replace('\n', '\\n')
 	return str
 }
