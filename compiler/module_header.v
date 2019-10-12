@@ -109,8 +109,9 @@ fn (v &V) generate_vh() {
 	// mod_path := v.mod.replace('.', os.PathSeparator)
 	dir := '$v_modules_path${os.PathSeparator}$v.dir'
 	path := dir + '.vh'
-	if !os.dir_exists(dir) {
-		os.mkdir_all(dir)
+	pdir := dir.all_before_last(os.PathSeparator)
+	if !os.dir_exists(pdir) {
+		os.mkdir_all(pdir)
 		// os.mkdir(os.realpath(dir))
 	}
 	file := os.create(path) or { panic(err) }

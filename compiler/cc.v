@@ -65,12 +65,13 @@ fn (v mut V) cc() {
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
 		mut out_dir := if v.dir.starts_with('vlib') {
-			'$v_modules_path/cache/$v.dir'	
+			'$v_modules_path${os.PathSeparator}cache${os.PathSeparator}$v.dir'	
 		} else {
-			'$v_modules_path/$v.dir'
+			'$v_modules_path${os.PathSeparator}$v.dir'
 		}
-		if !os.dir_exists(out_dir) {
-			os.mkdir_all(out_dir)
+		pdir := out_dir.all_before_last(os.PathSeparator)
+		if !os.dir_exists(pdir) {
+			os.mkdir_all(pdir)
 		}
 		v.out_name = '${out_dir}.o' //v.out_name
 		println('Building ${v.out_name}...')
@@ -116,25 +117,25 @@ fn (v mut V) cc() {
 	}
 	else if v.pref.is_debug {
 		vexe := os.executable()
-		builtin_o_path := '$v_modules_path/cache/vlib/builtin.o'
+		builtin_o_path := '$v_modules_path${os.PathSeparator}cache${os.PathSeparator}vlib${os.PathSeparator}builtin.o'
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
 			println('$builtin_o_path not found... building module builtin')
-			os.system('$vexe build module vlib/builtin')
+			os.system('$vexe build module vlib${os.PathSeparator}builtin')
 		}
 		for imp in v.table.imports {
 			if imp.contains('vweb') { continue } // not working
 			if imp == 'webview' { continue }
 			
-			imp_path := imp.replace('.', '/')
-			path := 	'$v_modules_path/cache/vlib/${imp_path}.o'
+			imp_path := imp.replace('.', os.PathSeparator)
+			path := 	'$v_modules_path${os.PathSeparator}cache${os.PathSeparator}vlib${os.PathSeparator}${imp_path}.o'
 			println('adding ${imp_path}.o')
 			if os.file_exists(path) {
 				libs += ' ' + path
 			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib/$imp_path')
+				os.system('$vexe build module vlib${os.PathSeparator}$imp_path')
 			}	
 		}
 	}
