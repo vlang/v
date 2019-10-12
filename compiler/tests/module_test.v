@@ -10,9 +10,9 @@ import (
 
 fn test_import() {
 	assert os.SUCCESS == os.SUCCESS &&
-		t.MonthDays[0] == t.MonthDays[0] &&
+		t.month_days[0] == t.month_days[0] &&
 		s2.Size == s2.Size &&
-		math.Pi == math.Pi &&
+		math.pi == math.pi &&
 		l.INFO == l.INFO &&
 		s5.Size == s5.Size
 }
