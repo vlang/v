@@ -861,7 +861,9 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 			p.next()
 		}
 		// !!!! NAME free
-		p.table.register_const(name, enum_name, p.mod)
+		if p.first_pass() {
+			p.table.register_const(name, enum_name, p.mod)
+		}
 		val++
 	}
 	p.table.register_type2(Type {
