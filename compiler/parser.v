@@ -116,7 +116,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 			path_platform = path_ending
 			path_pcguard = platform_postfix_to_ifdefguard( path_ending )
 			break
-		}		
+		}
 	}
 
 	mut p := v.new_parser(new_scanner_file(path), path)
@@ -214,11 +214,11 @@ fn (p & Parser) peek() TokenKind {
 // TODO remove dups
 [inline] fn (p &Parser) prev_token() Token {
 	return p.tokens[p.token_idx - 2]
-}	
+}
 
 [inline] fn (p &Parser) cur_tok() Token {
 	return p.tokens[p.token_idx - 1]
-}	
+}
 [inline] fn (p &Parser) peek_token() Token {
 	if p.token_idx >= p.tokens.len - 2 {
 		return Token{ tok:TokenKind.eof }
@@ -235,7 +235,7 @@ fn (p &Parser) log(s string) {
 */
 }
 
-fn (p mut Parser) parse(pass Pass) {	
+fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
 	p.cgen.file = cescaped_path(os.realpath(p.file_path))
 	/////////////////////////////////////
@@ -267,13 +267,13 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 	}
 	//
-	
+
 	p.cgen.nogen = false
 	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
 		//println('skipping $p.mod (v.mod = $p.v.mod)')
 		p.cgen.nogen = true
 		//defer { p.cgen.nogen = false }
-	}	
+	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
@@ -489,7 +489,7 @@ fn (p mut Parser) import_statement() {
 	//p.log('adding import $mod')
 	p.table.imports << mod
 	p.table.register_module(mod)
-	
+
 	p.fgenln(' ' + mod)
 }
 
@@ -533,7 +533,7 @@ fn (p mut Parser) const_decl() {
 		} else {
 			p.check_space(.assign)
 			typ = p.expression()
-		}	
+		}
 		if p.first_pass()  && p.table.known_const(name) {
 			p.error('redefinition of `$name`')
 		}
@@ -646,7 +646,7 @@ fn (p mut Parser) struct_decl() {
 	mut cat := key_to_type_cat(p.tok)
 	if is_objc {
 		cat = .objc_interface
-	}	
+	}
 	p.fgen(p.tok.str() + ' ')
 	// Get type name
 	p.next()
@@ -656,7 +656,7 @@ fn (p mut Parser) struct_decl() {
 	}
 	if !p.builtin_mod && !name[0].is_capital() {
 		p.error('struct names must be capitalized: use `struct ${name.capitalize()}`')
-	}	
+	}
 	if is_interface && !name.ends_with('er') {
 		p.error('interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)')
 	}
@@ -683,7 +683,7 @@ fn (p mut Parser) struct_decl() {
 	if is_objc {
 		// Forward declaration of an Objective-C interface with `@class` :)
 		p.gen_typedef('@class $name;')
-	}	
+	}
 	else if !is_c {
 		kind := if is_union {'union'} else {'struct'}
 		p.gen_typedef('typedef $kind $name $name;')
@@ -735,7 +735,7 @@ fn (p mut Parser) struct_decl() {
 		p.table.register_type2(typ)
 		//println('registering 1 nrfields=$typ.fields.len')
 	}
-	
+
 	mut did_gen_something := false
 	for p.tok != .rcbr {
 		if p.tok == .key_pub {
@@ -1231,7 +1231,7 @@ fn (p mut Parser) close_scope() {
 				//continue
 			}	 else {
 				continue
-			}	
+			}
 			if p.returns {
 				// Don't free a variable that's being returned
 				if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
@@ -1418,7 +1418,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	expr_type := p.bool_expression()
 	//if p.expected_type.starts_with('array_') {
 		//p.warn('expecting array got $expr_type')
-	//}	
+	//}
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') &&
 		expr_type == p.assigned_type.right('Option_'.len) {
@@ -1467,7 +1467,7 @@ fn (p mut Parser) var_decl() {
 	mut var_token_idxs := [p.cur_tok_index()]
 	mut var_mut := [is_mut] // add first var mut
 	mut var_names := [p.check_name()] // add first variable
-	
+
 	p.scanner.validate_var_name(var_names[0])
 	mut new_vars := 0
 	if var_names[0] != '_' && !p.known_var(var_names[0]) {
@@ -1724,7 +1724,7 @@ fn (p mut Parser) name_expr() string {
 	if name == 'r' && p.peek() == .str {
 		p.string_expr()
 		return 'string'
-	}	
+	}
 	p.fgen(name)
 	// known_type := p.table.known_type(name)
 	orig_name := name
@@ -1772,7 +1772,7 @@ fn (p mut Parser) name_expr() string {
 		p.assigned_type == 'string' {
 		p.warn('setting moved ' + v.typ)
 		p.mark_arg_moved(v)
-	}	
+	}
 	mut typ := p.var_expr(v)
 	// *var
 	if deref {
@@ -1793,7 +1793,7 @@ fn (p mut Parser) name_expr() string {
 		// v.is_returned = true // TODO modifying a local variable
 		// that's not used afterwards, this should be a compilation
 		// error
-	}	
+	}
 	return typ
 	} // TODO REMOVE for{}
 	// Module?
@@ -1820,7 +1820,7 @@ fn (p mut Parser) name_expr() string {
 	{
 		name = p.prepend_mod(name)
 	}
-	
+
 	// Variable, checked before modules, so module shadowing is allowed.
 	// (`gg = gg.newcontext(); gg.draw_rect(...)`)
 	for { // TODO remove
@@ -1838,7 +1838,7 @@ fn (p mut Parser) name_expr() string {
 		p.assigned_type == 'string' {
 		p.warn('setting moved ' + v.typ)
 		p.mark_arg_moved(v)
-	}	
+	}
 	mut typ := p.var_expr(v)
 	// *var
 	if deref {
@@ -1859,10 +1859,10 @@ fn (p mut Parser) name_expr() string {
 		// v.is_returned = true // TODO modifying a local variable
 		// that's not used afterwards, this should be a compilation
 		// error
-	}	
+	}
 	return typ
 	} // TODO REMOVE for{}
-	
+
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
@@ -2014,10 +2014,10 @@ fn (p mut Parser) name_expr() string {
 		return typ
 	}
 	//p.log('end of name_expr')
-	
+
 	if f.typ.ends_with('*') {
 		p.is_alloc = true
-	}	
+	}
 	return f.typ
 }
 
@@ -2226,7 +2226,7 @@ struct $f.parent_fn {
 	//}
 	if method.typ.ends_with('*') {
 		p.is_alloc = true
-	}	
+	}
 	return method.typ
 }
 
@@ -2409,7 +2409,7 @@ struct IndexCfg {
 	is_ptr bool
 	is_arr bool
 	is_arr0 bool
-	
+
 }
 
 // in and dot have higher priority than `!`
@@ -2432,7 +2432,7 @@ fn (p mut Parser) indot_expr() string {
 			// avoids an allocation
 			p.in_optimization(typ, ph)
 			return 'bool'
-		}	
+		}
 		p.fgen(' ')
 		p.gen('), ')
 		arr_typ := p.expression()
@@ -2486,7 +2486,7 @@ fn (p mut Parser) expression() string {
 			if p.expr_var.is_arg && p.expr_var.typ.starts_with('array_') {
 				p.error("for now it's not possible to append an element to "+
 					'a mutable array argument `$p.expr_var.name`')
-			}	
+			}
 			if !p.expr_var.is_changed {
 				p.mark_var_changed(p.expr_var)
 			}
@@ -2497,7 +2497,7 @@ fn (p mut Parser) expression() string {
 			if p.pref.autofree && typ == 'array_string' && expr_type == 'string' {
 				p.cgen.set_placeholder(ph_clone, 'string_clone(')
 				p.gen(')')
-			}	
+			}
 			p.gen_array_push(ph, typ, expr_type, tmp, tmp_typ)
 			return 'void'
 		}
@@ -2519,7 +2519,7 @@ fn (p mut Parser) expression() string {
 		tok_op := p.tok
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
-		}	
+		}
 		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
@@ -2640,7 +2640,7 @@ fn (p mut Parser) factor() string {
 	case .key_none:
 		if !p.expected_type.starts_with('Option_') {
 			p.error('need "$p.expected_type" got none')
-		}	
+		}
 		p.gen('opt_none()')
 		p.check(.key_none)
 		return p.expected_type
@@ -2776,7 +2776,7 @@ fn (p mut Parser) assoc() string {
 	var := p.find_var(name) or {
 		p.error('unknown variable `$name`')
 		exit(1)
-	}	
+	}
 	p.check(.pipe)
 	p.gen('($var.typ){')
 	mut fields := []string// track the fields user is setting, the rest will be copied from the old object
@@ -2823,7 +2823,7 @@ fn (p mut Parser) string_expr() {
 	is_raw := p.tok == .name && p.lit == 'r'
 	if is_raw {
 		p.next()
-	}	
+	}
 	str := p.lit
 	// No ${}, just return a simple string
 	if p.peek() != .dollar || is_raw {
@@ -2851,7 +2851,7 @@ fn (p mut Parser) string_expr() {
 	}
 	$if js {
 		p.error('js backend does not support string formatting yet')
-	}	
+	}
 	p.is_alloc = true // $ interpolation means there's allocation
 	mut args := '"'
 	mut format := '"'
@@ -3046,13 +3046,13 @@ fn (p mut Parser) array_init() string {
 			c := p.table.find_const(const_name) or {
 				//p.error('unknown const `$p.lit`')
 				exit(1)
-			}	
+			}
 			if c.typ == 'int' && p.peek() == .rsbr { //&& !p.inside_const {
 				is_integer = true
 				is_const_len = true
 			} else {
 				p.error('bad fixed size array const `$p.lit`')
-			}	
+			}
 		}
 	}
 	lit := p.lit
@@ -3633,7 +3633,7 @@ fn (p mut Parser) switch_statement() {
 			if got_comma {
 				if is_str {
 					p.gen(')')
-				}	
+				}
 				p.gen(' || ')
 			}
 			if typ == 'string' {
@@ -3723,7 +3723,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				} else {
 					p.returns = false
 					p.check(.lcbr)
-					
+
 					p.genln('{ ')
 					p.statements()
 					p.returns = all_cases_return && p.returns
@@ -3747,7 +3747,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				if got_brace {
 					p.check(.rcbr)
 				}
-				
+
 				p.gen(strings.repeat(`)`, i+1))
 
 				return res_typ
@@ -3756,7 +3756,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.genln('else // default:')
 
 				p.check(.lcbr)
-				
+
 				p.genln('{ ')
 				p.statements()
 
@@ -3780,7 +3780,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		} else {
 			p.gen('if (')
 		}
-		
+
 		// Multiple checks separated by comma
 		mut got_comma := false
 
@@ -3814,16 +3814,16 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			got_comma = true
 		}
 		p.gen(') )')
-		
+
 		p.check(.arrow)
-		
-		// statements are dissallowed (if match is expression) so user cant declare variables there and so on	
+
+		// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 		if is_expr {
 			p.gen('? (')
 
 			// braces are required for now
 			p.check(.lcbr)
-			
+
 			if i == 0 {
 				// on the first iteration we set value of res_typ
 				res_typ = p.bool_expression()
@@ -3840,7 +3840,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		else {
 			p.returns = false
 			p.check(.lcbr)
-			
+
 			p.genln('{ ')
 			p.statements()
 
@@ -3891,84 +3891,71 @@ if (!$tmp) {
 fn (p mut Parser) return_st() {
 	p.check(.key_return)
 	p.fgen(' ')
+	deferred_text := p.get_deferred_text()
 	fn_returns := p.cur_fn.typ != 'void'
 	if fn_returns {
 		if p.tok == .rcbr {
 			p.error('`$p.cur_fn.name` needs to return `$p.cur_fn.typ`')
 		}
-		else {
-			ph := p.cgen.add_placeholder()
-			p.inside_return_expr = true
-			is_none := p.tok == .key_none
-			p.expected_type = p.cur_fn.typ
-			mut expr_type := p.bool_expression()
-			mut types := []string
-			mut mr_values := [p.cgen.cur_line.right(ph).trim_space()]
-			types << expr_type
-			for p.tok == .comma {
-				p.check(.comma)
-				p.cgen.start_tmp()
-				types << p.bool_expression()
-				mr_values << p.cgen.end_tmp().trim_space()
-			}
-			mut cur_fn_typ_chk := p.cur_fn.typ
-			// multiple returns
-			if types.len > 1 {
-				expr_type = types.join(',')
-				cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
-				mut ret_fields := ''
-				for ret_val_idx, ret_val in mr_values {
-					if ret_val_idx > 0 {
-						ret_fields += ','
-					}
-					ret_fields += '.var_$ret_val_idx=${ret_val}'
-				}
-				p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
-			}
-			p.inside_return_expr = false
-			// Automatically wrap an object inside an option if the function
-			// returns an option:
-			// `return val` => `return opt_ok(val)`
-			if p.cur_fn.typ.ends_with(expr_type) && !is_none &&
-				p.cur_fn.typ.starts_with('Option_') {
-				tmp := p.get_tmp()
-				ret := p.cgen.cur_line.right(ph)
-				typ := expr_type.replace('Option_', '')
-				p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
-				p.gen('return opt_ok(&$tmp, sizeof($typ))')
-			}
-			else {
-				ret := p.cgen.cur_line.right(ph)
-
-				// @emily33901: Scoped defer
-				// Check all of our defer texts to see if there is one at a higher scope level
-				// The one for our current scope would be the last so any before that need to be
-				// added.
-
-				mut total_text := ''
-
-				for text in p.cur_fn.defer_text {
-					if text != '' {
-						// In reverse order
-						total_text = text + total_text
-					}
-				}
-
-				if total_text == '' || expr_type == 'void*' {
-					if expr_type == '${p.cur_fn.typ}*' {
-						p.cgen.resetln('return *$ret')
-					} else {
-						p.cgen.resetln('return $ret')
-					}
-				}  else {
-					tmp := p.get_tmp()
-					p.cgen.resetln('$expr_type $tmp = $ret;\n')
-					p.genln(total_text)
-					p.genln('return $tmp;')
-				}
-			}
-			p.check_types(expr_type, cur_fn_typ_chk)
+		ph := p.cgen.add_placeholder()
+		p.inside_return_expr = true
+		is_none := p.tok == .key_none
+		p.expected_type = p.cur_fn.typ
+		mut expr_type := p.bool_expression()
+		mut types := []string
+		mut mr_values := [p.cgen.cur_line.right(ph).trim_space()]
+		types << expr_type
+		for p.tok == .comma {
+			p.check(.comma)
+			p.cgen.start_tmp()
+			types << p.bool_expression()
+			mr_values << p.cgen.end_tmp().trim_space()
 		}
+		mut cur_fn_typ_chk := p.cur_fn.typ
+		// multiple returns
+		if types.len > 1 {
+			expr_type = types.join(',')
+			cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
+			mut ret_fields := ''
+			for ret_val_idx, ret_val in mr_values {
+				if ret_val_idx > 0 {
+					ret_fields += ','
+				}
+				ret_fields += '.var_$ret_val_idx=${ret_val}'
+			}
+			p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
+		}
+		p.inside_return_expr = false
+		// Automatically wrap an object inside an option if the function
+		// returns an option:
+		// `return val` => `return opt_ok(val)`
+		if p.cur_fn.typ.ends_with(expr_type) && !is_none &&
+			p.cur_fn.typ.starts_with('Option_') {
+			tmp := p.get_tmp()
+			ret := p.cgen.cur_line.right(ph)
+			typ := expr_type.replace('Option_', '')
+			p.cgen.resetln('$expr_type $tmp = OPTION_CAST($expr_type)($ret);')
+			p.genln(deferred_text)
+			p.gen('return opt_ok(&$tmp, sizeof($typ))')
+		}
+		else {
+			ret := p.cgen.cur_line.right(ph)
+
+			if deferred_text == '' || expr_type == 'void*' {
+				// no defer{} necessary?
+				if expr_type == '${p.cur_fn.typ}*' {
+					p.cgen.resetln('return *$ret')
+				} else {
+					p.cgen.resetln('return $ret')
+				}
+			}  else {
+				tmp := p.get_tmp()
+				p.cgen.resetln('$expr_type $tmp = $ret;\n')
+				p.genln(deferred_text)
+				p.genln('return $tmp;')
+			}
+		}
+		p.check_types(expr_type, cur_fn_typ_chk)
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
@@ -3976,6 +3963,7 @@ fn (p mut Parser) return_st() {
 			p.error_with_token_index('function `$p.cur_fn.name` should not return a value', p.cur_fn.fn_name_token_idx)
 		}
 
+		p.genln(deferred_text)
 		if p.cur_fn.name == 'main' {
 			p.gen('return 0')
 		}
@@ -3984,6 +3972,21 @@ fn (p mut Parser) return_st() {
 		}
 	}
 	p.returns = true
+}
+
+fn (p Parser) get_deferred_text() string {
+	// @emily33901: Scoped defer
+	// Check all of our defer texts to see if there is one at a higher scope level
+	// The one for our current scope would be the last so any before that need to be
+	// added.
+	mut deferred_text := ''
+	for text in p.cur_fn.defer_text {
+		if text != '' {
+			// In reverse order
+			deferred_text = text + deferred_text
+		}
+	}
+	return deferred_text
 }
 
 fn prepend_mod(mod, name string) string {
@@ -4046,7 +4049,7 @@ fn (p mut Parser) js_decode() string {
 	p.check(.name)// json
 	p.check(.dot)
 	op := p.check_name()
-	op_token_idx := p.cur_tok_index()	
+	op_token_idx := p.cur_tok_index()
 	if op == 'decode' {
 		// User tmp2; tmp2.foo = 0; tmp2.bar = 0;// I forgot to zero vals before => huge bug
 		// Option_User tmp3 =  jsdecode_User(json_parse( s), &tmp2); ;
@@ -4106,7 +4109,7 @@ fn (p mut Parser) attribute() {
 	if p.tok == .colon {
 		p.check(.colon)
 		p.attr = p.attr + ':' + p.check_name()
-	}	
+	}
 	p.check(.rsbr)
 	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
 		p.fn_decl()
