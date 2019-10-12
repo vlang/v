@@ -11,13 +11,13 @@ import (
 
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
+	vexe := os.executable()
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
 		// Translating V code to JS by launching vjs
 		$if !js {
 			if v.out_name.ends_with('.js') {
-				vexe := os.executable()
 				vjs_path := vexe + 'js'
 				dir := os.dir(vexe)
 				if !os.file_exists(vjs_path) {
@@ -53,7 +53,22 @@ fn (v mut V) cc() {
 			return
 		}
 	}
+	// TCC on Linux by default, unless -cc was provided
+	// TODO if -cc = cc, TCC is still used, default compiler should be
+	// used instead.
+	//vdir := os.dir(vexe)
+	$if linux {
+		//tcc_path := '$vdir/thirdparty/tcc/bin/tcc'
+		tcc_path := '/var/tmp/tcc/bin/tcc'
+		if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
+			// TODO tcc bug, needs an empty libtcc1.a fila
+			//os.mkdir('/var/tmp/tcc/lib/tcc/') 
+			//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
+			v.pref.ccompiler = tcc_path
+		}
+	}
 	
+
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
@@ -117,7 +132,6 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_cache {
-		vexe := os.executable()
 		builtin_o_path := '$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}builtin.o'
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
