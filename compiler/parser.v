@@ -278,7 +278,7 @@ fn (p mut Parser) parse(pass Pass) {
 	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
-	
+	// fully qualify the module name, eg base64 to encoding.base64
 	fq_mod := p.table.qualify_module(p.mod, p.file_path)
 	p.import_table.module_name = fq_mod
 	p.table.register_module(fq_mod)
