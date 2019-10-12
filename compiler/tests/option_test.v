@@ -19,7 +19,7 @@ fn err_call(ok bool) ?int {
 fn ret_none() ?int {
 	//return error('wtf') //none
 	return none
-}	
+}
 
 fn test_option_for_base_type_without_variable() {
 	val := err_call(true) or {
@@ -30,15 +30,19 @@ fn test_option_for_base_type_without_variable() {
 	val2 := ret_none() or {
 		println('yep')
 		return
-	}	
-	println('nice')
-	println(val2)
+	}
+	println('$val2 should have been `none`')
+	assert false
+	// This is invalid:
+	//	x := 5 or {
+	//		return
+	//	}
 }
 
 fn test_if_opt() {
 	if val := err_call(false) {
 		assert val == 42
-	}	
+	}
 	assert 1 == 1
 	println('nice')
-}	
+}
