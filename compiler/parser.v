@@ -42,6 +42,7 @@ mut:
 	pass           Pass
 	os             OS
 	mod            string
+	mod_gen_name   string
 	inside_const   bool
 	expr_var       Var
 	has_immutable_field bool
@@ -283,7 +284,8 @@ fn (p mut Parser) parse(pass Pass) {
 	p.import_table.module_name = fq_mod
 	p.table.register_module(fq_mod)
 	// replace "." with "_dot_" in module name for C variable names
-	p.mod = mod_gen_name(fq_mod)
+	p.mod = fq_mod
+	p.mod_gen_name = mod_gen_name(fq_mod)
 
 	if p.pass == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
@@ -851,7 +853,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		field := p.check_name()
 		fields << field
 		p.fgenln('')
-		name := '${p.mod}__${enum_name}_$field'
+		name := '${p.mod_gen_name}__${enum_name}_$field'
 		if p.pass == .main {
 			p.cgen.consts << '#define $name $val'
 		}
@@ -1751,7 +1753,7 @@ fn (p mut Parser) name_expr() string {
 			if !T.has_enum_val(val) {
 				p.error('enum `$T.name` does not have value `$val`')
 			}
-			p.gen(T.mod + '__' + p.expected_type + '_' + val)
+			p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
 		}
 		return p.expected_type
 	}
@@ -1893,7 +1895,7 @@ fn (p mut Parser) name_expr() string {
 			p.check(.dot)
 			val := p.lit
 			// println('enum val $val')
-			p.gen(enum_type.mod + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
+			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
 			return enum_type.name
 		}
@@ -3079,7 +3081,7 @@ fn (p mut Parser) array_init() string {
 					//p.gen('{0}')
 					p.is_alloc = false
 					if is_const_len {
-						return '[${p.mod}__$lit]$array_elem_typ'
+						return '[${p.mod_gen_name}__$lit]$array_elem_typ'
 					}
 					return '[$lit]$array_elem_typ'
 				} else {
@@ -3994,7 +3996,7 @@ fn prepend_mod(mod, name string) string {
 }
 
 fn (p &Parser) prepend_mod(name string) string {
-	return prepend_mod(p.mod, name)
+	return prepend_mod(p.mod_gen_name, name)
 }
 
 fn (p mut Parser) go_statement() {
