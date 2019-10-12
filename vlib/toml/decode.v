@@ -103,7 +103,8 @@ fn integer_decode_int(root &TOMLInt) ?int {
             binary  => temp = decode_binary()
             octal   => temp = decode_octal()
         }
-        return temp.int()
+        root.val() = temp.i64()
+        return int(root.val())
     }
     return error('This Key is not integer type.')
 }
@@ -117,7 +118,8 @@ fn integer_decode_i64(root &TOMLInt) ?i64{
             binary  => temp = decode_binary()
             octal   => temp = decode_octal()
         }
-        return temp.i64()
+        root.val() = temp.i64()
+        return root.val()
     }
     return error('This Key is not integer type.')
 }
@@ -131,12 +133,13 @@ fn integer_decode_i16(root &TOMLInt) ?i16{
             binary  => temp = decode_binary()
             octal   => temp = decode_octal()
         }
-        return temp.i16()
+        root.val() = temp.i64()
+        return i16(root.val())
     }
     return error('This Key is not integer type.')
 }
 
-fn integer_decode_i8(root &TOML) ?i8{
+fn integer_decode_i8(root &TOMLInt) ?i8{
     mut temp := root.str_val
     if temp == '' {
         match int_type{
@@ -145,7 +148,24 @@ fn integer_decode_i8(root &TOML) ?i8{
             binary  => temp = decode_binary()
             octal   => temp = decode_octal()
         }
-        return temp.i8()
+        root.val() = temp.i64()
+        return i8(root.val())
     }
     return error('This Key is not integer type.')
+}
+
+fn double_decode_f64(root &TOMLDouble) ?f64{
+    mut temp := root_str_val
+    if temp == ''{
+        return temp.f64()
+    }
+    return error('This Key is not double type.')
+}
+
+fn double_decode_f32(root &TOMLDouble) ?f32{
+    mut temp := root_str_val
+    if temp == ''{
+        return temp.f32()
+    }
+    return error('This Key is not double type.')
 }
