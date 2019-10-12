@@ -106,18 +106,11 @@ fn v_type_str(typ_ string) string {
 
 fn (v &V) generate_vh() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
-	mod_path := v.mod.replace('.', os.PathSeparator)
-	dir := '$v_modules_path${os.PathSeparator}$mod_path'
+	// mod_path := v.mod.replace('.', os.PathSeparator)
+	dir := '$v_modules_path${os.PathSeparator}$v.dir'
 	path := dir + '.vh'
 	if !os.dir_exists(dir) {
-		// create recursive
-		mut mkpath := v_modules_path
-		for subdir in mod_path.split(os.PathSeparator) {
-			mkpath += os.PathSeparator + subdir
-			if !os.dir_exists(mkpath) {
-				os.mkdir(mkpath)
-			}
-		}
+		os.mkdir_all(dir)
 		// os.mkdir(os.realpath(dir))
 	}
 	file := os.create(path) or { panic(err) }

@@ -64,17 +64,13 @@ fn (v mut V) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		out_dir := '$v_modules_path${os.PathSeparator}$v.dir'
+		mut out_dir := if v.dir.starts_with('vlib') {
+			'$v_modules_path/cache/$v.dir'	
+		} else {
+			'$v_modules_path/$v.dir'
+		}
 		if !os.dir_exists(out_dir) {
-			// create recursive
-			mut mkpath := v_modules_path
-			for subdir in v.dir.split(os.PathSeparator) {
-				mkpath += os.PathSeparator + subdir
-				if !os.dir_exists(mkpath) {
-					os.mkdir(mkpath)
-				}
-			}
-			//os.mkdir(out_dir)
+			os.mkdir_all(out_dir)
 		}
 		v.out_name = '${out_dir}.o' //v.out_name
 		println('Building ${v.out_name}...')
@@ -120,7 +116,7 @@ fn (v mut V) cc() {
 	}
 	else if v.pref.is_debug {
 		vexe := os.executable()
-		builtin_o_path := '$v_modules_path/cache/builtin.o'
+		builtin_o_path := '$v_modules_path/cache/vlib/builtin.o'
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
@@ -131,8 +127,8 @@ fn (v mut V) cc() {
 			if imp.contains('vweb') { continue } // not working
 			if imp == 'webview' { continue }
 			
-			imp_path := imp.replace('.', os.PathSeparator)
-			path := 	'$v_modules_path/cache/${imp_path}.o'
+			imp_path := imp.replace('.', '/')
+			path := 	'$v_modules_path/cache/vlib/${imp_path}.o'
 			println('adding ${imp_path}.o')
 			if os.file_exists(path) {
 				libs += ' ' + path

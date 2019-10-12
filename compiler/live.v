@@ -131,6 +131,14 @@ int load_so(byteptr path) {
 		}
 		else {
 			cgen.genln('
+void pthread_mutex_lock(HANDLE *m) {
+	WaitForSingleObject(*m, INFINITE);
+}
+
+void pthread_mutex_unlock(HANDLE *m) {
+	ReleaseMutex(*m);
+}
+
 void* live_lib=0;
 int load_so(byteptr path) {
 	char cpath[1024];
