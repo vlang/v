@@ -120,8 +120,6 @@ fn (v &V) generate_vh() {
 		}
 		// os.mkdir(os.realpath(dir))
 	}
-	println(path)
-	
 	file := os.create(path) or { panic(err) }
 	// Consts
 	mod_def := if v.mod.contains('.') { v.mod.all_after('.') } else { v.mod }
