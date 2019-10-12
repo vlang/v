@@ -61,10 +61,10 @@ fn (v &V) find_module_path(mod string) ?string {
 	return import_path
 }
 
-fn mod_gen_name(mod string) string {
+[inline] fn mod_gen_name(mod string) string {
 	return mod.replace('.', '_dot_')
 }
 
-fn mod_gen_name_rev(mod string) string {
+[inline] fn mod_gen_name_rev(mod string) string {
 	return mod.replace('_dot_', '.')
 }

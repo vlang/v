@@ -183,7 +183,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod &&
-			p.id != 'vgen' { // allow .str() on builtin arrays
+			p.file_path_id != 'vgen' { // allow .str() on builtin arrays
 			println('T.mod=$T.mod')
 			println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
@@ -814,7 +814,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) &Fn {
 	if p.v.pref.is_debug && f.name == 'panic' && !p.is_js {
 		mod_name := p.mod.replace('_dot_', '.')
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
-		file_path := cescaped_path(p.file_path)
+		file_path := cescaped_path(p.file_path_id)
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
 			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '

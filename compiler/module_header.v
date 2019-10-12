@@ -72,18 +72,31 @@ fn v_type_str(typ_ string) string {
 		typ_
 	}	
 	typ = typ.replace('Option_', '?')
+	// fn parent/alias?
+	if typ.starts_with('fn ') {
+		mut types := []string
+		fi_lpar := typ.index_byte(`(`)
+		li_rpar := typ.last_index_byte(`)`)
+		ret_type := typ.right(li_rpar+1)
+		for t in typ.substr(fi_lpar+1, li_rpar).split(',') {
+			types << v_type_str(t)
+		}
+		return 'fn (' + types.join(', ') + ')$ret_type'
+	}
+	typ = typ.replace('Option_', '?')
+	// multiple return
 	if typ.contains('_V_MulRet') {
-		words := typ.replace('_V_MulRet_', '').split('_V_')
+		words := typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
 		typ = '('
 		for i in 0 .. words.len {
-			typ += words[i]
+			typ += v_type_str(words[i])
 			if i != words.len - 1 {
 				typ += ','
 			}	
 		}	
 		typ += ')'
 		return typ
-	}	
+	}
 	//println('"$typ"')
 	if typ == '*void' {
 		return 'voidptr'
@@ -130,7 +143,7 @@ fn (v &V) generate_vh() {
 			if c.mod != v.mod {
 				continue
 			}	
-			println('$i $c.name')
+			// println('$i $c.name')
 			//if !c.name.contains('__') {
 				//continue
 			//}
@@ -158,7 +171,7 @@ fn (v &V) generate_vh() {
 	for _, typ in v.table.typesmap {
 		//println(typ.name)
 		if typ.mod != v.mod && typ.mod != ''{ // int, string etc mod == ''
-			println('skipping type "$typ.name"')
+			// println('skipping type "$typ.name"')
 			continue
 		}	
 		if typ.name.contains('_V_MulRet') {
@@ -229,7 +242,7 @@ fn (v &V) generate_vh() {
 	file.writeln('\n// Methods //////////////////')
 	for _, typ in v.table.typesmap {
 		if typ.mod != v.mod && !(v.mod == 'builtin' && typ.mod == '') {
-			println('skipping method typ $typ.name mod=$typ.mod')
+			// println('skipping method typ $typ.name mod=$typ.mod')
 			continue
 		}	
 		for method in typ.methods {
