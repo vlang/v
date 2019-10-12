@@ -627,7 +627,7 @@ fn (v mut V) add_v_files_to_compile() {
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
 		// set mod so we dont have to resolve submodule
-		if v.pref.build_mode == .build_module && 
+		if v.pref.build_mode == .build_module &&
 			file.contains(v.mod.replace('.', os.PathSeparator)) {
 			p.mod = v.mod
 		}
@@ -802,6 +802,12 @@ fn (v &V) log(s string) {
 }
 
 fn new_v(args[]string) &V {
+	// Create modules dirs if they are missing
+	if !os.dir_exists(v_modules_path) {
+		os.mkdir(v_modules_path)
+		os.mkdir('$v_modules_path${os.PathSeparator}cache')
+	}
+	
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module main\nimport strings')
 	
