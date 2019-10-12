@@ -174,7 +174,8 @@ fn (v &V) generate_vh() {
 		}	
 		// type alias
 		if typ.parent != '' && typ.cat == .alias {
-		        file.writeln('type $typ.name $typ.parent')
+			parent := v_type_str(typ.parent)
+			file.writeln('type $typ.name $parent')
 		}
 		if typ.cat in [TypeCategory.struct_, .c_struct] {
 			c := if typ.is_c { 'C.' } else { '' }
