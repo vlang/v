@@ -93,11 +93,11 @@ fn (v mut V) cc() {
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
 	
-	if v.pref.is_prod {
-		a << optimization_options
-	}
 	if debug_mode {
 		a << debug_options
+	}
+	if v.pref.is_prod {
+		a << optimization_options
 	}
 	
 	if debug_mode && os.user_os() != 'windows'{
