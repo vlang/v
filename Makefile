@@ -16,6 +16,8 @@ ifdef WIN32
 	./v0.exe -o v.exe compiler
 	rm -f v0.exe
 else
+	git clone --depth 1 --quiet https://github.com/vmisc/tccbin /var/tmp/tcc
+
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
 	@(VC_V=`./v version | cut -f 3 -d " "`; \
 	V_V=`git rev-parse --short HEAD`; \
