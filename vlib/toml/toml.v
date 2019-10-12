@@ -27,8 +27,8 @@ fn C.yyparse()
 
 struct TOML{
 	pub mut:
-		tbl 	[]Table
-		arr		[]Array
+		tbl 	&[]Table
+		arr		&[]Array
 }
 
 
@@ -51,9 +51,9 @@ struct Array{
 	name 			string
 	value_type 		ArrayType
 	mut:
-		val 			[]TOMLVal
-		arr 			[]Array
-		tbl				[]Table
+		val 			&[]TOMLVal
+		arr 			&[]Array
+		tbl				&[]Table
 
 	enum ArrayType{
 		integer str muitl_str float time_stamp
@@ -76,9 +76,9 @@ fn (a Array) array_of_table(s string) ?Table{
 struct Table{
 	name		string
 	mut:
-		key 		[]KeyVal
-		tbl			[]Table
-		arr			[]Array
+		key 		&[]KeyVal
+		tbl			&[]Table
+		arr			&[]Array
 }
 
 fn (t Table) key(s string) ?KeyVal{
@@ -117,11 +117,19 @@ struct TOMLVal{
 		arr			Array
 }
 
-fn (t TOMLInt) int_val() i64 {
+fn (t TOMLInt) val() i64 {
 	return t.val
 }
 
 fn (t TOMLInt) str_val() string{
+	return t.str_val
+}
+
+fn (t TOMLDouble) val() f64{
+	return t.val
+}
+
+fn (t TOMLDouble) str_val() string{
 	return t.str_val
 }
 
