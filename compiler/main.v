@@ -827,7 +827,6 @@ fn new_v(args[]string) &V {
 	if dir.starts_with('.$os.PathSeparator') {
 		dir = dir.right(2)
 	}
-	adir := os.realpath(dir)
 	if args.len < 2 {
 		dir = ''
 	}
@@ -837,13 +836,16 @@ fn new_v(args[]string) &V {
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		// v build module ~/v/os => os.o
-		mod_path := if adir.contains('vlib') {
-			adir.all_after('vlib'+os.PathSeparator)
+		mod_path := if dir.contains('vlib') {
+			dir.all_after('vlib'+os.PathSeparator)
 		}
-		else if adir.contains(os.PathSeparator) {
-			adir.all_after(os.PathSeparator)
+		else if dir.starts_with('.\\') || dir.starts_with('./') {
+			dir.right(2)
+		}
+		else if dir.starts_with(os.PathSeparator) {
+			dir.all_after(os.PathSeparator)
 		} else {
-			adir
+			dir
 		}
 		mod = mod_path.replace(os.PathSeparator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
