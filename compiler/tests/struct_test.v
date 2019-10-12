@@ -107,3 +107,14 @@ fn test_reserved_keywords() {
 	assert rk_holder2.volatile == 11
 	assert rk_holder2.while == 0 //Zero value as not specified.
 }
+
+struct User2 {
+mut:
+	name string
+}	
+
+fn test_mutable_fields() {
+	mut u := User2{}
+	u.name = 'Peter'
+	assert u.name == 'Peter'
+}	
