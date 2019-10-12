@@ -394,7 +394,7 @@ fn (v mut V) generate_init() {
 		v.cgen.nogen = false
 		consts_init_body := v.cgen.consts_init.join_lines()
 		init_fn_name := mod_gen_name(v.mod) + '__init_consts'
-		v.cgen.genln('void ${init_fn_name}() {\n$consts_init_body\n}')
+		v.cgen.genln('void ${init_fn_name}();\nvoid ${init_fn_name}() {\n$consts_init_body\n}')
 		v.cgen.nogen = nogen
 	}
 	if v.pref.build_mode == .default_mode {
