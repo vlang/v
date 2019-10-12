@@ -859,12 +859,11 @@ pub fn print_backtrace() {
 }
 
 pub fn mkdir_all(path string) {
-	mut p := ''
+	mut p := if path.starts_with(os.PathSeparator) { os.PathSeparator } else { '' }
 	for subdir in path.split(os.PathSeparator) {
-		p += os.PathSeparator + subdir
+		p += subdir + os.PathSeparator
 		if !os.dir_exists(p) {
 			os.mkdir(p)
 		}
 	}
-}	
-
+}

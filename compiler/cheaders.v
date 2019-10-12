@@ -94,13 +94,6 @@ CommonCHeaders = '
 #define OPTION_CAST(x)
 #endif
 
-void pthread_mutex_lock(HANDLE *m) {
-	WaitForSingleObject(*m, INFINITE);
-}
-
-void pthread_mutex_unlock(HANDLE *m) {
-	ReleaseMutex(*m);
-}
 #else
 #include <pthread.h>
 #endif
