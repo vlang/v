@@ -6,11 +6,8 @@ module runtime
 
 import os
 
-$if linux {
-	#include <sys/sysinfo.h>
-}
 //$if linux {
-fn C.get_nprocs() int
+fn C.sysconf(name int) i64
 //}
 
 //$if windows {
@@ -19,7 +16,10 @@ fn C.GetCurrentProcessorNumber() u32
 
 pub fn nr_cpus() int {
 	$if linux {
-		return C.get_nprocs()
+		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
+	}
+	$if mac {
+		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
 	}
 	$if windows {
 		mut nr := int(C.GetCurrentProcessorNumber())
