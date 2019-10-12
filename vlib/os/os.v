@@ -485,7 +485,7 @@ pub fn dir(path string) string {
 	if path == '.' {
 		return getwd()
 	}
-	pos := path.last_index(PathSeparator)
+	pos := path.last_index(path_separator)
 	if pos == -1 {
 		return '.'
 	}
@@ -502,7 +502,7 @@ fn path_sans_ext(path string) string {
 
 
 pub fn basedir(path string) string {
-	pos := path.last_index(PathSeparator)
+	pos := path.last_index(path_separator)
 	if pos == -1 {
 		return path
 	}
@@ -510,7 +510,7 @@ pub fn basedir(path string) string {
 }
 
 pub fn filename(path string) string {
-	return path.all_after(PathSeparator)
+	return path.all_after(path_separator)
 }
 
 // get_line returns a one-line string from stdin
@@ -626,7 +626,7 @@ pub fn home_dir() string {
 		}
 		home += homepath
 	}
-	home += PathSeparator
+	home += path_separator
 	return home
 }
 
@@ -795,7 +795,7 @@ pub fn walk_ext(path, ext string) []string {
 		if file.starts_with('.') {
 			continue
 		}
-		p := path + PathSeparator + file
+		p := path + path_separator + file
 		if os.is_dir(p) {
 			res << walk_ext(p, ext)
 		}
@@ -859,9 +859,9 @@ pub fn print_backtrace() {
 }
 
 pub fn mkdir_all(path string) {
-	mut p := if path.starts_with(os.PathSeparator) { os.PathSeparator } else { '' }
-	for subdir in path.split(os.PathSeparator) {
-		p += subdir + os.PathSeparator
+	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
+	for subdir in path.split(os.path_separator) {
+		p += subdir + os.path_separator
 		if !os.dir_exists(p) {
 			os.mkdir(p)
 		}

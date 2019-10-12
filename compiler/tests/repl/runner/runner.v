@@ -11,12 +11,12 @@ pub:
 
 pub fn full_path_to_v() string {
 	vname  := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vexec := os.dir(os.dir(os.dir(os.dir( os.executable() )))) + os.PathSeparator + vname
+	vexec := os.dir(os.dir(os.dir(os.dir( os.executable() )))) + os.path_separator + vname
 	/*
 	args := os.args
 	vreal  := os.realpath('v')
 	myself := os.realpath( os.executable() )
-	wd := os.getwd() + os.PathSeparator
+	wd := os.getwd() + os.path_separator
 	println('args are: $args')
 	println('vreal   : $vreal')
 	println('myself  : $myself')
@@ -76,7 +76,7 @@ $diff
 }
 
 pub fn new_options() RunnerOptions {
-	wd := os.getwd() + os.PathSeparator
+	wd := os.getwd() + os.path_separator
 	vexec := full_path_to_v()
 	mut files := []string
 	if os.args.len > 1 {
