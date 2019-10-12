@@ -518,9 +518,9 @@ fn (p mut Parser) const_decl() {
 			continue
 		}
 		mut name := p.check_name()		// `Age = 20`
-		if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
-			p.warn('const names cannot contain uppercase letters, use snake_case instead')
-		}
+		//if !p.pref.building_v && p.mod != 'os' && contains_capital(name) {
+			//p.warn('const names cannot contain uppercase letters, use snake_case instead')
+		//}
 		name = p.prepend_mod(name)
 		mut typ := ''
 		if p.is_vh {
