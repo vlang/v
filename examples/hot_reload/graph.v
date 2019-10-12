@@ -18,7 +18,7 @@ struct Context {
 
 fn main() {
 	os.clear()
-	glfw.init()
+	glfw.init_glfw()
 	ctx:= &Context{ 
 		gg: gg.new_context(gg.Cfg {
 			width: Size 
