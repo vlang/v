@@ -120,7 +120,7 @@ fn (v mut V) cc() {
 	}
 	else if v.pref.is_debug {
 		vexe := os.executable()
-		builtin_o_path := '$v_modules_path/vlib/builtin.o'
+		builtin_o_path := '$v_modules_path/cache/builtin.o'
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
@@ -132,7 +132,7 @@ fn (v mut V) cc() {
 			if imp == 'webview' { continue }
 			
 			imp_path := imp.replace('.', os.PathSeparator)
-			path := 	'$v_modules_path/vlib/${imp_path}.o'
+			path := 	'$v_modules_path/cache/${imp_path}.o'
 			println('adding ${imp_path}.o')
 			if os.file_exists(path) {
 				libs += ' ' + path

@@ -858,3 +858,13 @@ pub fn print_backtrace() {
 */
 }
 
+pub fn mkdir_all(path string) {
+	mut p := ''
+	for subdir in path.split(os.PathSeparator) {
+		p += os.PathSeparator + subdir
+		if !os.dir_exists(p) {
+			os.mkdir(p)
+		}
+	}
+}	
+
