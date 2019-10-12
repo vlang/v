@@ -34,7 +34,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo rebuild from source (twice, in case of C definitions changes)
+echo Now using V to build V...
 v2.exe -o v3.exe compiler
 v3.exe -o v.exe -prod compiler
 if %ERRORLEVEL% NEQ 0 (
