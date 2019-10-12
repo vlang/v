@@ -899,7 +899,7 @@ fn new_v(args[]string) &V {
 		exit(1)
 	}
 	// No -o provided? foo.v => foo
-	if out_name == 'a.out' && dir.ends_with('.v') {
+	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
 		out_name = dir.left(dir.len - 2)
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
