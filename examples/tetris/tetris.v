@@ -124,7 +124,7 @@ struct Game {
 }
 
 fn main() {
-	glfw.init()
+	glfw.init_glfw()
 	mut game := &Game{
 		gg: gg.new_context(gg.Cfg {
 			width: WinWidth
