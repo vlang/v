@@ -395,21 +395,18 @@ fn (p mut Parser) parse(pass Pass) {
 			if p.pref.is_script && !p.pref.is_test {
 				// cur_fn is empty since there was no fn main declared
 				// we need to set it to save and find variables
-				if p.first_pass() {
-					if p.cur_fn.name == '' {
-						p.set_current_fn( MainFn )
-					}
-					return
-				}
 				if p.cur_fn.name == '' {
 					p.set_current_fn( MainFn )
 					if p.pref.is_repl {
+						if p.first_pass() {
+							return
+						}
 						p.clear_vars()
 					}
 				}
 				mut start := p.cgen.lines.len
 				p.statement(true)
-				if p.cgen.lines[start - 1] != '' && p.cgen.fn_main != '' {
+				if start > 0 && p.cgen.lines[start - 1] != '' && p.cgen.fn_main != '' {
 					start--
 				}
 				p.genln('')
@@ -2174,9 +2171,8 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec ||
 			(field.typ.starts_with('array_') && next == .left_shift)
-		is_vi := p.fileis('vid')
-		if !p.builtin_mod && !p.pref.translated && modifying && !is_vi
-			&& p.has_immutable_field {
+		if !p.builtin_mod && !p.pref.translated && modifying &&
+			p.has_immutable_field {
 			f := p.first_immutable_field
 			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
 					'declare the field with `mut:`
@@ -2185,8 +2181,6 @@ struct $f.parent_fn {
 	$f.name $f.typ
 }
 ', fname_tidx)
-		}
-		if !p.builtin_mod && p.mod != typ.mod {
 		}
 		// Don't allow `arr.data`
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
