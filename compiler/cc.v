@@ -77,29 +77,30 @@ fn (v mut V) cc() {
 		println('Building ${v.out_name}...')
 	}
 
-	mut debug_options := ''
+	debug_mode := v.pref.is_debuggable || v.pref.is_debug  
+	mut debug_options := '-g'
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
-		if v.pref.is_debuggable {
+		if debug_mode {
 			debug_options = '-g -O0'
 		}
 		optimization_options = '-O3 -flto'
 	}
 	if v.pref.ccompiler.contains('gcc') {
-		if v.pref.is_debug {
+		if debug_mode {
 			debug_options = '-g3'
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
-
+	
 	if v.pref.is_prod {
 		a << optimization_options
 	}
-	else {
+	if debug_mode {
 		a << debug_options
 	}
-
-	if v.pref.is_debuggable && os.user_os() != 'windows'{
+	
+	if debug_mode && os.user_os() != 'windows'{
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 
