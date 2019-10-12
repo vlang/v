@@ -131,7 +131,7 @@ fn (v mut V) cc() {
 			
 			imp_path := imp.replace('.', os.PathSeparator)
 			path := 	'$v_modules_path${os.PathSeparator}cache${os.PathSeparator}vlib${os.PathSeparator}${imp_path}.o'
-			println('adding ${imp_path}.o')
+			//println('adding ${imp_path}.o')
 			if os.file_exists(path) {
 				libs += ' ' + path
 			} else {
