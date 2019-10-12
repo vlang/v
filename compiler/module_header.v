@@ -70,8 +70,20 @@ fn v_type_str(typ_ string) string {
 		'*' + typ_.left(typ_.len - 1)
 	} else {
 		typ_
-	}	
+	}
+	// fn type alias ?
+	if typ.starts_with('fn ') {
+		mut types := []string
+		fi_lpar := typ.index_byte(`(`)
+		li_rpar := typ.last_index_byte(`)`)
+		ret_type := typ.right(li_rpar+1)
+		for t in typ.substr(fi_lpar+1, li_rpar).split(',') {
+			types << v_type_str(t)
+		}
+		return 'fn (' + types.join(', ') + ')$ret_type'
+	}
 	typ = typ.replace('Option_', '?')
+	// multiple return
 	if typ.contains('_V_MulRet') {
 		words := typ.replace('_V_MulRet_', '').split('_V_')
 		typ = '('
