@@ -350,10 +350,6 @@ fn (v mut V) compile() {
 	
 	// All definitions
 	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
-	if v.pref.build_mode == .build_module {
-		init_fn_name := v.mod.replace('.', '__') + '__init_consts'
-		def.writeln('void $init_fn_name();')
-	}
 	$if !js {
 		def.writeln(cgen.includes.join_lines())
 		def.writeln(cgen.typedefs.join_lines())
@@ -401,6 +397,7 @@ fn (v mut V) generate_init() {
 		mut call_mod_init := ''
 		mut call_mod_init_consts := ''
 		if 'builtin' in v.cached_mods {
+			v.cgen.genln('void builtin__init_consts();')
 			call_mod_init_consts += 'builtin__init_consts();\n'
 		}
 		for mod in v.table.imports {
@@ -409,6 +406,7 @@ fn (v mut V) generate_init() {
 				call_mod_init += '${init_fn_name}();\n'
 			}
 			if mod in v.cached_mods {
+				v.cgen.genln('void ${init_fn_name}_consts();')
 				call_mod_init_consts += '${init_fn_name}_consts();\n'
 			}
 		}
