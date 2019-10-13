@@ -395,21 +395,18 @@ fn (p mut Parser) parse(pass Pass) {
 			if p.pref.is_script && !p.pref.is_test {
 				// cur_fn is empty since there was no fn main declared
 				// we need to set it to save and find variables
-				if p.first_pass() {
-					if p.cur_fn.name == '' {
-						p.set_current_fn( MainFn )
-					}
-					return
-				}
 				if p.cur_fn.name == '' {
 					p.set_current_fn( MainFn )
 					if p.pref.is_repl {
+						if p.first_pass() {
+							return
+						}
 						p.clear_vars()
 					}
 				}
 				mut start := p.cgen.lines.len
 				p.statement(true)
-				if p.cgen.lines[start - 1] != '' && p.cgen.fn_main != '' {
+				if start > 0 && p.cgen.lines[start - 1] != '' && p.cgen.fn_main != '' {
 					start--
 				}
 				p.genln('')
