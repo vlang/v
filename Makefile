@@ -12,6 +12,10 @@ ifeq ($(_SYS),Linux)
 LINUX := 1
 endif
 
+ifeq ($(_SYS),Darwin)
+MAC := 1
+endif
+
 all: fresh_vc fresh_tcc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe vc/v_win.c
