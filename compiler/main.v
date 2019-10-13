@@ -741,6 +741,7 @@ fn (v mut V) parse_lib_imports() {
 	for _, fit in v.table.file_imports {
 		if fit.file_path_id in done_fits { continue }
 		for _, mod in fit.imports {
+			if mod in done_imports { continue }
 			import_path := v.find_module_path(mod) or {
 				pidx := v.get_file_parser_index(fit.file_path_id) or { verror(err) break }
 				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (not found)', fit.get_import_tok_idx(mod))
@@ -753,14 +754,13 @@ fn (v mut V) parse_lib_imports() {
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
-				if file in done_imports { continue }
 				pid := v.parse(file, .imports)
-				done_imports << file
 				p_mod := v.parsers[pid].import_table.module_name
 				if p_mod != mod {
 					v.parsers[pid].error_with_token_index('bad module definition: $fit.file_path_id imports module "$mod" but $file is defined as module `$p_mod`', 1)
 				}
 			}
+			done_imports << mod
 		}
 		done_fits << fit.file_path_id
 	}
