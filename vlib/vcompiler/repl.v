@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module main
+module vcompiler
 
 import os
 import term
@@ -58,7 +58,7 @@ fn (r &Repl) function_call(line string) bool {
 	return false
 }
 
-fn repl_help() {
+pub fn repl_help() {
 version_hash := vhash()
 println('
 V $Version $version_hash
@@ -68,7 +68,7 @@ V $Version $version_hash
 ')
 }
 
-fn run_repl() []string {
+pub fn run_repl() []string {
 	version_hash := vhash()
 	println('V $Version $version_hash')
 	println('Use Ctrl-C or `exit` to exit')

@@ -2,12 +2,11 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module main
+module vcompiler
 
 import (
 	os
 	strings
-	benchmark
 )
 
 const (
@@ -57,7 +56,7 @@ enum Pass {
 }
 
 struct V {
-mut:
+pub mut:
 	os         OS           // the OS to build for
 	out_name_c string       // name of the temporary C file
 	files      []string     // all V files that need to be parsed and compiled
@@ -75,7 +74,7 @@ mut:
 }
 
 struct Preferences {
-mut:
+pub mut:
 	build_mode    BuildMode
 	nofmt         bool   // disable vfmt
 	is_test       bool   // `v test string_test.v`
@@ -115,87 +114,8 @@ mut:
 						 // work on the builtin module itself.
 }
 
-fn main() {
-	// There's no `flags` module yet, so args have to be parsed manually
-	args := env_vflags_and_os_args()
-	// Print the version and exit.
-	if '-v' in args || '--version' in args || 'version' in args {
-		version_hash := vhash()
-		println('V $Version $version_hash')
-		return
-	}
-	if '-h' in args || '--help' in args || 'help' in args {
-		println(HelpText)
-		return
-	}
-	if 'translate' in args {
-		println('Translating C to V will be available in V 0.3')
-		return
-	}
-	if 'up' in args {
-		update_v()
-		return
-	}
-	if 'get' in args {
-		println('use `v install` to install modules from vpm.vlang.io ')
-		return
-	}
-	if 'symlink' in args {
-		create_symlink()
-		return
-	}
-	if 'install' in args {
-		install_v(args)
-		return
-	}
-	// TODO quit if the compiler is too old
-	// u := os.file_last_mod_unix('v')
-	// If there's no tmp path with current version yet, the user must be using a pre-built package
-	//
-	// Just fmt and exit
-	if 'fmt' in args {
-		vfmt(args)
-		return
-	}
-	if 'test' in args {
-		test_v()
-		return
-	}
-	// Construct the V object from command line arguments
-	mut v := new_v(args)
-	if v.pref.is_verbose {
-		println(args)
-	}
-	// Generate the docs and exit
-	if 'doc' in args {
-		// v.gen_doc_html_for_module(args.last())
-		exit(0)
-	}
-
-	if 'run' in args {
-		// always recompile for now, too error prone to skip recompilation otherwise
-		// for example for -repl usage, especially when piping lines to v
-		v.compile()
-		v.run_compiled_executable_and_exit()
-	}
-
-	// No args? REPL
-	if args.len < 2 || (args.len == 2 && args[1] == '-') || 'runrepl' in args {
-		run_repl()
-		return
-	}
-
-	mut tmark := benchmark.new_benchmark()
-	v.compile()	
-	if v.pref.is_stats {
-		tmark.stop()
-		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
-	}
-
-	if v.pref.is_test {
-		v.run_compiled_executable_and_exit()
-	}
-	
+// Should be called by main at the end of the compilation process, to cleanup
+pub fn (v mut V) finalize_compilation(){	
 	// TODO remove
 	if v.pref.autofree {
 		println('started freeing v struct')
@@ -215,11 +135,11 @@ fn main() {
 	}	
 }
 
-fn (v mut V) add_parser(parser Parser) {
+pub fn (v mut V) add_parser(parser Parser) {
 	   v.parsers << parser
 }
 
-fn (v &V) get_file_parser_index(file string) ?int {
+pub fn (v &V) get_file_parser_index(file string) ?int {
 	for i, p in v.parsers {
 		if os.realpath(p.file_path_id) == os.realpath(file) {
 			return i
@@ -229,7 +149,7 @@ fn (v &V) get_file_parser_index(file string) ?int {
 }
 
 // find existing parser or create new one. returns v.parsers index
-fn (v mut V) parse(file string, pass Pass) int {
+pub fn (v mut V) parse(file string, pass Pass) int {
 	//println('parse($file, $pass)')
 	pidx := v.get_file_parser_index(file) or {
 		mut p := v.new_parser_from_file(file)
@@ -244,7 +164,7 @@ fn (v mut V) parse(file string, pass Pass) int {
 }
 
 
-fn (v mut V) compile() {
+pub fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
 	if os.user_os() != 'windows' && v.os == .msvc {
 		verror('Cannot build with msvc on ${os.user_os()}')
@@ -462,7 +382,7 @@ string _STR_TMP(const char *fmt, ...) {
 	}
 }
 
-fn (v mut V) generate_main() {
+pub fn (v mut V) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
 
@@ -522,7 +442,7 @@ fn (v mut V) generate_main() {
 	}
 }
 
-fn (v mut V) gen_main_start(add_os_args bool){
+pub fn (v mut V) gen_main_start(add_os_args bool){
 	v.cgen.genln('int main(int argc, char** argv) { ')
 	v.cgen.genln('  init();')
 	if add_os_args && 'os' in v.table.imports {
@@ -531,13 +451,13 @@ fn (v mut V) gen_main_start(add_os_args bool){
 	v.generate_hotcode_reloading_main_caller()
 	v.cgen.genln('')
 }
-fn (v mut V) gen_main_end(return_statement string){
+pub fn (v mut V) gen_main_end(return_statement string){
 	v.cgen.genln('')
 	v.cgen.genln('  $return_statement;')
 	v.cgen.genln('}')
 }
 
-fn final_target_out_name(out_name string) string {
+pub fn final_target_out_name(out_name string) string {
 	$if windows {
 		return out_name.replace('/', '\\') + '.exe'
 	}
@@ -549,7 +469,7 @@ fn final_target_out_name(out_name string) string {
 	}
 }
 
-fn (v V) run_compiled_executable_and_exit() {
+pub fn (v V) run_compiled_executable_and_exit() {
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}	
@@ -573,7 +493,7 @@ fn (v V) run_compiled_executable_and_exit() {
 	exit(0)
 }
 
-fn (v &V) v_files_from_dir(dir string) []string {
+pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
 		verror('$dir doesn\'t exist')
@@ -616,7 +536,7 @@ fn (v &V) v_files_from_dir(dir string) []string {
 }
 
 // Parses imports, adds necessary libs, and then user files
-fn (v mut V) add_v_files_to_compile() {
+pub fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	// Builtin cache exists? Use it.
 	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
@@ -680,7 +600,7 @@ fn (v mut V) add_v_files_to_compile() {
 	}
 }
 
-fn (v &V) get_builtin_files() []string {
+pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
 	
 	$if js {
@@ -690,7 +610,7 @@ fn (v &V) get_builtin_files() []string {
 }
 
 // get user files
-fn (v &V)  get_user_files() []string {
+pub fn (v &V)  get_user_files() []string {
 	mut dir := v.dir
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after libs, but we dont know
@@ -734,7 +654,7 @@ fn (v &V)  get_user_files() []string {
 }
 
 // parse deps from already parsed builtin/user files
-fn (v mut V) parse_lib_imports() {
+pub fn (v mut V) parse_lib_imports() {
 	mut done_fits := []string
 	mut done_imports := []string
 	for {
@@ -769,7 +689,7 @@ fn (v mut V) parse_lib_imports() {
 }
 
 // return resolved dep graph (order deps)
-fn (v &V) resolve_deps() &DepGraph {
+pub fn (v &V) resolve_deps() &DepGraph {
 	mut dep_graph := new_dep_graph()
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
@@ -780,11 +700,11 @@ fn (v &V) resolve_deps() &DepGraph {
 	return deps_resolved
 }
 
-fn get_arg(joined_args, arg, def string) string {
+pub fn get_arg(joined_args, arg, def string) string {
 	return get_param_after(joined_args, '-$arg', def)
 }
 
-fn get_param_after(joined_args, arg, def string) string {
+pub fn get_param_after(joined_args, arg, def string) string {
 	key := '$arg '
 	mut pos := joined_args.index(key)
 	if pos == -1 {
@@ -799,14 +719,14 @@ fn get_param_after(joined_args, arg, def string) string {
 	return res
 }
 
-fn (v &V) log(s string) {
+pub fn (v &V) log(s string) {
 	if !v.pref.is_verbose {
 		return
 	}
 	println(s)
 }
 
-fn new_v(args[]string) &V {
+pub fn new_v(args[]string) &V {
 	// Create modules dirs if they are missing
 	if !os.dir_exists(v_modules_path) {
 		os.mkdir(v_modules_path)
@@ -814,7 +734,7 @@ fn new_v(args[]string) &V {
 	}
 	
 	mut vgen_buf := strings.new_builder(1000)
-	vgen_buf.writeln('module main\nimport strings')
+	vgen_buf.writeln('module vcompiler\nimport strings')
 	
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
@@ -988,7 +908,7 @@ fn new_v(args[]string) &V {
 	}
 }
 
-fn env_vflags_and_os_args() []string {
+pub fn env_vflags_and_os_args() []string {
    mut args := []string
    vflags := os.getenv('VFLAGS')
    if '' != vflags {
@@ -1003,7 +923,7 @@ fn env_vflags_and_os_args() []string {
    return args
 }
 
-fn update_v() {
+pub fn update_v() {
 	println('Updating V...')
 	vroot := os.dir(os.executable())
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
@@ -1031,7 +951,7 @@ fn update_v() {
 	}
 }
 
-fn vfmt(args[]string) {
+pub fn vfmt(args[]string) {
 	file := args.last()
 	if !os.file_exists(file) {
 		println('"$file" does not exist')
@@ -1044,7 +964,7 @@ fn vfmt(args[]string) {
 	println('vfmt is temporarily disabled')
 }
 
-fn install_v(args[]string) {
+pub fn install_v(args[]string) {
 	if args.len < 3 {
 		println('usage: v install [module] [module] [...]')
 		return
@@ -1075,7 +995,7 @@ fn install_v(args[]string) {
 	}
 }
 
-fn create_symlink() {
+pub fn create_symlink() {
 	vexe := os.executable()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
@@ -1093,18 +1013,18 @@ pub fn verror(s string) {
 	exit(1)
 }
 
-fn vhash() string {
+pub fn vhash() string {
 	mut buf := [50]byte
 	buf[0] = 0
 	C.snprintf(*char(buf), 50, '%s', C.V_COMMIT_HASH )
 	return tos_clone(buf)
 }
 
-fn cescaped_path(s string) string {
+pub fn cescaped_path(s string) string {
   return s.replace('\\','\\\\')
 }
 
-fn os_from_string(os string) OS {
+pub fn os_from_string(os string) OS {
 	switch os {
 		case 'linux': return .linux
 		case 'windows': return .windows

@@ -1,4 +1,4 @@
-module main
+module vcompiler
 
 const (
 	HelpText = 'Usage: v [options/commands] [file.v | directory]

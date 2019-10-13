@@ -1,4 +1,4 @@
-module main
+module vcompiler
 
 import os
 import time

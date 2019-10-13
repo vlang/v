@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module main
+module vcompiler
 
 import (
 	os
@@ -237,9 +237,9 @@ fn (p mut Parser) parse(pass Pass) {
 	p.token_idx = 0
 	p.next()
 	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
-	// `module main` is not required if it's a single file program
+	// `module vcompiler` is not required if it's a single file program
 	if p.pref.is_script || p.pref.is_test {
-		// User may still specify `module main`
+		// User may still specify `module vcompiler`
 		if p.tok == .key_module {
 			p.next()
 			p.fgen('module ')

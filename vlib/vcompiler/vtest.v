@@ -1,4 +1,4 @@
-module main
+module vcompiler
 
 import (
 	os
@@ -15,14 +15,14 @@ mut:
 	benchmark benchmark.Benchmark
 }
 
-fn new_test_sesion(vargs string) TestSession {
+pub fn new_test_sesion(vargs string) TestSession {
 	return TestSession{
 		vexe: os.executable()
 		vargs: vargs
 	}
 }
 
-fn test_v() {
+pub fn test_v() {
 	args := os.args
 	if args.last() == 'test' {
 		println('Usage:')
@@ -71,7 +71,7 @@ fn test_v() {
 	}
 }
 
-fn (ts mut TestSession) test() {
+pub fn (ts mut TestSession) test() {
 	ok   := term.ok_message('OK')
 	fail := term.fail_message('FAIL')
 	cmd_needs_quoting := (os.user_os() == 'windows')
@@ -121,7 +121,7 @@ fn stable_example(example string, index int, arr []string) bool {
 	return !example.contains('vweb')
 }
 
-fn v_test_v(args_before_test string){
+pub fn v_test_v(args_before_test string){
 	vexe := os.executable()
 	parent_dir := os.dir(vexe)
 	// Changing the current directory is needed for some of the compiler tests,
@@ -165,7 +165,7 @@ fn v_test_v(args_before_test string){
 	}
 }
 
-fn test_vget() {
+pub fn test_vget() {
 	/*
 	vexe := os.executable()
 	ret := os.system('$vexe install nedpals.args')

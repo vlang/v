@@ -5,7 +5,7 @@
 // Directed acyclic graph
 // this implementation is specifically suited to ordering dependencies
 
-module main
+module vcompiler
 
 struct DepGraphNode  {
 mut:
