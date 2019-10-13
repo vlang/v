@@ -57,7 +57,6 @@ fn main() {
 	}
 	// Construct the V object from command line arguments
 	mut v := compiler.new_v(args)
-	v.pref.building_v = true
 	if v.pref.is_verbose {
 		println(args)
 	}
