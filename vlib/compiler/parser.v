@@ -3475,7 +3475,10 @@ fn (p mut Parser) for_st() {
 			else { typ.right(pad) }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		mut i_var_type := 'int'
-		if is_arr {
+		if is_variadic_arg {
+			p.gen_for_varg_header(i, expr, typ, val)
+		}
+		else if is_arr {
 			p.gen_for_header(i, tmp, var_typ, val)
 		}
 		else if is_map {
@@ -3485,9 +3488,6 @@ fn (p mut Parser) for_st() {
 		else if is_str {
 			i_var_type = 'byte'
 			p.gen_for_str_header(i, tmp, var_typ, val)
-		}
-		else if is_variadic_arg {
-			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		// Register temp vars
 		if i != '_' {
@@ -3542,19 +3542,20 @@ fn (p mut Parser) for_st() {
 		// TODO var_type := if...
 		i := p.get_tmp()
 		mut var_type := typ
-		if is_arr {
+		if is_variadic_arg {
+			p.gen_for_varg_header(i, expr, typ, val)
+		}
+		else if is_range {
+			var_type = 'int'
+			p.gen_for_range_header(i, range_end, tmp, var_type, val)
+		}
+		else if is_arr {
 			var_type = typ.right(6)// all after `array_`
 			p.gen_for_header(i, tmp, var_type, val)
 		}
 		else if is_str {
 			var_type = 'byte'
 			p.gen_for_str_header(i, tmp, var_type, val)
-		}
-		else if is_range {
-			var_type = 'int'
-			p.gen_for_range_header(i, range_end, tmp, var_type, val)
-		} else if is_variadic_arg {
-			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
