@@ -8,9 +8,12 @@ ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
 endif
 
-_SYS := $(shell uname -o)
-ifeq ($(_SYS),GNU/Linux)
+ifeq ($(_SYS),Linux)
 LINUX := 1
+endif
+
+ifeq ($(_SYS),Darwin)
+MAC := 1
 endif
 
 all: fresh_vc fresh_tcc
