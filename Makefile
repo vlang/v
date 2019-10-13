@@ -8,17 +8,12 @@ ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32:=1
 endif
 
-all:
-	rm -rf vc/
-	git clone --depth 1 --quiet https://github.com/vlang/vc
+all: fresh_vc fresh_tcc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe vc/v_win.c
 	./v0.exe -o v.exe compiler
 	rm -f v0.exe
 else
-	rm -rf /var/tmp/tcc
-	git clone --depth 1 --quiet https://github.com/vmisc/tccbin /var/tmp/tcc
-
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
 	@(VC_V=`./v version | cut -f 3 -d " "`; \
 	V_V=`git rev-parse --short HEAD`; \
@@ -30,3 +25,14 @@ endif
 	rm -rf vc/
 	@echo "V has been successfully built"
 
+
+fresh_vc:
+	rm -rf vc/
+	git clone --depth 1 --quiet https://github.com/vlang/vc
+
+fresh_tcc:
+	rm -rf /var/tmp/tcc/
+	git clone --depth 1 --quiet https://github.com/vmisc/tccbin /var/tmp/tcc
+
+selfcompile:
+	./v -o v compiler

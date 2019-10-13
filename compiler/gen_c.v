@@ -265,7 +265,7 @@ fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, 
 	if ftyp == 'void*' {
 		if receiver_type.starts_with('array_') {
 			// array_int => int
-			cast = receiver_type.all_after('_')
+			cast = receiver_type.all_after('array_')
 			cast = '*($cast*) '
 		}else{
 			cast = '(voidptr) '
