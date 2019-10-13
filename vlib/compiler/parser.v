@@ -2183,7 +2183,7 @@ struct $f.parent_fn {
 ', fname_tidx)
 		}
 		// Don't allow `arr.data`
-		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
+		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod && p.file_path_id != 'vgen' {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
 			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)', fname_tidx)
