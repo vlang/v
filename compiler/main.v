@@ -5,21 +5,21 @@
 module main
 
 import (
-	vcompiler
+	compiler
 	benchmark
 )
 
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
-	args := vcompiler.env_vflags_and_os_args()
+	args := compiler.env_vflags_and_os_args()
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
-		version_hash := vcompiler.vhash()
-		println('V $vcompiler.Version $version_hash')
+		version_hash := compiler.vhash()
+		println('V $compiler.Version $version_hash')
 		return
 	}
 	if '-h' in args || '--help' in args || 'help' in args {
-		println(vcompiler.HelpText)
+		println(compiler.HelpText)
 		return
 	}
 	if 'translate' in args {
@@ -27,7 +27,7 @@ fn main() {
 		return
 	}
 	if 'up' in args {
-		vcompiler.update_v()
+		compiler.update_v()
 		return
 	}
 	if 'get' in args {
@@ -35,28 +35,28 @@ fn main() {
 		return
 	}
 	if 'symlink' in args {
-		vcompiler.create_symlink()
+		compiler.create_symlink()
 		return
 	}
 	if 'install' in args {
-		vcompiler.install_v(args)
+		compiler.install_v(args)
 		return
 	}
-	// TODO quit if the vcompiler is too old
+	// TODO quit if the v compiler is too old
 	// u := os.file_last_mod_unix('v')
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
 	//
 	// Just fmt and exit
 	if 'fmt' in args {
-		vcompiler.vfmt(args)
+		compiler.vfmt(args)
 		return
 	}
 	if 'test' in args {
-		vcompiler.test_v()
+		compiler.test_v()
 		return
 	}
 	// Construct the V object from command line arguments
-	mut v := vcompiler.new_v(args)
+	mut v := compiler.new_v(args)
 	v.pref.building_v = true
 	if v.pref.is_verbose {
 		println(args)
@@ -76,7 +76,7 @@ fn main() {
 
 	// No args? REPL
 	if args.len < 2 || (args.len == 2 && args[1] == '-') || 'runrepl' in args {
-		vcompiler.run_repl()
+		compiler.run_repl()
 		return
 	}
 
