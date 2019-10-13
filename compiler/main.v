@@ -4,9 +4,8 @@
 
 module main
 
-import vcompiler
-
 import (
+	vcompiler
 	benchmark
 )
 
