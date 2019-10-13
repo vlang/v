@@ -16,6 +16,7 @@ ifdef WIN32
 	./v0.exe -o v.exe compiler
 	rm -f v0.exe
 else
+	rm -rf /var/tmp/tcc
 	git clone --depth 1 --quiet https://github.com/vmisc/tccbin /var/tmp/tcc
 
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
