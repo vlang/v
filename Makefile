@@ -5,7 +5,12 @@ _SYS := $(patsubst MSYS%,MSYS,$(_SYS))
 _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 
 ifneq ($(filter $(_SYS),MSYS MinGW),)
-WIN32:=1
+WIN32 := 1
+endif
+
+_SYS := $(shell uname -o)
+ifeq ($(_SYS),GNU/Linux)
+LINUX := 1
 endif
 
 all: fresh_vc fresh_tcc
