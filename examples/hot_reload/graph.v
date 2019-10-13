@@ -4,7 +4,7 @@ import gx
 import gg
 import time
 import glfw
-import math
+// import math
 import os
 
 const (
