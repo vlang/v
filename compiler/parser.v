@@ -18,8 +18,7 @@ struct Token {
 }
 
 struct Parser {
-	id             string // unique id. if parsing file will be same as file_path
-	file_path      string // "/home/user/hello.v"
+	file_path_id   string // unique id. if parsing file will be path eg, "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
 	// When p.file_pcguard != '', it contains a
@@ -49,7 +48,6 @@ mut:
 	assigned_type  string // non-empty if we are in an assignment expression
 	expected_type  string
 	tmp_cnt        int
-	is_script      bool
 	builtin_mod    bool
 	inside_if_expr bool
 	inside_unwrapping_match_statement bool
@@ -121,11 +119,9 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 
 	mut p := v.new_parser(new_scanner_file(path), path)
 	p = { p|
-		file_path: path,
 		file_name: path.all_after(os.path_separator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		is_script: (v.pref.is_script && os.realpath(path) == os.realpath(path)),
 		is_vh: path.ends_with('.vh')
 	}
 	if p.pref.building_v {
@@ -141,13 +137,12 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 	v.reset_cgen_file_line_parameters()
 	mut p := Parser {
-		id: id
+		file_path_id: id
 		scanner: scanner
 		v: v
 		table: v.table
 		cur_fn: EmptyFn
 		cgen: v.cgen
-		is_script: false
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
@@ -215,7 +210,6 @@ fn (p & Parser) peek() TokenKind {
 [inline] fn (p &Parser) prev_token() Token {
 	return p.tokens[p.token_idx - 2]
 }
-
 [inline] fn (p &Parser) cur_tok() Token {
 	return p.tokens[p.token_idx - 1]
 }
@@ -237,22 +231,19 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
-	p.cgen.file = cescaped_path(os.realpath(p.file_path))
+	p.cgen.file = cescaped_path(os.realpath(p.file_path_id))
 	/////////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0
 	p.next()
 	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
 	// `module main` is not required if it's a single file program
-	if p.is_script || p.pref.is_test {
+	if p.pref.is_script || p.pref.is_test {
 		// User may still specify `module main`
 		if p.tok == .key_module {
 			p.next()
 			p.fgen('module ')
-			mod := p.check_name()
-			if p.mod == '' {
-				p.mod = mod
-			}
+			p.mod = p.check_name()
 		} else {
 			p.mod = 'main'
 		}
@@ -260,11 +251,7 @@ fn (p mut Parser) parse(pass Pass) {
 	else {
 		p.check(.key_module)
 		p.fspace()
-		// setting mod manually for mod init parsers
-		mod := p.check_name()
-		if p.mod == '' {
-			p.mod = mod
-		}
+		p.mod = p.check_name()
 	}
 	//
 
@@ -278,12 +265,17 @@ fn (p mut Parser) parse(pass Pass) {
 	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
+	// if we are a building module get the full module name from v.mod
+	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { 
+		p.v.mod
+	}
 	// fully qualify the module name, eg base64 to encoding.base64
-	fq_mod := p.table.qualify_module(p.mod, p.file_path)
+	else {
+		p.table.qualify_module(p.mod, p.file_path_id)
+	}
 	p.import_table.module_name = fq_mod
 	p.table.register_module(fq_mod)
-	// replace "." with "_dot_" in module name for C variable names
-	p.mod = mod_gen_name(fq_mod)
+	p.mod = fq_mod
 
 	if p.pass == .imports {
 		for p.tok == .key_import && p.peek() != .key_const {
@@ -293,7 +285,7 @@ fn (p mut Parser) parse(pass Pass) {
 			p.error('module `builtin` cannot be imported')
 		}
 		// save file import table
-		p.table.file_imports[p.id] = p.import_table
+		p.table.file_imports[p.file_path_id] = p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -382,7 +374,7 @@ fn (p mut Parser) parse(pass Pass) {
 			//p.log('end of parse()')
 			// TODO: check why this was added? everything seems to work
 			// without it, and it's already happening in fn_decl
-			// if p.is_script && !p.pref.is_test {
+			// if p.pref.is_script && !p.pref.is_test {
 			// 	p.set_current_fn( MainFn )
 			// 	p.check_unused_variables()
 			// }
@@ -400,7 +392,7 @@ fn (p mut Parser) parse(pass Pass) {
 			return
 		default:
 			// no `fn main`, add this "global" statement to cgen.fn_main
-			if p.is_script && !p.pref.is_test {
+			if p.pref.is_script && !p.pref.is_test {
 				// cur_fn is empty since there was no fn main declared
 				// we need to set it to save and find variables
 				if p.cur_fn.name == '' {
@@ -848,7 +840,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		field := p.check_name()
 		fields << field
 		p.fgenln('')
-		name := '${p.mod}__${enum_name}_$field'
+		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
 		if p.pass == .main {
 			p.cgen.consts << '#define $name $val'
 		}
@@ -856,7 +848,9 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 			p.next()
 		}
 		// !!!! NAME free
-		p.table.register_const(name, enum_name, p.mod)
+		if p.first_pass() {
+			p.table.register_const(name, enum_name, p.mod)
+		}
 		val++
 	}
 	p.table.register_type2(Type {
@@ -1748,7 +1742,7 @@ fn (p mut Parser) name_expr() string {
 			if !T.has_enum_val(val) {
 				p.error('enum `$T.name` does not have value `$val`')
 			}
-			p.gen(T.mod + '__' + p.expected_type + '_' + val)
+			p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
 		}
 		return p.expected_type
 	}
@@ -1800,15 +1794,13 @@ fn (p mut Parser) name_expr() string {
 		// must be aliased module
 		if name != p.mod && p.import_table.known_alias(name) {
 			p.import_table.register_used_import(name)
-			// we replaced "." with "_dot_" in p.mod for C variable names,
-			// do same here.
-			mod = mod_gen_name(p.import_table.resolve_alias(name))
+			mod = p.import_table.resolve_alias(name)
 		}
 		p.next()
 		p.check(.dot)
 		name = p.lit
 		p.fgen(name)
-		name = prepend_mod(mod, name)
+		name = prepend_mod(mod_gen_name(mod), name)
 	}
 	// Unknown name, try prepending the module name to it
 	// TODO perf
@@ -1890,7 +1882,7 @@ fn (p mut Parser) name_expr() string {
 			p.check(.dot)
 			val := p.lit
 			// println('enum val $val')
-			p.gen(enum_type.mod + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
+			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
 			return enum_type.name
 		}
@@ -1967,7 +1959,7 @@ fn (p mut Parser) name_expr() string {
 			// If orig_name is a mod, then printing undefined: `mod` tells us nothing
 			// if p.table.known_mod(orig_name) {
 			if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-				name = mod_gen_name_rev(name.replace('__', '.'))
+				name = name.replace('__', '.')
 				p.error('undefined: `$name`')
 			}
 			else {
@@ -3073,7 +3065,7 @@ fn (p mut Parser) array_init() string {
 					//p.gen('{0}')
 					p.is_alloc = false
 					if is_const_len {
-						return '[${p.mod}__$lit]$array_elem_typ'
+						return '[${mod_gen_name(p.mod)}__$lit]$array_elem_typ'
 					}
 					return '[$lit]$array_elem_typ'
 				} else {
@@ -3864,7 +3856,7 @@ fn (p mut Parser) assert_statement() {
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
-	filename := cescaped_path(p.file_path)
+	filename := cescaped_path(p.file_path_id)
 	p.genln(';
 \n
 
@@ -3988,7 +3980,7 @@ fn prepend_mod(mod, name string) string {
 }
 
 fn (p &Parser) prepend_mod(name string) string {
-	return prepend_mod(p.mod, name)
+	return prepend_mod(mod_gen_name(p.mod), name)
 }
 
 fn (p mut Parser) go_statement() {
@@ -4152,7 +4144,7 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 
 fn (p mut Parser) check_unused_imports() {
 	// Don't run in the generated V file with `.str()`
-	if p.id == 'vgen' {
+	if p.file_path_id == 'vgen' {
 		return
 	}
 	mut output := ''

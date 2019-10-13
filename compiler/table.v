@@ -53,7 +53,7 @@ mut:
 struct FileImportTable {
 mut:
 	module_name    string
-	file_path      string
+	file_path_id   string 			 // file path or id
 	imports        map[string]string // alias => module
 	used_imports   []string          // alias
 	import_tok_idx map[string]int    // module => idx
@@ -879,16 +879,16 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-fn (table &Table) get_file_import_table(id string) FileImportTable {
-	if id in table.file_imports {
-		return table.file_imports[id]
+fn (table &Table) get_file_import_table(file_path_id string) FileImportTable {
+	if file_path_id in table.file_imports {
+		return table.file_imports[file_path_id]
 	}
-	return new_file_import_table(id)
+	return new_file_import_table(file_path_id)
 }
 
-fn new_file_import_table(file_path string) FileImportTable {
+fn new_file_import_table(file_path_id string) FileImportTable {
 	return FileImportTable{
-		file_path: file_path
+		file_path_id: file_path_id
 		imports:   map[string]string
 	}
 }
@@ -905,7 +905,7 @@ fn (fit mut FileImportTable) register_alias(alias string, mod string, tok_idx in
 	// NOTE: come back here
 	// if alias in fit.imports && fit.imports[alias] == mod {}
 	if alias in fit.imports && fit.imports[alias] != mod {
-		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path}"')
+		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path_id}"')
 	}
 	if mod.contains('.internal.') {
 		mod_parts := mod.split('.')
@@ -971,7 +971,7 @@ fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
-	name_orig := name.replace('__', '.').replace('_dot_', '.')
+	name_orig := mod_gen_name_rev(name.replace('__', '.'))
 	mut output := ''
 	// check functions
 	mut n := p.table.find_misspelled_fn(name, fit, min_match)
