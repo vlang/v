@@ -221,7 +221,7 @@ fn (v mut V) add_parser(parser Parser) {
 
 fn (v &V) get_file_parser_index(file string) ?int {
 	for i, p in v.parsers {
-		if os.realpath(p.file_path) == os.realpath(file) {
+		if os.realpath(p.file_path_id) == os.realpath(file) {
 			return i
 		}	
 	}
@@ -636,11 +636,6 @@ fn (v mut V) add_v_files_to_compile() {
 	// Parse user imports
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
-		// set mod so we dont have to resolve submodule
-		if v.pref.build_mode == .build_module &&
-			file.contains(v.mod.replace('.', os.path_separator)) {
-			p.mod = v.mod
-		}
 		p.parse(.imports)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
@@ -681,7 +676,7 @@ fn (v mut V) add_v_files_to_compile() {
 	// add remaining main files last
 	for _, fit in v.table.file_imports {
 		if fit.module_name != 'main' { continue }
-		v.files << fit.file_path
+		v.files << fit.file_path_id
 	}
 }
 
@@ -744,16 +739,16 @@ fn (v mut V) parse_lib_imports() {
 	mut done_imports := []string
 	for {
 	for _, fit in v.table.file_imports {
-		if fit.file_path in done_fits { continue }
+		if fit.file_path_id in done_fits { continue }
 		for _, mod in fit.imports {
 			import_path := v.find_module_path(mod) or {
-				pidx := v.get_file_parser_index(fit.file_path) or { verror(err) break }
+				pidx := v.get_file_parser_index(fit.file_path_id) or { verror(err) break }
 				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (not found)', fit.get_import_tok_idx(mod))
 				break
 			}
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				pidx := v.get_file_parser_index(fit.file_path) or { verror(err) break }
+				pidx := v.get_file_parser_index(fit.file_path_id) or { verror(err) break }
 				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', fit.get_import_tok_idx(mod))
 			}
 			// Add all imports referenced by these libs
@@ -763,11 +758,11 @@ fn (v mut V) parse_lib_imports() {
 				done_imports << file
 				p_mod := v.parsers[pid].import_table.module_name
 				if p_mod != mod {
-					v.parsers[pid].error_with_token_index('bad module definition: $fit.file_path imports module "$mod" but $file is defined as module `$p_mod`', 1)
+					v.parsers[pid].error_with_token_index('bad module definition: $fit.file_path_id imports module "$mod" but $file is defined as module `$p_mod`', 1)
 				}
 			}
 		}
-		done_fits << fit.file_path
+		done_fits << fit.file_path_id
 	}
 	if v.table.file_imports.size == done_fits.len { break}
 	}
