@@ -1,5 +1,5 @@
 import os
-import compiler.tests.repl.runner
+import vcompiler.tests.repl.runner
 import benchmark
 
 fn test_the_v_compiler_can_be_invoked() {

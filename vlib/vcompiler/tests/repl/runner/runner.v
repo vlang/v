@@ -11,7 +11,7 @@ pub:
 
 pub fn full_path_to_v() string {
 	vname  := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vexec := os.dir(os.dir(os.dir(os.dir( os.executable() )))) + os.path_separator + vname
+	vexec := os.dir(os.dir(os.dir(os.dir(os.dir( os.executable() ))))) + os.path_separator + vname
 	/*
 	args := os.args
 	vreal  := os.realpath('v')
