@@ -237,9 +237,9 @@ fn (p mut Parser) parse(pass Pass) {
 	p.token_idx = 0
 	p.next()
 	//p.log('\nparse() run=$p.pass file=$p.file_name tok=${p.strtok()}')// , "script_file=", script_file)
-	// `module vcompiler` is not required if it's a single file program
+	// `module main` is not required if it's a single file program
 	if p.pref.is_script || p.pref.is_test {
-		// User may still specify `module vcompiler`
+		// User may still specify `module main`
 		if p.tok == .key_module {
 			p.next()
 			p.fgen('module ')
@@ -2183,7 +2183,7 @@ struct $f.parent_fn {
 ', fname_tidx)
 		}
 		// Don't allow `arr.data`
-		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod && p.file_path_id != 'vgen' {
+		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
 			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)', fname_tidx)
