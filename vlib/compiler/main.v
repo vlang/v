@@ -24,7 +24,7 @@ enum BuildMode {
 
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris']
+		'netbsd', 'dragonfly', 'msvc', 'android', 'js', 'solaris']
 )
 
 enum OS {
@@ -35,6 +35,7 @@ enum OS {
 	openbsd
 	netbsd
 	dragonfly
+	msvc // TODO not an OS
 	js   // TODO
 	android
 	solaris
@@ -165,7 +166,7 @@ pub fn (v mut V) parse(file string, pass Pass) int {
 
 pub fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
-	if os.user_os() != 'windows' && v.pref.ccompiler == 'msvc' {
+	if os.user_os() != 'windows' && v.os == .msvc {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
 	mut cgen := v.cgen
@@ -495,9 +496,9 @@ pub fn (v V) run_compiled_executable_and_exit() {
 pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		verror('$dir doesn\'t exist')
+		verror("$dir doesn't exist!")
 	} else if !os.dir_exists(dir) {
-		verror('$dir isn\'t a directory')
+		verror("$dir isn't a directory")
 	}
 	mut files := os.ls(dir)
 	if v.pref.is_verbose {
@@ -511,7 +512,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && v.os != .windows {
+		if file.ends_with('_win.v') && (v.os != .windows && v.os != .msvc) {
 			continue
 		}
 		if file.ends_with('_lin.v') && v.os != .linux {
@@ -520,7 +521,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac {
 			continue
 		}
-		if file.ends_with('_nix.v') && v.os == .windows {
+		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
 			continue
 		}
 		if file.ends_with('_js.v') && v.os != .js {
@@ -573,7 +574,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 			// main files will get added last
 			continue
 		}
-		
 		// use cached built module if exists
 		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', os.path_separator)
@@ -586,8 +586,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			}
 		}
 		// standard module
-		mod_path := v.find_module_path(mod) or { verror(err) break }
-		vfiles := v.v_files_from_dir(mod_path)
+		vfiles := v.get_imported_module_files(mod)
 		for file in vfiles {
 			v.files << file
 		}
@@ -601,7 +600,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 
 pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
-	
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
 	}
@@ -632,7 +630,7 @@ pub fn (v &V)  get_user_files() []string {
 	if dir.ends_with('.v') {
 		// Just compile one file and get parent dir
 		user_files << dir
-		dir = dir.all_before('${os.path_separator}')
+		dir = dir.all_before(os.path_separator)
 	}
 	else {
 		// Add .v files from the directory being compiled
@@ -650,6 +648,17 @@ pub fn (v &V)  get_user_files() []string {
 		println(user_files)
 	}
 	return user_files
+}
+
+// get module files from already parsed imports
+fn (v &V) get_imported_module_files(mod string) []string {
+	mut files := []string
+	for _, fit in v.table.file_imports {
+		if fit.module_name == mod {
+			files << fit.file_path_id
+		}
+	}
+	return files
 }
 
 // parse deps from already parsed builtin/user files
@@ -884,7 +893,7 @@ pub fn new_v(args[]string) &V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (rdir_name == 'compiler'  || dir.contains('vlib'))
+		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
@@ -1032,6 +1041,7 @@ pub fn os_from_string(os string) OS {
 		case 'openbsd': return .openbsd
 		case 'netbsd': return .netbsd
 		case 'dragonfly': return .dragonfly
+		case 'msvc': return .msvc
 		case 'js': return .js
 		case 'solaris': return .solaris
 		case 'android': return .android
