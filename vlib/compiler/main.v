@@ -496,9 +496,9 @@ pub fn (v V) run_compiled_executable_and_exit() {
 pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		verror('$dir doesn\'t exist')
+		verror("$dir doesn't exist!")
 	} else if !os.dir_exists(dir) {
-		verror('$dir isn\'t a directory')
+		verror("$dir isn't a directory")
 	}
 	mut files := os.ls(dir)
 	if v.pref.is_verbose {
@@ -600,7 +600,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 
 pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
-	
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
 	}
