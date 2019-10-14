@@ -396,8 +396,8 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	//println('cfiles: $cfiles')
 
-	btarget := moduleflags.c_options_before_target()
-	atarget := moduleflags.c_options_after_target()
+	btarget := moduleflags.c_options_before_target_msvc()
+	atarget := moduleflags.c_options_after_target_msvc()
 	cmd := '""$msvc.full_cl_exe_path" /volatile:ms /Zi /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path""'
 	//NB: the quotes above ARE balanced.
 	println('thirdparty cmd line: $cmd')

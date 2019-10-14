@@ -26,7 +26,7 @@ fn (v &V) get_os_cflags() []CFlag {
 		|| (flag.os == 'linux' && v.os == .linux)
 		|| (flag.os == 'darwin' && v.os == .mac)
 		|| (flag.os == 'freebsd' && v.os == .freebsd)
-		|| (flag.os == 'windows' && (v.os == .windows || v.os == .msvc)) {
+		|| (flag.os == 'windows' && v.os == .windows) {
 			flags << flag
 		}
 	}
@@ -140,10 +140,10 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 }
 
 //TODO: implement msvc specific c_options_before_target and c_options_after_target ...
+fn (cflags []CFlag) c_options_before_target_msvc() string { return '' }
+fn (cflags []CFlag) c_options_after_target_msvc() string { return '' }
+
 fn (cflags []CFlag) c_options_before_target() string {	
-	$if msvc {
-		return ''
-	}
 	// -I flags, optimization flags and so on
 	mut args:=[]string
 	for flag in cflags {
@@ -155,9 +155,6 @@ fn (cflags []CFlag) c_options_before_target() string {
 }
 
 fn (cflags []CFlag) c_options_after_target() string {
-	$if msvc {
-		return ''
-	}
 	// -l flags (libs)
 	mut args:=[]string
 	for flag in cflags {

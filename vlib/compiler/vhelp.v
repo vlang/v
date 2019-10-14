@@ -26,7 +26,7 @@ const (
    you don\'t have to repeat them.
 
    You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
-   `set VFLAGS=-os msvc` on Windows.
+   `set VFLAGS=-cc msvc` on Windows.
 
 Options/commands:
   -h, help          Display this information.

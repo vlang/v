@@ -69,8 +69,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -os msvc -o v3.exe v.v
-v3.exe -os msvc -o v.exe -prod v.v
+v2.exe -cc msvc -o v3.exe v.v
+v3.exe -cc msvc -o v.exe -prod v.v
 if %ERRORLEVEL% NEQ 0 (
     echo V failed to build itself
     goto :compileerror
