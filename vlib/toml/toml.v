@@ -64,6 +64,10 @@ fn (a Array) val (i int) TOMLVal{
 	return a.val[i]
 }
 
+fn new_array(name string,val TOMLVal,val_type int){
+	return Array{}
+}
+
 fn (a Array) array_of_table(s string) ?Table{
 	for table in a.tbl.key{
 		if s == table.name{
@@ -79,6 +83,10 @@ struct Table{
 		key 		&[]KeyVal
 		tbl			&[]Table
 		arr			&[]Array
+}
+
+fn new_table(key_name string,val TOMLVal){
+	return Table{name: key_name,key: val}
 }
 
 fn (t Table) key(s string) ?KeyVal{
