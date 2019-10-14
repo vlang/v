@@ -40,7 +40,7 @@ fresh_vc:
 
 fresh_tcc:
 	rm -rf /var/tmp/tcc/
-	git clone --depth 1 --quiet https://github.com/vmisc/tccbin /var/tmp/tcc
+	git clone --depth 1 --quiet https://github.com/vlang/tccbin /var/tmp/tcc
 
 selfcompile:
 	./v v.v
