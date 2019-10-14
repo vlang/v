@@ -86,7 +86,7 @@ jobs:
     #    node-version: 12.x
     - name: Build
       env:
-        VFLAGS: -cc msvc
+        #VFLAGS: -cc msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -msvc
