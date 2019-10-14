@@ -85,14 +85,14 @@ jobs:
     #  with:
     #    node-version: 12.x
     - name: Build
-      #env:
-      #  VFLAGS: -cc msvc
+      env:
+        VFLAGS: -cc msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -msvc
     - name: Test
-      #env:
-      #  VFLAGS: -cc msvc
+      env:
+        VFLAGS: -cc msvc
       run: |
         .\v.exe test v
       ## v.js dosent work on windows
