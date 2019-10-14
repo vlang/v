@@ -586,7 +586,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			}
 		}
 		// standard module
-		vfiles := v.table.get_imported_module_files(mod)
+		vfiles := v.get_imported_module_files(mod)
 		for file in vfiles {
 			v.files << file
 		}
@@ -649,6 +649,17 @@ pub fn (v &V)  get_user_files() []string {
 		println(user_files)
 	}
 	return user_files
+}
+
+// get module files from already parsed imports
+fn (v &V) get_imported_module_files(mod string) []string {
+	mut files := []string
+	for _, fit in v.table.file_imports {
+		if fit.module_name == mod {
+			files << fit.file_path_id
+		}
+	}
+	return files
 }
 
 // parse deps from already parsed builtin/user files
