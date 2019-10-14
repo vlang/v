@@ -24,7 +24,7 @@ enum BuildMode {
 
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'msvc', 'android', 'js', 'solaris']
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris']
 )
 
 enum OS {
@@ -35,7 +35,6 @@ enum OS {
 	openbsd
 	netbsd
 	dragonfly
-	msvc // TODO not an OS
 	js   // TODO
 	android
 	solaris
@@ -166,7 +165,7 @@ pub fn (v mut V) parse(file string, pass Pass) int {
 
 pub fn (v mut V) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
-	if os.user_os() != 'windows' && v.os == .msvc {
+	if os.user_os() != 'windows' && v.pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
 	}
 	mut cgen := v.cgen
@@ -512,7 +511,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && (v.os != .windows && v.os != .msvc) {
+		if file.ends_with('_win.v') && v.os != .windows {
 			continue
 		}
 		if file.ends_with('_lin.v') && v.os != .linux {
@@ -521,7 +520,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_mac.v') && v.os != .mac {
 			continue
 		}
-		if file.ends_with('_nix.v') && (v.os == .windows || v.os == .msvc) {
+		if file.ends_with('_nix.v') && v.os == .windows {
 			continue
 		}
 		if file.ends_with('_js.v') && v.os != .js {
@@ -1041,10 +1040,12 @@ pub fn os_from_string(os string) OS {
 		case 'openbsd': return .openbsd
 		case 'netbsd': return .netbsd
 		case 'dragonfly': return .dragonfly
-		case 'msvc': return .msvc
 		case 'js': return .js
 		case 'solaris': return .solaris
 		case 'android': return .android
+		case 'msvc':
+			// notice that `-os msvc` became `-cc msvc`
+			verror('use the flag `-cc msvc` to build using msvc')
 		}
 	println('bad os $os') // todo panic?
 	return .linux
