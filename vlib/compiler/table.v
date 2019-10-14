@@ -5,7 +5,6 @@
 module compiler
 
 import os
-import math
 import strings
 
 struct Table {
@@ -778,14 +777,16 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
 	switch typ {
-	case 'byte': return 0 <= x && x <= math.max_u8
-	case 'u16': return 0 <= x && x <= math.max_u16
+	case 'byte': return 0 <= x && x <= 255
+	case 'u16': return 0 <= x && x <= 65535
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
-	case 'i8': return math.min_i8 <= x && x <= math.max_i8
+	case 'i8': return -128 <= x && x <= 127
+	/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
+	*/
 	//case 'i64':
 		//x64 := val.i64()
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
