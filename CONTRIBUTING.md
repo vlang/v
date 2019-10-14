@@ -37,7 +37,7 @@ The main files are:
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 
-## Example Workflow for Contributing
+## Example Workflow for Contributing.
 ##### (provided by [@spytheman](https://github.com/spytheman))
 
 (If you don't already have a Github account, please create one. Your Github username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it accordingly in the steps below.)
