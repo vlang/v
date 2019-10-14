@@ -437,9 +437,9 @@ fn (p mut Parser) fn_decl() {
 	if p.pref.is_prof && f.name != 'time__ticks' {
 		p.genln('double _PROF_START = time__ticks();//$f.name')
 		cgen_name := p.table.fn_gen_name(f)
-		// if f.defer_text.len > f.scope_level {
+		if f.defer_text.len > f.scope_level {
 			f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
-		// }
+		}
 	}
 	if is_generic {
 		// Don't need to generate body for the actual generic definition
