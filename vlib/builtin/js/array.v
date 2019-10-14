@@ -33,6 +33,11 @@ pub fn _make(len, cap, elm_size int) array {
 
 
 */
+
+pub fn make(len, cap, elm_size int) array {
+	return array{}
+}
+
 fn array_repeat(val voidptr, nr_repeats, elm_size int) array {
 	return val
 }
@@ -121,7 +126,7 @@ pub fn (b []byte) hex() string {
 	return 'sdf'
 }
 
-pub fn (arr mut array) _push_many(val voidptr, size int) {
+pub fn (arr mut array) push_many(val voidptr, size int) {
 }
 
 pub fn free(voidptr) {

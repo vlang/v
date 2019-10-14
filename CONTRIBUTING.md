@@ -7,6 +7,7 @@ The compiler itself is located in `compiler/`
 The main files are:
 
 1. `main.v` The entry point.
+
 - V figures out the build mode.
 - Constructs the compiler object (`struct V`).
 - Creates a list of .v files that need to be parsed.
@@ -18,7 +19,7 @@ The main files are:
 
    In V, objects can be used before declaration, so there are 2 passes. During the first pass, it only looks at declarations and skips function bodies. It memorizes all function signatures, types, consts, etc. During the second pass it looks at function bodies and generates C (e.g. `cgen('if ($expr) {'`) or machine code (e.g. `gen.mov(EDI, 1)`).
 
-   The formatter is embedded in the parser. Correctly formatted tokens are emitted as they are parsed. This allowed to simplify the compiler and avoid duplication, but slowed it down a bit. In the future this will be fixed with build flags and separate binaries for C generation, machine code generation, and formatting. This way there will be no unnecessary branching and function calls.
+   The formatter is embedded in the parser. Correctly formatted tokens are emitted as they are parsed. This allowed us to simplify the compiler and avoid duplication, but slowed it down a bit. In the future, this will be fixed with build flags and separate binaries for C generation, machine code generation, and formatting. This way there will be no unnecessary branching and function calls.
 
 3. `scanner.v` The scanner's job is to parse a list of characters and convert them to tokens. It also takes care of string interpolation, which is a mess at the moment.
 
@@ -35,3 +36,24 @@ The main files are:
 9. `x64/` is the directory with all the machine code generation logic. It will be available in early July. Obviously this is the most complex part of the compiler. It defines a set of functions that translates assembly instructions to machine code, it builds complicated binaries from scratch byte by byte. It manually builds all headers, segments, sections, symtable, relocations, etc. Right now it only has basic support of the x64 platform/Mach-O format, and it can only generate `.o` files, which then have to be linked with `lld`.
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps), `time/`, `os/`, etc. Their documentation is pretty clear.
+
+## Example Workflow for Contributing
+##### (provided by [@spytheman](https://github.com/spytheman))
+
+(If you don't already have a Github account, please create one. Your Github username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it accordingly in the steps below.)
+
+1. Clone https://github.com/vlang/v in a folder, say nv (`git clone https://github.com/vlang/v nv`)
+1. `cd nv`
+1. `git remote add pullrequest git@github.com:YOUR_GITHUB_USERNAME/v.git`  # (NOTE: this is your own forked repo of: https://github.com/vlang/v - After this, we just do normal git operations such as: `git pull` and so on.)
+1. When finished with a feature/bugfix, you can: `git checkout -b fix_alabala`
+1. `git push pullrequest`  # (NOTE: the pullrequest remote was setup on step 3)
+1. On Github's web interface, I go to: https://github.com/vlang/v/pulls  Here the UI shows a nice dialog with a button to make a new pull request based on the new pushed branch. (Example dialogue: https://url4e.com/gyazo/images/364edc04.png)
+1. After making your pullrequest (aka, PR), you can continue to work on the branch... just do step #5 when you have more commits.
+1. If there are merge conflicts, or a branch lags too much behind V's master, you can do the following:
+   1. `git checkout master`
+   1. `git pull`
+   1. `git checkout fix_alabala`
+   1. `git rebase master`  # solve conflicts and do git rebase --continue
+   1. `git push pullrequest -f`
+
+The point of doing the above steps to never directly push to the main V repository, only to your own fork. Since your local master branch tracks the main V repository's master, then `git checkout master; git pull --rebase origin master` work as expected (this is actually used by `v up`) and it can always do so cleanly. Git is very flexible, so there may be simpler/easier ways to accomplish the same thing.

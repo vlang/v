@@ -4,7 +4,7 @@
 
 // Linux version
 // Will serve as more advanced input method
-// Based on the work of https://github.com/AmokHuginnsson/replxx 
+// Based on the work of https://github.com/AmokHuginnsson/replxx
 
 module readline
 
@@ -14,7 +14,7 @@ import term
 #include <sys/ioctl.h>
 
 // Used to change the terminal options
-struct termios {
+struct Termios {
 mut:
   c_iflag int
   c_oflag int
@@ -24,7 +24,7 @@ mut:
 }
 
 // Used to collect the screen information
-struct winsize {
+struct Winsize {
   ws_row u16
   ws_col u16
   ws_xpixel u16
@@ -34,7 +34,7 @@ struct winsize {
 struct Readline {
 mut:
   is_raw bool
-  orig_termios termios
+  orig_termios Termios
   current ustring // Line being edited
   cursor int // Cursor position
   overwrite bool
@@ -68,9 +68,10 @@ enum Action {
 }
 
 // Toggle raw mode of the terminal by changing its attributes
-pub fn (r mut Readline) enable_raw_mode() {
+fn (r mut Readline) enable_raw_mode() {
   if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
     r.is_tty = false
+    r.is_raw = false
     return
   }
   mut raw := r.orig_termios
@@ -85,9 +86,10 @@ pub fn (r mut Readline) enable_raw_mode() {
 }
 
 // Not catching the SIGUSER (CTRL+C) Signal
-pub fn (r mut Readline) enable_raw_mode2() {
+fn (r mut Readline) enable_raw_mode2() {
   if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
     r.is_tty = false
+    r.is_raw = false
     return
   }
   mut raw := r.orig_termios
@@ -102,9 +104,10 @@ pub fn (r mut Readline) enable_raw_mode2() {
 }
 
 // Reset back the terminal to its default value
-pub fn (r Readline) disable_raw_mode() {
+pub fn (r mut Readline) disable_raw_mode() {
   if r.is_raw {
     C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
+    r.is_raw = false
   }
 }
 
@@ -115,8 +118,9 @@ fn (r Readline) read_char() int {
 
 // Main function of the readline module
 // Will loop and ingest characters until EOF or Enter
-// Returns the completed line
-pub fn (r mut Readline) read_line_utf8(prompt string) ustring {
+// Returns the completed line as utf8 ustring
+// Will return an error if line is empty
+pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
   r.current = ''.ustring()
   r.cursor = 0
   r.prompt = prompt
@@ -128,6 +132,9 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ustring {
   else {
     r.previous_lines[0] = ''.ustring()
   }
+  if !r.is_raw {
+    r.enable_raw_mode2()
+  }
 
   print(r.prompt)
   for {
@@ -137,13 +144,42 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ustring {
       break
     }
   }
+
   r.previous_lines[0] = ''.ustring()
   r.search_index = 0
+  r.disable_raw_mode()
+  if r.current.s == '' {
+    return error('empty line')
+  }
   return r.current
 }
 
-pub fn (r mut Readline) read_line(prompt string) string {
-  return r.read_line_utf8(prompt).s
+// Returns the string from the utf8 ustring
+pub fn (r mut Readline) read_line(prompt string) ?string {
+  s := r.read_line_utf8(prompt) or {
+    return error(err)
+  }
+  return s.s
+}
+
+// Standalone function without persistent functionnalities (eg: history)
+// Returns utf8 based ustring
+pub fn read_line_utf8(prompt string) ?ustring {
+  mut r := Readline{}
+  s := r.read_line_utf8(prompt) or {
+    return error(err)
+  }
+  return s
+}
+
+// Standalone function without persistent functionnalities (eg: history)
+// Return string from utf8 ustring
+pub fn read_line(prompt string) ?string {
+  mut r := Readline{}
+  s := r.read_line(prompt) or {
+    return error(err)
+  }
+  return s
 }
 
 fn (r Readline) analyse(c byte) Action {
@@ -232,7 +268,7 @@ fn (r mut Readline) execute(a Action, c int) bool {
 }
 
 fn get_screen_columns() int {
-  ws := winsize{}
+  ws := Winsize{}
   cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { int(ws.ws_col) }
   return cols
 }

@@ -4,11 +4,23 @@
 
 module builtin
 
+fn init() {
+	$if windows {	
+		if is_atty(0) {
+			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
+		} else {
+			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)		
+		}
+		C._setmode(C._fileno(C.stdout), C._O_U8TEXT)
+		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		C.setbuf(C.stdout,0)
+	}
+}
+
 fn C.memcpy(byteptr, byteptr, int)
 fn C.memmove(byteptr, byteptr, int)
 //fn C.malloc(int) byteptr
 fn C.realloc(byteptr, int) byteptr
-
 
 pub fn exit(code int) {
 	C.exit(code)
@@ -38,7 +50,32 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 			if C.backtrace_symbols_fd != 0 {
 				buffer := [100]byteptr
 				nr_ptrs := C.backtrace(*voidptr(buffer), 100)
-				C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs-skipframes, 1)
+				nr_actual_frames := nr_ptrs-skipframes
+				mut sframes := []string
+				csymbols := *byteptr(C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames))
+				for i in 0..nr_actual_frames {  sframes << tos2(csymbols[i]) }
+				for sframe in sframes {
+					executable := sframe.all_before('(')
+					addr := sframe.all_after('[').all_before(']')
+					cmd := 'addr2line -e $executable $addr'
+
+					// taken from os, to avoid depending on the os module inside builtin.v
+					f := byteptr(C.popen(cmd.str, 'r'))
+					if isnil(f) {
+						println(sframe) continue
+					}
+					buf := [1000]byte
+					mut output := ''
+					for C.fgets(buf, 1000, f) != 0 {
+						output += tos(buf, vstrlen(buf)) 
+					}
+					output = output.trim_space()+':'
+					if 0 != int(C.pclose(f)) {
+						println(sframe) continue
+					}
+					println( '${output:-45s} | $sframe')
+				}
+				//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 				return
 			}else{
 				C.printf('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
@@ -58,7 +95,7 @@ pub fn print_backtrace(){
 }
 
 // replaces panic when -debug arg is passed
-fn _panic_debug(line_no int, file,  mod, fn_name, s string) {
+fn panic_debug(line_no int, file,  mod, fn_name, s string) {
 	println('================ V panic ================')
 	println('   module: $mod')
 	println(' function: ${fn_name}()')
@@ -94,11 +131,16 @@ pub fn eprintln(s string) {
 	}
 	$if mac {
 		C.fprintf(stderr, '%.*s\n', s.len, s.str)
+		C.fflush(stderr)
+		return
+	}
+	$if linux {
+		C.fprintf(stderr, '%.*s\n', s.len, s.str)
+		C.fflush(stderr)
+		return
 	}
 	// TODO issues with stderr and cross compiling for Linux
-	$else {
-		println(s)
-	}
+	println(s)
 }
 
 pub fn print(s string) {
@@ -154,7 +196,15 @@ fn memdup(src voidptr, sz int) voidptr {
 
 fn v_ptr_free(ptr voidptr) {
 	C.free(ptr)
-}	
+}
 
-
+pub fn is_atty(fd int) bool {
+	$if windows {
+		mut mode := 0
+		C.GetConsoleMode(C._get_osfhandle(fd), &mode)
+		return mode > 0
+	} $else {
+		return C.isatty(fd) != 0
+	}
+}
 

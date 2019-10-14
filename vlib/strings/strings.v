@@ -8,3 +8,4 @@ pub fn repeat(c byte, n int) string {
 	arr[n] = `\0`
 	return string(arr, n)
 }
+

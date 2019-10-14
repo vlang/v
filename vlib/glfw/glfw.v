@@ -18,6 +18,8 @@ import gl
 #flag darwin -L/opt/local/lib
 
 #flag darwin -lglfw
+#flag freebsd -I/usr/local/include
+#flag freebsd -Wl,-L/usr/local/lib,-lglfw
 #flag linux -lglfw
 #flag windows -lglfw3
 #include <GLFW/glfw3.h>
@@ -84,7 +86,7 @@ pub:
 // type clickpub fn pub fn (window * GLFWwindow, button, action, mods int)
 type clickpubfn fn (window voidptr, button, action, mods int)
 
-pub fn init() {
+pub fn init_glfw() {
 	C.glfwInit()
 	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MAJOR, 3)
 	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MINOR, 3)

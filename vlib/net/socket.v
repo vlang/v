@@ -1,5 +1,7 @@
 module net
 
+import os
+
 struct Socket {
 pub:
 	sockfd int
@@ -8,24 +10,6 @@ pub:
 	proto int
 }
 
-struct C.WSAData {
-mut:
-	wVersion u16
-	wHighVersion u16	
-	szDescription [257]byte
-	szSystemStatus [129]byte
-	iMaxSockets u16
-	iMaxUdpDg u16
-	lpVendorInfo byteptr
-}
-
-const (
-    WSA_V1  = 0x100 // C.MAKEWORD(1, 0)
-    WSA_V11 = 0x101 // C.MAKEWORD(1, 1)
-    WSA_V2  = 0x200 // C.MAKEWORD(2, 0)
-    WSA_V21 = 0x201 // C.MAKEWORD(2, 1)
-    WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
-)
 
 struct C.in_addr {
 mut:
@@ -55,13 +39,6 @@ struct C.sockaddr_storage {}
 
 // create socket
 pub fn socket(family int, _type int, proto int) ?Socket {
-	$if windows {
-		mut wsadata := C.WSAData{}
-		res := C.WSAStartup(WSA_V22, &wsadata)
-		if res != 0 {
-			return error('socket: WSAStartup failed')
-		}
-	}
 
 	sockfd := C.socket(family, _type, proto)
 	one:=1
@@ -173,10 +150,10 @@ pub fn (s Socket) accept() ?Socket {
 // connect to given addrress and port
 pub fn (s Socket) connect(address string, port int) ?int {
 	mut hints := C.addrinfo{}
-	hints.ai_family = C.AF_UNSPEC
-	hints.ai_socktype = C.SOCK_STREAM
+	hints.ai_family = s.family
+	hints.ai_socktype = s._type
 	hints.ai_flags = C.AI_PASSIVE
-	hints.ai_protocol = 0
+	hints.ai_protocol = s.proto
 	hints.ai_addrlen = 0
 	hints.ai_canonname = C.NULL
 	hints.ai_addr = C.NULL
@@ -187,11 +164,13 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	sport := '$port'
 	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
-		return error('socket: connect failed')
+		error_message := os.get_error_msg(net.error_code())
+		return error('socket: getaddrinfo failed ($error_message)')
 	}
 	res := int(C.connect(s.sockfd, info.ai_addr, info.ai_addrlen))
 	if res < 0 {
-		return error('socket: connect failed')
+		error_message := os.get_error_msg(net.error_code())
+		return error('socket: connect failed ($error_message)')
 	}
 	return int(res)
 }
@@ -316,5 +295,3 @@ pub fn (s Socket) get_port() int {
 	sockname_res := C.getsockname(s.sockfd, &addr, &size)
 	return int(C.ntohs(addr.sin_port))
 }
-
-

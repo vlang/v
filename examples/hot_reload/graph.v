@@ -5,6 +5,7 @@ import gg
 import time
 import glfw
 // import math
+import os
 
 const (
 	Size  = 700
@@ -16,7 +17,8 @@ struct Context {
 }
 
 fn main() {
-	glfw.init()
+	os.clear()
+	glfw.init_glfw()
 	ctx:= &Context{ 
 		gg: gg.new_context(gg.Cfg {
 			width: Size 
@@ -40,11 +42,12 @@ fn main() {
 fn (ctx &Context) draw() {
 	ctx.gg.draw_line(0, Size / 2, Size, Size / 2) // x axis 
 	ctx.gg.draw_line(Size / 2, 0, Size / 2, Size) // y axis 
-	center := f64(Size / 2) 
+	center := f64(Size / 2)
+	mut y := 0.0
 	for x := -10.0; x <= 10.0; x += 0.002 {
-		y := x * x - 1 
-		//y := (x + 3) * (x + 3) - 1
-		//y := math.sqrt(30.0 - x * x)
+		y = x * x - 1 
+		//y = (x + 3) * (x + 3) - 1
+		//y = math.sqrt(30.0 - x * x)
 		ctx.gg.draw_rect(center + x * Scale, center - y * Scale, 1, 1, gx.Black) 
 		//ctx.gg.draw_rect(center + x * Scale, center + y * Scale, 1, 1, gx.Black) 
 	}

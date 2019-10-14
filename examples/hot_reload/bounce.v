@@ -22,7 +22,7 @@ mut:
 }
 
 fn main() {
-	glfw.init()
+	glfw.init_glfw()
 	width := 600
 	height := 300
 	mut game := &Game{
@@ -43,7 +43,7 @@ fn main() {
 	//window.onkeydown(key_down)
 	game.main_wnd = window 
 	window.make_context_current()
-	gg.init() 
+	gg.init_gg() 
 	game.gg = gg.new_context(gg.Cfg {
 		width: width
 		height: height

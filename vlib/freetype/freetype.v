@@ -17,6 +17,8 @@ import (
 
 #flag darwin -I/usr/local/include/freetype2
 #flag darwin -I/opt/local/include/freetype2
+#flag freebsd -I/usr/local/include/freetype2
+#flag freebsd -Wl,-L/usr/local/lib
 #flag -lfreetype
 
 //#flag -I @VROOT/thirdparty/freetype
@@ -250,14 +252,14 @@ fn (ctx mut Context) init_utf8_runes() {
 pub fn (ctx mut Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	//utext := text.ustring_tmp()
 	utext := text.ustring()
-	ctx._draw_text(_x, _y, utext, cfg)
+	ctx.private_draw_text(_x, _y, utext, cfg)
 }
 
 fn (ctx mut Context) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
-	ctx._draw_text(_x, _y, text, cfg)
+	ctx.private_draw_text(_x, _y, text, cfg)
 }
 
-fn (ctx mut Context) _draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
+fn (ctx mut Context) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	/*
 	if utext.s.contains('on_seg') {
 		println('\nat(0)')

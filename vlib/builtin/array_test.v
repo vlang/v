@@ -147,7 +147,7 @@ fn test_push_many() {
 }
 
 fn test_reverse() {
-  	mut a := [1, 2, 3, 4]
+  mut a := [1, 2, 3, 4]
 	mut b := ['test', 'array', 'reverse']
 	c := a.reverse()
 	d := b.reverse()
@@ -164,7 +164,6 @@ const (
 )
 
 fn test_fixed() {
-	/*
 	mut nums := [4]int
 	assert nums[0] == 0
 	assert nums[1] == 0
@@ -174,7 +173,6 @@ fn test_fixed() {
 	assert nums[1] == 7
 	nums2 := [N]int
 	assert nums2[N - 1] == 0
-	*/
 }
 
 fn modify (numbers mut []int) {
@@ -239,4 +237,104 @@ fn test_struct_print() {
 	assert a.str() == '{Test [{1 2}, {1 2}] }'
 	assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
+}
+
+fn test_single_element() {
+	mut a := [1]
+	a << 2
+	assert a.len == 2
+	assert a[0] == 1
+	assert a[1] == 2
+	println(a)
+}	
+
+fn test_find_index() {
+	// string
+	a := ['v', 'is', 'great']
+	assert a.index('v') == 0
+	assert a.index('is') == 1
+	assert a.index('gre')  == -1
+
+	// int
+	b := [1, 2, 3, 4]
+	assert b.index(1) == 0
+	assert b.index(4) == 3
+	assert b.index(5) == -1
+
+	// byte
+	c := [0x22, 0x33, 0x55]
+	assert c.index(0x22) == 0
+	assert c.index(0x55) == 2
+	assert c.index(0x99) == -1
+
+	// char
+	d := [`a`, `b`, `c`]
+	assert d.index(`b`) == 1
+	assert d.index(`c`) == 2
+	assert d.index(`u`) == -1
+}
+
+fn test_multi() {
+	a := [[1,2,3],[4,5,6]]
+	assert a.len == 2
+	assert a[0].len == 3
+	assert a[0][0] == 1
+	assert a[0][2] == 3
+	assert a[1][2] == 6
+	// TODO
+	//b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
+	//assert b[0][0][0] == 1
+}
+
+fn test_in() {
+	a := [1,2,3]
+	assert 1 in a
+	assert 2 in a
+	assert 3 in a
+	assert !(4 in a)
+	assert !(0 in a)
+}
+
+fn callback_1(val int, index int, arr []int) bool {
+	return val >= 2
+}
+
+fn callback_2(val string, index int, arr []string) bool {
+	return val.len >= 2
+}
+
+fn test_filter() {
+	a := [1, 2, 3, 4, 5, 6]
+	b := a.filter(callback_1)
+	assert b[0] == 2
+	assert b[1] == 3
+
+	c := ['v', 'is', 'awesome']
+	d := c.filter(callback_2)
+	assert d[0] == 'is'
+	assert d[1] == 'awesome'
+}
+
+fn sum(prev int, curr int) int {
+	return prev + curr
+}
+
+fn sub(prev int, curr int) int {
+	return prev - curr
+}
+
+fn test_reduce() {
+	a := [1, 2, 3, 4, 5]
+	b := a.reduce(sum, 0)
+	c := a.reduce(sum, 5)
+	d := a.reduce(sum, -1)
+	assert b == 15
+	assert c == 20
+	assert d == 14
+
+	e := [1, 2, 3]
+	f := e.reduce(sub, 0)
+	g := e.reduce(sub, -1)
+	assert f == -6
+	assert g == -7
 }
