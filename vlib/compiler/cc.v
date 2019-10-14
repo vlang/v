@@ -22,7 +22,7 @@ fn (v mut V) cc() {
 				dir := os.dir(vexe)
 				if !os.file_exists(vjs_path) {
 					println('V.js compiler not found, building...')
-					ret := os.system('$vexe -o $vjs_path -os js $dir/compiler')
+					ret := os.system('$vexe -o $vjs_path -os js $dir/v.v')
 					if ret == 0 {
 						println('Done.')
 					} else {
