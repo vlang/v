@@ -49,7 +49,7 @@ script:
       fi
       if [[ "${TRAVIS_JOB_NAME}" == "windows_msvc" ]]; then
         echo "Building V with MSVC"
-        #export VFLAGS="-cc msvc"
+        export VFLAGS="-cc msvc"
         ./make.bat -msvc
       fi
 
