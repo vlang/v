@@ -326,7 +326,7 @@ fn (p mut Parser) fn_decl() {
 			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
 	}
-	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
 	} else if p.attr == 'inline' {
 		'static inline '
@@ -590,7 +590,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
 	thread_name = '_thread$tmp_nr'
-	if p.os != .windows && p.os != .msvc {
+	if p.os != .windows {
 		p.genln('pthread_t $thread_name;')
 	}
 	tmp2 := p.get_tmp()
@@ -599,7 +599,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		parg = ' $tmp_struct'
 	}
 	// Call the wrapper
-	if p.os == .windows || p.os == .msvc {
+	if p.os == .windows {
 		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
 	}
 	else {

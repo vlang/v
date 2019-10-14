@@ -75,7 +75,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 }
 
 fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
-	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
 	} else if p.attr == 'inline' {
 		'static inline '

@@ -19,7 +19,7 @@ fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 
 fn (v &V) generate_hotcode_reloading_declarations() {
 	mut cgen := v.cgen
-	if v.os != .windows && v.os != .msvc {
+	if v.os != .windows {
 		if v.pref.is_so {
 			cgen.genln('pthread_mutex_t live_fn_mutex;')
 		}
@@ -42,7 +42,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	mut cgen := v.cgen
 	cgen.genln('')
 	file_base := os.filename(v.dir).replace('.v', '')
-	if !(v.os == .windows || v.os == .msvc) {
+	if v.os != .windows {
 		// unix:
 		so_name := file_base + '.so'
 		cgen.genln('  char *live_library_name = "$so_name";')
@@ -51,7 +51,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 		cgen.genln('  pthread_create(&_thread_so , NULL, &reload_so, live_library_name);')
 	} else {
 		// windows:
-		so_name := file_base + if v.os == .msvc {'.dll'} else {'.so'}
+		so_name := file_base + if v.pref.ccompiler == 'msvc' {'.dll'} else {'.so'}
 		cgen.genln('  char *live_library_name = "$so_name";')
 		cgen.genln('  live_fn_mutex = CreateMutexA(0, 0, 0);')
 		cgen.genln('  load_so(live_library_name);')
@@ -78,8 +78,8 @@ fn (v &V) generate_hot_reload_code() {
 		}
 		
 		mut msvc := ''
-		if v.os == .msvc {
-			msvc = '-os msvc'
+		if v.pref.ccompiler == 'msvc' {
+			msvc = '-cc msvc'
 		}
 		
 		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }		
@@ -104,7 +104,7 @@ void lfnmutex_print(char *s){
 }
 ')
 
-		if v.os != .windows && v.os != .msvc {
+		if v.os != .windows {
 			cgen.genln('
 #include <dlfcn.h>
 void* live_lib=0;

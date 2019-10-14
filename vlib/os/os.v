@@ -600,9 +600,6 @@ pub fn user_os() string {
 	$if dragonfly {
 		return 'dragonfly'
 	}
-	$if msvc {
-		return 'windows'
-	}
 	$if android{
 		return 'android'
 	}
