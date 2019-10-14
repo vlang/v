@@ -574,7 +574,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 			// main files will get added last
 			continue
 		}
-		
 		// use cached built module if exists
 		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', os.path_separator)
@@ -587,8 +586,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			}
 		}
 		// standard module
-		mod_path := v.find_module_path(mod) or { verror(err) break }
-		vfiles := v.v_files_from_dir(mod_path)
+		vfiles := v.table.get_imported_module_files(mod)
 		for file in vfiles {
 			v.files << file
 		}
@@ -633,7 +631,7 @@ pub fn (v &V)  get_user_files() []string {
 	if dir.ends_with('.v') {
 		// Just compile one file and get parent dir
 		user_files << dir
-		dir = dir.all_before('${os.path_separator}')
+		dir = dir.all_before(os.path_separator)
 	}
 	else {
 		// Add .v files from the directory being compiled

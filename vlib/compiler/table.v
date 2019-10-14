@@ -886,6 +886,16 @@ fn (table &Table) get_file_import_table(file_path_id string) FileImportTable {
 	return new_file_import_table(file_path_id)
 }
 
+fn (table &Table) get_imported_module_files(mod string) []string {
+	mut files := []string
+	for _, fit in table.file_imports {
+		if fit.module_name == mod {
+			files << fit.file_path_id
+		}
+	}
+	return files
+}
+
 fn new_file_import_table(file_path_id string) FileImportTable {
 	return FileImportTable{
 		file_path_id: file_path_id
