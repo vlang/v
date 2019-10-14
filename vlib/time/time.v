@@ -20,7 +20,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	uni    int // TODO it's safe to use "unix" now
+	uni    i64 // TODO it's safe to use "unix" now
 }
 
 
@@ -453,4 +453,51 @@ pub fn days_in_month(month, year int) ?int {
 	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
 	res := month_days[month-1] + extra
 	return res
+}
+
+
+// to_unix(t Time) calculates the Unix timestamp (the number of seconds that
+// have elapsed since the Unix epoch, that is the time 00:00:00 UTC on 1 January 1970,
+// minus leap seconds) from `struct Time`. Time in `t` is interpreted as UTC time.
+// Based on the algorithm of Howard Hinnant.
+// http://howardhinnant.github.io/date_algorithms.html#days_from_civil
+fn to_unix(t Time) i64 {
+    y := if t.month > 2 { t.year } else { t.year - 1 }
+    era := (if y >= 0 { y } else { (y - 399) }) / 400
+    yoe := y - era * 400
+    doy := (153 * (t.month + (if t.month > 2 { -3 } else { 9 })) + 2) / 5 + t.day - 1
+    doe := yoe * 365 + yoe / 4 - yoe / 100 + doy
+    sod := t.hour * 60 * 60 + t.minute * 60 + t.second
+    return (i64(era) * 146097 + doe - 719468) * 24 * 60 * 60 + sod
+}
+
+// from_unix(u i64) converts Unix timestamp to `struct Time`.
+// Time in `struct Time` is given in UTC time zone.
+// Based on the algorithm of Howard Hinnant.
+// http://howardhinnant.github.io/date_algorithms.html#civil_from_days
+fn from_unix(u i64) Time {
+    z := int(u / (24 * 60 * 60)) + 719468
+    era := (if z >= 0 { z } else { z - 146096}) / 146097
+    doe := z - era * 146097
+    yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    doy := doe - (365 * yoe + yoe / 4 - yoe / 100)
+    mp := (5 * doy + 2) / 153
+    d := doy - (153 * mp + 2) / 5 + 1
+    m := mp + (if mp < 10 { 3 } else { -9 })
+    y := yoe + era * 400 + (if m > 2 { 0 } else { 1 })
+
+    t := int(u % (24 * 60 * 60))
+    h := t / (60 * 60)
+    k := t % (60 * 60) / 60
+    s := t % 60
+
+    return Time {
+        year   : y
+        month  : m
+        day    : d
+        hour   : h
+        minute : k
+        second : s
+        uni    : u
+    }
 }
