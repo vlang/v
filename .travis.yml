@@ -60,7 +60,7 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" != "windows" ]]; then
       make
-      ./v -o v compiler
+      ./v -o v v.v
       ./v test v
     fi
   - |
