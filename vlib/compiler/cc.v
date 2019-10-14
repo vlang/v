@@ -11,7 +11,7 @@ import (
 
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
-	vexe := os.executable()
+	vexe := vexe_path()
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {

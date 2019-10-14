@@ -854,7 +854,7 @@ pub fn new_v(args[]string) &V {
 		_os = os_from_string(target_os)
 	}
 	// Location of all vlib files
-	vroot := os.dir(os.executable())
+	vroot := os.dir(vexe_path())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
@@ -948,7 +948,7 @@ pub fn env_vflags_and_os_args() []string {
 
 pub fn update_v() {
 	println('Updating V...')
-	vroot := os.dir(os.executable())
+	vroot := os.dir(vexe_path())
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
 		verror(err)
 		return
@@ -993,7 +993,7 @@ pub fn install_v(args[]string) {
 		return
 	}
 	names := args.slice(2, args.len)
-	vexec := os.executable()
+	vexec := vexe_path()
 	vroot := os.dir(vexec)
 	vget := '$vroot/tools/vget'
 	if true {
@@ -1019,7 +1019,7 @@ pub fn install_v(args[]string) {
 }
 
 pub fn create_symlink() {
-	vexe := os.executable()
+	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
@@ -1028,6 +1028,12 @@ pub fn create_symlink() {
 		println('failed to create symlink "$link_path", '+
 			'make sure you run with sudo')
 	}
+}
+
+pub fn vexe_path() string {
+	vexe := os.getenv('VEXE')
+	if '' != vexe {	return vexe	}
+	return os.executable()
 }
 
 pub fn verror(s string) {

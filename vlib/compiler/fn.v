@@ -14,6 +14,7 @@ const (
 
 struct Fn {
 	// addr int
+pub:
 mut:
 	name          string
 	mod           string

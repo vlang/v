@@ -8,7 +8,7 @@ import os
 import strings
 
 struct Table {
-mut:
+pub mut:
 	typesmap     map[string]Type
 	consts       []Var
 	fns          map[string]Fn
@@ -39,6 +39,13 @@ enum NameCategory {
 struct Name {
 	cat NameCategory
 	idx int // e.g. typ := types[name.idx]
+}	
+
+struct GenTable {
+pub:
+	fn_name string
+mut:
+	types []string
 }
 
 // Holds import information scoped to the parsed file
@@ -74,6 +81,7 @@ enum TypeCategory {
 }
 
 struct Var {
+pub:
 mut:
 	typ             string
 	name            string
@@ -102,6 +110,7 @@ mut:
 }
 
 struct Type {
+pub:
 mut:
 	mod            string
 	name           string
@@ -198,7 +207,14 @@ fn (f Fn) str() string {
 	return '$f.name($str_args) $f.typ'
 }
 
-fn (t &Table) debug_fns() string {
+pub fn (f Fn) v_fn_module() string {
+	return f.mod
+}
+pub fn (f Fn) v_fn_name() string {
+	return f.name.replace('${f.mod}__', '')
+}
+
+pub fn (t &Table) debug_fns() string {
 	mut s := strings.new_builder(1000)
 	for _, f in t.fns {
 		s.writeln(f.name)
