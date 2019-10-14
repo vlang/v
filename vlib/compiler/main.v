@@ -211,11 +211,10 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define _VJS (1) ')
 	}
 
-	if v.pref.building_v {
-		cgen.genln('#ifndef V_COMMIT_HASH')
-		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
-		cgen.genln('#endif')
-	}
+	cgen.genln('#ifndef V_COMMIT_HASH')
+	cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
+	cgen.genln('#endif')
+  
 	q := cgen.nogen // TODO hack
 	cgen.nogen = false
 	$if js {
