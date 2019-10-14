@@ -17,7 +17,7 @@ Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
 Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
 
-## Key Features of V
+## Key Features of V.
 
 - Simplicity: the language can be learned in less than an hour
 - Fast compilation: ≈100k — 1.2 million loc/s
