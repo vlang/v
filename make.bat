@@ -28,15 +28,15 @@ if not exist "%gccpath%" (
     goto:msvcstrap
 )
 
-gcc -std=gnu11 -w -o v2.exe vc\v_win.c
+gcc -std=c99 -w -o v2.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
     exit /b 1
 )
 
-echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -o v3.exe compiler
-v3.exe -o v.exe -prod compiler
+echo Now using V to build V...
+v2.exe -o v3.exe v.v
+v3.exe -o v.exe -prod v.v
 if %ERRORLEVEL% NEQ 0 (
     echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
     exit /b 1
@@ -52,7 +52,7 @@ goto :success
 :msvcstrap
 echo Attempting to build v.c  with MSVC...
 
-for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
   set InstallDir=%%i
 )
 
@@ -69,8 +69,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -os msvc -o v3.exe compiler
-v3.exe -os msvc -o v.exe -prod compiler
+v2.exe -cc msvc -o v3.exe v.v
+v3.exe -cc msvc -o v.exe -prod v.v
 if %ERRORLEVEL% NEQ 0 (
     echo V failed to build itself
     goto :compileerror

@@ -4,15 +4,11 @@
 
 module urllib
 
-struct ValueStruct {
+struct Value {
 pub:
 mut:
 	data []string
 }
-
-// using this instead of just ValueStruct
-// because of unknown map initializer bug
-type Value ValueStruct
 
 struct Values {
 pub:
@@ -41,7 +37,7 @@ pub fn (v &Value) all() []string {
 // get gets the first value associated with the given key.
 // If there are no values associated with the key, get returns
 // a empty string.
-pub fn (v Values) get(key string) string {
+pub fn (v &Values) get(key string) string {
 	if v.data.size == 0 {
 		return ''
 	}
@@ -55,7 +51,7 @@ pub fn (v Values) get(key string) string {
 // get_all gets the all the values associated with the given key.
 // If there are no values associated with the key, get returns
 // a empty []string.
-pub fn (v Values) get_all(key string) []string {
+pub fn (v &Values) get_all(key string) []string {
 	if v.data.size == 0 {
 		return []string
 	}

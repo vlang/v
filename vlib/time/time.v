@@ -7,7 +7,7 @@ module time
 import rand
 
 const (
-	MonthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 )
 
 #include <time.h>
@@ -28,6 +28,8 @@ fn C.localtime(int) &C.tm
 
 fn remove_me_when_c_bug_is_fixed() { // TODO
 }
+
+struct C.time_t {}
 
 struct C.tm {
 	tm_year int
@@ -58,17 +60,17 @@ const (
 // The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
-	absoluteZeroYear = i64(-292277022399)
+	absolute_zero_year = i64(-292277022399)
 
-	secondsPerMinute = 60
-	secondsPerHour   = 60 * secondsPerMinute
-	secondsPerDay    = 24 * secondsPerHour
-	secondsPerWeek   = 7 * secondsPerDay
-	daysPer400Years  = 365*400 + 97
-	daysPer100Years  = 365*100 + 24
-	daysPer4Years    = 365*4 + 1
+	seconds_per_minute = 60
+	seconds_per_hour   = 60 * seconds_per_minute
+	seconds_per_day    = 24 * seconds_per_hour
+	seconds_per_week   = 7 * seconds_per_day
+	days_per_400_years  = 365*400 + 97
+	days_per_100_years  = 365*100 + 24
+	days_per_4_years    = 365*4 + 1
 
- daysBefore = [
+ days_before = [
 	0,
 	31,
 	31 + 28,
@@ -86,33 +88,38 @@ const (
 
 )
 
+const (
+	months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	days_string = 'MonTueWedThuFriSatSun'
+)
+
 
 // Based on Go's time package.
 // Copyright 2009 The Go Authors.
 pub fn unix(abs int) Time {
 	// Split into time and day.
-	mut d := abs / secondsPerDay
+	mut d := abs / seconds_per_day
 
 	// Account for 400 year cycles.
-	mut n := d / daysPer400Years
+	mut n := d / days_per_400_years
 	mut y := 400 * n
-	d -= daysPer400Years * n
+	d -= days_per_400_years * n
 
 	// Cut off 100-year cycles.
 	// The last cycle has one extra leap year, so on the last day
-	// of that year, day / daysPer100Years will be 4 instead of 3.
+	// of that year, day / days_per_100_years will be 4 instead of 3.
 	// Cut it back down to 3 by subtracting n>>2.
-	n = d / daysPer100Years
+	n = d / days_per_100_years
 	n -= n >> 2
 	y += 100 * n
-	d -= daysPer100Years * n
+	d -= days_per_100_years * n
 
 	// Cut off 4-year cycles.
 	// The last cycle has a missing leap year, which does not
 	// affect the computation.
-	n = d / daysPer4Years
+	n = d / days_per_4_years
 	y += 4 * n
-	d -= daysPer4Years * n
+	d -= days_per_4_years * n
 
 	// Cut off years within a 4-year cycle.
 	// The last year is a leap year, so on the last day of that year,
@@ -126,10 +133,10 @@ pub fn unix(abs int) Time {
 	yday := int(d)
 	mut day := yday
 
-	year := abs / int(3.154e+7) + 1970 //int(i64(y) + absoluteZeroYear)
-	hour := int(abs%secondsPerDay) / secondsPerHour
-	minute := int(abs % secondsPerHour) / secondsPerMinute
-	second := int(abs % secondsPerMinute)
+	year := abs / int(3.154e+7) + 1970 //int(i64(y) + absolute_zero_year)
+	hour := int(abs%seconds_per_day) / seconds_per_hour
+	minute := int(abs % seconds_per_hour) / seconds_per_minute
+	second := int(abs % seconds_per_minute)
 	
 	if is_leap_year(year) {
 		// Leap year
@@ -147,12 +154,12 @@ pub fn unix(abs int) Time {
 	// The estimate may be too low by at most one month, so adjust.
 	mut month := day / 31
 	mut begin := 0
-	end := int(daysBefore[month+1])
+	end := int(days_before[month+1])
 	if day >= end {
 		month++
 		begin = end
 	} else {
-		begin = int(daysBefore[month])
+		begin = int(days_before[month])
 	}
 
 	month++ // because January is 1
@@ -180,14 +187,10 @@ pub fn (t Time) format() string {
 	return '${t.year}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}'
 }
 
-const (
-	Months = 'JanFebMarAprMayJunJulAugSepOctNovDec'
-	Days = 'MonTueWedThuFriSatSun'
-)
 
 pub fn (t Time) smonth() string {
 	i := t.month - 1
-	return Months.substr(i * 3, (i + 1) * 3)
+	return months_string.substr(i * 3, (i + 1) * 3)
 }
 
 // 21:04
@@ -225,6 +228,11 @@ pub fn (t Time) hhmmss() string {
 // 2012-01-05
 pub fn (t Time) ymmdd() string {
 	return '${t.year}-${t.month:02d}-${t.day:02d}'
+}
+
+// 05.02.2012
+pub fn (t Time) ddmmy() string {
+	return '${t.day:02d}.${t.month:02d}.${t.year}'
 }
 
 // Jul 3
@@ -379,7 +387,7 @@ pub fn (t Time) day_of_week() int {
 // weekday_str() returns the current day in string (upto 3 characters)
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return Days.substr(i * 3, (i + 1) * 3)
+	return days_string.substr(i * 3, (i + 1) * 3)
 }
 
 struct C.timeval  {
@@ -443,6 +451,6 @@ pub fn days_in_month(month, year int) ?int {
 		return error('Invalid month: $month')
 	}
 	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
-	res := MonthDays[month-1] + extra
+	res := month_days[month-1] + extra
 	return res
 }

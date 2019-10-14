@@ -14,8 +14,6 @@ module builtin
 	the performance gains are basically non-existent.
 */
 
-import math
-
 struct hashmap {
 	cap          int
 	keys         []string
@@ -37,7 +35,7 @@ const (
 )
 
 fn new_hashmap(planned_nr_items int) hashmap {
-	mut cap := planned_nr_items * 3
+	mut cap := planned_nr_items * 5
 	if cap < min_cap {
 		cap = min_cap
 	}	
@@ -47,12 +45,12 @@ fn new_hashmap(planned_nr_items int) hashmap {
 	return hashmap{
 		cap: cap
 		elm_size: 4
-		table: _make(cap, cap, sizeof(hashmapentry))
+		table: make(cap, cap, sizeof(hashmapentry))
 	}	
 }	
 
 fn (m mut hashmap) set(key string, val int) {
-	hash := int(math.abs(key.hash()))
+	mut hash := int(b_fabs( key.hash() ))
 	idx := hash % m.cap
 	if m.table[idx].key.len != 0 {
 		//println('\nset() idx=$idx key="$key" hash="$hash" val=$val')
@@ -69,7 +67,7 @@ fn (m mut hashmap) set(key string, val int) {
 }	
 
 fn (m mut hashmap) get(key string) int {
-	hash := int(math.abs(key.hash()))
+	hash := int(b_fabs( key.hash() ))
 	idx := hash % m.cap
 	mut e := &m.table[idx]
 	for e.next != 0 { // todo unsafe {
@@ -81,4 +79,4 @@ fn (m mut hashmap) get(key string) int {
 	return e.val
 }
 
-
+[inline] fn b_fabs(v int) f64 { return if v < 0 { -v } else { v } }

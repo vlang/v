@@ -91,7 +91,7 @@ v
 Make sure V can compile itself:
 
 ```
-v -o v compiler
+v v.v
 ```
 
 ```

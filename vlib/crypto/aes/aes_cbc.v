@@ -26,7 +26,8 @@ mut:
 	tmp        []byte
 }
 
-fn _new_cbc(b AesCipher, iv []byte) AesCbc {
+// internal
+fn new_aes_cbc(b AesCipher, iv []byte) AesCbc {
 	return AesCbc{
 		b:          b,
 		block_size: b.block_size(),
@@ -42,7 +43,7 @@ pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
 	if iv.len != b.block_size() {
 		panic('crypto.cipher.new_cbc_encrypter: IV length must equal block size')
 	}
-	return _new_cbc(b, iv)
+	return new_aes_cbc(b, iv)
 }
 
 pub fn (x &AesCbc) block_size() int { return x.block_size }

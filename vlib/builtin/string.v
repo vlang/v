@@ -197,11 +197,19 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return C.strtoul(*char(s.str), 0, 0)
+	$if tinyc {
+		return u32(s.int()) // TODO
+	} $else {
+		return C.strtoul(*char(s.str), 0, 0)
+	}
 }
 
 pub fn (s string) u64() u64 {
-	return C.strtoull(*char(s.str), 0, 0)
+	$if tinyc {
+		return u64(s.int()) // TODO
+	} $else {
+		return C.strtoull(*char(s.str), 0, 0)
+	}
 	//return C.atoll(s.str) // temporary fix for tcc on windows.
 }
 
@@ -508,6 +516,24 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
+pub fn (s string) index_byte(c byte) int {
+	for i:=0; i<s.len; i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (s string) last_index_byte(c byte) int {
+	for i:=s.len-1; i>=0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
 // counts occurrences of substr in s
 pub fn (s string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
@@ -629,12 +655,8 @@ pub fn (a []string) to_c() voidptr {
 }
 */
 
-fn is_space(c byte) bool {
-	return c in [` `,`\n`,`\t`,`\v`,`\f`,`\r`]
-}
-
 pub fn (c byte) is_space() bool {
-	return is_space(c)
+	return c in [` `,`\n`,`\t`,`\v`,`\f`,`\r`]
 }
 
 pub fn (s string) trim_space() string {

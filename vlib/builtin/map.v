@@ -36,7 +36,7 @@ fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
 		root: 0
 	}
 	for i in 0 .. cap {
-		res._set(keys[i], vals + i * elm_size)
+		res.set(keys[i], vals + i * elm_size)
 	}
 	return res
 }
@@ -116,7 +116,7 @@ fn (n & mapnode) find2(key string, element_size int) bool{
 	}
 }
 
-fn (m mut map) _set(key string, val voidptr) {
+fn (m mut map) set(key string, val voidptr) {
 	if isnil(m.root) {
 		m.root = new_node(key, val, m.element_size)
 		m.size++
@@ -177,6 +177,7 @@ pub fn (m &map) keys() []string {
 }
 
 fn (m map) get(key string, out voidptr) bool {
+	//println('g')
 	if m.root == 0 {
 		return false
 	}
@@ -210,11 +211,7 @@ pub fn (m mut map) delete(key string) {
 	m.size--
 }
 
-pub fn (m map) exists(key string) {
-	panic('map.exists(key) was removed from the language. Use `key in map` instead.')
-}
-
-fn (m map) _exists(key string) bool {
+fn (m map) exists(key string) bool {
 	return !isnil(m.root) && m.root.find2(key, m.element_size)
 }
 

@@ -4,19 +4,14 @@
 
 module http
 
-
 #flag windows -I @VROOT/thirdparty/vschannel
-#flag -l ws2_32
-#flag -l crypt32
-#flag -l secur32
+#flag -l ws2_32, crypt32, secur32
  
 #include "vschannel.c"
 
 fn C.new_tls_context() C.TlsContext
 
-fn init() int { return 1 }
-
-fn (req &Request) ssl_do(port int, method, host_name, path string) Response {
+fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
 

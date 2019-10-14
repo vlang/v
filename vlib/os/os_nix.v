@@ -4,12 +4,12 @@ module os
 #include <unistd.h>
 
 const (
-	PathSeparator = '/'
+	path_separator = '/'
 )
 
 fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
-	for i := 0; i < argc; i++ {
+	for i in 0 .. argc {
 		args << string(argv[i])
 	}		
 	return args
