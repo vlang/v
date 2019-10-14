@@ -19,7 +19,7 @@ endif
 all: fresh_vc fresh_tcc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe vc/v_win.c
-	./v0.exe -o v.exe compiler
+	./v0.exe -o v.exe v.v
 	rm -f v0.exe
 else
 	$(CC) -std=gnu11 -w -o v vc/v.c -lm
@@ -27,7 +27,7 @@ else
 	V_V=`git rev-parse --short HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
 		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		./v -o v compiler; \
+		./v v.v; \
 	fi)
 endif
 	rm -rf vc/
