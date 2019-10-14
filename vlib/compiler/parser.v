@@ -40,7 +40,6 @@ mut:
 	import_table   FileImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
-	mod            string
 	inside_const   bool
 	expr_var       Var
 	has_immutable_field bool
@@ -80,6 +79,8 @@ mut:
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
+pub:
+	mod            string
 }
 
 const (
