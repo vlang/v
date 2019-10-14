@@ -2189,7 +2189,13 @@ struct $f.parent_fn {
 		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod && p.file_path_id != 'vgen' {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
-			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)', fname_tidx)
+			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)\n' +
+					'declare the field with `pub:`
+struct $typ.name {
+  pub:
+	$struct_field $field.typ
+}
+', fname_tidx)
 		}
 		p.gen(dot + struct_field)
 		p.next()
