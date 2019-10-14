@@ -69,7 +69,9 @@ fn (p mut Parser) comp_time() {
 			p.genln('#ifdef __TINYC__')
 			p.check(.lcbr)
 			p.statements_no_rcbr()
-			p.genln('#endif')
+			if ! (p.tok == .dollar && p.peek() == .key_else) {
+				p.genln('#endif')
+			}
 		}
 		else {
 			println('Supported platforms:')
