@@ -5,12 +5,8 @@ import compiler
 
 fn main(){
 	
-	//Setup of input:
-	file := os.realpath( os.args[1] )
-	//println(file)
-	//	file = '/v/nv/vlib/bitfield/bitfield.v'
-	//	file = '/v/nv/vlib/http/http.v'
-	//file = '/v/nv/vlib/builtin/int.v'
+	//User input setup:
+	mut file := os.realpath( os.args[1] )
 	
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path()
@@ -24,12 +20,8 @@ fn main(){
 	for f in v.files { v.parse(f, .decl) }
 	fi := v.get_file_parser_index( file ) or { panic(err) }
 	fmod :=  v.parsers[fi].mod 
-	//println('pindex: $fi | fmod: $fmod')
 	
 	// output:
-	//println('Imports: ' + v.table.imports.str())
-	//println('Modules: ' + v.table.modules.str())
-	//println('Functions: ')
 	mut fns :=[]string
 	for _, f in v.table.fns {
 		if !f.is_public { continue }
