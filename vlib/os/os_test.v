@@ -135,3 +135,27 @@ fn test_walk() {
 //    println(cpid)
 //  }
 //}
+
+
+fn test_create_symlink_run_is_symlink_and_delete_symlink() {
+	$if windows {
+		// TODO
+		assert true
+		return
+	}
+	
+	folder  := './tfolder'
+	symlink := './tsymlink'
+	
+	os.mkdir(folder)	
+	folder_contents := os.ls(folder)
+	assert folder_contents.len == 0
+	
+	os.system('ln -s $folder $symlink')
+	assert os.is_symlink(symlink) == true
+	
+	os.rm(symlink)
+	os.rm(folder)
+	folder_exists := os.dir_exists(folder)	
+	assert folder_exists == false
+}

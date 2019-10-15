@@ -754,7 +754,7 @@ pub fn is_symlink(path string) bool {
 	$else {
 		statbuf := C.stat{}
 		cstr := path.str
-		if int(C.stat(cstr, &statbuf)) != 0 {
+		if C.stat(cstr, &statbuf) != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
