@@ -2324,7 +2324,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.gen(',')
 		}
 		// expression inside [ ]
-		if is_arr {
+		if is_arr || is_str {
 			index_pos := p.cgen.cur_line.len
 			T := p.table.find_type(p.expression())
 			// Allows only i8-64 and byte-64 to be used when accessing an array
