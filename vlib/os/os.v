@@ -740,6 +740,11 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+/**
+ * is_symlink - checks whether the path is a symlink on unix (windows is not done yet)
+ * @param path - the checked path, it must exist
+ * @return true when the path is a symlink, false if it is not
+*/
 pub fn is_symlink(path string) bool {
 	$if windows {
 		return false
