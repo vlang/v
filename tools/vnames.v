@@ -6,12 +6,14 @@ import compiler
 fn main(){
 	
 	//User input setup:
-	mut file := os.realpath( os.args[1] )
+	file := os.realpath( os.args[1] )
+	println('')
+	println('######################  $file  ######################')
 	
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
-	os.setenv('VEXE', '/v/nv/v', true)
+	os.setenv('VEXE', os.dir(os.dir(os.executable())) + '/v', true)
 
 	// main work:
 	vexe := compiler.vexe_path()
