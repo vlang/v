@@ -206,7 +206,7 @@ pub fn (s string) u32() u32 {
 
 pub fn (s string) u64() u64 {
 	$if tinyc {
-		return u64(s.int()) // TODO
+		return u64(s.i64()) // TODO
 	} $else {
 		return C.strtoull(*char(s.str), 0, 0)
 	}
