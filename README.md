@@ -145,7 +145,7 @@ glfw dependency will be removed soon.
 
 [examples/hello_v_js.v](examples/hello_v_js.v):
 
-```
+```v
 fn main() {
         for i := 0; i < 3; i++ {
                 println('Hello from V.js')
