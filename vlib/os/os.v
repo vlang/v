@@ -25,6 +25,8 @@ struct C.dirent {
 }
 
 fn C.readdir(voidptr) C.dirent
+fn C.stat(path byteptr, bufstat &C.stat) int
+
 
 pub const (
 	args = []string

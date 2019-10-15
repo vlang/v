@@ -17,12 +17,14 @@ const (
 
 // ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
 const (
-	S_IFMT   = 0170000 // mask for C.stat st_mode field
-	S_IFSOCK = 0140000 // socket
-	S_IFLNK  = 0120000 // symlink
-	S_IFREG  = 0100000 // regular file
-	S_IFDIR  = 0040000 // directory
-	S_IFIFO  = 0010000 // FIFO
+	S_IFMT   = 0xF000 // a mask for C.stat st_mode field, so that later
+	                  // comparing with the following constants works
+	S_IFIFO  = 0x1000 //   a FIFO pipe
+	S_IFCHR  = 0x2000 //   a character device
+	S_IFDIR  = 0x4000 // + directory
+	S_IFBLK  = 0x6000 //   a block device
+	S_IFREG  = 0x8000 // + a regular file
+	S_IFLNK  = 0xA000 // + a symbolic link
 )
 
 const(
