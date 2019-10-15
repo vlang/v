@@ -39,8 +39,14 @@ fresh_vc:
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 
 fresh_tcc:
+ifdef WIN32
+	rm -rf /var/tmp/tcc/
+	git clone --depth 1 --quiet https://github.com/vlang/tccbin_win /var/tmp/tcc
+endif
+ifdef LINUX
 	rm -rf /var/tmp/tcc/
 	git clone --depth 1 --quiet https://github.com/vlang/tccbin /var/tmp/tcc
+endif
 
 selfcompile:
 	./v v.v
