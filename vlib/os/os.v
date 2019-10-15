@@ -4,6 +4,8 @@
 
 module os
 
+import strings
+
 #include <sys/stat.h>
 #include <signal.h>
 #include <errno.h>
@@ -863,4 +865,15 @@ pub fn mkdir_all(path string) {
 			os.mkdir(p)
 		}
 	}
+}
+
+// TODO use []string.join once ...string becomes "[]string"
+pub fn join(base string, dirs ...string) string {
+	mut path := strings.new_builder(50)
+	path.write(base.trim_right('\\/'))
+	for d in dirs {
+		path.write(os.path_separator)
+		path.write(d)
+	}
+	return path.str()
 }

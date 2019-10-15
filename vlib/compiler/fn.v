@@ -662,7 +662,12 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		//println('r=$receiver.typ RT=$receiver_type')
 		if receiver.is_mut && !p.expr_var.is_mut {
 			//println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
-			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
+			if p.expr_var.is_for_var {
+				p.error('`$p.expr_var.name` is immutable, `for` variables' +
+					' always are')
+			}	 else {
+				p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
+			}
 		}
 		if !p.expr_var.is_changed {
 			p.mark_var_changed(p.expr_var)

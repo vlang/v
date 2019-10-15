@@ -105,6 +105,7 @@ mut:
 	is_moved        bool
 	line_nr         int
 	token_idx       int // this is a token index, which will be used by error reporting
+	is_for_var      bool
 }
 
 struct Type {
@@ -358,6 +359,22 @@ fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
 	if f.name.str != 0 { // TODO
 		return f
+	}
+	return none
+}
+
+fn (t &Table) find_fn_is_script(name string, is_script bool) ?Fn {
+	mut f := t.fns[name]
+	if f.name.str != 0 { // TODO
+		return f
+	}
+	// V script? Try os module.
+	if is_script {
+		println('trying replace $name')
+		f = t.fns[name.replace('main__', 'os__')]
+		if f.name.str != 0 {
+			return f
+		}
 	}
 	return none
 }
