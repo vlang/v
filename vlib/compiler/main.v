@@ -983,7 +983,7 @@ pub fn install_v(args[]string) {
 	if true {
 		//println('Building vget...')
 		os.chdir(vroot + '/tools')
-		vget_compilation := os.exec('$vexec -o $vget vget.v') or {
+		vget_compilation := os.exec('"$vexec" -o $vget vget.v') or {
 			verror(err)
 			return
 		}
