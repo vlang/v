@@ -51,13 +51,19 @@ goto :success
 
 :msvcstrap
 echo Attempting to build v.c  with MSVC...
-
-for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+set VsWhereDir=%ProgramFiles(x86)%
+set HostArch=x64
+if "%PROCESSOR_ARCHITECTURE%" == "x86" (
+  echo Using x86 Build Tools...
+  set VsWhereDir=%ProgramFiles%
+  set HostArch=x86
+)
+for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
   set InstallDir=%%i
 )
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo
+    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
     goto :nocompiler
 )
