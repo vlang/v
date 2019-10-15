@@ -43,10 +43,10 @@ pub fn (a f32) eq(b f32) bool {
 		$if tinyc {
 			return a -b <= 0.01
 		} $else {
-			return C.fabs(a - b) <= C.DBL_EPSILON	
+			return C.fabsf(a - b) <= C.FLT_EPSILON	
 		}
 	} $else {
-		return C.fabs(a - b) <= C.DBL_EPSILON	
+		return C.fabsf(a - b) <= C.FLT_EPSILON	
 	}
 }
 pub fn (a f64) eqbit(b f64) bool {
