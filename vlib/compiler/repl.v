@@ -4,8 +4,11 @@
 
 module compiler
 
-import os
-import term
+import (
+	os
+	term
+	readline
+)
 
 struct Repl {
 mut:
@@ -81,22 +84,27 @@ pub fn run_repl() []string {
 		os.rm(temp_file.left(temp_file.len - 2))
 	}
 	mut r := Repl{}
+	mut readline := readline.Readline{}
 	vexe := os.args[0]
+	mut prompt := '>>> '
 	for {
 		if r.indent == 0 {
-			print('>>> ')
+			prompt = '>>> '
 		}
 		else {
-			print('... ')
+			prompt = '... '
 		}
-		r.line = os.get_raw_line()
-		if r.line.trim_space() == '' && r.line.ends_with('\n') {
+		mut line := readline.read_line(prompt) or {
+				break
+		}
+		if line.trim_space() == '' && line.ends_with('\n') {
 			continue
 		}
-		r.line = r.line.trim_space()
-		if r.line.len == -1 || r.line == '' || r.line == 'exit' {
+		line = line.trim_space()
+		if line.len <= -1 || line == '' || line == 'exit' {
 			break
 		}
+		r.line = line
 		if r.line == '\n' {
 			continue
 		}
