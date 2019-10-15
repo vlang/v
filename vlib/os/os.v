@@ -740,6 +740,21 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+pub fn is_symlink(path string) bool {
+	$if windows {
+		return false
+	}
+	$else {
+		statbuf := C.stat{}
+		cstr := path.str
+		if int(C.stat(cstr, &statbuf)) != 0 {
+			return false
+		}
+		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
+		return ( (statbuf.st_mode & S_IFMT) == S_IFLNK )
+	}
+}
+                                            
 pub fn is_dir(path string) bool {
 	$if windows {
 		return dir_exists(path)
