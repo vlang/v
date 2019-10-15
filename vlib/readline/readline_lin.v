@@ -149,7 +149,7 @@ pub fn read_line(prompt string) ?string {
   return s
 }
 
-fn (r Readline) analyse(c byte) Action {
+fn (r Readline) analyse(c int) Action {
   switch c {
     case `\0`: return Action.eof
     case 0x3 : return Action.eof // End of Text
@@ -295,7 +295,9 @@ fn (r mut Readline) refresh_line() {
 fn (r mut Readline) eof() bool {
   r.previous_lines.insert(1, r.current)
   r.cursor = r.current.len
-  r.refresh_line()
+  if r.is_tty {
+    r.refresh_line()
+  }
   return true
 }
 
@@ -337,8 +339,8 @@ fn (r mut Readline) commit_line() bool {
   a := '\n'.ustring()
   r.current = r.current + a
   r.cursor = r.current.len
-  r.refresh_line()
   if r.is_tty {
+    r.refresh_line()
     println('')
   }
   return true
