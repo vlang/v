@@ -266,7 +266,7 @@ fn (p mut Parser) parse(pass Pass) {
 	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
-	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { 
+	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) {
 		p.v.mod
 	}
 	// fully qualify the module name, eg base64 to encoding.base64
@@ -1627,10 +1627,12 @@ fn (p mut Parser) bterm() string {
 	p.expected_type = typ
 	is_str := typ=='string'  &&   !p.is_sql
 	is_ustr := typ=='ustring'
-	is_float := typ=='f64' || typ=='f32'
+	is_float := typ[0] == `f` && (typ in ['f64', 'f32']) &&
+		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
+		!(p.cur_fn.name == 'eq')
 	expr_type := typ
 	tok := p.tok
-	if tok in [ .eq, .gt, .lt, .le, .ge, .ne] {
+	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
 		p.fgen(' ${p.tok.str()} ')
 		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
@@ -1686,7 +1688,7 @@ fn (p mut Parser) bterm() string {
 			case TokenKind.lt: p.cgen.set_placeholder(ph, 'ustring_lt(')
 			}
 		}
-		if is_float {
+		if is_float && p.cur_fn.name != 'f32_abs' && p.cur_fn.name != 'f64_abs' {
 			p.gen(')')
 			switch tok {
 			case TokenKind.eq: p.cgen.set_placeholder(ph, '${expr_type}_eq(')
