@@ -202,17 +202,13 @@ fn (p mut Parser) chash() {
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
 		file := hash.right(pos)
-		if p.pref.build_mode != BuildMode.default_mode {
+		if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
 		}
 	}
 	else if hash.contains('define') {
 		// Move defines on top
 		p.cgen.includes << '#$hash'
-	}
-	else if hash == 'v' {
-		println('v script')
-		//p.v_script = true
 	}
 	// Don't parse a non-JS V file (`#-js` flag)
 	else if hash == '-js'  {
