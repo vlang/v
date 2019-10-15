@@ -197,19 +197,19 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	$if tinyc {
-		return u32(s.int()) // TODO
-	} $else {
+	//$if tinyc {
+		//return u32(s.int()) // TODO
+	//} $else {
 		return C.strtoul(*char(s.str), 0, 0)
-	}
+	//}
 }
 
 pub fn (s string) u64() u64 {
-	$if tinyc {
-		return u64(s.i64()) // TODO
-	} $else {
+	//$if tinyc {
+		//return u64(s.i64()) // TODO
+	//} $else {
 		return C.strtoull(*char(s.str), 0, 0)
-	}
+	//}
 	//return C.atoll(s.str) // temporary fix for tcc on windows.
 }
 
