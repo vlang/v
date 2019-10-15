@@ -781,3 +781,9 @@ fn test_complex_acsch() {
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert result.str().eq(c2.str())
 }
+
+fn test_complex_re_im() {
+	c := cmplx.complex(2.1, 9.05)
+	assert c.re == 2.1
+	assert c.im == 9.05
+}
