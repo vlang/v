@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-// Windows version
+// JS version
 // Need to be implemented
 // Will serve as more advanced input method
 // Based on the work of https://github.com/AmokHuginnsson/replxx
