@@ -2922,7 +2922,9 @@ fn (p mut Parser) string_expr() {
 					if is_array && !has_str_method {
 						p.gen_array_str(typ2)
 					}
-					args = args.all_before_last(val) + '${typ}_str(${val}).len, ${typ}_str(${val}).str'
+					tmp_var := p.get_tmp()
+					p.cgen.insert_before('string $tmp_var = ${typ}_str(${val});')
+					args = args.all_before_last(val) + '${tmp_var}.len, ${tmp_var}.str'
 					format += '%.*s '
 				}
 				else {
