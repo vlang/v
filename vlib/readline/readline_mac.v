@@ -9,6 +9,8 @@
 
 module readline
 
+#include <termios.h>
+
 import os
 
 // Only use standard os.get_line
