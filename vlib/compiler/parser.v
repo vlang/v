@@ -987,35 +987,22 @@ fn (p mut Parser) get_type() string {
 		return f.typ_str()
 	}
 	// arrays ([]int)
-	mut is_arr := false
-	mut is_arr2 := false// [][]int TODO remove this and allow unlimited levels of arrays
+	mut arr_level := 0
 	is_question := p.tok == .question
 	if is_question {
 		p.check(.question)
 	}
-	if p.tok == .lsbr {
+	for p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
 		if p.tok == .number {
-			typ = '[$p.lit]'
+			typ += '[$p.lit]'
 			p.next()
 		}
 		else {
-			is_arr = true
+			arr_level++
 		}
 		p.check(.rsbr)
-		// [10][3]int
-		if p.tok == .lsbr {
-			p.next()
-			if p.tok == .number {
-				typ += '[$p.lit]'
-				p.check(.number)
-			}
-			else {
-				is_arr2 = true
-			}
-			p.check(.rsbr)
-		}
 	}
 	// map[string]int
 	if !p.builtin_mod && p.tok == .name && p.lit == 'map' {
@@ -1101,14 +1088,12 @@ fn (p mut Parser) get_type() string {
 		typ += strings.repeat(`*`, nr_muls)
 	}
 	// Register an []array type
-	if is_arr2 {
-		typ = 'array_array_$typ'
-		p.register_array(typ)
-	}
-	else if is_arr {
-		typ = 'array_$typ'
+	if arr_level > 0 {
 		// p.log('ARR TYPE="$typ" run=$p.pass')
 		// We come across "[]User" etc ?
+		for i := 0; i < arr_level; i++ {
+			typ = 'array_$typ'
+		}
 		p.register_array(typ)
 	}
 	p.next()
