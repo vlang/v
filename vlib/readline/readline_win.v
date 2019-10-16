@@ -27,7 +27,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
   }
 
   print(r.prompt)
-  r.current = os.get_raw_line().ustring()
+  r.current = os.get_line().ustring()
 
   r.previous_lines[0] = ''.ustring()
   r.search_index = 0
