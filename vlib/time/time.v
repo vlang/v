@@ -81,7 +81,7 @@ pub:
 	day_of_year int
 	utc_diff int
 	is_dst bool
-	uni int // TODO it's safe to use "unix" now
+	uni i64 // TODO it's safe to use "unix" now
 }
 
 // fn remove_me_when_c_bug_is_fixed() { // TODO
@@ -109,9 +109,11 @@ fn C.localtime(int) &C.tm
 // now() returns local time with time zone time difference
 // and Daylight Saving Time status if available.
 pub fn now() Time {
-	t := C.time(0)
+	t := C.time(C.NULL)
+	if t == time_t(-1) { panic('Could not get time') }
 	mut now := &C.tm{!}
 	now = C.localtime(&t)
+	if now == C.NULL { panic('Converting Unix time to local time failed') }
 	return from_tm(now)
 }
 
@@ -120,9 +122,15 @@ pub fn now() Time {
 // `utc_diff` field is set to the time difference from UTC in seconds.
 // `is_dst` field is `true` if Daylight Saving Time is used.
 // Works on time range 1901-12-13 20:45:52 UTC to 2038-01-19 03:14:07 UTC
-pub fn from_unix_to_local(uni int) Time {
-	// must convert to `time_t`, because `time_t` can be bigger than `int`
-	// C.localtime expects &time_t and would refer to wrong memory if given &int
+pub fn from_unix_to_local(uni i64) Time {
+	// C.localtime(&t) guarantees reliable results on all platforms
+	// only if Unix time is in 32-bit range
+	if uni < -2147483648 || uni > 2147483647 {
+	// if uni < i64(0x80000000) || uni > i64(0x7fffffff) { // bug - doesn't work
+		panic('Unix time out of local time range. Please use `from_unix_to_utc()`')
+	}
+	// must convert to `time_t` to be sure that the size of memory 
+	// referenced in C.localtime parameter is correct
 	t := time_t(uni)
 	mut tm := &C.tm{!}
 	tm = C.localtime(&t)
@@ -135,8 +143,8 @@ pub fn from_unix_to_local(uni int) Time {
 // Works on time range of Y1970 +/- 2^63 seconds (~ +/- 209 billion years).
 // Based on the algorithm of Howard Hinnant.
 // http://howardhinnant.github.io/date_algorithms.html#civil_from_days
-pub fn from_unix_to_utc(uni int) Time {
-    z := int(uni / (24 * 60 * 60)) + 719468
+pub fn from_unix_to_utc(uni i64) Time {
+    z := int(uni / day) + 719468
     era := (if z >= 0 { z } else { z - 146096}) / 146097
     doe := z - era * 146097
     yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
@@ -146,14 +154,14 @@ pub fn from_unix_to_utc(uni int) Time {
     m := mp + (if mp < 10 { 3 } else { -9 })
     y := yoe + era * 400 + (if m > 2 { 0 } else { 1 })
 
-    mut t := int(uni % (24 * 60 * 60))
+    mut t := int(uni % day)
 	if t < 0 {
 		d = d - 1
 		t = 24 * hour + t
 	}
-    h := t / (60 * 60)
-    k := t % (60 * 60) / 60
-    s := t % 60
+    h := t / hour
+    k := t % hour / minute
+    s := t % minute
 
     return Time {
         year   : y
@@ -185,7 +193,7 @@ pub fn from_tm(t tm) Time {
 		is_dst : t.tm_isdst == 1
 		uni : C.mktime(&t)
 	}
-	return { res | utc_diff : res.to_unix() - res.uni }
+	return { res | utc_diff : int(res.to_unix() - res.uni) }
 }
 
 // to_unix(t Time) calculates the Unix timestamp (the number of seconds that
@@ -193,14 +201,14 @@ pub fn from_tm(t tm) Time {
 // minus leap seconds) from `struct Time`. Time in `t` is interpreted as UTC time.
 // Based on the algorithm of Howard Hinnant.
 // http://howardhinnant.github.io/date_algorithms.html#days_from_civil
-pub fn (t Time) to_unix() int {
+pub fn (t Time) to_unix() i64 {
     y := if t.month > 2 { t.year } else { t.year - 1 }
     era := (if y >= 0 { y } else { (y - 399) }) / 400
     yoe := y - era * 400
     doy := (153 * (t.month + (if t.month > 2 { -3 } else { 9 })) + 2) / 5 + t.day - 1
     doe := yoe * 365 + yoe / 4 - yoe / 100 + doy
-    sod := t.hour * 60 * 60 + t.minute * 60 + t.second
-    return (era * 146097 + doe - 719468) * 24 * 60 * 60 + sod
+    sod := t.hour * hours + t.minute * minutes + t.second
+    return (i64(era) * 146097 + doe - 719468) * 24 * 60 * 60 + sod
 }
 
 // random() returns random local time in the range
@@ -208,8 +216,48 @@ pub fn (t Time) to_unix() int {
 // Import module `random` and use `rand.seed(time.now().uni)`
 // to get different random times on every run of your program.
 pub fn random() Time {
-	rand_unix := rand.next(0x7fffffff)
+	rand_unix := i64(rand.next(0x7fffffff))
 	return from_unix_to_local(rand_unix)
+}
+
+// `parse` parses time in the following format: "2018-01-27 12:48:34"
+pub fn parse(s string) Time {
+	// println('parse="$s"')
+	pos := s.index(' ')
+	if pos <= 0 {
+		println('bad time format')
+		return now()
+	}
+	symd := s.left(pos)
+	ymd := symd.split('-')
+	if ymd.len != 3 {
+		println('bad time format')
+		return now()
+	}
+	shms := s.right(pos)
+	hms := shms.split(':')
+	hour := hms[0]
+	minute := hms[1]
+	second := hms[2]
+
+	mut t := Time {
+		year: ymd[0].int()
+		month: ymd[1].int()
+		day: ymd[2].int()
+		hour: hour.int()
+		minute: minute.int()
+		second: second.int()
+		weekday : 0 // TODO
+		day_of_year : 0 // TODO
+		utc_diff : 0
+		is_dst : false
+	}
+	return {t | uni : t.to_unix()}
+}
+
+// TODO add(d time.Duration)
+pub fn (t Time) add_seconds(seconds int) Time {
+	return from_unix_to_local(t.uni + i64(seconds))
 }
 
 pub fn day_of_week(y, m, d int) int {
@@ -246,60 +294,6 @@ pub fn days_in_month(month, year int) ?int {
 	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
 	res := month_days[month-1] + extra
 	return res
-}
-
-// `parse` parses time in the following format: "2018-01-27 12:48:34"
-pub fn parse(s string) Time {
-	// println('parse="$s"')
-	pos := s.index(' ')
-	if pos <= 0 {
-		println('bad time format')
-		return now()
-	}
-	symd := s.left(pos)
-	ymd := symd.split('-')
-	if ymd.len != 3 {
-		println('bad time format')
-		return now()
-	}
-	shms := s.right(pos)
-	hms := shms.split(':')
-	hour := hms[0]
-	minute := hms[1]
-	second := hms[2]
-	// //////////
-	return new_time(Time {
-		year: ymd[0].int()
-		month: ymd[1].int()
-		day: ymd[2].int()
-		hour: hour.int()
-		minute: minute.int()
-		second: second.int()
-	})
-}
-
-pub fn new_time(t Time) Time {
-	return{t | uni: t.calc_unix()}
-}
-
-pub fn (t &Time) calc_unix() int {
-	if t.uni != 0  {
-		return t.uni
-	}
-	tt := C.tm{
-	tm_sec : t.second
-	tm_min : t.minute
-	tm_hour : t.hour
-	tm_mday : t.day
-	tm_mon : t.month-1
-	tm_year : t.year - 1900
-	}
-	return C.mktime(&tt)
-}
-
-// TODO add(d time.Duration)
-pub fn (t Time) add_seconds(seconds int) Time {
-	return from_unix_to_local(t.uni + seconds)
 }
 
 // TODO use time.Duration instead of seconds
