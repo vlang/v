@@ -220,6 +220,11 @@ pub fn random() Time {
 	return from_unix_to_local(rand_unix)
 }
 
+// Backwards compatibility
+pub fn unix(u int) Time {
+	return from_unix_to_local(i64(u))
+}
+
 // `parse` parses time in the following format: "2018-01-27 12:48:34"
 pub fn parse(s string) Time {
 	// println('parse="$s"')
