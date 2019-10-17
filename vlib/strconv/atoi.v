@@ -138,7 +138,6 @@ pub fn parse_int(_s string, base int, _bit_size int) i64 {
 	mut s := _s
     mut bit_size := _bit_size
     
-    // const fnparse_int = "parse_int"
 	if s == '' {
 		// return error('parse_int: syntax error $s')
         return i64(0)
@@ -185,7 +184,6 @@ pub fn parse_int(_s string, base int, _bit_size int) i64 {
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 pub fn atoi(_s string) int {
 	mut s := _s
-    // const fnAtoi = "Atoi"
 
 	if (int_size == 32 && (0 < s.len && s.len < 10)) ||
 		(int_size == 64 && (0 < s.len && s.len < 19)) {
