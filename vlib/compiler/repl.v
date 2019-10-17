@@ -4,11 +4,8 @@
 
 module compiler
 
-import (
-	os
-	term
-	readline
-)
+import os
+import term
 
 struct Repl {
 mut:
@@ -77,7 +74,6 @@ pub fn run_repl() []string {
 	println('Use Ctrl-C or `exit` to exit')
 	file := '.vrepl.v'
 	temp_file := '.vrepl_temp.v'
-	mut prompt := '>>> '
 	defer {
 		os.rm(file)
 		os.rm(temp_file)
@@ -85,26 +81,22 @@ pub fn run_repl() []string {
 		os.rm(temp_file.left(temp_file.len - 2))
 	}
 	mut r := Repl{}
-	mut readline := readline.Readline{}
 	vexe := os.args[0]
 	for {
 		if r.indent == 0 {
-			prompt = '>>> '
+			print('>>> ')
 		}
 		else {
-			prompt = '... '
+			print('... ')
 		}
-		mut line := readline.read_line(prompt) or {
-			break
-		}
-		if line.trim_space() == '' && line.ends_with('\n') {
+		r.line = os.get_raw_line()
+		if r.line.trim_space() == '' && r.line.ends_with('\n') {
 			continue
 		}
-		line = line.trim_space()
-		if line.len <= -1 || line == '' || line == 'exit' {
+		r.line = r.line.trim_space()
+		if r.line.len == -1 || r.line == '' || r.line == 'exit' {
 			break
 		}
-		r.line = line
 		if r.line == '\n' {
 			continue
 		}
