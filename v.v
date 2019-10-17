@@ -12,6 +12,8 @@ import (
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
+	//options := args.filter(it.starts_with('-'))
+	
 	// Print the version and exit.
 	if '-v' in args || '--version' in args || 'version' in args {
 		version_hash := compiler.vhash()
