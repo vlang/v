@@ -12,7 +12,7 @@ const(
     // int_size = 32 << (~u32(0) >> 63)
     // max_u64 = u64(u64(1 << 63) - 1)
 	int_size = 32
-	max_u64  = u64(C.UINT64_MAX)         
+	max_u64  = u64(C.UINT64_MAX) // use this untill we add support
 )
 
 fn byte_to_lower(c byte) byte {
