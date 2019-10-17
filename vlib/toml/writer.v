@@ -3,20 +3,29 @@
 
 import TOML
 
-fn load_parse(){
-	&C.yyparse()
-}
-
 struct C.toml_key_t{
-	val_type int
+	key 		byteptr
+	kind_type 	int
+	val_type 	int
+	num_keyval 	int
+	val &byteptr
+    arr &&C.array_t
+    tab &&C.table_t
 }
 
 struct C.array_t{
-
+	key byteptr
+	num_keyval int
+	keyval &&C.toml_key_t
 }
 
 struct C.table_t{
 
+}
+
+fn compile(){
+	lex_compile(toml.l)
+	yacc_compile(toml.y)
 }
 
 fn writing_data(){
