@@ -71,10 +71,12 @@ pub fn parse_uint(_s string, _base int, _bit_size int) u64 {
     cutoff = u64(max_u64/u64(base)) + u64(1)
 	mut max_val := u64(0)
     if bit_size == 64 {
-        a := u64(1)<<64(bit_size)
+        bs64 := u64(bit_size)
+		a := u64(1)<<bs64
         max_val = u64(a) - u64(1)
     } else {
-        max_val = u32(1)<<u32(bit_size - u32(1))
+		bs32 := u32(bit_size)
+        max_val = u32(1)<<u32(bs32 - u32(1))
     }
 
 	mut underscores := false
