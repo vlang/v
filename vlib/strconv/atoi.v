@@ -8,7 +8,8 @@ module strconv
 
 const(
     // int_size is the size in bits of an int or uint value.
-    int_size = 32 << (~u32(0) >> 63)
+    // int_size = 32 << (~u32(0) >> 63)
+	int_size = 32
     max_u64 = u64(u64(1<<64) - 1)
 )
 
