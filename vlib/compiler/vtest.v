@@ -153,7 +153,7 @@ pub fn v_test_v(args_before_test string){
 	//////////////////////////////////////////////////////////////
 	println('\nBuilding examples...')
 	mut es := new_test_sesion( args_before_test )
-	es.files << os.walk_ext(parent_dir+'/examples','.v').filter(stable_example)
+	es.files << os.walk_ext(parent_dir+'/examples','.v').filter2(stable_example)
 	es.test()
 	println( es.benchmark.total_message('building examples') )
 	//////////////////////////////////////////////////////////////
