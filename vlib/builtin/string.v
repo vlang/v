@@ -199,7 +199,7 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return u32(strconv.parse_uint(s, 0, 32))
+	return strconv.parse_uint(s, 0, 32)
 }
 
 pub fn (s string) u64() u64 {
