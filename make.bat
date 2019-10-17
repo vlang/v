@@ -35,8 +35,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo Now using V to build V...
-v2.exe -o v3.exe compiler
-v3.exe -o v.exe -prod compiler
+v2.exe -o v3.exe v.v
+v3.exe -o v.exe -prod v.v
 if %ERRORLEVEL% NEQ 0 (
     echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
     exit /b 1
@@ -51,13 +51,19 @@ goto :success
 
 :msvcstrap
 echo Attempting to build v.c  with MSVC...
-
-for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+set VsWhereDir=%ProgramFiles(x86)%
+set HostArch=x64
+if "%PROCESSOR_ARCHITECTURE%" == "x86" (
+  echo Using x86 Build Tools...
+  set VsWhereDir=%ProgramFiles%
+  set HostArch=x86
+)
+for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
   set InstallDir=%%i
 )
 
 if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=x64 -host_arch=x64 -no_logo
+    call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 ) else (
     goto :nocompiler
 )
@@ -69,8 +75,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -os msvc -o v3.exe compiler
-v3.exe -os msvc -o v.exe -prod compiler
+v2.exe -cc msvc -o v3.exe v.v
+v3.exe -cc msvc -o v.exe -prod v.v
 if %ERRORLEVEL% NEQ 0 (
     echo V failed to build itself
     goto :compileerror

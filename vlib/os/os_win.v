@@ -4,7 +4,7 @@ module os
 #include <winsock2.h>
 
 const (
-	PathSeparator = '\\'
+	path_separator = '\\'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types

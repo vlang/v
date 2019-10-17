@@ -2,7 +2,7 @@ import math
 import math.complex as cmplx
 
 fn test_complex_addition() {
-	// Test is based on and verified from practice examples of Khan Academy 
+	// Test is based on and verified from practice examples of Khan Academy
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(0,-10)
 	mut c2 := cmplx.complex(-40,8)
@@ -23,7 +23,7 @@ fn test_complex_addition() {
 }
 
 fn test_complex_subtraction() {
-	// Test is based on and verified from practice examples of Khan Academy 
+	// Test is based on and verified from practice examples of Khan Academy
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(-8,0)
 	mut c2 := cmplx.complex(6,30)
@@ -44,7 +44,7 @@ fn test_complex_subtraction() {
 }
 
 fn test_complex_multiplication() {
-	// Test is based on and verified from practice examples of Khan Academy 
+	// Test is based on and verified from practice examples of Khan Academy
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(1,2)
 	mut c2 := cmplx.complex(1,-4)
@@ -65,7 +65,7 @@ fn test_complex_multiplication() {
 }
 
 fn test_complex_division() {
-	// Test is based on and verified from practice examples of Khan Academy 
+	// Test is based on and verified from practice examples of Khan Academy
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(-9,-6)
 	mut c2 := cmplx.complex(-3,-2)
@@ -86,7 +86,7 @@ fn test_complex_division() {
 }
 
 fn test_complex_conjugate() {
-	// Test is based on and verified from practice examples of Khan Academy 
+	// Test is based on and verified from practice examples of Khan Academy
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(0,8)
 	mut result := c1.conjugate()
@@ -122,18 +122,18 @@ fn test_complex_abs() {
 }
 
 fn test_complex_angle(){
-	// Test is based on and verified from practice examples of Khan Academy 
+	// Test is based on and verified from practice examples of Khan Academy
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c := cmplx.complex(1, 0)
-	assert (c.angle() * 180 / math.Pi).eq(0)
+	assert (c.angle() * 180 / math.pi).eq(0)
 	c = cmplx.complex(1, 1)
-	assert (c.angle() * 180 / math.Pi).eq(45)
+	assert (c.angle() * 180 / math.pi).eq(45)
 	c = cmplx.complex(0, 1)
-	assert (c.angle() * 180 / math.Pi).eq(90)
+	assert (c.angle() * 180 / math.pi).eq(90)
 	c = cmplx.complex(-1, 1)
-	assert (c.angle() * 180 / math.Pi).eq(135)
+	assert (c.angle() * 180 / math.pi).eq(135)
 	c = cmplx.complex(-1, -1)
-	assert (c.angle() * 180 / math.Pi).eq(-135)
+	assert (c.angle() * 180 / math.pi).eq(-135)
 	mut cc := c.conjugate()
 	assert (cc.angle() + c.angle()).eq(0)
 }
@@ -629,7 +629,7 @@ fn test_complex_coth() {
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert result.str().eq(c2.str())
 }
- 
+
 fn test_complex_sech() {
 	// Tests were also verified on Wolfram Alpha
 	mut c1 := cmplx.complex(5,7)
@@ -780,4 +780,10 @@ fn test_complex_acsch() {
 	result = c1.acsch()
 	// Some issue with precision comparison in f64 using == operator hence serializing to string
 	assert result.str().eq(c2.str())
+}
+
+fn test_complex_re_im() {
+	c := cmplx.complex(2.1, 9.05)
+	assert c.re == 2.1
+	assert c.im == 9.05
 }

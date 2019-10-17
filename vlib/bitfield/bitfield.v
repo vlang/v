@@ -251,8 +251,7 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	offset_slot := input1.size / SLOT_SIZE
 
 	for i := 0; i < bitnslots(input2.size); i++ {
-		output.field[i + offset_slot] =
-		    output.field[i + offset_slot] |
+		output.field[i + offset_slot] |=
 		    u32(input2.field[i] << u32(offset_bit))
 	}
 
@@ -271,14 +270,12 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	 */
 	if (output_size - 1) % SLOT_SIZE < (input2.size - 1) % SLOT_SIZE {
 		for i := 0; i < bitnslots(input2.size); i++ {
-			output.field[i + offset_slot + 1] =
-			    output.field[i + offset_slot + 1] |
+			output.field[i + offset_slot + 1] |=
 			    u32(input2.field[i] >> u32(SLOT_SIZE - offset_bit))
 		}
 	} else if (output_size - 1) % SLOT_SIZE > (input2.size - 1) % SLOT_SIZE {
 		for i := 0; i < bitnslots(input2.size) - 1; i++ {
-			output.field[i + offset_slot + 1] =
-			    output.field[i + offset_slot + 1] |
+			output.field[i + offset_slot + 1] |=
 			    u32(input2.field[i] >> u32(SLOT_SIZE - offset_bit))
 		}
 	}
@@ -428,8 +425,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		mut mask := u32((1 << (end_offset + 1)) - 1)
 		mask = input.field[end_slot] & mask
 		mask = u32(mask << u32(SLOT_SIZE - start_offset))
-		output.field[(end - start - 1) / SLOT_SIZE] =
-		    output.field[(end - start - 1) / SLOT_SIZE] | mask
+		output.field[(end - start - 1) / SLOT_SIZE] |= mask
 	}
 	else if start_offset == 0 {
 		mut mask := u32(0)
@@ -447,8 +443,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		mut mask := u32(((1 << (end_offset - start_offset + 1)) - 1)  << start_offset)
 		mask = input.field[end_slot] & mask
 		mask = u32(mask >> u32(start_offset))
-		output.field[(end - start - 1) / SLOT_SIZE] =
-		    output.field[(end - start - 1) / SLOT_SIZE] | mask
+		output.field[(end - start - 1) / SLOT_SIZE] |= mask
 	}
 	return output
 }

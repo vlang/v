@@ -4,42 +4,11 @@
 
 module math
 
+#include <math.h>
+
 // NOTE
 // When adding a new function, please make sure it's in the right place.
 // All functions are sorted alphabetically.
-
-const (
-	E   = 2.71828182845904523536028747135266249775724709369995957496696763
-	Pi  = 3.14159265358979323846264338327950288419716939937510582097494459
-	Phi = 1.61803398874989484820458683436563811772030917980576286213544862
-	Tau = 6.28318530717958647692528676655900576839433879875021164194988918
-
-	Sqrt2   = 1.41421356237309504880168872420969807856967187537694807317667974
-	SqrtE   = 1.64872127070012814684865078781416357165377610071014801157507931
-	SqrtPi  = 1.77245385090551602729816748334114518279754945612238712821380779
-	SqrtTau = 2.50662827463100050241576528481104525300698674060993831662992357
-	SqrtPhi = 1.27201964951406896425242246173749149171560804184009624861664038
-
-	Ln2    = 0.693147180559945309417232121458176568075500134360255254120680009
-	Log2E  = 1.0 / Ln2
-	Ln10   = 2.30258509299404568401799145468436420760110148862877297603332790
-	Log10E = 1.0 / Ln10
-)
-
-const (
-        MaxI8   = 127
-        MinI8   = -128
-        MaxI16  = 32767
-        MinI16  = -32768
-        MaxI32  = 2147483647
-        MinI32  = -2147483648
-//        MaxI64  = ((1<<63) - 1)
-//        MinI64  = (-(1 << 63) )
-        MaxU8  = 255
-        MaxU16 = 65535
-        MaxU32 = 4294967295
-        MaxU64 = 18446744073709551615
-)
 
 // Returns the absolute value.
 pub fn abs(a f64) f64 {
@@ -93,7 +62,7 @@ pub fn cosh(a f64) f64 {
 
 // degrees convert from degrees to radians.
 pub fn degrees(radians f64) f64 {
-	return radians * (180.0 / Pi)
+	return radians * (180.0 / pi)
 }
 
 // exp calculates exponent of the number (math.pow(math.E, a)).
@@ -277,7 +246,7 @@ pub fn pow(a, b f64) f64 {
 
 // radians convert from radians to degrees.
 pub fn radians(degrees f64) f64 {
-	return degrees * (Pi / 180.0)
+	return degrees * (pi / 180.0)
 }
 
 // round returns the integer nearest to the provided value.
