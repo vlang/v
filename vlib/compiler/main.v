@@ -499,7 +499,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 	} else if !os.dir_exists(dir) {
 		verror("$dir isn't a directory")
 	}
-	mut files := os.ls(dir)
+	mut files := os.ls(dir) or { panic(err) }
 	if v.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}

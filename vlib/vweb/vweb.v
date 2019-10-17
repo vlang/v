@@ -194,7 +194,7 @@ fn (ctx mut Context) parse_form(s string) {
 }
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
-	files := os.ls(directory_path)
+	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
 		for file in files {
 			mut ext := ''
