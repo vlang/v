@@ -9,7 +9,7 @@ module strconv
 const(
     // int_size is the size in bits of an int or uint value.
     // int_size = 32 << (~u32(0) >> 63)
-	// max_u64 = u64(u64(1<<64) - 1)
+    // max_u64 = u64(u64(1<<64) - 1)
 	int_size = 32
 	max_u64  = u64(18446744073709551615)
 )
@@ -72,12 +72,10 @@ pub fn parse_uint(_s string, _base int, _bit_size int) u64 {
     cutoff = u64(max_u64/u64(base)) + u64(1)
 	mut max_val := u64(0)
     if bit_size == 64 {
-        bs64 := u64(bit_size)
-		a := u64(1)<<bs64
+        a := u64(1)<<64(bit_size)
         max_val = u64(a) - u64(1)
     } else {
-		bs32 := u32(bit_size)
-        max_val = u32(1)<<u32(bs32 - u32(1))
+        max_val = u32(1)<<u32(bit_size - u32(1))
     }
 
 	mut underscores := false
