@@ -74,7 +74,7 @@ pub fn parse_uint(_s string, _base int, _bit_size int) u64 {
     if bit_size == 64 {
 		// TODO: investigate
         // max_val = u64(1)<<64(bit_size) - u64(1)
-		max_val = u64(18446744073709551616) - u64(1)
+		max_val = max_u64
     } else {
         max_val = u32(1)<<u32(bit_size - u32(1))
     }
