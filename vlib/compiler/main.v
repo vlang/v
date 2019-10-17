@@ -560,7 +560,8 @@ pub fn (v mut V) add_v_files_to_compile() {
 			v.log('imports0:')
 			println(v.table.imports)
 			println(v.files)
-			p.import_table.register_alias('os', 'os', 0)
+			p.import_table.register_import('os', 0)
+			v.table.file_imports[p.file_path_id] = p.import_table
 			p.table.imports << 'os'
 			p.table.register_module('os')
 			println('got v script')
