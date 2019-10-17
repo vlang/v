@@ -12,7 +12,7 @@ const(
     // int_size = 32 << (~u32(0) >> 63)
     // max_u64 = u64(u64(1 << 63) - 1)
 	int_size = 32
-	max_u64  = u64(C.UINT64_MAX) // use this untill we add support
+	max_u64  = u64(C.UINT64_MAX) // use this until we add support
 )
 
 fn byte_to_lower(c byte) byte {
@@ -29,7 +29,6 @@ pub fn parse_uint(_s string, _base int, _bit_size int) u64 {
 		// return error('parse_uint: syntax error $s')
         return u64(0)
 	}
-    // base  := 0
 	base0 := base == 0
 	s0 := s
 	if 2 <= base && base <= 36 {
@@ -69,15 +68,13 @@ pub fn parse_uint(_s string, _base int, _bit_size int) u64 {
     
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
-	mut cutoff := u64(0)
-    cutoff = u64(max_u64/u64(base)) + u64(1)
-	mut max_val := u64(0)
-    if bit_size == 64 {
+    cutoff := u64(max_u64/u64(base)) + u64(1)
+    max_val := if bit_size == 64 {
 		// TODO: investigate
-        // max_val = u64(1)<<64(bit_size) - u64(1)
-		max_val = max_u64
+		// u64(1)<<64(bit_size) - u64(1)
+		max_u64
     } else {
-        max_val = u32(1)<<u32(bit_size - u32(1))
+        u64(u32(1)<<u32(bit_size - u32(1)))
     }
 
 	mut underscores := false
@@ -160,7 +157,6 @@ pub fn parse_int(_s string, base int, _bit_size int) i64 {
 	if un == 0 {
 		return i64(0)
 	}
-
 
 	if bit_size == 0 {
 		bit_size = int(int_size)
