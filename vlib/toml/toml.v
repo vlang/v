@@ -11,26 +11,13 @@ const (
 	OCT = 4
 )
 
-// bison
-#include "toml.tab.h"
-// Original yacc
-#include "y.tab.h"
-
-fn compile(){
-	// lex or flex compile for C
-	lex := system('flex -d toml.l') or system('lex -d toml.l') or eprintln('Please Install lex/flex.')
-	// yacc or bison compile for C
-	yacc := system('bison toml.y') or system('yacc toml.y') or eprintln('Please Install yacc/bison.')
-}
-
-fn C.yyparse()
+import yacc
 
 struct TOML{
 	pub mut:
 		tbl 	&[]Table
 		arr		&[]Array
 }
-
 
 fn (t TOML) toml_parse(){
 	// compile yacc(bison)/lex(flex) file.
