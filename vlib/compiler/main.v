@@ -588,7 +588,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			mod_path := mod.replace('.', os.path_separator)
 			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.file_exists(vh_path) {
-				println('using cached module `$mod`: $vh_path')
+				eprintln('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
 				v.files << vh_path
 				continue
