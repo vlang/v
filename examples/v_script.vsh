@@ -12,7 +12,7 @@ fn main() {
 
  println('')
  rm('a.out')
- 
+
  println('Making dir name and creating foo.txt')
  mkdir('name')
  create('foo.txt')
