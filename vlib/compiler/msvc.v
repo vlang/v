@@ -100,7 +100,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 
 		// println(kit_lib)
 
-		files := os.ls(kit_lib)
+		files := os.ls(kit_lib) or { panic(err) }
 		mut highest_path := ''
 		mut highest_int := 0
 		for f in files {
@@ -395,7 +395,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	println('$obj_path not found, building it (with msvc)...')
 	parent := os.dir(obj_path)
-	files := os.ls(parent)
+	files := os.ls(parent) or { panic(err) }
 
 	mut cfiles := ''
 	for file in files {

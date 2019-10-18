@@ -495,11 +495,15 @@ pub fn (v V) run_compiled_executable_and_exit() {
 pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		verror("$dir doesn't exist!")
+		if dir == 'compiler' && os.dir_exists('vlib') {
+			println('looks like you are trying to build V with an old command')
+			println('use `v v.v` instead of `v -o v compiler`')
+		}	
+		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
 		verror("$dir isn't a directory")
 	}
-	mut files := os.ls(dir)
+	mut files := os.ls(dir) or { panic(err) }
 	if v.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
@@ -588,7 +592,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			mod_path := mod.replace('.', os.path_separator)
 			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.file_exists(vh_path) {
-				println('using cached module `$mod`: $vh_path')
+				eprintln('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
 				v.files << vh_path
 				continue

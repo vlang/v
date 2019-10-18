@@ -2104,6 +2104,11 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		return 'void'
 	}
 	field_name := p.lit
+	if field_name == 'filter' && str_typ.starts_with('array_') {
+		p.gen_array_filter(str_typ, method_ph)
+		return str_typ
+	}	
+	
 	fname_tidx := p.cur_tok_index()
 	p.fgen(field_name)
 	//p.log('dot() field_name=$field_name typ=$str_typ')

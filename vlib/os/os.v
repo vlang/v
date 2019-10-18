@@ -788,7 +788,7 @@ pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
 		return []string
 	}
-	mut files := os.ls(path)
+	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
 	for i, file in files {
 		if file.starts_with('.') {
