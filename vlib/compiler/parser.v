@@ -802,7 +802,15 @@ fn (p mut Parser) struct_decl() {
 			attr = p.check_name()
 			if p.tok == .colon {
 				p.check(.colon)
-				attr += ':' + p.check_name()
+                mut val := ''
+                match p.tok {
+                    .name => { val = p.check_name() }
+                    .str => { val = p.check_string() }
+                    else => {
+                        p.error('attribute value should be either name or string')
+                    }
+                }
+				attr += ':' + val
 			}
 			p.check(.rsbr)
 		}
