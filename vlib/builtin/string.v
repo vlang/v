@@ -182,7 +182,7 @@ pub fn (s string) replace(rep, with string) string {
 }
 
 pub fn (s string) int() int {
-	return strconv.parse_int(s, 0, 32)
+	return strconv.atoi(s)
 }
 
 
