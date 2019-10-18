@@ -38,8 +38,8 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		base = 10
 		if s[0] == `0` {
 			if s.len >= 3 && byte_to_lower(s[1]) == `b` { 
-						base = 2 
-						start_index += 2
+				base = 2 
+				start_index += 2
 			}
 			else if s.len >= 3 && byte_to_lower(s[1]) == `o` {
 				base = 8
@@ -228,7 +228,8 @@ fn underscore_ok(s string) bool {
 
 	// Optional base prefix.
 	mut hex := false
-	if s.len-i >= 2 && s[i] == `0` && (byte_to_lower(s[i+1]) == `b` || byte_to_lower(s[i+1]) == `o` || byte_to_lower(s[i+1]) == `x`) {
+	if s.len-i >= 2 && s[i] == `0` &&
+		(byte_to_lower(s[i+1]) == `b` || byte_to_lower(s[i+1]) == `o` || byte_to_lower(s[i+1]) == `x`) {
 		saw = `0` // base prefix counts as a digit for "underscore as digit separator"
 		hex = byte_to_lower(s[i+1]) == `x`
 		i+=2
@@ -237,7 +238,8 @@ fn underscore_ok(s string) bool {
 	// Number proper.
 	for ; i < s.len; i++ {
 		// Digits are always okay.
-		if (`0` <= s[i] && s[i] <= `9`) || (hex && `a` <= byte_to_lower(s[i]) && byte_to_lower(s[i]) <= `f`) {
+		if (`0` <= s[i] && s[i] <= `9`) ||
+			(hex && `a` <= byte_to_lower(s[i]) && byte_to_lower(s[i]) <= `f`) {
 			saw = `0`
 			continue
 		}
