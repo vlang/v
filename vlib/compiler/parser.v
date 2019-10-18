@@ -2133,9 +2133,6 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		p.cgen.set_placeholder(method_ph,'\n$str_typ $tmp = new_array(0, $a .len,sizeof($val_type));\n')
 		p.genln('for (int i = 0; i < ${a}.len; i++) {')
 		p.genln('$val_type it = (($val_type*)${a}.data)[i];')
-		if val_type == 'string'{
-		p.genln('println(it);')
-		}
 		p.gen('if (')
 		p.bool_expression()
 		p.genln(') array_push(&$tmp, &it);')

@@ -12,35 +12,35 @@ import (
 fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
-	//options := args.filter(it.starts_with('-'))
-	
+	options := args.filter(it.starts_with('-'))
+	commands := args.filter(!it.starts_with('-'))
 	// Print the version and exit.
-	if '-v' in args || '--version' in args || 'version' in args {
+	if '-v' in options || '--version' in options || 'version' in commands {
 		version_hash := compiler.vhash()
 		println('V $compiler.Version $version_hash')
 		return
 	}
-	if '-h' in args || '--help' in args || 'help' in args {
-		println(compiler.HelpText)
+	else if '-h' in options || '--help' in options || 'help' in commands {
+		println(compiler.help_text)
 		return
 	}
-	if 'translate' in args {
+	else if 'translate' in commands {
 		println('Translating C to V will be available in V 0.3')
 		return
 	}
-	if 'up' in args {
+	else if 'up' in commands {
 		compiler.update_v()
 		return
 	}
-	if 'get' in args {
+	else if 'get' in commands {
 		println('use `v install` to install modules from vpm.vlang.io ')
 		return
 	}
-	if 'symlink' in args {
+	else if 'symlink' in commands {
 		compiler.create_symlink()
 		return
 	}
-	if 'install' in args {
+	else if 'install' in commands {
 		compiler.install_v(args)
 		return
 	}
@@ -49,23 +49,27 @@ fn main() {
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
 	//
 	// Just fmt and exit
-	if 'fmt' in args {
+	else if 'fmt' in commands {
 		compiler.vfmt(args)
 		return
 	}
-	if 'test' in args {
+	else if 'test' in commands {
 		compiler.test_v()
 		return
 	}
+	// Generate the docs and exit
+	else if 'doc' in commands {
+		// v.gen_doc_html_for_module(args.last())
+		exit(0)
+	} else {
+		//println('unknown command/argument\n')
+		//println(compiler.help_text)
+	}	
+	
 	// Construct the V object from command line arguments
 	mut v := compiler.new_v(args)
 	if v.pref.is_verbose {
 		println(args)
-	}
-	// Generate the docs and exit
-	if 'doc' in args {
-		// v.gen_doc_html_for_module(args.last())
-		exit(0)
 	}
 
 	if 'run' in args {
