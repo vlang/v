@@ -737,8 +737,10 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			}
 			t := p.get_type()
 			// register varg struct, incase function is never called
-			vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
-			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			if p.first_pass() {
+				vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
+				p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			}
 			typ = '...$t'
 		} else {
 			typ = p.get_type()
