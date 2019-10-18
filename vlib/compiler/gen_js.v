@@ -38,14 +38,22 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
-	expr := p.lit
 	is_indexer := p.peek() == .lsbr
-	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
+	mut expr := p.lit
+	mut is_fn_call := p.peek() == .lpar 
+	if !is_fn_call {
+		mut i := p.token_idx+1
+		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
+			p.tokens[i].lit != '_' {
+			expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
+			i++
+		}
+		is_fn_call = p.tokens[i].tok == .lpar
+	}
+	p.bool_expression()
 	if !is_indexer && !is_fn_call {
 		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
 	}
-	pos := p.cgen.add_placeholder()
-	p.bool_expression()
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
