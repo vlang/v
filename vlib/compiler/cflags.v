@@ -70,16 +70,15 @@ fn (table &Table) has_cflag(cflag CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
+fn (table mut Table) parse_cflag(cflag string, mod string) {
 	allowed_flags := [
 		'framework',
 		'library',
 		'I', 'l', 'L',
 	]
-	flag_orig := cflag.trim_space()
-	mut flag := flag_orig
+	mut flag := cflag.trim_space()
 	if flag == '' {
-		return true
+		return
 	}
 	mut fos := ''
 	mut name := ''
@@ -125,13 +124,6 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 			value = flag.trim_space()
 			index = -1
 		}
-		if (name in ['-I', '-l', '-L']) && value == '' {
-			if name == '-I' || name == '-L' {
-				return error('bad #flag `$flag_orig`: missing path after `-I`')
-			} else if name == '-l' {
-				return error('bad #flag `$flag_orig`: missing library after `-l`')
-			}
-		} 
 		cf := CFlag{
 			mod:   mod,
 			os:    fos,
@@ -145,7 +137,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 			break
 		}
 	}
-	return true
+	return
 }
 
 //TODO: implement msvc specific c_options_before_target and c_options_after_target ...
