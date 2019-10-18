@@ -39,7 +39,6 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
 	is_indexer := p.peek() == .lsbr
-	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
 	mut expr := p.lit
 	mut is_fn_call := p.peek() == .lpar 
 	if !is_fn_call {
