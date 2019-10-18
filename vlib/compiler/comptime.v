@@ -184,7 +184,9 @@ fn (p mut Parser) chash() {
 		flag = flag.replace('@VROOT', p.vroot)
 		flag = flag.replace('@VMOD', v_modules_path)
 		//p.log('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod)
+		_ = p.table.parse_cflag(flag, p.mod) or {
+			p.error_with_token_index(err, p.cur_tok_index()-1)
+		}
 		return
 	}
 	if hash.starts_with('include') {
