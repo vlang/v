@@ -2105,43 +2105,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	}
 	field_name := p.lit
 	if field_name == 'filter' && str_typ.starts_with('array_') {
-		/*
-			// V
-			a := [1,2,3,4]
-			b := a.filter(it % 2 == 0)
-			
-			// C
-			array_int a = ...;
-			array_int tmp2 = new_array(0, 4, 4);
-			for (int i = 0; i < a.len; i++) {
-				int it = ((int*)a.data)[i];
-				if (it % 2 == 0) array_push(&tmp2, &it);
-			}
-			array_int b = tmp2;
-		*/
-		val_type:=str_typ.right(6)
-		p.open_scope()
-		p.register_var(Var{
-			name: 'it'
-			typ: val_type
-		})
-		p.next()
-		p.check(.lpar)
-		p.cgen.resetln('')
-		tmp := p.get_tmp()
-		a := p.expr_var.name
-		p.cgen.set_placeholder(method_ph,'\n$str_typ $tmp = new_array(0, $a .len,sizeof($val_type));\n')
-		p.genln('for (int i = 0; i < ${a}.len; i++) {')
-		p.genln('$val_type it = (($val_type*)${a}.data)[i];')
-		p.gen('if (')
-		p.bool_expression()
-		p.genln(') array_push(&$tmp, &it);')
-		//p.genln(') array_push(&$tmp, &((($val_type*)${a}.data)[i]));')
-		//p.genln(') array_push(&$tmp, ${a}.data + i * ${a}.element_size);')
-		p.genln('}')
-		p.gen(tmp) // TODO why does this `gen()` work?
-		p.check(.rpar)
-		p.close_scope()
+		p.gen_array_filter(str_typ, method_ph)
 		return str_typ
 	}	
 	
