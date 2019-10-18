@@ -495,7 +495,11 @@ pub fn (v V) run_compiled_executable_and_exit() {
 pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		verror("$dir doesn't exist!")
+		if dir == 'compiler' && os.dir_exists('vlib') {
+			println('looks like you are trying to build V with an old command')
+			println('use `v v.v` instead of `v -o v compiler`')
+		}	
+		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
 		verror("$dir isn't a directory")
 	}
