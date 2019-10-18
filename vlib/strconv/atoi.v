@@ -55,14 +55,14 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 			}
 		}
 	} else {
-		// return error('parse_uint: base error $s0 - $base')
+		// return error('parse_uint: base error $s - $base')
 		return u64(0)
 	}
 
 	if bit_size == 0 {
 		bit_size = int(int_size)
 	} else if bit_size < 0 || bit_size > 64 {
-		// return error('parse_uint: bitsize error $s0 - $bit_size')
+		// return error('parse_uint: bitsize error $s - $bit_size')
 		return u64(0)
 	}
     
@@ -70,10 +70,9 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 	// Use compile-time constants for common cases.
 	cutoff := u64(max_u64/u64(base)) + u64(1)
 	max_val := if bit_size == 64 {
-		// u64(1)<<64(bit_size) - u64(1)
 		max_u64
 	} else {
-		u64(u32(1)<<u32(bit_size - u32(1)))
+		u64(u64(1)<<u64(bit_size))-u64(1)
 	}
 
 	mut underscores := false
@@ -104,7 +103,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		}
 		n *= u64(base)
 		n1 := n + u64(d)
-		if n1 < n || n1 > u64(max_val) {
+		if n1 < n || n1 > max_val {
 			// n+v overflows
 			// return error('parse_uint: range error $s')
 			return max_val
