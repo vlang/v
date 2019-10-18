@@ -7,9 +7,12 @@ module main
 import (
 	compiler
 	benchmark
+	//time
 )
 
 fn main() {
+	//t := time.ticks()
+	//defer { println(time.ticks() - t) }
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
 	options := args.filter(it.starts_with('-'))
