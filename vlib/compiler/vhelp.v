@@ -1,7 +1,7 @@
 module compiler
 
 const (
-	HelpText = 'Usage: v [options/commands] [file.v | directory]
+	help_text = 'Usage: v [options/commands] [file.v | directory]
 
    When V is run without any arguments, it is run in REPL mode.
 
@@ -42,7 +42,7 @@ Options/commands:
   -shared           Build a shared library.
   -stats            Show additional stats when compiling/running tests. Try `v -stats test .`
 
-  -cache            Turn on usage of the precompiled module cache. 
+  -cache            Turn on usage of the precompiled module cache.
                     It very significantly speeds up secondary compilations.
 
   -obf              Obfuscate the resulting binary.
@@ -51,7 +51,7 @@ Options/commands:
 Options for debugging/troubleshooting v programs:
   -g                Generate debugging information in the backtraces. Add *V* line numbers to the generated executable.
   -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
-  -keep_c           Do NOT remove the generated .tmp.c files after compilation. 
+  -keep_c           Do NOT remove the generated .tmp.c files after compilation.
                     It is useful when using debuggers like gdb/visual studio, when given after -g / -cg .
   -show_c_cmd       Print the full C compilation command and how much time it took.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
