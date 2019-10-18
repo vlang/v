@@ -93,7 +93,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 		if flag[0] == `-` {
 			for f in allowed_flags {
 				i := 1+f.len
-				if i < flag.len && f == flag.substr(1,i) {
+				if i <= flag.len && f == flag.substr(1,i) {
 					name = flag.left(i).trim_space()
 					flag = flag.right(i).trim_space()
 					break
@@ -137,6 +137,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 			break
 		}
 	}
+	return
 }
 
 //TODO: implement msvc specific c_options_before_target and c_options_after_target ...
