@@ -802,7 +802,15 @@ fn (p mut Parser) struct_decl() {
 			attr = p.check_name()
 			if p.tok == .colon {
 				p.check(.colon)
-				attr += ':' + p.check_name()
+				mut val := ''
+				match p.tok {
+					.name => { val = p.check_name() }
+					.str => { val = p.check_string() }
+					else => {
+						p.error('attribute value should be either name or string')
+					}
+				}
+				attr += ':' + val
 			}
 			p.check(.rsbr)
 		}
@@ -3770,6 +3778,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.gen('if (')
 		}
 
+		ph := p.cgen.add_placeholder()
+
 		// Multiple checks separated by comma
 		mut got_comma := false
 
@@ -3778,31 +3788,35 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.gen(') || (')
 			}
 
+			mut got_string := false
+
 			if typ == 'string' {
-				// TODO: use tmp variable
-				// p.gen('string_eq($tmp_var, ')
+				got_string = true
 				p.gen('string_eq($tmp_var, ')
 			}
 			else {
-				// TODO: use tmp variable
-				// p.gen('($tmp_var == ')
-				p.gen('($tmp_var == ')
+				p.gen('$tmp_var == ')
 			}
 
 			p.expected_type = typ
 			p.check_types(p.bool_expression(), typ)
 			p.expected_type = ''
 
+			if got_string {
+				p.gen(')')
+			}
+
 			if p.tok != .comma {
 				if got_comma {
 					p.gen(') ')
+					p.cgen.set_placeholder(ph, '(')
 				}
 				break
 			}
 			p.check(.comma)
 			got_comma = true
 		}
-		p.gen(') )')
+		p.gen(')')
 
 		p.check(.arrow)
 
