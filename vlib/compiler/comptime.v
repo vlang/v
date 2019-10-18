@@ -178,9 +178,6 @@ fn (p mut Parser) chash() {
 	hash := p.lit.trim_space()
 	// println('chsh() file=$p.file  hash="$hash"')
 	p.next()
-	if !p.first_pass() {
-		return
-	}
 	if hash.starts_with('flag ') {
 		mut flag := hash.right(5)
 		// expand `@VROOT` `@VMOD` to absolute path
