@@ -129,7 +129,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 			if name == '-I' || name == '-L' {
 				return error('bad #flag `$flag_orig`: missing path after `-I`')
 			} else if name == '-l' {
-				return error('bad #flag `$flag_orig`: missing library after `-l`')
+				return error('bad #flag `$flag_orig`: missing library name after `-l`')
 			}
 		} 
 		cf := CFlag{
