@@ -2,11 +2,12 @@
 
 I tried making the code of the compiler and vlib as simple and readable as possible. One of V's goals is to be open to developers with different levels of experience in compiler development. Compilers don't need to be black boxes full of magic that only few people understand.
 
-The compiler itself is located in `compiler/`
+The compiler itself is located in `vlib/compiler/`. It's a module that can be used by other
+applications.
 
 The main files are:
 
-1. `main.v` The entry point.
+1. `v.v` and `vlib/compiler/main.v`. The entry point.
 
 - V figures out the build mode.
 - Constructs the compiler object (`struct V`).
@@ -33,7 +34,7 @@ The main files are:
 
 8. `json.v` defines the json code generation. This file will be removed once V supports comptime code generation, and it will be possible to do this using the language's tools.
 
-9. `x64/` is the directory with all the machine code generation logic. It will be available in early July. Obviously this is the most complex part of the compiler. It defines a set of functions that translates assembly instructions to machine code, it builds complicated binaries from scratch byte by byte. It manually builds all headers, segments, sections, symtable, relocations, etc. Right now it only has basic support of the x64 platform/Mach-O format, and it can only generate `.o` files, which then have to be linked with `lld`.
+9. `x64/` is the directory with all the machine code generation logic. It's not released yet. Obviously this is the most complex part of the compiler. It defines a set of functions that translates assembly instructions to machine code, it builds complicated binaries from scratch byte by byte. It manually builds all headers, segments, sections, symtable, relocations, etc. Right now it only has basic support of the x64 platform/Mach-O format, and it can only generate `.o` files, which then have to be linked with `lld`.
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 

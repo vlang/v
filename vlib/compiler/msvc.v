@@ -37,7 +37,7 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
 		for version in versions {
 			required_bytes := 0 // TODO mut
-			result := C.RegQueryValueExW(key, version.to_wide(), 0, 0, 0, &required_bytes)
+			result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
 
 			length := required_bytes / 2
 
@@ -52,7 +52,7 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 				continue
 			}
 
-			result2 := C.RegQueryValueExW(key, version.to_wide(), 0, 0, value, &alloc_length)
+			result2 := C.RegQueryValueEx(key, version.to_wide(), 0, 0, value, &alloc_length)
 
 			if result2 != 0 {
 				continue
@@ -80,11 +80,11 @@ struct WindowsKit {
 }
 
 // Try and find the root key for installed windows kits
-fn find_windows_kit_root() ?WindowsKit {
+fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
-		rc := C.RegOpenKeyExA(
-			HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots', 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
+		rc := C.RegOpenKeyEx(
+			HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'.to_wide(), 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &root_key)
 
 		defer {C.RegCloseKey(root_key)}
 
@@ -100,7 +100,7 @@ fn find_windows_kit_root() ?WindowsKit {
 
 		// println(kit_lib)
 
-		files := os.ls(kit_lib)
+		files := os.ls(kit_lib) or { panic(err) }
 		mut highest_path := ''
 		mut highest_int := 0
 		for f in files {
@@ -119,8 +119,8 @@ fn find_windows_kit_root() ?WindowsKit {
 		// println('$kit_lib_highest $kit_include_highest')
 
 		return WindowsKit {
-			um_lib_path: kit_lib_highest + '\\um\\x64'
-			ucrt_lib_path: kit_lib_highest + '\\ucrt\\x64'
+			um_lib_path: kit_lib_highest + '\\um\\$host_arch'
+			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$host_arch'
 
 			um_include_path: kit_include_highest + '\\um'
 			ucrt_include_path: kit_include_highest + '\\ucrt'
@@ -136,7 +136,7 @@ struct VsInstallation {
 	exe_path string
 }
 
-fn find_vs() ?VsInstallation {
+fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	$if !windows {
 		return error('Host OS does not support finding a Vs installation')
 	}
@@ -144,7 +144,8 @@ fn find_vs() ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('""%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
+	
+	res := os.exec('""$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
 		return error(err)
 	}
 	// println('res: "$res"')
@@ -162,11 +163,11 @@ fn find_vs() ?VsInstallation {
 		version
 	}
 
-	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\x64'
+	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
 	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 
 	if os.file_exists('$lib_path\\vcruntime.lib') {
-		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Hostx64\\x64'
+		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$host_arch'
 
 		// println('$lib_path $include_path')
 
@@ -183,10 +184,21 @@ fn find_vs() ?VsInstallation {
 
 fn find_msvc() ?MsvcResult {
 	$if windows {
-		wk := find_windows_kit_root() or {
+		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
+		vswhere_dir := if processor_architecture == 'x86' {
+			'%ProgramFiles%'
+		} else {
+			'%ProgramFiles(x86)%'
+		}
+		host_arch := if processor_architecture == 'x86' {
+			'X86'
+		} else {
+			'X64'
+		}
+		wk := find_windows_kit_root(host_arch) or {
 			return error('Unable to find windows sdk')
 		}
-		vs := find_vs() or {
+		vs := find_vs(vswhere_dir, host_arch) or {
 			return error('Unable to find visual studio')
 		}
 
@@ -383,7 +395,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	println('$obj_path not found, building it (with msvc)...')
 	parent := os.dir(obj_path)
-	files := os.ls(parent)
+	files := os.ls(parent) or { panic(err) }
 
 	mut cfiles := ''
 	for file in files {

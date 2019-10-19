@@ -51,7 +51,7 @@ fn init_os_args(argc int, argv &byteptr) []string {
 }
 
 
-pub fn ls(path string) []string {
+pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string
 	// We can also check if the handle is valid. but using dir_exists instead
@@ -61,8 +61,7 @@ pub fn ls(path string) []string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !dir_exists(path) {
-		println('ls() couldnt open dir "$path" (does not exist).')
-		return dir_files
+		return error('ls() couldnt open dir "$path"')
 	}
 	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*

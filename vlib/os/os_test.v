@@ -37,7 +37,7 @@ fn test_create_and_delete_folder() {
   folder := './test1'
   os.mkdir(folder)
 
-  folder_contents := os.ls(folder)
+  folder_contents := os.ls(folder) or { panic(err) }
   assert folder_contents.len == 0
 
   os.rmdir(folder)

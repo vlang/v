@@ -13,39 +13,6 @@ import term
 #include <termios.h>
 #include <sys/ioctl.h>
 
-// Used to change the terminal options
-struct Termios {
-mut:
-  c_iflag int
-  c_oflag int
-  c_cflag int
-  c_lflag int
-  c_cc [12]int //NCCS == 12. Cant use the defined value here
-}
-
-// Used to collect the screen information
-struct Winsize {
-  ws_row u16
-  ws_col u16
-  ws_xpixel u16
-  ws_ypixel u16
-}
-
-struct Readline {
-mut:
-  is_raw bool
-  orig_termios Termios
-  current ustring // Line being edited
-  cursor int // Cursor position
-  overwrite bool
-  cursor_row_offset int
-  prompt string
-  previous_lines []ustring
-  search_index int
-  is_tty bool
-}
-
-
 // Defines actions to execute
 enum Action {
   eof
@@ -104,7 +71,7 @@ fn (r mut Readline) enable_raw_mode2() {
 }
 
 // Reset back the terminal to its default value
-pub fn (r mut Readline) disable_raw_mode() {
+fn (r mut Readline) disable_raw_mode() {
   if r.is_raw {
     C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
     r.is_raw = false
@@ -182,7 +149,7 @@ pub fn read_line(prompt string) ?string {
   return s
 }
 
-fn (r Readline) analyse(c byte) Action {
+fn (r Readline) analyse(c int) Action {
   switch c {
     case `\0`: return Action.eof
     case 0x3 : return Action.eof // End of Text
@@ -328,7 +295,9 @@ fn (r mut Readline) refresh_line() {
 fn (r mut Readline) eof() bool {
   r.previous_lines.insert(1, r.current)
   r.cursor = r.current.len
-  r.refresh_line()
+  if r.is_tty {
+    r.refresh_line()
+  }
   return true
 }
 
@@ -370,8 +339,8 @@ fn (r mut Readline) commit_line() bool {
   a := '\n'.ustring()
   r.current = r.current + a
   r.cursor = r.current.len
-  r.refresh_line()
   if r.is_tty {
+    r.refresh_line()
     println('')
   }
   return true

@@ -495,11 +495,15 @@ pub fn (v V) run_compiled_executable_and_exit() {
 pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
-		verror("$dir doesn't exist!")
+		if dir == 'compiler' && os.dir_exists('vlib') {
+			println('looks like you are trying to build V with an old command')
+			println('use `v v.v` instead of `v -o v compiler`')
+		}	
+		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
 		verror("$dir isn't a directory")
 	}
-	mut files := os.ls(dir)
+	mut files := os.ls(dir) or { panic(err) }
 	if v.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
@@ -556,6 +560,16 @@ pub fn (v mut V) add_v_files_to_compile() {
 	for file in v.get_user_files() {
 		mut p := v.new_parser_from_file(file)
 		p.parse(.imports)
+		if p.v_script {
+			v.log('imports0:')
+			println(v.table.imports)
+			println(v.files)
+			p.import_table.register_import('os', 0)
+			v.table.file_imports[p.file_path_id] = p.import_table
+			p.table.imports << 'os'
+			p.table.register_module('os')
+			println('got v script')
+		}	
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
 	}
@@ -578,7 +592,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			mod_path := mod.replace('.', os.path_separator)
 			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.file_exists(vh_path) {
-				println('using cached module `$mod`: $vh_path')
+				eprintln('using cached module `$mod`: $vh_path')
 				v.cached_mods << mod
 				v.files << vh_path
 				continue
@@ -609,12 +623,13 @@ pub fn (v &V) get_builtin_files() []string {
 pub fn (v &V)  get_user_files() []string {
 	mut dir := v.dir
 	v.log('get_v_files($dir)')
-	// Need to store user files separately, because they have to be added after libs, but we dont know
-	// which libs need to be added yet
+	// Need to store user files separately, because they have to be added after
+	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string
 
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << [v.vroot, 'vlib', 'benchmark', 'tests', 'always_imported.v'].join( os.path_separator )
+		user_files << os.join(v.vroot, 'vlib', 'benchmark', 'tests',
+			'always_imported.v')
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
@@ -624,9 +639,9 @@ pub fn (v &V)  get_user_files() []string {
 	if is_test_with_imports {
 		user_files << dir
 		pos := dir.last_index(os.path_separator)
-		dir = dir.left(pos) + os.path_separator// TODO WHY IS THIS .neEDED?
+		dir = dir.left(pos) + os.path_separator// TODO why is this needed
 	}
-	if dir.ends_with('.v') {
+	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		// Just compile one file and get parent dir
 		user_files << dir
 		dir = dir.all_before(os.path_separator)
@@ -792,7 +807,7 @@ pub fn new_v(args[]string) &V {
 		*/
 	}
 	is_test := dir.ends_with('_test.v')
-	is_script := dir.ends_with('.v')
+	is_script := dir.ends_with('.v') || dir.ends_with('.vsh')
 	if is_script && !os.file_exists(dir) {
 		println('`$dir` does not exist')
 		exit(1)
@@ -983,7 +998,7 @@ pub fn install_v(args[]string) {
 	if true {
 		//println('Building vget...')
 		os.chdir(vroot + '/tools')
-		vget_compilation := os.exec('$vexec -o $vget vget.v') or {
+		vget_compilation := os.exec('"$vexec" -o $vget vget.v') or {
 			verror(err)
 			return
 		}

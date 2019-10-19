@@ -133,6 +133,10 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 
 fn (s &Scanner) get_error_filepath() string {
 	if s.should_print_relative_paths_on_error {
+		workdir := os.getwd() + os.path_separator
+		if s.file_path.starts_with(workdir) {
+			return s.file_path.replace( workdir, '') 
+		}
 		return s.file_path
 	}
 	return os.realpath( s.file_path )

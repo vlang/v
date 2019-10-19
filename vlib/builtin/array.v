@@ -332,7 +332,7 @@ pub fn (a []char) index(v char) int {
 ////////////// FILTER //////////////
 
 // Creates a new array with all elements that pass the test implemented by the provided function.
-pub fn (a  []string) filter(predicate fn(p_val string, p_i int, p_arr []string) bool) []string
+pub fn (a  []string) filter2(predicate fn(p_val string, p_i int, p_arr []string) bool) []string
 {
 	mut res := []string
 	for i := 0; i < a.len; i++  {
@@ -343,7 +343,7 @@ pub fn (a  []string) filter(predicate fn(p_val string, p_i int, p_arr []string) 
 	return res
 }
 
-pub fn (a []int) filter(predicate fn(p_val, p_i int, p_arr []int) bool) []int
+pub fn (a []int) filter2(predicate fn(p_val, p_i int, p_arr []int) bool) []int
 {
 	mut res := []int
 	for i := 0; i < a.len; i++  {
@@ -356,7 +356,7 @@ pub fn (a []int) filter(predicate fn(p_val, p_i int, p_arr []int) bool) []int
 
 ////////////// REDUCE //////////////
 
-// Executes a reducer function (that you provide) on each element of the array, 
+// Executes a reducer function (that you provide) on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn (accum, curr int) int, accum_start int) int {
 	mut _accum := 0

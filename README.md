@@ -69,7 +69,7 @@ Otherwise, follow these instructions:
 
 You can create a `/usr/local/bin/v` symlink so that V is globally available:
 
-```
+```bash
 sudo ./v symlink
 ```
 
@@ -94,7 +94,7 @@ Make sure V can compile itself:
 v v.v
 ```
 
-```
+```bash
 $ v
 V 0.1.x
 Use Ctrl-C or `exit` to exit
@@ -105,7 +105,7 @@ hello world
 ```
 
 
-```
+```bash
 cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
@@ -145,7 +145,7 @@ glfw dependency will be removed soon.
 
 [examples/hello_v_js.v](examples/hello_v_js.v):
 
-```
+```v
 fn main() {
         for i := 0; i < 3; i++ {
                 println('Hello from V.js')

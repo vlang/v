@@ -4,6 +4,8 @@
 
 module os
 
+import strings
+
 #include <sys/stat.h>
 #include <signal.h>
 #include <errno.h>
@@ -813,7 +815,7 @@ pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
 		return []string
 	}
-	mut files := os.ls(path)
+	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
 	for i, file in files {
 		if file.starts_with('.') {
@@ -890,4 +892,15 @@ pub fn mkdir_all(path string) {
 			os.mkdir(p)
 		}
 	}
+}
+
+// TODO use []string.join once ...string becomes "[]string"
+pub fn join(base string, dirs ...string) string {
+	mut path := strings.new_builder(50)
+	path.write(base.trim_right('\\/'))
+	for d in dirs {
+		path.write(os.path_separator)
+		path.write(d)
+	}
+	return path.str()
 }

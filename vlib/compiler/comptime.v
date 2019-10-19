@@ -179,12 +179,16 @@ fn (p mut Parser) chash() {
 	// println('chsh() file=$p.file  hash="$hash"')
 	p.next()
 	if hash.starts_with('flag ') {
-		mut flag := hash.right(5)
-		// expand `@VROOT` `@VMOD` to absolute path
-		flag = flag.replace('@VROOT', p.vroot)
-		flag = flag.replace('@VMOD', v_modules_path)
-		//p.log('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod)
+		if p.first_pass() {
+			mut flag := hash.right(5)
+			// expand `@VROOT` `@VMOD` to absolute path
+			flag = flag.replace('@VROOT', p.vroot)
+			flag = flag.replace('@VMOD', v_modules_path)
+			//p.log('adding flag "$flag"')
+			_ = p.table.parse_cflag(flag, p.mod) or {
+				p.error_with_token_index(err, p.cur_tok_index()-1)
+			}
+		}
 		return
 	}
 	if hash.starts_with('include') {
@@ -202,17 +206,13 @@ fn (p mut Parser) chash() {
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
 		file := hash.right(pos)
-		if p.pref.build_mode != BuildMode.default_mode {
+		if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
 		}
 	}
 	else if hash.contains('define') {
 		// Move defines on top
 		p.cgen.includes << '#$hash'
-	}
-	else if hash == 'v' {
-		println('v script')
-		//p.v_script = true
 	}
 	// Don't parse a non-JS V file (`#-js` flag)
 	else if hash == '-js'  {
@@ -273,7 +273,10 @@ fn (p mut Parser) gen_array_str(typ Type) {
 	})
 	elm_type := typ.name.right(6)
 	elm_type2 := p.table.find_type(elm_type)
-	if p.typ_to_fmt(elm_type, 0) == '' &&
+	is_array := elm_type.starts_with('array_')
+	if is_array {
+		p.gen_array_str(elm_type2)
+	} else if p.typ_to_fmt(elm_type, 0) == '' &&
 		!p.table.type_has_method(elm_type2, 'str') {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
@@ -318,4 +321,44 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	// at the top of the file.
 	// This function will get parsee by V after the main pass.
 	p.cgen.fns << 'string ${typ.name}_str();'
+}
+
+fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
+	/*
+		// V
+		a := [1,2,3,4]
+		b := a.filter(it % 2 == 0)
+		
+		// C
+		array_int a = ...;
+		array_int tmp2 = new_array(0, 4, 4);
+		for (int i = 0; i < a.len; i++) {
+			int it = ((int*)a.data)[i];
+			if (it % 2 == 0) array_push(&tmp2, &it);
+		}
+		array_int b = tmp2;
+	*/
+	val_type:=str_typ.right(6)
+	p.open_scope()
+	p.register_var(Var{
+		name: 'it'
+		typ: val_type
+	})
+	p.next()
+	p.check(.lpar)
+	p.cgen.resetln('')
+	tmp := p.get_tmp()
+	a := p.expr_var.name
+	p.cgen.set_placeholder(method_ph,'\n$str_typ $tmp = new_array(0, $a .len,sizeof($val_type));\n')
+	p.genln('for (int i = 0; i < ${a}.len; i++) {')
+	p.genln('$val_type it = (($val_type*)${a}.data)[i];')
+	p.gen('if (')
+	p.bool_expression()
+	p.genln(') array_push(&$tmp, &it);')
+	//p.genln(') array_push(&$tmp, &((($val_type*)${a}.data)[i]));')
+	//p.genln(') array_push(&$tmp, ${a}.data + i * ${a}.element_size);')
+	p.genln('}')
+	p.gen(tmp) // TODO why does this `gen()` work?
+	p.check(.rpar)
+	p.close_scope()
 }

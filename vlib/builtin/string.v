@@ -41,6 +41,8 @@ NB: A V string should be/is immutable from the point of view of
     when used with modules using C functions (for example os and so on).
 */
 
+import strconv
+
 struct string {
 //mut:
 	//hash_cache int
@@ -180,12 +182,12 @@ pub fn (s string) replace(rep, with string) string {
 }
 
 pub fn (s string) int() int {
-	return C.atoi(*char(s.str))
+	return strconv.parse_int(s, 0, 32)
 }
 
 
 pub fn (s string) i64() i64 {
-	return C.atoll(*char(s.str))
+	return strconv.parse_int(s, 0, 64)
 }
 
 pub fn (s string) f32() f32 {
@@ -197,20 +199,11 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	$if tinyc {
-		return u32(s.int()) // TODO
-	} $else {
-		return C.strtoul(*char(s.str), 0, 0)
-	}
+	return strconv.parse_uint(s, 0, 32)
 }
 
 pub fn (s string) u64() u64 {
-	$if tinyc {
-		return u64(s.int()) // TODO
-	} $else {
-		return C.strtoull(*char(s.str), 0, 0)
-	}
-	//return C.atoll(s.str) // temporary fix for tcc on windows.
+	return strconv.parse_uint(s, 0, 64)
 }
 
 // ==
