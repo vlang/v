@@ -18,11 +18,11 @@ endif
 
 all: fresh_vc fresh_tcc
 ifdef WIN32
-	$(CC) -std=c99 -w -o v0.exe vc/v_win.c
+	$(CC) -std=c99 -w -o v0.exe vc/v_win.c $(LDFLAGS)
 	./v0.exe -o v.exe v.v
 	rm -f v0.exe
 else
-	$(CC) -std=gnu11 -w -o v vc/v.c -lm
+	$(CC) -std=gnu11 -w -o v vc/v.c $(LDFLAGS) -lm
 	@(VC_V=`./v version | cut -f 3 -d " "`; \
 	V_V=`git rev-parse --short HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
@@ -39,8 +39,14 @@ fresh_vc:
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 
 fresh_tcc:
+ifdef WIN32
 	rm -rf /var/tmp/tcc/
-	git clone --depth 1 --quiet https://github.com/vmisc/tccbin /var/tmp/tcc
+	git clone --depth 1 --quiet https://github.com/vlang/tccbin_win /var/tmp/tcc
+endif
+ifdef LINUX
+	rm -rf /var/tmp/tcc/
+	git clone --depth 1 --quiet https://github.com/vlang/tccbin /var/tmp/tcc
+endif
 
 selfcompile:
 	./v v.v

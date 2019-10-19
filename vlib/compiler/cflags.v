@@ -26,7 +26,7 @@ fn (v &V) get_os_cflags() []CFlag {
 		|| (flag.os == 'linux' && v.os == .linux)
 		|| (flag.os == 'darwin' && v.os == .mac)
 		|| (flag.os == 'freebsd' && v.os == .freebsd)
-		|| (flag.os == 'windows' && (v.os == .windows || v.os == .msvc)) {
+		|| (flag.os == 'windows' && v.os == .windows) {
 			flags << flag
 		}
 	}
@@ -70,15 +70,16 @@ fn (table &Table) has_cflag(cflag CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-fn (table mut Table) parse_cflag(cflag string, mod string) {
+fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 	allowed_flags := [
 		'framework',
 		'library',
 		'I', 'l', 'L',
 	]
-	mut flag := cflag.trim_space()
+	flag_orig := cflag.trim_space()
+	mut flag := flag_orig
 	if flag == '' {
-		return
+		return true
 	}
 	mut fos := ''
 	mut name := ''
@@ -93,7 +94,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 		if flag[0] == `-` {
 			for f in allowed_flags {
 				i := 1+f.len
-				if i < flag.len && f == flag.substr(1,i) {
+				if i <= flag.len && f == flag.substr(1,i) {
 					name = flag.left(i).trim_space()
 					flag = flag.right(i).trim_space()
 					break
@@ -124,6 +125,10 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 			value = flag.trim_space()
 			index = -1
 		}
+		if (name in ['-I', '-l', '-L']) && value == '' {
+			hint := if name == '-l' { 'library name' } else { 'path' }
+			return error('bad #flag `$flag_orig`: missing $hint after `$name`')
+		}
 		cf := CFlag{
 			mod:   mod,
 			os:    fos,
@@ -137,13 +142,14 @@ fn (table mut Table) parse_cflag(cflag string, mod string) {
 			break
 		}
 	}
+	return true
 }
 
 //TODO: implement msvc specific c_options_before_target and c_options_after_target ...
+fn (cflags []CFlag) c_options_before_target_msvc() string { return '' }
+fn (cflags []CFlag) c_options_after_target_msvc() string { return '' }
+
 fn (cflags []CFlag) c_options_before_target() string {	
-	$if msvc {
-		return ''
-	}
 	// -I flags, optimization flags and so on
 	mut args:=[]string
 	for flag in cflags {
@@ -155,9 +161,6 @@ fn (cflags []CFlag) c_options_before_target() string {
 }
 
 fn (cflags []CFlag) c_options_after_target() string {
-	$if msvc {
-		return ''
-	}
 	// -l flags (libs)
 	mut args:=[]string
 	for flag in cflags {

@@ -5,7 +5,6 @@
 module compiler
 
 import os
-import math
 import strings
 
 struct Table {
@@ -106,6 +105,7 @@ mut:
 	is_moved        bool
 	line_nr         int
 	token_idx       int // this is a token index, which will be used by error reporting
+	is_for_var      bool
 }
 
 struct Type {
@@ -359,6 +359,22 @@ fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
 	if f.name.str != 0 { // TODO
 		return f
+	}
+	return none
+}
+
+fn (t &Table) find_fn_is_script(name string, is_script bool) ?Fn {
+	mut f := t.fns[name]
+	if f.name.str != 0 { // TODO
+		return f
+	}
+	// V script? Try os module.
+	if is_script {
+		println('trying replace $name')
+		f = t.fns[name.replace('main__', 'os__')]
+		if f.name.str != 0 {
+			return f
+		}
 	}
 	return none
 }
@@ -778,14 +794,16 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
 	switch typ {
-	case 'byte': return 0 <= x && x <= math.max_u8
-	case 'u16': return 0 <= x && x <= math.max_u16
+	case 'byte': return 0 <= x && x <= 255
+	case 'u16': return 0 <= x && x <= 65535
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
-	case 'i8': return math.min_i8 <= x && x <= math.max_i8
+	case 'i8': return -128 <= x && x <= 127
+	/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
+	*/
 	//case 'i64':
 		//x64 := val.i64()
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)

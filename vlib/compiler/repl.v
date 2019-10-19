@@ -133,7 +133,7 @@ pub fn run_repl() []string {
 		if r.line.starts_with('print') {
 			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
 			os.write_file(file, source_code)
-			s := os.exec('$vexe run $file -repl') or {
+			s := os.exec('"$vexe" run $file -repl') or {
 				verror(err)
 				return []string
 			}
@@ -152,7 +152,7 @@ pub fn run_repl() []string {
 			}
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
-			s := os.exec('$vexe run $temp_file -repl') or {
+			s := os.exec('"$vexe" run $temp_file -repl') or {
 				verror(err)
 				return []string
 			}

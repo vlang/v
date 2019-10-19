@@ -93,6 +93,7 @@ enum TokenKind {
 	key_import_const
 	key_in
 	key_interface
+	//key_it
 	key_match
 	key_module
 	key_mut
@@ -189,6 +190,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_assert] = 'assert'
 	s[TokenKind.key_struct] = 'struct'
 	s[TokenKind.key_if] = 'if'
+	//s[TokenKind.key_it] = 'it'
 	s[TokenKind.key_else] = 'else'
 	s[TokenKind.key_return] = 'return'
 	s[TokenKind.key_module] = 'module'

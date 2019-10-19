@@ -75,7 +75,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 }
 
 fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
-	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
 	} else if p.attr == 'inline' {
 		'static inline '
@@ -92,14 +92,23 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
 	p.check_name()
 	p.check_space(.assign)
-	expr := p.lit
 	is_indexer := p.peek() == .lsbr
-	is_fn_call := p.peek() == .lpar || (p.peek() == .dot && p.tokens[p.token_idx+2].tok == .lpar)
-	if !is_indexer && !is_fn_call {
-		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+	mut expr := p.lit
+	mut is_fn_call := p.peek() == .lpar 
+	if !is_fn_call {
+		mut i := p.token_idx+1
+		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
+			p.tokens[i].lit != '_' {
+			expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
+			i++
+		}
+		is_fn_call = p.tokens[i].tok == .lpar
 	}
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
+	if !is_indexer && !is_fn_call {
+		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+	}
 	tmp := p.get_tmp()
 	// handle or
 	if p.tok == .key_orelse {

@@ -48,7 +48,7 @@ fn (v mut V) cc() {
 		}
 	}
 	$if windows {
-		if v.os == .msvc {
+		if v.pref.ccompiler == 'msvc' {
 			v.cc_msvc()
 			return
 		}
@@ -56,10 +56,19 @@ fn (v mut V) cc() {
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
-	//vdir := os.dir(vexe)
 	$if linux {
-		//tcc_path := '$vdir/thirdparty/tcc/bin/tcc'
+		vdir := os.dir(vexe)
+		tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
+		//println('tcc third "$tcc_3rd"')
 		tcc_path := '/var/tmp/tcc/bin/tcc'
+		if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
+			//println('moving tcc')
+			// if there's tcc in thirdparty/, that means this is
+			// a prebuilt V_linux.zip.
+			// Until the libtcc1.a bug is fixed, we neeed to move
+			// it to /var/tmp/
+			os.system('mv $vdir/thirdparty/tcc /var/tmp/')
+		}
 		if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
 			// TODO tcc bug, needs an empty libtcc1.a fila
 			//os.mkdir('/var/tmp/tcc/lib/tcc/') 
@@ -67,8 +76,6 @@ fn (v mut V) cc() {
 			v.pref.ccompiler = tcc_path
 		}
 	}
-	
-
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
@@ -119,7 +126,7 @@ fn (v mut V) cc() {
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 
-	if v.os != .msvc && v.os != .freebsd {
+	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
 
@@ -314,7 +321,11 @@ fn (c mut V) cc_windows_cross() {
 	mut args := '-o $c.out_name -w -L. '
 	cflags := c.get_os_cflags()
 	// -I flags
-	args += cflags.c_options_before_target()
+	args += if c.pref.ccompiler == 'msvc' {
+		cflags.c_options_before_target_msvc()
+	} else {
+		cflags.c_options_before_target()
+	}
 	mut libs := ''
 	if c.pref.build_mode == .default_mode {
 		libs = '"$v_modules_path/vlib/builtin.o"'
@@ -327,7 +338,11 @@ fn (c mut V) cc_windows_cross() {
 		}
 	}
 	args += ' $c.out_name_c '
-	args += cflags.c_options_after_target()
+	args += if c.pref.ccompiler == 'msvc' {
+		cflags.c_options_after_target_msvc()
+	} else {
+		cflags.c_options_after_target()
+	}
 	println('Cross compiling for Windows...')
 	winroot := '$v_modules_path/winroot'
 	if !os.dir_exists(winroot) {
@@ -372,7 +387,7 @@ fn (c &V) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {			
 			rest_of_module_flags := c.get_rest_of_module_cflags( flag )
-			if c.os == .msvc {
+			if c.pref.ccompiler == 'msvc' {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			}
 			else {

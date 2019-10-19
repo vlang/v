@@ -326,7 +326,7 @@ fn (p mut Parser) fn_decl() {
 			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
 	}
-	dll_export_linkage := if p.os == .msvc && p.attr == 'live' && p.pref.is_so {
+	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
 	} else if p.attr == 'inline' {
 		'static inline '
@@ -590,7 +590,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
 	thread_name = '_thread$tmp_nr'
-	if p.os != .windows && p.os != .msvc {
+	if p.os != .windows {
 		p.genln('pthread_t $thread_name;')
 	}
 	tmp2 := p.get_tmp()
@@ -599,7 +599,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		parg = ' $tmp_struct'
 	}
 	// Call the wrapper
-	if p.os == .windows || p.os == .msvc {
+	if p.os == .windows {
 		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
 	}
 	else {
@@ -662,7 +662,12 @@ fn (p mut Parser) fn_call(f Fn, method_ph int, receiver_var, receiver_type strin
 		//println('r=$receiver.typ RT=$receiver_type')
 		if receiver.is_mut && !p.expr_var.is_mut {
 			//println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
-			p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
+			if p.expr_var.is_for_var {
+				p.error('`$p.expr_var.name` is immutable, `for` variables' +
+					' always are')
+			}	 else {
+				p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
+			}
 		}
 		if !p.expr_var.is_changed {
 			p.mark_var_changed(p.expr_var)
@@ -732,8 +737,10 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			}
 			t := p.get_type()
 			// register varg struct, incase function is never called
-			vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
-			p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			if p.first_pass() {
+				vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
+				p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			}
 			typ = '...$t'
 		} else {
 			typ = p.get_type()
