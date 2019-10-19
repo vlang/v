@@ -87,6 +87,10 @@ fn (p &Parser) find_var_check_new_var(name string) ?Var {
 }
 
 fn (p mut Parser) open_scope() {
+	if p.in_dispatch {
+		println('opening scope $p.cur_fn.name $p.cur_fn.scope_level')
+		println('defer text = $p.cur_fn.defer_text')
+	}
 	p.cur_fn.defer_text << ''
 	p.cur_fn.scope_level++
 }
@@ -1051,13 +1055,14 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	}
 	p.check(.rpar)
 	if f.is_generic {
-		type_map := p.extract_type_params(f, saved_args)
+		type_map := p.extract_type_inst(f, saved_args)
 		p.dispatch_generic_fn_instance(mut f, type_map)
 	}
 }
 
-// Replace all type params in f's signature with an actual type
-fn (p mut Parser) extract_type_params(f &Fn, args_ []string) TypeInst {
+// From a given generic function and an argument list matching its signature,
+// create a type instantiation
+fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	mut r := TypeInst{}
 	mut i := 0
 	mut args := args_
@@ -1100,9 +1105,15 @@ fn (p mut Parser) extract_type_params(f &Fn, args_ []string) TypeInst {
 	return r
 }
 
-fn (p mut Parser) replace_type_params(args []string, ti TypeInst) []string {
+// Replace type params of a given generic function using a TypeInst
+fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
+	mut sig := []string
+	for a in f.args {
+		sig << a.typ
+	}
+	sig << f.typ
 	mut r := []string
-	for _, a in args {
+	for _, a in sig {
 		mut fi := a
 		mut fr := ''
 		if fi.starts_with('fn (') {
@@ -1255,14 +1266,10 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	}
 	f.is_generic = false		// the instance is a normal function
 	f.type_inst = []TypeInst
+	f.scope_level = 0
 	f.dispatch_of = ti
-	mut old_types := []string
-	for a in f.args {
-		old_types << a.typ
-	}
-	old_types << f.typ
 	old_args := f.args
-	new_types := p.replace_type_params(old_types, ti)
+	new_types := p.replace_type_params(f, ti)
 	f.args = []Var
 	for i in 0..new_types.len-1 {
 		mut v := old_args[i]
@@ -1283,12 +1290,12 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.cgen.tmp_line = ''
 	p.cgen.cur_line = ''
 	p.cgen.lines = []string
-	p.token_idx = f.body_idx-1
-	p.next()	// re-initializes the parser properly
-	p.set_current_fn(f)
+	p.cur_fn = *f
 	for arg in f.args {
 		p.register_var(arg)
 	}
+	p.token_idx = f.body_idx-1
+	p.next()	// re-initializes the parser properly
 	str_args := f.str_args(p.table)
 
 	p.in_dispatch = true
