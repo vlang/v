@@ -1098,6 +1098,9 @@ fn (p mut Parser) get_type() string {
 	}
 	if mul {
 		typ += strings.repeat(`*`, nr_muls)
+		if p.first_pass() {
+            p.table.register_type(typ)
+        }
 	}
 	// Register an []array type
 	if arr_level > 0 {
@@ -1706,8 +1709,16 @@ fn (p mut Parser) name_expr() string {
 	// amp
 	ptr := p.tok == .amp
 	deref := p.tok == .mul
+	mut nr_mul := 1
 	if ptr || deref {
-		p.next()
+		for {
+			p.next()
+			if p.tok == .amp || p.tok == .mul {
+				nr_mul++
+			}else{
+				break
+			}
+		}
 	}
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
@@ -1756,7 +1767,7 @@ fn (p mut Parser) name_expr() string {
 		p.gen('&')
 	}
 	else if deref {
-		p.gen('*')
+		p.gen('*'.repeat(nr_mul))
 	}
 	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
 		p.assigned_type == 'string' {
@@ -1770,8 +1781,11 @@ fn (p mut Parser) name_expr() string {
 			println('name="$name", t=$v.typ')
 			p.error('dereferencing requires a pointer, but got `$typ`')
 		}
-		typ = typ.replace('ptr', '')// TODO
-		typ = typ.replace('*', '')// TODO
+		for i in 0..nr_mul {
+			typ = typ.replace_once('ptr', '')// TODO
+			typ = typ.replace_once('*', '')// TODO
+		}
+		
 	}
 	// &var
 	else if ptr {
@@ -1834,8 +1848,10 @@ fn (p mut Parser) name_expr() string {
 			println('name="$name", t=$v.typ')
 			p.error('dereferencing requires a pointer, but got `$typ`')
 		}
-		typ = typ.replace('ptr', '')// TODO
-		typ = typ.replace('*', '')// TODO
+		for i in 0..nr_mul {
+			typ = typ.replace_once('ptr', '')// TODO
+			typ = typ.replace_once('*', '')// TODO
+		}
 	}
 	// &var
 	else if ptr {

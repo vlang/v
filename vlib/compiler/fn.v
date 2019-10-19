@@ -752,7 +752,10 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')
 		}
 		for name in names {
-			if !p.first_pass() && !p.table.known_type(typ) {
+			if !p.first_pass() && !p.table.known_type(typ) && !p.table.known_type2(typ) {
+				for typ in p.table.typesmap.keys() {
+					println(typ)
+				}
 				p.error('fn_args: unknown type $typ')
 			}
 			if is_mut {

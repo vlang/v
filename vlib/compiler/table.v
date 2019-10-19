@@ -337,6 +337,12 @@ fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
+fn (table &Table) known_type2(typ_ string) bool {
+    mut typ := typ_
+    t := table.typesmap[typ]
+    return t.name.len > 0
+}
+
 fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
 	// vararg
