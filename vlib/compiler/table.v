@@ -84,6 +84,7 @@ struct Var {
 mut:
 	typ             string
 	name            string
+	raw_name        string
 	idx             int // index in the local_vars array
 	is_arg          bool
 	is_const        bool
@@ -433,7 +434,7 @@ fn (t mut Table) rewrite_type(typ Type) {
 	t.typesmap[typ.name]  = typ
 }
 
-fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
+fn (table mut Table) add_field(type_name, field_name, raw_field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
 	if type_name == '' {
 		print_backtrace()
 		verror('add_field: empty type')
@@ -441,6 +442,7 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 	mut t := table.typesmap[type_name]
 	t.fields << Var {
 		name: field_name
+		raw_name: raw_field_name
 		typ: field_type
 		is_mut: is_mut
 		attr: attr

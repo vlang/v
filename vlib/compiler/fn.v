@@ -1034,8 +1034,8 @@ fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) st
 	} else {
 		p.table.register_type2(varg_type)
 	}
-	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
-	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	p.table.add_field(vargs_struct, 'len', 'len', 'int', false, '', .public)
+	p.table.add_field(vargs_struct, 'args[$values.len]', 'args[$values.len]', typ, false, '', .public)
 	return vargs_struct
 }
 
@@ -1079,7 +1079,7 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 		mod: p.mod
 	})
 	for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
-		p.table.add_field(typ, 'var_$i', t, false, '', .public)
+		p.table.add_field(typ, 'var_$i', 'var_$i', t, false, '', .public)
 	}
 	p.cgen.typedefs << 'typedef struct $typ $typ;'
 	return typ

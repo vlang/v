@@ -88,7 +88,7 @@ string res = tos2("");
 		name := if field.attr.starts_with('json:') {
 			field.attr.right(5)
 		} else {
-			field.name
+			field.raw_name
 		}
 		field_type := p.table.find_type(field.typ)
 		_typ := field.typ.replace('*', '')

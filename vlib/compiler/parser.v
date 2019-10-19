@@ -765,7 +765,8 @@ fn (p mut Parser) struct_decl() {
 		// }
 		// Check if reserved name
 		field_name_token_idx := p.cur_tok_index()
-		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
+		raw_field_name := p.check_name()
+		field_name := if name != 'Option' { p.table.var_cgen_name(raw_field_name) } else { raw_field_name }
 		// Check dups
 		if field_name in names {
 			p.error('duplicate field `$field_name`')
@@ -820,7 +821,7 @@ fn (p mut Parser) struct_decl() {
 
 		did_gen_something = true
 		if p.first_pass() {
-			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
+			p.table.add_field(typ.name, field_name, raw_field_name, field_type, is_mut, attr, access_mod)
 		}
 		p.fgenln('')
 	}
@@ -828,7 +829,7 @@ fn (p mut Parser) struct_decl() {
 	if !is_c {
 		if !did_gen_something {
 			if p.first_pass() {
-				p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
+				p.table.add_field(typ.name, '', '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
 			}
 		}
 	}
