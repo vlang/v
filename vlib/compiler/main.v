@@ -1086,3 +1086,21 @@ pub fn os_from_string(os string) OS {
 	println('bad os $os') // todo panic?
 	return .linux
 }
+
+//
+
+pub fn set_vroot_folder(vroot_path string) {
+	// Preparation for the compiler module:
+	// VEXE env variable is needed so that compiler.vexe_path()
+	// can return it later to whoever needs it:
+	mut vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.setenv('VEXE', os.realpath( [vroot_path, vname].join(os.path_separator) ), true)
+}
+
+pub fn new_v_compiler_with_args(args []string) &V {
+	vexe := vexe_path()
+	mut allargs := [vexe]
+	allargs << args
+	os.setenv('VOSARGS', allargs.join(' '), true)
+	return new_v(allargs)
+}
