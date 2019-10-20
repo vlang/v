@@ -4216,7 +4216,7 @@ fn (p mut Parser) is_next_expr_fn_call() (bool, string) {
 	if !is_fn_call {
 		mut i := p.token_idx+1
 		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
-			p.tokens[i].lit != '_' {
+			p.tokens[i].lit != '_' && i < p.tokens.len {
 			next_expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
 			i++
 		}
