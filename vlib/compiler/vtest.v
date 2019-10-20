@@ -55,7 +55,7 @@ pub fn test_v() {
 			continue
 		}
 		if os.dir_exists(targ) {
-
+			// Fetch all tests from the directory
 			ts.files << os.walk_ext( targ.trim_right(os.path_separator), '_test.v')
 			continue
 		}
@@ -117,10 +117,6 @@ pub fn (ts mut TestSession) test() {
 	ts.benchmark.stop()
 }
 
-fn stable_example(example string, index int, arr []string) bool {
-	return !example.contains('vweb')
-}
-
 pub fn v_test_v(args_before_test string){
 	vexe := os.executable()
 	parent_dir := os.dir(vexe)
@@ -144,22 +140,22 @@ pub fn v_test_v(args_before_test string){
 		}
 		println('v.c can be compiled without warnings. This is good :)')
 	}
-	//////////////////////////////////////////////////////////////
+	//
 	println('Testing...')
 	mut ts := new_test_sesion( args_before_test )
 	ts.files << os.walk_ext(parent_dir, '_test.v')
 	ts.test()
 	println( ts.benchmark.total_message('running V tests') )
-	//////////////////////////////////////////////////////////////
+	//
 	println('\nBuilding examples...')
 	mut es := new_test_sesion( args_before_test )
-	es.files << os.walk_ext(parent_dir+'/examples','.v').filter2(stable_example)
+	files := os.walk_ext(parent_dir+'/examples','.v')
+	stable := files.filter(!it.contains('vweb'))
+	es.files << stable
 	es.test()
 	println( es.benchmark.total_message('building examples') )
-	//////////////////////////////////////////////////////////////
-
+	//
 	test_vget()
-
 	if ts.failed || es.failed {
 		exit(1)
 	}
