@@ -3905,20 +3905,13 @@ fn (p mut Parser) assert_statement() {
 	tmp := p.get_tmp()
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
-	// TODO print "expected:  got" for failed tests
 	filename := cescaped_path(p.file_path_id)
 	p.genln(';
 \n
 
-if (!$tmp) {
-  println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
-  g_test_fails++;
+if (!assert_true($tmp)) {
+  eprintln(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
   return;
-  // TODO
-  // Maybe print all vars in a test function if it fails?
-} else {
-  g_test_oks++;
-  //println(tos2((byte *)"\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m"));
 }
 
 ')

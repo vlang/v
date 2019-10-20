@@ -235,7 +235,9 @@ pub fn (v mut V) compile() {
 		// `/usr/bin/ld: multiple definition of 'total_m'`
 		$if !js {
 			cgen.genln('int g_test_oks = 0;')
+			cgen.genln('void __increase_g_test_oks() { g_test_oks += 1; }')
 			cgen.genln('int g_test_fails = 0;')
+			cgen.genln('void __increase_g_test_fails() { g_test_fails += 1; }')
 		}
 		if imports_json {
 			cgen.genln('
