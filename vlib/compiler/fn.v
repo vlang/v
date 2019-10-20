@@ -646,7 +646,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		}
 	}
 	cgen_name := p.table.fn_gen_name(f)
-	p.check(.name)
+	p.next()		// fn name
 	if p.tok == .lt {
 		mut i := p.token_idx
 		for {
