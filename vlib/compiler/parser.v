@@ -4175,3 +4175,18 @@ fn (p mut Parser) check_unused_imports() {
 	 // the imports are usually at the start of the file
 	p.production_error_with_token_index( 'the following imports were never used: $output', 0 )
 }
+
+fn (p mut Parser) is_next_expr_fn_call() (bool, string) {
+	mut next_expr := p.lit
+	is_fn_call := p.peek() == .lpar 
+	if !is_fn_call {
+		mut i := p.token_idx+1
+		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
+			p.tokens[i].lit != '_' {
+			next_expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
+			i++
+		}
+		is_fn_call = p.tokens[i].tok == .lpar
+	}
+	return is_fn_call, next_expr
+}

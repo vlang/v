@@ -93,21 +93,11 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
 	is_indexer := p.peek() == .lsbr
-	mut expr := p.lit
-	mut is_fn_call := p.peek() == .lpar 
-	if !is_fn_call {
-		mut i := p.token_idx+1
-		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
-			p.tokens[i].lit != '_' {
-			expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
-			i++
-		}
-		is_fn_call = p.tokens[i].tok == .lpar
-	}
+	is_fn_call, next_expr := is_next_expr_fn_call()
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
 	if !is_indexer && !is_fn_call {
-		p.error_with_token_index('assigning `$expr` to `_` is redundant', assign_error_tok_idx)
+		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
 	}
 	tmp := p.get_tmp()
 	// handle or
