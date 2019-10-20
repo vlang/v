@@ -234,6 +234,7 @@ pub fn (a array) clone() array {
 }
 
 //pub fn (a []int) free() {
+[unsafe_fn]
 pub fn (a array) free() {
 	//if a.is_slice {
 		//return

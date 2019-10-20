@@ -52,6 +52,7 @@ mut:
 	inside_if_expr bool
 	inside_unwrapping_match_statement bool
 	inside_return_expr bool
+	inside_unsafe bool
 	is_struct_init bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
@@ -839,47 +840,6 @@ fn (p mut Parser) struct_decl() {
 	p.fgenln('\n')
 }
 
-fn (p mut Parser) enum_decl(_enum_name string) {
-	mut enum_name := _enum_name
-	// Specify full type name
-	if !p.builtin_mod && p.mod != 'main' {
-		enum_name = p.prepend_mod(enum_name)
-	}
-	// Skip empty enums
-	if enum_name != 'int' && !p.first_pass() {
-		p.cgen.typedefs << 'typedef int $enum_name;'
-	}
-	p.check(.lcbr)
-	mut val := 0
-	mut fields := []string
-	for p.tok == .name {
-		field := p.check_name()
-		fields << field
-		p.fgenln('')
-		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
-		if p.pass == .main {
-			p.cgen.consts << '#define $name $val'
-		}
-		if p.tok == .comma {
-			p.next()
-		}
-		// !!!! NAME free
-		if p.first_pass() {
-			p.table.register_const(name, enum_name, p.mod)
-		}
-		val++
-	}
-	p.table.register_type2(Type {
-		name: enum_name
-		mod: p.mod
-		parent: 'int'
-		cat: TypeCategory.enum_
-		enum_vals: fields.clone()
-	})
-	p.check(.rcbr)
-	p.fgenln('\n')
-}
-
 // check_name checks for a name token and returns its literal
 fn (p mut Parser) check_name() string {
 	name := p.lit
@@ -1316,6 +1276,14 @@ fn (p mut Parser) statement(add_semi bool) string {
 	case TokenKind.hash:
 		p.chash()
 		return ''
+	case TokenKind.key_unsafe:
+		p.next()
+		p.inside_unsafe = true
+		p.check(.lcbr)
+		p.genln('{')
+		p.statements()
+		p.inside_unsafe = false
+		//p.check(.rcbr)
 	case TokenKind.dollar:
 		p.comp_time()
 	case TokenKind.key_if:
@@ -1828,6 +1796,10 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			p.check(.dot)
 			val := p.lit
+			if !enum_type.has_enum_val(val) {
+				p.error('enum `$enum_type.name` does not have value `$val`')
+			}
+			
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
@@ -1908,21 +1880,6 @@ fn (p mut Parser) get_struct_type(name_ string, is_c bool, is_ptr bool) string {
 	}
 	p.is_c_struct_init = is_c
 	return p.struct_init(name)
-}
-
-fn (p mut Parser) check_enum_member_access() {
-	T := p.find_type(p.expected_type)
-	if T.cat == .enum_ {
-		p.check(.dot)
-		val := p.check_name()
-		// Make sure this enum value exists
-		if !T.has_enum_val(val) {
-			p.error('enum `$T.name` does not have value `$val`')
-		}
-		p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
-	} else {
-		p.error('`$T.name` is not an enum')
-	}
 }
 
 fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
@@ -4212,7 +4169,7 @@ fn (p mut Parser) check_unused_imports() {
 
 fn (p mut Parser) is_next_expr_fn_call() (bool, string) {
 	mut next_expr := p.lit
-	mut is_fn_call := p.peek() == .lpar 
+	mut is_fn_call := p.peek() == .lpar
 	if !is_fn_call {
 		mut i := p.token_idx+1
 		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&

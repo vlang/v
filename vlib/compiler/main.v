@@ -117,6 +117,7 @@ pub mut:
 pub fn (v mut V) finalize_compilation(){
 	// TODO remove
 	if v.pref.autofree {
+		/*
 		println('started freeing v struct')
 		v.table.typesmap.free()
 		v.table.obf_ids.free()
@@ -131,6 +132,7 @@ pub fn (v mut V) finalize_compilation(){
 		free(v.table)
 		//for p in parsers {}
 		println('done!')
+		*/
 	}
 }
 

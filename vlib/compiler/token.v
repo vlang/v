@@ -110,6 +110,7 @@ enum TokenKind {
 	key_union
 	key_pub
 	key_static
+	key_unsafe
 	keyword_end
 }
 
@@ -210,6 +211,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_break] = 'break'
 	s[TokenKind.key_import] = 'import'
 	s[TokenKind.key_embed] = 'embed'
+	s[TokenKind.key_unsafe] = 'unsafe'
 	//Tokens[key_typeof] = 'typeof'
 	s[TokenKind.key_default] = 'default'
 	s[TokenKind.key_enum] = 'enum'

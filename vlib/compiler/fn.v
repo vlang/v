@@ -31,6 +31,7 @@ mut:
 	is_method     bool
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
+	is_unsafe bool
 	defer_text    []string
 	is_generic		bool
 	type_pars 		[]string
@@ -158,10 +159,11 @@ fn (p mut Parser) clear_vars() {
 	p.var_idx = 0
 	if p.local_vars.len > 0 {
 		if p.pref.autofree {
-			p.local_vars.free()
+			//p.local_vars.free()
 		}
 		p.local_vars = []Var
 	}
+	
 }
 
 // Function signatures are added to the top of the .c file in the first run.
@@ -182,9 +184,10 @@ fn (p mut Parser) fn_decl() {
 	}
 	*/
 	mut f := Fn{
-			mod: p.mod
-			is_public: p.tok == .key_pub
-		}
+		mod: p.mod
+		is_public: p.tok == .key_pub
+		is_unsafe: p.attr == 'unsafe_fn'
+	}
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
 		println('INFO: run `v -live program.v` if you want to use [live] functions')
@@ -631,6 +634,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 
 // p.tok == fn_name
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
+	if f.is_unsafe && !p.builtin_mod && !p.inside_unsafe {
+		p.error('you are calling an unsafe function outside of an unsafe block')
+	}	
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
@@ -1154,7 +1160,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			r << fr
 			continue
 		}
-		for fi.starts_with('array_') { 
+		for fi.starts_with('array_') {
 			fi = fi.right(6)
 			fr += 'array_'
 		}
