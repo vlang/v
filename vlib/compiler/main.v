@@ -470,13 +470,24 @@ pub fn final_target_out_name(out_name string) string {
 }
 
 pub fn (v V) run_compiled_executable_and_exit() {
+	args := env_vflags_and_os_args()
+	
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
-	if os.args.len > 3 {
-		cmd += ' ' + os.args.right(3).join(' ')
+	
+	mut args_after := ' '
+	for i,a in args {
+		if i == 0 { continue }
+		if a.starts_with('-') { continue }
+		if a in ['run','test'] {
+			args_after += args.right(i+2).join(' ')
+			break
+		}
 	}
+	cmd += args_after
+	
 	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
@@ -932,18 +943,21 @@ pub fn new_v(args[]string) &V {
 }
 
 pub fn env_vflags_and_os_args() []string {
-   mut args := []string
-   vflags := os.getenv('VFLAGS')
-   if '' != vflags {
-	 args << os.args[0]
-	 args << vflags.split(' ')
-	 if os.args.len > 1 {
-	   args << os.args.right(1)
-	 }
-   } else{
-	 args << os.args
-   }
-   return args
+	vosargs := os.getenv('VOSARGS')
+	if '' != vosargs { return vosargs.split(' ') }
+
+	mut args := []string
+	vflags := os.getenv('VFLAGS')
+	if '' != vflags {
+		args << os.args[0]
+		args << vflags.split(' ')
+		if os.args.len > 1 {
+			args << os.args.right(1)
+		}
+	} else{
+		args << os.args
+	}
+	return args
 }
 
 pub fn update_v() {
