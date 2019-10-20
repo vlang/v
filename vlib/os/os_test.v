@@ -54,7 +54,7 @@ fn test_write_and_read_bytes() {
         // read_bytes_at with second parameter zeroed (size, 0).
         red_bytes := file.read_bytes(5)
 
-        assert red_bytes == payload
+        assert red_bytes.str() == payload.str()
 
         // We finally delete the test file.
         os.rm(file_name)
