@@ -1989,7 +1989,7 @@ fn (p mut Parser) get_undefined_fn_type(name string, orig_name string) string {
 		} else if orig_name in reserved_type_param_names {
 			p.error('the letter `$orig_name` is reserved for type parameters')
 		} else {
-			p.error('undefined symbol: `$orig_name`')
+			p.error('undefined: `$orig_name`')
 		}
 		return 'void'
 	}
