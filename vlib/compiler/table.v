@@ -41,13 +41,6 @@ struct Name {
 	idx int // e.g. typ := types[name.idx]
 }	
 
-struct GenTable {
-pub:
-	fn_name string
-mut:
-	types []string
-}
-
 // Holds import information scoped to the parsed file
 struct FileImportTable {
 mut:
