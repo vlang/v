@@ -67,7 +67,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 					buf := [1000]byte
 					mut output := ''
 					for C.fgets(buf, 1000, f) != 0 {
-						output += tos(buf, vstrlen(buf)) 
+						output += tos(buf, vstrlen(buf))
 					}
 					output = output.trim_space()+':'
 					if 0 != int(C.pclose(f)) {
@@ -153,6 +153,7 @@ pub fn print(s string) {
 
 __global total_m i64 = 0
 //__global nr_mallocs int = 0
+[unsafe_fn]
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
@@ -185,6 +186,7 @@ pub fn calloc(n int) byteptr {
 	return C.calloc(n, 1)
 }
 
+[unsafe_fn]
 pub fn free(ptr voidptr) {
 	C.free(ptr)
 }
