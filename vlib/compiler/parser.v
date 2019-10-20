@@ -1402,7 +1402,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		if p.assigned_type != p.expected_type {
 			p.error_with_token_index( 'incompatible types: $p.assigned_type != $p.expected_type', errtok)
 		}
-		p.cgen.resetln('memcpy(& $left, $etype{$expr}, sizeof( $left ) );')
+		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
