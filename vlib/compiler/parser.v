@@ -59,9 +59,9 @@ mut:
 	calling_c      bool
 	cur_fn         Fn
 	local_vars     []Var // local function variables
-	var_idx       int
-	returns        bool
-	vroot          string
+	var_idx       	int
+	returns        	bool
+	vroot          	string
 	is_c_struct_init bool
 	is_empty_c_struct_init bool
 	is_c_fn_call bool
@@ -71,7 +71,7 @@ mut:
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization
 	is_alloc   bool // Whether current expression resulted in an allocation
 	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
-	cur_gen_type string // "App" to replace "T" in current generic function
+	in_dispatch 	bool		// dispatching generic instance?
 	is_vweb bool
 	is_sql bool
 	is_js bool
@@ -671,7 +671,11 @@ fn (p mut Parser) struct_decl() {
 	}
 	mut typ := p.table.find_type(name)
 	if p.pass == .decl && p.table.known_type_fast(typ) {
-		p.error('`$name` redeclared')
+		if name in reserved_type_param_names {
+			p.error('name `$name` is reserved for type parameters')
+		} else {
+			p.error('type `$name` redeclared')
+		}
 	}
 	if is_objc {
 		// Forward declaration of an Objective-C interface with `@class` :)
@@ -802,7 +806,15 @@ fn (p mut Parser) struct_decl() {
 			attr = p.check_name()
 			if p.tok == .colon {
 				p.check(.colon)
-				attr += ':' + p.check_name()
+				mut val := ''
+				match p.tok {
+					.name => { val = p.check_name() }
+					.str => { val = p.check_string() }
+					else => {
+						p.error('attribute value should be either name or string')
+					}
+				}
+				attr += ':' + val
 			}
 			p.check(.rsbr)
 		}
@@ -1022,7 +1034,8 @@ fn (p mut Parser) get_type() string {
 		p.register_map(typ)
 		return typ
 	}
-	//
+	
+	// ptr/ref
 	mut warn := false
 	for p.tok == .mul {
 		if p.first_pass() {
@@ -1037,7 +1050,16 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-	typ += p.lit
+
+	// Generic type check
+	ti := p.cur_fn.dispatch_of.inst
+	if p.lit in ti.keys() {
+		typ += ti[p.lit]
+		// println('cur dispatch: $p.lit => $typ')
+	} else {
+		typ += p.lit
+	}
+
 	if !p.is_struct_init {
 		// Otherwise we get `foo := FooFoo{` because `Foo` was already
 		// generated in name_expr()
@@ -1156,8 +1178,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof && p.tok != .key_case &&
 		p.tok != .key_default && p.peek() != .arrow {
-		// println(p.tok.str())
-		// p.print_tok()
+		// println('stm: '+p.tok.str()+', next: '+p.peek().str())
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
@@ -1178,7 +1199,6 @@ fn (p mut Parser) statements_no_rcbr() string {
 		// p.check(.rcbr)
 	}
 	//p.fmt_dec()
-	// println('close scope line=$p.scanner.line_nr')
 
 	p.close_scope()
 	return last_st_typ
@@ -1247,7 +1267,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 	if p.returns && !p.is_vweb {
 		p.error('unreachable code')
 	}
-	p.cgen.is_tmp = false
+	// if !p.in_dispatch {
+		p.cgen.is_tmp = false
+	// }
 	tok := p.tok
 	mut q := ''
 	switch tok {
@@ -1711,73 +1733,43 @@ fn (p mut Parser) name_expr() string {
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
-	mut is_c_struct_init := is_c && ptr// a := &C.mycstruct{}
+
 	if is_c {
-		p.next()
+		p.check(.name)
 		p.check(.dot)
 		name = p.lit
-		p.fgen(name)
-		// Currently struct init is set to true only we have `&C.Foo{}`, handle `C.Foo{}`:
-		if !is_c_struct_init && p.peek() == .lcbr {
-			is_c_struct_init = true
+		// C struct initialization
+		if p.peek() == .lcbr && p.table.known_type(name) {
+			return p.get_struct_type(name, true, ptr)
 		}
+		// C function
+		if p.peek() == .lpar {
+			return p.get_c_func_type(name)
+		}
+		// C const (`C.GLFW_KEY_LEFT`)
+		p.gen(name)
+		p.next()
+		return 'int'
 	}
+
 	// enum value? (`color == .green`)
 	if p.tok == .dot {
-		//println('got enum dot val $p.left_type pass=$p.pass $p.scanner.line_nr left=$p.left_type')
-		T := p.find_type(p.expected_type)
-		if T.cat == .enum_ {
-			p.check(.dot)
-			val := p.check_name()
-			// Make sure this enum value exists
-			if !T.has_enum_val(val) {
-				p.error('enum `$T.name` does not have value `$val`')
-			}
-			p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
+		if p.table.known_type(p.expected_type) {
+			p.check_enum_member_access()
+			// println("found enum value: $p.expected_type")
+			return p.expected_type
+		} else {
+			p.error("unknown enum: `$p.expected_type`")
 		}
-		return p.expected_type
 	}
+
 	// Variable, checked before modules, so module shadowing is allowed.
 	// (`gg = gg.newcontext(); gg.draw_rect(...)`)
-	for { // TODO remove
-	mut v := p.find_var_check_new_var(name) or { break }
-	if name == '_' {
-		p.error('cannot use `_` as value')
+	if p.known_var_check_new_var(name) {
+		rtyp := p.get_var_type(name, ptr, deref)
+		return rtyp
 	}
-	if ptr {
-		p.gen('&')
-	}
-	else if deref {
-		p.gen('*')
-	}
-	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
-		p.assigned_type == 'string' {
-		p.warn('setting moved ' + v.typ)
-		p.mark_arg_moved(v)
-	}
-	mut typ := p.var_expr(v)
-	// *var
-	if deref {
-		if !typ.contains('*') && !typ.ends_with('ptr') {
-			println('name="$name", t=$v.typ')
-			p.error('dereferencing requires a pointer, but got `$typ`')
-		}
-		typ = typ.replace('ptr', '')// TODO
-		typ = typ.replace('*', '')// TODO
-	}
-	// &var
-	else if ptr {
-		typ += '*'
-	}
-	if p.inside_return_expr {
-		//println('marking $v.name returned')
-		p.mark_var_returned(v)
-		// v.is_returned = true // TODO modifying a local variable
-		// that's not used afterwards, this should be a compilation
-		// error
-	}
-	return typ
-	} // TODO REMOVE for{}
+
 	// Module?
 	if p.peek() == .dot && ((name == p.mod && p.table.known_mod(name)) ||
 		p.import_table.known_alias(name))	&& !is_c {
@@ -1793,6 +1785,7 @@ fn (p mut Parser) name_expr() string {
 		p.fgen(name)
 		name = prepend_mod(mod_gen_name(mod), name)
 	}
+
 	// Unknown name, try prepending the module name to it
 	// TODO perf
 	else if !p.table.known_type(name) &&
@@ -1801,52 +1794,15 @@ fn (p mut Parser) name_expr() string {
 		name = p.prepend_mod(name)
 	}
 
-	// Variable, checked before modules, so module shadowing is allowed.
-	// (`gg = gg.newcontext(); gg.draw_rect(...)`)
-	for { // TODO remove
-	mut v := p.find_var_check_new_var(name) or { break }
-	if name == '_' {
-		p.error('cannot use `_` as value')
+	// re-check
+	if p.known_var_check_new_var(name) {
+		return p.get_var_type(name, ptr, deref)
 	}
-	if ptr {
-		p.gen('&')
-	}
-	else if deref {
-		p.gen('*')
-	}
-	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
-		p.assigned_type == 'string' {
-		p.warn('setting moved ' + v.typ)
-		p.mark_arg_moved(v)
-	}
-	mut typ := p.var_expr(v)
-	// *var
-	if deref {
-		if !typ.contains('*') && !typ.ends_with('ptr') {
-			println('name="$name", t=$v.typ')
-			p.error('dereferencing requires a pointer, but got `$typ`')
-		}
-		typ = typ.replace('ptr', '')// TODO
-		typ = typ.replace('*', '')// TODO
-	}
-	// &var
-	else if ptr {
-		typ += '*'
-	}
-	if p.inside_return_expr {
-		//println('marking $v.name returned')
-		p.mark_var_returned(v)
-		// v.is_returned = true // TODO modifying a local variable
-		// that's not used afterwards, this should be a compilation
-		// error
-	}
-	return typ
-	} // TODO REMOVE for{}
 
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
-		// float(5), byte(0), (*int)(ptr) etc
+		// cast expression: float(5), byte(0), (*int)(ptr) etc
 		if !is_c && ( p.peek() == .lpar || (deref && p.peek() == .rpar) ) {
 			if deref {
 				name += '*'
@@ -1877,87 +1833,20 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return enum_type.name
 		}
-		// struct initialization
+		// normal struct init (non-C)
 		else if p.peek() == .lcbr {
-			if ptr {
-					name += '*'  // `&User{}` => type `User*`
-			}
-			if name == 'T' {
-				name = p.cur_gen_type
-			}
-			p.is_c_struct_init = is_c_struct_init
-			return p.struct_init(name)
+			return p.get_struct_type(name, false, ptr)
 		}
 	}
-	if is_c {
-		// C const (`C.GLFW_KEY_LEFT`)
-		if p.peek() != .lpar {
-			p.gen(name)
-			p.next()
-			return 'int'
-		}
-		// C function
-		f := Fn {
-			name: name
-			is_c: true
-		}
-		p.is_c_fn_call = true
-		p.fn_call(f, 0, '', '')
-		p.is_c_fn_call = false
-		// Try looking it up. Maybe its defined with "C.fn_name() fn_type",
-		// then we know what type it returns
-		cfn := p.table.find_fn(name) or {
-			// Not Found? Return 'void*'
-			//return 'cvoid' //'void*'
-			if false {
-			p.warn('\ndefine imported C function with ' +
-				'`fn C.$name([args]) [return_type]`\n')
-			}
-			return 'void*'
-		}
-		return cfn.typ
-	}
+
 	// Constant
-	for {
-		c := p.table.find_const(name) or { break }
-		if ptr && !c.is_global {
-			p.error('cannot take the address of constant `$c.name`')
-		} else if ptr && c.is_global {
-			// c.ptr = true
-			p.gen('& /*const*/ ')
-		}
-		mut typ := p.var_expr(c)
-		if ptr {
-			typ += '*'
-		}
-		return typ
+	if p.table.known_const(name) {
+		return p.get_const_type(name, ptr)
 	}
-	// Function (not method btw, methods are handled in `dot()`)
+
+	// Function (not method btw, methods are handled in dot())	
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
-		// We are in the second pass, that means this function was not defined,
-		// throw an error.
-		if !p.first_pass() {
-			// check for misspelled function / variable / module
-			suggested := p.identify_typo(name, p.import_table)
-			if suggested != '' {
-				p.error('undefined: `$name`. did you mean:$suggested')
-			}
-			// If orig_name is a mod, then printing undefined: `mod` tells us nothing
-			if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-				name = name.replace('__', '.')
-				p.error('undefined: `$name`')
-			}
-			else {
-				p.error('undefined: `$orig_name`')
-			}
-		} else {
-			p.next()
-			// First pass, the function can be defined later.
-			// Only in const definitions? (since fn bodies are skipped
-			// in the first pass).
-			return 'void'
-		}
-		return 'void'
+		return p.get_undefined_fn_type(name, orig_name)
 	}
 	// no () after func, so func is an argument, just gen its name
 	// TODO verify this and handle errors
@@ -1978,8 +1867,20 @@ fn (p mut Parser) name_expr() string {
 	if f.typ == 'void' && !p.inside_if_expr {
 		// p.error('`$f.name` used as value')
 	}
-	//p.log('calling function')
-	p.fn_call(f, 0, '', '')
+
+	// println('call to fn $f.name of type $f.typ')
+	// TODO replace the following dirty hacks (needs ptr access to fn table)
+	new_f := f
+	p.fn_call(mut new_f, 0, '', '')
+	if f.is_generic {
+		f2 := p.table.find_fn(f.name) or {
+			return ''
+		}
+		// println('after call of generic instance $new_f.name(${new_f.str_args(p.table)}) $new_f.typ')
+		// println('	from $f2.name(${f2.str_args(p.table)}) $f2.typ : $f2.type_inst')
+	}
+	f = new_f
+
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {
 		mut typ := ''
@@ -1995,6 +1896,146 @@ fn (p mut Parser) name_expr() string {
 		p.is_alloc = true
 	}
 	return f.typ
+}
+
+fn (p mut Parser) get_struct_type(name_ string, is_c bool, is_ptr bool) string {
+	mut name := name_
+	if is_ptr {
+		name += '*'  // `&User{}` => type `User*`
+	}
+	if name in reserved_type_param_names {
+		p.warn('name `$name` is reserved for type parameters')
+	}
+	p.is_c_struct_init = is_c
+	return p.struct_init(name)
+}
+
+fn (p mut Parser) check_enum_member_access() {
+	T := p.find_type(p.expected_type)
+	if T.cat == .enum_ {
+		p.check(.dot)
+		val := p.check_name()
+		// Make sure this enum value exists
+		if !T.has_enum_val(val) {
+			p.error('enum `$T.name` does not have value `$val`')
+		}
+		p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
+	} else {
+		p.error('`$T.name` is not an enum')
+	}
+}
+
+fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
+	v := p.find_var_check_new_var(name) or { return "" }
+	if name == '_' {
+		p.error('cannot use `_` as value')
+	}
+	if is_ptr {
+		p.gen('&')
+	}
+	else if is_deref {
+		p.gen('*')
+	}
+	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
+		p.assigned_type == 'string' {
+		p.warn('setting moved ' + v.typ)
+		p.mark_arg_moved(v)
+	}
+	mut typ := p.var_expr(v)
+	// *var
+	if is_deref {
+		if !typ.contains('*') && !typ.ends_with('ptr') {
+			println('name="$name", t=$v.typ')
+			p.error('dereferencing requires a pointer, but got `$typ`')
+		}
+		typ = typ.replace('ptr', '')// TODO
+		typ = typ.replace('*', '')// TODO
+	}
+	// &var
+	else if is_ptr {
+		typ += '*'
+	}
+	if p.inside_return_expr {
+		//println('marking $v.name returned')
+		p.mark_var_returned(v)
+		// v.is_returned = true // TODO modifying a local variable
+		// that's not used afterwards, this should be a compilation
+		// error
+	}
+	return typ
+}
+
+fn (p mut Parser) get_const_type(name string, is_ptr bool) string {
+	c := p.table.find_const(name) or { return "" }
+	if is_ptr && !c.is_global {
+		p.error('cannot take the address of constant `$c.name`')
+	} else if is_ptr && c.is_global {
+		// c.ptr = true
+		p.gen('& /*const*/ ')
+	}
+	mut typ := p.var_expr(c)
+	if is_ptr {
+		typ += '*'
+	}
+	return typ
+}
+
+fn (p mut Parser) get_c_func_type(name string) string {
+	f := Fn {
+		name: name
+		is_c: true
+	}
+	p.is_c_fn_call = true
+	p.fn_call(mut f, 0, '', '')
+	p.is_c_fn_call = false
+	// Try looking it up. Maybe its defined with "C.fn_name() fn_type",
+	// then we know what type it returns
+	cfn := p.table.find_fn(name) or {
+		// Not Found? Return 'void*'
+		//return 'cvoid' //'void*'
+		if false {
+		p.warn('\ndefine imported C function with ' +
+			'`fn C.$name([args]) [return_type]`\n')
+		}
+		return 'void*'
+	}
+	// println("C fn $name has type $cfn.typ")
+	return cfn.typ
+}
+
+fn (p mut Parser) get_undefined_fn_type(name string, orig_name string) string {
+	if p.first_pass() {
+		p.next()
+		// First pass, the function can be defined later.
+		return 'void'
+	} else {
+		// We are in the second pass, that means this function was not defined, throw an error.
+
+		// V script? Try os module.
+		// TODO
+		if p.v_script {
+			//name = name.replace('main__', 'os__')
+			//f = p.table.find_fn(name)
+		}
+
+		// check for misspelled function / variable / module
+		suggested := p.identify_typo(name, p.import_table)
+		if suggested != '' {
+			p.error('undefined function: `$name`. did you mean: `$suggested`')
+		}
+
+		// If orig_name is a mod, then printing undefined: `mod` tells us nothing
+		// if p.table.known_mod(orig_name) {
+		if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
+			m_name := mod_gen_name_rev(name.replace('__', '.'))
+			p.error('undefined function: `$m_name` (in module `$orig_name`)')
+		} else if orig_name in reserved_type_param_names {
+			p.error('the letter `$orig_name` is reserved for type parameters')
+		} else {
+			p.error('undefined symbol: `$orig_name`')
+		}
+		return 'void'
+	}
 }
 
 fn (p mut Parser) var_expr(v Var) string {
@@ -2078,11 +2119,6 @@ fn (p mut Parser) var_expr(v Var) string {
 		typ = p.index_expr(typ, fn_ph)
 	}
 	return typ
-}
-
-// for debugging only
-fn (p &Parser) fileis(s string) bool {
-	return p.scanner.file_path.contains(s)
 }
 
 // user.name => `str_typ` is `User`
@@ -2195,7 +2231,7 @@ struct $typ.name {
 		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
-	p.fn_call(method, method_ph, '', str_typ)
+	p.fn_call(mut method, method_ph, '', str_typ)
 	// Methods returning `array` should return `array_string`
 	if method.typ == 'array' && typ.name.starts_with('array_') {
 		return typ.name
@@ -2394,6 +2430,11 @@ struct IndexCfg {
 	is_arr bool
 	is_arr0 bool
 
+}
+
+// for debugging only
+fn (p &Parser) fileis(s string) bool {
+	return p.scanner.file_path.contains(s)
 }
 
 // in and dot have higher priority than `!`
@@ -3770,6 +3811,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.gen('if (')
 		}
 
+		ph := p.cgen.add_placeholder()
+
 		// Multiple checks separated by comma
 		mut got_comma := false
 
@@ -3778,31 +3821,35 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.gen(') || (')
 			}
 
+			mut got_string := false
+
 			if typ == 'string' {
-				// TODO: use tmp variable
-				// p.gen('string_eq($tmp_var, ')
+				got_string = true
 				p.gen('string_eq($tmp_var, ')
 			}
 			else {
-				// TODO: use tmp variable
-				// p.gen('($tmp_var == ')
-				p.gen('($tmp_var == ')
+				p.gen('$tmp_var == ')
 			}
 
 			p.expected_type = typ
 			p.check_types(p.bool_expression(), typ)
 			p.expected_type = ''
 
+			if got_string {
+				p.gen(')')
+			}
+
 			if p.tok != .comma {
 				if got_comma {
 					p.gen(') ')
+					p.cgen.set_placeholder(ph, '(')
 				}
 				break
 			}
 			p.check(.comma)
 			got_comma = true
 		}
-		p.gen(') )')
+		p.gen(')')
 
 		p.check(.arrow)
 
@@ -3891,6 +3938,7 @@ fn (p mut Parser) return_st() {
 		is_none := p.tok == .key_none
 		p.expected_type = p.cur_fn.typ
 		mut expr_type := p.bool_expression()
+		// println('$p.cur_fn.name returns type $expr_type, should be $p.cur_fn.typ')
 		mut types := []string
 		mut mr_values := [p.cgen.cur_line.right(ph).trim_space()]
 		types << expr_type

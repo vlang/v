@@ -41,17 +41,17 @@ fn (p mut Parser) comp_time() {
 						stack++
 					} else if p.tok == .rcbr {
 						stack--
-					}	
+					}
 					if p.tok == .eof {
 						break
-					}	
+					}
 					if stack <= 0 && p.tok == .rcbr {
 						//p.warn('exiting $stack')
 						p.next()
 						break
-					}	
+					}
 					p.next()
-				}	
+				}
 			}	 else {
 				p.statements_no_rcbr()
 			}
@@ -179,12 +179,17 @@ fn (p mut Parser) chash() {
 	// println('chsh() file=$p.file  hash="$hash"')
 	p.next()
 	if hash.starts_with('flag ') {
-		mut flag := hash.right(5)
-		// expand `@VROOT` `@VMOD` to absolute path
-		flag = flag.replace('@VROOT', p.vroot)
-		flag = flag.replace('@VMOD', v_modules_path)
-		//p.log('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod)
+		if p.first_pass() {
+			mut flag := hash.right(5)
+			// expand `@VROOT` `@VMOD` to absolute path
+			flag = flag.replace('@VROOT', p.vroot)
+			flag = flag.replace('@VMOD', v_modules_path)
+			//p.log('adding flag "$flag"')
+			_p := p.table.parse_cflag(flag, p.mod) or {
+				p.error_with_token_index(err, p.cur_tok_index()-1)
+				return
+			}
+		}
 		return
 	}
 	if hash.starts_with('include') {
@@ -215,16 +220,16 @@ fn (p mut Parser) chash() {
 		$if js {
 			for p.tok != .eof {
 				p.next()
-			}	
+			}
 		} $else {
 			p.next()
-		}	
+		}
 	}
 	else {
 		$if !js {
 			if !p.can_chash {
 				println('hash="$hash"')
-				println(hash.starts_with('include'))
+				if hash.starts_with('include') { println("include") } else {} 
 				p.error('bad token `#` (embedding C code is no longer supported)')
 			}
 		}
@@ -303,7 +308,7 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 		is_public: true
 		receiver_typ: typ.name
 	})
-	
+
 	mut sb := strings.new_builder(typ.fields.len * 20)
 	sb.writeln('fn (a $typ.name) str() string {\nreturn')
 	sb.writeln("'{")
