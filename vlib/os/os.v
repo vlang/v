@@ -71,6 +71,27 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
+// read_bytes reads an amount of bytes from the beginning of the file
+pub fn (f File) read_bytes(size int) []byte {
+        return f.read_bytes_at(size, 0)
+}
+
+// read_bytes_at reads an amount of bytes at the given position in the file
+pub fn (f File) read_bytes_at(size, pos int) []byte {
+        mut data := malloc(size)
+        mut arr  := [`0`].repeat(size)
+
+        C.fseek(f.cfile, pos, C.SEEK_SET)
+        C.fread(data, 1, size, f.cfile)
+        C.fseek(f.cfile, 0, C.SEEK_SET)
+
+        for e := 0; e < size; e++ {
+                arr[e] = data[e]
+        }
+
+        return arr
+}
+
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
