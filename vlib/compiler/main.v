@@ -213,7 +213,7 @@ pub fn (v mut V) compile() {
 
 	v_hash := vhash()
 	$if js {
-		cgen.genln('const V_COMMIT_HASH = '$v_hash';\n')
+		cgen.genln('const V_COMMIT_HASH = "$v_hash";\n')
 	} $else {
 		cgen.genln('#ifndef V_COMMIT_HASH')
 		cgen.genln('#define V_COMMIT_HASH "$v_hash"')
