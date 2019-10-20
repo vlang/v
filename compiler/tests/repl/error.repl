@@ -1,3 +1,0 @@
-println(a)
-===output===
-.vrepl.v:2:9: undefined: `a`

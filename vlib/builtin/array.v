@@ -293,7 +293,6 @@ pub fn (a mut []int) sort() {
 
 // Looking for an array index based on value.
 // If there is, it will return the index and if not, it will return `-1`
-// TODO: Implement for all types
 pub fn (a []string) index(v string) int {
 	for i := 0; i < a.len; i++ {
 		if a[i] == v {
@@ -333,7 +332,7 @@ pub fn (a []char) index(v char) int {
 ////////////// FILTER //////////////
 
 // Creates a new array with all elements that pass the test implemented by the provided function.
-pub fn (a  []string) filter(predicate fn(p_val string, p_i int, p_arr []string) bool) []string
+pub fn (a  []string) filter2(predicate fn(p_val string, p_i int, p_arr []string) bool) []string
 {
 	mut res := []string
 	for i := 0; i < a.len; i++  {
@@ -344,7 +343,7 @@ pub fn (a  []string) filter(predicate fn(p_val string, p_i int, p_arr []string) 
 	return res
 }
 
-pub fn (a []int) filter(predicate fn(p_val int, p_i int, p_arr []int) bool) []int
+pub fn (a []int) filter2(predicate fn(p_val, p_i int, p_arr []int) bool) []int
 {
 	mut res := []int
 	for i := 0; i < a.len; i++  {
@@ -353,4 +352,17 @@ pub fn (a []int) filter(predicate fn(p_val int, p_i int, p_arr []int) bool) []in
 		}
 	}
 	return res
+}
+
+////////////// REDUCE //////////////
+
+// Executes a reducer function (that you provide) on each element of the array,
+// resulting in a single output value.
+pub fn (a []int) reduce(iter fn (accum, curr int) int, accum_start int) int {
+	mut _accum := 0
+	_accum = accum_start
+	for i := 0; i < a.len; i++ {
+			_accum = iter(_accum, a[i])
+	}
+	return _accum
 }

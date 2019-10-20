@@ -22,7 +22,7 @@ mut:
 }
 
 fn main() {
-	glfw.init()
+	glfw.init_glfw()
 	width := 600
 	height := 300
 	mut game := &Game{
@@ -43,7 +43,7 @@ fn main() {
 	//window.onkeydown(key_down)
 	game.main_wnd = window 
 	window.make_context_current()
-	gg.init() 
+	gg.init_gg() 
 	game.gg = gg.new_context(gg.Cfg {
 		width: width
 		height: height
@@ -62,22 +62,22 @@ fn main() {
 }
 
 const (
-	W = 50
+	width = 50
 )
 
 [live]
 fn (game &Game) draw() {
-	game.gg.draw_rect(game.x, game.y, W, W, gx.rgb(255, 0, 0)) 
+	game.gg.draw_rect(game.x, game.y, width, width, gx.rgb(255, 0, 0)) 
 }
 
 fn (game mut Game) run() {
 	for {
 		game.x += game.dx
 		game.y += game.dy
-		if game.y >= game.height - W || game.y <= 0 {
+		if game.y >= game.height - width || game.y <= 0 {
 			game.dy = - game.dy
 		}
-		if game.x >= game.width - W || game.x <= 0 {
+		if game.x >= game.width - width || game.x <= 0 {
 			game.dx = - game.dx
 		}
 		// Refresh

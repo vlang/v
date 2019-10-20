@@ -22,9 +22,6 @@ struct map {
 	//return false
 //}
 
-fn (m mut map) _set(key string, val voidptr) {
-}
-
 //fn preorder_keys(node &mapnode, keys mut []string, key_i int) int {
 	//return 0
 //}
@@ -40,7 +37,7 @@ fn (m map) get(key string, out voidptr) bool {
 pub fn (m mut map) delete(key string) {
 }
 
-fn (m map) _exists(key string) bool {
+fn (m map) exists(key string) bool {
 	return false
 }
 

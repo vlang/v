@@ -6,7 +6,7 @@ module szip
 #include "zip.h"
 
 type zip      C.zip_t
-type zip_ptr *zip
+type zip_ptr &zip
 
 // Ref - miniz.h
 const (
@@ -283,4 +283,3 @@ pub fn (zentry mut zip_ptr) total() ?int {
     }
     return _tentry
 } 
-

@@ -14,9 +14,9 @@ jobs:
         brew install freetype glfw openssl
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make && ./v -o v compiler
+      run:  make && ./v -o v v.v
     - name: Build V using V
-      run:  ./v -o v2 compiler && ./v2 -o v3 compiler
+      run:  ./v -o v2 v.v && ./v2 -o v3 v.v
     - name: Test v->c
       run: ./v test v
     - name: Test v->js
@@ -36,7 +36,7 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
-      run: make && ./v -o v compiler
+      run: make && ./v -cc gcc -o v v.v
     - name: Test v->c
       run: ./v test v
     - name: Test v->js
@@ -49,12 +49,13 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get update; sudo apt-get install --quiet -y tcc libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
     - name: Build v
-      run: make && ./v -o v compiler
+      run: make && ./v -o v v.v
     - name: Test v->c with tcc
       env:
         VFLAGS: -cc tcc
       run: |
         tcc -version
+        ./v -o v2 v.v # Make sure vtcc can build itself
         ./v test v
 
   build-windows-gcc:
@@ -85,13 +86,13 @@ jobs:
     #    node-version: 12.x
     - name: Build
       env:
-        VFLAGS: -os msvc
+        VFLAGS: -cc msvc
       run: |
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -msvc
     - name: Test
       env:
-        VFLAGS: -os msvc
+        VFLAGS: -cc msvc
       run: |
         .\v.exe test v
       ## v.js dosent work on windows

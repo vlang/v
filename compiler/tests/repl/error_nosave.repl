@@ -1,5 +1,0 @@
-a
-33
-===output===
-.vrepl_temp.v:3:9: undefined: `a`
-33

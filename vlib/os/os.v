@@ -4,6 +4,8 @@
 
 module os
 
+import strings
+
 #include <sys/stat.h>
 #include <signal.h>
 #include <errno.h>
@@ -68,11 +70,6 @@ fn C.getline(voidptr, voidptr, voidptr) int
 fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
-
-fn parse_windows_cmd_line(cmd byteptr) []string {
-	s := string(cmd)
-	return s.split(' ')
-}
 
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
@@ -338,6 +335,7 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
+// `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
 	mut ret := int(0)
 	$if windows {
@@ -489,7 +487,7 @@ pub fn dir(path string) string {
 	if path == '.' {
 		return getwd()
 	}
-	pos := path.last_index(PathSeparator)
+	pos := path.last_index(path_separator)
 	if pos == -1 {
 		return '.'
 	}
@@ -506,7 +504,7 @@ fn path_sans_ext(path string) string {
 
 
 pub fn basedir(path string) string {
-	pos := path.last_index(PathSeparator)
+	pos := path.last_index(path_separator)
 	if pos == -1 {
 		return path
 	}
@@ -514,7 +512,7 @@ pub fn basedir(path string) string {
 }
 
 pub fn filename(path string) string {
-	return path.all_after(PathSeparator)
+	return path.all_after(path_separator)
 }
 
 // get_line returns a one-line string from stdin
@@ -533,7 +531,7 @@ pub fn get_raw_line() string {
     $if windows {
         max_line_chars := 256
         buf := &byte(malloc(max_line_chars*2))
-        if C.isConsole > 0 {
+        if is_atty(0) {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := 0
             C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
@@ -604,9 +602,6 @@ pub fn user_os() string {
 	$if dragonfly {
 		return 'dragonfly'
 	}
-	$if msvc {
-		return 'windows'
-	}
 	$if android{
 		return 'android'
 	}
@@ -630,7 +625,7 @@ pub fn home_dir() string {
 		}
 		home += homepath
 	}
-	home += PathSeparator
+	home += path_separator
 	return home
 }
 
@@ -793,13 +788,13 @@ pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
 		return []string
 	}
-	mut files := os.ls(path)
+	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
 		}
-		p := path + PathSeparator + file
+		p := path + path_separator + file
 		if os.is_dir(p) {
 			res << walk_ext(p, ext)
 		}
@@ -860,4 +855,25 @@ pub fn print_backtrace() {
 	# printf("%d!!\n", nptrs);
 	# backtrace_symbols_fd(buffer, nptrs, STDOUT_FILENO) ;
 */
+}
+
+pub fn mkdir_all(path string) {
+	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
+	for subdir in path.split(os.path_separator) {
+		p += subdir + os.path_separator
+		if !os.dir_exists(p) {
+			os.mkdir(p)
+		}
+	}
+}
+
+// TODO use []string.join once ...string becomes "[]string"
+pub fn join(base string, dirs ...string) string {
+	mut path := strings.new_builder(50)
+	path.write(base.trim_right('\\/'))
+	for d in dirs {
+		path.write(os.path_separator)
+		path.write(d)
+	}
+	return path.str()
 }

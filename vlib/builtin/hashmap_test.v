@@ -1,5 +1,4 @@
 import rand
-import strings
 
 fn test_random_strings() {
 	mut m := new_hashmap(1000)

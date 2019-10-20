@@ -18,12 +18,8 @@ fn main() {
 		return
 	}
 	mut m := map[string]int
-	for word in contents.to_lower().split(' ') {
-		key := filter_word(word)
-		if key == '' {
-			continue
-		}
-		m[key] = m[key] + 1// TODO m[key]++
+	for word in extract_words(contents) {
+		m[word] = m[word] + 1 // TODO m[key]++
 	}
 	// Sort the keys
 	mut keys := m.keys() 
@@ -33,6 +29,30 @@ fn main() {
 		val := m[key]
 		println('$key => $val')
 	}
+}
+
+// Creates an array of words from a given string
+fn extract_words(contents string) []string {
+	mut splitted := []string
+	for space_splitted in contents.to_lower().split(' ') {
+		if space_splitted.contains('\n') {
+			splitted << space_splitted.split('\n')
+		}
+		else {
+			splitted << space_splitted
+		}
+	}
+
+	mut results := []string
+	for s in splitted {
+		result := filter_word(s)
+		if result == '' {
+			continue
+		}
+		results << result
+	}
+
+	return results
 }
 
 // Removes punctuation

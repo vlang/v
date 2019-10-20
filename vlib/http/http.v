@@ -9,7 +9,6 @@ import http.chunked
 
 const (
 	max_redirects = 4
-	_ = http.init()
 )
 
 struct Request {
@@ -39,14 +38,20 @@ pub fn get(url string) ?Response {
 	req := new_request('GET', url, '') or {
 		return error(err)
 	}
-	return req.do()
+	res := req.do() or {
+		return error(err)
+	}
+	return res
 }
 
 pub fn post(url, data string) ?Response {
 	req := new_request('POST', url, data) or {
 		return error(err)
 	}
-	return req.do()
+	res := req.do() or {
+		return error(err)
+	}
+	return res
 }
 
 pub fn new_request(typ, _url, _data string) ?Request {
@@ -151,10 +156,16 @@ fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.U
 	//println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
 		//println('ssl_do( $nport, $method, $host_name, $path )')
-		return req.ssl_do( nport, method, host_name, path )
+		res := req.ssl_do( nport, method, host_name, path ) or {
+			return error(err)
+		}
+		return res
 	} else if scheme == 'http' {
 		//println('http_do( $nport, $method, $host_name, $path )')
-		return req.http_do(nport, method, host_name, path )
+		res := req.http_do(nport, method, host_name, path ) or {
+			return error(err)
+		}
+		return res
 	}
 	return error('http.request.do: unsupported scheme: $scheme')
 }
