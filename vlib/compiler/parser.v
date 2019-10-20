@@ -84,11 +84,6 @@ pub:
 }
 
 const (
-	EmptyFn = Fn{}
-	MainFn= Fn{name:'main'}
-)
-
-const (
 	MaxModuleDepth = 4
 )
 

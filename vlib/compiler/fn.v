@@ -12,6 +12,7 @@ const (
 	MaxLocalVars = 50
 )
 
+
 struct Fn {
 	// addr int
 pub:
@@ -49,6 +50,11 @@ mut:
 	inst 	map[string]string
 	done	bool
 }
+
+const (
+	EmptyFn = Fn{}
+	MainFn = Fn{ name: 'main' }
+)
 
 fn (a []TypeInst) str() string {
 	mut r := []string
