@@ -4212,7 +4212,7 @@ fn (p mut Parser) check_unused_imports() {
 
 fn (p mut Parser) is_next_expr_fn_call() (bool, string) {
 	mut next_expr := p.lit
-	is_fn_call := p.peek() == .lpar 
+	mut is_fn_call := p.peek() == .lpar 
 	if !is_fn_call {
 		mut i := p.token_idx+1
 		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&

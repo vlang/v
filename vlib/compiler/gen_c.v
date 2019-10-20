@@ -93,7 +93,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
 	is_indexer := p.peek() == .lsbr
-	is_fn_call, next_expr := is_next_expr_fn_call()
+	is_fn_call, next_expr := p.is_next_expr_fn_call()
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
 	if !is_indexer && !is_fn_call {

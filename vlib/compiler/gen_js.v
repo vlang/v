@@ -39,7 +39,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
 	is_indexer := p.peek() == .lsbr
-	is_fn_call, next_expr := is_next_expr_fn_call()
+	is_fn_call, next_expr := p.is_next_expr_fn_call()
 	p.bool_expression()
 	if !is_indexer && !is_fn_call {
 		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
