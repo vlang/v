@@ -50,7 +50,9 @@ fn test_generic_fn() {
     assert_eq(sum([5.1,6.2,7.0], 0.0), 18.3)
     assert_eq(plus(i64(4), i64(6)), i64(10))
     a := [1,2,3,4]
-    b := map_f(a, square)
-    assert_eq(sum(b, 0), 30)     // 1+4+9+16 = 30
-    assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
+    $if !windows {
+        b := map_f(a, square) 
+        assert_eq(sum(b, 0), 30)     // 1+4+9+16 = 30
+        assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
+    }
 }

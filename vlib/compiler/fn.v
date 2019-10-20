@@ -87,10 +87,6 @@ fn (p &Parser) find_var_check_new_var(name string) ?Var {
 }
 
 fn (p mut Parser) open_scope() {
-	if p.in_dispatch {
-		println('opening scope $p.cur_fn.name $p.cur_fn.scope_level')
-		println('defer text = $p.cur_fn.defer_text')
-	}
 	p.cur_fn.defer_text << ''
 	p.cur_fn.scope_level++
 }
@@ -650,7 +646,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		}
 	}
 	cgen_name := p.table.fn_gen_name(f)
-	p.next()
+	p.check(.name)
 	if p.tok == .lt {
 		mut i := p.token_idx
 		for {
@@ -666,6 +662,24 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name
 	// }
+
+	$if linux {	// TODO fix segfault caused by `dispatch_generic_fn_instance` on Windows
+		if f.is_generic {
+			p.check(.lpar)
+			mut b := 1
+			for b > 0 {
+				if p.tok == .rpar {
+					b -= 1
+				} else if p.tok == .lpar {
+					b += 1
+				}
+				p.next()
+			}
+			p.gen('/* SKIPPED */')
+			p.warn('skipped call to generic function `$f.name`\n\tReason: generic functions are currently broken on Windows 10\n')
+			return
+		}
+	}
 
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
@@ -1219,6 +1233,9 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 }
 
 fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
+	$if windows {
+		p.error('feature disabled on Windows')
+	}
 	mut new_inst := true
 	for e in f.type_inst {
 		if e.inst.str() == ti.inst.str() {
@@ -1283,7 +1300,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		f.typ = ti.inst[f.typ]
 	}
 	p.table.register_fn(f)
-	println("generating gen inst $f.name(${f.str_args(p.table)}) $f.typ : $ti.inst")
+	// println("generating gen inst $f.name(${f.str_args(p.table)}) $f.typ : $ti.inst")
 
 	p.cgen.is_tmp = false
 	p.returns = false

@@ -1868,8 +1868,8 @@ fn (p mut Parser) name_expr() string {
 		f2 := p.table.find_fn(f.name) or {
 			return ''
 		}
-		println('after call of generic instance $new_f.name(${new_f.str_args(p.table)}) $new_f.typ')
-		println('	from $f2.name(${f2.str_args(p.table)}) $f2.typ : $f2.type_inst')
+		// println('after call of generic instance $new_f.name(${new_f.str_args(p.table)}) $new_f.typ')
+		// println('	from $f2.name(${f2.str_args(p.table)}) $f2.typ : $f2.type_inst')
 	}
 	f = new_f
 
