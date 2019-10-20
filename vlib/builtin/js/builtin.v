@@ -23,7 +23,7 @@ pub fn println(s string) {
 }
 
 pub fn eprintln(s string) {
-	#console.log(s)
+	#console.error(s)
 }
 
 pub fn print(s string) {

@@ -179,7 +179,7 @@ fn (p mut Parser) chash() {
 	// println('chsh() file=$p.file  hash="$hash"')
 	p.next()
 	if hash.starts_with('flag ') {
-		p.first_pass() {
+		if p.first_pass() {
 			mut flag := hash.right(5)
 			// expand `@VROOT` `@VMOD` to absolute path
 			flag = flag.replace('@VROOT', p.vroot)
