@@ -32,6 +32,7 @@ mut:
 	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
 	is_unsafe bool
+	is_deprecated bool
 	defer_text    []string
 	is_generic		bool
 	type_pars 		[]string
@@ -187,6 +188,7 @@ fn (p mut Parser) fn_decl() {
 		mod: p.mod
 		is_public: p.tok == .key_pub
 		is_unsafe: p.attr == 'unsafe_fn'
+		is_deprecated: p.attr == 'deprecated'
 	}
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
@@ -636,6 +638,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
 	if f.is_unsafe && !p.builtin_mod && !p.inside_unsafe {
 		p.error('you are calling an unsafe function outside of an unsafe block')
+	}	
+	if f.is_deprecated {
+		p.warn('$f.name is deprecated')
 	}	
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
 		if f.name == 'contains' {
