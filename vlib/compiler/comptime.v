@@ -179,12 +179,16 @@ fn (p mut Parser) chash() {
 	// println('chsh() file=$p.file  hash="$hash"')
 	p.next()
 	if hash.starts_with('flag ') {
-		mut flag := hash.right(5)
-		// expand `@VROOT` `@VMOD` to absolute path
-		flag = flag.replace('@VROOT', p.vroot)
-		flag = flag.replace('@VMOD', v_modules_path)
-		//p.log('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod)
+		if p.first_pass() {
+			mut flag := hash.right(5)
+			// expand `@VROOT` `@VMOD` to absolute path
+			flag = flag.replace('@VROOT', p.vroot)
+			flag = flag.replace('@VMOD', v_modules_path)
+			//p.log('adding flag "$flag"')
+			_ = p.table.parse_cflag(flag, p.mod) or {
+				p.error_with_token_index(err, p.cur_tok_index()-1)
+			}
+		}
 		return
 	}
 	if hash.starts_with('include') {

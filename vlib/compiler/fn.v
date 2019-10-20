@@ -663,7 +663,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// p.cur_fn.called_fns << cgen_name
 	// }
 
-	$if linux {	// TODO fix segfault caused by `dispatch_generic_fn_instance` on Windows
+	$if windows {	// TODO fix segfault caused by `dispatch_generic_fn_instance` on Windows
 		if f.is_generic {
 			p.check(.lpar)
 			mut b := 1

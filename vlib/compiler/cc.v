@@ -56,10 +56,19 @@ fn (v mut V) cc() {
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
-	//vdir := os.dir(vexe)
 	$if linux {
-		//tcc_path := '$vdir/thirdparty/tcc/bin/tcc'
+		vdir := os.dir(vexe)
+		tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
+		//println('tcc third "$tcc_3rd"')
 		tcc_path := '/var/tmp/tcc/bin/tcc'
+		if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
+			//println('moving tcc')
+			// if there's tcc in thirdparty/, that means this is
+			// a prebuilt V_linux.zip.
+			// Until the libtcc1.a bug is fixed, we neeed to move
+			// it to /var/tmp/
+			os.system('mv $vdir/thirdparty/tcc /var/tmp/')
+		}
 		if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
 			// TODO tcc bug, needs an empty libtcc1.a fila
 			//os.mkdir('/var/tmp/tcc/lib/tcc/') 
@@ -67,8 +76,6 @@ fn (v mut V) cc() {
 			v.pref.ccompiler = tcc_path
 		}
 	}
-	
-
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
