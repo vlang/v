@@ -25,12 +25,9 @@ fn f_to_string(fmod string, f compiler.Fn) ?string {
 fn analyze_v_file(file string) {
 	println('')
 	println('######################  $file  ######################')
-	
+
 	// main work:
-	vexe := compiler.vexe_path()
-	println(vexe)
-	println(file)
-	mut v := compiler.new_v([vexe,file])
+	mut v := compiler.new_v_compiler_with_args([file])
 	v.add_v_files_to_compile()
 	for f in v.files { v.parse(f, .decl) }
 	fi := v.get_file_parser_index( file ) or { panic(err) }
@@ -47,17 +44,9 @@ fn analyze_v_file(file string) {
 	
 }
 
-fn no_js_v_files(val string, index int, arr []string) bool {
-	if val.ends_with('_js.v'){ return false }
-	return true
-}
-	
 fn main(){
-	// Preparation for the compiler module:
-	// VEXE env variable is needed so that compiler.vexe_path()
-	// can return it later to whoever needs it:
 	toolexe := os.executable()
-	os.setenv('VEXE', os.dir(os.dir(toolexe)) + '/v', true)	
+	compiler.set_vroot_folder( os.dir(os.dir(toolexe)) )
 	
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.filename(toolexe))
@@ -76,14 +65,11 @@ fn main(){
 	locations := fp.finalize() or { eprintln('Error: ' + err) exit(1) }
 	for xloc in locations {
 		loc := os.realpath(xloc)
-		if os.is_dir(loc){
-			files << os.walk_ext(loc,'.v').filter(no_js_v_files)
-		}else{
-			files << [ loc ].filter(no_js_v_files)
-		}
+		xfiles := if os.is_dir(loc){ os.walk_ext(loc,'.v') } else { [loc] }
+		filtered_files := xfiles.filter(!it.ends_with('_js.v'))
+		files << filtered_files
 	}
 
-	println('Files: ' + files.str())
 	for file in files {
 		analyze_v_file(file)
 	}
