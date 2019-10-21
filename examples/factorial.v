@@ -18,5 +18,5 @@ fn main() {
 
     stop := os.args[1].int()
     nfacto := fact(stop)
-    println(facto)
+    println(nfacto)
 }
