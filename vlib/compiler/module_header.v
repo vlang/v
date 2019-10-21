@@ -117,7 +117,81 @@ fn v_type_str(typ_ string) string {
 	return typ
 }	
 
-fn (v &V) generate_vh() {
+// `mod` == "vlib/os"
+fn generate_vh(mod string) {
+	println('\n\n\n\nGenerating a V header file for module `$mod`')
+	vexe := os.executable()
+	full_mod_path := os.dir(vexe) + '/' + mod
+	
+	mod_path := mod.replace('.', os.path_separator)
+	dir := if mod.starts_with('vlib') {
+		'$compiler.v_modules_path${os.path_separator}$mod'
+	} else {
+		'$compiler.v_modules_path${os.path_separator}$mod'
+	}
+	path := dir + '.vh'
+	pdir := dir.all_before_last(os.path_separator)
+	if !os.dir_exists(pdir) {
+		os.mkdir_all(pdir)
+		// os.mkdir(os.realpath(dir))
+	}
+	out := os.create(path) or { panic(err) }
+	// Consts
+	println(full_mod_path)
+	mut vfiles := os.walk_ext(full_mod_path, '.v')
+	filtered := vfiles.filter(!it.ends_with('test.v') && !it.ends_with('_win.v')) // TODO merge once filter allows it
+	println(filtered)
+	mut v := new_v(['foo.v'])
+	//v.pref.generating_vh = true
+	for file in filtered {
+		mut p := v.new_parser_from_file(file)
+		p.parse(.decl)
+		for i, tok in p.tokens {
+			if !p.tok.is_decl() {
+				continue
+			}	
+			match tok.tok {
+				TokenKind.key_fn => {	generate_fn(out, p.tokens, i)	}
+				TokenKind.key_const => {	generate_const(out, p.tokens, i)	}
+			}	
+		}	
+	}	
+}
+
+fn generate_fn(file os.File, tokens []Token, i int) {
+	mut out := strings.new_builder(100)
+	mut next := tokens[i+1]
+	if tokens[i-1].tok != .key_pub {
+		// Skip private fns
+		return
+	}
+	
+	if next.tok == .name && next.lit == 'C' {
+		println('skipping C')
+		return
+	}	
+	//out.write('pub ')
+	mut tok := tokens[i]
+	for i < tokens.len && tok.tok != .lcbr {
+		next = tokens[i+1]
+		
+		out.write(tok.str())
+		if tok.tok != .lpar  && !(next.tok in [.comma, .rpar]) {
+			// No space after (), [], etc
+			out.write(' ')
+		}
+		i++
+		tok = tokens[i]
+	}	
+	file.writeln(out.str())
+}	
+
+fn generate_const(file os.File, tokens []Token, i int) {
+	//mut out := strings.new_builder(100)
+	
+}
+
+fn (v &V) generate_vh_old() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
 	mod_path := v.mod.replace('.', os.path_separator)
 	dir := if v.dir.starts_with('vlib') {

@@ -200,13 +200,6 @@ fn (f Fn) str() string {
 	return '$f.name($str_args) $f.typ'
 }
 
-pub fn (f Fn) v_fn_module() string {
-	return f.mod
-}
-pub fn (f Fn) v_fn_name() string {
-	return f.name.replace('${f.mod}__', '')
-}
-
 pub fn (t &Table) debug_fns() string {
 	mut s := strings.new_builder(1000)
 	for _, f in t.fns {
