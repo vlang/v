@@ -1051,11 +1051,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			if p.tok != .comma && !is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
-			if p.tok == .comma {
-				p.fgen(', ')
-			}
-			if !is_variadic {
-				p.next()
+			if p.tok == .comma && (!is_variadic || (is_variadic && i < f.args.len-2 )) {
+				p.check(.comma)
 				p.gen(',')
 			}
 		}
