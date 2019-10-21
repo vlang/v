@@ -17,7 +17,7 @@ mut:
 
 pub fn new_test_sesion(vargs string) TestSession {
 	return TestSession{
-		vexe: os.executable()
+		vexe: vexe_path()
 		vargs: vargs
 	}
 }
@@ -118,7 +118,7 @@ pub fn (ts mut TestSession) test() {
 }
 
 pub fn v_test_v(args_before_test string){
-	vexe := os.executable()
+	vexe := vexe_path()
 	parent_dir := os.dir(vexe)
 	// Changing the current directory is needed for some of the compiler tests,
 	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
@@ -163,7 +163,7 @@ pub fn v_test_v(args_before_test string){
 
 pub fn test_vget() {
 	/*
-	vexe := os.executable()
+	vexe := vexe_path()
 	ret := os.system('$vexe install nedpals.args')
 	if ret != 0 {
 		println('failed to run v install')

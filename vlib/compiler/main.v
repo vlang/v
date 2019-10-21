@@ -211,11 +211,15 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define _VJS (1) ')
 	}
 
-	if v.pref.building_v {
+	v_hash := vhash()
+	$if js {
+		cgen.genln('const V_COMMIT_HASH = "$v_hash";\n')
+	} $else {
 		cgen.genln('#ifndef V_COMMIT_HASH')
-		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
+		cgen.genln('#define V_COMMIT_HASH "$v_hash"')
 		cgen.genln('#endif')
 	}
+  
 	q := cgen.nogen // TODO hack
 	cgen.nogen = false
 	$if js {
@@ -471,13 +475,24 @@ pub fn final_target_out_name(out_name string) string {
 }
 
 pub fn (v V) run_compiled_executable_and_exit() {
+	args := env_vflags_and_os_args()
+	
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
-	if os.args.len > 3 {
-		cmd += ' ' + os.args.right(3).join(' ')
+	
+	mut args_after := ' '
+	for i,a in args {
+		if i == 0 { continue }
+		if a.starts_with('-') { continue }
+		if a in ['run','test'] {
+			args_after += args.right(i+2).join(' ')
+			break
+		}
 	}
+	cmd += args_after
+	
 	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
@@ -855,7 +870,7 @@ pub fn new_v(args[]string) &V {
 		_os = os_from_string(target_os)
 	}
 	// Location of all vlib files
-	vroot := os.dir(os.executable())
+	vroot := os.dir(vexe_path())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
@@ -933,23 +948,26 @@ pub fn new_v(args[]string) &V {
 }
 
 pub fn env_vflags_and_os_args() []string {
-   mut args := []string
-   vflags := os.getenv('VFLAGS')
-   if '' != vflags {
-	 args << os.args[0]
-	 args << vflags.split(' ')
-	 if os.args.len > 1 {
-	   args << os.args.right(1)
-	 }
-   } else{
-	 args << os.args
-   }
-   return args
+	vosargs := os.getenv('VOSARGS')
+	if '' != vosargs { return vosargs.split(' ') }
+
+	mut args := []string
+	vflags := os.getenv('VFLAGS')
+	if '' != vflags {
+		args << os.args[0]
+		args << vflags.split(' ')
+		if os.args.len > 1 {
+			args << os.args.right(1)
+		}
+	} else{
+		args << os.args
+	}
+	return args
 }
 
 pub fn update_v() {
 	println('Updating V...')
-	vroot := os.dir(os.executable())
+	vroot := os.dir(vexe_path())
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
 		verror(err)
 		return
@@ -994,7 +1012,7 @@ pub fn install_v(args[]string) {
 		return
 	}
 	names := args.slice(2, args.len)
-	vexec := os.executable()
+	vexec := vexe_path()
 	vroot := os.dir(vexec)
 	vget := '$vroot/tools/vget'
 	if true {
@@ -1020,7 +1038,7 @@ pub fn install_v(args[]string) {
 }
 
 pub fn create_symlink() {
-	vexe := os.executable()
+	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
@@ -1029,6 +1047,12 @@ pub fn create_symlink() {
 		println('failed to create symlink "$link_path", '+
 			'make sure you run with sudo')
 	}
+}
+
+pub fn vexe_path() string {
+	vexe := os.getenv('VEXE')
+	if '' != vexe {	return vexe	}
+	return os.executable()
 }
 
 pub fn verror(s string) {
@@ -1066,4 +1090,22 @@ pub fn os_from_string(os string) OS {
 		}
 	println('bad os $os') // todo panic?
 	return .linux
+}
+
+//
+
+pub fn set_vroot_folder(vroot_path string) {
+	// Preparation for the compiler module:
+	// VEXE env variable is needed so that compiler.vexe_path()
+	// can return it later to whoever needs it:
+	mut vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.setenv('VEXE', os.realpath( [vroot_path, vname].join(os.path_separator) ), true)
+}
+
+pub fn new_v_compiler_with_args(args []string) &V {
+	vexe := vexe_path()
+	mut allargs := [vexe]
+	allargs << args
+	os.setenv('VOSARGS', allargs.join(' '), true)
+	return new_v(allargs)
 }
