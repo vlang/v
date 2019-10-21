@@ -189,6 +189,6 @@ pub fn get_error_msg(code int) string {
     return tos(_ptr_text, vstrlen(_ptr_text))
 }
 
-pub fn sleep(seconds u32) {
+pub fn sleep(seconds int) {
     C.Sleep(seconds * 1000)
 }
