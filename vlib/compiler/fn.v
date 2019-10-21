@@ -12,8 +12,10 @@ const (
 	MaxLocalVars = 50
 )
 
+
 struct Fn {
 	// addr int
+pub:
 mut:
 	name          string
 	mod           string
@@ -48,6 +50,11 @@ mut:
 	inst 	map[string]string
 	done	bool
 }
+
+const (
+	EmptyFn = Fn{}
+	MainFn = Fn{ name: 'main' }
+)
 
 fn (a []TypeInst) str() string {
 	mut r := []string
@@ -674,23 +681,6 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// p.cur_fn.called_fns << cgen_name
 	// }
 
-	$if windows {	// TODO fix segfault caused by `dispatch_generic_fn_instance` on Windows
-		if f.is_generic {
-			p.check(.lpar)
-			mut b := 1
-			for b > 0 {
-				if p.tok == .rpar {
-					b -= 1
-				} else if p.tok == .lpar {
-					b += 1
-				}
-				p.next()
-			}
-			p.gen('/* SKIPPED */')
-			p.warn('skipped call to generic function `$f.name`\n\tReason: generic functions are currently broken on Windows 10\n')
-			return
-		}
-	}
 
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
@@ -1244,9 +1234,6 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 }
 
 fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
-	$if windows {
-		p.error('feature disabled on Windows')
-	}
 	mut new_inst := true
 	for e in f.type_inst {
 		if e.inst.str() == ti.inst.str() {
@@ -1296,6 +1283,11 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	f.type_inst = []TypeInst
 	f.scope_level = 0
 	f.dispatch_of = ti
+
+	// TODO this is done to prevent a crash as a result of this not being
+	// properly initialised. This is a bug somewhere futher upstream
+	f.defer_text = []string {}
+
 	old_args := f.args
 	new_types := p.replace_type_params(f, ti)
 	f.args = []Var
