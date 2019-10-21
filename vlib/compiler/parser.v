@@ -534,6 +534,21 @@ fn (p mut Parser) const_decl() {
 		if p.first_pass() {
 			p.table.register_const(name, typ, p.mod)
 		}
+		// Check to see if this constant exists, and is void. If so, try and get the type again:
+		for { // TODO: Find out how the error handling, and use it here instead of the for/break hack...
+			my_const := p.v.table.find_const(name) or {
+				break
+			} 
+			if my_const.typ == 'void' {
+				for i, v in p.v.table.consts {
+					if v.name == name {
+						p.v.table.consts[i].typ = typ
+						break
+					}
+				}
+			}
+			break
+		}
 		if p.pass == .main && !p.cgen.nogen {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
