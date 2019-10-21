@@ -1425,3 +1425,12 @@ fn (fns []Fn) contains(f Fn) bool {
 	}
 	return false
 }
+
+pub fn (f Fn) v_fn_module() string {
+	return f.mod
+}
+
+pub fn (f Fn) v_fn_name() string {
+	return f.name.replace('${f.mod}__', '')
+}
+

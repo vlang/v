@@ -321,7 +321,7 @@ fn (p mut Parser) parse(pass Pass) {
 				p.check(.name)
 			}
 		case TokenKind.key_pub:
-			if p.peek() == .func {
+			if p.peek() == .key_fn {
 				p.fn_decl()
 			} else if p.peek() == .key_struct {
 				p.error('structs can\'t be declared public *yet*')
@@ -329,7 +329,7 @@ fn (p mut Parser) parse(pass Pass) {
 			} else {
 				p.error('wrong pub keyword usage')
 			}
-		case TokenKind.func:
+		case TokenKind.key_fn:
 			p.fn_decl()
 		case TokenKind.key_type:
 			p.type_decl()
@@ -816,8 +816,8 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 				mut val := ''
 				match p.tok {
-					.name => { val = p.check_name() }
-					.str => { val = p.check_string() }
+					.name  => { val = p.check_name() }
+					.str  => { val = p.check_string() }
 					else => {
 						p.error('attribute value should be either name or string')
 					}
@@ -942,7 +942,7 @@ fn (p mut Parser) get_type() string {
 		return typ
 	}
 	// fn type
-	if p.tok == .func {
+	if p.tok == .key_fn {
 		mut f := Fn{name: '_', mod: p.mod}
 		p.next()
 		line_nr := p.scanner.line_nr
@@ -2949,6 +2949,7 @@ fn (p mut Parser) string_expr() {
 	}
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
+	// TODO remove this hack, do this automatically
 	if p.tok == .not {
 		p.check(.not)
 		p.gen('_STR_TMP($format$args)')
@@ -3689,7 +3690,18 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	for p.tok != .rcbr {
 		if p.tok == .key_else {
 			p.check(.key_else)
-			p.check(.arrow)
+			if p.tok == .arrow {
+				/*
+				p.warn('=> is no longer needed in match statements, use\n' +
+'match foo {
+	1 { bar }
+	2 { baz }
+	else { ... }
+}')
+*/
+
+				p.check(.arrow)
+			}	
 
 			// unwrap match if there is only else
 			if i == 0 {
@@ -4112,7 +4124,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
-	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
+	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
 		return

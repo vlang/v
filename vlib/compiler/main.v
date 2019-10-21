@@ -219,7 +219,7 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define V_COMMIT_HASH "$v_hash"')
 		cgen.genln('#endif')
 	}
-  
+
 	q := cgen.nogen // TODO hack
 	cgen.nogen = false
 	$if js {
@@ -269,7 +269,7 @@ pub fn (v mut V) compile() {
 	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
-		v.generate_vh()
+		generate_vh(v.dir)
 	}
 
 	// parse generated V code (str() methods etc)
@@ -585,7 +585,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 			v.table.file_imports[p.file_path_id] = p.import_table
 			p.table.imports << 'os'
 			p.table.register_module('os')
-			println('got v script')
 		}	
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
