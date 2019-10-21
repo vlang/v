@@ -644,7 +644,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 // p.tok == fn_name
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
 	if f.is_unsafe && !p.builtin_mod && !p.inside_unsafe {
-		p.error('you are calling an unsafe function outside of an unsafe block')
+		p.warn('you are calling an unsafe function outside of an unsafe block')
 	}	
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
