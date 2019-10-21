@@ -12,7 +12,6 @@ mut:
 	typesmap     map[string]Type
 	consts       []Var
 	fns          map[string]Fn
-	generic_fns  []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum']
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
@@ -40,12 +39,6 @@ enum NameCategory {
 struct Name {
 	cat NameCategory
 	idx int // e.g. typ := types[name.idx]
-}	
-
-struct GenTable {
-	fn_name string
-mut:
-	types []string
 }
 
 // Holds import information scoped to the parsed file
@@ -125,7 +118,7 @@ mut:
 	// This information is needed in the first pass.
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
-	
+
 }
 
 struct TypeNode {
@@ -218,6 +211,7 @@ fn (t &Table) debug_fns() string {
 const (
 	number_types = ['number', 'int', 'i8', 'i16', 'u16', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
 	float_types  = ['f32', 'f64']
+	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
 
 fn is_number_type(typ string) bool {
@@ -254,8 +248,10 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type('bool')
 	t.register_type('void')
 	t.register_type('voidptr')
-	t.register_type('T')
 	t.register_type('va_list')
+	for c in reserved_type_param_names {
+		t.register_type(c)
+	}
 	t.register_const('stdin', 'int', 'main')
 	t.register_const('stdout', 'int', 'main')
 	t.register_const('stderr', 'int', 'main')
@@ -585,6 +581,13 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if p.pref.translated {
 		return true
 	}
+
+	// generic return type
+	if expected == '_ANYTYPE_' {
+		p.cur_fn.typ = got
+		return true
+	}
+
 	// variadic
 	if expected.starts_with('...') {
 		expected = expected.right(3)
@@ -665,7 +668,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('fn ') && (expected.ends_with('fn') ||
 	expected.ends_with('Fn')) {
 		return true
-	}	
+	}
 	// Allow pointer arithmetic
 	if expected=='void*' && got=='int' {
 		return true
@@ -676,7 +679,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	//}
 	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
-	}	
+	}
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
@@ -749,7 +752,7 @@ fn (t &Table) has_at_least_one_test_fn() bool {
 	for _, f in t.fns {
 		if f.name.starts_with('main__test_') {
 			return true
-		}	
+		}
 	}
 	return false
 }
@@ -778,7 +781,7 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	else if typ.starts_with('fn (') {
 		T := table.find_type(typ)
 		if T.name == '' {
-			println('this should never happen')
+			eprintln('function type `$typ` not found')
 			exit(1)
 		}
 		str_args := T.func.str_args(table)
@@ -811,32 +814,6 @@ fn is_valid_int_const(val, typ string) bool {
 	return true
 }
 
-fn (t mut Table) register_generic_fn(fn_name string) {
-	t.generic_fns << GenTable{fn_name, []string}
-}
-
-fn (t &Table) fn_gen_types(fn_name string) []string {
-	for _, f in t.generic_fns {
-		if f.fn_name == fn_name {
-			return f.types
-		}
-	}
-	verror('function $fn_name not found')
-	return []string
-}
-
-// `foo<Bar>()`
-// fn_name == 'foo'
-// typ == 'Bar'
-fn (t mut Table) register_generic_fn_type(fn_name, typ string) {
-	for i, f in t.generic_fns {
-		if f.fn_name == fn_name {
-			t.generic_fns[i].types << typ
-			return
-		}
-	}
-}
-
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	t := p.table.find_type(typ)
 	if t.cat == .enum_ {
@@ -864,6 +841,11 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 		return p.typ_to_fmt(t.parent, level+1)
 	}
 	return ''
+}
+
+fn type_to_safe_str(typ string) string {
+	r := typ.replace(' ','').replace('(','_').replace(')','_')
+	return r
 }
 
 fn is_compile_time_const(s_ string) bool {
