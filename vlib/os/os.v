@@ -660,8 +660,10 @@ pub fn write_file(path, text string) {
 }
 
 pub fn clear() {
-	C.printf('\x1b[2J')
-	C.printf('\x1b[H')
+	$if !windows {
+		C.printf('\x1b[2J')
+		C.printf('\x1b[H')
+	}
 }
 
 fn on_segfault(f voidptr) {
