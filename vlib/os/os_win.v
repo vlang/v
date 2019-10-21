@@ -2,6 +2,7 @@ module os
 
 #flag -lws2_32
 #include <winsock2.h>
+#include <windows.h>
 
 const (
 	path_separator = '\\'
@@ -186,4 +187,8 @@ pub fn get_error_msg(code int) string {
         return ''
     }
     return tos(_ptr_text, vstrlen(_ptr_text))
+}
+
+pub fn sleep(seconds u32) {
+    C.Sleep(seconds * 1000)
 }

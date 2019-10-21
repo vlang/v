@@ -11,7 +11,7 @@ fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
 		args << string(argv[i])
-	}		
+	}
 	return args
 }
 
@@ -60,4 +60,6 @@ pub fn mkdir(path string) {
 	C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
 }
 
-
+pub fn sleep(seconds u32) {
+    C.sleep(seconds)
+}
