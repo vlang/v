@@ -22,6 +22,18 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		fields << field
 		p.fgenln('')
 		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
+		if p.tok == .assign {
+			mut enum_assign_tidx := p.cur_tok_index()
+			if p.peek() == .number {
+				p.next()
+				val = p.lit.int()
+				p.next()
+			}else{
+				p.next()
+				enum_assign_tidx = p.cur_tok_index()
+				p.error_with_token_index('only numbers are allowed in enum initializations', enum_assign_tidx)
+			}			
+		}
 		if p.pass == .main {
 			p.cgen.consts << '#define $name $val'
 		}
