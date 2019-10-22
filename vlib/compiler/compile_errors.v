@@ -135,7 +135,7 @@ fn (s &Scanner) get_error_filepath() string {
 	if s.should_print_relative_paths_on_error {
 		workdir := os.getwd() + os.path_separator
 		if s.file_path.starts_with(workdir) {
-			return s.file_path.replace( workdir, '') 
+			return s.file_path.replace( workdir, '')
 		}
 		return s.file_path
 	}
@@ -269,3 +269,12 @@ fn (s mut Scanner) eat_single_newline(){
 	if s.text[ s.pos ] == `\n` { s.pos ++ return }
 	if s.text[ s.pos ] == `\r` { s.pos ++ return }
 }
+
+const (
+	match_arrow_warning = '=> is no longer needed in match statements, use\n' +
+'match foo {
+	1 { bar }
+	2 { baz }
+	else { ... }
+}'
+)
