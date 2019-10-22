@@ -27,7 +27,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - C to V translation
 - Hot code reloading
 - Powerful UI and graphics libraries
-- Easy cross compilation
+- Easy cross-compilation
 - REPL
 - Built-in ORM
 - C and JavaScript backends
@@ -119,22 +119,22 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
+To build Tetris and anything else using the graphics module, you will need to install glfw and FreeType libraries.
 
-If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
+If you plan to use the Http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
-brew install glfw freetype openssl
+brew install glfw FreeType OpenSSL
 
 Debian/Ubuntu:
 sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
 
 Arch/Manjaro:
-sudo pacman -S glfw-x11 freetype2
+sudo Pacman -S glfw-x11 freetype2
 
 Fedora:
-sudo dnf install glfw glfw-devel freetype-devel
+sudo dnf install glfw glfw-devel FreeType-devel
 
 Windows:
 git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [path to v repo]/thirdparty/freetype/
@@ -174,5 +174,3 @@ Code structure:
 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-
