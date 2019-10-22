@@ -82,8 +82,9 @@ const (
 		gx.rgb(0, 170, 170),    // unused ?
 	]
 
-	BackgroundColor = gx.rgb(235, 235, 235)
-	UIColor = gx.rgb(240, 0, 0)
+	BackgroundColor = gx.White
+	ClearColor = gx.rgb(230, 230, 230)
+	UIColor = gx.Red
 )
 
 // TODO: type Tetro [TetroSize]struct{ x, y int }
@@ -144,7 +145,7 @@ fn main() {
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(gx.White)
+	gg.clear(ClearColor)
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
 			width: WinWidth
@@ -155,7 +156,7 @@ fn main() {
 	})
 	game.font_loaded = (game.ft != 0 )
 	for {
-		gg.clear(gx.White)
+		gg.clear(ClearColor)
 		game.draw_scene()
 		game.gg.render()
 		if game.gg.window.should_close() {
