@@ -253,7 +253,7 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
 	//cgen.genln('/*================================== FNS =================================*/')
-	cgen.genln('this line will be replaced with definitions')
+	cgen.genln('// this line will be replaced with definitions')
 	mut defs_pos := cgen.lines.len - 1
 	if defs_pos == -1 {
 		defs_pos = 0
