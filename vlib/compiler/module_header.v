@@ -151,8 +151,8 @@ fn generate_vh(mod string) {
 				continue
 			}	
 			match tok.tok {
-				TokenKind.key_fn {	generate_fn(out, p.tokens, i)	}
-				TokenKind.key_const {	generate_const(out, p.tokens, i)	}
+				TokenKind.key_fn => {	generate_fn(out, p.tokens, i)	}
+				TokenKind.key_const => {	generate_const(out, p.tokens, i)	}
 			}	
 		}	
 	}	

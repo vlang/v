@@ -816,9 +816,9 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 				mut val := ''
 				match p.tok {
-					.name { val = p.check_name() }
-					.str { val = p.check_string() }
-					else {
+					.name => { val = p.check_name() }
+					.str => { val = p.check_string() }
+					else => {
 						p.error('attribute value should be either name or string')
 					}
 				}
