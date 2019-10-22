@@ -3580,18 +3580,26 @@ fn (p mut Parser) assert_statement() {
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
 	filename := cescaped_path(p.file_path)
+	nline := p.scanner.line_nr
+	sourceline := p.scanner.line( nline - 1 )
+	//println('sourceline: ${nline:11d}: $sourceline ')
 	p.genln(';
 \n
 
 if (!$tmp) {
-  println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
+  print_assertion_failed( 
+     tos2((byte *))"$filename", 
+     $p.scanner.line_nr, 
+     tos2((byte *))"$sourceline", 
+     tos2((byte *))"$p.cur_fn.name()" 
+  );
   g_test_fails++;
   return;
   // TODO
   // Maybe print all vars in a test function if it fails?
 } else {
   g_test_oks++;
-  //println(tos2((byte *)"\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m"));
+  print_assertion_ok( tos2((byte *))"$filename", $p.scanner.line_nr, tos2((byte *))"$sourceline",  tos2((byte *))"$p.cur_fn.name()" );
 }
 
 ')
