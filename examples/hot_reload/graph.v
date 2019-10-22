@@ -48,7 +48,7 @@ fn (ctx &Context) draw() {
 		y = x * x - 1 
 		//y = (x + 3) * (x + 3) - 1
 		//y = math.sqrt(30.0 - x * x)
-		ctx.gg.draw_rect(center + x * Scale, center - y * Scale, 1, 1, gx.Black) 
+		ctx.gg.draw_rect(f32(center + x * Scale), f32(center - y * Scale), 1, 1, gx.Black) 
 		//ctx.gg.draw_rect(center + x * Scale, center + y * Scale, 1, 1, gx.Black) 
 	}
 }

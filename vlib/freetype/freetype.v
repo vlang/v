@@ -298,7 +298,7 @@ fn (ctx mut Context) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCfg
 		mut found := false
 		if _rune.len == 1 {
 			idx := _rune[0]
-			if idx < 0 || idx >= ctx.chars.len {
+			if idx < 0 || idx >= byte(ctx.chars.len) {
 				println('BADE RUNE $_rune')
 				continue
 			}
