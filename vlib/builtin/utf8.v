@@ -79,7 +79,7 @@ pub fn (_rune string) utf32_code() int {
 	mut b := byte(int(_rune[0]))
 	// TODO should be
 	// res := int( rune[0] << rune.len)
-	b = b << _rune.len
+	b = b << byte(_rune.len)
 	mut res := int(b)
 	mut shift := 6 - _rune.len
 	for i := 1; i < _rune.len; i++ {
@@ -156,7 +156,7 @@ fn utf8_len(c byte) int {
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
   c := int(C.getchar())
-  len := utf8_len(~c)
+  len := utf8_len(byte(~c))
   if c < 0 {
     return 0
   } else if len == 0 {

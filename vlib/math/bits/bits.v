@@ -21,11 +21,11 @@ const(
 )
 
 const(
-	m0 = 0x5555555555555555 // 01010101 ...
-	m1 = 0x3333333333333333 // 00110011 ...
-	m2 = 0x0f0f0f0f0f0f0f0f // 00001111 ...
-	m3 = 0x00ff00ff00ff00ff // etc.
-	m4 = 0x0000ffff0000ffff
+	m0 = u64(0x5555555555555555) // 01010101 ...
+	m1 = u64(0x3333333333333333) // 00110011 ...
+	m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
+	m3 = u64(0x00ff00ff00ff00ff) // etc.
+	m4 = u64(0x0000ffff0000ffff)
 )
 
 // --- LeadingZeros ---
@@ -125,8 +125,8 @@ pub fn ones_count64(x u64) int {
 	// more, but it saves at best one instruction, so we leave
 	// it alone for clarity.
 	m := u64(1<<64) - 1
-	mut y := u64(x>>u64(1)&(m0&m)) + u64(x&(m0&m))
-	y = u64(y>>u64(2)&(m1&m)) + u64(y&(m1&m))
+	mut y := u64(x>>u64(1)&(m0&m)) + (x&(m0&m))
+	y = u64(y>>u64(2)&(m1&m)) + (y&(m1&m))
 	y = u64(u64(y>>4) + y) & (m2 & m)
 	y += y >> 8
 	y += y >> 16
