@@ -61,19 +61,13 @@ fn filter_word(word string) string {
 		return ''
 	}
 	mut i := 0
-	for i < word.len && !is_letter(word[i]) {
+	for i < word.len && !word[i].is_letter() {
 		i++
 	}
 	start := i
-	for i < word.len && is_letter(word[i]) {
+	for i < word.len && word[i].is_letter() {
 		i++
 	}
 	end := i
 	return word.substr(start, end)
 }
-
-// TODO remove once it's possible to call word[i].is_letter()
-fn is_letter(c byte) bool {
-	return c.is_letter()
-}
-

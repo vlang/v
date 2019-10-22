@@ -40,7 +40,6 @@ mut:
 	import_table   FileImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
-	mod            string
 	inside_const   bool
 	expr_var       Var
 	has_immutable_field bool
@@ -81,12 +80,9 @@ mut:
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
+pub:
+	mod            string
 }
-
-const (
-	EmptyFn = Fn{}
-	MainFn= Fn{name:'main'}
-)
 
 const (
 	MaxModuleDepth = 4
@@ -536,10 +532,7 @@ fn (p mut Parser) const_decl() {
 			p.table.register_const(name, typ, p.mod)
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
-		for { // TODO: Find out how the error handling, and use it here instead of the for/break hack...
-			my_const := p.v.table.find_const(name) or {
-				break
-			} 
+		if my_const := p.v.table.find_const(name) {
 			if my_const.typ == 'void' {
 				for i, v in p.v.table.consts {
 					if v.name == name {
@@ -548,7 +541,6 @@ fn (p mut Parser) const_decl() {
 					}
 				}
 			}
-			break
 		}
 		if p.pass == .main && !p.cgen.nogen {
 			// TODO hack
@@ -1422,7 +1414,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		if p.assigned_type != p.expected_type {
 			p.error_with_token_index( 'incompatible types: $p.assigned_type != $p.expected_type', errtok)
 		}
-		p.cgen.resetln('memcpy(& $left, $etype{$expr}, sizeof( $left ) );')
+		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)

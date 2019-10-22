@@ -35,7 +35,7 @@ pub fn (s string) i64() i64 {
 }
 
 pub fn (s string) f32() f32 {
-	return 0.0
+	return f32(0.0)
 }
 
 pub fn (s string) f64() f64 {

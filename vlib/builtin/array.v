@@ -141,7 +141,7 @@ pub fn (s array) left(n int) array {
 
 pub fn (s array) right(n int) array {
 	if n >= s.len {
-		return s
+		return new_array(0, 0, s.element_size)
 	}
 	return s.slice(n, s.len)
 }

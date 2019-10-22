@@ -109,7 +109,7 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 			// use strings.repeat(` `, col) to form it.
 			mut pointerline := []string		
 			for i , c in line {
-				if i < col {
+				if i < byte(col) {
 					x := if c.is_space() { c } else { ` ` }
 					pointerline << x.str()
 					continue
