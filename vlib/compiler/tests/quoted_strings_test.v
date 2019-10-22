@@ -1,4 +1,14 @@
 
+// first comment
+
+/* multi
+   line 
+   comment
+   with // embedded internal line comments
+
+
+*/
+
 fn test_simple_quoted_strings(){
 	s := 'testing'
 	raw_s_a       := r'testing'
