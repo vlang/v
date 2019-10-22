@@ -95,11 +95,11 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	// to find the source file, when the IDE has a different working folder than v itself.
 	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
 	
-	if s.should_print_line_on_error && s.file_lines.len > 0 {
-		context_start_line := imax(0,                (s.line_nr - error_context_before + 1 ))
-		context_end_line   := imin(s.file_lines.len, (s.line_nr + error_context_after + 1 ))
+	if s.should_print_line_on_error && s.nlines > 0 {
+		context_start_line := imax(0,          (s.line_nr - error_context_before + 1 ))
+		context_end_line   := imin(s.nlines-1, (s.line_nr + error_context_after  + 1 ))
 		for cline := context_start_line; cline < context_end_line; cline++ {
-			line := '${(cline+1):5d}| ' + s.file_lines[ cline ]
+			line := '${(cline+1):5d}| ' + s.line( cline )
 			coloredline := if cline == s.line_nr && color_on { term.red(line) } else { line }
 			eprintln( coloredline )
 			if cline != s.line_nr { continue }
@@ -225,9 +225,8 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	// Starting from the start, scan the source lines
 	// till the desired tline is reached, then
 	// s.pos + tcol would be the proper position
-	// of the token. Continue scanning for some more lines of context too.
+	// of the token.
 	s.goto_scanner_position(ScannerPos{})
-	s.file_lines = []string
 
 	mut prevlinepos := 0
 	// NB: TCC BUG workaround: removing the `mut ate:=0 ate++` line
@@ -251,15 +250,13 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	for {
 		prevlinepos = s.pos
 		if s.pos >= s.text.len { break }		
-		if s.line_nr > tline + 10 { break }
+		if s.line_nr > tline { break }
 		////////////////////////////////////////
 		if tline == s.line_nr {
 			sptoken = s.get_scanner_pos()
 			sptoken.pos += tcol
 		}
 		s.ignore_line() s.eat_single_newline()
-		sline := s.text.substr( prevlinepos, s.pos )//.trim_right('\r\n')
-		s.file_lines << sline
 	}
 	//////////////////////////////////////////////////
 	s.goto_scanner_position(cpos)
