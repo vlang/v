@@ -6,6 +6,7 @@ module compiler
 
 import os
 import strings
+import math
 
 struct Table {
 pub mut:
@@ -813,21 +814,17 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 }
 
 fn is_valid_int_const(val, typ string) bool {
-	x := val.int()
+	xi := val.i64()
+	xu := val.u64()
 	switch typ {
-	case 'byte': return 0 <= x && x <= 255
-	case 'u16': return 0 <= x && x <= 65535
-	//case 'u32': return 0 <= x && x <= math.MaxU32
-	//case 'u64': return 0 <= x && x <= math.MaxU64
-	//////////////
-	case 'i8': return -128 <= x && x <= 127
-	/*
-	case 'i16': return math.min_i16 <= x && x <= math.max_i16
-	case 'int': return math.min_i32 <= x && x <= math.max_i32
-	*/
-	//case 'i64':
-		//x64 := val.i64()
-		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
+	case 'byte': return xu <=u64(math.max_u8)
+	case 'u16': return xu <= u64(math.max_u16)
+	case 'u32': return xu <= u64(math.max_u32)
+	case 'u64': return xu <= u64(math.max_u64)
+	case 'i8':  return i64(math.min_i8) <=  xi && xi <= i64(math.max_i8)
+	case 'i16': return i64(math.min_i16) <= xi && xi <= i64(math.max_i16)
+	case 'int': return i64(math.min_i32) <= xi && xi <= i64(math.max_i32)
+	case 'i64': return i64(math.min_i64) <= xi && xi <= i64(math.max_i64)
 	}
 	return true
 }

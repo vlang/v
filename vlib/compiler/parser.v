@@ -2539,9 +2539,6 @@ fn (p mut Parser) expression() string {
 			}
 		}
 
-		if p.tok==.amp {
-			println('& type: $typ')
-		}
 		p.check_types_with_token_index(p.term(), typ, op_idx)
 
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
@@ -2579,10 +2576,10 @@ fn (p mut Parser) term() string {
 	//if p.fileis('fn_test') {
 		//println('\nterm() $line_nr')
 	//}
+	left_val := p.lit
+	left_idx := p.token_idx-1
 	typ := p.unary()
-	//if p.fileis('fn_test') {
-		//println('2: $line_nr')
-	//}
+
 	// `*` on a newline? Can't be multiplication, only dereference
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
@@ -2676,7 +2673,8 @@ fn (p mut Parser) factor() string {
 			}
 		}
 		if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) {
-			p.error('constant `$p.lit` overflows `$p.expected_type`')
+			needed_type := integer_types[integer_vbits.index(p.intlit_needed_bits)]
+			p.error('literal `$p.lit` overflows `$p.expected_type`; add `$needed_type(...)` cast')
 		}
 		p.gen(p.lit)
 		p.fgen(p.lit)
@@ -3083,6 +3081,7 @@ fn (p mut Parser) array_init() string {
 	mut i := 0
 	pos := p.cgen.cur_line.len// remember cur line to fetch first number in cgen       for [0; 10]
 	for p.tok != .rsbr {
+		p.expected_type = typ
 		val_typ := p.bool_expression()
 		// Get the type of the first expression
 		if i == 0 {

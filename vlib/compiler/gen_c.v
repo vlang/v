@@ -441,6 +441,7 @@ fn (p mut Parser) gen_empty_map(typ string) {
 	p.gen('new_map(1, sizeof($typ))')
 }
 
+// cast next expression to `typ`
 fn (p mut Parser) cast(typ string) {
 	p.next()
 	pos := p.cgen.add_placeholder()
@@ -479,7 +480,7 @@ fn (p mut Parser) cast(typ string) {
 			}
 		}
 		// `string(234)` => error
-		else if expr_typ == 'int' {
+		else if expr_typ in integer_types {
 			p.error('cannot cast `$expr_typ` to `$typ`, use `str()` method instead')
 		}
 		else {

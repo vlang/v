@@ -5,7 +5,7 @@
 module builtin
 
 pub fn utf8_char_len(b byte) int {
-	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
+	return (( u32(0xe5000000) >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
 // Convert utf32 to utf8

@@ -92,6 +92,15 @@ fn test_implicit_conversions() {
 	assert byte(e) == byte(200)
 }
 
+fn test_shift() {
+	val := 0x13000000
+	assert byte(u32(val & 0xff000000) >> 24) == 0x13
+	mut val2 := byte(0x50)
+	// val2 += 0x150		// overflows byte
+	val2 += byte(u16(0x301) & 3)
+	assert val2 == 0x51
+}
+
 /*
 fn test_cmp() {
 	assert 1 ≠ 2
