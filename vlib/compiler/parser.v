@@ -816,9 +816,9 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 				mut val := ''
 				match p.tok {
-					.name  => { val = p.check_name() }
-					.str  => { val = p.check_string() }
-					else => {
+					.name { val = p.check_name() }
+					.str { val = p.check_string() }
+					else {
 						p.error('attribute value should be either name or string')
 					}
 				}
@@ -1144,7 +1144,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	mut i := 0
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof && p.tok != .key_case &&
-		p.tok != .key_default && p.peek() != .arrow {
+		p.tok != .key_default {
 		// println('stm: '+p.tok.str()+', next: '+p.peek().str())
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
@@ -3691,15 +3691,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		if p.tok == .key_else {
 			p.check(.key_else)
 			if p.tok == .arrow {
-				/*
-				p.warn('=> is no longer needed in match statements, use\n' +
-'match foo {
-	1 { bar }
-	2 { baz }
-	else { ... }
-}')
-*/
-
+				p.warn(match_arrow_warning)
 				p.check(.arrow)
 			}	
 
@@ -3827,7 +3819,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		}
 		p.gen(')')
 
-		p.check(.arrow)
+		if p.tok == .arrow {
+			p.warn(match_arrow_warning)
+			p.check(.arrow)
+		}	
 
 		// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 		if is_expr {
