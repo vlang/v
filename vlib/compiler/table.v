@@ -209,13 +209,15 @@ fn (t &Table) debug_fns() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	number_types = ['number', 'int', 'i8', 'i16', 'u16', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
+	// do not change the ordering of the types in this array (relevant for implicit conversions!)
+	integer_types = [	'i8',	'byte',	'i16',	'u16',	'int',	'u32',	'i64',	'u64'	]
+	integer_vbits = [	7,		8,		15,		16,		31,		32,		63,		64		]
 	float_types  = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
 
 fn is_number_type(typ string) bool {
-	return typ in number_types
+	return typ in integer_types || typ in float_types
 }
 
 fn is_float_type(typ string) bool {
@@ -595,21 +597,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('...') {
 		got = got.right(3)
 	}
-	// Allow ints to be used as floats
-	if got == 'int' && expected == 'f32' {
-		return true
-	}
-	if got == 'int' && expected == 'f64' {
-		return true
-	}
-	if got == 'f64' && expected == 'f32' {
-		return true
-	}
-	if got == 'f32' && expected == 'f64' {
-		return true
-	}
-	// Allow ints to be used as longs
-	if got=='int' && expected=='i64' {
+
+	// ptr conversions
+	if got=='void*' || expected=='void*' {// || got == 'cvoid' || expected == 'cvoid' {
 		return true
 	}
 	if got == 'void*' && expected.starts_with('fn ') {
@@ -618,15 +608,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('[') && expected == 'byte*' {
 		return true
 	}
-	// Todo void* allows everything right now
-	if got=='void*' || expected=='void*' {// || got == 'cvoid' || expected == 'cvoid' {
-		return true
-	}
-	// TODO only allow numeric consts to be assigned to bytes, and
-	// throw an error if they are bigger than 255
-	if got=='int' && expected=='byte' {
-		return true
-	}
+
 	if got=='byteptr' && expected=='byte*' {
 		return true
 	}
@@ -643,6 +625,44 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got=='int' && expected=='byteptr' {
 		return true
 	}
+
+	// int -> float types
+	if (got == 'i8' || got == 'byte' || got == 'i16' || got == 'u16') 
+		&& expected in float_types {
+		return true
+	}
+	if (got == 'int' || got == 'u32') && (expected == 'f32') {
+		// enable the warning if needed:
+		// p.warn('conversion from `$got` to `$expected` loses precision')
+		return true
+	}
+	if (got == 'int' || got == 'u32') && (expected == 'f64') {
+		return true
+	}
+	if got == 'f32' && expected == 'f64' {
+		return true
+	}
+	
+	// implicit integer conversions
+	if got in integer_types && expected in integer_types {
+		i1 := integer_types.index(got)
+		i2 := integer_types.index(expected)
+		b1 := integer_vbits[i1]
+		b2 := integer_vbits[i2]
+		// widening
+		if i2 >= i1 && (i2 % 2 == i1 % 2 || (b2 + 1) % 8 == b1 % 8) {
+			return true
+		}
+		// literal shortening
+		if p.is_unsigned_intlit && p.intlit_needed_bits <= b2 + 1 {
+			if p.intlit_needed_bits == b2 + 1 {
+				p.warn_with_token_index('shortening literal to signed type `$expected`; possible overflow', p.token_idx-2)
+			}
+			return true
+		}
+	}
+	
+
 	if got == 'Option' && expected.starts_with('Option_') {
 		return true
 	}
@@ -658,12 +678,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if expected.ends_with('*') && got == 'int' {
 		return true
 	}
-	// if got == 'T' || got.contains('<T>') {
-	// return true
-	// }
-	// if expected == 'T' || expected.contains('<T>') {
-	// return true
-	// }
+
 	// TODO fn hack
 	if got.starts_with('fn ') && (expected.ends_with('fn') ||
 	expected.ends_with('Fn')) {
@@ -673,13 +688,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if expected=='void*' && got=='int' {
 		return true
 	}
-	// Allow `myu64 == 1`
-	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
-		//p.warn('got=$got exp=$expected $p.is_const_literal')
-	//}
-	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
-		return true
-	}
+	
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
@@ -970,7 +979,7 @@ fn (t &Type) contains_field_type(typ string) bool {
 fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
-	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
+	min_match := f32(0.50) // for dice coefficient between 0.0 - 1.0
 	name_orig := mod_gen_name_rev(name.replace('__', '.'))
 	mut output := ''
 	// check functions
@@ -993,7 +1002,7 @@ fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 
 // find function with closest name to `name`
 fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_match f32) string {
-	mut closest := f32(0)
+	mut closest := 0.0
 	mut closest_fn := ''
 	n1 := if name.starts_with('main__') { name.right(6) } else { name }
 	for _, f in table.fns {
@@ -1014,12 +1023,12 @@ fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_matc
 			closest_fn = f.name
 		}
 	}
-	return if closest >= min_match { closest_fn } else { '' }
+	return if f32(closest) >= min_match { closest_fn } else { '' }
 }
 
 // find imported module with closest name to `name`
 fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f32) string {
-	mut closest := f32(0)
+	mut closest := 0.0
 	mut closest_mod := ''
 	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
@@ -1031,5 +1040,5 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 			closest_mod = '$mod_alias'
 		}
 	}
-	return if closest >= min_match { closest_mod } else { '' }
+	return if f32(closest) >= min_match { closest_mod } else { '' }
 }

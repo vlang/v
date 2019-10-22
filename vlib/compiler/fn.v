@@ -1411,7 +1411,7 @@ fn (f &Fn) str_args(table &Table) string {
 
 // find local function variable with closest name to `name`
 fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
-	mut closest := f32(0)
+	mut closest := 0.0
 	mut closest_var := ''
 	for var in p.local_vars {
 		if var.scope_level > p.cur_fn.scope_level {

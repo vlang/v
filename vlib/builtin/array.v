@@ -312,6 +312,15 @@ pub fn (a []int) index(v int) int {
 	return -1
 }
 
+pub fn (a []u32) index(v u32) int {
+	for i := 0; i < a.len; i++ {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
 pub fn (a []byte) index(v byte) int {
 	for i := 0; i < a.len; i++ {
 		if a[i] == v {

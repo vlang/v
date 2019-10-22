@@ -95,10 +95,9 @@ fn test_repeat() {
 	assert b[0] == 7 && b[1] == 7 && b[2] == 7
 	{
 		mut aa := [1.1].repeat(10)
-		// FIXME: assert aa[0] == 1.1 will fail, need fix
-		assert aa[0] == f32(1.1)
-		assert aa[5] == f32(1.1)
-		assert aa[9] == f32(1.1)
+		assert aa[0] == 1.1
+		assert aa[5] == 1.1
+		assert aa[9] == 1.1
 	}
 	{
 		mut aa := [f32(1.1)].repeat(10)

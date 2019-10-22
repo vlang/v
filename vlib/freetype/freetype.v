@@ -334,12 +334,12 @@ fn (ctx mut Context) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCfg
 		h := f32(ch.size.y) * 1
 		// Update VBO for each character
 		vertices :=	[
-		 xpos,     ypos + h,   0.0, 0.0 ,
-		 xpos,     ypos,       0.0, 1.0 ,
-		 xpos + w, ypos,       1.0, 1.0 ,
-		 xpos,     ypos + h,   0.0, 0.0 ,
-		 xpos + w, ypos,       1.0, 1.0 ,
-		 xpos + w, ypos + h,   1.0, 0.0
+		 xpos,     ypos + h,   f32(0.0), f32(0.0) ,
+		 xpos,     ypos,       f32(0.0), f32(1.0) ,
+		 xpos + w, ypos,       f32(1.0), f32(1.0) ,
+		 xpos,     ypos + h,   f32(0.0), f32(0.0) ,
+		 xpos + w, ypos,       f32(1.0), f32(1.0) ,
+		 xpos + w, ypos + h,   f32(1.0), f32(0.0)
 		]
 		// Render glyph texture over quad
 		C.glBindTexture(C.GL_TEXTURE_2D, ch.texture_id)

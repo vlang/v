@@ -164,7 +164,7 @@ pub fn (a []byte) contains(val byte) bool {
 }
 
 pub fn (c rune) str() string {
-	fst_byte := int(c) >> 8 * 3 & 0xff
+	fst_byte := byte(int(c) >> 8 * 3 & 0xff)
 	len := utf8_char_len(fst_byte)
 	mut str := string {
 		len: len

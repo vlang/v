@@ -24,7 +24,7 @@ pub fn viewport(a, b, c, d int) {
 }
 
 pub fn clear_color(r, g, b, a int) {
-	C.glClearColor(f32(r)/255.0, f32(g)/255.0, f32(b)/255.0, f32(a)/255.0)
+	C.glClearColor(f32(r) / f32(255.0), f32(g) / f32(255.0), f32(b) / f32(255.0), f32(a) / f32(255.0))
 }
 
 pub fn clear() {

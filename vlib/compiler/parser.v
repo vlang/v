@@ -71,7 +71,8 @@ mut:
 	v_script bool // "V bash", import all os functions into global space
 	var_decl_name string 	// To allow declaring the variable so that it can be used in the struct initialization
 	is_alloc   bool // Whether current expression resulted in an allocation
-	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
+	is_unsigned_intlit 	bool // `1`, `512`, etc. to infer type as either int or uint
+	intlit_needed_bits	int
 	in_dispatch 	bool		// dispatching generic instance?
 	is_vweb bool
 	is_sql bool
@@ -1526,9 +1527,9 @@ fn (p mut Parser) var_decl() {
 		if is_assign && !known_var {
 			suggested := p.find_misspelled_local_var(var_name, 50)
 			if suggested != '' {
-				p.error_with_token_index('undefined: `$var_name`. did you mean:$suggested', var_token_idx)
+				p.error_with_token_index('undefined variable: `$var_name`. did you mean: `$suggested`', var_token_idx)
 			}
-			p.error_with_token_index('undefined: `$var_name`.', var_token_idx)
+			p.error_with_token_index('undefined variable: `$var_name`.', var_token_idx)
 		}
 		if var_name.len > 1 && contains_capital(var_name) {
 			p.error_with_token_index('variable names cannot contain uppercase letters, use snake_case instead', var_token_idx)
@@ -1622,6 +1623,7 @@ fn (p mut Parser) bterm() string {
 		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
 		!(p.cur_fn.name == 'eq')
 	expr_type := typ
+	op_idx := p.token_idx-1
 	tok := p.tok
 	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
 		p.fgen(' ${p.tok.str()} ')
@@ -1646,7 +1648,7 @@ fn (p mut Parser) bterm() string {
 			p.sql_types  << typ
 			//println('*** sql type: $typ | param: $sql_param')
 		}  else {
-			p.check_types(p.expression(), typ)
+			p.check_types_with_token_index(p.expression(), typ, op_idx)
 		}
 		typ = 'bool'
 		if is_str && !p.is_js { //&& !p.is_sql {
@@ -1698,7 +1700,6 @@ fn (p mut Parser) bterm() string {
 fn (p mut Parser) name_expr() string {
 //println('n')
 	p.has_immutable_field = false
-	p.is_const_literal = false
 	ph := p.cgen.add_placeholder()
 	// amp
 	ptr := p.tok == .amp
@@ -2456,7 +2457,6 @@ fn (p mut Parser) indot_expr() string {
 
 // returns resulting type
 fn (p mut Parser) expression() string {
-	p.is_const_literal = true
 	//if p.scanner.file_path.contains('test_test') {
 		//println('expression() pass=$p.pass tok=')
 		//p.print_tok()
@@ -2465,6 +2465,7 @@ fn (p mut Parser) expression() string {
 	mut typ := p.indot_expr()
 	is_str := typ=='string'
 	is_ustr := typ=='ustring'
+	op_idx := p.token_idx-1
 	// `a << b` ==> `array_push(&a, b)`
 	if p.tok == .left_shift {
 		if typ.contains('array_') {
@@ -2501,17 +2502,17 @@ fn (p mut Parser) expression() string {
 		else {
 			p.next()
 			p.gen(' << ')
-			p.check_types(p.expression(), typ)
+			p.check_types_with_token_index(p.expression(), typ, op_idx)
 			return 'int'
 		}
 	}
 	if p.tok == .righ_shift {
 		p.next()
 		p.gen(' >> ')
-		p.check_types(p.expression(), typ)
+		p.check_types_with_token_index(p.expression(), typ, op_idx)
 		return 'int'
 	}
-	// + - | ^
+	// + - | & ^
 	for p.tok in [TokenKind.plus, .minus, .pipe, .amp, .xor] {
 		tok_op := p.tok
 		if typ == 'bool' {
@@ -2545,10 +2546,16 @@ fn (p mut Parser) expression() string {
 				p.gen(',')
 			}
 		}
-		p.check_types(p.term(), typ)
+
+		if p.tok==.amp {
+			println('& type: $typ')
+		}
+		p.check_types_with_token_index(p.term(), typ, op_idx)
+
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
 			p.gen(')')
 		}
+
 		// Make sure operators are used with correct types
 		if !p.pref.translated && !is_str && !is_ustr && !is_num {
 			T := p.table.find_type(typ)
@@ -2588,6 +2595,7 @@ fn (p mut Parser) term() string {
 	if p.tok == .mul && line_nr != p.scanner.line_nr {
 		return typ
 	}
+	op_idx := p.token_idx-1
 	for p.tok == .mul || p.tok == .div || p.tok == .mod {
 		tok := p.tok
 		is_div := tok == .div
@@ -2602,7 +2610,7 @@ fn (p mut Parser) term() string {
 		if is_mod && (is_float_type(typ) || !is_number_type(typ)) {
 			p.error('operator .mod requires integer types')
 		}
-		p.check_types(p.unary(), typ)
+		p.check_types_with_token_index(p.unary(), typ, op_idx)
 	}
 	return typ
 }
@@ -2633,6 +2641,7 @@ fn (p mut Parser) unary() string {
 fn (p mut Parser) factor() string {
 	mut typ := ''
 	tok := p.tok
+	p.is_unsigned_intlit = false
 	switch tok {
 	case .key_none:
 		if !p.expected_type.starts_with('Option_') {
@@ -2642,16 +2651,36 @@ fn (p mut Parser) factor() string {
 		p.check(.key_none)
 		return p.expected_type
 	case TokenKind.number:
-		typ = 'int'
 		// Check if float (`1.0`, `1e+3`) but not if is hexa
 		if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) &&
 			!(p.lit[0] == `0` && (p.lit[1] == `x` || p.lit[1] == `X`)) {
-			typ = 'f32'
-			// typ = 'f64' // TODO
+			typ = 'f64'
 		} else {
-			v_u64 := p.lit.u64()
-			if u64(u32(v_u64)) < v_u64 {
-				typ = 'u64'
+			// TODO(?) hexadecimal literal = always unsigned?
+			if false && (p.lit.len > 2 && p.lit[0] == `0` && (p.lit[1] == `x` || p.lit[1] == `X`)) {
+				val := p.lit.u64()
+				if u64(u32(val)) < val {
+					typ = 'u64'
+				} else { 
+					typ = 'u32'
+				}
+			} else {
+				p.is_unsigned_intlit = true
+				val := p.lit.u64()	// if too large for int, make it i64
+				if u64(u32(val)) < val {
+					typ = 'i64'
+					p.intlit_needed_bits = 64
+				} else {
+					typ = 'int'
+					if u64(byte(val)) == val {
+						p.intlit_needed_bits = 8
+					} else if u64(u16(val)) == val {
+						p.intlit_needed_bits = 16
+					} else {
+						p.intlit_needed_bits = 32
+					}
+				}
+				// println('literal $val needs $p.intlit_needed_bits bits')
 			}
 		}
 		if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) {
@@ -2663,7 +2692,9 @@ fn (p mut Parser) factor() string {
 		p.gen('-')
 		p.fgen('-')
 		p.next()
-		return p.factor()
+		typ = p.factor()
+		p.is_unsigned_intlit = false
+		return typ
 		// Variable
 	case TokenKind.key_sizeof:
 		p.gen('sizeof(')

@@ -166,12 +166,12 @@ pub fn ortho(left, right, bottom, top f32) Mat4 {
 	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
 	n := 16
 	mut res := f32_calloc(n) 
-	res[0] = 2.0 / f32(right - left)  
-	res[5] = 2.0 / f32(top - bottom) 
-	res[10] = 1.0 
+	res[0] = f32(2.0) / f32(right - left)  
+	res[5] = f32(2.0) / f32(top - bottom) 
+	res[10] = f32(1.0) 
 	res[12] = - (right + left) / (right - left) 
 	res[13] = - (top + bottom) / (top - bottom) 
-	res[15] = 1.0 
+	res[15] = f32(1.0) 
 	return mat4(res)
 }
 
@@ -205,8 +205,8 @@ pub fn scale(m Mat4, v Vec3) Mat4 {
 pub fn rotate_z(m Mat4, rad f32) Mat4 {
 	a := m.data
 	mut out := f32_calloc(16)
-	s := math.sin(rad)
-	c := math.cos(rad)
+	s := f32(math.sin(rad))
+	c := f32(math.cos(rad))
 	a00 := a[0]
 	a01 := a[1]
 	a02 := a[2]
@@ -262,7 +262,7 @@ pub fn identity2(res mut &f32) {
 }
 
 pub fn identity3() []f32 {
-	res := [1.0, 0, 0, 0,
+	res := [f32(1.0), 0, 0, 0,
 	0, 1, 0, 0,
 	0, 0, 1, 0,
 	0, 0, 0, 1,
@@ -278,21 +278,21 @@ fn ortho_js(left, right, bottom, top f32) &f32 {
 	bt := 1.0 / (bottom - top)
 	nf := 1.0 / 1.0// (mynear -myfar)
 	mut out := (*f32)( malloc (sizeof(f32) * 16)) 
-	 out[0] = -2.0 * lr 
+	 out[0] = f32(-2.0 * lr) 
 	 out[1] = 0 
 	 out[2] = 0 
 	 out[3] = 0 
 	 out[4] = 0 
-	 out[5] = -2.0 * bt 
+	 out[5] = f32(-2.0 * bt)
 	 out[6] = 0 
 	 out[7] = 0 
 	 out[8] = 0 
 	 out[9] = 0 
-	 out[10] = 2.0 * nf 
+	 out[10] = f32(2.0 * nf)
 	 out[11] = 0 
-	 out[12] = (left + right) * lr 
-	 out[13] = (top + bottom) * bt 
-	 out[14] = 1.0 * nf//(far + near) * nf;
+	 out[12] = (left + right) * f32(lr)
+	 out[13] = (top + bottom) * f32(bt) 
+	 out[14] = f32(1.0 * nf)	//(far + near) * nf;
 	 out[15] = 1 
 	return out 
 	//f := 0.0

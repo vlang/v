@@ -6,7 +6,7 @@ fn test_if_flag_not_given_return_default_values() {
   
   assert false == fp.bool('a_bool', false, '')
     && 42 == fp.int('an_int', 42, '')
-    && 1.0 == fp.float('a_float', 1.0, '')
+    && 1.0 == fp.float('a_float', f32(1.0), '')
     && 'stuff' == fp.string('a_string', 'stuff', '')
 }
 
@@ -39,7 +39,7 @@ fn test_flags_could_be_defined_with_eq() {
   assert 42 == fp.int('an_int', 666, '')
     && true == fp.bool('a_bool', false, '')
     && true == fp.bool('bool_without', false, '')
-    && 2.0 == fp.float('a_float', 1.0, '')
+    && 2.0 == fp.float('a_float', f32(1.0), '')
     && 'stuff' == fp.string('a_string', 'not_stuff', '')
 }
 
@@ -54,7 +54,7 @@ fn test_values_could_be_defined_without_eq() {
   assert 42 == fp.int('an_int', 666, '')
     && true == fp.bool('a_bool', false, '')
     && true == fp.bool('bool_without', false, '')
-    && 2.0 == fp.float('a_float', 1.0, '')
+    && 2.0 == fp.float('a_float', f32(1.0), '')
     && 'stuff' == fp.string('a_string', 'not_stuff', '')
 }
 
@@ -69,7 +69,7 @@ fn test_values_could_be_defined_mixed() {
   assert 42 == fp.int('an_int', 666, '')
     && true == fp.bool('a_bool', false, '')
     && true == fp.bool('bool_without', false, '')
-    && 2.0 == fp.float('a_float', 1.0, '')
+    && 2.0 == fp.float('a_float', f32(1.0), '')
     && 'stuff' == fp.string('a_string', 'not_stuff', '')
 }
 
@@ -153,7 +153,7 @@ fn test_allow_to_build_usage_message() {
   fp.int('an_int', 666, 'some int to define')
   fp.bool('a_bool', false, 'some bool to define')
   fp.bool('bool_without_but_really_big', false, 'this should appear on the next line')
-  fp.float('a_float', 1.0, 'some float as well')
+  fp.float('a_float', f32(1.0), 'some float as well')
   fp.string('a_string', 'not_stuff', 'your credit card number')
   
   usage := fp.usage()
@@ -240,9 +240,9 @@ fn test_allow_abreviations() {
   v := fp.bool_('version', `v`, false, '')
   o := fp.string_('output', `o`, 'empty', '')
   i := fp.int_('count', `i`, 0, '')
-  f := fp.float_('value', `f`, 0.0, '')
+  f := fp.float_('value', `f`, f32(0.0), '')
 
-  assert v && o == 'some_file' && i == 42 && f == 2.0
+  assert v && o == 'some_file' && i == 42 && f == f32(2.0)
 
   u := fp.usage()
   assert u.contains(' -v') && u.contains(' -o') && u.contains(' -i') && u.contains(' -f')

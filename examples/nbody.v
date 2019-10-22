@@ -86,7 +86,7 @@ fn offsetmomentum(sys mut System) {
 fn energy(sys System) f64 {
     mut e := f64(0)
     for i := 0; i < N; i++ {
-        e += 0.5 * sys.v[i].m * (sys.v[i].x * sys.v[i].x + sys.v[i].y * sys.v[i].y + sys.v[i].z * sys.v[i].z)
+        e += f64(0.5) * sys.v[i].m * (sys.v[i].x * sys.v[i].x + sys.v[i].y * sys.v[i].y + sys.v[i].z * sys.v[i].z)
         for j := i + 1; j < N; j++ {
             dx := sys.s[i].x - sys.s[j].x
             dy := sys.s[i].y - sys.s[j].y

@@ -168,6 +168,6 @@ pub fn (s Shader) set_int(str string, n int) {
 }
 
 pub fn (s Shader) set_color(str string, c gx.Color) {
-	C.glUniform3f(s.uni_location(str), f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0)
+	C.glUniform3f(s.uni_location(str), f32(c.r) / f32(255.0), f32(c.g) / f32(255.0), f32(c.b) / f32(255.0))
 }
 

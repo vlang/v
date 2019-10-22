@@ -6,7 +6,7 @@
 // import gl
 import glm
 
-fn cmp(a, b f32) bool {
+fn cmp(a f32, b f64) bool {
 	return int(a * 1000) == int(b * 1000)
 }
 
@@ -71,7 +71,7 @@ fn test_rotate() {
 
 fn test_translate() {
 	mut m := glm.identity()
-	m = glm.translate(m, glm.vec3(0, 0, - 0.5))
+	m = glm.translate(m, glm.vec3(0, 0, f32(-0.5)))
 	$if debug {
 		println(m)
 	}

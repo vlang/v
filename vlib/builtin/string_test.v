@@ -278,7 +278,7 @@ fn test_to_num() {
 	assert s.int() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
-	assert f.f32() == 71.5
+	assert f.f64() == 71.5
 	b := 1.52345
 	mut a := '${b:.03f}'
 	assert a == '1.523'
