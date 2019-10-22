@@ -832,6 +832,15 @@ pub fn new_v(args[]string) &V {
 	// No -o provided? foo.v => foo
 	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
 		out_name = dir.left(dir.len - 2)
+		// Building V? Use v2, since we can't overwrite a running
+		// executable on Windows + the precompiled V is more
+		// optimized. 
+		if out_name == 'v' && os.dir_exists('vlib/compiler') {
+			println('Saving the resulting V executable in `./v2`')
+			println('Use `v -o v v.v` if you want to replace current '+
+				'V executable.')
+			out_name = 'v2'
+		}
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
 	if dir == '.' && out_name == 'a.out' {
