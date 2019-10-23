@@ -37,7 +37,8 @@ fn generate_vh(mod string) {
 	// Consts
 	println(full_mod_path)
 	mut vfiles := os.walk_ext(full_mod_path, '.v')
-	filtered := vfiles.filter(!it.ends_with('test.v') && !it.ends_with('_windows.v')) // TODO merge once filter allows it
+	filtered := vfiles.filter(!it.ends_with('test.v') &&
+		!it.ends_with('_windows.v') && !it.ends_with('_win.v')) // TODO merge once filter allows it
 	println(filtered)
 	mut v := new_v(['foo.v'])
 	//v.pref.generating_vh = true
@@ -57,8 +58,8 @@ fn generate_vh(mod string) {
 			}	
 		}	
 	}	
-	result := consts.str() + fns.str().replace('\n\n', '')
-	out.writeln(result.replace('[ ]', '[]').replace('? ', '?'))
+	result := consts.str() + fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
+	out.writeln(result.replace('[ ] ', '[]').replace('? ', '?'))
 	out.close()
 }
 
