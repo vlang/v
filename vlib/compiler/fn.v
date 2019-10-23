@@ -1059,7 +1059,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	// varargs
 	varg_type, varg_values := p.fn_call_vargs(f)
 	if f.is_variadic {
-		saved_args << '...$varg_type'
+		saved_args << varg_type
 	}
 	if p.tok == .comma {
 		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
@@ -1127,7 +1127,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 	}
 	sig << f.typ
 	mut r := []string
-	for _, a in sig {
+	for ai, a in sig {
 		mut fi := a
 		mut fr := ''
 		if fi.starts_with('fn (') {
@@ -1158,11 +1158,12 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			fi = fi.right(6)
 			fr += 'array_'
 		}
-		if fi.starts_with('...') {
-			fi = fi.right(3)
-		}
+		is_varg := fi.starts_with('...')
+		if is_varg { fi = fi.right(3) }
 		if fi in ti.inst.keys() {
-			fr += ti.inst[fi]
+			mut t := ti.inst[fi]
+			if is_varg { t = '...$t' }
+			fr += t
 			// println("replaced $a => $fr")
 		} else {
 			fr += fi
