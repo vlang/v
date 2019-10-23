@@ -111,6 +111,7 @@ pub mut:
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
+	//generating_vh bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -833,7 +834,7 @@ pub fn new_v(args[]string) &V {
 		out_name = dir.left(dir.len - 2)
 		// Building V? Use v2, since we can't overwrite a running
 		// executable on Windows + the precompiled V is more
-		// optimized. 
+		// optimized.
 		if out_name == 'v' && os.dir_exists('vlib/compiler') {
 			println('Saving the resulting V executable in `./v2`')
 			println('Use `v -o v v.v` if you want to replace current '+

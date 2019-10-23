@@ -20,7 +20,7 @@ struct Token {
 struct Parser {
 	file_path_id   string // unique id. if parsing file will be path eg, "/home/user/hello.v"
 	file_name      string // "hello.v"
-	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
+	file_platform  string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
 	// C ifdef guard clause that must be put before
 	// the #include directives in the parsed .v file
@@ -106,8 +106,21 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
-	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v'] {
+	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v', '_linux.v',
+		'_darwin.v', '_windows.v'] {
 		if path.ends_with(path_ending) {
+			if path_ending == '_mac.v' {
+				p := path_ending.replace('_mac.v', '_darwin.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
+			if path_ending == '_lin.v' {
+				p := path_ending.replace('_lin.v', '_linux.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
+			if path_ending == '_win.v' {
+				p := path_ending.replace('_win.v', '_windows.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
 			path_platform = path_ending
 			path_pcguard = platform_postfix_to_ifdefguard( path_ending )
 			break
@@ -124,6 +137,10 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = true
 	}
+	//if p.pref.generating_vh {
+		// Keep newlines
+		//p.scanner.is_vh = true
+	//}	
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
 	return p

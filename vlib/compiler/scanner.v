@@ -41,6 +41,7 @@ mut:
 	quote byte // which quote is used to denote current string: ' or "
 	line_ends   []int // the positions of source lines ends   (i.e. \n signs)
 	nlines int  // total number of lines in the source file that were scanned
+	is_vh bool // Keep newlines
 }
 
 // new scanner from file.
@@ -221,7 +222,12 @@ fn (s mut Scanner) ident_number() string {
 }
 
 fn (s mut Scanner) skip_whitespace() {
+	//if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
+		if is_nl(s.text[s.pos]) && s.is_vh {
+			return
+			
+		}	
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.inc_line_number()
@@ -231,10 +237,10 @@ fn (s mut Scanner) skip_whitespace() {
 }
 
 fn (s mut Scanner) scan() ScanRes {
-	if s.line_comment != '' {
-		//s.fgenln('// LOL "$s.line_comment"')
+	//if s.line_comment != '' {
+		//s.fgenln('// LC "$s.line_comment"')
 		//s.line_comment = ''
-	}
+	//}
 	if s.started {
 		s.pos++
 	}
@@ -242,13 +248,12 @@ fn (s mut Scanner) scan() ScanRes {
 	if s.pos >= s.text.len {
 		return scan_res(.eof, '')
 	}
-	// skip whitespace
 	if !s.inside_string {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
 	if s.inter_end {
-		if s.text[s.pos] == s.quote { //single_quote {
+		if s.text[s.pos] == s.quote {
 			s.inter_end = false
 			return scan_res(.str, '')
 		}
@@ -419,6 +424,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
 		return scan_res(.name, name)
+	/*
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
@@ -428,6 +434,7 @@ fn (s mut Scanner) scan() ScanRes {
 	case `\n`:
 		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
+	*/
 	case `.`:
 		if nextc == `.` {
 			s.pos++
@@ -783,6 +790,7 @@ fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
 
+[inline]
 fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }
