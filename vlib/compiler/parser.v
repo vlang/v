@@ -684,6 +684,9 @@ fn (p mut Parser) struct_decl() {
 			cat = .c_typedef
 		}
 	}
+	if name.len == 1 && !p.pref.building_v && !p.pref.is_repl {
+		p.warn('struct names must have more than one character')
+	}	
 	if !is_c && !good_type_name(name) {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')
 	}
@@ -693,11 +696,11 @@ fn (p mut Parser) struct_decl() {
 	}
 	mut typ := p.table.find_type(name)
 	if p.pass == .decl && p.table.known_type_fast(typ) {
-		if name in reserved_type_param_names {
-			p.error('name `$name` is reserved for type parameters')
-		} else {
-			p.error('type `$name` redeclared')
-		}
+		//if name in reserved_type_param_names {
+			//p.error('name `$name` is reserved for type parameters')
+		//} else {
+		p.error('type `$name` redeclared')
+		//}
 	}
 	if is_objc {
 		// Forward declaration of an Objective-C interface with `@class` :)

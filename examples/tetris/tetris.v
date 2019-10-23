@@ -324,23 +324,21 @@ fn (g &Game) draw_field() {
 }
 
 fn (g mut Game) draw_ui() {
-	if g.font_loaded {WinHeight / 2 + 2 * TextSize
+	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
 		if g.state == .gameover {
 			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
-			 								5 * TextSize, UIColor)
+		 								5 * TextSize, UIColor)
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to restart', text_cfg)
 		} else if g.state == .paused {
 			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
-										5 * TextSize, UIColor)
+				5 * TextSize, UIColor)
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Paused', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
 		}
 	}
-
 	g.gg.draw_rect(0, BlockSize, WinWidth, LimitThickness, UIColor)
-
 }
 
 fn (g mut Game) draw_scene() {
