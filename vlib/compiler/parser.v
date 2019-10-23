@@ -9,14 +9,6 @@ import (
 	strings
 )
 
-struct Token {
-	tok      TokenKind  // the token number/enum; for quick comparisons
-	lit      string // literal representation of the token
-	line_nr  int // the line number in the source where the token occured
-	name_idx int // name table index for O(1) lookup
-	col      int // the column where the token ends
-}
-
 struct Parser {
 	file_path_id   string // unique id. if parsing file will be path eg, "/home/user/hello.v"
 	file_name      string // "hello.v"
@@ -532,7 +524,12 @@ fn (p mut Parser) const_decl() {
 		mut typ := ''
 		if p.is_vh {
 			// .vh files don't have const values, just types: `const (a int)`
-			typ = p.get_type()
+			if p.tok == .assign {
+				p.next()
+				typ = p.expression()
+			} else {
+				typ = p.get_type()
+			}
 			p.table.register_const(name, typ, p.mod)
 			p.cgen.consts << ('extern ' +
 				p.table.cgen_name_type_pair(name, typ)) + ';'

@@ -4,6 +4,15 @@
 
 module compiler
 
+struct Token {
+	tok      TokenKind  // the token number/enum; for quick comparisons
+	lit      string // literal representation of the token
+	line_nr  int // the line number in the source where the token occured
+	name_idx int // name table index for O(1) lookup
+	col      int // the column where the token ends
+}
+
+
 enum TokenKind {
 	eof
 	name        // user
@@ -281,6 +290,9 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 }
 
 fn (t Token) str() string {
+	if t.tok == .str {
+		return "'$t.lit'"
+	}	
 	if t.tok < .plus {
 		return t.lit // string, number etc
 	}	
