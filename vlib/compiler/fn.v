@@ -1127,7 +1127,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 	}
 	sig << f.typ
 	mut r := []string
-	for ai, a in sig {
+	for _, a in sig {
 		mut fi := a
 		mut fr := ''
 		if fi.starts_with('fn (') {
