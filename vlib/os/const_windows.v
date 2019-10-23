@@ -69,12 +69,6 @@ const(
 	INVALID_HANDLE_VALUE = -1
 )
 
-const(
-    STD_INPUT_HANDLE  = -10
-    STD_OUTPUT_HANDLE = -11
-    STD_ERROR_HANDLE  = -12
-)
-
 // https://docs.microsoft.com/en-us/windows/console/setconsolemode
 const (
     // Input Buffer
