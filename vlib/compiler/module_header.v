@@ -21,6 +21,7 @@ fn generate_vh(mod string) {
 	vexe := os.executable()
 	full_mod_path := os.dir(vexe) + '/' + mod
 	
+	
 	mod_path := mod.replace('.', os.path_separator)
 	dir := if mod.starts_with('vlib') {
 		'$compiler.v_modules_path${os.path_separator}$mod'
@@ -34,6 +35,9 @@ fn generate_vh(mod string) {
 		// os.mkdir(os.realpath(dir))
 	}
 	out := os.create(path) or { panic(err) }
+	mod_def := if mod.contains('/') { mod.all_after('/') } else { mod } // "os"
+	out.writeln('// $mod module header \n')
+	out.writeln('module $mod_def\n')
 	// Consts
 	println(full_mod_path)
 	mut vfiles := os.walk_ext(full_mod_path, '.v')
