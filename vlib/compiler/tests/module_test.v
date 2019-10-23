@@ -9,7 +9,7 @@ import (
 )
 
 fn test_import() {
-	assert os.SUCCESS == os.SUCCESS &&
+	assert os.O_RDONLY == os.O_RDONLY &&
 		t.month_days[0] == t.month_days[0] &&
 		s2.Size == s2.Size &&
 		math.pi == math.pi &&
