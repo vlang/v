@@ -3574,14 +3574,16 @@ fn (p mut Parser) assert_statement() {
 		return
 	}
 	p.check(.key_assert)
+	after_assert_token := p.cur_tok() println( 'after_assert_token $after_assert_token ')
 	p.fspace()
 	tmp := p.get_tmp()
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
+	after_assert_token2 := p.tokens[ p.token_idx - 2 ] println( 'after_assert_token2 $after_assert_token2 ')
 	// TODO print "expected:  got" for failed tests
 	filename := cescaped_path(p.file_path)
 	nline := p.scanner.line_nr
-	sourceline := p.scanner.line( nline - 1 )
+	sourceline := p.scanner.line( nline - 1 ).replace('"', '\'')
 	//println('sourceline: ${nline:11d}: $sourceline ')
 	p.genln(';
 \n
