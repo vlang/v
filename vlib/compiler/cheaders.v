@@ -168,7 +168,6 @@ var u64 = function() {}
 var u32 = function() {}
 var u16 = function() {}
 var i8 = function() {}
-var u8 = function() {}
 var bool = function() {}
 var rune = function() {}
 var map_string = function() {}

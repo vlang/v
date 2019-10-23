@@ -37,10 +37,6 @@ pub fn (nn u32) str() string {
 	return '0'
 }
 
-pub fn (nn u8) str() string {
-	return '0'
-}
-
 pub fn (nn i64) str() string {
 	return '0'
 }
