@@ -132,7 +132,13 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 [inline] fn imin(a,b int) int { 	return if a < b { a } else { b } }
 
 fn (s &Scanner) get_error_filepath() string {
-	if s.should_print_relative_paths_on_error {
+	verror_paths_override := os.getenv('VERROR_PATHS')
+	use_relative_paths := match verror_paths_override {
+		'relative' { true }
+		'absolute' { false }
+		else { s.should_print_relative_paths_on_error }
+	}
+	if use_relative_paths {
 		workdir := os.getwd() + os.path_separator
 		if s.file_path.starts_with(workdir) {
 			return s.file_path.replace( workdir, '')
