@@ -15,14 +15,11 @@ fn test_fn_variadic() {
 }
 
 fn variadic_test_generic<T>(a int, b ...T) T {
-	assert a == 111
 	b1 := b[0]
 	b2 := b[1]
-	assert b1 == 'hello' 
-	assert b2 == 'v'
-	return '$b1 $b2'
+	return '$a $b1 $b2'
 }
 
 fn test_fn_variadic_generic() {
-	assert variadic_test_generic(111, 'hello', 'v') == 'hello v'
+	assert variadic_test_generic(111, 'hello', 'v') == '111 hello v'
 }
