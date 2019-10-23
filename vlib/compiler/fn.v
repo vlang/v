@@ -983,10 +983,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		type_mismatch := !p.check_types_no_throw(got, expected)
 		if type_mismatch && f.is_generic {
 			// println("argument `$arg.name` is generic")
-			println('got: $got')
 			saved_args << got
 		} else if type_mismatch {
-			println('got: $got')
 			mut j := i
 			if f.is_method {
 				j--
