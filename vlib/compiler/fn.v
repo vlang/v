@@ -193,7 +193,7 @@ fn (p mut Parser) fn_decl() {
 	*/
 	mut f := Fn{
 		mod: p.mod
-		is_public: p.tok == .key_pub
+		is_public: p.tok == .key_pub || p.is_vh // functions defined in .vh are always public
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
 	}
@@ -219,22 +219,25 @@ fn (p mut Parser) fn_decl() {
 			p.check_space(p.tok)
 		}
 		receiver_typ = p.get_type()
-		T := p.table.find_type(receiver_typ)
-		if T.cat == .interface_ {
+		t := p.table.find_type(receiver_typ)
+		if (t.name == '' || t.is_placeholder) && !p.first_pass() {
+			p.error('unknown receiver type `$receiver_typ`')
+		}	
+		if t.cat == .interface_ {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module
-		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod &&
-			p.file_path_id != 'vgen' { // allow .str() on builtin arrays
-			println('T.mod=$T.mod')
-			println('p.mod=$p.mod')
+		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
+			p.file_path_id != 'vgen' // allow .str() on builtin arrays
+		{
+			//println('T.mod=$T.mod')
+			//println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
 		}
 		// `(f *Foo)` instead of `(f mut Foo)` is a common mistake
-		//if !p.builtin_mod && receiver_typ.contains('*') {
 		if receiver_typ.ends_with('*') {
-			t := receiver_typ.replace('*', '')
-			p.error('use `($receiver_name mut $t)` instead of `($receiver_name *$t)`')
+			tt := receiver_typ.replace('*', '')
+			p.error('use `($receiver_name mut $tt)` instead of `($receiver_name *$tt)`')
 		}
 		f.receiver_typ = receiver_typ
 		if is_mut || is_amp {
@@ -281,6 +284,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	else if !p.pref.translated {
 		if contains_capital(f.name) && !p.fileis('view.v') {
+			println('`$f.name`')
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if f.name[0] == `_` {

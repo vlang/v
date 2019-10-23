@@ -37,13 +37,18 @@ fn generate_vh(mod string) {
 	// Consts
 	println(full_mod_path)
 	mut vfiles := os.walk_ext(full_mod_path, '.v')
-	filtered := vfiles.filter(!it.ends_with('test.v') &&
-		!it.ends_with('_windows.v') && !it.ends_with('_win.v')) // TODO merge once filter allows it
+	//mut vfiles := os.ls(full_mod_path) or {
+		//exit(1)
+	//}	
+	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') &&
+		!it.ends_with('_windows.v') && !it.ends_with('_win.v') &&
+		!it.contains('/js')) // TODO merge once filter allows it
 	println(filtered)
 	mut v := new_v(['foo.v'])
 	//v.pref.generating_vh = true
 	mut consts := strings.new_builder(100)
 	mut fns := strings.new_builder(100)
+	mut types := strings.new_builder(100)
 	for file in filtered {
 		mut p := v.new_parser_from_file(file)
 		p.scanner.is_vh = true
@@ -55,10 +60,13 @@ fn generate_vh(mod string) {
 			match tok.tok {
 				TokenKind.key_fn {	fns.writeln(generate_fn(p.tokens, i))	}
 				TokenKind.key_const {	consts.writeln(generate_const(p.tokens, i))	}
+				TokenKind.key_struct {	types.writeln(generate_type(p.tokens, i))	}
 			}	
 		}	
 	}	
-	result := consts.str() + fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
+	result := consts.str() + types.str() +
+		fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
+	
 	out.writeln(result.replace('[ ] ', '[]').replace('? ', '?'))
 	out.close()
 }
@@ -104,6 +112,22 @@ fn generate_const(tokens []Token, i int) string {
 		tok = tokens[i]
 	}
 	out.writeln('\n)')
+	return out.str()
+}
+
+fn generate_type(tokens []Token, i int) string {
+	mut out := strings.new_builder(100)
+	mut tok := tokens[i]
+	for i < tokens.len && tok.tok != .rcbr {
+		out.write(tok.str())
+		out.write(' ')
+		if tokens[i+1].line_nr != tokens[i].line_nr {
+			out.write('\n\t')
+		}	
+		i++
+		tok = tokens[i]
+	}
+	out.writeln('\n}')
 	return out.str()
 }
 
