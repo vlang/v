@@ -111,6 +111,7 @@ pub mut:
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
+	//generating_vh bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -219,7 +220,7 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define V_COMMIT_HASH "$v_hash"')
 		cgen.genln('#endif')
 	}
-  
+
 	q := cgen.nogen // TODO hack
 	cgen.nogen = false
 	$if js {
@@ -253,7 +254,7 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
 	//cgen.genln('/*================================== FNS =================================*/')
-	cgen.genln('this line will be replaced with definitions')
+	cgen.genln('// this line will be replaced with definitions')
 	mut defs_pos := cgen.lines.len - 1
 	if defs_pos == -1 {
 		defs_pos = 0
@@ -269,7 +270,7 @@ pub fn (v mut V) compile() {
 	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
-		v.generate_vh()
+		generate_vh(v.dir)
 	}
 
 	// parse generated V code (str() methods etc)
@@ -585,7 +586,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 			v.table.file_imports[p.file_path_id] = p.import_table
 			p.table.imports << 'os'
 			p.table.register_module('os')
-			println('got v script')
 		}	
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
@@ -832,6 +832,15 @@ pub fn new_v(args[]string) &V {
 	// No -o provided? foo.v => foo
 	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
 		out_name = dir.left(dir.len - 2)
+		// Building V? Use v2, since we can't overwrite a running
+		// executable on Windows + the precompiled V is more
+		// optimized.
+		if out_name == 'v' && os.dir_exists('vlib/compiler') {
+			println('Saving the resulting V executable in `./v2`')
+			println('Use `v -o v v.v` if you want to replace current '+
+				'V executable.')
+			out_name = 'v2'
+		}
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
 	if dir == '.' && out_name == 'a.out' {

@@ -38,7 +38,8 @@ pub:
 	height    int
 	use_ortho bool
 	retina    bool
-	
+	resizable bool
+
 	font_size int
 	font_path string
 	create_window bool
@@ -70,6 +71,11 @@ pub mut:
 pub fn new_context(cfg Cfg) &GG {
 	mut window := &glfw.Window{!}
 	if cfg.create_window {
+		if cfg.resizable {
+			glfw.window_hint(C.GLFW_RESIZABLE, 1)
+		} else {
+			glfw.window_hint(C.GLFW_RESIZABLE, 0)
+		}	
 		window = glfw.create_window(glfw.WinCfg{
 			title: cfg.window_title
 			width: cfg.width
@@ -113,7 +119,7 @@ pub fn new_context(cfg Cfg) &GG {
 		vao: vao
 		vbo: vbo
 		window: window
-	
+
 		// /line_vao: gl.gen_vertex_array()
 		// /line_vbo: gl.gen_buffer()
 		//text_ctx: new_context_text(cfg, scale),
@@ -136,8 +142,8 @@ pub fn (gg &GG) render_loop() bool {
 */
 
 pub fn clear(color gx.Color) {
+	gl.clear_color(color.r, color.g, color.b, 255)
 	gl.clear()
-	gl.clear_color(255, 255, 255, 255)
 }
 
 pub fn (gg &GG) render() {
@@ -437,4 +443,3 @@ pub fn (c &GG) draw_empty_rect(x, y, w, h int, color gx.Color) {
 	c.draw_line_c(x, y + h, x + w, y + h, color)
 	c.draw_line_c(x + w, y, x + w, y + h, color)
 }
-

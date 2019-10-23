@@ -20,7 +20,7 @@ struct Token {
 struct Parser {
 	file_path_id   string // unique id. if parsing file will be path eg, "/home/user/hello.v"
 	file_name      string // "hello.v"
-	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
+	file_platform  string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
 	// C ifdef guard clause that must be put before
 	// the #include directives in the parsed .v file
@@ -106,8 +106,21 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
-	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v'] {
+	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v', '_linux.v',
+		'_darwin.v', '_windows.v'] {
 		if path.ends_with(path_ending) {
+			if path_ending == '_mac.v' {
+				p := path_ending.replace('_mac.v', '_darwin.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
+			if path_ending == '_lin.v' {
+				p := path_ending.replace('_lin.v', '_linux.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
+			if path_ending == '_win.v' {
+				p := path_ending.replace('_win.v', '_windows.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
 			path_platform = path_ending
 			path_pcguard = platform_postfix_to_ifdefguard( path_ending )
 			break
@@ -124,6 +137,10 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = true
 	}
+	//if p.pref.generating_vh {
+		// Keep newlines
+		//p.scanner.is_vh = true
+	//}	
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
 	return p
@@ -321,7 +338,7 @@ fn (p mut Parser) parse(pass Pass) {
 				p.check(.name)
 			}
 		case TokenKind.key_pub:
-			if p.peek() == .func {
+			if p.peek() == .key_fn {
 				p.fn_decl()
 			} else if p.peek() == .key_struct {
 				p.error('structs can\'t be declared public *yet*')
@@ -329,7 +346,7 @@ fn (p mut Parser) parse(pass Pass) {
 			} else {
 				p.error('wrong pub keyword usage')
 			}
-		case TokenKind.func:
+		case TokenKind.key_fn:
 			p.fn_decl()
 		case TokenKind.key_type:
 			p.type_decl()
@@ -531,10 +548,7 @@ fn (p mut Parser) const_decl() {
 			p.table.register_const(name, typ, p.mod)
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
-		for { // TODO: Find out how the error handling, and use it here instead of the for/break hack...
-			my_const := p.v.table.find_const(name) or {
-				break
-			} 
+		if my_const := p.v.table.find_const(name) {
 			if my_const.typ == 'void' {
 				for i, v in p.v.table.consts {
 					if v.name == name {
@@ -543,7 +557,6 @@ fn (p mut Parser) const_decl() {
 					}
 				}
 			}
-			break
 		}
 		if p.pass == .main && !p.cgen.nogen {
 			// TODO hack
@@ -820,9 +833,9 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 				mut val := ''
 				match p.tok {
-					.name => { val = p.check_name() }
-					.str => { val = p.check_string() }
-					else => {
+					.name { val = p.check_name() }
+					.str { val = p.check_string() }
+					else {
 						p.error('attribute value should be either name or string')
 					}
 				}
@@ -946,7 +959,7 @@ fn (p mut Parser) get_type() string {
 		return typ
 	}
 	// fn type
-	if p.tok == .func {
+	if p.tok == .key_fn {
 		mut f := Fn{name: '_', mod: p.mod}
 		p.next()
 		line_nr := p.scanner.line_nr
@@ -1148,7 +1161,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	mut i := 0
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof && p.tok != .key_case &&
-		p.tok != .key_default && p.peek() != .arrow {
+		p.tok != .key_default {
 		// println('stm: '+p.tok.str()+', next: '+p.peek().str())
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
@@ -2953,6 +2966,7 @@ fn (p mut Parser) string_expr() {
 	}
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
+	// TODO remove this hack, do this automatically
 	if p.tok == .not {
 		p.check(.not)
 		p.gen('_STR_TMP($format$args)')
@@ -3693,7 +3707,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	for p.tok != .rcbr {
 		if p.tok == .key_else {
 			p.check(.key_else)
-			p.check(.arrow)
+			if p.tok == .arrow {
+				p.warn(match_arrow_warning)
+				p.check(.arrow)
+			}	
 
 			// unwrap match if there is only else
 			if i == 0 {
@@ -3819,7 +3836,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		}
 		p.gen(')')
 
-		p.check(.arrow)
+		if p.tok == .arrow {
+			p.warn(match_arrow_warning)
+			p.check(.arrow)
+		}	
 
 		// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 		if is_expr {
@@ -4116,7 +4136,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
-	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
+	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
 		return

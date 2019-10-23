@@ -39,7 +39,9 @@ mut:
 	should_print_errors_in_color bool
 	should_print_relative_paths_on_error bool
 	quote byte // which quote is used to denote current string: ' or "
-	file_lines   []string // filled *only on error* by rescanning the source till the error (and several lines more)
+	line_ends   []int // the positions of source lines ends   (i.e. \n signs)
+	nlines int  // total number of lines in the source file that were scanned
+	is_vh bool // Keep newlines
 }
 
 // new scanner from file.
@@ -220,7 +222,12 @@ fn (s mut Scanner) ident_number() string {
 }
 
 fn (s mut Scanner) skip_whitespace() {
+	//if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
+		if is_nl(s.text[s.pos]) && s.is_vh {
+			return
+			
+		}	
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.inc_line_number()
@@ -230,10 +237,10 @@ fn (s mut Scanner) skip_whitespace() {
 }
 
 fn (s mut Scanner) scan() ScanRes {
-	if s.line_comment != '' {
-		//s.fgenln('// LOL "$s.line_comment"')
+	//if s.line_comment != '' {
+		//s.fgenln('// LC "$s.line_comment"')
 		//s.line_comment = ''
-	}
+	//}
 	if s.started {
 		s.pos++
 	}
@@ -241,13 +248,12 @@ fn (s mut Scanner) scan() ScanRes {
 	if s.pos >= s.text.len {
 		return scan_res(.eof, '')
 	}
-	// skip whitespace
 	if !s.inside_string {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
 	if s.inter_end {
-		if s.text[s.pos] == s.quote { //single_quote {
+		if s.text[s.pos] == s.quote {
 			s.inter_end = false
 			return scan_res(.str, '')
 		}
@@ -418,6 +424,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
 		return scan_res(.name, name)
+	/*
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
@@ -427,6 +434,7 @@ fn (s mut Scanner) scan() ScanRes {
 	case `\n`:
 		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
+	*/
 	case `.`:
 		if nextc == `.` {
 			s.pos++
@@ -632,7 +640,7 @@ fn (s mut Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Don't allow \0
-		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == `\\` {
+		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
 			s.error('0 character in a string literal')
 		}
 		// Don't allow \x00
@@ -640,14 +648,14 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
-		if c == `{` && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
+		if c == `{` && prevc == `$` && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, `\\`) % 2 == 0 {
+		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
@@ -748,7 +756,7 @@ fn (s mut Scanner) debug_tokens() {
 
 
 fn (s mut Scanner) ignore_line() {
-	s.eat_to_end_of_line()
+	s.eat_to_end_of_line()	
 	s.inc_line_number()
 }
 
@@ -761,12 +769,28 @@ fn (s mut Scanner) eat_to_end_of_line(){
 fn (s mut Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
+	s.line_ends   << s.pos
+	s.nlines++
+}
+
+fn (s Scanner) line(n int) string {
+	mut res := ''
+	if n >= 0 &&
+		n < s.line_ends.len {
+		nline_start := if n == 0 { 0 } else { s.line_ends[ n - 1 ] }
+		nline_end   := s.line_ends[n]
+		if nline_start <= nline_end {
+			res = s.text.substr( nline_start, nline_end )
+		}
+	}	
+	return res.trim_right('\r\n').trim_left('\r\n')
 }
 
 fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
 
+[inline]
 fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }

@@ -289,16 +289,24 @@ fn os_name_to_ifdef(name string) string {
 }
 
 fn platform_postfix_to_ifdefguard(name string) string {
-	switch name {
-		case '.v': return '' // no guard needed
-		case '_win.v': return '#ifdef _WIN32'
-		case '_nix.v': return '#ifndef _WIN32'
-		case '_lin.v': return '#ifdef __linux__'
-		case '_mac.v': return '#ifdef __APPLE__'
-		case '_solaris.v': return '#ifdef __sun'
+	s := match name {
+		'.v'                   { '' }// no guard needed
+		'_win.v', '_windows.v' { '#ifdef _WIN32' }
+		'_nix.v'               { '#ifndef _WIN32' }
+		'_lin.v', '_linux.v'   { '#ifdef __linux__' }
+		'_mac.v', '_darwin.v'  { '#ifdef __APPLE__' }
+		'_solaris.v'           { '#ifdef __sun' }
+		else {
+			
+			//verror('bad platform_postfix "$name"')
+			// TODO
+			''
+		}
 	}
-	verror('bad platform_postfix "$name"')
-	return ''
+	if s == '' {
+		verror('bad platform_postfix "$name"')
+	}	
+	return s
 }
 
 // C struct definitions, ordered
