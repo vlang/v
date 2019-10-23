@@ -1255,7 +1255,7 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
-fn (f mut Fn) rename_generic_fn_instance(ti TypeInst) {
+fn (p mut Parser) rename_generic_fn_instance(f mut Fn, ti TypeInst) {
 	f.name = f.name + '_T'
 	for k in ti.inst.keys() {
 		f.name = f.name + '_' + type_to_safe_str(ti.inst[k].replace('...', ''))
@@ -1272,7 +1272,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	}
 
 	if !new_inst {
-		f.rename_generic_fn_instance(ti)
+		p.rename_generic_fn_instance(mut f, ti)
 		_f := p.table.find_fn(f.name) or {
 			p.error('function instance `$f.name` not found')
 			return
@@ -1301,7 +1301,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	saved_tmp_line := p.cgen.tmp_line
 	returns := p.returns		// should be always false
 
-	f.rename_generic_fn_instance(ti)
+	p.rename_generic_fn_instance(mut f, ti)
 	f.is_generic = false		// the instance is a normal function
 	f.type_inst = []TypeInst
 	f.scope_level = 0
