@@ -44,7 +44,6 @@ fn generate_vh(mod string) {
 	for file in filtered {
 		mut p := v.new_parser_from_file(file)
 		p.scanner.is_vh = true
-		println('kek $file')
 		p.parse(.decl)
 		for i, tok in p.tokens {
 			if !p.tok.is_decl() {

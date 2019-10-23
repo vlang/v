@@ -38,6 +38,7 @@ pub:
 	height    int
 	use_ortho bool
 	retina    bool
+	resizable bool
 
 	font_size int
 	font_path string
@@ -70,6 +71,11 @@ pub mut:
 pub fn new_context(cfg Cfg) &GG {
 	mut window := &glfw.Window{!}
 	if cfg.create_window {
+		if cfg.resizable {
+			glfw.window_hint(C.GLFW_RESIZABLE, 1)
+		} else {
+			glfw.window_hint(C.GLFW_RESIZABLE, 0)
+		}	
 		window = glfw.create_window(glfw.WinCfg{
 			title: cfg.window_title
 			width: cfg.width
