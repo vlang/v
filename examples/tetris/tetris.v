@@ -83,7 +83,6 @@ const (
 	]
 
 	BackgroundColor = gx.White
-	ClearColor = gx.rgb(230, 230, 230)
 	UIColor = gx.Red
 )
 
@@ -145,7 +144,7 @@ fn main() {
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(ClearColor)
+	gg.clear(BackgroundColor)
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
 			width: WinWidth
@@ -156,7 +155,7 @@ fn main() {
 	})
 	game.font_loaded = (game.ft != 0 )
 	for {
-		gg.clear(ClearColor)
+		gg.clear(BackgroundColor)
 		game.draw_scene()
 		game.gg.render()
 		if game.gg.window.should_close() {
@@ -344,12 +343,7 @@ fn (g mut Game) draw_ui() {
 
 }
 
-fn (g &Game) draw_background() {
-	g.gg.draw_rect(0, 0, WinWidth, WinHeight, BackgroundColor)
-}
-
 fn (g mut Game) draw_scene() {
-	g.draw_background()
 	g.draw_tetro()
 	g.draw_field()
 	g.draw_ui()
