@@ -533,13 +533,13 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && v.os != .windows {
+		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && v.os != .windows {
 			continue
 		}
-		if file.ends_with('_lin.v') && v.os != .linux {
+		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && v.os != .linux {
 			continue
 		}
-		if file.ends_with('_mac.v') && v.os != .mac {
+		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && v.os != .mac {
 			continue
 		}
 		if file.ends_with('_nix.v') && v.os == .windows {
