@@ -23,6 +23,31 @@ pub:
 	uni    int // TODO it's safe to use "unix" now
 }
 
+enum FormatTime {
+        hhmm12
+        hhmm24
+        hhmmss12
+        hhmmss24
+        no_time
+}
+
+enum FormatDate {
+        ddmmyy
+        ddmmyyyy
+        mmddyy
+        mmddyyyy
+        mmmd
+        mmmdd
+        mmmddyyyy
+        no_date
+        yyyymmdd
+}
+
+enum FormatDelimiter {
+        dot
+        hyphen
+        slash
+}
 
 fn C.localtime(int) &C.tm
 
@@ -180,11 +205,11 @@ pub fn convert_ctime(t tm) Time {
 }
 
 pub fn (t Time) format_ss() string {
-	return '${t.year}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+        return t.get_fmt_str(FormatDelimiter.hyphen, FormatTime.hhmmss24, FormatDate.yyyymmdd)
 }
 
 pub fn (t Time) format() string {
-	return '${t.year}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}'
+        return t.get_fmt_str(FormatDelimiter.hyphen, FormatTime.hhmm24, FormatDate.yyyymmdd)
 }
 
 
@@ -195,7 +220,7 @@ pub fn (t Time) smonth() string {
 
 // 21:04
 pub fn (t Time) hhmm() string {
-	return '${t.hour:02d}:${t.minute:02d}'
+        return t.get_fmt_str(FormatDelimiter.dot, FormatTime.hhmm24, FormatDate.no_date)
 }
 
 /*
@@ -206,33 +231,22 @@ fn (t Time) hhmm_tmp() string {
 
 // 9:04pm
 pub fn (t Time) hhmm12() string {
-	mut am := 'am'
-	mut hour := t.hour
-	if t.hour > 11 {
-		am = 'pm'
-	}
-	if t.hour > 12 {
-		hour = hour - 12
-	}
-	if t.hour == 0 {
-		hour = 12
-	}
-	return '$hour:${t.minute:02d} $am'
+        return t.get_fmt_str(FormatDelimiter.dot, FormatTime.hhmm12, FormatDate.no_date)
 }
 
 // 21:04:03
 pub fn (t Time) hhmmss() string {
-	return '${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+        return t.get_fmt_str(FormatDelimiter.dot, FormatTime.hhmmss24, FormatDate.no_date)
 }
 
 // 2012-01-05
 pub fn (t Time) ymmdd() string {
-	return '${t.year}-${t.month:02d}-${t.day:02d}'
+        return t.get_fmt_str(FormatDelimiter.hyphen, FormatTime.no_time, FormatDate.yyyymmdd)
 }
 
 // 05.02.2012
 pub fn (t Time) ddmmy() string {
-	return '${t.day:02d}.${t.month:02d}.${t.year}'
+        return t.get_fmt_str(FormatDelimiter.dot, FormatTime.no_time, FormatDate.ddmmyyyy)
 }
 
 // Jul 3
@@ -453,4 +467,71 @@ pub fn days_in_month(month, year int) ?int {
 	extra :=	if month == 2 && is_leap_year(year) {1} else {0}
 	res := month_days[month-1] + extra
 	return res
+}
+
+pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_date FormatDate) string {
+        tp            :=  if t.hour > 11 {
+                                  'p.m.'
+                          } else {
+                                  'a.m.'
+                          }
+
+        hour          :=  if t.hour > 12 {
+                                  t.hour - 12
+                          } else  if t.hour == 0 {
+                                          12
+                                  } else {
+                                           t.hour
+                                  }
+
+        month         := '${t.smonth()}'
+
+        year          :=  t.year.str().right(2)
+
+        fmt_dlmtr_str :=  match fmt_dlmtr {
+                                      .dot    { '.' }
+                                      .hyphen { '-' }
+                                      .slash  { '/' }
+                                      else    { 'unknown enumeration $fmt_dlmtr' }
+                          }
+
+        fmt_time_str  :=  match fmt_time {
+                                .hhmm12     { '$hour:${t.minute:02d} $tp' }
+                                .hhmm24     { '${t.hour:02d}:${t.minute:02d}' }
+                                .hhmmss12   { '$hour:${t.minute:02d}:${t.second:02d} $tp' }
+                                .hhmmss24   { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
+                                .no_time    { '' }
+                                else        { 'unknown enumeration $fmt_time' }
+                          }
+
+        fmt_date_str  :=  match fmt_date {
+                                .ddmmyy     { '${t.day:02d}|${t.month:02d}|$year' }
+                                .ddmmyyyy   { '${t.day:02d}|${t.month:02d}|${t.year}' }
+                                .mmddyy     { '${t.month:02d}|${t.day:02d}|$year' }
+                                .mmddyyyy   { '${t.month:02d}|${t.day:02d}|${t.year}' }
+                                .mmmd       { '$month ${t.day}' }
+                                .mmmdd      { '$month ${t.day:02d}' }
+                                .mmmddyyyy  { '$month ${t.day:02d} ${t.year}' }
+                                .no_date    { '' }
+                                .yyyymmdd   { '${t.year}|${t.month:02d}|${t.day:02d}' }
+                                else        { 'unknown enumeration $fmt_date' }
+                          }
+
+        mut fmt_str   :=  ''
+
+        if fmt_date == FormatDate.no_date {
+                if fmt_time != FormatTime.no_time {
+                        fmt_str = fmt_time_str
+                }
+        } else {
+                if fmt_time != FormatTime.no_time {
+                        fmt_str = fmt_date_str.replace('|', fmt_dlmtr_str)
+                                + ' '
+                                + fmt_time_str
+                } else {
+                        fmt_str = fmt_date_str.replace('|', fmt_dlmtr_str)
+                }
+        }
+
+        return fmt_str
 }
