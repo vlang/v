@@ -41,6 +41,8 @@ fn generate_vh(mod string) {
 	println(filtered)
 	mut v := new_v(['foo.v'])
 	//v.pref.generating_vh = true
+	mut consts := strings.new_builder(100)
+	mut fns := strings.new_builder(100)
 	for file in filtered {
 		mut p := v.new_parser_from_file(file)
 		p.scanner.is_vh = true
@@ -50,24 +52,27 @@ fn generate_vh(mod string) {
 				continue
 			}	
 			match tok.tok {
-				TokenKind.key_fn {	generate_fn(out, p.tokens, i)	}
-				TokenKind.key_const {	generate_const(out, p.tokens, i)	}
+				TokenKind.key_fn {	fns.writeln(generate_fn(p.tokens, i))	}
+				TokenKind.key_const {	consts.writeln(generate_const(p.tokens, i))	}
 			}	
 		}	
 	}	
+	result := consts.str() + fns.str().replace('\n\n', '')
+	out.writeln(result.replace('[ ]', '[]').replace('? ', '?'))
+	out.close()
 }
 
-fn generate_fn(file os.File, tokens []Token, i int) {
+fn generate_fn(tokens []Token, i int) string {
 	mut out := strings.new_builder(100)
 	mut next := tokens[i+1]
 	if tokens[i-1].tok != .key_pub {
 		// Skip private fns
-		return
+		return ''
 	}
 	
 	if next.tok == .name && next.lit == 'C' {
 		println('skipping C')
-		return
+		return ''
 	}	
 	//out.write('pub ')
 	mut tok := tokens[i]
@@ -82,10 +87,10 @@ fn generate_fn(file os.File, tokens []Token, i int) {
 		i++
 		tok = tokens[i]
 	}	
-	file.writeln(out.str())
+	return out.str()
 }	
 
-fn generate_const(file os.File, tokens []Token, i int) {
+fn generate_const(tokens []Token, i int) string {
 	mut out := strings.new_builder(100)
 	mut tok := tokens[i]
 	for i < tokens.len && tok.tok != .rpar {
@@ -93,13 +98,12 @@ fn generate_const(file os.File, tokens []Token, i int) {
 		out.write(' ')
 		if tokens[i+2].tok == .assign {
 			out.write('\n\t')
-			
 		}	
 		i++
 		tok = tokens[i]
 	}
 	out.writeln('\n)')
-	file.writeln(out.str())
+	return out.str()
 }
 
 /*
