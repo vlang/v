@@ -35,7 +35,7 @@ mut:
 	is_unsafe     bool
 	is_deprecated bool
 	is_variadic   bool
-	is_generic	  bool
+	is_generic    bool
 	returns_error bool
 	defer_text    []string
 	type_pars 	  []string
@@ -1172,7 +1172,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 	return r
 }
 
-fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) string {	
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) string {
 	vargs_struct := '_V_FnVargs_$f.name'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
