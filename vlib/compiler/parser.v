@@ -3587,19 +3587,14 @@ fn (p mut Parser) assert_statement() {
 \n
 
 if (!$tmp) {
-  print_assertion_failed( 
-     tos2((byte *))"$filename", 
-     $p.scanner.line_nr, 
-     tos2((byte *))"$sourceline", 
-     tos2((byte *))"$p.cur_fn.name()" 
-  );
+  main__cb_assertion_failed( tos2((byte *)"$filename"), $p.scanner.line_nr, tos2((byte *)"$sourceline"), tos2((byte *)"$p.cur_fn.name()") );
   g_test_fails++;
   return;
   // TODO
   // Maybe print all vars in a test function if it fails?
 } else {
   g_test_oks++;
-  print_assertion_ok( tos2((byte *))"$filename", $p.scanner.line_nr, tos2((byte *))"$sourceline",  tos2((byte *))"$p.cur_fn.name()" );
+  main__cb_assertion_ok( tos2((byte *)"$filename"), $p.scanner.line_nr, tos2((byte *)"$sourceline"), tos2((byte *)"$p.cur_fn.name()") );
 }
 
 ')
