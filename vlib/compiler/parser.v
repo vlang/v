@@ -1544,7 +1544,8 @@ fn (p mut Parser) var_decl() {
 			p.error_with_token_index('redefinition of `$var_name`', var_token_idx)
 		}
 		// mut specified with assignment
-		if /*is_assign && implicit*/ known_var && var_is_mut {
+		//if /*is_assign && implicit*/ known_var && var_is_mut {
+		if known_var && var_is_mut {
 			p.error_with_token_index('cannot specify mutability for existing var `$var_name`, only for new vars', var_token_idx)
 		}
 		// assignment, but var does not exist
