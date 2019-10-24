@@ -16,16 +16,16 @@ import encoding.binary
 
 const (
 	// The size of an MD5 checksum in bytes.
-	Size = 16
+	size = 16
 	// The blocksize of MD5 in bytes.
-	BlockSize = 64
+	block_size = 64
 )
 
 const (
-	Init0 = 0x67452301
-	Init1 = 0xEFCDAB89
-	Init2 = 0x98BADCFE
-	Init3 = 0x10325476
+	init0 = 0x67452301
+	init1 = 0xEFCDAB89
+	init2 = 0x98BADCFE
+	init3 = 0x10325476
 )
 
 // Digest represents the partial evaluation of a checksum.
@@ -39,11 +39,11 @@ mut:
 
 fn (d mut Digest) reset() {
 	d.s = [u32(0)].repeat(4)
-	d.x = [byte(0)].repeat(BlockSize)
-    d.s[0] = u32(Init0)
-	d.s[1] = u32(Init1)
-	d.s[2] = u32(Init2)
-	d.s[3] = u32(Init3)
+	d.x = [byte(0)].repeat(block_size)
+    d.s[0] = u32(init0)
+	d.s[1] = u32(init1)
+	d.s[2] = u32(init2)
+	d.s[3] = u32(init3)
 	d.nx = 0
 	d.len = 0
 }
@@ -62,7 +62,7 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 	if d.nx > 0 {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
-		if d.nx == BlockSize {
+		if d.nx == block_size {
             block(mut d, d.x)
 			d.nx = 0
 		}
@@ -72,8 +72,8 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 			p = p.right(n)
 		}
 	}
-	if p.len >= BlockSize {
-		n := p.len &~ (BlockSize - 1)
+	if p.len >= block_size {
+		n := p.len &~ (block_size - 1)
 		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
@@ -117,7 +117,7 @@ pub fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-    digest := [byte(0)].repeat(Size)
+    digest := [byte(0)].repeat(size)
 
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest.right(4), d.s[1])
@@ -139,8 +139,8 @@ fn block(dig mut Digest, p []byte) {
     block_generic(mut dig, p)
 }
 
-pub fn (d &Digest) size() int { return Size }
+pub fn (d &Digest) size() int { return size }
 
-pub fn (d &Digest) block_size() int { return BlockSize }
+pub fn (d &Digest) block_size() int { return block_size }
 
 pub fn hexhash(s string) string { return sum(s.bytes()).hex() }

@@ -12,7 +12,7 @@ module sha512
 import math.bits
 
 const(
-	_K = [
+	_k = [
 		0x428a2f98d728ae22,
 		0x7137449123ef65cd,
 		0xb5c0fbcfec4d3b2f,
@@ -135,7 +135,7 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		mut h := h7
 
 		for i := 0; i < 80; i++ {
-			t1 := h + (bits.rotate_left_64(e, -14) ^ bits.rotate_left_64(e, -18) ^ bits.rotate_left_64(e, -41)) + ((e & f) ^ (~e & g)) + _K[i] + w[i]
+			t1 := h + (bits.rotate_left_64(e, -14) ^ bits.rotate_left_64(e, -18) ^ bits.rotate_left_64(e, -41)) + ((e & f) ^ (~e & g)) + _k[i] + w[i]
 			t2 := (bits.rotate_left_64(a, -28) ^ bits.rotate_left_64(a, -34) ^ bits.rotate_left_64(a, -39)) + ((a & b) ^ (a & c) ^ (b & c))
 			
 			h = g
