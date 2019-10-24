@@ -1101,6 +1101,9 @@ fn (p mut Parser) get_type() string {
 				p.error('unknown type `$typ`')
 			}
 		}
+		else if !t.is_public && t.mod != p.mod && t.name != '' {
+			p.warn('type `$t.name` is private')
+		}	
 	}
 	if typ == 'void' {
 		p.error('unknown type `$typ`')
@@ -3228,6 +3231,9 @@ fn (p mut Parser) array_init() string {
 fn (p mut Parser) struct_init(typ string) string {
 	p.is_struct_init = true
 	t := p.table.find_type(typ)
+	if !t.is_public && t.mod != p.mod {
+		p.warn('type `$t.name` is private')
+	}	
 	if p.gen_struct_init(typ, t) { return typ }
 	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
@@ -4169,7 +4175,7 @@ fn (p mut Parser) js_decode() string {
 		p.gen('json__jsdecode_$typ($cjson_tmp, &$tmp); cJSON_Delete($cjson_tmp);')
 		opt_type := 'Option_$typ'
 		p.cgen.typedefs << 'typedef Option $opt_type;'
-		p.table.register_type(opt_type)
+		p.table.register_builtin(opt_type)
 		return opt_type
 	}
 	else if op == 'encode' {

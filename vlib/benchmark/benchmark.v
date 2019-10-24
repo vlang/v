@@ -9,9 +9,9 @@ Example usage of this module:
 import benchmark
 mut bmark := benchmark.new_benchmark()
 // by default the benchmark will be verbose, i.e. it will include timing information
-// if you want it to be silent, set bmark.verbose = false 
-for { 
-   bmark.step() // call this when you want to advance the benchmark. 
+// if you want it to be silent, set bmark.verbose = false
+for {
+   bmark.step() // call this when you want to advance the benchmark.
                 // The timing info in bmark.step_message will be measured starting from the last call to bmark.step
    ....
 
@@ -26,7 +26,7 @@ println( bmark.total_message('remarks about the benchmark') )
 ```
 */
 
-struct Benchmark{
+pub struct Benchmark{
 pub mut:
 	bench_start_time i64
 	bench_end_time i64
