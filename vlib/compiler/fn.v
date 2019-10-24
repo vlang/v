@@ -27,20 +27,21 @@ mut:
 	// idx           int
 	scope_level   int
 	typ           string // return type
-	is_c          bool
 	receiver_typ  string
+	is_c          bool
 	is_public     bool
 	is_method     bool
-	returns_error bool
 	is_decl       bool // type myfn fn(int, int)
-	is_unsafe bool
+	is_unsafe     bool
 	is_deprecated bool
+	is_variadic   bool
+	is_generic    bool
+	returns_error bool
 	defer_text    []string
-	is_generic		bool
-	type_pars 		[]string
-	type_inst 		[]TypeInst
-	dispatch_of		TypeInst	// current type inst of this generic instance
-	body_idx		int		// idx of the first body statement
+	type_pars 	  []string
+	type_inst 	  []TypeInst
+	dispatch_of	  TypeInst	// current type inst of this generic instance
+	body_idx	  int		// idx of the first body statement
 	fn_name_token_idx int // used by error reporting
 }
 
@@ -193,7 +194,7 @@ fn (p mut Parser) fn_decl() {
 	*/
 	mut f := Fn{
 		mod: p.mod
-		is_public: p.tok == .key_pub
+		is_public: p.tok == .key_pub || p.is_vh // functions defined in .vh are always public
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
 	}
@@ -219,22 +220,25 @@ fn (p mut Parser) fn_decl() {
 			p.check_space(p.tok)
 		}
 		receiver_typ = p.get_type()
-		T := p.table.find_type(receiver_typ)
-		if T.cat == .interface_ {
+		t := p.table.find_type(receiver_typ)
+		if (t.name == '' || t.is_placeholder) && !p.first_pass() {
+			p.error('unknown receiver type `$receiver_typ`')
+		}	
+		if t.cat == .interface_ {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
 		// Don't allow modifying types from a different module
-		if !p.first_pass() && !p.builtin_mod && T.mod != p.mod &&
-			p.file_path_id != 'vgen' { // allow .str() on builtin arrays
-			println('T.mod=$T.mod')
-			println('p.mod=$p.mod')
+		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
+			p.file_path_id != 'vgen' // allow .str() on builtin arrays
+		{
+			//println('T.mod=$T.mod')
+			//println('p.mod=$p.mod')
 			p.error('cannot define new methods on non-local type `$receiver_typ`')
 		}
 		// `(f *Foo)` instead of `(f mut Foo)` is a common mistake
-		//if !p.builtin_mod && receiver_typ.contains('*') {
 		if receiver_typ.ends_with('*') {
-			t := receiver_typ.replace('*', '')
-			p.error('use `($receiver_name mut $t)` instead of `($receiver_name *$t)`')
+			tt := receiver_typ.replace('*', '')
+			p.error('use `($receiver_name mut $tt)` instead of `($receiver_name *$tt)`')
 		}
 		f.receiver_typ = receiver_typ
 		if is_mut || is_amp {
@@ -281,6 +285,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	else if !p.pref.translated {
 		if contains_capital(f.name) && !p.fileis('view.v') {
+			println('`$f.name`')
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if f.name[0] == `_` {
@@ -778,11 +783,11 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			if p.tok == .rpar {
 				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
 			}
+			f.is_variadic = true
 			t := p.get_type()
 			// register varg struct, incase function is never called
-			if p.first_pass() {
-				vargs_struct := p.fn_register_vargs_stuct(f, t, []string)
-				p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+			if p.first_pass() && !f.is_generic {
+				p.fn_register_vargs_stuct(f, t, []string)
 			}
 			typ = '...$t'
 		} else {
@@ -835,11 +840,6 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
 	p.check(.lpar)
-	mut is_variadic := false
-	if f.args.len > 0 {
-		last_arg := f.args.last()
-		is_variadic = last_arg.typ.starts_with('...')
-	}
 	if f.is_c {
 		for p.tok != .rpar {
 			//C.func(var1, var2.method())
@@ -922,7 +922,6 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
 		mut typ := p.bool_expression()
-		if typ.starts_with('...') { typ = typ.right(3) }
 		if clone {
 			p.gen(')')
 		}
@@ -1048,20 +1047,20 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
-			if p.tok != .comma && !is_variadic {
+			if p.tok != .comma && !f.is_variadic {
 				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
 			}
-			if p.tok == .comma && (!is_variadic || (is_variadic && i < f.args.len-2 )) {
+			if p.tok == .comma && (!f.is_variadic || (f.is_variadic && i < f.args.len-2 )) {
 				p.check(.comma)
 				p.gen(',')
 			}
 		}
 	}
 	// varargs
-	if !p.first_pass() && is_variadic {
-		p.fn_gen_caller_vargs(mut f)
+	varg_type, varg_values := p.fn_call_vargs(f)
+	if f.is_variadic {
+		saved_args << varg_type
 	}
-
 	if p.tok == .comma {
 		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
 	}
@@ -1069,6 +1068,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	if f.is_generic {
 		type_map := p.extract_type_inst(f, saved_args)
 		p.dispatch_generic_fn_instance(mut f, type_map)
+	}
+	if f.is_variadic {
+		p.fn_gen_caller_vargs(f, varg_type, varg_values)
 	}
 }
 
@@ -1156,8 +1158,12 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			fi = fi.right(6)
 			fr += 'array_'
 		}
+		is_varg := fi.starts_with('...')
+		if is_varg { fi = fi.right(3) }
 		if fi in ti.inst.keys() {
-			fr += ti.inst[fi]
+			mut t := ti.inst[fi]
+			if is_varg { t = '...$t' }
+			fr += t
 			// println("replaced $a => $fr")
 		} else {
 			fr += fi
@@ -1174,31 +1180,46 @@ fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) st
 		name: vargs_struct,
 		mod: p.mod
 	}
-	if values.len > 0 {
-		p.table.rewrite_type(varg_type)
-	} else {
+	if !p.table.known_type(vargs_struct) {
 		p.table.register_type2(varg_type)
+		p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
+	} else {
+		p.table.rewrite_type(varg_type)
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
 	return vargs_struct
 }
 
-fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
+fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
+	if !f.is_variadic {
+		return '', []string
+	}
 	last_arg := f.args.last()
-	varg_def_type := last_arg.typ.right(3)
+	mut varg_def_type := last_arg.typ.right(3)
+	mut types := []string
 	mut values := []string
 	for p.tok != .rpar {
 		if p.tok == .comma {
 			p.check(.comma)
 		}
 		p.cgen.start_tmp()
-		varg_type := p.bool_expression()
+		mut varg_type := p.bool_expression()
 		varg_value := p.cgen.end_tmp()
-		p.check_types(last_arg.typ, varg_type)
+		if !f.is_generic {
+			p.check_types(last_arg.typ, varg_type)
+		} else {
+			if types.len > 0 {
+				for t in types {
+					p.check_types(varg_type, t)
+				}
+			}
+			varg_def_type = varg_type
+		}
 		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
 			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
 			else { '' }
+		types << varg_type
 		values << '$ref_deref$varg_value'
 	}
 	for va in p.table.varg_access {
@@ -1210,9 +1231,12 @@ fn (p mut Parser) fn_gen_caller_vargs(f mut Fn) {
 	if f.args.len > 1 {
 		p.cgen.gen(',')
 	}
-	vargs_struct := p.fn_register_vargs_stuct(f, varg_def_type, values)
-	p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	return varg_def_type, values
+}
 
+fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) {
+	vargs_struct := p.fn_register_vargs_stuct(f, varg_type, values)
+	p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
 }
 
 fn (p mut Parser) register_multi_return_stuct(types []string) string {
@@ -1230,6 +1254,13 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
+fn (p mut Parser) rename_generic_fn_instance(f mut Fn, ti TypeInst) {
+	f.name = f.name + '_T'
+	for k in ti.inst.keys() {
+		f.name = f.name + '_' + type_to_safe_str(ti.inst[k].replace('...', ''))
+	}
+}
+
 fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	mut new_inst := true
 	for e in f.type_inst {
@@ -1240,10 +1271,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	}
 
 	if !new_inst {
-		f.name = f.name + '_T'
-		for k in ti.inst.keys() {
-			f.name = f.name + '_' + type_to_safe_str(ti.inst[k])
-		}
+		p.rename_generic_fn_instance(mut f, ti)
 		_f := p.table.find_fn(f.name) or {
 			p.error('function instance `$f.name` not found')
 			return
@@ -1272,10 +1300,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	saved_tmp_line := p.cgen.tmp_line
 	returns := p.returns		// should be always false
 
-	f.name = f.name + '_T'
-	for k in ti.inst.keys() {
-		f.name = f.name + '_' + type_to_safe_str(ti.inst[k])
-	}
+	p.rename_generic_fn_instance(mut f, ti)
 	f.is_generic = false		// the instance is a normal function
 	f.type_inst = []TypeInst
 	f.scope_level = 0
@@ -1425,3 +1450,12 @@ fn (fns []Fn) contains(f Fn) bool {
 	}
 	return false
 }
+
+pub fn (f Fn) v_fn_module() string {
+	return f.mod
+}
+
+pub fn (f Fn) v_fn_name() string {
+	return f.name.replace('${f.mod}__', '')
+}
+

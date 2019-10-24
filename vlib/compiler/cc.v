@@ -71,7 +71,7 @@ fn (v mut V) cc() {
 		}
 		if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
 			// TODO tcc bug, needs an empty libtcc1.a fila
-			//os.mkdir('/var/tmp/tcc/lib/tcc/') 
+			//os.mkdir('/var/tmp/tcc/lib/tcc/')
 			//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
 			v.pref.ccompiler = tcc_path
 		}
@@ -253,7 +253,7 @@ fn (v mut V) cc() {
 			}
 		}
 		verror('C error. This should never happen. ' +
-			'Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
+			'\nPlease create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	diff := time.ticks() - ticks
 	// Print the C command

@@ -40,10 +40,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		if p.tok == .comma {
 			p.next()
 		}
-		// !!!! NAME free
-		if p.first_pass() {
-			p.table.register_const(name, enum_name, p.mod)
-		}
+		// TODO free name [memory]
 		val++
 	}
 	p.table.register_type2(Type {

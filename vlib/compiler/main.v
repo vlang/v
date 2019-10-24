@@ -9,7 +9,7 @@ import (
 	strings
 )
 
-const (
+pub const (
 	Version = '0.1.21'
 )
 
@@ -111,6 +111,7 @@ pub mut:
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
+	//generating_vh bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -219,7 +220,7 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define V_COMMIT_HASH "$v_hash"')
 		cgen.genln('#endif')
 	}
-  
+
 	q := cgen.nogen // TODO hack
 	cgen.nogen = false
 	$if js {
@@ -269,7 +270,7 @@ pub fn (v mut V) compile() {
 	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
-		v.generate_vh()
+		generate_vh(v.dir)
 	}
 
 	// parse generated V code (str() methods etc)
@@ -532,13 +533,13 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && v.os != .windows {
+		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && v.os != .windows {
 			continue
 		}
-		if file.ends_with('_lin.v') && v.os != .linux {
+		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && v.os != .linux {
 			continue
 		}
-		if file.ends_with('_mac.v') && v.os != .mac {
+		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && v.os != .mac {
 			continue
 		}
 		if file.ends_with('_nix.v') && v.os == .windows {
@@ -585,7 +586,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 			v.table.file_imports[p.file_path_id] = p.import_table
 			p.table.imports << 'os'
 			p.table.register_module('os')
-			println('got v script')
 		}	
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
@@ -733,8 +733,7 @@ pub fn (v &V) resolve_deps() &DepGraph {
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
-		deps_resolved.display()
-		verror('import cycle detected')
+		verror('import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
 	}
 	return deps_resolved
 }
@@ -832,6 +831,15 @@ pub fn new_v(args[]string) &V {
 	// No -o provided? foo.v => foo
 	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
 		out_name = dir.left(dir.len - 2)
+		// Building V? Use v2, since we can't overwrite a running
+		// executable on Windows + the precompiled V is more
+		// optimized.
+		if out_name == 'v' && os.dir_exists('vlib/compiler') {
+			println('Saving the resulting V executable in `./v2`')
+			println('Use `v -o v v.v` if you want to replace current '+
+				'V executable.')
+			out_name = 'v2'
+		}
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
 	if dir == '.' && out_name == 'a.out' {

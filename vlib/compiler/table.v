@@ -101,6 +101,7 @@ mut:
 	line_nr         int
 	token_idx       int // this is a token index, which will be used by error reporting
 	is_for_var      bool
+	is_public       bool // for consts
 }
 
 struct Type {
@@ -109,6 +110,7 @@ mut:
 	mod            string
 	name           string
 	cat            TypeCategory
+	is_public      bool
 	fields         []Var
 	methods        []Fn
 	parent         string
@@ -201,13 +203,6 @@ fn (f Fn) str() string {
 	return '$f.name($str_args) $f.typ'
 }
 
-pub fn (f Fn) v_fn_module() string {
-	return f.mod
-}
-pub fn (f Fn) v_fn_name() string {
-	return f.name.replace('${f.mod}__', '')
-}
-
 pub fn (t &Table) debug_fns() string {
 	mut s := strings.new_builder(1000)
 	for _, f in t.fns {
@@ -264,10 +259,10 @@ fn new_table(obfuscate bool) &Table {
 	for c in reserved_type_param_names {
 		t.register_type(c)
 	}
-	t.register_const('stdin', 'int', 'main')
-	t.register_const('stdout', 'int', 'main')
-	t.register_const('stderr', 'int', 'main')
-	t.register_const('errno', 'int', 'main')
+	t.register_const('stdin', 'int', 'main', true)
+	t.register_const('stdout', 'int', 'main', true)
+	t.register_const('stderr', 'int', 'main', true)
+	t.register_const('errno', 'int', 'main', true)
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -316,13 +311,14 @@ fn (table &Table) known_mod(mod string) bool {
 	return mod in table.modules
 }
 
-fn (t mut Table) register_const(name, typ, mod string) {
-	t.consts << Var {
+fn (t mut Table) register_const(name, typ, mod string, is_pub bool) {
+	t.consts << Var{
 		name: name
 		typ: typ
 		is_const: true
 		mod: mod
 		idx: -1
+		is_public: is_pub
 	}
 }
 

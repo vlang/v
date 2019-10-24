@@ -9,18 +9,10 @@ import (
 	strings
 )
 
-struct Token {
-	tok      TokenKind  // the token number/enum; for quick comparisons
-	lit      string // literal representation of the token
-	line_nr  int // the line number in the source where the token occured
-	name_idx int // name table index for O(1) lookup
-	col      int // the column where the token ends
-}
-
 struct Parser {
 	file_path_id   string // unique id. if parsing file will be path eg, "/home/user/hello.v"
 	file_name      string // "hello.v"
-	file_platform  string // ".v", "_win.v", "_nix.v", "_mac.v", "_lin.v" ...
+	file_platform  string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
 	// C ifdef guard clause that must be put before
 	// the #include directives in the parsed .v file
@@ -107,8 +99,21 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
 	mut path_platform := '.v'
-	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v'] {
+	for path_ending in ['_lin.v', '_mac.v', '_win.v', '_nix.v', '_linux.v',
+		'_darwin.v', '_windows.v'] {
 		if path.ends_with(path_ending) {
+			if path_ending == '_mac.v' {
+				p := path_ending.replace('_mac.v', '_darwin.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
+			if path_ending == '_lin.v' {
+				p := path_ending.replace('_lin.v', '_linux.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
+			if path_ending == '_win.v' {
+				p := path_ending.replace('_win.v', '_windows.v')
+				println('warning: use "$p" file name instead of "$path"')
+			}	
 			path_platform = path_ending
 			path_pcguard = platform_postfix_to_ifdefguard( path_ending )
 			break
@@ -125,6 +130,10 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = true
 	}
+	//if p.pref.generating_vh {
+		// Keep newlines
+		//p.scanner.is_vh = true
+	//}	
 	p.scan_tokens()
 	//p.scanner.debug_tokens()
 	return p
@@ -322,15 +331,16 @@ fn (p mut Parser) parse(pass Pass) {
 				p.check(.name)
 			}
 		case TokenKind.key_pub:
-			if p.peek() == .func {
-				p.fn_decl()
-			} else if p.peek() == .key_struct {
-				p.error('structs can\'t be declared public *yet*')
-				// TODO public structs
-			} else {
-				p.error('wrong pub keyword usage')
+			next := p.peek()
+			match next {
+				.key_fn     {	p.fn_decl()     }
+				.key_const  {	p.const_decl()  }
+				.key_struct {	p.struct_decl() }
+				else {
+					p.error('wrong pub keyword usage')
+				}
 			}
-		case TokenKind.func:
+		case TokenKind.key_fn:
 			p.fn_decl()
 		case TokenKind.key_type:
 			p.type_decl()
@@ -485,6 +495,10 @@ fn (p mut Parser) import_statement() {
 }
 
 fn (p mut Parser) const_decl() {
+	is_pub := p.tok == .key_pub
+	if is_pub {
+		p.next()
+	}	
 	if p.tok == .key_import {
 		p.error_with_token_index(
 			'`import const` was removed from the language, ' +
@@ -516,8 +530,13 @@ fn (p mut Parser) const_decl() {
 		mut typ := ''
 		if p.is_vh {
 			// .vh files don't have const values, just types: `const (a int)`
-			typ = p.get_type()
-			p.table.register_const(name, typ, p.mod)
+			if p.tok == .assign {
+				p.next()
+				typ = p.expression()
+			} else {
+				typ = p.get_type()
+			}
+			p.table.register_const(name, typ, p.mod, is_pub)
 			p.cgen.consts << ('extern ' +
 				p.table.cgen_name_type_pair(name, typ)) + ';'
 			continue // Don't generate C code when building a .vh file
@@ -529,7 +548,7 @@ fn (p mut Parser) const_decl() {
 			p.error('redefinition of `$name`')
 		}
 		if p.first_pass() {
-			p.table.register_const(name, typ, p.mod)
+			p.table.register_const(name, typ, p.mod, is_pub)
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
 		if my_const := p.v.table.find_const(name) {
@@ -637,6 +656,10 @@ fn key_to_type_cat(tok TokenKind) TypeCategory {
 
 // also unions and interfaces
 fn (p mut Parser) struct_decl() {
+	is_pub := p.tok == .key_pub
+	if is_pub {
+		p.next()
+	}	
 	// V can generate Objective C for integration with Cocoa
 	// `[objc_interface:ParentInterface]`
 	is_objc := p.attr.starts_with('objc_interface')
@@ -671,6 +694,9 @@ fn (p mut Parser) struct_decl() {
 			cat = .c_typedef
 		}
 	}
+	if name.len == 1 && !p.pref.building_v && !p.pref.is_repl {
+		p.warn('struct names must have more than one character')
+	}	
 	if !is_c && !good_type_name(name) {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')
 	}
@@ -680,11 +706,11 @@ fn (p mut Parser) struct_decl() {
 	}
 	mut typ := p.table.find_type(name)
 	if p.pass == .decl && p.table.known_type_fast(typ) {
-		if name in reserved_type_param_names {
-			p.error('name `$name` is reserved for type parameters')
-		} else {
-			p.error('type `$name` redeclared')
-		}
+		//if name in reserved_type_param_names {
+			//p.error('name `$name` is reserved for type parameters')
+		//} else {
+		p.error('type `$name` redeclared')
+		//}
 	}
 	if is_objc {
 		// Forward declaration of an Objective-C interface with `@class` :)
@@ -714,6 +740,7 @@ fn (p mut Parser) struct_decl() {
 			is_c: is_c
 			cat: cat
 			parent: objc_parent
+			is_public: is_pub
 		}
 	}
 	// Struct `C.Foo` declaration, no body
@@ -724,7 +751,7 @@ fn (p mut Parser) struct_decl() {
 	p.fgen(' ')
 	p.check(.lcbr)
 	// Struct fields
-	mut is_pub := false
+	mut is_pub_field := false
 	mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
 /*
@@ -745,10 +772,10 @@ fn (p mut Parser) struct_decl() {
 	mut did_gen_something := false
 	for p.tok != .rcbr {
 		if p.tok == .key_pub {
-			if is_pub {
+			if is_pub_field {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
 			}
-			is_pub = true
+			is_pub_field = true
 			p.fmt_dec()
 			p.check(.key_pub)
 			if p.tok != .key_mut {
@@ -797,7 +824,7 @@ fn (p mut Parser) struct_decl() {
 			continue
 		}
 		// `pub` access mod
-		access_mod := if is_pub{AccessMod.public} else { AccessMod.private}
+		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fgen(' ')
 		field_type := p.get_type()
 		if field_type == name {
@@ -817,9 +844,9 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 				mut val := ''
 				match p.tok {
-					.name => { val = p.check_name() }
-					.str => { val = p.check_string() }
-					else => {
+					.name { val = p.check_name() }
+					.str { val = p.check_string() }
+					else {
 						p.error('attribute value should be either name or string')
 					}
 				}
@@ -943,7 +970,7 @@ fn (p mut Parser) get_type() string {
 		return typ
 	}
 	// fn type
-	if p.tok == .func {
+	if p.tok == .key_fn {
 		mut f := Fn{name: '_', mod: p.mod}
 		p.next()
 		line_nr := p.scanner.line_nr
@@ -1145,7 +1172,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	mut i := 0
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof && p.tok != .key_case &&
-		p.tok != .key_default && p.peek() != .arrow {
+		p.tok != .key_default {
 		// println('stm: '+p.tok.str()+', next: '+p.peek().str())
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
@@ -1824,7 +1851,7 @@ fn (p mut Parser) name_expr() string {
 		return p.get_const_type(name, ptr)
 	}
 
-	// Function (not method btw, methods are handled in dot())	
+	// Function (not method, methods are handled in `.dot()`)	
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
 		return p.get_undefined_fn_type(name, orig_name)
 	}
@@ -1938,6 +1965,9 @@ fn (p mut Parser) get_const_type(name string, is_ptr bool) string {
 		// c.ptr = true
 		p.gen('& /*const*/ ')
 	}
+	if !c.is_public && c.mod != p.mod {
+		p.warn('constant `$c.name` is private')
+	}	
 	mut typ := p.var_expr(c)
 	if is_ptr {
 		typ += '*'
@@ -2997,6 +3027,7 @@ fn (p mut Parser) string_expr() {
 	}
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
+	// TODO remove this hack, do this automatically
 	if p.tok == .not {
 		p.check(.not)
 		p.gen('_STR_TMP($format$args)')
@@ -3738,7 +3769,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	for p.tok != .rcbr {
 		if p.tok == .key_else {
 			p.check(.key_else)
-			p.check(.arrow)
+			if p.tok == .arrow {
+				p.warn(match_arrow_warning)
+				p.check(.arrow)
+			}	
 
 			// unwrap match if there is only else
 			if i == 0 {
@@ -3864,7 +3898,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		}
 		p.gen(')')
 
-		p.check(.arrow)
+		if p.tok == .arrow {
+			p.warn(match_arrow_warning)
+			p.check(.arrow)
+		}	
 
 		// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 		if is_expr {
@@ -4161,7 +4198,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
-	if p.tok == .func || (p.tok == .key_pub && p.peek() == .func) {
+	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
 		return

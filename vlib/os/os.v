@@ -26,7 +26,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) C.dirent
 
-const (
+pub const (
 	args = []string
 	MAX_PATH = 4096
 )

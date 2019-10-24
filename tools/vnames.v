@@ -3,6 +3,7 @@ module main
 import os
 import flag
 import compiler
+import strings
 
 const (
 	tool_version = '0.0.1'
@@ -24,14 +25,15 @@ fn f_to_string(fmod string, f compiler.Fn) ?string {
 
 fn analyze_v_file(file string) {
 	println('')
-	println('######################  $file  ######################')
+	hash := strings.repeat(`#`, (76 - file.len) / 2)
+	println('$hash  $file  $hash')
 
 	// main work:
 	mut v := compiler.new_v_compiler_with_args([file])
 	v.add_v_files_to_compile()
 	for f in v.files { v.parse(f, .decl) }
 	fi := v.get_file_parser_index( file ) or { panic(err) }
-	fmod :=  v.parsers[fi].mod 
+	fmod :=  v.parsers[fi].mod
 	
 	// output:
 	mut fns :=[]string
