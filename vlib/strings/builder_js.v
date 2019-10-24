@@ -4,7 +4,7 @@
 
 module strings
 
-struct Builder {
+pub struct Builder {
 mut:
 	buf []byte
 pub:
@@ -39,5 +39,4 @@ pub fn (b mut Builder) cut(n int) {
 }
 
 pub fn (b mut Builder) free() {
-	free(b.buf.data)
 }

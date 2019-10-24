@@ -8,11 +8,10 @@ import os
 import strings
 
 struct Table {
-mut:
+pub mut:
 	typesmap     map[string]Type
 	consts       []Var
 	fns          map[string]Fn
-	generic_fns  []GenTable //map[string]GenTable // generic_fns['listen_and_serve'] == ['Blog', 'Forum']
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
@@ -41,12 +40,6 @@ struct Name {
 	cat NameCategory
 	idx int // e.g. typ := types[name.idx]
 }	
-
-struct GenTable {
-	fn_name string
-mut:
-	types []string
-}
 
 // Holds import information scoped to the parsed file
 struct FileImportTable {
@@ -81,6 +74,7 @@ enum TypeCategory {
 }
 
 struct Var {
+pub:
 mut:
 	typ             string
 	name            string
@@ -106,13 +100,16 @@ mut:
 	line_nr         int
 	token_idx       int // this is a token index, which will be used by error reporting
 	is_for_var      bool
+	is_public       bool // for consts
 }
 
 struct Type {
+pub:
 mut:
 	mod            string
 	name           string
 	cat            TypeCategory
+	is_public      bool
 	fields         []Var
 	methods        []Fn
 	parent         string
@@ -125,7 +122,7 @@ mut:
 	// This information is needed in the first pass.
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
-	
+
 }
 
 struct TypeNode {
@@ -205,7 +202,7 @@ fn (f Fn) str() string {
 	return '$f.name($str_args) $f.typ'
 }
 
-fn (t &Table) debug_fns() string {
+pub fn (t &Table) debug_fns() string {
 	mut s := strings.new_builder(1000)
 	for _, f in t.fns {
 		s.writeln(f.name)
@@ -218,6 +215,7 @@ fn (t &Table) debug_fns() string {
 const (
 	number_types = ['number', 'int', 'i8', 'i16', 'u16', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
 	float_types  = ['f32', 'f64']
+	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
 
 fn is_number_type(typ string) bool {
@@ -236,8 +234,8 @@ fn new_table(obfuscate bool) &Table {
 	mut t := &Table {
 		obfuscate: obfuscate
 	}
-	t.register_type('int')
-	t.register_type('size_t')
+	t.register_builtin('int')
+	t.register_builtin('size_t')
 	t.register_type_with_parent('i8', 'int')
 	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('char', 'int') // for C functions only, to avoid warnings
@@ -246,20 +244,22 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('i64', 'int')
 	t.register_type_with_parent('u64', 'u32')
-	t.register_type('byteptr')
-	t.register_type('intptr')
-	t.register_type('f32')
-	t.register_type('f64')
-	t.register_type('rune')
-	t.register_type('bool')
-	t.register_type('void')
-	t.register_type('voidptr')
-	t.register_type('T')
-	t.register_type('va_list')
-	t.register_const('stdin', 'int', 'main')
-	t.register_const('stdout', 'int', 'main')
-	t.register_const('stderr', 'int', 'main')
-	t.register_const('errno', 'int', 'main')
+	t.register_builtin('byteptr')
+	t.register_builtin('intptr')
+	t.register_builtin('f32')
+	t.register_builtin('f64')
+	t.register_builtin('rune')
+	t.register_builtin('bool')
+	t.register_builtin('void')
+	t.register_builtin('voidptr')
+	t.register_builtin('va_list')
+	for c in reserved_type_param_names {
+		t.register_builtin(c)
+	}
+	t.register_const('stdin', 'int', 'main', true)
+	t.register_const('stdout', 'int', 'main', true)
+	t.register_const('stderr', 'int', 'main', true)
+	t.register_const('errno', 'int', 'main', true)
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -308,13 +308,14 @@ fn (table &Table) known_mod(mod string) bool {
 	return mod in table.modules
 }
 
-fn (t mut Table) register_const(name, typ, mod string) {
-	t.consts << Var {
+fn (t mut Table) register_const(name, typ, mod string, is_pub bool) {
+	t.consts << Var{
 		name: name
 		typ: typ
 		is_const: true
 		mod: mod
 		idx: -1
+		is_public: is_pub
 	}
 }
 
@@ -389,14 +390,14 @@ fn (t &Table) known_const(name string) bool {
 	return true
 }
 
-fn (t mut Table) register_type(typ string) {
+fn (t mut Table) register_builtin(typ string) {
 	if typ.len == 0 {
 		return
 	}
 	if typ in t.typesmap {
 		return
 	}
-	t.typesmap[typ] = Type{name:typ}
+	t.typesmap[typ] = Type{name:typ, is_public:true}
 }
 
 fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
@@ -404,6 +405,7 @@ fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
 		name: strtyp
 		parent: parent
 		mod: p.mod
+		is_public: true
 	}
 	p.table.register_type2(typ)
 }
@@ -415,6 +417,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 	t.typesmap[typ] = Type {
 		name: typ
 		parent: parent
+		is_public: true
 		//mod: mod
 	}
 }
@@ -585,6 +588,13 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if p.pref.translated {
 		return true
 	}
+
+	// generic return type
+	if expected == '_ANYTYPE_' {
+		p.cur_fn.typ = got
+		return true
+	}
+
 	// variadic
 	if expected.starts_with('...') {
 		expected = expected.right(3)
@@ -665,7 +675,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('fn ') && (expected.ends_with('fn') ||
 	expected.ends_with('Fn')) {
 		return true
-	}	
+	}
 	// Allow pointer arithmetic
 	if expected=='void*' && got=='int' {
 		return true
@@ -676,7 +686,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	//}
 	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
-	}	
+	}
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
@@ -749,7 +759,7 @@ fn (t &Table) has_at_least_one_test_fn() bool {
 	for _, f in t.fns {
 		if f.name.starts_with('main__test_') {
 			return true
-		}	
+		}
 	}
 	return false
 }
@@ -778,7 +788,7 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 	else if typ.starts_with('fn (') {
 		T := table.find_type(typ)
 		if T.name == '' {
-			println('this should never happen')
+			eprintln('function type `$typ` not found')
 			exit(1)
 		}
 		str_args := T.func.str_args(table)
@@ -811,32 +821,6 @@ fn is_valid_int_const(val, typ string) bool {
 	return true
 }
 
-fn (t mut Table) register_generic_fn(fn_name string) {
-	t.generic_fns << GenTable{fn_name, []string}
-}
-
-fn (t &Table) fn_gen_types(fn_name string) []string {
-	for _, f in t.generic_fns {
-		if f.fn_name == fn_name {
-			return f.types
-		}
-	}
-	verror('function $fn_name not found')
-	return []string
-}
-
-// `foo<Bar>()`
-// fn_name == 'foo'
-// typ == 'Bar'
-fn (t mut Table) register_generic_fn_type(fn_name, typ string) {
-	for i, f in t.generic_fns {
-		if f.fn_name == fn_name {
-			t.generic_fns[i].types << typ
-			return
-		}
-	}
-}
-
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	t := p.table.find_type(typ)
 	if t.cat == .enum_ {
@@ -864,6 +848,11 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 		return p.typ_to_fmt(t.parent, level+1)
 	}
 	return ''
+}
+
+fn type_to_safe_str(typ string) string {
+	r := typ.replace(' ','').replace('(','_').replace(')','_')
+	return r
 }
 
 fn is_compile_time_const(s_ string) bool {

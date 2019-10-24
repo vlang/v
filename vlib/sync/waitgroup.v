@@ -4,7 +4,7 @@
 
 module sync
 
-struct WaitGroup {
+pub struct WaitGroup {
 mut:
 	mu Mutex
 	active int

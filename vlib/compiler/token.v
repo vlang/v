@@ -4,6 +4,15 @@
 
 module compiler
 
+struct Token {
+	tok      TokenKind  // the token number/enum; for quick comparisons
+	lit      string // literal representation of the token
+	line_nr  int // the line number in the source where the token occured
+	name_idx int // name table index for O(1) lookup
+	col      int // the column where the token ends
+}
+
+
 enum TokenKind {
 	eof
 	name        // user
@@ -84,7 +93,7 @@ enum TokenKind {
 	key_enum
 	key_false
 	key_for
-	func
+	key_fn
 	key_global
 	key_go
 	key_goto
@@ -110,6 +119,7 @@ enum TokenKind {
 	key_union
 	key_pub
 	key_static
+	key_unsafe
 	keyword_end
 }
 
@@ -203,13 +213,14 @@ fn build_token_str() []string {
 	s[TokenKind.key_for] = 'for'
 	s[TokenKind.key_switch] = 'switch'
 	s[TokenKind.key_case] = 'case'
-	s[TokenKind.func] = 'fn'
+	s[TokenKind.key_fn] = 'fn'
 	s[TokenKind.key_true] = 'true'
 	s[TokenKind.key_false] = 'false'
 	s[TokenKind.key_continue] = 'continue'
 	s[TokenKind.key_break] = 'break'
 	s[TokenKind.key_import] = 'import'
 	s[TokenKind.key_embed] = 'embed'
+	s[TokenKind.key_unsafe] = 'unsafe'
 	//Tokens[key_typeof] = 'typeof'
 	s[TokenKind.key_default] = 'default'
 	s[TokenKind.key_enum] = 'enum'
@@ -250,12 +261,8 @@ fn (t TokenKind) str() string {
 }
 
 fn (t TokenKind) is_decl() bool {
-	// TODO i
-	//return t in [.key_enum, .key_interface, .func, .typ, .key_const,
-		//.key_import_const, .key_struct, .key_pub, .eof]
-	return t == .key_enum || t == .key_interface || t == .func ||
-	t == .key_struct || t == .key_type ||
-	t == .key_const || t == .key_import_const || t == .key_pub || t == .eof
+	return t in [TokenKind.key_enum, .key_interface, .key_fn,
+		.key_struct ,.key_type,	.key_const,  .key_import_const, .key_pub, .eof]
 }
 
 const (
@@ -281,4 +288,14 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 	}
 	return false
 }
+
+fn (t Token) str() string {
+	if t.tok == .str {
+		return "'$t.lit'"
+	}	
+	if t.tok < .plus {
+		return t.lit // string, number etc
+	}	
+	return t.tok.str()
+}	
 

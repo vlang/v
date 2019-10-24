@@ -23,6 +23,7 @@ fn opt_ok(data voidptr, size int) Option {
 	return res
 }
 
+// used internally when returning `none`
 fn opt_none() Option {
 	return Option{ is_none: true }
 }
