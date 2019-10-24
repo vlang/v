@@ -55,7 +55,7 @@ pub fn trailing_zeros16(x u16) int {
 		return 16
 	}
 	// see comment in trailing_zeros64
-	return int(de_bruijn32tab[u32(x&-x)*de_bruijn32>>(32-5)])
+	return int(de_bruijn32tab[u32(x&-x)*de_bruijn32>>u32(32-5)])
 }
 
 // trailing_zeros32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
@@ -64,7 +64,7 @@ pub fn trailing_zeros32(x u32) int {
 		return 32
 	}
 	// see comment in trailing_zeros64
-	return int(de_bruijn32tab[(x&-x)*de_bruijn32>>(32-5)])
+	return int(de_bruijn32tab[(x&-x)*de_bruijn32>>u32(32-5)])
 }
 
 // trailing_zeros64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
@@ -83,7 +83,7 @@ pub fn trailing_zeros64(x u64) int {
 	// find by how many bits it was shifted by looking at which six bit
 	// substring ended up at the top of the word.
 	// (Knuth, volume 4, section 7.3.1)
-	return int(de_bruijn64tab[(x&-x)*de_bruijn64>>(64-6)])
+	return int(de_bruijn64tab[(x&-x)*de_bruijn64>>u64(64-6)])
 }
 
 // --- OnesCount ---

@@ -182,7 +182,7 @@ pub fn (s string) replace(rep, with string) string {
 }
 
 pub fn (s string) int() int {
-	return strconv.parse_int(s, 0, 32)
+	return int(strconv.parse_int(s, 0, 32))
 }
 
 
@@ -199,7 +199,7 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return strconv.parse_uint(s, 0, 32)
+	return u32(strconv.parse_uint(s, 0, 32))
 }
 
 pub fn (s string) u64() u64 {

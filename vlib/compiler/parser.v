@@ -2404,6 +2404,8 @@ fn (p &Parser) fileis(s string) bool {
 
 // in and dot have higher priority than `!`
 fn (p mut Parser) indot_expr() string {
+	tok_n1 := p.tokens[p.token_idx-1]
+	tok_n2 := p.tokens[p.token_idx].tok
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
 	if p.tok == .dot  {
@@ -2444,6 +2446,14 @@ fn (p mut Parser) indot_expr() string {
 		p.gen(')')
 		return 'bool'
 	}
+
+	if tok_n1.tok == .number && p.tok == tok_n2 && p.is_unsigned_intlit {
+		// println('found literal `$tok_n1.lit`')
+		p.is_unsigned_intlit = true
+	} else {
+		p.is_unsigned_intlit = false
+	}
+
 	return typ
 }
 
@@ -2453,8 +2463,13 @@ fn (p mut Parser) expression() string {
 		//println('expression() pass=$p.pass tok=')
 		//p.print_tok()
 	//}
+	lit := p.lit
 	ph := p.cgen.add_placeholder()
 	mut typ := p.indot_expr()
+	if p.is_unsigned_intlit && !is_valid_int_const(lit, p.expected_type) {
+		needed_type := integer_types[integer_vbits.index(p.intlit_needed_bits)]
+		p.error('literal `$lit` overflows `$p.expected_type`; add `$needed_type(...)` cast')
+	}
 	is_str := typ=='string'
 	is_ustr := typ=='ustring'
 	op_idx := p.token_idx-1
@@ -2495,14 +2510,14 @@ fn (p mut Parser) expression() string {
 			p.next()
 			p.gen(' << ')
 			p.check_types_with_token_index(p.expression(), typ, op_idx)
-			return 'int'
+			return typ
 		}
 	}
 	if p.tok == .righ_shift {
 		p.next()
 		p.gen(' >> ')
 		p.check_types_with_token_index(p.expression(), typ, op_idx)
-		return 'int'
+		return typ
 	}
 	// + - | & ^
 	for p.tok in [TokenKind.plus, .minus, .pipe, .amp, .xor] {
@@ -2576,8 +2591,8 @@ fn (p mut Parser) term() string {
 	//if p.fileis('fn_test') {
 		//println('\nterm() $line_nr')
 	//}
-	left_val := p.lit
-	left_idx := p.token_idx-1
+	tok_n1 := p.tokens[p.token_idx-1]
+	tok_n2 := p.tokens[p.token_idx].tok
 	typ := p.unary()
 
 	// `*` on a newline? Can't be multiplication, only dereference
@@ -2585,6 +2600,7 @@ fn (p mut Parser) term() string {
 		return typ
 	}
 	op_idx := p.token_idx-1
+	// * / %
 	for p.tok == .mul || p.tok == .div || p.tok == .mod {
 		tok := p.tok
 		is_div := tok == .div
@@ -2601,6 +2617,13 @@ fn (p mut Parser) term() string {
 		}
 		p.check_types_with_token_index(p.unary(), typ, op_idx)
 	}
+
+	if tok_n1.tok == .number && p.tok == tok_n2 && p.is_unsigned_intlit {
+		p.is_unsigned_intlit = true
+	} else {
+		p.is_unsigned_intlit = false
+	}
+
 	return typ
 }
 
@@ -2671,10 +2694,6 @@ fn (p mut Parser) factor() string {
 				}
 				// println('literal $val needs $p.intlit_needed_bits bits')
 			}
-		}
-		if p.expected_type != '' && !is_valid_int_const(p.lit, p.expected_type) {
-			needed_type := integer_types[integer_vbits.index(p.intlit_needed_bits)]
-			p.error('literal `$p.lit` overflows `$p.expected_type`; add `$needed_type(...)` cast')
 		}
 		p.gen(p.lit)
 		p.fgen(p.lit)

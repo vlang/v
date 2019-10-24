@@ -76,10 +76,10 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	}
 
 	// Last round uses s-box directly and XORs to produce output.
-	s0 = SBox0[t0>>24]<<24 | SBox0[t1>>16&0xff]<<16 | u32(SBox0[t2>>8&0xff]<<8) | SBox0[t3&u32(0xff)]
-	s1 = SBox0[t1>>24]<<24 | SBox0[t2>>16&0xff]<<16 | u32(SBox0[t3>>8&0xff]<<8) | SBox0[t0&u32(0xff)]
-	s2 = SBox0[t2>>24]<<24 | SBox0[t3>>16&0xff]<<16 | u32(SBox0[t0>>8&0xff]<<8) | SBox0[t1&u32(0xff)]
-	s3 = SBox0[t3>>24]<<24 | SBox0[t0>>16&0xff]<<16 | u32(SBox0[t1>>8&0xff]<<8) | SBox0[t2&u32(0xff)]
+	s0 = (SBox0[t0>>24]<<24) | (SBox0[t1>>16&0xff]<<16) | (SBox0[t2>>8&0xff]<<8) | (SBox0[t3&u32(0xff)])
+	s1 = (SBox0[t1>>24]<<24) | (SBox0[t2>>16&0xff]<<16) | (SBox0[t3>>8&0xff]<<8) | (SBox0[t0&u32(0xff)])
+	s2 = (SBox0[t2>>24]<<24) | (SBox0[t3>>16&0xff]<<16) | (SBox0[t0>>8&0xff]<<8) | (SBox0[t1&u32(0xff)])
+	s3 = (SBox0[t3>>24]<<24) | (SBox0[t0>>16&0xff]<<16) | (SBox0[t1>>8&0xff]<<8) | (SBox0[t2&u32(0xff)])
 
 	s0 ^= xk[k+0]
 	s1 ^= xk[k+1]
@@ -128,10 +128,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	}
 
 	// Last round uses s-box directly and XORs to produce output.
-	s0 = u32(SBox1[t0>>24])<<24 | u32(SBox1[t3>>16&0xff])<<16 | u32(SBox1[t2>>8&0xff]<<8) | u32(SBox1[t1&u32(0xff)])
-	s1 = u32(SBox1[t1>>24])<<24 | u32(SBox1[t0>>16&0xff])<<16 | u32(SBox1[t3>>8&0xff]<<8) | u32(SBox1[t2&u32(0xff)])
-	s2 = u32(SBox1[t2>>24])<<24 | u32(SBox1[t1>>16&0xff])<<16 | u32(SBox1[t0>>8&0xff]<<8) | u32(SBox1[t3&u32(0xff)])
-	s3 = u32(SBox1[t3>>24])<<24 | u32(SBox1[t2>>16&0xff])<<16 | u32(SBox1[t1>>8&0xff]<<8) | u32(SBox1[t0&u32(0xff)])
+	s0 = (SBox1[t0>>24]<<24) | (SBox1[t3>>16&0xff]<<16) | (SBox1[t2>>8&0xff]<<8) | (SBox1[t1&u32(0xff)])
+	s1 = (SBox1[t1>>24]<<24) | (SBox1[t0>>16&0xff]<<16) | (SBox1[t3>>8&0xff]<<8) | (SBox1[t2&u32(0xff)])
+	s2 = (SBox1[t2>>24]<<24) | (SBox1[t1>>16&0xff]<<16) | (SBox1[t0>>8&0xff]<<8) | (SBox1[t3&u32(0xff)])
+	s3 = (SBox1[t3>>24]<<24) | (SBox1[t2>>16&0xff]<<16) | (SBox1[t1>>8&0xff]<<8) | (SBox1[t0&u32(0xff)])
 
 	s0 ^= xk[k+0]
 	s1 ^= xk[k+1]
@@ -147,10 +147,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 
 // Apply SBox0 to each byte in w.
 fn subw(w u32) u32 {
-	return u32(SBox0[w>>24])<<24 |
-		   u32(SBox0[w>>16&0xff]<<16) |
-		   u32(SBox0[w>>8&0xff]<<8) |
-		   u32(SBox0[w&u32(0xff)])
+	return (SBox0[w>>24]<<24) |
+		   (SBox0[w>>16&0xff]<<16) |
+		   (SBox0[w>>8&0xff]<<8) |
+		   (SBox0[w&u32(0xff)])
 }
 
 // Rotate

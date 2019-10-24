@@ -92,12 +92,21 @@ fn test_implicit_conversions() {
 	assert byte(e) == byte(200)
 }
 
+fn test_all_conversions() {
+	assert i16(1) + byte(1) + i8(1) == 3
+	assert u16(1) + byte(1) == 2
+	assert int(1) + u16(1) + i16(1) + byte(1) + i8(1) == 5
+	assert u32(1) + u16(1) + byte(1) == 3
+	assert i64(1) + u32(1) + int(1) + u16(1) + i16(1) + byte(1) + i8(1) == 7
+	assert u64(1) + u32(1) + u16(1) + byte(1) == 4
+}
+
 fn test_shift() {
-	val := 0x13000000
-	assert byte(u32(val & 0xff000000) >> 24) == 0x13
+	val := u32(0x13000000)
+	assert byte((val & 0xff000000) >> 24) == 0x13
 	mut val2 := byte(0x50)
 	// val2 += 0x150		// overflows byte
-	val2 += byte(u16(0x301) & 3)
+	val2 += byte(u32(0x301) & 3)
 	assert val2 == 0x51
 }
 
