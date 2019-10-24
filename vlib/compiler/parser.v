@@ -1850,7 +1850,7 @@ fn (p mut Parser) name_expr() string {
 		return p.get_const_type(name, ptr)
 	}
 
-	// Function (not method btw, methods are handled in dot())	
+	// Function (not method, methods are handled in `.dot()`)	
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
 		return p.get_undefined_fn_type(name, orig_name)
 	}
@@ -1964,6 +1964,9 @@ fn (p mut Parser) get_const_type(name string, is_ptr bool) string {
 		// c.ptr = true
 		p.gen('& /*const*/ ')
 	}
+	if !c.is_public && c.mod != p.mod {
+		p.warn('constant `$c.name` is private')
+	}	
 	mut typ := p.var_expr(c)
 	if is_ptr {
 		typ += '*'

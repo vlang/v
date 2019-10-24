@@ -9,7 +9,7 @@ import (
 	strings
 )
 
-const (
+pub const (
 	Version = '0.1.21'
 )
 

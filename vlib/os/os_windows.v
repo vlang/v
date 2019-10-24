@@ -3,7 +3,7 @@ module os
 #flag -lws2_32
 #include <winsock2.h>
 
-const (
+pub const (
 	path_separator = '\\'
 )
 
