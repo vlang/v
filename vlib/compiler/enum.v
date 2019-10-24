@@ -49,7 +49,6 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		if p.tok == .comma {
 			p.next()
 		}
-		// TODO free name [memory]
 		val++
 	}
 	p.table.register_type2(Type {

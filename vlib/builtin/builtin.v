@@ -17,11 +17,6 @@ fn init() {
 	}
 }
 
-fn C.memcpy(byteptr, byteptr, int)
-fn C.memmove(byteptr, byteptr, int)
-//fn C.malloc(int) byteptr
-fn C.realloc(byteptr, int) byteptr
-
 pub fn exit(code int) {
 	C.exit(code)
 }
