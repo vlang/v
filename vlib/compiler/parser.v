@@ -2456,7 +2456,7 @@ fn (p mut Parser) indot_expr() string {
 	if p.tok == .key_in {
 		p.fgen(' ')
 		p.check(.key_in)
-		//if p.pref.is_debug && p.tok == .lsbr {
+		p.expected_type = typ // this allows `foo in [.val1, .val2, .val3]`
 		if p.tok == .lsbr {
 			// a in [1,2,3] optimization => `a == 1 || a == 2 || a == 3`
 			// avoids an allocation

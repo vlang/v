@@ -22,3 +22,9 @@ fn test_enum() {
 	color = .green
 	assert color == Color.green
 }
+
+fn test_in() {
+	color := Color.red
+	num := 3
+	assert color in [.red, .green]
+}	
