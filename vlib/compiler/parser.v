@@ -330,13 +330,14 @@ fn (p mut Parser) parse(pass Pass) {
 				p.check(.name)
 			}
 		case TokenKind.key_pub:
-			if p.peek() == .key_fn {
-				p.fn_decl()
-			} else if p.peek() == .key_struct {
-				p.error('structs can\'t be declared public *yet*')
-				// TODO public structs
-			} else {
-				p.error('wrong pub keyword usage')
+			next := p.peek()
+			match next {
+				.key_fn     {	p.fn_decl()     }
+				.key_const  {	p.const_decl()  }
+				.key_struct {	p.struct_decl() }
+				else {
+					p.error('wrong pub keyword usage')
+				}
 			}
 		case TokenKind.key_fn:
 			p.fn_decl()
@@ -493,6 +494,10 @@ fn (p mut Parser) import_statement() {
 }
 
 fn (p mut Parser) const_decl() {
+	is_pub := p.tok == .key_pub
+	if is_pub {
+		p.next()
+	}	
 	if p.tok == .key_import {
 		p.error_with_token_index(
 			'`import const` was removed from the language, ' +
@@ -530,7 +535,7 @@ fn (p mut Parser) const_decl() {
 			} else {
 				typ = p.get_type()
 			}
-			p.table.register_const(name, typ, p.mod)
+			p.table.register_const(name, typ, p.mod, is_pub)
 			p.cgen.consts << ('extern ' +
 				p.table.cgen_name_type_pair(name, typ)) + ';'
 			continue // Don't generate C code when building a .vh file
@@ -542,7 +547,7 @@ fn (p mut Parser) const_decl() {
 			p.error('redefinition of `$name`')
 		}
 		if p.first_pass() {
-			p.table.register_const(name, typ, p.mod)
+			p.table.register_const(name, typ, p.mod, is_pub)
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
 		if my_const := p.v.table.find_const(name) {
@@ -650,6 +655,10 @@ fn key_to_type_cat(tok TokenKind) TypeCategory {
 
 // also unions and interfaces
 fn (p mut Parser) struct_decl() {
+	is_pub := p.tok == .key_pub
+	if is_pub {
+		p.next()
+	}	
 	// V can generate Objective C for integration with Cocoa
 	// `[objc_interface:ParentInterface]`
 	is_objc := p.attr.starts_with('objc_interface')
@@ -730,6 +739,7 @@ fn (p mut Parser) struct_decl() {
 			is_c: is_c
 			cat: cat
 			parent: objc_parent
+			is_public: is_pub
 		}
 	}
 	// Struct `C.Foo` declaration, no body
@@ -740,7 +750,7 @@ fn (p mut Parser) struct_decl() {
 	p.fgen(' ')
 	p.check(.lcbr)
 	// Struct fields
-	mut is_pub := false
+	mut is_pub_field := false
 	mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
 /*
@@ -761,10 +771,10 @@ fn (p mut Parser) struct_decl() {
 	mut did_gen_something := false
 	for p.tok != .rcbr {
 		if p.tok == .key_pub {
-			if is_pub {
+			if is_pub_field {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
 			}
-			is_pub = true
+			is_pub_field = true
 			p.fmt_dec()
 			p.check(.key_pub)
 			if p.tok != .key_mut {
@@ -813,7 +823,7 @@ fn (p mut Parser) struct_decl() {
 			continue
 		}
 		// `pub` access mod
-		access_mod := if is_pub{AccessMod.public} else { AccessMod.private}
+		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fgen(' ')
 		field_type := p.get_type()
 		if field_type == name {
