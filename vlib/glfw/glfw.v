@@ -64,7 +64,7 @@ struct WinCfg {
 
 // data  *C.GLFWwindow
 // TODO change data to cobj
-struct Window {
+pub struct Window {
 	data  voidptr
 	title string
 	mx    int
