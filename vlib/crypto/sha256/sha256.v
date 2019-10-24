@@ -14,31 +14,31 @@ import encoding.binary
 
 const (
 	// The size of a SHA256 checksum in bytes.
-	Size = 32
+	size = 32
 	// The size of a SHA224 checksum in bytes.
-	Size224 = 28
+	size224 = 28
 	// The blocksize of SHA256 and SHA224 in bytes.
-	BlockSize = 64
+	block_size = 64
 )
 
 const (
-	Chunk     = 64
-	Init0     = 0x6A09E667
-	Init1     = 0xBB67AE85
-	Init2     = 0x3C6EF372
-	Init3     = 0xA54FF53A
-	Init4     = 0x510E527F
-	Init5     = 0x9B05688C
-	Init6     = 0x1F83D9AB
-	Init7     = 0x5BE0CD19
-	Init0_224 = 0xC1059ED8
-	Init1_224 = 0x367CD507
-	Init2_224 = 0x3070DD17
-	Init3_224 = 0xF70E5939
-	Init4_224 = 0xFFC00B31
-	Init5_224 = 0x68581511
-	Init6_224 = 0x64F98FA7
-	Init7_224 = 0xBEFA4FA4
+	chunk     = 64
+	init0     = 0x6A09E667
+	init1     = 0xBB67AE85
+	init2     = 0x3C6EF372
+	init3     = 0xA54FF53A
+	init4     = 0x510E527F
+	init5     = 0x9B05688C
+	init6     = 0x1F83D9AB
+	init7     = 0x5BE0CD19
+	init0_224 = 0xC1059ED8
+	init1_224 = 0x367CD507
+	init2_224 = 0x3070DD17
+	init3_224 = 0xF70E5939
+	init4_224 = 0xFFC00B31
+	init5_224 = 0x68581511
+	init6_224 = 0x64F98FA7
+	init7_224 = 0xBEFA4FA4
 )
 
 // digest represents the partial evaluation of a checksum.
@@ -53,25 +53,25 @@ mut:
 
 fn (d mut Digest) reset() {
 	d.h = [u32(0)].repeat(8)
-	d.x = [byte(0)].repeat(Chunk)
+	d.x = [byte(0)].repeat(chunk)
 	if !d.is224 {
-		d.h[0] = u32(Init0)
-		d.h[1] = u32(Init1)
-		d.h[2] = u32(Init2)
-		d.h[3] = u32(Init3)
-		d.h[4] = u32(Init4)
-		d.h[5] = u32(Init5)
-		d.h[6] = u32(Init6)
-		d.h[7] = u32(Init7)
+		d.h[0] = u32(init0)
+		d.h[1] = u32(init1)
+		d.h[2] = u32(init2)
+		d.h[3] = u32(init3)
+		d.h[4] = u32(init4)
+		d.h[5] = u32(init5)
+		d.h[6] = u32(init6)
+		d.h[7] = u32(init7)
 	} else {
-		d.h[0] = u32(Init0_224)
-		d.h[1] = u32(Init1_224)
-		d.h[2] = u32(Init2_224)
-		d.h[3] = u32(Init3_224)
-		d.h[4] = u32(Init4_224)
-		d.h[5] = u32(Init5_224)
-		d.h[6] = u32(Init6_224)
-		d.h[7] = u32(Init7_224)
+		d.h[0] = u32(init0_224)
+		d.h[1] = u32(init1_224)
+		d.h[2] = u32(init2_224)
+		d.h[3] = u32(init3_224)
+		d.h[4] = u32(init4_224)
+		d.h[5] = u32(init5_224)
+		d.h[6] = u32(init6_224)
+		d.h[7] = u32(init7_224)
 	}
 	d.nx = 0
 	d.len = 0
@@ -99,7 +99,7 @@ fn (d mut Digest) write(p_ []byte) ?int {
 	if d.nx > 0 {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
-		if d.nx == Chunk {
+		if d.nx == chunk {
 			block(mut d, d.x)
 			d.nx = 0
 		}
@@ -109,8 +109,8 @@ fn (d mut Digest) write(p_ []byte) ?int {
 			p = p.right(n)
 		}
 	}
-	if p.len >= Chunk {
-		n := p.len &~ (Chunk - 1)
+	if p.len >= chunk {
+		n := p.len &~ (chunk - 1)
 		block(mut d, p.left(n))
 		if n >= p.len {
 			p = []byte
@@ -130,7 +130,7 @@ fn (d &Digest) sum(b_in []byte) []byte {
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	if d0.is224 {
-		for b in hash.left(Size224) {
+		for b in hash.left(size224) {
 			b_out << b
 		}
 	} else {
@@ -161,7 +161,7 @@ fn (d mut Digest) checksum() []byte {
 		panic('d.nx != 0')
 	}
 
-	digest := [byte(0)].repeat(Size)
+	digest := [byte(0)].repeat(size)
 
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
@@ -194,8 +194,8 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data)
 	sum := d.checksum()
-	mut sum224 := [byte(0)].repeat(Size224)
-	copy(sum224, sum.left(Size224))
+	mut sum224 := [byte(0)].repeat(size224)
+	copy(sum224, sum.left(size224))
 	return sum224
 }
 
@@ -207,12 +207,12 @@ fn block(dig mut Digest, p []byte) {
 
 pub fn (d &Digest) size() int {
 	if !d.is224 {
-		return Size
+		return size
 	}
-	return Size224
+	return size224
 }
 
-pub fn (d &Digest) block_size() int { return BlockSize }
+pub fn (d &Digest) block_size() int { return block_size }
 
 pub fn hexhash(s string) string { return sum256(s.bytes()).hex() }
 pub fn hexhash_224(s string) string { return sum224(s.bytes()).hex() }

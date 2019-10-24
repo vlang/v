@@ -11,13 +11,13 @@ fn test_crypto_aes() {
 	block := aes.new_cipher(key)
 	// The IV needs to be unique, but not secure. Therefore it's common to
 	// include it at the beginning of the ciphertext.
-	if ciphertext.len < aes.BlockSize {
+	if ciphertext.len < aes.block_size {
 		panic('ciphertext too short')
 	}
-	iv := ciphertext.left(aes.BlockSize)
-	ciphertext = ciphertext.right(aes.BlockSize)
+	iv := ciphertext.left(aes.block_size)
+	ciphertext = ciphertext.right(aes.block_size)
 	// CBC mode always works in whole blocks.
-	if ciphertext.len%aes.BlockSize != 0 {
+	if ciphertext.len%aes.block_size != 0 {
 		panic('ciphertext is not a multiple of the block size')
 	}
 	mut mode := aes.new_cbc(block, iv)

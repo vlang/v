@@ -13,7 +13,7 @@ import (
 
 const (
 	// The AES block size in bytes.
-	BlockSize = 16
+	block_size = 16
 )
 
 // A cipher is an instance of AES encryption using a particular key.
@@ -39,17 +39,17 @@ pub fn new_cipher(key []byte) AesCipher {
 	return new_cipher_generic(key)
 }
 
-pub fn (c &AesCipher) block_size() int { return BlockSize }
+pub fn (c &AesCipher) block_size() int { return block_size }
 
 pub fn (c &AesCipher) encrypt(dst, src []byte) {
-	if src.len < BlockSize {
+	if src.len < block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < BlockSize {
+	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
-	// if subtle.inexact_overlap(dst[:BlockSize], src[:BlockSize]) {
-	if subtle.inexact_overlap(dst.left(BlockSize), src.left(BlockSize)) {
+	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
+	if subtle.inexact_overlap(dst.left(block_size), src.left(block_size)) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -57,13 +57,13 @@ pub fn (c &AesCipher) encrypt(dst, src []byte) {
 }
 
 pub fn (c &AesCipher) decrypt(dst, src []byte) {
-	if src.len < BlockSize {
+	if src.len < block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < BlockSize {
+	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap(dst.left(BlockSize), src.left(BlockSize)) {
+	if subtle.inexact_overlap(dst.left(block_size), src.left(block_size)) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
