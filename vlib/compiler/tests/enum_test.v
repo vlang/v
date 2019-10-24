@@ -29,3 +29,14 @@ fn test_in() {
 	assert color in [.red, .green]
 	assert num == 3
 }	
+
+fn test_match() {
+	color := Color.red
+	num := 3
+	match color {
+		.red { assert true }
+		.green { assert false }
+		else { assert false }
+	}	
+	assert num == 3
+}	

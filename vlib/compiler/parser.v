@@ -300,8 +300,8 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
-		switch p.tok {
-		case .key_import:
+		match p.tok {
+		.key_import {
 			if p.peek() == .key_const {
 				p.const_decl()
 			}
@@ -312,7 +312,8 @@ fn (p mut Parser) parse(pass Pass) {
 					p.fgenln('')
 				}
 			}
-		case TokenKind.key_enum:
+		}
+		.key_enum {
 			p.next()
 			if p.tok == .name {
 				p.fgen('enum ')
@@ -331,7 +332,8 @@ fn (p mut Parser) parse(pass Pass) {
 			else {
 				p.check(.name)
 			}
-		case TokenKind.key_pub:
+		}
+		.key_pub {
 			next := p.peek()
 			match next {
 				.key_fn     {	p.fn_decl()     }
@@ -342,27 +344,34 @@ fn (p mut Parser) parse(pass Pass) {
 					p.error('wrong pub keyword usage')
 				}
 			}
-		case TokenKind.key_fn:
+		}
+		.key_fn {
 			p.fn_decl()
-		case TokenKind.key_type:
+		}
+		.key_type {
 			p.type_decl()
-		case TokenKind.lsbr:
+		}
+		.lsbr {
 			// `[` can only mean an [attribute] before a function
 			// or a struct definition
 			p.attribute()
-		case TokenKind.key_struct, TokenKind.key_interface, TokenKind.key_union, TokenKind.lsbr:
+		}
+		.key_struct, .key_interface, .key_union, .lsbr {
 			p.struct_decl()
-		case TokenKind.key_const:
+		}
+		.key_const {
 			p.const_decl()
-		case TokenKind.hash:
-			// insert C code, TODO this is going to be removed ASAP
-			// some libraries (like UI) still have lots of C code
+		}
+		.hash {
+			// insert C code (only for ui module)
 			// # puts("hello");
 			p.chash()
-		case TokenKind.dollar:
+		}
+		.dollar {
 			// $if, $else
 			p.comp_time()
-		case TokenKind.key_global:
+		}
+		.key_global {
 			if !p.pref.translated && !p.pref.is_live &&
 				!p.builtin_mod && !p.pref.building_v && !os.getwd().contains('/volt') {
 				p.error('__global is only allowed in translated code')
@@ -384,7 +393,8 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.cgen.nogen {
 				p.cgen.consts << g
 			}
-		case TokenKind.eof:
+		}
+		.eof {
 			//p.log('end of parse()')
 			// TODO: check why this was added? everything seems to work
 			// without it, and it's already happening in fn_decl
@@ -404,7 +414,8 @@ fn (p mut Parser) parse(pass Pass) {
 				out.close()
 			}
 			return
-		default:
+		}
+		else {
 			// no `fn main`, add this "global" statement to cgen.fn_main
 			if p.pref.is_script && !p.pref.is_test {
 				// cur_fn is empty since there was no fn main declared
@@ -436,6 +447,7 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			else {
 				p.error('unexpected token `${p.strtok()}`')
+			}
 			}
 		}
 	}
