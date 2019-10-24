@@ -363,6 +363,7 @@ fn sort_structs(types []Type) []Type {
 	if !dep_graph_sorted.acyclic {
 		verror('cgen.sort_structs(): the following structs form a dependancy cycle:\n' +
 			dep_graph_sorted.display_cycles() +
+			'\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
