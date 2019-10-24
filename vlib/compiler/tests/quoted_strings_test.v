@@ -42,8 +42,15 @@ fn test_interpolated_variables_in_curly_braces_with_format_params(){
 	apostrophed_s := ' ${s:10s} '
 	assert preformatted_string == quoted_s
 	assert preformatted_string == apostrophed_s
+	assert true
+	assert s > 'x'
+	assert false
+	assert is_matching('a','b') > 10
 }
 
+fn is_matching(s1 string, s2 string) int {
+	return s1.len - s2.len
+}
 ///////////////////////////////////////////////////////////////////////////////
 
 /* TODO: V error: C error
