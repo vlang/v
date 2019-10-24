@@ -4,14 +4,14 @@
 
 module gx
 
-struct Color {
+pub struct Color {
 pub:
 	r int
 	g int
 	b int
 }
 
-const (	
+pub const (	
 	// Primary colors
 	Blue   = Color { r: 0, g: 0, b: 255 }
 	Red    = Color { r: 255, g: 0, b: 0 }

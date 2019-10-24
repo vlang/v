@@ -320,10 +320,12 @@ fn (p mut Parser) parse(pass Pass) {
 				p.fgen(' ')
 				p.enum_decl(name)
 			}
-			// enum without a name, only allowed in code, translated from C
-			// it's a very bad practice in C as well, but is used unfortunately (for example, by DOOM)
-			// such fields are basically int consts
 			else if p.pref.translated {
+				// enum without a name, only allowed in code,
+				// translated from C. it's a very bad practice
+				// in C as well, but is used unfortunately
+				// (for example, by DOOM). such fields are
+				// basically int consts
 				p.enum_decl('int')
 			}
 			else {
@@ -335,6 +337,7 @@ fn (p mut Parser) parse(pass Pass) {
 				.key_fn     {	p.fn_decl()     }
 				.key_const  {	p.const_decl()  }
 				.key_struct {	p.struct_decl() }
+				.key_enum   {	p.enum_decl('') }
 				else {
 					p.error('wrong pub keyword usage')
 				}
@@ -1101,7 +1104,7 @@ fn (p mut Parser) get_type() string {
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && t.name != '' {
-			p.warn('type `$t.name` is private')
+			p.error('type `$t.name` is private')
 		}	
 	}
 	if typ == 'void' {

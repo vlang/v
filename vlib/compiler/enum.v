@@ -6,6 +6,12 @@ module compiler
 
 fn (p mut Parser) enum_decl(_enum_name string) {
 	mut enum_name := _enum_name
+	is_pub := p.tok == .key_pub
+	if is_pub {
+		p.next()
+		p.check(.key_enum)
+		enum_name = p.check_name()
+	}	
 	// Specify full type name
 	if !p.builtin_mod && p.mod != 'main' {
 		enum_name = p.prepend_mod(enum_name)
@@ -49,6 +55,7 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		parent: 'int'
 		cat: TypeCategory.enum_
 		enum_vals: fields.clone()
+		is_public: is_pub
 	})
 	p.check(.rcbr)
 	p.fgenln('\n')

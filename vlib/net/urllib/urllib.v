@@ -305,7 +305,7 @@ fn escape(s string, mode EncodingMode) string {
 //
 // URL's String method uses the escaped_path method to obtain the path. See the
 // escaped_path method for more details.
-struct URL {
+pub struct URL {
 pub: mut:
 	scheme      string
 	opaque      string    // encoded opaque data
