@@ -472,7 +472,7 @@ fn (p mut Parser) import_statement() {
 	if p.tok != .name {
 		p.error('bad import format')
 	}
-	if p.peek() == .number { // && p.scanner.text[p.scanner.pos + 1] == `.` {
+	if p.peek() == .number {
 		p.error('bad import format. module/submodule names cannot begin with a number')
 	}
 	import_tok_idx := p.token_idx-1
@@ -513,14 +513,6 @@ fn (p mut Parser) const_decl() {
 	if is_pub {
 		p.next()
 	}	
-	if p.tok == .key_import {
-		p.error_with_token_index(
-			'`import const` was removed from the language, ' +
-			'because predeclaring C constants is not needed anymore. ' +
-			'You can use them directly with C.CONST_NAME',
-			p.cur_tok_index()
-		)
-	}
 	p.inside_const = true
 	p.check(.key_const)
 	p.fspace()
@@ -659,13 +651,13 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 
 fn key_to_type_cat(tok TokenKind) TypeCategory {
 	match tok {
-	.key_interface {  return TypeCategory.interface_ }
-	.key_struct { return TypeCategory.struct_ }
-	.key_union { return TypeCategory.union_ }
-	//TokenKind.key_ => return .interface_
+		.key_interface { return .interface_ }
+		.key_struct    { return .struct_    }
+		.key_union     { return .union_     }
+		//TokenKind.key_ => return .interface_
 	}
 	verror('Unknown token: $tok')
-	return TypeCategory.builtin
+	return .builtin
 }
 
 // check_name checks for a name token and returns its literal
@@ -727,10 +719,10 @@ fn (p mut Parser) check(expected TokenKind) {
 	*/
 	p.next()
 
-if p.scanner.line_comment != '' {
-	//p.fgenln('// ! "$p.scanner.line_comment"')
-	//p.scanner.line_comment = ''
-}
+	//if p.scanner.line_comment != '' {
+		//p.fgenln('// ! "$p.scanner.line_comment"')
+		//p.scanner.line_comment = ''
+	//}
 }
 
 
@@ -894,7 +886,7 @@ fn (p mut Parser) get_type() string {
 				p.error('unknown type `$typ`')
 			}
 		}
-		else if !t.is_public && t.mod != p.mod && t.name != '' {
+		else if !t.is_public && t.mod != p.mod && t.name != '' && !p.first_pass() {
 			p.error('type `$t.name` is private')
 		}	
 	}

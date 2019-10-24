@@ -11,9 +11,9 @@ const (
 	max_redirects = 4
 )
 
-struct Request {
+pub struct Request {
 pub:
-	headers  map[string]string 
+	headers  map[string]string
 	method   string
 	// cookies map[string]string
 	h        string
@@ -27,10 +27,10 @@ pub:
 	user_agent string
 }
 
-struct Response {
+pub struct Response {
 pub:
 	text        string
-	headers     map[string]string 
+	headers     map[string]string
 	status_code int
 }
 
@@ -56,7 +56,7 @@ pub fn post(url, data string) ?Response {
 
 pub fn new_request(typ, _url, _data string) ?Request {
 	if _url == '' {
-		return error('bad url') 
+		return error('bad url')
 	}
 	mut url := _url
 	mut data := _data
@@ -77,9 +77,9 @@ pub fn new_request(typ, _url, _data string) ?Request {
 }
 
 pub fn get_text(url string) string {
-	resp := get(url) or { return  '' } 
-	return resp.text 
-} 
+	resp := get(url) or { return  '' }
+	return resp.text
+}
 
 fn (req mut Request) free() {
 	req.headers.free()
@@ -172,29 +172,29 @@ fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.U
 
 fn parse_response(resp string) Response {
 	mut headers := map[string]string
-	first_header := resp.all_before('\n') 
-	mut status_code := 0 
+	first_header := resp.all_before('\n')
+	mut status_code := 0
 	if first_header.contains('HTTP/') {
 		val := first_header.find_between(' ', ' ')
 		status_code = val.int()
 	}
-	mut text := '' 
-	// Build resp headers map and separate the body 
-	mut nl_pos := 3 
-	mut i := 1 
-	for { 
-		old_pos := nl_pos 
-		nl_pos = resp.index_after('\n', nl_pos+1) 
+	mut text := ''
+	// Build resp headers map and separate the body
+	mut nl_pos := 3
+	mut i := 1
+	for {
+		old_pos := nl_pos
+		nl_pos = resp.index_after('\n', nl_pos+1)
 		if nl_pos == -1 {
-			break 
-		} 
-		h := resp.substr(old_pos + 1, nl_pos) 
-		// End of headers 
+			break
+		}
+		h := resp.substr(old_pos + 1, nl_pos)
+		// End of headers
 		if h.len <= 1 {
-			text = resp.right(nl_pos + 1) 
-			break 
-		} 
-		i++ 
+			text = resp.right(nl_pos + 1)
+			break
+		}
+		i++
 		pos := h.index(':')
 		if pos == -1 {
 			continue
@@ -212,9 +212,9 @@ fn parse_response(resp string) Response {
 	}
 
 	return Response {
-		status_code: status_code 
+		status_code: status_code
 		headers: headers
-		text: text 
+		text: text
 	}
 }
 
@@ -222,33 +222,33 @@ fn (req &Request) build_request_headers(method, host_name, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string
 	for key, val in req.headers {	
-		uheaders << '${key}: ${val}\r\n' 
+		uheaders << '${key}: ${val}\r\n'
 	}
 	if req.data.len > 0 {
 		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
-	return '$method $path HTTP/1.1\r\n' + 
-		'Host: $host_name\r\n' + 
+	return '$method $path HTTP/1.1\r\n' +
+		'Host: $host_name\r\n' +
 		'User-Agent: $ua\r\n' +
 		uheaders.join('') +
-		'Connection: close\r\n\r\n' + 
+		'Connection: close\r\n\r\n' +
 		req.data
 }
 
 pub fn unescape_url(s string) string {
-	panic('http.unescape_url() was replaced with urllib.query_unescape()') 
+	panic('http.unescape_url() was replaced with urllib.query_unescape()')
 }
 
 pub fn escape_url(s string) string {
-	panic('http.escape_url() was replaced with urllib.query_escape()') 
+	panic('http.escape_url() was replaced with urllib.query_escape()')
 }
 
 pub fn unescape(s string) string {
-	panic('http.unescape() was replaced with http.unescape_url()') 
+	panic('http.unescape() was replaced with http.unescape_url()')
 }
 
 pub fn escape(s string) string {
-	panic('http.escape() was replaced with http.escape_url()') 
+	panic('http.escape() was replaced with http.escape_url()')
 }
 
 type wsfn fn (s string, ptr voidptr)

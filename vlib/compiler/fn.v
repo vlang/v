@@ -275,8 +275,8 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	if p.pref.build_mode == .build_module {
-		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	if p.pref.is_verbose { // p.pref.build_mode == .build_module {
+		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
 	}
 	if is_c {
 		p.check(.dot)
@@ -561,8 +561,10 @@ fn (p mut Parser) check_unused_variables() {
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
-			p.error_with_token_index( '`$var.name` is declared as mutable, but it was never changed', var.token_idx )
+		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
+			!p.pref.translated && var.typ != 'T*'
+		{
+			p.error_with_token_index('`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
 	}
 }
