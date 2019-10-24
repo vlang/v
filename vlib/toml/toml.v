@@ -4,12 +4,6 @@
 // Thanks: Nett,tomlc99.
 
 module toml
-const (
-	DEC = 1
-	BIN = 2
-	HEX = 3
-	OCT = 4
-)
 
 import yacc
 
