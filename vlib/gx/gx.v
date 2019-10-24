@@ -41,7 +41,7 @@ pub const (
 	LightRed   = Color { r: 255, g: 204, b: 203 }
 )
 
-const (
+pub const (
 	ALIGN_LEFT  = 1
 	ALIGN_RIGHT = 4
 )
