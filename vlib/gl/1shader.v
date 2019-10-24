@@ -10,7 +10,7 @@ import glm
 
 // import darwin
 
-struct Shader {
+pub struct Shader {
 	program_id int
 }
 

@@ -100,6 +100,7 @@ mut:
 	line_nr         int
 	token_idx       int // this is a token index, which will be used by error reporting
 	is_for_var      bool
+	is_public       bool // for consts
 }
 
 struct Type {
@@ -108,6 +109,7 @@ mut:
 	mod            string
 	name           string
 	cat            TypeCategory
+	is_public      bool
 	fields         []Var
 	methods        []Fn
 	parent         string
@@ -232,8 +234,8 @@ fn new_table(obfuscate bool) &Table {
 	mut t := &Table {
 		obfuscate: obfuscate
 	}
-	t.register_type('int')
-	t.register_type('size_t')
+	t.register_builtin('int')
+	t.register_builtin('size_t')
 	t.register_type_with_parent('i8', 'int')
 	t.register_type_with_parent('byte', 'int')
 	t.register_type_with_parent('char', 'int') // for C functions only, to avoid warnings
@@ -242,22 +244,22 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type_with_parent('u32', 'int')
 	t.register_type_with_parent('i64', 'int')
 	t.register_type_with_parent('u64', 'u32')
-	t.register_type('byteptr')
-	t.register_type('intptr')
-	t.register_type('f32')
-	t.register_type('f64')
-	t.register_type('rune')
-	t.register_type('bool')
-	t.register_type('void')
-	t.register_type('voidptr')
-	t.register_type('va_list')
+	t.register_builtin('byteptr')
+	t.register_builtin('intptr')
+	t.register_builtin('f32')
+	t.register_builtin('f64')
+	t.register_builtin('rune')
+	t.register_builtin('bool')
+	t.register_builtin('void')
+	t.register_builtin('voidptr')
+	t.register_builtin('va_list')
 	for c in reserved_type_param_names {
-		t.register_type(c)
+		t.register_builtin(c)
 	}
-	t.register_const('stdin', 'int', 'main')
-	t.register_const('stdout', 'int', 'main')
-	t.register_const('stderr', 'int', 'main')
-	t.register_const('errno', 'int', 'main')
+	t.register_const('stdin', 'int', 'main', true)
+	t.register_const('stdout', 'int', 'main', true)
+	t.register_const('stderr', 'int', 'main', true)
+	t.register_const('errno', 'int', 'main', true)
 	t.register_type_with_parent('map_string', 'map')
 	t.register_type_with_parent('map_int', 'map')
 	return t
@@ -306,13 +308,14 @@ fn (table &Table) known_mod(mod string) bool {
 	return mod in table.modules
 }
 
-fn (t mut Table) register_const(name, typ, mod string) {
-	t.consts << Var {
+fn (t mut Table) register_const(name, typ, mod string, is_pub bool) {
+	t.consts << Var{
 		name: name
 		typ: typ
 		is_const: true
 		mod: mod
 		idx: -1
+		is_public: is_pub
 	}
 }
 
@@ -387,14 +390,14 @@ fn (t &Table) known_const(name string) bool {
 	return true
 }
 
-fn (t mut Table) register_type(typ string) {
+fn (t mut Table) register_builtin(typ string) {
 	if typ.len == 0 {
 		return
 	}
 	if typ in t.typesmap {
 		return
 	}
-	t.typesmap[typ] = Type{name:typ}
+	t.typesmap[typ] = Type{name:typ, is_public:true}
 }
 
 fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
@@ -402,6 +405,7 @@ fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
 		name: strtyp
 		parent: parent
 		mod: p.mod
+		is_public: true
 	}
 	p.table.register_type2(typ)
 }
@@ -413,6 +417,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 	t.typesmap[typ] = Type {
 		name: typ
 		parent: parent
+		is_public: true
 		//mod: mod
 	}
 }

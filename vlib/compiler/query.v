@@ -180,7 +180,7 @@ for (int i = 0; i < ${qprefix}rows.len; i++) {
 	}	else if query_one {		
 		opt_type := 'Option_$table_name'		
 		p.cgen.typedefs << 'typedef Option $opt_type;'
-		p.table.register_type( opt_type )
+		p.table.register_builtin( opt_type )
 		return opt_type
 	}  else {
 		p.register_array('array_$table_name')

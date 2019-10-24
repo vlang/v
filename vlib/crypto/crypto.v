@@ -1,6 +1,6 @@
 module crypto
 
-enum Hash {
+pub enum Hash {
 	MD4
 	MD5
 	SHA1
