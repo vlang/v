@@ -828,6 +828,25 @@ pub fn walk_ext(path, ext string) []string {
 	return res
 }
 
+// walk recursively traverse the given directory path.
+// When a file is encountred it will call the callback function with current file as argument.
+pub fn walk(path string, fnc fn(path string)) {
+	if !os.is_dir(path) {
+		return
+	}
+	mut files := os.ls(path) or { panic(err) }
+	for file in files {
+		p := path + os.path_separator + file
+		if os.is_dir(p) {
+			walk(p, fnc)
+		}
+		else if os.file_exists(p) {
+			fnc(p)
+		}
+	}
+	return
+}
+
 pub fn signal(signum int, handler voidptr) {
 	C.signal(signum, handler)
 }
