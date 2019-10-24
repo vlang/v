@@ -1064,8 +1064,8 @@ fn (p mut Parser) statement(add_semi bool) string {
 	// }
 	tok := p.tok
 	mut q := ''
-	switch tok {
-	case .name:
+	match tok {
+	.name {
 		next := p.peek()
 		//if p.pref.is_verbose {
 			//println(next.str())
@@ -1096,19 +1096,23 @@ fn (p mut Parser) statement(add_semi bool) string {
 			// `a + 3`, `a(7)`, or just `a`
 			q = p.bool_expression()
 		}
-	case TokenKind.key_goto:
+	}
+	.key_goto {
 		p.check(.key_goto)
 		p.fgen(' ')
 		label := p.check_name()
 		p.genln('goto $label;')
 		return ''
-	case TokenKind.key_defer:
+	}
+	.key_defer {
 		p.defer_st()
 		return ''
-	case TokenKind.hash:
+	}
+	.hash {
 		p.chash()
 		return ''
-	case TokenKind.key_unsafe:
+	}
+	.key_unsafe {
 		p.next()
 		p.inside_unsafe = true
 		p.check(.lcbr)
@@ -1116,42 +1120,55 @@ fn (p mut Parser) statement(add_semi bool) string {
 		p.statements()
 		p.inside_unsafe = false
 		//p.check(.rcbr)
-	case TokenKind.dollar:
+	}
+	.dollar {
 		p.comp_time()
-	case TokenKind.key_if:
+	}
+	.key_if {
 		p.if_st(false, 0)
-	case TokenKind.key_for:
+	}
+	.key_for {
 		p.for_st()
-	case TokenKind.key_switch:
+	}
+	.key_switch {
 		p.switch_statement()
-	case TokenKind.key_match:
+	}
+	.key_match {
 		p.match_statement(false)
-	case TokenKind.key_mut, TokenKind.key_static:
+	}
+	.key_mut, .key_static {
 		p.var_decl()
-	case TokenKind.key_return:
+	}
+	.key_return {
 		p.return_st()
-	case TokenKind.lcbr:// {} block
+	}
+	.lcbr {// {} block
 		p.check(.lcbr)
 		p.genln('{')
 		p.statements()
 		return ''
-	case TokenKind.key_continue:
+	}
+	.key_continue {
 		if p.for_expr_cnt == 0 {
 			p.error('`continue` statement outside `for`')
 		}
 		p.genln('continue')
 		p.check(.key_continue)
-	case TokenKind.key_break:
+	}
+	.key_break {
 		if p.for_expr_cnt == 0 {
 			p.error('`break` statement outside `for`')
 		}
 		p.genln('break')
 		p.check(.key_break)
-	case TokenKind.key_go:
+	}
+	.key_go {
 		p.go_statement()
-	case TokenKind.key_assert:
+	}
+	.key_assert {
 		p.assert_statement()
-	default:
+	}
+	else {
 		// An expression as a statement
 		typ := p.expression()
 		if p.inside_if_expr {
@@ -1160,6 +1177,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.genln('; ')
 		}
 		return typ
+	}
 	}
 	// ? : uses , as statement separators
 	if p.inside_if_expr && p.tok != .rcbr {
@@ -1195,12 +1213,13 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	}
 	is_str := v.typ == 'string'
 	is_ustr := v.typ == 'ustring'
-	switch tok {
-	case TokenKind.assign:
+	match tok {
+	.assign {
 		if !is_map && !p.is_empty_c_struct_init {
 			p.gen(' = ')
 		}
-	case TokenKind.plus_assign:
+	}
+	.plus_assign {
 		if is_str && !p.is_js {
 			p.gen('= string_add($v.name, ')// TODO can't do `foo.bar += '!'`
 		}
@@ -1210,7 +1229,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		else {
 			p.gen(' += ')
 		}
-	default: p.gen(' ' + p.tok.str() + ' ')
+	}
+	else {
+		p.gen(' ' + p.tok.str() + ' ')
+	}
 	}
 	p.fspace()
 	p.fgen(tok.str())
@@ -1469,43 +1491,35 @@ fn (p mut Parser) bterm() string {
 		typ = 'bool'
 		if is_str && !p.is_js { //&& !p.is_sql {
 			p.gen(')')
-			switch tok {
-			case TokenKind.eq: p.cgen.set_placeholder(ph, 'string_eq(')
-			case TokenKind.ne: p.cgen.set_placeholder(ph, 'string_ne(')
-			case TokenKind.le: p.cgen.set_placeholder(ph, 'string_le(')
-			case TokenKind.ge: p.cgen.set_placeholder(ph, 'string_ge(')
-			case TokenKind.gt: p.cgen.set_placeholder(ph, 'string_gt(')
-			case TokenKind.lt: p.cgen.set_placeholder(ph, 'string_lt(')
+			match tok {
+				.eq { p.cgen.set_placeholder(ph, 'string_eq(') }
+				.ne { p.cgen.set_placeholder(ph, 'string_ne(') }
+				.le { p.cgen.set_placeholder(ph, 'string_le(') }
+				.ge { p.cgen.set_placeholder(ph, 'string_ge(') }
+				.gt { p.cgen.set_placeholder(ph, 'string_gt(') }
+				.lt { p.cgen.set_placeholder(ph, 'string_lt(') }
 			}
-/*
-			 TokenKind.eq => p.cgen.set_placeholder(ph, 'string_eq(')
-			 TokenKind.ne => p.cgen.set_placeholder(ph, 'string_ne(')
-			 TokenKind.le => p.cgen.set_placeholder(ph, 'string_le(')
-			 TokenKind.ge => p.cgen.set_placeholder(ph, 'string_ge(')
-			 TokenKind.gt => p.cgen.set_placeholder(ph, 'string_gt(')
-			 TokenKind.lt => p.cgen.set_placeholder(ph, 'string_lt(')
-*/
 		}
 		if is_ustr {
 			p.gen(')')
-			switch tok {
-			case TokenKind.eq: p.cgen.set_placeholder(ph, 'ustring_eq(')
-			case TokenKind.ne: p.cgen.set_placeholder(ph, 'ustring_ne(')
-			case TokenKind.le: p.cgen.set_placeholder(ph, 'ustring_le(')
-			case TokenKind.ge: p.cgen.set_placeholder(ph, 'ustring_ge(')
-			case TokenKind.gt: p.cgen.set_placeholder(ph, 'ustring_gt(')
-			case TokenKind.lt: p.cgen.set_placeholder(ph, 'ustring_lt(')
+			match tok {
+				.eq { p.cgen.set_placeholder(ph, 'ustring_eq(') }
+				.ne { p.cgen.set_placeholder(ph, 'ustring_ne(') }
+				.le { p.cgen.set_placeholder(ph, 'ustring_le(') }
+				.ge { p.cgen.set_placeholder(ph, 'ustring_ge(') }
+				.gt { p.cgen.set_placeholder(ph, 'ustring_gt(') }
+				.lt { p.cgen.set_placeholder(ph, 'ustring_lt(') }
 			}
 		}
 		if is_float && p.cur_fn.name != 'f32_abs' && p.cur_fn.name != 'f64_abs' {
 			p.gen(')')
-			switch tok {
-			case TokenKind.eq: p.cgen.set_placeholder(ph, '${expr_type}_eq(')
-			case TokenKind.ne: p.cgen.set_placeholder(ph, '${expr_type}_ne(')
-			case TokenKind.le: p.cgen.set_placeholder(ph, '${expr_type}_le(')
-			case TokenKind.ge: p.cgen.set_placeholder(ph, '${expr_type}_ge(')
-			case TokenKind.gt: p.cgen.set_placeholder(ph, '${expr_type}_gt(')
-			case TokenKind.lt: p.cgen.set_placeholder(ph, '${expr_type}_lt(')
+			match tok {
+				.eq { p.cgen.set_placeholder(ph, '${expr_type}_eq(') }
+				.ne { p.cgen.set_placeholder(ph, '${expr_type}_ne(') }
+				.le { p.cgen.set_placeholder(ph, '${expr_type}_le(') }
+				.ge { p.cgen.set_placeholder(ph, '${expr_type}_ge(') }
+				.gt { p.cgen.set_placeholder(ph, '${expr_type}_gt(') }
+				.lt { p.cgen.set_placeholder(ph, '${expr_type}_lt(') }
 			}
 		}
 	}
