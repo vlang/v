@@ -683,10 +683,7 @@ fn on_segfault(f voidptr) {
 fn C.getpid() int
 fn C.proc_pidpath (int, byteptr, int) int
 
-/**
- * os.executable - get the path name of the executable that started the current process
- * @return absolute path  of the executable that started the current process
-*/
+// executable return the path name of the executable that started the current process.
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
@@ -745,11 +742,7 @@ pub fn executable() string {
 	return os.args[0]
 }
 
-/**
- * is_dir - return a boolean indicating whether the given path is a directory
- * @param path to directory
- * @return true if the given path is a directory.
-*/
+// is_dir return a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
 		return dir_exists(path)
@@ -768,10 +761,7 @@ pub fn is_dir(path string) bool {
 	}
 }
 
-/**
- * chdir - changes the current working directory to the new directory path.
- * @param path to new working directory
-*/
+// chdir changes the current working directory to the new directory path.
 pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
@@ -781,10 +771,7 @@ pub fn chdir(path string) {
 	}
 }
 
-/**
- * getwd - get the absolute path name of the current directory
- * @return absolute path
-*/
+// getwd return the absolute path name of the current directory.
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
@@ -808,11 +795,8 @@ pub fn getwd() string {
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
-/**
- * realpath - Returns the full absolute path for the given path, with all relative ../../, symlinks and so on resolved
- * @param path name
- * @return absolute path name
-*/
+
+// realpath return the full absolute path for the given path, with all relative ../../, symlinks and so on resolved
 pub fn realpath(fpath string) string {
 	mut fullpath := malloc( MAX_PATH )
 	mut res := 0
@@ -828,12 +812,7 @@ pub fn realpath(fpath string) string {
 	return fpath
 }
 
-/**
- * walk_ext get a recursive list of all file paths ending with the given extension name.
- * @param a path in which to start the search for the files
- * @param extension name, for example '.v' 
- * @return list of found file paths
-*/
+// walk_ext return a recursive list of all file paths ending with the given extension name.
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
 		return []string
