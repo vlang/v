@@ -271,18 +271,18 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 }
 
 fn os_name_to_ifdef(name string) string {
-	switch name {
-		case 'windows': return '_WIN32'
-		case 'mac': return '__APPLE__'
-		case 'linux': return '__linux__'
-		case 'freebsd': return '__FreeBSD__'
-		case 'openbsd': return '__OpenBSD__'
-		case 'netbsd': return '__NetBSD__'
-		case 'dragonfly': return '__DragonFly__'
-		case 'msvc': return '_MSC_VER'
-		case 'android': return '__BIONIC__'
-		case 'js': return '_VJS'
-		case 'solaris': return '__sun'
+	match name {
+		 'windows' { return '_WIN32'}
+		 'mac' { return '__APPLE__'}
+		 'linux' { return '__linux__'}
+		 'freebsd' { return '__FreeBSD__'}
+		 'openbsd'{  return '__OpenBSD__'}
+		 'netbsd'{ return '__NetBSD__'}
+		 'dragonfly'{ return '__DragonFly__'}
+		 'msvc'{ return '_MSC_VER'}
+		 'android'{ return '__BIONIC__'}
+		 'js' {return '_VJS'}
+		 'solaris'{ return '__sun'}
 	}
 	verror('bad os ifdef name "$name"')
 	return ''

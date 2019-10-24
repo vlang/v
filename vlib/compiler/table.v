@@ -803,13 +803,13 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
-	switch typ {
-	case 'byte': return 0 <= x && x <= 255
-	case 'u16': return 0 <= x && x <= 65535
+	match typ {
+	 'byte' { return 0 <= x && x <= 255 }
+	 'u16' { return 0 <= x && x <= 65535 }
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
-	case 'i8': return -128 <= x && x <= 127
+	 'i8' { return -128 <= x && x <= 127 }
 	/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
@@ -826,22 +826,23 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	if t.cat == .enum_ {
 		return '%d'
 	}
-	switch typ {
-	case 'string': return '%.*s'
-	//case 'bool': return '%.*s'
-	case 'ustring': return '%.*s'
-	case 'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8': return '%d'
-	case 'u16', 'u32': return '%u'
-	case 'f64', 'f32': return '%f'
-	case 'i64': return '%lld'
-	case 'u64': return '%llu'
-	case 'byte*', 'byteptr': return '%s'
-		// case 'array_string': return '%s'
-		// case 'array_int': return '%s'
-	case 'void': p.error('cannot interpolate this value')
-	default:
-		if typ.ends_with('*') {
-			return '%p'
+	match typ {
+		'string' { return '%.*s'}
+		//case 'bool': return '%.*s'
+		'ustring' { return '%.*s'}
+		'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8' { return '%d'}
+		'u16', 'u32' { return '%u'}
+		'f64', 'f32' { return '%f'}
+		'i64' { return '%lld'}
+		'u64' { return '%llu'}
+		'byte*', 'byteptr' { return '%s'}
+			// case 'array_string': return '%s'
+			// case 'array_int': return '%s'
+		'void' { p.error('cannot interpolate this value')}
+		else {
+			if typ.ends_with('*') {
+				return '%p'
+			}
 		}
 	}
 	if t.parent != '' && level == 0 {

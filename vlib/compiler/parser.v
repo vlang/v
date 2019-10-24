@@ -658,10 +658,10 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 }
 
 fn key_to_type_cat(tok TokenKind) TypeCategory {
-	switch tok {
-	case TokenKind.key_interface:  return TypeCategory.interface_
-	case TokenKind.key_struct: return TypeCategory.struct_
-	case TokenKind.key_union: return TypeCategory.union_
+	match tok {
+	.key_interface {  return TypeCategory.interface_ }
+	.key_struct { return TypeCategory.struct_ }
+	.key_union { return TypeCategory.union_ }
 	//TokenKind.key_ => return .interface_
 	}
 	verror('Unknown token: $tok')
@@ -2447,8 +2447,8 @@ fn (p mut Parser) term() string {
 fn (p mut Parser) unary() string {
 	mut typ := ''
 	tok := p.tok
-	switch tok {
-	case TokenKind.not:
+	match tok {
+	.not {
 		p.gen('!')
 		p.check(.not)
 		// typ should be bool type
@@ -2456,13 +2456,15 @@ fn (p mut Parser) unary() string {
 		if typ != 'bool' {
 			p.error('operator ! requires bool type, not `$typ`')
 		}
-
-	case TokenKind.bit_not:
+	}
+	.bit_not {
 		p.gen('~')
 		p.check(.bit_not)
 		typ = p.bool_expression()
-	default:
+	}
+	else {
 		typ = p.factor()
+	}
 	}
 	return typ
 }
@@ -2470,15 +2472,16 @@ fn (p mut Parser) unary() string {
 fn (p mut Parser) factor() string {
 	mut typ := ''
 	tok := p.tok
-	switch tok {
-	case .key_none:
+	match tok {
+	.key_none {
 		if !p.expected_type.starts_with('Option_') {
 			p.error('need "$p.expected_type" got none')
 		}
 		p.gen('opt_none()')
 		p.check(.key_none)
 		return p.expected_type
-	case TokenKind.number:
+	}
+	.number {
 		typ = 'int'
 		// Check if float (`1.0`, `1e+3`) but not if is hexa
 		if (p.lit.contains('.') || (p.lit.contains('e') || p.lit.contains('E'))) &&
@@ -2496,13 +2499,15 @@ fn (p mut Parser) factor() string {
 		}
 		p.gen(p.lit)
 		p.fgen(p.lit)
-	case TokenKind.minus:
+	}
+	.minus {
 		p.gen('-')
 		p.fgen('-')
 		p.next()
 		return p.factor()
 		// Variable
-	case TokenKind.key_sizeof:
+	}
+	.key_sizeof {
 		p.gen('sizeof(')
 		p.fgen('sizeof(')
 		p.next()
@@ -2512,10 +2517,12 @@ fn (p mut Parser) factor() string {
 		p.gen('$sizeof_typ)')
 		p.fgen('$sizeof_typ)')
 		return 'int'
-	case TokenKind.amp, TokenKind.dot, TokenKind.mul:
+	}
+	.amp, .dot, .mul {
 		// (dot is for enum vals: `.green`)
 		return p.name_expr()
-	case TokenKind.name:
+	}
+	.name {
 		// map[string]int
 		if p.lit == 'map' && p.peek() == .lsbr {
 			return p.map_init()
@@ -2532,7 +2539,8 @@ fn (p mut Parser) factor() string {
 		//}
 		typ = p.name_expr()
 		return typ
-	case TokenKind.key_default:
+	}
+	.key_default {
 		p.next()
 		p.next()
 		name := p.check_name()
@@ -2542,7 +2550,8 @@ fn (p mut Parser) factor() string {
 		p.gen('default(T)')
 		p.next()
 		return 'T'
-	case TokenKind.lpar:
+	}
+	.lpar {
 		//p.gen('(/*lpar*/')
 		p.gen('(')
 		p.check(.lpar)
@@ -2556,47 +2565,57 @@ fn (p mut Parser) factor() string {
 		p.ptr_cast = false
 		p.gen(')')
 		return typ
-	case TokenKind.chartoken:
+	}
+	.chartoken {
 		p.char_expr()
 		typ = 'byte'
 		return typ
-	case TokenKind.str:
+	}
+	.str {
 		p.string_expr()
 		typ = 'string'
 		return typ
-	case TokenKind.key_false:
+	}
+	.key_false {
 		typ = 'bool'
 		p.gen('0')
 		p.fgen('false')
-	case TokenKind.key_true:
+	}
+	.key_true {
 		typ = 'bool'
 		p.gen('1')
 		p.fgen('true')
-	case TokenKind.lsbr:
+	}
+	.lsbr {
 		// `[1,2,3]` or `[]` or `[20]byte`
 		// TODO have to return because arrayInit does next()
 		// everything should do next()
 		return p.array_init()
-	case TokenKind.lcbr:
+	}
+	.lcbr {
 		// `m := { 'one': 1 }`
 		if p.peek() == .str {
 			return p.map_init()
 		}
 		// { user | name :'new name' }
 		return p.assoc()
-	case TokenKind.key_if:
+	}
+	.key_if {
 		typ = p.if_st(true, 0)
 		return typ
-	case TokenKind.key_match:
+	}
+	.key_match {
 		typ = p.match_statement(true)
 		return typ
-	default:
+	}
+	else {
 		if p.pref.is_verbose || p.pref.is_debug {
 			next := p.peek()
 			println('prev=${p.prev_tok.str()}')
 			println('next=${next.str()}')
 		}
 		p.error('unexpected token: `${p.tok.str()}`')
+	}
 	}
 	p.next()// TODO everything should next()
 	return typ
@@ -3316,6 +3335,8 @@ fn (p mut Parser) for_st() {
 }
 
 fn (p mut Parser) switch_statement() {
+	p.warn('`switch` statement has been deprecated, use `match` instead:\n' +
+		'https://vlang.io/docs#match')
 	if p.tok == .key_switch {
 		p.check(.key_switch)
 	} else {

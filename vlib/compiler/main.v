@@ -1081,21 +1081,22 @@ pub fn cescaped_path(s string) string {
 }
 
 pub fn os_from_string(os string) OS {
-	switch os {
-		case 'linux': return .linux
-		case 'windows': return .windows
-		case 'mac': return .mac
-		case 'freebsd': return .freebsd
-		case 'openbsd': return .openbsd
-		case 'netbsd': return .netbsd
-		case 'dragonfly': return .dragonfly
-		case 'js': return .js
-		case 'solaris': return .solaris
-		case 'android': return .android
-		case 'msvc':
+	match os {
+		'linux' { return .linux}
+		'windows' { return .windows}
+		'mac' { return .mac}
+		'freebsd' { return .freebsd}
+		'openbsd' { return .openbsd}
+		'netbsd' { return .netbsd}
+		'dragonfly' { return .dragonfly}
+		'js' { return .js}
+		'solaris' { return .solaris}
+		'android' { return .android}
+		'msvc' {
 			// notice that `-os msvc` became `-cc msvc`
 			verror('use the flag `-cc msvc` to build using msvc')
 		}
+	}
 	println('bad os $os') // todo panic?
 	return .linux
 }

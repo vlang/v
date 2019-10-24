@@ -270,6 +270,8 @@ fn (s mut Scanner) eat_single_newline(){
 	if s.text[ s.pos ] == `\r` { s.pos ++ return }
 }
 
+///////////////////////////////
+
 const (
 	match_arrow_warning = '=> is no longer needed in match statements, use\n' +
 'match foo {
@@ -277,4 +279,6 @@ const (
 	2 { baz }
 	else { ... }
 }'
+
+	//make_receiver_mutable =
 )
