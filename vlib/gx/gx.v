@@ -46,7 +46,7 @@ const (
 	ALIGN_RIGHT = 4
 )
 
-struct TextCfg {
+pub struct TextCfg {
 pub:
 	color     Color
 	size      int

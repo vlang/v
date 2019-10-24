@@ -50,7 +50,7 @@ struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
 }
 
-struct WinCfg {
+pub struct WinCfg {
 	width      int
 	height     int
 	title      string
