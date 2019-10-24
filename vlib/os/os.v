@@ -326,7 +326,7 @@ fn pclose(f *C.FILE) int {
 	}
 }
 
-struct Result {
+pub struct Result {
 pub:
 	exit_code int
 	output string
