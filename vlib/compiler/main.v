@@ -733,8 +733,7 @@ pub fn (v &V) resolve_deps() &DepGraph {
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
-		deps_resolved.display()
-		verror('import cycle detected')
+		verror('import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
 	}
 	return deps_resolved
 }
