@@ -4,7 +4,7 @@
 
 module builtin
 
-struct string {
+pub struct string {
 //mut:
 	//hash_cache int
 pub:

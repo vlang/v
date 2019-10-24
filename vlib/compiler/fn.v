@@ -1310,7 +1310,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 
 	// TODO this is done to prevent a crash as a result of this not being
 	// properly initialised. This is a bug somewhere futher upstream
-	f.defer_text = []string {}
+	f.defer_text = []string
 
 	old_args := f.args
 	new_types := p.replace_type_params(f, ti)
