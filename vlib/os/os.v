@@ -35,7 +35,7 @@ struct C.FILE {
 	
 }
 
-struct File {
+pub struct File {
 	cfile &FILE
 }
 
