@@ -32,7 +32,7 @@ pub fn init_gg() {
 }
 
 
-struct Cfg {
+pub struct Cfg {
 pub:
 	width     int
 	height    int

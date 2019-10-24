@@ -17,7 +17,7 @@ import math
 // # glm__Vec3 myglm_mult(glm__Vec3, glm__Vec3);
 // # glm__Vec3 myglm_cross(glm__Vec3, glm__Vec3);
 // # glm__Vec3 myglm_normalize(glm__Vec3);
-struct Mat4 {
+pub struct Mat4 {
 pub:
 	data &f32
 }
