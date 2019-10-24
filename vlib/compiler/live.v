@@ -29,6 +29,14 @@ fn (v &V) generate_hotcode_reloading_declarations() {
 	} else {
 		if v.pref.is_so {
 			cgen.genln('HANDLE live_fn_mutex;')
+			cgen.genln('
+void pthread_mutex_lock(HANDLE *m) {
+	WaitForSingleObject(*m, INFINITE);
+}
+
+void pthread_mutex_unlock(HANDLE *m) {
+	ReleaseMutex(*m);
+}')
 		}
 		if v.pref.is_live {
 			cgen.genln('HANDLE live_fn_mutex = 0;')

@@ -289,16 +289,24 @@ fn os_name_to_ifdef(name string) string {
 }
 
 fn platform_postfix_to_ifdefguard(name string) string {
-	switch name {
-		case '.v': return '' // no guard needed
-		case '_win.v': return '#ifdef _WIN32'
-		case '_nix.v': return '#ifndef _WIN32'
-		case '_lin.v': return '#ifdef __linux__'
-		case '_mac.v': return '#ifdef __APPLE__'
-		case '_solaris.v': return '#ifdef __sun'
+	s := match name {
+		'.v'                   { '' }// no guard needed
+		'_win.v', '_windows.v' { '#ifdef _WIN32' }
+		'_nix.v'               { '#ifndef _WIN32' }
+		'_lin.v', '_linux.v'   { '#ifdef __linux__' }
+		'_mac.v', '_darwin.v'  { '#ifdef __APPLE__' }
+		'_solaris.v'           { '#ifdef __sun' }
+		else {
+			
+			//verror('bad platform_postfix "$name"')
+			// TODO
+			''
+		}
 	}
-	verror('bad platform_postfix "$name"')
-	return ''
+	if s == '' {
+		verror('bad platform_postfix "$name"')
+	}	
+	return s
 }
 
 // C struct definitions, ordered
@@ -353,7 +361,9 @@ fn sort_structs(types []Type) []Type {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		verror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
+		verror('cgen.sort_structs(): the following structs form a dependancy cycle:\n' +
+			dep_graph_sorted.display_cycles() +
+			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []Type

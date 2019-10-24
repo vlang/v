@@ -39,5 +39,5 @@ pub fn (b mut Builder) cut(n int) {
 }
 
 pub fn (b mut Builder) free() {
-	free(b.buf.data)
+	//free(b.buf.data)
 }

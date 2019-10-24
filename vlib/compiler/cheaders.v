@@ -48,6 +48,12 @@ CommonCHeaders = '
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __OpenBSD__
+#include <sys/types.h>
+#include <sys/resource.h>
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
@@ -162,7 +168,6 @@ var u64 = function() {}
 var u32 = function() {}
 var u16 = function() {}
 var i8 = function() {}
-var u8 = function() {}
 var bool = function() {}
 var rune = function() {}
 var map_string = function() {}

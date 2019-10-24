@@ -21,6 +21,7 @@ const (
 	WinHeight = BlockSize * FieldHeight
 	TimerPeriod = 250 // ms
 	TextSize = 12
+	LimitThickness = 3
 )
 
 const (
@@ -80,6 +81,9 @@ const (
 		gx.rgb(170, 85, 0),     // brown longest
 		gx.rgb(0, 170, 170),    // unused ?
 	]
+
+	BackgroundColor = gx.White
+	UIColor = gx.Red
 )
 
 // TODO: type Tetro [TetroSize]struct{ x, y int }
@@ -140,7 +144,7 @@ fn main() {
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(gx.White)
+	gg.clear(BackgroundColor)
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
 			width: WinWidth
@@ -151,7 +155,7 @@ fn main() {
 	})
 	game.font_loaded = (game.ft != 0 )
 	for {
-		gg.clear(gx.White)
+		gg.clear(BackgroundColor)
 		game.draw_scene()
 		game.gg.render()
 		if game.gg.window.should_close() {
@@ -319,23 +323,28 @@ fn (g &Game) draw_field() {
 	}
 }
 
-fn (g mut Game) draw_score() {
+fn (g mut Game) draw_ui() {
 	if g.font_loaded {
 		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
 		if g.state == .gameover {
+			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
+		 								5 * TextSize, UIColor)
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to restart', text_cfg)
 		} else if g.state == .paused {
+			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
+				5 * TextSize, UIColor)
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Paused', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
 		}
 	}
+	g.gg.draw_rect(0, BlockSize, WinWidth, LimitThickness, UIColor)
 }
 
 fn (g mut Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
-	g.draw_score()
+	g.draw_ui()
 }
 
 fn parse_binary_tetro(t_ int) []Block {

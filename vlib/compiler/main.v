@@ -89,14 +89,14 @@ pub mut:
 	is_run        bool
 	show_c_cmd    bool   // `v -show_c_cmd` prints the C command to build program.v.c
 	sanitize      bool   // use Clang's new "-fsanitize" option
-	
+
 	is_debug      bool   // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines     bool   // turned on by -g, false by default (it slows down .tmp.c generation slightly).
 	is_keep_c     bool   // -keep_c , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
 	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	is_cache      bool   // turns on v usage of the module cache to speed up compilation.
-	
+
 	is_stats      bool   // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free  bool   // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	cflags        string // Additional options which will be passed to the C compiler.
@@ -111,12 +111,14 @@ pub mut:
 						 // to increase compilation time.
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
+	//generating_vh bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
-pub fn (v mut V) finalize_compilation(){	
+pub fn (v mut V) finalize_compilation(){
 	// TODO remove
 	if v.pref.autofree {
+		/*
 		println('started freeing v struct')
 		v.table.typesmap.free()
 		v.table.obf_ids.free()
@@ -126,12 +128,13 @@ pub fn (v mut V) finalize_compilation(){
 			//f.local_vars.free()
 			f.args.free()
 			//f.defer_text.free()
-		}	
+		}
 		v.table.fns.free()
 		free(v.table)
-		//for p in parsers {}	
+		//for p in parsers {}
 		println('done!')
-	}	
+		*/
+	}
 }
 
 pub fn (v mut V) add_parser(parser Parser) {
@@ -142,7 +145,7 @@ pub fn (v &V) get_file_parser_index(file string) ?int {
 	for i, p in v.parsers {
 		if os.realpath(p.file_path_id) == os.realpath(file) {
 			return i
-		}	
+		}
 	}
 	return error('parser for "$file" not found')
 }
@@ -184,11 +187,11 @@ pub fn (v mut V) compile() {
 		println('\nparsers:')
 		for q in v.parsers {
 			println(q.file_name)
-		}	
+		}
 		println('\nfiles:')
 		for q in v.files {
 			println(q)
-		}	
+		}
 	}
 	*/
 	// First pass (declarations)
@@ -209,11 +212,15 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define _VJS (1) ')
 	}
 
-	if v.pref.building_v {
+	v_hash := vhash()
+	$if js {
+		cgen.genln('const V_COMMIT_HASH = "$v_hash";\n')
+	} $else {
 		cgen.genln('#ifndef V_COMMIT_HASH')
-		cgen.genln('#define V_COMMIT_HASH "' + vhash() + '"')
+		cgen.genln('#define V_COMMIT_HASH "$v_hash"')
 		cgen.genln('#endif')
 	}
+
 	q := cgen.nogen // TODO hack
 	cgen.nogen = false
 	$if js {
@@ -247,11 +254,11 @@ pub fn (v mut V) compile() {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
 	//cgen.genln('/*================================== FNS =================================*/')
-	cgen.genln('this line will be replaced with definitions')
+	cgen.genln('// this line will be replaced with definitions')
 	mut defs_pos := cgen.lines.len - 1
 	if defs_pos == -1 {
 		defs_pos = 0
-	}	
+	}
 	cgen.nogen = q
 	for file in v.files {
 		v.parse(file, .main)
@@ -263,7 +270,7 @@ pub fn (v mut V) compile() {
 	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
-		v.generate_vh()
+		generate_vh(v.dir)
 	}
 
 	// parse generated V code (str() methods etc)
@@ -272,7 +279,7 @@ pub fn (v mut V) compile() {
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
 	// v.parsers.add(vgen_parser)
-	
+
 	// All definitions
 	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
 	$if !js {
@@ -303,7 +310,7 @@ pub fn (v mut V) compile() {
 	}
 	$if js {
 		cgen.genln('main__main();')
-	}	
+	}
 	cgen.save()
 	v.cc()
 }
@@ -420,13 +427,13 @@ pub fn (v mut V) generate_main() {
 			}
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
-			
+
 			if v.pref.is_stats { cgen.genln('BenchedTests bt = main__start_testing();') }
-			
+
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
 					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
-					cgen.genln('$f.name();')					
+					cgen.genln('$f.name();')
 					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
 				}
 			}
@@ -469,13 +476,24 @@ pub fn final_target_out_name(out_name string) string {
 }
 
 pub fn (v V) run_compiled_executable_and_exit() {
+	args := env_vflags_and_os_args()
+	
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
-	}	
-	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
-	if os.args.len > 3 {
-		cmd += ' ' + os.args.right(3).join(' ')
 	}
+	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
+	
+	mut args_after := ' '
+	for i,a in args {
+		if i == 0 { continue }
+		if a.starts_with('-') { continue }
+		if a in ['run','test'] {
+			args_after += args.right(i+2).join(' ')
+			break
+		}
+	}
+	cmd += args_after
+	
 	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
@@ -515,13 +533,13 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if file.ends_with('_win.v') && v.os != .windows {
+		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && v.os != .windows {
 			continue
 		}
-		if file.ends_with('_lin.v') && v.os != .linux {
+		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && v.os != .linux {
 			continue
 		}
-		if file.ends_with('_mac.v') && v.os != .mac {
+		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && v.os != .mac {
 			continue
 		}
 		if file.ends_with('_nix.v') && v.os == .windows {
@@ -568,7 +586,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 			v.table.file_imports[p.file_path_id] = p.import_table
 			p.table.imports << 'os'
 			p.table.register_module('os')
-			println('got v script')
 		}	
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
@@ -631,7 +648,7 @@ pub fn (v &V)  get_user_files() []string {
 		user_files << os.join(v.vroot, 'vlib', 'benchmark', 'tests',
 			'always_imported.v')
 	}
-	
+
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
@@ -716,8 +733,7 @@ pub fn (v &V) resolve_deps() &DepGraph {
 	dep_graph.from_import_tables(v.table.file_imports)
 	deps_resolved := dep_graph.resolve()
 	if !deps_resolved.acyclic {
-		deps_resolved.display()
-		verror('import cycle detected')
+		verror('import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
 	}
 	return deps_resolved
 }
@@ -754,14 +770,14 @@ pub fn new_v(args[]string) &V {
 		os.mkdir(v_modules_path)
 		os.mkdir('$v_modules_path${os.path_separator}cache')
 	}
-	
+
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module main\nimport strings')
-	
+
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
-	
+
 	mut dir := args.last()
 	if 'run' in args {
 		dir = get_param_after(joined_args, 'run', '')
@@ -815,6 +831,15 @@ pub fn new_v(args[]string) &V {
 	// No -o provided? foo.v => foo
 	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
 		out_name = dir.left(dir.len - 2)
+		// Building V? Use v2, since we can't overwrite a running
+		// executable on Windows + the precompiled V is more
+		// optimized.
+		if out_name == 'v' && os.dir_exists('vlib/compiler') {
+			println('Saving the resulting V executable in `./v2`')
+			println('Use `v -o v v.v` if you want to replace current '+
+				'V executable.')
+			out_name = 'v2'
+		}
 	}
 	// if we are in `/foo` and run `v .`, the executable should be `foo`
 	if dir == '.' && out_name == 'a.out' {
@@ -853,7 +878,7 @@ pub fn new_v(args[]string) &V {
 		_os = os_from_string(target_os)
 	}
 	// Location of all vlib files
-	vroot := os.dir(os.executable())
+	vroot := os.dir(vexe_path())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
@@ -891,7 +916,7 @@ pub fn new_v(args[]string) &V {
 		is_vlines:     '-g' in args && !('-cg' in args)
 		is_keep_c:     '-keep_c' in args
 		is_cache:      '-cache' in args
-				
+
 		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args
@@ -931,23 +956,26 @@ pub fn new_v(args[]string) &V {
 }
 
 pub fn env_vflags_and_os_args() []string {
-   mut args := []string
-   vflags := os.getenv('VFLAGS')
-   if '' != vflags {
-	 args << os.args[0]
-	 args << vflags.split(' ')
-	 if os.args.len > 1 {
-	   args << os.args.right(1)
-	 }
-   } else{
-	 args << os.args
-   }
-   return args
+	vosargs := os.getenv('VOSARGS')
+	if '' != vosargs { return vosargs.split(' ') }
+
+	mut args := []string
+	vflags := os.getenv('VFLAGS')
+	if '' != vflags {
+		args << os.args[0]
+		args << vflags.split(' ')
+		if os.args.len > 1 {
+			args << os.args.right(1)
+		}
+	} else{
+		args << os.args
+	}
+	return args
 }
 
 pub fn update_v() {
 	println('Updating V...')
-	vroot := os.dir(os.executable())
+	vroot := os.dir(vexe_path())
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
 		verror(err)
 		return
@@ -992,7 +1020,7 @@ pub fn install_v(args[]string) {
 		return
 	}
 	names := args.slice(2, args.len)
-	vexec := os.executable()
+	vexec := vexe_path()
 	vroot := os.dir(vexec)
 	vget := '$vroot/tools/vget'
 	if true {
@@ -1018,7 +1046,7 @@ pub fn install_v(args[]string) {
 }
 
 pub fn create_symlink() {
-	vexe := os.executable()
+	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
@@ -1027,6 +1055,12 @@ pub fn create_symlink() {
 		println('failed to create symlink "$link_path", '+
 			'make sure you run with sudo')
 	}
+}
+
+pub fn vexe_path() string {
+	vexe := os.getenv('VEXE')
+	if '' != vexe {	return vexe	}
+	return os.executable()
 }
 
 pub fn verror(s string) {
@@ -1064,4 +1098,22 @@ pub fn os_from_string(os string) OS {
 		}
 	println('bad os $os') // todo panic?
 	return .linux
+}
+
+//
+
+pub fn set_vroot_folder(vroot_path string) {
+	// Preparation for the compiler module:
+	// VEXE env variable is needed so that compiler.vexe_path()
+	// can return it later to whoever needs it:
+	mut vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.setenv('VEXE', os.realpath( [vroot_path, vname].join(os.path_separator) ), true)
+}
+
+pub fn new_v_compiler_with_args(args []string) &V {
+	vexe := vexe_path()
+	mut allargs := [vexe]
+	allargs << args
+	os.setenv('VOSARGS', allargs.join(' '), true)
+	return new_v(allargs)
 }
