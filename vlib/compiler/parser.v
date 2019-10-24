@@ -1264,7 +1264,7 @@ fn (p mut Parser) gen(s string) {
 
 // Generate V header from V source
 fn (p mut Parser) statement(add_semi bool) string {
-	//p.expected_type = ''
+	p.expected_type = ''
 	if p.returns && !p.is_vweb {
 		p.error('unreachable code')
 	}
@@ -1997,11 +1997,10 @@ fn (p mut Parser) get_c_func_type(name string) string {
 	cfn := p.table.find_fn(name) or {
 		// Not Found? Return 'void*'
 		//return 'cvoid' //'void*'
-		//if false {
-		if p.expected_type != '' && p.expected_type != 'void' {
-			p.warn('\ndefine imported C function with ' +
-				'`fn C.$name([args]) [return_type]`\n')
-		}
+		//if p.expected_type != '' && p.expected_type != 'void' {
+			//p.warn('\n e=$p.expected_type define imported C function with ' +
+				//'`fn C.$name([args]) [return_type]`\n')
+		//}
 		return 'void*'
 	}
 	// println("C fn $name has type $cfn.typ")

@@ -25,6 +25,7 @@ fn test_enum() {
 
 fn test_in() {
 	color := Color.red
-	num := 3
+	num := 3 // used to be an expr bug before `in`
 	assert color in [.red, .green]
+	assert num == 3
 }	
