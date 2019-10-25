@@ -888,7 +888,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// Receiver is the first arg
 		// Skip the receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
-			if f.args.len > 1 && !p.is_js {
+			if f.args.len > 1 { // && !p.is_js {
 				p.gen(',')
 			}
 			continue

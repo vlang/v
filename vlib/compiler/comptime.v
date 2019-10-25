@@ -272,6 +272,9 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 }
 
 fn (p mut Parser) gen_array_str(typ Type) {
+	if typ.has_method('str') {
+		return
+	}	
 	p.add_method(typ.name, Fn{
 		name: 'str'
 		typ: 'string'
