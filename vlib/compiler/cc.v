@@ -19,13 +19,17 @@ fn (v mut V) cc() {
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
-		// Translating V code to JS by launching vjs
+		// Translating V code to JS by launching vjs.
+		// Using a separate process for V.js is for performance mostly,
+		// to avoid constant is_js checks.
 		$if !js {
 			if v.out_name.ends_with('.js') {
 				vjs_path := vexe + 'js'
 				dir := os.dir(vexe)
 				if !os.file_exists(vjs_path) {
 					println('V.js compiler not found, building...')
+					// Build V.js. Specifying `-os js` makes V include
+					// only _js.v files and ignore _c.v files.
 					ret := os.system('$vexe -o $vjs_path -os js $dir/v.v')
 					if ret == 0 {
 						println('Done.')

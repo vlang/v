@@ -721,14 +721,13 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		if !p.expr_var.is_changed {
 			p.mark_var_changed(p.expr_var)
 		}
-		met_call := p.gen_method_call(receiver, receiver_type, cgen_name, f.typ)
-		p.cgen.set_placeholder(method_ph, met_call)
+		p.gen_method_call(receiver, receiver_type, cgen_name, f.typ, method_ph)
 	} else {
 		// Normal function call
 		p.gen('$cgen_name (')
 	}
 	
-	// foo<Bar>()
+	// `foo<Bar>()`
 	// if f is generic, the name is changed to a suitable instance in dispatch_generic_fn_instance()
 	// we then replace `cgen_name` with the instance's name
 	generic := f.is_generic
