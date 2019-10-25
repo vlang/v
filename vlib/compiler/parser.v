@@ -1820,10 +1820,10 @@ fn (p mut Parser) get_undefined_fn_type(name string, orig_name string) string {
 		}
 
 		// check for misspelled function / variable / module
-		name_w_mod := mod_gen_name_rev(name.replace('__', '.'))
-		suggested := p.identify_typo(name, name_w_mod)
+		name_dotted := mod_gen_name_rev(name.replace('__', '.'))
+		suggested := p.identify_typo(name)
 		if suggested.len != 0 {
-			p.error('undefined: `$name_w_mod`. did you mean:\n$suggested\n')
+			p.error('undefined: `$name_dotted`. did you mean:\n$suggested\n')
 		}
 
 		// If orig_name is a mod, then printing undefined: `mod` tells us nothing

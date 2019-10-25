@@ -975,13 +975,14 @@ fn (t &Type) contains_field_type(typ string) bool {
 }
 
 // check for a function / variable / module typo in `name`
-fn (p &Parser) identify_typo(name string, name_w_mod string) string {
+fn (p &Parser) identify_typo(name string) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
+	name_dotted := mod_gen_name_rev(name.replace('__', '.'))
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	mut output := ''
 	// check imported modules
-	mut n := p.table.find_misspelled_imported_mod(name_w_mod, p.import_table, min_match)
+	mut n := p.table.find_misspelled_imported_mod(name_dotted, p.import_table, min_match)
 	if n != '' {
 		output += '\n  * module: `$n`'
 	}
@@ -996,7 +997,7 @@ fn (p &Parser) identify_typo(name string, name_w_mod string) string {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = p.find_misspelled_local_var(name_w_mod, min_match)
+	n = p.find_misspelled_local_var(name_dotted, min_match)
 	if n != '' {
 		output += '\n  * variable: `$n`'
 	}
