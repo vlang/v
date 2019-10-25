@@ -31,6 +31,7 @@ fn on_panic(f fn (int) int) {
 }
 
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
+	/*
 	$if mac {
 		buffer := [100]byteptr
 		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
@@ -77,6 +78,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 		}
 	}
 	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
+	*/
 }
 pub fn print_backtrace(){
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
