@@ -221,6 +221,8 @@ fn (v mut V) cc() {
 	}
 	
 	args := a.join(' ')
+start:
+	777 // TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -239,6 +241,13 @@ fn (v mut V) cc() {
 				'-----------------------------------------------------------\n' +
 				'Probably your C compiler is missing. \n' +
 				'Please reinstall it, or make it available in your PATH.')
+			// TCC problems on linux? Try gcc
+			$if linux {
+				if v.pref.ccompiler == 'tcc' {
+					v.pref.ccompiler = 'cc'
+					goto start
+				}	
+			}
 		}
 
 		if v.pref.is_debug {
