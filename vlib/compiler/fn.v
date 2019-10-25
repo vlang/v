@@ -392,8 +392,23 @@ fn (p mut Parser) fn_decl() {
 		if f.is_generic {
 			if p.first_pass() {
 				f.body_idx = p.cur_tok_index()+1
-				p.table.register_fn(f)
+				if f.is_method {
+					rcv := p.table.find_type(receiver_typ)
+					if p.first_pass() && rcv.name == '' {
+						r := Type {
+							name: rcv.name.replace('*', '')
+							mod: p.mod
+							is_placeholder: true
+						}
+						p.table.register_type2(r)
+					}
+					// println('added generic method $rcv.name $f.name')
+					p.add_method(rcv.name, f)
+				} else {
+					p.table.register_fn(f)
+				}
 			}
+			if f.is_method { p.mark_var_changed(f.args[0]) }
 			p.check_unused_variables()
 			p.set_current_fn( EmptyFn )
 			p.returns = false
@@ -692,9 +707,6 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
 	if f.is_method {
-		if f.is_generic {
-			p.error('generic methods are not yet implemented')
-		}
 		receiver := f.args.first()
 		//println('r=$receiver.typ RT=$receiver_type')
 		if receiver.is_mut && !p.expr_var.is_mut {
@@ -709,8 +721,8 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		if !p.expr_var.is_changed {
 			p.mark_var_changed(p.expr_var)
 		}
-		met_name := if f.is_generic { f.name } else { cgen_name }
-		p.gen_method_call(receiver_type, f.typ, met_name, receiver, method_ph)
+		met_call := p.gen_method_call(receiver, receiver_type, cgen_name, f.typ)
+		p.cgen.set_placeholder(method_ph, met_call)
 	} else {
 		// Normal function call
 		p.gen('$cgen_name (')
@@ -1082,8 +1094,8 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	mut r := TypeInst{}
 	mut i := 0
 	mut args := args_
-	args << f.typ
-	for ai, e in args {
+	if f.typ != 'void' { args << f.typ }
+	for e in args {
 		if e == '' { continue }
 		tp := f.type_pars[i]
 		mut ti := e
@@ -1117,6 +1129,11 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	}
 	if r.inst[f.typ] == '' && f.typ in f.type_pars {
 		r.inst[f.typ] = '_ANYTYPE_'
+	}
+	for tp in f.type_pars {
+		if r.inst[tp] == '' {
+			p.error_with_token_index('unused type parameter `$tp`', f.body_idx-2)
+		}
 	}
 	return r
 }
@@ -1257,6 +1274,9 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 }
 
 fn (p mut Parser) rename_generic_fn_instance(f mut Fn, ti TypeInst) {
+	if f.is_method {
+		f.name = f.receiver_typ + '_' + f.name
+	}
 	f.name = f.name + '_T'
 	for k in ti.inst.keys() {
 		f.name = f.name + '_' + type_to_safe_str(ti.inst[k].replace('...', ''))
@@ -1326,7 +1346,12 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	if f.typ in ti.inst {
 		f.typ = ti.inst[f.typ]
 	}
-	p.table.register_fn(f)
+
+	if f.is_method {
+		p.add_method(f.args[0].name, f)
+	} else {
+		p.table.register_fn(f)
+	}
 	// println("generating gen inst $f.name(${f.str_args(p.table)}) $f.typ : $ti.inst")
 
 	p.cgen.is_tmp = false
