@@ -14,8 +14,12 @@ fn C.isdigit(s byteptr) bool
 
 
 
+// <execinfo.h>
 fn backtrace(a voidptr, b int) int
 fn backtrace_symbols_fd(voidptr, int, int)
+
+// <libproc.h>
+fn proc_pidpath(int, voidptr, int) int
 
 
 

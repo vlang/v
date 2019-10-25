@@ -19,21 +19,6 @@ CommonCHeaders = '
 #endif
 
 
-#ifdef __APPLE__
-#include <libproc.h> // proc_pidpath
-//#include <execinfo.h> // backtrace and backtrace_symbols_fd
-#endif
-
-#ifdef __linux__
-//#if !defined(__BIONIC__) && !defined(__GNUC_PREREQ)
-//#include <execinfo.h> // backtrace and backtrace_symbols_fd
-//#endif
-
-#pragma weak backtrace
-#pragma weak backtrace_symbols_fd
-#endif
-
-
 #ifdef __linux__
 #include <sys/types.h>
 #include <sys/wait.h> // os__wait uses wait on nix
