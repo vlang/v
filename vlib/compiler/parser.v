@@ -10,7 +10,7 @@ import (
 )
 
 struct Parser {
-	file_path_id   string // unique id. if parsing file will be path eg, "/home/user/hello.v"
+	file_path      string // if parsing file will be path eg, "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
@@ -29,7 +29,7 @@ mut:
 	lit            string
 	cgen           &CGen
 	table          &Table
-	import_table   FileImportTable // Holds imports for just the file being parsed
+	import_table   ImportTable // Holds imports for just the file being parsed
 	pass           Pass
 	os             OS
 	inside_const   bool
@@ -64,6 +64,7 @@ mut:
 	is_alloc   bool // Whether current expression resulted in an allocation
 	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
 	in_dispatch 	bool		// dispatching generic instance?
+	is_vgen bool
 	is_vweb bool
 	is_sql bool
 	is_js bool
@@ -81,8 +82,8 @@ const (
 
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
-fn (v mut V) new_parser_from_string(text string, id string) Parser {
-	mut p := v.new_parser(new_scanner(text), id)
+fn (v mut V) new_parser_from_string(text string) Parser {
+	mut p := v.new_parser(new_scanner(text))
 	p.scan_tokens()
 	return p
 }
@@ -119,12 +120,17 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 
-	mut p := v.new_parser(new_scanner_file(path), path)
+	mut p := v.new_parser(new_scanner_file(path))
 	p = { p|
+		file_path: path,
 		file_name: path.all_after(os.path_separator),
 		file_platform: path_platform,
 		file_pcguard: path_pcguard,
-		is_vh: path.ends_with('.vh')
+		is_vh: path.ends_with('.vh'),
+		v_script: path.ends_with('.vsh')
+	}
+	if p.v_script {
+		println('new_parser: V script')
 	}
 	if p.pref.building_v {
 		p.scanner.should_print_relative_paths_on_error = true
@@ -140,10 +146,9 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 
 // creates a new parser. most likely you will want to use
 // `new_parser_file` or `new_parser_string` instead.
-fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
+fn (v mut V) new_parser(scanner &Scanner) Parser {
 	v.reset_cgen_file_line_parameters()
 	mut p := Parser {
-		file_path_id: id
 		scanner: scanner
 		v: v
 		table: v.table
@@ -153,12 +158,8 @@ fn (v mut V) new_parser(scanner &Scanner, id string) Parser {
 		os: v.os
 		vroot: v.vroot
 		local_vars: [Var{}].repeat(MaxLocalVars)
-		import_table: v.table.get_file_import_table(id)
-		v_script: id.ends_with('.vsh')
+		import_table: new_import_table()
 	}
-	if p.v_script {
-		println('new_parser: V script')
-	}	
 	$if js {
 		p.is_js = true
 	}
@@ -241,7 +242,7 @@ fn (p &Parser) log(s string) {
 
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
-	p.cgen.file = cescaped_path(os.realpath(p.file_path_id))
+	p.cgen.file = cescaped_path(os.realpath(p.file_path))
 	/////////////////////////////////////
 	p.pass = pass
 	p.token_idx = 0
@@ -281,9 +282,8 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	// fully qualify the module name, eg base64 to encoding.base64
 	else {
-		p.table.qualify_module(p.mod, p.file_path_id)
+		p.table.qualify_module(p.mod, p.file_path)
 	}
-	p.import_table.module_name = fq_mod
 	p.table.register_module(fq_mod)
 	p.mod = fq_mod
 
@@ -294,8 +294,6 @@ fn (p mut Parser) parse(pass Pass) {
 		if 'builtin' in p.table.imports {
 			p.error('module `builtin` cannot be imported')
 		}
-		// save file import table
-		p.table.file_imports[p.file_path_id] = p.import_table
 		return
 	}
 	// Go through every top level token or throw a compilation error if a non-top level token is met
@@ -496,7 +494,7 @@ fn (p mut Parser) import_statement() {
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
-	p.import_table.register_alias(mod_alias, mod, import_tok_idx)
+	p.register_import_alias(mod_alias, mod, import_tok_idx)
 	// Make sure there are no duplicate imports
 	if mod in p.table.imports {
 		return
@@ -2013,7 +2011,7 @@ struct $f.parent_fn {
 ', fname_tidx)
 		}
 		// Don't allow `arr.data`
-		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod && p.file_path_id != 'vgen' {
+		if field.access_mod == .private && !p.builtin_mod && !p.pref.translated && p.mod != typ.mod && !p.is_vgen {
 			// println('$typ.name :: $field.name ')
 			// println(field.access_mod)
 			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)\n' +
@@ -3617,7 +3615,7 @@ fn (p mut Parser) assert_statement() {
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
 	// TODO print "expected:  got" for failed tests
-	filename := cescaped_path(p.file_path_id)
+	filename := cescaped_path(p.file_path)
 	p.genln(';
 \n
 
@@ -3906,7 +3904,7 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 
 fn (p mut Parser) check_unused_imports() {
 	// Don't run in the generated V file with `.str()`
-	if p.file_path_id == 'vgen' {
+	if p.is_vgen {
 		return
 	}
 	mut output := ''

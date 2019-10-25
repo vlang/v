@@ -158,7 +158,7 @@ fn (p mut Parser) print_error_context(){
 	p.cgen.save()
 	// V up hint
 	cur_path := os.getwd()
-	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path_id.contains('v/compiler') || cur_path.contains('v/compiler') ){
+	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.')
 		println('If you didn\'t modify V\'s code, most likely there was a change that ')

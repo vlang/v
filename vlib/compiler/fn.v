@@ -229,7 +229,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
-			p.file_path_id != 'vgen' // allow .str() on builtin arrays
+			!p.is_vgen // allow .str()
 		{
 			//println('T.mod=$T.mod')
 			//println('p.mod=$p.mod')
@@ -866,7 +866,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	if p.v.pref.is_debug && f.name == 'panic' && !p.is_js {
 		mod_name := p.mod.replace('_dot_', '.')
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
-		file_path := cescaped_path(p.file_path_id)
+		file_path := cescaped_path(p.file_path)
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
 			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '
@@ -1435,9 +1435,9 @@ fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 		}
 		n := name.all_after('.')
 		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
-		coeff := strings.dice_coefficient(var.name, n)
-		if coeff > closest {
-			closest = coeff
+		c := strings.dice_coefficient(var.name, n)
+		if c > closest {
+			closest = c
 			closest_var = var.name
 		}
 	}
