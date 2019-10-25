@@ -352,7 +352,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Translated C code and .vh can have empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&
-		(p.pref.translated || p.pref.is_test || p.is_vh) &&
+		//(p.pref.translated || p.pref.is_test || p.is_vh) &&
 		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
