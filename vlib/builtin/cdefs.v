@@ -1,7 +1,5 @@
 module builtin
 
-fn backtrace(a voidptr, b int) int
-
 fn C.memcpy(byteptr, byteptr, int)
 fn C.memmove(byteptr, byteptr, int)
 //fn C.malloc(int) byteptr
@@ -13,13 +11,10 @@ fn C.sprintf(a ...voidptr) byteptr
 fn C.strlen(s byteptr) int
 
 
-
-fn backtrace_symbols_fd(voidptr, int, int)
-
+fn backtrace(a voidptr, b int) int { return 0 }
+fn backtrace_symbols_fd(a voidptr, b int, c int) {}
 
 
 // Windows
 fn C._setmode(int, int)
 fn C._fileno(int) int
-
-
