@@ -42,7 +42,14 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 			is_mut: false
 			is_used: true
 		})
+		p.register_var(Var {
+			name: 'errcode'
+			typ: 'int'
+			is_mut: false
+			is_used: true
+		})
 		p.genln('string err = $tmp . error;')
+		p.genln('int    errcode = $tmp . ecode;')
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
@@ -114,7 +121,14 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 			is_mut: false
 			is_used: true
 		})
+		p.register_var(Var {
+			name: 'errcode'
+			typ: 'int'
+			is_mut: false
+			is_used: true
+		})
 		p.genln('string err = $tmp . error;')
+		p.genln('int    errcode = $tmp . ecode;')
 		p.statements()
 		p.returns = false
 	} else {
