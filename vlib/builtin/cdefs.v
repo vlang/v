@@ -11,10 +11,10 @@ fn C.sprintf(a ...voidptr) byteptr
 fn C.strlen(s byteptr) int
 
 
-fn backtrace(a voidptr, b int) int { return 0 }
-fn backtrace_symbols_fd(a voidptr, b int, c int) {}
-
-
 // Windows
 fn C._setmode(int, int)
 fn C._fileno(int) int
+
+
+fn backtrace(a voidptr, b int) int
+fn backtrace_symbols_fd(a voidptr, b int, c int)
