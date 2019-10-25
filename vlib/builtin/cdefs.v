@@ -16,5 +16,5 @@ fn C._setmode(int, int)
 fn C._fileno(int) int
 
 
-fn backtrace(a voidptr, b int) int
-fn backtrace_symbols_fd(a voidptr, b int, c int)
+// fn backtrace(a voidptr, b int) int
+// fn backtrace_symbols_fd(a voidptr, b int, c int)
