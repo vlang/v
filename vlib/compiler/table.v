@@ -975,14 +975,23 @@ fn (t &Type) contains_field_type(typ string) bool {
 }
 
 // check for a function / variable / module typo in `name`
-fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
+fn (p &Parser) identify_typo(name string, name_orig string) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
-	name_orig := mod_gen_name_rev(name.replace('__', '.'))
 	mut output := ''
+	// check imported modules
+	mut n := p.table.find_misspelled_imported_mod(name_orig, p.import_table, min_match)
+	if n != '' {
+		output += '\n  * module: `$n`'
+	}
+	// check consts
+	n = p.table.find_misspelled_const(name, p.import_table, min_match)
+	if n != '' {
+		output += '\n  * const: `$n`'
+	}
 	// check functions
-	mut n := p.table.find_misspelled_fn(name, fit, min_match)
+	n = p.table.find_misspelled_fn(name, p.import_table, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
@@ -990,11 +999,6 @@ fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
 	n = p.find_misspelled_local_var(name_orig, min_match)
 	if n != '' {
 		output += '\n  * variable: `$n`'
-	}
-	// check imported modules
-	n = p.table.find_misspelled_imported_mod(name_orig, fit, min_match)
-	if n != '' {
-		output += '\n  * module: `$n`'
 	}
 	return output
 }
@@ -1017,9 +1021,10 @@ fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_matc
 			if !mod_imported { continue }
 		}
 		p := strings.dice_coefficient(n1, f.name)
+		f_name_orig := mod_gen_name_rev(f.name.replace('__', '.'))
 		if p > closest {
 			closest = p
-			closest_fn = f.name
+			closest_fn = f_name_orig
 		}
 	}
 	return if closest >= min_match { closest_fn } else { '' }
@@ -1031,7 +1036,7 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 	mut closest_mod := ''
 	n1 := if name.starts_with('main.') { name.right(5) } else { name }
 	for alias, mod in fit.imports {
-		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+		if n1.len - alias.len > 2 || alias.len - n1.len > 2 { continue }
 		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
 		p := strings.dice_coefficient(n1, alias)
 		if p > closest {
@@ -1041,3 +1046,25 @@ fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable
 	}
 	return if closest >= min_match { closest_mod } else { '' }
 }
+
+// find const with closest name to `name`
+fn (table &Table) find_misspelled_const(name string, fit &FileImportTable, min_match f32) string {
+	mut closest := f32(0)
+	mut closest_const := ''
+	mut mods_in_scope := ['builtin', 'main']
+	for _, mod in fit.imports {
+		mods_in_scope << mod
+	}
+	for c in table.consts {
+		if c.mod != fit.module_name && !(c.mod in mods_in_scope) && c.mod.contains('__') { continue }
+		if name.len - c.name.len > 2 || c.name.len - name.len > 2 { continue }
+		const_name_orig := mod_gen_name_rev(c.name.replace('__', '.'))
+		p := strings.dice_coefficient(name, c.name.replace('builtin__', 'main__'))
+		if p > closest {
+			closest = p
+			closest_const = const_name_orig
+		}
+	}
+	return if closest >= min_match { closest_const } else { '' }
+}
+
