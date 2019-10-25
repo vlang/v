@@ -55,48 +55,56 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// we could possibly allow, and parse will reject them if we
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
-		switch c {
-		case `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`, `"`:
+		if c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`,
+			`:`, `[`, `]`, `<`, `>`, `"`]
+		{
 			return false
 		}
 	}
 
-	switch c {
-	case `-`, `_`, `.`, `~`: // §2.3 Unreserved characters (mark)
-		return false
+	match c {
+		`-`, `_`, `.`, `~` { // §2.3 Unreserved characters (mark)
+			return false
+		}
 
-	case `$`, `&`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@`: // §2.2 Reserved characters (reserved)
+	 `$`, `&`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@` { // §2.2 Reserved characters (reserved)
 		// Different sections of the URL allow a few of
 		// the reserved characters to appear unescaped.
-		switch mode {
-		case EncodingMode.encode_path: // §3.3
+		match mode {
+		.encode_path { // §3.3
 			// The RFC allows : @ & = + $ but saves / ; , for assigning
 			// meaning to individual path segments. This package
 			// only manipulates the path as a whole, so we allow those
 			// last three as well. That leaves only ? to escape.
 			return c == `?`
+		}
 
-		case EncodingMode.encode_path_segment: // §3.3
+		.encode_path_segment { // §3.3
 			// The RFC allows : @ & = + $ but saves / ; , for assigning
 			// meaning to individual path segments.
 			return c == `/` || c == `;` || c == `,` || c == `?`
+		}
 
-		case EncodingMode.encode_user_password: // §3.2.1
+		.encode_user_password { // §3.2.1
 			// The RFC allows `;`, `:`, `&`, `=`, `+`, `$`, and `,` in
 			// userinfo, so we must escape only `@`, `/`, and `?`.
 			// The parsing of userinfo treats `:` as special so we must escape
 			// that too.
 			return c == `@` || c == `/` || c == `?` || c == `:`
+		}
 
-		case EncodingMode.encode_query_component: // §3.4
+		.encode_query_component { // §3.4
 			// The RFC reserves (so we must escape) everything.
 			return true
+		}
 
-		case EncodingMode.encode_fragment: // §4.1
+		.encode_fragment { // §4.1
 			// The RFC text is silent but the grammar allows
 			// everything, so escape nothing.
 			return false
 		}
+		}
+	}
 	}
 
 	if mode == .encode_fragment {
