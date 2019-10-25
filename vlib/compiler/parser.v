@@ -2686,7 +2686,7 @@ fn (p mut Parser) string_expr() {
 			p.gen("'$str'")
 		}
 		else if p.is_js {
-			p.gen('"$f"')
+			p.gen('tos("$f")')
 		}
 		else {
 			p.gen('tos3("$f")')

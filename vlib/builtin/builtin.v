@@ -30,8 +30,6 @@ fn on_panic(f fn (int) int) {
 	// TODO
 }
 
-fn C.backtrace(voidptr, int) int
-
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if mac {
 		buffer := [100]byteptr
