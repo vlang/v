@@ -10,6 +10,7 @@ fn C.qsort(voidptr, int, int, voidptr)
 
 fn C.sprintf(a ...voidptr) byteptr
 fn C.strlen(s byteptr) int
+fn C.isdigit(s byteptr) bool
 
 
 
