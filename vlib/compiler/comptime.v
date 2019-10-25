@@ -73,6 +73,14 @@ fn (p mut Parser) comp_time() {
 				p.genln('#endif')
 			}
 		}
+		else if name == 'glibc' {
+			p.genln('#ifdef __GLIBC__')
+			p.check(.lcbr)
+			p.statements_no_rcbr()
+			if ! (p.tok == .dollar && p.peek() == .key_else) {
+				p.genln('#endif')
+			}
+		}	
 		else {
 			println('Supported platforms:')
 			println(supported_platforms)
@@ -229,7 +237,7 @@ fn (p mut Parser) chash() {
 		$if !js {
 			if !p.can_chash {
 				println('hash="$hash"')
-				if hash.starts_with('include') { println("include") } else {} 
+				if hash.starts_with('include') { println("include") } else {}
 				p.error('bad token `#` (embedding C code is no longer supported)')
 			}
 		}

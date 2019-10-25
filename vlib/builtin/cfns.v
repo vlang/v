@@ -1,6 +1,5 @@
 module builtin
 
-fn C.backtrace(a voidptr, b int) int
 
 fn C.memcpy(byteptr, byteptr, int)
 fn C.memmove(byteptr, byteptr, int)
@@ -14,7 +13,8 @@ fn C.strlen(s byteptr) int
 
 
 
-fn C.backtrace_symbols_fd(voidptr, int, int)
+fn backtrace(a voidptr, b int) int
+fn backtrace_symbols_fd(voidptr, int, int)
 
 
 

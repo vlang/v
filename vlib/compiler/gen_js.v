@@ -91,7 +91,9 @@ fn (table &Table) fn_gen_name(f &Fn) string {
 	return name
 }
 
-fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, receiver Var,method_ph int) {
+fn (p mut Parser) gen_method_call(receiver_type, ftyp string,
+	cgen_name string, receiver Var,method_ph int)
+{
 	//mut cgen_name := p.table.fn_gen_name(f)
 	//mut method_call := cgen_name + '('
 	p.gen('.' + cgen_name.all_after('_') + '(')

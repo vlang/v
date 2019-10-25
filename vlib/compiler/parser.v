@@ -1065,7 +1065,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.fmt_dec()
 			label := p.check_name()
 			p.fmt_inc()
-			p.genln(label + ':')
+			p.genln(label + ': ;')
 			p.check(.colon)
 			return ''
 		}

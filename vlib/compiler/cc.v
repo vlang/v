@@ -9,6 +9,10 @@ import (
 	time
 )
 
+fn todo() {
+	
+}	
+
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
@@ -127,7 +131,7 @@ fn (v mut V) cc() {
 	}
 
 	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
-		a << '-Werror=implicit-function-declaration'
+		//a << '-Werror=implicit-function-declaration'
 	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {
@@ -221,6 +225,9 @@ fn (v mut V) cc() {
 	}
 	
 	args := a.join(' ')
+start:
+	todo()
+	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -230,9 +237,15 @@ fn (v mut V) cc() {
 	ticks := time.ticks()
 	res := os.exec(cmd) or { verror(err) return }
 	if res.exit_code != 0 {
-
+		// the command could not be found by the system
 		if res.exit_code == 127 {
-			// the command could not be found by the system
+			$if linux {
+				// TCC problems on linux? Try GCC.
+				if v.pref.ccompiler == 'tcc' {
+					v.pref.ccompiler = 'cc'
+					goto start
+				}	
+			}
 			verror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
