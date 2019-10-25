@@ -698,6 +698,8 @@ pub fn executable() string {
 		return string_from_wide2(result, len)
 	}
 	$if mac {
+		return os.args[0]
+		/*
 		mut result := malloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath (pid, result, MAX_PATH)
@@ -706,6 +708,7 @@ pub fn executable() string {
 			return '.'
 		}
 		return string(result)
+		*/
 	}
 	$if freebsd {
 		mut result := malloc(MAX_PATH)
