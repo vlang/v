@@ -7,6 +7,7 @@ module sync
 // Mutex HANDLE
 type MHANDLE voidptr
 
+//[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 pub struct Mutex {
 mut:
 	mx           MHANDLE    // mutex handle
@@ -37,6 +38,16 @@ const (
 	WAIT_TIMEOUT       = 0x00000102
 	WAIT_FAILED        = 0xFFFFFFFF
 )
+
+pub fn new_mutex() Mutex {
+	m := Mutex{}
+	m.mx = C.CreateMutex(0, false, 0)
+	if isnil(m.mx) {
+		m.state = .broken // handle broken and mutex state are broken
+		return m
+	}
+	return m
+}
 
 pub fn (m mut Mutex) lock() {
 	// if mutex handle not initalized
