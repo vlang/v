@@ -127,7 +127,7 @@ fn (v mut V) cc() {
 	}
 
 	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
-		a << '-Werror=implicit-function-declaration'
+		//a << '-Werror=implicit-function-declaration'
 	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {

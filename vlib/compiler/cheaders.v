@@ -21,7 +21,7 @@ CommonCHeaders = '
 
 #ifdef __APPLE__
 #include <libproc.h> // proc_pidpath
-#include <execinfo.h> // backtrace and backtrace_symbols_fd
+//#include <execinfo.h> // backtrace and backtrace_symbols_fd
 #endif
 
 #ifdef __linux__
