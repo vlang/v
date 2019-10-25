@@ -1,11 +1,15 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module vweb
 
 import (
 	os
-	net 
-	http 
-	net.urllib 
-) 
+	net
+	http
+	net.urllib
+)
 
 const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
@@ -27,16 +31,16 @@ const (
 	}
 )
 
-struct Context {
-		static_files map[string]string
-		static_mime_types map[string]string
-	pub:
-		req http.Request 
-		conn net.Socket 
-		form map[string]string 
-		// TODO Response 
-	mut:
-		headers string // response headers 
+pub struct Context {
+	static_files map[string]string
+	static_mime_types map[string]string
+pub:
+	req http.Request
+	conn net.Socket
+	form map[string]string
+	// TODO Response
+mut:
+	headers string // response headers
 }
 
 pub fn (ctx Context) html(html string) {
@@ -48,11 +52,11 @@ pub fn (ctx Context) text(s string) {
 }
 
 pub fn (ctx Context) json(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') 
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s')
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') 
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers')
 }
 
 pub fn (ctx Context) not_found(s string) {
@@ -84,15 +88,16 @@ fn (ctx mut Context) get_header(key string) string {
 	return ctx.headers.find_between('\r\n$key: ', '\r\n')
 }
 
-pub fn run<T>(port int) {
-	println('Running vweb app on http://localhost:$port ...') 
-	l := net.listen(port) or { panic('failed to listen') } 
-	mut app := T{} 
-	app.init() 
+//pub fn run<T>(port int) {
+pub fn run<T>(app T, port int) {
+	println('Running vweb app on http://localhost:$port ...')
+	l := net.listen(port) or { panic('failed to listen') }
+	//mut app := T{}
+	app.init()
 	for {
 		conn := l.accept() or {
 			panic('accept() failed')
-		} 
+		}
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
@@ -123,35 +128,35 @@ pub fn run<T>(port int) {
 				ws_func: 0
 				user_ptr: 0
 				method: vals[0]
-				url: vals[1] 
-		} 
+				url: vals[1]
+		}
 		$if debug {
 			println('vweb action = "$action"')
 		}
 		//mut app := T{
 		app.vweb = Context{
-			req: req 
-			conn: conn 
+			req: req
+			conn: conn
 			form: map[string]string
 			static_files: map[string]string
 			static_mime_types: map[string]string
-		} 
-		//} 
+		}
+		//}
 		if req.method in methods_with_form {
-			app.vweb.parse_form(s) 
-		} 
+			app.vweb.parse_form(s)
+		}
 		if vals.len < 2 {
 			$if debug {
 				println('no vals for http')
 			}
 			conn.close()
-			continue 
-		} 
+			continue
+		}
 
-		// Serve a static file if it's one 
+		// Serve a static file if it's one
 		// if app.vweb.handle_static() {
 		// 	conn.close()
-		// 	continue 
+		// 	continue
 		// }
 
 		// Call the right action
@@ -163,13 +168,13 @@ pub fn run<T>(port int) {
 }
 
 
-pub fn foobar<T>() { 
-} 
+pub fn foobar<T>() {
+}
 
-fn (ctx mut Context) parse_form(s string) { 
+fn (ctx mut Context) parse_form(s string) {
 	if !(ctx.req.method in methods_with_form) {
-		return 
-	} 
+		return
+	}
 	pos := s.index('\r\n\r\n')
 	if pos > -1 {
 		mut str_form := s.substr(pos, s.len)
@@ -177,18 +182,18 @@ fn (ctx mut Context) parse_form(s string) {
 		words := str_form.split('&')
 		for word in words {
 			$if debug {
-				println('parse form keyval="$word"') 
+				println('parse form keyval="$word"')
 			}
-			keyval := word.trim_space().split('=') 
-			if keyval.len != 2 { continue } 
+			keyval := word.trim_space().split('=')
+			if keyval.len != 2 { continue }
 			key := keyval[0]
 			val := urllib.query_unescape(keyval[1]) or {
-				continue 
+				continue
 			}
-			$if debug { 
-				println('http form "$key" => "$val"') 
+			$if debug {
+				println('http form "$key" => "$val"')
 			}
-			ctx.form[key] = val 
+			ctx.form[key] = val
 		}
 	}
 }
@@ -227,15 +232,15 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	static_file := ctx.static_files[ctx.req.url]
 	mime_type := ctx.static_mime_types[ctx.req.url]
 
-	if static_file != '' { 
-		data := os.read_file(static_file) or { return false }  
+	if static_file != '' {
+		data := os.read_file(static_file) or { return false }
 		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data')
-		return true 
-	} 
-	return false 
-} 
+		return true
+	}
+	return false
+}
 
 pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
-	ctx.static_files[url] = file_path 
+	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
 }

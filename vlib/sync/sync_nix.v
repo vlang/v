@@ -5,7 +5,7 @@
 module sync
 
 #include <pthread.h>
-struct Mutex {
+pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 

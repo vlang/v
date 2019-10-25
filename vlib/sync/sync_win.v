@@ -7,7 +7,7 @@ module sync
 // Mutex HANDLE
 type MHANDLE voidptr
 
-struct Mutex {
+pub struct Mutex {
 mut:
 	mx           MHANDLE    // mutex handle
 	state        MutexState // mutex state

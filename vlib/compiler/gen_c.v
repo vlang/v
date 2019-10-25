@@ -511,22 +511,22 @@ fn type_default(typ string) string {
 		return '{0}'
 	}
 	// Default values for other types are not needed because of mandatory initialization
-	switch typ {
-	case 'bool': return '0'
-	case 'string': return 'tos((byte *)"", 0)'
-	case 'i8': return '0'
-	case 'i16': return '0'
-	case 'i64': return '0'
-	case 'u16': return '0'
-	case 'u32': return '0'
-	case 'u64': return '0'
-	case 'byte': return '0'
-	case 'int': return '0'
-	case 'rune': return '0'
-	case 'f32': return '0.0'
-	case 'f64': return '0.0'
-	case 'byteptr': return '0'
-	case 'voidptr': return '0'
+	match typ {
+	'bool'{ return '0'}
+	'string'{ return 'tos3("")'}
+	'i8'{ return '0'}
+	'i16'{ return '0'}
+	'i64'{ return '0'}
+	'u16'{ return '0'}
+	'u32'{ return '0'}
+	'u64'{ return '0'}
+	'byte'{ return '0'}
+	'int'{ return '0'}
+	'rune'{ return '0'}
+	'f32'{ return '0.0'}
+	'f64'{ return '0.0'}
+	'byteptr'{ return '0'}
+	'voidptr'{ return '0'}
 	}
 	return '{0}'
 }

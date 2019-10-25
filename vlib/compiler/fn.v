@@ -229,7 +229,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
-			p.file_path_id != 'vgen' // allow .str() on builtin arrays
+			!p.is_vgen // allow .str()
 		{
 			//println('T.mod=$T.mod')
 			//println('p.mod=$p.mod')
@@ -275,8 +275,8 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	if p.pref.build_mode == .build_module {
-		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	if p.pref.is_verbose { // p.pref.build_mode == .build_module {
+		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
 	}
 	if is_c {
 		p.check(.dot)
@@ -352,7 +352,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Translated C code and .vh can have empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&
-		(p.pref.translated || p.pref.is_test || p.is_vh) &&
+		//(p.pref.translated || p.pref.is_test || p.is_vh) &&
 		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
@@ -576,8 +576,10 @@ fn (p mut Parser) check_unused_variables() {
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
-			p.error_with_token_index( '`$var.name` is declared as mutable, but it was never changed', var.token_idx )
+		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
+			!p.pref.translated && var.typ != 'T*'
+		{
+			p.error_with_token_index('`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
 	}
 }
@@ -876,7 +878,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	if p.v.pref.is_debug && f.name == 'panic' && !p.is_js {
 		mod_name := p.mod.replace('_dot_', '.')
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
-		file_path := cescaped_path(p.file_path_id)
+		file_path := cescaped_path(p.file_path)
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
 			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '
@@ -1328,7 +1330,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 
 	// TODO this is done to prevent a crash as a result of this not being
 	// properly initialised. This is a bug somewhere futher upstream
-	f.defer_text = []string {}
+	f.defer_text = []string
 
 	old_args := f.args
 	new_types := p.replace_type_params(f, ti)
@@ -1458,9 +1460,9 @@ fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 		}
 		n := name.all_after('.')
 		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
-		coeff := strings.dice_coefficient(var.name, n)
-		if coeff > closest {
-			closest = coeff
+		c := strings.dice_coefficient(var.name, n)
+		if c > closest {
+			closest = c
 			closest_var = var.name
 		}
 	}

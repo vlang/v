@@ -11,7 +11,7 @@ import gx
 import os
 import glfw
 
-struct Vec2 {
+pub struct Vec2 {
 pub:
 	x int
 	y int
@@ -32,7 +32,7 @@ pub fn init_gg() {
 }
 
 
-struct Cfg {
+pub struct Cfg {
 pub:
 	width     int
 	height    int
@@ -49,7 +49,7 @@ pub:
 	scale int
 }
 
-struct GG {
+pub struct GG {
 	shader    gl.Shader
 	// use_ortho bool
 	width     int

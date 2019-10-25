@@ -25,9 +25,10 @@ CommonCHeaders = '
 #endif
 
 #ifdef __linux__
-#ifndef __BIONIC__
+//#if !defined(__BIONIC__) && !defined(__GNUC_PREREQ)
 #include <execinfo.h> // backtrace and backtrace_symbols_fd
-#endif
+//#endif
+
 #pragma weak backtrace
 #pragma weak backtrace_symbols_fd
 #endif

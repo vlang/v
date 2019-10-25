@@ -17,11 +17,6 @@ fn init() {
 	}
 }
 
-fn C.memcpy(byteptr, byteptr, int)
-fn C.memmove(byteptr, byteptr, int)
-//fn C.malloc(int) byteptr
-fn C.realloc(byteptr, int) byteptr
-
 pub fn exit(code int) {
 	C.exit(code)
 }
@@ -34,8 +29,6 @@ pub fn isnil(v voidptr) bool {
 fn on_panic(f fn (int) int) {
 	// TODO
 }
-
-fn C.backtrace(voidptr, int) int
 
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if mac {

@@ -64,10 +64,10 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	mut t2 := u32(0)
 	mut t3 := u32(0)
 	for r := 0; r < nr; r++ {
-		t0 = xk[k+0] ^ Te0[byte(s0>>24)] ^ Te1[byte(s1>>16)] ^ Te2[byte(s2>>8)] ^ u32(Te3[byte(s3)])
-		t1 = xk[k+1] ^ Te0[byte(s1>>24)] ^ Te1[byte(s2>>16)] ^ Te2[byte(s3>>8)] ^ u32(Te3[byte(s0)])
-		t2 = xk[k+2] ^ Te0[byte(s2>>24)] ^ Te1[byte(s3>>16)] ^ Te2[byte(s0>>8)] ^ u32(Te3[byte(s1)])
-		t3 = xk[k+3] ^ Te0[byte(s3>>24)] ^ Te1[byte(s0>>16)] ^ Te2[byte(s1>>8)] ^ u32(Te3[byte(s2)])
+		t0 = xk[k+0] ^ te0[byte(s0>>24)] ^ te1[byte(s1>>16)] ^ te2[byte(s2>>8)] ^ u32(te3[byte(s3)])
+		t1 = xk[k+1] ^ te0[byte(s1>>24)] ^ te1[byte(s2>>16)] ^ te2[byte(s3>>8)] ^ u32(te3[byte(s0)])
+		t2 = xk[k+2] ^ te0[byte(s2>>24)] ^ te1[byte(s3>>16)] ^ te2[byte(s0>>8)] ^ u32(te3[byte(s1)])
+		t3 = xk[k+3] ^ te0[byte(s3>>24)] ^ te1[byte(s0>>16)] ^ te2[byte(s1>>8)] ^ u32(te3[byte(s2)])
 		k += 4
 		s0 = t0
 		s1 = t1
@@ -76,10 +76,10 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	}
 
 	// Last round uses s-box directly and XORs to produce output.
-	s0 = SBox0[t0>>24]<<24 | SBox0[t1>>16&0xff]<<16 | u32(SBox0[t2>>8&0xff]<<8) | SBox0[t3&u32(0xff)]
-	s1 = SBox0[t1>>24]<<24 | SBox0[t2>>16&0xff]<<16 | u32(SBox0[t3>>8&0xff]<<8) | SBox0[t0&u32(0xff)]
-	s2 = SBox0[t2>>24]<<24 | SBox0[t3>>16&0xff]<<16 | u32(SBox0[t0>>8&0xff]<<8) | SBox0[t1&u32(0xff)]
-	s3 = SBox0[t3>>24]<<24 | SBox0[t0>>16&0xff]<<16 | u32(SBox0[t1>>8&0xff]<<8) | SBox0[t2&u32(0xff)]
+	s0 = s_box0[t0>>24]<<24 | s_box0[t1>>16&0xff]<<16 | u32(s_box0[t2>>8&0xff]<<8) | s_box0[t3&u32(0xff)]
+	s1 = s_box0[t1>>24]<<24 | s_box0[t2>>16&0xff]<<16 | u32(s_box0[t3>>8&0xff]<<8) | s_box0[t0&u32(0xff)]
+	s2 = s_box0[t2>>24]<<24 | s_box0[t3>>16&0xff]<<16 | u32(s_box0[t0>>8&0xff]<<8) | s_box0[t1&u32(0xff)]
+	s3 = s_box0[t3>>24]<<24 | s_box0[t0>>16&0xff]<<16 | u32(s_box0[t1>>8&0xff]<<8) | s_box0[t2&u32(0xff)]
 
 	s0 ^= xk[k+0]
 	s1 ^= xk[k+1]
@@ -116,10 +116,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	mut t2 := u32(0)
 	mut t3 := u32(0)
 	for r := 0; r < nr; r++ {
-		t0 = xk[k+0] ^ Td0[byte(s0>>24)] ^ Td1[byte(s3>>16)] ^ Td2[byte(s2>>8)] ^ u32(Td3[byte(s1)])
-		t1 = xk[k+1] ^ Td0[byte(s1>>24)] ^ Td1[byte(s0>>16)] ^ Td2[byte(s3>>8)] ^ u32(Td3[byte(s2)])
-		t2 = xk[k+2] ^ Td0[byte(s2>>24)] ^ Td1[byte(s1>>16)] ^ Td2[byte(s0>>8)] ^ u32(Td3[byte(s3)])
-		t3 = xk[k+3] ^ Td0[byte(s3>>24)] ^ Td1[byte(s2>>16)] ^ Td2[byte(s1>>8)] ^ u32(Td3[byte(s0)])
+		t0 = xk[k+0] ^ td0[byte(s0>>24)] ^ td1[byte(s3>>16)] ^ td2[byte(s2>>8)] ^ u32(td3[byte(s1)])
+		t1 = xk[k+1] ^ td0[byte(s1>>24)] ^ td1[byte(s0>>16)] ^ td2[byte(s3>>8)] ^ u32(td3[byte(s2)])
+		t2 = xk[k+2] ^ td0[byte(s2>>24)] ^ td1[byte(s1>>16)] ^ td2[byte(s0>>8)] ^ u32(td3[byte(s3)])
+		t3 = xk[k+3] ^ td0[byte(s3>>24)] ^ td1[byte(s2>>16)] ^ td2[byte(s1>>8)] ^ u32(td3[byte(s0)])
 		k += 4
 		s0 = t0
 		s1 = t1
@@ -128,10 +128,10 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	}
 
 	// Last round uses s-box directly and XORs to produce output.
-	s0 = u32(SBox1[t0>>24])<<24 | u32(SBox1[t3>>16&0xff])<<16 | u32(SBox1[t2>>8&0xff]<<8) | u32(SBox1[t1&u32(0xff)])
-	s1 = u32(SBox1[t1>>24])<<24 | u32(SBox1[t0>>16&0xff])<<16 | u32(SBox1[t3>>8&0xff]<<8) | u32(SBox1[t2&u32(0xff)])
-	s2 = u32(SBox1[t2>>24])<<24 | u32(SBox1[t1>>16&0xff])<<16 | u32(SBox1[t0>>8&0xff]<<8) | u32(SBox1[t3&u32(0xff)])
-	s3 = u32(SBox1[t3>>24])<<24 | u32(SBox1[t2>>16&0xff])<<16 | u32(SBox1[t1>>8&0xff]<<8) | u32(SBox1[t0&u32(0xff)])
+	s0 = u32(s_box1[t0>>24])<<24 | u32(s_box1[t3>>16&0xff])<<16 | u32(s_box1[t2>>8&0xff]<<8) | u32(s_box1[t1&u32(0xff)])
+	s1 = u32(s_box1[t1>>24])<<24 | u32(s_box1[t0>>16&0xff])<<16 | u32(s_box1[t3>>8&0xff]<<8) | u32(s_box1[t2&u32(0xff)])
+	s2 = u32(s_box1[t2>>24])<<24 | u32(s_box1[t1>>16&0xff])<<16 | u32(s_box1[t0>>8&0xff]<<8) | u32(s_box1[t3&u32(0xff)])
+	s3 = u32(s_box1[t3>>24])<<24 | u32(s_box1[t2>>16&0xff])<<16 | u32(s_box1[t1>>8&0xff]<<8) | u32(s_box1[t0&u32(0xff)])
 
 	s0 ^= xk[k+0]
 	s1 ^= xk[k+1]
@@ -145,12 +145,12 @@ fn decrypt_block_generic(xk []u32, dst, src []byte) {
 	binary.big_endian_put_u32(mut dst.slice(12, 16), s3)
 }
 
-// Apply SBox0 to each byte in w.
+// Apply s_box0 to each byte in w.
 fn subw(w u32) u32 {
-	return u32(SBox0[w>>24])<<24 |
-		   u32(SBox0[w>>16&0xff]<<16) |
-		   u32(SBox0[w>>8&0xff]<<8) |
-		   u32(SBox0[w&u32(0xff)])
+	return u32(s_box0[w>>24])<<24 |
+		   u32(s_box0[w>>16&0xff]<<16) |
+		   u32(s_box0[w>>8&0xff]<<8) |
+		   u32(s_box0[w&u32(0xff)])
 }
 
 // Rotate
@@ -172,7 +172,7 @@ fn expand_key_generic(key []byte, enc mut []u32, dec mut []u32) {
 	for i < enc.len {
 		mut t := enc[i-1]
 		if i%nk == 0 {
-			t = subw(rotw(t)) ^ u32(PowX[i/nk-1]) << 24
+			t = subw(rotw(t)) ^ u32(pow_x[i/nk-1]) << 24
 		} else if nk > 6 && i%nk == 4 {
 			t = subw(t)
 		}
@@ -192,7 +192,7 @@ fn expand_key_generic(key []byte, enc mut []u32, dec mut []u32) {
 		for j := 0; j < 4; j++ {
 			mut x := enc[ei+j]
 			if i > 0 && i+4 < n {
-				x = Td0[SBox0[x>>24]] ^ Td1[SBox0[x>>16&0xff]] ^ Td2[SBox0[x>>8&0xff]] ^ Td3[SBox0[x&u32(0xff)]]
+				x = td0[s_box0[x>>24]] ^ td1[s_box0[x>>16&0xff]] ^ td2[s_box0[x>>8&0xff]] ^ td3[s_box0[x&u32(0xff)]]
 			}
 			dec[i+j] = x
 		}

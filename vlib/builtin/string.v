@@ -58,14 +58,9 @@ pub:
 	len   int
 }
 
-// For C strings only
-fn C.strlen(s byteptr) int
-
 pub fn vstrlen(s byteptr) int {
 	return C.strlen(*char(s))
 }	
-
-fn todo() { }
 
 // Converts a C string to a V string.
 // String data is reused, not copied.

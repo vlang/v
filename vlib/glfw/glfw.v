@@ -50,7 +50,7 @@ struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
 }
 
-struct WinCfg {
+pub struct WinCfg {
 	width      int
 	height     int
 	title      string
@@ -64,7 +64,7 @@ struct WinCfg {
 
 // data  *C.GLFWwindow
 // TODO change data to cobj
-struct Window {
+pub struct Window {
 	data  voidptr
 	title string
 	mx    int
