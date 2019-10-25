@@ -67,8 +67,9 @@ pub mut:
 	out_name   string       // "program.exe"
 	vroot      string
 	mod        string       // module being built with -lib
-	parsers    []Parser
+	parsers    []Parser     // file parsers
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
+	file_parser_idx map[string]int // map absolute file path to v.parsers index
 	cached_mods []string
 }
 
@@ -137,15 +138,17 @@ pub fn (v mut V) finalize_compilation(){
 	}
 }
 
-pub fn (v mut V) add_parser(parser Parser) {
+pub fn (v mut V) add_parser(parser Parser) int {
 	   v.parsers << parser
+	   pidx := v.parsers.len-1
+	   v.file_parser_idx[os.realpath(parser.file_path)] = pidx
+	   return pidx
 }
 
 pub fn (v &V) get_file_parser_index(file string) ?int {
-	for i, p in v.parsers {
-		if os.realpath(p.file_path_id) == os.realpath(file) {
-			return i
-		}
+	file_path := os.realpath(file)
+	if file_path in v.file_parser_idx {
+		return v.file_parser_idx[file_path]
 	}
 	return error('parser for "$file" not found')
 }
@@ -157,9 +160,9 @@ pub fn (v mut V) parse(file string, pass Pass) int {
 		mut p := v.new_parser_from_file(file)
 		p.parse(pass)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
-		v.add_parser(p)
-		return v.parsers.len-1
+		return v.add_parser(p)
 	}
+	// println('matched ' + v.parsers[pidx].file_path + ' with $file')
 	v.parsers[pidx].parse(pass)
 	//if v.parsers[i].pref.autofree {	v.parsers[i].scanner.text.free()	free(v.parsers[i].scanner)	}
 	return pidx
@@ -274,8 +277,9 @@ pub fn (v mut V) compile() {
 	}
 
 	// parse generated V code (str() methods etc)
-	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str(), 'vgen')
+	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str())
 	// free the string builder which held the generated methods
+	vgen_parser.is_vgen = true 
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
 	// v.parsers.add(vgen_parser)
@@ -582,8 +586,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			v.log('imports0:')
 			println(v.table.imports)
 			println(v.files)
-			p.import_table.register_import('os', 0)
-			v.table.file_imports[p.file_path_id] = p.import_table
+			p.register_import('os', 0)
 			p.table.imports << 'os'
 			p.table.register_module('os')
 		}	
@@ -622,9 +625,9 @@ pub fn (v mut V) add_v_files_to_compile() {
 		}
 	}
 	// add remaining main files last
-	for _, fit in v.table.file_imports {
-		if fit.module_name != 'main' { continue }
-		v.files << fit.file_path_id
+	for p in v.parsers {
+		if p.mod != 'main' { continue }
+		v.files << p.file_path
 	}
 }
 
@@ -684,9 +687,9 @@ pub fn (v &V)  get_user_files() []string {
 // get module files from already parsed imports
 fn (v &V) get_imported_module_files(mod string) []string {
 	mut files := []string
-	for _, fit in v.table.file_imports {
-		if fit.module_name == mod {
-			files << fit.file_path_id
+	for p in v.parsers {
+		if p.mod == mod {
+			files << p.file_path
 		}
 	}
 	return files
@@ -694,48 +697,34 @@ fn (v &V) get_imported_module_files(mod string) []string {
 
 // parse deps from already parsed builtin/user files
 pub fn (v mut V) parse_lib_imports() {
-	mut done_fits := []string
 	mut done_imports := []string
-	for {
-	for _, fit in v.table.file_imports {
-		if fit.file_path_id in done_fits { continue }
-		for _, mod in fit.imports {
+	for i in 0..v.parsers.len {
+		for _, mod in v.parsers[i].import_table.imports {
 			if mod in done_imports { continue }
 			import_path := v.find_module_path(mod) or {
-				pidx := v.get_file_parser_index(fit.file_path_id) or { verror(err) break }
-				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (not found)', fit.get_import_tok_idx(mod))
+				v.parsers[i].error_with_token_index(
+					'cannot import module "$mod" (not found)',
+					v.parsers[i].import_table.get_import_tok_idx(mod))
 				break
 			}
 			vfiles := v.v_files_from_dir(import_path)
 			if vfiles.len == 0 {
-				pidx := v.get_file_parser_index(fit.file_path_id) or { verror(err) break }
-				v.parsers[pidx].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', fit.get_import_tok_idx(mod))
+				v.parsers[i].error_with_token_index(
+					'cannot import module "$mod" (no .v files in "$import_path")',
+					v.parsers[i].import_table.get_import_tok_idx(mod))
 			}
 			// Add all imports referenced by these libs
 			for file in vfiles {
-				pid := v.parse(file, .imports)
-				p_mod := v.parsers[pid].import_table.module_name
+				pidx := v.parse(file, .imports)
+				p_mod := v.parsers[pidx].mod
 				if p_mod != mod {
-					v.parsers[pid].error_with_token_index('bad module definition: $fit.file_path_id imports module "$mod" but $file is defined as module `$p_mod`', 1)
+					v.parsers[pidx].error_with_token_index(
+						'bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1)
 				}
 			}
 			done_imports << mod
 		}
-		done_fits << fit.file_path_id
 	}
-	if v.table.file_imports.size == done_fits.len { break}
-	}
-}
-
-// return resolved dep graph (order deps)
-pub fn (v &V) resolve_deps() &DepGraph {
-	mut dep_graph := new_dep_graph()
-	dep_graph.from_import_tables(v.table.file_imports)
-	deps_resolved := dep_graph.resolve()
-	if !deps_resolved.acyclic {
-		verror('import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
-	}
-	return deps_resolved
 }
 
 pub fn get_arg(joined_args, arg, def string) string {
