@@ -241,7 +241,7 @@ start:
 		if res.exit_code == 127 {
 			$if linux {
 				// TCC problems on linux? Try GCC.
-				if v.pref.ccompiler == 'tcc' {
+				if v.pref.ccompiler.contains('tcc') {
 					v.pref.ccompiler = 'cc'
 					goto start
 				}	
