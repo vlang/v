@@ -9,6 +9,10 @@ import (
 	time
 )
 
+fn todo() {
+	
+}	
+
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
@@ -222,7 +226,8 @@ fn (v mut V) cc() {
 	
 	args := a.join(' ')
 start:
-	777 // TODO remove
+	todo()
+	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -232,22 +237,21 @@ start:
 	ticks := time.ticks()
 	res := os.exec(cmd) or { verror(err) return }
 	if res.exit_code != 0 {
-
+		// the command could not be found by the system
 		if res.exit_code == 127 {
-			// the command could not be found by the system
+			$if linux {
+				// TCC problems on linux? Try GCC.
+				if v.pref.ccompiler == 'tcc' {
+					v.pref.ccompiler = 'cc'
+					goto start
+				}	
+			}
 			verror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
 				'-----------------------------------------------------------\n' +
 				'Probably your C compiler is missing. \n' +
 				'Please reinstall it, or make it available in your PATH.')
-			// TCC problems on linux? Try gcc
-			$if linux {
-				if v.pref.ccompiler == 'tcc' {
-					v.pref.ccompiler = 'cc'
-					goto start
-				}	
-			}
 		}
 
 		if v.pref.is_debug {
