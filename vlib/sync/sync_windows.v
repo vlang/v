@@ -40,13 +40,16 @@ const (
 )
 
 pub fn new_mutex() Mutex {
-	m := Mutex{}
-	m.mx = C.CreateMutex(0, false, 0)
-	if isnil(m.mx) {
-		m.state = .broken // handle broken and mutex state are broken
-		return m
+	sm := Mutex{}
+	unsafe {
+		mut m := sm		
+		m.mx = C.CreateMutex(0, false, 0)
+		if isnil(m.mx) {
+			m.state = .broken // handle broken and mutex state are broken
+			return sm
+		}		
+		return sm
 	}
-	return m
 }
 
 pub fn (m mut Mutex) lock() {
@@ -60,9 +63,9 @@ pub fn (m mut Mutex) lock() {
 	}
 	state := C.WaitForSingleObject(m.mx, INFINITE) // infinite wait
 	m.state = match state {
-		WAIT_ABANDONED => { MutexState.abandoned }
-		WAIT_OBJECT_0  => { MutexState.waiting }
-		else           => { MutexState.broken }
+		WAIT_ABANDONED { MutexState.abandoned }
+		WAIT_OBJECT_0  { MutexState.waiting }
+		else           { MutexState.broken }
 	}
 }
 
