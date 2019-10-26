@@ -1,8 +1,8 @@
 import encoding.base64
 
 fn test_long_encoding(){
-	repeats := 128
-	input_size := 131072
+	repeats := 1000
+	input_size := 3000
 	
 	s_original := 'a'.repeat(input_size)
 	s_encoded := base64.encode(s_original)
