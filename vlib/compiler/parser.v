@@ -2155,14 +2155,21 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		}
 		// expression inside [ ]
 		if is_arr || is_str {
-			index_pos := p.cgen.cur_line.len
-			T := p.table.find_type(p.expression())
-			// Allows only i8-64 and byte-64 to be used when accessing an array
-			if T.parent != 'int' && T.parent != 'u32' {
-				p.check_types(T.name, 'int')
+			// [2..
+			if p.tok != .dotdot {
+				index_pos := p.cgen.cur_line.len
+				T := p.table.find_type(p.expression())
+				// Allows only i8-64 and byte-64 to be used when accessing an array
+				if T.parent != 'int' && T.parent != 'u32' {
+					p.check_types(T.name, 'int')
+				}
+				if p.cgen.cur_line.right(index_pos).replace(' ', '').int() < 0 {
+					p.error('cannot access negative array index')
+				}
 			}
-			if p.cgen.cur_line.right(index_pos).replace(' ', '').int() < 0 {
-				p.error('cannot access negative array index')
+			// [..
+			else {
+				p.gen('0')
 			}
 			if p.tok == .dotdot {
 				if is_arr {
@@ -2175,7 +2182,15 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 				is_slice = true
 				p.next()
 				p.gen(',')
-				p.check_types(p.expression(), 'int')
+				// ..4]
+				if p.tok != .rsbr {
+					p.check_types(p.expression(), 'int')
+					p.gen(', false')
+				}
+				// ..]
+				else {
+					p.gen('-1, true')
+				}
 			}	
 		}
 		else {

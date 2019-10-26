@@ -394,6 +394,12 @@ pub fn (s string) right(n int) string {
 	return s.substr(n, s.len)
 }
 
+// internally for slices
+fn (s string) slice2(start, _end int, end_max bool) string {
+	end := if end_max { s.len } else { _end }
+	return s.substr(start, end)
+}
+
 // substr
 pub fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {

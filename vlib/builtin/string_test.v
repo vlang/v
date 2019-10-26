@@ -210,6 +210,10 @@ fn test_runes() {
 	assert s2.substr(1, 4) == 'riv'
 	assert s2[1..4].len == 3
 	assert s2[1..4] == 'riv'
+	assert s2[..4].len == 4
+	assert s2[..4] == 'priv'
+	assert s2[2..].len == 4
+	assert s2[2..] == 'ivet'
 	assert u.substr(1, 4).len == 6
 	assert u.substr(1, 4) == 'рив'
 	assert s2.substr(1, 2) == 'r'

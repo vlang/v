@@ -146,6 +146,12 @@ pub fn (s array) right(n int) array {
 	return s.slice(n, s.len)
 }
 
+// internally for slices
+fn (s array) slice2(start, _end int, end_max bool) array {
+	end := if end_max { s.len } else { _end }
+	return s.slice(start, end)
+}
+
 pub fn (s array) slice(start, _end int) array {
 	mut end := _end
 	if start > end {
