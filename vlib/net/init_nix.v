@@ -9,7 +9,7 @@ module net
 const(
     ERROR_CODES = {
         //socket creation errors
-        "not_authorized": C.EACCESS,
+        "not_authorized": C.EACCES,
         "not_supported": C.EAFNOSUPPORT,
         "invalid": C.EINVAL,//exact signification depending on the context
         "m_file": C.EMFILE,
@@ -34,7 +34,7 @@ const(
         "msg_size": C.EMSGSIZE,
         "host_down": C.EHOSTDOWN,
         "host_unreachable": C.EHOSTUNREACH,
-        
+
 
 
         //linux specific:
