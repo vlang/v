@@ -600,6 +600,7 @@ pub fn get_lines_joined() string {
         return inputstr
 }
 
+// user_os return current user operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -658,6 +659,7 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
+// clear will clear current terminal screen.
 pub fn clear() {
 	$if !windows {
 		C.printf('\x1b[2J')
@@ -682,6 +684,7 @@ fn on_segfault(f voidptr) {
 fn C.getpid() int
 fn C.proc_pidpath (int, byteptr, int) int
 
+// executable return the path name of the executable that started the current process.
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
@@ -740,6 +743,7 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+// is_dir return a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
 		return dir_exists(path)
@@ -758,6 +762,7 @@ pub fn is_dir(path string) bool {
 	}
 }
 
+// chdir changes the current working directory to the new directory path.
 pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
@@ -767,6 +772,7 @@ pub fn chdir(path string) {
 	}
 }
 
+// getwd return the absolute path name of the current directory.
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
