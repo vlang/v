@@ -336,7 +336,7 @@ fn (p mut Parser) parse(pass Pass) {
 			match next {
 				.key_fn     {	p.fn_decl()     }
 				.key_const  {	p.const_decl()  }
-				.key_struct {	p.struct_decl() }
+				.key_struct, .key_union, .key_interface {	p.struct_decl() }
 				.key_enum   {	p.enum_decl('') }
 				else {
 					p.error('wrong pub keyword usage')
@@ -3887,7 +3887,13 @@ fn (p mut Parser) js_decode() string {
 
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)
-	p.attr = p.check_name()
+	if p.tok == .key_if {
+		// [if vfmt]
+		p.next()
+		p.attr = 'if ' + p.check_name()
+	}	else {
+		p.attr = p.check_name()
+	}
 	attr_token_idx := p.cur_tok_index()
 	if p.tok == .colon {
 		p.check(.colon)
