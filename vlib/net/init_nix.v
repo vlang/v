@@ -13,7 +13,7 @@ const(
         "not_supported": C.EAFNOSUPPORT,
         "invalid": C.EINVAL,//exact signification depending on the context
         "no_buffer": C.ENOBUFS,
-        "already_connected": C.WSAEISCONN,
+        "already_connected": C.EISCONN,
         "m_file": C.EMFILE,
         "no_memory": C.ENOMEM,
         "protocol_not_supported": C.EPROTONOSUPPORT,
