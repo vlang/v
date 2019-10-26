@@ -117,8 +117,11 @@ fn test_repeat() {
 fn test_right() {
 	a := [1, 2, 3, 4]
 	b := a.right(1)
+	c := a[1..a.len]
 	assert b[0] == 2
 	assert b[1] == 3
+	assert c[0] == 2
+	assert c[1] == 3
 }
 
 fn test_right_with_n_bigger_than_array_size() {
@@ -138,8 +141,11 @@ fn test_right_with_n_bigger_than_array_size() {
 fn test_left() {
 	a := [1, 2, 3]
 	b := a.left(2)
+	c := a[0..2]
 	assert b[0] == 1
 	assert b[1] == 2
+	assert c[0] == 1
+	assert c[1] == 2
 }
 
 fn test_slice() {
