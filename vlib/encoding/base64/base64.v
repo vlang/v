@@ -14,7 +14,17 @@ const (
 	47, 48, 49, 50, 51]
 )
 
-pub fn decode(data string) string {
+pub fn decode(data &string) string {
+	buffer := malloc( data.len * 3 / 4 )
+	return tos(buffer, decode_in_buffer(data, mut buffer) )
+}
+
+pub fn encode(data &string) string {
+	buffer := malloc( 4 * ((data.len + 2) / 3) )
+	return tos(buffer, encode_in_buffer(data, mut buffer))
+}
+
+pub fn decode_in_buffer(data &string, buffer mut byteptr) int {
 	mut padding := 0
 	if data.ends_with('=') {
 		if data.ends_with('==') {
@@ -26,87 +36,97 @@ pub fn decode(data string) string {
 	//input_length is the length of meaningful data
 	input_length := data.len - padding
 	output_length := input_length * 3 / 4
-
+	//////////////////////////////////////////////////
 	mut i := 0
 	mut j := 0
-	mut str := malloc(output_length)
-
+	mut b := &byte(0)
+	mut d := &byte(0)
+	unsafe{
+		d = byteptr(data.str)
+		b = byteptr(buffer)
+	}
 	for i < input_length {
 		mut char_a := 0
 		mut char_b := 0
 		mut char_c := 0
 		mut char_d := 0
-
 		if i < input_length {
-			char_a = Index[int(data[i])]
+			char_a = Index[d[i]]
 			i++
 		}
 		if i < input_length {
-			char_b = Index[int(data[i])]
+			char_b = Index[d[i]]
 			i++
 		}
 		if i < input_length {
-			char_c = Index[int(data[i])]
+			char_c = Index[d[i]]
 			i++
 		}
 		if i < input_length {
-			char_d = Index[int(data[i])]
+			char_d = Index[d[i]]
 			i++
 		}
-
+		
 		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		str[j] = decoded_bytes >> 16
-		str[j+1] = (decoded_bytes >> 8) & 0xff
-		str[j+2] = (decoded_bytes >> 0) & 0xff
-
+		b[j]   = decoded_bytes >> 16
+		b[j+1] = (decoded_bytes >> 8) & 0xff
+		b[j+2] = (decoded_bytes >> 0) & 0xff
 		j += 3
 	}
-	return tos(str, output_length)
+	return output_length
 }
-
+	
 const (
+	EndingTable = [0, 2, 1]
 	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
-pub fn encode(data string) string {
+pub fn encode_in_buffer(data &string, buffer mut byteptr) int {
 	input_length := data.len
 	output_length := 4 * ((input_length + 2) / 3)
 
 	mut i := 0
 	mut j := 0
-	mut str := malloc(output_length)
-
+	
+	mut d      := &byte(0)
+	mut b      := &byte(0)
+	mut etable := &byte(0)
+	unsafe{
+		d = &byte(data.str)
+		b = &byte(buffer)
+		etable = &byte(EncodingTable.str)
+	}
+	
 	for i < input_length {
 		mut octet_a := 0
 		mut octet_b := 0
 		mut octet_c := 0
 
 		if i < input_length {
-			octet_a = int(data[i])
+			octet_a = int(d[i])
 			i++
 		}
 		if i < input_length {
-			octet_b = int(data[i])
+			octet_b = int(d[i])
 			i++
 		}
 		if i < input_length {
-			octet_c = int(data[i])
+			octet_c = int(d[i])
 			i++
 		}
 
-		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
+		triple := ((int(octet_a) << 0x10) + (int(octet_b) << 0x08) + int(octet_c))
 
-		str[j+0] = EncodingTable[(triple >> 3 * 6) & 63] // 63 is 0x3F
-		str[j+1] = EncodingTable[(triple >> 2 * 6) & 63]
-		str[j+2] = EncodingTable[(triple >> 1 * 6) & 63]
-		str[j+3] = EncodingTable[(triple >> 0 * 6) & 63]
+		b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
+		b[j+1] = etable[ (triple >> 2 * 6) & 63 ]
+		b[j+2] = etable[ (triple >> 1 * 6) & 63 ]
+		b[j+3] = etable[ (triple >> 0 * 6) & 63 ]
 		j += 4
 	}
 
-	mod_table := [0, 2, 1]
-	for i = 0; i < mod_table[input_length % 3]; i++ {
-		str[output_length - 1 - i] = `=`
+	padding_length := EndingTable[input_length % 3]
+	for i = 0; i < padding_length; i++ {
+		b[output_length - 1 - i] = `=`
 	}
-
-	return tos(str, output_length)
+	return output_length
 }
