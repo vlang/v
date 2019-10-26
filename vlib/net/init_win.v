@@ -18,6 +18,9 @@ mut:
 
 const (
 	WSA_V22 = 0x202 // C.MAKEWORD(2, 2)
+	ERROR_CODES = {
+		"connection_refused": 10061
+	}
 )
 
 fn init() {

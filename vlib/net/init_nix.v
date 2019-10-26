@@ -6,6 +6,6 @@ module net
 #include <netdb.h>
 #include <errno.h>
 
-fn error_code() int {
+pub fn error_code() int {
     return C.errno
 }
