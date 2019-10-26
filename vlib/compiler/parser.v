@@ -3872,7 +3872,13 @@ fn (p mut Parser) js_decode() string {
 
 fn (p mut Parser) attribute() {
 	p.check(.lsbr)
-	p.attr = p.check_name()
+	if p.tok == .key_if {
+		// [if vfmt]
+		p.next()
+		p.attr = 'if ' + p.check_name()
+	}	else {
+		p.attr = p.check_name()
+	}
 	attr_token_idx := p.cur_tok_index()
 	if p.tok == .colon {
 		p.check(.colon)

@@ -113,6 +113,7 @@ pub mut:
 						 // This is on by default, since a vast majority of users do not
 						 // work on the builtin module itself.
 	//generating_vh bool
+	comptime_define string  // -D vfmt for `if $vfmt {`
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -279,7 +280,7 @@ pub fn (v mut V) compile() {
 	// parse generated V code (str() methods etc)
 	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str())
 	// free the string builder which held the generated methods
-	vgen_parser.is_vgen = true 
+	vgen_parser.is_vgen = true
 	v.vgen_buf.free()
 	vgen_parser.parse(.main)
 	// v.parsers.add(vgen_parser)
@@ -765,6 +766,7 @@ pub fn new_v(args[]string) &V {
 
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
+	comptime_define := get_arg(joined_args, 'd', '')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
 
 	mut dir := args.last()
@@ -922,6 +924,7 @@ pub fn new_v(args[]string) &V {
 		cflags: cflags
 		ccompiler: find_c_compiler()
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
+		comptime_define: comptime_define
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')

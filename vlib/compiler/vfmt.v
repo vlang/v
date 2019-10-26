@@ -7,6 +7,7 @@ module compiler
 import strings
 
 // fmt helpers
+//[if vfmt]
 fn (scanner mut Scanner) fgen(s_ string) {
 	mut s := s_
 	if scanner.fmt_line_empty {
