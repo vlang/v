@@ -374,3 +374,42 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 	p.check(.rpar)
 	p.close_scope()
 }
+
+fn (p mut Parser) gen_array_map(str_typ string, method_ph int) {
+	/*
+		// V
+		a := [1,2,3,4]
+		b := a.map(it * 2)
+		
+		// C
+		array_int a = ...;
+		array_int tmp2 = new_array(0, 4, 4);
+		for (int i = 0; i < a.len; i++) {
+			int it = ((int*)a.data)[i];
+			_PUSH(tmp2, it * 2, tmp3, int)
+		}
+		array_int b = tmp2;
+	*/
+	val_type:=str_typ.right(6)
+	p.open_scope()
+	p.register_var(Var{
+		name: 'it'
+		typ: val_type
+	})
+	p.next()
+	p.check(.lpar)
+	p.cgen.resetln('')
+	tmp := p.get_tmp()
+	tmp_elm := p.get_tmp()
+	a := p.expr_var.name
+	map_type, expr := p.tmp_expr()
+	p.cgen.set_placeholder(method_ph,'\narray $tmp = new_array(0, $a .len, ' +
+		'sizeof($map_type));\n')
+	p.genln('for (int i = 0; i < ${a}.len; i++) {')
+	p.genln('$val_type it = (($val_type*)${a}.data)[i];')
+	p.genln('_PUSH(&$tmp, $expr, $tmp_elm, $map_type)')
+	p.genln('}')
+	p.gen(tmp) // TODO why does this `gen()` work?
+	p.check(.rpar)
+	p.close_scope()
+}

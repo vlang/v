@@ -1947,6 +1947,10 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		p.gen_array_filter(str_typ, method_ph)
 		return str_typ
 	}	
+	else if field_name == 'map' && str_typ.starts_with('array_') {
+		p.gen_array_map(str_typ, method_ph)
+		return str_typ
+	}	
 	
 	fname_tidx := p.cur_tok_index()
 	p.fgen(field_name)
