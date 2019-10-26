@@ -4,6 +4,7 @@ module net
    For now, this will work. 
 */
 
+//return the string representing the last error fired by the system. Returns "" if not implemented or null.
 pub fn get_error_code() string {
 	err_code := error_code()
 	for key, not_used in ERROR_CODES{
