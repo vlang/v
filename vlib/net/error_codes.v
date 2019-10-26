@@ -1,10 +1,7 @@
 module net
 
 /* When maps will accept generic keys, it will be better to have an enum with all the error codes.
-   For now, this will work. Here is a list of all the error codes : 
-
-   - connection_refused
-   - already_connected
+   For now, this will work. 
 */
 
 pub fn get_error_code() string {

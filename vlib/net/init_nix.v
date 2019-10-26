@@ -14,7 +14,7 @@ const(
         "invalid": C.EINVAL,//exact signification depending on the context
         "no_buffer": C.ENOBUFS,
         "m_file": C.EMFILE,
-        "no_memory": C.WSA_NOT_ENOUGH_MEMORY,
+        "no_memory": C.ENOMEM,
         "protocol_not_supported": C.EPROTONOSUPPORT,
         
         //connection errors
