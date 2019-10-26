@@ -126,13 +126,15 @@ pub fn get_module_filename(handle HANDLE) ?string {
     mut buf := &u16(malloc(4096))
     for {
         status := C.GetModuleFileName(handle, &buf, sz)
-        switch status {
-        case SUCCESS:
-            _filename := string_from_wide2(buf, sz)
-            return _filename
-        default:
-            // Must handled with GetLastError and converted by FormatMessage
-            return error('Cannot get file name from handle')
+        match status {
+            SUCCESS {
+                _filename := string_from_wide2(buf, sz)
+                return _filename
+            }
+            else {
+                // Must handled with GetLastError and converted by FormatMessage
+                return error('Cannot get file name from handle')
+            }
         }
     }
     panic('this should be unreachable') // TODO remove unreachable after loop
