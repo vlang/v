@@ -195,12 +195,12 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 			p.gen('$index_expr ]')
 		}
 		else {
-			amp := if cfg.is_ptr { '&' } else { '' }
+			ref := if cfg.is_ptr { '*' } else { '' }
 			if cfg.is_slice {
-				p.gen(' array_slice($amp $index_expr) ')
+				p.gen(' array_slice($ref $index_expr) ')
 			}	
 			else {
-				p.gen('( *($typ*) array_get($amp $index_expr) )')
+				p.gen('( *($typ*) array_get($ref $index_expr) )')
 			}
 		}
 	}
