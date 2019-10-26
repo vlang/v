@@ -356,6 +356,7 @@ fn test_reduce() {
 fn test_filter() {
 	a := [1, 2, 3, 4, 5, 6]
 	b := a.filter(it % 2 == 0)
+	assert b.len == 3
 	assert b[0] == 2
 	assert b[1] == 4
 	assert b[2] == 6
@@ -363,6 +364,20 @@ fn test_filter() {
 	d := c.filter(it.len > 1)
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
+}	
+
+fn test_map() {
+	a := [1, 2, 3, 4, 5, 6]
+	b := a.map(it * 10)
+	assert b.len == 6
+	assert b[0] == 10
+	assert b[1] == 20
+	assert b[2] == 30
+	c := ['v', 'is', 'awesome']
+	d := c.map(it.to_upper())
+	assert d[0] == 'V'
+	assert d[1] == 'IS'
+	assert d[2] == 'AWESOME'
 }	
 
 fn test_array_str() {
