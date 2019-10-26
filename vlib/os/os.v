@@ -73,23 +73,20 @@ fn C.sigaction(int, voidptr, int)
 
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
-        return f.read_bytes_at(size, 0)
+	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads an amount of bytes at the given position in the file
 pub fn (f File) read_bytes_at(size, pos int) []byte {
-        mut data := malloc(size)
-        mut arr  := [`0`].repeat(size)
-
-        C.fseek(f.cfile, pos, C.SEEK_SET)
-        C.fread(data, 1, size, f.cfile)
-        C.fseek(f.cfile, 0, C.SEEK_SET)
-
-        for e := 0; e < size; e++ {
-                arr[e] = data[e]
-        }
-
-        return arr
+	mut data := malloc(size)
+	mut arr  := [`0`].repeat(size)
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fread(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_SET)
+	for e := 0; e < size; e++ {
+		arr[e] = data[e]
+	}
+	return arr
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -587,17 +584,17 @@ pub fn get_lines() []string {
 }
 
 pub fn get_lines_joined() string {
-        mut line := ''
-        mut inputstr := ''
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr += line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := ''
+	for {
+		line = get_line()
+		if line.len <= 0 {
+			break
+		}
+		line = line.trim_space()
+		inputstr += line
+	}
+	return inputstr
 }
 
 // user_os returns current user operating system name.
