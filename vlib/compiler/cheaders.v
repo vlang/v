@@ -9,7 +9,7 @@ CommonCHeaders = '
 #include <signal.h>
 #include <stdarg.h> // for va_list
 #include <inttypes.h>  // int64_t etc
-#include <string.h> // memcpy
+//#include <string.h> // memcpy
 
 #ifndef _WIN32
 #include <ctype.h>
