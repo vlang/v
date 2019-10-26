@@ -12,10 +12,9 @@ const(
         "not_authorized": C.EACCES,
         "not_supported": C.EAFNOSUPPORT,
         "invalid": C.EINVAL,//exact signification depending on the context
-        "m_file": C.EMFILE,
-        "n_file": C.ENFILE,
         "no_buffer": C.ENOBUFS,
-        "no_memory": C.ENOMEM,
+        "m_file": C.EMFILE,
+        "no_memory": C.WSA_NOT_ENOUGH_MEMORY,
         "protocol_not_supported": C.EPROTONOSUPPORT,
         
         //connection errors
@@ -29,7 +28,6 @@ const(
         "address_in_use": C.EADDRINUSE,
         "op_not_supported": C.EOPNOTSUPP,
         "not_connected": C.ENOTCONN,
-        "pipe": C.EPIPE,
         "connection_reset": C.ECONNRESET,
         "required_dest_addr": C.EDESTADDRREQ,
         "msg_size": C.EMSGSIZE,
@@ -39,6 +37,8 @@ const(
 
 
         //linux specific:
+        "n_file": C.ENFILE,
+        "pipe": C.EPIPE,
         "loop": C.ELOOP,
         "name_too_long": C.ENAMETOOLONG,
         "no_file": C.ENOENT,
