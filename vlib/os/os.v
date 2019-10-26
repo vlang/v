@@ -73,23 +73,20 @@ fn C.sigaction(int, voidptr, int)
 
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
-        return f.read_bytes_at(size, 0)
+	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads an amount of bytes at the given position in the file
 pub fn (f File) read_bytes_at(size, pos int) []byte {
-        mut data := malloc(size)
-        mut arr  := [`0`].repeat(size)
-
-        C.fseek(f.cfile, pos, C.SEEK_SET)
-        C.fread(data, 1, size, f.cfile)
-        C.fseek(f.cfile, 0, C.SEEK_SET)
-
-        for e := 0; e < size; e++ {
-                arr[e] = data[e]
-        }
-
-        return arr
+	mut data := malloc(size)
+	mut arr  := [`0`].repeat(size)
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fread(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_SET)
+	for e := 0; e < size; e++ {
+		arr[e] = data[e]
+	}
+	return arr
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -587,19 +584,20 @@ pub fn get_lines() []string {
 }
 
 pub fn get_lines_joined() string {
-        mut line := ''
-        mut inputstr := ''
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr += line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := ''
+	for {
+		line = get_line()
+		if line.len <= 0 {
+			break
+		}
+		line = line.trim_space()
+		inputstr += line
+	}
+	return inputstr
 }
 
+// user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -658,6 +656,7 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
+// clear will clear current terminal screen.
 pub fn clear() {
 	$if !windows {
 		C.printf('\x1b[2J')
@@ -682,6 +681,7 @@ fn on_segfault(f voidptr) {
 fn C.getpid() int
 fn C.proc_pidpath (int, byteptr, int) int
 
+// executable return the path name of the executable that started the current process.
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
@@ -740,6 +740,7 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+// is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
 		return dir_exists(path)
@@ -758,6 +759,7 @@ pub fn is_dir(path string) bool {
 	}
 }
 
+// chdir changes the current working directory to the new directory path.
 pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
@@ -767,6 +769,7 @@ pub fn chdir(path string) {
 	}
 }
 
+// getwd returns the absolute path name of the current directory.
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
