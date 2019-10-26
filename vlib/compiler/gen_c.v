@@ -42,7 +42,14 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 			is_mut: false
 			is_used: true
 		})
+		p.register_var(Var {
+			name: 'errcode'
+			typ: 'int'
+			is_mut: false
+			is_used: true
+		})
 		p.genln('string err = $tmp . error;')
+		p.genln('int    errcode = $tmp . ecode;')
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
@@ -114,7 +121,14 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 			is_mut: false
 			is_used: true
 		})
+		p.register_var(Var {
+			name: 'errcode'
+			typ: 'int'
+			is_mut: false
+			is_used: true
+		})
 		p.genln('string err = $tmp . error;')
+		p.genln('int    errcode = $tmp . ecode;')
 		p.statements()
 		p.returns = false
 	} else {
@@ -247,9 +261,11 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	return name
 }
 
-fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, receiver Var,method_ph int) {
+fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
+	cgen_name string, ftyp string, method_ph int)
+{
 	//mut cgen_name := p.table.fn_gen_name(f)
-	mut method_call := cgen_name + '('
+	mut method_call := cgen_name + ' ('
 	// if receiver is key_mut or a ref (&), generate & for the first arg
 	if receiver.ref || (receiver.is_mut && !receiver_type.contains('*')) {
 		method_call += '& /* ? */'
@@ -266,12 +282,11 @@ fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, 
 			// array_int => int
 			cast = receiver_type.all_after('array_')
 			cast = '*($cast*) '
-		}else{
+		} else {
 			cast = '(voidptr) '
 		}
 	}
 	p.cgen.set_placeholder(method_ph, '$cast $method_call')
-	//return method_call
 }
 
 fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {

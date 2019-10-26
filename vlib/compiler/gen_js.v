@@ -28,7 +28,8 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	}
 	name := p.table.fn_gen_name(f)
 	if f.is_method {
-		p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args) {')
+		//p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args) {')
+		p.genln('function ${f.receiver_typ}_$name($str_args) {')
 	}	 else {
 		p.genln('/** @return { $typ } **/\nfunction $name($str_args) {')
 	}
@@ -91,10 +92,18 @@ fn (table &Table) fn_gen_name(f &Fn) string {
 	return name
 }
 
-fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, receiver Var,method_ph int) {
+//fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
+	//ftyp string,	cgen_name string, receiver Var,method_ph int)
+fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
+	cgen_name string, ftyp string, method_ph int)
+{
+	// TODO  js methods have been broken from the start
+	
 	//mut cgen_name := p.table.fn_gen_name(f)
 	//mut method_call := cgen_name + '('
-	p.gen('.' + cgen_name.all_after('_') + '(')
+	//p.gen('/*2*/.' + cgen_name.all_after('_') + '(')
+	t := receiver_type.replace('*', '')
+	p.cgen.set_placeholder(method_ph, '${t}_$cgen_name(')
 	//p.cgen.set_placeholder(method_ph, '$cast kKE $method_call')
 	//return method_call
 }

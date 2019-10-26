@@ -12,8 +12,8 @@ import strings
 
 /*
 struct dirent {
-               d_ino int
-               d_off int
+     d_ino int
+     d_off int
 	d_reclen u16
 	d_type byte
 	d_name [256]byte
@@ -700,7 +700,7 @@ pub fn executable() string {
 	$if mac {
 		mut result := malloc(MAX_PATH)
 		pid := C.getpid()
-		ret := C.proc_pidpath (pid, result, MAX_PATH)
+		ret := proc_pidpath (pid, result, MAX_PATH)
 		if ret <= 0  {
 			println('os.executable() failed')
 			return '.'

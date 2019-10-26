@@ -1065,7 +1065,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 			p.fmt_dec()
 			label := p.check_name()
 			p.fmt_inc()
-			p.genln(label + ':')
+			p.genln(label + ': ;')
 			p.check(.colon)
 			return ''
 		}
@@ -1617,7 +1617,10 @@ fn (p mut Parser) name_expr() string {
 			}
 			p.gen('(')
 			mut typ := name
-			p.cast(name)
+			if typ in p.cur_fn.dispatch_of.inst.keys() {
+				typ = p.cur_fn.dispatch_of.inst[typ]
+			}
+			p.cast(typ)
 			p.gen(')')
 			for p.tok == .dot {
 				typ = p.dot(typ, ph)

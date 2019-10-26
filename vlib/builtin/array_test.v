@@ -364,3 +364,11 @@ fn test_filter() {
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
 }	
+
+fn test_array_str() {
+	numbers := [1, 2, 3]
+	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
+	assert true
+	assert numbers.str() == '[1, 2, 3]'
+	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
+}	
