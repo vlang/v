@@ -43,6 +43,7 @@ mut:
 	dispatch_of	  TypeInst	// current type inst of this generic instance
 	body_idx	  int		// idx of the first body statement
 	fn_name_token_idx int // used by error reporting
+	comptime_define string
 }
 
 struct TypeInst {
@@ -197,6 +198,7 @@ fn (p mut Parser) fn_decl() {
 		is_public: p.tok == .key_pub || p.is_vh // functions defined in .vh are always public
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
+		comptime_define: if p.attr.starts_with('if ') { p.attr.right(3) } else { '' }
 	}
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
@@ -677,6 +679,10 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		}
 		p.error('function `$f.name` is private')
 	}
+	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
+	if is_comptime_define {
+		p.cgen.nogen = true
+	}	
 	p.calling_c = f.is_c
 	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
@@ -739,6 +745,9 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 
 	p.gen(')')
 	p.calling_c = false
+	if is_comptime_define {
+		p.cgen.nogen = false
+	}
 	// println('end of fn call typ=$f.typ')
 }
 

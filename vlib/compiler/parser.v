@@ -1853,9 +1853,6 @@ fn (p mut Parser) var_expr(v Var) string {
 	p.next()
 	mut typ := v.typ
 	// Function pointer?
-
-	//println('CALLING FN PTR')
-	//p.print_tok()
 	if typ.starts_with('fn ') && p.tok == .lpar {
 		T := p.table.find_type(typ)
 		p.gen('(')
@@ -2038,7 +2035,7 @@ struct $typ.name {
 		exit(1)
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
-	// Methods returning `array` should return `array_string`
+	// Methods returning `array` should return `array_string` etc
 	if method.typ == 'array' && typ.name.starts_with('array_') {
 		return typ.name
 	}
