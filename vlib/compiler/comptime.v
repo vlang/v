@@ -375,7 +375,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 	p.close_scope()
 }
 
-fn (p mut Parser) gen_array_map(str_typ string, method_ph int) {
+fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 	/*
 		// V
 		a := [1,2,3,4]
@@ -412,4 +412,5 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) {
 	p.gen(tmp) // TODO why does this `gen()` work?
 	p.check(.rpar)
 	p.close_scope()
+	return 'array_' + map_type
 }

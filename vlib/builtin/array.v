@@ -259,6 +259,26 @@ pub fn (a []string) str() string {
 	return sb.str()
 }
 
+// "[true, true, false]"
+pub fn (a []bool) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write('[')
+	for i := 0; i < a.len; i++ {
+		val := a[i]
+		if val {
+			sb.write('true')
+		} else {
+			sb.write('false')
+			
+		}	
+		if i < a.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(']')
+	return sb.str()
+}
+
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len*2+1)
 	mut ptr := &hex[0]
