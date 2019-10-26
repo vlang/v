@@ -1,4 +1,4 @@
-import toml
+module toml
 
 sturct Token{
 	token	 TokenKind
@@ -11,38 +11,39 @@ sturct Token{
 enum TokenKind{
 	eof
 	comment
-	quote
 	form_feed
-	doublequote
 	nul
 	dot
 	comma
 	equal
-	lbrace
-	rbrace
-	creturn
-	newline
-	lbrackert
-	rbrackert
+	lcbr			//{
+	rcbr			//}
+	creturn 		//Carriage Return
+	newline			//Line Feed
+	lsbr			//[
+	rsbr			//]
 	hyphen
 	coron
-	bin_header
-	hex_header
-	oct_header
+	b_header
+	h_header
+	o_header
 	bool_true
 	bool_false
 	integer
 	binary
 	double
 	timestamp
-	wquote_string
-	quote_string
-	wquote_multi_line
-	quote_multi_line
+	char
+	multi_char
+}
+
+fn build_keys() map[string]int{
+	mut res := map[string]int
+
 }
 
 fn build_token_str() []string{
 	mut s := [''].repeat(NrToken)
 	s[TokenKind.eof] = 'eof'
-	
+	s[TokenKind.comment] = '#'
 }
