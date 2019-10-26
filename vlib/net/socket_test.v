@@ -1,6 +1,8 @@
 import net
+import os
 
 fn test_socket() {
+
 	mut server := net.listen(0) or {
 		panic(err)
 	}

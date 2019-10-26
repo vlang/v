@@ -31,6 +31,7 @@ const (
         
         //connection errors
         "connection_refused": C.WSAECONNREFUSED,
+        "already_connected": C.WSAEISCONN,
         "memory_fault": C.WSAEFAULT,
         "again": C.WSATRY_AGAIN,
         "would_block":C.WSAEWOULDBLOCK,

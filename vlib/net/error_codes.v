@@ -1,5 +1,7 @@
 module net
 
+import os
+
 /* When maps will accept generic keys, it will be better to have an enum with all the error codes.
    For now, this will work. 
 */
@@ -13,4 +15,8 @@ pub fn get_error_code() string {
 		}
 	}
 	return ""
+}
+
+pub fn get_error_msg(error_code string) string{
+	return os.get_error_msg(ERROR_CODES[error_code])
 }

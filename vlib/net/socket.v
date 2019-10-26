@@ -46,7 +46,7 @@ pub fn socket(family int, _type int, proto int) ?Socket {
 	// same port after the application exits.
 	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, sizeof(int))
 	if sockfd == 0 {
-		return error('socket: init failed')
+		return error(get_error_code())
 	}
 	s := Socket {
 		sockfd: sockfd
@@ -65,7 +65,7 @@ pub fn socket_udp() ?Socket {
 pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
 	res := C.setsockopt(s.sockfd, level, optname, optvalue, C.sizeof(optvalue))
 	if res < 0 {
-		return error('socket: setsockopt failed')
+		return error(get_error_code())
 	}
 	return int(res)
 }
@@ -79,7 +79,7 @@ pub fn (s Socket) bind(port int) ?int {
 	size := 16 // sizeof(C.sockaddr_in)
 	res := int(C.bind(s.sockfd, &addr, size))
 	if res < 0 {
-		return error('socket: bind failed')
+		return error(get_error_code())
 	}
 	return res
 }
@@ -89,7 +89,7 @@ pub fn (s Socket) listen() ?int {
 	backlog := 128
 	res := int(C.listen(s.sockfd, backlog))
 	if res < 0 {
-		return error('socket: listen failed')
+		return error(get_error_code())
 	}
 	$if debug {
 		println('listen res = $res')
@@ -105,7 +105,7 @@ pub fn (s Socket) listen_backlog(backlog int) ?int {
 	}
 	res := C.listen(s.sockfd, n)
 	if res < 0 {
-		return error('socket: listen_backlog failed')
+		return error(get_error_code())
 	}
 	return int(res)
 }
@@ -136,7 +136,7 @@ pub fn (s Socket) accept() ?Socket {
 	size := 128 // sizeof(sockaddr_storage)
 	sockfd := C.accept(s.sockfd, &addr, &size)
 	if sockfd < 0 {
-		return error('socket: accept failed')
+		return error(get_error_code())
 	}
 	c := Socket {
 		sockfd: sockfd
@@ -165,12 +165,12 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
 		error_message := os.get_error_msg(net.error_code())
-		return error('socket: getaddrinfo failed ($error_message)')
+		return error(get_error_code())
 	}
 	res := int(C.connect(s.sockfd, info.ai_addr, info.ai_addrlen))
 	if res < 0 {
 		error_message := os.get_error_msg(net.error_code())
-		return error('socket: connect failed ($error_message)')
+		return error(get_error_code())
 	}
 	return int(res)
 }
@@ -190,7 +190,7 @@ pub fn dial(address string, port int) ?Socket {
 pub fn (s Socket) send(buf byteptr, len int) ?int {
 	res := int( C.send(s.sockfd, buf, len, 0) )
 	if res < 0 {
-		return error('socket: send failed')
+		return error(get_error_code())
 	}
 	return res
 }
@@ -235,7 +235,7 @@ pub fn (s Socket) close() ?int {
 		res = C.close(s.sockfd)
 	}
 	if res < 0 {
-		return error('socket: close failed')
+		return error(get_error_code())
 	}
 
 	return 0
