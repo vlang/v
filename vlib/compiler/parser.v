@@ -336,7 +336,7 @@ fn (p mut Parser) parse(pass Pass) {
 			match next {
 				.key_fn     {	p.fn_decl()     }
 				.key_const  {	p.const_decl()  }
-				.key_struct {	p.struct_decl() }
+				.key_struct, .key_union, .key_interface {	p.struct_decl() }
 				.key_enum   {	p.enum_decl('') }
 				else {
 					p.error('wrong pub keyword usage')
