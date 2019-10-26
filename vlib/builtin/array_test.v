@@ -309,26 +309,6 @@ fn test_in() {
 	assert !(0 in a)
 }
 
-fn callback_1(val int, index int, arr []int) bool {
-	return val >= 2
-}
-
-fn callback_2(val string, index int, arr []string) bool {
-	return val.len >= 2
-}
-
-fn test_filter2() {
-	a := [1, 2, 3, 4, 5, 6]
-	b := a.filter2(callback_1)
-	assert b[0] == 2
-	assert b[1] == 3
-
-	c := ['v', 'is', 'awesome']
-	d := c.filter2(callback_2)
-	assert d[0] == 'is'
-	assert d[1] == 'awesome'
-}
-
 fn sum(prev int, curr int) int {
 	return prev + curr
 }
@@ -378,6 +358,12 @@ fn test_map() {
 	assert d[0] == 'V'
 	assert d[1] == 'IS'
 	assert d[2] == 'AWESOME'
+	bools := c.map(it == 'v')
+	assert bools.len == 3
+	assert bools[0] == true
+	assert bools[1] == false
+	assert bools[2] == false
+	
 }	
 
 fn test_array_str() {

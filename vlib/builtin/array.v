@@ -269,7 +269,6 @@ pub fn (a []bool) str() string {
 			sb.write('true')
 		} else {
 			sb.write('false')
-			
 		}	
 		if i < a.len - 1 {
 			sb.write(', ')
@@ -349,33 +348,6 @@ pub fn (a []char) index(v char) int {
 	}
 	return -1
 }
-
-////////////// FILTER //////////////
-
-// Creates a new array with all elements that pass the test implemented by the provided function.
-pub fn (a  []string) filter2(predicate fn(p_val string, p_i int, p_arr []string) bool) []string
-{
-	mut res := []string
-	for i := 0; i < a.len; i++  {
-		if predicate(a[i], i, a) {
-			res << a[i]
-		}
-	}
-	return res
-}
-
-pub fn (a []int) filter2(predicate fn(p_val, p_i int, p_arr []int) bool) []int
-{
-	mut res := []int
-	for i := 0; i < a.len; i++  {
-		if predicate(a[i], i, a) {
-			res << a[i]
-		}
-	}
-	return res
-}
-
-////////////// REDUCE //////////////
 
 // Executes a reducer function (that you provide) on each element of the array,
 // resulting in a single output value.
