@@ -13,11 +13,14 @@ fn test_long_encoding(){
 	mut s := 0
 	for i := 0; i < repeats; i++ {
 		s_encoded = base64.encode(s_original)
-		s_decoded = base64.decode(s_encoded)
 		s+= s_encoded.len
-		s+= s_decoded.len
 	}
 
+	for i := 0; i < repeats; i++ {
+		s_decoded = base64.decode(s_encoded)
+		s+= s_decoded.len
+	}
+	
 	assert s_encoded.len > s_original.len
 	assert s_original == s_decoded	
 }
