@@ -2,8 +2,8 @@ module builtin
 
 
 // <string.h>
-fn memcpy(byteptr, byteptr, int) voidptr
-fn memmove(byteptr, byteptr, int)
+fn C.memcpy(byteptr, byteptr, int) voidptr
+fn C.memmove(byteptr, byteptr, int)
 
 //fn C.malloc(int) byteptr
 fn C.realloc(a byteptr, b int) byteptr
