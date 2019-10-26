@@ -11,8 +11,8 @@ import (
 fn test_import() {
 	assert os.O_RDONLY == os.O_RDONLY &&
 		t.month_days[0] == t.month_days[0] &&
-		s2.Size == s2.Size &&
+		s2.size == s2.size &&
 		math.pi == math.pi &&
 		l.INFO == l.INFO &&
-		s5.Size == s5.Size
+		s5.size == s5.size
 }

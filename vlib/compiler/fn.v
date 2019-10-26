@@ -229,7 +229,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
-			p.file_path_id != 'vgen' // allow .str() on builtin arrays
+			!p.is_vgen // allow .str()
 		{
 			//println('T.mod=$T.mod')
 			//println('p.mod=$p.mod')
@@ -275,8 +275,8 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	if p.pref.build_mode == .build_module {
-		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	if p.pref.is_verbose { // p.pref.build_mode == .build_module {
+		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
 	}
 	if is_c {
 		p.check(.dot)
@@ -352,7 +352,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Translated C code and .vh can have empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&
-		(p.pref.translated || p.pref.is_test || p.is_vh) &&
+		//(p.pref.translated || p.pref.is_test || p.is_vh) &&
 		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
@@ -392,8 +392,23 @@ fn (p mut Parser) fn_decl() {
 		if f.is_generic {
 			if p.first_pass() {
 				f.body_idx = p.cur_tok_index()+1
-				p.table.register_fn(f)
+				if f.is_method {
+					rcv := p.table.find_type(receiver_typ)
+					if p.first_pass() && rcv.name == '' {
+						r := Type {
+							name: rcv.name.replace('*', '')
+							mod: p.mod
+							is_placeholder: true
+						}
+						p.table.register_type2(r)
+					}
+					// println('added generic method $rcv.name $f.name')
+					p.add_method(rcv.name, f)
+				} else {
+					p.table.register_fn(f)
+				}
 			}
+			if f.is_method { p.mark_var_changed(f.args[0]) }
 			p.check_unused_variables()
 			p.set_current_fn( EmptyFn )
 			p.returns = false
@@ -561,8 +576,10 @@ fn (p mut Parser) check_unused_variables() {
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated {
-			p.error_with_token_index( '`$var.name` is declared as mutable, but it was never changed', var.token_idx )
+		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
+			!p.pref.translated && var.typ != 'T*'
+		{
+			p.error_with_token_index('`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
 	}
 }
@@ -690,9 +707,6 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
 	if f.is_method {
-		if f.is_generic {
-			p.error('generic methods are not yet implemented')
-		}
 		receiver := f.args.first()
 		//println('r=$receiver.typ RT=$receiver_type')
 		if receiver.is_mut && !p.expr_var.is_mut {
@@ -707,14 +721,13 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		if !p.expr_var.is_changed {
 			p.mark_var_changed(p.expr_var)
 		}
-		met_name := if f.is_generic { f.name } else { cgen_name }
-		p.gen_method_call(receiver_type, f.typ, met_name, receiver, method_ph)
+		p.gen_method_call(receiver, receiver_type, cgen_name, f.typ, method_ph)
 	} else {
 		// Normal function call
 		p.gen('$cgen_name (')
 	}
 	
-	// foo<Bar>()
+	// `foo<Bar>()`
 	// if f is generic, the name is changed to a suitable instance in dispatch_generic_fn_instance()
 	// we then replace `cgen_name` with the instance's name
 	generic := f.is_generic
@@ -864,7 +877,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 	if p.v.pref.is_debug && f.name == 'panic' && !p.is_js {
 		mod_name := p.mod.replace('_dot_', '.')
 		fn_name := p.cur_fn.name.replace('${p.mod}__', '')
-		file_path := cescaped_path(p.file_path_id)
+		file_path := cescaped_path(p.file_path)
 		p.cgen.resetln(p.cgen.cur_line.replace(
 			'v_panic (',
 			'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '
@@ -875,7 +888,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// Receiver is the first arg
 		// Skip the receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
-			if f.args.len > 1 && !p.is_js {
+			if f.args.len > 1 { // && !p.is_js {
 				p.gen(',')
 			}
 			continue
@@ -1080,8 +1093,8 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	mut r := TypeInst{}
 	mut i := 0
 	mut args := args_
-	args << f.typ
-	for ai, e in args {
+	if f.typ != 'void' { args << f.typ }
+	for e in args {
 		if e == '' { continue }
 		tp := f.type_pars[i]
 		mut ti := e
@@ -1115,6 +1128,11 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	}
 	if r.inst[f.typ] == '' && f.typ in f.type_pars {
 		r.inst[f.typ] = '_ANYTYPE_'
+	}
+	for tp in f.type_pars {
+		if r.inst[tp] == '' {
+			p.error_with_token_index('unused type parameter `$tp`', f.body_idx-2)
+		}
 	}
 	return r
 }
@@ -1255,6 +1273,9 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 }
 
 fn (p mut Parser) rename_generic_fn_instance(f mut Fn, ti TypeInst) {
+	if f.is_method {
+		f.name = f.receiver_typ + '_' + f.name
+	}
 	f.name = f.name + '_T'
 	for k in ti.inst.keys() {
 		f.name = f.name + '_' + type_to_safe_str(ti.inst[k].replace('...', ''))
@@ -1308,7 +1329,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 
 	// TODO this is done to prevent a crash as a result of this not being
 	// properly initialised. This is a bug somewhere futher upstream
-	f.defer_text = []string {}
+	f.defer_text = []string
 
 	old_args := f.args
 	new_types := p.replace_type_params(f, ti)
@@ -1324,7 +1345,12 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	if f.typ in ti.inst {
 		f.typ = ti.inst[f.typ]
 	}
-	p.table.register_fn(f)
+
+	if f.is_method {
+		p.add_method(f.args[0].name, f)
+	} else {
+		p.table.register_fn(f)
+	}
 	// println("generating gen inst $f.name(${f.str_args(p.table)}) $f.typ : $ti.inst")
 
 	p.cgen.is_tmp = false
@@ -1433,9 +1459,9 @@ fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 		}
 		n := name.all_after('.')
 		if var.name == '' || (n.len - var.name.len > 2 || var.name.len - n.len > 2) { continue }
-		coeff := strings.dice_coefficient(var.name, n)
-		if coeff > closest {
-			closest = coeff
+		c := strings.dice_coefficient(var.name, n)
+		if c > closest {
+			closest = c
 			closest_var = var.name
 		}
 	}

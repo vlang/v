@@ -9,19 +9,27 @@ import (
 	time
 )
 
+fn todo() {
+	
+}	
+
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
-		// Translating V code to JS by launching vjs
+		// Translating V code to JS by launching vjs.
+		// Using a separate process for V.js is for performance mostly,
+		// to avoid constant is_js checks.
 		$if !js {
 			if v.out_name.ends_with('.js') {
 				vjs_path := vexe + 'js'
 				dir := os.dir(vexe)
 				if !os.file_exists(vjs_path) {
 					println('V.js compiler not found, building...')
+					// Build V.js. Specifying `-os js` makes V include
+					// only _js.v files and ignore _c.v files.
 					ret := os.system('$vexe -o $vjs_path -os js $dir/v.v')
 					if ret == 0 {
 						println('Done.')
@@ -127,7 +135,7 @@ fn (v mut V) cc() {
 	}
 
 	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
-		a << '-Werror=implicit-function-declaration'
+		//a << '-Werror=implicit-function-declaration'
 	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {
@@ -221,6 +229,9 @@ fn (v mut V) cc() {
 	}
 	
 	args := a.join(' ')
+start:
+	todo()
+	// TODO remove
 	cmd := '${v.pref.ccompiler} $args'
 	// Run
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -230,9 +241,15 @@ fn (v mut V) cc() {
 	ticks := time.ticks()
 	res := os.exec(cmd) or { verror(err) return }
 	if res.exit_code != 0 {
-
+		// the command could not be found by the system
 		if res.exit_code == 127 {
-			// the command could not be found by the system
+			$if linux {
+				// TCC problems on linux? Try GCC.
+				if v.pref.ccompiler.contains('tcc') {
+					v.pref.ccompiler = 'cc'
+					goto start
+				}	
+			}
 			verror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +

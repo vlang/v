@@ -12,8 +12,8 @@ import strings
 
 /*
 struct dirent {
-               d_ino int
-               d_off int
+     d_ino int
+     d_off int
 	d_reclen u16
 	d_type byte
 	d_name [256]byte
@@ -326,7 +326,7 @@ fn pclose(f *C.FILE) int {
 	}
 }
 
-struct Result {
+pub struct Result {
 pub:
 	exit_code int
 	output string
@@ -380,34 +380,33 @@ pub fn system(cmd string) int {
 
 pub fn sigint_to_signal_name(si int) string {
 	// POSIX signals:
-	switch si {
-	case  1: return 'SIGHUP'
-	case  2: return 'SIGINT'
-	case  3: return 'SIGQUIT'
-	case  4: return 'SIGILL'
-	case  6: return 'SIGABRT'
-	case  8: return 'SIGFPE'
-	case  9: return 'SIGKILL'
-	case 11: return 'SIGSEGV'
-	case 13: return 'SIGPIPE'
-	case 14: return 'SIGALRM'
-	case 15: return 'SIGTERM'
+	match si {
+		1 {return 'SIGHUP'}
+		2 {return 'SIGINT'}
+		3 {return 'SIGQUIT'}
+		4 {return 'SIGILL'}
+		6 {return 'SIGABRT'}
+		8 {return 'SIGFPE'}
+		9 {return 'SIGKILL'}
+		11 {return 'SIGSEGV'}
+		13 {return 'SIGPIPE'}
+		14 {return 'SIGALRM'}
+		15 {return 'SIGTERM'}
 	}
-	///////////////////////////////////
 	$if linux {
 		// From `man 7 signal` on linux:
-		switch si {
-		case 30,10,16: return 'SIGUSR1'
-		case 31,12,17: return 'SIGUSR2'
-		case 20,17,18: return 'SIGCHLD'
-		case 19,18,25: return 'SIGCONT'
-		case 17,19,23: return 'SIGSTOP'
-		case 18,20,24: return 'SIGTSTP'
-		case 21,21,26: return 'SIGTTIN'
-		case 22,22,27: return 'SIGTTOU'
-		///////////////////////////////
-		case 5: return 'SIGTRAP'
-		case 7: return 'SIGBUS'		
+		match si {
+			30,10,16{ return 'SIGUSR1'}
+			31,12,17{ return 'SIGUSR2'}
+			20,17,18{ return 'SIGCHLD'}
+			19,18,25{ return 'SIGCONT'}
+			17,19,23{ return 'SIGSTOP'}
+			18,20,24{ return 'SIGTSTP'}
+			21,21,26{ return 'SIGTTIN'}
+			22,22,27{ return 'SIGTTOU'}
+			///////////////////////////////
+			5{ return 'SIGTRAP'}
+			7{ return 'SIGBUS'		}
 		}
 	}
 	return 'unknown'
@@ -701,7 +700,7 @@ pub fn executable() string {
 	$if mac {
 		mut result := malloc(MAX_PATH)
 		pid := C.getpid()
-		ret := C.proc_pidpath (pid, result, MAX_PATH)
+		ret := proc_pidpath (pid, result, MAX_PATH)
 		if ret <= 0  {
 			println('os.executable() failed')
 			return '.'
@@ -826,6 +825,25 @@ pub fn walk_ext(path, ext string) []string {
 		}
 	}
 	return res
+}
+
+// walk recursively traverse the given directory path.
+// When a file is encountred it will call the callback function with current file as argument.
+pub fn walk(path string, fnc fn(path string)) {
+	if !os.is_dir(path) {
+		return
+	}
+	mut files := os.ls(path) or { panic(err) }
+	for file in files {
+		p := path + os.path_separator + file
+		if os.is_dir(p) {
+			walk(p, fnc)
+		}
+		else if os.file_exists(p) {
+			fnc(p)
+		}
+	}
+	return
 }
 
 pub fn signal(signum int, handler voidptr) {

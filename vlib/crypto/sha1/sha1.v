@@ -16,18 +16,18 @@ import encoding.binary
 
 const(
 	// The size of a SHA-1 checksum in bytes.
-	Size     = 20
+	size     = 20
 	// The blocksize of SHA-1 in bytes.
-	BlockSize = 64
+	block_size = 64
 )
 
 const (
-	Chunk = 64
-	Init0 = 0x67452301
-	Init1 = 0xEFCDAB89
-	Init2 = 0x98BADCFE
-	Init3 = 0x10325476
-	Init4 = 0xC3D2E1F0
+	chunk = 64
+	init0 = 0x67452301
+	init1 = 0xEFCDAB89
+	init2 = 0x98BADCFE
+	init3 = 0x10325476
+	init4 = 0xC3D2E1F0
 )
 
 // digest represents the partial evaluation of a checksum.
@@ -40,13 +40,13 @@ mut:
 }
 
 fn (d mut Digest) reset() {
-	d.x = [byte(0)].repeat(Chunk)
+	d.x = [byte(0)].repeat(chunk)
 	d.h = [u32(0)].repeat(5)
-	d.h[0] = u32(Init0)
-	d.h[1] = u32(Init1)
-	d.h[2] = u32(Init2)
-	d.h[3] = u32(Init3)
-	d.h[4] = u32(Init4)
+	d.h[0] = u32(init0)
+	d.h[1] = u32(init1)
+	d.h[2] = u32(init2)
+	d.h[3] = u32(init3)
+	d.h[4] = u32(init4)
 	d.nx = 0
 	d.len = 0
 }
@@ -66,7 +66,7 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 	if d.nx > 0 {
 		n := copy(d.x.right(d.nx), p)
 		d.nx += n
-		if d.nx == Chunk {
+		if d.nx == chunk {
 			block(d, d.x)
 			d.nx = 0
 		}
@@ -76,8 +76,8 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 			p = p.right(n)
 		}
 	}
-	if p.len >= Chunk {
-		n := p.len &~ (Chunk - 1)
+	if p.len >= chunk {
+		n := p.len &~ (chunk - 1)
 		block(d, p.left(n))
 		if n >= p.len {
 			p = []byte
@@ -120,7 +120,7 @@ fn (d mut Digest) checksum() []byte {
 	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp.left(8))
 
-	mut digest := [byte(0)].repeat(Size)
+	mut digest := [byte(0)].repeat(size)
 
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
@@ -144,8 +144,8 @@ fn block(dig &Digest, p []byte) {
 	block_generic(mut dig, p)
 }
 
-pub fn (d &Digest) size() int { return Size }
+pub fn (d &Digest) size() int { return size }
 
-pub fn (d &Digest) block_size() int { return BlockSize }
+pub fn (d &Digest) block_size() int { return block_size }
 
 pub fn hexhash(s string) string { return sum(s.bytes()).hex() }

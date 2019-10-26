@@ -4,7 +4,6 @@
 
 module compiler
 
-import os
 import strings
 
 struct Table {
@@ -15,7 +14,6 @@ pub mut:
 	obf_ids      map[string]int // obf_ids['myfunction'] == 23
 	modules      []string // List of all modules registered by the application
 	imports      []string // List of all imports
-	file_imports map[string]FileImportTable // List of imports for file
 	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
 	fn_cnt       int //atomic
 	obfuscate    bool
@@ -39,16 +37,6 @@ enum NameCategory {
 struct Name {
 	cat NameCategory
 	idx int // e.g. typ := types[name.idx]
-}	
-
-// Holds import information scoped to the parsed file
-struct FileImportTable {
-mut:
-	module_name    string
-	file_path_id   string 			 // file path or id
-	imports        map[string]string // alias => module
-	used_imports   []string          // alias
-	import_tok_idx map[string]int    // module => idx
 }
 
 enum AccessMod {
@@ -803,13 +791,13 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
-	switch typ {
-	case 'byte': return 0 <= x && x <= 255
-	case 'u16': return 0 <= x && x <= 65535
+	match typ {
+	 'byte' { return 0 <= x && x <= 255 }
+	 'u16' { return 0 <= x && x <= 65535 }
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
-	case 'i8': return -128 <= x && x <= 127
+	 'i8' { return -128 <= x && x <= 127 }
 	/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
@@ -826,22 +814,23 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 	if t.cat == .enum_ {
 		return '%d'
 	}
-	switch typ {
-	case 'string': return '%.*s'
-	//case 'bool': return '%.*s'
-	case 'ustring': return '%.*s'
-	case 'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8': return '%d'
-	case 'u16', 'u32': return '%u'
-	case 'f64', 'f32': return '%f'
-	case 'i64': return '%lld'
-	case 'u64': return '%llu'
-	case 'byte*', 'byteptr': return '%s'
-		// case 'array_string': return '%s'
-		// case 'array_int': return '%s'
-	case 'void': p.error('cannot interpolate this value')
-	default:
-		if typ.ends_with('*') {
-			return '%p'
+	match typ {
+		'string' { return '%.*s'}
+		//case 'bool': return '%.*s'
+		'ustring' { return '%.*s'}
+		'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8' { return '%d'}
+		'u16', 'u32' { return '%u'}
+		'f64', 'f32' { return '%f'}
+		'i64' { return '%lld'}
+		'u64' { return '%llu'}
+		'byte*', 'byteptr' { return '%s'}
+			// case 'array_string': return '%s'
+			// case 'array_int': return '%s'
+		'void' { p.error('cannot interpolate this value')}
+		else {
+			if typ.ends_with('*') {
+				return '%p'
+			}
 		}
 	}
 	if t.parent != '' && level == 0 {
@@ -871,96 +860,6 @@ fn is_compile_time_const(s_ string) bool {
 	return true
 }
 
-// Once we have a module format we can read from module file instead
-// this is not optimal
-fn (table &Table) qualify_module(mod string, file_path string) string {
-	for m in table.imports {
-		if m.contains('.') && m.contains(mod) {
-			m_parts := m.split('.')
-			m_path := m_parts.join(os.path_separator)
-			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
-				return m
-			}
-		}
-	}
-	return mod
-}
-
-fn (table &Table) get_file_import_table(file_path_id string) FileImportTable {
-	if file_path_id in table.file_imports {
-		return table.file_imports[file_path_id]
-	}
-	return new_file_import_table(file_path_id)
-}
-
-fn new_file_import_table(file_path_id string) FileImportTable {
-	return FileImportTable{
-		file_path_id: file_path_id
-		imports:   map[string]string
-	}
-}
-
-fn (fit &FileImportTable) known_import(mod string) bool {
-	return mod in fit.imports || fit.is_aliased(mod)
-}
-
-fn (fit mut FileImportTable) register_import(mod string, tok_idx int) {
-	fit.register_alias(mod, mod, tok_idx)
-}
-
-fn (fit mut FileImportTable) register_alias(alias string, mod string, tok_idx int) {
-	// NOTE: come back here
-	// if alias in fit.imports && fit.imports[alias] == mod {}
-	if alias in fit.imports && fit.imports[alias] != mod {
-		verror('cannot import $mod as $alias: import name $alias already in use in "${fit.file_path_id}"')
-	}
-	if mod.contains('.internal.') {
-		mod_parts := mod.split('.')
-		mut internal_mod_parts := []string
-		for part in mod_parts {
-			if part == 'internal' { break }
-			internal_mod_parts << part
-		}
-		internal_parent := internal_mod_parts.join('.')
-		if !fit.module_name.starts_with(internal_parent) {
-			verror('module $mod can only be imported internally by libs')
-		}
-	}
-	fit.imports[alias] = mod
-	fit.import_tok_idx[mod] = tok_idx
-}
-
-fn (fit &FileImportTable) get_import_tok_idx(mod string) int {
-	return fit.import_tok_idx[mod]
-}
-
-fn (fit &FileImportTable) known_alias(alias string) bool {
-	return alias in fit.imports
-}
-
-fn (fit &FileImportTable) is_aliased(mod string) bool {
-	for _, val in fit.imports {
-		if val == mod {
-			return true
-		}
-	}
-	return false
-}
-
-fn (fit &FileImportTable) resolve_alias(alias string) string {
-	return fit.imports[alias]
-}
-
-fn (fit mut FileImportTable) register_used_import(alias string) {
-	if !(alias in fit.used_imports) {
-		fit.used_imports << alias
-	}
-}
-
-fn (fit &FileImportTable) is_used_import(alias string) bool {
-	return alias in fit.used_imports
-}
-
 fn (t &Type) contains_field_type(typ string) bool {
 	if !t.name[0].is_capital() {
 		return false
@@ -974,32 +873,37 @@ fn (t &Type) contains_field_type(typ string) bool {
 }
 
 // check for a function / variable / module typo in `name`
-fn (p &Parser) identify_typo(name string, fit &FileImportTable) string {
+fn (p &Parser) identify_typo(name string) string {
 	// dont check if so short
 	if name.len < 2 { return '' }
+	name_dotted := mod_gen_name_rev(name.replace('__', '.'))
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
-	name_orig := mod_gen_name_rev(name.replace('__', '.'))
 	mut output := ''
+	// check imported modules
+	mut n := p.table.find_misspelled_imported_mod(name_dotted, p, min_match)
+	if n != '' {
+		output += '\n  * module: `$n`'
+	}
+	// check consts
+	n = p.table.find_misspelled_const(name, p, min_match)
+	if n != '' {
+		output += '\n  * const: `$n`'
+	}
 	// check functions
-	mut n := p.table.find_misspelled_fn(name, fit, min_match)
+	n = p.table.find_misspelled_fn(name, p, min_match)
 	if n != '' {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
-	n = p.find_misspelled_local_var(name_orig, min_match)
+	n = p.find_misspelled_local_var(name_dotted, min_match)
 	if n != '' {
 		output += '\n  * variable: `$n`'
-	}
-	// check imported modules
-	n = p.table.find_misspelled_imported_mod(name_orig, fit, min_match)
-	if n != '' {
-		output += '\n  * module: `$n`'
 	}
 	return output
 }
 
 // find function with closest name to `name`
-fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_match f32) string {
+fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
 	n1 := if name.starts_with('main__') { name.right(6) } else { name }
@@ -1007,7 +911,7 @@ fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_matc
 		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
 		if !(f.mod in ['', 'main', 'builtin']) {
 			mut mod_imported := false
-			for _, m in fit.imports {
+			for _, m in p.import_table.imports {
 				if f.mod == m {
 					mod_imported = true
 					break
@@ -1015,28 +919,51 @@ fn (table &Table) find_misspelled_fn(name string, fit &FileImportTable, min_matc
 			}
 			if !mod_imported { continue }
 		}
-		p := strings.dice_coefficient(n1, f.name)
-		if p > closest {
-			closest = p
-			closest_fn = f.name
+		c := strings.dice_coefficient(n1, f.name)
+		f_name_orig := mod_gen_name_rev(f.name.replace('__', '.'))
+		if c > closest {
+			closest = c
+			closest_fn = f_name_orig
 		}
 	}
 	return if closest >= min_match { closest_fn } else { '' }
 }
 
 // find imported module with closest name to `name`
-fn (table &Table) find_misspelled_imported_mod(name string, fit &FileImportTable, min_match f32) string {
+fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_mod := ''
 	n1 := if name.starts_with('main.') { name.right(5) } else { name }
-	for alias, mod in fit.imports {
-		if (n1.len - alias.len > 2 || alias.len - n1.len > 2) { continue }
+	for alias, mod in p.import_table.imports {
+		if n1.len - alias.len > 2 || alias.len - n1.len > 2 { continue }
 		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-		p := strings.dice_coefficient(n1, alias)
-		if p > closest {
-			closest = p
+		c := strings.dice_coefficient(n1, alias)
+		if c > closest {
+			closest = c
 			closest_mod = '$mod_alias'
 		}
 	}
 	return if closest >= min_match { closest_mod } else { '' }
 }
+
+// find const with closest name to `name`
+fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) string {
+	mut closest := f32(0)
+	mut closest_const := ''
+	mut mods_in_scope := ['builtin', 'main']
+	for _, mod in p.import_table.imports {
+		mods_in_scope << mod
+	}
+	for cnst in table.consts {
+		if cnst.mod != p.mod && !(cnst.mod in mods_in_scope) && cnst.mod.contains('__') { continue }
+		if name.len - cnst.name.len > 2 || cnst.name.len - name.len > 2 { continue }
+		const_name_orig := mod_gen_name_rev(cnst.name.replace('__', '.'))
+		c := strings.dice_coefficient(name, cnst.name.replace('builtin__', 'main__'))
+		if c > closest {
+			closest = c
+			closest_const = const_name_orig
+		}
+	}
+	return if closest >= min_match { closest_const } else { '' }
+}
+

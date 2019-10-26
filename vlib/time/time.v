@@ -44,7 +44,7 @@ const (
 
 #include <time.h>
 
-struct Time {
+pub struct Time {
 pub:
 	year   int
 	month  int
@@ -61,7 +61,7 @@ fn C.localtime(int) &C.tm
 fn remove_me_when_c_bug_is_fixed() { // TODO
 }
 
-struct C.time_t {}
+pub struct C.time_t {}
 
 struct C.tm {
 	tm_year int
@@ -132,7 +132,7 @@ pub fn unix(abs int) Time {
 	hour := int(abs%seconds_per_day) / seconds_per_hour
 	minute := int(abs % seconds_per_hour) / seconds_per_minute
 	second := int(abs % seconds_per_minute)
-	
+
 	if is_leap_year(year) {
 		// Leap year
 		if day > 31+29-1 {

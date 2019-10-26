@@ -306,8 +306,8 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.number, num)
 	}
 	// all other tokens
-	switch c {
-	case `+`:
+	match c {
+	`+` {
 		if nextc == `+` {
 			s.pos++
 			return scan_res(.inc, '')
@@ -317,7 +317,8 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.plus_assign, '')
 		}
 		return scan_res(.plus, '')
-	case `-`:
+	}
+	`-` {
 		if nextc == `-` {
 			s.pos++
 			return scan_res(.dec, '')
@@ -327,47 +328,62 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.minus_assign, '')
 		}
 		return scan_res(.minus, '')
-	case `*`:
+	}
+	`*` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.mult_assign, '')
 		}
 		return scan_res(.mul, '')
-	case `^`:
+	}
+	`^` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.xor_assign, '')
 		}
 		return scan_res(.xor, '')
-	case `%`:
+	}
+	 `%` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.mod_assign, '')
 		}
 		return scan_res(.mod, '')
-	case `?`:
+	}
+	`?` {
 		return scan_res(.question, '')
-	case single_quote, double_quote:
+	}
+	 single_quote, double_quote {
 		return scan_res(.str, s.ident_string())
-	case `\``: // ` // apostrophe balance comment. do not remove
+		}
+	 `\`` { // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
-	case `(`:
+		}
+	 `(` {
+	 	
 		return scan_res(.lpar, '')
-	case `)`:
+	 }
+	 `)` {
 		return scan_res(.rpar, '')
-	case `[`:
+	 }
+	 `[` {
 		return scan_res(.lsbr, '')
-	case `]`:
+	 }
+	 `]` {
 		return scan_res(.rsbr, '')
-	case `{`:
+	 }
+	 `{` {
 		// Skip { in ${ in strings
+		// }
 		if s.inside_string {
 			return s.scan()
 		}
 		return scan_res(.lcbr, '')
-	case `$`:
+	}
+	 `$` {
 		return scan_res(.dollar, '')
-	case `}`:
+	 }
+	 `}` {
 		// s = `hello $name !`
 		// s = `hello ${name} !`
 		if s.inside_string {
@@ -382,7 +398,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.rcbr, '')
 		}
-	case `&`:
+	 }
+	 `&` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.and_assign, '')
@@ -392,7 +409,8 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.and, '')
 		}
 		return scan_res(.amp, '')
-	case `|`:
+	 }
+	 `|` {
 		if nextc == `|` {
 			s.pos++
 			return scan_res(.logical_or, '')
@@ -402,9 +420,11 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.or_assign, '')
 		}
 		return scan_res(.pipe, '')
-	case `,`:
+	 }
+	 `,` {
 		return scan_res(.comma, '')
-	case `@`:
+	 }
+	 `@` {
 		s.pos++
 		name := s.ident_name()
 		// @FN => will be substituted with the name of the current V function
@@ -424,6 +444,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
 		return scan_res(.name, name)
+	}
 	/*
 	case `\r`:
 		if nextc == `\n` {
@@ -431,11 +452,13 @@ fn (s mut Scanner) scan() ScanRes {
 			s.last_nl_pos = s.pos
 			return scan_res(.nl, '')
 		}
+	 }
 	case `\n`:
 		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
+	 }
 	*/
-	case `.`:
+	 `.` {
 		if nextc == `.` {
 			s.pos++
 			if s.text[s.pos+1] == `.` {
@@ -445,7 +468,8 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.dotdot, '')
 		}
 		return scan_res(.dot, '')
-	case `#`:
+	}
+	 `#` {
 		start := s.pos + 1
 		s.ignore_line()
 		if nextc == `!` {
@@ -456,7 +480,8 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		hash := s.text.substr(start, s.pos)
 		return scan_res(.hash, hash.trim_space())
-	case `>`:
+	 }
+	 `>` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.ge, '')
@@ -472,7 +497,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.gt, '')
 		}
-	case 0xE2:
+	 }
+	 0xE2 {
 		//case `≠`:
 		if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
 			s.pos += 2
@@ -488,7 +514,8 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos += 2
 			return scan_res(.ge, '')
 		}
-	case `<`:
+	 }
+	 `<` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.le, '')
@@ -504,7 +531,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.lt, '')
 		}
-	case `=`:
+	 }
+	 `=` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.eq, '')
@@ -516,7 +544,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.assign, '')
 		}
-	case `:`:
+	 }
+	 `:` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.decl_assign, '')
@@ -524,9 +553,11 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.colon, '')
 		}
-	case `;`:
+	 }
+	 `;` {
 		return scan_res(.semicolon, '')
-	case `!`:
+	 }
+	 `!` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.ne, '')
@@ -534,9 +565,11 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.not, '')
 		}
-	case `~`:
+	 }
+	 `~` {
 		return scan_res(.bit_not, '')
-	case `/`:
+	}
+	 `/` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.div_assign, '')
@@ -581,6 +614,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return s.scan()
 		}
 		return scan_res(.div, '')
+	 }
 	}
 	$if windows {
 		if c == `\0` {

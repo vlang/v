@@ -6,7 +6,7 @@ module builtin
 
 import strings
 
-struct map {
+pub struct map {
 	obj voidptr
 }
 

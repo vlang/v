@@ -25,6 +25,9 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 	mut fields := []string
 	for p.tok == .name {
 		field := p.check_name()
+		if contains_capital(field) {
+			p.warn('enum values cannot contain uppercase letters, use snake_case instead')
+		}
 		fields << field
 		p.fgenln('')
 		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
@@ -46,7 +49,6 @@ fn (p mut Parser) enum_decl(_enum_name string) {
 		if p.tok == .comma {
 			p.next()
 		}
-		// TODO free name [memory]
 		val++
 	}
 	p.table.register_type2(Type {

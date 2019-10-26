@@ -482,3 +482,13 @@ fn test_escape() {
 	//println("\"$a")
 }	
 
+fn test_atoi() {
+	assert '234232'.int() == 234232
+	assert '-9009'.int() == -9009
+	assert '0'.int() == 0
+	for n in -10000 .. 100000 {
+		s := n.str()
+		assert s.int() == n
+	}	
+}	
+

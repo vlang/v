@@ -4,7 +4,7 @@
 
 module builtin
 
-struct string {
+pub struct string {
 //mut:
 	//hash_cache int
 pub:
@@ -16,6 +16,15 @@ pub:
 fn C.strlen(s byteptr) int
 
 fn todo() { }
+
+pub fn tos(s byteptr) string {
+	len := 0
+	#len = s.length;
+	return string{
+		str: s
+		len: len
+	}	
+}	
 
 
 pub fn (a string) clone() string {

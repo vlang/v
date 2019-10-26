@@ -28,7 +28,8 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	}
 	name := p.table.fn_gen_name(f)
 	if f.is_method {
-		p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args) {')
+		//p.genln('\n${f.receiver_typ}.prototype.${name} = function($str_args) {')
+		p.genln('function ${f.receiver_typ}_$name($str_args) {')
 	}	 else {
 		p.genln('/** @return { $typ } **/\nfunction $name($str_args) {')
 	}
@@ -91,10 +92,18 @@ fn (table &Table) fn_gen_name(f &Fn) string {
 	return name
 }
 
-fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, receiver Var,method_ph int) {
+//fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
+	//ftyp string,	cgen_name string, receiver Var,method_ph int)
+fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
+	cgen_name string, ftyp string, method_ph int)
+{
+	// TODO  js methods have been broken from the start
+	
 	//mut cgen_name := p.table.fn_gen_name(f)
 	//mut method_call := cgen_name + '('
-	p.gen('.' + cgen_name.all_after('_') + '(')
+	//p.gen('/*2*/.' + cgen_name.all_after('_') + '(')
+	t := receiver_type.replace('*', '')
+	p.cgen.set_placeholder(method_ph, '${t}_$cgen_name(')
 	//p.cgen.set_placeholder(method_ph, '$cast kKE $method_call')
 	//return method_call
 }
@@ -214,22 +223,22 @@ fn type_default(typ string) string {
 		return '{}'
 	}
 	// Default values for other types are not needed because of mandatory initialization
-	switch typ {
-	case 'bool': return '0'
-	case 'string': return '""'
-	case 'i8': return '0'
-	case 'i16': return '0'
-	case 'i64': return '0'
-	case 'u16': return '0'
-	case 'u32': return '0'
-	case 'u64': return '0'
-	case 'byte': return '0'
-	case 'int': return '0'
-	case 'rune': return '0'
-	case 'f32': return '0.0'
-	case 'f64': return '0.0'
-	case 'byteptr': return '0'
-	case 'voidptr': return '0'
+	match typ {
+		'bool'{ return '0'}
+		'string'{ return 'tos("")'}
+		'i8'{ return '0'}
+		'i16'{ return '0'}
+		'i64'{ return '0'}
+		'u16'{ return '0'}
+		'u32'{ return '0'}
+		'u64'{ return '0'}
+		'byte'{ return '0'}
+		'int'{ return '0'}
+		'rune'{ return '0'}
+		'f32'{ return '0.0'}
+		'f64'{ return '0.0'}
+		'byteptr'{ return '0'}
+		'voidptr'{ return '0'}
 	}
 	return '{}'
 }

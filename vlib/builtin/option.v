@@ -7,6 +7,7 @@ module builtin
 struct Option {
 	data     [255]byte
 	error    string
+	ecode    int
 	ok       bool
 	is_none  bool
 }
@@ -33,5 +34,13 @@ pub fn error(s string) Option {
 		error: s
 	}
 }
+
+pub fn error_with_code(s string, code int) Option {
+	return Option {
+		error: s
+		ecode: code
+	}
+}
+
 
 

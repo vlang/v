@@ -58,14 +58,9 @@ pub:
 	len   int
 }
 
-// For C strings only
-fn C.strlen(s byteptr) int
-
 pub fn vstrlen(s byteptr) int {
 	return C.strlen(*char(s))
 }	
-
-fn todo() { }
 
 // Converts a C string to a V string.
 // String data is reused, not copied.
@@ -181,8 +176,28 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
+/*
 pub fn (s string) int() int {
 	return strconv.parse_int(s, 0, 32)
+}
+*/
+
+pub fn (s string) int() int {
+	mut neg := false
+	mut i := 0
+	if s[0] == `-` {
+		neg = true
+		i++
+	}
+	else if s[0] == `+` {
+		i++
+	}
+	mut n := 0
+	for C.isdigit(s[i]) {
+		n = 10 * n - int(s[i] - `0`)
+		i++
+	}
+	return if neg { n } else { -n }
 }
 
 
