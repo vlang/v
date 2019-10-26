@@ -169,7 +169,7 @@ fn types_to_c(types []Type, table &Table) string {
 	return sb.str()
 }
 
-fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
+fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	// Erase var name we generated earlier:	"int a = m, 0"
 	// "m, 0" gets killed since we need to start from scratch. It's messy.
 	// "m, 0" is an index expression, save it before deleting and insert later in map_get()
@@ -195,15 +195,21 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 			p.gen('$index_expr ]')
 		}
 		else {
-			if cfg.is_ptr {
-				p.gen('( *($typ*) array_get(* $index_expr) )')
-			}  else {
-				p.gen('( *($typ*) array_get($index_expr) )')
+			amp := if cfg.is_ptr { '&' } else { '' }
+			if cfg.is_slice {
+				p.gen(' array_slice($amp $index_expr) ')
+			}	
+			else {
+				p.gen('( *($typ*) array_get($amp $index_expr) )')
 			}
 		}
 	}
 	else if cfg.is_str && !p.builtin_mod {
-		p.gen('string_at($index_expr)')
+		if cfg.is_slice {
+			p.gen('string_substr($index_expr)')
+		} else {
+			p.gen('string_at($index_expr)')
+		}
 	}
 	// Zero the string after map_get() if it's nil, numbers are automatically 0
 	// This is ugly, but what can I do without generics?

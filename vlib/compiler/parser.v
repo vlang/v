@@ -2091,6 +2091,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	is_arr0 := typ.starts_with('array_')
 	is_arr := is_arr0 || typ == 'array'
 	is_ptr := typ == 'byte*' || typ == 'byteptr' || typ.contains('*')
+	mut is_slice := false
 	is_indexer := p.tok == .lsbr
 	mut close_bracket := false
 	index_error_tok_pos := p.token_idx
@@ -2163,6 +2164,19 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			if p.cgen.cur_line.right(index_pos).replace(' ', '').int() < 0 {
 				p.error('cannot access negative array index')
 			}
+			if p.tok == .dotdot {
+				if is_arr {
+					typ = 'array_' + typ
+				} else if is_str {
+					typ = 'string'
+				}	 else {
+					p.error('slicing is supported by arrays and strings only')
+				}	
+				is_slice = true
+				p.next()
+				p.gen(',')
+				p.check_types(p.expression(), 'int')
+			}	
 		}
 		else {
 			T := p.table.find_type(p.expression())
@@ -2197,6 +2211,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			return typ
 		}
 	}
+	// `m[key] = val`
 	// TODO move this from index_expr()
 	if (p.tok == .assign && !p.is_sql) || p.tok.is_assign() {
 		if is_indexer && is_str && !p.builtin_mod {
@@ -2216,26 +2231,27 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	// else if p.pref.is_verbose && p.assigned_var != '' {
 	// p.error('didnt assign')
 	// }
-	// m[key]. no =, just a getter
+	// `m[key]`. no =, just a getter
 	else if (is_map || is_arr || (is_str && !p.builtin_mod)) && is_indexer {
-		p.index_get(typ, fn_ph, IndexCfg{
+		p.index_get(typ, fn_ph, IndexConfig{
 			is_arr: is_arr
 			is_map: is_map
 			is_ptr: is_ptr
 			is_str: is_str
+			is_slice: is_slice
 		})
 	}
 	// else if is_arr && is_indexer{}
 	return typ
 }
 
-struct IndexCfg {
+struct IndexConfig {
 	is_map bool
 	is_str bool
 	is_ptr bool
 	is_arr bool
 	is_arr0 bool
-
+	is_slice bool
 }
 
 // for debugging only

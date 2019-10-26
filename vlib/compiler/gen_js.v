@@ -70,7 +70,7 @@ fn types_to_c(types []Type, table &Table) string {
 	return sb.str()
 }
 
-fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
+fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	p.cgen.cur_line = p.cgen.cur_line.replace(',', '[') + ']'
 }
 
