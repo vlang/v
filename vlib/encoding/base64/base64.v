@@ -4,14 +4,17 @@
 
 module base64
 
-const (
-	Index = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+const (	
+	Index = [int(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0,
 	0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 	17, 18, 19, 20, 21, 22, 23, 24, 25, 0, 0, 0, 0, 63, 0, 26, 27, 28, 29,
 	30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
-	47, 48, 49, 50, 51]
+	47, 48, 49, 50, 51]!!
+	
+	EndingTable = [0, 2, 1]
+	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'	
 )
 
 pub fn decode(data string) string {
@@ -45,6 +48,7 @@ pub fn decode_in_buffer(data &string, buffer mut byteptr) int {
 		d = byteptr(data.str)
 		b = byteptr(buffer)
 	}
+		
 	for i < input_length {
 		mut char_a := 0
 		mut char_b := 0
@@ -76,11 +80,6 @@ pub fn decode_in_buffer(data &string, buffer mut byteptr) int {
 	return output_length
 }
 	
-const (
-	EndingTable = [0, 2, 1]
-	EncodingTable = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-)
-
 pub fn encode_in_buffer(data &string, buffer mut byteptr) int {
 	input_length := data.len
 	output_length := 4 * ((input_length + 2) / 3)
