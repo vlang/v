@@ -14,12 +14,12 @@ const (
 	47, 48, 49, 50, 51]
 )
 
-pub fn decode(data &string) string {
+pub fn decode(data string) string {
 	buffer := malloc( data.len * 3 / 4 )
 	return tos(buffer, decode_in_buffer(data, mut buffer) )
 }
 
-pub fn encode(data &string) string {
+pub fn encode(data string) string {
 	buffer := malloc( 4 * ((data.len + 2) / 3) )
 	return tos(buffer, encode_in_buffer(data, mut buffer))
 }
