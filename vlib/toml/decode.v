@@ -1,4 +1,4 @@
-import toml
+module toml
 import math
 
 fn decode_demical(s string) string{

@@ -4,11 +4,12 @@
 fn &C.yyparse()
 
 struct YaccConfig{
-	output_name string: none
+	output_name: ''
+	debug_mode: false
 }
 
 struct BisonConfig {
-
+	output_name string: none
 }
 
 struct LexConfig {
