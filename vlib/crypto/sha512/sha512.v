@@ -78,8 +78,8 @@ mut:
 fn (d mut Digest) reset() {
 	d.h = [u64(0)].repeat(8)
 	d.x = [byte(0)].repeat(Chunk)
-	switch d.function {
-	case crypto.Hash.sha384:
+	match d.function {
+	.sha384 {
 		d.h[0] = init0_384
 		d.h[1] = init1_384
 		d.h[2] = init2_384
@@ -88,7 +88,8 @@ fn (d mut Digest) reset() {
 		d.h[5] = init5_384
 		d.h[6] = init6_384
 		d.h[7] = init7_384
-	case crypto.Hash.sha512_224:
+	}
+	.sha512_224 {
 		d.h[0] = init0_224
 		d.h[1] = init1_224
 		d.h[2] = init2_224
@@ -97,7 +98,8 @@ fn (d mut Digest) reset() {
 		d.h[5] = init5_224
 		d.h[6] = init6_224
 		d.h[7] = init7_224
-	case crypto.Hash.sha512_256:
+	}
+	.sha512_256 {
 		d.h[0] = init0_256
 		d.h[1] = init1_256
 		d.h[2] = init2_256
@@ -106,7 +108,8 @@ fn (d mut Digest) reset() {
 		d.h[5] = init5_256
 		d.h[6] = init6_256
 		d.h[7] = init7_256
-	default:
+	}
+	else {
 		d.h[0] = init0
 		d.h[1] = init1
 		d.h[2] = init2
@@ -115,6 +118,7 @@ fn (d mut Digest) reset() {
 		d.h[5] = init5
 		d.h[6] = init6
 		d.h[7] = init7
+	}
 	}
 	d.nx = 0
 	d.len = 0
@@ -184,23 +188,27 @@ fn (d mut Digest) sum(b_in []byte) []byte {
 	mut d0 := *d
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
-	switch d0.function {
-	case crypto.Hash.sha384:
+	match d0.function {
+	.sha384 {
 		for b in hash[..size384] {
 			b_out << b
 		}
-	case crypto.Hash.sha512_224:
+	}
+	.sha512_224 {
 		for b in hash[..size224] {
 			b_out << b
 		}
-	case crypto.Hash.sha512_256:
+	}
+	.sha512_256 {
 		for b in hash[..size256] {
 			b_out << b
 		}
-	default:
+	}
+	else {
 		for b in hash {
 			b_out << b
 		}
+	}
 	}
 	return b_out
 }
@@ -288,15 +296,11 @@ fn block(dig mut Digest, p []byte) {
 }
 
 pub fn (d &Digest) size() int {
-	switch d.function {
-	case crypto.Hash.sha512_224:
-		return size224
-	case crypto.Hash.sha512_256:
-		return size256
-	case crypto.Hash.sha384:
-		return size384
-	default:
-		return size
+	match d.function {
+		.sha512_224 { return size224 }
+		.sha512_256 { return size256 }
+		.sha384     {	return size384 }
+		else        { return size    }
 	}
 }
 
