@@ -127,20 +127,22 @@ fn test_right() {
 	assert d[1] == 3
 }
 
-// NOTE: this will no longer be possible
-// fn test_right_with_n_bigger_than_array_size() {
-// 	a := [1, 2, 3, 4]
-// 	mut b := a[10..]
-// 	assert b.len == 0
+fn test_right_with_n_bigger_than_array_size() {
+	a := [1, 2, 3, 4]
+	// NOTE: slice syntax wont return empty array
+	// instead will give index out of bounds
+	// mut b := a[10..]
+	mut b := a.right(10)
+	assert b.len == 0
 	
-// 	// also check that the result of a.right
-// 	// is an array of the same type/element size as a:
-// 	b << 5
-// 	b << 6
-// 	assert b.len == 2
-// 	assert b[0] == 5
-// 	assert b[1] == 6
-// }
+	// also check that the result of a.right
+	// is an array of the same type/element size as a:
+	b << 5
+	b << 6
+	assert b.len == 2
+	assert b[0] == 5
+	assert b[1] == 6
+}
 
 fn test_left() {
 	a := [1, 2, 3]
