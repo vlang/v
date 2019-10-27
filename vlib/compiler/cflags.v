@@ -94,7 +94,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 		if flag[0] == `-` {
 			for f in allowed_flags {
 				i := 1+f.len
-				if i <= flag.len && f == flag.substr(1,i) {
+				if i <= flag.len && f == flag[1..i] {
 					name = flag[..i].trim_space()
 					flag = flag[i..].trim_space()
 					break
@@ -109,7 +109,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 		if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
 			for f in allowed_flags {
 				i := index+f.len
-				if i < flag.len && f == flag.substr(index, i) {
+				if i < flag.len && f == flag[index..i] {
 					index = i
 					break
 				}

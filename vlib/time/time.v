@@ -185,7 +185,7 @@ pub fn (t Time) format() string {
 
 pub fn (t Time) smonth() string {
 	i := t.month - 1
-	return months_string.substr(i * 3, (i + 1) * 3)
+	return months_string[i * 3..(i + 1) * 3]
 }
 
 // 21:04
@@ -382,7 +382,7 @@ pub fn (t Time) day_of_week() int {
 // weekday_str() returns the current day in string (upto 3 characters)
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return days_string.substr(i * 3, (i + 1) * 3)
+	return days_string[i * 3..(i + 1) * 3]
 }
 
 struct C.timeval  {

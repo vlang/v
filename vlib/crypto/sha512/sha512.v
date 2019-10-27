@@ -212,9 +212,9 @@ fn (d mut Digest) checksum() []byte {
 	tmp[0] = 0x80
 
 	if int(len)%128 < 112 {
-		d.write(tmp.left(112-int(len)%128))
+		d.write(tmp[..112-int(len)%128])
 	} else {
-		d.write(tmp.left(128+112-int(len)%128))
+		d.write(tmp[..128+112-int(len)%128])
 	}
 
 	// Length in bits.

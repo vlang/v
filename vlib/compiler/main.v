@@ -743,7 +743,7 @@ pub fn get_param_after(joined_args, arg, def string) string {
 	if space == -1 {
 		space = joined_args.len
 	}
-	res := joined_args.substr(pos, space)
+	res := joined_args[pos..space]
 	return res
 }
 

@@ -42,7 +42,7 @@ fn (s mut ChunkScanner) skip_crlf() {
 fn (s mut ChunkScanner) read_chunk(chunksize int) string {
 	startpos := s.pos
 	s.pos += chunksize
-	return s.text.substr(startpos, s.pos)
+	return s.text[startpos..s.pos]
 }
 
 pub fn decode(text string) string {

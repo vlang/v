@@ -188,7 +188,7 @@ fn parse_response(resp string) Response {
 		if nl_pos == -1 {
 			break
 		}
-		h := resp.substr(old_pos + 1, nl_pos)
+		h := resp[old_pos + 1..nl_pos]
 		// End of headers
 		if h.len <= 1 {
 			text = resp[nl_pos + 1..]

@@ -133,7 +133,7 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
       } else {
         panic('Missing argument for \'$n\'')
       }
-    } else if a.len > c.len && c == a[..c.len] && a.substr(c.len, c.len+1) == '=' {
+    } else if a.len > c.len && c == a[..c.len] && a[c.len..c.len+1] == '=' {
       val := a[c.len+1..]
       fs.args.delete(i)
       return val
@@ -162,7 +162,7 @@ fn (fs mut FlagParser) parse_bool_value(n string, ab byte) ?string {
         fs.args.delete(i)
         return val
       }
-    } else if a.len > c.len && c == a[..c.len] && a.substr(c.len, c.len+1) == '=' {
+    } else if a.len > c.len && c == a[..c.len] && a[c.len..c.len+1] == '=' {
       val := a[c.len+1..]
       fs.args.delete(i)
       return val

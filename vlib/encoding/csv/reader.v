@@ -80,7 +80,7 @@ fn (r mut Reader) read_line() ?string {
 			}
 		}
 	}
-	mut line := r.data.substr(r.row_pos, i)
+	mut line := r.data[r.row_pos..i]
 	r.row_pos = i+1
 	// normalize win line endings (remove extra \r)
 	if !r.is_mac_pre_osx_le && (line.len >= 1 && line[line.len-1] == `\r`) {

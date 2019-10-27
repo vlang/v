@@ -147,9 +147,9 @@ fn (d mut Digest) checksum() []byte {
 	mut tmp := [byte(0)].repeat(64)
 	tmp[0] = 0x80
 	if int(len)%64 < 56 {
-		d.write(tmp.left(56-int(len)%64))
+		d.write(tmp[..56-int(len)%64])
 	} else {
-		d.write(tmp.left(64+56-int(len)%64))
+		d.write(tmp[..64+56-int(len)%64])
 	}
 
 	// Length in bits.

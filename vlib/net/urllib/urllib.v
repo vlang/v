@@ -172,8 +172,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 			// But https://tools.ietf.org/html/rfc6874#section-2
 			// introduces %25 being allowed to escape a percent sign
 			// in IPv6 scoped-address literals. Yay.
-			if mode == .encode_host && unhex(s[i+1]) < 8 && s.substr(i, i+3) != '%25' {
-				return error(error_msg(err_msg_escape, s.substr(i, i+3)))
+			if mode == .encode_host && unhex(s[i+1]) < 8 && s[i..i+3] != '%25' {
+				return error(error_msg(err_msg_escape, s[i..i+3]))
 			}
 			if mode == .encode_zone {
 				// RFC 6874 says basically 'anything goes' for zone identifiers
@@ -184,8 +184,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				// to introduce bytes you couldn't just write directly.
 				// But Windows puts spaces here! Yay.
 				v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
-				if s.substr(i, i+3) != '%25' && v != ` ` && should_escape(v, .encode_host) {
-					error(error_msg(err_msg_escape, s.substr(i, i+3)))
+				if s[i..i+3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
+					error(error_msg(err_msg_escape, s[i..i+3]))
 				}
 			}
 			i += 3
@@ -194,7 +194,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 			i++
 		default:
 			if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
-				error(error_msg('invalid character in host name', s.substr(i, i+1)))
+				error(error_msg('invalid character in host name', s[i..i+1]))
 			}
 			i++
 		}
@@ -615,7 +615,7 @@ fn parse_host(host string) ?string {
 			host1 := unescape(host[..zone], .encode_host) or {
 				return err
 			}
-			host2 := unescape(host.substr(zone, i), .encode_zone) or {
+			host2 := unescape(host[zone..i], .encode_zone) or {
 				return err
 			}
 			host3 := unescape(host[i..], .encode_host) or {
@@ -1044,7 +1044,7 @@ fn split_host_port(hostport string) (string, string) {
 	}
 
 	if host.starts_with('[') && host.ends_with(']') {
-		host = host.substr(1, host.len-1)
+		host = host[1..host.len-1]
 	}
 
 	return host, port

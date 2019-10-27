@@ -301,9 +301,9 @@ fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
 	// array_int a; a[0]
 	// type is "array_int", need "int"
 	// typ = typ.replace('array_', '')
-	if is_arr0 {
-		typ = typ[6..]
-	}
+	// if is_arr0 {
+	// 	typ = typ.right(6)
+	// }
 	// array a; a.first() voidptr
 	// type is "array", need "void*"
 	if typ == 'array' {
