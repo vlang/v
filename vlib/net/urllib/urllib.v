@@ -1080,12 +1080,13 @@ pub fn valid_userinfo(s string) bool {
 		if `0` <= r && r <= `9` {
 			continue
 		}
-		switch r {
-			case `-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`,
-				`(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@`:
-				continue
-			default:
-				return false
+		match r {
+				`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`,
+				`(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@` {
+					continue
+				} else {
+					return false
+				}
 		}
 	}
 	return true
