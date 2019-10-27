@@ -167,9 +167,9 @@ fn (p mut Parser) comp_time() {
 		pp.v.add_parser(pp)
 		tmpl_fn_body := p.cgen.lines.slice(pos + 2, p.cgen.lines.len).join('\n').clone()
 		end_pos := tmpl_fn_body.last_index('Builder_str( sb )')  + 19 // TODO
-		p.cgen.lines = p.cgen.lines.left(pos)
+		p.cgen.lines = p.cgen.lines[..pos]
 		p.genln('/////////////////// tmpl start')
-		p.genln(tmpl_fn_body.left(end_pos))
+		p.genln(tmpl_fn_body[..end_pos])
 		p.genln('/////////////////// tmpl end')
 		// `app.vweb.html(index_view())`
 		receiver := p.cur_fn.args[0]
@@ -188,7 +188,7 @@ fn (p mut Parser) chash() {
 	p.next()
 	if hash.starts_with('flag ') {
 		if p.first_pass() {
-			mut flag := hash.right(5)
+			mut flag := hash[5..]
 			// expand `@VROOT` `@VMOD` to absolute path
 			flag = flag.replace('@VROOT', p.vroot)
 			flag = flag.replace('@VMOD', v_modules_path)
@@ -214,7 +214,7 @@ fn (p mut Parser) chash() {
 	// TODO remove after ui_mac.m is removed
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
-		file := hash.right(pos)
+		file := hash[pos..]
 		if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
 		}
@@ -350,7 +350,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 		}
 		array_int b = tmp2;
 	*/
-	val_type:=str_typ.right(6)
+	val_type:=str_typ[6..]
 	p.open_scope()
 	p.register_var(Var{
 		name: 'it'

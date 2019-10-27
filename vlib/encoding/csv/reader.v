@@ -84,7 +84,7 @@ fn (r mut Reader) read_line() ?string {
 	r.row_pos = i+1
 	// normalize win line endings (remove extra \r)
 	if !r.is_mac_pre_osx_le && (line.len >= 1 && line[line.len-1] == `\r`) {
-		line = line.left(line.len-1)
+		line = line[..line.len-1]
 	}
 	return line
 }
@@ -118,28 +118,28 @@ fn (r mut Reader) read_record() ?[]string {
 				// last
 				break
 			}
-			fields << line.left(i)
-			line = line.right(i+1)
+			fields << line[..i]
+			line = line[i+1..]
 			continue
 		}
 		// quoted
 		else {
-			line = line.right(1)
+			line = line[1..]
 			i = line.index('"')
 			if i != -1 {
 				if i+1 == line.len {
 					// last record
-					fields << line.left(i)
+					fields << line[..i]
 					break
 				}
 				next := line[i+1]
 				if next == r.delimiter {
-					fields << line.left(i)
-					line = line.right(i)
+					fields << line[..i]
+					line = line[i..]
 					continue
 				}
 			}
-			line = line.right(1)
+			line = line[1..]
 		}
 		if i <= -1 && fields.len == 0 {
 			return err_invalid_delim

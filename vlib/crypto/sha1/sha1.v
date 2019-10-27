@@ -64,7 +64,7 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 	d.len += u64(nn)
 
 	if d.nx > 0 {
-		n := copy(d.x.right(d.nx), p)
+		n := copy(d.x[d.nx..], p)
 		d.nx += n
 		if d.nx == chunk {
 			block(d, d.x)
@@ -73,16 +73,16 @@ pub fn (d mut Digest) write(p_ []byte) ?int {
 		if n >= p.len {
 			p = []byte
 		} else {
-			p = p.right(n)
+			p = p[n..]
 		}
 	}
 	if p.len >= chunk {
 		n := p.len &~ (chunk - 1)
-		block(d, p.left(n))
+		block(d, p[..n])
 		if n >= p.len {
 			p = []byte
 		} else {
-			p = p.right(n)
+			p = p[n..]
 		}
 	}
 	if p.len > 0 {
@@ -118,15 +118,15 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= 3
 	binary.big_endian_put_u64(mut tmp, len)
-	d.write(tmp.left(8))
+	d.write(tmp[..8])
 
 	mut digest := [byte(0)].repeat(size)
 
 	binary.big_endian_put_u32(mut digest, d.h[0])
-	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
-	binary.big_endian_put_u32(mut digest.right(8), d.h[2])
-	binary.big_endian_put_u32(mut digest.right(12), d.h[3])
-	binary.big_endian_put_u32(mut digest.right(16), d.h[4])
+	binary.big_endian_put_u32(mut digest[4..], d.h[1])
+	binary.big_endian_put_u32(mut digest[8..], d.h[2])
+	binary.big_endian_put_u32(mut digest[12..], d.h[3])
+	binary.big_endian_put_u32(mut digest[16..], d.h[4])
 
 	return digest
 }

@@ -191,7 +191,7 @@ fn parse_response(resp string) Response {
 		h := resp.substr(old_pos + 1, nl_pos)
 		// End of headers
 		if h.len <= 1 {
-			text = resp.right(nl_pos + 1)
+			text = resp[nl_pos + 1..]
 			break
 		}
 		i++
@@ -202,8 +202,8 @@ fn parse_response(resp string) Response {
 		//if h.contains('Content-Type') {
 			//continue
 		//}
-		key := h.left(pos)
-		val := h.right(pos + 2)
+		key := h[..pos]
+		val := h[pos + 2..]
 		headers[key] = val.trim_space()
 	}
 	

@@ -1099,11 +1099,11 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 		tp := f.type_pars[i]
 		mut ti := e
 		if ti.starts_with('fn (') {
-			fn_args := ti.right(4).all_before(') ').split(',')
+			fn_args := ti[4..].all_before(') ').split(',')
 			mut found := false
 			for fa_ in fn_args {
 				mut fa := fa_
-				for fa.starts_with('array_') { fa = fa.right(6) }
+				for fa.starts_with('array_') { fa = fa[6..] }
 				if fa == tp {
 					r.inst[tp] = fa
 					found = true
@@ -1114,7 +1114,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 			if found { continue }
 			ti = ti.all_after(') ')
 		}
-		for ti.starts_with('array_') { ti = ti.right(6) }
+		for ti.starts_with('array_') { ti = ti[6..] }
 		if r.inst[tp] != '' {
 			if r.inst[tp] != ti {
 				p.error('type parameter `$tp` has type ${r.inst[tp]}, not `$ti`')
@@ -1150,12 +1150,12 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 		mut fr := ''
 		if fi.starts_with('fn (') {
 			fr += 'fn ('
-			mut fn_args := fi.right(4).all_before(') ').split(',')
+			mut fn_args := fi[4..].all_before(') ').split(',')
 			fn_args << fi.all_after(') ')
 			for i, fa_ in fn_args {
 				mut fna := fa_.trim_space()
 				for fna.starts_with('array_') {
-					fna = fna.right(6)
+					fna = fna[6..]
 					fr += 'array_'
 				}
 				if fna in ti.inst.keys() {
@@ -1173,11 +1173,11 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			continue
 		}
 		for fi.starts_with('array_') {
-			fi = fi.right(6)
+			fi = fi[6..]
 			fr += 'array_'
 		}
 		is_varg := fi.starts_with('...')
-		if is_varg { fi = fi.right(3) }
+		if is_varg { fi = fi[3..] }
 		if fi in ti.inst.keys() {
 			mut t := ti.inst[fi]
 			if is_varg { t = '...$t' }
@@ -1214,7 +1214,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		return '', []string
 	}
 	last_arg := f.args.last()
-	mut varg_def_type := last_arg.typ.right(3)
+	mut varg_def_type := last_arg.typ[3..]
 	mut types := []string
 	mut values := []string
 	for p.tok != .rpar {
@@ -1428,7 +1428,7 @@ fn (f &Fn) str_args(table &Table) string {
 			for method in interface_type.methods {
 				s += ', $method.typ (*${arg.typ}_${method.name})(void*'
 				if method.args.len > 1 {
-					for a in method.args.right(1) {
+					for a in method.args[1..] {
 						s += ', $a.typ'
 					}
 				}

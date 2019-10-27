@@ -493,7 +493,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		if i == 0 { continue }
 		if a.starts_with('-') { continue }
 		if a in ['run','test'] {
-			args_after += args.right(i+2).join(' ')
+			args_after += args[i+2..].join(' ')
 			break
 		}
 	}
@@ -660,7 +660,7 @@ pub fn (v &V)  get_user_files() []string {
 	if is_test_with_imports {
 		user_files << dir
 		pos := dir.last_index(os.path_separator)
-		dir = dir.left(pos) + os.path_separator// TODO why is this needed
+		dir = dir[..pos] + os.path_separator// TODO why is this needed
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		// Just compile one file and get parent dir
@@ -777,7 +777,7 @@ pub fn new_v(args[]string) &V {
 		dir = dir.all_before_last(os.path_separator)
 	}
 	if dir.starts_with('.$os.path_separator') {
-		dir = dir.right(2)
+		dir = dir[2..]
 	}
 	if args.len < 2 {
 		dir = ''
@@ -792,7 +792,7 @@ pub fn new_v(args[]string) &V {
 			dir.all_after('vlib'+os.path_separator)
 		}
 		else if dir.starts_with('.\\') || dir.starts_with('./') {
-			dir.right(2)
+			dir[2..]
 		}
 		else if dir.starts_with(os.path_separator) {
 			dir.all_after(os.path_separator)
@@ -821,7 +821,7 @@ pub fn new_v(args[]string) &V {
 	}
 	// No -o provided? foo.v => foo
 	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
-		out_name = dir.left(dir.len - 2)
+		out_name = dir[..dir.len - 2]
 		// Building V? Use v2, since we can't overwrite a running
 		// executable on Windows + the precompiled V is more
 		// optimized.
@@ -957,7 +957,7 @@ pub fn env_vflags_and_os_args() []string {
 		args << os.args[0]
 		args << vflags.split(' ')
 		if os.args.len > 1 {
-			args << os.args.right(1)
+			args << os.args[1..]
 		}
 	} else{
 		args << os.args

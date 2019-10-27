@@ -46,8 +46,8 @@ pub fn (w mut Writer) write(record []string) ?bool {
 				i = field.len
 			}
 
-			w.sb.write(field.left(i))
-			field = field.right(i)
+			w.sb.write(field[..i])
+			field = field[i..]
 
 			if field.len > 0 {
 				z := field[0]
@@ -57,7 +57,7 @@ pub fn (w mut Writer) write(record []string) ?bool {
 				case `\r` || `\n`:
 					w.sb.write(le)
 				}
-				field = field.right(1)
+				field = field[1..]
 			}
 		}
 		w.sb.write('"')

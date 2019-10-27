@@ -17,7 +17,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// `[typ] [name] = bool_expression();`
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
-	if typ.starts_with('...') { typ = typ.right(3) }
+	if typ.starts_with('...') { typ = typ[3..] }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
@@ -66,7 +66,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	} else if typ.starts_with('[') && typ[ typ.len-1 ] != `*` {
 		// a fixed_array initializer, like `v := [1.1, 2.2]!!`
 		// ... should translate to the following in C `f32 v[2] = {1.1, 2.2};`
-		initializer := p.cgen.cur_line.right(pos)
+		initializer := p.cgen.cur_line[pos..]
 		if initializer.len > 0 {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
 		} else if initializer.len == 0 {
@@ -175,11 +175,11 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	// "m, 0" is an index expression, save it before deleting and insert later in map_get()
 	mut index_expr := ''
 	if p.cgen.is_tmp {
-		index_expr = p.cgen.tmp_line.right(fn_ph)
-		p.cgen.resetln(p.cgen.tmp_line.left(fn_ph))
+		index_expr = p.cgen.tmp_line[fn_ph..]
+		p.cgen.resetln(p.cgen.tmp_line[..fn_ph])
 	} else {
-		index_expr = p.cgen.cur_line.right(fn_ph)
-		p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
+		index_expr = p.cgen.cur_line[fn_ph..]
+		p.cgen.resetln(p.cgen.cur_line[..fn_ph])
 	}
 	// Can't pass integer literal, because map_get() requires a void*
 	tmp := p.get_tmp()
@@ -302,7 +302,7 @@ fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
 	// type is "array_int", need "int"
 	// typ = typ.replace('array_', '')
 	if is_arr0 {
-		typ = typ.right(6)
+		typ = typ[6..]
 	}
 	// array a; a.first() voidptr
 	// type is "array", need "void*"
@@ -377,8 +377,8 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_pos int, is_cao bool) {
 	// `a[0] = 7`
 	// curline right now: `a , 0  =  7`
-	mut val := p.cgen.cur_line.right(assign_pos)
-	p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
+	mut val := p.cgen.cur_line[assign_pos..]
+	p.cgen.resetln(p.cgen.cur_line[..assign_pos])
 	mut cao_tmp := p.cgen.cur_line
 	mut func := ''
 	if is_map {
@@ -522,7 +522,7 @@ fn (p mut Parser) cast(typ string) {
 
 fn type_default(typ string) string {
 	if typ.starts_with('array_') {
-		return 'new_array(0, 1, sizeof( ${typ.right(6)} ))'
+		return 'new_array(0, 1, sizeof( ${typ[6..]} ))'
 	}
 	// Always set pointers to 0
 	if typ.ends_with('*') {
@@ -567,7 +567,7 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
 		if elm_type.ends_with('*') {
-			p.gen('), $tmp, ${elm_type.left(elm_type.len - 1)})')
+			p.gen('), $tmp, ${elm_type[..elm_type.len - 1]})')
 		} else {
 			p.gen('), $tmp, $elm_type)')
 		}

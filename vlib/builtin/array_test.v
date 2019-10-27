@@ -116,7 +116,7 @@ fn test_repeat() {
 
 fn test_right() {
 	a := [1, 2, 3, 4]
-	b := a.right(1)
+	b := a[1..]
 	c := a[1..a.len]
 	d := a[1..]
 	assert b[0] == 2
@@ -129,7 +129,7 @@ fn test_right() {
 
 fn test_right_with_n_bigger_than_array_size() {
 	a := [1, 2, 3, 4]
-	mut b := a.right(10)
+	mut b := a[10..]
 	assert b.len == 0
 	
 	// also check that the result of a.right
@@ -143,7 +143,7 @@ fn test_right_with_n_bigger_than_array_size() {
 
 fn test_left() {
 	a := [1, 2, 3]
-	b := a.left(2)
+	b := a[..2]
 	c := a[0..2]
 	d := a[..2]
 	assert b[0] == 1
@@ -207,9 +207,9 @@ fn modify (numbers mut []int) {
 
 fn test_mut_slice() {
 	mut n := [1,2,3]
-	modify(mut n.left(2))
+	modify(mut n[..2])
 	assert n[0] == 777
-	modify(mut n.right(2))
+	modify(mut n[2..])
 	assert n[2] == 777
 	println(n)
 }

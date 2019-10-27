@@ -116,7 +116,7 @@ pub fn run<T>(app T, port int) {
 			conn.close()
 			return
 		}
-		mut action := vals[1].right(1).all_before('/')
+		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
 		}

@@ -141,10 +141,10 @@ pub fn parse_int(_s string, base int, _bit_size int) i64 {
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
-		s = s.right(1)
+		s = s[1..]
 	} else if s[0] == `-` {
 		neg = true
-		s = s.right(1)
+		s = s[1..]
 	}
 
 	// Convert unsigned and check range.

@@ -97,7 +97,7 @@ fn (d mut Digest) write(p_ []byte) ?int {
 	nn := p.len
 	d.len += u64(nn)
 	if d.nx > 0 {
-		n := copy(d.x.right(d.nx), p)
+		n := copy(d.x[d.nx..], p)
 		d.nx += n
 		if d.nx == chunk {
 			block(mut d, d.x)
@@ -106,16 +106,16 @@ fn (d mut Digest) write(p_ []byte) ?int {
 		if n >= p.len {
 			p = []byte
 		} else {
-			p = p.right(n)
+			p = p[n..]
 		}
 	}
 	if p.len >= chunk {
 		n := p.len &~ (chunk - 1)
-		block(mut d, p.left(n))
+		block(mut d, p[..n])
 		if n >= p.len {
 			p = []byte
 		} else {
-			p = p.right(n)
+			p = p[n..]
 		}
 	}
 	if p.len > 0 {
@@ -130,7 +130,7 @@ fn (d &Digest) sum(b_in []byte) []byte {
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	if d0.is224 {
-		for b in hash.left(size224) {
+		for b in hash[..size224] {
 			b_out << b
 		}
 	} else {
@@ -155,7 +155,7 @@ fn (d mut Digest) checksum() []byte {
 	// Length in bits.
 	len <<= u64(3)
 	binary.big_endian_put_u64(mut tmp, len)
-	d.write(tmp.left(8))
+	d.write(tmp[..8])
 
 	if d.nx != 0 {
 		panic('d.nx != 0')
@@ -164,14 +164,14 @@ fn (d mut Digest) checksum() []byte {
 	digest := [byte(0)].repeat(size)
 
 	binary.big_endian_put_u32(mut digest, d.h[0])
-	binary.big_endian_put_u32(mut digest.right(4), d.h[1])
-	binary.big_endian_put_u32(mut digest.right(8), d.h[2])
-	binary.big_endian_put_u32(mut digest.right(12), d.h[3])
-	binary.big_endian_put_u32(mut digest.right(16), d.h[4])
-	binary.big_endian_put_u32(mut digest.right(20), d.h[5])
-	binary.big_endian_put_u32(mut digest.right(24), d.h[6])
+	binary.big_endian_put_u32(mut digest[4..], d.h[1])
+	binary.big_endian_put_u32(mut digest[8..], d.h[2])
+	binary.big_endian_put_u32(mut digest[12..], d.h[3])
+	binary.big_endian_put_u32(mut digest[16..], d.h[4])
+	binary.big_endian_put_u32(mut digest[20..], d.h[5])
+	binary.big_endian_put_u32(mut digest[24..], d.h[6])
 	if !d.is224 {
-		binary.big_endian_put_u32(mut digest.right(28), d.h[7])
+		binary.big_endian_put_u32(mut digest[28..], d.h[7])
 	}
 
 	return digest
@@ -195,7 +195,7 @@ pub fn sum224(data []byte) []byte {
 	d.write(data)
 	sum := d.checksum()
 	mut sum224 := [byte(0)].repeat(size224)
-	copy(sum224, sum.left(size224))
+	copy(sum224, sum[..size224])
 	return sum224
 }
 

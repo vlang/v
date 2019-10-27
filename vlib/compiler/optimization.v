@@ -8,7 +8,7 @@ fn (p mut Parser) in_optimization(typ string, ph int) {
 	p.check(.lsbr)
 	mut i := 0
 	// Get `a` expr value (can be a string literal, not a variable)
-	expr := p.cgen.cur_line.right(ph)
+	expr := p.cgen.cur_line[ph..]
 	is_str := typ == 'string'
 	//println('!! $p.expr_var.name => $name ($typ)')
 	for p.tok != .rsbr && p.tok != .eof {

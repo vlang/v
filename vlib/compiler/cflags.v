@@ -85,8 +85,8 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 	mut name := ''
 	if flag.starts_with('linux') || flag.starts_with('darwin') || flag.starts_with('freebsd') || flag.starts_with('windows') {
 		pos := flag.index(' ')
-		fos = flag.left(pos).trim_space()
-		flag = flag.right(pos).trim_space()
+		fos = flag[..pos].trim_space()
+		flag = flag[pos..].trim_space()
 	}
 	for {
 		mut index := -1
@@ -95,8 +95,8 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 			for f in allowed_flags {
 				i := 1+f.len
 				if i <= flag.len && f == flag.substr(1,i) {
-					name = flag.left(i).trim_space()
-					flag = flag.right(i).trim_space()
+					name = flag[..i].trim_space()
+					flag = flag[i..].trim_space()
 					break
 				}
 			}
@@ -114,12 +114,12 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 					break
 				}
 			}
-			value = flag.left(index).trim_space()
-			flag = flag.right(index).trim_space()
+			value = flag[..index].trim_space()
+			flag = flag[index..].trim_space()
 		}
 		else if index != -1 && index < flag.len-2 && flag[index] == `,` {
-			value = flag.left(index).trim_space()
-			flag = flag.right(index+1).trim_space()
+			value = flag[..index].trim_space()
+			flag = flag[index+1..].trim_space()
 		}
 		else {
 			value = flag.trim_space()

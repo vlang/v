@@ -160,9 +160,9 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 			}
 			n++
 			if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
-				s = s.right(i)
+				s = s[i..]
 				if s.len > 3 {
-					s = s.left(3)
+					s = s[..3]
 				}
 				return error(error_msg(err_msg_escape, s))
 			}
@@ -260,7 +260,7 @@ fn escape(s string, mode EncodingMode) string {
 
 	required := s.len + 2*hex_count
 	if required <= buf.len {
-		t = buf.left(required)
+		t = buf[..required]
 	} else {
 		t = [byte(0)].repeat(required)
 	}
@@ -394,7 +394,7 @@ fn split_by_scheme(rawurl string) ?[]string {
 			if i == 0 {
 				return error(error_msg('missing protocol scheme', ''))
 			}
-			return [rawurl.left(i), rawurl.right(i+1)]
+			return [rawurl[..i], rawurl[i+1..]]
 		}
 		else {
 			// we have encountered an invalid character,
@@ -421,9 +421,9 @@ fn split(s string, sep byte, cutc bool) (string, string) {
 		return s, ''
 	}
 	if cutc {
-		return s.left(i), s.right(i+1)
+		return s[..i], s[i+1..]
 	}
-	return s.left(i), s.right(i)
+	return s[..i], s[i..]
 }
 
 // parse parses rawurl into a URL structure.
@@ -486,9 +486,9 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	url.scheme = url.scheme.to_lower()
 
 	// if rest.ends_with('?') && strings.count(rest, '?') == 1 {
-	if rest.ends_with('?') && !rest.left(1).contains('?') {
+	if rest.ends_with('?') && !rest[..1].contains('?') {
 		url.force_query = true
-		rest = rest.left(rest.len-1)
+		rest = rest[..rest.len-1]
 	} else {
 		r, raw_query := split(rest, `?`, true)
 		rest = r
@@ -520,7 +520,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	}
 
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
-		authority, r := split(rest.right(2), `/`, false)
+		authority, r := split(rest[2..], `/`, false)
 		rest = r
 		a := parse_authority(authority) or {
 			return error(err)
@@ -553,7 +553,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		}
 		host = h
 	} else {
-		h := parse_host(authority.right(i+1)) or {
+		h := parse_host(authority[i+1..]) or {
 			return error(err)
 		}
 		host = h
@@ -561,7 +561,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	if i < 0 {
 		return ParseAuthorityRes{host: host}
 	}
-	mut userinfo := authority.left(i)
+	mut userinfo := authority[..i]
 	if !valid_userinfo(userinfo) {
 		return error(error_msg('invalid userinfo', ''))
 	}
@@ -599,7 +599,7 @@ fn parse_host(host string) ?string {
 		if i < 0 {
 			return error(error_msg('missing \']\' in host', ''))
 		}
-		mut colon_port := host.right(i+1)
+		mut colon_port := host[i+1..]
 		if !valid_optional_port(colon_port) {
 			return error(error_msg('invalid port $colon_port after host ', ''))
 		}
@@ -610,22 +610,22 @@ fn parse_host(host string) ?string {
 		// can only %-encode non-ASCII bytes.
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
-		zone := host.left(i).index('%25')
+		zone := host[..i].index('%25')
 		if zone >= 0 {
-			host1 := unescape(host.left(zone), .encode_host) or {
+			host1 := unescape(host[..zone], .encode_host) or {
 				return err
 			}
 			host2 := unescape(host.substr(zone, i), .encode_zone) or {
 				return err
 			}
-			host3 := unescape(host.right(i), .encode_host) or {
+			host3 := unescape(host[i..], .encode_host) or {
 				return err
 			}
 			return host1 + host2 + host3
 		} else {
 			i = host.last_index(':')
 			if i != -1 {
-				colon_port = host.right(i)
+				colon_port = host[i..]
 				if !valid_optional_port(colon_port) {
 					return error(error_msg('invalid port $colon_port after host ', ''))
 				}
@@ -719,7 +719,7 @@ fn valid_optional_port(port string) bool {
 	if port[0] != `:` {
 		return false
 	}
-	for b in port.right(1) {
+	for b in port[1..] {
 		if b < `0` || b > `9` {
 			return false
 		}
@@ -781,7 +781,7 @@ pub fn (u &URL) str() string {
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
 			i := path.index_byte(`:`)
-			if i > -1 && path.left(i).index_byte(`/`) == -1 {
+			if i > -1 && path[..i].index_byte(`/`) == -1 {
 				buf.write('./')
 			}
 		}
@@ -836,8 +836,8 @@ fn parse_query_values(m mut Values, query string) ?bool {
 		mut key := q
 		mut i := key.index_any('&;')
 		if i >= 0 {
-			q = key.right(i+1)
-			key = key.left(i)
+			q = key[i+1..]
+			key = key[..i]
 		} else {
 			q = ''
 		}
@@ -847,8 +847,8 @@ fn parse_query_values(m mut Values, query string) ?bool {
 		mut value := ''
 		i = key.index('=')
 		if  i >= 0 {
-			value = key.right(i+1)
-			key = key.left(i)
+			value = key[i+1..]
+			key = key[..i]
 		}
 		k := query_unescape(key) or {
 			had_error = true
@@ -904,7 +904,7 @@ fn resolve_path(base, ref string) string {
 		full = base
 	} else if ref[0] != `/` {
 		i := base.last_index('/')
-		full = base.left(i+1) + ref
+		full = base[..i+1] + ref
 	} else {
 		full = ref
 	}
@@ -919,7 +919,7 @@ fn resolve_path(base, ref string) string {
 			// drop
 		case '..':
 			if dst.len > 0 {
-				dst = dst.left(dst.len-1)
+				dst = dst[..dst.len-1]
 			}
 		default:
 			dst << elem
@@ -1038,9 +1038,9 @@ fn split_host_port(hostport string) (string, string) {
 	mut port := ''
 	
 	colon := host.last_index_byte(`:`)
-	if colon != -1 && valid_optional_port(host.right(colon)) {
-		port = host.right(colon+1)
-		host = host.left(colon)
+	if colon != -1 && valid_optional_port(host[colon..]) {
+		port = host[colon+1..]
+		host = host[..colon]
 	}
 
 	if host.starts_with('[') && host.ends_with(']') {

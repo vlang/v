@@ -9,7 +9,7 @@ const (
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	p.gen('var $name /* typ */ = ')
 	mut typ := p.bool_expression()
-	if typ.starts_with('...') { typ = typ.right(3) }
+	if typ.starts_with('...') { typ = typ[3..] }
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
@@ -149,8 +149,8 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 }
 
 fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_pos int, is_cao bool) {
-	mut val := p.cgen.cur_line.right(assign_pos)
-	p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
+	mut val := p.cgen.cur_line[assign_pos..]
+	p.cgen.resetln(p.cgen.cur_line[..assign_pos])
 	p.gen('] =')
 	cao_tmp := p.cgen.cur_line
 	if is_cao  {

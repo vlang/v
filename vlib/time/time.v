@@ -287,13 +287,13 @@ pub fn parse(s string) Time {
 		println('bad time format')
 		return now()
 	}
-	symd := s.left(pos)
+	symd := s[..pos]
 	ymd := symd.split('-')
 	if ymd.len != 3 {
 		println('bad time format')
 		return now()
 	}
-	shms := s.right(pos)
+	shms := s[pos..]
 	hms := shms.split(':')
 	hour := hms[0]
 	minute := hms[1]

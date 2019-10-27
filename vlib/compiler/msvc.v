@@ -158,7 +158,7 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	// println('version: $version')
 
 	v := if version.ends_with('\n') {
-		version.left(version.len - 2)
+		version[..version.len - 2]
 	} else {
 		version
 	}

@@ -47,7 +47,7 @@ _ = header
 		if line.contains('@if ') {
 			s.writeln(STR_END)
 			pos := line.index('@if')
-			s.writeln('if ' + line.right(pos + 4) + '{')
+			s.writeln('if ' + line[pos + 4..] + '{')
 			s.writeln(STR_START)
 		}
 		else if line.contains('@end') {
@@ -63,7 +63,7 @@ _ = header
 		else if line.contains('@for') {
 			s.writeln(STR_END)
 			pos := line.index('@for')
-			s.writeln('for ' + line.right(pos + 4) + '{')
+			s.writeln('for ' + line[pos + 4..] + '{')
 			s.writeln(STR_START)
 		}
 		else if !in_css && line.contains('.') && line.ends_with('{') {

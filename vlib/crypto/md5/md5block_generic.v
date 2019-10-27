@@ -21,8 +21,8 @@ fn block_generic(dig mut Digest, p []byte) {
 	mut d := dig.s[3]
 	
 	for i := 0; i <= p.len-block_size; i += block_size {
-		mut q := p.right(i)
-		q = q.left(block_size)
+		mut q := p[i..]
+		q = q[..block_size]
 		// save current state
 		aa := a
 		bb := b
@@ -30,22 +30,22 @@ fn block_generic(dig mut Digest, p []byte) {
 		dd := d
 
 		// load input block
-		x0 := binary.little_endian_u32(q.right(4*0x0))
-		x1 := binary.little_endian_u32(q.right(4*0x1))
-		x2 := binary.little_endian_u32(q.right(4*0x2))
-		x3 := binary.little_endian_u32(q.right(4*0x3))
-		x4 := binary.little_endian_u32(q.right(4*0x4))
-		x5 := binary.little_endian_u32(q.right(4*0x5))
-		x6 := binary.little_endian_u32(q.right(4*0x6))
-		x7 := binary.little_endian_u32(q.right(4*0x7))
-		x8 := binary.little_endian_u32(q.right(4*0x8))
-		x9 := binary.little_endian_u32(q.right(4*0x9))
-		xa := binary.little_endian_u32(q.right(4*0xa))
-		xb := binary.little_endian_u32(q.right(4*0xb))
-		xc := binary.little_endian_u32(q.right(4*0xc))
-		xd := binary.little_endian_u32(q.right(4*0xd))
-		xe := binary.little_endian_u32(q.right(4*0xe))
-		xf := binary.little_endian_u32(q.right(4*0xf))
+		x0 := binary.little_endian_u32(q[4*0x0..])
+		x1 := binary.little_endian_u32(q[4*0x1..])
+		x2 := binary.little_endian_u32(q[4*0x2..])
+		x3 := binary.little_endian_u32(q[4*0x3..])
+		x4 := binary.little_endian_u32(q[4*0x4..])
+		x5 := binary.little_endian_u32(q[4*0x5..])
+		x6 := binary.little_endian_u32(q[4*0x6..])
+		x7 := binary.little_endian_u32(q[4*0x7..])
+		x8 := binary.little_endian_u32(q[4*0x8..])
+		x9 := binary.little_endian_u32(q[4*0x9..])
+		xa := binary.little_endian_u32(q[4*0xa..])
+		xb := binary.little_endian_u32(q[4*0xb..])
+		xc := binary.little_endian_u32(q[4*0xc..])
+		xd := binary.little_endian_u32(q[4*0xd..])
+		xe := binary.little_endian_u32(q[4*0xe..])
+		xf := binary.little_endian_u32(q[4*0xf..])
 
 		// round 1
 		a = b + bits.rotate_left_32((((c^d)&b)^d)+a+x0+u32(0xd76aa478), 7)
