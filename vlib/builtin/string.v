@@ -1044,19 +1044,19 @@ pub fn (s []string) join_lines() string {
 	return s.join('\n')
 }
 
+// reverse will return a new reversed string.
 pub fn (s string) reverse() string {
 	mut res := string {
 		len: s.len
 		str: malloc(s.len)
 	}
-
 	for i := s.len - 1; i >= 0; i-- {
-				res[s.len-i-1] = s[i]
+		res[s.len-i-1] = s[i]
 	}
-
 	return res
 }
 
+// limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
@@ -1094,7 +1094,7 @@ pub fn (s string) bytes() []byte {
 	return buf
 }
 
-// Returns a new string with a specified number of copies of the string it was called on.
+// repeat returns a new string with a specified number of copies of the string it was called on.
 pub fn (s string) repeat(count int) string {
 	if count <= 1 {
 		return s
