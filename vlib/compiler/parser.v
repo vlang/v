@@ -3361,80 +3361,8 @@ fn (p mut Parser) for_st() {
 }
 
 fn (p mut Parser) switch_statement() {
-	p.warn('`switch` statement has been deprecated, use `match` instead:\n' +
+	p.error('`switch` statement has been removed, use `match` instead:\n' +
 		'https://vlang.io/docs#match')
-	if p.tok == .key_switch {
-		p.check(.key_switch)
-	} else {
-		p.check(.key_match)
-	}
-	p.cgen.start_tmp()
-	typ := p.bool_expression()
-	is_str := typ == 'string'
-	expr := p.cgen.end_tmp()
-	p.check(.lcbr)
-	mut i := 0
-	mut all_cases_return := true
-	for p.tok == .key_case || p.tok == .key_default || p.peek() == .arrow || p.tok == .key_else {
-		p.returns = false
-		if p.tok == .key_default || p.tok == .key_else {
-			p.genln('else  { // default:')
-			if p.tok == .key_default {
-				p.check(.key_default)
-				p.check(.colon)
-			}  else {
-				p.check(.key_else)
-				p.check(.arrow)
-			}
-			p.statements()
-			p.returns = all_cases_return && p.returns
-			return
-		}
-		if i > 0 {
-			p.gen('else ')
-		}
-		p.gen('if (')
-		// Multiple checks separated by comma
-		mut got_comma := false
-		for {
-			if got_comma {
-				if is_str {
-					p.gen(')')
-				}
-				p.gen(' || ')
-			}
-			if typ == 'string' {
-				p.gen('string_eq($expr, ')
-			}
-			else {
-				p.gen('$expr == ')
-			}
-			if p.tok == .key_case || p.tok == .key_default {
-				p.check(p.tok)
-			}
-			p.bool_expression()
-			if p.tok != .comma {
-				break
-			}
-			p.check(.comma)
-			got_comma = true
-		}
-		if p.tok == .colon {
-			p.check(.colon)
-		}
-		else {
-			p.check(.arrow)
-		}
-		if is_str {
-			p.gen(')')
-		}
-		p.gen(') {')
-		p.genln('/* case */')
-		p.statements()
-		all_cases_return = all_cases_return && p.returns
-		i++
-	}
-	p.returns = false // only get here when no default, so return is not guaranteed
 }
 
 // Returns typ if used as expession
