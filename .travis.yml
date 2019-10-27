@@ -84,6 +84,6 @@ script:
   - |
     if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
     # Build Vid
-      git clone https://github.com/vlang/vid
-      cd vid && ../v -o vid .
+      #git clone https://github.com/vlang/vid
+      #cd vid && ../v -o vid .
     fi
