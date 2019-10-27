@@ -161,9 +161,9 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				}
 				n++
 				if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
-					s = s.right(i)
+					s = s[i..]
 					if s.len > 3 {
-						s = s.left(3)
+						s = s[..3]
 					}
 					return error(error_msg(err_msg_escape, s))
 				}
@@ -173,8 +173,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				// But https://tools.ietf.org/html/rfc6874#section-2
 				// introduces %25 being allowed to escape a percent sign
 				// in IPv6 scoped-address literals. Yay.
-				if mode == .encode_host && unhex(s[i+1]) < 8 && s.substr(i, i+3) != '%25' {
-					return error(error_msg(err_msg_escape, s.substr(i, i+3)))
+				if mode == .encode_host && unhex(s[i+1]) < 8 && s[i..i+3] != '%25' {
+					return error(error_msg(err_msg_escape, s[i..i+3]))
 				}
 				if mode == .encode_zone {
 					// RFC 6874 says basically 'anything goes' for zone identifiers
@@ -185,8 +185,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
 					v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
-					if s.substr(i, i+3) != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s.substr(i, i+3)))
+					if s[i..i+3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
+						error(error_msg(err_msg_escape, s[i..i+3]))
 					}
 				}
 				i += 3
@@ -196,7 +196,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				i++
 			} else {
 				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
-					error(error_msg('invalid character in host name', s.substr(i, i+1)))
+					error(error_msg('invalid character in host name', s[i..i+1]))
 				}
 				i++
 			}
@@ -928,7 +928,7 @@ fn resolve_path(base, ref string) string {
 			}
 			'..' {
 				if dst.len > 0 {
-					dst = dst.left(dst.len-1)
+					dst = dst[..dst.len-1]
 				}
 			} else {
 				dst << elem
