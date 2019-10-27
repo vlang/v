@@ -8,14 +8,14 @@ module crc32
 
 // polynomials
 const (
-	IEEE       = 0xedb88320
-	Castagnoli = 0x82f63b78
-	Koopman    = 0xeb31d82e
+	ieee       = 0xedb88320
+	castagnoli = 0x82f63b78
+	koopman    = 0xeb31d82e
 )
 
 // The size of a CRC-32 checksum in bytes.
 const (
-	Size = 4
+	size = 4
 )
 
 struct Crc32 {
@@ -56,8 +56,8 @@ pub fn new(poly int) &Crc32 {
 	return c
 }
 
-// calculate crc32 using IEEE
+// calculate crc32 using ieee
 pub fn sum(b []byte) u32 {
-	mut c := new(IEEE)
+	mut c := new(ieee)
 	return c.sum32(b)
 }

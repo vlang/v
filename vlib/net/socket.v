@@ -2,7 +2,7 @@ module net
 
 import os
 
-struct Socket {
+pub struct Socket {
 pub:
 	sockfd int
 	family int

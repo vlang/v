@@ -12,8 +12,8 @@ import strings
 
 /*
 struct dirent {
-               d_ino int
-               d_off int
+     d_ino int
+     d_off int
 	d_reclen u16
 	d_type byte
 	d_name [256]byte
@@ -26,7 +26,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) C.dirent
 
-const (
+pub const (
 	args = []string
 	MAX_PATH = 4096
 )
@@ -35,7 +35,7 @@ struct C.FILE {
 	
 }
 
-struct File {
+pub struct File {
 	cfile &FILE
 }
 
@@ -70,6 +70,24 @@ fn C.getline(voidptr, voidptr, voidptr) int
 fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
+
+// read_bytes reads an amount of bytes from the beginning of the file
+pub fn (f File) read_bytes(size int) []byte {
+	return f.read_bytes_at(size, 0)
+}
+
+// read_bytes_at reads an amount of bytes at the given position in the file
+pub fn (f File) read_bytes_at(size, pos int) []byte {
+	mut data := malloc(size)
+	mut arr  := [`0`].repeat(size)
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fread(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_SET)
+	for e := 0; e < size; e++ {
+		arr[e] = data[e]
+	}
+	return arr
+}
 
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
@@ -305,7 +323,7 @@ fn pclose(f *C.FILE) int {
 	}
 }
 
-struct Result {
+pub struct Result {
 pub:
 	exit_code int
 	output string
@@ -359,34 +377,33 @@ pub fn system(cmd string) int {
 
 pub fn sigint_to_signal_name(si int) string {
 	// POSIX signals:
-	switch si {
-	case  1: return 'SIGHUP'
-	case  2: return 'SIGINT'
-	case  3: return 'SIGQUIT'
-	case  4: return 'SIGILL'
-	case  6: return 'SIGABRT'
-	case  8: return 'SIGFPE'
-	case  9: return 'SIGKILL'
-	case 11: return 'SIGSEGV'
-	case 13: return 'SIGPIPE'
-	case 14: return 'SIGALRM'
-	case 15: return 'SIGTERM'
+	match si {
+		1 {return 'SIGHUP'}
+		2 {return 'SIGINT'}
+		3 {return 'SIGQUIT'}
+		4 {return 'SIGILL'}
+		6 {return 'SIGABRT'}
+		8 {return 'SIGFPE'}
+		9 {return 'SIGKILL'}
+		11 {return 'SIGSEGV'}
+		13 {return 'SIGPIPE'}
+		14 {return 'SIGALRM'}
+		15 {return 'SIGTERM'}
 	}
-	///////////////////////////////////
 	$if linux {
 		// From `man 7 signal` on linux:
-		switch si {
-		case 30,10,16: return 'SIGUSR1'
-		case 31,12,17: return 'SIGUSR2'
-		case 20,17,18: return 'SIGCHLD'
-		case 19,18,25: return 'SIGCONT'
-		case 17,19,23: return 'SIGSTOP'
-		case 18,20,24: return 'SIGTSTP'
-		case 21,21,26: return 'SIGTTIN'
-		case 22,22,27: return 'SIGTTOU'
-		///////////////////////////////
-		case 5: return 'SIGTRAP'
-		case 7: return 'SIGBUS'		
+		match si {
+			30,10,16{ return 'SIGUSR1'}
+			31,12,17{ return 'SIGUSR2'}
+			20,17,18{ return 'SIGCHLD'}
+			19,18,25{ return 'SIGCONT'}
+			17,19,23{ return 'SIGSTOP'}
+			18,20,24{ return 'SIGTSTP'}
+			21,21,26{ return 'SIGTTIN'}
+			22,22,27{ return 'SIGTTOU'}
+			///////////////////////////////
+			5{ return 'SIGTRAP'}
+			7{ return 'SIGBUS'		}
 		}
 	}
 	return 'unknown'
@@ -478,7 +495,7 @@ pub fn ext(path string) string {
 	if pos == -1 {
 		return ''
 	}
-	return path.right(pos)
+	return path[pos..]
 }
 
 
@@ -491,7 +508,7 @@ pub fn dir(path string) string {
 	if pos == -1 {
 		return '.'
 	}
-	return path.left(pos)
+	return path[..pos]
 }
 
 fn path_sans_ext(path string) string {
@@ -499,7 +516,7 @@ fn path_sans_ext(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path.left(pos)
+	return path[..pos]
 }
 
 
@@ -508,7 +525,7 @@ pub fn basedir(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path.left(pos + 1)
+	return path[..pos + 1]
 }
 
 pub fn filename(path string) string {
@@ -567,19 +584,20 @@ pub fn get_lines() []string {
 }
 
 pub fn get_lines_joined() string {
-        mut line := ''
-        mut inputstr := ''
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr += line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := ''
+	for {
+		line = get_line()
+		if line.len <= 0 {
+			break
+		}
+		line = line.trim_space()
+		inputstr += line
+	}
+	return inputstr
 }
 
+// user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -638,9 +656,12 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
+// clear will clear current terminal screen.
 pub fn clear() {
-	C.printf('\x1b[2J')
-	C.printf('\x1b[H')
+	$if !windows {
+		C.printf('\x1b[2J')
+		C.printf('\x1b[H')
+	}
 }
 
 fn on_segfault(f voidptr) {
@@ -660,6 +681,7 @@ fn on_segfault(f voidptr) {
 fn C.getpid() int
 fn C.proc_pidpath (int, byteptr, int) int
 
+// executable return the path name of the executable that started the current process.
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
@@ -678,7 +700,7 @@ pub fn executable() string {
 	$if mac {
 		mut result := malloc(MAX_PATH)
 		pid := C.getpid()
-		ret := C.proc_pidpath (pid, result, MAX_PATH)
+		ret := proc_pidpath (pid, result, MAX_PATH)
 		if ret <= 0  {
 			println('os.executable() failed')
 			return '.'
@@ -718,6 +740,7 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+// is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
 		return dir_exists(path)
@@ -736,6 +759,7 @@ pub fn is_dir(path string) bool {
 	}
 }
 
+// chdir changes the current working directory to the new directory path.
 pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
@@ -745,6 +769,7 @@ pub fn chdir(path string) {
 	}
 }
 
+// getwd returns the absolute path name of the current directory.
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
@@ -803,6 +828,25 @@ pub fn walk_ext(path, ext string) []string {
 		}
 	}
 	return res
+}
+
+// walk recursively traverse the given directory path.
+// When a file is encountred it will call the callback function with current file as argument.
+pub fn walk(path string, fnc fn(path string)) {
+	if !os.is_dir(path) {
+		return
+	}
+	mut files := os.ls(path) or { panic(err) }
+	for file in files {
+		p := path + os.path_separator + file
+		if os.is_dir(p) {
+			walk(p, fnc)
+		}
+		else if os.file_exists(p) {
+			fnc(p)
+		}
+	}
+	return
 }
 
 pub fn signal(signum int, handler voidptr) {

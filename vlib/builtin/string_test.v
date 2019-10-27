@@ -208,6 +208,12 @@ fn test_runes() {
 	assert u.len == 6
 	assert s2.substr(1, 4).len == 3
 	assert s2.substr(1, 4) == 'riv'
+	assert s2[1..4].len == 3
+	assert s2[1..4] == 'riv'
+	assert s2[..4].len == 4
+	assert s2[..4] == 'priv'
+	assert s2[2..].len == 4
+	assert s2[2..] == 'ivet'
 	assert u.substr(1, 4).len == 6
 	assert u.substr(1, 4) == 'рив'
 	assert s2.substr(1, 2) == 'r'
@@ -254,7 +260,7 @@ fn test_upper() {
 fn test_left_right() {
 	s := 'ALOHA'
 	assert s.left(3) == 'ALO'
-	assert s.right(3) == 'HA'
+	assert s[3..] == 'HA'
 	u := s.ustring()
 	assert u.left(3) == 'ALO'
 	assert u.right(3) == 'HA'
@@ -480,5 +486,15 @@ fn test_escape() {
 	// TODO
 	//a := 10
 	//println("\"$a")
+}	
+
+fn test_atoi() {
+	assert '234232'.int() == 234232
+	assert '-9009'.int() == -9009
+	assert '0'.int() == 0
+	for n in -10000 .. 100000 {
+		s := n.str()
+		assert s.int() == n
+	}	
 }	
 

@@ -52,7 +52,7 @@ struct C.FT_Library {
 	_z int
 }
 
-struct Context {
+pub struct Context {
 	shader    gl.Shader
 	// use_ortho bool
 	width     int

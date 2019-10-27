@@ -17,11 +17,6 @@ fn init() {
 	}
 }
 
-fn C.memcpy(byteptr, byteptr, int)
-fn C.memmove(byteptr, byteptr, int)
-//fn C.malloc(int) byteptr
-fn C.realloc(byteptr, int) byteptr
-
 pub fn exit(code int) {
 	C.exit(code)
 }
@@ -35,8 +30,6 @@ fn on_panic(f fn (int) int) {
 	// TODO
 }
 
-fn C.backtrace(voidptr, int) int
-
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if mac {
 		buffer := [100]byteptr
@@ -46,8 +39,9 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	}
 	$if linux {
 		$if !android {
+			$if glibc {
 			// backtrace is not available on Android.
-			if C.backtrace_symbols_fd != 0 {
+			//if C.backtrace_symbols_fd != 0 {
 				buffer := [100]byteptr
 				nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 				nr_actual_frames := nr_ptrs-skipframes
@@ -67,7 +61,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 					buf := [1000]byte
 					mut output := ''
 					for C.fgets(buf, 1000, f) != 0 {
-						output += tos(buf, vstrlen(buf)) 
+						output += tos(buf, vstrlen(buf))
 					}
 					output = output.trim_space()+':'
 					if 0 != int(C.pclose(f)) {
@@ -77,7 +71,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 				}
 				//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 				return
-			}else{
+			}$else{
 				C.printf('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
 				C.printf('Some libc implementations like musl simply do not provide it.\n')
 			}
@@ -85,6 +79,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	}
 	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
 }
+
 pub fn print_backtrace(){
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// 1 frame for print_backtrace_skipping_top_frames
@@ -153,6 +148,7 @@ pub fn print(s string) {
 
 __global total_m i64 = 0
 //__global nr_mallocs int = 0
+[unsafe_fn]
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
@@ -185,6 +181,7 @@ pub fn calloc(n int) byteptr {
 	return C.calloc(n, 1)
 }
 
+[unsafe_fn]
 pub fn free(ptr voidptr) {
 	C.free(ptr)
 }

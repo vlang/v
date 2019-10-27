@@ -10,11 +10,11 @@ import glm
 
 // import darwin
 
-struct Shader {
+pub struct Shader {
 	program_id int
 }
 
-const (
+pub const (
 	TEXT_VERT   = '#version 330 core
 layout (location = 0) in vec4 vertex; // <vec2 pos, vec2 tex>
 out vec2 TexCoords;

@@ -20,10 +20,10 @@ fn test_foo() {
 
 If you are fixing a bug, please add a test that covers it.
 
-Before submitting a PR, please run the tests with `make test`, and make sure V can still compile itself. Run this twice:
+Before submitting a PR, please run the tests with `v test v`, and make sure V can still compile itself. Run this twice:
 
-./v -o v compiler
-./v -o v compiler
+./v -o v v.v
+./v -o v v.v
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
 

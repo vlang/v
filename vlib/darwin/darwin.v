@@ -26,12 +26,16 @@ pub fn resource_path() string {
 
 	main_bundle := C.CFBundleGetMainBundle()
 	resource_dir_url := C.CFBundleCopyResourcesDirectoryURL(main_bundle)
-	assert !isnil(resource_dir_url)
+	if (isnil(resource_dir_url)) {
+		panic('CFBundleCopyResourcesDirectoryURL failed')
+	}
 	buffer_size := 4096
 	mut buffer := malloc(buffer_size)
 	buffer[0] = 0
 	conv_result := C.CFURLGetFileSystemRepresentation(resource_dir_url, true, buffer, buffer_size)
-	assert conv_result
+	if(conv_result == 0) {
+		panic('CFURLGetFileSystemRepresentation failed')
+	}
 	result := string(buffer)
 	C.CFRelease(resource_dir_url)
 	return result

@@ -30,7 +30,7 @@ struct Asset {
 }
 
 // new_manager returns a new AssetManager
-pub fn new_manager() *AssetManager {
+pub fn new_manager() &AssetManager {
 	return &AssetManager{}
 }
 

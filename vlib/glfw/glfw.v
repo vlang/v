@@ -27,18 +27,18 @@ import gl
 // #flag darwin -framework Cocoa
 // #flag darwin -framework CoreVideo
 // #flag darwin -framework IOKit
-const (
+pub const (
 	RESIZABLE = 1
 	DECORATED = 2
 )
 
-const (
+pub const (
 	KEY_ESCAPE     = 256
 	key_space     = 32
 	KEY_LEFT_SUPER = 343
 )
 
-const (
+pub const (
 	KeyUp    = 265
 	KeyLeft  = 263
 	KeyRight = 262
@@ -50,7 +50,7 @@ struct TmpGlImportHack {
 	hack gl.TmpGlImportHack
 }
 
-struct WinCfg {
+pub struct WinCfg {
 	width      int
 	height     int
 	title      string
@@ -64,7 +64,7 @@ struct WinCfg {
 
 // data  *C.GLFWwindow
 // TODO change data to cobj
-struct Window {
+pub struct Window {
 	data  voidptr
 	title string
 	mx    int

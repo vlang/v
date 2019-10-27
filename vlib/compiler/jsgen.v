@@ -86,7 +86,7 @@ string res = tos2("");
 			continue
 		}
 		name := if field.attr.starts_with('json:') {
-			field.attr.right(5)
+			field.attr[5..]
 		} else {
 			field.name
 		}

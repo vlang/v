@@ -47,6 +47,8 @@ make
 
 That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo]` can be anywhere.
 
+(On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`.)
+
 V is being constantly updated. To update V, simply run
 
 ```

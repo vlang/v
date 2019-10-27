@@ -15,109 +15,128 @@ import (
 	They are used together with pre-compiled modules.
 */
 
-// "fn foo(a int) string"
-fn (f &Fn) v_definition() string {
-	//t :=time.ticks()
-	mut sb := strings.new_builder(100)
-	if f.is_public {
-		sb.write('pub ')
-	}	
-	sb.write('fn ')
-	if f.is_c {
-		sb.write('C.')
-	}	
-	if f.is_method {
-		recv := f.args[0]
-		typ := v_type_str(recv.typ).replace('*', '')
-		mut mu := if recv.is_mut { 'mut' } else { '' }
-		if recv.ref {
-			mu = '&'
-		}	
-		sb.write('($recv.name $mu $typ) ')
-	}	
-	if f.name.contains('__') {
-		sb.write(f.name.all_after('__') + '(')
+// `mod` == "vlib/os"
+fn generate_vh(mod string) {
+	println('\n\n\n\nGenerating a V header file for module `$mod`')
+	vexe := os.executable()
+	full_mod_path := os.dir(vexe) + '/' + mod
+	
+	
+	mod_path := mod.replace('.', os.path_separator)
+	dir := if mod.starts_with('vlib') {
+		'$compiler.v_modules_path${os.path_separator}$mod'
 	} else {
-		sb.write('$f.name(')
+		'$compiler.v_modules_path${os.path_separator}$mod'
 	}
-	for i, arg in f.args {
-		if i == 0 && f.is_method { // skip the receiver
-			continue
-		}	
-		typ := v_type_str(arg.typ).replace('*', '&')
-		if arg.name == '' {
-			sb.write(typ)
-		}	 else {
-			sb.write('$arg.name $typ')
-		}
-		if i != f.args.len - 1 {
-			sb.write(', ')
-		}
+	path := dir + '.vh'
+	pdir := dir.all_before_last(os.path_separator)
+	if !os.dir_exists(pdir) {
+		os.mkdir_all(pdir)
+		// os.mkdir(os.realpath(dir))
 	}
-	sb.write(')')
-	if f.typ != 'void' {
-		typ := v_type_str(f.typ).replace('*', '&')
-		sb.write(' ')
-		sb.write(typ)
-		sb.writeln(' ')
-	}
-	//println('ms: ${time.ticks() - t}')
-	return sb.str()
-}
-
-fn v_type_str(typ_ string) string {
-	mut typ := if typ_.ends_with('*') {
-		'*' + typ_.left(typ_.len - 1)
-	} else {
-		typ_
-	}	
-	typ = typ.replace('Option_', '?')
-	// fn parent/alias?
-	if typ.starts_with('fn ') {
-		mut types := []string
-		fi_lpar := typ.index_byte(`(`)
-		li_rpar := typ.last_index_byte(`)`)
-		ret_type := typ.right(li_rpar+1)
-		for t in typ.substr(fi_lpar+1, li_rpar).split(',') {
-			types << v_type_str(t)
-		}
-		return 'fn (' + types.join(', ') + ')$ret_type'
-	}
-	typ = typ.replace('Option_', '?')
-	// multiple return
-	if typ.contains('_V_MulRet') {
-		words := typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_')
-		typ = '('
-		for i in 0 .. words.len {
-			typ += v_type_str(words[i])
-			if i != words.len - 1 {
-				typ += ','
+	out := os.create(path) or { panic(err) }
+	mod_def := if mod.contains('/') { mod.all_after('/') } else { mod } // "os"
+	out.writeln('// $mod module header \n')
+	out.writeln('module $mod_def\n')
+	// Consts
+	println(full_mod_path)
+	mut vfiles := os.walk_ext(full_mod_path, '.v')
+	//mut vfiles := os.ls(full_mod_path) or {
+		//exit(1)
+	//}	
+	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') &&
+		!it.ends_with('_windows.v') && !it.ends_with('_win.v') &&
+		!it.contains('/js')) // TODO merge once filter allows it
+	println(filtered)
+	mut v := new_v(['foo.v'])
+	//v.pref.generating_vh = true
+	mut consts := strings.new_builder(100)
+	mut fns := strings.new_builder(100)
+	mut types := strings.new_builder(100)
+	for file in filtered {
+		mut p := v.new_parser_from_file(file)
+		p.scanner.is_vh = true
+		p.parse(.decl)
+		for i, tok in p.tokens {
+			if !p.tok.is_decl() {
+				continue
+			}	
+			match tok.tok {
+				TokenKind.key_fn {	fns.writeln(generate_fn(p.tokens, i))	}
+				TokenKind.key_const {	consts.writeln(generate_const(p.tokens, i))	}
+				TokenKind.key_struct {	types.writeln(generate_type(p.tokens, i))	}
 			}	
 		}	
-		typ += ')'
-		return typ
+	}	
+	result := consts.str() + types.str() +
+		fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
+	
+	out.writeln(result.replace('[ ] ', '[]').replace('? ', '?'))
+	out.close()
+}
+
+fn generate_fn(tokens []Token, i int) string {
+	mut out := strings.new_builder(100)
+	mut next := tokens[i+1]
+	if tokens[i-1].tok != .key_pub {
+		// Skip private fns
+		return ''
 	}
-	//println('"$typ"')
-	if typ == '*void' {
-		return 'voidptr'
+	
+	if next.tok == .name && next.lit == 'C' {
+		println('skipping C')
+		return ''
 	}	
-	if typ == '*byte' {
-		return 'byteptr'
+	//out.write('pub ')
+	mut tok := tokens[i]
+	for i < tokens.len && tok.tok != .lcbr {
+		next = tokens[i+1]
+		
+		out.write(tok.str())
+		if tok.tok != .lpar  && !(next.tok in [.comma, .rpar]) {
+			// No space after (), [], etc
+			out.write(' ')
+		}
+		i++
+		tok = tokens[i]
 	}	
-	if typ.starts_with('array_') {
-		return '[]' + typ.right(6)
-	}	
-	if typ.contains('__') {
-		opt := typ.starts_with('?')
-		typ = typ.all_after('__')
-		if opt {
-			typ = '?' + typ
-		}	
-	}	
-	return typ
+	return out.str()
 }	
 
-fn (v &V) generate_vh() {
+fn generate_const(tokens []Token, i int) string {
+	mut out := strings.new_builder(100)
+	mut tok := tokens[i]
+	for i < tokens.len && tok.tok != .rpar {
+		out.write(tok.str())
+		out.write(' ')
+		if tokens[i+2].tok == .assign {
+			out.write('\n\t')
+		}	
+		i++
+		tok = tokens[i]
+	}
+	out.writeln('\n)')
+	return out.str()
+}
+
+fn generate_type(tokens []Token, i int) string {
+	mut out := strings.new_builder(100)
+	mut tok := tokens[i]
+	for i < tokens.len && tok.tok != .rcbr {
+		out.write(tok.str())
+		out.write(' ')
+		if tokens[i+1].line_nr != tokens[i].line_nr {
+			out.write('\n\t')
+		}	
+		i++
+		tok = tokens[i]
+	}
+	out.writeln('\n}')
+	return out.str()
+}
+
+/*
+fn (v &V) generate_vh_old() {
 	println('\n\n\n\nGenerating a V header file for module `$v.mod`')
 	mod_path := v.mod.replace('.', os.path_separator)
 	dir := if v.dir.starts_with('vlib') {
@@ -259,4 +278,5 @@ fn (v &V) generate_vh() {
 	}	
 	*/
 }	
+*/
 

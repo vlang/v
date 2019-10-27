@@ -1,6 +1,6 @@
 module main
 
-import vcompiler.tests.repl.runner
+import compiler.tests.repl.runner
 import log
 import benchmark
 

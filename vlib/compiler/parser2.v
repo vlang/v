@@ -8,7 +8,7 @@ fn (p mut Parser) get_type2() Type {
 	mut typ := ''
 	mut cat := TypeCategory.struct_
 	// fn type
-	if p.tok == .func {
+	if p.tok == .key_fn {
 		mut f := Fn{name: '_', mod: p.mod}
 		p.next()
 		line_nr := p.scanner.line_nr
