@@ -60,7 +60,7 @@ pub fn (db DB) exec(query string) []Row {
 		for i in 0..nr_cols {
 			val := tos_clone(C.sqlite3_column_text(stmt, i))
 			row.vals << val
-			println(val)
+			//println(val)
 		}
 		rows << row
 	}
