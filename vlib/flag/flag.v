@@ -125,7 +125,7 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
   c := '--$n'
   for i, a in fs.args {
     if a == c || (a.len == 2 && a[1] == ab) {
-      if fs.args.len > i+1 && fs.args[i+1][..2] != '--' {
+      if fs.args.len > i+1 && fs.args[i+1].left(2) != '--' {
         val := fs.args[i+1]
         fs.args.delete(i+1)
         fs.args.delete(i)
@@ -368,7 +368,7 @@ pub fn (fs FlagParser) usage() string {
 // error handling is up to the application developer
 pub fn (fs FlagParser) finalize() ?[]string {
   for a in fs.args {
-    if a[..2] == '--' {
+    if a.len >= 2 && a[..2] == '--' {
       return error('Unknown argument \'${a[2..]}\'')
     }
   }
