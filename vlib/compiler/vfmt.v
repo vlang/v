@@ -7,7 +7,7 @@ module compiler
 import strings
 
 // fmt helpers
-//[if vfmt]
+[if vfmt]
 fn (scanner mut Scanner) fgen(s_ string) {
 	mut s := s_
 	if scanner.fmt_line_empty {
@@ -17,7 +17,7 @@ fn (scanner mut Scanner) fgen(s_ string) {
 	scanner.fmt_line_empty = false
 }
 
-//[if vfmt]
+[if vfmt]
 fn (scanner mut Scanner) fgenln(s_ string) {
 	mut s := s_
 	if scanner.fmt_line_empty {
@@ -27,17 +27,17 @@ fn (scanner mut Scanner) fgenln(s_ string) {
 	scanner.fmt_line_empty = true
 }
 
-//[if vfmt]
+[if vfmt]
 fn (p mut Parser) fgen(s string) {
 	p.scanner.fgen(s)
 }
 
-//[if vfmt]
+[if vfmt]
 fn (p mut Parser) fspace() {
 	p.fgen(' ')
 }
 
-//[if vfmt]
+[if vfmt]
 fn (p mut Parser) fgenln(s string) {
 	p.scanner.fgenln(s)
 }
@@ -55,12 +55,12 @@ fn (p mut Parser) peek() TokenKind {
 }
 */
 
-//[if vfmt]
+[if vfmt]
 fn (p mut Parser) fmt_inc() {
 	p.scanner.fmt_indent++
 }
 
-//[if vfmt]
+[if vfmt]
 fn (p mut Parser) fmt_dec() {
 	p.scanner.fmt_indent--
 }
