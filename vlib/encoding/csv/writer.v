@@ -51,11 +51,9 @@ pub fn (w mut Writer) write(record []string) ?bool {
 
 			if field.len > 0 {
 				z := field[0]
-				switch z {
-				case `"`:
-					w.sb.write('""')
-				case `\r` || `\n`:
-					w.sb.write(le)
+				match z {
+					`"` 					{ w.sb.write('""') }
+					`\r` || `\n` 	{ w.sb.write(le) }
 				}
 				field = field[1..]
 			}

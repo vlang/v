@@ -28,12 +28,13 @@ struct AesCipher {
 // AES-128, AES-192, or AES-256.
 pub fn new_cipher(key []byte) AesCipher {
 	k := key.len
-	switch k {
-	case 16, 24, 32:
-		// break
-	default:
-		panic('crypto.aes: invalid key size ' + k.str())
-		// return error('crypto.aes: invalid key size ' + k.str())
+	match k {
+		16, 24, 32 {
+			// break
+		} else {
+			panic('crypto.aes: invalid key size ' + k.str())
+			// return error('crypto.aes: invalid key size ' + k.str())
+		}
 	}
 	// for now use generic version
 	return new_cipher_generic(key)
