@@ -747,6 +747,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	p.calling_c = false
 	if is_comptime_define {
 		p.cgen.nogen = false
+		p.cgen.resetln('')
 	}
 	// println('end of fn call typ=$f.typ')
 }
