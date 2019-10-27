@@ -114,9 +114,10 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// (1) we always escape sub-delims outside of the fragment, and (2) we always
 		// escape single quote to avoid breaking callers that had previously assumed that
 		// single quotes would be escaped. See issue #19917.
-		switch c {
-		case `!`, `(`, `)`, `*`:
-			return false
+		match c {
+			`!`, `(`, `)`, `*`{
+				return false
+			}
 		}
 	}
 
@@ -153,50 +154,53 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 	mut has_plus := false
 	for i := 0; i < s.len; {
 		x := s[i]
-		switch x {
-		case `%`:
-			if s == '' {
-				break
-			}
-			n++
-			if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
-				s = s.right(i)
-				if s.len > 3 {
-					s = s.left(3)
+		match x {
+			`%` {
+				if s == '' {
+					break
 				}
-				return error(error_msg(err_msg_escape, s))
-			}
-			// Per https://tools.ietf.org/html/rfc3986#page-21
-			// in the host component %-encoding can only be used
-			// for non-ASCII bytes.
-			// But https://tools.ietf.org/html/rfc6874#section-2
-			// introduces %25 being allowed to escape a percent sign
-			// in IPv6 scoped-address literals. Yay.
-			if mode == .encode_host && unhex(s[i+1]) < 8 && s.substr(i, i+3) != '%25' {
-				return error(error_msg(err_msg_escape, s.substr(i, i+3)))
-			}
-			if mode == .encode_zone {
-				// RFC 6874 says basically 'anything goes' for zone identifiers
-				// and that even non-ASCII can be redundantly escaped,
-				// but it seems prudent to restrict %-escaped bytes here to those
-				// that are valid host name bytes in their unescaped form.
-				// That is, you can use escaping in the zone identifier but not
-				// to introduce bytes you couldn't just write directly.
-				// But Windows puts spaces here! Yay.
-				v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
-				if s.substr(i, i+3) != '%25' && v != ` ` && should_escape(v, .encode_host) {
-					error(error_msg(err_msg_escape, s.substr(i, i+3)))
+				n++
+				if i+2 >= s.len || !ishex(s[i+1]) || !ishex(s[i+2]) {
+					s = s.right(i)
+					if s.len > 3 {
+						s = s.left(3)
+					}
+					return error(error_msg(err_msg_escape, s))
 				}
+				// Per https://tools.ietf.org/html/rfc3986#page-21
+				// in the host component %-encoding can only be used
+				// for non-ASCII bytes.
+				// But https://tools.ietf.org/html/rfc6874#section-2
+				// introduces %25 being allowed to escape a percent sign
+				// in IPv6 scoped-address literals. Yay.
+				if mode == .encode_host && unhex(s[i+1]) < 8 && s.substr(i, i+3) != '%25' {
+					return error(error_msg(err_msg_escape, s.substr(i, i+3)))
+				}
+				if mode == .encode_zone {
+					// RFC 6874 says basically 'anything goes' for zone identifiers
+					// and that even non-ASCII can be redundantly escaped,
+					// but it seems prudent to restrict %-escaped bytes here to those
+					// that are valid host name bytes in their unescaped form.
+					// That is, you can use escaping in the zone identifier but not
+					// to introduce bytes you couldn't just write directly.
+					// But Windows puts spaces here! Yay.
+					v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
+					if s.substr(i, i+3) != '%25' && v != ` ` && should_escape(v, .encode_host) {
+						error(error_msg(err_msg_escape, s.substr(i, i+3)))
+					}
+				}
+				i += 3
 			}
-			i += 3
-		case `+`:
-			has_plus = mode == .encode_query_component
-			i++
-		default:
-			if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
-				error(error_msg('invalid character in host name', s.substr(i, i+1)))
+			
+			`+`{
+				has_plus = mode == .encode_query_component
+				i++
+			} else {
+				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
+					error(error_msg('invalid character in host name', s.substr(i, i+1)))
+				}
+				i++
 			}
-			i++
 		}
 	}
 
@@ -207,18 +211,20 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 	mut t := strings.new_builder(s.len - 2*n)
 	for i := 0; i < s.len; i++ {
 		x := s[i]
-		switch x {
-		case `%`:
-			t.write( byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
-			i += 2
-		case `+`:
-			if mode == .encode_query_component {
-				t.write(' ')
-			} else {
-				t.write('+')
+		match x {
+			`%` {
+				t.write( byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
+				i += 2
 			}
-		default:
-			t.write(s[i].str())
+			`+` {
+				if mode == .encode_query_component {
+					t.write(' ')
+				} else {
+					t.write('+')
+				}
+			} else {
+				t.write(s[i].str())
+			}
 		}
 	}
 	return t.str()
@@ -694,16 +700,19 @@ fn valid_encoded_path(s string) bool {
 		// so we check the sub-delims ourselves and let
 		// should_escape handle the others.
 		x := s[i]
-		switch x {
-		case `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@`:
-			// ok
-		case `[`, `]`:
-			// ok - not specified in RFC 3986 but left alone by modern browsers
-		case `%`:
-			// ok - percent encoded, will decode
-		default:
-			if should_escape(s[i], .encode_path) {
-				return false
+		match x {
+			`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
+				// ok
+			}
+			`[`, `]` {
+				// ok - not specified in RFC 3986 but left alone by modern browsers
+			}
+			`%` {
+				// ok - percent encoded, will decode
+			} else {
+				if should_escape(s[i], .encode_path) {
+					return false
+				}
 			}
 		}
 	}
@@ -914,15 +923,17 @@ fn resolve_path(base, ref string) string {
 	mut dst := []string
 	src := full.split('/')
 	for _, elem in src {
-		switch elem {
-		case '.':
-			// drop
-		case '..':
-			if dst.len > 0 {
-				dst = dst.left(dst.len-1)
+		match elem {
+			'.' {
+				// drop
 			}
-		default:
-			dst << elem
+			'..' {
+				if dst.len > 0 {
+					dst = dst.left(dst.len-1)
+				}
+			} else {
+				dst << elem
+			}
 		}
 	}
 	last := src[src.len-1]
@@ -1069,12 +1080,13 @@ pub fn valid_userinfo(s string) bool {
 		if `0` <= r && r <= `9` {
 			continue
 		}
-		switch r {
-		case `-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`,
-			`(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@`:
-			continue
-		default:
-			return false
+		match r {
+				`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`,
+				`(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@` {
+					continue
+				} else {
+					return false
+				}
 		}
 	}
 	return true

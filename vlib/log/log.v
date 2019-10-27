@@ -50,56 +50,56 @@ pub fn (l Log) fatal(s string){
 
 pub fn (l Log) error(s string){
     if l.level >= ERROR{
-        switch l.output {
-        case 'terminal':
-            f := term.red('E')
-            t := time.now()
-            println('[$f ${t.format_ss()}] $s')
-
-        default:
-            l.log_file(s, 'E')
+        match l.output {
+            'terminal'{
+                f := term.red('E')
+                t := time.now()
+                println('[$f ${t.format_ss()}] $s')
+            } else {
+                l.log_file(s, 'E')
+            }
         }
     }
 }
 
 pub fn (l Log) warn(s string){
     if l.level >= WARN{
-        switch l.output {
-        case 'terminal':
-            f := term.yellow('W')
-            t := time.now()
-            println('[$f ${t.format_ss()}] $s')
-
-        default:
-            l.log_file(s, 'W')
+        match l.output {
+            'terminal'{
+                f := term.yellow('W')
+                t := time.now()
+                println('[$f ${t.format_ss()}] $s')
+            } else {
+                l.log_file(s, 'W')
+            }
         }
-    }  
+    }
 }
 
 pub fn (l Log) info(s string){
     if l.level >= INFO{
-        switch l.output {
-        case 'terminal':
-            f := term.white('I')
-            t := time.now()
-            println('[$f ${t.format_ss()}] $s')
-
-        default:
-            l.log_file(s, 'I')
+        match l.output {
+            'terminal'{
+                f := term.white('I')
+                t := time.now()
+                println('[$f ${t.format_ss()}] $s')
+            } else {
+              l.log_file(s, 'I')
+            }
         }
     }
 }
 
 pub fn (l Log) debug(s string){
     if l.level >= DEBUG{
-        switch l.output {
-        case 'terminal':
-            f := term.blue('D')
-            t := time.now()
-            println('[$f ${t.format_ss()}] $s')
-
-        default:
-            l.log_file(s, 'D')
+        match l.output {
+            'terminal' {
+                f := term.blue('D')
+                t := time.now()
+                println('[$f ${t.format_ss()}] $s')
+            } else {
+                l.log_file(s, 'D')
+            }
         }
     }
 }
