@@ -116,7 +116,7 @@ pub fn run<T>(app T, port int) {
 			conn.close()
 			return
 		}
-		mut action := vals[1].right(1).all_before('/')
+		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
 		}
@@ -177,7 +177,7 @@ fn (ctx mut Context) parse_form(s string) {
 	}
 	pos := s.index('\r\n\r\n')
 	if pos > -1 {
-		mut str_form := s.substr(pos, s.len)
+		mut str_form := s[pos..s.len]
 		str_form = str_form.replace('+', ' ')
 		words := str_form.split('&')
 		for word in words {
@@ -208,9 +208,9 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 			for i > 0 {
 		 		i--
 				if flag {
-					ext = file.substr(i, i + 1) + ext
+					ext = file[i..i + 1] + ext
 				}
-				if file.substr(i, i + 1) == '.' {
+				if file[i..i + 1] == '.' {
 					flag = false
 				}
 			}

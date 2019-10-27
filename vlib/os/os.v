@@ -495,7 +495,7 @@ pub fn ext(path string) string {
 	if pos == -1 {
 		return ''
 	}
-	return path.right(pos)
+	return path[pos..]
 }
 
 
@@ -508,7 +508,7 @@ pub fn dir(path string) string {
 	if pos == -1 {
 		return '.'
 	}
-	return path.left(pos)
+	return path[..pos]
 }
 
 fn path_sans_ext(path string) string {
@@ -516,7 +516,7 @@ fn path_sans_ext(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path.left(pos)
+	return path[..pos]
 }
 
 
@@ -525,7 +525,7 @@ pub fn basedir(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path.left(pos + 1)
+	return path[..pos + 1]
 }
 
 pub fn filename(path string) string {

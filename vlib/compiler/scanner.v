@@ -106,7 +106,7 @@ fn (s mut Scanner) ident_name() string {
 			break
 		}
 	}
-	name := s.text.substr(start, s.pos)
+	name := s.text[start..s.pos]
 	s.pos--
 	return name
 }
@@ -124,7 +124,7 @@ fn (s mut Scanner) ident_hex_number() string {
 		}
 		s.pos++
 	}
-	number := s.text.substr(start_pos, s.pos)
+	number := s.text[start_pos..s.pos]
 	s.pos--
 	return number
 }
@@ -145,7 +145,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		}
 		s.pos++
 	}
-	number := s.text.substr(start_pos, s.pos)
+	number := s.text[start_pos..s.pos]
 	s.pos--
 	return number
 }
@@ -161,7 +161,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	// e.g. 1..9
 	// we just return '1' and don't scan '..9'
 	if s.expect('..', s.pos) {
-		number := s.text.substr(start_pos, s.pos)
+		number := s.text[start_pos..s.pos]
 		s.pos--
 		return number
 	}
@@ -200,7 +200,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 	}
 
-	number := s.text.substr(start_pos, s.pos)
+	number := s.text[start_pos..s.pos]
 	s.pos--
 	return number
 }
@@ -474,11 +474,11 @@ fn (s mut Scanner) scan() ScanRes {
 		s.ignore_line()
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
-			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
+			s.line_comment = s.text[start + 1..s.pos].trim_space()
 			s.fgenln('// shebang line "$s.line_comment"')
 			return s.scan()
 		}
-		hash := s.text.substr(start, s.pos)
+		hash := s.text[start..s.pos]
 		return scan_res(.hash, hash.trim_space())
 	 }
 	 `>` {
@@ -577,7 +577,7 @@ fn (s mut Scanner) scan() ScanRes {
 		if nextc == `/` {
 			start := s.pos + 1
 			s.ignore_line()
-			s.line_comment = s.text.substr(start + 1, s.pos)
+			s.line_comment = s.text[start + 1..s.pos]
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 			// Skip the comment (return the next token)
@@ -608,7 +608,7 @@ fn (s mut Scanner) scan() ScanRes {
 			}
 			s.pos++
 			end := s.pos + 1
-			comm := s.text.substr(start, end)
+			comm := s.text[start..end]
 			s.fgenln(comm)
 			// Skip if not in fmt mode
 			return s.scan()
@@ -706,7 +706,7 @@ fn (s mut Scanner) ident_string() string {
 	}
 	if start > s.pos{}
 	else {
-		lit = s.text.substr(start, end)
+		lit = s.text[start..end]
 	}
 	return lit
 }
@@ -732,7 +732,7 @@ fn (s mut Scanner) ident_char() string {
 		}
 	}
 	len--
-	c := s.text.substr(start + 1, s.pos)
+	c := s.text[start + 1..s.pos]
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
@@ -814,7 +814,7 @@ fn (s Scanner) line(n int) string {
 		nline_start := if n == 0 { 0 } else { s.line_ends[ n - 1 ] }
 		nline_end   := s.line_ends[n]
 		if nline_start <= nline_end {
-			res = s.text.substr( nline_start, nline_end )
+			res = s.text[nline_start..nline_end]
 		}
 	}	
 	return res.trim_right('\r\n').trim_left('\r\n')

@@ -13,8 +13,8 @@ fn test_flag_parsing() {
 		mut base := rest
 
 		fl := if rest.starts_with('-') {
-			base = rest.right(2).trim_space()
-			rest.left(2)
+			base = rest[2..].trim_space()
+			rest[..2]
 		} else {
 			''
 		}
@@ -28,8 +28,8 @@ fn test_flag_parsing() {
 			}
 		}
 		arg := if lowest != -1 {
-			rest = base.right(lowest).trim_space().trim(',')
-			base.left(lowest).trim_space().trim(',')
+			rest = base[lowest..].trim_space().trim(',')
+			base[..lowest].trim_space().trim(',')
 		} else {
 			rest = ''
 			base.trim_space()

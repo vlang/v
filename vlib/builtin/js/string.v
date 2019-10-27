@@ -148,12 +148,12 @@ pub fn (s string) find_between(start, end string) string {
 		return ''
 	}
 	// First get everything to the right of 'start'
-	val := s.right(start_pos + start.len)
+	val := s[start_pos + start.len..]
 	end_pos := val.index(end)
 	if end_pos == -1 {
 		return val
 	}
-	return val.left(end_pos)
+	return val[..end_pos]
 }
 
 // TODO generic
@@ -258,7 +258,7 @@ pub fn (s string) all_before(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.left(pos)
+	return s[..pos]
 }
 
 pub fn (s string) all_before_last(dot string) string {
@@ -266,7 +266,7 @@ pub fn (s string) all_before_last(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.left(pos)
+	return s[..pos]
 }
 
 pub fn (s string) all_after(dot string) string {
@@ -274,7 +274,7 @@ pub fn (s string) all_after(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.right(pos + dot.len)
+	return s[pos + dot.len..]
 }
 
 // fn (s []string) substr(a, b int) string {

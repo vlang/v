@@ -260,7 +260,7 @@ fn test_upper() {
 fn test_left_right() {
 	s := 'ALOHA'
 	assert s.left(3) == 'ALO'
-	assert s.right(3) == 'HA'
+	assert s[3..] == 'HA'
 	u := s.ustring()
 	assert u.left(3) == 'ALO'
 	assert u.right(3) == 'HA'

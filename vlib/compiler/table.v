@@ -330,11 +330,11 @@ fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
 	// vararg
 	if typ.starts_with('...') && typ.len > 3 {
-		typ = typ.right(3)
+		typ = typ[3..]
 	}
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
-		typ = typ.left(typ.len - 1)
+		typ = typ[..typ.len - 1]
 	}
 	t := table.typesmap[typ]
 	return t.name.len > 0 && !t.is_placeholder
@@ -560,7 +560,7 @@ fn (p &Parser) find_type(name string) Type {
 fn (t &Table) find_type(name_ string) Type {
 	mut name := name_
 	if name.ends_with('*') && !name.contains(' ') {
-		name = name.left(name.len - 1)
+		name = name[..name.len - 1]
 	}
 	if !(name in t.typesmap) {
 		//println('ret Type')
@@ -585,10 +585,10 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 
 	// variadic
 	if expected.starts_with('...') {
-		expected = expected.right(3)
+		expected = expected[3..]
 	}
 	if got.starts_with('...') {
-		got = got.right(3)
+		got = got[3..]
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
@@ -906,7 +906,7 @@ fn (p &Parser) identify_typo(name string) string {
 fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
-	n1 := if name.starts_with('main__') { name.right(6) } else { name }
+	n1 := if name.starts_with('main__') { name[6..] } else { name }
 	for _, f in table.fns {
 		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
 		if !(f.mod in ['', 'main', 'builtin']) {
@@ -933,7 +933,7 @@ fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) stri
 fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_mod := ''
-	n1 := if name.starts_with('main.') { name.right(5) } else { name }
+	n1 := if name.starts_with('main.') { name[5..] } else { name }
 	for alias, mod in p.import_table.imports {
 		if n1.len - alias.len > 2 || alias.len - n1.len > 2 { continue }
 		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }

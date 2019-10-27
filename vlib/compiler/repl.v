@@ -28,13 +28,13 @@ fn (r mut Repl) checks() bool {
 			in_string = !in_string
 		}
 		if r.line[i] == `{` && !in_string {
-			r.line = r.line.left(i + 1) + '\n' + r.line.right(i + 1)
+			r.line = r.line[..i + 1] + '\n' + r.line[i + 1..]
 			is_cut = true
 			i++
 			r.indent++
 		}
 		if r.line[i] == `}` && !in_string {
-			r.line = r.line.left(i) + '\n' + r.line.right(i)
+			r.line = r.line[..i] + '\n' + r.line[i..]
 			is_cut = true
 			i++
 			r.indent--
@@ -77,8 +77,8 @@ pub fn run_repl() []string {
 	defer {
 		os.rm(file)
 		os.rm(temp_file)
-		os.rm(file.left(file.len - 2))
-		os.rm(temp_file.left(temp_file.len - 2))
+		os.rm(file[..file.len - 2])
+		os.rm(temp_file[..temp_file.len - 2])
 	}
 	mut r := Repl{}
 	vexe := os.args[0]

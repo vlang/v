@@ -136,12 +136,12 @@ fn (g mut CGen) cut() string {
 	pos := g.cut_pos
 	g.cut_pos = 0
 	if g.is_tmp {
-		res := g.tmp_line.right(pos)
-		g.tmp_line = g.tmp_line.left(pos)
+		res := g.tmp_line[pos..]
+		g.tmp_line = g.tmp_line[..pos]
 		return res
 	}
-	res := g.cur_line.right(pos)
-	g.cur_line = g.cur_line.left(pos)
+	res := g.cur_line[pos..]
+	g.cur_line = g.cur_line[..pos]
 	return res
 }
 
@@ -151,13 +151,13 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 	}
 	// g.lines.set(pos, val)
 	if g.is_tmp {
-		left := g.tmp_line.left(pos)
-		right := g.tmp_line.right(pos)
+		left := g.tmp_line[..pos]
+		right := g.tmp_line[pos..]
 		g.tmp_line = '${left}${val}${right}'
 		return
 	}
-	left := g.cur_line.left(pos)
-	right := g.cur_line.right(pos)
+	left := g.cur_line[..pos]
+	right := g.cur_line[pos..]
 	g.cur_line = '${left}${val}${right}'
 	// g.genln('')
 }

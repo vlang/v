@@ -9,7 +9,7 @@ fn main() {
 			break
 		}
 		end := html.index_after('"', pos)
-		println(html.substr(pos, end))
+		println(html[pos..end])
 	}
 }
 

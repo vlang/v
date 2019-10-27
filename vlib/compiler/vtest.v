@@ -39,7 +39,7 @@ pub fn test_v() {
 		return
 	}
 
-	args_string := args.right(1).join(' ')
+	args_string := args[1..].join(' ')
 	args_before := args_string.all_before('test ')
 	args_after  := args_string.all_after('test ')
 
