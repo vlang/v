@@ -382,25 +382,28 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	// Fetch the game object stored in the user pointer
 	mut game := &Game(glfw.get_window_user_pointer(wnd))
 	// global keys
-	switch key {
-	case glfw.KEY_ESCAPE:
-		glfw.set_should_close(wnd, true)
-	case glfw.key_space:
-		if game.state == .running {
-			game.state = .paused
-		} else if game.state == .paused {
-			game.state = .running
-		} else if game.state == .gameover {
-			game.init_game()
-			game.state = .running
+	match key {
+		glfw.KEY_ESCAPE {
+			glfw.set_should_close(wnd, true)
+		}
+		glfw.key_space {
+			if game.state == .running {
+				game.state = .paused
+			} else if game.state == .paused {
+				game.state = .running
+			} else if game.state == .gameover {
+				game.init_game()
+				game.state = .running
+			}
 		}
 	}
+	
 	if game.state != .running {
 		return
 	}
 	// keys while game is running
-	switch key {
-	case glfw.KeyUp:
+	match key {
+	glfw.KeyUp {
 		// Rotate the tetro
 		old_rotation_idx := game.rotation_idx
 		game.rotation_idx++
@@ -412,15 +415,18 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 			game.rotation_idx = old_rotation_idx
 			game.get_tetro()
 		}
-
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
-	case glfw.KeyLeft:
+	}
+	glfw.KeyLeft {
 		game.move_right(-1)
-	case glfw.KeyRight:
+	}
+	glfw.KeyRight {
 		game.move_right(1)
-	case glfw.KeyDown:
+	}
+	glfw.KeyDown {
 		game.move_tetro() // drop faster when the player presses <down>
+	}
 	}
 }
