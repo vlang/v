@@ -83,10 +83,8 @@ enum TokenKind {
 	key_assert
 	key_atomic
 	key_break
-	key_case
 	key_const
 	key_continue
-	key_default
 	key_defer
 	key_else
 	key_embed
@@ -212,7 +210,6 @@ fn build_token_str() []string {
 	s[TokenKind.key_type] = 'type'
 	s[TokenKind.key_for] = 'for'
 	s[TokenKind.key_switch] = 'switch'
-	s[TokenKind.key_case] = 'case'
 	s[TokenKind.key_fn] = 'fn'
 	s[TokenKind.key_true] = 'true'
 	s[TokenKind.key_false] = 'false'
@@ -222,7 +219,6 @@ fn build_token_str() []string {
 	s[TokenKind.key_embed] = 'embed'
 	s[TokenKind.key_unsafe] = 'unsafe'
 	//Tokens[key_typeof] = 'typeof'
-	s[TokenKind.key_default] = 'default'
 	s[TokenKind.key_enum] = 'enum'
 	s[TokenKind.key_interface] = 'interface'
 	s[TokenKind.key_pub] = 'pub'

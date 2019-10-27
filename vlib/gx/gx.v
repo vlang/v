@@ -57,7 +57,7 @@ pub:
 	mono      bool
 }
 
-struct Image {
+pub struct Image {
 mut:
 	obj    voidptr
 pub:

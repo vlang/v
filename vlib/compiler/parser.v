@@ -957,8 +957,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	}
 	mut i := 0
 	mut last_st_typ := ''
-	for p.tok != .rcbr && p.tok != .eof && p.tok != .key_case &&
-		p.tok != .key_default {
+	for p.tok != .rcbr && p.tok != .eof {
 		// println('stm: '+p.tok.str()+', next: '+p.peek().str())
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
@@ -972,13 +971,8 @@ fn (p mut Parser) statements_no_rcbr() string {
 			p.error('more than 50 000 statements in function `$p.cur_fn.name`')
 		}
 	}
-	if p.tok != .key_case && p.tok != .key_default && p.peek() != .arrow {
 		// p.next()
-		p.check(.rcbr)
-	}
-	else {
-		// p.check(.rcbr)
-	}
+	p.check(.rcbr)
 	//p.fmt_dec()
 
 	p.close_scope()
@@ -2565,6 +2559,7 @@ fn (p mut Parser) factor() string {
 		typ = p.name_expr()
 		return typ
 	}
+	/*
 	.key_default {
 		p.next()
 		p.next()
@@ -2576,6 +2571,7 @@ fn (p mut Parser) factor() string {
 		p.next()
 		return 'T'
 	}
+	*/
 	.lpar {
 		//p.gen('(/*lpar*/')
 		p.gen('(')
