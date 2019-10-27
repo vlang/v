@@ -116,7 +116,7 @@ fn test_repeat() {
 
 fn test_right() {
 	a := [1, 2, 3, 4]
-	b := a[1..]
+	b := a.right(1)
 	c := a[1..a.len]
 	d := a[1..]
 	assert b[0] == 2
@@ -146,7 +146,7 @@ fn test_right_with_n_bigger_than_array_size() {
 
 fn test_left() {
 	a := [1, 2, 3]
-	b := a[..2]
+	b := a.left(2)
 	c := a[0..2]
 	d := a[..2]
 	assert b[0] == 1
