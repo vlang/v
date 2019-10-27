@@ -1044,7 +1044,7 @@ pub fn (s []string) join_lines() string {
 	return s.join('\n')
 }
 
-// reverse will reverse string.
+// reverse will return a new reversed string.
 pub fn (s string) reverse() string {
 	mut res := string {
 		len: s.len
