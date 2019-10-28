@@ -382,6 +382,10 @@ pub fn (a []int) eq(a2 []int) bool {
 	return array_eq(a, a2) 
 }
 
+pub fn (a []i64) eq(a2 []i64) bool { 
+	return array_eq(a, a2) 
+}
+
 pub fn (a []string) eq(a2 []string) bool { 
 	return array_eq(a, a2) 
 }
