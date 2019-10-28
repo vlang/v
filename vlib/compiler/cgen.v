@@ -25,7 +25,7 @@ mut:
 	consts_init  []string
 	pass         Pass
 	nogen           bool
-    prev_tmps    []string
+	prev_tmps    []string
 	tmp_line        string
 	cur_line        string
 	prev_line       string
@@ -106,7 +106,7 @@ fn (g mut CGen) save() {
 
 fn (g mut CGen) start_tmp() {
 	if g.is_tmp {
-        g.prev_tmps << g.tmp_line
+		g.prev_tmps << g.tmp_line
 	}
 	// kg.tmp_lines_pos++
 	g.tmp_line = ''
@@ -115,13 +115,13 @@ fn (g mut CGen) start_tmp() {
 
 fn (g mut CGen) end_tmp() string {
 	res := g.tmp_line
-    if g.prev_tmps.len > 0 {
+	if g.prev_tmps.len > 0 {
 		g.tmp_line = g.prev_tmps.last()
 		g.prev_tmps = g.prev_tmps[0..g.prev_tmps.len-1]
-    } else {
+	} else {
 		g.tmp_line = ''
-        g.is_tmp = false
-    }
+		g.is_tmp = false
+	}
 	return res
 }
 
