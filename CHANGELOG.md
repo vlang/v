@@ -6,13 +6,13 @@
 - Optimized `array.filter()` and `array.map()`.
 - `sqlite` module.
 - Cached modules for faster compilation.
-- Dramatic compilation optimizations: V now compiles itself in
-0.10 - 0.30 seconds.
+- Dramatic compilation optimizations: [V now compiles itself in
+0.10 - 0.30 seconds](https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds).
 - V scripts (simpler and cross-platform alternative to Bash).
 - Infinite multi-dimensional arrays (`[][][]int`).
 - `unsafe`.
 - `[deprecated]` attribute.
-- [if] function attributes for compile time function exclusion
+- `[if]` function attributes for compile time function exclusion
 for performance.
 - `switch` has been completely removed from the language and replaced by
 `match` everywhere.
