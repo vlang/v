@@ -1,3 +1,5 @@
+import sqlite
+
 fn test_sqlite() {
 	$if mac {
 		db := sqlite.connect('users.db')
