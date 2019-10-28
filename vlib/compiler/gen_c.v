@@ -16,7 +16,7 @@ fn (p mut Parser) gen_or_else(pos int) string {
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// Generate expression to tmp because we need its type first
 	// `[typ] [name] = bool_expression();`
-p.cgen.lines[p.cgen.lines.len-3]	pos := p.cgen.add_placeholder()
+	pos := p.cgen.add_placeholder()
 	p.is_var_decl = true
 	mut typ := p.bool_expression()
 	p.is_var_decl = false
@@ -97,8 +97,9 @@ fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int) stri
 	last_ph := p.cgen.add_placeholder()
 	last_typ := p.statements()
 	if is_assign && last_typ == typ {
-		z := p.cgen.lines[p.cgen.lines.len-3]
-		last_expr := z[last_ph..]
+		expr_line := p.cgen.lines[p.cgen.lines.len-3]
+		last_expr := expr_line[last_ph..]
+		p.cgen.lines[p.cgen.lines.len-3]  = ''
 		p.genln('if (!$tmp .ok) {')
 		p.genln('$name = $last_expr;')
 		p.genln('}')

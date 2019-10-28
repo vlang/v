@@ -556,12 +556,13 @@ fn (p mut Parser) const_decl() {
 			p.table.register_const(name, typ, p.mod, is_pub)
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
-		_ = p.v.table.find_const(name) or {
-		//if my_const := p.v.table.find_const(name) {
-			for i, v in p.v.table.consts {
-				if v.name == name {
-					p.v.table.consts[i].typ = typ
-					break
+		if my_const := p.v.table.find_const(name) {
+			if my_const.typ == 'void' {
+				for i, v in p.v.table.consts {
+					if v.name == name {
+						p.v.table.consts[i].typ = typ
+						break
+					}
 				}
 			}
 		}
@@ -1694,12 +1695,13 @@ fn (p mut Parser) name_expr() string {
 	}
 	f = new_f
 
-	// optional function call `function() or {}`
+	// optional function call `function() or {}`, no return assignment
     is_or_else := p.tok == .key_orelse
     if !p.is_var_decl && is_or_else {
 		f.typ = p.gen_handle_optional_or(f.typ, '', fn_call_ph)
 	}
-    else if !p.is_var_decl && !is_or_else && f.typ.starts_with('Option_') {
+    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+		f.typ.starts_with('Option_') {
         opt_type := f.typ[7..]
         p.error('unhandled option type: `?$opt_type`')
     }
@@ -2046,12 +2048,13 @@ struct $typ.name {
 		exit(1)
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
-    // optional method call `a.method() or {}`
+    // optional method call `a.method() or {}`, no return assignment
     is_or_else := p.tok == .key_orelse
 	if !p.is_var_decl && is_or_else {
 		method.typ = p.gen_handle_optional_or(method.typ, '', method_ph)
 	}
-    else if !p.is_var_decl && !is_or_else && method.typ.starts_with('Option_') {
+    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+		method.typ.starts_with('Option_') {
         opt_type := method.typ[7..]
         p.error('unhandled option type: `?$opt_type`')
     }
@@ -3098,7 +3101,9 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		var_name := p.lit
 		p.next()
 		p.check(.decl_assign)
+		p.is_var_decl = true
 		option_type, expr := p.tmp_expr()// := p.bool_expression()
+		p.is_var_decl = false
 		typ := option_type[7..]
 		// Option_User tmp = get_user(1);
 		// if (tmp.ok) {
