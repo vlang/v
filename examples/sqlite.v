@@ -1,6 +1,7 @@
 import sqlite
 
 fn main() {
+	/*
 	db := sqlite.connect('users.db')
 	db.exec("create table users (id integer primary key, name text default '');")
 	
@@ -18,4 +19,5 @@ fn main() {
 	for row in users {
 		println(row.vals)
 	}	
+	*/
 }	

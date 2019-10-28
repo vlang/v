@@ -13,6 +13,8 @@ matrix:
             - libglfw3-dev
             - libfreetype6-dev
             - libssl-dev
+            - sqlite3
+            - libsqlite3-dev
     - os: windows
       name: "windows_gcc"
       language: bash
