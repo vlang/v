@@ -111,6 +111,7 @@ fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int) stri
 	p.returns = false
 	return typ
 }
+
 // blank identifer assignment `_ = 111`
 fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx

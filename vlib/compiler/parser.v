@@ -1695,16 +1695,14 @@ fn (p mut Parser) name_expr() string {
 	f = new_f
 
 	// optional function call `function() or {}`
-	// assignment optional (`a := function() or {}`) is handled in gen_var_decl
     is_or_else := p.tok == .key_orelse
     if !p.is_var_decl && is_or_else {
 		f.typ = p.gen_handle_optional_or(f.typ, '', fn_call_ph)
 	}
-    if !p.is_var_decl && !is_or_else && f.typ.starts_with('Option_') {
+    else if !p.is_var_decl && !is_or_else && f.typ.starts_with('Option_') {
         opt_type := f.typ[7..]
         p.error('unhandled option type: `?$opt_type`')
     }
-
 
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {
@@ -2049,13 +2047,11 @@ struct $typ.name {
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
     // optional method call `a.method() or {}`
-    // assignment optional (`b := a.method() or {}`) is handled in gen_var_decl
     is_or_else := p.tok == .key_orelse
 	if !p.is_var_decl && is_or_else {
 		method.typ = p.gen_handle_optional_or(method.typ, '', method_ph)
-		return method.typ
 	}
-    if !p.is_var_decl && !is_or_else && method.typ.starts_with('Option_') {
+    else if !p.is_var_decl && !is_or_else && method.typ.starts_with('Option_') {
         opt_type := method.typ[7..]
         p.error('unhandled option type: `?$opt_type`')
     }
