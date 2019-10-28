@@ -3579,18 +3579,10 @@ fn (p mut Parser) assert_statement() {
 	tmp := p.get_tmp()
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
-	after_assert_token_op := p.tokens[ p.token_idx - 3 ]
-	after_assert_token_b  := p.tokens[ p.token_idx - 2 ]
-	// NB: verify that this will be stable...
-	// when after_assert_token_op.str() == 'assert', it means
-	// the assert was in the form of: `assert false`
-	// Otherwise, after_assert_token_op.str() is the op.
-	println( 'a: ${after_assert_token_a.str():20s} | ${after_assert_token_op}  | b: ${after_assert_token_b.str():20s} ')
 	// TODO print "expected:  got" for failed tests
 	filename := cescaped_path(p.file_path)
 	nline := p.scanner.line_nr
 	sourceline := p.scanner.line( nline - 1 ).replace('"', '\'')
-	//println('sourceline: ${nline:11d}: $sourceline ')
 	p.genln(';
 \n
 
