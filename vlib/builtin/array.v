@@ -366,6 +366,7 @@ pub fn (a []int) reduce(iter fn (accum, curr int) int, accum_start int) int {
 	return _accum
 }
 
+// []int == []int (also for: i64, f32, f64, byte, string)
 fn array_eq<T>(a1, a2 []T) bool {
 	if a1.len != a2.len {
 		return false
