@@ -1,5 +1,9 @@
 module sqlite
 
+#flag -D SQLITE_ENABLE_FTS5
+#flag -D SQLITE_ENABLE_RTREE
+#flag -D SQLITE_ENABLE_JSON1
+/// adding #flag -Os reduces the size of the produced .o file by ~50%, but slows down compilation to ~15s...
 #flag -I @VROOT/thirdparty/sqlite
 #include "sqlite3.h"
 #flag @VROOT/thirdparty/sqlite/sqlite.o
