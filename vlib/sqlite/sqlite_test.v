@@ -1,5 +1,5 @@
 fn test_sqlite() {
-	$if darwin {
+	$if mac {
 		db := sqlite.connect('users.db')
 		db.exec("create table users (id integer primary key, name text default '');")
 		
