@@ -399,6 +399,3 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2) 
 }
 
-pub fn (a []f64) eq(a2 []f64) bool { 
-	return array_eq(a, a2) 
-}
