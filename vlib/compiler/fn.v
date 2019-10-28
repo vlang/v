@@ -12,7 +12,7 @@ const (
 	MaxLocalVars = 50
 )
 
-
+pub
 struct Fn {
 	// addr int
 pub:
