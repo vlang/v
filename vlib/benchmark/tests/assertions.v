@@ -31,4 +31,5 @@ fn cb_assertion_failed(filename string, line int, sourceline string, funcname st
 
 fn cb_assertion_ok(filename string, line int, sourceline string, funcname string){
 	//do nothing for now on an OK assertion
+	//println('OK ${line:5d}|$sourceline ')
 }
