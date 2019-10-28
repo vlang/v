@@ -117,12 +117,21 @@ fn test_repeat() {
 fn test_right() {
 	a := [1, 2, 3, 4]
 	b := a.right(1)
+	c := a[1..a.len]
+	d := a[1..]
 	assert b[0] == 2
 	assert b[1] == 3
+	assert c[0] == 2
+	assert c[1] == 3
+	assert d[0] == 2
+	assert d[1] == 3
 }
 
 fn test_right_with_n_bigger_than_array_size() {
 	a := [1, 2, 3, 4]
+	// NOTE: slice syntax wont return empty array
+	// instead will give index out of bounds
+	// mut b := a[10..]
 	mut b := a.right(10)
 	assert b.len == 0
 	
@@ -138,8 +147,14 @@ fn test_right_with_n_bigger_than_array_size() {
 fn test_left() {
 	a := [1, 2, 3]
 	b := a.left(2)
+	c := a[0..2]
+	d := a[..2]
 	assert b[0] == 1
 	assert b[1] == 2
+	assert c[0] == 1
+	assert c[1] == 2
+	assert d[0] == 1
+	assert d[1] == 2
 }
 
 fn test_slice() {
@@ -195,9 +210,9 @@ fn modify (numbers mut []int) {
 
 fn test_mut_slice() {
 	mut n := [1,2,3]
-	modify(mut n.left(2))
+	modify(mut n[..2])
 	assert n[0] == 777
-	modify(mut n.right(2))
+	modify(mut n[2..])
 	assert n[2] == 777
 	println(n)
 }
@@ -309,26 +324,6 @@ fn test_in() {
 	assert !(0 in a)
 }
 
-fn callback_1(val int, index int, arr []int) bool {
-	return val >= 2
-}
-
-fn callback_2(val string, index int, arr []string) bool {
-	return val.len >= 2
-}
-
-fn test_filter2() {
-	a := [1, 2, 3, 4, 5, 6]
-	b := a.filter2(callback_1)
-	assert b[0] == 2
-	assert b[1] == 3
-
-	c := ['v', 'is', 'awesome']
-	d := c.filter2(callback_2)
-	assert d[0] == 'is'
-	assert d[1] == 'awesome'
-}
-
 fn sum(prev int, curr int) int {
 	return prev + curr
 }
@@ -356,6 +351,7 @@ fn test_reduce() {
 fn test_filter() {
 	a := [1, 2, 3, 4, 5, 6]
 	b := a.filter(it % 2 == 0)
+	assert b.len == 3
 	assert b[0] == 2
 	assert b[1] == 4
 	assert b[2] == 6
@@ -363,4 +359,32 @@ fn test_filter() {
 	d := c.filter(it.len > 1)
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
+}	
+
+fn test_map() {
+	a := [1, 2, 3, 4, 5, 6]
+	b := a.map(it * 10)
+	assert b.len == 6
+	assert b[0] == 10
+	assert b[1] == 20
+	assert b[2] == 30
+	c := ['v', 'is', 'awesome']
+	d := c.map(it.to_upper())
+	assert d[0] == 'V'
+	assert d[1] == 'IS'
+	assert d[2] == 'AWESOME'
+	bools := c.map(it == 'v')
+	assert bools.len == 3
+	assert bools[0] == true
+	assert bools[1] == false
+	assert bools[2] == false
+	
+}	
+
+fn test_array_str() {
+	numbers := [1, 2, 3]
+	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
+	assert true
+	assert numbers.str() == '[1, 2, 3]'
+	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
 }	

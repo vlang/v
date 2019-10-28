@@ -73,6 +73,14 @@ fn (p mut Parser) comp_time() {
 				p.genln('#endif')
 			}
 		}
+		else if name == 'glibc' {
+			p.genln('#ifdef __GLIBC__')
+			p.check(.lcbr)
+			p.statements_no_rcbr()
+			if ! (p.tok == .dollar && p.peek() == .key_else) {
+				p.genln('#endif')
+			}
+		}	
 		else {
 			println('Supported platforms:')
 			println(supported_platforms)
@@ -159,9 +167,9 @@ fn (p mut Parser) comp_time() {
 		pp.v.add_parser(pp)
 		tmpl_fn_body := p.cgen.lines.slice(pos + 2, p.cgen.lines.len).join('\n').clone()
 		end_pos := tmpl_fn_body.last_index('Builder_str( sb )')  + 19 // TODO
-		p.cgen.lines = p.cgen.lines.left(pos)
+		p.cgen.lines = p.cgen.lines[..pos]
 		p.genln('/////////////////// tmpl start')
-		p.genln(tmpl_fn_body.left(end_pos))
+		p.genln(tmpl_fn_body[..end_pos])
 		p.genln('/////////////////// tmpl end')
 		// `app.vweb.html(index_view())`
 		receiver := p.cur_fn.args[0]
@@ -180,7 +188,7 @@ fn (p mut Parser) chash() {
 	p.next()
 	if hash.starts_with('flag ') {
 		if p.first_pass() {
-			mut flag := hash.right(5)
+			mut flag := hash[5..]
 			// expand `@VROOT` `@VMOD` to absolute path
 			flag = flag.replace('@VROOT', p.vroot)
 			flag = flag.replace('@VMOD', v_modules_path)
@@ -206,7 +214,7 @@ fn (p mut Parser) chash() {
 	// TODO remove after ui_mac.m is removed
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
-		file := hash.right(pos)
+		file := hash[pos..]
 		if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
 		}
@@ -229,7 +237,7 @@ fn (p mut Parser) chash() {
 		$if !js {
 			if !p.can_chash {
 				println('hash="$hash"')
-				if hash.starts_with('include') { println("include") } else {} 
+				if hash.starts_with('include') { println("include") } else {}
 				p.error('bad token `#` (embedding C code is no longer supported)')
 			}
 		}
@@ -264,6 +272,9 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 }
 
 fn (p mut Parser) gen_array_str(typ Type) {
+	if typ.has_method('str') {
+		return
+	}	
 	p.add_method(typ.name, Fn{
 		name: 'str'
 		typ: 'string'
@@ -272,7 +283,7 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		is_public: true
 		receiver_typ: typ.name
 	})
-	elm_type := typ.name.right(6)
+	elm_type := typ.name[6..]
 	elm_type2 := p.table.find_type(elm_type)
 	is_array := elm_type.starts_with('array_')
 	if is_array {
@@ -339,7 +350,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 		}
 		array_int b = tmp2;
 	*/
-	val_type:=str_typ.right(6)
+	val_type:=str_typ[6..]
 	p.open_scope()
 	p.register_var(Var{
 		name: 'it'
@@ -362,4 +373,44 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 	p.gen(tmp) // TODO why does this `gen()` work?
 	p.check(.rpar)
 	p.close_scope()
+}
+
+fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
+	/*
+		// V
+		a := [1,2,3,4]
+		b := a.map(it * 2)
+		
+		// C
+		array_int a = ...;
+		array_int tmp2 = new_array(0, 4, 4);
+		for (int i = 0; i < a.len; i++) {
+			int it = ((int*)a.data)[i];
+			_PUSH(tmp2, it * 2, tmp3, int)
+		}
+		array_int b = tmp2;
+	*/
+	val_type:=str_typ[6..]
+	p.open_scope()
+	p.register_var(Var{
+		name: 'it'
+		typ: val_type
+	})
+	p.next()
+	p.check(.lpar)
+	p.cgen.resetln('')
+	tmp := p.get_tmp()
+	tmp_elm := p.get_tmp()
+	a := p.expr_var.name
+	map_type, expr := p.tmp_expr()
+	p.cgen.set_placeholder(method_ph,'\narray $tmp = new_array(0, $a .len, ' +
+		'sizeof($map_type));\n')
+	p.genln('for (int i = 0; i < ${a}.len; i++) {')
+	p.genln('$val_type it = (($val_type*)${a}.data)[i];')
+	p.genln('_PUSH(&$tmp, $expr, $tmp_elm, $map_type)')
+	p.genln('}')
+	p.gen(tmp) // TODO why does this `gen()` work?
+	p.check(.rpar)
+	p.close_scope()
+	return 'array_' + map_type
 }

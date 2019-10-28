@@ -7,9 +7,6 @@ module builtin
 #include <float.h>
 #include <math.h>
 
-pub fn (d double) str() string {
-	return '0'
-}
 
 pub fn (d f64) str() string {
 	return '0'
@@ -37,10 +34,6 @@ pub fn (nn int) str() string {
 }
 
 pub fn (nn u32) str() string {
-	return '0'
-}
-
-pub fn (nn u8) str() string {
 	return '0'
 }
 
