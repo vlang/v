@@ -44,13 +44,13 @@ pub fn dice_coefficient(s1, s2 string) f32 {
 	b := if a == s1 { s2 } else { s1 }
 	mut first_bigrams := map[string]int
 	for i := 0; i < a.len-1; i++ {
-		bigram := a.substr(i, i+2)
+		bigram := a[i..i+2]
 		q := if bigram in first_bigrams { first_bigrams[bigram]+1 } else { 1 }
 		first_bigrams[bigram] = q
 	}
 	mut intersection_size := 0
 	for i := 0; i < b.len-1; i++ {
-		bigram := b.substr(i, i+2)
+		bigram := b[i..i+2]
 		count := if bigram in first_bigrams { first_bigrams[bigram] } else { 0 }
 		if count > 0 {
 			first_bigrams[bigram] = count - 1

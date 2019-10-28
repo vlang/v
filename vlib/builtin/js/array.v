@@ -6,7 +6,7 @@ module builtin
 
 import strings
 
-struct array {
+pub struct array {
 pub:
 	data         voidptr
 	len          int

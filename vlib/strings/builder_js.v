@@ -4,7 +4,7 @@
 
 module strings
 
-struct Builder {
+pub struct Builder {
 mut:
 	buf []byte
 pub:

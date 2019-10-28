@@ -17,7 +17,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// `[typ] [name] = bool_expression();`
 	pos := p.cgen.add_placeholder()
 	mut typ := p.bool_expression()
-	if typ.starts_with('...') { typ = typ.right(3) }
+	if typ.starts_with('...') { typ = typ[3..] }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
@@ -42,7 +42,14 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 			is_mut: false
 			is_used: true
 		})
+		p.register_var(Var {
+			name: 'errcode'
+			typ: 'int'
+			is_mut: false
+			is_used: true
+		})
 		p.genln('string err = $tmp . error;')
+		p.genln('int    errcode = $tmp . ecode;')
 		p.statements()
 		p.genln('$typ $name = *($typ*) $tmp . data;')
 		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
@@ -59,7 +66,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	} else if typ.starts_with('[') && typ[ typ.len-1 ] != `*` {
 		// a fixed_array initializer, like `v := [1.1, 2.2]!!`
 		// ... should translate to the following in C `f32 v[2] = {1.1, 2.2};`
-		initializer := p.cgen.cur_line.right(pos)
+		initializer := p.cgen.cur_line[pos..]
 		if initializer.len > 0 {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
 		} else if initializer.len == 0 {
@@ -114,7 +121,14 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 			is_mut: false
 			is_used: true
 		})
+		p.register_var(Var {
+			name: 'errcode'
+			typ: 'int'
+			is_mut: false
+			is_used: true
+		})
 		p.genln('string err = $tmp . error;')
+		p.genln('int    errcode = $tmp . ecode;')
 		p.statements()
 		p.returns = false
 	} else {
@@ -155,17 +169,17 @@ fn types_to_c(types []Type, table &Table) string {
 	return sb.str()
 }
 
-fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
+fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	// Erase var name we generated earlier:	"int a = m, 0"
 	// "m, 0" gets killed since we need to start from scratch. It's messy.
 	// "m, 0" is an index expression, save it before deleting and insert later in map_get()
 	mut index_expr := ''
 	if p.cgen.is_tmp {
-		index_expr = p.cgen.tmp_line.right(fn_ph)
-		p.cgen.resetln(p.cgen.tmp_line.left(fn_ph))
+		index_expr = p.cgen.tmp_line[fn_ph..]
+		p.cgen.resetln(p.cgen.tmp_line[..fn_ph])
 	} else {
-		index_expr = p.cgen.cur_line.right(fn_ph)
-		p.cgen.resetln(p.cgen.cur_line.left(fn_ph))
+		index_expr = p.cgen.cur_line[fn_ph..]
+		p.cgen.resetln(p.cgen.cur_line[..fn_ph])
 	}
 	// Can't pass integer literal, because map_get() requires a void*
 	tmp := p.get_tmp()
@@ -181,15 +195,21 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
 			p.gen('$index_expr ]')
 		}
 		else {
-			if cfg.is_ptr {
-				p.gen('( *($typ*) array_get(* $index_expr) )')
-			}  else {
-				p.gen('( *($typ*) array_get($index_expr) )')
+			ref := if cfg.is_ptr { '*' } else { '' }
+			if cfg.is_slice {
+				p.gen(' array_slice2($ref $index_expr) ')
+			}	
+			else {
+				p.gen('( *($typ*) array_get($ref $index_expr) )')
 			}
 		}
 	}
 	else if cfg.is_str && !p.builtin_mod {
-		p.gen('string_at($index_expr)')
+		if cfg.is_slice {
+			p.gen('string_substr2($index_expr)')
+		} else {
+			p.gen('string_at($index_expr)')
+		}
 	}
 	// Zero the string after map_get() if it's nil, numbers are automatically 0
 	// This is ugly, but what can I do without generics?
@@ -247,9 +267,11 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	return name
 }
 
-fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, receiver Var,method_ph int) {
+fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
+	cgen_name string, ftyp string, method_ph int)
+{
 	//mut cgen_name := p.table.fn_gen_name(f)
-	mut method_call := cgen_name + '('
+	mut method_call := cgen_name + ' ('
 	// if receiver is key_mut or a ref (&), generate & for the first arg
 	if receiver.ref || (receiver.is_mut && !receiver_type.contains('*')) {
 		method_call += '& /* ? */'
@@ -266,12 +288,11 @@ fn (p mut Parser) gen_method_call(receiver_type, ftyp string, cgen_name string, 
 			// array_int => int
 			cast = receiver_type.all_after('array_')
 			cast = '*($cast*) '
-		}else{
+		} else {
 			cast = '(voidptr) '
 		}
 	}
 	p.cgen.set_placeholder(method_ph, '$cast $method_call')
-	//return method_call
 }
 
 fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
@@ -280,9 +301,9 @@ fn (p mut Parser) gen_array_at(typ_ string, is_arr0 bool, fn_ph int) {
 	// array_int a; a[0]
 	// type is "array_int", need "int"
 	// typ = typ.replace('array_', '')
-	if is_arr0 {
-		typ = typ.right(6)
-	}
+	// if is_arr0 {
+	// 	typ = typ.right(6)
+	// }
 	// array a; a.first() voidptr
 	// type is "array", need "void*"
 	if typ == 'array' {
@@ -356,8 +377,8 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_pos int, is_cao bool) {
 	// `a[0] = 7`
 	// curline right now: `a , 0  =  7`
-	mut val := p.cgen.cur_line.right(assign_pos)
-	p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
+	mut val := p.cgen.cur_line[assign_pos..]
+	p.cgen.resetln(p.cgen.cur_line[..assign_pos])
 	mut cao_tmp := p.cgen.cur_line
 	mut func := ''
 	if is_map {
@@ -501,7 +522,7 @@ fn (p mut Parser) cast(typ string) {
 
 fn type_default(typ string) string {
 	if typ.starts_with('array_') {
-		return 'new_array(0, 1, sizeof( ${typ.right(6)} ))'
+		return 'new_array(0, 1, sizeof( ${typ[6..]} ))'
 	}
 	// Always set pointers to 0
 	if typ.ends_with('*') {
@@ -512,22 +533,22 @@ fn type_default(typ string) string {
 		return '{0}'
 	}
 	// Default values for other types are not needed because of mandatory initialization
-	switch typ {
-	case 'bool': return '0'
-	case 'string': return 'tos((byte *)"", 0)'
-	case 'i8': return '0'
-	case 'i16': return '0'
-	case 'i64': return '0'
-	case 'u16': return '0'
-	case 'u32': return '0'
-	case 'u64': return '0'
-	case 'byte': return '0'
-	case 'int': return '0'
-	case 'rune': return '0'
-	case 'f32': return '0.0'
-	case 'f64': return '0.0'
-	case 'byteptr': return '0'
-	case 'voidptr': return '0'
+	match typ {
+	'bool'{ return '0'}
+	'string'{ return 'tos3("")'}
+	'i8'{ return '0'}
+	'i16'{ return '0'}
+	'i64'{ return '0'}
+	'u16'{ return '0'}
+	'u32'{ return '0'}
+	'u64'{ return '0'}
+	'byte'{ return '0'}
+	'int'{ return '0'}
+	'rune'{ return '0'}
+	'f32'{ return '0.0'}
+	'f64'{ return '0.0'}
+	'byteptr'{ return '0'}
+	'voidptr'{ return '0'}
 	}
 	return '{0}'
 }
@@ -546,7 +567,7 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
 		if elm_type.ends_with('*') {
-			p.gen('), $tmp, ${elm_type.left(elm_type.len - 1)})')
+			p.gen('), $tmp, ${elm_type[..elm_type.len - 1]})')
 		} else {
 			p.gen('), $tmp, $elm_type)')
 		}

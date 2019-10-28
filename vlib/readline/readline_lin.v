@@ -150,38 +150,39 @@ pub fn read_line(prompt string) ?string {
 }
 
 fn (r Readline) analyse(c int) Action {
-  switch c {
-    case `\0`: return Action.eof
-    case 0x3 : return Action.eof // End of Text
-    case 0x4 : return Action.eof // End of Transmission
-    case 255 : return Action.eof
-    case `\n`: return Action.commit_line
-    case `\r`: return Action.commit_line
-    case `\f`: return Action.clear_screen // CTRL + L
-    case `\b`: return Action.delete_left // Backspace
-    case 127 : return Action.delete_left // DEL
-    case 27  : return r.analyse_control() // ESC
-    case 1   : return Action.move_cursor_begining // ^A
-    case 5   : return Action.move_cursor_end // ^E
-    case 26  : return Action.suspend // CTRL + Z, SUB
-    default  : return if c >= ` ` { Action.insert_character } else { Action.nothing }
+  match c {
+    `\0`  { return Action.eof }
+    0x3   { return Action.eof } // End of Text
+    0x4   { return Action.eof } // End of Transmission
+    255   { return Action.eof }
+    `\n`  { return Action.commit_line }
+    `\r`  { return Action.commit_line }
+    `\f`  { return Action.clear_screen } // CTRL + L
+    `\b`  { return Action.delete_left } // Backspace
+    127   { return Action.delete_left } // DEL
+    27    { return r.analyse_control() } // ESC
+    1     { return Action.move_cursor_begining } // ^A
+    5     { return Action.move_cursor_end } // ^E
+    26    { return Action.suspend } // CTRL + Z, SUB
+    else  { return if c >= ` ` { Action.insert_character } else { Action.nothing } }
   }
 }
 
 fn (r Readline) analyse_control() Action {
   c := r.read_char()
-  switch c {
-    case `[`:
+  match c {
+    `[` {
       sequence := r.read_char()
-      switch sequence {
-        case `C`: return Action.move_cursor_right
-        case `D`: return Action.move_cursor_left
-        case `B`: return Action.history_next
-        case `A`: return Action.history_previous
-        case `1`: return r.analyse_extended_control()
-        case `2`: return r.analyse_extended_control_no_eat(sequence)
-        case `3`: return r.analyse_extended_control_no_eat(sequence)
+      match sequence {
+        `C` { return Action.move_cursor_right }
+        `D` { return Action.move_cursor_left }
+        `B` { return Action.history_next }
+        `A` { return Action.history_previous }
+        `1` { return r.analyse_extended_control() }
+        `2` { return r.analyse_extended_control_no_eat(sequence) }
+        `3` { return r.analyse_extended_control_no_eat(sequence) }
       }
+    }
   }
   return Action.nothing
 }
@@ -189,47 +190,49 @@ fn (r Readline) analyse_control() Action {
 fn (r Readline) analyse_extended_control() Action {
   r.read_char() // Removes ;
   c := r.read_char()
-  switch c {
-    case `5`:
+  match c {
+    `5` {
       direction := r.read_char()
-      switch direction {
-        case `C`: return Action.move_cursor_word_right
-        case `D`: return Action.move_cursor_word_left
+      match direction {
+        `C` { return Action.move_cursor_word_right }
+        `D` { return Action.move_cursor_word_left }
       }
+    }
   }
   return Action.nothing
 }
 
 fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
   c := r.read_char()
-  switch c {
-    case `~`:
-      switch last_c {
-        case `3`: return Action.delete_right // Suppr key
-        case `2`: return Action.overwrite
+  match c {
+    `~` {
+      match last_c {
+        `3` { return Action.delete_right } // Suppr key
+        `2` { return Action.overwrite }
       }
+    }
   }
   return Action.nothing
 }
 
 fn (r mut Readline) execute(a Action, c int) bool {
-  switch a {
-    case Action.eof: return r.eof()
-    case Action.insert_character: r.insert_character(c)
-    case Action.commit_line: return r.commit_line()
-    case Action.delete_left: r.delete_character()
-    case Action.delete_right: r.suppr_character()
-    case Action.move_cursor_left: r.move_cursor_left()
-    case Action.move_cursor_right: r.move_cursor_right()
-    case Action.move_cursor_begining: r.move_cursor_begining()
-    case Action.move_cursor_end: r.move_cursor_end()
-    case Action.move_cursor_word_left: r.move_cursor_word_left()
-    case Action.move_cursor_word_right: r.move_cursor_word_right()
-    case Action.history_previous: r.history_previous()
-    case Action.history_next: r.history_next()
-    case Action.overwrite: r.switch_overwrite()
-    case Action.clear_screen: r.clear_screen()
-    case Action.suspend: r.suspend()
+  match a {
+    Action.eof                    { return r.eof() }
+    Action.insert_character       { r.insert_character(c) }
+    Action.commit_line            { return r.commit_line() }
+    Action.delete_left            { r.delete_character() }
+    Action.delete_right           { r.suppr_character() }
+    Action.move_cursor_left       { r.move_cursor_left() }
+    Action.move_cursor_right      { r.move_cursor_right() }
+    Action.move_cursor_begining   { r.move_cursor_begining() }
+    Action.move_cursor_end        { r.move_cursor_end() }
+    Action.move_cursor_word_left  { r.move_cursor_word_left() }
+    Action.move_cursor_word_right { r.move_cursor_word_right() }
+    Action.history_previous       { r.history_previous() }
+    Action.history_next           { r.history_next() }
+    Action.overwrite              { r.switch_overwrite() }
+    Action.clear_screen           { r.clear_screen() }
+    Action.suspend                { r.suspend() }
   }
   return false
 }

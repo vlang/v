@@ -5,16 +5,17 @@
 module builtin
 
 struct Option {
-	data     [255]byte
+	data     [300]byte
 	error    string
+	ecode    int
 	ok       bool
 	is_none  bool
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, size int) Option {
-	if size >= 255 {
-		panic('option size too big: $size (max is 255), this is a temporary limit')
+	if size >= 300 {
+		panic('option size too big: $size (max is 300), this is a temporary limit')
 	}
 	res := Option {
 		ok: true
@@ -23,6 +24,7 @@ fn opt_ok(data voidptr, size int) Option {
 	return res
 }
 
+// used internally when returning `none`
 fn opt_none() Option {
 	return Option{ is_none: true }
 }
@@ -32,5 +34,13 @@ pub fn error(s string) Option {
 		error: s
 	}
 }
+
+pub fn error_with_code(s string, code int) Option {
+	return Option {
+		error: s
+		ecode: code
+	}
+}
+
 
 

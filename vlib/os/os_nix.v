@@ -3,7 +3,7 @@ module os
 #include <dirent.h>
 #include <unistd.h>
 
-const (
+pub const (
 	path_separator = '/'
 )
 

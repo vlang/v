@@ -27,7 +27,7 @@ else
 	V_V=`git rev-parse --short HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
 		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		./v v.v; \
+		./v -o v v.v; \
 	fi)
 endif
 	rm -rf vc/
@@ -49,4 +49,4 @@ ifdef LINUX
 endif
 
 selfcompile:
-	./v v.v
+	./v -o v v.v

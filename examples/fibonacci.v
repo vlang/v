@@ -15,9 +15,9 @@ fn main() {
 	stop := os.args[1].int()
 
 	// Three consecutive terms of the sequence
-	mut a := 0
-	mut b := 0
-	mut c := 1
+	mut a := i64(0)
+	mut b := i64(0)
+	mut c := i64(1)
 
 	for i := 0; i < stop; i++ {
 		// Set a and b to the next term

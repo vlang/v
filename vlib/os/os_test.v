@@ -92,6 +92,27 @@ fn test_dir() {
 	} 
 } 
 
+fn walk_callback(file string) {
+    if file == '.' || file == '..' {
+        return
+    }
+    assert file == 'test_walk'+os.path_separator+'test1'
+}
+
+fn test_walk() {
+    folder := 'test_walk'
+    os.mkdir(folder)
+    
+    file1 := folder+os.path_separator+'test1'
+    
+    os.write_file(file1,'test-1')
+    
+    os.walk(folder, walk_callback)
+	
+	os.rm(file1)
+	os.rmdir(folder)
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {

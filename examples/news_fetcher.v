@@ -17,10 +17,10 @@ struct Story {
 
 struct Fetcher {
 mut:
-	mu      sync.Mutex
+	mu      &sync.Mutex
 	ids     []int
 	cursor  int
-	wg		&sync.WaitGroup
+	wg      &sync.WaitGroup
 }
 
 fn (f mut Fetcher) fetch() {
@@ -65,12 +65,15 @@ fn main() {
 		ids = tmp
 	}
 	
-	mut wg := &sync.WaitGroup{}
-	fetcher := &Fetcher{ids: ids, wg: wg} // wg sent via ptr
-	wg.add(ids.len)
+	wg := sync.new_waitgroup()
+	mtx := sync.new_mutex()
+	mut fetcher := &Fetcher{ids: ids}
+	fetcher.mu = &mtx
+	fetcher.wg = &wg
+	fetcher.wg.add(ids.len)
 	for i := 0; i < NR_THREADS; i++ {
 		go fetcher.fetch()
 	}
-	wg.wait()
+	fetcher.wg.wait()
 }
 

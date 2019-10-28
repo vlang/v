@@ -43,7 +43,7 @@ NB: A V string should be/is immutable from the point of view of
 
 import strconv
 
-struct string {
+pub struct string {
 //mut:
 	//hash_cache int
 pub:
@@ -51,21 +51,16 @@ pub:
 	len int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 }
 
-struct ustring {
+pub struct ustring {
 pub:
 	s     string
 	runes []int
 	len   int
 }
 
-// For C strings only
-fn C.strlen(s byteptr) int
-
 pub fn vstrlen(s byteptr) int {
 	return C.strlen(*char(s))
 }	
-
-fn todo() { }
 
 // Converts a C string to a V string.
 // String data is reused, not copied.
@@ -181,8 +176,28 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
+/*
 pub fn (s string) int() int {
 	return strconv.parse_int(s, 0, 32)
+}
+*/
+
+pub fn (s string) int() int {
+	mut neg := false
+	mut i := 0
+	if s[0] == `-` {
+		neg = true
+		i++
+	}
+	else if s[0] == `+` {
+		i++
+	}
+	mut n := 0
+	for C.isdigit(s[i]) {
+		n = 10 * n - int(s[i] - `0`)
+		i++
+	}
+	return if neg { n } else { -n }
 }
 
 
@@ -377,6 +392,12 @@ pub fn (s string) right(n int) string {
 		return ''
 	}
 	return s.substr(n, s.len)
+}
+
+// used internally for [2..4]
+fn (s string) substr2(start, _end int, end_max bool) string {
+	end := if end_max { s.len } else { _end }
+	return s.substr(start, end)
 }
 
 // substr
@@ -1023,19 +1044,19 @@ pub fn (s []string) join_lines() string {
 	return s.join('\n')
 }
 
+// reverse will return a new reversed string.
 pub fn (s string) reverse() string {
 	mut res := string {
 		len: s.len
 		str: malloc(s.len)
 	}
-
 	for i := s.len - 1; i >= 0; i-- {
-				res[s.len-i-1] = s[i]
+		res[s.len-i-1] = s[i]
 	}
-
 	return res
 }
 
+// limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
@@ -1073,7 +1094,7 @@ pub fn (s string) bytes() []byte {
 	return buf
 }
 
-// Returns a new string with a specified number of copies of the string it was called on.
+// repeat returns a new string with a specified number of copies of the string it was called on.
 pub fn (s string) repeat(count int) string {
 	if count <= 1 {
 		return s

@@ -3,7 +3,7 @@ module main
 import vweb
 
 const (
-	Port = 8082
+	port = 8082
 )
 
 struct App {
@@ -13,7 +13,9 @@ pub mut:
 }
 
 fn main() {
-	vweb.run<App>(Port)
+	mut app := App{}
+	vweb.run(app, port)
+	//vweb.run<App>(Port)
 }
 
 pub fn (app mut App) init() {

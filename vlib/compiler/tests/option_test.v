@@ -1,3 +1,15 @@
+
+fn opt_err_with_code() ?string {return error_with_code('hi',137)}
+fn test_err_with_code(){
+	v := opt_err_with_code() or {
+		assert err == 'hi'
+		assert errcode == 137
+		return
+	}
+	assert false
+	println(v) // suppress not used error
+}
+
 fn opt_err() ?string {return error('hi')}
 
 fn test_err(){
