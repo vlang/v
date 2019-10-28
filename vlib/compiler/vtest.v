@@ -80,6 +80,9 @@ pub fn (ts mut TestSession) test() {
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
+		$if windows {
+			if file.contains('sqlite') { continue }
+		}
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		mut cmd := '"$ts.vexe" $ts.vargs "$file"'
