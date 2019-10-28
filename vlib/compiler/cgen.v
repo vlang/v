@@ -267,6 +267,11 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 		verror(err)
 		return
 	}
+	if res.exit_code != 0 {
+		println('failed thirdparty object build cmd: $cmd')
+		verror(res.output)
+		return
+	}
 	println(res.output)
 }
 

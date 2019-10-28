@@ -414,7 +414,13 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	//NB: the quotes above ARE balanced.
 	println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {
+		println('msvc: failed thirdparty object build cmd: $cmd')
 		verror(err)
+		return
+	}
+	if res.exit_code != 0 {
+		println('msvc: failed thirdparty object build cmd: $cmd')
+		verror(res.output)
 		return
 	}
 	println(res.output)
