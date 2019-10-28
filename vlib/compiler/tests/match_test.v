@@ -6,35 +6,35 @@ fn test_match_integers() {
 	// a := 3 
 	// mut b := 0 
 	// match a {
-	//    2 => println('two') 
-	//    3 => println('three') 
+	//    2 {println('two')}
+	//    3 {println('three')}
 	//         b = 3 
-	//    4 => println('four') 
-	// else => println('???') 
+	//    4 {println('four')}
+	// else {println('???')}
 	// } 
 	// assert b == 3 
 
     assert match 2 {
-        1 => {2}
-        2 => {3}
-        else => {5}
+        1 {2}
+        2 {3}
+        else {5}
     } == 3
     
     assert match 0 {
-        1 => {2}
-        2 => {3}
-        else => 5
+        1 {2}
+        2 {3}
+        else {5}
     } == 5
 
     assert match 1 {
-        else => {5}
+        else {5}
     } == 5
     
     mut a := 0
     match 2 {
-        0 => {a = 1}
-        1 => {a = 2}
-        else => {
+        0 {a = 1}
+        1 {a = 2}
+        else {
             a = 3
             println('a is $a')
         }
@@ -43,8 +43,8 @@ fn test_match_integers() {
     
     a = 0
     match 1 {
-        0 => {a = 1}
-        1 => {
+        0 {a = 1}
+        1 {
             a = 2
             a = a + 2
             a = a + 2
@@ -54,7 +54,7 @@ fn test_match_integers() {
 
     a = 0
     match 1 {
-        else => {
+        else {
             a = -2
         }
     }
@@ -64,11 +64,11 @@ fn test_match_integers() {
 fn test_match_enums(){
     mut b := Color.red
     match b{
-        .red => {
+        .red {
             b = .green
         }
-        .green => {b = .blue}
-        else => {
+        .green {b = .blue}
+        else {
             println('b is ${b.str()}')
             b = .red
         }
@@ -76,10 +76,10 @@ fn test_match_enums(){
     assert b == .green
 
     match b{
-        .red => {
+        .red {
             b = .green
         }
-        else => {
+        else {
             println('b is ${b.str()}')
             b = .blue
         }
