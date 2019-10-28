@@ -35,6 +35,11 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	}
 }
 
+// TODO
+fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int, is_assign bool) string {
+
+}
+
 fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
 	p.check_name()
@@ -48,6 +53,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	or_else := p.tok == .key_orelse
 	//tmp := p.get_tmp()
 	if or_else {
+		//p.gen_handle_optional_or()
 		//panic('optionals todo')
 	}
 }

@@ -45,6 +45,7 @@ mut:
 	inside_return_expr bool
 	inside_unsafe bool
 	is_struct_init bool
+	is_var_decl    bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
 	ptr_cast       bool
@@ -555,13 +556,12 @@ fn (p mut Parser) const_decl() {
 			p.table.register_const(name, typ, p.mod, is_pub)
 		}
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
-		if my_const := p.v.table.find_const(name) {
-			if my_const.typ == 'void' {
-				for i, v in p.v.table.consts {
-					if v.name == name {
-						p.v.table.consts[i].typ = typ
-						break
-					}
+		_ = p.v.table.find_const(name) or {
+		//if my_const := p.v.table.find_const(name) {
+			for i, v in p.v.table.consts {
+				if v.name == name {
+					p.v.table.consts[i].typ = typ
+					break
 				}
 			}
 		}
@@ -1445,9 +1445,15 @@ fn (p mut Parser) bterm() string {
 	is_float := typ[0] == `f` && (typ in ['f64', 'f32']) &&
 		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
 		!(p.cur_fn.name == 'eq')
+	is_array := typ.contains('array_')
 	expr_type := typ
 	tok := p.tok
 	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
+		//TODO: remove when array comparing is supported
+		if is_array {
+			p.error('Array comparing is not supported yet')
+		}
+
 		p.fgen(' ${p.tok.str()} ')
 		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
@@ -1674,6 +1680,7 @@ fn (p mut Parser) name_expr() string {
 		// p.error('`$f.name` used as value')
 	}
 
+	fn_call_ph := p.cgen.add_placeholder()
 	// println('call to fn $f.name of type $f.typ')
 	// TODO replace the following dirty hacks (needs ptr access to fn table)
 	new_f := f
@@ -1686,6 +1693,18 @@ fn (p mut Parser) name_expr() string {
 		// println('	from $f2.name(${f2.str_args(p.table)}) $f2.typ : $f2.type_inst')
 	}
 	f = new_f
+
+	// optional function call `function() or {}`
+	// assignment optional (`a := function() or {}`) is handled in gen_var_decl
+    is_or_else := p.tok == .key_orelse
+    if !p.is_var_decl && is_or_else {
+		f.typ = p.gen_handle_optional_or(f.typ, '', fn_call_ph)
+	}
+    if !p.is_var_decl && !is_or_else && f.typ.starts_with('Option_') {
+        opt_type := f.typ[7..]
+        p.error('unhandled option type: `?$opt_type`')
+    }
+
 
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {
@@ -2024,11 +2043,22 @@ struct $typ.name {
 		return field.typ
 	}
 	// method
-	method := p.table.find_method(typ, field_name) or {
+	mut method := p.table.find_method(typ, field_name) or {
 		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
+    // optional method call `a.method() or {}`
+    // assignment optional (`b := a.method() or {}`) is handled in gen_var_decl
+    is_or_else := p.tok == .key_orelse
+	if !p.is_var_decl && is_or_else {
+		method.typ = p.gen_handle_optional_or(method.typ, '', method_ph)
+		return method.typ
+	}
+    if !p.is_var_decl && !is_or_else && method.typ.starts_with('Option_') {
+        opt_type := method.typ[7..]
+        p.error('unhandled option type: `?$opt_type`')
+    }
 	// Methods returning `array` should return `array_string` etc
 	if method.typ == 'array' && typ.name.starts_with('array_') {
 		return typ.name

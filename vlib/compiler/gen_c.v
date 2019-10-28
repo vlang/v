@@ -11,51 +11,21 @@ fn (p mut Parser) gen_or_else(pos int) string {
 }
 */
 
+
 // returns the type of the new variable
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// Generate expression to tmp because we need its type first
 	// `[typ] [name] = bool_expression();`
-	pos := p.cgen.add_placeholder()
+p.cgen.lines[p.cgen.lines.len-3]	pos := p.cgen.add_placeholder()
+	p.is_var_decl = true
 	mut typ := p.bool_expression()
+	p.is_var_decl = false
 	if typ.starts_with('...') { typ = typ[3..] }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
-	tmp := p.get_tmp()
 	if or_else {
-		// Option_User tmp = get_user(1);
-		// if (!tmp.ok) { or_statement }
-		// User user = *(User*)tmp.data;
-		// p.assigned_var = ''
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		if !typ.starts_with('Option_') {
-			p.error('`or` block cannot be applied to non-optional type')
-		}
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.register_var(Var {
-			name: 'errcode'
-			typ: 'int'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
-		p.genln('int    errcode = $tmp . ecode;')
-		p.statements()
-		p.genln('$typ $name = *($typ*) $tmp . data;')
-		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-			p.error('`or` block must return/exit/continue/break/panic')
-		}
-		p.returns = false
+		typ = p.gen_handle_optional_or(typ, name, pos)
 		return typ
 	}
 	gen_name := p.table.var_cgen_name(name)
@@ -94,6 +64,53 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
+fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int) string {
+	mut typ := _typ
+	is_assign := name.len > 0
+	if !typ.starts_with('Option_') {
+		p.error('`or` block cannot be applied to non-optional type')
+	}
+	tmp := p.get_tmp()
+	p.cgen.set_placeholder(fn_call_ph, '$typ $tmp = ')
+	typ = typ[7..]
+	p.genln(';')
+	p.next()
+	p.check(.lcbr)
+	p.register_var(Var {
+		name: 'err'
+		typ: 'string'
+		is_mut: false
+		is_used: true
+	})
+	p.register_var(Var {
+		name: 'errcode'
+		typ: 'int'
+		is_mut: false
+		is_used: true
+	})
+	if is_assign {
+		p.genln('$typ $name;')
+	}
+	p.genln('if (!$tmp .ok) {')
+	p.genln('string err = $tmp . error;')
+	p.genln('int errcode = $tmp . ecode;')
+	last_ph := p.cgen.add_placeholder()
+	last_typ := p.statements()
+	if is_assign && last_typ == typ {
+		z := p.cgen.lines[p.cgen.lines.len-3]
+		last_expr := z[last_ph..]
+		p.genln('if (!$tmp .ok) {')
+		p.genln('$name = $last_expr;')
+		p.genln('}')
+	} else if is_assign {
+		p.genln('$name = *($typ*) $tmp . data;')
+	}
+	if !p.returns && last_typ != typ && is_assign && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
+		p.error('`or` block must provide a default value or return/exit/continue/break/panic')
+	}
+	p.returns = false
+	return typ
+}
 // blank identifer assignment `_ = 111`
 fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
@@ -102,35 +119,15 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	is_indexer := p.peek() == .lsbr
 	is_fn_call, next_expr := p.is_next_expr_fn_call()
 	pos := p.cgen.add_placeholder()
+	p.is_var_decl = true
 	mut typ := p.bool_expression()
+	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
 		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
 	}
-	tmp := p.get_tmp()
 	// handle or
 	if p.tok == .key_orelse {
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.register_var(Var {
-			name: 'errcode'
-			typ: 'int'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
-		p.genln('int    errcode = $tmp . ecode;')
-		p.statements()
-		p.returns = false
+		p.gen_handle_optional_or(typ, '', pos)
 	} else {
 		if is_fn_call {
 			p.gen(';')
