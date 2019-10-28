@@ -1445,9 +1445,15 @@ fn (p mut Parser) bterm() string {
 	is_float := typ[0] == `f` && (typ in ['f64', 'f32']) &&
 		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
 		!(p.cur_fn.name == 'eq')
+	is_array := typ.contains('array_')
 	expr_type := typ
 	tok := p.tok
 	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
+		//TODO: remove when array comparing is supported
+		if is_array {
+			p.error('Array comparing is not supported yet')
+		}
+
 		p.fgen(' ${p.tok.str()} ')
 		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
