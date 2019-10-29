@@ -387,4 +387,9 @@ fn test_array_str() {
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
 	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
-}	
+}
+
+fn test_eq() {
+	assert [5,6,7].eq([6,7]) == false
+	assert [`a`,`b`].eq([`a`,`b`]) == true
+}
