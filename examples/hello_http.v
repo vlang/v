@@ -14,36 +14,40 @@ const (
 fn main(){
 	listener := net.listen(port) or {panic("Failed to listen to port $port")}
 	for {
-		conn := listener.accept() or {panic("conn accept() failed.")}
-		s := conn.read_line()
-		if s == '' {
-			conn.write(HTTP_500)
-			conn.close()
-			return
-		}
-    
-		first_line := s.all_before('\n')
-		vals := first_line.split(' ')
-		if vals.len < 2 {
-			println('no vals for http')
-			conn.write(HTTP_500)
-			conn.close()
-			return
-		}
-    
-		req := to_request(s, vals)
-		
-		mut name := "HTTP"
-		if req.url.contains("/") {
-			split := req.url.split("/")
-			if split.len > 0 {
-			name = req.url.split("/")[0]
-			}
-		}
-    
-		write_html(conn, "<h1>Hello, $name </h1>") 
-		conn.close()
+		listen_for_request(listener)
 	}
+}
+
+fn listen_for_request(listener net.Socket) {
+	conn := listener.accept() or {panic("conn accept() failed.")}
+	s := conn.read_line()
+	if s == '' {
+		conn.write(HTTP_500)
+		conn.close()
+		return
+	}
+    
+	first_line := s.all_before('\n')
+	vals := first_line.split(' ')
+	if vals.len < 2 {
+		println('no vals for http')
+		conn.write(HTTP_500)
+		conn.close()
+		return
+	}
+    
+	req := to_request(s, vals)
+		
+	mut name := "HTTP"
+	if req.url.contains("/") {
+		split := req.url.split("/")
+		if split.len > 0 {
+			name = req.url.split("/")[0]
+		}
+	}
+    
+	write_html(conn, "<h1>Hello, $name </h1>") 
+	conn.close()
 }
 fn write_html(conn net.Socket, html string){
 		conn.write("HTTP/1.1 200 OK\r")
