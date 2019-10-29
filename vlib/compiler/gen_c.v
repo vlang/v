@@ -573,3 +573,4 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
 		}
 	}
 }
+
