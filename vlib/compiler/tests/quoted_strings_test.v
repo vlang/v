@@ -43,7 +43,12 @@ fn test_interpolated_variables_in_curly_braces_with_format_params(){
 	assert preformatted_string == quoted_s
 	assert preformatted_string == apostrophed_s
 	assert true
+	assert 2+2 == 111+222
+	assert s == 'x'
+	assert 5 >= 10
+	assert s < 'x'
 	assert s > 'x'
+	assert s <= 'x'
 	assert false
 	assert is_matching('a','b') > 10
 }
