@@ -204,7 +204,7 @@ pub fn (v mut V) compile() {
 	}
 
 	// Main pass
-	cgen.pass = Pass.main
+	cgen.pass = .main
 	if v.pref.is_debug {
 		$if js {
 			cgen.genln('const VDEBUG = 1;\n')

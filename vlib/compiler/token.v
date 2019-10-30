@@ -257,17 +257,17 @@ fn (t TokenKind) str() string {
 }
 
 fn (t TokenKind) is_decl() bool {
-	return t in [TokenKind.key_enum, .key_interface, .key_fn,
+	return t in [.key_enum, .key_interface, .key_fn,
 		.key_struct ,.key_type,	.key_const,  .key_import_const, .key_pub, .eof]
 }
 
 const (
 	AssignTokens = [
-		TokenKind.assign, TokenKind.plus_assign, TokenKind.minus_assign,
-		TokenKind.mult_assign, TokenKind.div_assign, TokenKind.xor_assign,
-		TokenKind.mod_assign,
-		TokenKind.or_assign, TokenKind.and_assign, TokenKind.righ_shift_assign,
-		TokenKind.left_shift_assign
+		TokenKind.assign, .plus_assign, .minus_assign,
+		.mult_assign, .div_assign, .xor_assign,
+		.mod_assign,
+		.or_assign, .and_assign, .righ_shift_assign,
+		.left_shift_assign
 	]
 	
 )

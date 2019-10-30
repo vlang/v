@@ -197,7 +197,7 @@ fn (p mut Parser) next() {
 	 p.prev_tok = p.tok
 	 p.scanner.prev_tok = p.tok
 	 if p.token_idx >= p.tokens.len {
-			 p.tok = TokenKind.eof
+			 p.tok = .eof
 			 p.lit = ''
 			 return
 	 }
@@ -211,7 +211,7 @@ fn (p mut Parser) next() {
 
 fn (p & Parser) peek() TokenKind {
 	if p.token_idx >= p.tokens.len - 2 {
-		return TokenKind.eof
+		return .eof
 	}
 	tok := p.tokens[p.token_idx]
 	return tok.tok
@@ -371,7 +371,8 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		.key_global {
 			if !p.pref.translated && !p.pref.is_live &&
-				!p.builtin_mod && !p.pref.building_v && !os.getwd().contains('/volt') {
+				!p.builtin_mod && !p.pref.building_v &&
+				p.mod != 'ui'  && !os.getwd().contains('/volt') {
 				p.error('__global is only allowed in translated code')
 			}
 			p.next()
@@ -760,7 +761,7 @@ fn (p mut Parser) get_type() string {
 		p.fn_args(mut f)
 		// Same line, it's a return type
 		if p.scanner.line_nr == line_nr {
-			if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
+			if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
 				f.typ = p.get_type()
 			}
 			else {
@@ -1639,6 +1640,9 @@ fn (p mut Parser) name_expr() string {
 			if !enum_type.has_enum_val(val) {
 				p.error('enum `$enum_type.name` does not have value `$val`')
 			}
+			if p.expected_type == enum_type.name {
+				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
+			}	
 			
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
@@ -2374,7 +2378,7 @@ fn (p mut Parser) expression() string {
 		return 'int'
 	}
 	// + - | ^
-	for p.tok in [TokenKind.plus, .minus, .pipe, .amp, .xor] {
+	for p.tok in [.plus, .minus, .pipe, .amp, .xor] {
 		tok_op := p.tok
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
@@ -3604,9 +3608,9 @@ if (!$tmp) {
 	p.genln(';\n
 if (!$tmp) {
   g_test_fails++;
-  main__cb_assertion_failed( 
-     tos3("$filename"), 
-     $p.scanner.line_nr, 
+  main__cb_assertion_failed(
+     tos3("$filename"),
+     $p.scanner.line_nr,
      tos3("$sourceline"),
      tos3("$p.cur_fn.name()")
   );
@@ -3615,9 +3619,9 @@ if (!$tmp) {
   // Maybe print all vars in a test function if it fails?
 } else {
   g_test_oks++;
-  main__cb_assertion_ok( 
-     tos3("$filename"), 
-     $p.scanner.line_nr, 
+  main__cb_assertion_ok(
+     tos3("$filename"),
+     $p.scanner.line_nr,
      tos3("$sourceline"),
      tos3("$p.cur_fn.name()")
   );

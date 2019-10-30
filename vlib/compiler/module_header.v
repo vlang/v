@@ -46,6 +46,8 @@ fn generate_vh(mod string) {
 	//}	
 	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') &&
 		!it.ends_with('_windows.v') && !it.ends_with('_win.v') &&
+		!it.ends_with('_lin.v') &&
+		!it.contains('/examples') &&
 		!it.contains('/js')) // TODO merge once filter allows it
 	println(filtered)
 	mut v := new_v(['foo.v'])
@@ -62,9 +64,9 @@ fn generate_vh(mod string) {
 				continue
 			}	
 			match tok.tok {
-				TokenKind.key_fn {	fns.writeln(generate_fn(p.tokens, i))	}
-				TokenKind.key_const {	consts.writeln(generate_const(p.tokens, i))	}
-				TokenKind.key_struct {	types.writeln(generate_type(p.tokens, i))	}
+				.key_fn {	fns.writeln(generate_fn(p.tokens, i))	}
+				.key_const {	consts.writeln(generate_const(p.tokens, i))	}
+				.key_struct {	types.writeln(generate_type(p.tokens, i))	}
 			}	
 		}	
 	}	
