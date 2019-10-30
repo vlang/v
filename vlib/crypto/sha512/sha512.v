@@ -133,22 +133,22 @@ fn new_digest(hash crypto.Hash) &Digest {
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA-512 checksum.
 pub fn new() &Digest {
-	return new_digest(crypto.Hash.sha512)
+	return new_digest(.sha512)
 }
 
 // new512_224 returns a new Digest (implementing hash.Hash) computing the SHA-512/224 checksum.
 fn new512_224() &Digest {
-	return new_digest(crypto.Hash.sha512_224)
+	return new_digest(.sha512_224)
 }
 
 // new512_256 returns a new Digest (implementing hash.Hash) computing the SHA-512/256 checksum.
 fn new512_256() &Digest {
-	return new_digest(crypto.Hash.sha512_256)
+	return new_digest(.sha512_256)
 }
 
 // new384 returns a new Digest (implementing hash.Hash) computing the SHA-384 checksum.
 fn new384() &Digest {
-	return new_digest(crypto.Hash.sha384)
+	return new_digest(.sha384)
 }
 
 fn (d mut Digest) write(p_ []byte) ?int {
@@ -244,7 +244,7 @@ fn (d mut Digest) checksum() []byte {
 	binary.big_endian_put_u64(mut digest[24..], d.h[3])
 	binary.big_endian_put_u64(mut digest[32..], d.h[4])
 	binary.big_endian_put_u64(mut digest[40..], d.h[5])
-	if d.function != crypto.Hash.sha384 {
+	if d.function != .sha384 {
 		binary.big_endian_put_u64(mut digest[48..], d.h[6])
 		binary.big_endian_put_u64(mut digest[56..], d.h[7])
 	}
@@ -254,14 +254,14 @@ fn (d mut Digest) checksum() []byte {
 
 // sum512 returns the SHA512 checksum of the data.
 pub fn sum512(data []byte) []byte {
-	mut d := new_digest(crypto.Hash.sha512)
+	mut d := new_digest(.sha512)
 	d.write(data)
 	return d.checksum()
 }
 
 // sum384 returns the SHA384 checksum of the data.
 pub fn sum384(data []byte) []byte {
-	mut d := new_digest(crypto.Hash.sha384)
+	mut d := new_digest(.sha384)
 	d.write(data)
 	sum := d.checksum()
 	mut sum384 := [byte(0)].repeat(size384)
@@ -271,7 +271,7 @@ pub fn sum384(data []byte) []byte {
 
 // sum512_224 returns the Sum512/224 checksum of the data.
 pub fn sum512_224(data []byte) []byte {
-	mut d := new_digest(crypto.Hash.sha512_224)
+	mut d := new_digest(.sha512_224)
 	d.write(data)
 	sum := d.checksum()
 	mut sum224 := [byte(0)].repeat(size224)
@@ -281,7 +281,7 @@ pub fn sum512_224(data []byte) []byte {
 
 // Sum512_256 returns the Sum512/256 checksum of the data.
 pub fn sum512_256(data []byte) []byte {
-	mut d := new_digest(crypto.Hash.sha512_256)
+	mut d := new_digest(.sha512_256)
 	d.write(data)
 	sum := d.checksum()
 	mut sum256 := [byte(0)].repeat(size256)
