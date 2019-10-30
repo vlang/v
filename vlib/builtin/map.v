@@ -207,8 +207,12 @@ pub fn (n mut mapnode) delete(key string, element_size int) {
 }
 
 pub fn (m mut map) delete(key string) {
-	m.root.delete(key, m.element_size)
-	m.size--
+	if m.exists(key) {
+		m.root.delete(key, m.element_size)
+		m.size--
+	} else {
+		println("key: `$key` is not defined")
+	}
 }
 
 fn (m map) exists(key string) bool {
