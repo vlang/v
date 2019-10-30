@@ -3574,18 +3574,34 @@ fn (p mut Parser) assert_statement() {
 		return
 	}
 	p.check(.key_assert)
-	after_assert_token_a := p.cur_tok()
 	p.fspace()
 	tmp := p.get_tmp()
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
+	nline := p.scanner.line_nr
 	// TODO print "expected:  got" for failed tests
 	filename := cescaped_path(p.file_path)
-	nline := p.scanner.line_nr
+	cfname:=p.cur_fn.name.replace('main__', '')
 	sourceline := p.scanner.line( nline - 1 ).replace('"', '\'')
-	p.genln(';
-\n
 
+	if !p.pref.is_test {
+		// an assert used in a normal v program. no fancy formatting
+		p.genln(';\n
+/// sline: "$sourceline"
+if (!$tmp) {
+	g_test_fails++;
+	eprintln(tos3("${filename}:${p.scanner.line_nr}: FAILED: ${cfname}()"));
+	eprintln(tos3("Source: $sourceline"));
+    v_panic(tos3("An assertion failed."));
+	return;
+} else {
+	g_test_oks++;
+}
+')
+		return
+	}
+	
+	p.genln(';\n
 if (!$tmp) {
   g_test_fails++;
   main__cb_assertion_failed( 
