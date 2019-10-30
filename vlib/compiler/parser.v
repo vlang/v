@@ -3589,10 +3589,10 @@ fn (p mut Parser) assert_statement() {
 if (!$tmp) {
   g_test_fails++;
   main__cb_assertion_failed( 
-     tos2((byte *)"$filename"), 
+     tos3("$filename"), 
      $p.scanner.line_nr, 
-     tos2((byte *)"$sourceline"),
-     tos2((byte *)"$p.cur_fn.name()")
+     tos3("$sourceline"),
+     tos3("$p.cur_fn.name()")
   );
   return;
   // TODO
@@ -3600,10 +3600,10 @@ if (!$tmp) {
 } else {
   g_test_oks++;
   main__cb_assertion_ok( 
-     tos2((byte *)"$filename"), 
+     tos3("$filename"), 
      $p.scanner.line_nr, 
-     tos2((byte *)"$sourceline"),
-     tos2((byte *)"$p.cur_fn.name()")
+     tos3("$sourceline"),
+     tos3("$p.cur_fn.name()")
   );
 }
 
