@@ -1641,9 +1641,10 @@ fn (p mut Parser) name_expr() string {
 				p.error('enum `$enum_type.name` does not have value `$val`')
 			}
 			if p.expected_type == enum_type.name {
-				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
+				// `if color == .red` is enough
+				// no need in `if color == Color.red`
+				p.error('`${enum_type.name}.$val` is unnecessary, use `.$val`')
 			}	
-			
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
