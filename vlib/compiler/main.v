@@ -840,6 +840,15 @@ pub fn new_v(args[]string) &V {
 		base := os.getwd().all_after(os.path_separator)
 		out_name = base.trim_space()
 	}
+	// `v -o dir/exec`, create "dir/" if it doesn't exist
+	if out_name.contains(os.path_separator) {
+		d := out_name.all_before_last(os.path_separator)
+		println('DIRRR ' + d)
+		if !os.dir_exists(d) {
+			println('creating a new directory "$d"')
+			os.mkdir(d)
+		}	
+	}	
 	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
