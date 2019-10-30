@@ -38,6 +38,8 @@ fn test_map() {
 	assert keys[1] == 'hello'
 	m.delete('hi')
 	assert m.size == 1
+	m.delete('aloha')
+	assert m.size == 1
 
 	assert m['hi'] == 0
 	assert m.keys().len == 1
