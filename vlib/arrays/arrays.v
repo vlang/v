@@ -1,8 +1,8 @@
 module arrays
 
 fn range<T>(start, end T) []T {
-	mut res := [T(0)]
-	for i := start; i < end; i++ {
+	mut res := [start]
+	for i := start + 1; i < end; i++ {
 		res << i
 	}	
 	return res
