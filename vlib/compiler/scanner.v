@@ -236,6 +236,12 @@ fn (s mut Scanner) skip_whitespace() {
 	}
 }
 
+fn (s mut Scanner) end_of_file() ScanRes {
+	s.pos = s.text.len
+	s.inc_line_number()
+	return scan_res(.eof, '')
+}
+
 fn (s mut Scanner) scan() ScanRes {
 	//if s.line_comment != '' {
 		//s.fgenln('// LC "$s.line_comment"')
@@ -246,7 +252,7 @@ fn (s mut Scanner) scan() ScanRes {
 	}
 	s.started = true
 	if s.pos >= s.text.len {
-		return scan_res(.eof, '')
+		return s.end_of_file()
 	}
 	if !s.inside_string {
 		s.skip_whitespace()
@@ -263,7 +269,7 @@ fn (s mut Scanner) scan() ScanRes {
 	s.skip_whitespace()
 	// end of file
 	if s.pos >= s.text.len {
-		return scan_res(.eof, '')
+		return s.end_of_file()
 	}
 	// handle each char
 	c := s.text[s.pos]
@@ -618,7 +624,7 @@ fn (s mut Scanner) scan() ScanRes {
 	}
 	$if windows {
 		if c == `\0` {
-			return scan_res(.eof, '')
+			return s.end_of_file()
 		}
 	}
 	mut msg := 'invalid character `${c.str()}`'
@@ -626,7 +632,7 @@ fn (s mut Scanner) scan() ScanRes {
 		msg += ', use \' to denote strings'
 	}
 	s.error(msg)
-	return scan_res(.eof, '')
+	return s.end_of_file()
 }
 
 fn (s &Scanner) current_column() int {
@@ -804,7 +810,9 @@ fn (s mut Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends   << s.pos
-	s.nlines++
+	if s.line_nr > s.nlines { 
+		s.nlines = s.line_nr
+	}
 }
 
 fn (s Scanner) line(n int) string {
