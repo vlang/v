@@ -63,9 +63,9 @@ pub fn (m mut Mutex) lock() {
 	}
 	state := C.WaitForSingleObject(m.mx, INFINITE) // infinite wait
 	m.state = match state {
-		WAIT_ABANDONED { MutexState.abandoned }
-		WAIT_OBJECT_0  { MutexState.waiting }
-		else           { MutexState.broken }
+		WAIT_ABANDONED { .abandoned }
+		WAIT_OBJECT_0  { .waiting }
+		else           { .broken }
 	}
 }
 
