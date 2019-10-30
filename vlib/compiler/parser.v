@@ -3578,20 +3578,49 @@ fn (p mut Parser) assert_statement() {
 	tmp := p.get_tmp()
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
+	nline := p.scanner.line_nr
 	// TODO print "expected:  got" for failed tests
 	filename := cescaped_path(p.file_path)
-	p.genln(';
-\n
+	cfname:=p.cur_fn.name.replace('main__', '')
+	sourceline := p.scanner.line( nline - 1 ).replace('"', '\'')
 
+	if !p.pref.is_test {
+		// an assert used in a normal v program. no fancy formatting
+		p.genln(';\n
+/// sline: "$sourceline"
 if (!$tmp) {
-  println(tos2((byte *)"\\x1B[31mFAILED: $p.cur_fn.name() in $filename:$p.scanner.line_nr\\x1B[0m"));
+	g_test_fails++;
+	eprintln(tos3("${filename}:${p.scanner.line_nr}: FAILED: ${cfname}()"));
+	eprintln(tos3("Source: $sourceline"));
+    v_panic(tos3("An assertion failed."));
+	return;
+} else {
+	g_test_oks++;
+}
+')
+		return
+	}
+	
+	p.genln(';\n
+if (!$tmp) {
   g_test_fails++;
+  main__cb_assertion_failed( 
+     tos3("$filename"), 
+     $p.scanner.line_nr, 
+     tos3("$sourceline"),
+     tos3("$p.cur_fn.name()")
+  );
   return;
   // TODO
   // Maybe print all vars in a test function if it fails?
 } else {
   g_test_oks++;
-  //println(tos2((byte *)"\\x1B[32mPASSED: $p.cur_fn.name()\\x1B[0m"));
+  main__cb_assertion_ok( 
+     tos3("$filename"), 
+     $p.scanner.line_nr, 
+     tos3("$sourceline"),
+     tos3("$p.cur_fn.name()")
+  );
 }
 
 ')
