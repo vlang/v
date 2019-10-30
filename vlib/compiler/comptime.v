@@ -215,9 +215,9 @@ fn (p mut Parser) chash() {
 	else if hash.contains('embed') {
 		pos := hash.index('embed') + 5
 		file := hash[pos..]
-		if p.pref.build_mode != .default_mode {
+		//if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
-		}
+		//}
 	}
 	else if hash.contains('define') {
 		// Move defines on top

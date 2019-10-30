@@ -262,7 +262,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok in [TokenKind.plus, .minus, .mul] {
+	if p.tok in [.plus, .minus, .mul] {
 		f.name = p.tok.str()
 		p.next()
 	}
@@ -277,9 +277,9 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	if p.pref.is_verbose { // p.pref.build_mode == .build_module {
-		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
-	}
+	//if p.pref.is_verbose { // p.pref.build_mode == .build_module {
+		//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	//}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -348,7 +348,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Returns a type?
 	mut typ := 'void'
-	if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
+	if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
 		p.fgen(' ')
 		typ = p.get_type()
 	}
