@@ -500,19 +500,19 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
                 return ''
         }
 
-        tp            :=  if t.hour > 11 {
-                                  'p.m.'
-                          } else {
-                                  'a.m.'
-                          }
+        tp := if t.hour > 11 {
+                'p.m.'
+              } else {
+                'a.m.'
+              }
 
-        hour          :=  if t.hour > 12 {
-                                  t.hour - 12
-                          } else  if t.hour == 0 {
-                                          12
-                                  } else {
-                                           t.hour
-                                  }
+        hour := if t.hour > 12 {
+                        t.hour - 12
+                } else  if t.hour == 0 {
+                              12
+                        } else {
+                              t.hour
+                        }
 
         return  match fmt_time {
                         .hhmm12     { '$hour:${t.minute:02d} $tp' }
@@ -532,9 +532,8 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
                 return ''
         }
 
-        month         := '${t.smonth()}'
-
-        year          :=  t.year.str().right(2)
+        month := '${t.smonth()}'
+        year := t.year.str().right(2)
 
         return  match fmt_date {
                         .ddmmyy     { '${t.day:02d}|${t.month:02d}|$year' }
