@@ -1048,6 +1048,23 @@ pub fn install_v(args[]string) {
 	}
 }
 
+pub fn run_repl() {
+	vexec := vexe_path()
+	vroot := os.dir(vexec)
+	vrepl := '$vroot/tools/vrepl'
+
+	os.chdir(vroot + '/tools')
+	vrepl_compilation := os.exec('"$vexec" -o $vrepl vrepl.v') or {
+		verror(err)
+		return
+	}
+	if vrepl_compilation.exit_code != 0 {
+		verror(vrepl_compilation.output)
+		return
+	}
+	vreplresult := os.system('$vrepl "$vexec"')
+}
+
 pub fn create_symlink() {
 	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
