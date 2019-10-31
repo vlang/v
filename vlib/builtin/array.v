@@ -365,49 +365,36 @@ pub fn (a mut []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
+fn array_index<T>(a []T, v T) int {
+	for i := 0; i < a.len; i++ {
+		if a[i] == v { return i }
+	}
+	return -1
+}
+
 // []string.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []string) index(v string) int {
-	for i := 0; i < a.len; i++ {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
+	return array_index(a, v)
 }
 
 // []int.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []int) index(v int) int {
-	for i := 0; i < a.len; i++ {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
+		return array_index(a, v)
 }
 
 // []byte.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []byte) index(v byte) int {
-	for i := 0; i < a.len; i++ {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
+	return array_index(a, v)
 }
 
 // []char.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 // TODO is `char` type yet in the language?
 pub fn (a []char) index(v char) int {
-	for i := 0; i < a.len; i++ {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
+	return array_index(a, v)
 }
 
 // []int.reduce executes a given reducer function on each element of the array,
