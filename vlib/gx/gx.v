@@ -75,16 +75,14 @@ pub fn (c Color) str() string {
 }
 
 pub fn (a Color) eq(b Color) bool {
-	return a.r == b.r &&
-	a.g == b.g &&
-	a.b == b.b
+	return a.r == b.r &&	a.g == b.g &&	a.b == b.b
 }
 
 pub fn rgb(r, g, b int) Color {
 	res := Color {
-		r: r,
-		g: g,
-		b: b,
+		r: r
+		g: g
+		b: b
 	}
 	return res
 }
