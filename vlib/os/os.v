@@ -282,7 +282,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-fn popen(path string) *C.FILE {
+fn vpopen(path string) *C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -333,7 +333,7 @@ pub:
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
 	pcmd := '$cmd 2>&1'
-	f := popen(pcmd)
+	f := vpopen(pcmd)
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
