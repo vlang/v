@@ -7,12 +7,44 @@ module time
 import rand
 
 const (
-	month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        days_string        = 'MonTueWedThuFriSatSun'
+
+        month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+
+        // The unsigned zero year for internal calculations.
+        // Must be 1 mod 400, and times before it will not compute correctly,
+        // but otherwise can be changed at will.
+        absolute_zero_year = i64(-292277022399)
+
+        seconds_per_minute = 60
+        seconds_per_hour   = 60 * seconds_per_minute
+        seconds_per_day    = 24 * seconds_per_hour
+        seconds_per_week   = 7 * seconds_per_day
+        days_per_400_years = 365*400 + 97
+        days_per_100_years = 365*100 + 24
+        days_per_4_years   = 365*4 + 1
+
+        days_before        = [
+                0,
+                31,
+                31 + 28,
+                31 + 28 + 31,
+                31 + 28 + 31 + 30,
+                31 + 28 + 31 + 30 + 31,
+                31 + 28 + 31 + 30 + 31 + 30,
+                31 + 28 + 31 + 30 + 31 + 30 + 31,
+                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+        ]
 )
 
 #include <time.h>
 
-struct Time {
+pub struct Time {
 pub:
 	year   int
 	month  int
@@ -55,7 +87,7 @@ fn C.localtime(int) &C.tm
 fn remove_me_when_c_bug_is_fixed() { // TODO
 }
 
-struct C.time_t {}
+pub struct C.time_t {}
 
 struct C.tm {
 	tm_year int
@@ -81,43 +113,6 @@ pub fn random() Time {
 
 	return time.unix(rand_unix)
 }
-
-const (
-// The unsigned zero year for internal calculations.
-	// Must be 1 mod 400, and times before it will not compute correctly,
-	// but otherwise can be changed at will.
-	absolute_zero_year = i64(-292277022399)
-
-	seconds_per_minute = 60
-	seconds_per_hour   = 60 * seconds_per_minute
-	seconds_per_day    = 24 * seconds_per_hour
-	seconds_per_week   = 7 * seconds_per_day
-	days_per_400_years  = 365*400 + 97
-	days_per_100_years  = 365*100 + 24
-	days_per_4_years    = 365*4 + 1
-
- days_before = [
-	0,
-	31,
-	31 + 28,
-	31 + 28 + 31,
-	31 + 28 + 31 + 30,
-	31 + 28 + 31 + 30 + 31,
-	31 + 28 + 31 + 30 + 31 + 30,
-	31 + 28 + 31 + 30 + 31 + 30 + 31,
-	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
-	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
-	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
-	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
-	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-]
-
-)
-
-const (
-	months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
-	days_string = 'MonTueWedThuFriSatSun'
-)
 
 
 // Based on Go's time package.
@@ -163,7 +158,7 @@ pub fn unix(abs int) Time {
 	hour := int(abs%seconds_per_day) / seconds_per_hour
 	minute := int(abs % seconds_per_hour) / seconds_per_minute
 	second := int(abs % seconds_per_minute)
-	
+
 	if is_leap_year(year) {
 		// Leap year
 		if day > 31+29-1 {
@@ -226,7 +221,7 @@ pub fn (t Time) format() string {
 
 pub fn (t Time) smonth() string {
 	i := t.month - 1
-	return months_string.substr(i * 3, (i + 1) * 3)
+	return months_string[i * 3..(i + 1) * 3]
 }
 
 // hhmm     returns a string for t in the given format HH:MM in 24h notation
@@ -333,13 +328,13 @@ pub fn parse(s string) Time {
 		println('bad time format')
 		return now()
 	}
-	symd := s.left(pos)
+	symd := s[..pos]
 	ymd := symd.split('-')
 	if ymd.len != 3 {
 		println('bad time format')
 		return now()
 	}
-	shms := s.right(pos)
+	shms := s[pos..]
 	hms := shms.split(':')
 	hour := hms[0]
 	minute := hms[1]
@@ -428,7 +423,7 @@ pub fn (t Time) day_of_week() int {
 // weekday_str() returns the current day in string (upto 3 characters)
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return days_string.substr(i * 3, (i + 1) * 3)
+	return days_string[i * 3..(i + 1) * 3]
 }
 
 struct C.timeval  {

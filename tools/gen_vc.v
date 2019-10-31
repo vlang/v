@@ -249,7 +249,7 @@ fn (gen_vc mut GenVC) generate() {
 
 	// last commit hash in v repo
 	last_commit_hash_v := git_log_v.find_between('commit', '\n').trim_space()
-	last_commit_hash_v_short := last_commit_hash_v.left(7)
+	last_commit_hash_v_short := last_commit_hash_v[..7]
 
 	// log some info
 	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format_ss())
@@ -270,7 +270,7 @@ fn (gen_vc mut GenVC) generate() {
 	
 	// build v.c for each os
 	for os_name in vc_build_oses {
-		vc_suffix := if os_name == 'unix' { '' } else { '_${os_name.left(3)}' }
+		vc_suffix := if os_name == 'unix' { '' } else { '_${os_name[..3]}' }
 		v_os_arg := if os_name == 'unix' { '' } else { '-os $os_name' }
 		c_file := 'v${vc_suffix}.c'
 		// try generate .c file

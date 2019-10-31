@@ -1,6 +1,6 @@
 module compiler
 
-const (
+pub const (
 	help_text = 'Usage: v [options/commands] [file.v | directory]
 
    When V is run without any arguments, it is run in REPL mode.
@@ -65,12 +65,12 @@ Commands:
   run <file.v>      Build and execute the V program in file.v. You can add arguments for the V program *after* the file name.
   build <module>    Compile a module into an object file.
   runrepl           Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
-  symlink           Useful on unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
+  symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
   install <module>  Install a user module from https://vpm.vlang.io/.
   test v            Run all V test files, and compile all V examples.
   test folder/      Run all V test files located in the folder and its subfolders. You can also pass individual _test.v files too.
   fmt               Run vfmt to format the source code. [wip]
-  doc               Run vdoc over the source code and produce documentation. [wip]
+  doc               Run vdoc over the source code and produce documentation.
   translate         Translates C to V. [wip, will be available in V 0.3]
 '
 )

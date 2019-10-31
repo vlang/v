@@ -27,7 +27,7 @@ struct Winsize {
   ws_ypixel u16
 }
 
-struct Readline {
+pub struct Readline {
 mut:
   is_raw bool
   orig_termios Termios // Linux

@@ -69,5 +69,5 @@ fn filter_word(word string) string {
 		i++
 	}
 	end := i
-	return word.substr(start, end)
+	return word[start..end]
 }

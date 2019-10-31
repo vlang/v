@@ -11,7 +11,6 @@ struct DepGraphNode  {
 mut:
 	name string
 	deps []string
-	last_cycle string
 }
 
 struct DepGraph {
@@ -84,13 +83,8 @@ pub fn(graph &DepGraph) resolve() &DepGraph {
 		if ready_set.size() == 0 {
 			mut g := new_dep_graph()
 			g.acyclic = false
-			ndk := node_deps.keys()
-			for name, _ in node_deps {				
-				mut node := node_names[name]
-				if name == ndk[node_deps.size-1] {
-					node.last_cycle = node_deps[name].items[node_deps[name].items.len-1]
-				}
-				g.nodes << node
+			for name, _ in node_deps {
+				g.nodes << node_names[name]
 			}
 			return g
 		}
@@ -112,19 +106,31 @@ pub fn(graph &DepGraph) last_node() DepGraphNode {
 	return graph.nodes[graph.nodes.len-1]
 }
 
-pub fn(graph &DepGraph) last_cycle() string {
-	return graph.last_node().last_cycle
-}
-
-pub fn(graph &DepGraph) display() {
-	for i:=0; i<graph.nodes.len; i++ {
-		node := graph.nodes[i]
+pub fn(graph &DepGraph) display() string {
+	mut out := '\n'
+	for node in graph.nodes {
 		for dep in node.deps {
-			mut out := ' * $node.name -> $dep'
-			if !graph.acyclic && i == graph.nodes.len-1 && dep == node.last_cycle {
-				out += ' <-- last cycle'
-			}
-			println(out)
+			out += ' * $node.name -> $dep\n'
 		}
 	}
+	return out
 }
+
+pub fn(graph &DepGraph) display_cycles() string {
+	mut node_names := map[string]DepGraphNode
+	for node in graph.nodes {
+		node_names[node.name] = node
+	}
+	mut out := '\n'
+	for node in graph.nodes {
+		for dep in node.deps {
+			if !(dep in node_names) { continue }
+			dn := node_names[dep]
+			if node.name in dn.deps {
+				out += ' * $node.name -> $dep\n'
+			}
+		}
+	}
+	return out
+}
+

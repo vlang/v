@@ -21,6 +21,7 @@ const (
 	WinHeight = BlockSize * FieldHeight
 	TimerPeriod = 250 // ms
 	TextSize = 12
+	LimitThickness = 3
 )
 
 const (
@@ -28,6 +29,11 @@ const (
 		align:gx.ALIGN_LEFT
 		size:TextSize
 		color:gx.rgb(0, 0, 0)
+	}
+	over_cfg = gx.TextCfg{
+		align:gx.ALIGN_LEFT
+		size:TextSize
+		color:gx.White
 	}
 )
 
@@ -80,6 +86,9 @@ const (
 		gx.rgb(170, 85, 0),     // brown longest
 		gx.rgb(0, 170, 170),    // unused ?
 	]
+
+	BackgroundColor = gx.White
+	UIColor = gx.Red
 )
 
 // TODO: type Tetro [TetroSize]struct{ x, y int }
@@ -140,7 +149,7 @@ fn main() {
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
-	gg.clear(gx.White)
+	gg.clear(BackgroundColor)
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
 			width: WinWidth
@@ -151,7 +160,7 @@ fn main() {
 	})
 	game.font_loaded = (game.ft != 0 )
 	for {
-		gg.clear(gx.White)
+		gg.clear(BackgroundColor)
 		game.draw_scene()
 		game.gg.render()
 		if game.gg.window.should_close() {
@@ -304,8 +313,9 @@ fn (g &Game) draw_tetro() {
 }
 
 fn (g &Game) draw_block(i, j, color_idx int) {
+	color := if g.state == .gameover { gx.Gray } else { Colors[color_idx] }
 	g.gg.draw_rect((j - 1) * BlockSize, (i - 1) * BlockSize,
-		BlockSize - 1, BlockSize - 1, Colors[color_idx])
+		BlockSize - 1, BlockSize - 1, color)
 }
 
 fn (g &Game) draw_field() {
@@ -319,23 +329,28 @@ fn (g &Game) draw_field() {
 	}
 }
 
-fn (g mut Game) draw_score() {
+fn (g mut Game) draw_ui() {
 	if g.font_loaded {
-		g.ft.draw_text(1, 2, 'score: ' + g.score.str(), text_cfg)
+		g.ft.draw_text(1, 3, g.score.str(), text_cfg)
 		if g.state == .gameover {
-			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', text_cfg)
-			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to restart', text_cfg)
+			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
+		 								5 * TextSize, UIColor)
+			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Over', over_cfg)
+			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'Space to restart', over_cfg)
 		} else if g.state == .paused {
+			g.gg.draw_rect(0, WinHeight / 2 - TextSize, WinWidth,
+				5 * TextSize, UIColor)
 			g.ft.draw_text(1, WinHeight / 2 + 0 * TextSize, 'Game Paused', text_cfg)
 			g.ft.draw_text(1, WinHeight / 2 + 2 * TextSize, 'SPACE to resume', text_cfg)
 		}
 	}
+	//g.gg.draw_rect(0, BlockSize, WinWidth, LimitThickness, UIColor)
 }
 
 fn (g mut Game) draw_scene() {
 	g.draw_tetro()
 	g.draw_field()
-	g.draw_score()
+	g.draw_ui()
 }
 
 fn parse_binary_tetro(t_ int) []Block {
@@ -373,25 +388,28 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	// Fetch the game object stored in the user pointer
 	mut game := &Game(glfw.get_window_user_pointer(wnd))
 	// global keys
-	switch key {
-	case glfw.KEY_ESCAPE:
-		glfw.set_should_close(wnd, true)
-	case glfw.key_space:
-		if game.state == .running {
-			game.state = .paused
-		} else if game.state == .paused {
-			game.state = .running
-		} else if game.state == .gameover {
-			game.init_game()
-			game.state = .running
+	match key {
+		glfw.KEY_ESCAPE {
+			glfw.set_should_close(wnd, true)
+		}
+		glfw.key_space {
+			if game.state == .running {
+				game.state = .paused
+			} else if game.state == .paused {
+				game.state = .running
+			} else if game.state == .gameover {
+				game.init_game()
+				game.state = .running
+			}
 		}
 	}
+	
 	if game.state != .running {
 		return
 	}
 	// keys while game is running
-	switch key {
-	case glfw.KeyUp:
+	match key {
+	glfw.KeyUp {
 		// Rotate the tetro
 		old_rotation_idx := game.rotation_idx
 		game.rotation_idx++
@@ -403,15 +421,18 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 			game.rotation_idx = old_rotation_idx
 			game.get_tetro()
 		}
-
 		if game.pos_x < 0 {
 			game.pos_x = 1
 		}
-	case glfw.KeyLeft:
+	}
+	glfw.KeyLeft {
 		game.move_right(-1)
-	case glfw.KeyRight:
+	}
+	glfw.KeyRight {
 		game.move_right(1)
-	case glfw.KeyDown:
+	}
+	glfw.KeyDown {
 		game.move_tetro() // drop faster when the player presses <down>
+	}
 	}
 }

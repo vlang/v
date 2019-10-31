@@ -12,7 +12,7 @@ pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
 	status := C.SecRandomCopyBytes(0, bytes_needed, buffer)
 	if status != 0 {
-		return ReadError
+		return read_error
 	}
 	return c_array_to_bytes_tmp(bytes_needed, buffer)
 }

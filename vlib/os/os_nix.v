@@ -3,11 +3,11 @@ module os
 #include <dirent.h>
 #include <unistd.h>
 
-const (
+pub const (
 	path_separator = '/'
 )
 
-fn init_os_args(argc int, argv &byteptr) []string {
+pub fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
 		args << string(argv[i])

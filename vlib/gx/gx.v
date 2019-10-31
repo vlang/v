@@ -4,14 +4,14 @@
 
 module gx
 
-struct Color {
+pub struct Color {
 pub:
 	r int
 	g int
 	b int
 }
 
-const (	
+pub const (	
 	// Primary colors
 	Blue   = Color { r: 0, g: 0, b: 255 }
 	Red    = Color { r: 255, g: 0, b: 0 }
@@ -41,12 +41,12 @@ const (
 	LightRed   = Color { r: 255, g: 204, b: 203 }
 )
 
-const (
+pub const (
 	ALIGN_LEFT  = 1
 	ALIGN_RIGHT = 4
 )
 
-struct TextCfg {
+pub struct TextCfg {
 pub:
 	color     Color
 	size      int
@@ -57,7 +57,7 @@ pub:
 	mono      bool
 }
 
-struct Image {
+pub struct Image {
 mut:
 	obj    voidptr
 pub:
@@ -75,16 +75,14 @@ pub fn (c Color) str() string {
 }
 
 pub fn (a Color) eq(b Color) bool {
-	return a.r == b.r &&
-	a.g == b.g &&
-	a.b == b.b
+	return a.r == b.r &&	a.g == b.g &&	a.b == b.b
 }
 
 pub fn rgb(r, g, b int) Color {
 	res := Color {
-		r: r,
-		g: g,
-		b: b,
+		r: r
+		g: g
+		b: b
 	}
 	return res
 }

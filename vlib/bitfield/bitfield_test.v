@@ -104,17 +104,19 @@ fn test_hamming() {
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	for i := 0; i < len; i++ {
-		switch rand.next(4) {
-			case 0:
-			case 1:
+		match rand.next(4) {
+			0, 1 {
 				input1.setbit(i)
 				count++
-			case 2:
+			}
+			2 {
 				input2.setbit(i)
 				count++
-			case 3:
+			}
+			3 {
 				input1.setbit(i)
 				input2.setbit(i)
+			}
 		}
 	}
 	assert count == bitfield.hamming(input1, input2)

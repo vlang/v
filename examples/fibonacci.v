@@ -14,10 +14,16 @@ fn main() {
 	// Parse first argument and cast it to int
 	stop := os.args[1].int()
 
+	// Can only calculate correctly until rank 92
+	if stop > 92 {
+		println('rank must be 92 or less')
+		return
+	}
+
 	// Three consecutive terms of the sequence
-	mut a := 0
-	mut b := 0
-	mut c := 1
+	mut a := u64(0)
+	mut b := u64(0)
+	mut c := u64(1)
 
 	for i := 0; i < stop; i++ {
 		// Set a and b to the next term

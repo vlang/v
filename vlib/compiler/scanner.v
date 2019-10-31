@@ -41,6 +41,7 @@ mut:
 	quote byte // which quote is used to denote current string: ' or "
 	line_ends   []int // the positions of source lines ends   (i.e. \n signs)
 	nlines int  // total number of lines in the source file that were scanned
+	is_vh bool // Keep newlines
 }
 
 // new scanner from file.
@@ -105,7 +106,7 @@ fn (s mut Scanner) ident_name() string {
 			break
 		}
 	}
-	name := s.text.substr(start, s.pos)
+	name := s.text[start..s.pos]
 	s.pos--
 	return name
 }
@@ -123,7 +124,7 @@ fn (s mut Scanner) ident_hex_number() string {
 		}
 		s.pos++
 	}
-	number := s.text.substr(start_pos, s.pos)
+	number := s.text[start_pos..s.pos]
 	s.pos--
 	return number
 }
@@ -144,7 +145,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		}
 		s.pos++
 	}
-	number := s.text.substr(start_pos, s.pos)
+	number := s.text[start_pos..s.pos]
 	s.pos--
 	return number
 }
@@ -160,7 +161,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	// e.g. 1..9
 	// we just return '1' and don't scan '..9'
 	if s.expect('..', s.pos) {
-		number := s.text.substr(start_pos, s.pos)
+		number := s.text[start_pos..s.pos]
 		s.pos--
 		return number
 	}
@@ -199,7 +200,7 @@ fn (s mut Scanner) ident_dec_number() string {
 		}
 	}
 
-	number := s.text.substr(start_pos, s.pos)
+	number := s.text[start_pos..s.pos]
 	s.pos--
 	return number
 }
@@ -221,7 +222,12 @@ fn (s mut Scanner) ident_number() string {
 }
 
 fn (s mut Scanner) skip_whitespace() {
+	//if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
+		if is_nl(s.text[s.pos]) && s.is_vh {
+			return
+			
+		}	
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.inc_line_number()
@@ -230,25 +236,30 @@ fn (s mut Scanner) skip_whitespace() {
 	}
 }
 
+fn (s mut Scanner) end_of_file() ScanRes {
+	s.pos = s.text.len
+	s.inc_line_number()
+	return scan_res(.eof, '')
+}
+
 fn (s mut Scanner) scan() ScanRes {
-	if s.line_comment != '' {
-		//s.fgenln('// LOL "$s.line_comment"')
+	//if s.line_comment != '' {
+		//s.fgenln('// LC "$s.line_comment"')
 		//s.line_comment = ''
-	}
+	//}
 	if s.started {
 		s.pos++
 	}
 	s.started = true
 	if s.pos >= s.text.len {
-		return scan_res(.eof, '')
+		return s.end_of_file()
 	}
-	// skip whitespace
 	if !s.inside_string {
 		s.skip_whitespace()
 	}
 	// End of $var, start next string
 	if s.inter_end {
-		if s.text[s.pos] == s.quote { //single_quote {
+		if s.text[s.pos] == s.quote {
 			s.inter_end = false
 			return scan_res(.str, '')
 		}
@@ -258,7 +269,7 @@ fn (s mut Scanner) scan() ScanRes {
 	s.skip_whitespace()
 	// end of file
 	if s.pos >= s.text.len {
-		return scan_res(.eof, '')
+		return s.end_of_file()
 	}
 	// handle each char
 	c := s.text[s.pos]
@@ -301,8 +312,8 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.number, num)
 	}
 	// all other tokens
-	switch c {
-	case `+`:
+	match c {
+	`+` {
 		if nextc == `+` {
 			s.pos++
 			return scan_res(.inc, '')
@@ -312,7 +323,8 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.plus_assign, '')
 		}
 		return scan_res(.plus, '')
-	case `-`:
+	}
+	`-` {
 		if nextc == `-` {
 			s.pos++
 			return scan_res(.dec, '')
@@ -322,47 +334,62 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.minus_assign, '')
 		}
 		return scan_res(.minus, '')
-	case `*`:
+	}
+	`*` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.mult_assign, '')
 		}
 		return scan_res(.mul, '')
-	case `^`:
+	}
+	`^` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.xor_assign, '')
 		}
 		return scan_res(.xor, '')
-	case `%`:
+	}
+	 `%` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.mod_assign, '')
 		}
 		return scan_res(.mod, '')
-	case `?`:
+	}
+	`?` {
 		return scan_res(.question, '')
-	case single_quote, double_quote:
+	}
+	 single_quote, double_quote {
 		return scan_res(.str, s.ident_string())
-	case `\``: // ` // apostrophe balance comment. do not remove
+		}
+	 `\`` { // ` // apostrophe balance comment. do not remove
 		return scan_res(.chartoken, s.ident_char())
-	case `(`:
+		}
+	 `(` {
+	 	
 		return scan_res(.lpar, '')
-	case `)`:
+	 }
+	 `)` {
 		return scan_res(.rpar, '')
-	case `[`:
+	 }
+	 `[` {
 		return scan_res(.lsbr, '')
-	case `]`:
+	 }
+	 `]` {
 		return scan_res(.rsbr, '')
-	case `{`:
+	 }
+	 `{` {
 		// Skip { in ${ in strings
+		// }
 		if s.inside_string {
 			return s.scan()
 		}
 		return scan_res(.lcbr, '')
-	case `$`:
+	}
+	 `$` {
 		return scan_res(.dollar, '')
-	case `}`:
+	 }
+	 `}` {
 		// s = `hello $name !`
 		// s = `hello ${name} !`
 		if s.inside_string {
@@ -377,7 +404,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.rcbr, '')
 		}
-	case `&`:
+	 }
+	 `&` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.and_assign, '')
@@ -387,7 +415,8 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.and, '')
 		}
 		return scan_res(.amp, '')
-	case `|`:
+	 }
+	 `|` {
 		if nextc == `|` {
 			s.pos++
 			return scan_res(.logical_or, '')
@@ -397,9 +426,11 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.or_assign, '')
 		}
 		return scan_res(.pipe, '')
-	case `,`:
+	 }
+	 `,` {
 		return scan_res(.comma, '')
-	case `@`:
+	 }
+	 `@` {
 		s.pos++
 		name := s.ident_name()
 		// @FN => will be substituted with the name of the current V function
@@ -419,16 +450,21 @@ fn (s mut Scanner) scan() ScanRes {
 			s.error('@ must be used before keywords (e.g. `@type string`)')
 		}
 		return scan_res(.name, name)
+	}
+	/*
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
 			s.last_nl_pos = s.pos
 			return scan_res(.nl, '')
 		}
+	 }
 	case `\n`:
 		s.last_nl_pos = s.pos
 		return scan_res(.nl, '')
-	case `.`:
+	 }
+	*/
+	 `.` {
 		if nextc == `.` {
 			s.pos++
 			if s.text[s.pos+1] == `.` {
@@ -438,18 +474,20 @@ fn (s mut Scanner) scan() ScanRes {
 			return scan_res(.dotdot, '')
 		}
 		return scan_res(.dot, '')
-	case `#`:
+	}
+	 `#` {
 		start := s.pos + 1
 		s.ignore_line()
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
-			s.line_comment = s.text.substr(start + 1, s.pos).trim_space()
+			s.line_comment = s.text[start + 1..s.pos].trim_space()
 			s.fgenln('// shebang line "$s.line_comment"')
 			return s.scan()
 		}
-		hash := s.text.substr(start, s.pos)
+		hash := s.text[start..s.pos]
 		return scan_res(.hash, hash.trim_space())
-	case `>`:
+	 }
+	 `>` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.ge, '')
@@ -465,7 +503,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.gt, '')
 		}
-	case 0xE2:
+	 }
+	 0xE2 {
 		//case `≠`:
 		if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
 			s.pos += 2
@@ -481,7 +520,8 @@ fn (s mut Scanner) scan() ScanRes {
 			s.pos += 2
 			return scan_res(.ge, '')
 		}
-	case `<`:
+	 }
+	 `<` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.le, '')
@@ -497,7 +537,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.lt, '')
 		}
-	case `=`:
+	 }
+	 `=` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.eq, '')
@@ -509,7 +550,8 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.assign, '')
 		}
-	case `:`:
+	 }
+	 `:` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.decl_assign, '')
@@ -517,9 +559,11 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.colon, '')
 		}
-	case `;`:
+	 }
+	 `;` {
 		return scan_res(.semicolon, '')
-	case `!`:
+	 }
+	 `!` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.ne, '')
@@ -527,9 +571,11 @@ fn (s mut Scanner) scan() ScanRes {
 		else {
 			return scan_res(.not, '')
 		}
-	case `~`:
+	 }
+	 `~` {
 		return scan_res(.bit_not, '')
-	case `/`:
+	}
+	 `/` {
 		if nextc == `=` {
 			s.pos++
 			return scan_res(.div_assign, '')
@@ -537,7 +583,7 @@ fn (s mut Scanner) scan() ScanRes {
 		if nextc == `/` {
 			start := s.pos + 1
 			s.ignore_line()
-			s.line_comment = s.text.substr(start + 1, s.pos)
+			s.line_comment = s.text[start + 1..s.pos]
 			s.line_comment = s.line_comment.trim_space()
 			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 			// Skip the comment (return the next token)
@@ -568,16 +614,17 @@ fn (s mut Scanner) scan() ScanRes {
 			}
 			s.pos++
 			end := s.pos + 1
-			comm := s.text.substr(start, end)
+			comm := s.text[start..end]
 			s.fgenln(comm)
 			// Skip if not in fmt mode
 			return s.scan()
 		}
 		return scan_res(.div, '')
+	 }
 	}
 	$if windows {
 		if c == `\0` {
-			return scan_res(.eof, '')
+			return s.end_of_file()
 		}
 	}
 	mut msg := 'invalid character `${c.str()}`'
@@ -585,7 +632,7 @@ fn (s mut Scanner) scan() ScanRes {
 		msg += ', use \' to denote strings'
 	}
 	s.error(msg)
-	return scan_res(.eof, '')
+	return s.end_of_file()
 }
 
 fn (s &Scanner) current_column() int {
@@ -665,7 +712,7 @@ fn (s mut Scanner) ident_string() string {
 	}
 	if start > s.pos{}
 	else {
-		lit = s.text.substr(start, end)
+		lit = s.text[start..end]
 	}
 	return lit
 }
@@ -691,7 +738,7 @@ fn (s mut Scanner) ident_char() string {
 		}
 	}
 	len--
-	c := s.text.substr(start + 1, s.pos)
+	c := s.text[start + 1..s.pos]
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
@@ -763,7 +810,9 @@ fn (s mut Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends   << s.pos
-	s.nlines++
+	if s.line_nr > s.nlines { 
+		s.nlines = s.line_nr
+	}
 }
 
 fn (s Scanner) line(n int) string {
@@ -773,7 +822,7 @@ fn (s Scanner) line(n int) string {
 		nline_start := if n == 0 { 0 } else { s.line_ends[ n - 1 ] }
 		nline_end   := s.line_ends[n]
 		if nline_start <= nline_end {
-			res = s.text.substr( nline_start, nline_end )
+			res = s.text[nline_start..nline_end]
 		}
 	}	
 	return res.trim_right('\r\n').trim_left('\r\n')
@@ -783,6 +832,7 @@ fn is_name_char(c byte) bool {
 	return c.is_letter() || c == `_`
 }
 
+[inline]
 fn is_nl(c byte) bool {
 	return c == `\r` || c == `\n`
 }

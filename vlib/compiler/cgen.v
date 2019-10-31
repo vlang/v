@@ -25,6 +25,7 @@ mut:
 	consts_init  []string
 	pass         Pass
 	nogen           bool
+	prev_tmps    []string
 	tmp_line        string
 	cur_line        string
 	prev_line       string
@@ -105,9 +106,7 @@ fn (g mut CGen) save() {
 
 fn (g mut CGen) start_tmp() {
 	if g.is_tmp {
-		println(g.tmp_line)
-		println('start_tmp() already started. cur_line="$g.cur_line"')
-		exit(1)
+		g.prev_tmps << g.tmp_line
 	}
 	// kg.tmp_lines_pos++
 	g.tmp_line = ''
@@ -115,9 +114,14 @@ fn (g mut CGen) start_tmp() {
 }
 
 fn (g mut CGen) end_tmp() string {
-	g.is_tmp = false
 	res := g.tmp_line
-	g.tmp_line = ''
+	if g.prev_tmps.len > 0 {
+		g.tmp_line = g.prev_tmps.last()
+		g.prev_tmps = g.prev_tmps[0..g.prev_tmps.len-1]
+	} else {
+		g.tmp_line = ''
+		g.is_tmp = false
+	}
 	return res
 }
 
@@ -136,12 +140,12 @@ fn (g mut CGen) cut() string {
 	pos := g.cut_pos
 	g.cut_pos = 0
 	if g.is_tmp {
-		res := g.tmp_line.right(pos)
-		g.tmp_line = g.tmp_line.left(pos)
+		res := g.tmp_line[pos..]
+		g.tmp_line = g.tmp_line[..pos]
 		return res
 	}
-	res := g.cur_line.right(pos)
-	g.cur_line = g.cur_line.left(pos)
+	res := g.cur_line[pos..]
+	g.cur_line = g.cur_line[..pos]
 	return res
 }
 
@@ -151,13 +155,13 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 	}
 	// g.lines.set(pos, val)
 	if g.is_tmp {
-		left := g.tmp_line.left(pos)
-		right := g.tmp_line.right(pos)
+		left := g.tmp_line[..pos]
+		right := g.tmp_line[pos..]
 		g.tmp_line = '${left}${val}${right}'
 		return
 	}
-	left := g.cur_line.left(pos)
-	right := g.cur_line.right(pos)
+	left := g.cur_line[..pos]
+	right := g.cur_line[pos..]
 	g.cur_line = '${left}${val}${right}'
 	// g.genln('')
 }
@@ -267,38 +271,51 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 		verror(err)
 		return
 	}
+	if res.exit_code != 0 {
+		println('failed thirdparty object build cmd: $cmd')
+		verror(res.output)
+		return
+	}
 	println(res.output)
 }
 
 fn os_name_to_ifdef(name string) string {
-	switch name {
-		case 'windows': return '_WIN32'
-		case 'mac': return '__APPLE__'
-		case 'linux': return '__linux__'
-		case 'freebsd': return '__FreeBSD__'
-		case 'openbsd': return '__OpenBSD__'
-		case 'netbsd': return '__NetBSD__'
-		case 'dragonfly': return '__DragonFly__'
-		case 'msvc': return '_MSC_VER'
-		case 'android': return '__BIONIC__'
-		case 'js': return '_VJS'
-		case 'solaris': return '__sun'
+	match name {
+		 'windows' { return '_WIN32'}
+		 'mac' { return '__APPLE__'}
+		 'linux' { return '__linux__'}
+		 'freebsd' { return '__FreeBSD__'}
+		 'openbsd'{  return '__OpenBSD__'}
+		 'netbsd'{ return '__NetBSD__'}
+		 'dragonfly'{ return '__DragonFly__'}
+		 'msvc'{ return '_MSC_VER'}
+		 'android'{ return '__BIONIC__'}
+		 'js' {return '_VJS'}
+		 'solaris'{ return '__sun'}
 	}
 	verror('bad os ifdef name "$name"')
 	return ''
 }
 
 fn platform_postfix_to_ifdefguard(name string) string {
-	switch name {
-		case '.v': return '' // no guard needed
-		case '_win.v': return '#ifdef _WIN32'
-		case '_nix.v': return '#ifndef _WIN32'
-		case '_lin.v': return '#ifdef __linux__'
-		case '_mac.v': return '#ifdef __APPLE__'
-		case '_solaris.v': return '#ifdef __sun'
+	s := match name {
+		'.v'                   { '' }// no guard needed
+		'_win.v', '_windows.v' { '#ifdef _WIN32' }
+		'_nix.v'               { '#ifndef _WIN32' }
+		'_lin.v', '_linux.v'   { '#ifdef __linux__' }
+		'_mac.v', '_darwin.v'  { '#ifdef __APPLE__' }
+		'_solaris.v'           { '#ifdef __sun' }
+		else {
+			
+			//verror('bad platform_postfix "$name"')
+			// TODO
+			''
+		}
 	}
-	verror('bad platform_postfix "$name"')
-	return ''
+	if s == '' {
+		verror('bad platform_postfix "$name"')
+	}	
+	return s
 }
 
 // C struct definitions, ordered
@@ -353,7 +370,10 @@ fn sort_structs(types []Type) []Type {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		verror('error: cgen.sort_structs() DGNAC.\nplease create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
+		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
+			dep_graph_sorted.display_cycles() +
+			'\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
+			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []Type
