@@ -172,8 +172,20 @@ fn (v mut V) cc() {
 				libs += ' ' + path
 			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				if path.ends_with('vlib/ui.o') {
+					vdir := os.dir(vexe)
+					println('copying ui...')
+					os.cp('$vdir/thirdparty/ui/ui.o', path)
+					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
+							'/vlib/ui.vh')
+					
+				}	else {
+					os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				}
 			}	
+			if path.ends_with('vlib/ui.o') {
+				a << '-framework Cocoa -framework Carbon'
+			}
 		}
 	}
 	if v.pref.sanitize {

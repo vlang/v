@@ -126,6 +126,15 @@ pub fn mv(old, new string) {
 	}
 }
 
+// TODO implement actual cp()
+pub fn cp(old, new string) {
+	$if windows {
+		panic('not implemented')
+	}	$else {
+		os.system('cp $old $new')
+	}	
+}
+
 fn vfopen(path, mode string) *C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
