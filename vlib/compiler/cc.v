@@ -65,6 +65,7 @@ fn (v mut V) cc() {
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
 	$if linux {
+	$if !android {
 		vdir := os.dir(vexe)
 		tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
 		//println('tcc third "$tcc_3rd"')
@@ -83,6 +84,7 @@ fn (v mut V) cc() {
 			//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
 			v.pref.ccompiler = tcc_path
 		}
+	}
 	}
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
