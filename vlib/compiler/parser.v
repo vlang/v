@@ -3372,7 +3372,7 @@ fn (p mut Parser) switch_statement() {
 		'https://vlang.io/docs#match')
 }
 
-// Returns typ if used as expession
+// Returns typ if used as expression
 fn (p mut Parser) match_statement(is_expr bool) string {
 	p.check(.key_match)
 	p.cgen.start_tmp()
@@ -3566,7 +3566,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 	if is_expr {
 		// we get here if no else found, ternary requires "else" branch
-		p.error('Match expession requires "else"')
+		p.error('Match expression requires "else"')
 	}
 
 	p.returns = false // only get here when no default, so return is not guaranteed
