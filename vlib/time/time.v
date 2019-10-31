@@ -206,7 +206,7 @@ pub fn convert_ctime(t tm) Time {
 // @return    string
 // @example   1980-07-11 21:23:42
 pub fn (t Time) format_ss() string {
-        return t.get_fmt_str(FormatDelimiter.hyphen, FormatTime.hhmmss24, FormatDate.yyyymmdd)
+        return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM in 24h
@@ -215,7 +215,7 @@ pub fn (t Time) format_ss() string {
 // @return    string
 // @example   1980-07-11 21:23
 pub fn (t Time) format() string {
-        return t.get_fmt_str(FormatDelimiter.hyphen, FormatTime.hhmm24, FormatDate.yyyymmdd)
+        return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
 }
 
 
@@ -229,7 +229,7 @@ pub fn (t Time) smonth() string {
 // @return  string
 // @example 21:04
 pub fn (t Time) hhmm() string {
-        return t.get_fmt_time_str(FormatTime.hhmm24)
+        return t.get_fmt_time_str(.hhmm24)
 }
 
 /*
@@ -243,7 +243,7 @@ fn (t Time) hhmm_tmp() string {
 // @return  string
 // @example 9:04 p.m.
 pub fn (t Time) hhmm12() string {
-        return t.get_fmt_time_str(FormatTime.hhmm12)
+        return t.get_fmt_time_str(.hhmm12)
 }
 
 // hhmmss   returns a string for t in the given format HH:MM:SS in 24h notation
@@ -251,7 +251,7 @@ pub fn (t Time) hhmm12() string {
 // @return  string
 // @example 21:04:03
 pub fn (t Time) hhmmss() string {
-        return t.get_fmt_time_str(FormatTime.hhmmss24)
+        return t.get_fmt_time_str(.hhmmss24)
 }
 
 // ymmdd    returns a string for t in the given format YYYY-MM-DD
@@ -259,7 +259,7 @@ pub fn (t Time) hhmmss() string {
 // @return  string
 // @example 2012-01-05
 pub fn (t Time) ymmdd() string {
-        return t.get_fmt_date_str(FormatDelimiter.hyphen, FormatDate.yyyymmdd)
+        return t.get_fmt_date_str(.hyphen, .yyyymmdd)
 }
 
 // ddmmy    returns a string for t in the given format DD.MM.YYYY
@@ -267,7 +267,7 @@ pub fn (t Time) ymmdd() string {
 // @return  string
 // @example 05.02.2012
 pub fn (t Time) ddmmy() string {
-        return t.get_fmt_date_str(FormatDelimiter.dot, FormatDate.ddmmyyyy)
+        return t.get_fmt_date_str(.dot, .ddmmyyyy)
 }
 
 // md       returns a string for t in the given format MMM D
@@ -275,7 +275,7 @@ pub fn (t Time) ddmmy() string {
 // @return  string
 // @example Jul 3
 pub fn (t Time) md() string {
-        return t.get_fmt_date_str(FormatDelimiter.space, FormatDate.mmmd) 
+        return t.get_fmt_date_str(.space, .mmmd) 
 }
 
 pub fn (t Time) clean() string {
@@ -285,7 +285,7 @@ pub fn (t Time) clean() string {
 	// }
 	// Today
 	if t.month == nowe.month && t.year == nowe.year && t.day == nowe.day {
-                return t.get_fmt_time_str(FormatTime.hhmm24)
+                return t.get_fmt_time_str(.hhmm24)
 	}
 	// This week
 	// if time.Since(t) < 24*7*time.Hour {
@@ -293,7 +293,7 @@ pub fn (t Time) clean() string {
 	// }
 	// This year
 	if t.year == nowe.year {
-                return t.get_fmt_str(FormatDelimiter.space, FormatTime.hhmm24, FormatDate.mmmd)
+                return t.get_fmt_str(.space, .hhmm24, .mmmd)
 	}
 	return t.format()
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
@@ -306,7 +306,7 @@ pub fn (t Time) clean12() string {
 	// }
 	// Today
 	if t.month == nowe.month && t.year == nowe.year && t.day == nowe.day {
-                return t.get_fmt_time_str(FormatTime.hhmm12)
+                return t.get_fmt_time_str(.hhmm12)
 	}
 	// This week
 	// if time.Since(t) < 24*7*time.Hour {
@@ -314,7 +314,7 @@ pub fn (t Time) clean12() string {
 	// }
 	// This year
 	if t.year == nowe.year {
-                return t.get_fmt_str(FormatDelimiter.space, FormatTime.hhmm12, FormatDate.mmmd)
+                return t.get_fmt_str(.space, .hhmm12, .mmmd)
 	}
 	return t.format()
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
@@ -496,7 +496,7 @@ pub fn days_in_month(month, year int) ?int {
 // @return            string
 // @example           21:23:42
 pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
-        if fmt_time == FormatTime.no_time {
+        if fmt_time == .no_time {
                 return ''
         }
 
@@ -528,7 +528,7 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 // @return            string
 // @example           11.07.1980
 pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate) string {
-        if fmt_date == FormatDate.no_date {
+        if fmt_date == .no_date {
                 return ''
         }
 
@@ -560,8 +560,8 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 // @return      string
 // @example     11.07.1980 21:23:42
 pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_date FormatDate) string {
-        if fmt_date == FormatDate.no_date {
-                if fmt_time == FormatTime.no_time {
+        if fmt_date == .no_date {
+                if fmt_time == .no_time {
                         // saving one function call although it's checked in
                         // t.get_fmt_time_str(fmt_time) in the beginning
                         return ''
@@ -569,7 +569,7 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
                         return t.get_fmt_time_str(fmt_time)
                 }
         } else {
-                if fmt_time != FormatTime.no_time {
+                if fmt_time != .no_time {
                         return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
                                + ' '
                                + t.get_fmt_time_str(fmt_time)
