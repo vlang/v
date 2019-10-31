@@ -151,20 +151,20 @@ pub fn read_line(prompt string) ?string {
 
 fn (r Readline) analyse(c int) Action {
   match c {
-    `\0`  { return Action.eof }
-    0x3   { return Action.eof } // End of Text
-    0x4   { return Action.eof } // End of Transmission
-    255   { return Action.eof }
-    `\n`  { return Action.commit_line }
-    `\r`  { return Action.commit_line }
-    `\f`  { return Action.clear_screen } // CTRL + L
-    `\b`  { return Action.delete_left } // Backspace
-    127   { return Action.delete_left } // DEL
+    `\0`  { return .eof }
+    0x3   { return .eof } // End of Text
+    0x4   { return .eof } // End of Transmission
+    255   { return .eof }
+    `\n`  { return .commit_line }
+    `\r`  { return .commit_line }
+    `\f`  { return .clear_screen } // CTRL + L
+    `\b`  { return .delete_left } // Backspace
+    127   { return .delete_left } // DEL
     27    { return r.analyse_control() } // ESC
-    1     { return Action.move_cursor_begining } // ^A
-    5     { return Action.move_cursor_end } // ^E
-    26    { return Action.suspend } // CTRL + Z, SUB
-    else  { return if c >= ` ` { Action.insert_character } else { Action.nothing } }
+    1     { return .move_cursor_begining } // ^A
+    5     { return .move_cursor_end } // ^E
+    26    { return .suspend } // CTRL + Z, SUB
+    else  { return if c >= ` ` { .insert_character } else { Action.nothing } }
   }
 }
 
