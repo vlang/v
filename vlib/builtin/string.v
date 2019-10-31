@@ -4,7 +4,7 @@
 
 module builtin
 
-//import strconv
+import strconv
 
 /*
 NB: A V string should be/is immutable from the point of view of
@@ -203,23 +203,7 @@ pub fn (s string) int() int {
 
 
 pub fn (s string) i64() i64 {
-	mut neg := false
-	mut i := 0
-	if s[0] == `-` {
-		neg = true
-		i++
-	}
-	else if s[0] == `+` {
-		i++
-	}
-	mut n := i64(0)
-	for C.isdigit(s[i]) {
-		n = i64(10) * n - i64(s[i] - `0`)
-		i++
-	}
-	return if neg { n } else { -n }
-	//return strconv.parse_int(s, 0, 64)
-	//return C.atoll(*char(s.str))
+	return strconv.parse_int(s, 0, 64)
 }
 
 pub fn (s string) f32() f32 {
@@ -251,23 +235,7 @@ pub fn (s string) u32() u32 {
 }
 
 pub fn (s string) u64() u64 {
-	mut neg := false
-	mut i := 0
-	if s[0] == `-` {
-		neg = true
-		i++
-	}
-	else if s[0] == `+` {
-		i++
-	}
-	mut n := u64(0)
-	for C.isdigit(s[i]) {
-		n = u64(10) * n - u64(s[i] - `0`)
-		i++
-	}
-	return if neg { n } else { -n }
-	//return C.atoll(*char(s.str))
-	//return strconv.parse_uint(s, 0, 64)
+	return strconv.parse_uint(s, 0, 64)
 }
 
 // ==
