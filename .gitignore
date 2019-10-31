@@ -19,6 +19,8 @@ vjs
 *.exp
 *.ilk
 *.pdb
+examples/sqlite
+users.db
 
 #
 # macOS.gitignore
