@@ -59,9 +59,9 @@ fn test_format_ss() {
                             second:   42,
                             uni:      0 }
 
-        assert  '11.07.1980 21:23:42' == t.get_fmt_str(time.FormatDelimiter.dot,
-                                                       time.FormatTime.hhmmss24,
-                                                       time.FormatDate.ddmmyyyy)
+        assert  '11.07.1980 21:23:42' == t.get_fmt_str(.dot,
+                                                       .hhmmss24,
+                                                       .ddmmyyyy)
 }
 
 fn test_format() {
@@ -73,9 +73,9 @@ fn test_format() {
                             second:   42,
                             uni:      0 }
 
-        assert  '11.07.1980 21:23' == t.get_fmt_str(time.FormatDelimiter.dot,
-                                                    time.FormatTime.hhmm24,
-                                                    time.FormatDate.ddmmyyyy)
+        assert  '11.07.1980 21:23' == t.get_fmt_str(.dot,
+                                                    .hhmm24,
+                                                    .ddmmyyyy)
 }
 
 fn test_hhmm() {
@@ -87,7 +87,7 @@ fn test_hhmm() {
                             second:   42,
                             uni:      0 }
 
-        assert  '21:23' == t.get_fmt_time_str(time.FormatTime.hhmm24)
+        assert  '21:23' == t.get_fmt_time_str(.hhmm24)
 }
 
 fn test_hhmm12() {
@@ -99,7 +99,7 @@ fn test_hhmm12() {
                             second:   42,
                             uni:      0 }
 
-        assert  '9:23 p.m.' == t.get_fmt_time_str(time.FormatTime.hhmm12)
+        assert  '9:23 p.m.' == t.get_fmt_time_str(.hhmm12)
 }
 
 fn test_hhmmss() {
@@ -111,7 +111,7 @@ fn test_hhmmss() {
                             second:   42,
                             uni:      0 }
 
-        assert  '21:23:42' == t.get_fmt_time_str(time.FormatTime.hhmmss24)
+        assert  '21:23:42' == t.get_fmt_time_str(.hhmmss24)
 }
 
 fn test_ymmdd() {
@@ -123,8 +123,8 @@ fn test_ymmdd() {
                             second:   42,
                             uni:      0 }
 
-        assert  '1980-07-11' == t.get_fmt_date_str(time.FormatDelimiter.hyphen,
-                                                   time.FormatDate.yyyymmdd)
+        assert  '1980-07-11' == t.get_fmt_date_str(.hyphen,
+                                                   .yyyymmdd)
 }
 
 fn test_ddmmy() {
@@ -136,8 +136,8 @@ fn test_ddmmy() {
                             second:   42,
                             uni:      0 }
 
-        assert  '11.07.1980' == t.get_fmt_date_str(time.FormatDelimiter.dot,
-                                                   time.FormatDate.ddmmyyyy)
+        assert  '11.07.1980' == t.get_fmt_date_str(.dot,
+                                                   .ddmmyyyy)
 }
 
 fn test_md() {
@@ -149,8 +149,8 @@ fn test_md() {
                             second:   42,
                             uni:      0 }
 
-        assert 'Jul 11' == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                              time.FormatDate.mmmd)
+        assert 'Jul 11' == t.get_fmt_date_str(.space,
+                                              .mmmd)
 }
 
 fn test_get_fmt_time_str() {
@@ -162,10 +162,10 @@ fn test_get_fmt_time_str() {
                             second:   42,
                             uni:      0 }
 
-        assert  '21:23:42' == t.get_fmt_time_str(time.FormatTime.hhmmss24)
-        assert  '21:23' == t.get_fmt_time_str(time.FormatTime.hhmm24)
-        assert  '9:23:42 p.m.' == t.get_fmt_time_str(time.FormatTime.hhmmss12)
-        assert  '9:23 p.m.' == t.get_fmt_time_str(time.FormatTime.hhmm12)
+        assert  '21:23:42' == t.get_fmt_time_str(.hhmmss24)
+        assert  '21:23' == t.get_fmt_time_str(.hhmm24)
+        assert  '9:23:42 p.m.' == t.get_fmt_time_str(.hhmmss12)
+        assert  '9:23 p.m.' == t.get_fmt_time_str(.hhmm12)
 }
 
 fn test_get_fmt_date_str() {
@@ -177,46 +177,46 @@ fn test_get_fmt_date_str() {
                             second:   42,
                             uni:      0 }
 
-        assert  '11.07.1980' == t.get_fmt_date_str(time.FormatDelimiter.dot,
-                                                   time.FormatDate.ddmmyyyy)
-        assert  '11/07/1980' == t.get_fmt_date_str(time.FormatDelimiter.slash,
-                                                   time.FormatDate.ddmmyyyy)
-        assert  '11-07-1980' == t.get_fmt_date_str(time.FormatDelimiter.hyphen,
-                                                   time.FormatDate.ddmmyyyy)
-        assert  '11 07 1980' == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                   time.FormatDate.ddmmyyyy)
-        assert  '07.11.1980' == t.get_fmt_date_str(time.FormatDelimiter.dot,
-                                                   time.FormatDate.mmddyyyy)
-        assert  '07/11/1980' == t.get_fmt_date_str(time.FormatDelimiter.slash,
-                                                   time.FormatDate.mmddyyyy)
-        assert  '07-11-1980' == t.get_fmt_date_str(time.FormatDelimiter.hyphen,
-                                                   time.FormatDate.mmddyyyy)
-        assert  '07 11 1980' == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                   time.FormatDate.mmddyyyy)
-        assert  '11.07.80'   == t.get_fmt_date_str(time.FormatDelimiter.dot,
-                                                   time.FormatDate.ddmmyy)
-        assert  '11/07/80'   == t.get_fmt_date_str(time.FormatDelimiter.slash,
-                                                   time.FormatDate.ddmmyy)
-        assert  '11-07-80'   == t.get_fmt_date_str(time.FormatDelimiter.hyphen,
-                                                   time.FormatDate.ddmmyy)
-        assert  '11 07 80'   == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                   time.FormatDate.ddmmyy)
-        assert  '07.11.80'   == t.get_fmt_date_str(time.FormatDelimiter.dot,
-                                                   time.FormatDate.mmddyy)
-        assert  '07/11/80'   == t.get_fmt_date_str(time.FormatDelimiter.slash,
-                                                   time.FormatDate.mmddyy)
-        assert  '07-11-80'   == t.get_fmt_date_str(time.FormatDelimiter.hyphen,
-                                                   time.FormatDate.mmddyy)
-        assert  '07 11 80'   == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                   time.FormatDate.mmddyy)
-        assert  'Jul 11'     == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                   time.FormatDate.mmmd)
-        assert  'Jul 11'     == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                   time.FormatDate.mmmdd)
-        assert  'Jul 11 1980' == t.get_fmt_date_str(time.FormatDelimiter.space,
-                                                    time.FormatDate.mmmddyyyy)
-        assert  '1980-07-11'  == t.get_fmt_date_str(time.FormatDelimiter.hyphen,
-                                                    time.FormatDate.yyyymmdd)
+        assert  '11.07.1980' == t.get_fmt_date_str(.dot,
+                                                   .ddmmyyyy)
+        assert  '11/07/1980' == t.get_fmt_date_str(.slash,
+                                                   .ddmmyyyy)
+        assert  '11-07-1980' == t.get_fmt_date_str(.hyphen,
+                                                   .ddmmyyyy)
+        assert  '11 07 1980' == t.get_fmt_date_str(.space,
+                                                   .ddmmyyyy)
+        assert  '07.11.1980' == t.get_fmt_date_str(.dot,
+                                                   .mmddyyyy)
+        assert  '07/11/1980' == t.get_fmt_date_str(.slash,
+                                                   .mmddyyyy)
+        assert  '07-11-1980' == t.get_fmt_date_str(.hyphen,
+                                                   .mmddyyyy)
+        assert  '07 11 1980' == t.get_fmt_date_str(.space,
+                                                   .mmddyyyy)
+        assert  '11.07.80'   == t.get_fmt_date_str(.dot,
+                                                   .ddmmyy)
+        assert  '11/07/80'   == t.get_fmt_date_str(.slash,
+                                                   .ddmmyy)
+        assert  '11-07-80'   == t.get_fmt_date_str(.hyphen,
+                                                   .ddmmyy)
+        assert  '11 07 80'   == t.get_fmt_date_str(.space,
+                                                   .ddmmyy)
+        assert  '07.11.80'   == t.get_fmt_date_str(.dot,
+                                                   .mmddyy)
+        assert  '07/11/80'   == t.get_fmt_date_str(.slash,
+                                                   .mmddyy)
+        assert  '07-11-80'   == t.get_fmt_date_str(.hyphen,
+                                                   .mmddyy)
+        assert  '07 11 80'   == t.get_fmt_date_str(.space,
+                                                   .mmddyy)
+        assert  'Jul 11'     == t.get_fmt_date_str(.space,
+                                                   .mmmd)
+        assert  'Jul 11'     == t.get_fmt_date_str(.space,
+                                                   .mmmdd)
+        assert  'Jul 11 1980' == t.get_fmt_date_str(.space,
+                                                    .mmmddyyyy)
+        assert  '1980-07-11'  == t.get_fmt_date_str(.hyphen,
+                                                    .yyyymmdd)
 }
 
 fn test_get_fmt_str() {
@@ -231,7 +231,7 @@ fn test_get_fmt_str() {
         // Since get_fmt_time_str and get_fmt_date_str do have comprehensive
         // tests I don't want to exaggerate here with all possible
         // combinations.
-        assert  '11.07.1980 21:23:42' == t.get_fmt_str(time.FormatDelimiter.dot,
-                                                       time.FormatTime.hhmmss24,
-                                                       time.FormatDate.ddmmyyyy)
+        assert  '11.07.1980 21:23:42' == t.get_fmt_str(.dot,
+                                                       .hhmmss24,
+                                                       .ddmmyyyy)
 }
