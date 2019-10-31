@@ -58,7 +58,7 @@ fn main() {
 		return
 	}
 	else if 'test' in commands {
-		compiler.test_v()
+		compiler.launch_tool('vtest')
 		return
 	}
 	// Generate the docs and exit

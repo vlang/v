@@ -1,4 +1,4 @@
-module compiler
+module main
 
 import (
 	os
@@ -22,7 +22,15 @@ pub fn new_test_sesion(vargs string) TestSession {
 	}
 }
 
-pub fn test_v() {
+fn vexe_path() string {
+	// NB: tools extracted from v require that the first
+	// argument to them to be the v executable location.
+	// They are usually launched by vlib/compiler/vtools.v,
+	// launch_tool/1 , which provides it.
+	return os.args[1]
+}
+
+pub fn main() {
 	args := os.args
 	if args.last() == 'test' {
 		println('Usage:')
