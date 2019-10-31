@@ -17,7 +17,7 @@ pub:
 }
 
 // Private function, used by V (`nums := []int`)
-fn new_array(mylen, cap, elm_size int) array {
+pub fn new_array(mylen, cap, elm_size int) array {
 	arr := array {
 		len: mylen
 		cap: cap
@@ -379,23 +379,23 @@ fn array_eq<T>(a1, a2 []T) bool {
 	return true
 }
 
-pub fn (a []int) eq(a2 []int) bool { 
-	return array_eq(a, a2) 
+pub fn (a []int) eq(a2 []int) bool {
+	return array_eq(a, a2)
 }
 
-pub fn (a []i64) eq(a2 []i64) bool { 
-	return array_eq(a, a2) 
+pub fn (a []i64) eq(a2 []i64) bool {
+	return array_eq(a, a2)
 }
 
-pub fn (a []string) eq(a2 []string) bool { 
-	return array_eq(a, a2) 
+pub fn (a []string) eq(a2 []string) bool {
+	return array_eq(a, a2)
 }
 
-pub fn (a []byte) eq(a2 []byte) bool { 
-	return array_eq(a, a2) 
+pub fn (a []byte) eq(a2 []byte) bool {
+	return array_eq(a, a2)
 }
 
-pub fn (a []f32) eq(a2 []f32) bool { 
-	return array_eq(a, a2) 
+pub fn (a []f32) eq(a2 []f32) bool {
+	return array_eq(a, a2)
 }
 

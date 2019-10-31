@@ -508,6 +508,7 @@ fn (p mut Parser) import_statement() {
 }
 
 fn (p mut Parser) const_decl() {
+	//println('const decl $p.file_path')
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
@@ -534,10 +535,16 @@ fn (p mut Parser) const_decl() {
 		name = p.prepend_mod(name)
 		mut typ := ''
 		if p.is_vh {
-			// .vh files don't have const values, just types: `const (a int)`
+			//println('CONST VH $p.file_path')
+			// .vh files may not have const values, just types: `const (a int)`
 			if p.tok == .assign {
 				p.next()
+				// Otherwise parse the expression to get its type,
+				// but don't generate it. Const's value is generated
+				// in "module.o".
+				p.cgen.nogen = true
 				typ = p.expression()
+				p.cgen.nogen = false
 			} else {
 				typ = p.get_type()
 			}
@@ -566,6 +573,13 @@ fn (p mut Parser) const_decl() {
 				}
 			}
 		}
+		if p.pass == .main && p.cgen.nogen && p.pref.build_mode == .build_module {
+			// We are building module `ui`, but are parsing `gx` right now
+			// (because of nogen). We need to import gx constants with `extern`.
+			//println('extern const mod=$p.mod name=$name')
+			p.cgen.consts << ('extern ' +
+				p.table.cgen_name_type_pair(name, typ)) + ';'
+		}
 		if p.pass == .main && !p.cgen.nogen {
 			// TODO hack
 			// cur_line has const's value right now. if it's just a number, then optimize generation:
@@ -584,6 +598,7 @@ fn (p mut Parser) const_decl() {
 			}
 			else {
 				p.cgen.consts << p.table.cgen_name_type_pair(name, typ) + ';'
+				//println('adding to init "$name"')
 				p.cgen.consts_init << '$name = $p.cgen.cur_line;'
 			}
 			p.cgen.resetln('')

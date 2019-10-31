@@ -44,6 +44,7 @@ mut:
 	body_idx	  int		// idx of the first body statement
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
+	is_used bool // so that we can skip unused fns in resulting C code
 }
 
 struct TypeInst {
@@ -193,9 +194,10 @@ fn (p mut Parser) fn_decl() {
 	else {
 	}
 	*/
+	is_pub := p.tok == .key_pub
 	mut f := Fn{
 		mod: p.mod
-		is_public: p.tok == .key_pub || p.is_vh // functions defined in .vh are always public
+		is_public: is_pub || p.is_vh // functions defined in .vh are always public
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
 		comptime_define: if p.attr.starts_with('if ') { p.attr.right(3) } else { '' }
@@ -204,12 +206,13 @@ fn (p mut Parser) fn_decl() {
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
 		println('INFO: run `v -live program.v` if you want to use [live] functions')
 	}
-	if f.is_public {
+	if is_pub {
 		p.next()
 	}
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
 	p.next()
+	
 	// Method receiver
 	mut receiver_typ := ''
 	if p.tok == .lpar {
@@ -277,9 +280,9 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	//if p.pref.is_verbose {
+	if p.is_vh {
 	//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
-	//}
+	}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -691,6 +694,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 			p.error('use `malloc()` instead of `C.malloc()`')
 		}
 	}
+	f.is_used = true
 	cgen_name := p.table.fn_gen_name(f)
 	p.next()		// fn name
 	if p.tok == .lt {

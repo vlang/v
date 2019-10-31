@@ -4,6 +4,7 @@ module darwin
 #include <CoreFoundation/CoreFoundation.h>
 
 #flag -framework Cocoa
+#flag -framework Carbon
 
 struct C.NSString { }
 

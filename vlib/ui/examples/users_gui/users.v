@@ -1,3 +1,5 @@
+module main
+
 import (
 	ui
 	gx
