@@ -282,7 +282,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-fn popen(path string) *C.FILE {
+fn vpopen(path string) *C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -313,7 +313,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	}
 }
 
-fn pclose(f *C.FILE) int {
+fn vpclose(f *C.FILE) int {
 	$if windows {
 		return int( C._pclose(f) )
 	}
@@ -333,7 +333,7 @@ pub:
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
 	pcmd := '$cmd 2>&1'
-	f := popen(pcmd)
+	f := vpopen(pcmd)
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
@@ -343,7 +343,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)
+	exit_code := vpclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}

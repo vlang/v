@@ -64,27 +64,31 @@ fn (v mut V) cc() {
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
-	$if linux {
-	$if !android {
-		vdir := os.dir(vexe)
-		tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
-		//println('tcc third "$tcc_3rd"')
-		tcc_path := '/var/tmp/tcc/bin/tcc'
-		if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
-			//println('moving tcc')
-			// if there's tcc in thirdparty/, that means this is
-			// a prebuilt V_linux.zip.
-			// Until the libtcc1.a bug is fixed, we neeed to move
-			// it to /var/tmp/
-			os.system('mv $vdir/thirdparty/tcc /var/tmp/')
+	if v.pref.fast {
+		$if linux {
+		$if !android {
+			vdir := os.dir(vexe)
+			tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
+			//println('tcc third "$tcc_3rd"')
+			tcc_path := '/var/tmp/tcc/bin/tcc'
+			if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
+				//println('moving tcc')
+				// if there's tcc in thirdparty/, that means this is
+				// a prebuilt V_linux.zip.
+				// Until the libtcc1.a bug is fixed, we neeed to move
+				// it to /var/tmp/
+				os.system('mv $vdir/thirdparty/tcc /var/tmp/')
+			}
+			if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
+				// TODO tcc bug, needs an empty libtcc1.a fila
+				//os.mkdir('/var/tmp/tcc/lib/tcc/')
+				//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
+				v.pref.ccompiler = tcc_path
+			}
 		}
-		if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
-			// TODO tcc bug, needs an empty libtcc1.a fila
-			//os.mkdir('/var/tmp/tcc/lib/tcc/')
-			//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
-			v.pref.ccompiler = tcc_path
-		}
-	}
+		} $else {
+			verror('-fast is only supported on Linux right now')
+		}	
 	}
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
@@ -149,7 +153,8 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_cache {
-		builtin_o_path := '$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}builtin.o'
+		builtin_o_path := os.join(v_modules_path, 'cache', 'vlib', 'builtin.o')
+		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
