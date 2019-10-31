@@ -21,42 +21,8 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
-	tmp := p.get_tmp()
 	if or_else {
-		// Option_User tmp = get_user(1);
-		// if (!tmp.ok) { or_statement }
-		// User user = *(User*)tmp.data;
-		// p.assigned_var = ''
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		if !typ.starts_with('Option_') {
-			p.error('`or` block cannot be applied to non-optional type')
-		}
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.register_var(Var {
-			name: 'errcode'
-			typ: 'int'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
-		p.genln('int    errcode = $tmp . ecode;')
-		p.statements()
-		p.genln('$typ $name = *($typ*) $tmp . data;')
-		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-			p.error('`or` block must return/exit/continue/break/panic')
-		}
-		p.returns = false
-		return typ
+		return p.gen_handle_option_or_else(typ, name, pos)
 	}
 	gen_name := p.table.var_cgen_name(name)
 	mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ)
@@ -102,35 +68,12 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	is_indexer := p.peek() == .lsbr
 	is_fn_call, next_expr := p.is_next_expr_fn_call()
 	pos := p.cgen.add_placeholder()
-	mut typ := p.bool_expression()
+	typ := p.bool_expression()
 	if !is_indexer && !is_fn_call {
 		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
 	}
-	tmp := p.get_tmp()
-	// handle or
 	if p.tok == .key_orelse {
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.register_var(Var {
-			name: 'errcode'
-			typ: 'int'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
-		p.genln('int    errcode = $tmp . ecode;')
-		p.statements()
-		p.returns = false
+		p.gen_handle_option_or_else(typ, '', pos)
 	} else {
 		if is_fn_call {
 			p.gen(';')
@@ -138,6 +81,44 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 			p.cgen.resetln('{$typ _ = $p.cgen.cur_line;}')
 		}
 	}
+}
+
+fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
+	mut typ := _typ
+	if !typ.starts_with('Option_') {
+		p.error('`or` block cannot be applied to non-optional type')
+	}
+	is_assign := name.len > 0
+	tmp := p.get_tmp()
+	p.cgen.set_placeholder(fn_call_ph, '$typ $tmp = ')
+	typ = typ[7..]
+	p.genln(';')
+	p.check(.key_orelse)
+	p.check(.lcbr)
+	p.register_var(Var {
+		name: 'err'
+		typ: 'string'
+		is_mut: false
+		is_used: true
+	})
+	p.register_var(Var {
+		name: 'errcode'
+		typ: 'int'
+		is_mut: false
+		is_used: true
+	})
+	p.genln('if (!$tmp .ok) {')
+	p.genln('string err = $tmp . error;')
+	p.genln('int errcode = $tmp . ecode;')
+	p.statements()
+	if is_assign {
+		p.genln('$typ $name = *($typ*) $tmp . data;')
+	}
+	if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
+		p.error('`or` block must return/exit/continue/break/panic')
+	}
+	p.returns = false
+	return typ
 }
 
 fn types_to_c(types []Type, table &Table) string {
