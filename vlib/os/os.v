@@ -313,7 +313,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	}
 }
 
-fn pclose(f *C.FILE) int {
+fn vpclose(f *C.FILE) int {
 	$if windows {
 		return int( C._pclose(f) )
 	}
@@ -343,7 +343,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)
+	exit_code := vpclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}
