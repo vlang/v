@@ -90,7 +90,7 @@ fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
 	return arr
 }
 
-// array.repeat returns new array with the given array elements 
+// array.repeat returns new array with the given array elements
 // repeated `nr_repeat` times
 pub fn (a array) repeat(nr_repeats int) array {
 	if nr_repeats < 0 {
@@ -184,7 +184,7 @@ pub fn (a array) left(n int) array {
 }
 
 // array.right returns an array using same buffer as the given array
-// but starting with the element of the given array beyond the index `n`. 
+// but starting with the element of the given array beyond the index `n`.
 // If `n` is bigger or equal to the length of the given array,
 // returns an empty array of the same type as the given array.
 pub fn (a array) right(n int) array {
@@ -204,8 +204,8 @@ fn (a array) slice2(start, _end int, end_max bool) array {
 }
 
 // array.slice returns an array using the same buffer as original array
-// but starting from the `start` element and ending with the element before 
-// the `end` element of the original array with the length and capacity 
+// but starting from the `start` element and ending with the element before
+// the `end` element of the original array with the length and capacity
 // set to the number of the elements in the slice.
 pub fn (a array) slice(start, _end int) array {
 	mut end := _end
@@ -251,7 +251,7 @@ pub fn (a mut array) push_many(val voidptr, size int) {
 	a.len += size
 }
 
-// array.reverse returns a new array with the elements of 
+// array.reverse returns a new array with the elements of
 // the original array in reverse order.
 pub fn (a array) reverse() array {
 	arr := array {
@@ -325,7 +325,7 @@ pub fn (a []bool) str() string {
 	return sb.str()
 }
 
-// []byte.hex returns a string with the hexadecimal representation 
+// []byte.hex returns a string with the hexadecimal representation
 // of the byte elements of the array
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len*2+1)

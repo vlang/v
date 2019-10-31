@@ -114,6 +114,7 @@ pub mut:
 						 // work on the builtin module itself.
 	//generating_vh bool
 	comptime_define string  // -D vfmt for `if $vfmt {`
+	fast bool // use tcc/x64 codegen
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -930,6 +931,7 @@ pub fn new_v(args[]string) &V {
 		is_run: 'run' in args
 		autofree: '-autofree' in args
 		compress: '-compress' in args
+		fast: '-fast' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
