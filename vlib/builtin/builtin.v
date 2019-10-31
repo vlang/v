@@ -186,7 +186,7 @@ pub fn free(ptr voidptr) {
 	C.free(ptr)
 }
 
-fn memdup(src voidptr, sz int) voidptr {
+pub fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }

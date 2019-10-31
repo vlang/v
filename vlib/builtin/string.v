@@ -41,7 +41,7 @@ NB: A V string should be/is immutable from the point of view of
     when used with modules using C functions (for example os and so on).
 */
 
-import strconv
+//import strconv
 
 pub struct string {
 //mut:
@@ -84,7 +84,7 @@ pub fn tos_clone(s byteptr) string {
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts.
 // Used only internally.
-fn tos2(s byteptr) string {
+pub fn tos2(s byteptr) string {
 	if s == 0 {
 		panic('tos2: nil string')
 	}
@@ -94,7 +94,7 @@ fn tos2(s byteptr) string {
 	}
 }
 
-fn tos3(s *C.char) string {
+pub fn tos3(s *C.char) string {
 	if s == 0 {
 		panic('tos3: nil string')
 	}
@@ -202,7 +202,8 @@ pub fn (s string) int() int {
 
 
 pub fn (s string) i64() i64 {
-	return strconv.parse_int(s, 0, 64)
+	//return strconv.parse_int(s, 0, 64)
+	return C.atoll(*char(s.str))
 }
 
 pub fn (s string) f32() f32 {
@@ -214,11 +215,13 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return strconv.parse_uint(s, 0, 32)
+	return C.atol(*char(s.str))
+	//return strconv.parse_uint(s, 0, 32)
 }
 
 pub fn (s string) u64() u64 {
-	return strconv.parse_uint(s, 0, 64)
+	return C.atoll(*char(s.str))
+	//return strconv.parse_uint(s, 0, 64)
 }
 
 // ==
