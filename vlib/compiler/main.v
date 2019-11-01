@@ -978,34 +978,6 @@ pub fn env_vflags_and_os_args() []string {
 	return args
 }
 
-pub fn update_v() {
-	println('Updating V...')
-	vroot := os.dir(vexe_path())
-	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
-		verror(err)
-		return
-	}
-	println(s.output)
-	$if windows {
-		v_backup_file := '$vroot/v_old.exe'
-		if os.file_exists( v_backup_file ) {
-			os.rm( v_backup_file )
-		}
-		os.mv('$vroot/v.exe', v_backup_file)
-		s2 := os.exec('"$vroot/make.bat"') or {
-			verror(err)
-			return
-		}
-		println(s2.output)
-	} $else {
-		s2 := os.exec('make -C "$vroot"') or {
-			verror(err)
-			return
-		}
-		println(s2.output)
-	}
-}
-
 pub fn vfmt(args[]string) {
 	file := args.last()
 	if !os.file_exists(file) {
