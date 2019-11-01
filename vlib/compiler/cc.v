@@ -7,6 +7,7 @@ module compiler
 import (
 	os
 	time
+	filepath
 )
 
 fn todo() {
@@ -152,7 +153,7 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_cache {
-		builtin_o_path := os.join(v_modules_path, 'cache', 'vlib', 'builtin.o')
+		builtin_o_path := filepath.join(v_modules_path, 'cache', 'vlib', 'builtin.o')
 		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
