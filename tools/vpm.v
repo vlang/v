@@ -39,10 +39,10 @@ fn main() {
 		'update'  { vpm_update(module_names) }
 		'remove'  { vpm_remove(module_names) }
 		else {
-			println('Error: you tried to run "v vpm $vpm_command"')
-			println('... but "v vpm" only knows about these commands:')
+			println('Error: you tried to run "v pm $vpm_command"')
+			println('... but "v pm" only knows about these commands:')
 			for validcmd in valid_vpm_commands {
-				println('    v vpm $validcmd')
+				println('    v pm $validcmd')
 			}
 			exit(3)
 		}
@@ -52,12 +52,12 @@ fn main() {
 fn vpm_search(module_names []string){
 	if user_asks_for_help(module_names) {
 		println('Usage:')
-		println('  v vpm search module [module] [module] [...]')
+		println('  v pm search module [module] [module] [...]')
 		println('  ^^^^^^^^^^^^ will show details about the modules you specified')
 		exit(0)
 	}
 	if module_names.len == 0 {
-		println('  v vpm search requires *at least one* module name')
+		println('  v pm search requires *at least one* module name')
 		exit(2)
 	}
 	todo('search')
@@ -66,12 +66,12 @@ fn vpm_search(module_names []string){
 fn vpm_install(module_names []string){
 	if user_asks_for_help(module_names) {
 		println('Usage:')
-		println('  v vpm install module [module] [module] [...]')
+		println('  v pm install module [module] [module] [...]')
 		println('  ^^^^^^^^^^^^^ will install the modules you specified')
 		exit(0)
 	}
 	if module_names.len == 0 {
-		println('  v vpm install requires *at least one* module name')
+		println('  v pm install requires *at least one* module name')
 		exit(2)
 	}
 
@@ -123,9 +123,9 @@ fn vpm_install(module_names []string){
 
 fn vpm_update(module_names []string){
 	println('Usage: ')
-	println(' a) v vpm update module [module] [module] [...]')
+	println(' a) v pm update module [module] [module] [...]')
 	println('    ^^^^^^^^^^^^ will update the listed modules to their latest versions')
-	println(' b) v vpm update')
+	println(' b) v pm update')
 	println('    ^^^^^^^^^^^^ will update ALL installed modules to their latest versions')
 	todo('update')
 }
@@ -133,9 +133,9 @@ fn vpm_update(module_names []string){
 fn vpm_remove(module_names []string){
 	if user_asks_for_help(module_names) {
 		println('Usage: ')
-		println(' a) v vpm remove module [module] [module] [...]')
+		println(' a) v pm remove module [module] [module] [...]')
 		println('    ^^^^^^^^^^^^ will remove the listed modules')
-		println(' b) v vpm remove')
+		println(' b) v pm remove')
 		println('    ^^^^^^^^^^^^ will remove ALL installed modules')
 		exit(0)
 	}
@@ -159,7 +159,7 @@ fn change_to_vmodules_dir() {
 }
 
 fn todo(vpm_command string){
-	println('TODO: v vpm $vpm_command')
+	println('TODO: v pm $vpm_command')
 	exit(4)
 }
 
@@ -169,11 +169,11 @@ fn user_asks_for_help(module_names []string) bool {
 
 fn vpm_help(module_names []string){
 	println('Usage:')
-	println('  a) v vpm help -- shows this help screen')
-	println('  b) v vpm search module [module] [module] [...]')
-	println('  c) v vpm install module [module] [module] [...]')
-	println('  d) v vpm update [module] [...]')
-	println('  e) v vpm remove [module] [...]')
+	println('  a) v pm help -- shows this help screen')
+	println('  b) v pm search module [module] [module] [...]')
+	println('  c) v pm install module [module] [module] [...]')
+	println('  d) v pm update [module] [...]')
+	println('  e) v pm remove [module] [...]')
 	println('')
-	println('  You can also pass -h or --help to each v vpm command, to see more details about it.')
+	println('  You can also pass -h or --help to each `v pm` command, to see more details about it.')
 }

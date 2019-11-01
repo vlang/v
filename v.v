@@ -38,7 +38,7 @@ fn main() {
 		compiler.launch_tool('vup')
 		return
 	}
-	else if 'vpm' in commands {
+	else if 'pm' in commands {
 		compiler.launch_tool('vpm')
 		return
 	}
