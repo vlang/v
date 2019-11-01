@@ -15,9 +15,19 @@ import (
 	They are used together with pre-compiled modules.
 */
 
+struct VhGen {
+mut:
+	i int // token index
+	consts strings.Builder
+	fns strings.Builder
+	types strings.Builder
+	tokens []Token
+	
+}	
+
 // `mod` == "vlib/os"
 fn generate_vh(mod string) {
-	println('\n\n\n\nGenerating a V header file for module `$mod`')
+	println('\n\n\n\n1Generating a V header file for module `$mod`')
 	vexe := os.executable()
 	full_mod_path := os.dir(vexe) + '/' + mod
 	mod_path := mod.replace('.', os.path_separator)
@@ -46,110 +56,120 @@ fn generate_vh(mod string) {
 		!it.ends_with('_windows.v') && !it.ends_with('_win.v') &&
 		!it.ends_with('_lin.v') &&
 		!it.contains('/examples') &&
+		!it.contains('_js.v') &&
 		!it.contains('/js')) // TODO merge once filter allows it
+	println('f:')
 	println(filtered)
 	mut v := new_v(['foo.v'])
 	//v.pref.generating_vh = true
-	mut consts := strings.new_builder(100)
-	mut fns := strings.new_builder(100)
-	mut types := strings.new_builder(100)
+	mut g := VhGen{
+	 consts : strings.new_builder(1000)
+	 fns : strings.new_builder(1000)
+	 types : strings.new_builder(1000)
+	}
 	for file in filtered {
 		mut p := v.new_parser_from_file(file)
 		p.scanner.is_vh = true
 		p.parse(.decl)
-		for i, tok in p.tokens {
-			if !p.tok.is_decl() {
+		g.tokens = p.tokens
+		g.i = 0
+		for ; g.i < p.tokens.len; g.i++ {
+			if !p.tokens[g.i].tok.is_decl() {
 				continue
 			}	
-			match tok.tok {
-				.key_fn     {	fns.writeln(generate_fn(p.tokens, i))	}
-				.key_const  {	consts.writeln(generate_const(p.tokens, i))	}
-				.key_struct {	types.writeln(generate_type(p.tokens, i))	}
-				.key_type   {	types.writeln(generate_alias(p.tokens, i))	}
+			match g.tokens[g.i].tok {
+				.key_fn     {	g.generate_fn()    }
+				.key_const  {	g.generate_const() }
+				.key_struct {	g.generate_type()  }
+				.key_type   {	g.generate_alias() }
 			}	
 		}	
 	}	
-	result := consts.str() + types.str() +
-		fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
+	result :=
+		g.types.str() +
+		g.consts.str() +
+		g.fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
 	
 	out.writeln(result.replace('[ ] ', '[]').replace('? ', '?'))
 	out.close()
 }
 
-fn generate_fn(tokens []Token, i int) string {
-	mut out := strings.new_builder(100)
-	mut next := tokens[i+1]
-	if tokens[i-1].tok != .key_pub {
+fn (g mut VhGen) generate_fn() {
+	if g.i >= g.tokens.len - 2 {
+		return
+	}	
+	mut next := g.tokens[g.i+1]
+	if g.i > 0 && g.tokens[g.i-1].tok != .key_pub {
 		// Skip private fns
-		return ''
+		//return ''
 	}
 	
 	if next.tok == .name && next.lit == 'C' {
 		println('skipping C')
-		return ''
+		return
 	}	
 	//out.write('pub ')
-	mut tok := tokens[i]
-	for i < tokens.len && tok.tok != .lcbr {
-		next = tokens[i+1]
+	mut tok := g.tokens[g.i]
+	for g.i < g.tokens.len - 1 && tok.tok != .lcbr {
+		next = g.tokens[g.i+1]
 		
-		out.write(tok.str())
+		g.fns.write(tok.str())
 		if tok.tok != .lpar  && !(next.tok in [.comma, .rpar]) {
 			// No space after (), [], etc
-			out.write(' ')
+			g.fns.write(' ')
 		}
-		i++
-		tok = tokens[i]
+		g.i++
+		tok = g.tokens[g.i]
 	}	
-	return out.str()
+	g.fns.writeln('')
+	//g.i--
 }	
 
-fn generate_alias(tokens []Token, i int) string {
-	mut out := strings.new_builder(100)
-	mut tok := tokens[i]
-	for i < tokens.len-1 {
-		out.write(tok.str())
-		out.write(' ')
-		if tok.line_nr != tokens[i+1].line_nr {
+fn (g mut VhGen) generate_alias() {
+	mut tok := g.tokens[g.i]
+	for g.i < g.tokens.len-1 {
+		g.types.write(tok.str())
+		g.types.write(' ')
+		if tok.line_nr != g.tokens[g.i+1].line_nr {
 			break
 		}	
-		i++
-		tok = tokens[i]
+		g.i++
+		tok = g.tokens[g.i]
 	}
-	out.writeln('\n')
-	return out.str()
+	g.types.writeln('\n')
+	//g.i--
 }
 
-fn generate_const(tokens []Token, i int) string {
-	mut out := strings.new_builder(100)
-	mut tok := tokens[i]
-	for i < tokens.len && tok.tok != .rpar {
-		out.write(tok.str())
-		out.write(' ')
-		if tokens[i+2].tok == .assign {
-			out.write('\n\t')
+fn (g mut VhGen) generate_const() {
+	mut tok := g.tokens[g.i]
+	for g.i < g.tokens.len && tok.tok != .rpar {
+		g.consts.write(tok.str())
+		g.consts.write(' ')
+		if g.tokens[g.i+2].tok == .assign {
+			g.consts.write('\n\t')
 		}	
-		i++
-		tok = tokens[i]
+		g.i++
+		tok = g.tokens[g.i]
 	}
-	out.writeln('\n)')
-	return out.str()
+	g.consts.writeln('\n)')
+	//g.i--
 }
 
-fn generate_type(tokens []Token, i int) string {
-	mut out := strings.new_builder(100)
-	mut tok := tokens[i]
-	for i < tokens.len && tok.tok != .rcbr {
-		out.write(tok.str())
-		out.write(' ')
-		if tokens[i+1].line_nr != tokens[i].line_nr {
-			out.write('\n\t')
+fn (g mut VhGen) generate_type() {
+	//old := g.i
+	mut tok := g.tokens[g.i]
+	for g.i < g.tokens.len && tok.tok != .rcbr {
+		g.types.write(tok.str())
+		g.types.write(' ')
+		if g.tokens[g.i+1].line_nr != g.tokens[g.i].line_nr {
+			g.types.write('\n\t')
 		}	
-		i++
-		tok = tokens[i]
+		g.i++
+		tok = g.tokens[g.i]
 	}
-	out.writeln('\n}')
-	return out.str()
+	g.types.writeln('\n}')
+	//g.i = old
+	//g.i--
 }
 
 

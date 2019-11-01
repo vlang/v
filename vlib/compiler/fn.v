@@ -274,7 +274,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	f.fn_name_token_idx = p.cur_tok_index()
 	// init fn
-	if f.name == 'init' && !f.is_method && f.is_public {
+	if f.name == 'init' && !f.is_method && f.is_public && !p.is_vh {
 		p.error('init function cannot be public')
 	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
