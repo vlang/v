@@ -34,3 +34,4 @@ tools/vrepl
 tools/vtest
 tools/vup
 examples/sqlite
+tools/vpm
