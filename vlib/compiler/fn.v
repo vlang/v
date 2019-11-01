@@ -12,7 +12,7 @@ const (
 	MaxLocalVars = 50
 )
 
-
+pub
 struct Fn {
 	// addr int
 pub:
@@ -43,6 +43,8 @@ mut:
 	dispatch_of	  TypeInst	// current type inst of this generic instance
 	body_idx	  int		// idx of the first body statement
 	fn_name_token_idx int // used by error reporting
+	comptime_define string
+	is_used bool // so that we can skip unused fns in resulting C code
 }
 
 struct TypeInst {
@@ -192,22 +194,25 @@ fn (p mut Parser) fn_decl() {
 	else {
 	}
 	*/
+	is_pub := p.tok == .key_pub
 	mut f := Fn{
 		mod: p.mod
-		is_public: p.tok == .key_pub || p.is_vh // functions defined in .vh are always public
+		is_public: is_pub || p.is_vh // functions defined in .vh are always public
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
+		comptime_define: if p.attr.starts_with('if ') { p.attr.right(3) } else { '' }
 	}
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {
 		println('INFO: run `v -live program.v` if you want to use [live] functions')
 	}
-	if f.is_public {
+	if is_pub {
 		p.next()
 	}
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
 	p.next()
+	
 	// Method receiver
 	mut receiver_typ := ''
 	if p.tok == .lpar {
@@ -260,7 +265,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok in [TokenKind.plus, .minus, .mul] {
+	if p.tok in [.plus, .minus, .mul] {
 		f.name = p.tok.str()
 		p.next()
 	}
@@ -275,8 +280,8 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	if p.pref.is_verbose { // p.pref.build_mode == .build_module {
-		println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	if p.is_vh {
+	//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
 	}
 	if is_c {
 		p.check(.dot)
@@ -346,7 +351,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Returns a type?
 	mut typ := 'void'
-	if p.tok in [TokenKind.name, .mul, .amp, .lsbr, .question, .lpar] {
+	if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
 		p.fgen(' ')
 		typ = p.get_type()
 	}
@@ -677,6 +682,10 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		}
 		p.error('function `$f.name` is private')
 	}
+	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
+	if is_comptime_define {
+		p.cgen.nogen = true
+	}	
 	p.calling_c = f.is_c
 	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
@@ -685,6 +694,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 			p.error('use `malloc()` instead of `C.malloc()`')
 		}
 	}
+	f.is_used = true
 	cgen_name := p.table.fn_gen_name(f)
 	p.next()		// fn name
 	if p.tok == .lt {
@@ -739,6 +749,10 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 
 	p.gen(')')
 	p.calling_c = false
+	if is_comptime_define {
+		p.cgen.nogen = false
+		p.cgen.resetln('')
+	}
 	// println('end of fn call typ=$f.typ')
 }
 
@@ -1099,11 +1113,11 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 		tp := f.type_pars[i]
 		mut ti := e
 		if ti.starts_with('fn (') {
-			fn_args := ti.right(4).all_before(') ').split(',')
+			fn_args := ti[4..].all_before(') ').split(',')
 			mut found := false
 			for fa_ in fn_args {
 				mut fa := fa_
-				for fa.starts_with('array_') { fa = fa.right(6) }
+				for fa.starts_with('array_') { fa = fa[6..] }
 				if fa == tp {
 					r.inst[tp] = fa
 					found = true
@@ -1114,7 +1128,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 			if found { continue }
 			ti = ti.all_after(') ')
 		}
-		for ti.starts_with('array_') { ti = ti.right(6) }
+		for ti.starts_with('array_') { ti = ti[6..] }
 		if r.inst[tp] != '' {
 			if r.inst[tp] != ti {
 				p.error('type parameter `$tp` has type ${r.inst[tp]}, not `$ti`')
@@ -1150,12 +1164,12 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 		mut fr := ''
 		if fi.starts_with('fn (') {
 			fr += 'fn ('
-			mut fn_args := fi.right(4).all_before(') ').split(',')
+			mut fn_args := fi[4..].all_before(') ').split(',')
 			fn_args << fi.all_after(') ')
 			for i, fa_ in fn_args {
 				mut fna := fa_.trim_space()
 				for fna.starts_with('array_') {
-					fna = fna.right(6)
+					fna = fna[6..]
 					fr += 'array_'
 				}
 				if fna in ti.inst.keys() {
@@ -1173,11 +1187,11 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			continue
 		}
 		for fi.starts_with('array_') {
-			fi = fi.right(6)
+			fi = fi[6..]
 			fr += 'array_'
 		}
 		is_varg := fi.starts_with('...')
-		if is_varg { fi = fi.right(3) }
+		if is_varg { fi = fi[3..] }
 		if fi in ti.inst.keys() {
 			mut t := ti.inst[fi]
 			if is_varg { t = '...$t' }
@@ -1214,7 +1228,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		return '', []string
 	}
 	last_arg := f.args.last()
-	mut varg_def_type := last_arg.typ.right(3)
+	mut varg_def_type := last_arg.typ[3..]
 	mut types := []string
 	mut values := []string
 	for p.tok != .rpar {
@@ -1428,7 +1442,7 @@ fn (f &Fn) str_args(table &Table) string {
 			for method in interface_type.methods {
 				s += ', $method.typ (*${arg.typ}_${method.name})(void*'
 				if method.args.len > 1 {
-					for a in method.args.right(1) {
+					for a in method.args[1..] {
 						s += ', $a.typ'
 					}
 				}

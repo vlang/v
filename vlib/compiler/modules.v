@@ -6,7 +6,7 @@ module compiler
 
 import os
 
-const (
+pub const (
 	v_modules_path = os.home_dir() + '.vmodules'
 )
 

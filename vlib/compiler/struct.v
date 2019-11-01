@@ -13,7 +13,7 @@ fn (p mut Parser) struct_decl() {
 	// V can generate Objective C for integration with Cocoa
 	// `[objc_interface:ParentInterface]`
 	is_objc := p.attr.starts_with('objc_interface')
-	objc_parent := if is_objc { p.attr.right(15) } else { '' }
+	objc_parent := if is_objc { p.attr[15..] } else { '' }
 	// interface, union, struct
 	is_interface := p.tok == .key_interface
 	is_union := p.tok == .key_union
@@ -81,7 +81,7 @@ fn (p mut Parser) struct_decl() {
 		typ.is_placeholder = false
 		typ.cat = cat
 		typ.parent = objc_parent
-		typ.is_public = is_pub
+		typ.is_public = is_pub || p.is_vh
 		p.table.rewrite_type(typ)
 	}
 	else {
@@ -91,7 +91,7 @@ fn (p mut Parser) struct_decl() {
 			is_c: is_c
 			cat: cat
 			parent: objc_parent
-			is_public: is_pub
+			is_public: is_pub || p.is_vh
 		}
 	}
 	// Struct `C.Foo` declaration, no body
@@ -288,7 +288,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			// init map fields
 			if field_typ.starts_with('map_') {
 				p.gen_struct_field_init(sanitized_name)
-				p.gen_empty_map(field_typ.right(4))
+				p.gen_empty_map(field_typ[4..])
 				inited_fields << sanitized_name
 				if i != t.fields.len - 1 {
 					p.gen(',')

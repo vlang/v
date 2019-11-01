@@ -7,6 +7,7 @@ module main
 import (
 	compiler
 	benchmark
+	os
 	//time
 )
 
@@ -57,13 +58,22 @@ fn main() {
 		return
 	}
 	else if 'test' in commands {
-		compiler.test_v()
+		compiler.launch_tool('vtest')
 		return
 	}
 	// Generate the docs and exit
 	else if 'doc' in commands {
-		// v.gen_doc_html_for_module(args.last())
+		vexe := os.executable()
+		vdir := os.dir(os.executable())
+		os.chdir(vdir)
+		mod := args.last()
+		os.system('$vexe build module vlib/' + args.last())
+		txt := os.read_file('$compiler.v_modules_path/vlib/${mod}.vh') or {
+			panic(err)
+		}	
+		println(txt)
 		exit(0)
+		// v.gen_doc_html_for_module(args.last())
 	} else {
 		//println('unknown command/argument\n')
 		//println(compiler.help_text)

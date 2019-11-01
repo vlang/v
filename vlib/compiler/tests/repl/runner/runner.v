@@ -80,7 +80,7 @@ pub fn new_options() RunnerOptions {
 	vexec := full_path_to_v()
 	mut files := []string
 	if os.args.len > 1 {
-		files = os.args.right(1)
+		files = os.args[1..]
 	} else {
 		files = os.walk_ext('.', '.repl')
 	}

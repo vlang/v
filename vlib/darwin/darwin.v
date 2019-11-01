@@ -4,11 +4,13 @@ module darwin
 #include <CoreFoundation/CoreFoundation.h>
 
 #flag -framework Cocoa
+#flag -framework Carbon
 
 struct C.NSString { }
 
 // macOS and iOS helpers
-pub fn nsstring(s string) *C.NSString {
+//pub fn nsstring(s string) *C.NSString {
+pub fn nsstring(s string) voidptr {
 	// println('ns $s len=$s.len')
 	# return [ [ NSString alloc ] initWithBytesNoCopy:s.str  length:s.len
 	# encoding:NSUTF8StringEncoding freeWhenDone: false];

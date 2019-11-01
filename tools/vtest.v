@@ -1,4 +1,4 @@
-module compiler
+module main
 
 import (
 	os
@@ -22,7 +22,15 @@ pub fn new_test_sesion(vargs string) TestSession {
 	}
 }
 
-pub fn test_v() {
+fn vexe_path() string {
+	// NB: tools extracted from v require that the first
+	// argument to them to be the v executable location.
+	// They are usually launched by vlib/compiler/vtools.v,
+	// launch_tool/1 , which provides it.
+	return os.args[1]
+}
+
+pub fn main() {
 	args := os.args
 	if args.last() == 'test' {
 		println('Usage:')
@@ -39,7 +47,7 @@ pub fn test_v() {
 		return
 	}
 
-	args_string := args.right(1).join(' ')
+	args_string := args[1..].join(' ')
 	args_before := args_string.all_before('test ')
 	args_after  := args_string.all_after('test ')
 
@@ -80,6 +88,9 @@ pub fn (ts mut TestSession) test() {
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
+		$if windows {
+			if file.contains('sqlite') { continue }
+		}
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		mut cmd := '"$ts.vexe" $ts.vargs "$file"'

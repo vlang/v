@@ -1,8 +1,10 @@
 module builtin
 
 
-fn C.memcpy(byteptr, byteptr, int)
-fn C.memmove(byteptr, byteptr, int)
+// <string.h>
+fn C.memcpy(byteptr, byteptr, int) voidptr
+fn C.memmove(byteptr, byteptr, int) voidptr
+
 //fn C.malloc(int) byteptr
 fn C.realloc(a byteptr, b int) byteptr
 
@@ -12,10 +14,12 @@ fn C.sprintf(a ...voidptr) byteptr
 fn C.strlen(s byteptr) int
 fn C.isdigit(s byteptr) bool
 
-
+// stdio.h
+fn C.popen(c byteptr, t byteptr) voidptr
 
 // <execinfo.h>
 fn backtrace(a voidptr, b int) int
+fn backtrace_symbols(voidptr, int) &byteptr
 fn backtrace_symbols_fd(voidptr, int, int)
 
 // <libproc.h>

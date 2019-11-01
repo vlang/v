@@ -63,13 +63,13 @@ pub fn (c mut Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	if src.len == 0 {
 		return
 	}
-	if subtle.inexact_overlap(dst.left(src.len), src) {
+	if subtle.inexact_overlap(dst[..src.len], src) {
 		panic('crypto.rc4: invalid buffer overlap')
 	}
 	mut i := c.i
 	mut j := c.j
 	_ = dst[src.len-1]
-	*dst = dst.left(src.len) // eliminate bounds check from loop
+	*dst = dst[..src.len] // eliminate bounds check from loop
 	for k, v in src {
 		i += byte(1)
 		x := c.s[i]

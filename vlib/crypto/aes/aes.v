@@ -28,12 +28,13 @@ struct AesCipher {
 // AES-128, AES-192, or AES-256.
 pub fn new_cipher(key []byte) AesCipher {
 	k := key.len
-	switch k {
-	case 16, 24, 32:
+	match k {
+	16, 24, 32 {
 		// break
-	default:
+	} else {
 		panic('crypto.aes: invalid key size ' + k.str())
 		// return error('crypto.aes: invalid key size ' + k.str())
+	}
 	}
 	// for now use generic version
 	return new_cipher_generic(key)
@@ -49,7 +50,7 @@ pub fn (c &AesCipher) encrypt(dst, src []byte) {
 		panic('crypto.aes: output not full block')
 	}
 	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
-	if subtle.inexact_overlap(dst.left(block_size), src.left(block_size)) {
+	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -63,7 +64,7 @@ pub fn (c &AesCipher) decrypt(dst, src []byte) {
 	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap(dst.left(block_size), src.left(block_size)) {
+	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version

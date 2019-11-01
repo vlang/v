@@ -9,11 +9,10 @@ const (
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	p.gen('var $name /* typ */ = ')
 	mut typ := p.bool_expression()
-	if typ.starts_with('...') { typ = typ.right(3) }
+	if typ.starts_with('...') { typ = typ[3..] }
 	or_else := p.tok == .key_orelse
-	//tmp := p.get_tmp()
 	if or_else {
-		//panic('optionals todo')
+		// return p.gen_handle_option_or_else(typ, name, pos)
 	}
 	return typ
 }
@@ -46,10 +45,14 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
 	}
 	or_else := p.tok == .key_orelse
-	//tmp := p.get_tmp()
 	if or_else {
-		//panic('optionals todo')
+		// return p.gen_handle_option_or_else(typ, '', pos)
 	}
+}
+
+// TODO: optionals
+fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
+	return _typ
 }
 
 fn types_to_c(types []Type, table &Table) string {
@@ -70,7 +73,7 @@ fn types_to_c(types []Type, table &Table) string {
 	return sb.str()
 }
 
-fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexCfg) {
+fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	p.cgen.cur_line = p.cgen.cur_line.replace(',', '[') + ']'
 }
 
@@ -149,8 +152,8 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 }
 
 fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_pos int, is_cao bool) {
-	mut val := p.cgen.cur_line.right(assign_pos)
-	p.cgen.resetln(p.cgen.cur_line.left(assign_pos))
+	mut val := p.cgen.cur_line[assign_pos..]
+	p.cgen.resetln(p.cgen.cur_line[..assign_pos])
 	p.gen('] =')
 	cao_tmp := p.cgen.cur_line
 	if is_cao  {

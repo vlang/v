@@ -27,18 +27,18 @@ import gl
 // #flag darwin -framework Cocoa
 // #flag darwin -framework CoreVideo
 // #flag darwin -framework IOKit
-const (
+pub const (
 	RESIZABLE = 1
 	DECORATED = 2
 )
 
-const (
+pub const (
 	KEY_ESCAPE     = 256
 	key_space     = 32
 	KEY_LEFT_SUPER = 343
 )
 
-const (
+pub const (
 	KeyUp    = 265
 	KeyLeft  = 263
 	KeyRight = 262
@@ -71,13 +71,13 @@ pub struct Window {
 	my    int
 }
 
-struct Size {
+pub struct Size {
 pub:
 	width  int
 	height int
 }
 
-struct Pos {
+pub struct Pos {
 pub:
 	x int
 	y int

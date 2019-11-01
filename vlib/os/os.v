@@ -73,23 +73,20 @@ fn C.sigaction(int, voidptr, int)
 
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
-        return f.read_bytes_at(size, 0)
+	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads an amount of bytes at the given position in the file
 pub fn (f File) read_bytes_at(size, pos int) []byte {
-        mut data := malloc(size)
-        mut arr  := [`0`].repeat(size)
-
-        C.fseek(f.cfile, pos, C.SEEK_SET)
-        C.fread(data, 1, size, f.cfile)
-        C.fseek(f.cfile, 0, C.SEEK_SET)
-
-        for e := 0; e < size; e++ {
-                arr[e] = data[e]
-        }
-
-        return arr
+	mut data := malloc(size)
+	mut arr  := [`0`].repeat(size)
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fread(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_SET)
+	for e := 0; e < size; e++ {
+		arr[e] = data[e]
+	}
+	return arr
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -127,6 +124,15 @@ pub fn mv(old, new string) {
 	} $else {
 		C.rename(*char(old.str), *char(new.str))
 	}
+}
+
+// TODO implement actual cp()
+pub fn cp(old, new string) {
+	$if windows {
+		panic('not implemented')
+	}	$else {
+		os.system('cp $old $new')
+	}	
 }
 
 fn vfopen(path, mode string) *C.FILE {
@@ -285,7 +291,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-fn popen(path string) *C.FILE {
+fn vpopen(path string) *C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -316,7 +322,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	}
 }
 
-fn pclose(f *C.FILE) int {
+fn vpclose(f *C.FILE) int {
 	$if windows {
 		return int( C._pclose(f) )
 	}
@@ -336,7 +342,7 @@ pub:
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
 	pcmd := '$cmd 2>&1'
-	f := popen(pcmd)
+	f := vpopen(pcmd)
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
@@ -346,7 +352,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)
+	exit_code := vpclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}
@@ -498,7 +504,7 @@ pub fn ext(path string) string {
 	if pos == -1 {
 		return ''
 	}
-	return path.right(pos)
+	return path[pos..]
 }
 
 
@@ -511,7 +517,7 @@ pub fn dir(path string) string {
 	if pos == -1 {
 		return '.'
 	}
-	return path.left(pos)
+	return path[..pos]
 }
 
 fn path_sans_ext(path string) string {
@@ -519,7 +525,7 @@ fn path_sans_ext(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path.left(pos)
+	return path[..pos]
 }
 
 
@@ -528,7 +534,7 @@ pub fn basedir(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path.left(pos + 1)
+	return path[..pos + 1]
 }
 
 pub fn filename(path string) string {
@@ -587,19 +593,20 @@ pub fn get_lines() []string {
 }
 
 pub fn get_lines_joined() string {
-        mut line := ''
-        mut inputstr := ''
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr += line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := ''
+	for {
+		line = get_line()
+		if line.len <= 0 {
+			break
+		}
+		line = line.trim_space()
+		inputstr += line
+	}
+	return inputstr
 }
 
+// user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -658,6 +665,7 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
+// clear will clear current terminal screen.
 pub fn clear() {
 	$if !windows {
 		C.printf('\x1b[2J')
@@ -682,6 +690,7 @@ fn on_segfault(f voidptr) {
 fn C.getpid() int
 fn C.proc_pidpath (int, byteptr, int) int
 
+// executable return the path name of the executable that started the current process.
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
@@ -740,6 +749,7 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+// is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
 		return dir_exists(path)
@@ -758,6 +768,7 @@ pub fn is_dir(path string) bool {
 	}
 }
 
+// chdir changes the current working directory to the new directory path.
 pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
@@ -767,6 +778,7 @@ pub fn chdir(path string) {
 	}
 }
 
+// getwd returns the absolute path name of the current directory.
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
