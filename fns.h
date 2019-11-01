@@ -1,6 +1,6 @@
 // <signal.h>
-void sigaction();
-void sigemptyset();
+//void sigaction();
+//void sigemptyset();
 
 // <string.h>
 void* memcpy();
