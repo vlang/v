@@ -33,7 +33,7 @@ fn main() {
 		return
 	}
 	else if 'up' in commands {
-		compiler.update_v()
+		compiler.launch_tool('vup')
 		return
 	}
 	else if 'get' in commands {

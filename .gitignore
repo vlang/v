@@ -30,3 +30,7 @@ vjs
 ._*
 .vrepl_temp.v
 a.out
+tools/vrepl
+tools/vtest
+tools/vup
+examples/sqlite
