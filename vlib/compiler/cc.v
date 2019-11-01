@@ -118,13 +118,13 @@ fn (v mut V) cc() {
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
 		if debug_mode {
-			debug_options = '-g -O0'
+			debug_options = '-g -O0 -no-pie'
 		}
 		optimization_options = '-O3 -flto'
 	}
 	if v.pref.ccompiler.contains('gcc') {
 		if debug_mode {
-			debug_options = '-g3'
+			debug_options = '-g3 -no-pie'
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
