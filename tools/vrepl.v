@@ -189,9 +189,10 @@ pub fn run_repl() []string {
 }
 
 fn main() {
-	if os.args.len != 2 || !os.file_exists(os.args[1]) {
-		println('Usage: vrepl [vexe]\n')
-		println('vexe: v binary file')
+	if os.args.len < 2 || !os.file_exists(os.args[1]) {
+		println('Usage:')
+		println('  vrepl vexepath\n')
+		println('  ... where vexepath is the full path to the v executable file')
 		return
 	}
 	run_repl()
