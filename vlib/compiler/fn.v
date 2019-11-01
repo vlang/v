@@ -814,7 +814,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			t := p.get_type()
 			// register varg struct, incase function is never called
 			if p.first_pass() && !f.is_generic && !f.is_c{
-				p.fn_register_vargs_stuct(f, t, 0)
+				p.register_vargs_stuct(t, 0)
 			}
 			typ = '...$t'
 		} else {
@@ -1205,7 +1205,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 	return r
 }
 
-fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, len int) string {
+fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	vargs_struct := '_V_FnVargs_$typ'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
@@ -1278,7 +1278,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) 
 	if is_varg { // forwarding varg
 		p.cgen.gen('${values[0]}')
 	} else {
-		vargs_struct := p.fn_register_vargs_stuct(f, varg_type, values.len)
+		vargs_struct := p.register_vargs_stuct(varg_type, values.len)
 		p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
 	}
 }
