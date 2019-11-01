@@ -813,7 +813,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			f.is_variadic = true
 			t := p.get_type()
 			// register varg struct, incase function is never called
-			if p.first_pass() && !f.is_generic {
+			if p.first_pass() && !f.is_generic && !f.is_c{
 				p.fn_register_vargs_stuct(f, t, 0)
 			}
 			typ = '...$t'
@@ -1206,7 +1206,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 }
 
 fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, len int) string {
-	vargs_struct := '_V_FnVargs_$f.name'
+	vargs_struct := '_V_FnVargs_$typ'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
 		name: vargs_struct,
@@ -1275,14 +1275,10 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 
 fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) {
 	is_varg := varg_type.starts_with('...')
-	typ := if is_varg { varg_type[3..] } else { varg_type }
-	if is_varg {
-		ex_typ := p.table.find_type('_V_FnVargs_$p.cur_fn.name')
-		ex_len := ex_typ.fields[1].name[5..ex_typ.fields[1].name.len-1].int()
-		vargs_struct := p.fn_register_vargs_stuct(f, typ, ex_len)
-		p.cgen.gen('&($vargs_struct){.len=${values[0]}->len,.args=*${values[0]}->args}')
+	if is_varg { // forwarding varg
+		p.cgen.gen('${values[0]}')
 	} else {
-		vargs_struct := p.fn_register_vargs_stuct(f, typ, values.len)
+		vargs_struct := p.fn_register_vargs_stuct(f, varg_type, values.len)
 		p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
 	}
 }
@@ -1466,7 +1462,7 @@ fn (f &Fn) str_args(table &Table) string {
 			}
 		}
 		else if arg.typ.starts_with('...') {
-			s += '_V_FnVargs_$f.name *$arg.name'
+			s += '_V_FnVargs_${arg.typ[3..]} *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'
