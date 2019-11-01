@@ -38,12 +38,12 @@ fn main() {
 		compiler.launch_tool('vup')
 		return
 	}
-	else if 'pm' in commands {
+	else if ('search' in commands) || ('install' in commands) || ('update' in commands) || ('remove' in commands){
 		compiler.launch_tool('vpm')
 		return
 	}
-	else if ('get' in commands) || ('install' in commands) { // obsoleted
-		println('use `v vpm install` to install modules from vpm.vlang.io ')
+	else if ('get' in commands) { // obsoleted
+		println('use `v install` to install modules from vpm.vlang.io ')
 		return
 	}
 	else if 'symlink' in commands {
