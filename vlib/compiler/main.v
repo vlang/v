@@ -764,6 +764,9 @@ pub fn new_v(args[]string) &V {
 		os.mkdir(v_modules_path)
 		os.mkdir('$v_modules_path${os.path_separator}cache')
 	}
+	
+	// Location of all vlib files
+	vroot := os.dir(vexe_path())
 
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module main\nimport strings')
@@ -791,6 +794,7 @@ pub fn new_v(args[]string) &V {
 	mut mod := ''
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
+		os.chdir(vroot)
 		// v build module ~/v/os => os.o
 		mod_path := if dir.contains('vlib') {
 			dir.all_after('vlib'+os.path_separator)
@@ -880,8 +884,6 @@ pub fn new_v(args[]string) &V {
 	else {
 		_os = os_from_string(target_os)
 	}
-	// Location of all vlib files
-	vroot := os.dir(vexe_path())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {

@@ -16,6 +16,7 @@ fn todo() {
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
+	vdir := os.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
@@ -25,12 +26,11 @@ fn (v mut V) cc() {
 		$if !js {
 			if v.out_name.ends_with('.js') {
 				vjs_path := vexe + 'js'
-				dir := os.dir(vexe)
 				if !os.file_exists(vjs_path) {
 					println('V.js compiler not found, building...')
 					// Build V.js. Specifying `-os js` makes V include
 					// only _js.v files and ignore _c.v files.
-					ret := os.system('$vexe -o $vjs_path -os js $dir/v.v')
+					ret := os.system('$vexe -o $vjs_path -os js $vdir/v.v')
 					if ret == 0 {
 						println('Done.')
 					} else {
@@ -67,7 +67,6 @@ fn (v mut V) cc() {
 	if v.pref.fast {
 		$if linux {
 		$if !android {
-			vdir := os.dir(vexe)
 			tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
 			//println('tcc third "$tcc_3rd"')
 			tcc_path := '/var/tmp/tcc/bin/tcc'
@@ -141,7 +140,7 @@ fn (v mut V) cc() {
 	}
 
 	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
-		//a << '-Werror=implicit-function-declaration'
+		a << '-Werror=implicit-function-declaration'
 	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {
@@ -173,7 +172,6 @@ fn (v mut V) cc() {
 			} else {
 				println('$path not found... building module $imp')
 				if path.ends_with('vlib/ui.o') {
-					vdir := os.dir(vexe)
 					println('copying ui...')
 					os.cp('$vdir/thirdparty/ui/ui.o', path)
 					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
