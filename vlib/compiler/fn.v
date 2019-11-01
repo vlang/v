@@ -1260,7 +1260,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 			p.error_with_token_index('variadic arg index out of range: $va.index/${values.len-1}, vargs are 0 indexed', va.tok_idx)
 		}
 	}
-	if f.args.len > 1 {
+	if !f.is_method && f.args.len > 1 {
 		p.cgen.gen(',')
 	}
 	return varg_def_type, values
