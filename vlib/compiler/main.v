@@ -7,6 +7,7 @@ module compiler
 import (
 	os
 	strings
+	filepath
 )
 
 pub const (
@@ -650,11 +651,11 @@ pub fn (v &V)  get_user_files() []string {
 	mut user_files := []string
 
 	if v.pref.is_test {
-		user_files << os.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
+		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
 	}
 	
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << os.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
+		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
