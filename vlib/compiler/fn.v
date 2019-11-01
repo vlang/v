@@ -814,7 +814,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			t := p.get_type()
 			// register varg struct, incase function is never called
 			if p.first_pass() && !f.is_generic {
-				p.fn_register_vargs_stuct(f, t, []string)
+				p.fn_register_vargs_stuct(f, t, 0)
 			}
 			typ = '...$t'
 		} else {
@@ -1205,21 +1205,25 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 	return r
 }
 
-fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, values []string) string {
+fn (p mut Parser) fn_register_vargs_stuct(f &Fn, typ string, len int) string {
 	vargs_struct := '_V_FnVargs_$f.name'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
 		name: vargs_struct,
 		mod: p.mod
 	}
+	mut varg_len := len
 	if !p.table.known_type(vargs_struct) {
 		p.table.register_type2(varg_type)
 		p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 	} else {
+		ex_typ := p.table.find_type(vargs_struct)
+		ex_len := ex_typ.fields[1].name[5..ex_typ.fields[1].name.len-1].int()
+		if ex_len > varg_len { varg_len = ex_len }
 		p.table.rewrite_type(varg_type)
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
-	p.table.add_field(vargs_struct, 'args[$values.len]', typ, false, '', .public)
+	p.table.add_field(vargs_struct, 'args[$varg_len]', typ, false, '', .public)
 	return vargs_struct
 }
 
@@ -1238,6 +1242,10 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		p.cgen.start_tmp()
 		mut varg_type := p.bool_expression()
 		varg_value := p.cgen.end_tmp()
+		if varg_type.starts_with('...') &&
+			(values.len > 0 || p.tok == .comma) {
+				p.error('You cannot pass additional vargs when forwarding vargs to another function/method')
+			}
 		if !f.is_generic {
 			p.check_types(last_arg.typ, varg_type)
 		} else {
@@ -1246,7 +1254,6 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 					p.check_types(varg_type, t)
 				}
 			}
-			varg_def_type = varg_type
 		}
 		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
 			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
@@ -1263,12 +1270,21 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 	if !f.is_method && f.args.len > 1 {
 		p.cgen.gen(',')
 	}
-	return varg_def_type, values
+	return types[0], values
 }
 
 fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) {
-	vargs_struct := p.fn_register_vargs_stuct(f, varg_type, values)
-	p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	is_varg := varg_type.starts_with('...')
+	typ := if is_varg { varg_type[3..] } else { varg_type }
+	if is_varg {
+		ex_typ := p.table.find_type('_V_FnVargs_$p.cur_fn.name')
+		ex_len := ex_typ.fields[1].name[5..ex_typ.fields[1].name.len-1].int()
+		vargs_struct := p.fn_register_vargs_stuct(f, typ, ex_len)
+		p.cgen.gen('&($vargs_struct){.len=${values[0]}->len,.args=*${values[0]}->args}')
+	} else {
+		vargs_struct := p.fn_register_vargs_stuct(f, typ, values.len)
+		p.cgen.gen('&($vargs_struct){.len=$values.len,.args={'+values.join(',')+'}}')
+	}
 }
 
 fn (p mut Parser) register_multi_return_stuct(types []string) string {
