@@ -994,54 +994,6 @@ pub fn vfmt(args[]string) {
 	println('vfmt is temporarily disabled')
 }
 
-pub fn install_v(args[]string) {
-	if args.len < 3 {
-		println('usage: v install [module] [module] [...]')
-		return
-	}
-	names := args.slice(2, args.len)
-	vexec := vexe_path()
-	vroot := os.dir(vexec)
-	vget := '$vroot/tools/vget'
-	if true {
-		//println('Building vget...')
-		os.chdir(vroot + '/tools')
-		vget_compilation := os.exec('"$vexec" -o $vget vget.v') or {
-			verror(err)
-			return
-		}
-		if vget_compilation.exit_code != 0 {
-			verror( vget_compilation.output )
-			return
-		}
-	}
-	vgetresult := os.exec('$vget ' + names.join(' ')) or {
-		verror(err)
-		return
-	}
-	if vgetresult.exit_code != 0 {
-		verror( vgetresult.output )
-		return
-	}
-}
-
-pub fn run_repl() {
-	vexec := vexe_path()
-	vroot := os.dir(vexec)
-	vrepl := '$vroot/tools/vrepl'
-
-	os.chdir(vroot + '/tools')
-	vrepl_compilation := os.exec('"$vexec" -o $vrepl vrepl.v') or {
-		verror(err)
-		return
-	}
-	if vrepl_compilation.exit_code != 0 {
-		verror(vrepl_compilation.output)
-		return
-	}
-	vreplresult := os.system('$vrepl "$vexec"')
-}
-
 pub fn create_symlink() {
 	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
