@@ -676,7 +676,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
 	}	
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod  {
+	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
 		}
@@ -712,7 +712,6 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name
 	// }
-
 
 	// If we have a method placeholder,
 	// we need to preappend "method(receiver, ...)"
@@ -803,7 +802,6 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		if is_mut {
 			p.check(.key_mut)
 		}
-		mut typ := ''
 		// variadic arg
 		if p.tok == .ellipsis {
 			p.check(.ellipsis)
@@ -811,25 +809,28 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				p.error('you must provide a type for vargs: eg `...string`. multiple types `...` are not supported yet.')
 			}
 			f.is_variadic = true
-			t := p.get_type()
-			// register varg struct, incase function is never called
-			if p.first_pass() && !f.is_generic && !f.is_c{
-				p.register_vargs_stuct(t, 0)
-			}
-			typ = '...$t'
-		} else {
-			typ = p.get_type()
 		}
-
+		mut typ := p.get_type()
+		if !p.first_pass() && !p.table.known_type(typ) {
+			p.error('fn_args: unknown type $typ')
+		}
+		if f.is_variadic {
+			if !f.is_c {
+				// register varg struct, incase function is never called
+				if p.first_pass() && !f.is_generic {
+					p.register_vargs_stuct(typ, 0)
+				}
+				typ = 'varg_$typ'
+			} else {
+				typ = '...$typ' // TODO: fix, this is invalid in C
+			}
+		}
 		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
 			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')
 		}
 		for name in names {
-			if !p.first_pass() && !p.table.known_type(typ) {
-				p.error('fn_args: unknown type $typ')
-			}
 			if is_mut {
 				typ += '*'
 			}
@@ -908,7 +909,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			continue
 		}
 		// Reached the final vararg? Quit
-		if i == f.args.len - 1 && arg.typ.starts_with('...') {
+		if i == f.args.len - 1 && arg.typ.starts_with('varg_') {
 			break
 		}
 		ph := p.cgen.add_placeholder()
@@ -982,13 +983,22 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			// Make sure this type has a `str()` method
 			$if !js {
 			if !T.has_method('str') {
+				// varg
+				if T.name.starts_with('varg_') {
+					p.gen_varg_str(T)
+					p.cgen.set_placeholder(ph, '${typ}_str(')
+					p.gen(')')
+					continue
+				}
 				// Arrays have automatic `str()` methods
-				if T.name.starts_with('array_') {
+				else if T.name.starts_with('array_') {
 					p.gen_array_str(T)
 					p.cgen.set_placeholder(ph, '${typ}_str(')
 					p.gen(')')
 					continue
-				} else if T.cat == .struct_ {
+				}
+				// struct
+				else if T.cat == .struct_ {
 					p.gen_struct_str(T)
 					p.cgen.set_placeholder(ph, '${typ}_str(')
 					p.gen(')')
@@ -1190,11 +1200,12 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			fi = fi[6..]
 			fr += 'array_'
 		}
-		is_varg := fi.starts_with('...')
-		if is_varg { fi = fi[3..] }
+		if fi.starts_with('varg_') {
+			fi = fi[5..]
+			fr += 'varg_'
+		}
 		if fi in ti.inst.keys() {
 			mut t := ti.inst[fi]
-			if is_varg { t = '...$t' }
 			fr += t
 			// println("replaced $a => $fr")
 		} else {
@@ -1206,7 +1217,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 }
 
 fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
-	vargs_struct := '_V_FnVargs_$typ'
+	vargs_struct := 'varg_$typ'
 	varg_type := Type{
 		cat: TypeCategory.struct_,
 		name: vargs_struct,
@@ -1224,6 +1235,7 @@ fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$varg_len]', typ, false, '', .public)
+	
 	return vargs_struct
 }
 
@@ -1242,7 +1254,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		p.cgen.start_tmp()
 		mut varg_type := p.bool_expression()
 		varg_value := p.cgen.end_tmp()
-		if varg_type.starts_with('...') &&
+		if varg_type.starts_with('varg_') &&
 			(values.len > 0 || p.tok == .comma) {
 				p.error('You cannot pass additional vargs when forwarding vargs to another function/method')
 			}
@@ -1274,7 +1286,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 }
 
 fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) {
-	is_varg := varg_type.starts_with('...')
+	is_varg := varg_type.starts_with('varg_')
 	if is_varg { // forwarding varg
 		p.cgen.gen('${values[0]}')
 	} else {
@@ -1304,7 +1316,7 @@ fn (p mut Parser) rename_generic_fn_instance(f mut Fn, ti TypeInst) {
 	}
 	f.name = f.name + '_T'
 	for k in ti.inst.keys() {
-		f.name = f.name + '_' + type_to_safe_str(ti.inst[k].replace('...', ''))
+		f.name = f.name + '_' + type_to_safe_str(ti.inst[k])
 	}
 }
 
@@ -1461,8 +1473,8 @@ fn (f &Fn) str_args(table &Table) string {
 				s += ')'
 			}
 		}
-		else if arg.typ.starts_with('...') {
-			s += '_V_FnVargs_${arg.typ[3..]} *$arg.name'
+		else if arg.typ.starts_with('varg_') {
+			s += '$arg.typ *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'
