@@ -33,7 +33,6 @@ pub fn launch_tool(tname string){
 	if tool_should_be_recompiled {
 		compilation_command := '$vexe $tool_source'
 		//println('Compiling $tname with: "$compilation_command"')
-		println('Building $tname for the first time...')
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
 			panic('V tool "$tool_source" could not be compiled.')
