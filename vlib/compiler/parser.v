@@ -1950,7 +1950,6 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	mut str_typ := str_typ_
 	p.check(.dot)
 	is_variadic_arg := str_typ.starts_with('varg_')
-	// if is_variadic_arg { str_typ = str_typ[5..] }
 	mut typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
