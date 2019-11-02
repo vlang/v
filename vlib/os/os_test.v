@@ -117,7 +117,7 @@ fn test_cp() {
   $if windows {
     old_file_name := './example.txt'
     new_file_name := './new_example.txt'
-
+    
     os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')
     os.cp(old_file_name, new_file_name)
 
