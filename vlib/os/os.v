@@ -71,6 +71,8 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
+fn C.GetLastError() u32
+
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -126,15 +128,25 @@ pub fn mv(old, new string) {
 	}
 }
 
+fn C.CopyFile(&u32, &u32, int) int
+
 // TODO implement actual cp for linux
-pub fn cp(old, new string) {
+pub fn cp(old, new string) ?bool {
 	$if windows {
 		_old := old.replace('/', '\\')
 		_new := new.replace('/', '\\')
 		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+
+		result := C.GetLastError()
+		if result == 0 {
+			return true
+		} else {
+			return error_with_code('failed to copy $old to $new', int(result))
+		}
 	} $else {
 		os.system('cp $old $new')
-	}	
+		return true // TODO make it return true or error when cp for linux is implemented
+	}
 }
 
 fn vfopen(path, mode string) *C.FILE {
