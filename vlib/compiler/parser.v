@@ -900,7 +900,7 @@ fn (p mut Parser) get_type() string {
 				p.error('unknown type `$typ`')
 			}
 		}
-		else if !t.is_public && t.mod != p.mod && t.name != '' && !p.first_pass() {
+		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
 			p.error('type `$t.name` is private')
 		}	
 	}
@@ -1949,8 +1949,8 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	//}
 	mut str_typ := str_typ_
 	p.check(.dot)
-	is_variadic_arg := str_typ.starts_with('...')
-	if is_variadic_arg { str_typ = str_typ[3..] }
+	is_variadic_arg := str_typ.starts_with('varg_')
+	// if is_variadic_arg { str_typ = str_typ[5..] }
 	mut typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
@@ -2102,7 +2102,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		//println('index expr typ=$typ')
 		//println(v.name)
 	//}
-	is_variadic_arg := typ.starts_with('...')
+	is_variadic_arg := typ.starts_with('varg_')
 	is_map := typ.starts_with('map_')
 	is_str := typ == 'string'
 	is_arr0 := typ.starts_with('array_')
@@ -2132,6 +2132,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 				p.gen(',')
 			}
 		}
+		if is_variadic_arg { typ = typ[5..] }
 		if is_fixed_arr {
 			// `[10]int` => `int`, `[10][3]int` => `[3]int`
 			if typ.contains('][') {
@@ -3254,8 +3255,7 @@ fn (p mut Parser) for_st() {
 		is_arr := typ.starts_with('array_')
 		is_map := typ.starts_with('map_')
 		is_str := typ == 'string'
-		is_variadic_arg :=  typ.starts_with('...')
-		if is_variadic_arg { typ = typ[3..] }
+		is_variadic_arg :=  typ.starts_with('varg_')
 		if !is_arr && !is_str && !is_map && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
@@ -3267,25 +3267,24 @@ fn (p mut Parser) for_st() {
 				p.genln('$typ $tmp = $expr;')
 			}
 		}
-		pad := if is_arr { 6 } else  { 4 }
-		var_typ := if is_str { 'byte' }
-			else if is_variadic_arg { typ }
-			else { typ[pad..] }
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		mut i_var_type := 'int'
 		if is_variadic_arg {
+			typ = typ[5..]
 			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		else if is_arr {
-			p.gen_for_header(i, tmp, var_typ, val)
+			typ = typ[6..]
+			p.gen_for_header(i, tmp, typ, val)
 		}
 		else if is_map {
 			i_var_type = 'string'
-			p.gen_for_map_header(i, tmp, var_typ, val, typ)
+			typ = typ[4..]
+			p.gen_for_map_header(i, tmp, typ, val, typ)
 		}
 		else if is_str {
-			i_var_type = 'byte'
-			p.gen_for_str_header(i, tmp, var_typ, val)
+			typ = 'byte'
+			p.gen_for_str_header(i, tmp, typ, val)
 		}
 		// Register temp vars
 		if i != '_' {
@@ -3299,7 +3298,7 @@ fn (p mut Parser) for_st() {
 		if val != '_' {
 			p.register_var(Var {
 				name: val
-				typ: var_typ
+				typ: typ
 				ptr: typ.contains('*')
 			})
 		}
@@ -3315,8 +3314,7 @@ fn (p mut Parser) for_st() {
 		mut typ := p.bool_expression()
 		expr := p.cgen.end_tmp()
 		is_range := p.tok == .dotdot
-		is_variadic_arg :=  typ.starts_with('...')
-		if is_variadic_arg { typ = typ[3..] }
+		is_variadic_arg :=  typ.starts_with('varg_')
 		mut range_end := ''
 		if is_range {
 			p.check_types(typ, 'int')
@@ -3339,28 +3337,28 @@ fn (p mut Parser) for_st() {
 		}
 		// TODO var_type := if...
 		i := p.get_tmp()
-		mut var_type := typ
 		if is_variadic_arg {
+			typ = typ[5..]
 			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		else if is_range {
-			var_type = 'int'
-			p.gen_for_range_header(i, range_end, tmp, var_type, val)
+			typ = 'int'
+			p.gen_for_range_header(i, range_end, tmp, typ, val)
 		}
 		else if is_arr {
-			var_type = typ[6..]// all after `array_`
-			p.gen_for_header(i, tmp, var_type, val)
+			typ = typ[6..]// all after `array_`
+			p.gen_for_header(i, tmp, typ, val)
 		}
 		else if is_str {
-			var_type = 'byte'
-			p.gen_for_str_header(i, tmp, var_type, val)
+			typ = 'byte'
+			p.gen_for_str_header(i, tmp, typ, val)
 		}
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
 		if val != '_' {
 			p.register_var(Var {
 				name: val
-				typ: var_type
+				typ: typ
 				ptr: typ.contains('*')
 				is_changed: true
 				is_mut: false

@@ -328,10 +328,6 @@ fn (t mut Table) register_fn(new_fn Fn) {
 
 fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
-	// vararg
-	if typ.starts_with('...') && typ.len > 3 {
-		typ = typ[3..]
-	}
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ[..typ.len - 1]
@@ -584,11 +580,11 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	}
 
 	// variadic
-	if expected.starts_with('...') {
-		expected = expected[3..]
+	if expected.starts_with('varg_') {
+		expected = expected[5..]
 	}
-	if got.starts_with('...') {
-		got = got[3..]
+	if got.starts_with('varg_') {
+		got = got[5..]
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {

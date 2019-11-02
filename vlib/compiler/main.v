@@ -770,7 +770,7 @@ pub fn new_v(args[]string) &V {
 	vroot := os.dir(vexe_path())
 
 	mut vgen_buf := strings.new_builder(1000)
-	vgen_buf.writeln('module main\nimport strings')
+	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
