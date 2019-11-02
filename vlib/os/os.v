@@ -129,8 +129,10 @@ pub fn mv(old, new string) {
 // TODO implement actual cp()
 pub fn cp(old, new string) {
 	$if windows {
-		panic('not implemented')
-	}	$else {
+		_old := old.replace('/', '\\')
+		_new := new.replace('/', '\\')
+		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+	} $else {
 		os.system('cp $old $new')
 	}	
 }
