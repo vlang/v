@@ -236,7 +236,6 @@ fn (a mut array) set(i int, val voidptr) {
 	C.memcpy(a.data + a.element_size * i, val, a.element_size)
 }
 
-// TODO push(val) is the same as push_many(val, 1), can be eliminated
 fn (a mut array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
 	C.memcpy(a.data + a.element_size * a.len, val, a.element_size)

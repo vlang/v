@@ -7,6 +7,7 @@ module compiler
 import (
 	os
 	strings
+	filepath
 )
 
 pub const (
@@ -650,11 +651,11 @@ pub fn (v &V)  get_user_files() []string {
 	mut user_files := []string
 
 	if v.pref.is_test {
-		user_files << os.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
+		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
 	}
 	
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << os.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
+		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
@@ -764,6 +765,9 @@ pub fn new_v(args[]string) &V {
 		os.mkdir(v_modules_path)
 		os.mkdir('$v_modules_path${os.path_separator}cache')
 	}
+	
+	// Location of all vlib files
+	vroot := os.dir(vexe_path())
 
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module main\nimport strings')
@@ -791,6 +795,7 @@ pub fn new_v(args[]string) &V {
 	mut mod := ''
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
+		os.chdir(vroot)
 		// v build module ~/v/os => os.o
 		mod_path := if dir.contains('vlib') {
 			dir.all_after('vlib'+os.path_separator)
@@ -880,8 +885,6 @@ pub fn new_v(args[]string) &V {
 	else {
 		_os = os_from_string(target_os)
 	}
-	// Location of all vlib files
-	vroot := os.dir(vexe_path())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
@@ -978,34 +981,6 @@ pub fn env_vflags_and_os_args() []string {
 	return args
 }
 
-pub fn update_v() {
-	println('Updating V...')
-	vroot := os.dir(vexe_path())
-	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
-		verror(err)
-		return
-	}
-	println(s.output)
-	$if windows {
-		v_backup_file := '$vroot/v_old.exe'
-		if os.file_exists( v_backup_file ) {
-			os.rm( v_backup_file )
-		}
-		os.mv('$vroot/v.exe', v_backup_file)
-		s2 := os.exec('"$vroot/make.bat"') or {
-			verror(err)
-			return
-		}
-		println(s2.output)
-	} $else {
-		s2 := os.exec('make -C "$vroot"') or {
-			verror(err)
-			return
-		}
-		println(s2.output)
-	}
-}
-
 pub fn vfmt(args[]string) {
 	file := args.last()
 	if !os.file_exists(file) {
@@ -1017,54 +992,6 @@ pub fn vfmt(args[]string) {
 		exit(1)
 	}
 	println('vfmt is temporarily disabled')
-}
-
-pub fn install_v(args[]string) {
-	if args.len < 3 {
-		println('usage: v install [module] [module] [...]')
-		return
-	}
-	names := args.slice(2, args.len)
-	vexec := vexe_path()
-	vroot := os.dir(vexec)
-	vget := '$vroot/tools/vget'
-	if true {
-		//println('Building vget...')
-		os.chdir(vroot + '/tools')
-		vget_compilation := os.exec('"$vexec" -o $vget vget.v') or {
-			verror(err)
-			return
-		}
-		if vget_compilation.exit_code != 0 {
-			verror( vget_compilation.output )
-			return
-		}
-	}
-	vgetresult := os.exec('$vget ' + names.join(' ')) or {
-		verror(err)
-		return
-	}
-	if vgetresult.exit_code != 0 {
-		verror( vgetresult.output )
-		return
-	}
-}
-
-pub fn run_repl() {
-	vexec := vexe_path()
-	vroot := os.dir(vexec)
-	vrepl := '$vroot/tools/vrepl'
-
-	os.chdir(vroot + '/tools')
-	vrepl_compilation := os.exec('"$vexec" -o $vrepl vrepl.v') or {
-		verror(err)
-		return
-	}
-	if vrepl_compilation.exit_code != 0 {
-		verror(vrepl_compilation.output)
-		return
-	}
-	vreplresult := os.system('$vrepl "$vexec"')
 }
 
 pub fn create_symlink() {

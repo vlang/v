@@ -3,6 +3,8 @@ module main
 import (
 	ui
 	gx
+	os
+	darwin
 )
 
 const (
