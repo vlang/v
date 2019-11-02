@@ -126,7 +126,7 @@ pub fn mv(old, new string) {
 	}
 }
 
-// TODO implement actual cp()
+// TODO implement actual cp for linux
 pub fn cp(old, new string) {
 	$if windows {
 		_old := old.replace('/', '\\')
