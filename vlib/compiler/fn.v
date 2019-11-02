@@ -1200,7 +1200,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 			fi = fi[6..]
 			fr += 'array_'
 		}
-		for fi.starts_with('varg_') {
+		if fi.starts_with('varg_') {
 			fi = fi[5..]
 			fr += 'varg_'
 		}
