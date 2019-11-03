@@ -174,8 +174,8 @@ fn (v mut V) cc() {
 				println('$path not found... building module $imp')
 				if path.ends_with('vlib/ui.o') {
 					println('copying ui...')
-					os.cp('$vdir/thirdparty/ui/ui.o', path) or { panic('error copying ui files') }
-					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
+					_ = os.cp('$vdir/thirdparty/ui/ui.o', path) or { panic('error copying ui files') }
+					_ = os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
 							'/vlib/ui.vh')  or { panic('error copying ui files') }
 					
 				}	else {
