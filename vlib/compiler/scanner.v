@@ -650,11 +650,11 @@ fn (s Scanner) count_symbol_before(p int, sym byte) int {
   return count
 }
 
-// println('array out of bounds $idx len=$a.len')
-// This is really bad. It needs a major clean up
 fn (s mut Scanner) ident_string() string {
 	q := s.text[s.pos]
-	if (q == single_quote || q == double_quote) &&	!s.inside_string{
+	is_quote := q == single_quote || q == double_quote
+	is_raw :=  is_quote && s.text[s.pos-1] == `r`
+	if is_quote && !s.inside_string {
 		s.quote = q
 	}
 	//if s.file_path.contains('string_test') {
@@ -688,14 +688,14 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
-		if c == `{` && prevc == `$` && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		if c == `{` && prevc == `$` && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		if (c.is_letter() || c == `_`) && prevc == `$` && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
