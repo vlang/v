@@ -877,7 +877,7 @@ fn (p &Parser) identify_typo(name string) string {
 	mut output := ''
 	// check imported modules
 	mut n := p.table.find_misspelled_imported_mod(name_dotted, p, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * module: `$n`'
 	}
 	// check consts
@@ -885,14 +885,19 @@ fn (p &Parser) identify_typo(name string) string {
 	if n != '' {
 		output += '\n  * const: `$n`'
 	}
+	// check types
+	typ, type_cat := p.table.find_misspelled_type(name, p, min_match)
+	if typ.len > 0 {
+		output += '\n  * $type_cat: `$typ`'
+	}
 	// check functions
 	n = p.table.find_misspelled_fn(name, p, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
 	n = p.find_misspelled_local_var(name_dotted, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * variable: `$n`'
 	}
 	return output
@@ -902,28 +907,24 @@ fn (p &Parser) identify_typo(name string) string {
 fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
-	n1 := if name.starts_with('main__') { name[6..] } else { name }
 	for _, f in table.fns {
-		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
-		if !(f.mod in ['', 'main', 'builtin']) {
-			mut mod_imported := false
-			for _, m in p.import_table.imports {
-				if f.mod == m {
-					mod_imported = true
-					break
-				}
-			}
-			if !mod_imported { continue }
-		}
-		c := strings.dice_coefficient(n1, f.name)
+		if name.len - f.name.len > 2 || f.name.len - name.len > 2 { continue }
+		if f.mod != p.mod && !p.is_mod_in_scope(f.mod) && f.mod.contains('__') { continue }
+		c := strings.dice_coefficient(name, f.name)
 		f_name_orig := mod_gen_name_rev(f.name.replace('__', '.'))
 		if c > closest {
 			closest = c
 			closest_fn = f_name_orig
 		}
 	}
+	// n1 := if name.starts_with('main__') { name[6..] } else { name }
 	return if closest >= min_match { closest_fn } else { '' }
 }
+
+// start abstracting from below
+// fn a() {
+// 	if a.contains('__') && != a.starts_with(mod_gen_name(cnst.mod)) { return }
+// }
 
 // find imported module with closest name to `name`
 fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match f32) string {
@@ -946,15 +947,14 @@ fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match
 fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_const := ''
-	mut mods_in_scope := ['builtin', 'main']
-	for _, mod in p.import_table.imports {
-		mods_in_scope << mod
-	}
 	for cnst in table.consts {
-		if cnst.mod != p.mod && !(cnst.mod in mods_in_scope) && cnst.mod.contains('__') { continue }
+		if cnst.mod != p.mod && !p.is_mod_in_scope(cnst.mod) && cnst.mod.contains('__') { continue }
 		if name.len - cnst.name.len > 2 || cnst.name.len - name.len > 2 { continue }
 		const_name_orig := mod_gen_name_rev(cnst.name.replace('__', '.'))
-		c := strings.dice_coefficient(name, cnst.name.replace('builtin__', 'main__'))
+		n := if name.contains('__') { name.all_after('__') } else { name }
+		c := strings.dice_coefficient(n, cnst.name.replace('${mod_gen_name(cnst.mod)}__', ''))
+		println(' # $name - $cnst.name')
+		println(' # $n - ' + cnst.name.replace('${mod_gen_name(cnst.mod)}__', ''))
 		if c > closest {
 			closest = c
 			closest_const = const_name_orig
@@ -963,3 +963,42 @@ fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) s
 	return if closest >= min_match { closest_const } else { '' }
 }
 
+// find type with closest name to `name`
+fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (string, string) {
+	mut closest := f32(0)
+	mut closest_type := ''
+	mut type_cat := ''
+	for _, typ in table.typesmap {
+		if typ.mod != p.mod && !p.is_mod_in_scope(typ.mod) && typ.mod.contains('__') { continue }
+		if name.len - typ.name.len > 2 || typ.name.len - name.len > 2 { continue }
+		type_name_orig := mod_gen_name_rev(typ.name.replace('__', '.'))
+		c := strings.dice_coefficient(name, typ.name.replace('builtin__', 'main__'))
+		if c > closest {
+			closest = c
+			closest_type = type_name_orig
+			type_cat = type_cat_str(typ.cat)
+		}
+	}
+	if closest >= min_match {
+		return closest_type, type_cat
+	}
+	return '', ''
+}
+
+fn type_cat_str(tc TypeCategory) string {
+	tc_str := match tc {
+		.builtin    { 'builtin' }
+		.struct_    { 'struct' }
+		.func       { 'function' }
+		.interface_ { 'interface' }
+		.enum_      { 'enum' }
+		.union_     { 'union' }
+		.c_struct   { 'C struct' }
+		.c_typedef  { 'C typedef' }
+		.objc_interface { 'obj C interface' }
+		.array      { 'array' }
+		.alias      { 'type alias' }
+		else        { 'unknown' }
+	}
+	return tc_str
+}
