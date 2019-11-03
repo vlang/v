@@ -355,6 +355,9 @@ pub:
 
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
+	if cmd.contains(';') || cmd.contains('&&') {
+		return error('; and && are not allowed in shell commands')
+	}
 	pcmd := '$cmd 2>&1'
 	f := vpopen(pcmd)
 	if isnil(f) {
@@ -378,6 +381,10 @@ pub fn exec(cmd string) ?Result {
 
 // `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
+	if cmd.contains(';') || cmd.contains('&&') {
+		// TODO remove panic
+		panic('; and && are not allowed in shell commands')
+	}
 	mut ret := int(0)
 	$if windows {
 		ret = C._wsystem(cmd.to_wide())
