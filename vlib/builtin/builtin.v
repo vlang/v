@@ -54,7 +54,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 					cmd := 'addr2line -e $executable $addr'
 
 					// taken from os, to avoid depending on the os module inside builtin.v
-					f := byteptr(C.popen(cmd.str, 'r'))
+					f := C.popen(cmd.str, 'r')
 					if isnil(f) {
 						println(sframe) continue
 					}
@@ -186,7 +186,7 @@ pub fn free(ptr voidptr) {
 	C.free(ptr)
 }
 
-fn memdup(src voidptr, sz int) voidptr {
+pub fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }

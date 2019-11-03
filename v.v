@@ -7,6 +7,7 @@ module main
 import (
 	compiler
 	benchmark
+	os
 	//time
 )
 
@@ -16,15 +17,17 @@ fn main() {
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
 	options := args.filter(it.starts_with('-'))
-	commands := args.filter(!it.starts_with('-'))
+	//NB: commands should be explicitly set by the command line (os.args)
+	//    NOT passed through VFLAGS, otherwise the naked `v` invocation for
+	//    the repl does not work when you have VFLAGS with -cc or -cflags set
+	//    which may be surprising to v users.
+	stuff_after_executable := os.args[1..]
+	commands := stuff_after_executable.filter(!it.starts_with('-'))
+	
 	// Print the version and exit.
 	if '-v' in options || '--version' in options || 'version' in commands {
 		version_hash := compiler.vhash()
 		println('V $compiler.Version $version_hash')
-		return
-	}
-	else if '-h' in options || '--help' in options || 'help' in commands {
-		println(compiler.help_text)
 		return
 	}
 	else if 'translate' in commands {
@@ -32,19 +35,19 @@ fn main() {
 		return
 	}
 	else if 'up' in commands {
-		compiler.update_v()
+		compiler.launch_tool('vup')
 		return
 	}
-	else if 'get' in commands {
+	else if ('search' in commands) || ('install' in commands) || ('update' in commands) || ('remove' in commands){
+		compiler.launch_tool('vpm')
+		return
+	}
+	else if ('get' in commands) { // obsoleted
 		println('use `v install` to install modules from vpm.vlang.io ')
 		return
 	}
 	else if 'symlink' in commands {
 		compiler.create_symlink()
-		return
-	}
-	else if 'install' in commands {
-		compiler.install_v(args)
 		return
 	}
 	// TODO quit if the v compiler is too old
@@ -57,18 +60,37 @@ fn main() {
 		return
 	}
 	else if 'test' in commands {
-		compiler.test_v()
+		compiler.launch_tool('vtest')
+		return
+	}
+	// No args? REPL
+	else if 'runrepl' in commands || commands.len == 0 || (args.len == 2 && args[1] == '-') {
+		compiler.launch_tool('vrepl')
 		return
 	}
 	// Generate the docs and exit
 	else if 'doc' in commands {
-		// v.gen_doc_html_for_module(args.last())
+		vexe := os.executable()
+		vdir := os.dir(os.executable())
+		os.chdir(vdir)
+		mod := args.last()
+		os.system('$vexe build module vlib/' + args.last())
+		txt := os.read_file('$compiler.v_modules_path/vlib/${mod}.vh') or {
+			panic(err)
+		}
+		println(txt)
 		exit(0)
-	} else {
+		// v.gen_doc_html_for_module(args.last())
+	}
+	else if '-h' in options || '--help' in options || 'help' in commands {
+		println(compiler.help_text)
+		return
+	}
+	else {
 		//println('unknown command/argument\n')
 		//println(compiler.help_text)
-	}	
-	
+	}
+
 	// Construct the V object from command line arguments
 	mut v := compiler.new_v(args)
 	if v.pref.is_verbose {
@@ -82,14 +104,8 @@ fn main() {
 		v.run_compiled_executable_and_exit()
 	}
 
-	// No args? REPL
-	if args.len < 2 || (args.len == 2 && args[1] == '-') || 'runrepl' in args {
-		compiler.run_repl()
-		return
-	}
-
 	mut tmark := benchmark.new_benchmark()
-	v.compile()	
+	v.compile()
 	if v.pref.is_stats {
 		tmark.stop()
 		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')

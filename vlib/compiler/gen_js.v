@@ -12,7 +12,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	if typ.starts_with('...') { typ = typ[3..] }
 	or_else := p.tok == .key_orelse
 	if or_else {
-		// return p.gen_handle_option_or_else(typ, '', pos)
+		// return p.gen_handle_option_or_else(typ, name, pos)
 	}
 	return typ
 }
@@ -53,6 +53,11 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	if or_else {
 		// return p.gen_handle_option_or_else(typ, '', pos)
 	}
+}
+
+// TODO: optionals
+fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
+	return _typ
 }
 
 fn types_to_c(types []Type, table &Table) string {

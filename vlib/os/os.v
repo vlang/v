@@ -4,7 +4,7 @@
 
 module os
 
-import strings
+import filepath
 
 #include <sys/stat.h>
 #include <signal.h>
@@ -71,6 +71,8 @@ fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
 
+fn C.GetLastError() u32
+
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -123,6 +125,27 @@ pub fn mv(old, new string) {
 		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
 		C.rename(*char(old.str), *char(new.str))
+	}
+}
+
+fn C.CopyFile(&u32, &u32, int) int
+
+// TODO implement actual cp for linux
+pub fn cp(old, new string) ?bool {
+	$if windows {
+		_old := old.replace('/', '\\')
+		_new := new.replace('/', '\\')
+		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+
+		result := C.GetLastError()
+		if result == 0 {
+			return true
+		} else {
+			return error_with_code('failed to copy $old to $new', int(result))
+		}
+	} $else {
+		os.system('cp $old $new')
+		return true // TODO make it return true or error when cp for linux is implemented
 	}
 }
 
@@ -282,7 +305,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-fn popen(path string) *C.FILE {
+fn vpopen(path string) *C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -313,7 +336,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	}
 }
 
-fn pclose(f *C.FILE) int {
+fn vpclose(f *C.FILE) int {
 	$if windows {
 		return int( C._pclose(f) )
 	}
@@ -332,8 +355,11 @@ pub:
 
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
+	if cmd.contains(';') || cmd.contains('&&') {
+		return error('; and && are not allowed in shell commands')
+	}
 	pcmd := '$cmd 2>&1'
-	f := popen(pcmd)
+	f := vpopen(pcmd)
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
@@ -343,7 +369,7 @@ pub fn exec(cmd string) ?Result {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()
-	exit_code := pclose(f)
+	exit_code := vpclose(f)
 	//if exit_code != 0 {
 		//return error(res)
 	//}
@@ -355,6 +381,10 @@ pub fn exec(cmd string) ?Result {
 
 // `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
+	if cmd.contains(';') || cmd.contains('&&') {
+		// TODO remove panic
+		panic('; and && are not allowed in shell commands')
+	}
 	mut ret := int(0)
 	$if windows {
 		ret = C._wsystem(cmd.to_wide())
@@ -911,13 +941,7 @@ pub fn mkdir_all(path string) {
 	}
 }
 
-// TODO use []string.join once ...string becomes "[]string"
 pub fn join(base string, dirs ...string) string {
-	mut path := strings.new_builder(50)
-	path.write(base.trim_right('\\/'))
-	for d in dirs {
-		path.write(os.path_separator)
-		path.write(d)
-	}
-	return path.str()
+	println('use filepath.join')
+	return filepath.join(base, dirs)
 }

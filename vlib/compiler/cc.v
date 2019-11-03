@@ -7,6 +7,7 @@ module compiler
 import (
 	os
 	time
+	filepath
 )
 
 fn todo() {
@@ -16,6 +17,7 @@ fn todo() {
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
+	vdir := os.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
@@ -25,12 +27,11 @@ fn (v mut V) cc() {
 		$if !js {
 			if v.out_name.ends_with('.js') {
 				vjs_path := vexe + 'js'
-				dir := os.dir(vexe)
 				if !os.file_exists(vjs_path) {
 					println('V.js compiler not found, building...')
 					// Build V.js. Specifying `-os js` makes V include
 					// only _js.v files and ignore _c.v files.
-					ret := os.system('$vexe -o $vjs_path -os js $dir/v.v')
+					ret := os.system('$vexe -o $vjs_path -os js $vdir/v.v')
 					if ret == 0 {
 						println('Done.')
 					} else {
@@ -64,25 +65,30 @@ fn (v mut V) cc() {
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
-	$if linux {
-		vdir := os.dir(vexe)
-		tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
-		//println('tcc third "$tcc_3rd"')
-		tcc_path := '/var/tmp/tcc/bin/tcc'
-		if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
-			//println('moving tcc')
-			// if there's tcc in thirdparty/, that means this is
-			// a prebuilt V_linux.zip.
-			// Until the libtcc1.a bug is fixed, we neeed to move
-			// it to /var/tmp/
-			os.system('mv $vdir/thirdparty/tcc /var/tmp/')
+	if v.pref.fast {
+		$if linux {
+		$if !android {
+			tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
+			//println('tcc third "$tcc_3rd"')
+			tcc_path := '/var/tmp/tcc/bin/tcc'
+			if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
+				//println('moving tcc')
+				// if there's tcc in thirdparty/, that means this is
+				// a prebuilt V_linux.zip.
+				// Until the libtcc1.a bug is fixed, we neeed to move
+				// it to /var/tmp/
+				os.system('mv $vdir/thirdparty/tcc /var/tmp/')
+			}
+			if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
+				// TODO tcc bug, needs an empty libtcc1.a fila
+				//os.mkdir('/var/tmp/tcc/lib/tcc/')
+				//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
+				v.pref.ccompiler = tcc_path
+			}
 		}
-		if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
-			// TODO tcc bug, needs an empty libtcc1.a fila
-			//os.mkdir('/var/tmp/tcc/lib/tcc/')
-			//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
-			v.pref.ccompiler = tcc_path
-		}
+		} $else {
+			verror('-fast is only supported on Linux right now')
+		}	
 	}
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
@@ -112,13 +118,13 @@ fn (v mut V) cc() {
 	mut optimization_options := '-O2'
 	if v.pref.ccompiler.contains('clang') {
 		if debug_mode {
-			debug_options = '-g -O0'
+			debug_options = '-g -O0 -no-pie'
 		}
 		optimization_options = '-O3 -flto'
 	}
 	if v.pref.ccompiler.contains('gcc') {
 		if debug_mode {
-			debug_options = '-g3'
+			debug_options = '-g3 -no-pie'
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
@@ -135,7 +141,7 @@ fn (v mut V) cc() {
 	}
 
 	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
-		//a << '-Werror=implicit-function-declaration'
+		a << '-Werror=implicit-function-declaration'
 	}
 
 	for f in v.generate_hotcode_reloading_compiler_flags() {
@@ -147,7 +153,8 @@ fn (v mut V) cc() {
 		a << '-c'
 	}
 	else if v.pref.is_cache {
-		builtin_o_path := '$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}builtin.o'
+		builtin_o_path := filepath.join(v_modules_path, 'cache', 'vlib', 'builtin.o')
+		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.file_exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
@@ -165,8 +172,19 @@ fn (v mut V) cc() {
 				libs += ' ' + path
 			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				if path.ends_with('vlib/ui.o') {
+					println('copying ui...')
+					os.cp('$vdir/thirdparty/ui/ui.o', path)
+					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
+							'/vlib/ui.vh')
+					
+				}	else {
+					os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				}
 			}	
+			if path.ends_with('vlib/ui.o') {
+				a << '-framework Cocoa -framework Carbon'
+			}
 		}
 	}
 	if v.pref.sanitize {

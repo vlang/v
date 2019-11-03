@@ -6,6 +6,8 @@ module ui
 #include <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
 
+__global default_font *C.NSFont
+
 
 fn focus_app(next, event, data voidptr) {
   #NSLog(@"2The hot key was pressed.");

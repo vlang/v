@@ -113,6 +113,23 @@ fn test_walk() {
 	os.rmdir(folder)
 }
 
+fn test_cp() {
+  $if windows {
+    old_file_name := './example.txt'
+    new_file_name := './new_example.txt'
+    
+    os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')
+    result := os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
+
+    old_file := os.read_file(old_file_name) or { panic(err) }
+    new_file := os.read_file(new_file_name) or { panic(err) }
+    assert old_file == new_file
+    
+    os.rm(old_file_name)
+    os.rm(new_file_name)
+  }
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {

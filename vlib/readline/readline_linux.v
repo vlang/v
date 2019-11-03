@@ -151,19 +151,19 @@ pub fn read_line(prompt string) ?string {
 
 fn (r Readline) analyse(c int) Action {
   match c {
-    `\0`  { return Action.eof }
-    0x3   { return Action.eof } // End of Text
-    0x4   { return Action.eof } // End of Transmission
-    255   { return Action.eof }
-    `\n`  { return Action.commit_line }
-    `\r`  { return Action.commit_line }
-    `\f`  { return Action.clear_screen } // CTRL + L
-    `\b`  { return Action.delete_left } // Backspace
-    127   { return Action.delete_left } // DEL
+    `\0`  { return .eof }
+    0x3   { return .eof } // End of Text
+    0x4   { return .eof } // End of Transmission
+    255   { return .eof }
+    `\n`  { return .commit_line }
+    `\r`  { return .commit_line }
+    `\f`  { return .clear_screen } // CTRL + L
+    `\b`  { return .delete_left } // Backspace
+    127   { return .delete_left } // DEL
     27    { return r.analyse_control() } // ESC
-    1     { return Action.move_cursor_begining } // ^A
-    5     { return Action.move_cursor_end } // ^E
-    26    { return Action.suspend } // CTRL + Z, SUB
+    1     { return .move_cursor_begining } // ^A
+    5     { return .move_cursor_end } // ^E
+    26    { return .suspend } // CTRL + Z, SUB
     else  { return if c >= ` ` { Action.insert_character } else { Action.nothing } }
   }
 }
@@ -174,17 +174,17 @@ fn (r Readline) analyse_control() Action {
     `[` {
       sequence := r.read_char()
       match sequence {
-        `C` { return Action.move_cursor_right }
-        `D` { return Action.move_cursor_left }
-        `B` { return Action.history_next }
-        `A` { return Action.history_previous }
+        `C` { return .move_cursor_right }
+        `D` { return .move_cursor_left }
+        `B` { return .history_next }
+        `A` { return .history_previous }
         `1` { return r.analyse_extended_control() }
         `2` { return r.analyse_extended_control_no_eat(sequence) }
         `3` { return r.analyse_extended_control_no_eat(sequence) }
       }
     }
   }
-  return Action.nothing
+  return .nothing
 }
 
 fn (r Readline) analyse_extended_control() Action {
@@ -194,12 +194,12 @@ fn (r Readline) analyse_extended_control() Action {
     `5` {
       direction := r.read_char()
       match direction {
-        `C` { return Action.move_cursor_word_right }
-        `D` { return Action.move_cursor_word_left }
+        `C` { return .move_cursor_word_right }
+        `D` { return .move_cursor_word_left }
       }
     }
   }
-  return Action.nothing
+  return .nothing
 }
 
 fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
@@ -207,32 +207,32 @@ fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
   match c {
     `~` {
       match last_c {
-        `3` { return Action.delete_right } // Suppr key
-        `2` { return Action.overwrite }
+        `3` { return .delete_right } // Suppr key
+        `2` { return .overwrite }
       }
     }
   }
-  return Action.nothing
+  return .nothing
 }
 
 fn (r mut Readline) execute(a Action, c int) bool {
   match a {
-    Action.eof                    { return r.eof() }
-    Action.insert_character       { r.insert_character(c) }
-    Action.commit_line            { return r.commit_line() }
-    Action.delete_left            { r.delete_character() }
-    Action.delete_right           { r.suppr_character() }
-    Action.move_cursor_left       { r.move_cursor_left() }
-    Action.move_cursor_right      { r.move_cursor_right() }
-    Action.move_cursor_begining   { r.move_cursor_begining() }
-    Action.move_cursor_end        { r.move_cursor_end() }
-    Action.move_cursor_word_left  { r.move_cursor_word_left() }
-    Action.move_cursor_word_right { r.move_cursor_word_right() }
-    Action.history_previous       { r.history_previous() }
-    Action.history_next           { r.history_next() }
-    Action.overwrite              { r.switch_overwrite() }
-    Action.clear_screen           { r.clear_screen() }
-    Action.suspend                { r.suspend() }
+    .eof                    { return r.eof() }
+    .insert_character       { r.insert_character(c) }
+    .commit_line            { return r.commit_line() }
+    .delete_left            { r.delete_character() }
+    .delete_right           { r.suppr_character() }
+    .move_cursor_left       { r.move_cursor_left() }
+    .move_cursor_right      { r.move_cursor_right() }
+    .move_cursor_begining   { r.move_cursor_begining() }
+    .move_cursor_end        { r.move_cursor_end() }
+    .move_cursor_word_left  { r.move_cursor_word_left() }
+    .move_cursor_word_right { r.move_cursor_word_right() }
+    .history_previous       { r.history_previous() }
+    .history_next           { r.history_next() }
+    .overwrite              { r.switch_overwrite() }
+    .clear_screen           { r.clear_screen() }
+    .suspend                { r.suspend() }
   }
   return false
 }

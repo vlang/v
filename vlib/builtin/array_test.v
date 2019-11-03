@@ -32,6 +32,10 @@ fn test_deleting() {
 	a.delete(1)
 	assert a.str() == '[5, 3, 4]'
 	assert a.len == 3
+
+    a.delete(a.len - 1)
+	assert a.str() == '[5, 3]'
+	assert a.len == 2
 }
 
 fn test_short() {
@@ -80,37 +84,115 @@ fn test_push() {
 	assert a.str() == '[1, 3]'
 }
 
+// TODO array.insert is broken
+// Cannot pass literal or primitive type as it cannot be cast to voidptr.
+// In the current state only that would work:
+//   i := 3
+//	 a.insert(0, &i)
+// ----------------------------
+// fn test_insert() {
+//     mut a := [1, 2]
+
+//     a.insert(0, 3)
+//     assert a[0] == 3
+//     assert a[2] == 2
+//     assert a.len == 3
+
+//     a.insert(1, 4)
+//     assert a[1] == 4
+//     assert a[2] == 1
+//     assert a.len == 4
+
+//     a.insert(4, 5)
+//     assert a[4] == 5
+//     assert a[3] == 2
+//     assert a.len == 5
+
+//     mut b := []f64
+//     assert b.len == 0
+//     b.insert(0, f64(1.1))
+//     assert b.len == 1
+//     assert b[0] == f64(1.1)
+// }
+
+// TODO array.prepend is broken
+// It depends on array.insert
+// -----------------------------
+// fn test_prepend() {
+//     mut a := []int
+//     assert a.len == 0
+//     a.prepend(1)
+//     assert a.len == 1
+//     assert a[0] == 1
+
+//     mut b := []f64
+//     assert b.len == 0
+//     b.prepend(f64(1.1))
+//     assert b.len == 1
+//     assert b[0] == f64(1.1)
+// }
+
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == '["a", "b", "c"]'
 }
 
-fn test_repeat() {
-	a := [0].repeat(5)
-	assert a.len == 5
-	assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
+fn test_compare_ints() {
+    assert compare_ints(1, 2) == -1
+    assert compare_ints(2, 1) == 1
+    assert compare_ints(0, 0) == 0
 
-	b := [7].repeat(3)
-	assert b.len == 3
-	assert b[0] == 7 && b[1] == 7 && b[2] == 7
+    a := 1
+    b := 2
+    assert compare_ints(a, b) == -1
+    assert compare_ints(b, a) == 1
+    assert compare_ints(a, a) == 0
+}
+
+fn test_repeat() {
 	{
-		mut aa := [1.1].repeat(10)
+		a := [0].repeat(5)
+		assert a.len == 5
+		assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
+	}
+	{
+		a := [1.1].repeat(10)
 		// FIXME: assert aa[0] == 1.1 will fail, need fix
-		assert aa[0] == f32(1.1)
-		assert aa[5] == f32(1.1)
-		assert aa[9] == f32(1.1)
+		assert a[0] == f32(1.1)
+		assert a[5] == f32(1.1)
+		assert a[9] == f32(1.1)
 	}
 	{
-		mut aa := [f32(1.1)].repeat(10)
-		assert aa[0] == f32(1.1)
-		assert aa[5] == f32(1.1)
-		assert aa[9] == f32(1.1)
+		a := [f32(1.1)].repeat(10)
+		assert a[0] == f32(1.1)
+		assert a[5] == f32(1.1)
+		assert a[9] == f32(1.1)
 	}
 	{
-		aa := [f64(1.1)].repeat(10)
-		assert aa[0] == f64(1.1)
-		assert aa[5] == f64(1.1)
-		assert aa[9] == f64(1.1)
+		a := [f64(1.1)].repeat(10)
+		assert a[0] == f64(1.1)
+		assert a[5] == f64(1.1)
+		assert a[9] == f64(1.1)
+	}
+	{
+		a := [1, 2].repeat(2)
+		assert a[0] == 1
+		assert a[1] == 2
+		assert a[2] == 1
+		assert a[3] == 2
+	}
+	{
+		a := ['1', 'abc'].repeat(2)
+		assert a[0] == '1'
+		assert a[1] == 'abc'
+		assert a[2] == '1'
+		assert a[3] == 'abc'
+	}
+	{
+		mut a := ['1', 'abc'].repeat(0)
+		assert a.len == 0
+		a << 'abc'
+		assert a[0] == 'abc'
 	}
 }
 
@@ -149,12 +231,16 @@ fn test_left() {
 	b := a.left(2)
 	c := a[0..2]
 	d := a[..2]
+    e := a.left(4)
 	assert b[0] == 1
 	assert b[1] == 2
 	assert c[0] == 1
 	assert c[1] == 2
 	assert d[0] == 1
 	assert d[1] == 2
+    assert e[0] == 1
+    assert e[2] == 3
+    assert e.len == 3
 }
 
 fn test_slice() {
@@ -387,4 +473,9 @@ fn test_array_str() {
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
 	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
-}	
+}
+
+fn test_eq() {
+	assert [5,6,7].eq([6,7]) == false
+	assert [`a`,`b`].eq([`a`,`b`]) == true
+}

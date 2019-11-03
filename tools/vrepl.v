@@ -2,10 +2,14 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module compiler
+module main
 
-import os
-import term
+import (
+	compiler
+	os
+	term
+	readline
+)
 
 struct Repl {
 mut:
@@ -59,9 +63,9 @@ fn (r &Repl) function_call(line string) bool {
 }
 
 pub fn repl_help() {
-version_hash := vhash()
+version_hash := compiler.vhash()
 println('
-V $Version $version_hash
+V ${compiler.Version} $version_hash
   help                   Displays this information.
   Ctrl-C, Ctrl-D, exit   Exits the REPL.
   clear                  Clears the screen.
@@ -69,11 +73,12 @@ V $Version $version_hash
 }
 
 pub fn run_repl() []string {
-	version_hash := vhash()
-	println('V $Version $version_hash')
+	version_hash := compiler.vhash()
+	println('V ${compiler.Version} $version_hash')
 	println('Use Ctrl-C or `exit` to exit')
 	file := '.vrepl.v'
 	temp_file := '.vrepl_temp.v'
+	mut prompt := '>>> '
 	defer {
 		os.rm(file)
 		os.rm(temp_file)
@@ -81,22 +86,26 @@ pub fn run_repl() []string {
 		os.rm(temp_file[..temp_file.len - 2])
 	}
 	mut r := Repl{}
-	vexe := os.args[0]
+	mut readline := readline.Readline{}
+	vexe := os.args[1]
 	for {
 		if r.indent == 0 {
-			print('>>> ')
+			prompt = '>>> '
 		}
 		else {
-			print('... ')
+			prompt = '... '
 		}
-		r.line = os.get_raw_line()
-		if r.line.trim_space() == '' && r.line.ends_with('\n') {
-			continue
-		}
-		r.line = r.line.trim_space()
-		if r.line.len == -1 || r.line == '' || r.line == 'exit' {
+		mut line := readline.read_line(prompt) or {
 			break
 		}
+		if line.trim_space() == '' && line.ends_with('\n') {
+			continue
+		}
+		line = line.trim_space()
+		if line.len <= -1 || line == '' || line == 'exit' {
+			break
+		}
+		r.line = line
 		if r.line == '\n' {
 			continue
 		}
@@ -134,7 +143,7 @@ pub fn run_repl() []string {
 			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" run $file -repl') or {
-				verror(err)
+				compiler.verror(err)
 				return []string
 			}
 			vals := s.output.split('\n')
@@ -153,7 +162,7 @@ pub fn run_repl() []string {
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('"$vexe" run $temp_file -repl') or {
-				verror(err)
+				compiler.verror(err)
 				return []string
 			}
 			if !func_call && s.exit_code == 0 && !temp_flag {
@@ -177,4 +186,14 @@ pub fn run_repl() []string {
 		}
 	}
 	return r.lines
+}
+
+fn main() {
+	if os.args.len < 2 || !os.file_exists(os.args[1]) {
+		println('Usage:')
+		println('  vrepl vexepath\n')
+		println('  ... where vexepath is the full path to the v executable file')
+		return
+	}
+	run_repl()
 }

@@ -81,7 +81,7 @@ fn (p mut Parser) struct_decl() {
 		typ.is_placeholder = false
 		typ.cat = cat
 		typ.parent = objc_parent
-		typ.is_public = is_pub
+		typ.is_public = is_pub || p.is_vh
 		p.table.rewrite_type(typ)
 	}
 	else {
@@ -91,7 +91,7 @@ fn (p mut Parser) struct_decl() {
 			is_c: is_c
 			cat: cat
 			parent: objc_parent
-			is_public: is_pub
+			is_public: is_pub || p.is_vh
 		}
 	}
 	// Struct `C.Foo` declaration, no body
