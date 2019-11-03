@@ -34,11 +34,6 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	}
 }
 
-// TODO: optionals
-fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
-	return _typ
-}
-
 fn (p mut Parser) gen_blank_identifier_assign() {
 	assign_error_tok_idx := p.token_idx
 	p.check_name()
