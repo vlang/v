@@ -55,7 +55,7 @@ pub fn new() &Digest {
 	return d
 }
 
-pub fn (d mut Digest) write(p_ []byte) ?int {
+pub fn (d mut Digest) write(p_ []byte) int {
 	mut p := p_
 	nn := p.len
 	d.len += u64(nn)

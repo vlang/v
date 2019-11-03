@@ -45,6 +45,7 @@ mut:
 	inside_return_expr bool
 	inside_unsafe bool
 	is_struct_init bool
+	is_var_decl    bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
 	ptr_cast       bool
@@ -1700,6 +1701,7 @@ fn (p mut Parser) name_expr() string {
 		// p.error('`$f.name` used as value')
 	}
 
+	fn_call_ph := p.cgen.add_placeholder()
 	// println('call to fn $f.name of type $f.typ')
 	// TODO replace the following dirty hacks (needs ptr access to fn table)
 	new_f := f
@@ -1712,6 +1714,17 @@ fn (p mut Parser) name_expr() string {
 		// println('	from $f2.name(${f2.str_args(p.table)}) $f2.typ : $f2.type_inst')
 	}
 	f = new_f
+
+	// optional function call `function() or {}`, no return assignment
+    is_or_else := p.tok == .key_orelse
+    if !p.is_var_decl && is_or_else {
+		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
+	}
+    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+		f.typ.starts_with('Option_') {
+        opt_type := f.typ[7..]
+        p.error('unhandled option type: `?$opt_type`')
+    }
 
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {
@@ -2049,11 +2062,21 @@ struct $typ.name {
 		return field.typ
 	}
 	// method
-	method := p.table.find_method(typ, field_name) or {
+	mut method := p.table.find_method(typ, field_name) or {
 		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
+    // optional method call `a.method() or {}`, no return assignment
+    is_or_else := p.tok == .key_orelse
+	if !p.is_var_decl && is_or_else {
+		method.typ = p.gen_handle_option_or_else(method.typ, '', method_ph)
+	}
+    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+		method.typ.starts_with('Option_') {
+        opt_type := method.typ[7..]
+        p.error('unhandled option type: `?$opt_type`')
+    }
 	// Methods returning `array` should return `array_string` etc
 	if method.typ == 'array' && typ.name.starts_with('array_') {
 		return typ.name
@@ -3098,7 +3121,9 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		var_name := p.lit
 		p.next()
 		p.check(.decl_assign)
+		p.is_var_decl = true
 		option_type, expr := p.tmp_expr()// := p.bool_expression()
+		p.is_var_decl = false
 		typ := option_type[7..]
 		// Option_User tmp = get_user(1);
 		// if (tmp.ok) {
