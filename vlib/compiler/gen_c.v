@@ -99,6 +99,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	p.cgen.set_placeholder(fn_call_ph, '$typ $tmp = ')
 	typ = typ[7..]
 	p.genln(';')
+	or_tok_idx := p.token_idx
 	p.check(.key_orelse)
 	p.check(.lcbr)
 	p.register_var(Var {
@@ -132,7 +133,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		p.genln('$name = *($typ*) $tmp . data;')
 	}
 	if !p.returns && last_typ != typ && is_assign && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-		p.error('`or` block must provide a default value or return/exit/continue/break/panic')
+		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)
 	}
 	p.returns = false
 	return typ
