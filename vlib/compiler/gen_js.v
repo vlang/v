@@ -11,9 +11,8 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	mut typ := p.bool_expression()
 	if typ.starts_with('...') { typ = typ[3..] }
 	or_else := p.tok == .key_orelse
-	//tmp := p.get_tmp()
 	if or_else {
-		//panic('optionals todo')
+		// return p.gen_handle_option_or_else(typ, '', pos)
 	}
 	return typ
 }
@@ -35,8 +34,8 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, _str_args string) {
 	}
 }
 
-// TODO
-fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int) string {
+// TODO: optionals
+fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
 	return _typ
 }
 
@@ -51,10 +50,8 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
 	}
 	or_else := p.tok == .key_orelse
-	//tmp := p.get_tmp()
 	if or_else {
-		//p.gen_handle_optional_or()
-		//panic('optionals todo')
+		// return p.gen_handle_option_or_else(typ, '', pos)
 	}
 }
 

@@ -1698,7 +1698,7 @@ fn (p mut Parser) name_expr() string {
 	// optional function call `function() or {}`, no return assignment
     is_or_else := p.tok == .key_orelse
     if !p.is_var_decl && is_or_else {
-		f.typ = p.gen_handle_optional_or(f.typ, '', fn_call_ph)
+		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
 	}
     else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
 		f.typ.starts_with('Option_') {
@@ -2051,7 +2051,7 @@ struct $typ.name {
     // optional method call `a.method() or {}`, no return assignment
     is_or_else := p.tok == .key_orelse
 	if !p.is_var_decl && is_or_else {
-		method.typ = p.gen_handle_optional_or(method.typ, '', method_ph)
+		method.typ = p.gen_handle_option_or_else(method.typ, '', method_ph)
 	}
     else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
 		method.typ.starts_with('Option_') {

@@ -25,7 +25,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
 	if or_else {
-		typ = p.gen_handle_optional_or(typ, name, pos)
+		typ = p.gen_handle_option_or_else(typ, name, pos)
 		return typ
 	}
 	gen_name := p.table.var_cgen_name(name)
@@ -64,7 +64,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
 }
 
-fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int) string {
+fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
 	mut typ := _typ
 	is_assign := name.len > 0
 	if !typ.starts_with('Option_') {
@@ -74,7 +74,7 @@ fn (p mut Parser) gen_handle_optional_or(_typ, name string, fn_call_ph int) stri
 	p.cgen.set_placeholder(fn_call_ph, '$typ $tmp = ')
 	typ = typ[7..]
 	p.genln(';')
-	p.next()
+	p.check(.key_orelse)
 	p.check(.lcbr)
 	p.register_var(Var {
 		name: 'err'
@@ -129,7 +129,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	}
 	// handle or
 	if p.tok == .key_orelse {
-		p.gen_handle_optional_or(typ, '', pos)
+		p.gen_handle_option_or_else(typ, '', pos)
 	} else {
 		if is_fn_call {
 			p.gen(';')
