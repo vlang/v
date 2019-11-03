@@ -184,7 +184,7 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 	g.thread_args << wrapper_text
 }
 
-fn (v &V) prof_counters() string {
+fn (v &VFrontend) prof_counters() string {
 	mut res := []string
 	// Global fns
 	//for f in c.table.fns {
@@ -321,7 +321,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 // C struct definitions, ordered
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
-fn (v &V) type_definitions() string {
+fn (v &VFrontend) type_definitions() string {
 	mut types := []Type // structs that need to be sorted
 	mut builtin_types := []Type // builtin types
 	// builtin types need to be on top

@@ -14,7 +14,7 @@ fn todo() {
 	
 }	
 
-fn (v mut V) cc() {
+fn (v mut VFrontend) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
 	vdir := os.dir(vexe)
@@ -349,7 +349,7 @@ start:
 }
 
 
-fn (c mut V) cc_windows_cross() {
+fn (c mut VFrontend) cc_windows_cross() {
 	if !c.out_name.ends_with('.exe') {
 		c.out_name = c.out_name + '.exe'
 	}
@@ -418,7 +418,7 @@ fn (c mut V) cc_windows_cross() {
 	println('Done!')
 }
 
-fn (c &V) build_thirdparty_obj_files() {
+fn (c &VFrontend) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {			
 			rest_of_module_flags := c.get_rest_of_module_cflags( flag )

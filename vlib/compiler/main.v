@@ -55,7 +55,7 @@ enum Pass {
 	main
 }
 
-struct V {
+struct VFrontend {
 pub mut:
 	os         OS           // the OS to build for
 	out_name_c string       // name of the temporary C file
@@ -119,7 +119,7 @@ pub mut:
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
-pub fn (v mut V) finalize_compilation(){
+pub fn (v mut VFrontend) finalize_compilation(){
 	// TODO remove
 	if v.pref.autofree {
 		/*
@@ -141,14 +141,14 @@ pub fn (v mut V) finalize_compilation(){
 	}
 }
 
-pub fn (v mut V) add_parser(parser Parser) int {
+pub fn (v mut VFrontend) add_parser(parser Parser) int {
 	   v.parsers << parser
 	   pidx := v.parsers.len-1
 	   v.file_parser_idx[os.realpath(parser.file_path)] = pidx
 	   return pidx
 }
 
-pub fn (v &V) get_file_parser_index(file string) ?int {
+pub fn (v &VFrontend) get_file_parser_index(file string) ?int {
 	file_path := os.realpath(file)
 	if file_path in v.file_parser_idx {
 		return v.file_parser_idx[file_path]
@@ -157,7 +157,7 @@ pub fn (v &V) get_file_parser_index(file string) ?int {
 }
 
 // find existing parser or create new one. returns v.parsers index
-pub fn (v mut V) parse(file string, pass Pass) int {
+pub fn (v mut VFrontend) parse(file string, pass Pass) int {
 	//println('parse($file, $pass)')
 	pidx := v.get_file_parser_index(file) or {
 		mut p := v.new_parser_from_file(file)
@@ -172,7 +172,7 @@ pub fn (v mut V) parse(file string, pass Pass) int {
 }
 
 
-pub fn (v mut V) compile() {
+pub fn (v mut VFrontend) compile() {
 	// Emily: Stop people on linux from being able to build with msvc
 	if os.user_os() != 'windows' && v.pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
@@ -322,7 +322,7 @@ pub fn (v mut V) compile() {
 	v.cc()
 }
 
-fn (v mut V) generate_init() {
+fn (v mut VFrontend) generate_init() {
 	$if js { return }
 	if v.pref.build_mode == .build_module {
 		nogen := v.cgen.nogen
@@ -395,7 +395,7 @@ string _STR_TMP(const char *fmt, ...) {
 	}
 }
 
-pub fn (v mut V) generate_main() {
+pub fn (v mut VFrontend) generate_main() {
 	mut cgen := v.cgen
 	$if js { return }
 
@@ -455,7 +455,7 @@ pub fn (v mut V) generate_main() {
 	}
 }
 
-pub fn (v mut V) gen_main_start(add_os_args bool){
+pub fn (v mut VFrontend) gen_main_start(add_os_args bool){
 	v.cgen.genln('int main(int argc, char** argv) { ')
 	v.cgen.genln('  init();')
 	if add_os_args && 'os' in v.table.imports {
@@ -464,7 +464,7 @@ pub fn (v mut V) gen_main_start(add_os_args bool){
 	v.generate_hotcode_reloading_main_caller()
 	v.cgen.genln('')
 }
-pub fn (v mut V) gen_main_end(return_statement string){
+pub fn (v mut VFrontend) gen_main_end(return_statement string){
 	v.cgen.genln('')
 	v.cgen.genln('  $return_statement;')
 	v.cgen.genln('}')
@@ -482,7 +482,7 @@ pub fn final_target_out_name(out_name string) string {
 	}
 }
 
-pub fn (v V) run_compiled_executable_and_exit() {
+pub fn (v VFrontend) run_compiled_executable_and_exit() {
 	args := env_vflags_and_os_args()
 	
 	if v.pref.is_verbose {
@@ -517,7 +517,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 	exit(0)
 }
 
-pub fn (v &V) v_files_from_dir(dir string) []string {
+pub fn (v &VFrontend) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.file_exists(dir) {
 		if dir == 'compiler' && os.dir_exists('vlib') {
@@ -564,7 +564,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 }
 
 // Parses imports, adds necessary libs, and then user files
-pub fn (v mut V) add_v_files_to_compile() {
+pub fn (v mut VFrontend) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	// Builtin cache exists? Use it.
 	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
@@ -634,7 +634,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	}
 }
 
-pub fn (v &V) get_builtin_files() []string {
+pub fn (v &VFrontend) get_builtin_files() []string {
 	// .vh cache exists? Use it
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
@@ -643,7 +643,7 @@ pub fn (v &V) get_builtin_files() []string {
 }
 
 // get user files
-pub fn (v &V)  get_user_files() []string {
+pub fn (v &VFrontend)  get_user_files() []string {
 	mut dir := v.dir
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after
@@ -691,7 +691,7 @@ pub fn (v &V)  get_user_files() []string {
 }
 
 // get module files from already parsed imports
-fn (v &V) get_imported_module_files(mod string) []string {
+fn (v &VFrontend) get_imported_module_files(mod string) []string {
 	mut files := []string
 	for p in v.parsers {
 		if p.mod == mod {
@@ -702,7 +702,7 @@ fn (v &V) get_imported_module_files(mod string) []string {
 }
 
 // parse deps from already parsed builtin/user files
-pub fn (v mut V) parse_lib_imports() {
+pub fn (v mut VFrontend) parse_lib_imports() {
 	mut done_imports := []string
 	for i in 0..v.parsers.len {
 		for _, mod in v.parsers[i].import_table.imports {
@@ -752,14 +752,14 @@ pub fn get_param_after(joined_args, arg, def string) string {
 	return res
 }
 
-pub fn (v &V) log(s string) {
+pub fn (v &VFrontend) log(s string) {
 	if !v.pref.is_verbose {
 		return
 	}
 	println(s)
 }
 
-pub fn new_v(args[]string) &V {
+pub fn new_v(args[]string) &VFrontend {
 	// Create modules dirs if they are missing
 	if !os.dir_exists(v_modules_path) {
 		os.mkdir(v_modules_path)
@@ -948,7 +948,7 @@ pub fn new_v(args[]string) &V {
 	if pref.is_so {
 		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
 	}
-	return &V{
+	return &VFrontend{
 		os: _os
 		out_name: out_name
 		dir: dir
@@ -1060,7 +1060,7 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VEXE', os.realpath( [vroot_path, vname].join(os.path_separator) ), true)
 }
 
-pub fn new_v_compiler_with_args(args []string) &V {
+pub fn new_v_compiler_with_args(args []string) &VFrontend {
 	vexe := vexe_path()
 	mut allargs := [vexe]
 	allargs << args

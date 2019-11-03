@@ -17,7 +17,7 @@ struct Parser {
 	// C ifdef guard clause that must be put before
 	// the #include directives in the parsed .v file
 	file_pcguard   string
-	v              &V
+	v              &VFrontend
 	pref           &Preferences // Preferences shared from V struct
 mut:
 	scanner        &Scanner
@@ -82,19 +82,19 @@ const (
 
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
-fn (v mut V) new_parser_from_string(text string) Parser {
+fn (v mut VFrontend) new_parser_from_string(text string) Parser {
 	mut p := v.new_parser(new_scanner(text))
 	p.scan_tokens()
 	return p
 }
 
-fn (v mut V) reset_cgen_file_line_parameters(){
+fn (v mut VFrontend) reset_cgen_file_line_parameters(){
 	v.cgen.line = 0
 	v.cgen.file = ''
 	v.cgen.line_directives = v.pref.is_vlines
 }
 
-fn (v mut V) new_parser_from_file(path string) Parser {
+fn (v mut VFrontend) new_parser_from_file(path string) Parser {
 	v.reset_cgen_file_line_parameters()
 	//println('new_parser("$path")')
 	mut path_pcguard := ''
@@ -146,7 +146,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 
 // creates a new parser. most likely you will want to use
 // `new_parser_file` or `new_parser_string` instead.
-fn (v mut V) new_parser(scanner &Scanner) Parser {
+fn (v mut VFrontend) new_parser(scanner &Scanner) Parser {
 	v.reset_cgen_file_line_parameters()
 	mut p := Parser {
 		scanner: scanner

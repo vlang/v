@@ -19,7 +19,7 @@ fn (c &CFlag) str() string {
 }
 
 // get flags for current os
-fn (v &V) get_os_cflags() []CFlag {
+fn (v &VFrontend) get_os_cflags() []CFlag {
 	mut flags := []CFlag
 	for flag in v.table.cflags {
 		if flag.os == ''
@@ -33,7 +33,7 @@ fn (v &V) get_os_cflags() []CFlag {
 	return flags
 }
 
-fn (v &V) get_rest_of_module_cflags(c &CFlag) []CFlag {
+fn (v &VFrontend) get_rest_of_module_cflags(c &CFlag) []CFlag {
 	mut flags := []CFlag
 	cflags := v.get_os_cflags()
 	for flag in cflags {

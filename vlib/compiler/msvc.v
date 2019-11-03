@@ -222,7 +222,7 @@ fn find_msvc() ?MsvcResult {
 	}
 }
 
-pub fn (v mut V) cc_msvc() {
+pub fn (v mut VFrontend) cc_msvc() {
 	r := find_msvc() or {
 		// TODO: code reuse
 		if !v.pref.is_keep_c && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {

@@ -101,7 +101,7 @@ fn (it &ImportTable) is_used_import(alias string) bool {
 }
 
 // return resolved dep graph (order deps)
-pub fn (v &V) resolve_deps() &DepGraph {
+pub fn (v &VFrontend) resolve_deps() &DepGraph {
 	graph := v.import_graph()
 	deps_resolved := graph.resolve()
 	if !deps_resolved.acyclic {
@@ -111,7 +111,7 @@ pub fn (v &V) resolve_deps() &DepGraph {
 }
 
 // graph of all imported modules
-pub fn(v &V) import_graph() &DepGraph {
+pub fn(v &VFrontend) import_graph() &DepGraph {
 	mut graph := new_dep_graph()
 	for p in v.parsers {
 		mut deps := []string
@@ -132,7 +132,7 @@ pub fn(graph &DepGraph) imports() []string {
 	return mods
 }
 
-fn (v &V) module_path(mod string) string {
+fn (v &VFrontend) module_path(mod string) string {
 	// submodule support
 	if mod.contains('.') {
 		return mod.replace('.', os.path_separator)
@@ -144,7 +144,7 @@ fn (v &V) module_path(mod string) string {
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-fn (v &V) find_module_path(mod string) ?string {
+fn (v &VFrontend) find_module_path(mod string) ?string {
 	mod_path := v.module_path(mod)
 	// First check for local modules in the same directory
 	mut import_path := os.getwd() + '${os.path_separator}$mod_path'
