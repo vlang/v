@@ -100,6 +100,15 @@ fn (it &ImportTable) is_used_import(alias string) bool {
 	return alias in it.used_imports
 }
 
+// should module be accessable
+pub fn (p &Parser) is_mod_in_scope(mod string) bool {
+	mut mods_in_scope := ['', 'builtin', 'main', p.mod]
+	for _, m in p.import_table.imports {
+		mods_in_scope << m
+	}
+	return mod in mods_in_scope
+}
+
 // return resolved dep graph (order deps)
 pub fn (v &V) resolve_deps() &DepGraph {
 	graph := v.import_graph()

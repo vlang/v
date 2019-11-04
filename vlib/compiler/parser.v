@@ -898,7 +898,11 @@ fn (p mut Parser) get_type() string {
 				// for q in p.table.types {
 				// println(q.name)
 				// }
-				p.error('unknown type `$typ`')
+				mut t_suggest, tc_suggest := p.table.find_misspelled_type(typ, p, 0.50)
+				if t_suggest.len > 0 {
+					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
+				}
+				p.error('unknown type `$typ`$t_suggest')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
@@ -1676,10 +1680,17 @@ fn (p mut Parser) name_expr() string {
 	if p.table.known_const(name) {
 		return p.get_const_type(name, ptr)
 	}
-
+	// TODO: V script? Try os module.
 	// Function (not method, methods are handled in `.dot()`)	
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
-		return p.get_undefined_fn_type(name, orig_name)
+		// First pass, the function can be defined later.
+		if p.first_pass() {
+			p.next()
+			return 'void'
+		}
+		// exhaused all options type,enum,const,mod,var,fn etc
+		// so show undefined error (also checks typos)
+		p.undefined_error(name, orig_name) return '' // panics
 	}
 	// no () after func, so func is an argument, just gen its name
 	// TODO verify this and handle errors
@@ -1838,40 +1849,20 @@ fn (p mut Parser) get_c_func_type(name string) string {
 	return cfn.typ
 }
 
-fn (p mut Parser) get_undefined_fn_type(name string, orig_name string) string {
-	if p.first_pass() {
-		p.next()
-		// First pass, the function can be defined later.
-		return 'void'
-	} else {
-		// We are in the second pass, that means this function was not defined, throw an error.
-
-		// V script? Try os module.
-		// TODO
-		if p.v_script {
-			//name = name.replace('main__', 'os__')
-			//f = p.table.find_fn(name)
-		}
-
-		// check for misspelled function / variable / module
-		name_dotted := mod_gen_name_rev(name.replace('__', '.'))
-		suggested := p.identify_typo(name)
-		if suggested.len != 0 {
-			p.error('undefined: `$name_dotted`. did you mean:\n$suggested\n')
-		}
-
-		// If orig_name is a mod, then printing undefined: `mod` tells us nothing
-		// if p.table.known_mod(orig_name) {
-		if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-			m_name := mod_gen_name_rev(name.replace('__', '.'))
-			p.error('undefined function: `$m_name` (in module `$orig_name`)')
-		} else if orig_name in reserved_type_param_names {
-			p.error('the letter `$orig_name` is reserved for type parameters')
-		} else {
-			p.error('undefined: `$orig_name`')
-		}
-		return 'void'
+fn (p mut Parser) undefined_error(name string, orig_name string) {
+	name_dotted := mod_gen_name_rev(name.replace('__', '.'))
+	// check for misspelled function / variable / module / type
+	suggested := p.identify_typo(name)
+	if suggested.len != 0 {
+		p.error('undefined: `$name_dotted`. did you mean:\n$suggested\n')
 	}
+	// If orig_name is a mod, then printing undefined: `mod` tells us nothing
+	if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
+		p.error('undefined: `$name_dotted` (in module `$orig_name`)')
+	} else if orig_name in reserved_type_param_names {
+		p.error('the letter `$orig_name` is reserved for type parameters')
+	}
+	p.error('undefined: `$orig_name`')
 }
 
 fn (p mut Parser) var_expr(v Var) string {

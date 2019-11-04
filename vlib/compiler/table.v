@@ -877,7 +877,7 @@ fn (p &Parser) identify_typo(name string) string {
 	mut output := ''
 	// check imported modules
 	mut n := p.table.find_misspelled_imported_mod(name_dotted, p, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * module: `$n`'
 	}
 	// check consts
@@ -885,41 +885,45 @@ fn (p &Parser) identify_typo(name string) string {
 	if n != '' {
 		output += '\n  * const: `$n`'
 	}
+	// check types
+	typ, type_cat := p.table.find_misspelled_type(name, p, min_match)
+	if typ.len > 0 {
+		output += '\n  * $type_cat: `$typ`'
+	}
 	// check functions
 	n = p.table.find_misspelled_fn(name, p, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
 	n = p.find_misspelled_local_var(name_dotted, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * variable: `$n`'
 	}
 	return output
+}
+
+// compare just name part, some items are mod prefied
+fn typo_compare_name_mod(a, b, b_mod string) f32 {
+	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
+	auidx := a.index('__')
+	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
+	a_name := if auidx != -1 { a[auidx..] } else { a }
+	b_name := if b.contains('__') { b.all_after('__') } else { b }
+	if a_mod.len > 0 && b_mod.len > 0 && a_mod != b_mod { return 0 }
+	return strings.dice_coefficient(a_name, b_name)
 }
 
 // find function with closest name to `name`
 fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
-	n1 := if name.starts_with('main__') { name[6..] } else { name }
 	for _, f in table.fns {
-		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
-		if !(f.mod in ['', 'main', 'builtin']) {
-			mut mod_imported := false
-			for _, m in p.import_table.imports {
-				if f.mod == m {
-					mod_imported = true
-					break
-				}
-			}
-			if !mod_imported { continue }
-		}
-		c := strings.dice_coefficient(n1, f.name)
-		f_name_orig := mod_gen_name_rev(f.name.replace('__', '.'))
+		if f.name.contains('__') && !p.is_mod_in_scope(f.mod) { continue }
+		c := typo_compare_name_mod(name, f.name, f.mod)
 		if c > closest {
 			closest = c
-			closest_fn = f_name_orig
+			closest_fn = mod_gen_name_rev(f.name.replace('__', '.'))
 		}
 	}
 	return if closest >= min_match { closest_fn } else { '' }
@@ -931,12 +935,10 @@ fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match
 	mut closest_mod := ''
 	n1 := if name.starts_with('main.') { name[5..] } else { name }
 	for alias, mod in p.import_table.imports {
-		if n1.len - alias.len > 2 || alias.len - n1.len > 2 { continue }
-		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-		c := strings.dice_coefficient(n1, alias)
+		c := typo_compare_name_mod(n1, alias, '')
 		if c > closest {
 			closest = c
-			closest_mod = '$mod_alias'
+			closest_mod = if alias == mod { alias } else { '$alias ($mod)' }
 		}
 	}
 	return if closest >= min_match { closest_mod } else { '' }
@@ -946,20 +948,51 @@ fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match
 fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_const := ''
-	mut mods_in_scope := ['builtin', 'main']
-	for _, mod in p.import_table.imports {
-		mods_in_scope << mod
-	}
 	for cnst in table.consts {
-		if cnst.mod != p.mod && !(cnst.mod in mods_in_scope) && cnst.mod.contains('__') { continue }
-		if name.len - cnst.name.len > 2 || cnst.name.len - name.len > 2 { continue }
-		const_name_orig := mod_gen_name_rev(cnst.name.replace('__', '.'))
-		c := strings.dice_coefficient(name, cnst.name.replace('builtin__', 'main__'))
+		if cnst.name.contains('__') && !p.is_mod_in_scope(cnst.mod) { continue }
+		c := typo_compare_name_mod(name, cnst.name, cnst.mod)
 		if c > closest {
 			closest = c
-			closest_const = const_name_orig
+			closest_const = mod_gen_name_rev(cnst.name.replace('__', '.'))
 		}
 	}
 	return if closest >= min_match { closest_const } else { '' }
 }
 
+// find type with closest name to `name`
+fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (string, string) {
+	mut closest := f32(0)
+	mut closest_type := ''
+	mut type_cat := ''
+	for _, typ in table.typesmap {
+		if typ.name.contains('__') && !p.is_mod_in_scope(typ.mod) { continue }
+		c := typo_compare_name_mod(name, typ.name, typ.mod)
+		if c > closest {
+			closest = c
+			closest_type = mod_gen_name_rev(typ.name.replace('__', '.'))
+			type_cat = type_cat_str(typ.cat)
+		}
+	}
+	if closest >= min_match {
+		return closest_type, type_cat
+	}
+	return '', ''
+}
+
+fn type_cat_str(tc TypeCategory) string {
+	tc_str := match tc {
+		.builtin    { 'builtin' }
+		.struct_    { 'struct' }
+		.func       { 'function' }
+		.interface_ { 'interface' }
+		.enum_      { 'enum' }
+		.union_     { 'union' }
+		.c_struct   { 'C struct' }
+		.c_typedef  { 'C typedef' }
+		.objc_interface { 'obj C interface' }
+		.array      { 'array' }
+		.alias      { 'type alias' }
+		else        { 'unknown' }
+	}
+	return tc_str
+}
