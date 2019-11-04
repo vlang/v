@@ -373,8 +373,12 @@ fn (p mut Parser) parse(pass Pass) {
 		.key_global {
 			if !p.pref.translated && !p.pref.is_live &&
 				!p.builtin_mod && !p.pref.building_v &&
-				p.mod != 'ui'  && !os.getwd().contains('/volt') {
-				p.error('__global is only allowed in translated code')
+				p.mod != 'ui'  && !os.getwd().contains('/volt') &&
+				!p.pref.enable_globals
+			{
+				p.error('use `v --enable-globals ...` to enable globals')
+				
+				//p.error('__global is only allowed in translated code')
 			}
 			p.next()
 			name := p.check_name()
