@@ -907,9 +907,10 @@ fn (p &Parser) identify_typo(name string) string {
 fn typo_compare_name_mod(a, b, b_mod string) f32 {
 	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
 	auidx := a.index('__')
+	buidx := b.index('__')
 	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
-	a_name := if auidx != -1 { a[auidx..] } else { a }
-	b_name := if b.contains('__') { b.all_after('__') } else { b }
+	a_name := if auidx != -1 { a[auidx+2..] } else { a }
+	b_name := if buidx != -1 { b[buidx+2..] } else { b }
 	if a_mod.len > 0 && b_mod.len > 0 && a_mod != b_mod { return 0 }
 	return strings.dice_coefficient(a_name, b_name)
 }
