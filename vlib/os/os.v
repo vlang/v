@@ -151,7 +151,42 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
-fn vfopen(path, mode string) voidptr { //*C.FILE {
+fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
+	if !os.file_exists(source_path) {
+		return error('Source path doesn\'t exist')
+	}
+	//single file copy
+	if !os.is_dir(source_path) {
+		mut adjasted_path := dest_path
+		if os.is_dir(adjasted_path) {
+			adjasted_path = dest_path + os.path_separator + os.basedir(source_path)
+		}
+		if os.file_exists(adjasted_path) {
+			if overwrite { os.rm(adjasted_path) }
+			else { return error('Destination file path already exist') }
+		}
+		os.cp(source_path, adjasted_path) or { return error(err) }
+		return true
+	}
+	if !os.is_dir(dest_path) {
+		return error('Destination path is not a valid directory')
+	}
+	files := os.ls(source_path) or { return error(err) }
+	for file in files {
+		sp := source_path + os.path_separator + file
+		dp := dest_path + os.path_separator + file
+		if os.is_dir(sp) {
+			os.mkdir(dp)
+		}
+		cp_r(sp, dp, overwrite) or {
+			os.rmdir(dp)
+			panic(err) 
+		}
+	}
+	return true
+}
+
+fn vfopen(path, mode string) *C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
