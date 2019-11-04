@@ -498,3 +498,10 @@ fn test_atoi() {
 	}	
 }	
 
+fn test_raw_inter() {
+	world := 'world'
+	s := r'hello\n$world'
+	assert s == r'hello\n$world'
+	assert s.contains('$')
+}
+
