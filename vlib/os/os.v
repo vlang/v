@@ -151,7 +151,7 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
-fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
+pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 	if !os.file_exists(source_path) {
 		return error('Source path doesn\'t exist')
 	}
