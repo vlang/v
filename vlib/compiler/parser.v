@@ -3960,7 +3960,7 @@ fn (p mut Parser) check_unused_imports() {
 }
 
 fn (p mut Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
-	mut expr := p.tokens[start_tok_idx-1].lit
+	mut expr := p.tokens[start_tok_idx-1].str()
 	mut is_fn_call := p.tokens[start_tok_idx].tok == .lpar
 	if !is_fn_call {
 		mut i := start_tok_idx
