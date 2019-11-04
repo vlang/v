@@ -1248,10 +1248,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	//if p.expected_type.starts_with('array_') {
 		//p.warn('expecting array got $expr_type')
 	//}
-	// Allow `num = 4` where `num` is an `?int`
 	if expr_type == 'void' {
 		p.error_with_token_index('cannot assign from function that does not return a value', p.token_idx-2)
 	}
+	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') &&
 		expr_type == p.assigned_type['Option_'.len..] {
 		expr := p.cgen.cur_line[pos..]
