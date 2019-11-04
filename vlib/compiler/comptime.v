@@ -66,21 +66,20 @@ fn (p mut Parser) comp_time() {
 			p.genln('#endif')
 		}
 		else if name == 'tinyc' {
-			p.genln('#ifdef __TINYC__')
-			p.check(.lcbr)
-			p.statements_no_rcbr()
-			if ! (p.tok == .dollar && p.peek() == .key_else) {
-				p.genln('#endif')
-			}
+			p.comptime_if_block('__TINYC__')
 		}
 		else if name == 'glibc' {
-			p.genln('#ifdef __GLIBC__')
-			p.check(.lcbr)
-			p.statements_no_rcbr()
-			if ! (p.tok == .dollar && p.peek() == .key_else) {
-				p.genln('#endif')
-			}
+			p.comptime_if_block('__GLIBC__')
 		}	
+		else if name == 'mingw' {
+			p.comptime_if_block('__MINGW32__')
+		}
+		else if name == 'msvc' {
+			p.comptime_if_block('__MSC_VER__')
+		}
+		else if name == 'clang' {
+			p.comptime_if_block('__clang__')
+		}
 		else {
 			println('Supported platforms:')
 			println(supported_platforms)
@@ -438,4 +437,13 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 	p.check(.rpar)
 	p.close_scope()
 	return 'array_' + map_type
+}
+
+fn (p mut Parser) comptime_if_block(name string) {
+	p.genln('#ifdef $name')
+	p.check(.lcbr)
+	p.statements_no_rcbr()
+	if ! (p.tok == .dollar && p.peek() == .key_else) {
+		p.genln('#endif')
+	}
 }
