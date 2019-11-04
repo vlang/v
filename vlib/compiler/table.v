@@ -903,7 +903,7 @@ fn (p &Parser) identify_typo(name string) string {
 	return output
 }
 
-// compare just name part, some items are name prefied
+// compare just name part, some items are mod prefied
 fn typo_compare_name_mod(a, b, b_mod string) f32 {
 	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
 	auidx := a.index('__')
@@ -919,7 +919,7 @@ fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) stri
 	mut closest := f32(0)
 	mut closest_fn := ''
 	for _, f in table.fns {
-		if f.mod.contains('__') && !p.is_mod_in_scope(f.mod) { continue }
+		if f.name.contains('__') && !p.is_mod_in_scope(f.mod) { continue }
 		c := typo_compare_name_mod(name, f.name, f.mod)
 		if c > closest {
 			closest = c
@@ -949,7 +949,7 @@ fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) s
 	mut closest := f32(0)
 	mut closest_const := ''
 	for cnst in table.consts {
-		if cnst.mod.contains('__') && !p.is_mod_in_scope(cnst.mod) { continue }
+		if cnst.name.contains('__') && !p.is_mod_in_scope(cnst.mod) { continue }
 		c := typo_compare_name_mod(name, cnst.name, cnst.mod)
 		if c > closest {
 			closest = c
@@ -965,7 +965,7 @@ fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (s
 	mut closest_type := ''
 	mut type_cat := ''
 	for _, typ in table.typesmap {
-		if typ.mod.contains('__') && !p.is_mod_in_scope(typ.mod) { continue }
+		if typ.name.contains('__') && !p.is_mod_in_scope(typ.mod) { continue }
 		c := typo_compare_name_mod(name, typ.name, typ.mod)
 		if c > closest {
 			closest = c

@@ -1688,7 +1688,7 @@ fn (p mut Parser) name_expr() string {
 			p.next()
 			return 'void'
 		}
-		// exhaused all options type,enum,const,mod,var etc
+		// exhaused all options type,enum,const,mod,var,fn etc
 		// so show undefined error (also checks typos)
 		p.undefined_error(name, orig_name) return '' // panics
 	}
