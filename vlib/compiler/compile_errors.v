@@ -280,12 +280,13 @@ fn (s mut Scanner) eat_single_newline(){
 ///////////////////////////////
 
 const (
-	match_arrow_warning = '=> is no longer needed in match statements, use\n' +
+	warn_match_arrow = '=> is no longer needed in match statements, use\n' +
 'match foo {
 	1 { bar }
 	2 { baz }
 	else { ... }
 }'
-
 	//make_receiver_mutable =
+
+	err_used_as_value = 'used as value'
 )

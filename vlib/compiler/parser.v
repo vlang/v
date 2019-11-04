@@ -1248,6 +1248,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	//if p.expected_type.starts_with('array_') {
 		//p.warn('expecting array got $expr_type')
 	//}
+	if expr_type == 'void' {
+		_, fn_name := p.is_expr_fn_call(p.token_idx-3)
+		p.error_with_token_index('$fn_name() $err_used_as_value', p.token_idx-2)
+	}
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') &&
 		expr_type == p.assigned_type['Option_'.len..] {
@@ -1334,6 +1338,10 @@ fn (p mut Parser) var_decl() {
 	}
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_'+var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
+	if t == 'void' {
+		_, fn_name := p.is_expr_fn_call(p.token_idx-3)
+		p.error_with_token_index('$fn_name() $err_used_as_value', p.token_idx-2)
+	}
 	mut var_types := [t]
 	// multiple returns types
 	if var_names.len > 1 {
@@ -3426,7 +3434,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		if p.tok == .key_else {
 			p.check(.key_else)
 			if p.tok == .arrow {
-				p.warn(match_arrow_warning)
+				p.warn(warn_match_arrow)
 				p.check(.arrow)
 			}	
 
@@ -3555,7 +3563,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		p.gen(')')
 
 		if p.tok == .arrow {
-			p.warn(match_arrow_warning)
+			p.warn(warn_match_arrow)
 			p.check(.arrow)
 		}	
 
@@ -3951,17 +3959,17 @@ fn (p mut Parser) check_unused_imports() {
 	p.production_error_with_token_index( 'the following imports were never used: $output', 0 )
 }
 
-fn (p mut Parser) is_next_expr_fn_call() (bool, string) {
-	mut next_expr := p.lit
-	mut is_fn_call := p.peek() == .lpar
+fn (p mut Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
+	mut expr := p.tokens[start_tok_idx-1].str()
+	mut is_fn_call := p.tokens[start_tok_idx].tok == .lpar
 	if !is_fn_call {
-		mut i := p.token_idx+1
+		mut i := start_tok_idx
 		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
 			p.tokens[i].lit != '_' && i < p.tokens.len {
-			next_expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
+			expr += p.tokens[i].str()
 			i++
 		}
 		is_fn_call = p.tokens[i].tok == .lpar
 	}
-	return is_fn_call, next_expr
+	return is_fn_call, expr
 }
