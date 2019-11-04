@@ -1249,6 +1249,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		//p.warn('expecting array got $expr_type')
 	//}
 	// Allow `num = 4` where `num` is an `?int`
+	if expr_type == 'void' {
+		p.error_with_token_index('cannot assign from function that dosen\'t return a value', p.token_idx-2)
+	}
 	if p.assigned_type.starts_with('Option_') &&
 		expr_type == p.assigned_type['Option_'.len..] {
 		expr := p.cgen.cur_line[pos..]
@@ -1334,6 +1337,9 @@ fn (p mut Parser) var_decl() {
 	}
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_'+var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
+	if t == 'void' {
+		p.error_with_token_index('cannot assign from function that dosen\'t return a value', p.token_idx-2)
+	}
 	mut var_types := [t]
 	// multiple returns types
 	if var_names.len > 1 {
