@@ -717,7 +717,9 @@ fn (p mut Parser) check(expected TokenKind) {
 		s := 'expected `${expected.str()}` but got `${p.strtok()}`'
 		p.next()
 		println('next token = `${p.strtok()}`')
-		print_backtrace()
+		if p.pref.is_debug {
+			print_backtrace()
+		}
 		p.error(s)
 	}
 	/*
