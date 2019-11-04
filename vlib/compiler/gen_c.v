@@ -69,7 +69,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
 	is_indexer := p.peek() == .lsbr
-	is_fn_call, next_expr := p.is_next_expr_fn_call()
+	is_fn_call, next_expr := p.is_expr_fn_call(p.token_idx)
 	pos := p.cgen.add_placeholder()
 	p.is_var_decl = true
 	typ := p.bool_expression()
