@@ -6,7 +6,7 @@ CommonCHeaders = '
 
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
-//#include "fns.h"
+#include "fns.h"
 #include <signal.h>
 #include <stdarg.h> // for va_list
 #include <inttypes.h>  // int64_t etc
