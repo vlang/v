@@ -27,8 +27,6 @@ fn (p mut Parser) warn(s string) {
 	p.warn_with_token_index(s, p.token_idx-1 )
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (p mut Parser) production_error_with_token_index(e string, tokenindex int) {
 	if p.pref.is_prod {
 		p.error_with_token_index( e, tokenindex )
@@ -37,8 +35,6 @@ fn (p mut Parser) production_error_with_token_index(e string, tokenindex int) {
 	}
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (p mut Parser) error_with_token_index(s string, tokenindex int) {
 	p.error_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
 }
@@ -46,8 +42,6 @@ fn (p mut Parser) error_with_token_index(s string, tokenindex int) {
 fn (p mut Parser) warn_with_token_index(s string, tokenindex int) {
 	p.warn_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
 }
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
 	p.print_error_context()
@@ -65,8 +59,6 @@ fn (p mut Parser) warn_with_position(s string, sp ScannerPos) {
 	p.scanner.goto_scanner_position( cpos )
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (s &Scanner) error(msg string) {
 	s.error_with_col(msg, 0)
 }
@@ -75,7 +67,6 @@ fn (s &Scanner) warn(msg string) {
 	s.warn_with_col(msg, 0)
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
 fn (s &Scanner) warn_with_col(msg string, col int) {
 	fullpath := s.get_error_filepath()		
 	color_on := s.is_color_output_on()
@@ -280,12 +271,13 @@ fn (s mut Scanner) eat_single_newline(){
 ///////////////////////////////
 
 const (
-	match_arrow_warning = '=> is no longer needed in match statements, use\n' +
+	warn_match_arrow = '=> is no longer needed in match statements, use\n' +
 'match foo {
 	1 { bar }
 	2 { baz }
 	else { ... }
 }'
-
 	//make_receiver_mutable =
+
+	err_used_as_value = 'used as value'
 )

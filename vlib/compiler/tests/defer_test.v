@@ -46,6 +46,8 @@ fn test_defer_early_exit() {
 
 fn test_defer_option() {
 	mut ok := Num{0}
-	set_num_opt(mut ok)
+	set_num_opt(mut ok) or {
+		assert false
+	}
 	assert ok.val == 1
 }

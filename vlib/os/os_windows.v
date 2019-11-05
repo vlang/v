@@ -61,7 +61,7 @@ pub fn ls(path string) ?[]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !dir_exists(path) {
-		return error('ls() couldnt open dir "$path"')
+		return error('ls() couldnt open dir "$path": directory does not exist')
 	}
 	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*

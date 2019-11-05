@@ -58,3 +58,15 @@ fn test_if_opt() {
 	assert 1 == 1
 	println('nice')
 }
+
+fn for_opt_default() ?string {
+        return error('awww')
+}
+
+fn test_opt_default() {
+	a := for_opt_default() or {
+			// panic(err)
+			'default'
+	}
+	assert a == 'default'
+}

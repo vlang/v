@@ -66,21 +66,20 @@ fn (p mut Parser) comp_time() {
 			p.genln('#endif')
 		}
 		else if name == 'tinyc' {
-			p.genln('#ifdef __TINYC__')
-			p.check(.lcbr)
-			p.statements_no_rcbr()
-			if ! (p.tok == .dollar && p.peek() == .key_else) {
-				p.genln('#endif')
-			}
+			p.comptime_if_block('__TINYC__')
 		}
 		else if name == 'glibc' {
-			p.genln('#ifdef __GLIBC__')
-			p.check(.lcbr)
-			p.statements_no_rcbr()
-			if ! (p.tok == .dollar && p.peek() == .key_else) {
-				p.genln('#endif')
-			}
+			p.comptime_if_block('__GLIBC__')
 		}	
+		else if name == 'mingw' {
+			p.comptime_if_block('__MINGW32__')
+		}
+		else if name == 'msvc' {
+			p.comptime_if_block('__MSC_VER__')
+		}
+		else if name == 'clang' {
+			p.comptime_if_block('__clang__')
+		}
 		else {
 			println('Supported platforms:')
 			println(supported_platforms)
@@ -331,7 +330,32 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	p.v.vgen_buf.writeln(sb.str())
 	// Need to manually add the definition to `fns` so that it stays
 	// at the top of the file.
-	// This function will get parsee by V after the main pass.
+	// This function will get parsed by V after the main pass.
+	p.cgen.fns << 'string ${typ.name}_str();'
+}
+
+fn (p mut Parser) gen_varg_str(typ Type) {
+	elm_type := typ.name[5..]
+	elm_type2 := p.table.find_type(elm_type)
+	is_array := elm_type.starts_with('array_')
+	if is_array {
+		p.gen_array_str(elm_type2)
+	} else if elm_type2.cat == .struct_ {
+		p.gen_struct_str(elm_type2)
+	}
+	p.v.vgen_buf.writeln('
+fn (a $typ.name) str() string {
+	mut sb := strings.new_builder(a.len * 3)
+	sb.write("[")
+	for i, elm in a {
+		sb.write(elm.str())
+		if i < a.len - 1 {
+			sb.write(", ")
+		}
+	}
+	sb.write("]")
+	return sb.str()
+}')
 	p.cgen.fns << 'string ${typ.name}_str();'
 }
 
@@ -413,4 +437,13 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 	p.check(.rpar)
 	p.close_scope()
 	return 'array_' + map_type
+}
+
+fn (p mut Parser) comptime_if_block(name string) {
+	p.genln('#ifdef $name')
+	p.check(.lcbr)
+	p.statements_no_rcbr()
+	if ! (p.tok == .dollar && p.peek() == .key_else) {
+		p.genln('#endif')
+	}
 }
