@@ -31,12 +31,14 @@ pub const (
 	MAX_PATH = 4096
 )
 
+/*
 struct C.FILE {
 	
 }
+*/
 
 pub struct File {
-	cfile &FILE
+	cfile voidptr
 }
 
 struct FileInfo {
@@ -149,7 +151,7 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
-fn vfopen(path, mode string) *C.FILE {
+fn vfopen(path, mode string) voidptr { //*C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -305,7 +307,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-fn vpopen(path string) *C.FILE {
+fn vpopen(path string) voidptr {//*C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -336,7 +338,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	}
 }
 
-fn vpclose(f *C.FILE) int {
+fn vpclose(f voidptr) int {
 	$if windows {
 		return int( C._pclose(f) )
 	}
