@@ -9,13 +9,10 @@ CommonCHeaders = '
 #include "fns.h"
 #include <stdarg.h> // for va_list
 #include <inttypes.h>  // int64_t etc
-//#include <string.h> // memcpy
 
 #ifndef _WIN32
 #include <ctype.h>
-#include <locale.h> // tolower
 #include <sys/time.h>
-#include <unistd.h> // sleep
 #else
 #if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
 #error Please upgrade your MinGW distribution to use msvcr90.dll or later.
