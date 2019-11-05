@@ -171,8 +171,8 @@ pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 	}
 	files := os.ls(source_path) or { return error(err) }
 	for file in files {
-		sp := source_path + os.path_separator + file
-		dp := dest_path + os.path_separator + file
+		sp := filepath.join(source_path, file)
+		dp := filepath.join(dest_path, file)
 		if os.is_dir(sp) {
 			os.mkdir(dp)
 		}
