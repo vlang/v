@@ -3385,7 +3385,9 @@ fn (p mut Parser) for_st() {
 			})
 			// TODO don't generate if it's not used.
 			// Otherwise it's a C warning + perf.
-			p.genln('bool last = $i == $tmp . len - 1;')
+			if !p.is_js {
+				p.genln('bool last = $i == $tmp . len - 1;')
+			}
 		}
 		else if is_str {
 			typ = 'byte'
