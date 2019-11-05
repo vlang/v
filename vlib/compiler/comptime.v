@@ -343,12 +343,13 @@ fn (p mut Parser) gen_varg_str(typ Type) {
 	} else if elm_type2.cat == .struct_ {
 		p.gen_struct_str(elm_type2)
 	}
+	str := if elm_type.starts_with('string') { '' } else { '.str()' }
 	p.v.vgen_buf.writeln('
 fn (a $typ.name) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write("[")
 	for i, elm in a {
-		sb.write(elm.str())
+		sb.write(elm$str)
 		if i < a.len - 1 {
 			sb.write(", ")
 		}

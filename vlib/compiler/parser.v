@@ -2159,7 +2159,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 				p.gen(',')
 			}
 		}
-		if is_variadic_arg { typ = typ[5..] }
+		if is_variadic_arg { typ = typ[5..].replace('_ptr', '*') }
 		if is_fixed_arr {
 			// `[10]int` => `int`, `[10][3]int` => `[3]int`
 			if typ.contains('][') {
@@ -3299,7 +3299,7 @@ fn (p mut Parser) for_st() {
 		// typ = strings.Replace(typ, "_ptr", "*", -1)
 		mut i_var_type := 'int'
 		if is_variadic_arg {
-			typ = typ[5..]
+			typ = typ[5..].replace('_ptr', '*')
 			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		else if is_arr {
@@ -3367,7 +3367,7 @@ fn (p mut Parser) for_st() {
 		// TODO var_type := if...
 		i := p.get_tmp()
 		if is_variadic_arg {
-			typ = typ[5..]
+			typ = typ[5..].replace('_ptr', '*')
 			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		else if is_range {

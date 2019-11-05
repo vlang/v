@@ -985,7 +985,6 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			if !T.has_method('str') {
 				// varg
 				if T.name.starts_with('varg_') {
-					p.gen_varg_str(T)
 					p.cgen.set_placeholder(ph, '${typ}_str(')
 					p.gen(')')
 					continue
@@ -1217,7 +1216,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 }
 
 fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
-	vargs_struct := 'varg_$typ'
+	vargs_struct := 'varg_' + typ.replace('*', '_ptr')
 	varg_type := Type{
 		cat: TypeCategory.struct_,
 		name: vargs_struct,
@@ -1226,6 +1225,7 @@ fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	mut varg_len := len
 	if !p.table.known_type(vargs_struct) {
 		p.table.register_type2(varg_type)
+		p.gen_varg_str(varg_type)
 		p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 	} else {
 		ex_typ := p.table.find_type(vargs_struct)
@@ -1244,7 +1244,6 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		return '', []string
 	}
 	last_arg := f.args.last()
-	mut varg_def_type := last_arg.typ[3..]
 	mut types := []string
 	mut values := []string
 	for p.tok != .rpar {
@@ -1253,22 +1252,31 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		}
 		p.cgen.start_tmp()
 		mut varg_type := p.bool_expression()
-		varg_value := p.cgen.end_tmp()
-		if varg_type.starts_with('varg_') &&
-			(values.len > 0 || p.tok == .comma) {
-				p.error('You cannot pass additional vargs when forwarding vargs to another function/method')
-			}
+		mut varg_value := p.cgen.end_tmp().trim_space()
 		if !f.is_generic {
 			p.check_types(last_arg.typ, varg_type)
 		} else {
-			if types.len > 0 {
-				for t in types {
-					p.check_types(varg_type, t)
-				}
+			for t in types {
+				p.check_types(varg_type, t)
 			}
 		}
-		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' }
-			else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' }
+		if varg_type.starts_with('varg_') {
+			if values.len > 0 || p.tok == .comma {
+				p.error('cannot pass additional vargs when forwarding vargs to another function/method')
+			}
+			if varg_type != last_arg.typ {
+				p.error('cannot forward varg using ${type_to_decl(varg_type)} as ${type_to_decl(last_arg.typ)}')
+			}
+		}
+		is_value_ref := varg_value[0] == `&`
+		is_varg_def_typ_ref := last_arg.typ[last_arg.typ.len-1] == `*`
+		is_varg_type_ref := varg_type[varg_type.len == `*`
+		if is_value_ref && !is_varg_def_typ_ref {
+			varg_type = varg_type[..varg_type.len-1]
+			varg_value = varg_value[1..]
+		} 
+		ref_deref := if is_varg_def_typ_ref && !is_varg_type_ref { '&' }
+			else if !is_varg_def_typ_ref && is_varg_type_ref && !is_value_ref { '*' }
 			else { '' }
 		types << varg_type
 		values << '$ref_deref$varg_value'
@@ -1474,7 +1482,7 @@ fn (f &Fn) str_args(table &Table) string {
 			}
 		}
 		else if arg.typ.starts_with('varg_') {
-			s += '$arg.typ *$arg.name'
+			s += arg.typ.replace('*', '_ptr') + ' *$arg.name'
 		}
 		else {
 			// s += '$arg.typ $arg.name'
@@ -1523,3 +1531,13 @@ pub fn (f Fn) v_fn_name() string {
 	return f.name.replace('${f.mod}__', '')
 }
 
+fn type_to_decl(_typ string) string {
+	mut typ := _typ
+	if typ.starts_with('array_') {
+		typ = '[]'+typ[6..]
+	}
+	if typ.ends_with('*') { 
+		typ = '&'+typ.replace('*', '')
+	}
+	return typ
+}
