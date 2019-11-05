@@ -1271,10 +1271,8 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		is_value_ref := varg_value[0] == `&`
 		is_varg_def_typ_ref := last_arg.typ[last_arg.typ.len-1] == `*`
 		is_varg_type_ref := varg_type[varg_type.len-1] == `*`
-		if is_value_ref && !is_varg_def_typ_ref {
-			varg_type = varg_type[..varg_type.len-1]
-			varg_value = varg_value[1..]
-		} 
+		if is_value_ref && !is_varg_def_typ_ref { varg_value = varg_value[1..] }
+		if is_varg_type_ref && !is_varg_def_typ_ref { varg_type = varg_type[..varg_type.len-1] }
 		ref_deref := if is_varg_def_typ_ref && !is_varg_type_ref { '&' }
 			else if !is_varg_def_typ_ref && is_varg_type_ref && !is_value_ref { '*' }
 			else { '' }
