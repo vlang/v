@@ -130,6 +130,24 @@ fn test_cp() {
   }
 }
 
+fn test_cp_r() {
+  //fileX -> dir/fileX
+  os.write_file('ex1.txt', 'wow!')
+  os.mkdir('ex')
+  os.cp_r('ex1.txt', 'ex', false) or { panic(err) }
+  old := os.read_file('ex1.txt') or { panic(err) }
+  new := os.read_file('ex/ex1.txt') or { panic(err) }
+  assert old == new
+  os.mkdir('ex/ex2')
+  os.write_file('ex2.txt', 'great!')
+  os.cp_r('ex2.txt', 'ex/ex2', false) or { panic(err) }
+  old2 := os.read_file('ex2.txt') or { panic(err) }
+  new2 := os.read_file('ex/ex2/ex2.txt') or { panic(err) }
+  assert old2 == new2
+  //recurring on dir -> local dir
+  os.cp_r('ex', './', true) or { panic(err) }
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {
