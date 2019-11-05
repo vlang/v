@@ -479,3 +479,17 @@ fn test_eq() {
 	assert [5,6,7].eq([6,7]) == false
 	assert [`a`,`b`].eq([`a`,`b`]) == true
 }
+
+fn test_for_last() {
+	numbers := [1, 2, 3, 4]
+	mut s := '['
+	for num in numbers {
+		s += '$num'
+		if !last {
+			s += ', '
+			
+		}	
+	}	
+	s += ']'
+	assert s == '[1, 2, 3, 4]'
+}	

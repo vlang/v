@@ -3377,6 +3377,15 @@ fn (p mut Parser) for_st() {
 		else if is_arr {
 			typ = typ[6..]// all after `array_`
 			p.gen_for_header(i, tmp, typ, val)
+			p.register_var(Var {
+				name: 'last'
+				typ: 'bool'
+				is_mut: false
+				is_used: true
+			})
+			// TODO don't generate if it's not used.
+			// Otherwise it's a C warning + perf.
+			p.genln('bool last = $i == $tmp . len - 1;')
 		}
 		else if is_str {
 			typ = 'byte'
