@@ -42,7 +42,6 @@ fn test_fn_variadic_forward() {
 	assert variadic_forward_a('a', 'b', 'c') == 'abc'
 }
 
-
 fn variadic_auto_ref(a ...&VaTestGroup) {
 	b := *a[0]
 	assert b.name == 'vlang'
