@@ -45,6 +45,7 @@ mut:
 	inside_return_expr bool
 	inside_unsafe bool
 	is_struct_init bool
+	is_var_decl    bool
 	if_expr_cnt    int
 	for_expr_cnt   int // to detect whether `continue` can be used
 	ptr_cast       bool
@@ -372,8 +373,12 @@ fn (p mut Parser) parse(pass Pass) {
 		.key_global {
 			if !p.pref.translated && !p.pref.is_live &&
 				!p.builtin_mod && !p.pref.building_v &&
-				p.mod != 'ui'  && !os.getwd().contains('/volt') {
-				p.error('__global is only allowed in translated code')
+				p.mod != 'ui'  && !os.getwd().contains('/volt') &&
+				!p.pref.enable_globals
+			{
+				p.error('use `v --enable-globals ...` to enable globals')
+				
+				//p.error('__global is only allowed in translated code')
 			}
 			p.next()
 			name := p.check_name()
@@ -716,7 +721,9 @@ fn (p mut Parser) check(expected TokenKind) {
 		s := 'expected `${expected.str()}` but got `${p.strtok()}`'
 		p.next()
 		println('next token = `${p.strtok()}`')
-		print_backtrace()
+		if p.pref.is_debug {
+			print_backtrace()
+		}
 		p.error(s)
 	}
 	/*
@@ -897,7 +904,11 @@ fn (p mut Parser) get_type() string {
 				// for q in p.table.types {
 				// println(q.name)
 				// }
-				p.error('unknown type `$typ`')
+				mut t_suggest, tc_suggest := p.table.find_misspelled_type(typ, p, 0.50)
+				if t_suggest.len > 0 {
+					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
+				}
+				p.error('unknown type `$typ`$t_suggest')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
@@ -1243,6 +1254,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	//if p.expected_type.starts_with('array_') {
 		//p.warn('expecting array got $expr_type')
 	//}
+	if expr_type == 'void' {
+		_, fn_name := p.is_expr_fn_call(p.token_idx-3)
+		p.error_with_token_index('$fn_name() $err_used_as_value', p.token_idx-2)
+	}
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') &&
 		expr_type == p.assigned_type['Option_'.len..] {
@@ -1329,6 +1344,10 @@ fn (p mut Parser) var_decl() {
 	}
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_'+var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
+	if t == 'void' {
+		_, fn_name := p.is_expr_fn_call(p.token_idx-3)
+		p.error_with_token_index('$fn_name() $err_used_as_value', p.token_idx-2)
+	}
 	mut var_types := [t]
 	// multiple returns types
 	if var_names.len > 1 {
@@ -1675,10 +1694,17 @@ fn (p mut Parser) name_expr() string {
 	if p.table.known_const(name) {
 		return p.get_const_type(name, ptr)
 	}
-
+	// TODO: V script? Try os module.
 	// Function (not method, methods are handled in `.dot()`)	
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
-		return p.get_undefined_fn_type(name, orig_name)
+		// First pass, the function can be defined later.
+		if p.first_pass() {
+			p.next()
+			return 'void'
+		}
+		// exhaused all options type,enum,const,mod,var,fn etc
+		// so show undefined error (also checks typos)
+		p.undefined_error(name, orig_name) return '' // panics
 	}
 	// no () after func, so func is an argument, just gen its name
 	// TODO verify this and handle errors
@@ -1700,6 +1726,7 @@ fn (p mut Parser) name_expr() string {
 		// p.error('`$f.name` used as value')
 	}
 
+	fn_call_ph := p.cgen.add_placeholder()
 	// println('call to fn $f.name of type $f.typ')
 	// TODO replace the following dirty hacks (needs ptr access to fn table)
 	new_f := f
@@ -1712,6 +1739,17 @@ fn (p mut Parser) name_expr() string {
 		// println('	from $f2.name(${f2.str_args(p.table)}) $f2.typ : $f2.type_inst')
 	}
 	f = new_f
+
+	// optional function call `function() or {}`, no return assignment
+    is_or_else := p.tok == .key_orelse
+    if !p.is_var_decl && is_or_else {
+		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
+	}
+    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+		f.typ.starts_with('Option_') {
+        opt_type := f.typ[7..]
+        p.error('unhandled option type: `?$opt_type`')
+    }
 
 	// dot after a function call: `get_user().age`
 	if p.tok == .dot {
@@ -1825,40 +1863,20 @@ fn (p mut Parser) get_c_func_type(name string) string {
 	return cfn.typ
 }
 
-fn (p mut Parser) get_undefined_fn_type(name string, orig_name string) string {
-	if p.first_pass() {
-		p.next()
-		// First pass, the function can be defined later.
-		return 'void'
-	} else {
-		// We are in the second pass, that means this function was not defined, throw an error.
-
-		// V script? Try os module.
-		// TODO
-		if p.v_script {
-			//name = name.replace('main__', 'os__')
-			//f = p.table.find_fn(name)
-		}
-
-		// check for misspelled function / variable / module
-		name_dotted := mod_gen_name_rev(name.replace('__', '.'))
-		suggested := p.identify_typo(name)
-		if suggested.len != 0 {
-			p.error('undefined: `$name_dotted`. did you mean:\n$suggested\n')
-		}
-
-		// If orig_name is a mod, then printing undefined: `mod` tells us nothing
-		// if p.table.known_mod(orig_name) {
-		if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
-			m_name := mod_gen_name_rev(name.replace('__', '.'))
-			p.error('undefined function: `$m_name` (in module `$orig_name`)')
-		} else if orig_name in reserved_type_param_names {
-			p.error('the letter `$orig_name` is reserved for type parameters')
-		} else {
-			p.error('undefined: `$orig_name`')
-		}
-		return 'void'
+fn (p mut Parser) undefined_error(name string, orig_name string) {
+	name_dotted := mod_gen_name_rev(name.replace('__', '.'))
+	// check for misspelled function / variable / module / type
+	suggested := p.identify_typo(name)
+	if suggested.len != 0 {
+		p.error('undefined: `$name_dotted`. did you mean:\n$suggested\n')
 	}
+	// If orig_name is a mod, then printing undefined: `mod` tells us nothing
+	if p.table.known_mod(orig_name) || p.import_table.known_alias(orig_name) {
+		p.error('undefined: `$name_dotted` (in module `$orig_name`)')
+	} else if orig_name in reserved_type_param_names {
+		p.error('the letter `$orig_name` is reserved for type parameters')
+	}
+	p.error('undefined: `$orig_name`')
 }
 
 fn (p mut Parser) var_expr(v Var) string {
@@ -2049,11 +2067,21 @@ struct $typ.name {
 		return field.typ
 	}
 	// method
-	method := p.table.find_method(typ, field_name) or {
+	mut method := p.table.find_method(typ, field_name) or {
 		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
+    // optional method call `a.method() or {}`, no return assignment
+    is_or_else := p.tok == .key_orelse
+	if !p.is_var_decl && is_or_else {
+		method.typ = p.gen_handle_option_or_else(method.typ, '', method_ph)
+	}
+    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+		method.typ.starts_with('Option_') {
+        opt_type := method.typ[7..]
+        p.error('unhandled option type: `?$opt_type`')
+    }
 	// Methods returning `array` should return `array_string` etc
 	if method.typ == 'array' && typ.name.starts_with('array_') {
 		return typ.name
@@ -2733,7 +2761,7 @@ fn (p mut Parser) string_expr() {
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
-		C.fun('ssss'.to_wide()) =>  fun(string_to_wide(tos2((byte*)('ssss'))))
+		C.fun('ssss'.to_wide()) =>  fun(string_to_wide(tos3("ssss")))
 		*/
 		if (p.calling_c && p.peek() != .dot) || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
@@ -3098,7 +3126,9 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		var_name := p.lit
 		p.next()
 		p.check(.decl_assign)
+		p.is_var_decl = true
 		option_type, expr := p.tmp_expr()// := p.bool_expression()
+		p.is_var_decl = false
 		typ := option_type[7..]
 		// Option_User tmp = get_user(1);
 		// if (tmp.ok) {
@@ -3347,6 +3377,15 @@ fn (p mut Parser) for_st() {
 		else if is_arr {
 			typ = typ[6..]// all after `array_`
 			p.gen_for_header(i, tmp, typ, val)
+			p.register_var(Var {
+				name: 'last'
+				typ: 'bool'
+				is_mut: false
+				is_used: true
+			})
+			// TODO don't generate if it's not used.
+			// Otherwise it's a C warning + perf.
+			p.genln('bool last = $i == $tmp . len - 1;')
 		}
 		else if is_str {
 			typ = 'byte'
@@ -3410,7 +3449,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		if p.tok == .key_else {
 			p.check(.key_else)
 			if p.tok == .arrow {
-				p.warn(match_arrow_warning)
+				p.warn(warn_match_arrow)
 				p.check(.arrow)
 			}	
 
@@ -3539,7 +3578,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		p.gen(')')
 
 		if p.tok == .arrow {
-			p.warn(match_arrow_warning)
+			p.warn(warn_match_arrow)
 			p.check(.arrow)
 		}	
 
@@ -3935,17 +3974,17 @@ fn (p mut Parser) check_unused_imports() {
 	p.production_error_with_token_index( 'the following imports were never used: $output', 0 )
 }
 
-fn (p mut Parser) is_next_expr_fn_call() (bool, string) {
-	mut next_expr := p.lit
-	mut is_fn_call := p.peek() == .lpar
+fn (p mut Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
+	mut expr := p.tokens[start_tok_idx-1].str()
+	mut is_fn_call := p.tokens[start_tok_idx].tok == .lpar
 	if !is_fn_call {
-		mut i := p.token_idx+1
+		mut i := start_tok_idx
 		for (p.tokens[i].tok == .dot || p.tokens[i].tok == .name) &&
 			p.tokens[i].lit != '_' && i < p.tokens.len {
-			next_expr += if p.tokens[i].tok == .dot { '.' } else { p.tokens[i].lit }
+			expr += p.tokens[i].str()
 			i++
 		}
 		is_fn_call = p.tokens[i].tok == .lpar
 	}
-	return is_fn_call, next_expr
+	return is_fn_call, expr
 }

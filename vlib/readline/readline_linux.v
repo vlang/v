@@ -35,6 +35,7 @@ enum Action {
 }
 
 // Toggle raw mode of the terminal by changing its attributes
+// Catches SIGUSER (CTRL+C) Signal to reset tty
 fn (r mut Readline) enable_raw_mode() {
   if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
     r.is_tty = false
@@ -53,7 +54,7 @@ fn (r mut Readline) enable_raw_mode() {
 }
 
 // Not catching the SIGUSER (CTRL+C) Signal
-fn (r mut Readline) enable_raw_mode2() {
+fn (r mut Readline) enable_raw_mode_nosig() {
   if ( C.tcgetattr(0, &r.orig_termios) == -1 ) {
     r.is_tty = false
     r.is_raw = false
@@ -100,7 +101,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
     r.previous_lines[0] = ''.ustring()
   }
   if !r.is_raw {
-    r.enable_raw_mode2()
+    r.enable_raw_mode()
   }
 
   print(r.prompt)

@@ -13,7 +13,9 @@ fn test_socket() {
 	}
 	
 	message := 'Hello World'
-	socket.send(message.str, message.len)	
+	socket.send(message.str, message.len) or {
+		assert false
+	}
 	$if debug {	println('message send: $message')	}
 	$if debug {	println('send socket: $socket.sockfd')	}
 
@@ -24,7 +26,7 @@ fn test_socket() {
 
 	assert message == received
 
-	server.close()
-	client.close()
-	socket.close()
+	server.close() or {}
+	client.close() or {}
+	socket.close() or {}
 }

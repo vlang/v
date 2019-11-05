@@ -174,9 +174,9 @@ fn (v mut V) cc() {
 				println('$path not found... building module $imp')
 				if path.ends_with('vlib/ui.o') {
 					println('copying ui...')
-					os.cp('$vdir/thirdparty/ui/ui.o', path)
+					os.cp('$vdir/thirdparty/ui/ui.o', path) or { panic('error copying ui files') }
 					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
-							'/vlib/ui.vh')
+							'/vlib/ui.vh')  or { panic('error copying ui files') }
 					
 				}	else {
 					os.system('$vexe build module vlib${os.path_separator}$imp_path')

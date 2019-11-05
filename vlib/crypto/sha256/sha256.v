@@ -92,7 +92,7 @@ pub fn new224() &Digest {
 	return d
 }
 
-fn (d mut Digest) write(p_ []byte) ?int {
+fn (d mut Digest) write(p_ []byte) int {
 	mut p := p_
 	nn := p.len
 	d.len += u64(nn)

@@ -5,7 +5,6 @@
 module main
 
 import (
-	compiler
 	os
 	term
 	readline
@@ -63,9 +62,9 @@ fn (r &Repl) function_call(line string) bool {
 }
 
 pub fn repl_help() {
-version_hash := compiler.vhash()
-println('
-V ${compiler.Version} $version_hash
+	version := v_version()
+	println(version)
+	println('
   help                   Displays this information.
   Ctrl-C, Ctrl-D, exit   Exits the REPL.
   clear                  Clears the screen.
@@ -73,8 +72,8 @@ V ${compiler.Version} $version_hash
 }
 
 pub fn run_repl() []string {
-	version_hash := compiler.vhash()
-	println('V ${compiler.Version} $version_hash')
+	version := v_version()
+	println(version)
 	println('Use Ctrl-C or `exit` to exit')
 	file := '.vrepl.v'
 	temp_file := '.vrepl_temp.v'
@@ -143,7 +142,7 @@ pub fn run_repl() []string {
 			source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.line
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" run $file -repl') or {
-				compiler.verror(err)
+				rerror(err)
 				return []string
 			}
 			vals := s.output.split('\n')
@@ -162,7 +161,7 @@ pub fn run_repl() []string {
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('"$vexe" run $temp_file -repl') or {
-				compiler.verror(err)
+				rerror(err)
 				return []string
 			}
 			if !func_call && s.exit_code == 0 && !temp_flag {
@@ -196,4 +195,16 @@ fn main() {
 		return
 	}
 	run_repl()
+}
+
+pub fn rerror(s string) {
+	println('V repl error: $s')
+	os.flush_stdout()
+	exit(1)
+}
+
+fn v_version() string {
+	vexe := os.args[1]
+	vversion_res := os.exec('$vexe --version') or { panic('"$vexe --version" is not working') }
+	return vversion_res.output
 }

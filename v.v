@@ -30,6 +30,10 @@ fn main() {
 		println('V $compiler.Version $version_hash')
 		return
 	}
+	else if '-h' in options || '--help' in options || 'help' in commands {
+		println(compiler.help_text)
+		return
+	}
 	else if 'translate' in commands {
 		println('Translating C to V will be available in V 0.3')
 		return
@@ -81,10 +85,6 @@ fn main() {
 		println(txt)
 		exit(0)
 		// v.gen_doc_html_for_module(args.last())
-	}
-	else if '-h' in options || '--help' in options || 'help' in commands {
-		println(compiler.help_text)
-		return
 	}
 	else {
 		//println('unknown command/argument\n')

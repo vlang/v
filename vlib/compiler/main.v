@@ -116,6 +116,7 @@ pub mut:
 	//generating_vh bool
 	comptime_define string  // -D vfmt for `if $vfmt {`
 	fast bool // use tcc/x64 codegen
+	enable_globals bool // allow __global for low level code
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -522,7 +523,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 	if !os.file_exists(dir) {
 		if dir == 'compiler' && os.dir_exists('vlib') {
 			println('looks like you are trying to build V with an old command')
-			println('use `v v.v` instead of `v -o v compiler`')
+			println('use `v -o v v.v` instead of `v -o v compiler`')
 		}	
 		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
@@ -934,6 +935,7 @@ pub fn new_v(args[]string) &V {
 		is_run: 'run' in args
 		autofree: '-autofree' in args
 		compress: '-compress' in args
+		enable_globals: '--enable-globals' in args
 		fast: '-fast' in args
 		is_repl: is_repl
 		build_mode: build_mode

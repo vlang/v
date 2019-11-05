@@ -537,7 +537,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	// raw_path is a hint of the encoding of path. We don't want to set it if
 	// the default escaping of path is equivalent, to help make sure that people
 	// don't rely on it in general.
-	_ = url.set_path(rest) or {
+	url.set_path(rest) or {
 		return error(err)
 	}
 	return url
@@ -974,7 +974,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 		// The 'absoluteURI' or 'net_path' cases.
 		// We can ignore the error from set_path since we know we provided a
 		// validly-escaped path.
-		url.set_path(resolve_path(ref.escaped_path(), ''))
+		url.set_path(resolve_path(ref.escaped_path(), '')) or {return error(err)}
 		return url
 	}
 	if ref.opaque != '' {
@@ -992,7 +992,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 	// The 'abs_path' or 'rel_path' cases.
 	url.host = u.host
 	url.user = u.user
-	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path()))
+	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path())) or { return error(err) }
 	return url
 }
 
