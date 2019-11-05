@@ -22,6 +22,9 @@ CommonCHeaders = '
 #endif
 #endif
 
+#if defined(__CYGWIN__) && !defined(_WIN32)
+#error Cygwin is not supported, please use MinGW or Visual Studio.
+#endif
 
 #ifdef __linux__
 #include <sys/types.h>
