@@ -9,7 +9,7 @@ CommonCHeaders = '
 #include "fns.h"
 #include <stdarg.h> // for va_list
 #include <inttypes.h>  // int64_t etc
-#include <string.h> // memcpy
+//#include <string.h> // memcpy
 
 #ifndef _WIN32
 #include <ctype.h>
@@ -20,6 +20,10 @@ CommonCHeaders = '
 #if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
 #error Please upgrade your MinGW distribution to use msvcr90.dll or later.
 #endif
+#endif
+
+#if defined(__CYGWIN__) && !defined(_WIN32)
+#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
 
