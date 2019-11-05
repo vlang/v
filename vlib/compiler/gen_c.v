@@ -523,6 +523,10 @@ fn (p mut Parser) cast(typ string) {
 			}	
 			p.error('cannot cast `$expr_typ` to `bool`')
 		}
+		// Strings can't be cast
+		if expr_typ == 'string' {
+			p.error('cannot cast `$expr_typ` to `$typ`')
+		}	
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	p.check(.rpar)
