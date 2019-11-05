@@ -7,7 +7,6 @@ CommonCHeaders = '
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 #include "fns.h"
-#include <signal.h>
 #include <stdarg.h> // for va_list
 #include <inttypes.h>  // int64_t etc
 #include <string.h> // memcpy
@@ -23,9 +22,6 @@ CommonCHeaders = '
 #endif
 #endif
 
-#if defined(__CYGWIN__) && !defined(_WIN32)
-#error Cygwin is not supported, please use MinGW or Visual Studio.
-#endif
 
 #ifdef __linux__
 #include <sys/types.h>

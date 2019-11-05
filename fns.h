@@ -1,5 +1,4 @@
 // <signal.h>
-/*
 void sigaction();
 void sigemptyset();
 
@@ -9,4 +8,3 @@ void* memmove();
 void* memset();
 unsigned long strlen(const char*);
 char* strerror(int);
-*/
