@@ -41,3 +41,20 @@ fn variadic_forward_b(a ...string) string {
 fn test_fn_variadic_forward() {
 	assert variadic_forward_a('a', 'b', 'c') == 'abc'
 }
+
+
+fn variadic_auto_ref(a ...&VaTestGroup) {
+	b := *a[0]
+	assert b.name == 'vlang'
+}
+fn variadic_auto_deref(a ...VaTestGroup) {
+	b := a[0]
+	assert b.name == 'vlang'
+}
+
+fn test_fn_variadic_auto_ref_deref() {
+	a := VaTestGroup{name: 'vlang'}
+	b := &a
+	variadic_auto_ref(a)
+	variadic_auto_deref(b)
+}
