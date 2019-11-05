@@ -1276,7 +1276,15 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 			p.error_with_token_index( 'incompatible types: $p.assigned_type != $p.expected_type', errtok)
 		}
 		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
-	}
+	} 
+	else if tok == .left_shift_assign || tok == .righ_shift_assign {
+		if !is_integer_type(p.assigned_type) {
+			p.error_with_token_index( 'cannot use shift operator on non-integer type `$p.assigned_type`', errtok)
+		}
+		if !is_integer_type(expr_type) {
+			p.error_with_token_index( 'cannot use non-integer type `$expr_type` as shift argument', errtok)
+		}
+	} 
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
@@ -2409,6 +2417,9 @@ fn (p mut Parser) expression() string {
 			return 'void'
 		}
 		else {
+			if !is_integer_type(typ) {
+				p.error('cannot use shift operator on non-integer type `$typ`')
+			}
 			p.next()
 			p.gen(' << ')
 			p.check_types(p.expression(), 'integer')
@@ -2416,6 +2427,9 @@ fn (p mut Parser) expression() string {
 		}
 	}
 	if p.tok == .righ_shift {
+		if !is_integer_type(typ) {
+			p.error('cannot use shift operator on non-integer type `$typ`')
+		}
 		p.next()
 		p.gen(' >> ')
 		p.check_types(p.expression(), 'integer')
