@@ -7,7 +7,7 @@ module os
 import filepath
 
 #include <sys/stat.h>
-#include <signal.h>
+//#include <signal.h>
 #include <errno.h>
 
 /*
