@@ -201,13 +201,17 @@ pub fn (t &Table) debug_fns() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	number_types = ['number', 'int', 'i8', 'i16', 'u16', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
-	float_types  = ['f32', 'f64']
+	integer_types = ['int', 'i8', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
+	float_types   = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
 
 fn is_number_type(typ string) bool {
-	return typ in number_types
+	return typ in integer_types || typ in float_types
+}
+
+fn is_integer_type(typ string) bool {
+	return typ in integer_types
 }
 
 fn is_float_type(typ string) bool {
@@ -671,6 +675,15 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
 	}
+
+	if expected == 'integer' {
+		if is_integer_type(got) {
+			return true
+		} else {
+			p.error('expected type `$expected`, but got `$got`')
+		}
+	}
+
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {

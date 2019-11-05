@@ -2411,15 +2411,15 @@ fn (p mut Parser) expression() string {
 		else {
 			p.next()
 			p.gen(' << ')
-			p.check_types(p.expression(), typ)
-			return 'int'
+			p.check_types(p.expression(), 'integer')
+			return typ
 		}
 	}
 	if p.tok == .righ_shift {
 		p.next()
 		p.gen(' >> ')
-		p.check_types(p.expression(), typ)
-		return 'int'
+		p.check_types(p.expression(), 'integer')
+		return typ
 	}
 	// + - | ^
 	for p.tok in [.plus, .minus, .pipe, .amp, .xor] {
