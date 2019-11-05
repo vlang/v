@@ -37,6 +37,11 @@ fn (p mut Parser) struct_decl() {
 	}
 	is_c := name == 'C' && p.tok == .dot
 	if is_c {
+		if !p.pref.building_v && !p.fileis('vlib') {
+			p.warn('Virtual C structs will soon be removed from the language' +
+			'\ndefine the C structs and functions in V')
+		}
+				
 		p.check(.dot)
 		name = p.check_name()
 		cat = .c_struct
