@@ -1469,7 +1469,6 @@ fn (p mut Parser) bool_expression() string {
 		p.check_types(p.bterm(), typ)
 		if typ != 'bool' {
 			p.error('logical operators `&&` and `||` require booleans')
-			
 		}	
 	}
 	if typ == '' {
@@ -2363,12 +2362,12 @@ fn (p mut Parser) indot_expr() string {
 		}
 		// `typ` is element's type
 		if is_map {
-			p.cgen.set_placeholder(ph, '_IN_MAP( (')
+			p.cgen.set_placeholder(ph, '(_IN_MAP( (')
 		}
 		else {
-			p.cgen.set_placeholder(ph, '_IN($typ, (')
+			p.cgen.set_placeholder(ph, '(_IN($typ, (')
 		}
-		p.gen(')')
+		p.gen('))')
 		return 'bool'
 	}
 	return typ
@@ -2474,7 +2473,12 @@ fn (p mut Parser) expression() string {
 		if is_str && tok_op != .plus {
 			p.error('strings only support `+` operator')
 		}	
-		p.check_types(p.term(), typ)
+		expr_type := p.term()
+		if (tok_op in [.pipe, .amp]) && !(is_integer_type(expr_type) &&
+			is_integer_type(typ)) {
+			p.error('operators `&` and `|` are defined only on integer types')
+		}	
+		p.check_types(expr_type, typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
 			p.gen(')')
 		}
