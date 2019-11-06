@@ -227,7 +227,7 @@ fn (p & Parser) peek() TokenKind {
 }
 [inline] fn (p &Parser) peek_token() Token {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Token{ tok:TokenKind.eof }
+		return Token{ tok:.eof }
 	}
 	return p.tokens[p.token_idx]
 }
@@ -313,32 +313,30 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 		}
 		.key_enum {
-			p.next()
-			if p.tok == .name {
+			next := p.peek()
+			if next == .name {
 				p.fgen('enum ')
-				name := p.check_name()
 				p.fgen(' ')
-				p.enum_decl(name)
+				p.enum_decl(false)
 			}
-			else if p.pref.translated {
+			else if next == .lcbr && p.pref.translated {
 				// enum without a name, only allowed in code,
 				// translated from C. it's a very bad practice
 				// in C as well, but is used unfortunately
 				// (for example, by DOOM). such fields are
 				// basically int consts
-				p.enum_decl('int')
-			}
-			else {
-				p.check(.name)
+				p.enum_decl(true)
 			}
 		}
 		.key_pub {
 			next := p.peek()
 			match next {
-				.key_fn     {	p.fn_decl()     }
-				.key_const  {	p.const_decl()  }
-				.key_struct, .key_union, .key_interface {	p.struct_decl() }
-				.key_enum   {	p.enum_decl('') }
+				.key_fn        {	p.fn_decl()     }
+				.key_const     {	p.const_decl()  }
+				.key_struct,
+				.key_union,
+				.key_interface {	p.struct_decl() }
+				.key_enum      {	p.enum_decl(false) }
 				else {
 					p.error('wrong pub keyword usage')
 				}
@@ -641,7 +639,7 @@ fn (p mut Parser) type_decl() {
 		name: name
 		parent: parent.name
 		mod: p.mod
-		cat: TypeCategory.alias
+		cat: .alias
 	})
 }
 
@@ -1277,6 +1275,14 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		}
 		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
 	}
+	else if tok == .left_shift_assign || tok == .righ_shift_assign {
+		if !is_integer_type(p.assigned_type) {
+			p.error_with_token_index( 'cannot use shift operator on non-integer type `$p.assigned_type`', errtok)
+		}
+		if !is_integer_type(expr_type) {
+			p.error_with_token_index( 'cannot use non-integer type `$expr_type` as shift argument', errtok)
+		}
+	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
@@ -1461,6 +1467,9 @@ fn (p mut Parser) bool_expression() string {
 		}
 		p.check_space(p.tok)
 		p.check_types(p.bterm(), typ)
+		if typ != 'bool' {
+			p.error('logical operators `&&` and `||` require booleans')
+		}	
 	}
 	if typ == '' {
 		println('curline:')
@@ -1677,7 +1686,7 @@ fn (p mut Parser) name_expr() string {
 			if p.expected_type == enum_type.name {
 				// `if color == .red` is enough
 				// no need in `if color == Color.red`
-				p.error('`${enum_type.name}.$val` is unnecessary, use `.$val`')
+				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
 			}	
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
@@ -2353,12 +2362,12 @@ fn (p mut Parser) indot_expr() string {
 		}
 		// `typ` is element's type
 		if is_map {
-			p.cgen.set_placeholder(ph, '_IN_MAP( (')
+			p.cgen.set_placeholder(ph, '(_IN_MAP( (')
 		}
 		else {
-			p.cgen.set_placeholder(ph, '_IN($typ, (')
+			p.cgen.set_placeholder(ph, '(_IN($typ, (')
 		}
-		p.gen(')')
+		p.gen('))')
 		return 'bool'
 	}
 	return typ
@@ -2409,17 +2418,23 @@ fn (p mut Parser) expression() string {
 			return 'void'
 		}
 		else {
+			if !is_integer_type(typ) {
+				p.error('cannot use shift operator on non-integer type `$typ`')
+			}
 			p.next()
 			p.gen(' << ')
-			p.check_types(p.expression(), typ)
-			return 'int'
+			p.check_types(p.expression(), 'integer')
+			return typ
 		}
 	}
 	if p.tok == .righ_shift {
+		if !is_integer_type(typ) {
+			p.error('cannot use shift operator on non-integer type `$typ`')
+		}
 		p.next()
 		p.gen(' >> ')
-		p.check_types(p.expression(), typ)
-		return 'int'
+		p.check_types(p.expression(), 'integer')
+		return typ
 	}
 	// + - | ^
 	for p.tok in [.plus, .minus, .pipe, .amp, .xor] {
@@ -2455,7 +2470,15 @@ fn (p mut Parser) expression() string {
 				p.gen(',')
 			}
 		}
-		p.check_types(p.term(), typ)
+		if is_str && tok_op != .plus {
+			p.error('strings only support `+` operator')
+		}	
+		expr_type := p.term()
+		if (tok_op in [.pipe, .amp]) && !(is_integer_type(expr_type) &&
+			is_integer_type(typ)) {
+			p.error('operators `&` and `|` are defined only on integer types')
+		}	
+		p.check_types(expr_type, typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
 			p.gen(')')
 		}
@@ -2509,10 +2532,14 @@ fn (p mut Parser) term() string {
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
-		if is_mod && (is_float_type(typ) || !is_number_type(typ)) {
-			p.error('operator .mod requires integer types')
-		}
-		p.check_types(p.unary(), typ)
+		expr_type := p.unary()
+		if is_mod {
+			if !(is_integer_type(expr_type) && is_integer_type(typ)) {
+				p.error('operator `mod` requires integer types')
+			}
+		} else {
+			p.check_types(expr_type, typ)
+		}	
 	}
 	return typ
 }

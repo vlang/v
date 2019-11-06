@@ -516,6 +516,17 @@ fn (p mut Parser) cast(typ string) {
 		p.cgen.set_placeholder(pos, '*($typ*)(')
 	}
 	else {
+		// Nothing can be cast to bool
+		if typ == 'bool' {
+			if is_number_type(expr_typ) || is_float_type(expr_typ) {
+				p.error('cannot cast a number to `bool`')
+			}	
+			p.error('cannot cast `$expr_typ` to `bool`')
+		}
+		// Strings can't be cast
+		if expr_typ == 'string' {
+			p.error('cannot cast `$expr_typ` to `$typ`')
+		}	
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	p.check(.rpar)

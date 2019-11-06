@@ -727,7 +727,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 			}
 		}
-		if !p.expr_var.is_changed {
+		if !p.expr_var.is_changed && receiver.is_mut {
 			p.mark_var_changed(p.expr_var)
 		}
 		p.gen_method_call(receiver, receiver_type, cgen_name, f.typ, method_ph)
@@ -1219,7 +1219,7 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	vargs_struct := 'varg_$typ'
 	varg_type := Type{
-		cat: TypeCategory.struct_,
+		cat: .struct_,
 		name: vargs_struct,
 		mod: p.mod
 	}
@@ -1299,7 +1299,7 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	typ := '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
 	if p.table.known_type(typ) { return typ }
 	p.table.register_type2(Type{
-		cat: TypeCategory.struct_,
+		cat: .struct_,
 		name: typ,
 		mod: p.mod
 	})

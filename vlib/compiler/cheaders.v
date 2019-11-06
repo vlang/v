@@ -6,6 +6,8 @@ CommonCHeaders = '
 
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+
+//#include "fns.h"
 #include <signal.h>
 #include <stdarg.h> // for va_list
 #include <inttypes.h>  // int64_t etc
@@ -15,7 +17,15 @@ CommonCHeaders = '
 #include <ctype.h>
 #include <locale.h> // tolower
 #include <sys/time.h>
-#include <unistd.h> // sleep	
+#include <unistd.h> // sleep
+#else
+#if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
+#error Please upgrade your MinGW distribution to use msvcr90.dll or later.
+#endif
+#endif
+
+#if defined(__CYGWIN__) && !defined(_WIN32)
+#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
 

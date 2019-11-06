@@ -1,14 +1,14 @@
 import net
 
 fn test_socket() {
-	mut server := net.listen(0) or {
+	server := net.listen(0) or {
 		panic(err)
 	}
 	server_port := server.get_port()
-	mut client := net.dial('127.0.0.1', server_port) or {
+	client := net.dial('127.0.0.1', server_port) or {
 		panic(err)
 	}
-	mut socket := server.accept() or {
+	socket := server.accept() or {
 		panic(err)
 	}
 	
