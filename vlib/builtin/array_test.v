@@ -262,8 +262,8 @@ fn test_push_many() {
 }
 
 fn test_reverse() {
-  mut a := [1, 2, 3, 4]
-	mut b := ['test', 'array', 'reverse']
+	a := [1, 2, 3, 4]
+	b := ['test', 'array', 'reverse']
 	c := a.reverse()
 	d := b.reverse()
 	for i, _  in c {
