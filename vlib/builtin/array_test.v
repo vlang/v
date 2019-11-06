@@ -480,6 +480,7 @@ fn test_eq() {
 	assert [`a`,`b`].eq([`a`,`b`]) == true
 }
 
+/*
 fn test_for_last() {
 	numbers := [1, 2, 3, 4]
 	mut s := '['
@@ -493,3 +494,4 @@ fn test_for_last() {
 	s += ']'
 	assert s == '[1, 2, 3, 4]'
 }	
+*/
