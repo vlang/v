@@ -690,6 +690,12 @@ fn (p mut Parser) check_string() string {
 	return s
 }
 
+fn (p mut Parser) check_not_reserved () {
+	if p.lit in ['i8','i16','int','i64','i128','byte','u16','u32','u64','u128','f32','f64','rune','byteptr','voidptr'] {
+		p.error('`$p.lit` can\'t be used as name')
+	}
+}
+
 fn (p &Parser) strtok() string {
 	if p.tok == .name {
 		return p.lit
@@ -1090,6 +1096,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 		}
 		// `a := 777`
 		else if p.peek() == .decl_assign || p.peek() == .comma {
+			p.check_not_reserved()
 			//p.log('var decl')
 			p.var_decl()
 		}
@@ -3149,6 +3156,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.next()
 	// `if a := opt() { }` syntax
 	if p.tok == .name && p.peek() == .decl_assign {
+		p.check_not_reserved()
 		option_tmp := p.get_tmp()
 		var_name := p.lit
 		p.next()
@@ -3244,6 +3252,404 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		println('if ret typ="$typ" line=$p.scanner.line_nr')
 	}
 	return typ
+}
+
+fn (p mut Parser) for_st() {
+	p.check(.key_for)
+	p.fgen(' ')
+	p.for_expr_cnt++
+	next_tok := p.peek()
+	//debug := p.scanner.file_path.contains('r_draw')
+	p.open_scope()
+	if p.tok == .lcbr {
+		// Infinite loop
+		p.gen('while (1) {')
+	}
+	else if p.tok == .key_mut {
+		p.error('`mut` is not required in for loops')
+	}
+	// for i := 0; i < 10; i++ {
+	else if next_tok == .decl_assign || next_tok == .assign || p.tok == .semicolon {
+		p.genln('for (')
+		if next_tok == .decl_assign {
+			p.check_not_reserved()
+			p.var_decl()
+		}
+		else if p.tok != .semicolon {
+			// allow `for ;; i++ {`
+			// Allow `for i = 0; i < ...`
+			p.statement(false)
+		}
+		p.check(.semicolon)
+		p.gen(' ; ')
+		p.fgen(' ')
+		if p.tok != .semicolon {
+			p.bool_expression()
+		}
+		p.check(.semicolon)
+		p.gen(' ; ')
+		p.fgen(' ')
+		if p.tok != .lcbr {
+			p.statement(false)
+		}
+		p.genln(') { ')
+	}
+	// for i, val in array
+	else if p.peek() == .comma {
+		/*
+		`for i, val in array {`
+		==>
+		```
+		 array_int tmp = array;
+		 for (int i = 0; i < tmp.len; i++) {
+		 int val = tmp[i];
+		```
+		*/
+		i := p.check_name()
+		p.check(.comma)
+		val := p.check_name()
+		if i == '_' && val == '_' {
+			p.error('no new variables on the left side of `in`')
+		}
+		p.fgen(' ')
+		p.check(.key_in)
+		p.fgen(' ')
+		tmp := p.get_tmp()
+		p.cgen.start_tmp()
+		mut typ := p.bool_expression()
+		is_arr := typ.starts_with('array_')
+		is_map := typ.starts_with('map_')
+		is_str := typ == 'string'
+		is_variadic_arg :=  typ.starts_with('varg_')
+		if !is_arr && !is_str && !is_map && !is_variadic_arg {
+			p.error('cannot range over type `$typ`')
+		}
+		expr := p.cgen.end_tmp()
+		if !is_variadic_arg {
+			if p.is_js {
+				p.genln('var $tmp = $expr;')
+			} else {
+				p.genln('$typ $tmp = $expr;')
+			}
+		}
+		// typ = strings.Replace(typ, "_ptr", "*", -1)
+		mut i_var_type := 'int'
+		if is_variadic_arg {
+			typ = typ[5..]
+			p.gen_for_varg_header(i, expr, typ, val)
+		}
+		else if is_arr {
+			typ = typ[6..]
+			p.gen_for_header(i, tmp, typ, val)
+		}
+		else if is_map {
+			i_var_type = 'string'
+			typ = typ[4..]
+			p.gen_for_map_header(i, tmp, typ, val, typ)
+		}
+		else if is_str {
+			typ = 'byte'
+			p.gen_for_str_header(i, tmp, typ, val)
+		}
+		// Register temp vars
+		if i != '_' {
+			p.register_var(Var {
+				name: i
+				typ: i_var_type
+				is_mut: true
+				is_changed: true
+			})
+		}
+		if val != '_' {
+			p.register_var(Var {
+				name: val
+				typ: typ
+				ptr: typ.contains('*')
+			})
+		}
+	}
+	// `for val in vals`
+	else if p.peek() == .key_in {
+		val := p.check_name()
+		p.fgen(' ')
+		p.check(.key_in)
+		p.fspace()
+		tmp := p.get_tmp()
+		p.cgen.start_tmp()
+		mut typ := p.bool_expression()
+		expr := p.cgen.end_tmp()
+		is_range := p.tok == .dotdot
+		is_variadic_arg :=  typ.starts_with('varg_')
+		mut range_end := ''
+		if is_range {
+			p.check_types(typ, 'int')
+			p.check_space(.dotdot)
+			p.cgen.start_tmp()
+			p.check_types(p.bool_expression(), 'int')
+			range_end = p.cgen.end_tmp()
+		}
+		is_arr := typ.contains('array')
+		is_str := typ == 'string'
+		if !is_arr && !is_str && !is_range && !is_variadic_arg {
+			p.error('cannot range over type `$typ`')
+		}
+		if !is_variadic_arg {
+			if p.is_js {
+				p.genln('var $tmp = $expr;')
+			} else {
+				p.genln('$typ $tmp = $expr;')
+			}
+		}
+		// TODO var_type := if...
+		i := p.get_tmp()
+		if is_variadic_arg {
+			typ = typ[5..]
+			p.gen_for_varg_header(i, expr, typ, val)
+		}
+		else if is_range {
+			typ = 'int'
+			p.gen_for_range_header(i, range_end, tmp, typ, val)
+		}
+		else if is_arr {
+			typ = typ[6..]// all after `array_`
+			p.gen_for_header(i, tmp, typ, val)
+		}
+		else if is_str {
+			typ = 'byte'
+			p.gen_for_str_header(i, tmp, typ, val)
+		}
+		// println('for typ=$typ vartyp=$var_typ')
+		// Register temp var
+		if val != '_' {
+			p.register_var(Var {
+				name: val
+				typ: typ
+				ptr: typ.contains('*')
+				is_changed: true
+				is_mut: false
+				is_for_var: true
+			})
+		}
+	} else {
+		// `for a < b {`
+		p.gen('while (')
+		p.check_types(p.bool_expression(), 'bool')
+		p.genln(') {')
+	}
+	p.fspace()
+	p.check(.lcbr)
+	p.genln('')
+	p.statements()
+	p.close_scope()
+	p.for_expr_cnt--
+	p.returns = false // TODO handle loops that are guaranteed to return
+}
+
+fn (p mut Parser) switch_statement() {
+	p.error('`switch` statement has been removed, use `match` instead:\n' +
+		'https://vlang.io/docs#match')
+}
+
+// Returns typ if used as expression
+fn (p mut Parser) match_statement(is_expr bool) string {
+	p.check(.key_match)
+	p.cgen.start_tmp()
+	typ := p.bool_expression()
+	expr := p.cgen.end_tmp()
+
+	// is it safe to use p.cgen.insert_before ???
+	tmp_var := p.get_tmp()
+	p.cgen.insert_before('$typ $tmp_var = $expr;')
+
+	p.check(.lcbr)
+	mut i := 0
+	mut all_cases_return := true
+
+	// stores typ of resulting variable
+	mut res_typ := ''
+
+	defer {
+		p.check(.rcbr)
+	}
+
+	for p.tok != .rcbr {
+		if p.tok == .key_else {
+			p.check(.key_else)
+			if p.tok == .arrow {
+				p.warn(warn_match_arrow)
+				p.check(.arrow)
+			}	
+
+			// unwrap match if there is only else
+			if i == 0 {
+				if is_expr {
+					// statements are dissallowed (if match is expression) so user cant declare variables there and so on
+
+					// allow braces is else
+					got_brace := p.tok == .lcbr
+					if got_brace {
+						p.check(.lcbr)
+					}
+
+					p.gen('( ')
+
+					res_typ = p.bool_expression()
+
+					p.gen(' )')
+
+					// allow braces in else
+					if got_brace {
+						p.check(.rcbr)
+					}
+
+					return res_typ
+				} else {
+					p.returns = false
+					p.check(.lcbr)
+
+					p.genln('{ ')
+					p.statements()
+					p.returns = all_cases_return && p.returns
+					return ''
+				}
+			}
+
+			if is_expr {
+				// statements are dissallowed (if match is expression) so user cant declare variables there and so on
+				p.gen(':(')
+
+				// allow braces is else
+				got_brace := p.tok == .lcbr
+				if got_brace {
+					p.check(.lcbr)
+				}
+
+				p.check_types(p.bool_expression(), res_typ)
+
+				// allow braces in else
+				if got_brace {
+					p.check(.rcbr)
+				}
+
+				p.gen(strings.repeat(`)`, i+1))
+
+				return res_typ
+			} else {
+				p.returns = false
+				p.genln('else // default:')
+
+				p.check(.lcbr)
+
+				p.genln('{ ')
+				p.statements()
+
+				p.returns = all_cases_return && p.returns
+				return ''
+			}
+		}
+
+		if i > 0 {
+			if is_expr {
+				p.gen(': (')
+			} else {
+				p.gen('else ')
+			}
+		} else if is_expr {
+			p.gen('(')
+		}
+
+		if is_expr {
+			p.gen('(')
+		} else {
+			p.gen('if (')
+		}
+
+		ph := p.cgen.add_placeholder()
+
+		// Multiple checks separated by comma
+		mut got_comma := false
+
+		for {
+			if got_comma {
+				p.gen(') || (')
+			}
+
+			mut got_string := false
+
+			if typ == 'string' {
+				got_string = true
+				p.gen('string_eq($tmp_var, ')
+			}
+			else {
+				p.gen('$tmp_var == ')
+			}
+
+			p.expected_type = typ
+			p.check_types(p.bool_expression(), typ)
+			p.expected_type = ''
+
+			if got_string {
+				p.gen(')')
+			}
+
+			if p.tok != .comma {
+				if got_comma {
+					p.gen(') ')
+					p.cgen.set_placeholder(ph, '(')
+				}
+				break
+			}
+			p.check(.comma)
+			got_comma = true
+		}
+		p.gen(')')
+
+		if p.tok == .arrow {
+			p.warn(warn_match_arrow)
+			p.check(.arrow)
+		}	
+
+		// statements are dissallowed (if match is expression) so user cant declare variables there and so on
+		if is_expr {
+			p.gen('? (')
+
+			// braces are required for now
+			p.check(.lcbr)
+
+			if i == 0 {
+				// on the first iteration we set value of res_typ
+				res_typ = p.bool_expression()
+			} else {
+				// later on we check that the value is of res_typ type
+				p.check_types(p.bool_expression(), res_typ)
+			}
+
+			// braces are required for now
+			p.check(.rcbr)
+
+			p.gen(')')
+		}
+		else {
+			p.returns = false
+			p.check(.lcbr)
+
+			p.genln('{ ')
+			p.statements()
+
+			all_cases_return = all_cases_return && p.returns
+			// p.gen(')')
+		}
+		i++
+	}
+
+	if is_expr {
+		// we get here if no else found, ternary requires "else" branch
+		p.error('Match expression requires "else"')
+	}
+
+	p.returns = false // only get here when no default, so return is not guaranteed
+
+	return ''
 }
 
 fn (p mut Parser) assert_statement() {
