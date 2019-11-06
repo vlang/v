@@ -227,7 +227,7 @@ fn (p & Parser) peek() TokenKind {
 }
 [inline] fn (p &Parser) peek_token() Token {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Token{ tok:TokenKind.eof }
+		return Token{ tok:.eof }
 	}
 	return p.tokens[p.token_idx]
 }
@@ -639,7 +639,7 @@ fn (p mut Parser) type_decl() {
 		name: name
 		parent: parent.name
 		mod: p.mod
-		cat: TypeCategory.alias
+		cat: .alias
 	})
 }
 
