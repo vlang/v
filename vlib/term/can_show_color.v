@@ -3,11 +3,19 @@ module term
 import os
 
 pub fn can_show_color_on_stdout() bool {
-	return is_atty(1) && os.getenv('TERM') != 'dumb'
+	return supports_escape_sequences(1)
 }
 
 pub fn can_show_color_on_stderr() bool {
-	return is_atty(2) && os.getenv('TERM') != 'dumb'
+	return supports_escape_sequences(2)
+}
+
+fn supports_escape_sequences(fd int) bool {
+	$if windows {
+		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+	} $else {
+		return is_atty(fd) > 0 && os.getenv('TERM') != 'dumb'
+	}
 }
 
 //////////////////////////////////////////////

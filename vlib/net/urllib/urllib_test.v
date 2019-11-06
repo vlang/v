@@ -18,6 +18,13 @@ fn test_net_urllib() {
 		u.port()        == '8080' &&
 		u.path          == '/som/url' &&
 		u.fragment      == 'testfragment' &&
-		u.user.username == 'joe' && 
+		u.user.username == 'joe' &&
 		u.user.password == 'pass'
 }
+
+fn test_str() {
+	url := urllib.parse("https://en.wikipedia.org/wiki/Brazil_(1985_film)") or {
+		panic("unable to parse URL")
+	}
+	assert url.str() == 'https://en.wikipedia.org/wiki/Brazil_(1985_film)'
+}	
