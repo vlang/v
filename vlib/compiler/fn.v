@@ -645,7 +645,11 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Also register the wrapper, so we can use the original function without modifying it
 	fn_name = p.table.fn_gen_name(f)
 	wrapper_name := '${fn_name}_thread_wrapper'
-	wrapper_text := 'void* __stdcall $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args );  }'
+	mut wrapper_type := 'void*'
+	if p.os == .windows {
+		wrapper_type = 'void* __stdcall'
+	}
+	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args );  }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
