@@ -2521,10 +2521,11 @@ fn (p mut Parser) term() string {
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
-		if is_mod && (is_float_type(typ) || !is_number_type(typ)) {
-			p.error('operator .mod requires integer types')
+		expr_type := p.unary()
+		p.check_types(expr_type, typ)
+		if is_mod && (!is_integer_type(expr_type) || !is_integer_type(typ)) {
+			p.error('operator % requires integer types')
 		}
-		p.check_types(p.unary(), typ)
 	}
 	return typ
 }
