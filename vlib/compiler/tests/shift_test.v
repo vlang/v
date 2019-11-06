@@ -30,4 +30,40 @@ fn test_shift_operators() {
 	d := u64(1)
 	c = d << i8(63)
 	assert c == 9223372036854775808
+
+	// check that shift-assign works with all types
+	// of integers on the right-hand side
+	mut e := 1
+	e <<= i8(i)
+	assert e == b
+	e >>= i8(i)
+	assert e == a
+	e <<= i16(i)
+	assert e == b
+	e >>= i16(i)
+	assert e == a
+	e <<= int(i)
+	assert e == b
+	e >>= int(i)
+	assert e == a
+	e <<= i64(i)
+	assert e == b
+	e >>= i64(i)
+	assert e == a
+	e <<= byte(i)
+	assert e == b
+	e >>= byte(i)
+	assert e == a
+	e <<= u16(i)
+	assert e == b
+	e >>= u16(i)
+	assert e == a
+	e <<= u32(i)
+	assert e == b
+	e >>= u32(i)
+	assert e == a
+	e <<= u64(i)
+	assert e == b
+	e >>= u64(i)
+	assert e == a
 }
