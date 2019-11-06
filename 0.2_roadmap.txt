@@ -1,3 +1,6 @@
++ = done
+- = TODO
+
 + release vid
 + bring back playground
 + fix non-ascii rendering in gg (ä, å, etc)
