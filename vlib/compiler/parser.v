@@ -227,7 +227,7 @@ fn (p & Parser) peek() TokenKind {
 }
 [inline] fn (p &Parser) peek_token() Token {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Token{ tok:.eof }
+		return Token{ tok:TokenKind.eof }
 	}
 	return p.tokens[p.token_idx]
 }
@@ -639,7 +639,7 @@ fn (p mut Parser) type_decl() {
 		name: name
 		parent: parent.name
 		mod: p.mod
-		cat: .alias
+		cat: TypeCategory.alias
 	})
 }
 
@@ -1274,7 +1274,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 			p.error_with_token_index( 'incompatible types: $p.assigned_type != $p.expected_type', errtok)
 		}
 		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
-	} 
+	}
 	else if tok == .left_shift_assign || tok == .righ_shift_assign {
 		if !is_integer_type(p.assigned_type) {
 			p.error_with_token_index( 'cannot use shift operator on non-integer type `$p.assigned_type`', errtok)
@@ -1282,7 +1282,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		if !is_integer_type(expr_type) {
 			p.error_with_token_index( 'cannot use non-integer type `$expr_type` as shift argument', errtok)
 		}
-	} 
+	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
@@ -1683,7 +1683,7 @@ fn (p mut Parser) name_expr() string {
 			if p.expected_type == enum_type.name {
 				// `if color == .red` is enough
 				// no need in `if color == Color.red`
-				p.error('`${enum_type.name}.$val` is unnecessary, use `.$val`')
+				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
 			}	
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`

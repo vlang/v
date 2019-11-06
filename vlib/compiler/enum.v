@@ -59,7 +59,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
-		cat: .enum_ //.enum_ //if is_c { TypeCategory.c_struct } else {TypeCategory.enum_ }
+		cat: TypeCategory.enum_
 		enum_vals: fields.clone()
 		is_public: is_pub
 	})
