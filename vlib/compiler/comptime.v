@@ -201,11 +201,12 @@ fn (p mut Parser) chash() {
 	}
 	if hash.starts_with('include') {
 		if p.first_pass() && !p.is_vh {
+			/*
 			if !p.pref.building_v && !p.fileis('vlib') {
 				p.warn('C #includes will soon be removed from the language' +
 				'\ndefine the C structs and functions in V')
-				
 			}	
+			*/
 			if p.file_pcguard.len != 0 {
 				//println('p: $p.file_platform $p.file_pcguard')
 				p.cgen.includes << '$p.file_pcguard\n#$hash\n#endif'

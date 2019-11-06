@@ -227,7 +227,7 @@ fn (p & Parser) peek() TokenKind {
 }
 [inline] fn (p &Parser) peek_token() Token {
 	if p.token_idx >= p.tokens.len - 2 {
-		return Token{ tok:TokenKind.eof }
+		return Token{ tok:.eof }
 	}
 	return p.tokens[p.token_idx]
 }
@@ -313,32 +313,30 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 		}
 		.key_enum {
-			p.next()
-			if p.tok == .name {
+			next := p.peek()
+			if next == .name {
 				p.fgen('enum ')
-				name := p.check_name()
 				p.fgen(' ')
-				p.enum_decl(name)
+				p.enum_decl(false)
 			}
-			else if p.pref.translated {
+			else if next == .lcbr && p.pref.translated {
 				// enum without a name, only allowed in code,
 				// translated from C. it's a very bad practice
 				// in C as well, but is used unfortunately
 				// (for example, by DOOM). such fields are
 				// basically int consts
-				p.enum_decl('int')
-			}
-			else {
-				p.check(.name)
+				p.enum_decl(true)
 			}
 		}
 		.key_pub {
 			next := p.peek()
 			match next {
-				.key_fn     {	p.fn_decl()     }
-				.key_const  {	p.const_decl()  }
-				.key_struct, .key_union, .key_interface {	p.struct_decl() }
-				.key_enum   {	p.enum_decl('') }
+				.key_fn        {	p.fn_decl()     }
+				.key_const     {	p.const_decl()  }
+				.key_struct,
+				.key_union,
+				.key_interface {	p.struct_decl() }
+				.key_enum      {	p.enum_decl(false) }
 				else {
 					p.error('wrong pub keyword usage')
 				}
@@ -641,7 +639,7 @@ fn (p mut Parser) type_decl() {
 		name: name
 		parent: parent.name
 		mod: p.mod
-		cat: TypeCategory.alias
+		cat: .alias
 	})
 }
 
