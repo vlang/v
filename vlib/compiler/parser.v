@@ -79,6 +79,12 @@ pub:
 
 const (
 	MaxModuleDepth = 4
+	Reserved_Types = {
+		'i8' : true, 'i16' : true, 'int' : true, 'i64' : true, 'i128' : true,
+		'byte' : true, 'u16' : true, 'u32' : true, 'u64' : true, 'u128' : true,
+		'f32' : true, 'f64' : true,
+		'rune' : true, 'byteptr' : true, 'voidptr' : true
+	}
 )
 
 // new parser from string. unique id specified in `id`.
@@ -691,8 +697,8 @@ fn (p mut Parser) check_string() string {
 }
 
 fn (p mut Parser) check_not_reserved () {
-	if p.lit in ['i8','i16','int','i64','i128','byte','u16','u32','u64','u128','f32','f64','rune','byteptr','voidptr'] {
-		p.error('`$p.lit` can\'t be used as name')
+	if p.lit in Reserved_Types { 
+		p.error('`$p.lit` can\'t be used as name') 
 	}
 }
 
