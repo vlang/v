@@ -301,26 +301,25 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	// simple_name := f.name
-	// println('!SIMP.le=$simple_name')
 	// user.register() => User_register()
 	has_receiver := receiver_typ.len > 0
 	if receiver_typ != '' {
 		// f.name = '${receiver_typ}_${f.name}'
 	}
 	// full mod function name
-	// os.exit ==> os__exit()
+	// `os.exit()` ==> `os__exit()`
 	// if !is_c && !p.builtin_mod && receiver_typ.len == 0 {
-	if !is_c && receiver_typ.len == 0 && (!p.builtin_mod || (p.builtin_mod && f.name == 'init')) {
+	if !is_c && !has_receiver &&
+(!p.builtin_mod || (p.builtin_mod && f.name == 'init')) {
 		f.name = p.prepend_mod(f.name)
 	}
 	if p.first_pass() && receiver_typ.len == 0 {
-		for {
-		existing_fn := p.table.find_fn(f.name) or { break }
-		// This existing function could be defined as C decl before (no body), then we don't need to throw an erro
-		if !existing_fn.is_decl {
-			p.error('redefinition of `$f.name`')
-		}
-		break
+		if existing_fn := p.table.find_fn(f.name) {
+			// This existing function could be defined as C decl before
+			// (no body), then we don't need to throw an error.
+			if !existing_fn.is_decl {
+				p.error('redefinition of `$f.name`')
+			}
 		}
 	}
 	// Generic?
@@ -355,14 +354,12 @@ fn (p mut Parser) fn_decl() {
 		p.fgen(' ')
 		typ = p.get_type()
 	}
-	// Translated C code and .vh can have empty functions (just definitions)
-	is_fn_header := !is_c && !p.is_vh &&
-		//(p.pref.translated || p.pref.is_test || p.is_vh) &&
-		p.tok != .lcbr
+	// V allows empty functions (just definitions)
+	is_fn_header := !is_c && !p.is_vh &&		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
 	}
-	// { required only in normal function declarations
+	// `{` required only in normal function declarations
 	if !is_c && !p.is_vh && !is_fn_header {
 		p.fgen(' ')
 		p.check(.lcbr)

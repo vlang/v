@@ -280,4 +280,7 @@ const (
 	//make_receiver_mutable =
 
 	err_used_as_value = 'used as value'
+	
+	and_or_error = 'use `()` to make the boolean expression clear\n' +
+'for example: `(a && b) || c` instead of `a && b || c`'
 )
