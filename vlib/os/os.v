@@ -580,7 +580,7 @@ pub fn get_raw_line() string {
     $if windows {
         max_line_chars := 256
         buf := &byte(malloc(max_line_chars*2))
-        if is_atty(0) {
+        if is_atty(0) > 0 {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := 0
             C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
