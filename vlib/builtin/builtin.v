@@ -6,7 +6,7 @@ module builtin
 
 fn init() {
 	$if windows {	
-		if is_atty(0) {
+		if is_atty(0) > 0 {
 			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
 		} else {
 			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)		
@@ -195,13 +195,13 @@ fn v_ptr_free(ptr voidptr) {
 	C.free(ptr)
 }
 
-pub fn is_atty(fd int) bool {
+pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := 0
 		C.GetConsoleMode(C._get_osfhandle(fd), &mode)
-		return mode > 0
+		return mode
 	} $else {
-		return C.isatty(fd) != 0
+		return C.isatty(fd)
 	}
 }
 
