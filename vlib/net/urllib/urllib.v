@@ -564,7 +564,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		host = h
 	}
 	if i < 0 {
-		return ParseAuthorityRes{host: host}
+		return ParseAuthorityRes{host: host, user: user}
 	}
 	mut userinfo := authority[..i]
 	if !valid_userinfo(userinfo) {
