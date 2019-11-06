@@ -2522,10 +2522,13 @@ fn (p mut Parser) term() string {
 			p.error('division or modulo by zero')
 		}
 		expr_type := p.unary()
-		p.check_types(expr_type, typ)
-		if is_mod && (!is_integer_type(expr_type) || !is_integer_type(typ)) {
-			p.error('operator % requires integer types')
-		}
+		if is_mod {
+			if !(is_integer_type(expr_type) && is_integer_type(typ)) {
+				p.error('operator `mod` requires integer types')
+			}
+		} else {
+			p.check_types(expr_type, typ)
+		}	
 	}
 	return typ
 }
