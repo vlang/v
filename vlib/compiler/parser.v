@@ -2522,7 +2522,7 @@ fn (p mut Parser) term() string {
 			p.error('division or modulo by zero')
 		}
 		if is_mod && (is_float_type(typ) || !is_number_type(typ)) {
-			p.error('operator .mod requires integer types')
+			p.error('operator .mod requires integer types. For a floating-point remainder please use `math.fmod(f64, f64)`')
 		}
 		p.check_types(p.unary(), typ)
 	}
