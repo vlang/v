@@ -1467,6 +1467,10 @@ fn (p mut Parser) bool_expression() string {
 		}
 		p.check_space(p.tok)
 		p.check_types(p.bterm(), typ)
+		if typ != 'bool' {
+			p.error('logical operators `&&` and `||` require booleans')
+			
+		}	
 	}
 	if typ == '' {
 		println('curline:')
@@ -2467,6 +2471,9 @@ fn (p mut Parser) expression() string {
 				p.gen(',')
 			}
 		}
+		if is_str && tok_op != .plus {
+			p.error('strings only support `+` operator')
+		}	
 		p.check_types(p.term(), typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
 			p.gen(')')
