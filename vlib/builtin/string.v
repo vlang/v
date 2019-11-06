@@ -648,7 +648,7 @@ pub fn (s string) find_between(start, end string) string {
 	}
 	// First get everything to the right of 'start'
 	val := s.right(start_pos + start.len)
-	end_pos := val.index(end)
+	end_pos := val.last_index(end)
 	if end_pos == -1 {
 		return val
 	}
