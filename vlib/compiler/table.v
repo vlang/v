@@ -671,11 +671,11 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if expected=='void*' && got=='int' {
 		return true
 	}
-	// Allow `myu64 == 1`
 	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
 		//p.warn('got=$got exp=$expected $p.is_const_literal')
 	//}
-	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
+	// Allow `myu64 == 1`, `myfloat == 2` etc
+	if is_integer_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
 	}
 
