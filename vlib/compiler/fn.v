@@ -967,14 +967,17 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 			typ = 'string'
 		}
-		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'ustring' && typ != 'void' {
+		if i == 0 && (f.name == 'println' || f.name == 'print')  &&
+			!(typ in ['string', 'ustring', 'void' ])
+		{
 			T := p.table.find_type(typ)
 			$if !windows {
 			$if !js {
 				fmt := p.typ_to_fmt(typ, 0)
-				if fmt != '' {
+				if fmt != '' && typ != 'bool' {
 					nl := if f.name == 'println' { '\\n' } else { '' }
-					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '$nl", '))
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name +
+					' (', '/*opt*/printf ("' + fmt + '$nl", '))
 					continue
 				}
 			}
