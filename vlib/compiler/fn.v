@@ -646,7 +646,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	if p.os == .windows {
 		wrapper_type = 'void* __stdcall'
 	}
-	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args );  }'
+	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return NULL; }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
