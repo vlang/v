@@ -697,8 +697,8 @@ fn (p mut Parser) check_string() string {
 }
 
 fn (p mut Parser) check_not_reserved () {
-	if p.lit in Reserved_Types { 
-		p.error('`$p.lit` can\'t be used as name') 
+	if p.lit in Reserved_Types {
+		p.error('`$p.lit` can\'t be used as name')
 	}
 }
 
@@ -1565,7 +1565,7 @@ fn (p mut Parser) undefined_error(name string, orig_name string) {
 	} else if orig_name in reserved_type_param_names {
 		p.error('the letter `$orig_name` is reserved for type parameters')
 	}
-	p.error('undefined symbol: `$orig_name`')
+	p.error('undefined: `$orig_name`')
 }
 
 fn (p mut Parser) var_expr(v Var) string {
