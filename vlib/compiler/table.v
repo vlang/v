@@ -576,6 +576,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if p.pref.translated {
 		return true
 	}
+	if got == expected { 
+		return true
+	}
 
 	// generic return type
 	if expected == '_ANYTYPE_' {
