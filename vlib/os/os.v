@@ -388,32 +388,6 @@ pub:
 	//stderr string // TODO
 }
 
-// exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) ?Result {
-	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-		return error(';, &&, || and \\n are not allowed in shell commands')
-	}
-	pcmd := '$cmd 2>&1'
-	f := vpopen(pcmd)
-	if isnil(f) {
-		return error('exec("$cmd") failed')
-	}
-	buf := [1000]byte
-	mut res := ''
-	for C.fgets(*char(buf), 1000, f) != 0 {
-		res += tos(buf, vstrlen(buf))
-	}
-	res = res.trim_space()
-	exit_code := vpclose(f)
-	//if exit_code != 0 {
-		//return error(res)
-	//}
-	return Result {
-		output: res
-		exit_code: exit_code
-	}
-}
-
 // `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
 	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {

@@ -145,7 +145,7 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	// If its not there then end user needs to update their visual studio
 	// installation!
 	
-	res := os.exec('""$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"') or {
+	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') or {
 		return error(err)
 	}
 	// println('res: "$res"')
@@ -348,7 +348,7 @@ pub fn (v mut V) cc_msvc() {
 	
 	args := a.join(' ')
 
-	cmd := '""$r.full_cl_exe_path" $args"'
+	cmd := '"$r.full_cl_exe_path" $args'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	if v.pref.show_c_cmd || v.pref.is_verbose {
@@ -410,7 +410,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	btarget := moduleflags.c_options_before_target_msvc()
 	atarget := moduleflags.c_options_after_target_msvc()
-	cmd := '""$msvc.full_cl_exe_path" /volatile:ms /Zi /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path""'
+	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /Zi /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path"'
 	//NB: the quotes above ARE balanced.
 	println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {
