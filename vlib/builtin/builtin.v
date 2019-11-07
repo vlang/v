@@ -60,7 +60,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 					}
 					buf := [1000]byte
 					mut output := ''
-					for C.fgets(buf, 1000, f) != 0 {
+					for C.fgets(voidptr(buf), 1000, f) != 0 {
 						output += tos(buf, vstrlen(buf))
 					}
 					output = output.trim_space()+':'
