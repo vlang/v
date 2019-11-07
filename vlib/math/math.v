@@ -6,6 +6,35 @@ module math
 
 #include <math.h>
 
+fn C.acos(x f64) f64
+fn C.asin(x f64) f64
+fn C.atan(x f64) f64
+fn C.atan2(y f64, x f64) f64
+fn C.cbrt(x f64) f64
+fn C.ceil(x f64) f64
+fn C.cos(x f64) f64
+fn C.cosh(x f64) f64
+fn C.erf(x f64) f64
+fn C.erfc(x f64) f64
+fn C.exp(x f64) f64
+fn C.exp2(x f64) f64
+fn C.floor(x f64) f64
+fn C.fmod(x f64, y f64) f64
+fn C.hypot(x f64, y f64) f64
+fn C.log(x f64) f64
+fn C.log2(x f64) f64
+fn C.log10(x f64) f64
+fn C.lgamma(x f64) f64
+fn C.pow(x f64, y f64) f64
+fn C.round(x f64) f64
+fn C.sin(x f64) f64
+fn C.sqrt(x f64) f64
+fn C.tgamma(x f64) f64
+fn C.tan(x f64) f64
+fn C.tanh(x f64) f64
+fn C.trunc(x f64) f64
+
+
 // NOTE
 // When adding a new function, please make sure it's in the right place.
 // All functions are sorted alphabetically.
@@ -17,8 +46,6 @@ pub fn abs(a f64) f64 {
 	}
 	return a
 }
-
-fn C.acos(a f64) f64
 
 // acos calculates inverse cosine (arccosine).
 pub fn acos(a f64) f64 {
