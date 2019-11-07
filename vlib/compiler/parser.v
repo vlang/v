@@ -697,8 +697,8 @@ fn (p mut Parser) check_string() string {
 }
 
 fn (p mut Parser) check_not_reserved () {
-	if p.lit in Reserved_Types {
-		p.error('`$p.lit` can\'t be used as name')
+	if Reserved_Types[p.lit] { 
+		p.error('`$p.lit` can\'t be used as name') 
 	}
 }
 
