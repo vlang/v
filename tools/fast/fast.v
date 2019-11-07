@@ -14,6 +14,8 @@ fn main() {
 	}	
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
+	println('Fetching updates...')
+	exec('git pull --rebase')
 	mut commit_hash := exec('git rev-parse HEAD')
 	commit_hash = commit_hash[..7]
 	if !os.file_exists('table.html') {
