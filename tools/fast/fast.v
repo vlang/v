@@ -31,7 +31,8 @@ fn main() {
 	println('Measuring...')
 	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/v.v')
 	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/v.v')
-	diff3 := measure('$vdir/vprod -cc clang -o v2 -fast $vdir/v.v')
+	diff3 := measure('$vdir/vprod -o v2 -fast $vdir/v.v')
+	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v')
 	//println('Building V took ${diff}ms')
 	commit_date := exec('git log -n1 --pretty="format:%at"')
 	message := exec('git log -n1 --pretty="format:%s"')
@@ -46,6 +47,7 @@ fn main() {
 	<td>${diff1}ms</td>
 	<td>${diff2}ms</td>
 	<td>${diff3}ms</td>
+	<td>${diff4}ms</td>
 </tr>\n' +
 	table.trim_space()
 	out.writeln(table)
