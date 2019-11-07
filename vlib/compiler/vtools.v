@@ -35,7 +35,7 @@ pub fn launch_tool(tname string){
 		//println('Compiling $tname with: "$compilation_command"')
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
-			panic('V tool "$tool_source" could not be compiled.')
+			panic('V tool "$tool_source" could not be compiled\n' + tool_compilation.output)
 		}
 	}
 	
