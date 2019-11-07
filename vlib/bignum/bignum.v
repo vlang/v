@@ -1,5 +1,7 @@
 module bignum
 
+// Wrapper for https://github.com/kokke/tiny-bignum-c
+
 #flag -I @VROOT/thirdparty/bignum
 #flag @VROOT/thirdparty/bignum/bn.o
 #include "bn.h"
@@ -67,8 +69,17 @@ pub fn (n Number) int() int {
 }
 
 pub fn (n Number) str() string {
+	// TODO: return a decimal representation of the bignumber n.
+	// A decimal representation will be easier to use in the repl
+	// but will be slower to calculate. Also, it is not implemented
+	// in the bn library.
+	return 'Number (in hex): ' + n.hexstr()
+}
+
+pub fn (n Number) hexstr() string {
 	mut buf := [STRING_BUFFER_SIZE]byte
 	C.bignum_to_string( &n, buf, STRING_BUFFER_SIZE)
+	// NB: bignum_to_string , returns the HEXADECIMAL representation of the bignum n
 	s := tos_clone( buf )
 	if s.len == 0 { return '0' }
 	return s
@@ -165,7 +176,7 @@ pub fn (a Number) clone() Number {
 	return b
 }
 ////////////////////////////////////////////////////////////
-fn factorial(nn bignum.Number) bignum.Number {
+pub fn factorial(nn bignum.Number) bignum.Number {
 	mut n := nn.clone()
 	mut a := nn.clone()
 	n.dec()
@@ -177,4 +188,8 @@ fn factorial(nn bignum.Number) bignum.Number {
 		i++
 	}
 	return a
+}
+
+pub fn fact(n int) bignum.Number {
+	return factorial( bignum.from_int(n) )
 }
