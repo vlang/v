@@ -48,7 +48,7 @@ struct FileInfo {
 
 struct C.stat {
 	st_size int
-	st_mode int
+	st_mode u32
 	st_mtime int
 }
 
@@ -794,7 +794,7 @@ pub fn is_dir(path string) bool {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return (statbuf.st_mode & S_IFMT) == S_IFDIR
+		return (int(statbuf.st_mode) & S_IFMT) == S_IFDIR
 	}
 }
 
