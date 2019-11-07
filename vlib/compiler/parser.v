@@ -79,6 +79,12 @@ pub:
 
 const (
 	MaxModuleDepth = 4
+	Reserved_Types = {
+		'i8' : true, 'i16' : true, 'int' : true, 'i64' : true, 'i128' : true,
+		'byte' : true, 'u16' : true, 'u32' : true, 'u64' : true, 'u128' : true,
+		'f32' : true, 'f64' : true,
+		'rune' : true, 'byteptr' : true, 'voidptr' : true
+	}
 )
 
 // new parser from string. unique id specified in `id`.
@@ -690,6 +696,12 @@ fn (p mut Parser) check_string() string {
 	return s
 }
 
+fn (p mut Parser) check_not_reserved () {
+	if p.lit in Reserved_Types { 
+		p.error('`$p.lit` can\'t be used as name') 
+	}
+}
+
 fn (p &Parser) strtok() string {
 	if p.tok == .name {
 		return p.lit
@@ -1090,6 +1102,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 		}
 		// `a := 777`
 		else if p.peek() == .decl_assign || p.peek() == .comma {
+			p.check_not_reserved()
 			//p.log('var decl')
 			p.var_decl()
 		}
@@ -3149,6 +3162,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.next()
 	// `if a := opt() { }` syntax
 	if p.tok == .name && p.peek() == .decl_assign {
+		p.check_not_reserved()
 		option_tmp := p.get_tmp()
 		var_name := p.lit
 		p.next()
