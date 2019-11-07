@@ -22,6 +22,7 @@ fn (p mut Parser) for_st() {
 	else if next_tok == .decl_assign || next_tok == .assign || p.tok == .semicolon {
 		p.genln('for (')
 		if next_tok == .decl_assign {
+			p.check_not_reserved()
 			p.var_decl()
 		}
 		else if p.tok != .semicolon {
