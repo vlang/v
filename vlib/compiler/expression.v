@@ -448,34 +448,29 @@ fn (p mut Parser) expression() string {
 		// Make sure operators are used with correct types
 		if !p.pref.translated && !is_str && !is_ustr && !is_num {
 			T := p.table.find_type(typ)
-			if tok_op == .plus {
-				if T.has_method('+') {
-					p.cgen.set_placeholder(ph, typ + '_plus(')
-					p.gen(')')
-				}
-				else {
-					p.error('operator + not defined on `$typ`')
-				}
-			}
-			else if tok_op == .minus {
-				if T.has_method('-') {
-					p.cgen.set_placeholder(ph, '${typ}_minus(')
-					p.gen(')')
-				}
-				else {
-					p.error('operator - not defined on `$typ`')
-				}
-			}
+			if      tok_op == .plus {  p.handle_operator('+', typ, 'op_plus', ph, T)  }
+			else if tok_op == .minus { p.handle_operator('-', typ, 'op_minus', ph, T) }
 		}
 	}
 	return typ
 }
+
+fn (p mut Parser) handle_operator(op string, typ string, cpostfix string, ph int, T &Type) {
+	if T.has_method( op ) {
+		p.cgen.set_placeholder(ph, '${typ}_${cpostfix}(')
+		p.gen(')')
+	}
+	else {
+		p.error('operator $op not defined on `$typ`')
+	}
+}  
 
 fn (p mut Parser) term() string {
 	line_nr := p.scanner.line_nr
 	//if p.fileis('fn_test') {
 		//println('\nterm() $line_nr')
 	//}
+	ph := p.cgen.add_placeholder()
 	typ := p.unary()
 	//if p.fileis('fn_test') {
 		//println('2: $line_nr')
@@ -491,11 +486,28 @@ fn (p mut Parser) term() string {
 		// is_mul := tok == .mod
 		p.next()
 		p.gen(tok.str())// + ' /*op2*/ ')
+		oph := p.cgen.add_placeholder()
 		p.fgen(' ' + tok.str() + ' ')
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
 		expr_type := p.unary()
+
+		if !is_primitive_type(expr_type) && expr_type == typ {
+			p.check_types(expr_type, typ)
+			T := p.table.find_type(typ)
+			// NB: oph is a char index just after the OP
+			before_oph := p.cgen.cur_line[..oph-1]
+			after_oph := p.cgen.cur_line[oph..]
+			p.cgen.cur_line = before_oph + ',' + after_oph
+			match tok {
+				.mul {   p.handle_operator('*', typ, 'op_mul', ph, T) }
+				.div {   p.handle_operator('/', typ, 'op_div', ph, T) }
+				.mod {   p.handle_operator('%', typ, 'op_mod', ph, T) }
+			}
+			continue
+		}
+		
 		if is_mod {
 			if !(is_integer_type(expr_type) && is_integer_type(typ)) {
 				p.error('operator `mod` requires integer types')

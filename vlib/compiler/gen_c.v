@@ -228,9 +228,15 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	if f.is_method {
 		name = '${f.receiver_typ}_$f.name'
 		name = name.replace(' ', '')
-		name = name.replace('*', '')
-		name = name.replace('+', 'plus')
-		name = name.replace('-', 'minus')
+		if f.name.len == 1 {
+			match f.name[0] {
+				`+` { name = name.replace('+', 'op_plus') }
+				`-` { name = name.replace('-', 'op_minus') }
+				`*` { name = name.replace('*', 'op_mul') }
+				`/` { name = name.replace('/', 'op_div') }
+				`%` { name = name.replace('%', 'op_mod') }
+			}
+		}
 	}
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate v_abs(), v_print()

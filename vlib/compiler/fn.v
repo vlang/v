@@ -265,7 +265,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok in [.plus, .minus, .mul] {
+	if p.tok in [.plus, .minus, .mul, .div, .mod] {
 		f.name = p.tok.str()
 		p.next()
 	}
