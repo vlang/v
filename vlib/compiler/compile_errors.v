@@ -27,8 +27,6 @@ fn (p mut Parser) warn(s string) {
 	p.warn_with_token_index(s, p.token_idx-1 )
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (p mut Parser) production_error_with_token_index(e string, tokenindex int) {
 	if p.pref.is_prod {
 		p.error_with_token_index( e, tokenindex )
@@ -37,8 +35,6 @@ fn (p mut Parser) production_error_with_token_index(e string, tokenindex int) {
 	}
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (p mut Parser) error_with_token_index(s string, tokenindex int) {
 	p.error_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
 }
@@ -46,8 +42,6 @@ fn (p mut Parser) error_with_token_index(s string, tokenindex int) {
 fn (p mut Parser) warn_with_token_index(s string, tokenindex int) {
 	p.warn_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
 }
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
 	p.print_error_context()
@@ -65,8 +59,6 @@ fn (p mut Parser) warn_with_position(s string, sp ScannerPos) {
 	p.scanner.goto_scanner_position( cpos )
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 fn (s &Scanner) error(msg string) {
 	s.error_with_col(msg, 0)
 }
@@ -75,7 +67,6 @@ fn (s &Scanner) warn(msg string) {
 	s.warn_with_col(msg, 0)
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
 fn (s &Scanner) warn_with_col(msg string, col int) {
 	fullpath := s.get_error_filepath()		
 	color_on := s.is_color_output_on()
@@ -96,8 +87,8 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
 	
 	if s.should_print_line_on_error && s.nlines > 0 {
-		context_start_line := imax(0,          (s.line_nr - error_context_before + 1 ))
-		context_end_line   := imin(s.nlines-1, (s.line_nr + error_context_after  + 1 ))
+		context_start_line := imax(0,        (s.line_nr - error_context_before    ))
+		context_end_line   := imin(s.nlines-1, (s.line_nr + error_context_after + 1 ))
 		for cline := context_start_line; cline < context_end_line; cline++ {
 			line := '${(cline+1):5d}| ' + s.line( cline )
 			coloredline := if cline == s.line_nr && color_on { term.red(line) } else { line }
@@ -132,7 +123,13 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 [inline] fn imin(a,b int) int { 	return if a < b { a } else { b } }
 
 fn (s &Scanner) get_error_filepath() string {
-	if s.should_print_relative_paths_on_error {
+	verror_paths_override := os.getenv('VERROR_PATHS')
+	use_relative_paths := match verror_paths_override {
+		'relative' { true }
+		'absolute' { false }
+		else { s.should_print_relative_paths_on_error }
+	}
+	if use_relative_paths {
 		workdir := os.getwd() + os.path_separator
 		if s.file_path.starts_with(workdir) {
 			return s.file_path.replace( workdir, '')
@@ -246,11 +243,12 @@ fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
 	/////////////////// s.get_scanner_pos()
 	/////////////////// which just returns a struct, and that works
 	/////////////////// in gcc and clang, but causes the TCC problem.
-	
+
+	maxline := imin( s.nlines, tline + 2 * error_context_after)
 	for {
 		prevlinepos = s.pos
 		if s.pos >= s.text.len { break }		
-		if s.line_nr > tline { break }
+		if s.line_nr > maxline { break }
 		////////////////////////////////////////
 		if tline == s.line_nr {
 			sptoken = s.get_scanner_pos()
@@ -273,12 +271,13 @@ fn (s mut Scanner) eat_single_newline(){
 ///////////////////////////////
 
 const (
-	match_arrow_warning = '=> is no longer needed in match statements, use\n' +
+	warn_match_arrow = '=> is no longer needed in match statements, use\n' +
 'match foo {
 	1 { bar }
 	2 { baz }
 	else { ... }
 }'
-
 	//make_receiver_mutable =
+
+	err_used_as_value = 'used as value'
 )

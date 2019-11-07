@@ -62,11 +62,17 @@ pub fn (m mut Mutex) lock() {
 		}
 	}
 	state := C.WaitForSingleObject(m.mx, INFINITE) // infinite wait
+	/* TODO fix match/enum combo
 	m.state = match state {
-		WAIT_ABANDONED { MutexState.abandoned }
-		WAIT_OBJECT_0  { MutexState.waiting }
-		else           { MutexState.broken }
+		WAIT_ABANDONED { .abandoned }
+		WAIT_OBJECT_0  { .waiting }
+		else           { .broken }
 	}
+	*/
+	mut s := MutexState.broken
+	if state == WAIT_ABANDONED { s = .abandoned }
+	else if state == WAIT_OBJECT_0 { s = .waiting }
+	m.state = s
 }
 
 pub fn (m mut Mutex) unlock() {

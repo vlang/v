@@ -4,7 +4,7 @@ import os
 import time
 import term
 
-const (
+pub const (
     FATAL = 1
     ERROR = 2 
     WARN  = 3
@@ -20,12 +20,11 @@ interface Logger {
     debug(s string)
 }
 
-struct Log{
+pub struct Log {
 mut:
     level int
     output string
 }
-
 
 pub fn (l mut Log) set_level(level int){
     l.level = level

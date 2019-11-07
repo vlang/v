@@ -104,7 +104,7 @@ pub fn (b mut Benchmark) total_duration() i64 {
 fn (b mut Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {
 	if b.verbose {
 		tdiff := (eticks - sticks)
-		return '${tdiff:6d} ms | $s'
+		return '${tdiff:6lld} ms | $s'
 	}
 	return s
 }

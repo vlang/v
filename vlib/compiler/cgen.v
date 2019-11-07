@@ -25,6 +25,7 @@ mut:
 	consts_init  []string
 	pass         Pass
 	nogen           bool
+	prev_tmps    []string
 	tmp_line        string
 	cur_line        string
 	prev_line       string
@@ -105,9 +106,7 @@ fn (g mut CGen) save() {
 
 fn (g mut CGen) start_tmp() {
 	if g.is_tmp {
-		println(g.tmp_line)
-		println('start_tmp() already started. cur_line="$g.cur_line"')
-		exit(1)
+		g.prev_tmps << g.tmp_line
 	}
 	// kg.tmp_lines_pos++
 	g.tmp_line = ''
@@ -115,9 +114,14 @@ fn (g mut CGen) start_tmp() {
 }
 
 fn (g mut CGen) end_tmp() string {
-	g.is_tmp = false
 	res := g.tmp_line
-	g.tmp_line = ''
+	if g.prev_tmps.len > 0 {
+		g.tmp_line = g.prev_tmps.last()
+		g.prev_tmps = g.prev_tmps[0..g.prev_tmps.len-1]
+	} else {
+		g.tmp_line = ''
+		g.is_tmp = false
+	}
 	return res
 }
 
@@ -265,6 +269,11 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)
+		return
+	}
+	if res.exit_code != 0 {
+		println('failed thirdparty object build cmd: $cmd')
+		verror(res.output)
 		return
 	}
 	println(res.output)

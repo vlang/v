@@ -37,6 +37,12 @@ fn (p mut Parser) struct_decl() {
 	}
 	is_c := name == 'C' && p.tok == .dot
 	if is_c {
+		/*
+		if !p.pref.building_v && !p.fileis('vlib') {
+			p.warn('Virtual C structs will soon be removed from the language' +
+			'\ndefine the C structs and functions in V')
+		}
+		*/
 		p.check(.dot)
 		name = p.check_name()
 		cat = .c_struct
@@ -81,7 +87,7 @@ fn (p mut Parser) struct_decl() {
 		typ.is_placeholder = false
 		typ.cat = cat
 		typ.parent = objc_parent
-		typ.is_public = is_pub
+		typ.is_public = is_pub || p.is_vh
 		p.table.rewrite_type(typ)
 	}
 	else {
@@ -91,7 +97,7 @@ fn (p mut Parser) struct_decl() {
 			is_c: is_c
 			cat: cat
 			parent: objc_parent
-			is_public: is_pub
+			is_public: is_pub || p.is_vh
 		}
 	}
 	// Struct `C.Foo` declaration, no body
@@ -259,6 +265,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			p.gen_struct_field_init(field)
 			p.check(.colon)
 			p.fspace()
+			p.expected_type = f.typ
 			p.check_types(p.bool_expression(),  f.typ)
 			if p.tok == .comma {
 				p.next()

@@ -113,6 +113,41 @@ fn test_walk() {
 	os.rmdir(folder)
 }
 
+fn test_cp() {
+  $if windows {
+    old_file_name := './example.txt'
+    new_file_name := './new_example.txt'
+    
+    os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')
+    result := os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
+
+    old_file := os.read_file(old_file_name) or { panic(err) }
+    new_file := os.read_file(new_file_name) or { panic(err) }
+    assert old_file == new_file
+    
+    os.rm(old_file_name)
+    os.rm(new_file_name)
+  }
+}
+
+fn test_cp_r() {
+  //fileX -> dir/fileX
+  os.write_file('ex1.txt', 'wow!')
+  os.mkdir('ex')
+  os.cp_r('ex1.txt', 'ex', false) or { panic(err) }
+  old := os.read_file('ex1.txt') or { panic(err) }
+  new := os.read_file('ex/ex1.txt') or { panic(err) }
+  assert old == new
+  os.mkdir('ex/ex2')
+  os.write_file('ex2.txt', 'great!')
+  os.cp_r('ex2.txt', 'ex/ex2', false) or { panic(err) }
+  old2 := os.read_file('ex2.txt') or { panic(err) }
+  new2 := os.read_file('ex/ex2/ex2.txt') or { panic(err) }
+  assert old2 == new2
+  //recurring on dir -> local dir
+  os.cp_r('ex', './', true) or { panic(err) }
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {

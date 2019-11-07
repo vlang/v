@@ -27,13 +27,13 @@ fn test_digits() {
 	assert negative_digits[2] == -1
 }
 
-/* 
+/*
 fn test_factorial() {
 	assert math.factorial(12) == 479001600
 	assert math.factorial(5) == 120
 	assert math.factorial(0) == 1
 }
-*/ 
+*/
 
 fn test_erf() {
 	assert math.erf(0) == 0
@@ -48,3 +48,12 @@ fn test_gamma() {
 	assert math.gamma(5) == 24
 	assert math.log_gamma(4.5) == math.log(math.gamma(4.5))
 }
+
+fn test_mod() {
+	assert 4 % 2 == 0
+	x := 2
+	assert u64(5) % x == 1
+	mut a := 10
+	a %= 2
+	assert a == 0
+}	
