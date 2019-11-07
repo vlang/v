@@ -46,7 +46,7 @@ pub fn cbrt(a f64) f64 {
 }
 
 // ceil returns the nearest f64 greater or equal to the provided value.
-pub fn ceil(a f64) int {
+pub fn ceil(a f64) f64 {
 	return C.ceil(a)
 }
 
