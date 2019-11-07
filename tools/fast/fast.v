@@ -8,15 +8,18 @@ import time
 fn main() {
 	exe := os.executable()
 	dir := os.dir(exe)
-	vdir := os.dir(dir)
+	vdir := os.dir(os.dir(dir))
 	if !os.file_exists('$vdir/v') && !os.dir_exists('$vdir/vlib') {
-		println('fast.html generator needs to be located in `v/tools/`')
+		println('fast.html generator needs to be located in `v/tools/fast/`')
 	}	
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
 	mut commit_hash := exec('git rev-parse HEAD')
 	commit_hash = commit_hash[..7]
-	mut table := os.read_file('table.html') or { '' }
+	if !os.file_exists('table.html') {
+		os.create('table.html') or { panic(err) }
+	}	
+	mut table := os.read_file('table.html') or { panic(err) }
 	// Do nothing if it's already been processed.
 	if table.contains(commit_hash) {
 		println('Commit $commit_hash has already been processed')
@@ -25,16 +28,11 @@ fn main() {
 	// Build an optimized V
 	println('Building vprod...')
 	exec('v -o $vdir/vprod -prod $vdir/v.v')
-	cmd := '$vdir/vprod -o v.c $vdir/v.v'
-	println('Warming up...')
-	for i in 0..3 {
-		os.exec(cmd) or { panic(err) }
-	}	
-	println('Building...')
-	ticks := time.ticks()
-	os.exec(cmd) or { panic(err) }
-	diff := time.ticks() - ticks
-	println('Building V took ${diff}ms')
+	println('Measuring...')
+	diff1 := measure('$vdir/vprod -o v.c $vdir/v.v')
+	diff2 := measure('$vdir/vprod -o v2 $vdir/v.v')
+	diff3 := measure('$vdir/vprod -o v2 -fast $vdir/v.v')
+	//println('Building V took ${diff}ms')
 	commit_date := exec('git log -n1 --pretty="format:%at"')
 	message := exec('git log -n1 --pretty="format:%s"')
 	date := time.unix(commit_date.int())
@@ -45,9 +43,9 @@ fn main() {
 	<td>${date.format()}</td>
 	<td><a target=_blank href="https://github.com/vlang/v/commit/$commit_hash">$commit_hash</a></td>
 	<td>$message</td>
-	<td>${diff}ms</td>
-	<td>${diff}ms</td>
-	<td>${diff}ms</td>
+	<td>${diff1}ms</td>
+	<td>${diff2}ms</td>
+	<td>${diff3}ms</td>
 </tr>\n' +
 	table.trim_space()
 	out.writeln(table)
@@ -63,6 +61,18 @@ fn main() {
 fn exec(s string) string {
 	e := os.exec(s) or { panic(err) }
 	return e.output
+}	
+
+// returns milliseconds
+fn measure(cmd string) int {
+	println('Warming up...')
+	for i in 0..3 {
+		exec(cmd)
+	}	
+	println('Building...')
+	ticks := time.ticks()
+	exec(cmd)
+	return int(time.ticks() - ticks)
 }	
 	
 
