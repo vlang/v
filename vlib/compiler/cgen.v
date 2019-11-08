@@ -5,6 +5,7 @@
 module compiler
 
 import os
+import strings
 
 struct CGen {
 	out          os.File
@@ -25,6 +26,7 @@ mut:
 	consts_init  []string
 	pass         Pass
 	nogen           bool
+	prev_tmps    []string
 	tmp_line        string
 	cur_line        string
 	prev_line       string
@@ -105,9 +107,7 @@ fn (g mut CGen) save() {
 
 fn (g mut CGen) start_tmp() {
 	if g.is_tmp {
-		println(g.tmp_line)
-		println('start_tmp() already started. cur_line="$g.cur_line"')
-		exit(1)
+		g.prev_tmps << g.tmp_line
 	}
 	// kg.tmp_lines_pos++
 	g.tmp_line = ''
@@ -115,9 +115,14 @@ fn (g mut CGen) start_tmp() {
 }
 
 fn (g mut CGen) end_tmp() string {
-	g.is_tmp = false
 	res := g.tmp_line
-	g.tmp_line = ''
+	if g.prev_tmps.len > 0 {
+		g.tmp_line = g.prev_tmps.last()
+		g.prev_tmps = g.prev_tmps[0..g.prev_tmps.len-1]
+	} else {
+		g.tmp_line = ''
+		g.is_tmp = false
+	}
 	return res
 }
 
@@ -267,6 +272,11 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 		verror(err)
 		return
 	}
+	if res.exit_code != 0 {
+		println('failed thirdparty object build cmd: $cmd')
+		verror(res.output)
+		return
+	}
 	println(res.output)
 }
 
@@ -378,3 +388,33 @@ fn sort_structs(types []Type) []Type {
 	}
 	return types_sorted
 }
+
+// Generates interface table and interface indexes
+fn (v &V) interface_table() string {
+       mut sb := strings.new_builder(100)
+       for _, t in v.table.typesmap {
+               if t.cat != .interface_ {
+                       continue
+               }
+               mut methods := ''
+               for i, gen_type in t.gen_types {
+                       methods += '{'
+                       for i, method in t.methods {
+					       // Cat_speak
+                               methods += '${gen_type}_${method.name}'
+                               if i < t.methods.len - 1 {
+                                       methods += ', '
+                               }
+                       }
+                       methods += '}, '
+                       // Speaker_Cat_index = 0
+                       sb.writeln('int _${t.name}_${gen_type}_index = $i;')
+               }
+               sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
+'{ $methods }; ')
+               continue
+       }
+       return sb.str()
+}
+
+

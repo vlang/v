@@ -4,7 +4,7 @@
 
 module math
 
-const (
+pub const (
 	e   = 2.71828182845904523536028747135266249775724709369995957496696763
 	pi  = 3.14159265358979323846264338327950288419716939937510582097494459
 	phi = 1.61803398874989484820458683436563811772030917980576286213544862
@@ -25,7 +25,7 @@ const (
 // Floating-point limit values
 // max is the largest finite value representable by the type.
 // smallest_non_zero is the smallest positive, non-zero value representable by the type.
-const (
+pub const (
 	max_f32               = 3.40282346638528859811704183484516925440e+38  // 2**127 * (2**24 - 1) / 2**23
 	smallest_non_zero_f32 = 1.401298464324817070923729583289916131280e-45 // 1 / 2**(127 - 1 + 23)
 
@@ -34,14 +34,17 @@ const (
 )
 
 // Integer limit values
-const (
+pub const (
 	max_i8  = 127
 	min_i8  = -128
 	max_i16 = 32767
 	min_i16 = -32768
 	max_i32 = 2147483647
 	min_i32 = -2147483648
-	min_i64 = -9223372036854775808
+	// -9223372036854775808 is wrong because C compilers parse litteral values
+	// without sign first, and 9223372036854775808 overflows i64, hence the
+	// consecutive subtraction by 1
+	min_i64 = -9223372036854775807 - 1
 	max_i64 = 9223372036854775807
 	max_u8  = 255
 	max_u16 = 65535

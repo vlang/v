@@ -7,10 +7,11 @@ module compiler
 import (
 	os
 	strings
+	filepath
 )
 
 pub const (
-	Version = '0.1.21'
+	Version = '0.1.22'
 )
 
 enum BuildMode {
@@ -114,6 +115,8 @@ pub mut:
 						 // work on the builtin module itself.
 	//generating_vh bool
 	comptime_define string  // -D vfmt for `if $vfmt {`
+	fast bool // use tcc/x64 codegen
+	enable_globals bool // allow __global for low level code
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -204,7 +207,7 @@ pub fn (v mut V) compile() {
 	}
 
 	// Main pass
-	cgen.pass = Pass.main
+	cgen.pass = .main
 	if v.pref.is_debug {
 		$if js {
 			cgen.genln('const VDEBUG = 1;\n')
@@ -294,6 +297,7 @@ pub fn (v mut V) compile() {
 		def.writeln('\nstring _STR(const char*, ...);\n')
 		def.writeln('\nstring _STR_TMP(const char*, ...);\n')
 		def.writeln(cgen.fns.join_lines()) // fn definitions
+		def.writeln(v.interface_table())
 	} $else {
 		def.writeln(v.type_definitions())
 	}
@@ -520,7 +524,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 	if !os.file_exists(dir) {
 		if dir == 'compiler' && os.dir_exists('vlib') {
 			println('looks like you are trying to build V with an old command')
-			println('use `v v.v` instead of `v -o v compiler`')
+			println('use `v -o v v.v` instead of `v -o v compiler`')
 		}	
 		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
@@ -648,11 +652,14 @@ pub fn (v &V)  get_user_files() []string {
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string
 
-	if v.pref.is_test && v.pref.is_stats {
-		user_files << os.join(v.vroot, 'vlib', 'benchmark', 'tests',
-			'always_imported.v')
+	if v.pref.is_test {
+		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
 	}
-
+	
+	if v.pref.is_test && v.pref.is_stats {
+		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
+	}
+	
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
@@ -760,9 +767,12 @@ pub fn new_v(args[]string) &V {
 		os.mkdir(v_modules_path)
 		os.mkdir('$v_modules_path${os.path_separator}cache')
 	}
+	
+	// Location of all vlib files
+	vroot := os.dir(vexe_path())
 
 	mut vgen_buf := strings.new_builder(1000)
-	vgen_buf.writeln('module main\nimport strings')
+	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
@@ -787,6 +797,7 @@ pub fn new_v(args[]string) &V {
 	mut mod := ''
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
+		os.chdir(vroot)
 		// v build module ~/v/os => os.o
 		mod_path := if dir.contains('vlib') {
 			dir.all_after('vlib'+os.path_separator)
@@ -837,6 +848,14 @@ pub fn new_v(args[]string) &V {
 		base := os.getwd().all_after(os.path_separator)
 		out_name = base.trim_space()
 	}
+	// `v -o dir/exec`, create "dir/" if it doesn't exist
+	if out_name.contains(os.path_separator) {
+		d := out_name.all_before_last(os.path_separator)
+		if !os.dir_exists(d) {
+			println('creating a new directory "$d"')
+			os.mkdir(d)
+		}	
+	}	
 	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
@@ -868,8 +887,6 @@ pub fn new_v(args[]string) &V {
 	else {
 		_os = os_from_string(target_os)
 	}
-	// Location of all vlib files
-	vroot := os.dir(vexe_path())
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
@@ -919,6 +936,8 @@ pub fn new_v(args[]string) &V {
 		is_run: 'run' in args
 		autofree: '-autofree' in args
 		compress: '-compress' in args
+		enable_globals: '--enable-globals' in args
+		fast: '-fast' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
@@ -965,34 +984,6 @@ pub fn env_vflags_and_os_args() []string {
 	return args
 }
 
-pub fn update_v() {
-	println('Updating V...')
-	vroot := os.dir(vexe_path())
-	s := os.exec('git -C "$vroot" pull --rebase origin master') or {
-		verror(err)
-		return
-	}
-	println(s.output)
-	$if windows {
-		v_backup_file := '$vroot/v_old.exe'
-		if os.file_exists( v_backup_file ) {
-			os.rm( v_backup_file )
-		}
-		os.mv('$vroot/v.exe', v_backup_file)
-		s2 := os.exec('"$vroot/make.bat"') or {
-			verror(err)
-			return
-		}
-		println(s2.output)
-	} $else {
-		s2 := os.exec('make -C "$vroot"') or {
-			verror(err)
-			return
-		}
-		println(s2.output)
-	}
-}
-
 pub fn vfmt(args[]string) {
 	file := args.last()
 	if !os.file_exists(file) {
@@ -1004,37 +995,6 @@ pub fn vfmt(args[]string) {
 		exit(1)
 	}
 	println('vfmt is temporarily disabled')
-}
-
-pub fn install_v(args[]string) {
-	if args.len < 3 {
-		println('usage: v install [module] [module] [...]')
-		return
-	}
-	names := args.slice(2, args.len)
-	vexec := vexe_path()
-	vroot := os.dir(vexec)
-	vget := '$vroot/tools/vget'
-	if true {
-		//println('Building vget...')
-		os.chdir(vroot + '/tools')
-		vget_compilation := os.exec('"$vexec" -o $vget vget.v') or {
-			verror(err)
-			return
-		}
-		if vget_compilation.exit_code != 0 {
-			verror( vget_compilation.output )
-			return
-		}
-	}
-	vgetresult := os.exec('$vget ' + names.join(' ')) or {
-		verror(err)
-		return
-	}
-	if vgetresult.exit_code != 0 {
-		verror( vgetresult.output )
-		return
-	}
 }
 
 pub fn create_symlink() {

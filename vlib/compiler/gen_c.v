@@ -11,52 +11,21 @@ fn (p mut Parser) gen_or_else(pos int) string {
 }
 */
 
+
 // returns the type of the new variable
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	// Generate expression to tmp because we need its type first
 	// `[typ] [name] = bool_expression();`
 	pos := p.cgen.add_placeholder()
+	p.is_var_decl = true
 	mut typ := p.bool_expression()
+	p.is_var_decl = false
 	if typ.starts_with('...') { typ = typ[3..] }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
-	tmp := p.get_tmp()
 	if or_else {
-		// Option_User tmp = get_user(1);
-		// if (!tmp.ok) { or_statement }
-		// User user = *(User*)tmp.data;
-		// p.assigned_var = ''
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		if !typ.starts_with('Option_') {
-			p.error('`or` block cannot be applied to non-optional type')
-		}
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.register_var(Var {
-			name: 'errcode'
-			typ: 'int'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
-		p.genln('int    errcode = $tmp . ecode;')
-		p.statements()
-		p.genln('$typ $name = *($typ*) $tmp . data;')
-		if !p.returns && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
-			p.error('`or` block must return/exit/continue/break/panic')
-		}
-		p.returns = false
-		return typ
+		return p.gen_handle_option_or_else(typ, name, pos)
 	}
 	gen_name := p.table.var_cgen_name(name)
 	mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ)
@@ -100,37 +69,20 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.check_name()
 	p.check_space(.assign)
 	is_indexer := p.peek() == .lsbr
-	is_fn_call, next_expr := p.is_next_expr_fn_call()
+	is_fn_call, next_expr := p.is_expr_fn_call(p.token_idx)
 	pos := p.cgen.add_placeholder()
-	mut typ := p.bool_expression()
+	p.is_var_decl = true
+	typ := p.bool_expression()
+	if typ == 'void' {
+		p.error_with_token_index('$next_expr() $err_used_as_value', p.token_idx-2)
+	}
+	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
 		p.error_with_token_index('assigning `$next_expr` to `_` is redundant', assign_error_tok_idx)
 	}
-	tmp := p.get_tmp()
 	// handle or
 	if p.tok == .key_orelse {
-		p.cgen.set_placeholder(pos, '$typ $tmp = ')
-		p.genln(';')
-		typ = typ.replace('Option_', '')
-		p.next()
-		p.check(.lcbr)
-		p.genln('if (!$tmp .ok) {')
-		p.register_var(Var {
-			name: 'err'
-			typ: 'string'
-			is_mut: false
-			is_used: true
-		})
-		p.register_var(Var {
-			name: 'errcode'
-			typ: 'int'
-			is_mut: false
-			is_used: true
-		})
-		p.genln('string err = $tmp . error;')
-		p.genln('int    errcode = $tmp . ecode;')
-		p.statements()
-		p.returns = false
+		p.gen_handle_option_or_else(typ, '', pos)
 	} else {
 		if is_fn_call {
 			p.gen(';')
@@ -140,21 +92,76 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	}
 }
 
+fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) string {
+	mut typ := _typ
+	if !typ.starts_with('Option_') {
+		p.error('`or` block cannot be applied to non-optional type')
+	}
+	is_assign := name.len > 0
+	tmp := p.get_tmp()
+	p.cgen.set_placeholder(fn_call_ph, '$typ $tmp = ')
+	typ = typ[7..]
+	p.genln(';')
+	or_tok_idx := p.token_idx
+	p.check(.key_orelse)
+	p.check(.lcbr)
+	p.register_var(Var {
+		name: 'err'
+		typ: 'string'
+		is_mut: false
+		is_used: true
+	})
+	p.register_var(Var {
+		name: 'errcode'
+		typ: 'int'
+		is_mut: false
+		is_used: true
+	})
+	if is_assign {
+		p.genln('$typ $name;')
+	}
+	p.genln('if (!$tmp .ok) {')
+	p.genln('string err = $tmp . error;')
+	p.genln('int errcode = $tmp . ecode;')
+	last_ph := p.cgen.add_placeholder()
+	last_typ := p.statements()
+	if is_assign && last_typ == typ {
+		expr_line := p.cgen.lines[p.cgen.lines.len-3]
+		last_expr := expr_line[last_ph..]
+		p.cgen.lines[p.cgen.lines.len-3]  = ''
+		p.genln('if (!$tmp .ok) {')
+		p.genln('$name = $last_expr;')
+		p.genln('}')
+	} else if is_assign {
+		p.genln('$name = *($typ*) $tmp . data;')
+	}
+	if !p.returns && last_typ != typ && is_assign && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
+		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)
+	}
+	p.returns = false
+	return typ
+}
+
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
-		if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
+		//if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
+		if !(t.cat in [.union_, .struct_, .objc_interface, .interface_]) {
 			continue
 		}
 		//if is_atomic {
 			//sb.write('_Atomic ')
 		//}
-		if t.cat ==  .objc_interface {
+		if t.cat == .objc_interface {
 			sb.writeln('@interface $t.name : $t.parent { @public')
 		}
 		else {
 			kind := if t.cat == .union_ {'union'} else {'struct'}
 			sb.writeln('$kind $t.name {')
+			if t.cat == .interface_ {
+				sb.writeln('\tvoid* _object;')
+				sb.writeln('\tint _interface_idx; // int t')
+			}
 		}
 		for field in t.fields {
 			sb.write('\t')
@@ -226,9 +233,20 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	if f.is_method {
 		name = '${f.receiver_typ}_$f.name'
 		name = name.replace(' ', '')
-		name = name.replace('*', '')
-		name = name.replace('+', 'plus')
-		name = name.replace('-', 'minus')
+		if f.name.len == 1 {
+			match f.name[0] {
+				`+` { name = name.replace('+', 'op_plus') }
+				`-` { name = name.replace('-', 'op_minus') }
+				`*` { name = name.replace('*', 'op_mul') }
+				`/` { name = name.replace('/', 'op_div') }
+				`%` { name = name.replace('%', 'op_mod') }
+			}
+		}
+	}
+	if f.is_interface {
+	//       iname := f.args[0].typ // Speaker
+		//         	var := p.expr_var.name
+		return ''
 	}
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate v_abs(), v_print()
@@ -514,6 +532,17 @@ fn (p mut Parser) cast(typ string) {
 		p.cgen.set_placeholder(pos, '*($typ*)(')
 	}
 	else {
+		// Nothing can be cast to bool
+		if typ == 'bool' {
+			if is_number_type(expr_typ) || is_float_type(expr_typ) {
+				p.error('cannot cast a number to `bool`')
+			}	
+			p.error('cannot cast `$expr_typ` to `bool`')
+		}
+		// Strings can't be cast
+		if expr_typ == 'string' {
+			p.error('cannot cast `$expr_typ` to `$typ`')
+		}	
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	p.check(.rpar)

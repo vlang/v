@@ -65,13 +65,18 @@ Commands:
   run <file.v>      Build and execute the V program in file.v. You can add arguments for the V program *after* the file name.
   build <module>    Compile a module into an object file.
   runrepl           Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
-  symlink           Useful on unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
-  install <module>  Install a user module from https://vpm.vlang.io/.
+  symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
   test v            Run all V test files, and compile all V examples.
   test folder/      Run all V test files located in the folder and its subfolders. You can also pass individual _test.v files too.
   fmt               Run vfmt to format the source code. [wip]
-  doc               Run vdoc over the source code and produce documentation. [wip]
+  doc               Run vdoc over the source code and produce documentation.
   translate         Translates C to V. [wip, will be available in V 0.3]
+
+V package management commands:
+  search  keywords  Search the https://vpm.vlang.io/ module repository for matching modules and shows their details.
+  install <module>  Install a user module from https://vpm.vlang.io/.
+  update  [module]  Updates an already installed module, or ALL installed modules at once, when no module name is given.
+  remove  [module]  Removes an installed module, or ALL installed modules at once, when no module name is given.
 '
 )
 

@@ -31,7 +31,7 @@ fn (p mut Parser) get_type2() Type {
 			name: f.typ_str()// 'fn (int, int) string'
 			mod: p.mod
 			func: f
-			cat: TypeCategory.func
+			cat: .func
 		}
 		p.table.register_type2(fn_typ)
 		return fn_typ

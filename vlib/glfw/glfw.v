@@ -71,13 +71,13 @@ pub struct Window {
 	my    int
 }
 
-struct Size {
+pub struct Size {
 pub:
 	width  int
 	height int
 }
 
-struct Pos {
+pub struct Pos {
 pub:
 	x int
 	y int

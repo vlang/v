@@ -1,3 +1,38 @@
+## V 0.1.22
+*28 Oct 2019*
+
+- Generic functions (`fn foo<T>(bar T) T {`) with varargs support.
+- `array[start..end]` and `string[start..end]` slicing syntax.
+- Optimized `array.filter()` and `array.map()`.
+- `sqlite` module.
+- Cached modules for faster compilation.
+- Dramatic compilation optimizations: [V now compiles itself in
+0.10 - 0.30 seconds](https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds).
+- V scripts (simpler and cross-platform alternative to Bash).
+- Infinite multi-dimensional arrays (`[][][]int`).
+- `unsafe`.
+- `[deprecated]` attribute.
+- `[if]` function attributes for compile time function exclusion
+for performance.
+- `switch` has been completely removed from the language and replaced by
+`match` everywhere.
+- `pub struct` and `pub const`, previously all structs and consts were public
+by default.
+- `musl` support (V can now run on, for example, Alpine Linux).
+- Module header generation. V now supports closed source modules, which are still
+used in some industries.
+- Constants were added to typo suggestions.
+- `color in [.green, .red, .blue]` now works without specifying `Color.green`.
+- V compiler is now a module that can be used by other programs.
+- Backtraces now have source lines on Linux.
+- `runtime.nr_cpus()`.
+- `fn init()` for module initialization.
+- `a in [1, 2, 3]` optimization: no array gets allocated.
+- Raw strings: `s := r'hello\nworld'`.
+- `if a := func() { }` syntax for handling optionals.
+- f32/f64 comparison now uses machine epsilon by default.
+
+
 ## V 0.1.21
 *30 Sep 2019*
 

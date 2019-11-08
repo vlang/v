@@ -27,8 +27,8 @@ fn(c mut Crc32) generate_table(poly int) {
 	for i := 0; i < 256; i++ {
 		mut crc := u32(i)
 		for j := 0; j < 8; j++ {
-			if crc&u32(1) == u32(1) {
-				crc = u32((crc >> u32(1)) ^ poly)
+			if crc & u32(1) == u32(1) {
+				crc = (crc >> 1) ^ u32(poly)
 			} else {
 				crc >>= u32(1)
 			}

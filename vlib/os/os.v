@@ -4,10 +4,10 @@
 
 module os
 
-import strings
+import filepath
 
 #include <sys/stat.h>
-#include <signal.h>
+//#include <signal.h>
 #include <errno.h>
 
 /*
@@ -31,12 +31,14 @@ pub const (
 	MAX_PATH = 4096
 )
 
+/*
 struct C.FILE {
 	
 }
+*/
 
 pub struct File {
-	cfile &FILE
+	cfile voidptr
 }
 
 struct FileInfo {
@@ -46,7 +48,7 @@ struct FileInfo {
 
 struct C.stat {
 	st_size int
-	st_mode int
+	st_mode u32
 	st_mtime int
 }
 
@@ -70,6 +72,8 @@ fn C.getline(voidptr, voidptr, voidptr) int
 fn C.ftell(fp voidptr) int
 fn C.getenv(byteptr) byteptr
 fn C.sigaction(int, voidptr, int)
+
+fn C.GetLastError() u32
 
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
@@ -124,6 +128,60 @@ pub fn mv(old, new string) {
 	} $else {
 		C.rename(*char(old.str), *char(new.str))
 	}
+}
+
+fn C.CopyFile(&u32, &u32, int) int
+
+// TODO implement actual cp for linux
+pub fn cp(old, new string) ?bool {
+	$if windows {
+		_old := old.replace('/', '\\')
+		_new := new.replace('/', '\\')
+		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+
+		result := C.GetLastError()
+		if result == 0 {
+			return true
+		} else {
+			return error_with_code('failed to copy $old to $new', int(result))
+		}
+	} $else {
+		os.system('cp $old $new')
+		return true // TODO make it return true or error when cp for linux is implemented
+	}
+}
+
+pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
+	if !os.file_exists(source_path) {
+		return error('Source path doesn\'t exist')
+	}
+	//single file copy
+	if !os.is_dir(source_path) {
+		adjasted_path := if os.is_dir(dest_path) { 
+			filepath.join(dest_path, os.basedir(source_path)) } else { dest_path }
+		if os.file_exists(adjasted_path) {
+			if overwrite { os.rm(adjasted_path) }
+			else { return error('Destination file path already exist') }
+		}
+		os.cp(source_path, adjasted_path) or { return error(err) }
+		return true
+	}
+	if !os.is_dir(dest_path) {
+		return error('Destination path is not a valid directory')
+	}
+	files := os.ls(source_path) or { return error(err) }
+	for file in files {
+		sp := filepath.join(source_path, file)
+		dp := filepath.join(dest_path, file)
+		if os.is_dir(sp) {
+			os.mkdir(dp)
+		}
+		cp_r(sp, dp, overwrite) or {
+			os.rmdir(dp)
+			panic(err) 
+		}
+	}
+	return true
 }
 
 fn vfopen(path, mode string) *C.FILE {
@@ -282,7 +340,7 @@ pub fn (f File) close() {
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
-fn popen(path string) *C.FILE {
+fn vpopen(path string) voidptr {//*C.FILE {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
@@ -313,7 +371,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 	}
 }
 
-fn pclose(f *C.FILE) int {
+fn vpclose(f voidptr) int {
 	$if windows {
 		return int( C._pclose(f) )
 	}
@@ -330,31 +388,12 @@ pub:
 	//stderr string // TODO
 }
 
-// exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) ?Result {
-	pcmd := '$cmd 2>&1'
-	f := popen(pcmd)
-	if isnil(f) {
-		return error('exec("$cmd") failed')
-	}
-	buf := [1000]byte
-	mut res := ''
-	for C.fgets(*char(buf), 1000, f) != 0 {
-		res += tos(buf, vstrlen(buf))
-	}
-	res = res.trim_space()
-	exit_code := pclose(f)
-	//if exit_code != 0 {
-		//return error(res)
-	//}
-	return Result {
-		output: res
-		exit_code: exit_code
-	}
-}
-
 // `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
+	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
+		// TODO remove panic
+		panic(';, &&, || and \\n are not allowed in shell commands')
+	}
 	mut ret := int(0)
 	$if windows {
 		ret = C._wsystem(cmd.to_wide())
@@ -548,7 +587,7 @@ pub fn get_raw_line() string {
     $if windows {
         max_line_chars := 256
         buf := &byte(malloc(max_line_chars*2))
-        if is_atty(0) {
+        if is_atty(0) > 0 {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := 0
             C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
@@ -755,7 +794,7 @@ pub fn is_dir(path string) bool {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return (statbuf.st_mode & S_IFMT) == S_IFDIR
+		return (int(statbuf.st_mode) & S_IFMT) == S_IFDIR
 	}
 }
 
@@ -800,7 +839,9 @@ pub fn realpath(fpath string) string {
 		res = int( C._fullpath( fullpath, fpath.str, MAX_PATH ) )
 	}
 	$else{
-		res = int( C.realpath( fpath.str, fullpath ) )
+		// here we want an int==0 if realpath failed, in which case
+		// realpath would return NULL, and !isnil(NULL) would be false==0
+		res = int( !isnil(C.realpath( fpath.str, fullpath )) )
 	}
 	if res != 0 {
 		return string(fullpath, vstrlen(fullpath))
@@ -912,13 +953,7 @@ pub fn mkdir_all(path string) {
 	}
 }
 
-// TODO use []string.join once ...string becomes "[]string"
 pub fn join(base string, dirs ...string) string {
-	mut path := strings.new_builder(50)
-	path.write(base.trim_right('\\/'))
-	for d in dirs {
-		path.write(os.path_separator)
-		path.write(d)
-	}
-	return path.str()
+	println('use filepath.join')
+	return filepath.join(base, dirs)
 }

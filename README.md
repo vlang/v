@@ -38,7 +38,6 @@ V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian
 
-
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -49,12 +48,11 @@ That's it! Now you have a V executable at `[path to V repo]/v`. `[path to V repo
 
 (On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`.)
 
-V is being constantly updated. To update V, simply run
+V is being constantly updated. To update V, simply run:
 
 ```
 v up
 ```
-
 
 ### C compiler
 
@@ -66,7 +64,6 @@ Otherwise, follow these instructions:
 
 [github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-
 ### Symlinking
 
 You can create a `/usr/local/bin/v` symlink so that V is globally available:
@@ -74,7 +71,6 @@ You can create a `/usr/local/bin/v` symlink so that V is globally available:
 ```bash
 sudo ./v symlink
 ```
-
 
 ### Docker
 
@@ -85,8 +81,6 @@ docker build -t vlang .
 docker run --rm -it vlang:latest
 v
 ```
-
-
 
 ### Testing and running the examples
 
@@ -105,7 +99,6 @@ Use Ctrl-C or `exit` to exit
 hello world
 >>>
 ```
-
 
 ```bash
 cd examples
@@ -174,5 +167,3 @@ Code structure:
 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-

@@ -201,13 +201,17 @@ pub fn (t &Table) debug_fns() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	number_types = ['number', 'int', 'i8', 'i16', 'u16', 'u32', 'byte', 'i64', 'u64', 'f32', 'f64']
-	float_types  = ['f32', 'f64']
+	integer_types = ['int', 'i8', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
+	float_types   = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
 
 fn is_number_type(typ string) bool {
-	return typ in number_types
+	return typ in integer_types || typ in float_types
+}
+
+fn is_integer_type(typ string) bool {
+	return typ in integer_types
 }
 
 fn is_float_type(typ string) bool {
@@ -328,10 +332,6 @@ fn (t mut Table) register_fn(new_fn Fn) {
 
 fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
-	// vararg
-	if typ.starts_with('...') && typ.len > 3 {
-		typ = typ[3..]
-	}
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
 		typ = typ[..typ.len - 1]
@@ -538,16 +538,14 @@ fn (t &Type) find_method(name string) ?Fn {
 	return none
 }
 
-/*
-// TODO
-fn (t mutt Type) add_gen_type(type_name string) {
-	// println('add_gen_type($s)')
-	if t.gen_types.contains(type_name) {
+fn (table mut Table) add_gen_type(type_name, gen_type string) {
+	mut t := table.typesmap[type_name]
+	if gen_type in t.gen_types {
 		return
 	}
-	t.gen_types << type_name
+	t.gen_types << gen_type
+	table.typesmap[type_name] = t
 }
-*/
 
 fn (p &Parser) find_type(name string) Type {
 	typ := p.table.find_type(name)
@@ -576,6 +574,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if p.pref.translated {
 		return true
 	}
+	if got == expected {
+		return true
+	}
 
 	// generic return type
 	if expected == '_ANYTYPE_' {
@@ -584,11 +585,11 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	}
 
 	// variadic
-	if expected.starts_with('...') {
-		expected = expected[3..]
+	if expected.starts_with('varg_') {
+		expected = expected[5..]
 	}
-	if got.starts_with('...') {
-		got = got[3..]
+	if got.starts_with('varg_') {
+		got = got[5..]
 	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
@@ -668,13 +669,22 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if expected=='void*' && got=='int' {
 		return true
 	}
-	// Allow `myu64 == 1`
 	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
 		//p.warn('got=$got exp=$expected $p.is_const_literal')
 	//}
-	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
+	// Allow `myu64 == 1`, `myfloat == 2` etc
+	if is_integer_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
 	}
+
+	if expected == 'integer' {
+		if is_integer_type(got) {
+			return true
+		} else {
+			p.error('expected type `$expected`, but got `$got`')
+		}
+	}
+
 	expected = expected.replace('*', '')
 	got = got.replace('*', '')
 	if got != expected {
@@ -716,7 +726,8 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 	for method in int_typ.methods {
 		if !typ.has_method(method.name) {
 			// if throw {
-			p.error('Type "$_typ" doesn\'t satisfy interface "$interface_name" (method "$method.name" is not implemented)')
+			p.error('type `$_typ` doesn\'t satisfy interface ' +
+				'`$interface_name` (method `$method.name` is not implemented)')
 			// }
 			return false
 		}
@@ -881,7 +892,7 @@ fn (p &Parser) identify_typo(name string) string {
 	mut output := ''
 	// check imported modules
 	mut n := p.table.find_misspelled_imported_mod(name_dotted, p, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * module: `$n`'
 	}
 	// check consts
@@ -889,41 +900,46 @@ fn (p &Parser) identify_typo(name string) string {
 	if n != '' {
 		output += '\n  * const: `$n`'
 	}
+	// check types
+	typ, type_cat := p.table.find_misspelled_type(name, p, min_match)
+	if typ.len > 0 {
+		output += '\n  * $type_cat: `$typ`'
+	}
 	// check functions
 	n = p.table.find_misspelled_fn(name, p, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * function: `$n`'
 	}
 	// check function local variables
 	n = p.find_misspelled_local_var(name_dotted, min_match)
-	if n != '' {
+	if n.len > 0 {
 		output += '\n  * variable: `$n`'
 	}
 	return output
+}
+
+// compare just name part, some items are mod prefied
+fn typo_compare_name_mod(a, b, b_mod string) f32 {
+	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
+	auidx := a.index('__')
+	buidx := b.index('__')
+	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
+	a_name := if auidx != -1 { a[auidx+2..] } else { a }
+	b_name := if buidx != -1 { b[buidx+2..] } else { b }
+	if a_mod.len > 0 && b_mod.len > 0 && a_mod != b_mod { return 0 }
+	return strings.dice_coefficient(a_name, b_name)
 }
 
 // find function with closest name to `name`
 fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_fn := ''
-	n1 := if name.starts_with('main__') { name[6..] } else { name }
 	for _, f in table.fns {
-		if n1.len - f.name.len > 2 || f.name.len - n1.len > 2 { continue }
-		if !(f.mod in ['', 'main', 'builtin']) {
-			mut mod_imported := false
-			for _, m in p.import_table.imports {
-				if f.mod == m {
-					mod_imported = true
-					break
-				}
-			}
-			if !mod_imported { continue }
-		}
-		c := strings.dice_coefficient(n1, f.name)
-		f_name_orig := mod_gen_name_rev(f.name.replace('__', '.'))
+		if f.name.contains('__') && !p.is_mod_in_scope(f.mod) { continue }
+		c := typo_compare_name_mod(name, f.name, f.mod)
 		if c > closest {
 			closest = c
-			closest_fn = f_name_orig
+			closest_fn = mod_gen_name_rev(f.name.replace('__', '.'))
 		}
 	}
 	return if closest >= min_match { closest_fn } else { '' }
@@ -935,12 +951,10 @@ fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match
 	mut closest_mod := ''
 	n1 := if name.starts_with('main.') { name[5..] } else { name }
 	for alias, mod in p.import_table.imports {
-		if n1.len - alias.len > 2 || alias.len - n1.len > 2 { continue }
-		mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-		c := strings.dice_coefficient(n1, alias)
+		c := typo_compare_name_mod(n1, alias, '')
 		if c > closest {
 			closest = c
-			closest_mod = '$mod_alias'
+			closest_mod = if alias == mod { alias } else { '$alias ($mod)' }
 		}
 	}
 	return if closest >= min_match { closest_mod } else { '' }
@@ -950,20 +964,51 @@ fn (table &Table) find_misspelled_imported_mod(name string, p &Parser, min_match
 fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) string {
 	mut closest := f32(0)
 	mut closest_const := ''
-	mut mods_in_scope := ['builtin', 'main']
-	for _, mod in p.import_table.imports {
-		mods_in_scope << mod
-	}
 	for cnst in table.consts {
-		if cnst.mod != p.mod && !(cnst.mod in mods_in_scope) && cnst.mod.contains('__') { continue }
-		if name.len - cnst.name.len > 2 || cnst.name.len - name.len > 2 { continue }
-		const_name_orig := mod_gen_name_rev(cnst.name.replace('__', '.'))
-		c := strings.dice_coefficient(name, cnst.name.replace('builtin__', 'main__'))
+		if cnst.name.contains('__') && !p.is_mod_in_scope(cnst.mod) { continue }
+		c := typo_compare_name_mod(name, cnst.name, cnst.mod)
 		if c > closest {
 			closest = c
-			closest_const = const_name_orig
+			closest_const = mod_gen_name_rev(cnst.name.replace('__', '.'))
 		}
 	}
 	return if closest >= min_match { closest_const } else { '' }
 }
 
+// find type with closest name to `name`
+fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (string, string) {
+	mut closest := f32(0)
+	mut closest_type := ''
+	mut type_cat := ''
+	for _, typ in table.typesmap {
+		if typ.name.contains('__') && !p.is_mod_in_scope(typ.mod) { continue }
+		c := typo_compare_name_mod(name, typ.name, typ.mod)
+		if c > closest {
+			closest = c
+			closest_type = mod_gen_name_rev(typ.name.replace('__', '.'))
+			type_cat = type_cat_str(typ.cat)
+		}
+	}
+	if closest >= min_match {
+		return closest_type, type_cat
+	}
+	return '', ''
+}
+
+fn type_cat_str(tc TypeCategory) string {
+	tc_str := match tc {
+		.builtin    { 'builtin' }
+		.struct_    { 'struct' }
+		.func       { 'function' }
+		.interface_ { 'interface' }
+		.enum_      { 'enum' }
+		.union_     { 'union' }
+		.c_struct   { 'C struct' }
+		.c_typedef  { 'C typedef' }
+		.objc_interface { 'obj C interface' }
+		.array      { 'array' }
+		.alias      { 'type alias' }
+		else        { 'unknown' }
+	}
+	return tc_str
+}

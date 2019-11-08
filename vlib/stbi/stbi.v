@@ -11,7 +11,7 @@ module stbi
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-struct Image {
+pub struct Image {
 mut:
 	width       int
 	height      int

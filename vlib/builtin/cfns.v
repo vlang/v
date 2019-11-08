@@ -14,11 +14,12 @@ fn C.sprintf(a ...voidptr) byteptr
 fn C.strlen(s byteptr) int
 fn C.isdigit(s byteptr) bool
 
-
-
+// stdio.h
+fn C.popen(c byteptr, t byteptr) voidptr
 
 // <execinfo.h>
 fn backtrace(a voidptr, b int) int
+fn backtrace_symbols(voidptr, int) &byteptr
 fn backtrace_symbols_fd(voidptr, int, int)
 
 // <libproc.h>

@@ -6,7 +6,7 @@ module builtin
 
 fn init() {
 	$if windows {	
-		if is_atty(0) {
+		if is_atty(0) > 0 {
 			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
 		} else {
 			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)		
@@ -54,13 +54,13 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 					cmd := 'addr2line -e $executable $addr'
 
 					// taken from os, to avoid depending on the os module inside builtin.v
-					f := byteptr(C.popen(cmd.str, 'r'))
+					f := C.popen(cmd.str, 'r')
 					if isnil(f) {
 						println(sframe) continue
 					}
 					buf := [1000]byte
 					mut output := ''
-					for C.fgets(buf, 1000, f) != 0 {
+					for C.fgets(voidptr(buf), 1000, f) != 0 {
 						output += tos(buf, vstrlen(buf))
 					}
 					output = output.trim_space()+':'
@@ -186,7 +186,7 @@ pub fn free(ptr voidptr) {
 	C.free(ptr)
 }
 
-fn memdup(src voidptr, sz int) voidptr {
+pub fn memdup(src voidptr, sz int) voidptr {
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
@@ -195,13 +195,13 @@ fn v_ptr_free(ptr voidptr) {
 	C.free(ptr)
 }
 
-pub fn is_atty(fd int) bool {
+pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := 0
 		C.GetConsoleMode(C._get_osfhandle(fd), &mode)
-		return mode > 0
+		return mode
 	} $else {
-		return C.isatty(fd) != 0
+		return C.isatty(fd)
 	}
 }
 
