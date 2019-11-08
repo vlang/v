@@ -90,6 +90,9 @@ pub fn (ts mut TestSession) test() {
 		$if windows {
 			if file.contains('sqlite') { continue }
 		}
+		$if msvc {
+			if file.contains('interface_test') { continue }
+		}
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		cmd := '"$ts.vexe" $ts.vargs "$file"'
