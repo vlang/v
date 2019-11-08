@@ -410,6 +410,9 @@ fn (v &V) interface_table() string {
                        // Speaker_Cat_index = 0
                        sb.writeln('int _${t.name}_${gen_type}_index = $i;')
                }
+              if t.methods.len == 0 {
+              	methods = '{TCCSKIP(0)}'
+              }	
                sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
 '{ $methods }; ')
                continue
