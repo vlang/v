@@ -14,6 +14,17 @@ fn todo() {
 	
 }	
 
+fn no_mingw_installed() bool {
+	$if !windows {
+		panic('no_mingw_installed() can only run on Windows')
+	}
+	os.exec('gcc -v') or {
+		println('mingw not found, trying to build with msvc...')
+		return true
+	}
+	return false
+}
+
 fn (v mut V) cc() {
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
@@ -57,7 +68,7 @@ fn (v mut V) cc() {
 		}
 	}
 	$if windows {
-		if v.pref.ccompiler == 'msvc' {
+		if v.pref.ccompiler == 'msvc' || no_mingw_installed() {
 			v.cc_msvc()
 			return
 		}
@@ -257,7 +268,20 @@ start:
 		println(cmd)
 	}
 	ticks := time.ticks()
-	res := os.exec(cmd) or { verror(err) return }
+	res := os.exec(cmd) or {
+		// C compilation failed.
+		// If we are on Windows, try msvc
+		println('C compilation failed.')
+		/*
+		if os.user_os() == 'windows' && v.pref.ccompiler != 'msvc' {
+			println('Trying to build with MSVC')
+			v.cc_msvc()
+			return
+		}
+		*/
+		verror(err) 
+		return
+	}
 	if res.exit_code != 0 {
 		// the command could not be found by the system
 		if res.exit_code == 127 {
