@@ -75,7 +75,7 @@ fn (p mut Parser) comp_time() {
 			p.comptime_if_block('__MINGW32__')
 		}
 		else if name == 'msvc' {
-			p.comptime_if_block('__MSC_VER__')
+			p.comptime_if_block('_MSC_VER')
 		}
 		else if name == 'clang' {
 			p.comptime_if_block('__clang__')
