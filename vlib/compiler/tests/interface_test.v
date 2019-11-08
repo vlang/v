@@ -25,6 +25,7 @@ interface Speak2er {
 
 struct Foo {
 	speaker Speaker
+	speakers []Speaker
 }	
 
 fn perform_speak(s Speaker) {
@@ -34,14 +35,21 @@ fn perform_speak(s Speaker) {
 	assert name == 'Dog' || name == 'Cat'
 }
 
+fn perform_speakers(speakers []Speaker) {
+	
+}	
+
 fn test_perform_speak() {
-	d := Dog{}
-	perform_speak(d)
+	dog := Dog{}
+	perform_speak(dog)
 	cat := Cat{}
 	perform_speak(cat)
+	//perform_speakers([dog, cat])
+	/*
 	f := Foo {
-		//speaker: d
+		speaker: dog
 	}	
+	*/
 
 }
 

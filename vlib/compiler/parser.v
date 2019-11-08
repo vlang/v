@@ -1613,9 +1613,9 @@ fn (p mut Parser) var_expr(v Var) string {
 			// typ = p.index_expr(typ, fn_ph, v)
 		}
 	}
-	// a++ and a--
+	// `a++` and `a--`
 	if p.tok == .inc || p.tok == .dec {
-		if !v.is_mut && !v.is_arg && !p.pref.translated {
+		if !v.is_mut && !p.pref.translated {
 			p.error('`$v.name` is immutable')
 		}
 		if !v.is_changed {
@@ -1629,7 +1629,7 @@ fn (p mut Parser) var_expr(v Var) string {
 		p.gen(p.tok.str())
 		p.fgen(p.tok.str())
 		p.next()// ++/--
-		// allow `a := c++` in translated code
+		// allow `a := c++` in translated code TODO remove once c2v handles this
 		if p.pref.translated {
 			//return p.index_expr(typ, fn_ph)
 		}
@@ -2324,6 +2324,10 @@ fn (p mut Parser) map_init() string {
 
 // `nums := [1, 2, 3]`
 fn (p mut Parser) array_init() string {
+	expected_array_type := p.expected_type
+	//if p.fileis('interface_') {
+		//println('a exp='+p.expected_type)
+	//}	
 	p.is_alloc = true
 	p.check(.lsbr)
 	mut is_integer := p.tok == .number  // for `[10]int`
@@ -2380,7 +2384,17 @@ fn (p mut Parser) array_init() string {
 		}
 		if val_typ != typ {
 			if !p.check_types_no_throw(val_typ, typ) {
-				p.error('bad array element type `$val_typ` instead of `$typ`')
+				mut ok := false
+				// `foo([cat, dog])` where foo is `fn foo([]Animal) {`
+				// `expected_type` is `[]Animaler`
+				if expected_array_type.ends_with('er') {
+					if p.satisfies_interface(expected_array_type, typ, false) {
+						ok = true
+					}	
+				}	
+				if !ok {
+					p.error('bad array element type `$val_typ` instead of `$typ`')
+				}
 			}
 		}
 		if p.tok != .rsbr && p.tok != .semicolon {
@@ -2391,15 +2405,7 @@ fn (p mut Parser) array_init() string {
 		i++
 		// Repeat (a = [0;5] )
 		if i == 1 && p.tok == .semicolon {
-			p.warn('`[0 ; len]` syntax was removed. Use `[0].repeat(len)` instead')
-			p.check_space(.semicolon)
-			val := p.cgen.cur_line[pos..]
-			p.cgen.resetln(p.cgen.cur_line[..pos])
-			p.gen('array_repeat_old(& ($typ[]){ $val }, ')
-			p.check_types(p.bool_expression(), 'int')
-			p.gen(', sizeof($typ) )')
-			p.check(.rsbr)
-			return 'array_$typ'
+			p.error('`[0 ; len]` syntax was removed. Use `[0].repeat(len)` instead')
 		}
 	}
 	p.check(.rsbr)
