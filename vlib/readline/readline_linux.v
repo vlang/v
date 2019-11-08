@@ -100,10 +100,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
   else {
     r.previous_lines[0] = ''.ustring()
   }
-  if !r.is_raw {
-    r.enable_raw_mode()
-  }
-
+  
   print(r.prompt)
   for {
     c := r.read_char()
@@ -115,7 +112,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
 
   r.previous_lines[0] = ''.ustring()
   r.search_index = 0
-  r.disable_raw_mode()
+  
   if r.current.s == '' {
     return error('empty line')
   }
