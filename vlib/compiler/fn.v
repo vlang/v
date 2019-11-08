@@ -735,7 +735,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				p.cgen.resetln('')
 				var := p.expr_var.name
 				iname := f.args[0].typ // Speaker
-				p.gen('((void (*)())(${iname}_name_table[${var}._interface_idx][$idx]))(${var}._object)')
+				p.gen('(($f.typ (*)())(${iname}_name_table[${var}._interface_idx][$idx]))(${var}._object)')
 			}
 		}
 		//println('r=$receiver.typ RT=$receiver_type')

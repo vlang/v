@@ -27,16 +27,18 @@ struct Foo {
 	speaker Speaker
 }	
 
-fn perform_speak(s Speaker) bool {
+fn perform_speak(s Speaker) {
 	s.speak()
-	return true
+	assert true
+	name := s.name()
+	assert name == 'Dog' || name == 'Cat'
 }
 
 fn test_perform_speak() {
 	d := Dog{}
-	assert perform_speak(d)
+	perform_speak(d)
 	cat := Cat{}
-	assert perform_speak(cat)
+	perform_speak(cat)
 	f := Foo {
 		//speaker: d
 	}	

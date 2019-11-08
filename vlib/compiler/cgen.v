@@ -389,6 +389,7 @@ fn sort_structs(types []Type) []Type {
 	return types_sorted
 }
 
+// Generates interface table and interface indexes
 fn (v &V) interface_table() string {
        mut sb := strings.new_builder(100)
        for _, t in v.table.typesmap {
