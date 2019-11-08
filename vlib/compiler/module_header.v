@@ -7,6 +7,7 @@ module compiler
 import (
 	strings
 	os
+	filepath
 )
 
 /*
@@ -27,15 +28,10 @@ mut:
 
 // `mod` == "vlib/os"
 fn generate_vh(mod string) {
-	println('\n\n\n\n1Generating a V header file for module `$mod`')
+	println('\n\n\n\nGenerating a V header file for module `$mod`')
 	vexe := os.executable()
-	full_mod_path := os.dir(vexe) + '/' + mod
-	mod_path := mod.replace('.', os.path_separator)
-	dir := if mod.starts_with('vlib') {
-		'$compiler.v_modules_path${os.path_separator}$mod'
-	} else {
-		'$compiler.v_modules_path${os.path_separator}$mod'
-	}
+	full_mod_path := filepath.join(os.dir(vexe), mod)
+	dir := if mod.starts_with('vlib') { '$compiler.v_modules_path${os.path_separator}$mod' } else { mod }
 	path := dir + '.vh'
 	pdir := dir.all_before_last(os.path_separator)
 	if !os.dir_exists(pdir) {
@@ -43,8 +39,9 @@ fn generate_vh(mod string) {
 		// os.mkdir(os.realpath(dir))
 	}
 	out := os.create(path) or { panic(err) }
-	mod_def := if mod.contains('/') { mod.all_after('/') } else { mod } // "os"
-	out.writeln('// $mod module header \n')
+	mod_path := mod.replace("\\", "/")
+	out.writeln('// $mod_path module header\n')
+	mod_def := if mod_path.contains('/') { mod_path.all_after('/') } else { mod_path } // "os"
 	out.writeln('module $mod_def\n')
 	// Consts
 	println(full_mod_path)
@@ -55,9 +52,9 @@ fn generate_vh(mod string) {
 	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') &&
 		!it.ends_with('_windows.v') && !it.ends_with('_win.v') &&
 		!it.ends_with('_lin.v') &&
-		!it.contains('/examples') &&
+		!it.contains('${os.path_separator}examples') &&
 		!it.contains('_js.v') &&
-		!it.contains('/js')) // TODO merge once filter allows it
+		!it.contains('${os.path_separator}js')) // TODO merge once filter allows it
 	println('f:')
 	println(filtered)
 	mut v := new_v(['foo.v'])

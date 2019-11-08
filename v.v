@@ -8,6 +8,7 @@ import (
 	compiler
 	benchmark
 	os
+	filepath
 	//time
 )
 
@@ -78,8 +79,8 @@ fn main() {
 		vdir := os.dir(os.executable())
 		os.chdir(vdir)
 		mod := args.last()
-		os.system('$vexe build module vlib/' + args.last())
-		txt := os.read_file('$compiler.v_modules_path/vlib/${mod}.vh') or {
+		os.system('$vexe build module vlib$os.path_separator' + args.last())
+		txt := os.read_file(filepath.join(compiler.v_modules_path, 'vlib', '${mod}.vh')) or {
 			panic(err)
 		}
 		println(txt)
