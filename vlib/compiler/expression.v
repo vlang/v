@@ -481,13 +481,16 @@ fn (p mut Parser) term() string {
 	}
 	for p.tok == .mul || p.tok == .div || p.tok == .mod {
 		tok := p.tok
+		is_mul := tok == .mul
 		is_div := tok == .div
 		is_mod := tok == .mod
-		// is_mul := tok == .mod
 		p.next()
 		p.gen(tok.str())// + ' /*op2*/ ')
 		oph := p.cgen.add_placeholder()
 		p.fgen(' ' + tok.str() + ' ')
+		if (is_mul || is_div) && p.tok == .str {
+			p.error('operator ${tok.str()} cannot be used on strings')
+		}
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
