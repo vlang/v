@@ -488,14 +488,13 @@ fn (p mut Parser) term() string {
 		p.gen(tok.str())// + ' /*op2*/ ')
 		oph := p.cgen.add_placeholder()
 		p.fgen(' ' + tok.str() + ' ')
-		if (is_mul || is_div) && p.tok == .str {
-			p.error('operator ${tok.str()} cannot be used on strings')
-		}
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
 		expr_type := p.unary()
-
+		if (is_mul || is_div) && expr_type == 'string' {
+			p.error('operator ${tok.str()} cannot be used on strings')
+		}
 		if !is_primitive_type(expr_type) && expr_type == typ {
 			p.check_types(expr_type, typ)
 			T := p.table.find_type(typ)
