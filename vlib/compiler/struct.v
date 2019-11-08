@@ -222,12 +222,8 @@ fn (p mut Parser) struct_decl() {
 		p.fgenln('')
 	}
 	p.check(.rcbr)
-	if !is_c {
-		if !did_gen_something {
-			if p.first_pass() {
-				p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
-			}
-		}
+	if !is_c && !did_gen_something && p.first_pass() {
+		p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
 	}
 	p.fgenln('\n')
 }

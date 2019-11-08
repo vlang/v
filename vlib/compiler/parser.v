@@ -697,8 +697,8 @@ fn (p mut Parser) check_string() string {
 }
 
 fn (p mut Parser) check_not_reserved () {
-	if Reserved_Types[p.lit] { 
-		p.error('`$p.lit` can\'t be used as name') 
+	if Reserved_Types[p.lit] {
+		p.error('`$p.lit` can\'t be used as name')
 	}
 }
 
@@ -2053,6 +2053,7 @@ fn (p mut Parser) indot_expr() string {
 	return typ
 }
 
+// { user | name: 'new name' }
 fn (p mut Parser) assoc() string {
 	// println('assoc()')
 	p.next()

@@ -297,6 +297,7 @@ pub fn (v mut V) compile() {
 		def.writeln('\nstring _STR(const char*, ...);\n')
 		def.writeln('\nstring _STR_TMP(const char*, ...);\n')
 		def.writeln(cgen.fns.join_lines()) // fn definitions
+		def.writeln(v.interface_table())
 	} $else {
 		def.writeln(v.type_definitions())
 	}
