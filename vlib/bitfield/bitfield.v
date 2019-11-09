@@ -34,7 +34,7 @@ fn bitslot(size int) int {
 }
 
 fn bitget(instance BitField, bitnr int) int {
-	return (instance.field[bitslot(bitnr)] >> u32(bitnr % SLOT_SIZE)) & 1
+	return (instance.field[bitslot(bitnr)] >> (bitnr % SLOT_SIZE)) & u32(1)
 }
 
 fn bitset(instance mut BitField, bitnr int) {

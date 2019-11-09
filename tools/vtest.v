@@ -82,7 +82,6 @@ pub fn main() {
 pub fn (ts mut TestSession) test() {
 	ok   := term.ok_message('OK')
 	fail := term.fail_message('FAIL')
-	cmd_needs_quoting := (os.user_os() == 'windows')
 	show_stats := '-stats' in ts.vargs.split(' ')
 	ts.benchmark = benchmark.new_benchmark()
 	for dot_relative_file in ts.files {
@@ -91,10 +90,13 @@ pub fn (ts mut TestSession) test() {
 		$if windows {
 			if file.contains('sqlite') { continue }
 		}
+		$if msvc {
+			if file.contains('interface_test') { continue }
+			if file.contains('module_test') { continue }
+		}
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
-		mut cmd := '"$ts.vexe" $ts.vargs "$file"'
-		if cmd_needs_quoting { cmd = '"$cmd"' }
+		cmd := '"$ts.vexe" $ts.vargs "$file"'
 
 		ts.benchmark.step()
 		if show_stats {

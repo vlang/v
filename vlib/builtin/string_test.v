@@ -172,7 +172,7 @@ fn test_replace() {
 	assert b.replace('B', '') == 'onetwothree'
 	b = '**char'
 	assert b.replace('*char', 'byteptr') == '*byteptr'
-	mut c :='abc'
+	c :='abc'
 	assert c.replace('','-') == c
 }
 
@@ -403,7 +403,7 @@ fn test_capitalize() {
 }
 
 fn test_title() {
-	mut s := 'hello world'
+	s := 'hello world'
 	assert s.title() == 'Hello World'
 	s.to_upper()
 	assert s.title() == 'Hello World'
@@ -500,6 +500,7 @@ fn test_atoi() {
 
 fn test_raw_inter() {
 	world := 'world'
+	println(world)
 	s := r'hello\n$world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')

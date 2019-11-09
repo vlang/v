@@ -42,7 +42,7 @@ fn main() {
 		compiler.launch_tool('vup')
 		return
 	}
-	else if ('search' in commands) || ('install' in commands) || ('update' in commands) || ('remove' in commands){
+	else if 'search' in commands || 'install' in commands || 'update' in commands || 'remove' in commands {
 		compiler.launch_tool('vpm')
 		return
 	}

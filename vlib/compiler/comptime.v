@@ -75,7 +75,7 @@ fn (p mut Parser) comp_time() {
 			p.comptime_if_block('__MINGW32__')
 		}
 		else if name == 'msvc' {
-			p.comptime_if_block('__MSC_VER__')
+			p.comptime_if_block('_MSC_VER')
 		}
 		else if name == 'clang' {
 			p.comptime_if_block('__clang__')
@@ -201,6 +201,12 @@ fn (p mut Parser) chash() {
 	}
 	if hash.starts_with('include') {
 		if p.first_pass() && !p.is_vh {
+			/*
+			if !p.pref.building_v && !p.fileis('vlib') {
+				p.warn('C #includes will soon be removed from the language' +
+				'\ndefine the C structs and functions in V')
+			}	
+			*/
 			if p.file_pcguard.len != 0 {
 				//println('p: $p.file_platform $p.file_pcguard')
 				p.cgen.includes << '$p.file_pcguard\n#$hash\n#endif'

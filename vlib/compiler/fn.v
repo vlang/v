@@ -12,8 +12,7 @@ const (
 	MaxLocalVars = 50
 )
 
-pub
-struct Fn {
+pub struct Fn {
 	// addr int
 pub:
 mut:
@@ -265,7 +264,7 @@ fn (p mut Parser) fn_decl() {
 		p.register_var(receiver)
 	}
 	// +-/* methods
-	if p.tok in [.plus, .minus, .mul] {
+	if p.tok in [.plus, .minus, .mul, .div, .mod] {
 		f.name = p.tok.str()
 		p.next()
 	}
@@ -301,26 +300,25 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	// simple_name := f.name
-	// println('!SIMP.le=$simple_name')
 	// user.register() => User_register()
 	has_receiver := receiver_typ.len > 0
 	if receiver_typ != '' {
 		// f.name = '${receiver_typ}_${f.name}'
 	}
 	// full mod function name
-	// os.exit ==> os__exit()
+	// `os.exit()` ==> `os__exit()`
 	// if !is_c && !p.builtin_mod && receiver_typ.len == 0 {
-	if !is_c && receiver_typ.len == 0 && (!p.builtin_mod || (p.builtin_mod && f.name == 'init')) {
+	if !is_c && !has_receiver &&
+(!p.builtin_mod || (p.builtin_mod && f.name == 'init')) {
 		f.name = p.prepend_mod(f.name)
 	}
 	if p.first_pass() && receiver_typ.len == 0 {
-		for {
-		existing_fn := p.table.find_fn(f.name) or { break }
-		// This existing function could be defined as C decl before (no body), then we don't need to throw an erro
-		if !existing_fn.is_decl {
-			p.error('redefinition of `$f.name`')
-		}
-		break
+		if existing_fn := p.table.find_fn(f.name) {
+			// This existing function could be defined as C decl before
+			// (no body), then we don't need to throw an error.
+			if !existing_fn.is_decl {
+				p.error('redefinition of `$f.name`')
+			}
 		}
 	}
 	// Generic?
@@ -355,14 +353,12 @@ fn (p mut Parser) fn_decl() {
 		p.fgen(' ')
 		typ = p.get_type()
 	}
-	// Translated C code and .vh can have empty functions (just definitions)
-	is_fn_header := !is_c && !p.is_vh &&
-		//(p.pref.translated || p.pref.is_test || p.is_vh) &&
-		p.tok != .lcbr
+	// V allows empty functions (just definitions)
+	is_fn_header := !is_c && !p.is_vh &&		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
 	}
-	// { required only in normal function declarations
+	// `{` required only in normal function declarations
 	if !is_c && !p.is_vh && !is_fn_header {
 		p.fgen(' ')
 		p.check(.lcbr)
@@ -563,7 +559,7 @@ fn (p mut Parser) skip_fn_body() {
 	}
 }
 
-fn (p Parser) get_linkage_prefix() string {
+fn (p &Parser) get_linkage_prefix() string {
 	return if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so {
 		'__declspec(dllexport) '
 	} else if p.attr == 'inline' {
@@ -645,7 +641,11 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// Also register the wrapper, so we can use the original function without modifying it
 	fn_name = p.table.fn_gen_name(f)
 	wrapper_name := '${fn_name}_thread_wrapper'
-	wrapper_text := 'void* $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args );  }'
+	mut wrapper_type := 'void*'
+	if p.os == .windows {
+		wrapper_type = 'void* __stdcall'
+	}
+	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return NULL; }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
@@ -663,7 +663,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
 	}
 	else {
-		p.genln('int $tmp2 = pthread_create(& $thread_name, NULL, $wrapper_name, $parg);')
+		p.genln('int $tmp2 = pthread_create(& $thread_name, NULL, (void *)$wrapper_name, $parg);')
 	}
 	p.check(.rpar)
 }
@@ -717,6 +717,27 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// we need to preappend "method(receiver, ...)"
 	if f.is_method {
 		receiver := f.args.first()
+		if receiver.typ.ends_with('er') {
+			// I absolutely love this syntax
+			// `s.speak()` =>
+			// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);
+			// where `1` refers to the speak method, since it's the second method
+			// of the Speaker interface
+			t := p.table.find_type(receiver.typ)
+			if t.cat == .interface_ {
+				// Find the index of the method
+				mut idx := 0
+				for i, method in t.methods {
+					if method.name == f.name {
+						idx = i
+					}	
+				}	
+				p.cgen.resetln('')
+				var := p.expr_var.name
+				iname := f.args[0].typ // Speaker
+				p.gen('(($f.typ (*)())(${iname}_name_table[${var}._interface_idx][$idx]))(${var}._object)')
+			}
+		}
 		//println('r=$receiver.typ RT=$receiver_type')
 		if receiver.is_mut && !p.expr_var.is_mut {
 			//println('$method_call  recv=$receiver.name recv_mut=$receiver.is_mut')
@@ -727,7 +748,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				p.error('`$p.expr_var.name` is immutable, declare it with `mut`')
 			}
 		}
-		if !p.expr_var.is_changed {
+		if !p.expr_var.is_changed && receiver.is_mut {
 			p.mark_var_changed(p.expr_var)
 		}
 		p.gen_method_call(receiver, receiver_type, cgen_name, f.typ, method_ph)
@@ -746,7 +767,9 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		// println('calling inst $f.name: $p.cgen.cur_line')
 	}
 
-	p.gen(')')
+	//if !is_interface {
+		p.gen(')')
+	//}
 	p.calling_c = false
 	if is_comptime_define {
 		p.cgen.nogen = false
@@ -756,16 +779,16 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 }
 
 // for declaration
-// return an updated Fn object with args[] field set
+// update the Fn object's args[]
 fn (p mut Parser) fn_args(f mut Fn) {
 	p.check(.lpar)
 	defer { p.check(.rpar) }
 	if f.is_interface {
-		int_arg := Var {
+		interface_arg := Var {
 			typ: f.receiver_typ
 			token_idx: p.cur_tok_index()
 		}
-		f.args << int_arg
+		f.args << interface_arg
 	}
 	// `(int, string, int)`
 	// Just register fn arg types
@@ -828,7 +851,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 		p.check_and_register_used_imported_type(typ)
 		if is_mut && is_primitive_type(typ) {
 			p.error('mutable arguments are only allowed for arrays, maps, and structs.' +
-			'\nreturn values instead: `foo(n mut int)` => `foo(n int) int`')
+			'\nreturn values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
 		}
 		for name in names {
 			if is_mut {
@@ -915,8 +938,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		ph := p.cgen.add_placeholder()
 		// `)` here means that not enough args were provided
 		if p.tok == .rpar {
-			str_args := f.str_args(p.table)// TODO this is C args
-			p.error('not enough arguments in call to `$f.name ($str_args)`')
+			p.error('not enough arguments in call to `${f.str_for_error()}`')
 		}
 		// If `arg` is mutable, the caller needs to provide `mut`:
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
@@ -950,6 +972,21 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
 		mut typ := p.bool_expression()
+		// Register an interface type usage:
+		// fn run(r Animal) { ... }
+		// `run(dog)` adds `Dog` to the `Animal` interface.
+		// This is needed to generate an interface table.
+		if arg.typ.ends_with('er') {
+		        t := p.table.find_type(arg.typ)
+		        if t.cat == .interface_ {
+		                // perform((Speaker) { ._object = &dog,
+		                //     _interface_idx = _Speaker_Dog_index })
+		                p.cgen.set_placeholder(ph, '($arg.typ) { ._object = &')
+		                p.gen(', ._interface_idx = _${arg.typ}_${typ}_index} /* i. arg*/')
+		                p.table.add_gen_type(arg.typ, typ)
+		        }
+		}
+
 		if clone {
 			p.gen(')')
 		}
@@ -963,14 +1000,17 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 			typ = 'string'
 		}
-		if i == 0 && (f.name == 'println' || f.name == 'print')  && typ != 'string' && typ != 'ustring' && typ != 'void' {
+		if i == 0 && (f.name == 'println' || f.name == 'print')  &&
+			!(typ in ['string', 'ustring', 'void' ])
+		{
 			T := p.table.find_type(typ)
 			$if !windows {
 			$if !js {
 				fmt := p.typ_to_fmt(typ, 0)
-				if fmt != '' {
+				if fmt != '' && typ != 'bool' {
 					nl := if f.name == 'println' { '\\n' } else { '' }
-					p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '$nl", '))
+					p.cgen.resetln(p.cgen.cur_line.replace(f.name +
+					' (', '/*opt*/printf ("' + fmt + '$nl", '))
 					continue
 				}
 			}
@@ -1073,19 +1113,19 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		}
 		else if is_interface {
 			if !got_ptr {
-				p.cgen.set_placeholder(ph, '&')
+				//p.cgen.set_placeholder(ph, '&')
 			}
 			// Pass all interface methods
-			interface_type := p.table.find_type(arg.typ)
-			for method in interface_type.methods {
-				p.gen(', ${typ}_${method.name} ')
-			}
+			//interface_type := p.table.find_type(arg.typ)
+			//for method in interface_type.methods {
+				//p.gen(', ${typ}_${method.name} ')
+			//}
 		}
 		// Check for commas
 		if i < f.args.len - 1 {
 			// Handle 0 args passed to varargs
 			if p.tok != .comma && !f.is_variadic {
-				p.error('wrong number of arguments for $i,$arg.name fn `$f.name`: expected $f.args.len, but got less')
+				p.error('wrong number of arguments in call to `${f.str_for_error()}`')
 			}
 			if p.tok == .comma && (!f.is_variadic || (f.is_variadic && i < f.args.len-2 )) {
 				p.check(.comma)
@@ -1099,7 +1139,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		saved_args << varg_type
 	}
 	if p.tok == .comma {
-		p.error('wrong number of arguments for fn `$f.name`: expected $f.args.len, but got more')
+		p.error('wrong number of arguments in call to `${f.str_for_error()}`')
 	}
 	p.check(.rpar)
 	if f.is_generic {
@@ -1219,8 +1259,8 @@ fn (p mut Parser) replace_type_params(f &Fn, ti TypeInst) []string {
 fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	vargs_struct := 'varg_$typ'
 	varg_type := Type{
-		cat: TypeCategory.struct_,
-		name: vargs_struct,
+		cat: .struct_
+		name: vargs_struct
 		mod: p.mod
 	}
 	mut varg_len := len
@@ -1299,7 +1339,7 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	typ := '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
 	if p.table.known_type(typ) { return typ }
 	p.table.register_type2(Type{
-		cat: TypeCategory.struct_,
+		cat: .struct_,
 		name: typ,
 		mod: p.mod
 	})
@@ -1458,6 +1498,7 @@ fn (f &Fn) str_args(table &Table) string {
 		// to all methods:
 		// fn handle(r Runner) { =>
 		// void handle(void *r, void (*Runner_run)(void*)) {
+			/*
 		if table.is_interface(arg.typ) {
 			// First the object (same name as the interface argument)
 			s += ' void* $arg.name'
@@ -1473,7 +1514,8 @@ fn (f &Fn) str_args(table &Table) string {
 				s += ')'
 			}
 		}
-		else if arg.typ.starts_with('varg_') {
+		*/
+		if arg.typ.starts_with('varg_') {
 			s += '$arg.typ *$arg.name'
 		}
 		else {
@@ -1515,11 +1557,31 @@ fn (fns []Fn) contains(f Fn) bool {
 	return false
 }
 
-pub fn (f Fn) v_fn_module() string {
+pub fn (f &Fn) v_fn_module() string {
 	return f.mod
 }
 
-pub fn (f Fn) v_fn_name() string {
+pub fn (f &Fn) v_fn_name() string {
 	return f.name.replace('${f.mod}__', '')
 }
+
+pub fn (f &Fn) str_for_error() string {
+	// Build the args for the error
+                       mut s := ''
+                       for i, a in f.args {
+                               if i == 0 {
+                                       if f.is_method {
+                                               s += a.typ + '.' + f.name + '('
+                                               continue
+                                       }
+                                       s += f.name + '('
+                               }
+                               s += a.typ
+                               if i < f.args.len - 1 {
+                                       s += ', '
+                               }
+                       }
+       return s + ')'
+}
+
 

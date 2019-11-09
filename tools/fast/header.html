@@ -1,0 +1,34 @@
+<html>
+<head>
+<title>Is V still fast?</title>
+<style>
+*, body {
+	font-family: Menlo,Monospace,'Courier New';
+}
+table, td {
+	border-collapse: collapse;
+	border: 1px solid #dfdfdf;
+}
+td {
+	padding: 5px;
+}
+</style>
+</head>
+<body>
+<h2>Is V still fast?</h2>
+
+Monitoring compilation speed for each commit. <br><br>
+Running on a $3.5 instance. <br><br>
+Source code: <a target=blank href='https://github.com/vlang/v/blob/master/tools/fast/fast.v'>fast.v</a> <br><br>
+
+<table>
+	<tr>
+		<td></td>
+		<td></td>
+		<td style='width:400px'></td>
+		<td style='width:120px'>v -o v.c</td>
+		<td style='width:120px'>v -o v</td>
+		<td style='width:120px'>v -o v -fast</td>
+		<td style='width:120px'>v hello.v</td>
+	</tr>
+

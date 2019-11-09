@@ -56,7 +56,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 		cgen.genln('  char *live_library_name = "$so_name";')
 		cgen.genln('  load_so(live_library_name);')
 		cgen.genln('  pthread_t _thread_so;')
-		cgen.genln('  pthread_create(&_thread_so , NULL, &reload_so, live_library_name);')
+		cgen.genln('  pthread_create(&_thread_so , NULL, (void *)&reload_so, live_library_name);')
 	} else {
 		// windows:
 		so_name := file_base + if v.pref.ccompiler == 'msvc' {'.dll'} else {'.so'}

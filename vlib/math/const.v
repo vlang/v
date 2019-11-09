@@ -41,7 +41,10 @@ pub const (
 	min_i16 = -32768
 	max_i32 = 2147483647
 	min_i32 = -2147483648
-	min_i64 = -9223372036854775808
+	// -9223372036854775808 is wrong because C compilers parse litteral values
+	// without sign first, and 9223372036854775808 overflows i64, hence the
+	// consecutive subtraction by 1
+	min_i64 = -9223372036854775807 - 1
 	max_i64 = 9223372036854775807
 	max_u8  = 255
 	max_u16 = 65535

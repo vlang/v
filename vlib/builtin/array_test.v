@@ -262,8 +262,8 @@ fn test_push_many() {
 }
 
 fn test_reverse() {
-  mut a := [1, 2, 3, 4]
-	mut b := ['test', 'array', 'reverse']
+	a := [1, 2, 3, 4]
+	b := ['test', 'array', 'reverse']
 	c := a.reverse()
 	d := b.reverse()
 	for i, _  in c {
@@ -479,3 +479,19 @@ fn test_eq() {
 	assert [5,6,7].eq([6,7]) == false
 	assert [`a`,`b`].eq([`a`,`b`]) == true
 }
+
+/*
+fn test_for_last() {
+	numbers := [1, 2, 3, 4]
+	mut s := '['
+	for num in numbers {
+		s += '$num'
+		if !last {
+			s += ', '
+			
+		}	
+	}	
+	s += ']'
+	assert s == '[1, 2, 3, 4]'
+}	
+*/
