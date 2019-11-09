@@ -653,6 +653,7 @@ pub fn (v &V)  get_user_files() []string {
 	mut user_files := []string
 
 	if v.pref.is_test {
+		// TODO this somtimes fails on CI
 		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
 	}
 	

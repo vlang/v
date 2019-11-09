@@ -397,6 +397,7 @@ fn (v &V) interface_table() string {
                        continue
                }
                mut methods := ''
+              sb.writeln('// NR methods = $t.gen_types.len')
                for i, gen_type in t.gen_types {
                        methods += '{'
                        for i, method in t.methods {
@@ -410,11 +411,12 @@ fn (v &V) interface_table() string {
                        // Speaker_Cat_index = 0
                        sb.writeln('int _${t.name}_${gen_type}_index = $i;')
                }
-              if t.methods.len == 0 {
-              	methods = '{TCCSKIP(0)}'
-              }	
+              if t.gen_types.len > 0 {
+//              	methods = '{TCCSKIP(0)}'
+//              }	
                sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
 '{ $methods }; ')
+}
                continue
        }
        return sb.str()
