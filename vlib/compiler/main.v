@@ -77,7 +77,7 @@ pub mut:
 struct Preferences {
 pub mut:
 	build_mode    BuildMode
-	nofmt         bool   // disable vfmt
+	//nofmt         bool   // disable vfmt
 	is_test       bool   // `v test string_test.v`
 	is_script     bool   // single file mode (`v program.v`), main function can be skipped
 	is_live       bool   // for hot code reloading
@@ -271,9 +271,9 @@ pub fn (v mut V) compile() {
 		v.parse(file, .main)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		// Format all files (don't format automatically generated vlib headers)
-		if !v.pref.nofmt && !file.contains('/vlib/') {
+		//if !v.pref.nofmt && !file.contains('/vlib/') {
 			// new vfmt is not ready yet
-		}
+		//}
 	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
@@ -778,6 +778,7 @@ pub fn new_v(args[]string) &V {
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
+	//println('comptimedefine=$comptime_define')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
 
 	mut dir := args.last()
@@ -931,7 +932,7 @@ pub fn new_v(args[]string) &V {
 		is_prof: '-prof' in args
 		is_live: '-live' in args
 		sanitize: '-sanitize' in args
-		nofmt: '-nofmt' in args
+		//nofmt: '-nofmt' in args
 		show_c_cmd: '-show_c_cmd' in args
 		translated: 'translated' in args
 		is_run: 'run' in args
@@ -986,6 +987,7 @@ pub fn env_vflags_and_os_args() []string {
 }
 
 pub fn vfmt(args[]string) {
+	println('running vfmt...')
 	file := args.last()
 	if !os.file_exists(file) {
 		println('"$file" does not exist')
@@ -995,7 +997,6 @@ pub fn vfmt(args[]string) {
 		println('v fmt can only be used on .v files')
 		exit(1)
 	}
-	println('vfmt is temporarily disabled')
 }
 
 pub fn create_symlink() {

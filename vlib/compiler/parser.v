@@ -200,6 +200,11 @@ fn (p mut Parser) set_current_fn(f Fn) {
 }
 
 fn (p mut Parser) next() {
+	// Generate a formatted version of this token
+	// (only when vfmt compile time flag is enabled, otherwise this function
+	// is not even generatd)
+	p.fnext()
+	
 	 p.prev_tok2 = p.prev_tok
 	 p.prev_tok = p.tok
 	 p.scanner.prev_tok = p.tok
@@ -214,6 +219,8 @@ fn (p mut Parser) next() {
 	 p.lit = res.lit
 	 p.scanner.line_nr = res.line_nr
 	 p.cgen.line = res.line_nr
+	
+
 }
 
 fn (p & Parser) peek() TokenKind {
@@ -260,7 +267,7 @@ fn (p mut Parser) parse(pass Pass) {
 		// User may still specify `module main`
 		if p.tok == .key_module {
 			p.next()
-			p.fgen('module ')
+			p.fspace()
 			p.mod = p.check_name()
 		} else {
 			p.mod = 'main'
@@ -413,13 +420,18 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.first_pass() && !p.pref.is_repl {
 				p.check_unused_imports()
 			}
-			if false && !p.first_pass() && p.fileis('main.v') {
-				out := os.create('/var/tmp/fmt.v') or {
-					verror('failed to create fmt.v')
-					return
+			if !p.first_pass() && p.fileis('main.v') {
+				s := p.scanner.fmt_out.str().trim_space()
+				if s.len > 0 {
+					println('GENERATING MAIN.V')
+					out := os.create('/var/tmp/fmt.v') or {
+						verror('failed to create fmt.v')
+						return
+					}
+					//println(p.scanner.fmt_out.str())
+					out.writeln(p.scanner.fmt_out.str().trim_space())
+					out.close()
 				}
-				out.writeln(p.scanner.fmt_out.str())
-				out.close()
 			}
 			return
 		}
@@ -462,6 +474,7 @@ fn (p mut Parser) parse(pass Pass) {
 }
 
 fn (p mut Parser) imports() {
+	p.fgenln2('\n')
 	p.check(.key_import)
 	// `import ()`
 	if p.tok == .lpar {
@@ -474,14 +487,16 @@ fn (p mut Parser) imports() {
 	}
 	// `import foo`
 	p.import_statement()
+	p.fgenln2('')
 }
 
 fn (p mut Parser) import_statement() {
+	p.fspace()
 	if p.tok != .name {
 		p.error('bad import format')
 	}
 	if p.peek() == .number {
-		p.error('bad import format. module/submodule names cannot begin with a number')
+		p.error('bad import format: module/submodule names cannot begin with a number')
 	}
 	import_tok_idx := p.token_idx-1
 	mut mod := p.check_name().trim_space()
@@ -505,6 +520,7 @@ fn (p mut Parser) import_statement() {
 	}
 	// add import to file scope import table
 	p.register_import_alias(mod_alias, mod, import_tok_idx)
+	p.fgenln2('')
 	// Make sure there are no duplicate imports
 	if mod in p.table.imports {
 		return
@@ -512,8 +528,6 @@ fn (p mut Parser) import_statement() {
 	//p.log('adding import $mod')
 	p.table.imports << mod
 	p.table.register_module(mod)
-
-	p.fgenln(' ' + mod)
 }
 
 fn (p mut Parser) const_decl() {
@@ -742,8 +756,7 @@ fn (p mut Parser) check(expected TokenKind) {
 	}
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
-	// TODO
-	if expected == .lcbr && p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
+	if expected == .lcbr { //&& p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
 		p.fgenln('')
 		p.fmt_inc()
 	}
@@ -1000,7 +1013,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
 			p.genln('')// // end st tok= ${p.strtok()}')
-			p.fgenln('')
+			p.fgenln2('')
 		}
 		i++
 		if i > 50000 {
@@ -2480,9 +2493,9 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	}
 	else {
 		p.gen('if (')
-		p.fgen('if ')
 	}
 	p.next()
+	p.fspace()
 	// `if a := opt() { }` syntax
 	if p.tok == .name && p.peek() == .decl_assign {
 		p.check_not_reserved()
@@ -2522,7 +2535,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	else {
 		p.genln(') {')
 	}
-	p.fgen(' ')
+	p.fspace()
 	p.check(.lcbr)
 	mut typ := ''
 	// if { if hack
@@ -2537,7 +2550,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.returns = false
 	// println('IF TYp=$typ')
 	if p.tok == .key_else {
-		p.fgenln('')
+		p.fgenln2('')
 		p.check(.key_else)
 		p.fspace()
 		if p.tok == .key_if {
@@ -2642,7 +2655,7 @@ if (!$tmp) {
 
 fn (p mut Parser) return_st() {
 	p.check(.key_return)
-	p.fgen(' ')
+	p.fspace()
 	deferred_text := p.get_deferred_text()
 	fn_returns := p.cur_fn.typ != 'void'
 	if fn_returns {

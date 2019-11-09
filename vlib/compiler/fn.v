@@ -179,7 +179,6 @@ fn (p mut Parser) clear_vars() {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
-	p.fgen('fn ')
 
 	//defer { p.fgenln('\n') }
 	// If we are in the first pass, create a new function.
@@ -211,6 +210,7 @@ fn (p mut Parser) fn_decl() {
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
 	p.next()
+	p.fspace()
 	
 	// Method receiver
 	mut receiver_typ := ''
@@ -360,8 +360,9 @@ fn (p mut Parser) fn_decl() {
 	}
 	// `{` required only in normal function declarations
 	if !is_c && !p.is_vh && !is_fn_header {
-		p.fgen(' ')
+		p.fspace()
 		p.check(.lcbr)
+		//p.fgenln('')
 	}
 	// Register ?option type
 	if typ.starts_with('Option_') {
