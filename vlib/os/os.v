@@ -856,11 +856,12 @@ pub fn walk_ext(path, ext string) []string {
 	}
 	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
+	separator := if path.ends_with(path_separator) { '' } else { path_separator}
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
 		}
-		p := path + path_separator + file
+		p := path + separator + file
 		if os.is_dir(p) {
 			res << walk_ext(p, ext)
 		}

@@ -3,7 +3,7 @@ import compiler.tests.repl.runner
 import benchmark
 
 fn test_the_v_compiler_can_be_invoked() {
-	vexec := runner.full_path_to_v()
+	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
 
