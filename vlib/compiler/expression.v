@@ -437,7 +437,7 @@ fn (p mut Parser) expression() string {
 			p.error('strings only support `+` operator')
 		}	
 		expr_type := p.term()
-		if (tok_op in [.pipe, .amp]) && !(is_integer_type(expr_type) &&
+		if (tok_op in [.pipe, .amp, .xor]) && !(is_integer_type(expr_type) &&
 			is_integer_type(typ)) {
 			p.error('operators `&` and `|` are defined only on integer types')
 		}	
