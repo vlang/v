@@ -439,7 +439,7 @@ fn (p mut Parser) expression() string {
 		expr_type := p.term()
 		if (tok_op in [.pipe, .amp, .xor]) && !(is_integer_type(expr_type) &&
 			is_integer_type(typ)) {
-			p.error('operators `&` and `|` are defined only on integer types')
+			p.error('operator ${tok_op.str()} is defined only on integer types')
 		}	
 		p.check_types(expr_type, typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
