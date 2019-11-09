@@ -2,7 +2,6 @@ module os
 
 #flag -lws2_32
 #include <winsock2.h>
-#include <dbghelp.h>
 
 pub const (
 	path_separator = '\\'
@@ -36,27 +35,6 @@ mut:
   	dwFileType u32
   	dwCreatorType u32
   	wFinderFlags u16
-}
-
-// win: _SYMBOL_INFO (for DbgHelp.h) 
-// https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/ns-dbghelp-symbol_info
-pub struct SymbolInfo {
-pub mut:
-	SizeOfStruct	u16
-	TypeIndex		u16			// Type Index of symbol
-	Reserved		[2]u64
-	Index			u16
-	Size			u16
-	ModBase			u64			// Base Address of module comtaining this symbol
-	Flags			u16
-	Value			u64			// Value of symbol, ValuePresent should be 1
-	Address			u64			// Address of symbol including base address of module
-	Register		u16			// register holding value or pointer to value
-	Scope			u16			// scope of the symbol
-	Tag				u16			// pdb classification
-	NameLen			u16			// Actual length of name
-	MaxNameLen		u16
-	Name			[]string	// CHAR[] Name of symbol
 }
 
 struct ProcessInformation {
@@ -107,7 +85,6 @@ fn init_os_args(argc int, argv &byteptr) []string {
 	C.LocalFree(args_list)
 	return args
 }
-
 
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
