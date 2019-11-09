@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 
 module builtin
+import os
 
 fn init() {
 	$if windows {	
@@ -76,6 +77,56 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 				C.printf('Some libc implementations like musl simply do not provide it.\n')
 			}
 		}
+	}
+	$if windows {
+		println('print_backtrace window\n')
+
+		stack := [100]byteptr
+//		stack := [100]u64
+		mut handle := (*voidptr)(C.GetCurrentProcess())
+
+		//options := C.SymSetOptions(C.SYMOPT_DEBUG | C.SYMOPT_LOAD_LINES | C.SYMOPT_UNDNAME | C.SYMOPT_ALLOW_ZERO_ADDRESS | C.SYMOPT_CASE_INSENSITIVE)
+		options := C.SymSetOptions(C.SYMOPT_DEBUG | C.SYMOPT_LOAD_LINES | C.SYMOPT_UNDNAME)
+		println('options= ${options}')
+
+//		mut success := C.SymInitialize(handle, C.NULL, 1)
+		mut success := C.SymInitialize(C.GetCurrentProcess(), C.NULL, 1)
+		println('SymInitialize Success= ${int(success)} handle= ${handle} = ${C.GetCurrentProcess()}')
+
+		if (success != 1) {
+			println('Failed getting process: Aborting backtrace.\n')
+			return
+		}
+
+		frames := C.CaptureStackBackTrace(0, 100, stack, 0)
+		println('Nb frames= ${int(frames)}')
+
+		println('Sizes of Symbol_Info= ${sizeof(os.SymbolInfo)}  string= ${sizeof(string)}')
+
+		for i:=0; i < frames; i++
+		{
+			println(' Stack[ ${i.str()} ] = "${u64(stack[i])}"')
+
+			mut symbol_info := os.SymbolInfo{}
+			symbol_info.SizeOfStruct = sizeof(os.SymbolInfo) // Note: C.SYMBOL_INFO is 88
+			symbol_info.MaxNameLen = 255
+			symbol_info.Name = ([]string)(calloc(256))
+
+			// https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symfromaddr
+//			success = C.SymFromAddr(C.GetCurrentProcess(), u64(stack[i]), 0, &symbol_info)
+			success = C.SymFromAddr(C.GetCurrentProcess(), u64(stack[i]), 0, &symbol_info)
+
+			if (success == 1) {
+				println('   SymFromAddr success: ${int(success)} Name: ${symbol_info.Name} SizeOfStruct: ${symbol_info.SizeOfStruct} Address: $symbol_info.Address \n')
+			}
+		  	else {
+				// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
+				println('   SymFromAddr failure: ${C.GetLastError()}  (Note: 87 = The parameter is incorrect)')  // 87 = The parameter is incorrect.
+			} 
+		}
+
+		C.SymCleanup(handle)
+		return
 	}
 	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
 }
