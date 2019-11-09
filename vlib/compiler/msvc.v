@@ -267,6 +267,8 @@ pub fn (v mut V) cc_msvc() {
 
 	//alibs := []string // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
+		// Compile only
+		a << '/c'
 	}
 	else if v.pref.build_mode == .default_mode {
 		/*
