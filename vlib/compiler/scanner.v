@@ -76,7 +76,7 @@ fn new_scanner_file(file_path string) &Scanner {
 fn new_scanner(text string) &Scanner {
 	return &Scanner {
 		text: text
-		fmt_out: strings.new_builder(1000)
+		fmt_out: strings.new_builder(10000)
 		should_print_line_on_error: true
 		should_print_errors_in_color: true
 		should_print_relative_paths_on_error: true
@@ -481,7 +481,7 @@ fn (s mut Scanner) scan() ScanRes {
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
 			s.line_comment = s.text[start + 1..s.pos].trim_space()
-			s.fgenln('// shebang line "$s.line_comment"')
+			//s.fgenln('// shebang line "$s.line_comment"')
 			return s.scan()
 		}
 		hash := s.text[start..s.pos]
@@ -585,7 +585,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.ignore_line()
 			s.line_comment = s.text[start + 1..s.pos]
 			s.line_comment = s.line_comment.trim_space()
-			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
+			//s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 			// Skip the comment (return the next token)
 			return s.scan()
 		}
@@ -810,7 +810,7 @@ fn (s mut Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends   << s.pos
-	if s.line_nr > s.nlines { 
+	if s.line_nr > s.nlines {
 		s.nlines = s.line_nr
 	}
 }

@@ -6,7 +6,7 @@ module compiler
 
 fn (p mut Parser) for_st() {
 	p.check(.key_for)
-	p.fgen(' ')
+	p.fspace()
 	p.for_expr_cnt++
 	next_tok := p.peek()
 	//debug := p.scanner.file_path.contains('r_draw')
@@ -32,13 +32,13 @@ fn (p mut Parser) for_st() {
 		}
 		p.check(.semicolon)
 		p.gen(' ; ')
-		p.fgen(' ')
+		p.fspace()
 		if p.tok != .semicolon {
 			p.bool_expression()
 		}
 		p.check(.semicolon)
 		p.gen(' ; ')
-		p.fgen(' ')
+		p.fspace()
 		if p.tok != .lcbr {
 			p.statement(false)
 		}
@@ -61,9 +61,9 @@ fn (p mut Parser) for_st() {
 		if i == '_' && val == '_' {
 			p.error('no new variables on the left side of `in`')
 		}
-		p.fgen(' ')
+		p.fspace()
 		p.check(.key_in)
-		p.fgen(' ')
+		p.fspace()
 		tmp := p.get_tmp()
 		p.cgen.start_tmp()
 		mut typ := p.bool_expression()
@@ -121,7 +121,7 @@ fn (p mut Parser) for_st() {
 	// `for val in vals`
 	else if p.peek() == .key_in {
 		val := p.check_name()
-		p.fgen(' ')
+		p.fspace()
 		p.check(.key_in)
 		p.fspace()
 		tmp := p.get_tmp()

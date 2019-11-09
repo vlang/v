@@ -58,10 +58,11 @@ fn (p mut Parser) bterm() string {
 	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
 		//TODO: remove when array comparing is supported
 		if is_array {
-			p.error('Array comparing is not supported yet')
+			p.error('array comparing is not supported yet')
 		}
 
-		p.fgen(' ${p.tok.str()} ')
+		p.fspace()
+		//p.fgen(' ${p.tok.str()} ')
 		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
 		}
@@ -72,6 +73,7 @@ fn (p mut Parser) bterm() string {
 			p.gen(tok.str())
 		}
 		p.next()
+		p.fspace()
 		// `id == user.id` => `id == $1`, `user.id`
 		if p.is_sql {
 			p.sql_i++
@@ -140,7 +142,6 @@ fn (p mut Parser) name_expr() string {
 		p.string_expr()
 		return 'string'
 	}
-	p.fgen(name)
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
@@ -190,7 +191,6 @@ fn (p mut Parser) name_expr() string {
 		p.next()
 		p.check(.dot)
 		name = p.lit
-		p.fgen(name)
 		name = prepend_mod(mod_gen_name(mod), name)
 	}
 	// Unknown name, try prepending the module name to it
@@ -463,7 +463,7 @@ fn (p mut Parser) handle_operator(op string, typ string, cpostfix string, ph int
 	else {
 		p.error('operator $op not defined on `$typ`')
 	}
-}  
+}
 
 fn (p mut Parser) term() string {
 	line_nr := p.scanner.line_nr
@@ -484,10 +484,11 @@ fn (p mut Parser) term() string {
 		is_mul := tok == .mul
 		is_div := tok == .div
 		is_mod := tok == .mod
+		p.fspace()
 		p.next()
 		p.gen(tok.str())// + ' /*op2*/ ')
 		oph := p.cgen.add_placeholder()
-		p.fgen(' ' + tok.str() + ' ')
+		p.fspace()
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
@@ -575,11 +576,9 @@ fn (p mut Parser) factor() string {
 			p.error('constant `$p.lit` overflows `$p.expected_type`')
 		}
 		p.gen(p.lit)
-		p.fgen(p.lit)
 	}
 	.minus {
 		p.gen('-')
-		p.fgen('-')
 		p.next()
 		return p.factor()
 		// Variable

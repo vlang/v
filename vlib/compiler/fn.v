@@ -179,8 +179,7 @@ fn (p mut Parser) clear_vars() {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
-
-	//defer { p.fgenln('\n') }
+	defer { p.fgenln2('\n') }
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
 	/*
@@ -206,6 +205,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	if is_pub {
 		p.next()
+		p.fspace()
 	}
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
@@ -218,10 +218,12 @@ fn (p mut Parser) fn_decl() {
 		f.is_method = true
 		p.check(.lpar)
 		receiver_name := p.check_name()
+		p.fspace()
 		is_mut := p.tok == .key_mut
 		is_amp := p.tok == .amp
 		if is_mut || is_amp {
-			p.check_space(p.tok)
+			p.check(p.tok)
+			p.fspace()
 		}
 		receiver_typ = p.get_type()
 		t := p.table.find_type(receiver_typ)
@@ -350,7 +352,7 @@ fn (p mut Parser) fn_decl() {
 	// Returns a type?
 	mut typ := 'void'
 	if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
-		p.fgen(' ')
+		p.fspace()
 		typ = p.get_type()
 	}
 	// V allows empty functions (just definitions)
@@ -1568,9 +1570,9 @@ pub fn (f &Fn) v_fn_name() string {
 
 pub fn (f &Fn) str_for_error() string {
 	// Build the args for the error
-                       mut s := ''
-                       for i, a in f.args {
-                               if i == 0 {
+     mut s := ''
+     for i, a in f.args {
+	     if i == 0 {
                                        if f.is_method {
                                                s += a.typ + '.' + f.name + '('
                                                continue
@@ -1581,7 +1583,7 @@ pub fn (f &Fn) str_for_error() string {
                                if i < f.args.len - 1 {
                                        s += ', '
                                }
-                       }
+       }
        return s + ')'
 }
 

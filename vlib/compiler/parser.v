@@ -279,6 +279,7 @@ fn (p mut Parser) parse(pass Pass) {
 		p.mod = p.check_name()
 	}
 	//
+		p.fgenln2('\n')
 
 	p.cgen.nogen = false
 	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
@@ -392,6 +393,7 @@ fn (p mut Parser) parse(pass Pass) {
 				//p.error('__global is only allowed in translated code')
 			}
 			p.next()
+			p.fspace()
 			name := p.check_name()
 			typ := p.get_type()
 			p.register_global(name, typ)
@@ -408,6 +410,11 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.cgen.nogen {
 				p.cgen.consts << g
 			}
+			p.fgenln2('')
+			if p.tok != .key_global {
+				// An extra empty line to separate a block of globals
+				p.fgenln2('')
+			}	
 		}
 		.eof {
 			//p.log('end of parse()')
@@ -420,19 +427,7 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.first_pass() && !p.pref.is_repl {
 				p.check_unused_imports()
 			}
-			if !p.first_pass() && p.fileis('main.v') {
-				s := p.scanner.fmt_out.str().trim_space()
-				if s.len > 0 {
-					println('GENERATING MAIN.V')
-					out := os.create('/var/tmp/fmt.v') or {
-						verror('failed to create fmt.v')
-						return
-					}
-					//println(p.scanner.fmt_out.str())
-					out.writeln(p.scanner.fmt_out.str().trim_space())
-					out.close()
-				}
-			}
+			p.gen_fmt() // not generated unless `-d vfmt` is provided
 			return
 		}
 		else {
@@ -720,8 +715,15 @@ fn (p &Parser) strtok() string {
 	if p.tok == .name {
 		return p.lit
 	}
+	if p.tok == .number {
+		return p.lit
+	}	
 	if p.tok == .str {
-		return '"$p.lit"'
+		if p.lit.contains("'") {
+			return '"$p.lit"'
+		}	  else {
+			return "'$p.lit'"
+		}
 	}
 	res := p.tok.str()
 	if res == '' {
@@ -782,6 +784,8 @@ fn (p mut Parser) get_type() string {
 	mut typ := ''
 	// multiple returns
 	if p.tok == .lpar {
+		//p.warn('`()` are no longer necessary in multiple returns' +
+		//'\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
 		// if p.inside_tuple {p.error('unexpected (')}
 		// p.inside_tuple = true
 		p.check(.lpar)
@@ -1270,9 +1274,8 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	}
 	}
 	p.fspace()
-	p.fgen(tok.str())
-	p.fspace()
 	p.next()
+	p.fspace()
 	pos := p.cgen.cur_line.len
 	expr_type := p.bool_expression()
 	//if p.expected_type.starts_with('array_') {
@@ -1633,7 +1636,6 @@ fn (p mut Parser) var_expr(v Var) string {
 			}
 		}
 		p.gen(p.tok.str())
-		p.fgen(p.tok.str())
 		p.next()// ++/--
 		// allow `a := c++` in translated code TODO remove once c2v handles this
 		if p.pref.translated {
@@ -2541,9 +2543,10 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	}
 	if_returns := p.returns
 	p.returns = false
-	// println('IF TYp=$typ')
 	if p.tok == .key_else {
-		p.fgenln2('')
+		if !p.inside_if_expr {
+			p.fgenln2('')
+		}
 		p.check(.key_else)
 		p.fspace()
 		if p.tok == .key_if {
@@ -2730,6 +2733,7 @@ fn (p mut Parser) return_st() {
 			p.gen('return')
 		}
 	}
+	p.fgenln('//ret')
 	p.returns = true
 }
 
@@ -2876,6 +2880,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
+	p.fgenln2('')
 	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''

@@ -5,6 +5,7 @@
 module compiler
 
 import strings
+import os
 
 [if vfmt]
 fn (scanner mut Scanner) fgen(s_ string) {
@@ -93,14 +94,37 @@ fn (p mut Parser) fnext() {
 	if p.tok == .eof {
 		return
 	}
-	if p.tok == .rcbr {
+	if p.tok == .rcbr && !p.inside_if_expr {
 		p.fmt_dec()
 	}
 	p.fgen2(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
-	if p.tok == .lcbr { //&& p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
+	if p.tok == .lcbr && !p.inside_if_expr { //&& p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
 		p.fgenln2('')
 		p.fmt_inc()
 	}
+}
+
+
+[if vfmt]
+fn (p mut Parser) gen_fmt() {
+	if p.pass != .main {
+		return
+	}
+	if p.file_name == '' {
+		return
+	}	
+	s := p.scanner.fmt_out.str().trim_space()
+	if s == '' {
+		return
+	}	
+	println('GENERATING ${p.file_name}.V')
+	out := os.create('/var/tmp/fmt/' + p.file_name) or {
+		verror('failed to create fmt.v')
+		return
+	}
+	//println(p.scanner.fmt_out.str())
+	out.writeln(p.scanner.fmt_out.str().trim_space())
+	out.close()
 }
 

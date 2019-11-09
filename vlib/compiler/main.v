@@ -117,6 +117,7 @@ pub mut:
 	comptime_define string  // -D vfmt for `if $vfmt {`
 	fast bool // use tcc/x64 codegen
 	enable_globals bool // allow __global for low level code
+	is_fmt bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -946,6 +947,7 @@ pub fn new_v(args[]string) &V {
 		ccompiler: find_c_compiler()
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
 		comptime_define: comptime_define
+		is_fmt: comptime_define == 'vfmt'
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')

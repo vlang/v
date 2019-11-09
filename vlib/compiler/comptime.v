@@ -89,8 +89,10 @@ fn (p mut Parser) comp_time() {
 		p.returns = false
 		//p.gen('/* returns $p.returns */')
 		if p.tok == .dollar && p.peek() == .key_else {
+			p.fspace()
 			p.next()
 			p.next()
+			p.fspace() // spaces before and after $else
 			p.check(.lcbr)
 			p.genln('#else')
 			p.statements_no_rcbr()
