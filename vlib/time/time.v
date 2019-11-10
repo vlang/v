@@ -354,7 +354,7 @@ pub fn new_time(t Time) Time {
 	return{t | uni: t.calc_unix()}
 }
 
-pub fn (t &Time) calc_unix() int {
+pub fn (t Time) calc_unix() int {
 	if t.uni != 0  {
 		return t.uni
 	}
