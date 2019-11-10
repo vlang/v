@@ -9,6 +9,7 @@ fn (p mut Parser) struct_decl() {
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
+		p.fspace()
 	}	
 	// V can generate Objective C for integration with Cocoa
 	// `[objc_interface:ParentInterface]`
@@ -22,9 +23,9 @@ fn (p mut Parser) struct_decl() {
 	if is_objc {
 		cat = .objc_interface
 	}
-	p.fgen(p.tok.str() + ' ')
-	// Get type name
 	p.next()
+	p.fspace()
+	// Get type name
 	mut name := p.check_name()
 	if name.contains('_') && !p.pref.translated {
 		p.error('type names cannot contain `_`')
@@ -105,7 +106,7 @@ fn (p mut Parser) struct_decl() {
 		p.table.register_type2(typ)
 		return
 	}
-	p.fgen(' ')
+	p.fspace()
 	p.check(.lcbr)
 	// Struct fields
 	mut is_pub_field := false
@@ -139,7 +140,7 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 			}
 			p.fmt_inc()
-			p.fgenln('')
+			p.fgenln2('')
 		}
 		if p.tok == .key_mut {
 			if is_mut {
@@ -152,7 +153,7 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 			}
 			p.fmt_inc()
-			p.fgenln('')
+			p.fgenln2('')
 		}
 		// if is_pub {
 		// }
@@ -182,7 +183,7 @@ fn (p mut Parser) struct_decl() {
 		}
 		// `pub` access mod
 		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
-		p.fgen(' ')
+		p.fspace()
 		field_type := p.get_type()
 		if field_type == name {
 			p.error_with_token_index( 'cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
@@ -195,6 +196,7 @@ fn (p mut Parser) struct_decl() {
 		// [ATTR]
 		mut attr := ''
 		if p.tok == .lsbr {
+			p.fspace()
 			p.next()
 			attr = p.check_name()
 			if p.tok == .colon {
@@ -219,17 +221,13 @@ fn (p mut Parser) struct_decl() {
 		if p.first_pass() {
 			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
 		}
-		p.fgenln('')
+		p.fgenln2('') // newline between struct fields
 	}
 	p.check(.rcbr)
-	if !is_c {
-		if !did_gen_something {
-			if p.first_pass() {
-				p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
-			}
-		}
+	if !is_c && !did_gen_something && p.first_pass() {
+		p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
 	}
-	p.fgenln('\n')
+	p.fgenln2('\n')
 }
 
 // `User{ foo: bar }`
@@ -273,8 +271,9 @@ fn (p mut Parser) struct_init(typ string) string {
 			if p.tok != .rcbr {
 				p.gen(',')
 			}
-			p.fgenln('')
+			p.fspace()
 			did_gen_something = true
+			p.fgenln2('') // newline between struct fields
 		}
 		// If we already set some fields, need to prepend a comma
 		if t.fields.len != inited_fields.len && inited_fields.len > 0 {
@@ -311,6 +310,7 @@ fn (p mut Parser) struct_init(typ string) string {
 					p.gen(',')
 				}
 				did_gen_something = true
+				p.fgenln2('') // newline between struct fields
 			}
 		}
 	}

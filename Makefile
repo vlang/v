@@ -37,7 +37,7 @@ endif
 fresh_vc:
 	rm -rf vc/
 	git clone --depth 1 --quiet https://github.com/vlang/vc
-	cp fns.h vc/fns.h
+	#cp fns.h vc/fns.h
 
 fresh_tcc:
 ifdef WIN32

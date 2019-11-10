@@ -145,18 +145,23 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
-		if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
+		//if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
+		if !(t.cat in [.union_, .struct_, .objc_interface, .interface_]) {
 			continue
 		}
 		//if is_atomic {
 			//sb.write('_Atomic ')
 		//}
-		if t.cat ==  .objc_interface {
+		if t.cat == .objc_interface {
 			sb.writeln('@interface $t.name : $t.parent { @public')
 		}
 		else {
 			kind := if t.cat == .union_ {'union'} else {'struct'}
 			sb.writeln('$kind $t.name {')
+			if t.cat == .interface_ {
+				sb.writeln('\tvoid* _object;')
+				sb.writeln('\tint _interface_idx; // int t')
+			}
 		}
 		for field in t.fields {
 			sb.write('\t')
@@ -228,9 +233,20 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	if f.is_method {
 		name = '${f.receiver_typ}_$f.name'
 		name = name.replace(' ', '')
-		name = name.replace('*', '')
-		name = name.replace('+', 'plus')
-		name = name.replace('-', 'minus')
+		if f.name.len == 1 {
+			match f.name[0] {
+				`+` { name = name.replace('+', 'op_plus') }
+				`-` { name = name.replace('-', 'op_minus') }
+				`*` { name = name.replace('*', 'op_mul') }
+				`/` { name = name.replace('/', 'op_div') }
+				`%` { name = name.replace('%', 'op_mod') }
+			}
+		}
+	}
+	if f.is_interface {
+	//       iname := f.args[0].typ // Speaker
+		//         	var := p.expr_var.name
+		return ''
 	}
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate v_abs(), v_print()

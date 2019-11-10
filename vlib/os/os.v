@@ -48,7 +48,7 @@ struct FileInfo {
 
 struct C.stat {
 	st_size int
-	st_mode int
+	st_mode u32
 	st_mtime int
 }
 
@@ -157,7 +157,7 @@ pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 	}
 	//single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { 
+		adjasted_path := if os.is_dir(dest_path) {
 			filepath.join(dest_path, os.basedir(source_path)) } else { dest_path }
 		if os.file_exists(adjasted_path) {
 			if overwrite { os.rm(adjasted_path) }
@@ -178,7 +178,7 @@ pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 		}
 		cp_r(sp, dp, overwrite) or {
 			os.rmdir(dp)
-			panic(err) 
+			panic(err)
 		}
 	}
 	return true
@@ -386,32 +386,6 @@ pub:
 	exit_code int
 	output string
 	//stderr string // TODO
-}
-
-// exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) ?Result {
-	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-		return error(';, &&, || and \\n are not allowed in shell commands')
-	}
-	pcmd := '$cmd 2>&1'
-	f := vpopen(pcmd)
-	if isnil(f) {
-		return error('exec("$cmd") failed')
-	}
-	buf := [1000]byte
-	mut res := ''
-	for C.fgets(*char(buf), 1000, f) != 0 {
-		res += tos(buf, vstrlen(buf))
-	}
-	res = res.trim_space()
-	exit_code := vpclose(f)
-	//if exit_code != 0 {
-		//return error(res)
-	//}
-	return Result {
-		output: res
-		exit_code: exit_code
-	}
 }
 
 // `system` works like `exec()`, but only returns a return code.
@@ -820,7 +794,7 @@ pub fn is_dir(path string) bool {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return (statbuf.st_mode & S_IFMT) == S_IFDIR
+		return (int(statbuf.st_mode) & S_IFMT) == S_IFDIR
 	}
 }
 
@@ -882,11 +856,12 @@ pub fn walk_ext(path, ext string) []string {
 	}
 	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
+	separator := if path.ends_with(path_separator) { '' } else { path_separator}
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
 		}
-		p := path + path_separator + file
+		p := path + separator + file
 		if os.is_dir(p) {
 			res << walk_ext(p, ext)
 		}

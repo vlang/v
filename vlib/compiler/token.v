@@ -286,6 +286,10 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 }
 
 fn (t Token) str() string {
+	if t.tok == .number {
+		return t.lit
+		
+	}	
 	if t.tok == .str {
 		return "'$t.lit'"
 	}	

@@ -538,16 +538,14 @@ fn (t &Type) find_method(name string) ?Fn {
 	return none
 }
 
-/*
-// TODO
-fn (t mutt Type) add_gen_type(type_name string) {
-	// println('add_gen_type($s)')
-	if t.gen_types.contains(type_name) {
+fn (table mut Table) add_gen_type(type_name, gen_type string) {
+	mut t := table.typesmap[type_name]
+	if gen_type in t.gen_types {
 		return
 	}
-	t.gen_types << type_name
+	t.gen_types << gen_type
+	table.typesmap[type_name] = t
 }
-*/
 
 fn (p &Parser) find_type(name string) Type {
 	typ := p.table.find_type(name)
@@ -574,6 +572,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	mut expected := expected_
 	//p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
+		return true
+	}
+	if got == expected {
 		return true
 	}
 
@@ -668,11 +669,11 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if expected=='void*' && got=='int' {
 		return true
 	}
-	// Allow `myu64 == 1`
 	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
 		//p.warn('got=$got exp=$expected $p.is_const_literal')
 	//}
-	if is_number_type(got) && is_number_type(expected) && p.is_const_literal {
+	// Allow `myu64 == 1`, `myfloat == 2` etc
+	if is_integer_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
 	}
 
@@ -725,7 +726,8 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 	for method in int_typ.methods {
 		if !typ.has_method(method.name) {
 			// if throw {
-			p.error('Type "$_typ" doesn\'t satisfy interface "$interface_name" (method "$method.name" is not implemented)')
+			p.error('type `$_typ` doesn\'t satisfy interface ' +
+				'`$interface_name` (method `$method.name` is not implemented)')
 			// }
 			return false
 		}

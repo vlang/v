@@ -5,6 +5,7 @@
 module compiler
 
 import os
+import strings
 
 struct CGen {
 	out          os.File
@@ -387,3 +388,38 @@ fn sort_structs(types []Type) []Type {
 	}
 	return types_sorted
 }
+
+// Generates interface table and interface indexes
+fn (v &V) interface_table() string {
+       mut sb := strings.new_builder(100)
+       for _, t in v.table.typesmap {
+               if t.cat != .interface_ {
+                       continue
+               }
+               mut methods := ''
+              sb.writeln('// NR methods = $t.gen_types.len')
+               for i, gen_type in t.gen_types {
+                       methods += '{'
+                       for i, method in t.methods {
+					       // Cat_speak
+                               methods += '${gen_type}_${method.name}'
+                               if i < t.methods.len - 1 {
+                                       methods += ', '
+                               }
+                       }
+                       methods += '}, '
+                       // Speaker_Cat_index = 0
+                       sb.writeln('int _${t.name}_${gen_type}_index = $i;')
+               }
+              if t.gen_types.len > 0 {
+//              	methods = '{TCCSKIP(0)}'
+//              }	
+               sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
+'{ $methods }; ')
+}
+               continue
+       }
+       return sb.str()
+}
+
+
