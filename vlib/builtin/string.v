@@ -315,8 +315,8 @@ pub fn (s string) split(delim string) []string {
 	// 	return res
 	// }
 	if delim.len == 0 {
-		for i := 0; i < s.len; i++ {
-			res << s.substr(i, i+1)
+		for ch in s {
+			res << ch.str()
 		}
 		return res
 	}
