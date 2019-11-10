@@ -80,11 +80,12 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if windows {
 		$if msvc {
 			print_backtrace_skipping_top_frames_msvc(skipframes)
+			return
 		}
-		$else {
+		$if mingw {
 			print_backtrace_skipping_top_frames_mingw(skipframes)
+			return
 		}
-		return
 	}
 	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
 }
