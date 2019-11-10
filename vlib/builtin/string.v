@@ -310,8 +310,14 @@ fn (s string) add(a string) string {
 pub fn (s string) split(delim string) []string {
 	// println('string split delim="$delim" s="$s"')
 	mut res := []string
+	// if delim.len == 0 {
+	// 	res << s
+	// 	return res
+	// }
 	if delim.len == 0 {
-		res << s
+		for i := 0; i < s.len; i++ {
+			res << s.substr(i, i+1)
+		}
 		return res
 	}
 	if delim.len == 1 {
