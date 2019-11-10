@@ -55,6 +55,10 @@ fn main() {
 		compiler.create_symlink()
 		return
 	}
+	else if 'create' in commands {
+		compiler.launch_tool('vcreate')
+		return
+	}
 	// TODO quit if the v compiler is too old
 	// u := os.file_last_mod_unix('v')
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
