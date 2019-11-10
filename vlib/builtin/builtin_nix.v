@@ -31,7 +31,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 }
 
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
-	$if tcc {
+	$if tinyc {
 		println('TODO: print_backtrace_skipping_top_frames_linux $skipframes with tcc fails tests with "stack smashing detected" .')
 	}
 	$if !android {
