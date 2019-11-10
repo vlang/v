@@ -1441,7 +1441,9 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.cgen.tmp_line = ''
 	p.cgen.cur_line = ''
 	p.cgen.lines = []string
-	p.cur_fn = *f
+	unsafe { // TODO
+		p.cur_fn = *f
+	}
 	for arg in f.args {
 		p.register_var(arg)
 	}
