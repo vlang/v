@@ -1,5 +1,4 @@
-#same container that golang use
-FROM buildpack-deps:buster-curl
+FROM debian:10
 
 LABEL maintainer="ANAGO Ronnel <anagoandy@gmail.com>"
 WORKDIR /opt/vlang
@@ -11,4 +10,4 @@ COPY . .
 RUN make && \
     ln -s /opt/vlang/v /usr/local/bin/v
 
-CMD [ "bash" ]
+CMD [ "/bin/bash" ]
