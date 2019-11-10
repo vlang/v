@@ -15,7 +15,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 }
 
 fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
-	skipframes = xskipframes - 1
+	skipframes := xskipframes - 1
 	$if mac {
 		buffer := [100]byteptr
 		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
