@@ -55,8 +55,8 @@ fn main() {
 		compiler.create_symlink()
 		return
 	}
-	if 'create' in args {
-		compiler.create_project()
+	else if 'create' in commands {
+		compiler.launch_tool('vcreate')
 		return
 	}
 	// TODO quit if the v compiler is too old

@@ -1001,25 +1001,6 @@ pub fn vfmt(args[]string) {
 	}
 }
 
-pub fn create_project() {
-	vexec := os.executable()
-	vroot := os.dir(vexec)
-	vcreate := '$vroot/tools/vcreate'
-	println('$vexec -o $vcreate create.v')
-	println(vcreate)
-	os.chdir(vroot + '/tools')
-	compilation := os.exec('$vexec -o $vcreate create.v') or {
-		verror(err)
-		return
-	}
-	os.chdir(vroot)
-	if compilation.exit_code != 0 {
-		verror(compilation.output)
-		return
-	}
-	vresult := os.system(vcreate)
-}
-
 pub fn create_symlink() {
 	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
