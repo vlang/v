@@ -1481,9 +1481,11 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
 	mut typ := p.var_expr(v)
 	// *var
 	if is_deref {
+		/*
 		if !p.inside_unsafe {
 			p.error('dereferencing can only be done inside an `unsafe` block')
 		}	
+		*/
 		if !typ.contains('*') && !typ.ends_with('ptr') {
 			println('name="$name", t=$v.typ')
 			p.error('dereferencing requires a pointer, but got `$typ`')
