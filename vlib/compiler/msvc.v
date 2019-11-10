@@ -226,7 +226,7 @@ pub fn (v mut V) cc_msvc() {
 	r := find_msvc() or {
 		// TODO: code reuse
 		if !v.pref.is_keep_c && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-			os.rm(v.out_name_c)
+			os.rm(v.out_name_c) or { panic(err) }
 		}
 		verror('Cannot find MSVC on this OS')
 		return
@@ -373,11 +373,11 @@ pub fn (v mut V) cc_msvc() {
 	// println('C OUTPUT:')
 
 	if !v.pref.is_keep_c && v.out_name_c != 'v.c' && v.out_name_c != 'v_macos.c' {
-		os.rm(v.out_name_c)
+		os.rm(v.out_name_c) or { panic(err) }
 	}
 
 	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj)
+	os.rm(out_name_obj) or { panic(err) }
 }
 fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	msvc := find_msvc() or {

@@ -151,7 +151,7 @@ fn (p mut Parser) comp_time() {
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
 		if os.file_exists('.vwebtmpl.v') {
-			os.rm('.vwebtmpl.v')
+			os.rm('.vwebtmpl.v') or { panic(err) }
 		}
 		os.write_file('.vwebtmpl.v', v_code.clone()) // TODO don't need clone, compiler bug
 		p.genln('')
@@ -160,7 +160,7 @@ fn (p mut Parser) comp_time() {
 		pos := p.cgen.lines.len - 1
 		mut pp := p.v.new_parser_from_file('.vwebtmpl.v')
 		if !p.pref.is_debug {
-			os.rm('.vwebtmpl.v')
+			os.rm('.vwebtmpl.v') or { panic(err) }
 		}
 		pp.is_vweb = true
 		pp.set_current_fn( p.cur_fn ) // give access too all variables in current function

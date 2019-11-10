@@ -34,7 +34,7 @@ fn test_write_and_read_string_to_file() {
   }
   assert hello == read_hello
 
-  os.rm(filename)
+  os.rm(filename)  or { panic(err) }
 }
 
 // test_write_and_read_bytes checks for regressions made in the functions
@@ -70,7 +70,7 @@ fn test_write_and_read_bytes() {
         assert red_bytes.str() == payload.str()
 
         // We finally delete the test file.
-        os.rm(file_name)
+        os.rm(file_name) or { panic(err) }
 }
 
 fn test_create_and_delete_folder() {
@@ -113,7 +113,7 @@ fn test_walk() {
 
     os.walk(folder, walk_callback)
 	
-	os.rm(file1)
+	os.rm(file1) or { panic(err) }
 	os.rmdir(folder)
 }
 

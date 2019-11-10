@@ -53,10 +53,10 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	os.write_file(input_temporary_filename, input)
 
 	r := os.exec('"$vexec" runrepl < $input_temporary_filename') or {
-		os.rm(input_temporary_filename)
+		os.rm(input_temporary_filename) or { panic(err) }
 		return error('Could not execute "$vexec runrepl < $input_temporary_filename" ')
 	}
-	os.rm(input_temporary_filename)
+	os.rm(input_temporary_filename) or { panic(err) }
 
 	result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
 

@@ -30,8 +30,8 @@ fn main() {
  println('Removing name and foo.txt')
  println('')
  chdir('../')
- rmdir('name')
- rm('foo.txt')
+ rmdir('name') or { panic(err) }
+ rm('foo.txt') or { panic(err) }
 
  again := ls('.') or { panic(err) }
  println(again)

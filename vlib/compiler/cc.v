@@ -343,7 +343,7 @@ start:
 	}
 	*/
 	if !v.pref.is_keep_c && v.out_name_c != 'v.c' {
-		os.rm(v.out_name_c)
+		os.rm(v.out_name_c) or { panic(err) }
 	}
 	if v.pref.compress {
 		$if windows {

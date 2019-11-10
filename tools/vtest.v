@@ -123,7 +123,7 @@ pub fn (ts mut TestSession) test() {
 				println(ts.benchmark.step_message('$relative_file $ok'))
 			}
 		}
-		os.rm( tmpc_filepath )
+		os.rm( tmpc_filepath ) or { panic(err) }
 	}
 	ts.benchmark.stop()
 }

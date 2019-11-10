@@ -502,14 +502,23 @@ pub fn file_exists(_path string) bool {
 }
 
 // rm removes file in `path`.
-pub fn rm(path string) {
-	$if windows {
-		C._wremove(path.to_wide())
-	}
-	$else {
-		C.remove(path.str)
-	}
-	// C.unlink(path.cstr())
+pub fn rm(path string) ?bool {
+    $if windows {
+      res := int(C._wremove(path.to_wide()))
+      match res {
+        0 { return error('File not found') }
+        -1 { return error('File not found') }
+      }
+    }
+    $else {
+      res := int(C.remove(path.str))
+	  match res {
+        0 { return error('File not found') }
+        -1 { return error('File not found') }
+      }
+    }
+    // C.unlink(path.cstr())
+    return true
 }
 
 

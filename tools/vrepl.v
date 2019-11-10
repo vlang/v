@@ -79,10 +79,10 @@ pub fn run_repl() []string {
 	temp_file := '.vrepl_temp.v'
 	mut prompt := '>>> '
 	defer {
-		os.rm(file)
-		os.rm(temp_file)
-		os.rm(file[..file.len - 2])
-		os.rm(temp_file[..temp_file.len - 2])
+		os.rm(file) or { panic(err) }
+		os.rm(temp_file) or { panic(err) }
+		os.rm(file[..file.len - 2]) or { panic(err) }
+		os.rm(temp_file[..temp_file.len - 2]) or { panic(err) }
 	}
 	mut r := Repl{}
 	mut readline := readline.Readline{}
