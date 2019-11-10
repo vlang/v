@@ -931,8 +931,23 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// Skip the receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
 			if f.args.len > 1 { // && !p.is_js {
-				p.gen(',')
+				p.gen(', ')
 			}
+			//if f.args[0].typ.ends_with('*') {
+			//p.gen('&/*119*/')
+			//}
+			/*
+			pos := p.cgen.cur_line.index('/* ? */')
+			if pos > -1 {
+				expr := p.cgen.cur_line[pos..]
+				// TODO hack
+				// If current expression is a func call, generate the array hack
+				if expr.contains('(') {
+					p.cgen.set_placeholder(pos, '(${arg.typ[..arg.typ.len-1]}[]){')
+					p.gen('}[0] ')
+				}
+			}
+			*/
 			continue
 		}
 		// Reached the final vararg? Quit
@@ -948,14 +963,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
 			if p.tok != .key_mut && p.tok == .name {
-				mut dots_example :=  'mut $p.lit'
-				if i > 0 {
-					dots_example = '.., ' + dots_example
-				}
-				if i < f.args.len - 1 {
-					dots_example = dots_example + ',..'
-				}
-				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name($dots_example)`')
+				p.mutable_arg_error(i, arg, f)
 			}
 			if p.peek() != .name {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
@@ -1105,13 +1113,26 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){')
 					p.gen('}[0] ')
 				}
+				else if exp_ptr && expected == got + '*' {
+					expr := p.cgen.cur_line[ph..]
+					// TODO hack
+					// If current expression is a func call, generate the array hack
+					if expr.contains('(') {
+						//println('fn hack expr=$expr')
+						p.cgen.set_placeholder(ph, '& /*113 e="$expected" g="$got"*/ ($got[]){')
+						p.gen('}[0] ')
+					} else {
+						p.cgen.set_placeholder(ph, '& /*114*/')
+					}
+					
+				}	
 				// println('\ne:"$expected" got:"$got"')
 				else if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') &&
 				//! (expected == 'void*' && got == 'array_int') {
 				! (expected == 'byte*' && got == 'byteptr') {
-					p.cgen.set_placeholder(ph, '& /*112 EXP:"$expected" GOT:"$got" */')
+					p.cgen.set_placeholder(ph, '& /*112 e="$expected" g="$got" */')
 				}
 			}
 		}

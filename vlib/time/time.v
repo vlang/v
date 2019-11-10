@@ -110,7 +110,6 @@ pub fn now() Time {
 pub fn random() Time {
 	now_unix := now().uni
 	rand_unix := rand.next(now_unix)
-
 	return time.unix(rand_unix)
 }
 
@@ -275,7 +274,7 @@ pub fn (t Time) ddmmy() string {
 // @return  string
 // @example Jul 3
 pub fn (t Time) md() string {
-        return t.get_fmt_date_str(.space, .mmmd) 
+        return t.get_fmt_date_str(.space, .mmmd)
 }
 
 pub fn (t Time) clean() string {
