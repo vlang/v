@@ -19,7 +19,6 @@ CommonCHeaders = '
 #include <sys/time.h>
 #include <unistd.h> // sleep
 #else
-#pragma comment(lib, "Dbghelp.lib")
 #if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
 #error Please upgrade your MinGW distribution to use msvcr90.dll or later.
 #endif
