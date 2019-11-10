@@ -179,7 +179,7 @@ fn (p mut Parser) clear_vars() {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
-	defer { p.fgenln2('\n') }
+	defer { p.fgenln('\n') }
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
 	/*
@@ -909,6 +909,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			if p.tok == .comma {
 				p.gen(', ')
 				p.check(.comma)
+				p.fspace()
 			}
 		}
 		p.check(.rpar)
@@ -1132,6 +1133,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 			if p.tok == .comma && (!f.is_variadic || (f.is_variadic && i < f.args.len-2 )) {
 				p.check(.comma)
+				p.fspace()
 				p.gen(',')
 			}
 		}

@@ -30,9 +30,6 @@ fn (scanner mut Scanner) fgenln(s_ string) {
 
 [if vfmt]
 fn (p mut Parser) fgen(s string) {
-	}
-[if vfmt]
-fn (p mut Parser) fgen2(s string) {
 	if p.pass != .main {
 		return
 	}	
@@ -44,16 +41,12 @@ fn (p mut Parser) fspace() {
 	if p.first_pass() {
 		return
 	}	
-	p.fgen2(' ')
+	p.fgen(' ')
 }
 
 
 [if vfmt]
 fn (p mut Parser) fgenln(s string) {
-	}
-
-[if vfmt]
-fn (p mut Parser) fgenln2(s string) {
 	if p.pass != .main {
 		return
 	}	
@@ -94,17 +87,29 @@ fn (p mut Parser) fnext() {
 	if p.tok == .eof {
 		return
 	}
-	if p.tok == .rcbr && !p.inside_if_expr {
+	if p.tok == .rcbr && !p.inside_if_expr && p.prev_tok != .lcbr {
 		p.fmt_dec()
 	}
-	p.fgen2(p.strtok())
+	mut s := p.strtok()
+	// Need to reconstruct an interpolated string from multiple string and
+	// dollar tokens.
+	// 'abc $name zxc' => ['abc', $, name, 'zxc'] => 'abc'$name'zxc'
+	// need to remove the extra '
+	if p.tok == .str && p.peek() == .dollar {
+		s = s[..s.len - 1]
+		p.fmt_dollar = true
+	}	
+	else if p.tok == .str && p.fmt_dollar {
+		s = s[1..]
+		p.fmt_dollar = false
+	}	
+	p.fgen(s)
 	// vfmt: increase indentation on `{` unless it's `{}`
-	if p.tok == .lcbr && !p.inside_if_expr { //&& p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
-		p.fgenln2('')
+	if p.tok == .lcbr && !p.inside_if_expr && p.peek() != .rcbr {
+		p.fgenln('')
 		p.fmt_inc()
 	}
 }
-
 
 [if vfmt]
 fn (p mut Parser) gen_fmt() {

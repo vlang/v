@@ -11,6 +11,7 @@ import (
 // Returns typ if used as expression
 fn (p mut Parser) match_statement(is_expr bool) string {
 	p.check(.key_match)
+	p.fspace()
 	p.cgen.start_tmp()
 	typ := p.bool_expression()
 	if typ.starts_with('array_') {
@@ -22,6 +23,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	tmp_var := p.get_tmp()
 	p.cgen.insert_before('$typ $tmp_var = $expr;')
 
+	p.fspace()
 	p.check(.lcbr)
 	mut i := 0
 	mut all_cases_return := true
@@ -37,8 +39,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		if p.tok == .key_else {
 			p.check(.key_else)
 			if p.tok == .arrow {
-				p.warn(warn_match_arrow)
-				p.check(.arrow)
+				p.error(warn_match_arrow)
 			}	
 
 			// unwrap match if there is only else
@@ -201,6 +202,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			// p.gen(')')
 		}
 		i++
+		p.fgenln('')
 	}
 
 	if is_expr {

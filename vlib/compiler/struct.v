@@ -140,7 +140,7 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 			}
 			p.fmt_inc()
-			p.fgenln2('')
+			p.fgenln('')
 		}
 		if p.tok == .key_mut {
 			if is_mut {
@@ -153,7 +153,7 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 			}
 			p.fmt_inc()
-			p.fgenln2('')
+			p.fgenln('')
 		}
 		// if is_pub {
 		// }
@@ -221,13 +221,13 @@ fn (p mut Parser) struct_decl() {
 		if p.first_pass() {
 			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
 		}
-		p.fgenln2('') // newline between struct fields
+		p.fgenln('') // newline between struct fields
 	}
 	p.check(.rcbr)
 	if !is_c && !did_gen_something && p.first_pass() {
 		p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
 	}
-	p.fgenln2('\n')
+	p.fgenln('\n')
 }
 
 // `User{ foo: bar }`
@@ -273,7 +273,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			}
 			p.fspace()
 			did_gen_something = true
-			p.fgenln2('') // newline between struct fields
+			p.fgenln('') // newline between struct fields
 		}
 		// If we already set some fields, need to prepend a comma
 		if t.fields.len != inited_fields.len && inited_fields.len > 0 {
@@ -310,7 +310,6 @@ fn (p mut Parser) struct_init(typ string) string {
 					p.gen(',')
 				}
 				did_gen_something = true
-				p.fgenln2('') // newline between struct fields
 			}
 		}
 	}
