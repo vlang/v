@@ -58,7 +58,7 @@ const (
 	SYMOPT_DEBUG = 0x80000000
 )
 
-fn print_backtrace_skipping_top_frames_msvc(skipframes int) {
+fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 	mut offset := u64(0)
 	backtraces := [100]voidptr
 	sic := SymbolInfoContainer{}
@@ -76,7 +76,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) {
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
 		println('Failed getting process: Aborting backtrace.\n')
-		return
+		return true
 	}
 
 	frames := int( C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0) )
@@ -113,8 +113,15 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) {
 			}
 		}
 	}
+	return true
 }
 
-fn print_backtrace_skipping_top_frames_mingw(skipframes int) {
+fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	println('TODO: print_backtrace_skipping_top_frames_mingw($skipframes)')
+	return false
+}
+
+fn print_backtrace_skipping_top_frames_nix(skipframes int) bool {
+	println('not implemented, see builtin_nix.v')
+	return false
 }
