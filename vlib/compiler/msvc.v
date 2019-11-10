@@ -3,7 +3,7 @@ module compiler
 import os
 
 #flag windows -l shell32
-
+#flag windows -l dbghelp
 // RegOpenKeyExA etc
 #flag windows -l advapi32
 
