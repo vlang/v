@@ -160,7 +160,7 @@ pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 		adjasted_path := if os.is_dir(dest_path) {
 			filepath.join(dest_path, os.basedir(source_path)) } else { dest_path }
 		if os.file_exists(adjasted_path) {
-			if overwrite { os.rm(adjasted_path) }
+			if overwrite { os.rm(adjasted_path) or { panic(err) } }
 			else { return error('Destination file path already exist') }
 		}
 		os.cp(source_path, adjasted_path) or { return error(err) }

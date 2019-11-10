@@ -128,8 +128,8 @@ fn test_cp() {
     new_file := os.read_file(new_file_name) or { panic(err) }
     assert old_file == new_file
 
-    os.rm(old_file_name)
-    os.rm(new_file_name)
+    os.rm(old_file_name) or { panic(err)}
+    os.rm(new_file_name) or { panic(err) }
 }
 
 fn test_cp_r() {
@@ -184,14 +184,14 @@ fn test_zzz_cleanup(){
 // files so that they can be run several times in a row.
 fn cleanup_leftovers(){
 	// possible leftovers from test_cp
-	os.rm('cp_example.txt')
-	os.rm('cp_new_example.txt')
+	os.rm('cp_example.txt') or { panic(err) }
+	os.rm('cp_new_example.txt') or { panic(err) }
 	
 	// possible leftovers from test_cp_r
-	os.rm('ex/ex2/ex2.txt')
-	os.rm('ex/ex2')
-	os.rm('ex/ex1.txt')
-	os.rm('ex')  
-	os.rm('ex2/ex2.txt')
-	os.rm('ex2')  
+	os.rm('ex/ex2/ex2.txt') or { panic(err) }
+	os.rm('ex/ex2') or { panic(err) }
+	os.rm('ex/ex1.txt') or { panic(err) }
+	os.rm('ex') or { panic(err) }
+	os.rm('ex2/ex2.txt') or { panic(err) }
+	os.rm('ex2') or { panic(err) }
 }
