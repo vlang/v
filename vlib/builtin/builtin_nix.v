@@ -23,14 +23,14 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 
 // the functions below are not called outside this file,
 // so there is no need to have their twins in builtin_windows.v
-fn print_backtrace_skipping_top_frames_mac(xskipframes int) bool {
+fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	buffer := [100]byteptr
 	nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 	C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
 	return true
 }
 
-fn print_backtrace_skipping_top_frames_linux(xskipframes int) bool {
+fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if !android {
 		$if glibc {
 		// backtrace is not available on Android.
