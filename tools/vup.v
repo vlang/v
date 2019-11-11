@@ -18,4 +18,6 @@ fn main() {
 		s2 := os.exec('make -C "$vroot"') or { panic(err) }
 		println(s2.output)
 	}
+	s3:=os.exec('v -v')
+	println(s3.output)
 }
