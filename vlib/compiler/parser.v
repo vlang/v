@@ -989,6 +989,10 @@ fn (p mut Parser) statements() string {
 
 fn (p mut Parser) statements_no_rcbr() string {
 	p.open_scope()
+
+	if !p.inside_if_expr {
+		//p.genln('')
+	}
 	mut i := 0
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof {
@@ -996,6 +1000,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
+			//p.genln('')// // end st tok= ${p.strtok()}')
 			p.fgenln('')
 		}
 		i++
@@ -2513,7 +2518,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.returns = false
 	if p.tok == .key_else {
 		if !p.inside_if_expr {
-			//p.fgenln('')
+			p.fgenln('')
 		}
 		p.check(.key_else)
 		p.fspace()
