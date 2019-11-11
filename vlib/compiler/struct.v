@@ -238,7 +238,6 @@ fn (p mut Parser) struct_init(typ string) string {
 		p.warn('type `$t.name` is private')
 	}	
 	if p.gen_struct_init(typ, t) { return typ }
-	p.scanner.fmt_out.cut(typ.len)
 	ptr := typ.contains('*')
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values

@@ -13,6 +13,8 @@ fn (scanner mut Scanner) fgen(s_ string) {
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
+	
+	//scanner.fmt_out << s
 	scanner.fmt_out.write(s)
 	scanner.fmt_line_empty = false
 }
@@ -23,6 +25,8 @@ fn (scanner mut Scanner) fgenln(s_ string) {
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
+	//scanner.fmt_out << s
+	//scanner.fmt_out << '\n'
 	scanner.fmt_out.writeln(s)
 	scanner.fmt_line_empty = true
 }
@@ -111,6 +115,7 @@ fn (p mut Parser) fnext() {
 	}
 }
 
+
 [if vfmt]
 fn (p mut Parser) gen_fmt() {
 	if p.pass != .main {
@@ -120,6 +125,7 @@ fn (p mut Parser) gen_fmt() {
 		return
 	}	
 	s := p.scanner.fmt_out.str().trim_space()
+	//s := p.scanner.fmt_out.join('').trim_space()
 	if s == '' {
 		return
 	}	
@@ -128,8 +134,7 @@ fn (p mut Parser) gen_fmt() {
 		verror('failed to create fmt.v')
 		return
 	}
-	//println(p.scanner.fmt_out.str())
-	out.writeln(p.scanner.fmt_out.str().trim_space())
+	out.writeln(s)//p.scanner.fmt_out.str().trim_space())
 	out.close()
 }
 
