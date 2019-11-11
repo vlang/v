@@ -1117,6 +1117,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 					expr := p.cgen.cur_line[ph..]
 					// TODO hack
 					// If current expression is a func call, generate the array hack
+					$if !tinyc {
 					if expr.contains('(') {
 						//println('fn hack expr=$expr')
 						p.cgen.set_placeholder(ph, '& /*113 e="$expected" g="$got"*/ ($got[]){')
@@ -1124,6 +1125,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 					} else {
 						p.cgen.set_placeholder(ph, '& /*114*/')
 					}
+					} $else {
+						p.cgen.set_placeholder(ph, '& /*114*/')
+					}	
 					
 				}	
 				// println('\ne:"$expected" got:"$got"')
