@@ -65,12 +65,12 @@ struct K {
 }
 
 fn test_empty() {
-	mut chunks := []Chunk{}
+	mut chunks := []Chunk
 	a := Chunk{}
 	assert chunks.len == 0
 	chunks << a
 	assert chunks.len == 1
-	chunks = []Chunk{}
+	chunks = []Chunk
 	assert chunks.len == 0
 	chunks << a
 	assert chunks.len == 1
@@ -90,6 +90,11 @@ fn test_push() {
 //   i := 3
 //	 a.insert(0, &i)
 // ----------------------------
+fn test_insert() {
+//     mut a := [1, 2]
+//     a.insert(0, 3)
+//    println(a)
+	}
 // fn test_insert() {
 //     mut a := [1, 2]
 

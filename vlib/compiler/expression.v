@@ -168,7 +168,6 @@ fn (p mut Parser) name_expr() string {
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
-
 	if is_c {
 		p.check(.name)
 		p.check(.dot)

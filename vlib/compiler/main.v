@@ -206,7 +206,6 @@ pub fn (v mut V) compile() {
 	for file in v.files {
 		v.parse(file, .decl)
 	}
-
 	// Main pass
 	cgen.pass = .main
 	if v.pref.is_debug {
@@ -268,7 +267,7 @@ pub fn (v mut V) compile() {
 		defs_pos = 0
 	}
 	cgen.nogen = q
-	for file in v.files {
+	for i, file in v.files {
 		v.parse(file, .main)
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		// Format all files (don't format automatically generated vlib headers)

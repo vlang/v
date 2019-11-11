@@ -10,7 +10,7 @@ import (
 )
 
 struct Parser {
-	file_path      string // if parsing file will be path eg, "/home/user/hello.v"
+	file_path      string // "/home/user/hello.v"
 	file_name      string // "hello.v"
 	file_platform  string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
@@ -202,33 +202,41 @@ fn (p mut Parser) set_current_fn(f Fn) {
 fn (p mut Parser) next() {
 	// Generate a formatted version of this token
 	// (only when vfmt compile time flag is enabled, otherwise this function
-	// is not even generatd)
+	// is not even generated)
 	p.fnext()
 	
-	 p.prev_tok2 = p.prev_tok
-	 p.prev_tok = p.tok
-	 p.scanner.prev_tok = p.tok
-	 if p.token_idx >= p.tokens.len {
+	p.prev_tok2 = p.prev_tok
+	p.prev_tok = p.tok
+	p.scanner.prev_tok = p.tok
+	if p.token_idx >= p.tokens.len {
 			 p.tok = .eof
 			 p.lit = ''
 			 return
-	 }
-	 res := p.tokens[p.token_idx]
-	 p.token_idx++
-	 p.tok = res.tok
-	 p.lit = res.lit
-	 p.scanner.line_nr = res.line_nr
-	 p.cgen.line = res.line_nr
-	
-
+	}
+	res := p.tokens[p.token_idx]
+	p.token_idx++
+	p.tok = res.tok
+	p.lit = res.lit
+	p.scanner.line_nr = res.line_nr
+	p.cgen.line = res.line_nr
 }
 
-fn (p & Parser) peek() TokenKind {
+fn (p &Parser) peek() TokenKind {
 	if p.token_idx >= p.tokens.len - 2 {
 		return .eof
 	}
-	tok := p.tokens[p.token_idx]
-	return tok.tok
+	return p.tokens[p.token_idx].tok
+	/*
+	mut i := p.token_idx
+	for i < p.tokens.len  {
+		tok := p.tokens[i]
+		if tok.tok != .mline_comment && tok.tok != .line_comment {
+			return tok.tok
+		}	
+		i++
+	}
+	return .eof
+	*/
 }
 
 // TODO remove dups
@@ -461,11 +469,17 @@ fn (p mut Parser) imports() {
 	p.check(.key_import)
 	// `import ()`
 	if p.tok == .lpar {
+		p.fspace()
 		p.check(.lpar)
+		p.fmt_inc()
+		p.fgenln('')
 		for p.tok != .rpar && p.tok != .eof {
 			p.import_statement()
+			p.fgenln('')
 		}
+		p.fmt_dec()
 		p.check(.rpar)
+		p.fgenln('\n')
 		return
 	}
 	// `import foo`
@@ -615,7 +629,6 @@ fn (p mut Parser) const_decl() {
 	}
 	p.fmt_dec()
 	p.check(.rpar)
-	p.fgenln('\n')
 	p.inside_const = false
 }
 
@@ -676,7 +689,6 @@ fn key_to_type_cat(tok TokenKind) TypeCategory {
 		.key_interface { return .interface_ }
 		.key_struct    { return .struct_    }
 		.key_union     { return .union_     }
-		//TokenKind.key_ => return .interface_
 	}
 	verror('Unknown token: $tok')
 	return .builtin
@@ -707,6 +719,9 @@ fn (p &Parser) strtok() string {
 	}
 	if p.tok == .number {
 		return p.lit
+	}	
+	if p.tok == .chartoken {
+		return '`$p.lit`'
 	}	
 	if p.tok == .str {
 		if p.lit.contains("'") {
@@ -1166,6 +1181,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 	}
 	.lcbr {// {} block
 		p.check(.lcbr)
+		if p.tok == .rcbr {
+			p.error('empty statements block')
+		}	
 		p.genln('{')
 		p.statements()
 		return ''
@@ -2075,6 +2093,7 @@ fn (p mut Parser) assoc() string {
 		if p.tok != .rcbr {
 			p.check(.comma)
 		}
+		p.fgenln('')
 	}
 	// Copy the rest of the fields
 	T := p.table.find_type(var.typ)
@@ -2083,7 +2102,7 @@ fn (p mut Parser) assoc() string {
 		if f in fields {
 			continue
 		}
-		p.gen('.$f = $name . $f,')
+		p.gen('.$f = ${name}.$f,')
 	}
 	p.check(.rcbr)
 	p.gen('}')
@@ -2266,6 +2285,7 @@ fn (p mut Parser) map_init() string {
 			keys_gen += 'tos3("$key"), '
 			p.check(.str)
 			p.check(.colon)
+			p.fspace()
 			t, val_expr := p.tmp_expr()
 			if i == 0 {
 				val_type = t
@@ -2278,12 +2298,14 @@ fn (p mut Parser) map_init() string {
 			}
 			vals_gen += '$val_expr, '
 			if p.tok == .rcbr {
+				p.fgenln('')
 				p.check(.rcbr)
 				break
 			}
 			if p.tok == .comma {
 				p.check(.comma)
 			}
+			p.fgenln('')
 		}
 		p.gen('new_map_init($i, sizeof($val_type), ' +
 			'(string[$i]){ $keys_gen }, ($val_type [$i]){ $vals_gen } )')
