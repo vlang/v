@@ -54,7 +54,6 @@ jobs:
       env:
         VFLAGS: -cc tcc
       run: |
-        exit
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
         ./v -o v2 v.v # Make sure vtcc can build itself
