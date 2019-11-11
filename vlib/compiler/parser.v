@@ -1623,7 +1623,7 @@ fn (p mut Parser) var_expr(v Var) string {
 		if !v.is_changed {
 			p.mark_var_changed(v)
 		}
-		if typ != 'int' {
+		if typ != 'int' && !typ.contains('*') {
 			if !p.pref.translated && !is_number_type(typ) {
 				p.error('cannot ++/-- value of type `$typ`')
 			}
@@ -1635,7 +1635,7 @@ fn (p mut Parser) var_expr(v Var) string {
 			//return p.index_expr(typ, fn_ph)
 		}
 		else {
-			return 'void'
+			return typ
 		}
 	}
 	typ = p.index_expr(typ, fn_ph)
