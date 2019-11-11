@@ -1317,13 +1317,12 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		if p.tok == .comma {
 			p.check(.comma)
 		}
-		p.cgen.start_tmp()
-		mut varg_type := p.bool_expression()
-		varg_value := p.cgen.end_tmp()
+		varg_type, varg_value := p.tmp_expr()
 		if varg_type.starts_with('varg_') &&
-			(values.len > 0 || p.tok == .comma) {
+			(values.len > 0 || p.tok == .comma)
+		{
 				p.error('You cannot pass additional vargs when forwarding vargs to another function/method')
-			}
+		}
 		if !f.is_generic {
 			p.check_types(last_arg.typ, varg_type)
 		} else {

@@ -2649,9 +2649,9 @@ fn (p mut Parser) return_st() {
 		types << expr_type
 		for p.tok == .comma {
 			p.check(.comma)
-			p.cgen.start_tmp()
-			types << p.bool_expression()
-			mr_values << p.cgen.end_tmp().trim_space()
+			typ, expr := p.tmp_expr()
+			types << typ
+			mr_values << expr.trim_space()
 		}
 		mut cur_fn_typ_chk := p.cur_fn.typ
 		// multiple returns
@@ -2804,9 +2804,8 @@ fn (p mut Parser) js_decode() string {
 		p.check(.lpar)
 		typ := p.get_type()
 		p.check(.comma)
-		p.cgen.start_tmp()
-		p.check_types(p.bool_expression(), 'string')
-		expr := p.cgen.end_tmp()
+		styp, expr := p.tmp_expr()
+		p.check_types(styp, 'string')
 		p.check(.rpar)
 		tmp := p.get_tmp()
 		cjson_tmp := p.get_tmp()
@@ -2816,7 +2815,7 @@ fn (p mut Parser) js_decode() string {
 		for field in T.fields {
 			def_val := type_default(field.typ)
 			if def_val != '' {
-				decl += '$tmp . $field.name = OPTION_CAST($field.typ) $def_val;\n'
+				decl += '${tmp}.$field.name = OPTION_CAST($field.typ) $def_val;\n'
 			}
 		}
 		p.gen_json_for_type(T)
@@ -2831,11 +2830,9 @@ fn (p mut Parser) js_decode() string {
 	}
 	else if op == 'encode' {
 		p.check(.lpar)
-		p.cgen.start_tmp()
-		typ := p.bool_expression()
+		typ, expr := p.tmp_expr()
 		T := p.table.find_type(typ)
 		p.gen_json_for_type(T)
-		expr := p.cgen.end_tmp()
 		p.check(.rpar)
 		p.gen('json__json_print(json__jsencode_$typ($expr))')
 		return 'string'

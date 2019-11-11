@@ -135,9 +135,11 @@ fn get_foo() Foo {
 
 // This used to be broken.
 fn test_ref_fn_arg() {
-	process_foo(get_foo())
-	println(3434)
-	assert true
+	$if !tinyc {
+		process_foo(get_foo())
+		println(3434)
+		assert true
+	}
 	
 	/*
 	res := (time.random().calc_unix())
