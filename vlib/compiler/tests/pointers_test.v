@@ -5,6 +5,9 @@ fn test_pointer_arithmetic() {
 		mut parr := *int(arr.data)
 		parr += 1
 		assert 2 == *parr
+		parr++
+		assert 3 == *parr
+		assert *(parr + 1) == 4
 	}
 }
 

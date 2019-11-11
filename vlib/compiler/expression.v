@@ -146,6 +146,19 @@ fn (p mut Parser) name_expr() string {
         p.next()
     }
 
+	if p.tok == .lpar {
+		p.gen('*'.repeat(deref_nr))
+		p.gen('(')
+		p.check(.lpar)
+		mut temp_type := p.bool_expression()
+		p.gen(')')
+		p.check(.rpar)
+		for _ in 0..deref_nr {
+			temp_type = temp_type.replace_once('*', '')
+		}
+		return temp_type
+	}
+
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
 	if name == 'r' && p.peek() == .str {
