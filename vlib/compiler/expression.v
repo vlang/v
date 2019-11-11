@@ -133,9 +133,19 @@ fn (p mut Parser) name_expr() string {
 	// amp
 	ptr := p.tok == .amp
 	deref := p.tok == .mul
-	if ptr || deref {
-		p.next()
-	}
+    mut mul_nr := 0
+    mut deref_nr := 0
+    for {
+        if p.tok == .amp {
+            mul_nr++
+        }else if p.tok == .mul {
+            deref_nr++
+        }else {
+            break
+        }
+        p.next()
+    }
+
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
 	if name == 'r' && p.peek() == .str {
@@ -176,7 +186,7 @@ fn (p mut Parser) name_expr() string {
 	// Variable, checked before modules, so that module shadowing is allowed:
 	// `gg = gg.newcontext(); gg.draw_rect(...)`
 	if p.known_var_check_new_var(name) {
-		return p.get_var_type(name, ptr, deref)
+		return p.get_var_type(name, ptr, deref_nr)
 	}
 	// Module?
 	if p.peek() == .dot && (name == p.mod ||
@@ -204,7 +214,7 @@ fn (p mut Parser) name_expr() string {
 	}	
 	// re-check
 	if p.known_var_check_new_var(name) {
-		return p.get_var_type(name, ptr, deref)
+		return p.get_var_type(name, ptr, deref_nr)
 	}
 
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
@@ -213,10 +223,10 @@ fn (p mut Parser) name_expr() string {
 		// cast expression: float(5), byte(0), (*int)(ptr) etc
 		if !is_c && ( p.peek() == .lpar || (deref && p.peek() == .rpar) ) {
 			if deref {
-				name += '*'
+				name += '*'.repeat(deref_nr )
 			}
 			else if ptr {
-				name += '*'
+				name += '*'.repeat(mul_nr)
 			}
 			p.gen('(')
 			mut typ := name
@@ -405,7 +415,7 @@ fn (p mut Parser) expression() string {
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
 		}
-		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
+		is_num := typ.contains('*') || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
 			p.cgen.set_placeholder(ph, 'string_add(')
@@ -421,7 +431,9 @@ fn (p mut Parser) expression() string {
 				// Msvc errors on void* pointer arithmatic
 				// ... So cast to byte* and then do the add
 				p.cgen.set_placeholder(ph, '(byte*)')
-			}
+			}else if typ.contains('*') {
+                p.cgen.set_placeholder(ph, '($typ)')
+            }
 			p.gen(tok_op.str())
 		}
 		// Vec + Vec

@@ -1462,7 +1462,7 @@ fn (p mut Parser) get_struct_type(name_ string, is_c bool, is_ptr bool) string {
 	return p.struct_init(name)
 }
 
-fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
+fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	v := p.find_var_check_new_var(name) or { return "" }
 	if name == '_' {
 		p.error('cannot use `_` as value')
@@ -1470,9 +1470,11 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
 	if is_ptr {
 		p.gen('&')
 	}
-	else if is_deref {
-		p.gen('*')
-	}
+    else if deref_nr > 0 {
+        for _ in 0..deref_nr {
+        	p.gen('*')
+        }
+    }
 	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
 		p.assigned_type == 'string' {
 		p.warn('setting moved ' + v.typ)
@@ -1480,7 +1482,7 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
 	}
 	mut typ := p.var_expr(v)
 	// *var
-	if is_deref {
+	if deref_nr > 0 {
 		/*
 		if !p.inside_unsafe {
 			p.error('dereferencing can only be done inside an `unsafe` block')
@@ -1490,8 +1492,11 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
 			println('name="$name", t=$v.typ')
 			p.error('dereferencing requires a pointer, but got `$typ`')
 		}
-		typ = typ.replace('ptr', '')// TODO
-		typ = typ.replace('*', '')// TODO
+		for _ in 0..deref_nr {
+			typ = typ.replace_once('ptr', '')// TODO
+			typ = typ.replace_once('*', '')// TODO
+		}
+
 	}
 	// &var
 	else if is_ptr {
