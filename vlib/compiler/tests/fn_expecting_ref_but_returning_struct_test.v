@@ -8,12 +8,13 @@ fn process_foo(foo &Foo) {
 
 fn get_foo() Foo {
 	println('>get_foo')
-  return Foo{}
+	return Foo{}
 }
 
-/* TODO: Fix this. It 'works' only with tcc, but is not stable.
+/*
+// TODO: Fix this. It 'works' only with tcc, but is not stable.
 fn test_ref_fn_arg() {
-  process_foo(get_foo())
+	process_foo(get_foo())
 	println(3434)
 	assert true
 }
