@@ -2450,13 +2450,6 @@ fn (p mut Parser) get_tmp_counter() int {
 	return p.tmp_cnt
 }
 
-// returns expression's type, and entire expression's string representation)
-fn (p mut Parser) tmp_expr() (string, string) {
-		p.cgen.start_tmp()
-		typ := p.bool_expression()
-		val := p.cgen.end_tmp()
-		return typ, val
-}
 
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {

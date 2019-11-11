@@ -12,13 +12,10 @@ import (
 fn (p mut Parser) match_statement(is_expr bool) string {
 	p.check(.key_match)
 	p.fspace()
-	p.cgen.start_tmp()
-	typ := p.bool_expression()
+	typ, expr := p.tmp_expr()
 	if typ.starts_with('array_') {
 		p.error('arrays cannot be compared')
 	}	
-	expr := p.cgen.end_tmp()
-
 	// is it safe to use p.cgen.insert_before ???
 	tmp_var := p.get_tmp()
 	p.cgen.insert_before('$typ $tmp_var = $expr;')
