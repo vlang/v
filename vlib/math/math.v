@@ -216,6 +216,16 @@ pub fn hypot(a, b f64) f64 {
 	return C.hypot(a, b)
 }
 
+// whether or not the number is even
+pub fn is_even(n int) bool {
+	return (n & 1) == 0
+}
+
+// whether or not the number is odd
+pub fn is_odd(n int) bool {
+	return (n & 1) == 1
+}
+
 // lcm calculates least common (non-negative) multiple.
 pub fn lcm(a, b i64) i64 {
 	if a == 0 {
