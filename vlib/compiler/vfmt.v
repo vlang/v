@@ -87,6 +87,11 @@ fn (p mut Parser) fmt_dec() {
 }
 
 [if vfmt]
+fn (p mut Scanner) init_fmt() {
+	p.is_fmt = true
+}
+
+[if vfmt]
 fn (p mut Parser) fnext() {
 	if p.tok == .eof {
 		return
@@ -95,18 +100,6 @@ fn (p mut Parser) fnext() {
 		p.fmt_dec()
 	}
 	mut s := p.strtok()
-	// Need to reconstruct an interpolated string from multiple string and
-	// dollar tokens.
-	// 'abc $name zxc' => ['abc', $, name, 'zxc'] => 'abc'$name'zxc'
-	// need to remove the extra '
-	if p.tok == .str && p.peek() == .dollar {
-		s = s[..s.len - 1]
-		p.fmt_dollar = true
-	}	
-	else if p.tok == .str && p.fmt_dollar {
-		s = s[1..]
-		p.fmt_dollar = false
-	}	
 	p.fgen(s)
 	// vfmt: increase indentation on `{` unless it's `{}`
 	if p.tok == .lcbr && !p.inside_if_expr && p.peek() != .rcbr {

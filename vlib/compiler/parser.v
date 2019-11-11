@@ -73,7 +73,6 @@ mut:
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
-	fmt_dollar bool
 pub:
 	mod            string
 }

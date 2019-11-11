@@ -969,6 +969,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
+			p.fspace()
 			var_name := p.lit
 			v := p.find_var(var_name) or {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
