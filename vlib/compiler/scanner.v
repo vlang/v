@@ -76,7 +76,7 @@ fn new_scanner_file(file_path string) &Scanner {
 fn new_scanner(text string) &Scanner {
 	return &Scanner {
 		text: text
-		fmt_out: strings.new_builder(10000)
+		fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 		should_print_errors_in_color: true
 		should_print_relative_paths_on_error: true

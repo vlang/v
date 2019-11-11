@@ -270,6 +270,18 @@ fn (s mut Scanner) eat_single_newline(){
 
 ///////////////////////////////
 
+fn (p mut Parser) mutable_arg_error(i int, arg Var, f Fn) {
+	mut dots_example :=  'mut $p.lit'
+	if i > 0 {
+		dots_example = '.., ' + dots_example
+	}
+	if i < f.args.len - 1 {
+		dots_example = dots_example + ',..'
+	}
+	p.error('`$arg.name` is a mutable argument, you need to provide `mut`: ' +
+			'`$f.name($dots_example)`')
+}	
+
 const (
 	warn_match_arrow = '=> is no longer needed in match statements, use\n' +
 'match foo {

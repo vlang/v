@@ -16,6 +16,8 @@
 /tools/vup.exe
 /tools/vpm
 /tools/vpm.exe
+/tools/vcreate
+/tools/vcreate.exe
 *.exe
 *.o
 .*.c

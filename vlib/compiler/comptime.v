@@ -120,10 +120,9 @@ fn (p mut Parser) comp_time() {
 		p.check(.dollar)
 		p.check(.name)
 		p.check(.assign)
-		p.cgen.start_tmp()
-		p.bool_expression()
-		val := p.cgen.end_tmp()
-		println(val)
+		_, val := p.tmp_expr()
+		//p.bool_expression()
+		//val := p.cgen.end_tmp()
 		p.check(.rcbr)
 		// }
 	}

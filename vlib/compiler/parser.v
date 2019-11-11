@@ -73,6 +73,7 @@ mut:
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
+	fmt_dollar bool
 pub:
 	mod            string
 }
@@ -279,7 +280,7 @@ fn (p mut Parser) parse(pass Pass) {
 		p.mod = p.check_name()
 	}
 	//
-		p.fgenln2('\n')
+		p.fgenln('\n')
 
 	p.cgen.nogen = false
 	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
@@ -315,22 +316,11 @@ fn (p mut Parser) parse(pass Pass) {
 	for {
 		match p.tok {
 		.key_import {
-			if p.peek() == .key_const {
-				p.const_decl()
-			}
-			else {
-				// TODO remove imported consts from the language
-				p.imports()
-				if p.tok != .key_import {
-					p.fgenln('')
-				}
-			}
+			p.imports()
 		}
 		.key_enum {
 			next := p.peek()
 			if next == .name {
-				p.fgen('enum ')
-				p.fgen(' ')
 				p.enum_decl(false)
 			}
 			else if next == .lcbr && p.pref.translated {
@@ -410,10 +400,10 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.cgen.nogen {
 				p.cgen.consts << g
 			}
-			p.fgenln2('')
+			p.fgenln('')
 			if p.tok != .key_global {
 				// An extra empty line to separate a block of globals
-				p.fgenln2('')
+				p.fgenln('')
 			}	
 		}
 		.eof {
@@ -469,7 +459,6 @@ fn (p mut Parser) parse(pass Pass) {
 }
 
 fn (p mut Parser) imports() {
-	p.fgenln2('\n')
 	p.check(.key_import)
 	// `import ()`
 	if p.tok == .lpar {
@@ -482,7 +471,10 @@ fn (p mut Parser) imports() {
 	}
 	// `import foo`
 	p.import_statement()
-	p.fgenln2('')
+	p.fgenln('')
+	if p.tok != .key_import {
+		p.fgenln('')
+	}
 }
 
 fn (p mut Parser) import_statement() {
@@ -515,7 +507,6 @@ fn (p mut Parser) import_statement() {
 	}
 	// add import to file scope import table
 	p.register_import_alias(mod_alias, mod, import_tok_idx)
-	p.fgenln2('')
 	// Make sure there are no duplicate imports
 	if mod in p.table.imports {
 		return
@@ -675,7 +666,7 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 		method.typ = 'void'
 	} else {
 		method.typ = p.get_type()// method return type
-		p.fspace()
+		//p.fspace()
 		p.fgenln('')
 	}
 	return method
@@ -878,7 +869,6 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-
 	// Generic type check
 	ti := p.cur_fn.dispatch_of.inst
 	if p.lit in ti.keys() {
@@ -886,12 +876,6 @@ fn (p mut Parser) get_type() string {
 		// println('cur dispatch: $p.lit => $typ')
 	} else {
 		typ += p.lit
-	}
-
-	if !p.is_struct_init {
-		// Otherwise we get `foo := FooFoo{` because `Foo` was already
-		// generated in name_expr()
-		p.fgen(p.lit)
 	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
@@ -1007,7 +991,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 	p.open_scope()
 
 	if !p.inside_if_expr {
-		p.genln('')
+		//p.genln('')
 	}
 	mut i := 0
 	mut last_st_typ := ''
@@ -1016,8 +1000,8 @@ fn (p mut Parser) statements_no_rcbr() string {
 		last_st_typ = p.statement(true)
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
-			p.genln('')// // end st tok= ${p.strtok()}')
-			p.fgenln2('')
+			//p.genln('')// // end st tok= ${p.strtok()}')
+			p.fgenln('')
 		}
 		i++
 		if i > 50000 {
@@ -1138,7 +1122,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 	}
 	.key_goto {
 		p.check(.key_goto)
-		p.fgen(' ')
+		p.fspace()
 		label := p.check_name()
 		p.genln('goto $label;')
 		return ''
@@ -1497,6 +1481,11 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, is_deref bool) string {
 	mut typ := p.var_expr(v)
 	// *var
 	if is_deref {
+		/*
+		if !p.inside_unsafe {
+			p.error('dereferencing can only be done inside an `unsafe` block')
+		}	
+		*/
 		if !typ.contains('*') && !typ.ends_with('ptr') {
 			println('name="$name", t=$v.typ')
 			p.error('dereferencing requires a pointer, but got `$typ`')
@@ -1683,7 +1672,6 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	}	
 	
 	fname_tidx := p.cur_tok_index()
-	p.fgen(field_name)
 	//p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
 		//println('dot() field_name=$field_name typ=$str_typ prev_tok=${prev_tok.str()}')
@@ -1845,7 +1833,6 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// Get element type (set `typ` to it)
 		if is_str {
 			typ = 'byte'
-			p.fgen('[')
 			// Direct faster access to .str[i] in builtin modules
 			if p.builtin_mod {
 				p.gen('.str[')
@@ -2028,7 +2015,7 @@ fn (p mut Parser) indot_expr() string {
 	// `a in [1, 2, 3]`
 	// `key in map`
 	if p.tok == .key_in {
-		p.fgen(' ')
+		p.fspace()
 		p.check(.key_in)
 		p.expected_type = typ // this allows `foo in [.val1, .val2, .val3]`
 		if p.tok == .lsbr {
@@ -2037,7 +2024,7 @@ fn (p mut Parser) indot_expr() string {
 			p.in_optimization(typ, ph)
 			return 'bool'
 		}
-		p.fgen(' ')
+		p.fspace()
 		p.gen('), ')
 		arr_typ := p.expression()
 		is_map := arr_typ.starts_with('map_')
@@ -2121,7 +2108,6 @@ fn (p mut Parser) string_expr() {
 	str := p.lit
 	// No ${}, just return a simple string
 	if p.peek() != .dollar || is_raw {
-		p.fgen("'$str'")
 		f := if is_raw { cescaped_path(str) } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
@@ -2149,11 +2135,9 @@ fn (p mut Parser) string_expr() {
 	p.is_alloc = true // $ interpolation means there's allocation
 	mut args := '"'
 	mut format := '"'
-	p.fgen('\'')
 	mut complex_inter := false  // for vfmt
 	for p.tok == .str {
 		// Add the string between %d's
-		p.fgen(p.lit)
 		p.lit = p.lit.replace('%', '%%')
 		format += format_str(p.lit)
 		p.next()// skip $
@@ -2169,10 +2153,8 @@ fn (p mut Parser) string_expr() {
 			complex_inter = true
 		}
 		// Get bool expr inside a temp var
-		p.cgen.start_tmp()
-		typ := p.bool_expression()
-		mut val := p.cgen.end_tmp()
-		val = val.trim_space()
+		typ, val_ := p.tmp_expr()
+		val := val_.trim_space()
 		args += ', $val'
 		if typ == 'string' {
 			// args += '.str'
@@ -2238,7 +2220,7 @@ fn (p mut Parser) string_expr() {
 	if complex_inter {
 		p.fgen('}')
 	}
-	p.fgen('\'')
+	//p.fgen('\'')
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {
 		return
@@ -2280,8 +2262,7 @@ fn (p mut Parser) map_init() string {
 			keys_gen += 'tos3("$key"), '
 			p.check(.str)
 			p.check(.colon)
-			p.cgen.start_tmp()
-			t := p.bool_expression()
+			t, val_expr := p.tmp_expr()
 			if i == 0 {
 				val_type = t
 			}
@@ -2291,7 +2272,6 @@ fn (p mut Parser) map_init() string {
 					p.error('bad map element type `$val_type` instead of `$t`')
 				}
 			}
-			val_expr := p.cgen.end_tmp()
 			vals_gen += '$val_expr, '
 			if p.tok == .rcbr {
 				p.check(.rcbr)
@@ -2470,13 +2450,6 @@ fn (p mut Parser) get_tmp_counter() int {
 	return p.tmp_cnt
 }
 
-// returns expression's type, and entire expression's string representation)
-fn (p mut Parser) tmp_expr() (string, string) {
-		p.cgen.start_tmp()
-		typ := p.bool_expression()
-		val := p.cgen.end_tmp()
-		return typ, val
-}
 
 fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	if is_expr {
@@ -2545,7 +2518,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.returns = false
 	if p.tok == .key_else {
 		if !p.inside_if_expr {
-			p.fgenln2('')
+			p.fgenln('')
 		}
 		p.check(.key_else)
 		p.fspace()
@@ -2669,9 +2642,9 @@ fn (p mut Parser) return_st() {
 		types << expr_type
 		for p.tok == .comma {
 			p.check(.comma)
-			p.cgen.start_tmp()
-			types << p.bool_expression()
-			mr_values << p.cgen.end_tmp().trim_space()
+			typ, expr := p.tmp_expr()
+			types << typ
+			mr_values << expr.trim_space()
 		}
 		mut cur_fn_typ_chk := p.cur_fn.typ
 		// multiple returns
@@ -2733,7 +2706,7 @@ fn (p mut Parser) return_st() {
 			p.gen('return')
 		}
 	}
-	p.fgenln('//ret')
+	//p.fgenln('//ret')
 	p.returns = true
 }
 
@@ -2762,6 +2735,7 @@ fn (p &Parser) prepend_mod(name string) string {
 
 fn (p mut Parser) go_statement() {
 	p.check(.key_go)
+	p.fspace()
 	mut gotoken_idx := p.cur_tok_index()
 	// TODO copypasta of name_expr() ?
 	if p.peek() == .dot {
@@ -2823,9 +2797,8 @@ fn (p mut Parser) js_decode() string {
 		p.check(.lpar)
 		typ := p.get_type()
 		p.check(.comma)
-		p.cgen.start_tmp()
-		p.check_types(p.bool_expression(), 'string')
-		expr := p.cgen.end_tmp()
+		styp, expr := p.tmp_expr()
+		p.check_types(styp, 'string')
 		p.check(.rpar)
 		tmp := p.get_tmp()
 		cjson_tmp := p.get_tmp()
@@ -2835,7 +2808,7 @@ fn (p mut Parser) js_decode() string {
 		for field in T.fields {
 			def_val := type_default(field.typ)
 			if def_val != '' {
-				decl += '$tmp . $field.name = OPTION_CAST($field.typ) $def_val;\n'
+				decl += '${tmp}.$field.name = OPTION_CAST($field.typ) $def_val;\n'
 			}
 		}
 		p.gen_json_for_type(T)
@@ -2850,11 +2823,9 @@ fn (p mut Parser) js_decode() string {
 	}
 	else if op == 'encode' {
 		p.check(.lpar)
-		p.cgen.start_tmp()
-		typ := p.bool_expression()
+		typ, expr := p.tmp_expr()
 		T := p.table.find_type(typ)
 		p.gen_json_for_type(T)
-		expr := p.cgen.end_tmp()
 		p.check(.rpar)
 		p.gen('json__json_print(json__jsencode_$typ($expr))')
 		return 'string'
@@ -2880,7 +2851,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
-	p.fgenln2('')
+	p.fgenln('')
 	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''

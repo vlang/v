@@ -657,12 +657,10 @@ fn (p mut Parser) factor() string {
 	.key_false {
 		typ = 'bool'
 		p.gen('0')
-		p.fgen('false')
 	}
 	.key_true {
 		typ = 'bool'
 		p.gen('1')
-		p.fgen('true')
 	}
 	.lsbr {
 		// `[1,2,3]` or `[]` or `[20]byte`

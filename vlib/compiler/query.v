@@ -90,21 +90,18 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	// `where` statement
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
-		p.cgen.start_tmp()
+		_, expr := p.tmp_expr()
 		p.is_sql = true
-		p.bool_expression()
 		p.is_sql = false
-		q += ' where ' + p.cgen.end_tmp()
+		q += ' where ' + expr
 	}
 	// limit?
 	mut query_one := false
 	if p.tok == .name && p.lit == 'limit' {
 		p.next()
-		p.cgen.start_tmp()
+		_, limit := p.tmp_expr()
 		p.is_sql = true
-		p.bool_expression()
 		p.is_sql = false
-		limit := p.cgen.end_tmp()
 		q += ' limit ' + limit
 		// `limit 1` means we are getting `?User`, not `[]User`
 		if limit.trim_space() == '1' {

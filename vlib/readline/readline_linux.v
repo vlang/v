@@ -93,6 +93,7 @@ pub fn (r mut Readline) read_line_utf8(prompt string) ?ustring {
   r.cursor = 0
   r.prompt = prompt
   r.search_index = 0
+  r.prompt_offset = get_prompt_offset(prompt)
   if r.previous_lines.len <= 1 {
     r.previous_lines << ''.ustring()
     r.previous_lines << ''.ustring()
@@ -148,6 +149,19 @@ pub fn read_line(prompt string) ?string {
     return error(err)
   }
   return s
+}
+
+fn get_prompt_offset(prompt string) int {
+  mut len := 0
+
+  for i := 0; i < prompt.len; i++ {
+    if prompt[i] == `\e` {
+      for ;i < prompt.len && prompt[i] != `m`; i++ {}
+    } else {
+      len = len + 1
+    }
+  }
+  return prompt.len - len
 }
 
 fn (r Readline) analyse(c int) Action {
@@ -291,7 +305,7 @@ fn (r mut Readline) refresh_line() {
   if end_of_input[0] == 0 && end_of_input[1] > 0 {
     print('\n')
   }
-  shift_cursor(cursor_pos[0], - (end_of_input[1] - cursor_pos[1]))
+  shift_cursor(cursor_pos[0] - r.prompt_offset, - (end_of_input[1] - cursor_pos[1]))
   r.cursor_row_offset = cursor_pos[1]
 }
 

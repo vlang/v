@@ -21,6 +21,8 @@ multi line comment (3)
 	multi line comment (2)
 */
 
+import time
+
 type myfn fn (int) string
 
 type myfn2 fn (a int, b int) int
@@ -118,4 +120,35 @@ fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
 fn test_fns() {
 	// no asserts for now, just test function declarations above
 }
+
+struct Foo {
+}
+
+
+fn process_foo(foo &Foo) {
+}
+
+fn get_foo() Foo {
+        return Foo{}
+}
+
+
+// This used to be broken.
+fn test_ref_fn_arg() {
+	// TODO tcc bug
+	/*
+	$if !tinyc {
+		process_foo(get_foo())
+		println(3434)
+		assert true
+	}
+	*/
+	
+	/*
+	res := (time.random().calc_unix())
+	println(res)
+	assert true
+	*/
+	
+}	
 
