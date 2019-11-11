@@ -45,21 +45,20 @@ pub fn (r mut Reader) read() ?[]string {
 	return l
 }
 
-// Once we have multi dimensional array
-// pub fn (r mut Reader) read_all() ?[][]string {
-// 	mut records := []string
-// 	for {
-// 		record := r.read_record() or {
-// 			if error(err).error == err_eof.error {
-// 				return records
-// 			} else {
-// 				return error(err)
-// 			}
-// 		}
-// 		records << record
-// 	}
-// 	return records
-// }
+ pub fn (r mut Reader) read_all() ?[][]string {
+	mut records := []string
+	for {
+ 		record := r.read_record() or {
+ 			if err == 'encoding.csv: end of file' {
+ 				return records
+ 			} else {
+ 				return error(err)
+ 			}
+ 		}
+ 		records << record
+ 	}
+ 	return records
+}
 
 fn (r mut Reader) read_line() ?string {
 	// last record
