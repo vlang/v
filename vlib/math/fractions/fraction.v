@@ -79,7 +79,10 @@ pub fn (f1 Fraction) divide(f2 Fraction) Fraction {
 
 // Fraction reciprocal method
 pub fn (f1 Fraction) reciprocal() Fraction {
-	return Fraction{f1.d, f1.n}
+	if f1.n != 0 {
+		return Fraction{f1.d, f1.n}
+	}
+	panic('Denominator cannot be zero')
 }
 
 // Fraction method which gives greatest common divisor of numerator and denominator
