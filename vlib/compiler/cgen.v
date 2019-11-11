@@ -106,7 +106,7 @@ fn (g mut CGen) save() {
 }
 
 
-// returns expression's type, and entire expression's string representation)
+// returns expression's type, and entire expression's string representation
 fn (p mut Parser) tmp_expr() (string, string) {
 	// former start_tmp()
 	if p.cgen.is_tmp {
@@ -117,7 +117,7 @@ fn (p mut Parser) tmp_expr() (string, string) {
 	p.cgen.is_tmp = true
 	//
 	typ := p.bool_expression()
-	
+	// former end_tmp()
 	res := p.cgen.tmp_line
 	if p.cgen.prev_tmps.len > 0 {
 		p.cgen.tmp_line = p.cgen.prev_tmps.last()

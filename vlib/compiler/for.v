@@ -184,7 +184,7 @@ fn (p mut Parser) for_st() {
 	}
 	p.fspace()
 	p.check(.lcbr)
-	p.genln('')
+	//p.genln('')
 	p.statements()
 	p.close_scope()
 	p.for_expr_cnt--
