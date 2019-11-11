@@ -2153,10 +2153,8 @@ fn (p mut Parser) string_expr() {
 			complex_inter = true
 		}
 		// Get bool expr inside a temp var
-		p.cgen.start_tmp()
-		typ := p.bool_expression()
-		mut val := p.cgen.end_tmp()
-		val = val.trim_space()
+		typ, val_ := p.tmp_expr()
+		val := val_.trim_space()
 		args += ', $val'
 		if typ == 'string' {
 			// args += '.str'
@@ -2264,8 +2262,7 @@ fn (p mut Parser) map_init() string {
 			keys_gen += 'tos3("$key"), '
 			p.check(.str)
 			p.check(.colon)
-			p.cgen.start_tmp()
-			t := p.bool_expression()
+			t, val_expr := p.tmp_expr()
 			if i == 0 {
 				val_type = t
 			}
@@ -2275,7 +2272,6 @@ fn (p mut Parser) map_init() string {
 					p.error('bad map element type `$val_type` instead of `$t`')
 				}
 			}
-			val_expr := p.cgen.end_tmp()
 			vals_gen += '$val_expr, '
 			if p.tok == .rcbr {
 				p.check(.rcbr)
