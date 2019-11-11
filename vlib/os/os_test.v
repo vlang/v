@@ -193,5 +193,7 @@ fn cleanup_leftovers(){
 	os.rm('ex/ex1.txt')
 	os.rm('ex')  
 	os.rm('ex2/ex2.txt')
-	os.rm('ex2')  
+	os.rm('ex2')
+	os.rm('ex1.txt')
+	os.rm('ex2.txt')
 }
