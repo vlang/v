@@ -1831,7 +1831,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	if is_indexer {
 		is_fixed_arr := typ[0] == `[`
 		if !is_str && !is_arr && !is_map && !is_ptr && !is_fixed_arr && !is_variadic_arg {
-			p.error('Cant [] non-array/string/map. Got type "$typ"')
+			p.error('invalid operation: type `$typ` does not support indexing')
 		}
 		p.check(.lsbr)
 		// Get element type (set `typ` to it)
@@ -1844,7 +1844,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			}
 			else {
 				// Bounds check everywhere else
-				p.gen(',')
+				p.gen(', ')
 			}
 		}
 		if is_variadic_arg { typ = typ[5..] }
@@ -1864,8 +1864,8 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			// typ = 'byte'
 			typ = typ.replace('*', '')
 			// modify(mut []string) fix
-			if !is_arr {
-				p.gen('[/*ptr*/')
+			if !is_arr && !is_map {
+				p.gen('[/*ptr!*/')
 				close_bracket = true
 			}
 		}

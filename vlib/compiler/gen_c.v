@@ -400,7 +400,11 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_po
 	mut cao_tmp := p.cgen.cur_line
 	mut func := ''
 	if is_map {
-		func = 'map_set(&'
+		if is_ptr {
+			func = 'map_set('
+		} else {
+			func = 'map_set(&'
+		}
 		// CAO on map is a bit more complicated as it loads
 		// the value inside a pointer instead of returning it.
 	}
