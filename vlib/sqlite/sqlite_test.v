@@ -1,9 +1,7 @@
-import os
 import sqlite
 
 fn test_sqlite() {
-	db_file := 'users.db'
-	db := sqlite.connect(db_file)
+	db := sqlite.connect(':memory:')
 	db.exec("drop table if exists users")
 	db.exec("create table users (id integer primary key, name text default '');")
 	
@@ -22,5 +20,4 @@ fn test_sqlite() {
 	for row in users {
 		println(row.vals)
 	}	
-	os.rm(db_file)
 }	
