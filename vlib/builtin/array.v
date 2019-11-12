@@ -155,7 +155,7 @@ fn (a array) get(i int) voidptr {
 	return a.data + i * a.element_size
 }
 
-// array.first gives the first element of the array
+// array.first returns the first element of the array
 pub fn (a array) first() voidptr {
 	if a.len == 0 {
 		panic('array.first: array is empty')
@@ -163,7 +163,7 @@ pub fn (a array) first() voidptr {
 	return a.data + 0
 }
 
-// array.last gives the last element of the array
+// array.last returns the last element of the array
 pub fn (a array) last() voidptr {
 	if a.len == 0 {
 		panic('array.last: array is empty')
