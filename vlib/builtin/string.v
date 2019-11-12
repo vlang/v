@@ -123,6 +123,13 @@ pub fn (s string) cstr() byteptr {
 	return clone.str
 }
 */
+pub fn (s string) replace_once(rep, with string) string {
+    index := s.index(rep)
+    if index != -1 {
+        return s.substr(0,index) + with + s.substr(index + rep.len, s.len)
+    }
+    return s
+}
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
@@ -310,8 +317,14 @@ fn (s string) add(a string) string {
 pub fn (s string) split(delim string) []string {
 	// println('string split delim="$delim" s="$s"')
 	mut res := []string
+	// if delim.len == 0 {
+	// 	res << s
+	// 	return res
+	// }
 	if delim.len == 0 {
-		res << s
+		for ch in s {
+			res << ch.str()
+		}
 		return res
 	}
 	if delim.len == 1 {

@@ -58,10 +58,11 @@ fn (p mut Parser) bterm() string {
 	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
 		//TODO: remove when array comparing is supported
 		if is_array {
-			p.error('Array comparing is not supported yet')
+			p.error('array comparing is not supported yet')
 		}
 
-		p.fgen(' ${p.tok.str()} ')
+		p.fspace()
+		//p.fgen(' ${p.tok.str()} ')
 		if (is_float || is_str || is_ustr) && !p.is_js {
 			p.gen(',')
 		}
@@ -72,6 +73,7 @@ fn (p mut Parser) bterm() string {
 			p.gen(tok.str())
 		}
 		p.next()
+		p.fspace()
 		// `id == user.id` => `id == $1`, `user.id`
 		if p.is_sql {
 			p.sql_i++
@@ -131,16 +133,38 @@ fn (p mut Parser) name_expr() string {
 	// amp
 	ptr := p.tok == .amp
 	deref := p.tok == .mul
-	if ptr || deref {
-		p.next()
+    mut mul_nr := 0
+    mut deref_nr := 0
+    for {
+        if p.tok == .amp {
+            mul_nr++
+        }else if p.tok == .mul {
+            deref_nr++
+        }else {
+            break
+        }
+        p.next()
+    }
+
+	if p.tok == .lpar {
+		p.gen('*'.repeat(deref_nr))
+		p.gen('(')
+		p.check(.lpar)
+		mut temp_type := p.bool_expression()
+		p.gen(')')
+		p.check(.rpar)
+		for _ in 0..deref_nr {
+			temp_type = temp_type.replace_once('*', '')
+		}
+		return temp_type
 	}
+
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
 	if name == 'r' && p.peek() == .str {
 		p.string_expr()
 		return 'string'
 	}
-	p.fgen(name)
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
@@ -175,7 +199,7 @@ fn (p mut Parser) name_expr() string {
 	// Variable, checked before modules, so that module shadowing is allowed:
 	// `gg = gg.newcontext(); gg.draw_rect(...)`
 	if p.known_var_check_new_var(name) {
-		return p.get_var_type(name, ptr, deref)
+		return p.get_var_type(name, ptr, deref_nr)
 	}
 	// Module?
 	if p.peek() == .dot && (name == p.mod ||
@@ -190,7 +214,6 @@ fn (p mut Parser) name_expr() string {
 		p.next()
 		p.check(.dot)
 		name = p.lit
-		p.fgen(name)
 		name = prepend_mod(mod_gen_name(mod), name)
 	}
 	// Unknown name, try prepending the module name to it
@@ -204,7 +227,7 @@ fn (p mut Parser) name_expr() string {
 	}	
 	// re-check
 	if p.known_var_check_new_var(name) {
-		return p.get_var_type(name, ptr, deref)
+		return p.get_var_type(name, ptr, deref_nr)
 	}
 
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
@@ -213,10 +236,10 @@ fn (p mut Parser) name_expr() string {
 		// cast expression: float(5), byte(0), (*int)(ptr) etc
 		if !is_c && ( p.peek() == .lpar || (deref && p.peek() == .rpar) ) {
 			if deref {
-				name += '*'
+				name += '*'.repeat(deref_nr )
 			}
 			else if ptr {
-				name += '*'
+				name += '*'.repeat(mul_nr)
 			}
 			p.gen('(')
 			mut typ := name
@@ -405,7 +428,7 @@ fn (p mut Parser) expression() string {
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
 		}
-		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
+		is_num := typ.contains('*') || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
 			p.cgen.set_placeholder(ph, 'string_add(')
@@ -421,7 +444,9 @@ fn (p mut Parser) expression() string {
 				// Msvc errors on void* pointer arithmatic
 				// ... So cast to byte* and then do the add
 				p.cgen.set_placeholder(ph, '(byte*)')
-			}
+			}else if typ.contains('*') {
+                p.cgen.set_placeholder(ph, '($typ)')
+            }
 			p.gen(tok_op.str())
 		}
 		// Vec + Vec
@@ -437,9 +462,9 @@ fn (p mut Parser) expression() string {
 			p.error('strings only support `+` operator')
 		}	
 		expr_type := p.term()
-		if (tok_op in [.pipe, .amp]) && !(is_integer_type(expr_type) &&
+		if (tok_op in [.pipe, .amp, .xor]) && !(is_integer_type(expr_type) &&
 			is_integer_type(typ)) {
-			p.error('operators `&` and `|` are defined only on integer types')
+			p.error('operator ${tok_op.str()} is defined only on integer types')
 		}	
 		p.check_types(expr_type, typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
@@ -463,7 +488,7 @@ fn (p mut Parser) handle_operator(op string, typ string, cpostfix string, ph int
 	else {
 		p.error('operator $op not defined on `$typ`')
 	}
-}  
+}
 
 fn (p mut Parser) term() string {
 	line_nr := p.scanner.line_nr
@@ -484,10 +509,11 @@ fn (p mut Parser) term() string {
 		is_mul := tok == .mul
 		is_div := tok == .div
 		is_mod := tok == .mod
+		p.fspace()
 		p.next()
 		p.gen(tok.str())// + ' /*op2*/ ')
 		oph := p.cgen.add_placeholder()
-		p.fgen(' ' + tok.str() + ' ')
+		p.fspace()
 		if (is_div || is_mod) && p.tok == .number && p.lit == '0' {
 			p.error('division or modulo by zero')
 		}
@@ -575,11 +601,9 @@ fn (p mut Parser) factor() string {
 			p.error('constant `$p.lit` overflows `$p.expected_type`')
 		}
 		p.gen(p.lit)
-		p.fgen(p.lit)
 	}
 	.minus {
 		p.gen('-')
-		p.fgen('-')
 		p.next()
 		return p.factor()
 		// Variable
@@ -658,12 +682,10 @@ fn (p mut Parser) factor() string {
 	.key_false {
 		typ = 'bool'
 		p.gen('0')
-		p.fgen('false')
 	}
 	.key_true {
 		typ = 'bool'
 		p.gen('1')
-		p.fgen('true')
 	}
 	.lsbr {
 		// `[1,2,3]` or `[]` or `[20]byte`

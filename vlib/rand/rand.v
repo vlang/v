@@ -22,8 +22,10 @@ fn C.rand() int
  * @return a value between 0 and C.RAND_MAX (inclusive)
  */
 pub fn rand_r(seed &int) int {
+	unsafe {
 	mut rs := seed
 	ns := ( *rs * 1103515245 + 12345 )
 	*rs = ns
 	return ns & 0x7fffffff
+	}
 }

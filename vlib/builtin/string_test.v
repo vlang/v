@@ -113,6 +113,17 @@ fn test_split() {
 	assert vals[0] == 'l'
 	assert vals[1] == 'l'
 	assert vals[2] == 'l'
+	// /////////
+	s = 'awesome'
+	a := s.split('')
+	assert a.len == 7
+	assert a[0] == 'a'
+	assert a[1] == 'w'
+	assert a[2] == 'e'
+	assert a[3] == 's'
+	assert a[4] == 'o'
+	assert a[5] == 'm'
+	assert a[6] == 'e'
 }
 
 fn test_trim_space() {

@@ -99,6 +99,9 @@ pub fn exp(a f64) f64 {
 
 // digits returns an array of the digits of n in the given base.
 pub fn digits(_n, base int) []int {
+	if base < 2 {
+		panic('digits: Cannot find digits of n with base $base')
+	}
 	mut n := _n
 	mut sign := 1
 	if n < 0 {

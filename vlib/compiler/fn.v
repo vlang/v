@@ -179,9 +179,7 @@ fn (p mut Parser) clear_vars() {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
-	p.fgen('fn ')
-
-	//defer { p.fgenln('\n') }
+	defer { p.fgenln('\n') }
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
 	/*
@@ -207,10 +205,12 @@ fn (p mut Parser) fn_decl() {
 	}
 	if is_pub {
 		p.next()
+		p.fspace()
 	}
 	p.returns = false
 	//p.gen('/* returns $p.returns */')
 	p.next()
+	p.fspace()
 	
 	// Method receiver
 	mut receiver_typ := ''
@@ -218,10 +218,12 @@ fn (p mut Parser) fn_decl() {
 		f.is_method = true
 		p.check(.lpar)
 		receiver_name := p.check_name()
+		p.fspace()
 		is_mut := p.tok == .key_mut
 		is_amp := p.tok == .amp
 		if is_mut || is_amp {
-			p.check_space(p.tok)
+			p.check(p.tok)
+			p.fspace()
 		}
 		receiver_typ = p.get_type()
 		t := p.table.find_type(receiver_typ)
@@ -350,7 +352,7 @@ fn (p mut Parser) fn_decl() {
 	// Returns a type?
 	mut typ := 'void'
 	if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
-		p.fgen(' ')
+		p.fspace()
 		typ = p.get_type()
 	}
 	// V allows empty functions (just definitions)
@@ -360,8 +362,9 @@ fn (p mut Parser) fn_decl() {
 	}
 	// `{` required only in normal function declarations
 	if !is_c && !p.is_vh && !is_fn_header {
-		p.fgen(' ')
+		p.fspace()
 		p.check(.lcbr)
+		//p.fgenln('')
 	}
 	// Register ?option type
 	if typ.starts_with('Option_') {
@@ -906,6 +909,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			if p.tok == .comma {
 				p.gen(', ')
 				p.check(.comma)
+				p.fspace()
 			}
 		}
 		p.check(.rpar)
@@ -927,8 +931,23 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// Skip the receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
 			if f.args.len > 1 { // && !p.is_js {
-				p.gen(',')
+				p.gen(', ')
 			}
+			//if f.args[0].typ.ends_with('*') {
+			//p.gen('&/*119*/')
+			//}
+			/*
+			pos := p.cgen.cur_line.index('/* ? */')
+			if pos > -1 {
+				expr := p.cgen.cur_line[pos..]
+				// TODO hack
+				// If current expression is a func call, generate the array hack
+				if expr.contains('(') {
+					p.cgen.set_placeholder(pos, '(${arg.typ[..arg.typ.len-1]}[]){')
+					p.gen('}[0] ')
+				}
+			}
+			*/
 			continue
 		}
 		// Reached the final vararg? Quit
@@ -944,19 +963,13 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		// `mut numbers := [1,2,3]; reverse(mut numbers);`
 		if arg.is_mut {
 			if p.tok != .key_mut && p.tok == .name {
-				mut dots_example :=  'mut $p.lit'
-				if i > 0 {
-					dots_example = '.., ' + dots_example
-				}
-				if i < f.args.len - 1 {
-					dots_example = dots_example + ',..'
-				}
-				p.error('`$arg.name` is a mutable argument, you need to provide `mut`: `$f.name($dots_example)`')
+				p.mutable_arg_error(i, arg, f)
 			}
 			if p.peek() != .name {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
+			p.fspace()
 			var_name := p.lit
 			v := p.find_var(var_name) or {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
@@ -1101,13 +1114,30 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 					p.cgen.set_placeholder(ph, '& /*111*/ (array[]){')
 					p.gen('}[0] ')
 				}
+				else if exp_ptr && expected == got + '*' {
+					$if !tinyc {
+					expr := p.cgen.cur_line[ph..]
+					// TODO hack
+					// If current expression is a func call, generate the array hack
+					if expr.contains('(') {
+						//println('fn hack expr=$expr')
+						p.cgen.set_placeholder(ph, '& /*113 e="$expected" g="$got"*/ ($got[]){')
+						p.gen('}[0] ')
+					} else {
+						p.cgen.set_placeholder(ph, '& /*114*/')
+					}
+					} $else {
+						p.cgen.set_placeholder(ph, '& /*114*/')
+					}	
+					
+				}	
 				// println('\ne:"$expected" got:"$got"')
 				else if ! (expected == 'void*' && got == 'int') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') &&
 				//! (expected == 'void*' && got == 'array_int') {
 				! (expected == 'byte*' && got == 'byteptr') {
-					p.cgen.set_placeholder(ph, '& /*112 EXP:"$expected" GOT:"$got" */')
+					p.cgen.set_placeholder(ph, '& /*112 e="$expected" g="$got" */')
 				}
 			}
 		}
@@ -1129,6 +1159,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 			if p.tok == .comma && (!f.is_variadic || (f.is_variadic && i < f.args.len-2 )) {
 				p.check(.comma)
+				p.fspace()
 				p.gen(',')
 			}
 		}
@@ -1291,13 +1322,12 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		if p.tok == .comma {
 			p.check(.comma)
 		}
-		p.cgen.start_tmp()
-		mut varg_type := p.bool_expression()
-		varg_value := p.cgen.end_tmp()
+		varg_type, varg_value := p.tmp_expr()
 		if varg_type.starts_with('varg_') &&
-			(values.len > 0 || p.tok == .comma) {
+			(values.len > 0 || p.tok == .comma)
+		{
 				p.error('You cannot pass additional vargs when forwarding vargs to another function/method')
-			}
+		}
 		if !f.is_generic {
 			p.check_types(last_arg.typ, varg_type)
 		} else {
@@ -1436,7 +1466,9 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.cgen.tmp_line = ''
 	p.cgen.cur_line = ''
 	p.cgen.lines = []string
-	p.cur_fn = *f
+	unsafe { // TODO
+		p.cur_fn = *f
+	}
 	for arg in f.args {
 		p.register_var(arg)
 	}
@@ -1567,9 +1599,9 @@ pub fn (f &Fn) v_fn_name() string {
 
 pub fn (f &Fn) str_for_error() string {
 	// Build the args for the error
-                       mut s := ''
-                       for i, a in f.args {
-                               if i == 0 {
+     mut s := ''
+     for i, a in f.args {
+	     if i == 0 {
                                        if f.is_method {
                                                s += a.typ + '.' + f.name + '('
                                                continue
@@ -1580,7 +1612,7 @@ pub fn (f &Fn) str_for_error() string {
                                if i < f.args.len - 1 {
                                        s += ', '
                                }
-                       }
+       }
        return s + ')'
 }
 

@@ -10,6 +10,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		p.next()
 	}	
 	p.check(.key_enum)
+	p.fspace()
 	mut enum_name	:= p.check_name()
 	is_c := enum_name == 'C' && p.tok == .dot
 	if is_c {
@@ -24,6 +25,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	if !no_name && !p.first_pass() {
 		p.cgen.typedefs << 'typedef int $enum_name;'
 	}
+	p.fspace()
 	p.check(.lcbr)
 	mut val := 0
 	mut fields := []string

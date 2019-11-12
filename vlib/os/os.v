@@ -157,7 +157,7 @@ pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 	}
 	//single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { 
+		adjasted_path := if os.is_dir(dest_path) {
 			filepath.join(dest_path, os.basedir(source_path)) } else { dest_path }
 		if os.file_exists(adjasted_path) {
 			if overwrite { os.rm(adjasted_path) }
@@ -178,7 +178,7 @@ pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
 		}
 		cp_r(sp, dp, overwrite) or {
 			os.rmdir(dp)
-			panic(err) 
+			panic(err)
 		}
 	}
 	return true
@@ -856,11 +856,12 @@ pub fn walk_ext(path, ext string) []string {
 	}
 	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
+	separator := if path.ends_with(path_separator) { '' } else { path_separator}
 	for i, file in files {
 		if file.starts_with('.') {
 			continue
 		}
-		p := path + path_separator + file
+		p := path + separator + file
 		if os.is_dir(p) {
 			res << walk_ext(p, ext)
 		}

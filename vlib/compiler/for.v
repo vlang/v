@@ -6,7 +6,7 @@ module compiler
 
 fn (p mut Parser) for_st() {
 	p.check(.key_for)
-	p.fgen(' ')
+	p.fspace()
 	p.for_expr_cnt++
 	next_tok := p.peek()
 	//debug := p.scanner.file_path.contains('r_draw')
@@ -32,13 +32,13 @@ fn (p mut Parser) for_st() {
 		}
 		p.check(.semicolon)
 		p.gen(' ; ')
-		p.fgen(' ')
+		p.fspace()
 		if p.tok != .semicolon {
 			p.bool_expression()
 		}
 		p.check(.semicolon)
 		p.gen(' ; ')
-		p.fgen(' ')
+		p.fspace()
 		if p.tok != .lcbr {
 			p.statement(false)
 		}
@@ -61,12 +61,11 @@ fn (p mut Parser) for_st() {
 		if i == '_' && val == '_' {
 			p.error('no new variables on the left side of `in`')
 		}
-		p.fgen(' ')
+		p.fspace()
 		p.check(.key_in)
-		p.fgen(' ')
+		p.fspace()
 		tmp := p.get_tmp()
-		p.cgen.start_tmp()
-		mut typ := p.bool_expression()
+		mut typ, expr := p.tmp_expr()
 		is_arr := typ.starts_with('array_')
 		is_map := typ.starts_with('map_')
 		is_str := typ == 'string'
@@ -74,7 +73,6 @@ fn (p mut Parser) for_st() {
 		if !is_arr && !is_str && !is_map && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
-		expr := p.cgen.end_tmp()
 		if !is_variadic_arg {
 			if p.is_js {
 				p.genln('var $tmp = $expr;')
@@ -121,22 +119,20 @@ fn (p mut Parser) for_st() {
 	// `for val in vals`
 	else if p.peek() == .key_in {
 		val := p.check_name()
-		p.fgen(' ')
+		p.fspace()
 		p.check(.key_in)
 		p.fspace()
 		tmp := p.get_tmp()
-		p.cgen.start_tmp()
-		mut typ := p.bool_expression()
-		expr := p.cgen.end_tmp()
+		mut typ, expr := p.tmp_expr()
 		is_range := p.tok == .dotdot
 		is_variadic_arg :=  typ.starts_with('varg_')
 		mut range_end := ''
 		if is_range {
 			p.check_types(typ, 'int')
 			p.check_space(.dotdot)
-			p.cgen.start_tmp()
-			p.check_types(p.bool_expression(), 'int')
-			range_end = p.cgen.end_tmp()
+			range_typ, range_expr := p.tmp_expr()
+			p.check_types(range_typ, 'int')
+			range_end = range_expr
 		}
 		is_arr := typ.contains('array')
 		is_str := typ == 'string'
@@ -188,7 +184,7 @@ fn (p mut Parser) for_st() {
 	}
 	p.fspace()
 	p.check(.lcbr)
-	p.genln('')
+	p.genln('') // TODO why is this needed?
 	p.statements()
 	p.close_scope()
 	p.for_expr_cnt--

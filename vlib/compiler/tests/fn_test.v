@@ -118,4 +118,3 @@ fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
 fn test_fns() {
 	// no asserts for now, just test function declarations above
 }
-

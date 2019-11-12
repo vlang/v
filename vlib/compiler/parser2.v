@@ -97,11 +97,6 @@ fn (p mut Parser) get_type2() Type {
 		p.check(.amp)
 	}
 	typ += p.lit
-	if !p.is_struct_init {
-		// Otherwise we get `foo := FooFoo{` because `Foo` was already
-		// generated in name_expr()
-		p.fgen(p.lit)
-	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()

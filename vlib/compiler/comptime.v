@@ -89,8 +89,10 @@ fn (p mut Parser) comp_time() {
 		p.returns = false
 		//p.gen('/* returns $p.returns */')
 		if p.tok == .dollar && p.peek() == .key_else {
+			p.fspace()
 			p.next()
 			p.next()
+			p.fspace() // spaces before and after $else
 			p.check(.lcbr)
 			p.genln('#else')
 			p.statements_no_rcbr()
@@ -118,10 +120,9 @@ fn (p mut Parser) comp_time() {
 		p.check(.dollar)
 		p.check(.name)
 		p.check(.assign)
-		p.cgen.start_tmp()
-		p.bool_expression()
-		val := p.cgen.end_tmp()
-		println(val)
+		_, val := p.tmp_expr()
+		//p.bool_expression()
+		//val := p.cgen.end_tmp()
 		p.check(.rcbr)
 		// }
 	}
