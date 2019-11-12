@@ -32,5 +32,4 @@ fn C.realpath(byteptr, byteptr) &char
 // Windows
 fn C._setmode(int, int)
 fn C._fileno(int) int
-
-
+fn C._get_osfhandle(fd int) voidptr
