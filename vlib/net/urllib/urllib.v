@@ -24,12 +24,12 @@ enum EncodingMode {
 }
 
 const (
-	err_msg_escape = 'invalid URL escape'
-	err_msg_parse  = 'error parsing url'
+	err_msg_escape = 'unescape: invalid URL escape'
+	err_msg_parse  = 'parse: failed parsing url'
 )
 
 fn error_msg(message, val string) string {
-	mut msg := 'net.urllib: $message'
+	mut msg := 'net.urllib.$message'
 	if val != '' { msg = '$msg ($val)' }
 	return msg
 }
@@ -196,7 +196,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				i++
 			} else {
 				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
-					error(error_msg('invalid character in host name', s[i..i+1]))
+					error(error_msg('unescape: invalid character in host name', s[i..i+1]))
 				}
 				i++
 			}
@@ -397,7 +397,7 @@ fn split_by_scheme(rawurl string) ?[]string {
 		}
 		else if c == `:` {
 			if i == 0 {
-				return error(error_msg('missing protocol scheme', ''))
+				return error(error_msg('split_by_scheme: missing protocol scheme', ''))
 			}
 			return [rawurl[..i], rawurl[i+1..]]
 		}
@@ -468,11 +468,11 @@ fn parse_request_uri(rawurl string) ?URL {
 // If via_request is false, all forms of relative URLs are allowed.
 fn parse_url(rawurl string, via_request bool) ?URL {
 	if string_contains_ctl_byte(rawurl) {
-		return error(error_msg('invalid control character in URL', rawurl))
+		return error(error_msg('parse_url: invalid control character in URL', rawurl))
 	}
 
 	if rawurl == '' && via_request {
-		return error(error_msg('empty URL', ''))
+		return error(error_msg('parse_url: empty URL', rawurl))
 	}
 	mut url := URL{}
 
@@ -507,7 +507,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 			return url
 		}
 		if via_request {
-			return error(error_msg('invalid URI for request', ''))
+			return error(error_msg('parse_url: invalid URI for request', ''))
 		}
 
 		// Avoid confusion with malformed schemes, like cache_object:foo/bar.
@@ -520,7 +520,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		slash := rest.index('/')
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
-			return error(error_msg('first path segment in URL cannot contain colon', ''))
+			return error(error_msg('parse_url: first path segment in URL cannot contain colon', ''))
 		}
 	}
 
@@ -568,7 +568,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	}
 	mut userinfo := authority[..i]
 	if !valid_userinfo(userinfo) {
-		return error(error_msg('invalid userinfo', ''))
+		return error(error_msg('parse_authority: invalid userinfo', ''))
 	}
 	if !userinfo.contains(':') {
 		u := unescape(userinfo, .encode_user_password) or {
@@ -602,11 +602,11 @@ fn parse_host(host string) ?string {
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
 		mut i := host.last_index(']')
 		if i < 0 {
-			return error(error_msg('missing \']\' in host', ''))
+			return error(error_msg('parse_host: missing \']\' in host', ''))
 		}
 		mut colon_port := host[i+1..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('invalid port $colon_port after host ', ''))
+			return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
 		}
 
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
@@ -632,7 +632,7 @@ fn parse_host(host string) ?string {
 			if i != -1 {
 				colon_port = host[i..]
 				if !valid_optional_port(colon_port) {
-					return error(error_msg('invalid port $colon_port after host ', ''))
+					return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
 				}
 			}
 		}
@@ -872,7 +872,7 @@ fn parse_query_values(m mut Values, query string) ?bool {
 		m.add(key, value)
 	}
 	if had_error {
-		return error(error_msg('error parsing query string', ''))
+		return error(error_msg('parse_query_values: failed parsing query string', ''))
 	}
 	return true
 }
