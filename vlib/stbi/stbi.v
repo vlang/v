@@ -85,14 +85,14 @@ pub fn (img Image) free() {
 	C.stbi_image_free(img.data)
 }
 
-// pub fn (img Image) tex_image_2d() {
-// 	mut rgb_flag := C.GL_RGB
-// 	if img.ext == 'png' {
-// 		rgb_flag = C.GL_RGBA
-// 	}
-// 	C.glTexImage2D(C.GL_TEXTURE_2D, 0, rgb_flag, img.width, img.height, 0,
-// 		rgb_flag, C.GL_UNSIGNED_BYTE,	img.data)
-// }
+pub fn (img Image) tex_image_2d() {
+	mut rgb_flag := C.GL_RGB
+	if img.ext == 'png' {
+		rgb_flag = C.GL_RGBA
+	}
+	C.glTexImage2D(C.GL_TEXTURE_2D, 0, rgb_flag, img.width, img.height, 0,
+		rgb_flag, C.GL_UNSIGNED_BYTE,	img.data)
+}
 
 pub fn set_flip_vertically_on_load(val bool) {
 	C.stbi_set_flip_vertically_on_load(val)
