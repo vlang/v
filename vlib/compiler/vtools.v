@@ -31,11 +31,7 @@ pub fn launch_tool(tname string){
 	}
 	
 	if tool_should_be_recompiled {
-		mut ccompiler := ''
-		if (os.user_os() == 'windows' ) {
-				ccompiler = '-cc msvc'
-		}
-		compilation_command := '$vexe $ccompiler $tool_source'
+		compilation_command := '$vexe $tool_source'
 		//println('Compiling $tname with: "$compilation_command"')
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
