@@ -70,3 +70,11 @@ fn test_opt_default() {
 	}
 	assert a == 'default'
 }
+
+fn foo_ok() ?int {
+	return 777
+}	
+
+fn test_q() {
+	//assert foo_ok()? == true
+}	

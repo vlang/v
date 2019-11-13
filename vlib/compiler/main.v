@@ -892,7 +892,7 @@ pub fn new_v(args[]string) &V {
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
 	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
-		println('vlib not found, downloading it...')
+		//println('vlib not found, downloading it...')
 		/*
 		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
 		if ret != 0 {
