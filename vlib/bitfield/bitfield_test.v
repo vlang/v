@@ -122,6 +122,20 @@ fn test_hamming() {
 	assert count == bitfield.hamming(input1, input2)
 }
 
+fn test_bf_from_bytes() {
+	input := [byte(0xF0), byte(0x0F), byte(0xF0), byte(0xFF)]
+	output := bitfield.from_bytes(input)
+	mut result := 1
+	for i := 0; i < input.len * 8; i++ {
+		expected := input[input.len - 1 - i / 8] >> i % 8 & 1
+		actual := output.getbit(i)
+		if expected != actual {
+			result = 0
+		}
+	}
+	assert result == 1
+}
+
 fn test_bf_str2bf() {
 	rand.seed(time.now().uni)
 	len := 80
