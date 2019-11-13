@@ -118,7 +118,7 @@ pub fn (a string) clone() string {
 }
 
 // Converts a V string to a C string.
-fn (text string)toc() voidptr{
+pub fn (text string)toc() voidptr{
     mut res := malloc(0)
 	 for i := 0; i < text.len; i++ {
 	 	val := text[i]
