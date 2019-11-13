@@ -117,6 +117,16 @@ pub fn (a string) clone() string {
 	return b
 }
 
+// Converts a V string to a C string.
+fn (text string)toc() voidptr{
+    mut res := malloc(0)
+	 for i := 0; i < text.len; i++ {
+	 	val := text[i]
+	 	res[i] = val
+	 }
+     return res
+}
+
 /*
 pub fn (s string) cstr() byteptr {
 	clone := s.clone()
