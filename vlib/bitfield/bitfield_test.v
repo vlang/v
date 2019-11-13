@@ -122,9 +122,9 @@ fn test_hamming() {
 	assert count == bitfield.hamming(input1, input2)
 }
 
-fn test_bf_bytes2bf() {
+fn test_bf_from_bytes() {
 	input := [byte(0xF0), byte(0x0F), byte(0xF0), byte(0xFF)]
-	output := bitfield.bytes2bf(input)
+	output := bitfield.from_bytes(input)
 	mut result := 1
 	for i := 0; i < input.len * 8; i++ {
 		expected := input[input.len - 1 - i / 8] >> i % 8 & 1
