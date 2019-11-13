@@ -227,7 +227,10 @@ fn (p mut Parser) chash() {
 	}
 	else if hash.contains('define') {
 		// Move defines on top
-		p.cgen.includes << '#$hash'
+		if p.first_pass() {
+			p.cgen.includes << '#$hash'
+		}
+		
 	}
 	// Don't parse a non-JS V file (`#-js` flag)
 	else if hash == '-js'  {
