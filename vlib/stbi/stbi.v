@@ -50,7 +50,7 @@ pub fn (img Image) gray() Image {
 		exit(1)
 	}
 	mut p := img.data
-	mut pg := gray_data;
+	mut pg := gray_data
 	for  p != img.data + size {
 		*pg = (*p + *(p + 1) + *(p + 2))/3
 		if img.channels == 4 {
