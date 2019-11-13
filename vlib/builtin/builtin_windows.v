@@ -59,6 +59,8 @@ const (
 )
 
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
+
+$if msvc {
 	mut offset := u64(0)
 	backtraces := [100]voidptr
 	sic := SymbolInfoContainer{}
@@ -115,6 +117,12 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 	}
 	return true
 }
+$else {
+	println('TODO: Not implemented on Windows without msvc.')
+	return false
+}
+}
+
 
 fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	println('TODO: print_backtrace_skipping_top_frames_mingw($skipframes)')
