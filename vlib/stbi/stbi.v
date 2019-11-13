@@ -21,6 +21,7 @@ mut:
 	height      int
 	channels 	int
 	data        byteptr
+	ext 		string
 }
 
 pub fn load(path string) Image {
@@ -28,6 +29,7 @@ pub fn load(path string) Image {
 	mut res := Image{}
 	flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
 	res.data = C.stbi_load(path.str, &res.width, &res.height,	&res.channels, flag)
+	ret.ext = ext
 	if isnil(res.data) {
 		println('stbi image failed to load')
 		exit(1)
