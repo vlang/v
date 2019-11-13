@@ -77,6 +77,29 @@ fn cleartail(instance mut BitField) {
 
 // public functions
 
+pub fn bytes2bf(input []byte) BitField {
+	mut output := new(input.len * 8)
+	for i, b in input {
+		pos := i / 4
+		match i % 4 {
+			0 {
+				output.field[pos] = output.field[pos] | (u32(b) << 24)
+			}
+			1 {
+				output.field[pos] = output.field[pos] | (u32(b) << 16)
+			}
+			2 {
+				output.field[pos] = output.field[pos] | (u32(b) << 8)
+			}
+			3 {
+				output.field[pos] = output.field[pos] | u32(b)
+			}
+		}
+	}
+
+	return output
+}
+
 // str2bf() converts a string of characters ('0' and '1') to a bit
 // array. Any character different from '0' is treated as '1'.
 
