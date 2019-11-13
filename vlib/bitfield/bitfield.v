@@ -77,6 +77,9 @@ fn cleartail(instance mut BitField) {
 
 // public functions
 
+// bytes2bf() converts a byte arry into a bitfield.
+// Be aware of possible trailing zeroes being added
+// due to the underlying 32bit int containers.
 pub fn bytes2bf(input []byte) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
