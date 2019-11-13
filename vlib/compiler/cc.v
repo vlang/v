@@ -103,7 +103,20 @@ fn (v mut V) cc() {
 	}
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
-	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
+	// arguments for the C compiler
+	mut a := [v.pref.cflags, '-std=gnu11',
+		'-Wall',
+		'-Wextra',
+		// TODO : activate -Werror once no warnings remain
+//		'-Werror',
+		// TODO : try and remove the below workaround options when the corresponding
+		// warnings are totally fixed/removed
+		'-Wno-unused-variable',
+		'-Wno-unused-but-set-variable',
+		'-Wno-unused-parameter',
+		'-Wno-unused-result',
+		'-Wno-missing-braces',
+		'-Wno-unused-label']
 
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
