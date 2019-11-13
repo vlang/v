@@ -42,6 +42,8 @@ mut:
 	line_ends   []int // the positions of source lines ends   (i.e. \n signs)
 	nlines int  // total number of lines in the source file that were scanned
 	is_vh bool // Keep newlines
+	is_fmt bool // Used only for skipping ${} in strings, since we need literal
+	            // string values when generating formatted code.
 }
 
 // new scanner from file.
@@ -67,6 +69,7 @@ fn new_scanner_file(file_path string) &Scanner {
 	}
 
 	mut s := new_scanner(raw_text)
+	s.init_fmt()
 	s.file_path = file_path
 
 	return s
@@ -481,7 +484,7 @@ fn (s mut Scanner) scan() ScanRes {
 		if nextc == `!` {
 			// treat shebang line (#!) as a comment
 			s.line_comment = s.text[start + 1..s.pos].trim_space()
-			s.fgenln('// shebang line "$s.line_comment"')
+			//s.fgenln('// shebang line "$s.line_comment"')
 			return s.scan()
 		}
 		hash := s.text[start..s.pos]
@@ -585,7 +588,7 @@ fn (s mut Scanner) scan() ScanRes {
 			s.ignore_line()
 			s.line_comment = s.text[start + 1..s.pos]
 			s.line_comment = s.line_comment.trim_space()
-			s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
+			//s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 			// Skip the comment (return the next token)
 			return s.scan()
 		}
@@ -688,14 +691,14 @@ fn (s mut Scanner) ident_string() string {
 			s.error('0 character in a string literal')
 		}
 		// ${var}
-		if c == `{` && prevc == `$` && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
@@ -810,7 +813,7 @@ fn (s mut Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends   << s.pos
-	if s.line_nr > s.nlines { 
+	if s.line_nr > s.nlines {
 		s.nlines = s.line_nr
 	}
 }

@@ -113,6 +113,17 @@ fn test_split() {
 	assert vals[0] == 'l'
 	assert vals[1] == 'l'
 	assert vals[2] == 'l'
+	// /////////
+	s = 'awesome'
+	a := s.split('')
+	assert a.len == 7
+	assert a[0] == 'a'
+	assert a[1] == 'w'
+	assert a[2] == 'e'
+	assert a[3] == 's'
+	assert a[4] == 'o'
+	assert a[5] == 'm'
+	assert a[6] == 'e'
 }
 
 fn test_trim_space() {
@@ -172,7 +183,7 @@ fn test_replace() {
 	assert b.replace('B', '') == 'onetwothree'
 	b = '**char'
 	assert b.replace('*char', 'byteptr') == '*byteptr'
-	mut c :='abc'
+	c :='abc'
 	assert c.replace('','-') == c
 }
 
@@ -403,7 +414,7 @@ fn test_capitalize() {
 }
 
 fn test_title() {
-	mut s := 'hello world'
+	s := 'hello world'
 	assert s.title() == 'Hello World'
 	s.to_upper()
 	assert s.title() == 'Hello World'
@@ -500,6 +511,7 @@ fn test_atoi() {
 
 fn test_raw_inter() {
 	world := 'world'
+	println(world)
 	s := r'hello\n$world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')

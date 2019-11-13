@@ -118,13 +118,11 @@ pub fn mode(arr []f64) f64 {
 	for v in arr {
 		freqs<<freq(arr,v)
 	}
-	mut i := 0
 	mut max := 0
-	for i < freqs.len {
+	for i := 0; i < freqs.len; i++ {
 		if freqs[i] > freqs[max] {
 			max = i
 		}
-		i++
 	}
 	return arr[max]
 }

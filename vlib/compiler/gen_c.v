@@ -126,9 +126,9 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	last_ph := p.cgen.add_placeholder()
 	last_typ := p.statements()
 	if is_assign && last_typ == typ {
-		expr_line := p.cgen.lines[p.cgen.lines.len-3]
+		expr_line := p.cgen.lines[p.cgen.lines.len-2]
 		last_expr := expr_line[last_ph..]
-		p.cgen.lines[p.cgen.lines.len-3]  = ''
+		p.cgen.lines[p.cgen.lines.len-2]  = ''
 		p.genln('if (!$tmp .ok) {')
 		p.genln('$name = $last_expr;')
 		p.genln('}')
@@ -145,18 +145,23 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
-		if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
+		//if t.cat != .union_ && t.cat != .struct_ && t.cat != .objc_interface {
+		if !(t.cat in [.union_, .struct_, .objc_interface, .interface_]) {
 			continue
 		}
 		//if is_atomic {
 			//sb.write('_Atomic ')
 		//}
-		if t.cat ==  .objc_interface {
+		if t.cat == .objc_interface {
 			sb.writeln('@interface $t.name : $t.parent { @public')
 		}
 		else {
 			kind := if t.cat == .union_ {'union'} else {'struct'}
 			sb.writeln('$kind $t.name {')
+			if t.cat == .interface_ {
+				sb.writeln('\tvoid* _object;')
+				sb.writeln('\tint _interface_idx; // int t')
+			}
 		}
 		for field in t.fields {
 			sb.write('\t')
@@ -228,9 +233,20 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	if f.is_method {
 		name = '${f.receiver_typ}_$f.name'
 		name = name.replace(' ', '')
-		name = name.replace('*', '')
-		name = name.replace('+', 'plus')
-		name = name.replace('-', 'minus')
+		if f.name.len == 1 {
+			match f.name[0] {
+				`+` { name = name.replace('+', 'op_plus') }
+				`-` { name = name.replace('-', 'op_minus') }
+				`*` { name = name.replace('*', 'op_mul') }
+				`/` { name = name.replace('/', 'op_div') }
+				`%` { name = name.replace('%', 'op_mod') }
+			}
+		}
+	}
+	if f.is_interface {
+	//       iname := f.args[0].typ // Speaker
+		//         	var := p.expr_var.name
+		return ''
 	}
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate v_abs(), v_print()
@@ -384,7 +400,11 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_po
 	mut cao_tmp := p.cgen.cur_line
 	mut func := ''
 	if is_map {
-		func = 'map_set(&'
+		if is_ptr {
+			func = 'map_set('
+		} else {
+			func = 'map_set(&'
+		}
 		// CAO on map is a bit more complicated as it loads
 		// the value inside a pointer instead of returning it.
 	}
@@ -516,6 +536,17 @@ fn (p mut Parser) cast(typ string) {
 		p.cgen.set_placeholder(pos, '*($typ*)(')
 	}
 	else {
+		// Nothing can be cast to bool
+		if typ == 'bool' {
+			if is_number_type(expr_typ) || is_float_type(expr_typ) {
+				p.error('cannot cast a number to `bool`')
+			}	
+			p.error('cannot cast `$expr_typ` to `bool`')
+		}
+		// Strings can't be cast
+		if expr_typ == 'string' {
+			p.error('cannot cast `$expr_typ` to `$typ`')
+		}	
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	p.check(.rpar)

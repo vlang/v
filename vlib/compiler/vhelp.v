@@ -71,6 +71,7 @@ Commands:
   fmt               Run vfmt to format the source code. [wip]
   doc               Run vdoc over the source code and produce documentation.
   translate         Translates C to V. [wip, will be available in V 0.3]
+  create            Create a new v project interactively. Answer the questions, and run it with `v run projectname`
 
 V package management commands:
   search  keywords  Search the https://vpm.vlang.io/ module repository for matching modules and shows their details.

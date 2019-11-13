@@ -36,6 +36,7 @@ mut:
   overwrite bool
   cursor_row_offset int
   prompt string
+  prompt_offset int
   previous_lines []ustring
   search_index int
   is_tty bool

@@ -75,7 +75,7 @@ fn (p mut Parser) comp_time() {
 			p.comptime_if_block('__MINGW32__')
 		}
 		else if name == 'msvc' {
-			p.comptime_if_block('__MSC_VER__')
+			p.comptime_if_block('_MSC_VER')
 		}
 		else if name == 'clang' {
 			p.comptime_if_block('__clang__')
@@ -89,8 +89,10 @@ fn (p mut Parser) comp_time() {
 		p.returns = false
 		//p.gen('/* returns $p.returns */')
 		if p.tok == .dollar && p.peek() == .key_else {
+			p.fspace()
 			p.next()
 			p.next()
+			p.fspace() // spaces before and after $else
 			p.check(.lcbr)
 			p.genln('#else')
 			p.statements_no_rcbr()
@@ -118,10 +120,9 @@ fn (p mut Parser) comp_time() {
 		p.check(.dollar)
 		p.check(.name)
 		p.check(.assign)
-		p.cgen.start_tmp()
-		p.bool_expression()
-		val := p.cgen.end_tmp()
-		println(val)
+		_, val := p.tmp_expr()
+		//p.bool_expression()
+		//val := p.cgen.end_tmp()
 		p.check(.rcbr)
 		// }
 	}
@@ -201,6 +202,12 @@ fn (p mut Parser) chash() {
 	}
 	if hash.starts_with('include') {
 		if p.first_pass() && !p.is_vh {
+			/*
+			if !p.pref.building_v && !p.fileis('vlib') {
+				p.warn('C #includes will soon be removed from the language' +
+				'\ndefine the C structs and functions in V')
+			}	
+			*/
 			if p.file_pcguard.len != 0 {
 				//println('p: $p.file_platform $p.file_pcguard')
 				p.cgen.includes << '$p.file_pcguard\n#$hash\n#endif'

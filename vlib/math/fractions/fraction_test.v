@@ -147,7 +147,7 @@ fn test_fraction_equals() {
 }
 
 fn test_gcd_and_reduce(){
-	mut f := fractions.fraction(3, 9)
+	f := fractions.fraction(3, 9)
 	assert f.gcd() == 3
-	assert f.reduce().equals(fractions.fraction(1, 3)) 
+	assert f.reduce().equals(fractions.fraction(1, 3))
 }

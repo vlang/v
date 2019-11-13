@@ -8,6 +8,7 @@ import (
 	compiler
 	benchmark
 	os
+	filepath
 	//time
 )
 
@@ -42,7 +43,7 @@ fn main() {
 		compiler.launch_tool('vup')
 		return
 	}
-	else if ('search' in commands) || ('install' in commands) || ('update' in commands) || ('remove' in commands){
+	else if 'search' in commands || 'install' in commands || 'update' in commands || 'remove' in commands {
 		compiler.launch_tool('vpm')
 		return
 	}
@@ -52,6 +53,10 @@ fn main() {
 	}
 	else if 'symlink' in commands {
 		compiler.create_symlink()
+		return
+	}
+	else if 'create' in commands {
+		compiler.launch_tool('vcreate')
 		return
 	}
 	// TODO quit if the v compiler is too old
@@ -78,8 +83,8 @@ fn main() {
 		vdir := os.dir(os.executable())
 		os.chdir(vdir)
 		mod := args.last()
-		os.system('$vexe build module vlib/' + args.last())
-		txt := os.read_file('$compiler.v_modules_path/vlib/${mod}.vh') or {
+		os.system('$vexe build module vlib$os.path_separator' + args.last())
+		txt := os.read_file(filepath.join(compiler.v_modules_path, 'vlib', '${mod}.vh')) or {
 			panic(err)
 		}
 		println(txt)

@@ -2,13 +2,16 @@ struct Dog {
 	breed string
 }
 
-fn (d Dog) speak() {
-	println('dog.speak()')
+struct Cat {
+       breed string
 }
 
-fn (d Dog) name() string {
-	return 'old gray'
-}
+
+fn (d Cat) name() string { return 'Cat' }
+fn (d Cat) speak() { println('meow') }
+
+fn (d Dog) speak() { println('woof') }
+fn (d Dog) name() string {  return 'Dog'}
 
 interface Speaker {
 	name() string
@@ -16,17 +19,37 @@ interface Speaker {
 }
 
 interface Speak2er {
-	speak()
 	name() string
+	speak()
 }
 
-fn perform_speak(s Speaker) bool {
+struct Foo {
+	speaker Speaker
+	speakers []Speaker
+}	
+
+fn perform_speak(s Speaker) {
 	s.speak()
-	return true
+	assert true
+	name := s.name()
+	assert name == 'Dog' || name == 'Cat'
 }
+
+fn perform_speakers(speakers []Speaker) {
+	
+}	
 
 fn test_perform_speak() {
-	d := Dog{}
-	assert perform_speak(d)
+	dog := Dog{}
+	perform_speak(dog)
+	cat := Cat{}
+	perform_speak(cat)
+	//perform_speakers([dog, cat])
+	/*
+	f := Foo {
+		speaker: dog
+	}	
+	*/
+
 }
 

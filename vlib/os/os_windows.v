@@ -37,6 +37,42 @@ mut:
   	wFinderFlags u16
 }
 
+struct ProcessInformation {
+mut:
+	hProcess voidptr
+	hThread voidptr
+	dwProcessId u32
+	dwThreadId u32
+}
+
+struct StartupInfo {
+mut:	
+	cb u32
+	lpReserved &u16
+	lpDesktop &u16
+	lpTitle &u16
+	dwX u32
+	dwY u32
+	dwXSize u32
+	dwYSize u32
+	dwXCountChars u32
+	dwYCountChars u32
+	dwFillAttribute u32
+	dwFlags u32
+	wShowWindow u16
+	cbReserved2 u16
+	lpReserved2 byteptr
+	hStdInput voidptr
+	hStdOutput voidptr
+	hStdError voidptr
+}
+
+struct SecurityAttributes {
+mut:
+	nLength u32
+	lpSecurityDescriptor voidptr
+	bInheritHandle bool
+}
 
 fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
@@ -188,4 +224,65 @@ pub fn get_error_msg(code int) string {
         return ''
     }
     return string_from_wide(_ptr_text)
+}
+
+// exec starts the specified command, waits for it to complete, and returns its output.
+pub fn exec(cmd string) ?Result {
+	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
+		return error(';, &&, || and \\n are not allowed in shell commands')
+	}
+	mut child_stdin := &u32(0)
+	mut child_stdout_read := &u32(0)
+	mut child_stdout_write := &u32(0)
+	mut sa := SecurityAttributes {}
+	sa.nLength = sizeof(C.SECURITY_ATTRIBUTES)
+	sa.bInheritHandle = true
+
+	create_pipe_result := C.CreatePipe(&child_stdout_read, &child_stdout_write, &sa, 0)
+	if create_pipe_result == 0 {
+		error_msg := get_error_msg(int(C.GetLastError()))
+		return error('exec failed (CreatePipe): $error_msg')
+	}
+	set_handle_info_result := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
+	if set_handle_info_result == 0 {
+		error_msg := get_error_msg(int(C.GetLastError()))
+		panic('exec failed (SetHandleInformation): $error_msg')
+	}
+
+	proc_info := ProcessInformation{}	
+	mut start_info := StartupInfo{}
+	start_info.cb = sizeof(C.PROCESS_INFORMATION)
+	start_info.hStdInput = child_stdin
+	start_info.hStdOutput = child_stdout_write
+	start_info.hStdError = child_stdout_write
+	start_info.dwFlags = u32(C.STARTF_USESTDHANDLES)
+	command_line := [32768]u16
+	C.ExpandEnvironmentStrings(cmd.to_wide(), &command_line, 32768)
+	create_process_result := C.CreateProcess(0, command_line, 0, 0, C.TRUE, 0, 0, 0, &start_info, &proc_info)
+	if create_process_result == 0 {
+		error_msg := get_error_msg(int(C.GetLastError()))
+		return error('exec failed (CreateProcess): $error_msg')
+	}
+	C.CloseHandle(child_stdin)
+	C.CloseHandle(child_stdout_write)	
+	buf := [1000]byte
+	mut bytes_read := 0
+	mut read_data := ''
+	for {
+		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, &bytes_read, 0)
+		read_data += tos(buf, bytes_read)
+		if (readfile_result == 0 || bytes_read == 0) {
+			break 
+		}		
+	}
+	read_data = read_data.trim_space()
+	exit_code := 0	
+	C.WaitForSingleObject(proc_info.hProcess, C.INFINITE)
+	C.GetExitCodeProcess(proc_info.hProcess, &exit_code)
+	C.CloseHandle(proc_info.hProcess)
+	C.CloseHandle(proc_info.hThread)
+	return Result {
+		output: read_data
+		exit_code: exit_code
+	}
 }

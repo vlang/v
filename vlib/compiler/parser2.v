@@ -31,7 +31,7 @@ fn (p mut Parser) get_type2() Type {
 			name: f.typ_str()// 'fn (int, int) string'
 			mod: p.mod
 			func: f
-			cat: TypeCategory.func
+			cat: .func
 		}
 		p.table.register_type2(fn_typ)
 		return fn_typ
@@ -97,11 +97,6 @@ fn (p mut Parser) get_type2() Type {
 		p.check(.amp)
 	}
 	typ += p.lit
-	if !p.is_struct_init {
-		// Otherwise we get `foo := FooFoo{` because `Foo` was already
-		// generated in name_expr()
-		p.fgen(p.lit)
-	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()

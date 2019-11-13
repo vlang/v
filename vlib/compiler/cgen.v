@@ -5,6 +5,7 @@
 module compiler
 
 import os
+import strings
 
 struct CGen {
 	out          os.File
@@ -104,25 +105,28 @@ fn (g mut CGen) save() {
 	g.out.close()
 }
 
-fn (g mut CGen) start_tmp() {
-	if g.is_tmp {
-		g.prev_tmps << g.tmp_line
+
+// returns expression's type, and entire expression's string representation)
+fn (p mut Parser) tmp_expr() (string, string) {
+	// former start_tmp()
+	if p.cgen.is_tmp {
+		p.cgen.prev_tmps << p.cgen.tmp_line
 	}
 	// kg.tmp_lines_pos++
-	g.tmp_line = ''
-	g.is_tmp = true
-}
-
-fn (g mut CGen) end_tmp() string {
-	res := g.tmp_line
-	if g.prev_tmps.len > 0 {
-		g.tmp_line = g.prev_tmps.last()
-		g.prev_tmps = g.prev_tmps[0..g.prev_tmps.len-1]
+	p.cgen.tmp_line = ''
+	p.cgen.is_tmp = true
+	//
+	typ := p.bool_expression()
+	
+	res := p.cgen.tmp_line
+	if p.cgen.prev_tmps.len > 0 {
+		p.cgen.tmp_line = p.cgen.prev_tmps.last()
+		p.cgen.prev_tmps = p.cgen.prev_tmps[0..p.cgen.prev_tmps.len-1]
 	} else {
-		g.tmp_line = ''
-		g.is_tmp = false
+		p.cgen.tmp_line = ''
+		p.cgen.is_tmp = false
 	}
-	return res
+	return typ, res
 }
 
 fn (g &CGen) add_placeholder() int {
@@ -387,3 +391,38 @@ fn sort_structs(types []Type) []Type {
 	}
 	return types_sorted
 }
+
+// Generates interface table and interface indexes
+fn (v &V) interface_table() string {
+       mut sb := strings.new_builder(100)
+       for _, t in v.table.typesmap {
+               if t.cat != .interface_ {
+                       continue
+               }
+               mut methods := ''
+              sb.writeln('// NR methods = $t.gen_types.len')
+               for i, gen_type in t.gen_types {
+                       methods += '{'
+                       for i, method in t.methods {
+					       // Cat_speak
+                               methods += '${gen_type}_${method.name}'
+                               if i < t.methods.len - 1 {
+                                       methods += ', '
+                               }
+                       }
+                       methods += '}, '
+                       // Speaker_Cat_index = 0
+                       sb.writeln('int _${t.name}_${gen_type}_index = $i;')
+               }
+              if t.gen_types.len > 0 {
+//              	methods = '{TCCSKIP(0)}'
+//              }	
+               sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
+'{ $methods }; ')
+}
+               continue
+       }
+       return sb.str()
+}
+
+
