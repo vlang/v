@@ -162,9 +162,10 @@ fn v_ptr_free(ptr voidptr) {
 
 pub fn is_atty(fd int) int {
 	$if windows {
-		mut mode := 0
-		C.GetConsoleMode(C._get_osfhandle(fd), &mode)
-		return mode
+		mut mode := u32(0)
+		osfh := voidptr(C._get_osfhandle(fd))
+		C.GetConsoleMode(osfh, voidptr(&mode))
+		return int(mode)
 	} $else {
 		return C.isatty(fd)
 	}
