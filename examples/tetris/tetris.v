@@ -422,7 +422,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 			game.get_tetro()
 		}
 		if game.pos_x < 0 {
-			game.pos_x = 1
+			//game.pos_x = 1
 		}
 	}
 	glfw.KeyLeft {
