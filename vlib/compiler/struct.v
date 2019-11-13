@@ -31,7 +31,7 @@ fn (p mut Parser) struct_decl() {
 		p.error('type names cannot contain `_`')
 	}
 	if !p.builtin_mod && !name[0].is_capital() {
-		p.error('struct names must be capitalized: use `struct ${name.capitalize()}`')
+		p.error('mod=$p.mod struct names must be capitalized: use `struct ${name.capitalize()}`')
 	}
 	if is_interface && !name.ends_with('er') {
 		p.error('interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)')
@@ -112,15 +112,18 @@ fn (p mut Parser) struct_decl() {
 	mut is_pub_field := false
 	mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
-/*
 	mut fmt_max_len := 0
-	for field in typ.fields  {
-		if field.name.len > max_len {
-			fmt_max_len = field.name.len
+	// TODO why is typ.fields == 0?
+	if p.scanner.is_fmt && p.pass == .main {
+		for field in typ.fields  {
+			println(field.name)
+			if field.name.len > fmt_max_len {
+				fmt_max_len = field.name.len
+			}
 		}
 	}
-	println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
-*/
+	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
+	
 
 	if !is_ph && p.first_pass() {
 		p.table.register_type2(typ)
@@ -164,6 +167,11 @@ fn (p mut Parser) struct_decl() {
 		// Check if reserved name
 		field_name_token_idx := p.cur_tok_index()
 		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
+		/*
+		if !p.first_pass() {
+			p.fgen(strings.repeat(` `, fmt_max_len - field_name.len))
+		}
+		*/
 		// Check dups
 		if field_name in names {
 			p.error('duplicate field `$field_name`')

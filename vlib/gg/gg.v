@@ -52,8 +52,6 @@ pub:
 pub struct GG {
 	shader    gl.Shader
 	// use_ortho bool
-	width     int
-	height    int
 	vao       u32
 	rect_vao  u32
 	rect_vbo  u32
@@ -61,7 +59,10 @@ pub struct GG {
 	line_vbo  u32
 	vbo       u32
 	scale     int // retina = 2 , normal = 1
+//pub:
 pub mut:
+	width     int
+	height    int
 	window &glfw.Window
 	render_fn fn()
 }
