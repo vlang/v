@@ -38,8 +38,9 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	// because we can have many queries in the _same_ scope.
 	qprefix := p.get_tmp().replace('tmp','sql') + '_'
 	p.sql_i = 0
-	p.sql_params = []string
-	p.sql_types = []string
+	p.sql_params = []
+	if false {}
+	p.sql_types = []
 
 	mut q := 'select '
 	p.check(.key_select)

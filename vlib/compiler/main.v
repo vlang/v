@@ -570,7 +570,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 pub fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
-		builtin_files = []string
+		builtin_files = []
 	}	
 	// Builtin cache exists? Use it.
 	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
