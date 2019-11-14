@@ -579,7 +579,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 pub fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
-		builtin_files = []
+		//builtin_files = []
 	}	
 	// Builtin cache exists? Use it.
 	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
@@ -651,6 +651,9 @@ pub fn (v mut V) add_v_files_to_compile() {
 
 pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
+	if v.pref.is_bare {
+		return v.v_files_from_dir(filepath.join(v.vroot, 'vlib', 'builtin', 'bare'))
+	}
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
 	}
