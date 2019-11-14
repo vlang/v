@@ -2428,13 +2428,14 @@ fn (p mut Parser) array_init() string {
 	if p.tok != .name && i == 0 && !exp_array {
 		p.error('specify array type: `[]typ` instead of `[]`')
 	}
-	if p.tok == .name && i == 0 {
+	if p.tok == .name && i == 0 &&
+		p.tokens[p.token_idx-2].line_nr == p.tokens[p.token_idx-1].line_nr { // TODO
 		// vals.len == 0 {
 		if exp_array {
 			p.error('use `foo = []` instead of `foo = []Type`')
 		}	
 		typ = p.get_type()
-	} else if exp_array {
+	} else if exp_array && i == 0 {
 		// allow `known_array = []`
 		typ = p.expected_type[6..]
 	}	

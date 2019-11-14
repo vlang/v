@@ -65,12 +65,12 @@ struct K {
 }
 
 fn test_empty() {
-	mut chunks := []Chunk
+	mut chunks := []
 	a := Chunk{}
 	assert chunks.len == 0
 	chunks << a
 	assert chunks.len == 1
-	chunks = []Chunk
+	chunks = []
 	assert chunks.len == 0
 	chunks << a
 	assert chunks.len == 1
