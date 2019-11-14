@@ -120,7 +120,7 @@ pub fn parse_headers(lines []string) map[string]string {
 	return headers
 }
 
-// do will send the HTTP request and returns as soon as the request is sent
+// do will send the HTTP request and returns `http.Response` as soon as the request is sent
 pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
