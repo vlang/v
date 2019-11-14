@@ -127,8 +127,12 @@ fn test_bf_from_bytes() {
 	output := bitfield.from_bytes(input)
 	mut result := 1
 	for i := 0; i < input.len * 8; i++ {
-		expected := input[input.len - 1 - i / 8] >> i % 8 & 1
+		byte_idx := i / 8
+		shift_idx := 7 - i % 8
+
+		expected := input[byte_idx] >> shift_idx & 1
 		actual := output.getbit(i)
+
 		if expected != actual {
 			result = 0
 		}
