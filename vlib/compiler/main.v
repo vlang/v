@@ -957,9 +957,9 @@ pub fn new_v(args[]string) &V {
 		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
 	}
 	$if !linux {
-	if pref.is_bare {
-		verror('-bare only works on Linux for now')
-	}	
+		if pref.is_bare && !out_name.ends_with('.c') {
+			verror('-bare only works on Linux for now')
+		}	
 	}
 	return &V{
 		os: _os
