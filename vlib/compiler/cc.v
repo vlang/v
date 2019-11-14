@@ -110,7 +110,7 @@ fn (v mut V) cc() {
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.is_bare {
-		a << '-nostdlib $vdir/vlib/os/bare/bare.S'
+		a << '-static -nostdlib $vdir/vlib/os/bare/bare.S'
 	}	
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
