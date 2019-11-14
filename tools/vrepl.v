@@ -143,7 +143,7 @@ pub fn run_repl() []string {
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" run $file -repl') or {
 				rerror(err)
-				return []string
+				return []
 			}
 			print_output(s)
 		}
@@ -160,7 +160,7 @@ pub fn run_repl() []string {
 			s := os.exec('"$vexe" run $temp_file -repl') or {
 				println("SDFSDF")
 				rerror(err)
-				return []string
+				return []
 			}
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {

@@ -65,7 +65,7 @@ struct K {
 }
 
 fn test_empty() {
-	mut chunks := []
+	mut chunks := []Chunk
 	a := Chunk{}
 	assert chunks.len == 0
 	chunks << a
@@ -346,7 +346,7 @@ fn (t Test) str() string {
 fn test_struct_print() {
 	mut a := Test {
 		a: 'Test',
-		b: []Test2
+		b: []
 	}
 	b := Test2 {
 		one: 1,

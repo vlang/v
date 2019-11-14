@@ -104,7 +104,7 @@ fn (d mut Digest) write(p_ []byte) int {
 			d.nx = 0
 		}
 		if n >= p.len {
-			p = []byte
+			p = []
 		} else {
 			p = p[n..]
 		}
@@ -113,7 +113,7 @@ fn (d mut Digest) write(p_ []byte) int {
 		n := p.len &~ (chunk - 1)
 		block(mut d, p[..n])
 		if n >= p.len {
-			p = []byte
+			p = []
 		} else {
 			p = p[n..]
 		}

@@ -174,7 +174,7 @@ fn (g mut Game) init_game() {
 	g.parse_tetros()
 	rand.seed(time.now().uni)
 	g.generate_tetro()
-	g.field = []array_int // TODO: g.field = [][]int
+	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
 	for i := 0; i < FieldHeight + 2; i++ {
 		mut row := [0].repeat(FieldWidth + 2)

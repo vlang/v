@@ -144,7 +144,7 @@ fn test_finalize_returns_error_for_unknown_flags() {
 }
 
 fn test_allow_to_build_usage_message() {
-  mut fp := flag.new_flag_parser([]string)
+  mut fp := flag.new_flag_parser([])
   fp.limit_free_args(1, 4)
   fp.application('flag_tool')
   fp.version('v0.0.0')
@@ -177,7 +177,7 @@ fn test_allow_to_build_usage_message() {
 }
 
 fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
-  mut fp := flag.new_flag_parser([]string)
+  mut fp := flag.new_flag_parser([])
   fp.application('flag_tool')
   fp.version('v0.0.0')
 
@@ -187,7 +187,7 @@ fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
 }
 
 fn test_if_no_options_given_usage_message_does_not_contain_options() {
-  mut fp := flag.new_flag_parser([]string)
+  mut fp := flag.new_flag_parser([])
   fp.application('flag_tool')
   fp.version('v0.0.0')
 
