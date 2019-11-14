@@ -118,6 +118,7 @@ pub mut:
 	fast bool // use tcc/x64 codegen
 	enable_globals bool // allow __global for low level code
 	is_fmt bool
+	is_bare bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -940,6 +941,7 @@ pub fn new_v(args[]string) &V {
 		compress: '-compress' in args
 		enable_globals: '--enable-globals' in args
 		fast: '-fast' in args
+		is_bare: '-bare' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
@@ -953,6 +955,11 @@ pub fn new_v(args[]string) &V {
 	}
 	if pref.is_so {
 		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
+	}
+	$if !linux {
+	if pref.is_bare {
+		verror('-bare only works on Linux for now')
+	}	
 	}
 	return &V{
 		os: _os

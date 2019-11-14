@@ -346,12 +346,10 @@ fn (p mut Parser) name_expr() string {
 	}	
 	else if !p.is_var_decl && is_or_else {
 		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
-		p.print_tok()
 	}
     else if !p.is_var_decl && !is_or_else  && !p.inside_return_expr &&
 		f.typ.starts_with('Option_') {
         opt_type := f.typ[7..]
-       p.print_tok()
         p.error('unhandled option type: `?$opt_type`')
     }
 
