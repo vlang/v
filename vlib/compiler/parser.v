@@ -2424,13 +2424,16 @@ fn (p mut Parser) array_init() string {
 	}
 	p.check(.rsbr)
 	// type after `]`? (e.g. "[]string")
-	if p.tok != .name && i == 0 {
+	if p.tok != .name && i == 0 && !p.expected_type.starts_with('array_') {
 		p.error('specify array type: `[]typ` instead of `[]`')
 	}
 	if p.tok == .name && i == 0 {
 		// vals.len == 0 {
 		typ = p.get_type()
-	}
+	} else if p.expected_type.starts_with('array_') {
+		// allow `known_array = []`
+		typ = p.expected_type[6..]
+	}	
 	// ! after array => no malloc and no copy
 	no_alloc := p.tok == .not
 	if no_alloc {
