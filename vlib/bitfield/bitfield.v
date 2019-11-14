@@ -85,21 +85,7 @@ fn cleartail(instance mut BitField) {
 pub fn from_bytes(input []byte) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
-		pos := i / 4
-		match i % 4 {
-			0 {
-				output.field[pos] = output.field[pos] | (u32(b) << 24)
-			}
-			1 {
-				output.field[pos] = output.field[pos] | (u32(b) << 16)
-			}
-			2 {
-				output.field[pos] = output.field[pos] | (u32(b) << 8)
-			}
-			3 {
-				output.field[pos] = output.field[pos] | u32(b)
-			}
-		}
+		output.field[i / 4] |= (u32(b) << (3 - i % 4) * 8)
 	}
 
 	for i, f in output.field {
