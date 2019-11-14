@@ -184,7 +184,15 @@ pub fn unix(abs int) Time {
 
 	month++ // because January is 1
 	day = day - begin + 1
-	return Time{year:year, month: month, day:day, hour:hour, minute: minute, second: second}
+	return Time{
+		year:year
+		month: month
+		day:day
+		hour:hour
+		minute: minute
+		second: second
+		uni: abs
+	}
 }
 
 pub fn convert_ctime(t tm) Time {
@@ -224,8 +232,6 @@ pub fn (t Time) smonth() string {
 }
 
 // hhmm     returns a string for t in the given format HH:MM in 24h notation
-// @param
-// @return  string
 // @example 21:04
 pub fn (t Time) hhmm() string {
         return t.get_fmt_time_str(.hhmm24)
@@ -238,41 +244,26 @@ fn (t Time) hhmm_tmp() string {
 */
 
 // hhmm12   returns a string for t in the given format HH:MM in 12h notation
-// @param
-// @return  string
-// @example 9:04 p.m.
 pub fn (t Time) hhmm12() string {
         return t.get_fmt_time_str(.hhmm12)
 }
 
 // hhmmss   returns a string for t in the given format HH:MM:SS in 24h notation
-// @param
-// @return  string
-// @example 21:04:03
 pub fn (t Time) hhmmss() string {
         return t.get_fmt_time_str(.hhmmss24)
 }
 
 // ymmdd    returns a string for t in the given format YYYY-MM-DD
-// @param
-// @return  string
-// @example 2012-01-05
 pub fn (t Time) ymmdd() string {
         return t.get_fmt_date_str(.hyphen, .yyyymmdd)
 }
 
 // ddmmy    returns a string for t in the given format DD.MM.YYYY
-// @param
-// @return  string
-// @example 05.02.2012
 pub fn (t Time) ddmmy() string {
         return t.get_fmt_date_str(.dot, .ddmmyyyy)
 }
 
 // md       returns a string for t in the given format MMM D
-// @param
-// @return  string
-// @example Jul 3
 pub fn (t Time) md() string {
         return t.get_fmt_date_str(.space, .mmmd)
 }
@@ -371,6 +362,10 @@ pub fn (t &Time) calc_unix() int {
 // TODO add(d time.Duration)
 pub fn (t Time) add_seconds(seconds int) Time {
 	return unix(t.uni + seconds)
+}
+
+pub fn (t Time) add_days(days int) Time {
+	return unix(t.uni + days * 3600 * 24)
 }
 
 // TODO use time.Duration instead of seconds

@@ -12,23 +12,22 @@ pub:
 }
 
 pub const (	
-	// Primary colors
 	Blue   = Color { r: 0, g: 0, b: 255 }
 	Red    = Color { r: 255, g: 0, b: 0 }
+	Green  = Color { r: 0, g: 255, b: 0 }
+	green  = Color { r: 0, g: 255, b: 0 }
 	Yellow = Color { r: 255, g: 255, b: 0 }
 	
-	// Secondary colors
-	Green  = Color { r: 0, g: 255, b: 0 }
 	Orange = Color { r: 255, g: 165, b: 0 }
 	Purple = Color { r: 128, g: 0, b: 128 }
 	
-	// Other
 	Black  = Color { r: 0, g: 0, b: 0 }
 	Gray   = Color { r: 128, g: 128, b: 128 }
 	Indigo = Color { r: 75, g: 0, b: 130 }
 	Pink   = Color { r: 255, g: 192, b: 203 }
 	Violet = Color { r: 238, g: 130, b: 238 }
 	White  = Color { r: 255, g: 255, b: 255 }
+	white  = Color { r: 255, g: 255, b: 255 }
 	
 	// Shades
 	DarkBlue   = Color { r: 0, g: 0, b: 139 }

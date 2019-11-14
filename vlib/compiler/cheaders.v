@@ -2,7 +2,7 @@ module compiler
 
 const (
 
-CommonCHeaders = '
+c_headers = '
 
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
@@ -10,7 +10,6 @@ CommonCHeaders = '
 //#include "fns.h"
 #include <signal.h>
 #include <stdarg.h> // for va_list
-#include <inttypes.h>  // int64_t etc
 #include <string.h> // memcpy
 
 #ifndef _WIN32
@@ -19,6 +18,9 @@ CommonCHeaders = '
 #include <sys/time.h>
 #include <unistd.h> // sleep
 #else
+#if defined(_MSC_VER)
+#pragma comment(lib, "Dbghelp.lib")
+#endif
 #if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
 #error Please upgrade your MinGW distribution to use msvcr90.dll or later.
 #endif
@@ -102,35 +104,6 @@ CommonCHeaders = '
 #include <pthread.h>
 #endif
 
-//================================== TYPEDEFS ================================*/
-
-typedef int64_t i64;
-typedef int16_t i16;
-typedef int8_t i8;
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint16_t u16;
-typedef uint8_t byte;
-typedef uint32_t rune;
-typedef float f32;
-typedef double f64;
-typedef unsigned char* byteptr;
-typedef int* intptr;
-typedef void* voidptr;
-typedef struct array array;
-typedef struct map map;
-typedef array array_string;
-typedef array array_int;
-typedef array array_byte;
-typedef array array_f32;
-typedef array array_f64;
-typedef map map_int;
-typedef map map_string;
-#ifndef bool
-	typedef int bool;
-	#define true 1
-	#define false 0
-#endif
 
 //============================== HELPER C MACROS =============================*/
 #define _PUSH(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push(arr, &tmp);}
@@ -171,5 +144,40 @@ var rune = function() {}
 var map_string = function() {}
 var map_int = function() {}
 
+'
+
+
+c_builtin_types = '
+
+//================================== TYPEDEFS ================================*/
+
+#include <inttypes.h>  // int64_t etc
+typedef int64_t i64;
+typedef int16_t i16;
+typedef int8_t i8;
+typedef uint64_t u64;
+typedef uint32_t u32;
+typedef uint16_t u16;
+typedef uint8_t byte;
+typedef uint32_t rune;
+typedef float f32;
+typedef double f64;
+typedef unsigned char* byteptr;
+typedef int* intptr;
+typedef void* voidptr;
+typedef struct array array;
+typedef struct map map;
+typedef array array_string;
+typedef array array_int;
+typedef array array_byte;
+typedef array array_f32;
+typedef array array_f64;
+typedef map map_int;
+typedef map map_string;
+#ifndef bool
+	typedef int bool;
+	#define true 1
+	#define false 0
+#endif
 '
 )

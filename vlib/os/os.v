@@ -852,7 +852,7 @@ pub fn realpath(fpath string) string {
 // walk_ext returns a recursive list of all file paths ending with `ext`.
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
-		return []string
+		return []
 	}
 	mut files := os.ls(path) or { panic(err) }
 	mut res := []string

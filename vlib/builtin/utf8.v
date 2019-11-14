@@ -85,7 +85,7 @@ pub fn (_rune string) utf32_code() int {
 	for i := 1; i < _rune.len; i++ {
 		c := int(_rune[i])
 		res = res << shift
-		res |= c & 63 /* 0x3f */
+		res |= c & 63 // 0x3f
 		shift = 6
 	}
 	return res

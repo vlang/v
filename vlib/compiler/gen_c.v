@@ -129,11 +129,11 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		expr_line := p.cgen.lines[p.cgen.lines.len-2]
 		last_expr := expr_line[last_ph..]
 		p.cgen.lines[p.cgen.lines.len-2]  = ''
-		p.genln('if (!$tmp .ok) {')
+		p.genln('if (!${tmp}.ok) {')
 		p.genln('$name = $last_expr;')
 		p.genln('}')
 	} else if is_assign {
-		p.genln('$name = *($typ*) $tmp . data;')
+		p.genln('$name = *($typ*)${tmp}.data;')
 	}
 	if !p.returns && last_typ != typ && is_assign && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
 		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)

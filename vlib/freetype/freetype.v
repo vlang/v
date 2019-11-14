@@ -191,7 +191,7 @@ pub fn new_context(cfg gg.Cfg) &Context {
 	C.glPixelStorei(C.GL_UNPACK_ALIGNMENT, 1)
 	// Gen texture
 	// Load first 128 characters of ASCII set
-	mut chars := []Character{}
+	mut chars := []Character
 	for c := 0; c < 128; c++ {
 		mut ch := ft_load_char(face, i64(c))
 		// s := utf32_to_str(uint(0x043f))

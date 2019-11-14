@@ -18,7 +18,7 @@ mut:
 }
 
 // new_values returns a new Values struct for creating
-// urlencoded query string parameters. it can also be to 
+// urlencoded query string parameters. it can also be to
 // post form data with application/x-www-form-urlencoded.
 // values.encode() will return the encoded data
 pub fn new_values() Values {
@@ -53,11 +53,11 @@ pub fn (v &Values) get(key string) string {
 // a empty []string.
 pub fn (v &Values) get_all(key string) []string {
 	if v.data.size == 0 {
-		return []string
+		return []
 	}
 	vs := v.data[key]
 	if vs.data.len == 0 {
-		return []string
+		return []
 	}
 	return vs.data
 }
@@ -76,7 +76,7 @@ pub fn (v mut Values) set(key, value string) {
 pub fn (v mut Values) add(key, value string) {
 	mut a := v.data[key]
 	if a.data.len == 0 {
-		a.data = []string
+		a.data = []
 	}
 	a.data << value
 	v.data[key] = a

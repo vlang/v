@@ -31,12 +31,15 @@ fn (p mut Parser) comp_time() {
 			}
 			p.check(.lcbr)
 			os := os_from_string(name)
-			if false && p.fileis('runtime.v') && os != p.os {
+			if (!not && os != p.os) || (not && os == p.os) {
 				// `$if os {` for a different target, skip everything inside
 				// to avoid compilation errors (like including <windows.h>
 				// on non-Windows systems)
 				mut stack := 1
 				for {
+					if p.tok == .key_return {
+						p.returns = true
+					}	
 					if p.tok == .lcbr {
 						stack++
 					} else if p.tok == .rcbr {
@@ -100,7 +103,9 @@ fn (p mut Parser) comp_time() {
 			else_returns := p.returns
 			p.returns = if_returns && else_returns
 			//p.gen('/* returns $p.returns */')
-		}
+		} else if p.tok == .key_else {
+			p.error('use `$' + 'else` instead of `else` in comptime if statements')
+		}	
 	}
 	else if p.tok == .key_for {
 		p.next()
@@ -227,9 +232,11 @@ fn (p mut Parser) chash() {
 	}
 	else if hash.contains('define') {
 		// Move defines on top
-		p.cgen.includes << '#$hash'
+		if p.first_pass() {
+			p.cgen.includes << '#$hash'
+		}
 	}
-	// Don't parse a non-JS V file (`#-js` flag)
+	//// Don't parse a non-JS V file (`#-js` flag)
 	else if hash == '-js'  {
 		$if js {
 			for p.tok != .eof {

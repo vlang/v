@@ -37,8 +37,8 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		// Look for octal, hex prefix.
 		base = 10
 		if s[0] == `0` {
-			if s.len >= 3 && byte_to_lower(s[1]) == `b` { 
-				base = 2 
+			if s.len >= 3 && byte_to_lower(s[1]) == `b` {
+				base = 2
 				start_index += 2
 			}
 			else if s.len >= 3 && byte_to_lower(s[1]) == `o` {
@@ -65,7 +65,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		// return error('parse_uint: bitsize error $s - $bit_size')
 		return u64(0)
 	}
-    
+
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
 	cutoff := u64(max_u64/u64(base)) + u64(1)
@@ -133,7 +133,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 pub fn parse_int(_s string, base int, _bit_size int) i64 {
 	mut s := _s
 	mut bit_size := _bit_size
-    
+
 	if s.len < 1 {
 		// return error('parse_int: syntax error $s')
 		return i64(0)

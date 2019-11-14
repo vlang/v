@@ -171,7 +171,7 @@ fn (p mut Parser) clear_vars() {
 		if p.pref.autofree {
 			//p.local_vars.free()
 		}
-		p.local_vars = []Var
+		p.local_vars = []
 	}
 	
 }
@@ -1136,7 +1136,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') &&
 				//! (expected == 'void*' && got == 'array_int') {
-				! (expected == 'byte*' && got == 'byteptr') {
+				! (expected == 'byte*' && got == 'byteptr') && !p.pref.is_bare {
 					p.cgen.set_placeholder(ph, '& /*112 e="$expected" g="$got" */')
 				}
 			}
@@ -1408,7 +1408,8 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		f.args = _f.args
 		f.typ = _f.typ
 		f.is_generic = false
-		f.type_inst = []TypeInst
+		f.type_inst = []
+		if false {}
 		f.dispatch_of = ti
 		// println('using existing inst $f.name(${f.str_args(p.table)}) $f.typ')
 		return
@@ -1431,17 +1432,18 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 
 	p.rename_generic_fn_instance(mut f, ti)
 	f.is_generic = false		// the instance is a normal function
-	f.type_inst = []TypeInst
+	f.type_inst = []
+	if false {}
 	f.scope_level = 0
 	f.dispatch_of = ti
 
 	// TODO this is done to prevent a crash as a result of this not being
 	// properly initialised. This is a bug somewhere futher upstream
-	f.defer_text = []string
-
+	f.defer_text = []
+	if false {}
 	old_args := f.args
 	new_types := p.replace_type_params(f, ti)
-	f.args = []Var
+	f.args = []
 	for i in 0..new_types.len-1 {
 		mut v := old_args[i]
 		v.typ = new_types[i]
@@ -1465,7 +1467,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.returns = false
 	p.cgen.tmp_line = ''
 	p.cgen.cur_line = ''
-	p.cgen.lines = []string
+	p.cgen.lines = []
 	unsafe { // TODO
 		p.cur_fn = *f
 	}

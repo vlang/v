@@ -86,7 +86,6 @@ fn init_os_args(argc int, argv &byteptr) []string {
 	return args
 }
 
-
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string
