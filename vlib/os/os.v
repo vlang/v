@@ -31,14 +31,8 @@ pub const (
 	MAX_PATH = 4096
 )
 
-/*
-struct C.FILE {
-	
-}
-*/
-
 pub struct File {
-	cfile voidptr
+	cfile voidptr // Using void* instead of FILE*
 }
 
 struct FileInfo {
