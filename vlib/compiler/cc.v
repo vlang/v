@@ -109,6 +109,9 @@ fn (v mut V) cc() {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
 	}
+	if v.pref.is_bare {
+		a << '-nostdlib $vdir/vlib/os/bare/bare.S'
+	}	
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
 		mut out_dir := if v.dir.starts_with('vlib') {
@@ -279,7 +282,7 @@ start:
 			return
 		}
 		*/
-		verror(err) 
+		verror(err)
 		return
 	}
 	if res.exit_code != 0 {

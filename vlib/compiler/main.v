@@ -234,7 +234,10 @@ pub fn (v mut V) compile() {
 	$if js {
 		cgen.genln(js_headers)
 	} $else {
-		cgen.genln(CommonCHeaders)
+		cgen.genln(c_builtin_types)
+		if !v.pref.is_bare {
+			cgen.genln(c_headers)
+		}
 	}
 	v.generate_hotcode_reloading_declarations()
 	// We need the cjson header for all the json decoding that will be done in
@@ -295,8 +298,10 @@ pub fn (v mut V) compile() {
 		def.writeln(cgen.includes.join_lines())
 		def.writeln(cgen.typedefs.join_lines())
 		def.writeln(v.type_definitions())
-		def.writeln('\nstring _STR(const char*, ...);\n')
-		def.writeln('\nstring _STR_TMP(const char*, ...);\n')
+		if !v.pref.is_bare {
+			def.writeln('\nstring _STR(const char*, ...);\n')
+			def.writeln('\nstring _STR_TMP(const char*, ...);\n')
+		}
 		def.writeln(cgen.fns.join_lines()) // fn definitions
 		def.writeln(v.interface_table())
 	} $else {
@@ -353,6 +358,7 @@ fn (v mut V) generate_init() {
 			}
 		}
 		consts_init_body := v.cgen.consts_init.join_lines()
+		if !v.pref.is_bare {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
 g_str_buf=malloc(1000);
@@ -396,6 +402,7 @@ string _STR_TMP(const char *fmt, ...) {
 
 ')
 	}
+	}
 }
 
 pub fn (v mut V) generate_main() {
@@ -403,12 +410,12 @@ pub fn (v mut V) generate_main() {
 	$if js { return }
 
 	if v.pref.is_vlines {
-		///// After this point, the v files are compiled.
-		///// The rest is auto generated code, which will not have
-		///// different .v source file/line numbers.
+		// After this point, the v files are compiled.
+		// The rest is auto generated code, which will not have
+		// different .v source file/line numbers.
 		lines_so_far := cgen.lines.join('\n').count('\n') + 5
 		cgen.genln('')
-		cgen.genln('////////////////// Reset the file/line numbers //////////')
+		cgen.genln('// Reset the file/line numbers')
 		cgen.lines << '#line $lines_so_far "${cescaped_path(os.realpath(cgen.out_path))}"'
 		cgen.genln('')
 	}
@@ -460,7 +467,9 @@ pub fn (v mut V) generate_main() {
 
 pub fn (v mut V) gen_main_start(add_os_args bool){
 	v.cgen.genln('int main(int argc, char** argv) { ')
-	v.cgen.genln('  init();')
+	if !v.pref.is_bare {
+		v.cgen.genln('  init();')
+	}
 	if add_os_args && 'os' in v.table.imports {
 		v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}

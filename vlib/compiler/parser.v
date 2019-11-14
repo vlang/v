@@ -2137,7 +2137,7 @@ fn (p mut Parser) string_expr() {
 		Calling a C function sometimes requires a call to a string method
 		C.fun('ssss'.to_wide()) =>  fun(string_to_wide(tos3("ssss")))
 		*/
-		if (p.calling_c && p.peek() != .dot) || (p.pref.translated && p.mod == 'main') {
+		if (p.calling_c && p.peek() != .dot) || p.pref.is_bare || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
 		}
 		else if p.is_sql {

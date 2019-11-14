@@ -1,13 +1,13 @@
 .intel_syntax noprefix
 .text
-    .globl _start, syscall5
+    .globl _start, main__syscall5
 
     _start:
         xor rbp,rbp
         pop rdi
         mov rsi,rsp
         and rsp,-16
-        call main
+        call main__main
 
         mov rdi,rax /* syscall param 1 = rax (ret value of main) */
         mov rax,60 /* SYS_exit */
@@ -16,7 +16,7 @@
         ret /* should never be reached, but if the OS somehow fails
                to kill us, it will cause a segmentation fault */
 
-    syscall5:
+    main__syscall5:
         mov rax,rdi
         mov rdi,rsi
         mov rsi,rdx

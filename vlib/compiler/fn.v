@@ -1136,7 +1136,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') &&
 				//! (expected == 'void*' && got == 'array_int') {
-				! (expected == 'byte*' && got == 'byteptr') {
+				! (expected == 'byte*' && got == 'byteptr') && !p.pref.is_bare {
 					p.cgen.set_placeholder(ph, '& /*112 e="$expected" g="$got" */')
 				}
 			}
