@@ -833,9 +833,15 @@ pub fn realpath(fpath string) string {
 		res = int( C._fullpath( fullpath, fpath.str, MAX_PATH ) )
 	}
 	$else{
-		// here we want an int==0 if realpath failed, in which case
-		// realpath would return NULL, and !isnil(NULL) would be false==0
-		res = int( !isnil(C.realpath( fpath.str, fullpath )) )
+		if fpath.len != strlen(fpath.str) {
+			l := strlen(fpath.str)
+			println('FIXME realpath diff len $fpath.len strlen=$l')
+		}	
+		ret := C.realpath(fpath.str, fullpath)
+		if ret == 0 {
+			return fpath
+		}	
+		return string(fullpath)
 	}
 	if res != 0 {
 		return string(fullpath, vstrlen(fullpath))

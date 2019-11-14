@@ -25,6 +25,8 @@ fn backtrace_symbols_fd(voidptr, int, int)
 // <libproc.h>
 fn proc_pidpath(int, voidptr, int) int
 
+fn C.realpath(byteptr, byteptr) &char
+
 
 
 // Windows
