@@ -41,6 +41,8 @@ jobs:
       run: ./v test v
     - name: Test v->js
       run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Bare metal
+      run: v -bare -o bare vlib/os/bare/bare.v
 
   build-ubuntu-tcc:
     runs-on: ubuntu-18.04

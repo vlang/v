@@ -39,5 +39,6 @@
 + fix interfaces
 - merge v.c and v_win.c
 + fast.vlang.io
++ bare metal support
 
 
