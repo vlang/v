@@ -445,7 +445,7 @@ pub fn ticks() i64 {
 
 pub fn sleep(seconds int) {
 	$if windows {
-		C._sleep(seconds * 1000)
+		C.Sleep(seconds * 1000)
 	}
 	$else {
 		C.sleep(seconds)
