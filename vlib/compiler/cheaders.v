@@ -14,27 +14,18 @@ c_headers = '
 
 #if INTPTR_MAX == INT32_MAX
     #define TARGET_IS_32BIT 1
-    #define IS_32_BIT 1
-    #define IS_64_BIT 0
 #elif INTPTR_MAX == INT64_MAX
     #define TARGET_IS_64BIT 1
-    #define IS_32_BIT 0
-    #define IS_64_BIT 1
 #else
     #error "The environment is not 32 or 64-bit."
 #endif
 
-// NB: __ORDER_BIG_ENDIAN__ and __BYTE_ORDER__ seems to be defined ONLY in musl ...
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__) 
     #define TARGET_ORDER_IS_BIG
-    #define IS_BIG_ENDIAN 1
-    #define IS_LITTLE_ENDIAN 0
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
     #define TARGET_ORDER_IS_LITTLE
-    #define IS_BIG_ENDIAN 0
-    #define IS_LITTLE_ENDIAN 1
 #else
-    #error "Unknown architecture"
+    #error "Unknown architecture endianness"
 #endif
 
 #ifndef _WIN32

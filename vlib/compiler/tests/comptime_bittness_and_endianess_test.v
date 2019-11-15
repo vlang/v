@@ -1,28 +1,26 @@
 
 fn test_bitness(){
+  mut x := 0
   $if x32 {
     println('system is 32 bit')
-    assert true
+    x = 1
   }
   $if x64 {
     println('system is 64 bit')
-    assert true
+    x = 2
   }
-  assert C.IS_32_BIT > -1
-  assert C.IS_64_BIT > -1 
-  assert C.IS_32_BIT != C.IS_64_BIT
+  assert x > 0
 }
 
 fn test_endianness(){
+  mut x := 0
   $if little_endian {
     println('system is little endian')
-    assert true
+    x = 1
   }
   $if big_endian {
     println('system is big endian')
-    assert true
+    x = 2
   }
-  assert C.IS_BIG_ENDIAN > -1
-  assert C.IS_LITTLE_ENDIAN > -1
-  assert C.IS_BIG_ENDIAN != C.IS_LITTLE_ENDIAN
+  assert x > 0
 }
