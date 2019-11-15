@@ -4,8 +4,6 @@
 
 module runtime
 
-import os
-
 //$if linux {
 fn C.sysconf(name int) i64
 //}
@@ -15,18 +13,32 @@ fn C.GetCurrentProcessorNumber() u32
 //}
 
 pub fn nr_cpus() int {
-	$if linux {
-		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
-	}
-	$if mac {
-		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
-	}
 	$if windows {
-		mut nr := int(C.GetCurrentProcessorNumber())
-		if nr == 0 {
-			nr = os.getenv('NUMBER_OF_PROCESSORS').int()
-		}
-		return nr
+		return nr_cpus_win()
 	}
-	return 1
+	return nr_cpus_nix()
+}
+
+pub fn is_32bit() bool {
+	mut x := false
+	$if x32 { x = true }
+	return x
+}
+
+pub fn is_64bit() bool {
+	mut x := false
+	$if x64 { x = true }
+	return x
+}
+
+pub fn is_little_endian() bool {
+	mut x := false
+	$if little_endian { x = true }
+	return x
+}
+
+pub fn is_big_endian() bool {
+	mut x := false
+	$if big_endian { x = true }
+	return x
 }
