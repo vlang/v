@@ -646,9 +646,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	wrapper_name := '${fn_name}_thread_wrapper'
 	mut wrapper_type := 'void*'
 	if p.os == .windows {
-		wrapper_type = 'void* __stdcall'
+		wrapper_type = 'DWORD WINAPI'
 	}
-	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return NULL; }'
+	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return 0; }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
@@ -663,7 +663,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	}
 	// Call the wrapper
 	if p.os == .windows {
-		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
+		p.genln(' CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_name, $parg, 0,0);')
 	}
 	else {
 		p.genln('int $tmp2 = pthread_create(& $thread_name, NULL, (void *)$wrapper_name, $parg);')
