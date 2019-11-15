@@ -806,14 +806,14 @@ pub fn chdir(path string) {
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(malloc(max*2))
+		buf := &u16(calloc(max*2))
 		if C._wgetcwd(buf, max) == 0 {
 			return ''
 		}
 		return string_from_wide(buf)
 	}
 	$else {
-		buf := malloc(512)
+		buf := calloc(512)
 		if C.getcwd(buf, 512) == 0 {
 			return ''
 		}
@@ -827,7 +827,7 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut fullpath := malloc( MAX_PATH )
+	mut fullpath := calloc( MAX_PATH )
 	mut res := 0
 	$if windows {
 		res = int( C._fullpath( fullpath, fpath.str, MAX_PATH ) )

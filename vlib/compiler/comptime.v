@@ -62,18 +62,27 @@ fn (p mut Parser) comp_time() {
 				p.genln('#endif')
 			}
 		}
+		else if name == 'x64' {
+			p.comptime_if_block('TARGET_IS_64BIT')
+		}
+		else if name == 'x32' {
+			p.comptime_if_block('TARGET_IS_32BIT')
+		}
+		else if name == 'big_endian' {
+			p.comptime_if_block('TARGET_ORDER_IS_BIG')
+		}
+		else if name == 'little_endian' {
+			p.comptime_if_block('TARGET_ORDER_IS_LITTLE')
+		}
 		else if name == 'debug' {
-			p.genln('#ifdef VDEBUG')
-			p.check(.lcbr)
-			p.statements_no_rcbr()
-			p.genln('#endif')
+			p.comptime_if_block('VDEBUG')
 		}
 		else if name == 'tinyc' {
 			p.comptime_if_block('__TINYC__')
 		}
 		else if name == 'glibc' {
 			p.comptime_if_block('__GLIBC__')
-		}	
+		}
 		else if name == 'mingw' {
 			p.comptime_if_block('__MINGW32__')
 		}
