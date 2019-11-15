@@ -109,9 +109,9 @@ fn main() {
 		v.run_compiled_executable_and_exit()
 	}
 
-	mut tmark := benchmark.new_benchmark()
 	v.compile()
 	if v.pref.is_stats {
+		mut tmark := benchmark.new_benchmark()
 		tmark.stop()
 		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
@@ -122,4 +122,3 @@ fn main() {
 
 	v.finalize_compilation()
 }
-
