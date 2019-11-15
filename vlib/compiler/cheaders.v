@@ -89,9 +89,10 @@ c_headers = '
 
 #ifdef _WIN32
 #define WINVER 0x0600
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
+#ifdef _WIN32_WINNT
+#undef _WIN32_WINNT
 #endif
+#define _WIN32_WINNT 0x0600
 #define WIN32_LEAN_AND_MEAN
 #define _UNICODE
 #define UNICODE
