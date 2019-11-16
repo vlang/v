@@ -59,6 +59,9 @@ Options for debugging/troubleshooting v programs:
                     Common C compilers are gcc, clang, tcc, icc, cl...
   -cflags <flags>   Pass additional C flags to the C backend compiler.
                     Example: -cflags `sdl2-config --cflags`
+  -vtmp /var/tmp    Changes the default folder that V uses for storing .tmp.c files.
+                    The environment variable VTMP and -vtmp are equivalent.
+                    -vtmp has higher precedence over VTMP.
 
 Commands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.
