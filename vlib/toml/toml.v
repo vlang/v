@@ -5,7 +5,6 @@
 
 module toml
 
-import yacc
 
 struct TOML{
 	pub mut:
@@ -14,12 +13,8 @@ struct TOML{
 }
 
 fn (t TOML) toml_parse(){
-	// compile yacc(bison)/lex(flex) file.
-	compile()
 	// Parse Start.
 	load_parse()
-	// Data Writing.
-	writing_data()
 }
 
 struct KeyVal{
