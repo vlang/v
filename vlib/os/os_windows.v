@@ -78,14 +78,13 @@ fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	mut args_list := &voidptr(0)
 	mut args_count := 0
-	args_list = C.CommandLineToArgvW(C.GetCommandLine(), &args_count)
+	args_list = &voidptr(C.CommandLineToArgvW(C.GetCommandLine(), &args_count))
 	for i := 0; i < args_count; i++ {
 		args << string_from_wide(&u16(args_list[i]))
 	}
 	C.LocalFree(args_list)
 	return args
 }
-
 
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
@@ -104,12 +103,12 @@ pub fn ls(path string) ?[]string {
 	path_files := '$path\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
-	h_find_files := C.FindFirstFile(path_files.to_wide(), &find_file_data)
+	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
 	first_filename := string_from_wide(&u16(find_file_data.cFileName))
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
-	for C.FindNextFile(h_find_files, &find_file_data) {
+	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) {
 		filename := string_from_wide(&u16(find_file_data.cFileName))
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
@@ -121,11 +120,11 @@ pub fn ls(path string) ?[]string {
 
 pub fn dir_exists(path string) bool {
 	_path := path.replace('/', '\\')
-	attr := int(C.GetFileAttributes(_path.to_wide()))
-	if attr == C.INVALID_FILE_ATTRIBUTES {
+	attr := C.GetFileAttributesW(_path.to_wide())
+	if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
 		return false
 	}
-	if (attr & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+	if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
 		return true
 	}
 	return false
@@ -150,7 +149,7 @@ pub fn get_file_handle(path string) HANDLE {
     if _fd == 0 {
 	    return HANDLE(INVALID_HANDLE_VALUE)
     }
-    _handle := C._get_osfhandle(C._fileno(_fd)) // CreateFile? - hah, no -_-
+    _handle := HANDLE(C._get_osfhandle(C._fileno(_fd))) // CreateFile? - hah, no -_-
     return _handle
 }
 
@@ -161,7 +160,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
     mut sz := int(4096) // Optimized length
     mut buf := &u16(malloc(4096))
     for {
-        status := C.GetModuleFileName(handle, &buf, sz)
+        status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
         match status {
             SUCCESS {
                 _filename := string_from_wide2(buf, sz)
@@ -210,7 +209,7 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 		FORMAT_MESSAGE_ALLOCATE_BUFFER
 		| FORMAT_MESSAGE_FROM_SYSTEM
 		| FORMAT_MESSAGE_IGNORE_INSERTS,
-        0, code, C.MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), &buf, 0, 0)
+        0, code, C.MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), voidptr(&buf), 0, 0)
     return buf
 }
 
@@ -238,12 +237,12 @@ pub fn exec(cmd string) ?Result {
 	sa.nLength = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.bInheritHandle = true
 
-	create_pipe_result := C.CreatePipe(&child_stdout_read, &child_stdout_write, &sa, 0)
+	create_pipe_result := int(C.CreatePipe(voidptr(&child_stdout_read), voidptr(&child_stdout_write), voidptr(&sa), 0))
 	if create_pipe_result == 0 {
 		error_msg := get_error_msg(int(C.GetLastError()))
 		return error('exec failed (CreatePipe): $error_msg')
 	}
-	set_handle_info_result := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
+	set_handle_info_result := int(C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0))
 	if set_handle_info_result == 0 {
 		error_msg := get_error_msg(int(C.GetLastError()))
 		panic('exec failed (SetHandleInformation): $error_msg')
@@ -257,8 +256,8 @@ pub fn exec(cmd string) ?Result {
 	start_info.hStdError = child_stdout_write
 	start_info.dwFlags = u32(C.STARTF_USESTDHANDLES)
 	command_line := [32768]u16
-	C.ExpandEnvironmentStrings(cmd.to_wide(), &command_line, 32768)
-	create_process_result := C.CreateProcess(0, command_line, 0, 0, C.TRUE, 0, 0, 0, &start_info, &proc_info)
+	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
+	create_process_result := int(C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info)))
 	if create_process_result == 0 {
 		error_msg := get_error_msg(int(C.GetLastError()))
 		return error('exec failed (CreateProcess): $error_msg')
@@ -266,23 +265,23 @@ pub fn exec(cmd string) ?Result {
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)	
 	buf := [1000]byte
-	mut bytes_read := 0
+	mut bytes_read := u32(0)
 	mut read_data := ''
 	for {
-		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, &bytes_read, 0)
-		read_data += tos(buf, bytes_read)
-		if (readfile_result == 0 || bytes_read == 0) {
+		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read), 0)
+		read_data += tos(buf, int(bytes_read))
+		if (readfile_result == false || int(bytes_read) == 0) {
 			break 
 		}		
 	}
 	read_data = read_data.trim_space()
-	exit_code := 0	
+	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.hProcess, C.INFINITE)
-	C.GetExitCodeProcess(proc_info.hProcess, &exit_code)
+	C.GetExitCodeProcess(proc_info.hProcess, voidptr(&exit_code))
 	C.CloseHandle(proc_info.hProcess)
 	C.CloseHandle(proc_info.hThread)
 	return Result {
 		output: read_data
-		exit_code: exit_code
+		exit_code: int(exit_code)
 	}
 }

@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <windows.h> 
+#include <windows.h>
 #include <winsock.h>
 #include <wincrypt.h>
 #include <wintrust.h>

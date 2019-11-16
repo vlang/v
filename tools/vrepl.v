@@ -143,12 +143,9 @@ pub fn run_repl() []string {
 			os.write_file(file, source_code)
 			s := os.exec('"$vexe" run $file -repl') or {
 				rerror(err)
-				return []string
+				return []
 			}
-			vals := s.output.split('\n')
-			for i:=0; i < vals.len; i++ {
-				println(vals[i])
-			}
+			print_output(s)
 		}
 		else {
 			mut temp_line := r.line
@@ -161,8 +158,9 @@ pub fn run_repl() []string {
 			temp_source_code := r.functions.join('\n') + r.lines.join('\n') + '\n' + r.temp_lines.join('\n') + '\n' + temp_line
 			os.write_file(temp_file, temp_source_code)
 			s := os.exec('"$vexe" run $temp_file -repl') or {
+				println("SDFSDF")
 				rerror(err)
-				return []string
+				return []
 			}
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
@@ -178,13 +176,23 @@ pub fn run_repl() []string {
 					r.temp_lines.delete(0)
 				}
 			}
-			vals := s.output.split('\n')
-			for i:=0; i<vals.len; i++ {
-				println(vals[i])
-			}
+			print_output(s)
 		}
 	}
 	return r.lines
+}
+
+fn print_output(s os.Result) {
+	lines := s.output.split('\n')
+	for line in lines {
+		if line.starts_with('.vrepl_temp.v') {
+			// Hide the temporary file name
+			println(line[line.index(' ') + 1 .. ])
+		}	 else {
+			println(line)
+		}
+	}
+	
 }
 
 fn main() {

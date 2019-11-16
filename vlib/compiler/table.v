@@ -334,7 +334,7 @@ fn (table &Table) known_type(typ_ string) bool {
 	mut typ := typ_
 	// 'byte*' => look up 'byte', but don't mess up fns
 	if typ.ends_with('*') && !typ.contains(' ') {
-		typ = typ[..typ.len - 1]
+		typ = typ.replace('*', '')
 	}
 	t := table.typesmap[typ]
 	return t.name.len > 0 && !t.is_placeholder
@@ -558,7 +558,7 @@ fn (p &Parser) find_type(name string) Type {
 fn (t &Table) find_type(name_ string) Type {
 	mut name := name_
 	if name.ends_with('*') && !name.contains(' ') {
-		name = name[..name.len - 1]
+		name = name.replace('*', '')
 	}
 	if !(name in t.typesmap) {
 		//println('ret Type')

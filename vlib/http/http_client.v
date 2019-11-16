@@ -13,7 +13,7 @@ fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
 	client.send( s.str, s.len ) or {}
 	for {
 		readbytes := client.crecv( rbuffer, bufsize )
-		if readbytes  < 0 { return error('http_do error reading response. readbytes: $readbytes') }
+		if readbytes  < 0 { return error('http.request.http_do: error reading response. readbytes=$readbytes') }
 		if readbytes == 0 { break }
 		sb.write( tos(rbuffer, readbytes) )
 	}

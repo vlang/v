@@ -8,7 +8,7 @@
 // applications.
 
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/sha1
-// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01 
+// Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 
 module sha1
 
@@ -71,7 +71,7 @@ pub fn (d mut Digest) write(p_ []byte) int {
 			d.nx = 0
 		}
 		if n >= p.len {
-			p = []byte
+			p = []
 		} else {
 			p = p[n..]
 		}
@@ -80,7 +80,7 @@ pub fn (d mut Digest) write(p_ []byte) int {
 		n := p.len &~ (chunk - 1)
 		block(d, p[..n])
 		if n >= p.len {
-			p = []byte
+			p = []
 		} else {
 			p = p[n..]
 		}

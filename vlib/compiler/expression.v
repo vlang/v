@@ -133,19 +133,41 @@ fn (p mut Parser) name_expr() string {
 	// amp
 	ptr := p.tok == .amp
 	deref := p.tok == .mul
-	if ptr || deref {
-		p.next()
+    mut mul_nr := 0
+    mut deref_nr := 0
+    for {
+        if p.tok == .amp {
+            mul_nr++
+        }else if p.tok == .mul {
+            deref_nr++
+        }else {
+            break
+        }
+        p.next()
+    }
+
+	if p.tok == .lpar {
+		p.gen('*'.repeat(deref_nr))
+		p.gen('(')
+		p.check(.lpar)
+		mut temp_type := p.bool_expression()
+		p.gen(')')
+		p.check(.rpar)
+		for _ in 0..deref_nr {
+			temp_type = temp_type.replace_once('*', '')
+		}
+		return temp_type
 	}
+
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
-	if name == 'r' && p.peek() == .str {
+	if (name == 'r' || name == 'c') && p.peek() == .str {
 		p.string_expr()
 		return 'string'
 	}
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
-
 	if is_c {
 		p.check(.name)
 		p.check(.dot)
@@ -176,7 +198,7 @@ fn (p mut Parser) name_expr() string {
 	// Variable, checked before modules, so that module shadowing is allowed:
 	// `gg = gg.newcontext(); gg.draw_rect(...)`
 	if p.known_var_check_new_var(name) {
-		return p.get_var_type(name, ptr, deref)
+		return p.get_var_type(name, ptr, deref_nr)
 	}
 	// Module?
 	if p.peek() == .dot && (name == p.mod ||
@@ -199,12 +221,10 @@ fn (p mut Parser) name_expr() string {
 		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
 	{
 		name = p.prepend_mod(name)
-	} else {
-		//println('$name')
 	}	
 	// re-check
 	if p.known_var_check_new_var(name) {
-		return p.get_var_type(name, ptr, deref)
+		return p.get_var_type(name, ptr, deref_nr)
 	}
 
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
@@ -213,10 +233,10 @@ fn (p mut Parser) name_expr() string {
 		// cast expression: float(5), byte(0), (*int)(ptr) etc
 		if !is_c && ( p.peek() == .lpar || (deref && p.peek() == .rpar) ) {
 			if deref {
-				name += '*'
+				name += '*'.repeat(deref_nr )
 			}
 			else if ptr {
-				name += '*'
+				name += '*'.repeat(mul_nr)
 			}
 			p.gen('(')
 			mut typ := name
@@ -309,11 +329,25 @@ fn (p mut Parser) name_expr() string {
 	f = new_f
 
 	// optional function call `function() or {}`, no return assignment
-    is_or_else := p.tok == .key_orelse
-    if !p.is_var_decl && is_or_else {
+	is_or_else := p.tok == .key_orelse
+	if p.tok == .question {
+		// `files := os.ls('.')?`
+		if p.cur_fn.name != 'main__main' {
+			p.error('`func()?` syntax can only be used inside `fn main()` for now')
+		}	
+		p.next()
+		tmp := p.get_tmp()
+		p.cgen.set_placeholder(fn_call_ph, '$f.typ $tmp = ')
+		p.genln(';')
+		p.genln('if (!${tmp}.ok) v_panic(${tmp}.error);')
+		typ := f.typ[7..] // option_xxx
+		p.gen('*($typ*) ${tmp}.data;')
+		return typ
+	}	
+	else if !p.is_var_decl && is_or_else {
 		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
 	}
-    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+    else if !p.is_var_decl && !is_or_else  && !p.inside_return_expr &&
 		f.typ.starts_with('Option_') {
         opt_type := f.typ[7..]
         p.error('unhandled option type: `?$opt_type`')
@@ -381,8 +415,11 @@ fn (p mut Parser) expression() string {
 			return 'void'
 		}
 		else {
-			if !is_integer_type(typ) {
-				p.error('cannot use shift operator on non-integer type `$typ`')
+			if !is_integer_type(typ)  {
+				t := p.table.find_type(typ)
+				if t.cat != .enum_ {
+					p.error('cannot use shift operator on non-integer type `$typ`')
+				}
 			}
 			p.next()
 			p.gen(' << ')
@@ -391,8 +428,11 @@ fn (p mut Parser) expression() string {
 		}
 	}
 	if p.tok == .righ_shift {
-		if !is_integer_type(typ) {
-			p.error('cannot use shift operator on non-integer type `$typ`')
+		if !is_integer_type(typ)  {
+			t := p.table.find_type(typ)
+			if t.cat != .enum_ {
+				p.error('cannot use shift operator on non-integer type `$typ`')
+			}
 		}
 		p.next()
 		p.gen(' >> ')
@@ -405,7 +445,7 @@ fn (p mut Parser) expression() string {
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
 		}
-		is_num := typ == 'void*' || typ == 'byte*' || is_number_type(typ)
+		is_num := typ.contains('*') || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
 			p.cgen.set_placeholder(ph, 'string_add(')
@@ -421,7 +461,9 @@ fn (p mut Parser) expression() string {
 				// Msvc errors on void* pointer arithmatic
 				// ... So cast to byte* and then do the add
 				p.cgen.set_placeholder(ph, '(byte*)')
-			}
+			}else if typ.contains('*') {
+                p.cgen.set_placeholder(ph, '($typ)')
+            }
 			p.gen(tok_op.str())
 		}
 		// Vec + Vec

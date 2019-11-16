@@ -1092,5 +1092,3 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 		break;
 	}
 }
-	
-

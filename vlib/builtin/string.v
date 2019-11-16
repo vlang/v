@@ -123,6 +123,13 @@ pub fn (s string) cstr() byteptr {
 	return clone.str
 }
 */
+pub fn (s string) replace_once(rep, with string) string {
+    index := s.index(rep)
+    if index != -1 {
+        return s.substr(0,index) + with + s.substr(index + rep.len, s.len)
+    }
+    return s
+}
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
@@ -1110,7 +1117,7 @@ pub fn (s string) hash() int {
 
 pub fn (s string) bytes() []byte {
 	if s.len == 0 {
-		return []byte
+		return []
 	}
 	mut buf := [byte(0)].repeat(s.len)
 	C.memcpy(buf.data, s.str, s.len)

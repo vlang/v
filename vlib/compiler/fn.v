@@ -171,7 +171,7 @@ fn (p mut Parser) clear_vars() {
 		if p.pref.autofree {
 			//p.local_vars.free()
 		}
-		p.local_vars = []Var
+		p.local_vars = []
 	}
 	
 }
@@ -646,9 +646,9 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	wrapper_name := '${fn_name}_thread_wrapper'
 	mut wrapper_type := 'void*'
 	if p.os == .windows {
-		wrapper_type = 'void* __stdcall'
+		wrapper_type = 'DWORD WINAPI'
 	}
-	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return NULL; }'
+	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return 0; }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
@@ -663,7 +663,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	}
 	// Call the wrapper
 	if p.os == .windows {
-		p.genln(' CreateThread(0,0, $wrapper_name, $parg, 0,0);')
+		p.genln(' CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_name, $parg, 0,0);')
 	}
 	else {
 		p.genln('int $tmp2 = pthread_create(& $thread_name, NULL, (void *)$wrapper_name, $parg);')
@@ -969,6 +969,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
 			}
 			p.check(.key_mut)
+			p.fspace()
 			var_name := p.lit
 			v := p.find_var(var_name) or {
 				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
@@ -1135,7 +1136,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') &&
 				//! (expected == 'void*' && got == 'array_int') {
-				! (expected == 'byte*' && got == 'byteptr') {
+				! (expected == 'byte*' && got == 'byteptr') && !p.pref.is_bare {
 					p.cgen.set_placeholder(ph, '& /*112 e="$expected" g="$got" */')
 				}
 			}
@@ -1407,7 +1408,8 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		f.args = _f.args
 		f.typ = _f.typ
 		f.is_generic = false
-		f.type_inst = []TypeInst
+		f.type_inst = []
+		if false {}
 		f.dispatch_of = ti
 		// println('using existing inst $f.name(${f.str_args(p.table)}) $f.typ')
 		return
@@ -1430,17 +1432,18 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 
 	p.rename_generic_fn_instance(mut f, ti)
 	f.is_generic = false		// the instance is a normal function
-	f.type_inst = []TypeInst
+	f.type_inst = []
+	if false {}
 	f.scope_level = 0
 	f.dispatch_of = ti
 
 	// TODO this is done to prevent a crash as a result of this not being
 	// properly initialised. This is a bug somewhere futher upstream
-	f.defer_text = []string
-
+	f.defer_text = []
+	if false {}
 	old_args := f.args
 	new_types := p.replace_type_params(f, ti)
-	f.args = []Var
+	f.args = []
 	for i in 0..new_types.len-1 {
 		mut v := old_args[i]
 		v.typ = new_types[i]
@@ -1464,7 +1467,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.returns = false
 	p.cgen.tmp_line = ''
 	p.cgen.cur_line = ''
-	p.cgen.lines = []string
+	p.cgen.lines = []
 	unsafe { // TODO
 		p.cur_fn = *f
 	}

@@ -56,7 +56,7 @@ pub fn post(url, data string) ?Response {
 
 pub fn new_request(typ, _url, _data string) ?Request {
 	if _url == '' {
-		return error('bad url')
+		return error('http.new_request: empty url')
 	}
 	mut url := _url
 	mut data := _data
@@ -90,17 +90,7 @@ fn (resp mut Response) free() {
 }
 
 pub fn (req mut Request) add_header(key, val string) {
-	// println('start add header')
-	// println('add header "$key" "$val"')
-	// println(key)
-	// println(val)
-	// h := '$key: $val'
-	// println('SET H')
-	// req.headers << h
 	req.headers[key] = val
-	// mut h := req.h
-	// h += ' -H "${key}: ${val}" '
-	// req.h = h
 }
 
 pub fn parse_headers(lines []string) map[string]string {
@@ -122,10 +112,7 @@ pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
 	}
-	for key, val in req.headers {
-		//h := '$key: $val'
-	}
-	url := urllib.parse(req.url) or { return error('http.request.do: invalid URL $req.url') }
+	url := urllib.parse(req.url) or { return error('http.request.do: invalid URL "$req.url"') }
 	mut rurl := url
 	mut resp := Response{}
 	mut no_redirects := 0
@@ -136,7 +123,7 @@ pub fn (req &Request) do() ?Response {
 		if ! (resp.status_code in [301, 302, 303, 307, 308]) { break }
 		// follow any redirects
 		redirect_url := resp.headers['Location']
-		qrurl := urllib.parse( redirect_url ) or { return error('http.request.do: invalid URL in redirect $redirect_url') }
+		qrurl := urllib.parse( redirect_url ) or { return error('http.request.do: invalid URL in redirect "$redirect_url"') }
 		rurl = qrurl
 		no_redirects++
 	}
@@ -167,7 +154,7 @@ fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.U
 		}
 		return res
 	}
-	return error('http.request.do: unsupported scheme: $scheme')
+	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
 }
 
 fn parse_response(resp string) Response {

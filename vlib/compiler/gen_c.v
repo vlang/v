@@ -129,11 +129,11 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		expr_line := p.cgen.lines[p.cgen.lines.len-2]
 		last_expr := expr_line[last_ph..]
 		p.cgen.lines[p.cgen.lines.len-2]  = ''
-		p.genln('if (!$tmp .ok) {')
+		p.genln('if (!${tmp}.ok) {')
 		p.genln('$name = $last_expr;')
 		p.genln('}')
 	} else if is_assign {
-		p.genln('$name = *($typ*) $tmp . data;')
+		p.genln('$name = *($typ*)${tmp}.data;')
 	}
 	if !p.returns && last_typ != typ && is_assign && p.prev_tok2 != .key_continue && p.prev_tok2 != .key_break {
 		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)
@@ -211,7 +211,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 			}
 		}
 	}
-	else if cfg.is_str && !p.builtin_mod {
+	else if cfg.is_str && !p.builtin_mod && !p.pref.is_bare {
 		if cfg.is_slice {
 			p.gen('string_substr2($index_expr)')
 		} else {
@@ -400,7 +400,11 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_po
 	mut cao_tmp := p.cgen.cur_line
 	mut func := ''
 	if is_map {
-		func = 'map_set(&'
+		if is_ptr {
+			func = 'map_set('
+		} else {
+			func = 'map_set(&'
+		}
 		// CAO on map is a bit more complicated as it loads
 		// the value inside a pointer instead of returning it.
 	}

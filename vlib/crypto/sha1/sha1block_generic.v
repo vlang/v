@@ -109,7 +109,7 @@ fn block_generic(dig mut Digest, p_ []byte) {
 		h4 += e
 
 		if chunk >= p.len {
-			p = []byte
+			p = []
 		} else {
 			p = p[chunk..]
 		}
