@@ -844,10 +844,6 @@ pub fn realpath(fpath string) string {
 		res = int( !isnil(C._fullpath( fullpath, fpath.str, MAX_PATH )) )
 	}
 	$else{
-		if fpath.len != strlen(fpath.str) {
-			l := strlen(fpath.str)
-			println('FIXME realpath diff len $fpath.len strlen=$l')
-		}	
 		ret := C.realpath(fpath.str, fullpath)
 		if ret == 0 {
 			return fpath
