@@ -145,17 +145,26 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
-pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
+pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
+	source_path := os.realpath( osource_path )
+	dest_path := os.realpath( odest_path )
 	if !os.file_exists(source_path) {
 		return error('Source path doesn\'t exist')
 	}
 	//single file copy
 	if !os.is_dir(source_path) {
 		adjasted_path := if os.is_dir(dest_path) {
-			filepath.join(dest_path, os.basedir(source_path)) } else { dest_path }
+			filepath.join(dest_path, os.filename(source_path)) 
+		} else { 
+			dest_path 
+		}
 		if os.file_exists(adjasted_path) {
-			if overwrite { os.rm(adjasted_path) }
-			else { return error('Destination file path already exist') }
+			if overwrite {
+				os.rm(adjasted_path) 
+			}
+			else { 
+				return error('Destination file path already exist') 
+			}
 		}
 		os.cp(source_path, adjasted_path) or { return error(err) }
 		return true
@@ -558,7 +567,7 @@ pub fn basedir(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path[..pos + 1]
+	return path[..pos ] // NB: *without* terminating /
 }
 
 pub fn filename(path string) string {
