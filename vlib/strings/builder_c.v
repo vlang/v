@@ -37,6 +37,10 @@ pub fn (b mut Builder) writeln(s string) {
 }
 
 pub fn (b Builder) str() string {
+	unsafe {
+		mut mb := b
+		mb.buf << 0
+	}
 	return string(b.buf, b.len)
 }
 
