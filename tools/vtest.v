@@ -92,6 +92,9 @@ pub fn (ts mut TestSession) test() {
 		}
 		$if msvc {
 		}
+		$if tinyc {
+			if file.contains('asm') { continue }
+		}	
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		cmd := '"$ts.vexe" $ts.vargs "$file"'
