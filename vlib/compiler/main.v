@@ -799,11 +799,7 @@ pub fn new_v(args[]string) &V {
 	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
-	
-	// support passing -vtmp on the CLI
-	vtmp := get_arg(joined_args, 'vtmp', '')
-	if vtmp.len != 0 { set_vtmp_folder(vtmp) }
-	
+		
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
 	//println('comptimedefine=$comptime_define')

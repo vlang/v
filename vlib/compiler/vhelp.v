@@ -28,6 +28,9 @@ pub const (
    You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
    `set VFLAGS=-cc msvc` on Windows.
 
+   V respects the TMPDIR environment variable, and will put .tmp.c files in $TMPDIR/v/ .
+   If you have not set it, a suitable platform specific folder (like /tmp) will be used.
+
 Options/commands:
   -h, help          Display this information.
   -o <file>         Write output to <file>.
@@ -59,9 +62,6 @@ Options for debugging/troubleshooting v programs:
                     Common C compilers are gcc, clang, tcc, icc, cl...
   -cflags <flags>   Pass additional C flags to the C backend compiler.
                     Example: -cflags `sdl2-config --cflags`
-  -vtmp /var/tmp    Changes the default folder that V uses for storing .tmp.c files.
-                    The environment variable VTMP and -vtmp are equivalent,
-                    but -vtmp has higher precedence over VTMP.
 
 Commands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.

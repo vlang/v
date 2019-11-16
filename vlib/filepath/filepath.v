@@ -2,7 +2,6 @@ module filepath
 
 import(
 	os
-	strings
 )
 
 // return the extension in the file `path`
@@ -26,12 +25,8 @@ pub fn is_abs(path string) bool {
 // pass directories as parameters, returns path as string 
 // TODO use []string.join once ...string becomes "[]string"
 pub fn join(base string, dirs ...string) string {
-	mut path := strings.new_builder(50)
-	path.write(base.trim_right('\\/'))
-	for d in dirs {
-		path.write(os.path_separator)
-		path.write(d)
-	}
-	path.write(byte(0).str())
-	return path.str()
+	mut result := []string
+	result << base.trim_right('\\/')
+	for d in dirs {	result << d	}
+	return result.join( os.path_separator )
 }

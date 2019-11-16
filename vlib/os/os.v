@@ -978,9 +978,12 @@ pub fn tmpdir() string {
 		if path == '' { path = '/tmp' }
 	}
 	$if mac {
+		/*
 		if path == '' {
-			path = C.NSTemporaryDirectory() // TODO untested
+			// TODO untested
+			path = C.NSTemporaryDirectory() 
 		}
+        */
 		if path == '' {	path = '/tmp' }
 	}
 	$if windows {
@@ -993,6 +996,5 @@ pub fn tmpdir() string {
 			if path == '' {	path = 'C:/tmp'	}
 		}
 	}
-	println('tmpdir: $path')
 	return path
 }
