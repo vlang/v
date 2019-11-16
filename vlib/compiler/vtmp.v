@@ -8,7 +8,7 @@ import os
 import filepath
 
 pub fn get_vtmp_folder() string {
-	vtmp := os.tmpdir() + os.path_separator + 'v'
+	vtmp := filepath.join(os.tmpdir(),'v')
 	if !os.dir_exists( vtmp ) {
 		os.mkdir(vtmp)
 	}
