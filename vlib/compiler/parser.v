@@ -1856,10 +1856,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_str {
 			typ = 'byte'
 			// Direct faster access to .str[i] in builtin modules
-			if p.builtin_mod {
+			if p.builtin_mod || p.pref.is_bare {
 				p.gen('.str[')
 				close_bracket = true
-			}
+			}	
 			else {
 				// Bounds check everywhere else
 				p.gen(', ')
