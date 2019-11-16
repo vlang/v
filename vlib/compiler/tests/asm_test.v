@@ -1,6 +1,4 @@
 fn test_inline_asm() {
-	$if !windows {
-	$if !tinyc {
 	a := 10
 	b := 0
 	unsafe {
@@ -18,11 +16,11 @@ fn test_inline_asm() {
 	e := 0
 	unsafe {
 		asm(
+			//".intel_syntax noprefix;"
+			//"mov %0, 5"
 			"movl $5, %0"
 			:"=a"(e)
 		)
 	}
 	assert e == 5
-	}
-	}
 }
