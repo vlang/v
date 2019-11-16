@@ -1,6 +1,6 @@
 .intel_syntax noprefix
 .text
-    .globl _start, syscall5
+    .globl _start, main__syscall5
 
     _start:
         xor rbp,rbp
@@ -16,7 +16,7 @@
         ret /* should never be reached, but if the OS somehow fails
                to kill us, it will cause a segmentation fault */
 
-    syscall5:
+    main__syscall5:
         mov rax,rdi
         mov rdi,rsi
         mov rsi,rdx
@@ -26,7 +26,7 @@
         syscall
         ret
 
-    syscall6:
+    main__syscall6:
         mov rax,rdi
         mov rdi,rsi
         mov rsi,rdx
