@@ -196,7 +196,7 @@ fn (gen_vc mut GenVC) generate() {
 	// check if gen_vc dir exists
 	if !os.dir_exists(gen_vc.options.work_dir) {
 		// try create
-		os.mkdir(gen_vc.options.work_dir)
+		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
 		// still dosen't exist... we have a problem
 		if !os.dir_exists(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: $gen_vc.options.work_dir')

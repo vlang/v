@@ -843,8 +843,8 @@ pub fn (v &V) log(s string) {
 pub fn new_v(args[]string) &V {
 	// Create modules dirs if they are missing
 	if !os.dir_exists(v_modules_path) {
-		os.mkdir(v_modules_path)
-		os.mkdir('$v_modules_path${os.path_separator}cache')
+		os.mkdir(v_modules_path) or { panic(err) }
+		os.mkdir('$v_modules_path${os.path_separator}cache') or { panic(err) }
 	}
 	
 	// Location of all vlib files
@@ -939,7 +939,7 @@ pub fn new_v(args[]string) &V {
 		d := out_name.all_before_last(os.path_separator)
 		if !os.dir_exists(d) {
 			println('creating a new directory "$d"')
-			os.mkdir(d)
+			os.mkdir(d) or { panic(err) }
 		}	
 	}	
 	mut _os := OS.mac

@@ -75,7 +75,7 @@ fn test_write_and_read_bytes() {
 
 fn test_create_and_delete_folder() {
   folder := './test1'
-  os.mkdir(folder)
+  os.mkdir(folder) or { panic(err) }
 	assert os.dir_exists(folder)
 
   folder_contents := os.ls(folder) or { panic(err) }
@@ -106,7 +106,7 @@ fn walk_callback(file string) {
 
 fn test_walk() {
     folder := 'test_walk'
-    os.mkdir(folder)
+    os.mkdir(folder) or { panic(err) }
 
     file1 := folder+os.path_separator+'test1'
 
@@ -137,12 +137,12 @@ fn test_cp_r() {
   //fileX -> dir/fileX
   // NB: clean up of the files happens inside the cleanup_leftovers function
   os.write_file('ex1.txt', 'wow!')
-  os.mkdir('ex')
+  os.mkdir('ex') or { panic(err) }
   os.cp_r('ex1.txt', 'ex', false) or { panic(err) }
   old := os.read_file('ex1.txt') or { panic(err) }
   new := os.read_file('ex/ex1.txt') or { panic(err) }
   assert old == new
-  os.mkdir('ex/ex2')
+  os.mkdir('ex/ex2') or { panic(err) }
   os.write_file('ex2.txt', 'great!')
   os.cp_r('ex2.txt', 'ex/ex2', false) or { panic(err) }
   old2 := os.read_file('ex2.txt') or { panic(err) }

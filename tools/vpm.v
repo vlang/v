@@ -154,7 +154,7 @@ fn ensure_vmodules_dir_exist() {
 	home_vmodules := get_vmodules_dir_path()
 	if !os.dir_exists( home_vmodules ) {
 		println('Creating $home_vmodules/ ...')
-		os.mkdir(home_vmodules)
+		os.mkdir(home_vmodules) or { panic(err) }
 	}
 }
 
