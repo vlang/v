@@ -973,8 +973,26 @@ pub fn join(base string, dirs ...string) string {
 
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
 pub fn tmpdir() string {
-	if os.user_os() == 'windows' {
-		return os.getenv('TEMP')
+	mut path := os.getenv('TMPDIR')
+	$if linux {
+		if path == '' { path = '/tmp' }
 	}
-	return '/tmp'
+	$if mac {
+		if path == '' {
+			path = C.NSTemporaryDirectory() // TODO untested
+		}
+		if path == '' {	path = '/tmp' }
+	}
+	$if windows {
+		if path == '' {
+			// TODO see Qt's implementation?
+			// https://doc.qt.io/qt-5/qdir.html#tempPath
+			// https://github.com/qt/qtbase/blob/e164d61ca8263fc4b46fdd916e1ea77c7dd2b735/src/corelib/io/qfilesystemengine_win.cpp#L1275
+			path = os.getenv('TEMP')
+			if path == '' {	path = os.getenv('TMP')	}
+			if path == '' {	path = 'C:/tmp'	}
+		}
+	}
+	println('tmpdir: $path')
+	return path
 }
