@@ -20,7 +20,7 @@ pub fn set_vtmp_folder(vtmp string){
 pub fn get_vtmp_folder() string {
 	mut vtmp := os.getenv('VTMP')
 	if vtmp.len == 0 || !os.dir_exists( vtmp ) {
-		vtmp = if os.user_os() == 'windows' { os.getenv('TMP') } else { '/tmp' }
+		vtmp = os.tmpdir()
 	}
 	if vtmp.len == 0 || !os.dir_exists( vtmp ) {
 		vtmp = filepath.join(v_modules_path, '_vtmp')

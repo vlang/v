@@ -970,3 +970,11 @@ pub fn join(base string, dirs ...string) string {
 	println('use filepath.join')
 	return filepath.join(base, dirs)
 }
+
+// tmpdir returns the path to a folder, that is suitable for storing temporary files
+pub fn tmpdir() string {
+	if os.user_os() == 'windows' {
+		return os.getenv('TEMP')
+	}
+	return '/tmp'
+}
