@@ -4,28 +4,58 @@
 fn &C.yyparse()
 
 struct YaccConfig{
-	output_name: ''
-	debug_mode: false
-}
+	file_prefix:	''	  // -b
+	define_name:	''	  // -d
+	prefix_name:	''	  // -p
+	debug_mode: 	false // -t
+	report: 		false // -v
+	optimize:		false // -l
+	parser_only:	false // -n
+ }
 
 struct BisonConfig {
-	output_name string: none
+	file_prefix:	''	  // -b
+	define_name:	''	  // -d
+	output_name: 	''	  // -o
+	prefix_name:	''	  // -p
+	debug_mode: 	false // -t
+	report: 		false // -v
+	optimize:		false // -l
+	parser_only:	false // -n
 }
 
 struct LexConfig {
-
+	debug_mode: 	false
+	report: 		false
+	optimize:		false
 }
 
 struct FlexConfig{
-	output_name string: none
+	output_name: 	''    // -o
+	debug_mode: 	false
+	report: 		false
+	optimize:		false
+	intractive:		false
+	trace_mode:		false
+	input:			false // -8
 }
 
-fn yacc_compile(file string,config YaccConfig) {
+fn yacc_config(){
+
+}
+
+fn flex_config(){
+
+}
+
+fn yacc_compile(file_path string,config YaccConfig) {
+	args := yacc_config(config)
 	// yacc or bison compile for C
-	yacc := system('bison -y $file') or system('yacc $file') or eprintln('Please Install yacc/bison.')
+	yacc := system('bison -y $file_path $args') or system('yacc $file_path $args') or eprintln('Please Install yacc/bison.')
 }
 
-fn bison_compile(file string) {
+fn bison_compile(file string, config BisonConfig) {
+	args := bison_config(config)
 	// bison default option compile for C
     bison := system('bison $file') or eprintln('Bison not installed.')
 }
