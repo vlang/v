@@ -31,7 +31,6 @@ fn (v mut V) cc() {
 	vdir := os.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
-	println('CC() $v.out_name')
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,

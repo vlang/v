@@ -517,3 +517,12 @@ fn test_raw_inter() {
 	assert s.contains('$')
 }
 
+fn test_c_r() {
+	// This used to break because of r'' and c''
+	c := 42
+	println('$c')
+	r := 50
+	println('$r')
+	
+}	
+
