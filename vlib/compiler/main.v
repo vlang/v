@@ -838,7 +838,9 @@ pub fn new_v(args[]string) &V {
 		mod = mod_path.replace(os.path_separator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
-		out_name = mod
+		if !out_name.ends_with('.c') {
+			out_name = mod
+		}
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {

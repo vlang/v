@@ -1501,7 +1501,7 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	// *var
 	if deref_nr > 0 {
 		/*
-		if !p.inside_unsafe {
+		if !p.inside_unsafe  && !p.pref.building_v && p.mod != 'os' {
 			p.error('dereferencing can only be done inside an `unsafe` block')
 		}	
 		*/
