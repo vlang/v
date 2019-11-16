@@ -7,3 +7,7 @@ pub fn panic(s string) {
 	//write(1, s.str, s.len)
 }
 
+pub fn panic_debug(s string) {
+	//write(1, s.str, s.len)
+}
+
