@@ -31,14 +31,8 @@ pub const (
 	MAX_PATH = 4096
 )
 
-/*
-struct C.FILE {
-	
-}
-*/
-
 pub struct File {
-	cfile voidptr
+	cfile voidptr // Using void* instead of FILE*
 }
 
 struct FileInfo {
@@ -115,7 +109,7 @@ pub fn read_file(path string) ?string {
 pub fn file_size(path string) int {
 	mut s := C.stat{}
 	$if windows {
-		C._wstat(path.to_wide(), &s)
+		C._wstat(path.to_wide(), voidptr(&s))
 	} $else {
 		C.stat(*char(path.str), &s)
 	}
@@ -589,13 +583,13 @@ pub fn get_raw_line() string {
         buf := &byte(malloc(max_line_chars*2))
         if is_atty(0) > 0 {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-            mut nr_chars := 0
-            C.ReadConsole(h_input, buf, max_line_chars * 2, &nr_chars, 0)
-            return string_from_wide2(&u16(buf), nr_chars)
+            mut nr_chars := u32(0)
+            C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&nr_chars), 0)
+            return string_from_wide2(&u16(buf), int(nr_chars))
         }
-        res := int( C.fgetws(buf, max_line_chars, C.stdin ) )
+        res := C.fgetws(&u16(buf), max_line_chars, C.stdin )
         len := int(  C.wcslen(&u16(buf)) )
-        if 0 != res { return string_from_wide2( &u16(buf), len ) }
+        if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
         return ''
     } $else {
         max := size_t(256)
@@ -812,14 +806,14 @@ pub fn chdir(path string) {
 pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
-		buf := &u16(malloc(max*2))
+		buf := &u16(calloc(max*2))
 		if C._wgetcwd(buf, max) == 0 {
 			return ''
 		}
 		return string_from_wide(buf)
 	}
 	$else {
-		buf := malloc(512)
+		buf := calloc(512)
 		if C.getcwd(buf, 512) == 0 {
 			return ''
 		}
@@ -833,15 +827,23 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut fullpath := malloc( MAX_PATH )
+	mut fullpath := calloc( MAX_PATH )
 	mut res := 0
 	$if windows {
-		res = int( C._fullpath( fullpath, fpath.str, MAX_PATH ) )
+	// here we want an int==0 if _fullpath failed , in which case
+	// it would return NULL, and !isnil(NULL) would be false==0
+		res = int( !isnil(C._fullpath( fullpath, fpath.str, MAX_PATH )) )
 	}
 	$else{
-		// here we want an int==0 if realpath failed, in which case
-		// realpath would return NULL, and !isnil(NULL) would be false==0
-		res = int( !isnil(C.realpath( fpath.str, fullpath )) )
+		if fpath.len != strlen(fpath.str) {
+			l := strlen(fpath.str)
+			println('FIXME realpath diff len $fpath.len strlen=$l')
+		}	
+		ret := C.realpath(fpath.str, fullpath)
+		if ret == 0 {
+			return fpath
+		}	
+		return string(fullpath)
 	}
 	if res != 0 {
 		return string(fullpath, vstrlen(fullpath))
@@ -852,7 +854,7 @@ pub fn realpath(fpath string) string {
 // walk_ext returns a recursive list of all file paths ending with `ext`.
 pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
-		return []string
+		return []
 	}
 	mut files := os.ls(path) or { panic(err) }
 	mut res := []string
@@ -900,19 +902,25 @@ fn C.fork() int
 fn C.wait() int
 
 pub fn fork() int {
+	mut pid := -1
 	$if !windows {
-		pid := C.fork()
-		return pid
+		pid = C.fork()
 	}
-	panic('os.fork not supported in windows') // TODO
+	$if windows {
+		panic('os.fork not supported in windows') // TODO
+	}
+	return pid
 }
 
 pub fn wait() int {
+	mut pid := -1
 	$if !windows {
-		pid := C.wait(0)
-		return pid
+		pid = C.wait(0)
 	}
-	panic('os.wait not supported in windows') // TODO
+	$if !windows {
+		panic('os.wait not supported in windows') // TODO
+	}
+	return pid
 }
 
 pub fn file_last_mod_unix(path string) int {

@@ -66,7 +66,7 @@ const (
 )
 
 const(
-	INVALID_HANDLE_VALUE = -1
+	INVALID_HANDLE_VALUE = voidptr(-1)
 )
 
 // https://docs.microsoft.com/en-us/windows/console/setconsolemode

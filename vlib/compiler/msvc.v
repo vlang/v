@@ -3,8 +3,8 @@ module compiler
 import os
 
 #flag windows -l shell32
-
-// RegOpenKeyExA etc
+#flag windows -l dbghelp
+// RegOpenKeyExW etc
 #flag windows -l advapi32
 
 struct MsvcResult {

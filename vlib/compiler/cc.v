@@ -103,12 +103,28 @@ fn (v mut V) cc() {
 	}
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
-	mut a := [v.pref.cflags, '-std=gnu11', '-w'] // arguments for the C compiler
+	// arguments for the C compiler
+	mut a := [v.pref.cflags, '-std=gnu11',
+		'-Wall',
+		'-Wextra',
+		// TODO : activate -Werror once no warnings remain
+//		'-Werror',
+		// TODO : try and remove the below workaround options when the corresponding
+		// warnings are totally fixed/removed
+		'-Wno-unused-variable',
+		'-Wno-unused-but-set-variable',
+		'-Wno-unused-parameter',
+		'-Wno-unused-result',
+		'-Wno-missing-braces',
+		'-Wno-unused-label']
 
 	if v.pref.is_so {
 		a << '-shared -fPIC '// -Wl,-z,defs'
 		v.out_name = v.out_name + '.so'
 	}
+	if v.pref.is_bare {
+		a << '-static -ffreestanding -nostdlib $vdir/vlib/os/bare/bare.S'
+	}	
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
 		mut out_dir := if v.dir.starts_with('vlib') {
@@ -279,7 +295,7 @@ start:
 			return
 		}
 		*/
-		verror(err) 
+		verror(err)
 		return
 	}
 	if res.exit_code != 0 {

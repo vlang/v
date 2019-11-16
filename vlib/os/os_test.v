@@ -76,6 +76,7 @@ fn test_write_and_read_bytes() {
 fn test_create_and_delete_folder() {
   folder := './test1'
   os.mkdir(folder)
+	assert os.dir_exists(folder)
 
   folder_contents := os.ls(folder) or { panic(err) }
   assert folder_contents.len == 0
@@ -120,7 +121,7 @@ fn test_walk() {
 fn test_cp() {
     old_file_name := 'cp_example.txt'
     new_file_name := 'cp_new_example.txt'
-    
+
     os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')
     os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
 
@@ -191,7 +192,7 @@ fn cleanup_leftovers(){
 	os.rm('ex/ex2/ex2.txt')
 	os.rm('ex/ex2')
 	os.rm('ex/ex1.txt')
-	os.rm('ex')  
+	os.rm('ex')
 	os.rm('ex2/ex2.txt')
 	os.rm('ex2')
 	os.rm('ex1.txt')

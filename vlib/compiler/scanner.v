@@ -588,6 +588,9 @@ fn (s mut Scanner) scan() ScanRes {
 			s.ignore_line()
 			s.line_comment = s.text[start + 1..s.pos]
 			s.line_comment = s.line_comment.trim_space()
+			if s.is_fmt {
+				return scan_res(.line_comment, s.line_comment)
+			}	
 			//s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 			// Skip the comment (return the next token)
 			return s.scan()
@@ -617,8 +620,11 @@ fn (s mut Scanner) scan() ScanRes {
 			}
 			s.pos++
 			end := s.pos + 1
-			comm := s.text[start..end]
-			s.fgenln(comm)
+			comment := s.text[start..end]
+			if s.is_fmt {
+				s.line_comment = comment
+				return scan_res(.mline_comment, s.line_comment)
+			}	
 			// Skip if not in fmt mode
 			return s.scan()
 		}

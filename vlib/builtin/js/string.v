@@ -318,5 +318,5 @@ pub fn (s string) hash() int {
 }
 
 pub fn (s string) bytes() []byte {
-	return []byte
+	return []
 }

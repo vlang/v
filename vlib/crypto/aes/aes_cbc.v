@@ -70,7 +70,7 @@ pub fn (x mut AesCbc) encrypt_blocks(dst mut []byte, src_ []byte) {
 		// Move to the next block with this block as the next iv.
 		iv = dst[..x.block_size]
 		if x.block_size >= src.len {
-			src = []byte
+			src = []
 		} else {
 			src = src[x.block_size..]
 		}

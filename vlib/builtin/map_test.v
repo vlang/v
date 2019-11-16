@@ -158,6 +158,16 @@ fn test_string_arr() {
 	assert m['a'][1] == 'two'
 }
 
+fn mut_map(m mut map[string]int) {
+	m['a'] = 10
+}
+
+fn test_mut_arg() {
+	mut m := map[string]int
+	mut_map(mut m)
+	assert m['a'] == 10
+}
+
 /*
 fn test_ref() {
 	m := { 'one': 1 }

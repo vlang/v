@@ -161,14 +161,13 @@ fn (p mut Parser) name_expr() string {
 
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
-	if name == 'r' && p.peek() == .str {
+	if (name == 'r' || name == 'c') && p.peek() == .str {
 		p.string_expr()
 		return 'string'
 	}
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
-
 	if is_c {
 		p.check(.name)
 		p.check(.dot)
@@ -222,8 +221,6 @@ fn (p mut Parser) name_expr() string {
 		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
 	{
 		name = p.prepend_mod(name)
-	} else {
-		//println('$name')
 	}	
 	// re-check
 	if p.known_var_check_new_var(name) {
@@ -332,11 +329,25 @@ fn (p mut Parser) name_expr() string {
 	f = new_f
 
 	// optional function call `function() or {}`, no return assignment
-    is_or_else := p.tok == .key_orelse
-    if !p.is_var_decl && is_or_else {
+	is_or_else := p.tok == .key_orelse
+	if p.tok == .question {
+		// `files := os.ls('.')?`
+		if p.cur_fn.name != 'main__main' {
+			p.error('`func()?` syntax can only be used inside `fn main()` for now')
+		}	
+		p.next()
+		tmp := p.get_tmp()
+		p.cgen.set_placeholder(fn_call_ph, '$f.typ $tmp = ')
+		p.genln(';')
+		p.genln('if (!${tmp}.ok) v_panic(${tmp}.error);')
+		typ := f.typ[7..] // option_xxx
+		p.gen('*($typ*) ${tmp}.data;')
+		return typ
+	}	
+	else if !p.is_var_decl && is_or_else {
 		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
 	}
-    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+    else if !p.is_var_decl && !is_or_else  && !p.inside_return_expr &&
 		f.typ.starts_with('Option_') {
         opt_type := f.typ[7..]
         p.error('unhandled option type: `?$opt_type`')
@@ -404,8 +415,11 @@ fn (p mut Parser) expression() string {
 			return 'void'
 		}
 		else {
-			if !is_integer_type(typ) {
-				p.error('cannot use shift operator on non-integer type `$typ`')
+			if !is_integer_type(typ)  {
+				t := p.table.find_type(typ)
+				if t.cat != .enum_ {
+					p.error('cannot use shift operator on non-integer type `$typ`')
+				}
 			}
 			p.next()
 			p.gen(' << ')
@@ -414,8 +428,11 @@ fn (p mut Parser) expression() string {
 		}
 	}
 	if p.tok == .righ_shift {
-		if !is_integer_type(typ) {
-			p.error('cannot use shift operator on non-integer type `$typ`')
+		if !is_integer_type(typ)  {
+			t := p.table.find_type(typ)
+			if t.cat != .enum_ {
+				p.error('cannot use shift operator on non-integer type `$typ`')
+			}
 		}
 		p.next()
 		p.gen(' >> ')

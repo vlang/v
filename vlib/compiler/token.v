@@ -71,8 +71,8 @@ enum TokenKind {
 	ge
 	le
 	// comments
-	//line_com
-	//mline_com
+	line_comment
+	mline_comment
 	nl
 	dot
 	dotdot
@@ -192,7 +192,8 @@ fn build_token_str() []string {
 	s[TokenKind.question] = '?'
 	s[TokenKind.left_shift] = '<<'
 	s[TokenKind.righ_shift] = '>>'
-	//s[TokenKind.line_com] = '//'
+	s[TokenKind.line_comment] = '// line comment'
+	s[TokenKind.mline_comment] = '/* mline comment */'
 	s[TokenKind.nl] = 'NLL'
 	s[TokenKind.dollar] = '$'
 	s[TokenKind.key_assert] = 'assert'
