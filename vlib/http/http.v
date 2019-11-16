@@ -90,17 +90,7 @@ fn (resp mut Response) free() {
 }
 
 pub fn (req mut Request) add_header(key, val string) {
-	// println('start add header')
-	// println('add header "$key" "$val"')
-	// println(key)
-	// println(val)
-	// h := '$key: $val'
-	// println('SET H')
-	// req.headers << h
 	req.headers[key] = val
-	// mut h := req.h
-	// h += ' -H "${key}: ${val}" '
-	// req.h = h
 }
 
 pub fn parse_headers(lines []string) map[string]string {
@@ -121,9 +111,6 @@ pub fn parse_headers(lines []string) map[string]string {
 pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
-	}
-	for key, val in req.headers {
-		//h := '$key: $val'
 	}
 	url := urllib.parse(req.url) or { return error('http.request.do: invalid URL "$req.url"') }
 	mut rurl := url
