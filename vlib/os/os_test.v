@@ -82,6 +82,9 @@ fn test_create_and_delete_folder() {
   assert folder_contents.len == 0
 
   r := os.mkdir(folder)
+
+  println(r)
+
   assert r == 17
 
   os.rmdir(folder)
