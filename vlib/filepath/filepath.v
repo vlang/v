@@ -32,5 +32,6 @@ pub fn join(base string, dirs ...string) string {
 		path.write(os.path_separator)
 		path.write(d)
 	}
+	path.write(byte(0).str())
 	return path.str()
 }
