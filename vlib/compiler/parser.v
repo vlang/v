@@ -297,7 +297,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
+	p.can_chash = p.mod in ['ui','darwin','clipboard']// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) {
