@@ -28,7 +28,7 @@ pub const (
    You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
    `set VFLAGS=-cc msvc` on Windows.
 
-   V respects the TMPDIR environment variable, and will put .tmp.c files in $TMPDIR/v/ .
+   V respects the TMPDIR environment variable, and will put .tmp.c files in \$TMPDIR/v/ .
    If you have not set it, a suitable platform specific folder (like /tmp) will be used.
 
 Options/commands:
