@@ -1208,6 +1208,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 	.key_assert {
 		p.assert_statement()
 	}
+	.key_asm {
+		p.inline_asm()
+	}	
 	else {
 		// An expression as a statement
 		typ := p.expression()
@@ -2745,7 +2748,7 @@ fn (p mut Parser) return_st() {
 	p.returns = true
 }
 
-fn (p Parser) get_deferred_text() string {
+fn (p &Parser) get_deferred_text() string {
 	// @emily33901: Scoped defer
 	// Check all of our defer texts to see if there is one at a higher scope level
 	// The one for our current scope would be the last so any before that need to be
