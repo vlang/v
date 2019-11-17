@@ -147,7 +147,7 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 	return cb
 }
 
-fn (cb &Clipboard) check_availability(){
+fn (cb &Clipboard) check_availability() bool {
 	return cb.display != C.NULL
 }
 

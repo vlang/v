@@ -19,7 +19,7 @@ fn new_clipboard() &Clipboard{
 	return cb
 }
 
-fn (cb &Clipboard) check_availability(){
+fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != C.NULL
 }
 

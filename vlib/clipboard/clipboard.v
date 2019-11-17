@@ -31,7 +31,7 @@ pub fn (cb mut Clipboard) check_ownership() bool {
 }
 
 // check if clipboard can be used
-pub fn (cb &Clipboard) is_available(){
+pub fn (cb &Clipboard) is_available() bool {
 	return cb.check_availability()
 }
 
