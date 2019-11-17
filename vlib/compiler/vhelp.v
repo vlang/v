@@ -49,6 +49,7 @@ Options/commands:
                     It very significantly speeds up secondary compilations.
 
   -obf              Obfuscate the resulting binary.
+  -compress         Compress the resulting binary.
   -                 Shorthand for `v runrepl`.
 
 Options for debugging/troubleshooting v programs:
