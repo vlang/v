@@ -145,17 +145,26 @@ pub fn cp(old, new string) ?bool {
 	}
 }
 
-pub fn cp_r(source_path, dest_path string, overwrite bool) ?bool{
+pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
+	source_path := os.realpath( osource_path )
+	dest_path := os.realpath( odest_path )
 	if !os.file_exists(source_path) {
 		return error('Source path doesn\'t exist')
 	}
 	//single file copy
 	if !os.is_dir(source_path) {
 		adjasted_path := if os.is_dir(dest_path) {
-			filepath.join(dest_path, os.basedir(source_path)) } else { dest_path }
+			filepath.join(dest_path, os.filename(source_path)) 
+		} else { 
+			dest_path 
+		}
 		if os.file_exists(adjasted_path) {
-			if overwrite { os.rm(adjasted_path) }
-			else { return error('Destination file path already exist') }
+			if overwrite {
+				os.rm(adjasted_path) 
+			}
+			else { 
+				return error('Destination file path already exist') 
+			}
 		}
 		os.cp(source_path, adjasted_path) or { return error(err) }
 		return true
@@ -558,7 +567,7 @@ pub fn basedir(path string) string {
 	if pos == -1 {
 		return path
 	}
-	return path[..pos + 1]
+	return path[..pos ] // NB: *without* terminating /
 }
 
 pub fn filename(path string) string {
@@ -835,10 +844,6 @@ pub fn realpath(fpath string) string {
 		res = int( !isnil(C._fullpath( fullpath, fpath.str, MAX_PATH )) )
 	}
 	$else{
-		if fpath.len != strlen(fpath.str) {
-			l := strlen(fpath.str)
-			println('FIXME realpath diff len $fpath.len strlen=$l')
-		}	
 		ret := C.realpath(fpath.str, fullpath)
 		if ret == 0 {
 			return fpath
@@ -964,4 +969,32 @@ pub fn mkdir_all(path string) {
 pub fn join(base string, dirs ...string) string {
 	println('use filepath.join')
 	return filepath.join(base, dirs)
+}
+
+// tmpdir returns the path to a folder, that is suitable for storing temporary files
+pub fn tmpdir() string {
+	mut path := os.getenv('TMPDIR')
+	$if linux {
+		if path == '' { path = '/tmp' }
+	}
+	$if mac {
+		/*
+		if path == '' {
+			// TODO untested
+			path = C.NSTemporaryDirectory() 
+		}
+        */
+		if path == '' {	path = '/tmp' }
+	}
+	$if windows {
+		if path == '' {
+			// TODO see Qt's implementation?
+			// https://doc.qt.io/qt-5/qdir.html#tempPath
+			// https://github.com/qt/qtbase/blob/e164d61ca8263fc4b46fdd916e1ea77c7dd2b735/src/corelib/io/qfilesystemengine_win.cpp#L1275
+			path = os.getenv('TEMP')
+			if path == '' {	path = os.getenv('TMP')	}
+			if path == '' {	path = 'C:/tmp'	}
+		}
+	}
+	return path
 }
