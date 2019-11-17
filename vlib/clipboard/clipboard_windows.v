@@ -82,7 +82,7 @@ fn new_clipboard() &Clipboard {
 }
 
 fn (cb &Clipboard) check_availability() bool {
-	return cb.hwnd != C.NULL
+	return cb.hwnd != HWND(C.NULL)
 }
 
 fn (cb &Clipboard) has_ownership() bool {
