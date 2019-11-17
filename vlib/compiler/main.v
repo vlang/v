@@ -432,7 +432,8 @@ pub fn (v mut V) generate_main() {
 	if v.pref.build_mode != .build_module {
 		if !v.table.main_exists() && !v.pref.is_test {
 			// It can be skipped in single file programs
-			if v.pref.is_script {
+			// But make sure that there's some code outside of main()
+			if v.pref.is_script && cgen.fn_main.trim_space() != ''{
 				//println('Generating main()...')
 				v.gen_main_start(true)
 				cgen.genln('$cgen.fn_main;')
