@@ -6,9 +6,24 @@ pub mut:
 	description string
 	execute fn(cmd cli.Command, args []string)
 
+	parent &Command
 	commands []Command
 	flags []Flag
 	args []string
+}
+
+pub fn (cmd Command) full_name() string {
+	if isnil(cmd.parent) {
+		return cmd.name
+	}
+	return cmd.parent.full_name() + ' ${cmd.name}'
+}
+
+pub fn (cmd Command) root() Command {
+	if isnil(cmd.parent) {
+		return cmd
+	}
+	return cmd.parent.root()
 }
 
 pub fn (cmd mut Command) add_command(command Command) {
@@ -21,10 +36,14 @@ pub fn (cmd mut Command) add_flag(flag Flag) {
 
 pub fn (cmd mut Command) parse(args []string) {
 	cmd.args = args.right(1)
+	for i := 0; i < cmd.commands.len; i++ {
+		cmd.commands[i].parent = cmd
+	}
 
 	cmd.parse_flags()
 	cmd.check_required_flags()
-	cmd.parse_command()
+	cmd.parse_commands()
+}
 }
 
 fn (cmd mut Command) parse_flags() {
@@ -39,7 +58,7 @@ fn (cmd mut Command) parse_flags() {
 			if flag.matches(cmd.args) {
 				found = true
 				mut args := flag.parse(cmd.args) or {	// TODO: fix once options types can be assigned to struct variables
-					println('failed to parse flag ${cmd.args[0]}')
+					println('failed to parse flag ${cmd.args[0]}: ${err}')
 					exit(1)
 				}
 				cmd.args = args
@@ -57,13 +76,14 @@ fn (cmd mut Command) parse_flags() {
 fn (cmd mut Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value == '' {
-			println('flag ${flag.name} is required')
+			full_name := cmd.full_name()
+			println('flag \'${flag.name}\' is required by \'${full_name}\'')
 			exit(1)
 		}
 	}
 }
 
-fn (cmd mut Command) parse_command() {
+fn (cmd mut Command) parse_commands() {
 	flags := cmd.flags
 	global_flags := flags.filter(it.global) // TODO: fix once filter can be applied to struct variable
 
