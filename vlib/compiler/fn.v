@@ -689,7 +689,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		p.error('function `$f.name` is private')
 	}
 	if Reserved_Types[f.name] && !p.builtin_mod && !f.is_method {
-		p.error('`$f.name` can\'t be used as a name')
+		p.error('`$f.name` can\'t be used as a function name')
 	}
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
 	if is_comptime_define {
