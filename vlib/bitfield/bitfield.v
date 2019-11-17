@@ -13,9 +13,7 @@ Bit arrays are stored in data structures called 'BitField'. The structure is
 provides API (functions and methods) for accessing and modifying bit arrays.
 */
 
-import math.bits
-
-struct BitField {
+pub struct BitField {
 mut:
 	size int
 	//field *u32
@@ -79,19 +77,12 @@ fn cleartail(instance mut BitField) {
 
 // public functions
 
-// from_bytes() converts a byte arry into a bitfield.
-// Be aware of possible trailing zeroes being added
-// due to the underlying 32bit int containers.
+// from_bytes() converts a byte array into a bitfield.
 pub fn from_bytes(input []byte) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
-		output.field[i / 4] |= (u32(b) << (3 - i % 4) * 8)
+		output.field[i / 4] |= u32(b) << i % 4 * 8
 	}
-
-	for i, f in output.field {
-		output.field[i] = bits.reverse32(f)
-	}
-
 	return output
 }
 
