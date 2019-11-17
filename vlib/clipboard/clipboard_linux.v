@@ -128,6 +128,11 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 	}
 
 	display := new_display()
+
+	if display == C.NULL {
+		panic("No X Server running.")
+	}
+
 	mut cb := &Clipboard{
 		display: display
 		window: create_xwindow(display)
