@@ -39,8 +39,8 @@ jobs:
       run: make && ./v -cc gcc -o v v.v
     - name: Test v->c
       run: ./v test v
-    - name: Test v->js
-      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+#    - name: Test v->js
+#      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Bare metal
       run: ./v -bare -o bare vlib/os/bare/bare_example_linux.v
 

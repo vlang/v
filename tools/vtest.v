@@ -91,6 +91,7 @@ pub fn (ts mut TestSession) test() {
 			if file.contains('sqlite') { continue }
 		}
 		$if msvc {
+			if file.contains('asm') { continue }
 		}
 		$if tinyc {
 			if file.contains('asm') { continue }
