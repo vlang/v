@@ -4,7 +4,7 @@ Lots of things are broken and not implemented yet in V and vweb.
 
 There's no documentation yet, have a look at a simple example: 
 
-https://github.com/vlang/v/tree/master/examples/vweb/test_app.v 
+https://github.com/vlang/v/tree/master/examples/vweb/test_vweb_app.v 
 
 There's also the V forum: https://github.com/vlang/vorum 
 
