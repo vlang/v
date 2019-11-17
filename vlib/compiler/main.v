@@ -439,7 +439,7 @@ pub fn (v mut V) generate_main() {
 				cgen.genln('$cgen.fn_main;')
 				v.gen_main_end('return 0')
 			}
-			else {
+			else if !v.pref.is_repl {
 				verror('function `main` is not declared in the main module')
 			}
 		}
@@ -453,7 +453,9 @@ pub fn (v mut V) generate_main() {
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 
-			if v.pref.is_stats { cgen.genln('BenchedTests bt = main__start_testing();') }
+			if v.pref.is_stats {
+				cgen.genln('BenchedTests bt = main__start_testing();')
+			}
 
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
