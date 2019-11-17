@@ -19,20 +19,21 @@ fn new_clipboard() &Clipboard{
 	return cb
 }
 
-fn (c &Clipboard) clear(){
+fn (cb &Clipboard) clear(){
 	#[c->pb clearContents];
 }
 
-fn (c &Clipboard) free(){
+fn (cb &Clipboard) free(){
 	//nothing to free
 }
 
-fn (c &Clipboard) has_ownership() bool {
+fn (cb &Clipboard) has_ownership() bool {
+	if cb.last_cb_serial == 0 {return false}
 	#return [c->pb changeCount] == c->last_cb_serial;
 	return false
 }
 
-fn (c &Clipboard) set_text(text string) bool {
+fn (cb &Clipboard) set_text(text string) bool {
 	#NSString *ns_clip;
 	mut ret := false
 
@@ -47,7 +48,7 @@ fn (c &Clipboard) set_text(text string) bool {
 	return ret
 }
 
-fn (c &Clipboard) get_text() string {
+fn (cb &Clipboard) get_text() string {
 	#NSString *ns_clip;
 	mut utf8_clip := byteptr(0)
 
