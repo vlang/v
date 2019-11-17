@@ -234,7 +234,14 @@ pub fn (v mut V) compile() {
 	$if js {
 		cgen.genln(js_headers)
 	} $else {
+		if !v.pref.is_bare {
+			cgen.genln('#include <inttypes.h>')  // int64_t etc
+		} else {
+			cgen.genln('#include <stdint.h>')
+		}	
+		
 		cgen.genln(c_builtin_types)
+		
 		if !v.pref.is_bare {
 			cgen.genln(c_headers)
 		}
@@ -579,7 +586,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 pub fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
-		builtin_files = []
+		//builtin_files = []
 	}	
 	// Builtin cache exists? Use it.
 	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
@@ -651,6 +658,9 @@ pub fn (v mut V) add_v_files_to_compile() {
 
 pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
+	if v.pref.is_bare {
+		return v.v_files_from_dir(filepath.join(v.vroot, 'vlib', 'builtin', 'bare'))
+	}
 	$if js {
 		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
 	}
@@ -789,6 +799,7 @@ pub fn new_v(args[]string) &V {
 	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
+		
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
 	//println('comptimedefine=$comptime_define')
@@ -828,7 +839,9 @@ pub fn new_v(args[]string) &V {
 		mod = mod_path.replace(os.path_separator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
-		out_name = mod
+		if !out_name.ends_with('.c') {
+			out_name = mod
+		}
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
@@ -918,8 +931,8 @@ pub fn new_v(args[]string) &V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
-	// println('out_name:$out_name')
-	mut out_name_c := os.realpath('${out_name}.tmp.c')
+
+	mut out_name_c := get_vtmp_filename( out_name, '.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
 
@@ -966,7 +979,7 @@ pub fn new_v(args[]string) &V {
 		println('C compiler=$pref.ccompiler')
 	}
 	if pref.is_so {
-		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
+		out_name_c = get_vtmp_filename( out_name, '.tmp.so.c')
 	}
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {

@@ -4,7 +4,7 @@ import os
 
 #flag windows -l shell32
 #flag windows -l dbghelp
-// RegOpenKeyExA etc
+// RegOpenKeyExW etc
 #flag windows -l advapi32
 
 struct MsvcResult {

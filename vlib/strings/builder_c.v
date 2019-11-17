@@ -36,7 +36,8 @@ pub fn (b mut Builder) writeln(s string) {
 	b.len += s.len + 1
 }
 
-pub fn (b Builder) str() string {
+pub fn (b mut Builder) str() string {
+	b.buf << `\0`
 	return string(b.buf, b.len)
 }
 

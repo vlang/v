@@ -80,6 +80,7 @@ enum TokenKind {
 	// keywords
 	keyword_beg
 	key_as
+	key_asm
 	key_assert
 	key_atomic
 	key_break
@@ -201,6 +202,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_if] = 'if'
 	//s[TokenKind.key_it] = 'it'
 	s[TokenKind.key_else] = 'else'
+	s[TokenKind.key_asm] = 'asm'
 	s[TokenKind.key_return] = 'return'
 	s[TokenKind.key_module] = 'module'
 	s[TokenKind.key_sizeof] = 'sizeof'

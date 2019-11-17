@@ -26,7 +26,7 @@ fn main() {
 	// so its first argument is the path to the v frontend executable.
 	args := os.args // args are: vpm vexepath SUBCOMMAND module names
 	if args.len < 3 {
-		vpm_help([]string)
+		vpm_help([])
 		exit(5)
 	}
 	vpm_command := args[2]

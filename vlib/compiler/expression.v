@@ -161,7 +161,7 @@ fn (p mut Parser) name_expr() string {
 
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
-	if name == 'r' && p.peek() == .str {
+	if (name == 'r' || name == 'c') && p.peek() == .str && p.prev_tok != .dollar {
 		p.string_expr()
 		return 'string'
 	}
@@ -415,8 +415,11 @@ fn (p mut Parser) expression() string {
 			return 'void'
 		}
 		else {
-			if !is_integer_type(typ) {
-				p.error('cannot use shift operator on non-integer type `$typ`')
+			if !is_integer_type(typ)  {
+				t := p.table.find_type(typ)
+				if t.cat != .enum_ {
+					p.error('cannot use shift operator on non-integer type `$typ`')
+				}
 			}
 			p.next()
 			p.gen(' << ')
@@ -425,8 +428,11 @@ fn (p mut Parser) expression() string {
 		}
 	}
 	if p.tok == .righ_shift {
-		if !is_integer_type(typ) {
-			p.error('cannot use shift operator on non-integer type `$typ`')
+		if !is_integer_type(typ)  {
+			t := p.table.find_type(typ)
+			if t.cat != .enum_ {
+				p.error('cannot use shift operator on non-integer type `$typ`')
+			}
 		}
 		p.next()
 		p.gen(' >> ')

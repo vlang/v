@@ -76,6 +76,7 @@ fn test_write_and_read_bytes() {
 fn test_create_and_delete_folder() {
   folder := './test1'
   os.mkdir(folder)
+	assert os.dir_exists(folder)
 
   folder_contents := os.ls(folder) or { panic(err) }
   assert folder_contents.len == 0
@@ -120,7 +121,7 @@ fn test_walk() {
 fn test_cp() {
     old_file_name := 'cp_example.txt'
     new_file_name := 'cp_new_example.txt'
-    
+
     os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')
     os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
 
@@ -151,6 +152,24 @@ fn test_cp_r() {
   os.cp_r('ex', './', true) or { panic(err) }
 }
 
+fn test_tmpdir(){
+	t := os.tmpdir()
+	assert t.len > 0
+	assert os.is_dir(t)
+	
+	tfile := t + os.path_separator + 'tmpfile.txt'
+	
+	os.rm(tfile) // just in case
+	
+	tfile_content := 'this is a temporary file'
+	os.write_file(tfile, tfile_content)
+	
+	tfile_content_read := os.read_file(tfile) or { panic(err) }
+	assert tfile_content_read == tfile_content
+	
+	os.rm(tfile)
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {
@@ -178,7 +197,6 @@ fn test_zzz_cleanup(){
 	cleanup_leftovers() assert true
 }
 
-
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover
 // files so that they can be run several times in a row.
@@ -191,7 +209,7 @@ fn cleanup_leftovers(){
 	os.rm('ex/ex2/ex2.txt')
 	os.rm('ex/ex2')
 	os.rm('ex/ex1.txt')
-	os.rm('ex')  
+	os.rm('ex')
 	os.rm('ex2/ex2.txt')
 	os.rm('ex2')
 	os.rm('ex1.txt')

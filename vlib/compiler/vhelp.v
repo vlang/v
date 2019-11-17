@@ -28,6 +28,9 @@ pub const (
    You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
    `set VFLAGS=-cc msvc` on Windows.
 
+   V respects the TMPDIR environment variable, and will put .tmp.c files in TMPDIR/v/ .
+   If you have not set it, a suitable platform specific folder (like /tmp) will be used.
+
 Options/commands:
   -h, help          Display this information.
   -o <file>         Write output to <file>.
@@ -46,6 +49,7 @@ Options/commands:
                     It very significantly speeds up secondary compilations.
 
   -obf              Obfuscate the resulting binary.
+  -compress         Compress the resulting binary.
   -                 Shorthand for `v runrepl`.
 
 Options for debugging/troubleshooting v programs:

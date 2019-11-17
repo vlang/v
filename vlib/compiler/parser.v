@@ -297,7 +297,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
+	p.can_chash = p.mod in ['ui','darwin','clipboard']// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) {
@@ -1208,6 +1208,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 	.key_assert {
 		p.assert_statement()
 	}
+	.key_asm {
+		p.inline_asm()
+	}	
 	else {
 		// An expression as a statement
 		typ := p.expression()
@@ -1501,7 +1504,7 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	// *var
 	if deref_nr > 0 {
 		/*
-		if !p.inside_unsafe {
+		if !p.inside_unsafe  && !p.pref.building_v && p.mod != 'os' {
 			p.error('dereferencing can only be done inside an `unsafe` block')
 		}	
 		*/
@@ -1856,10 +1859,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_str {
 			typ = 'byte'
 			// Direct faster access to .str[i] in builtin modules
-			if p.builtin_mod {
+			if p.builtin_mod || p.pref.is_bare {
 				p.gen('.str[')
 				close_bracket = true
-			}
+			}	
 			else {
 				// Bounds check everywhere else
 				p.gen(', ')
@@ -2125,7 +2128,8 @@ fn format_str(_str string) string {
 
 fn (p mut Parser) string_expr() {
 	is_raw := p.tok == .name && p.lit == 'r'
-	if is_raw {
+	is_cstr := p.tok == .name && p.lit == 'c'
+	if is_raw || is_cstr {
 		p.next()
 	}
 	str := p.lit
@@ -2137,7 +2141,7 @@ fn (p mut Parser) string_expr() {
 		Calling a C function sometimes requires a call to a string method
 		C.fun('ssss'.to_wide()) =>  fun(string_to_wide(tos3("ssss")))
 		*/
-		if (p.calling_c && p.peek() != .dot) || p.pref.is_bare || (p.pref.translated && p.mod == 'main') {
+		if (p.calling_c && p.peek() != .dot) || is_cstr || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
 		}
 		else if p.is_sql {
@@ -2744,7 +2748,7 @@ fn (p mut Parser) return_st() {
 	p.returns = true
 }
 
-fn (p Parser) get_deferred_text() string {
+fn (p &Parser) get_deferred_text() string {
 	// @emily33901: Scoped defer
 	// Check all of our defer texts to see if there is one at a higher scope level
 	// The one for our current scope would be the last so any before that need to be
