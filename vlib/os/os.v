@@ -399,7 +399,9 @@ pub fn system(cmd string) int {
 	}
 	mut ret := int(0)
 	$if windows {
-		ret = C._wsystem(cmd.to_wide())
+		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
+		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"$cmd"' } else { cmd }
+		ret = C._wsystem(wcmd.to_wide())
 	} $else {
 		ret = C.system(cmd.str)
 	}
