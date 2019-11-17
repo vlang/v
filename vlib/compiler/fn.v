@@ -279,7 +279,7 @@ fn (p mut Parser) fn_decl() {
 		p.error('init function cannot be public')
 	}
 	// the function name is the same as the function name for casting type
-	if Reserved_Types[f.name] && !p.builtin_mod {
+	if Reserved_Types[f.name] && !p.builtin_mod && !f.is_method {
 		p.error('`$f.name` can\'t be used as a function name')
 	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
@@ -690,7 +690,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		p.error('function `$f.name` is private')
 	}
 	// the function name is the same as the function name for casting type
-	if Reserved_Types[f.name] && !p.builtin_mod {
+	if Reserved_Types[f.name] && !p.builtin_mod && !f.is_method {
 		p.error('`$f.name` can\'t be used as a function name')
 	}
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
@@ -1625,5 +1625,3 @@ pub fn (f &Fn) str_for_error() string {
        }
        return s + ')'
 }
-
-
