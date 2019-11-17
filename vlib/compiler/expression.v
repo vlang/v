@@ -161,7 +161,7 @@ fn (p mut Parser) name_expr() string {
 
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
-	if (name == 'r' || name == 'c') && p.peek() == .str {
+	if (name == 'r' || name == 'c') && p.peek() == .str && p.prev_tok != .dollar {
 		p.string_expr()
 		return 'string'
 	}

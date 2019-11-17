@@ -278,6 +278,9 @@ fn (p mut Parser) fn_decl() {
 	if f.name == 'init' && !f.is_method && f.is_public && !p.is_vh {
 		p.error('init function cannot be public')
 	}
+	if Reserved_Types[f.name] && !p.builtin_mod {
+		p.error('`$f.name` can\'t be used as a name')
+	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -684,6 +687,9 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 			println('use `value in numbers` instead of `numbers.contains(value)`')
 		}
 		p.error('function `$f.name` is private')
+	}
+	if Reserved_Types[f.name] && !p.builtin_mod {
+		p.error('`$f.name` can\'t be used as a name')
 	}
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
 	if is_comptime_define {
