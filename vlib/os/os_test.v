@@ -152,6 +152,24 @@ fn test_cp_r() {
   os.cp_r('ex', './', true) or { panic(err) }
 }
 
+fn test_tmpdir(){
+	t := os.tmpdir()
+	assert t.len > 0
+	assert os.is_dir(t)
+	
+	tfile := t + os.path_separator + 'tmpfile.txt'
+	
+	os.rm(tfile) // just in case
+	
+	tfile_content := 'this is a temporary file'
+	os.write_file(tfile, tfile_content)
+	
+	tfile_content_read := os.read_file(tfile) or { panic(err) }
+	assert tfile_content_read == tfile_content
+	
+	os.rm(tfile)
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {
@@ -178,7 +196,6 @@ fn test_cp_r() {
 fn test_zzz_cleanup(){
 	cleanup_leftovers() assert true
 }
-
 
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover

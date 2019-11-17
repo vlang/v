@@ -211,8 +211,11 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 			}
 		}
 	}
-	else if cfg.is_str && !p.builtin_mod && !p.pref.is_bare {
-		if cfg.is_slice {
+	else if cfg.is_str && !p.builtin_mod {
+		if  p.pref.is_bare {
+			p.gen(index_expr)
+		}	
+		else if cfg.is_slice {
 			p.gen('string_substr2($index_expr)')
 		} else {
 			p.gen('string_at($index_expr)')

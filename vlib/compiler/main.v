@@ -799,6 +799,7 @@ pub fn new_v(args[]string) &V {
 	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
+		
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
 	//println('comptimedefine=$comptime_define')
@@ -838,7 +839,9 @@ pub fn new_v(args[]string) &V {
 		mod = mod_path.replace(os.path_separator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
-		out_name = mod
+		if !out_name.ends_with('.c') {
+			out_name = mod
+		}
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
@@ -928,8 +931,8 @@ pub fn new_v(args[]string) &V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
-	// println('out_name:$out_name')
-	mut out_name_c := os.realpath('${out_name}.tmp.c')
+
+	mut out_name_c := get_vtmp_filename( out_name, '.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
 
@@ -976,7 +979,7 @@ pub fn new_v(args[]string) &V {
 		println('C compiler=$pref.ccompiler')
 	}
 	if pref.is_so {
-		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
+		out_name_c = get_vtmp_filename( out_name, '.tmp.so.c')
 	}
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {
