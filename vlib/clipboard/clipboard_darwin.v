@@ -29,7 +29,7 @@ fn (cb &Clipboard) free(){
 
 fn (cb &Clipboard) has_ownership() bool {
 	if cb.last_cb_serial == 0 {return false}
-	#return [c->pb changeCount] == c->last_cb_serial;
+	#return [c->pb changeCount] == cb->last_cb_serial;
 	return false
 }
 
@@ -44,7 +44,7 @@ fn (cb &Clipboard) set_text(text string) bool {
 
 	mut serial := 0
 	#serial = [c->pb changeCount];
-	C.OSAtomicCompareAndSwapLong(c.last_cb_serial, serial, &c.last_cb_serial)
+	C.OSAtomicCompareAndSwapLong(cb.last_cb_serial, serial, &cb.last_cb_serial)
 	return ret
 }
 
