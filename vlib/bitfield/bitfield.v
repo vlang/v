@@ -86,10 +86,10 @@ pub fn from_bytes(input []byte) BitField {
 	return output
 }
 
-// str2bf() converts a string of characters ('0' and '1') to a bit
+// from_string() converts a string of characters ('0' and '1') to a bit
 // array. Any character different from '0' is treated as '1'.
 
-pub fn str2bf(input string) BitField {
+pub fn from_string(input string) BitField {
 	mut output := new(input.len)
 	for i := 0; i < input.len; i++ {
 		if input[i] != 48 {
