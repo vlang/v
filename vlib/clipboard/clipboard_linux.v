@@ -130,7 +130,8 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 	display := new_display()
 
 	if display == C.NULL {
-		panic("No X Server running.")
+		println("ERROR: No X Server running. Clipboard cannot be used.")
+		return &Clipboard{}
 	}
 
 	mut cb := &Clipboard{
@@ -144,6 +145,10 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 	// we will be locked and will have to hard exit
 	go cb.start_listener()
 	return cb
+}
+
+fn (cb &Clipboard) check_availability(){
+	return cb.display != C.NULL
 }
 
 fn (cb mut Clipboard) free() {

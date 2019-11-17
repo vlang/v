@@ -30,6 +30,11 @@ pub fn (cb mut Clipboard) check_ownership() bool {
 	return cb.has_ownership()
 }
 
+// check if clipboard can be used
+pub fn (cb &Clipboard) is_available(){
+	return cb.check_availability()
+}
+
 // create a new PRIMARY clipboard (only supported on Linux)
 pub fn new_primary() &Clipboard {
 	$if linux {

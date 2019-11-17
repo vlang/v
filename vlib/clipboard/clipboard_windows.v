@@ -71,14 +71,18 @@ fn new_clipboard() &Clipboard {
         lpszClassName: "clipboard".to_wide()
     }
     if RegisterClassEx(&wndclass) <= 0 && GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
-        panic("Failed registering class.")
+        println("Failed registering class.")
     }
     hwnd := CreateWindowEx(0, wndclass.lpszClassName, wndclass.lpszClassName, 0, 0, 0, 0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
     if hwnd == C.NULL {
-        panic("Error creating window!")
+        println("Error creating window!")
     }
     cb.hwnd = hwnd
     return cb
+}
+
+fn (cb &Clipboard) check_availability(){
+	return cb.hwnd != C.NULL
 }
 
 fn (cb &Clipboard) has_ownership() bool {

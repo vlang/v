@@ -19,6 +19,10 @@ fn new_clipboard() &Clipboard{
 	return cb
 }
 
+fn (cb &Clipboard) check_availability(){
+	return cb.pb != C.NULL
+}
+
 fn (cb &Clipboard) clear(){
 	#[c->pb clearContents];
 }

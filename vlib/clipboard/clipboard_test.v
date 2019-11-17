@@ -2,6 +2,7 @@ import clipboard
 
 fn run_test(is_primary bool){
 	mut cb := if is_primary {clipboard.new_primary()}else{clipboard.new()}
+	if !cb.is_available() {return}
 	assert cb.check_ownership() == false
 	assert cb.copy("I am a good boy!") == true
 	assert cb.check_ownership() == true
