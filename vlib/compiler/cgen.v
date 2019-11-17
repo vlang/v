@@ -308,6 +308,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		'_nix.v'               { '#ifndef _WIN32' }
 		'_lin.v', '_linux.v'   { '#ifdef __linux__' }
 		'_mac.v', '_darwin.v'  { '#ifdef __APPLE__' }
+		'_bsd.v', '_freebsd.v '{ '#ifdef __FreeBSD__'}
 		'_solaris.v'           { '#ifdef __sun' }
 		else {
 			

@@ -18,6 +18,7 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	skipframes := xskipframes + 2
 	$if mac { return print_backtrace_skipping_top_frames_mac(skipframes) }
 	$if linux { return print_backtrace_skipping_top_frames_linux(skipframes) }
+	$if freebsd { return print_backtrace_skipping_top_frames_freebsd(skipframes)  }
 	return false
 }
 
@@ -30,6 +31,15 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
 	}
 	return true
+}
+
+fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
+	$if freebsd {
+        buffer := [100]byteptr
+        nr_ptrs := C.backtrace(*voidptr(buffer), 100)
+        C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
+        }
+        return true
 }
 
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
