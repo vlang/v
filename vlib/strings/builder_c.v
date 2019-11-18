@@ -42,5 +42,7 @@ pub fn (b mut Builder) str() string {
 }
 
 pub fn (b mut Builder) free() {
-	//free(b.buf.data)
+	unsafe{ free(b.buf.data) }
+	b.buf = make(0, 1, 1)
+	b.len = 0
 }
