@@ -32,3 +32,6 @@ fn error_code() int {
 	return C.WSAGetLastError()
 }
 
+pub const (
+	MSG_NOSIGNAL = 0
+)

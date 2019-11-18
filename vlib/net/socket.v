@@ -245,7 +245,6 @@ pub const (
 	CRLF = '\r\n'
 	MAX_READ = 400
 	MSG_PEEK = 0x02
-	MSG_NOSIGNAL = 0x4000
 )
 
 // write - write a string with CRLF after it over the socket s
