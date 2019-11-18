@@ -82,7 +82,7 @@ fn (v mut V) cc() {
 		// TODO : try and remove the below workaround options when the corresponding
 		// warnings are totally fixed/removed
 		'-Wno-unused-variable',
-		'-Wno-unused-but-set-variable',
+		//'-Wno-unused-but-set-variable',
 		'-Wno-unused-parameter',
 		'-Wno-unused-result',
 		'-Wno-missing-braces',
