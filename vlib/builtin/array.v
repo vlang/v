@@ -17,7 +17,7 @@ pub:
 }
 
 // Private function, used by V (`nums := []int`)
-pub fn new_array(mylen, cap, elm_size int) array {
+fn new_array(mylen, cap, elm_size int) array {
 	arr := array {
 		len: mylen
 		cap: cap

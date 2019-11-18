@@ -54,6 +54,7 @@ pub fn post(url, data string) ?Response {
 	return res
 }
 
+// new_request creates a new HTTP request
 pub fn new_request(typ, _url, _data string) ?Request {
 	if _url == '' {
 		return error('http.new_request: empty url')
@@ -89,6 +90,7 @@ fn (resp mut Response) free() {
 	resp.headers.free()
 }
 
+// add_header adds the key and value of an HTTP request header
 pub fn (req mut Request) add_header(key, val string) {
 	req.headers[key] = val
 }
@@ -108,6 +110,7 @@ pub fn parse_headers(lines []string) map[string]string {
 	return headers
 }
 
+// do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
@@ -239,4 +242,3 @@ pub fn escape(s string) string {
 }
 
 type wsfn fn (s string, ptr voidptr)
-

@@ -407,10 +407,10 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.cgen.nogen {
 				p.cgen.consts << g
 			}
-			p.fgenln('')
+			p.fgen_nl()
 			if p.tok != .key_global {
 				// An extra empty line to separate a block of globals
-				p.fgenln('')
+				p.fgen_nl()
 			}	
 		}
 		.eof {
@@ -472,10 +472,10 @@ fn (p mut Parser) imports() {
 		p.fspace()
 		p.check(.lpar)
 		p.fmt_inc()
-		p.fgenln('')
+		p.fgen_nl()
 		for p.tok != .rpar && p.tok != .eof {
 			p.import_statement()
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		p.fmt_dec()
 		p.check(.rpar)
@@ -484,9 +484,9 @@ fn (p mut Parser) imports() {
 	}
 	// `import foo`
 	p.import_statement()
-	p.fgenln('')
+	p.fgen_nl()
 	if p.tok != .key_import {
-		p.fgenln('')
+		p.fgen_nl()
 	}
 }
 
@@ -539,7 +539,7 @@ fn (p mut Parser) const_decl() {
 	p.check(.key_const)
 	p.fspace()
 	p.check(.lpar)
-	p.fgenln('')
+	p.fgen_nl()
 	p.fmt_inc()
 	for p.tok == .name {
 		if p.lit == '_' && p.peek() == .assign && !p.cgen.nogen {
@@ -611,7 +611,7 @@ fn (p mut Parser) const_decl() {
 			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
 				p.cgen.consts << '#define $name $p.cgen.cur_line'
 				p.cgen.resetln('')
-				p.fgenln('')
+				p.fgen_nl()
 				continue
 			}
 			if typ.starts_with('[') {
@@ -625,7 +625,7 @@ fn (p mut Parser) const_decl() {
 			}
 			p.cgen.resetln('')
 		}
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	p.fmt_dec()
 	p.check(.rpar)
@@ -679,7 +679,7 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	} else {
 		method.typ = p.get_type()// method return type
 		//p.fspace()
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	return method
 }
@@ -764,7 +764,7 @@ fn (p mut Parser) check(expected TokenKind) {
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
 	if expected == .lcbr { //&& p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
-		p.fgenln('')
+		p.fgen_nl()
 		p.fmt_inc()
 	}
 	*/
@@ -1015,7 +1015,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
 			//p.genln('')// // end st tok= ${p.strtok()}')
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		i++
 		if i > 50000 {
@@ -2096,7 +2096,7 @@ fn (p mut Parser) assoc() string {
 		if p.tok != .rcbr {
 			p.check(.comma)
 		}
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	// Copy the rest of the fields
 	T := p.table.find_type(var.typ)
@@ -2302,14 +2302,14 @@ fn (p mut Parser) map_init() string {
 			}
 			vals_gen += '$val_expr, '
 			if p.tok == .rcbr {
-				p.fgenln('')
+				p.fgen_nl()
 				p.check(.rcbr)
 				break
 			}
 			if p.tok == .comma {
 				p.check(.comma)
 			}
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		p.gen('new_map_init($i, sizeof($val_type), ' +
 			'(string[$i]){ $keys_gen }, ($val_type [$i]){ $vals_gen } )')
@@ -2556,7 +2556,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.returns = false
 	if p.tok == .key_else {
 		if !p.inside_if_expr {
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		p.check(.key_else)
 		p.fspace()
@@ -2889,7 +2889,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
-	p.fgenln('')
+	p.fgen_nl()
 	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
