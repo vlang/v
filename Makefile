@@ -29,6 +29,9 @@ else
 		echo "Self rebuild ($$VC_V => $$V_V)"; \
 		./v -o v v.v; \
 	fi)
+	./v build module vlib/builtin
+	./v build module vlib/strings
+	./v build module vlib/strconv
 endif
 	rm -rf vc/
 	@echo "V has been successfully built"

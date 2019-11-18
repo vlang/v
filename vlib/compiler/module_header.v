@@ -54,9 +54,10 @@ fn generate_vh(mod string) {
 		!it.ends_with('_lin.v') &&
 		!it.contains('${os.path_separator}examples') &&
 		!it.contains('_js.v') &&
+		!it.contains('_bare.v') &&
 		!it.contains('${os.path_separator}js')) // TODO merge once filter allows it
-	println('f:')
-	println(filtered)
+	//println('f:')
+	//println(filtered)
 	mut v := new_v(['foo.v'])
 	//v.pref.generating_vh = true
 	mut g := VhGen{
@@ -102,7 +103,7 @@ fn (g mut VhGen) generate_fn() {
 	}
 	
 	if next.tok == .name && next.lit == 'C' {
-		println('skipping C')
+		//println('skipping C')
 		return
 	}	
 	//out.write('pub ')
