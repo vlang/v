@@ -349,11 +349,11 @@ pub fn copy(dst, src []byte) int {
 }
 
 // Private function. Comparator for int type.
-fn compare_ints(a, b int) int {
-	if a < b {
+fn compare_ints(a, b &int) int {
+	if *a < *b {
 		return -1
 	}
-	if a > b {
+	if *a > *b {
 		return 1
 	}
 	return 0
