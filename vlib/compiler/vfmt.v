@@ -31,6 +31,12 @@ fn (scanner mut Scanner) fgenln(s_ string) {
 	scanner.fmt_line_empty = true
 }
 
+[if vfmt]
+fn (scanner mut Scanner) fgen_nl() {
+	scanner.fmt_out.writeln('')
+	scanner.fmt_line_empty = true
+}
+
 
 [if vfmt]
 fn (p mut Parser) fgen(s string) {
@@ -55,6 +61,18 @@ fn (p mut Parser) fgenln(s string) {
 		return
 	}	
 	p.scanner.fgenln(s)
+}
+
+[if vfmt]
+fn (p mut Parser) fgen_nl() {
+	if p.pass != .main {
+		return
+	}	
+	println(p.tok)
+	if p.prev_tok == .line_comment {
+		return
+	}	
+	p.scanner.fgen_nl()
 }
 
 /*
@@ -108,8 +126,9 @@ fn (p mut Parser) fnext() {
 	p.fgen(s)
 	}
 	// vfmt: increase indentation on `{` unless it's `{}`
+	mut inc_indent := false
 	if p.tok == .lcbr && !p.inside_if_expr && p.peek() != .rcbr {
-		p.fgenln('')
+		p.fgen_nl()
 		p.fmt_inc()
 	}
 	
@@ -117,32 +136,50 @@ fn (p mut Parser) fnext() {
 	if p.tokens[p.token_idx].tok in [.line_comment, .mline_comment] {
 		// Newline before the comment and after consts and closing }
 		if p.inside_const {
-			p.fgenln('\n')
+			p.fgen_nl()
+			p.fgen_nl()
 		}	
-		if p.tok == .rcbr {
-			p.fgenln('')
-		}	
+		is_rcbr := p.tok == .rcbr
 		for p.token_idx < p.tokens.len - 1 {
+			i := p.token_idx
 			tok := p.tokens[p.token_idx].tok
 			if tok != .line_comment && tok != .mline_comment {
 				break
 			}	
 			comment_token := p.tokens[p.token_idx]
+			next := p.tokens[p.token_idx+1]
+			comment_on_new_line := p.token_idx == 0 ||
+				comment_token.line_nr > p.tokens[p.token_idx - 1].line_nr
+			//prev_token := p.tokens[p.token_idx - 1]
 			comment := comment_token.lit
-			if p.token_idx > 0 && comment_token.line_nr > p.tokens[p.token_idx-1].line_nr {
-				//p.fgenln('')
+			if i > 0 && p.tokens[i-1].tok != .line_comment &&
+				comment_token.line_nr > p.tokens[i-1].line_nr {
+				p.fgen_nl()
 			}	
 			if tok == .line_comment {
+				if !comment_on_new_line { //prev_token.line_nr < comment_token.line_nr {
+					p.fgen(' ')
+				}	
 				p.fgen('// ' + comment)
+				/*
+				if false && i > 0 {
+				p.fgen(
+'pln=${p.tokens[i-1].line_nr} ${comment_token.str()} ' +
+'line_nr=$comment_token.line_nr  next=${next.str()}  next_line_nr=$next.line_nr')
+}
+*/
+					
 			}	else {
 				p.fgen(comment)
 			}	
-			if p.token_idx > 0 &&
-				comment_token.line_nr < p.tokens[p.token_idx+1].line_nr
-			{
-				p.fgenln('')
+			if next.tok == .line_comment &&	comment_token.line_nr < next.line_nr	{
+				p.fgen_nl()
 			}
 			p.token_idx++
+		}	
+		
+		if inc_indent {
+			p.fgen_nl()
 		}	
 	}
 }
@@ -162,7 +199,7 @@ fn (p mut Parser) gen_fmt() {
 	if s == '' {
 		return
 	}	
-	println('GENERATING ${p.file_name}.V')
+	println('generating ${p.file_name}.v')
 	out := os.create('/var/tmp/fmt/' + p.file_name) or {
 		verror('failed to create fmt.v')
 		return

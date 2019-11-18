@@ -432,13 +432,14 @@ pub fn (v mut V) generate_main() {
 	if v.pref.build_mode != .build_module {
 		if !v.table.main_exists() && !v.pref.is_test {
 			// It can be skipped in single file programs
-			if v.pref.is_script {
+			// But make sure that there's some code outside of main()
+			if (v.pref.is_script && cgen.fn_main.trim_space() != '') || v.pref.is_repl {
 				//println('Generating main()...')
 				v.gen_main_start(true)
 				cgen.genln('$cgen.fn_main;')
 				v.gen_main_end('return 0')
 			}
-			else {
+			else if !v.pref.is_repl {
 				verror('function `main` is not declared in the main module')
 			}
 		}
@@ -452,7 +453,9 @@ pub fn (v mut V) generate_main() {
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 
-			if v.pref.is_stats { cgen.genln('BenchedTests bt = main__start_testing();') }
+			if v.pref.is_stats {
+				cgen.genln('BenchedTests bt = main__start_testing();')
+			}
 
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
@@ -952,7 +955,6 @@ pub fn new_v(args[]string) &V {
 		is_vlines:     '-g' in args && !('-cg' in args)
 		is_keep_c:     '-keep_c' in args
 		is_cache:      '-cache' in args
-
 		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args
