@@ -9,7 +9,7 @@ fn (p mut Parser) inline_asm() {
 		p.error('asm() needs to be run unside `unsafe {}`')
 	}	
 	p.next()
-	p.check(.lpar)
+	p.check(.lcbr)
 	s := p.check_string()
 	p.genln('asm("$s"')
 	for p.tok == .str {
@@ -28,11 +28,8 @@ fn (p mut Parser) inline_asm() {
 			}	
 			p.check(.rpar)
 			p.genln('($var_name)')
-			
 		}	
-		
 	}	
 	p.genln(');')
-	p.check(.rpar)
-	
+	p.check(.rcbr)
 }	

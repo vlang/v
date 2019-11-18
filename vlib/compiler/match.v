@@ -41,6 +41,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 			// unwrap match if there is only else
 			if i == 0 {
+				p.fspace()
 				if is_expr {
 					// statements are dissallowed (if match is expression) so user cant declare variables there and so on
 
@@ -80,6 +81,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				// allow braces is else
 				got_brace := p.tok == .lcbr
 				if got_brace {
+					p.fspace()
 					p.check(.lcbr)
 				}
 
@@ -97,6 +99,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.returns = false
 				p.genln('else // default:')
 
+				p.fspace()
 				p.check(.lcbr)
 
 				p.genln('{ ')
@@ -190,6 +193,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		}
 		else {
 			p.returns = false
+			p.fspace()
 			p.check(.lcbr)
 
 			p.genln('{ ')
@@ -199,7 +203,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			// p.gen(')')
 		}
 		i++
-		p.fgenln('')
+		p.fgen_nl()
 	}
 
 	if is_expr {

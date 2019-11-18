@@ -433,7 +433,7 @@ pub fn (v mut V) generate_main() {
 		if !v.table.main_exists() && !v.pref.is_test {
 			// It can be skipped in single file programs
 			// But make sure that there's some code outside of main()
-			if v.pref.is_script && cgen.fn_main.trim_space() != ''{
+			if (v.pref.is_script && cgen.fn_main.trim_space() != '') || v.pref.is_repl {
 				//println('Generating main()...')
 				v.gen_main_start(true)
 				cgen.genln('$cgen.fn_main;')
@@ -955,7 +955,6 @@ pub fn new_v(args[]string) &V {
 		is_vlines:     '-g' in args && !('-cg' in args)
 		is_keep_c:     '-keep_c' in args
 		is_cache:      '-cache' in args
-
 		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args
