@@ -243,10 +243,11 @@ pub fn (s Socket) close() ?int {
 
 const (
         MAX_READ = 400
+        MSG_NOSIGNAL = 0x4000
 )
 pub fn (s Socket) write(str string) {
         line := '$str\r\n'
-        C.send(s.sockfd, line.str, line.len, 0)
+        C.send(s.sockfd, line.str, line.len, MSG_NOSIGNAL)
 }
 
 pub fn (s Socket) read_line() string {
