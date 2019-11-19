@@ -56,6 +56,7 @@ fn main() {
 	out.close()
 	// Regenerate index.html
 	header := os.read_file('header.html') or { panic(err) }
+	footer := os.read_file('footer.html') or { panic(err) }
 	res := os.create('index.html') or { panic(err) }
 	res.writeln(header)
 	res.writeln(table)
