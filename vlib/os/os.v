@@ -187,6 +187,13 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 	return true
 }
 
+// mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
+// mv_by_cp may be used when you are not sure that the source and target are on the same mount/partition.
+pub fn mv_by_cp(source string, target string) ?bool {
+	os.cp(source, target) or { return error(err) }
+	os.rm(source)
+}
+
 fn vfopen(path, mode string) *C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
