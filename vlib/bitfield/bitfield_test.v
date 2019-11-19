@@ -127,16 +127,14 @@ fn test_bf_from_bytes() {
 	output := bitfield.from_bytes(input)
 	mut result := 1
 	for i := 0; i < input.len * 8; i++ {
-		expected := input[input.len - 1 - i / 8] >> i % 8 & 1
-		actual := output.getbit(i)
-		if expected != actual {
+		if (input[i / 8] >> (i % 8)) & 1 != output.getbit(i) {
 			result = 0
 		}
 	}
 	assert result == 1
 }
 
-fn test_bf_str2bf() {
+fn test_bf_from_string() {
 	rand.seed(time.now().uni)
 	len := 80
 	mut input := ''
@@ -148,7 +146,7 @@ fn test_bf_str2bf() {
 			input = input + '0'
 		}
 	}
-	output := bitfield.str2bf(input)
+	output := bitfield.from_string(input)
 	mut result := 1
 	for i := 0; i < len; i++ {
 		if input[i] != output.getbit(i) + 48 {
