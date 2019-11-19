@@ -15,7 +15,27 @@ mut:
 	description string
 	global bool
 	required bool
+
 	value string
+}
+
+pub fn (flags []Flag) get_bool(name string) ?bool {
+	value := flags.get_raw(name) or { return error(err) }
+	return value == 'true'
+}
+
+pub fn (flags []Flag) get_int(name string) ?int {
+	value := flags.get_raw(name) or { return error(err) }
+	return value.int()
+}
+
+pub fn (flags []Flag) get_float(name string) ?f32 {
+	value := flags.get_raw(name) or { return error(err) }
+	return value.f32()
+}
+
+pub fn (flags []Flag) get_string(name string) ?string {
+	return flags.get_raw(name)
 }
 
 // check if first arg matches flag
@@ -42,6 +62,7 @@ fn (flag mut Flag) parse(args []string) ?[]string {
 
 fn (flag mut Flag) parse_raw(args []string) ?[]string {
 	if args[0].len > flag.name.len && args[0].contains('=') {
+		println('1')
 		flag.value = args[0].split('=')[1]
 		return args.right(1)
 	} else if args.len >= 2 {
@@ -55,13 +76,14 @@ fn (flag mut Flag) parse_bool(args []string) ?[]string {
 	if args[0].len > flag.name.len && args[0].contains('=') {
 		flag.value = args[0].split('=')[1]
 		return args.right(1)
-	} else if args.len >= 2 && args[1] in ['true', 'false'] {
-		flag.value = args[1]
-		return args.right(2)
-	} else {
-		flag.value = 'true'
-		return args.right(1)
-	}
+	} else if args.len >= 2 { 
+		if args[1] in ['true', 'false'] {
+			flag.value = args[1]
+			return args.right(2)
+		} 
+	} 
+	flag.value = 'true'
+	return args.right(1)
 }
 
 fn (flags []Flag) get_raw(name string) ?string {
@@ -73,21 +95,11 @@ fn (flags []Flag) get_raw(name string) ?string {
 	return error('flag ${name} not found.')
 }
 
-pub fn (flags []Flag) get_bool(name string) ?bool {
-	value := flags.get_raw(name) or { return error(err) }
-	return value == 'true'
-}
-
-pub fn (flags []Flag) get_int(name string) ?int {
-	value := flags.get_raw(name) or { return error(err) }
-	return value.int()
-}
-
-pub fn (flags []Flag) get_float(name string) ?f32 {
-	value := flags.get_raw(name) or { return error(err) }
-	return value.f32()
-}
-
-pub fn (flags []Flag) get_string(name string) ?string {
-	return flags.get_raw(name)
+fn (flags []Flag) contains(name string) bool {
+	for flag in flags {
+		if flag.name == name || flag.abbrev == name {
+			return true
+		}
+	}
+	return false
 }

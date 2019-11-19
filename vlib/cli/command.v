@@ -4,7 +4,8 @@ pub struct Command {
 pub mut:
 	name string
 	description string
-	execute fn(cmd cli.Command, args []string)
+	version string
+	execute fn(cmd Command)
 
 	parent &Command
 	commands []Command
@@ -40,10 +41,21 @@ pub fn (cmd mut Command) parse(args []string) {
 		cmd.commands[i].parent = cmd
 	}
 
+	cmd.add_default_flags()
 	cmd.parse_flags()
+	cmd.check_help_flag()
+	cmd.check_version_flag()
 	cmd.check_required_flags()
 	cmd.parse_commands()
 }
+
+fn (cmd mut Command) add_default_flags() {
+	if !cmd.flags.contains('help') && !cmd.flags.contains('h') {
+		cmd.add_flag(help_flag())
+	}
+	if cmd.version != '' && !cmd.flags.contains('version') && !cmd.flags.contains('v') {
+		cmd.add_flag(version_flag())
+	}
 }
 
 fn (cmd mut Command) parse_flags() {
@@ -69,6 +81,26 @@ fn (cmd mut Command) parse_flags() {
 		if !found {
 			println('invalid flag: ${cmd.args[0]}')
 			exit(1)
+		}
+	}
+}
+
+fn (cmd mut Command) check_help_flag() {
+	if cmd.flags.contains('help') {
+		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
+		if help_flag {
+			help_func(cmd)
+			exit(0)
+		}
+	}
+}
+
+fn (cmd mut Command) check_version_flag() {
+	if cmd.version != '' && cmd.flags.contains('version') {
+		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
+		if version_flag {
+			version_func(cmd)
+			exit(0)
 		}
 	}
 }
@@ -99,18 +131,11 @@ fn (cmd mut Command) parse_commands() {
 		}
 	}
 
+	// if no further command was found execute current command
 	if int(cmd.execute) == 0 {
-		cmd.print_usage()
+		help_func(cmd)
 	} else {
 		execute := cmd.execute
-		execute(cmd, cmd.args) // TODO: fix once higher order function can be execute on struct variable
-	}
-}
-
-pub fn (cmd mut Command) print_usage() {
-	println(cmd.description + '\n')
-	println('COMMAND:')
-	for command in cmd.commands {
-		println(command.name + '\t' + command.description)
+		execute(cmd) // TODO: fix once higher order function can be execute on struct variable
 	}
 }
