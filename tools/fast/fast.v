@@ -60,6 +60,7 @@ fn main() {
 	res := os.create('index.html') or { panic(err) }
 	res.writeln(header)
 	res.writeln(table)
+	res.writeln(footer)
 	res.close()
 }
 
