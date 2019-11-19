@@ -3,7 +3,7 @@ module rand
 // Ported from http://www.pcg-random.org/download.html
 // and https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.c
 
-struct Pcg32 {
+pub struct Pcg32 {
 mut:
 	state u64
 	inc u64
