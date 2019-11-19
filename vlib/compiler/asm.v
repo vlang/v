@@ -6,7 +6,7 @@ module compiler
 
 fn (p mut Parser) inline_asm() {
 	if !p.inside_unsafe {
-		p.error('asm() needs to be run unside `unsafe {}`')
+		p.error('asm() needs to be run inside `unsafe {}`')
 	}	
 	p.next()
 	p.check(.lcbr)
