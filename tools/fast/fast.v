@@ -60,12 +60,12 @@ fn main() {
 	res.writeln(header)
 	res.writeln(table)
 	res.close()
-}	
+}
 
 fn exec(s string) string {
 	e := os.exec(s) or { panic(err) }
 	return e.output
-}	
+}
 
 // returns milliseconds
 fn measure(cmd string) int {
@@ -77,6 +77,4 @@ fn measure(cmd string) int {
 	ticks := time.ticks()
 	exec(cmd)
 	return int(time.ticks() - ticks)
-}	
-	
-
+}
