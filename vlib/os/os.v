@@ -192,6 +192,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 pub fn mv_by_cp(source string, target string) ?bool {
 	os.cp(source, target) or { return error(err) }
 	os.rm(source)
+	return true
 }
 
 fn vfopen(path, mode string) *C.FILE {
