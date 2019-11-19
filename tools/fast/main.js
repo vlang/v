@@ -1,7 +1,8 @@
 (function () {
     var table = document.querySelector("table");
-    var tbody = table.querySelector("tbody");
-    var trs = tbody.querySelectorAll("tr");
+    var isTbody = table.children[0].nodeName == "TBODY"
+    var trs = isTbody ? table.children[0].querySelectorAll('tr') : table.querySelectorAll('tr')
+
     trs.forEach(function (tr, idx) {
         if (idx != 0 && idx + 1 < trs.length) {
             var vc = 3, vv = 4, vf = 5, vh = 6;
