@@ -62,11 +62,11 @@ pub fn dir_exists(path string) bool {
 
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) {
-	$if linux {
-		C.syscall(83, path.str, 511) // sys_mkdir
-	}	$else {
+	//$if linux {
+		//C.syscall(83, path.str, 511) // sys_mkdir
+	//}	$else {
 		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
-	}
+	//}
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.

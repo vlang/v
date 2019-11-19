@@ -154,16 +154,16 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 	//single file copy
 	if !os.is_dir(source_path) {
 		adjasted_path := if os.is_dir(dest_path) {
-			filepath.join(dest_path, os.filename(source_path)) 
-		} else { 
-			dest_path 
+			filepath.join(dest_path, os.filename(source_path))
+		} else {
+			dest_path
 		}
 		if os.file_exists(adjasted_path) {
 			if overwrite {
-				os.rm(adjasted_path) 
+				os.rm(adjasted_path)
 			}
-			else { 
-				return error('Destination file path already exist') 
+			else {
+				return error('Destination file path already exist')
 			}
 		}
 		os.cp(source_path, adjasted_path) or { return error(err) }
@@ -187,6 +187,14 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 	return true
 }
 
+// mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
+// mv_by_cp may be used when you are not sure that the source and target are on the same mount/partition.
+pub fn mv_by_cp(source string, target string) ?bool {
+	os.cp(source, target) or { return error(err) }
+	os.rm(source)
+	return true
+}
+
 fn vfopen(path, mode string) *C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
@@ -196,8 +204,7 @@ fn vfopen(path, mode string) *C.FILE {
 }	
 
 // read_lines reads the file in `path` into an array of lines.
-// TODO return `?[]string` TODO implement `?[]` support
-pub fn read_lines(path string) []string {
+pub fn read_lines(path string) ?[]string {
 	mut res := []string
 	mut buf_len := 1024
 	mut buf := malloc(buf_len)
@@ -205,9 +212,7 @@ pub fn read_lines(path string) []string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)
 	if isnil(fp) {
-		// TODO
-		// return error('failed to open file "$path"')
-		return res
+		return error('read_lines() failed to open file "$path"')
 	}
 
 	mut buf_index := 0
@@ -217,7 +222,7 @@ pub fn read_lines(path string) []string {
 			buf_len *= 2
 			buf = C.realloc(buf, buf_len)
 			if isnil(buf) {
-				panic('Could not reallocate the read buffer')
+				return error('could not reallocate the read buffer')
 			}
 			buf_index = len
 			continue
@@ -235,8 +240,10 @@ pub fn read_lines(path string) []string {
 	return res
 }
 
-fn read_ulines(path string) []ustring {
-	lines := read_lines(path)
+fn read_ulines(path string) ?[]ustring {
+	lines := read_lines(path) or {
+		return err
+	}	
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
 	for myline in lines {
@@ -983,7 +990,7 @@ pub fn tmpdir() string {
 		/*
 		if path == '' {
 			// TODO untested
-			path = C.NSTemporaryDirectory() 
+			path = C.NSTemporaryDirectory()
 		}
         */
 		if path == '' {	path = '/tmp' }
