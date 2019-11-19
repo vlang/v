@@ -433,7 +433,7 @@ pub fn ticks() i64 {
 	$else {
 		ts := C.timeval{}
 		C.gettimeofday(&ts,0)
-        return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
+		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
 	}
 
 /*
