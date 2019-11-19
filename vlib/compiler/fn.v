@@ -282,7 +282,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// the function name is the same as the function name for casting type
 	if Reserved_Types[f.name] && !f.is_method {
-		p.error('`$f.name` can\'t be used as a function name')
+		p.error('`$f.name` can\'t be used as a name')
 	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
@@ -693,7 +693,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	}
 	// the function name is the same as the function name for casting type
 	if Reserved_Types[f.name] && !f.is_method {
-		p.error('`$f.name` can\'t be used as a function name')
+		p.error('`$f.name` can\'t be used as a name')
 	}
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
 	if is_comptime_define {
