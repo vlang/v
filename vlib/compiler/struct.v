@@ -196,6 +196,10 @@ fn (p mut Parser) struct_decl() {
 		if field_type == name {
 			p.error_with_token_index( 'cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
 		}
+		// Register ?option type
+		if field_type.starts_with('Option_') {
+			p.gen_typedef('typedef Option $field_type;')
+		}
 		p.check_and_register_used_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {

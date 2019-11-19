@@ -368,9 +368,14 @@ fn (p mut Parser) fn_decl() {
 		p.check(.lcbr)
 		//p.fgen_nl()
 	}
-	// Register ?option type
-	if typ.starts_with('Option_') {
+	// Register ?option type for return value and args
+	if typ.starts_with('Option_') { 
 		p.cgen.typedefs << 'typedef Option $typ;'
+	}
+	for arg in f.args {
+		if arg.typ.starts_with('Option_') {
+			p.cgen.typedefs << 'typedef Option $arg.typ;'
+		}
 	}
 	// Register function
 	f.typ = typ
