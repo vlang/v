@@ -2436,7 +2436,7 @@ fn (p mut Parser) array_init() string {
 		p.tokens[p.token_idx-2].line_nr == p.tokens[p.token_idx-1].line_nr { // TODO
 		// vals.len == 0 {
 		if exp_array {
-			p.error('use `foo = []` instead of `foo = []Type`')
+			p.error('no need to specify the full array type here, use `[]` instead of `[]${p.expected_type[6..]}`')
 		}	
 		typ = p.get_type()
 	} else if exp_array && i == 0 {
