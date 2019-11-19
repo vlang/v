@@ -95,31 +95,30 @@ fn main() {
 		//println('unknown command/argument\n')
 		//println(compiler.help_text)
 	}
-
 	// Construct the V object from command line arguments
 	mut v := compiler.new_v(args)
 	if v.pref.is_verbose {
 		println(args)
 	}
-
 	if 'run' in args {
 		// always recompile for now, too error prone to skip recompilation otherwise
 		// for example for -repl usage, especially when piping lines to v
 		v.compile()
 		v.run_compiled_executable_and_exit()
 	}
-
 	mut tmark := benchmark.new_benchmark()
-	v.compile()
+	if v.pref.x64 {
+		v.compile_x64()
+	}	else {
+		v.compile()
+	}
 	if v.pref.is_stats {
 		tmark.stop()
 		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
-
 	if v.pref.is_test {
 		v.run_compiled_executable_and_exit()
 	}
-
 	v.finalize_compilation()
 }
 

@@ -87,6 +87,27 @@ pub fn (f File) read_bytes_at(size, pos int) []byte {
 	return arr
 }
 
+pub fn read_bytes(path string) ?[]byte {
+	mut fp := vfopen(path, 'rb')
+	if isnil(fp) {
+		return error('failed to open file "$path"')
+	}
+	C.fseek(fp, 0, C.SEEK_END)
+	fsize := C.ftell(fp)
+	C.rewind(fp)
+	println('fsize=$fsize')
+	mut data := malloc(fsize)
+	C.fread(data, fsize, 1, fp)
+	mut res  := [`0`].repeat(fsize)
+	for i in 0..fsize {
+		res[i] = data[i]
+	}
+	C.fclose(fp)
+	//res := []byte(data, 10) // TODO can't `return []byte(data)`
+	//println('res0 = ' + res[0].str())
+	return res
+}
+
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
