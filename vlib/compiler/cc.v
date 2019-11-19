@@ -59,7 +59,7 @@ fn (v mut V) cc() {
 		}
     
 		// v.out_name_c may be on a different partition than v.out_name
-		os.mv_by_cp(v.out_name_c, v.out_name)
+		os.mv_by_cp(v.out_name_c, v.out_name) or { panic(err) }
 		exit(0)
 	}
 	// Cross compiling for Windows
