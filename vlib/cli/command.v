@@ -39,12 +39,14 @@ pub fn (cmd mut Command) add_flag(flag Flag) {
 }
 
 pub fn (cmd mut Command) parse(args []string) {
+	cmd.add_default_flags()
+	cmd.add_default_commands()
+
 	cmd.args = args.right(1)
 	for i := 0; i < cmd.commands.len; i++ {
 		cmd.commands[i].parent = cmd
 	}
 
-	cmd.add_default_flags()
 	cmd.parse_flags()
 	cmd.check_help_flag()
 	cmd.check_version_flag()
@@ -58,6 +60,15 @@ fn (cmd mut Command) add_default_flags() {
 	}
 	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') && !cmd.flags.contains('v') {
 		cmd.add_flag(version_flag())
+	}
+}
+
+fn (cmd mut Command) add_default_commands() {
+	if !cmd.disable_help && !cmd.commands.contains('help') {
+		cmd.add_command(help_cmd())
+	}
+	if !cmd.disable_version && cmd.version != '' && !cmd.commands.contains('version') {
+		cmd.add_command(version_cmd())
 	}
 }
 
@@ -94,7 +105,9 @@ fn (cmd mut Command) check_help_flag() {
 	if cmd.flags.contains('help') {
 		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
-			help_func(cmd)
+			help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
+			execute := help_cmd.execute
+			execute(help_cmd)
 			exit(0)
 		}
 	}
@@ -107,7 +120,9 @@ fn (cmd mut Command) check_version_flag() {
 	if cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
-			version_func(cmd)
+			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
+			execute := version_cmd.execute
+			execute(version_cmd)
 			exit(0)
 		}
 	}
@@ -144,10 +159,30 @@ fn (cmd mut Command) parse_commands() {
 	// if no further command was found execute current command
 	if int(cmd.execute) == 0 {
 		if !cmd.disable_help {
-			help_func(cmd)
+			help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
+			execute := help_cmd.execute
+			execute(help_cmd)
 		}
 	} else {
 		execute := cmd.execute
 		execute(cmd) // TODO: fix once higher order function can be execute on struct variable
 	}
 }
+
+fn (cmds []Command) contains(name string) bool {
+	for cmd in cmds {
+		if cmd.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn (cmds []Command) get(name string) ?Command {
+	for cmd in cmds {
+		if cmd.name == name {
+			return cmd
+		}
+	}
+	return error('command \'${name}\' not found.')
+} 

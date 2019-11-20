@@ -23,7 +23,8 @@ fn help_cmd() Command {
 	}
 }
 
-fn help_func(cmd cli.Command) {
+fn help_func(help_cmd cli.Command) {
+	cmd := help_cmd.parent	
 	full_name := cmd.full_name()
 
 	mut help := ''

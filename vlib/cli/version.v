@@ -3,7 +3,6 @@ module cli
 fn version_flag() Flag {
 	return Flag{
 		flag: .bool,
-		global: true,
 		name: 'version',
 		abbrev: 'v',
 		description: 'Prints version information',
@@ -18,9 +17,8 @@ fn version_cmd() Command {
 	}
 }
 
-fn version_func(cmd cli.Command) {
-	root := cmd.root()
-
-	version := '${root.name} v${root.version}'
+fn version_func(version_cmd cli.Command) {
+	cmd := version_cmd.parent
+	version := '${cmd.name} v${cmd.version}'
 	println(version)
 }
