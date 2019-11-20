@@ -34,11 +34,11 @@ fn main() {
 	gg.clear(bg_color)
 	// Try to load font
 	ctx.ft = freetype.new_context(gg.Cfg{
-			width: win_width
-			height: win_height
-			use_ortho: true
-			font_size: 18
-			scale: 2
+		width: win_width
+		height: win_height
+		use_ortho: true
+		font_size: 18
+		scale: 2
 	})
 	for {
 		gg.clear(bg_color)
@@ -51,6 +51,6 @@ fn main() {
 	}
 }
 
-fn (ctx mut Context) draw() {
+fn (ctx Context) draw() {
 }
 
