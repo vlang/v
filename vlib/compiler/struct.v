@@ -166,7 +166,7 @@ fn (p mut Parser) struct_decl() {
 		// }
 		// Check if reserved name
 		field_name_token_idx := p.cur_tok_index()
-		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
+		field_name := if name != 'Option' && !is_interface { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 		/*
 		if !p.first_pass() {
 			p.fgen(strings.repeat(` `, fmt_max_len - field_name.len))
