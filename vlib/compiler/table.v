@@ -186,7 +186,7 @@ const (
 // This is used for debugging only
 fn (f Fn) str() string {
 	t := Table{}
-	str_args := f.str_args(t)
+	str_args := f.str_args_c(t)
 	return '$f.name($str_args) $f.typ'
 }
 
@@ -790,7 +790,7 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 			eprintln('function type `$typ` not found')
 			exit(1)
 		}
-		str_args := T.func.str_args(table)
+		str_args := T.func.str_args_c(table)
 		return '$T.func.typ (*$name)( $str_args /*FFF*/ )'
 	}
 	// TODO tm hack, do this for all C struct args

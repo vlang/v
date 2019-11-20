@@ -262,6 +262,25 @@ fn (p &Parser) log(s string) {
 */
 }
 
+pub fn (p mut Parser) add_text(text string) {
+	// p.scanner.pos = 0
+	// p.scanner.line_nr = 0
+	// println('tok idx: $p.token_idx')
+	// println('tok len: $p.tokens.len')
+	// println('scanner pos: $p.scanner.pos')
+	// println('scanner line_nr: $p.scanner.line_nr')
+	// println('==============================')
+	if p.tokens[p.tokens.len-1].tok == .eof {
+		p.tokens.delete(p.tokens.len-1)
+	}
+	p.scanner.text = p.scanner.text + '\n' + text
+	p.scan_tokens()
+	// println('tok idx: $p.token_idx')
+	// println('tok len: $p.tokens.len')
+	// println('scanner pos: $p.scanner.pos')
+	// println('scanner line_nr: $p.scanner.line_nr')
+}
+
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
 	p.cgen.file = cescaped_path(os.realpath(p.file_path))
