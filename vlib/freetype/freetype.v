@@ -52,7 +52,7 @@ struct C.FT_Library {
 	_z int
 }
 
-pub struct Context {
+pub struct FreeType {
 	shader    gl.Shader
 	// use_ortho bool
 	width     int
@@ -130,11 +130,11 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 	}
 }
 
-pub fn new_context(cfg gg.Cfg) &Context {
+pub fn new_context(cfg gg.Cfg) &FreeType {
 	scale := cfg.scale
 	// Can only have text in ortho mode
 	if !cfg.use_ortho {
-		return &Context{}
+		return &FreeType{}
 	}
 	mut width := cfg.width * scale
 	mut height := cfg.height * scale
@@ -217,7 +217,7 @@ pub fn new_context(cfg gg.Cfg) &Context {
 	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLf32), 0);
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
 	// # glBindVertexArray(0);
-	mut ctx := &Context {
+	mut ctx := &FreeType {
 		shader: shader
 		width: width
 		height: height
@@ -234,7 +234,7 @@ pub fn new_context(cfg gg.Cfg) &Context {
 /*
 // A dirty hack to implement rendering of cyrillic letters.
 // All UTF-8 must be supported. update: no longer needed
-fn (ctx mut Context) init_utf8_runes() {
+fn (ctx mut FreeType) init_utf8_runes() {
 	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
 	print('init utf8 runes: ')
 	//println(s)
@@ -249,17 +249,17 @@ fn (ctx mut Context) init_utf8_runes() {
 }
 */
 
-pub fn (ctx mut Context) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
+pub fn (ctx mut FreeType) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	//utext := text.ustring_tmp()
 	utext := text.ustring()
 	ctx.private_draw_text(_x, _y, utext, cfg)
 }
 
-fn (ctx mut Context) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
+fn (ctx mut FreeType) draw_text_fast(_x, _y int, text ustring, cfg gx.TextCfg) {
 	ctx.private_draw_text(_x, _y, text, cfg)
 }
 
-fn (ctx mut Context) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
+fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCfg) {
 	/*
 	if utext.s.contains('on_seg') {
 		println('\nat(0)')
@@ -357,7 +357,7 @@ fn (ctx mut Context) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCfg
 	C.glBindTexture(C.GL_TEXTURE_2D, 0)
 }
 
-pub fn (ctx mut Context) draw_text_def(x, y int, text string) {
+pub fn (ctx mut FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
 		color: gx.Black,
 		size: DEFAULT_FONT_SIZE,
