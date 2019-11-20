@@ -162,16 +162,16 @@ fn (p mut Parser) name_expr() string {
 	mut name := p.lit
 	// Raw string (`s := r'hello \n ')
 	if (name == 'r' || name == 'c') && p.peek() == .str && p.prev_tok != .dollar {
-    	p.string_expr()
+		p.string_expr()
 		//s := s1 + '...'.repeat()
-    	if p.tok == .dot {
+		if p.tok == .dot {
 			mut typ := ''
-    	    for p.tok == .dot {
-    	        typ = p.dot('string', ph)
-    	    }
-    	    typ = p.index_expr(typ, ph)
-    	    return typ
-    	}
+		    for p.tok == .dot {
+		        typ = p.dot('string', ph)
+		    }
+		    typ = p.index_expr(typ, ph)
+		    return typ
+		}
 		return 'string'
 	}
 	// known_type := p.table.known_type(name)
@@ -700,20 +700,20 @@ fn (p mut Parser) factor() string {
 		typ = 'byte'
 		return typ
 	}
-    .str {
-      ph := p.cgen.add_placeholder()
-      p.string_expr()
+	.str {
+	  ph := p.cgen.add_placeholder()
+	  p.string_expr()
 	  //s := s1 + '...'.repeat()
-      if p.tok == .dot {
-          for p.tok == .dot {
-              typ = p.dot('string', ph)
-          }
-          typ = p.index_expr(typ, ph)
-          return typ
-      }
-      typ = 'string'
-      return typ
-    }
+	  if p.tok == .dot {
+			for p.tok == .dot {
+			    typ = p.dot('string', ph)
+			}
+			typ = p.index_expr(typ, ph)
+			return typ
+	  }
+	  typ = 'string'
+	  return typ
+	}
 	.key_false {
 		typ = 'bool'
 		p.gen('0')
