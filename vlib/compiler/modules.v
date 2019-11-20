@@ -159,12 +159,12 @@ fn (v &V) find_module_path(mod string) ?string {
 	mut import_path := os.getwd() + '${os.path_separator}$mod_path'
 	// Now search in vlib/
 	if mod == 'compiler' || !os.dir_exists(import_path) {
-		import_path = '$v.lang_dir${os.path_separator}vlib${os.path_separator}$mod_path'
+		import_path = '${v.pref.vlib_path}${os.path_separator}$mod_path'
 	}
 	//println('ip=$import_path')
 	// Finally try modules installed with vpm (~/.vmodules)
 	if !os.dir_exists(import_path) {
-		import_path = '$v_modules_path${os.path_separator}$mod_path'
+		import_path = '${v.pref.vpath}${os.path_separator}$mod_path'
 		if !os.dir_exists(import_path){
 			return error('module "$mod" not found')
 		}
