@@ -20,29 +20,27 @@ pub mut:
 }
 
 pub fn (flags []Flag) get_bool(name string) ?bool {
-	value := flags.get_raw(name) or { return error(err) }
-	return value == 'true'
+	flag := flags.get(name) or { return error(err) }
+	if flag.flag != .bool { return error('invalid flag type') }
+	return flag.value == 'true'
 }
 
 pub fn (flags []Flag) get_int(name string) ?int {
-	value := flags.get_raw(name) or { return error(err) }
-	return value.int()
+	flag := flags.get(name) or { return error(err) }
+	if flag.flag != .int { return error('invalid flag type') }
+	return flag.value.int()
 }
 
 pub fn (flags []Flag) get_float(name string) ?f32 {
-	value := flags.get_raw(name) or { return error(err) }
-	return value.f32()
+	flag := flags.get(name) or { return error(err) }
+	if flag.flag != .float { return error('invalid flag type') }
+	return flag.value.f32()
 }
 
 pub fn (flags []Flag) get_string(name string) ?string {
-	return flags.get_raw(name)
-}
-
-// check if first arg matches flag
-fn (flag mut Flag) matches(args []string) bool {
-	return 
-		(flag.name != '' && args[0].starts_with('--${flag.name}')) ||
-		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}'))
+	flag := flags.get(name) or { return error(err) }
+	if flag.flag != .string { return error('invalid flag type') }
+	return flag.value
 }
 
 // parse flag value from arguments and return arguments with all consumed element removed
@@ -58,6 +56,13 @@ fn (flag mut Flag) parse(args []string) ?[]string {
 	} else {
 		return args
 	}
+}
+
+// check if first arg matches flag
+fn (flag mut Flag) matches(args []string) bool {
+	return 
+		(flag.name != '' && args[0].starts_with('--${flag.name}')) ||
+		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}'))
 }
 
 fn (flag mut Flag) parse_raw(args []string) ?[]string {
@@ -86,10 +91,10 @@ fn (flag mut Flag) parse_bool(args []string) ?[]string {
 	return args.right(1)
 }
 
-fn (flags []Flag) get_raw(name string) ?string {
+fn (flags []Flag) get(name string) ?Flag {
 	for flag in flags {
 		if flag.name == name {
-			return flag.value
+			return flag
 		}
 	}
 	return error('flag ${name} not found.')
