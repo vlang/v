@@ -11,7 +11,7 @@ pub mut:
 	disable_version bool
 
 	parent &Command
-	commands []&Command
+	commands []Command
 	flags []Flag
 	args []string
 }
@@ -30,7 +30,7 @@ pub fn (cmd Command) root() Command {
 	return cmd.parent.root()
 }
 
-pub fn (cmd mut Command) add_command(command &Command) {
+pub fn (cmd mut Command) add_command(command Command) {
 	cmd.commands << command
 }
 
