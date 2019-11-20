@@ -1038,12 +1038,23 @@ pub fn create_symlink() {
 	$if windows { return }
 	vexe := os.executable()
 	link_path := '/usr/local/bin/v'
-	ret := os.system('ln -sf $vexe $link_path')
-	if ret == 0 {
-		println('symlink "$link_path" has been created')
+	if vexe[0..2] == './' {
+		vexe_full_path := os.getwd() + vexe
+		ret := os.system('ln -sf $vexe_full_path $link_path')
+		if ret == 0 {
+			println('symlink "$link_path" has been created')
+		} else {
+			println('failed to create symlink "$link_path", '+
+				'make sure you run with sudo')
+		}
 	} else {
-		println('failed to create symlink "$link_path", '+
-			'make sure you run with sudo')
+		ret := os.system('ln -sf $vexe $link_path')
+		if ret == 0 {
+			println('symlink "$link_path" has been created')
+		} else {
+			println('failed to create symlink "$link_path", '+
+				'make sure you run with sudo')
+		}
 	}
 }
 
