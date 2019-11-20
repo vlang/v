@@ -62,6 +62,7 @@ pub mut:
 	out_name_c string       // name of the temporary C file
 	files      []string     // all V files that need to be parsed and compiled
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
+	compiled_dir string     // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
 	x64        &x64.Gen
@@ -874,6 +875,7 @@ pub fn new_v(args[]string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
+    
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''
@@ -1051,6 +1053,7 @@ pub fn new_v(args[]string) &V {
 		os: _os
 		out_name: out_name
 		dir: dir
+		compiled_dir: if os.is_dir( rdir ) { rdir } else { os.dir( rdir ) }
 		lang_dir: vroot
 		table: new_table(obfuscate)
 		out_name_c: out_name_c

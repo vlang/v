@@ -21,6 +21,7 @@ fn new_graphics() &gg.GG {
 		create_window: true
 		resizable: false
 		window_title: 'v life (with gg, glfw, gx)'
+		window_user_ptr: 0
 	})
 }
 
