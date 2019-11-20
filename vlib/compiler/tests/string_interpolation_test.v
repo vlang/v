@@ -26,4 +26,7 @@ fn test_implicit_str() {
 
   text := '$i' + '42'
   assert text == '4242'
+
+  text2 := '8'.repeat(2) + '*'.repeat(2) 
+  assert text2 == '88**'
 }
