@@ -1,9 +1,12 @@
+<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Is V still fast?</title>
 <style>
 *, body {
-	font-family: Menlo,Monospace,'Courier New';
+	font-family: Menlo, Monospace, 'Courier New';
 }
 table, td {
 	border-collapse: collapse;
@@ -11,6 +14,23 @@ table, td {
 }
 td {
 	padding: 5px;
+	position: relative;
+}
+.diff {
+	border-radius: 2.5px;
+	color: #ffffff;
+	padding: 0 5px 0 5px;
+	position: absolute;
+	right: 5px;
+}
+.minus {
+	background-color: rgb(195, 74, 104);
+}
+.plus {
+	background-color: #8BC34A;
+}
+.equal {
+	background-color: rgb(113, 68, 172);
 }
 </style>
 </head>
@@ -31,4 +51,3 @@ Source code: <a target=blank href='https://github.com/vlang/v/blob/master/tools/
 		<td style='width:120px'>v -o v -fast</td>
 		<td style='width:120px'>v hello.v</td>
 	</tr>
-
