@@ -48,9 +48,6 @@ pub fn (cmd mut Command) parse(args []string) {
 	}
 
 	cmd.parse_flags()
-	cmd.check_help_flag()
-	cmd.check_version_flag()
-	cmd.check_required_flags()
 	cmd.parse_commands()
 }
 
@@ -98,6 +95,42 @@ fn (cmd mut Command) parse_flags() {
 	}
 }
 
+fn (cmd mut Command) parse_commands() {
+	flags := cmd.flags
+	global_flags := flags.filter(it.global) // TODO: fix once filter can be applied to struct variable
+
+	cmd.check_help_flag()
+	cmd.check_version_flag()
+
+	for i := 0; i < cmd.args.len; i++ {
+		arg := cmd.args[i]
+		for j := 0; j < cmd.commands.len; j++ {
+			mut command := cmd.commands[j]
+			if command.name == arg {
+				for flag in global_flags {
+					command.add_flag(flag)
+				}
+				command.parse(cmd.args.right(i))
+				return
+			}
+		}
+	}
+
+	// if no further command was found execute current command
+	if int(cmd.execute) == 0 {
+		if !cmd.disable_help {
+			help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
+			execute := help_cmd.execute
+			execute(help_cmd)
+		}
+	} else {
+		cmd.check_required_flags()
+
+		execute := cmd.execute
+		execute(cmd) // TODO: fix once higher order function can be execute on struct variable
+	}
+}
+
 fn (cmd mut Command) check_help_flag() {
 	if cmd.disable_help {
 		return
@@ -135,37 +168,6 @@ fn (cmd mut Command) check_required_flags() {
 			println('flag \'${flag.name}\' is required by \'${full_name}\'')
 			exit(1)
 		}
-	}
-}
-
-fn (cmd mut Command) parse_commands() {
-	flags := cmd.flags
-	global_flags := flags.filter(it.global) // TODO: fix once filter can be applied to struct variable
-
-	for i := 0; i < cmd.args.len; i++ {
-		arg := cmd.args[i]
-		for j := 0; j < cmd.commands.len; j++ {
-			mut command := cmd.commands[j]
-			if command.name == arg {
-				for flag in global_flags {
-					command.add_flag(flag)
-				}
-				command.parse(cmd.args.right(i))
-				return
-			}
-		}
-	}
-
-	// if no further command was found execute current command
-	if int(cmd.execute) == 0 {
-		if !cmd.disable_help {
-			help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-			execute := help_cmd.execute
-			execute(help_cmd)
-		}
-	} else {
-		execute := cmd.execute
-		execute(cmd) // TODO: fix once higher order function can be execute on struct variable
 	}
 }
 
