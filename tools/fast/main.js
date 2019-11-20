@@ -1,8 +1,9 @@
 (function () {
     var table = document.querySelector("table");
-    var isTbody = table.children[0].nodeName == "TBODY"
-    var trs = isTbody ? table.children[0].querySelectorAll('tr') : table.querySelectorAll('tr')
-
+    var isTbody = table.children[0].nodeName == "TBODY";
+    var trs = isTbody
+        ? table.children[0].querySelectorAll("tr")
+        : table.querySelectorAll("tr");
     trs.forEach(function (tr, idx) {
         if (idx != 0 && idx + 1 < trs.length) {
             var vc = 3, vv = 4, vf = 5, vh = 6;
@@ -30,10 +31,14 @@
                 vf: currentData.vf - prevData.vf,
                 vh: currentData.vh - prevData.vh
             };
-            tr.children[vc].appendChild(createElement(result.vc));
-            tr.children[vv].appendChild(createElement(result.vv));
-            tr.children[vf].appendChild(createElement(result.vf));
-            tr.children[vh].appendChild(createElement(result.vh));
+            if (Math.abs(result.vc) > 50)
+                tr.children[vc].appendChild(createElement(result.vc));
+            if (Math.abs(result.vv) > 50)
+                tr.children[vv].appendChild(createElement(result.vv));
+            if (Math.abs(result.vf) > 50)
+                tr.children[vf].appendChild(createElement(result.vf));
+            if (Math.abs(result.vh) > 50)
+                tr.children[vh].appendChild(createElement(result.vh));
         }
     });
     function int(src) {
@@ -50,18 +55,7 @@
     function createElement(result) {
         var el = document.createElement("span");
         var parsedResult = parseResult(result);
-        var title = "";
-        if (result > 0) {
-            title = "slower that previous commit";
-        }
-        else if (result < 0) {
-            title = "faster than previous commit";
-        }
-        else {
-            title = "same with previous commit";
-        }
         el.classList.add("diff");
-        el.setAttribute("title", title);
         el.classList.add(getClassName(result));
         el.textContent = parsedResult;
         return el;
