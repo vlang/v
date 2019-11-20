@@ -9,3 +9,7 @@ module net
 fn error_code() int {
     return C.errno
 }
+
+pub const (
+	MSG_NOSIGNAL = 0x4000
+)

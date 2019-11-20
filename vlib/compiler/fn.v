@@ -223,7 +223,9 @@ fn (p mut Parser) fn_decl() {
 		is_amp := p.tok == .amp
 		if is_mut || is_amp {
 			p.check(p.tok)
-			p.fspace()
+			if !is_amp {
+				p.fspace()
+			}
 		}
 		receiver_typ = p.get_type()
 		t := p.table.find_type(receiver_typ)
@@ -364,11 +366,16 @@ fn (p mut Parser) fn_decl() {
 	if !is_c && !p.is_vh && !is_fn_header {
 		p.fspace()
 		p.check(.lcbr)
-		//p.fgenln('')
+		//p.fgen_nl()
 	}
-	// Register ?option type
-	if typ.starts_with('Option_') {
+	// Register ?option type for return value and args
+	if typ.starts_with('Option_') { 
 		p.cgen.typedefs << 'typedef Option $typ;'
+	}
+	for arg in f.args {
+		if arg.typ.starts_with('Option_') {
+			p.cgen.typedefs << 'typedef Option $arg.typ;'
+		}
 	}
 	// Register function
 	f.typ = typ
@@ -425,7 +432,7 @@ fn (p mut Parser) fn_decl() {
 
 	if is_fn_header {
 		p.genln('$typ $fn_name_cgen($str_args);')
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	if is_c {
 		p.fgenln('\n')
@@ -720,6 +727,8 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// we need to preappend "method(receiver, ...)"
 	if f.is_method {
 		receiver := f.args.first()
+
+		mut receiver_is_interface := false
 		if receiver.typ.ends_with('er') {
 			// I absolutely love this syntax
 			// `s.speak()` =>
@@ -738,7 +747,8 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				p.cgen.resetln('')
 				var := p.expr_var.name
 				iname := f.args[0].typ // Speaker
-				p.gen('(($f.typ (*)())(${iname}_name_table[${var}._interface_idx][$idx]))(${var}._object)')
+				p.gen('(($f.typ (*)())(${iname}_name_table[${var}._interface_idx][$idx]))(${var}._object')
+				receiver_is_interface = true
 			}
 		}
 		//println('r=$receiver.typ RT=$receiver_type')
@@ -754,7 +764,10 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		if !p.expr_var.is_changed && receiver.is_mut {
 			p.mark_var_changed(p.expr_var)
 		}
-		p.gen_method_call(receiver, receiver_type, cgen_name, f.typ, method_ph)
+
+		if !receiver_is_interface {
+			p.gen_method_call(receiver, receiver_type, cgen_name, f.typ, method_ph)
+		}
 	} else {
 		// Normal function call
 		p.gen('$cgen_name (')

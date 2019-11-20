@@ -56,16 +56,18 @@ fn main() {
 	out.close()
 	// Regenerate index.html
 	header := os.read_file('header.html') or { panic(err) }
+	footer := os.read_file('footer.html') or { panic(err) }
 	res := os.create('index.html') or { panic(err) }
 	res.writeln(header)
 	res.writeln(table)
+	res.writeln(footer)
 	res.close()
-}	
+}
 
 fn exec(s string) string {
 	e := os.exec(s) or { panic(err) }
 	return e.output
-}	
+}
 
 // returns milliseconds
 fn measure(cmd string) int {
@@ -77,6 +79,4 @@ fn measure(cmd string) int {
 	ticks := time.ticks()
 	exec(cmd)
 	return int(time.ticks() - ticks)
-}	
-	
-
+}

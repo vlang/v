@@ -35,7 +35,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 			p.warn('enum values cannot contain uppercase letters, use snake_case instead')
 		}
 		fields << field
-		p.fgenln('')
+		p.fgen_nl()
 		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
 		if p.tok == .assign {
 			mut enum_assign_tidx := p.cur_tok_index()

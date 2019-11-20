@@ -143,7 +143,7 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 			}
 			p.fmt_inc()
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		if p.tok == .key_mut {
 			if is_mut {
@@ -156,7 +156,7 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 			}
 			p.fmt_inc()
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		// if is_pub {
 		// }
@@ -166,7 +166,7 @@ fn (p mut Parser) struct_decl() {
 		// }
 		// Check if reserved name
 		field_name_token_idx := p.cur_tok_index()
-		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
+		field_name := if name != 'Option' && !is_interface { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 		/*
 		if !p.first_pass() {
 			p.fgen(strings.repeat(` `, fmt_max_len - field_name.len))
@@ -195,6 +195,10 @@ fn (p mut Parser) struct_decl() {
 		field_type := p.get_type()
 		if field_type == name {
 			p.error_with_token_index( 'cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
+		}
+		// Register ?option type
+		if field_type.starts_with('Option_') {
+			p.gen_typedef('typedef Option $field_type;')
 		}
 		p.check_and_register_used_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
@@ -229,7 +233,7 @@ fn (p mut Parser) struct_decl() {
 		if p.first_pass() {
 			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
 		}
-		p.fgenln('') // newline between struct fields
+		p.fgen_nl() // newline between struct fields
 	}
 	p.check(.rcbr)
 	if !is_c && !did_gen_something && p.first_pass() {
@@ -280,7 +284,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			}
 			p.fspace()
 			did_gen_something = true
-			p.fgenln('') // newline between struct fields
+			p.fgen_nl() // newline between struct fields
 		}
 		// If we already set some fields, need to prepend a comma
 		if t.fields.len != inited_fields.len && inited_fields.len > 0 {

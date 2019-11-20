@@ -129,8 +129,10 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		expr_line := p.cgen.lines[p.cgen.lines.len-2]
 		last_expr := expr_line[last_ph..]
 		p.cgen.lines[p.cgen.lines.len-2]  = ''
-		p.genln('if (!${tmp}.ok) {')
-		p.genln('$name = $last_expr;')
+		p.genln('if ($tmp .ok) {')
+		p.genln('$name = *($typ*) $tmp . data;')
+		p.genln('} else {')
+		p.genln('$name = $last_expr')
 		p.genln('}')
 	} else if is_assign {
 		p.genln('$name = *($typ*)${tmp}.data;')
