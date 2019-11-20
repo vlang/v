@@ -86,6 +86,13 @@ pub:
 // type clickpub fn pub fn (window * GLFWwindow, button, action, mods int)
 type clickpubfn fn (window voidptr, button, action, mods int)
 
+/*
+ * TODO broken
+fn init() {
+	init_glfw()
+}
+*/
+
 pub fn init_glfw() {
 	C.glfwInit()
 	C.glfwWindowHint(C.GLFW_CONTEXT_VERSION_MAJOR, 3)

@@ -128,7 +128,7 @@ struct Game {
 	// gg context for drawing
 	gg          &gg.GG
 	// ft context for font drawing
-	ft          &freetype.Context
+	ft          &freetype.FreeType
 	font_loaded bool
 }
 
