@@ -1,8 +1,9 @@
+module main
 import time
 import automaton
 
-fn print_field(field []array_int) {
-	for line in field {
+fn print_automaton(a &automaton.Automaton){
+	for line in a.field {
 		mut s := '    '
 		for j, cell in line {
 			if j == 0 || j == line.len - 1{continue}
@@ -14,11 +15,10 @@ fn print_field(field []array_int) {
 }
 
 fn main() {
-	mut field := automaton.gun()
-	print_field(field)
+	mut a := automaton.gun()
 	for {
-		field = automaton.update(field)
-		print_field(field)
+		a.update()
+		print_automaton(a)
 		time.sleep_ms(100)
 	}
 }

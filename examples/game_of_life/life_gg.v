@@ -1,3 +1,5 @@
+module main
+
 import time
 import gg
 import glfw
