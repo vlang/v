@@ -7,8 +7,11 @@ pub mut:
 	version string
 	execute fn(cmd Command)
 
+	disable_help bool
+	disable_version bool
+
 	parent &Command
-	commands []Command
+	commands []&Command
 	flags []Flag
 	args []string
 }
@@ -27,7 +30,7 @@ pub fn (cmd Command) root() Command {
 	return cmd.parent.root()
 }
 
-pub fn (cmd mut Command) add_command(command Command) {
+pub fn (cmd mut Command) add_command(command &Command) {
 	cmd.commands << command
 }
 
@@ -50,10 +53,10 @@ pub fn (cmd mut Command) parse(args []string) {
 }
 
 fn (cmd mut Command) add_default_flags() {
-	if !cmd.flags.contains('help') && !cmd.flags.contains('h') {
+	if !cmd.disable_help && !cmd.flags.contains('help') && !cmd.flags.contains('h') {
 		cmd.add_flag(help_flag())
 	}
-	if cmd.version != '' && !cmd.flags.contains('version') && !cmd.flags.contains('v') {
+	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') && !cmd.flags.contains('v') {
 		cmd.add_flag(version_flag())
 	}
 }
@@ -63,7 +66,6 @@ fn (cmd mut Command) parse_flags() {
 		if cmd.args.len < 1 || !cmd.args[0].starts_with('-') {
 			break
 		}
-
 		mut found := false
 		for i := 0; i < cmd.flags.len; i++ {
 			mut flag := &cmd.flags[i]
@@ -86,6 +88,9 @@ fn (cmd mut Command) parse_flags() {
 }
 
 fn (cmd mut Command) check_help_flag() {
+	if cmd.disable_help {
+		return
+	}
 	if cmd.flags.contains('help') {
 		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
@@ -96,6 +101,9 @@ fn (cmd mut Command) check_help_flag() {
 }
 
 fn (cmd mut Command) check_version_flag() {
+	if cmd.disable_version {
+		return
+	}
 	if cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
@@ -124,7 +132,9 @@ fn (cmd mut Command) parse_commands() {
 		for j := 0; j < cmd.commands.len; j++ {
 			mut command := cmd.commands[j]
 			if command.name == arg {
-				command.flags << global_flags
+				for flag in global_flags {
+					command.add_flag(flag)
+				}
 				command.parse(cmd.args.right(i))
 				return
 			}
@@ -133,7 +143,9 @@ fn (cmd mut Command) parse_commands() {
 
 	// if no further command was found execute current command
 	if int(cmd.execute) == 0 {
-		help_func(cmd)
+		if !cmd.disable_help {
+			help_func(cmd)
+		}
 	} else {
 		execute := cmd.execute
 		execute(cmd) // TODO: fix once higher order function can be execute on struct variable

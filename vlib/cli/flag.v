@@ -8,7 +8,7 @@ pub enum FlagType {
 }
 
 pub struct Flag {
-mut:
+pub mut:
 	flag FlagType
 	name string
 	abbrev string
