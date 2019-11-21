@@ -294,9 +294,9 @@ fn (p mut Parser) fn_decl() {
 		f.is_c = true
 	}
 	else if !p.pref.translated {
-		if contains_capital(f.name) && !p.fileis('view.v') {
-			// println('`$f.name`')
-			// p.error('function names cannot contain uppercase letters, use snake_case instead')
+		if contains_capital(f.name) && !p.fileis('view.v') && !p.is_vgen {
+			println('`$f.name`')
+			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if f.name[0] == `_` {
 			p.error('function names cannot start with `_`, use snake_case instead')
