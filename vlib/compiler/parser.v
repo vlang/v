@@ -263,7 +263,7 @@ fn (p &Parser) log(s string) {
 }
 
 pub fn (p mut Parser) add_text(text string) {
-	if p.tokens[p.tokens.len-1].tok == .eof {
+	if p.tokens.len > 1 && p.tokens[p.tokens.len-1].tok == .eof {
 		p.tokens.delete(p.tokens.len-1)
 	}
 	p.scanner.text = p.scanner.text + '\n' + text
@@ -433,6 +433,10 @@ fn (p mut Parser) parse(pass Pass) {
 				p.check_unused_imports()
 			}
 			p.gen_fmt() // not generated unless `-d vfmt` is provided
+			// if p.v.gen_parser.token_idx < p.v.gen_parser.tokens.len {
+			// 	p.v.gen_parser.continue()
+			// }
+			
 			return
 		}
 		else {
