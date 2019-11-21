@@ -177,9 +177,23 @@ fn (p mut Parser) name_expr() string {
 			return p.get_struct_type(name, true, ptr)
 		}
 		// C function
-		if p.peek() == .lpar {
-			return p.get_c_func_type(name)
-		}
+        if p.peek() == .lpar {
+            if p.file_path.contains('vlib') || p.table.known_fn(name) {
+                return p.get_c_func_type(name)
+            } else {
+				//cast to c struct
+				// var := C.Struct(...)
+                p.gen('(')
+                mut str := ''
+				if deref_nr > 0 {
+					str = '*'.repeat(deref_nr)
+				}
+                temp := name + str
+                p.cast(temp)
+                p.gen(')')  
+                return temp         
+            }   
+        }
 		// C const (`C.GLFW_KEY_LEFT`)
 		p.gen(name)
 		p.next()
