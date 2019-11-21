@@ -70,8 +70,8 @@ pub mut:
 	mod        string       // module being built with -lib
 	parsers    []Parser     // file parsers
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
-	gen_parser_idx int
 	file_parser_idx map[string]int // map absolute file path to v.parsers index
+	gen_parser_idx  map[string]int
 	cached_mods []string
 }
 
@@ -287,10 +287,12 @@ pub fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		//}
 	}
+	println('about to parse vgens')
 	for i, _ in v.parsers {
 		if !v.parsers[i].is_vgen { continue }
 		v.parsers[i].parse(.main)
 	}
+	println('done')
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		generate_vh(v.dir)

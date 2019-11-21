@@ -39,8 +39,7 @@ mut:
 	defer_text    []string
 	type_pars 	  []string
 	type_inst 	  []TypeInst
-	dispatch_of	  TypeInst	// current type inst of this generic instance
-	body_idx	  int		// idx of the first body statement
+	// dispatch_of	  TypeInst	// current type inst of this generic instance
 	generic_body  string
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
@@ -404,18 +403,18 @@ fn (p mut Parser) fn_decl() {
 		// Generic functions are inserted as needed from the call site
 		if f.is_generic {
 			if p.first_pass() {
-				f.body_idx = p.cur_tok_index()+1
-				p.save_fn_body(mut f, fn_decl_start_pos)
+				p.save_fn_body(mut f, p.cur_tok_index())
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
-					if p.first_pass() && rcv.name == '' {
-						r := Type {
-							name: rcv.name.replace('*', '')
-							mod: p.mod
-							is_placeholder: true
-						}
-						p.table.register_type2(r)
-					}
+					// if p.first_pass() && rcv.name == '' {
+					// 	r := Type {
+					// 		name: rcv.name.replace('*', '')
+					// 		mod: p.mod
+					// 		is_placeholder: true
+					// 	}
+					// 	println('type name: $r.name')
+					// 	p.table.register_type2(r)
+					// }
 					// println('added generic method $rcv.name $f.name')
 					p.add_method(rcv.name, f)
 				} else {
@@ -1239,8 +1238,8 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	}
 	for tp in f.type_pars {
 		if r.inst[tp] == '' {
-			println('TP: $tp')
-			p.error_with_token_index('unused type parameter `$tp`', f.body_idx-2)
+			// p.error_with_token_index('unused type parameter `$tp`', f.body_idx-2)
+			p.error('unused type parameter `$tp`')
 		}
 	}
 	return r
@@ -1362,11 +1361,10 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 fn (p mut Parser) save_fn_body(f mut Fn, pos int) {
 	mut code := ''
 	mut cbr_depth := 1
-	for i in f.body_idx-1..p.tokens.len {
+	for i in pos..p.tokens.len {
 		tok := p.tokens[i]
 		if tok.tok == .lcbr { cbr_depth++ }
 		if tok.tok == .rcbr { cbr_depth-- }
-		ts := tok.str()
 		code += tok.str() + ' '
 		if tok.tok == .rcbr && cbr_depth == 0 {
 			break
@@ -1400,18 +1398,25 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 			p.error('function instance `$f.name` not found')
 			return
 		}
-		// println('using existing inst $f.name(${f.str_args_c(p.table)}) $f.typ')
+		println('using existing inst ${p.fn_signature_v(f)}')
 		return
 	}
-
+	// new_inst := f.name in p.v.gen_fn_dispatch
+	println('dispatch start')
 	f.type_inst << ti
 	p.table.register_fn(f)
 
 	p.rename_generic_fn_instance(mut f, ti)
 	p.replace_type_params(mut f, ti)
-	if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
-	if f.typ in ti.inst {
-		f.typ = ti.inst[f.typ]
+	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
+	// if f.typ in ti.inst {
+	// 	f.typ = ti.inst[f.typ]
+	// }
+	f.is_generic = false
+	if f.is_method {
+		p.add_method(f.args[0].name, f)
+	} else {
+		p.table.register_fn(f)
 	}
 
 	receiver_arg := f.args[0]
@@ -1426,15 +1431,22 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		method = '($receiver_arg.name $mu $receiver_type)'
 		fname = fname.all_after('${receiver_type}_')
 	}
-	mut code := 'module $f.mod\n\n${vis}fn $method $fname(${f.str_args_v(p.table)}) $ftype {\n$f.generic_body'
-	mut gp := p.v.new_parser_from_string(code)
-	gp.gen_fn_dispatch[f.name] = ti
-	gp.is_vgen = true
-	gp.mod = f.mod
-	p.cgen.pass = .decl
-	gp.parse(.decl)
-	p.cgen.pass = .main
-	p.v.add_parser(gp)
+	mut fn_code := '${vis}fn $method $fname(${f.str_args_v(p.table)}) $ftype {\n$f.generic_body'
+	for k, v in ti.inst {
+		for fn_code.contains(' $k ') {
+			fn_code = fn_code.replace(' $k ', ' $v ')
+		}
+	}
+	
+	if f.mod in p.v.gen_parser_idx {
+		pidx := p.v.gen_parser_idx[f.mod]
+		p.v.parsers[pidx].add_text(fn_code)
+	} else {
+		println('using existing module parser')
+		pidx := p.v.add_parser(p.v.new_parser_from_string('module $f.mod\n$fn_code'))
+		p.v.parsers[pidx].is_vgen = true
+	}
+	p.cgen.fns << '${p.fn_signature_c(f)};'
 }
 
 // "fn (int, string) int"
@@ -1532,6 +1544,13 @@ fn (fns []Fn) contains(f Fn) bool {
 		}
 	}
 	return false
+}
+fn (p &Parser) fn_signature_c(f &Fn) string {
+	return '$f.typ $f.name(${f.str_args_c(p.table)})'
+}
+
+fn (p &Parser) fn_signature_v(f &Fn) string {
+	return '$f.name(${f.str_args_v(p.table)}) $f.typ'
 }
 
 pub fn (f &Fn) v_fn_module() string {

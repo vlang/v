@@ -65,7 +65,6 @@ mut:
 	is_alloc   bool // Whether current expression resulted in an allocation
 	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
 	in_dispatch 	bool		// dispatching generic instance?
-	gen_fn_dispatch map[string]TypeInst
 	is_vgen bool
 	is_vweb bool
 	is_sql bool
@@ -892,17 +891,15 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-	// Generic type check
-	if p.cur_fn.name in p.gen_fn_dispatch {
-		ti := p.gen_fn_dispatch[p.cur_fn.name]
-		if p.lit in ti.inst.keys() {
-			typ += ti.inst[p.lit]
-		} else {
-			typ += p.lit
-		}
-	} else {
-		typ += p.lit
-	}
+	typ += p.lit
+	// // Generic type check
+	// ti := p.cur_fn.dispatch_of.inst
+	// if p.lit in ti.keys() {
+	// 	typ += ti[p.lit]
+	// 	// println('cur dispatch: $p.lit => $typ')
+	// } else {
+	// 	typ += p.lit
+	// }
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
