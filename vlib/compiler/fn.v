@@ -380,7 +380,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Register function
 	f.typ = typ
-	str_args := f.str_args_c(p.table)
+	str_args := f.str_args(p.table)
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
 		if str_args != '' || typ != 'void' {
@@ -1424,7 +1424,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	} else {
 		// TODO: add here after I work out bug
 	}
-	p.cgen.fns << '${p.fn_signature_c(f)};'
+	p.cgen.fns << '${p.fn_signature(f)};'
 }
 
 // "fn (int, string) int"
@@ -1445,7 +1445,7 @@ fn (f &Fn) typ_str() string {
 }
 
 // f.args => "int a, string b"
-fn (f &Fn) str_args_c(table &Table) string {
+fn (f &Fn) str_args(table &Table) string {
 	mut s := ''
 	for i, arg in f.args {
 		// Interfaces are a special case. We need to pass the object + pointers
@@ -1487,9 +1487,9 @@ fn (f &Fn) str_args_v(table &Table) string {
 	mut str_args := ''
 	for i, arg in f.args {
 		if f.is_method && i == 0 { continue }
-		mut arg_typ := arg.typ.replace('array_', '[]')
+		mut arg_typ := arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
 		if arg.is_mut { arg_typ = 'mut '+arg_typ.trim('*') }
-		if arg_typ.ends_with('*') { arg_typ = '&'+arg_typ[..arg_typ.len-1] }
+		if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
 		str_args += '$arg.name $arg_typ'
 		if i < f.args.len-1 { str_args += ','}
 	}
@@ -1523,8 +1523,8 @@ fn (fns []Fn) contains(f Fn) bool {
 	}
 	return false
 }
-fn (p &Parser) fn_signature_c(f &Fn) string {
-	return '$f.typ $f.name(${f.str_args_c(p.table)})'
+fn (p &Parser) fn_signature(f &Fn) string {
+	return '$f.typ $f.name(${f.str_args(p.table)})'
 }
 
 fn (p &Parser) fn_signature_v(f &Fn) string {
@@ -1534,8 +1534,10 @@ fn (p &Parser) fn_signature_v(f &Fn) string {
 		receiver_arg := f.args[0]
 		receiver_type := receiver_arg.typ.trim('*')
 		f_name = f_name.all_after('${receiver_type}_') 
-		mu := if receiver_arg.is_mut { 'mut' } else if receiver_arg.ptr { '&' } else { '' }
-		method = '($receiver_arg.name $mu $receiver_type) '
+		mut rcv_typ := receiver_arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
+		if receiver_arg.is_mut { rcv_typ = 'mut '+rcv_typ.trim('*') }
+			else if rcv_typ.ends_with('*') || receiver_arg.ptr { rcv_typ = '&'+rcv_typ.trim_right('*') }
+		method = '($receiver_arg.name $rcv_typ) '
 	}
 	vis := if f.is_public { 'pub ' } else { '' }
 	f_type := if f.typ == 'void' { '' } else { f.typ }
