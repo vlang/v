@@ -119,6 +119,9 @@ pub mut:
 	enable_globals bool // allow __global for low level code
 	is_fmt bool
 	is_bare bool
+
+	vlib_path string
+	vpath string
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -592,7 +595,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 		//builtin_files = []
 	}	
 	// Builtin cache exists? Use it.
-	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
+	builtin_vh := '${v.pref.vlib_path}${os.path_separator}builtin.vh'
 	if v.pref.is_cache && os.file_exists(builtin_vh) {
 		v.cached_mods << 'builtin'
 		builtin_files = [builtin_vh]
@@ -636,7 +639,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			continue
 		}
 		// use cached built module if exists
-		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
+		if v.pref.vpath != '' && v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', os.path_separator)
 			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.file_exists(vh_path) {
@@ -662,12 +665,12 @@ pub fn (v mut V) add_v_files_to_compile() {
 pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
 	if v.pref.is_bare {
-		return v.v_files_from_dir(filepath.join(v.vroot, 'vlib', 'builtin', 'bare'))
+		return v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'bare'))
 	}
 	$if js {
-		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
+		return v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'js'))
 	}
-	return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin')
+	return v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin'))
 }
 
 // get user files
@@ -680,11 +683,11 @@ pub fn (v &V)  get_user_files() []string {
 
 	if v.pref.is_test {
 		// TODO this somtimes fails on CI
-		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
+		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_assertions.v')
 	}
 	
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
+		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_with_stats.v')
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
@@ -781,6 +784,20 @@ pub fn get_param_after(joined_args, arg, def string) string {
 	return res
 }
 
+pub fn get_cmdline_option(args []string, param string, def string) string {
+	mut found := false
+
+	for arg in args {
+		if found {
+			return arg
+		} else if param == arg {
+			found = true
+		}
+	}
+
+	return def
+}
+
 pub fn (v &V) log(s string) {
 	if !v.pref.is_verbose {
 		return
@@ -797,6 +814,8 @@ pub fn new_v(args[]string) &V {
 	
 	// Location of all vlib files
 	vroot := os.dir(vexe_path())
+	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot, 'vlib'))
+	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
 
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
@@ -920,7 +939,7 @@ pub fn new_v(args[]string) &V {
 	}
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
-	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
+	if !os.dir_exists(vlib_path) || !os.dir_exists(vlib_path + os.path_separator + 'builtin') {
 		//println('vlib not found, downloading it...')
 		/*
 		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
@@ -935,12 +954,12 @@ pub fn new_v(args[]string) &V {
 		exit(1)
 	}
 
-	mut out_name_c := get_vtmp_filename( out_name, '.tmp.c')
+	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
-
-	rdir := os.realpath( dir )
-	rdir_name := os.filename( rdir )
+	
+	rdir := os.realpath(dir)
+	rdir_name := os.filename(rdir)
 
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
@@ -976,6 +995,8 @@ pub fn new_v(args[]string) &V {
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
 		comptime_define: comptime_define
 		is_fmt: comptime_define == 'vfmt'
+		vlib_path: vlib_path
+		vpath: vpath
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
