@@ -16,6 +16,11 @@ ifeq ($(_SYS),Darwin)
 MAC := 1
 endif
 
+ifdef ANDROID_ROOT
+ANDROID := 1
+undefine LINUX
+endif
+
 all: fresh_vc fresh_tcc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe vc/v_win.c $(LDFLAGS)
