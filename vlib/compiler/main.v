@@ -1049,7 +1049,9 @@ pub fn create_symlink() {
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if '' != vexe {	return vexe	}
-	return os.realpath(os.executable())
+	real_vexe_path := os.realpath(os.executable())
+	os.setenv('VEXE', real_vexe_path, true)
+	return real_vexe_path
 }
 
 pub fn verror(s string) {
