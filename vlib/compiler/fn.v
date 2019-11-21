@@ -406,16 +406,10 @@ fn (p mut Parser) fn_decl() {
 				p.save_fn_body(mut f, p.cur_tok_index())
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
-					// if p.first_pass() && rcv.name == '' {
-					// 	r := Type {
-					// 		name: rcv.name.replace('*', '')
-					// 		mod: p.mod
-					// 		is_placeholder: true
-					// 	}
-					// 	println('type name: $r.name')
-					// 	p.table.register_type2(r)
-					// }
-					// println('added generic method $rcv.name $f.name')
+					if p.first_pass() && rcv.name == '' {
+						p.error('cannot currently add generic method to a type after it or in another module')
+					}
+					// println('added generic method r:$rcv.name f:$f.name')
 					p.add_method(rcv.name, f)
 				} else {
 					p.table.register_fn(f)
@@ -1401,10 +1395,9 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		// println('using existing inst ${p.fn_signature_v(f)}')
 		return
 	}
-	// new_inst := f.name in p.v.gen_fn_dispatch
 	f.type_inst << ti
 	p.table.register_fn(f)
-
+	
 	p.rename_generic_fn_instance(mut f, ti)
 	p.replace_type_params(mut f, ti)
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
@@ -1418,32 +1411,18 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		p.table.register_fn(f)
 	}
 
-	receiver_arg := f.args[0]
-	receiver_type := f.args[0].typ.trim('*')
-
-	vis := if f.is_public { 'pub ' } else { '' }
-	mut fname := f.name.all_after('__')
-	ftype := if f.typ != 'void' { f.typ } else { '' }
-	mut method := ''
-	if f.is_method {
-		mu := if receiver_arg.is_mut { 'mut' } else if receiver_arg.ptr { '&' } else { '' }
-		method = '($receiver_arg.name $mu $receiver_type)'
-		fname = fname.all_after('${receiver_type}_')
-	}
-	mut fn_code := '${vis}fn $method $fname(${f.str_args_v(p.table)}) $ftype {\n$f.generic_body'
+	mut fn_code := '${p.fn_signature_v(f)} {\n$f.generic_body'
 	for k, v in ti.inst {
 		for fn_code.contains(' $k ') {
 			fn_code = fn_code.replace(' $k ', ' $v ')
 		}
 	}
-	
+
 	if f.mod in p.v.gen_parser_idx {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
 	} else {
-		// pidx := p.v.add_parser(p.v.new_parser_from_string('module $f.mod\n$fn_code'))
-		// p.v.parsers[pidx].is_vgen = true
-		// p.v.gen_parser_idx[f.mod] = pidx
+		// TODO: add here after I work out bug
 	}
 	p.cgen.fns << '${p.fn_signature_c(f)};'
 }
@@ -1549,7 +1528,18 @@ fn (p &Parser) fn_signature_c(f &Fn) string {
 }
 
 fn (p &Parser) fn_signature_v(f &Fn) string {
-	return '$f.name(${f.str_args_v(p.table)}) $f.typ'
+	mut method := ''
+	mut f_name := f.name.all_after('__')
+	if f.is_method {
+		receiver_arg := f.args[0]
+		receiver_type := receiver_arg.typ.trim('*')
+		f_name = f_name.all_after('${receiver_type}_') 
+		mu := if receiver_arg.is_mut { 'mut' } else if receiver_arg.ptr { '&' } else { '' }
+		method = '($receiver_arg.name $mu $receiver_type) '
+	}
+	vis := if f.is_public { 'pub ' } else { '' }
+	f_type := if f.typ == 'void' { '' } else { f.typ }
+	return '${vis}fn $method$f_name(${f.str_args_v(p.table)}) $f_type'
 }
 
 pub fn (f &Fn) v_fn_module() string {
