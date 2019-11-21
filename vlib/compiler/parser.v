@@ -1088,10 +1088,7 @@ fn (p mut Parser) close_scope() {
 		//p.cur_fn.defer_text[f] = ''
 	}
 	p.cur_fn.scope_level--
-	if p.cur_fn.scope_level > 0 {
-		p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
-	}
-	// p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
+	p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
 	p.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
 }
