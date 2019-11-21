@@ -1036,7 +1036,7 @@ pub fn vfmt(args[]string) {
 
 pub fn create_symlink() {
 	$if windows { return }
-	vexe := os.executable()
+	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
