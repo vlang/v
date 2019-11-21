@@ -1110,10 +1110,5 @@ pub fn new_v_compiler_with_args(args []string) &V {
 	mut allargs := [vexe]
 	allargs << args
 	os.setenv('VOSARGS', allargs.join(' '), true)
-	// return new_v(allargs)
-	mut nv := new_v(allargs)
-	// mut gp := nv.new_parser_from_string('')
-	// // gp.parse(.main)
-	// nv.gen_parser_idx = nv.add_parser(gp)
-	return nv
+	return new_v(allargs)
 }

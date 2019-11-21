@@ -423,8 +423,6 @@ fn (p mut Parser) parse(pass Pass) {
 			}	
 		}
 		.eof {
-			// if gen_parser_idx != 0 {
-			// p.v.parsers[p.v.gen_parser_idx].parse(.main)
 			//p.log('end of parse()')
 			// TODO: check why this was added? everything seems to work
 			// without it, and it's already happening in fn_decl
@@ -436,10 +434,6 @@ fn (p mut Parser) parse(pass Pass) {
 				p.check_unused_imports()
 			}
 			p.gen_fmt() // not generated unless `-d vfmt` is provided
-			// if p.v.gen_parser.token_idx < p.v.gen_parser.tokens.len {
-			// 	p.v.gen_parser.continue()
-			// }
-			
 			return
 		}
 		else {

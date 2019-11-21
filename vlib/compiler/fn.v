@@ -1408,14 +1408,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.table.register_fn(f)
 
 	p.rename_generic_fn_instance(mut f, ti)
-	// f.is_generic = false		// the instance is a normal function
-	// f.type_inst = []
-	// f.scope_level = 0
-	// f.dispatch_of = ti
-	// // // TODO this is done to prevent a crash as a result of this not being
-	// // // properly initialised. This is a bug somewhere futher upstream
-	// f.defer_text = []
-	// if false {}
 	p.replace_type_params(mut f, ti)
 	if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
 	if f.typ in ti.inst {
