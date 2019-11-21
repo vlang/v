@@ -240,9 +240,15 @@ fn (p mut Parser) name_expr() string {
 			}
 			p.gen('(')
 			mut typ := name
-			if typ in p.cur_fn.dispatch_of.inst.keys() {
-				typ = p.cur_fn.dispatch_of.inst[typ]
+			if p.cur_fn.name in p.gen_fn_dispatch {
+				ti := p.gen_fn_dispatch[p.cur_fn.name]
+				if typ in ti.inst.keys() {
+					typ = ti.inst[typ]
+				}
 			}
+			// if typ in p.cur_fn.dispatch_of.inst.keys() {
+			// 	typ = p.cur_fn.dispatch_of.inst[typ]
+			// }
 			p.cast(typ)
 			p.gen(')')
 			for p.tok == .dot {

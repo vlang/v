@@ -70,6 +70,7 @@ pub mut:
 	mod        string       // module being built with -lib
 	parsers    []Parser     // file parsers
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
+	gen_parser_idx int
 	file_parser_idx map[string]int // map absolute file path to v.parsers index
 	cached_mods []string
 }
@@ -285,6 +286,10 @@ pub fn (v mut V) compile() {
 		//if !v.pref.nofmt && !file.contains('/vlib/') {
 			// new vfmt is not ready yet
 		//}
+	}
+	for i, _ in v.parsers {
+		if !v.parsers[i].is_vgen { continue }
+		v.parsers[i].parse(.main)
 	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
@@ -1105,5 +1110,10 @@ pub fn new_v_compiler_with_args(args []string) &V {
 	mut allargs := [vexe]
 	allargs << args
 	os.setenv('VOSARGS', allargs.join(' '), true)
-	return new_v(allargs)
+	// return new_v(allargs)
+	mut nv := new_v(allargs)
+	// mut gp := nv.new_parser_from_string('')
+	// // gp.parse(.main)
+	// nv.gen_parser_idx = nv.add_parser(gp)
+	return nv
 }

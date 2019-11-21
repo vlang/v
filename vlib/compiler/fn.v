@@ -381,24 +381,6 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Register function
 	f.typ = typ
-
-	// generic instance, add dispatch information
-	if f.name.contains('T') {
-		println('LOOKING FOR: $f.name')
-		// f.name = f.name.all_after('__')
-		println('p cur: $p.cur_fn.name - $p.cur_fn.mod')
-		mut existing := p.table.find_fn(f.name) or { Fn{} }
-		if existing.name.len == 0 {
-		    rt := p.table.find_type(receiver_typ)
-		    ex2 := rt.find_method(f.name) or { Fn{} }
-			existing = ex2
-		}
-		if existing.dispatch_of.inst.size > 0 {
-			println('existing: $f.name - $f.mod - $existing.mod')
-			f.dispatch_of = existing.dispatch_of
-		}
-	}
-
 	str_args := f.str_args_c(p.table)
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
@@ -424,7 +406,6 @@ fn (p mut Parser) fn_decl() {
 			if p.first_pass() {
 				f.body_idx = p.cur_tok_index()+1
 				p.save_fn_body(mut f, fn_decl_start_pos)
-				println(' # saving: $f.name - $f.mod')
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
 					if p.first_pass() && rcv.name == '' {
@@ -1427,14 +1408,14 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	p.table.register_fn(f)
 
 	p.rename_generic_fn_instance(mut f, ti)
-	f.is_generic = false		// the instance is a normal function
-	f.type_inst = []
-	f.scope_level = 0
-	f.dispatch_of = ti
-	// // TODO this is done to prevent a crash as a result of this not being
-	// // properly initialised. This is a bug somewhere futher upstream
-	f.defer_text = []
-	if false {}
+	// f.is_generic = false		// the instance is a normal function
+	// f.type_inst = []
+	// f.scope_level = 0
+	// f.dispatch_of = ti
+	// // // TODO this is done to prevent a crash as a result of this not being
+	// // // properly initialised. This is a bug somewhere futher upstream
+	// f.defer_text = []
+	// if false {}
 	p.replace_type_params(mut f, ti)
 	if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
 	if f.typ in ti.inst {
@@ -1443,12 +1424,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 
 	receiver_arg := f.args[0]
 	receiver_type := f.args[0].typ.trim('*')
-	if f.is_method {
-		p.add_method(receiver_type, f)
-	} else {
-		p.table.register_fn(f)
-	}
-	// println("generating gen inst $f.name(${f.str_args_c(p.table)}) $f.typ : $ti.inst")
 
 	vis := if f.is_public { 'pub ' } else { '' }
 	mut fname := f.name.all_after('__')
@@ -1459,16 +1434,15 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		method = '($receiver_arg.name $mu $receiver_type)'
 		fname = fname.all_after('${receiver_type}_')
 	}
-	mut code := '${vis}fn $method $fname(${f.str_args_v(p.table)}) $ftype {\n$f.generic_body'
-	// p.add_text(code)
-	// p.v.gen_parser.reset()
-	// p.v.gen_parser.add_text(code)
-	// p.v.gen_parser.forward()
-	// p.v.gen_parser.statements()
-	p.v.parsers[p.v.gen_parser_idx].add_text(code)
-	// p.v.gen_parser.forward()
-	// p.v.gen_parser.parse()
-	p.cgen.fns << '${p.get_linkage_prefix()}$f.typ $f.name(${f.str_args_c(p.table)});'
+	mut code := 'module $f.mod\n\n${vis}fn $method $fname(${f.str_args_v(p.table)}) $ftype {\n$f.generic_body'
+	mut gp := p.v.new_parser_from_string(code)
+	gp.gen_fn_dispatch[f.name] = ti
+	gp.is_vgen = true
+	gp.mod = f.mod
+	p.cgen.pass = .decl
+	gp.parse(.decl)
+	p.cgen.pass = .main
+	p.v.add_parser(gp)
 }
 
 // "fn (int, string) int"

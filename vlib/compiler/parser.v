@@ -65,6 +65,7 @@ mut:
 	is_alloc   bool // Whether current expression resulted in an allocation
 	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
 	in_dispatch 	bool		// dispatching generic instance?
+	gen_fn_dispatch map[string]TypeInst
 	is_vgen bool
 	is_vweb bool
 	is_sql bool
@@ -422,6 +423,8 @@ fn (p mut Parser) parse(pass Pass) {
 			}	
 		}
 		.eof {
+			// if gen_parser_idx != 0 {
+			// p.v.parsers[p.v.gen_parser_idx].parse(.main)
 			//p.log('end of parse()')
 			// TODO: check why this was added? everything seems to work
 			// without it, and it's already happening in fn_decl
@@ -896,13 +899,23 @@ fn (p mut Parser) get_type() string {
 		p.check(.amp)
 	}
 	// Generic type check
-	ti := p.cur_fn.dispatch_of.inst
-	if p.lit in ti.keys() {
-		typ += ti[p.lit]
-		// println('cur dispatch: $p.lit => $typ')
+	if p.cur_fn.name in p.gen_fn_dispatch {
+		ti := p.gen_fn_dispatch[p.cur_fn.name]
+		if p.lit in ti.inst.keys() {
+			typ += ti.inst[p.lit]
+		} else {
+			typ += p.lit
+		}
 	} else {
 		typ += p.lit
 	}
+	// ti := p.cur_fn.dispatch_of.inst
+	// if p.lit in ti.keys() {
+	// 	typ += ti[p.lit]
+	// 	// println('cur dispatch: $p.lit => $typ')
+	// } else {
+	// 	typ += p.lit
+	// }
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
@@ -1088,7 +1101,10 @@ fn (p mut Parser) close_scope() {
 		//p.cur_fn.defer_text[f] = ''
 	}
 	p.cur_fn.scope_level--
-	p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
+	if p.cur_fn.scope_level > 0 {
+		p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
+	}
+	// p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
 	p.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
 }
