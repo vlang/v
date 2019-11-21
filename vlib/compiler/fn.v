@@ -1395,14 +1395,13 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	if !new_inst {
 		p.rename_generic_fn_instance(mut f, ti)
 		_f := p.table.find_fn(f.name) or {
-			p.error('function instance `$f.name` not found')
+			// p.error('function instance `$f.name` not found')
 			return
 		}
-		println('using existing inst ${p.fn_signature_v(f)}')
+		// println('using existing inst ${p.fn_signature_v(f)}')
 		return
 	}
 	// new_inst := f.name in p.v.gen_fn_dispatch
-	println('dispatch start')
 	f.type_inst << ti
 	p.table.register_fn(f)
 
@@ -1442,7 +1441,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
 	} else {
-		println('using existing module parser')
 		pidx := p.v.add_parser(p.v.new_parser_from_string('module $f.mod\n$fn_code'))
 		p.v.parsers[pidx].is_vgen = true
 	}

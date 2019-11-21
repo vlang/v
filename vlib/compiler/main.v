@@ -287,12 +287,10 @@ pub fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		//}
 	}
-	println('about to parse vgens')
 	for i, _ in v.parsers {
 		if !v.parsers[i].is_vgen { continue }
 		v.parsers[i].parse(.main)
 	}
-	println('done')
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		generate_vh(v.dir)
