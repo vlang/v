@@ -814,7 +814,7 @@ pub fn new_v(args[]string) &V {
 	
 	// Location of all vlib files
 	vroot := os.dir(vexe_path())
-	vlib_path := get_cmdline_option(args, '-vlib_path', filepath.join(vroot, 'vlib'))
+	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot, 'vlib'))
 	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
 
 	mut vgen_buf := strings.new_builder(1000)
