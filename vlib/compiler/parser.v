@@ -903,13 +903,6 @@ fn (p mut Parser) get_type() string {
 	} else {
 		typ += p.lit
 	}
-	// ti := p.cur_fn.dispatch_of.inst
-	// if p.lit in ti.keys() {
-	// 	typ += ti[p.lit]
-	// 	// println('cur dispatch: $p.lit => $typ')
-	// } else {
-	// 	typ += p.lit
-	// }
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()

@@ -246,9 +246,6 @@ fn (p mut Parser) name_expr() string {
 					typ = ti.inst[typ]
 				}
 			}
-			// if typ in p.cur_fn.dispatch_of.inst.keys() {
-			// 	typ = p.cur_fn.dispatch_of.inst[typ]
-			// }
 			p.cast(typ)
 			p.gen(')')
 			for p.tok == .dot {
