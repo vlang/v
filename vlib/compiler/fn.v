@@ -1441,8 +1441,9 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
 	} else {
-		pidx := p.v.add_parser(p.v.new_parser_from_string('module $f.mod\n$fn_code'))
-		p.v.parsers[pidx].is_vgen = true
+		// pidx := p.v.add_parser(p.v.new_parser_from_string('module $f.mod\n$fn_code'))
+		// p.v.parsers[pidx].is_vgen = true
+		// p.v.gen_parser_idx[f.mod] = pidx
 	}
 	p.cgen.fns << '${p.fn_signature_c(f)};'
 }
