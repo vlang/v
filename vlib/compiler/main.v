@@ -1036,21 +1036,22 @@ pub fn vfmt(args[]string) {
 
 pub fn create_symlink() {
 	$if windows { return }
-	vexe := os.executable()
+	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
-		println('symlink "$link_path" has been created')
+		println('Symlink "$link_path" has been created')
 	} else {
-		println('failed to create symlink "$link_path", '+
-			'make sure you run with sudo')
+		println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
 }
 
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if '' != vexe {	return vexe	}
-	return os.executable()
+	real_vexe_path := os.realpath(os.executable())
+	os.setenv('VEXE', real_vexe_path, true)
+	return real_vexe_path
 }
 
 pub fn verror(s string) {
