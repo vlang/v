@@ -1528,6 +1528,7 @@ fn (f &Fn) str_args_v(table &Table) string {
 	for i, arg in f.args {
 		if f.is_method && i == 0 { continue }
 		mut arg_typ := arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
+		if arg_typ == 'void*' { arg_typ = 'voidptr' }
 		if arg.is_mut { arg_typ = 'mut '+arg_typ.trim('*') }
 		else if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
 		str_args += '$arg.name $arg_typ'
