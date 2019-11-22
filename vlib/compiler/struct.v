@@ -299,8 +299,8 @@ fn (p mut Parser) struct_init(typ string) string {
 				continue
 			}
 			field_typ := field.typ
-			if !p.builtin_mod && field_typ.ends_with('*') && field_typ.contains('Cfg') {
-				p.error('pointer field `${typ}.${field.name}` must be initialized')
+			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' { //&&
+				p.warn('pointer field `${typ}.${field.name}` must be initialized')
 			}
 			// init map fields
 			if field_typ.starts_with('map_') {

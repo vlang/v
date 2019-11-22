@@ -7,6 +7,7 @@ module compiler
 import (
 	os
 	strings
+	compiler.x64
 )
 
 struct Parser {
@@ -28,6 +29,7 @@ mut:
 	prev_tok2      TokenKind // TODO remove these once the tokens are cached
 	lit            string
 	cgen           &CGen
+	x64            &x64.Gen
 	table          &Table
 	import_table   ImportTable // Holds imports for just the file being parsed
 	pass           Pass
@@ -161,6 +163,7 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		table: v.table
 		cur_fn: EmptyFn
 		cgen: v.cgen
+		x64: v.x64
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
@@ -2967,3 +2970,7 @@ fn (p mut Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
 	}
 	return is_fn_call, expr
 }
+
+fn todo_remove() {
+	x64.new_gen('f')
+}	

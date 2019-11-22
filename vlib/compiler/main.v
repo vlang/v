@@ -8,6 +8,7 @@ import (
 	os
 	strings
 	filepath
+	compiler.x64
 )
 
 pub const (
@@ -63,6 +64,7 @@ pub mut:
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
+	x64        &x64.Gen
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
 	lang_dir   string       // "~/code/v"
 	out_name   string       // "program.exe"
@@ -123,6 +125,7 @@ pub mut:
 
 	vlib_path string
 	vpath string
+	x64 bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -968,9 +971,12 @@ pub fn new_v(args[]string) &V {
 	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
-	
 	rdir := os.realpath(dir)
 	rdir_name := os.filename(rdir)
+	
+	if '-bare' in args {
+		verror('use -freestanding instead of -bare')
+	}	
 
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
@@ -998,7 +1004,8 @@ pub fn new_v(args[]string) &V {
 		compress: '-compress' in args
 		enable_globals: '--enable-globals' in args
 		fast: '-fast' in args
-		is_bare: '-bare' in args
+		is_bare: '-freestanding' in args
+		x64: '-x64' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
@@ -1028,6 +1035,7 @@ pub fn new_v(args[]string) &V {
 		table: new_table(obfuscate)
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
+		x64: x64.new_gen(out_name)
 		vroot: vroot
 		pref: pref
 		mod: mod

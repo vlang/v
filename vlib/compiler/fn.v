@@ -282,9 +282,10 @@ fn (p mut Parser) fn_decl() {
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
-	if p.is_vh {
-	//println('\n\nfn_decl() name=$f.name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
-	}
+	//if p.is_vh {
+	//if f.name == 'main' {
+	//println('\n\nfn_decl() name=$f.name pass=$p.pass $p.file_name receiver_typ=$receiver_typ nogen=$p.cgen.nogen')
+	//}
 	if is_c {
 		p.check(.dot)
 		f.name = p.check_name()
@@ -368,7 +369,7 @@ fn (p mut Parser) fn_decl() {
 		//p.fgen_nl()
 	}
 	// Register ?option type for return value and args
-	if typ.starts_with('Option_') { 
+	if typ.starts_with('Option_') {
 		p.cgen.typedefs << 'typedef Option $typ;'
 	}
 	for arg in f.args {
@@ -988,6 +989,12 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		if clone {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
+		
+		// x64 println gen
+		if p.pref.x64 && i == 0 && f.name == 'println' && p.tok == .str &&	p.peek() == .rpar {
+			p.x64.gen_print(p.lit)
+		}	
+		
 		mut typ := p.bool_expression()
 		// Register an interface type usage:
 		// fn run(r Animal) { ... }
@@ -1007,6 +1014,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		if clone {
 			p.gen(')')
 		}
+		
+			
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls.
 		// `println(777)` => `printf("%d\n", 777)`
@@ -1020,6 +1029,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		if i == 0 && (f.name == 'println' || f.name == 'print')  &&
 			!(typ in ['string', 'ustring', 'void' ])
 		{
+			//
 			T := p.table.find_type(typ)
 			$if !windows {
 			$if !js {
@@ -1562,7 +1572,7 @@ fn (p &Parser) fn_signature_v(f &Fn) string {
 	if f.is_method {
 		receiver_arg := f.args[0]
 		receiver_type := receiver_arg.typ.trim('*')
-		f_name = f_name.all_after('${receiver_type}_') 
+		f_name = f_name.all_after('${receiver_type}_')
 		mut rcv_typ := receiver_arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
 		if receiver_arg.is_mut { rcv_typ = 'mut '+rcv_typ.trim('*') }
 			else if rcv_typ.ends_with('*') || receiver_arg.ptr { rcv_typ = '&'+rcv_typ.trim_right('&*') }
