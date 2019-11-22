@@ -1,5 +1,9 @@
 module builtin
 
+pub fn isnil(p voidptr) bool {
+	return p == 0
+}
+
 pub fn print(s string) {
 	write(1, s.str, u64(s.len))
 }
@@ -30,4 +34,11 @@ pub fn panic(s string) {
 	print('V panic: ')
 	println(s)
 	exit(1)
+}
+
+pub fn eprintln(s string) {
+	if isnil(s.str) {
+		panic('eprintln(NIL)')
+	}
+	println(s)
 }
