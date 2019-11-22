@@ -44,23 +44,23 @@ mut:
 }
 
 pub fn (ctx Context) html(html string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
 }
 
 pub fn (ctx Context) text(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s') or { panic(err) }
 }
 
 pub fn (ctx Context) json(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') or { panic(err) }
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers')
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
-	ctx.conn.write(HTTP_404)
+	ctx.conn.write(HTTP_404) or { panic(err) }
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
@@ -89,7 +89,7 @@ fn (ctx mut Context) get_header(key string) string {
 }
 
 //pub fn run<T>(port int) {
-pub fn run<T>(app T, port int) {
+pub fn run<T>(app mut T, port int) {
 	println('Running vweb app on http://localhost:$port ...')
 	l := net.listen(port) or { panic('failed to listen') }
 	//mut app := T{}
@@ -102,8 +102,8 @@ pub fn run<T>(app T, port int) {
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
-			conn.write(HTTP_500)
-			conn.close()
+			conn.write(HTTP_500) or {}
+			conn.close() or {}
 			return
 		}
 		// Parse the first line
@@ -112,8 +112,8 @@ pub fn run<T>(app T, port int) {
 		vals := first_line.split(' ')
 		if vals.len < 2 {
 			println('no vals for http')
-			conn.write(HTTP_500)
-			conn.close()
+			conn.write(HTTP_500) or {}
+			conn.close() or {}
 			return
 		}
 		mut action := vals[1][1..].all_before('/')
@@ -149,7 +149,7 @@ pub fn run<T>(app T, port int) {
 			$if debug {
 				println('no vals for http')
 			}
-			conn.close()
+			conn.close() or {}
 			continue
 		}
 
@@ -161,9 +161,9 @@ pub fn run<T>(app T, port int) {
 
 		// Call the right action
 		app.$action() or {
-			conn.write(HTTP_404)
+			conn.write(HTTP_404) or {}
 		}
-		conn.close()
+		conn.close() or {}
 	}
 }
 
@@ -234,7 +234,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
-		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data')
+		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data') or { panic(err) }
 		return true
 	}
 	return false
