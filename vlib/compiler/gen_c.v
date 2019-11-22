@@ -538,7 +538,7 @@ fn (p mut Parser) cast(typ string) {
 		p.error('cannot cast `$expr_typ` to `$typ`, use backquotes `` to create a `$typ` or access the value of an index of `$expr_typ` using []')
 	}
 	else if casting_voidptr_to_value {
-		p.cgen.set_placeholder(pos, '*($typ*)(')
+		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	else {
 		// Nothing can be cast to bool
