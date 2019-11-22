@@ -49,7 +49,7 @@ fn (p mut Parser) register_import_alias(alias string, mod string, tok_idx int) {
 	if alias in p.import_table.imports && p.import_table.imports[alias] != mod {
 		p.error('cannot import $mod as $alias: import name $alias already in use"')
 	}
-	if mod.contains('.internal.') {
+	if mod.contains('.internal.') && !p.is_vgen {
 		mod_parts := mod.split('.')
 		mut internal_mod_parts := []string
 		for part in mod_parts {

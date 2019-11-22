@@ -262,6 +262,14 @@ fn (p &Parser) log(s string) {
 */
 }
 
+pub fn (p mut Parser) add_text(text string) {
+	if p.tokens.len > 1 && p.tokens[p.tokens.len-1].tok == .eof {
+		p.tokens.delete(p.tokens.len-1)
+	}
+	p.scanner.text = p.scanner.text + '\n' + text
+	p.scan_tokens()
+}
+
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
 	p.cgen.file = cescaped_path(os.realpath(p.file_path))
@@ -883,14 +891,7 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-	// Generic type check
-	ti := p.cur_fn.dispatch_of.inst
-	if p.lit in ti.keys() {
-		typ += ti[p.lit]
-		// println('cur dispatch: $p.lit => $typ')
-	} else {
-		typ += p.lit
-	}
+	typ += p.lit
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
