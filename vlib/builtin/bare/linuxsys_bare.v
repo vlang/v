@@ -110,6 +110,11 @@ pub fn munmap(addr voidptr, len u64) int {
 	return int(syscall2(11, u64(addr), len))
 }
 
+// 22  sys_pipe  int *filedes
+pub fn pipe() intptr {
+	return intptr(syscall0(22))
+}
+
 // 24 sys_sched_yield
 pub fn sched_yield() int {
 	return int(syscall0(24))
@@ -147,6 +152,7 @@ pub fn exit (ec int) {
 }
 
 
+
 /*
 A few years old, but still relevant
 https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
@@ -173,7 +179,7 @@ https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
 19  sys_readv unsigned long fd  const struct iovec *vec unsigned long vlen
 20  sys_writev  unsigned long fd  const struct iovec *vec unsigned long vlen
 21  sys_access  const char *filename  int mode
-22  sys_pipe  int *filedes
+>22  sys_pipe  int *filedes
 23  sys_select  int n fd_set *inp fd_set *outp  fd_set*exp  struct timeval *tvp
 >24 sys_sched_yield
 25  sys_mremap  unsigned long addr  unsigned long old_len unsigned long new_len unsigned long flags unsigned long new_addr
