@@ -1430,6 +1430,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
 		for mod in p.table.imports {
+			if p.v.parsers[pidx].import_table.known_import(mod) { continue }
 			p.v.parsers[pidx].register_import(mod, 0)
 		}
 	} else {
