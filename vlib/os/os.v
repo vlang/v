@@ -752,12 +752,15 @@ fn on_segfault(f voidptr) {
 
 fn C.getpid() int
 fn C.proc_pidpath (int, byteptr, int) int
+fn C.readlink() int
 
-// executable return the path name of the executable that started the current process.
+
+// executable returns the path name of the executable that started the current
+// process.
 pub fn executable() string {
 	$if linux {
 		mut result := malloc(MAX_PATH)
-		count := int(C.readlink('/proc/self/exe', result, MAX_PATH ))
+		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
 			panic('error reading /proc/self/exe to get exe path')
 		}

@@ -15,6 +15,7 @@ import (
 struct C.Display
 struct C.Atom
 struct C.Window
+fn C.XFree()
 fn C.XInitThreads() int
 fn C.XCloseDisplay(d &Display)
 fn C.XFlush(d &Display)
