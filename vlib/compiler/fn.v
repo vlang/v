@@ -406,7 +406,7 @@ fn (p mut Parser) fn_decl() {
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
 					if p.first_pass() && rcv.name == '' {
-						p.error('cannot currently add generic method to a type after it or in another module')
+						p.error('cannot currently add generic method to a type declared after it or in another module')
 					}
 					// println('added generic method r:$rcv.name f:$f.name')
 					p.add_method(rcv.name, f)
