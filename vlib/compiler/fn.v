@@ -1581,7 +1581,7 @@ fn (p &Parser) fn_signature_v(f &Fn) string {
 		method = '($receiver_arg.name $rcv_typ) '
 	}
 	vis := if f.is_public { 'pub ' } else { '' }
-	f_type := if f.typ == 'void' { '' } else { f.typ }
+	f_type := if f.typ == 'void' { '' } else if f.typ == 'void*' { 'voidptr' } else { f.typ }
 	return '${vis}fn $method$f_name(${f.str_args_v(p.table)}) $f_type'
 }
 
