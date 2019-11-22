@@ -216,7 +216,8 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 			}
 
 			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
-			if flag {
+			// if flag {
+			if os.is_dir(file) {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else {
 				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file
