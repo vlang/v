@@ -89,7 +89,7 @@ fn (ctx mut Context) get_header(key string) string {
 }
 
 //pub fn run<T>(port int) {
-pub fn run<T>(app T, port int) {
+pub fn run<T>(app mut T, port int) {
 	println('Running vweb app on http://localhost:$port ...')
 	l := net.listen(port) or { panic('failed to listen') }
 	//mut app := T{}
@@ -102,8 +102,8 @@ pub fn run<T>(app T, port int) {
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
-			conn.write(HTTP_500)
-			conn.close()
+			conn.write(HTTP_500) or {}
+			conn.close() or {}
 			return
 		}
 		// Parse the first line
@@ -112,8 +112,8 @@ pub fn run<T>(app T, port int) {
 		vals := first_line.split(' ')
 		if vals.len < 2 {
 			println('no vals for http')
-			conn.write(HTTP_500)
-			conn.close()
+			conn.write(HTTP_500) or {}
+			conn.close() or {}
 			return
 		}
 		mut action := vals[1][1..].all_before('/')
@@ -149,7 +149,7 @@ pub fn run<T>(app T, port int) {
 			$if debug {
 				println('no vals for http')
 			}
-			conn.close()
+			conn.close() or {}
 			continue
 		}
 
@@ -161,9 +161,9 @@ pub fn run<T>(app T, port int) {
 
 		// Call the right action
 		app.$action() or {
-			conn.write(HTTP_404)
+			conn.write(HTTP_404) or {}
 		}
-		conn.close()
+		conn.close() or {}
 	}
 }
 

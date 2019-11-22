@@ -1370,9 +1370,14 @@ fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
 fn (f &Fn) generic_tmpl_to_inst(ti TypeInst) string {
 	mut fn_body := ''
 	for tok in f.generic_tmpl {
-		mut toks := tok.str()
-		for k,v in ti.inst {
-			toks = toks.replace(k, v)
+		mut toks := tok.str().replace('map_', '')
+		for toks.starts_with('array_') {
+			toks = toks.replace('array_', '')
+		}
+		if toks in ti.inst {
+			for k,v in ti.inst {
+				toks = toks.replace(k, v)
+			}
 		}
 		fn_body += ' $toks'
 	}
@@ -1423,11 +1428,13 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	} else {
 		p.table.register_fn(f)
 	}
-
 	mut fn_code := '${p.fn_signature_v(f)} {\n${f.generic_tmpl_to_inst(ti)}\n}'
 	if f.mod in p.v.gen_parser_idx {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
+		for mod in p.table.imports {
+			p.v.parsers[pidx].register_import(mod, 0)
+		}
 	} else {
 		// TODO: add here after I work out bug
 	}
@@ -1496,7 +1503,7 @@ fn (f &Fn) str_args_v(table &Table) string {
 		if f.is_method && i == 0 { continue }
 		mut arg_typ := arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
 		if arg.is_mut { arg_typ = 'mut '+arg_typ.trim('*') }
-		if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
+		else if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
 		str_args += '$arg.name $arg_typ'
 		if i < f.args.len-1 { str_args += ','}
 	}
@@ -1543,7 +1550,7 @@ fn (p &Parser) fn_signature_v(f &Fn) string {
 		f_name = f_name.all_after('${receiver_type}_') 
 		mut rcv_typ := receiver_arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
 		if receiver_arg.is_mut { rcv_typ = 'mut '+rcv_typ.trim('*') }
-			else if rcv_typ.ends_with('*') || receiver_arg.ptr { rcv_typ = '&'+rcv_typ.trim_right('*') }
+			else if rcv_typ.ends_with('*') || receiver_arg.ptr { rcv_typ = '&'+rcv_typ.trim_right('&*') }
 		method = '($receiver_arg.name $rcv_typ) '
 	}
 	vis := if f.is_public { 'pub ' } else { '' }
