@@ -1370,10 +1370,7 @@ fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
 fn (f &Fn) generic_tmpl_to_inst(ti TypeInst) string {
 	mut fn_body := ''
 	for tok in f.generic_tmpl {
-		mut toks := tok.str().replace('map_', '')
-		for toks.starts_with('array_') {
-			toks = toks.replace('array_', '')
-		}
+		mut toks := tok.str()
 		if toks in ti.inst {
 			for k,v in ti.inst {
 				toks = toks.replace(k, v)
