@@ -11,6 +11,8 @@ Documentation: [vlang.io/docs](https://vlang.io/docs)
 
 Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
 
+Speed Test: [fast.vlang.io](https://fast.vlang.io/) (monitors compilation speed for each commit to verify there are no speed regressions)
+
 Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
 Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
