@@ -44,23 +44,23 @@ mut:
 }
 
 pub fn (ctx Context) html(html string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
 }
 
 pub fn (ctx Context) text(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s') or { panic(err) }
 }
 
 pub fn (ctx Context) json(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') or { panic(err) }
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers')
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
-	ctx.conn.write(HTTP_404)
+	ctx.conn.write(HTTP_404) or { panic(err) }
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
@@ -234,7 +234,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
-		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data')
+		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data') or { panic(err) }
 		return true
 	}
 	return false
