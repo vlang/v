@@ -40,7 +40,7 @@ mut:
 	type_pars 	  []string
 	type_inst 	  []TypeInst
 	// dispatch_of	  TypeInst	// current type inst of this generic instance
-	generic_body  string
+	generic_tmpl  []Token
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
 	is_used bool // so that we can skip unused fns in resulting C code
@@ -180,7 +180,6 @@ fn (p mut Parser) clear_vars() {
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
 	defer { p.fgenln('\n') }
-	fn_decl_start_pos := p.token_idx
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
 	/*
@@ -403,7 +402,7 @@ fn (p mut Parser) fn_decl() {
 		// Generic functions are inserted as needed from the call site
 		if f.is_generic {
 			if p.first_pass() {
-				p.save_fn_body(mut f, p.cur_tok_index())
+				p.save_generic_tmpl(mut f, p.cur_tok_index())
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
 					if p.first_pass() && rcv.name == '' {
@@ -1239,7 +1238,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 	return r
 }
 
-// Replace type params of a given generic function using a TypeInst
+// Replace function type and type of params for a given generic function using a TypeInst
 fn (p mut Parser) replace_type_params(f mut Fn, ti TypeInst) {
     mut args2 := []Var
 	mut args := f.args
@@ -1247,14 +1246,15 @@ fn (p mut Parser) replace_type_params(f mut Fn, ti TypeInst) {
 		mut arg := args[i]
 		for k, v in ti.inst {
 			for arg.typ.contains(k) {
-			if arg.typ == v { break }
-			arg.typ = arg.typ.replace(k, v)
-			}
-			for f.typ.contains(k) {
-				f.typ = f.typ.replace(k, v)
+				arg.typ = arg.typ.replace(k, v)
 			}
 		}
 		args2 << arg
+	}
+	for k, v in ti.inst {
+		for f.typ.contains(k) {
+			f.typ = f.typ.replace(k, v)
+		}
 	}
 	f.args = args2
 }
@@ -1352,19 +1352,31 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
-fn (p mut Parser) save_fn_body(f mut Fn, pos int) {
-	mut code := ''
+fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
 	mut cbr_depth := 1
-	for i in pos..p.tokens.len {
+	mut tokens := []Token
+	for i in pos..p.tokens.len-1 {
 		tok := p.tokens[i]
 		if tok.tok == .lcbr { cbr_depth++ }
-		if tok.tok == .rcbr { cbr_depth-- }
-		code += tok.str() + ' '
-		if tok.tok == .rcbr && cbr_depth == 0 {
-			break
+		if tok.tok == .rcbr {
+			cbr_depth--
+			if cbr_depth == 0 { break }
 		}
+		tokens << tok
 	}
-	f.generic_body = code
+	f.generic_tmpl = tokens
+}
+
+fn (f &Fn) generic_tmpl_to_inst(ti TypeInst) string {
+	mut fn_body := ''
+	for tok in f.generic_tmpl {
+		mut toks := tok.str()
+		for k,v in ti.inst {
+			toks = toks.replace(k, v)
+		}
+		fn_body += ' $toks'
+	}
+	return fn_body
 }
 
 fn (p mut Parser) rename_generic_fn_instance(f mut Fn, ti TypeInst) {
@@ -1385,7 +1397,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 			break
 		}
 	}
-
 	if !new_inst {
 		p.rename_generic_fn_instance(mut f, ti)
 		_f := p.table.find_fn(f.name) or {
@@ -1400,6 +1411,8 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 	
 	p.rename_generic_fn_instance(mut f, ti)
 	p.replace_type_params(mut f, ti)
+
+	// TODO: Handle
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
 	// if f.typ in ti.inst {
 	// 	f.typ = ti.inst[f.typ]
@@ -1411,13 +1424,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti TypeInst) {
 		p.table.register_fn(f)
 	}
 
-	mut fn_code := '${p.fn_signature_v(f)} {\n$f.generic_body'
-	for k, v in ti.inst {
-		for fn_code.contains(' $k ') {
-			fn_code = fn_code.replace(' $k ', ' $v ')
-		}
-	}
-
+	mut fn_code := '${p.fn_signature_v(f)} {\n${f.generic_tmpl_to_inst(ti)}\n}'
 	if f.mod in p.v.gen_parser_idx {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)

@@ -634,6 +634,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	// resolve deps and add imports in correct order
 	imported_mods := v.resolve_deps().imports()
 	for mod in imported_mods {
+		// TODO: work out bug and only add when needed in fn.v
 		if !mod in v.gen_parser_idx {
 			mut gp := v.new_parser_from_string('module '+mod.all_after('.')+'\n')
 			gp.is_vgen = true
