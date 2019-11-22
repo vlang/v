@@ -1249,7 +1249,8 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 
 // replace a generic type using TypeInst
 fn replace_generic_type(gen_type string, ti &TypeInst) string {
-		mut typ := gen_type.replace('map_', '').trim_right('*')
+		mut typ := gen_type.replace('map_', '')
+			.replace('varg_', '').trim_right('*')
 		for typ.starts_with('array_') { typ = typ[6..] }
 		if typ in ti.inst {
 			typ = gen_type.replace(typ, ti.inst[typ])
