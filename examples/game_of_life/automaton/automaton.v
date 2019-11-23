@@ -39,7 +39,6 @@ pub mut:
 }
 
 fn new_automaton(f [][]int) Automaton {
-	mut a := Automaton{ field: &A2D{data:0} new_field: &A2D{data:0} }
 	mut maxy := f.len
 	mut maxx := 0
 	for y := 0; y<f.len; y++ {
@@ -47,14 +46,14 @@ fn new_automaton(f [][]int) Automaton {
 			maxx = f[y].len
 		}
 	}
-	a.field     = &A2D{ maxx: maxx maxy: maxy data: &int( calloc( sizeof(int) * maxy * maxx ) ) }
-	a.new_field = &A2D{ maxx: maxx maxy: maxy data: &int( calloc( sizeof(int) * maxy * maxx ) ) }
-	for y := 0; y<a.field.maxy; y++ {
-		for x := 0; x<a.field.maxx; x++ {
-			a.field.set( x, y, f[y][x] )
+	field     := &A2D{ maxx: maxx maxy: maxy data: &int( calloc( sizeof(int) * maxy * maxx ) ) }
+	new_field := &A2D{ maxx: maxx maxy: maxy data: &int( calloc( sizeof(int) * maxy * maxx ) ) }
+	for y := 0; y < field.maxy; y++ {
+		for x := 0; x < field.maxx; x++ {
+			field.set( x, y, f[y][x] )
 		}
 	}
-	return a
+	return Automaton{ field: field new_field: new_field }
 }
 
 pub fn (aa mut Automaton) update() {
