@@ -131,12 +131,12 @@ pub fn dir_exists(path string) bool {
 }
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(apath string) ?bool {
-	if apath == '.' { return true }
-	path := os.realpath( apath )
-	r := int(C.CreateDirectory(path.to_wide(), 0))
+pub fn mkdir(path string) ?bool {
+	if path == '.' { return true }
+	apath := os.realpath( path )
+	r := int(C.CreateDirectory(apath.to_wide(), 0))
 	if r == 0 {
-		return error('mkdir failed for "$path", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
+		return error('mkdir failed for "$apath", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
 	}
 	return true 
 }
