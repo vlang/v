@@ -19,3 +19,7 @@ fn encode_demical() {
 fn encode_integer() {
     mut temp := ''
 }
+
+fn encode_local_datetime(){
+    mut temp := ''
+}

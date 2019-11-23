@@ -87,6 +87,10 @@ fn decode_octal(s string) string{
     return temp.str()
 }
 
+fn decode_datetime(root &TOML){
+    
+}
+
 fn string_decode(root &TOML) ?string{
     if root.str == '' {
         return root.str
