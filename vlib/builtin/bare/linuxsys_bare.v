@@ -7,29 +7,29 @@ fn do_not_call_me_asm_keeper0() {
 			"ret\n"
 			""
 			".intel_syntax noprefix\n"
-			".globl syscall0\n"
-			".globl syscall1, syscall2, syscall3\n"
-			".globl syscall4, syscall5, syscall6\n"
+			".globl sys_call0\n"
+			".globl sys_call1, sys_call2, sys_call3\n"
+			".globl sys_call4, sys_call5, sys_call6\n"
 			""
-			"syscall0:\n"
+			"sys_call0:\n"
 				"mov rax,rdi\n"
 				"syscall\n"
 				"ret\n"
 			""
-			"syscall1:\n"
+			"sys_call1:\n"
 				"mov rax,rdi\n"
 				"mov rdi,rsi\n"
 				"syscall\n"
 				"ret\n"
 			""
-			"syscall2:\n"
+			"sys_call2:\n"
 				"mov rax,rdi\n"
 				"mov rdi,rsi\n"
 				"mov rsi,rdx\n"
 				"syscall\n"
 				"ret\n"
 			""
-			"syscall3:\n"
+			"sys_call3:\n"
 				"mov rax,rdi\n"
 				"mov rdi,rsi\n"
 				"mov rsi,rdx\n"
@@ -37,7 +37,7 @@ fn do_not_call_me_asm_keeper0() {
 				"syscall\n"
 				"ret\n"
 			""
-			"syscall4:\n"
+			"sys_call4:\n"
 				"mov rax,rdi\n"
 				"mov rdi,rsi\n"
 				"mov rsi,rdx\n"
@@ -46,7 +46,7 @@ fn do_not_call_me_asm_keeper0() {
 				"syscall\n"
 				"ret\n"
 			""
-			"syscall5:\n"
+			"sys_call5:\n"
 				"mov rax,rdi\n"
 				"mov rdi,rsi\n"
 				"mov rsi,rdx\n"
@@ -56,7 +56,7 @@ fn do_not_call_me_asm_keeper0() {
 				"syscall\n"
 				"ret\n"
 			""
-			"syscall6:\n"
+			"sys_call6:\n"
 				"mov rax,rdi\n"
 				"mov rdi,rsi\n"
 				"mov rsi,rdx\n"
@@ -72,89 +72,89 @@ fn do_not_call_me_asm_keeper0() {
 	}
 }
 
-fn syscall0(scn u64) u64
-fn syscall1(scn, arg1 u64) u64
-fn syscall2(scn, arg1, arg2 u64) u64
-fn syscall3(scn, arg1, arg2, arg3 u64) u64
-fn syscall4(scn, arg1, arg2, arg3, arg4 u64) u64
-fn syscall5(scn, arg1, arg2, arg3, arg4, arg5 u64) u64
-fn syscall6(scn, arg1, arg2, arg3, arg4, arg5, arg6 u64) u64
+fn sys_call0(scn u64) u64
+fn sys_call1(scn, arg1 u64) u64
+fn sys_call2(scn, arg1, arg2 u64) u64
+fn sys_call3(scn, arg1, arg2, arg3 u64) u64
+fn sys_call4(scn, arg1, arg2, arg3, arg4 u64) u64
+fn sys_call5(scn, arg1, arg2, arg3, arg4, arg5 u64) u64
+fn sys_call6(scn, arg1, arg2, arg3, arg4, arg5, arg6 u64) u64
 
 // 0 sys_read unsigned int fd char *buf size_t count
 pub fn read (fd int, buf byteptr, count u64) i64 {
-	return i64(syscall3(0, u64(fd), u64(buf), count))
+	return i64(sys_call3(0, u64(fd), u64(buf), count))
 }
 
 // 1 sys_write unsigned int fd, const char *buf, size_t count
 pub fn write(fd int, buf byteptr, count u64) i64 {
-	return i64(syscall3(1, u64(fd), u64(buf), count))
+	return i64(sys_call3(1, u64(fd), u64(buf), count))
 }
 
 pub fn open(filename byteptr, flags u64, mode u64) i64 {
 	//2 sys_open  const char *filename  int flags int mode
-	return i64(syscall3(2, u64(filename), flags, mode))
+	return i64(sys_call3(2, u64(filename), flags, mode))
 }
 
 pub fn close(fd u64) i64 {
 	// 3 sys_close unsigned int fd
-	return i64(syscall1(3, fd))
+	return i64(sys_call1(3, fd))
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off
 pub fn mmap(addr byteptr, len u64, prot u64, flags u64, fildes u64, off u64) voidptr {
-	return voidptr(syscall6(9, u64(addr), len, prot, flags, fildes, off))
+	return voidptr(sys_call6(9, u64(addr), len, prot, flags, fildes, off))
 }
 
 pub fn munmap(addr voidptr, len u64) int {
 	// 11 sys_munmap  unsigned long addr  size_t len
-	return int(syscall2(11, u64(addr), len))
+	return int(sys_call2(11, u64(addr), len))
 }
 
 // 22  sys_pipe  int *filedes
 pub fn pipe(filedes intptr) int {
-	return int(syscall1(22, u64(filedes)))
+	return int(sys_call1(22, u64(filedes)))
 }
 
 // 24 sys_sched_yield
 pub fn sched_yield() int {
-	return int(syscall0(24))
+	return int(sys_call0(24))
 }
 
 pub fn madvise(addr voidptr, len u64, advice int) int {
 	// 28 sys_madvise unsigned long start size_t len_in int behavior
-	return int(syscall3(28, u64(addr), len, u64(advice)))
+	return int(sys_call3(28, u64(addr), len, u64(advice)))
 }
 
 // 39 sys_getpid
 pub fn getpid() int {
-	return int(syscall0(39))
+	return int(sys_call0(39))
 }
 
 // 57 sys_fork
 pub fn fork() int {
-	return int(syscall0(57))
+	return int(sys_call0(57))
 }
 
 // 58 sys_vfork
 pub fn vfork() int {
-	return int(syscall0(58))
+	return int(sys_call0(58))
 }
 
 // 33  sys_dup2  unsigned int oldfd  unsigned int newfd
 pub fn dup2 (oldfd, newfd int) int {
-	return int(syscall2(33, u64(oldfd),u64(newfd)))
+	return int(sys_call2(33, u64(oldfd),u64(newfd)))
 }
 
 
 //59  sys_execve  const char *filename  const char *const argv[]  const char *const envp[]
 //pub fn execve(filename byteptr, argv []byteptr, envp []byteptr) int {
-//  return syscall3(59, filename, argv, envp)
+//  return sys_call3(59, filename, argv, envp)
 //}
 
 
 // 60 sys_exit  int error_code
 pub fn exit (ec int) {
-	syscall1(60, u64(ec))
+	sys_call1(60, u64(ec))
 }
 
 
