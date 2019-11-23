@@ -1,6 +1,6 @@
 module eventbus
 
-struct Subscriber {
+pub struct Subscriber {
 	mut:
 	registry &Registry
 }
@@ -15,7 +15,7 @@ struct EventHandler {
 	func fn(Params)
 }
 
-struct EventBus{
+pub struct EventBus{
 	mut:
 	registry &Registry
 	pub:
