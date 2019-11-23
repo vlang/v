@@ -378,13 +378,6 @@ fn (p mut Parser) fn_decl() {
 			p.cgen.typedefs << 'typedef Option $arg.typ;'
 		}
 	}
-	// attach dispatch info (TypeInst) to generic function instance
-	if !p.first_pass() && p.is_vgen && f.name.conains('_T_') {
-		p.attach_generic_type_inst(mut f)
-	}
-	if f.dispatch_of.inst.size > 0 {
-		println(f.dispatch_of)
-	}
 	// Register function
 	f.typ = typ
 	str_args := f.str_args(p.table)
@@ -1386,23 +1379,6 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
-// re attach the dispach info (TypeInst) to the generic function instance
-fn (p mut Parser) attach_generic_type_inst(f mut Fn) {
-	mut gen_f_inst := Fn{}
-	// TODO method was never saved, see dispatch_generic_fn_instance
-	if f.is_method {
-		// _f_typ := p.table.find_type(f.args[0].typ.trim_right('*'))
-		// _f := p.table.find_method(_f_typ, f.name) or { gen_f_inst }
-		// gen_f_inst = _f
-	} else {
-		_f := p.table.find_fn(f.name) or { gen_f_inst }
-		gen_f_inst = _f
-	}
-	if gen_f_inst.dispatch_of.inst.size > 0 {
-		f.dispatch_of = gen_f_inst.dispatch_of
-	}
-}
-
 // save the tokens for the generic funciton body (between `{}`) 
 // the function signature isn't saved, it is reconstructed from Fn
 fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
@@ -1465,6 +1441,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
+	// TODO: save dispatch info when update to incremental parsing
 	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
@@ -1478,6 +1455,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 		p.table.register_fn(f)
 	}
 	mut fn_code := '${p.fn_signature_v(f)} {\n${f.generic_tmpl_to_inst(ti)}\n}'
+	// TODO: parse incrementally as needed & set typeinst
 	if f.mod in p.v.gen_parser_idx {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
@@ -1552,7 +1530,7 @@ fn (f &Fn) str_args_v(table &Table) string {
 	for i, arg in f.args {
 		if f.is_method && i == 0 { continue }
 		mut arg_typ := arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
-		if arg_typ == 'void*' { arg_typ = 'voidptr' }
+		if arg_typ == 'void*' { arg_typ = 'voidptr' } else if arg_typ == 'byte*' { arg_typ = 'byteptr' }
 		if arg.is_mut { arg_typ = 'mut '+arg_typ.trim('*') }
 		else if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
 		str_args += '$arg.name $arg_typ'
@@ -1605,7 +1583,8 @@ fn (p &Parser) fn_signature_v(f &Fn) string {
 		method = '($receiver_arg.name $rcv_typ) '
 	}
 	vis := if f.is_public { 'pub ' } else { '' }
-	f_type := if f.typ == 'void' { '' } else if f.typ == 'void*' { 'voidptr' } else { f.typ }
+	f_type := if f.typ == 'void' { '' } else if f.typ == 'void*' { 'voidptr' }
+		else if f.typ == 'byte*' { 'byteptr' } else { f.typ }
 	return '${vis}fn $method$f_name(${f.str_args_v(p.table)}) $f_type'
 }
 
@@ -1619,21 +1598,19 @@ pub fn (f &Fn) v_fn_name() string {
 
 pub fn (f &Fn) str_for_error() string {
 	// Build the args for the error
-     mut s := ''
-     for i, a in f.args {
-	     if i == 0 {
-                                       if f.is_method {
-                                               s += a.typ + '.' + f.name + '('
-                                               continue
-                                       }
-                                       s += f.name + '('
-                               }
-                               s += a.typ
-                               if i < f.args.len - 1 {
-                                       s += ', '
-                               }
-       }
-       return s + ')'
+	mut s := ''
+	for i, a in f.args {
+		if i == 0 {
+			if f.is_method {
+				s += a.typ + '.' + f.name + '('
+				continue
+			}
+			s += f.name + '('
+		}
+		s += a.typ
+		if i < f.args.len - 1 {
+			s += ', '
+		}
+	}
+	return s + ')'
 }
-
-
