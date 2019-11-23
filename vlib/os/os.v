@@ -869,7 +869,7 @@ pub fn realpath(fpath string) string {
 	mut fullpath := calloc( MAX_PATH )
 	mut res := 0
 	$if windows {
-		ret := C._fullpath(fpath.str, fullpath)
+		ret := C._fullpath(fullpath, fpath.str, MAX_PATH)
 		if ret == 0 {
 			return fpath
 		}	
