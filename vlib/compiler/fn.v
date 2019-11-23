@@ -39,6 +39,7 @@ mut:
 	defer_text    []string
 	type_pars 	  []string
 	type_inst 	  []TypeInst
+	dispatch_of	  TypeInst	// current type inst of this generic instance
 	generic_tmpl  []Token
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
@@ -376,6 +377,13 @@ fn (p mut Parser) fn_decl() {
 		if arg.typ.starts_with('Option_') {
 			p.cgen.typedefs << 'typedef Option $arg.typ;'
 		}
+	}
+	// attach dispatch info (TypeInst) to generic function instance
+	if !p.first_pass() && p.is_vgen && f.name.conains('_T_') {
+		p.attach_generic_type_inst(mut f)
+	}
+	if f.dispatch_of.inst.size > 0 {
+		println(f.dispatch_of)
 	}
 	// Register function
 	f.typ = typ
@@ -1378,6 +1386,23 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
+// re attach the dispach info (TypeInst) to the generic function instance
+fn (p mut Parser) attach_generic_type_inst(f mut Fn) {
+	mut gen_f_inst := Fn{}
+	// TODO method was never saved, see dispatch_generic_fn_instance
+	if f.is_method {
+		// _f_typ := p.table.find_type(f.args[0].typ.trim_right('*'))
+		// _f := p.table.find_method(_f_typ, f.name) or { gen_f_inst }
+		// gen_f_inst = _f
+	} else {
+		_f := p.table.find_fn(f.name) or { gen_f_inst }
+		gen_f_inst = _f
+	}
+	if gen_f_inst.dispatch_of.inst.size > 0 {
+		f.dispatch_of = gen_f_inst.dispatch_of
+	}
+}
+
 // save the tokens for the generic funciton body (between `{}`) 
 // the function signature isn't saved, it is reconstructed from Fn
 fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
@@ -1437,19 +1462,18 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	f.type_inst << *ti
 	p.table.register_fn(f)
-	// NOTE: f.dispatch_of was removed because of how the parsing is done now. if we need
-	// function dispatch info we will need to store it somewhere other than function
-	// or reattach it to the function instance in fn_decl when the generic instance is parsed
+
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
-
+	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
 	// if f.typ in ti.inst {
 	// 	f.typ = ti.inst[f.typ]
 	// }
 	if f.is_method {
-		p.add_method(f.args[0].name, f)
+		// TODO: add_method won't add anything on second pass
+		// p.add_method(f.args[0].typ.trim_right('*'), f)
 	} else {
 		p.table.register_fn(f)
 	}
