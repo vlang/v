@@ -131,14 +131,18 @@ pub fn dir_exists(path string) bool {
 }
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) {
+pub fn mkdir(path string) ?bool {
 	_path := path.replace('/', '\\')
 	// Windows doesnt recursively create the folders
 	// so we need to help it out here
 	if _path.last_index('\\') != -1 {
-		mkdir(_path.all_before_last('\\'))
+		mkdir(_path.all_before_last('\\')) or { return error(err) }
 	}
-	C.CreateDirectory(_path.to_wide(), 0)
+	r := int(C.CreateDirectory(_path.to_wide(), 0))
+	if r == 0 {
+		return error('mkdir failed for "$path", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
+	}
+	return true 
 }
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
