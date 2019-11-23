@@ -869,9 +869,11 @@ pub fn realpath(fpath string) string {
 	mut fullpath := calloc( MAX_PATH )
 	mut res := 0
 	$if windows {
-	// here we want an int==0 if _fullpath failed , in which case
-	// it would return NULL, and !isnil(NULL) would be false==0
-		res = int( !isnil(C._fullpath( fullpath, fpath.str, MAX_PATH )) )
+		ret := C._fullpath(fpath.str, fullpath)
+		if ret == 0 {
+			return fpath
+		}	
+		return string(fullpath)
 	}
 	$else{
 		ret := C.realpath(fpath.str, fullpath)
@@ -879,9 +881,6 @@ pub fn realpath(fpath string) string {
 			return fpath
 		}	
 		return string(fullpath)
-	}
-	if res != 0 {
-		return string(fullpath, vstrlen(fullpath))
 	}
 	return fpath
 }
