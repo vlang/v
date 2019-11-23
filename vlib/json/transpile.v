@@ -3,8 +3,14 @@ import (
     json
 )
 
-fn json_num_to_tomlint(){
+fn jsonnum_to_tomlint(){
 
 }
 
-fn json_num_to
+fn jsonnum_to_tomldouble(){
+
+}
+
+fn jsonstring_to_tomlstring(){
+    
+}

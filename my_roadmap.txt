@@ -3,7 +3,6 @@ keito940's TODO
 + = done
 - = TODO
 
--yacc/bison/lex/flex support
 -toml support
 -yaml support
 -protobuf support
