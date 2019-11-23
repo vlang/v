@@ -11,7 +11,7 @@ fn main() {
 		if os.file_exists( v_backup_file ) {
 			os.rm( v_backup_file )
 		}
-		os.mv('$vroot/v.exe', v_backup_file)
+		os.mv_by_cp('$vroot/v.exe', v_backup_file) or { panic(err) }
 		s2 := os.exec('"$vroot/make.bat"') or { panic(err) }
 		println(s2.output)
 	} $else {

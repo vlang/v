@@ -16,7 +16,7 @@ pub:
 struct mapnode {
 	left &mapnode
 	right &mapnode
-	is_empty bool
+	is_empty bool // set by delete()
 	key string
 	val voidptr
 }
@@ -97,7 +97,7 @@ fn (n & mapnode) find(key string, out voidptr, element_size int) bool{
 
 // same as `find`, but doesn't return a value. Used by `exists`
 fn (n & mapnode) find2(key string, element_size int) bool{
-	if n.key == key {
+	if n.key == key && !n.is_empty {
 		return true
 	}
 	else if n.key > key {

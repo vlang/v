@@ -205,6 +205,8 @@ fn (p mut Parser) chash() {
 			mut flag := hash[5..]
 			// expand `@VROOT` `@VMOD` to absolute path
 			flag = flag.replace('@VROOT', p.vroot)
+			flag = flag.replace('@VPATH', p.pref.vpath)
+			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)
 			flag = flag.replace('@VMOD', v_modules_path)
 			//p.log('adding flag "$flag"')
 			_ = p.table.parse_cflag(flag, p.mod) or {

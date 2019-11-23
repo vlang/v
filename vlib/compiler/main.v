@@ -8,6 +8,7 @@ import (
 	os
 	strings
 	filepath
+	compiler.x64
 )
 
 pub const (
@@ -63,6 +64,7 @@ pub mut:
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
+	x64        &x64.Gen
 	pref       &Preferences // all the preferences and settings extracted to a struct for reusability
 	lang_dir   string       // "~/code/v"
 	out_name   string       // "program.exe"
@@ -71,6 +73,7 @@ pub mut:
 	parsers    []Parser     // file parsers
 	vgen_buf   strings.Builder // temporary buffer for generated V code (.str() etc)
 	file_parser_idx map[string]int // map absolute file path to v.parsers index
+	gen_parser_idx  map[string]int
 	cached_mods []string
 }
 
@@ -119,6 +122,10 @@ pub mut:
 	enable_globals bool // allow __global for low level code
 	is_fmt bool
 	is_bare bool
+
+	vlib_path string
+	vpath string
+	x64 bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -286,19 +293,22 @@ pub fn (v mut V) compile() {
 			// new vfmt is not ready yet
 		//}
 	}
+
+	// add parser generated V code (str() methods etc)
+	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str())
+	// free the string builder which held the generated methods
+	v.vgen_buf.free()
+	vgen_parser.is_vgen = true
+	v.add_parser(vgen_parser)
+	// run vgen / generic parsers
+	for i, _ in v.parsers {
+		if !v.parsers[i].is_vgen { continue }
+		v.parsers[i].parse(.main)
+	}
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		generate_vh(v.dir)
 	}
-
-	// parse generated V code (str() methods etc)
-	mut vgen_parser := v.new_parser_from_string(v.vgen_buf.str())
-	// free the string builder which held the generated methods
-	vgen_parser.is_vgen = true
-	v.vgen_buf.free()
-	vgen_parser.parse(.main)
-	// v.parsers.add(vgen_parser)
-
 	// All definitions
 	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
 	$if !js {
@@ -336,6 +346,26 @@ pub fn (v mut V) compile() {
 	cgen.save()
 	v.cc()
 }
+
+pub fn (v mut V) compile_x64() {
+	$if !linux {
+		println('v -x64 can only generate Linux binaries for now')
+		println('You are not on a Linux system, so you will not ' +
+			'be able to run the resulting executable')
+	}	
+	
+	v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'bare'))
+	v.files << v.dir
+	v.x64.generate_elf_header()
+	for f in v.files {
+		v.parse(f, .decl)
+	}
+	for f in v.files {
+		v.parse(f, .main)
+	}
+	v.x64.generate_elf_footer()
+	
+}	
 
 fn (v mut V) generate_init() {
 	$if js { return }
@@ -432,13 +462,14 @@ pub fn (v mut V) generate_main() {
 	if v.pref.build_mode != .build_module {
 		if !v.table.main_exists() && !v.pref.is_test {
 			// It can be skipped in single file programs
-			if v.pref.is_script {
+			// But make sure that there's some code outside of main()
+			if (v.pref.is_script && cgen.fn_main.trim_space() != '') || v.pref.is_repl {
 				//println('Generating main()...')
 				v.gen_main_start(true)
 				cgen.genln('$cgen.fn_main;')
 				v.gen_main_end('return 0')
 			}
-			else {
+			else if !v.pref.is_repl {
 				verror('function `main` is not declared in the main module')
 			}
 		}
@@ -452,7 +483,9 @@ pub fn (v mut V) generate_main() {
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 
-			if v.pref.is_stats { cgen.genln('BenchedTests bt = main__start_testing();') }
+			if v.pref.is_stats {
+				cgen.genln('BenchedTests bt = main__start_testing();')
+			}
 
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
@@ -589,7 +622,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 		//builtin_files = []
 	}	
 	// Builtin cache exists? Use it.
-	builtin_vh := '$v_modules_path${os.path_separator}vlib${os.path_separator}builtin.vh'
+	builtin_vh := '${v.pref.vlib_path}${os.path_separator}builtin.vh'
 	if v.pref.is_cache && os.file_exists(builtin_vh) {
 		v.cached_mods << 'builtin'
 		builtin_files = [builtin_vh]
@@ -627,13 +660,20 @@ pub fn (v mut V) add_v_files_to_compile() {
 	// resolve deps and add imports in correct order
 	imported_mods := v.resolve_deps().imports()
 	for mod in imported_mods {
+		// TODO: work out bug and only add when needed in fn.v
+		if !mod in v.gen_parser_idx {
+			mut gp := v.new_parser_from_string('module '+mod.all_after('.')+'\n')
+			gp.is_vgen = true
+			gp.mod = mod
+			v.gen_parser_idx[mod] = v.add_parser(gp)
+		}
 		if mod == 'builtin' || mod == 'main' {
 			// builtin already added
 			// main files will get added last
 			continue
 		}
 		// use cached built module if exists
-		if v.pref.build_mode != .build_module && !mod.contains('vweb') {
+		if v.pref.vpath != '' && v.pref.build_mode != .build_module && !mod.contains('vweb') {
 			mod_path := mod.replace('.', os.path_separator)
 			vh_path := '$v_modules_path${os.path_separator}vlib${os.path_separator}${mod_path}.vh'
 			if v.pref.is_cache && os.file_exists(vh_path) {
@@ -659,12 +699,12 @@ pub fn (v mut V) add_v_files_to_compile() {
 pub fn (v &V) get_builtin_files() []string {
 	// .vh cache exists? Use it
 	if v.pref.is_bare {
-		return v.v_files_from_dir(filepath.join(v.vroot, 'vlib', 'builtin', 'bare'))
+		return v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'bare'))
 	}
 	$if js {
-		return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin${os.path_separator}js')
+		return v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'js'))
 	}
-	return v.v_files_from_dir('$v.vroot${os.path_separator}vlib${os.path_separator}builtin')
+	return v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin'))
 }
 
 // get user files
@@ -677,11 +717,11 @@ pub fn (v &V)  get_user_files() []string {
 
 	if v.pref.is_test {
 		// TODO this somtimes fails on CI
-		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_assertions.v')
+		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_assertions.v')
 	}
 	
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << filepath.join(v.vroot,'vlib','compiler','preludes','tests_with_stats.v')
+		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_with_stats.v')
 	}
 	
 	// v volt/slack_test.v: compile all .v files to get the environment
@@ -778,6 +818,20 @@ pub fn get_param_after(joined_args, arg, def string) string {
 	return res
 }
 
+pub fn get_cmdline_option(args []string, param string, def string) string {
+	mut found := false
+
+	for arg in args {
+		if found {
+			return arg
+		} else if param == arg {
+			found = true
+		}
+	}
+
+	return def
+}
+
 pub fn (v &V) log(s string) {
 	if !v.pref.is_verbose {
 		return
@@ -794,11 +848,14 @@ pub fn new_v(args[]string) &V {
 	
 	// Location of all vlib files
 	vroot := os.dir(vexe_path())
+	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot, 'vlib'))
+	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
 
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
+		
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
 	//println('comptimedefine=$comptime_define')
@@ -838,7 +895,9 @@ pub fn new_v(args[]string) &V {
 		mod = mod_path.replace(os.path_separator, '.')
 		println('Building module "${mod}" (dir="$dir")...')
 		//out_name = '$TmpPath/vlib/${base}.o'
-		out_name = mod
+		if !out_name.ends_with('.c') {
+			out_name = mod
+		}
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
@@ -914,7 +973,7 @@ pub fn new_v(args[]string) &V {
 	}
 	//println('VROOT=$vroot')
 	// v.exe's parent directory should contain vlib
-	if !os.dir_exists(vroot) || !os.dir_exists(vroot + '/vlib/builtin') {
+	if !os.dir_exists(vlib_path) || !os.dir_exists(vlib_path + os.path_separator + 'builtin') {
 		//println('vlib not found, downloading it...')
 		/*
 		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
@@ -928,13 +987,16 @@ pub fn new_v(args[]string) &V {
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
-	// println('out_name:$out_name')
-	mut out_name_c := os.realpath('${out_name}.tmp.c')
+
+	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
 
 	cflags := get_cmdline_cflags(args)
-
-	rdir := os.realpath( dir )
-	rdir_name := os.filename( rdir )
+	rdir := os.realpath(dir)
+	rdir_name := os.filename(rdir)
+	
+	if '-bare' in args {
+		verror('use -freestanding instead of -bare')
+	}	
 
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
@@ -949,7 +1011,6 @@ pub fn new_v(args[]string) &V {
 		is_vlines:     '-g' in args && !('-cg' in args)
 		is_keep_c:     '-keep_c' in args
 		is_cache:      '-cache' in args
-
 		is_stats: '-stats' in args
 		obfuscate: obfuscate
 		is_prof: '-prof' in args
@@ -963,7 +1024,8 @@ pub fn new_v(args[]string) &V {
 		compress: '-compress' in args
 		enable_globals: '--enable-globals' in args
 		fast: '-fast' in args
-		is_bare: '-bare' in args
+		is_bare: '-freestanding' in args
+		x64: '-x64' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
@@ -971,12 +1033,14 @@ pub fn new_v(args[]string) &V {
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
 		comptime_define: comptime_define
 		is_fmt: comptime_define == 'vfmt'
+		vlib_path: vlib_path
+		vpath: vpath
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
 	}
 	if pref.is_so {
-		out_name_c = out_name.all_after(os.path_separator) + '_shared_lib.c'
+		out_name_c = get_vtmp_filename( out_name, '.tmp.so.c')
 	}
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {
@@ -991,6 +1055,7 @@ pub fn new_v(args[]string) &V {
 		table: new_table(obfuscate)
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
+		x64: x64.new_gen(out_name)
 		vroot: vroot
 		pref: pref
 		mod: mod
@@ -1030,21 +1095,23 @@ pub fn vfmt(args[]string) {
 }
 
 pub fn create_symlink() {
+	$if windows { return }
 	vexe := vexe_path()
 	link_path := '/usr/local/bin/v'
 	ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
-		println('symlink "$link_path" has been created')
+		println('Symlink "$link_path" has been created')
 	} else {
-		println('failed to create symlink "$link_path", '+
-			'make sure you run with sudo')
+		println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
 }
 
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if '' != vexe {	return vexe	}
-	return os.executable()
+	real_vexe_path := os.realpath(os.executable())
+	os.setenv('VEXE', real_vexe_path, true)
+	return real_vexe_path
 }
 
 pub fn verror(s string) {

@@ -8,9 +8,7 @@ pub:
 
 pub fn strlen(s byteptr) int {
 	mut i := 0
-	for i = 0; s[i] != 0; i++ {
-		
-	}	
+	for ; s[i] != 0; i++ {}	
 	return i
 }	
 
@@ -54,6 +52,10 @@ pub fn tos3(s *C.char) string {
 		len: strlen(byteptr(s))
 	}
 }
+
+pub fn println(s string) {
+	
+}	
 
 /*
 pub fn (a string) clone() string {

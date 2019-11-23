@@ -53,3 +53,23 @@ fn test_perform_speak() {
 
 }
 
+interface Register {
+	register()
+}
+
+struct RegTest {a int}
+
+fn (f RegTest) register() {
+}
+
+fn handle_reg(r Register) {
+}
+
+fn test_register() {
+	f := RegTest{}
+	f.register()
+	handle_reg(f)
+}
+
+
+

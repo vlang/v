@@ -589,6 +589,8 @@ fn (s mut Scanner) scan() ScanRes {
 			s.line_comment = s.text[start + 1..s.pos]
 			s.line_comment = s.line_comment.trim_space()
 			if s.is_fmt {
+				s.pos-- // fix line_nr, \n was read, and the comment is marked on the next line
+				s.line_nr--
 				return scan_res(.line_comment, s.line_comment)
 			}	
 			//s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')

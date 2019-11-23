@@ -129,8 +129,10 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		expr_line := p.cgen.lines[p.cgen.lines.len-2]
 		last_expr := expr_line[last_ph..]
 		p.cgen.lines[p.cgen.lines.len-2]  = ''
-		p.genln('if (!${tmp}.ok) {')
-		p.genln('$name = $last_expr;')
+		p.genln('if ($tmp .ok) {')
+		p.genln('$name = *($typ*) $tmp . data;')
+		p.genln('} else {')
+		p.genln('$name = $last_expr')
 		p.genln('}')
 	} else if is_assign {
 		p.genln('$name = *($typ*)${tmp}.data;')
@@ -211,8 +213,11 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 			}
 		}
 	}
-	else if cfg.is_str && !p.builtin_mod && !p.pref.is_bare {
-		if cfg.is_slice {
+	else if cfg.is_str && !p.builtin_mod {
+		if  p.pref.is_bare {
+			p.gen(index_expr)
+		}	
+		else if cfg.is_slice {
 			p.gen('string_substr2($index_expr)')
 		} else {
 			p.gen('string_at($index_expr)')
@@ -533,7 +538,7 @@ fn (p mut Parser) cast(typ string) {
 		p.error('cannot cast `$expr_typ` to `$typ`, use backquotes `` to create a `$typ` or access the value of an index of `$expr_typ` using []')
 	}
 	else if casting_voidptr_to_value {
-		p.cgen.set_placeholder(pos, '*($typ*)(')
+		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	else {
 		// Nothing can be cast to bool

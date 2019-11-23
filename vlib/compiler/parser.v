@@ -7,6 +7,7 @@ module compiler
 import (
 	os
 	strings
+	compiler.x64
 )
 
 struct Parser {
@@ -28,6 +29,7 @@ mut:
 	prev_tok2      TokenKind // TODO remove these once the tokens are cached
 	lit            string
 	cgen           &CGen
+	x64            &x64.Gen
 	table          &Table
 	import_table   ImportTable // Holds imports for just the file being parsed
 	pass           Pass
@@ -161,6 +163,7 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		table: v.table
 		cur_fn: EmptyFn
 		cgen: v.cgen
+		x64: v.x64
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
@@ -262,6 +265,14 @@ fn (p &Parser) log(s string) {
 */
 }
 
+pub fn (p mut Parser) add_text(text string) {
+	if p.tokens.len > 1 && p.tokens[p.tokens.len-1].tok == .eof {
+		p.tokens.delete(p.tokens.len-1)
+	}
+	p.scanner.text = p.scanner.text + '\n' + text
+	p.scan_tokens()
+}
+
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
 	p.cgen.file = cescaped_path(os.realpath(p.file_path))
@@ -297,7 +308,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod=='ui' || p.mod == 'darwin'// TODO tmp remove
+	p.can_chash = p.mod in ['ui','darwin','clipboard']// TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) {
@@ -407,10 +418,10 @@ fn (p mut Parser) parse(pass Pass) {
 			if !p.cgen.nogen {
 				p.cgen.consts << g
 			}
-			p.fgenln('')
+			p.fgen_nl()
 			if p.tok != .key_global {
 				// An extra empty line to separate a block of globals
-				p.fgenln('')
+				p.fgen_nl()
 			}	
 		}
 		.eof {
@@ -472,10 +483,10 @@ fn (p mut Parser) imports() {
 		p.fspace()
 		p.check(.lpar)
 		p.fmt_inc()
-		p.fgenln('')
+		p.fgen_nl()
 		for p.tok != .rpar && p.tok != .eof {
 			p.import_statement()
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		p.fmt_dec()
 		p.check(.rpar)
@@ -484,9 +495,9 @@ fn (p mut Parser) imports() {
 	}
 	// `import foo`
 	p.import_statement()
-	p.fgenln('')
+	p.fgen_nl()
 	if p.tok != .key_import {
-		p.fgenln('')
+		p.fgen_nl()
 	}
 }
 
@@ -539,7 +550,7 @@ fn (p mut Parser) const_decl() {
 	p.check(.key_const)
 	p.fspace()
 	p.check(.lpar)
-	p.fgenln('')
+	p.fgen_nl()
 	p.fmt_inc()
 	for p.tok == .name {
 		if p.lit == '_' && p.peek() == .assign && !p.cgen.nogen {
@@ -611,7 +622,7 @@ fn (p mut Parser) const_decl() {
 			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
 				p.cgen.consts << '#define $name $p.cgen.cur_line'
 				p.cgen.resetln('')
-				p.fgenln('')
+				p.fgen_nl()
 				continue
 			}
 			if typ.starts_with('[') {
@@ -625,7 +636,7 @@ fn (p mut Parser) const_decl() {
 			}
 			p.cgen.resetln('')
 		}
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	p.fmt_dec()
 	p.check(.rpar)
@@ -679,7 +690,7 @@ fn (p mut Parser) interface_method(field_name, receiver string) &Fn {
 	} else {
 		method.typ = p.get_type()// method return type
 		//p.fspace()
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	return method
 }
@@ -764,7 +775,7 @@ fn (p mut Parser) check(expected TokenKind) {
 	p.fgen(p.strtok())
 	// vfmt: increase indentation on `{` unless it's `{}`
 	if expected == .lcbr { //&& p.scanner.pos + 1 < p.scanner.text.len && p.scanner.text[p.scanner.pos + 1] != `}` {
-		p.fgenln('')
+		p.fgen_nl()
 		p.fmt_inc()
 	}
 	*/
@@ -883,14 +894,7 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-	// Generic type check
-	ti := p.cur_fn.dispatch_of.inst
-	if p.lit in ti.keys() {
-		typ += ti[p.lit]
-		// println('cur dispatch: $p.lit => $typ')
-	} else {
-		typ += p.lit
-	}
+	typ += p.lit
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
@@ -1015,7 +1019,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
 			//p.genln('')// // end st tok= ${p.strtok()}')
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		i++
 		if i > 50000 {
@@ -1208,6 +1212,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 	.key_assert {
 		p.assert_statement()
 	}
+	.key_asm {
+		p.inline_asm()
+	}	
 	else {
 		// An expression as a statement
 		typ := p.expression()
@@ -1501,7 +1508,7 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	// *var
 	if deref_nr > 0 {
 		/*
-		if !p.inside_unsafe {
+		if !p.inside_unsafe  && !p.pref.building_v && p.mod != 'os' {
 			p.error('dereferencing can only be done inside an `unsafe` block')
 		}	
 		*/
@@ -1856,10 +1863,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_str {
 			typ = 'byte'
 			// Direct faster access to .str[i] in builtin modules
-			if p.builtin_mod {
+			if p.builtin_mod || p.pref.is_bare {
 				p.gen('.str[')
 				close_bracket = true
-			}
+			}	
 			else {
 				// Bounds check everywhere else
 				p.gen(', ')
@@ -2093,7 +2100,7 @@ fn (p mut Parser) assoc() string {
 		if p.tok != .rcbr {
 			p.check(.comma)
 		}
-		p.fgenln('')
+		p.fgen_nl()
 	}
 	// Copy the rest of the fields
 	T := p.table.find_type(var.typ)
@@ -2299,14 +2306,14 @@ fn (p mut Parser) map_init() string {
 			}
 			vals_gen += '$val_expr, '
 			if p.tok == .rcbr {
-				p.fgenln('')
+				p.fgen_nl()
 				p.check(.rcbr)
 				break
 			}
 			if p.tok == .comma {
 				p.check(.comma)
 			}
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		p.gen('new_map_init($i, sizeof($val_type), ' +
 			'(string[$i]){ $keys_gen }, ($val_type [$i]){ $vals_gen } )')
@@ -2433,7 +2440,7 @@ fn (p mut Parser) array_init() string {
 		p.tokens[p.token_idx-2].line_nr == p.tokens[p.token_idx-1].line_nr { // TODO
 		// vals.len == 0 {
 		if exp_array {
-			p.error('use `foo = []` instead of `foo = []Type`')
+			p.error('no need to specify the full array type here, use `[]` instead of `[]${p.expected_type[6..]}`')
 		}	
 		typ = p.get_type()
 	} else if exp_array && i == 0 {
@@ -2553,7 +2560,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 	p.returns = false
 	if p.tok == .key_else {
 		if !p.inside_if_expr {
-			p.fgenln('')
+			p.fgen_nl()
 		}
 		p.check(.key_else)
 		p.fspace()
@@ -2745,7 +2752,7 @@ fn (p mut Parser) return_st() {
 	p.returns = true
 }
 
-fn (p Parser) get_deferred_text() string {
+fn (p &Parser) get_deferred_text() string {
 	// @emily33901: Scoped defer
 	// Check all of our defer texts to see if there is one at a higher scope level
 	// The one for our current scope would be the last so any before that need to be
@@ -2886,7 +2893,7 @@ fn (p mut Parser) attribute() {
 		p.attr = p.attr + ':' + p.check_name()
 	}
 	p.check(.rsbr)
-	p.fgenln('')
+	p.fgen_nl()
 	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
@@ -2963,3 +2970,7 @@ fn (p mut Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
 	}
 	return is_fn_call, expr
 }
+
+fn todo_remove() {
+	x64.new_gen('f')
+}	

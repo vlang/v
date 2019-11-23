@@ -86,6 +86,6 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	return false
 }
 
-pub fn (w &Writer) str() string {
+pub fn (w mut Writer) str() string {
 	return w.sb.str()
 }

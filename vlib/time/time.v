@@ -420,9 +420,9 @@ pub fn (t Time) weekday_str() string {
 	return days_string[i * 3..(i + 1) * 3]
 }
 
-struct C.timeval  {
-	tv_sec int
-	tv_usec int
+pub struct C.timeval  {
+	tv_sec u64 
+	tv_usec u64
 }
 
 // in ms
@@ -433,7 +433,7 @@ pub fn ticks() i64 {
 	$else {
 		ts := C.timeval{}
 		C.gettimeofday(&ts,0)
-		return ts.tv_sec * 1000 + (ts.tv_usec / 1000)
+		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
 	}
 
 /*
