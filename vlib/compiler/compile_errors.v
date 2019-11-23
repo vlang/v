@@ -225,13 +225,6 @@ fn (s mut Scanner) get_scanner_pos_of_token(tok &Token) ScannerPos {
 	}
 }
 
-fn (s mut Scanner) eat_single_newline(){
-	if s.pos >= s.text.len { return }
-	if s.expect('\r\n', s.pos) { s.pos += 2 return }
-	if s.text[ s.pos ] == `\n` { s.pos ++ return }
-	if s.text[ s.pos ] == `\r` { s.pos ++ return }
-}
-
 ///////////////////////////////
 
 fn (p mut Parser) mutable_arg_error(i int, arg Var, f Fn) {
