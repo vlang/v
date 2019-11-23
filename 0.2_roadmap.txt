@@ -42,5 +42,6 @@
 + bare metal support
 + inline assembly
 + x64 machine code generation (ELF)
+- require implicit C.fn definitions, add all missing definitions
 
 
