@@ -33,11 +33,11 @@ const (
 fn print_automaton(a &automaton.Automaton){
 	gg.clear(gx.White)
 	square_size := 18
-	for i, line in a.field {
-		for j, cell in line {
-			if j == 0 || j == line.len - 1 { continue }
+	for y := 1; y<a.field.maxy; y++ {
+		for x := 1; x<a.field.maxx; x++ {
+			cell := a.field.get(x,y)
 			if cell == 1 {
-				graphics.draw_rect( square_size*j, square_size*i, square_size, square_size, filled_color )
+				graphics.draw_rect( square_size*x, square_size*y, square_size, square_size, filled_color )
 			}
 		}
 	}

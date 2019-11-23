@@ -3,11 +3,11 @@ import time
 import automaton
 
 fn print_automaton(a &automaton.Automaton){
-	for line in a.field {
+	for y := 1; y<a.field.maxy; y++ {
 		mut s := '    '
-		for j, cell in line {
-			if j == 0 || j == line.len - 1{continue}
-			s += if cell == 1{'@'} else { '.'}
+		for x := 1; x<a.field.maxx; x++ {
+			cell := a.field.get(x,y)
+			s += if cell == 1 { '@' } else { '.' }
 		}
 		println(s)
 	}
