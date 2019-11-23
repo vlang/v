@@ -38,3 +38,6 @@ vjs
 ._*
 .vrepl_temp.v
 a.out
+/*.tab.c
+/*.tab.h
+/*.yy.c
