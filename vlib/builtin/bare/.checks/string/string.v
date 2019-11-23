@@ -10,6 +10,6 @@ fn check_string_eq () {
 
 fn main () {
 	check_string_eq ()
-	exit(0)
+	sys_exit(0)
 }
 
