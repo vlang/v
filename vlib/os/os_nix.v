@@ -61,7 +61,9 @@ pub fn dir_exists(path string) bool {
 }
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(apath string) ?bool {
+	if apath == '.' { return true }
+	path := os.realpath( apath )
 	r := int(C.mkdir(path.str, 511))
 	if r == -1 {
 		return error(get_error_msg(C.errno))
