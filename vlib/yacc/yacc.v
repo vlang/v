@@ -1,6 +1,8 @@
 // yacc header include.
 #include "y.tab.h"
 
+import strings
+
 fn &C.yyparse()
 
 struct YaccConfig{
@@ -40,12 +42,45 @@ struct FlexConfig{
 	input:			false // -8
 }
 
-fn yacc_config(){
+fn yacc_config(y YaccConfig) string{
+	mut temp := ''
+	if y.file_prefix != ''{
+		temp += '-b $y.fileprefix'
+	}
+	if y.define_name != ''{
+		temp += '-d $y.define_name'
+	}
+	if y.prefix_name != ''{
+		temp += '-p $y.prefix_name'
+	}
+	if y.debug_mode {
+		temp += '-t'
+	}
+	if y.report {
+		temp += '-v'
+	}
+	if y.optimize {
+		temp += '-l'
+	}
+	if y.parser_only {
+		temp += '-n'
+	}
+	return temp
+}
 
+fn bison_config() string{
+	mut temp := ''
+	return temp
+}
+
+fn lex_config() string{
+	mut temp := ''
+	return temp
 }
 
 fn flex_config(){
-
+	mut temp := ''
+	return temp
 }
 
 fn yacc_compile(file_path string,config YaccConfig) {
