@@ -882,7 +882,6 @@ pub fn realpath(fpath string) string {
 		}	
 		return string(fullpath)
 	}
-	return fpath
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
