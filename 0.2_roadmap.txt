@@ -41,5 +41,6 @@
 + fast.vlang.io
 + bare metal support
 + inline assembly
++ x64 machine code generation (ELF)
 
 

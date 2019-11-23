@@ -1625,7 +1625,9 @@ fn (p mut Parser) var_expr(v Var) string {
 			p.next()
 			return p.select_query(fn_ph)
 		}
-		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
+		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name &&
+			!p.tokens[p.token_idx].lit.contains('exec')
+		{
 			p.next()
 			p.insert_query(fn_ph)
 			return 'void'
