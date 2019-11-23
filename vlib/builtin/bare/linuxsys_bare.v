@@ -1,5 +1,102 @@
 module builtin
 
+pub enum fcntl {
+	fd_cloexec = 0x00000001
+	f_dupfd = 0x00000000
+	f_exlck = 0x00000004
+	f_getfd = 0x00000001
+	f_getfl = 0x00000003
+	f_getlk = 0x00000005
+	f_getlk64 = 0x0000000c
+	f_getown = 0x00000009
+	f_getowner_uids = 0x00000011
+	f_getown_ex = 0x00000010
+	f_getsig = 0x0000000b
+	f_ofd_getlk = 0x00000024
+	f_ofd_setlk = 0x00000025
+	f_ofd_setlkw = 0x00000026
+	f_owner_pgrp = 0x00000002
+	f_owner_pid = 0x00000001
+	f_owner_tid = 0x00000000
+	f_rdlck = 0x00000000
+	f_setfd = 0x00000002
+	f_setfl = 0x00000004
+	f_setlk = 0x00000006
+	f_setlk64 = 0x0000000d
+	f_setlkw = 0x00000007
+	f_setlkw64 = 0x0000000e
+	f_setown = 0x00000008
+	f_setown_ex = 0x0000000f
+	f_setsig = 0x0000000a
+	f_shlck = 0x00000008
+	f_unlck = 0x00000002
+	f_wrlck = 0x00000001
+	lock_ex = 0x00000002
+	lock_mand = 0x00000020
+	lock_nb = 0x00000004
+	lock_read = 0x00000040
+	lock_rw = 0x000000c0
+	lock_sh = 0x00000001
+	lock_un = 0x00000008
+	lock_write = 0x00000080
+	o_accmode = 0x00000003
+	o_append = 0x00000400
+	o_cloexec = 0x00080000
+	o_creat = 0x00000040
+	o_direct = 0x00004000
+	o_directory = 0x00010000
+	o_dsync = 0x00001000
+	o_excl = 0x00000080
+	o_largefile = 0x00008000
+	o_ndelay = 0x00000800
+	o_noatime = 0x00040000
+	o_noctty = 0x00000100
+	o_nofollow = 0x00020000
+	o_nonblock = 0x00000800
+	o_path = 0x00200000
+	o_rdonly = 0x00000000
+	o_rdwr = 0x00000002
+	o_trunc = 0x00000200
+	o_wronly = 0x00000001
+}
+
+pub enum errno {
+	e2big = 0x00000007
+	eacces = 0x0000000d
+	eagain = 0x0000000b
+	ebadf = 0x00000009
+	ebusy = 0x00000010
+	echild = 0x0000000a
+	edom = 0x00000021
+	eexist = 0x00000011
+	efault = 0x0000000e
+	efbig = 0x0000001b
+	eintr = 0x00000004
+	einval = 0x00000016
+	eio = 0x00000005
+	eisdir = 0x00000015
+	emfile = 0x00000018
+	emlink = 0x0000001f
+	enfile = 0x00000017
+	enodev = 0x00000013
+	enoent = 0x00000002
+	enoexec = 0x00000008
+	enomem = 0x0000000c
+	enospc = 0x0000001c
+	enotblk = 0x0000000f
+	enotdir = 0x00000014
+	enotty = 0x00000019
+	enxio = 0x00000006
+	eperm = 0x00000001
+	epipe = 0x00000020
+	erange = 0x00000022
+	erofs = 0x0000001e
+	espipe = 0x0000001d
+	esrch = 0x00000003
+	etxtbsy = 0x0000001a
+	exdev = 0x00000012
+}
+
 fn do_not_call_me_asm_keeper0() {
 	unsafe {
 		asm {
@@ -90,14 +187,14 @@ pub fn sys_write(fd int, buf byteptr, count u64) i64 {
 	return i64(sys_call3(1, u64(fd), u64(buf), count))
 }
 
-pub fn sys_open(filename byteptr, flags u64, mode u64) i64 {
+pub fn sys_open(filename byteptr, flags int, mode int) int {
 	//2 sys_open  const char *filename  int flags int mode
-	return i64(sys_call3(2, u64(filename), flags, mode))
+	return int(sys_call3(2, u64(filename), u64(flags), u64(mode)))
 }
 
-pub fn sys_close(fd u64) i64 {
+pub fn sys_close(fd int) int {
 	// 3 sys_close unsigned int fd
-	return i64(sys_call1(3, fd))
+	return int(sys_call1(3, u64(fd)))
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off

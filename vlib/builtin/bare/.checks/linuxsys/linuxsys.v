@@ -3,7 +3,18 @@ module main
 __global fd [2]int
 __global buffer [16]byte
 
-fn check_read_write_pipe () {
+const (
+	sample_text_file1 = ""
+)
+
+fn check_read_write_pipe() {
+	/*
+		Checks the following system calls:
+			sys_pipe
+			sys_write
+			sys_read
+			sys_close
+	*/
 	println ("checking pipe read/write")
 	fd[0] = -1
 	fd[1] = -1
@@ -34,14 +45,39 @@ fn check_read_write_pipe () {
 		assert test_data[i] == buffer[i]
 	}
 
-	assert -1 != sys_close(fd[0])
-	assert -1 != sys_close(fd[1])
+	assert 0 == sys_close(fd[0])
+	assert 0 == sys_close(fd[1])
+
+	assert 0 != sys_close(-1)
 
 	println ("pipe read/write passed")
 }
 
-fn main () {
-	check_read_write_pipe ()
+fn check_read_file() {
+	/*
+		Checks the following system calls:
+			sys_read
+			sys_write
+			sys_close
+	*/
+	test_file := "sample_text1.txt"
+	sample_text := "Do not change this text.\n"
+	println ("checking read file")
+	fd := sys_open(test_file.str, int(fcntl.o_rdonly), 0)
+	assert fd > 0
+	n := sample_text.len
+	c := sys_read(fd, buffer, u64(n*2))
+	assert c == n
+	for i in 0..n {
+		assert sample_text[i] == buffer[i]
+	}
+	assert 0 == sys_close(fd)
+	println("read file passed")
+}
+
+fn main() {
+	check_read_write_pipe()
+	check_read_file()
 	sys_exit(0)
 }
 
