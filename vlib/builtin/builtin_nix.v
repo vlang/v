@@ -66,7 +66,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				if 0 != int(C.pclose(f)) {
 					println(sframe) continue
 				}
-				println( '${output:-45s} | $sframe')
+				if output in ['??:0:','??:?:'] { output = '' }
+				println( '${output:-48s} | $sframe')
 			}
 			//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
