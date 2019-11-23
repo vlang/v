@@ -111,8 +111,8 @@ pub fn munmap(addr voidptr, len u64) int {
 }
 
 // 22  sys_pipe  int *filedes
-pub fn pipe() intptr {
-	return intptr(syscall0(22))
+pub fn pipe(filedes intptr) int {
+	return int(syscall1(22, u64(filedes)))
 }
 
 // 24 sys_sched_yield
@@ -139,6 +139,12 @@ pub fn fork() int {
 pub fn vfork() int {
 	return int(syscall0(58))
 }
+
+// 33  sys_dup2  unsigned int oldfd  unsigned int newfd
+pub fn dup2 (oldfd, newfd int) int {
+	return int(syscall2(33, u64(oldfd),u64(newfd)))
+}
+
 
 //59  sys_execve  const char *filename  const char *const argv[]  const char *const envp[]
 //pub fn execve(filename byteptr, argv []byteptr, envp []byteptr) int {

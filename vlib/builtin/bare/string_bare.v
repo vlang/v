@@ -53,9 +53,16 @@ pub fn tos3(s *C.char) string {
 	}
 }
 
-pub fn println(s string) {
-	
-}	
+pub fn string_eq (s1, s2 string) bool {
+	if s1.len != s2.len { return false }
+	for i in 0..s1.len {
+		if s1[i] != s2[i] { return false }
+	}
+	return true
+}
+pub fn string_ne (s1, s2 string) bool {
+	return !string_eq(s1,s2)
+}
 
 /*
 pub fn (a string) clone() string {
