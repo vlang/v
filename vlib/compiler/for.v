@@ -11,6 +11,8 @@ fn (p mut Parser) for_st() {
 	next_tok := p.peek()
 	//debug := p.scanner.file_path.contains('r_draw')
 	p.open_scope()
+	mut label := 0
+	mut to := 0
 	if p.tok == .lcbr {
 		// Infinite loop
 		p.gen('while (1) {')
@@ -130,9 +132,17 @@ fn (p mut Parser) for_st() {
 		if is_range {
 			p.check_types(typ, 'int')
 			p.check_space(.dotdot)
+			if p.pref.x64 {
+				to = p.lit.int()
+			}
 			range_typ, range_expr := p.tmp_expr()
 			p.check_types(range_typ, 'int')
 			range_end = range_expr
+			if p.pref.x64 {
+				label = p.x64.gen_loop_start(expr.int())
+				//to  = range_expr.int() // TODO why empty?
+			}	
+			
 		}
 		is_arr := typ.contains('array')
 		is_str := typ == 'string'
@@ -189,5 +199,8 @@ fn (p mut Parser) for_st() {
 	p.close_scope()
 	p.for_expr_cnt--
 	p.returns = false // TODO handle loops that are guaranteed to return
+	if label > 0 {
+		p.x64.gen_loop_end(to, label)
+	}	
 }
 

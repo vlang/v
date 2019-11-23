@@ -53,6 +53,10 @@ pub fn tos3(s *C.char) string {
 	}
 }
 
+pub fn println(s string) {
+	
+}	
+
 /*
 pub fn (a string) clone() string {
 	mut b := string {
