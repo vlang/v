@@ -198,7 +198,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 		sp := filepath.join(source_path, file)
 		dp := filepath.join(dest_path, file)
 		if os.is_dir(sp) {
-			os.mkdir(dp)
+			os.mkdir(dp) or { panic(err) }
 		}
 		cp_r(sp, dp, overwrite) or {
 			os.rmdir(dp)
@@ -991,7 +991,7 @@ pub fn mkdir_all(path string) {
 	for subdir in path.split(os.path_separator) {
 		p += subdir + os.path_separator
 		if !os.dir_exists(p) {
-			os.mkdir(p)
+			os.mkdir(p) or { panic(err) }
 		}
 	}
 }
