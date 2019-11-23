@@ -177,6 +177,14 @@ fn sys_call4(scn, arg1, arg2, arg3, arg4 u64) u64
 fn sys_call5(scn, arg1, arg2, arg3, arg4, arg5 u64) u64
 fn sys_call6(scn, arg1, arg2, arg3, arg4, arg5, arg6 u64) u64
 
+/*
+these wrappers don't act exactly like the libc ones in regard to return value, so they have the raw syscall behavior.
+
+    there is no errno
+    if zero is the expected value, a value > 0 is the error code
+    if a >=0 is a good value, then for errors, a negative error_code is returned
+*/
+
 // 0 sys_read unsigned int fd char *buf size_t count
 pub fn sys_read (fd int, buf byteptr, count u64) i64 {
 	return i64(sys_call3(0, u64(fd), u64(buf), count))
