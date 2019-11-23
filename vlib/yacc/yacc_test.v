@@ -1,9 +1,9 @@
 import yacc
 
-fn test_parse(){
+fn test_yacc_generate(){
 	
 }
 
-fn test_option(){
+fn test_yacc_(){
 	
 }

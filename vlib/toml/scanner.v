@@ -48,6 +48,22 @@ fn scan_res(tok TokenKind, lit string) ScanRes{
 	return ScanRes {tok, lit}
 }
 
+fn (s &Scanner) expect(want string, start_pos int) bool {
+	end_pos := start_pos + want.len
+	if start_pos < 0 || start_pos >= s.text.len {
+		return false
+	}
+	if end_pos < 0 || end_pos > s.text.len {
+		return false
+	}
+	for pos in start_pos..end_pos {
+		if s.text[pos] != want[pos-start_pos] {
+			return false
+		}
+	}
+	return true
+}
+
 fn (s mut Scanner) ident_basic_string string{
 	q := s.text[s.pos]
 	// """
@@ -60,6 +76,10 @@ fn (s mut Scanner) ident_basic_string string{
 			break
 		}
 		c := s.text[s.pos]
+		prevc := s.text[s.pos - 1]
+		if c == `\n`{
+			s.inc_line_number()
+		}
 	}
 }
 
@@ -68,6 +88,17 @@ fn (s mut Scanner) ident_literal_string string{
 	// '''
 	is_raw := s.text[s.pos + 1] == literal_quote && s.text[s.pos + 2] == literal_quote
 	mut start := s.pos
+	for {
+		s.pos++
+		if s.pos >= s.text.len{
+			break
+		}
+		double_slash := s.expect(`\\\\`,s.pos - 2)
+
+		if s.text[s.pos] == `\\`{
+			s.pos++
+		}
+	}
 }
 
 fn (s mut Scanner) ident_name() string{
@@ -90,6 +121,10 @@ fn (s mut Scanner) ident_number() string{
 
 fn (s mut Scanner) ident_unicode string {
 		
+}
+
+fn (s mut Scanner) ident_dec_num() string{
+
 }
 
 fn (s mut Scanner) ident_hex_num() string {
