@@ -39,6 +39,7 @@ mut:
 	defer_text    []string
 	type_pars 	  []string
 	type_inst 	  []TypeInst
+	dispatch_of	  TypeInst	// current type inst of this generic instance
 	generic_tmpl  []Token
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
@@ -1437,23 +1438,24 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	f.type_inst << *ti
 	p.table.register_fn(f)
-	// NOTE: f.dispatch_of was removed because of how the parsing is done now. if we need
-	// function dispatch info we will need to store it somewhere other than function
-	// or reattach it to the function instance in fn_decl when the generic instance is parsed
+
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
-
+	// TODO: save dispatch info when update to incremental parsing
+	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
 	// if f.typ in ti.inst {
 	// 	f.typ = ti.inst[f.typ]
 	// }
 	if f.is_method {
-		p.add_method(f.args[0].name, f)
+		// TODO: add_method won't add anything on second pass
+		// p.add_method(f.args[0].typ.trim_right('*'), f)
 	} else {
 		p.table.register_fn(f)
 	}
 	mut fn_code := '${p.fn_signature_v(f)} {\n${f.generic_tmpl_to_inst(ti)}\n}'
+	// TODO: parse incrementally as needed & set typeinst
 	if f.mod in p.v.gen_parser_idx {
 		pidx := p.v.gen_parser_idx[f.mod]
 		p.v.parsers[pidx].add_text(fn_code)
@@ -1528,7 +1530,7 @@ fn (f &Fn) str_args_v(table &Table) string {
 	for i, arg in f.args {
 		if f.is_method && i == 0 { continue }
 		mut arg_typ := arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
-		if arg_typ == 'void*' { arg_typ = 'voidptr' }
+		if arg_typ == 'void*' { arg_typ = 'voidptr' } else if arg_typ == 'byte*' { arg_typ = 'byteptr' }
 		if arg.is_mut { arg_typ = 'mut '+arg_typ.trim('*') }
 		else if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
 		str_args += '$arg.name $arg_typ'
@@ -1581,7 +1583,8 @@ fn (p &Parser) fn_signature_v(f &Fn) string {
 		method = '($receiver_arg.name $rcv_typ) '
 	}
 	vis := if f.is_public { 'pub ' } else { '' }
-	f_type := if f.typ == 'void' { '' } else if f.typ == 'void*' { 'voidptr' } else { f.typ }
+	f_type := if f.typ == 'void' { '' } else if f.typ == 'void*' { 'voidptr' }
+		else if f.typ == 'byte*' { 'byteptr' } else { f.typ }
 	return '${vis}fn $method$f_name(${f.str_args_v(p.table)}) $f_type'
 }
 
@@ -1595,21 +1598,19 @@ pub fn (f &Fn) v_fn_name() string {
 
 pub fn (f &Fn) str_for_error() string {
 	// Build the args for the error
-     mut s := ''
-     for i, a in f.args {
-	     if i == 0 {
-                                       if f.is_method {
-                                               s += a.typ + '.' + f.name + '('
-                                               continue
-                                       }
-                                       s += f.name + '('
-                               }
-                               s += a.typ
-                               if i < f.args.len - 1 {
-                                       s += ', '
-                               }
-       }
-       return s + ')'
+	mut s := ''
+	for i, a in f.args {
+		if i == 0 {
+			if f.is_method {
+				s += a.typ + '.' + f.name + '('
+				continue
+			}
+			s += f.name + '('
+		}
+		s += a.typ
+		if i < f.args.len - 1 {
+			s += ', '
+		}
+	}
+	return s + ')'
 }
-
-
