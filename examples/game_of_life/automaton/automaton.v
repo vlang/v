@@ -67,11 +67,11 @@ pub fn (aa mut Automaton) update() {
 			)
 			cell := aa.field.get(x,y)
 			v := if cell == 1 {
-				int(moore_sum in [2, 3])
+				moore_sum in [2, 3]
 			} else {
-				int(moore_sum == 3)
+				moore_sum == 3
 			}
-			aa.new_field.set(x,y, v )
+			aa.new_field.set(x,y, if v { 1 } else { 0 })
 		}
 	}
 	mut tmp := aa.field

@@ -1,6 +1,6 @@
 module eventbus
 
-/* 
+/*
 NOTE: All these non-generic methods are temporary until
 V has a properly functioning generic system
 */
@@ -43,7 +43,7 @@ pub fn get_array<T>(p Params, name string, def T) []T {
 	return []
 }
 
-// TODO: make this a method after generics are fixed. 
+// TODO: make this a method after generics are fixed.
 pub fn get_map<T>(p Params, name string, valueTyp T) map[string]T {
 	param, _ := p.get_param(name, "")
 	ret := map[string]T
@@ -71,9 +71,9 @@ pub fn (p Params) get_int_map(name string) map[string]int {
 
 pub fn (p Params) get_bool_map(name string) map[string]bool {
 	return get_map(p, name, false)
-} 
+}
 
-// TODO: make this a method after generics are fixed. 
+// TODO: make this a method after generics are fixed.
 pub fn put_map<T>(p mut Params, name string, valueTyp T, value map[string]T) {
 	keys := value.keys()
 	mut vals := []T
@@ -88,7 +88,7 @@ pub fn put_map<T>(p mut Params, name string, valueTyp T, value map[string]T) {
 	}
 }
 
-// TODO: make this a method after generic methods are working. 
+// TODO: make this a method after generic methods are working.
 pub fn put_array<T>(p mut Params, name string, arr []T) {
 	p.put_custom(name, "[$arr.len]", arr.data)
 }
@@ -102,7 +102,7 @@ pub fn (p mut Params) put_string(name string, s string) {
 }
 
 pub fn (p mut Params) put_bool(name string, val bool) {
-	p.put_custom(name, "bool", int(val))
+	p.put_custom(name, "bool", if val { 1 } else { 0 })
 }
 
 pub fn (p mut Params) put_custom(name string, typ string, data voidptr) {
