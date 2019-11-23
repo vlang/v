@@ -903,7 +903,7 @@ pub fn new_v(args[]string) &V {
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
-			os.mkdir('$TmpPath/vlib/$target_os')
+			os.mkdir('$TmpPath/vlib/$target_os') or { panic(err) }
 			out_name = '$TmpPath/vlib/$target_os/${base}.o'
 			println('target_os=$target_os user_os=${os.user_os()}')
 			println('!Cross compiling $out_name')
