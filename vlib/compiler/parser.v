@@ -2499,7 +2499,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 			//println('IF EXPR')
 		//}
 		p.inside_if_expr = true
-		p.gen('(')
+		p.gen('((')
 	}
 	else {
 		p.gen('if (')
@@ -2594,7 +2594,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		p.inside_if_expr = false
 		if is_expr {
 			p.check_types(first_typ, typ)
-			p.gen(strings.repeat(`)`, elif_depth + 1))
+			p.gen(strings.repeat(`)`, 2 * (elif_depth + 1)))
 		}
 		else_returns := p.returns
 		p.returns = if_returns && else_returns
