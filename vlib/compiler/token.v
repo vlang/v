@@ -9,7 +9,7 @@ struct Token {
 	lit      string // literal representation of the token
 	line_nr  int // the line number in the source where the token occured
 	name_idx int // name table index for O(1) lookup
-	col      int // the column where the token ends
+	pos      int // the position of the token in scanner text
 }
 
 

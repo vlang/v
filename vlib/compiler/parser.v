@@ -188,7 +188,7 @@ fn (p mut Parser) scan_tokens() {
 			tok: res.tok
 			lit: res.lit
 			line_nr: p.scanner.line_nr
-			col: p.scanner.pos - p.scanner.last_nl_pos
+			pos: p.scanner.pos
 		}
 		if res.tok == .eof {
 				break
@@ -2384,7 +2384,8 @@ fn (p mut Parser) array_init() string {
 			if is_integer && p.tok == .rsbr && p.peek() == .name &&
 				p.cur_tok().line_nr == p.peek_token().line_nr {
 				// there is no space between `[10]` and `byte`
-				if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
+				// if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
+				if p.cur_tok().pos + p.peek_token().lit.len == p.peek_token().pos {
 					p.check(.rsbr)
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
