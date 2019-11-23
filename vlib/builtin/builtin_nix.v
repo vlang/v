@@ -50,6 +50,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			for sframe in sframes {
 				executable := sframe.all_before('(')
 				addr := sframe.all_after('[').all_before(']')
+				beforeaddr := sframe.all_before('[')
 				cmd := 'addr2line -e $executable $addr'
 
 				// taken from os, to avoid depending on the os module inside builtin.v
@@ -67,7 +68,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					println(sframe) continue
 				}
 				if output in ['??:0:','??:?:'] { output = '' }
-				println( '${output:-48s} | $sframe')
+				println( '${output:-46s} | ${addr:14s} | $beforeaddr')
 			}
 			//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
