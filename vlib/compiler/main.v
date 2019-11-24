@@ -40,7 +40,7 @@ enum OS {
 	js   // TODO
 	android
 	solaris
-        haiku
+	haiku
 }
 
 enum Pass {
