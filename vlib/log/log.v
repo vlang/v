@@ -1,5 +1,3 @@
-module log
-
 import os
 import time
 import term
@@ -12,12 +10,23 @@ pub enum LogLevel {
 	debug
 }
 
+fn tag(l LogLevel) string {
+	return match l {
+		.fatal { term.red('F') }
+		.error { term.red('E') }
+		.warning { term.yellow('W') }
+		.info { term.white('I') }
+		.debug { term.blue('D') }
+		else { ' ' }
+	}
+}
+
 pub const (
-    FATAL = 1
-    ERROR = 2
-    WARN  = 3
-    INFO  = 4
-    DEBUG = 5
+	FATAL = 1
+	ERROR = 2
+	WARN  = 3
+	INFO  = 4
+	DEBUG = 5
 )
 
 interface Logger {
@@ -58,23 +67,28 @@ pub fn (l mut Log) set_output(output string){
 	l.output_label = output
 }
 
-fn (l Log) log_file(s string, e string) {
+fn (l Log) log_file(s string, level LogLevel) {
 	filename := '${l.output_label}.log'.replace(' ', '')
 	f := os.open_append(filename) or {
 		panic('error reading file $filename')
 	}
 	timestamp := time.now().format_ss()
+	e := tag(level)
 	f.writeln('$timestamp [$e] $s')
+}
+
+fn (l Log) log_cli(s string, level LogLevel) {
+	f := tag(level)
+	t := time.now()
+	println('[$f ${t.format_ss()}] $s')
 }
 
 pub fn (l Log) fatal(s string){
 	if l.level == .fatal {
 		if l.output_to_file {
-			l.log_file(s, 'F')
+			l.log_file(s, .fatal)
 		} else {
-			f := term.red('F')
-			t := time.now()
-			println('[$f ${t.format_ss()}] $s')
+			l.log_cli(s, .fatal)
 		}
 		panic('$l.output_label: $s')
 	}
@@ -84,23 +98,20 @@ pub fn (l Log) error(s string){
 
 	if l.level in [.info, .debug, .warning, .error] {
 		if l.output_to_file {
-			l.log_file(s, 'E')
+			l.log_file(s, .error)
 		} else {
-			f := term.red('E')
-			t := time.now()
-			println('[$f ${t.format_ss()}] $s')
+			l.log_cli(s, .error)
 		}
+
 	}
 }
 
 pub fn (l Log) warn(s string){
 	if l.level in [.info, .debug, .warning] {
 		if l.output_to_file {
-			l.log_file(s, 'W')
+			l.log_file(s, .warning)
 		} else {
-			f := term.yellow('W')
-			t := time.now()
-			println('[$f ${t.format_ss()}] $s')
+			l.log_cli(s, .warning)
 		}
 	}
 }
@@ -108,11 +119,9 @@ pub fn (l Log) warn(s string){
 pub fn (l Log) info(s string){
 	if l.level in [.info, .debug] {
 		if l.output_to_file {
-			l.log_file(s, 'I')
+			l.log_file(s, .info)
 		} else {
-			f := term.white('I')
-			t := time.now()
-			println('[$f ${t.format_ss()}] $s')
+			l.log_cli(s, .info)
 		}
 	}
 }
@@ -122,10 +131,20 @@ pub fn (l Log) debug(s string){
 		return
 	}
 	if l.output_to_file {
-		l.log_file(s, 'D')
+		l.log_file(s, .debug)
 	} else {
-		f := term.blue('D')
-		t := time.now()
-		println('[$f ${t.format_ss()}] $s')
+		l.log_cli(s, .debug)
 	}
 }
+
+fn main() {
+	mut l := Log { LogLevel.info, 'info', true }
+	l.info('info')
+	l.warn('warn')
+	l.error('error')
+	l.debug('no debug')
+	l.set_level(DEBUG)
+	l.debug('debug')
+	l.fatal('fatal')
+}
+
