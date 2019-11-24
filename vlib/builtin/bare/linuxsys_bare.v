@@ -1,5 +1,24 @@
 module builtin
 
+pub enum wp_sys {
+	wnohang = 0x00000001
+	wuntraced = 0x00000002
+	wstopped = 0x00000002
+	wexited	= 0x00000004
+	wcontinued = 0x00000008
+	wnowait = 0x01000000 // don't reap, just poll status.
+	__wnothread = 0x20000000 // don't wait on children of other threads in this group
+	__wall = 0x40000000 // wait on all children, regardless of type
+	__wclone = 0x80000000 // wait only on non-sigchld children
+}
+
+// First argument to waitid:
+pub enum wi_sys {
+	p_all = 0
+	p_pid = 1
+	p_pgid = 2
+}
+
 pub enum fcntl {
 	fd_cloexec = 0x00000001
 	f_dupfd = 0x00000000
@@ -61,6 +80,7 @@ pub enum fcntl {
 }
 
 pub enum errno {
+	enoerror = 0x00000000
 	e2big = 0x00000007
 	eacces = 0x0000000d
 	eagain = 0x0000000b
@@ -195,9 +215,13 @@ pub fn sys_write(fd int, buf byteptr, count u64) i64 {
 	return i64(sys_call3(1, u64(fd), u64(buf), count))
 }
 
-pub fn sys_open(filename byteptr, flags int, mode int) int {
+pub fn sys_open(filename byteptr, flags fcntl, mode int) (int, errno) {
 	//2 sys_open  const char *filename  int flags int mode
-	return int(sys_call3(2, u64(filename), u64(flags), u64(mode)))
+	rc := int(sys_call3(2, u64(filename), u64(flags), u64(mode)))
+	if rc < 0 {
+		return -1, errno(-rc)
+	}
+	return rc, errno.enoerror
 }
 
 pub fn sys_close(fd int) int {
