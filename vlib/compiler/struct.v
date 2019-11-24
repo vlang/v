@@ -131,7 +131,9 @@ fn (p mut Parser) struct_decl() {
 	}
 
 	mut did_gen_something := false
+	mut i := -1
 	for p.tok != .rcbr {
+		i++
 		if p.tok == .key_pub {
 			if is_pub_field {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
@@ -205,6 +207,15 @@ fn (p mut Parser) struct_decl() {
 		if is_atomic {
 			p.next()
 		}
+		// `a int = 4`
+		if p.tok == .assign {
+			p.next()
+			def_val_type, expr := p.tmp_expr()
+			if def_val_type != field_type {
+				p.error('expected `$field_type` but got `$def_val_type`')
+			}
+			p.table.add_default_val(i, typ.name, expr)
+		}	
 		// [ATTR]
 		mut attr := ''
 		if p.tok == .lsbr {

@@ -35,6 +35,7 @@ fn C.DefaultScreen() int
 fn C.RootWindow() voidptr
 fn C.BlackPixel() voidptr
 fn C.WhitePixel() voidptr
+fn C.XFree()
 
 struct C.XSelectionRequestEvent{
 	mut:
@@ -329,7 +330,7 @@ fn read_property(d &Display, w Window, p Atom) Property {
 	ret := byteptr(0)
 	mut read_bytes := 1024
 	for {
-		if(ret != 0){
+		if ret != 0 {
 			C.XFree(ret)
 		}
 		XGetWindowProperty(d, w, p, 0, read_bytes, 0, C.AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &ret)

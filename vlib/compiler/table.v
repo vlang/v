@@ -105,6 +105,7 @@ mut:
 	is_c           bool // `C.FILE`
 	enum_vals []string
 	gen_types []string
+	default_vals []string // `struct Foo { bar int = 2 }`
 	// This field is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -438,6 +439,12 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 		parent_fn: type_name   // Name of the parent type
 		access_mod: access_mod
 	}
+	table.typesmap[type_name] = t
+}
+
+fn (table mut Table) add_default_val(idx int, type_name, val_expr string) {
+	mut t := table.typesmap[type_name]
+	t.default_vals[idx] = val_expr
 	table.typesmap[type_name] = t
 }
 
