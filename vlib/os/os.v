@@ -1026,3 +1026,8 @@ pub fn tmpdir() string {
 	}
 	return path
 }
+
+
+pub fn chmod(path string, mode int) {
+	C.chmod(path.str, mode)
+}	

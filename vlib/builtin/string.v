@@ -95,6 +95,7 @@ pub fn tos2(s byteptr) string {
 	}
 }
 
+// Same as `tos2`, but for char*, to avoid warnings
 pub fn tos3(s *C.char) string {
 	if s == 0 {
 		panic('tos3: nil string')

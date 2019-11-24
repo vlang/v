@@ -1266,7 +1266,7 @@ fn replace_generic_type(gen_type string, ti &TypeInst) string {
 				args_r << replace_generic_type(arg, ti)
 			}
 			mut t := 'fn (' + args_r.join(',') + ')'
-			if ret_t.len > 0 { 
+			if ret_t.len > 0 {
 				t += ' ' + replace_generic_type(ret_t, ti)
 			}
 			typ = t
@@ -1379,7 +1379,7 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
-// save the tokens for the generic funciton body (between `{}`) 
+// save the tokens for the generic funciton body (between `{}`)
 // the function signature isn't saved, it is reconstructed from Fn
 fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
 	mut cbr_depth := 1

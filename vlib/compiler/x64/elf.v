@@ -89,7 +89,7 @@ pub fn (g mut Gen) generate_elf_footer() {
 	g.write64_at(file_size, g.file_size_pos+8)
 	// Create the binary
 	f := os.create(g.out_name) or { panic(err) }
-	C.chmod(g.out_name.str, 0775)
+	os.chmod(g.out_name, 0775)
 	f.write_bytes(g.buf.data, g.buf.len)
 	f.close()
 	println('x64 elf binary has been successfully generated')

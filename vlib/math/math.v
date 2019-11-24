@@ -28,6 +28,7 @@ fn C.lgamma(x f64) f64
 fn C.pow(x f64, y f64) f64
 fn C.round(x f64) f64
 fn C.sin(x f64) f64
+fn C.sinh(x f64) f64
 fn C.sqrt(x f64) f64
 fn C.tgamma(x f64) f64
 fn C.tan(x f64) f64

@@ -1555,8 +1555,6 @@ fn (p mut Parser) get_const_type(name string, is_ptr bool) string {
 }
 
 fn (p mut Parser) get_c_func_type(name string) string {
-		//p.warn(name + ' ' + p.expected_type)
-	//}
 	f := Fn {
 		name: name
 		is_c: true
@@ -1564,15 +1562,15 @@ fn (p mut Parser) get_c_func_type(name string) string {
 	p.is_c_fn_call = true
 	p.fn_call(mut f, 0, '', '')
 	p.is_c_fn_call = false
-	// Try looking it up. Maybe its defined with "C.fn_name() fn_type",
-	// then we know what type it returns
+	// C functions must be defined with `C.fn_name() fn_type`
 	cfn := p.table.find_fn(name) or {
-		// Not Found? Return 'void*'
-		//return 'cvoid' //'void*'
-		//if p.expected_type != '' && p.expected_type != 'void' {
-			//p.warn('\n e=$p.expected_type define imported C function with ' +
-				//'`fn C.$name([args]) [return_type]`\n')
-		//}
+		// Is the user trying to do `var := C.foo()` or `bar(C.foo())`
+		// without declaring `foo`?
+		// Do not allow it.
+		if !name.starts_with('gl') && !name.starts_with('glad') {
+		p.error('undefined C function `$f.name`\n' +
+			'define it with `fn C.$name([args]) [return_type]`')
+		}
 		return 'void*'
 	}
 	// println("C fn $name has type $cfn.typ")

@@ -18,11 +18,11 @@ pub fn init_os_args(argc int, argv &byteptr) []string {
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
-	_ptr_text := C.strerror(code) // voidptr?
-	if _ptr_text == 0 {
+	ptr_text := C.strerror(code) // voidptr?
+	if ptr_text == 0 {
 		return ''
 	}
-	return tos(_ptr_text, vstrlen(_ptr_text))
+	return tos3(ptr_text)
 }
 
 pub fn ls(path string) ?[]string {

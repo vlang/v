@@ -8,6 +8,8 @@ module rand
 
 #flag darwin -framework Security
 
+fn C.SecRandomCopyBytes() int
+
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
 	status := C.SecRandomCopyBytes(0, bytes_needed, buffer)

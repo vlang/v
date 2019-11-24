@@ -153,6 +153,11 @@ pub fn (s Shader) use() {
 	gl.use_program(s.program_id)
 }
 
+fn C.glGetUniformLocation() int
+fn C.glUniformMatrix4fv()
+fn C.glUniform1i()
+fn C.glUniform3f()
+
 pub fn (s Shader) uni_location(key string) int {
 	return C.glGetUniformLocation(s.program_id, key.str)
 }

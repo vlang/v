@@ -19,6 +19,7 @@
 + bring back generics
 - bring back forum/blog and vpm
 - wrap up orm
++ bring back vweb
 - fix vorum, migrate to orm
 - wrap up memory management
 - remove all compiler memory leaks
@@ -42,6 +43,6 @@
 + bare metal support
 + inline assembly
 + x64 machine code generation (ELF)
-- require implicit C.fn definitions, add all missing definitions
+- require explicit C.fn definitions, add all missing definitions
 
 

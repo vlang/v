@@ -132,6 +132,7 @@ TODO
 	print_backtrace()
 #endif
 */
+free(C.malloc(n))
 	ptr := C.malloc(n)
 	if isnil(ptr) {
 		panic('malloc($n) failed')

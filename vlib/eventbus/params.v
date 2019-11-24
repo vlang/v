@@ -43,6 +43,8 @@ pub fn get_array<T>(p Params, name string, def T) []T {
 	return []
 }
 
+fn C.map_set() // TODO remove hack
+
 // TODO: make this a method after generics are fixed.
 pub fn get_map<T>(p Params, name string, valueTyp T) map[string]T {
 	param, _ := p.get_param(name, "")
@@ -55,6 +57,7 @@ pub fn get_map<T>(p Params, name string, valueTyp T) map[string]T {
 		keys = C.new_array_from_c_array_no_alloc(len, len, sizeof(T), param.keys)
 		for i, key in keys {
 			//the most simple way to set map value without knowing the typ
+			// TODO remove
 			C.map_set(&ret, key, param.value + i * sizeof(T))
 		}
 	}
