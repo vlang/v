@@ -91,6 +91,7 @@ fn C.syscall() int
 
 
 
+
 // Windows
 fn C._setmode(int, int)
 fn C._fileno(int) int
@@ -107,5 +108,39 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 fn C.RemoveDirectory() int
 fn C.GetStdHandle() int
 fn C.SetConsoleMode()
-fn C._putsws()
+fn C.GetConsoleMode() int
+fn C._putws()
 fn C.wprintf()
+fn C.setbuf()
+fn C.SymCleanup()
+fn C.MultiByteToWideChar() int
+fn C.wcslen() int
+fn C.WideCharToMultiByte() byteptr
+fn C._wstat()
+fn C._wrename()
+fn C._wfopen() voidptr
+fn C._wpopen() voidptr
+fn C._pclose() int
+fn C._wsystem() int
+fn C._wgetenv() voidptr
+fn C._putenv() int
+fn C._waccess() int
+fn C._wremove()
+fn C.ReadConsole()
+fn C.fgetws() int
+fn C.GetModuleFileName() int
+fn C._wchdir()
+fn C._wgetcwd() int
+fn C._fullpath() int
+fn C.GetCommandLine() voidptr
+fn C.CommandLineToArgvW() *voidptr
+fn C.LocalFree()
+fn C.FindFirstFileW() voidptr
+fn C.FindFirstFile() voidptr
+fn C.FindNextFile() voidptr
+fn C.FindClose()
+fn C.MAKELANGID() int
+fn C.FormatMessage() voidptr
+fn C.CloseHandle()
+fn C.WaitForSingleObject()
+fn C.GetExitCodeProcess()
