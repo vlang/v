@@ -105,6 +105,8 @@ fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumbe
 fn C.GetFileAttributesW(lpFileName byteptr) u32
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lpReserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
+fn C.RegCloseKey()
+fn C.RegQueryValueEx() voidptr
 fn C.RemoveDirectory() int
 fn C.GetStdHandle() int
 fn C.SetConsoleMode()
@@ -133,7 +135,7 @@ fn C._wchdir()
 fn C._wgetcwd() int
 fn C._fullpath() int
 fn C.GetCommandLine() voidptr
-fn C.CommandLineToArgvW() *voidptr
+fn C.CommandLineToArgvW() &voidptr
 fn C.LocalFree()
 fn C.FindFirstFileW() voidptr
 fn C.FindFirstFile() voidptr
