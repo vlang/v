@@ -1,3 +1,5 @@
+module log
+
 import os
 import time
 import term
@@ -95,7 +97,6 @@ pub fn (l Log) fatal(s string){
 }
 
 pub fn (l Log) error(s string){
-
 	if l.level in [.info, .debug, .warning, .error] {
 		if l.output_to_file {
 			l.log_file(s, .error)
@@ -136,15 +137,3 @@ pub fn (l Log) debug(s string){
 		l.log_cli(s, .debug)
 	}
 }
-
-fn main() {
-	mut l := Log { LogLevel.info, 'info', true }
-	l.info('info')
-	l.warn('warn')
-	l.error('error')
-	l.debug('no debug')
-	l.set_level(DEBUG)
-	l.debug('debug')
-	l.fatal('fatal')
-}
-
