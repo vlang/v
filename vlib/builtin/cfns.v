@@ -105,3 +105,7 @@ fn C.GetFileAttributesW(lpFileName byteptr) u32
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lpReserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 fn C.RemoveDirectory() int
+fn C.GetStdHandle()
+fn C.SetConsoleMode()
+fn C._putsws()
+fn C.wprintf()

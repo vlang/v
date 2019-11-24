@@ -32,6 +32,8 @@ fn C.XConvertSelection(d &Display, selection Atom, target Atom, property Atom, r
 fn C.XSync(d &Display, discard int) int
 fn C.XGetWindowProperty(d &Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &i64, bytes_after_return &i64, prop_return &byteptr) int
 fn C.XDeleteProperty(d &Display, w Window, property Atom) int
+fn C.DefaultScren() int
+
 struct C.XSelectionRequestEvent{
 	mut:
 	selection Atom
@@ -39,7 +41,7 @@ struct C.XSelectionRequestEvent{
 	owner Window
 	requestor Window
 	target Atom
-	property Atom 
+	property Atom
 	time int
 }
 struct C.XSelectionEvent{
@@ -49,7 +51,7 @@ struct C.XSelectionEvent{
 	display &Display	/* Display the event was read from */
 	requestor Window
 	target Atom
-	property Atom 
+	property Atom
 	time int
 }
 struct C.XSelectionClearEvent{
@@ -115,7 +117,7 @@ fn new_clipboard() &Clipboard {
 	return new_x11_clipboard(.clipboard)
 }
 
-// Initialize a new clipboard of the given selection type. 
+// Initialize a new clipboard of the given selection type.
 // We can initialize multiple clipboard instances and use them separately
 fn new_x11_clipboard(selection atom_type) &Clipboard {
 	if !(selection in [.clipboard, .primary, .secondary]) {
@@ -295,7 +297,7 @@ fn (cb mut Clipboard) start_listener(){
 					}
 				}
 			}
-			C.PropertyNotify {} 
+			C.PropertyNotify {}
 		}
 	}
 }
@@ -340,7 +342,7 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 	//The list of targets is a list of atoms, so it should have type XA_ATOM
 	//but it may have the type TARGETS instead.
 	if((prop.actual_type != cb.get_atom(.xa_atom) && prop.actual_type != cb.get_atom(.targets)) || prop.actual_format != 32)
-	{ 
+	{
 		//This would be really broken. Targets have to be an atom list
 		//and applications should support this. Nevertheless, some
 		//seem broken (MATLAB 7, for instance), so ask for STRING
@@ -396,7 +398,7 @@ fn (cb &Clipboard) get_target_index(target Atom) int {
 		if atom == target {return i}
 	}
 	return -1
-} 
+}
 
 fn (cb &Clipboard) get_supported_targets() []Atom {
 	return cb.get_atoms(atom_type.utf8_string, .xa_string, .text, .text_plain, .text_html)
@@ -409,7 +411,7 @@ fn new_atom(value int) &Atom {
 }
 
 fn create_xwindow(display &Display) Window {
-	N := int(C.DefaultScreen(display))
+	N := C.DefaultScreen(display)
 	return XCreateSimpleWindow(display, C.RootWindow(display, N), 0, 0, 1, 1, 0, C.BlackPixel(display, N), C.WhitePixel(display, N))
 }
 
