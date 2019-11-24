@@ -698,6 +698,9 @@ pub fn user_os() string {
 	$if solaris {
 		return 'solaris'
 	}
+       $if haiku {
+               return 'haiku'
+       }
 	return 'unknown'
 }
 
@@ -812,6 +815,9 @@ pub fn executable() string {
 		}
 		return string(result, count)
 	}
+       $if haiku {
+               // currently not aware of any steps required
+       }
 	return os.args[0]
 }
 

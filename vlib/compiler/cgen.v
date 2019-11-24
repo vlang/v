@@ -296,6 +296,7 @@ fn os_name_to_ifdef(name string) string {
 		 'android'{ return '__BIONIC__'}
 		 'js' {return '_VJS'}
 		 'solaris'{ return '__sun'}
+                'haiku' { return '__haiku__' }
 	}
 	verror('bad os ifdef name "$name"')
 	return ''
@@ -309,6 +310,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		'_lin.v', '_linux.v'   { '#ifdef __linux__' }
 		'_mac.v', '_darwin.v'  { '#ifdef __APPLE__' }
 		'_solaris.v'           { '#ifdef __sun' }
+               '_haiku.v'             { '#ifdef __haiku__' }
 		else {
 			
 			//verror('bad platform_postfix "$name"')

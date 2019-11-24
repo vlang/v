@@ -26,7 +26,7 @@ enum BuildMode {
 
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris']
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
 )
 
 enum OS {
@@ -40,6 +40,7 @@ enum OS {
 	js   // TODO
 	android
 	solaris
+       haiku
 }
 
 enum Pass {
@@ -969,6 +970,9 @@ pub fn new_v(args[]string) &V {
 		$if solaris {
 			_os = .solaris
 		}
+               $if haiku {
+                       _os = .haiku
+               }
 	}
 	else {
 		_os = os_from_string(target_os)
@@ -1150,6 +1154,7 @@ pub fn os_from_string(os string) OS {
 			// notice that `-os msvc` became `-cc msvc`
 			verror('use the flag `-cc msvc` to build using msvc')
 		}
+               'haiku' { return .haiku }
 	}
 	println('bad os $os') // todo panic?
 	return .linux

@@ -264,7 +264,7 @@ fn (v mut V) cc() {
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
-		v.os == .netbsd || v.os == .dragonfly || v.os == .solaris) {
+		v.os == .netbsd || v.os == .dragonfly || v.os == .solaris || v.os == .haiku) {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
 		if v.os == .linux {
