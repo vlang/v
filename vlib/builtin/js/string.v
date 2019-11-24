@@ -63,10 +63,6 @@ pub fn (s string) split(delim string) []string {
 	return s.split(delim)
 }
 
-pub fn (s string) split_single(delim byte) []string {
-	return s.split(delim.str())
-}
-
 pub fn (s string) split_into_lines() []string {
 	return s.split('\n')
 }
