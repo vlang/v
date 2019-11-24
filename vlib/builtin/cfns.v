@@ -148,3 +148,4 @@ fn C.WaitForSingleObject()
 fn C.GetExitCodeProcess()
 fn C.RegOpenKeyEx() voidptr
 fn C.GetTickCount() i64
+fn C.Sleep()
