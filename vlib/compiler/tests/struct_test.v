@@ -118,3 +118,19 @@ fn test_mutable_fields() {
 	u.name = 'Peter'
 	assert u.name == 'Peter'
 }	
+
+
+struct Def {
+	a int
+	b int = 7
+}	
+
+fn test_default_vals() {
+	d := Def{}
+	assert d.a == 0
+	assert d.b == 7
+	d2 := Def{10, 20}
+	assert d2.a == 10
+	assert d2.b == 20
+}	
+

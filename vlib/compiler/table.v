@@ -444,6 +444,9 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 
 fn (table mut Table) add_default_val(idx int, type_name, val_expr string) {
 	mut t := table.typesmap[type_name]
+	if t.default_vals.len == 0 {
+		t.default_vals = [''].repeat(t.fields.len)
+	}	
 	t.default_vals[idx] = val_expr
 	table.typesmap[type_name] = t
 }
