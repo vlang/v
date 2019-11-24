@@ -165,7 +165,7 @@ pub fn v_test_v(args_before_test string){
 	println('\nBuilding examples...')
 	mut es := new_test_sesion( args_before_test )
 	files := os.walk_ext(parent_dir+'/examples','.v')
-	stable := files.filter(!it.contains('automaton.v'))
+	stable := files.filter(!it.contains('automaton.v') && !it.contains('some_module.v'))
 	es.files << stable
 	es.test()
 	println( es.benchmark.total_message('building examples') )

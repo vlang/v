@@ -1,9 +1,16 @@
 module eventbus
 
+
+pub struct Publisher {
+	mut:
+	registry &Registry
+}
+
 pub struct Subscriber {
 	mut:
 	registry &Registry
 }
+
 struct Registry{
 	mut:
 	names []string
@@ -18,11 +25,10 @@ struct EventHandler {
 pub struct EventBus{
 	mut:
 	registry &Registry
+	publisher &Publisher
 	pub:
-	subscriber Subscriber
+	subscriber &Subscriber
 }
-
-// EventBus Methods
 
 pub fn new() &EventBus{
 	registry := &Registry{
@@ -32,33 +38,48 @@ pub fn new() &EventBus{
 	}
 	return &EventBus{
 		registry,
-		Subscriber{registry}
+		&Publisher{registry},
+		&Subscriber{registry}
 	}
 }
 
-pub fn (eb mut EventBus) publish(name string, p Params){
-	for i, n in eb.registry.names {
+// EventBus Methods
+
+pub fn (eb &EventBus) publish(name string, p Params) {
+	mut publisher := eb.publisher
+	publisher.publish(name, p)
+}
+
+pub fn (eb &EventBus) clear_all(){
+	mut publisher := eb.publisher
+	publisher.clear_all()
+}
+
+pub fn (eb &EventBus) has_subscriber(name string) bool {
+	return eb.registry.check_subscriber(name)
+}
+
+// Publisher Methods
+
+fn (pb mut Publisher) publish(name string, p Params){
+	for i, n in pb.registry.names {
 		if name == n {
-			eh := eb.registry.events[i]
+			eh := pb.registry.events[i]
 			invoke(eh, p)
-			once_index := eb.registry.once.index(eb.registry.names[i])
+			once_index := pb.registry.once.index(pb.registry.names[i])
 			if once_index > -1 {
-				eb.registry.events.delete(i)
-				eb.registry.names.delete(i)
-				eb.registry.once.delete(once_index)
+				pb.registry.events.delete(i)
+				pb.registry.names.delete(i)
+				pb.registry.once.delete(once_index)
 			}
 		}
 	}
 }
 
-pub fn (eb mut EventBus) clear_all(){
-	for i, n in eb.registry.names {
-		eb.registry.delete_entry(i)
+fn (p mut Publisher) clear_all(){
+	for i, n in p.registry.names {
+		p.registry.delete_entry(i)
 	}
-}
-
-pub fn (eb &EventBus) has_subscriber(name string) bool {
-	return eb.registry.check_subscriber(name)
 }
 
 // Subscriber Methods
