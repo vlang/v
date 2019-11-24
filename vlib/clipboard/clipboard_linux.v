@@ -15,7 +15,6 @@ import (
 struct C.Display
 struct C.Atom
 struct C.Window
-fn C.XFree()
 fn C.XInitThreads() int
 fn C.XCloseDisplay(d &Display)
 fn C.XFlush(d &Display)
@@ -32,7 +31,10 @@ fn C.XConvertSelection(d &Display, selection Atom, target Atom, property Atom, r
 fn C.XSync(d &Display, discard int) int
 fn C.XGetWindowProperty(d &Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &i64, bytes_after_return &i64, prop_return &byteptr) int
 fn C.XDeleteProperty(d &Display, w Window, property Atom) int
-fn C.DefaultScren() int
+fn C.DefaultScreen() int
+fn C.RootWindow() voidptr
+fn C.BlackPixel() voidptr
+fn C.WhitePixel() voidptr
 
 struct C.XSelectionRequestEvent{
 	mut:
@@ -412,7 +414,8 @@ fn new_atom(value int) &Atom {
 
 fn create_xwindow(display &Display) Window {
 	N := C.DefaultScreen(display)
-	return XCreateSimpleWindow(display, C.RootWindow(display, N), 0, 0, 1, 1, 0, C.BlackPixel(display, N), C.WhitePixel(display, N))
+	return XCreateSimpleWindow(display, C.RootWindow(display, N), 0, 0, 1, 1,
+		0, C.BlackPixel(display, N), C.WhitePixel(display, N))
 }
 
 fn new_display() &Display {
