@@ -9,7 +9,7 @@ struct C.WPARAM
 struct C.LPARAM
 struct C.LRESULT
 struct C.HGLOBAL
-struct C.HANDLE
+//struct C.HANDLE
 
 struct C.WNDCLASSEX {
     cbSize int
@@ -20,7 +20,7 @@ struct C.WNDCLASSEX {
 fn C.RegisterClassEx(class WNDCLASSEX) int
 fn C.GetClipboardOwner() &HWND
 fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, hInstance voidptr, lpParam voidptr) &HWND
-fn C.MultiByteToWideChar(CodePage u32, dwFlags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
+//fn C.MultiByteToWideChar(CodePage u32, dwFlags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
 fn C.CloseClipboard()
 fn C.GlobalAlloc(uFlag u32, size i64) HGLOBAL
