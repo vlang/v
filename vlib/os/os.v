@@ -198,7 +198,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 		sp := filepath.join(source_path, file)
 		dp := filepath.join(dest_path, file)
 		if os.is_dir(sp) {
-			os.mkdir(dp)
+			os.mkdir(dp) or { panic(err) }
 		}
 		cp_r(sp, dp, overwrite) or {
 			os.rmdir(dp)
@@ -869,9 +869,11 @@ pub fn realpath(fpath string) string {
 	mut fullpath := calloc( MAX_PATH )
 	mut res := 0
 	$if windows {
-	// here we want an int==0 if _fullpath failed , in which case
-	// it would return NULL, and !isnil(NULL) would be false==0
-		res = int( !isnil(C._fullpath( fullpath, fpath.str, MAX_PATH )) )
+		ret := C._fullpath(fullpath, fpath.str, MAX_PATH)
+		if ret == 0 {
+			return fpath
+		}	
+		return string(fullpath)
 	}
 	$else{
 		ret := C.realpath(fpath.str, fullpath)
@@ -880,10 +882,6 @@ pub fn realpath(fpath string) string {
 		}	
 		return string(fullpath)
 	}
-	if res != 0 {
-		return string(fullpath, vstrlen(fullpath))
-	}
-	return fpath
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
@@ -991,7 +989,7 @@ pub fn mkdir_all(path string) {
 	for subdir in path.split(os.path_separator) {
 		p += subdir + os.path_separator
 		if !os.dir_exists(p) {
-			os.mkdir(p)
+			os.mkdir(p) or { panic(err) }
 		}
 	}
 }

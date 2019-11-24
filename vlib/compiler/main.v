@@ -62,6 +62,7 @@ pub mut:
 	out_name_c string       // name of the temporary C file
 	files      []string     // all V files that need to be parsed and compiled
 	dir        string       // directory (or file) being compiled (TODO rename to path?)
+	compiled_dir string     // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	table      &Table       // table with types, vars, functions etc
 	cgen       &CGen        // C code generator
 	x64        &x64.Gen
@@ -842,8 +843,8 @@ pub fn (v &V) log(s string) {
 pub fn new_v(args[]string) &V {
 	// Create modules dirs if they are missing
 	if !os.dir_exists(v_modules_path) {
-		os.mkdir(v_modules_path)
-		os.mkdir('$v_modules_path${os.path_separator}cache')
+		os.mkdir(v_modules_path) or { panic(err) }
+		os.mkdir('$v_modules_path${os.path_separator}cache') or { panic(err) }
 	}
 	
 	// Location of all vlib files
@@ -874,6 +875,7 @@ pub fn new_v(args[]string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
+    
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''
@@ -901,7 +903,7 @@ pub fn new_v(args[]string) &V {
 		// Cross compiling? Use separate dirs for each os
 		/*
 		if target_os != os.user_os() {
-			os.mkdir('$TmpPath/vlib/$target_os')
+			os.mkdir('$TmpPath/vlib/$target_os') or { panic(err) }
 			out_name = '$TmpPath/vlib/$target_os/${base}.o'
 			println('target_os=$target_os user_os=${os.user_os()}')
 			println('!Cross compiling $out_name')
@@ -937,7 +939,7 @@ pub fn new_v(args[]string) &V {
 		d := out_name.all_before_last(os.path_separator)
 		if !os.dir_exists(d) {
 			println('creating a new directory "$d"')
-			os.mkdir(d)
+			os.mkdir(d) or { panic(err) }
 		}	
 	}	
 	mut _os := OS.mac
@@ -1051,6 +1053,7 @@ pub fn new_v(args[]string) &V {
 		os: _os
 		out_name: out_name
 		dir: dir
+		compiled_dir: if os.is_dir( rdir ) { rdir } else { os.dir( rdir ) }
 		lang_dir: vroot
 		table: new_table(obfuscate)
 		out_name_c: out_name_c

@@ -188,7 +188,7 @@ fn (p mut Parser) scan_tokens() {
 			tok: res.tok
 			lit: res.lit
 			line_nr: p.scanner.line_nr
-			col: p.scanner.pos - p.scanner.last_nl_pos
+			pos: p.scanner.pos
 		}
 		if res.tok == .eof {
 				break
@@ -1625,7 +1625,9 @@ fn (p mut Parser) var_expr(v Var) string {
 			p.next()
 			return p.select_query(fn_ph)
 		}
-		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name {
+		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name &&
+			!p.tokens[p.token_idx].lit.contains('exec')
+		{
 			p.next()
 			p.insert_query(fn_ph)
 			return 'void'
@@ -2384,7 +2386,8 @@ fn (p mut Parser) array_init() string {
 			if is_integer && p.tok == .rsbr && p.peek() == .name &&
 				p.cur_tok().line_nr == p.peek_token().line_nr {
 				// there is no space between `[10]` and `byte`
-				if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
+				// if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
+				if p.cur_tok().pos + p.peek_token().lit.len == p.peek_token().pos {
 					p.check(.rsbr)
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
@@ -2499,7 +2502,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 			//println('IF EXPR')
 		//}
 		p.inside_if_expr = true
-		p.gen('(')
+		p.gen('((')
 	}
 	else {
 		p.gen('if (')
@@ -2594,7 +2597,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 		p.inside_if_expr = false
 		if is_expr {
 			p.check_types(first_typ, typ)
-			p.gen(strings.repeat(`)`, elif_depth + 1))
+			p.gen(strings.repeat(`)`, 2 * (elif_depth + 1)))
 		}
 		else_returns := p.returns
 		p.returns = if_returns && else_returns

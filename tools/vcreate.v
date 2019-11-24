@@ -48,7 +48,7 @@ fn main() {
 	c.description = os.get_line()
 	println('Initialising ...')
 	if (os.is_dir(c.name)) { cerror('folder already exists') exit(3) }
-	os.mkdir(c.name)
+	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod()
 	c.write_main()
 	println('Complete !')
