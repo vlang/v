@@ -26,7 +26,7 @@ enum BuildMode {
 
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris']
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
 )
 
 enum OS {
@@ -40,6 +40,7 @@ enum OS {
 	js   // TODO
 	android
 	solaris
+	haiku
 }
 
 enum Pass {
