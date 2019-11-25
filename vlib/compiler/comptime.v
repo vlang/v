@@ -173,7 +173,7 @@ fn (p mut Parser) comp_time() {
 		p.statements_no_rcbr()
 		p.restore_state(saved_state)
 		if !is_strings_imorted {
-			p.unregister_import(p.import_table.resolve_alias('strings'))
+			p.unregister_import('strings')
 		}
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut { '->' } else { '.' }
