@@ -75,6 +75,40 @@ fn foo_ok() ?int {
 	return 777
 }	
 
+fn foo_str() ?string {
+	return 'something'
+}
+
 fn test_q() {
 	//assert foo_ok()? == true
 }	
+
+struct Person {
+mut:
+	name string
+	age int
+	title ?string
+}
+
+fn test_field_or() {
+	name := foo_str() or {
+		'nada'
+	}
+	assert name == 'something'
+
+	mut p := Person {}
+	p.name = foo_str() or {
+		'nothing'
+	}
+	assert p.name == 'something'
+
+	p.age = foo_ok() or {
+		panic('no age')
+	}
+	assert p.age == 777
+
+	mytitle := p.title or {
+		'default'
+	}
+	assert mytitle == 'default'
+}
