@@ -163,7 +163,8 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar)
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
-		if !p.import_table.known_import('strings') {
+		is_strings_imorted := p.import_table.known_import('strings')
+		if !is_strings_imorted {
 			p.register_import('strings', 0) // used by v_code
 		}
 		saved_state := p.save_state()
@@ -171,7 +172,9 @@ fn (p mut Parser) comp_time() {
 		p.add_text(v_code)
 		p.statements_no_rcbr()
 		p.restore_state(saved_state)
-		p.unregister_import('strings')
+		if is_strings_imorted {
+			p.unregister_import(p.import_table.resolve_alias('strings'))
+		}
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut { '->' } else { '.' }
 		p.genln('vweb__Context_html($receiver.name $dot vweb, tmpl_res)')

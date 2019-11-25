@@ -79,16 +79,6 @@ pub:
 	mod            string
 }
 
-struct ParserState {
-	scanner_text string
-	tokens       []Token
-	token_idx    int
-	tok          TokenKind
-	prev_tok     TokenKind
-	prev_tok2    TokenKind
-	lit          string
-}
-
 const (
 	MaxModuleDepth = 4
 	Reserved_Types = {
@@ -98,6 +88,16 @@ const (
 		'rune' : true, 'byteptr' : true, 'voidptr' : true
 	}
 )
+
+struct ParserState {
+	scanner_text string
+	tokens       []Token
+	token_idx    int
+	tok          TokenKind
+	prev_tok     TokenKind
+	prev_tok2    TokenKind
+	lit          string
+}
 
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
