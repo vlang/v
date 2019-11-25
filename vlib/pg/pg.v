@@ -29,6 +29,10 @@ fn C.PQconnectdb(a byteptr) &C.PGconn
 fn C.PQerrorMessage(voidptr) byteptr
 fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int
+fn C.PQntuples(voidptr) int
+fn C.PQnfields(voidptr) int
+fn C.PQexec(voidptr) int
+fn C.PQexecParams(voidptr) int
 
 pub fn connect(config pg.Config) DB {
 	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname'

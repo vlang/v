@@ -474,7 +474,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	if rawurl == '' && via_request {
 		return error(error_msg('parse_url: empty URL', rawurl))
 	}
-	mut url := URL{}
+	mut url := URL{user:0}
 
 	if rawurl == '*' {
 		url.path = '*'
