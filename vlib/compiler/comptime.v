@@ -169,7 +169,9 @@ fn (p mut Parser) comp_time() {
 		}
 		p.import_table.register_used_import('strings')
 		p.genln('/////////////////// tmpl start')
+		p.is_vweb = true
 		p.statements_from_text(v_code, false)
+		p.is_vweb = false
 		p.genln('/////////////////// tmpl end')
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut { '->' } else { '.' }
