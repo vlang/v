@@ -1116,13 +1116,9 @@ pub fn create_symlink() {
 
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
-println('vexe_path vexe: ' + vexe + ' vexe.len: $vexe.len ')
 	if '' != vexe {	return vexe	}
 	real_vexe_path := os.realpath(os.executable())
-println('vexe_path executable: ' + os.executable() )			   
-println('vexe_path real_vexe_path: ' + real_vexe_path)
 	os.setenv('VEXE', real_vexe_path, true)
-println('===============================> VEXE is now: ' + os.getenv('VEXE') )
 	return real_vexe_path
 }
 
