@@ -326,7 +326,7 @@ pub fn (p mut Parser) add_text(text string) {
 
 fn (p mut Parser) statements_from_text(text string, rcbr bool) {
 	saved_state := p.save_state()
-	p.clear_state(false)
+	p.clear_state()
 	p.add_text(text)
 	p.next()
 	if rcbr {
