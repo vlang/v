@@ -168,7 +168,7 @@ fn (p mut Parser) comp_time() {
 			p.register_import('strings', 0) // used by v_code
 		}
 		saved_state := p.save_state()
-		p.reset_state()
+		p.clear_state()
 		p.add_text(v_code)
 		p.statements_no_rcbr()
 		p.restore_state(saved_state)

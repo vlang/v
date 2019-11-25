@@ -297,7 +297,7 @@ pub fn (p mut Parser) restore_state(state ParserState) {
 	p.lit          = state.lit
 }
 
-fn (p mut Parser) reset_state() {
+fn (p mut Parser) clear_state() {
 	p.tokens = []
 	p.token_idx = 0
 	p.scanner.text = ''
