@@ -131,7 +131,7 @@ pub fn mv(old, new string) {
 	$if windows {
 		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
-		C.rename(&char(old.str), &char(new.str))
+		C.rename(*char(old.str), *char(new.str))
 	}
 }
 
@@ -210,7 +210,7 @@ fn vfopen(path, mode string) *C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		return C.fopen(&char(path.str), &char(mode.str))
+		return C.fopen(*char(path.str), *char(mode.str))
 	}
 }	
 
@@ -244,7 +244,7 @@ pub fn read_lines(path string) ?[]string {
 		if len > 1 && buf[len - 2] == 13 {
 			buf[len - 2] = `\0`
 		}
-		res << cstring_to_vstring(buf)
+		res << tos_clone(buf)
 		buf_index = 0
 	}
 	C.fclose(fp)
@@ -275,7 +275,7 @@ pub fn open(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(&char(cpath), 'rb')
+			cfile: C.fopen(*char(cpath), 'rb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -296,7 +296,7 @@ pub fn create(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(&char(cpath), 'wb')
+			cfile: C.fopen(*char(cpath), 'wb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -316,7 +316,7 @@ pub fn open_append(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(&char(cpath), 'ab')
+			cfile: C.fopen(*char(cpath), 'ab')
 		}
 	}
 	if isnil(file.cfile) {
@@ -473,41 +473,43 @@ pub fn sigint_to_signal_name(si int) string {
 
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {	
-	mut s := &byte(0)
 	$if windows {
-		s = C._wgetenv(key.to_wide())
+		s := C._wgetenv(key.to_wide())
 		if isnil(s) {
 			return ''
 		}
 		return string_from_wide(s)
 	} $else {
-		//NB: C.getenv returns a pointer to the process environment, which HAS to be copied.
-		s = C.getenv(key.str)
+		s := *byte(C.getenv(key.str))
 		if isnil(s) {
 			return ''
 		}
-		return cstring_to_vstring(s)
+		return string(s)
 	}
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
-	mut res := -1					
 	$if windows {
+		format := '$name=$value'
+
 		if overwrite {
-			format := '$name=$value'
-			res = C._putenv(format.str)
+			return C._putenv(format.str)
 		}
-	} $else {
-		res = C.setenv(name.str, value.str, overwrite)
+
+		return -1
 	}
-	return res
+	$else {
+		return C.setenv(name.str, value.str, overwrite)
+	}
 }
 
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='		
+		format := '${name}='
+		
 		return C._putenv(format.str)
-	} $else {
+	}
+	$else {
 		return C.unsetenv(name.str)
 	}
 }
@@ -526,9 +528,11 @@ pub fn file_exists(_path string) bool {
 pub fn rm(path string) {
 	$if windows {
 		C._wremove(path.to_wide())
-	} $else {
+	}
+	$else {
 		C.remove(path.str)
 	}
+	// C.unlink(path.cstr())
 }
 
 
@@ -536,7 +540,8 @@ pub fn rm(path string) {
 pub fn rmdir(path string) {
 	$if !windows {
 		C.rmdir(path.str)		
-	} $else {
+	}
+	$else {
 		C.RemoveDirectory(path.to_wide())
 	}
 }
@@ -545,6 +550,7 @@ pub fn rmdir(path string) {
 fn print_c_errno() {
 	//C.printf('errno=%d err="%s"\n', C.errno, C.strerror(C.errno))
 }
+
 
 pub fn ext(path string) string {
 	pos := path.last_index('.')
@@ -590,7 +596,7 @@ pub fn filename(path string) string {
 
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
-	str := get_raw_line()
+    str := get_raw_line()
 	$if windows {
 		return str.trim_right('\r\n')
 	}
@@ -601,9 +607,9 @@ pub fn get_line() string {
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-    mut max_line_chars := 256
     $if windows {
-        buf := &byte(calloc(max_line_chars*2))
+        max_line_chars := 256
+        buf := &byte(malloc(max_line_chars*2))
         if is_atty(0) > 0 {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := u32(0)
@@ -614,13 +620,14 @@ pub fn get_raw_line() string {
         len := int(  C.wcslen(&u16(buf)) )
         if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
         return ''
-    } $else {	
-        buf := [256]byte
-        nr_chars := C.getline(&buf, &max_line_chars, stdin)
+    } $else {
+        max := size_t(256)
+        buf := *char(malloc(int(max)))
+        nr_chars := C.getline(&buf, &max, stdin)
         if nr_chars == 0 {
             return ''
         }
-        return cstring_to_vstring( buf )
+        return string(byteptr(buf), nr_chars)
     }
 }
 
@@ -742,59 +749,60 @@ fn C.readlink() int
 // process.
 pub fn executable() string {
 	$if linux {
-		mut result := [MAX_PATH]char
+		mut result := malloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
 			panic('error reading /proc/self/exe to get exe path')
 		}
-		return cstring_to_vstring( result )
+		return string(result, count)
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(calloc(max*2)) // MAX_PATH * sizeof(wchar_t)
+		mut result := &u16(malloc(max*2)) // MAX_PATH * sizeof(wchar_t)
 		len := int(C.GetModuleFileName( 0, result, max ))
 		return string_from_wide2(result, len)
 	}
 	$if mac {
-		mut result := [MAX_PATH]char
+		mut result := malloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath (pid, result, MAX_PATH)
 		if ret <= 0  {
-		      return os.realpath( os.args[0] )
+			println('os.executable() failed')
+			return '.'
 		}
-		return cstring_to_vstring( result )
+		return string(result)
 	}
 	$if freebsd {
-		mut result := [MAX_PATH]char
+		mut result := malloc(MAX_PATH)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := MAX_PATH
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
-		return cstring_to_vstring( result )
+		return string(result)
 	}
 	$if openbsd {
 		// "Sadly there is no way to get the full path of the executed file in OpenBSD."
 		// lol
-		return os.realpath( os.args[0] )
+		return os.args[0]
 	}
 	$if solaris {
 	}
 	$if netbsd {
-		mut result := [MAX_PATH]char
+		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
 		if count < 0 {
 			panic('error reading /proc/curproc/exe to get exe path')
 		}
-		return cstring_to_vstring( result )
+		return string(result, count)
 	}
 	$if dragonfly {
-		mut result := [MAX_PATH]char
+		mut result := malloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH ))
 		if count < 0 {
 			panic('error reading /proc/curproc/file to get exe path')
 		}
-		return cstring_to_vstring( result )
+		return string(result, count)
 	}
-	return os.realpath( os.args[0] )
+	return os.args[0]
 }
 
 // is_dir returns a boolean indicating whether the given path is a directory.
@@ -827,22 +835,21 @@ pub fn chdir(path string) {
 }
 
 // getwd returns the absolute path name of the current directory.
-pub fn getwd() string {
+pub fn getwd() string {	
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
 		buf := &u16(calloc(max*2))
 		if C._wgetcwd(buf, max) == 0 {
-			free(buf)			      
-			return '.'
+			return ''
 		}
 		return string_from_wide(buf)
 	}
 	$else {
-		buf := [MAX_PATH]char
-		if C.getcwd(buf, MAX_PATH) == 0 {
-			return '.'
+		buf := calloc(512)
+		if C.getcwd(buf, 512) == 0 {
+			return ''
 		}
-		return cstring_to_vstring( buf )
+		return string(buf)
 	}
 }
 
@@ -852,20 +859,22 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut ret := [MAX_PATH]char
-	mut res := byteptr(0)
+	mut fullpath := calloc( MAX_PATH )
+	mut res := 0
 	$if windows {
-		res = byteptr( C._fullpath(ret, fpath.str, MAX_PATH) )
-		if isnil(res) {
+		ret := C._fullpath(fullpath, fpath.str, MAX_PATH)
+		if ret == 0 {
 			return fpath
 		}	
-	} $else {
-		res = byteptr( C.realpath(fpath.str, ret) )
-		if isnil(res) {
-			return fpath
-		}	
+		return string(fullpath)
 	}
-	return cstring_to_vstring( ret )
+	$else{
+		ret := C.realpath(fpath.str, fullpath)
+		if ret == 0 {
+			return fpath
+		}	
+		return string(fullpath)
+	}
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
