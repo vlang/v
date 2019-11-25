@@ -99,6 +99,12 @@ pub fn eprintln(s string) {
 		C.fflush(stderr)
 		return
 	}
+	$if freebsd {
+		C.fprintf(stderr, '%.*s\n', s.len, s.str)
+		C.fflush(stderr)
+		return
+	}
+
 	// TODO issues with stderr and cross compiling for Linux
 	println(s)
 }
@@ -171,4 +177,3 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
-

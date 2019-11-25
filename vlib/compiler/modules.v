@@ -153,21 +153,16 @@ pub fn(graph &DepGraph) imports() []string {
 fn (v &V) find_module_path(mod string) ?string {
 	// Module search order:
 	// 1) search in the *same* directory, as the compiled final v program source
-  //    (i.e. the . in `v .` or file.v in `v file.v`)
-	// 2) search in the current work dir (this preserves existing behaviour)
-	// 3) search in vlib/
-	// 4) search in ~/.vmodules/ (i.e. modules installed with vpm)
+	//    (i.e. the . in `v .` or file.v in `v file.v`)
+	// 2) search in vlib/
+	// 3.1) search in -vpath (if given)
+	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm) (no -vpath)
+	modules_lookup_path := if v.pref.vpath.len > 0 { v.pref.vpath } else { v_modules_path }
 	mod_path := v.module_path(mod)
 	mut tried_paths := []string
 	tried_paths << filepath.join(v.compiled_dir, mod_path)
-	if v.pref.vpath.len > 0 {
-		tried_paths << filepath.join(v.pref.vlib_path, mod_path)
-		tried_paths << filepath.join(v.pref.vpath, mod_path)
-	}else{
-		tried_paths << filepath.join(os.getwd(), mod_path)
-		tried_paths << filepath.join(v.pref.vlib_path, mod_path)
-		tried_paths << filepath.join(v_modules_path, mod_path)
-	}
+	tried_paths << filepath.join(v.pref.vlib_path, mod_path)
+	tried_paths << filepath.join(modules_lookup_path, mod_path)
 	for try_path in tried_paths {
 		if v.pref.is_verbose { println('  >> trying to find $mod in $try_path ...') }
 		if os.dir_exists(try_path) { 
