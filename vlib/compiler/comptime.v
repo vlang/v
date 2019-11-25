@@ -170,7 +170,9 @@ fn (p mut Parser) comp_time() {
 		saved_state := p.save_state()
 		p.clear_state()
 		p.add_text(v_code)
+		p.genln('/////////////////// tmpl start')
 		p.statements_no_rcbr()
+		p.genln('/////////////////// tmpl end')
 		p.restore_state(saved_state)
 		if !is_strings_imorted {
 			p.unregister_import('strings')
