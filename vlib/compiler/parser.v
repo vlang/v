@@ -311,6 +311,18 @@ pub fn (p mut Parser) add_text(text string) {
 	p.scan_tokens()
 }
 
+fn (p mut Parser) statements_from_text(text string, rcbr bool) {
+	saved_state := p.save_state()
+	p.clear_state()
+	p.add_text(text)
+	if rcbr {
+		p.statements()
+	} else {
+		p.statements_no_rcbr()
+	}
+	p.restore_state(saved_state)
+}
+
 fn (p mut Parser) parse(pass Pass) {
 	p.cgen.line = 0
 	p.cgen.file = cescaped_path(os.realpath(p.file_path))

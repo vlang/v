@@ -168,13 +168,9 @@ fn (p mut Parser) comp_time() {
 			p.register_import('strings', 0) // used by v_code
 		}
 		p.import_table.register_used_import('strings')
-		saved_state := p.save_state()
-		p.clear_state()
-		p.add_text(v_code)
 		p.genln('/////////////////// tmpl start')
-		p.statements_no_rcbr()
+		p.statements_from_text(v_code, false)
 		p.genln('/////////////////// tmpl end')
-		p.restore_state(saved_state)
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut { '->' } else { '.' }
 		p.genln('vweb__Context_html($receiver.name $dot vweb, tmpl_res)')
