@@ -130,7 +130,7 @@ pub fn dir_exists(path string) bool {
 	return false
 }
 
-fn C.CreateDirectory(byteptr, int) bool
+
 
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
