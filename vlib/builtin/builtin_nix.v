@@ -47,10 +47,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		println('TODO: print_backtrace_skipping_top_frames_linux $skipframes with tcc fails tests with "stack smashing detected" .')
 		return false
 	}
-	$if !android {
+	$if !android {		// backtrace is not available on Android.
 		$if glibc {
-		// backtrace is not available on Android.
-		//if C.backtrace_symbols_fd != 0 {
 			buffer := [100]byteptr
 			nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 			nr_actual_frames := nr_ptrs-skipframes

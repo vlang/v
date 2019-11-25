@@ -502,6 +502,7 @@ pub fn (v mut V) generate_main() {
 		else if v.table.main_exists() {
 			v.gen_main_start(true)
 			cgen.genln('  main__main();')
+			cgen.genln('free(g_str_buf);')
 			v.gen_main_end('return 0')
 		}
 	}
@@ -876,7 +877,7 @@ pub fn new_v(args[]string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
-    
+
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''

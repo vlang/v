@@ -174,8 +174,8 @@ fn (p mut Parser) comp_time() {
 		p.is_vweb = false
 		p.genln('/////////////////// tmpl end')
 		receiver := p.cur_fn.args[0]
-		dot := if receiver.is_mut { '->' } else { '.' }
-		p.genln('vweb__Context_html($receiver.name $dot vweb, tmpl_res)')
+		dot := if receiver.is_mut || receiver.ptr { '->' } else { '.' }
+		p.genln('vweb__Context_html($receiver.name /*!*/$dot vweb, tmpl_res)')
 	}
 	else {
 		p.error('bad comptime expr')
@@ -261,16 +261,23 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	p.cgen.cur_line = ''
 	p.check(.dollar)
 	var := p.check_name()
+	mut j := 0
 	for i, method in typ.methods {
 		if method.typ != 'void' {
+			
 			continue
 		}
 		receiver := method.args[0]
-		amp := if receiver.is_mut { '&' } else { '' }
-		if i > 0 {
+		if !p.expr_var.ptr {
+			p.error('`$p.expr_var.name` needs to be a reference')
+		}	
+		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
+		if j > 0 {
 			p.gen(' else ')
 		}
-		p.gen('if ( string_eq($var, _STR("$method.name")) ) ${typ.name}_$method.name($amp $p.expr_var.name);')
+		p.genln('if ( string_eq($var, _STR("$method.name")) ) ' +
+			'${typ.name}_$method.name($amp $p.expr_var.name);')
+		j++
 	}
 	p.check(.lpar)
 	p.check(.rpar)

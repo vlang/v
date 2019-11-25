@@ -1000,7 +1000,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 		}
 		p.expected_type = arg.typ
-		clone := p.pref.autofree && arg.typ == 'string' && arg.is_moved && p.mod != 'builtin'
+		clone := p.pref.autofree && p.mod != 'string' && arg.typ == 'string' &&
+	!p.builtin_mod //&& arg.is_moved
 		if clone {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}

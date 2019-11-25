@@ -296,7 +296,7 @@ pub fn (p mut Parser) save_state() ParserState {
 }
 
 pub fn (p mut Parser) restore_state(state ParserState) {
-	p.scanner.line_nr = state.scanner_line_nr 
+	p.scanner.line_nr = state.scanner_line_nr
 	p.scanner.text    = state.scanner_text
 	p.scanner.pos     = state.scanner_pos
 	p.scanner.line_ends = state.scanner_line_ends
@@ -1111,36 +1111,13 @@ fn (p mut Parser) close_scope() {
 	mut i := p.var_idx - 1
 	for ; i >= 0; i-- {
 		v := p.local_vars[i]
-		if v.scope_level != p.cur_fn.scope_level {
-			break
+		if p.pref.autofree && (v.is_alloc || (v.is_arg && v.typ == 'string')) { // && !p.pref.is_test {
+			p.free_var(v)
 		}
-		// Clean up memory, only do this if -autofree was passed for now
-		if p.pref.autofree && v.is_alloc { // && !p.pref.is_test {
-			mut free_fn := 'free'
-			if v.typ.starts_with('array_') {
-				free_fn = 'v_array_free'
-			} else if v.typ == 'string' {
-				free_fn = 'v_string_free'
-				//if p.fileis('str.v') {
-					//println('freeing str $v.name')
-				//}
-				continue
-			}	else if v.ptr || v.typ.ends_with('*') {
-				free_fn = 'v_ptr_free'
-				//continue
-			}	 else {
-				continue
-			}
-			if p.returns {
-				// Don't free a variable that's being returned
-				if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
-					prev_line := p.cgen.lines[p.cgen.lines.len-2]
-					p.cgen.lines[p.cgen.lines.len-2] =
-						'$free_fn($v.name); /* :) close_scope free $v.typ */' + prev_line
-				}
-			} else {
-				p.genln('$free_fn($v.name); // close_scope free')
-			}
+		//if p.fileis('mem.v') {
+		//println(v.name + ' $v.is_arg scope=$v.scope_level cur=$p.cur_fn.scope_level')}
+		if v.scope_level != p.cur_fn.scope_level {// && !v.is_arg {
+			break
 		}
 	}
 	if p.cur_fn.defer_text.last() != '' {
@@ -1151,6 +1128,37 @@ fn (p mut Parser) close_scope() {
 	p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
 	p.var_idx = i + 1
 	// println('close_scope new var_idx=$f.var_idx\n')
+}
+
+fn (p mut Parser) free_var(v Var) {
+	// Clean up memory, only do this if -autofree was passed for now
+	//if p.fileis('mem.v') {println('free_var() $v.name')}
+	mut free_fn := 'free'
+	if v.typ.starts_with('array_') {
+		free_fn = 'v_array_free'
+	} else if v.typ == 'string' {
+		free_fn = 'v_string_free'
+		//if p.fileis('str.v') {
+			//println('freeing str $v.name')
+		//}
+		//continue
+	}	else if v.ptr || v.typ.ends_with('*') {
+		free_fn = 'v_ptr_free'
+		//continue
+	}	 else {
+		return
+	}
+	if p.returns {
+		// Don't free a variable that's being returned
+		if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
+			prev_line := p.cgen.lines[p.cgen.lines.len-2]
+			p.cgen.lines[p.cgen.lines.len-2] =
+				'$free_fn($v.name); /* :) close_scope free $v.typ */' + prev_line
+		}
+	} else {
+		//if p.fileis('mem.v') {println(v.name)}
+		p.genln('$free_fn($v.name); // close_scope free')
+	}
 }
 
 fn (p mut Parser) genln(s string) {
@@ -1567,11 +1575,13 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
         	p.gen('*')
         }
     }
+   /*
 	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
 		p.assigned_type == 'string' {
 		p.warn('setting moved ' + v.typ)
 		p.mark_arg_moved(v)
 	}
+	*/
 	mut typ := p.var_expr(v)
 	// *var
 	if deref_nr > 0 {
@@ -1691,12 +1701,14 @@ fn (p mut Parser) var_expr(v Var) string {
 			p.next()
 			return p.select_query(fn_ph)
 		}
-		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name &&
-			!p.tokens[p.token_idx].lit.contains('exec')
+		if typ == 'pg__DB' && !p.fileis('pg.v') && p.peek() == .name
 		{
-			p.next()
-			p.insert_query(fn_ph)
-			return 'void'
+			name := p.tokens[p.token_idx].lit
+			if !name.contains('exec') && !name.starts_with('q_') {
+				p.next()
+				p.insert_query(fn_ph)
+				return 'void'
+			}
 		}
 		// println('dot #$dc')
 		typ = p.dot(typ, fn_ph)

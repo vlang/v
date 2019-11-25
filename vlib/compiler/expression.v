@@ -445,6 +445,7 @@ fn (p mut Parser) expression() string {
 		is_num := typ.contains('*') || is_number_type(typ)
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
+			p.is_alloc = true
 			p.cgen.set_placeholder(ph, 'string_add(')
 			p.gen(',')
 		}
