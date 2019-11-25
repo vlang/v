@@ -66,15 +66,6 @@ fn (p mut Parser) register_import_alias(alias string, mod string, tok_idx int) {
 	p.import_table.import_tok_idx[mod] = tok_idx
 }
 
-fn (p mut Parser) unregister_import(mod string) {
-	p.unregister_import_alias(mod)
-}
-
-fn (p mut Parser) unregister_import_alias(alias string) {
-	if !(alias in p.import_table.imports) { return }
-	p.import_table.imports.delete(alias)
-}
-
 fn (it &ImportTable) get_import_tok_idx(mod string) int {
 	return it.import_tok_idx[mod]
 }
