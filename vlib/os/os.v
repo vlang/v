@@ -484,32 +484,27 @@ pub fn getenv(key string) string {
 		if isnil(s) {
 			return ''
 		}
-		return string(s)
+		return cstring_to_vstring( *char(s) )
 	}
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '$name=$value'
-
 		if overwrite {
 			return C._putenv(format.str)
 		}
-
 		return -1
-	}
-	$else {
+	} $else {
 		return C.setenv(name.str, value.str, overwrite)
 	}
 }
 
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='
-		
+		format := '${name}='		
 		return C._putenv(format.str)
-	}
-	$else {
+	} $else {
 		return C.unsetenv(name.str)
 	}
 }
@@ -859,22 +854,20 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
+	mut ret := *char(0)
 	mut fullpath := calloc( MAX_PATH )
-	mut res := 0
 	$if windows {
-		ret := C._fullpath(fullpath, fpath.str, MAX_PATH)
-		if ret == 0 {
+		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
+		if isnil(ret) {
 			return fpath
 		}	
-		return string(fullpath)
-	}
-	$else{
-		ret := C.realpath(fpath.str, fullpath)
-		if ret == 0 {
+	} $else {
+		ret = C.realpath(fpath.str, fullpath)
+		if isnil(ret) {
 			return fpath
 		}	
-		return string(fullpath)
 	}
+	return cstring_to_vstring(*char(fullpath))
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
