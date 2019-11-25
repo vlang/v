@@ -852,26 +852,20 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut ret := byteptr(0)
+	mut ret := [MAX_PATH]char
+	mut res := byteptr(0)
 	$if windows {
-		// NB: 0 means C._fullpath will allocate
-		ret = byteptr( C._fullpath(0, fpath.str, MAX_PATH) )
-		if ret == 0 {
+		res = byteptr( C._fullpath(ret, fpath.str, MAX_PATH) )
+		if isnil(res) {
 			return fpath
 		}	
 	} $else {
-		// NB: 0 means C.realpath will allocate
-		 ret = byteptr( C.realpath(fpath.str, 0) )
-		if ret == 0 {
+		res = byteptr( C.realpath(fpath.str, ret) )
+		if isnil(res) {
 			return fpath
 		}	
 	}
-	sreal := cstring_to_vstring( ret )
-	unsafe{
-	       // NB: the c string ret was allocated by C above
-//	       free(ret)
-	}
-	return sreal
+	return cstring_to_vstring( ret )
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
