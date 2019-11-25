@@ -292,14 +292,10 @@ pub fn (p mut Parser) save_state() ParserState {
 		prev_tok     : p.prev_tok
 		prev_tok2    : p.prev_tok2
 		lit          : p.lit
-		cgen_tmp_line: p.cgen.tmp_line
-		cgen_cur_line: p.cgen.cur_line
-		cgen_lines   : p.cgen.lines
-		cgen_line    : p.cgen.line
 	}
 }
 
-pub fn (p mut Parser) restore_state(state ParserState, restore_cgen bool) {
+pub fn (p mut Parser) restore_state(state ParserState) {
 	p.scanner.line_nr = state.scanner_line_nr 
 	p.scanner.text  = state.scanner_text
 	p.scanner.pos   = state.scanner_pos
@@ -309,27 +305,15 @@ pub fn (p mut Parser) restore_state(state ParserState, restore_cgen bool) {
 	p.prev_tok      = state.prev_tok
 	p.prev_tok2     = state.prev_tok2
 	p.lit           = state.lit
-	if restore_cgen {
-		p.cgen.tmp_line = state.cgen_tmp_line
-		p.cgen.cur_line = state.cgen_cur_line
-		p.cgen.lines = state.cgen_lines
-		p.cgen.line  = state.cgen_line
-	}
 }
 
-fn (p mut Parser) clear_state(clear_cgen bool) {
+fn (p mut Parser) clear_state() {
 	p.scanner.line_nr = 0
 	p.scanner.text = ''
 	p.scanner.pos = 0
 	p.tokens = []
 	p.token_idx = 0
 	p.lit = ''
-	if clear_cgen {
-		p.cgen.tmp_line = ''
-		p.cgen.cur_line = ''
-		p.cgen.lines = []
-		p.cgen.line  = 0
-	}
 }
 
 pub fn (p mut Parser) add_text(text string) {
@@ -350,7 +334,7 @@ fn (p mut Parser) statements_from_text(text string, rcbr bool) {
 	} else {
 		p.statements_no_rcbr()
 	}
-	p.restore_state(saved_state, false)
+	p.restore_state(saved_state)
 }
 
 fn (p mut Parser) parse(pass Pass) {
