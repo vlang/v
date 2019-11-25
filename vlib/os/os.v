@@ -1072,6 +1072,8 @@ pub fn join(base string, dirs ...string) string {
 	return filepath.join(base,dirs)
 }
 
+fn C.NSTemporaryDirectory() byteptr
+
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
 pub fn tmpdir() string {
 	mut path := os.getenv('TMPDIR')
