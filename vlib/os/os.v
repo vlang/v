@@ -615,7 +615,7 @@ pub fn get_raw_line() string {
         if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
         return ''
     } $else {	
-        buf := [256]char
+        buf := [256]byte
         nr_chars := C.getline(&buf, &max_line_chars, stdin)
         if nr_chars == 0 {
             return ''
