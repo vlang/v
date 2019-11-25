@@ -99,10 +99,6 @@ struct ParserState {
 	prev_tok      TokenKind
 	prev_tok2     TokenKind
 	lit           string
-	cgen_tmp_line string
-	cgen_cur_line string
-	cgen_line     int
-	cgen_lines    []string
 }
 
 // new parser from string. unique id specified in `id`.
