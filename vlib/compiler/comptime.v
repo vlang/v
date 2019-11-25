@@ -172,7 +172,7 @@ fn (p mut Parser) comp_time() {
 		p.add_text(v_code)
 		p.statements_no_rcbr()
 		p.restore_state(saved_state)
-		if is_strings_imorted {
+		if !is_strings_imorted {
 			p.unregister_import(p.import_table.resolve_alias('strings'))
 		}
 		receiver := p.cur_fn.args[0]
