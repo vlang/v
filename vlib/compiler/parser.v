@@ -91,8 +91,10 @@ const (
 
 struct ParserState {
 	scanner_line_nr int
-	scanner_text  string
-	scanner_pos   int
+	scanner_text    string
+	scanner_pos     int
+	scanner_line_ends []int
+	scanner_nlines    int
 	tokens        []Token
 	token_idx     int
 	tok           TokenKind
@@ -280,8 +282,10 @@ fn (p &Parser) log(s string) {
 pub fn (p mut Parser) save_state() ParserState {
 	return ParserState{
 		scanner_line_nr: p.scanner.line_nr
-		scanner_text : p.scanner.text
-		scanner_pos  : p.scanner.pos
+		scanner_text   : p.scanner.text
+		scanner_pos    : p.scanner.pos
+		scanner_line_ends : p.scanner.line_ends
+		scanner_nlines    : p.scanner.nlines
 		tokens       : p.tokens
 		token_idx    : p.token_idx
 		tok          : p.tok
@@ -293,8 +297,10 @@ pub fn (p mut Parser) save_state() ParserState {
 
 pub fn (p mut Parser) restore_state(state ParserState) {
 	p.scanner.line_nr = state.scanner_line_nr 
-	p.scanner.text  = state.scanner_text
-	p.scanner.pos   = state.scanner_pos
+	p.scanner.text    = state.scanner_text
+	p.scanner.pos     = state.scanner_pos
+	p.scanner.line_ends = state.scanner_line_ends
+	p.scanner.nlines    = state.scanner_nlines
 	p.tokens        = state.tokens
 	p.token_idx     = state.token_idx
 	p.tok           = state.tok
@@ -307,6 +313,8 @@ fn (p mut Parser) clear_state() {
 	p.scanner.line_nr = 0
 	p.scanner.text = ''
 	p.scanner.pos = 0
+	p.scanner.line_ends = []
+	p.scanner.nlines = 0
 	p.tokens = []
 	p.token_idx = 0
 	p.lit = ''
