@@ -5,7 +5,8 @@ import log
 import benchmark
 
 fn main(){
-	logger := &log.Log{log.DEBUG, 'terminal'}
+	mut logger := log.Log{}
+	logger.set_level(log.DEBUG)
 	options := runner.new_options()
 
 	mut bmark := benchmark.new_benchmark()
