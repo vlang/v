@@ -1,3 +1,11 @@
 FROM alpine:3.10
-RUN apk add gcc musl-dev upx git make 
-RUN mkdir -p /usr/local/v && git clone --depth 1 https://github.com/vlang/v.git /usr/local/v && cd /usr/local/v && make
+
+LABEL maintainer="Delyan Angelov <delyan@bulsynt.org>"
+
+ENV VVV /opt/vlang
+ENV PATH $VVV:$PATH
+WORKDIR $VVV
+
+RUN apk add git make upx gcc musl-dev openssl-dev sqlite-dev libx11-dev glfw-dev freetype-dev
+COPY . .
+RUN make && ln -s /opt/vlang/v /usr/local/bin/v
