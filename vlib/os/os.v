@@ -869,7 +869,7 @@ pub fn realpath(fpath string) string {
 	sreal := cstring_to_vstring( ret )
 	unsafe{
 	       // NB: the c string ret was allocated by C above
-	       free(ret)
+//	       free(ret)
 	}
 	return sreal
 }
