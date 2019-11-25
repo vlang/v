@@ -8,4 +8,5 @@ WORKDIR $VVV
 
 RUN apk add git make upx gcc musl-dev openssl-dev sqlite-dev libx11-dev glfw-dev freetype-dev
 COPY . .
+
 RUN make && ln -s $VVV/v /usr/local/bin/v
