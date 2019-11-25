@@ -90,13 +90,15 @@ const (
 )
 
 struct ParserState {
-	scanner_text string
-	tokens       []Token
-	token_idx    int
-	tok          TokenKind
-	prev_tok     TokenKind
-	prev_tok2    TokenKind
-	lit          string
+	scanner_line_nr int
+	scanner_text  string
+	scanner_pos   int
+	tokens        []Token
+	token_idx     int
+	tok           TokenKind
+	prev_tok      TokenKind
+	prev_tok2     TokenKind
+	lit           string
 }
 
 // new parser from string. unique id specified in `id`.
@@ -277,7 +279,9 @@ fn (p &Parser) log(s string) {
 
 pub fn (p mut Parser) save_state() ParserState {
 	return ParserState{
+		scanner_line_nr: p.scanner.line_nr
 		scanner_text : p.scanner.text
+		scanner_pos  : p.scanner.pos
 		tokens       : p.tokens
 		token_idx    : p.token_idx
 		tok          : p.tok
@@ -288,19 +292,24 @@ pub fn (p mut Parser) save_state() ParserState {
 }
 
 pub fn (p mut Parser) restore_state(state ParserState) {
-	p.scanner.text = state.scanner_text
-	p.tokens       = state.tokens
-	p.token_idx    = state.token_idx
-	p.tok          = state.tok
-	p.prev_tok     = state.prev_tok
-	p.prev_tok2    = state.prev_tok2
-	p.lit          = state.lit
+	p.scanner.line_nr = state.scanner_line_nr 
+	p.scanner.text  = state.scanner_text
+	p.scanner.pos   = state.scanner_pos
+	p.tokens        = state.tokens
+	p.token_idx     = state.token_idx
+	p.tok           = state.tok
+	p.prev_tok      = state.prev_tok
+	p.prev_tok2     = state.prev_tok2
+	p.lit           = state.lit
 }
 
 fn (p mut Parser) clear_state() {
+	p.scanner.line_nr = 0
+	p.scanner.text = ''
+	p.scanner.pos = 0
 	p.tokens = []
 	p.token_idx = 0
-	p.scanner.text = ''
+	p.lit = ''
 }
 
 pub fn (p mut Parser) add_text(text string) {
@@ -315,6 +324,7 @@ fn (p mut Parser) statements_from_text(text string, rcbr bool) {
 	saved_state := p.save_state()
 	p.clear_state()
 	p.add_text(text)
+	p.next()
 	if rcbr {
 		p.statements()
 	} else {
