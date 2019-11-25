@@ -163,29 +163,15 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar)
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
-		if os.file_exists('.vwebtmpl.v') {
-			os.rm('.vwebtmpl.v')
+		if !p.import_table.known_import('strings') {
+			p.register_import('strings', 0) // used by v_code
 		}
-		os.write_file('.vwebtmpl.v', v_code.clone()) // TODO don't need clone, compiler bug
-		p.genln('')
-		// Parse the function and embed resulting C code in current function so that
-		// all variables are available.
-		pos := p.cgen.lines.len - 1
-		mut pp := p.v.new_parser_from_file('.vwebtmpl.v')
-		if !p.pref.is_debug {
-			os.rm('.vwebtmpl.v')
-		}
-		pp.is_vweb = true
-		pp.set_current_fn( p.cur_fn ) // give access too all variables in current function
-		pp.parse(.main)
-		pp.v.add_parser(pp)
-		tmpl_fn_body := p.cgen.lines.slice(pos + 2, p.cgen.lines.len).join('\n').clone()
-		end_pos := tmpl_fn_body.last_index('Builder_str( sb )')  + 19 // TODO
-		p.cgen.lines = p.cgen.lines[..pos]
-		p.genln('/////////////////// tmpl start')
-		p.genln(tmpl_fn_body[..end_pos])
-		p.genln('/////////////////// tmpl end')
-		// `app.vweb.html(index_view())`
+		saved_state := p.save_state()
+		p.reset()
+		p.add_text(v_code)
+		p.statements_no_rcbr()
+		p.restore_state(saved_state)
+		p.unregister_import('strings')
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut { '->' } else { '.' }
 		p.genln('vweb__Context_html($receiver.name $dot vweb, tmpl_res)')

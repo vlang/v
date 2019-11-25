@@ -79,6 +79,16 @@ pub:
 	mod            string
 }
 
+struct ParserState {
+	scanner_text string
+	tokens       []Token
+	token_idx    int
+	tok          TokenKind
+	prev_tok     TokenKind
+	prev_tok2    TokenKind
+	lit          string
+}
+
 const (
 	MaxModuleDepth = 4
 	Reserved_Types = {
@@ -263,6 +273,34 @@ fn (p &Parser) log(s string) {
 	}
 	println(s)
 */
+}
+
+pub fn (p mut Parser) save_state() ParserState {
+	return ParserState{
+		scanner_text : p.scanner.text
+		tokens       : p.tokens
+		token_idx    : p.token_idx
+		tok          : p.tok
+		prev_tok     : p.prev_tok
+		prev_tok2    : p.prev_tok2
+		lit          : p.lit
+	}
+}
+
+pub fn (p mut Parser) restore_state(state ParserState) {
+	p.scanner.text = state.scanner_text
+	p.tokens       = state.tokens
+	p.token_idx    = state.token_idx
+	p.tok          = state.tok
+	p.prev_tok     = state.prev_tok
+	p.prev_tok2    = state.prev_tok2
+	p.lit          = state.lit
+}
+
+fn (p mut Parser) reset() {
+	p.tokens = []
+	p.token_idx = 0
+	p.scanner.text = ''
 }
 
 pub fn (p mut Parser) add_text(text string) {

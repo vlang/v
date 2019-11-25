@@ -28,7 +28,7 @@ pub fn compile_template(path string) string {
 	lines := html.split_into_lines() 
 	mut s := strings.new_builder(1000) 
 	base := path.all_after('/').replace('.html', '')
-	s.writeln('module main import strings fn ${base}_view() string {   // this line will get removed becase only function body is embedded 
+	s.writeln(' 
 mut sb := strings.new_builder(${lines.len * 30})
 header := \'$header\' 
 _ = header 
