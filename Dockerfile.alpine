@@ -1,0 +1,3 @@
+FROM alpine:3.10
+RUN apk add gcc musl-dev upx git make 
+RUN mkdir -p /usr/local/v && git clone --depth 1 https://github.com/vlang/v.git /usr/local/v && cd /usr/local/v && make
