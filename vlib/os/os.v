@@ -1075,25 +1075,9 @@ pub fn join(base string, dirs ...string) string {
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
 pub fn tmpdir() string {
 	mut path := os.getenv('TMPDIR')
-	$if linux {
-		if path == '' {
-			path = '/tmp'
-		}
-	}
-	$if freebsd {
-		if path == '' {
-			path = '/tmp'
-		}
-	}
 	$if macos {
-		/*
 		if path == '' {
-			// TODO untested
 			path = C.NSTemporaryDirectory()
-		}
-        */
-		if path == '' {
-			path = '/tmp'
 		}
 	}
 	$if windows {
@@ -1105,10 +1089,10 @@ pub fn tmpdir() string {
 			if path == '' {
 				path = os.getenv('TMP')
 			}
-			if path == '' {
-				path = 'C:/tmp'
-			}
 		}
+	}
+	if path == '' {
+		path = '/tmp'
 	}
 	return path
 }
