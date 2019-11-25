@@ -1856,7 +1856,21 @@ struct $typ.name {
 	p.fn_call(mut method, method_ph, '', str_typ)
     // optional method call `a.method() or {}`, no return assignment
     is_or_else := p.tok == .key_orelse
-	if !p.is_var_decl && is_or_else {
+	if p.tok == .question {
+		// `files := os.ls('.')?`
+		if p.cur_fn.name != 'main__main' {
+			p.error('`func()?` syntax can only be used inside `fn main()` for now')
+		}
+		p.next()
+		tmp := p.get_tmp()
+		p.cgen.set_placeholder(method_ph, '$method.typ $tmp = ')
+		p.genln(';')
+		p.genln('if (!${tmp}.ok) v_panic(${tmp}.error);')
+		ty := method.typ[7..] // option_xxx
+		p.gen('*($ty*) ${tmp}.data;')
+		return ty
+	}
+	else if !p.is_var_decl && is_or_else {
 		method.typ = p.gen_handle_option_or_else(method.typ, '', method_ph)
 	}
     else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
