@@ -70,6 +70,20 @@ fn (a []TypeInst) str() string {
 	return r.str()
 }
 
+fn (p mut Parser) find_var_or_const(name string) ?Var {
+	if p.known_var(name) {
+		return p.find_var(name)
+	}
+	if p.table.known_const(name) {
+		return p.table.find_const(name)
+	}
+	modname := p.prepend_mod(name)
+	if p.table.known_const(modname) {
+		return p.table.find_const(modname)
+	}
+	return none
+}
+
 fn (p &Parser) find_var(name string) ?Var {
 	for i in 0 .. p.var_idx {
 		if p.local_vars[i].name == name {
