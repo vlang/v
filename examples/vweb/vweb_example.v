@@ -26,16 +26,14 @@ pub fn (app & App) json_endpoint() {
 	app.vweb.json('{"a": 3}')
 }
 
-/*
 pub fn (app mut App) index() {
 	app.cnt ++
 	
 	$vweb.html()
 }
-*/
 
 pub fn (app & App) text() {
-	app.vweb.text('hello world')
+	app.vweb.text('Hello world')
 }
 
 pub fn (app mut App) cookie() {
