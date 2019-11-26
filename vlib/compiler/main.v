@@ -695,6 +695,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	// add remaining main files last
 	for p in v.parsers {
 		if p.mod != 'main' { continue }
+		if p.is_vgen { continue }
 		v.files << p.file_path
 	}
 }
