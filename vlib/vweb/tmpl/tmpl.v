@@ -79,8 +79,7 @@ _ = header
 		}
 	}
 	s.writeln(STR_END)
-	s.writeln('tmpl_res := sb.str() ') 
-	s.writeln('return tmpl_res }')
+	s.writeln('tmpl_res := sb.str() }') 
 	return s.str()
 }
 

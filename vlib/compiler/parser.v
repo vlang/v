@@ -68,7 +68,6 @@ mut:
 	is_const_literal bool // `1`, `2.0` etc, so that `u64_var == 0` works
 	in_dispatch 	bool		// dispatching generic instance?
 	is_vgen bool
-	is_vweb bool
 	is_sql bool
 	is_js bool
 	sql_i int  // $1 $2 $3
@@ -1172,7 +1171,7 @@ fn (p mut Parser) gen(s string) {
 // Generate V header from V source
 fn (p mut Parser) statement(add_semi bool) string {
 	p.expected_type = ''
-	if p.returns && !p.is_vweb {
+	if p.returns {
 		p.error('unreachable code')
 	}
 	// if !p.in_dispatch {
@@ -2819,7 +2818,7 @@ fn (p mut Parser) return_st() {
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
-		if !p.is_vweb && (p.tok == .name || p.tok == .number || p.tok == .str) {
+		if p.tok == .name || p.tok == .number || p.tok == .str {
 			p.error_with_token_index('function `$p.cur_fn.name` should not return a value', p.cur_fn.fn_name_token_idx)
 		}
 
