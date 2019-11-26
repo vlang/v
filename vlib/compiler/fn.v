@@ -587,7 +587,9 @@ fn (p mut Parser) check_unused_variables() {
 		if var.name == '' {
 			break
 		}
-		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated {
+		if !var.is_used && !p.pref.is_repl && !var.is_arg &&
+			!p.pref.translated && var.name != 'tmpl_res'
+		{
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
