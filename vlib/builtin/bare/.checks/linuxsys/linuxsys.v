@@ -87,14 +87,18 @@ fn check_read_file() {
 	}
 	assert 0 == sys_close(fd)
 
-	fd1, ec1 := sys_open("./nofilehere".str, .o_rdonly, 0)
-	assert fd1 == -1
-//ss1
-	assert ec1 == .enoent
-//ss2
 	println("read file passed")
 }
 
+fn check_open_file_fail() {
+	println ("checking 'open file fail'")
+	fd1, ec1 := sys_open("./nofilehere".str, .o_rdonly, 0)
+	assert fd1 == -1
+	assert ec1 == .enoent
+	println ("'open file fail' check passed")
+}
+
+/*
 fn check_print() {
 	println ("checking print and println")
 
@@ -106,11 +110,13 @@ fn check_print() {
 	//sys_dup2
 	println ("print and println passed")
 }
+*/
 
 fn main() {
 	check_read_write_pipe()
 	check_read_file()
-	check_print()
+	// check_print()
+	check_open_file_fail()
 	sys_exit(0)
 }
 
