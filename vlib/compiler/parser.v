@@ -2150,11 +2150,13 @@ fn (p mut Parser) assoc() string {
 	// println('assoc()')
 	p.next()
 	name := p.check_name()
-	var := p.find_var(name) or {
+	var := p.find_var_or_const(name) or {
 		p.error('unknown variable `$name`')
 		exit(1)
 	}
-	p.mark_var_used(var)
+	if !var.is_const {
+		p.mark_var_used(var)
+	}
 	p.check(.pipe)
 	p.gen('($var.typ){')
 	mut fields := []string// track the fields user is setting, the rest will be copied from the old object
@@ -2177,7 +2179,7 @@ fn (p mut Parser) assoc() string {
 		if f in fields {
 			continue
 		}
-		p.gen('.$f = ${name}.$f,')
+		p.gen('.$f = ${var.name}.$f,')
 	}
 	p.check(.rcbr)
 	p.gen('}')
