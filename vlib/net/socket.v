@@ -60,7 +60,7 @@ pub fn new_socket(family int, _type int, proto int) ?Socket {
 	one:=1
 	// This is needed so that there are no problems with reusing the
 	// same port after the application exits.
-	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, 4)//sizeof(int))
+	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, sizeof(int))
 	if sockfd == 0 {
 		return error('net.socket: failed')
 	}
@@ -79,7 +79,7 @@ pub fn socket_udp() ?Socket {
 
 // set socket options
 pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
-	res := C.setsockopt(s.sockfd, level, optname, optvalue, sizeof(int))
+	res := C.setsockopt(s.sockfd, level, optname, optvalue, sizeof(&int))
 	if res < 0 {
 		return error('net.setsocketopt: failed with $res')
 	}

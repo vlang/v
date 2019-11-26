@@ -30,9 +30,9 @@ fn C.realpath(byteptr, byteptr) &char
 
 
 
-fn C.chmod(byteptr, int)
-fn C.printf(byteptr, ...byteptr)
-fn C.fputs(byteptr)
+fn C.chmod(byteptr, int) int
+fn C.printf(byteptr, ...byteptr) int
+fn C.fputs(byteptr) int
 fn C.fflush(byteptr) int
 // TODO define args in these functions
 fn C.fseek() int
@@ -93,7 +93,7 @@ fn C.syscall() int
 
 
 // Windows
-fn C._setmode(int, int)
+fn C._setmode(int, int) int
 fn C._fileno(int) int
 fn C._get_osfhandle(fd int) C.intptr_t
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
@@ -144,8 +144,21 @@ fn C.FindClose()
 fn C.MAKELANGID() int
 fn C.FormatMessage() voidptr
 fn C.CloseHandle()
-fn C.WaitForSingleObject()
 fn C.GetExitCodeProcess()
 fn C.RegOpenKeyEx() voidptr
 fn C.GetTickCount() i64
+
 fn C.Sleep()
+fn C.WSAStartup(u16, &voidptr) int
+fn C.WSAGetLastError() int
+fn C.closesocket(int) int
+fn C.vschannel_init(&C.TlsContext)
+fn C.request(&C.TlsContext,int, &u16, byteptr, &byteptr)
+fn C.vschannel_cleanup(&C.TlsContext)
+fn C.URLDownloadToFile(int, &u16,&u16, int, int)
+fn C.GetLastError() u32
+fn C.CreateDirectory(byteptr, int) bool
+fn C.BCryptGenRandom(int,voidptr,int,int) int
+fn C.CreateMutex(int,bool,byteptr) voidptr
+fn C.WaitForSingleObject(voidptr,int) int
+fn C.ReleaseMutex(voidptr) bool

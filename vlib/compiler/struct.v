@@ -214,7 +214,10 @@ fn (p mut Parser) struct_decl() {
 			if def_val_type != field_type {
 				p.error('expected `$field_type` but got `$def_val_type`')
 			}
-			p.table.add_default_val(i, typ.name, expr)
+			//println('pass=$p.pass $typ.name ADDING field=$field_name "$def_val_type" "$expr"')
+			if !p.first_pass() {
+				p.table.add_default_val(i, typ.name, expr)
+			}
 		}	
 		// [ATTR]
 		mut attr := ''
@@ -303,7 +306,11 @@ fn (p mut Parser) struct_init(typ string) string {
 		}
 		// Zero values: init all fields (ints to 0, strings to '' etc)
 		for i, field in t.fields {
-			sanitized_name := if typ != 'Option' { p.table.var_cgen_name( field.name ) } else { field.name }
+			sanitized_name := if typ != 'Option' {
+				p.table.var_cgen_name( field.name )
+			} else {
+				field.name
+			}
 			// println('### field.name')
 			// Skip if this field has already been assigned to
 			if sanitized_name in inited_fields {
@@ -324,7 +331,13 @@ fn (p mut Parser) struct_init(typ string) string {
 				did_gen_something = true
 				continue
 			}
-			def_val := type_default(field_typ)
+			// Did the user provide a default value for this struct field?
+			// Use it. Otherwise zero it.
+			def_val := if t.default_vals.len > i && t.default_vals[i] != '' {
+				t.default_vals[i]
+			} else {
+				type_default(field_typ)
+			}
 			if def_val != '' && def_val != '{0}' {
 				p.gen_struct_field_init(sanitized_name)
 				p.gen(def_val)

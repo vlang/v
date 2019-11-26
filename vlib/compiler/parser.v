@@ -89,6 +89,20 @@ const (
 	}
 )
 
+struct ParserState {
+	scanner_line_nr int
+	scanner_text    string
+	scanner_pos     int
+	scanner_line_ends []int
+	scanner_nlines    int
+	tokens        []Token
+	token_idx     int
+	tok           TokenKind
+	prev_tok      TokenKind
+	prev_tok2     TokenKind
+	lit           string
+}
+
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
 fn (v mut V) new_parser_from_string(text string) Parser {
@@ -265,12 +279,66 @@ fn (p &Parser) log(s string) {
 */
 }
 
+pub fn (p mut Parser) save_state() ParserState {
+	return ParserState{
+		scanner_line_nr: p.scanner.line_nr
+		scanner_text   : p.scanner.text
+		scanner_pos    : p.scanner.pos
+		scanner_line_ends : p.scanner.line_ends
+		scanner_nlines    : p.scanner.nlines
+		tokens       : p.tokens
+		token_idx    : p.token_idx
+		tok          : p.tok
+		prev_tok     : p.prev_tok
+		prev_tok2    : p.prev_tok2
+		lit          : p.lit
+	}
+}
+
+pub fn (p mut Parser) restore_state(state ParserState) {
+	p.scanner.line_nr = state.scanner_line_nr 
+	p.scanner.text    = state.scanner_text
+	p.scanner.pos     = state.scanner_pos
+	p.scanner.line_ends = state.scanner_line_ends
+	p.scanner.nlines    = state.scanner_nlines
+	p.tokens        = state.tokens
+	p.token_idx     = state.token_idx
+	p.tok           = state.tok
+	p.prev_tok      = state.prev_tok
+	p.prev_tok2     = state.prev_tok2
+	p.lit           = state.lit
+}
+
+fn (p mut Parser) clear_state() {
+	p.scanner.line_nr = 0
+	p.scanner.text = ''
+	p.scanner.pos = 0
+	p.scanner.line_ends = []
+	p.scanner.nlines = 0
+	p.tokens = []
+	p.token_idx = 0
+	p.lit = ''
+}
+
 pub fn (p mut Parser) add_text(text string) {
 	if p.tokens.len > 1 && p.tokens[p.tokens.len-1].tok == .eof {
 		p.tokens.delete(p.tokens.len-1)
 	}
 	p.scanner.text = p.scanner.text + '\n' + text
 	p.scan_tokens()
+}
+
+fn (p mut Parser) statements_from_text(text string, rcbr bool) {
+	saved_state := p.save_state()
+	p.clear_state()
+	p.add_text(text)
+	p.next()
+	if rcbr {
+		p.statements()
+	} else {
+		p.statements_no_rcbr()
+	}
+	p.restore_state(saved_state)
 }
 
 fn (p mut Parser) parse(pass Pass) {
