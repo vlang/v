@@ -402,9 +402,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	dll_export_linkage := p.get_linkage_prefix()
-	if !p.is_vweb {
-		p.set_current_fn( f )
-	}
+	p.set_current_fn( f )
 	// Generate `User_register()` instead of `register()`
 	// Internally it's still stored as "register" in type User
 	mut fn_name_cgen := p.table.fn_gen_name(f)
@@ -517,10 +515,8 @@ fn (p mut Parser) fn_decl() {
 		p.genln(p.print_prof_counters())
 	}
 	// Counting or not, always need to add defer before the end
-	if !p.is_vweb {
-		if f.defer_text.len > f.scope_level {
+	if f.defer_text.len > f.scope_level {
 		p.genln(f.defer_text[f.scope_level])
-		}
 	}
 	if typ != 'void' && !p.returns {
 		p.error_with_token_index('$f.name must return "$typ"', f.fn_name_token_idx)
