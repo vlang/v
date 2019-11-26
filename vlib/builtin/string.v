@@ -185,30 +185,10 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
-/*
-pub fn (s string) int() int {
-	return strconv.parse_int(s, 0, 32)
-}
-*/
 
 pub fn (s string) int() int {
-	mut neg := false
-	mut i := 0
-	if s[0] == `-` {
-		neg = true
-		i++
-	}
-	else if s[0] == `+` {
-		i++
-	}
-	mut n := 0
-	for C.isdigit(s[i]) {
-		n = 10 * n - int(s[i] - `0`)
-		i++
-	}
-	return if neg { n } else { -n }
+	return int(strconv.parse_int(s,0,32))
 }
-
 
 pub fn (s string) i64() i64 {
 	return strconv.parse_int(s, 0, 64)
@@ -223,23 +203,7 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	mut neg := false
-	mut i := 0
-	if s[0] == `-` {
-		neg = true
-		i++
-	}
-	else if s[0] == `+` {
-		i++
-	}
-	mut n := u32(0)
-	for C.isdigit(s[i]) {
-		n = u32(10) * n - u32(s[i] - `0`)
-		i++
-	}
-	return if neg { n } else { -n }
-	//return C.atol(*char(s.str))
-	//return strconv.parse_uint(s, 0, 32)
+	return u32(strconv.parse_uint(s, 0, 32))
 }
 
 pub fn (s string) u64() u64 {

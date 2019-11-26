@@ -7,14 +7,26 @@ const (
 	sample_text_file1 = ""
 )
 
+fn fork_test (test_fn fn(), name string) {
+	//print ("checking")
+	// a := "$name"
+	println (name)
+	child := sys_fork()
+	if child == 0 {
+		test_fn()
+		sys_exit(0)
+	}
+//	pid := sys_wait(0)
+//	assert
+}
+
 fn check_read_write_pipe() {
-	/*
-		Checks the following system calls:
-			sys_pipe
-			sys_write
-			sys_read
-			sys_close
-	*/
+	//	Checks the following system calls:
+	//		sys_pipe
+	//		sys_write
+	//		sys_read
+	//		sys_close
+	//
 	println ("checking pipe read/write")
 	fd[0] = -1
 	fd[1] = -1
@@ -59,12 +71,14 @@ fn check_read_file() {
 			sys_read
 			sys_write
 			sys_close
+			sys_open
 	*/
 	test_file := "sample_text1.txt"
 	sample_text := "Do not change this text.\n"
 	println ("checking read file")
-	fd := sys_open(test_file.str, int(fcntl.o_rdonly), 0)
+	fd, ec := sys_open(test_file.str, .o_rdonly, 0)
 	assert fd > 0
+	assert ec == .enoerror
 	n := sample_text.len
 	c := sys_read(fd, buffer, u64(n*2))
 	assert c == n
@@ -72,12 +86,37 @@ fn check_read_file() {
 		assert sample_text[i] == buffer[i]
 	}
 	assert 0 == sys_close(fd)
+
 	println("read file passed")
 }
+
+fn check_open_file_fail() {
+	println ("checking 'open file fail'")
+	fd1, ec1 := sys_open("./nofilehere".str, .o_rdonly, 0)
+	assert fd1 == -1
+	assert ec1 == .enoent
+	println ("'open file fail' check passed")
+}
+
+/*
+fn check_print() {
+	println ("checking print and println")
+
+	a := sys_pipe(intptr(fd))
+	assert a != -1
+	assert fd[0] != -1
+	assert fd[1] != -1
+
+	//sys_dup2
+	println ("print and println passed")
+}
+*/
 
 fn main() {
 	check_read_write_pipe()
 	check_read_file()
+	// check_print()
+	check_open_file_fail()
 	sys_exit(0)
 }
 
