@@ -40,7 +40,6 @@ mut:
 	type_pars 	  []string
 	type_inst 	  []TypeInst
 	dispatch_of	  TypeInst	// current type inst of this generic instance
-	generic_body_idx int		// idx of the first body statement	
 	generic_tmpl  []Token
 	generic_code  string
 	fn_name_token_idx int // used by error reporting
@@ -423,8 +422,7 @@ fn (p mut Parser) fn_decl() {
 		// Generic functions are inserted as needed from the call site
 		if f.is_generic {
 			if p.first_pass() {
-				p.save_generic_tmpl(mut f, fn_start_idx, p.cur_tok_index())
-				f.generic_body_idx = p.cur_tok_index() -1
+				p.save_generic_tmpl(mut f, fn_start_idx)
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
 					if p.first_pass() && rcv.name == '' {
@@ -1401,13 +1399,15 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 
 // save the tokens for the generic funciton body (between `{}`)
 // the function signature isn't saved, it is reconstructed from Fn
-fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int, pos int) {
+fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int) {
 	mut cbr_depth := 0
 	mut tokens := []Token
 	for i in fn_start_pos..p.tokens.len-1 {
 		tok := p.tokens[i]
 		tokens << tok
-		if tok.tok == .lcbr { cbr_depth++ }
+		if tok.tok == .lcbr { 
+			cbr_depth++
+		}
 		if tok.tok == .rcbr {
 			cbr_depth--
 			if cbr_depth == 0 { break }
@@ -1416,19 +1416,6 @@ fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int, pos int) {
 	}
 	f.generic_tmpl = tokens
 
-	// start := tokens[0].pos-1-tokens[0].lit.len
-	// start := tokens[0].pos-1
-	// end := tokens[tokens.len-1].pos+1
-	// f.generic_code = p.scanner.text[start-1..end]
-	// println('===============================')
-	// println(generic_code)
-	// println('===============================')
-
-	if tokens.len == 0 {
-		println('0 len tokens: $f.name')
-		return 
-	}
-	// println(tokens[0].lit + '|' + tokens[0].lit.len.str())
 	start := tokens[0].pos-1-tokens[0].lit.len
 	end := tokens[tokens.len-1].pos+1
 	f.generic_code = p.scanner.text[start..end]
@@ -1436,48 +1423,31 @@ fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int, pos int) {
 
 // replace generic types in function body template with types from TypeInst
 fn (f &Fn) generic_tmpl_to_inst(ti &TypeInst) string {
-	// mut fn_body := ''
-	// mut body_started := false
-	// for tok in f.generic_tmpl {
-	// 	if tok.tok == .lcbr { body_started = true }
-	// 	if !body_started { continue }
-	// 	mut tok_str := tok.str()
-	// 	if tok.tok == .name && tok_str in ti.inst {
-	// 		tok_str = ti.inst[tok_str]
-	// 	}
-	// 	fn_body += ' $tok_str'
-	// }
-	// return fn_body
 
-	mut start := f.generic_tmpl[0].pos
-	mut fn_body2 := f.generic_code
+	first_lcbr := f.generic_code.index_byte(`{`)
+	mut start := f.generic_tmpl[0].pos + first_lcbr
+	mut fn_body2 := f.generic_code[first_lcbr..]
 	mut body_started := false
 
-	first_lcbr := fn_body2.index_byte(`{`)
-	fn_body2 = fn_body2[first_lcbr..]
-	start += first_lcbr
-	body_started = true
-
-	// for tok in f.generic_tmpl {
-	for i:=f.generic_tmpl.len-1; i>=0; i-- {
-		tok := f.generic_tmpl[i]
-		if tok.tok == .lcbr { body_started = true }
-		if !body_started { continue }
-		mut tok_str := tok.str()
-		if tok.tok == .name && tok_str in ti.inst {
-			prefix := fn_body2[..tok.pos-start+1]
-			suffix := fn_body2[(tok.pos-start)+2..]
-			fn_body2 = prefix + ti.inst[tok_str] + suffix
+	mut first_lcbr_tok_idx := 0
+	for i, tok in f.generic_tmpl {
+		if tok.tok == .lcbr {
+			first_lcbr_tok_idx = i
+			break
 		}
 	}
 
-	println('=======================================')
-	println(fn_body2)
-	println('=======================================')
-
-	// mut fn_body2 := f.generic_code
-	// first_lcbr := fn_body2.index_byte(`{`)
-	// fn_body2 = fn_body2[first_lcbr..]
+	// for tok in f.generic_tmpl {
+	for i:=f.generic_tmpl.len-1; i>=first_lcbr_tok_idx; i-- {
+		tok := f.generic_tmpl[i]
+		mut tok_str := tok.str()
+		if tok.tok == .name && tok_str in ti.inst {
+			println('$tok_str in ti -  $i')
+			prefix := fn_body2[..tok.pos-start+1]
+			suffix := fn_body2[(tok.pos-start)+2..]
+			fn_body2 = prefix + ti.inst[tok_str]  + suffix
+		}
+	}
 	
 	return fn_body2
 }
