@@ -117,7 +117,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		is_mut: false
 		is_used: true
 	})
-	if is_assign {
+	if is_assign && !name.contains('.') { // don't initialize struct fields
 		p.genln('$typ $name;')
 	}
 	p.genln('if (!$tmp .ok) {')
@@ -141,6 +141,21 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)
 	}
 	p.returns = false
+	return typ
+}
+
+// `files := os.ls('.')?`
+fn (p mut Parser) gen_handle_question_suffix(f Fn, ph int) string {
+	if p.cur_fn.name != 'main__main' {
+		p.error('`func()?` syntax can only be used inside `fn main()` for now')
+	}
+	p.check(.question)
+	tmp := p.get_tmp()
+	p.cgen.set_placeholder(ph, '$f.typ $tmp = ')
+	p.genln(';')
+	p.genln('if (!${tmp}.ok) v_panic(${tmp}.error);')
+	typ := f.typ[7..] // option_xxx
+	p.gen('*($typ*) ${tmp}.data;')
 	return typ
 }
 
