@@ -1372,15 +1372,16 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
 	else if expr_type.starts_with('Option_') &&
-		p.assigned_type == expr_type['Option_'.len..] && p.tok == .key_orelse {
-			line := p.cgen.cur_line
-			vname := line[..pos].replace('=','')
-			p.cgen.resetln(line.replace(line[..line.index('=')+1], ''))
-			p.gen_handle_option_or_else(expr_type, vname, ph)
+		p.assigned_type == expr_type['Option_'.len..] && p.tok == .key_orelse
+	{
+		line := p.cgen.cur_line
+		vname := line[..pos].replace('=','') // TODO cgen line hack
+		p.cgen.resetln(line.replace(line[..line.index('=')+1], ''))
+		p.gen_handle_option_or_else(expr_type, vname, ph)
 	}
 	else if expr_type[0]==`[` {
-		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!`
-		expr := p.cgen.cur_line[pos..].all_after('{').all_before('}')
+		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!` 
+		expr := p.cgen.cur_line[pos..].all_after('{').all_before('}') // TODO cgen line hack
 		left := p.cgen.cur_line[..pos].all_before('=')
 		cline_pos := p.cgen.cur_line[pos..]
 		etype := cline_pos.all_before(' {')
