@@ -40,7 +40,9 @@ mut:
 	type_pars 	  []string
 	type_inst 	  []TypeInst
 	dispatch_of	  TypeInst	// current type inst of this generic instance
+	generic_body_idx int		// idx of the first body statement	
 	generic_tmpl  []Token
+	generic_code  string
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
 	is_used bool // so that we can skip unused fns in resulting C code
@@ -194,6 +196,7 @@ fn (p mut Parser) clear_vars() {
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
 	defer { p.fgenln('\n') }
+	fn_start_idx := p.cur_tok_index()
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
 	/*
@@ -402,6 +405,11 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	dll_export_linkage := p.get_linkage_prefix()
+	if p.generic_dispatch.inst.size > 0 {
+		f.dispatch_of = p.generic_dispatch
+		println('# $f.name')
+		println(f.dispatch_of.inst)
+	}
 	p.set_current_fn( f )
 	// Generate `User_register()` instead of `register()`
 	// Internally it's still stored as "register" in type User
@@ -415,7 +423,8 @@ fn (p mut Parser) fn_decl() {
 		// Generic functions are inserted as needed from the call site
 		if f.is_generic {
 			if p.first_pass() {
-				p.save_generic_tmpl(mut f, p.cur_tok_index())
+				p.save_generic_tmpl(mut f, fn_start_idx, p.cur_tok_index())
+				f.generic_body_idx = p.cur_tok_index() -1
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
 					if p.first_pass() && rcv.name == '' {
@@ -996,8 +1005,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 		}
 		p.expected_type = arg.typ
-		clone := p.pref.autofree && p.mod != 'string' && arg.typ == 'string' &&
-	!p.builtin_mod //&& arg.is_moved
+		clone := p.pref.autofree && p.mod != 'string' && arg.typ == 'string' && 
+		!p.builtin_mod //&& arg.is_moved
 		if clone {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
@@ -1392,32 +1401,85 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 
 // save the tokens for the generic funciton body (between `{}`)
 // the function signature isn't saved, it is reconstructed from Fn
-fn (p mut Parser) save_generic_tmpl(f mut Fn, pos int) {
-	mut cbr_depth := 1
+fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int, pos int) {
+	mut cbr_depth := 0
 	mut tokens := []Token
-	for i in pos..p.tokens.len-1 {
+	for i in fn_start_pos..p.tokens.len-1 {
 		tok := p.tokens[i]
+		tokens << tok
 		if tok.tok == .lcbr { cbr_depth++ }
 		if tok.tok == .rcbr {
 			cbr_depth--
 			if cbr_depth == 0 { break }
 		}
-		tokens << tok
+		// tokens << tok
 	}
 	f.generic_tmpl = tokens
+
+	// start := tokens[0].pos-1-tokens[0].lit.len
+	// start := tokens[0].pos-1
+	// end := tokens[tokens.len-1].pos+1
+	// f.generic_code = p.scanner.text[start-1..end]
+	// println('===============================')
+	// println(generic_code)
+	// println('===============================')
+
+	if tokens.len == 0 {
+		println('0 len tokens: $f.name')
+		return 
+	}
+	// println(tokens[0].lit + '|' + tokens[0].lit.len.str())
+	start := tokens[0].pos-1-tokens[0].lit.len
+	end := tokens[tokens.len-1].pos+1
+	f.generic_code = p.scanner.text[start..end]
 }
 
 // replace generic types in function body template with types from TypeInst
 fn (f &Fn) generic_tmpl_to_inst(ti &TypeInst) string {
-	mut fn_body := ''
-	for tok in f.generic_tmpl {
+	// mut fn_body := ''
+	// mut body_started := false
+	// for tok in f.generic_tmpl {
+	// 	if tok.tok == .lcbr { body_started = true }
+	// 	if !body_started { continue }
+	// 	mut tok_str := tok.str()
+	// 	if tok.tok == .name && tok_str in ti.inst {
+	// 		tok_str = ti.inst[tok_str]
+	// 	}
+	// 	fn_body += ' $tok_str'
+	// }
+	// return fn_body
+
+	mut start := f.generic_tmpl[0].pos
+	mut fn_body2 := f.generic_code
+	mut body_started := false
+
+	first_lcbr := fn_body2.index_byte(`{`)
+	fn_body2 = fn_body2[first_lcbr..]
+	start += first_lcbr
+	body_started = true
+
+	// for tok in f.generic_tmpl {
+	for i:=f.generic_tmpl.len-1; i>=0; i-- {
+		tok := f.generic_tmpl[i]
+		if tok.tok == .lcbr { body_started = true }
+		if !body_started { continue }
 		mut tok_str := tok.str()
 		if tok.tok == .name && tok_str in ti.inst {
-			tok_str = ti.inst[tok_str]
+			prefix := fn_body2[..tok.pos-start+1]
+			suffix := fn_body2[(tok.pos-start)+2..]
+			fn_body2 = prefix + ti.inst[tok_str] + suffix
 		}
-		fn_body += ' $tok_str'
 	}
-	return fn_body
+
+	println('=======================================')
+	println(fn_body2)
+	println('=======================================')
+
+	// mut fn_body2 := f.generic_code
+	// first_lcbr := fn_body2.index_byte(`{`)
+	// fn_body2 = fn_body2[first_lcbr..]
+	
+	return fn_body2
 }
 
 fn rename_generic_fn_instance(f mut Fn, ti &TypeInst) {
@@ -1465,19 +1527,66 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	} else {
 		p.table.register_fn(f)
 	}
-	mut fn_code := '${p.fn_signature_v(f)} {\n${f.generic_tmpl_to_inst(ti)}\n}'
+	nlines := strings.repeat(`\n`, f.generic_tmpl[0].line_nr)
+	// mut fn_code := '${p.fn_signature_v(f)} {\n${f.generic_tmpl_to_inst(ti)}\n}'
+	mut fn_code := '$nlines${p.fn_signature_v(f)} ${f.generic_tmpl_to_inst(ti)}\n'
+	// println('============================')
+	// println(fn_code)
+	// println('============================')
 	// TODO: parse incrementally as needed & set typeinst
-	if f.mod in p.v.gen_parser_idx {
-		pidx := p.v.gen_parser_idx[f.mod]
-		p.v.parsers[pidx].add_text(fn_code)
-		for mod in p.table.imports {
-			if p.v.parsers[pidx].import_table.known_import(mod) { continue }
-			p.v.parsers[pidx].register_import(mod, 0)
-		}
-	} else {
-		// TODO: add here after I work out bug
+	// if f.mod in p.v.gen_parser_idx {
+	// 	pidx := p.v.gen_parser_idx[f.mod]
+	// 	p.v.parsers[pidx].add_text(fn_code)
+	// 	for mod in p.table.imports {
+	// 		if p.v.parsers[pidx].import_table.known_import(mod) { continue }
+	// 		p.v.parsers[pidx].register_import(mod, 0)
+	// 	}
+	// } else {
+	// 	// TODO: add here after I work out bug
+	// }
+	// p.cgen.fns << '${p.fn_signature(f)};'
+
+	mut gp := p.v.new_parser_from_string('$fn_code')
+	// gp.file_name = p.file_name
+	gp.is_vgen = true
+	gp.mod = f.mod
+	gp.builtin_mod = f.mod == 'builtin'
+	for mod in p.table.imports {
+		if gp.import_table.known_import(mod) { continue }
+		gp.register_import(mod, 0)
 	}
+	gp.pass = .main
+	mut lines_bak := gp.cgen.lines
+	cur_line_bak := gp.cgen.cur_line
+	gp.cgen.cur_line = ''
+	gp.cgen.lines = []
+	p.generic_dispatch = *ti
+	gp.next()
+	// gp.set_current_fn(f)
+	// p.gen_fn_decl(f, typ, str_args)
+	// p.statements(f, typ, str_args)
+	gp.fn_decl()
+	fn_lines := gp.cgen.lines
+	// lines_bak << gp.cgen.lines
+	gp.cgen.lines = lines_bak
+	gp.cgen.cur_line = cur_line_bak
+	p.cgen.fns << fn_lines
+
+
+	// saved_state := p.save_state()
+	// // p.clear_state(false, false)
+	// p.token_idx = f.generic_body_idx
+	// p.gen_fn_decl(f, f.typ, f.str_args(p.table))
+	// p.next()
+	// for arg in f.args {	
+	// 	p.register_var(arg)	
+	// }
+	// p.statements()
+	// fn_lines := p.cgen.lines
+	// p.restore_state(saved_state, false, false)
+
 	p.cgen.fns << '${p.fn_signature(f)};'
+	// p.cgen.fns << fn_lines
 }
 
 // "fn (int, string) int"

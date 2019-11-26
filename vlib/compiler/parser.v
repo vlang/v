@@ -74,6 +74,7 @@ mut:
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
+	generic_dispatch TypeInst
 pub:
 	mod            string
 }
@@ -961,7 +962,14 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-	typ += p.lit
+	// Generic type check		typ += p.lit
+	ti := p.cur_fn.dispatch_of.inst	
+	if p.lit in ti.keys() {	
+		typ += ti[p.lit]	
+		// println('cur dispatch: $p.lit => $typ')	
+	} else {	
+		typ += p.lit	
+	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
