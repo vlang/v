@@ -502,7 +502,9 @@ pub fn (v mut V) generate_main() {
 		else if v.table.main_exists() {
 			v.gen_main_start(true)
 			cgen.genln('  main__main();')
-			cgen.genln('free(g_str_buf);')
+			if !v.pref.is_bare {
+				cgen.genln('free(g_str_buf);')
+			}
 			v.gen_main_end('return 0')
 		}
 	}

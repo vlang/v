@@ -143,7 +143,17 @@ pub fn run<T>(app mut T, port int) {
 		}
 		//}
 		if req.method in methods_with_form {
-			app.vweb.parse_form(s)
+			for {
+				line := conn.read_line()
+				if line == '' || line == '\r\n' {
+					break
+				}	
+				//if line.contains('POST') || line == '' {
+					//break
+				//}	
+			}	
+			line := conn.read_line()
+			app.vweb.parse_form(line)
 		}
 		if vals.len < 2 {
 			$if debug {
@@ -175,27 +185,27 @@ fn (ctx mut Context) parse_form(s string) {
 	if !(ctx.req.method in methods_with_form) {
 		return
 	}
-	pos := s.index('\r\n\r\n')
-	if pos > -1 {
-		mut str_form := s[pos..s.len]
-		str_form = str_form.replace('+', ' ')
-		words := str_form.split('&')
-		for word in words {
-			$if debug {
-				println('parse form keyval="$word"')
-			}
-			keyval := word.trim_space().split('=')
-			if keyval.len != 2 { continue }
-			key := keyval[0]
-			val := urllib.query_unescape(keyval[1]) or {
-				continue
-			}
-			$if debug {
-				println('http form "$key" => "$val"')
-			}
-			ctx.form[key] = val
+	//pos := s.index('\r\n\r\n')
+	//if pos > -1 {
+	mut str_form := s//[pos..s.len]
+	str_form = str_form.replace('+', ' ')
+	words := str_form.split('&')
+	for word in words {
+		$if debug {
+			println('parse form keyval="$word"')
 		}
+		keyval := word.trim_space().split('=')
+		if keyval.len != 2 { continue }
+		key := keyval[0]
+		val := urllib.query_unescape(keyval[1]) or {
+			continue
+		}
+		$if debug {
+			println('http form "$key" => "$val"')
+		}
+		ctx.form[key] = val
 	}
+	//}
 }
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
