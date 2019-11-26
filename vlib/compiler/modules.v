@@ -162,7 +162,7 @@ fn (v &V) find_module_path(mod string) ?string {
 	mod_path := v.module_path(mod)
 	mut tried_paths := []string
 	tried_paths << filepath.join(v.compiled_dir, mod_path)
-	tried_paths << filepath.join(v.compiled_dir, '/modules', mod_path)
+	tried_paths << filepath.join(v.compiled_dir, 'modules', mod_path)
 	tried_paths << filepath.join(v.pref.vlib_path, mod_path)
 	tried_paths << filepath.join(modules_lookup_path, mod_path)
 	for try_path in tried_paths {
