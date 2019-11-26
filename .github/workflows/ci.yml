@@ -43,6 +43,8 @@ jobs:
       run: ./v test v
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Build Vorum
+      git clone --depth 1 https://github.com/vlang/vorum && cd vorum && v .
     - name: Bare metal
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: x64 machine code generation
