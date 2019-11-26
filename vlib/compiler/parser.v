@@ -1361,7 +1361,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	p.next()
 	p.fspace()
 	pos := p.cgen.cur_line.len
+	p.is_var_decl = true
 	expr_type := p.bool_expression()
+	p.is_var_decl = false
 	//if p.expected_type.starts_with('array_') {
 		//p.warn('expecting array got $expr_type')
 	//}
@@ -1377,9 +1379,17 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		typ := expr_type.replace('Option_', '')
 		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
 	}
+	else if expr_type.starts_with('Option_') &&
+		p.assigned_type == expr_type['Option_'.len..] && p.tok == .key_orelse
+	{
+		line := p.cgen.cur_line
+		vname := line[..pos].replace('=','') // TODO cgen line hack
+		p.cgen.resetln(line.replace(line[..line.index('=')+1], ''))
+		p.gen_handle_option_or_else(expr_type, vname, ph)
+	}
 	else if expr_type[0]==`[` {
-		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!`
-		expr := p.cgen.cur_line[pos..].all_after('{').all_before('}')
+		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!` 
+		expr := p.cgen.cur_line[pos..].all_after('{').all_before('}') // TODO cgen line hack
 		left := p.cgen.cur_line[..pos].all_before('=')
 		cline_pos := p.cgen.cur_line[pos..]
 		etype := cline_pos.all_before(' {')

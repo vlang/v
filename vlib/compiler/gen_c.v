@@ -117,7 +117,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		is_mut: false
 		is_used: true
 	})
-	if is_assign {
+	if is_assign && !name.contains('.') { // don't initialize struct fields
 		p.genln('$typ $name;')
 	}
 	p.genln('if (!$tmp .ok) {')
