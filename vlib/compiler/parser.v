@@ -1868,7 +1868,11 @@ struct $typ.name {
 	p.fn_call(mut method, method_ph, '', str_typ)
     // optional method call `a.method() or {}`, no return assignment
     is_or_else := p.tok == .key_orelse
-	if !p.is_var_decl && is_or_else {
+	if p.tok == .question {
+		// `files := os.ls('.')?`
+		return p.gen_handle_question_suffix(method, method_ph)
+	}
+	else if !p.is_var_decl && is_or_else {
 		method.typ = p.gen_handle_option_or_else(method.typ, '', method_ph)
 	}
     else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&

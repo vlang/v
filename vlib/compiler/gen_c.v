@@ -144,6 +144,21 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	return typ
 }
 
+// `files := os.ls('.')?`
+fn (p mut Parser) gen_handle_question_suffix(f Fn, ph int) string {
+	if p.cur_fn.name != 'main__main' {
+		p.error('`func()?` syntax can only be used inside `fn main()` for now')
+	}
+	p.check(.question)
+	tmp := p.get_tmp()
+	p.cgen.set_placeholder(ph, '$f.typ $tmp = ')
+	p.genln(';')
+	p.genln('if (!${tmp}.ok) v_panic(${tmp}.error);')
+	typ := f.typ[7..] // option_xxx
+	p.gen('*($typ*) ${tmp}.data;')
+	return typ
+}
+
 fn types_to_c(types []Type, table &Table) string {
 	mut sb := strings.new_builder(10)
 	for t in types {
