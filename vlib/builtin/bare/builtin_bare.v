@@ -39,7 +39,7 @@ pub fn eprint(s string) {
 	if isnil(s.str) {
 		panic('eprint(NIL)')
 	}
-	sys_write(1, s.str, u64(s.len))
+	sys_write(2, s.str, u64(s.len))
 }
 
 pub fn eprint_ln(s string) {

@@ -91,7 +91,7 @@ pub fn i64_tos(buf byteptr, len int, n0 i64, base int) string {
 	}
 	offset := i+1
 	b.str = b.str + offset
-	b.len -= offset
+	b.len -= (offset+1)
 	return b
 }
 
