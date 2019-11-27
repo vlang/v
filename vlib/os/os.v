@@ -480,16 +480,16 @@ pub fn getenv(key string) string {
 		}
 		return string_from_wide(s)
 	} $else {
-		s := *byte(C.getenv(key.str))
+		s := C.getenv(key.str)
 		if isnil(s) {
 			return ''
 		}
-		return cstring_to_vstring( *char(s) )
+		// NB: C.getenv *requires* that the result be copied.
+		return cstring_to_vstring( s )
 	}
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
-	ioverwrite := if overwrite { 1 } else { 0 }
 	$if windows {
 		format := '$name=$value'
 		if overwrite {
@@ -497,7 +497,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 		}
 		return -1
 	} $else {
-		return C.setenv(name.str, value.str, ioverwrite)
+		return C.setenv(name.str, value.str, overwrite)
 	}
 }
 
@@ -751,8 +751,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return os.args[0]
 		}
-	   eprintln('os.executable: count = $count')
-		return string(result, count)
+		return string(result)
 	}
 	$if windows {
 		max := 512
@@ -860,7 +859,7 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
 	mut ret := *char(0)
-	mut fullpath := calloc( MAX_PATH )
+	mut fullpath := calloc(MAX_PATH)
 	$if windows {
 		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
 		if isnil(ret) {
@@ -872,7 +871,7 @@ pub fn realpath(fpath string) string {
 			return fpath
 		}	
 	}
-	return cstring_to_vstring(*char(fullpath))
+	return string(fullpath)
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.

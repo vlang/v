@@ -126,7 +126,7 @@ pub fn (s string) cstr() byteptr {
 */
 
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
-pub fn cstring_to_vstring(cstr *C.char) string {
+pub fn cstring_to_vstring(cstr byteptr) string {
 	slen := C.strlen(cstr)
 	mut s := byteptr( memdup(cstr, slen+1) )
 	s[slen] = `\0`
