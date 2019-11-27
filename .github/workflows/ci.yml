@@ -135,7 +135,7 @@ jobs:
     - name: Make V
       uses: spytheman/docker_alpine_v@v4.0
       with:
-        entrypoint: /usr/bin/make
+        entrypoint: ["/usr/bin/make", "all", "selfcompile"]
 
     - name: Test V
       uses: spytheman/docker_alpine_v@v4.0
