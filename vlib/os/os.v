@@ -64,7 +64,7 @@ mut:
 
 fn C.getline(voidptr, voidptr, voidptr) int
 fn C.ftell(fp voidptr) int
-fn C.getenv(byteptr) byteptr
+fn C.getenv(byteptr) &char
 fn C.sigaction(int, voidptr, int)
 
 
@@ -475,17 +475,17 @@ pub fn sigint_to_signal_name(si int) string {
 pub fn getenv(key string) string {	
 	$if windows {
 		s := C._wgetenv(key.to_wide())
-		if isnil(s) {
+		if s == 0 {
 			return ''
 		}
 		return string_from_wide(s)
 	} $else {
 		s := C.getenv(key.str)
-		if isnil(s) {
+		if s == 0 {
 			return ''
 		}
 		// NB: C.getenv *requires* that the result be copied.
-		return cstring_to_vstring( s )
+		return cstring_to_vstring( byteptr(s) )
 	}
 }
 
