@@ -2,13 +2,10 @@
 
 set -e
 
-echo "Hello from the Alpine docker image."
-echo "Argument 1: $1"
-echo "Argument @: $@"
+pwd
 
 make
 
-v test v
+/opt/vlang/v test v
 
-
-
+echo "DONE"
