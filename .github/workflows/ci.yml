@@ -2,6 +2,24 @@ name: CI
 on: [push, pull_request]
 jobs:
 
+  build-alpine-docker-musl-gcc:
+    name: Alpine/musl
+    runs-on: ubuntu-latest
+    steps:
+    
+    - name: Checkout
+      uses: actions/checkout@v1
+    
+    - name: Build V
+      uses: spytheman/docker_alpine_v@v5.0
+      with:
+        entrypoint: .github/workflows/alpine.build.sh
+
+    - name: Test V
+      uses: spytheman/docker_alpine_v@v5.0
+      with:
+        entrypoint: .github/workflows/alpine.test.sh
+
   build-osx:
     runs-on: macOS-10.14
     steps:
