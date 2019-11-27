@@ -277,7 +277,7 @@ fn escape(s string, mode EncodingMode) string {
 				t[i] = `+`
 			}
 		}
-		return string(t)
+		return string(t, t.len)
 	}
 
 	upperhex := '0123456789ABCDEF'
@@ -297,7 +297,7 @@ fn escape(s string, mode EncodingMode) string {
 			j++
 		}
 	}
-	return string(t)
+	return string(t, t.len)
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
