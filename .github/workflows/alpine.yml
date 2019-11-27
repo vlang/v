@@ -11,13 +11,9 @@ jobs:
       uses: actions/checkout@v1
     
     - name: Build V
-      uses: vlang/v@master
-      using: 'docker'
-      image: 'Dockerfile.alpine'
+      uses: spytheman/docker_alpine_v@v5.0
       entrypoint: .github/workflows/alpine.build.sh
 
     - name: Test V
-      uses: vlang/v@master
-      using: 'docker'
-      image: 'Dockerfile.alpine'
+      uses: spytheman/docker_alpine_v@v5.0
       entrypoint: .github/workflows/alpine.test.sh
