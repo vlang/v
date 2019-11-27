@@ -6,10 +6,10 @@ pwd
 
 uname -a
 
-ls -lart 
-
 du -s .
 
-./v -stats test v
+ls -lat 
+
+./v test v
 
 echo "DONE"
