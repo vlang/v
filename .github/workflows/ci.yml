@@ -137,4 +137,4 @@ jobs:
       ### NB: the uses: line below uses releases/tags
       uses: spytheman/docker_alpine_v@v2.0
       with:
-        myInput: make all selfcompile && v test v
+        myInput: /usr/bin/make all selfcompile && v test v
