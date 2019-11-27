@@ -136,8 +136,7 @@ jobs:
       id: make_v
       ### NB: the uses: line below uses releases/tags
       uses: spytheman/docker_alpine_v@v1.0
+      entrypoint: echo this is a new entrypoint
       with:
         args: echo hello world
         
-    - name: Get the result of making v
-      run: echo "The result was ${{ steps.make_v.outputs.result }}"
