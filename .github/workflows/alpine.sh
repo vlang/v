@@ -4,8 +4,12 @@ set -e
 
 pwd
 
+uname -a
+
 make
 
-/opt/vlang/v test v
+./v --version
+
+./v test v
 
 echo "DONE"
