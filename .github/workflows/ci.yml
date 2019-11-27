@@ -133,13 +133,13 @@ jobs:
       uses: actions/checkout@v1
     
     - name: Make V
-      id: make_v
-      ### NB: the uses: line below uses releases/tags
-      uses: spytheman/docker_alpine_v@v3.0
-      with:
-        myInput: /usr/bin/make
-
-    - name: Make V
-      uses: spytheman/docker_alpine_v@v3.0
+      uses: spytheman/docker_alpine_v@v4.0
       with:
         entrypoint: /usr/bin/make
+        params: all selfcompile
+
+    - name: Test V
+      uses: spytheman/docker_alpine_v@v4.0
+      with:
+        entrypoint: v
+        params: test v
