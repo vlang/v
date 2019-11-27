@@ -10,6 +10,6 @@ make
 
 ./v --version
 
-./v test v
+du -s .
 
 echo "DONE"
