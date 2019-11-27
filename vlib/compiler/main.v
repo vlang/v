@@ -367,7 +367,6 @@ pub fn (v mut V) compile_x64() {
 		v.parse(f, .main)
 	}
 	v.x64.generate_elf_footer()
-	
 }	
 
 fn (v mut V) generate_init() {

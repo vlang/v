@@ -12,8 +12,9 @@ mut:
 	offset i64
 	str_pos []i64
 	strings []string // TODO use a map and don't duplicate strings
-	//str string
 	file_size_pos i64
+	main_fn_addr i64
+	code_start_pos i64 // location of the start of the assembly instructions
 	//string_addr map[string]i64
 }	
 
@@ -120,8 +121,26 @@ fn (g mut Gen) cmp(reg Register, size Size, val i64) {
 fn abs(a i64) i64 { return if a < 0 { -a } else { a } }
 
 fn (g mut Gen) jle(addr i64) {
+	// Calculate the relative offset to jump to
+	// (`addr` is absolute address)
 	offset := 0xff - int(abs(addr - g.buf.len))-1
 	g.write8(0x7e)
+	g.write8(offset)
+}
+
+fn (g mut Gen) jl(addr i64) {
+	offset := 0xff - int(abs(addr - g.buf.len))-1
+	g.write8(0x7c)
+	g.write8(offset)
+}
+
+fn (g &Gen) abs_to_rel_addr(addr i64) int {
+	return int(abs(addr - g.buf.len))-1
+}	
+
+fn (g mut Gen) jmp (addr i64) {
+	offset := 0xff - g.abs_to_rel_addr(addr)
+	g.write8(0xe9)
 	g.write8(offset)
 }
 
@@ -137,7 +156,9 @@ fn (g mut Gen) mov64(reg Register, val i64) {
 }
 
 fn (g mut Gen) call(val int) {
+	//println('call val=$val')
 	g.write8(0xe8)
+	g.write32(val)
 }
 
 fn (g mut Gen) syscall() {
@@ -146,7 +167,7 @@ fn (g mut Gen) syscall() {
 	g.write8(0x05)
 }
 
-fn (g mut Gen) ret() {
+pub fn (g mut Gen) ret() {
 	g.write8(0xc3)
 }
 
@@ -163,6 +184,10 @@ pub fn (g mut Gen) gen_loop_end(to int, label int) {
 	g.jle(label)
 }
 
+pub fn (g mut Gen) save_main_fn_addr() {
+	g.main_fn_addr = g.buf.len
+}
+
 pub fn (g mut Gen) gen_print(s string) {
 	g.strings << s + '\n'
 	//g.string_addr[s] = str_pos
@@ -174,6 +199,13 @@ pub fn (g mut Gen) gen_print(s string) {
 	g.mov(.edx, s.len+1) // len
 	g.syscall()
 }	
+
+pub fn (g mut Gen) gen_exit() {
+	// Return 0
+	g.mov(.edi, 0) // ret value
+	g.mov(.eax, 60)
+	g.syscall()
+}
 
 fn (g mut Gen) mov(reg Register, val int) {
 	match reg {

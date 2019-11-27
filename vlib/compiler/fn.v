@@ -44,6 +44,7 @@ mut:
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
 	is_used bool // so that we can skip unused fns in resulting C code
+	//x64_addr i64 // address in the generated x64 binary
 }
 
 struct TypeInst {
@@ -397,6 +398,9 @@ fn (p mut Parser) fn_decl() {
 	str_args := f.str_args(p.table)
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
+		if p.pref.x64 && !p.first_pass() {
+			p.x64.save_main_fn_addr()
+		}	
 		if str_args != '' || typ != 'void' {
 			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
@@ -525,6 +529,12 @@ fn (p mut Parser) fn_decl() {
 		//p.genln('// live_function body end')
 		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
 	}
+	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
+		p.x64.gen_exit()
+	}	
+	if p.pref.x64 && !p.first_pass() {
+		p.x64.ret()
+	}
 	// {} closed correctly? scope_level should be 0
 	if p.mod == 'main' {
 		// println(p.cur_fn.scope_level)
@@ -541,6 +551,7 @@ fn (p mut Parser) fn_decl() {
 	p.check_unused_variables()
 	p.set_current_fn( EmptyFn )
 	p.returns = false
+	
 }
 
 [inline]

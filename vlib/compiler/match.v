@@ -167,7 +167,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		p.gen(')')
 
 		if p.tok == .arrow {
-			p.warn(warn_match_arrow)
+			p.error(warn_match_arrow)
 			p.check(.arrow)
 		}	
 

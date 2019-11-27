@@ -69,6 +69,8 @@ pub fn (g mut Gen) generate_elf_header() {
 	g.write64(0x1000) // p_align
 	// user code starts here at
 	// address: 00070 and a half
+	g.code_start_pos = g.buf.len
+	g.call(0)// call main function, it's not guaranteed to be the first
 }
 
 pub fn (g mut Gen) generate_elf_footer() {
@@ -87,6 +89,12 @@ pub fn (g mut Gen) generate_elf_footer() {
 	file_size := g.buf.len
 	g.write64_at(file_size, g.file_size_pos) // set file size 64 bit value
 	g.write64_at(file_size, g.file_size_pos+8)
+	// call main function, it's not guaranteed to be the first
+	// we generated call(0) ("e8 0")
+	// no need to replace "0" with a relative address of the main function
+	// +1 is for "e8"
+	// -5 is for "e8 00 00 00 00"
+	g.write64_at(int(g.main_fn_addr - g.code_start_pos) - 5, g.code_start_pos+1)
 	// Create the binary
 	f := os.create(g.out_name) or { panic(err) }
 	os.chmod(g.out_name, 0775)
