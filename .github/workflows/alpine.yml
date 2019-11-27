@@ -12,8 +12,10 @@ jobs:
     
     - name: Build V
       uses: spytheman/docker_alpine_v@v5.0
-      entrypoint: .github/workflows/alpine.build.sh
+      with:
+        entrypoint: .github/workflows/alpine.build.sh
 
     - name: Test V
       uses: spytheman/docker_alpine_v@v5.0
-      entrypoint: .github/workflows/alpine.test.sh
+      with:
+        entrypoint: .github/workflows/alpine.test.sh
