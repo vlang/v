@@ -123,3 +123,18 @@ jobs:
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
+
+  build-alpine-docker-musl-gcc:
+    runs-on: ubuntu-latest
+    name: An Alpine docker build of V
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v1
+    - uses: ./.github/alpine.docker.build/
+    - name: Make V
+      id: make_v
+      uses: vlang/v@v1
+      with:
+        what-to-do: 'make v'
+    - name: Get the result of making v
+      run: echo "The result was ${{ steps.make_v.outputs.result }}"

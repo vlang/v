@@ -1,0 +1,18 @@
+
+# action.yml , see https://help.github.com/en/actions/automating-your-workflow-with-github-actions/metadata-syntax-for-github-actions
+
+name: 'An Alpine Docker image to build and test v'
+description: 'Builds the Alpine Docker image and runs tests in it.'
+inputs:
+  what-to-do: # id of input
+    description: 'What do you want the docker container to do'
+    required: true
+    default: 'make'
+outputs:
+  result:
+    description: 'The result of the operation'
+runs:
+  using: 'docker'
+  image: 'Dockerfile.alpine'
+  args:
+    - ${{ inputs.what-to-do }}
