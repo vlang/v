@@ -135,6 +135,10 @@ jobs:
     - name: Make V
       id: make_v
       ### NB: the uses: line below uses releases/tags
-      uses: spytheman/docker_alpine_v@v2.0
+      uses: spytheman/docker_alpine_v@v3.0
       with:
         myInput: /usr/bin/make all selfcompile && v test v
+
+    - name: Make V
+      uses: spytheman/docker_alpine_v@v3.0
+      entrypoint: make
