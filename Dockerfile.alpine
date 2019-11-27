@@ -2,11 +2,15 @@ FROM alpine:3.10
 
 LABEL maintainer="Delyan Angelov <delyan@bulsynt.org>"
 
-ENV VVV /opt/vlang
-ENV PATH $VVV:$PATH
-WORKDIR $VVV
+WORKDIR /opt/vlang
 
-RUN apk add git make upx gcc musl-dev openssl-dev sqlite-dev libx11-dev glfw-dev freetype-dev
-COPY . .
+ENV VVV  /opt/vlang
+ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-RUN make && ln -s $VVV/v /usr/local/bin/v
+RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
+
+RUN apk --no-cache add \
+  git make upx gcc \
+  musl-dev \
+  openssl-dev sqlite-dev \
+  libx11-dev glfw-dev freetype-dev
