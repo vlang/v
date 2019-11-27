@@ -125,8 +125,8 @@ jobs:
         #node hi.js
 
   build-alpine-docker-musl-gcc:
-    name: An Alpine docker build of V
     runs-on: ubuntu-latest
+    name: An Alpine docker build of V
     steps:
     - name: Checkout
       uses: actions/checkout@v1
