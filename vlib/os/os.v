@@ -489,6 +489,7 @@ pub fn getenv(key string) string {
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
+	ioverwrite := if overwrite { 1 } else { 0 }
 	$if windows {
 		format := '$name=$value'
 		if overwrite {
@@ -496,7 +497,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 		}
 		return -1
 	} $else {
-		return C.setenv(name.str, value.str, overwrite)
+		return C.setenv(name.str, value.str, ioverwrite)
 	}
 }
 
@@ -744,31 +745,33 @@ fn C.readlink() int
 // process.
 pub fn executable() string {
 	$if linux {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
-			panic('error reading /proc/self/exe to get exe path')
+			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+			return os.args[0]
 		}
+	   eprintln('os.executable: count = $count')
 		return string(result, count)
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(malloc(max*2)) // MAX_PATH * sizeof(wchar_t)
+		mut result := &u16(calloc(max*2)) // MAX_PATH * sizeof(wchar_t)
 		len := int(C.GetModuleFileName( 0, result, max ))
 		return string_from_wide2(result, len)
 	}
 	$if mac {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath (pid, result, MAX_PATH)
 		if ret <= 0  {
-			println('os.executable() failed')
-			return '.'
+			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
+			return os.args[0]
 		}
 		return string(result)
 	}
 	$if freebsd {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := MAX_PATH
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
@@ -782,18 +785,20 @@ pub fn executable() string {
 	$if solaris {
 	}
 	$if netbsd {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
 		if count < 0 {
-			panic('error reading /proc/curproc/exe to get exe path')
+			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
+			return os.args[0]
 		}
 		return string(result, count)
 	}
 	$if dragonfly {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH ))
 		if count < 0 {
-			panic('error reading /proc/curproc/file to get exe path')
+			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
+			return os.args[0]
 		}
 		return string(result, count)
 	}
