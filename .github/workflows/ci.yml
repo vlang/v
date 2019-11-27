@@ -124,21 +124,3 @@ jobs:
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
 
-  build-alpine-docker-musl-gcc:
-    runs-on: ubuntu-latest
-    name: An Alpine docker build of V
-    steps:
-    
-    - name: Checkout
-      uses: actions/checkout@v1
-    
-    - name: Make V
-      uses: spytheman/docker_alpine_v@v4.0
-      with:
-        entrypoint: "/usr/bin/make all selfcompile"
-
-    - name: Test V
-      uses: spytheman/docker_alpine_v@v4.0
-      with:
-        entrypoint: v
-        params: test v
