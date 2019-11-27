@@ -133,6 +133,7 @@ jobs:
     - uses: ./.github/alpine.docker.build/
     - name: Make V
       id: make_v
+      uses: spytheman/docker_alpine_v@v1
       with:
         what-to-do: 'make v'
     - name: Get the result of making v
