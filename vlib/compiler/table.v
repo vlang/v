@@ -446,7 +446,7 @@ fn (table mut Table) add_default_val(idx int, type_name, val_expr string) {
 	mut t := table.typesmap[type_name]
 	if t.default_vals.len == 0 {
 		t.default_vals = [''].repeat(t.fields.len)
-	}	
+	}
 	t.default_vals[idx] = val_expr
 	table.typesmap[type_name] = t
 }
@@ -696,7 +696,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	}
 
 	expected = expected.replace('*', '')
-	got = got.replace('*', '')
+	got = got.replace('*', '').replace('ptr','')
 	if got != expected {
 		// Interface check
 		if expected.ends_with('er') {
