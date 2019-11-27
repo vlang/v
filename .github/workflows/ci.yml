@@ -135,7 +135,7 @@ jobs:
     - name: Make V
       id: make_v
       ### NB: the uses: line below uses releases/tags
-      uses: spytheman/docker_alpine_v@v1.0
+      uses: spytheman/docker_alpine_v@v2.0
       with:
         args: echo abcdef
         
