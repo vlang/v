@@ -858,16 +858,16 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut ret := *char(0)
 	mut fullpath := calloc(MAX_PATH)
+	mut ret := *char(0)
 	$if windows {
 		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
-		if isnil(ret) {
+		if ret == 0 {
 			return fpath
 		}	
 	} $else {
 		ret = C.realpath(fpath.str, fullpath)
-		if isnil(ret) {
+		if ret == 0 {
 			return fpath
 		}	
 	}
