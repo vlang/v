@@ -128,14 +128,16 @@ jobs:
     runs-on: ubuntu-latest
     name: An Alpine docker build of V
     steps:
+    
     - name: Checkout
       uses: actions/checkout@v1
-    - uses: ./.github/alpine.docker.build/
+    
     - name: Make V
       id: make_v
       ### NB: the uses: line below uses releases/tags
       uses: spytheman/docker_alpine_v@v1.0
       with:
-        what-to-do: 'make v'
+        args: echo hello world
+        
     - name: Get the result of making v
       run: echo "The result was ${{ steps.make_v.outputs.result }}"
