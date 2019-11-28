@@ -10,7 +10,7 @@ pub struct HttpServer {
 }
 
 pub struct ServerRequest {
-
+	dummy string
 }
 
 
@@ -51,9 +51,9 @@ pub fn (s HttpServer) free() ?bool {
 }
 
 // handle connections, this runs in a different system thread.
-fn (s HttpServer) handle_conn(conn net.Socket) {
+fn (s HttpServer) handle_conn(conn net.Socket) ?bool {
 	mut headers := map[string]string
-	headers['Uesr-Agent'] = 'vlang'
+	headers['User-Agent'] = 'vlang'
 	headers['Content-Type'] = 'text/plain'
 	res := Response {
 		text: 'Not Found',
@@ -61,12 +61,16 @@ fn (s HttpServer) handle_conn(conn net.Socket) {
 		headers: headers
 	}
 	serialized_headers := serialize_headers(res.headers)
-	req := ServerRequest {}
-	new_res := s.handler(req, res)
+	req := ServerRequest {
+		dummy: 'test'
+	}
+	// new_res := s.handler(req, res) V bug preventing this from working
+	new_res := res
 	conn.write('HTTP/1.1 $new_res.status_code\r\n$serialized_headers\r\n$new_res.text') or {
-		panic(err)
+		return error(err)
 	}
 	conn.close() or {
-		panic(err)
+		return error(err)
 	}
+	return true
 }
