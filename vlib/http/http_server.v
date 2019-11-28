@@ -3,14 +3,19 @@ module http
 import net
 
 pub struct HttpServer {
-	handler fn(req Request, res Response) Response
+	handler fn(req ServerRequest, res Response) Response
 	pub mut: 
 	sock net.Socket
 
 }
 
+pub struct ServerRequest {
+
+}
+
+
 // create an http server, beware: the handler callback runs on a different system thread.
-pub fn create_server(handler fn(req Request, res Response) Response) ?HttpServer {
+pub fn create_server(handler fn(req ServerRequest, res Response) Response) ?HttpServer {
 	sock := net.new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
@@ -47,7 +52,18 @@ pub fn (s HttpServer) free() ?bool {
 
 // handle connections, this runs in a different system thread.
 fn (s HttpServer) handle_conn(conn net.Socket) {
-	conn.write('HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found') or {
+	mut headers := map[string]string
+	headers['Uesr-Agent'] = 'vlang'
+	headers['Content-Type'] = 'text/plain'
+	res := Response {
+		text: 'Not Found',
+		status_code: 404,
+		headers: headers
+	}
+	serialized_headers := serialize_headers(res.headers)
+	req := ServerRequest {}
+	new_res := s.handler(req, res)
+	conn.write('HTTP/1.1 $new_res.status_code\r\n$serialized_headers\r\n$new_res.text') or {
 		panic(err)
 	}
 	conn.close() or {

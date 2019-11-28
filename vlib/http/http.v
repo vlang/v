@@ -28,7 +28,7 @@ pub:
 }
 
 pub struct Response {
-pub:
+pub mut:
 	text        string
 	headers     map[string]string
 	status_code int
@@ -93,6 +93,16 @@ fn (resp mut Response) free() {
 // add_header adds the key and value of an HTTP request header
 pub fn (req mut Request) add_header(key, val string) {
 	req.headers[key] = val
+}
+
+// turn the header map into a string
+pub fn serialize_headers(headers map[string]string) string {
+	mut str := ''
+	for key in headers.keys() {
+		val := headers[key]
+		str += '$key: $val\r\n'
+	}
+	return str
 }
 
 pub fn parse_headers(lines []string) map[string]string {

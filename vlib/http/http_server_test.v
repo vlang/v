@@ -14,8 +14,8 @@ fn test_404() {
 	}
 }
 
-fn serve(req http.Request, res http.Response) http.Response {
-	return res
+fn serve(req http.Request, res http.Response) Response {
+	
 }
 
 fn listen(srv http.HttpServer) {
