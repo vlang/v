@@ -11,8 +11,8 @@ import (
 )
 
 fn todo() {
-	
-}	
+
+}
 
 fn no_mingw_installed() bool {
 	$if !windows {
@@ -48,16 +48,16 @@ fn (v mut V) cc() {
 					} else {
 						println('Failed.')
 						exit(1)
-					}	
-				}	
+					}
+				}
 				ret := os.system('$vjs_path -o $v.out_name $v.dir')
 				if ret == 0 {
 					println('Done. Run it with `node $v.out_name`')
 					println('JS backend is at a very early stage.')
-				}	
+				}
 			}
 		}
-    
+
 		// v.out_name_c may be on a different partition than v.out_name
 		os.mv_by_cp(v.out_name_c, v.out_name) or { panic(err) }
 		exit(0)
@@ -116,7 +116,7 @@ fn (v mut V) cc() {
 		}
 		} $else {
 			verror('-fast is only supported on Linux right now')
-		}	
+		}
 	}
 	//linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
@@ -127,11 +127,11 @@ fn (v mut V) cc() {
 	}
 	if v.pref.is_bare {
 		a << '-static -ffreestanding -nostdlib $vdir/vlib/os/bare/bare.S'
-	}	
+	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
 		mut out_dir := if v.dir.starts_with('vlib') {
-			'$v_modules_path${os.path_separator}cache${os.path_separator}$v.dir'	
+			'$v_modules_path${os.path_separator}cache${os.path_separator}$v.dir'
 		} else {
 			'$v_modules_path${os.path_separator}$v.dir'
 		}
@@ -158,14 +158,14 @@ fn (v mut V) cc() {
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
-	
+
 	if debug_mode {
 		a << debug_options
 	}
 	if v.pref.is_prod {
 		a << optimization_options
 	}
-	
+
 	if debug_mode && os.user_os() != 'windows'{
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
@@ -194,7 +194,7 @@ fn (v mut V) cc() {
 		for imp in v.table.imports {
 			if imp.contains('vweb') { continue } // not working
 			if imp == 'webview' { continue }
-			
+
 			imp_path := imp.replace('.', os.path_separator)
 			path := 	'$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
 			//println('adding ${imp_path}.o')
@@ -207,11 +207,11 @@ fn (v mut V) cc() {
 					os.cp('$vdir/thirdparty/ui/ui.o', path) or { panic('error copying ui files') }
 					os.cp('$vdir/thirdparty/ui/ui.vh', v_modules_path +
 							'/vlib/ui.vh')  or { panic('error copying ui files') }
-					
+
 				}	else {
 					os.system('$vexe build module vlib${os.path_separator}$imp_path')
 				}
-			}	
+			}
 			if path.ends_with('vlib/ui.o') {
 				a << '-framework Cocoa -framework Carbon'
 			}
@@ -256,10 +256,10 @@ fn (v mut V) cc() {
 
 	// add .o files
 	a << cflags.c_options_only_object_files()
-	
+
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
-	
+
 	a << libs
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
@@ -275,7 +275,7 @@ fn (v mut V) cc() {
 	if v.os == .js && os.user_os() == 'linux' {
 		a << '-lm'
 	}
-	
+
 	args := a.join(' ')
 start:
 	todo()
@@ -309,14 +309,16 @@ start:
 				if v.pref.ccompiler.contains('tcc') {
 					v.pref.ccompiler = 'cc'
 					goto start
-				}	
+				}
 			}
+
 			verror('C compiler error, while attempting to run: \n' +
 				'-----------------------------------------------------------\n' +
 				'$cmd\n' +
 				'-----------------------------------------------------------\n' +
 				'Probably your C compiler is missing. \n' +
-				'Please reinstall it, or make it available in your PATH.')
+				'Please reinstall it, or make it available in your PATH.\n\n' +
+				missing_compiler_info())
 		}
 
 		if v.pref.is_debug {
@@ -368,7 +370,7 @@ start:
 		$if windows {
 			println('-compress does not work on Windows for now')
 			return
-		}	
+		}
 		ret := os.system('strip $v.out_name')
 		if ret != 0 {
 			println('strip failed')
@@ -379,16 +381,16 @@ start:
 			println('upx failed')
 			$if mac {
 				println('install upx with `brew install upx`')
-			}	
+			}
 			$if linux {
 				println('install upx\n' +
 					'for example, on Debian/Ubuntu run `sudo apt install upx`')
-			}	
+			}
 			$if windows {
 				// :)
-			}	
+			}
 		}
-	}	
+	}
 }
 
 
@@ -430,7 +432,7 @@ fn (c mut V) cc_windows_cross() {
 		println('Unzip it afterwards.\n')
 		println('winroot.zip contains all library and header files needed '+
 			'to cross-compile for Windows.')
-		exit(1)	
+		exit(1)
 	}
 	mut obj_name := c.out_name
 	obj_name = obj_name.replace('.exe', '')
@@ -463,7 +465,7 @@ fn (c mut V) cc_windows_cross() {
 
 fn (c &V) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
-		if flag.value.ends_with('.o') {			
+		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags( flag )
 			if c.pref.ccompiler == 'msvc' {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
@@ -511,4 +513,17 @@ fn get_cmdline_cflags(args []string) string {
 		}
 	}
 	return cflags
+}
+
+fn missing_compiler_info() string {
+	$if windows {
+		return 'https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows'
+	}
+	$if linux {
+		return 'On Debian/Ubuntu, run `sudo apt install build-essential`'
+	}
+	$if mac {
+		return 'Install command line XCode tools with `xcode-select --install`'
+	}
+	return ''
 }

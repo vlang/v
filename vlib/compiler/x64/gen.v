@@ -15,6 +15,7 @@ mut:
 	file_size_pos i64
 	main_fn_addr i64
 	code_start_pos i64 // location of the start of the assembly instructions
+	fn_addr map[string]i64
 	//string_addr map[string]i64
 }	
 
@@ -42,6 +43,10 @@ pub fn new_gen(out_name string) &Gen {
 		buf: []
 		out_name: out_name
 	}	
+}	
+
+pub fn (g &Gen) pos() i64 {
+	return g.buf.len
 }	
 
 
@@ -155,10 +160,13 @@ fn (g mut Gen) mov64(reg Register, val i64) {
 	g.write64(val)
 }
 
-fn (g mut Gen) call(val int) {
-	//println('call val=$val')
+fn (g mut Gen) call(addr int) {
+	//rel := g.abs_to_rel_addr(addr)
+	rel := 0xffffffff - int(abs(addr - g.buf.len))-1
+	
+	println('call addr=$addr rel_addr=$addr pos=$g.buf.len')
 	g.write8(0xe8)
-	g.write32(val)
+	g.write32(addr)
 }
 
 fn (g mut Gen) syscall() {
@@ -226,6 +234,21 @@ fn (g mut Gen) mov(reg Register, val int) {
 		
 	}
 	g.write32(val)
+}
+
+pub fn (g mut Gen) register_function_address(name string) {
+	addr := g.pos()
+	println('reg fn addr $name $addr')
+	g.fn_addr[name] = addr
+}
+
+pub fn (g mut Gen) call_fn(name string) {
+	if !name.contains('__') {
+		return
+	}	
+	addr := g.fn_addr[name]
+	g.call(int(addr))
+	println('call $name $addr')
 }
 
 

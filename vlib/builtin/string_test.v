@@ -93,7 +93,7 @@ fn test_split() {
 	assert vals.len == 2
 	assert vals[0] == 'volt/twitch.v'
 	assert vals[1] == '34'
-	// /////////	
+	// /////////
 	s = '2018-01-01z13:01:02'
 	vals = s.split('z')
 	assert vals.len == 2
@@ -491,13 +491,13 @@ fn test_raw() {
 	lines := raw.split('\n')
 	assert lines.len == 1
 	println('raw string: "$raw"')
-}	
+}
 
 fn test_escape() {
 	// TODO
 	//a := 10
 	//println("\"$a")
-}	
+}
 
 fn test_atoi() {
 	assert '234232'.int() == 234232
@@ -506,8 +506,8 @@ fn test_atoi() {
 	for n in -10000 .. 100000 {
 		s := n.str()
 		assert s.int() == n
-	}	
-}	
+	}
+}
 
 fn test_raw_inter() {
 	world := 'world'
@@ -523,6 +523,6 @@ fn test_c_r() {
 	println('$c')
 	r := 50
 	println('$r')
-	
-}	
+
+}
 
