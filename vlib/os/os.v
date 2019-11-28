@@ -64,7 +64,7 @@ mut:
 
 fn C.getline(voidptr, voidptr, voidptr) int
 fn C.ftell(fp voidptr) int
-fn C.getenv(byteptr) byteptr
+fn C.getenv(byteptr) &char
 fn C.sigaction(int, voidptr, int)
 
 
@@ -76,15 +76,11 @@ pub fn (f File) read_bytes(size int) []byte {
 
 // read_bytes_at reads an amount of bytes at the given position in the file
 pub fn (f File) read_bytes_at(size, pos int) []byte {
-	mut data := malloc(size)
-	mut arr  := [`0`].repeat(size)
+	mut arr	 := [`0`].repeat(size)
 	C.fseek(f.cfile, pos, C.SEEK_SET)
-	C.fread(data, 1, size, f.cfile)
+	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_SET)
-	for e := 0; e < size; e++ {
-		arr[e] = data[e]
-	}
-	return arr
+	return arr.slice(0, nreadbytes)
 }
 
 pub fn read_bytes(path string) ?[]byte {
@@ -96,16 +92,10 @@ pub fn read_bytes(path string) ?[]byte {
 	fsize := C.ftell(fp)
 	C.rewind(fp)
 	println('fsize=$fsize')
-	mut data := malloc(fsize)
-	C.fread(data, fsize, 1, fp)
-	mut res  := [`0`].repeat(fsize)
-	for i in 0..fsize {
-		res[i] = data[i]
-	}
+	mut res	 := [`0`].repeat(fsize)
+	nreadbytes := C.fread(res.data, fsize, 1, fp)
 	C.fclose(fp)
-	//res := []byte(data, 10) // TODO can't `return []byte(data)`
-	//println('res0 = ' + res[0].str())
-	return res
+	return res.slice(0, nreadbytes )
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -485,41 +475,37 @@ pub fn sigint_to_signal_name(si int) string {
 pub fn getenv(key string) string {	
 	$if windows {
 		s := C._wgetenv(key.to_wide())
-		if isnil(s) {
+		if s == 0 {
 			return ''
 		}
 		return string_from_wide(s)
 	} $else {
-		s := *byte(C.getenv(key.str))
-		if isnil(s) {
+		s := C.getenv(key.str)
+		if s == 0 {
 			return ''
 		}
-		return string(s)
+		// NB: C.getenv *requires* that the result be copied.
+		return cstring_to_vstring( byteptr(s) )
 	}
 }
 
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '$name=$value'
-
 		if overwrite {
 			return C._putenv(format.str)
 		}
-
 		return -1
-	}
-	$else {
+	} $else {
 		return C.setenv(name.str, value.str, overwrite)
 	}
 }
 
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='
-		
+		format := '${name}='		
 		return C._putenv(format.str)
-	}
-	$else {
+	} $else {
 		return C.unsetenv(name.str)
 	}
 }
@@ -759,31 +745,32 @@ fn C.readlink() int
 // process.
 pub fn executable() string {
 	$if linux {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		count := C.readlink('/proc/self/exe', result, MAX_PATH)
 		if count < 0 {
-			panic('error reading /proc/self/exe to get exe path')
+			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+			return os.args[0]
 		}
-		return string(result, count)
+		return string(result)
 	}
 	$if windows {
 		max := 512
-		mut result := &u16(malloc(max*2)) // MAX_PATH * sizeof(wchar_t)
+		mut result := &u16(calloc(max*2)) // MAX_PATH * sizeof(wchar_t)
 		len := int(C.GetModuleFileName( 0, result, max ))
 		return string_from_wide2(result, len)
 	}
 	$if mac {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath (pid, result, MAX_PATH)
 		if ret <= 0  {
-			println('os.executable() failed')
-			return '.'
+			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
+			return os.args[0]
 		}
 		return string(result)
 	}
 	$if freebsd {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := MAX_PATH
 		C.sysctl(mib.data, 4, result, &size, 0, 0)
@@ -797,18 +784,20 @@ pub fn executable() string {
 	$if solaris {
 	}
 	$if netbsd {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH ))
 		if count < 0 {
-			panic('error reading /proc/curproc/exe to get exe path')
+			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
+			return os.args[0]
 		}
 		return string(result, count)
 	}
 	$if dragonfly {
-		mut result := malloc(MAX_PATH)
+		mut result := calloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH ))
 		if count < 0 {
-			panic('error reading /proc/curproc/file to get exe path')
+			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
+			return os.args[0]
 		}
 		return string(result, count)
 	}
@@ -869,22 +858,20 @@ pub fn getwd() string {
 //  and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
-	mut fullpath := calloc( MAX_PATH )
-	mut res := 0
+	mut fullpath := calloc(MAX_PATH)
+	mut ret := *char(0)
 	$if windows {
-		ret := C._fullpath(fullpath, fpath.str, MAX_PATH)
+		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
 		if ret == 0 {
 			return fpath
 		}	
-		return string(fullpath)
-	}
-	$else{
-		ret := C.realpath(fpath.str, fullpath)
+	} $else {
+		ret = C.realpath(fpath.str, fullpath)
 		if ret == 0 {
 			return fpath
 		}	
-		return string(fullpath)
 	}
+	return string(fullpath)
 }
 
 // walk_ext returns a recursive list of all file paths ending with `ext`.
