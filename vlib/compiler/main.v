@@ -301,12 +301,8 @@ pub fn (v mut V) compile() {
 	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.is_vgen = true
-	v.add_parser(vgen_parser)
-	// run vgen / generic parsers
-	for i, _ in v.parsers {
-		if !v.parsers[i].is_vgen { continue }
-		v.parsers[i].parse(.main)
-	}
+	// v.add_parser(vgen_parser)
+	vgen_parser.parse(.main)
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		generate_vh(v.dir)
@@ -665,13 +661,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 	// resolve deps and add imports in correct order
 	imported_mods := v.resolve_deps().imports()
 	for mod in imported_mods {
-		// TODO: work out bug and only add when needed in fn.v
-		if !mod in v.gen_parser_idx {
-			mut gp := v.new_parser_from_string('module '+mod.all_after('.')+'\n')
-			gp.is_vgen = true
-			gp.mod = mod
-			v.gen_parser_idx[mod] = v.add_parser(gp)
-		}
 		if mod == 'builtin' || mod == 'main' {
 			// builtin already added
 			// main files will get added last
