@@ -61,7 +61,7 @@ pub:
 
 pub fn vstrlen(s byteptr) int {
 	return C.strlen(*char(s))
-}	
+}
 
 // Converts a C string to a V string.
 // String data is reused, not copied.
@@ -124,6 +124,15 @@ pub fn (s string) cstr() byteptr {
 	return clone.str
 }
 */
+
+// cstring_to_vstring creates a copy of cstr and turns it into a v string
+pub fn cstring_to_vstring(cstr byteptr) string {
+	slen := C.strlen(cstr)
+	mut s := byteptr( memdup(cstr, slen+1) )
+	s[slen] = `\0`
+	return tos(s, slen)
+}
+
 pub fn (s string) replace_once(rep, with string) string {
     index := s.index(rep)
     if index != -1 {
@@ -187,11 +196,11 @@ pub fn (s string) replace(rep, with string) string {
 
 
 pub fn (s string) int() int {
-	return int(strconv.parse_int(s,0,32))
+	return int(strconv.common_parse_int(s,0,32, false, false))
 }
 
 pub fn (s string) i64() i64 {
-	return strconv.parse_int(s, 0, 64)
+	return strconv.common_parse_int(s, 0, 64, false, false)
 }
 
 pub fn (s string) f32() f32 {
@@ -203,11 +212,11 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return u32(strconv.parse_uint(s, 0, 32))
+	return u32(strconv.common_parse_uint(s, 0, 32, false, false))
 }
 
 pub fn (s string) u64() u64 {
-	return strconv.parse_uint(s, 0, 64)
+	return strconv.common_parse_uint(s, 0, 64, false, false)
 }
 
 // ==
@@ -614,7 +623,7 @@ pub fn (s string) title() string {
 	}
 	title := tit.join(' ')
 
-	return title	
+	return title
 }
 
 // 'hey [man] how you doin'

@@ -89,22 +89,13 @@ pub fn eprintln(s string) {
 	if isnil(s.str) {
 		panic('eprintln(NIL)')
 	}
-	$if mac {
+	$if !windows {
+		C.fflush(stdout)
+		C.fflush(stderr)
 		C.fprintf(stderr, '%.*s\n', s.len, s.str)
 		C.fflush(stderr)
 		return
 	}
-	$if linux {
-		C.fprintf(stderr, '%.*s\n', s.len, s.str)
-		C.fflush(stderr)
-		return
-	}
-	$if freebsd {
-		C.fprintf(stderr, '%.*s\n', s.len, s.str)
-		C.fflush(stderr)
-		return
-	}
-
 	// TODO issues with stderr and cross compiling for Linux
 	println(s)
 }

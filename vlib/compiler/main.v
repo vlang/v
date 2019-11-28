@@ -125,6 +125,7 @@ pub mut:
 	is_fmt bool
 	is_bare bool
 
+	user_mod_path string // `v -user_mod_path /Users/user/modules` adds a new lookup path for imported modules
 	vlib_path string
 	vpath string
 	x64 bool
@@ -362,7 +363,6 @@ pub fn (v mut V) compile_x64() {
 		v.parse(f, .main)
 	}
 	v.x64.generate_elf_footer()
-	
 }	
 
 fn (v mut V) generate_init() {
@@ -537,7 +537,6 @@ pub fn final_target_out_name(out_name string) string {
 
 pub fn (v V) run_compiled_executable_and_exit() {
 	args := env_vflags_and_os_args()
-	
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}
@@ -841,6 +840,9 @@ pub fn new_v(args[]string) &V {
 		os.mkdir('$v_modules_path${os.path_separator}cache') or { panic(err) }
 	}
 	
+	// optional, custom modules search path
+	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
+
 	// Location of all vlib files
 	vroot := os.dir(vexe_path())
 	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot, 'vlib'))
@@ -1029,6 +1031,7 @@ pub fn new_v(args[]string) &V {
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
 		comptime_define: comptime_define
 		is_fmt: comptime_define == 'vfmt'
+		user_mod_path: user_mod_path
 		vlib_path: vlib_path
 		vpath: vpath
 	}

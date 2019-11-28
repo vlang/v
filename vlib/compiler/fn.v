@@ -44,6 +44,7 @@ mut:
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
 	is_used bool // so that we can skip unused fns in resulting C code
+	//x64_addr i64 // address in the generated x64 binary
 }
 
 struct GenericTmpl {
@@ -194,7 +195,7 @@ fn (p mut Parser) clear_vars() {
 		}
 		p.local_vars = []
 	}
-	
+
 }
 
 // Function signatures are added to the top of the .c file in the first run.
@@ -233,7 +234,7 @@ fn (p mut Parser) fn_decl() {
 	//p.gen('/* returns $p.returns */')
 	p.next()
 	p.fspace()
-	
+
 	// Method receiver
 	mut receiver_typ := ''
 	if p.tok == .lpar {
@@ -253,7 +254,7 @@ fn (p mut Parser) fn_decl() {
 		t := p.table.find_type(receiver_typ)
 		if (t.name == '' || t.is_placeholder) && !p.first_pass() {
 			p.error('unknown receiver type `$receiver_typ`')
-		}	
+		}
 		if t.cat == .interface_ {
 			p.error('invalid receiver type `$receiver_typ` (`$receiver_typ` is an interface)')
 		}
@@ -405,6 +406,9 @@ fn (p mut Parser) fn_decl() {
 	str_args := f.str_args(p.table)
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
+		if p.pref.x64 && !p.first_pass() {
+			p.x64.save_main_fn_addr()
+		}	
 		if str_args != '' || typ != 'void' {
 			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
@@ -537,6 +541,12 @@ fn (p mut Parser) fn_decl() {
 		//p.genln('// live_function body end')
 		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
 	}
+	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
+		p.x64.gen_exit()
+	}	
+	if p.pref.x64 && !p.first_pass() {
+		p.x64.ret()
+	}
 	// {} closed correctly? scope_level should be 0
 	if p.mod == 'main' {
 		// println(p.cur_fn.scope_level)
@@ -553,6 +563,7 @@ fn (p mut Parser) fn_decl() {
 	p.check_unused_variables()
 	p.set_current_fn( EmptyFn )
 	p.returns = false
+	
 }
 
 [inline]
@@ -699,10 +710,10 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
 	if f.is_unsafe && !p.builtin_mod && !p.inside_unsafe {
 		p.warn('you are calling an unsafe function outside of an unsafe block')
-	}	
+	}
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
-	}	
+	}
 	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
@@ -712,7 +723,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
 	if is_comptime_define {
 		p.cgen.nogen = true
-	}	
+	}
 	p.calling_c = f.is_c
 	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
@@ -759,8 +770,8 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				for i, method in t.methods {
 					if method.name == f.name {
 						idx = i
-					}	
-				}	
+					}
+				}
 				p.cgen.resetln('')
 				var := p.expr_var.name
 				iname := f.args[0].typ // Speaker
@@ -789,7 +800,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		// Normal function call
 		p.gen('$cgen_name (')
 	}
-	
+
 	// `foo<Bar>()`
 	// if f is generic, the name is changed to a suitable instance in dispatch_generic_fn_instance()
 	// we then replace `cgen_name` with the instance's name
@@ -1015,12 +1026,12 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		if clone {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
 		}
-		
+
 		// x64 println gen
 		if p.pref.x64 && i == 0 && f.name == 'println' && p.tok == .str &&	p.peek() == .rpar {
 			p.x64.gen_print(p.lit)
-		}	
-		
+		}
+
 		mut typ := p.bool_expression()
 		// Register an interface type usage:
 		// fn run(r Animal) { ... }
@@ -1040,8 +1051,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		if clone {
 			p.gen(')')
 		}
-		
-			
+
+
 		// Optimize `println`: replace it with `printf` to avoid extra allocations and
 		// function calls.
 		// `println(777)` => `printf("%d\n", 777)`
@@ -1168,11 +1179,12 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 					}
 					} $else {
 						p.cgen.set_placeholder(ph, '& /*114*/')
-					}	
-					
-				}	
+					}
+
+				}
 				// println('\ne:"$expected" got:"$got"')
 				else if ! (expected == 'void*' && got == 'int') &&
+				! (expected == 'void*' && got == 'byteptr') &&
 				! (expected == 'byte*' && got.contains(']byte')) &&
 				! (expected == 'byte*' && got == 'string') &&
 				//! (expected == 'void*' && got == 'array_int') {
@@ -1330,7 +1342,7 @@ fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	}
 	p.table.add_field(vargs_struct, 'len', 'int', false, '', .public)
 	p.table.add_field(vargs_struct, 'args[$varg_len]', typ, false, '', .public)
-	
+
 	return vargs_struct
 }
 

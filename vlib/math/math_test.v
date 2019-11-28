@@ -46,7 +46,12 @@ fn test_erf() {
 fn test_gamma() {
 	assert math.gamma(1) == 1
 	assert math.gamma(5) == 24
-	assert math.log_gamma(4.5) == math.log(math.gamma(4.5))
+
+	sval := '2.453737'
+	assert math.log_gamma(4.5).str() == sval
+	assert math.log(math.gamma(4.5)).str() == sval
+	assert math.abs( math.log_gamma(4.5) - math.log(math.gamma(4.5)) ) < 0.000001
+	// assert math.log_gamma(4.5) == math.log(math.gamma(4.5)) /* <-- fails on alpine/musl
 }
 
 fn test_mod() {

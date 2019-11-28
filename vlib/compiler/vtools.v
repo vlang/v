@@ -13,7 +13,7 @@ pub fn launch_tool(tname string){
 	tool_args := oargs.join(' ')
 	tool_command := '"$tool_exe" $tool_args'
 	//println('Launching: "$tool_command" ...')
-	
+
 	mut tool_should_be_recompiled := false
 	if !os.file_exists( tool_exe ) {
 		// fresh checkout
