@@ -1,7 +1,7 @@
 module main
 
 __global fd [2]int
-__global buffer [16]byte
+__global buffer [128]byte
 
 const (
 	sample_text_file1 = ""
@@ -36,20 +36,22 @@ fn check_read_write_pipe() {
 
 	a := sys_pipe(intptr(fd))
 
-	assert a != -1
+	assert a == .enoerror
 
 	assert fd[0] != -1
 	assert fd[1] != -1
 
 	test_data := "test_data"
 	b := test_data.len + 1
-	mut c := sys_write (fd[1], test_data.str, u64(b))
+	c1, e1 := sys_write (fd[1], test_data.str, u64(b))
 
-	assert c == b
+	assert e1 == .enoerror
+	assert c1 == b
 
-	c = sys_read(fd[0], byteptr(buffer), u64(b))
+	c2, e2 := sys_read(fd[0], byteptr(buffer), u64(b))
 
-	assert c == b
+	assert e2 == .enoerror
+	assert c2 == b
 
 	assert buffer[b-1] == 0
 
@@ -57,10 +59,10 @@ fn check_read_write_pipe() {
 		assert test_data[i] == buffer[i]
 	}
 
-	assert 0 == sys_close(fd[0])
-	assert 0 == sys_close(fd[1])
+	assert sys_close(fd[0]) == .enoerror
+	assert sys_close(fd[1]) == .enoerror
 
-	assert 0 != sys_close(-1)
+	assert sys_close(-1) == .ebadf
 
 	println ("pipe read/write passed")
 }
@@ -80,12 +82,13 @@ fn check_read_file() {
 	assert fd > 0
 	assert ec == .enoerror
 	n := sample_text.len
-	c := sys_read(fd, buffer, u64(n*2))
+	c, e := sys_read(fd, buffer, u64(n*2))
+	assert e == .enoerror
 	assert c == n
 	for i in 0..n {
 		assert sample_text[i] == buffer[i]
 	}
-	assert 0 == sys_close(fd)
+	assert sys_close(fd) == .enoerror
 
 	println("read file passed")
 }
@@ -112,11 +115,22 @@ fn check_print() {
 }
 */
 
+fn check_munmap_fail() {
+	println ("checking 'munmap fail'")
+
+	ec := sys_munmap(-16384,8192)
+	assert ec == .einval
+	//es := i64_tos(buffer2,80,int(ec),16)
+	//println(es)
+
+	println ("'munmap fail' check passed")
+}
+
 fn main() {
 	check_read_write_pipe()
 	check_read_file()
 	// check_print()
 	check_open_file_fail()
+	check_munmap_fail()
 	sys_exit(0)
 }
-
