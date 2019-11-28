@@ -9,6 +9,9 @@ fn test_404() {
 		panic(err)
 	}
 	assert res.status_code == 404
+	srv.free() or {
+		panic(err)
+	}
 }
 
 fn serve(req http.Request, res http.Response) http.Response {

@@ -37,6 +37,14 @@ pub fn (s HttpServer) listen(port int) ?int {
 
 	return port
 }
+
+pub fn (s HttpServer) free() ?bool {
+	s.sock.close() or {
+		return error(err)
+	}
+	return true
+}
+
 // handle connections, this runs in a different system thread.
 fn (s HttpServer) handle_conn(conn net.Socket) {
 	conn.write('HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found') or {
