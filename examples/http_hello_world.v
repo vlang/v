@@ -11,10 +11,10 @@ fn main() {
 }
 
 fn handle(req http.ServerRequest, resO http.Response) http.Response {
-	mut res := resO
+	mut res := resO // Make a clone of resO to edit
 	res.status_code = 200
 	ua := req.headers['User-Agent']
 	res.text = '<h1> Hello World! </h1> <p> Your user agent: $ua</p>'
 	res.headers['Content-Type'] = 'text/html'
-	return res
+	return res // Return our edited clone to be sent
 }
