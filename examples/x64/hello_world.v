@@ -1,6 +1,6 @@
 fn test_fn() {
 	println('test fn')
-}	
+}
 
 fn main() {
 	println('x64 test')
@@ -8,7 +8,7 @@ fn main() {
 		println('Hello world from V x64 machine code generator!')
 	}
 	println('Hello again!')
-	test_fn()
-	println('dne')
+	//test_fn()
+	println('done')
 }
 
