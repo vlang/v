@@ -74,6 +74,7 @@ mut:
 	sql_params []string // ("select * from users where id = $1", ***"100"***)
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
+	generic_dispatch TypeInst
 pub:
 	mod            string
 }
@@ -94,6 +95,9 @@ struct ParserState {
 	scanner_pos     int
 	scanner_line_ends []int
 	scanner_nlines    int
+	cgen_lines    []string
+	cgen_cur_line string
+	cgen_tmp_line string
 	tokens        []Token
 	token_idx     int
 	tok           TokenKind
@@ -285,6 +289,9 @@ pub fn (p mut Parser) save_state() ParserState {
 		scanner_pos    : p.scanner.pos
 		scanner_line_ends : p.scanner.line_ends
 		scanner_nlines    : p.scanner.nlines
+		cgen_lines    : p.cgen.lines
+		cgen_cur_line : p.cgen.cur_line
+		cgen_tmp_line : p.cgen.tmp_line
 		tokens       : p.tokens
 		token_idx    : p.token_idx
 		tok          : p.tok
@@ -294,12 +301,19 @@ pub fn (p mut Parser) save_state() ParserState {
 	}
 }
 
-pub fn (p mut Parser) restore_state(state ParserState) {
-	p.scanner.line_nr = state.scanner_line_nr
-	p.scanner.text    = state.scanner_text
-	p.scanner.pos     = state.scanner_pos
-	p.scanner.line_ends = state.scanner_line_ends
-	p.scanner.nlines    = state.scanner_nlines
+pub fn (p mut Parser) restore_state(state ParserState, scanner bool, cgen bool) {
+	if scanner {
+		p.scanner.line_nr = state.scanner_line_nr
+		p.scanner.text    = state.scanner_text
+		p.scanner.pos     = state.scanner_pos
+		p.scanner.line_ends = state.scanner_line_ends
+		p.scanner.nlines    = state.scanner_nlines
+	}
+	if cgen {
+		p.cgen.lines    = state.cgen_lines
+		p.cgen.cur_line = state.cgen_cur_line
+		p.cgen.tmp_line = state.cgen_tmp_line
+	}
 	p.tokens        = state.tokens
 	p.token_idx     = state.token_idx
 	p.tok           = state.tok
@@ -308,12 +322,19 @@ pub fn (p mut Parser) restore_state(state ParserState) {
 	p.lit           = state.lit
 }
 
-fn (p mut Parser) clear_state() {
-	p.scanner.line_nr = 0
-	p.scanner.text = ''
-	p.scanner.pos = 0
-	p.scanner.line_ends = []
-	p.scanner.nlines = 0
+fn (p mut Parser) clear_state(scanner bool, cgen bool) {
+	if scanner {
+		p.scanner.line_nr = 0
+		p.scanner.text = ''
+		p.scanner.pos = 0
+		p.scanner.line_ends = []
+		p.scanner.nlines = 0
+	}
+	if cgen {
+		p.cgen.lines    = []
+		p.cgen.cur_line = ''
+		p.cgen.tmp_line = ''
+	}
 	p.tokens = []
 	p.token_idx = 0
 	p.lit = ''
@@ -329,7 +350,7 @@ pub fn (p mut Parser) add_text(text string) {
 
 fn (p mut Parser) statements_from_text(text string, rcbr bool) {
 	saved_state := p.save_state()
-	p.clear_state()
+	p.clear_state(true, false)
 	p.add_text(text)
 	p.next()
 	if rcbr {
@@ -337,7 +358,7 @@ fn (p mut Parser) statements_from_text(text string, rcbr bool) {
 	} else {
 		p.statements_no_rcbr()
 	}
-	p.restore_state(saved_state)
+	p.restore_state(saved_state, true, false)
 }
 
 fn (p mut Parser) parse(pass Pass) {
@@ -961,7 +982,13 @@ fn (p mut Parser) get_type() string {
 		nr_muls++
 		p.check(.amp)
 	}
-	typ += p.lit
+	// generic type check
+	ti := p.cur_fn.dispatch_of.inst	
+	if p.lit in ti.keys() {	
+		typ += ti[p.lit]
+	} else {	
+		typ += p.lit	
+	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
