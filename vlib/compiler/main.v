@@ -1043,7 +1043,7 @@ pub fn new_v(args[]string) &V {
 	}
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {
-			verror('-bare only works on Linux for now')
+			verror('-freestanding only works on Linux for now')
 		}
 	}
 	return &V{
