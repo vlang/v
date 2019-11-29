@@ -1,22 +1,44 @@
 /**********************************************************************
 *
-* utf-8 functions
+* utf-8 util
+*
+* This file contains utilities for utf8 strings
 *
 **********************************************************************/
 module builtin
 
-fn utf8util_char_len(b byte) int {
-	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
-}
-
+//
+// utf8_to_upper
+// Parameters:
+//
+// Output:
+//  string
+//
+// Convert a utf8 string to uppercase
+//
 pub fn (s string) utf8_to_upper() string {
 	return s.utf8_up_low(true)
 }
 
+//
+// utf8_to_lower
+// Parameters:
+//
+// Output:
+//  string
+//
+// Convert a utf8 string to lowercase
+// 
 pub fn (s string) utf8_to_lower() string {
 	return s.utf8_up_low(false) 
 }
 
+// Private function, calculate the lenght in bytes of a utf8 rune
+fn utf8util_char_len(b byte) int {
+	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
+}
+
+// Private function, make the dir jobs
 fn (s string) utf8_up_low(uppper_flag bool) string {
 	mut _index := 0
 	mut old_index := 0
@@ -73,7 +95,7 @@ fn (s string) utf8_up_low(uppper_flag bool) string {
 
 			// char not in table no need of conversion
 			//****************************************************************
-			//BUG: need bracket for & condition, otherwise priority ignored!!!
+			//BUG: need round brackets for & condition, otherwise priority ignored!!!
 			//****************************************************************
 			if ch_index==0 || ( ch_index & 1 )== test_result { 
 				for i in 0..ch_len {
@@ -91,7 +113,9 @@ fn (s string) utf8_up_low(uppper_flag bool) string {
 					str_res[ _index + 0 ] = ch0
 					str_res[ _index + 1 ] = ch1
 					
-					//  BUG: doesn't compile, workaround user shitf to 0 
+					//****************************************************************
+					//  BUG: doesn't compile, workaround use shitf to right of 0 bit
+					//****************************************************************
 					//str_res[_index + 1 ] = byte( tab_char & 0xbf )			/*1011 1111*/
 					
 				}
