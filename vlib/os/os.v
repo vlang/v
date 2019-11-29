@@ -212,7 +212,7 @@ fn vfopen(path, mode string) *C.FILE {
 	} $else {
 		return C.fopen(*char(path.str), *char(mode.str))
 	}
-}	
+}
 
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
@@ -254,7 +254,7 @@ pub fn read_lines(path string) ?[]string {
 fn read_ulines(path string) ?[]ustring {
 	lines := read_lines(path) or {
 		return err
-	}	
+	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring
 	for myline in lines {
@@ -269,7 +269,7 @@ pub fn open(path string) ?File {
 	$if windows {
 		wpath := path.to_wide()
 		mode := 'rb'
-		file = File {			
+		file = File {
 			cfile: C._wfopen(wpath, mode.to_wide())
 		}
 	} $else {
@@ -290,7 +290,7 @@ pub fn create(path string) ?File {
 	$if windows {
 		wpath := path.replace('/', '\\').to_wide()
 		mode := 'wb'
-		file = File {			
+		file = File {
 			cfile: C._wfopen(wpath, mode.to_wide())
 		}
 	} $else {
@@ -310,7 +310,7 @@ pub fn open_append(path string) ?File {
 	$if windows {
 		wpath := path.replace('/', '\\').to_wide()
 		mode := 'ab'
-		file = File {			
+		file = File {
 			cfile: C._wfopen(wpath, mode.to_wide())
 		}
 	} $else {
@@ -384,7 +384,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 		if C.WIFEXITED( waitret ) {
 			ret = C.WEXITSTATUS( waitret )
 			is_signaled = false
-		} else if C.WIFSIGNALED( waitret ){		
+		} else if C.WIFSIGNALED( waitret ){
 			ret = C.WTERMSIG( waitret )
 			is_signaled = true
 		}
@@ -411,10 +411,10 @@ pub:
 
 // `system` works like `exec()`, but only returns a return code.
 pub fn system(cmd string) int {
-	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
+	//if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 		// TODO remove panic
-		panic(';, &&, || and \\n are not allowed in shell commands')
-	}
+		//panic(';, &&, || and \\n are not allowed in shell commands')
+	//}
 	mut ret := int(0)
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
@@ -472,7 +472,7 @@ pub fn sigint_to_signal_name(si int) string {
 }
 
 // `getenv` returns the value of the environment variable named by the key.
-pub fn getenv(key string) string {	
+pub fn getenv(key string) string {
 	$if windows {
 		s := C._wgetenv(key.to_wide())
 		if s == 0 {
@@ -503,7 +503,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='		
+		format := '${name}='
 		return C._putenv(format.str)
 	} $else {
 		return C.unsetenv(name.str)
@@ -535,7 +535,7 @@ pub fn rm(path string) {
 // rmdir removes a specified directory.
 pub fn rmdir(path string) {
 	$if !windows {
-		C.rmdir(path.str)		
+		C.rmdir(path.str)
 	}
 	$else {
 		C.RemoveDirectory(path.to_wide())
@@ -834,7 +834,7 @@ pub fn chdir(path string) {
 }
 
 // getwd returns the absolute path name of the current directory.
-pub fn getwd() string {	
+pub fn getwd() string {
 	$if windows {
 		max := 512 // MAX_PATH * sizeof(wchar_t)
 		buf := &u16(calloc(max*2))
@@ -864,12 +864,12 @@ pub fn realpath(fpath string) string {
 		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
 		if ret == 0 {
 			return fpath
-		}	
+		}
 	} $else {
 		ret = C.realpath(fpath.str, fullpath)
 		if ret == 0 {
 			return fpath
-		}	
+		}
 	}
 	return string(fullpath)
 }
@@ -1020,4 +1020,4 @@ pub fn tmpdir() string {
 
 pub fn chmod(path string, mode int) {
 	C.chmod(path.str, mode)
-}	
+}
