@@ -56,7 +56,11 @@ fn (s string) utf8_up_low(uppper_flag bool) string {
 		ch_len := utf8util_char_len(s.str[_index])
 
 		if ch_len == 1 {
-			str_res[_index] = C.toupper(s.str[_index])
+			if uppper_flag==true {
+				str_res[_index] = C.toupper(s.str[_index])
+			}else{
+				str_res[_index] = C.tolower(s.str[_index])
+			}
 		}
 		else if ch_len > 1 && ch_len < 5{
 			mut lword := int(0)
