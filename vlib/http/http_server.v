@@ -60,12 +60,12 @@ fn (s HttpServer) handle_conn(conn net.Socket) ?bool {
 		status_code: 404,
 		headers: headers
 	}
-	serialized_headers := serialize_headers(res.headers)
 	req := ServerRequest {
 		dummy: 'test'
 	}
-	// new_res := s.handler(req, res) V bug preventing this from working
-	new_res := res
+	handler := s.handler
+	new_res := handler(req, res)
+	serialized_headers := serialize_headers(res.headers)
 	conn.write('HTTP/1.1 $new_res.status_code\r\n$serialized_headers\r\n$new_res.text') or {
 		return error(err)
 	}
