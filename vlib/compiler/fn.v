@@ -349,15 +349,13 @@ fn (p mut Parser) fn_decl() {
 			}
 		}
 	}
-	mut is_dispatch :=  false
-	if p.generic_dispatch.inst.size > 0 {
-		f.dispatch_of = p.generic_dispatch
-		rename_generic_fn_instance(mut f, f.dispatch_of)
-		is_dispatch = true
-	}
 	// Generic?
 	if p.tok == .lt {
-		if !is_dispatch {
+		// instance (dispatch)
+		if p.generic_dispatch.inst.size > 0 {
+			f.dispatch_of = p.generic_dispatch
+			rename_generic_fn_instance(mut f, f.dispatch_of)
+		} else {
 			f.is_generic = true
 		}
 		p.next()
