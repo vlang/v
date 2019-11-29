@@ -73,8 +73,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Download V
-      run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_linux.zip
- && unzip v_linux.zip && ./v --version
+      run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_linux.zip && unzip v_linux.zip && ./v --version
 
 
   ubuntu-tcc:
