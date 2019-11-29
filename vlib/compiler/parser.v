@@ -289,7 +289,7 @@ pub fn (p mut Parser) save_state() ParserState {
 		scanner_pos    : p.scanner.pos
 		scanner_line_ends : p.scanner.line_ends
 		scanner_nlines    : p.scanner.nlines
-	    cgen_lines    : p.cgen.lines
+		cgen_lines    : p.cgen.lines
 		cgen_cur_line : p.cgen.cur_line
 		cgen_tmp_line : p.cgen.tmp_line
 		tokens       : p.tokens
