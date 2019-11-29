@@ -847,8 +847,8 @@ fn (p mut Parser) check_space(expected TokenKind) {
 
 fn (p mut Parser) check(expected TokenKind) {
 	if p.tok != expected {
-		println('check()')
-		s := 'expected `${expected.str()}` but got `${p.strtok()}`'
+		//println('check()')
+		s := 'syntax error: unexpected `${p.strtok()}`, expecting `${expected.str()}`'
 		p.next()
 		println('next token = `${p.strtok()}`')
 		if p.pref.is_debug {
@@ -2556,7 +2556,7 @@ fn (p mut Parser) array_init() string {
 	p.check(.rsbr)
 	// type after `]`? (e.g. "[]string")
 	exp_array := p.expected_type.starts_with('array_')
-	if p.tok != .name && i == 0 && !exp_array {
+	if p.tok != .name && p.tok != .lsbr && i == 0 && !exp_array {
 		p.error('specify array type: `[]typ` instead of `[]`')
 	}
 	if p.tok == .name && i == 0 &&
