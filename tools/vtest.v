@@ -95,7 +95,7 @@ pub fn (ts mut TestSession) test() {
 		}
 		$if tinyc {
 			if file.contains('asm') { continue }
-		}	
+		}
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		cmd := '"$ts.vexe" $ts.vargs "$file"'
@@ -142,18 +142,22 @@ pub fn v_test_v(args_before_test string){
 		println('vlib/ is missing, it must be next to the V executable')
 		exit(1)
 	}
+	/*
 	if !os.file_exists(parent_dir + '/v.v') {
 		println('v.v is missing, it must be next to the V executable')
 		exit(1)
 	}
+	*/
 	// Make sure v.c can be compiled without warnings
 	$if mac {
-		os.system('$vexe -o v.c v.v')
-		if os.system('cc -Werror v.c') != 0 {
-			println('cc failed to build v.c without warnings')
-			exit(1)
+		if os.file_exists('/v.v') {
+			os.system('$vexe -o v.c v.v')
+			if os.system('cc -Werror v.c') != 0 {
+				println('cc failed to build v.c without warnings')
+				exit(1)
+			}
+			println('v.c can be compiled without warnings. This is good :)')
 		}
-		println('v.c can be compiled without warnings. This is good :)')
 	}
 	//
 	println('Testing...')
