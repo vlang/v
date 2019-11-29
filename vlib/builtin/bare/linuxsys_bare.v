@@ -1,5 +1,9 @@
 module builtin
 
+pub enum linux_mem {
+	page_size = 4096
+}
+
 pub enum wp_sys {
 	wnohang = 0x00000001
 	wuntraced = 0x00000002
@@ -117,6 +121,28 @@ pub enum errno {
 	exdev = 0x00000012
 }
 
+pub enum mm_prot {
+	prot_read = 0x1
+	prot_write = 0x2
+	prot_exec = 0x4
+	prot_none = 0x0
+	prot_growsdown = 0x01000000
+	prot_growsup = 0x02000000
+}
+
+pub enum map_flags {
+	map_shared = 0x01
+	map_private = 0x02
+	map_shared_validate = 0x03
+	map_type = 0x0f
+	map_fixed = 0x10
+	map_file = 0x00
+	map_anonymous = 0x20
+	map_anon = 0x20
+	map_huge_shift = 26
+	map_huge_mask = 0x3f
+}
+
 fn do_not_call_me_asm_keeper0() {
 	unsafe {
 		asm {
@@ -197,61 +223,60 @@ fn sys_call4(scn, arg1, arg2, arg3, arg4 u64) u64
 fn sys_call5(scn, arg1, arg2, arg3, arg4, arg5 u64) u64
 fn sys_call6(scn, arg1, arg2, arg3, arg4, arg5, arg6 u64) u64
 
-/*
-these wrappers don't act exactly like the libc ones in regard to return value, so they have the raw syscall behavior.
 
-    there is no errno
-    if zero is the expected value, a value > 0 is the error code
-    if a >=0 is a good value, then for errors, a negative error_code is returned
-*/
-
-// 0 sys_read unsigned int fd char *buf size_t count
-pub fn sys_read (fd int, buf byteptr, count u64) i64 {
-	return i64(sys_call3(0, u64(fd), u64(buf), count))
-}
-
-// 1 sys_write unsigned int fd, const char *buf, size_t count
-pub fn sys_write(fd int, buf byteptr, count u64) i64 {
-	return i64(sys_call3(1, u64(fd), u64(buf), count))
-}
-
-pub fn sys_open(filename byteptr, flags fcntl, mode int) (int, errno) {
-	//2 sys_open  const char *filename  int flags int mode
-	rc := int(sys_call3(2, u64(filename), u64(flags), u64(mode)))
+fn split_int_errno(rc_in u64) (i64, errno) {
+	rc := i64(rc_in)
 	if rc < 0 {
-		return -1, errno(-rc)
+		return i64(-1), errno(-rc)
 	}
 	return rc, errno.enoerror
 }
 
-pub fn sys_close(fd int) int {
+// 0 sys_read unsigned int fd char *buf size_t count
+pub fn sys_read (fd i64, buf byteptr, count u64) (i64, errno) {
+	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
+}
+
+// 1 sys_write unsigned int fd, const char *buf, size_t count
+pub fn sys_write(fd i64, buf byteptr, count u64) (i64, errno) {
+	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
+}
+
+pub fn sys_open(filename byteptr, flags fcntl, mode int) (i64, errno) {
+	//2 sys_open  const char *filename  int flags int mode
+	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
+}
+
+pub fn sys_close(fd i64) errno {
 	// 3 sys_close unsigned int fd
-	return int(sys_call1(3, u64(fd)))
+	return errno(-i64(sys_call1(3, u64(fd))))
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off
-pub fn sys_mmap(addr byteptr, len u64, prot u64, flags u64, fildes u64, off u64) voidptr {
-	return voidptr(sys_call6(9, u64(addr), len, prot, flags, fildes, off))
+pub fn sys_mmap(addr byteptr, len u64, prot mm_prot, flags map_flags, fildes u64, off u64) (byteptr, errno) {
+	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
+	a, e := split_int_errno(rc)
+	return byteptr(a), e
 }
 
-pub fn sys_munmap(addr voidptr, len u64) int {
+pub fn sys_munmap(addr voidptr, len u64) errno {
 	// 11 sys_munmap  unsigned long addr  size_t len
-	return int(sys_call2(11, u64(addr), len))
+	return errno(-sys_call2(11, u64(addr), len))
 }
 
 // 22  sys_pipe  int *filedes
-pub fn sys_pipe(filedes intptr) int {
-	return int(sys_call1(22, u64(filedes)))
+pub fn sys_pipe(filedes intptr) errno {
+	return errno(sys_call1(22, u64(filedes)))
 }
 
 // 24 sys_sched_yield
-pub fn sys_sched_yield() int {
-	return int(sys_call0(24))
+pub fn sys_sched_yield() errno {
+	return errno(sys_call0(24))
 }
 
-pub fn sys_madvise(addr voidptr, len u64, advice int) int {
+pub fn sys_madvise(addr voidptr, len u64, advice int) errno {
 	// 28 sys_madvise unsigned long start size_t len_in int behavior
-	return int(sys_call3(28, u64(addr), len, u64(advice)))
+	return errno(sys_call3(28, u64(addr), len, u64(advice)))
 }
 
 // 39 sys_getpid
@@ -270,8 +295,8 @@ pub fn sys_vfork() int {
 }
 
 // 33  sys_dup2  unsigned int oldfd  unsigned int newfd
-pub fn sys_dup2 (oldfd, newfd int) int {
-	return int(sys_call2(33, u64(oldfd),u64(newfd)))
+pub fn sys_dup2 (oldfd, newfd int) (i64, errno) {
+	return split_int_errno(sys_call2(33, u64(oldfd),u64(newfd)))
 }
 
 
@@ -285,6 +310,10 @@ pub fn sys_dup2 (oldfd, newfd int) int {
 pub fn sys_exit (ec int) {
 	sys_call1(60, u64(ec))
 }
+
+// 247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
+//pub fn sys_waitid (idtype wi_sys, pid i64, infop voidptr, options
+
 
 /*
 A few years old, but still relevant
@@ -537,7 +566,7 @@ https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
 244 sys_mq_notify mqd_t mqdes const struct sigevent *u_notification
 245 sys_mq_getsetattr mqd_t mqdes const struct mq_attr *u_mqstat  struct mq_attr *u_omqstat
 246 sys_kexec_load  unsigned long entry unsigned long nr_segments struct kexec_segment *segments  unsigned long flags
-247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
+>247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
 248 sys_add_key const char *_type const char *_description  const void *_payload  size_t plen
 249 sys_request_key const char *_type const char *_description  const char *_callout_info key_serial_t destringid
 250 sys_keyctl  int option  unsigned long arg2  unsigned long arg3  unsigned long arg4  unsigned long arg5

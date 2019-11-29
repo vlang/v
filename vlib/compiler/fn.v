@@ -532,6 +532,9 @@ fn (p mut Parser) fn_decl() {
 			f.defer_text[f.scope_level] = '  ${cgen_name}_time += time__ticks() - _PROF_START;'
 		}
 	}
+	if p.pref.x64 {
+		p.x64.register_function_address(f.name)
+	}	
 	p.statements_no_rcbr()
 	//p.cgen.nogen = false
 	// Print counting result after all statements in main
@@ -732,6 +735,9 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if is_comptime_define {
 		p.cgen.nogen = true
 	}
+	if p.pref.x64 && !p.first_pass() {
+		p.x64.call_fn(f.name)
+	}	
 	p.calling_c = f.is_c
 	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
