@@ -1468,17 +1468,11 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	} else {
 		p.table.register_fn(f)
 	}
-	mut gp := p.v.new_parser_from_string(p.v.parsers[f.parser_idx].scanner.text)
-	gp.scanner.file_path = p.v.parsers[f.parser_idx].file_path // set for error
+	mut gp := p.v.parsers[f.parser_idx]
 	gp.is_vgen = true
 	gp.mod = f.mod
 	gp.builtin_mod = f.mod == 'builtin'
 	gp.generic_dispatch = *ti
-	for mod in p.table.imports {
-		if gp.import_table.known_import(mod) { continue }
-		if mod == f.mod { continue }
-		gp.register_import(mod, 0)
-	}
 	saved_state := p.save_state()
 	p.clear_state(true, true)
 	gp.token_idx = f.generic_fn_idx
