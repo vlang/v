@@ -78,7 +78,7 @@ fn (r Response) send(conn net.Socket) ?bool {
 }
 
 // gets a response with the status code and default headers
-fn get_status_res(code int) Response {
+pub fn get_status_res(code int) Response {
 	return Response {
 		text: get_response_status_message(code),
 		status_code: code,
