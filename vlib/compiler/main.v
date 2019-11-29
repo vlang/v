@@ -12,7 +12,7 @@ import (
 )
 
 pub const (
-	Version = '0.1.22'
+	Version = '0.1.23'
 )
 
 enum BuildMode {
@@ -248,10 +248,10 @@ pub fn (v mut V) compile() {
 			cgen.genln('#include <inttypes.h>')  // int64_t etc
 		} else {
 			cgen.genln('#include <stdint.h>')
-		}	
-		
+		}
+
 		cgen.genln(c_builtin_types)
-		
+
 		if !v.pref.is_bare {
 			cgen.genln(c_headers)
 		}
@@ -351,8 +351,8 @@ pub fn (v mut V) compile_x64() {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' +
 			'be able to run the resulting executable')
-	}	
-	
+	}
+
 	v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'bare'))
 	v.files << v.dir
 	v.x64.generate_elf_header()
@@ -363,7 +363,7 @@ pub fn (v mut V) compile_x64() {
 		v.parse(f, .main)
 	}
 	v.x64.generate_elf_footer()
-}	
+}
 
 fn (v mut V) generate_init() {
 	$if js { return }
@@ -541,7 +541,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
-	
+
 	mut args_after := ' '
 	for i,a in args {
 		if i == 0 { continue }
@@ -552,7 +552,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		}
 	}
 	cmd += args_after
-	
+
 	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
@@ -575,7 +575,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if dir == 'compiler' && os.dir_exists('vlib') {
 			println('looks like you are trying to build V with an old command')
 			println('use `v -o v v.v` instead of `v -o v compiler`')
-		}	
+		}
 		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
 		verror("$dir isn't a directory")
@@ -620,7 +620,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
 		//builtin_files = []
-	}	
+	}
 	// Builtin cache exists? Use it.
 	builtin_vh := '${v.pref.vlib_path}${os.path_separator}builtin.vh'
 	if v.pref.is_cache && os.file_exists(builtin_vh) {
@@ -647,7 +647,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			p.register_import('os', 0)
 			p.table.imports << 'os'
 			p.table.register_module('os')
-		}	
+		}
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
 	}
@@ -713,11 +713,11 @@ pub fn (v &V)  get_user_files() []string {
 		// TODO this somtimes fails on CI
 		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_assertions.v')
 	}
-	
+
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_with_stats.v')
 	}
-	
+
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
@@ -839,7 +839,7 @@ pub fn new_v(args[]string) &V {
 		os.mkdir(v_modules_path) or { panic(err) }
 		os.mkdir('$v_modules_path${os.path_separator}cache') or { panic(err) }
 	}
-	
+
 	// optional, custom modules search path
 	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
 
@@ -852,7 +852,7 @@ pub fn new_v(args[]string) &V {
 	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
-		
+
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
 	//println('comptimedefine=$comptime_define')
@@ -936,8 +936,8 @@ pub fn new_v(args[]string) &V {
 		if !os.dir_exists(d) {
 			println('creating a new directory "$d"')
 			os.mkdir(d) or { panic(err) }
-		}	
-	}	
+		}
+	}
 	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
@@ -991,10 +991,10 @@ pub fn new_v(args[]string) &V {
 	cflags := get_cmdline_cflags(args)
 	rdir := os.realpath(dir)
 	rdir_name := os.filename(rdir)
-	
+
 	if '-bare' in args {
 		verror('use -freestanding instead of -bare')
-	}	
+	}
 
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
@@ -1044,7 +1044,7 @@ pub fn new_v(args[]string) &V {
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {
 			verror('-bare only works on Linux for now')
-		}	
+		}
 	}
 	return &V{
 		os: _os
