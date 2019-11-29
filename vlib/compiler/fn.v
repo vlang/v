@@ -1471,15 +1471,14 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	mut gp := p.v.parsers[f.parser_idx]
 	gp.is_vgen = true
 	gp.mod = f.mod
-	gp.builtin_mod = f.mod == 'builtin'
 	gp.generic_dispatch = *ti
 	saved_state := p.save_state()
-	p.clear_state(true, true)
+	p.clear_state(false, true)
 	gp.token_idx = f.generic_fn_idx
 	gp.next()
 	gp.fn_decl()
 	p.cgen.lines_extra << p.cgen.lines
-	p.restore_state(saved_state, true, true)
+	p.restore_state(saved_state, false, true)
 
 	p.cgen.fns << '${p.fn_signature(f)};'
 }
