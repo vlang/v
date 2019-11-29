@@ -427,10 +427,12 @@ fn (p mut Parser) fn_decl() {
 		// Generic functions are inserted as needed from the call site
 		if f.is_generic {
 			if p.first_pass() {
-				gpidx := p.v.get_file_parser_index(p.file_path) or {
-					panic('error finding parser for: $p.file_path')
+				if !p.scanner.is_vh {
+					gpidx := p.v.get_file_parser_index(p.file_path) or {
+						panic('error finding parser for: $p.file_path')
+					}
+					f.parser_idx = gpidx
 				}
-				f.parser_idx = gpidx
 				f.generic_fn_idx = fn_start_idx
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
