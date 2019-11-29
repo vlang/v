@@ -473,13 +473,15 @@ fn (p mut Parser) expression() string {
 			p.error('strings only support `+` operator')
 		}
 		expr_type := p.term()
-		mut open := false
+		open := tok_op == .amp && p.tok in [.eq, .ne] // force precedence `(a & b) == c`  //false
 		if tok_op in [.pipe, .amp, .xor] {
 			if  !(is_integer_type(expr_type) &&			is_integer_type(typ)) {
 				p.error('operator ${tok_op.str()} is defined only on integer types')
 			}
+			//open = true
+		}
+		if open {
 			p.cgen.set_placeholder(ph, '(')
-			open = true
 		}
 		p.check_types(expr_type, typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
@@ -487,7 +489,6 @@ fn (p mut Parser) expression() string {
 		}
 		if open {
 			p.gen(')')
-
 		}
 		// Make sure operators are used with correct types
 		if !p.pref.translated && !is_str && !is_ustr && !is_num {
