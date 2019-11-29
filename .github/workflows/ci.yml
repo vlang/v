@@ -55,23 +55,23 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev
-    - name: Build v
+    - name: Build V
       run: make && ./v -cc gcc -o v v.v
-    - name: Test v->c
+    - name: Test V
       run: ./v test v
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: Build vorum
+    - name: Build Vorum
       run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
     - name: Bare metal
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: x64 machine code generation
       run: cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
 
+
   ubuntu-prebuilt:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
     - name: Download V
       run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_linux.zip && unzip v_linux.zip && ./v --version
 
