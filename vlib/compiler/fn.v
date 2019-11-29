@@ -1495,8 +1495,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 		p.table.register_fn(f)
 	}
 	nlines := strings.repeat(`\n`, f.generic_tmpl.tokens[0].line_nr) // nl so error matches
-	mut fn_code := '$nlines${f.generic_tmpl.code}\n'
-	mut gp := p.v.new_parser_from_string('$fn_code')
+	mut gp := p.v.new_parser_from_string('$nlines${f.generic_tmpl.code}\n')
 	gp.scanner.file_path = p.v.parsers[f.generic_tmpl.parser_idx].file_path // set for error
 	gp.is_vgen = true
 	gp.mod = f.mod
