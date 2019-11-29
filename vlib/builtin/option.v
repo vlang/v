@@ -5,7 +5,7 @@
 module builtin
 
 struct Option {
-	data     [400]byte
+	data     [300]byte
 	error    string
 	ecode    int
 	ok       bool
@@ -14,7 +14,7 @@ struct Option {
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, size int) Option {
-	if size >= 400 {
+	if size >= 300 {
 		panic('option size too big: $size (max is 300), this is a temporary limit')
 	}
 	res := Option {

@@ -40,18 +40,12 @@ mut:
 	type_pars 	  []string
 	type_inst 	  []TypeInst
 	dispatch_of	  TypeInst	// current type inst of this generic instance
-	generic_tmpl  GenericTmpl
+	generic_fn_idx int
+	parser_idx     int
 	fn_name_token_idx int // used by error reporting
 	comptime_define string
 	is_used bool // so that we can skip unused fns in resulting C code
 	//x64_addr i64 // address in the generated x64 binary
-}
-
-struct GenericTmpl {
-mut:
-	tokens  []Token
-	code    string
-	parser_idx int
 }
 
 struct TypeInst {
@@ -436,8 +430,8 @@ fn (p mut Parser) fn_decl() {
 				gpidx := p.v.get_file_parser_index(p.file_path) or {
 					panic('error finding parser for: $p.file_path')
 				}
-				f.generic_tmpl.parser_idx = gpidx
-				p.save_generic_tmpl(mut f, fn_start_idx)
+				f.parser_idx = gpidx
+				f.generic_fn_idx = fn_start_idx
 				if f.is_method {
 					rcv := p.table.find_type(receiver_typ)
 					if p.first_pass() && rcv.name == '' {
@@ -1428,26 +1422,6 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
-fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int) {
-	mut cbr_depth := 0
-	mut tokens := []Token
-	for i in fn_start_pos..p.tokens.len-1 {
-		tok := p.tokens[i]
-		tokens << tok
-		if tok.tok == .lcbr { cbr_depth++ }
-		if tok.tok == .rcbr {
-			cbr_depth--
-			if cbr_depth == 0 { break }
-		}
-	}
-	f.generic_tmpl.tokens = tokens
-
-	mut start := tokens[0].pos-1-tokens[0].lit.len
-	if start > 0 { start = start-1 }
-	end := tokens[tokens.len-1].pos+1
-	f.generic_tmpl.code = p.scanner.text[start..end]
-}
-
 fn rename_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	if f.is_method && f.dispatch_of.inst.size == 0 {
 		f.name = f.receiver_typ + '_' + f.name
@@ -1492,9 +1466,8 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	} else {
 		p.table.register_fn(f)
 	}
-	nlines := strings.repeat(`\n`, f.generic_tmpl.tokens[0].line_nr) // nl so error matches
-	mut gp := p.v.new_parser_from_string('$nlines${f.generic_tmpl.code}\n')
-	gp.scanner.file_path = p.v.parsers[f.generic_tmpl.parser_idx].file_path // set for error
+	mut gp := p.v.new_parser_from_string(p.v.parsers[f.parser_idx].scanner.text)
+	gp.scanner.file_path = p.v.parsers[f.parser_idx].file_path // set for error
 	gp.is_vgen = true
 	gp.mod = f.mod
 	gp.builtin_mod = f.mod == 'builtin'
@@ -1506,6 +1479,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	saved_state := p.save_state()
 	p.clear_state(true, true)
+	gp.token_idx = f.generic_fn_idx
 	gp.next()
 	gp.fn_decl()
 	p.cgen.lines_extra << p.cgen.lines
