@@ -1470,7 +1470,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	mut gp := p.v.parsers[f.parser_idx]
 	gp.is_vgen = true
-	gp.mod = f.mod
 	gp.generic_dispatch = *ti
 	saved_state := p.save_state()
 	p.clear_state(false, true)
