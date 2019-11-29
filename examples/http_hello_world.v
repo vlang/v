@@ -13,7 +13,8 @@ fn main() {
 fn handle(req http.ServerRequest, resO http.Response) http.Response {
 	mut res := resO
 	res.status_code = 200
-	res.text = '<h1> Hello World! </h1>'
+	ua := req.headers['User-Agent']
+	res.text = '<h1> Hello World! </h1> <p> Your user agent: $ua</p>'
 	res.headers['Content-Type'] = 'text/html'
 	return res
 }
