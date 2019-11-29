@@ -148,6 +148,59 @@ fn check_mmap_one_page() {
 	println ("check_mmap_one_page passed")
 }
 
+fn check_mm_pages() {
+	println ("checking check_mm_pages")
+	for i in 0 .. int(linux_mem.page_size)-4 {
+		assert u32(1) == mm_pages(u64(i))
+	}
+	for i in int(linux_mem.page_size)-3 .. (int(linux_mem.page_size)*2)-4 {
+		assert u32(2) == mm_pages(u64(i))
+	}
+	for i in (int(linux_mem.page_size)*2)-3 .. (int(linux_mem.page_size)*3)-4 {
+		assert u32(3) == mm_pages(u64(i))
+	}
+	println ("check_mm_pages passed")
+}
+
+//pub fn mm_alloc(size u64) (voidptr, errno)
+
+fn check_mm_alloc() {
+	println ("checking check_mm_alloc")
+
+	for i in 1 .. 2000 {
+		size := u64(i*1000)
+		pages := mm_pages(size)
+		mut a, e := mm_alloc(size)
+
+		//ads := i64_tos(buffer,80,i64(a),16)
+		//println(ads)
+		//es := i64_tos(buffer,80,i64(e),16)
+		//println(es)
+
+		assert e == .enoerror
+		ap := intptr(a-4)
+		assert *ap == int(pages)
+		assert e == .enoerror
+		assert !isnil(a)
+
+		if (i%111) == 0 {
+			for j in 0 .. int(size) {
+				b := j & 0xFF
+				a[j] = b
+				assert b == int(a[j])
+			}
+		}
+
+		mfa := mm_free(a)
+
+		//mfas := i64_tos(buffer,80,i64(mfa),16)
+		//println(mfas)
+
+		assert mfa == .enoerror
+	}
+	println ("mm_alloc passed")
+}
+
 fn main() {
 	check_read_write_pipe()
 	check_read_file()
@@ -155,5 +208,7 @@ fn main() {
 	check_open_file_fail()
 	check_munmap_fail()
 	check_mmap_one_page()
+	check_mm_pages()
+	check_mm_alloc()
 	sys_exit(0)
 }
