@@ -1,5 +1,9 @@
 module builtin
 
+pub enum linux_mem {
+	page_size = 4096
+}
+
 pub enum wp_sys {
 	wnohang = 0x00000001
 	wuntraced = 0x00000002
@@ -127,7 +131,6 @@ pub enum mm_prot {
 }
 
 pub enum map_flags {
-	map_failed = 0xffffffffffffffff
 	map_shared = 0x01
 	map_private = 0x02
 	map_shared_validate = 0x03
@@ -250,12 +253,10 @@ pub fn sys_close(fd i64) errno {
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off
-pub fn sys_mmap(addr byteptr, len u64, prot mm_prot, flags map_flags, fildes u64, off u64) (u64, errno) {
-	rc := i64 (sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off))
-	if rc >= 0 {
-		return u64(rc), errno.enoerror
-	}
-	return u64(map_flags.map_failed), errno(-rc)
+pub fn sys_mmap(addr byteptr, len u64, prot mm_prot, flags map_flags, fildes u64, off u64) (byteptr, errno) {
+	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
+	a, e := split_int_errno(rc)
+	return byteptr(a), e
 }
 
 pub fn sys_munmap(addr voidptr, len u64) errno {

@@ -126,11 +126,34 @@ fn check_munmap_fail() {
 	println ("'munmap fail' check passed")
 }
 
+fn check_mmap_one_page() {
+	println ("checking check_mmap_one_page")
+
+	mp := int(mm_prot.prot_read) | int(mm_prot.prot_write)
+	mf := int(map_flags.map_private) | int(map_flags.map_anonymous)
+	mut a, e := sys_mmap(0, u64(linux_mem.page_size), mm_prot(mp), map_flags(mf), -1, 0)
+
+	assert e == .enoerror
+	assert a != byteptr(-1)
+
+	for i in 0..int(linux_mem.page_size) {
+		b := i & 0xFF
+		a[i] = b
+		assert a[i] == b
+	}
+
+	ec := sys_munmap(a, u64(linux_mem.page_size))
+	assert ec == .enoerror
+
+	println ("check_mmap_one_page passed")
+}
+
 fn main() {
 	check_read_write_pipe()
 	check_read_file()
 	// check_print()
 	check_open_file_fail()
 	check_munmap_fail()
+	check_mmap_one_page()
 	sys_exit(0)
 }
