@@ -160,6 +160,12 @@ fn (p mut Parser) name_expr() string {
 	}
 
 	mut name := p.lit
+
+	// generic type check
+	if name in p.cur_fn.dispatch_of.inst.keys() {	
+		name = p.cur_fn.dispatch_of.inst[name]
+	}
+
 	// Raw string (`s := r'hello \n ')
 	if (name == 'r' || name == 'c') && p.peek() == .str && p.prev_tok != .dollar {
 		p.string_expr()
@@ -239,14 +245,15 @@ fn (p mut Parser) name_expr() string {
 				name += '*'.repeat(mul_nr)
 			}
 			p.gen('(')
+			// mut typ := name
+			// if p.cur_fn.dispatch_of.inst.size > 0 {
+			// 	println('SIZE > 0')
+			// }
+			// if typ in p.cur_fn.dispatch_of.inst.keys() {	
+			// 	typ = p.cur_fn.dispatch_of.inst[typ]	
+			// 	println('TYPE: $typ')
+			// }
 			mut typ := name
-			if p.cur_fn.dispatch_of.inst.size > 0 {
-				println('SIZE > 0')
-			}
-			if typ in p.cur_fn.dispatch_of.inst.keys() {	
-				typ = p.cur_fn.dispatch_of.inst[typ]	
-				println('TYPE: $typ')
-			}
 			p.cast(typ)
 			p.gen(')')
 			for p.tok == .dot {

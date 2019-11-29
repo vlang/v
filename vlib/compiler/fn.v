@@ -349,9 +349,17 @@ fn (p mut Parser) fn_decl() {
 			}
 		}
 	}
+	mut is_dispatch :=  false
+	if p.generic_dispatch.inst.size > 0 {
+		f.dispatch_of = p.generic_dispatch
+		rename_generic_fn_instance(mut f, f.dispatch_of)
+		is_dispatch = true
+	}
 	// Generic?
 	if p.tok == .lt {
-		f.is_generic = true
+		if !is_dispatch {
+			f.is_generic = true
+		}
 		p.next()
 		for {
 			type_par := p.check_name()
@@ -365,8 +373,8 @@ fn (p mut Parser) fn_decl() {
 			if p.tok == .gt { break }
 			p.check(.comma)
 		}
-		p.set_current_fn(f)
 		p.check(.gt)
+		p.set_current_fn(f)
 	}
 	// Args (...)
 	p.fn_args(mut f)
@@ -1416,8 +1424,6 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	return typ
 }
 
-// save the tokens for the generic funciton body (between `{}`)
-// the function signature isn't saved, it is reconstructed from Fn
 fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int) {
 	mut cbr_depth := 0
 	mut tokens := []Token
@@ -1429,55 +1435,17 @@ fn (p mut Parser) save_generic_tmpl(f mut Fn, fn_start_pos int) {
 			cbr_depth--
 			if cbr_depth == 0 { break }
 		}
-		// tokens << tok
 	}
 	f.generic_tmpl.tokens = tokens
 
-	start := tokens[0].pos-1-tokens[0].lit.len
+	mut start := tokens[0].pos-1-tokens[0].lit.len
+	if start > 0 { start = start-1 }
 	end := tokens[tokens.len-1].pos+1
 	f.generic_tmpl.code = p.scanner.text[start..end]
 }
 
-// replace generic types in function body template with types from TypeInst
-fn (f &Fn) generic_tmpl_to_inst(ti &TypeInst) string {
-	first_lcbr := f.generic_tmpl.code.index_byte(`{`)
-	mut start := f.generic_tmpl.tokens[0].pos + first_lcbr
-	mut fn_body := f.generic_tmpl.code[first_lcbr..]
-	mut first_lcbr_tok_idx := 0
-	for i, tok in f.generic_tmpl.tokens {
-		if tok.tok == .lcbr {
-			first_lcbr_tok_idx = i
-			break
-		}
-	}
-	for i:=f.generic_tmpl.tokens.len-1; i>=first_lcbr_tok_idx; i-- {
-		tok := f.generic_tmpl.tokens[i]
-		mut tok_str := tok.str()
-		if tok.tok == .name && tok_str in ti.inst {
-			fn_body = fn_body[..tok.pos-start+1] + 
-				ti.inst[tok_str] + '/*$tok_str*/' +
-				fn_body[(tok.pos-start)+2..]
-		}
-	}
-	return fn_body
-
-	// // for tok in f.generic_tmpl.tokens {
-	// mut fn_body := ''
-	// for i:=first_lcbr_tok_idx; i<f.generic_tmpl.tokens.len; i++ {
-	// 	tok := f.generic_tmpl.tokens[i]
-	// 	mut tok_str := tok.str()
-	// 	if tok.tok == .name && tok_str in ti.inst {
-	// 		tok_str = ti.inst[tok_str]
-	// 	}
-	// 	fn_body += tok_str + ' '
-	// }
-	
-	// return fn_body
-	
-}
-
 fn rename_generic_fn_instance(f mut Fn, ti &TypeInst) {
-	if f.is_method {
+	if f.is_method && f.dispatch_of.inst.size == 0 {
 		f.name = f.receiver_typ + '_' + f.name
 	}
 	f.name = f.name + '_T'
@@ -1505,7 +1473,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	f.type_inst << *ti
 	p.table.register_fn(f)
-
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
 	// TODO: save dispatch info when update to incremental parsing
@@ -1521,13 +1488,14 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	} else {
 		p.table.register_fn(f)
 	}
-	nlines := strings.repeat(`\n`, f.generic_tmpl.tokens[0].line_nr) // lines so error matches
-	mut fn_code := '$nlines${p.fn_signature_v(f)} ${f.generic_tmpl_to_inst(ti)}\n'
+	nlines := strings.repeat(`\n`, f.generic_tmpl.tokens[0].line_nr) // nl so error matches
+	mut fn_code := '$nlines${f.generic_tmpl.code}\n'
 	mut gp := p.v.new_parser_from_string('$fn_code')
 	gp.scanner.file_path = p.v.parsers[f.generic_tmpl.parser_idx].file_path // set for error
 	gp.is_vgen = true
 	gp.mod = f.mod
 	gp.builtin_mod = f.mod == 'builtin'
+	gp.generic_dispatch = *ti
 	for mod in p.table.imports {
 		if gp.import_table.known_import(mod) { continue }
 		if mod == f.mod { continue }
@@ -1599,20 +1567,6 @@ fn (f &Fn) str_args(table &Table) string {
 	return s
 }
 
-fn (f &Fn) str_args_v(table &Table) string {
-	mut str_args := ''
-	for i, arg in f.args {
-		if f.is_method && i == 0 { continue }
-		mut arg_typ := arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
-		if arg_typ == 'void*' { arg_typ = 'voidptr' } else if arg_typ == 'byte*' { arg_typ = 'byteptr' }
-		if arg.is_mut { arg_typ = 'mut '+arg_typ.trim('*') }
-		else if arg_typ.ends_with('*') || arg.ptr { arg_typ = '&'+arg_typ.trim_right('*') }
-		str_args += '$arg.name $arg_typ'
-		if i < f.args.len-1 { str_args += ','}
-	}
-	return str_args
-}
-
 // find local function variable with closest name to `name`
 fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 	mut closest := f32(0)
@@ -1642,24 +1596,6 @@ fn (fns []Fn) contains(f Fn) bool {
 }
 fn (p &Parser) fn_signature(f &Fn) string {
 	return '$f.typ $f.name(${f.str_args(p.table)})'
-}
-
-fn (p &Parser) fn_signature_v(f &Fn) string {
-	mut method := ''
-	mut f_name := f.name.all_after('__')
-	if f.is_method {
-		receiver_arg := f.args[0]
-		receiver_type := receiver_arg.typ.trim('*')
-		f_name = f_name.all_after('${receiver_type}_')
-		mut rcv_typ := receiver_arg.typ.replace('array_', '[]').replace('map_', 'map[string]')
-		if receiver_arg.is_mut { rcv_typ = 'mut '+rcv_typ.trim('*') }
-			else if rcv_typ.ends_with('*') || receiver_arg.ptr { rcv_typ = '&'+rcv_typ.trim_right('&*') }
-		method = '($receiver_arg.name $rcv_typ) '
-	}
-	vis := if f.is_public { 'pub ' } else { '' }
-	f_type := if f.typ == 'void' { '' } else if f.typ == 'void*' { 'voidptr' }
-		else if f.typ == 'byte*' { 'byteptr' } else { f.typ }
-	return '${vis}fn $method$f_name(${f.str_args_v(p.table)}) $f_type'
 }
 
 pub fn (f &Fn) v_fn_module() string {
