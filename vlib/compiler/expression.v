@@ -32,7 +32,7 @@ fn (p mut Parser) bool_expression() string {
 		p.check_types(p.bterm(), typ)
 		if typ != 'bool' {
 			p.error('logical operators `&&` and `||` require booleans')
-		}	
+		}
 	}
 	if typ == '' {
 		println('curline:')
@@ -162,7 +162,7 @@ fn (p mut Parser) name_expr() string {
 	mut name := p.lit
 
 	// generic type check
-	if name in p.cur_fn.dispatch_of.inst.keys() {	
+	if name in p.cur_fn.dispatch_of.inst.keys() {
 		name = p.cur_fn.dispatch_of.inst[name]
 	}
 
@@ -227,7 +227,7 @@ fn (p mut Parser) name_expr() string {
 		!p.table.known_fn(name) && !p.table.known_const(name) && !is_c
 	{
 		name = p.prepend_mod(name)
-	}	
+	}
 	// re-check
 	if p.known_var_check_new_var(name) {
 		return p.get_var_type(name, ptr, deref_nr)
@@ -269,7 +269,7 @@ fn (p mut Parser) name_expr() string {
 				// `if color == .red` is enough
 				// no need in `if color == Color.red`
 				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
-			}	
+			}
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val)// `color = main__Color_green`
 			p.next()
@@ -286,7 +286,7 @@ fn (p mut Parser) name_expr() string {
 		return p.get_const_type(name, ptr)
 	}
 	// TODO: V script? Try os module.
-	// Function (not method, methods are handled in `.dot()`)	
+	// Function (not method, methods are handled in `.dot()`)
 	mut f := p.table.find_fn_is_script(name, p.v_script) or {
 		// First pass, the function can be defined later.
 		if p.first_pass() {
@@ -336,7 +336,7 @@ fn (p mut Parser) name_expr() string {
 	if p.tok == .question {
 		// `files := os.ls('.')?`
 		return p.gen_handle_question_suffix(f, fn_call_ph)
-	}	
+	}
 	else if !p.is_var_decl && is_or_else {
 		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
 	}
@@ -471,15 +471,23 @@ fn (p mut Parser) expression() string {
 		}
 		if is_str && tok_op != .plus {
 			p.error('strings only support `+` operator')
-		}	
+		}
 		expr_type := p.term()
-		if (tok_op in [.pipe, .amp, .xor]) && !(is_integer_type(expr_type) &&
-			is_integer_type(typ)) {
-			p.error('operator ${tok_op.str()} is defined only on integer types')
-		}	
+		mut open := false
+		if tok_op in [.pipe, .amp, .xor] {
+			if  !(is_integer_type(expr_type) &&			is_integer_type(typ)) {
+				p.error('operator ${tok_op.str()} is defined only on integer types')
+			}
+			p.cgen.set_placeholder(ph, '(')
+			open = true
+		}
 		p.check_types(expr_type, typ)
 		if (is_str || is_ustr) && tok_op == .plus && !p.is_js {
 			p.gen(')')
+		}
+		if open {
+			p.gen(')')
+
 		}
 		// Make sure operators are used with correct types
 		if !p.pref.translated && !is_str && !is_ustr && !is_num {
@@ -546,14 +554,14 @@ fn (p mut Parser) term() string {
 			}
 			continue
 		}
-		
+
 		if is_mod {
 			if !(is_integer_type(expr_type) && is_integer_type(typ)) {
 				p.error('operator `mod` requires integer types')
 			}
 		} else {
 			p.check_types(expr_type, typ)
-		}	
+		}
 	}
 	return typ
 }
