@@ -5,7 +5,7 @@
 * This file contains utilities for utf8 strings
 *
 **********************************************************************/
-module builtin
+module utf8
 
 //
 // utf8_to_upper
@@ -16,8 +16,8 @@ module builtin
 //
 // Convert a utf8 string to uppercase
 //
-pub fn (s string) utf8_to_upper() string {
-	return s.utf8_up_low(true)
+pub fn to_upper(s string) string {
+	return up_low(s, true)
 }
 
 //
@@ -29,8 +29,8 @@ pub fn (s string) utf8_to_upper() string {
 //
 // Convert a utf8 string to lowercase
 // 
-pub fn (s string) utf8_to_lower() string {
-	return s.utf8_up_low(false) 
+pub fn to_lower(s string) string {
+	return up_low(s, false) 
 }
 
 // Private function, calculate the lenght in bytes of a utf8 rune
@@ -39,7 +39,7 @@ fn utf8util_char_len(b byte) int {
 }
 
 // Private function, make the dir jobs
-fn (s string) utf8_up_low(uppper_flag bool) string {
+fn up_low(s string, uppper_flag bool) string {
 	mut _index := 0
 	mut old_index := 0
 	mut str_res := malloc(s.len + 1)
@@ -110,8 +110,8 @@ fn (s string) utf8_up_low(uppper_flag bool) string {
 				//C.printf("Old char: %04x, New char: %04x, index: %d, offset: %d\n",unicode_con_table[ch_index],tab_char,ch_index,offset)
 				
 				if ch_len == 2 {
-					ch0:=( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
-					ch1:=( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
+					ch0:=byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
+					ch1:=byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
 					//C.printf("[%02x%02x]",ch0,ch1)
 
 					str_res[ _index + 0 ] = ch0
@@ -124,9 +124,9 @@ fn (s string) utf8_up_low(uppper_flag bool) string {
 					
 				}
 				else if ch_len == 3 {
-					ch0:=( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
-					ch1:=( (tab_char >> 6) & 0x3f ) | 0x80		/*10xx xxxx*/
-					ch2:=( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
+					ch0:=byte( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
+					ch1:=byte( (tab_char >> 6) & 0x3f ) | 0x80		/*10xx xxxx*/
+					ch2:=byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
 
 					str_res[_index + 0 ] = ch0
 					str_res[_index + 1 ] = ch1
