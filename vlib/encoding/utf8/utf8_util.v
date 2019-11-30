@@ -66,7 +66,7 @@ pub fn to_upper(s string) string {
 // Parameters:
 //
 // Output:
-//  string
+//  ustring
 //
 // Convert a ustring to uppercase
 //
@@ -93,7 +93,7 @@ pub fn to_lower(s string) string {
 // Parameters:
 //
 // Output:
-//  string
+//  ustring
 //
 // Convert a ustring to lowercase
 // 
