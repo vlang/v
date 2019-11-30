@@ -141,7 +141,7 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
   mut logger := &log.Log{}
   logger.set_level(log.DEBUG)
   if flag_options.log_to == 'file' {
-     logger.set_output_file( flag_options.log_file )
+	logger.set_full_logpath( flag_options.log_file )
   }
 	return &GenVC{
 		options: flag_options
@@ -337,7 +337,7 @@ fn (gen_vc mut GenVC) command_execute(cmd string, dry bool) string {
 }
 
 // just log cmd, dont execute
-fn (gen_vc &GenVC) command_execute_dry(cmd string) string {
+fn (gen_vc mut GenVC) command_execute_dry(cmd string) string {
 	gen_vc.logger.info('cmd (dry): "$cmd"')
 	return ''
 }

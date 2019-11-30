@@ -65,11 +65,18 @@ pub fn (l mut Log) set_output_level(level LogLevel){
 	l.level = level
 }
 
+pub fn (l mut Log) set_full_logpath(full_log_path string) {
+	rlog_file := os.realpath( full_log_path )
+	l.set_output_label( os.filename( rlog_file ) )
+	l.set_output_path( os.basedir( rlog_file ) )
+}  
+
 pub fn (l mut Log) set_output_label(label string){
 	l.output_label = label
 }
 
 pub fn (l mut Log) set_output_path(output_file_path string) {
+	if l.ofile.is_opened() { l.ofile.close() }
 	l.output_to_file = true
 	l.output_file_name = filepath.join( os.realpath( output_file_path ) , '${l.output_label}.log' )
 	ofile := os.open_append( l.output_file_name  ) or {
