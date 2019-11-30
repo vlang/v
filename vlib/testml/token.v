@@ -1,14 +1,10 @@
-module yaml
-
 enum TokenKind{
 	eof
-	comma
+	name
+	function
+	str
 	hyphen
-	rangle
-	vertcal
-	hash
-	seprate
-	space
+	json
 }
 
 fn build_token_str() []string{
