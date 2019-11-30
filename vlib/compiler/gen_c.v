@@ -222,7 +222,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 			ref := if cfg.is_ptr { '*' } else { '' }
 			if cfg.is_slice {
 				p.gen(' array_slice2($ref $index_expr) ')
-			}	
+			}
 			else {
 				p.gen('( *($typ*) array_get($ref $index_expr) )')
 			}
@@ -231,7 +231,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	else if cfg.is_str && !p.builtin_mod {
 		if  p.pref.is_bare {
 			p.gen(index_expr)
-		}	
+		}
 		else if cfg.is_slice {
 			p.gen('string_substr2($index_expr)')
 		} else {
@@ -366,10 +366,12 @@ fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
-	p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
+	// TODO var_typ is always byte
+	//p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
 	p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
 	if val == '_' { return }
-	p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
+	//p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
+	p.genln('$var_typ $val = ${tmp}.str[$i];')
 }
 
 fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
@@ -560,17 +562,17 @@ fn (p mut Parser) cast(typ string) {
 		if typ == 'bool' {
 			if is_number_type(expr_typ) || is_float_type(expr_typ) {
 				p.error('cannot cast a number to `bool`')
-			}	
+			}
 			p.error('cannot cast `$expr_typ` to `bool`')
 		}
 		// Strings can't be cast
 		if expr_typ == 'string' {
 			p.error('cannot cast `$expr_typ` to `$typ`')
-		}	
+		}
 		// Nothing can be cast to bool
 		if expr_typ == 'bool' {
 			p.error('cannot cast `bool` to `$typ`')
-		}	
+		}
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	p.check(.rpar)
