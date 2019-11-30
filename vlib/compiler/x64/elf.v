@@ -96,7 +96,7 @@ pub fn (g mut Gen) generate_elf_footer() {
 	// -5 is for "e8 00 00 00 00"
 	g.write64_at(int(g.main_fn_addr - g.code_start_pos) - 5, g.code_start_pos+1)
 	// Create the binary
-	f := os.create(g.out_name) or { panic(err) }
+	mut f := os.create(g.out_name) or { panic(err) }
 	os.chmod(g.out_name, 0775)
 	f.write_bytes(g.buf.data, g.buf.len)
 	f.close()

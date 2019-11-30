@@ -200,7 +200,7 @@ fn (p mut Parser) gen_fmt() {
 		return
 	}	
 	println('generating ${p.file_name}.v')
-	out := os.create('/var/tmp/fmt/' + p.file_name) or {
+	mut out := os.create('/var/tmp/fmt/' + p.file_name) or {
 		verror('failed to create fmt.v')
 		return
 	}
