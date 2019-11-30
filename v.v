@@ -68,6 +68,10 @@ fn main() {
 		compiler.vfmt(args)
 		return
 	}
+	else if 'test-compiler' in commands {
+		compiler.launch_tool('vtest-compiler')
+		return
+	}
 	else if 'test' in commands {
 		compiler.launch_tool('vtest')
 		return
