@@ -144,7 +144,7 @@ fn (t Type) str() string {
 */
 
 const (
-	CReserved = [
+	c_reserved = [
 		'delete',
 		'exit',
 		'unix',
@@ -245,6 +245,7 @@ fn new_table(obfuscate bool) &Table {
 	t.register_builtin('bool')
 	t.register_builtin('void')
 	t.register_builtin('voidptr')
+	t.register_builtin('charptr')
 	t.register_builtin('va_list')
 	for c in reserved_type_param_names {
 		t.register_builtin(c)
@@ -260,7 +261,7 @@ fn new_table(obfuscate bool) &Table {
 
 // If `name` is a reserved C keyword, returns `v_name` instead.
 fn (t &Table) var_cgen_name(name string) string {
-	if name in CReserved {
+	if name in c_reserved {
 		return 'v_$name'
 	}
 	else {

@@ -271,7 +271,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate v_abs(), v_print()
 	// TODO duplicate functionality
-	if f.mod == 'builtin' && f.name in CReserved {
+	if f.mod == 'builtin' && f.name in c_reserved {
 		return 'v_$name'
 	}
 	// Obfuscate but skip certain names

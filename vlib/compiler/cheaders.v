@@ -187,6 +187,7 @@ typedef double f64;
 typedef unsigned char* byteptr;
 typedef int* intptr;
 typedef void* voidptr;
+typedef char* charptr;
 typedef struct array array;
 typedef struct map map;
 typedef array array_string;
