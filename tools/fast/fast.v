@@ -39,7 +39,7 @@ fn main() {
 	commit_date := exec('git log -n1 --pretty="format:%at"')
 	message := exec('git log -n1 --pretty="format:%s"')
 	date := time.unix(commit_date.int())
-	out := os.create('table.html') or { panic(err) }
+	mut out := os.create('table.html') or { panic(err) }
 	// Place the new row on top
 	table =
 '<tr>
@@ -57,7 +57,7 @@ fn main() {
 	// Regenerate index.html
 	header := os.read_file('header.html') or { panic(err) }
 	footer := os.read_file('footer.html') or { panic(err) }
-	res := os.create('index.html') or { panic(err) }
+	mut res := os.create('index.html') or { panic(err) }
 	res.writeln(header)
 	res.writeln(table)
 	res.writeln(footer)

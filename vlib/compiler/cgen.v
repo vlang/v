@@ -42,7 +42,7 @@ mut:
 
 fn new_cgen(out_name_c string) &CGen {
 	path := out_name_c
-	out := os.create(path) or {
+	mut out := os.create(path) or {
 		println('failed to create $path')
 		return &CGen{}
 	}

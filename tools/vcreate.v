@@ -19,7 +19,7 @@ fn cerror(e string){
 }
 
 fn (c Create)write_vmod() {
-	vmod := os.create('${c.name}/v.mod') or { cerror(err) exit(1) }
+	mut vmod := os.create('${c.name}/v.mod') or { cerror(err) exit(1) }
 	mut vmod_content := []string
 	vmod_content << '#V Project#\n'
 	vmod_content << 'Module {'
@@ -31,7 +31,7 @@ fn (c Create)write_vmod() {
 }
 
 fn (c Create)write_main() {
-	main := os.create('${c.name}/${c.name}.v') or {	cerror(err) exit(2)	}
+	mut main := os.create('${c.name}/${c.name}.v') or {	cerror(err) exit(2)	}
 	mut main_content := []string
 	main_content << 'module main\n'
 	main_content << 'fn main() {'
