@@ -40,3 +40,5 @@ vjs
 .vrepl_temp.v
 a.out
 vlib/os/bare/bare_example_linux
+
+info.log
