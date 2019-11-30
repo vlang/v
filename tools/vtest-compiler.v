@@ -3,8 +3,11 @@ module main
 import (
   os
   testing
-  compiler
 )  
+
+pub const (
+  v_modules_path = os.home_dir() + '.vmodules'
+)
 
 fn main() {
 	args := os.args
@@ -78,7 +81,7 @@ pub fn test_vget() {
 		println('failed to run v install')
 		exit(1)
 	}
-	if !os.file_exists(compiler.v_modules_path + '/nedpals/args') {
+	if !os.file_exists(v_modules_path + '/nedpals/args') {
 		println('v failed to install a test module')
 		exit(1)
 	}
