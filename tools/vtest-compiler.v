@@ -1,12 +1,12 @@
 module main
 
 import (
-  os
-  testing
+	os
+	testing
 )  
 
 pub const (
-  v_modules_path = os.home_dir() + '.vmodules'
+	v_modules_path = os.home_dir() + '.vmodules'
 )
 
 fn main() {
@@ -25,14 +25,14 @@ fn v_test_compiler(args_before_test string){
 		println('vlib/ is missing, it must be next to the V executable')
 		exit(1)
 	}
-  
+	
 	/*
 	if !os.file_exists(parent_dir + '/v.v') {
 		println('v.v is missing, it must be next to the V executable')
 		exit(1)
 	}
 	*/
-  
+	
 	// Make sure v.c can be compiled without warnings
 	$if mac {
 		if os.file_exists('/v.v') {
@@ -44,7 +44,7 @@ fn v_test_compiler(args_before_test string){
 			println('v.c can be compiled without warnings. This is good :)')
 		}
 	}
-
+	
 	println('Building v tools...')
 	mut tools_session := testing.new_test_sesion( args_before_test )
 	tools_v_files := os.walk_ext(parent_dir+'/tools','.v')
@@ -52,7 +52,7 @@ fn v_test_compiler(args_before_test string){
 	tools_session.files << tools_main_files
 	tools_session.test()
 	println( tools_session.benchmark.total_message('building v tools') )
-
+	
 	println('\nTesting all _test.v files...')
 	mut compiler_test_session := testing.new_test_sesion( args_before_test )
 	compiler_test_session.files << os.walk_ext(parent_dir, '_test.v')
@@ -66,11 +66,11 @@ fn v_test_compiler(args_before_test string){
 	example_session.files << example_mains
 	example_session.test()
 	println( example_session.benchmark.total_message('building examples') )
-
+	
 	if tools_session.failed || compiler_test_session.failed || example_session.failed {
-    exit(1)
-  }
-
+		exit(1)
+	}
+	
 	test_vget()  
 }
 
