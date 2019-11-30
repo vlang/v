@@ -114,20 +114,21 @@ fn utf8util_char_len(b byte) int {
 	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
+
 // Private function, make the dirt job
-// if upper_flag == true  then make low ==> upper  conversion 
-// if upper_flag == false then make upper ==> low
+// if upper_flag == true  then make low ==> upper conversion 
+// if upper_flag == false then make upper ==> low conversion
 //
 fn up_low(s string, uppper_flag bool) string {
 	mut _index := 0
 	mut old_index := 0
 	mut str_res := malloc(s.len + 1)
 
-	mut offset:=1 // up to low, no change index
-	mut i_step:=-1 // up to low, look forward in the table
+	mut offset:=1 // up to low, index offset 1
+	mut i_step:=-1 // up to low, look backward in the table 
 	if uppper_flag {
-		offset=0 // low to up, index offset 1
-		i_step=1 // low to up, look backward in the table
+		offset=0 // low to up, no change index
+		i_step=1 // low to up, look forward in the table
 	}
 
 	for {
@@ -172,7 +173,7 @@ fn up_low(s string, uppper_flag bool) string {
 			}
 
 			//C.printf("len: %d code: %04x ",ch_len,res)
-			ch_index := find_char(u16(res), uppper_flag, offset, i_step)
+			ch_index := find_char_in_table(u16(res), uppper_flag, offset, i_step)
 			//C.printf(" utf8 index: %d ",ch_index)
 
 			// char not in table no need of conversion
@@ -213,6 +214,7 @@ fn up_low(s string, uppper_flag bool) string {
 				// TODO: write if needed
 				else if ch_len == 4 {
 					// place holder!!
+					// at the present time simply copy the utf8 char
 					for i in 0..ch_len {
 						str_res[_index + i] = s.str[_index + i] 
 					}
@@ -226,13 +228,17 @@ fn up_low(s string, uppper_flag bool) string {
 				str_res[_index + i] = s.str[_index + i] 
 			}
 		}
+
 		old_index = _index
 		_index += ch_len	
 
+		// we are done, exit the loop
 		if _index >= s.len {
 			break
 		}
 	}
+
+	// for c compatibility set the ending 0
 	str_res[_index]=0
 
 	//C.printf("str_res: %s\n--------------\n",str_res)
@@ -240,7 +246,7 @@ fn up_low(s string, uppper_flag bool) string {
 	return tos(str_res, s.len)
 }
 
-fn find_char( inCode u16, uppper_flag bool, offset int, i_step int ) int {
+fn find_char_in_table( inCode u16, uppper_flag bool, offset int, i_step int ) int {
 	//
 	// lockup table to speed the search
 	// we look for the first char that start with the first byte of the utf8 char
@@ -294,7 +300,7 @@ fn find_char( inCode u16, uppper_flag bool, offset int, i_step int ) int {
 *  term of use: https://www.ibm.com/legal?lnk=flg-tous-usen
 *  license: not stated, general fair use license applied
 * 
-*  regex replace:
+*  regex expresion => replace from html table to V :
 *  src: ([A-F\d]+)\s+([A-F\d]+)\s+(.*)
 *  dst: 0x$1, 0x$2, // $3
 *
@@ -303,7 +309,7 @@ fn find_char( inCode u16, uppper_flag bool, offset int, i_step int ) int {
 const(
 
 //
-// Index table of the utf8 char first byte presents in the conversion table
+// Index table of the utf8 char's first byte presents in the conversion table
 //
 table_index=[
  u16(0x00),
@@ -340,28 +346,6 @@ up_to_low_index=[
  0xff, 1338,
 ]
 
-/*
-//
-// 0x03 , 380
-// A       A 
-// |	   +----  index in the table where the utf8 code with 0x03XX starts (in bytes)
-// +------------  first byte of the utf8 char in the table
-//
-low_to_up_index=[
- 0x00, 0,
- 0x01, 112,
- 0x02, 318,
- 0x03, 378,
- 0x04, 458,
- 0x05, 678,
- 0x10, 754,
- 0x1e, 830,
- 0x1f, 1070,
- 0x24, 1226,
- 0xff, 1278,
- 0xff, 1332,
-]
-*/
 
 unicode_con_table_up_to_low=[
 u16(0x0041), 0x0061, //LATIN CAPITAL LETTER A	LATIN SMALL LETTER A
