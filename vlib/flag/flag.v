@@ -125,14 +125,14 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
   c := '--$n'
   for i, a in fs.args {
     if a == c || (a.len == 2 && a[1] == ab) {
-      if fs.args.len > i+1 && fs.args[i+1].left(2) != '--' {
-        val := fs.args[i+1]
-        fs.args.delete(i+1)
-        fs.args.delete(i)
-        return val
-      } else {
-        panic('Missing argument for \'$n\'')
-      }
+      if i+1 > fs.args.len { panic('Missing argument for \'$n\'') }
+      nextarg := fs.args[i+1]
+      println( 'nextarg: $nextarg' )
+      if nextarg[..2] == '--' { panic('Missing argument for \'$n\'') }
+      val := fs.args[i+1]
+      fs.args.delete(i+1)
+      fs.args.delete(i)
+      return val
     } else if a.len > c.len && c == a[..c.len] && a[c.len..c.len+1] == '=' {
       val := a[c.len+1..]
       fs.args.delete(i)
