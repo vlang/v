@@ -5,7 +5,9 @@ The last release before 0.2.
 
 - Direct x64 machine code generation. Hello world being built in 3 milliseconds.
 - Bare metal support via the `-freestanding` flag, allowing to build programs without linking to libc.
-- Lots of fixes in Generics,.
+- Prebuilt V packages for Linux, macOS, and Windows.
+- `string.index()` now returns `?int` instead of `int/-1`.
+- Lots of fixes in Generics.
 - vweb framework for developing web applications is back.
 - Vorum, the forum/blogging software written in V/vweb, can now be compiled and has been added to CI.
 - REPL, `v up` have been split up into separate applications to keep the core V compiler small.
@@ -36,6 +38,14 @@ The last release before 0.2.
 - Clipboard module (Windows, macOS, X).
 - `foo()?` syntax for error propagation.
 - Docs have been migrated from HTML to `doc/docs.md`.
+- `eventbus` module.
+- Haiku OS support.
+- `malloc/free` on bare metal.
+- `utf8` helper functions (`to_lower()`, `to_upper()`, etc).
+- Optimization of `for c in str {`.
+- `string/array.left/right/slice/substr` were removed (`[a..b]` slicing syntax should be used instead).
+
+
 
 
 
