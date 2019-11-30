@@ -799,8 +799,7 @@ pub fn get_arg(joined_args, arg, def string) string {
 
 pub fn get_param_after(joined_args, arg, def string) string {
 	key := '$arg '
-	mut pos := joined_args.index(key)
-	if pos == -1 {
+	mut pos := joined_args.index(key) or {
 		return def
 	}
 	pos += key.len

@@ -313,8 +313,7 @@ pub fn (t Time) clean12() string {
 // `parse` parses time in the following format: "2018-01-27 12:48:34"
 pub fn parse(s string) Time {
 	// println('parse="$s"')
-	pos := s.index(' ')
-	if pos <= 0 {
+	pos := s.index(' ') or {
 		println('bad time format')
 		return now()
 	}

@@ -39,7 +39,7 @@ fn (p mut Parser) comp_time() {
 				for {
 					if p.tok == .key_return {
 						p.returns = true
-					}	
+					}
 					if p.tok == .lcbr {
 						stack++
 					} else if p.tok == .rcbr {
@@ -114,7 +114,7 @@ fn (p mut Parser) comp_time() {
 			//p.gen('/* returns $p.returns */')
 		} else if p.tok == .key_else {
 			p.error('use `$' + 'else` instead of `else` in comptime if statements')
-		}	
+		}
 	}
 	else if p.tok == .key_for {
 		p.next()
@@ -207,7 +207,7 @@ fn (p mut Parser) chash() {
 			if !p.pref.building_v && !p.fileis('vlib') {
 				p.warn('C #includes will soon be removed from the language' +
 				'\ndefine the C structs and functions in V')
-			}	
+			}
 			*/
 			if p.file_pcguard.len != 0 {
 				//println('p: $p.file_platform $p.file_pcguard')
@@ -220,8 +220,8 @@ fn (p mut Parser) chash() {
 	}
 	// TODO remove after ui_mac.m is removed
 	else if hash.contains('embed') {
-		pos := hash.index('embed') + 5
-		file := hash[pos..]
+		pos := hash.index('embed') or { return }
+		file := hash[pos+5..]
 		//if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
 		//}
@@ -262,13 +262,13 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	mut j := 0
 	for i, method in typ.methods {
 		if method.typ != 'void' {
-			
+
 			continue
 		}
 		receiver := method.args[0]
 		if !p.expr_var.ptr {
 			p.error('`$p.expr_var.name` needs to be a reference')
-		}	
+		}
 		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
 		if j > 0 {
 			p.gen(' else ')
@@ -290,7 +290,7 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 fn (p mut Parser) gen_array_str(typ Type) {
 	if typ.has_method('str') {
 		return
-	}	
+	}
 	p.add_method(typ.name, Fn{
 		name: 'str'
 		typ: 'string'
@@ -381,7 +381,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 		// V
 		a := [1,2,3,4]
 		b := a.filter(it % 2 == 0)
-		
+
 		// C
 		array_int a = ...;
 		array_int tmp2 = new_array(0, 4, 4);
@@ -421,7 +421,7 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 		// V
 		a := [1,2,3,4]
 		b := a.map(it * 2)
-		
+
 		// C
 		array_int a = ...;
 		array_int tmp2 = new_array(0, 4, 4);

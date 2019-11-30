@@ -1068,9 +1068,12 @@ fn (p mut Parser) get_type() string {
 		//}
 		return 'void*'
 	}
+	/*
+	TODO this is not needed?
 	if typ.last_index('__') > typ.index('__') {
 		p.error('2 __ in gettype(): typ="$typ"')
 	}
+	*/
 	return typ
 }
 
@@ -1410,8 +1413,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	{
 		line := p.cgen.cur_line
 		vname := line[..pos].replace('=','') // TODO cgen line hack
-		p.cgen.resetln(line.replace(line[..line.index('=')+1], ''))
-		p.gen_handle_option_or_else(expr_type, vname, ph)
+		if idx := line.index('=') {
+			p.cgen.resetln(line.replace(line[..idx+1], ''))
+			p.gen_handle_option_or_else(expr_type, vname, ph)
+		}
 	}
 	else if expr_type[0]==`[` {
 		// assignment to a fixed_array `mut a:=[3]int a=[1,2,3]!!`
@@ -3053,12 +3058,10 @@ fn (p mut Parser) defer_st() {
 }
 
 fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
-	us_idx := typ_name.index('__')
-	if us_idx != -1 {
-		arg_mod := typ_name[..us_idx]
-		if p.import_table.known_alias(arg_mod) {
-			p.import_table.register_used_import(arg_mod)
-		}
+	us_idx := typ_name.index('__') or { return }
+	arg_mod := typ_name[..us_idx]
+	if p.import_table.known_alias(arg_mod) {
+		p.import_table.register_used_import(arg_mod)
 	}
 }
 

@@ -115,7 +115,9 @@ pub fn (p mut Params) put_custom(name string, typ string, data voidptr) {
 //HELPERS
 
 fn parse_len(typ, s_tok, e_tok string) int {
-	len := typ[typ.index(s_tok) + 1 .. typ.index(e_tok)].int()
+	start_index := typ.index(s_tok) or { return 0 }
+	end_index := typ.index(e_tok) or { return 0 }
+	len := typ[start_index+1..end_index].int()
 	//t := typ.substr(typ.index(e_tok) + 1, typ.len)
 	return len
 }
