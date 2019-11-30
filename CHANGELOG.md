@@ -3,7 +3,7 @@
 
 The last release before 0.2.
 
-- Direct x64 machine code generation. Hello world being built in 3 milliseconds.
+- [Direct x64 machine code generation](https://github.com/vlang/v/issues/2849). Hello world being built in 3 milliseconds.
 - Bare metal support via the `-freestanding` flag, allowing to build programs without linking to libc.
 - Prebuilt V packages for Linux, macOS, and Windows.
 - `string.index()` now returns `?int` instead of `int/-1`.
