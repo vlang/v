@@ -106,6 +106,17 @@ fn test_split_nth() {
 	assert (c.split('').len == 6)
 	assert (c.split_nth('', 3).len == 3)
 	assert (c.split_nth('BC', -1).len == 2)
+	// all those tests are broken
+	// d := ","
+	// assert (d.split(',').len == 2)
+	// assert (d.split_nth('', 3).len == 2)
+	// assert (d.split_nth(',', -1).len == 2)
+	// assert (d.split_nth(',', 3).len == 2)
+	e := ",,,0,,,,,a,,b,"
+	// assert (e.split(',,').len == 2)
+	// assert (e.split_nth(',,', 3).len == 2)
+	// assert (e.split_nth(',', -1).len == 3)
+	assert (e.split_nth(',', 3).len == 0)
 }
 
 fn test_split() {
