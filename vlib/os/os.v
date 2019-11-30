@@ -33,6 +33,8 @@ pub const (
 
 pub struct File {
 	cfile voidptr // Using void* instead of FILE*
+mut: 
+	opened bool
 }
 
 struct FileInfo {
@@ -68,6 +70,9 @@ fn C.getenv(byteptr) &char
 fn C.sigaction(int, voidptr, int)
 
 
+pub fn (f File) is_opened() bool {
+	return f.opened
+}
 
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f File) read_bytes(size int) []byte {
@@ -281,6 +286,7 @@ pub fn open(path string) ?File {
 	if isnil(file.cfile) {
 		return error('failed to open file "$path"')
 	}
+	file.opened = true
 	return file
 }
 
@@ -302,6 +308,7 @@ pub fn create(path string) ?File {
 	if isnil(file.cfile) {
 		return error('failed to create file "$path"')
 	}
+	file.opened = true
 	return file
 }
 
@@ -322,6 +329,7 @@ pub fn open_append(path string) ?File {
 	if isnil(file.cfile) {
 		return error('failed to create(append) file "$path"')
 	}
+	file.opened = true
 	return file
 }
 
@@ -344,6 +352,7 @@ pub fn (f File) write_bytes_at(data voidptr, size, pos int) {
 }
 
 pub fn (f File) writeln(s string) {
+	if !f.opened { return }
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
@@ -356,7 +365,8 @@ pub fn (f File) flush() {
 	C.fflush(f.cfile)
 }
 
-pub fn (f File) close() {
+pub fn (f mut File) close() {
+	f.opened = false
 	C.fclose(f.cfile)
 }
 
@@ -707,7 +717,7 @@ pub fn home_dir() string {
 
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path, text string) {
-	f := os.create(path) or {
+	mut f := os.create(path) or {
 		return
 	}
 	f.write(text)

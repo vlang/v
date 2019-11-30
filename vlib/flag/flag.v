@@ -45,7 +45,7 @@ module flag
 //  ```
 
 // data object storing information about a defined flag
-struct Flag {
+pub struct Flag {
 pub:
   name     string // name as it appears on command line
   abbr     byte   // shortcut
@@ -55,7 +55,7 @@ pub:
 }
 
 // 
-struct FlagParser {
+pub struct FlagParser {
 pub mut: 
   args  []string                  // the arguments to be parsed
   flags []Flag                    // registered flags
@@ -69,7 +69,7 @@ pub mut:
   args_description        string
 }
 
-const (
+pub const (
   // used for formating usage message
   SPACE = '                            '
   UNDERLINE = '-----------------------------------------------'
