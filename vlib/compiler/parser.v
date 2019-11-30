@@ -547,7 +547,7 @@ fn (p mut Parser) parse(pass Pass) {
 				}
 				p.genln('')
 				end := p.cgen.lines.len
-				lines := p.cgen.lines.slice(start, end)
+				lines := p.cgen.lines[start..end]
 				//mut line := p.cgen.fn_main + lines.join('\n')
 				//line = line.trim_space()
 				p.cgen.fn_main = p.cgen.fn_main + lines.join('\n')

@@ -80,7 +80,7 @@ pub fn (f File) read_bytes_at(size, pos int) []byte {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_SET)
-	return arr.slice(0, nreadbytes)
+	return arr[0..nreadbytes]
 }
 
 pub fn read_bytes(path string) ?[]byte {
@@ -95,7 +95,7 @@ pub fn read_bytes(path string) ?[]byte {
 	mut res	 := [`0`].repeat(fsize)
 	nreadbytes := C.fread(res.data, fsize, 1, fp)
 	C.fclose(fp)
-	return res.slice(0, nreadbytes )
+	return res[0..nreadbytes]
 }
 
 // read_file reads the file in `path` and returns the contents.

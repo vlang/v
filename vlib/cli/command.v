@@ -42,7 +42,7 @@ pub fn (cmd mut Command) parse(args []string) {
 	cmd.add_default_flags()
 	cmd.add_default_commands()
 
-	cmd.args = args.right(1)
+	cmd.args = args[1..]
 	for i := 0; i < cmd.commands.len; i++ {
 		cmd.commands[i].parent = cmd
 	}
@@ -110,7 +110,7 @@ fn (cmd mut Command) parse_commands() {
 				for flag in global_flags {
 					command.add_flag(flag)
 				}
-				command.parse(cmd.args.right(i))
+				command.parse(cmd.args[i..])
 				return
 			}
 		}
@@ -187,4 +187,4 @@ fn (cmds []Command) get(name string) ?Command {
 		}
 	}
 	return error('command \'${name}\' not found.')
-} 
+}
