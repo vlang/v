@@ -75,12 +75,12 @@ pub fn (f File) is_opened() bool {
 }
 
 // read_bytes reads an amount of bytes from the beginning of the file
-pub fn (f File) read_bytes(size int) []byte {
+pub fn (f mut File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads an amount of bytes at the given position in the file
-pub fn (f File) read_bytes_at(size, pos int) []byte {
+pub fn (f mut File) read_bytes_at(size, pos int) []byte {
 	mut arr	 := [`0`].repeat(size)
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
@@ -333,7 +333,7 @@ pub fn open_append(path string) ?File {
 	return file
 }
 
-pub fn (f File) write(s string) {
+pub fn (f mut File) write(s string) {
 	C.fputs(s.str, f.cfile)
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
@@ -341,17 +341,17 @@ pub fn (f File) write(s string) {
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
-pub fn (f File) write_bytes(data voidptr, size int) {
+pub fn (f mut File) write_bytes(data voidptr, size int) {
 	C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (f File) write_bytes_at(data voidptr, size, pos int) {
+pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
 }
 
-pub fn (f File) writeln(s string) {
+pub fn (f mut File) writeln(s string) {
 	if !f.opened { return }
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
@@ -361,7 +361,7 @@ pub fn (f File) writeln(s string) {
 	C.fputs('\n', f.cfile)
 }
 
-pub fn (f File) flush() {
+pub fn (f mut File) flush() {
 	C.fflush(f.cfile)
 }
 
