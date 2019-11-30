@@ -35,6 +35,18 @@ pub fn len(s string) int {
 	return count
 }
 
+//
+// len
+// Parameters:
+//
+// Output:
+//  int
+//
+// get the lenght of the ustring
+//
+pub fn u_len(s ustring) int {
+	return len(s.s)
+}
 
 //
 // to_upper
@@ -49,6 +61,19 @@ pub fn to_upper(s string) string {
 	return up_low(s, true)
 }
 
+//
+// to_upper
+// Parameters:
+//
+// Output:
+//  string
+//
+// Convert a ustring to uppercase
+//
+pub fn u_to_upper(s ustring) ustring {
+	tmp := up_low(s.s, true)
+	return tmp.ustring()
+}
 
 //
 // to_lower
@@ -62,6 +87,21 @@ pub fn to_upper(s string) string {
 pub fn to_lower(s string) string {
 	return up_low(s, false) 
 }
+
+//
+// to_lower
+// Parameters:
+//
+// Output:
+//  string
+//
+// Convert a ustring to lowercase
+// 
+pub fn u_to_lower(s ustring) ustring {
+	tmp := up_low(s.s, false)
+	return tmp.ustring()
+}
+
 
 /**********************************************************************
 *
@@ -131,9 +171,9 @@ fn up_low(s string, uppper_flag bool) string {
 						(( lword & 0x00003F00 ) >> 2 ) | ( lword & 0x0000003f ) 
 			}
 
-			C.printf("len: %d code: %04x ",ch_len,res)
+			//C.printf("len: %d code: %04x ",ch_len,res)
 			ch_index := find_char(u16(res), uppper_flag, offset, i_step)
-			C.printf(" utf8 index: %d ",ch_index)
+			//C.printf(" utf8 index: %d ",ch_index)
 
 			// char not in table no need of conversion
 			if ch_index==0 { 
@@ -144,20 +184,12 @@ fn up_low(s string, uppper_flag bool) string {
 			}else{
 				mut tab_char := u16(0)
 				tab_char = u16(unicode_con_table_up_to_low[ch_index+offset])
-				
-				/*
-				if uppper_flag == true {
-					tab_char = u16(unicode_con_table_low_to_up[ch_index+1])
-				}else{
-					tab_char = u16(unicode_con_table_up_to_low[ch_index+1])
-				}
-				*/
-				C.printf("tab_char: %04x ",tab_char)
+				//C.printf("tab_char: %04x ",tab_char)
 				
 				if ch_len == 2 {
 					ch0:=byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
 					ch1:=byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
-					C.printf("[%02x%02x] \n",ch0,ch1)
+					//C.printf("[%02x%02x] \n",ch0,ch1)
 
 					str_res[ _index + 0 ] = ch0
 					str_res[ _index + 1 ] = ch1
@@ -203,7 +235,7 @@ fn up_low(s string, uppper_flag bool) string {
 	}
 	str_res[_index]=0
 
-	C.printf("str_res: %s\n--------------\n",str_res)
+	//C.printf("str_res: %s\n--------------\n",str_res)
 
 	return tos(str_res, s.len)
 }
@@ -232,12 +264,12 @@ fn find_char( inCode u16, uppper_flag bool, offset int, i_step int ) int {
 	mut index := up_to_low_index[ (start_index << 1) + 1 ]			// first index of our utf8 char range
 	mut last_index := up_to_low_index[ ((start_index+1) << 1) + 1 ]	// last+1 index of our utf8 char range
 
-	C.printf("\nLooking for: 0x%04x",inCode)
-	C.printf("\nWe have a range index:[%d] ==> %d",up_to_low_index[ start_index<<1 ] ,up_to_low_index[ (start_index << 1) +1 ])
+	//C.printf("\nLooking for: 0x%04x",inCode)
+	//C.printf("\nWe have a range index:[%d] ==> %d",up_to_low_index[ start_index<<1 ] ,up_to_low_index[ (start_index << 1) +1 ])
 	for {
 		x:=unicode_con_table_up_to_low[index+offset+i_step]	// get the utf8 char
 		if x==inCode {
-			C.printf(" Found!\n")
+			//C.printf(" Found!\n")
 			return int(index)
 		}
 		index+=2 // incrment to the next char
@@ -245,7 +277,7 @@ fn find_char( inCode u16, uppper_flag bool, offset int, i_step int ) int {
 		// exit, we are out of our range
 		//if index>last_index || index>unicode_con_table_low_to_up.len {
 		if  index>(unicode_con_table_up_to_low.len-1) {
-			C.printf(" Break in %d < %d!\n",index,last_index)
+			//C.printf(" Break in %d < %d!\n",index,last_index)
 			break
 		}
 	}
