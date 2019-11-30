@@ -166,7 +166,7 @@ fn (v &V) find_module_path(mod string) ?string {
 	tried_paths << filepath.join(v.pref.vlib_path, mod_path)
 	tried_paths << filepath.join(modules_lookup_path, mod_path)
 	if v.pref.user_mod_path.len > 0 {
-		tried_paths << v.pref.user_mod_path
+		tried_paths << filepath.join(v.pref.user_mod_path, mod_path)
 	}
 	for try_path in tried_paths {
 		if v.pref.is_verbose { println('  >> trying to find $mod in $try_path ...') }
