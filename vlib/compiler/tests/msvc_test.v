@@ -1,8 +1,8 @@
 fn test_flag_parsing() {
 	mut rest := '-lGlfw -f gl2,-ltest_nice_meme,-l cc,-Ldl test.o a.o ' //, whatever.o'
-	result := ['-l', 'Glfw', 
-			   '-f', 'gl2', 
-			   '-l', 'test_nice_meme', 
+	result := ['-l', 'Glfw',
+			   '-f', 'gl2',
+			   '-l', 'test_nice_meme',
 			   '-l', 'cc',
 			   '-L', 'dl',
 			   '', 'test.o',
@@ -21,8 +21,10 @@ fn test_flag_parsing() {
 
 		// Which ever one of these is lowest we use
 		// TODO: we really shouldnt support all of these cmon
-		mut lowest := base.index('-')
-		for x in [base.index(' '), base.index(',')] {
+		mut lowest := base.index('-') or { -1 }
+		a := base.index(' ') or { -1 }
+		b := base.index(',') or { -1 }
+		for x in [a, b] {
 			if (x < lowest && x != -1) || lowest == -1 {
 				lowest = x
 			}
@@ -44,6 +46,6 @@ fn test_flag_parsing() {
 	}
 
 	for i, f in flags {
-		assert f == result[i] 
+		assert f == result[i]
 	}
 }
