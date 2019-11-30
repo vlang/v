@@ -24,6 +24,12 @@ pub fn main() {
 	args_before := args_string.all_before('test ')
 	args_after  := args_string.all_after('test ')
 
+	if args_after == 'v' {
+		eprintln('`v test v` has been deprecated.')
+		eprintln('Use `v test-compiler` instead.')
+		exit(1)
+	}
+  
 	mut ts := testing.new_test_sesion(args_before)
 	for targ in args_after.split(' ') {
 		if os.file_exists(targ) && targ.ends_with('_test.v') {
