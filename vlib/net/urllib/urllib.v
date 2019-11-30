@@ -626,17 +626,15 @@ fn parse_host(host string) ?string {
 				return err
 			}
 			return host1 + host2 + host3
-		} else {
-			i = host.last_index(':')
-			if i != -1 {
-				colon_port = host[i..]
-				if !valid_optional_port(colon_port) {
-					return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
-				}
+		}
+		i = host.last_index(':')
+		if i != -1 {
+			colon_port = host[i..]
+			if !valid_optional_port(colon_port) {
+				return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
 			}
 		}
 	}
-
 	h := unescape(host, .encode_host) or {
 		return err
 	}
@@ -852,8 +850,8 @@ fn parse_query_values(m mut Values, query string) ?bool {
 			continue
 		}
 		mut value := ''
-		i = key.index('=')
-		if  i >= 0 {
+		if idx := key.index('=') {
+			i = idx
 			value = key[i+1..]
 			key = key[..i]
 		}

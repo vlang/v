@@ -2663,6 +2663,7 @@ fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
 			//token_idx: var_token_idx
 		})
 		p.statements()
+		p.returns = false
 		return 'void'
 	}	else {
 		p.check_types(p.bool_expression(), 'bool')
