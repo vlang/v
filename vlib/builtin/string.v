@@ -404,8 +404,7 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 	return s.substr(start, end)
 }
 
-// substr
-pub fn (s string) substr(start, end int) string {
+fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
 	}
