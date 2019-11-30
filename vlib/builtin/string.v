@@ -306,7 +306,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	mut start := 0
 	for i < s.len {
 		mut is_delim := s[i] == delim[0]
-		mut j := 1
+		mut j := 0
 		for is_delim && j < delim.len {
 			is_delim = is_delim && s[i + j] == delim[j]
 			j++
@@ -323,7 +323,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 				if val.starts_with(delim) {
 					val = val.right(delim.len)
 				}
-				res << val.trim_space()
+				res << val // .trim_space()
 			}
 			start = i + delim.len
 		}
