@@ -331,7 +331,8 @@ fn (p mut Parser) fn_decl() {
 	// `os.exit()` ==> `os__exit()`
 	// if !is_c && !p.builtin_mod && receiver_typ.len == 0 {
 	if !is_c && !has_receiver &&
-(!p.builtin_mod || (p.builtin_mod && f.name == 'init')) {
+		(!p.builtin_mod || (p.builtin_mod && f.name == 'init'))
+	{
 		f.name = p.prepend_mod(f.name)
 	}
 	if p.first_pass() && receiver_typ.len == 0 {
@@ -408,7 +409,7 @@ fn (p mut Parser) fn_decl() {
 	if f.name == 'main__main' && !has_receiver {
 		if p.pref.x64 && !p.first_pass() {
 			p.x64.save_main_fn_addr()
-		}	
+		}
 		if str_args != '' || typ != 'void' {
 			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
 		}
@@ -528,7 +529,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	if p.pref.x64 {
 		p.x64.register_function_address(f.name)
-	}	
+	}
 	p.statements_no_rcbr()
 	//p.cgen.nogen = false
 	// Print counting result after all statements in main
@@ -548,7 +549,7 @@ fn (p mut Parser) fn_decl() {
 	}
 	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
 		p.x64.gen_exit()
-	}	
+	}
 	if p.pref.x64 && !p.first_pass() {
 		p.x64.ret()
 	}
@@ -568,7 +569,7 @@ fn (p mut Parser) fn_decl() {
 	p.check_unused_variables()
 	p.set_current_fn( EmptyFn )
 	p.returns = false
-	
+
 }
 
 [inline]
@@ -731,7 +732,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	}
 	if p.pref.x64 && !p.first_pass() {
 		p.x64.call_fn(f.name)
-	}	
+	}
 	p.calling_c = f.is_c
 	if f.is_c && !p.builtin_mod {
 		if f.name == 'free' {
@@ -848,6 +849,9 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
+			if typ == '' && !f.is_c {
+				p.error('bad fn arg type')
+			}
 			p.check_and_register_used_imported_type(typ)
 			v := Var {
 				typ: typ
@@ -1029,7 +1033,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			}
 		}
 		p.expected_type = arg.typ
-		clone := p.pref.autofree && p.mod != 'string' && arg.typ == 'string' && 
+		clone := p.pref.autofree && p.mod != 'string' && arg.typ == 'string' &&
 		!p.builtin_mod //&& arg.is_moved
 		if clone {
 			p.gen('/*YY f=$f.name arg=$arg.name is_moved=$arg.is_moved*/string_clone(')
