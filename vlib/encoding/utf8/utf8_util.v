@@ -14,9 +14,9 @@ module utf8
 //
 // len
 // Parameters:
-//
+//  - s string
 // Output:
-//  int
+//  - int
 //
 // get the lenght of the string as utf8 chars
 //
@@ -38,9 +38,9 @@ pub fn len(s string) int {
 //
 // u_len
 // Parameters:
-//
+//  - s ustring
 // Output:
-//  int
+//  - int
 //
 // get the lenght of the ustring
 //
@@ -51,9 +51,9 @@ pub fn u_len(s ustring) int {
 //
 // to_upper
 // Parameters:
-//
+//  - s string
 // Output:
-//  string
+//  - string
 //
 // Convert a utf8 string to uppercase
 //
@@ -64,9 +64,9 @@ pub fn to_upper(s string) string {
 //
 // u_to_upper
 // Parameters:
-//
+//  - s ustring
 // Output:
-//  ustring
+//  - ustring
 //
 // Convert a ustring to uppercase
 //
@@ -78,9 +78,9 @@ pub fn u_to_upper(s ustring) ustring {
 //
 // to_lower
 // Parameters:
-//
+//  - s string
 // Output:
-//  string
+//  - string
 //
 // Convert a utf8 string to lowercase
 // 
@@ -91,9 +91,9 @@ pub fn to_lower(s string) string {
 //
 // u_to_lower
 // Parameters:
-//
+//  - s ustring
 // Output:
-//  ustring
+//  - ustring
 //
 // Convert a ustring to lowercase
 // 
