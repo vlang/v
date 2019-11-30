@@ -127,8 +127,7 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
     if a == c || (a.len == 2 && a[1] == ab) {
       if i+1 > fs.args.len { panic('Missing argument for \'$n\'') }
       nextarg := fs.args[i+1]
-      println( 'nextarg: $nextarg' )
-      if nextarg[..2] == '--' { panic('Missing argument for \'$n\'') }
+      if nextarg.limit(2) == '--' { panic('Missing argument for \'$n\'') }
       val := fs.args[i+1]
       fs.args.delete(i+1)
       fs.args.delete(i)
