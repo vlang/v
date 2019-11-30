@@ -849,8 +849,10 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()
-			if typ == '' && !f.is_c {
+			if typ == '' { //&& !f.is_c {
+				if p.prev_tok != .ellipsis {
 				p.error('bad fn arg type')
+				}
 			}
 			p.check_and_register_used_imported_type(typ)
 			v := Var {
