@@ -41,12 +41,13 @@ interface Logger {
 }
 
 pub struct Log {
-	mut:
+mut:
 	level LogLevel
 	output_label string
   
 	ofile os.File
 	output_to_file bool
+pub:
 	output_file_name string
 }
 
@@ -79,7 +80,7 @@ pub fn (l mut Log) set_output_path(output_file_path string) {
 	if l.ofile.is_opened() { l.ofile.close() }
 	l.output_to_file = true
 	l.output_file_name = filepath.join( os.realpath( output_file_path ) , '${l.output_label}.log' )
-	ofile := os.open_append( l.output_file_name  ) or {
+	mut ofile := os.open_append( l.output_file_name  ) or {
 		panic('error while opening log file ${l.output_file_name} for appending')
 	}
 	l.ofile = ofile  
