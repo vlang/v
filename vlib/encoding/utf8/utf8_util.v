@@ -36,7 +36,7 @@ pub fn len(s string) int {
 }
 
 //
-// len
+// u_len
 // Parameters:
 //
 // Output:
@@ -62,7 +62,7 @@ pub fn to_upper(s string) string {
 }
 
 //
-// to_upper
+// u_to_upper
 // Parameters:
 //
 // Output:
@@ -89,7 +89,7 @@ pub fn to_lower(s string) string {
 }
 
 //
-// to_lower
+// u_to_lower
 // Parameters:
 //
 // Output:
