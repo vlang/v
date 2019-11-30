@@ -2,10 +2,38 @@
 *
 * utf-8 util
 *
+* Copyright (c) 2019 Dario Deledda. All rights reserved.
+* Use of this source code is governed by an MIT license
+* that can be found in the LICENSE file.
+*
 * This file contains utilities for utf8 strings
 *
 **********************************************************************/
 module utf8
+
+//
+// utf8_to_upper
+// Parameters:
+//
+// Output:
+//  int
+//
+// get the lenght of the string as utf8 chars
+//
+pub fn len(s string) int {
+	mut count := 0
+	mut index := 0
+
+	for {
+		ch_len := utf8util_char_len(s.str[index])
+		index += ch_len
+		if index > s.len {
+			break
+		}
+		count++
+	}
+	return count
+}
 
 //
 // utf8_to_upper
@@ -33,12 +61,18 @@ pub fn to_lower(s string) string {
 	return up_low(s, false) 
 }
 
+/**********************************************************************
+*
+* Private functions
+*
+**********************************************************************/
+
 // Private function, calculate the lenght in bytes of a utf8 rune
 fn utf8util_char_len(b byte) int {
 	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
-// Private function, make the dir jobs
+// Private function, make the dirt job
 fn up_low(s string, uppper_flag bool) string {
 	mut _index := 0
 	mut old_index := 0
@@ -150,7 +184,7 @@ fn up_low(s string, uppper_flag bool) string {
 		}
 		old_index = _index
 		_index += ch_len
-		my_substr:=s.substr(old_index,_index)
+		//my_substr:=s.substr(old_index,_index)
 		//println("#: $ch_len ==> $my_substr")
 		
 		uct := unicode_con_table[0]

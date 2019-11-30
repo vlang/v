@@ -6,4 +6,8 @@ fn test_utf8_util() {
 	lower:=utf8.to_lower(src)
 	assert upper=="ĂĂ ÔÔ TESTO Æ€”"
 	assert lower=="ăă ôô testo æ€”"
+
+	// check len function
+	assert utf8.len("pippo")==5
+	assert utf8.len(src)==15
 }
