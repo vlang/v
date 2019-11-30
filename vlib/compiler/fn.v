@@ -214,7 +214,7 @@ fn (p mut Parser) fn_decl() {
 		is_public: is_pub || p.is_vh // functions defined in .vh are always public
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
-		comptime_define: if p.attr.starts_with('if ') { p.attr.right(3) } else { '' }
+		comptime_define: if p.attr.starts_with('if ') { p.attr[3..] } else { '' }
 	}
 	is_live := p.attr == 'live' && !p.pref.is_so  && p.pref.is_live
 	if p.attr == 'live' &&  p.first_pass() && !p.pref.is_live && !p.pref.is_so {

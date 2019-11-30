@@ -384,14 +384,14 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // 'hello'.left(2) => 'he'
-pub fn (s string) left(n int) string {
+fn (s string) left(n int) string {
 	if n >= s.len {
 		return s
 	}
 	return s.substr(0, n)
 }
 // 'hello'.right(2) => 'llo'
-pub fn (s string) right(n int) string {
+fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
 	}

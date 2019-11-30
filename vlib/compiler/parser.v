@@ -983,11 +983,11 @@ fn (p mut Parser) get_type() string {
 		p.check(.amp)
 	}
 	// generic type check
-	ti := p.cur_fn.dispatch_of.inst	
-	if p.lit in ti.keys() {	
+	ti := p.cur_fn.dispatch_of.inst
+	if p.lit in ti.keys() {
 		typ += ti[p.lit]
-	} else {	
-		typ += p.lit	
+	} else {
+		typ += p.lit
 	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
@@ -2093,7 +2093,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// }
 		if is_indexer {
 			l := p.cgen.cur_line.trim_space()
-			index_val := l.right(l.last_index(' ')).trim_space()
+			index_val := l[l.last_index(' ')..].trim_space()
 			p.cgen.resetln(l[..fn_ph])
 			p.table.varg_access << VargAccess{
 				fn_name: p.cur_fn.name,

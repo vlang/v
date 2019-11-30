@@ -421,7 +421,7 @@ pub fn (t Time) weekday_str() string {
 }
 
 pub struct C.timeval  {
-	tv_sec u64 
+	tv_sec u64
 	tv_usec u64
 }
 
@@ -527,7 +527,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
         }
 
         month := '${t.smonth()}'
-        year := t.year.str().right(2)
+        year := t.year.str()[2..]
 
         return  match fmt_date {
                         .ddmmyy     { '${t.day:02d}|${t.month:02d}|$year' }
