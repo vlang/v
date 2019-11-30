@@ -362,11 +362,14 @@ pub fn (f mut File) writeln(s string) {
 }
 
 pub fn (f mut File) flush() {
+	if !f.opened { return }
 	C.fflush(f.cfile)
 }
 
 pub fn (f mut File) close() {
+	if !f.opened { return }
 	f.opened = false
+	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
 
