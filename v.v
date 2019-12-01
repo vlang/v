@@ -72,6 +72,14 @@ fn main() {
 		compiler.launch_tool('vtest-compiler')
 		return
 	}
+	else if 'build-tools' in commands {
+		compiler.launch_tool('vbuild-tools')
+		return
+	}
+	else if 'build-examples' in commands {
+		compiler.launch_tool('vbuild-examples')
+		return
+	}
 	else if 'test' in commands {
 		compiler.launch_tool('vtest')
 		return

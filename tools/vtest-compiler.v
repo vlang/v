@@ -16,17 +16,15 @@ fn main() {
 	v_test_compiler(args_string.all_before('test-compiler'))
 }
 
-fn v_test_compiler(args_before_test string){
+fn v_test_compiler(vargs string){
 	vexe := testing.vexe_path()
 	parent_dir := os.dir(vexe)
+	testing.vlib_should_be_present( parent_dir )
+  
 	// Changing the current directory is needed for some of the compiler tests,
 	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
 	os.chdir( parent_dir )
-	if !os.dir_exists(parent_dir + '/vlib') {
-		println('vlib/ is missing, it must be next to the V executable')
-		exit(1)
-	}
-	
+  
 	/*
 	if !os.file_exists(parent_dir + '/v.v') {
 		println('v.v is missing, it must be next to the V executable')
@@ -46,28 +44,16 @@ fn v_test_compiler(args_before_test string){
 		}
 	}
 	
-	println('Building v tools...')
-	mut tools_session := testing.new_test_sesion( args_before_test )
-	tools_v_files := os.walk_ext(parent_dir+'/tools','.v')
-	tools_main_files := tools_v_files.filter(!it.contains('modules'))
-	tools_session.files << tools_main_files
-	tools_session.test()
-	println( tools_session.benchmark.total_message('building v tools') )
+	building_tools_failed := testing.v_build_failing(vargs, 'tools')
 	
 	println('\nTesting all _test.v files...')
-	mut compiler_test_session := testing.new_test_sesion( args_before_test )
+	mut compiler_test_session := testing.new_test_sesion( vargs )
 	compiler_test_session.files << os.walk_ext(parent_dir, '_test.v')
 	compiler_test_session.test()
 	println( compiler_test_session.benchmark.total_message('running V tests') )
-	
-	println('\nBuilding examples...')
-	mut example_session := testing.new_test_sesion( args_before_test )
-	example_files := os.walk_ext(parent_dir+'/examples','.v')
-	example_mains := example_files.filter(!it.contains('modules'))
-	example_session.files << example_mains
-	example_session.test()
-	println( example_session.benchmark.total_message('building examples') )
-	
+
+	println('')
+	building_examples_failed := testing.v_build_failing(vargs, 'examples')
 	
 	v_module_install_cmd := '$vexe install nedpals.args'
 	println('\nInstalling a v module with: $v_module_install_cmd ')
@@ -84,7 +70,7 @@ fn v_test_compiler(args_before_test string){
 	vmark.stop()
 	println( 'Installing a v module took: ' + vmark.total_duration().str() + 'ms')
 	
-	if tools_session.failed || compiler_test_session.failed || example_session.failed {
+	if building_tools_failed || compiler_test_session.failed || building_examples_failed {
 		exit(1)
 	}
 	

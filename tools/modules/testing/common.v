@@ -4,6 +4,7 @@ import (
 	os
 	term
 	benchmark
+	filepath
 )
 
 pub struct TestSession {
@@ -89,4 +90,30 @@ pub fn (ts mut TestSession) test() {
 		os.rm( tmpc_filepath )
 	}
 	ts.benchmark.stop()
+}
+
+pub fn vlib_should_be_present( parent_dir string ) {
+	vlib_dir := filepath.join( parent_dir, 'vlib' )
+	if !os.dir_exists( vlib_dir ){
+		println('$vlib_dir is missing, it must be next to the V executable')
+		exit(1)
+	}
+}
+
+pub fn v_build_failing(vargs string, folder string) bool {
+	main_label := 'Building $folder ...'
+	finish_label := 'building $folder'
+	vexe := vexe_path()
+	parent_dir := os.dir(vexe)
+	vlib_should_be_present( parent_dir )
+  
+	println(main_label)
+	mut session := new_test_sesion( vargs )
+	files := os.walk_ext(filepath.join(parent_dir, folder),'.v')
+	mains := files.filter(!it.contains('modules'))
+	session.files << mains
+	session.test()
+	println( session.benchmark.total_message( finish_label ) )
+
+	return session.failed
 }
