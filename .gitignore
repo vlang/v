@@ -1,3 +1,4 @@
+fns.txt
 *.dSYM
 *_test
 /v
@@ -12,12 +13,18 @@
 /tools/vrepl.exe
 /tools/vtest
 /tools/vtest.exe
+/tools/vtest-compiler
+/tools/vtest-compiler.exe
 /tools/vup
 /tools/vup.exe
 /tools/vpm
 /tools/vpm.exe
 /tools/vcreate
 /tools/vcreate.exe
+/tools/vbuild-examples
+/tools/vbuild-examples.exe
+/tools/vbuild-tools
+/tools/vbuild-tools.exe
 *.exe
 *.o
 .*.c
@@ -38,3 +45,6 @@ vjs
 ._*
 .vrepl_temp.v
 a.out
+vlib/os/bare/bare_example_linux
+
+info.log

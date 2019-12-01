@@ -36,7 +36,7 @@ jobs:
     - name: Build V using V
       run:  ./v -o v2 v.v && ./v2 -o v3 v.v
     - name: Test v->c
-      run: ./v test v
+      run: ./v test-compiler
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
@@ -58,7 +58,7 @@ jobs:
     - name: Build V
       run: make && ./v -cc gcc -o v v.v
     - name: Test V
-      run: ./v test v
+      run: ./v test-compiler
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Build Vorum
@@ -110,7 +110,7 @@ jobs:
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
         ./v -o v2 v.v # Make sure vtcc can build itself
-        ./v test v
+        ./v test-compiler
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
@@ -124,7 +124,7 @@ jobs:
     - name: Build v
       run: make && ./v -cc musl-gcc -o v v.v
 #    - name: Test v->c
-#      run: ./v test v
+#      run: ./v test-compiler
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
 
@@ -142,7 +142,7 @@ jobs:
         .\make.bat -gcc
     - name: Test
       run: |
-        .\v.exe test v
+        .\v.exe test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
@@ -164,7 +164,7 @@ jobs:
       env:
         VFLAGS: -cc msvc
       run: |
-        .\v.exe test v
+        .\v.exe test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js

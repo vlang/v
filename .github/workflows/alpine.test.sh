@@ -10,6 +10,6 @@ du -s .
 
 ls -lat 
 
-./v test v
+./v test-compiler
 
 echo "DONE"
