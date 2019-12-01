@@ -640,6 +640,12 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got=='byte*' && expected=='byteptr' {
 		return true
 	}
+	if got=='charptr' && expected=='char*' {
+		return true
+	}
+	if got=='char*' && expected=='charptr' {
+		return true
+	}
 	if got=='int' && expected=='byte*' {
 		return true
 	}
@@ -647,7 +653,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		//return true
 	//}
 	// byteptr += int
-	if got=='int' && expected=='byteptr' {
+	if got=='int' && expected in ['byteptr', 'charptr'] {
 		return true
 	}
 	if got == 'Option' && expected.starts_with('Option_') {
