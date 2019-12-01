@@ -3,6 +3,7 @@ module main
 import (
 	os
 	testing
+	benchmark
 )  
 
 pub const (
@@ -67,16 +68,11 @@ fn v_test_compiler(args_before_test string){
 	example_session.test()
 	println( example_session.benchmark.total_message('building examples') )
 	
-	if tools_session.failed || compiler_test_session.failed || example_session.failed {
-		exit(1)
-	}
 	
-	test_vget()  
-}
-
-pub fn test_vget() {
-	vexe := testing.vexe_path()
-	ret := os.system('$vexe install nedpals.args')
+	v_module_install_cmd := '$vexe install nedpals.args'
+	println('\nInstalling a v module with: $v_module_install_cmd ')
+	mut vmark := benchmark.new_benchmark()
+	ret := os.system(v_module_install_cmd)
 	if ret != 0 {
 		println('failed to run v install')
 		exit(1)
@@ -85,5 +81,11 @@ pub fn test_vget() {
 		println('v failed to install a test module')
 		exit(1)
 	}
-	println('vget is OK')
+	vmark.stop()
+	println( 'Installing a v module took: ' + vmark.total_duration().str() + 'ms')
+	
+	if tools_session.failed || compiler_test_session.failed || example_session.failed {
+		exit(1)
+	}
+	
 }

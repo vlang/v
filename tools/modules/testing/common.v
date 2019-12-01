@@ -13,6 +13,9 @@ pub mut:
 	vargs string
 	failed bool
 	benchmark benchmark.Benchmark
+
+	ok string
+	fail string
 }
 
 pub fn new_test_sesion(vargs string) TestSession {
@@ -31,11 +34,15 @@ pub fn vexe_path() string {
 }
 
 
-pub fn (ts mut TestSession) test() {
-	ok   := term.ok_message('OK')
-	fail := term.fail_message('FAIL')
-	show_stats := '-stats' in ts.vargs.split(' ')
+pub fn (ts mut TestSession) init() {
+	ts.ok   = term.ok_message('OK')
+	ts.fail = term.fail_message('FAIL')
 	ts.benchmark = benchmark.new_benchmark()
+}
+
+pub fn (ts mut TestSession) test() {
+	ts.init()
+	show_stats := '-stats' in ts.vargs.split(' ')
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath( relative_file )
@@ -67,16 +74,16 @@ pub fn (ts mut TestSession) test() {
 			r := os.exec(cmd) or {
 				ts.benchmark.fail()
 				ts.failed = true
-				println(ts.benchmark.step_message('$relative_file $fail'))
+				println(ts.benchmark.step_message('$relative_file ${ts.fail}'))
 				continue
 			}
 			if r.exit_code != 0 {
 				ts.benchmark.fail()
 				ts.failed = true
-				println(ts.benchmark.step_message('$relative_file $fail\n`$file`\n (\n$r.output\n)'))
+				println(ts.benchmark.step_message('$relative_file ${ts.fail}\n`$file`\n (\n$r.output\n)'))
 			} else {
 				ts.benchmark.ok()
-				println(ts.benchmark.step_message('$relative_file $ok'))
+				println(ts.benchmark.step_message('$relative_file ${ts.ok}'))
 			}
 		}
 		os.rm( tmpc_filepath )
