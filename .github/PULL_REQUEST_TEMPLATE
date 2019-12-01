@@ -1,6 +1,7 @@
 **Please delete this information after reading it.*
 
-Please title your PR as follows: `time: fix foo bar`. Always start with the thing you are fixing, then describe the fix.
+Please title your PR as follows: `time: fix foo bar`. 
+Always start with the thing you are fixing, then describe the fix.
 Don't use past tense (e.g. "fixed foo bar").
 
 Explain what your PR does and why.
@@ -20,10 +21,13 @@ fn test_foo() {
 
 If you are fixing a bug, please add a test that covers it.
 
-Before submitting a PR, please run the tests with `v test v`, and make sure V can still compile itself. Run this twice:
-
+Before submitting a PR, please:
+  A) run the tests with `v test-compiler` .
+  B) make sure, that V can still compile itself:
+```shell
 ./v -o v v.v
 ./v -o v v.v
+```
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
 
