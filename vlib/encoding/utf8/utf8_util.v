@@ -196,8 +196,7 @@ fn up_low(s string, upper_flag bool) string {
 // find_char_in_table utility function for up_low, search utf8 chars in the conversion table
 fn find_char_in_table( in_code u16, upper_flag bool) int {
 	//
-	// lockup table to speed the search
-	// we look for the first char that start with the first byte of the utf8 char
+	// We will use a simple binary search
 	//
 
 	mut first_index := int(0) 										// first index of our utf8 char range
