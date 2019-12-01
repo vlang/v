@@ -139,8 +139,8 @@ pub fn build_v_cmd_failed (cmd string) bool {
 }
 
 pub fn building_any_v_binaries_failed() bool {
-	println('Building V binaries...')
-	println('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
+	eprintln('Building V binaries...')
+	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := testing.vexe_path()
 	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
@@ -166,15 +166,15 @@ pub fn building_any_v_binaries_failed() bool {
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
 			failed = true
-			println(bmark.step_message('$cmd => ${bfail} . See details above ^^^^^^^'))
-			println('')
+			eprintln(bmark.step_message('$cmd => ${bfail} . See details above ^^^^^^^'))
+			eprintln('')
 			continue
 		}
 		bmark.ok()
-		println(bmark.step_message('$cmd => ${bok}'))		
+		eprintln(bmark.step_message('$cmd => ${bok}'))		
 	}
 	bmark.stop()
-	println( bmark.total_message( 'building v binaries' ) )
+	eprintln( bmark.total_message( 'building v binaries' ) )
 	
 	return failed
 }
