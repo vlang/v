@@ -102,19 +102,19 @@ fn up_low(s string, upper_flag bool) string {
 			// 2 byte utf-8
 			// byte format: 110xxxxx 10xxxxxx
 			//
-			if ch_len==2 {
+			if ch_len == 2 {
 				res = (lword & 0x1f00) >> 2 | (lword & 0x3f)
 			}
 			// 3 byte utf-8
 			// byte format: 1110xxxx 10xxxxxx 10xxxxxx
 			//
-			else if ch_len==3 {
+			else if ch_len == 3 {
 				res = ( lword & 0x0f0000 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f ) 
 			}
 			// 4 byte utf-8
 			// byte format: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 			//
-			else if ch_len==4 {
+			else if ch_len == 4 {
 				res = (( lword & 0x07000000 ) >> 6)  | (( lword & 0x003f0000 ) >> 4) | 
 						(( lword & 0x00003F00 ) >> 2 ) | ( lword & 0x0000003f ) 
 			}
@@ -124,19 +124,18 @@ fn up_low(s string, upper_flag bool) string {
 			//C.printf(" utf8 index: %d ",ch_index)
 
 			// char not in table, no need of conversion
-			if ch_index==0 { 
+			if ch_index == 0 { 
 				for i in 0..ch_len {
 					str_res[_index + i] = s.str[_index + i] 
 				}
 				//C.printf("\n")
 			}else{
-				mut tab_char := u16(0)
-				tab_char = u16(unicode_con_table_up_to_low[ch_index])
+				tab_char := u16(unicode_con_table_up_to_low[ch_index])
 				//C.printf("tab_char: %04x ",tab_char)
 				
 				if ch_len == 2 {
-					ch0:=byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
-					ch1:=byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
+					ch0 := byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
+					ch1 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
 					//C.printf("[%02x%02x] \n",ch0,ch1)
 
 					str_res[ _index + 0 ] = ch0
@@ -149,9 +148,9 @@ fn up_low(s string, upper_flag bool) string {
 					
 				}
 				else if ch_len == 3 {
-					ch0:=byte( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
-					ch1:=byte( (tab_char >> 6) & 0x3f ) | 0x80		/*10xx xxxx*/
-					ch2:=byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
+					ch0 := byte( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
+					ch1 := byte( (tab_char >> 6) & 0x3f ) | 0x80		/*10xx xxxx*/
+					ch2 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
 					//C.printf("[%02x%02x%02x] \n",ch0,ch1,ch2)
 
 					str_res[_index + 0 ] = ch0
@@ -202,7 +201,7 @@ fn find_char_in_table( inCode u16, upper_flag bool) int {
 	mut first_index := int(0) 										// first index of our utf8 char range
 	mut last_index := int(unicode_con_table_up_to_low.len >> 1)		// last+1 index of our utf8 char range
 	mut index := int(0)	
-	mut x:=u16(0)
+	mut x := u16(0)
 
 	mut offset:=int(0) // up to low
 	mut i_step:=int(1) // up to low
@@ -214,11 +213,11 @@ fn find_char_in_table( inCode u16, upper_flag bool) int {
 	//C.printf("looking for [%04x] in (%d..%d).\n",inCode,first_index,last_index)
 	for {
 		index = (first_index+last_index) >> 1
-		x=unicode_con_table_up_to_low[ (index<<1)+offset ]
+		x = unicode_con_table_up_to_low[ (index<<1)+offset ]
 		
 		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,inCode,x)
 
-		if x==inCode {
+		if x == inCode {
 			//C.printf(" Found!\n")
 			return int( (index<<1) + i_step)
 		}

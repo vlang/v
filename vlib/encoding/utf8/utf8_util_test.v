@@ -3,9 +3,9 @@ import encoding.utf8
 fn test_utf8_util() {
 
 	// string test
-	src:="ăĂ ôÔ testo æ€” \u1E5A\u1E5B<=>\u1F49\u1F41<=>\u0128\u012a\u012c" // len 29 runes, raw 49 bytes
-	src_upper:="ĂĂ ÔÔ TESTO Æ€” ṚṚ<=>ὉὉ<=>ĨĪĬ"
-	src_lower:="ăă ôô testo æ€” ṛṛ<=>ὁὁ<=>ĩīĭ"
+	src:="ăĂ ôÔ testo æ€”_\u1E5A\u1E5B<=>\u1F49\u1F41<=>\u0128\u012a\u012c" // len 29 runes, raw 49 bytes
+	src_upper:="ĂĂ ÔÔ TESTO Æ€”_\u1E5A\u1E5A<=>\u1F49\u1F49<=>\u0128\u012A\u012C"
+	src_lower:="ăă ôô testo æ€”_\u1E5B\u1E5B<=>\u1F41\u1F41<=>\u0129\u012B\u012D"
 	upper:=utf8.to_upper(src)
 	lower:=utf8.to_lower(src)
 	assert upper==src_upper
