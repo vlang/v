@@ -140,6 +140,7 @@ pub fn build_v_cmd_failed (cmd string) bool {
 
 pub fn building_any_v_binaries_failed() bool {
 	println('Building V binaries...')
+	println('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := testing.vexe_path()
 	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
