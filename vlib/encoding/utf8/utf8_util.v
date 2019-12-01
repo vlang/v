@@ -12,7 +12,7 @@
 module utf8
 
 
-// return the leght as number of unicode chars from a string
+// len return the leght as number of unicode chars from a string
 pub fn len(s string) int {
 	mut count := 0
 	mut index := 0
@@ -28,29 +28,29 @@ pub fn len(s string) int {
 	return count
 }
 
-// return the leght as number of unicode chars from a ustring
+// u_len return the leght as number of unicode chars from a ustring
 pub fn u_len(s ustring) int {
 	return len(s.s)
 }
 
 
-// return an uppercase string from a string
+// to_upper return an uppercase string from a string
 pub fn to_upper(s string) string {
 	return up_low(s, true)
 }
 
-// return an uppercase string from a ustring
+// u_to_upper return an uppercase string from a ustring
 pub fn u_to_upper(s ustring) ustring {
 	tmp := up_low(s.s, true)
 	return tmp.ustring()
 }
 
-// return an lowercase string from a string
+// to_lower return an lowercase string from a string
 pub fn to_lower(s string) string {
 	return up_low(s, false) 
 }
 
-// return an lowercase string from a ustring
+// u_to_lower return an lowercase string from a ustring
 pub fn u_to_lower(s ustring) ustring {
 	tmp := up_low(s.s, false)
 	return tmp.ustring()
@@ -63,16 +63,17 @@ pub fn u_to_lower(s ustring) ustring {
 *
 **********************************************************************/
 
-// Private function, calculate the lenght in bytes of a utf8 rune
+// utf8util_char_len calculate the lenght in bytes of a utf8 rune
 fn utf8util_char_len(b byte) int {
 	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
 
-// Private function, make the dirt job
+// 
 // if upper_flag == true  then make low ==> upper conversion 
 // if upper_flag == false then make upper ==> low conversion
-//
+// 
+// up_low make the dirt job
 fn up_low(s string, upper_flag bool) string {
 	mut _index := 0
 	mut old_index := 0
@@ -192,7 +193,8 @@ fn up_low(s string, upper_flag bool) string {
 	return tos(str_res, s.len)
 }
 
-fn find_char_in_table( inCode u16, upper_flag bool) int {
+// find_char_in_table utility function for up_low, search utf8 chars in the conversion table
+fn find_char_in_table( in_code u16, upper_flag bool) int {
 	//
 	// lockup table to speed the search
 	// we look for the first char that start with the first byte of the utf8 char
@@ -210,18 +212,18 @@ fn find_char_in_table( inCode u16, upper_flag bool) int {
 		i_step=0		// low to up
 	}
 
-	//C.printf("looking for [%04x] in (%d..%d).\n",inCode,first_index,last_index)
+	//C.printf("looking for [%04x] in (%d..%d).\n",in_code,first_index,last_index)
 	for {
 		index = (first_index+last_index) >> 1
 		x = unicode_con_table_up_to_low[ (index<<1)+offset ]
 		
-		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,inCode,x)
+		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,in_code,x)
 
-		if x == inCode {
+		if x == in_code {
 			//C.printf(" Found!\n")
 			return int( (index<<1) + i_step)
 		}
-		else if x>inCode {
+		else if x>in_code {
 			last_index=index 
 
 		}else {
