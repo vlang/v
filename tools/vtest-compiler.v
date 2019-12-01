@@ -63,7 +63,7 @@ fn v_test_compiler(args_before_test string){
 	println('\nBuilding examples...')
 	mut example_session := testing.new_test_sesion( args_before_test )
 	example_files := os.walk_ext(parent_dir+'/examples','.v')
-	example_mains := example_files.filter(!it.contains('modules') && !it.contains('automaton.v') && !it.contains('some_module.v'))
+	example_mains := example_files.filter(!it.contains('modules'))
 	example_session.files << example_mains
 	example_session.test()
 	println( example_session.benchmark.total_message('building examples') )
