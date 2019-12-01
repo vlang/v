@@ -37,6 +37,8 @@ jobs:
       run:  ./v -o v2 v.v && ./v2 -o v3 v.v
     - name: Test v->c
       run: ./v test-compiler
+    - name: Test v binaries
+      run: ./v build-vbinaries
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
@@ -59,6 +61,8 @@ jobs:
       run: make && ./v -cc gcc -o v v.v
     - name: Test V
       run: ./v test-compiler
+    - name: Test v binaries
+      run: ./v build-vbinaries
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Build Vorum
@@ -97,23 +101,27 @@ jobs:
 
   ubuntu-tcc:
     runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v1
     - name: Install dependencies
       run: sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev
     - name: Build v
-      run: make && ./v -o v v.v
-    - name: Test v->c with tcc
-      env:
-        VFLAGS: -cc tcc
+      run: echo $VFLAGS && make && ./v -o v v.v
+    - name: Test v->c
       run: |
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
         ./v -o v2 v.v # Make sure vtcc can build itself
         ./v test-compiler
+    - name: Test v binaries
+      run: ./v build-vbinaries
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc musl-gcc
     steps:
     - uses: actions/checkout@v1
     - uses: actions/setup-node@v1
@@ -122,14 +130,18 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools
     - name: Build v
-      run: make && ./v -cc musl-gcc -o v v.v
-#    - name: Test v->c
-#      run: ./v test-compiler
+      run: echo $VFLAGS && make && ./v -o v v.v
+    - name: Test v->c
+      run: ./v test-compiler
+    - name: Test v binaries
+      run: ./v build-vbinaries
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
 
   windows-gcc:
     runs-on: windows-2019
+    env:
+        VFLAGS: -cc gcc
     steps:
     - uses: actions/checkout@v1
     #- uses: actions/setup-node@v1
@@ -146,26 +158,30 @@ jobs:
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
+    - name: Test v binaries
+      run: ./v build-vbinaries
 
   windows-msvc:
     runs-on: windows-2019
+    env:
+        VFLAGS: -cc msvc
     steps:
     - uses: actions/checkout@v1
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
     - name: Build
-      env:
-        VFLAGS: -cc msvc
       run: |
+        echo %VFLAGS%
+        echo $VFLAGS
         git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
         .\make.bat -msvc
     - name: Test
-      env:
-        VFLAGS: -cc msvc
       run: |
         .\v.exe test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
+    - name: Test v binaries
+      run: ./v build-vbinaries
 
