@@ -87,6 +87,37 @@ fn test_sort() {
 	assert vals[3] == 'arr'
 }
 
+fn test_split_nth() {
+	a := "1,2,3"
+	assert (a.split(',').len == 3)
+	assert (a.split_nth(',', -1).len == 3)
+	assert (a.split_nth(',', 0).len == 3)
+	assert (a.split_nth(',', 1).len == 1)
+	assert (a.split_nth(',', 2).len == 2)
+	assert (a.split_nth(',', 10).len == 3)
+	b := "1::2::3"
+	assert (b.split('::').len == 3)
+	assert (b.split_nth('::', -1).len == 3)
+	assert (b.split_nth('::', 0).len == 3)
+	assert (b.split_nth('::', 1).len == 1)
+	assert (b.split_nth('::', 2).len == 2)
+	assert (b.split_nth('::', 10).len == 3)
+	c := "ABCDEF"
+	assert (c.split('').len == 6)
+	assert (c.split_nth('', 3).len == 3)
+	assert (c.split_nth('BC', -1).len == 2)
+	d := ","
+	assert (d.split(',').len == 2)
+	assert (d.split_nth('', 3).len == 1)
+	assert (d.split_nth(',', -1).len == 2)
+	assert (d.split_nth(',', 3).len == 2)
+	e := ",,,0,,,,,a,,b,"
+	// assert (e.split(',,').len == 5)
+	// assert (e.split_nth(',,', 3).len == 2)
+	assert (e.split_nth(',', -1).len == 12)
+	assert (e.split_nth(',', 3).len == 3)
+}
+
 fn test_split() {
 	mut s := 'volt/twitch.v:34'
 	mut vals := s.split(':')
@@ -109,10 +140,11 @@ fn test_split() {
 	// /////////
 	s = 'lalala'
 	vals = s.split('a')
-	assert vals.len == 3
+	assert vals.len == 4
 	assert vals[0] == 'l'
 	assert vals[1] == 'l'
 	assert vals[2] == 'l'
+	assert vals[3] == ''
 	// /////////
 	s = 'awesome'
 	a := s.split('')

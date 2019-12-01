@@ -285,76 +285,50 @@ fn (s string) add(a string) string {
 }
 
 pub fn (s string) split(delim string) []string {
-	// println('string split delim="$delim" s="$s"')
+	return s.split_nth(delim, 0)
+}
+
+pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string
-	// if delim.len == 0 {
-	// 	res << s
-	// 	return res
-	// }
+	mut i := 0
 	if delim.len == 0 {
+		i = 1
 		for ch in s {
+			if nth > 0 && i >= nth {
+				res << s.substr(i, s.len)
+				break
+			}
 			res << ch.str()
+			i++
 		}
 		return res
 	}
-	if delim.len == 1 {
-		return s.split_single(delim[0])
-	}
-	mut i := 0
-	mut start := 0// - 1
-	for i < s.len {
-		// printiln(i)
-		mut a := s[i] == delim[0]
-		mut j := 1
-		for j < delim.len && a {
-			a = a && s[i + j] == delim[j]
+	mut start := 0
+	for i <= s.len {
+		mut is_delim := s[i] == delim[0]
+		mut j := 0
+		for is_delim && j < delim.len {
+			is_delim = is_delim && s[i + j] == delim[j]
 			j++
 		}
+		was_last := nth > 0 && res.len == nth
+		if was_last{break}
 		last := i == s.len - 1
-		if a || last {
-			if last {
+		if is_delim || last {
+			if !is_delim && last {
 				i++
 			}
 			mut val := s.substr(start, i)
-			// println('got it "$val" start=$start i=$i delim="$delim"')
-			if val.len > 0 {
-				// todo perf
-				// val now is '___VAL'. remove '___' from the start
-				if val.starts_with(delim) {
-					// println('!!')
-					val = val.right(delim.len)
-				}
-				res << val.trim_space()
+			if val.starts_with(delim) {
+				val = val.right(delim.len)
 			}
-			start = i
+			res << val
+			start = i + delim.len
 		}
 		i++
 	}
-	return res
-}
-
-pub fn (s string) split_single(delim byte) []string {
-	mut res := []string
-	if int(delim) == 0 {
-		res << s
-		return res
-	}
-	mut i := 0
-	mut start := 0
-	for i < s.len {
-		is_delim := s[i] == delim
-		last := i == s.len - 1
-		if is_delim || last {
-			if !is_delim && i == s.len - 1 {
-				i++
-			}
-			val := s.substr(start, i)
-			if val.len > 0 {
-				res << val
-			}
-			start = i + 1
-		}
-		i++
+	if s.ends_with (delim) && (nth < 1 || res.len < nth) {
+		res << ''
 	}
 	return res
 }
