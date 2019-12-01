@@ -115,10 +115,8 @@ pub fn v_build_failing(vargs string, folder string) bool {
 	if os.user_os() == 'windows' {
 		// on windows, an executable can not be rebuilt, while it is running
 		myself := os.executable().replace('.exe', '') + '.v'
-		rebuildable_mains = []
-		for f in mains {
-			if myself != f { rebuildable_mains << f }
-		}
+		mains_without_myself := mains.filter(!it.contains(myself))
+		rebuildable_mains = mains_without_myself // workaround a bug in it.contains generation
 	}
 	session.files << rebuildable_mains
 	session.test()
