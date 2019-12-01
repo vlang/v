@@ -60,7 +60,7 @@ pub:
 }
 
 pub fn vstrlen(s byteptr) int {
-	return C.strlen(*char(s))
+	return C.strlen(charptr(s))
 }
 
 // Converts a C string to a V string.
@@ -200,11 +200,11 @@ pub fn (s string) i64() i64 {
 }
 
 pub fn (s string) f32() f32 {
-	return C.atof(*char(s.str))
+	return C.atof(charptr(s.str))
 }
 
 pub fn (s string) f64() f64 {
-	return C.atof(*char(s.str))
+	return C.atof(charptr(s.str))
 }
 
 pub fn (s string) u32() u32 {

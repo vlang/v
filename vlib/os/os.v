@@ -122,7 +122,7 @@ pub fn file_size(path string) int {
 	$if windows {
 		C._wstat(path.to_wide(), voidptr(&s))
 	} $else {
-		C.stat(*char(path.str), &s)
+		C.stat(charptr(path.str), &s)
 	}
 	return s.st_size
 }
@@ -131,7 +131,7 @@ pub fn mv(old, new string) {
 	$if windows {
 		C._wrename(old.to_wide(), new.to_wide())
 	} $else {
-		C.rename(*char(old.str), *char(new.str))
+		C.rename(charptr(old.str), charptr(new.str))
 	}
 }
 
@@ -210,7 +210,7 @@ fn vfopen(path, mode string) *C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		return C.fopen(*char(path.str), *char(mode.str))
+		return C.fopen(charptr(path.str), charptr(mode.str))
 	}
 }
 
@@ -275,7 +275,7 @@ pub fn open(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(*char(cpath), 'rb')
+			cfile: C.fopen(charptr(cpath), 'rb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -296,7 +296,7 @@ pub fn create(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(*char(cpath), 'wb')
+			cfile: C.fopen(charptr(cpath), 'wb')
 		}
 	}
 	if isnil(file.cfile) {
@@ -316,7 +316,7 @@ pub fn open_append(path string) ?File {
 	} $else {
 		cpath := path.str
 		file = File {
-			cfile: C.fopen(*char(cpath), 'ab')
+			cfile: C.fopen(charptr(cpath), 'ab')
 		}
 	}
 	if isnil(file.cfile) {
@@ -618,7 +618,7 @@ pub fn get_raw_line() string {
         return ''
     } $else {
         max := size_t(256)
-        buf := *char(malloc(int(max)))
+        buf := charptr(malloc(int(max)))
         nr_chars := C.getline(&buf, &max, stdin)
         if nr_chars == 0 {
             return ''
@@ -859,7 +859,7 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 pub fn realpath(fpath string) string {
 	mut fullpath := calloc(MAX_PATH)
-	mut ret := *char(0)
+	mut ret := charptr(0)
 	$if windows {
 		ret = C._fullpath(fullpath, fpath.str, MAX_PATH)
 		if ret == 0 {

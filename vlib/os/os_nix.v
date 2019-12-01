@@ -83,7 +83,7 @@ pub fn exec(cmd string) ?Result {
 	}
 	buf := [1000]byte
 	mut res := ''
-	for C.fgets(*char(buf), 1000, f) != 0 {
+	for C.fgets(charptr(buf), 1000, f) != 0 {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()

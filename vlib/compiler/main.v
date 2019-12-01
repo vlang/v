@@ -1122,7 +1122,7 @@ pub fn verror(s string) {
 pub fn vhash() string {
 	mut buf := [50]byte
 	buf[0] = 0
-	C.snprintf(*char(buf), 50, '%s', C.V_COMMIT_HASH )
+	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH )
 	return tos_clone(buf)
 }
 

@@ -181,8 +181,8 @@ fn test_replace() {
 	assert lol.replace('lol', 'LOL') == 'LOL LOL LOL'
 	b = 'oneBtwoBBthree'
 	assert b.replace('B', '') == 'onetwothree'
-	b = '**char'
-	assert b.replace('*char', 'byteptr') == '*byteptr'
+	b = '*charptr'
+	assert b.replace('charptr', 'byteptr') == '*byteptr'
 	c :='abc'
 	assert c.replace('','-') == c
 }
