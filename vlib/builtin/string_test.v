@@ -106,17 +106,16 @@ fn test_split_nth() {
 	assert (c.split('').len == 6)
 	assert (c.split_nth('', 3).len == 3)
 	assert (c.split_nth('BC', -1).len == 2)
-	// all those tests are broken
-	// d := ","
-	// assert (d.split(',').len == 2)
-	// assert (d.split_nth('', 3).len == 2)
-	// assert (d.split_nth(',', -1).len == 2)
-	// assert (d.split_nth(',', 3).len == 2)
+	d := ","
+	assert (d.split(',').len == 2)
+	assert (d.split_nth('', 3).len == 1)
+	assert (d.split_nth(',', -1).len == 2)
+	assert (d.split_nth(',', 3).len == 2)
 	e := ",,,0,,,,,a,,b,"
-	// assert (e.split(',,').len == 2)
+	// assert (e.split(',,').len == 5)
 	// assert (e.split_nth(',,', 3).len == 2)
-	// assert (e.split_nth(',', -1).len == 3)
-	assert (e.split_nth(',', 3).len == 0)
+	assert (e.split_nth(',', -1).len == 12)
+	assert (e.split_nth(',', 3).len == 3)
 }
 
 fn test_split() {
@@ -141,10 +140,11 @@ fn test_split() {
 	// /////////
 	s = 'lalala'
 	vals = s.split('a')
-	assert vals.len == 3
+	assert vals.len == 4
 	assert vals[0] == 'l'
 	assert vals[1] == 'l'
 	assert vals[2] == 'l'
+	assert vals[3] == ''
 	// /////////
 	s = 'awesome'
 	a := s.split('')
