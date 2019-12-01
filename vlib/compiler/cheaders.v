@@ -205,4 +205,17 @@ typedef map map_string;
 	#define false 0
 #endif
 '
+
+bare_c_headers = '
+
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
+#define TCCSKIP(x) x
+
+#ifdef __TINYC__
+#undef EMPTY_ARRAY_OF_ELEMS
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef TCCSKIP
+#define TCCSKIP(x)
+#endif
+'
 )

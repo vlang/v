@@ -17,11 +17,52 @@ pub enum wp_sys {
 }
 
 // First argument to waitid:
-pub enum wi_sys {
+pub enum wi_which {
 	p_all = 0
 	p_pid = 1
 	p_pgid = 2
 }
+
+pub enum wi_si_code {
+	cld_exited = 1 // child has exited
+	cld_killed = 2 // child was killed
+	cld_dumped = 3 // child terminated abnormally
+	cld_trapped = 4 // traced child has trapped
+	cld_stopped = 5 // child has stopped
+	cld_continued = 6 // stopped child has continued
+}
+
+/* Paraphrased from "man 2 waitid" on Linux
+
+	Upon successful return, waitid() fills in the
+	following fields of the siginfo_t structure
+	pointed to by infop:
+
+	si_pid, offset 0x10, int index 0x04:
+		The process ID of the child.
+
+	si_uid: offset 0x14, int index 0x05
+		The real user ID of the child.
+
+	si_signo: offset 0x00, int index 0x00
+		Always set to SIGCHLD.
+
+	si_status: ofset 0x18, int index 0x06
+		1 the exit status of the child, as given to _exit(2)
+			(or exit(3)) (sc_sys.cld_exited)
+		2 the signal that caused the child to terminate, stop,
+			or continue.
+		3 The si_code field can be used to determine how to
+			interpret this field.
+
+	si_code, set to one of (enum wi_si_code), offset 0x08, int index 0x02:
+		CLD_EXITED (child called _exit(2));
+		CLD_KILLED (child killed by signal);
+		CLD_DUMPED (child  killed by signal, and dumped core);
+		CLD_STOPPED (child stopped by signal);
+		CLD_TRAPPED (traced child has trapped);
+		CLD_CONTINUED (child continued by SIGCONT).
+*/
 
 pub enum fcntl {
 	fd_cloexec = 0x00000001

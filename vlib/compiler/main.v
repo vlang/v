@@ -254,6 +254,8 @@ pub fn (v mut V) compile() {
 
 		if !v.pref.is_bare {
 			cgen.genln(c_headers)
+		} else {
+			cgen.genln(bare_c_headers)
 		}
 	}
 	v.generate_hotcode_reloading_declarations()

@@ -126,7 +126,7 @@ fn (v mut V) cc() {
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.is_bare {
-		a << '-static -ffreestanding -nostdlib $vdir/vlib/os/bare/bare.S'
+		a << '-fno-stack-protector -static -ffreestanding -nostdlib $vdir/vlib/os/bare/bare.S'
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
@@ -263,7 +263,7 @@ fn (v mut V) cc() {
 	a << libs
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
-	if v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
+	if !v.pref.is_bare && v.pref.build_mode != .build_module && (v.os == .linux || v.os == .freebsd || v.os == .openbsd ||
 		v.os == .netbsd || v.os == .dragonfly || v.os == .solaris) {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -272,7 +272,7 @@ fn (v mut V) cc() {
 		}
 	}
 
-	if v.os == .js && os.user_os() == 'linux' {
+	if !v.pref.is_bare && v.os == .js && os.user_os() == 'linux' {
 		a << '-lm'
 	}
 

@@ -165,7 +165,7 @@ fn check_mm_pages() {
 //pub fn mm_alloc(size u64) (voidptr, errno)
 
 fn check_mm_alloc() {
-	println ("checking check_mm_alloc")
+	println ("checking mm_alloc")
 
 	for i in 1 .. 2000 {
 		size := u64(i*1000)
@@ -201,6 +201,107 @@ fn check_mm_alloc() {
 	println ("mm_alloc passed")
 }
 
+fn check_int_array_ro() {
+	println ("trying check_int_array_ro")
+	a := [100,110,120,130]
+	assert a.len == 4
+	assert a[0] == 100
+	assert a[1] == 110
+	assert a[2] == 120
+	assert a[3] == 130
+	println ("check_int_array_ro passed")
+}
+
+fn check_int_array_rw() {
+	println ("trying check_int_array_rw")
+	mut a := [-10,-11,-12,-13]
+	assert a.len == 4
+	assert a[0] == -10
+	assert a[1] == -11
+	assert a[2] == -12
+	assert a[3] == -13
+	for i in 0..a.len {
+		b := -a[i] * 10
+		a[i] = b
+		assert a[i] == b
+	}
+	assert a[3] == 130
+
+	println ("check_int_array_rw passed")
+}
+
+fn check_int64_array_ro() {
+	println ("trying check_int64_array_ro")
+	a := [i64(1000),1100,1200,1300,1400]
+	assert a.len == 5
+	assert a[0] == 1000
+	assert a[1] == 1100
+	assert a[2] == 1200
+	assert a[3] == 1300
+	assert a[4] == 1400
+	println ("check_int64_array_ro passed")
+}
+
+fn check_voidptr_array_ro() {
+	println ("trying check_voidptr_array_ro")
+	a := [
+		voidptr(10000),
+		voidptr(11000),
+		voidptr(12000),
+		voidptr(13000),
+		voidptr(14000),
+		voidptr(15000)
+	]
+	assert a.len == 6
+	assert a[0] == voidptr(10000)
+	assert a[1] == voidptr(11000)
+	assert a[2] == voidptr(12000)
+	assert a[3] == voidptr(13000)
+	assert a[4] == voidptr(14000)
+	assert a[5] == voidptr(15000)
+	println ("check_voidptr_array_ro passed")
+}
+
+fn check_voidptr_array_rw() {
+	println ("trying check_voidptr_array_rw")
+	mut a := [
+		voidptr(-1),
+		voidptr(-1),
+		voidptr(-1),
+		voidptr(-1),
+		voidptr(-1),
+		voidptr(-1)
+	]
+	assert a.len == 6
+
+	assert a[0] == voidptr(-1)
+	assert a[1] == voidptr(-1)
+	assert a[2] == voidptr(-1)
+	assert a[3] == voidptr(-1)
+	assert a[4] == voidptr(-1)
+	assert a[5] == voidptr(-1)
+
+	a[0] = voidptr(100000)
+	assert a[0] == voidptr(100000)
+
+	a[1] = voidptr(110000)
+	assert a[1] == voidptr(110000)
+
+	a[2] = voidptr(120000)
+	assert a[2] == voidptr(120000)
+
+	a[3] = voidptr(130000)
+	assert a[3] == voidptr(130000)
+
+	a[4] = voidptr(140000)
+	assert a[4] == voidptr(140000)
+
+	a[5] = voidptr(150000)
+	assert a[5] == voidptr(150000)
+	println ("check_voidptr_array_rw passed")
+}
+
+
 fn main() {
 	check_read_write_pipe()
 	check_read_file()
@@ -210,5 +311,10 @@ fn main() {
 	check_mmap_one_page()
 	check_mm_pages()
 	check_mm_alloc()
+	check_int_array_ro()
+	check_int_array_rw()
+	check_int64_array_ro()
+	check_voidptr_array_ro()
+	check_voidptr_array_rw()
 	sys_exit(0)
 }
