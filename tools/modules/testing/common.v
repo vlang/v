@@ -124,3 +124,56 @@ pub fn v_build_failing(vargs string, folder string) bool {
 
 	return session.failed
 }
+
+pub fn build_v_cmd_failed (cmd string) bool {
+	res := os.exec(cmd) or {
+		println('====')
+		return true
+	}
+	if res.exit_code != 0 {
+		eprintln('')
+		eprintln( res.output )
+		return true
+	}
+	return false
+}
+
+pub fn building_any_v_binaries_failed() bool {
+	println('Building V binaries...')
+	vexe := testing.vexe_path()
+	parent_dir := os.dir(vexe)
+	testing.vlib_should_be_present( parent_dir )
+	os.chdir( parent_dir )
+	
+	mut failed := false 
+	v_build_commands := [
+
+		// '$vexe -o v_g             -g  v.v',
+		// '$vexe -o v_prod_g  -prod -g  v.v',
+
+		'$vexe -o v_cg            -cg v.v',
+		'$vexe -o v_prod_cg -prod -cg v.v',
+
+		'$vexe -o v_prod    -prod     v.v',
+	]
+	
+	mut bmark := benchmark.new_benchmark()
+	bok   := term.ok_message('OK')
+	bfail := term.fail_message('FAIL')
+	for cmd in v_build_commands { 
+		bmark.step()
+		if build_v_cmd_failed(cmd) {
+			bmark.fail()
+			failed = true
+			println(bmark.step_message('$cmd => ${bfail} . See details above ^^^^^^^'))
+			println('')
+			continue
+		}
+		bmark.ok()
+		println(bmark.step_message('$cmd => ${bok}'))		
+	}
+	bmark.stop()
+	println( bmark.total_message( 'building v binaries' ) )
+	
+	return failed
+}
