@@ -142,7 +142,7 @@ jobs:
         .\make.bat -gcc
     - name: Test
       run: |
-        .\v.exe test v
+        .\v.exe test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
@@ -164,7 +164,7 @@ jobs:
       env:
         VFLAGS: -cc msvc
       run: |
-        .\v.exe test v
+        .\v.exe test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
