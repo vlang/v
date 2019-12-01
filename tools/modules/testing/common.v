@@ -111,7 +111,16 @@ pub fn v_build_failing(vargs string, folder string) bool {
 	mut session := new_test_sesion( vargs )
 	files := os.walk_ext(filepath.join(parent_dir, folder),'.v')
 	mains := files.filter(!it.contains('modules'))
-	session.files << mains
+	mut rebuildable_mains := mains
+	if os.user_os() == 'windows' {
+		// on windows, an executable can not be rebuilt, while it is running
+		myself := os.executable().replace('.exe', '') + '.v'
+		rebuildable_mains = []
+		for f in mains {
+			if myself != f { rebuildable_mains << f }
+		}
+	}
+	session.files << rebuildable_mains
 	session.test()
 	println( session.benchmark.total_message( finish_label ) )
 
