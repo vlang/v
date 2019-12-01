@@ -25,7 +25,7 @@ fn main() {
 	stuff_after_executable := os.args[1..]
 	commands := stuff_after_executable.filter(!it.starts_with('-'))
 	
-	simple_tools := ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples']
+	simple_tools := ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
 	for tool in simple_tools {
 		if tool in commands {
 			compiler.launch_tool('v$tool')

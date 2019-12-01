@@ -62,7 +62,7 @@ pub fn (ts mut TestSession) test() {
 
 		ts.benchmark.step()
 		if show_stats {
-			println('-------------------------------------------------')
+			eprintln('-------------------------------------------------')
 			status := os.system(cmd)
 			if status == 0 {
 				ts.benchmark.ok()
@@ -75,16 +75,16 @@ pub fn (ts mut TestSession) test() {
 			r := os.exec(cmd) or {
 				ts.benchmark.fail()
 				ts.failed = true
-				println(ts.benchmark.step_message('$relative_file ${ts.fail}'))
+				eprintln(ts.benchmark.step_message('$relative_file ${ts.fail}'))
 				continue
 			}
 			if r.exit_code != 0 {
 				ts.benchmark.fail()
 				ts.failed = true
-				println(ts.benchmark.step_message('$relative_file ${ts.fail}\n`$file`\n (\n$r.output\n)'))
+				eprintln(ts.benchmark.step_message('$relative_file ${ts.fail}\n`$file`\n (\n$r.output\n)'))
 			} else {
 				ts.benchmark.ok()
-				println(ts.benchmark.step_message('$relative_file ${ts.ok}'))
+				eprintln(ts.benchmark.step_message('$relative_file ${ts.ok}'))
 			}
 		}
 		os.rm( tmpc_filepath )
@@ -95,7 +95,7 @@ pub fn (ts mut TestSession) test() {
 pub fn vlib_should_be_present( parent_dir string ) {
 	vlib_dir := filepath.join( parent_dir, 'vlib' )
 	if !os.dir_exists( vlib_dir ){
-		println('$vlib_dir is missing, it must be next to the V executable')
+		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
 	}
 }
@@ -107,7 +107,7 @@ pub fn v_build_failing(vargs string, folder string) bool {
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present( parent_dir )
   
-	println(main_label)
+	eprintln(main_label)
 	mut session := new_test_sesion( vargs )
 	files := os.walk_ext(filepath.join(parent_dir, folder),'.v')
 	mains := files.filter(!it.contains('modules'))
@@ -120,7 +120,60 @@ pub fn v_build_failing(vargs string, folder string) bool {
 	}
 	session.files << rebuildable_mains
 	session.test()
-	println( session.benchmark.total_message( finish_label ) )
+	eprintln( session.benchmark.total_message( finish_label ) )
 
 	return session.failed
+}
+
+pub fn build_v_cmd_failed (cmd string) bool {
+	res := os.exec(cmd) or {
+		return true
+	}
+	if res.exit_code != 0 {
+		eprintln('')
+		eprintln( res.output )
+		return true
+	}
+	return false
+}
+
+pub fn building_any_v_binaries_failed() bool {
+	eprintln('Building V binaries...')
+	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
+	vexe := testing.vexe_path()
+	parent_dir := os.dir(vexe)
+	testing.vlib_should_be_present( parent_dir )
+	os.chdir( parent_dir )
+	
+	mut failed := false 
+	v_build_commands := [
+
+		// '$vexe -o v_g             -g  v.v',
+		// '$vexe -o v_prod_g  -prod -g  v.v',
+
+		'$vexe -o v_cg            -cg v.v',
+		'$vexe -o v_prod_cg -prod -cg v.v',
+
+		'$vexe -o v_prod    -prod     v.v',
+	]
+	
+	mut bmark := benchmark.new_benchmark()
+	bok   := term.ok_message('OK')
+	bfail := term.fail_message('FAIL')
+	for cmd in v_build_commands { 
+		bmark.step()
+		if build_v_cmd_failed(cmd) {
+			bmark.fail()
+			failed = true
+			eprintln(bmark.step_message('$cmd => ${bfail} . See details above ^^^^^^^'))
+			eprintln('')
+			continue
+		}
+		bmark.ok()
+		eprintln(bmark.step_message('$cmd => ${bok}'))		
+	}
+	bmark.stop()
+	eprintln( bmark.total_message( 'building v binaries' ) )
+	
+	return failed
 }

@@ -12,4 +12,6 @@ ls -lat
 
 ./v test-compiler
 
+./v build-vbinaries
+
 echo "DONE"
