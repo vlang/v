@@ -73,23 +73,25 @@ fn utf8util_char_len(b byte) int {
 // if upper_flag == true  then make low ==> upper conversion 
 // if upper_flag == false then make upper ==> low conversion
 //
-fn up_low(s string, uppper_flag bool) string {
+fn up_low(s string, upper_flag bool) string {
 	mut _index := 0
 	mut old_index := 0
 	mut str_res := malloc(s.len + 1)
 
+	/*
 	mut offset:=1 // up to low, index offset 1
 	mut i_step:=-1 // up to low, look backward in the table 
-	if uppper_flag {
+	if upper_flag {
 		offset=0 // low to up, no change index
 		i_step=1 // low to up, look forward in the table
 	}
+	*/
 
 	for {
 		ch_len := utf8util_char_len(s.str[_index])
 
 		if ch_len == 1 {
-			if uppper_flag==true {
+			if upper_flag==true {
 				str_res[_index] = C.toupper(s.str[_index])
 			}else{
 				str_res[_index] = C.tolower(s.str[_index])
@@ -116,7 +118,7 @@ fn up_low(s string, uppper_flag bool) string {
 			// byte format: 1110xxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len==3 {
-				res = ( lword & 0x0f00 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f ) 
+				res = ( lword & 0x0f0000 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f ) 
 			}
 			// 4 byte utf-8
 			// byte format: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
@@ -127,7 +129,7 @@ fn up_low(s string, uppper_flag bool) string {
 			}
 
 			//C.printf("len: %d code: %04x ",ch_len,res)
-			ch_index := find_char_in_table(u16(res), uppper_flag, offset, i_step)
+			ch_index := find_char_in_table(u16(res), upper_flag)
 			//C.printf(" utf8 index: %d ",ch_index)
 
 			// char not in table, no need of conversion
@@ -138,7 +140,8 @@ fn up_low(s string, uppper_flag bool) string {
 				//C.printf("\n")
 			}else{
 				mut tab_char := u16(0)
-				tab_char = u16(unicode_con_table_up_to_low[ch_index+offset])
+				//tab_char = u16(unicode_con_table_up_to_low[ch_index+offset])
+				tab_char = u16(unicode_con_table_up_to_low[ch_index])
 				//C.printf("tab_char: %04x ",tab_char)
 				
 				if ch_len == 2 {
@@ -200,11 +203,12 @@ fn up_low(s string, uppper_flag bool) string {
 	return tos(str_res, s.len)
 }
 
-fn find_char_in_table( inCode u16, uppper_flag bool, offset int, i_step int ) int {
+fn find_char_in_table( inCode u16, upper_flag bool) int {
 	//
 	// lockup table to speed the search
 	// we look for the first char that start with the first byte of the utf8 char
 	//
+/*
 	mut start_index := (table_index.len +1)
 	code := inCode>>8
 	for c,x in table_index {
@@ -220,30 +224,45 @@ fn find_char_in_table( inCode u16, uppper_flag bool, offset int, i_step int ) in
 	if start_index==(table_index.len +1) {
 		return int(0)
 	}
+*/
+	mut first_index := int(0) 										// first index of our utf8 char range
+	mut last_index := int(unicode_con_table_up_to_low.len >> 1)		// last+1 index of our utf8 char range
+	mut index := int(0)	
+	mut x:=u16(0)
 
-	mut index := up_to_low_index[ (start_index << 1) + 1 ]			// first index of our utf8 char range
-	mut last_index := up_to_low_index[ ((start_index+1) << 1) + 1 ]	// last+1 index of our utf8 char range
+	mut offset:=int(0) // up to low
+	mut i_step:=int(1) // up to low
+	if upper_flag==true {
+		offset=1		// low to up
+		i_step=0		// low to up
+	}
 
-	//C.printf("\nLooking for: 0x%04x",inCode)
-	//C.printf("\nWe have a range index:[%d] ==> %d",up_to_low_index[ start_index<<1 ] ,up_to_low_index[ (start_index << 1) +1 ])
+	//C.printf("looking for [%04x] in (%d..%d).\n",inCode,first_index,last_index)
 	for {
-		x:=unicode_con_table_up_to_low[index+offset+i_step]	// get the utf8 char
+		index = (first_index+last_index) >> 1
+		x=unicode_con_table_up_to_low[ (index<<1)+offset ]
+		
+		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,inCode,x)
+
 		if x==inCode {
 			//C.printf(" Found!\n")
-			return int(index)
+			return int( (index<<1) + i_step)
 		}
-		index+=2 // incrment to the next char
+		else if x>inCode {
+			last_index=index 
 
-		// exit, we are out of our range
-		//if index>last_index || index>unicode_con_table_low_to_up.len {
-		if  index>(unicode_con_table_up_to_low.len-1) {
-			//C.printf(" Break in %d < %d!\n",index,last_index)
+		}else {
+			first_index=index
+		}
+
+		if (last_index-first_index)<=1 {
 			break
 		}
 	}
-
+	//C.printf("not found.\n")
 	return int(0)
 }
+
 
 /*****************************************************************************
 *
@@ -280,6 +299,25 @@ table_index=[
 ]
 
 //
+// index in the table where the utf8 code with 0x03XX starts (in bytes)
+//
+up_to_low_index=[
+	0,
+	110,
+	236,
+	384,
+	464,
+	684,
+	760,
+	836,
+	1076,
+	1232,
+	1284,
+	1338,
+]
+
+/*
+//
 // 0x03 , 386
 // A       A 
 // |	   +----  index in the table where the utf8 code with 0x03XX starts (in bytes)
@@ -299,6 +337,7 @@ up_to_low_index=[
  0xff, 1284,
  0xff, 1338,
 ]
+*/
 
 
 unicode_con_table_up_to_low=[
