@@ -11,15 +11,8 @@
 **********************************************************************/
 module utf8
 
-//
-// len
-// Parameters:
-//  - s string
-// Output:
-//  - int
-//
-// get the lenght of the string as utf8 chars
-//
+
+// return the leght as number of unicode chars from a string
 pub fn len(s string) int {
 	mut count := 0
 	mut index := 0
@@ -35,68 +28,29 @@ pub fn len(s string) int {
 	return count
 }
 
-//
-// u_len
-// Parameters:
-//  - s ustring
-// Output:
-//  - int
-//
-// get the lenght of the ustring
-//
+// return the leght as number of unicode chars from a ustring
 pub fn u_len(s ustring) int {
 	return len(s.s)
 }
 
-//
-// to_upper
-// Parameters:
-//  - s string
-// Output:
-//  - string
-//
-// Convert a utf8 string to uppercase
-//
+
+// return an uppercase string from a string
 pub fn to_upper(s string) string {
 	return up_low(s, true)
 }
 
-//
-// u_to_upper
-// Parameters:
-//  - s ustring
-// Output:
-//  - ustring
-//
-// Convert a ustring to uppercase
-//
+// return an uppercase string from a ustring
 pub fn u_to_upper(s ustring) ustring {
 	tmp := up_low(s.s, true)
 	return tmp.ustring()
 }
 
-//
-// to_lower
-// Parameters:
-//  - s string
-// Output:
-//  - string
-//
-// Convert a utf8 string to lowercase
-// 
+// return an lowercase string from a string
 pub fn to_lower(s string) string {
 	return up_low(s, false) 
 }
 
-//
-// u_to_lower
-// Parameters:
-//  - s ustring
-// Output:
-//  - ustring
-//
-// Convert a ustring to lowercase
-// 
+// return an lowercase string from a ustring
 pub fn u_to_lower(s ustring) ustring {
 	tmp := up_low(s.s, false)
 	return tmp.ustring()
@@ -176,7 +130,7 @@ fn up_low(s string, uppper_flag bool) string {
 			ch_index := find_char_in_table(u16(res), uppper_flag, offset, i_step)
 			//C.printf(" utf8 index: %d ",ch_index)
 
-			// char not in table no need of conversion
+			// char not in table, no need of conversion
 			if ch_index==0 { 
 				for i in 0..ch_len {
 					str_res[_index + i] = s.str[_index + i] 
@@ -213,7 +167,7 @@ fn up_low(s string, uppper_flag bool) string {
 				}
 				// TODO: write if needed
 				else if ch_len == 4 {
-					// place holder!!
+					// place holder!! 
 					// at the present time simply copy the utf8 char
 					for i in 0..ch_len {
 						str_res[_index + i] = s.str[_index + i] 
@@ -222,7 +176,7 @@ fn up_low(s string, uppper_flag bool) string {
 			}
 
 		}		
-		// other cases just copy the string
+		// other cases, just copy the string
 		else{
 			for i in 0..ch_len {
 				str_res[_index + i] = s.str[_index + i] 
