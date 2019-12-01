@@ -78,15 +78,6 @@ fn up_low(s string, upper_flag bool) string {
 	mut old_index := 0
 	mut str_res := malloc(s.len + 1)
 
-	/*
-	mut offset:=1 // up to low, index offset 1
-	mut i_step:=-1 // up to low, look backward in the table 
-	if upper_flag {
-		offset=0 // low to up, no change index
-		i_step=1 // low to up, look forward in the table
-	}
-	*/
-
 	for {
 		ch_len := utf8util_char_len(s.str[_index])
 
@@ -140,7 +131,6 @@ fn up_low(s string, upper_flag bool) string {
 				//C.printf("\n")
 			}else{
 				mut tab_char := u16(0)
-				//tab_char = u16(unicode_con_table_up_to_low[ch_index+offset])
 				tab_char = u16(unicode_con_table_up_to_low[ch_index])
 				//C.printf("tab_char: %04x ",tab_char)
 				
@@ -208,23 +198,7 @@ fn find_char_in_table( inCode u16, upper_flag bool) int {
 	// lockup table to speed the search
 	// we look for the first char that start with the first byte of the utf8 char
 	//
-/*
-	mut start_index := (table_index.len +1)
-	code := inCode>>8
-	for c,x in table_index {
-		if x==code {
-			start_index = c
-			break
-		}
-	}
-	
-	//
-	// no char range found, exit
-	//
-	if start_index==(table_index.len +1) {
-		return int(0)
-	}
-*/
+
 	mut first_index := int(0) 										// first index of our utf8 char range
 	mut last_index := int(unicode_con_table_up_to_low.len >> 1)		// last+1 index of our utf8 char range
 	mut index := int(0)	
@@ -280,65 +254,6 @@ fn find_char_in_table( inCode u16, upper_flag bool) int {
 *****************************************************************************/
 
 const(
-
-//
-// Index table of the utf8 char's first byte presents in the conversion table
-//
-table_index=[
- u16(0x00),
- 0x01,
- 0x02,
- 0x03,
- 0x04,
- 0x05,
- 0x10,
- 0x1e,
- 0x1f,
- 0x24,
- 0xff,
-]
-
-//
-// index in the table where the utf8 code with 0x03XX starts (in bytes)
-//
-up_to_low_index=[
-	0,
-	110,
-	236,
-	384,
-	464,
-	684,
-	760,
-	836,
-	1076,
-	1232,
-	1284,
-	1338,
-]
-
-/*
-//
-// 0x03 , 386
-// A       A 
-// |	   +----  index in the table where the utf8 code with 0x03XX starts (in bytes)
-// +------------  first byte of the utf8 char in the table
-//
-up_to_low_index=[
- 0x00, 0,
- 0x01, 110,
- 0x02, 236,
- 0x03, 384,
- 0x04, 464,
- 0x05, 684,
- 0x10, 760,
- 0x1e, 836,
- 0x1f, 1076,
- 0x24, 1232,
- 0xff, 1284,
- 0xff, 1338,
-]
-*/
-
 
 unicode_con_table_up_to_low=[
 u16(0x0041), 0x0061, //LATIN CAPITAL LETTER A	LATIN SMALL LETTER A
