@@ -45,7 +45,7 @@ const(
 	// name
 	app_name = 'gen_vc'
 	// version
-	app_version = '0.1.0'
+	app_version = '0.1.1'
 	// description
 	app_description = 'This tool regenerates V\'s bootstrap .c files every time the V master branch is updated.'
 	// assume something went wrong if file size less than this
@@ -114,9 +114,12 @@ fn main() {
  	fp.version(app_version)
  	fp.description(app_description)
  	fp.skip_executable()
-
+              
+	show_help:=fp.bool('help', false, 'Show this help screen\n')
 	flag_options := parse_flags(mut fp)
-
+  
+	if( show_help ){ println( fp.usage() ) exit(0) }
+  
 	fp.finalize() or {
  		eprintln(err)
  		println(fp.usage())
