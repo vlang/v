@@ -4,11 +4,11 @@ module mysql
 #include <mysql.h>
 
 pub struct DB {
-	conn *C.MYSQL
+	conn &C.MYSQL
 }
 
 pub struct Result {
-	result *C.MYSQL_RES
+	result &C.MYSQL_RES
 }
 
 pub struct Row {
@@ -21,15 +21,15 @@ pub mut:
 struct C.MYSQL { }
 struct C.MYSQL_RES { }
 
-fn C.mysql_init(mysql *C.MYSQL) *C.MYSQL
-fn C.mysql_real_connect(mysql *C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) *C.MYSQL
-fn C.mysql_query(mysql *C.MYSQL, q byteptr) int
-fn C.mysql_error(mysql *C.MYSQL) byteptr
-fn C.mysql_num_fields(res *C.MYSQL_RES) int
-fn C.mysql_store_result(mysql *C.MYSQL) *C.MYSQL_RES
-fn C.mysql_fetch_row(res *C.MYSQL_RES) &byteptr
-fn C.mysql_free_result(res *C.MYSQL_RES)
-fn C.mysql_close(sock *C.MYSQL)
+fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
+fn C.mysql_real_connect(mysql &C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &C.MYSQL
+fn C.mysql_query(mysql &C.MYSQL, q byteptr) int
+fn C.mysql_error(mysql &C.MYSQL) byteptr
+fn C.mysql_num_fields(res &C.MYSQL_RES) int
+fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
+fn C.mysql_fetch_row(res &C.MYSQL_RES) &byteptr
+fn C.mysql_free_result(res &C.MYSQL_RES)
+fn C.mysql_close(sock &C.MYSQL)
 
 // V
 
