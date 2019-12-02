@@ -35,6 +35,8 @@ jobs:
       run:  make && ./v -o v v.v
     - name: Build V using V
       run:  ./v -o v2 v.v && ./v2 -o v3 v.v
+    - name: Test symlink
+      run:  sudo ./v symlink
     - name: Test v->c
       run: ./v test-compiler
     - name: Test v binaries

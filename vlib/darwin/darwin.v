@@ -15,7 +15,7 @@ pub fn nsstring(s string) voidptr {
 	# return [ [ NSString alloc ] initWithBytesNoCopy:s.str  length:s.len
 	# encoding:NSUTF8StringEncoding freeWhenDone: false];
 	return 0
-	
+
 	//ns := C.alloc_NSString()
 	//return ns.initWithBytesNoCopy(s.str, length: s.len,
 		//encoding: NSUTF8StringEncoding,		freeWhenDone: false)
@@ -24,6 +24,12 @@ pub fn nsstring(s string) voidptr {
 // returns absolute path to folder where your resources should / will reside
 // for .app packages: .../my.app/Contents/Resources
 // for cli: .../parent_folder/Resources
+
+fn C.CFBundleCopyResourcesDirectoryURL() byteptr
+fn C.CFBundleGetMainBundle() voidptr
+fn C.CFURLGetFileSystemRepresentation() int
+fn C.CFRelease()
+
 pub fn resource_path() string {
 
 	main_bundle := C.CFBundleGetMainBundle()

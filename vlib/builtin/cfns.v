@@ -68,7 +68,7 @@ fn C.atof() int
 fn C.tolower() int
 fn C.toupper() int
 fn C.getchar() int
-fn C.strerror() *C.char
+fn C.strerror() charptr
 fn C.snprintf() int
 fn C.fprintf(byteptr, ...byteptr)
 
