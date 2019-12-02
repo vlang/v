@@ -24,6 +24,7 @@ fns.txt
 /v_prod_g
 *.exe
 *.o
+**/*.o
 .*.c
 *.tmp.c
 vjs
