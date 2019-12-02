@@ -182,10 +182,23 @@ fn (p mut Parser) name_expr() string {
 		if p.peek() == .lcbr && p.table.known_type(name) {
 			return p.get_struct_type(name, true, ptr)
 		}
-		// C function
-		if p.peek() == .lpar {
-			return p.get_c_func_type(name)
-		}
+        // C function
+        if p.peek() == .lpar {
+            if p.table.known_fn(name) {
+                return p.get_c_func_type(name)
+            } else {
+				//cast to C type  C.Type(...)
+                p.gen('(')
+                mut str := ''
+                if deref_nr > 0 {
+                    str = '*'.repeat(deref_nr)
+                }
+                temp :=name + str
+                p.cast(temp)
+                p.gen(')')  
+                return temp         
+            }   
+        }
 		// C const (`C.GLFW_KEY_LEFT`)
 		p.gen(name)
 		p.next()
