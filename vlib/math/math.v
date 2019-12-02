@@ -133,49 +133,20 @@ pub fn exp2(a f64) f64 {
 }
 
 // factorial calculates the factorial of the provided value.
-// TODO bring back once multiple value functions are implemented
-/*
-fn recursive_product( n int, current_number_ptr &int) int{
-    mut m := n / 2
-    if (m == 0){
-        return *current_number_ptr += 2
-    }
-    if (n == 2){
-        return (*current_number_ptr += 2) * (*current_number_ptr += 2)
-    }
-    return recursive_product((n - m), *current_number_ptr) * recursive_product(m, *current_number_ptr)
-}
+pub fn factorial(n f64) f64 {
+	// For a large postive argument (n >= factorials.len) return max_f64
 
-pub fn factorial(n int) i64 {
-    if n < 0 {
-        panic('factorial: Cannot find factorial of negative number')
-    }
-    if n < 2 {
-        return i64(1)
-    }
-    mut r := 1
-    mut p := 1
-    mut current_number := 1
-    mut h := 0
-    mut shift := 0
-    mut high := 1
-    mut len := high
-    mut log2n := int(floor(log2(n)))
-    for ;h != n; {
-        shift += h
-        h = n >> log2n
-        log2n -= 1
-        len = high
-        high = (h - 1) | 1
-        len = (high - len)/2
-        if (len > 0){
-            p *= recursive_product(len, &current_number)
-            r *= p
-        }
-    }
-    return i64((r << shift))
+	if n >= factorials.len {
+			return max_f64
+	}
+
+	/* Otherwise return n!. */
+	if n == f64(i64(n)) && n >= 0.0 {
+			return f64(factorials[i64(n)])
+	}
+
+	return gamma(n + 1.0)
 }
-*/
 
 // floor returns the nearest f64 lower or equal of the provided value.
 pub fn floor(a f64) f64 {
