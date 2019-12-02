@@ -697,6 +697,9 @@ pub fn user_os() string {
 	$if solaris {
 		return 'solaris'
 	}
+	$if haiku {
+		return 'haiku'
+	}
 	return 'unknown'
 }
 
@@ -795,6 +798,8 @@ pub fn executable() string {
 		return os.args[0]
 	}
 	$if solaris {
+	}
+	$if haiku {
 	}
 	$if netbsd {
 		mut result := calloc(MAX_PATH)
