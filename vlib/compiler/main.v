@@ -1129,7 +1129,7 @@ pub fn vhash() string {
 }
 
 pub fn cescaped_path(s string) string {
-  return s.replace('\\','\\\\')
+	return s.replace('\\','\\\\')
 }
 
 pub fn os_from_string(os string) OS {
