@@ -43,7 +43,7 @@ pub fn tos2(s byteptr) string {
 	}
 }
 
-pub fn tos3(s *C.char) string {
+pub fn tos3(s charptr) string {
 	if s == 0 {
 		panic('tos3: nil string')
 	}
