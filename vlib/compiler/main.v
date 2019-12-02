@@ -982,7 +982,7 @@ pub fn new_v(args[]string) &V {
 			exit(1)
 		}
 		*/
-		println('vlib not found. It should be next to the V executable. ')
+		println('vlib not found. It should be next to the V executable.')
 		println('Go to https://vlang.io to install V.')
 		exit(1)
 	}
@@ -1129,7 +1129,7 @@ pub fn vhash() string {
 }
 
 pub fn cescaped_path(s string) string {
-  return s.replace('\\','\\\\')
+	return s.replace('\\','\\\\')
 }
 
 pub fn os_from_string(os string) OS {
