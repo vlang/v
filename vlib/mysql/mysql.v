@@ -16,10 +16,8 @@ pub mut:
 	vals []string
 }
 
-// C
-
-struct C.MYSQL { }
-struct C.MYSQL_RES { }
+struct C.MYSQL
+struct C.MYSQL_RES
 
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 fn C.mysql_real_connect(mysql &C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &C.MYSQL
@@ -30,9 +28,6 @@ fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 fn C.mysql_fetch_row(res &C.MYSQL_RES) &byteptr
 fn C.mysql_free_result(res &C.MYSQL_RES)
 fn C.mysql_close(sock &C.MYSQL)
-
-// V
-
 
 pub fn connect(server, user, passwd, dbname string) DB {
 	conn := C.mysql_init(0)
