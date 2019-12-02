@@ -3,15 +3,15 @@ module mysql
 #flag -lmysqlclient
 #include <mysql.h>
 
-struct DB {
+pub struct DB {
 	conn *C.MYSQL
 }
 
-struct Result {
+pub struct Result {
 	result *C.MYSQL_RES
 }
 
-struct Row {
+pub struct Row {
 pub mut:
 	vals []string
 }
