@@ -129,6 +129,7 @@ pub mut:
 	vlib_path string
 	vpath string
 	x64 bool
+	output_cross_c bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -407,7 +408,7 @@ fn (v mut V) generate_init() {
           }
       ')
     }
-    
+
 		if !v.pref.is_bare {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
@@ -523,9 +524,9 @@ pub fn (v mut V) generate_main() {
 
 pub fn (v mut V) gen_main_start(add_os_args bool){
 	v.cgen.genln('int main(int argc, char** argv) { ')
-  
+
 	v.cgen.genln('  init();')
-  
+
 	if add_os_args && 'os' in v.table.imports {
 		v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
@@ -1042,6 +1043,7 @@ pub fn new_v(args[]string) &V {
 		fast: '-fast' in args
 		is_bare: '-freestanding' in args
 		x64: '-x64' in args
+		output_cross_c: '-output-cross-platform-c' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags

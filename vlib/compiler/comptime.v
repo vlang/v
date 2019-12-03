@@ -34,7 +34,9 @@ fn (p mut Parser) comp_time() {
 			}
 			p.check(.lcbr)
 			os := os_from_string(name)
-			if (!not && os != p.os) || (not && os == p.os) {
+			if ((!not && os != p.os) || (not && os == p.os)) &&
+				!p.pref.output_cross_c
+			{
 				// `$if os {` for a different target, skip everything inside
 				// to avoid compilation errors (like including <windows.h>
 				// on non-Windows systems)

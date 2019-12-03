@@ -86,6 +86,7 @@ fn C.DEFAULT_GE() bool
 fn C.isatty() int
 
 fn C.syscall() int
+fn C.sysctl() int
 
 
 
