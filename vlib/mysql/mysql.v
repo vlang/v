@@ -2,6 +2,7 @@ module mysql
 
 #flag -lmysqlclient
 #include <mysql.h>
+#include <errmsg.h>
 
 pub struct DB {
 	conn &C.MYSQL
