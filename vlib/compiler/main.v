@@ -945,7 +945,7 @@ pub fn new_v(args[]string) &V {
 		$if linux {
 			_os = .linux
 		}
-		$if mac {
+		$if macos {
 			_os = .mac
 		}
 		$if windows {

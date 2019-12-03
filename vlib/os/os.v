@@ -673,7 +673,7 @@ pub fn user_os() string {
 	$if linux {
 		return 'linux'
 	}
-	$if mac {
+	$if macos {
 		return 'mac'
 	}
 	$if windows {
@@ -742,7 +742,7 @@ fn on_segfault(f voidptr) {
 	$if windows {
 		return
 	}
-	$if mac {
+	$if macos {
 		mut sa := C.sigaction{}
 		C.memset(&sa, 0, sizeof(sigaction))
 		C.sigemptyset(&sa.sa_mask)
@@ -775,7 +775,7 @@ pub fn executable() string {
 		len := int(C.GetModuleFileName( 0, result, max ))
 		return string_from_wide2(result, len)
 	}
-	$if mac {
+	$if macos {
 		mut result := calloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath (pid, result, MAX_PATH)
@@ -1013,7 +1013,7 @@ pub fn tmpdir() string {
 	$if linux {
 		if path == '' { path = '/tmp' }
 	}
-	$if mac {
+	$if macos {
 		/*
 		if path == '' {
 			// TODO untested

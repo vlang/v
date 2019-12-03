@@ -396,7 +396,7 @@ start:
 		ret2 := os.system('upx --lzma -qqq $v.out_name')
 		if ret2 != 0 {
 			println('upx failed')
-			$if mac {
+			$if macos {
 				println('install upx with `brew install upx`')
 			}
 			$if linux {
@@ -539,7 +539,7 @@ fn missing_compiler_info() string {
 	$if linux {
 		return 'On Debian/Ubuntu, run `sudo apt install build-essential`'
 	}
-	$if mac {
+	$if macos {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
 	return ''
