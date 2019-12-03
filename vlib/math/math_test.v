@@ -27,13 +27,11 @@ fn test_digits() {
 	assert negative_digits[2] == -1
 }
 
-/*
 fn test_factorial() {
 	assert math.factorial(12) == 479001600
 	assert math.factorial(5) == 120
 	assert math.factorial(0) == 1
 }
-*/
 
 fn test_erf() {
 	assert math.erf(0) == 0
@@ -46,7 +44,12 @@ fn test_erf() {
 fn test_gamma() {
 	assert math.gamma(1) == 1
 	assert math.gamma(5) == 24
-	assert math.log_gamma(4.5) == math.log(math.gamma(4.5))
+
+	sval := '2.453737'
+	assert math.log_gamma(4.5).str() == sval
+	assert math.log(math.gamma(4.5)).str() == sval
+	assert math.abs( math.log_gamma(4.5) - math.log(math.gamma(4.5)) ) < 0.000001
+	// assert math.log_gamma(4.5) == math.log(math.gamma(4.5)) /* <-- fails on alpine/musl
 }
 
 fn test_mod() {

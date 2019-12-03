@@ -38,7 +38,7 @@ fn generate_vh(mod string) {
 		os.mkdir_all(pdir)
 		// os.mkdir(os.realpath(dir)) or { panic(err) }
 	}
-	out := os.create(path) or { panic(err) }
+	mut out := os.create(path) or { panic(err) }
 	mod_path := mod.replace("\\", "/")
 	out.writeln('// $mod_path module header\n')
 	mod_def := if mod_path.contains('/') { mod_path.all_after('/') } else { mod_path } // "os"

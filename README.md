@@ -85,6 +85,15 @@ docker run --rm -it vlang:latest
 v
 ```
 
+### Docker with Alpine/musl:
+```bash
+git clone https://github.com/vlang/v
+cd v
+docker build -t vlang --file=Dockerfile.alpine .
+docker run --rm -it vlang:latest
+/usr/local/v/v
+```
+
 ### Testing and running the examples
 
 Make sure V can compile itself:

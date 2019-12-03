@@ -12,7 +12,7 @@ import (
 )
 
 pub const (
-	Version = '0.1.22'
+	Version = '0.1.23'
 )
 
 enum BuildMode {
@@ -26,7 +26,7 @@ enum BuildMode {
 
 const (
 	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris']
+		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
 )
 
 enum OS {
@@ -40,6 +40,7 @@ enum OS {
 	js   // TODO
 	android
 	solaris
+	haiku
 }
 
 enum Pass {
@@ -124,6 +125,7 @@ pub mut:
 	is_fmt bool
 	is_bare bool
 
+	user_mod_path string // `v -user_mod_path /Users/user/modules` adds a new lookup path for imported modules
 	vlib_path string
 	vpath string
 	x64 bool
@@ -246,12 +248,14 @@ pub fn (v mut V) compile() {
 			cgen.genln('#include <inttypes.h>')  // int64_t etc
 		} else {
 			cgen.genln('#include <stdint.h>')
-		}	
-		
+		}
+
 		cgen.genln(c_builtin_types)
-		
+
 		if !v.pref.is_bare {
 			cgen.genln(c_headers)
+		} else {
+			cgen.genln(bare_c_headers)
 		}
 	}
 	v.generate_hotcode_reloading_declarations()
@@ -300,12 +304,8 @@ pub fn (v mut V) compile() {
 	// free the string builder which held the generated methods
 	v.vgen_buf.free()
 	vgen_parser.is_vgen = true
-	v.add_parser(vgen_parser)
-	// run vgen / generic parsers
-	for i, _ in v.parsers {
-		if !v.parsers[i].is_vgen { continue }
-		v.parsers[i].parse(.main)
-	}
+	// v.add_parser(vgen_parser)
+	vgen_parser.parse(.main)
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
 		generate_vh(v.dir)
@@ -353,8 +353,8 @@ pub fn (v mut V) compile_x64() {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' +
 			'be able to run the resulting executable')
-	}	
-	
+	}
+
 	v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path, 'builtin', 'bare'))
 	v.files << v.dir
 	v.x64.generate_elf_header()
@@ -365,8 +365,7 @@ pub fn (v mut V) compile_x64() {
 		v.parse(f, .main)
 	}
 	v.x64.generate_elf_footer()
-	
-}	
+}
 
 fn (v mut V) generate_init() {
 	$if js { return }
@@ -501,6 +500,9 @@ pub fn (v mut V) generate_main() {
 		else if v.table.main_exists() {
 			v.gen_main_start(true)
 			cgen.genln('  main__main();')
+			if !v.pref.is_bare {
+				cgen.genln('free(g_str_buf);')
+			}
 			v.gen_main_end('return 0')
 		}
 	}
@@ -537,12 +539,11 @@ pub fn final_target_out_name(out_name string) string {
 
 pub fn (v V) run_compiled_executable_and_exit() {
 	args := env_vflags_and_os_args()
-	
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe','') + '"'
-	
+
 	mut args_after := ' '
 	for i,a in args {
 		if i == 0 { continue }
@@ -553,7 +554,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		}
 	}
 	cmd += args_after
-	
+
 	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
@@ -576,7 +577,7 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if dir == 'compiler' && os.dir_exists('vlib') {
 			println('looks like you are trying to build V with an old command')
 			println('use `v -o v v.v` instead of `v -o v compiler`')
-		}	
+		}
 		verror("$dir doesn't exist")
 	} else if !os.dir_exists(dir) {
 		verror("$dir isn't a directory")
@@ -621,7 +622,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
 		//builtin_files = []
-	}	
+	}
 	// Builtin cache exists? Use it.
 	builtin_vh := '${v.pref.vlib_path}${os.path_separator}builtin.vh'
 	if v.pref.is_cache && os.file_exists(builtin_vh) {
@@ -648,7 +649,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 			p.register_import('os', 0)
 			p.table.imports << 'os'
 			p.table.register_module('os')
-		}	
+		}
 		//if p.pref.autofree {		p.scanner.text.free()		free(p.scanner)	}
 		v.add_parser(p)
 	}
@@ -661,13 +662,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 	// resolve deps and add imports in correct order
 	imported_mods := v.resolve_deps().imports()
 	for mod in imported_mods {
-		// TODO: work out bug and only add when needed in fn.v
-		if !mod in v.gen_parser_idx {
-			mut gp := v.new_parser_from_string('module '+mod.all_after('.')+'\n')
-			gp.is_vgen = true
-			gp.mod = mod
-			v.gen_parser_idx[mod] = v.add_parser(gp)
-		}
 		if mod == 'builtin' || mod == 'main' {
 			// builtin already added
 			// main files will get added last
@@ -693,6 +687,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 	// add remaining main files last
 	for p in v.parsers {
 		if p.mod != 'main' { continue }
+		if p.is_vgen { continue }
 		v.files << p.file_path
 	}
 }
@@ -720,11 +715,11 @@ pub fn (v &V)  get_user_files() []string {
 		// TODO this somtimes fails on CI
 		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_assertions.v')
 	}
-	
+
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_with_stats.v')
 	}
-	
+
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
@@ -806,8 +801,7 @@ pub fn get_arg(joined_args, arg, def string) string {
 
 pub fn get_param_after(joined_args, arg, def string) string {
 	key := '$arg '
-	mut pos := joined_args.index(key)
-	if pos == -1 {
+	mut pos := joined_args.index(key) or {
 		return def
 	}
 	pos += key.len
@@ -846,7 +840,10 @@ pub fn new_v(args[]string) &V {
 		os.mkdir(v_modules_path) or { panic(err) }
 		os.mkdir('$v_modules_path${os.path_separator}cache') or { panic(err) }
 	}
-	
+
+	// optional, custom modules search path
+	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
+
 	// Location of all vlib files
 	vroot := os.dir(vexe_path())
 	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot, 'vlib'))
@@ -856,7 +853,7 @@ pub fn new_v(args[]string) &V {
 	vgen_buf.writeln('module vgen\nimport strings')
 
 	joined_args := args.join(' ')
-		
+
 	target_os := get_arg(joined_args, 'os', '')
 	comptime_define := get_arg(joined_args, 'd', '')
 	//println('comptimedefine=$comptime_define')
@@ -875,7 +872,7 @@ pub fn new_v(args[]string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
-    
+
 	// build mode
 	mut build_mode := BuildMode.default_mode
 	mut mod := ''
@@ -940,8 +937,8 @@ pub fn new_v(args[]string) &V {
 		if !os.dir_exists(d) {
 			println('creating a new directory "$d"')
 			os.mkdir(d) or { panic(err) }
-		}	
-	}	
+		}
+	}
 	mut _os := OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
@@ -969,6 +966,9 @@ pub fn new_v(args[]string) &V {
 		$if solaris {
 			_os = .solaris
 		}
+		$if haiku {
+			_os = .haiku
+		}
 	}
 	else {
 		_os = os_from_string(target_os)
@@ -985,8 +985,9 @@ pub fn new_v(args[]string) &V {
 			exit(1)
 		}
 		*/
-		println('vlib not found. It should be next to the V executable. ')
+		println('vlib not found. It should be next to the V executable.')
 		println('Go to https://vlang.io to install V.')
+		println('(os.executable=${os.executable()} vlib_path=$vlib_path vexe_path=${vexe_path()}')
 		exit(1)
 	}
 
@@ -995,10 +996,10 @@ pub fn new_v(args[]string) &V {
 	cflags := get_cmdline_cflags(args)
 	rdir := os.realpath(dir)
 	rdir_name := os.filename(rdir)
-	
+
 	if '-bare' in args {
 		verror('use -freestanding instead of -bare')
-	}	
+	}
 
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
@@ -1035,6 +1036,7 @@ pub fn new_v(args[]string) &V {
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v'  || dir.contains('vlib'))
 		comptime_define: comptime_define
 		is_fmt: comptime_define == 'vfmt'
+		user_mod_path: user_mod_path
 		vlib_path: vlib_path
 		vpath: vpath
 	}
@@ -1046,8 +1048,8 @@ pub fn new_v(args[]string) &V {
 	}
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {
-			verror('-bare only works on Linux for now')
-		}	
+			verror('-freestanding only works on Linux for now')
+		}
 	}
 	return &V{
 		os: _os
@@ -1126,12 +1128,12 @@ pub fn verror(s string) {
 pub fn vhash() string {
 	mut buf := [50]byte
 	buf[0] = 0
-	C.snprintf(*char(buf), 50, '%s', C.V_COMMIT_HASH )
+	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH )
 	return tos_clone(buf)
 }
 
 pub fn cescaped_path(s string) string {
-  return s.replace('\\','\\\\')
+	return s.replace('\\','\\\\')
 }
 
 pub fn os_from_string(os string) OS {
@@ -1150,6 +1152,7 @@ pub fn os_from_string(os string) OS {
 			// notice that `-os msvc` became `-cc msvc`
 			verror('use the flag `-cc msvc` to build using msvc')
 		}
+		'haiku' { return .haiku }
 	}
 	println('bad os $os') // todo panic?
 	return .linux

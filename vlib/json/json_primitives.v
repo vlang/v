@@ -12,7 +12,6 @@ struct C.cJSON {
 	valueint    int
 	valuedouble f32
 	valuestring byteptr
-	name		byteptr
 }
 
 fn jsdecode_int(root &C.cJSON) int {
@@ -97,6 +96,13 @@ fn jsdecode_string(root &C.cJSON) string {
 	// return tos(root.valuestring, _strlen(root.valuestring))
 	return tos_clone(root.valuestring)// , _strlen(root.valuestring))
 }
+
+fn C.cJSON_IsTrue() bool
+fn C.cJSON_CreateNumber() &C.cJSON
+fn C.cJSON_CreateBool() &C.cJSON
+fn C.cJSON_CreateString() &C.cJSON
+fn C.cJSON_Parse() &C.cJSON
+fn C.cJSON_PrintUnformatted() byteptr
 
 fn jsdecode_bool(root &C.cJSON) bool {
 	if isnil(root) {

@@ -39,7 +39,7 @@ fn (p mut Parser) comp_time() {
 				for {
 					if p.tok == .key_return {
 						p.returns = true
-					}	
+					}
 					if p.tok == .lcbr {
 						stack++
 					} else if p.tok == .rcbr {
@@ -114,7 +114,7 @@ fn (p mut Parser) comp_time() {
 			//p.gen('/* returns $p.returns */')
 		} else if p.tok == .key_else {
 			p.error('use `$' + 'else` instead of `else` in comptime if statements')
-		}	
+		}
 	}
 	else if p.tok == .key_for {
 		p.next()
@@ -163,32 +163,17 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar)
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
-		if os.file_exists('.vwebtmpl.v') {
-			os.rm('.vwebtmpl.v')
+		is_strings_imorted := p.import_table.known_import('strings')
+		if !is_strings_imorted {
+			p.register_import('strings', 0) // used by v_code
 		}
-		os.write_file('.vwebtmpl.v', v_code.clone()) // TODO don't need clone, compiler bug
-		p.genln('')
-		// Parse the function and embed resulting C code in current function so that
-		// all variables are available.
-		pos := p.cgen.lines.len - 1
-		mut pp := p.v.new_parser_from_file('.vwebtmpl.v')
-		if !p.pref.is_debug {
-			os.rm('.vwebtmpl.v')
-		}
-		pp.is_vweb = true
-		pp.set_current_fn( p.cur_fn ) // give access too all variables in current function
-		pp.parse(.main)
-		pp.v.add_parser(pp)
-		tmpl_fn_body := p.cgen.lines.slice(pos + 2, p.cgen.lines.len).join('\n').clone()
-		end_pos := tmpl_fn_body.last_index('Builder_str( sb )')  + 19 // TODO
-		p.cgen.lines = p.cgen.lines[..pos]
+		p.import_table.register_used_import('strings')
 		p.genln('/////////////////// tmpl start')
-		p.genln(tmpl_fn_body[..end_pos])
+		p.statements_from_text(v_code, false)
 		p.genln('/////////////////// tmpl end')
-		// `app.vweb.html(index_view())`
 		receiver := p.cur_fn.args[0]
-		dot := if receiver.is_mut { '->' } else { '.' }
-		p.genln('vweb__Context_html($receiver.name $dot vweb, tmpl_res)')
+		dot := if receiver.is_mut || receiver.ptr || receiver.typ.ends_with('*') { '->' } else { '.' }
+		p.genln('vweb__Context_html($receiver.name /*!*/$dot vweb, tmpl_res)')
 	}
 	else {
 		p.error('bad comptime expr')
@@ -222,7 +207,7 @@ fn (p mut Parser) chash() {
 			if !p.pref.building_v && !p.fileis('vlib') {
 				p.warn('C #includes will soon be removed from the language' +
 				'\ndefine the C structs and functions in V')
-			}	
+			}
 			*/
 			if p.file_pcguard.len != 0 {
 				//println('p: $p.file_platform $p.file_pcguard')
@@ -235,8 +220,8 @@ fn (p mut Parser) chash() {
 	}
 	// TODO remove after ui_mac.m is removed
 	else if hash.contains('embed') {
-		pos := hash.index('embed') + 5
-		file := hash[pos..]
+		pos := hash.index('embed') or { return }
+		file := hash[pos+5..]
 		//if p.pref.build_mode != .default_mode {
 			p.genln('#include $file')
 		//}
@@ -274,16 +259,23 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	p.cgen.cur_line = ''
 	p.check(.dollar)
 	var := p.check_name()
+	mut j := 0
 	for i, method in typ.methods {
 		if method.typ != 'void' {
+
 			continue
 		}
 		receiver := method.args[0]
-		amp := if receiver.is_mut { '&' } else { '' }
-		if i > 0 {
+		if !p.expr_var.ptr {
+			p.error('`$p.expr_var.name` needs to be a reference')
+		}
+		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
+		if j > 0 {
 			p.gen(' else ')
 		}
-		p.gen('if ( string_eq($var, _STR("$method.name")) ) ${typ.name}_$method.name($amp $p.expr_var.name);')
+		p.genln('if ( string_eq($var, _STR("$method.name")) ) ' +
+			'${typ.name}_$method.name($amp $p.expr_var.name);')
+		j++
 	}
 	p.check(.lpar)
 	p.check(.rpar)
@@ -298,7 +290,7 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 fn (p mut Parser) gen_array_str(typ Type) {
 	if typ.has_method('str') {
 		return
-	}	
+	}
 	p.add_method(typ.name, Fn{
 		name: 'str'
 		typ: 'string'
@@ -389,7 +381,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 		// V
 		a := [1,2,3,4]
 		b := a.filter(it % 2 == 0)
-		
+
 		// C
 		array_int a = ...;
 		array_int tmp2 = new_array(0, 4, 4);
@@ -429,7 +421,7 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 		// V
 		a := [1,2,3,4]
 		b := a.map(it * 2)
-		
+
 		// C
 		array_int a = ...;
 		array_int tmp2 = new_array(0, 4, 4);

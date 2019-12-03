@@ -84,7 +84,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 	mut fos := ''
 	mut name := ''
 	if flag.starts_with('linux') || flag.starts_with('darwin') || flag.starts_with('freebsd') || flag.starts_with('windows') {
-		pos := flag.index(' ')
+		pos := flag.index(' ') or { return none }
 		fos = flag[..pos].trim_space()
 		flag = flag[pos..].trim_space()
 	}
@@ -101,16 +101,21 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 				}
 			}
 		}
-		for i in [flag.index(' '), flag.index(',')] {
-			if index == -1 || (i != -1 && i < index) {
+		if i := flag.index(' ') {
+			if index == -1 || i < index {
+				index = i
+			}
+		}
+		if i := flag.index(',') {
+			if index == -1 || i < index {
 				index = i
 			}
 		}
 		if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
 			for f in allowed_flags {
-				i := index+f.len
-				if i < flag.len && f == flag[index..i] {
-					index = i
+				j := index+f.len
+				if j < flag.len && f == flag[index..j] {
+					index = j
 					break
 				}
 			}
@@ -149,7 +154,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 fn (cflags []CFlag) c_options_before_target_msvc() string { return '' }
 fn (cflags []CFlag) c_options_after_target_msvc() string { return '' }
 
-fn (cflags []CFlag) c_options_before_target() string {	
+fn (cflags []CFlag) c_options_before_target() string {
 	// -I flags, optimization flags and so on
 	mut args:=[]string
 	for flag in cflags {
@@ -185,7 +190,7 @@ fn (cflags []CFlag) c_options_without_object_files() string {
 fn (cflags []CFlag) c_options_only_object_files() string {
 	mut args:=[]string
 	for flag in cflags {
-		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') { 
+		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			args << flag.format()
 		}
 	}

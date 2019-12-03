@@ -45,7 +45,7 @@ module flag
 //  ```
 
 // data object storing information about a defined flag
-struct Flag {
+pub struct Flag {
 pub:
   name     string // name as it appears on command line
   abbr     byte   // shortcut
@@ -55,7 +55,7 @@ pub:
 }
 
 // 
-struct FlagParser {
+pub struct FlagParser {
 pub mut: 
   args  []string                  // the arguments to be parsed
   flags []Flag                    // registered flags
@@ -69,7 +69,7 @@ pub mut:
   args_description        string
 }
 
-const (
+pub const (
   // used for formating usage message
   SPACE = '                            '
   UNDERLINE = '-----------------------------------------------'
@@ -125,14 +125,13 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
   c := '--$n'
   for i, a in fs.args {
     if a == c || (a.len == 2 && a[1] == ab) {
-      if fs.args.len > i+1 && fs.args[i+1].left(2) != '--' {
-        val := fs.args[i+1]
-        fs.args.delete(i+1)
-        fs.args.delete(i)
-        return val
-      } else {
-        panic('Missing argument for \'$n\'')
-      }
+      if i+1 > fs.args.len { panic('Missing argument for \'$n\'') }
+      nextarg := fs.args[i+1]
+      if nextarg.limit(2) == '--' { panic('Missing argument for \'$n\'') }
+      val := fs.args[i+1]
+      fs.args.delete(i+1)
+      fs.args.delete(i)
+      return val
     } else if a.len > c.len && c == a[..c.len] && a[c.len..c.len+1] == '=' {
       val := a[c.len+1..]
       fs.args.delete(i)

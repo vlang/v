@@ -29,8 +29,71 @@ fn C.realpath(byteptr, byteptr) &char
 
 
 
+
+fn C.chmod(byteptr, int) int
+fn C.printf(byteptr, ...byteptr) int
+fn C.fputs(byteptr) int
+fn C.fflush(byteptr) int
+// TODO define args in these functions
+fn C.fseek() int
+fn C.fopen() int
+fn C.fwrite() int
+fn C.fclose() int
+fn C.pclose() int
+fn C.system() int
+fn C.setenv() int
+fn C.unsetenv() int
+fn C.access() int
+fn C.remove() int
+fn C.rmdir() int
+fn C.chdir() int
+fn C.fread() int
+fn C.rewind() int
+fn C.stat() int
+fn C.rename() int
+fn C.fgets() int
+fn C.memset() int
+fn C.sigemptyset() int
+fn C.getcwd() int
+fn C.signal() int
+fn C.mktime() int
+fn C.gettimeofday() int
+fn C.sleep() int
+fn C.usleep() int
+fn C.opendir() voidptr
+fn C.closedir() int
+fn C.mkdir() int
+fn C.srand() int
+fn C.atof() int
+fn C.tolower() int
+fn C.toupper() int
+fn C.getchar() int
+fn C.strerror() charptr
+fn C.snprintf() int
+fn C.fprintf(byteptr, ...byteptr)
+
+fn C.WIFEXITED() bool
+fn C.WEXITSTATUS() int
+fn C.WIFSIGNALED() bool
+fn C.WTERMSIG() int
+fn C.DEFAULT_LE() bool
+fn C.DEFAULT_EQ() bool
+fn C.DEFAULT_GT() bool
+fn C.DEFAULT_EQUAL() bool
+fn C.DEFAULT_NOT_EQUAL() bool
+fn C.DEFAULT_LT() bool
+fn C.DEFAULT_GE() bool
+fn C.isatty() int
+
+fn C.syscall() int
+
+
+
+
+
+
 // Windows
-fn C._setmode(int, int)
+fn C._setmode(int, int) int
 fn C._fileno(int) int
 fn C._get_osfhandle(fd int) C.intptr_t
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
@@ -42,3 +105,60 @@ fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumbe
 fn C.GetFileAttributesW(lpFileName byteptr) u32
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lpReserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
+fn C.RegCloseKey()
+fn C.RegQueryValueEx() voidptr
+fn C.RemoveDirectory() int
+fn C.GetStdHandle() int
+fn C.SetConsoleMode()
+fn C.GetConsoleMode() int
+fn C._putws()
+fn C.wprintf()
+fn C.setbuf()
+fn C.SymCleanup()
+fn C.MultiByteToWideChar() int
+fn C.wcslen() int
+fn C.WideCharToMultiByte() byteptr
+fn C._wstat()
+fn C._wrename()
+fn C._wfopen() voidptr
+fn C._wpopen() voidptr
+fn C._pclose() int
+fn C._wsystem() int
+fn C._wgetenv() voidptr
+fn C._putenv() int
+fn C._waccess() int
+fn C._wremove()
+fn C.ReadConsole()
+fn C.fgetws() int
+fn C.GetModuleFileName() int
+fn C._wchdir()
+fn C._wgetcwd() int
+fn C._fullpath() int
+fn C.GetCommandLine() voidptr
+fn C.CommandLineToArgvW() &voidptr
+fn C.LocalFree()
+fn C.FindFirstFileW() voidptr
+fn C.FindFirstFile() voidptr
+fn C.FindNextFile() voidptr
+fn C.FindClose()
+fn C.MAKELANGID() int
+fn C.FormatMessage() voidptr
+fn C.CloseHandle()
+fn C.GetExitCodeProcess()
+fn C.RegOpenKeyEx() voidptr
+fn C.GetTickCount() i64
+
+fn C.Sleep()
+fn C.WSAStartup(u16, &voidptr) int
+fn C.WSAGetLastError() int
+fn C.closesocket(int) int
+fn C.vschannel_init(&C.TlsContext)
+fn C.request(&C.TlsContext,int, &u16, byteptr, &byteptr)
+fn C.vschannel_cleanup(&C.TlsContext)
+fn C.URLDownloadToFile(int, &u16,&u16, int, int)
+fn C.GetLastError() u32
+fn C.CreateDirectory(byteptr, int) bool
+fn C.BCryptGenRandom(int,voidptr,int,int) int
+fn C.CreateMutex(int,bool,byteptr) voidptr
+fn C.WaitForSingleObject(voidptr,int) int
+fn C.ReleaseMutex(voidptr) bool

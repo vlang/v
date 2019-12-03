@@ -21,6 +21,10 @@ mut:
 	ext         string
 }
 
+fn C.stbi_load() voidptr
+fn C.stbi_image_free()
+fn C.stbi_set_flip_vertically_on_load()
+
 pub fn load(path string) Image {
 	ext := path.all_after('.')
 	mut res := Image {

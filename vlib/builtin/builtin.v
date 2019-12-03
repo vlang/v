@@ -89,12 +89,9 @@ pub fn eprintln(s string) {
 	if isnil(s.str) {
 		panic('eprintln(NIL)')
 	}
-	$if mac {
-		C.fprintf(stderr, '%.*s\n', s.len, s.str)
+	$if !windows {
+		C.fflush(stdout)
 		C.fflush(stderr)
-		return
-	}
-	$if linux {
 		C.fprintf(stderr, '%.*s\n', s.len, s.str)
 		C.fflush(stderr)
 		return
@@ -132,6 +129,7 @@ TODO
 	print_backtrace()
 #endif
 */
+free(C.malloc(n))
 	ptr := C.malloc(n)
 	if isnil(ptr) {
 		panic('malloc($n) failed')
@@ -170,4 +168,3 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
-

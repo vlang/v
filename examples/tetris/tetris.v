@@ -289,7 +289,7 @@ fn (g mut Game) generate_tetro() {
 // Get the right tetro from cache
 fn (g mut Game) get_tetro() {
 	idx := g.tetro_idx * TetroSize * TetroSize + g.rotation_idx * TetroSize
-	g.tetro = g.tetros_cache.slice(idx, idx + TetroSize)
+	g.tetro = g.tetros_cache[idx..idx+TetroSize]
 }
 
 // TODO mut
@@ -403,7 +403,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 			}
 		}
 	}
-	
+
 	if game.state != .running {
 		return
 	}

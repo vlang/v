@@ -105,6 +105,7 @@ mut:
 	is_c           bool // `C.FILE`
 	enum_vals []string
 	gen_types []string
+	default_vals []string // `struct Foo { bar int = 2 }`
 	// This field is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -143,7 +144,7 @@ fn (t Type) str() string {
 */
 
 const (
-	CReserved = [
+	c_reserved = [
 		'delete',
 		'exit',
 		'unix',
@@ -244,6 +245,7 @@ fn new_table(obfuscate bool) &Table {
 	t.register_builtin('bool')
 	t.register_builtin('void')
 	t.register_builtin('voidptr')
+	t.register_builtin('charptr')
 	t.register_builtin('va_list')
 	for c in reserved_type_param_names {
 		t.register_builtin(c)
@@ -259,7 +261,7 @@ fn new_table(obfuscate bool) &Table {
 
 // If `name` is a reserved C keyword, returns `v_name` instead.
 fn (t &Table) var_cgen_name(name string) string {
-	if name in CReserved {
+	if name in c_reserved {
 		return 'v_$name'
 	}
 	else {
@@ -438,6 +440,15 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 		parent_fn: type_name   // Name of the parent type
 		access_mod: access_mod
 	}
+	table.typesmap[type_name] = t
+}
+
+fn (table mut Table) add_default_val(idx int, type_name, val_expr string) {
+	mut t := table.typesmap[type_name]
+	if t.default_vals.len == 0 {
+		t.default_vals = [''].repeat(t.fields.len)
+	}
+	t.default_vals[idx] = val_expr
 	table.typesmap[type_name] = t
 }
 
@@ -629,6 +640,12 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got=='byte*' && expected=='byteptr' {
 		return true
 	}
+	if got=='charptr' && expected=='char*' {
+		return true
+	}
+	if got=='char*' && expected=='charptr' {
+		return true
+	}
 	if got=='int' && expected=='byte*' {
 		return true
 	}
@@ -636,7 +653,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		//return true
 	//}
 	// byteptr += int
-	if got=='int' && expected=='byteptr' {
+	if got=='int' && expected in ['byteptr', 'charptr'] {
 		return true
 	}
 	if got == 'Option' && expected.starts_with('Option_') {
@@ -686,7 +703,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	}
 
 	expected = expected.replace('*', '')
-	got = got.replace('*', '')
+	got = got.replace('*', '').replace('ptr','')
 	if got != expected {
 		// Interface check
 		if expected.ends_with('er') {
@@ -921,8 +938,8 @@ fn (p &Parser) identify_typo(name string) string {
 // compare just name part, some items are mod prefied
 fn typo_compare_name_mod(a, b, b_mod string) f32 {
 	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
-	auidx := a.index('__')
-	buidx := b.index('__')
+	auidx := a.index('__') or { -1 }
+	buidx := b.index('__') or { -1 }
 	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
 	a_name := if auidx != -1 { a[auidx+2..] } else { a }
 	b_name := if buidx != -1 { b[buidx+2..] } else { b }

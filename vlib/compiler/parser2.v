@@ -157,8 +157,10 @@ fn (p mut Parser) get_type2() Type {
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
 	}
+	/*
 	if typ.last_index('__') > typ.index('__') {
 		p.error('2 __ in gettype(): typ="$typ"')
 	}
+	*/
 	return Type{name: typ, cat: cat}
 }
