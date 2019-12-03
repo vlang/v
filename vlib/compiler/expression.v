@@ -182,6 +182,22 @@ fn (p mut Parser) name_expr() string {
 		if p.peek() == .lcbr && p.table.known_type(name) {
 			return p.get_struct_type(name, true, ptr)
 		}
+		if ptr && p.peek() == .lpar {
+			peek2 := p.tokens[p.token_idx+1]
+			// `&C.Foo(0)` cast (replacing old `&C.Foo{!}`)
+			if peek2.tok == .number && peek2.lit == '0' {
+				p.cgen.insert_before('struct /*C.Foo(0)*/ ')
+				p.gen('0')
+				p.next()
+				p.next()
+				p.next()
+				p.next()
+				return name + '*'
+			}
+			// `&C.Foo(foo)` cast
+			p.cast(name + '*')
+			return name + '*'
+		}
 		// C function
 		if p.peek() == .lpar {
 			return p.get_c_func_type(name)
@@ -232,22 +248,22 @@ fn (p mut Parser) name_expr() string {
 	if p.known_var_check_new_var(name) {
 		return p.get_var_type(name, ptr, deref_nr)
 	}
-
 	// if known_type || is_c_struct_init || (p.first_pass() && p.peek() == .lcbr) {
 	// known type? int(4.5) or Color.green (enum)
 	if p.table.known_type(name) {
 		// cast expression: float(5), byte(0), (*int)(ptr) etc
-		if !is_c && ( p.peek() == .lpar || (deref && p.peek() == .rpar) ) {
+		//if !is_c && ( p.peek() == .lpar || (deref && p.peek() == .rpar) ) {
+		if p.peek() == .lpar || (deref && p.peek() == .rpar) {
 			if deref {
 				name += '*'.repeat(deref_nr )
 			}
 			else if ptr {
 				name += '*'.repeat(mul_nr)
 			}
-			p.gen('(')
+			//p.gen('(')
 			mut typ := name
 			p.cast(typ)
-			p.gen(')')
+			//p.gen(')')
 			for p.tok == .dot {
 				typ = p.dot(typ, ph)
 			}

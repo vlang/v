@@ -507,6 +507,8 @@ fn (p mut Parser) gen_empty_map(typ string) {
 }
 
 fn (p mut Parser) cast(typ string) {
+	p.gen('(')
+	defer { p.gen(')') }
 	p.next()
 	pos := p.cgen.add_placeholder()
 	if p.tok == .rpar {

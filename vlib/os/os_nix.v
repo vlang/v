@@ -31,6 +31,7 @@ pub fn ls(path string) ?[]string {
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')
 	}
+	//mut ent := &C.dirent(0)
 	mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
