@@ -25,6 +25,7 @@ fn vcheck(vfile string) {
 fn main() {
 	vcheck("string")
 	vcheck("linuxsys")
+	vcheck("consts")
 	exit(0)
 }
 
