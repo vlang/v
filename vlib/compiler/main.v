@@ -395,6 +395,19 @@ fn (v mut V) generate_init() {
 			}
 		}
 		consts_init_body := v.cgen.consts_init.join_lines()
+
+    if v.pref.is_bare {
+      // vlib can't have init_consts()
+      v.cgen.genln('
+          void init() {
+                $call_mod_init_consts
+                $consts_init_body
+                builtin__init();
+                $call_mod_init
+          }
+      ')
+    }
+    
 		if !v.pref.is_bare {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
@@ -510,9 +523,9 @@ pub fn (v mut V) generate_main() {
 
 pub fn (v mut V) gen_main_start(add_os_args bool){
 	v.cgen.genln('int main(int argc, char** argv) { ')
-	if !v.pref.is_bare {
-		v.cgen.genln('  init();')
-	}
+  
+	v.cgen.genln('  init();')
+  
 	if add_os_args && 'os' in v.table.imports {
 		v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
 	}
