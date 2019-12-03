@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
     - name: Download V
-      run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_linux.zip && unzip v_linux.zip && ./v --version
+      run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
     - name: Test V
       run: ./v examples/hello_world.v && examples/hello_world && ./v build-examples
 
@@ -88,7 +88,7 @@ jobs:
     runs-on: macOS-10.14
     steps:
     - name: Download V
-      run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_macos.zip && unzip v_macos.zip && ./v --version
+      run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
     - name: Test V
       run: ./v examples/hello_world.v && examples/hello_world && ./v build-examples
 
