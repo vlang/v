@@ -146,13 +146,30 @@ fn (v mut V) cc() {
 	debug_mode := v.pref.is_debug
 	mut debug_options := '-g'
 	mut optimization_options := '-O2'
-	if v.pref.ccompiler.contains('clang') {
+  
+	mut guessed_compiler := v.pref.ccompiler
+	if guessed_compiler == 'cc' && v.pref.is_prod {
+		// deliberately guessing only for -prod builds for performance reasons
+		if ccversion := os.exec('cc --version') {
+			if ccversion.exit_code == 0 {
+				if ccversion.output.contains('This is free software;') 
+				&& ccversion.output.contains('Free Software Foundation, Inc.') {
+					guessed_compiler = 'gcc'
+				}
+				if ccversion.output.contains('clang version '){
+					guessed_compiler = 'clang'
+				}
+			}
+		}
+	}
+	
+	if v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang' {
 		if debug_mode {
 			debug_options = '-g -O0 -no-pie'
 		}
 		optimization_options = '-O3 -flto'
 	}
-	if v.pref.ccompiler.contains('gcc') {
+	if v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc' {
 		if debug_mode {
 			debug_options = '-g3 -no-pie'
 		}
