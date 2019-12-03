@@ -313,8 +313,7 @@ pub fn (t Time) clean12() string {
 // `parse` parses time in the following format: "2018-01-27 12:48:34"
 pub fn parse(s string) Time {
 	// println('parse="$s"')
-	pos := s.index(' ')
-	if pos <= 0 {
+	pos := s.index(' ') or {
 		println('bad time format')
 		return now()
 	}
@@ -421,7 +420,7 @@ pub fn (t Time) weekday_str() string {
 }
 
 pub struct C.timeval  {
-	tv_sec u64 
+	tv_sec u64
 	tv_usec u64
 }
 
@@ -527,7 +526,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
         }
 
         month := '${t.smonth()}'
-        year := t.year.str().right(2)
+        year := t.year.str()[2..]
 
         return  match fmt_date {
                         .ddmmyy     { '${t.day:02d}|${t.month:02d}|$year' }

@@ -45,7 +45,7 @@ const(
 	// name
 	app_name = 'gen_vc'
 	// version
-	app_version = '0.1.0'
+	app_version = '0.1.1'
 	// description
 	app_description = 'This tool regenerates V\'s bootstrap .c files every time the V master branch is updated.'
 	// assume something went wrong if file size less than this
@@ -114,17 +114,22 @@ fn main() {
  	fp.version(app_version)
  	fp.description(app_description)
  	fp.skip_executable()
-
+              
+	show_help:=fp.bool('help', false, 'Show this help screen\n')
 	flag_options := parse_flags(mut fp)
-
- 	_ = fp.finalize() or {
+  
+	if( show_help ){ println( fp.usage() ) exit(0) }
+  
+	fp.finalize() or {
  		eprintln(err)
  		println(fp.usage())
  		return
  	}
+  
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run<WebhookServer>(flag_options.port)
+		app := WebhookServer{ gen_vc: new_gen_vc(flag_options) }
+		vweb.run(mut app, flag_options.port)
 	}
 	// cmd mode
 	else {
@@ -136,15 +141,14 @@ fn main() {
 
 // new GenVC
 fn new_gen_vc(flag_options FlagOptions) &GenVC {
+	mut logger := &log.Log{}
+	logger.set_level(log.DEBUG)
+	if flag_options.log_to == 'file' {
+		logger.set_full_logpath( flag_options.log_file )
+	}
 	return &GenVC{
-		// options
 		options: flag_options
-		// logger
-		logger: if flag_options.log_to == 'file' {
-			&log.Log{log.DEBUG, flag_options.log_file}
-		} else {
-			&log.Log{log.DEBUG, 'terminal'}
-		}
+		logger: logger
 	}
 }
 
@@ -175,7 +179,7 @@ fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 		purge    : fp.bool('purge', false, 'force purge the local repositories')
 		port     : fp.int('port', int(server_port), 'port for web server to listen on')
 		log_to   : fp.string('log-to', log_to, 'log to is \'file\' or \'terminal\'')
-		log_file : fp.string('log_file', log_file, 'log file to use when log-to is \'file\'')
+		log_file : fp.string('log-file', log_file, 'log file to use when log-to is \'file\'')
 		dry_run  : fp.bool('dry-run', dry_run, 'when specified dont push anything to remote repo')
 	}
 }

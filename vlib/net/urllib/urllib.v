@@ -277,7 +277,7 @@ fn escape(s string, mode EncodingMode) string {
 				t[i] = `+`
 			}
 		}
-		return string(t)
+		return string(t, t.len)
 	}
 
 	upperhex := '0123456789ABCDEF'
@@ -297,7 +297,7 @@ fn escape(s string, mode EncodingMode) string {
 			j++
 		}
 	}
-	return string(t)
+	return string(t, t.len)
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
@@ -386,7 +386,7 @@ fn (u &Userinfo) string() string {
 // If so, return [scheme, path]; else return ['', rawurl]
 fn split_by_scheme(rawurl string) ?[]string {
 	for i := 0; i < rawurl.len; i++ {
-		c := rawurl[i]		
+		c := rawurl[i]
 		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
 			// do nothing
 		}
@@ -474,7 +474,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	if rawurl == '' && via_request {
 		return error(error_msg('parse_url: empty URL', rawurl))
 	}
-	mut url := URL{}
+	mut url := URL{user:0}
 
 	if rawurl == '*' {
 		url.path = '*'
@@ -516,8 +516,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':')
-		slash := rest.index('/')
+		colon := rest.index(':') or { -1 }
+		slash := rest.index('/') or { -1 }
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
 			return error(error_msg('parse_url: first path segment in URL cannot contain colon', ''))
@@ -615,8 +615,7 @@ fn parse_host(host string) ?string {
 		// can only %-encode non-ASCII bytes.
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
-		zone := host[..i].index('%25')
-		if zone >= 0 {
+		if zone := host[..i].index('%25') {
 			host1 := unescape(host[..zone], .encode_host) or {
 				return err
 			}
@@ -627,17 +626,15 @@ fn parse_host(host string) ?string {
 				return err
 			}
 			return host1 + host2 + host3
-		} else {
-			i = host.last_index(':')
-			if i != -1 {
-				colon_port = host[i..]
-				if !valid_optional_port(colon_port) {
-					return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
-				}
+		}
+		i = host.last_index(':')
+		if i != -1 {
+			colon_port = host[i..]
+			if !valid_optional_port(colon_port) {
+				return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
 			}
 		}
 	}
-
 	h := unescape(host, .encode_host) or {
 		return err
 	}
@@ -853,8 +850,8 @@ fn parse_query_values(m mut Values, query string) ?bool {
 			continue
 		}
 		mut value := ''
-		i = key.index('=')
-		if  i >= 0 {
+		if idx := key.index('=') {
+			i = idx
 			value = key[i+1..]
 			key = key[..i]
 		}
@@ -863,7 +860,7 @@ fn parse_query_values(m mut Values, query string) ?bool {
 			continue
 		}
 		key = k
-		
+
 		v := query_unescape(value) or {
 			had_error = true
 			continue
@@ -1046,7 +1043,7 @@ pub fn (u &URL) port() string {
 fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	
+
 	colon := host.last_index_byte(`:`)
 	if colon != -1 && valid_optional_port(host[colon..]) {
 		port = host[colon+1..]

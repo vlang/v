@@ -37,6 +37,8 @@ fn (cb &Clipboard) has_ownership() bool {
 	return false
 }
 
+fn C.OSAtomicCompareAndSwapLong()
+
 fn (cb &Clipboard) set_text(text string) bool {
 	#NSString *ns_clip;
 	mut ret := false

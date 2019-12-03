@@ -9,15 +9,18 @@ struct C.WPARAM
 struct C.LPARAM
 struct C.LRESULT
 struct C.HGLOBAL
+//struct C.HANDLE
+
 struct C.WNDCLASSEX {
     cbSize int
     lpfnWndProc voidptr
     lpszClassName &u16
 }
+
 fn C.RegisterClassEx(class WNDCLASSEX) int
 fn C.GetClipboardOwner() &HWND
 fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, hInstance voidptr, lpParam voidptr) &HWND
-fn C.MultiByteToWideChar(CodePage u32, dwFlags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
+//fn C.MultiByteToWideChar(CodePage u32, dwFlags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
 fn C.CloseClipboard()
 fn C.GlobalAlloc(uFlag u32, size i64) HGLOBAL
@@ -118,7 +121,7 @@ fn (cb &Clipboard) set_text(text string) bool {
         GlobalFree(buf)
         return false
     } else {
-        /* EmptyClipboard must be called to properly update clipboard ownership */
+        // EmptyClipboard must be called to properly update clipboard ownership
         EmptyClipboard()
         if SetClipboardData(C.CF_UNICODETEXT, buf) == HANDLE(C.NULL) {
             println("SetClipboardData: Failed.")
@@ -127,7 +130,7 @@ fn (cb &Clipboard) set_text(text string) bool {
             return false
         }
     }
-    /* CloseClipboard appears to change the sequence number... */
+    // CloseClipboard appears to change the sequence number...
     CloseClipboard()
     return true
 }

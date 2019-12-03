@@ -117,7 +117,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		is_mut: false
 		is_used: true
 	})
-	if is_assign {
+	if is_assign && !name.contains('.') { // don't initialize struct fields
 		p.genln('$typ $name;')
 	}
 	p.genln('if (!$tmp .ok) {')
@@ -141,6 +141,21 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		p.error_with_token_index('`or` block must provide a default value or return/exit/continue/break/panic', or_tok_idx)
 	}
 	p.returns = false
+	return typ
+}
+
+// `files := os.ls('.')?`
+fn (p mut Parser) gen_handle_question_suffix(f Fn, ph int) string {
+	if p.cur_fn.name != 'main__main' {
+		p.error('`func()?` syntax can only be used inside `fn main()` for now')
+	}
+	p.check(.question)
+	tmp := p.get_tmp()
+	p.cgen.set_placeholder(ph, '$f.typ $tmp = ')
+	p.genln(';')
+	p.genln('if (!${tmp}.ok) v_panic(${tmp}.error);')
+	typ := f.typ[7..] // option_xxx
+	p.gen('*($typ*) ${tmp}.data;')
 	return typ
 }
 
@@ -207,7 +222,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 			ref := if cfg.is_ptr { '*' } else { '' }
 			if cfg.is_slice {
 				p.gen(' array_slice2($ref $index_expr) ')
-			}	
+			}
 			else {
 				p.gen('( *($typ*) array_get($ref $index_expr) )')
 			}
@@ -216,7 +231,7 @@ fn (p mut Parser) index_get(typ string, fn_ph int, cfg IndexConfig) {
 	else if cfg.is_str && !p.builtin_mod {
 		if  p.pref.is_bare {
 			p.gen(index_expr)
-		}	
+		}
 		else if cfg.is_slice {
 			p.gen('string_substr2($index_expr)')
 		} else {
@@ -256,7 +271,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	// Avoid name conflicts (with things like abs(), print() etc).
 	// Generate v_abs(), v_print()
 	// TODO duplicate functionality
-	if f.mod == 'builtin' && f.name in CReserved {
+	if f.mod == 'builtin' && f.name in c_reserved {
 		return 'v_$name'
 	}
 	// Obfuscate but skip certain names
@@ -351,10 +366,12 @@ fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 }
 
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
-	p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
+	// TODO var_typ is always byte
+	//p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
 	p.genln(';\nfor (int $i = 0; $i < $tmp .len; $i ++) {')
 	if val == '_' { return }
-	p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
+	//p.genln('$var_typ $val = (($var_typ *) bytes_$tmp . data)[$i];')
+	p.genln('$var_typ $val = ${tmp}.str[$i];')
 }
 
 fn (p mut Parser) gen_for_range_header(i, range_end, tmp, var_type, val string) {
@@ -545,17 +562,17 @@ fn (p mut Parser) cast(typ string) {
 		if typ == 'bool' {
 			if is_number_type(expr_typ) || is_float_type(expr_typ) {
 				p.error('cannot cast a number to `bool`')
-			}	
+			}
 			p.error('cannot cast `$expr_typ` to `bool`')
 		}
 		// Strings can't be cast
 		if expr_typ == 'string' {
 			p.error('cannot cast `$expr_typ` to `$typ`')
-		}	
+		}
 		// Nothing can be cast to bool
 		if expr_typ == 'bool' {
 			p.error('cannot cast `bool` to `$typ`')
-		}	
+		}
 		p.cgen.set_placeholder(pos, '($typ)(')
 	}
 	p.check(.rpar)

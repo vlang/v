@@ -19,8 +19,9 @@ fn byte_to_lower(c byte) byte {
 	return c | (`x` - `X`)
 }
 
-// parse_uint is like parse_int but for unsigned numbers.
-pub fn parse_uint(s string, _base int, _bit_size int) u64 {
+// common_parse_uint is called by parse_uint and allows the parsing
+// to stop on non or invalid digit characters and return the result so far
+pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) u64 {
 	mut bit_size := _bit_size
 	mut base := _base
 
@@ -28,7 +29,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		// return error('parse_uint: syntax error $s')
 		return u64(0)
 	}
-	
+
 	base0 := base == 0
 	mut start_index := 0
 	if 2 <= base && base <= 36 {
@@ -89,12 +90,20 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		else if `0` <= c && c <= `9`   { d = c - `0` }
 		else if `a` <= cl && cl <= `z` { d = cl - `a` + 10 }
 		else {
-			// return error('parse_uint: syntax error $s')
-			return u64(0)
+			if error_on_non_digit {
+				// return error('parse_uint: syntax error $s')
+				return u64(0)
+			} else {
+				break
+			}
 		}
 		if d >= byte(base) {
-			// return error('parse_uint: syntax error $s')
-			return u64(0)
+			if error_on_high_digit {
+				// return error('parse_uint: syntax error $s')
+				return u64(0)
+			}	else {
+				break
+			}
 		}
 		if n >= cutoff {
 			// n*base overflows
@@ -114,23 +123,17 @@ pub fn parse_uint(s string, _base int, _bit_size int) u64 {
 		// return error('parse_uint: syntax error $s')
 		return u64(0)
 	}
-
-    return n
+	return n
 }
 
-// parse_int interprets a string s in the given base (0, 2 to 36) and
-// bit size (0 to 64) and returns the corresponding value i.
-//
-// If the base argument is 0, the true base is implied by the string's
-// prefix: 2 for "0b", 8 for "0" or "0o", 16 for "0x", and 10 otherwise.
-// Also, for argument base 0 only, underscore characters are permitted
-// as defined by the Go syntax for integer literals.
-//
-// The bitSize argument specifies the integer type
-// that the result must fit into. Bit sizes 0, 8, 16, 32, and 64
-// correspond to int, int8, int16, int32, and int64.
-// If bitSize is below 0 or above 64, an error is returned.
-pub fn parse_int(_s string, base int, _bit_size int) i64 {
+// parse_uint is like parse_int but for unsigned numbers.
+pub fn parse_uint(s string, _base int, _bit_size int) u64 {
+	return common_parse_uint(s, _base, _bit_size, true, true)
+}
+
+// common_parse_int is called by parse int and allows the parsing
+// to stop on non or invalid digit characters and return the result so far
+pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) i64 {
 	mut s := _s
 	mut bit_size := _bit_size
 
@@ -151,7 +154,7 @@ pub fn parse_int(_s string, base int, _bit_size int) i64 {
 	// un := parse_uint(s, base, bit_size) or {
 	//     return i64(0)
 	// }
-	un := parse_uint(s, base, bit_size)
+	un := common_parse_uint(s, base, bit_size, error_on_non_digit, error_on_high_digit)
 	if un == 0 {
 		return i64(0)
 	}
@@ -173,7 +176,21 @@ pub fn parse_int(_s string, base int, _bit_size int) i64 {
 
 	return if neg { -i64(un) } else { i64(un) }
 }
-
+// parse_int interprets a string s in the given base (0, 2 to 36) and
+// bit size (0 to 64) and returns the corresponding value i.
+//
+// If the base argument is 0, the true base is implied by the string's
+// prefix: 2 for "0b", 8 for "0" or "0o", 16 for "0x", and 10 otherwise.
+// Also, for argument base 0 only, underscore characters are permitted
+// as defined by the Go syntax for integer literals.
+//
+// The bitSize argument specifies the integer type
+// that the result must fit into. Bit sizes 0, 8, 16, 32, and 64
+// correspond to int, int8, int16, int32, and int64.
+// If bitSize is below 0 or above 64, an error is returned.
+pub fn parse_int(_s string, base int, _bit_size int) i64 {
+	return common_parse_int(_s, base, _bit_size, true, true)
+}
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 pub fn atoi(s string) int {

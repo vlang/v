@@ -77,7 +77,7 @@ pub fn (m mut Mutex) lock() {
 
 pub fn (m mut Mutex) unlock() {
 	if m.state == .waiting {
-		if C.ReleaseMutex(m.mx) != 0 {
+		if ReleaseMutex(m.mx) {
 			m.state = .broken
 			return
 		}

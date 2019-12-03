@@ -6,6 +6,11 @@ module sync
 
 #include <pthread.h>
 
+fn C.pthread_mutex_init()
+fn C.pthread_mutex_lock()
+fn C.pthread_mutex_unlock()
+
+
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 pub struct Mutex {
 	mutex C.pthread_mutex_t

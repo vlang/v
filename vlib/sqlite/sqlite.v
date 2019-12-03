@@ -34,6 +34,11 @@ pub fn (db DB) q_int(query string) int {
 }
 
 fn C.sqlite3_column_text(voidptr, int) byteptr
+fn C.sqlite3_column_int(voidptr, int) int
+fn C.sqlite3_open()
+fn C.sqlite3_step() int
+fn C.sqlite3_prepare_v2()
+fn C.sqlite3_finalize()
 
 pub fn (db DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt{!}

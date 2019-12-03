@@ -885,14 +885,14 @@ interface Speaker {
     speak() string
 }
 
-fn perform(s Speaker) {
-    println(s.speak())
+fn perform(s Speaker) string {
+    return s.speak()
 }
 
 dog := Dog{}
 cat := Cat{}
-perform(dog) // "woof"
-perform(cat) // "meow"
+println(perform(dog)) // "woof"
+println(perform(cat)) // "meow"
 ```
 
 A type implements an interface by implementing its methods.

@@ -187,12 +187,16 @@ fn print_output(s os.Result) {
 	for line in lines {
 		if line.starts_with('.vrepl_temp.v') {
 			// Hide the temporary file name
-			println(line[line.index(' ') + 1 .. ])
+			idx := line.index(' ') or {
+				println(line)
+				return
+			}
+			println(line[idx+1..])
 		}	 else {
 			println(line)
 		}
 	}
-	
+
 }
 
 fn main() {

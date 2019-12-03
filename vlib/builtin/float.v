@@ -8,13 +8,13 @@ module builtin
 
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(*char(buf), '%f', d)
+	C.sprintf(charptr(buf), '%f', d)
 	return tos(buf, vstrlen(buf))
 }
 
 pub fn (d f32) str() string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(*char(buf), '%f', d)
+	C.sprintf(charptr(buf), '%f', d)
 	return tos(buf, vstrlen(buf))
 }
 
