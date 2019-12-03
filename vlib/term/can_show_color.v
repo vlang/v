@@ -12,7 +12,8 @@ pub fn can_show_color_on_stderr() bool {
 
 fn supports_escape_sequences(fd int) bool {
 	$if windows {
-		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		// ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb'
 	} $else {
 		return is_atty(fd) > 0 && os.getenv('TERM') != 'dumb'
 	}
@@ -23,7 +24,7 @@ fn supports_escape_sequences(fd int) bool {
 pub fn ok_message(s string) string {
 	return if can_show_color_on_stdout() {
 		green( s )
-	}else{
+	} else {
 		s
 	}
 }
@@ -31,7 +32,7 @@ pub fn ok_message(s string) string {
 pub fn fail_message(s string) string {
 	return if can_show_color_on_stdout() {
 		red( s )
-	}else{
+	} else {
 		s
 	}
 }

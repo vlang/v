@@ -54,23 +54,19 @@ pub fn erase_display(t string) {
     print('\x1b[' + t + 'J')
 }
 
-pub fn erase_toend()
-{
+pub fn erase_toend() {
     erase_display('0')
 }
 
-pub fn erase_tobeg()
-{
+pub fn erase_tobeg() {
     erase_display('1')
 }
 
-pub fn erase_clear()
-{
+pub fn erase_clear() {
     erase_display('2')
 }
 
-pub fn erase_del_clear()
-{
+pub fn erase_del_clear() {
     erase_display('3')
 }
 
@@ -82,29 +78,24 @@ pub fn erase_line(t string) {
     print('\x1b[' + t + 'K')
 }
 
-pub fn erase_line_toend()
-{
+pub fn erase_line_toend() {
     erase_line('0')
 }
 
-pub fn erase_line_tobeg()
-{
+pub fn erase_line_tobeg() {
     erase_line('1')
 }
 
-pub fn erase_line_clear()
-{
+pub fn erase_line_clear() {
     erase_line('2')
 }
 
 // Will make cursor appear if not visible
-pub fn show_cursor()
-{
+pub fn show_cursor() {
 	print('\x1b[?25h')
 }
 
 // Will make cursor invisible
-pub fn hide_cursor()
-{
+pub fn hide_cursor() {
 	print('\x1b[?25l')
 }
