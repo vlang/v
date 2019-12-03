@@ -52,7 +52,7 @@ const(
 	too_short_file_limit = 5000
 	// create a .c file for these os's
 	vc_build_oses = [
-		'unix',
+		'nix', // all nix based os
 		'windows'
 	]
 )
@@ -274,11 +274,11 @@ fn (gen_vc mut GenVC) generate() {
 	
 	// build v.c for each os
 	for os_name in vc_build_oses {
-		vc_suffix := if os_name == 'unix' { '' } else { '_${os_name[..3]}' }
-		v_os_arg := if os_name == 'unix' { '' } else { '-os $os_name' }
+		vc_suffix := if os_name == 'nix' { '' } else { '_${os_name[..3]}' }
+		v_flags := if os_name == 'nix' { '-output-cross-platform-c' } else { '-os $os_name' }
 		c_file := 'v${vc_suffix}.c'
 		// try generate .c file
-		gen_vc.cmd_exec('$v_exec $v_os_arg -o $c_file $git_repo_dir_v/compiler')
+		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/compiler')
 		// check if the c file seems ok
 		gen_vc.assert_file_exists_and_is_not_too_short(c_file, err_msg_gen_c)
 		// embed the latest v commit hash into the c file
