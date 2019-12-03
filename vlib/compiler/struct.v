@@ -10,7 +10,7 @@ fn (p mut Parser) struct_decl() {
 	if is_pub {
 		p.next()
 		p.fspace()
-	}	
+	}
 	// V can generate Objective C for integration with Cocoa
 	// `[objc_interface:ParentInterface]`
 	is_objc := p.attr.starts_with('objc_interface')
@@ -53,7 +53,7 @@ fn (p mut Parser) struct_decl() {
 	}
 	if name.len == 1 && !p.pref.building_v && !p.pref.is_repl {
 		p.warn('struct names must have more than one character')
-	}	
+	}
 	if !is_c && !good_type_name(name) {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')
 	}
@@ -123,7 +123,7 @@ fn (p mut Parser) struct_decl() {
 		}
 	}
 	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
-	
+
 
 	if !is_ph && p.first_pass() {
 		p.table.register_type2(typ)
@@ -218,7 +218,7 @@ fn (p mut Parser) struct_decl() {
 			if !p.first_pass() {
 				p.table.add_default_val(i, typ.name, expr)
 			}
-		}	
+		}
 		// [ATTR]
 		mut attr := ''
 		if p.tok == .lsbr {
@@ -262,7 +262,7 @@ fn (p mut Parser) struct_init(typ string) string {
 	t := p.table.find_type(typ)
 	if !t.is_public && t.mod != p.mod {
 		p.warn('type `$t.name` is private')
-	}	
+	}
 	if p.gen_struct_init(typ, t) { return typ }
 	ptr := typ.contains('*')
 	mut did_gen_something := false
@@ -318,7 +318,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			}
 			field_typ := field.typ
 			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' { //&&
-				p.warn('pointer field `${typ}.${field.name}` must be initialized')
+				p.warn('reference field `${typ}.${field.name}` must be initialized')
 			}
 			// init map fields
 			if field_typ.starts_with('map_') {

@@ -33,7 +33,7 @@ pub const (
 
 pub struct File {
 	cfile voidptr // Using void* instead of FILE*
-mut: 
+mut:
 	opened bool
 }
 
@@ -738,7 +738,7 @@ pub fn clear() {
 	}
 }
 
-fn on_segfault(f voidptr) {
+pub fn on_segfault(f voidptr) {
 	$if windows {
 		return
 	}

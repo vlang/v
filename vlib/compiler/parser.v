@@ -2265,7 +2265,7 @@ fn (p mut Parser) string_expr() {
 	}
 	str := p.lit
 	// No ${}, just return a simple string
-	if p.peek() != .dollar || is_raw {
+	if p.peek() != .str_dollar || is_raw {
 		f := if is_raw { cescaped_path(str) } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
@@ -2299,11 +2299,11 @@ fn (p mut Parser) string_expr() {
 		p.lit = p.lit.replace('%', '%%')
 		format += format_str(p.lit)
 		p.next()// skip $
-		if p.tok != .dollar {
+		if p.tok != .str_dollar {
 			continue
 		}
 		// Handle .dollar
-		p.check(.dollar)
+		p.check(.str_dollar)
 		// If there's no string after current token, it means we are in
 		// a complex expression (`${...}`)
 		if p.peek() != .str {

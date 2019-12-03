@@ -56,7 +56,7 @@ fn new_scanner_file(file_path string) &Scanner {
 		verror('scanner: failed to open $file_path')
 		return 0
 	}
-		
+
 	// BOM check
 	if raw_text.len >= 3 {
 		c_text := raw_text.str
@@ -229,8 +229,8 @@ fn (s mut Scanner) skip_whitespace() {
 	for s.pos < s.text.len && s.text[s.pos].is_white() {
 		if is_nl(s.text[s.pos]) && s.is_vh {
 			return
-			
-		}	
+
+		}
 		// Count \r\n as one line
 		if is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos-1) {
 			s.inc_line_number()
@@ -369,7 +369,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.chartoken, s.ident_char())
 		}
 	 `(` {
-	 	
+
 		return scan_res(.lpar, '')
 	 }
 	 `)` {
@@ -390,7 +390,12 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.lcbr, '')
 	}
 	 `$` {
-		return scan_res(.dollar, '')
+	// 	if s.inter_start {
+		if s.inside_string {// || s.inter_start {
+			return scan_res(.str_dollar, '')
+		}  else {
+			return scan_res(.dollar, '')
+		}
 	 }
 	 `}` {
 		// s = `hello $name !`
@@ -592,7 +597,7 @@ fn (s mut Scanner) scan() ScanRes {
 				s.pos-- // fix line_nr, \n was read, and the comment is marked on the next line
 				s.line_nr--
 				return scan_res(.line_comment, s.line_comment)
-			}	
+			}
 			//s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 			// Skip the comment (return the next token)
 			return s.scan()
@@ -626,7 +631,7 @@ fn (s mut Scanner) scan() ScanRes {
 			if s.is_fmt {
 				s.line_comment = comment
 				return scan_res(.mline_comment, s.line_comment)
-			}	
+			}
 			// Skip if not in fmt mode
 			return s.scan()
 		}
@@ -758,7 +763,7 @@ fn (s mut Scanner) ident_char() string {
 	}
 	if c == '\\`' {
 		return '`'
-	}	
+	}
 	// Escapes a `'` character
 	return if c == '\'' { '\\' + c } else { c }
 }
@@ -807,7 +812,7 @@ fn (s mut Scanner) debug_tokens() {
 
 
 fn (s mut Scanner) ignore_line() {
-	s.eat_to_end_of_line()	
+	s.eat_to_end_of_line()
 	s.inc_line_number()
 }
 
@@ -835,7 +840,7 @@ fn (s Scanner) line(n int) string {
 		if nline_start <= nline_end {
 			res = s.text[nline_start..nline_end]
 		}
-	}	
+	}
 	return res.trim_right('\r\n').trim_left('\r\n')
 }
 
@@ -878,8 +883,8 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' +
 'looks like you have a multi-word name without separating them with `_`' +
 '\nfor example, use `registration_date` instead of `registrationdate` ')
-		
-	}	
+
+	}
 }
 
 

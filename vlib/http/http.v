@@ -21,10 +21,11 @@ pub:
 	typ      string // GET POST
 	data     string
 	url      string
-	ws_func  voidptr
-	user_ptr voidptr
 	verbose  bool
 	user_agent string
+mut:
+	user_ptr voidptr
+	ws_func  voidptr
 }
 
 pub struct Response {

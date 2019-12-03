@@ -41,6 +41,7 @@ enum TokenKind {
 	amp
 	hash
 	dollar
+	str_dollar
 	left_shift
 	righ_shift
 	//at // @
@@ -197,6 +198,7 @@ fn build_token_str() []string {
 	s[TokenKind.mline_comment] = '/* mline comment */'
 	s[TokenKind.nl] = 'NLL'
 	s[TokenKind.dollar] = '$'
+	s[TokenKind.str_dollar] = '$2'
 	s[TokenKind.key_assert] = 'assert'
 	s[TokenKind.key_struct] = 'struct'
 	s[TokenKind.key_if] = 'if'
@@ -272,7 +274,7 @@ const (
 		.or_assign, .and_assign, .righ_shift_assign,
 		.left_shift_assign
 	]
-	
+
 )
 
 fn (t TokenKind) is_assign() bool {
@@ -291,17 +293,17 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 fn (t Token) str() string {
 	if t.tok == .number {
 		return t.lit
-		
-	}	
+
+	}
 	if t.tok == .chartoken {
 		return '`$t.lit`'
-	}	
+	}
 	if t.tok == .str {
 		return "'$t.lit'"
-	}	
+	}
 	if t.tok < .plus {
 		return t.lit // string, number etc
-	}	
+	}
 	return t.tok.str()
-}	
+}
 
