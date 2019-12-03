@@ -1,9 +1,38 @@
+## Indentation
+
+There are some basic rules, mostly coming from Go, but some highlights are:
+
+- Indent code using *tabs*
+- Open braces at the right of the statements
+- Use `v fmt` when in doubt
+
+## Example Workflow for Contributing
+##### (provided by [@spytheman](https://github.com/spytheman))
+
+(If you don't already have a Github account, please create one. Your Github username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it accordingly in the steps below.)
+
+1. Clone https://github.com/vlang/v in a folder, say nv (`git clone https://github.com/vlang/v nv`)
+1. `cd nv`
+1. `git remote add pullrequest git@github.com:YOUR_GITHUB_USERNAME/v.git`  # (NOTE: this is your own forked repo of: https://github.com/vlang/v - After this, we just do normal git operations such as: `git pull` and so on.)
+1. When finished with a feature/bugfix, you can: `git checkout -b fix_alabala`
+1. `git push pullrequest`  # (NOTE: the pullrequest remote was setup on step 3)
+1. On Github's web interface, I go to: https://github.com/vlang/v/pulls  Here the UI shows a nice dialog with a button to make a new pull request based on the new pushed branch. (Example dialogue: https://url4e.com/gyazo/images/364edc04.png)
+1. After making your pullrequest (aka, PR), you can continue to work on the branch... just do step #5 when you have more commits.
+1. If there are merge conflicts, or a branch lags too much behind V's master, you can do the following:
+   1. `git checkout master`
+   1. `git pull`
+   1. `git checkout fix_alabala`
+   1. `git rebase master`  # solve conflicts and do git rebase --continue
+   1. `git push pullrequest -f`
+
+The point of doing the above steps to never directly push to the main V repository, only to your own fork. Since your local master branch tracks the main V repository's master, then `git checkout master; git pull --rebase origin master` work as expected (this is actually used by `v up`) and it can always do so cleanly. Git is very flexible, so there may be simpler/easier ways to accomplish the same thing.
+
+
 ## Code Structure
 
 I tried making the code of the compiler and vlib as simple and readable as possible. One of V's goals is to be open to developers with different levels of experience in compiler development. Compilers don't need to be black boxes full of magic that only few people understand.
 
-The compiler itself is located in `vlib/compiler/`. It's a module that can be used by other
-applications.
+The compiler itself is located in `vlib/compiler/`. It's a module that can be used by other applications.
 
 The main files are:
 
@@ -38,23 +67,3 @@ The main files are:
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays, maps), `time/`, `os/`, etc. Their documentation is pretty clear.
 
-## Example Workflow for Contributing
-##### (provided by [@spytheman](https://github.com/spytheman))
-
-(If you don't already have a Github account, please create one. Your Github username will be referred to later as 'YOUR_GITHUB_USERNAME'. Change it accordingly in the steps below.)
-
-1. Clone https://github.com/vlang/v in a folder, say nv (`git clone https://github.com/vlang/v nv`)
-1. `cd nv`
-1. `git remote add pullrequest git@github.com:YOUR_GITHUB_USERNAME/v.git`  # (NOTE: this is your own forked repo of: https://github.com/vlang/v - After this, we just do normal git operations such as: `git pull` and so on.)
-1. When finished with a feature/bugfix, you can: `git checkout -b fix_alabala`
-1. `git push pullrequest`  # (NOTE: the pullrequest remote was setup on step 3)
-1. On Github's web interface, I go to: https://github.com/vlang/v/pulls  Here the UI shows a nice dialog with a button to make a new pull request based on the new pushed branch. (Example dialogue: https://url4e.com/gyazo/images/364edc04.png)
-1. After making your pullrequest (aka, PR), you can continue to work on the branch... just do step #5 when you have more commits.
-1. If there are merge conflicts, or a branch lags too much behind V's master, you can do the following:
-   1. `git checkout master`
-   1. `git pull`
-   1. `git checkout fix_alabala`
-   1. `git rebase master`  # solve conflicts and do git rebase --continue
-   1. `git push pullrequest -f`
-
-The point of doing the above steps to never directly push to the main V repository, only to your own fork. Since your local master branch tracks the main V repository's master, then `git checkout master; git pull --rebase origin master` work as expected (this is actually used by `v up`) and it can always do so cleanly. Git is very flexible, so there may be simpler/easier ways to accomplish the same thing.
