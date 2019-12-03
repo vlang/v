@@ -25,8 +25,8 @@ enum BuildMode {
 }
 
 const (
-	supported_platforms = ['windows', 'mac', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
+	supported_platforms = ['windows', 'mac', 'macos', 'linux', 'freebsd',
+	'openbsd', 'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']
 )
 
 enum OS {
@@ -1141,6 +1141,7 @@ pub fn os_from_string(os string) OS {
 		'linux' { return .linux}
 		'windows' { return .windows}
 		'mac' { return .mac}
+		'macos' { return .mac}
 		'freebsd' { return .freebsd}
 		'openbsd' { return .openbsd}
 		'netbsd' { return .netbsd}

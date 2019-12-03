@@ -289,6 +289,7 @@ fn os_name_to_ifdef(name string) string {
 	match name {
 		'windows' { return '_WIN32' }
 		'mac' { return '__APPLE__' }
+		'macos' { return '__APPLE__' }
 		'linux' { return '__linux__' }
 		'freebsd' { return '__FreeBSD__' }
 		'openbsd'{  return '__OpenBSD__' }

@@ -23,6 +23,9 @@ fn (p mut Parser) comp_time() {
 		p.fspace()
 		if name in supported_platforms {
 			ifdef_name := os_name_to_ifdef(name)
+			if name == 'mac' {
+				p.warn('use `macos` instead of `mac`')
+			}
 			if not {
 				p.genln('#ifndef $ifdef_name')
 			}
