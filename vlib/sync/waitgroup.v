@@ -34,6 +34,10 @@ pub fn (wg mut WaitGroup) wait() {
 	for wg.active > 0 {
 		// Do not remove this, busy empty loops are optimized
 		// with -prod by some compilers, see issue #2874
-		C.usleep(1000) 
+		$if windows {
+			C.Sleep(1)
+		} $else {
+			C.usleep(1000)
+		}
 	}
 }
