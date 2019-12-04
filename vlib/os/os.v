@@ -735,7 +735,7 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
-// clear will clear current terminal screen.
+// clear clears current terminal screen.
 pub fn clear() {
 	$if !windows {
 		C.printf('\x1b[2J')
@@ -838,23 +838,31 @@ pub fn is_dir(path string) bool {
 	$if windows {
 		_path := path.replace('/', '\\')
 		attr := C.GetFileAttributesW(_path.to_wide())
-		if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
+		if int(attr) == C.INVALID_FILE_ATTRIBUTES {
 			return false
 		}
-		if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		if int(attr) & C.FILE_ATTRIBUTE_DIRECTORY != 0 {
 			return true
 		}
 		return false
 	}
 	$else {
 		statbuf := C.stat{}
-		cstr := path.str
-		if C.stat(cstr, &statbuf) != 0 {
+		if C.stat(path.str, &statbuf) != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return (int(statbuf.st_mode) & S_IFMT) == S_IFDIR
+		return int(statbuf.st_mode) & S_IFMT == S_IFDIR
 	}
+}
+
+// is_link returns a boolean indicating whether the given path is a link.
+pub fn is_link(path string) bool {
+	statbuf := C.stat{}
+	if C.lstat(path.str, &statbuf) != 0 {
+		return false
+	}
+	return int(statbuf.st_mode) & S_IFMT == S_IFLNK
 }
 
 // chdir changes the current working directory to the new directory path.

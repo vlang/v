@@ -50,6 +50,7 @@ fn C.chdir() int
 fn C.fread() int
 fn C.rewind() int
 fn C.stat() int
+fn C.lstat() int
 fn C.rename() int
 fn C.fgets() int
 fn C.memset() int
