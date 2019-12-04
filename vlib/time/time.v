@@ -102,7 +102,7 @@ fn C.time(int) C.time_t
 
 pub fn now() Time {
 	t := C.time(0)
-	mut now := &C.tm{!}
+	mut now := &C.tm(0)
 	now = C.localtime(&t)
 	return convert_ctime(now)
 }

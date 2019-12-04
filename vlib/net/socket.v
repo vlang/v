@@ -29,7 +29,7 @@ mut:
 	ai_socktype int
 	ai_flags int
 	ai_protocol int
-	ai_addrlen int	
+	ai_addrlen int
 	ai_addr voidptr
 	ai_canonname voidptr
 	ai_next voidptr
@@ -174,9 +174,9 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	hints.ai_canonname = C.NULL
 	hints.ai_addr = C.NULL
 	hints.ai_next = C.NULL
-	
 
-	info := &C.addrinfo{!}
+
+	info := &C.addrinfo(0)
 	sport := '$port'
 	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {

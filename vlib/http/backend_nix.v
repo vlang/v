@@ -73,7 +73,7 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	res = C.BIO_set_conn_hostname(web, addr.str)
 	if res != 1 {
 	}
-	ssl := &C.SSL{!}
+	ssl := &C.SSL(0)
 	C.BIO_get_ssl(web, &ssl)
 	if isnil(ssl) {
 	}

@@ -19,13 +19,13 @@ pub mut:
 }
 
 pub fn connect(path string) DB {
-	db := &C.sqlite3{!}
+	db := &C.sqlite3(0)
 	C.sqlite3_open(path.str, &db)
 	return DB {conn: db}
 }
 
 pub fn (db DB) q_int(query string) int {
-	stmt := &C.sqlite3_stmt{!}
+	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, query.str, - 1, &stmt, 0)
 	C.sqlite3_step(stmt)
 	res := C.sqlite3_column_int(stmt, 0)
@@ -41,7 +41,7 @@ fn C.sqlite3_prepare_v2()
 fn C.sqlite3_finalize()
 
 pub fn (db DB) q_string(query string) string {
-	stmt := &C.sqlite3_stmt{!}
+	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, query.str, - 1, &stmt, 0)
 	C.sqlite3_step(stmt)
 	f := C.sqlite3_column_text(stmt, 0)
@@ -53,7 +53,7 @@ pub fn (db DB) q_string(query string) string {
 fn C.sqlite3_column_count(voidptr) int
 
 pub fn (db DB) exec(query string) []Row {
-	stmt := &C.sqlite3_stmt{!}
+	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, query.str, - 1, &stmt, 0)
 	nr_cols := C.sqlite3_column_count(stmt)
 	//println('nr cols $nr_cols')
@@ -62,7 +62,7 @@ pub fn (db DB) exec(query string) []Row {
 		ret := C.sqlite3_step(stmt)
 		if ret != 0x64 {
 			break
-		}	
+		}
 		mut row := Row{}
 		for i in 0..nr_cols {
 			val := tos_clone(C.sqlite3_column_text(stmt, i))
