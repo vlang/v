@@ -7,17 +7,34 @@ const (
 	sample_text_file1 = ""
 )
 
-fn fork_test (test_fn fn(), name string) {
-	//print ("checking")
-	// a := "$name"
-	println (name)
+fn check_fork_minimal () {
 	child := sys_fork()
+	ec := 100
 	if child == 0 {
-		test_fn()
-		sys_exit(0)
+		println("child")
+		sys_exit(ec)
 	}
-//	pid := sys_wait(0)
-//	assert
+	siginfo := [
+		int(0), 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0]
+
+	e := sys_waitid(.p_pid, child, intptr(siginfo.data) , .wexited, 0)
+
+	assert e == .enoerror
+	//println(i64_tos(buffer,80,siginfo[sig_index.si_code],16))
+	assert siginfo[sig_index.si_code] == int(wi_si_code.cld_exited)
+	assert siginfo[sig_index.si_pid] == child
+	assert siginfo[sig_index.si_status] == ec
+	assert siginfo[sig_index.si_signo] == int(signo.sigchld)
+	assert siginfo[sig_index.si_uid] == sys_getuid()
+
+	println("fork minimal check passed")
 }
 
 fn check_read_write_pipe() {
@@ -316,5 +333,6 @@ fn main() {
 	check_int64_array_ro()
 	check_voidptr_array_ro()
 	check_voidptr_array_rw()
+	check_fork_minimal()
 	sys_exit(0)
 }

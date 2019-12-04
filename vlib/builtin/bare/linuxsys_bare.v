@@ -64,6 +64,50 @@ pub enum wi_si_code {
 		CLD_CONTINUED (child continued by SIGCONT).
 */
 
+pub enum sig_index {
+	si_signo = 0x00
+	si_code = 0x02
+	si_pid = 0x04
+	si_uid = 0x05
+	si_status = 0x06
+}
+
+pub enum signo {
+	sigint = 2	// Interactive attention signal.
+	sigill = 4	// Illegal instruction.
+	sigabrt = 6	// Abnormal termination.
+	sigfpe = 8	// Erroneous arithmetic operation.
+	sigsegv = 11	// Invalid access to storage.
+	sigterm = 15	// Termination request.
+
+	sighup =  1	// Hangup.
+	sigquit = 3	// Quit.
+	sigtrap = 5	// Trace/breakpoint trap.
+	sigkill = 9	// Killed.
+	sigpipe = 13	// Broken pipe.
+	sigalrm = 14	// Alarm clock.
+
+	sigttin = 21	// Background read from control terminal.
+	sigttou = 22	// Background write to control terminal.
+	sigpoll = 23	// Pollable event occurred (System V).
+	sigxcpu = 24	// CPU time limit exceeded.
+	sigxfsz = 25	// File size limit exceeded.
+	sigvtalrm = 26	// Virtual timer expired.
+	sigprof = 27	// Profiling timer expired.
+
+	sigbus = 7
+	sigusr1 = 10
+	sigusr2 = 12
+	sigchld = 17
+	sigcont = 18
+	sigstop = 19
+	sigtstp = 20
+	sigurg = 23
+	sigpoll = 29
+	sigsys = 31
+}
+
+
 pub enum fcntl {
 	fd_cloexec = 0x00000001
 	f_dupfd = 0x00000000
@@ -191,10 +235,23 @@ fn do_not_call_me_asm_keeper0() {
 			"ret\n"
 			""
 			".intel_syntax noprefix\n"
-			".globl sys_call0\n"
+			".globl _start, sys_call0\n"
 			".globl sys_call1, sys_call2, sys_call3\n"
 			".globl sys_call4, sys_call5, sys_call6\n"
 			""
+			"_start:\n"
+				"xor rbp,rbp\n"
+				"pop rdi\n"
+				"mov rsi,rsp\n"
+				"and rsp,-16\n"
+				"call main\n"
+				"mov rdi,rax\n" /* syscall param 1 = rax (ret value of main) */
+				"mov rax,60\n"  /* SYS_exit */
+				"syscall\n"
+				""
+				// should never be reached, but if the OS somehow fails to kill us,
+				// it will cause a segmentation fault
+				"ret\n"
 			"sys_call0:\n"
 				"mov rax,rdi\n"
 				"syscall\n"
@@ -352,8 +409,16 @@ pub fn sys_exit (ec int) {
 	sys_call1(60, u64(ec))
 }
 
+// 102 sys_getuid
+pub fn sys_getuid() int {
+	return int(sys_call0(102))
+}
+
 // 247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
-//pub fn sys_waitid (idtype wi_sys, pid i64, infop voidptr, options
+pub fn sys_waitid (which wi_which, pid int, infop intptr, options wp_sys, ru voidptr) errno {
+	return errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+}
+
 
 
 /*

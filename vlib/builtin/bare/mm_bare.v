@@ -1,5 +1,10 @@
 module builtin
 
+const (
+	mem_prot = mm_prot(int(mm_prot.prot_read) | int(mm_prot.prot_write))
+	mem_flags = map_flags(int(map_flags.map_private) | int(map_flags.map_anonymous))
+)
+
 pub fn mm_pages(size u64) u32 {
 	pages := (u64(size+u64(4))+u64(linux_mem.page_size))/u64(linux_mem.page_size)
 	return u32(pages)
@@ -8,9 +13,6 @@ pub fn mm_pages(size u64) u32 {
 pub fn mm_alloc(size u64) (byteptr, errno) {
 	pages := mm_pages(size)
 	n_bytes := u64(pages*u32(linux_mem.page_size))
-
-	mem_prot := mm_prot(int(mm_prot.prot_read) | int(mm_prot.prot_write))
-	mem_flags := map_flags(int(map_flags.map_private) | int(map_flags.map_anonymous))
 
 	a, e := sys_mmap(0, n_bytes, mem_prot, mem_flags, -1, 0)
 	if e == .enoerror {
