@@ -80,7 +80,7 @@ pub:
 }
 
 const (
-	MaxModuleDepth = 4
+	//MaxModuleDepth = 4
 	Reserved_Types = {
 		'i8' : true, 'i16' : true, 'int' : true, 'i64' : true, 'i128' : true,
 		'byte' : true, 'u16' : true, 'u32' : true, 'u64' : true, 'u128' : true,
@@ -601,16 +601,16 @@ fn (p mut Parser) import_statement() {
 	mut mod := p.check_name().trim_space()
 	mut mod_alias := mod
 	// submodule support
-	mut depth := 1
+	//mut depth := 1
 	for p.tok == .dot {
 		p.check(.dot)
 		submodule := p.check_name()
 		mod_alias = submodule
 		mod += '.' + submodule
-		depth++
-		if depth > MaxModuleDepth {
-			p.error('module depth of $MaxModuleDepth exceeded: $mod')
-		}
+		//depth++
+		//if depth > MaxModuleDepth {
+		//	p.error('module depth of $MaxModuleDepth exceeded: $mod')
+		//}
 	}
 	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
