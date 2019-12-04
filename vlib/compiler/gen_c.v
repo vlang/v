@@ -485,16 +485,17 @@ fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
 		}
 	}
 	else {
-		// TODO tmp hack for 0 pointers init
-		// &User{!} ==> 0
 		if p.tok == .not {
-			p.warn('use `$t.name(0)` instead of `&$t.name{!}`')
+			// old &User{!} ==> 0 hack
+			p.error('use `$t.name(0)` instead of `&$t.name{!}`')
+			/*
 			p.next()
 			p.gen('0')
 			p.check(.rcbr)
 			return true
+			*/
 		}
-		p.gen('($t.name*)memdup(&($t.name)  {')
+		p.gen('($t.name*)memdup(&($t.name) {')
 	}
 	return false
 }
