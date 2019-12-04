@@ -141,18 +141,19 @@ fn (p mut Parser) for_st() {
 			if p.pref.x64 {
 				label = p.x64.gen_loop_start(expr.int())
 				//to  = range_expr.int() // TODO why empty?
-			}	
-			
+			}
+
 		}
 		is_arr := typ.contains('array')
+		is_fixed := typ.starts_with('[')
 		is_str := typ == 'string'
-		if !is_arr && !is_str && !is_range && !is_variadic_arg {
+		if !is_arr && !is_str && !is_range && !is_fixed && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
 		if !is_variadic_arg {
 			if p.is_js {
 				p.genln('var $tmp = $expr;')
-			} else {
+			} else if !is_fixed { // Don't copy if it's a fixed array
 				p.genln('$typ $tmp = $expr;')
 			}
 		}
@@ -173,6 +174,10 @@ fn (p mut Parser) for_st() {
 		else if is_str {
 			typ = 'byte'
 			p.gen_for_str_header(i, tmp, typ, val)
+		}
+		else if is_fixed {
+			typ = typ.all_after(']')
+			p.gen_for_fixed_header(i, expr, typ, val)
 		}
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
@@ -201,6 +206,6 @@ fn (p mut Parser) for_st() {
 	p.returns = false // TODO handle loops that are guaranteed to return
 	if label > 0 {
 		p.x64.gen_loop_end(to, label)
-	}	
+	}
 }
 

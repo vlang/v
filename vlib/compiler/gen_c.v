@@ -365,6 +365,12 @@ fn (p mut Parser) gen_for_header(i, tmp, var_typ, val string) {
 	p.genln('$var_typ $val = (($var_typ *) $tmp . data)[$i];')
 }
 
+fn (p mut Parser) gen_for_fixed_header(i, tmp, var_typ, val string) {
+	p.genln('for (int $i = 0; $i < sizeof(${tmp}) / sizeof($tmp [0]); $i++) {')
+	if val == '_' { return }
+	p.genln('$var_typ $val = $tmp[$i];')
+}
+
 fn (p mut Parser) gen_for_str_header(i, tmp, var_typ, val string) {
 	// TODO var_typ is always byte
 	//p.genln('array_byte bytes_$tmp = string_bytes( $tmp );')
