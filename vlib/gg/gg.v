@@ -70,13 +70,13 @@ pub mut:
 
 // fn new_context(width, height int, use_ortho bool, font_size int) *GG {
 pub fn new_context(cfg Cfg) &GG {
-	mut window := &glfw.Window{!}
+	mut window := &glfw.Window(0)
 	if cfg.create_window {
 		if cfg.resizable {
 			glfw.window_hint(C.GLFW_RESIZABLE, 1)
 		} else {
 			glfw.window_hint(C.GLFW_RESIZABLE, 0)
-		}	
+		}
 		window = glfw.create_window(glfw.WinCfg{
 			title: cfg.window_title
 			width: cfg.width
