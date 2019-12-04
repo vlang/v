@@ -111,10 +111,46 @@ fn test_reserved_keywords() {
 struct User2 {
 mut:
 	name string
-}	
+}
 
 fn test_mutable_fields() {
 	mut u := User2{}
 	u.name = 'Peter'
 	assert u.name == 'Peter'
-}	
+}
+
+
+struct Def {
+	a int
+	b int = 7
+}
+
+fn test_default_vals() {
+	d := Def{}
+	assert d.a == 0
+	assert d.b == 7
+	d2 := Def{10, 20}
+	assert d2.a == 10
+	assert d2.b == 20
+}
+
+fn test_assoc_with_vars() {
+	def2 := Def { a: 12 }
+	merged := { def2 | a: 42 }
+	assert merged.a == 42
+	assert merged.b == 7
+}
+
+const (
+	const_def = Def { a: 100 }
+)
+fn test_assoc_with_constants() {
+	merged := { const_def | a: 42 }
+	assert merged.a == 42
+	assert merged.b == 7
+
+	again := { const_def | b: 22 }
+	assert again.a == 100
+	assert again.b == 22
+}
+

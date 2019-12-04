@@ -34,6 +34,10 @@ import (
 #include "ft2build.h"
 #include FT_FREETYPE_H
 
+fn C.FT_Init_FreeType() voidptr
+fn C.FT_New_Face() voidptr
+fn C.FT_Set_Pixel_Sizes()
+
 
 
 const (

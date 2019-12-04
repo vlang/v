@@ -208,44 +208,22 @@ fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 	s.last_nl_pos = scp.last_nl_pos
 }
 
-// get_scanner_pos_of_token rescans *the whole source* till it reaches {t.line_nr, t.col} .
-fn (s mut Scanner) get_scanner_pos_of_token(t &Token) ScannerPos {
-	// This rescanning is done just once on error, so it is fine for now.
-	// Be careful for the performance implications, if you want to
-	// do it more frequently. The alternative would be to store
-	// the scanpos (12 bytes) for each token, and there are potentially many tokens.
-	tline := t.line_nr
-	tcol  := if t.line_nr == 0 { t.col + 1 } else { t.col - 1 }
-	// save the current scanner position, it will be restored later
-	cpos := s.get_scanner_pos()
-	mut sptoken := ScannerPos{}
-	// Starting from the start, scan the source lines
-	// till the desired tline is reached, then
-	// s.pos + tcol would be the proper position
-	// of the token.
-	s.goto_scanner_position(ScannerPos{})
-
-	maxline := imin( s.nlines, tline + 2 * error_context_after)
-	for {
-		if s.pos >= s.text.len { break }		
-		if s.line_nr > maxline { break }
-		////////////////////////////////////////
-		if tline == s.line_nr {
-			sptoken = s.get_scanner_pos()
-			sptoken.pos += tcol
+fn (s mut Scanner) get_last_nl_from_pos(_pos int) int {
+	mut pos := if _pos >= s.text.len { s.text.len-1 } else { _pos }
+	for i := pos; i >= 0; i-- {
+		if s.text[i] == `\n` {
+			return i
 		}
-		s.ignore_line() s.eat_single_newline()
 	}
-	//////////////////////////////////////////////////
-	s.goto_scanner_position(cpos)
-	return sptoken
+	return 0
 }
 
-fn (s mut Scanner) eat_single_newline(){
-	if s.pos >= s.text.len { return }
-	if s.expect('\r\n', s.pos) { s.pos += 2 return }
-	if s.text[ s.pos ] == `\n` { s.pos ++ return }
-	if s.text[ s.pos ] == `\r` { s.pos ++ return }
+fn (s mut Scanner) get_scanner_pos_of_token(tok &Token) ScannerPos {
+	return ScannerPos{
+		pos: tok.pos
+		line_nr: tok.line_nr
+		last_nl_pos: s.get_last_nl_from_pos(tok.pos)
+	}
 }
 
 ///////////////////////////////

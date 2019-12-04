@@ -29,16 +29,16 @@ mut:
 // `mod` == "vlib/os"
 fn generate_vh(mod string) {
 	println('\n\n\n\nGenerating a V header file for module `$mod`')
-	vexe := os.executable()
+	vexe := vexe_path()
 	full_mod_path := filepath.join(os.dir(vexe), mod)
 	dir := if mod.starts_with('vlib') { '$compiler.v_modules_path${os.path_separator}$mod' } else { mod }
 	path := dir + '.vh'
 	pdir := dir.all_before_last(os.path_separator)
 	if !os.dir_exists(pdir) {
 		os.mkdir_all(pdir)
-		// os.mkdir(os.realpath(dir))
+		// os.mkdir(os.realpath(dir)) or { panic(err) }
 	}
-	out := os.create(path) or { panic(err) }
+	mut out := os.create(path) or { panic(err) }
 	mod_path := mod.replace("\\", "/")
 	out.writeln('// $mod_path module header\n')
 	mod_def := if mod_path.contains('/') { mod_path.all_after('/') } else { mod_path } // "os"
@@ -169,5 +169,3 @@ fn (g mut VhGen) generate_type() {
 	//g.i = old
 	//g.i--
 }
-
-

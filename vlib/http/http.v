@@ -21,10 +21,11 @@ pub:
 	typ      string // GET POST
 	data     string
 	url      string
-	ws_func  voidptr
-	user_ptr voidptr
 	verbose  bool
 	user_agent string
+mut:
+	user_ptr voidptr
+	ws_func  voidptr
 }
 
 pub struct Response {
@@ -185,18 +186,17 @@ fn parse_response(resp string) Response {
 			break
 		}
 		i++
-		pos := h.index(':')
-		if pos == -1 {
+		pos := h.index(':') or {
 			continue
 		}
 		//if h.contains('Content-Type') {
 			//continue
 		//}
 		key := h[..pos]
-		val := h[pos + 2..]
+		val := h[pos+2..]
 		headers[key] = val.trim_space()
 	}
-	
+
 	if headers['Transfer-Encoding'] == 'chunked' {
 		text = chunked.decode( text )
 	}
@@ -211,7 +211,7 @@ fn parse_response(resp string) Response {
 fn (req &Request) build_request_headers(method, host_name, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string
-	for key, val in req.headers {	
+	for key, val in req.headers {
 		uheaders << '${key}: ${val}\r\n'
 	}
 	if req.data.len > 0 {

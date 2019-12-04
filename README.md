@@ -11,6 +11,8 @@ Documentation: [vlang.io/docs](https://vlang.io/docs)
 
 Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
 
+Speed Test: [fast.vlang.io](https://fast.vlang.io/) (monitors compilation speed for each commit to verify there are no speed regressions)
+
 Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
 Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
@@ -81,6 +83,15 @@ cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
 v
+```
+
+### Docker with Alpine/musl:
+```bash
+git clone https://github.com/vlang/v
+cd v
+docker build -t vlang --file=Dockerfile.alpine .
+docker run --rm -it vlang:latest
+/usr/local/v/v
 ```
 
 ### Testing and running the examples

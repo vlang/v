@@ -45,14 +45,14 @@ const(
 	// name
 	app_name = 'gen_vc'
 	// version
-	app_version = '0.1.0'
+	app_version = '0.1.1'
 	// description
 	app_description = 'This tool regenerates V\'s bootstrap .c files every time the V master branch is updated.'
 	// assume something went wrong if file size less than this
 	too_short_file_limit = 5000
 	// create a .c file for these os's
 	vc_build_oses = [
-		'unix',
+		'nix', // all nix based os
 		'windows'
 	]
 )
@@ -114,17 +114,22 @@ fn main() {
  	fp.version(app_version)
  	fp.description(app_description)
  	fp.skip_executable()
-
+              
+	show_help:=fp.bool('help', false, 'Show this help screen\n')
 	flag_options := parse_flags(mut fp)
-
- 	_ = fp.finalize() or {
+  
+	if( show_help ){ println( fp.usage() ) exit(0) }
+  
+	fp.finalize() or {
  		eprintln(err)
  		println(fp.usage())
  		return
  	}
+  
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run<WebhookServer>(flag_options.port)
+		app := WebhookServer{ gen_vc: new_gen_vc(flag_options) }
+		vweb.run(mut app, flag_options.port)
 	}
 	// cmd mode
 	else {
@@ -136,15 +141,14 @@ fn main() {
 
 // new GenVC
 fn new_gen_vc(flag_options FlagOptions) &GenVC {
+	mut logger := &log.Log{}
+	logger.set_level(log.DEBUG)
+	if flag_options.log_to == 'file' {
+		logger.set_full_logpath( flag_options.log_file )
+	}
 	return &GenVC{
-		// options
 		options: flag_options
-		// logger
-		logger: if flag_options.log_to == 'file' {
-			&log.Log{log.DEBUG, flag_options.log_file}
-		} else {
-			&log.Log{log.DEBUG, 'terminal'}
-		}
+		logger: logger
 	}
 }
 
@@ -175,7 +179,7 @@ fn parse_flags(fp mut flag.FlagParser) FlagOptions {
 		purge    : fp.bool('purge', false, 'force purge the local repositories')
 		port     : fp.int('port', int(server_port), 'port for web server to listen on')
 		log_to   : fp.string('log-to', log_to, 'log to is \'file\' or \'terminal\'')
-		log_file : fp.string('log_file', log_file, 'log file to use when log-to is \'file\'')
+		log_file : fp.string('log-file', log_file, 'log file to use when log-to is \'file\'')
 		dry_run  : fp.bool('dry-run', dry_run, 'when specified dont push anything to remote repo')
 	}
 }
@@ -196,7 +200,7 @@ fn (gen_vc mut GenVC) generate() {
 	// check if gen_vc dir exists
 	if !os.dir_exists(gen_vc.options.work_dir) {
 		// try create
-		os.mkdir(gen_vc.options.work_dir)
+		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
 		// still dosen't exist... we have a problem
 		if !os.dir_exists(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: $gen_vc.options.work_dir')
@@ -270,11 +274,11 @@ fn (gen_vc mut GenVC) generate() {
 	
 	// build v.c for each os
 	for os_name in vc_build_oses {
-		vc_suffix := if os_name == 'unix' { '' } else { '_${os_name[..3]}' }
-		v_os_arg := if os_name == 'unix' { '' } else { '-os $os_name' }
+		vc_suffix := if os_name == 'nix' { '' } else { '_${os_name[..3]}' }
+		v_flags := if os_name == 'nix' { '-output-cross-platform-c' } else { '-os $os_name' }
 		c_file := 'v${vc_suffix}.c'
 		// try generate .c file
-		gen_vc.cmd_exec('$v_exec $v_os_arg -o $c_file $git_repo_dir_v/compiler')
+		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/compiler')
 		// check if the c file seems ok
 		gen_vc.assert_file_exists_and_is_not_too_short(c_file, err_msg_gen_c)
 		// embed the latest v commit hash into the c file

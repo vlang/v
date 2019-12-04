@@ -67,7 +67,7 @@ $if msvc {
 	mut si := &sic.syminfo
 	si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88
 	si.f_max_name_len = sizeof(SymbolInfoContainer) - sizeof(SymbolInfo) - 1
-	fname := *char( &si.f_name )
+	fname := charptr( &si.f_name )
 	mut sline64 := Line64{}
 	sline64.f_size_of_struct = sizeof(Line64)
 

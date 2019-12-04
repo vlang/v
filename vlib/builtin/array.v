@@ -173,7 +173,7 @@ pub fn (a array) last() voidptr {
 
 // array.left returns a new array using the same buffer as the given array
 // with the first `n` elements of the given array.
-pub fn (a array) left(n int) array {
+fn (a array) left(n int) array {
 	if n < 0 {
 		panic('array.left: index is negative (n == $n)')
 	}
@@ -187,7 +187,7 @@ pub fn (a array) left(n int) array {
 // but starting with the element of the given array beyond the index `n`.
 // If `n` is bigger or equal to the length of the given array,
 // returns an empty array of the same type as the given array.
-pub fn (a array) right(n int) array {
+fn (a array) right(n int) array {
 	if n < 0 {
 		panic('array.right: index is negative (n == $n)')
 	}
@@ -207,7 +207,7 @@ fn (a array) slice2(start, _end int, end_max bool) array {
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array with the length and capacity
 // set to the number of the elements in the slice.
-pub fn (a array) slice(start, _end int) array {
+fn (a array) slice(start, _end int) array {
 	mut end := _end
 	if start > end {
 		panic('array.slice: invalid slice index ($start > $end)')
@@ -315,7 +315,7 @@ pub fn (a []bool) str() string {
 			sb.write('true')
 		} else {
 			sb.write('false')
-		}	
+		}
 		if i < a.len - 1 {
 			sb.write(', ')
 		}
@@ -330,7 +330,7 @@ pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len*2+1)
 	mut ptr := &hex[0]
 	for i := 0; i < b.len ; i++ {
-		ptr += C.sprintf(*char(ptr), '%02x', b[i])
+		ptr += C.sprintf(charptr(ptr), '%02x', b[i])
 	}
 	return string(hex)
 }

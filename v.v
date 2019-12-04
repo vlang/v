@@ -25,6 +25,14 @@ fn main() {
 	stuff_after_executable := os.args[1..]
 	commands := stuff_after_executable.filter(!it.starts_with('-'))
 	
+	simple_tools := ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
+	for tool in simple_tools {
+		if tool in commands {
+			compiler.launch_tool('v$tool')
+			return
+		}
+	}
+  
 	// Print the version and exit.
 	if '-v' in options || '--version' in options || 'version' in commands {
 		version_hash := compiler.vhash()
@@ -39,10 +47,6 @@ fn main() {
 		println('Translating C to V will be available in V 0.3')
 		return
 	}
-	else if 'up' in commands {
-		compiler.launch_tool('vup')
-		return
-	}
 	else if 'search' in commands || 'install' in commands || 'update' in commands || 'remove' in commands {
 		compiler.launch_tool('vpm')
 		return
@@ -55,10 +59,6 @@ fn main() {
 		compiler.create_symlink()
 		return
 	}
-	else if 'create' in commands {
-		compiler.launch_tool('vcreate')
-		return
-	}
 	// TODO quit if the v compiler is too old
 	// u := os.file_last_mod_unix('v')
 	// If there's no tmp path with current version yet, the user must be using a pre-built package
@@ -66,10 +66,6 @@ fn main() {
 	// Just fmt and exit
 	else if 'fmt' in commands {
 		compiler.vfmt(args)
-		return
-	}
-	else if 'test' in commands {
-		compiler.launch_tool('vtest')
 		return
 	}
 	// No args? REPL
@@ -95,31 +91,30 @@ fn main() {
 		//println('unknown command/argument\n')
 		//println(compiler.help_text)
 	}
-
 	// Construct the V object from command line arguments
 	mut v := compiler.new_v(args)
 	if v.pref.is_verbose {
 		println(args)
 	}
-
 	if 'run' in args {
 		// always recompile for now, too error prone to skip recompilation otherwise
 		// for example for -repl usage, especially when piping lines to v
 		v.compile()
 		v.run_compiled_executable_and_exit()
 	}
-
 	mut tmark := benchmark.new_benchmark()
-	v.compile()
+	if v.pref.x64 {
+		v.compile_x64()
+	}	else {
+		v.compile()
+	}
 	if v.pref.is_stats {
 		tmark.stop()
 		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
-
 	if v.pref.is_test {
 		v.run_compiled_executable_and_exit()
 	}
-
 	v.finalize_compilation()
 }
 

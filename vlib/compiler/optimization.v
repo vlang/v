@@ -18,23 +18,25 @@ fn (p mut Parser) in_optimization(typ string, ph int) {
 			}	else {
 				p.gen(' || $expr == ')
 			}
-		}	
+		}
 		if i == 0 {
 			if is_str {
-				p.cgen.set_placeholder(ph, ' string_eq(')
+				p.cgen.set_placeholder(ph, ' (string_eq(')
 				p.gen(', ')
 			} else {
+				p.cgen.set_placeholder(ph, ' (')
 				p.gen(' ==')
-			}	
-		}	
+			}
+		}
 		p.check_types(p.bool_expression(), typ)
 		if is_str {
 			p.gen(')')
-		}	
+		}
 		if p.tok != .rsbr {
 			p.check(.comma)
 		}
 		i++
-	}	
+	}
+	p.gen(')')
 	p.check(.rsbr)
 }

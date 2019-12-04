@@ -11,6 +11,7 @@ module http
 fn download_file_with_progress(url, out string, cb, cb_finished voidptr) {
 }
 
+/*
 pub fn download_file(url, out string) {
 	C.URLDownloadToFile(0, url.to_wide(), out.to_wide(), 0, 0)
 	/*
@@ -25,3 +26,4 @@ pub fn download_file(url, out string) {
 	# }
 	*/
 }
+*/

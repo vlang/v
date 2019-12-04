@@ -11,18 +11,18 @@ pub fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
 		args << string(argv[i])
-	}		
+	}
 	return args
 }
 
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
-	_ptr_text := C.strerror(code) // voidptr?
-	if _ptr_text == 0 {
+	ptr_text := C.strerror(code) // voidptr?
+	if ptr_text == 0 {
 		return ''
 	}
-	return tos(_ptr_text, vstrlen(_ptr_text))
+	return tos3(ptr_text)
 }
 
 pub fn ls(path string) ?[]string {
@@ -50,7 +50,7 @@ pub fn dir_exists(path string) bool {
 	/*
 	$if linux {
 		C.syscall(4, path.str) // sys_newstat
-	}	
+	}
 	*/
 	dir := C.opendir(path.str)
 	res := !isnil(dir)
@@ -61,19 +61,21 @@ pub fn dir_exists(path string) bool {
 }
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) {
-	//$if linux {
-		//C.syscall(83, path.str, 511) // sys_mkdir
-	//}	$else {
-		C.mkdir(path.str, 511)// S_IRWXU | S_IRWXG | S_IRWXO
-	//}
+pub fn mkdir(path string) ?bool {
+	if path == '.' { return true }
+	apath := os.realpath( path )
+	r := int(C.mkdir(apath.str, 511))
+	if r == -1 {
+		return error(get_error_msg(C.errno))
+	}
+	return true
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
-	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-		return error(';, &&, || and \\n are not allowed in shell commands')
-	}
+	//if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
+		//return error(';, &&, || and \\n are not allowed in shell commands')
+	//}
 	pcmd := '$cmd 2>&1'
 	f := vpopen(pcmd)
 	if isnil(f) {
@@ -81,7 +83,7 @@ pub fn exec(cmd string) ?Result {
 	}
 	buf := [1000]byte
 	mut res := ''
-	for C.fgets(*char(buf), 1000, f) != 0 {
+	for C.fgets(charptr(buf), 1000, f) != 0 {
 		res += tos(buf, vstrlen(buf))
 	}
 	res = res.trim_space()

@@ -19,6 +19,7 @@
 + bring back generics
 - bring back forum/blog and vpm
 - wrap up orm
++ bring back vweb
 - fix vorum, migrate to orm
 - wrap up memory management
 - remove all compiler memory leaks
@@ -37,9 +38,12 @@
 - declarative ui with hot reload (similar to swiftui)
 - "building a simple blog with vweb" tutorial + youtube video
 + fix interfaces
-- merge v.c and v_win.c
 + fast.vlang.io
 + bare metal support
 + inline assembly
++ x64 machine code generation (ELF)
++ require explicit C.fn definitions, add all missing definitions
++ string.index() ?int
+
 
 

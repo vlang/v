@@ -6,7 +6,7 @@ module builtin
 
 pub fn ptr_str(ptr voidptr) string {
 	buf := malloc(sizeof(double) * 5 + 1)// TODO
-	C.sprintf(*char(buf), '%p', ptr)
+	C.sprintf(charptr(buf), '%p', ptr)
 	return tos(buf, vstrlen(buf))
 }
 
@@ -40,6 +40,10 @@ pub fn (nn int) str() string {
 	}
 	return tos(buf + max - len, len)
 }
+
+pub fn (n i8) str() string  {	return int(n).str() }
+pub fn (n i16) str() string {	return int(n).str() }
+pub fn (n u16) str() string {	return int(n).str() }
 
 pub fn (nn u32) str() string {
 	 mut n := nn
@@ -139,7 +143,7 @@ pub fn (n int) hex() string {
 		11
 	}
 	hex := malloc(len) // 0x + \n
-	count := int(C.sprintf(*char(hex), '0x%x', n))
+	count := int(C.sprintf(charptr(hex), '0x%x', n))
 	return tos(hex, count)
 }
 
@@ -150,7 +154,7 @@ pub fn (n i64) hex() string {
 		19
 	}
 	hex := malloc(len)
-	count := int(C.sprintf(*char(hex), '0x%' C.PRIx64, n))
+	count := int(C.sprintf(charptr(hex), '0x%' C.PRIx64, n))
 	return tos(hex, count)
 }
 

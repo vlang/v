@@ -43,7 +43,7 @@ pub fn tos2(s byteptr) string {
 	}
 }
 
-pub fn tos3(s *C.char) string {
+pub fn tos3(s charptr) string {
 	if s == 0 {
 		panic('tos3: nil string')
 	}
@@ -52,6 +52,50 @@ pub fn tos3(s *C.char) string {
 		len: strlen(byteptr(s))
 	}
 }
+
+pub fn string_eq (s1, s2 string) bool {
+	if s1.len != s2.len { return false }
+	for i in 0..s1.len {
+		if s1[i] != s2[i] { return false }
+	}
+	return true
+}
+pub fn string_ne (s1, s2 string) bool {
+	return !string_eq(s1,s2)
+}
+
+
+pub fn i64_tos(buf byteptr, len int, n0 i64, base int) string {
+	if base < 2 { panic("base must be >= 2")}
+	if base > 36 { panic("base must be <= 36")}
+
+	mut b := tos(buf, len)
+	mut i := len-1
+
+	mut n := n0
+	neg := n < 0
+	if neg { n = -n }
+
+	b[i--] = 0
+
+	for {
+		c := (n%base) + 48
+		b[i--] = if c > 57 {c+7} else {c}
+		if i < 0 { panic ("buffer to small") }
+		n /= base
+		if n < 1 {break}
+	}
+	if (neg) {
+		if i < 0 { panic ("buffer to small") }
+		b[i--] = 45
+	}
+	offset := i+1
+	b.str = b.str + offset
+	b.len -= (offset+1)
+	return b
+}
+
+
 
 /*
 pub fn (a string) clone() string {

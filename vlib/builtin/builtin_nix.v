@@ -16,15 +16,16 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 
 fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	skipframes := xskipframes + 2
-	$if mac { return print_backtrace_skipping_top_frames_mac(skipframes) }
+	$if macos { return print_backtrace_skipping_top_frames_mac(skipframes) }
 	$if linux { return print_backtrace_skipping_top_frames_linux(skipframes) }
+	$if freebsd { return print_backtrace_skipping_top_frames_freebsd(skipframes)  }
 	return false
 }
 
 // the functions below are not called outside this file,
 // so there is no need to have their twins in builtin_windows.v
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
-	$if mac {
+	$if macos {
 	buffer := [100]byteptr
 	nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 	C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
@@ -32,15 +33,22 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	return true
 }
 
+fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
+	$if freebsd {
+        buffer := [100]byteptr
+        nr_ptrs := C.backtrace(*voidptr(buffer), 100)
+        C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
+        }
+        return true
+}
+
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if tinyc {
 		println('TODO: print_backtrace_skipping_top_frames_linux $skipframes with tcc fails tests with "stack smashing detected" .')
 		return false
 	}
-	$if !android {
+	$if !android {		// backtrace is not available on Android.
 		$if glibc {
-		// backtrace is not available on Android.
-		//if C.backtrace_symbols_fd != 0 {
 			buffer := [100]byteptr
 			nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 			nr_actual_frames := nr_ptrs-skipframes
@@ -50,6 +58,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			for sframe in sframes {
 				executable := sframe.all_before('(')
 				addr := sframe.all_after('[').all_before(']')
+				beforeaddr := sframe.all_before('[')
 				cmd := 'addr2line -e $executable $addr'
 
 				// taken from os, to avoid depending on the os module inside builtin.v
@@ -66,7 +75,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				if 0 != int(C.pclose(f)) {
 					println(sframe) continue
 				}
-				println( '${output:-45s} | $sframe')
+				if output in ['??:0:','??:?:'] { output = '' }
+				println( '${output:-46s} | ${addr:14s} | $beforeaddr')
 			}
 			//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true

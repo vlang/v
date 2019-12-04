@@ -39,7 +39,7 @@ fn main() {
 	commit_date := exec('git log -n1 --pretty="format:%at"')
 	message := exec('git log -n1 --pretty="format:%s"')
 	date := time.unix(commit_date.int())
-	out := os.create('table.html') or { panic(err) }
+	mut out := os.create('table.html') or { panic(err) }
 	// Place the new row on top
 	table =
 '<tr>
@@ -56,16 +56,18 @@ fn main() {
 	out.close()
 	// Regenerate index.html
 	header := os.read_file('header.html') or { panic(err) }
-	res := os.create('index.html') or { panic(err) }
+	footer := os.read_file('footer.html') or { panic(err) }
+	mut res := os.create('index.html') or { panic(err) }
 	res.writeln(header)
 	res.writeln(table)
+	res.writeln(footer)
 	res.close()
-}	
+}
 
 fn exec(s string) string {
 	e := os.exec(s) or { panic(err) }
 	return e.output
-}	
+}
 
 // returns milliseconds
 fn measure(cmd string) int {
@@ -77,6 +79,4 @@ fn measure(cmd string) int {
 	ticks := time.ticks()
 	exec(cmd)
 	return int(time.ticks() - ticks)
-}	
-	
-
+}

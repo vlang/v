@@ -130,15 +130,16 @@ pub fn dir_exists(path string) bool {
 	return false
 }
 
+
+
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) {
-	_path := path.replace('/', '\\')
-	// Windows doesnt recursively create the folders
-	// so we need to help it out here
-	if _path.last_index('\\') != -1 {
-		mkdir(_path.all_before_last('\\'))
+pub fn mkdir(path string) ?bool {
+	if path == '.' { return true }
+	apath := os.realpath( path )
+	if !C.CreateDirectory(apath.to_wide(), 0) {
+		return error('mkdir failed for "$apath", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
 	}
-	C.CreateDirectory(_path.to_wide(), 0)
+	return true
 }
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
@@ -237,13 +238,14 @@ pub fn exec(cmd string) ?Result {
 	sa.nLength = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.bInheritHandle = true
 
-	create_pipe_result := int(C.CreatePipe(voidptr(&child_stdout_read), voidptr(&child_stdout_write), voidptr(&sa), 0))
-	if create_pipe_result == 0 {
+	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read),
+		voidptr(&child_stdout_write), voidptr(&sa), 0)
+	if !create_pipe_ok {
 		error_msg := get_error_msg(int(C.GetLastError()))
 		return error('exec failed (CreatePipe): $error_msg')
 	}
-	set_handle_info_result := int(C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0))
-	if set_handle_info_result == 0 {
+	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
+	if !set_handle_info_ok {
 		error_msg := get_error_msg(int(C.GetLastError()))
 		panic('exec failed (SetHandleInformation): $error_msg')
 	}
@@ -257,8 +259,8 @@ pub fn exec(cmd string) ?Result {
 	start_info.dwFlags = u32(C.STARTF_USESTDHANDLES)
 	command_line := [32768]u16
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_result := int(C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info)))
-	if create_process_result == 0 {
+	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info))
+	if !create_process_ok {
 		error_msg := get_error_msg(int(C.GetLastError()))
 		return error('exec failed (CreateProcess): $error_msg')
 	}
@@ -270,8 +272,8 @@ pub fn exec(cmd string) ?Result {
 	for {
 		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read), 0)
 		read_data += tos(buf, int(bytes_read))
-		if (readfile_result == false || int(bytes_read) == 0) {
-			break 
+		if readfile_result == false || int(bytes_read) == 0 {
+			break
 		}		
 	}
 	read_data = read_data.trim_space()

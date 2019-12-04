@@ -113,8 +113,7 @@ fn (r mut Reader) read_record() ?[]string {
 	for {
 		// not quoted
 		if line[0] != `"` {
-			i = line.index(r.delimiter.str())
-			if i == -1 {
+			i = line.index(r.delimiter.str()) or {
 				// last
 				break
 			}
@@ -125,8 +124,7 @@ fn (r mut Reader) read_record() ?[]string {
 		// quoted
 		else {
 			line = line[1..]
-			i = line.index('"')
-			if i != -1 {
+			if i := line.index('"') {
 				if i+1 == line.len {
 					// last record
 					fields << line[..i]
@@ -145,7 +143,6 @@ fn (r mut Reader) read_record() ?[]string {
 			return err_invalid_delim
 		}
 	}
-	
 	return fields
 }
 

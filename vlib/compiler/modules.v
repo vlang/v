@@ -5,6 +5,7 @@
 module compiler
 
 import os
+import filepath
 
 pub const (
 	v_modules_path = os.home_dir() + '.vmodules'
@@ -47,9 +48,9 @@ fn (p mut Parser) register_import_alias(alias string, mod string, tok_idx int) {
 	// NOTE: come back here
 	// if alias in it.imports && it.imports[alias] == mod {}
 	if alias in p.import_table.imports && p.import_table.imports[alias] != mod {
-		p.error('cannot import $mod as $alias: import name $alias already in use"')
+		p.error('cannot import $mod as $alias: import name $alias already in use')
 	}
-	if mod.contains('.internal.') {
+	if mod.contains('.internal.') && !p.is_vgen {
 		mod_parts := mod.split('.')
 		mut internal_mod_parts := []string
 		for part in mod_parts {
@@ -141,35 +142,39 @@ pub fn(graph &DepGraph) imports() []string {
 	return mods
 }
 
-fn (v &V) module_path(mod string) string {
+[inline] fn (v &V) module_path(mod string) string {
 	// submodule support
-	if mod.contains('.') {
-		return mod.replace('.', os.path_separator)
-		// return mod.replace('.', '/')
-	}
-	return mod
+	return mod.replace('.', os.path_separator)
 }
 
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
 fn (v &V) find_module_path(mod string) ?string {
+	// Module search order:
+	// 1) search in the *same* directory, as the compiled final v program source
+	//    (i.e. the . in `v .` or file.v in `v file.v`)
+	// 2) search in the modules/ in the same directory.
+	// 3) search in vlib/
+	// 4.1) search in -vpath (if given)
+	// 4.2) search in ~/.vmodules/ (i.e. modules installed with vpm) (no -vpath)
+	modules_lookup_path := if v.pref.vpath.len > 0 { v.pref.vpath } else { v_modules_path }
 	mod_path := v.module_path(mod)
-	// First check for local modules in the same directory
-	mut import_path := os.getwd() + '${os.path_separator}$mod_path'
-	// Now search in vlib/
-	if mod == 'compiler' || !os.dir_exists(import_path) {
-		import_path = '$v.lang_dir${os.path_separator}vlib${os.path_separator}$mod_path'
+	mut tried_paths := []string
+	tried_paths << filepath.join(v.compiled_dir, mod_path)
+	tried_paths << filepath.join(v.compiled_dir, 'modules', mod_path)
+	tried_paths << filepath.join(v.pref.vlib_path, mod_path)
+	tried_paths << filepath.join(modules_lookup_path, mod_path)
+	if v.pref.user_mod_path.len > 0 {
+		tried_paths << filepath.join(v.pref.user_mod_path, mod_path)
 	}
-	//println('ip=$import_path')
-	// Finally try modules installed with vpm (~/.vmodules)
-	if !os.dir_exists(import_path) {
-		import_path = '$v_modules_path${os.path_separator}$mod_path'
-		if !os.dir_exists(import_path){
-			return error('module "$mod" not found')
+	for try_path in tried_paths {
+		if v.pref.is_verbose { println('  >> trying to find $mod in $try_path ...') }
+		if os.dir_exists(try_path) { 
+			return try_path 
 		}
 	}
-	return import_path
+	return error('module "$mod" not found')
 }
 
 [inline] fn mod_gen_name(mod string) string {

@@ -46,7 +46,7 @@ fn assert_eq<T>(a, b T) {
 
 fn print_nice<T>(x T, indent int) {
     mut space := ''
-    for i in 0..indent {
+    for _ in 0..indent {
         space = space + ' '
     }
     println('$space$x')

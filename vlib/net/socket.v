@@ -36,9 +36,25 @@ mut:
 }
 
 struct C.sockaddr_storage {}
+fn C.socket() int
+fn C.setsockopt() int
+fn C.htonl() int
+fn C.htons() int
+fn C.bind() int
+fn C.listen() int
+fn C.accept() int
+fn C.getaddrinfo() int
+fn C.connect() int
+fn C.send() int
+fn C.recv() int
+fn C.read() int
+fn C.shutdown() int
+fn C.close() int
+fn C.ntohs() int
+fn C.getsockname() int
 
 // create socket
-pub fn socket(family int, _type int, proto int) ?Socket {
+pub fn new_socket(family int, _type int, proto int) ?Socket {
 
 	sockfd := C.socket(family, _type, proto)
 	one:=1
@@ -58,16 +74,16 @@ pub fn socket(family int, _type int, proto int) ?Socket {
 }
 
 pub fn socket_udp() ?Socket {
-	return socket(C.AF_INET, C.SOCK_DGRAM, C.IPPROTO_UDP)
+	return new_socket(C.AF_INET, C.SOCK_DGRAM, C.IPPROTO_UDP)
 }
 
 // set socket options
 pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
-	res := C.setsockopt(s.sockfd, level, optname, optvalue, C.sizeof(optvalue))
+	res := C.setsockopt(s.sockfd, level, optname, optvalue, sizeof(&int))
 	if res < 0 {
 		return error('net.setsocketopt: failed with $res')
 	}
-	return int(res)
+	return res
 }
 
 // bind socket to port
@@ -77,7 +93,7 @@ pub fn (s Socket) bind(port int) ?int {
 	addr.sin_port = C.htons(port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := 16 // sizeof(C.sockaddr_in)
-	res := int(C.bind(s.sockfd, &addr, size))
+	res := C.bind(s.sockfd, &addr, size)
 	if res < 0 {
 		return error('net.bind: failed with $res')
 	}
@@ -87,7 +103,7 @@ pub fn (s Socket) bind(port int) ?int {
 // put socket into passive mode and wait to receive
 pub fn (s Socket) listen() ?int {
 	backlog := 128
-	res := int(C.listen(s.sockfd, backlog))
+	res := C.listen(s.sockfd, backlog)
 	if res < 0 {
 		return error('net.listen: failed with $res')
 	}
@@ -107,7 +123,7 @@ pub fn (s Socket) listen_backlog(backlog int) ?int {
 	if res < 0 {
 		return error('net.listen_backlog: failed with $res')
 	}
-	return int(res)
+	return res
 }
 
 // helper method to create, bind, and listen given port number
@@ -115,7 +131,7 @@ pub fn listen(port int) ?Socket {
 	$if debug {
 		println('net.listen($port)')
 	}
-	s := socket(C.AF_INET, C.SOCK_STREAM, 0) or {
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
 	bind_res := s.bind(port) or {
@@ -167,17 +183,17 @@ pub fn (s Socket) connect(address string, port int) ?int {
 		error_message := os.get_error_msg(net.error_code())
 		return error('net.connect: getaddrinfo failed "$error_message"')
 	}
-	res := int(C.connect(s.sockfd, info.ai_addr, info.ai_addrlen))
+	res := C.connect(s.sockfd, info.ai_addr, info.ai_addrlen)
 	if res < 0 {
 		error_message := os.get_error_msg(net.error_code())
 		return error('net.connect: connect failed "$error_message"')
 	}
-	return int(res)
+	return res
 }
 
 // helper method to create socket and connect
 pub fn dial(address string, port int) ?Socket {
-	s := socket(C.AF_INET, C.SOCK_STREAM, 0) or {
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
 	res := s.connect(address, port) or {
@@ -188,7 +204,7 @@ pub fn dial(address string, port int) ?Socket {
 
 // send string data to socket
 pub fn (s Socket) send(buf byteptr, len int) ?int {
-	res := int( C.send(s.sockfd, buf, len, MSG_NOSIGNAL) )
+	res := C.send(s.sockfd, buf, len, MSG_NOSIGNAL)
 	if res < 0 {
 		return error('net.send: failed with $res')
 	}
@@ -198,18 +214,18 @@ pub fn (s Socket) send(buf byteptr, len int) ?int {
 // receive string data from socket
 pub fn (s Socket) recv(bufsize int) (byteptr, int) {
 	buf := malloc(bufsize)
-	res := int( C.recv(s.sockfd, buf, bufsize, 0) )
+	res := C.recv(s.sockfd, buf, bufsize, 0)
 	return buf, res
 }
 
 // TODO: remove cread/2 and crecv/2 when the Go net interface is done
 pub fn (s Socket) cread( buffer byteptr, buffersize int ) int {
-	return int( C.read(s.sockfd, buffer, buffersize) )
+	return C.read(s.sockfd, buffer, buffersize)
 }
 // Receive a message from the socket, and place it in a preallocated buffer buf,
 // with maximum message size bufsize. Returns the length of the received message.
 pub fn (s Socket) crecv( buffer byteptr, buffersize int ) int {
-	return int( C.recv(s.sockfd, buffer, buffersize, 0) )
+	return C.recv(s.sockfd, buffer, buffersize, 0)
 }
 
 // shutdown and close socket
@@ -250,7 +266,7 @@ pub const (
 // write - write a string with CRLF after it over the socket s
 pub fn (s Socket) write(str string) ?int {
 	line := '$str$CRLF'
-	res := int( C.send(s.sockfd, line.str, line.len, MSG_NOSIGNAL) )
+	res := C.send(s.sockfd, line.str, line.len, MSG_NOSIGNAL)
 	if res < 0 { return error('net.write: failed with $res') }
 	return res
 }
@@ -299,6 +315,8 @@ pub fn (s Socket) read_line() string {
 pub fn (s Socket) get_port() int {
 	mut addr := C.sockaddr_in {}
 	size := 16 // sizeof(sockaddr_in)
-	sockname_res := C.getsockname(s.sockfd, &addr, &size)
-	return int(C.ntohs(addr.sin_port))
+	C.getsockname(s.sockfd, &addr, &size)
+	return C.ntohs(addr.sin_port)
 }
+
+

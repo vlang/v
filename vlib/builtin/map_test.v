@@ -168,6 +168,17 @@ fn test_mut_arg() {
 	assert m['a'] == 10
 }
 
+fn test_delete() {
+	mut m := map[string]int
+	m['one'] = 1
+	m['two'] = 2
+	println(m['two']) // => "2"
+	m.delete('two')
+	println(m['two']) // => 0
+	assert 'two' in m == false
+	println('two' in m) // => true, on Linux  and Windows  <-- wrong !
+}	
+
 /*
 fn test_ref() {
 	m := { 'one': 1 }

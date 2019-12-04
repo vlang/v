@@ -67,7 +67,7 @@ fn main() {
 	
 	wg := sync.new_waitgroup()
 	mtx := sync.new_mutex()
-	mut fetcher := &Fetcher{ids: ids}
+	mut fetcher := &Fetcher{ids: ids mu: 0 wg: 0}
 	fetcher.mu = &mtx
 	fetcher.wg = &wg
 	fetcher.wg.add(ids.len)

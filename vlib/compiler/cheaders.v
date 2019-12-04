@@ -187,6 +187,7 @@ typedef double f64;
 typedef unsigned char* byteptr;
 typedef int* intptr;
 typedef void* voidptr;
+typedef char* charptr;
 typedef struct array array;
 typedef struct map map;
 typedef array array_string;
@@ -194,12 +195,28 @@ typedef array array_int;
 typedef array array_byte;
 typedef array array_f32;
 typedef array array_f64;
+typedef array array_u16;
+typedef array array_u32;
+typedef array array_u64;
 typedef map map_int;
 typedef map map_string;
 #ifndef bool
 	typedef int bool;
 	#define true 1
 	#define false 0
+#endif
+'
+
+bare_c_headers = '
+
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
+#define TCCSKIP(x) x
+
+#ifdef __TINYC__
+#undef EMPTY_ARRAY_OF_ELEMS
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef TCCSKIP
+#define TCCSKIP(x)
 #endif
 '
 )

@@ -10,6 +10,10 @@ pub:
 }
 
 pub fn full_path_to_v(dirs_in int) string {
+	vexe_from_env := os.getenv('VEXE')
+	if vexe_from_env.len > 0 {
+		return vexe_from_env
+	}
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	mut path := os.executable()
 	for i := 0; i < dirs_in; i++ {

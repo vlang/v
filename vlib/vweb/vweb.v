@@ -44,23 +44,23 @@ mut:
 }
 
 pub fn (ctx Context) html(html string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
 }
 
 pub fn (ctx Context) text(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s') or { panic(err) }
 }
 
 pub fn (ctx Context) json(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s')
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') or { panic(err) }
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers')
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
-	ctx.conn.write(HTTP_404)
+	ctx.conn.write(HTTP_404) or { panic(err) }
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
@@ -89,7 +89,7 @@ fn (ctx mut Context) get_header(key string) string {
 }
 
 //pub fn run<T>(port int) {
-pub fn run<T>(app T, port int) {
+pub fn run<T>(app mut T, port int) {
 	println('Running vweb app on http://localhost:$port ...')
 	l := net.listen(port) or { panic('failed to listen') }
 	//mut app := T{}
@@ -102,8 +102,8 @@ pub fn run<T>(app T, port int) {
 		// TODO move this to handle_conn<T>(conn, app)
 		s := conn.read_line()
 		if s == '' {
-			conn.write(HTTP_500)
-			conn.close()
+			conn.write(HTTP_500) or {}
+			conn.close() or {}
 			return
 		}
 		// Parse the first line
@@ -112,8 +112,8 @@ pub fn run<T>(app T, port int) {
 		vals := first_line.split(' ')
 		if vals.len < 2 {
 			println('no vals for http')
-			conn.write(HTTP_500)
-			conn.close()
+			conn.write(HTTP_500) or {}
+			conn.close() or {}
 			return
 		}
 		mut action := vals[1][1..].all_before('/')
@@ -143,13 +143,23 @@ pub fn run<T>(app T, port int) {
 		}
 		//}
 		if req.method in methods_with_form {
-			app.vweb.parse_form(s)
+			for {
+				line := conn.read_line()
+				if line == '' || line == '\r\n' {
+					break
+				}	
+				//if line.contains('POST') || line == '' {
+					//break
+				//}	
+			}	
+			line := conn.read_line()
+			app.vweb.parse_form(line)
 		}
 		if vals.len < 2 {
 			$if debug {
 				println('no vals for http')
 			}
-			conn.close()
+			conn.close() or {}
 			continue
 		}
 
@@ -161,9 +171,9 @@ pub fn run<T>(app T, port int) {
 
 		// Call the right action
 		app.$action() or {
-			conn.write(HTTP_404)
+			conn.write(HTTP_404) or {}
 		}
-		conn.close()
+		conn.close() or {}
 	}
 }
 
@@ -175,27 +185,27 @@ fn (ctx mut Context) parse_form(s string) {
 	if !(ctx.req.method in methods_with_form) {
 		return
 	}
-	pos := s.index('\r\n\r\n')
-	if pos > -1 {
-		mut str_form := s[pos..s.len]
-		str_form = str_form.replace('+', ' ')
-		words := str_form.split('&')
-		for word in words {
-			$if debug {
-				println('parse form keyval="$word"')
-			}
-			keyval := word.trim_space().split('=')
-			if keyval.len != 2 { continue }
-			key := keyval[0]
-			val := urllib.query_unescape(keyval[1]) or {
-				continue
-			}
-			$if debug {
-				println('http form "$key" => "$val"')
-			}
-			ctx.form[key] = val
+	//pos := s.index('\r\n\r\n')
+	//if pos > -1 {
+	mut str_form := s//[pos..s.len]
+	str_form = str_form.replace('+', ' ')
+	words := str_form.split('&')
+	for word in words {
+		$if debug {
+			println('parse form keyval="$word"')
 		}
+		keyval := word.trim_space().split('=')
+		if keyval.len != 2 { continue }
+		key := keyval[0]
+		val := urllib.query_unescape(keyval[1]) or {
+			continue
+		}
+		$if debug {
+			println('http form "$key" => "$val"')
+		}
+		ctx.form[key] = val
 	}
+	//}
 }
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
@@ -216,7 +226,8 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 			}
 
 			// todo: os.is_dir is broken now so we expect that file is dir it has no extension
-			if flag {
+			// if flag {
+			if os.is_dir(file) {
 				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
 			} else {
 				ctx.static_files[mount_path + '/' + file] = directory_path + '/' + file
@@ -234,7 +245,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
-		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data')
+		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data') or { panic(err) }
 		return true
 	}
 	return false

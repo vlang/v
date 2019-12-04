@@ -103,9 +103,9 @@ fn (am mut AssetManager) combine(asset_type string, to_file bool) string {
 		return out
 	}
 	if !os.dir_exists(am.cache_dir) {
-		os.mkdir(am.cache_dir)
+		os.mkdir(am.cache_dir) or { panic(err) }
 	}
-	file := os.create(out_file) or {
+	mut file := os.create(out_file) or {
 		panic(err)
 	}
 	file.write(out)

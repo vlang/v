@@ -10,7 +10,7 @@ fn (p mut Parser) struct_decl() {
 	if is_pub {
 		p.next()
 		p.fspace()
-	}	
+	}
 	// V can generate Objective C for integration with Cocoa
 	// `[objc_interface:ParentInterface]`
 	is_objc := p.attr.starts_with('objc_interface')
@@ -53,7 +53,7 @@ fn (p mut Parser) struct_decl() {
 	}
 	if name.len == 1 && !p.pref.building_v && !p.pref.is_repl {
 		p.warn('struct names must have more than one character')
-	}	
+	}
 	if !is_c && !good_type_name(name) {
 		p.error('bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`')
 	}
@@ -123,7 +123,7 @@ fn (p mut Parser) struct_decl() {
 		}
 	}
 	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
-	
+
 
 	if !is_ph && p.first_pass() {
 		p.table.register_type2(typ)
@@ -131,7 +131,9 @@ fn (p mut Parser) struct_decl() {
 	}
 
 	mut did_gen_something := false
+	mut i := -1
 	for p.tok != .rcbr {
+		i++
 		if p.tok == .key_pub {
 			if is_pub_field {
 				p.error('structs can only have one `pub:`, all public fields have to be grouped')
@@ -166,7 +168,7 @@ fn (p mut Parser) struct_decl() {
 		// }
 		// Check if reserved name
 		field_name_token_idx := p.cur_tok_index()
-		field_name := if name != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
+		field_name := if name != 'Option' && !is_interface { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 		/*
 		if !p.first_pass() {
 			p.fgen(strings.repeat(` `, fmt_max_len - field_name.len))
@@ -204,6 +206,18 @@ fn (p mut Parser) struct_decl() {
 		is_atomic := p.tok == .key_atomic
 		if is_atomic {
 			p.next()
+		}
+		// `a int = 4`
+		if p.tok == .assign {
+			p.next()
+			def_val_type, expr := p.tmp_expr()
+			if def_val_type != field_type {
+				p.error('expected `$field_type` but got `$def_val_type`')
+			}
+			//println('pass=$p.pass $typ.name ADDING field=$field_name "$def_val_type" "$expr"')
+			if !p.first_pass() {
+				p.table.add_default_val(i, typ.name, expr)
+			}
 		}
 		// [ATTR]
 		mut attr := ''
@@ -248,7 +262,7 @@ fn (p mut Parser) struct_init(typ string) string {
 	t := p.table.find_type(typ)
 	if !t.is_public && t.mod != p.mod {
 		p.warn('type `$t.name` is private')
-	}	
+	}
 	if p.gen_struct_init(typ, t) { return typ }
 	ptr := typ.contains('*')
 	mut did_gen_something := false
@@ -292,15 +306,19 @@ fn (p mut Parser) struct_init(typ string) string {
 		}
 		// Zero values: init all fields (ints to 0, strings to '' etc)
 		for i, field in t.fields {
-			sanitized_name := if typ != 'Option' { p.table.var_cgen_name( field.name ) } else { field.name }
+			sanitized_name := if typ != 'Option' {
+				p.table.var_cgen_name( field.name )
+			} else {
+				field.name
+			}
 			// println('### field.name')
 			// Skip if this field has already been assigned to
 			if sanitized_name in inited_fields {
 				continue
 			}
 			field_typ := field.typ
-			if !p.builtin_mod && field_typ.ends_with('*') && field_typ.contains('Cfg') {
-				p.error('pointer field `${typ}.${field.name}` must be initialized')
+			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' { //&&
+				p.warn('reference field `${typ}.${field.name}` must be initialized')
 			}
 			// init map fields
 			if field_typ.starts_with('map_') {
@@ -313,7 +331,13 @@ fn (p mut Parser) struct_init(typ string) string {
 				did_gen_something = true
 				continue
 			}
-			def_val := type_default(field_typ)
+			// Did the user provide a default value for this struct field?
+			// Use it. Otherwise zero it.
+			def_val := if t.default_vals.len > i && t.default_vals[i] != '' {
+				t.default_vals[i]
+			} else {
+				type_default(field_typ)
+			}
 			if def_val != '' && def_val != '{0}' {
 				p.gen_struct_field_init(sanitized_name)
 				p.gen(def_val)

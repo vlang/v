@@ -247,3 +247,20 @@ fn test_allow_abreviations() {
   u := fp.usage()
   assert u.contains(' -v') && u.contains(' -o') && u.contains(' -i') && u.contains(' -f')
 }
+
+fn test_allow_kebab_options() {
+  default_value := 'this_is_the_default_value_of_long_option'
+  long_option_value := 'this_is_a_long_option_value_as_argument'
+  
+  mut fp := flag.new_flag_parser(['--my-long-flag', 'true', '--my-long-option', long_option_value ])
+
+  my_flag   := fp.bool('my-long-flag',     false,         'flag with long-kebab-name')
+  my_option := fp.string('my-long-option', default_value, 'string with long-kebab-name')
+ 
+  assert my_flag == true
+  assert my_option == long_option_value
+
+  u := fp.usage()
+  assert u.contains(' --my-long-flag')
+  assert u.contains(' --my-long-option')
+}
