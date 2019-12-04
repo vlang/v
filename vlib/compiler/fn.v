@@ -1144,7 +1144,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			if f.is_method {
 				j--
 			}
-			mut nr := '${i+1}th'
+			mut nr := '${j+1}th'
 			if j == 0 {
 				nr = 'first'
 			} else if j == 1 {
