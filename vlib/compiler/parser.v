@@ -2171,7 +2171,7 @@ fn (p mut Parser) indot_expr() string {
 	if p.tok == .key_in {
 		p.fspace()
 		p.check(.key_in)
-		p.expected_type = typ // this allows `foo in [.val1, .val2, .val3]`
+		p.expected_type = typ // this allows short enum syntax `foo in [.val1, .val2, .val3]`
 		if p.tok == .lsbr {
 			// a in [1,2,3] optimization => `a == 1 || a == 2 || a == 3`
 			// avoids an allocation
@@ -2182,8 +2182,15 @@ fn (p mut Parser) indot_expr() string {
 		p.gen('), ')
 		arr_typ := p.expression()
 		is_map := arr_typ.starts_with('map_')
-		if !arr_typ.starts_with('array_') && !is_map {
+		is_arr:= arr_typ.starts_with('array_')
+		if !is_arr && !is_map {
 			p.error('`in` requires an array/map')
+		}
+		if is_arr && arr_typ[6..] != typ {
+			p.error('bad element type: `$typ` in `$arr_typ`')
+		}
+		if is_map && typ != 'string' {
+			p.error('bad element type: expecting `string`')
 		}
 		T := p.table.find_type(arr_typ)
 		if !is_map && !T.has_method('contains') {
