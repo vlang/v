@@ -126,7 +126,7 @@ fn (v mut V) cc() {
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.is_bare {
-		a << '-fno-stack-protector -static -ffreestanding -nostdlib $vdir/vlib/os/bare/bare.S'
+		a << '-fno-stack-protector -static -ffreestanding -nostdlib'
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
@@ -146,13 +146,13 @@ fn (v mut V) cc() {
 	debug_mode := v.pref.is_debug
 	mut debug_options := '-g'
 	mut optimization_options := '-O2'
-  
+
 	mut guessed_compiler := v.pref.ccompiler
 	if guessed_compiler == 'cc' && v.pref.is_prod {
 		// deliberately guessing only for -prod builds for performance reasons
 		if ccversion := os.exec('cc --version') {
 			if ccversion.exit_code == 0 {
-				if ccversion.output.contains('This is free software;') 
+				if ccversion.output.contains('This is free software;')
 				&& ccversion.output.contains('Free Software Foundation, Inc.') {
 					guessed_compiler = 'gcc'
 				}
@@ -162,7 +162,7 @@ fn (v mut V) cc() {
 			}
 		}
 	}
-	
+
 	if v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang' {
 		if debug_mode {
 			debug_options = '-g -O0 -no-pie'
