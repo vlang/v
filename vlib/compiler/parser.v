@@ -80,8 +80,8 @@ pub:
 }
 
 const (
-	MaxModuleDepth = 4
-	Reserved_Types = {
+	max_module_depth = 5
+	reserved_types = {
 		'i8' : true, 'i16' : true, 'int' : true, 'i64' : true, 'i128' : true,
 		'byte' : true, 'u16' : true, 'u32' : true, 'u64' : true, 'u128' : true,
 		'f32' : true, 'f64' : true,
@@ -608,8 +608,8 @@ fn (p mut Parser) import_statement() {
 		mod_alias = submodule
 		mod += '.' + submodule
 		depth++
-		if depth > MaxModuleDepth {
-			p.error('module depth of $MaxModuleDepth exceeded: $mod')
+		if depth > max_module_depth {
+			p.error('module depth of $max_module_depth exceeded: $mod')
 		}
 	}
 	// aliasing (import encoding.base64 as b64)
@@ -807,7 +807,7 @@ fn (p mut Parser) check_string() string {
 }
 
 fn (p mut Parser) check_not_reserved () {
-	if Reserved_Types[p.lit] {
+	if reserved_types[p.lit] {
 		p.error('`$p.lit` can\'t be used as name')
 	}
 }
