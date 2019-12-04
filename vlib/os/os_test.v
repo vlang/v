@@ -76,14 +76,14 @@ fn test_write_and_read_bytes() {
 fn test_create_and_delete_folder() {
   folder := './test1'
   os.mkdir(folder) or { panic(err) }
-	assert os.dir_exists(folder)
+	assert os.is_dir(folder)
 
   folder_contents := os.ls(folder) or { panic(err) }
   assert folder_contents.len == 0
 
   os.rmdir(folder)
 
-  folder_exists := os.dir_exists(folder)
+  folder_exists := os.is_dir(folder)
 
   assert folder_exists == false
 }

@@ -94,7 +94,7 @@ pub fn (ts mut TestSession) test() {
 
 pub fn vlib_should_be_present( parent_dir string ) {
 	vlib_dir := filepath.join( parent_dir, 'vlib' )
-	if !os.dir_exists( vlib_dir ){
+	if !os.is_dir( vlib_dir ){
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
 	}

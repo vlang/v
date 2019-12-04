@@ -46,7 +46,7 @@ mut:
 }
 
 struct StartupInfo {
-mut:	
+mut:
 	cb u32
 	lpReserved &u16
 	lpDesktop &u16
@@ -89,13 +89,13 @@ fn init_os_args(argc int, argv &byteptr) []string {
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string
-	// We can also check if the handle is valid. but using dir_exists instead
+	// We can also check if the handle is valid. but using is_dir instead
 	// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
 	// if (INVALID_HANDLE_VALUE == h_find_dir) {
 	//     return dir_files
 	// }
 	// C.FindClose(h_find_dir)
-	if !dir_exists(path) {
+	if !is_dir(path) {
 		return error('ls() couldnt open dir "$path": directory does not exist')
 	}
 	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
@@ -118,7 +118,8 @@ pub fn ls(path string) ?[]string {
 	return dir_files
 }
 
-pub fn dir_exists(path string) bool {
+/*
+pub fn is_dir(path string) bool {
 	_path := path.replace('/', '\\')
 	attr := C.GetFileAttributesW(_path.to_wide())
 	if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
@@ -129,6 +130,7 @@ pub fn dir_exists(path string) bool {
 	}
 	return false
 }
+*/
 
 
 
@@ -250,7 +252,7 @@ pub fn exec(cmd string) ?Result {
 		panic('exec failed (SetHandleInformation): $error_msg')
 	}
 
-	proc_info := ProcessInformation{}	
+	proc_info := ProcessInformation{}
 	mut start_info := StartupInfo{}
 	start_info.cb = sizeof(C.PROCESS_INFORMATION)
 	start_info.hStdInput = child_stdin
@@ -265,7 +267,7 @@ pub fn exec(cmd string) ?Result {
 		return error('exec failed (CreateProcess): $error_msg')
 	}
 	C.CloseHandle(child_stdin)
-	C.CloseHandle(child_stdout_write)	
+	C.CloseHandle(child_stdout_write)
 	buf := [1000]byte
 	mut bytes_read := u32(0)
 	mut read_data := ''
@@ -274,7 +276,7 @@ pub fn exec(cmd string) ?Result {
 		read_data += tos(buf, int(bytes_read))
 		if readfile_result == false || int(bytes_read) == 0 {
 			break
-		}		
+		}
 	}
 	read_data = read_data.trim_space()
 	exit_code := u32(0)

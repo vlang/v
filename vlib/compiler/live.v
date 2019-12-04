@@ -191,7 +191,7 @@ void reload_so() {
 			sprintf(compile_cmd, "$vexe $msvc -o %s -shared $file", new_so_base);
 			os__system(tos2(compile_cmd));
 
-			if( !os__file_exists(tos2(new_so_name)) ) {
+			if( !os__exists(tos2(new_so_name)) ) {
 				fprintf(stderr, "Errors while compiling $file\\n");
 				continue;
 			}

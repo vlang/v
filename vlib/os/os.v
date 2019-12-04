@@ -164,7 +164,7 @@ pub fn cp(old, new string) ?bool {
 pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 	source_path := os.realpath( osource_path )
 	dest_path := os.realpath( odest_path )
-	if !os.file_exists(source_path) {
+	if !os.exists(source_path) {
 		return error('Source path doesn\'t exist')
 	}
 	//single file copy
@@ -174,7 +174,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 		} else {
 			dest_path
 		}
-		if os.file_exists(adjasted_path) {
+		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
 			}
@@ -523,14 +523,19 @@ pub fn unsetenv(name string) int {
 	}
 }
 
-// file_exists returns true if `path` exists.
-pub fn file_exists(_path string) bool {
+// exists returns true if `path` exists.
+pub fn exists(path string) bool {
 	$if windows {
-		path := _path.replace('/', '\\')
-		return C._waccess(path.to_wide(), 0) != -1
+		p := path.replace('/', '\\')
+		return C._waccess(p.to_wide(), 0) != -1
 	} $else {
-		return C.access(_path.str, 0 ) != -1
+		return C.access(path.str, 0 ) != -1
 	}
+}
+
+[deprecated]
+pub fn file_exists(_path string) bool {
+	panic('use os.exists(path) instead of os.file_exists(path)')
 }
 
 // rm removes file in `path`.
@@ -822,13 +827,24 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+[deprecated]
+pub fn dir_exists(path string) bool {
+	panic('use os.is_dir()')
+	//return false
+}
+
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
-		return dir_exists(path)
-		//val := int(C.GetFileAttributes(path.to_wide()))
-		// Note: this return is broke (wrong). we have dir_exists already how will this differ?
-		//return (val &FILE_ATTRIBUTE_DIRECTORY) > 0
+		_path := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(_path.to_wide())
+		if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
+			return false
+		}
+		if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+			return true
+		}
+		return false
 	}
 	$else {
 		statbuf := C.stat{}
@@ -927,7 +943,7 @@ pub fn walk(path string, fnc fn(path string)) {
 		if os.is_dir(p) {
 			walk(p, fnc)
 		}
-		else if os.file_exists(p) {
+		else if os.exists(p) {
 			fnc(p)
 		}
 	}
@@ -996,7 +1012,7 @@ pub fn mkdir_all(path string) {
 	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
 	for subdir in path.split(os.path_separator) {
 		p += subdir + os.path_separator
-		if !os.dir_exists(p) {
+		if !os.is_dir(p) {
 			os.mkdir(p) or { panic(err) }
 		}
 	}

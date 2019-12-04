@@ -9,7 +9,7 @@ import filepath
 
 pub fn get_vtmp_folder() string {
 	vtmp := filepath.join(os.tmpdir(),'v')
-	if !os.dir_exists( vtmp ) {
+	if !os.is_dir( vtmp ) {
 		os.mkdir(vtmp) or { panic(err) }
 	}
 	return vtmp

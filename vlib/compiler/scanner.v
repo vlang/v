@@ -48,7 +48,7 @@ mut:
 
 // new scanner from file.
 fn new_scanner_file(file_path string) &Scanner {
-	if !os.file_exists(file_path) {
+	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
 

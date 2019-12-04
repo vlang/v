@@ -166,7 +166,7 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
 	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 
-	if os.file_exists('$lib_path\\vcruntime.lib') {
+	if os.exists('$lib_path\\vcruntime.lib') {
 		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$host_arch'
 
 		// println('$lib_path $include_path')
@@ -274,7 +274,7 @@ pub fn (v mut V) cc_msvc() {
 		/*
 		b := os.realpath( '$v_modules_path/vlib/builtin.obj' )
 		alibs << '"$b"'
-		if !os.file_exists(b) {
+		if !os.exists(b) {
 			println('`builtin.obj` not found')
 			exit(1)
 		}
@@ -390,7 +390,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 
 	obj_path = os.realpath(obj_path)
 
-	if os.file_exists(obj_path) {
+	if os.exists(obj_path) {
 		println('$obj_path already build.')
 		return
 	}

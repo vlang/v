@@ -170,7 +170,7 @@ fn (v &V) find_module_path(mod string) ?string {
 	}
 	for try_path in tried_paths {
 		if v.pref.is_verbose { println('  >> trying to find $mod in $try_path ...') }
-		if os.dir_exists(try_path) { 
+		if os.is_dir(try_path) { 
 			return try_path 
 		}
 	}

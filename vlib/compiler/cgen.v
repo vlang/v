@@ -255,7 +255,7 @@ fn (g mut CGen) add_to_main(s string) {
 
 fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
-	if os.file_exists(obj_path) {
+	if os.exists(obj_path) {
 		return
 	}
 	println('$obj_path not found, building it...')

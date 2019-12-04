@@ -34,7 +34,7 @@ fn generate_vh(mod string) {
 	dir := if mod.starts_with('vlib') { '$compiler.v_modules_path${os.path_separator}$mod' } else { mod }
 	path := dir + '.vh'
 	pdir := dir.all_before_last(os.path_separator)
-	if !os.dir_exists(pdir) {
+	if !os.is_dir(pdir) {
 		os.mkdir_all(pdir)
 		// os.mkdir(os.realpath(dir)) or { panic(err) }
 	}

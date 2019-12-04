@@ -47,12 +47,11 @@ pub fn ls(path string) ?[]string {
 	return res
 }
 
-pub fn dir_exists(path string) bool {
-	/*
-	$if linux {
-		C.syscall(4, path.str) // sys_newstat
-	}
-	*/
+/*
+pub fn is_dir(path string) bool {
+	//$if linux {
+		//C.syscall(4, path.str) // sys_newstat
+	//}
 	dir := C.opendir(path.str)
 	res := !isnil(dir)
 	if res {
@@ -60,6 +59,7 @@ pub fn dir_exists(path string) bool {
 	}
 	return res
 }
+*/
 
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {

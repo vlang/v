@@ -173,12 +173,12 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	if font_path == '' {
 		font_path = 'RobotoMono-Regular.ttf'
 	}
-	if !os.file_exists(font_path) {
+	if !os.exists(font_path) {
 		exe_path := os.executable()
 		exe_dir := os.basedir(exe_path)
 		font_path = '$exe_dir/$font_path'
 	}
-	if !os.file_exists(font_path) {
+	if !os.exists(font_path) {
 		println('failed to load $font_path')
 		return 0
 	}

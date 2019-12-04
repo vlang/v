@@ -363,7 +363,7 @@ pub fn create_image(file string) u32 {
 	if file.contains('twitch') {
 		return u32(0)// TODO
 	}
-	if !os.file_exists(file) {
+	if !os.exists(file) {
 		println('gg create image no such file "$file"')
 		return u32(0)
 	}

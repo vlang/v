@@ -19,7 +19,7 @@ pub fn compile_template(path string) string {
 		panic('html failed')
 	}
 	mut	header := ''
-	if os.file_exists('header.html') {
+	if os.exists('header.html') {
 		h := os.read_file('header.html') or {
 			panic('html failed')
 		}
