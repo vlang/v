@@ -1236,11 +1236,16 @@ fn (p mut Parser) statement(add_semi bool) string {
 		}
 		else {
 			// panic and exit count as returns since they stop the function
-			if p.lit == 'panic' || p.lit == 'exit' {
+			is_panic :=	p.lit == 'panic' || p.lit == 'exit'
+			if is_panic {
 				p.returns = true
 			}
 			// `a + 3`, `a(7)`, or just `a`
 			q = p.bool_expression()
+			// Fix "control reaches end of non-void function" error
+			if is_panic && p.cur_fn.typ == 'bool' {
+				p.genln(';\nreturn false;')
+			}
 		}
 	}
 	.key_goto {

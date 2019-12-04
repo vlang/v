@@ -858,11 +858,15 @@ pub fn is_dir(path string) bool {
 
 // is_link returns a boolean indicating whether the given path is a link.
 pub fn is_link(path string) bool {
-	statbuf := C.stat{}
-	if C.lstat(path.str, &statbuf) != 0 {
-		return false
+	$if windows {
+		return false // TODO
+	} $else {
+		statbuf := C.stat{}
+		if C.lstat(path.str, &statbuf) != 0 {
+			return false
+		}
+		return int(statbuf.st_mode) & S_IFMT == S_IFLNK
 	}
-	return int(statbuf.st_mode) & S_IFMT == S_IFLNK
 }
 
 // chdir changes the current working directory to the new directory path.
