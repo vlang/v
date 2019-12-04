@@ -167,12 +167,12 @@ fn (p mut Parser) name_expr() string {
 	}
 
 	// Raw string (`s := r'hello \n ')
-	if (name == 'r') && p.peek() == .str && p.prev_tok != .str_dollar {
+	if name == 'r' && p.peek() == .str && p.prev_tok != .str_dollar {
 		p.string_expr()
 		return 'string'
 	}
 	// C string (a zero terminated one) C.func( c'hello' )
-	if (name == 'c') && p.peek() == .str && p.prev_tok != .str_dollar {
+	if name == 'c' && p.peek() == .str && p.prev_tok != .str_dollar {
 		p.string_expr()
 		return 'charptr'
 	}
