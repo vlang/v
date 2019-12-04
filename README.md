@@ -9,7 +9,7 @@ https://vlang.io
 
 Documentation: [vlang.io/docs](https://vlang.io/docs)
 
-Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
+Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md)
 
 Speed Test: [fast.vlang.io](https://fast.vlang.io/) (monitors compilation speed for each commit to verify there are no speed regressions)
 
@@ -35,7 +35,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Built-in ORM
 - C and JavaScript backends
 
-V 1.0 release is planned for December 2019. Right now V is in an alpha stage.
+A stable 0.2 release is planned for early December 2019. Right now V is in an alpha stage.
 
 ## Installing V from source
 
