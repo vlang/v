@@ -488,6 +488,7 @@ fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
 		// TODO tmp hack for 0 pointers init
 		// &User{!} ==> 0
 		if p.tok == .not {
+			p.warn('use `$t.name(0)` instead of `&$t.name{!}`')
 			p.next()
 			p.gen('0')
 			p.check(.rcbr)
