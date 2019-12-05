@@ -223,7 +223,7 @@ fn test_right_with_n_bigger_than_array_size() {
 	// mut b := a[10..]
 	mut b := a.right(10)
 	assert b.len == 0
-	
+
 	// also check that the result of a.right
 	// is an array of the same type/element size as a:
 	b << 5
@@ -284,6 +284,10 @@ fn test_reverse() {
 const (
 	N = 5
 )
+
+struct Foooj {
+	a [N]int
+}
 
 fn test_fixed() {
 	mut nums := [4]int
@@ -368,7 +372,7 @@ fn test_single_element() {
 	assert a[0] == 1
 	assert a[1] == 2
 	println(a)
-}	
+}
 
 fn test_find_index() {
 	// string
@@ -452,7 +456,7 @@ fn test_filter() {
 	d := c.filter(it.len > 1)
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
-}	
+}
 
 fn test_map() {
 	a := [1, 2, 3, 4, 5, 6]
@@ -471,8 +475,8 @@ fn test_map() {
 	assert bools[0] == true
 	assert bools[1] == false
 	assert bools[2] == false
-	
-}	
+
+}
 
 fn test_array_str() {
 	numbers := [1, 2, 3]
@@ -502,7 +506,7 @@ fn test_sort() {
 	assert nums[2] == 42
 	assert nums[3] == 67
 	assert nums[4] == 108
-}	
+}
 
 
 
@@ -514,10 +518,10 @@ fn test_for_last() {
 		s += '$num'
 		if !last {
 			s += ', '
-			
-		}	
-	}	
+
+		}
+	}
 	s += ']'
 	assert s == '[1, 2, 3, 4]'
-}	
+}
 */

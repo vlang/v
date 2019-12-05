@@ -2,7 +2,7 @@ module main
 
 import (
 	os
-  testing
+	testing
 )
 
 pub fn main() {
@@ -29,8 +29,8 @@ pub fn main() {
 		eprintln('Use `v test-compiler` instead.')
 		exit(1)
 	}
-  
-	mut ts := testing.new_test_sesion(args_before)
+
+	mut ts := testing.new_test_session(args_before)
 	for targ in args_after.split(' ') {
 		if os.exists(targ) && targ.ends_with('_test.v') {
 			ts.files << targ

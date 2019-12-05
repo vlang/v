@@ -19,7 +19,7 @@ pub mut:
 	fail string
 }
 
-pub fn new_test_sesion(vargs string) TestSession {
+pub fn new_test_session(vargs string) TestSession {
 	return TestSession{
 		vexe: vexe_path()
 		vargs: vargs
@@ -49,6 +49,9 @@ pub fn (ts mut TestSession) test() {
 		file := os.realpath( relative_file )
 		$if windows {
 			if file.contains('sqlite') { continue }
+		}
+		$if !macos {
+			if file.contains('customer') { continue }
 		}
 		$if msvc {
 			if file.contains('asm') { continue }
@@ -108,11 +111,11 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present( parent_dir )
 	vargs := zargs.replace(vexe, '')
-	
+
 	eprintln(main_label)
 	eprintln('   v compiler args: "$vargs"')
-	
-	mut session := new_test_sesion( vargs )
+
+	mut session := new_test_session( vargs )
 	files := os.walk_ext(filepath.join(parent_dir, folder),'.v')
 	mains := files.filter(!it.contains('modules'))
 	mut rebuildable_mains := mains
@@ -148,8 +151,8 @@ pub fn building_any_v_binaries_failed() bool {
 	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
 	os.chdir( parent_dir )
-	
-	mut failed := false 
+
+	mut failed := false
 	v_build_commands := [
 
 		// '$vexe -o v_g             -g  v.v',
@@ -160,11 +163,11 @@ pub fn building_any_v_binaries_failed() bool {
 
 		'$vexe -o v_prod    -prod     v.v',
 	]
-	
+
 	mut bmark := benchmark.new_benchmark()
 	bok   := term.ok_message('OK')
 	bfail := term.fail_message('FAIL')
-	for cmd in v_build_commands { 
+	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
@@ -174,10 +177,10 @@ pub fn building_any_v_binaries_failed() bool {
 			continue
 		}
 		bmark.ok()
-		eprintln(bmark.step_message('$cmd => ${bok}'))		
+		eprintln(bmark.step_message('$cmd => ${bok}'))
 	}
 	bmark.stop()
 	eprintln( bmark.total_message( 'building v binaries' ) )
-	
+
 	return failed
 }

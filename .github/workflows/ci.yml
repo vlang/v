@@ -29,7 +29,7 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: |
-        brew install freetype glfw openssl
+        brew install freetype glfw openssl postgres
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make && ./v -o v v.v
@@ -37,6 +37,10 @@ jobs:
       run:  ./v -o v2 v.v && ./v2 -o v3 v.v
     - name: Test symlink
       run:  sudo ./v symlink
+    - name: Set up pg database
+      run: |
+        psql -U postgres -c 'create database customerdb;'
+        psql -d customerdb -f examples/database/pg/mydb.sql
     - name: Test v->c
       run: ./v test-compiler
     - name: Test v binaries
