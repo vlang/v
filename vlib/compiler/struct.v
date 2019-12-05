@@ -194,9 +194,10 @@ fn (p mut Parser) struct_decl() {
 		// `pub` access mod
 		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fspace()
-		field_type := p.get_type()
+		tt := p.get_type2()
+		field_type := tt.name
 		if field_type == name {
-			p.error_with_token_index( 'cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
+			p.error_with_token_index('cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
 		}
 		// Register ?option type
 		if field_type.starts_with('Option_') {

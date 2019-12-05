@@ -740,7 +740,7 @@ fn (p mut Parser) type_decl() {
 	if p.tok == .key_struct {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
-	parent := p.get_type3()
+	parent := p.get_type2()
 	nt_pair := p.table.cgen_name_type_pair(name, parent.name)
 	// TODO dirty C typedef hacks for DOOM
 	// Unknown type probably means it's a struct, and it's used before the struct is defined,

@@ -8,7 +8,7 @@ import (
 	strings
 )
 
-fn (p mut Parser) get_type3() Type{
+fn (p mut Parser) get_type2() Type{
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
@@ -188,6 +188,17 @@ fn (p mut Parser) get_type3() Type{
 	if is_question {
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
+	}
+
+	// Because the code uses * to see if it's a pointer
+	if typ == 'byteptr' {
+		typ = 'byte*'
+	}
+	if typ == 'voidptr' {
+		//if !p.builtin_mod && p.mod != 'os' && p.mod != 'gx' && p.mod != 'gg' && !p.pref.translated {
+			//p.error('voidptr can only be used in unsafe code')
+		//}
+		typ = 'void*'
 	}
 	/*
 	TODO this is not needed?
