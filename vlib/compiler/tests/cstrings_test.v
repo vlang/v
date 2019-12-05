@@ -1,9 +1,7 @@
 
-fn C.puts(charptr) int
-
 fn test_cstring(){
   h := c'world'
-  C.puts(c'hello')
-  C.puts(h)
+  C.strlen(c'hello') == 5
+  C.strlen(h) == 5
   assert true
 }
