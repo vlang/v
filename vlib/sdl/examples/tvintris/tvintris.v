@@ -224,19 +224,19 @@ mut:
 	font            voidptr
 }
 
-fn (sdl mut SdlContext) set_sdl_context(w int, h int, title string) {
+fn (sdlc mut SdlContext) set_sdl_context(w int, h int, title string) {
 	C.SDL_Init(C.SDL_INIT_VIDEO | C.SDL_INIT_AUDIO | C.SDL_INIT_JOYSTICK)
 	C.atexit(C.SDL_Quit)
 	C.TTF_Init()
 	C.atexit(C.TTF_Quit)
 	bpp := 32
-	sdl.create_window_and_renderer(w, h, 0, &sdl.window, &sdl.renderer)
-//	C.SDL_CreateWindowAndRenderer(w, h, 0, voidptr(&sdl.window), voidptr(&sdl.renderer))
-	C.SDL_SetWindowTitle(sdl.window, title.str)
-	sdl.w = w
-	sdl.h = h
-	sdl.screen = sdl.create_rgb_surface(0, w, h, bpp, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
-	sdl.texture = C.SDL_CreateTexture(sdl.renderer, C.SDL_PIXELFORMAT_ARGB8888, C.SDL_TEXTUREACCESS_STREAMING, w, h)
+	sdl.create_window_and_renderer(w, h, 0, &sdlc.window, &sdlc.renderer)
+//	C.SDL_CreateWindowAndRenderer(w, h, 0, voidptr(&sdlc.window), voidptr(&sdlc.renderer))
+	C.SDL_SetWindowTitle(sdlc.window, title.str)
+	sdlc.w = w
+	sdlc.h = h
+	sdlc.screen = sdl.create_rgb_surface(0, w, h, bpp, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
+	sdlc.texture = C.SDL_CreateTexture(sdlc.renderer, C.SDL_PIXELFORMAT_ARGB8888, C.SDL_TEXTUREACCESS_STREAMING, w, h)
 
 	C.Mix_Init(0)
 	C.atexit(C.Mix_Quit)
@@ -244,13 +244,13 @@ fn (sdl mut SdlContext) set_sdl_context(w int, h int, title string) {
 		println('couldn\'t open audio')
 	}
 	println('opening music $MusicName')
-	sdl.actx.music = C.Mix_LoadMUS(MusicName.str)
-	sdl.actx.waves[0] = C.Mix_LoadWAV(SndBlockName.str)
-	sdl.actx.waves[1] = C.Mix_LoadWAV(SndLineName.str)
-	sdl.actx.waves[2] = C.Mix_LoadWAV(SndDoubleName.str)
-	sdl.actx.volume = C.SDL_MIX_MAXVOLUME
-	if C.Mix_PlayMusic(sdl.actx.music, 1) != -1 {
-		C.Mix_VolumeMusic(sdl.actx.volume)
+	sdlc.actx.music = C.Mix_LoadMUS(MusicName.str)
+	sdlc.actx.waves[0] = C.Mix_LoadWAV(SndBlockName.str)
+	sdlc.actx.waves[1] = C.Mix_LoadWAV(SndLineName.str)
+	sdlc.actx.waves[2] = C.Mix_LoadWAV(SndDoubleName.str)
+	sdlc.actx.volume = C.SDL_MIX_MAXVOLUME
+	if C.Mix_PlayMusic(sdlc.actx.music, 1) != -1 {
+		C.Mix_VolumeMusic(sdlc.actx.volume)
 	}
 	njoy := C.SDL_NumJoysticks()
 	for i := 0; i < njoy; i++ {
@@ -258,9 +258,9 @@ fn (sdl mut SdlContext) set_sdl_context(w int, h int, title string) {
 		jn := tos_clone(sdl.joystick_name_for_index(i))
 		println('JOY NAME $jn')
 		for j := 0; j < NJOYMAX; j++ {
-			if sdl.jnames[j] == jn {
+			if sdlc.jnames[j] == jn {
 				println('FOUND JOYSTICK $j $jn ID=$i')
-				sdl.jids[j] = i
+				sdlc.jids[j] = i
 			}
 		}
 	}
@@ -270,11 +270,11 @@ fn (sdl mut SdlContext) set_sdl_context(w int, h int, title string) {
 		println('error initializing image library.')
 	}
 	println('opening logo $VLogo')
-	sdl.v_logo = img.load(VLogo)
-	if !isnil(sdl.v_logo) {
-//		println('got v_logo=$sdl.v_logo')
-		sdl.tv_logo = sdl.create_texture_from_surface(sdl.renderer, sdl.v_logo)
-//		println('got tv_logo=$sdl.tv_logo')
+	sdlc.v_logo = img.load(VLogo)
+	if !isnil(sdlc.v_logo) {
+//		println('got v_logo=$sdlc.v_logo')
+		sdlc.tv_logo = sdl.create_texture_from_surface(sdlc.renderer, sdlc.v_logo)
+//		println('got tv_logo=$sdlc.tv_logo')
 	}
 	C.SDL_JoystickEventState(C.SDL_ENABLE)
 }
