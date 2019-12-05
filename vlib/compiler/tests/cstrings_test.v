@@ -1,7 +1,8 @@
 
 fn test_cstring(){
-  h := c'world'
-  C.strlen(c'hello') == 5
-  C.strlen(h) == 5
-  assert true
+  w := c'world'
+  hlen := C.strlen(c'hello')
+  wlen := C.strlen(w)
+  assert  hlen == 5
+  assert  wlen == 5
 }
