@@ -10,7 +10,7 @@ module image
 //////////////////////////////////////////////////////////
 // SDL_Image.h
 //////////////////////////////////////////////////////////
-//fn C.IMG_Load_RW(logo &vsdl2.RwOps, free_src int) &vsdl2.Surface
+//fn C.IMG_Load_RW(logo &sdl.RwOps, free_src int) &sdl.Surface
 fn C.IMG_Init(flags int) int
 fn C.IMG_Quit()
 fn C.IMG_Load(file byteptr) voidptr
@@ -23,7 +23,7 @@ pub fn quit() {
 	C.IMG_Quit()
 }
 
-pub fn load(file string) &vsdl2.Surface {
+pub fn load(file string) &sdl.Surface {
 	res := C.IMG_Load(file.str)
 	return res
 }
