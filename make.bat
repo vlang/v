@@ -85,6 +85,10 @@ if %ERRORLEVEL% NEQ 0 (
 del v2.exe
 del v3.exe
 rd /s /q vc
+del v.pdb
+del v3.ilk
+del v3.pdb
+del vc140.pdb
 
 goto :success
 
