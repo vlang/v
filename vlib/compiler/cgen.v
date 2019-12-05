@@ -22,6 +22,7 @@ mut:
 	includes     []string
 	thread_args  []string
 	consts       []string
+	const_defines []string
 	fns          []string
 	so_fns       []string
 	consts_init  []string
@@ -119,7 +120,7 @@ fn (p mut Parser) tmp_expr() (string, string) {
 	p.cgen.is_tmp = true
 	//
 	typ := p.bool_expression()
-	
+
 	res := p.cgen.tmp_line
 	if p.cgen.prev_tmps.len > 0 {
 		p.cgen.tmp_line = p.cgen.prev_tmps.last()
@@ -175,7 +176,7 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 fn (g mut CGen) insert_before(val string) {
 	if g.nogen {
 		return
-	}	
+	}
 	prev := g.lines[g.lines.len - 1]
 	g.lines[g.lines.len - 1] = '$prev \n $val \n'
 }
@@ -316,7 +317,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		'_solaris.v'           { '#ifdef __sun' }
 		'_haiku.v'             { '#ifdef __haiku__' }
 		else {
-			
+
 			//verror('bad platform_postfix "$name"')
 			// TODO
 			''
@@ -324,7 +325,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 	}
 	if s == '' {
 		verror('bad platform_postfix "$name"')
-	}	
+	}
 	return s
 }
 
@@ -354,7 +355,7 @@ fn (v &V) type_definitions() string {
 			types_to_c(types_sorted, v.table)
 	return res
 }
-	
+
 // sort structs by dependant fields
 fn sort_structs(types []Type) []Type {
 	mut dep_graph := new_dep_graph()
@@ -422,7 +423,7 @@ fn (v &V) interface_table() string {
                }
               if t.gen_types.len > 0 {
 //              	methods = '{TCCSKIP(0)}'
-//              }	
+//              }
                sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
 '{ $methods }; ')
 }

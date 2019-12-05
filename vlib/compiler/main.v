@@ -316,6 +316,7 @@ pub fn (v mut V) compile() {
 	}
 	// All definitions
 	mut def := strings.new_builder(10000)// Avoid unnecessary allocations
+	def.writeln(cgen.const_defines.join_lines())
 	$if !js {
 		def.writeln(cgen.includes.join_lines())
 		def.writeln(cgen.typedefs.join_lines())

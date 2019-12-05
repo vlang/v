@@ -75,8 +75,13 @@ fn (p mut Parser) get_type2() Type{
 	for p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
-		if p.tok == .number {
-			typ += '[$p.lit]'
+		if p.tok == .number || (p.tok == .name && !p.inside_const) {
+			if p.tok == .name {
+				typ += '[${p.mod}__$p.lit]'
+
+			} else {
+				typ += '[$p.lit]'
+			}
 			p.next()
 		}
 		else {

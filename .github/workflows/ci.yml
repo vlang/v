@@ -39,6 +39,7 @@ jobs:
       run:  sudo ./v symlink
     - name: Set up pg database
       run: |
+        brew services start postgresql
         psql -U postgres -c 'create database customerdb;'
         psql -d customerdb -f examples/database/pg/mydb.sql
     - name: Test v->c

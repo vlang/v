@@ -708,7 +708,7 @@ fn (p mut Parser) const_decl() {
 			// Do not do this when building a module, otherwise the consts
 			// will not be accessible.
 			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
-				p.cgen.consts << '#define $name $p.cgen.cur_line'
+				p.cgen.const_defines << '#define $name $p.cgen.cur_line'
 				p.cgen.resetln('')
 				p.fgen_nl()
 				continue
