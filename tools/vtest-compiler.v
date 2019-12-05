@@ -4,7 +4,7 @@ import (
 	os
 	testing
 	benchmark
-  filepath
+	filepath
 )  
 
 pub const (
@@ -56,6 +56,7 @@ fn v_test_compiler(vargs string){
 	eprintln('')
 	building_examples_failed := testing.v_build_failing(vargs, 'examples')
 
+	eprintln('')
 	building_live_failed := testing.v_build_failing(vargs + '-live', 
                                     filepath.join( 'examples', 'hot_reload'))
 
