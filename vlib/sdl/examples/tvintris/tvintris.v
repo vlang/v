@@ -11,8 +11,8 @@ import rand
 import time
 import os
 import math
-import nsauzede.vsdl2
-import nsauzede.vsdl2.image as img
+import sdl
+import sdl.image as img
 [inline] fn sdl_fill_rect(s &vsdl2.Surface,r &vsdl2.Rect,c &vsdl2.Color){vsdl2.fill_rect(s,r,c)}
 
 const (
