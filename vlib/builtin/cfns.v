@@ -110,7 +110,7 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 fn C.RegCloseKey()
 fn C.RegQueryValueEx() voidptr
 fn C.RemoveDirectory() int
-fn C.GetStdHandle() int
+fn C.GetStdHandle() voidptr
 fn C.SetConsoleMode()
 fn C.GetConsoleMode() int
 fn C._putws()
@@ -131,7 +131,7 @@ fn C._putenv() int
 fn C._waccess() int
 fn C._wremove()
 fn C.ReadConsole()
-fn C.fgetws() int
+fn C.fgetws() voidptr
 fn C.GetModuleFileName() int
 fn C._wchdir()
 fn C._wgetcwd() int

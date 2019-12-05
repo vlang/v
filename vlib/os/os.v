@@ -838,7 +838,7 @@ pub fn is_dir(path string) bool {
 	$if windows {
 		_path := path.replace('/', '\\')
 		attr := C.GetFileAttributesW(_path.to_wide())
-		if int(attr) == C.INVALID_FILE_ATTRIBUTES {
+		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 			return false
 		}
 		if int(attr) & C.FILE_ATTRIBUTE_DIRECTORY != 0 {
