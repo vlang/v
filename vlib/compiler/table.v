@@ -715,7 +715,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 			return false
 		}
 		else {
-			p.error('expected type `$expected`, but got `$got`')
+			p.error('cannot convert `$got` to `$expected`')
 		}
 	}
 	return true

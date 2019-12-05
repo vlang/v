@@ -92,3 +92,15 @@ fn test_cmp() {
 	assert 1 ⩾ 0
 }
 */
+
+type myint int
+type mystring string
+
+fn test_int_alias() {
+	/*
+	i := myint(2)
+	s := mystring('hi')
+	ss := s + '!'
+	assert i + 10 == 12
+	*/
+}
