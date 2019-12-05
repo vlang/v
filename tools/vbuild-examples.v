@@ -17,7 +17,8 @@ fn main() {
 	vexe := args[1]
 	ret := os.system('$vexe -live examples/hot_reload/message.v')
 	if ret != 0 {
-		println('-live message.v failed')
+		println('v -live message.v failed')
 		exit(1)
 	}
+	println('v -live message.v is ok')
 }

@@ -130,7 +130,7 @@ TODO
 #endif
 */
 	ptr := C.malloc(n)
-	if isnil(ptr) {
+	if ptr == 0 {
 		panic('malloc($n) failed')
 	}
 	return ptr
