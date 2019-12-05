@@ -284,6 +284,9 @@ pub fn (v mut V) compile() {
 	if '-debug_alloc' in os.args {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
+	if v.pref.is_live && v.os != .windows {
+		cgen.includes << '#include <dlfcn.h>'
+	}
 	//cgen.genln('/*================================== FNS =================================*/')
 	cgen.genln('// this line will be replaced with definitions')
 	mut defs_pos := cgen.lines.len - 1
