@@ -68,14 +68,14 @@ fn (s &Scanner) warn(msg string) {
 }
 
 fn (s &Scanner) warn_with_col(msg string, col int) {
-	fullpath := s.get_error_filepath()		
+	fullpath := s.get_error_filepath()
 	color_on := s.is_color_output_on()
 	final_message := if color_on { term.bold(term.bright_blue( msg )) } else { msg }
 	eprintln('warning: ${fullpath}:${s.line_nr+1}:${col}: $final_message')
 }
 
 fn (s &Scanner) error_with_col(msg string, col int) {
-	fullpath := s.get_error_filepath()		
+	fullpath := s.get_error_filepath()
 	color_on := s.is_color_output_on()
 	final_message := if color_on { term.red( term.bold( msg ) ) } else { msg }
 	// The filepath:line:col: format is the default C compiler
@@ -85,7 +85,7 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	// NB: using only the filename may lead to inability of IDE/editors
 	// to find the source file, when the IDE has a different working folder than v itself.
 	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
-	
+
 	if s.should_print_line_on_error && s.nlines > 0 {
 		context_start_line := imax(0,        (s.line_nr - error_context_before    ))
 		context_end_line   := imin(s.nlines-1, (s.line_nr + error_context_after + 1 ))
@@ -98,7 +98,7 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
-			mut pointerline := []string		
+			mut pointerline := []string
 			for i , c in line {
 				if i < col {
 					x := if c.is_space() { c } else { ` ` }
@@ -140,7 +140,7 @@ fn (s &Scanner) get_error_filepath() string {
 }
 
 fn (s &Scanner) is_color_output_on() bool {
-	return s.should_print_errors_in_color && term.can_show_color_on_stderr()	
+	return s.should_print_errors_in_color && term.can_show_color_on_stderr()
 }
 
 fn (p mut Parser) print_error_context(){
@@ -171,12 +171,17 @@ fn (p mut Parser) print_error_context(){
 	// p.scanner.debug_tokens()
 }
 
-fn normalized_error( s string ) string {
+fn normalized_error(s string) string {
 	// Print `[]int` instead of `array_int` in errors
-	return s.replace('array_', '[]')
+	mut res := s.replace('array_', '[]')
 	.replace('__', '.')
 	.replace('Option_', '?')
 	.replace('main.', '')
+	if res.contains('_V_MulRet_') {
+		res = res.replace('_V_MulRet_', '(').replace('_V_', ', ')
+		res = res[..res.len-1] + ')"'
+	}
+	return res
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -238,7 +243,7 @@ fn (p mut Parser) mutable_arg_error(i int, arg Var, f Fn) {
 	}
 	p.error('`$arg.name` is a mutable argument, you need to provide `mut`: ' +
 			'`$f.name($dots_example)`')
-}	
+}
 
 const (
 	warn_match_arrow = '=> is no longer needed in match statements, use\n' +
@@ -250,7 +255,7 @@ const (
 	//make_receiver_mutable =
 
 	err_used_as_value = 'used as value'
-	
+
 	and_or_error = 'use `()` to make the boolean expression clear\n' +
 'for example: `(a && b) || c` instead of `a && b || c`'
 )
