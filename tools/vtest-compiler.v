@@ -55,6 +55,9 @@ fn v_test_compiler(vargs string){
 	eprintln('')
 	building_examples_failed := testing.v_build_failing(vargs, 'examples')
 
+	building_live_failed := testing.v_build_failing(vargs + '-live', 
+                                    filepath.join( 'examples', 'hot_reload'))
+
 	eprintln('')
 	v_module_install_cmd := '$vexe install nedpals.args'
 	eprintln('\nInstalling a v module with: $v_module_install_cmd ')
@@ -69,7 +72,10 @@ fn v_test_compiler(vargs string){
 	vmark.stop()
 	eprintln( 'Installing a v module took: ' + vmark.total_duration().str() + 'ms')
 	
-	if building_tools_failed || compiler_test_session.failed || building_examples_failed {
+	if building_tools_failed || 
+     compiler_test_session.failed || 
+     building_examples_failed || 
+     building_live_failed {
 		exit(1)
 	}
 	
