@@ -328,7 +328,7 @@ fn (p mut Parser) name_expr() string {
 			mod: p.mod
 			func: f
 		}
-		p.table.register_type2(fn_typ)
+		p.table.register_type(fn_typ)
 		p.gen(p.table.fn_gen_name(f))
 		p.next()
 		return f.typ_str() //'void*'

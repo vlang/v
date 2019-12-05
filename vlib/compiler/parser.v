@@ -752,7 +752,7 @@ fn (p mut Parser) type_decl() {
 		''
 	}
 	p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
-	p.table.register_type2(Type{
+	p.table.register_type(Type{
 		name: name
 		parent: parent.name
 		mod: p.mod
@@ -931,7 +931,7 @@ fn (p mut Parser) get_type() string {
 			mod: p.mod
 			func: f
 		}
-		p.table.register_type2(fn_typ)
+		p.table.register_type(fn_typ)
 		return f.typ_str()
 	}
 	// arrays ([]int)

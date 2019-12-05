@@ -33,7 +33,7 @@ fn (p mut Parser) get_type2() Type {
 			func: f
 			cat: .func
 		}
-		p.table.register_type2(fn_typ)
+		p.table.register_type(fn_typ)
 		return fn_typ
 	}
 	// arrays ([]int)

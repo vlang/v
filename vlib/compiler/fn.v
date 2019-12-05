@@ -473,7 +473,7 @@ fn (p mut Parser) fn_decl() {
 				mod: p.mod
 				is_placeholder: true
 			}
-			p.table.register_type2(receiver_t)
+			p.table.register_type(receiver_t)
 		}
 		p.add_method(receiver_t.name, f)
 	}
@@ -1346,7 +1346,7 @@ fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
 	}
 	mut varg_len := len
 	if !p.table.known_type(vargs_struct) {
-		p.table.register_type2(varg_type)
+		p.table.register_type(varg_type)
 		p.cgen.typedefs << 'typedef struct $vargs_struct $vargs_struct;\n'
 	} else {
 		ex_typ := p.table.find_type(vargs_struct)
@@ -1418,7 +1418,7 @@ fn (p mut Parser) fn_gen_caller_vargs(f &Fn, varg_type string, values []string) 
 fn (p mut Parser) register_multi_return_stuct(types []string) string {
 	typ := '_V_MulRet_' + types.join('_V_').replace('*', '_PTR_')
 	if p.table.known_type(typ) { return typ }
-	p.table.register_type2(Type{
+	p.table.register_type(Type{
 		cat: .struct_,
 		name: typ,
 		mod: p.mod

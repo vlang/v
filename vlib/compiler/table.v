@@ -106,7 +106,7 @@ mut:
 	enum_vals []string
 	gen_types []string
 	default_vals []string // `struct Foo { bar int = 2 }`
-	// This field is used for types that are not defined yet but are known to exist.
+	// `is_placeholder` is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
 	is_placeholder bool
@@ -397,7 +397,7 @@ fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
 		mod: p.mod
 		is_public: true
 	}
-	p.table.register_type2(typ)
+	p.table.register_type(typ)
 }
 
 fn (t mut Table) register_type_with_parent(typ, parent string) {
@@ -412,7 +412,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 	}
 }
 
-fn (t mut Table) register_type2(typ Type) {
+fn (t mut Table) register_type(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}

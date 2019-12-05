@@ -103,7 +103,7 @@ fn (p mut Parser) struct_decl() {
 	}
 	// Struct `C.Foo` declaration, no body
 	if is_c && is_struct && p.tok != .lcbr {
-		p.table.register_type2(typ)
+		p.table.register_type(typ)
 		return
 	}
 	p.fspace()
@@ -126,7 +126,7 @@ fn (p mut Parser) struct_decl() {
 
 
 	if !is_ph && p.first_pass() {
-		p.table.register_type2(typ)
+		p.table.register_type(typ)
 		//println('registering 1 nrfields=$typ.fields.len')
 	}
 

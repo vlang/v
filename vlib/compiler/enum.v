@@ -8,7 +8,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
-	}	
+	}
 	p.check(.key_enum)
 	p.fspace()
 	mut enum_name	:= p.check_name()
@@ -47,7 +47,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 				p.next()
 				enum_assign_tidx = p.cur_tok_index()
 				p.error_with_token_index('only numbers are allowed in enum initializations', enum_assign_tidx)
-			}			
+			}
 		}
 		if p.pass == .main {
 			p.cgen.consts << '#define $name $val'
@@ -57,7 +57,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		}
 		val++
 	}
-	p.table.register_type2(Type {
+	p.table.register_type(Type {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
