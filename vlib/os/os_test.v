@@ -207,11 +207,11 @@ fn cleanup_leftovers(){
 	
 	// possible leftovers from test_cp_r
 	os.rm('ex/ex2/ex2.txt')
-	os.rm('ex/ex2')
+	os.rmdir('ex/ex2')
 	os.rm('ex/ex1.txt')
-	os.rm('ex')
+	os.rmdir('ex')
 	os.rm('ex2/ex2.txt')
-	os.rm('ex2')
+	os.rmdir('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
 }
