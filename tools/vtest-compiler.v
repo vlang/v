@@ -34,7 +34,7 @@ fn v_test_compiler(vargs string){
 	*/
 	
 	// Make sure v.c can be compiled without warnings
-	$if mac {
+	$if macos {
 		if os.exists('/v.v') {
 			os.system('$vexe -o v.c v.v')
 			if os.system('cc -Werror v.c') != 0 {
