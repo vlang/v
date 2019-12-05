@@ -59,6 +59,7 @@ pub fn (ts mut TestSession) test() {
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		cmd := '"$ts.vexe" $ts.vargs "$file"'
+		//eprintln('>>> v cmd: $cmd')
 
 		ts.benchmark.step()
 		if show_stats {
@@ -100,14 +101,17 @@ pub fn vlib_should_be_present( parent_dir string ) {
 	}
 }
 
-pub fn v_build_failing(vargs string, folder string) bool {
+pub fn v_build_failing(zargs string, folder string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present( parent_dir )
-  
+	vargs := zargs.replace(vexe, '')
+	
 	eprintln(main_label)
+	eprintln('   v compiler args: "$vargs"')
+	
 	mut session := new_test_sesion( vargs )
 	files := os.walk_ext(filepath.join(parent_dir, folder),'.v')
 	mains := files.filter(!it.contains('modules'))
