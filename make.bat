@@ -107,3 +107,5 @@ echo Exiting from error
 exit /b 1
 
 :success
+echo V build OK!
+v -v
