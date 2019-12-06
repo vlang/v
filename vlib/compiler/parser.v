@@ -1276,7 +1276,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 		p.comp_time()
 	}
 	.key_if {
-		p.if_st(false, 0)
+		p.if_statement(false, 0)
 	}
 	.key_for {
 		p.for_st()
@@ -2637,121 +2637,6 @@ fn (p mut Parser) get_tmp_counter() int {
 	return p.tmp_cnt
 }
 
-
-fn (p mut Parser) if_st(is_expr bool, elif_depth int) string {
-	if is_expr {
-		//if p.fileis('if_expr') {
-			//println('IF EXPR')
-		//}
-		p.inside_if_expr = true
-		p.gen('((')
-	}
-	else {
-		p.gen('if (')
-	}
-	p.next()
-	p.fspace()
-	// `if a := opt() { }` syntax
-	if p.tok == .name && p.peek() == .decl_assign {
-		p.check_not_reserved()
-		option_tmp := p.get_tmp()
-		var_name := p.lit
-		p.next()
-		p.check(.decl_assign)
-		p.is_var_decl = true
-		option_type, expr := p.tmp_expr()// := p.bool_expression()
-		p.is_var_decl = false
-		typ := option_type[7..]
-		// Option_User tmp = get_user(1);
-		// if (tmp.ok) {
-		//   User user = *(User*)tmp.data;
-		//   [statements]
-		// }
-		p.cgen.insert_before('$option_type $option_tmp = $expr; ')
-		p.check(.lcbr)
-		p.genln(option_tmp + '.ok) {')
-		p.genln('$typ $var_name = *($typ*) $option_tmp . data;')
-		p.register_var(Var {
-			name: var_name
-			typ: typ
-			is_mut: false // TODO
-			//is_alloc: p.is_alloc || typ.starts_with('array_')
-			//line_nr: p.tokens[ var_token_idx ].line_nr
-			//token_idx: var_token_idx
-		})
-		p.statements()
-		p.returns = false
-		return 'void'
-	}	else {
-		p.check_types(p.bool_expression(), 'bool')
-	}
-	if is_expr {
-		p.gen(') ? (')
-	}
-	else {
-		p.genln(') {')
-	}
-	p.fspace()
-	p.check(.lcbr)
-	mut typ := ''
-	// if { if hack
-	if p.tok == .key_if && p.inside_if_expr {
-		typ = p.factor()
-		p.next()
-	}
-	else {
-		typ = p.statements()
-	}
-	if_returns := p.returns
-	p.returns = false
-	if p.tok == .key_else {
-		if !p.inside_if_expr {
-			p.fgen_nl()
-		}
-		p.check(.key_else)
-		p.fspace()
-		if p.tok == .key_if {
-			if is_expr {
-				p.gen(') : (')
-				nested := p.if_st(is_expr, elif_depth + 1)
-				nested_returns := p.returns
-				p.returns = if_returns && nested_returns
-				return nested
-			}
-			else {
-				p.gen(' else ')
-				nested := p.if_st(is_expr, 0)
-				nested_returns := p.returns
-				p.returns = if_returns && nested_returns
-				return nested
-			}
-			// return ''
-		}
-		if is_expr {
-			p.gen(') : (')
-		}
-		else {
-			p.genln(' else { ')
-		}
-		p.check(.lcbr)
-		// statements() returns the type of the last statement
-		first_typ := typ
-		typ = p.statements()
-		p.inside_if_expr = false
-		if is_expr {
-			p.check_types(first_typ, typ)
-			p.gen(strings.repeat(`)`, 2 * (elif_depth + 1)))
-		}
-		else_returns := p.returns
-		p.returns = if_returns && else_returns
-		return typ
-	}
-	p.inside_if_expr = false
-	if p.fileis('test_test') {
-		println('if ret typ="$typ" line=$p.scanner.line_nr')
-	}
-	return typ
-}
 
 fn (p mut Parser) assert_statement() {
 	if p.first_pass() {

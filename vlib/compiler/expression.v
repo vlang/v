@@ -743,7 +743,7 @@ fn (p mut Parser) factor() string {
 		return p.assoc()
 	}
 	.key_if {
-		typ = p.if_st(true, 0)
+		typ = p.if_statement(true, 0)
 		return typ
 	}
 	.key_match {
