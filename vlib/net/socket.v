@@ -312,6 +312,19 @@ pub fn (s Socket) read_line() string {
 	return res
 }
 
+// TODO
+pub fn (s Socket) read_all() string {
+	mut buf := [MAX_READ]byte // where C.recv will store the network data
+	mut res := '' // The final result, including the ending \n.
+	for {
+		n := C.recv(s.sockfd, buf, MAX_READ-1, 0)
+		if n == -1 { return res }
+		if n == 0 {	return res }
+		res += tos_clone(buf)
+	}
+	return res
+}
+
 pub fn (s Socket) get_port() int {
 	mut addr := C.sockaddr_in {}
 	size := 16 // sizeof(sockaddr_in)
