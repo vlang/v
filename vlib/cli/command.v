@@ -79,7 +79,7 @@ fn (cmd mut Command) parse_flags() {
 			mut flag := &cmd.flags[i]
 			if flag.matches(cmd.args) {
 				found = true
-				mut args := flag.parse(cmd.args) or {	// TODO: fix once options types can be assigned to struct variables
+				args := flag.parse(cmd.args) or {	// TODO: fix once options types can be assigned to struct variables
 					println('failed to parse flag ${cmd.args[0]}: ${err}')
 					exit(1)
 				}
@@ -95,7 +95,7 @@ fn (cmd mut Command) parse_flags() {
 	}
 }
 
-fn (cmd mut Command) parse_commands() {
+fn (cmd &Command) parse_commands() {
 	flags := cmd.flags
 	global_flags := flags.filter(it.global) // TODO: fix once filter can be applied to struct variable
 
@@ -131,7 +131,7 @@ fn (cmd mut Command) parse_commands() {
 	}
 }
 
-fn (cmd mut Command) check_help_flag() {
+fn (cmd &Command) check_help_flag() {
 	if cmd.disable_help {
 		return
 	}
@@ -146,7 +146,7 @@ fn (cmd mut Command) check_help_flag() {
 	}
 }
 
-fn (cmd mut Command) check_version_flag() {
+fn (cmd &Command) check_version_flag() {
 	if cmd.disable_version {
 		return
 	}
@@ -161,7 +161,7 @@ fn (cmd mut Command) check_version_flag() {
 	}
 }
 
-fn (cmd mut Command) check_required_flags() {
+fn (cmd &Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value == '' {
 			full_name := cmd.full_name()
