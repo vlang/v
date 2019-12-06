@@ -170,6 +170,37 @@ fn test_tmpdir(){
 	os.rm(tfile)
 }
 
+
+fn test_make_symlink_check_is_link_and_remove_symlink() {
+   $if windows {
+       // TODO
+       assert true
+       return
+   }
+
+   folder  := 'tfolder'
+   symlink := 'tsymlink'
+
+   os.rm(symlink) 
+   os.rm(folder)
+
+   os.mkdir(folder) or { panic(err) }
+   folder_contents := os.ls(folder) or { panic(err) }
+   assert folder_contents.len == 0
+
+   os.system('ln -s $folder $symlink')
+   assert os.is_link(symlink) == true
+
+   os.rm(symlink) 
+   os.rm(folder)
+   
+   folder_exists := os.is_dir(folder)
+   assert folder_exists == false
+   
+   symlink_exists := os.is_link(symlink)
+   assert symlink_exists == false
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {
