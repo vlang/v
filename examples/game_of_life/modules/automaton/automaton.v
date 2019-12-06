@@ -74,7 +74,7 @@ pub fn (aa mut Automaton) update() {
 			aa.new_field.set(x,y, if v { 1 } else { 0 })
 		}
 	}
-	mut tmp := aa.field
+	tmp := aa.field
 	aa.field = aa.new_field
 	aa.new_field = tmp
 }
