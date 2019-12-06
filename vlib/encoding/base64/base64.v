@@ -48,7 +48,7 @@ pub fn encode(data string) string {
  * @return the actual size of the decoded data in the buffer.
  * NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
  */
-pub fn decode_in_buffer(data &string, buffer mut byteptr) int {
+pub fn decode_in_buffer(data &string, buffer byteptr) int {
 	mut padding := 0
 	if data.ends_with('=') {
 		if data.ends_with('==') {
