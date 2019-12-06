@@ -38,3 +38,14 @@ fn test_big_sb() {
 	
 }	
 
+fn test_byte_write() {
+	mut sb := strings.new_builder(100)
+	temp_str := "byte testing"
+	mut count := 0
+	for word in temp_str {
+		sb.write_b(word)
+		count += 1
+		assert count == sb.len
+	}
+	assert sb.str() == temp_str
+}
