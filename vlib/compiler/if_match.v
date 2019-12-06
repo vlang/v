@@ -258,6 +258,7 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			name: var_name
 			typ: typ
 			is_mut: false // TODO
+			is_used: true // TODO
 			//is_alloc: p.is_alloc || typ.starts_with('array_')
 			//line_nr: p.tokens[ var_token_idx ].line_nr
 			//token_idx: var_token_idx
