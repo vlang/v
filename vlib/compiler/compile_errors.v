@@ -213,8 +213,8 @@ fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 	s.last_nl_pos = scp.last_nl_pos
 }
 
-fn (s mut Scanner) get_last_nl_from_pos(_pos int) int {
-	mut pos := if _pos >= s.text.len { s.text.len-1 } else { _pos }
+fn (s &Scanner) get_last_nl_from_pos(_pos int) int {
+	pos := if _pos >= s.text.len { s.text.len-1 } else { _pos }
 	for i := pos; i >= 0; i-- {
 		if s.text[i] == `\n` {
 			return i
@@ -223,7 +223,7 @@ fn (s mut Scanner) get_last_nl_from_pos(_pos int) int {
 	return 0
 }
 
-fn (s mut Scanner) get_scanner_pos_of_token(tok &Token) ScannerPos {
+fn (s &Scanner) get_scanner_pos_of_token(tok &Token) ScannerPos {
 	return ScannerPos{
 		pos: tok.pos
 		line_nr: tok.line_nr

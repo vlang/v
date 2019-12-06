@@ -72,7 +72,7 @@ fn (a []TypeInst) str() string {
 	return r.str()
 }
 
-fn (p mut Parser) find_var_or_const(name string) ?Var {
+fn (p &Parser) find_var_or_const(name string) ?Var {
 	if p.known_var(name) {
 		return p.find_var(name)
 	}
@@ -150,14 +150,14 @@ fn (p mut Parser) mark_arg_moved(v Var) {
 	p.table.fns[p.cur_fn.name] = p.cur_fn
 }
 
-fn (p mut Parser) known_var(name string) bool {
+fn (p &Parser) known_var(name string) bool {
 	_ = p.find_var(name) or {
 		return false
 	}
 	return true
 }
 
-fn (p mut Parser) known_var_check_new_var(name string) bool {
+fn (p &Parser) known_var_check_new_var(name string) bool {
 	_ = p.find_var_check_new_var(name) or {
 		return false
 	}
@@ -561,15 +561,18 @@ fn (p mut Parser) fn_decl() {
 		// p.error('unclosed {')
 	}
 	// Make sure all vars in this function are used (only in main for now)
+	/*
 	if p.mod != 'main' {
 		p.genln('}')
 		return
 	}
+	*/
 	p.genln('}')
-	p.check_unused_variables()
-	p.set_current_fn( EmptyFn )
+	if !p.builtin_mod && p.mod != 'os' {
+		p.check_unused_and_mut_vars()
+	}
+	p.set_current_fn(EmptyFn)
 	p.returns = false
-
 }
 
 [inline]
@@ -611,7 +614,7 @@ fn (p &Parser) get_linkage_prefix() string {
 	}
 }
 
-fn (p mut Parser) check_unused_variables() {
+fn (p mut Parser) check_unused_and_mut_vars() {
 	for var in p.local_vars {
 		if var.name == '' {
 			break
@@ -1365,7 +1368,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string, []string) {
 		return '', []string
 	}
 	last_arg := f.args.last()
-	mut varg_def_type := last_arg.typ[3..]
+	//varg_def_type := last_arg.typ[3..]
 	mut types := []string
 	mut values := []string
 	for p.tok != .rpar {
@@ -1450,7 +1453,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	if !new_inst {
 		rename_generic_fn_instance(mut f, ti)
-		_f := p.table.find_fn(f.name) or {
+		_ = p.table.find_fn(f.name) or {
 			p.error('function instance `$f.name` not found')
 			return
 		}

@@ -44,6 +44,7 @@ mut:
 }
 
 pub fn (ctx Context) html(html string) {
+	//println('$html HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
 }
 
@@ -64,10 +65,11 @@ pub fn (ctx Context) not_found(s string) {
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
+	//println('Set-Cookie $key=$val')
 	ctx.add_header('Set-Cookie', '$key=$val')
 }
 
-pub fn (ctx mut Context) get_cookie(key string) ?string { // TODO refactor
+pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	cookie_header := ctx.get_header('Cookie')
 	cookie := if cookie_header.contains(';') {
 		cookie_header.find_between('$key=', ';')
@@ -81,10 +83,13 @@ pub fn (ctx mut Context) get_cookie(key string) ?string { // TODO refactor
 }
 
 fn (ctx mut Context) add_header(key, val string) {
-	ctx.headers = ctx.headers + if ctx.headers == '' { '$key: val' } else { '\r\n$key: val' }
+	//println('add_header($key, $val)')
+	ctx.headers = ctx.headers +
+		if ctx.headers == '' { '$key: $val' } else { '\r\n$key: $val' }
+	//println(ctx.headers)
 }
 
-fn (ctx mut Context) get_header(key string) string {
+fn (ctx &Context) get_header(key string) string {
 	return ctx.headers.find_between('\r\n$key: ', '\r\n')
 }
 
@@ -147,11 +152,11 @@ pub fn run<T>(app mut T, port int) {
 				line := conn.read_line()
 				if line == '' || line == '\r\n' {
 					break
-				}	
+				}
 				//if line.contains('POST') || line == '' {
 					//break
-				//}	
-			}	
+				//}
+			}
 			line := conn.read_line()
 			app.vweb.parse_form(line)
 		}

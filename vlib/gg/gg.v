@@ -275,8 +275,8 @@ fn todo_remove_me(cfg Cfg, scale int) {
 	if !cfg.use_ortho {
 		return
 	}
-	mut width := cfg.width * scale
-	mut height := cfg.height * scale
+	width := cfg.width * scale
+	height := cfg.height * scale
 	font_size := cfg.font_size * scale
 	gl.enable(C.GL_BLEND)
 	//# glBlendFunc(C.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

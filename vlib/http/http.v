@@ -137,8 +137,8 @@ pub fn (req &Request) do() ?Response {
 fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
 	host_name := url.hostname()
 	scheme := url.scheme
-	mut p := url.path.trim_left('/')
-	mut path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
+	p := url.path.trim_left('/')
+	path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http'  { nport = 80  }

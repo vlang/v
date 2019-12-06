@@ -265,7 +265,7 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	p.check(.dollar)
 	var := p.check_name()
 	mut j := 0
-	for i, method in typ.methods {
+	for method in typ.methods {
 		if method.typ != 'void' {
 
 			continue

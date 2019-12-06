@@ -12,7 +12,7 @@ fn (p mut Parser) get_type2() Type{
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
-	mut cat := TypeCategory.struct_
+	cat := TypeCategory.struct_
 	// multiple returns
 	if p.tok == .lpar {
 		//p.warn('`()` are no longer necessary in multiple returns' +

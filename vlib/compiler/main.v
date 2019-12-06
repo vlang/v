@@ -133,7 +133,7 @@ pub mut:
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
-pub fn (v mut V) finalize_compilation(){
+pub fn (v &V) finalize_compilation(){
 	// TODO remove
 	if v.pref.autofree {
 		/*
@@ -1184,7 +1184,7 @@ pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path()
 	// can return it later to whoever needs it:
-	mut vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.realpath( [vroot_path, vname].join(os.path_separator) ), true)
 }
 

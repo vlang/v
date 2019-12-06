@@ -15,7 +15,7 @@ import (
 	encoding.binary
 )
 
-const (
+pub const (
 	// size is the size, in bytes, of a SHA-512 checksum.
 	size = 64
 	// size224 is the size, in bytes, of a SHA-512/224 checksum.
@@ -183,7 +183,7 @@ fn (d mut Digest) write(p_ []byte) int {
 	return nn
 }
 
-fn (d mut Digest) sum(b_in []byte) []byte {
+fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
@@ -237,7 +237,7 @@ fn (d mut Digest) checksum() []byte {
 	}
 
 	mut digest := [byte(0)].repeat(size)
-	
+
 	binary.big_endian_put_u64(mut digest, d.h[0])
 	binary.big_endian_put_u64(mut digest[8..], d.h[1])
 	binary.big_endian_put_u64(mut digest[16..], d.h[2])
@@ -264,7 +264,7 @@ pub fn sum384(data []byte) []byte {
 	mut d := new_digest(.sha384)
 	d.write(data)
 	sum := d.checksum()
-	mut sum384 := [byte(0)].repeat(size384)
+	sum384 := [byte(0)].repeat(size384)
 	copy(sum384, sum[..size384])
 	return sum384
 }
@@ -274,7 +274,7 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := new_digest(.sha512_224)
 	d.write(data)
 	sum := d.checksum()
-	mut sum224 := [byte(0)].repeat(size224)
+	sum224 := [byte(0)].repeat(size224)
 	copy(sum224, sum[..size224])
 	return sum224
 }
@@ -284,7 +284,7 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := new_digest(.sha512_256)
 	d.write(data)
 	sum := d.checksum()
-	mut sum256 := [byte(0)].repeat(size256)
+	sum256 := [byte(0)].repeat(size256)
 	copy(sum256, sum[..size256])
 	return sum256
 }

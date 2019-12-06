@@ -14,7 +14,7 @@ module sha1
 
 import encoding.binary
 
-const(
+pub const(
 	// The size of a SHA-1 checksum in bytes.
 	size     = 20
 	// The blocksize of SHA-1 in bytes.

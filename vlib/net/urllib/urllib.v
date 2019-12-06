@@ -260,7 +260,7 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 
-	mut buf := [byte(0)].repeat(64)
+	buf := [byte(0)].repeat(64)
 	mut t := []byte
 
 	required := s.len + 2*hex_count
@@ -677,7 +677,7 @@ fn (u mut URL) set_path(p string) ?bool {
 // reading u.raw_path directly.
 fn (u &URL) escaped_path() string {
 	if u.raw_path != '' && valid_encoded_path(u.raw_path) {
-		p := unescape(u.raw_path, .encode_path)
+		unescape(u.raw_path, .encode_path) or { return '' }
 		return u.raw_path
 	}
 	if u.path == '*' {

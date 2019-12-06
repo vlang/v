@@ -12,7 +12,7 @@ module sha256
 
 import encoding.binary
 
-const (
+pub const (
 	// The size of a SHA256 checksum in bytes.
 	size = 32
 	// The size of a SHA224 checksum in bytes.
@@ -194,7 +194,7 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data)
 	sum := d.checksum()
-	mut sum224 := [byte(0)].repeat(size224)
+	sum224 := [byte(0)].repeat(size224)
 	copy(sum224, sum[..size224])
 	return sum224
 }

@@ -84,7 +84,7 @@ struct C.Bitmap {
 struct C.Advance {
 	x int
 }
-	
+
 struct C.Glyph {
 	bitmap Bitmap
 	bitmap_left int
@@ -140,8 +140,8 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	if !cfg.use_ortho {
 		return &FreeType{}
 	}
-	mut width := cfg.width * scale
-	mut height := cfg.height * scale
+	width := cfg.width * scale
+	height := cfg.height * scale
 	font_size := cfg.font_size * scale
 	// exit('fs=$font_size')
 	// if false {
@@ -221,7 +221,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	// # glVertexAttribPointer(0, 4, GL_FLOAT,false, 4 * sizeof(GLf32), 0);
 	// gl.bind_buffer(GL_ARRAY_BUFFER, uint(0))
 	// # glBindVertexArray(0);
-	mut ctx := &FreeType {
+	ctx := &FreeType {
 		shader: shader
 		width: width
 		height: height

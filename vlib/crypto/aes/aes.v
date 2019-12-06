@@ -11,7 +11,7 @@ import (
 	crypto.internal.subtle
 )
 
-const (
+pub const (
 	// The AES block size in bytes.
 	block_size = 16
 )

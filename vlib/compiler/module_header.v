@@ -23,8 +23,8 @@ mut:
 	fns strings.Builder
 	types strings.Builder
 	tokens []Token
-	
-}	
+
+}
 
 // `mod` == "vlib/os"
 fn generate_vh(mod string) {
@@ -45,10 +45,10 @@ fn generate_vh(mod string) {
 	out.writeln('module $mod_def\n')
 	// Consts
 	println(full_mod_path)
-	mut vfiles := os.walk_ext(full_mod_path, '.v')
+	vfiles := os.walk_ext(full_mod_path, '.v')
 	//mut vfiles := os.ls(full_mod_path) or {
 		//exit(1)
-	//}	
+	//}
 	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') &&
 		!it.ends_with('_windows.v') && !it.ends_with('_win.v') &&
 		!it.ends_with('_lin.v') &&
@@ -74,20 +74,20 @@ fn generate_vh(mod string) {
 		for ; g.i < p.tokens.len; g.i++ {
 			if !p.tokens[g.i].tok.is_decl() {
 				continue
-			}	
+			}
 			match g.tokens[g.i].tok {
 				.key_fn     {	g.generate_fn()    }
 				.key_const  {	g.generate_const() }
 				.key_struct {	g.generate_type()  }
 				.key_type   {	g.generate_alias() }
-			}	
-		}	
-	}	
+			}
+		}
+	}
 	result :=
 		g.types.str() +
 		g.consts.str() +
 		g.fns.str().replace('\n\n\n', '\n').replace('\n\n', '\n')
-	
+
 	out.writeln(result.replace('[ ] ', '[]').replace('? ', '?'))
 	out.close()
 }
@@ -95,22 +95,22 @@ fn generate_vh(mod string) {
 fn (g mut VhGen) generate_fn() {
 	if g.i >= g.tokens.len - 2 {
 		return
-	}	
+	}
 	mut next := g.tokens[g.i+1]
 	if g.i > 0 && g.tokens[g.i-1].tok != .key_pub {
 		// Skip private fns
 		//return ''
 	}
-	
+
 	if next.tok == .name && next.lit == 'C' {
 		//println('skipping C')
 		return
-	}	
+	}
 	//out.write('pub ')
 	mut tok := g.tokens[g.i]
 	for g.i < g.tokens.len - 1 && tok.tok != .lcbr {
 		next = g.tokens[g.i+1]
-		
+
 		g.fns.write(tok.str())
 		if tok.tok != .lpar  && !(next.tok in [.comma, .rpar]) {
 			// No space after (), [], etc
@@ -118,10 +118,10 @@ fn (g mut VhGen) generate_fn() {
 		}
 		g.i++
 		tok = g.tokens[g.i]
-	}	
+	}
 	g.fns.writeln('')
 	//g.i--
-}	
+}
 
 fn (g mut VhGen) generate_alias() {
 	mut tok := g.tokens[g.i]
@@ -130,7 +130,7 @@ fn (g mut VhGen) generate_alias() {
 		g.types.write(' ')
 		if tok.line_nr != g.tokens[g.i+1].line_nr {
 			break
-		}	
+		}
 		g.i++
 		tok = g.tokens[g.i]
 	}
@@ -145,7 +145,7 @@ fn (g mut VhGen) generate_const() {
 		g.consts.write(' ')
 		if g.tokens[g.i+2].tok == .assign {
 			g.consts.write('\n\t')
-		}	
+		}
 		g.i++
 		tok = g.tokens[g.i]
 	}
@@ -161,7 +161,7 @@ fn (g mut VhGen) generate_type() {
 		g.types.write(' ')
 		if g.tokens[g.i+1].line_nr != g.tokens[g.i].line_nr {
 			g.types.write('\n\t')
-		}	
+		}
 		g.i++
 		tok = g.tokens[g.i]
 	}

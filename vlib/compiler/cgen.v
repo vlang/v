@@ -43,7 +43,7 @@ mut:
 
 fn new_cgen(out_name_c string) &CGen {
 	path := out_name_c
-	mut out := os.create(path) or {
+	out := os.create(path) or {
 		println('failed to create $path')
 		return &CGen{}
 	}
@@ -192,7 +192,7 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 }
 
 fn (v &V) prof_counters() string {
-	mut res := []string
+	res := []string
 	// Global fns
 	//for f in c.table.fns {
 		//res << 'double ${c.table.cgen_name(f)}_time;'
@@ -212,7 +212,7 @@ fn (v &V) prof_counters() string {
 }
 
 fn (p &Parser) print_prof_counters() string {
-	mut res := []string
+	res := []string
 	// Global fns
 	//for f in p.table.fns {
 		//counter := '${p.table.cgen_name(f)}_time'
@@ -410,10 +410,10 @@ fn (v &V) interface_table() string {
               sb.writeln('// NR methods = $t.gen_types.len')
                for i, gen_type in t.gen_types {
                        methods += '{'
-                       for i, method in t.methods {
+                       for j, method in t.methods {
 					       // Cat_speak
                                methods += '${gen_type}_${method.name}'
-                               if i < t.methods.len - 1 {
+                               if j < t.methods.len - 1 {
                                        methods += ', '
                                }
                        }

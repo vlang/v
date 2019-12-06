@@ -392,7 +392,7 @@ fn (p mut Parser) expression() string {
 		//p.print_tok()
 	//}
 	ph := p.cgen.add_placeholder()
-	mut typ := p.indot_expr()
+	typ := p.indot_expr()
 	is_str := typ=='string'
 	is_ustr := typ=='ustring'
 	// `a << b` ==> `array_push(&a, b)`

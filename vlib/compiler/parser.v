@@ -282,7 +282,7 @@ fn (p &Parser) log(s string) {
 */
 }
 
-pub fn (p mut Parser) save_state() ParserState {
+pub fn (p &Parser) save_state() ParserState {
 	return ParserState{
 		scanner_line_nr: p.scanner.line_nr
 		scanner_text   : p.scanner.text
@@ -1577,7 +1577,7 @@ fn (p mut Parser) var_decl() {
 				p.gen('$var_name = ${p.var_decl_name}.var_$i')
 				continue
 			}
-			// decleration
+			// declaration
 			p.gen('$var_type $var_name = ${p.var_decl_name}.var_$i')
 		}
 		p.register_var(Var {
@@ -1722,6 +1722,12 @@ fn (p mut Parser) var_expr(v Var) string {
 	// println('var expr is_tmp=$p.cgen.is_tmp\n')
 	if !v.is_const {
 		p.mark_var_used(v)
+		// `C.foo(&var)` means that `var` is changed. Mark it as changed
+		// to avoid `var was declared as mutable but was never changed` errors.
+		if p.calling_c && !v.is_changed {
+			//println('marking C var changed: $v.name')
+			p.mark_var_changed(v)
+		}
 	}
 	fn_ph := p.cgen.add_placeholder()
 	p.expr_var = v
@@ -1806,10 +1812,10 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	//if p.fileis('orm_test') {
 		//println('ORM dot $str_typ')
 	//}
-	mut str_typ := str_typ_
+	str_typ := str_typ_
 	p.check(.dot)
 	is_variadic_arg := str_typ.starts_with('varg_')
-	mut typ := p.find_type(str_typ)
+	typ := p.find_type(str_typ)
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
 	}
@@ -2513,7 +2519,6 @@ fn (p mut Parser) array_init() string {
 	mut typ := ''
 	new_arr_ph := p.cgen.add_placeholder()
 	mut i := 0
-	pos := p.cgen.cur_line.len// remember cur line to fetch first number in cgen       for [0; 10]
 	for p.tok != .rsbr {
 		val_typ := p.bool_expression()
 		// Get the type of the first expression
@@ -3095,7 +3100,7 @@ fn (p mut Parser) check_unused_imports() {
 	p.production_error_with_token_index( 'the following imports were never used: $output', 0 )
 }
 
-fn (p mut Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
+fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool, string) {
 	mut expr := p.tokens[start_tok_idx-1].str()
 	mut is_fn_call := p.tokens[start_tok_idx].tok == .lpar
 	if !is_fn_call {
