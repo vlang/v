@@ -70,15 +70,14 @@ pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directive
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
-	cookie_header := ctx.get_header('Cookie')
+	cookie_header := ' ' + ctx.get_header('Cookie')
 	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between('$key=', ';')
+		cookie_header.find_between(' $key=', ';')
 	} else {
-		cookie_header.find_between('$key=', '\r')
-		//cookie_header
+		cookie_header.find_between(' $key=', '\r')
 	}
 	if cookie != '' {
-		return cookie
+		return cookie.trim_space()
 	}
 	return error('Cookie not found')
 }
