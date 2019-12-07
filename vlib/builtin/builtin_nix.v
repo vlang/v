@@ -53,7 +53,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 			nr_actual_frames := nr_ptrs-skipframes
 			mut sframes := []string
-			csymbols := *byteptr(C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames))
+			csymbols := C.backtrace_symbols(*voidptr(&buffer[skipframes]),
+				nr_actual_frames)
 			for i in 0..nr_actual_frames {  sframes << tos2(csymbols[i]) }
 			for sframe in sframes {
 				executable := sframe.all_before('(')
@@ -72,7 +73,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					output += tos(buf, vstrlen(buf))
 				}
 				output = output.trim_space()+':'
-				if 0 != int(C.pclose(f)) {
+				if 0 != C.pclose(f) {
 					println(sframe) continue
 				}
 				if output in ['??:0:','??:?:'] { output = '' }

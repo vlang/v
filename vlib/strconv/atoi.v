@@ -61,7 +61,7 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	}
 
 	if bit_size == 0 {
-		bit_size = int(int_size)
+		bit_size = int_size
 	} else if bit_size < 0 || bit_size > 64 {
 		// return error('parse_uint: bitsize error $s - $bit_size')
 		return u64(0)
@@ -69,11 +69,11 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
-	cutoff := u64(max_u64/u64(base)) + u64(1)
+	cutoff := max_u64/u64(base) + u64(1)
 	max_val := if bit_size == 64 {
 		max_u64
 	} else {
-		u64(u64(1)<<u64(bit_size))-u64(1)
+		(u64(1)<<u64(bit_size))-u64(1)
 	}
 
 	mut underscores := false
@@ -160,11 +160,11 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	}
 
 	if bit_size == 0 {
-		bit_size = int(int_size)
+		bit_size = int_size
 	}
 
 	// TODO: check should u64(bit_size-1) be size of int (32)?
-	cutoff := u64(u64(1) << u64(bit_size-1))
+	cutoff := u64(1) << u64(bit_size-1)
 	if !neg && un >= cutoff {
 		// return error('parse_int: range error $s0')
         return i64(cutoff - u64(1))

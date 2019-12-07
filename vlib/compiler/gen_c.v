@@ -527,6 +527,10 @@ fn (p mut Parser) cast(typ string) {
 	p.check(.lpar)
 	p.expected_type = typ
 	expr_typ := p.bool_expression()
+	// Do not allow `int(my_int)`
+	if expr_typ == typ {
+		p.warn('casting `$typ` to `$expr_typ` is not needed')
+	}
 	// `face := FT_Face(cobj)` => `FT_Face face = *((FT_Face*)cobj);`
 	casting_voidptr_to_value :=  expr_typ == 'void*' && typ != 'int' &&
 		typ != 'byteptr' &&		!typ.ends_with('*')

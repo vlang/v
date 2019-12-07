@@ -155,7 +155,7 @@ fn utf8_len(c byte) int {
 
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
-  c := int(C.getchar())
+  c := C.getchar()
   len := utf8_len(~c)
   if c < 0 {
     return 0
@@ -164,12 +164,12 @@ pub fn utf8_getchar() int {
   } else if len == 1 {
     return -1
   } else {
-    mut uc := int(c & ((1 << (7 - len)) - 1))
+    mut uc := c & ((1 << (7 - len)) - 1)
     for i := 0; i + 1 < len; i++ {
-      c2 := int(C.getchar())
+      c2 := C.getchar()
       if c2 != -1 && (c2 >> 6) == 2 {
         uc <<= 6
-        uc |= int((c2 & 63))
+        uc |= (c2 & 63)
       }  else if c2 == -1 {
         return 0
       } else {
