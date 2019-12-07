@@ -106,9 +106,9 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 				index = i
 			}
 		}
-		if i := flag.index(',') {
-			if index == -1 || i < index {
-				index = i
+		if i2 := flag.index(',') {
+			if index == -1 || i2 < index {
+				index = i2
 			}
 		}
 		if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
