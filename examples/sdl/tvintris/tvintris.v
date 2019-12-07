@@ -237,7 +237,7 @@ fn (sdlc mut SdlContext) set_sdl_context(w int, h int, title string) {
 	sdlc.screen = sdl.create_rgb_surface(0, w, h, bpp, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
 	sdlc.texture = C.SDL_CreateTexture(sdlc.renderer, C.SDL_PIXELFORMAT_ARGB8888, C.SDL_TEXTUREACCESS_STREAMING, w, h)
 
-	C.Mix_Init(0)
+	C.Mix_Init(C.MIX_INIT_MOD)
 	C.atexit(C.Mix_Quit)
 	if C.Mix_OpenAudio(48000,C.MIX_DEFAULT_FORMAT,2,AudioBufSize) < 0 {
 		println('couldn\'t open audio')
@@ -374,7 +374,7 @@ fn main() {
 			match int(ev._type) {
 				C.SDL_QUIT { should_close = true }
 				C.SDL_KEYDOWN {
-					key := int(ev.key.keysym.sym)
+					key := ev.key.keysym.sym
 					if key == C.SDLK_ESCAPE {
 					        should_close = true
 					        break
@@ -384,7 +384,7 @@ fn main() {
 				}
 				C.SDL_JOYBUTTONDOWN {
 					jb := int(ev.jbutton.button)
-					joyid := int(ev.jbutton.which)
+					joyid := ev.jbutton.which
 //					println('JOY BUTTON $jb $joyid')
 					game.handle_jbutton(jb, joyid)
 					game2.handle_jbutton(jb, joyid)
@@ -392,7 +392,7 @@ fn main() {
 				C.SDL_JOYHATMOTION {
 					jh := int(ev.jhat.hat)
 					jv := int(ev.jhat.value)
-					joyid := int(ev.jhat.which)
+					joyid := ev.jhat.which
 //					println('JOY HAT $jh $jv $joyid')
 					game.handle_jhat(jh, jv, joyid)
 					game2.handle_jhat(jh, jv, joyid)
@@ -441,7 +441,7 @@ enum Action {
 }
 fn (game mut Game) handle_key(key int) {
 	// global keys
-	mut action := Action(.idle)
+	mut action := Action.idle
 	match key {
 		C.SDLK_SPACE { action = .space }
 		game.k_fire { action = .fire }
@@ -487,7 +487,7 @@ fn (game mut Game) handle_jbutton(jb int, joyid int) {
 		return
 	}
 	// global buttons
-	mut action := Action(.idle)
+	mut action := Action.idle
 	match jb {
 		game.jb_fire { action = .fire }
 		else {}
@@ -830,7 +830,7 @@ fn parse_binary_tetro(t_ int) []Block {
 	for i := 0; i <= 3; i++ {
 		// Get ith digit of t
 		p := int(math.pow(10, 3 - i))
-		mut digit := int(t / p)
+		mut digit := t / p
 		t %= p
 		// Convert the digit to binary
 		for j := 3; j >= 0; j-- {

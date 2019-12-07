@@ -146,7 +146,7 @@ jobs:
       with:
         node-version: 12.x
     - name: Install dependencies
-      run: sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools
+      run: sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
       run: echo $VFLAGS && make && ./v -o v v.v
     - name: Test v binaries
