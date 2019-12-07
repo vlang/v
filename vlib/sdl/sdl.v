@@ -19,19 +19,11 @@ module sdl
 #flag windows -L/mingw64/lib -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -lSDL2_mixer -lSDL2_image
 
 #include <SDL.h>
-#include <SDL_ttf.h>
-#include <SDL_mixer.h>
 
 
-//struct C.SDL_Color{
-pub struct Color{
-pub:
-        r byte                              /**< Red value 0-255 */
-        g byte                              /**< Green value 0-255 */
-        b byte                              /**< Blue value 0-255 */
-        a byte                              /**< Alpha value 0-255 */
-}
-//type Color C.SDL_Color
+pub struct C.SDL_RWops {}
+pub struct C.SDL_Renderer {}
+pub struct C.SDL_Texture {}
 
 pub struct C.SDL_Color{
 pub:
@@ -41,34 +33,30 @@ pub:
         a byte
 }
 
-//struct C.SDL_Rect {
-pub struct Rect {
-pub:
-        x int                               /**< number of pixels from left side of screen */
-        y int                               /**< num of pixels from top of screen */
-        w int                               /**< width of rectangle */
-        h int                               /**< height of rectangle */
+pub struct C.SDL_Rect {
+pub mut:
+	x int
+	y int
+	w int
+	h int
 }
-//type Rect C.SDL_Rect
 
-//pub struct C.SDL_Surface {
-pub struct Surface {
+pub struct C.SDL_Surface {
 pub:
-        flags u32
-        format voidptr
-        w int
-        h int
-        pitch int
-        pixels voidptr
-        userdata voidptr
-        locked int
-        lock_data voidptr
-        clip_rect Rect
-        map voidptr
-        refcount int
+	flags u32
+	format voidptr
+	w int
+	h int
+	pitch int
+	pixels voidptr
+	userdata voidptr
+	locked int
+	lock_data voidptr
+	clip_rect SDL_Rect
+	map voidptr
+	refcount int
 }
-//type Surface C.SDL_Surface
-//type Surface Surface
+
 
 /////////////////////////////////////////////////////////
 
@@ -116,7 +104,6 @@ pub:
 			                   */
 }
 
-//pub union EventU {
 pub union Event {
 pub:
         _type u32
@@ -126,13 +113,10 @@ pub:
         jhat JoyHatEvent
         _pad56 [56]byte
 }
-//type Event EventU
 
 
-//struct C.SDL_AudioSpec {
-pub struct AudioSpec {
-pub:
-mut:
+pub struct C.SDL_AudioSpec {
+pub mut:
         freq int                           /**< DSP frequency -- samples per second */
         format u16                         /**< Audio data format */
         channels byte                      /**< Number of channels: 1 mono, 2 stereo */
@@ -204,33 +188,6 @@ fn C.SDL_GetPerformanceFrequency() u64
 fn C.SDL_Delay(ms u32)
 
 //////////////////////////////////////////////////////////
-// TTF
-//////////////////////////////////////////////////////////
-fn C.TTF_Init() int
-fn C.TTF_Quit()
-fn C.TTF_OpenFont(file byteptr, ptsize int) voidptr
-fn C.TTF_CloseFont(font voidptr)
-//fn C.TTF_RenderText_Solid(voidptr, voidptr, SdlColor) voidptr
-fn C.TTF_RenderText_Solid(voidptr, voidptr, C.SDL_Color) voidptr
-//////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////
-// MIX
-//////////////////////////////////////////////////////////
-fn C.Mix_Init(flags int) int
-fn C.Mix_OpenAudio(frequency int, format u16, channels int, chunksize int) int
-fn C.Mix_LoadMUS(file byteptr) voidptr
-fn C.Mix_LoadWAV(file byteptr) voidptr
-fn C.Mix_PlayMusic(music voidptr, loops int) int
-fn C.Mix_VolumeMusic(volume int) int
-fn C.Mix_FreeMusic(music voidptr)
-fn C.Mix_CloseAudio()
-fn C.Mix_FreeChunk(chunk voidptr)
-fn C.Mix_PauseMusic()
-fn C.Mix_ResumeMusic()
-fn C.Mix_PlayChannel(channel int, chunk voidptr, loops int) int
-
-//////////////////////////////////////////////////////////
 // GL
 //////////////////////////////////////////////////////////
 fn C.SDL_GL_SetAttribute(attr int, value int) int
@@ -240,7 +197,7 @@ fn C.SDL_GL_SetSwapInterval(interval int) int
 fn C.SDL_GL_SwapWindow(window voidptr)
 fn C.SDL_GL_DeleteContext(context voidptr)
 
-pub fn create_texture_from_surface(renderer voidptr, surface &Surface) voidptr {
+pub fn create_texture_from_surface(renderer voidptr, surface &SDL_Surface) voidptr {
 	return C.SDL_CreateTextureFromSurface(renderer, voidptr(surface))
 }
 
@@ -252,19 +209,19 @@ pub fn joystick_name_for_index(device_index int) byteptr {
 	return byteptr(C.SDL_JoystickNameForIndex(device_index))
 }
 
-pub fn fill_rect(screen &Surface, rect &Rect, _col &Color) {
+pub fn fill_rect(screen &SDL_Surface, rect &SDL_Rect, _col &SDL_Color) {
 	col := C.SDL_MapRGB(screen.format, _col.r, _col.g, _col.b)
 	_screen := voidptr(screen)
 	_rect := voidptr(rect)
 	C.SDL_FillRect(_screen, _rect, col)
 }
 
-pub fn create_rgb_surface(flags u32, width int, height int, depth int, rmask u32, gmask u32, bmask u32, amask u32) &Surface {
+pub fn create_rgb_surface(flags u32, width int, height int, depth int, rmask u32, gmask u32, bmask u32, amask u32) &SDL_Surface {
 	res := C.SDL_CreateRGBSurface(flags, width, height, depth, rmask, gmask, bmask, amask)
 	return res
 }
 
-pub fn render_copy(renderer voidptr, texture voidptr, srcrect &Rect, dstrect &Rect) int {
+pub fn render_copy(renderer voidptr, texture voidptr, srcrect &SDL_Rect, dstrect &SDL_Rect) int {
 	_srcrect := voidptr(srcrect)
 	_dstrect := voidptr(dstrect)
 	return C.SDL_RenderCopy(renderer, texture, _srcrect, _dstrect)
@@ -278,7 +235,7 @@ pub fn destroy_texture(text voidptr) {
         C.SDL_DestroyTexture(text)
 }
 
-pub fn free_surface(surf &Surface) {
+pub fn free_surface(surf &SDL_Surface) {
 	_surf := voidptr(surf)
         C.SDL_FreeSurface(_surf)
 }
