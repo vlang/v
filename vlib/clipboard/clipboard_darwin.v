@@ -8,10 +8,12 @@ module clipboard
 struct Clipboard {
     pb voidptr
     last_cb_serial i64
+mut:
+	foo int // TODO remove, for mut hack
 }
 
 fn new_clipboard() &Clipboard{
-	mut pb := voidptr(0)
+	pb := voidptr(0)
 	#pb = [NSPasteboard generalPasteboard];
 	cb := &Clipboard{
 		pb: pb
@@ -23,11 +25,13 @@ fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != C.NULL
 }
 
-fn (cb &Clipboard) clear(){
+fn (cb mut Clipboard) clear(){
+	cb.foo = 0
 	#[cb->pb clearContents];
 }
 
-fn (cb &Clipboard) free(){
+fn (cb mut Clipboard) free(){
+	cb.foo = 0
 	//nothing to free
 }
 
@@ -39,9 +43,10 @@ fn (cb &Clipboard) has_ownership() bool {
 
 fn C.OSAtomicCompareAndSwapLong()
 
-fn (cb &Clipboard) set_text(text string) bool {
+fn (cb mut Clipboard) set_text(text string) bool {
+	cb.foo = 0
 	#NSString *ns_clip;
-	mut ret := false
+	ret := false
 
 	#ns_clip = [[ NSString alloc ] initWithBytesNoCopy:text.str length:text.len encoding:NSUTF8StringEncoding freeWhenDone: false];
 	#[cb->pb declareTypes:[NSArray arrayWithObject:NSStringPboardType] owner:nil];
@@ -54,9 +59,10 @@ fn (cb &Clipboard) set_text(text string) bool {
 	return ret
 }
 
-fn (cb &Clipboard) get_text() string {
+fn (cb mut Clipboard) get_text() string {
+	cb.foo = 0
 	#NSString *ns_clip;
-	mut utf8_clip := byteptr(0)
+	utf8_clip := byteptr(0)
 
 	#ns_clip = [cb->pb stringForType:NSStringPboardType]; //NSPasteboardTypeString
 	#if (ns_clip == nil) {

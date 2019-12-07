@@ -18,7 +18,7 @@ pub fn (cb mut Clipboard) paste() string {
 // clear the clipboard
 pub fn (cb mut Clipboard) clear_all() {
 	cb.clear()
-} 
+}
 
 // destroy the clipboard
 pub fn (cb mut Clipboard) destroy() {
