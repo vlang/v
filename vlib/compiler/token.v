@@ -129,7 +129,7 @@ fn build_keys() map[string]int {
 	mut res := map[string]int
 	for t := int(TokenKind.keyword_beg) + 1; t < int(TokenKind.keyword_end); t++ {
 		key := TokenStr[t]
-		res[key] = int(t)
+		res[key] = t
 	}
 	return res
 }

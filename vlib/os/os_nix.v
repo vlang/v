@@ -65,7 +65,7 @@ pub fn is_dir(path string) bool {
 pub fn mkdir(path string) ?bool {
 	if path == '.' { return true }
 	apath := os.realpath( path )
-	r := int(C.mkdir(apath.str, 511))
+	r := C.mkdir(apath.str, 511)
 	if r == -1 {
 		return error(get_error_msg(C.errno))
 	}

@@ -410,7 +410,7 @@ fn vpclose(f voidptr) int {
 		return int( C._pclose(f) )
 	}
 	$else {
-		ret , _ := posix_wait4_to_exit_status( int( C.pclose(f) ) )
+		ret , _ := posix_wait4_to_exit_status(C.pclose(f))
 		return ret
 	}
 }
@@ -428,7 +428,7 @@ pub fn system(cmd string) int {
 		// TODO remove panic
 		//panic(';, &&, || and \\n are not allowed in shell commands')
 	//}
-	mut ret := int(0)
+	mut ret := 0
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"$cmd"' } else { cmd }

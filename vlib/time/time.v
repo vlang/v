@@ -150,13 +150,13 @@ pub fn unix(abs int) Time {
 	y += n
 	d -= 365 * n
 
-	yday := int(d)
+	yday := d
 	mut day := yday
 
 	year := abs / int(3.154e+7) + 1970 //int(i64(y) + absolute_zero_year)
-	hour := int(abs%seconds_per_day) / seconds_per_hour
-	minute := int(abs % seconds_per_hour) / seconds_per_minute
-	second := int(abs % seconds_per_minute)
+	hour := (abs%seconds_per_day) / seconds_per_hour
+	minute := (abs % seconds_per_hour) / seconds_per_minute
+	second := (abs % seconds_per_minute)
 
 	if is_leap_year(year) {
 		// Leap year
@@ -174,12 +174,12 @@ pub fn unix(abs int) Time {
 	// The estimate may be too low by at most one month, so adjust.
 	mut month := day / 31
 	mut begin := 0
-	end := int(days_before[month+1])
+	end := (days_before[month+1])
 	if day >= end {
 		month++
 		begin = end
 	} else {
-		begin = int(days_before[month])
+		begin = (days_before[month])
 	}
 
 	month++ // because January is 1

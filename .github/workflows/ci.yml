@@ -41,8 +41,8 @@ jobs:
       run: |
         brew services start postgresql
         sleep 3
-        psql -c -d postgres 'select rolname from pg_roles'
-        psql -U postgres -c 'create database customerdb;'
+        psql -c -d postgres -c 'select rolname from pg_roles'
+        psql -U postgres -d postgres -c 'create database customerdb;'
         psql -d customerdb -f examples/database/pg/mydb.sql
     - name: Test v->c
       run: ./v test-compiler
