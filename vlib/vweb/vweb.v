@@ -57,7 +57,7 @@ pub fn (ctx Context) json(s string) {
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') or { panic(err) }
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.headers\r\n\r\n') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
