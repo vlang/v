@@ -697,8 +697,12 @@ fn (s mut Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Don't allow \0
-		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
-			s.error('0 character in a string literal')
+		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash  {
+			if s.pos < s.text.len - 1 && s.text[s.pos+1].is_digit() {
+
+			} else {
+				s.error('0 character in a string literal')
+			}
 		}
 		// Don't allow \x00
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
