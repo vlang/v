@@ -74,7 +74,7 @@ fn jsdecode_f32(root &C.cJSON) f32 {
 	if isnil(root) {
 		return f32(0)
 	}
-	return f32(root.valuedouble)
+	return root.valuedouble
 }
 
 fn jsdecode_f64(root &C.cJSON) f64 {

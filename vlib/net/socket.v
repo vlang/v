@@ -277,7 +277,7 @@ pub fn (s Socket) read_line() string {
 	mut res := '' // The final result, including the ending \n.
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
-		n := int(C.recv(s.sockfd, buf, MAX_READ-1, MSG_PEEK))
+		n := C.recv(s.sockfd, buf, MAX_READ-1, MSG_PEEK)
 		if n == -1 { return res }
 		if n == 0 {	return res }
 		buf[n] = `\0`

@@ -382,7 +382,7 @@ pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
 	C.glDeleteBuffers(1, &ctx.vbo)
 	ctx.shader.use()
 	ctx.shader.set_color('color', color)
-	vertices := [f32(x), f32(y), f32(x2), f32(y2)] !
+	vertices := [x, y, x2, y2] !
 	gl.bind_vao(ctx.vao)
 	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
 	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
@@ -433,7 +433,7 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	gl.enable_vertex_attrib_array(1)
 	gl.vertex_attrib_pointer(2, 2, C.GL_FLOAT, false, 8, 6)
 	gl.enable_vertex_attrib_array(2)
-	gl.bind_2d_texture(u32(tex_id))
+	gl.bind_2d_texture(tex_id)
 	gl.bind_vao(ctx.vao)
 	gl.draw_elements(C.GL_TRIANGLES, 6, C.GL_UNSIGNED_INT, 0)
 }

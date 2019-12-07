@@ -402,6 +402,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 				game.state = .running
 			}
 		}
+		else {}
 	}
 
 	if game.state != .running {
@@ -434,5 +435,6 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	glfw.KeyDown {
 		game.move_tetro() // drop faster when the player presses <down>
 	}
+	else { }
 	}
 }

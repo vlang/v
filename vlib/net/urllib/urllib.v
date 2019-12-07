@@ -103,8 +103,9 @@ fn should_escape(c byte, mode EncodingMode) bool {
 			// everything, so escape nothing.
 			return false
 		}
+		else {}
 		}
-	}
+	} else {}
 	}
 
 	if mode == .encode_fragment {
@@ -118,6 +119,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 			`!`, `(`, `)`, `*`{
 				return false
 			}
+			else {}
 		}
 	}
 
@@ -184,7 +186,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
-					v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
+					v := (unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
 					if s[i..i+3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
 						error(error_msg(err_msg_escape, s[i..i+3]))
 					}
@@ -212,7 +214,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		x := s[i]
 		match x {
 			`%` {
-				t.write( byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
+				t.write((unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
 				i += 2
 			}
 			`+` {

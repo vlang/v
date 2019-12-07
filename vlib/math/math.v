@@ -140,9 +140,9 @@ pub fn factorial(n f64) f64 {
 			return max_f64
 	}
 
-	/* Otherwise return n!. */
+	// Otherwise return n!.
 	if n == f64(i64(n)) && n >= 0.0 {
-			return f64(factorials[i64(n)])
+		return factorials[i64(n)]
 	}
 
 	return gamma(n + 1.0)

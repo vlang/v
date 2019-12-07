@@ -203,14 +203,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		i++
 		p.fgen_nl()
 	}
-
-	//if is_expr {
-		// we get here if no else found, ternary requires "else" branch
-		p.warn('match expression requires `else`')
-	//}
-
-	p.returns = false // only get here when no default, so return is not guaranteed
-
+	p.error('match expression requires `else`')
+	//p.returns = false // only get here when no default, so return is not guaranteed
 	return ''
 }
 
