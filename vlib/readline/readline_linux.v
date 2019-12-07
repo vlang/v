@@ -190,21 +190,50 @@ fn (r Readline) analyse(c int) Action {
 
 fn (r Readline) analyse_control() Action {
   c := r.read_char()
-  match c {
-    `[` {
-      sequence := r.read_char()
-      match sequence {
-        `C` { return .move_cursor_right }
-        `D` { return .move_cursor_left }
-        `B` { return .history_next }
-        `A` { return .history_previous }
-        `1` { return r.analyse_extended_control() }
-        `2` { return r.analyse_extended_control_no_eat(sequence) }
-        `3` { return r.analyse_extended_control_no_eat(sequence) }
-       else {}
-      }
-    }
-  }
+
+match c {
+	`[` {
+		sequence := r.read_char()
+		match sequence {
+			`C` { return .move_cursor_right }
+			`D` { return .move_cursor_left }
+			`B` { return .history_next }
+			`A` { return .history_previous }
+			`1` { return r.analyse_extended_control() }
+			`2` { return r.analyse_extended_control_no_eat(sequence) }
+			`3` { return r.analyse_extended_control_no_eat(sequence) }
+			else {}
+		}
+	}
+	else { }
+}
+
+
+/*
+//TODO
+match c {
+	case `[`:
+	sequence := r.read_char()
+	match sequence {
+	case `C`: return .move_cursor_right
+	case `D`: return .move_cursor_left
+	case `B`: return .history_next
+	case `A`: return .history_previous
+	case `1`: return r.analyse_extended_control()
+	case `2`: return r.analyse_extended_control_no_eat(sequence)
+	case `3`: return r.analyse_extended_control_no_eat(sequence)
+	case `9`:
+		foo()
+		bar()
+	else:
+	}
+	else:
+}
+*/
+
+
+
+
   return .nothing
 }
 

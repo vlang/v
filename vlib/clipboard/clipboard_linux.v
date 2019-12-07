@@ -300,6 +300,7 @@ fn (cb mut Clipboard) start_listener(){
 				}
 			}
 			C.PropertyNotify {}
+			else {}
 		}
 	}
 }
