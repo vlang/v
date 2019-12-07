@@ -2663,7 +2663,7 @@ if (!$tmp) {
 	eprintln(tos3("${filename}:${p.scanner.line_nr}: FAILED: ${cfname}()"));
 	eprintln(tos3("Source: $sourceline"));
     v_panic(tos3("An assertion failed."));
-	return;
+    exit(1);
 } else {
 	g_test_oks++;
 }
@@ -2680,7 +2680,7 @@ if (!$tmp) {
      tos3("$sourceline"),
      tos3("$p.cur_fn.name()")
   );
-  return;
+  exit(1);
   // TODO
   // Maybe print all vars in a test function if it fails?
 } else {
