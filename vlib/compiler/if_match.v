@@ -27,11 +27,9 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 
 	// stores typ of resulting variable
 	mut res_typ := ''
-
 	defer {
 		p.check(.rcbr)
 	}
-
 	for p.tok != .rcbr {
 		if p.tok == .key_else {
 			p.check(.key_else)
@@ -206,10 +204,10 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		p.fgen_nl()
 	}
 
-	if is_expr {
+	//if is_expr {
 		// we get here if no else found, ternary requires "else" branch
-		p.error('Match expression requires "else"')
-	}
+		p.warn('match expression requires `else`')
+	//}
 
 	p.returns = false // only get here when no default, so return is not guaranteed
 

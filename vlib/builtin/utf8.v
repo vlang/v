@@ -97,7 +97,7 @@ const (
 
 pub fn (_str string) to_wide() &u16 {
 	$if windows {
-		num_chars := int(C.MultiByteToWideChar(CP_UTF8, 0, _str.str, _str.len, 0, 0))
+		num_chars := (C.MultiByteToWideChar(CP_UTF8, 0, _str.str, _str.len, 0, 0))
 		mut wstr := &u16(malloc((num_chars + 1) * 2)) // sizeof(wchar_t)
 		if !isnil(wstr) {
 			C.MultiByteToWideChar(CP_UTF8, 0, _str.str, _str.len, wstr, num_chars)
@@ -111,7 +111,7 @@ pub fn (_str string) to_wide() &u16 {
 
 pub fn string_from_wide(_wstr &u16) string {
     $if windows {
-	    wstr_len := int(C.wcslen(_wstr))
+	    wstr_len := C.wcslen(_wstr)
 	    return string_from_wide2(_wstr, wstr_len)
     } $else {
         return ''
@@ -120,11 +120,11 @@ pub fn string_from_wide(_wstr &u16) string {
 
 pub fn string_from_wide2(_wstr &u16, len int) string {
     $if windows {
-    	num_chars := int(C.WideCharToMultiByte(CP_UTF8, 0, _wstr, len, 0, 0, 0, 0))
-    	mut str_to := &byte(malloc(num_chars + 1))
+    	num_chars := C.WideCharToMultiByte(CP_UTF8, 0, _wstr, len, 0, 0, 0, 0))
+    	mut str_to := malloc(num_chars + 1)
     	if !isnil(str_to) {
     		C.WideCharToMultiByte(CP_UTF8, 0, _wstr, len, str_to, num_chars, 0, 0)
-		    C.memset(&byte(str_to) + num_chars, 0, 1)
+		    C.memset(str_to + num_chars, 0, 1)
 	    }
 	    return tos2(str_to)
     } $else {

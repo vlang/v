@@ -97,6 +97,7 @@ fn (p mut Parser) bterm() string {
 				.ge { p.cgen.set_placeholder(ph, 'string_ge(') }
 				.gt { p.cgen.set_placeholder(ph, 'string_gt(') }
 				.lt { p.cgen.set_placeholder(ph, 'string_lt(') }
+				else { }
 			}
 		}
 		if is_ustr {
@@ -108,6 +109,7 @@ fn (p mut Parser) bterm() string {
 				.ge { p.cgen.set_placeholder(ph, 'ustring_ge(') }
 				.gt { p.cgen.set_placeholder(ph, 'ustring_gt(') }
 				.lt { p.cgen.set_placeholder(ph, 'ustring_lt(') }
+				else { }
 			}
 		}
 		if is_float && p.cur_fn.name != 'f32_abs' && p.cur_fn.name != 'f64_abs' {
@@ -119,6 +121,7 @@ fn (p mut Parser) bterm() string {
 				.ge { p.cgen.set_placeholder(ph, '${expr_type}_ge(') }
 				.gt { p.cgen.set_placeholder(ph, '${expr_type}_gt(') }
 				.lt { p.cgen.set_placeholder(ph, '${expr_type}_lt(') }
+				else { }
 			}
 		}
 	}
@@ -573,6 +576,7 @@ fn (p mut Parser) term() string {
 				.mul {   p.handle_operator('*', typ, 'op_mul', ph, T) }
 				.div {   p.handle_operator('/', typ, 'op_div', ph, T) }
 				.mod {   p.handle_operator('%', typ, 'op_mod', ph, T) }
+				else {}
 			}
 			continue
 		}

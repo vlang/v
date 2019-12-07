@@ -1173,8 +1173,9 @@ pub fn os_from_string(os string) OS {
 			verror('use the flag `-cc msvc` to build using msvc')
 		}
 		'haiku' { return .haiku }
+		else { panic('bad os $os') }
 	}
-	println('bad os $os') // todo panic?
+	//println('bad os $os') // todo panic?
 	return .linux
 }
 

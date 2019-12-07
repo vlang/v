@@ -80,6 +80,7 @@ fn generate_vh(mod string) {
 				.key_const  {	g.generate_const() }
 				.key_struct {	g.generate_type()  }
 				.key_type   {	g.generate_alias() }
+				else {}
 			}
 		}
 	}

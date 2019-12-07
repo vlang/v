@@ -260,6 +260,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 				`*` { name = name.replace('*', 'op_mul') }
 				`/` { name = name.replace('/', 'op_div') }
 				`%` { name = name.replace('%', 'op_mod') }
+				else {}
 			}
 		}
 	}
@@ -606,24 +607,50 @@ fn type_default(typ string) string {
 		return '{0}'
 	}
 	// Default values for other types are not needed because of mandatory initialization
-	match typ {
-	'bool'{ return '0'}
-	'string'{ return 'tos3("")'}
-	'i8'{ return '0'}
-	'i16'{ return '0'}
-	'i64'{ return '0'}
-	'u16'{ return '0'}
-	'u32'{ return '0'}
-	'u64'{ return '0'}
-	'byte'{ return '0'}
-	'int'{ return '0'}
-	'rune'{ return '0'}
-	'f32'{ return '0.0'}
-	'f64'{ return '0.0'}
-	'byteptr'{ return '0'}
-	'voidptr'{ return '0'}
+	 match typ {
+ 'bool'{ return '0'}
+ 'string'{ return 'tos3("")'}
+ 'i8'{ return '0'}
+ 'i16'{ return '0'}
+ 'i64'{ return '0'}
+ 'u16'{ return '0'}
+ 'u32'{ return '0'}
+ 'u64'{ return '0'}
+ 'byte'{ return '0'}
+ 'int'{ return '0'}
+ 'rune'{ return '0'}
+ 'f32'{ return '0.0'}
+ 'f64'{ return '0.0'}
+ 'byteptr'{ return '0'}
+ 'voidptr'{ return '0'}
+else {}
+ }
+ return '{0}'
+
+
+	// TODO this results in
+	// error: expected a field designator, such as '.field = 4'
+	//- Empty ee= (Empty) { . =  {0}  } ;
+	/*
+	return match typ {
+		'bool'{ '0'}
+		'string'{ 'tos3("")'}
+		'i8'{ '0'}
+		'i16'{ '0'}
+		'i64'{ '0'}
+		'u16'{ '0'}
+		'u32'{ '0'}
+		'u64'{ '0'}
+		'byte'{ '0'}
+		'int'{ '0'}
+		'rune'{ '0'}
+		'f32'{ '0.0'}
+		'f64'{ '0.0'}
+		'byteptr'{ '0'}
+		'voidptr'{ '0'}
+		else { '{0} '}
 	}
-	return '{0}'
+	*/
 }
 
 fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {

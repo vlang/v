@@ -301,8 +301,9 @@ fn os_name_to_ifdef(name string) string {
 		'js' {return '_VJS' }
 		'solaris'{ return '__sun' }
 		'haiku' { return '__haiku__' }
+		else { verror('bad os ifdef name "$name"') }
 	}
-	verror('bad os ifdef name "$name"')
+	//verror('bad os ifdef name "$name"')
 	return ''
 }
 

@@ -637,6 +637,7 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 		return scan_res(.div, '')
 	 }
+	else { }
 	}
 	$if windows {
 		if c == `\0` {

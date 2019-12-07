@@ -788,6 +788,7 @@ fn key_to_type_cat(tok TokenKind) TypeCategory {
 		.key_interface { return .interface_ }
 		.key_struct    { return .struct_    }
 		.key_union     { return .union_     }
+		else {}
 	}
 	verror('Unknown token: $tok')
 	return .builtin

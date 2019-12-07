@@ -464,6 +464,7 @@ pub fn sigint_to_signal_name(si int) string {
 		13 {return 'SIGPIPE'}
 		14 {return 'SIGALRM'}
 		15 {return 'SIGTERM'}
+		else { }
 	}
 	$if linux {
 		// From `man 7 signal` on linux:

@@ -819,13 +819,13 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
-	match typ {
-	 'byte' { return 0 <= x && x <= 255 }
-	 'u16' { return 0 <= x && x <= 65535 }
+	return match typ {
+	 'byte' { 0 <= x && x <= 255 }
+	 'u16' { 0 <= x && x <= 65535 }
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
-	 'i8' { return -128 <= x && x <= 127 }
+	 'i8' { -128 <= x && x <= 127 }
 	/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
@@ -833,8 +833,8 @@ fn is_valid_int_const(val, typ string) bool {
 	//case 'i64':
 		//x64 := val.i64()
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
+		else { true }
 	}
-	return true
 }
 
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {
