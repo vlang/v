@@ -52,6 +52,8 @@ jobs:
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
       run:  ./v symlink && v -o v2 v.v
+    - name: Test vsh
+      run:  ./v examples/v_script.vsh
     - name: Test vid
       run: |
         git clone --depth 1 https://github.com/vlang/vid.git
