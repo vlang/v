@@ -124,16 +124,16 @@ fn (r mut Reader) read_record() ?[]string {
 		// quoted
 		else {
 			line = line[1..]
-			if i := line.index('"') {
-				if i+1 == line.len {
+			if j := line.index('"') {
+				if j+1 == line.len {
 					// last record
-					fields << line[..i]
+					fields << line[..j]
 					break
 				}
-				next := line[i+1]
+				next := line[j+1]
 				if next == r.delimiter {
-					fields << line[..i]
-					line = line[i..]
+					fields << line[..j]
+					line = line[j..]
 					continue
 				}
 			}
