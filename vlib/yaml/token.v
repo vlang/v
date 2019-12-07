@@ -1,5 +1,13 @@
 module yaml
 
+struct Token{
+	tok 		TokenKind
+	lit			string
+	line_nr 	int
+	name_idx 	int
+	pos 		int
+}
+
 enum TokenKind{
 	eof
 	comma
@@ -9,6 +17,9 @@ enum TokenKind{
 	hash
 	seprate
 	space
+	coron
+	json
+	name
 }
 
 fn build_token_str() []string{

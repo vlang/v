@@ -1,14 +1,24 @@
 module testml
 
 struct TestML {
-	
+	var []TestML
 }
 
 struct TestMLVar {
-	var_type TestMLType
+	name		string
+	var		 	string
+	var_type 	TestMLVarType
 }
 
-enum TestMLType {
+fn (t TestMLVar) type TestMLType {
+	return t.var_type
+}
+
+fn (t TestMLVar) var string{
+	return t.var
+}
+
+enum TestMLVarType {
 	str
 	num
 	regex

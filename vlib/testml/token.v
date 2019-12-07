@@ -1,3 +1,5 @@
+module
+
 enum TokenKind{
 	eof
 	name
@@ -5,6 +7,8 @@ enum TokenKind{
 	str
 	hyphen
 	json
+	equal
+	yaml
 }
 
 fn build_token_str() []string{

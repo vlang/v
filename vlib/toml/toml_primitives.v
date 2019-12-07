@@ -32,7 +32,7 @@ struct Array{
 		tbl				&[]Table
 
 	enum ArrayType{
-		integer str muitl_str float time_stamp
+		integer str muitl_str double time_stamp
 	}
 }
 

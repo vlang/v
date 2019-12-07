@@ -1,3 +1,14 @@
 // test pattern created by BurntSushi and Iarna.
+import (
+	toml
+	yaml
+	json
+)
 
-import toml
+fn test_BurntSushi_arrayempty_toml(){
+
+}
+
+fn test_BurntSushi_arrayempty_json(){
+	
+}

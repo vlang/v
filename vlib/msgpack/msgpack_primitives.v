@@ -1,0 +1,5 @@
+module msgpack
+
+struct MsgPack{
+	
+}
