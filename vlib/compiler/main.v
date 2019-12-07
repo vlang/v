@@ -246,11 +246,7 @@ pub fn (v mut V) compile() {
 		cgen.genln(js_headers)
 	} $else {
 		if !v.pref.is_bare {
-			$if msvc {
-				cgen.genln('#include <stdint.h>')
-			} $else {
-				cgen.genln('#include <inttypes.h>')  // int64_t etc
-			}
+			cgen.genln('#include <inttypes.h>')  // int64_t etc
 		} else {
 			cgen.genln('#include <stdint.h>')
 		}
