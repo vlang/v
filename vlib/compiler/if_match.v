@@ -231,6 +231,9 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 		p.check_not_reserved()
 		option_tmp := p.get_tmp()
 		var_name := p.lit
+		if p.known_var(var_name) {
+			p.error('redefinition of `$var_name`')
+		}
 		p.next()
 		p.check(.decl_assign)
 		p.is_var_decl = true
