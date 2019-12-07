@@ -119,7 +119,7 @@ fn C.setbuf()
 fn C.SymCleanup()
 fn C.MultiByteToWideChar() int
 fn C.wcslen() int
-fn C.WideCharToMultiByte() byteptr
+fn C.WideCharToMultiByte() int
 fn C._wstat()
 fn C._wrename()
 fn C._wfopen() voidptr

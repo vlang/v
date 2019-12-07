@@ -480,6 +480,7 @@ pub fn sigint_to_signal_name(si int) string {
 			///////////////////////////////
 			5{ return 'SIGTRAP'}
 			7{ return 'SIGBUS'		}
+			else {}
 		}
 	}
 	return 'unknown'
@@ -624,7 +625,7 @@ pub fn get_line() string {
 pub fn get_raw_line() string {
     $if windows {
         max_line_chars := 256
-        buf := &byte(malloc(max_line_chars*2))
+        buf := malloc(max_line_chars*2)
         if is_atty(0) > 0 {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := u32(0)
@@ -632,7 +633,7 @@ pub fn get_raw_line() string {
             return string_from_wide2(&u16(buf), int(nr_chars))
         }
         res := C.fgetws(&u16(buf), max_line_chars, C.stdin )
-        len := int(  C.wcslen(&u16(buf)) )
+        len := C.wcslen(&u16(buf))
         if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
         return ''
     } $else {
