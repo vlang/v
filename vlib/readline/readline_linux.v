@@ -201,6 +201,7 @@ fn (r Readline) analyse_control() Action {
         `1` { return r.analyse_extended_control() }
         `2` { return r.analyse_extended_control_no_eat(sequence) }
         `3` { return r.analyse_extended_control_no_eat(sequence) }
+       else {}
       }
     }
   }
@@ -216,8 +217,10 @@ fn (r Readline) analyse_extended_control() Action {
       match direction {
         `C` { return .move_cursor_word_right }
         `D` { return .move_cursor_word_left }
+       else {}
       }
     }
+    else {}
   }
   return .nothing
 }
@@ -229,8 +232,10 @@ fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
       match last_c {
         `3` { return .delete_right } // Suppr key
         `2` { return .overwrite }
+        else {}
       }
     }
+    else {}
   }
   return .nothing
 }
@@ -253,6 +258,7 @@ fn (r mut Readline) execute(a Action, c int) bool {
     .overwrite              { r.switch_overwrite() }
     .clear_screen           { r.clear_screen() }
     .suspend                { r.suspend() }
+    else {}
   }
   return false
 }
