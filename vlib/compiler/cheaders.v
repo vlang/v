@@ -218,5 +218,10 @@ bare_c_headers = '
 #undef TCCSKIP
 #define TCCSKIP(x)
 #endif
+
+#ifndef exit
+#define exit(rc) sys_exit(rc)
+void sys_exit (int);
+#endif
 '
 )
