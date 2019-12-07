@@ -13,7 +13,9 @@ import os
 import math
 import sdl
 import sdl.image as img
-[inline] fn sdl_fill_rect(s &sdl.Surface,r &sdl.Rect,c &sdl.Color){sdl.fill_rect(s,r,c)}
+import sdl.mixer as mix
+import sdl.ttf as ttf
+[inline] fn sdl_fill_rect(s &SDL_Surface,r &SDL_Rect,c &SDL_Color){sdl.fill_rect(s,r,c)}
 
 const (
 	Title = 'tVintris'
@@ -107,25 +109,22 @@ const (
 	]
 	// Each tetro has its unique color
 	Colors = [
-		sdl.Color{byte(0), byte(0), byte(0), byte(0)},		// unused ?
-		sdl.Color{byte(0), byte(0x62), byte(0xc0), byte(0)},	// quad : darkblue 0062c0
-		sdl.Color{byte(0xca), byte(0x7d), byte(0x5f), byte(0)},	// tricorn : lightbrown ca7d5f
-		sdl.Color{byte(0), byte(0xc1), byte(0xbf), byte(0)},	// short topright : lightblue 00c1bf
-		sdl.Color{byte(0), byte(0xc1), byte(0), byte(0)},	// short topleft : lightgreen 00c100
-		sdl.Color{byte(0xbf), byte(0xbe), byte(0), byte(0)},	// long topleft : yellowish bfbe00
-		sdl.Color{byte(0xd1), byte(0), byte(0xbf), byte(0)},	// long topright : pink d100bf
-		sdl.Color{byte(0xd1), byte(0), byte(0), byte(0)},	// longest : lightred d10000
-		sdl.Color{byte(0), byte(170), byte(170), byte(0)},	// unused ?
+		SDL_Color{byte(0), byte(0), byte(0), byte(0)},		// unused ?
+		SDL_Color{byte(0), byte(0x62), byte(0xc0), byte(0)},	// quad : darkblue 0062c0
+		SDL_Color{byte(0xca), byte(0x7d), byte(0x5f), byte(0)},	// tricorn : lightbrown ca7d5f
+		SDL_Color{byte(0), byte(0xc1), byte(0xbf), byte(0)},	// short topright : lightblue 00c1bf
+		SDL_Color{byte(0), byte(0xc1), byte(0), byte(0)},	// short topleft : lightgreen 00c100
+		SDL_Color{byte(0xbf), byte(0xbe), byte(0), byte(0)},	// long topleft : yellowish bfbe00
+		SDL_Color{byte(0xd1), byte(0), byte(0xbf), byte(0)},	// long topright : pink d100bf
+		SDL_Color{byte(0xd1), byte(0), byte(0), byte(0)},	// longest : lightred d10000
+		SDL_Color{byte(0), byte(170), byte(170), byte(0)},	// unused ?
 	]
 	// Background color
-	BackgroundColor = sdl.Color{byte(0), byte(0), byte(0), byte(0)}
-//	BackgroundColor = sdl.Color{byte(255), byte(255), byte(255), byte(0)}
+	BackgroundColor = SDL_Color{byte(0), byte(0), byte(0), byte(0)}
 	// Foreground color
-	ForegroundColor = sdl.Color{byte(0), byte(170), byte(170), byte(0)}
-//	ForegroundColor = sdl.Color{byte(0), byte(0), byte(0), byte(0)}
+	ForegroundColor = SDL_Color{byte(0), byte(170), byte(170), byte(0)}
 	// Text color
-	TextColor = sdl.Color{byte(0xca), byte(0x7d), byte(0x5f), byte(0)}
-//	TextColor = sdl.Color{byte(0), byte(0), byte(0), byte(0)}
+	TextColor = SDL_Color{byte(0xca), byte(0x7d), byte(0x5f), byte(0)}
 )
 
 // TODO: type Tetro [TetroSize]struct{ x, y int }
@@ -154,7 +153,7 @@ mut:
 	h		int
 	window          voidptr
 	renderer        voidptr
-	screen          &sdl.Surface
+	screen          &SDL_Surface
 	texture         voidptr
 //	AUDIO
 	actx		AudioContext
@@ -162,7 +161,7 @@ mut:
 	jnames		[2]string
 	jids		[2]int
 //	V logo
-	v_logo		&sdl.Surface
+	v_logo		&SDL_Surface
 	tv_logo		voidptr
 }
 
@@ -708,7 +707,7 @@ fn (g &Game) draw_tetro() {
 }
 
 fn (g &Game) draw_block(i, j, color_idx int) {
-	rect := sdl.Rect {g.ofs_x + (j - 1) * BlockSize, (i - 1) * BlockSize,
+	rect := SDL_Rect {g.ofs_x + (j - 1) * BlockSize, (i - 1) * BlockSize,
 		BlockSize - 1, BlockSize - 1}
 	col := Colors[color_idx]
 	sdl_fill_rect(g.sdl.screen, &rect, &col)
@@ -732,27 +731,27 @@ fn (g &Game) draw_v_logo() {
 	texw := 0
 	texh := 0
 	C.SDL_QueryTexture(g.sdl.tv_logo, 0, 0, &texw, &texh)
-	dstrect := sdl.Rect { (WinWidth / 2) - (texw / 2), 20, texw, texh }
+	dstrect := SDL_Rect { (WinWidth / 2) - (texw / 2), 20, texw, texh }
 	// Currently we can't seem to use sdl.render_copy when we need to pass a nil pointer (eg: srcrect to be NULL)
 //	sdl.render_copy(g.sdl.renderer, tv_logo, 0, &dstrect)
 	C.SDL_RenderCopy(g.sdl.renderer, g.sdl.tv_logo, voidptr(0), voidptr(&dstrect))
 }
 
-fn (g &Game) draw_text(x int, y int, text string, tcol sdl.Color) {
+fn (g &Game) draw_text(x int, y int, text string, tcol SDL_Color) {
 	_tcol := C.SDL_Color{tcol.r, tcol.g, tcol.b, tcol.a}
 	tsurf := C.TTF_RenderText_Solid(g.font, text.str, _tcol)
 	ttext := C.SDL_CreateTextureFromSurface(g.sdl.renderer, tsurf)
 	texw := 0
 	texh := 0
 	C.SDL_QueryTexture(ttext, 0, 0, &texw, &texh)
-	dstrect := sdl.Rect { x, y, texw, texh }
+	dstrect := SDL_Rect { x, y, texw, texh }
 //	sdl.render_copy(g.sdl.renderer, ttext, 0, &dstrect)
 	C.SDL_RenderCopy(g.sdl.renderer, ttext, voidptr(0), voidptr(&dstrect))
 	C.SDL_DestroyTexture(ttext)
 	sdl.free_surface(tsurf)
 }
 
-[inline] fn (g &Game) draw_ptext(x int, y int, text string, tcol sdl.Color) {
+[inline] fn (g &Game) draw_ptext(x int, y int, text string, tcol SDL_Color) {
 	g.draw_text(g.ofs_x + x, y, text, tcol)
 }
 
@@ -760,14 +759,14 @@ fn (g &Game) draw_text(x int, y int, text string, tcol sdl.Color) {
 fn (g &Game) draw_begin() {
 //	println('about to clear')
 	C.SDL_RenderClear(g.sdl.renderer)
-	mut rect := sdl.Rect {0,0,g.sdl.w,g.sdl.h}
-	col := sdl.Color{byte(00), byte(00), byte(0), byte(0)}
+	mut rect := SDL_Rect {0,0,g.sdl.w,g.sdl.h}
+	col := SDL_Color{byte(00), byte(00), byte(0), byte(0)}
 //	sdl_fill_rect(g.sdl.screen, &rect, BackgroundColor)
 	sdl_fill_rect(g.sdl.screen, &rect, col)
 
-	rect = sdl.Rect {BlockSize * FieldWidth + 2,0,2,g.sdl.h}
+	rect = SDL_Rect {BlockSize * FieldWidth + 2,0,2,g.sdl.h}
 	sdl_fill_rect(g.sdl.screen, &rect, ForegroundColor)
-	rect = sdl.Rect {WinWidth - BlockSize * FieldWidth - 4,0,2,g.sdl.h}
+	rect = SDL_Rect {WinWidth - BlockSize * FieldWidth - 4,0,2,g.sdl.h}
 	sdl_fill_rect(g.sdl.screen, &rect, ForegroundColor)
 
 	mut idx := 0
@@ -778,7 +777,7 @@ fn (g &Game) draw_begin() {
 		}
 		w := BlockSize
 		h := s * 4 * w / 100
-		rect = sdl.Rect {(WinWidth - 7 * (w + 1)) / 2 + idx * (w + 1), WinHeight * 3 / 4 - h, w, h}
+		rect = SDL_Rect {(WinWidth - 7 * (w + 1)) / 2 + idx * (w + 1), WinHeight * 3 / 4 - h, w, h}
 		sdl_fill_rect(g.sdl.screen, &rect, Colors[idx + 1])
 		idx++
 	}
