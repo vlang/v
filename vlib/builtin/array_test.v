@@ -508,7 +508,25 @@ fn test_sort() {
 	assert nums[4] == 108
 }
 
-
+fn test_slice2(){
+	//
+	// test negative indexes in slices
+	//
+	a:=[0,1,2,3,4,5,6,7,8,9]
+	// normal behaviour
+	assert a[1..3].str() == '[1, 2]'
+	assert a[..3].str() == '[0, 1, 2]'
+	assert a[8..].str() == '[8, 9]'
+	// negative indexes behaviour
+	assert a[-2..].str() == '[8, 9]'
+	assert a[..-8].str() == '[0, 1]'
+	assert a[2..-2].str() == '[2, 3, 4, 5, 6, 7]'
+	assert a[-12..-16].str() == '[]'
+	assert a[-8..-2].str() == '[2, 3, 4, 5, 6, 7]'
+	// out of bound both indexes
+	assert a[12..14].str() == '[]'
+	assert a[-12..16].str() == a.str()
+}
 
 /*
 fn test_for_last() {

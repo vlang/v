@@ -198,9 +198,39 @@ fn (a array) right(n int) array {
 }
 
 // used internally for [2..4]
+/*
 fn (a array) slice2(start, _end int, end_max bool) array {
 	end := if end_max { a.len } else { _end }
 	return a.slice(start, end)
+}
+*/
+fn (a array) slice2(start, _end int, end_max bool) array {
+	//C.printf("DEBUG: slice2 [%d..%d] [in_end_max=%d] \n",start,_end,end_max)
+	mut tmp_start:=start
+	if start < 0 {
+		tmp_start = a.len+start
+		if tmp_start < 0 {
+			tmp_start = 0
+		}
+	}else if start > a.len {
+		tmp_start = a.len
+	}
+
+	mut tmp_end:=_end
+	if _end < 0 {
+		tmp_end = a.len+_end
+		if tmp_end < 0 {
+			tmp_end = 0
+		}
+	}else if _end > a.len {
+		tmp_end = a.len
+	}
+
+	if end_max { tmp_end = a.len}
+
+	if tmp_end <= tmp_start { return array{} }
+
+	return a.slice(tmp_start, tmp_end)
 }
 
 // array.slice returns an array using the same buffer as original array

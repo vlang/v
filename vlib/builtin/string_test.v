@@ -565,3 +565,23 @@ fn test_inter_before_comp_if() {
 	}
 }
 
+fn test_slice2_negative(){
+	//
+	// test negative indexes in slices
+	//
+	s := '0123456789'
+	// normal behaviour
+	assert s[1..3] == '12'
+	assert s[..3] == '012'
+	assert s[8..] == '89'
+	// negative indexes behaviour
+	assert s[-2..] == '89'
+	assert s[..-8] == '01'
+	assert s[2..-2] == '234567'
+	assert s[-12..-16] == ''
+	assert s[-8..-2]== '234567'
+	// out of bound both indexes
+	assert s[12..14] == ''
+	assert s[-12..16] == '0123456789'
+}
+

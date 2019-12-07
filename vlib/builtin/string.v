@@ -369,9 +369,41 @@ fn (s string) right(n int) string {
 }
 
 // used internally for [2..4]
+/*
 fn (s string) substr2(start, _end int, end_max bool) string {
 	end := if end_max { s.len } else { _end }
 	return s.substr(start, end)
+}
+*/
+
+fn (s string) substr2(start , end int, end_max bool) string {
+	//C.printf("DEBUG: substr2 [%d..%d] [in_end_max=%d] \n",start,end,end_max)
+	
+	mut _start:=start
+	if start < 0 {
+		_start = s.len+start
+		if _start < 0 {
+			_start = 0
+		}
+	}else if start > s.len {
+		_start = s.len
+	}
+
+	mut _end:=end
+	if end < 0 {
+		_end = s.len+end
+		if _end < 0 {
+			_end = 0
+		}
+	}else if end > s.len {
+		_end = s.len
+	}
+
+	if end_max { _end = s.len}
+
+	if _end <= _start { return '' }
+
+	return s.substr(_start, _end)
 }
 
 fn (s string) substr(start, end int) string {

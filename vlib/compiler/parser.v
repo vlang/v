@@ -2058,9 +2058,11 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 				if T.parent != 'int' && T.parent != 'u32' {
 					p.check_types(T.name, 'int')
 				}
+				/*
 				if p.cgen.cur_line[index_pos..].replace(' ', '').int() < 0 {
 					p.error('cannot access negative array index')
 				}
+				*/
 			}
 			// [..
 			else {
