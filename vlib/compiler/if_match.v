@@ -234,6 +234,7 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 		if p.known_var(var_name) {
 			p.error('redefinition of `$var_name`')
 		}
+		p.open_scope()
 		p.next()
 		p.check(.decl_assign)
 		p.is_var_decl = true
@@ -262,6 +263,7 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			//token_idx: var_token_idx
 		})
 		p.statements()
+		p.close_scope()
 		p.returns = false
 		return 'void'
 	}	else {
