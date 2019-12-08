@@ -70,7 +70,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 
 fn (v &V) generate_hot_reload_code() {
 	mut cgen := v.cgen
-	
+
 	// Hot code reloading
 	if v.pref.is_live {
 		mut file := os.realpath(v.dir)
@@ -79,18 +79,18 @@ fn (v &V) generate_hot_reload_code() {
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.
 		mut vexe := os.args[0]
-		
+
 		if os.user_os() == 'windows' {
 			vexe = cescaped_path(vexe)
 			file = cescaped_path(file)
 		}
-		
+
 		mut msvc := ''
 		if v.pref.ccompiler == 'msvc' {
 			msvc = '-cc msvc'
 		}
-		
-		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }		
+
+		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }
 		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -shared $file'
 		if v.pref.show_c_cmd {
 			println(cmd_compile_shared_library)
@@ -100,7 +100,7 @@ fn (v &V) generate_hot_reload_code() {
 		diff := time.ticks() - ticks
 		println('compiling shared library took $diff ms')
 		println('=========\n')
-		
+
 		cgen.genln('
 
 void lfnmutex_print(char *s){
@@ -114,7 +114,6 @@ void lfnmutex_print(char *s){
 
 		if v.os != .windows {
 			cgen.genln('
-#include <dlfcn.h>
 void* live_lib=0;
 int load_so(byteptr path) {
 	char cpath[1024];
@@ -159,7 +158,7 @@ int load_so(byteptr path) {
 				cgen.genln('$so_fn = (void *)GetProcAddress(live_lib, "$so_fn");  ')
 			}
 		}
-		
+
 		cgen.genln('return 1;
 }
 
@@ -191,7 +190,7 @@ void reload_so() {
 			sprintf(compile_cmd, "$vexe $msvc -o %s -shared $file", new_so_base);
 			os__system(tos2(compile_cmd));
 
-			if( !os__file_exists(tos2(new_so_name)) ) {
+			if( !os__exists(tos2(new_so_name)) ) {
 				fprintf(stderr, "Errors while compiling $file\\n");
 				continue;
 			}

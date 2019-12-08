@@ -50,6 +50,7 @@ fn C.chdir() int
 fn C.fread() int
 fn C.rewind() int
 fn C.stat() int
+fn C.lstat() int
 fn C.rename() int
 fn C.fgets() int
 fn C.memset() int
@@ -86,6 +87,7 @@ fn C.DEFAULT_GE() bool
 fn C.isatty() int
 
 fn C.syscall() int
+fn C.sysctl() int
 
 
 
@@ -108,7 +110,7 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 fn C.RegCloseKey()
 fn C.RegQueryValueEx() voidptr
 fn C.RemoveDirectory() int
-fn C.GetStdHandle() int
+fn C.GetStdHandle() voidptr
 fn C.SetConsoleMode()
 fn C.GetConsoleMode() int
 fn C._putws()
@@ -117,7 +119,7 @@ fn C.setbuf()
 fn C.SymCleanup()
 fn C.MultiByteToWideChar() int
 fn C.wcslen() int
-fn C.WideCharToMultiByte() byteptr
+fn C.WideCharToMultiByte() int
 fn C._wstat()
 fn C._wrename()
 fn C._wfopen() voidptr
@@ -129,7 +131,7 @@ fn C._putenv() int
 fn C._waccess() int
 fn C._wremove()
 fn C.ReadConsole()
-fn C.fgetws() int
+fn C.fgetws() voidptr
 fn C.GetModuleFileName() int
 fn C._wchdir()
 fn C._wgetcwd() int

@@ -9,7 +9,7 @@ fn main() {
 	exe := os.executable()
 	dir := os.dir(exe)
 	vdir := os.dir(os.dir(dir))
-	if !os.file_exists('$vdir/v') && !os.dir_exists('$vdir/vlib') {
+	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/tools/fast/`')
 	}	
 	println('fast.html generator\n')
@@ -18,7 +18,7 @@ fn main() {
 	exec('git pull --rebase')
 	mut commit_hash := exec('git rev-parse HEAD')
 	commit_hash = commit_hash[..7]
-	if !os.file_exists('table.html') {
+	if !os.exists('table.html') {
 		os.create('table.html') or { panic(err) }
 	}	
 	mut table := os.read_file('table.html') or { panic(err) }

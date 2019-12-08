@@ -30,9 +30,14 @@ pub fn (wg mut WaitGroup) done() {
 	wg.add(-1)
 }
 
-pub fn (wg mut WaitGroup) wait() {
+pub fn (wg &WaitGroup) wait() {
 	for wg.active > 0 {
-		// waiting
+		// Do not remove this, busy empty loops are optimized
+		// with -prod by some compilers, see issue #2874
+		$if windows {
+			C.Sleep(1)
+		} $else {
+			C.usleep(1000)
+		}
 	}
 }
-

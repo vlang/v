@@ -15,11 +15,11 @@ const (
 
 pub fn compile_template(path string) string {
 	//lines := os.read_lines(path)
-	mut html := os.read_file(path) or {
+	html := os.read_file(path) or {
 		panic('html failed')
 	}
 	mut	header := ''
-	if os.file_exists('header.html') {
+	if os.exists('header.html') {
 		h := os.read_file('header.html') or {
 			panic('html failed')
 		}
@@ -27,7 +27,7 @@ pub fn compile_template(path string) string {
 	}
 	lines := html.split_into_lines()
 	mut s := strings.new_builder(1000)
-	base := path.all_after('/').replace('.html', '')
+	//base := path.all_after('/').replace('.html', '')
 	s.writeln('
 mut sb := strings.new_builder(${lines.len * 30})
 header := \'$header\'

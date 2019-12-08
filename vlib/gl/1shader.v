@@ -92,8 +92,8 @@ pub fn new_shader(name string) Shader {
 	if name.starts_with('/') {
 		dir = ''
 	}
-	vertex_path := '${dir}${name}.vert'
-	fragment_path := '${dir}${name}.frag'
+	//vertex_path := '${dir}${name}.vert'
+	//fragment_path := '${dir}${name}.frag'
 	//println('shader path=$vertex_path,\n fpath="$fragment_path"')
 	// vertex_src := os.read_file(vertex_path.trim_space())
 	mut vertex_src := ''

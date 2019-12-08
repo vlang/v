@@ -14,8 +14,8 @@ fn main() {
  rm('a.out')
 
  println('Making dir name and creating foo.txt')
- mkdir('name')
- create('foo.txt')
+ os.mkdir('name')? // TODO mkdir()
+ create('foo.txt')?
 
  foo_ls := ls('.') or { panic(err) }
  println(foo_ls)

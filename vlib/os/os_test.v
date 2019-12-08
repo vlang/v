@@ -76,14 +76,14 @@ fn test_write_and_read_bytes() {
 fn test_create_and_delete_folder() {
   folder := './test1'
   os.mkdir(folder) or { panic(err) }
-	assert os.dir_exists(folder)
+	assert os.is_dir(folder)
 
   folder_contents := os.ls(folder) or { panic(err) }
   assert folder_contents.len == 0
 
   os.rmdir(folder)
 
-  folder_exists := os.dir_exists(folder)
+  folder_exists := os.is_dir(folder)
 
   assert folder_exists == false
 }
@@ -170,6 +170,37 @@ fn test_tmpdir(){
 	os.rm(tfile)
 }
 
+
+fn test_make_symlink_check_is_link_and_remove_symlink() {
+   $if windows {
+       // TODO
+       assert true
+       return
+   }
+
+   folder  := 'tfolder'
+   symlink := 'tsymlink'
+
+   os.rm(symlink) 
+   os.rm(folder)
+
+   os.mkdir(folder) or { panic(err) }
+   folder_contents := os.ls(folder) or { panic(err) }
+   assert folder_contents.len == 0
+
+   os.system('ln -s $folder $symlink')
+   assert os.is_link(symlink) == true
+
+   os.rm(symlink) 
+   os.rm(folder)
+   
+   folder_exists := os.is_dir(folder)
+   assert folder_exists == false
+   
+   symlink_exists := os.is_link(symlink)
+   assert symlink_exists == false
+}
+
 //fn test_fork() {
 //  pid := os.fork()
 //  if pid == 0 {
@@ -207,11 +238,11 @@ fn cleanup_leftovers(){
 	
 	// possible leftovers from test_cp_r
 	os.rm('ex/ex2/ex2.txt')
-	os.rm('ex/ex2')
+	os.rmdir('ex/ex2')
 	os.rm('ex/ex1.txt')
-	os.rm('ex')
+	os.rmdir('ex')
 	os.rm('ex2/ex2.txt')
-	os.rm('ex2')
+	os.rmdir('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
 }

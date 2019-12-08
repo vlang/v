@@ -117,6 +117,9 @@ fn test_hamming() {
 				input1.setbit(i)
 				input2.setbit(i)
 			}
+			else {
+
+			}
 		}
 	}
 	assert count == bitfield.hamming(input1, input2)

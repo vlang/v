@@ -44,6 +44,7 @@ mut:
 }
 
 pub fn (ctx Context) html(html string) {
+	//println('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
 }
 
@@ -56,7 +57,7 @@ pub fn (ctx Context) json(s string) {
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') or { panic(err) }
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.headers\r\n\r\n') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
@@ -64,28 +65,32 @@ pub fn (ctx Context) not_found(s string) {
 }
 
 pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
+	//println('Set-Cookie $key=$val')
 	ctx.add_header('Set-Cookie', '$key=$val')
 }
 
-pub fn (ctx mut Context) get_cookie(key string) ?string { // TODO refactor
-	cookie_header := ctx.get_header('Cookie')
+pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
+	cookie_header := ' ' + ctx.get_header('Cookie')
 	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between('$key=', ';')
+		cookie_header.find_between(' $key=', ';')
 	} else {
-		cookie_header
+		cookie_header.find_between(' $key=', '\r')
 	}
 	if cookie != '' {
-		return cookie
+		return cookie.trim_space()
 	}
 	return error('Cookie not found')
 }
 
 fn (ctx mut Context) add_header(key, val string) {
-	ctx.headers = ctx.headers + if ctx.headers == '' { '$key: val' } else { '\r\n$key: val' }
+	//println('add_header($key, $val)')
+	ctx.headers = ctx.headers +
+		if ctx.headers == '' { '$key: $val' } else { '\r\n$key: $val' }
+	//println(ctx.headers)
 }
 
-fn (ctx mut Context) get_header(key string) string {
-	return ctx.headers.find_between('\r\n$key: ', '\r\n')
+fn (ctx &Context) get_header(key string) string {
+	return ctx.req.headers[key]
 }
 
 //pub fn run<T>(port int) {
@@ -100,21 +105,30 @@ pub fn run<T>(app mut T, port int) {
 		}
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
-		s := conn.read_line()
-		if s == '' {
+		first_line:= conn.read_line()
+		if first_line == '' {
 			conn.write(HTTP_500) or {}
 			conn.close() or {}
 			return
 		}
 		// Parse the first line
 		// "GET / HTTP/1.1"
-		first_line := s.all_before('\n')
+		//first_line := s.all_before('\n')
 		vals := first_line.split(' ')
 		if vals.len < 2 {
 			println('no vals for http')
 			conn.write(HTTP_500) or {}
 			conn.close() or {}
 			return
+		}
+		mut headers := []string
+		for _ in 0..30 {
+			header := conn.read_line()
+			headers << header
+			//println('header="$header" len = ' + header.len.str())
+			if header.len <= 2 {
+				break
+			}
 		}
 		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
@@ -124,13 +138,15 @@ pub fn run<T>(app mut T, port int) {
 			action = 'index'
 		}
 		req := http.Request{
-				headers: http.parse_headers(s.split_into_lines())
+				headers: http.parse_headers(headers) //s.split_into_lines())
 				ws_func: 0
 				user_ptr: 0
 				method: vals[0]
 				url: vals[1]
 		}
 		$if debug {
+			println('req.headers = ')
+			println(req.headers)
 			println('vweb action = "$action"')
 		}
 		//mut app := T{
@@ -147,11 +163,11 @@ pub fn run<T>(app mut T, port int) {
 				line := conn.read_line()
 				if line == '' || line == '\r\n' {
 					break
-				}	
+				}
 				//if line.contains('POST') || line == '' {
 					//break
-				//}	
-			}	
+				//}
+			}
 			line := conn.read_line()
 			app.vweb.parse_form(line)
 		}

@@ -162,7 +162,7 @@ fn (g mut Gen) mov64(reg Register, val i64) {
 
 fn (g mut Gen) call(addr int) {
 	//rel := g.abs_to_rel_addr(addr)
-	rel := 0xffffffff - int(abs(addr - g.buf.len))-1
+	//rel := 0xffffffff - int(abs(addr - g.buf.len))-1
 
 	println('call addr=$addr rel_addr=$addr pos=$g.buf.len')
 	g.write8(0xe8)

@@ -555,6 +555,13 @@ fn test_c_r() {
 	println('$c')
 	r := 50
 	println('$r')
+}
 
+fn test_inter_before_comp_if() {
+	s := '123'
+	// This used to break ('123 $....')
+	$if linux {
+		println(s)
+	}
 }
 

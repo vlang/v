@@ -200,7 +200,7 @@ fn print_output(s os.Result) {
 }
 
 fn main() {
-	if os.args.len < 2 || !os.file_exists(os.args[1]) {
+	if os.args.len < 2 || !os.exists(os.args[1]) {
 		println('Usage:')
 		println('  vrepl vexepath\n')
 		println('  ... where vexepath is the full path to the v executable file')

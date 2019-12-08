@@ -29,7 +29,7 @@ mut:
 	ai_socktype int
 	ai_flags int
 	ai_protocol int
-	ai_addrlen int	
+	ai_addrlen int
 	ai_addr voidptr
 	ai_canonname voidptr
 	ai_next voidptr
@@ -134,10 +134,10 @@ pub fn listen(port int) ?Socket {
 	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
-	bind_res := s.bind(port) or {
+	_ = s.bind(port) or {
 		return error(err)
 	}
-	listen_res := s.listen() or {
+	_ = s.listen() or {
 		return error(err)
 	}
 	return s
@@ -174,9 +174,9 @@ pub fn (s Socket) connect(address string, port int) ?int {
 	hints.ai_canonname = C.NULL
 	hints.ai_addr = C.NULL
 	hints.ai_next = C.NULL
-	
 
-	info := &C.addrinfo{!}
+
+	info := &C.addrinfo(0)
 	sport := '$port'
 	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
 	if info_res != 0 {
@@ -196,7 +196,7 @@ pub fn dial(address string, port int) ?Socket {
 	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		return error(err)
 	}
-	res := s.connect(address, port) or {
+	_ = s.connect(address, port) or {
 		return error(err)
 	}
 	return s
@@ -277,7 +277,7 @@ pub fn (s Socket) read_line() string {
 	mut res := '' // The final result, including the ending \n.
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
-		n := int(C.recv(s.sockfd, buf, MAX_READ-1, MSG_PEEK))
+		n := C.recv(s.sockfd, buf, MAX_READ-1, MSG_PEEK)
 		if n == -1 { return res }
 		if n == 0 {	return res }
 		buf[n] = `\0`
@@ -308,6 +308,19 @@ pub fn (s Socket) read_line() string {
 		res += line
 		res += CRLF
 		break
+	}
+	return res
+}
+
+// TODO
+pub fn (s Socket) read_all() string {
+	mut buf := [MAX_READ]byte // where C.recv will store the network data
+	mut res := '' // The final result, including the ending \n.
+	for {
+		n := C.recv(s.sockfd, buf, MAX_READ-1, 0)
+		if n == -1 { return res }
+		if n == 0 {	return res }
+		res += tos_clone(buf)
 	}
 	return res
 }

@@ -126,7 +126,7 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 	if !(selection in [.clipboard, .primary, .secondary]) {
 		panic("Wrong atom_type. Must be one of .primary, .secondary or .clipboard.")
 	}
-	
+
 	//init x11 thread support
 	status := XInitThreads()
 	if status == 0 {
@@ -184,7 +184,6 @@ fn (cb &Clipboard) take_ownership(){
 
 fn (cb mut Clipboard) set_text(text string) bool {
 	if cb.window == Window(C.None) {return false}
-	mut ret := false
 	cb.mutex.lock()
 	cb.text = text
 	cb.is_owner = true
@@ -202,10 +201,10 @@ fn (cb mut Clipboard) get_text() string {
 		return cb.text
 	}
 	cb.got_text = false
-	
+
 	//Request a list of possible conversions, if we're pasting.
 	XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection, cb.window, C.CurrentTime)
-	
+
 	//wait for the text to arrive
 	mut retries := 5
 	for {
@@ -260,7 +259,7 @@ fn (cb mut Clipboard) start_listener(){
 				if event.xselectionrequest.selection == cb.selection {
 					mut xsre := &XSelectionRequestEvent{}
 					xsre = &event.xselectionrequest
-					
+
 					mut xse := XSelectionEvent{
 						@type: C.SelectionNotify // 31
 						display: xsre.display
@@ -301,6 +300,7 @@ fn (cb mut Clipboard) start_listener(){
 				}
 			}
 			C.PropertyNotify {}
+			else {}
 		}
 	}
 }
@@ -355,22 +355,22 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 	else
 	{
 		atom_list := &Atom(prop.data)
-		
+
 		mut to_be_requested := Atom(0)
 
 		//This is higher than the maximum priority.
 		mut priority := math.max_i32
-		
+
 		supported_targets := cb.get_supported_targets()
 
 		for i := 0; i < prop.nitems; i++ {
 			//See if this data type is allowed and of higher priority (closer to zero)
 			//than the present one.
-			
+
 			if cb.is_supported_target(atom_list[i]) {
 				index := cb.get_target_index(atom_list[i])
 				if(priority > index && index >= 0)
-				{	
+				{
 					priority = index
 					to_be_requested = atom_list[i]
 				}
@@ -383,7 +383,7 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 fn (cb &Clipboard) get_atoms(types ...atom_type) []Atom {
 	mut atoms := []Atom
 	for typ in types {
-		atoms << cb.atoms[typ]		
+		atoms << cb.atoms[typ]
 	}
 	return atoms
 }

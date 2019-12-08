@@ -39,7 +39,7 @@ pub mut:
 }
 
 fn new_automaton(f [][]int) Automaton {
-	mut maxy := f.len
+	maxy := f.len
 	mut maxx := 0
 	for y := 0; y<f.len; y++ {
 		if maxx < f[y].len {
@@ -61,7 +61,7 @@ pub fn (aa mut Automaton) update() {
 	for y := 1; y<aa.field.maxy; y++ {
 		for x := 1; x<aa.field.maxx; x++ {
 			moore_sum := ( 0 +
-				aa.field.get(x-1,y-1) + aa.field.get(x,y-1) + aa.field.get(x+1,y-1) +	
+				aa.field.get(x-1,y-1) + aa.field.get(x,y-1) + aa.field.get(x+1,y-1) +
 				aa.field.get(x-1,y  ) + 0                   + aa.field.get(x+1,y  ) +
 				aa.field.get(x-1,y+1) + aa.field.get(x,y+1) + aa.field.get(x+1,y+1)
 			)
@@ -74,7 +74,7 @@ pub fn (aa mut Automaton) update() {
 			aa.new_field.set(x,y, if v { 1 } else { 0 })
 		}
 	}
-	mut tmp := aa.field
+	tmp := aa.field
 	aa.field = aa.new_field
 	aa.new_field = tmp
 }

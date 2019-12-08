@@ -47,7 +47,7 @@ pub fn u_to_upper(s ustring) ustring {
 
 // to_lower return an lowercase string from a string
 pub fn to_lower(s string) string {
-	return up_low(s, false) 
+	return up_low(s, false)
 }
 
 // u_to_lower return an lowercase string from a ustring
@@ -69,10 +69,10 @@ fn utf8util_char_len(b byte) int {
 }
 
 
-// 
-// if upper_flag == true  then make low ==> upper conversion 
+//
+// if upper_flag == true  then make low ==> upper conversion
 // if upper_flag == false then make upper ==> low conversion
-// 
+//
 // up_low make the dirt job
 fn up_low(s string, upper_flag bool) string {
 	mut _index := 0
@@ -90,14 +90,14 @@ fn up_low(s string, upper_flag bool) string {
 			}
 		}
 		else if ch_len > 1 && ch_len < 5{
-			mut lword := int(0)
+			mut lword := 0
 
 			for i:=0; i < ch_len ; i++ {
-				lword = (lword << 8 ) | int( s.str[_index + i] ) 
+				lword = (lword << 8 ) | int( s.str[_index + i] )
 			}
 
 			//C.printf(" #%d (%x) ", _index, lword)
-			
+
 			mut res := int(0)
 
 			// 2 byte utf-8
@@ -110,14 +110,14 @@ fn up_low(s string, upper_flag bool) string {
 			// byte format: 1110xxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len == 3 {
-				res = ( lword & 0x0f0000 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f ) 
+				res = ( lword & 0x0f0000 ) >> 4 | ( lword & 0x3f00 ) >> 2 | ( lword & 0x3f )
 			}
 			// 4 byte utf-8
 			// byte format: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 			//
 			else if ch_len == 4 {
-				res = (( lword & 0x07000000 ) >> 6)  | (( lword & 0x003f0000 ) >> 4) | 
-						(( lword & 0x00003F00 ) >> 2 ) | ( lword & 0x0000003f ) 
+				res = (( lword & 0x07000000 ) >> 6)  | (( lword & 0x003f0000 ) >> 4) |
+						(( lword & 0x00003F00 ) >> 2 ) | ( lword & 0x0000003f )
 			}
 
 			//C.printf("len: %d code: %04x ",ch_len,res)
@@ -125,15 +125,15 @@ fn up_low(s string, upper_flag bool) string {
 			//C.printf(" utf8 index: %d ",ch_index)
 
 			// char not in table, no need of conversion
-			if ch_index == 0 { 
+			if ch_index == 0 {
 				for i in 0..ch_len {
-					str_res[_index + i] = s.str[_index + i] 
+					str_res[_index + i] = s.str[_index + i]
 				}
 				//C.printf("\n")
 			}else{
 				tab_char := u16(unicode_con_table_up_to_low[ch_index])
 				//C.printf("tab_char: %04x ",tab_char)
-				
+
 				if ch_len == 2 {
 					ch0 := byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
 					ch1 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
@@ -141,12 +141,12 @@ fn up_low(s string, upper_flag bool) string {
 
 					str_res[ _index + 0 ] = ch0
 					str_res[ _index + 1 ] = ch1
-					
+
 					//****************************************************************
 					//  BUG: doesn't compile, workaround use shitf to right of 0 bit
 					//****************************************************************
 					//str_res[_index + 1 ] = byte( tab_char & 0xbf )			/*1011 1111*/
-					
+
 				}
 				else if ch_len == 3 {
 					ch0 := byte( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
@@ -160,24 +160,24 @@ fn up_low(s string, upper_flag bool) string {
 				}
 				// TODO: write if needed
 				else if ch_len == 4 {
-					// place holder!! 
+					// place holder!!
 					// at the present time simply copy the utf8 char
 					for i in 0..ch_len {
-						str_res[_index + i] = s.str[_index + i] 
+						str_res[_index + i] = s.str[_index + i]
 					}
 				}
 			}
 
-		}		
+		}
 		// other cases, just copy the string
 		else{
 			for i in 0..ch_len {
-				str_res[_index + i] = s.str[_index + i] 
+				str_res[_index + i] = s.str[_index + i]
 			}
 		}
 
 		old_index = _index
-		_index += ch_len	
+		_index += ch_len
 
 		// we are done, exit the loop
 		if _index >= s.len {
@@ -201,7 +201,7 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 
 	mut first_index := int(0) 										// first index of our utf8 char range
 	mut last_index := int(unicode_con_table_up_to_low.len >> 1)		// last+1 index of our utf8 char range
-	mut index := int(0)	
+	mut index := int(0)
 	mut x := u16(0)
 
 	mut offset:=int(0) // up to low
@@ -215,7 +215,7 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 	for {
 		index = (first_index+last_index) >> 1
 		x = unicode_con_table_up_to_low[ (index<<1)+offset ]
-		
+
 		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,in_code,x)
 
 		if x == in_code {
@@ -223,7 +223,7 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 			return int( (index<<1) + i_step)
 		}
 		else if x>in_code {
-			last_index=index 
+			last_index=index
 
 		}else {
 			first_index=index
@@ -246,7 +246,7 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 *  source: https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_73/nls/rbagslowtoupmaptable.htm?view=embed
 *  term of use: https://www.ibm.com/legal?lnk=flg-tous-usen
 *  license: not stated, general fair use license applied
-* 
+*
 *  regex expresion => replace from html table to V :
 *  src: ([A-F\d]+)\s+([A-F\d]+)\s+(.*)
 *  dst: 0x$1, 0x$2, // $3

@@ -106,7 +106,7 @@ mut:
 	enum_vals []string
 	gen_types []string
 	default_vals []string // `struct Foo { bar int = 2 }`
-	// This field is used for types that are not defined yet but are known to exist.
+	// `is_placeholder` is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
 	is_placeholder bool
@@ -397,7 +397,7 @@ fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
 		mod: p.mod
 		is_public: true
 	}
-	p.table.register_type2(typ)
+	p.table.register_type(typ)
 }
 
 fn (t mut Table) register_type_with_parent(typ, parent string) {
@@ -412,7 +412,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 	}
 }
 
-fn (t mut Table) register_type2(typ Type) {
+fn (t mut Table) register_type(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}
@@ -715,7 +715,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 			return false
 		}
 		else {
-			p.error('expected type `$expected`, but got `$got`')
+			p.error('cannot convert `$got` to `$expected`')
 		}
 	}
 	return true
@@ -819,13 +819,13 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
-	match typ {
-	 'byte' { return 0 <= x && x <= 255 }
-	 'u16' { return 0 <= x && x <= 65535 }
+	return match typ {
+	 'byte' { 0 <= x && x <= 255 }
+	 'u16' { 0 <= x && x <= 65535 }
 	//case 'u32': return 0 <= x && x <= math.MaxU32
 	//case 'u64': return 0 <= x && x <= math.MaxU64
 	//////////////
-	 'i8' { return -128 <= x && x <= 127 }
+	 'i8' { -128 <= x && x <= 127 }
 	/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
@@ -833,8 +833,8 @@ fn is_valid_int_const(val, typ string) bool {
 	//case 'i64':
 		//x64 := val.i64()
 		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
+		else { true }
 	}
-	return true
 }
 
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {

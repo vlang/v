@@ -19,6 +19,7 @@ const (
 const (
 	S_IFMT  = 0xF000 // type of file
 	S_IFDIR = 0x4000 // directory
+	S_IFLNK = 0xa000 // link
 )
 
 const(

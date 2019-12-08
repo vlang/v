@@ -17,6 +17,11 @@ pub fn new_builder(initial_size int) Builder {
 	}
 }
 
+pub fn (b mut Builder) write_b(data byte) {
+	b.buf << data
+	b.len += 1
+}
+
 pub fn (b mut Builder) write(s string) {
 	b.buf.push_many(s.str, s.len)
 	//b.buf << []byte(s)  // TODO

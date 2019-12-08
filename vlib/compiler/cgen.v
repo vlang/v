@@ -22,6 +22,7 @@ mut:
 	includes     []string
 	thread_args  []string
 	consts       []string
+	const_defines []string
 	fns          []string
 	so_fns       []string
 	consts_init  []string
@@ -42,7 +43,7 @@ mut:
 
 fn new_cgen(out_name_c string) &CGen {
 	path := out_name_c
-	mut out := os.create(path) or {
+	out := os.create(path) or {
 		println('failed to create $path')
 		return &CGen{}
 	}
@@ -119,7 +120,7 @@ fn (p mut Parser) tmp_expr() (string, string) {
 	p.cgen.is_tmp = true
 	//
 	typ := p.bool_expression()
-	
+
 	res := p.cgen.tmp_line
 	if p.cgen.prev_tmps.len > 0 {
 		p.cgen.tmp_line = p.cgen.prev_tmps.last()
@@ -175,7 +176,7 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 fn (g mut CGen) insert_before(val string) {
 	if g.nogen {
 		return
-	}	
+	}
 	prev := g.lines[g.lines.len - 1]
 	g.lines[g.lines.len - 1] = '$prev \n $val \n'
 }
@@ -191,7 +192,7 @@ fn (g mut CGen) register_thread_fn(wrapper_name, wrapper_text, struct_text strin
 }
 
 fn (v &V) prof_counters() string {
-	mut res := []string
+	res := []string
 	// Global fns
 	//for f in c.table.fns {
 		//res << 'double ${c.table.cgen_name(f)}_time;'
@@ -211,7 +212,7 @@ fn (v &V) prof_counters() string {
 }
 
 fn (p &Parser) print_prof_counters() string {
-	mut res := []string
+	res := []string
 	// Global fns
 	//for f in p.table.fns {
 		//counter := '${p.table.cgen_name(f)}_time'
@@ -255,7 +256,7 @@ fn (g mut CGen) add_to_main(s string) {
 
 fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
-	if os.file_exists(obj_path) {
+	if os.exists(obj_path) {
 		return
 	}
 	println('$obj_path not found, building it...')
@@ -289,6 +290,7 @@ fn os_name_to_ifdef(name string) string {
 	match name {
 		'windows' { return '_WIN32' }
 		'mac' { return '__APPLE__' }
+		'macos' { return '__APPLE__' }
 		'linux' { return '__linux__' }
 		'freebsd' { return '__FreeBSD__' }
 		'openbsd'{  return '__OpenBSD__' }
@@ -299,8 +301,9 @@ fn os_name_to_ifdef(name string) string {
 		'js' {return '_VJS' }
 		'solaris'{ return '__sun' }
 		'haiku' { return '__haiku__' }
+		else { verror('bad os ifdef name "$name"') }
 	}
-	verror('bad os ifdef name "$name"')
+	//verror('bad os ifdef name "$name"')
 	return ''
 }
 
@@ -315,7 +318,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		'_solaris.v'           { '#ifdef __sun' }
 		'_haiku.v'             { '#ifdef __haiku__' }
 		else {
-			
+
 			//verror('bad platform_postfix "$name"')
 			// TODO
 			''
@@ -323,7 +326,7 @@ fn platform_postfix_to_ifdefguard(name string) string {
 	}
 	if s == '' {
 		verror('bad platform_postfix "$name"')
-	}	
+	}
 	return s
 }
 
@@ -353,7 +356,7 @@ fn (v &V) type_definitions() string {
 			types_to_c(types_sorted, v.table)
 	return res
 }
-	
+
 // sort structs by dependant fields
 fn sort_structs(types []Type) []Type {
 	mut dep_graph := new_dep_graph()
@@ -408,10 +411,10 @@ fn (v &V) interface_table() string {
               sb.writeln('// NR methods = $t.gen_types.len')
                for i, gen_type in t.gen_types {
                        methods += '{'
-                       for i, method in t.methods {
+                       for j, method in t.methods {
 					       // Cat_speak
                                methods += '${gen_type}_${method.name}'
-                               if i < t.methods.len - 1 {
+                               if j < t.methods.len - 1 {
                                        methods += ', '
                                }
                        }
@@ -421,7 +424,7 @@ fn (v &V) interface_table() string {
                }
               if t.gen_types.len > 0 {
 //              	methods = '{TCCSKIP(0)}'
-//              }	
+//              }
                sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
 '{ $methods }; ')
 }

@@ -6,6 +6,9 @@ module compiler
 // `ph` is for string_eq()
 fn (p mut Parser) in_optimization(typ string, ph int) {
 	p.check(.lsbr)
+	if p.tok == .rsbr {
+		p.error('`x in []` is always false')
+	}
 	mut i := 0
 	// Get `a` expr value (can be a string literal, not a variable)
 	expr := p.cgen.cur_line[ph..]

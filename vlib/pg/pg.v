@@ -19,10 +19,10 @@ struct C.PGResult { }
 
 pub struct Config {
 pub:
-  host string
-  user string
-  password string
-  dbname string
+	host string
+	user string
+	password string
+	dbname string
 }
 
 fn C.PQconnectdb(a byteptr) &C.PGconn
@@ -31,17 +31,17 @@ fn C.PQgetvalue(voidptr, int, int) byteptr
 fn C.PQstatus(voidptr) int
 fn C.PQntuples(voidptr) int
 fn C.PQnfields(voidptr) int
-fn C.PQexec(voidptr) int
-fn C.PQexecParams(voidptr) int
+fn C.PQexec(voidptr) voidptr
+fn C.PQexecParams(voidptr) voidptr
 
-pub fn connect(config pg.Config) DB {
+pub fn connect(config pg.Config) ?DB {
 	conninfo := 'host=$config.host user=$config.user dbname=$config.dbname'
-	conn:=C.PQconnectdb(conninfo.str)
+	conn := C.PQconnectdb(conninfo.str)
 	status := C.PQstatus(conn)
+	println("status=$status")
 	if status != C.CONNECTION_OK {
 		error_msg := C.PQerrorMessage(conn)
-		eprintln('Connection to a PG database failed: ' + string(error_msg))
-		exit(1)
+		return error ('Connection to a PG database failed: ' + string(error_msg))
 	}
 	return DB {conn: conn}
 }

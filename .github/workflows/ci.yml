@@ -29,7 +29,7 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: |
-        brew install freetype glfw openssl
+        brew install freetype glfw openssl postgres
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make && ./v -o v v.v
@@ -37,6 +37,13 @@ jobs:
       run:  ./v -o v2 v.v && ./v2 -o v3 v.v
     - name: Test symlink
       run:  sudo ./v symlink
+    - name: Set up pg database
+      run: |
+        brew services start postgresql
+        sleep 3
+        psql -d postgres -c 'select rolname from pg_roles'
+        psql -d postgres -c 'create database customerdb;'
+        psql -d customerdb -f examples/database/pg/mydb.sql
     - name: Test v->c
       run: ./v test-compiler
     - name: Test v binaries
@@ -45,6 +52,8 @@ jobs:
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
       run:  ./v symlink && v -o v2 v.v
+    - name: Test vsh
+      run:  ./v examples/v_script.vsh
     - name: Test vid
       run: |
         git clone --depth 1 https://github.com/vlang/vid.git
@@ -69,7 +78,7 @@ jobs:
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Build Vorum
       run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
-    - name: Bare metal
+    - name: Freestanding
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: x64 machine code generation
       run: cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
@@ -78,19 +87,26 @@ jobs:
   ubuntu-prebuilt:
     runs-on: ubuntu-18.04
     steps:
+    - name: Install dependencies
+      run: sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev
     - name: Download V
-      run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_linux.zip && unzip v_linux.zip && ./v --version
+      run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
     - name: Test V
-      run: ./v examples/hello_world.v && examples/hello_world
+      run: ./v examples/hello_world.v && examples/hello_world && ./v build-examples
 
 
   macos-prebuilt:
     runs-on: macOS-10.14
+
     steps:
+    - name: Install dependencies
+      run: |
+        brew install freetype glfw openssl
+        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Download V
-      run: wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_macos.zip && unzip v_macos.zip && ./v --version
+      run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
     - name: Test V
-      run: ./v examples/hello_world.v && examples/hello_world
+      run: ./v examples/hello_world.v && examples/hello_world && ./v build-examples
 
   windows-prebuilt:
     runs-on: windows-2019

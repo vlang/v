@@ -19,7 +19,7 @@ pub mut:
 	fail string
 }
 
-pub fn new_test_sesion(vargs string) TestSession {
+pub fn new_test_session(vargs string) TestSession {
 	return TestSession{
 		vexe: vexe_path()
 		vargs: vargs
@@ -50,6 +50,9 @@ pub fn (ts mut TestSession) test() {
 		$if windows {
 			if file.contains('sqlite') { continue }
 		}
+		$if !macos {
+			if file.contains('customer') { continue }
+		}
 		$if msvc {
 			if file.contains('asm') { continue }
 		}
@@ -59,6 +62,7 @@ pub fn (ts mut TestSession) test() {
 		tmpc_filepath := file.replace('.v', '.tmp.c')
 
 		cmd := '"$ts.vexe" $ts.vargs "$file"'
+		//eprintln('>>> v cmd: $cmd')
 
 		ts.benchmark.step()
 		if show_stats {
@@ -94,21 +98,24 @@ pub fn (ts mut TestSession) test() {
 
 pub fn vlib_should_be_present( parent_dir string ) {
 	vlib_dir := filepath.join( parent_dir, 'vlib' )
-	if !os.dir_exists( vlib_dir ){
+	if !os.is_dir( vlib_dir ){
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
 	}
 }
 
-pub fn v_build_failing(vargs string, folder string) bool {
+pub fn v_build_failing(zargs string, folder string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present( parent_dir )
-  
+	vargs := zargs.replace(vexe, '')
+
 	eprintln(main_label)
-	mut session := new_test_sesion( vargs )
+	eprintln('   v compiler args: "$vargs"')
+
+	mut session := new_test_session( vargs )
 	files := os.walk_ext(filepath.join(parent_dir, folder),'.v')
 	mains := files.filter(!it.contains('modules'))
 	mut rebuildable_mains := mains
@@ -144,8 +151,8 @@ pub fn building_any_v_binaries_failed() bool {
 	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
 	os.chdir( parent_dir )
-	
-	mut failed := false 
+
+	mut failed := false
 	v_build_commands := [
 
 		// '$vexe -o v_g             -g  v.v',
@@ -156,11 +163,11 @@ pub fn building_any_v_binaries_failed() bool {
 
 		'$vexe -o v_prod    -prod     v.v',
 	]
-	
+
 	mut bmark := benchmark.new_benchmark()
 	bok   := term.ok_message('OK')
 	bfail := term.fail_message('FAIL')
-	for cmd in v_build_commands { 
+	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
@@ -170,10 +177,10 @@ pub fn building_any_v_binaries_failed() bool {
 			continue
 		}
 		bmark.ok()
-		eprintln(bmark.step_message('$cmd => ${bok}'))		
+		eprintln(bmark.step_message('$cmd => ${bok}'))
 	}
 	bmark.stop()
 	eprintln( bmark.total_message( 'building v binaries' ) )
-	
+
 	return failed
 }
