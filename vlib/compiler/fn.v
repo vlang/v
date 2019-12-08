@@ -309,18 +309,7 @@ fn (p mut Parser) fn_decl() {
 		f.name = p.check_name()
 		f.is_c = true
 	}
-	else if !p.pref.translated {
-		if contains_capital(f.name) && !p.fileis('view.v') && !p.is_vgen {
-			println('`$f.name`')
-			p.error('function names cannot contain uppercase letters, use snake_case instead')
-		}
-		if f.name[0] == `_` {
-			p.error('function names cannot start with `_`, use snake_case instead')
-		}
-		if f.name.contains('__') {
-			p.error('function names cannot contain double underscores, use single underscores instead')
-		}
-	}
+	orig_name := f.name
 	// simple_name := f.name
 	// user.register() => User_register()
 	has_receiver := receiver_typ.len > 0
@@ -386,6 +375,19 @@ fn (p mut Parser) fn_decl() {
 	is_fn_header := !is_c && !p.is_vh &&		p.tok != .lcbr
 	if is_fn_header {
 		f.is_decl = true
+	}
+	// Make sure the name is valid
+	if !is_c && !p.pref.translated && !is_fn_header {
+		if contains_capital(orig_name) && !p.fileis('view.v') && !p.is_vgen {
+			//println(orig_name)
+			p.error('function names cannot contain uppercase letters, use snake_case instead')
+		}
+		if f.name[0] == `_` {
+			p.error('function names cannot start with `_`, use snake_case instead')
+		}
+		if orig_name.contains('__') {
+			p.error('function names cannot contain double underscores, use single underscores instead')
+		}
 	}
 	// `{` required only in normal function declarations
 	if !is_c && !p.is_vh && !is_fn_header {
