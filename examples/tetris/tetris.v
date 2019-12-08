@@ -361,7 +361,7 @@ fn parse_binary_tetro(t_ int) []Block {
 	for i := 0; i <= 3; i++ {
 		// Get ith digit of t
 		p := int(math.pow(10, 3 - i))
-		mut digit := int(t / p)
+		mut digit := t / p
 		t %= p
 		// Convert the digit to binary
 		for j := 3; j >= 0; j-- {
@@ -402,6 +402,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 				game.state = .running
 			}
 		}
+		else {}
 	}
 
 	if game.state != .running {
@@ -434,5 +435,6 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	glfw.KeyDown {
 		game.move_tetro() // drop faster when the player presses <down>
 	}
+	else { }
 	}
 }

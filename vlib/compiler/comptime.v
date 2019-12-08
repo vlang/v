@@ -23,6 +23,9 @@ fn (p mut Parser) comp_time() {
 		p.fspace()
 		if name in supported_platforms {
 			ifdef_name := os_name_to_ifdef(name)
+			if name == 'mac' {
+				p.warn('use `macos` instead of `mac`')
+			}
 			if not {
 				p.genln('#ifndef $ifdef_name')
 			}
@@ -31,7 +34,9 @@ fn (p mut Parser) comp_time() {
 			}
 			p.check(.lcbr)
 			os := os_from_string(name)
-			if (!not && os != p.os) || (not && os == p.os) {
+			if ((!not && os != p.os) || (not && os == p.os)) &&
+				!p.pref.output_cross_c
+			{
 				// `$if os {` for a different target, skip everything inside
 				// to avoid compilation errors (like including <windows.h>
 				// on non-Windows systems)
@@ -148,12 +153,12 @@ fn (p mut Parser) comp_time() {
 		if p.pref.is_debug {
 			println('compiling tmpl $path')
 		}
-		if !os.file_exists(path) {
+		if !os.exists(path) {
 			// Can't find the template file in current directory,
 			// try looking next to the vweb program, in case it's run with
 			// v path/to/vweb_app.v
 			path = os.dir(p.scanner.file_path) + '/' + path
-			if !os.file_exists(path) {
+			if !os.exists(path) {
 				p.error('vweb HTML template "$path" not found')
 			}
 		}
@@ -260,7 +265,7 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 	p.check(.dollar)
 	var := p.check_name()
 	mut j := 0
-	for i, method in typ.methods {
+	for method in typ.methods {
 		if method.typ != 'void' {
 
 			continue

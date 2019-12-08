@@ -12,8 +12,8 @@ const (
 	mask      = 0x7FF
 	shift     = 64 - 11 - 1
 	bias      = 1023
-	sign_mask = u64(u64(1) << 63)
-	frac_mask = u64(u64(u64(1)<<u64(shift)) - u64(1))
+	sign_mask = (u64(1) << 63)
+	frac_mask = ((u64(1)<<u64(shift)) - u64(1))
 )
 
 // inf returns positive infinity if sign >= 0, negative infinity if sign < 0.

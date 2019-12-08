@@ -44,7 +44,7 @@ pub struct Log {
 mut:
 	level LogLevel
 	output_label string
-  
+
 	ofile os.File
 	output_to_file bool
 pub:
@@ -70,7 +70,7 @@ pub fn (l mut Log) set_full_logpath(full_log_path string) {
 	rlog_file := os.realpath( full_log_path )
 	l.set_output_label( os.filename( rlog_file ) )
 	l.set_output_path( os.basedir( rlog_file ) )
-}  
+}
 
 pub fn (l mut Log) set_output_label(label string){
 	l.output_label = label
@@ -80,10 +80,10 @@ pub fn (l mut Log) set_output_path(output_file_path string) {
 	if l.ofile.is_opened() { l.ofile.close() }
 	l.output_to_file = true
 	l.output_file_name = filepath.join( os.realpath( output_file_path ) , l.output_label )
-	mut ofile := os.open_append( l.output_file_name  ) or {
+	ofile := os.open_append( l.output_file_name  ) or {
 		panic('error while opening log file ${l.output_file_name} for appending')
 	}
-	l.ofile = ofile  
+	l.ofile = ofile
 }
 
 pub fn (l mut Log) close(){
@@ -96,7 +96,7 @@ fn (l mut Log) log_file(s string, level LogLevel) {
 	l.ofile.writeln('$timestamp [$e] $s')
 }
 
-fn (l mut Log) log_cli(s string, level LogLevel) {
+fn (l &Log) log_cli(s string, level LogLevel) {
 	f := tag(level)
 	t := time.now()
 	println('[$f ${t.format_ss()}] $s')

@@ -18,7 +18,7 @@ pub fn (cb mut Clipboard) paste() string {
 // clear the clipboard
 pub fn (cb mut Clipboard) clear_all() {
 	cb.clear()
-} 
+}
 
 // destroy the clipboard
 pub fn (cb mut Clipboard) destroy() {
@@ -26,7 +26,7 @@ pub fn (cb mut Clipboard) destroy() {
 }
 
 // check if we own the clipboard
-pub fn (cb mut Clipboard) check_ownership() bool {
+pub fn (cb Clipboard) check_ownership() bool {
 	return cb.has_ownership()
 }
 

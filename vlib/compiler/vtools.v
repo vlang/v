@@ -15,7 +15,7 @@ pub fn launch_tool(tname string){
 	//println('Launching: "$tool_command" ...')
 
 	mut tool_should_be_recompiled := false
-	if !os.file_exists( tool_exe ) {
+	if !os.exists( tool_exe ) {
 		// fresh checkout
 		tool_should_be_recompiled = true
 	}else{

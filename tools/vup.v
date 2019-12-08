@@ -8,7 +8,7 @@ fn main() {
 	println(s.output)
 	$if windows {
 		v_backup_file := '$vroot/v_old.exe'
-		if os.file_exists( v_backup_file ) {
+		if os.exists( v_backup_file ) {
 			os.rm( v_backup_file )
 		}
 		os.mv_by_cp('$vroot/v.exe', v_backup_file) or { panic(err) }

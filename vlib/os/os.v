@@ -33,7 +33,7 @@ pub const (
 
 pub struct File {
 	cfile voidptr // Using void* instead of FILE*
-mut: 
+mut:
 	opened bool
 }
 
@@ -164,7 +164,7 @@ pub fn cp(old, new string) ?bool {
 pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 	source_path := os.realpath( osource_path )
 	dest_path := os.realpath( odest_path )
-	if !os.file_exists(source_path) {
+	if !os.exists(source_path) {
 		return error('Source path doesn\'t exist')
 	}
 	//single file copy
@@ -174,7 +174,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool{
 		} else {
 			dest_path
 		}
-		if os.file_exists(adjasted_path) {
+		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
 			}
@@ -407,10 +407,10 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 
 fn vpclose(f voidptr) int {
 	$if windows {
-		return int( C._pclose(f) )
+		return C._pclose(f)
 	}
 	$else {
-		ret , _ := posix_wait4_to_exit_status( int( C.pclose(f) ) )
+		ret , _ := posix_wait4_to_exit_status(C.pclose(f))
 		return ret
 	}
 }
@@ -428,7 +428,7 @@ pub fn system(cmd string) int {
 		// TODO remove panic
 		//panic(';, &&, || and \\n are not allowed in shell commands')
 	//}
-	mut ret := int(0)
+	mut ret := 0
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"$cmd"' } else { cmd }
@@ -464,6 +464,7 @@ pub fn sigint_to_signal_name(si int) string {
 		13 {return 'SIGPIPE'}
 		14 {return 'SIGALRM'}
 		15 {return 'SIGTERM'}
+		else { }
 	}
 	$if linux {
 		// From `man 7 signal` on linux:
@@ -479,6 +480,7 @@ pub fn sigint_to_signal_name(si int) string {
 			///////////////////////////////
 			5{ return 'SIGTRAP'}
 			7{ return 'SIGBUS'		}
+			else {}
 		}
 	}
 	return 'unknown'
@@ -523,14 +525,19 @@ pub fn unsetenv(name string) int {
 	}
 }
 
-// file_exists returns true if `path` exists.
-pub fn file_exists(_path string) bool {
+// exists returns true if `path` exists.
+pub fn exists(path string) bool {
 	$if windows {
-		path := _path.replace('/', '\\')
-		return C._waccess(path.to_wide(), 0) != -1
+		p := path.replace('/', '\\')
+		return C._waccess(p.to_wide(), 0) != -1
 	} $else {
-		return C.access(_path.str, 0 ) != -1
+		return C.access(path.str, 0 ) != -1
 	}
+}
+
+[deprecated]
+pub fn file_exists(_path string) bool {
+	panic('use os.exists(path) instead of os.file_exists(path)')
 }
 
 // rm removes file in `path`.
@@ -618,7 +625,7 @@ pub fn get_line() string {
 pub fn get_raw_line() string {
     $if windows {
         max_line_chars := 256
-        buf := &byte(malloc(max_line_chars*2))
+        buf := malloc(max_line_chars*2)
         if is_atty(0) > 0 {
             h_input := C.GetStdHandle(STD_INPUT_HANDLE)
             mut nr_chars := u32(0)
@@ -626,7 +633,7 @@ pub fn get_raw_line() string {
             return string_from_wide2(&u16(buf), int(nr_chars))
         }
         res := C.fgetws(&u16(buf), max_line_chars, C.stdin )
-        len := int(  C.wcslen(&u16(buf)) )
+        len := C.wcslen(&u16(buf))
         if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
         return ''
     } $else {
@@ -673,7 +680,7 @@ pub fn user_os() string {
 	$if linux {
 		return 'linux'
 	}
-	$if mac {
+	$if macos {
 		return 'mac'
 	}
 	$if windows {
@@ -730,7 +737,7 @@ pub fn write_file(path, text string) {
 	f.close()
 }
 
-// clear will clear current terminal screen.
+// clear clears current terminal screen.
 pub fn clear() {
 	$if !windows {
 		C.printf('\x1b[2J')
@@ -738,11 +745,11 @@ pub fn clear() {
 	}
 }
 
-fn on_segfault(f voidptr) {
+pub fn on_segfault(f voidptr) {
 	$if windows {
 		return
 	}
-	$if mac {
+	$if macos {
 		mut sa := C.sigaction{}
 		C.memset(&sa, 0, sizeof(sigaction))
 		C.sigemptyset(&sa.sa_mask)
@@ -772,10 +779,10 @@ pub fn executable() string {
 	$if windows {
 		max := 512
 		mut result := &u16(calloc(max*2)) // MAX_PATH * sizeof(wchar_t)
-		len := int(C.GetModuleFileName( 0, result, max ))
+		len := C.GetModuleFileName( 0, result, max )
 		return string_from_wide2(result, len)
 	}
-	$if mac {
+	$if macos {
 		mut result := calloc(MAX_PATH)
 		pid := C.getpid()
 		ret := proc_pidpath (pid, result, MAX_PATH)
@@ -822,22 +829,45 @@ pub fn executable() string {
 	return os.args[0]
 }
 
+[deprecated]
+pub fn dir_exists(path string) bool {
+	panic('use os.is_dir()')
+	//return false
+}
+
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
-		return dir_exists(path)
-		//val := int(C.GetFileAttributes(path.to_wide()))
-		// Note: this return is broke (wrong). we have dir_exists already how will this differ?
-		//return (val &FILE_ATTRIBUTE_DIRECTORY) > 0
+		_path := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(_path.to_wide())
+		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
+			return false
+		}
+		if int(attr) & C.FILE_ATTRIBUTE_DIRECTORY != 0 {
+			return true
+		}
+		return false
 	}
 	$else {
 		statbuf := C.stat{}
-		cstr := path.str
-		if C.stat(cstr, &statbuf) != 0 {
+		if C.stat(path.str, &statbuf) != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		return (int(statbuf.st_mode) & S_IFMT) == S_IFDIR
+		return int(statbuf.st_mode) & S_IFMT == S_IFDIR
+	}
+}
+
+// is_link returns a boolean indicating whether the given path is a link.
+pub fn is_link(path string) bool {
+	$if windows {
+		return false // TODO
+	} $else {
+		statbuf := C.stat{}
+		if C.lstat(path.str, &statbuf) != 0 {
+			return false
+		}
+		return int(statbuf.st_mode) & S_IFMT == S_IFLNK
 	}
 }
 
@@ -927,7 +957,7 @@ pub fn walk(path string, fnc fn(path string)) {
 		if os.is_dir(p) {
 			walk(p, fnc)
 		}
-		else if os.file_exists(p) {
+		else if os.exists(p) {
 			fnc(p)
 		}
 	}
@@ -996,7 +1026,7 @@ pub fn mkdir_all(path string) {
 	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
 	for subdir in path.split(os.path_separator) {
 		p += subdir + os.path_separator
-		if !os.dir_exists(p) {
+		if !os.is_dir(p) {
 			os.mkdir(p) or { panic(err) }
 		}
 	}
@@ -1013,7 +1043,7 @@ pub fn tmpdir() string {
 	$if linux {
 		if path == '' { path = '/tmp' }
 	}
-	$if mac {
+	$if macos {
 		/*
 		if path == '' {
 			// TODO untested

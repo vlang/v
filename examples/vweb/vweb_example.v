@@ -27,8 +27,7 @@ pub fn (app & App) json_endpoint() {
 }
 
 pub fn (app mut App) index() {
-	app.cnt ++
-	
+	app.cnt++
 	$vweb.html()
 }
 

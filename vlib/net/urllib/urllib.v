@@ -103,8 +103,9 @@ fn should_escape(c byte, mode EncodingMode) bool {
 			// everything, so escape nothing.
 			return false
 		}
+		else {}
 		}
-	}
+	} else {}
 	}
 
 	if mode == .encode_fragment {
@@ -118,6 +119,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 			`!`, `(`, `)`, `*`{
 				return false
 			}
+			else {}
 		}
 	}
 
@@ -184,7 +186,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
-					v := byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
+					v := (unhex(s[i+1])<<byte(4) | unhex(s[i+2]))
 					if s[i..i+3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
 						error(error_msg(err_msg_escape, s[i..i+3]))
 					}
@@ -212,7 +214,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		x := s[i]
 		match x {
 			`%` {
-				t.write( byte(unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
+				t.write((unhex(s[i+1])<<byte(4) | unhex(s[i+2])).str() )
 				i += 2
 			}
 			`+` {
@@ -260,7 +262,7 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 
-	mut buf := [byte(0)].repeat(64)
+	buf := [byte(0)].repeat(64)
 	mut t := []byte
 
 	required := s.len + 2*hex_count
@@ -677,7 +679,7 @@ fn (u mut URL) set_path(p string) ?bool {
 // reading u.raw_path directly.
 fn (u &URL) escaped_path() string {
 	if u.raw_path != '' && valid_encoded_path(u.raw_path) {
-		p := unescape(u.raw_path, .encode_path)
+		unescape(u.raw_path, .encode_path) or { return '' }
 		return u.raw_path
 	}
 	if u.path == '*' {

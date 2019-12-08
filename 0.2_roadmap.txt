@@ -17,10 +17,10 @@
 + prebuilt binaries for all platforms
 + cached modules
 + bring back generics
-- bring back forum/blog and vpm
-- wrap up orm
++ bring back forum/blog and vpm
++ wrap up orm
 + bring back vweb
-- fix vorum, migrate to orm
++ fix vorum, migrate to orm
 - wrap up memory management
 - remove all compiler memory leaks
 + fix child <T> function calls

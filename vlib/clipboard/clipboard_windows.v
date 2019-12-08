@@ -39,6 +39,7 @@ struct Clipboard {
     retry_delay int
     mut:
     hwnd HWND
+    foo int // TODO remove
 }
 
 fn (cb &Clipboard) get_clipboard_lock() bool {
@@ -92,14 +93,16 @@ fn (cb &Clipboard) has_ownership() bool {
     return GetClipboardOwner() == cb.hwnd
 }
 
-fn (cb &Clipboard) clear() {
+fn (cb mut Clipboard) clear() {
     if !cb.get_clipboard_lock() {return}
     EmptyClipboard()
     CloseClipboard()
+	cb.foo = 0
 }
 
-fn (cb &Clipboard) free(){
+fn (cb mut Clipboard) free(){
     DestroyWindow(cb.hwnd)
+	cb.foo = 0
 }
 
 // the string.to_wide doesn't work with SetClipboardData, don't know why
@@ -115,7 +118,8 @@ fn to_wide(text string) &HGLOBAL {
     return buf
 }
 
-fn (cb &Clipboard) set_text(text string) bool {
+fn (cb mut Clipboard) set_text(text string) bool {
+	cb.foo = 0
     buf := to_wide(text)
     if !cb.get_clipboard_lock() {
         GlobalFree(buf)
@@ -135,7 +139,8 @@ fn (cb &Clipboard) set_text(text string) bool {
     return true
 }
 
-fn (cb &Clipboard) get_text() string {
+fn (cb mut Clipboard) get_text() string {
+	cb.foo = 0
     if !cb.get_clipboard_lock() {
         return ""
     }

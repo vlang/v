@@ -2,7 +2,7 @@ module main
 
 import (
 	os
-  testing
+	testing
 )
 
 pub fn main() {
@@ -29,14 +29,14 @@ pub fn main() {
 		eprintln('Use `v test-compiler` instead.')
 		exit(1)
 	}
-  
-	mut ts := testing.new_test_sesion(args_before)
+
+	mut ts := testing.new_test_session(args_before)
 	for targ in args_after.split(' ') {
-		if os.file_exists(targ) && targ.ends_with('_test.v') {
+		if os.exists(targ) && targ.ends_with('_test.v') {
 			ts.files << targ
 			continue
 		}
-		if os.dir_exists(targ) {
+		if os.is_dir(targ) {
 			// Fetch all tests from the directory
 			ts.files << os.walk_ext( targ.trim_right(os.path_separator), '_test.v')
 			continue

@@ -16,7 +16,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 
 fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	skipframes := xskipframes + 2
-	$if mac { return print_backtrace_skipping_top_frames_mac(skipframes) }
+	$if macos { return print_backtrace_skipping_top_frames_mac(skipframes) }
 	$if linux { return print_backtrace_skipping_top_frames_linux(skipframes) }
 	$if freebsd { return print_backtrace_skipping_top_frames_freebsd(skipframes)  }
 	return false
@@ -25,7 +25,7 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 // the functions below are not called outside this file,
 // so there is no need to have their twins in builtin_windows.v
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
-	$if mac {
+	$if macos {
 	buffer := [100]byteptr
 	nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 	C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
@@ -53,7 +53,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			nr_ptrs := C.backtrace(*voidptr(buffer), 100)
 			nr_actual_frames := nr_ptrs-skipframes
 			mut sframes := []string
-			csymbols := *byteptr(C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames))
+			csymbols := C.backtrace_symbols(*voidptr(&buffer[skipframes]),
+				nr_actual_frames)
 			for i in 0..nr_actual_frames {  sframes << tos2(csymbols[i]) }
 			for sframe in sframes {
 				executable := sframe.all_before('(')
@@ -72,7 +73,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					output += tos(buf, vstrlen(buf))
 				}
 				output = output.trim_space()+':'
-				if 0 != int(C.pclose(f)) {
+				if 0 != C.pclose(f) {
 					println(sframe) continue
 				}
 				if output in ['??:0:','??:?:'] { output = '' }

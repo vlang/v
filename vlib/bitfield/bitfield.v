@@ -460,7 +460,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 // reverse() reverses the order of bits in the array (swap the first with the
 // last, the second with the last but one and so on)
 
-pub fn (instance mut BitField) reverse() BitField {
+pub fn (instance BitField) reverse() BitField {
 	size := instance.size
 	bitnslots := bitnslots(size)
 	mut output := new(size)

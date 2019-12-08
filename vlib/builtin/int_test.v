@@ -75,6 +75,16 @@ fn test_and() {
 	assert c[4] & 1 != 0
 }
 
+fn test_i8_print() {
+	b := i8(0)
+	println(b)
+	c := i16(7)
+	println(c)
+	d := u16(6)
+	println(d)
+	assert true
+}
+
 /*
 fn test_cmp() {
 	assert 1 ≠ 2
@@ -82,3 +92,15 @@ fn test_cmp() {
 	assert 1 ⩾ 0
 }
 */
+
+type myint int
+type mystring string
+
+fn test_int_alias() {
+	/*
+	i := myint(2)
+	s := mystring('hi')
+	ss := s + '!'
+	assert i + 10 == 12
+	*/
+}

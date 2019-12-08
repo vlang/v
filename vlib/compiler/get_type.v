@@ -1,12 +1,42 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module compiler
 
-import strings
+import (
+	strings
+)
 
-fn (p mut Parser) get_type2() Type {
+fn (p mut Parser) get_type2() Type{
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
-	mut cat := TypeCategory.struct_
+	cat := TypeCategory.struct_
+	// multiple returns
+	if p.tok == .lpar {
+		//p.warn('`()` are no longer necessary in multiple returns' +
+		//'\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
+		// if p.inside_tuple {p.error('unexpected (')}
+		// p.inside_tuple = true
+		p.check(.lpar)
+		mut types := []string
+		for {
+			types << p.get_type()
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+		}
+		p.check(.rpar)
+		// p.inside_tuple = false
+		typ = p.register_multi_return_stuct(types)
+		return Type {
+			name: typ
+			mod: p.mod
+			cat: cat
+		}
+	}
 	// fn type
 	if p.tok == .key_fn {
 		mut f := Fn{name: '_', mod: p.mod}
@@ -15,7 +45,7 @@ fn (p mut Parser) get_type2() Type {
 		p.fn_args(mut f)
 		// Same line, it's a return type
 		if p.scanner.line_nr == line_nr {
-			if p.tok == .name {
+			if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
 				f.typ = p.get_type()
 			}
 			else {
@@ -33,40 +63,31 @@ fn (p mut Parser) get_type2() Type {
 			func: f
 			cat: .func
 		}
-		p.table.register_type2(fn_typ)
+		p.table.register_type(fn_typ)
 		return fn_typ
 	}
 	// arrays ([]int)
-	mut is_arr := false
-	mut is_arr2 := false// [][]int TODO remove this and allow unlimited levels of arrays
+	mut arr_level := 0
 	is_question := p.tok == .question
 	if is_question {
 		p.check(.question)
 	}
-	if p.tok == .lsbr {
+	for p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
-		if p.tok == .number {
-			typ = '[$p.lit]'
+		if p.tok == .number || (p.tok == .name && !p.inside_const) {
+			if p.tok == .name {
+				typ += '[${p.mod}__$p.lit]'
+
+			} else {
+				typ += '[$p.lit]'
+			}
 			p.next()
 		}
 		else {
-			is_arr = true
+			arr_level++
 		}
 		p.check(.rsbr)
-		// [10][3]int
-		if p.tok == .lsbr {
-			p.next()
-			if p.tok == .number {
-				typ += '[$p.lit]'
-				p.check(.number)
-			}
-			else {
-				is_arr2 = true
-			}
-			p.check(.rsbr)
-		}
-		cat = .array
 	}
 	// map[string]int
 	if !p.builtin_mod && p.tok == .name && p.lit == 'map' {
@@ -82,10 +103,11 @@ fn (p mut Parser) get_type2() Type {
 		p.register_map(typ)
 		return Type{name: typ}
 	}
-	//
+	// ptr/ref
+	mut warn := false
 	for p.tok == .mul {
 		if p.first_pass() {
-			p.warn('use `&Foo` instead of `*Foo`')
+			warn = true
 		}
 		mul = true
 		nr_muls++
@@ -96,7 +118,13 @@ fn (p mut Parser) get_type2() Type {
 		nr_muls++
 		p.check(.amp)
 	}
-	typ += p.lit
+	// generic type check
+	ti := p.cur_fn.dispatch_of.inst
+	if p.lit in ti.keys() {
+		typ += ti[p.lit]
+	} else {
+		typ += p.lit
+	}
 	// C.Struct import
 	if p.lit == 'C' && p.peek() == .dot {
 		p.next()
@@ -104,13 +132,16 @@ fn (p mut Parser) get_type2() Type {
 		typ = p.lit
 	}
 	else {
+		if warn && p.mod != 'ui' {
+			p.warn('use `&Foo` instead of `*Foo`')
+		}
 		// Module specified? (e.g. gx.Image)
 		if p.peek() == .dot {
 			// try resolve full submodule
 			if !p.builtin_mod && p.import_table.known_alias(typ) {
 				mod := p.import_table.resolve_alias(typ)
 				if mod.contains('.') {
-					typ = mod.replace('.', '_dot_')
+					typ = mod_gen_name(mod)
 				}
 			}
 			p.next()
@@ -132,8 +163,15 @@ fn (p mut Parser) get_type2() Type {
 				// for q in p.table.types {
 				// println(q.name)
 				// }
-				p.error('unknown type `$typ`')
+				mut t_suggest, tc_suggest := p.table.find_misspelled_type(typ, p, 0.50)
+				if t_suggest.len > 0 {
+					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
+				}
+				p.error('unknown type `$typ`$t_suggest')
 			}
+		}
+		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
+			p.error('type `$t.name` is private')
 		}
 	}
 	if typ == 'void' {
@@ -143,13 +181,12 @@ fn (p mut Parser) get_type2() Type {
 		typ += strings.repeat(`*`, nr_muls)
 	}
 	// Register an []array type
-	if is_arr2 {
-		typ = 'array_array_$typ'
-		p.register_array(typ)
-	}
-	else if is_arr {
-		typ = 'array_$typ'
+	if arr_level > 0 {
+		// p.log('ARR TYPE="$typ" run=$p.pass')
 		// We come across "[]User" etc ?
+		for i := 0; i < arr_level; i++ {
+			typ = 'array_$typ'
+		}
 		p.register_array(typ)
 	}
 	p.next()
@@ -157,10 +194,23 @@ fn (p mut Parser) get_type2() Type {
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
 	}
+
+	// Because the code uses * to see if it's a pointer
+	if typ == 'byteptr' {
+		typ = 'byte*'
+	}
+	if typ == 'voidptr' {
+		//if !p.builtin_mod && p.mod != 'os' && p.mod != 'gx' && p.mod != 'gg' && !p.pref.translated {
+			//p.error('voidptr can only be used in unsafe code')
+		//}
+		typ = 'void*'
+	}
 	/*
+	TODO this is not needed?
 	if typ.last_index('__') > typ.index('__') {
 		p.error('2 __ in gettype(): typ="$typ"')
 	}
 	*/
 	return Type{name: typ, cat: cat}
 }
+

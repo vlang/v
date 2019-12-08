@@ -1,5 +1,9 @@
 module builtin
 
+// called by the generated main/init
+fn init() {
+}
+
 pub fn isnil(p voidptr) bool {
 	return p == 0
 }

@@ -41,6 +41,10 @@ pub fn (nn int) str() string {
 	return tos(buf + max - len, len)
 }
 
+pub fn (n i8) str() string  {	return int(n).str() }
+pub fn (n i16) str() string {	return int(n).str() }
+pub fn (n u16) str() string {	return int(n).str() }
+
 pub fn (nn u32) str() string {
 	 mut n := nn
 	if n == u32(0) {

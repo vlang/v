@@ -5,11 +5,11 @@
 module builtin
 
 fn init() {
-	$if windows {	
+	$if windows {
 		if is_atty(0) > 0 {
 			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
 		} else {
-			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)		
+			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)
 		}
 		C._setmode(C._fileno(C.stdout), C._O_U8TEXT)
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
@@ -129,9 +129,8 @@ TODO
 	print_backtrace()
 #endif
 */
-free(C.malloc(n))
 	ptr := C.malloc(n)
-	if isnil(ptr) {
+	if ptr == 0 {
 		panic('malloc($n) failed')
 	}
 	return ptr

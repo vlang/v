@@ -38,7 +38,7 @@ fn (v mut V) cc() {
 		$if !js {
 			if v.out_name.ends_with('.js') {
 				vjs_path := vexe + 'js'
-				if !os.file_exists(vjs_path) {
+				if !os.exists(vjs_path) {
 					println('V.js compiler not found, building...')
 					// Build V.js. Specifying `-os js` makes V include
 					// only _js.v files and ignore _c.v files.
@@ -98,7 +98,7 @@ fn (v mut V) cc() {
 			tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
 			//println('tcc third "$tcc_3rd"')
 			tcc_path := '/var/tmp/tcc/bin/tcc'
-			if os.file_exists(tcc_3rd) && !os.file_exists(tcc_path) {
+			if os.exists(tcc_3rd) && !os.exists(tcc_path) {
 				//println('moving tcc')
 				// if there's tcc in thirdparty/, that means this is
 				// a prebuilt V_linux.zip.
@@ -106,7 +106,7 @@ fn (v mut V) cc() {
 				// it to /var/tmp/
 				os.system('mv $vdir/thirdparty/tcc /var/tmp/')
 			}
-			if v.pref.ccompiler == 'cc' && os.file_exists(tcc_path) {
+			if v.pref.ccompiler == 'cc' && os.exists(tcc_path) {
 				// TODO tcc bug, needs an empty libtcc1.a fila
 				//os.mkdir('/var/tmp/tcc/lib/tcc/') or { panic(err) }
 				//os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
@@ -126,7 +126,7 @@ fn (v mut V) cc() {
 		v.out_name = v.out_name + '.so'
 	}
 	if v.pref.is_bare {
-		a << '-fno-stack-protector -static -ffreestanding -nostdlib $vdir/vlib/os/bare/bare.S'
+		a << '-fno-stack-protector -static -ffreestanding -nostdlib'
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
@@ -136,7 +136,7 @@ fn (v mut V) cc() {
 			'$v_modules_path${os.path_separator}$v.dir'
 		}
 		pdir := out_dir.all_before_last(os.path_separator)
-		if !os.dir_exists(pdir) {
+		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
 		}
 		v.out_name = '${out_dir}.o' //v.out_name
@@ -146,13 +146,30 @@ fn (v mut V) cc() {
 	debug_mode := v.pref.is_debug
 	mut debug_options := '-g'
 	mut optimization_options := '-O2'
-	if v.pref.ccompiler.contains('clang') {
+
+	mut guessed_compiler := v.pref.ccompiler
+	if guessed_compiler == 'cc' && v.pref.is_prod {
+		// deliberately guessing only for -prod builds for performance reasons
+		if ccversion := os.exec('cc --version') {
+			if ccversion.exit_code == 0 {
+				if ccversion.output.contains('This is free software;')
+				&& ccversion.output.contains('Free Software Foundation, Inc.') {
+					guessed_compiler = 'gcc'
+				}
+				if ccversion.output.contains('clang version '){
+					guessed_compiler = 'clang'
+				}
+			}
+		}
+	}
+
+	if v.pref.ccompiler.contains('clang') || guessed_compiler == 'clang' {
 		if debug_mode {
 			debug_options = '-g -O0 -no-pie'
 		}
 		optimization_options = '-O3 -flto'
 	}
-	if v.pref.ccompiler.contains('gcc') {
+	if v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc' {
 		if debug_mode {
 			debug_options = '-g3 -no-pie'
 		}
@@ -185,7 +202,7 @@ fn (v mut V) cc() {
 	else if v.pref.is_cache {
 		builtin_o_path := filepath.join(v_modules_path, 'cache', 'vlib', 'builtin.o')
 		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
-		if os.file_exists(builtin_o_path) {
+		if os.exists(builtin_o_path) {
 			libs = builtin_o_path
 		} else {
 			println('$builtin_o_path not found... building module builtin')
@@ -198,7 +215,7 @@ fn (v mut V) cc() {
 			imp_path := imp.replace('.', os.path_separator)
 			path := 	'$v_modules_path${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
 			//println('adding ${imp_path}.o')
-			if os.file_exists(path) {
+			if os.exists(path) {
 				libs += ' ' + path
 			} else {
 				println('$path not found... building module $imp')
@@ -236,7 +253,7 @@ fn (v mut V) cc() {
 	//
 	// Output executable name
 	a << '-o "$v.out_name"'
-	if os.dir_exists(v.out_name) {
+	if os.is_dir(v.out_name) {
 		verror('\'$v.out_name\' is a directory')
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
@@ -379,7 +396,7 @@ start:
 		ret2 := os.system('upx --lzma -qqq $v.out_name')
 		if ret2 != 0 {
 			println('upx failed')
-			$if mac {
+			$if macos {
 				println('install upx with `brew install upx`')
 			}
 			$if linux {
@@ -409,7 +426,7 @@ fn (c mut V) cc_windows_cross() {
 	mut libs := ''
 	if c.pref.build_mode == .default_mode {
 		libs = '"$v_modules_path/vlib/builtin.o"'
-		if !os.file_exists(libs) {
+		if !os.exists(libs) {
 				println('`$libs` not found')
 				exit(1)
 		}
@@ -425,7 +442,7 @@ fn (c mut V) cc_windows_cross() {
 	}
 	println('Cross compiling for Windows...')
 	winroot := '$v_modules_path/winroot'
-	if !os.dir_exists(winroot) {
+	if !os.is_dir(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
 		println('"$winroot" not found.')
 		println('Download it from $winroot_url and save it in $v_modules_path')
@@ -485,7 +502,7 @@ fn find_c_compiler() string {
 
 fn find_c_compiler_default() string {
 	//fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
-	//if os.file_exists(fast_clang) {
+	//if os.exists(fast_clang) {
 	//	return fast_clang
 	//}
 	// TODO fix $if after 'string'
@@ -522,7 +539,7 @@ fn missing_compiler_info() string {
 	$if linux {
 		return 'On Debian/Ubuntu, run `sudo apt install build-essential`'
 	}
-	$if mac {
+	$if macos {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
 	return ''

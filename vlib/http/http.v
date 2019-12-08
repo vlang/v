@@ -21,10 +21,11 @@ pub:
 	typ      string // GET POST
 	data     string
 	url      string
-	ws_func  voidptr
-	user_ptr voidptr
 	verbose  bool
 	user_agent string
+mut:
+	user_ptr voidptr
+	ws_func  voidptr
 }
 
 pub struct Response {
@@ -136,8 +137,8 @@ pub fn (req &Request) do() ?Response {
 fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.URL) ?Response {
 	host_name := url.hostname()
 	scheme := url.scheme
-	mut p := url.path.trim_left('/')
-	mut path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
+	p := url.path.trim_left('/')
+	path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http'  { nport = 80  }
