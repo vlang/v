@@ -1,0 +1,5 @@
+module protobuf
+
+struct protobuf{
+	
+}

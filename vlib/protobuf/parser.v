@@ -1,9 +1,4 @@
-module toml
-
-import (
-	os
-	strings
-)
+module protobuf
 
 struct Parser{
 	file_path string
