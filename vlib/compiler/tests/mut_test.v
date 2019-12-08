@@ -41,7 +41,8 @@ fn test_mut_2() {
 	b.a[zero].v << 5
 
 	b.a[0].v[zero] = 3
-	b.a[0].v[b.a[zero].v[zero]] += 1b.a[0].v[b.a[0].v[zero]] += 1
+	b.a[0].v[b.a[zero].v[zero]]++
+	b.a[0].v[b.a[0].v[zero]]++
 
 	assert b.a[0].v.len == 5
 	assert b.a[0].v[0] == 3

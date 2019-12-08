@@ -16,7 +16,7 @@ fn test_defer() {
 }
 
 fn set_num(i int, n mut Num) {
-	defer { n.val+=1 }
+	defer { n.val++ }
 	println("Hi")
 	if i < 5 {
 		return

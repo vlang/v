@@ -203,7 +203,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		i++
 		p.fgen_nl()
 	}
-	p.error('match expression requires `else`')
+	p.error('match must be exhaustive')
 	//p.returns = false // only get here when no default, so return is not guaranteed
 	return ''
 }
