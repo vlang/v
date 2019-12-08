@@ -50,6 +50,11 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 				base = 16
 				start_index += 2
 			}
+			// manage leading zeros in decimal base's numbers
+			else if s.len >=2 && ( s[1] >=  `0` && s[1] <= `9`) {
+				base = 10 
+				start_index ++
+			}
 			else {
 				base = 8
 				start_index++
