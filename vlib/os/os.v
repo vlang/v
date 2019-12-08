@@ -407,7 +407,7 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 
 fn vpclose(f voidptr) int {
 	$if windows {
-		return int( C._pclose(f) )
+		return C._pclose(f)
 	}
 	$else {
 		ret , _ := posix_wait4_to_exit_status(C.pclose(f))
@@ -779,7 +779,7 @@ pub fn executable() string {
 	$if windows {
 		max := 512
 		mut result := &u16(calloc(max*2)) // MAX_PATH * sizeof(wchar_t)
-		len := int(C.GetModuleFileName( 0, result, max ))
+		len := C.GetModuleFileName( 0, result, max )
 		return string_from_wide2(result, len)
 	}
 	$if macos {
@@ -1069,3 +1069,7 @@ pub fn tmpdir() string {
 pub fn chmod(path string, mode int) {
 	C.chmod(path.str, mode)
 }
+
+pub const (
+  wd_at_startup = getwd()
+)

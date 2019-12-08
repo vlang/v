@@ -3,7 +3,7 @@ fn test_pointer_arithmetic() {
 	arr := [1,2,3,4]
 	unsafe {
 		mut parr := *int(arr.data)
-		parr += 1
+		parr++
 		assert 2 == *parr
 		parr++
 		assert 3 == *parr

@@ -756,7 +756,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				// probably a typo, do not concern the user with the above error message
 				break
 			}
-			i += 1
+			i++
 		}
 	}
 	// if p.pref.is_prof {
@@ -1271,7 +1271,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 				if fa == tp {
 					r.inst[tp] = fa
 					found = true
-					i += 1
+					i++
 					break
 				}
 			}
@@ -1287,7 +1287,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 		}
 		// println("extracted $tp => $ti")
 		r.inst[tp] = ti
-		i += 1
+		i++
 		if i >= f.type_pars.len { break }
 	}
 	if r.inst[f.typ] == '' && f.typ in f.type_pars {

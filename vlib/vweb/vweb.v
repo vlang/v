@@ -57,7 +57,7 @@ pub fn (ctx Context) json(s string) {
 }
 
 pub fn (ctx Context) redirect(url string) {
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n\r\n$ctx.headers') or { panic(err) }
+	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.headers\r\n\r\n') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
@@ -70,15 +70,14 @@ pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directive
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
-	cookie_header := ctx.get_header('Cookie')
+	cookie_header := ' ' + ctx.get_header('Cookie')
 	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between('$key=', ';')
+		cookie_header.find_between(' $key=', ';')
 	} else {
-		cookie_header.find_between('$key=', '\r')
-		//cookie_header
+		cookie_header.find_between(' $key=', '\r')
 	}
 	if cookie != '' {
-		return cookie
+		return cookie.trim_space()
 	}
 	return error('Cookie not found')
 }
@@ -160,6 +159,7 @@ pub fn run<T>(app mut T, port int) {
 		}
 		//}
 		if req.method in methods_with_form {
+			/*
 			for {
 				line := conn.read_line()
 				if line == '' || line == '\r\n' {
@@ -169,6 +169,7 @@ pub fn run<T>(app mut T, port int) {
 					//break
 				//}
 			}
+			*/
 			line := conn.read_line()
 			app.vweb.parse_form(line)
 		}
@@ -191,6 +192,8 @@ pub fn run<T>(app mut T, port int) {
 			conn.write(HTTP_404) or {}
 		}
 		conn.close() or {}
+		reset := 'reset'
+		app.$reset()
 	}
 }
 

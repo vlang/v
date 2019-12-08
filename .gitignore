@@ -7,7 +7,7 @@ fns.txt
 /v.*.c
 /v.c.out
 /tools/performance_compare
-/tools/performance_compare.exe
+/tools/oldv
 /tools/vrepl
 /tools/vtest
 /tools/vtest-compiler

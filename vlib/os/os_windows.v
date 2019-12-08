@@ -78,7 +78,7 @@ fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	mut args_list := &voidptr(0)
 	mut args_count := 0
-	args_list = &voidptr(C.CommandLineToArgvW(C.GetCommandLine(), &args_count))
+	args_list = C.CommandLineToArgvW(C.GetCommandLine(), &args_count)
 	for i := 0; i < args_count; i++ {
 		args << string_from_wide(&u16(args_list[i]))
 	}
@@ -160,7 +160,7 @@ pub fn get_file_handle(path string) HANDLE {
 // get_module_filename retrieves the fully qualified path for the file that contains the specified module.
 // The module must have been loaded by the current process.
 pub fn get_module_filename(handle HANDLE) ?string {
-    mut sz := int(4096) // Optimized length
+    mut sz := 4096 // Optimized length
     mut buf := &u16(malloc(4096))
     for {
         status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))

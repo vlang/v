@@ -203,7 +203,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		i++
 		p.fgen_nl()
 	}
-	p.error('match expression requires `else`')
+	p.error('match must be exhaustive')
 	//p.returns = false // only get here when no default, so return is not guaranteed
 	return ''
 }
@@ -231,10 +231,17 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 		p.check_not_reserved()
 		option_tmp := p.get_tmp()
 		var_name := p.lit
+		if p.known_var(var_name) {
+			p.error('redefinition of `$var_name`')
+		}
+		p.open_scope()
 		p.next()
 		p.check(.decl_assign)
 		p.is_var_decl = true
 		option_type, expr := p.tmp_expr()// := p.bool_expression()
+		if !option_type.starts_with('Option_') {
+			p.error('`if x := opt() {` syntax requires a function that returns an optional value')
+		}
 		p.is_var_decl = false
 		typ := option_type[7..]
 		// Option_User tmp = get_user(1);
@@ -256,6 +263,7 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			//token_idx: var_token_idx
 		})
 		p.statements()
+		p.close_scope()
 		p.returns = false
 		return 'void'
 	}	else {

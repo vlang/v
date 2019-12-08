@@ -565,3 +565,11 @@ fn test_inter_before_comp_if() {
 	}
 }
 
+fn test_double_quote_inter() {
+	a := 1
+	b := 2
+	println("${a} ${b}")
+	assert "${a} ${b}" == "1 2"
+	assert '${a} ${b}' == "1 2"
+}
+

@@ -133,3 +133,15 @@ fn test_anon_fn() {
 	})
 	*/
 }
+
+fn assert_in_bool_fn(v int) bool {
+	assert v < 3
+	return true
+}
+
+fn test_assert_in_bool_fn() {
+	assert_in_bool_fn(2)
+}
+
+
+
