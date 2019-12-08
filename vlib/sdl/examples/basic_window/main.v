@@ -5,9 +5,6 @@ import sdl
 fn main() {
 	window := C.SDL_CreateWindow('Hello SDL2', 300, 300, 500, 300, 0)
 	renderer := C.SDL_CreateRenderer(window, -1, C.SDL_RENDERER_ACCELERATED | C.SDL_RENDERER_PRESENTVSYNC)
-	
-/*	sdl.create_window_and_renderer(800, 600, 0, &sdlc.window, &sdlc.renderer)
-	C.SDL_SetWindowTitle(sdlc.window, 'Hello SDL!`)*/
 
 	mut should_close := false
 	for {
