@@ -60,6 +60,13 @@ fn (c mut Context) compile_oldv_if_needed() {
 		build_cmd := cmd.replace('{SOURCE}', source_location)
 		scripting.run( build_cmd )
 	}
+
+	if !os.exists( vexepath ) && c.cmd_to_run.len > 0 {
+		// NB: 125 is a special code, that git bisect understands as 'skip this commit'.
+		// it is used to inform git bisect that the current commit leads to a build failure.
+		exit( 125 ) 
+	}
+
 }
 
 fn line_to_timestamp_and_commit(line string) (int, string) {
