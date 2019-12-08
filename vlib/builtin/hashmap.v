@@ -15,18 +15,18 @@ module builtin
 */
 
 struct hashmap {
-	cap          int
-	keys         []string
-	table        []hashmapentry
+	cap int
+	keys []string
+	table []hashmapentry
 	elm_size int
 pub:
 	nr_collisions int
 }
 
 struct hashmapentry {
-        key string
-        val int
-        next &hashmapentry  // linked list for collisions
+	key string
+	val int
+	next &hashmapentry  // linked list for collisions
 }
 
 const (

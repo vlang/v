@@ -14,59 +14,59 @@ c_headers = '
 #include <string.h> // memcpy
 
 #if INTPTR_MAX == INT32_MAX
-    #define TARGET_IS_32BIT 1
+#	define TARGET_IS_32BIT 1
 #elif INTPTR_MAX == INT64_MAX
-    #define TARGET_IS_64BIT 1
+#	define TARGET_IS_64BIT 1
 #else
-    #error "The environment is not 32 or 64-bit."
+#	error "The environment is not 32 or 64-bit."
 #endif
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
-    #define TARGET_ORDER_IS_BIG
+#	define TARGET_ORDER_IS_BIG
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || defined(_M_AMD64) || defined(_M_X64) || defined(_M_IX86)
-    #define TARGET_ORDER_IS_LITTLE
+#	define TARGET_ORDER_IS_LITTLE
 #else
     #error "Unknown architecture endianness"
 #endif
 
 #ifndef _WIN32
-#include <ctype.h>
-#include <locale.h> // tolower
-#include <sys/time.h>
-#include <unistd.h> // sleep
+#	include <ctype.h>
+#	include <locale.h> // tolower
+#	include <sys/time.h>
+#	include <unistd.h> // sleep
 #else
-#if defined(_MSC_VER)
-#pragma comment(lib, "Dbghelp.lib")
-#endif
-#if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
-#error Please upgrade your MinGW distribution to use msvcr90.dll or later.
-#endif
+#	if defined(_MSC_VER)
+#		pragma comment(lib, "Dbghelp.lib")
+#	endif
+#	if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
+#		error Please upgrade your MinGW distribution to use msvcr90.dll or later.
+#	endif
 #endif
 
 #if defined(__CYGWIN__) && !defined(_WIN32)
-#error Cygwin is not supported, please use MinGW or Visual Studio.
+#	error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
 
 #ifdef __linux__
-#include <sys/types.h>
-#include <sys/wait.h> // os__wait uses wait on nix
+#	include <sys/types.h>
+#	include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
 #ifdef __FreeBSD__
-#include <sys/types.h>
-#include <sys/wait.h> // os__wait uses wait on nix
+#	include <sys/types.h>
+#	include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
 #ifdef __DragonFly__
-#include <sys/types.h>
-#include <sys/wait.h> // os__wait uses wait on nix
+#	include <sys/types.h>
+#	include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
 #ifdef __OpenBSD__
-#include <sys/types.h>
-#include <sys/resource.h>
-#include <sys/wait.h> // os__wait uses wait on nix
+#	include <sys/types.h>
+#	include <sys/resource.h>
+#	include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
 #define EMPTY_STRUCT_DECLARATION
@@ -76,52 +76,47 @@ c_headers = '
 #define TCCSKIP(x) x
 
 #ifdef __TINYC__
-#undef EMPTY_STRUCT_DECLARATION
-#undef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_DECLARATION char _dummy
-#define EMPTY_STRUCT_INITIALIZATION 0
-#undef EMPTY_ARRAY_OF_ELEMS
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
-#undef TCCSKIP
-#define TCCSKIP(x)
+#	undef EMPTY_STRUCT_DECLARATION
+#	undef EMPTY_STRUCT_INITIALIZATION
+#	define EMPTY_STRUCT_DECLARATION char _dummy
+#	define EMPTY_STRUCT_INITIALIZATION 0
+#	undef EMPTY_ARRAY_OF_ELEMS
+#	define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#	undef TCCSKIP
+#	define TCCSKIP(x)
 #endif
 
 #define OPTION_CAST(x) (x)
 
 #ifdef _WIN32
-#define WINVER 0x0600
-#ifdef _WIN32_WINNT
-#undef _WIN32_WINNT
-#endif
-#define _WIN32_WINNT 0x0600
-#define WIN32_LEAN_AND_MEAN
-#define _UNICODE
-#define UNICODE
-#include <windows.h>
-
+#	define WINVER 0x0600
+#	ifdef _WIN32_WINNT
+#		undef _WIN32_WINNT
+#	endif
+#	define _WIN32_WINNT 0x0600
+#	define WIN32_LEAN_AND_MEAN
+#	define _UNICODE
+#	define UNICODE
+#	include <windows.h>
 // must be included after <windows.h>
-#ifndef __TINYC__
-#include <shellapi.h>
-#endif
-
-#include <io.h> // _waccess
-#include <fcntl.h> // _O_U8TEXT
-#include <direct.h> // _wgetcwd
+#	ifndef __TINYC__
+#		include <shellapi.h>
+#	endif
+#	include <io.h> // _waccess
+#	include <fcntl.h> // _O_U8TEXT
+#	include <direct.h> // _wgetcwd
 //#include <WinSock2.h>
-#ifdef _MSC_VER
+#	ifdef _MSC_VER
 // On MSVC these are the same (as long as /volatile:ms is passed)
-#define _Atomic volatile
-
+#		define _Atomic volatile
 // MSVC cannot parse some things properly
-#undef EMPTY_STRUCT_DECLARATION
-#undef OPTION_CAST
-
-#define EMPTY_STRUCT_DECLARATION int ____dummy_variable
-#define OPTION_CAST(x)
-#endif
-
+#		undef EMPTY_STRUCT_DECLARATION
+#		undef OPTION_CAST
+#		define EMPTY_STRUCT_DECLARATION int ____dummy_variable
+#		define OPTION_CAST(x)
+#	endif
 #else
-#include <pthread.h>
+#	include <pthread.h>
 #endif
 
 
@@ -213,14 +208,14 @@ bare_c_headers = '
 #define TCCSKIP(x) x
 
 #ifdef __TINYC__
-#undef EMPTY_ARRAY_OF_ELEMS
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
-#undef TCCSKIP
-#define TCCSKIP(x)
+#	undef EMPTY_ARRAY_OF_ELEMS
+#	define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#	undef TCCSKIP
+#	define TCCSKIP(x)
 #endif
 
 #ifndef exit
-#define exit(rc) sys_exit(rc)
+#	define exit(rc) sys_exit(rc)
 void sys_exit (int);
 #endif
 '

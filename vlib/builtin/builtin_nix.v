@@ -26,20 +26,20 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 // so there is no need to have their twins in builtin_windows.v
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
-	buffer := [100]byteptr
-	nr_ptrs := C.backtrace(*voidptr(buffer), 100)
-	C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
+		buffer := [100]byteptr
+		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
+		C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
 	}
 	return true
 }
 
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
-        buffer := [100]byteptr
-        nr_ptrs := C.backtrace(*voidptr(buffer), 100)
-        C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
-        }
-        return true
+		buffer := [100]byteptr
+		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
+		C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs-skipframes, 1)
+	}
+	return true
 }
 
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
@@ -55,7 +55,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			mut sframes := []string
 			csymbols := C.backtrace_symbols(*voidptr(&buffer[skipframes]),
 				nr_actual_frames)
-			for i in 0..nr_actual_frames {  sframes << tos2(csymbols[i]) }
+			for i in 0..nr_actual_frames { sframes << tos2(csymbols[i]) }
 			for sframe in sframes {
 				executable := sframe.all_before('(')
 				addr := sframe.all_after('[').all_before(']')
@@ -81,7 +81,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			}
 			//C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
-		}$else{
+		} $else {
 			C.printf('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
 			C.printf('Some libc implementations like musl simply do not provide it.\n')
 		}

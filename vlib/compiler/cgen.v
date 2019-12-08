@@ -318,7 +318,6 @@ fn platform_postfix_to_ifdefguard(name string) string {
 		'_solaris.v'           { '#ifdef __sun' }
 		'_haiku.v'             { '#ifdef __haiku__' }
 		else {
-
 			//verror('bad platform_postfix "$name"')
 			// TODO
 			''
@@ -402,35 +401,33 @@ fn sort_structs(types []Type) []Type {
 
 // Generates interface table and interface indexes
 fn (v &V) interface_table() string {
-       mut sb := strings.new_builder(100)
-       for _, t in v.table.typesmap {
-               if t.cat != .interface_ {
-                       continue
-               }
-               mut methods := ''
-              sb.writeln('// NR methods = $t.gen_types.len')
-               for i, gen_type in t.gen_types {
-                       methods += '{'
-                       for j, method in t.methods {
-					       // Cat_speak
-                               methods += '${gen_type}_${method.name}'
-                               if j < t.methods.len - 1 {
-                                       methods += ', '
-                               }
-                       }
-                       methods += '}, '
-                       // Speaker_Cat_index = 0
-                       sb.writeln('int _${t.name}_${gen_type}_index = $i;')
-               }
-              if t.gen_types.len > 0 {
-//              	methods = '{TCCSKIP(0)}'
-//              }
-               sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
-'{ $methods }; ')
+	mut sb := strings.new_builder(100)
+	for _, t in v.table.typesmap {
+		if t.cat != .interface_ {
+			continue
+		}
+		mut methods := ''
+		sb.writeln('// NR methods = $t.gen_types.len')
+		for i, gen_type in t.gen_types {
+			methods += '{'
+			for j, method in t.methods {
+				// Cat_speak
+				methods += '${gen_type}_${method.name}'
+				if j < t.methods.len - 1 {
+					methods += ', '
+				}
+			}
+			methods += '}, '
+			// Speaker_Cat_index = 0
+			sb.writeln('int _${t.name}_${gen_type}_index = $i;')
+		}
+		if t.gen_types.len > 0 {
+			// methods = '{TCCSKIP(0)}'
+			// }
+			sb.writeln('void* (* ${t.name}_name_table[][$t.methods.len]) = ' +
+					'{ $methods }; ')
+		}
+		continue
+	}
+	return sb.str()
 }
-               continue
-       }
-       return sb.str()
-}
-
-

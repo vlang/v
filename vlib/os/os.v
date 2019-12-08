@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
+
 module os
 
 import filepath
@@ -12,8 +13,8 @@ import filepath
 
 /*
 struct dirent {
-     d_ino int
-     d_off int
+	d_ino int
+	d_off int
 	d_reclen u16
 	d_type byte
 	d_name [256]byte
@@ -612,7 +613,7 @@ pub fn filename(path string) string {
 
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
-    str := get_raw_line()
+	str := get_raw_line()
 	$if windows {
 		return str.trim_right('\r\n')
 	}
@@ -623,42 +624,42 @@ pub fn get_line() string {
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any
 pub fn get_raw_line() string {
-    $if windows {
-        max_line_chars := 256
-        buf := malloc(max_line_chars*2)
-        if is_atty(0) > 0 {
-            h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-            mut nr_chars := u32(0)
-            C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&nr_chars), 0)
-            return string_from_wide2(&u16(buf), int(nr_chars))
-        }
-        res := C.fgetws(&u16(buf), max_line_chars, C.stdin )
-        len := C.wcslen(&u16(buf))
-        if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
-        return ''
-    } $else {
-        max := size_t(256)
-        buf := charptr(malloc(int(max)))
-        nr_chars := C.getline(&buf, &max, stdin)
-        if nr_chars == 0 {
-            return ''
-        }
-        return string(byteptr(buf), nr_chars)
-    }
+	$if windows {
+		max_line_chars := 256
+		buf := &byte(malloc(max_line_chars*2))
+		if is_atty(0) > 0 {
+			h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+			mut nr_chars := u32(0)
+			C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&nr_chars), 0)
+			return string_from_wide2(&u16(buf), int(nr_chars))
+		}
+		res := C.fgetws(&u16(buf), max_line_chars, C.stdin )
+		len := int(  C.wcslen(&u16(buf)) )
+		if !isnil(res) { return string_from_wide2( &u16(buf), len ) }
+		return ''
+	} $else {
+		max := size_t(256)
+		buf := charptr(malloc(int(max)))
+		nr_chars := C.getline(&buf, &max, stdin)
+		if nr_chars == 0 {
+			return ''
+		}
+		return string(byteptr(buf), nr_chars)
+	}
 }
 
 pub fn get_lines() []string {
-        mut line := ''
-        mut inputstr := []string
-        for {
-                line = get_line()
-                if(line.len <= 0) {
-                        break
-                }
-                line = line.trim_space()
-                inputstr << line
-        }
-        return inputstr
+	mut line := ''
+	mut inputstr := []string
+	for {
+		line = get_line()
+		if(line.len <= 0) {
+			break
+		}
+		line = line.trim_space()
+		inputstr << line
+	}
+	return inputstr
 }
 
 pub fn get_lines_joined() string {
@@ -1049,7 +1050,7 @@ pub fn tmpdir() string {
 			// TODO untested
 			path = C.NSTemporaryDirectory()
 		}
-        */
+		*/
 		if path == '' {	path = '/tmp' }
 	}
 	$if windows {
