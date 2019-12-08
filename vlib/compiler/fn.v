@@ -374,6 +374,7 @@ fn (p mut Parser) fn_decl() {
 	// V allows empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&		p.tok != .lcbr
 	if is_fn_header {
+		f.name = orig_name // don't prepend module to external fn defs
 		f.is_decl = true
 	}
 	// Make sure the name is valid
