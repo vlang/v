@@ -154,13 +154,10 @@ pub fn building_any_v_binaries_failed() bool {
 
 	mut failed := false
 	v_build_commands := [
-
-		// '$vexe -o v_g             -g  v.v',
-		// '$vexe -o v_prod_g  -prod -g  v.v',
-
+		'$vexe -o v_g             -g  v.v',
+		'$vexe -o v_prod_g  -prod -g  v.v',
 		'$vexe -o v_cg            -cg v.v',
 		'$vexe -o v_prod_cg -prod -cg v.v',
-
 		'$vexe -o v_prod    -prod     v.v',
 	]
 
