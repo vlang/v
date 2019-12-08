@@ -37,7 +37,7 @@ enum OS {
 	openbsd
 	netbsd
 	dragonfly
-	js   // TODO
+	js // TODO
 	android
 	solaris
 	haiku
@@ -401,22 +401,22 @@ fn (v mut V) generate_init() {
 		}
 		consts_init_body := v.cgen.consts_init.join_lines()
 
-    if v.pref.is_bare {
-      // vlib can't have init_consts()
-      v.cgen.genln('
-          void init() {
-                $call_mod_init_consts
-                $consts_init_body
-                builtin__init();
-                $call_mod_init
-          }
-      ')
-    }
+		if v.pref.is_bare {
+			// vlib can't have init_consts()
+			v.cgen.genln('
+void init() {
+	$call_mod_init_consts
+	$consts_init_body
+	builtin__init();
+	$call_mod_init
+}
+			')
+		}
 
 		if !v.pref.is_bare {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
-g_str_buf=malloc(1000);
+g_str_buf = malloc(1000);
 $call_mod_init_consts
 $consts_init_body
 builtin__init();

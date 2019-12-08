@@ -826,7 +826,7 @@ fn (p &Parser) strtok() string {
 	if p.tok == .str {
 		if p.lit.contains("'") {
 			return '"$p.lit"'
-		}	  else {
+		} else {
 			return "'$p.lit'"
 		}
 	}
@@ -1616,12 +1616,11 @@ fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	}
 	if is_ptr {
 		p.gen('&')
+	} else if deref_nr > 0 {
+		for _ in 0..deref_nr {
+			p.gen('*')
+		}
 	}
-    else if deref_nr > 0 {
-        for _ in 0..deref_nr {
-        	p.gen('*')
-        }
-    }
    /*
 	if p.pref.autofree && v.typ == 'string' && v.is_arg &&
 		p.assigned_type == 'string' {
@@ -1892,7 +1891,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' +
 					'declare the field with `mut:`
 struct $f.parent_fn {
-  mut:
+mut:
 	$f.name $f.typ
 }
 ', fname_tidx)
@@ -1904,7 +1903,7 @@ struct $f.parent_fn {
 			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)\n' +
 					'declare the field with `pub:`
 struct $typ.name {
-  pub:
+pub:
 	$struct_field $field.typ
 }
 ', fname_tidx)
@@ -1919,20 +1918,18 @@ struct $typ.name {
 		exit(1)
 	}
 	p.fn_call(mut method, method_ph, '', str_typ)
-    // optional method call `a.method() or {}`, no return assignment
-    is_or_else := p.tok == .key_orelse
+	// optional method call `a.method() or {}`, no return assignment
+	is_or_else := p.tok == .key_orelse
 	if p.tok == .question {
 		// `files := os.ls('.')?`
 		return p.gen_handle_question_suffix(method, method_ph)
-	}
-	else if !p.is_var_decl && is_or_else {
+	} else if !p.is_var_decl && is_or_else {
 		method.typ = p.gen_handle_option_or_else(method.typ, '', method_ph)
-	}
-    else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
+	} else if !p.is_var_decl && !is_or_else && !p.inside_return_expr &&
 		method.typ.starts_with('Option_') {
-        opt_type := method.typ[7..]
-        p.error('unhandled option type: `?$opt_type`')
-    }
+		opt_type := method.typ[7..]
+		p.error('unhandled option type: `?$opt_type`')
+	}
 	// Methods returning `array` should return `array_string` etc
 	if method.typ == 'array' && typ.name.starts_with('array_') {
 		return typ.name
@@ -2022,7 +2019,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 			p.gen('[')
 			close_bracket = true
 		}
-		else if is_ptr  && !is_variadic_arg {
+		else if is_ptr && !is_variadic_arg {
 			// typ = 'byte'
 			typ = typ.replace('*', '')
 			// modify(mut []string) fix
@@ -2034,7 +2031,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		if is_arr {
 			if is_arr0 {
 				typ = typ[6..]
-			   }
+			}
 			p.gen_array_at(typ, is_arr0, fn_ph)
 		}
 		// map is tricky
@@ -2173,7 +2170,7 @@ fn (p &Parser) fileis(s string) bool {
 fn (p mut Parser) indot_expr() string {
 	ph := p.cgen.add_placeholder()
 	mut typ := p.term()
-	if p.tok == .dot  {
+	if p.tok == .dot {
 		for p.tok == .dot {
 			typ = p.dot(typ, ph)
 		}
@@ -2289,7 +2286,7 @@ fn (p mut Parser) string_expr() {
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
-		C.fun('ssss'.to_wide()) =>  fun(string_to_wide(tos3("ssss")))
+		C.fun('ssss'.to_wide()) => fun(string_to_wide(tos3("ssss")))
 		*/
 		if (p.calling_c && p.peek() != .dot) || is_cstr || (p.pref.translated && p.mod == 'main') {
 			p.gen('"$f"')
@@ -2312,7 +2309,7 @@ fn (p mut Parser) string_expr() {
 	p.is_alloc = true // $ interpolation means there's allocation
 	mut args := '"'
 	mut format := '"'
-	mut complex_inter := false  // for vfmt
+	mut complex_inter := false // for vfmt
 	for p.tok == .str {
 		// Add the string between %d's
 		p.lit = p.lit.replace('%', '%%')
@@ -2430,7 +2427,7 @@ fn (p mut Parser) map_init() string {
 	// m := { 'one': 1, 'two': 2 }
 	mut keys_gen := '' // (string[]){tos2("one"), tos2("two")}
 	mut vals_gen := '' // (int[]){1, 2}
-	mut val_type := ''  // 'int'
+	mut val_type := '' // 'int'
 	if p.tok == .lcbr {
 		p.check(.lcbr)
 		mut i := 0
@@ -2498,7 +2495,7 @@ fn (p mut Parser) array_init() string {
 	//}
 	p.is_alloc = true
 	p.check(.lsbr)
-	mut is_integer := p.tok == .number  // for `[10]int`
+	mut is_integer := p.tok == .number // for `[10]int`
 	// fixed length arrays with a const len: `nums := [N]int`, same as `[10]int` basically
 	mut is_const_len := false
 	if p.tok == .name && !p.inside_const {
@@ -2649,7 +2646,7 @@ fn (p mut Parser) assert_statement() {
 	p.gen('bool $tmp = ')
 	p.check_types(p.bool_expression(), 'bool')
 	nline := p.scanner.line_nr
-	// TODO print "expected:  got" for failed tests
+	// TODO print "expected: got" for failed tests
 	filename := cescaped_path(p.file_path)
 	cfname:=p.cur_fn.name.replace('main__', '')
 	sourceline := p.scanner.line( nline - 1 ).replace('"', '\'')
@@ -2662,8 +2659,8 @@ if (!$tmp) {
 	g_test_fails++;
 	eprintln(tos3("${filename}:${p.scanner.line_nr}: FAILED: ${cfname}()"));
 	eprintln(tos3("Source: $sourceline"));
-    v_panic(tos3("An assertion failed."));
-    exit(1);
+	v_panic(tos3("An assertion failed."));
+	exit(1);
 } else {
 	g_test_oks++;
 }
@@ -2673,24 +2670,24 @@ if (!$tmp) {
 
 	p.genln(';\n
 if (!$tmp) {
-  g_test_fails++;
-  main__cb_assertion_failed(
-     tos3("$filename"),
-     $p.scanner.line_nr,
-     tos3("$sourceline"),
-     tos3("$p.cur_fn.name()")
-  );
-  exit(1);
-  // TODO
-  // Maybe print all vars in a test function if it fails?
+	g_test_fails++;
+	main__cb_assertion_failed(
+		tos3("$filename"),
+		$p.scanner.line_nr,
+		tos3("$sourceline"),
+		tos3("$p.cur_fn.name()")
+	);
+	exit(1);
+	// TODO
+	// Maybe print all vars in a test function if it fails?
 } else {
-  g_test_oks++;
-  main__cb_assertion_ok(
-     tos3("$filename"),
-     $p.scanner.line_nr,
-     tos3("$sourceline"),
-     tos3("$p.cur_fn.name()")
-  );
+	g_test_oks++;
+	main__cb_assertion_ok(
+		tos3("$filename"),
+		$p.scanner.line_nr,
+		tos3("$sourceline"),
+		tos3("$p.cur_fn.name()")
+	);
 }
 
 ')
@@ -2757,7 +2754,7 @@ fn (p mut Parser) return_st() {
 				} else {
 					p.cgen.resetln('return $ret')
 				}
-			}  else {
+			} else {
 				tmp := p.get_tmp()
 				p.cgen.resetln('$expr_type $tmp = $ret;\n')
 				p.genln(deferred_text)
@@ -2863,11 +2860,11 @@ fn (p mut Parser) js_decode() string {
 	op_token_idx := p.cur_tok_index()
 	if op == 'decode' {
 		// User tmp2; tmp2.foo = 0; tmp2.bar = 0;// I forgot to zero vals before => huge bug
-		// Option_User tmp3 =  jsdecode_User(json_parse( s), &tmp2); ;
+		// Option_User tmp3 = jsdecode_User(json_parse( s), &tmp2); ;
 		// if (!tmp3 .ok) {
 		// return
 		// }
-		// User u = *(User*) tmp3 . data;  // TODO remove this (generated in or {} block handler)
+		// User u = *(User*) tmp3 . data; // TODO remove this (generated in or {} block handler)
 		p.check(.lpar)
 		typ := p.get_type()
 		p.check(.comma)
