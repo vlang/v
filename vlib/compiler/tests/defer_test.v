@@ -21,7 +21,7 @@ fn set_num(i int, n mut Num) {
 	if i < 5 {
 		return
 	} else {
-		n.val+=1
+		n.val++
 	}
 }
 
