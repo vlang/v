@@ -187,9 +187,10 @@ fn (p mut Parser) name_expr() string {
 		p.check(.dot)
 		name = p.lit
 		// C struct initialization
-		if p.peek() == .lcbr {
+		if p.peek() == .lcbr && p.expected_type == '' { // not an expression
 			if !p.table.known_type(name) {
-				p.error('unknown C type `$name`')
+				p.error('unknown C type `$name`, ' +
+					'define it with `struct C.$name { ... }`')
 			}
 			return p.get_struct_type(name, true, ptr)
 		}
