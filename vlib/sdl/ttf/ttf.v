@@ -129,3 +129,7 @@ fn C.TTF_RenderGlyph_Blended(font &TTF_Font, ch u16, fg C.SDL_Color) &SDL_Surfac
 fn C.TTF_WasInit() int
 
 fn C.TTF_CloseFont(font &TTF_Font)
+
+pub const (
+  version = '0.0.1'
+)

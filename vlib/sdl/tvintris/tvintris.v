@@ -71,6 +71,11 @@ const (
 )
 
 const (
+  mix_version = mix.version
+  ttf_version = ttf.version
+)
+
+const (
 	// Tetros' 4 possible states are encoded in binaries
 	BTetros = [
 		// 0000 0

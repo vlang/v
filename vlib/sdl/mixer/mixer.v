@@ -95,3 +95,7 @@ fn C.Mix_SetPanning(channel int, left byte, right byte) int
 fn C.Mix_SetDistance(channel int, distance byte) int
 fn C.Mix_SetPosition(channel int, angle i16, distance byte) int
 fn C.Mix_SetReverseStereo(channel int, flip int) int
+
+pub const (
+  version = sdl.version // TODO: remove this hack to mark sdl as used; avoids warning
+)

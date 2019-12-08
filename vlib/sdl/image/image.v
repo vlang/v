@@ -61,3 +61,7 @@ pub fn load(file string) &SDL_Surface {
 	res := C.IMG_Load(file.str)
 	return res
 }
+
+pub const (
+  version = sdl.version // TODO: remove this hack to mark sdl as used; avoids warning
+)
