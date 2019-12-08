@@ -298,14 +298,15 @@ fn (s mut Scanner) scan() ScanRes {
 				s.inside_string = false
 			}
 		}
+		// end of `$expr`
 		if s.inter_start && next_char != `.` {
 			s.inter_end = true
 			s.inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
-			s.pos++
 			//If a single letter name at the start of the file, increment
 			//Otherwise the scanner would be stuck at s.pos = 0
+			s.pos++
 		}
 		return scan_res(.name, name)
 	}
@@ -390,8 +391,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.lcbr, '')
 	}
 	 `$` {
-	// 	if s.inter_start {
-		if s.inside_string {// || s.inter_start {
+		if s.inside_string {
 			return scan_res(.str_dollar, '')
 		}  else {
 			return scan_res(.dollar, '')
@@ -402,8 +402,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
-			// TODO UNNEEDED?
-			if s.text[s.pos] == single_quote {
+			if s.text[s.pos] == s.quote {
 				s.inside_string = false
 				return scan_res(.str, '')
 			}
@@ -704,15 +703,19 @@ fn (s mut Scanner) ident_string() string {
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
 			s.error('0 character in a string literal')
 		}
-		// ${var}
-		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		// ${var} (ignore in vfmt mode)
+		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt &&
+			s.count_symbol_before(s.pos-2, slash) % 2 == 0
+		{
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt &&
+			!is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0
+		{
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
