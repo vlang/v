@@ -938,8 +938,8 @@ fn (p &Parser) identify_typo(name string) string {
 // compare just name part, some items are mod prefied
 fn typo_compare_name_mod(a, b, b_mod string) f32 {
 	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
-	auidx := a.index('__') or { -1 }
-	buidx := b.index('__') or { -1 }
+	auidx := a.index('__') or { return 0 } // TODO or {-1} once cgen lines bug is fixed //-1 }
+	buidx := b.index('__') or { return 0 } //-1 }
 	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
 	a_name := if auidx != -1 { a[auidx+2..] } else { a }
 	b_name := if buidx != -1 { b[buidx+2..] } else { b }
