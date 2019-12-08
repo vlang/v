@@ -159,6 +159,7 @@ pub fn run<T>(app mut T, port int) {
 		}
 		//}
 		if req.method in methods_with_form {
+			/*
 			for {
 				line := conn.read_line()
 				if line == '' || line == '\r\n' {
@@ -168,6 +169,7 @@ pub fn run<T>(app mut T, port int) {
 					//break
 				//}
 			}
+			*/
 			line := conn.read_line()
 			app.vweb.parse_form(line)
 		}
@@ -190,6 +192,7 @@ pub fn run<T>(app mut T, port int) {
 			conn.write(HTTP_404) or {}
 		}
 		conn.close() or {}
+		app.reset()
 	}
 }
 
