@@ -1069,3 +1069,7 @@ pub fn tmpdir() string {
 pub fn chmod(path string, mode int) {
 	C.chmod(path.str, mode)
 }
+
+pub const (
+  wd_at_startup = getwd()
+)
