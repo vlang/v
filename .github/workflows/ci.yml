@@ -54,6 +54,8 @@ jobs:
       run:  ./v symlink && v -o v2 v.v
     - name: Test vsh
       run:  ./v examples/v_script.vsh
+    - name: Test v -g v.v
+      run:  ./v -g -o v2 v.v
     - name: Test vid
       run: |
         git clone --depth 1 https://github.com/vlang/vid.git
