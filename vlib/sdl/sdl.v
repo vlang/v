@@ -22,6 +22,7 @@ module sdl
 
 
 pub struct C.SDL_RWops {}
+pub struct C.SDL_Window {}
 pub struct C.SDL_Renderer {}
 pub struct C.SDL_Texture {}
 
@@ -150,6 +151,7 @@ fn C.SDL_NumJoysticks() int
 fn C.SDL_JoystickNameForIndex(device_index int) voidptr
 fn C.SDL_RenderCopy(renderer voidptr, texture voidptr, srcrect voidptr, dstrect voidptr) int
 fn C.SDL_CreateWindow(title byteptr, x int, y int, w int, h int, flags u32) voidptr
+fn C.SDL_CreateRenderer(window &SDL_Window, index int, flags u32) voidptr
 fn C.SDL_CreateWindowAndRenderer(width int, height int, window_flags u32, window &voidptr, renderer &voidptr) int
 fn C.SDL_DestroyWindow(window voidptr)
 fn C.SDL_GetWindowSize(window voidptr, w voidptr, h voidptr)
@@ -159,6 +161,7 @@ fn C.SDL_SetHint(name byteptr, value byteptr) C.SDL_bool
 fn C.SDL_CreateTextureFromSurface(renderer voidptr, surface voidptr) voidptr
 fn C.SDL_CreateTexture(renderer voidptr, format u32, access int, w int, h int) voidptr
 fn C.SDL_FillRect(dst voidptr, dstrect voidptr, color u32) int
+fn C.SDL_SetRenderDrawColor(renderer voidptr, r byte, g byte, b byte, a byte)
 fn C.SDL_RenderPresent(renderer voidptr)
 fn C.SDL_RenderClear(renderer voidptr) int
 fn C.SDL_UpdateTexture(texture voidptr, rect voidptr, pixels voidptr, pitch int) int
