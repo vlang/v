@@ -644,8 +644,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return s.end_of_file()
 		}
 	}
-	mut msg := 'invalid character `${c.str()}`'
-	s.error(msg)
+	s.error('invalid character `${c.str()}`')
 	return s.end_of_file()
 }
 

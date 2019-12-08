@@ -1385,6 +1385,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 			p.gen('= ustring_add($v.name, ')
 		}
 		else {
+			next := p.peek_token()
+			if next.tok == .number  && next.lit== '1' {
+				p.warn('use ++ instead of += 1')
+			}
 			p.gen(' += ')
 		}
 	}
