@@ -645,9 +645,6 @@ fn (s mut Scanner) scan() ScanRes {
 		}
 	}
 	mut msg := 'invalid character `${c.str()}`'
-	if c == `"` {
-		msg += ', use \' to denote strings'
-	}
 	s.error(msg)
 	return s.end_of_file()
 }
@@ -763,7 +760,8 @@ fn (s mut Scanner) ident_char() string {
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
-			s.error('invalid character literal (more than one character: $len)')
+			s.error('invalid character literal (more than one character)\n' +
+				'use quotes for strings, backticks for characters')
 		}
 	}
 	if c == '\\`' {
