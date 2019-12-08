@@ -60,7 +60,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	}
 	fn_name_cgen := p.table.fn_gen_name(f)
 	//str_args := f.str_args(p.table)
-	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
+	p.genln('$dll_export_linkage$typ $fn_name_cgen ($str_args) {')
 }
 
 // blank identifer assignment `_ = 111`
@@ -74,7 +74,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.is_var_decl = true
 	typ := p.bool_expression()
 	if typ == 'void' {
-		p.error_with_token_index('$next_expr() $err_used_as_value', p.token_idx-2)
+		p.error_with_token_index('${next_expr}() $err_used_as_value', p.token_idx-2)
 	}
 	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
@@ -417,7 +417,7 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
 		p.cgen.set_placeholder(new_arr_ph,
-			'$new_arr($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
+			'${new_arr}($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
 	}
 }
 
@@ -494,7 +494,7 @@ fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
 	else {
 		if p.tok == .not {
 			// old &User{!} ==> 0 hack
-			p.error('use `$t.name(0)` instead of `&$t.name{!}`')
+			p.error('use `${t.name}(0)` instead of `&$t.name{!}`')
 			/*
 			p.next()
 			p.gen('0')

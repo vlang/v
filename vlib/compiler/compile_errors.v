@@ -242,7 +242,7 @@ fn (p mut Parser) mutable_arg_error(i int, arg Var, f Fn) {
 		dots_example = dots_example + ',..'
 	}
 	p.error('`$arg.name` is a mutable argument, you need to provide `mut`: ' +
-			'`$f.name($dots_example)`')
+			'`$f.name ($dots_example)`')
 }
 
 const (

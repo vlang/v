@@ -279,7 +279,7 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 			p.gen(' else ')
 		}
 		p.genln('if ( string_eq($var, _STR("$method.name")) ) ' +
-			'${typ.name}_$method.name($amp $p.expr_var.name);')
+			'${typ.name}_$method.name ($amp $p.expr_var.name);')
 		j++
 	}
 	p.check(.lpar)

@@ -299,7 +299,8 @@ fn (s mut Scanner) scan() ScanRes {
 			}
 		}
 		// end of `$expr`
-		if s.inter_start && next_char != `.` {
+		// allow `'$a.b'` and `'$a.c()'`
+		if s.inter_start && next_char != `.` && next_char != `(` {
 			s.inter_end = true
 			s.inter_start = false
 		}
@@ -314,6 +315,16 @@ fn (s mut Scanner) scan() ScanRes {
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 		num := s.ident_number()
 		return scan_res(.number, num)
+	}
+	// Handle `'$fn()'`
+	if c == `)` && s.inter_start {
+		s.inter_end = true
+		s.inter_start = false
+		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+		if next_char == s.quote {
+			s.inside_string = false
+		}
+		return scan_res(.rpar, '')
 	}
 	// all other tokens
 	match c {
@@ -383,8 +394,7 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.rsbr, '')
 	 }
 	 `{` {
-		// Skip { in ${ in strings
-		// }
+		// Skip { in `${` in strings
 		if s.inside_string {
 			return s.scan()
 		}

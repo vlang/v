@@ -502,13 +502,15 @@ pub fn (v mut V) generate_main() {
 			v.gen_main_start(false)
 
 			if v.pref.is_stats {
-				cgen.genln('BenchedTests bt = main__start_testing();')
+				// QQQ
+				//cgen.genln('BenchedTests bt = main__start_testing();')
 			}
 
 			for _, f in v.table.fns {
 				if f.name.starts_with('main__test_') {
-					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
-					cgen.genln('$f.name();')
+					if v.pref.is_stats {
+						cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
+					cgen.genln('$f.name ();')
 					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
 				}
 			}

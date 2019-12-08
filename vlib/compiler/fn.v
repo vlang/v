@@ -455,7 +455,7 @@ fn (p mut Parser) fn_decl() {
 	}
 
 	if is_fn_header {
-		p.genln('$typ $fn_name_cgen($str_args);')
+		p.genln('$typ $fn_name_cgen ($str_args);')
 		p.fgen_nl()
 	}
 	if is_c {
@@ -495,7 +495,7 @@ fn (p mut Parser) fn_decl() {
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
 		// Function definition that goes to the top of the C file.
-		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen($str_args)'
+		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen ($str_args)'
 		if p.pref.obfuscate {
 			fn_decl += '; // $f.name'
 		}
@@ -692,7 +692,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	if p.os == .windows {
 		wrapper_type = 'DWORD WINAPI'
 	}
-	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return 0; }'
+	wrapper_text := '$wrapper_type $wrapper_name ($arg_struct_name * arg) {$fn_name ( /*f*/$str_args ); return 0; }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
@@ -1024,13 +1024,15 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				p.mutable_arg_error(i, arg, f)
 			}
 			if p.peek() != .name {
-				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to ' +
+					'provide a variable to modify: `${f.name}(... mut a...)`')
 			}
 			p.check(.key_mut)
 			p.fspace()
 			var_name := p.lit
 			v := p.find_var(var_name) or {
-				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to ' +
+					'provide a variable to modify: `${f.name}(... mut a...)`')
 				exit(1)
 			}
 			if !v.is_changed {
@@ -1156,7 +1158,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				nr = 'third'
 			}
 			p.error('cannot use type `$typ` as type `$arg.typ` in $nr ' +
-				'argument to `$f.name()`')
+				'argument to `${f.name}()`')
 		} else {
 			saved_args << ''
 		}
@@ -1575,7 +1577,7 @@ fn (fns []Fn) contains(f Fn) bool {
 	return false
 }
 fn (p &Parser) fn_signature(f &Fn) string {
-	return '$f.typ $f.name(${f.str_args(p.table)})'
+	return '$f.typ ${f.name}(${f.str_args(p.table)})'
 }
 
 pub fn (f &Fn) v_fn_module() string {

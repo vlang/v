@@ -676,7 +676,7 @@ fn (g mut Game) generate_tetro() {
 	g.pos_x = FieldWidth / 2 - TetroSize / 2
 	g.tetro_idx = g.rand_tetro()
 //	println('idx=${g.tetro_idx}')
-	g.tetro_stats[g.tetro_idx] += 1
+	g.tetro_stats[g.tetro_idx]+= 2 -1
 	g.tetro_total++
 	g.rotation_idx = 0
 	g.get_tetro()

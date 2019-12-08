@@ -1183,11 +1183,11 @@ fn (p mut Parser) free_var(v Var) {
 		if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
 			prev_line := p.cgen.lines[p.cgen.lines.len-2]
 			p.cgen.lines[p.cgen.lines.len-2] =
-				'$free_fn($v.name); /* :) close_scope free $v.typ */' + prev_line
+				'$free_fn ($v.name); /* :) close_scope free $v.typ */' + prev_line
 		}
 	} else {
 		//if p.fileis('mem.v') {println(v.name)}
-		p.genln('$free_fn($v.name); // close_scope free')
+		p.genln('$free_fn ($v.name); // close_scope free')
 	}
 }
 
@@ -1408,7 +1408,7 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	//}
 	if expr_type == 'void' {
 		_, fn_name := p.is_expr_fn_call(p.token_idx-3)
-		p.error_with_token_index('$fn_name() $err_used_as_value', p.token_idx-2)
+		p.error_with_token_index('${fn_name}() $err_used_as_value', p.token_idx-2)
 	}
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') &&
@@ -1517,7 +1517,7 @@ fn (p mut Parser) var_decl() {
 	t := p.gen_var_decl(p.var_decl_name, is_static)
 	if t == 'void' {
 		_, fn_name := p.is_expr_fn_call(p.token_idx-3)
-		p.error_with_token_index('$fn_name() $err_used_as_value', p.token_idx-2)
+		p.error_with_token_index('${fn_name}() $err_used_as_value', p.token_idx-2)
 	}
 	mut var_types := [t]
 	// multiple returns types
@@ -1698,7 +1698,7 @@ fn (p mut Parser) get_c_func_type(name string) string {
 		// Do not allow it.
 		if !name.starts_with('gl') && !name.starts_with('glad') {
 		p.error('undefined C function `$f.name`\n' +
-			'define it with `fn C.$name([args]) [return_type]`')
+			'define it with `fn C.${name}([args]) [return_type]`')
 		}
 		return 'void*'
 	}
@@ -2534,7 +2534,7 @@ if (!$tmp) {
      tos3("$filename"),
      $p.scanner.line_nr,
      tos3("$sourceline"),
-     tos3("$p.cur_fn.name()")
+     tos3("${p.cur_fn.name}()")
   );
   exit(1);
   // TODO
@@ -2545,7 +2545,7 @@ if (!$tmp) {
      tos3("$filename"),
      $p.scanner.line_nr,
      tos3("$sourceline"),
-     tos3("$p.cur_fn.name()")
+     tos3("${p.cur_fn.name}()")
   );
 }
 
@@ -2745,7 +2745,7 @@ fn (p mut Parser) js_decode() string {
 		decl += 'cJSON* $cjson_tmp = json__json_parse($expr);'
 		p.cgen.insert_before(decl)
 		// p.gen('jsdecode_$typ(json_parse($expr), &$tmp);')
-		p.gen('json__jsdecode_$typ($cjson_tmp, &$tmp); cJSON_Delete($cjson_tmp);')
+		p.gen('json__jsdecode_${typ}($cjson_tmp, &$tmp); cJSON_Delete($cjson_tmp);')
 		opt_type := 'Option_$typ'
 		p.cgen.typedefs << 'typedef Option $opt_type;'
 		p.table.register_builtin(opt_type)
@@ -2757,7 +2757,7 @@ fn (p mut Parser) js_decode() string {
 		T := p.table.find_type(typ)
 		p.gen_json_for_type(T)
 		p.check(.rpar)
-		p.gen('json__json_print(json__jsencode_$typ($expr))')
+		p.gen('json__json_print(json__jsencode_${typ}($expr))')
 		return 'string'
 	}
 	else {

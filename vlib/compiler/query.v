@@ -123,7 +123,8 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			if field.typ == 'int' {
 				cast = 'v_string_int'
 			}
-			obj_gen.writeln('${qprefix}$tmp . $field.name = $cast( *(string*)array_get(${qprefix}row.vals, $i) );')
+			obj_gen.writeln('${qprefix}${tmp}.$field.name = ' +
+				'${cast}(*(string*)array_get(${qprefix}row.vals, $i));')
 		}
 		// One object
 		if query_one {

@@ -188,7 +188,7 @@ const (
 fn (f Fn) str() string {
 	t := Table{}
 	str_args := f.str_args(t)
-	return '$f.name($str_args) $f.typ'
+	return '${f.name}($str_args) $f.typ'
 }
 
 pub fn (t &Table) debug_fns() string {

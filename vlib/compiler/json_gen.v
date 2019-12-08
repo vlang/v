@@ -57,8 +57,8 @@ fn (p mut Parser) gen_json_for_type(typ Type) {
 	p.table.register_fn(enc_fn)
 	// Code gen decoder
 	dec += '
-//$t $dec_fn.name(cJSON* root) {
-Option $dec_fn.name(cJSON* root, $t* res) {
+//$t $dec_fn.name (cJSON* root) {
+Option ${dec_fn.name}(cJSON* root, $t* res) {
 //  $t res;
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
@@ -71,7 +71,7 @@ Option $dec_fn.name(cJSON* root, $t* res) {
 '
 	// Code gen encoder
 	enc += '
-cJSON* $enc_fn.name($t val) {
+cJSON* $enc_fn.name ($t val) {
 cJSON *o = cJSON_CreateObject();
 string res = tos2("");
 '
@@ -96,24 +96,24 @@ string res = tos2("");
 		if field.attr == 'raw' {
 			dec += ' res->$field.name = tos2(cJSON_PrintUnformatted(' +
 				'js_get(root, "$name")));\n'
-			
+
 		} else {
 			// Now generate decoders for all field types in this struct
 			// need to do it here so that these functions are generated first
 			p.gen_json_for_type(field_type)
-	
+
 			dec_name := js_dec_name(_typ)
 
 			if is_js_prim(_typ) {
-				dec += ' res->$field.name = $dec_name(js_get(' +
+				dec += ' res->$field.name = $dec_name (js_get(' +
 					'root, "$name"))'
 			}
 			else {
-				dec += ' $dec_name(js_get(root, "$name"), & (res->$field.name))'
+				dec += ' $dec_name (js_get(root, "$name"), & (res->$field.name))'
 			}
 			dec += ';\n'
 		}
-		enc += '  cJSON_AddItemToObject(o,  "$name",$enc_name(val.$field.name)); \n'
+		enc += '  cJSON_AddItemToObject(o,  "$name",$enc_name (val.$field.name)); \n'
 	}
 	// cJSON_delete
 	//p.cgen.fns << '$dec return opt_ok(res); \n}'
@@ -136,10 +136,10 @@ fn (p mut Parser) decode_array(array_type string) string {
 	p.gen_json_for_type(t)
 	mut s := ''
 	if is_js_prim(typ) {
-		s = '$typ val= $fn_name(jsval); '
+		s = '$typ val= $fn_name (jsval); '
 	}
 	else {
-		s = '  $typ val; $fn_name(jsval, &val); '
+		s = '  $typ val; $fn_name (jsval, &val); '
 	}
 	return '
 *res = new_array(0, 0, sizeof($typ));
@@ -168,7 +168,7 @@ fn (p &Parser) encode_array(array_type string) string {
 	return '
 o = cJSON_CreateArray();
 for (int i = 0; i < val.len; i++){
-  cJSON_AddItemToArray(o, $fn_name(  (($typ*)val.data)[i]  ));
+  cJSON_AddItemToArray(o, $fn_name (  (($typ*)val.data)[i]  ));
 }
 '
 }
