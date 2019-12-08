@@ -192,7 +192,8 @@ pub fn run<T>(app mut T, port int) {
 			conn.write(HTTP_404) or {}
 		}
 		conn.close() or {}
-		app.reset()
+		reset := 'reset'
+		app.$reset()
 	}
 }
 
