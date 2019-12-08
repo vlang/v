@@ -97,9 +97,7 @@ fn (table &Table) fn_gen_name(f &Fn) string {
 
 //fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
 	//ftyp string,	cgen_name string, receiver Var,method_ph int)
-fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
-	cgen_name string, ftyp string, method_ph int)
-{
+fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string, cgen_name string, ftyp string, method_ph int) {
 	// TODO  js methods have been broken from the start
 	
 	//mut cgen_name := p.table.fn_gen_name(f)

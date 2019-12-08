@@ -107,8 +107,7 @@ string res = tos2("");
 			if is_js_prim(_typ) {
 				dec += ' res->$field.name = $dec_name(js_get(' +
 					'root, "$name"))'
-			}
-			else {
+			} else {
 				dec += ' $dec_name(js_get(root, "$name"), & (res->$field.name))'
 			}
 			dec += ';\n'
@@ -137,15 +136,13 @@ fn (p mut Parser) decode_array(array_type string) string {
 	mut s := ''
 	if is_js_prim(typ) {
 		s = '$typ val= $fn_name(jsval); '
-	}
-	else {
+	} else {
 		s = '  $typ val; $fn_name(jsval, &val); '
 	}
 	return '
 *res = new_array(0, 0, sizeof($typ));
 const cJSON *jsval = NULL;
-cJSON_ArrayForEach(jsval, root)
-{
+cJSON_ArrayForEach(jsval, root) {
 $s
   array_push(res, &val);
 }

@@ -306,9 +306,7 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 	return name
 }
 
-fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string,
-	cgen_name string, ftyp string, method_ph int)
-{
+fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string, cgen_name string, ftyp string, method_ph int) {
 	//mut cgen_name := p.table.fn_gen_name(f)
 	mut method_call := cgen_name + ' ('
 	// if receiver is key_mut or a ref (&), generate & for the first arg

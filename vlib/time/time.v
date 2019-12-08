@@ -7,39 +7,39 @@ module time
 import rand
 
 const (
-        days_string        = 'MonTueWedThuFriSatSun'
+	days_string = 'MonTueWedThuFriSatSun'
 
-        month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
 
-        // The unsigned zero year for internal calculations.
-        // Must be 1 mod 400, and times before it will not compute correctly,
-        // but otherwise can be changed at will.
-        absolute_zero_year = i64(-292277022399)
+	// The unsigned zero year for internal calculations.
+	// Must be 1 mod 400, and times before it will not compute correctly,
+	// but otherwise can be changed at will.
+	absolute_zero_year = i64(-292277022399)
 
-        seconds_per_minute = 60
-        seconds_per_hour   = 60 * seconds_per_minute
-        seconds_per_day    = 24 * seconds_per_hour
-        seconds_per_week   = 7 * seconds_per_day
-        days_per_400_years = 365*400 + 97
-        days_per_100_years = 365*100 + 24
-        days_per_4_years   = 365*4 + 1
+	seconds_per_minute = 60
+	seconds_per_hour   = 60 * seconds_per_minute
+	seconds_per_day    = 24 * seconds_per_hour
+	seconds_per_week   = 7 * seconds_per_day
+	days_per_400_years = 365*400 + 97
+	days_per_100_years = 365*100 + 24
+	days_per_4_years   = 365*4 + 1
 
-        days_before        = [
-                0,
-                31,
-                31 + 28,
-                31 + 28 + 31,
-                31 + 28 + 31 + 30,
-                31 + 28 + 31 + 30 + 31,
-                31 + 28 + 31 + 30 + 31 + 30,
-                31 + 28 + 31 + 30 + 31 + 30 + 31,
-                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
-                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
-                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
-                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
-                31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-        ]
+	days_before = [
+		0,
+		31,
+		31 + 28,
+		31 + 28 + 31,
+		31 + 28 + 31 + 30,
+		31 + 28 + 31 + 30 + 31,
+		31 + 28 + 31 + 30 + 31 + 30,
+		31 + 28 + 31 + 30 + 31 + 30 + 31,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+	]
 )
 
 #include <time.h>
@@ -56,30 +56,30 @@ pub:
 }
 
 pub enum FormatTime {
-        hhmm12
-        hhmm24
-        hhmmss12
-        hhmmss24
-        no_time
+	hhmm12
+	hhmm24
+	hhmmss12
+	hhmmss24
+	no_time
 }
 
 pub enum FormatDate {
-        ddmmyy
-        ddmmyyyy
-        mmddyy
-        mmddyyyy
-        mmmd
-        mmmdd
-        mmmddyyyy
-        no_date
-        yyyymmdd
+	ddmmyy
+	ddmmyyyy
+	mmddyy
+	mmddyyyy
+	mmmd
+	mmmdd
+	mmmddyyyy
+	no_date
+	yyyymmdd
 }
 
 pub enum FormatDelimiter {
-        dot
-        hyphen
-        slash
-        space
+	dot
+	hyphen
+	slash
+	space
 }
 
 fn C.localtime(int) &C.tm
@@ -208,21 +208,21 @@ pub fn convert_ctime(t tm) Time {
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM:SS in
-//            24h notation
+//	    24h notation
 // @param
 // @return    string
 // @example   1980-07-11 21:23:42
 pub fn (t Time) format_ss() string {
-        return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
+	return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM in 24h
-//            notation
+//	    notation
 // @param
 // @return    string
 // @example   1980-07-11 21:23
 pub fn (t Time) format() string {
-        return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
+	return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
 }
 
 
@@ -234,7 +234,7 @@ pub fn (t Time) smonth() string {
 // hhmm     returns a string for t in the given format HH:MM in 24h notation
 // @example 21:04
 pub fn (t Time) hhmm() string {
-        return t.get_fmt_time_str(.hhmm24)
+	return t.get_fmt_time_str(.hhmm24)
 }
 
 /*
@@ -245,27 +245,27 @@ fn (t Time) hhmm_tmp() string {
 
 // hhmm12   returns a string for t in the given format HH:MM in 12h notation
 pub fn (t Time) hhmm12() string {
-        return t.get_fmt_time_str(.hhmm12)
+	return t.get_fmt_time_str(.hhmm12)
 }
 
 // hhmmss   returns a string for t in the given format HH:MM:SS in 24h notation
 pub fn (t Time) hhmmss() string {
-        return t.get_fmt_time_str(.hhmmss24)
+	return t.get_fmt_time_str(.hhmmss24)
 }
 
 // ymmdd    returns a string for t in the given format YYYY-MM-DD
 pub fn (t Time) ymmdd() string {
-        return t.get_fmt_date_str(.hyphen, .yyyymmdd)
+	return t.get_fmt_date_str(.hyphen, .yyyymmdd)
 }
 
 // ddmmy    returns a string for t in the given format DD.MM.YYYY
 pub fn (t Time) ddmmy() string {
-        return t.get_fmt_date_str(.dot, .ddmmyyyy)
+	return t.get_fmt_date_str(.dot, .ddmmyyyy)
 }
 
 // md       returns a string for t in the given format MMM D
 pub fn (t Time) md() string {
-        return t.get_fmt_date_str(.space, .mmmd)
+	return t.get_fmt_date_str(.space, .mmmd)
 }
 
 pub fn (t Time) clean() string {
@@ -275,7 +275,7 @@ pub fn (t Time) clean() string {
 	// }
 	// Today
 	if t.month == nowe.month && t.year == nowe.year && t.day == nowe.day {
-                return t.get_fmt_time_str(.hhmm24)
+		return t.get_fmt_time_str(.hhmm24)
 	}
 	// This week
 	// if time.Since(t) < 24*7*time.Hour {
@@ -283,7 +283,7 @@ pub fn (t Time) clean() string {
 	// }
 	// This year
 	if t.year == nowe.year {
-                return t.get_fmt_str(.space, .hhmm24, .mmmd)
+		return t.get_fmt_str(.space, .hhmm24, .mmmd)
 	}
 	return t.format()
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
@@ -296,7 +296,7 @@ pub fn (t Time) clean12() string {
 	// }
 	// Today
 	if t.month == nowe.month && t.year == nowe.year && t.day == nowe.day {
-                return t.get_fmt_time_str(.hhmm12)
+		return t.get_fmt_time_str(.hhmm12)
 	}
 	// This week
 	// if time.Since(t) < 24*7*time.Hour {
@@ -304,7 +304,7 @@ pub fn (t Time) clean12() string {
 	// }
 	// This year
 	if t.year == nowe.year {
-                return t.get_fmt_str(.space, .hhmm12, .mmmd)
+		return t.get_fmt_str(.space, .hhmm12, .mmmd)
 	}
 	return t.format()
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
@@ -445,8 +445,7 @@ pub fn ticks() i64 {
 pub fn sleep(seconds int) {
 	$if windows {
 		C.Sleep(seconds * 1000)
-	}
-	$else {
+	} $else {
 		C.sleep(seconds)
 	}
 }
@@ -454,8 +453,7 @@ pub fn sleep(seconds int) {
 pub fn usleep(n int) {
 $if windows {
 	//C._usleep(n)
-}
-$else {
+} $else {
 	C.usleep(n)
 }
 }
@@ -485,66 +483,66 @@ pub fn days_in_month(month, year int) ?int {
 }
 
 // get_fmt_time_str   returns a string for time t in a given format
-// @param             FormatTime
-// @return            string
-// @example           21:23:42
+// @param	     FormatTime
+// @return	    string
+// @example	   21:23:42
 pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
-        if fmt_time == .no_time {
-                return ''
-        }
+	if fmt_time == .no_time {
+		return ''
+	}
 
-        tp := if t.hour > 11 {
-                'p.m.'
-              } else {
-                'a.m.'
-              }
+	tp := if t.hour > 11 {
+			'p.m.'
+		} else {
+			'a.m.'
+		}
 
-        hour := if t.hour > 12 {
-                        t.hour - 12
-                } else  if t.hour == 0 {
-                              12
-                        } else {
-                              t.hour
-                        }
+	hour := if t.hour > 12 {
+			t.hour - 12
+		} else if t.hour == 0 {
+			12
+		} else {
+		      t.hour
+		}
 
-        return  match fmt_time {
-                        .hhmm12     { '$hour:${t.minute:02d} $tp' }
-                        .hhmm24     { '${t.hour:02d}:${t.minute:02d}' }
-                        .hhmmss12   { '$hour:${t.minute:02d}:${t.second:02d} $tp' }
-                        .hhmmss24   { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
-                        else        { 'unknown enumeration $fmt_time' }
-                }
+	return match fmt_time {
+			.hhmm12     { '$hour:${t.minute:02d} $tp' }
+			.hhmm24     { '${t.hour:02d}:${t.minute:02d}' }
+			.hhmmss12   { '$hour:${t.minute:02d}:${t.second:02d} $tp' }
+			.hhmmss24   { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
+			else	{ 'unknown enumeration $fmt_time' }
+		}
 }
 
 // get_fmt_date_str   returns a string for t in a given date format
-// @param             FormatDelimiter, FormatDate
-// @return            string
-// @example           11.07.1980
+// @param	     FormatDelimiter, FormatDate
+// @return	    string
+// @example	   11.07.1980
 pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate) string {
-        if fmt_date == .no_date {
-                return ''
-        }
+	if fmt_date == .no_date {
+		return ''
+	}
 
-        month := '${t.smonth()}'
-        year := t.year.str()[2..]
+	month := '${t.smonth()}'
+	year := t.year.str()[2..]
 
-        return  match fmt_date {
-                        .ddmmyy     { '${t.day:02d}|${t.month:02d}|$year' }
-                        .ddmmyyyy   { '${t.day:02d}|${t.month:02d}|${t.year}' }
-                        .mmddyy     { '${t.month:02d}|${t.day:02d}|$year' }
-                        .mmddyyyy   { '${t.month:02d}|${t.day:02d}|${t.year}' }
-                        .mmmd       { '$month|${t.day}' }
-                        .mmmdd      { '$month|${t.day:02d}' }
-                        .mmmddyyyy  { '$month|${t.day:02d}|${t.year}' }
-                        .yyyymmdd   { '${t.year}|${t.month:02d}|${t.day:02d}' }
-                        else        { 'unknown enumeration $fmt_date' }
-                }.replace('|',  match fmt_dlmtr {
-                                        .dot    { '.' }
-                                        .hyphen { '-' }
-                                        .slash  { '/' }
-                                        .space  { ' ' }
-                                        else    { 'unknown enumeration $fmt_dlmtr' }
-                                })
+	return  match fmt_date {
+			.ddmmyy     { '${t.day:02d}|${t.month:02d}|$year' }
+			.ddmmyyyy   { '${t.day:02d}|${t.month:02d}|${t.year}' }
+			.mmddyy     { '${t.month:02d}|${t.day:02d}|$year' }
+			.mmddyyyy   { '${t.month:02d}|${t.day:02d}|${t.year}' }
+			.mmmd       { '$month|${t.day}' }
+			.mmmdd      { '$month|${t.day:02d}' }
+			.mmmddyyyy  { '$month|${t.day:02d}|${t.year}' }
+			.yyyymmdd   { '${t.year}|${t.month:02d}|${t.day:02d}' }
+			else	{ 'unknown enumeration $fmt_date' }
+		}.replace('|',  match fmt_dlmtr {
+					.dot    { '.' }
+					.hyphen { '-' }
+					.slash  { '/' }
+					.space  { ' ' }
+					else    { 'unknown enumeration $fmt_dlmtr' }
+				})
 }
 
 // get_fmt_str  returns a string for t in a given format for time and date
@@ -552,21 +550,21 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 // @return      string
 // @example     11.07.1980 21:23:42
 pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_date FormatDate) string {
-        if fmt_date == .no_date {
-                if fmt_time == .no_time {
-                        // saving one function call although it's checked in
-                        // t.get_fmt_time_str(fmt_time) in the beginning
-                        return ''
-                } else {
-                        return t.get_fmt_time_str(fmt_time)
-                }
-        } else {
-                if fmt_time != .no_time {
-                        return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
-                               + ' '
-                               + t.get_fmt_time_str(fmt_time)
-                } else {
-                        return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
-                }
-        }
+	if fmt_date == .no_date {
+		if fmt_time == .no_time {
+			// saving one function call although it's checked in
+			// t.get_fmt_time_str(fmt_time) in the beginning
+			return ''
+		} else {
+			return t.get_fmt_time_str(fmt_time)
+		}
+	} else {
+		if fmt_time != .no_time {
+			return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
+			       + ' '
+			       + t.get_fmt_time_str(fmt_time)
+		} else {
+			return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
+		}
+	}
 }
