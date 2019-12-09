@@ -1,6 +1,5 @@
 module main
 
-import time
 import gg
 import glfw
 import gx
@@ -50,9 +49,7 @@ fn main() {
 		gg.post_empty_event() // needed so the animation does not stop
 		///////////////////////////////////////////////
 		a.update()
-		print_automaton(a)
-		
+		print_automaton(a)		
 		graphics.render()
-		time.sleep_ms(1) // TODO: remove this when live reload depence on the time module is fixed
 	}
 }

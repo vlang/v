@@ -277,7 +277,7 @@ fn todo_remove_me(cfg Cfg, scale int) {
 	}
 	width := cfg.width * scale
 	height := cfg.height * scale
-	font_size := cfg.font_size * scale
+	//font_size := cfg.font_size * scale
 	gl.enable(C.GL_BLEND)
 	//# glBlendFunc(C.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	shader := gl.new_shader('text')
