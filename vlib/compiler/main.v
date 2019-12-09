@@ -503,8 +503,7 @@ pub fn (v mut V) generate_main() {
 			v.gen_main_start(false)
 
 			if v.pref.is_stats {
-				// QQQ
-				//cgen.genln('BenchedTests bt = main__start_testing();')
+				cgen.genln('BenchedTests bt = main__start_testing();')
 			}
 
 			for _, f in v.table.fns {
