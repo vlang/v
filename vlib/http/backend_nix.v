@@ -83,6 +83,9 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	}
 	res = C.SSL_set_tlsext_host_name(ssl, host_name.str)
 	res = C.BIO_do_connect(web)
+	if res != 1 {
+		return error('cannot connect the endpoint')
+	}
 	res = C.BIO_do_handshake(web)
 	C.SSL_get_peer_certificate(ssl)
 	res = C.SSL_get_verify_result(ssl)
