@@ -17,7 +17,10 @@ enum TokenKind{
 	array			
 	table			
 	array_of_table
-	table_of_array	
+	table_of_array
+	offset_datetime	// 1992-04-27T08:30:00Z
+	localdate		// 1992-04-27
+	localtime		// 08:30:00.999999
 	wquote			// "
 	squote			// '
 	number			// 123

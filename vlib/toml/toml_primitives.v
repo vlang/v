@@ -5,6 +5,9 @@
 
 module toml
 
+import (
+	time
+)
 
 struct TOML{
 	pub mut:
@@ -100,6 +103,7 @@ struct TOMLVal{
 		time_stamp	TimeStamp
 		arr			Array
 }
+]
 
 fn (t TOMLInt) val() i64 {
 	return t.val
@@ -118,8 +122,17 @@ fn (t TOMLDouble) str_val() string{
 }
 
 struct TimeStamp{
-	// Calender
-	year,month,date   					int
-	// Clock
-	hour,minute,second,millsecond  		int
+	year		int							
+	month  		int
+	date		int
+	hour		int
+	minute		int
+	second		int
+	millsecond  int
+}
+
+fn (t TimeStamp) val() Time {
+	date_data := '$t.year-$t.month-$t.date'
+	time_data := '$t.hour:$t.minute:$t.second'
+	return parse('$date_data $time_data')
 }

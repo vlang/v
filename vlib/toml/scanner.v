@@ -15,6 +15,9 @@ mut:
 	file_path		string
 	text			string
 	pos				int
+	last_nl_pos		int
+	nlines 			int
+	line_ends		[]int
 	line_nr 		int
 	line_comment 	string
 	prev_tok		TokenKind
@@ -62,6 +65,14 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 		}
 	}
 	return true
+}
+
+fn (s mut Scanner) ident_array string{
+
+}
+
+fn (s mut Scanner) ident_table string{
+
 }
 
 fn (s mut Scanner) ident_basic_string string{
@@ -119,7 +130,7 @@ fn (s mut Scanner) ident_number() string{
 	}
 }
 
-fn (s mut Scanner) ident_unicode string {
+fn (s mut Scanner) ident_unicode() string {
 		
 }
 
@@ -127,7 +138,7 @@ fn (s mut Scanner) ident_dec_num() string{
 
 }
 
-fn (s mut Scanner) ident_hex_num() string {
+fn (s mut Scanner) ident_hex_num() string{
 	start := s.pos
 	s.pos += 2	// skip 0x
 }
@@ -138,12 +149,34 @@ fn (s mut Scanner) ident_bin_num() string{
 }
 
 fn (s mut Scanner) ident_oct_num() string {
-	start := s.pos
+	start_pos := s.pos
 	s.pos += 2 // skip 0o
+	for {
+		if s.pos >= s.text.len{
+			break
+		}
+		c := s.text[s.pos]
+		if !c.is_hex_digit{
+			break
+		}
+		s.pos++
+	}
+	number := s.text[start_pos..s.pos]
+	s.pos--
+	return number
 }
 
 fn (s mut Scanner) end_of_file() ScanRes{
 		s.pos = s.text.line_nr
 		s.inc_line_number()
 		return scan_res(.eof,'')
+}
+
+fn (s mut Scanner) inc_line_number(){
+	s.last_nl_pos = s.pos
+	s.line_nr++
+	s.line_ends << s.pos
+	if s.line_nr > s.nlines{
+		s.nlines = s.line_nr
+	}
 }

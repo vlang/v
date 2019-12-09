@@ -1,5 +1,9 @@
 module toml
-import math
+
+import (
+    math
+    time
+)
 
 fn decode_demical(s string) string{
     for i := 0; i == s.len(); i++{
@@ -87,7 +91,7 @@ fn decode_octal(s string) string{
     return temp.str()
 }
 
-fn decode_datetime(root &TOML){
+fn decode_datetime(root &TOML) ?Time{
     
 }
 
@@ -98,6 +102,7 @@ fn string_decode(root &TOML) ?string{
     return error('This Key is not string type.')
 }
 
+// Returns TOML's integer(int)
 fn integer_decode_int(root &TOMLInt) ?int {
     mut temp := root.str_val
     if temp == '' {
@@ -113,6 +118,7 @@ fn integer_decode_int(root &TOMLInt) ?int {
     return error('This Key is not integer type.')
 }
 
+// Returns TOML's integer(i64)
 fn integer_decode_i64(root &TOMLInt) ?i64{     
     mut temp := root.str_val
     if temp == '' {
@@ -128,6 +134,7 @@ fn integer_decode_i64(root &TOMLInt) ?i64{
     return error('This Key is not integer type.')
 }
 
+// Returns TOML's integer(i16)
 fn integer_decode_i16(root &TOMLInt) ?i16{
     mut temp := root.str_val
     if temp == '' {
@@ -143,6 +150,7 @@ fn integer_decode_i16(root &TOMLInt) ?i16{
     return error('This Key is not integer type.')
 }
 
+// Return TOML's integer(i8)
 fn integer_decode_i8(root &TOMLInt) ?i8{
     mut temp := root.str_val
     if temp == '' {

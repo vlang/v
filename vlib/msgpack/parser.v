@@ -1,6 +1,9 @@
 module msgpack
 
-import encoding/binary
+import (
+	math.bits
+	encoding.binary
+)
 
 const (
 	pos_fixint = 0x00 .. 0x7f
@@ -38,3 +41,9 @@ const (
 	map_32 = 0xdf
 	neg_fixint = 0xe0 .. 0xff
 )
+
+struct Reader{
+	data string
+mut:	
+	pos int
+}
