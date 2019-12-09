@@ -4,12 +4,12 @@ import gx
 import gg
 import time
 import glfw
-// import math
-import os
+import math
 
 const (
 	Size  = 700
-	Scale  = 50.0 
+	Scale  = 50.0
+	pi = math.pi
 )
 
 struct Context {
@@ -17,7 +17,6 @@ struct Context {
 }
 
 fn main() {
-	os.clear()
 	glfw.init_glfw()
 	ctx:= &Context{ 
 		gg: gg.new_context(gg.Cfg {
@@ -40,23 +39,31 @@ fn main() {
 
 [live] 
 fn (ctx &Context) draw() {
-	ctx.gg.draw_line(0, Size / 2, Size, Size / 2) // x axis 
-	ctx.gg.draw_line(Size / 2, 0, Size / 2, Size) // y axis 
 	center := f64(Size / 2)
+	ctx.gg.draw_line(0, center, Size, center) // x axis 
+	ctx.gg.draw_line(center, 0, center, Size) // y axis 
+	atime := f64( time.ticks() / 10 )
+	stime := math.sin( 2.0 * pi * f64( time.ticks() % 6000 ) / 6000 )
 	mut y := 0.0
-	for x := -10.0; x <= 10.0; x += 0.002 {
-		y = x * x - 1 
-		//y = (x + 3) * (x + 3) - 1
-		//y = math.sqrt(30.0 - x * x)
-		ctx.gg.draw_rect(center + x * Scale, center - y * Scale, 1, 1, gx.Black) 
-		//ctx.gg.draw_rect(center + x * Scale, center + y * Scale, 1, 1, gx.Black) 
+	y = 1.0
+	for x := -10.0; x <= 10.0; x += 0.02 {
+		//y = x*x + 2
+		y = x*x + stime*stime
+		//y = stime
+		//y = stime * x
+		y = stime*1.0*math.sin(x + stime+atime/50) * x
+		//y = (stime * x) * x + stime
+		//y = (x + 3) * (x + 3) / stime + stime*2.5
+		//y = math.sqrt(30.0 - x * x) * stime
+		//y -= (stime-0.5) + stime
+		ctx.gg.draw_rect(center + x * Scale, center - y * Scale, 1, 1, gx.Blue)
+		ctx.gg.draw_rect(center + x * Scale, center + y * Scale, 1, 1, gx.Red) 
 	}
 }
 
 fn update() {
 	for { 
 		gg.post_empty_event() 
-		time.sleep_ms(300) 
+		time.sleep_ms(16) // 60 fps
 	} 
- 
 } 

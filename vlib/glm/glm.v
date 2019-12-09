@@ -272,8 +272,8 @@ pub fn identity3() []f32 {
 
 // https://github.com/toji/gl-matrix/blob/1549cf21dfa14a2bc845993485343d519cf064fe/src/gl-matrix/mat4.js
 fn ortho_js(left, right, bottom, top f32) &f32 {
-	mynear := 1
-	myfar := 1
+//	mynear := 1
+//	myfar := 1
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
 	nf := 1.0 / 1.0// (mynear -myfar)
