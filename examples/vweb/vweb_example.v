@@ -31,7 +31,7 @@ pub fn (app mut App) index() {
 	$vweb.html()
 }
 
-pub fn (app & App) text() {
+pub fn (app mut App) text() {
 	app.vweb.text('Hello world')
 }
 
