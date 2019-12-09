@@ -1448,6 +1448,9 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 			p.error_with_token_index( 'cannot use non-integer type `$expr_type` as ${tok.str()} argument', errtok)
 		}
 	}
+	else if expr_type == 'int' && p.assigned_type == 'PermissionA' {
+		println('TMP HACK')
+	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
@@ -1854,6 +1857,16 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		p.gen_array_str(typ)
 		has_method = true
 	}
+	if !has_method && field_name in ['set', 'has', 'clear', 'toggle'] {
+		//tt := p.table.find_type(typ)
+		if typ.is_bitfield {
+			//p.cgen.gen(' /* JOE111 set_bitfield(*/')
+			has_method = true
+			println(' ## $field_name bitfield $typ.name')
+			//p.next()
+			//return typ.name
+		}
+	}
 	if !typ.is_c && !p.is_c_fn_call && !has_field && !has_method && !p.first_pass() {
 		if typ.name.starts_with('Option_') {
 			opt_type := typ.name[7..]
@@ -1916,6 +1929,12 @@ struct $typ.name {
 		p.gen(dot + struct_field)
 		p.next()
 		return field.typ
+	}
+	if typ.is_bitfield && field_name in ['set', 'has', 'clear', 'toggle'] {
+		p.gen('/* JOE 222 */')
+		p.next()
+		p.cgen.set_placeholder(method_ph, '/* PLACEHOLDER */')
+		return typ.name
 	}
 	// method
 	mut method := p.table.find_method(typ, field_name) or {
@@ -2789,6 +2808,12 @@ fn (p mut Parser) attribute() {
 	}
 	else if p.tok == .key_struct {
 		p.struct_decl()
+		p.attr = ''
+		return
+	}
+	else if p.tok == .key_enum {
+		p.enum_decl(false)
+		println('ATTR: $p.attr')
 		p.attr = ''
 		return
 	}

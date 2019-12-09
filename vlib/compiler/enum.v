@@ -57,6 +57,10 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		}
 		val++
 	}
+	is_bitfield := p.attr == 'flags'
+	if is_bitfield {
+		println(' # Set is_bitfield for $enum_name')
+	}
 	p.table.register_type(Type {
 		name: enum_name
 		mod: p.mod
@@ -64,6 +68,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		cat: .enum_
 		enum_vals: fields.clone()
 		is_public: is_pub
+		is_bitfield: p.attr == 'flags'
 	})
 	p.check(.rcbr)
 	p.fgenln('\n')

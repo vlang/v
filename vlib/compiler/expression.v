@@ -504,7 +504,10 @@ fn (p mut Parser) expression() string {
 		open := tok_op == .amp && p.tok in [.eq, .ne] // force precedence `(a & b) == c`  //false
 		if tok_op in [.pipe, .amp, .xor] {
 			if  !(is_integer_type(expr_type) &&			is_integer_type(typ)) {
-				p.error('operator ${tok_op.str()} is defined only on integer types')
+				t := p.table.find_type(typ)
+				if !(t.cat == .enum_ && t.is_bitfield) {
+					p.error('operator ${tok_op.str()} is defined only on integer types')
+				}
 			}
 			//open = true
 		}

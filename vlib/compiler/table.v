@@ -111,7 +111,7 @@ mut:
 	// This information is needed in the first pass.
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
-
+	is_bitfield    bool
 }
 
 struct TypeNode {
@@ -602,6 +602,15 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('varg_') {
 		got = got[5..]
 	}
+
+	// bitfield
+	if (got == 'enum' && expected == 'int') ||
+		(expected == 'enum' && got =='int') {
+		println('check types bitfield OK')
+		return true
+	}
+
+
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
 		return true
