@@ -25,8 +25,8 @@ fn main() {
 
 	// V syntax can be used to build queries
 	println('----------------------------------------------------------------')
-	country := 'Bulgaria'
-	bg_customers := db.select from Customer where country == country  && id != 2
+	bg_country := 'Bulgaria'
+	bg_customers := db.select from Customer where country == bg_country  && id != 2
 	for customer in bg_customers {
 		println('$customer.country | $customer.id - $customer.name')
 	}
