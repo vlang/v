@@ -190,6 +190,9 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
+pub fn (s string) bool() bool {
+	return s == 'true' || s == 't' // TODO t for pg, remove
+}
 
 pub fn (s string) int() int {
 	return int(strconv.common_parse_int(s,0,32, false, false))

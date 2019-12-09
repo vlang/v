@@ -746,7 +746,7 @@ pub fn (v &V)  get_user_files() []string {
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << filepath.join(preludes_path,'tests_with_stats.v')
 	}
-	
+
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&

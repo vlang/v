@@ -41,26 +41,34 @@ pub:
 	// TODO Response
 mut:
 	headers string // response headers
+	done bool
 }
 
 pub fn (ctx Context) html(html string) {
+	if ctx.done { return }
 	//println('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
 }
 
-pub fn (ctx Context) text(s string) {
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n$ctx.headers\r\n\r\n $s') or { panic(err) }
+pub fn (ctx mut Context) text(s string) {
+	if ctx.done { return }
+	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n' +
+		'$ctx.headers\r\n$s') or { panic(err) }
+	ctx.done = true
 }
 
 pub fn (ctx Context) json(s string) {
+	if ctx.done { return }
 	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') or { panic(err) }
 }
 
 pub fn (ctx Context) redirect(url string) {
+	if ctx.done { return }
 	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.headers\r\n\r\n') or { panic(err) }
 }
 
 pub fn (ctx Context) not_found(s string) {
+	if ctx.done { return }
 	ctx.conn.write(HTTP_404) or { panic(err) }
 }
 
