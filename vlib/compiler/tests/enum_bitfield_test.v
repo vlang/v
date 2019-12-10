@@ -23,4 +23,12 @@ fn test_bitfield() {
 	assert a.perm.has(.execute)
 	assert !a.perm.has(.write)
 	assert !a.perm.has(.other)
+
+	mut b := BfPermission.read // TODO:  this does nothing currenty just sets the type
+	b.set(.write)
+	b.set(.other)
+	assert b.has(.write)
+	assert b.has(.other)
+	assert !b.has(.read)
+	assert !b.has(.execute)
 }
