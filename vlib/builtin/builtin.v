@@ -17,6 +17,16 @@ fn init() {
 	}
 }
 
+// Bitfield flag enum
+// pub fn (e mut enum) set(flag enum)      { *e = int(*e) | (1 << int(flag)) }
+// pub fn (e mut enum) clear(flag enum)    { *e = int(*e) &~ (1 << int(flag)) }
+// pub fn (e mut enum) toggle(flag enum)   { *e = int(*e) ^ (1 << int(flag)) }
+// pub fn (e mut enum) has(flag enum) bool { return int(*e)&(1 << int(flag)) != 0 }
+// pub fn (e mut enum) test(flag enum) {
+// 	println(e.name)
+// 	println(flag.name)
+// }
+
 pub fn exit(code int) {
 	C.exit(code)
 }

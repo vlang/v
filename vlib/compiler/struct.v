@@ -195,20 +195,13 @@ fn (p mut Parser) struct_decl() {
 		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fspace()
 		tt := p.get_type2()
-		mut field_type := tt.name
+		field_type := tt.name
 		if field_type == name {
 			p.error_with_token_index('cannot embed struct `$name` in itself (field `$field_name`)', field_name_token_idx)
 		}
 		// Register ?option type
 		if field_type.starts_with('Option_') {
 			p.gen_typedef('typedef Option $field_type;')
-		}
-		if field_type == 'PermissionA' {
-			println('is type PermissionA')
-		}
-		if tt.is_bitfield {
-			println(' ## 2 IS BITFIELD - set to int')
-			field_type = 'int'
 		}
 		p.check_and_register_used_imported_type(field_type)
 		is_atomic := p.tok == .key_atomic
@@ -293,8 +286,8 @@ fn (p mut Parser) struct_init(typ string) string {
 				break
 			}
 			tt := p.table.find_type(f.typ)
-			if tt.is_bitfield {
-				println(' #3 is bitfield $f.name')
+			if tt.is_flag {
+				p.error(err_modify_bitfield)
 			}
 			inited_fields << field
 			p.gen_struct_field_init(field)
@@ -371,6 +364,10 @@ fn (p mut Parser) struct_init(typ string) string {
 			expr_typ := p.bool_expression()
 			if !p.check_types_no_throw(expr_typ, ffield.typ) {
 				p.error('field value #${i+1} `$ffield.name` has type `$ffield.typ`, got `$expr_typ` ')
+			}
+			tt := p.table.find_type(ffield.typ)
+			if tt.is_flag {
+				p.error(err_modify_bitfield)
 			}
 			if i < T.fields.len - 1 {
 				if p.tok != .comma {

@@ -57,19 +57,23 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		}
 		val++
 	}
-	is_bitfield := p.attr == 'flags'
-	if is_bitfield {
-		println(' # Set is_bitfield for $enum_name')
+	is_flag := p.attr == 'flag'
+	if is_flag && fields.len > 32 {
+		p.error('when an enum is used as bit field, it must have a max of 32 fields')
 	}
-	p.table.register_type(Type {
+	mut T := Type {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
 		cat: .enum_
 		enum_vals: fields.clone()
 		is_public: is_pub
-		is_bitfield: p.attr == 'flags'
-	})
+		is_flag: is_flag
+	}
+	if is_flag {
+		p.gen_enum_flag_methods(mut T)
+	}
+	p.table.register_type(T)
 	p.check(.rcbr)
 	p.fgenln('\n')
 }
@@ -85,7 +89,10 @@ fn (p mut Parser) check_enum_member_access() {
 		}
 		p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
 	} else {
-		p.error('`$T.name` is not an enum')
+		if T.name != 'enum_' {
+			println('THIS ONE')
+			p.error('`$T.name` is not an enum')
+		}
 	}
 }
 

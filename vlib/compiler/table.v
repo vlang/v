@@ -111,7 +111,7 @@ mut:
 	// This information is needed in the first pass.
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
-	is_bitfield    bool
+	is_flag        bool  // enum bitfield flag
 }
 
 struct TypeNode {
@@ -502,7 +502,7 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 	}
 	// TODO table.typesmap[type_name].methods << f
 	mut t := p.table.typesmap[type_name]
-	if f.name != 'str' && f in t.methods  {
+	if f.name != 'str' && f in t.methods   {
 		p.error('redefinition of method `${type_name}.$f.name`')
 	}
 	t.methods << f
@@ -602,15 +602,6 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('varg_') {
 		got = got[5..]
 	}
-
-	// bitfield
-	if (got == 'enum' && expected == 'int') ||
-		(expected == 'enum' && got =='int') {
-		println('check types bitfield OK')
-		return true
-	}
-
-
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
 		return true

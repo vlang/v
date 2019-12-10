@@ -872,8 +872,7 @@ fn (p mut Parser) check(expected TokenKind) {
 
 	//if p.scanner.line_comment != '' {
 		//p.fgenln('// ! "$p.scanner.line_comment"')
-		//p.scanner.line_comment = ''
-	//}
+		//p.scanner.line_comff
 }
 
 
@@ -906,6 +905,10 @@ fn (p mut Parser) get_type() string {
 		// p.inside_tuple = false
 		typ = p.register_multi_return_stuct(types)
 		return typ
+	}
+	if p.tok == .key_enum {
+		p.check(.key_enum)
+		return 'enum_'
 	}
 	// fn type
 	if p.tok == .key_fn {
@@ -1857,16 +1860,6 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		p.gen_array_str(typ)
 		has_method = true
 	}
-	if !has_method && field_name in ['set', 'has', 'clear', 'toggle'] {
-		//tt := p.table.find_type(typ)
-		if typ.is_bitfield {
-			//p.cgen.gen(' /* JOE111 set_bitfield(*/')
-			has_method = true
-			println(' ## $field_name bitfield $typ.name')
-			//p.next()
-			//return typ.name
-		}
-	}
 	if !typ.is_c && !p.is_c_fn_call && !has_field && !has_method && !p.first_pass() {
 		if typ.name.starts_with('Option_') {
 			opt_type := typ.name[7..]
@@ -1929,12 +1922,6 @@ struct $typ.name {
 		p.gen(dot + struct_field)
 		p.next()
 		return field.typ
-	}
-	if typ.is_bitfield && field_name in ['set', 'has', 'clear', 'toggle'] {
-		p.gen('/* JOE 222 */')
-		p.next()
-		p.cgen.set_placeholder(method_ph, '/* PLACEHOLDER */')
-		return typ.name
 	}
 	// method
 	mut method := p.table.find_method(typ, field_name) or {
