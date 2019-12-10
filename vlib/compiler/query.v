@@ -245,3 +245,63 @@ fn (p mut Parser) insert_query(fn_ph int) {
 0, params, 0, 0, 0)')
 }
 
+// `db.update User set nr_orders=nr_orders+1`
+fn (p mut Parser) update_query(fn_ph int) {
+	println('update query')
+	p.check_name()
+	table_name := p.check_name()
+	typ := p.table.find_type(table_name)
+	if typ.name == '' {
+		p.error('unknown type `$table_name`')
+	}
+	set := p.check_name()
+	if set != 'set' {
+		p.error('expected `set`')
+	}
+	if typ.fields.len == 0 {
+		p.error('V orm: update: empty fields in `$typ.name`')
+	}
+	if typ.fields[0].name != 'id' {
+		p.error('V orm: `id int` must be the first field in `$typ.name`')
+	}
+	field := p.check_name()
+	p.check(.assign)
+	for f in typ.fields {
+		if !(f.typ in ['string', 'int', 'bool']) {
+			println('orm: skipping $f.name')
+			continue
+		}
+		p.register_var({ f | is_mut: true, is_used:true, is_changed:true })
+	}
+	mut q := 'update ${typ.name}s set $field='
+	p.is_sql = true
+	set_typ, expr := p.tmp_expr()
+	p.is_sql = false
+	// TODO this hack should not be necessary
+	if set_typ == 'bool' {
+		if expr.trim_space() == '1' {
+			q += 'true'
+		}
+		else {
+			q += 'false'
+		}
+	} else {
+		q += expr
+	}
+	// where
+	if p.tok == .name && p.lit == 'where' {
+		p.next()
+		p.is_sql = true
+		_, wexpr := p.tmp_expr()
+		p.is_sql = false
+		q += ' where ' + wexpr
+	}
+
+
+	nr_vals := 0
+	p.cgen.insert_before('char* params[$nr_vals];')// + params)
+	p.cgen.set_placeholder(fn_ph, 'PQexecParams( ')
+	println('update q="$q"')
+	p.genln('.conn, "$q", $nr_vals, 0, params, 0, 0, 0)')
+}
+

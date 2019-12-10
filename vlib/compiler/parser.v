@@ -1764,7 +1764,11 @@ fn (p mut Parser) var_expr(v Var) string {
 			name := p.tokens[p.token_idx].lit
 			if !name.contains('exec') && !name.starts_with('q_') {
 				p.next()
-				p.insert_query(fn_ph)
+				if name == 'insert' {
+					p.insert_query(fn_ph)
+				} else if name == 'update' {
+					p.update_query(fn_ph)
+				}
 				return 'void'
 			}
 		}

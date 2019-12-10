@@ -190,6 +190,101 @@ pub fn (s string) replace(rep, with string) string {
 	return tos(b, new_len)
 }
 
+struct RepIndex {
+	idx int
+	val_idx int
+}
+
+fn (a mut []RepIndex) sort() {
+	a.sort_with_compare(compare_rep_index)
+}
+
+
+// TODO
+/*
+fn (a RepIndex) < (b RepIndex) bool {
+	return a.idx < b.idx
+}
+*/
+
+fn compare_rep_index(a, b &RepIndex) int {
+	if a.idx < b.idx {
+		return -1
+	}
+	if a.idx > b.idx {
+		return 1
+	}
+	return 0
+}
+
+pub fn (s string) replace_each(vals []string) string {
+	if s.len == 0 || vals.len == 0 {
+		return s
+	}
+	if vals.len % 2 != 0 {
+		println('string.replace_many(): odd number of strings')
+		return s
+	}
+	// `rep` - string to replace
+	// `with` - string to replace with
+	// Remember positions of all rep strings, and calculate the length
+	// of the new string to do just one allocation.
+	mut new_len := s.len
+	mut idxs := []RepIndex
+	mut idx := 0
+	for rep_i := 0; rep_i < vals.len; rep_i+=2 {
+		// vals: ['rep1, 'with1', 'rep2', 'with2']
+		rep := vals[rep_i]
+		with := vals[rep_i+1]
+		for {
+			idx = s.index_after(rep, idx)
+			if idx == -1 {
+				break
+			}
+			// We need to remember both the position in the string,
+			// and which rep/with pair it refers to.
+			idxs << RepIndex{idx, rep_i}
+			idx++
+			new_len += with.len - rep.len
+		}
+	}
+	// Dont change the string if there's nothing to replace
+	if idxs.len == 0 {
+		return s
+	}
+	idxs.sort()
+	mut b := malloc(new_len + 1)// add a \0 just in case
+	// Fill the new string
+	mut idx_pos := 0
+	mut cur_idx := idxs[idx_pos]
+	mut b_i := 0
+	for i := 0; i < s.len; i++ {
+		// Reached the location of rep, replace it with "with"
+		if i == cur_idx.idx {
+			rep := vals[cur_idx.val_idx]
+			with :=  vals[cur_idx.val_idx+1]
+			for j := 0; j < with.len; j++ {
+				b[b_i] = with[j]
+				b_i++
+			}
+			// Skip the length of rep, since we just replaced it with "with"
+			i += rep.len - 1
+			// Go to the next index
+			idx_pos++
+			if idx_pos < idxs.len {
+				cur_idx = idxs[idx_pos]
+			}
+		}
+		// Rep doesnt start here, just copy
+		else {
+			b[b_i] = s[i]
+			b_i++
+		}
+	}
+	b[new_len] = `\0`
+	return tos(b, new_len)
+}
+
 pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO t for pg, remove
 }
