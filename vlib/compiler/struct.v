@@ -285,6 +285,10 @@ fn (p mut Parser) struct_init(typ string) string {
 				p.error('no such field: "$field" in type $typ')
 				break
 			}
+			tt := p.table.find_type(f.typ)
+			if tt.is_flag {
+				p.error(err_modify_bitfield)
+			}
 			inited_fields << field
 			p.gen_struct_field_init(field)
 			p.check(.colon)
@@ -360,6 +364,10 @@ fn (p mut Parser) struct_init(typ string) string {
 			expr_typ := p.bool_expression()
 			if !p.check_types_no_throw(expr_typ, ffield.typ) {
 				p.error('field value #${i+1} `$ffield.name` has type `$ffield.typ`, got `$expr_typ` ')
+			}
+			tt := p.table.find_type(ffield.typ)
+			if tt.is_flag {
+				p.error(err_modify_bitfield)
 			}
 			if i < T.fields.len - 1 {
 				if p.tok != .comma {

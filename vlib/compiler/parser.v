@@ -1449,6 +1449,10 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 		}
 	}
 	else if !p.builtin_mod && !p.check_types_no_throw(expr_type, p.assigned_type) {
+		t := p.table.find_type(	p.assigned_type)
+		if t.cat == .enum_ && t.is_flag {
+			p.error_with_token_index(err_modify_bitfield, errtok)
+		}
 		p.error_with_token_index( 'cannot use type `$expr_type` as type `$p.assigned_type` in assignment', errtok)
 	}
 	if (is_str || is_ustr) && tok == .plus_assign && !p.is_js {
@@ -2789,6 +2793,11 @@ fn (p mut Parser) attribute() {
 	}
 	else if p.tok == .key_struct {
 		p.struct_decl()
+		p.attr = ''
+		return
+	}
+	else if p.tok == .key_enum {
+		p.enum_decl(false)
 		p.attr = ''
 		return
 	}

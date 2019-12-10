@@ -469,3 +469,26 @@ fn (p mut Parser) comptime_if_block(name string) {
 		p.genln('#endif')
 	}
 }
+
+fn (p mut Parser) gen_enum_flag_methods(typ mut Type) {
+	for method in ['set', 'clear', 'toggle', 'has'] {
+		typ.methods << Fn{
+			name: method,
+			typ: if method == 'has' { 'bool' } else { 'void' }
+			args: [Var{typ: typ.name, is_mut: true, is_arg:true}, Var{typ: typ.name, is_arg: true}]
+			is_method: true
+			is_public: true
+			receiver_typ: typ.name
+		}
+	}
+	p.v.vgen_buf.writeln('
+pub fn (e mut $typ.name) set(flag $typ.name)      { *e = int(*e) | (1 << int(flag)) }
+pub fn (e mut $typ.name) clear(flag $typ.name)    { *e = int(*e) &~ (1 << int(flag)) }
+pub fn (e mut $typ.name) toggle(flag $typ.name)   { *e = int(*e) ^ (1 << int(flag)) }
+pub fn (e &$typ.name) has(flag $typ.name) bool { return int(*e)&(1 << int(flag)) != 0 }'
+)
+	p.cgen.fns << 'void ${typ.name}_set($typ.name *e, $typ.name flag);'
+	p.cgen.fns << 'void ${typ.name}_clear($typ.name *e, $typ.name flag);'
+	p.cgen.fns << 'void ${typ.name}_toggle($typ.name *e, $typ.name flag);'
+	p.cgen.fns << 'bool ${typ.name}_has($typ.name *e, $typ.name flag);'
+}
