@@ -70,7 +70,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		is_public: is_pub
 		is_flag: is_flag
 	}
-	if is_flag {
+	if is_flag && !p.first_pass() {
 		p.gen_enum_flag_methods(mut T)
 	}
 	p.table.register_type(T)

@@ -259,5 +259,5 @@ const (
 	and_or_error = 'use `()` to make the boolean expression clear\n' +
 'for example: `(a && b) || c` instead of `a && b || c`'
 
-	err_modify_bitfield = 'cannot modify bit field, use the methods: set, has, clear, toggle'
+err_modify_bitfield = 'to modify a bitfield flag use the methods: set, clear, toggle. and to check for flag use: has'
 )
