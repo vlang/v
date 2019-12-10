@@ -257,7 +257,7 @@ fn is_key(key string) bool {
 	return int(key_to_token(key)) > 0
 }
 
-fn (t TokenKind) str() string {
+pub fn (t TokenKind) str() string {
 	return TokenStr[int(t)]
 }
 
@@ -290,7 +290,7 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 	return false
 }
 
-fn (t Token) str() string {
+pub fn (t Token) str() string {
 	if t.tok == .number {
 		return t.lit
 

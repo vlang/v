@@ -60,7 +60,7 @@ const (
 	MainFn = Fn{ name: 'main' }
 )
 
-fn (a []TypeInst) str() string {
+pub fn (a []TypeInst) str() string {
 	mut r := []string
 	for t in a {
 		mut s := ' | '

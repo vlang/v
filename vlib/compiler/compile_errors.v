@@ -199,7 +199,7 @@ mut:
    last_nl_pos int
 }
 
-fn (s ScannerPos) str() string {
+pub fn (s ScannerPos) str() string {
 	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} , ${s.last_nl_pos:5d} }'
 }
 
