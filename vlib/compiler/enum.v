@@ -89,10 +89,7 @@ fn (p mut Parser) check_enum_member_access() {
 		}
 		p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
 	} else {
-		if T.name != 'enum_' {
-			println('THIS ONE')
-			p.error('`$T.name` is not an enum')
-		}
+		p.error('`$T.name` is not an enum')
 	}
 }
 
