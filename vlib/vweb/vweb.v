@@ -117,7 +117,7 @@ pub fn run<T>(app mut T, port int) {
 		if first_line == '' {
 			conn.write(HTTP_500) or {}
 			conn.close() or {}
-			return
+			continue
 		}
 		// Parse the first line
 		// "GET / HTTP/1.1"
@@ -127,7 +127,7 @@ pub fn run<T>(app mut T, port int) {
 			println('no vals for http')
 			conn.write(HTTP_500) or {}
 			conn.close() or {}
-			return
+			continue
 		}
 		mut headers := []string
 		for _ in 0..30 {
