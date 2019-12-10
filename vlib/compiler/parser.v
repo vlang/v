@@ -872,7 +872,8 @@ fn (p mut Parser) check(expected TokenKind) {
 
 	//if p.scanner.line_comment != '' {
 		//p.fgenln('// ! "$p.scanner.line_comment"')
-		//p.scanner.line_comff
+		//p.scanner.line_comment = ''
+	//}
 }
 
 
@@ -905,10 +906,6 @@ fn (p mut Parser) get_type() string {
 		// p.inside_tuple = false
 		typ = p.register_multi_return_stuct(types)
 		return typ
-	}
-	if p.tok == .key_enum {
-		p.check(.key_enum)
-		return 'enum_'
 	}
 	// fn type
 	if p.tok == .key_fn {
