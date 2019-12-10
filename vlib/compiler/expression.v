@@ -51,14 +51,19 @@ fn (p mut Parser) bterm() string {
 	is_ustr := typ=='ustring'
 	is_float := typ[0] == `f` && (typ in ['f64', 'f32']) &&
 		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
-		!(p.cur_fn.name == 'eq')
-	is_array := typ.contains('array_')
+		p.cur_fn.name != 'eq'
+	is_array := typ.starts_with('array_')
 	expr_type := typ
 	tok := p.tok
+	/*
+	if tok == .assign {
+		p.error('no = ')
+	}
+	*/
 	if tok in [.eq, .gt, .lt, .le, .ge, .ne] {
 		//TODO: remove when array comparing is supported
 		if is_array {
-			p.error('array comparing is not supported yet')
+			p.error('array comparison is not supported yet')
 		}
 
 		p.fspace()
@@ -161,14 +166,11 @@ fn (p mut Parser) name_expr() string {
 		}
 		return temp_type
 	}
-
 	mut name := p.lit
-
 	// generic type check
 	if name in p.cur_fn.dispatch_of.inst.keys() {
 		name = p.cur_fn.dispatch_of.inst[name]
 	}
-
 	// Raw string (`s := r'hello \n ')
 	if name == 'r' && p.peek() == .str && p.prev_tok != .str_dollar {
 		p.string_expr()

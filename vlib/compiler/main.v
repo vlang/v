@@ -85,8 +85,9 @@ pub mut:
 	//nofmt         bool   // disable vfmt
 	is_test       bool   // `v test string_test.v`
 	is_script     bool   // single file mode (`v program.v`), main function can be skipped
-	is_live       bool   // for hot code reloading
-	is_so         bool
+	is_live       bool   // main program that contains live/hot code
+	is_solive     bool   // a shared library, that will be used in a -live main program
+	is_so         bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_prof       bool   // benchmark every function
 	translated    bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod       bool   // use "-O2"
@@ -502,8 +503,7 @@ pub fn (v mut V) generate_main() {
 			v.gen_main_start(false)
 
 			if v.pref.is_stats {
-				// QQQ
-				//cgen.genln('BenchedTests bt = main__start_testing();')
+				cgen.genln('BenchedTests bt = main__start_testing();')
 			}
 
 			for _, f in v.table.fns {
@@ -731,13 +731,20 @@ pub fn (v &V)  get_user_files() []string {
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string
 
-	if v.pref.is_test {
-		// TODO this somtimes fails on CI
-		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_assertions.v')
+	preludes_path := filepath.join(v.pref.vlib_path,'compiler','preludes')
+
+	if v.pref.is_live {
+		user_files << filepath.join(preludes_path,'live_main.v')
+	}
+	if v.pref.is_solive {
+		user_files << filepath.join(preludes_path,'live_shared.v')
 	}
 
+	if v.pref.is_test {
+		user_files << filepath.join(preludes_path,'tests_assertions.v')
+	}
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_with_stats.v')
+		user_files << filepath.join(preludes_path,'tests_with_stats.v')
 	}
 
 	// v volt/slack_test.v: compile all .v files to get the environment
@@ -1027,6 +1034,7 @@ pub fn new_v(args[]string) &V {
 		is_test: is_test
 		is_script: is_script
 		is_so: '-shared' in args
+		is_solive: '-solive' in args
 		is_prod: '-prod' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 

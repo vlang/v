@@ -32,6 +32,7 @@ fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string
 	return params_gen
 }
 
+
 // `db.select from User where id == 1 && nr_bookings > 0`
 fn (p mut Parser) select_query(fn_ph int) string {
 	// NB: qprefix and { p.sql_i, p.sql_params, p.sql_types } SHOULD be reset for each query,
@@ -49,7 +50,8 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		p.check_name()
 	}
 	table_name := p.check_name()
-	// Register this type's fields as variables so they can be used in where expressions
+	// Register this type's fields as variables so they can be used in `where`
+	// expressions
 	typ := p.table.find_type(table_name)
 	if typ.name == '' {
 		p.error('unknown type `$table_name`')
@@ -58,7 +60,8 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	// get only string and int fields
 	mut fields := []Var
 	for i, field in typ.fields {
-		if field.typ != 'string' && field.typ != 'int' {
+		if !(field.typ in ['string', 'int', 'bool']) {
+			println('orm: skipping $field.name')
 			continue
 		}
 		fields << field
@@ -81,12 +84,13 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	}
 	for field in fields {
 		//println('registering sql field var $field.name')
-		if field.typ != 'string' && field.typ != 'int' {
+		if !(field.typ in ['string', 'int', 'bool']) {
+			println('orm: skipping $field.name')
 			continue
 		}
-		p.register_var({ field | is_used:true })
+		p.register_var({ field | is_mut: true, is_used:true, is_changed:true })
 	}
-	q += table_name
+	q += table_name + 's'
 	// `where` statement
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
@@ -122,6 +126,9 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			mut cast := ''
 			if field.typ == 'int' {
 				cast = 'v_string_int'
+			}
+			else if field.typ == 'bool' {
+				cast = 'string_bool'
 			}
 			obj_gen.writeln('${qprefix}${tmp}.$field.name = ' +
 				'${cast}(*(string*)array_get(${qprefix}row.vals, $i));')
