@@ -1619,9 +1619,6 @@ fn (p mut Parser) get_struct_type(name_ string, is_c bool, is_ptr bool) string {
 
 fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	v := p.find_var_check_new_var(name) or { return "" }
-	if name == '_' {
-		p.error('cannot use `_` as value')
-	}
 	if is_ptr {
 		p.gen('&')
 	}

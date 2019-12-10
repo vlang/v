@@ -167,6 +167,10 @@ fn (p mut Parser) name_expr() string {
 		return temp_type
 	}
 	mut name := p.lit
+	// blank identifier (not var)
+	if name == '_' {
+		p.error('cannot use `_` as value')
+	}
 	// generic type check
 	if name in p.cur_fn.dispatch_of.inst.keys() {
 		name = p.cur_fn.dispatch_of.inst[name]
