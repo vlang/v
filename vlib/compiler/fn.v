@@ -297,6 +297,10 @@ fn (p mut Parser) fn_decl() {
 	if f.name == 'init' && !f.is_method && f.is_public && !p.is_vh {
 		p.error('init function cannot be public')
 	}
+	// .str() methods
+	if f.is_method && f.name == 'str' && !f.is_public {
+		p.error('.str() methods must be declared as public')
+	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -726,9 +730,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
 	}
-	if !f.is_public && !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod &&
-		!p.is_vgen // allow vgen access to methods like .str() defined in other modules 
-	{
+	if !f.is_public && !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
 		}
