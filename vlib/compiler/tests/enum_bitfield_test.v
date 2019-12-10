@@ -11,7 +11,7 @@ mut:
 	perm BfPermission
 }
 
-fn test_bitfield() {
+fn test_enum_bitfield() {
 	mut a := BfFile{}
 	a.perm.set(.read)
 	a.perm.set(.write)
