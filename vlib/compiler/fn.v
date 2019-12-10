@@ -254,7 +254,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
-			!p.is_vgen // allow .str()
+			!p.is_vgen // let vgen define methods like .str() on types defined in other modules
 		{
 			//println('T.mod=$T.mod')
 			//println('p.mod=$p.mod')
@@ -726,7 +726,9 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
 	}
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
+	if !f.is_public && !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod &&
+		!p.is_vgen // allow vgen access to methods like .str() defined in other modules 
+	{
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
 		}
