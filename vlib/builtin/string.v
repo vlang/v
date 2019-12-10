@@ -145,14 +145,14 @@ pub fn (s string) replace(rep, with string) string {
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int
-	mut rem := s
-	mut rstart := 0
+	mut idx := 0
 	for {
-		mut i := rem.index(rep) or { break }
-		idxs << rstart + i
-		i += rep.len
-		rstart += i
-		rem = rem.substr(i, rem.len)
+		idx = s.index_after(rep, idx)
+		if idx == -1 {
+			break
+		}
+		idxs << idx
+		idx++
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
