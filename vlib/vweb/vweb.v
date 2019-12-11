@@ -32,7 +32,7 @@ const (
 		'.svg': 'image/svg+xml',
 		'.xml': 'text/xml; charset=utf-8'
 	}
-	BUFFER_SIZE = 1024
+	MAX_HTTP_POST_SIZE = 1024 * 1024
 )
 
 pub struct Context {
@@ -127,15 +127,24 @@ pub fn run<T>(app mut T, port int) {
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		message := readall(conn)
-		lines := message.split_into_lines()
-		if lines.len < 2 {
-			println('invalid http request; not enough lines')
+		
+		if message.len > MAX_HTTP_POST_SIZE {
+			println('message.len = $message.len > MAX_HTTP_POST_SIZE')
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
+		
+		lines := message.split_into_lines()
+		
+		if lines.len < 2 {
+			conn.send_string(HTTP_500) or {}
+			conn.close() or {}
+			continue
+		}
+		
 		first_line := strip(lines[0])
-		println(first_line)
+		$if debug { println(first_line) }
 		// Parse the first line
 		// "GET / HTTP/1.1"
 		//first_line := s.all_before('\n')
@@ -155,9 +164,10 @@ pub fn run<T>(app mut T, port int) {
 			if in_headers {
 				headers << sline
 			} else {
-				body += line
+				body += strip(sline) + '\r\n'
 			}
 		}
+		
 		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
@@ -298,16 +308,13 @@ pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
 fn readall(conn net.Socket) string {
 	// read all message from socket
 	mut message := ''
+	buf := [1024]byte
 	for {
-		buf := [BUFFER_SIZE]byte
-		n := C.recv(conn.sockfd, buf, BUFFER_SIZE, 2)
-		bs, m := conn.recv(BUFFER_SIZE-1)
-		ss := tos_clone(bs)
-		message += ss
-		if n == m {
-			// the end of message
-			break
-		}
+		n := C.recv(conn.sockfd, buf, 1024, 2)
+		m := conn.crecv(buf, 1024)
+		message += string( byteptr(buf), m )
+		if message.len > MAX_HTTP_POST_SIZE { break }
+		if n == m { break }
 	}
 	return message
 }
