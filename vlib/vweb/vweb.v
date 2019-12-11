@@ -49,28 +49,28 @@ mut:
 pub fn (ctx mut Context) html(html string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: text/html\r\nContent-Length: ${html.len}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${html.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
 	ctx.conn.send_string(html) or { return }
 }
 
 pub fn (ctx mut Context) text(s string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: text/plain\r\nContent-Length: ${s.len}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${s.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
 	ctx.conn.send_string(s) or { return }
 }
 
 pub fn (ctx mut Context) json(s string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: application/json\r\nContent-Length: ${s.len}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${s.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
 	ctx.conn.send_string(s) or { return }
 }
 
 pub fn (ctx mut Context) redirect(url string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 302 Found${ctx.headers}\r\nLocation: ${url}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
 }
 
 pub fn (ctx mut Context) not_found(s string) {
@@ -100,7 +100,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 
 fn (ctx mut Context) add_header(key, val string) {
 	//println('add_header($key, $val)')
-	ctx.headers = ctx.headers + if ctx.headers == '' { '$key: $val' } else { '\r\n$key: $val' }
+	ctx.headers = ctx.headers + '\r\n$key: $val'
 	//println(ctx.headers)
 }
 
@@ -282,7 +282,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
 		ctx.done = true
-		ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\nContent-Length: ${data.len}\r\n${HEADERS_CLOSE}') or { return false }
+		ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\nContent-Length: ${data.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return false }
 		ctx.conn.send_string(data) or { return false }
 		return true
 	}
