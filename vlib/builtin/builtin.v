@@ -4,6 +4,8 @@
 
 module builtin
 
+__global g_m2_ptr byteptr
+
 fn init() {
 	$if windows {
 		if is_atty(0) > 0 {
@@ -108,14 +110,27 @@ pub fn print(s string) {
 	}
 }
 
+
 __global total_m i64 = 0
-//__global nr_mallocs int = 0
+__global nr_mallocs int = 0
+
 [unsafe_fn]
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
-	//nr_mallocs++
+	$if debug {
+		res := g_m2_ptr
+		g_m2_ptr += n
+		nr_mallocs++
+		return res
+	} $else {
+		ptr := C.malloc(n)
+		if ptr == 0 {
+			panic('malloc($n) failed')
+		}
+		return ptr
+	}
 /*
 TODO
 #ifdef VPLAY
@@ -129,11 +144,6 @@ TODO
 	print_backtrace()
 #endif
 */
-	ptr := C.malloc(n)
-	if ptr == 0 {
-		panic('malloc($n) failed')
-	}
-	return ptr
 }
 
 pub fn calloc(n int) byteptr {

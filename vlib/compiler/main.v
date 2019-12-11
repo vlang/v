@@ -199,7 +199,7 @@ pub fn (v mut V) compile() {
 		println(v.files)
 	}
 	v.add_v_files_to_compile()
-	if v.pref.is_verbose || v.pref.is_debug {
+	if v.pref.is_verbose {
 		println('all .v files:')
 		println(v.files)
 	}
@@ -418,6 +418,10 @@ fn (v mut V) generate_init() {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
 g_str_buf=malloc(1000);
+#if VDEBUG
+g_m2_ptr=malloc(50 * 1000 * 1000);
+puts("allocated 50 mb");
+#endif
 $call_mod_init_consts
 $consts_init_body
 builtin__init();
