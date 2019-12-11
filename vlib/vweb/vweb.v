@@ -51,7 +51,11 @@ pub fn (ctx mut Context) html(html string) {
 	if ctx.done { return }
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
-	sb.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${html.len}${ctx.headers}\r\n${HEADERS_CLOSE}')
+	sb.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ')
+	sb.write( html.len.str() )
+	sb.write( ctx.headers )
+	sb.write('\r\n')
+	sb.write(HEADERS_CLOSE)
 	sb.write(html)
 	ctx.conn.send_string(sb.str()) or { return }
 	sb.free()
