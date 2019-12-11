@@ -76,7 +76,7 @@ _ = header
 		}
 		// HTML, may include `@var`
 		else {
-			s.writeln(line.replace('@', '\x24').replace('\'', '"') )
+			s.writeln(line.replace('@', '\x24').replace("'", '"') )
 		}
 	}
 	s.writeln(STR_END)

@@ -74,11 +74,11 @@ pub fn (ctx Context) not_found(s string) {
 
 pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
-	ctx.add_header('Set-Cookie', '$key=$val')
+	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly')
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
-	cookie_header := ' ' + ctx.get_header('Cookie')
+	cookie_header := ' ' + ctx.get_header('cookie')
 	cookie := if cookie_header.contains(';') {
 		cookie_header.find_between(' $key=', ';')
 	} else {

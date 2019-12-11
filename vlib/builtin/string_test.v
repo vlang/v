@@ -233,6 +233,11 @@ fn test_replace_each() {
 		'[code]', '<code>',
 		'[/code]', '</code>'
 	]) == '<b>bold</b> <code>code</code>'
+	bb2 := '[b]cool[/b]'
+	assert bb2.replace_each([
+		'[b]', '<b>',
+		'[/b]', '</b>',
+	]) == '<b>cool</b>'
 }
 
 fn test_itoa() {
