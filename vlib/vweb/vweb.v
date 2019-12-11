@@ -131,13 +131,12 @@ pub fn run<T>(app mut T, port int) {
 			continue
 		}
 		mut headers := []string
-		for _ in 0..30 {
+		for {
+			if headers.len >= 30 { break }
 			header := conn.read_line()
 			headers << header
 			//println('header="$header" len = ' + header.len.str())
-			if header.len <= 2 {
-				break
-			}
+			if header.len <= 2 { break }
 		}
 		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
