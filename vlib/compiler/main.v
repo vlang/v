@@ -419,7 +419,8 @@ fn (v mut V) generate_init() {
 		v.cgen.genln('void init() {
 g_str_buf=malloc(1000);
 #if VDEBUG
-g_m2_ptr=malloc(50 * 1000 * 1000);
+g_m2_buf = malloc(50 * 1000 * 1000);
+g_m2_ptr = g_m2_buf;
 puts("allocated 50 mb");
 #endif
 $call_mod_init_consts
@@ -526,7 +527,10 @@ pub fn (v mut V) generate_main() {
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
 				cgen.genln('free(g_str_buf);')
-				cgen.genln('free(g_m2_ptr);')
+				cgen.genln('#if VDEBUG')
+				cgen.genln('free(g_m2_buf);')
+				cgen.genln('puts("freed mem buf");')
+				cgen.genln('#endif')
 			}
 			v.gen_main_end('return 0')
 		}
