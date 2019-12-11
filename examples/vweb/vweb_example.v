@@ -22,7 +22,7 @@ pub fn (app mut App) init() {
 	app.vweb.handle_static('.')
 }
 
-pub fn (app & App) json_endpoint() {
+pub fn (app mut App) json_endpoint() {
 	app.vweb.json('{"a": 3}')
 }
 

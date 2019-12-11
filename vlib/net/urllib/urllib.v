@@ -518,8 +518,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':') or { -1 }
-		slash := rest.index('/') or { -1 }
+		colon := rest.index(':') or { return error('there should be a : in the URL') }
+		slash := rest.index('/') or { return error('there should be a / in the URL') }
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
 			return error(error_msg('parse_url: first path segment in URL cannot contain colon', ''))
@@ -553,7 +553,7 @@ struct ParseAuthorityRes {
 fn parse_authority(authority string) ?ParseAuthorityRes {
 	i := authority.last_index('@')
 	mut host := ''
-	mut user := user('')
+	mut zuser := user('')
 	if i < 0 {
 		h := parse_host(authority) or {
 			return error(err)
@@ -566,7 +566,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		host = h
 	}
 	if i < 0 {
-		return ParseAuthorityRes{host: host, user: user}
+		return ParseAuthorityRes{host: host, user: zuser}
 	}
 	mut userinfo := authority[..i]
 	if !valid_userinfo(userinfo) {
@@ -577,7 +577,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 			return error(err)
 		}
 		userinfo = u
-		user = user(userinfo)
+		zuser = user(userinfo)
 	} else {
 		mut username, mut password := split(userinfo, `:`, true)
 		u := unescape(username, .encode_user_password) or {
@@ -588,10 +588,10 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 			return error(err)
 		}
 		password = p
-		user = user_password(username, password)
+		zuser = user_password(username, password)
 	}
 	return ParseAuthorityRes{
-		user: user
+		user: zuser
 		host: host
 	}
 }

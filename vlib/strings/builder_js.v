@@ -9,11 +9,13 @@ mut:
 	buf []byte
 pub:
 	len int
+	initial_size int = 1
 }
 
 pub fn new_builder(initial_size int) Builder {
 	return Builder {
 		buf: make(0, initial_size, sizeof(byte))
+		initial_size: initial_size
 	}
 }
 
@@ -44,4 +46,6 @@ pub fn (b mut Builder) cut(n int) {
 }
 
 pub fn (b mut Builder) free() {
+	b.buf = make(0, b.initial_size, 1)
+	b.len = 0
 }
