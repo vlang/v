@@ -4,6 +4,7 @@
 
 module builtin
 
+__global g_m2_buf byteptr
 __global g_m2_ptr byteptr
 
 fn init() {

@@ -1352,7 +1352,6 @@ fn (p mut Parser) statement(add_semi bool) string {
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
 fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	errtok := p.cur_tok_index()
-	//p.log('assign_statement() name=$v.name tok=')
 	is_vid := p.fileis('vid') // TODO remove
 	tok := p.tok
 	//if !v.is_mut && !v.is_arg && !p.pref.translated && !v.is_global{
@@ -1829,6 +1828,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	if typ.name.len == 0 {
 		p.error('dot(): cannot find type `$str_typ`')
 	}
+	// foo.$action()
 	if p.tok == .dollar {
 		p.comptime_method_call(typ)
 		return 'void'
@@ -1841,7 +1841,6 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	else if field_name == 'map' && str_typ.starts_with('array_') {
 		return p.gen_array_map(str_typ, method_ph)
 	}
-
 	fname_tidx := p.cur_tok_index()
 	//p.log('dot() field_name=$field_name typ=$str_typ')
 	//if p.fileis('main.v') {
@@ -2175,7 +2174,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return p.scanner.file_path.contains(s)
+	return os.filename(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`

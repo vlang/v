@@ -526,6 +526,7 @@ pub fn (v mut V) generate_main() {
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
 				cgen.genln('free(g_str_buf);')
+				cgen.genln('free(g_m2_ptr);')
 			}
 			v.gen_main_end('return 0')
 		}
