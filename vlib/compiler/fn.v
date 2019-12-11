@@ -60,7 +60,7 @@ const (
 	MainFn = Fn{ name: 'main' }
 )
 
-fn (a []TypeInst) str() string {
+pub fn (a []TypeInst) str() string {
 	mut r := []string
 	for t in a {
 		mut s := ' | '
@@ -254,7 +254,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
-			!p.is_vgen // allow .str()
+			!p.is_vgen // let vgen define methods like .str() on types defined in other modules
 		{
 			//println('T.mod=$T.mod')
 			//println('p.mod=$p.mod')
@@ -296,6 +296,10 @@ fn (p mut Parser) fn_decl() {
 	// init fn
 	if f.name == 'init' && !f.is_method && f.is_public && !p.is_vh {
 		p.error('init function cannot be public')
+	}
+	// .str() methods
+	if f.is_method && f.name == 'str' && !f.is_public {
+		p.error('.str() methods must be declared as public')
 	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
@@ -726,7 +730,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
 	}
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
+	if !f.is_public && !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
 		}

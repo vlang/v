@@ -14,7 +14,7 @@ struct CFlag{
 	value string // eg. /path/to/include
 }
 
-fn (c &CFlag) str() string {
+pub fn (c &CFlag) str() string {
 	return 'CFlag{ name: "$c.name" value: "$c.value" mod: "$c.mod" os: "$c.os" }'
 }
 

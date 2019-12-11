@@ -314,7 +314,7 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
 	p.v.vgen_buf.writeln('
-fn (a $typ.name) str() string {
+pub fn (a $typ.name) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write("[")
 	for i, elm in a {
@@ -342,7 +342,7 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	})
 
 	mut sb := strings.new_builder(typ.fields.len * 20)
-	sb.writeln('fn (a $typ.name) str() string {\nreturn')
+	sb.writeln('pub fn (a $typ.name) str() string {\nreturn')
 	sb.writeln("'{")
 	for field in typ.fields {
 		sb.writeln('\t$field.name: $' + 'a.${field.name}')
@@ -366,7 +366,7 @@ fn (p mut Parser) gen_varg_str(typ Type) {
 		p.gen_struct_str(elm_type2)
 	}
 	p.v.vgen_buf.writeln('
-fn (a $typ.name) str() string {
+pub fn (a $typ.name) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write("[")
 	for i, elm in a {

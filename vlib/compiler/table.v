@@ -122,7 +122,7 @@ struct TypeNode {
 
 /*
 // For debugging types
-fn (t Type) str() string {
+pub fn (t Type) str() string {
 	mut s := 'type "$t.name" {'
 	if t.fields.len > 0 {
 		// s += '\n    $t.fields.len fields:\n'
@@ -185,7 +185,7 @@ const (
 )
 
 // This is used for debugging only
-fn (f Fn) str() string {
+pub fn (f Fn) str() string {
 	t := Table{}
 	str_args := f.str_args(t)
 	return '${f.name}($str_args) $f.typ'

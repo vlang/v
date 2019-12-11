@@ -49,15 +49,15 @@ fn mat4(f &f32) Mat4 {
 	return res
 }
 
-fn (v Vec3) str() string {
+pub fn (v Vec3) str() string {
 	return 'Vec3{ $v.x, $v.y, $v.z }'
 }
 
-fn (v Vec2) str() string {
+pub fn (v Vec2) str() string {
 	return 'Vec3{ $v.x, $v.y }'
 }
 
-fn (m Mat4) str() string {
+pub fn (m Mat4) str() string {
 	mut s := '[ '
 	for i := 0; i < 4; i++ {
 		if i != 0 {
