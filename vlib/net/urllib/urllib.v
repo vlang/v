@@ -518,8 +518,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':') or { -1 }
-		slash := rest.index('/') or { -1 }
+		colon := rest.index(':') or { return error('there should be a : in the URL') }
+		slash := rest.index('/') or { return error('there should be a / in the URL') }
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
 			return error(error_msg('parse_url: first path segment in URL cannot contain colon', ''))
