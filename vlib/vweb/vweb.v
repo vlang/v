@@ -135,12 +135,12 @@ pub fn run<T>(app mut T, port int) {
 			continue
 		}
 		first_line := strip(lines[0])
+		println(first_line)
 		// Parse the first line
 		// "GET / HTTP/1.1"
 		//first_line := s.all_before('\n')
 		vals := first_line.split(' ')
 		if vals.len < 2 {
-			println(first_line)
 			println('no vals for http')
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
@@ -212,10 +212,8 @@ pub fn run<T>(app mut T, port int) {
 			conn.send_string(HTTP_404) or {}
 		}
 		conn.close() or {}
-		println(555555)
 		reset := 'reset'
 		app.$reset()
-		println(66666)
 	}
 }
 
