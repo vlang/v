@@ -1,7 +1,3 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
-
 module compiler
 
 import strings
@@ -10,18 +6,26 @@ const (
 	dot_ptr = '->'
 )
 
+/*
+fn (p mut Parser) gen_or_else(pos int) string {
+}
+*/
+
+
 // returns the type of the new variable
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
+	// Generate expression to tmp because we need its type first
+	// `[typ] [name] = bool_expression();`
+	pos := p.cgen.add_placeholder()
 	p.is_var_decl = true
 	mut typ := p.bool_expression()
-	//mut typ, expr := p.tmp_expr()
 	p.is_var_decl = false
 	if typ.starts_with('...') { typ = typ[3..] }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
 	if or_else {
-		return p.gen_handle_option_or_else(typ, name, 0)
+		return p.gen_handle_option_or_else(typ, name, pos)
 	}
 	gen_name := p.table.var_cgen_name(name)
 	mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ)
@@ -31,7 +35,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	} else if typ.starts_with('[') && typ[ typ.len-1 ] != `*` {
 		// a fixed_array initializer, like `v := [1.1, 2.2]!!`
 		// ... should translate to the following in C `f32 v[2] = {1.1, 2.2};`
-		initializer := p.cgen.cur_line
+		initializer := p.cgen.cur_line[pos..]
 		if initializer.len > 0 {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
 		} else if initializer.len == 0 {
@@ -42,9 +46,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	if is_static {
 		nt_gen = 'static $nt_gen'
 	}
-	// Now that we know the type, prepend it
-	// `[typ] [name] = bool_expression();`
-	p.cgen.prepend_to_statement(nt_gen)
+	p.cgen.set_placeholder(pos, nt_gen)
 	return typ
 }
 
