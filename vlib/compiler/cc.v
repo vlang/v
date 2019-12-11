@@ -87,6 +87,7 @@ fn (v mut V) cc() {
 		//'-Wno-unused-but-set-variable',
 		'-Wno-unused-parameter',
 		'-Wno-unused-result',
+		'-Wunused-function',
 		'-Wno-missing-braces',
 		'-Wno-unused-label']
 	// TCC on Linux by default, unless -cc was provided
