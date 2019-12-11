@@ -24,7 +24,7 @@ fn main() {
 	//    which may be surprising to v users.
 	stuff_after_executable := os.args[1..]
 	commands := stuff_after_executable.filter(!it.starts_with('-'))
-	
+
 	simple_tools := ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
 	for tool in simple_tools {
 		if tool in commands {
@@ -32,7 +32,7 @@ fn main() {
 			return
 		}
 	}
-  
+
 	// Print the version and exit.
 	if '-v' in options || '--version' in options || 'version' in commands {
 		version_hash := compiler.vhash()
@@ -44,7 +44,7 @@ fn main() {
 		return
 	}
 	else if 'translate' in commands {
-		println('Translating C to V will be available in V 0.3')
+		println('Translating C to V will be available in V 0.3 (January)')
 		return
 	}
 	else if 'search' in commands || 'install' in commands || 'update' in commands || 'remove' in commands {

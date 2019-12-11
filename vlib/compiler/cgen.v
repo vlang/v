@@ -77,6 +77,16 @@ fn (g mut CGen) genln(s string) {
 	}
 }
 
+// same as `set_placeholder(0, s)`, but faster
+fn (g mut CGen) prepend_to_statement(s string) {
+	if g.is_tmp {
+		g.tmp_line = s + g.tmp_line
+		return
+	}
+	g.lines << s
+	g.prev_line = g.cur_line
+}
+
 fn (g mut CGen) gen(s string) {
 	if g.nogen || g.pass != .main {
 		return
@@ -160,6 +170,10 @@ fn (g mut CGen) set_placeholder(pos int, val string) {
 	if g.nogen || g.pass != .main {
 		return
 	}
+	//if pos == 0 {
+		//g.prepend_to_statement(val)
+		//return
+	//}
 	// g.lines.set(pos, val)
 	if g.is_tmp {
 		left := g.tmp_line[..pos]
