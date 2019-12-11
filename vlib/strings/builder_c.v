@@ -19,6 +19,11 @@ pub fn new_builder(initial_size int) Builder {
 	}
 }
 
+pub fn (b mut Builder) write_bytes(bytes byteptr, howmany int) {
+	b.buf.push_many(bytes, howmany)
+	b.len += howmany
+}
+
 pub fn (b mut Builder) write_b(data byte) {
 	b.buf << data
 	b.len++
