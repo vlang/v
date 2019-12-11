@@ -47,32 +47,31 @@ mut:
 	done bool
 }
 
-pub fn (ctx mut Context) html(html string) {
-	if ctx.done { return }
+fn (ctx mut Context) send_response_to_client(mimetype string, res string) bool {
+	if ctx.done { return false }
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
-	sb.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ')
-	sb.write( html.len.str() )
-	sb.write( ctx.headers )
+	sb.write('HTTP/1.1 200 OK\r\nContent-Type: ') sb.write(mimetype)
+	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
+	sb.write(ctx.headers)
 	sb.write('\r\n')
 	sb.write(HEADERS_CLOSE)
-	sb.write(html)
-	ctx.conn.send_string(sb.str()) or { return }
+	sb.write(res)
+	ctx.conn.send_string(sb.str()) or { return false }
 	sb.free()
+	return true
+}
+
+pub fn (ctx mut Context) html(s string) {
+	ctx.send_response_to_client('text/html', s)
 }
 
 pub fn (ctx mut Context) text(s string) {
-	if ctx.done { return }
-	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${s.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
-	ctx.conn.send_string(s) or { return }
+	ctx.send_response_to_client('text/plain', s)
 }
 
 pub fn (ctx mut Context) json(s string) {
-	if ctx.done { return }
-	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${s.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
-	ctx.conn.send_string(s) or { return }
+	ctx.send_response_to_client('application/json', s)
 }
 
 pub fn (ctx mut Context) redirect(url string) {
@@ -289,10 +288,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
-		ctx.done = true
-		ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\nContent-Length: ${data.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return false }
-		ctx.conn.send_string(data) or { return false }
-		return true
+		return ctx.send_response_to_client(mime_type, data)
 	}
 	return false
 }
