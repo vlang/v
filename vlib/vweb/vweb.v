@@ -13,9 +13,11 @@ import (
 
 const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
-	HEADER_SERVER = 'Server: VWeb\r\n' // TODO add to the headers
-	HTTP_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found'
-	HTTP_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n500 Internal Server Error'
+	HEADER_SERVER = 'Server: VWeb\r\n'
+	HEADER_CONNECTION_CLOSE = 'Connection: close\r\n'
+	HEADERS_CLOSE = '${HEADER_SERVER}${HEADER_CONNECTION_CLOSE}\r\n'
+	HTTP_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n${HEADERS_CLOSE}404 Not Found'
+	HTTP_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${HEADERS_CLOSE}500 Internal Server Error'
 	mime_types = {
 		'.css': 'text/css; charset=utf-8',
 		'.gif': 'image/gif',
@@ -46,35 +48,37 @@ mut:
 
 pub fn (ctx Context) html(html string) {
 	if ctx.done { return }
-	//println('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html')
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n$ctx.headers\r\n\r\n$html') or { panic(err) }
+	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: text/html\r\nContent-Length: ${html.len}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string(html) or { return }
 }
 
 pub fn (ctx mut Context) text(s string) {
 	if ctx.done { return }
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n' +
-		'$ctx.headers\r\n$s') or { panic(err) }
+	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: text/plain\r\nContent-Length: ${s.len}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string(s) or { return }
 	ctx.done = true
 }
 
 pub fn (ctx Context) json(s string) {
 	if ctx.done { return }
-	ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n$ctx.headers\r\n\r\n$s') or { panic(err) }
+	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: application/json\r\nContent-Length: ${s.len}\r\n${HEADERS_CLOSE}') or { return }
+	ctx.conn.send_string(s) or { return }
 }
 
 pub fn (ctx Context) redirect(url string) {
 	if ctx.done { return }
-	ctx.conn.write('HTTP/1.1 302 Found\r\nLocation: $url\r\n$ctx.headers\r\n\r\n') or { panic(err) }
+	ctx.conn.send_string('HTTP/1.1 302 Found${ctx.headers}\r\nLocation: ${url}\r\n${HEADERS_CLOSE}') or { return }
 }
 
 pub fn (ctx Context) not_found(s string) {
 	if ctx.done { return }
-	ctx.conn.write(HTTP_404) or { panic(err) }
+	ctx.conn.send_string(HTTP_404) or { return }
 }
 
-pub fn (ctx mut Context) set_cookie(key, val string) { // TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
+pub fn (ctx mut Context) set_cookie(key, val string) {
+	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
-	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly')
+	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
@@ -92,8 +96,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 
 fn (ctx mut Context) add_header(key, val string) {
 	//println('add_header($key, $val)')
-	ctx.headers = ctx.headers +
-		if ctx.headers == '' { '$key: $val' } else { '\r\n$key: $val' }
+	ctx.headers = ctx.headers + if ctx.headers == '' { '$key: $val' } else { '\r\n$key: $val' }
 	//println(ctx.headers)
 }
 
@@ -108,14 +111,12 @@ pub fn run<T>(app mut T, port int) {
 	//mut app := T{}
 	app.init()
 	for {
-		conn := l.accept() or {
-			panic('accept() failed')
-		}
+		conn := l.accept() or { panic('accept() failed') }
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		first_line:= conn.read_line()
 		if first_line == '' {
-			conn.write(HTTP_500) or {}
+			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
@@ -125,7 +126,7 @@ pub fn run<T>(app mut T, port int) {
 		vals := first_line.split(' ')
 		if vals.len < 2 {
 			println('no vals for http')
-			conn.write(HTTP_500) or {}
+			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
@@ -198,7 +199,7 @@ pub fn run<T>(app mut T, port int) {
 		// Call the right action
 		println('action=$action')
 		app.$action() or {
-			conn.write(HTTP_404) or {}
+			conn.send_string(HTTP_404) or {}
 		}
 		conn.close() or {}
 		reset := 'reset'
@@ -274,7 +275,8 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
-		ctx.conn.write('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\n\r\n$data') or { panic(err) }
+		ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\nContent-Length: ${data.len}\r\n${HEADERS_CLOSE}') or { return false }
+		ctx.conn.send_string(data) or { return false }
 		return true
 	}
 	return false

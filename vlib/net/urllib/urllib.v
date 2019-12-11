@@ -553,7 +553,7 @@ struct ParseAuthorityRes {
 fn parse_authority(authority string) ?ParseAuthorityRes {
 	i := authority.last_index('@')
 	mut host := ''
-	mut user := user('')
+	mut zuser := user('')
 	if i < 0 {
 		h := parse_host(authority) or {
 			return error(err)
@@ -566,7 +566,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		host = h
 	}
 	if i < 0 {
-		return ParseAuthorityRes{host: host, user: user}
+		return ParseAuthorityRes{host: host, user: zuser}
 	}
 	mut userinfo := authority[..i]
 	if !valid_userinfo(userinfo) {
@@ -577,7 +577,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 			return error(err)
 		}
 		userinfo = u
-		user = user(userinfo)
+		zuser = user(userinfo)
 	} else {
 		mut username, mut password := split(userinfo, `:`, true)
 		u := unescape(username, .encode_user_password) or {
@@ -588,10 +588,10 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 			return error(err)
 		}
 		password = p
-		user = user_password(username, password)
+		zuser = user_password(username, password)
 	}
 	return ParseAuthorityRes{
-		user: user
+		user: zuser
 		host: host
 	}
 }
