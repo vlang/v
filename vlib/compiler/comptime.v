@@ -178,7 +178,7 @@ fn (p mut Parser) comp_time() {
 		p.genln('/////////////////// tmpl end')
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut || receiver.ptr || receiver.typ.ends_with('*') { '->' } else { '.' }
-		p.genln('vweb__Context_html($receiver.name /*!*/$dot vweb, tmpl_res)')
+		p.genln('vweb__Context_html( & $receiver.name /*!*/$dot vweb, tmpl_res)')
 	}
 	else {
 		p.error('bad comptime expr')

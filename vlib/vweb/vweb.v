@@ -46,32 +46,36 @@ mut:
 	done bool
 }
 
-pub fn (ctx Context) html(html string) {
+pub fn (ctx mut Context) html(html string) {
 	if ctx.done { return }
+	ctx.done = true
 	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: text/html\r\nContent-Length: ${html.len}\r\n${HEADERS_CLOSE}') or { return }
 	ctx.conn.send_string(html) or { return }
 }
 
 pub fn (ctx mut Context) text(s string) {
 	if ctx.done { return }
+	ctx.done = true
 	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: text/plain\r\nContent-Length: ${s.len}\r\n${HEADERS_CLOSE}') or { return }
 	ctx.conn.send_string(s) or { return }
-	ctx.done = true
 }
 
-pub fn (ctx Context) json(s string) {
+pub fn (ctx mut Context) json(s string) {
 	if ctx.done { return }
+	ctx.done = true
 	ctx.conn.send_string('HTTP/1.1 200 OK${ctx.headers}\r\nContent-Type: application/json\r\nContent-Length: ${s.len}\r\n${HEADERS_CLOSE}') or { return }
 	ctx.conn.send_string(s) or { return }
 }
 
-pub fn (ctx Context) redirect(url string) {
+pub fn (ctx mut Context) redirect(url string) {
 	if ctx.done { return }
+	ctx.done = true
 	ctx.conn.send_string('HTTP/1.1 302 Found${ctx.headers}\r\nLocation: ${url}\r\n${HEADERS_CLOSE}') or { return }
 }
 
-pub fn (ctx Context) not_found(s string) {
+pub fn (ctx mut Context) not_found(s string) {
 	if ctx.done { return }
+	ctx.done = true
 	ctx.conn.send_string(HTTP_404) or { return }
 }
 
@@ -269,6 +273,7 @@ fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
 }
 
 pub fn (ctx mut Context) handle_static(directory_path string) bool {
+	if ctx.done { return false }
 	ctx.scan_static_directory(directory_path, '')
 
 	static_file := ctx.static_files[ctx.req.url]
@@ -276,6 +281,7 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }
+		ctx.done = true
 		ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: $mime_type\r\nContent-Length: ${data.len}\r\n${HEADERS_CLOSE}') or { return false }
 		ctx.conn.send_string(data) or { return false }
 		return true
