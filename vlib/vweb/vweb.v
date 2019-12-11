@@ -32,6 +32,7 @@ const (
 		'.svg': 'image/svg+xml',
 		'.xml': 'text/xml; charset=utf-8'
 	}
+	BUFFER_SIZE = 1024
 )
 
 pub struct Context {
@@ -125,24 +126,37 @@ pub fn run<T>(app mut T, port int) {
 		conn := l.accept() or { panic('accept() failed') }
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
-		first_line:= conn.read_line()
+		message := readall(conn)
+		lines := message.split_into_lines()
+		if lines.len < 2 {
+			println('invalid http request; not enough lines')
+			conn.send_string(HTTP_500) or {}
+			conn.close() or {}
+			continue
+		}
+		first_line := strip(lines[0])
 		// Parse the first line
 		// "GET / HTTP/1.1"
 		//first_line := s.all_before('\n')
 		vals := first_line.split(' ')
 		if vals.len < 2 {
+			println(first_line)
 			println('no vals for http')
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
 		mut headers := []string
-		for {
-			if headers.len >= 30 { break }
-			header := conn.read_line()
-			headers << header
-			//println('header="$header" len = ' + header.len.str())
-			if header.len <= 2 { break }
+		mut body := ''
+		mut in_headers := true
+		for line in lines[1..] {
+			sline := strip(line)
+			if sline == '' { in_headers = false }
+			if in_headers {
+				headers << sline
+			} else {
+				body += line
+			}
 		}
 		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
@@ -173,19 +187,8 @@ pub fn run<T>(app mut T, port int) {
 		}
 		//}
 		if req.method in methods_with_form {
-			/*
-			for {
-				line := conn.read_line()
-				if line == '' || line == '\r\n' {
-					break
-				}
-				//if line.contains('POST') || line == '' {
-					//break
-				//}
-			}
-			*/
-			line := conn.read_line()
-			app.vweb.parse_form(line)
+			body = strip(body)
+			app.vweb.parse_form(body)
 		}
 		if vals.len < 2 {
 			$if debug {
@@ -209,13 +212,11 @@ pub fn run<T>(app mut T, port int) {
 			conn.send_string(HTTP_404) or {}
 		}
 		conn.close() or {}
+		println(555555)
 		reset := 'reset'
 		app.$reset()
+		println(66666)
 	}
-}
-
-
-pub fn foobar<T>() {
 }
 
 fn (ctx mut Context) parse_form(s string) {
@@ -243,6 +244,8 @@ fn (ctx mut Context) parse_form(s string) {
 		ctx.form[key] = val
 	}
 	//}
+	// todo: parse form-data and application/json
+	// ...
 }
 
 fn (ctx mut Context) scan_static_directory(directory_path, mount_path string) {
@@ -291,4 +294,27 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
+}
+
+
+fn readall(conn net.Socket) string {
+	// read all message from socket
+	mut message := ''
+	for {
+		buf := [BUFFER_SIZE]byte
+		n := C.recv(conn.sockfd, buf, BUFFER_SIZE, 2)
+		bs, m := conn.recv(BUFFER_SIZE-1)
+		ss := tos_clone(bs)
+		message += ss
+		if n == m {
+			// the end of message
+			break
+		}
+	}
+	return message
+}
+
+fn strip(s string) string {
+	// strip('\nabc\r\n') => 'abc'
+	return s.trim('\r\n')
 }
