@@ -9,6 +9,7 @@ import (
 	net
 	http
 	net.urllib
+	strings
 )
 
 const (
@@ -49,8 +50,11 @@ mut:
 pub fn (ctx mut Context) html(html string) {
 	if ctx.done { return }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${html.len}${ctx.headers}\r\n${HEADERS_CLOSE}') or { return }
-	ctx.conn.send_string(html) or { return }
+	mut sb := strings.new_builder(1024)
+	sb.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${html.len}${ctx.headers}\r\n${HEADERS_CLOSE}')
+	sb.write(html)
+	ctx.conn.send_string(sb.str()) or { return }
+	sb.free()
 }
 
 pub fn (ctx mut Context) text(s string) {
