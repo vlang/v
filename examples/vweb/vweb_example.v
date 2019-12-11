@@ -3,7 +3,7 @@ module main
 import vweb
 
 const (
-	port = 8082
+	port = 6789
 )
 
 struct App {

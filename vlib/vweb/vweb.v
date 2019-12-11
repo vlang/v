@@ -126,11 +126,6 @@ pub fn run<T>(app mut T, port int) {
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		first_line:= conn.read_line()
-		if first_line == '' {
-			conn.send_string(HTTP_500) or {}
-			conn.close() or {}
-			continue
-		}
 		// Parse the first line
 		// "GET / HTTP/1.1"
 		//first_line := s.all_before('\n')
