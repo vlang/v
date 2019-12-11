@@ -197,7 +197,9 @@ pub fn run<T>(app mut T, port int) {
 		// }
 
 		// Call the right action
-		println('action=$action')
+		$if debug {
+			println('action=$action')
+		}
 		app.$action() or {
 			conn.send_string(HTTP_404) or {}
 		}
