@@ -632,7 +632,8 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
-			!p.pref.translated && var.typ != 'T*'
+			!p.pref.translated && var.typ != 'T*' &&
+			p.mod != 'ui'
 		{
 			p.error_with_token_index('`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
