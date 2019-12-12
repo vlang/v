@@ -1307,6 +1307,12 @@ fn (p mut Parser) statement(add_semi bool) string {
 		p.return_st()
 	}
 	.lcbr {// {} block
+		// Do not allow {} block to start on the same line
+		// to avoid e.g. `foo() {` instead of `if foo() {`
+		if p.prev_token().line_nr == p.scanner.line_nr {
+			p.genln('')
+			p.error('{} block has to start on a new line')
+		}
 		p.check(.lcbr)
 		if p.tok == .rcbr {
 			p.error('empty statements block')
