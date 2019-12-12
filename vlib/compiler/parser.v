@@ -447,6 +447,7 @@ fn (p mut Parser) parse(pass Pass) {
 				.key_union,
 				.key_interface {	p.struct_decl() }
 				.key_enum      {	p.enum_decl(false) }
+				.key_type      { p.type_decl() }
 				else {
 					p.error('wrong pub keyword usage')
 				}
@@ -734,6 +735,10 @@ fn (p mut Parser) const_decl() {
 // `type myint int`
 // `type onclickfn fn(voidptr) int`
 fn (p mut Parser) type_decl() {
+	is_pub := p.tok == .key_pub
+	if is_pub {
+		p.next()
+	}
 	p.check(.key_type)
 	name := p.check_name()
 	// V used to have 'type Foo struct', many Go users might use this syntax
@@ -757,6 +762,7 @@ fn (p mut Parser) type_decl() {
 		parent: parent.name
 		mod: p.mod
 		cat: .alias
+		is_public: is_pub
 	})
 }
 
