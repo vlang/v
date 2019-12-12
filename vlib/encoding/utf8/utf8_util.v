@@ -128,8 +128,8 @@ pub fn is_punct( s string , index int) bool {
 	return find_punct_in_table( get_uchar(s,index) , unicode_punct_western ) != 0
 }
 
-// is_punct_uchar return true if the input unicode is a western unicode punctuation
-pub fn is_punct_uchar( uchar int ) bool {
+// is_uchar_punct return true if the input unicode is a western unicode punctuation
+pub fn is_uchar_punct( uchar int ) bool {
 	return find_punct_in_table( uchar , unicode_punct_western ) != 0
 }
 
@@ -142,8 +142,8 @@ pub fn is_global_punct( s string , index int) bool {
 	return find_punct_in_table( get_uchar(s,index) , unicode_punct ) != 0
 }
 
-// is_global_punct_uchar return true if the input unicode is a global unicode punctuation
-pub fn is_global_punct_uchar( uchar int ) bool {
+// is_uchar_global_punct return true if the input unicode is a global unicode punctuation
+pub fn is_uchar_global_punct( uchar int ) bool {
 	return find_punct_in_table( uchar , unicode_punct ) != 0
 }
 
