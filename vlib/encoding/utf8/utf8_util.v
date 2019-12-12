@@ -11,11 +11,11 @@
 **********************************************************************/
 module utf8
 
-////////////////////////////////////////////////////////////////////////
-//
-// Utility functions
-//
-////////////////////////////////////////////////////////////////////////
+/**********************************************************************
+*
+* Utility functions
+*
+**********************************************************************/
 
 // len return the leght as number of unicode chars from a string
 pub fn len(s string) int {
@@ -36,11 +36,6 @@ pub fn len(s string) int {
 // u_len return the leght as number of unicode chars from a ustring
 pub fn u_len(s ustring) int {
 	return len(s.s)
-}
-
-// utf8util_char_len calculate the length in bytes of a utf8 char
-pub fn utf8util_char_len(b byte) int {
-	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
 }
 
 // get_uchar convert a unicode glyph in string[index] into a int unicode char
@@ -86,11 +81,11 @@ pub fn get_uchar(s string, index int) int {
 }
 
 
-////////////////////////////////////////////////////////////////////////
-//
-// Conversion functions
-//
-////////////////////////////////////////////////////////////////////////
+/**********************************************************************
+*
+* Conversion functions
+*
+**********************************************************************/
 
 // to_upper return an uppercase string from a string
 pub fn to_upper(s string) string {
@@ -115,26 +110,21 @@ pub fn u_to_lower(s ustring) ustring {
 }
 
 
-////////////////////////////////////////////////////////////////////////
-//
-// Punctuation functions
-//
-// The "western" function search on a small table, that is quicker than
-// the global unicode table search. **Use only for western chars**.
-//
-////////////////////////////////////////////////////////////////////////
+/**********************************************************************
+*
+* Punctuation functions
+*
+* The "western" function search on a small table, that is quicker than
+* the global unicode table search. **Use only for western chars**.
+*
+**********************************************************************/
 
 //
 // Western
 //
 
-// is_punct return true if the first char of the string is a western unicode punctuation
-pub fn is_punct( s string ) bool {
-	return find_punct_in_table( get_uchar(s,0) , unicode_punct_western ) != 0
-}
-
-// is_punct_index return true if the string[index] byte is the start of an unicode western punctuation
-pub fn is_punct_index( s string , index int) bool {
+// is_punct return true if the string[index] byte is the start of an unicode western punctuation
+pub fn is_punct( s string , index int) bool {
 	return find_punct_in_table( get_uchar(s,index) , unicode_punct_western ) != 0
 }
 
@@ -147,18 +137,13 @@ pub fn is_punct_uchar( uchar int ) bool {
 // Global
 //
 
-// is_gpunct return true if the first char of the string is a global unicode punctuation
-pub fn is_gpunct( s string ) bool {
-	return find_punct_in_table( get_uchar(s,0) , unicode_punct ) != 0
-}
-
-// is_gpunct_index return true if the string[index] byte of is the start of a global unicode punctuation
-pub fn is_gpunct_index( s string , index int) bool {
+// is_global_punct return true if the string[index] byte of is the start of a global unicode punctuation
+pub fn is_global_punct( s string , index int) bool {
 	return find_punct_in_table( get_uchar(s,index) , unicode_punct ) != 0
 }
 
-// is_gpunct_uchar return true if the input unicode is a global unicode punctuation
-pub fn is_gpunct_uchar( uchar int ) bool {
+// is_global_punct_uchar return true if the input unicode is a global unicode punctuation
+pub fn is_global_punct_uchar( uchar int ) bool {
 	return find_punct_in_table( uchar , unicode_punct ) != 0
 }
 
@@ -168,6 +153,10 @@ pub fn is_gpunct_uchar( uchar int ) bool {
 * Private functions
 *
 **********************************************************************/
+// utf8util_char_len calculate the length in bytes of a utf8 char
+fn utf8util_char_len(b byte) int {
+	return (( 0xe5000000 >> (( b >> 3 ) & 0x1e )) & 3 ) + 1
+}
 
 //
 // if upper_flag == true  then make low ==> upper conversion
