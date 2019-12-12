@@ -14,12 +14,14 @@ fn todo() {
 
 }
 
-fn no_mingw_installed() bool {
+fn (v &V) no_mingw_installed() bool {
 	$if !windows {
 		panic('no_mingw_installed() can only run on Windows')
 	}
 	os.exec('gcc -v') or {
-		println('mingw not found, trying to build with msvc...')
+		if v.pref.is_verbose {
+			println('mingw not found, trying to build with msvc...')
+		}
 		return true
 	}
 	return false
@@ -70,7 +72,7 @@ fn (v mut V) cc() {
 		}
 	}
 	$if windows {
-		if v.pref.ccompiler == 'msvc' || no_mingw_installed() {
+		if v.pref.ccompiler == 'msvc' || v.no_mingw_installed() {
 			v.cc_msvc()
 			return
 		}
