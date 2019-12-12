@@ -376,19 +376,22 @@ fn sort_structs(types []Type) []Type {
 	mut dep_graph := new_dep_graph()
 	// types name list
 	mut type_names := []string
-	for t in types {
-		type_names << t.name
+	for typ in types {
+		type_names << typ.name
 	}
 	// loop over types
 	for t in types {
 		// create list of deps
 		mut field_deps := []string
 		for field in t.fields {
+			// Need to handle fixed size arrays as well (`[10]Point`)
+			ft := if field.typ.starts_with('[') { field.typ.all_after(']') }
+				else { field.typ }
 			// skip if not in types list or already in deps
-			if !(field.typ in type_names) || field.typ in field_deps {
+			if !(ft in type_names) || ft in field_deps {
 				continue
 			}
-			field_deps << field.typ
+			field_deps << ft//field.typ
 		}
 		// add type and dependant types to graph
 		dep_graph.add(t.name, field_deps)

@@ -14,6 +14,9 @@ fn test_add() {
 	assert a.ends_with('bbbbb')
 	a += '123'
 	assert a.ends_with('3')
+	mut foo := Foo{0, 'hi'}
+	foo.str += '!'
+	assert foo.str == 'hi!'
 }
 
 fn test_ends_with() {
@@ -418,6 +421,8 @@ fn test_reverse() {
 
 struct Foo {
 	bar int
+mut:
+	str string
 }
 
 fn (f Foo) baz() string {
@@ -584,6 +589,7 @@ fn test_inter_before_comp_if() {
 	$if linux {
 		println(s)
 	}
+	assert s == '123'
 }
 
 fn test_double_quote_inter() {

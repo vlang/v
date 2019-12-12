@@ -154,3 +154,26 @@ fn test_assoc_with_constants() {
 	assert again.b == 22
 }
 
+/*
+[typedef]
+struct C.fixed {
+	points [10]C.point
+}
+
+[typedef]
+struct C.point {
+	x int
+	y int
+}
+
+fn test_fixed_field() {
+	f := &C.fixed{}
+	p := f.points[0]
+	//f.nums[0] = 10
+	//println(f.nums[0])
+	println(p.x)
+		//nums: [10]int
+	//}
+}
+*/
+
