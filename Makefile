@@ -43,8 +43,10 @@ ifndef ANDROID
 	./v build module vlib/strconv > /dev/null
 endif  
 endif
-	rm -rf vc/
+	./v -prod -o v v.v
+        rm -rf vc/
 	@echo "V has been successfully built"
+        ./v -v
 
 
 fresh_vc:
