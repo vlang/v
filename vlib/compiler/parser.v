@@ -2262,13 +2262,19 @@ fn (p mut Parser) assoc() string {
 	}
 	p.check(.pipe)
 	p.gen('($var.typ){')
+	typ := p.table.find_type(var.typ)
 	mut fields := []string// track the fields user is setting, the rest will be copied from the old object
 	for p.tok != .rcbr {
 		field := p.check_name()
+		//if !typ.has_field(field) {
+		f := typ.find_field(field) or {
+			p.error('`$typ.name` has no field `$field`')
+			exit(1)
+		}
 		fields << field
 		p.gen('.$field = ')
 		p.check(.colon)
-		p.bool_expression()
+		p.check_types(p.bool_expression(), f.typ)
 		p.gen(',')
 		if p.tok != .rcbr {
 			p.check(.comma)
@@ -2276,8 +2282,7 @@ fn (p mut Parser) assoc() string {
 		p.fgen_nl()
 	}
 	// Copy the rest of the fields
-	T := p.table.find_type(var.typ)
-	for ffield in T.fields {
+	for ffield in typ.fields {
 		f := ffield.name
 		if f in fields {
 			continue
