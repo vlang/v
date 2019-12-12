@@ -26,23 +26,24 @@ fn test_utf8_util() {
 	assert utf8.u_len(src1)==15 //29
 	assert utf8.u_len("pippo".ustring())==5
 
-	// test western punctuation
+	// western punctuation
 	a := '.abc?abcòàè.'  	
   	assert utf8.is_punct(a)==true
   	assert utf8.is_punct('b')==false
   	assert utf8.is_punct_index(a,4)==true		// ?
   	assert utf8.is_punct_index(a,14)==true		// last .
   	assert utf8.is_punct_index(a,12)==false	// è
+  	println("OK western")
   	
-  	// test global punctuation
-  	b := '\u066Babc\u1AA4abc\uFE12 '
+  	// global punctuation
+  	b := '.ĂĂa. ÔÔ TESTO Æ€'
   	assert utf8.is_gpunct(b)==true
-  	assert utf8.is_gpunct('\u066B')==true
-  	assert utf8.is_gpunct_uchar(0x066B)==true
-  	assert utf8.is_gpunct_index(b,5)==true	// \u1AA4
-  	assert utf8.is_gpunct_index(b,4)==false	// c
+  	assert utf8.is_gpunct('.')==true
+  	assert utf8.is_gpunct_uchar(0x002E)==true
+  	assert utf8.is_gpunct_index(b,6)==true	// .
+  	assert utf8.is_gpunct_index(b,1)==false	// a
 
   	// test utility functions
-  	assert utf8.get_uchar(b,0)==0x066B
-  	assert utf8.utf8util_char_len(b.str)==2
+  	assert utf8.get_uchar(b,0)==0x002E
+  	assert utf8.utf8util_char_len(b.str[1])==2
 }
