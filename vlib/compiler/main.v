@@ -759,11 +759,13 @@ pub fn (v &V)  get_user_files() []string {
 	// v volt/slack_test.v: compile all .v files to get the environment
 	// I need to implement user packages! TODO
 	is_test_with_imports := dir.ends_with('_test.v') &&
-	(dir.contains('${os.path_separator}volt') || dir.contains('${os.path_separator}c2volt'))// TODO
+		(dir.contains('${os.path_separator}volt') ||
+		dir.contains('${os.path_separator}c2volt'))// TODO
 	if is_test_with_imports {
 		user_files << dir
-		pos := dir.last_index(os.path_separator)
-		dir = dir[..pos] + os.path_separator// TODO why is this needed
+		if pos := dir.last_index(os.path_separator) {
+			dir = dir[..pos] + os.path_separator// TODO why is this needed
+		}
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		// Just compile one file and get parent dir

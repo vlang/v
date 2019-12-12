@@ -533,7 +533,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // KMP search
-pub fn (s string) index_kmp(p string) int {
+fn (s string) index_kmp(p string) int {
         if p.len > s.len {
                 return -1
         }
@@ -572,9 +572,9 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
-pub fn (s string) last_index(p string) int {
+pub fn (s string) last_index(p string) ?int {
 	if p.len > s.len {
-		return -1
+		return none
 	}
 	mut i := s.len - p.len
 	for i >= 0 {
@@ -587,7 +587,7 @@ pub fn (s string) last_index(p string) int {
 		}
 		i--
 	}
-	return -1
+	return none
 }
 
 pub fn (s string) index_after(p string, start int) int {
@@ -672,8 +672,10 @@ pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	res := s.last_index(p) == s.len - p.len
-	return res
+	idx := s.last_index(p) or {
+		return false
+	}
+	return idx == s.len - p.len
 }
 
 // TODO only works with ASCII
@@ -1069,16 +1071,14 @@ pub fn (s string) all_before(dot string) string {
 }
 
 pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index(dot)
-	if pos == -1 {
+	pos := s.last_index(dot) or {
 		return s
 	}
 	return s.left(pos)
 }
 
 pub fn (s string) all_after(dot string) string {
-	pos := s.last_index(dot)
-	if pos == -1 {
+	pos := s.last_index(dot) or {
 		return s
 	}
 	return s.right(pos + dot.len)

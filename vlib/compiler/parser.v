@@ -2137,7 +2137,10 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		// }
 		if is_indexer {
 			l := p.cgen.cur_line.trim_space()
-			index_val := l[l.last_index(' ')..].trim_space()
+			idx := l.last_index(' ') or {
+				panic('idx')
+			}
+			index_val := l[idx..].trim_space()
 			p.cgen.resetln(l[..fn_ph])
 			p.table.varg_access << VargAccess{
 				fn_name: p.cur_fn.name,
