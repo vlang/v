@@ -36,7 +36,7 @@ fn C.fputs(byteptr) int
 fn C.fflush(byteptr) int
 // TODO define args in these functions
 fn C.fseek() int
-fn C.fopen() int
+fn C.fopen() voidptr
 fn C.fwrite() int
 fn C.fclose() int
 fn C.pclose() int
