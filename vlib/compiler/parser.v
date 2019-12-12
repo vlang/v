@@ -1163,6 +1163,10 @@ fn (p mut Parser) close_scope() {
 fn (p mut Parser) free_var(v Var) {
 	// Clean up memory, only do this if -autofree was passed for now
 	//if p.fileis('mem.v') {println('free_var() $v.name')}
+	//println(p.cur_fn.name)
+	if p.cur_fn.name in ['add', 'clone', 'free'] {
+		return
+	}
 	mut free_fn := 'free'
 	if v.typ.starts_with('array_') {
 		free_fn = 'v_array_free'
@@ -1181,11 +1185,19 @@ fn (p mut Parser) free_var(v Var) {
 	if p.returns {
 		// Don't free a variable that's being returned
 		if !v.is_returned && v.typ != 'FILE*' { //!v.is_c {
-			prev_line := p.cgen.lines[p.cgen.lines.len-2]
-			p.cgen.lines[p.cgen.lines.len-2] =
-				'$free_fn ($v.name); /* :) close_scope free $v.typ */' + prev_line
+			//p.cgen.cur_line = '/* free */' + p.cgen.cur_line
+			//p.cgen.set_placeholder(0, '/*free2*/')
+			prev_line := p.cgen.lines[p.cgen.lines.len-1]
+			free := '$free_fn ($v.name); /* :) close_scope free $v.typ */'
+			p.cgen.lines[p.cgen.lines.len-1] = free + '\n' + prev_line
+			//'$free_fn ($v.name); /* :) close_scope free $v.typ */\n' + prev_line
 		}
-	} else {
+	} else if p.mod != 'strings' { //&& p.mod != 'builtin' {
+		/*
+		prev_line := p.cgen.lines[p.cgen.lines.len-1]
+		free := '$free_fn ($v.name); /* :) close_scope free $v.typ */'
+		p.cgen.lines[p.cgen.lines.len-1] = free + '\n' + prev_line
+		*/
 		//if p.fileis('mem.v') {println(v.name)}
 		p.genln('$free_fn ($v.name); // close_scope free')
 	}
@@ -1359,7 +1371,7 @@ fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 		if v.is_arg {
 			if p.cur_fn.args.len > 0 && p.cur_fn.args[0].name == v.name {
 				println('make the receiver `$v.name` mutable:
-fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
+fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 ')
 			}
 		}
@@ -1368,8 +1380,8 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	if !v.is_changed {
 		p.mark_var_changed(v)
 	}
-	is_str := v.typ == 'string'
-	is_ustr := v.typ == 'ustring'
+	is_str := p.expected_type == 'string'
+	is_ustr := p.expected_type == 'ustring'
 	match tok {
 	.assign {
 		if !is_map && !p.is_empty_c_struct_init {
@@ -1378,7 +1390,8 @@ fn ($v.name mut $v.typ) $p.cur_fn.name (...) {
 	}
 	.plus_assign {
 		if is_str && !p.is_js {
-			p.gen('= string_add($v.name, ')// TODO can't do `foo.bar += '!'`
+			expr := p.cgen.cur_line
+			p.gen('= string_add($expr, ')
 		}
 		else if is_ustr {
 			p.gen('= ustring_add($v.name, ')

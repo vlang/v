@@ -76,18 +76,6 @@ pub fn panic(s string) {
 	C.exit(1)
 }
 
-pub fn println(s string) {
-	// Should never happen
-	if isnil(s.str) {
-		panic('println(NIL)')
-	}
-	$if windows {
-		C._putws(s.to_wide())
-	} $else {
-		C.printf('%.*s\n', s.len, s.str)
-	}
-}
-
 pub fn eprintln(s string) {
 	if isnil(s.str) {
 		panic('eprintln(NIL)')
