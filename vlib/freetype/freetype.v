@@ -197,7 +197,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	// Load first 128 characters of ASCII set
 	mut chars := []Character
 	for c := 0; c < 128; c++ {
-		mut ch := ft_load_char(face, i64(c))
+		ch := ft_load_char(face, i64(c))
 		// s := utf32_to_str(uint(0x043f))
 		// s := 'п'
 		// ch = ft_load_char(f, s.utf32_code())
@@ -208,7 +208,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 		// # ch = gg__ft_load_char(f, 0xd0bf) ;  // UTF 8
 		chars << ch
 	}
-	ch := Character{}
+	//ch := Character{}
 	// Configure VAO
 	vao := gl.gen_vertex_array()
 	println('new gg text context vao=$vao')
@@ -285,7 +285,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	x *= ctx.scale// f32(2)
 	// println('y=$_y height=$ctx.height')
 	// _y = _y * int(ctx.scale) //+ 26
-	y = y * int(ctx.scale) + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
+	y = y * ctx.scale + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
 	y = f32(ctx.height) - y
 	color := cfg.color
 	// Activate corresponding render state

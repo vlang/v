@@ -152,11 +152,12 @@ fn main() {
 	gg.clear(BackgroundColor)
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
-			width: WinWidth
-			height: WinHeight
-			use_ortho: true
-			font_size: 18
-			scale: 2
+		width: WinWidth
+		height: WinHeight
+		use_ortho: true
+		font_size: 18
+		scale: 2
+		window_user_ptr: 0
 	})
 	game.font_loaded = (game.ft != 0 )
 	for {
