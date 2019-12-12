@@ -176,7 +176,6 @@ pub fn is_gpunct_uchar( uchar int ) bool {
 // up_low make the dirt job
 fn up_low(s string, upper_flag bool) string {
 	mut _index := 0
-	//mut old_index := 0
 	mut str_res := malloc(s.len + 1)
 
 	for {
@@ -276,7 +275,6 @@ fn up_low(s string, upper_flag bool) string {
 			}
 		}
 
-		//old_index = _index
 		_index += ch_len
 
 		// we are done, exit the loop
@@ -342,7 +340,7 @@ fn find_punct_in_table( in_code int , in_table []int ) int {
 	// We will use a simple binary search
 	//
 
-	mut first_index := 0 
+	mut first_index := 0
 	mut last_index := (in_table.len)
 	mut index := 0
 	mut x := 0
@@ -353,7 +351,7 @@ fn find_punct_in_table( in_code int , in_table []int ) int {
 		//C.printf("(%d..%d) index:%d base[%08x]==>[%08x]\n",first_index,last_index,index,in_code,x)
 
 		if x == in_code {
-			return index 
+			return index
 		}
 		else if x>in_code {
 			last_index=index
