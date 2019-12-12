@@ -123,14 +123,14 @@ pub fn u_to_lower(s ustring) ustring {
 // Western
 //
 
-// is_punct return true if the string[index] byte is the start of an unicode western punctuation
+// is_punct return true if the string[index] byte is the start of a unicode western punctuation
 pub fn is_punct( s string , index int) bool {
-	return find_punct_in_table( get_uchar(s,index) , unicode_punct_western ) != 0
+	return is_uchar_punct(get_uchar(s, index))
 }
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
 pub fn is_uchar_punct( uchar int ) bool {
-	return find_punct_in_table( uchar , unicode_punct_western ) != 0
+	return find_punct_in_table(uchar, unicode_punct_western ) != 0
 }
 
 //
@@ -139,7 +139,7 @@ pub fn is_uchar_punct( uchar int ) bool {
 
 // is_global_punct return true if the string[index] byte of is the start of a global unicode punctuation
 pub fn is_global_punct( s string , index int) bool {
-	return find_punct_in_table( get_uchar(s,index) , unicode_punct ) != 0
+	return is_uchar_global_punct(get_uchar(s, index))
 }
 
 // is_uchar_global_punct return true if the input unicode is a global unicode punctuation
