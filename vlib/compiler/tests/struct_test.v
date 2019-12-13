@@ -163,7 +163,7 @@ pub:
 	d int     // public immmutable (readonly)
 pub mut:
 	e int     // public, but mutable only in parent module
-//__global:
+__global:
 	f int 	  // public and mutable both inside and outside parent module
 }
 

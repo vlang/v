@@ -161,6 +161,17 @@ fn (p mut Parser) struct_decl() {
 			p.fmt_inc()
 			p.fgen_nl()
 		}
+		else if p.tok == .key_global {
+			new_access_mod = .global
+			if new_access_mod in used {
+				p.error('structs can only have one `__global:`, all global fields have to be grouped')
+			}
+			p.fmt_dec()
+			p.check(.key_global)
+			p.check(.colon)
+			p.fmt_inc()
+			p.fgen_nl()
+		}
 		if new_access_mod != access_mod {
 			used << new_access_mod
 		}
@@ -246,9 +257,8 @@ fn (p mut Parser) struct_decl() {
 		if attr == 'raw' && field_type != 'string' {
 			p.error('struct field with attribute "raw" should be of type "string" but got "$field_type"')
 		}
-
 		did_gen_something = true
-		is_mut := access_mod in [.private_mut, .public_mut]
+		is_mut := access_mod in [.private_mut, .public_mut, .global]
 		if p.first_pass() {
 			p.table.add_field(typ.name, field_name, field_type, is_mut,
 				attr, access_mod)
