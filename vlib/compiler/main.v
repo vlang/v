@@ -230,6 +230,9 @@ pub fn (v mut V) compile() {
 			cgen.genln('#define VDEBUG (1)')
 		}
 	}
+	if v.pref.prealloc {
+		cgen.genln('#define VPREALLOC (1)')
+	}
 	if v.os == .js {
 		cgen.genln('#define _VJS (1) ')
 	}
