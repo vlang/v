@@ -1,7 +1,7 @@
 module mysql
 
 // if mysql.h is not in your CPATH (include path), set environment CPATH 
-//     export CPATH=/usr/include/mysql
+//     export CPATH=$CPATH:/usr/include/mysql
 // or include -cflags flag to v compiler
 //     v -cflags '-I/usr/include/mysql' program.v
 
