@@ -94,7 +94,13 @@ pub fn (ctx mut Context) set_cookie(key, val string) {
 }
 
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
-	cookie_header := ' ' + ctx.get_header('cookie')
+	mut cookie_header := ctx.get_header('cookie')
+	if cookie_header == '' {
+		cookie_header = ctx.get_header('Cookie')
+	}
+	cookie_header = ' ' + cookie_header
+	//println('cookie_header="$cookie_header"')
+	//println(ctx.req.headers)
 	cookie := if cookie_header.contains(';') {
 		cookie_header.find_between(' $key=', ';')
 	} else {
@@ -127,22 +133,22 @@ pub fn run<T>(app mut T, port int) {
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		message := readall(conn)
-		
+
 		if message.len > MAX_HTTP_POST_SIZE {
 			println('message.len = $message.len > MAX_HTTP_POST_SIZE')
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
-		
+
 		lines := message.split_into_lines()
-		
+
 		if lines.len < 2 {
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
-		
+
 		first_line := strip(lines[0])
 		$if debug { println(first_line) }
 		// Parse the first line
@@ -167,7 +173,7 @@ pub fn run<T>(app mut T, port int) {
 				body += strip(sline) + '\r\n'
 			}
 		}
-		
+
 		mut action := vals[1][1..].all_before('/')
 		if action.contains('?') {
 			action = action.all_before('?')
