@@ -109,8 +109,9 @@ fn (p mut Parser) struct_decl() {
 	p.fspace()
 	p.check(.lcbr)
 	// Struct fields
-	mut is_pub_field := false
-	mut is_mut := false
+	mut access_mod := AccessMod.private
+	//mut is_pub_field := false
+	//mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
 	mut fmt_max_len := 0
 	// TODO why is typ.fields == 0?
@@ -123,45 +124,47 @@ fn (p mut Parser) struct_decl() {
 		}
 	}
 	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
-
-
 	if !is_ph && p.first_pass() {
 		p.table.register_type(typ)
 		//println('registering 1 nrfields=$typ.fields.len')
 	}
-
 	mut did_gen_something := false
+	mut used := []AccessMod
 	mut i := -1
 	for p.tok != .rcbr {
 		i++
+		mut new_access_mod := access_mod
 		if p.tok == .key_pub {
-			if is_pub_field {
-				p.error('structs can only have one `pub:`, all public fields have to be grouped')
-			}
-			is_pub_field = true
-			p.fmt_dec()
 			p.check(.key_pub)
-			if p.tok != .key_mut {
-				p.check(.colon)
+			if p.tok == .key_mut {
+				new_access_mod = .public_mut
+				p.next() // skip `mut`
+			} else {
+				new_access_mod = .public
 			}
+			if new_access_mod in used {
+				p.error('structs can only have one `pub:`/`pub mut:`, all public fields have to be grouped')
+			}
+			p.fmt_dec()
+			p.check(.colon)
 			p.fmt_inc()
 			p.fgen_nl()
 		}
-		if p.tok == .key_mut {
-			if is_mut {
+		else if p.tok == .key_mut {
+			new_access_mod = .private_mut
+			if new_access_mod in used {
 				p.error('structs can only have one `mut:`, all private mutable fields have to be grouped')
 			}
-			is_mut = true
 			p.fmt_dec()
 			p.check(.key_mut)
-			if p.tok != .key_mut {
-				p.check(.colon)
-			}
+			p.check(.colon)
 			p.fmt_inc()
 			p.fgen_nl()
 		}
-		// if is_pub {
-		// }
+		if new_access_mod != access_mod {
+			used << new_access_mod
+		}
+		access_mod = new_access_mod
 		// (mut) user *User
 		// if p.tok == .plus {
 		// p.next()
@@ -192,7 +195,7 @@ fn (p mut Parser) struct_decl() {
 			continue
 		}
 		// `pub` access mod
-		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
+		//access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fspace()
 		tt := p.get_type2()
 		field_type := tt.name
@@ -245,8 +248,10 @@ fn (p mut Parser) struct_decl() {
 		}
 
 		did_gen_something = true
+		is_mut := access_mod in [.private_mut, .public_mut]
 		if p.first_pass() {
-			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
+			p.table.add_field(typ.name, field_name, field_type, is_mut,
+				attr, access_mod)
 		}
 		p.fgen_nl() // newline between struct fields
 	}

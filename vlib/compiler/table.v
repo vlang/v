@@ -44,7 +44,16 @@ enum AccessMod {
 	private_mut    // private mutable
 	public         // public immutable (readonly)
 	public_mut     // public, but mutable only in this module
-	public_mut_mut // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+	global         // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+}
+
+fn (a []AccessMod) contains(b AccessMod) bool {
+	for elm in a {
+		if elm == b {
+			return true
+		}
+	}
+	return false
 }
 
 enum TypeCategory {
@@ -62,8 +71,7 @@ enum TypeCategory {
 }
 
 struct Var {
-pub:
-mut:
+pub mut:
 	typ             string
 	name            string
 	idx             int // index in the local_vars array
@@ -92,8 +100,7 @@ mut:
 }
 
 struct Type {
-pub:
-mut:
+pub mut:
 	mod            string
 	name           string
 	cat            TypeCategory

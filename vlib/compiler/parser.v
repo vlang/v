@@ -20,6 +20,7 @@ struct Parser {
 	file_pcguard   string
 	v              &V
 	pref           &Preferences // Preferences shared from V struct
+	kek string
 mut:
 	scanner        &Scanner
 	tokens         []Token
@@ -75,7 +76,7 @@ mut:
 	sql_types []string // int, string and so on; see sql_params
 	is_vh bool // parsing .vh file (for example `const (a int)` is allowed)
 	generic_dispatch TypeInst
-pub:
+pub mut:
 	mod            string
 }
 
