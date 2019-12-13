@@ -67,7 +67,7 @@ jobs:
       with:
         node-version: 12.x
     - name: Install dependencies
-      run: sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make && ./v -cc gcc -o v v.v
     - name: Test V
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
     - name: Install dependencies
-      run: sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
     - name: Test V
@@ -124,7 +124,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install dependencies
-      run: sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
       run: echo $VFLAGS && make && ./v -o v v.v
     - name: Test v->c
@@ -146,7 +146,7 @@ jobs:
       with:
         node-version: 12.x
     - name: Install dependencies
-      run: sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
       run: echo $VFLAGS && make && ./v -o v v.v
     - name: Test v binaries
