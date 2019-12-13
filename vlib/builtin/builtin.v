@@ -108,18 +108,20 @@ pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
+	/*
 	$if debug {
 		res := g_m2_ptr
 		g_m2_ptr += n
 		nr_mallocs++
 		return res
 	} $else {
+		*/
 		ptr := C.malloc(n)
 		if ptr == 0 {
 			panic('malloc($n) failed')
 		}
 		return ptr
-	}
+	//}
 /*
 TODO
 #ifdef VPLAY

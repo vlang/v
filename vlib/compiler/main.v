@@ -132,6 +132,7 @@ pub mut:
 	vpath string
 	x64 bool
 	output_cross_c bool
+	prealloc bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -419,7 +420,7 @@ fn (v mut V) generate_init() {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
 g_str_buf=malloc(1000);
-#if VDEBUG
+#if VPREALLOC
 g_m2_buf = malloc(50 * 1000 * 1000);
 g_m2_ptr = g_m2_buf;
 puts("allocated 50 mb");
@@ -528,7 +529,7 @@ pub fn (v mut V) generate_main() {
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
 				cgen.genln('free(g_str_buf);')
-				cgen.genln('#if VDEBUG')
+				cgen.genln('#if VPREALLOC')
 				cgen.genln('free(g_m2_buf);')
 				cgen.genln('puts("freed mem buf");')
 				cgen.genln('#endif')
@@ -663,7 +664,7 @@ pub fn (v mut V) add_v_files_to_compile() {
 		}
 	}
 	if v.pref.is_verbose { v.log('v.add_v_files_to_compile > builtin_files: $builtin_files') }
-	
+
 	// Parse builtin imports
 	for file in builtin_files {
 		// add builtins first
@@ -1076,6 +1077,7 @@ pub fn new_v(args[]string) &V {
 		is_bare: '-freestanding' in args
 		x64: '-x64' in args
 		output_cross_c: '-output-cross-platform-c' in args
+		prealloc: '-prealloc' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
