@@ -373,12 +373,12 @@ fn main() {
 		g.draw_end()
 
 //		game.handle_events()            // CRASHES if done in function ???
-		evtw := sdl.EventWrapper{}
-		for 0 < sdl.poll_event(&evtw) {
-			match int(evtw.evt.typ) {
+		evt := SDL_Event{}
+		for 0 < sdl.poll_event(&evt) {
+			match int(evt.@type) {
 				C.SDL_QUIT { should_close = true }
 				C.SDL_KEYDOWN {
-					key := evtw.evt.key.keysym.sym
+					key := evt.key.keysym.sym
 					if key == C.SDLK_ESCAPE {
 					        should_close = true
 					        break
@@ -387,16 +387,16 @@ fn main() {
 					game2.handle_key(key)
 				}
 				C.SDL_JOYBUTTONDOWN {
-					jb := int(evtw.evt.jbutton.button)
-					joyid := evtw.evt.jbutton.which
+					jb := int(evt.jbutton.button)
+					joyid := evt.jbutton.which
 //					println('JOY BUTTON $jb $joyid')
 					game.handle_jbutton(jb, joyid)
 					game2.handle_jbutton(jb, joyid)
 				}
 				C.SDL_JOYHATMOTION {
-					jh := int(evtw.evt.jhat.hat)
-					jv := int(evtw.evt.jhat.value)
-					joyid := evtw.evt.jhat.which
+					jh := int(evt.jhat.hat)
+					jv := int(evt.jhat.value)
+					joyid := evt.jhat.which
 //					println('JOY HAT $jh $jv $joyid')
 					game.handle_jhat(jh, jv, joyid)
 					game2.handle_jhat(jh, jv, joyid)

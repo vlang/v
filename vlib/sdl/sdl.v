@@ -181,8 +181,8 @@ pub fn render_copy(renderer voidptr, texture voidptr, srcrect &SDL_Rect, dstrect
 	return C.SDL_RenderCopy(renderer, texture, _srcrect, _dstrect)
 }
 
-pub fn poll_event(event &EventWrapper) int {
-	return C.SDL_PollEvent(&event.sdl)
+pub fn poll_event(event &C.SDL_Event) int {
+	return C.SDL_PollEvent(event)
 }
 
 pub fn destroy_texture(text voidptr) {
