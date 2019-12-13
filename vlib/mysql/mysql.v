@@ -1,5 +1,10 @@
 module mysql
 
+// if mysql.h is not in your CPATH (include path), set environment CPATH 
+//     export CPATH=/usr/include/mysql
+// or include -cflags flag to v compiler
+//     v -cflags '-I/usr/include/mysql' program.v
+
 #flag -lmysqlclient
 #include <mysql.h>
 
@@ -28,6 +33,7 @@ fn C.mysql_num_fields(res &C.MYSQL_RES) int
 fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 fn C.mysql_fetch_row(res &C.MYSQL_RES) &byteptr
 fn C.mysql_free_result(res &C.MYSQL_RES)
+fn C.mysql_real_escape_string_quote(mysql &C.MYSQL, to byteptr, from byteptr, len u64, quote byte) u64
 fn C.mysql_close(sock &C.MYSQL)
 
 pub fn connect(server, user, passwd, dbname string) ?DB {
@@ -49,6 +55,15 @@ pub fn (db DB) query(q string) ?Result {
 	}
 	res := C.mysql_store_result(db.conn)
 	return Result {result: res}
+}
+
+pub fn (db DB) escape_string(s string) string {
+    len := strlen(s.str)
+    to := malloc(len)
+    quote := byte(39) // single quote
+
+    C.mysql_real_escape_string_quote(db.conn, to, s.str, len, quote)
+    return string(to)
 }
 
 pub fn (db DB) close() {
@@ -91,3 +106,4 @@ fn get_error_msg(conn &C.MYSQL) string {
 fn get_errno(conn &C.MYSQL) int {
 	return C.mysql_errno(conn)
 }
+
