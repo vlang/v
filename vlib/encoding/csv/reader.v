@@ -21,8 +21,7 @@ struct Reader  {
 	// has_header        bool
 	// headings          []string
 	data              string
-pub:
-mut:
+pub mut:
 	delimiter         byte
 	comment           byte
 	is_mac_pre_osx_le bool
