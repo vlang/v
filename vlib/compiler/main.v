@@ -77,6 +77,7 @@ pub mut:
 	file_parser_idx map[string]int // map absolute file path to v.parsers index
 	gen_parser_idx  map[string]int
 	cached_mods []string
+	module_lookup_paths []string
 }
 
 struct Preferences {
@@ -641,23 +642,28 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
-		res << '$dir${os.path_separator}$file'
+		res << filepath.join(dir,file)
 	}
 	return res
 }
 
 // Parses imports, adds necessary libs, and then user files
 pub fn (v mut V) add_v_files_to_compile() {
+	v.set_module_lookup_paths()
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
 		//builtin_files = []
 	}
 	// Builtin cache exists? Use it.
-	builtin_vh := '${v.pref.vlib_path}${os.path_separator}builtin.vh'
-	if v.pref.is_cache && os.exists(builtin_vh) {
-		v.cached_mods << 'builtin'
-		builtin_files = [builtin_vh]
+	if v.pref.is_cache {
+		builtin_vh := filepath.join(v_modules_path,'vlib','builtin.vh')
+		if os.exists(builtin_vh) {
+			v.cached_mods << 'builtin'
+			builtin_files = [builtin_vh]
+		}
 	}
+	if v.pref.is_verbose { v.log('v.add_v_files_to_compile > builtin_files: $builtin_files') }
+	
 	// Parse builtin imports
 	for file in builtin_files {
 		// add builtins first
@@ -768,11 +774,13 @@ pub fn (v &V)  get_user_files() []string {
 		}
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
+		single_v_file := dir
 		// Just compile one file and get parent dir
-		user_files << dir
-		dir = dir.all_before(os.path_separator)
+		user_files << single_v_file
+		if v.pref.is_verbose { v.log('> just compile one file: "${single_v_file}"') }
 	}
 	else {
+		if v.pref.is_verbose { v.log('> add all .v files from directory "${dir}" ...') }
 		// Add .v files from the directory being compiled
 		files := v.v_files_from_dir(dir)
 		for file in files {
@@ -784,8 +792,7 @@ pub fn (v &V)  get_user_files() []string {
 		exit(1)
 	}
 	if v.pref.is_verbose {
-		v.log('user_files:')
-		println(user_files)
+		v.log('user_files: $user_files')
 	}
 	return user_files
 }
