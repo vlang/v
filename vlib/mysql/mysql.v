@@ -59,7 +59,7 @@ pub fn (db DB) query(q string) ?Result {
 
 pub fn (db DB) escape_string(s string) string {
     len := strlen(s.str)
-    to := malloc(2 * len)
+    to := malloc(2 * len + 1)
     quote := byte(39) // single quote
 
     C.mysql_real_escape_string_quote(db.conn, to, s.str, len, quote)
