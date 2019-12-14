@@ -1,3 +1,5 @@
+module main
+
 import os
 import compiler.tests.repl.runner
 import benchmark

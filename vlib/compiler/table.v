@@ -778,13 +778,14 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
-fn (t &Table) has_at_least_one_test_fn() bool {
+fn (t &Table) all_test_function_names() []string {
+	mut res := []string
 	for _, f in t.fns {
-		if f.name.starts_with('main__test_') {
-			return true
+		if f.name.contains('__test_') {
+			res << f.name
 		}
 	}
-	return false
+	return res
 }
 
 fn (t &Table) find_const(name string) ?Var {

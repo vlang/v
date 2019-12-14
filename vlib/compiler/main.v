@@ -506,23 +506,21 @@ pub fn (v mut V) generate_main() {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
 			}
-			if !v.table.has_at_least_one_test_fn() {
+			test_fn_names := v.table.all_test_function_names()
+			if test_fn_names.len == 0 {
 				verror('test files need to have at least one test function')
 			}
+			
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 
 			if v.pref.is_stats {
 				cgen.genln('BenchedTests bt = main__start_testing();')
 			}
-
-			for _, f in v.table.fns {
-				if f.name.starts_with('main__test_') {
-					if v.pref.is_stats {
-						cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
-					cgen.genln('$f.name ();')
-					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
-				}
+			for tfname in test_fn_names {
+				if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$tfname"));') }
+				cgen.genln('$tfname ();')
+				if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
 			}
 			if v.pref.is_stats { cgen.genln('BenchedTests_end_testing(&bt);') }
 			v.gen_main_end('return g_test_fails > 0')
@@ -766,17 +764,25 @@ pub fn (v &V)  get_user_files() []string {
 		user_files << filepath.join(preludes_path,'tests_with_stats.v')
 	}
 
-	// v volt/slack_test.v: compile all .v files to get the environment
-	// I need to implement user packages! TODO
-	is_test_with_imports := dir.ends_with('_test.v') &&
-		(dir.contains('${os.path_separator}volt') ||
-		dir.contains('${os.path_separator}c2volt'))// TODO
-	if is_test_with_imports {
-		user_files << dir
-		if pos := dir.last_index(os.path_separator) {
-			dir = dir[..pos] + os.path_separator// TODO why is this needed
+	is_test := dir.ends_with('_test.v')
+	mut is_internal_module_test := false
+	if is_test {
+		tcontent := os.read_file( dir ) or { panic('$dir does not exist') }
+		if tcontent.contains('module ') && !tcontent.contains('module main') {
+			is_internal_module_test = true
 		}
 	}
+	if is_internal_module_test {
+		// v volt/slack_test.v: compile all .v files to get the environment
+		single_test_v_file := os.realpath(dir)
+		if v.pref.is_verbose {
+			v.log('> Compiling an internal module _test.v file $single_test_v_file .')
+			v.log('> That brings in all other ordinary .v files in the same module too .')
+		}
+		user_files << single_test_v_file
+		dir = os.basedir( single_test_v_file )
+	}
+	
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
 		// Just compile one file and get parent dir
