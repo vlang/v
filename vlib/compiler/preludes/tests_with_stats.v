@@ -34,8 +34,7 @@ fn start_testing() BenchedTests {
 
 // Called before each test_ function, defined in file_test.v
 fn (b mut BenchedTests) testing_step_start(stepfunc string) {
-	b.step_func_name = stepfunc.replace('main__','')
-  b.step_func_name = b.step_func_name.replace('__','.')
+	b.step_func_name = stepfunc.replace('main__','').replace('__','.')
 	b.oks   = C.g_test_oks
 	b.fails = C.g_test_fails
 	b.bench.step()
