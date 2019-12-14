@@ -49,11 +49,12 @@ fn (p mut Parser) bterm() string {
 	p.expected_type = typ
 	is_str := typ=='string'  &&   !p.is_sql
 	is_ustr := typ=='ustring'
-	is_float := typ[0] == `f` && (typ in ['f64', 'f32']) &&
+	base := p.base_type(typ)
+	is_float := base[0] == `f` && (base in ['f64', 'f32']) &&
 		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
 		p.cur_fn.name != 'eq'
 	is_array := typ.starts_with('array_')
-	expr_type := typ
+	expr_type := base
 	tok := p.tok
 	/*
 	if tok == .assign {
