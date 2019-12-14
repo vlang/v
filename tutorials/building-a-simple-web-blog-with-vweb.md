@@ -9,10 +9,12 @@ the performance of C.
 in a 1 MB package.
 - Very small resulting binaries: the blog we'll create in this tutorial is about 150 KB.
 - Easy deployments: a single binary file that even  includes the precompiled templates.
-- Runs on the cheapest hardare with minimum footprint: for most apps a $3 instance
+- Runs on the cheapest hardware with minimum footprint: for most apps a $3 instance
 is enough.
 
 *Please note that V and Vweb are at a very early stage and are changing rapidly.*
+
+The code is available <a href='https://github.com/vlang/v/tree/master/tutorials'>here</a>.
 
 
 ### Installing V
@@ -34,7 +36,7 @@ https://github.com/vlang/v#installing-v-from-source
 
 ### Creating a new Vweb project
 
-V projects can be created anywhere and don't need to have any structure:
+V projects can be created anywhere and don't need to have a certain structure:
 
 ```bash
 mkdir blog
