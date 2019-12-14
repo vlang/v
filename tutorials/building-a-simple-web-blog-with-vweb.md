@@ -82,7 +82,7 @@ v run blog.v
 
 and open http://localhost:8080/ in your browser:
 
-<img width=662 src="https://github.com/medvednikov/v2/blob/tutorial/tutorials/hello.png?raw=true)">
+<img width=662 src="https://github.com/vlang/v/blob/tutorial/tutorials/hello.png?raw=true)">
 
 The `App` struct is an entry point of our web application. If you have experience
 with an MVC web framework, you can think of it as a controller. (Vweb is
@@ -99,7 +99,7 @@ fn (app mut App) time() {
 ```
 
 
-<img width=662 src="https://github.com/medvednikov/v2/blob/tutorial/tutorials/time.png?raw=true)">
+<img width=662 src="https://github.com/vlang/v/blob/tutorial/tutorials/time.png?raw=true)">
 
 >You have to rebuild and restart the website every time you change the code.
 In the future Vweb will detect changes and recompile the website in the background
@@ -136,7 +136,7 @@ fn (app mut App) index() {
 }
 ```
 
-<img width=662 src="https://github.com/medvednikov/v2/blob/tutorial/tutorials/hello_html.png?raw=true)">
+<img width=662 src="https://github.com/vlang/v/blob/tutorial/tutorials/hello_html.png?raw=true)">
 
 Good, now we have an actual HTML page.
 
@@ -276,7 +276,7 @@ Finally, let's update our view:
 v run .
 ```
 
-<img width=662 src="https://github.com/medvednikov/v2/blob/tutorial/tutorials/articles1.png?raw=true)">
+<img width=662 src="https://github.com/vlang/v/blob/tutorial/tutorials/articles1.png?raw=true)">
 
 That was very simple, wasn't it?
 
