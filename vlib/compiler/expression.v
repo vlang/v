@@ -472,7 +472,7 @@ fn (p mut Parser) expression() string {
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
 		}
-		is_num := typ.contains('*') || is_number_type(typ)
+        is_num := typ.contains('*') || is_number_type(typ) || is_number_type(p.base_type(typ))
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
 			p.is_alloc = true
