@@ -124,7 +124,7 @@ fn (ctx &Context) get_header(key string) string {
 
 //pub fn run<T>(port int) {
 pub fn run<T>(app mut T, port int) {
-	println('Running vweb app on http://localhost:$port ...')
+	println('Running a Vweb app on http://localhost:$port ...')
 	l := net.listen(port) or { panic('failed to listen') }
 	//mut app := T{}
 	app.init()

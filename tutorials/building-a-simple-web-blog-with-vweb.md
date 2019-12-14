@@ -81,7 +81,11 @@ Run it with
 v run blog.v
 ```
 
-and open http://localhost:8080/ in your browser:
+```
+Running a Vweb app on http://localhost:8080 ...
+```
+
+Vweb helpfully provided a link, open http://localhost:8080/ in your browser:
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/hello.png?raw=true)">
 
