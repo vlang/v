@@ -342,7 +342,7 @@ pub fn (app mut App) new_article() {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
 	if title == '' || text == ''  {
-		app.vweb.text('Empty text/titile')
+		app.vweb.text('Empty text/title')
 		return
 	}
 	article := Article{
@@ -359,7 +359,10 @@ pub fn (app mut App) new_article() {
 parameters via function arguments: `new_article(title, text string) {`.
 
 We need to update `index.html` to add a link to the "new article" page:
+
+```html
 <a href='/new'>New article</a>
+```
 
 
 
