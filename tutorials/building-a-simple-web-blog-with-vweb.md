@@ -13,6 +13,7 @@ in a 1 MB package.
 - Easy deployments: a single binary file that even  includes the precompiled templates.
 - Runs on the cheapest hardware with minimum footprint: for most apps a $3 instance
 is enough.
+- Fast development without any boilerplate.
 
 *Please note that V and Vweb are at a very early stage and are changing rapidly.*
 
@@ -313,6 +314,7 @@ V ORM, soon they will not be needed.
 
 To be continued on Dec 14...
 
+For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
 
 
 
