@@ -4,6 +4,7 @@ import (
 	vweb
 	time
 	pg
+	json
 )
 
 struct App {
@@ -40,6 +41,32 @@ pub fn (app mut App) init() {
 		user:   'alex'
 	}) or { panic(err) }
 	app.db = db
+}
+
+pub fn (app mut App) new() {
+	$vweb.html()
+}
+
+pub fn (app mut App) new_article() {
+	title := app.vweb.form['title']
+	text := app.vweb.form['text']
+	if title == '' || text == ''  {
+		app.vweb.text('Empty text/titile')
+		return
+	}
+	article := Article{
+		title: title
+		text: text
+	}
+	println(article)
+	db := app.db
+	db.insert(article)
+	app.vweb.redirect('/article/')
+}
+
+pub fn (app mut App) articles() {
+	articles := app.find_all_articles()
+	app.vweb.json(json.encode(articles))
 }
 
 fn (app mut App) time() {

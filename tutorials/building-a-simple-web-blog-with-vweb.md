@@ -317,6 +317,69 @@ article := app.retrieve_article(10) or {
 > `db := app.db` is a temporary limitation in the
 V ORM, soon this will not be needed.
 
+
+### Adding new articles
+
+Create `new.html`:
+
+```html
+<html>
+<header>
+	<title>V Blog</title>
+</header>
+<body>
+	<form action='/new_article' method='post'>
+		<input type='text' placeholder='Title' name='title'> <br>
+		<textarea placeholder='Text' name='text'></textarea>
+		<input type='submit'>
+	</form>
+</body>
+</html>
+```
+
+```v
+pub fn (app mut App) new_article() {
+	title := app.vweb.form['title']
+	text := app.vweb.form['text']
+	if title == '' || text == ''  {
+		app.vweb.text('Empty text/titile')
+		return
+	}
+	article := Article{
+		title: title
+		text: text
+	}
+	db := app.db
+	db.insert(article)
+	app.vweb.redirect('/article/')
+}
+```
+
+> Untyped `form['key']` is temporary. Very soon Vweb will accept query and form
+parameters via function arguments: `new_article(title, text string) {`.
+
+We need to update `index.html` to add a link to the "new article" page:
+<a href='/new'>New article</a>
+
+
+
+### JSON endpoints
+
+This tutorial used the traditional server side rendering. If you prefer
+to render everything on the client or need an API, creating JSON endpoints
+in V is very simple:
+
+```v
+pub fn (app mut App) articles() {
+	articles := app.find_all_articles()
+	app.vweb.json(json.encode(articles))
+}
+```
+
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/articles_json.png?raw=true">
+
+
+
 To be continued on Dec 14...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
