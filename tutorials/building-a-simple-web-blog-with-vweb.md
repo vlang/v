@@ -247,7 +247,7 @@ struct Article {
 	text  string
 }
 
-pub fn (app & App) find_all_articles() []Article {
+pub fn (app &App) find_all_articles() []Article {
 	db := app.db
 	articles := db.select from Article
 	return articles
@@ -314,8 +314,8 @@ article := app.retrieve_article(10) or {
 ```
 
 
-> Temporary variables like `db := app.db` are a temporary limitation in the
-V ORM, soon they will not be needed.
+> `db := app.db` is a temporary limitation in the
+V ORM, soon this will not be needed.
 
 To be continued on Dec 14...
 

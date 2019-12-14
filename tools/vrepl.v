@@ -122,12 +122,12 @@ pub fn run_repl() []string {
 		}
 		was_func := r.in_func
 		if r.checks() {
-			for line in r.line.split('\n') {
+			for rline in r.line.split('\n') {
 				if r.in_func || was_func {
-					r.functions << line
+					r.functions << rline
 				}
 				else {
-					r.temp_lines << line
+					r.temp_lines << rline
 				}
 			}
 			if r.indent > 0 {
