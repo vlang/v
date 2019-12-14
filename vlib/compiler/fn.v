@@ -1469,6 +1469,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	if !new_inst {
 		rename_generic_fn_instance(mut f, ti)
+		replace_generic_type_params(mut f, ti)
 		_ = p.table.find_fn(f.name) or {
 			p.error('function instance `$f.name` not found')
 			return
@@ -1480,7 +1481,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	p.table.register_fn(f)
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
-	// TODO: save dispatch info when update to incremental parsing
 	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
