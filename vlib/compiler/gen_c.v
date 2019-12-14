@@ -125,9 +125,20 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	last_ph := p.cgen.add_placeholder()
 	last_typ := p.statements()
 	if is_assign && last_typ == typ {
-		expr_line := p.cgen.lines[p.cgen.lines.len-2]
+		// workaround for -g with default optional value
+		// when p.cgen.line_directives is true an extra
+		// line is added so we need to account for that
+		expr_line := if p.cgen.line_directives {
+			p.cgen.lines[p.cgen.lines.len-3]
+		} else {
+			p.cgen.lines[p.cgen.lines.len-2]
+		}
 		last_expr := expr_line[last_ph..]
-		p.cgen.lines[p.cgen.lines.len-2]  = ''
+		p.cgen.lines[p.cgen.lines.len-2] = ''
+		// same here
+		if p.cgen.line_directives {
+			p.cgen.lines[p.cgen.lines.len-3] = ''
+		}
 		p.genln('if ($tmp .ok) {')
 		p.genln('$name = *($typ*) $tmp . data;')
 		p.genln('} else {')
