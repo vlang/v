@@ -9,9 +9,9 @@ fn main() {
 
 	mut should_close := false
 	for {
-		ev := sdl.Event{}
-		for 0 < sdl.poll_event(&ev) {
-			match int(ev._type) {
+		evt := SDL_Event{}
+		for 0 < sdl.poll_event(&evt) {
+			match int(evt.@type) {
 				C.SDL_QUIT { should_close = true }
 				else {}
 			}

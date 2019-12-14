@@ -59,12 +59,6 @@ pub:
 }
 
 
-/////////////////////////////////////////////////////////
-
-struct QuitEvent {
-        _type u32                          /**< SDL_QUIT */
-        timestamp u32
-}
 struct Keysym {
 pub:
         scancode int                       /**< hardware specific scancode */
@@ -72,49 +66,6 @@ pub:
         mod u16                            /**< current key modifiers */
         unused u32                         /**< translated character */
 }
-struct KeyboardEvent {
-pub:
-        _type u32                          /**< SDL_KEYDOWN or SDL_KEYUP */
-        timestamp u32
-        windowid u32
-        state byte                         /**< SDL_PRESSED or SDL_RELEASED */
-        repeat byte
-        padding2 byte
-        padding3 byte
-        keysym Keysym
-}
-struct JoyButtonEvent {
-pub:
-        _type u32                          /**< SDL_JOYBUTTONDOWN or SDL_JOYBUTTONUP */
-        timestamp u32
-        which int                          /**< The joystick device index */
-        button byte                        /**< The joystick button index */
-        state byte                         /**< SDL_PRESSED or SDL_RELEASED */
-}
-struct JoyHatEvent {
-pub:
-        _type u32                          /**< SDL_JOYHATMOTION */
-        timestamp u32
-        which int                          /**< The joystick device index */
-        hat byte                           /**< The joystick hat index */
-        value byte                         /**< The hat position value:
-			                   *   SDL_HAT_LEFTUP   SDL_HAT_UP       SDL_HAT_RIGHTUP
-			                   *   SDL_HAT_LEFT     SDL_HAT_CENTERED SDL_HAT_RIGHT
-			                   *   SDL_HAT_LEFTDOWN SDL_HAT_DOWN     SDL_HAT_RIGHTDOWN
-			                   *  Note that zero means the POV is centered.
-			                   */
-}
-
-pub union Event {
-pub:
-        _type u32
-        quit QuitEvent
-        key KeyboardEvent
-        jbutton JoyButtonEvent
-        jhat JoyHatEvent
-        _pad56 [56]byte
-}
-
 
 pub struct C.SDL_AudioSpec {
 pub mut:
@@ -140,13 +91,12 @@ pub mut:
 // }
 //type AudioSpec C.voidptrioSpec
 
-type atexit_func_t fn ()
-fn C.atexit(atexit_func_t)
+fn C.atexit(func fn ())
 
 ///////////////////////////////////////////////////
 fn C.SDL_MapRGB(fmt voidptr byte, g byte, b byte) u32
 fn C.SDL_CreateRGBSurface(flags u32, width int, height int, depth int, Rmask u32, Gmask u32, Bmask u32, Amask u32) voidptr
-fn C.SDL_PollEvent(&Event) int
+fn C.SDL_PollEvent(&SDL_Event) int
 fn C.SDL_NumJoysticks() int
 fn C.SDL_JoystickNameForIndex(device_index int) voidptr
 fn C.SDL_RenderCopy(renderer voidptr, texture voidptr, srcrect voidptr, dstrect voidptr) int
@@ -231,8 +181,8 @@ pub fn render_copy(renderer voidptr, texture voidptr, srcrect &SDL_Rect, dstrect
 	return C.SDL_RenderCopy(renderer, texture, _srcrect, _dstrect)
 }
 
-pub fn poll_event(event &Event) int {
-	return C.SDL_PollEvent(voidptr(event))
+pub fn poll_event(event &C.SDL_Event) int {
+	return C.SDL_PollEvent(event)
 }
 
 pub fn destroy_texture(text voidptr) {
