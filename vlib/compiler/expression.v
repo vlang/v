@@ -49,11 +49,12 @@ fn (p mut Parser) bterm() string {
 	p.expected_type = typ
 	is_str := typ=='string'  &&   !p.is_sql
 	is_ustr := typ=='ustring'
-	is_float := typ[0] == `f` && (typ in ['f64', 'f32']) &&
+	base := p.base_type(typ)
+	is_float := base[0] == `f` && (base in ['f64', 'f32']) &&
 		!(p.cur_fn.name in ['f64_abs', 'f32_abs']) &&
 		p.cur_fn.name != 'eq'
 	is_array := typ.starts_with('array_')
-	expr_type := typ
+	expr_type := base
 	tok := p.tok
 	/*
 	if tok == .assign {
@@ -472,7 +473,7 @@ fn (p mut Parser) expression() string {
 		if typ == 'bool' {
 			p.error('operator ${p.tok.str()} not defined on bool ')
 		}
-		is_num := typ.contains('*') || is_number_type(typ)
+        is_num := typ.contains('*') || is_number_type(typ) || is_number_type(p.base_type(typ))
 		p.check_space(p.tok)
 		if is_str && tok_op == .plus && !p.is_js {
 			p.is_alloc = true

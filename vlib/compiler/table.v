@@ -601,7 +601,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		p.cur_fn.typ = got
 		return true
 	}
-
+	if throw && p.base_type(got) == p.base_type(expected) {
+		return true
+	}
 	// variadic
 	if expected.starts_with('varg_') {
 		expected = expected[5..]
@@ -727,6 +729,14 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	}
 	return true
 }
+
+	fn (p mut Parser) base_type(name string) string {
+	    typ := p.find_type(name)
+	    if typ.parent != '' {
+	        return p.base_type(typ.parent)
+	    }
+	    return name
+	}
 
 // throw by default
 fn (p mut Parser) check_types(got, expected string) bool {
