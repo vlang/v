@@ -17,7 +17,7 @@ is enough.
 
 *Please note that V and Vweb are at a very early stage and are changing rapidly.*
 
-The code is available <a href='https://github.com/vlang/v/tree/master/tutorials'>here</a>.
+The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/code/blog'>here</a>.
 
 
 ### Installing V
@@ -58,6 +58,7 @@ import (
 )
 
 struct App {
+mut:
 	vweb vweb.Context
 }
 
