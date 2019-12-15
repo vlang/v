@@ -32,6 +32,7 @@ fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string
 	return params_gen
 }
 
+
 // `db.select from User where id == 1 && nr_bookings > 0`
 fn (p mut Parser) select_query(fn_ph int) string {
 	// NB: qprefix and { p.sql_i, p.sql_params, p.sql_types } SHOULD be reset for each query,
@@ -49,7 +50,8 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		p.check_name()
 	}
 	table_name := p.check_name()
-	// Register this type's fields as variables so they can be used in where expressions
+	// Register this type's fields as variables so they can be used in `where`
+	// expressions
 	typ := p.table.find_type(table_name)
 	if typ.name == '' {
 		p.error('unknown type `$table_name`')
@@ -58,7 +60,11 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	// get only string and int fields
 	mut fields := []Var
 	for i, field in typ.fields {
-		if field.typ != 'string' && field.typ != 'int' {
+		if !(field.typ in ['string', 'int', 'bool']) {
+			println('orm: skipping $field.name')
+			continue
+		}
+		if field.attr.contains('skip') {
 			continue
 		}
 		fields << field
@@ -81,12 +87,14 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	}
 	for field in fields {
 		//println('registering sql field var $field.name')
-		if field.typ != 'string' && field.typ != 'int' {
+		if !(field.typ in ['string', 'int', 'bool']) {
+			println('orm: skipping $field.name')
 			continue
 		}
-		p.register_var({ field | is_used:true })
+
+		p.register_var({ field | is_mut: true, is_used:true, is_changed:true })
 	}
-	q += table_name
+	q += table_name + 's'
 	// `where` statement
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
@@ -123,7 +131,11 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			if field.typ == 'int' {
 				cast = 'v_string_int'
 			}
-			obj_gen.writeln('${qprefix}$tmp . $field.name = $cast( *(string*)array_get(${qprefix}row.vals, $i) );')
+			else if field.typ == 'bool' {
+				cast = 'string_bool'
+			}
+			obj_gen.writeln('${qprefix}${tmp}.$field.name = ' +
+				'${cast}(*(string*)array_get(${qprefix}row.vals, $i));')
 		}
 		// One object
 		if query_one {
@@ -235,5 +247,65 @@ fn (p mut Parser) insert_query(fn_ph int) {
 	p.cgen.set_placeholder(fn_ph, 'PQexecParams( ')
 	p.genln('.conn, "insert into $table_name ($sfields) values ($vals)", $nr_vals,
 0, params, 0, 0, 0)')
+}
+
+// `db.update User set nr_orders=nr_orders+1`
+fn (p mut Parser) update_query(fn_ph int) {
+	println('update query')
+	p.check_name()
+	table_name := p.check_name()
+	typ := p.table.find_type(table_name)
+	if typ.name == '' {
+		p.error('unknown type `$table_name`')
+	}
+	set := p.check_name()
+	if set != 'set' {
+		p.error('expected `set`')
+	}
+	if typ.fields.len == 0 {
+		p.error('V orm: update: empty fields in `$typ.name`')
+	}
+	if typ.fields[0].name != 'id' {
+		p.error('V orm: `id int` must be the first field in `$typ.name`')
+	}
+	field := p.check_name()
+	p.check(.assign)
+	for f in typ.fields {
+		if !(f.typ in ['string', 'int', 'bool']) {
+			println('orm: skipping $f.name')
+			continue
+		}
+		p.register_var({ f | is_mut: true, is_used:true, is_changed:true })
+	}
+	mut q := 'update ${typ.name}s set $field='
+	p.is_sql = true
+	set_typ, expr := p.tmp_expr()
+	p.is_sql = false
+	// TODO this hack should not be necessary
+	if set_typ == 'bool' {
+		if expr.trim_space() == '1' {
+			q += 'true'
+		}
+		else {
+			q += 'false'
+		}
+	} else {
+		q += expr
+	}
+	// where
+	if p.tok == .name && p.lit == 'where' {
+		p.next()
+		p.is_sql = true
+		_, wexpr := p.tmp_expr()
+		p.is_sql = false
+		q += ' where ' + wexpr
+	}
+
+
+	nr_vals := 0
+	p.cgen.insert_before('char* params[$nr_vals];')// + params)
+	p.cgen.set_placeholder(fn_ph, 'PQexecParams( ')
+	println('update q="$q"')
+	p.genln('.conn, "$q", $nr_vals, 0, params, 0, 0, 0)')
 }
 

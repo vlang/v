@@ -52,15 +52,15 @@ struct Window {
 				onclick: btn_click
 			},
 		]
-	}	
-}	
+	}
+}
 
 // Improved V
 struct Window {
 	width: 500
 	height: 300
 	title: 'Users'
-	
+
 	Layout {
 	[
 		TextBox {
@@ -77,8 +77,8 @@ struct Window {
 			onclick: btn_click
 		}
 	]
-	}	
-}	
+	}
+}
 
 /*
 
@@ -100,16 +100,21 @@ Window {
 			title: 'Add user'
 			onclick: btn_click
 		}
-	}	
-	
+	}
+
 	draw: draw_fn
-}	
+}
 */
 */
 
 fn main() {
 	mut ctx := &Context {
 		txt_pos: 10
+	}
+	ctx.users << User {
+		first_name: 'Sam'
+		last_name: 'Johnson'
+		age: 29
 	}
 	ctx.window = ui.new_window(ui.WinCfg {
 		width: 500
@@ -122,7 +127,9 @@ fn main() {
 	ctx.last_name = ctx.add_textbox('Last name')
 	ctx.age = ctx.add_textbox('Age')
 	mut btn := ui.new_button('Add user', ctx.window, btn_click)
+	btn.onclick(btn_click)
 	btn.widget.set_pos(TABLE_WIDTH + 50, ctx.txt_pos)
+
 	for {
 		ui.wait_events()
 	}
@@ -158,6 +165,7 @@ fn draw(ctx &Context) {
 }
 
 fn (ctx mut Context) add_textbox(placeholder string) ui.TextBox {
+
 	mut txt_box := ui.new_textbox(ctx.window, false)
 	txt_box.set_placeholder(placeholder)
 	txt_box.widget.set_pos(TABLE_WIDTH + 50, ctx.txt_pos)

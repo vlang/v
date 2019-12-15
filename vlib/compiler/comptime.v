@@ -82,6 +82,9 @@ fn (p mut Parser) comp_time() {
 		else if name == 'debug' {
 			p.comptime_if_block('VDEBUG')
 		}
+		else if name == 'prealloc' {
+			p.comptime_if_block('VPREALLOC')
+		}
 		else if name == 'tinyc' {
 			p.comptime_if_block('__TINYC__')
 		}
@@ -178,7 +181,7 @@ fn (p mut Parser) comp_time() {
 		p.genln('/////////////////// tmpl end')
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut || receiver.ptr || receiver.typ.ends_with('*') { '->' } else { '.' }
-		p.genln('vweb__Context_html($receiver.name /*!*/$dot vweb, tmpl_res)')
+		p.genln('vweb__Context_html( & $receiver.name /*!*/$dot vweb, tmpl_res)')
 	}
 	else {
 		p.error('bad comptime expr')
@@ -279,7 +282,7 @@ fn (p mut Parser) comptime_method_call(typ Type) {
 			p.gen(' else ')
 		}
 		p.genln('if ( string_eq($var, _STR("$method.name")) ) ' +
-			'${typ.name}_$method.name($amp $p.expr_var.name);')
+			'${typ.name}_$method.name ($amp $p.expr_var.name);')
 		j++
 	}
 	p.check(.lpar)
@@ -314,7 +317,7 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		p.error('cant print ${elm_type}[], unhandled print of ${elm_type}')
 	}
 	p.v.vgen_buf.writeln('
-fn (a $typ.name) str() string {
+pub fn (a $typ.name) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write("[")
 	for i, elm in a {
@@ -342,7 +345,7 @@ fn (p mut Parser) gen_struct_str(typ Type) {
 	})
 
 	mut sb := strings.new_builder(typ.fields.len * 20)
-	sb.writeln('fn (a $typ.name) str() string {\nreturn')
+	sb.writeln('pub fn (a $typ.name) str() string {\nreturn')
 	sb.writeln("'{")
 	for field in typ.fields {
 		sb.writeln('\t$field.name: $' + 'a.${field.name}')
@@ -366,7 +369,7 @@ fn (p mut Parser) gen_varg_str(typ Type) {
 		p.gen_struct_str(elm_type2)
 	}
 	p.v.vgen_buf.writeln('
-fn (a $typ.name) str() string {
+pub fn (a $typ.name) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write("[")
 	for i, elm in a {
@@ -468,4 +471,27 @@ fn (p mut Parser) comptime_if_block(name string) {
 	if ! (p.tok == .dollar && p.peek() == .key_else) {
 		p.genln('#endif')
 	}
+}
+
+fn (p mut Parser) gen_enum_flag_methods(typ mut Type) {
+	for method in ['set', 'clear', 'toggle', 'has'] {
+		typ.methods << Fn{
+			name: method,
+			typ: if method == 'has' { 'bool' } else { 'void' }
+			args: [Var{typ: typ.name, is_mut: true, is_arg:true}, Var{typ: typ.name, is_arg: true}]
+			is_method: true
+			is_public: true
+			receiver_typ: typ.name
+		}
+	}
+	p.v.vgen_buf.writeln('
+pub fn (e mut $typ.name) set(flag $typ.name)      { *e = int(*e) | (1 << int(flag)) }
+pub fn (e mut $typ.name) clear(flag $typ.name)    { *e = int(*e) &~ (1 << int(flag)) }
+pub fn (e mut $typ.name) toggle(flag $typ.name)   { *e = int(*e) ^ (1 << int(flag)) }
+pub fn (e &$typ.name) has(flag $typ.name) bool { return int(*e)&(1 << int(flag)) != 0 }'
+)
+	p.cgen.fns << 'void ${typ.name}_set($typ.name *e, $typ.name flag);'
+	p.cgen.fns << 'void ${typ.name}_clear($typ.name *e, $typ.name flag);'
+	p.cgen.fns << 'void ${typ.name}_toggle($typ.name *e, $typ.name flag);'
+	p.cgen.fns << 'bool ${typ.name}_has($typ.name *e, $typ.name flag);'
 }

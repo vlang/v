@@ -14,7 +14,7 @@ mut:
 }
 
 struct DepGraph {
-pub:
+//pub:
 	mut:
 	acyclic bool
 	nodes   []DepGraphNode

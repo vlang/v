@@ -148,6 +148,7 @@ git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [pat
 
 glfw dependency will be removed soon.
 
+<!---
 ## JavaScript backend
 
 [examples/hello_v_js.v](examples/hello_v_js.v):
@@ -166,6 +167,7 @@ Hello from V.js
 Hello from V.js
 Hello from V.js
 ```
+-->
 
 ## Troubleshooting:
 

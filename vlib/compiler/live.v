@@ -91,7 +91,7 @@ fn (v &V) generate_hot_reload_code() {
 		}
 
 		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }
-		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -shared $file'
+		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -solive -shared $file'
 		if v.pref.show_c_cmd {
 			println(cmd_compile_shared_library)
 		}
@@ -187,7 +187,7 @@ void reload_so() {
 			#else
 			sprintf(new_so_name, "%s.so", new_so_base);
 			#endif
-			sprintf(compile_cmd, "$vexe $msvc -o %s -shared $file", new_so_base);
+			sprintf(compile_cmd, "$vexe $msvc -o %s -solive -shared $file", new_so_base);
 			os__system(tos2(compile_cmd));
 
 			if( !os__exists(tos2(new_so_name)) ) {

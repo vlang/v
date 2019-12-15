@@ -103,6 +103,9 @@ fn (p mut Parser) for_st() {
 		}
 		// Register temp vars
 		if i != '_' {
+			if p.known_var(i) {
+				p.error('redefinition of `$i`')
+			}
 			p.register_var(Var {
 				name: i
 				typ: i_var_type
@@ -111,6 +114,9 @@ fn (p mut Parser) for_st() {
 			})
 		}
 		if val != '_' {
+			if p.known_var(val) {
+				p.error('redefinition of `$val`')
+			}
 			p.register_var(Var {
 				name: val
 				typ: typ
@@ -182,6 +188,9 @@ fn (p mut Parser) for_st() {
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
 		if val != '_' {
+			if p.known_var(val) {
+				p.error('redefinition of `$val`')
+			}
 			p.register_var(Var {
 				name: val
 				typ: typ

@@ -44,10 +44,9 @@ pub struct Log {
 mut:
 	level LogLevel
 	output_label string
-
 	ofile os.File
 	output_to_file bool
-pub:
+pub mut:
 	output_file_name string
 }
 

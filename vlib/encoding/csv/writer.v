@@ -8,8 +8,7 @@ import strings
 
 struct Writer {
 	sb strings.Builder
-pub:
-mut:
+pub mut:
 	use_crlf bool
 	delimiter byte
 }

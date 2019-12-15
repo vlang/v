@@ -199,7 +199,7 @@ mut:
    last_nl_pos int
 }
 
-fn (s ScannerPos) str() string {
+pub fn (s ScannerPos) str() string {
 	return 'ScannerPos{ ${s.pos:5d} , ${s.line_nr:5d} , ${s.last_nl_pos:5d} }'
 }
 
@@ -242,7 +242,7 @@ fn (p mut Parser) mutable_arg_error(i int, arg Var, f Fn) {
 		dots_example = dots_example + ',..'
 	}
 	p.error('`$arg.name` is a mutable argument, you need to provide `mut`: ' +
-			'`$f.name($dots_example)`')
+			'`$f.name ($dots_example)`')
 }
 
 const (
@@ -258,4 +258,6 @@ const (
 
 	and_or_error = 'use `()` to make the boolean expression clear\n' +
 'for example: `(a && b) || c` instead of `a && b || c`'
+
+err_modify_bitfield = 'to modify a bitfield flag use the methods: set, clear, toggle. and to check for flag use: has'
 )

@@ -569,8 +569,7 @@ fn print_c_errno() {
 
 
 pub fn ext(path string) string {
-	pos := path.last_index('.')
-	if pos == -1 {
+	pos := path.last_index('.') or {
 		return ''
 	}
 	return path[pos..]
@@ -582,16 +581,14 @@ pub fn dir(path string) string {
 	if path == '.' {
 		return getwd()
 	}
-	pos := path.last_index(path_separator)
-	if pos == -1 {
+	pos := path.last_index(path_separator) or {
 		return '.'
 	}
 	return path[..pos]
 }
 
 fn path_sans_ext(path string) string {
-	pos := path.last_index('.')
-	if pos == -1 {
+	pos := path.last_index('.') or {
 		return path
 	}
 	return path[..pos]
@@ -599,8 +596,7 @@ fn path_sans_ext(path string) string {
 
 
 pub fn basedir(path string) string {
-	pos := path.last_index(path_separator)
-	if pos == -1 {
+	pos := path.last_index(path_separator) or {
 		return path
 	}
 	return path[..pos ] // NB: *without* terminating /
@@ -1069,3 +1065,7 @@ pub fn tmpdir() string {
 pub fn chmod(path string, mode int) {
 	C.chmod(path.str, mode)
 }
+
+pub const (
+  wd_at_startup = getwd()
+)

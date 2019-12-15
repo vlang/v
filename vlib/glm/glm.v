@@ -49,15 +49,15 @@ fn mat4(f &f32) Mat4 {
 	return res
 }
 
-fn (v Vec3) str() string {
+pub fn (v Vec3) str() string {
 	return 'Vec3{ $v.x, $v.y, $v.z }'
 }
 
-fn (v Vec2) str() string {
+pub fn (v Vec2) str() string {
 	return 'Vec3{ $v.x, $v.y }'
 }
 
-fn (m Mat4) str() string {
+pub fn (m Mat4) str() string {
 	mut s := '[ '
 	for i := 0; i < 4; i++ {
 		if i != 0 {
@@ -272,8 +272,8 @@ pub fn identity3() []f32 {
 
 // https://github.com/toji/gl-matrix/blob/1549cf21dfa14a2bc845993485343d519cf064fe/src/gl-matrix/mat4.js
 fn ortho_js(left, right, bottom, top f32) &f32 {
-	mynear := 1
-	myfar := 1
+//	mynear := 1
+//	myfar := 1
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
 	nf := 1.0 / 1.0// (mynear -myfar)

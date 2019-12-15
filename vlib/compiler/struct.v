@@ -109,8 +109,9 @@ fn (p mut Parser) struct_decl() {
 	p.fspace()
 	p.check(.lcbr)
 	// Struct fields
-	mut is_pub_field := false
-	mut is_mut := false
+	mut access_mod := AccessMod.private
+	//mut is_pub_field := false
+	//mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
 	mut fmt_max_len := 0
 	// TODO why is typ.fields == 0?
@@ -123,45 +124,58 @@ fn (p mut Parser) struct_decl() {
 		}
 	}
 	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
-
-
 	if !is_ph && p.first_pass() {
 		p.table.register_type(typ)
 		//println('registering 1 nrfields=$typ.fields.len')
 	}
-
 	mut did_gen_something := false
+	mut used := []AccessMod
 	mut i := -1
 	for p.tok != .rcbr {
 		i++
+		mut new_access_mod := access_mod
 		if p.tok == .key_pub {
-			if is_pub_field {
-				p.error('structs can only have one `pub:`, all public fields have to be grouped')
-			}
-			is_pub_field = true
-			p.fmt_dec()
 			p.check(.key_pub)
-			if p.tok != .key_mut {
-				p.check(.colon)
+			if p.tok == .key_mut {
+				new_access_mod = .public_mut
+				p.next() // skip `mut`
+			} else {
+				new_access_mod = .public
 			}
+			if new_access_mod in used {
+				p.error('structs can only have one `pub:`/`pub mut:`, all public fields have to be grouped')
+			}
+			p.fmt_dec()
+			p.check(.colon)
 			p.fmt_inc()
 			p.fgen_nl()
 		}
-		if p.tok == .key_mut {
-			if is_mut {
+		else if p.tok == .key_mut {
+			new_access_mod = .private_mut
+			if new_access_mod in used {
 				p.error('structs can only have one `mut:`, all private mutable fields have to be grouped')
 			}
-			is_mut = true
 			p.fmt_dec()
 			p.check(.key_mut)
-			if p.tok != .key_mut {
-				p.check(.colon)
-			}
+			p.check(.colon)
 			p.fmt_inc()
 			p.fgen_nl()
 		}
-		// if is_pub {
-		// }
+		else if p.tok == .key_global {
+			new_access_mod = .global
+			if new_access_mod in used {
+				p.error('structs can only have one `__global:`, all global fields have to be grouped')
+			}
+			p.fmt_dec()
+			p.check(.key_global)
+			p.check(.colon)
+			p.fmt_inc()
+			p.fgen_nl()
+		}
+		if new_access_mod != access_mod {
+			used << new_access_mod
+		}
+		access_mod = new_access_mod
 		// (mut) user *User
 		// if p.tok == .plus {
 		// p.next()
@@ -192,7 +206,7 @@ fn (p mut Parser) struct_decl() {
 			continue
 		}
 		// `pub` access mod
-		access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
+		//access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fspace()
 		tt := p.get_type2()
 		field_type := tt.name
@@ -243,10 +257,11 @@ fn (p mut Parser) struct_decl() {
 		if attr == 'raw' && field_type != 'string' {
 			p.error('struct field with attribute "raw" should be of type "string" but got "$field_type"')
 		}
-
 		did_gen_something = true
+		is_mut := access_mod in [.private_mut, .public_mut, .global]
 		if p.first_pass() {
-			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
+			p.table.add_field(typ.name, field_name, field_type, is_mut,
+				attr, access_mod)
 		}
 		p.fgen_nl() // newline between struct fields
 	}
@@ -284,6 +299,10 @@ fn (p mut Parser) struct_init(typ string) string {
 			f := t.find_field(field) or {
 				p.error('no such field: "$field" in type $typ')
 				break
+			}
+			tt := p.table.find_type(f.typ)
+			if tt.is_flag {
+				p.error(err_modify_bitfield)
 			}
 			inited_fields << field
 			p.gen_struct_field_init(field)
@@ -360,6 +379,10 @@ fn (p mut Parser) struct_init(typ string) string {
 			expr_typ := p.bool_expression()
 			if !p.check_types_no_throw(expr_typ, ffield.typ) {
 				p.error('field value #${i+1} `$ffield.name` has type `$ffield.typ`, got `$expr_typ` ')
+			}
+			tt := p.table.find_type(ffield.typ)
+			if tt.is_flag {
+				p.error(err_modify_bitfield)
 			}
 			if i < T.fields.len - 1 {
 				if p.tok != .comma {

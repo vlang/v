@@ -14,7 +14,7 @@ struct CFlag{
 	value string // eg. /path/to/include
 }
 
-fn (c &CFlag) str() string {
+pub fn (c &CFlag) str() string {
 	return 'CFlag{ name: "$c.name" value: "$c.value" mod: "$c.mod" os: "$c.os" }'
 }
 
@@ -74,6 +74,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 	allowed_flags := [
 		'framework',
 		'library',
+		'Wl',
 		'I', 'l', 'L',
 	]
 	flag_orig := cflag.trim_space()
@@ -82,14 +83,13 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 		return true
 	}
 	mut fos := ''
-	mut name := ''
 	if flag.starts_with('linux') || flag.starts_with('darwin') || flag.starts_with('freebsd') || flag.starts_with('windows') {
 		pos := flag.index(' ') or { return none }
 		fos = flag[..pos].trim_space()
 		flag = flag[pos..].trim_space()
 	}
 	for {
-		mut index := -1
+		mut name := ''
 		mut value := ''
 		if flag[0] == `-` {
 			for f in allowed_flags {
@@ -101,34 +101,23 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 				}
 			}
 		}
-		if i := flag.index(' ') {
-			if index == -1 || i < index {
-				index = i
-			}
-		}
-		if i := flag.index(',') {
-			if index == -1 || i < index {
-				index = i
-			}
-		}
-		if index != -1 && flag[index] == ` ` && flag[index+1] == `-` {
+		mut index := flag.index(' -') or { -1 }
+		for index > -1 {
+			mut has_next := false
 			for f in allowed_flags {
-				j := index+f.len
-				if j < flag.len && f == flag[index..j] {
-					index = j
+				i := index+2+f.len
+				if i <= flag.len && f == flag[index+2..i] {
+					value = flag[..index+1].trim_space()
+					flag = flag[index+1..].trim_space()
+					has_next = true
 					break
 				}
 			}
-			value = flag[..index].trim_space()
-			flag = flag[index..].trim_space()
+			if has_next { break }
+			index = flag.index_after(' -', index+1)
 		}
-		else if index != -1 && index < flag.len-2 && flag[index] == `,` {
-			value = flag[..index].trim_space()
-			flag = flag[index+1..].trim_space()
-		}
-		else {
+		if index == -1 {
 			value = flag.trim_space()
-			index = -1
 		}
 		if (name in ['-I', '-l', '-L']) && value == '' {
 			hint := if name == '-l' { 'library name' } else { 'path' }

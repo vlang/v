@@ -70,6 +70,7 @@ pub enum sig_index {
 	si_pid = 0x04
 	si_uid = 0x05
 	si_status = 0x06
+	si_size = 0x80
 }
 
 pub enum signo {

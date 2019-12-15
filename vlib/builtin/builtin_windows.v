@@ -73,7 +73,7 @@ $if msvc {
 
 	handle := C.GetCurrentProcess()
 	defer { C.SymCleanup(handle) }
-	
+
 	options := C.SymSetOptions(SYMOPT_DEBUG | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME)
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
@@ -133,3 +133,8 @@ fn print_backtrace_skipping_top_frames_nix(skipframes int) bool {
 	println('not implemented, see builtin_nix.v')
 	return false
 }
+
+pub fn println(s string) {
+	C._putws(s.to_wide())
+}
+

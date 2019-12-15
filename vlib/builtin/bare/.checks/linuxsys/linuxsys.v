@@ -40,15 +40,15 @@ fn check_read_write_pipe() {
 	//		sys_read
 	//		sys_close
 	//
-	buffer, e := mm_alloc(128)
-	assert e == .enoerror
+	buffer0 := [byte(0)].repeat(128)
+	buffer := byteptr(buffer0.data)
 
 	fd := [-1, -1]
 
 	assert fd[0] == -1
 	assert fd[1] == -1
 
-	a := sys_pipe(intptr(fd.data))
+	a := sys_pipe(intptr(&fd[0]))
 
 	assert a == .enoerror
 
@@ -62,7 +62,7 @@ fn check_read_write_pipe() {
 	assert e1 == .enoerror
 	assert c1 == b
 
-	c2, e2 := sys_read(fd[0], byteptr(buffer), u64(b))
+	c2, e2 := sys_read(fd[0], buffer, u64(b))
 
 	assert e2 == .enoerror
 	assert c2 == b
@@ -77,8 +77,6 @@ fn check_read_write_pipe() {
 	assert sys_close(fd[1]) == .enoerror
 
 	assert sys_close(-1) == .ebadf
-
-	assert mm_free(buffer) == .enoerror
 }
 
 fn check_read_file() {
@@ -89,8 +87,8 @@ fn check_read_file() {
 			sys_close
 			sys_open
 	*/
-	buffer, mae := mm_alloc(128)
-	assert mae == .enoerror
+	buffer0 := [byte(0)].repeat(128)
+	buffer := byteptr(buffer0.data)
 
 	test_file := "sample_text1.txt"
 	sample_text := "Do not change this text.\n"
@@ -105,7 +103,6 @@ fn check_read_file() {
 		assert sample_text[i] == buffer[i]
 	}
 	assert sys_close(fd) == .enoerror
-	assert mm_free(buffer) == .enoerror
 }
 
 fn check_open_file_fail() {

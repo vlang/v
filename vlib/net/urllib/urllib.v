@@ -321,7 +321,7 @@ fn escape(s string, mode EncodingMode) string {
 // URL's String method uses the escaped_path method to obtain the path. See the
 // escaped_path method for more details.
 pub struct URL {
-pub: mut:
+pub mut:
 	scheme      string
 	opaque      string    // encoded opaque data
 	user        &Userinfo // username and password information
@@ -518,8 +518,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':') or { -1 }
-		slash := rest.index('/') or { -1 }
+		colon := rest.index(':') or { return error('there should be a : in the URL') }
+		slash := rest.index('/') or { return error('there should be a / in the URL') }
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
 			return error(error_msg('parse_url: first path segment in URL cannot contain colon', ''))
@@ -551,9 +551,9 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) ?ParseAuthorityRes {
-	i := authority.last_index('@')
+	i := authority.last_index('@') or { -1 }
 	mut host := ''
-	mut user := user('')
+	mut zuser := user('')
 	if i < 0 {
 		h := parse_host(authority) or {
 			return error(err)
@@ -566,7 +566,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		host = h
 	}
 	if i < 0 {
-		return ParseAuthorityRes{host: host, user: user}
+		return ParseAuthorityRes{host: host, user: zuser}
 	}
 	mut userinfo := authority[..i]
 	if !valid_userinfo(userinfo) {
@@ -577,7 +577,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 			return error(err)
 		}
 		userinfo = u
-		user = user(userinfo)
+		zuser = user(userinfo)
 	} else {
 		mut username, mut password := split(userinfo, `:`, true)
 		u := unescape(username, .encode_user_password) or {
@@ -588,10 +588,10 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 			return error(err)
 		}
 		password = p
-		user = user_password(username, password)
+		zuser = user_password(username, password)
 	}
 	return ParseAuthorityRes{
-		user: user
+		user: zuser
 		host: host
 	}
 }
@@ -602,8 +602,7 @@ fn parse_host(host string) ?string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.last_index(']')
-		if i < 0 {
+		mut i := host.last_index(']') or {
 			return error(error_msg('parse_host: missing \']\' in host', ''))
 		}
 		mut colon_port := host[i+1..]
@@ -629,9 +628,8 @@ fn parse_host(host string) ?string {
 			}
 			return host1 + host2 + host3
 		}
-		i = host.last_index(':')
-		if i != -1 {
-			colon_port = host[i..]
+		if idx := host.last_index(':')  {
+			colon_port = host[idx..]
 			if !valid_optional_port(colon_port) {
 				return error(error_msg('parse_host: invalid port $colon_port after host ', ''))
 			}
@@ -910,7 +908,7 @@ fn resolve_path(base, ref string) string {
 	if ref == '' {
 		full = base
 	} else if ref[0] != `/` {
-		i := base.last_index('/')
+		i := base.last_index('/') or { -1 }
 		full = base[..i+1] + ref
 	} else {
 		full = ref

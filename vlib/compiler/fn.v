@@ -14,7 +14,7 @@ const (
 
 pub struct Fn {
 	// addr int
-pub:
+//pub:
 mut:
 	name          string
 	mod           string
@@ -60,7 +60,7 @@ const (
 	MainFn = Fn{ name: 'main' }
 )
 
-fn (a []TypeInst) str() string {
+pub fn (a []TypeInst) str() string {
 	mut r := []string
 	for t in a {
 		mut s := ' | '
@@ -254,7 +254,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		// Don't allow modifying types from a different module
 		if !p.first_pass() && !p.builtin_mod && t.mod != p.mod &&
-			!p.is_vgen // allow .str()
+			!p.is_vgen // let vgen define methods like .str() on types defined in other modules
 		{
 			//println('T.mod=$T.mod')
 			//println('p.mod=$p.mod')
@@ -297,6 +297,10 @@ fn (p mut Parser) fn_decl() {
 	if f.name == 'init' && !f.is_method && f.is_public && !p.is_vh {
 		p.error('init function cannot be public')
 	}
+	// .str() methods
+	if f.is_method && f.name == 'str' && !f.is_public {
+		p.error('.str() methods must be declared as public')
+	}
 	// C function header def? (fn C.NSMakeRect(int,int,int,int))
 	is_c := f.name == 'C' && p.tok == .dot
 	// Just fn signature? only builtin.v + default build mode
@@ -309,18 +313,7 @@ fn (p mut Parser) fn_decl() {
 		f.name = p.check_name()
 		f.is_c = true
 	}
-	else if !p.pref.translated {
-		if contains_capital(f.name) && !p.fileis('view.v') && !p.is_vgen {
-			println('`$f.name`')
-			p.error('function names cannot contain uppercase letters, use snake_case instead')
-		}
-		if f.name[0] == `_` {
-			p.error('function names cannot start with `_`, use snake_case instead')
-		}
-		if f.name.contains('__') {
-			p.error('function names cannot contain double underscores, use single underscores instead')
-		}
-	}
+	orig_name := f.name
 	// simple_name := f.name
 	// user.register() => User_register()
 	has_receiver := receiver_typ.len > 0
@@ -385,7 +378,21 @@ fn (p mut Parser) fn_decl() {
 	// V allows empty functions (just definitions)
 	is_fn_header := !is_c && !p.is_vh &&		p.tok != .lcbr
 	if is_fn_header {
+		f.name = orig_name // don't prepend module to external fn defs
 		f.is_decl = true
+	}
+	// Make sure the name is valid
+	if !is_c && !p.pref.translated && !is_fn_header {
+		if contains_capital(orig_name) && !p.fileis('view.v') && !p.is_vgen {
+			//println(orig_name)
+			p.error('function names cannot contain uppercase letters, use snake_case instead')
+		}
+		if f.name[0] == `_` {
+			p.error('function names cannot start with `_`, use snake_case instead')
+		}
+		if orig_name.contains('__') {
+			p.error('function names cannot contain double underscores, use single underscores instead')
+		}
 	}
 	// `{` required only in normal function declarations
 	if !is_c && !p.is_vh && !is_fn_header {
@@ -455,7 +462,7 @@ fn (p mut Parser) fn_decl() {
 	}
 
 	if is_fn_header {
-		p.genln('$typ $fn_name_cgen($str_args);')
+		p.genln('$typ $fn_name_cgen ($str_args);')
 		p.fgen_nl()
 	}
 	if is_c {
@@ -495,7 +502,7 @@ fn (p mut Parser) fn_decl() {
 			fn_name_cgen = '(* $fn_name_cgen )'
 		}
 		// Function definition that goes to the top of the C file.
-		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen($str_args)'
+		mut fn_decl := '$dll_export_linkage$typ $fn_name_cgen ($str_args)'
 		if p.pref.obfuscate {
 			fn_decl += '; // $f.name'
 		}
@@ -620,12 +627,13 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl &&  !var.is_arg &&
-			!p.pref.translated && var.name != 'tmpl_res'
+			!p.pref.translated && var.name != 'tmpl_res' && p.mod != 'vweb'
 		{
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx )
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
-			!p.pref.translated && var.typ != 'T*'
+			!p.pref.translated && var.typ != 'T*' &&
+			p.mod != 'ui' && var.typ != 'App*'
 		{
 			p.error_with_token_index('`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
@@ -637,6 +645,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 // receiver_var - "user" (needed for pthreads)
 // receiver_type - "User"
 fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
+	p.verify_fn_before_call(f)
 	// println('\nfn_call $f.name is_method=$f.is_method receiver_type=$f.receiver_type')
 	// p.print_tok()
 	mut thread_name := ''
@@ -692,7 +701,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	if p.os == .windows {
 		wrapper_type = 'DWORD WINAPI'
 	}
-	wrapper_text := '$wrapper_type $wrapper_name($arg_struct_name * arg) {$fn_name( /*f*/$str_args ); return 0; }'
+	wrapper_text := '$wrapper_type $wrapper_name ($arg_struct_name * arg) {$fn_name ( /*f*/$str_args ); return 0; }'
 	p.cgen.register_thread_fn(wrapper_name, wrapper_text, arg_struct)
 	// Create thread object
 	tmp_nr := p.get_tmp_counter()
@@ -713,22 +722,27 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		p.genln('int $tmp2 = pthread_create(& $thread_name, NULL, (void *)$wrapper_name, $parg);')
 	}
 	p.check(.rpar)
+
 }
 
-// p.tok == fn_name
-fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
+fn (p mut Parser) verify_fn_before_call(f &Fn) {
 	if f.is_unsafe && !p.builtin_mod && !p.inside_unsafe {
 		p.warn('you are calling an unsafe function outside of an unsafe block')
 	}
 	if f.is_deprecated {
 		p.warn('$f.name is deprecated')
 	}
-	if !f.is_public &&  !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
+	if !f.is_public && !f.is_c && !p.pref.is_test && !f.is_interface && f.mod != p.mod {
 		if f.name == 'contains' {
 			println('use `value in numbers` instead of `numbers.contains(value)`')
 		}
 		p.error('function `$f.name` is private')
 	}
+}
+
+// p.tok == fn_name
+fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
+	p.verify_fn_before_call(f)
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
 	if is_comptime_define {
 		p.cgen.nogen = true
@@ -756,7 +770,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 				// probably a typo, do not concern the user with the above error message
 				break
 			}
-			i += 1
+			i++
 		}
 	}
 	// if p.pref.is_prof {
@@ -1024,13 +1038,15 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				p.mutable_arg_error(i, arg, f)
 			}
 			if p.peek() != .name {
-				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to ' +
+					'provide a variable to modify: `${f.name}(... mut a...)`')
 			}
 			p.check(.key_mut)
 			p.fspace()
 			var_name := p.lit
 			v := p.find_var(var_name) or {
-				p.error('`$arg.name` is a mutable argument, you need to provide a variable to modify: `$f.name(... mut a...)`')
+				p.error('`$arg.name` is a mutable argument, you need to ' +
+					'provide a variable to modify: `${f.name}(... mut a...)`')
 				exit(1)
 			}
 			if !v.is_changed {
@@ -1156,7 +1172,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				nr = 'third'
 			}
 			p.error('cannot use type `$typ` as type `$arg.typ` in $nr ' +
-				'argument to `$f.name()`')
+				'argument to `${f.name}()`')
 		} else {
 			saved_args << ''
 		}
@@ -1271,7 +1287,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 				if fa == tp {
 					r.inst[tp] = fa
 					found = true
-					i += 1
+					i++
 					break
 				}
 			}
@@ -1287,7 +1303,7 @@ fn (p mut Parser) extract_type_inst(f &Fn, args_ []string) TypeInst {
 		}
 		// println("extracted $tp => $ti")
 		r.inst[tp] = ti
-		i += 1
+		i++
 		if i >= f.type_pars.len { break }
 	}
 	if r.inst[f.typ] == '' && f.typ in f.type_pars {
@@ -1453,6 +1469,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	if !new_inst {
 		rename_generic_fn_instance(mut f, ti)
+		replace_generic_type_params(mut f, ti)
 		_ = p.table.find_fn(f.name) or {
 			p.error('function instance `$f.name` not found')
 			return
@@ -1464,7 +1481,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	p.table.register_fn(f)
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
-	// TODO: save dispatch info when update to incremental parsing
 	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
@@ -1575,7 +1591,7 @@ fn (fns []Fn) contains(f Fn) bool {
 	return false
 }
 fn (p &Parser) fn_signature(f &Fn) string {
-	return '$f.typ $f.name(${f.str_args(p.table)})'
+	return '$f.typ ${f.name}(${f.str_args(p.table)})'
 }
 
 pub fn (f &Fn) v_fn_module() string {
