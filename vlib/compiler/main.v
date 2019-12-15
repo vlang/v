@@ -510,7 +510,7 @@ pub fn (v mut V) generate_main() {
 			if test_fn_names.len == 0 {
 				verror('test files need to have at least one test function')
 			}
-			
+
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 
@@ -782,7 +782,7 @@ pub fn (v &V)  get_user_files() []string {
 		user_files << single_test_v_file
 		dir = os.basedir( single_test_v_file )
 	}
-	
+
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
 		// Just compile one file and get parent dir
