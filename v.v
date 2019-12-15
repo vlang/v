@@ -83,38 +83,31 @@ fn main() {
 fn v_command(command string, args []string) {
 	match command {
 		'', '.', 'run' {
-
+			return
 		}
 		'version' {
 			println('V $compiler.Version $compiler.vhash()')
-			return
 		}
 		'help' {
 			println(compiler.help_text)
-			return
 		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3 (January)')
-			return
 		}
 		'search', 'install', 'update' {
 			compiler.launch_tool('vpm')
 		}
 		'get' {
 			println('use `v install` to install modules from vpm.vlang.io ')
-			return
 		}
 		'symlink' {
 			compiler.create_symlink()
-			return
 		}
 		'fmt' {
 			compiler.vfmt(args)
-			return
 		}
 		'runrepl' {
 			compiler.launch_tool('vrepl')
-			return
 		}
 		'doc' {
 			vexe := os.executable()
@@ -126,14 +119,13 @@ fn v_command(command string, args []string) {
 				panic(err)
 			}
 			println(txt)
-			exit(0)
 			// v.gen_doc_html_for_module(args.last())
 		}
 		else {
 			println('v $command: unknown command')
 			println('Run "v help" for usage.')
-			return
 		}
 	}
+	exit(0)
 }
 

@@ -570,6 +570,7 @@ pub fn final_target_out_name(out_name string) string {
 }
 
 pub fn (v V) run_compiled_executable_and_exit() {
+	println('RUNNING')
 	args := env_vflags_and_os_args()
 	if v.pref.is_verbose {
 		println('============ running $v.out_name ============')
@@ -585,6 +586,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 			break
 		}
 	}
+	println(args_after)
 	cmd += args_after
 
 	if v.pref.is_test {
