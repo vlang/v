@@ -35,7 +35,7 @@ fn main() {
 		return
 	}
 	// v run, v doc, etc
-	if !command.starts_with('-') && !os.exists(command) {
+	if !command.starts_with('-') && !command.ends_with('.v') && !os.exists(command) {
 		v_command(command, args)
 	}
 	// Print the version and exit.
