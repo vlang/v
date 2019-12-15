@@ -83,9 +83,10 @@ fn main() {
 
 // take first non option or file as command
 fn get_v_command() string {
-	options_with_param := ['-o', '-os', '-cc', '-cflags']
-	for i, arg in os.args[1..os.args.len] {
-		if arg[0] != `-` && !(os.args[i] in options_with_param) && !os.exists(arg) {
+	opts_w_param := ['-o', '-os', '-cc', '-cflags']
+	args := os.args[1..os.args.len]
+	for i, arg in args {
+		if arg[0] != `-` && (i == 0 ||!(args[i-1] in opts_w_param)) && !os.exists(arg) {
 			return arg
 		}
 	}
