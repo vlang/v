@@ -389,6 +389,7 @@ fn (n mapnode) preoder_keys(ref mut ArrayReference) []string {
 	return ref.array
 }
 
+// This is temporary
 struct ArrayReference {
 mut:
 	array []string
