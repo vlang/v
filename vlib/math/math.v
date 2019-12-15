@@ -18,6 +18,7 @@ fn C.erf(x f64) f64
 fn C.erfc(x f64) f64
 fn C.exp(x f64) f64
 fn C.exp2(x f64) f64
+fn C.fabs(x f64) f64
 fn C.floor(x f64) f64
 fn C.fmod(x f64, y f64) f64
 fn C.hypot(x f64, y f64) f64
@@ -42,10 +43,7 @@ fn C.trunc(x f64) f64
 
 // Returns the absolute value.
 pub fn abs(a f64) f64 {
-	if a < 0 {
-		return -a
-	}
-	return a
+	return C.fabs(a)
 }
 
 // acos calculates inverse cosine (arccosine).
