@@ -64,6 +64,9 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			println('orm: skipping $field.name')
 			continue
 		}
+		if field.attr.contains('skip') {
+			continue
+		}
 		fields << field
 	}
 	if fields.len == 0 {
@@ -88,6 +91,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			println('orm: skipping $field.name')
 			continue
 		}
+
 		p.register_var({ field | is_mut: true, is_used:true, is_changed:true })
 	}
 	q += table_name + 's'

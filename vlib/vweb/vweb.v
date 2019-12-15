@@ -124,7 +124,7 @@ fn (ctx &Context) get_header(key string) string {
 
 //pub fn run<T>(port int) {
 pub fn run<T>(app mut T, port int) {
-	println('Running vweb app on http://localhost:$port ...')
+	println('Running a Vweb app on http://localhost:$port ...')
 	l := net.listen(port) or { panic('failed to listen') }
 	//mut app := T{}
 	app.init()
@@ -132,24 +132,31 @@ pub fn run<T>(app mut T, port int) {
 		conn := l.accept() or { panic('accept() failed') }
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
-		message := readall(conn)
-
+		//message := readall(conn)
+		//println(message)
+/*
 		if message.len > MAX_HTTP_POST_SIZE {
 			println('message.len = $message.len > MAX_HTTP_POST_SIZE')
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
+		*/
 
-		lines := message.split_into_lines()
+		//lines := message.split_into_lines()
+		//println(lines)
 
+/*
 		if lines.len < 2 {
 			conn.send_string(HTTP_500) or {}
 			conn.close() or {}
 			continue
 		}
+		*/
 
-		first_line := strip(lines[0])
+		//first_line := strip(lines[0])
+		first_line := conn.read_line()
+		println('firstline="$first_line"')
 		$if debug { println(first_line) }
 		// Parse the first line
 		// "GET / HTTP/1.1"
@@ -164,13 +171,40 @@ pub fn run<T>(app mut T, port int) {
 		mut headers := []string
 		mut body := ''
 		mut in_headers := true
-		for line in lines[1..] {
+		mut len := 0
+		mut body_len := 0
+		//for line in lines[1..] {
+		for j := 0; j < 100; j++ {
+			//println(j)
+			line := conn.read_line()
 			sline := strip(line)
-			if sline == '' { in_headers = false }
+			if sline == '' {
+				//if in_headers {
+					// End of headers, no body => exit
+					if len == 0 {
+						break
+					}
+				//} //else {
+					// End of body
+					//break
+				//}
+				//println('HHH')
+				in_headers = false
+			}
 			if in_headers {
+				//println(sline)
 				headers << sline
+				if sline.starts_with('Content-Length') {
+					len = sline.all_after(': ').int()
+					//println('GOT CL=$len')
+				}
 			} else {
-				body += strip(sline) + '\r\n'
+				body += sline + '\r\n'
+				body_len += body.len
+				if body_len >= len {
+					break
+				}
+				//println('body:$body')
 			}
 		}
 
@@ -182,11 +216,11 @@ pub fn run<T>(app mut T, port int) {
 			action = 'index'
 		}
 		req := http.Request{
-				headers: http.parse_headers(headers) //s.split_into_lines())
-				ws_func: 0
-				user_ptr: 0
-				method: vals[0]
-				url: vals[1]
+			headers: http.parse_headers(headers) //s.split_into_lines())
+			ws_func: 0
+			user_ptr: 0
+			method: vals[0]
+			url: vals[1]
 		}
 		$if debug {
 			println('req.headers = ')
@@ -204,6 +238,7 @@ pub fn run<T>(app mut T, port int) {
 		//}
 		if req.method in methods_with_form {
 			body = strip(body)
+			println('body="$body"' )
 			app.vweb.parse_form(body)
 		}
 		if vals.len < 2 {
@@ -311,12 +346,14 @@ pub fn (ctx mut Context) serve_static(url, file_path, mime_type string) {
 }
 
 
+/*
 fn readall(conn net.Socket) string {
 	// read all message from socket
+	//printf("waitall=%d\n", C.MSG_WAITALL)
 	mut message := ''
 	buf := [1024]byte
 	for {
-		n := C.recv(conn.sockfd, buf, 1024, 2)
+		n := C.recv(conn.sockfd, buf, 1024, 0)
 		m := conn.crecv(buf, 1024)
 		message += string( byteptr(buf), m )
 		if message.len > MAX_HTTP_POST_SIZE { break }
@@ -324,6 +361,7 @@ fn readall(conn net.Socket) string {
 	}
 	return message
 }
+*/
 
 fn strip(s string) string {
 	// strip('\nabc\r\n') => 'abc'

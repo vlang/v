@@ -12,91 +12,48 @@ import (
 	//time
 )
 
+const (
+	known_commands = ['run', 'build', 'version', 'doc']
+	simple_tools = ['up', 'create', 'test', 'test-compiler', 'build-tools',
+		 'build-examples', 'build-vbinaries']
+)
+
 fn main() {
 	//t := time.ticks()
 	//defer { println(time.ticks() - t) }
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
-	options := args.filter(it.starts_with('-'))
-	//NB: commands should be explicitly set by the command line (os.args)
-	//    NOT passed through VFLAGS, otherwise the naked `v` invocation for
-	//    the repl does not work when you have VFLAGS with -cc or -cflags set
-	//    which may be surprising to v users.
-	stuff_after_executable := os.args[1..]
-	commands := stuff_after_executable.filter(!it.starts_with('-'))
-
-	simple_tools := ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
-	for tool in simple_tools {
-		if tool in commands {
-			compiler.launch_tool('v$tool')
-			return
-		}
+	options, command := compiler.get_v_options_and_main_command( args )	
+	// external tool
+	if command in simple_tools {
+		compiler.launch_tool('v' + command)
+		return
 	}
-
+	// v run, v doc, etc
+	if !command.starts_with('-') && !command.ends_with('.v') && !os.exists(command) {
+		v_command(command, args)
+	}
 	// Print the version and exit.
-	if '-v' in options || '--version' in options || 'version' in commands {
+	if '-v' in options || '--version' in options {
 		version_hash := compiler.vhash()
 		println('V $compiler.Version $version_hash')
 		return
 	}
-	else if '-h' in options || '--help' in options || 'help' in commands {
+	else if '-h' in options || '--help' in options {
 		println(compiler.help_text)
 		return
 	}
-	else if 'translate' in commands {
-		println('Translating C to V will be available in V 0.3 (January)')
-		return
-	}
-	else if 'search' in commands || 'install' in commands || 'update' in commands || 'remove' in commands {
-		compiler.launch_tool('vpm')
-		return
-	}
-	else if ('get' in commands) { // obsoleted
-		println('use `v install` to install modules from vpm.vlang.io ')
-		return
-	}
-	else if 'symlink' in commands {
-		compiler.create_symlink()
-		return
-	}
-	// TODO quit if the v compiler is too old
-	// u := os.file_last_mod_unix('v')
-	// If there's no tmp path with current version yet, the user must be using a pre-built package
-	//
-	// Just fmt and exit
-	else if 'fmt' in commands {
-		compiler.vfmt(args)
-		return
-	}
 	// No args? REPL
-	else if 'runrepl' in commands || commands.len == 0 || (args.len == 2 && args[1] == '-') {
+	else if command == '' || (args.len == 2 && args[1] == '-') {
 		compiler.launch_tool('vrepl')
 		return
-	}
-	// Generate the docs and exit
-	else if 'doc' in commands {
-		vexe := os.executable()
-		vdir := os.dir(os.executable())
-		os.chdir(vdir)
-		mod := args.last()
-		os.system('$vexe build module vlib$os.path_separator' + args.last())
-		txt := os.read_file(filepath.join(compiler.v_modules_path, 'vlib', '${mod}.vh')) or {
-			panic(err)
-		}
-		println(txt)
-		exit(0)
-		// v.gen_doc_html_for_module(args.last())
-	}
-	else {
-		//println('unknown command/argument\n')
-		//println(compiler.help_text)
 	}
 	// Construct the V object from command line arguments
 	mut v := compiler.new_v(args)
 	if v.pref.is_verbose {
 		println(args)
 	}
-	if 'run' in args {
+	if command == 'run' {
 		// always recompile for now, too error prone to skip recompilation otherwise
 		// for example for -repl usage, especially when piping lines to v
 		v.compile()
@@ -110,11 +67,60 @@ fn main() {
 	}
 	if v.pref.is_stats {
 		tmark.stop()
-		println( 'compilation took: ' + tmark.total_duration().str() + 'ms')
+		println('compilation took: ' + tmark.total_duration().str() + 'ms')
 	}
 	if v.pref.is_test {
 		v.run_compiled_executable_and_exit()
 	}
 	v.finalize_compilation()
+}
+
+fn v_command(command string, args []string) {
+	match command {
+		'', '.', 'run' {
+			return
+		}
+		'version' {
+			println('V $compiler.Version $compiler.vhash()')
+		}
+		'help' {
+			println(compiler.help_text)
+		}
+		'translate' {
+			println('Translating C to V will be available in V 0.3 (January)')
+		}
+		'search', 'install', 'update' {
+			compiler.launch_tool('vpm')
+		}
+		'get' {
+			println('use `v install` to install modules from vpm.vlang.io ')
+		}
+		'symlink' {
+			compiler.create_symlink()
+		}
+		'fmt' {
+			compiler.vfmt(args)
+		}
+		'runrepl' {
+			compiler.launch_tool('vrepl')
+		}
+		'doc' {
+			vexe := os.executable()
+			vdir := os.dir(os.executable())
+			os.chdir(vdir)
+			mod := args.last()
+			os.system('$vexe build module vlib$os.path_separator' + args.last())
+			txt := os.read_file(filepath.join(compiler.v_modules_path, 'vlib', '${mod}.vh')) or {
+				panic(err)
+			}
+			println(txt)
+			// v.gen_doc_html_for_module(args.last())
+		}
+		else {
+			println('v $command: unknown command')
+			println('Run "v help" for usage.')
+		}
+	}
+	exit(0)
 }
 

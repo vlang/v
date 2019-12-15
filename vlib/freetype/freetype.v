@@ -18,7 +18,7 @@ import (
 #flag darwin -I/usr/local/include/freetype2
 #flag darwin -I/opt/local/include/freetype2
 #flag freebsd -I/usr/local/include/freetype2
-#flag freebsd -Wl,-L/usr/local/lib
+#flag freebsd -Wl -L/usr/local/lib
 #flag -lfreetype
 
 //#flag -I @VROOT/thirdparty/freetype

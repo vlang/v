@@ -633,7 +633,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl &&
 			!p.pref.translated && var.typ != 'T*' &&
-			p.mod != 'ui'
+			p.mod != 'ui' && var.typ != 'App*'
 		{
 			p.error_with_token_index('`$var.name` is declared as mutable, but it was never changed', var.token_idx )
 		}
@@ -645,6 +645,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 // receiver_var - "user" (needed for pthreads)
 // receiver_type - "User"
 fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type string) {
+	p.verify_fn_before_call(f)
 	// println('\nfn_call $f.name is_method=$f.is_method receiver_type=$f.receiver_type')
 	// p.print_tok()
 	mut thread_name := ''
@@ -721,10 +722,10 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 		p.genln('int $tmp2 = pthread_create(& $thread_name, NULL, (void *)$wrapper_name, $parg);')
 	}
 	p.check(.rpar)
+
 }
 
-// p.tok == fn_name
-fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
+fn (p mut Parser) verify_fn_before_call(f &Fn) {
 	if f.is_unsafe && !p.builtin_mod && !p.inside_unsafe {
 		p.warn('you are calling an unsafe function outside of an unsafe block')
 	}
@@ -737,6 +738,11 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		}
 		p.error('function `$f.name` is private')
 	}
+}
+
+// p.tok == fn_name
+fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
+	p.verify_fn_before_call(f)
 	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
 	if is_comptime_define {
 		p.cgen.nogen = true
@@ -1463,6 +1469,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	if !new_inst {
 		rename_generic_fn_instance(mut f, ti)
+		replace_generic_type_params(mut f, ti)
 		_ = p.table.find_fn(f.name) or {
 			p.error('function instance `$f.name` not found')
 			return
@@ -1474,7 +1481,6 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	p.table.register_fn(f)
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
-	// TODO: save dispatch info when update to incremental parsing
 	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }

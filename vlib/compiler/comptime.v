@@ -82,6 +82,9 @@ fn (p mut Parser) comp_time() {
 		else if name == 'debug' {
 			p.comptime_if_block('VDEBUG')
 		}
+		else if name == 'prealloc' {
+			p.comptime_if_block('VPREALLOC')
+		}
 		else if name == 'tinyc' {
 			p.comptime_if_block('__TINYC__')
 		}

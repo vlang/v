@@ -108,7 +108,7 @@ pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
-	$if debug {
+	$if prealloc {
 		res := g_m2_ptr
 		g_m2_ptr += n
 		nr_mallocs++
