@@ -48,7 +48,7 @@ fn (v &V) get_rest_of_module_cflags(c &CFlag) []CFlag {
 // format flag
 fn (cf &CFlag) format() string {
 	mut value := cf.value
-	if cf.name == '-l' && value.len>0 {
+	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len>0 {
 		return '${cf.name}${value}'.trim_space()
 	}
 	// convert to absolute path
@@ -74,7 +74,7 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 	allowed_flags := [
 		'framework',
 		'library',
-		'Wl',
+		'Wa', 'Wl', 'Wp',
 		'I', 'l', 'L',
 	]
 	flag_orig := cflag.trim_space()
