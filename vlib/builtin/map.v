@@ -416,18 +416,6 @@ pub fn (m map_string) str() string {
 
 pub fn (m map) print() {
 	println('<<<<<<<<')
-	//for i := 0; i < m.entries.len; i++ {
-		// entry := m.entries[i]
-		// println('$entry.key => $entry.val')
-	//}
-	/*
-	for i := 0; i < m.cap * m.element_size; i++ {
-		b := m.table[i]
-		print('$i: ')
-		C.printf('%02x', b)
-		println('')
-	}
-*/
 	println('>>>>>>>>>>')
 }
 
