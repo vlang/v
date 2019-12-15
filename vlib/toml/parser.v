@@ -6,12 +6,10 @@ import (
 )
 
 const (
-	err_array
+	err_syntax = ('toml: syntax error.')
 )
 
 struct Parser{
-	file_path string
-	file_name string
 mut:
 	scanner &Scanner
 }

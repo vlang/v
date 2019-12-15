@@ -15,9 +15,8 @@ struct TOML{
 		arr		&[]Array
 }
 
-fn (t TOML) toml_parse(){
-	// Parse Start.
-	load_parse()
+fn toml_parse(s string){
+	new_scanner(s)
 }
 
 struct KeyVal{

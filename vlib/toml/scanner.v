@@ -12,7 +12,6 @@ const (
 
 struct Scanner{
 mut:
-	file_path		string
 	text			string
 	pos				int
 	last_nl_pos		int
@@ -31,20 +30,21 @@ struct ScanRes{
 	lit string
 }
 
-fn new_scanner_file(file_path string) &Scanner{
-	if !os.file_exists(file_path) {
-		error("$file_path doesn't exist")
-	}
+fn new_scanner(mut text string) &Scanner{
+	// BOM check
+	if text.len >= 3{
+		temp := text.str
 
-	mut raw_text := os.read_file(file_path) or{
-		error('toml: failed to open $file_path')
-		return 0
+		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
+			// skip three BOM bytes
+			offset_from_begin := 3
+			rtext = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
+		}
 	}
 	
-	mut s := new_scanner(raw_text)
-	s.file_path = file_path
-
-	return s
+	return &Scanner {
+		text: text
+	}
 }
 
 fn scan_res(tok TokenKind, lit string) ScanRes{

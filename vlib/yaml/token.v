@@ -20,6 +20,7 @@ enum TokenKind{
 	coron
 	json
 	name
+	tab
 }
 
 fn build_token_str() []string{

@@ -1,11 +1,11 @@
 module toml
 
-sturct Token{
+struct Token{
 	token	 TokenKind
 	lit		 string
 	line_nr  int 
 	name_idx int
-	col		 int
+	pos		 int
 }
 
 enum TokenKind{
