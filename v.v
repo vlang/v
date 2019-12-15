@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	known_commands = ['run', 'build', 'version', 'doc']
+	known_commands = ['run', 'build', 'version', 'doc', 'help', 'translate',
+		'search', 'install', 'update', 'get', 'symlink', 'fmt', 'runrepl']
 	simple_tools = ['up', 'create', 'test', 'test-compiler', 'build-tools',
 		 'build-examples', 'build-vbinaries']
 )
@@ -28,7 +29,7 @@ fn main() {
 	//    NOT passed through VFLAGS, otherwise the naked `v` invocation for
 	//    the repl does not work when you have VFLAGS with -cc or -cflags set
 	//    which may be surprising to v users.
-	command := if os.args.len > 1 { os.args[1] } else { '' }
+	command := get_v_command()
 	// external tool
 	if command in simple_tools {
 		compiler.launch_tool('v' + command)
@@ -48,8 +49,8 @@ fn main() {
 		println(compiler.help_text)
 		return
 	}
-	// No args? REPL
-	else if command == '' || (args.len == 2 && args[1] == '-') {
+	// No args? REPL (v || v -)
+	else if (options.len == 0 && args.len == 1) || (args.len == 2 && args[1] == '-') {
 		compiler.launch_tool('vrepl')
 		return
 	}
@@ -78,6 +79,17 @@ fn main() {
 		v.run_compiled_executable_and_exit()
 	}
 	v.finalize_compilation()
+}
+
+// take first non option or file as command
+fn get_v_command() string {
+	options_with_param := ['-o', '-os', '-cc', '-cflags']
+	for i, arg in os.args[1..os.args.len] {
+		if arg[0] != `-` && !(os.args[i] in options_with_param) && !os.exists(arg) {
+			return arg
+		}
+	}
+	return ''
 }
 
 fn v_command(command string, args []string) {
