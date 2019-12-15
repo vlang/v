@@ -341,11 +341,11 @@ mut:
 	b []Test2
 }
 
-fn (t Test2) str() string {
+pub fn (t Test2) str() string {
 	return '{$t.one $t.two}'
 }
 
-fn (t Test) str() string {
+pub  fn (t Test) str() string {
 	return '{$t.a $t.b}'
 }
 

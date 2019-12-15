@@ -57,14 +57,23 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		}
 		val++
 	}
-	p.table.register_type(Type {
+	is_flag := p.attr == 'flag'
+	if is_flag && fields.len > 32 {
+		p.error('when an enum is used as bit field, it must have a max of 32 fields')
+	}
+	mut T := Type {
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
 		cat: .enum_
 		enum_vals: fields.clone()
 		is_public: is_pub
-	})
+		is_flag: is_flag
+	}
+	if is_flag && !p.first_pass() {
+		p.gen_enum_flag_methods(mut T)
+	}
+	p.table.register_type(T)
 	p.check(.rcbr)
 	p.fgenln('\n')
 }

@@ -5,14 +5,12 @@
 module urllib
 
 struct Value {
-pub:
-mut:
+pub mut:
 	data []string
 }
 
 struct Values {
-pub:
-mut:
+pub mut:
 	data map[string]Value
 	size int
 }

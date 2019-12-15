@@ -77,6 +77,7 @@ pub mut:
 	file_parser_idx map[string]int // map absolute file path to v.parsers index
 	gen_parser_idx  map[string]int
 	cached_mods []string
+	module_lookup_paths []string
 }
 
 struct Preferences {
@@ -85,8 +86,9 @@ pub mut:
 	//nofmt         bool   // disable vfmt
 	is_test       bool   // `v test string_test.v`
 	is_script     bool   // single file mode (`v program.v`), main function can be skipped
-	is_live       bool   // for hot code reloading
-	is_so         bool
+	is_live       bool   // main program that contains live/hot code
+	is_solive     bool   // a shared library, that will be used in a -live main program
+	is_so         bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_prof       bool   // benchmark every function
 	translated    bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod       bool   // use "-O2"
@@ -130,6 +132,7 @@ pub mut:
 	vpath string
 	x64 bool
 	output_cross_c bool
+	prealloc bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -198,7 +201,7 @@ pub fn (v mut V) compile() {
 		println(v.files)
 	}
 	v.add_v_files_to_compile()
-	if v.pref.is_verbose || v.pref.is_debug {
+	if v.pref.is_verbose {
 		println('all .v files:')
 		println(v.files)
 	}
@@ -226,6 +229,9 @@ pub fn (v mut V) compile() {
 		}	$else {
 			cgen.genln('#define VDEBUG (1)')
 		}
+	}
+	if v.pref.prealloc {
+		cgen.genln('#define VPREALLOC (1)')
 	}
 	if v.os == .js {
 		cgen.genln('#define _VJS (1) ')
@@ -417,6 +423,11 @@ fn (v mut V) generate_init() {
 		// vlib can't have `init_consts()`
 		v.cgen.genln('void init() {
 g_str_buf=malloc(1000);
+#if VPREALLOC
+g_m2_buf = malloc(50 * 1000 * 1000);
+g_m2_ptr = g_m2_buf;
+puts("allocated 50 mb");
+#endif
 $call_mod_init_consts
 $consts_init_body
 builtin__init();
@@ -495,22 +506,21 @@ pub fn (v mut V) generate_main() {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
 			}
-			if !v.table.has_at_least_one_test_fn() {
+			test_fn_names := v.table.all_test_function_names()
+			if test_fn_names.len == 0 {
 				verror('test files need to have at least one test function')
 			}
+
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 
 			if v.pref.is_stats {
 				cgen.genln('BenchedTests bt = main__start_testing();')
 			}
-
-			for _, f in v.table.fns {
-				if f.name.starts_with('main__test_') {
-					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$f.name"));') }
-					cgen.genln('$f.name();')
-					if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
-				}
+			for tfname in test_fn_names {
+				if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$tfname"));') }
+				cgen.genln('$tfname ();')
+				if v.pref.is_stats { cgen.genln('BenchedTests_testing_step_end(&bt);') }
 			}
 			if v.pref.is_stats { cgen.genln('BenchedTests_end_testing(&bt);') }
 			v.gen_main_end('return g_test_fails > 0')
@@ -520,6 +530,10 @@ pub fn (v mut V) generate_main() {
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
 				cgen.genln('free(g_str_buf);')
+				cgen.genln('#if VPREALLOC')
+				cgen.genln('free(g_m2_buf);')
+				cgen.genln('puts("freed mem buf");')
+				cgen.genln('#endif')
 			}
 			v.gen_main_end('return 0')
 		}
@@ -630,23 +644,28 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
-		res << '$dir${os.path_separator}$file'
+		res << filepath.join(dir,file)
 	}
 	return res
 }
 
 // Parses imports, adds necessary libs, and then user files
 pub fn (v mut V) add_v_files_to_compile() {
+	v.set_module_lookup_paths()
 	mut builtin_files := v.get_builtin_files()
 	if v.pref.is_bare {
 		//builtin_files = []
 	}
 	// Builtin cache exists? Use it.
-	builtin_vh := '${v.pref.vlib_path}${os.path_separator}builtin.vh'
-	if v.pref.is_cache && os.exists(builtin_vh) {
-		v.cached_mods << 'builtin'
-		builtin_files = [builtin_vh]
+	if v.pref.is_cache {
+		builtin_vh := filepath.join(v_modules_path,'vlib','builtin.vh')
+		if os.exists(builtin_vh) {
+			v.cached_mods << 'builtin'
+			builtin_files = [builtin_vh]
+		}
 	}
+	if v.pref.is_verbose { v.log('v.add_v_files_to_compile > builtin_files: $builtin_files') }
+
 	// Parse builtin imports
 	for file in builtin_files {
 		// add builtins first
@@ -729,30 +748,49 @@ pub fn (v &V)  get_user_files() []string {
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string
 
+	preludes_path := filepath.join(v.pref.vlib_path,'compiler','preludes')
+
+	if v.pref.is_live {
+		user_files << filepath.join(preludes_path,'live_main.v')
+	}
+	if v.pref.is_solive {
+		user_files << filepath.join(preludes_path,'live_shared.v')
+	}
+
 	if v.pref.is_test {
-		// TODO this somtimes fails on CI
-		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_assertions.v')
+		user_files << filepath.join(preludes_path,'tests_assertions.v')
 	}
-
 	if v.pref.is_test && v.pref.is_stats {
-		user_files << filepath.join(v.pref.vlib_path,'compiler','preludes','tests_with_stats.v')
+		user_files << filepath.join(preludes_path,'tests_with_stats.v')
 	}
 
-	// v volt/slack_test.v: compile all .v files to get the environment
-	// I need to implement user packages! TODO
-	is_test_with_imports := dir.ends_with('_test.v') &&
-	(dir.contains('${os.path_separator}volt') || dir.contains('${os.path_separator}c2volt'))// TODO
-	if is_test_with_imports {
-		user_files << dir
-		pos := dir.last_index(os.path_separator)
-		dir = dir[..pos] + os.path_separator// TODO why is this needed
+	is_test := dir.ends_with('_test.v')
+	mut is_internal_module_test := false
+	if is_test {
+		tcontent := os.read_file( dir ) or { panic('$dir does not exist') }
+		if tcontent.contains('module ') && !tcontent.contains('module main') {
+			is_internal_module_test = true
+		}
 	}
+	if is_internal_module_test {
+		// v volt/slack_test.v: compile all .v files to get the environment
+		single_test_v_file := os.realpath(dir)
+		if v.pref.is_verbose {
+			v.log('> Compiling an internal module _test.v file $single_test_v_file .')
+			v.log('> That brings in all other ordinary .v files in the same module too .')
+		}
+		user_files << single_test_v_file
+		dir = os.basedir( single_test_v_file )
+	}
+
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
+		single_v_file := dir
 		// Just compile one file and get parent dir
-		user_files << dir
-		dir = dir.all_before(os.path_separator)
+		user_files << single_v_file
+		if v.pref.is_verbose { v.log('> just compile one file: "${single_v_file}"') }
 	}
 	else {
+		if v.pref.is_verbose { v.log('> add all .v files from directory "${dir}" ...') }
 		// Add .v files from the directory being compiled
 		files := v.v_files_from_dir(dir)
 		for file in files {
@@ -764,8 +802,7 @@ pub fn (v &V)  get_user_files() []string {
 		exit(1)
 	}
 	if v.pref.is_verbose {
-		v.log('user_files:')
-		println(user_files)
+		v.log('user_files: $user_files')
 	}
 	return user_files
 }
@@ -1025,6 +1062,7 @@ pub fn new_v(args[]string) &V {
 		is_test: is_test
 		is_script: is_script
 		is_so: '-shared' in args
+		is_solive: '-solive' in args
 		is_prod: '-prod' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 
@@ -1048,6 +1086,7 @@ pub fn new_v(args[]string) &V {
 		is_bare: '-freestanding' in args
 		x64: '-x64' in args
 		output_cross_c: '-output-cross-platform-c' in args
+		prealloc: '-prealloc' in args
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags

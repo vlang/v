@@ -18,25 +18,25 @@ pub fn println(s string) {
 }
 
 pub fn panic(s string) {
-	print('V panic: ')
-	println(s)
+	eprint('V panic: ')
+	eprintln(s)
 	sys_exit(1)
 }
 
 // replaces panic when -debug arg is passed
 fn panic_debug(line_no int, file,  mod, fn_name, s string) {
-	println('================ V panic ================')
-	print('   module: ')
-	println('mod')
-	print(' function: ')
-	print(fn_name)
-	println('()')
-	println('     file: ')
-	println(file)
+	eprintln('================ V panic ================')
+	eprint('   module: ')
+	eprintln('mod')
+	eprint(' function: ')
+	eprint(fn_name)
+	eprintln('()')
+	eprintln('     file: ')
+	eprintln(file)
 	//println('     line: ${line_no}')
-	print('  message: ')
-	println(s)
-	println('=========================================')
+	eprint('  message: ')
+	eprintln(s)
+	eprintln('=========================================')
 	sys_exit(1)
 }
 pub fn eprint(s string) {

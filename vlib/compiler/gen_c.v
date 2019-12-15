@@ -1,3 +1,7 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 module compiler
 
 import strings
@@ -6,26 +10,18 @@ const (
 	dot_ptr = '->'
 )
 
-/*
-fn (p mut Parser) gen_or_else(pos int) string {
-}
-*/
-
-
 // returns the type of the new variable
 fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
-	// Generate expression to tmp because we need its type first
-	// `[typ] [name] = bool_expression();`
-	pos := p.cgen.add_placeholder()
 	p.is_var_decl = true
 	mut typ := p.bool_expression()
+	//mut typ, expr := p.tmp_expr()
 	p.is_var_decl = false
 	if typ.starts_with('...') { typ = typ[3..] }
 	//p.gen('/*after expr*/')
 	// Option check ? or {
 	or_else := p.tok == .key_orelse
 	if or_else {
-		return p.gen_handle_option_or_else(typ, name, pos)
+		return p.gen_handle_option_or_else(typ, name, 0)
 	}
 	gen_name := p.table.var_cgen_name(name)
 	mut nt_gen := p.table.cgen_name_type_pair(gen_name, typ)
@@ -35,7 +31,7 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	} else if typ.starts_with('[') && typ[ typ.len-1 ] != `*` {
 		// a fixed_array initializer, like `v := [1.1, 2.2]!!`
 		// ... should translate to the following in C `f32 v[2] = {1.1, 2.2};`
-		initializer := p.cgen.cur_line[pos..]
+		initializer := p.cgen.cur_line
 		if initializer.len > 0 {
 			p.cgen.resetln(' = {' + initializer.all_after('{') )
 		} else if initializer.len == 0 {
@@ -46,7 +42,10 @@ fn (p mut Parser) gen_var_decl(name string, is_static bool) string {
 	if is_static {
 		nt_gen = 'static $nt_gen'
 	}
-	p.cgen.set_placeholder(pos, nt_gen)
+	// Now that we know the type, prepend it
+	// `[typ] [name] = bool_expression();`
+	//p.cgen.prepend_to_statement(nt_gen)
+	p.cgen.set_placeholder(0, nt_gen)
 	return typ
 }
 
@@ -60,7 +59,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	}
 	fn_name_cgen := p.table.fn_gen_name(f)
 	//str_args := f.str_args(p.table)
-	p.genln('$dll_export_linkage$typ $fn_name_cgen($str_args) {')
+	p.genln('$dll_export_linkage$typ $fn_name_cgen ($str_args) {')
 }
 
 // blank identifer assignment `_ = 111`
@@ -74,7 +73,7 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	p.is_var_decl = true
 	typ := p.bool_expression()
 	if typ == 'void' {
-		p.error_with_token_index('$next_expr() $err_used_as_value', p.token_idx-2)
+		p.error_with_token_index('${next_expr}() $err_used_as_value', p.token_idx-2)
 	}
 	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
@@ -126,9 +125,20 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	last_ph := p.cgen.add_placeholder()
 	last_typ := p.statements()
 	if is_assign && last_typ == typ {
-		expr_line := p.cgen.lines[p.cgen.lines.len-2]
+		// workaround for -g with default optional value
+		// when p.cgen.line_directives is true an extra
+		// line is added so we need to account for that
+		expr_line := if p.cgen.line_directives {
+			p.cgen.lines[p.cgen.lines.len-3]
+		} else {
+			p.cgen.lines[p.cgen.lines.len-2]
+		}
 		last_expr := expr_line[last_ph..]
-		p.cgen.lines[p.cgen.lines.len-2]  = ''
+		p.cgen.lines[p.cgen.lines.len-2] = ''
+		// same here
+		if p.cgen.line_directives {
+			p.cgen.lines[p.cgen.lines.len-3] = ''
+		}
 		p.genln('if ($tmp .ok) {')
 		p.genln('$name = *($typ*) $tmp . data;')
 		p.genln('} else {')
@@ -417,7 +427,7 @@ fn (p mut Parser) gen_array_init(typ string, no_alloc bool, new_arr_ph int, nr_e
 	// Need to do this in the second pass, otherwise it goes to the very top of the out.c file
 	if !p.first_pass() {
 		p.cgen.set_placeholder(new_arr_ph,
-			'$new_arr($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
+			'${new_arr}($nr_elems, $nr_elems, sizeof($typ), EMPTY_ARRAY_OF_ELEMS( $typ, $nr_elems ) { ')
 	}
 }
 
@@ -494,7 +504,7 @@ fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
 	else {
 		if p.tok == .not {
 			// old &User{!} ==> 0 hack
-			p.error('use `$t.name(0)` instead of `&$t.name{!}`')
+			p.error('use `${t.name}(0)` instead of `&$t.name{!}`')
 			/*
 			p.next()
 			p.gen('0')

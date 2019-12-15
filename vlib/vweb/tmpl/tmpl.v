@@ -15,7 +15,7 @@ const (
 
 pub fn compile_template(path string) string {
 	//lines := os.read_lines(path)
-	html := os.read_file(path) or {
+	mut html := os.read_file(path) or {
 		panic('html failed')
 	}
 	mut	header := ''
@@ -24,13 +24,14 @@ pub fn compile_template(path string) string {
 			panic('html failed')
 		}
 		header = h.replace('\'', '"')
+		html = header + html
 	}
 	lines := html.split_into_lines()
 	mut s := strings.new_builder(1000)
 	//base := path.all_after('/').replace('.html', '')
 	s.writeln('
 mut sb := strings.new_builder(${lines.len * 30})
-header := \'$header\'
+header := \' \' // TODO remove
 _ = header
 //footer := \'footer\'
 ')
@@ -75,7 +76,7 @@ _ = header
 		}
 		// HTML, may include `@var`
 		else {
-			s.writeln(line.replace('@', '\x24').replace('\'', '"') )
+			s.writeln(line.replace('@', '\x24').replace("'", '"') )
 		}
 	}
 	s.writeln(STR_END)

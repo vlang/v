@@ -77,13 +77,13 @@ const (
 	// Each tetro has its unique color
 	Colors = [
 		gx.rgb(0, 0, 0),        // unused ?
-		gx.rgb(253, 32, 47),    // lightred quad
-		gx.rgb(0, 110, 194),    // lightblue triple
-		gx.rgb(170, 170, 0),    // darkyellow short topright
-		gx.rgb(170, 0, 170),    // purple short topleft
-		gx.rgb(50, 90, 110),    // darkgrey long topleft
-		gx.rgb(0, 170, 0),      // lightgreen long topright
-		gx.rgb(170, 85, 0),     // brown longest
+		gx.rgb(255, 242, 0),    // yellow quad
+		gx.rgb(174, 0, 255),    // purple triple
+		gx.rgb(60, 255, 0),     // green short topright
+		gx.rgb(255, 0, 0),      // red short topleft
+		gx.rgb(255, 180, 31),   // orange long topleft
+		gx.rgb(33, 66, 255),    // blue long topright
+		gx.rgb(74, 198, 255),   // lightblue longest
 		gx.rgb(0, 170, 170),    // unused ?
 	]
 
@@ -152,11 +152,12 @@ fn main() {
 	gg.clear(BackgroundColor)
 	// Try to load font
 	game.ft = freetype.new_context(gg.Cfg{
-			width: WinWidth
-			height: WinHeight
-			use_ortho: true
-			font_size: 18
-			scale: 2
+		width: WinWidth
+		height: WinHeight
+		use_ortho: true
+		font_size: 18
+		scale: 2
+		window_user_ptr: 0
 	})
 	game.font_loaded = (game.ft != 0 )
 	for {

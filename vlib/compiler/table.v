@@ -44,7 +44,16 @@ enum AccessMod {
 	private_mut    // private mutable
 	public         // public immutable (readonly)
 	public_mut     // public, but mutable only in this module
-	public_mut_mut // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+	global         // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+}
+
+fn (a []AccessMod) contains(b AccessMod) bool {
+	for elm in a {
+		if elm == b {
+			return true
+		}
+	}
+	return false
 }
 
 enum TypeCategory {
@@ -62,8 +71,7 @@ enum TypeCategory {
 }
 
 struct Var {
-pub:
-mut:
+pub mut:
 	typ             string
 	name            string
 	idx             int // index in the local_vars array
@@ -92,8 +100,7 @@ mut:
 }
 
 struct Type {
-pub:
-mut:
+pub mut:
 	mod            string
 	name           string
 	cat            TypeCategory
@@ -111,7 +118,7 @@ mut:
 	// This information is needed in the first pass.
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
-
+	is_flag        bool  // enum bitfield flag
 }
 
 struct TypeNode {
@@ -122,7 +129,7 @@ struct TypeNode {
 
 /*
 // For debugging types
-fn (t Type) str() string {
+pub fn (t Type) str() string {
 	mut s := 'type "$t.name" {'
 	if t.fields.len > 0 {
 		// s += '\n    $t.fields.len fields:\n'
@@ -185,10 +192,10 @@ const (
 )
 
 // This is used for debugging only
-fn (f Fn) str() string {
+pub fn (f Fn) str() string {
 	t := Table{}
 	str_args := f.str_args(t)
-	return '$f.name($str_args) $f.typ'
+	return '${f.name}($str_args) $f.typ'
 }
 
 pub fn (t &Table) debug_fns() string {
@@ -502,7 +509,7 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 	}
 	// TODO table.typesmap[type_name].methods << f
 	mut t := p.table.typesmap[type_name]
-	if f.name != 'str' && f in t.methods  {
+	if f.name != 'str' && f in t.methods {
 		p.error('redefinition of method `${type_name}.$f.name`')
 	}
 	t.methods << f
@@ -594,7 +601,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		p.cur_fn.typ = got
 		return true
 	}
-
+	if throw && p.base_type(got) == p.base_type(expected) {
+		return true
+	}
 	// variadic
 	if expected.starts_with('varg_') {
 		expected = expected[5..]
@@ -721,6 +730,14 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	return true
 }
 
+	fn (p mut Parser) base_type(name string) string {
+	    typ := p.find_type(name)
+	    if typ.parent != '' {
+	        return p.base_type(typ.parent)
+	    }
+	    return name
+	}
+
 // throw by default
 fn (p mut Parser) check_types(got, expected string) bool {
 	if p.first_pass() { return true }
@@ -771,13 +788,14 @@ fn (t &Table) main_exists() bool {
 	return false
 }
 
-fn (t &Table) has_at_least_one_test_fn() bool {
+fn (t &Table) all_test_function_names() []string {
+	mut res := []string
 	for _, f in t.fns {
-		if f.name.starts_with('main__test_') {
-			return true
+		if f.name.contains('__test_') {
+			res << f.name
 		}
 	}
-	return false
+	return res
 }
 
 fn (t &Table) find_const(name string) ?Var {
@@ -938,8 +956,8 @@ fn (p &Parser) identify_typo(name string) string {
 // compare just name part, some items are mod prefied
 fn typo_compare_name_mod(a, b, b_mod string) f32 {
 	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
-	auidx := a.index('__') or { -1 }
-	buidx := b.index('__') or { -1 }
+	auidx := a.index('__') or { return 0 } // TODO or {-1} once cgen lines bug is fixed //-1 }
+	buidx := b.index('__') or { return 0 } //-1 }
 	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
 	a_name := if auidx != -1 { a[auidx+2..] } else { a }
 	b_name := if buidx != -1 { b[buidx+2..] } else { b }

@@ -202,13 +202,23 @@ pub fn dial(address string, port int) ?Socket {
 	return s
 }
 
-// send string data to socket
+// send data to socket (when you have a memory buffer)
 pub fn (s Socket) send(buf byteptr, len int) ?int {
-	res := C.send(s.sockfd, buf, len, MSG_NOSIGNAL)
-	if res < 0 {
-		return error('net.send: failed with $res')
+	mut dptr := buf
+	mut dlen := len
+	for {
+		sbytes := C.send(s.sockfd, dptr, dlen, MSG_NOSIGNAL)
+		if sbytes < 0 { return error('net.send: failed with $sbytes') }
+		dlen -= sbytes
+		if dlen <= 0 { break }
+		dptr += sbytes
 	}
-	return res
+	return len
+}
+
+// send string data to socket (when you have a v string)
+pub fn (s Socket) send_string(sdata string) ?int {
+	return s.send( sdata.str, sdata.len )
 }
 
 // receive string data from socket

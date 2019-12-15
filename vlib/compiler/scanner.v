@@ -298,14 +298,16 @@ fn (s mut Scanner) scan() ScanRes {
 				s.inside_string = false
 			}
 		}
-		if s.inter_start && next_char != `.` {
+		// end of `$expr`
+		// allow `'$a.b'` and `'$a.c()'`
+		if s.inter_start && next_char != `.` && next_char != `(` {
 			s.inter_end = true
 			s.inter_start = false
 		}
 		if s.pos == 0 && next_char == ` ` {
-			s.pos++
 			//If a single letter name at the start of the file, increment
 			//Otherwise the scanner would be stuck at s.pos = 0
+			s.pos++
 		}
 		return scan_res(.name, name)
 	}
@@ -313,6 +315,16 @@ fn (s mut Scanner) scan() ScanRes {
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 		num := s.ident_number()
 		return scan_res(.number, num)
+	}
+	// Handle `'$fn()'`
+	if c == `)` && s.inter_start {
+		s.inter_end = true
+		s.inter_start = false
+		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
+		if next_char == s.quote {
+			s.inside_string = false
+		}
+		return scan_res(.rpar, '')
 	}
 	// all other tokens
 	match c {
@@ -382,16 +394,14 @@ fn (s mut Scanner) scan() ScanRes {
 		return scan_res(.rsbr, '')
 	 }
 	 `{` {
-		// Skip { in ${ in strings
-		// }
+		// Skip { in `${` in strings
 		if s.inside_string {
 			return s.scan()
 		}
 		return scan_res(.lcbr, '')
 	}
 	 `$` {
-	// 	if s.inter_start {
-		if s.inside_string {// || s.inter_start {
+		if s.inside_string {
 			return scan_res(.str_dollar, '')
 		}  else {
 			return scan_res(.dollar, '')
@@ -402,8 +412,7 @@ fn (s mut Scanner) scan() ScanRes {
 		// s = `hello ${name} !`
 		if s.inside_string {
 			s.pos++
-			// TODO UNNEEDED?
-			if s.text[s.pos] == single_quote {
+			if s.text[s.pos] == s.quote {
 				s.inside_string = false
 				return scan_res(.str, '')
 			}
@@ -644,11 +653,7 @@ fn (s mut Scanner) scan() ScanRes {
 			return s.end_of_file()
 		}
 	}
-	mut msg := 'invalid character `${c.str()}`'
-	if c == `"` {
-		msg += ', use \' to denote strings'
-	}
-	s.error(msg)
+	s.error('invalid character `${c.str()}`')
 	return s.end_of_file()
 }
 
@@ -708,15 +713,19 @@ fn (s mut Scanner) ident_string() string {
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
 			s.error('0 character in a string literal')
 		}
-		// ${var}
-		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		// ${var} (ignore in vfmt mode)
+		if c == `{` && prevc == `$` && !is_raw && !s.is_fmt &&
+			s.count_symbol_before(s.pos-2, slash) % 2 == 0
+		{
 			s.inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0 {
+		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt &&
+			!is_raw && s.count_symbol_before(s.pos-2, slash) % 2 == 0
+		{
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
@@ -763,7 +772,8 @@ fn (s mut Scanner) ident_char() string {
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
-			s.error('invalid character literal (more than one character: $len)')
+			s.error('invalid character literal (more than one character)\n' +
+				'use quotes for strings, backticks for characters')
 		}
 	}
 	if c == '\\`' {

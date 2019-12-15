@@ -4,6 +4,10 @@
 
 module builtin
 
+pub fn println(s string) {
+	C.printf('%.*s\n', s.len, s.str)
+}
+
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 	println('not implemented, see builtin_windows.v')
 	return false
