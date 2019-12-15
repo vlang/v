@@ -23,15 +23,7 @@ fn main() {
 	//defer { println(time.ticks() - t) }
 	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
-	options := args.filter(it.starts_with('-'))
-  
-	//NB: command should be explicitly set by the command line (os.args)
-	//    NOT passed through VFLAGS, otherwise the naked `v` invocation for
-	//    the repl does not work when you have VFLAGS with -cc or -cflags set
-	//    which may be surprising to v users.
-	potential_commands := os.args.filter(!it.starts_with('-'))
-	command := if potential_commands.len > 1 { potential_commands[1] } else { '' }
-
+	options, command := compiler.get_v_options_and_main_command( args )	
 	// external tool
 	if command in simple_tools {
 		compiler.launch_tool('v' + command)
