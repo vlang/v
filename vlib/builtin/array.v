@@ -231,6 +231,27 @@ fn (a array) slice(start, _end int) array {
 		len: l
 		cap: l
 	}
+	return res
+}
+
+fn (a array) slice_clone(start, _end int) array {
+	mut end := _end
+	if start > end {
+		panic('array.slice: invalid slice index ($start > $end)')
+	}
+	if end > a.len {
+		panic('array.slice: slice bounds out of range ($end >= $a.len)')
+	}
+	if start < 0 {
+		panic('array.slice: slice bounds out of range ($start < 0)')
+	}
+	l := end - start
+	res := array {
+		element_size: a.element_size
+		data: a.data + start * a.element_size
+		len: l
+		cap: l
+	}
 	return res.clone()
 }
 
