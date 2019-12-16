@@ -1140,6 +1140,16 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 					p.cgen.set_placeholder(ph, '${typ}_str(')
 					p.gen(')')
 					continue
+				} else {
+					base := p.base_type(T.name)
+					if base != T.name {
+						base_type := p.find_type(base)
+						if base_type.has_method('str') {
+							p.cgen.set_placeholder(ph, '${base_type.name}_str(')
+							p.gen(')')
+							continue
+						}
+					}
 				}
 				error_msg := ('`$typ` needs to have method `str() string` to be printable')
 				p.error(error_msg)
