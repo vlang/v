@@ -46,6 +46,7 @@ fn test_atof() {
 	// special cases
 	mut f1 := f64(0.0)
 	mut ptr := *u64(&f1)
+	ptr = *u64(&f1)
 
 	// DOUBLE_PLUS_ZERO
 	f1=0.0
