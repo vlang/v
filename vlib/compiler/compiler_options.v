@@ -14,7 +14,7 @@ pub fn get_v_options_and_main_command(args []string) ([]string,string) {
 			continue
 		}else{
 			options << a
-			if a in ['-o', '-os', '-cc', '-cflags'] { i++ }
+			if a in ['-o', '-os', '-cc', '-cflags', '-d'] { i++ }
 		}
 	}
 	// potential_commands[0] is always the executable itself, so ignore it
