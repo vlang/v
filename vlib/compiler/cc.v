@@ -14,15 +14,14 @@ fn todo() {
 
 }
 
-fn (v &V) no_mingw_installed() bool {
-	$if !windows {
-		panic('no_mingw_installed() can only run on Windows')
-	}
-	os.exec('gcc -v') or {
-		if v.pref.is_verbose {
-			println('mingw not found, trying to build with msvc...')
+fn (v &V) no_cc_installed() bool {
+	$if windows {	
+		os.exec('$v.pref.ccompiler -v') or {
+			if v.pref.is_verbose {
+				println('C compiler not found, trying to build with msvc...')
+			}
+			return true
 		}
-		return true
 	}
 	return false
 }
@@ -72,7 +71,7 @@ fn (v mut V) cc() {
 		}
 	}
 	$if windows {
-		if v.pref.ccompiler == 'msvc' || v.no_mingw_installed() {
+		if v.pref.ccompiler == 'msvc' || v.no_cc_installed() {
 			v.cc_msvc()
 			return
 		}
@@ -487,7 +486,7 @@ fn (c &V) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags( flag )
-			if c.pref.ccompiler == 'msvc' {
+			if c.pref.ccompiler == 'msvc' || c.no_cc_installed() {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			}
 			else {
