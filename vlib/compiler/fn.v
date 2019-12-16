@@ -403,6 +403,7 @@ fn (p mut Parser) fn_decl() {
 	// Register ?option type for return value and args
 	if typ.starts_with('Option_') {
 		p.cgen.typedefs << 'typedef Option $typ;'
+		//p.cgen.typedefs << 'typedef struct Option_$typ Option_$typ'
 	}
 	for arg in f.args {
 		if arg.typ.starts_with('Option_') {

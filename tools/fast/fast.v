@@ -11,22 +11,26 @@ fn main() {
 	vdir := os.dir(os.dir(dir))
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/tools/fast/`')
-	}	
+	}
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
 	println('Fetching updates...')
-	exec('git pull --rebase')
+	ret := os.system('git pull --rebase')
+	if ret != 0 {
+		println('failed to git pull')
+		return
+	}
 	mut commit_hash := exec('git rev-parse HEAD')
 	commit_hash = commit_hash[..7]
 	if !os.exists('table.html') {
 		os.create('table.html') or { panic(err) }
-	}	
+	}
 	mut table := os.read_file('table.html') or { panic(err) }
 	// Do nothing if it's already been processed.
 	if table.contains(commit_hash) {
 		println('Commit $commit_hash has already been processed')
 		return
-	}	
+	}
 	// Build an optimized V
 	println('Building vprod...')
 	exec('v -o $vdir/vprod -prod $vdir/v.v')
@@ -74,7 +78,7 @@ fn measure(cmd string) int {
 	println('Warming up...')
 	for i in 0..3 {
 		exec(cmd)
-	}	
+	}
 	println('Building...')
 	ticks := time.ticks()
 	exec(cmd)

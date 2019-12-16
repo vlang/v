@@ -4,6 +4,16 @@
 
 module builtin
 
+/*
+struct Option2<T> {
+	data T
+	error string
+	ecode int
+	ok bool
+	is_none bool
+}
+*/
+
 struct Option {
 	data     [300]byte
 	error    string

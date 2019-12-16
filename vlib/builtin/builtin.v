@@ -106,7 +106,7 @@ __global nr_mallocs int = 0
 [unsafe_fn]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
-		panic('malloc(<0)')
+		panic('malloc(<=0)')
 	}
 	$if prealloc {
 		res := g_m2_ptr
@@ -136,8 +136,8 @@ TODO
 }
 
 pub fn calloc(n int) byteptr {
-	if n < 0 {
-		panic('calloc(<0)')
+	if n <= 0 {
+		panic('calloc(<=0)')
 	}
 	return C.calloc(n, 1)
 }

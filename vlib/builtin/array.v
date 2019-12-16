@@ -18,11 +18,12 @@ pub:
 
 // Private function, used by V (`nums := []int`)
 fn new_array(mylen, cap, elm_size int) array {
+	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array {
 		len: mylen
 		cap: cap
 		element_size: elm_size
-		data: calloc(cap * elm_size)
+		data: calloc(cap_ * elm_size)
 	}
 	return arr
 }
@@ -36,11 +37,12 @@ pub fn make(len, cap, elm_size int) array {
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
+	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array {
 		len: len
 		cap: cap
 		element_size: elm_size
-		data: calloc(cap * elm_size)
+		data: calloc(cap_ * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
 	C.memcpy(arr.data, c_array, len * elm_size)
@@ -96,11 +98,15 @@ pub fn (a array) repeat(nr_repeats int) array {
 	if nr_repeats < 0 {
 		panic('array.repeat: count is negative (count == $nr_repeats)')
 	}
+	mut size := nr_repeats * a.len * a.element_size
+	if size == 0 {
+		size = a.element_size
+	}
 	arr := array {
 		len: nr_repeats * a.len
 		cap: nr_repeats * a.len
 		element_size: a.element_size
-		data: calloc(nr_repeats * a.len * a.element_size)
+		data: calloc(size)
 	}
 	for i := 0; i < nr_repeats; i++ {
 		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
@@ -267,11 +273,15 @@ pub fn (a array) reverse() array {
 
 // array.clone returns an independent copy of a given array
 pub fn (a array) clone() array {
+	mut size := a.cap * a.element_size
+	if size == 0 {
+		size++
+	}
 	arr := array {
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
-		data: calloc(a.cap * a.element_size)
+		data: calloc(size)
 	}
 	C.memcpy(arr.data, a.data, a.cap * a.element_size)
 	return arr
