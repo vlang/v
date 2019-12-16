@@ -511,7 +511,7 @@ fn converter(pn mut PrepNumber) u64 {
 		} else {
 			//C.printf("All 0!\n")
 			if (s1 & (check_round_bit<<u32(1) )) != 0 {
-				C.printf("Add 1 form -1 bit control!\n")
+				//C.printf("Add 1 form -1 bit control!\n")
 				s2,s1,s0 = add96(s2,s1,s0, 0,check_round_bit,0)
 			}
 		}
