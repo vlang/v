@@ -284,10 +284,12 @@ fn (p mut Parser) fn_decl() {
 		f.args << receiver
 		p.register_var(receiver)
 	}
-	// +-/* methods
+	// +-/* methods (operator overloading)
+	mut is_op := false
 	if p.tok in [.plus, .minus, .mul, .div, .mod] {
 		f.name = p.tok.str()
 		p.next()
+		is_op = true
 	}
 	else {
 		f.name = p.check_name()
@@ -364,6 +366,14 @@ fn (p mut Parser) fn_decl() {
 	}
 	// Args (...)
 	p.fn_args(mut f)
+	if is_op {
+		if f.args.len != 1 + 1 { // +1 is for the receiver
+			p.error('operator overloading methods must have only 1 argument')
+		}
+		if f.args[0].typ != f.args[1].typ {
+			p.error('operators must have the same types on both sides')
+		}
+	}
 	// Returns an error?
 	if p.tok == .not {
 		p.next()
