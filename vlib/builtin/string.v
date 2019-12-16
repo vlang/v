@@ -298,11 +298,13 @@ pub fn (s string) i64() i64 {
 }
 
 pub fn (s string) f32() f32 {
-	return C.atof(charptr(s.str))
+	//return C.atof(charptr(s.str))
+	return f32(strconv.atof64(s))
 }
 
 pub fn (s string) f64() f64 {
-	return C.atof(charptr(s.str))
+	//return C.atof(charptr(s.str))
+	return strconv.atof64(s)
 }
 
 pub fn (s string) u32() u32 {
