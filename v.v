@@ -77,7 +77,7 @@ fn main() {
 
 fn v_command(command string, args []string) {
 	match command {
-		'', '.', 'run' {
+		'', '.', 'run', 'build' { // handled later in vlib/compiler/main.v
 			return
 		}
 		'version' {
