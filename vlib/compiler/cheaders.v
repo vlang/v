@@ -2,6 +2,28 @@ module compiler
 
 const (
 
+c_common_macros = '
+
+#define EMPTY_STRUCT_DECLARATION
+#define EMPTY_STRUCT_INITIALIZATION 0
+// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
+#define TCCSKIP(x) x
+
+#ifdef __TINYC__
+#undef EMPTY_STRUCT_DECLARATION
+#undef EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_DECLARATION char _dummy
+#define EMPTY_STRUCT_INITIALIZATION 0
+#undef EMPTY_ARRAY_OF_ELEMS
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef TCCSKIP
+#define TCCSKIP(x)
+#endif
+
+#define OPTION_CAST(x) (x)
+'
+
 c_headers = '
 
 //#include <inttypes.h>  // int64_t etc
@@ -69,24 +91,7 @@ c_headers = '
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
-#define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION 0
-// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
-#define TCCSKIP(x) x
-
-#ifdef __TINYC__
-#undef EMPTY_STRUCT_DECLARATION
-#undef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_DECLARATION char _dummy
-#define EMPTY_STRUCT_INITIALIZATION 0
-#undef EMPTY_ARRAY_OF_ELEMS
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
-#undef TCCSKIP
-#define TCCSKIP(x)
-#endif
-
-#define OPTION_CAST(x) (x)
+$c_common_macros 
 
 #ifdef _WIN32
 #define WINVER 0x0600
@@ -209,19 +214,7 @@ typedef map map_string;
 
 bare_c_headers = '
 
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
-#define TCCSKIP(x) x
-
-#ifdef __TINYC__
-#undef EMPTY_ARRAY_OF_ELEMS
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
-#undef TCCSKIP
-#define TCCSKIP(x)
-#endif
-
-#ifndef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_INITIALIZATION 0
-#endif
+$c_common_macros
 
 #ifndef exit
 #define exit(rc) sys_exit(rc)
@@ -229,3 +222,5 @@ void sys_exit (int);
 #endif
 '
 )
+
+

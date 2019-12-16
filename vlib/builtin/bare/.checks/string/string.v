@@ -39,12 +39,24 @@ fn check_str_clone() {
 	assert c == "-6789"
 }
 
+fn check_string_add_works(){
+  abc := 'abc'
+  combined := 'a' + 'b' + 'c'
+  assert abc.len == combined.len
+  assert abc[0] == combined[0]
+  assert abc[1] == combined[1]
+  assert abc[2] == combined[2]
+  assert abc[0] == `a`
+  assert abc == combined
+}  
+
 fn main () {
 	mut fails := 0
 	fails += forkedtest.normal_run(check_string_eq, "check_string_eq")
 	fails += forkedtest.normal_run(check_i64_tos, "check_i64_tos")
 	fails += forkedtest.normal_run(check_i64_str, "check_i64_str")
 	fails += forkedtest.normal_run(check_str_clone, "check_str_clone")
+	fails += forkedtest.normal_run(check_string_add_works,    "check_string_add_works")
 	assert fails == 0
 	sys_exit(0)
 }
