@@ -1441,7 +1441,7 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 		expr := p.cgen.cur_line[pos..]
 		left := p.cgen.cur_line[..pos]
 		typ := expr_type.replace('Option_', '')
-		p.cgen.resetln(left + 'opt_ok($expr, sizeof($typ))')
+		p.cgen.resetln(left + 'opt_ok(($typ[]){ $expr }, sizeof($typ))')
 	}
 	else if expr_type.starts_with('Option_') &&
 		p.assigned_type == expr_type['Option_'.len..] && p.tok == .key_orelse

@@ -73,7 +73,7 @@ fn test_opt_default() {
 
 fn foo_ok() ?int {
 	return 777
-}	
+}
 
 fn foo_str() ?string {
 	return 'something'
@@ -81,7 +81,7 @@ fn foo_str() ?string {
 
 fn test_q() {
 	//assert foo_ok()? == true
-}	
+}
 
 struct Person {
 mut:
@@ -111,4 +111,16 @@ fn test_field_or() {
 		'default'
 	}
 	assert mytitle == 'default'
+}
+
+struct Thing {
+mut:
+	opt ?int
+}
+
+fn test_opt_field() {
+	mut t := Thing{}
+	t.opt = 5
+	val := t.opt or { return }
+	assert val == 5
 }
