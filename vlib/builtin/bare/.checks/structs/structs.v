@@ -33,21 +33,10 @@ fn check_non_empty_struct(){
   println('sizeof NonEmptyStruct:' + i64_str( sizeof(NonEmptyStruct) , 10 ))
 }
 
-fn check_string_add_works(){
-  abc := 'abc'
-  combined := 'a' + 'b' + 'c'
-  assert abc.len == combined.len
-  assert abc[0] == combined[0]
-  assert abc[1] == combined[1]
-  assert abc[2] == combined[2]
-  assert abc == combined
-}  
-
 fn main(){
 	mut fails := 0
 	fails += forkedtest.normal_run(check_simple_empty_struct, "check_simple_empty_struct")
 	fails += forkedtest.normal_run(check_non_empty_struct,    "check_non_empty_struct")
-	fails += forkedtest.normal_run(check_string_add_works,    "check_string_add_works")
 	assert fails == 0
 	sys_exit(0)
 }
