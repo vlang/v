@@ -163,7 +163,7 @@ pub fn strsci(x f64, digit_num int) string{
 	return tmpstr
 }
 
-// return a long string of the input f64, max  
+// return a long string of the input f64, max
 pub fn strlong(x f64) string {
 	buf := malloc(18+32)// TODO
 	C.sprintf(charptr(buf),"%0.30lf",x)
@@ -206,7 +206,7 @@ fn parser(s string ) (int,PrepNumber) {
 	mut pn := PrepNumber{}
 
 	for state != FSM_STOP {
-		
+
 		match  state {
 
 			// skip starting spaces
@@ -244,7 +244,7 @@ fn parser(s string ) (int,PrepNumber) {
 					state = FSM_E
 				}
 			}
-			
+
 			// reading leading zeros in the fractional part of mantissa
 			FSM_D {
 				if c == ZERO {
@@ -301,7 +301,7 @@ fn parser(s string ) (int,PrepNumber) {
 
 			// reading sign of exponent
 			FSM_G {
-				if (c == PLUS) {
+				if c == PLUS {
 					c = s[i++]
 				} else if c == MINUS {
 					expneg = true
@@ -337,7 +337,7 @@ fn parser(s string ) (int,PrepNumber) {
 
 			else {}
 		}
-		
+
 		//C.printf("len: %d i: %d str: %s \n",s.len,i,s[..i])
 		if i>=s.len {
 			state = FSM_STOP
@@ -383,7 +383,7 @@ fn parser(s string ) (int,PrepNumber) {
 // converter return a u64 with the bit image of the f64 number
 fn converter(pn mut PrepNumber) u64 {
 	mut binexp := 92
-	
+
 	mut s2:=u32(0)             // 96-bit precision integer
 	mut s1:=u32(0)
 	mut s0:=u32(0)
@@ -393,7 +393,7 @@ fn converter(pn mut PrepNumber) u64 {
 	mut r2:=u32(0)             // 96-bit precision integer
 	mut r1:=u32(0)
 	mut r0:=u32(0)
-	
+
 	mask28 := u32(0xF << 28)
 
 	mut result := u64(0)
@@ -449,14 +449,14 @@ fn converter(pn mut PrepNumber) u64 {
 		s0 = q0
 
 		pn.exponent++
-		
+
 	}
 
 	//C.printf("mantissa before normalization: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
 
 	// normalization, the 28 bit in s2 must the leftest one in the variable
-	if (s2 != 0 || s1 != 0|| s0 != 0) {
-		for ((s2 & mask28) == 0) {
+	if s2 != 0 || s1 != 0|| s0 != 0 {
+		for (s2 & mask28) == 0 {
 			q2, q1, q0 = lsl96(s2, s1, s0)
 			binexp--
 			s2 = q2
@@ -497,7 +497,7 @@ fn converter(pn mut PrepNumber) u64 {
 	*/
 
 	//C.printf("mantissa before rounding: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
-	
+
 	// s1 => 0xFFFFFFxx only F are rapresented
 	nbit := 7
 	check_round_bit := u32(1) << u32(nbit)
@@ -520,7 +520,7 @@ fn converter(pn mut PrepNumber) u64 {
 	}
 
 	// recheck normalization
-	if (s2 & (mask28<<u32(1)) != 0 ) {
+	if s2 & (mask28<<u32(1)) != 0 {
 		//C.printf("Renormalize!!")
 		q2, q1, q0 = lsr96(s2, s1, s0)
 		binexp--
@@ -532,13 +532,13 @@ fn converter(pn mut PrepNumber) u64 {
 	//tmp := ( u64(s2 & ~mask28) << 24) | ((u64(s1) + u64(128)) >> 8)
 	//C.printf("mantissa after rounding : %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
 	//C.printf("Tmp result: %016x\n",tmp)
-	
+
 	// end rounding
-	
+
 	// offset the binary exponent IEEE 754
 	binexp += 1023
 
-	if (binexp > 2046) {
+	if binexp > 2046 {
 		if pn.negative {
 			result = DOUBLE_MINUS_INFINITY
 		} else {
@@ -573,14 +573,14 @@ fn converter(pn mut PrepNumber) u64 {
 pub fn atof64(s string) f64 {
 	mut pn := PrepNumber{}
 	mut res_parsing := 0
-	
+
 	mut result := f64(0)
 	result=f64(0.0)
 	mut res_ptr := *u64(&result)
-	
+
 	res_parsing, pn = parser(s+' ') // TODO: need an extra char for now
 	//println(pn)
-	
+
 	match res_parsing {
 		PARSER_OK {
 			*res_ptr = converter( mut pn)
