@@ -18,6 +18,24 @@ pub fn (d f32) str() string {
 	return tos(buf, vstrlen(buf))
 }
 
+
+// return a string of the input f64 in scientific notation with digit_num digits displayed
+pub fn (x f64) strsci(digit_num int) string{
+	buf := malloc(digit_num*2+2)// TODO
+	conf_str := '%0.'+digit_num.str()+'e'
+	C.sprintf(charptr(buf), charptr(conf_str.str), x)
+	tmpstr := tos(buf, vstrlen(buf))
+	return tmpstr
+}
+
+// return a long string of the input f64, max  
+pub fn (x f64) strlong() string {
+	buf := malloc(18+32)// TODO
+	C.sprintf(charptr(buf),"%0.30lf",x)
+	tmpstr := tos(buf, vstrlen(buf))
+	return tmpstr
+}
+
 fn f32_abs(a f32) f32 {	return if a < 0 { -a } else { a } }
 fn f64_abs(a f64) f64 {	return if a < 0 { -a } else { a } }
 
