@@ -202,6 +202,8 @@ fn (fs mut FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 	return error("parameter '$longhand' not found")
 }
 
+// bool_opt returns an optional that returns the value associated with the flag.
+// In the situation that the flag was not provided, it returns null.
 pub fn (fs mut FlagParser) bool_opt(n string, a byte, u string) ?bool {
 	fs.add_flag(n, a, u, '<bool>')
 	parsed := fs.parse_bool_value(n, a) or {
@@ -234,6 +236,8 @@ pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
 	return fs.bool_(n, `\0`, v, u)
 }
 
+// int_multi returns all instances of values associated with the flags provided
+// In the case that none were found, it returns an empty array.
 pub fn (fs mut FlagParser) int_multi(n string, a byte, u string) []int {
 	fs.add_flag(n, a, u, '<multiple ints>')
 	parsed := fs.parse_value(n, a)
@@ -244,6 +248,8 @@ pub fn (fs mut FlagParser) int_multi(n string, a byte, u string) []int {
 	return value
 }
 
+// int_opt returns an optional that returns the value associated with the flag.
+// In the situation that the flag was not provided, it returns null.
 pub fn (fs mut FlagParser) int_opt(n string, a byte, u string) ?int {
 	fs.add_flag(n, a, u, '<int>')
 	parsed := fs.parse_value(n, a)
@@ -277,6 +283,8 @@ pub fn (fs mut FlagParser) int(n string, i int, u string) int {
 	return fs.int_(n, `\0`, i, u)
 }
 
+// float_multi returns all instances of values associated with the flags provided
+// In the case that none were found, it returns an empty array.
 pub fn (fs mut FlagParser) float_multi(n string, a byte, u string) []f32 {
 	fs.add_flag(n, a, u, '<multiple floats>')
 	parsed := fs.parse_value(n, a)
@@ -287,6 +295,8 @@ pub fn (fs mut FlagParser) float_multi(n string, a byte, u string) []f32 {
 	return value
 }
 
+// float_opt returns an optional that returns the value associated with the flag.
+// In the situation that the flag was not provided, it returns null.
 pub fn (fs mut FlagParser) float_opt(n string, a byte, u string) ?f32 {
 	fs.add_flag(n, a, u, '<float>')
 	parsed := fs.parse_value(n, a)
@@ -320,11 +330,15 @@ pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
 	return fs.float_(n, `\0`, f, u)
 }
 
+// string_multi returns all instances of values associated with the flags provided
+// In the case that none were found, it returns an empty array.
 pub fn (fs mut FlagParser) string_multi(n string, a byte, u string) []string {
 	fs.add_flag(n, a, u, '<multiple floats>')
 	return fs.parse_value(n, a)
 }
 
+// string_opt returns an optional that returns the value associated with the flag.
+// In the situation that the flag was not provided, it returns null.
 pub fn (fs mut FlagParser) string_opt(n string, a byte, u string) ?string {
 	fs.add_flag(n, a, u, '<string>')
 	parsed := fs.parse_value(n, a)
