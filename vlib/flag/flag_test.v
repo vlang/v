@@ -296,3 +296,24 @@ fn test_provided_option_is_returned() {
 	}
 	assert a && b == 3 && c == 'hello' && d == 3.14
 }
+
+fn test_multiple_arguments() {
+	mut fp := flag.new_flag_parser([
+		'-a', '2', '-a', '3', '-a', '5',
+		'-b', 'a', '-b', 'c', '-b', 'b',
+		'-c', '1.23', '-c', '2.34', '-c', '3.45'
+	])
+
+	//TODO Move to array comparison once it's implemented
+	//assert fp.int_multi('some-flag', `a`, '') == [2, 3, 5] &&
+	//	fp.string_multi('some-flag', `b`, '') == ['a', 'c', 'b'] &&
+	//	fp.float_multi('some-flag', `c`, '') == [1.23, 2.34, 3.45]
+
+	a := fp.int_multi('some-flag', `a`, '')
+	b := fp.string_multi('some-flag', `b`, '')
+	c := fp.float_multi('some-flag', `c`, '')
+	assert a.len == 3 && b.len == 3 && c.len == 3
+	assert a[0] == 2 && a[1] == 3 && a[2] == 5
+	assert b[0] == 'a' && b[1] == 'c' && b[2] == 'b'
+	assert c[0] == 1.23 && c[1] == 2.34 && c[2] == 3.45
+}

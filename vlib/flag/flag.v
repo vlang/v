@@ -234,6 +234,16 @@ pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
 	return fs.bool_(n, `\0`, v, u)
 }
 
+pub fn (fs mut FlagParser) int_multi(n string, a byte, u string) []int {
+	fs.add_flag(n, a, u, '<multiple ints>')
+	parsed := fs.parse_value(n, a)
+	mut value := []int
+	for val in parsed {
+		value << val.int()
+	}
+	return value
+}
+
 pub fn (fs mut FlagParser) int_opt(n string, a byte, u string) ?int {
 	fs.add_flag(n, a, u, '<int>')
 	parsed := fs.parse_value(n, a)
@@ -267,6 +277,16 @@ pub fn (fs mut FlagParser) int(n string, i int, u string) int {
 	return fs.int_(n, `\0`, i, u)
 }
 
+pub fn (fs mut FlagParser) float_multi(n string, a byte, u string) []f32 {
+	fs.add_flag(n, a, u, '<multiple floats>')
+	parsed := fs.parse_value(n, a)
+	mut value := []f32
+	for val in parsed {
+		value << val.f32()
+	}
+	return value
+}
+
 pub fn (fs mut FlagParser) float_opt(n string, a byte, u string) ?f32 {
 	fs.add_flag(n, a, u, '<float>')
 	parsed := fs.parse_value(n, a)
@@ -298,6 +318,11 @@ pub fn (fs mut FlagParser) float_(n string, a byte, f f32, u string) f32 {
 //TODO error handling for invalid string to float conversion
 pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
 	return fs.float_(n, `\0`, f, u)
+}
+
+pub fn (fs mut FlagParser) string_multi(n string, a byte, u string) []string {
+	fs.add_flag(n, a, u, '<multiple floats>')
+	return fs.parse_value(n, a)
 }
 
 pub fn (fs mut FlagParser) string_opt(n string, a byte, u string) ?string {
