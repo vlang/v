@@ -158,7 +158,7 @@ fn test_allow_to_build_usage_message() {
 	usage := fp.usage()
 	mut all_strings_found := true
 	for s in ['flag_tool', 'v0.0.0',
-	'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>', 'a_string <string>:not_stuff',
+	'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>', 'a_string <string>',
 	'some int to define',
 	'some bool to define',
 	'this should appear on the next line',
@@ -262,4 +262,37 @@ fn test_allow_kebab_options() {
 	u := fp.usage()
 	assert u.contains(' --my-long-flag')
 	assert u.contains(' --my-long-option')
+}
+
+fn test_not_provided_option_is_not_returned() {
+	mut fp := flag.new_flag_parser([])
+	fp.bool_opt('some-flag', `a`, '') or {
+		fp.int_opt('some-flag', `a`, '') or {
+			fp.float_opt('some-flag', `a`, '') or {
+				fp.string_opt('some-flag', `a`, '') or {
+					//Everything should not return
+					return
+				}
+			}
+		}
+	}
+	//If we reach here, one of them returned a value.
+	assert false
+}
+
+fn test_provided_option_is_returned() {
+	mut fp := flag.new_flag_parser(['-a', '-b', '3', '-c', 'hello', '-d', '3.14'])
+	a := fp.bool_opt('some-flag', `a`, '') or {
+		panic('bool_opt did not return a bool')
+	}
+	b := fp.int_opt('some-flag', `b`, '') or {
+		panic('int_opt did not return an int')
+	}
+	c := fp.string_opt('some-flag', `c`, '') or {
+		panic('string_opt did not return a string')
+	}
+	d := fp.float_opt('some-flag', `d`, '') or {
+		panic('float_opt did not return a float')
+	}
+	assert a && b == 3 && c == 'hello' && d == 3.14
 }

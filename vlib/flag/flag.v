@@ -121,24 +121,47 @@ fn (fs mut FlagParser) add_flag(n string, a byte, u, vd string) {
 //
 //  - the name, usage are registered
 //  - found arguments and corresponding values are removed from args list
-fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
-	c := '--$n'
-	for i, a in fs.args {
-		if a == c || (a.len == 2 && a[1] == ab) {
-			if i+1 > fs.args.len { panic('Missing argument for \'$n\'') }
+fn (fs mut FlagParser) parse_value(longhand string, shorthand byte) []string {
+	full := '--$longhand'
+	mut found_entries := []string
+	mut to_delete := []int
+	mut should_skip_one := false
+	for i, arg in fs.args {
+		if should_skip_one {
+			should_skip_one = false
+			continue
+		}
+		if arg == '--' {
+			//End of input. We're done here.
+			break
+		}
+		if arg == full || (arg[0] == `-` && arg[1] == shorthand && arg.len == 2) {
+			if i+1 > fs.args.len {
+				panic("Missing argument for '$longhand'")
+			}
 			nextarg := fs.args[i+1]
-			if nextarg.limit(2) == '--' { panic('Missing argument for \'$n\'') }
-			val := fs.args[i+1]
-			fs.args.delete(i+1)
-			fs.args.delete(i)
-			return val
-		} else if a.len > c.len && c == a[..c.len] && a[c.len..c.len+1] == '=' {
-			val := a[c.len+1..]
-			fs.args.delete(i)
-			return val
+			if nextarg.len > 2 && nextarg[..2] == '--' {
+				//It could be end of input (--) or another argument (--abc).
+				//Both are invalid so die.
+				panic("Missing argument for '$longhand'")
+			}
+			found_entries << fs.args[i+1]
+			to_delete << i
+			to_delete << i+1
+			should_skip_one = true
+			continue
+		}
+		if arg.len > full.len+1 && arg[..full.len+1] == '$full=' {
+			found_entries << arg[full.len+1..]
+			to_delete << i
+			continue
 		}
 	}
-	return error('parameter \'$n\' not found')
+	for i, del in to_delete {
+		//i entrys are deleted so it's shifted left i times.
+		fs.args.delete(del - i)
+	}
+	return found_entries
 }
 
 // special parsing for bool values
@@ -147,27 +170,44 @@ fn (fs mut FlagParser) parse_value(n string, ab byte) ?string {
 // special: it is allowed to define bool flags without value
 // -> '--flag' is parsed as true
 // -> '--flag' is equal to '--flag=true'
-fn (fs mut FlagParser) parse_bool_value(n string, ab byte) ?string {
-	c := '--$n'
-	for i, a in fs.args {
-		if a == c || (a.len == 2 && a[1] == ab) {
+fn (fs mut FlagParser) parse_bool_value(longhand string, shorthand byte) ?string {
+	full := '--$longhand'
+	for i, arg in fs.args {
+		if arg == '--' {
+			//End of input. We're done.
+			break
+		}
+		if arg == full || (arg[0] == `-` && arg[1] == shorthand && arg.len == 2) {
 			if fs.args.len > i+1 && (fs.args[i+1] in ['true', 'false'])  {
 				val := fs.args[i+1]
 				fs.args.delete(i+1)
 				fs.args.delete(i)
 				return val
 			} else {
-				val := 'true'
 				fs.args.delete(i)
-				return val
+				return 'true'
 			}
-		} else if a.len > c.len && c == a[..c.len] && a[c.len..c.len+1] == '=' {
-			val := a[c.len+1..]
+		}
+		if arg.len > full.len+1 && arg[..full.len+1] == '$full=' {
+			// Flag abc=true
+			val := arg[full.len+1..]
 			fs.args.delete(i)
 			return val
 		}
+		if arg[0] == `-` && arg.index_byte(shorthand) != -1 {
+			// -abc is equivalent to -a -b -c
+			return 'true'
+		}
 	}
-	return error('parameter \'$n\' not found')
+	return error("parameter '$longhand' not found")
+}
+
+pub fn (fs mut FlagParser) bool_opt(n string, a byte, u string) ?bool {
+	fs.add_flag(n, a, u, '<bool>')
+	parsed := fs.parse_bool_value(n, a) or {
+		return error("parameter '$n' not provided")
+	}
+	return parsed == 'true'
 }
 
 // defining and parsing a bool flag
@@ -178,11 +218,10 @@ fn (fs mut FlagParser) parse_bool_value(n string, ab byte) ?string {
 // version with abbreviation
 //TODO error handling for invalid string to bool conversion
 pub fn (fs mut FlagParser) bool_(n string, a byte, v bool, u string) bool {
-	fs.add_flag(n, a, u, '<bool>:'+v.str())
-	parsed := fs.parse_bool_value(n, a) or {
+	value := fs.bool_opt(n, a, u) or {
 		return v
 	}
-	return parsed == 'true'
+	return value
 }
 
 // defining and parsing a bool flag
@@ -195,6 +234,15 @@ pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
 	return fs.bool_(n, `\0`, v, u)
 }
 
+pub fn (fs mut FlagParser) int_opt(n string, a byte, u string) ?int {
+	fs.add_flag(n, a, u, '<int>')
+	parsed := fs.parse_value(n, a)
+	if parsed.len == 0 {
+		return error("parameter '$n' not provided")
+	}
+	return parsed[0].int()
+}
+
 // defining and parsing an int flag
 //  if defined
 //      the value is returned (int)
@@ -203,11 +251,10 @@ pub fn (fs mut FlagParser) bool(n string, v bool, u string) bool {
 // version with abbreviation
 //TODO error handling for invalid string to int conversion
 pub fn (fs mut FlagParser) int_(n string, a byte, i int, u string) int {
-	fs.add_flag(n, a, u, '<int>:$i')
-	parsed := fs.parse_value(n, a) or {
+	value := fs.int_opt(n, a, u) or {
 		return i
 	}
-	return parsed.int()
+	return value
 }
 
 // defining and parsing an int flag
@@ -220,6 +267,15 @@ pub fn (fs mut FlagParser) int(n string, i int, u string) int {
 	return fs.int_(n, `\0`, i, u)
 }
 
+pub fn (fs mut FlagParser) float_opt(n string, a byte, u string) ?f32 {
+	fs.add_flag(n, a, u, '<float>')
+	parsed := fs.parse_value(n, a)
+	if parsed.len == 0 {
+		return error("parameter '$n' not provided")
+	}
+	return parsed[0].f32()
+}
+
 // defining and parsing a float flag
 //  if defined
 //      the value is returned (float)
@@ -228,11 +284,10 @@ pub fn (fs mut FlagParser) int(n string, i int, u string) int {
 // version with abbreviation
 //TODO error handling for invalid string to float conversion
 pub fn (fs mut FlagParser) float_(n string, a byte, f f32, u string) f32 {
-	fs.add_flag(n, a, u, '<float>:$f')
-	parsed := fs.parse_value(n, a) or {
+	value := fs.float_opt(n, a, u) or {
 		return f
 	}
-	return parsed.f32()
+	return value
 }
 
 // defining and parsing a float flag
@@ -245,6 +300,15 @@ pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
 	return fs.float_(n, `\0`, f, u)
 }
 
+pub fn (fs mut FlagParser) string_opt(n string, a byte, u string) ?string {
+	fs.add_flag(n, a, u, '<string>')
+	parsed := fs.parse_value(n, a)
+	if parsed.len == 0 {
+		return error("parameter '$n' not provided")
+	}
+	return parsed[0]
+}
+
 // defining and parsing a string flag
 //  if defined
 //      the value is returned (string)
@@ -252,11 +316,10 @@ pub fn (fs mut FlagParser) float(n string, f f32, u string) f32 {
 //      the default value is returned
 // version with abbreviation
 pub fn (fs mut FlagParser) string_(n string, a byte, v, u string) string {
-	fs.add_flag(n, a, u, '<string>:$v')
-	parsed := fs.parse_value(n, a) or {
+	value := fs.string_opt(n, a, u) or {
 		return v
 	}
-	return parsed
+	return value
 }
 
 // defining and parsing a string flag
