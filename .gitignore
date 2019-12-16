@@ -2,6 +2,7 @@ fns.txt
 *.dSYM
 *_test
 /v
+/v2
 /vprod
 /v.c
 /v.*.c

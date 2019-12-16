@@ -231,7 +231,7 @@ fn (a array) slice(start, _end int) array {
 		len: l
 		cap: l
 	}
-	return res
+	return res.clone()
 }
 
 // Private function. Used to implement assigment to the array element.
