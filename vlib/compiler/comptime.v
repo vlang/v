@@ -171,12 +171,18 @@ fn (p mut Parser) comp_time() {
 		p.check(.lpar)
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
+		if p.pref.is_verbose {
+			println('vweb template:')
+			println(v_code)
+		}
 		is_strings_imorted := p.import_table.known_import('strings')
 		if !is_strings_imorted {
 			p.register_import('strings', 0) // used by v_code
 		}
 		p.import_table.register_used_import('strings')
 		p.genln('/////////////////// tmpl start')
+		p.scanner.file_path = path
+		p.scanner.line_nr = 0
 		p.statements_from_text(v_code, false)
 		p.genln('/////////////////// tmpl end')
 		receiver := p.cur_fn.args[0]

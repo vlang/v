@@ -18,6 +18,7 @@ pub mut:
 	fn_cnt       int //atomic
 	obfuscate    bool
 	varg_access  []VargAccess
+	//enum_vals map[string][]string
 	//names        []Name
 }
 
@@ -230,9 +231,18 @@ fn is_primitive_type(typ string) bool {
 	return is_number_type(typ) || typ == 'string'
 }
 
+/*
+fn (t mut Table) register_enum_val(typ, val string) {
+	if t.enum_vals.len == 0 {
+		t.enum_vals = [val]
+	}
+}
+*/
+
 fn new_table(obfuscate bool) &Table {
 	mut t := &Table {
 		obfuscate: obfuscate
+		//enum_vals: map[string][]string
 	}
 	t.register_builtin('int')
 	t.register_builtin('size_t')
