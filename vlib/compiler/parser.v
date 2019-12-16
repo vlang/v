@@ -99,6 +99,7 @@ struct ParserState {
 	cgen_lines    []string
 	cgen_cur_line string
 	cgen_tmp_line string
+	cgen_is_tmp   bool
 	tokens        []Token
 	token_idx     int
 	tok           TokenKind
@@ -293,6 +294,7 @@ pub fn (p &Parser) save_state() ParserState {
 		cgen_lines    : p.cgen.lines
 		cgen_cur_line : p.cgen.cur_line
 		cgen_tmp_line : p.cgen.tmp_line
+		cgen_is_tmp   : p.cgen.is_tmp
 		tokens       : p.tokens
 		token_idx    : p.token_idx
 		tok          : p.tok
@@ -314,6 +316,7 @@ pub fn (p mut Parser) restore_state(state ParserState, scanner bool, cgen bool) 
 		p.cgen.lines    = state.cgen_lines
 		p.cgen.cur_line = state.cgen_cur_line
 		p.cgen.tmp_line = state.cgen_tmp_line
+		p.cgen.is_tmp   = state.cgen_is_tmp
 	}
 	p.tokens        = state.tokens
 	p.token_idx     = state.token_idx
@@ -335,6 +338,7 @@ fn (p mut Parser) clear_state(scanner bool, cgen bool) {
 		p.cgen.lines    = []
 		p.cgen.cur_line = ''
 		p.cgen.tmp_line = ''
+		p.cgen.is_tmp   = false
 	}
 	p.tokens = []
 	p.token_idx = 0

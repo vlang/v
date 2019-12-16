@@ -80,3 +80,21 @@ fn test_generic_method() {
     p.translate(2, 1.0)
     assert p.x == 2.0 && p.y == 1.0
 }
+
+fn get_values<T>(i T) []T {
+    return [i]
+}
+
+fn test_generic_fn_in_for_in_expression() {
+    for value in get_values(1) {
+        assert value == 1
+    }
+
+    for i, val in get_values(0) {
+        assert i == val
+    }
+
+    for value in get_values('a') {
+        assert value == 'a'
+    }
+}

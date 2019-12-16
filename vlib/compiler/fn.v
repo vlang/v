@@ -844,7 +844,12 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	generic := f.is_generic
 	p.fn_call_args(mut f)
 	if generic {
-		p.cgen.resetln(p.cgen.cur_line.replace('$cgen_name (', '$f.name ('))
+		line := if p.cgen.is_tmp {
+			p.cgen.tmp_line
+		} else {
+			p.cgen.cur_line
+		}
+		p.cgen.resetln(line.replace('$cgen_name (', '$f.name ('))
 		// println('calling inst $f.name: $p.cgen.cur_line')
 	}
 
