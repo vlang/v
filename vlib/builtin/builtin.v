@@ -105,7 +105,7 @@ __global nr_mallocs int = 0
 
 [unsafe_fn]
 pub fn malloc(n int) byteptr {
-	if n < 0 {
+	if n <= 0 {
 		panic('malloc(<0)')
 	}
 	$if prealloc {

@@ -24,7 +24,11 @@ const (
  * NB: if you need to decode many strings repeatedly, take a look at decode_in_buffer too.
  */
 pub fn decode(data string) string {
-	buffer := malloc( data.len * 3 / 4 )
+	size := data.len * 3 / 4
+	if size <= 0 {
+		return ''
+	}
+	buffer := malloc(size)
 	return tos(buffer, decode_in_buffer(data, buffer) )
 }
 
@@ -36,7 +40,11 @@ pub fn decode(data string) string {
  * NB: if you need to encode many strings repeatedly, take a look at encode_in_buffer too.
  */
 pub fn encode(data string) string {
-	buffer := malloc( 4 * ((data.len + 2) / 3) )
+	size := 4 * ((data.len + 2) / 3)
+	if size <= 0 {
+		return ''
+	}
+	buffer := malloc(size)
 	return tos(buffer, encode_in_buffer(data, buffer))
 }
 

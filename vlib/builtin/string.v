@@ -1126,6 +1126,9 @@ pub fn (s []string) join_lines() string {
 
 // reverse will return a new reversed string.
 pub fn (s string) reverse() string {
+	if s.len == 0 {
+		return ''
+	}
 	mut res := string {
 		len: s.len
 		str: malloc(s.len)
