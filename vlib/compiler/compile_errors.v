@@ -51,6 +51,9 @@ fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
 }
 
 fn (p mut Parser) warn_with_position(s string, sp ScannerPos) {
+	if p.scanner.is_fmt {
+		return
+	}
 	// on a warning, restore the scanner state after printing the warning:
 	cpos := p.scanner.get_scanner_pos()
 	e := normalized_error( s )

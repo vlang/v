@@ -195,7 +195,7 @@ fn (p mut Parser) clear_vars() {
 // Function signatures are added to the top of the .c file in the first run.
 fn (p mut Parser) fn_decl() {
 	p.clear_vars() // clear local vars every time a new fn is started
-	defer { p.fgenln('\n') }
+	defer { p.fgen_nl() p.fgen_nl() }
 	fn_start_idx := p.cur_tok_index()
 	// If we are in the first pass, create a new function.
 	// In the second pass fetch the one we created.
@@ -477,7 +477,7 @@ fn (p mut Parser) fn_decl() {
 		p.fgen_nl()
 	}
 	if is_c {
-		p.fgenln('\n')
+		p.fgen_nl()
 	}
 	// Register the method
 	if receiver_typ != '' {

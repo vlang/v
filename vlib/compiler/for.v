@@ -6,9 +6,11 @@ module compiler
 
 fn (p mut Parser) for_st() {
 	p.check(.key_for)
-	p.fspace()
 	p.for_expr_cnt++
 	next_tok := p.peek()
+	if p.tok != .lcbr {
+		p.fspace()
+	}
 	//debug := p.scanner.file_path.contains('r_draw')
 	p.open_scope()
 	mut label := 0

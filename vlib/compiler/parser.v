@@ -20,7 +20,6 @@ struct Parser {
 	file_pcguard   string
 	v              &V
 	pref           &Preferences // Preferences shared from V struct
-	kek string
 mut:
 	scanner        &Scanner
 	tokens         []Token
@@ -44,7 +43,7 @@ mut:
 	tmp_cnt        int
 	builtin_mod    bool
 	inside_if_expr bool
-	inside_unwrapping_match_statement bool
+	//inside_unwrapping_match bool
 	inside_return_expr bool
 	inside_unsafe bool
 	is_struct_init bool
@@ -60,7 +59,7 @@ mut:
 	returns        	bool
 	vroot          	string
 	is_c_struct_init bool
-	is_empty_c_struct_init bool
+	is_empty_c_struct_init bool // for `foo := C.Foo{}` => `Foo foo;`
 	is_c_fn_call bool
 	can_chash bool
 	attr string
@@ -112,9 +111,11 @@ struct ParserState {
 // new parser from string. unique id specified in `id`.
 // tip: use a hashing function to auto generate `id` from `text` eg. sha1.hexhash(text)
 fn (v mut V) new_parser_from_string(text string) Parser {
+	// line comment 1
 	mut p := v.new_parser(new_scanner(text))
-	p.scan_tokens()
+	p.scan_tokens() // same line comment
 	return p
+	// final comment
 }
 
 fn (v mut V) reset_cgen_file_line_parameters(){
@@ -277,6 +278,7 @@ fn (p &Parser) peek() TokenKind {
 }
 
 fn (p &Parser) log(s string) {
+	123 // vfmt
 /*
 	if !p.pref.is_verbose {
 		return
@@ -738,6 +740,8 @@ fn (p mut Parser) const_decl() {
 	p.fmt_dec()
 	p.check(.rpar)
 	p.inside_const = false
+	p.fgen_nl()
+	p.fgen_nl()
 }
 
 // `type myint int`
@@ -1131,6 +1135,7 @@ fn (p mut Parser) statements_no_rcbr() string {
 		// println('last st typ=$last_st_typ')
 		if !p.inside_if_expr {
 			//p.genln('')// // end st tok= ${p.strtok()}')
+			//p.fgenln('// ST')
 			p.fgen_nl()
 		}
 		i++

@@ -6,7 +6,7 @@ module compiler
 
 import (
 	os
-	strings
+	//strings
 )
 
 const (
@@ -29,10 +29,13 @@ mut:
 	debug          bool
 	line_comment   string
 	started        bool
-	// vfmt fields
-	fmt_out        strings.Builder
+	// vfmt fields TODO move to a separate struct
+	//fmt_out        strings.Builder
+	fmt_lines      []string
+	//fmt_line   string
 	fmt_indent     int
 	fmt_line_empty bool
+	//fmt_needs_nl bool
 	prev_tok TokenKind
 	fn_name string // needed for @FN
 	should_print_line_on_error bool
@@ -79,7 +82,7 @@ fn new_scanner_file(file_path string) &Scanner {
 fn new_scanner(text string) &Scanner {
 	return &Scanner {
 		text: text
-		fmt_out: strings.new_builder(1000)
+		//fmt_out: strings.new_builder(1000)
 		should_print_line_on_error: true
 		should_print_errors_in_color: true
 		should_print_relative_paths_on_error: true

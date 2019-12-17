@@ -4,6 +4,10 @@
 
 module compiler
 
+import (
+	strings
+)
+
 // also unions and interfaces
 fn (p mut Parser) struct_decl() {
 	is_pub := p.tok == .key_pub
@@ -113,16 +117,7 @@ fn (p mut Parser) struct_decl() {
 	//mut is_pub_field := false
 	//mut is_mut := false
 	mut names := []string// to avoid dup names TODO alloc perf
-	mut fmt_max_len := 0
-	// TODO why is typ.fields == 0?
-	if p.scanner.is_fmt && p.pass == .main {
-		for field in typ.fields  {
-			println(field.name)
-			if field.name.len > fmt_max_len {
-				fmt_max_len = field.name.len
-			}
-		}
-	}
+	mut fmt_max_len := p.table.max_field_len[name]
 	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
 	if !is_ph && p.first_pass() {
 		p.table.register_type(typ)
@@ -135,8 +130,10 @@ fn (p mut Parser) struct_decl() {
 		i++
 		mut new_access_mod := access_mod
 		if p.tok == .key_pub {
+			p.fmt_dec()
 			p.check(.key_pub)
 			if p.tok == .key_mut {
+				p.fspace()
 				new_access_mod = .public_mut
 				p.next() // skip `mut`
 			} else {
@@ -145,7 +142,6 @@ fn (p mut Parser) struct_decl() {
 			if new_access_mod in used {
 				p.error('structs can only have one `pub:`/`pub mut:`, all public fields have to be grouped')
 			}
-			p.fmt_dec()
 			p.check(.colon)
 			p.fmt_inc()
 			p.fgen_nl()
@@ -183,14 +179,15 @@ fn (p mut Parser) struct_decl() {
 		// Check if reserved name
 		field_name_token_idx := p.cur_tok_index()
 		field_name := if name != 'Option' && !is_interface { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
-		/*
-		if !p.first_pass() {
+		if p.pass == .main {
 			p.fgen(strings.repeat(` `, fmt_max_len - field_name.len))
 		}
-		*/
 		// Check dups
 		if field_name in names {
 			p.error('duplicate field `$field_name`')
+		}
+		if p.scanner.is_fmt && p.pass == .decl && field_name.len > fmt_max_len {
+			fmt_max_len = field_name.len
 		}
 		if !is_c && p.mod != 'os' && contains_capital(field_name) {
 			p.error('struct fields cannot contain uppercase letters, use snake_case instead')
@@ -265,11 +262,17 @@ fn (p mut Parser) struct_decl() {
 		}
 		p.fgen_nl() // newline between struct fields
 	}
+	if p.scanner.is_fmt && p.pass == .decl {
+		p.table.max_field_len[typ.name] = fmt_max_len
+	}
+	//p.fgen_require_nl()
 	p.check(.rcbr)
 	if !is_c && !did_gen_something && p.first_pass() {
 		p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
 	}
-	p.fgenln('\n')
+	p.fgen_nl()
+	p.fgen_nl()
+	//p.fgenln('//kek')
 }
 
 // `User{ foo: bar }`

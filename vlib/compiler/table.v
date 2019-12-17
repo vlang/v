@@ -20,6 +20,7 @@ pub mut:
 	varg_access  []VargAccess
 	//enum_vals map[string][]string
 	//names        []Name
+	max_field_len map[string]int // for vfmt: max_field_len['Parser'] == 12
 }
 
 struct VargAccess {
@@ -120,6 +121,7 @@ pub mut:
 	is_placeholder bool
 	gen_str	       bool  // needs `.str()` method generation
 	is_flag        bool  // enum bitfield flag
+	//max_field_len  int
 }
 
 struct TypeNode {
