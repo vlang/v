@@ -75,15 +75,15 @@ fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
 // This implementation does proactive insertion,
 // meaning that splits are done top-down and not
 // bottom-up. 
-pub fn (t mut map) set(key string, value voidptr) {
-	mut node := t.root
+pub fn (m mut map) set(key string, value voidptr) {
+	mut node := m.root
 	mut child_index := 0
 	mut parent := &mapnode(0)
 	for {
 		if node.size == max_length {
 			if parent == 0 {
 				parent = new_mapnode()
-				t.root = parent
+				m.root = parent
 			}
 			parent.split_child(child_index, mut node)
 			if key == parent.keys[child_index] {
@@ -114,10 +114,10 @@ pub fn (t mut map) set(key string, value voidptr) {
 		node.values[i + 1] = node.values[i]
 	}
 	node.keys[i + 1] = key
-	node.values[i + 1] = voidptr(malloc(t.element_size))
-	C.memcpy(&node.values[i + 1], value, t.element_size)
+	node.values[i + 1] = voidptr(malloc(m.element_size))
+	C.memcpy(node.values[i + 1], value, m.element_size)
 	node.size++
-	t.size++
+	m.size++
 }
 
 fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
@@ -152,13 +152,13 @@ fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
 	n.size++
 }
 
-pub fn (t map) get(key string, out voidptr) bool {
-	mut node := t.root
+pub fn (m map) get(key string, out voidptr) bool {
+	mut node := m.root
 	for {
 		mut i := node.size
 		for i-- > 0 && key < node.keys[i] {}
 		if i != -1 && key == node.keys[i] {
-			C.memcpy(out, node.values[i], t.element_size)
+			C.memcpy(out, node.values[i], m.element_size)
 			return true
 		}
 		if node.children == 0 {
@@ -169,8 +169,8 @@ pub fn (t map) get(key string, out voidptr) bool {
 	return false
 }
 
-pub fn (t map) exists(key string) bool {
-	mut node := t.root
+pub fn (m map) exists(key string) bool {
+	mut node := m.root
 	for {
 		mut i := node.size
 		for i-- != 0 && key < node.keys[i] {}
@@ -327,20 +327,20 @@ fn (n mut mapnode) merge(idx int) {
 	// free(sibling)
 }
 
-pub fn (t mut map) delete(k string) {
-	if t.root.size == 0 {
+pub fn (m mut map) delete(k string) {
+	if m.root.size == 0 {
 		return
 	}
-	is_removed := t.root.remove_key(k)
+	is_removed := m.root.remove_key(k)
 	if is_removed {
-		t.size--
+		m.size--
 	} 
-	if t.root.size == 0 {
+	if m.root.size == 0 {
 		// tmp := t.root
-		if t.root.children ==  0 {
+		if m.root.children ==  0 {
 			return
 		} else {
-			t.root = &mapnode(t.root.children[0])
+			m.root = &mapnode(m.root.children[0])
 		}
 		// free(tmp)
 	}
@@ -364,8 +364,8 @@ fn (n mapnode) free() {
 	// free(n)
 }
 
-pub fn (t map) free() {
-	t.root.free()
+pub fn (m map) free() {
+	m.root.free()
 	// free(t.root)
 }
 
@@ -395,9 +395,10 @@ mut:
 	array []string
 }
 
-pub fn (t map) keys() []string {
+pub fn (m &map) keys() []string {
 	mut keys := ArrayReference{}
-	return t.root.preoder_keys(mut keys)
+	m.root.preoder_keys(mut keys)
+	return keys.array
 }
 
 
@@ -419,15 +420,3 @@ pub fn (m map) print() {
 	println('>>>>>>>>>>')
 }
 
-pub fn (m map_string) str() string {
-	if m.size == 0 {
-		return '{}'
-	}
-	mut sb := strings.new_builder(50)
-	sb.writeln('{')
-	for key, val  in m {
-		sb.writeln('  "$key" => "$val"')
-	}
-	sb.writeln('}')
-	return sb.str()
-}
