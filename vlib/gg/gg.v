@@ -27,7 +27,6 @@ pub fn vec2(x, y int) Vec2 {
 
 pub fn init_gg() {
 	glfw.init_glfw()
-	println(gl.TEXT_VERT)
 	gl.init_glad()
 }
 
