@@ -43,7 +43,7 @@ pub mut:
 	size int
 }
 
-fn new_mapnode() &mapnode {
+fn new_node() &mapnode {
 	return &mapnode {
 		children: 0
 		size: 0
@@ -55,17 +55,14 @@ fn new_mapnode() &mapnode {
 // the root is null for each insertion.
 pub fn new_map(cap, elm_size int) map {
 	return map {
-		root: new_mapnode()
+		root: new_node()
 		size: 0
 		element_size: elm_size
 	}
 }
 
 fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
-	mut res := map {
-		element_size: elm_size
-		root: 0
-	}
+	mut res := new_map(cap, elm_size)
 	for i in 0 .. cap {
 		res.set(keys[i], vals + i * elm_size)
 	}
@@ -82,7 +79,7 @@ pub fn (m mut map) set(key string, value voidptr) {
 	for {
 		if node.size == max_length {
 			if parent == 0 {
-				parent = new_mapnode()
+				parent = new_node()
 				m.root = parent
 			}
 			parent.split_child(child_index, mut node)
@@ -121,7 +118,7 @@ pub fn (m mut map) set(key string, value voidptr) {
 }
 
 fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
-	mut z := new_mapnode()
+	mut z := new_node()
 	mut j := mid_index
 	z.size = mid_index
 	y.size = mid_index
