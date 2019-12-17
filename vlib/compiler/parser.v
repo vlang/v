@@ -2485,13 +2485,15 @@ fn (p mut Parser) array_init() string {
 	p.check(.rsbr)
 	// type after `]`? (e.g. "[]string")
 	exp_array := p.expected_type.starts_with('array_')
-	
-	if i == 0 && !exp_array &&
+	if p.tok != .name && p.tok != .mul && p.tok != .lsbr && i == 0 && !exp_array {
+        p.error('specify array type: `[]typ` instead of `[]`')
+    }
+	if i == 0 && (p.tok == .name || p.tok == .mul) &&
 		p.tokens[p.token_idx-2].line_nr == p.tokens[p.token_idx-1].line_nr { // TODO
 		// vals.len == 0 {
-		// if exp_array {
-		// 	p.error('no need to specify the full array type here, use `[]` instead of `[]${p.expected_type[6..]}`')
-		// }
+		if exp_array {
+			p.error('no need to specify the full array type here, use `[]` instead of `[]${p.expected_type[6..]}`')
+		}
         typ = p.get_type().replace('*','_ptr')
 	} else if exp_array && i == 0 {
 		// allow `known_array = []`
