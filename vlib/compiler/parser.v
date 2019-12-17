@@ -2078,7 +2078,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 		}
 		if is_arr {
 			if is_arr0 {
-				typ = typ[6..]
+				typ = typ[6..].replace('_ptr', '*')
 			   }
 			p.gen_array_at(typ, is_arr0, fn_ph)
 		}
@@ -2191,6 +2191,7 @@ fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	// }
 	// `m[key]`. no =, just a getter
 	else if (is_map || is_arr || (is_str && !p.builtin_mod)) && is_indexer {
+		typ = typ.replace('_ptr','*')
 		p.index_get(typ, fn_ph, IndexConfig{
 			is_arr: is_arr
 			is_map: is_map
@@ -2484,16 +2485,14 @@ fn (p mut Parser) array_init() string {
 	p.check(.rsbr)
 	// type after `]`? (e.g. "[]string")
 	exp_array := p.expected_type.starts_with('array_')
-	if p.tok != .name && p.tok != .lsbr && i == 0 && !exp_array {
-		p.error('specify array type: `[]typ` instead of `[]`')
-	}
-	if p.tok == .name && i == 0 &&
+	
+	if i == 0 &&
 		p.tokens[p.token_idx-2].line_nr == p.tokens[p.token_idx-1].line_nr { // TODO
 		// vals.len == 0 {
 		if exp_array {
 			p.error('no need to specify the full array type here, use `[]` instead of `[]${p.expected_type[6..]}`')
 		}
-		typ = p.get_type()
+        typ = p.get_type().replace('*','_ptr')
 	} else if exp_array && i == 0 {
 		// allow `known_array = []`
 		typ = p.expected_type[6..]
@@ -2524,7 +2523,9 @@ fn (p mut Parser) array_init() string {
 	// if ptr {
 	// typ += '_ptr"
 	// }
-	p.gen_array_init(typ, no_alloc, new_arr_ph, i)
+
+	real := typ.replace('_ptr','*')
+	p.gen_array_init(real, no_alloc, new_arr_ph, i)
 	typ = 'array_$typ'
 	p.register_array(typ)
 	return typ

@@ -676,11 +676,7 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
 		// Don't dereference if it's already a mutable array argument  (`fn foo(mut []int)`)
 		push_call := if typ.contains('*'){'_PUSH('} else { '_PUSH(&'}
 		p.cgen.set_placeholder(ph, push_call)
-		if elm_type.ends_with('*') {
-			p.gen('), $tmp, ${elm_type[..elm_type.len - 1]})')
-		} else {
-			p.gen('), $tmp, $elm_type)')
-		}
+		p.gen('), $tmp, $elm_type)')
 	}
 }
 
