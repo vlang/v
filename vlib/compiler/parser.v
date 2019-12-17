@@ -1954,6 +1954,18 @@ struct $typ.name {
 }
 ', fname_tidx)
 		}
+
+		if p.base_type(field.typ).starts_with('fn ') && p.peek() == .lpar {
+			tmp_typ := p.table.find_type(field.typ)
+			mut f := tmp_typ.func
+			p.gen('.$field.name')
+			p.gen('(')
+			p.check(.name)
+			p.fn_call_args(mut f)
+			p.gen(')')
+			return f.typ
+		}
+
 		p.gen(dot + struct_field)
 		p.next()
 		return field.typ
