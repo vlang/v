@@ -1126,9 +1126,13 @@ pub fn new_v(args[]string) &V {
 	}
 }
 
+fn non_empty(a []string) []string {
+	return a.filter(it.len != 0)
+}
+
 pub fn env_vflags_and_os_args() []string {
 	vosargs := os.getenv('VOSARGS')
-	if '' != vosargs { return vosargs.split(' ') }
+	if '' != vosargs { return non_empty(vosargs.split(' ')) }
 
 	mut args := []string
 	vflags := os.getenv('VFLAGS')
@@ -1141,7 +1145,7 @@ pub fn env_vflags_and_os_args() []string {
 	} else{
 		args << os.args
 	}
-	return args
+	return non_empty(args)
 }
 
 pub fn vfmt(args[]string) {
