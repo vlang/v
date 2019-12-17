@@ -96,11 +96,11 @@ pub fn read_bytes(path string) ?[]byte {
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
-	println('fsize=$fsize')
+
 	mut res	 := [`0`].repeat(fsize)
-	nreadbytes := C.fread(res.data, fsize, 1, fp)
+	nreadelements := C.fread(res.data, fsize, 1, fp)
 	C.fclose(fp)
-	return res[0..nreadbytes]
+	return res[0..nreadelements * fsize]
 }
 
 // read_file reads the file in `path` and returns the contents.
