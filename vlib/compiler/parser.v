@@ -55,6 +55,7 @@ mut:
 	calling_c      bool
 	cur_fn         Fn
 	local_vars     []Var // local function variables
+	global_vars     []Var // only for "script" programs without "fn main"
 	var_idx       	int
 	returns        	bool
 	vroot          	string
@@ -546,17 +547,19 @@ fn (p mut Parser) parse(pass Pass) {
 						p.clear_vars()
 					}
 				}
-				mut start := p.cgen.lines.len
+				start := p.cgen.lines.len
 				p.statement(true)
-				if start > 0 && p.cgen.lines[start - 1] != '' && p.cgen.fn_main != '' {
-					start--
-				}
+				//if start > 0 && p.cgen.lines[start - 1] != '' &&
+					//p.cgen.fn_main != '' {
+					//start--
+				//}
 				p.genln('')
 				end := p.cgen.lines.len
 				lines := p.cgen.lines[start..end]
+				//println('adding "' + lines.join('\n') + '"\n')
 				//mut line := p.cgen.fn_main + lines.join('\n')
 				//line = line.trim_space()
-				p.cgen.fn_main = p.cgen.fn_main + lines.join('\n')
+				p.cgen.fn_main += lines.join('\n')
 				p.cgen.resetln('')
 				for i := start; i < end; i++ {
 					p.cgen.lines[i] = ''
@@ -565,7 +568,7 @@ fn (p mut Parser) parse(pass Pass) {
 			else {
 				p.error('unexpected token `${p.strtok()}`')
 			}
-			}
+		}
 		}
 	}
 }
@@ -1618,14 +1621,18 @@ fn (p mut Parser) var_decl() {
 			// declaration
 			p.gen('$var_type $var_name = ${p.var_decl_name}.var_$i')
 		}
-		p.register_var(Var {
-			name: var_name
-			typ: var_type
-			is_mut: var_is_mut
-			is_alloc: p.is_alloc || var_type.starts_with('array_')
-			line_nr: p.tokens[ var_token_idx ].line_nr
-			token_idx: var_token_idx
-		})
+		// Function bodies are always parsed once in the second pass, but
+		// script programs are parsed in the first pass, need to handle that.
+		if p.pass == .main {
+			p.register_var(Var {
+				name: var_name
+				typ: var_type
+				is_mut: var_is_mut
+				is_alloc: p.is_alloc || var_type.starts_with('array_')
+				line_nr: p.tokens[ var_token_idx ].line_nr
+				token_idx: var_token_idx
+			})
+		}
 		//if p.fileis('str.v') {
 			//if p.is_alloc { println('REG VAR IS ALLOC $name') }
 		//}
