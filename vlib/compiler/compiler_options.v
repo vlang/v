@@ -10,7 +10,7 @@ pub fn get_v_options_and_main_command(args []string) ([]string,string) {
 	for i := 0; i < args.len; i++ {
 		a := args[i]
 		if !a.starts_with('-') {
-			if a.len > 0 { potential_commands << a }
+			potential_commands << a
 			continue
 		}else{
 			options << a
