@@ -289,6 +289,10 @@ fn (v mut V) cc() {
 		if v.os == .linux {
 			a << ' -ldl '
 		}
+		if v.os == .freebsd {
+			// FreeBSD: backtrace needs execinfo library while linking    
+			a << ' -lexecinfo '
+		}
 	}
 
 	if !v.pref.is_bare && v.os == .js && os.user_os() == 'linux' {
