@@ -1805,8 +1805,8 @@ fn (p mut Parser) var_expr(v Var) string {
 	p.next()
 	mut typ := v.typ
 	// Function pointer?
-	if typ.starts_with('fn ') && p.tok == .lpar {
-		T := p.table.find_type(typ)
+	if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
+		T := p.table.find_type(p.base_type(typ))
 		p.gen('(')
 		p.fn_call_args(mut T.func)
 		p.gen(')')
