@@ -31,7 +31,7 @@ fn option_parser() bool {
 }
 
 fn str_is_nbr(s string) bool {
-	for i := 0; i < s.len; i++ {
+    for i := 0; i < s.len; i++ {
         if !s[i].is_digit() {
             return false
         }
@@ -88,7 +88,7 @@ fn get_bet(money int) int {
 }
 
 fn run_wheel(bet_nbr int, _bet int) int {
-	mut bet := _bet
+    mut bet := _bet
     rand.seed(time.now().uni)
     winning_nbr := rand.next(50)
     print('Roulette Wheel spinning... and stops on the number $winning_nbr which is a ')
