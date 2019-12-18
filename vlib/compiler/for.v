@@ -61,6 +61,7 @@ fn (p mut Parser) for_st() {
 		*/
 		i := p.check_name()
 		p.check(.comma)
+		p.fspace()
 		val := p.check_name()
 		if i == '_' && val == '_' {
 			p.error('no new variables on the left side of `in`')

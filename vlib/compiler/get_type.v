@@ -27,6 +27,7 @@ fn (p mut Parser) get_type2() Type{
 				break
 			}
 			p.check(.comma)
+			p.fspace()
 		}
 		p.check(.rpar)
 		// p.inside_tuple = false

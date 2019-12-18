@@ -142,7 +142,7 @@ fn (p mut Parser) mark_var_changed(v Var) {
 }
 
 fn (p mut Parser) mark_arg_moved(v Var) {
-	for i,arg in p.cur_fn.args {
+	for i, arg in p.cur_fn.args {
 		if arg.name == v.name {
 			// println('setting f $p.cur_fn.name arg $arg.name to is_mut')
 			p.cur_fn.args[i].is_moved = true
@@ -677,7 +677,7 @@ fn (p mut Parser) async_fn_call(f Fn, method_ph int, receiver_var, receiver_type
 	// wrapper(arg_struct * arg) { fn("arg->a, arg->b"); }
 	mut str_args := ''
 	mut did_gen_something := false
-	for i,arg in f.args {
+	for i, arg in f.args {
 		arg_struct += '$arg.typ $arg.name ;' // Add another field (arg) to the tmp struct definition
 		str_args += 'arg $dot_ptr $arg.name'
 		if i == 0 && f.is_method {
@@ -801,7 +801,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 			if t.cat == .interface_ {
 				// Find the index of the method
 				mut idx := 0
-				for i,method in t.methods {
+				for i, method in t.methods {
 					if method.name == f.name {
 						idx = i
 					}
@@ -1008,7 +1008,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		p.cgen.resetln(p.cgen.cur_line.replace('v_panic (', 'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '))
 	}
 	mut saved_args := []string
-	for i,arg in f.args {
+	for i, arg in f.args {
 		// Receiver is the first arg
 		// Skip the receiver, because it was already generated in the expression
 		if i == 0 && f.is_method {
@@ -1374,7 +1374,7 @@ fn replace_generic_type(gen_type string, ti &TypeInst) string {
 // replace return type & param types for a given generic function using TypeInst
 fn replace_generic_type_params(f mut Fn, ti &TypeInst) {
 	mut args := []Var
-	for i,_ in f.args {
+	for i, _ in f.args {
 		mut arg := f.args[i]
 		arg.typ = replace_generic_type(arg.typ, ti)
 		args << arg
@@ -1474,7 +1474,7 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 		name: typ
 		mod: p.mod
 	})
-	for i,t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
+	for i, t in typ.replace('_V_MulRet_', '').replace('_PTR_', '*').split('_V_') {
 		p.table.add_field(typ, 'var_$i', t, false, '', .public)
 	}
 	p.cgen.typedefs << 'typedef struct $typ $typ;'
@@ -1543,7 +1543,7 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 fn (f &Fn) typ_str() string {
 	mut sb := strings.new_builder(50)
 	sb.write('fn (')
-	for i,arg in f.args {
+	for i, arg in f.args {
 		sb.write(arg.typ)
 		if i < f.args.len - 1 {
 			sb.write(',')
@@ -1559,7 +1559,7 @@ fn (f &Fn) typ_str() string {
 // f.args => "int a, string b"
 fn (f &Fn) str_args(table &Table) string {
 	mut s := ''
-	for i,arg in f.args {
+	for i, arg in f.args {
 		// Interfaces are a special case. We need to pass the object + pointers
 		// to all methods:
 		// fn handle(r Runner) { =>
@@ -1640,7 +1640,7 @@ pub fn (f &Fn) v_fn_name() string {
 pub fn (f &Fn) str_for_error() string {
 	// Build the args for the error
 	mut s := ''
-	for i,a in f.args {
+	for i, a in f.args {
 		if i == 0 {
 			if f.is_method {
 				s += a.typ + '.' + f.name + '('

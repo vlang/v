@@ -323,7 +323,7 @@ pub fn (p &Parser) save_state() ParserState {
 	}
 }
 
-pub fn (p mut Parser) restore_state(state ParserState,scanner bool,cgen bool) {
+pub fn (p mut Parser) restore_state(state ParserState, scanner bool, cgen bool) {
 	if scanner {
 		p.scanner.line_nr = state.scanner_line_nr
 		p.scanner.text = state.scanner_text
@@ -345,7 +345,7 @@ pub fn (p mut Parser) restore_state(state ParserState,scanner bool,cgen bool) {
 	p.lit = state.lit
 }
 
-fn (p mut Parser) clear_state(scanner bool,cgen bool) {
+fn (p mut Parser) clear_state(scanner bool, cgen bool) {
 	if scanner {
 		p.scanner.line_nr = 0
 		p.scanner.text = ''
@@ -372,7 +372,7 @@ pub fn (p mut Parser) add_text(text string) {
 	p.scan_tokens()
 }
 
-fn (p mut Parser) statements_from_text(text string,rcbr bool) {
+fn (p mut Parser) statements_from_text(text string, rcbr bool) {
 	saved_state := p.save_state()
 	p.clear_state(true, false)
 	p.add_text(text)
@@ -711,7 +711,7 @@ fn (p mut Parser) const_decl() {
 		// Check to see if this constant exists, and is void. If so, try and get the type again:
 		if my_const:=p.v.table.find_const(name){
 			if my_const.typ == 'void' {
-				for i,v in p.v.table.consts {
+				for i, v in p.v.table.consts {
 					if v.name == name {
 						p.v.table.consts[i].typ = typ
 						break
@@ -967,7 +967,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-
+			
 			mod: p.mod
 			func: f
 		}
@@ -1413,7 +1413,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 }
 // is_map: are we in map assignment? (m[key] = val) if yes, dont generate '='
 // this can be `user = ...`  or `user.field = ...`, in both cases `v` is `user`
-fn (p mut Parser) assign_statement(v Var,ph int,is_map bool) {
+fn (p mut Parser) assign_statement(v Var, ph int, is_map bool) {
 	errtok := p.cur_tok_index()
 	is_vid := p.fileis('vid') // TODO remove
 	tok := p.tok
@@ -1593,7 +1593,7 @@ fn (p mut Parser) var_decl() {
 		mr_fn := p.cgen.cur_line.find_between('=', '(').trim_space()
 		p.error_with_token_index('assignment mismatch: ${var_names.len} variables but `$mr_fn` returns $var_types.len values', var_token_idxs.last())
 	}
-	for i,var_name in var_names {
+	for i, var_name in var_names {
 		var_token_idx := var_token_idxs[i]
 		var_is_mut := var_mut[i]
 		var_type := var_types[i]
@@ -1669,7 +1669,7 @@ fn (p mut Parser) var_decl() {
 	p.is_empty_c_struct_init = false
 }
 
-fn (p mut Parser) get_struct_type(name_ string,is_c bool,is_ptr bool) string {
+fn (p mut Parser) get_struct_type(name_ string, is_c bool, is_ptr bool) string {
 	mut name := name_
 	if is_ptr {
 		name += '*' // `&User{}` => type `User*`
@@ -1681,7 +1681,7 @@ fn (p mut Parser) get_struct_type(name_ string,is_c bool,is_ptr bool) string {
 	return p.struct_init(name)
 }
 
-fn (p mut Parser) get_var_type(name string,is_ptr bool,deref_nr int) string {
+fn (p mut Parser) get_var_type(name string, is_ptr bool, deref_nr int) string {
 	v := p.find_var_check_new_var(name) or {
 		return ''
 	}
@@ -1732,7 +1732,7 @@ fn (p mut Parser) get_var_type(name string,is_ptr bool,deref_nr int) string {
 	return typ
 }
 
-fn (p mut Parser) get_const_type(name string,is_ptr bool) string {
+fn (p mut Parser) get_const_type(name string, is_ptr bool) string {
 	c := p.table.find_const(name) or {
 		return ''
 	}
@@ -1775,7 +1775,7 @@ fn (p mut Parser) get_c_func_type(name string) string {
 	return cfn.typ
 }
 
-fn (p mut Parser) undefined_error(name string,orig_name string) {
+fn (p mut Parser) undefined_error(name string, orig_name string) {
 	name_dotted := mod_gen_name_rev(name.replace('__', '.'))
 	// check for misspelled function / variable / module / type
 	suggested := p.identify_typo(name)
@@ -1887,7 +1887,7 @@ fn (p mut Parser) var_expr(v Var) string {
 
 // user.name => `str_typ` is `User`
 // user.company.name => `str_typ` is `Company`
-fn (p mut Parser) dot(str_typ_ string,method_ph int) string {
+fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	// if p.fileis('orm_test') {
 	// println('ORM dot $str_typ')
 	// }
@@ -2067,7 +2067,7 @@ fn get_index_type(typ string) IndexType {
 	return .noindex
 }
 
-fn (p mut Parser) index_expr(typ_ string,fn_ph int) string {
+fn (p mut Parser) index_expr(typ_ string, fn_ph int) string {
 	mut typ := typ_
 	// a[0]
 	v := p.expr_var
@@ -2685,7 +2685,7 @@ fn (p mut Parser) return_st() {
 			expr_type = types.join(',')
 			cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
 			mut ret_fields := ''
-			for ret_val_idx,ret_val in mr_values {
+			for ret_val_idx, ret_val in mr_values {
 				if ret_val_idx > 0 {
 					ret_fields += ','
 				}
@@ -2937,7 +2937,7 @@ fn (p mut Parser) check_unused_imports() {
 		return
 	}
 	mut output := ''
-	for alias,mod in p.import_table.imports {
+	for alias, mod in p.import_table.imports {
 		if !p.import_table.is_used_import(alias) {
 			mod_alias := if alias == mod {alias}else {'$alias ($mod)'}
 			output += '\n * $mod_alias'
