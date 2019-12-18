@@ -1815,6 +1815,13 @@ fn (p mut Parser) var_expr(v Var) string {
 	// users[0].name
 	if p.tok == .lsbr {
 		typ = p.index_expr(typ, fn_ph)
+		if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
+		T := p.table.find_type(p.base_type(typ))
+		p.gen('(')
+		p.fn_call_args(mut T.func)
+		p.gen(')')
+		typ = T.func.typ
+	}
 	}
 	// a.b.c().d chain
 	// mut dc := 0
@@ -1979,8 +1986,9 @@ pub:
 }
 ', fname_tidx)
 		}
-		if p.base_type(field.typ).starts_with('fn ') && p.peek() == .lpar {
-			tmp_typ := p.table.find_type(field.typ)
+		base := p.base_type(field.typ)
+		if base.starts_with('fn ') && p.peek() == .lpar {
+			tmp_typ := p.table.find_type(base)
 			mut f := tmp_typ.func
 			p.gen('.$field.name')
 			p.gen('(')
