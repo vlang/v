@@ -10,10 +10,12 @@ import os
 [if vfmt]
 fn (scanner mut Scanner) fgen(s_ string) {
 	mut s := s_
+	if s != ' ' {
+		//s = s.trim_space()
+	}
 	if scanner.fmt_line_empty {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s.trim_left(' ')
 	}
-
 	scanner.fmt_lines << s
 	//scanner.fmt_out << s
 	//scanner.fmt_out.write(s)
@@ -22,7 +24,7 @@ fn (scanner mut Scanner) fgen(s_ string) {
 
 [if vfmt]
 fn (scanner mut Scanner) fgenln(s_ string) {
-	mut s := s_
+	mut s := s_//.trim_space()
 	if scanner.fmt_line_empty && scanner.fmt_indent > 0 {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
@@ -227,7 +229,8 @@ fn (p &Parser) gen_fmt() {
 	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
-	s := p.scanner.fmt_lines.join('').trim_space()
+	s := p.scanner.fmt_lines.join('').trim_space().replace('\n\n\n\n', '\n\n')
+		.replace(' \n', '\n')
 	if s == '' {
 		return
 	}
