@@ -24,15 +24,18 @@ fn test_in() {
 	num := 3 // used to be an expr bug before `in`
 	assert color in [.red, .green]
 	assert num == 3
-}	
+	println(color)
+	assert true
+}
 
 fn test_match() {
-	color := Color.red
+	color := Color.green
 	num := 3
 	match color {
-		.red { assert true }
-		.green { assert false }
+		.red { assert false }
+		.green { assert true }
 		else { assert false }
-	}	
+	}
+	println(color)
 	assert num == 3
-}	
+}

@@ -229,8 +229,11 @@ fn (p &Parser) gen_fmt() {
 	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
-	s := p.scanner.fmt_lines.join('').trim_space().replace('\n\n\n\n', '\n\n')
-		.replace(' \n', '\n')
+	s := p.scanner.fmt_lines.join('').trim_space().replace_each([
+		'\n\n\n\n', '\n\n',
+		' \n', '\n',
+		') or{', ') or {',
+	])
 	if s == '' {
 		return
 	}
