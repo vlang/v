@@ -293,14 +293,12 @@ fn (p &Parser) peek_token() Token {
 }
 
 fn (p &Parser) log(s string) {
-	123 // vfmt
 	/*
 	if !p.pref.is_verbose {
 		return
 	}
 	println(s)
 */
-
 }
 
 pub fn (p &Parser) save_state() ParserState {
@@ -1965,7 +1963,7 @@ fn (p mut Parser) dot(str_typ_ string,method_ph int) string {
 			f := p.first_immutable_field
 			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' + 'declare the field with `mut:`
 struct $f.parent_fn {
- mut:
+mut:
 	$f.name $f.typ
 }
 ', fname_tidx)
@@ -1976,7 +1974,7 @@ struct $f.parent_fn {
 			// println(field.access_mod)
 			p.error_with_token_index('cannot refer to unexported field `$struct_field` (type `$typ.name`)\n' + 'declare the field with `pub:`
 struct $typ.name {
- pub:
+pub:
 	$struct_field $field.typ
 }
 ', fname_tidx)
