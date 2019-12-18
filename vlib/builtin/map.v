@@ -85,6 +85,7 @@ pub fn (m mut map) set(key string, value voidptr) {
 			parent.split_child(child_index, mut node)
 			if key == parent.keys[child_index] {
 				parent.values[child_index] = value
+				return
 			}
 			node = if key < parent.keys[child_index] {
 				&mapnode(parent.children[child_index])
