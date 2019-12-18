@@ -141,7 +141,7 @@ fn (p mut Parser) fnext() {
 		//println('eof ret')
 		//return
 	//}
-	if p.tok == .rcbr && !p.inside_if_expr && p.prev_tok != .lcbr {
+	if p.tok == .rcbr && !p.inside_if_expr { //&& p.prev_tok != .lcbr {
 		p.fmt_dec()
 	}
 	s := p.strtok()
@@ -150,7 +150,7 @@ fn (p mut Parser) fnext() {
 	}
 	// vfmt: increase indentation on `{` unless it's `{}`
 	inc_indent := false
-	if p.tok == .lcbr && !p.inside_if_expr && p.peek() != .rcbr {
+	if p.tok == .lcbr && !p.inside_if_expr {// && p.peek() != .rcbr {
 		p.fgen_nl()
 		p.fmt_inc()
 	}
@@ -231,12 +231,15 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	//if !p.file_name.contains('parser.v') {return}
-	println('generating ${p.file_name}')
-	mut out := os.create('/var/tmp/fmt/' + p.file_name) or {
+	if !p.file_name.contains('parser.v') {return}
+	path := os.tmpdir() + '/' + p.file_name
+	println('generating ${path}')
+	mut out := os.create(path) or {
 		verror('failed to create fmt.v')
 		return
 	}
+	println('replacing ${p.file_path}...')
+	os.mv(path, p.file_path)
 	out.writeln(s)//p.scanner.fmt_out.str().trim_space())
 	out.close()
 }
