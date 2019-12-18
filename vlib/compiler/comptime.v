@@ -35,6 +35,7 @@ fn (p mut Parser) comp_time() {
 			p.check(.lcbr)
 			os := os_from_string(name)
 			if ((!not && os != p.os) || (not && os == p.os)) &&
+				!p.scanner.is_fmt &&
 				!p.pref.output_cross_c
 			{
 				// `$if os {` for a different target, skip everything inside

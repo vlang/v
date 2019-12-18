@@ -37,6 +37,7 @@ fn (p mut Parser) in_optimization(typ string, ph int) {
 		}
 		if p.tok != .rsbr {
 			p.check(.comma)
+			p.fspace()
 		}
 		i++
 	}

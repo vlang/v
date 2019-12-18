@@ -160,7 +160,8 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	}
 	mut p := v.new_parser(new_scanner_file(path))
 	p = {
-		p|file_path:path,
+		p |
+		file_path:path,
 		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
@@ -201,7 +202,8 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		import_table: new_import_table()
 	}
 	$if js {
-		p.is_js=true}
+		p.is_js = true
+	}
 	if p.pref.is_repl {
 		p.scanner.should_print_line_on_error = false
 		p.scanner.should_print_errors_in_color = false
@@ -419,7 +421,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgenln('\n')
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in['ui','darwin','clipboard','webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['ui', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) {p.v.mod}
@@ -948,7 +950,7 @@ fn (p mut Parser) get_type() string {
 		p.fn_args(mut f)
 		// Same line, it's a return type
 		if p.scanner.line_nr == line_nr {
-			if p.tok in[.name,.mul,.amp,.lsbr,.question,.lpar] {
+			if p.tok in [.name, .mul, .amp, .lsbr, .question, .lpar] {
 				f.typ = p.get_type()
 			}
 			else {
@@ -1199,7 +1201,7 @@ fn (p mut Parser) free_var(v Var) {
 	// Clean up memory, only do this if -autofree was passed for now
 	// if p.fileis('mem.v') {println('free_var() $v.name')}
 	// println(p.cur_fn.name)
-	if p.cur_fn.name in['add','clone','free'] {
+	if p.cur_fn.name in ['add', 'clone', 'free'] {
 		return
 	}
 	mut free_fn := 'free'
@@ -1494,7 +1496,7 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 		p.cgen.resetln('memcpy( (& $left), ($etype{$expr}), sizeof( $left ) );')
 	}
 	// check type for <<= >>= %= ^= &= |=
-	else if tok in[.left_shift_assign,.righ_shift_assign,.mod_assign,.xor_assign,.and_assign,.or_assign] {
+	else if tok in [.left_shift_assign, .righ_shift_assign, .mod_assign, .xor_assign, .and_assign, .or_assign] {
 		if !is_integer_type(p.assigned_type) {
 			p.error_with_token_index('cannot use ${tok.str()} assignment operator on non-integer type `$p.assigned_type`', errtok)
 		}
@@ -1628,7 +1630,7 @@ fn (p mut Parser) var_decl() {
 			// assigment
 			// if !p.builtin_mod && known_var {
 			if known_var {
-				v := p.find_var(var_name) or{
+				v := p.find_var(var_name) or {
 					p.error_with_token_index('cannot find `$var_name`', var_token_idx)
 					break
 				}
@@ -1677,7 +1679,7 @@ fn (p mut Parser) get_struct_type(name_ string,is_c bool,is_ptr bool) string {
 }
 
 fn (p mut Parser) get_var_type(name string,is_ptr bool,deref_nr int) string {
-	v := p.find_var_check_new_var(name) or{
+	v := p.find_var_check_new_var(name) or {
 		return ''
 	}
 	if is_ptr {
@@ -1728,7 +1730,7 @@ fn (p mut Parser) get_var_type(name string,is_ptr bool,deref_nr int) string {
 }
 
 fn (p mut Parser) get_const_type(name string,is_ptr bool) string {
-	c := p.table.find_const(name) or{
+	c := p.table.find_const(name) or {
 		return ''
 	}
 	if is_ptr && !c.is_global {
@@ -1757,7 +1759,7 @@ fn (p mut Parser) get_c_func_type(name string) string {
 	p.fn_call(mut f, 0, '', '')
 	p.is_c_fn_call = false
 	// C functions must be defined with `C.fn_name() fn_type`
-	cfn := p.table.find_fn(name) or{
+	cfn := p.table.find_fn(name) or {
 		// Is the user trying to do `var := C.foo()` or `bar(C.foo())`
 		// without declaring `foo`?
 		// Do not allow it.
@@ -1948,7 +1950,7 @@ fn (p mut Parser) dot(str_typ_ string,method_ph int) string {
 	// field
 	if has_field {
 		struct_field := if typ.name != 'Option' {p.table.var_cgen_name(field_name)}else {field_name}
-		field := p.table.find_field(typ, struct_field) or{
+		field := p.table.find_field(typ, struct_field) or {
 			p.error_with_token_index('missing field: $struct_field in type $typ.name', fname_tidx)
 			exit(1)
 		}
@@ -1994,7 +1996,7 @@ pub:
 		return field.typ
 	}
 	// method
-	mut method := p.table.find_method(typ, field_name) or{
+	mut method := p.table.find_method(typ, field_name) or {
 		p.error_with_token_index('could not find method `$field_name`', fname_tidx) // should never happen
 		exit(1)
 	}
@@ -2204,7 +2206,7 @@ fn (p mut Parser) index_expr(typ_ string,fn_ph int) string {
 		// }
 		if is_indexer {
 			l := p.cgen.cur_line.trim_space()
-			idx := l.last_index(' ') or{
+			idx := l.last_index(' ') or {
 				panic('idx')
 			}
 			index_val := l[idx..].trim_space()
@@ -2285,6 +2287,7 @@ fn (p mut Parser) indot_expr() string {
 		if p.tok == .lsbr {
 			// a in [1,2,3] optimization => `a == 1 || a == 2 || a == 3`
 			// avoids an allocation
+			p.fspace()
 			p.in_optimization(typ, ph)
 			return 'bool'
 		}
@@ -2324,7 +2327,8 @@ fn (p mut Parser) assoc() string {
 	// println('assoc()')
 	p.next()
 	name := p.check_name()
-	var := p.find_var_or_const(name) or{
+	p.fspace()
+	var := p.find_var_or_const(name) or {
 		p.error('unknown variable `$name`')
 		exit(1)
 	}
@@ -2332,13 +2336,14 @@ fn (p mut Parser) assoc() string {
 		p.mark_var_used(var)
 	}
 	p.check(.pipe)
+	p.fgen_nl()
 	p.gen('($var.typ){')
 	typ := p.table.find_type(var.typ)
 	mut fields := []string // track the fields user is setting, the rest will be copied from the old object
 	for p.tok != .rcbr {
 		field := p.check_name()
 		// if !typ.has_field(field) {
-		f := typ.find_field(field) or{
+		f := typ.find_field(field) or {
 			p.error('`$typ.name` has no field `$field`')
 			exit(1)
 		}
@@ -2456,7 +2461,7 @@ fn (p mut Parser) array_init() string {
 	if p.tok == .name && !p.inside_const {
 		const_name := p.prepend_mod(p.lit)
 		if p.table.known_const(const_name) {
-			c := p.table.find_const(const_name) or{
+			c := p.table.find_const(const_name) or {
 				// p.error('unknown const `$p.lit`')
 				exit(1)
 			}
@@ -2765,7 +2770,7 @@ fn (p mut Parser) go_statement() {
 	if p.peek() == .dot {
 		// Method
 		var_name := p.lit
-		v := p.find_var(var_name) or{
+		v := p.find_var(var_name) or {
 			return
 		}
 		p.mark_var_used(v)
@@ -2773,7 +2778,7 @@ fn (p mut Parser) go_statement() {
 		p.next()
 		p.check(.dot)
 		typ := p.table.find_type(v.typ)
-		method := p.table.find_method(typ, p.lit) or{
+		method := p.table.find_method(typ, p.lit) or {
 			p.error_with_token_index('go method missing $var_name', gotoken_idx)
 			return
 		}
@@ -2782,7 +2787,7 @@ fn (p mut Parser) go_statement() {
 	else {
 		f_name := p.lit
 		// Normal function
-		f := p.table.find_fn(p.prepend_mod(f_name)) or{
+		f := p.table.find_fn(p.prepend_mod(f_name)) or {
 			println(p.table.debug_fns())
 			p.error_with_token_index('can not find function $f_name', gotoken_idx)
 			return
@@ -2913,7 +2918,7 @@ fn (p mut Parser) defer_st() {
 }
 
 fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
-	us_idx := typ_name.index('__') or{
+	us_idx := typ_name.index('__') or {
 		return
 	}
 	arg_mod := typ_name[..us_idx]
