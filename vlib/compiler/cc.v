@@ -15,7 +15,7 @@ fn todo() {
 }
 
 fn (v &V) no_cc_installed() bool {
-	$if windows {	
+	$if windows {
 		os.exec('$v.pref.ccompiler -v') or {
 			if v.pref.is_verbose {
 				println('C compiler not found, trying to build with msvc...')
@@ -27,6 +27,9 @@ fn (v &V) no_cc_installed() bool {
 }
 
 fn (v mut V) cc() {
+	if os.executable().contains('vfmt') {
+		return
+	}
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
 	vdir := os.dir(vexe)

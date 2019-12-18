@@ -130,11 +130,11 @@ fn (p mut Parser) fmt_dec() {
 }
 
 [if vfmt]
-fn (p mut Scanner) init_fmt() {
+fn (s mut Scanner) init_fmt() {
 	// Right now we can't do `$if vfmt {`, so I'm using
 	// a conditional function init_fmt to set this flag.
 	// This function will only be called if `-d vfmt` is passed.
-	p.is_fmt = true
+	s.is_fmt = true
 }
 
 [if vfmt]
@@ -243,7 +243,7 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	if !p.file_name.contains('fn.v') {return}
+	if !p.file_name.contains('parser.v') {return}
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {

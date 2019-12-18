@@ -221,7 +221,7 @@ fn (p mut Parser) fn_decl() {
 	mut f := Fn{
 		mod: p.mod
 		is_public: is_pub || p.is_vh // functions defined in .vh are always public
-		
+
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
 		comptime_define: if p.attr.starts_with('if ') {p.attr[3..]}else {''}
@@ -454,7 +454,7 @@ fn (p mut Parser) fn_decl() {
 			p.genln('; // $f.name')
 		}
 		// Generic functions are inserted as needed from the call site
-		if f.is_generic {
+		if f.is_generic && !p.scanner.is_fmt {
 			if p.first_pass() {
 				if !p.scanner.is_vh {
 					gpidx := p.v.get_file_parser_index(p.file_path) or {
@@ -885,7 +885,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				typ: typ
 				is_arg: true
 				// is_mut: is_mut
-				
+
 				line_nr: p.scanner.line_nr
 				token_idx: p.cur_tok_index()
 			}
@@ -1271,7 +1271,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		p.error('wrong number of arguments in call to `${f.str_for_error()}`')
 	}
 	p.check(.rpar)
-	if f.is_generic {
+	if f.is_generic && !p.scanner.is_fmt {
 		type_map := p.extract_type_inst(f, saved_args)
 		p.dispatch_generic_fn_instance(mut f, &type_map)
 	}
