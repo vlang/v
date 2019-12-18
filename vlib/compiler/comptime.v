@@ -199,6 +199,7 @@ fn (p mut Parser) comp_time() {
 fn (p mut Parser) chash() {
 	hash := p.lit.trim_space()
 	// println('chsh() file=$p.file  hash="$hash"')
+	p.fgen_nl()
 	p.next()
 	if hash.starts_with('flag ') {
 		if p.first_pass() {

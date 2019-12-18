@@ -7,6 +7,7 @@ import (
 	os
 	strings
 	compiler.x64
+	//time
 )
 
 struct Parser {
@@ -212,7 +213,9 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 	return p
 }
 
+// __global scan_time i64
 fn (p mut Parser) scan_tokens() {
+	//t := time.ticks()
 	for {
 		res := p.scanner.scan()
 		p.tokens << Token{
@@ -225,6 +228,8 @@ fn (p mut Parser) scan_tokens() {
 			break
 		}
 	}
+	// scan_time += time.ticks() - t
+	// println('scan tokens $p.file_name $scan_time ')
 }
 
 fn (p mut Parser) set_current_fn(f Fn) {
@@ -866,6 +871,9 @@ fn (p &Parser) strtok() string {
 			return "'$p.lit'"
 		}
 	}
+	if p.tok == .hash {
+		return '#' + p.lit
+	}
 	res := p.tok.str()
 	if res == '' {
 		n := int(p.tok)
@@ -967,7 +975,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 		}
@@ -1165,6 +1173,9 @@ fn (p mut Parser) statements_no_rcbr() string {
 		}
 	}
 	// p.next()
+	if p.inside_if_expr {
+		p.fspace()
+	}
 	p.check(.rcbr)
 	// p.fmt_dec()
 	p.close_scope()
@@ -1821,12 +1832,12 @@ fn (p mut Parser) var_expr(v Var) string {
 	if p.tok == .lsbr {
 		typ = p.index_expr(typ, fn_ph)
 		if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
-		T := p.table.find_type(p.base_type(typ))
-		p.gen('(')
-		p.fn_call_args(mut T.func)
-		p.gen(')')
-		typ = T.func.typ
-	}
+			T := p.table.find_type(p.base_type(typ))
+			p.gen('(')
+			p.fn_call_args(mut T.func)
+			p.gen(')')
+			typ = T.func.typ
+		}
 	}
 	// a.b.c().d chain
 	// mut dc := 0

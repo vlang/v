@@ -243,7 +243,7 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	if !p.file_name.contains('parser.v') {return}
+	//if !p.file_name.contains('float.v') {return}
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {

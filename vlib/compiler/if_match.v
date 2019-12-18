@@ -277,6 +277,9 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 	}
 	p.fspace()
 	p.check(.lcbr)
+	if p.inside_if_expr {
+		p.fspace()
+	}
 	mut typ := ''
 	// if { if hack
 	if p.tok == .key_if && p.inside_if_expr {
@@ -289,7 +292,9 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 	if_returns := p.returns
 	p.returns = false
 	if p.tok == .key_else {
-		if !p.inside_if_expr {
+		if p.inside_if_expr {
+			p.fspace()
+		} else {
 			p.fgen_nl()
 		}
 		p.check(.key_else)
@@ -318,6 +323,9 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			p.genln(' else { ')
 		}
 		p.check(.lcbr)
+		if is_expr {
+			p.fspace()
+		}
 		// statements() returns the type of the last statement
 		first_typ := typ
 		typ = p.statements()
