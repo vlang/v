@@ -1039,6 +1039,9 @@ pub fn tmpdir() string {
 	$if linux {
 		if path == '' { path = '/tmp' }
 	}
+	$if freebsd {
+		if path == '' { path = '/tmp' }
+	}
 	$if macos {
 		/*
 		if path == '' {
