@@ -161,8 +161,8 @@ fn (p mut Parser) fnext() {
 	if p.tokens[p.token_idx].tok in [.line_comment, .mline_comment] {
 		// Newline before the comment and after consts and closing }
 		if p.inside_const {
-			p.fgen_nl()
-			p.fgen_nl()
+			//p.fgen_nl()
+			//p.fgen_nl()
 		}
 		//is_rcbr := p.tok == .rcbr
 		for p.token_idx < p.tokens.len - 1 {
@@ -218,6 +218,12 @@ fn (p mut Parser) fnext() {
 	}
 }
 
+[if vfmt]
+fn (p mut Parser) fremove_last() {
+	p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
+
+}
+
 
 [if vfmt]
 fn (p &Parser) gen_fmt() {
@@ -237,7 +243,7 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	if !p.file_name.contains('parser.v') {return}
+	if !p.file_name.contains('scanner.v') {return}
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {

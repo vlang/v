@@ -172,7 +172,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		println('new_parser: V script')
 	}
 	if p.pref.building_v {
-		p.scanner.should_print_relative_paths_on_error = true
+		p.scanner.print_rel_paths_on_error = true
 	}
 	// if p.pref.generating_vh {
 	// Keep newlines
@@ -205,9 +205,9 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		p.is_js = true
 	}
 	if p.pref.is_repl {
-		p.scanner.should_print_line_on_error = false
-		p.scanner.should_print_errors_in_color = false
-		p.scanner.should_print_relative_paths_on_error = true
+		p.scanner.print_line_on_error = false
+		p.scanner.print_colored_error = false
+		p.scanner.print_rel_paths_on_error = true
 	}
 	return p
 }
@@ -942,7 +942,7 @@ fn (p mut Parser) get_type() string {
 	// fn type
 	if p.tok == .key_fn {
 		mut f := Fn{
-			name: '_',
+			name: '_'
 			mod: p.mod
 		}
 		p.next()
@@ -2212,8 +2212,8 @@ fn (p mut Parser) index_expr(typ_ string,fn_ph int) string {
 			index_val := l[idx..].trim_space()
 			p.cgen.resetln(l[..fn_ph])
 			p.table.varg_access << VargAccess{
-				fn_name: p.cur_fn.name,
-				tok_idx: index_error_tok_pos,
+				fn_name: p.cur_fn.name
+				tok_idx: index_error_tok_pos
 				index: index_val.int()
 			}
 			p.cgen.set_placeholder(fn_ph, '${v.name}->args[$index_val]')

@@ -315,6 +315,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			p.check_types(p.bool_expression(),  f.typ)
 			if p.tok == .comma {
 				p.next()
+				p.fremove_last()
 			}
 			if p.tok != .rcbr {
 				p.gen(',')

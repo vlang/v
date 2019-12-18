@@ -89,7 +89,7 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	// to find the source file, when the IDE has a different working folder than v itself.
 	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
 
-	if s.should_print_line_on_error && s.nlines > 0 {
+	if s.print_line_on_error && s.nlines > 0 {
 		context_start_line := imax(0,        (s.line_nr - error_context_before    ))
 		context_end_line   := imin(s.nlines-1, (s.line_nr + error_context_after + 1 ))
 		for cline := context_start_line; cline < context_end_line; cline++ {
@@ -130,7 +130,7 @@ fn (s &Scanner) get_error_filepath() string {
 	use_relative_paths := match verror_paths_override {
 		'relative' { true }
 		'absolute' { false }
-		else { s.should_print_relative_paths_on_error }
+		else { s.print_rel_paths_on_error }
 	}
 	if use_relative_paths {
 		workdir := os.getwd() + os.path_separator
@@ -143,7 +143,7 @@ fn (s &Scanner) get_error_filepath() string {
 }
 
 fn (s &Scanner) is_color_output_on() bool {
-	return s.should_print_errors_in_color && term.can_show_color_on_stderr()
+	return s.print_colored_error && term.can_show_color_on_stderr()
 }
 
 fn (p mut Parser) print_error_context(){
