@@ -1,6 +1,5 @@
 module eventbus
 
-
 pub struct Publisher {
 	mut:
 	registry &Registry
@@ -19,11 +18,11 @@ struct Registry{
 }
 
 struct EventHandler {
-	func fn(Params)
+	func fn(voidptr, Params)
 }
 
 pub struct EventBus{
-	mut:
+	pub mut:
 	registry &Registry
 	publisher &Publisher
 	pub:
@@ -45,9 +44,9 @@ pub fn new() &EventBus{
 
 // EventBus Methods
 
-pub fn (eb &EventBus) publish(name string, p Params) {
+pub fn (eb &EventBus) publish(name string, sender voidptr, p Params) {
 	mut publisher := eb.publisher
-	publisher.publish(name, p)
+	publisher.publish(name, sender, p)
 }
 
 pub fn (eb &EventBus) clear_all(){
@@ -61,36 +60,38 @@ pub fn (eb &EventBus) has_subscriber(name string) bool {
 
 // Publisher Methods
 
-fn (pb mut Publisher) publish(name string, p Params){
+fn (pb mut Publisher) publish(name string, sender voidptr, p Params){
+	//p.put_custom("sender", "any", sender) //add sender to params
 	for i, n in pb.registry.names {
 		if name == n {
 			eh := pb.registry.events[i]
-			invoke(eh, p)
 			once_index := pb.registry.once.index(pb.registry.names[i])
 			if once_index > -1 {
 				pb.registry.events.delete(i)
 				pb.registry.names.delete(i)
 				pb.registry.once.delete(once_index)
 			}
+			invoke(eh, sender, p)
 		}
 	}
 }
 
 fn (p mut Publisher) clear_all(){
-	for i, n in p.registry.names {
+	if p.registry.names.len == 0 {return}
+	for i := p.registry.names.len - 1; i >= 0; i-- {
 		p.registry.delete_entry(i)
 	}
 }
 
 // Subscriber Methods
 
-pub fn (s mut Subscriber) subscribe(name string, handler fn(Params)){
+pub fn (s mut Subscriber) subscribe(name string, handler fn(voidptr, Params)){
 	s.registry.names << name
 	v := voidptr(handler)
 	s.registry.events << v
 }
 
-pub fn (s mut Subscriber) subscribe_once(name string, handler fn(Params)){
+pub fn (s mut Subscriber) subscribe_once(name string, handler fn(voidptr, Params)){
 	s.subscribe(name, handler)
 	s.registry.once << name
 }
@@ -99,7 +100,7 @@ pub fn (s &Subscriber) is_subscribed(name string) bool {
 	return s.registry.check_subscriber(name)
 }
 
-pub fn (s mut Subscriber) unsubscribe(name string, handler fn(Params)){
+pub fn (s mut Subscriber) unsubscribe(name string, handler fn(voidptr, Params)){
 	v := voidptr(handler)
 	for i, n in s.registry.names {
 		if name == n {
@@ -131,7 +132,7 @@ fn (r mut Registry) delete_entry(index int) {
 
 // Helper Functions
 
-fn invoke(p voidptr, arr Params){
+fn invoke(p, sender voidptr, arr Params){
 	handler := EventHandler{p}.func
-	handler(arr)
+	handler(sender, arr)
 }
