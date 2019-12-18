@@ -1159,6 +1159,20 @@ pub fn vfmt(args[]string) {
 		println('v fmt can only be used on .v files')
 		exit(1)
 	}
+	println('WIP')
+	/*
+	vexe := vexe_path()
+	//launch_tool('vfmt', '-d vfmt')
+	vroot := os.dir(vexe)
+	os.chdir(vroot)
+	ret := os.system('$vexe -o $vroot/tools/vfmt -d vfmt v.v')
+	if ret != 0 {
+		println('err')
+		return
+	}
+	os.exec('$vroot/tools/vfmt $file') or { panic(err) }
+	//if !os.exists('
+	*/
 }
 
 pub fn create_symlink() {

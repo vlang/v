@@ -243,16 +243,16 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	if !p.file_name.contains('scanner.v') {return}
+	if !p.file_name.contains('fn.v') {return}
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {
 		verror('failed to create fmt.v')
 		return
 	}
-	println('replacing ${p.file_path}...')
-	os.mv(path, p.file_path)
+	println('replacing ${p.file_path}...\n')
 	out.writeln(s)//p.scanner.fmt_out.str().trim_space())
 	out.close()
+	os.mv(path, p.file_path)
 }
 

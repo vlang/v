@@ -21,9 +21,8 @@ const (
 fn main() {
 	//t := time.ticks()
 	//defer { println(time.ticks() - t) }
-	// There's no `flags` module yet, so args have to be parsed manually
 	args := compiler.env_vflags_and_os_args()
-	options, command := compiler.get_v_options_and_main_command( args )	
+	options, command := compiler.get_v_options_and_main_command( args )
 	// external tool
 	if command in simple_tools {
 		compiler.launch_tool('v' + command)

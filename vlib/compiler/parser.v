@@ -853,6 +853,9 @@ fn (p &Parser) strtok() string {
 		return p.lit
 	}
 	if p.tok == .chartoken {
+		if p.lit == '`' {
+			return '`\\$p.lit`'
+		}
 		return '`$p.lit`'
 	}
 	if p.tok == .str {
@@ -964,7 +967,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 		}
@@ -2902,6 +2905,7 @@ fn (p mut Parser) attribute() {
 
 fn (p mut Parser) defer_st() {
 	p.check(.key_defer)
+	p.fspace()
 	p.check(.lcbr)
 	pos := p.cgen.lines.len
 	// Save everything inside the defer block to `defer_text`.
