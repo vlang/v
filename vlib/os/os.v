@@ -98,9 +98,9 @@ pub fn read_bytes(path string) ?[]byte {
 	C.rewind(fp)
 
 	mut res	 := [`0`].repeat(fsize)
-	nreadelements := C.fread(res.data, fsize, 1, fp)
+	n_read_elements := C.fread(res.data, fsize, 1, fp)
 	C.fclose(fp)
-	return res[0..nreadelements * fsize]
+	return res[0..n_read_elements * fsize]
 }
 
 // read_file reads the file in `path` and returns the contents.
