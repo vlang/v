@@ -17,7 +17,7 @@ pub:
 
 // Private function, used by V (`nums := []int`)
 fn new_array(mylen, cap, elm_size int) array {
-	cap_ := if cap == 0 {1}else {cap}
+	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen
 		cap: cap
@@ -34,7 +34,7 @@ pub fn make(len, cap, elm_size int) array {
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
-	cap_ := if cap == 0 {1}else {cap}
+	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: len
 		cap: cap
@@ -60,7 +60,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 // Private function. Doubles array capacity if needed
 fn (a mut array) ensure_cap(required int) {
 	if required > a.cap {
-		mut cap := if a.cap == 0 {2}else {a.cap * 2}
+		mut cap := if a.cap == 0 { 2 } else { a.cap * 2 }
 		for required > cap {
 			cap *= 2
 		}
@@ -204,7 +204,7 @@ fn (a array) right(n int) array {
 
 // used internally for [2..4]
 fn (a array) slice2(start, _end int, end_max bool) array {
-	end := if end_max {a.len}else {_end}
+	end := if end_max { a.len } else { _end }
 	return a.slice(start, end)
 }
 
@@ -372,7 +372,7 @@ pub fn (b []byte) hex() string {
 // TODO: implement for all types
 pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
-		min := if dst.len < src.len {dst.len}else {src.len}
+		min := if dst.len < src.len { dst.len } else { src.len }
 		C.memcpy(dst.data, src.left(min).data, dst.element_size * min)
 		return min
 	}
@@ -454,7 +454,6 @@ pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
 // []int == []int (also for: i64, f32, f64, byte, string)
 fn array_eq<T>(a1, a2 []T) bool {
-
 	if a1.len != a2.len {
 		return false
 	}

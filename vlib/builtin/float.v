@@ -143,3 +143,4 @@ fn (a f64) gebit(b f64) bool {
 fn (a f32) gebit(b f32) bool {
 	return C.DEFAULT_GE(a, b)
 }
+

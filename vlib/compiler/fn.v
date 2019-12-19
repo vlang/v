@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module compiler
 
-
-
 import (
 	strings
 )
