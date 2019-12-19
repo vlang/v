@@ -419,14 +419,14 @@ fn (p mut Parser) parse(pass Pass) {
 		p.mod = p.check_name()
 	}
 	//
-	p.fgenln('\n')
+	p.fgen_nl()
 	p.cgen.nogen = false
 	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
 		// println('skipping $p.mod (v.mod = $p.v.mod)')
 		p.cgen.nogen = true
 		// defer { p.cgen.nogen = false }
 	}
-	p.fgenln('\n')
+	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
 	p.can_chash = p.mod in ['ui', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
@@ -466,7 +466,6 @@ fn (p mut Parser) parse(pass Pass) {
 				}
 			}
 			.key_pub {
-				p.fspace()
 				next := p.peek()
 				match next {
 					.key_fn {
@@ -522,6 +521,7 @@ fn (p mut Parser) parse(pass Pass) {
 				p.next()
 				p.fspace()
 				name := p.check_name()
+				p.fspace()
 				typ := p.get_type()
 				p.register_global(name, typ)
 				// p.genln(p.table.cgen_name_type_pair(name, typ))
@@ -665,6 +665,7 @@ fn (p mut Parser) const_decl() {
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
+		p.fspace()
 	}
 	p.inside_const = true
 	p.check(.key_const)
@@ -770,9 +771,12 @@ fn (p mut Parser) type_decl() {
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
+		p.fspace()
 	}
 	p.check(.key_type)
+	p.fspace()
 	name := p.check_name()
+	p.fspace()
 	// V used to have 'type Foo struct', many Go users might use this syntax
 	if p.tok == .key_struct {
 		p.error('use `struct $name {` instead of `type $name struct {`')
@@ -867,7 +871,7 @@ fn (p &Parser) strtok() string {
 		return '`$p.lit`'
 	}
 	if p.tok == .str {
-		if p.lit.contains("'") {
+		if p.lit.contains("'") && !p.lit.contains('"') {
 			return '"$p.lit"'
 		}
 		else {
@@ -2989,3 +2993,4 @@ fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {
 fn todo_remove() {
 	x64.new_gen('f')
 }
+
