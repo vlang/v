@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module x64
 
 import os
@@ -14,19 +13,14 @@ const (
 	ei_class = 4
 	elfclass64 = 2
 	elfdata2lsb = 1
-	
 	ev_current = 1
 	elf_osabi = 0
-	
 	// ELF file types
 	et_rel = 1
 	et_exec = 2
 	et_dyn = 3
-	
 	e_machine = 0x3e
-	
 	shn_xindex = 0xffff
-	
 	sht_null = 0
 )
 
@@ -34,14 +28,13 @@ const (
 	segment_start = 0x400000
 )
 
-
 pub fn (g mut Gen) generate_elf_header() {
 	g.buf << [byte(mag0), mag1, mag2, mag3]
 	g.buf << elfclass64 // file class
 	g.buf << elfdata2lsb // data encoding
 	g.buf << ev_current // file version
-	g.buf << 1//elf_osabi
-	g.write64(0)//et_rel) // et_rel for .o
+	g.buf << 1 // elf_osabi
+	g.write64(0) // et_rel) // et_rel for .o
 	g.write16(2) // e_type
 	g.write16(e_machine) //
 	g.write32(ev_current) // e_version
@@ -70,7 +63,7 @@ pub fn (g mut Gen) generate_elf_header() {
 	// user code starts here at
 	// address: 00070 and a half
 	g.code_start_pos = g.buf.len
-	g.call(0)// call main function, it's not guaranteed to be the first
+	g.call(0) // call main function, it's not guaranteed to be the first
 }
 
 pub fn (g mut Gen) generate_elf_footer() {
@@ -84,19 +77,21 @@ pub fn (g mut Gen) generate_elf_footer() {
 		g.write64_at(segment_start + g.buf.len, int(g.str_pos[i]))
 		g.write_string(s)
 		g.write8(6)
-	}	
+	}
 	// Now we know the file size, set it
 	file_size := g.buf.len
 	g.write64_at(file_size, g.file_size_pos) // set file size 64 bit value
-	g.write64_at(file_size, g.file_size_pos+8)
+	g.write64_at(file_size, g.file_size_pos + 8)
 	// call main function, it's not guaranteed to be the first
 	// we generated call(0) ("e8 0")
 	// no need to replace "0" with a relative address of the main function
 	// +1 is for "e8"
 	// -5 is for "e8 00 00 00 00"
-	g.write64_at(int(g.main_fn_addr - g.code_start_pos) - 5, g.code_start_pos+1)
+	g.write64_at(int(g.main_fn_addr - g.code_start_pos) - 5, g.code_start_pos + 1)
 	// Create the binary
-	mut f := os.create(g.out_name) or { panic(err) }
+	mut f := os.create(g.out_name)or{
+		panic(err)
+	}
 	os.chmod(g.out_name, 0775)
 	f.write_bytes(g.buf.data, g.buf.len)
 	f.close()

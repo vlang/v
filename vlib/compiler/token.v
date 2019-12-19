@@ -1,25 +1,23 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 struct Token {
-	tok      TokenKind  // the token number/enum; for quick comparisons
+	tok      TokenKind // the token number/enum; for quick comparisons
 	lit      string // literal representation of the token
 	line_nr  int // the line number in the source where the token occured
 	name_idx int // name table index for O(1) lookup
 	pos      int // the position of the token in scanner text
 }
 
-
 enum TokenKind {
 	eof
-	name        // user
-	number      // 123
-	str         // 'foo'
-	str_inter   // 'name=$user.name'
-	chartoken   // `A`
+	name // user
+	number // 123
+	str // 'foo'
+	str_inter // 'name=$user.name'
+	chartoken // `A`
 	plus
 	minus
 	mul
@@ -44,7 +42,7 @@ enum TokenKind {
 	str_dollar
 	left_shift
 	righ_shift
-	//at // @
+	// at // @
 	assign // =
 	decl_assign // :=
 	plus_assign // +=
@@ -102,7 +100,7 @@ enum TokenKind {
 	key_import_const
 	key_in
 	key_interface
-	//key_it
+	// key_it
 	key_match
 	key_module
 	key_mut
@@ -114,7 +112,7 @@ enum TokenKind {
 	key_switch
 	key_true
 	key_type
-	//typeof
+	// typeof
 	key_orelse
 	key_union
 	key_pub
@@ -125,6 +123,8 @@ enum TokenKind {
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
+
+
 fn build_keys() map[string]int {
 	mut res := map[string]int
 	for t := int(TokenKind.keyword_beg) + 1; t < int(TokenKind.keyword_end); t++ {
@@ -163,7 +163,7 @@ fn build_token_str() []string {
 	s[TokenKind.dotdot] = '..'
 	s[TokenKind.ellipsis] = '...'
 	s[TokenKind.comma] = ','
-	//s[TokenKind.at] = '@'
+	// s[TokenKind.at] = '@'
 	s[TokenKind.semicolon] = ';'
 	s[TokenKind.colon] = ':'
 	s[TokenKind.arrow] = '=>'
@@ -202,7 +202,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_assert] = 'assert'
 	s[TokenKind.key_struct] = 'struct'
 	s[TokenKind.key_if] = 'if'
-	//s[TokenKind.key_it] = 'it'
+	// s[TokenKind.key_it] = 'it'
 	s[TokenKind.key_else] = 'else'
 	s[TokenKind.key_asm] = 'asm'
 	s[TokenKind.key_return] = 'return'
@@ -223,7 +223,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_import] = 'import'
 	s[TokenKind.key_embed] = 'embed'
 	s[TokenKind.key_unsafe] = 'unsafe'
-	//Tokens[key_typeof] = 'typeof'
+	// Tokens[key_typeof] = 'typeof'
 	s[TokenKind.key_enum] = 'enum'
 	s[TokenKind.key_interface] = 'interface'
 	s[TokenKind.key_pub] = 'pub'
@@ -262,19 +262,11 @@ pub fn (t TokenKind) str() string {
 }
 
 fn (t TokenKind) is_decl() bool {
-	return t in [.key_enum, .key_interface, .key_fn,
-		.key_struct ,.key_type,	.key_const,  .key_import_const, .key_pub, .eof]
+	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
 }
 
 const (
-	AssignTokens = [
-		TokenKind.assign, .plus_assign, .minus_assign,
-		.mult_assign, .div_assign, .xor_assign,
-		.mod_assign,
-		.or_assign, .and_assign, .righ_shift_assign,
-		.left_shift_assign
-	]
-
+	AssignTokens = [TokenKind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign, .righ_shift_assign, .left_shift_assign]
 )
 
 fn (t TokenKind) is_assign() bool {
@@ -293,7 +285,6 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 pub fn (t Token) str() string {
 	if t.tok == .number {
 		return t.lit
-
 	}
 	if t.tok == .chartoken {
 		return '`$t.lit`'

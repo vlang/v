@@ -718,7 +718,7 @@ fn (p mut Parser) factor() string {
 			// p.fgen('$sizeof_typ)')
 			return 'int'
 		}
-		.amp,.dot,.mul {
+		.amp, .dot, .mul {
 			// (dot is for enum vals: `.green`)
 			return p.name_expr()
 		}
@@ -822,3 +822,4 @@ fn (p mut Parser) factor() string {
 }
 
 // { user | name: 'new name' }
+

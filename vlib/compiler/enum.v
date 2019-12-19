@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 fn (p mut Parser) enum_decl(no_name bool) {
@@ -12,7 +11,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	}
 	p.check(.key_enum)
 	p.fspace()
-	mut enum_name	:= p.check_name()
+	mut enum_name := p.check_name()
 	is_c := enum_name == 'C' && p.tok == .dot
 	if is_c {
 		p.check(.dot)
@@ -44,7 +43,8 @@ fn (p mut Parser) enum_decl(no_name bool) {
 				p.next()
 				val = p.lit.int()
 				p.next()
-			}else{
+			}
+			else {
 				p.next()
 				enum_assign_tidx = p.cur_tok_index()
 				p.error_with_token_index('only numbers are allowed in enum initializations', enum_assign_tidx)
@@ -62,7 +62,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	if is_flag && fields.len > 32 {
 		p.error('when an enum is used as bit field, it must have a max of 32 fields')
 	}
-	mut T := Type {
+	mut T := Type{
 		name: enum_name
 		mod: p.mod
 		parent: 'int'
@@ -89,9 +89,9 @@ fn (p mut Parser) check_enum_member_access() {
 			p.error('enum `$T.name` does not have value `$val`')
 		}
 		p.gen(mod_gen_name(T.mod) + '__' + p.expected_type + '_' + val)
-	} else {
+	}
+	else {
 		p.error('`$T.name` is not an enum')
 	}
 }
-
 

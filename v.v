@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module main
 
 import (
@@ -9,20 +8,19 @@ import (
 	benchmark
 	os
 	filepath
-	//time
+	// time
 )
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['up', 'create', 'test', 'test-compiler', 'build-tools',
-		 'build-examples', 'build-vbinaries']
+	simple_tools = ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
-	//t := time.ticks()
-	//defer { println(time.ticks() - t) }
+	// t := time.ticks()
+	// defer { println(time.ticks() - t) }
 	args := compiler.env_vflags_and_os_args()
-	options, command := compiler.get_v_options_and_main_command( args )
+	options,command := compiler.get_v_options_and_main_command(args)
 	// external tool
 	if command in simple_tools {
 		compiler.launch_tool('v' + command)
@@ -61,7 +59,8 @@ fn main() {
 	mut tmark := benchmark.new_benchmark()
 	if v.pref.x64 {
 		v.compile_x64()
-	}	else {
+	}
+	else {
 		v.compile()
 	}
 	if v.pref.is_stats {
@@ -76,7 +75,8 @@ fn main() {
 
 fn v_command(command string, args []string) {
 	match command {
-		'', '.', 'run', 'build' { // handled later in vlib/compiler/main.v
+		'', '.', 'run', 'build' {
+			// handled later in vlib/compiler/main.v
 			return
 		}
 		'version' {
@@ -109,7 +109,7 @@ fn v_command(command string, args []string) {
 			os.chdir(vdir)
 			mod := args.last()
 			os.system('$vexe build module vlib$os.path_separator' + args.last())
-			txt := os.read_file(filepath.join(compiler.v_modules_path, 'vlib', '${mod}.vh')) or {
+			txt := os.read_file(filepath.join(compiler.v_modules_path,'vlib','${mod}.vh'))or{
 				panic(err)
 			}
 			println(txt)
@@ -118,8 +118,7 @@ fn v_command(command string, args []string) {
 		else {
 			println('v $command: unknown command')
 			println('Run "v help" for usage.')
-		}
-	}
+		}}
 	exit(0)
 }
 

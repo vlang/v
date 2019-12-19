@@ -875,13 +875,13 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 		'ustring' {
 			return '%.*s'
 		}
-		'byte','bool','int','char','byte','i16','i8' {
+		'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8' {
 			return '%d'
 		}
-		'u16','u32' {
+		'u16', 'u32' {
 			return '%u'
 		}
-		'f64','f32' {
+		'f64', 'f32' {
 			return '%f'
 		}
 		'i64' {
@@ -890,7 +890,7 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 		'u64' {
 			return '%llu'
 		}
-		'byte*','byteptr' {
+		'byte*', 'byteptr' {
 			return '%s'
 		}
 		// case 'array_string': return '%s'

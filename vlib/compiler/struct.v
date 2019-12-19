@@ -1,14 +1,14 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 import (
 	strings
 )
-
 // also unions and interfaces
+
+
 fn (p mut Parser) struct_decl() {
 	is_pub := p.tok == .key_pub
 	if is_pub {
@@ -67,18 +67,18 @@ fn (p mut Parser) struct_decl() {
 	}
 	mut typ := p.table.find_type(name)
 	if p.pass == .decl && p.table.known_type_fast(typ) {
-		//if name in reserved_type_param_names {
-			//p.error('name `$name` is reserved for type parameters')
-		//} else {
+		// if name in reserved_type_param_names {
+		// p.error('name `$name` is reserved for type parameters')
+		// } else {
 		p.error('type `$name` redeclared')
-		//}
+		// }
 	}
 	if is_objc {
 		// Forward declaration of an Objective-C interface with `@class` :)
 		p.gen_typedef('@class $name;')
 	}
 	else if !is_c {
-		kind := if is_union {'union'} else {'struct'}
+		kind := if is_union { 'union' } else { 'struct' }
 		p.gen_typedef('typedef $kind $name $name;')
 	}
 	// Register the type
@@ -96,7 +96,7 @@ fn (p mut Parser) struct_decl() {
 		p.table.rewrite_type(typ)
 	}
 	else {
-		typ = Type {
+		typ = Type{
 			name: name
 			mod: p.mod
 			is_c: is_c
@@ -114,14 +114,14 @@ fn (p mut Parser) struct_decl() {
 	p.check(.lcbr)
 	// Struct fields
 	mut access_mod := AccessMod.private
-	//mut is_pub_field := false
-	//mut is_mut := false
-	mut names := []string// to avoid dup names TODO alloc perf
+	// mut is_pub_field := false
+	// mut is_mut := false
+	mut names := []string // to avoid dup names TODO alloc perf
 	mut fmt_max_len := p.table.max_field_len[name]
-	//println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
+	// println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
 	if !is_ph && p.first_pass() {
 		p.table.register_type(typ)
-		//println('registering 1 nrfields=$typ.fields.len')
+		// println('registering 1 nrfields=$typ.fields.len')
 	}
 	mut did_gen_something := false
 	mut used := []AccessMod
@@ -136,7 +136,8 @@ fn (p mut Parser) struct_decl() {
 				p.fspace()
 				new_access_mod = .public_mut
 				p.next() // skip `mut`
-			} else {
+			}
+			else {
 				new_access_mod = .public
 			}
 			if new_access_mod in used {
@@ -203,7 +204,7 @@ fn (p mut Parser) struct_decl() {
 			continue
 		}
 		// `pub` access mod
-		//access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
+		// access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fspace()
 		tt := p.get_type2()
 		field_type := tt.name
@@ -222,11 +223,11 @@ fn (p mut Parser) struct_decl() {
 		// `a int = 4`
 		if p.tok == .assign {
 			p.next()
-			def_val_type, expr := p.tmp_expr()
+			def_val_type,expr := p.tmp_expr()
 			if def_val_type != field_type {
 				p.error('expected `$field_type` but got `$def_val_type`')
 			}
-			//println('pass=$p.pass $typ.name ADDING field=$field_name "$def_val_type" "$expr"')
+			// println('pass=$p.pass $typ.name ADDING field=$field_name "$def_val_type" "$expr"')
 			if !p.first_pass() {
 				p.table.add_default_val(i, typ.name, expr)
 			}
@@ -241,12 +242,15 @@ fn (p mut Parser) struct_decl() {
 				p.check(.colon)
 				mut val := ''
 				match p.tok {
-					.name { val = p.check_name() }
-					.str { val = p.check_string() }
+					.name {
+						val = p.check_name()
+					}
+					.str {
+						val = p.check_string()
+					}
 					else {
 						p.error('attribute value should be either name or string')
-					}
-				}
+					}}
 				attr += ':' + val
 			}
 			p.check(.rsbr)
@@ -257,24 +261,22 @@ fn (p mut Parser) struct_decl() {
 		did_gen_something = true
 		is_mut := access_mod in [.private_mut, .public_mut, .global]
 		if p.first_pass() {
-			p.table.add_field(typ.name, field_name, field_type, is_mut,
-				attr, access_mod)
+			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
 		}
 		p.fgen_nl() // newline between struct fields
 	}
 	if p.scanner.is_fmt && p.pass == .decl {
 		p.table.max_field_len[typ.name] = fmt_max_len
 	}
-	//p.fgen_require_nl()
+	// p.fgen_require_nl()
 	p.check(.rcbr)
 	if !is_c && !did_gen_something && p.first_pass() {
 		p.table.add_field(typ.name, '', 'EMPTY_STRUCT_DECLARATION', false, '', .private)
 	}
 	p.fgen_nl()
 	p.fgen_nl()
-	//p.fgenln('//kek')
+	// p.fgenln('//kek')
 }
-
 // `User{ foo: bar }`
 fn (p mut Parser) struct_init(typ string) string {
 	p.is_struct_init = true
@@ -282,7 +284,9 @@ fn (p mut Parser) struct_init(typ string) string {
 	if !t.is_public && t.mod != p.mod {
 		p.warn('type `$t.name` is private')
 	}
-	if p.gen_struct_init(typ, t) { return typ }
+	if p.gen_struct_init(typ, t) {
+		return typ
+	}
 	ptr := typ.contains('*')
 	mut did_gen_something := false
 	// Loop thru all struct init keys and assign values
@@ -292,7 +296,7 @@ fn (p mut Parser) struct_init(typ string) string {
 	peek := p.peek()
 	if peek == .colon || p.tok == .rcbr {
 		for p.tok != .rcbr {
-			field := if typ != 'Option' { p.table.var_cgen_name( p.check_name() ) } else { p.check_name() }
+			field := if typ != 'Option' { p.table.var_cgen_name(p.check_name()) } else { p.check_name() }
 			if !p.first_pass() && !t.has_field(field) {
 				p.error('`$t.name` has no field `$field`')
 			}
@@ -312,7 +316,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			p.check(.colon)
 			p.fspace()
 			p.expected_type = f.typ
-			p.check_types(p.bool_expression(),  f.typ)
+			p.check_types(p.bool_expression(), f.typ)
 			if p.tok == .comma {
 				p.next()
 				p.fremove_last()
@@ -330,18 +334,15 @@ fn (p mut Parser) struct_init(typ string) string {
 		}
 		// Zero values: init all fields (ints to 0, strings to '' etc)
 		for i, field in t.fields {
-			sanitized_name := if typ != 'Option' {
-				p.table.var_cgen_name( field.name )
-			} else {
-				field.name
-			}
+			sanitized_name := if typ != 'Option' { p.table.var_cgen_name(field.name) } else { field.name }
 			// println('### field.name')
 			// Skip if this field has already been assigned to
 			if sanitized_name in inited_fields {
 				continue
 			}
 			field_typ := field.typ
-			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' { //&&
+			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' {
+				// &&
 				p.warn('reference field `${typ}.${field.name}` must be initialized')
 			}
 			// init map fields
@@ -357,11 +358,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			}
 			// Did the user provide a default value for this struct field?
 			// Use it. Otherwise zero it.
-			def_val := if t.default_vals.len > i && t.default_vals[i] != '' {
-				t.default_vals[i]
-			} else {
-				type_default(field_typ)
-			}
+			def_val := if t.default_vals.len > i && t.default_vals[i] != '' { t.default_vals[i] } else { type_default(field_typ) }
 			if def_val != '' && def_val != '{0}' {
 				p.gen_struct_field_init(sanitized_name)
 				p.gen(def_val)
@@ -418,5 +415,4 @@ fn (p mut Parser) struct_init(typ string) string {
 	p.is_c_struct_init = false
 	return typ
 }
-
 

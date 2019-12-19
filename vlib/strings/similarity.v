@@ -1,7 +1,5 @@
 module strings
-
-//#-js
-
+// #-js
 // use levenshtein distance algorithm to calculate
 // the distance between between two strings (lower is closer)
 pub fn levenshtein_distance(a, b string) int {
@@ -66,3 +64,4 @@ pub fn dice_coefficient(s1, s2 string) f32 {
 	}
 	return (2.0 * intersection_size) / (f32(a.len) + f32(b.len) - 2)
 }
+

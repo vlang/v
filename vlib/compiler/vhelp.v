@@ -84,9 +84,8 @@ V package management commands:
   remove  [module]  Removes an installed module, or ALL installed modules at once, when no module name is given.
 '
 )
-
-
 /*
 - To disable automatic formatting:
 v -nofmt file.v
 */
+

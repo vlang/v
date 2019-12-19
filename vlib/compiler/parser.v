@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module compiler
 
-
-
 import (
 	os
 	strings
@@ -474,7 +472,7 @@ fn (p mut Parser) parse(pass Pass) {
 					.key_const {
 						p.const_decl()
 					}
-					.key_struct,.key_union,.key_interface {
+					.key_struct, .key_union, .key_interface {
 						p.struct_decl()
 					}
 					.key_enum {
@@ -498,7 +496,7 @@ fn (p mut Parser) parse(pass Pass) {
 				// or a struct definition
 				p.attribute()
 			}
-			.key_struct,.key_interface,.key_union,.lsbr {
+			.key_struct, .key_interface, .key_union, .lsbr {
 				p.struct_decl()
 			}
 			.key_const {
@@ -982,7 +980,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-
+			
 			mod: p.mod
 			func: f
 		}
@@ -1364,7 +1362,7 @@ fn (p mut Parser) statement(add_semi bool) string {
 		.key_match {
 			p.match_statement(false)
 		}
-		.key_mut,.key_static {
+		.key_mut, .key_static {
 			p.var_decl()
 		}
 		.key_return {

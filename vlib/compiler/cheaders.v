@@ -1,8 +1,7 @@
 module compiler
 
 const (
-
-c_common_macros = '
+	c_common_macros = '
 
 #define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION 0
@@ -23,8 +22,7 @@ c_common_macros = '
 
 #define OPTION_CAST(x) (x)
 '
-
-c_headers = '
+	c_headers = '
 
 //#include <inttypes.h>  // int64_t etc
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
@@ -91,7 +89,7 @@ c_headers = '
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
-$c_common_macros 
+$c_common_macros
 
 #ifdef _WIN32
 #define WINVER 0x0600
@@ -146,8 +144,7 @@ byteptr g_str_buf;
 int load_so(byteptr);
 void reload_so();
 '
-
-js_headers = '
+	js_headers = '
 
 var array_string = function() {}
 var array_byte = function() {}
@@ -170,9 +167,7 @@ var map_string = function() {}
 var map_int = function() {}
 
 '
-
-
-c_builtin_types = '
+	c_builtin_types = '
 
 //#include <inttypes.h>  // int64_t etc
 //#include <stdint.h>  // int64_t etc
@@ -211,8 +206,7 @@ typedef map map_string;
 	#define false 0
 #endif
 '
-
-bare_c_headers = '
+	bare_c_headers = '
 
 $c_common_macros
 
@@ -222,5 +216,4 @@ void sys_exit (int);
 #endif
 '
 )
-
 

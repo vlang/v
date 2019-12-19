@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 import os
@@ -10,15 +9,13 @@ import filepath
 pub const (
 	v_modules_path = os.home_dir() + '.vmodules'
 )
-
 // Holds import information scoped to the parsed file
 struct ImportTable {
 mut:
 	imports        map[string]string // alias => module
-	used_imports   []string          // alias
-	import_tok_idx map[string]int    // module => idx
+	used_imports   []string // alias
+	import_tok_idx map[string]int // module => idx
 }
-
 // Once we have a module format we can read from module file instead
 // this is not optimal
 fn (table &Table) qualify_module(mod string, file_path string) string {
@@ -26,7 +23,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
 			m_path := m_parts.join(os.path_separator)
-			if mod == m_parts[m_parts.len-1] && file_path.contains(m_path) {
+			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
 				return m
 			}
 		}
@@ -36,7 +33,7 @@ fn (table &Table) qualify_module(mod string, file_path string) string {
 
 fn new_import_table() ImportTable {
 	return ImportTable{
-		imports:   map[string]string
+		imports: map[string]string
 	}
 }
 
@@ -54,7 +51,9 @@ fn (p mut Parser) register_import_alias(alias string, mod string, tok_idx int) {
 		mod_parts := mod.split('.')
 		mut internal_mod_parts := []string
 		for part in mod_parts {
-			if part == 'internal' { break }
+			if part == 'internal' {
+				break
+			}
 			internal_mod_parts << part
 		}
 		internal_parent := internal_mod_parts.join('.')
@@ -121,7 +120,7 @@ pub fn (v &V) resolve_deps() &DepGraph {
 }
 
 // graph of all imported modules
-pub fn(v &V) import_graph() &DepGraph {
+pub fn (v &V) import_graph() &DepGraph {
 	mut graph := new_dep_graph()
 	for p in v.parsers {
 		mut deps := []string
@@ -134,7 +133,7 @@ pub fn(v &V) import_graph() &DepGraph {
 }
 
 // get ordered imports (module speficic dag method)
-pub fn(graph &DepGraph) imports() []string {
+pub fn (graph &DepGraph) imports() []string {
 	mut mods := []string
 	for node in graph.nodes {
 		mods << node.name
@@ -142,7 +141,8 @@ pub fn(graph &DepGraph) imports() []string {
 	return mods
 }
 
-[inline] fn (v &V) module_path(mod string) string {
+[inline]
+fn (v &V) module_path(mod string) string {
 	// submodule support
 	return mod.replace('.', os.path_separator)
 }
@@ -150,33 +150,30 @@ pub fn(graph &DepGraph) imports() []string {
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-
-fn (v mut V) set_module_lookup_paths(){
-	mlookup_path := if v.pref.vpath.len>0{ v.pref.vpath }else{ v_modules_path }
+fn (v mut V) set_module_lookup_paths() {
+	mlookup_path := if v.pref.vpath.len > 0 { v.pref.vpath } else { v_modules_path }
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
 	// with the _test.v files, *guarantees* that the tested module can be found
 	// without needing to set custom options/flags.
-	
 	// 1) search in the *same* directory, as the compiled final v program source
-	//    (i.e. the . in `v .` or file.v in `v file.v`)
+	// (i.e. the . in `v .` or file.v in `v file.v`)
 	// 2) search in the modules/ in the same directory.
 	// 3) search in vlib/
 	// 4.1) search in -vpath (if given)
 	// 4.2) search in ~/.vmodules/ (i.e. modules installed with vpm) (no -vpath)
-	v.module_lookup_paths = []	
+	v.module_lookup_paths = []
 	if v.pref.is_test {
 		v.module_lookup_paths << os.basedir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_lookup_paths << v.compiled_dir
-	v.module_lookup_paths << filepath.join(v.compiled_dir, 'modules')
+	v.module_lookup_paths << filepath.join(v.compiled_dir,'modules')
 	v.module_lookup_paths << v.pref.vlib_path
 	v.module_lookup_paths << mlookup_path
 	if v.pref.user_mod_path.len > 0 {
 		v.module_lookup_paths << v.pref.user_mod_path
 	}
-
 	if v.pref.is_verbose {
 		v.log('v.module_lookup_paths: $v.module_lookup_paths')
 	}
@@ -185,20 +182,27 @@ fn (v mut V) set_module_lookup_paths(){
 fn (v &V) find_module_path(mod string) ?string {
 	mod_path := v.module_path(mod)
 	for lookup_path in v.module_lookup_paths {
-		try_path := filepath.join(lookup_path, mod_path)
-		if v.pref.is_verbose { println('  >> trying to find $mod in $try_path ...') }
+		try_path := filepath.join(lookup_path,mod_path)
+		if v.pref.is_verbose {
+			println('  >> trying to find $mod in $try_path ...')
+		}
 		if os.is_dir(try_path) {
-			if v.pref.is_verbose { println('  << found $try_path .') }
-			return try_path 
+			if v.pref.is_verbose {
+				println('  << found $try_path .')
+			}
+			return try_path
 		}
 	}
 	return error('module "$mod" not found')
 }
 
-[inline] fn mod_gen_name(mod string) string {
+[inline]
+fn mod_gen_name(mod string) string {
 	return mod.replace('.', '_dot_')
 }
 
-[inline] fn mod_gen_name_rev(mod string) string {
+[inline]
+fn mod_gen_name_rev(mod string) string {
 	return mod.replace('_dot_', '.')
 }
+

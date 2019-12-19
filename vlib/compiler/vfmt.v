@@ -251,7 +251,7 @@ fn (p &Parser) gen_fmt() {
 		return
 	}
 	//files := ['get_type.v']
-	if !p.file_path.contains('vlib/builtin') {return}
+	if p.file_path.contains('vfmt') {return}
 	//if !(p.file_name in files) { return }
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')

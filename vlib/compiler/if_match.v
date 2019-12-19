@@ -138,6 +138,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				break
 			}
 			p.check(.comma)
+			p.fspace()
 			got_comma = true
 		}
 		p.gen(')')

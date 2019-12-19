@@ -2,7 +2,6 @@ module os
 
 #include <dirent.h>
 #include <unistd.h>
-
 pub const (
 	path_separator = '/'
 )
@@ -14,7 +13,6 @@ pub fn init_os_args(argc int, argv &byteptr) []string {
 	}
 	return args
 }
-
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
@@ -32,7 +30,7 @@ pub fn ls(path string) ?[]string {
 		return error('ls() couldnt open dir "$path"')
 	}
 	mut ent := &C.dirent(0)
-	//mut ent := &C.dirent{!}
+	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
 		if isnil(ent) {
@@ -63,8 +61,10 @@ pub fn is_dir(path string) bool {
 
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
-	if path == '.' { return true }
-	apath := os.realpath( path )
+	if path == '.' {
+		return true
+	}
+	apath := os.realpath(path)
 	r := C.mkdir(apath.str, 511)
 	if r == -1 {
 		return error(get_error_msg(C.errno))
@@ -74,9 +74,9 @@ pub fn mkdir(path string) ?bool {
 
 // exec starts the specified command, waits for it to complete, and returns its output.
 pub fn exec(cmd string) ?Result {
-	//if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-		//return error(';, &&, || and \\n are not allowed in shell commands')
-	//}
+	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
+	// return error(';, &&, || and \\n are not allowed in shell commands')
+	// }
 	pcmd := '$cmd 2>&1'
 	f := vpopen(pcmd)
 	if isnil(f) {
@@ -89,11 +89,12 @@ pub fn exec(cmd string) ?Result {
 	}
 	res = res.trim_space()
 	exit_code := vpclose(f)
-	//if exit_code != 0 {
-		//return error(res)
-	//}
-	return Result {
+	// if exit_code != 0 {
+	// return error(res)
+	// }
+	return Result{
 		output: res
 		exit_code: exit_code
 	}
 }
+
