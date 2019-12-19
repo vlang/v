@@ -13,7 +13,8 @@ pub mut:
 }
 
 fn main() {
-	app := App{}
+	mut app := App{}
+	app.vweb = vweb.Context{}
 	vweb.run(mut app, port)
 	//vweb.run<App>(Port)
 }
