@@ -35,12 +35,13 @@ fn (p mut Parser) enum_decl(no_name bool) {
 			p.warn('enum values cannot contain uppercase letters, use snake_case instead')
 		}
 		fields << field
-		p.fgen_nl()
 		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
 		if p.tok == .assign {
+			p.fspace()
 			mut enum_assign_tidx := p.cur_tok_index()
 			if p.peek() == .number {
 				p.next()
+				p.fspace()
 				val = p.lit.int()
 				p.next()
 			}
@@ -56,6 +57,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		if p.tok == .comma {
 			p.next()
 		}
+		p.fgen_nl()
 		val++
 	}
 	is_flag := p.attr == 'flag'
@@ -76,7 +78,8 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	}
 	p.table.register_type(T)
 	p.check(.rcbr)
-	p.fgenln('\n')
+	p.fgen_nl()
+	p.fgen_nl()
 }
 
 fn (p mut Parser) check_enum_member_access() {

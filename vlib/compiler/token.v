@@ -123,8 +123,6 @@ enum TokenKind {
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
-
-
 fn build_keys() map[string]int {
 	mut res := map[string]int
 	for t := int(TokenKind.keyword_beg) + 1; t < int(TokenKind.keyword_end); t++ {

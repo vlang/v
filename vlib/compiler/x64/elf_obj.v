@@ -11,12 +11,12 @@ But it will be necessary once we have dynamic linking.
 
 
 enum SectionType {
-	null
-	=0progbits
-	=1symtab
-	=2strtab
-	=3rela
-	=4}
+	null = 0
+	progbits = 1
+	symtab = 2
+	strtab = 3
+	rela = 4
+}
 
 struct SectionConfig {
 	name    string
@@ -62,7 +62,7 @@ fn genobj() {
 		align:0
 		entsize: 0
 	})
-	
+
 		/*
 	for sect in sections {
 		g.section_header(SectionConfig{
@@ -77,10 +77,10 @@ fn genobj() {
 			align: sect.align
 			entsize: sect.entsize
 		})
-		
-	}	
+
+	}
 	*/
-	
+
 	g.section_header(SectionConfig{
 		name: '.DATA'
 		typ: .progbits
@@ -93,7 +93,7 @@ fn genobj() {
 		align: 1
 		entsize: 0
 	})
-	
+
 	g.section_header(SectionConfig{
 		name: '.TEXT'
 		typ: .progbits

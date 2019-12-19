@@ -16,8 +16,8 @@ struct MsvcResult {
 	vs_include_path     string
 	shared_include_path string
 }
-// shell32 for RegOpenKeyExW etc
 
+// shell32 for RegOpenKeyExW etc
 // Mimics a HKEY
 type RegKey voidptr
 // Taken from the windows SDK
