@@ -158,8 +158,8 @@ fn test_fn_type_call() {
     st := MySt{f:test}
     assert st.f(10) == 1010
 
-	st := &MySt{f:test}
-    assert st.f(10) == 1010
+	st1 := &MySt{f:test}
+    assert st1.f(10) == 1010
 }
 
 
