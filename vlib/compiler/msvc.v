@@ -3,7 +3,7 @@ module compiler
 import os
 
 #flag windows -l shell32
-#flag windows -l dbghelp // RegOpenKeyExW etc
+#flag windows -l dbghelp
 #flag windows -l advapi32
 struct MsvcResult {
 	full_cl_exe_path    string
@@ -16,6 +16,7 @@ struct MsvcResult {
 	vs_include_path     string
 	shared_include_path string
 }
+// shell32 for RegOpenKeyExW etc
 
 // Mimics a HKEY
 type RegKey voidptr
