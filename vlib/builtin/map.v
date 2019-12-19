@@ -57,6 +57,7 @@ fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
 		C.memcpy(n.val, val, m.element_size)
 		if n.is_empty {
 			m.size++
+			n.is_empty = false
 		}
 		return
 	}
