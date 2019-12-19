@@ -250,7 +250,9 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	if !p.file_path.contains('table.v') {return}
+	files := ['cgen.v', 'comptime.v', 'cc.v', 'if_match.v']
+	//if !p.file_path.contains('table.v') {return}
+	if !(p.file_name in files) { return }
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {

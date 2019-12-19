@@ -453,7 +453,9 @@ pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
 // []int == []int (also for: i64, f32, f64, byte, string)
+/*
 fn array_eq<T>(a1, a2 []T) bool {
+
 	if a1.len != a2.len {
 		return false
 	}
@@ -484,3 +486,4 @@ pub fn (a []byte) eq(a2 []byte) bool {
 pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
+*/
