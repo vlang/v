@@ -55,6 +55,9 @@ fn new_node(key string, val voidptr, element_size int) &mapnode {
 fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
 	if n.key == key {
 		C.memcpy(n.val, val, m.element_size)
+		if n.is_empty {
+			m.size++
+		}
 		return
 	}
 	if n.key > key {
@@ -237,20 +240,20 @@ pub fn (m map) print() {
 fn (n mut mapnode) free() {
 	if n.val != 0 {
 		free(n.val)
-	}	
+	}
 	if n.left != 0 {
 		n.left.free()
-	}	
+	}
 	if n.right != 0 {
 		n.right.free()
-	}	
+	}
 	free(n)
 }
 
 pub fn (m mut map) free() {
 	if m.root == 0 {
 		return
-	}	
+	}
 	m.root.free()
 	// C.free(m.table)
 	// C.free(m.keys_table)
