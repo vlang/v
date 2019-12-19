@@ -2006,7 +2006,7 @@ pub:
 		if base.starts_with('fn ') && p.peek() == .lpar {
 			tmp_typ := p.table.find_type(base)
 			mut f := tmp_typ.func
-			p.gen('.$field.name')
+			p.gen('$dot$field.name')
 			p.gen('(')
 			p.check(.name)
 			p.fn_call_args(mut f)
