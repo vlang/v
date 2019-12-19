@@ -46,6 +46,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 					// allow braces is else
 					got_brace := p.tok == .lcbr
 					if got_brace {
+						p.fspace()
 						p.check(.lcbr)
 					}
 
@@ -73,7 +74,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			}
 
 			if is_expr {
-				// statements are dissallowed (if match is expression) so user cant declare variables there and so on
+				// statements are dissallowed (if match is expression) so
+				// user cant declare variables there and so on
 				p.gen(':(')
 
 				// allow braces is else
@@ -185,6 +187,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			}
 
 			// braces are required for now
+			p.fgen_nl()
 			p.check(.rcbr)
 
 			p.gen(')')
