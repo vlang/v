@@ -24,11 +24,12 @@ fn (scanner mut Scanner) fgen(s_ string) {
 
 [if vfmt]
 fn (scanner mut Scanner) fgenln(s_ string) {
-	mut s := s_//.trim_space()
+	mut s := s_.trim_right(' ')
 	if scanner.fmt_line_empty && scanner.fmt_indent > 0 {
 		s = strings.repeat(`\t`, scanner.fmt_indent) + s
 	}
 	scanner.fmt_lines << s
+	//println('s="$s"')
 	//scanner.fmt_lines << '//!'
 	scanner.fmt_lines << '\n'
 	//scanner.fmt_out.writeln(s)
@@ -235,15 +236,21 @@ fn (p &Parser) gen_fmt() {
 	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
-	s := p.scanner.fmt_lines.join('').trim_space().replace_each([
+	//p.scanner.fgenln('// nice')
+	s := p.scanner.fmt_lines.join('')/*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
 		') or{', ') or {',
 	])
+	*/
+		//.replace('\n\n\n\n', '\n\n')
+		.replace(' \n', '\n')
+		.replace(') or{', ') or {')
+
 	if s == '' {
 		return
 	}
-	//if !p.file_name.contains('float.v') {return}
+	if !p.file_path.contains('fn.v') {return}
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {
@@ -251,7 +258,8 @@ fn (p &Parser) gen_fmt() {
 		return
 	}
 	println('replacing ${p.file_path}...\n')
-	out.writeln(s)//p.scanner.fmt_out.str().trim_space())
+	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
+	out.writeln('')
 	out.close()
 	os.mv(path, p.file_path)
 }

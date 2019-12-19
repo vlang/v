@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module compiler
 
+
+
 import (
 	strings
 )
@@ -221,10 +223,10 @@ fn (p mut Parser) fn_decl() {
 	mut f := Fn{
 		mod: p.mod
 		is_public: is_pub || p.is_vh // functions defined in .vh are always public
-
+		
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
-		comptime_define: if p.attr.starts_with('if ') {p.attr[3..]}else {''}
+		comptime_define: if p.attr.starts_with('if ') { p.attr[3..] } else { '' }
 	}
 	is_live := p.attr == 'live' && !p.pref.is_so && p.pref.is_live
 	if p.attr == 'live' && p.first_pass() && !p.pref.is_live && !p.pref.is_so {
@@ -634,7 +636,7 @@ fn (p mut Parser) skip_fn_body() {
 }
 
 fn (p &Parser) get_linkage_prefix() string {
-	return if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so {'__declspec(dllexport) '}else if p.attr == 'inline' {'static inline '}else {''}
+	return if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so { '__declspec(dllexport) ' } else if p.attr == 'inline' { 'static inline ' } else { '' }
 }
 
 fn (p mut Parser) check_unused_and_mut_vars() {
@@ -840,7 +842,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	generic := f.is_generic
 	p.fn_call_args(mut f)
 	if generic {
-		line := if p.cgen.is_tmp {p.cgen.tmp_line}else {p.cgen.cur_line}
+		line := if p.cgen.is_tmp { p.cgen.tmp_line } else { p.cgen.cur_line }
 		p.cgen.resetln(line.replace('$cgen_name (', '$f.name ('))
 		// println('calling inst $f.name: $p.cgen.cur_line')
 	}
@@ -885,7 +887,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				typ: typ
 				is_arg: true
 				// is_mut: is_mut
-
+				
 				line_nr: p.scanner.line_nr
 				token_idx: p.cur_tok_index()
 			}
@@ -1107,7 +1109,7 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 				$if !js {
 					fmt := p.typ_to_fmt(typ, 0)
 					if fmt != '' && typ != 'bool' {
-						nl := if f.name == 'println' {'\\n'}else {''}
+						nl := if f.name == 'println' { '\\n' } else { '' }
 						p.cgen.resetln(p.cgen.cur_line.replace(f.name + ' (', '/*opt*/printf ("' + fmt + '$nl", '))
 						continue
 					}
@@ -1434,7 +1436,7 @@ fn (p mut Parser) fn_call_vargs(f Fn) (string,[]string) {
 				}
 			}
 		}
-		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') {'&'}else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') {'*'}else {''}
+		ref_deref := if last_arg.typ.ends_with('*') && !varg_type.ends_with('*') { '&' } else if !last_arg.typ.ends_with('*') && varg_type.ends_with('*') { '*' } else { '' }
 		types << varg_type
 		values << '$ref_deref$varg_value'
 	}
@@ -1613,7 +1615,7 @@ fn (p &Parser) find_misspelled_local_var(name string, min_match f32) string {
 			closest_var = var.name
 		}
 	}
-	return if closest >= min_match {closest_var}else {''}
+	return if closest >= min_match { closest_var } else { '' }
 }
 
 fn (fns []Fn) contains(f Fn) bool {
@@ -1655,3 +1657,4 @@ pub fn (f &Fn) str_for_error() string {
 	}
 	return s + ')'
 }
+

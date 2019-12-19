@@ -3,11 +3,13 @@
 // that can be found in the LICENSE file.
 module compiler
 
+
+
 import (
 	os
 	strings
 	compiler.x64
-	//time
+	// time
 )
 
 struct Parser {
@@ -215,7 +217,7 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 
 // __global scan_time i64
 fn (p mut Parser) scan_tokens() {
-	//t := time.ticks()
+	// t := time.ticks()
 	for {
 		res := p.scanner.scan()
 		p.tokens << Token{
@@ -429,9 +431,9 @@ fn (p mut Parser) parse(pass Pass) {
 	p.can_chash = p.mod in ['ui', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
-	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) {p.v.mod}
+	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
 	// fully qualify the module name, eg base64 to encoding.base64
-	else {p.table.qualify_module(p.mod, p.file_path)}
+	else { p.table.qualify_module(p.mod, p.file_path) }
 	p.table.register_module(fq_mod)
 	p.mod = fq_mod
 	if p.pass == .imports {
@@ -464,6 +466,7 @@ fn (p mut Parser) parse(pass Pass) {
 				}
 			}
 			.key_pub {
+				p.fspace()
 				next := p.peek()
 				match next {
 					.key_fn {
@@ -779,7 +782,7 @@ fn (p mut Parser) type_decl() {
 	// TODO dirty C typedef hacks for DOOM
 	// Unknown type probably means it's a struct, and it's used before the struct is defined,
 	// so specify "struct"
-	_struct := if parent.cat != .array && parent.cat != .func && !p.table.known_type(parent.name) {'struct'}else {''}
+	_struct := if parent.cat != .array && parent.cat != .func && !p.table.known_type(parent.name) { 'struct' } else { '' }
 	p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
 	p.table.register_type(Type{
 		name: name
@@ -1588,7 +1591,7 @@ fn (p mut Parser) var_decl() {
 	if is_decl_assign && var_names.len == 1 && var_names[0] == '_' {
 		p.error_with_token_index('use `=` instead of `:=`', var_token_idxs.last())
 	}
-	p.var_decl_name = if var_names.len > 1 {'_V_mret_${p.token_idx}_' + var_names.join('_')}else {var_names[0]}
+	p.var_decl_name = if var_names.len > 1 { '_V_mret_${p.token_idx}_' + var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
 	if t == 'void' {
 		_,fn_name := p.is_expr_fn_call(p.token_idx - 3)
@@ -1970,7 +1973,7 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 	}
 	// field
 	if has_field {
-		struct_field := if typ.name != 'Option' {p.table.var_cgen_name(field_name)}else {field_name}
+		struct_field := if typ.name != 'Option' { p.table.var_cgen_name(field_name) } else { field_name }
 		field := p.table.find_field(typ, struct_field) or {
 			p.error_with_token_index('missing field: $struct_field in type $typ.name', fname_tidx)
 			exit(1)
@@ -2958,7 +2961,7 @@ fn (p mut Parser) check_unused_imports() {
 	mut output := ''
 	for alias, mod in p.import_table.imports {
 		if !p.import_table.is_used_import(alias) {
-			mod_alias := if alias == mod {alias}else {'$alias ($mod)'}
+			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
 			output += '\n * $mod_alias'
 		}
 	}
