@@ -48,7 +48,7 @@ pub fn main() {
 	ts.test()
 
 	// Print separator with dynamic width
-	tpu := os.exec("tput cols") or {
+	tput := os.exec("tput cols") or {
 		return
 	}
 	cols := if tpu.exit_code == 0 {
