@@ -235,3 +235,11 @@ fn test_get_fmt_str() {
                                                        .hhmmss24,
                                                        .ddmmyyyy)
 }
+
+fn test_parse() {
+	s := '2018-01-27 12:48:34'
+	t := time.parse(s)
+	assert t.year == 2018 && t.month == 1 && t.day == 27
+	    && t.hour == 12 && t.minute == 48 && t.second == 34
+}
+
