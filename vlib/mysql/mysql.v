@@ -6,6 +6,7 @@ module mysql
 //     v -cflags '-I/usr/include/mysql' program.v
 
 #flag -lmysqlclient
+#flag linux -I/usr/include/mysql
 #include <mysql.h>
 
 pub struct DB {
