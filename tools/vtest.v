@@ -49,7 +49,7 @@ pub fn main() {
 
 	// Print separator with dynamic width
 	mut cols := 76
-	if tput := os.exec("tput cols") {
+	if tput := os.exec("tput cols; echo") {
 		if tput.exit_code == 0 {
 			cols = tput.output.int()
 		}
