@@ -88,20 +88,21 @@ fn (m mut map) set(key string, value voidptr) {
 				&mapnode(parent.children[child_index + 1])
 			}
 		}
-		mut i := node.size
-		for i-- > 0 && key < node.keys[i] {}
-		if i != -1 && key == node.keys[i] {
-			C.memcpy(&node.values[i], value, m.element_size)
+		mut i := 0
+		for i < node.size && key > node.keys[i] { i++ }
+		if i != node.size && key == node.keys[i] {
+			C.memcpy(node.values[i], value, m.element_size)
 			return
 		}
 		if node.children == 0 {
-			mut j := node.size
-			for j-- > 0 && key < node.keys[j] {
+			mut j := node.size - 1
+			for j >= 0 && key < node.keys[j] {
 				node.keys[j + 1] = node.keys[j]
 				node.values[j + 1] = node.values[j]
+				j--
 			}
 			node.keys[j + 1] = key
-			node.values[j + 1] = voidptr(malloc(m.element_size))
+			node.values[j + 1] = malloc(m.element_size)
 			C.memcpy(node.values[j + 1], value, m.element_size)
 			node.size++
 			m.size++
@@ -115,17 +116,15 @@ fn (m mut map) set(key string, value voidptr) {
 
 fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
 	mut z := new_node()
-	mut j := mid_index
 	z.size = mid_index
 	y.size = mid_index
-	for j-- > 0 {
+	for j := mid_index - 1; j >= 0; j-- {
 		z.keys[j] = y.keys[j + degree]
 		z.values[j] = y.values[j + degree]
 	}
 	if y.children != 0 {
 		z.children = &voidptr(malloc(children_size))
-		j = degree
-		for j-- > 0 {
+		for j := degree - 1; j >= 0; j-- {
 			z.children[j] = y.children[j + degree]
 		}
 	}
@@ -133,7 +132,7 @@ fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
 		n.children = &voidptr(malloc(children_size))
 	}
 	n.children[n.size + 1] = n.children[n.size]
-	for j = n.size; j > child_index; j-- {
+	for j := n.size; j > child_index; j-- {
 		n.keys[j] = n.keys[j - 1]
 		n.values[j] = n.values[j - 1]
 		n.children[j] = n.children[j - 1]
@@ -148,8 +147,8 @@ fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
 fn (m map) get(key string, out voidptr) bool {
 	mut node := m.root
 	for {
-		mut i := node.size
-		for i-- > 0 && key < node.keys[i] {}
+		mut i := node.size - 1
+		for i >= 0 && key < node.keys[i] { i-- }
 		if i != -1 && key == node.keys[i] {
 			C.memcpy(out, node.values[i], m.element_size)
 			return true
@@ -165,8 +164,8 @@ fn (m map) get(key string, out voidptr) bool {
 fn (m map) exists(key string) bool {
 	mut node := m.root
 	for {
-		mut i := node.size
-		for i-- != 0 && key < node.keys[i] {}
+		mut i := node.size - 1
+		for i >= 0 && key < node.keys[i] { i-- }
 		if i != -1 && key == node.keys[i] {
 			return true
 		}
