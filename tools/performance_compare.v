@@ -63,7 +63,7 @@ fn (c Context) compare_versions() {
 	// clone the VC source *just once per comparison*, and reuse it:
 	run('git clone --quiet \'$c.vc_repo_url\'	\'$c.vc\' ')
 
-	println('Comparing v compiler performance of commit $c.commit_before (before) vs commit $c.commit_after (after) ...')
+	println('Comparing V performance of commit $c.commit_before (before) vs commit $c.commit_after (after) ...')
 	c.prepare_v( c.b , c.commit_before )
 	c.prepare_v( c.a , c.commit_after  )
 
@@ -71,21 +71,21 @@ fn (c Context) compare_versions() {
 	c.compare_v_performance([
 			//The first is the baseline, against which all the others will be compared.
 			//It is the fastest, since hello_world.v has only a single println in it,	
-			'vprod -debug -o source.c examples/hello_world.v',
-			'vprod        -o source.c examples/hello_world.v',      
-			'vprod -debug -o source.c compiler',
-			'vprod        -o source.c compiler',      
-			'vprod        -o hello    examples/hello_world.v',
-			'vprod        -o binary   compiler',           
+			'vprod @DEBUG@ -o source.c examples/hello_world.v',
+			'vprod         -o source.c examples/hello_world.v',      
+			'vprod @DEBUG@ -o source.c @COMPILER@',
+			'vprod         -o source.c @COMPILER@',      
+			'vprod         -o hello    examples/hello_world.v',
+			'vprod         -o binary   @COMPILER@',           
 
 			/////////////////////////////////////////////////////////
 			
-			'v     -debug -o source.c examples/hello_world.v',
-			'v            -o source.c examples/hello_world.v',      
-			'v     -debug -o source.c compiler',
-			'v            -o source.c compiler',      
-			'v            -o hello    examples/hello_world.v',
-			'v            -o binary   compiler',           
+			'v    @DEBUG@  -o source.c examples/hello_world.v',
+			'v             -o source.c examples/hello_world.v',      
+			'v    @DEBUG@  -o source.c @COMPILER@',
+			'v             -o source.c @COMPILER@',      
+			'v             -o hello    examples/hello_world.v',
+			'v             -o binary   @COMPILER@',           
 	])
 
 }
@@ -138,11 +138,12 @@ fn (c &Context) prepare_v( cdir string, commit string ) {
 
 	run('git clean -f')
 	c.prepare_vc_source( cdir, commit )
+  source_location := if os.exists('v.v') { 'v.v' } else { 'compiler/' }
 
 	println('Making v and vprod compilers in $cdir')
 	run(command_for_building_v_from_c_source)
-	run('./cv		-o v	 compiler/ ')
-	run('./cv -prod -o vprod compiler/ ')
+	run('./cv		-o v	 $source_location')
+	run('./cv -prod -o vprod $source_location')
 
 	run('cp cv		 cv_stripped')
 	run('cp v		 v_stripped')
@@ -160,17 +161,28 @@ fn (c &Context) prepare_v( cdir string, commit string ) {
 	show_sizes_of_files(["$cdir/v",     "$cdir/v_stripped",      "$cdir/v_stripped_upxed"])
 	show_sizes_of_files(["$cdir/vprod", "$cdir/vprod_stripped",  "$cdir/vprod_stripped_upxed"])
 	println("V version is: " + run("$cdir/v --version") + " , local source commit: " + run("git rev-parse --short  --verify HEAD") )
-	println('Source lines in compiler/ ' + run('wc compiler/*.v | tail -n -1') )
+	println('Source lines of the compiler: ' + run('wc v.v compiler/*.v vlib/compiler/*.v | tail -n -1') )
 }
-
 
 fn (c Context) compare_v_performance( commands []string ) {
 	println('---------------------------------------------------------------------------------')
 	println('Compare v performance when doing the following commands:')
-	mut hyperfine_commands_arguments := []string
+  
+  source_location_a := if os.exists('$c.a/v.v') { 'v.v' } else { 'compiler/' }
+  source_location_b := if os.exists('$c.b/v.v') { 'v.v' } else { 'compiler/' }
+  timestamp_a, _ := line_to_timestamp_and_commit(run('cd $c.a/ ; git rev-list -n1 --timestamp HEAD'))
+  timestamp_b, _ := line_to_timestamp_and_commit(run('cd $c.b/ ; git rev-list -n1 --timestamp HEAD'))
+  debug_option_a := if timestamp_a > 1570877641 { '-g' } else { '-debug' }
+  debug_option_b := if timestamp_b > 1570877641 { '-g' } else { '-debug' }
+  
+	mut hyperfine_commands_arguments := []string  
 	for cmd in commands { println(cmd) }
-	for cmd in commands { hyperfine_commands_arguments << ' \'cd ${c.b:30s} ; ./$cmd \' ' }
-	for cmd in commands { hyperfine_commands_arguments << ' \'cd ${c.a:30s} ; ./$cmd \' ' }
+	for cmd in commands { 
+     hyperfine_commands_arguments << ' \'cd ${c.b:30s} ; ./$cmd \' '.replace_each(['@COMPILER@', source_location_b, '@DEBUG@', debug_option_b]) 
+  }
+	for cmd in commands { 
+     hyperfine_commands_arguments << ' \'cd ${c.a:30s} ; ./$cmd \' '.replace_each(['@COMPILER@', source_location_a, '@DEBUG@', debug_option_a]) 
+  }
 	///////////////////////////////////////////////////////////////////////////////
 	cmd_stats_file := os.realpath([ c.workdir, 'v_performance_stats.json'].join(os.path_separator))
 	comparison_cmd := 'hyperfine $c.hyperfineopts '+
