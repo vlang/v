@@ -1146,9 +1146,8 @@ pub fn vfmt(args []string) {
 		exit(1)
 	}
 	println('WIP')
-	/*
 	vexe := vexe_path()
-	//launch_tool('vfmt', '-d vfmt')
+	// launch_tool('vfmt', '-d vfmt')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
 	ret := os.system('$vexe -o $vroot/tools/vfmt -d vfmt v.v')
@@ -1156,10 +1155,10 @@ pub fn vfmt(args []string) {
 		println('err')
 		return
 	}
-	os.exec('$vroot/tools/vfmt $file') or { panic(err) }
-	//if !os.exists('
-	*/
-
+	os.exec('$vroot/tools/vfmt $file')or{
+		panic(err)
+	}
+	// if !os.exists('
 }
 
 pub fn create_symlink() {

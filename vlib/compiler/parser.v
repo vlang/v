@@ -1584,6 +1584,7 @@ fn (p mut Parser) var_decl() {
 		p.check(.comma)
 		if p.tok == .key_mut {
 			p.check(.key_mut)
+			p.fspace()
 			var_mut << true
 		}
 		else {
