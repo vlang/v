@@ -851,7 +851,7 @@ fn (s Scanner) line(n int) string {
 }
 
 fn is_name_char(c byte) bool {
-	return c.is_letter() || c == `_`
+	return c == `_` || c.is_letter()
 }
 
 [inline]
