@@ -48,13 +48,11 @@ pub fn main() {
 	ts.test()
 
 	// Print separator with dynamic width
-	tput := os.exec("tput cols") or {
-		return
-	}
-	cols := if tput.exit_code == 0 {
-		tput.output.int()
-	} else {
-		76
+	mut cols := 76
+	if tput := os.exec("tput cols") {
+		if tput.exit_code == 0 {
+			cols = tput.output.int()
+		}
 	}
 	println("-".repeat(cols))
 
