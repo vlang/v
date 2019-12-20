@@ -467,15 +467,15 @@ fn (v &V) interface_table() string {
 		sb.writeln('// NR methods = $t.gen_types.len')
 		for i, gen_type in t.gen_types {
 			gen_concrete_type_name := gen_type.replace('*', '')
-			methods += '{'
+			methods += '{\n'
 			for j, method in t.methods {
 				// Cat_speak
-				methods += '${gen_concrete_type_name}_${method.name}'
+				methods += '    ${gen_concrete_type_name}_${method.name}'
 				if j < t.methods.len - 1 {
-					methods += ', '
+					methods += ', \n'
 				}
 			}
-			methods += '}, '
+			methods += '\n},\n\n'
 			// Speaker_Cat_index = 0      
 			concrete_type_name := gen_type.replace('*', '_ptr')			
 			sb.writeln('int _${interface_name}_${concrete_type_name}_index = $i;')
@@ -484,7 +484,7 @@ fn (v &V) interface_table() string {
 		if t.gen_types.len > 0 {
 			// methods = '{TCCSKIP(0)}'
 			// }
-			sb.writeln('void* (* ${interface_name}_name_table[][$t.methods.len]) = ' + '{ $methods }; ')
+			sb.writeln('void* (* ${interface_name}_name_table[][$t.methods.len]) = ' + '{ \n $methods \n }; ')
 		}else{
 			// The line below is needed so that C compilation succeeds,
 			// even if no interface methods are called.
