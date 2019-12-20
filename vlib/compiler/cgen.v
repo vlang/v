@@ -458,7 +458,7 @@ fn sort_structs(types []Type) []Type {
 // Generates interface table and interface indexes
 fn (v &V) interface_table() string {
 	mut sb := strings.new_builder(100)
-	for _, t in v.table.typesmap {		
+	for _, t in v.table.typesmap {
 		if t.cat != .interface_ {
 			continue
 		}
@@ -476,10 +476,8 @@ fn (v &V) interface_table() string {
 				}
 			}
 			methods += '}, '
-			// Speaker_Cat_index = 0
-      
-			concrete_type_name := gen_type.replace('*', '_ptr')
-			
+			// Speaker_Cat_index = 0      
+			concrete_type_name := gen_type.replace('*', '_ptr')			
 			sb.writeln('int _${interface_name}_${concrete_type_name}_index = $i;')
 		}
 		
