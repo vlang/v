@@ -235,3 +235,20 @@ fn test_get_fmt_str() {
                                                        .hhmmss24,
                                                        .ddmmyyyy)
 }
+
+fn test_parse_iso() {
+	s1 := 'Thu, 12 Dec 2019 06:07:45 GMT'
+	t1 := parse_iso(s1)
+	assert t1.year == 2019 && t1.month == 12 && t1.day == 12
+	    && t1.hour == 6 && t1.minute == 7 && t1.second == 45
+
+	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
+	t2 := parse_iso(s2)
+	assert t2.year == 2019 && t2.month == 12 && t2.day == 12
+	    && t2.hour == 6 && t2.minute == 7 && t2.second == 45
+
+	s3 := 'Thu 12 Foo 2019 06:07:45 +0800'
+	t3 := parse_iso(s3)
+	assert t3.year == 0 && t3.month == 0 && t3.day == 0
+	    && t3.hour == 0 && t3.minute == 0 && t3.second == 0
+}
