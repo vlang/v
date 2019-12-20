@@ -20,7 +20,7 @@ fn new_array(mylen, cap, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen
-		cap: cap
+		cap: cap_
 		element_size: elm_size
 		data: calloc(cap_ * elm_size)
 	}
