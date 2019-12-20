@@ -51,8 +51,8 @@ pub fn main() {
 	tput := os.exec("tput cols") or {
 		return
 	}
-	cols := if tpu.exit_code == 0 {
-		tpu.output.int()
+	cols := if tput.exit_code == 0 {
+		tput.output.int()
 	} else {
 		76
 	}
