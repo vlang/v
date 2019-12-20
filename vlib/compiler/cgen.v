@@ -401,7 +401,7 @@ fn (v &V) type_definitions() string {
 	}
 	// everything except builtin will get sorted
 	for t_name, t in v.table.typesmap {
-		if t_name in builtins {
+		if t_name in builtins || t.is_generic {
 			continue
 		}
 		types << t

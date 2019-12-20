@@ -154,14 +154,17 @@ pub fn (v &V) finalize_compilation() {
 }
 
 pub fn (v mut V) add_parser(parser Parser) int {
+	pidx := v.parsers.len
 	v.parsers << parser
-	pidx := v.parsers.len - 1
-	v.file_parser_idx[os.realpath(parser.file_path)] = pidx
+	file_path := if filepath.is_abs(parser.file_path) { 
+		parser.file_path } else { os.realpath(parser.file_path) }
+	v.file_parser_idx[file_path] = pidx
 	return pidx
 }
 
 pub fn (v &V) get_file_parser_index(file string) ?int {
-	file_path := os.realpath(file)
+	file_path := if filepath.is_abs(file) { 
+		file } else { os.realpath(file) }
 	if file_path in v.file_parser_idx {
 		return v.file_parser_idx[file_path]
 	}
