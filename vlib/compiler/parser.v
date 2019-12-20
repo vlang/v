@@ -2607,7 +2607,7 @@ fn (p mut Parser) array_init() string {
 	// if ptr {
 	// typ += '_ptr"
 	// }
-	real := typ.replace('_ptr', '*')
+	real := parse_pointer(typ)
 	p.gen_array_init(real, no_alloc, new_arr_ph, i)
 	typ = 'array_${stringify_pointer(typ)}'
 	p.register_array(typ)
