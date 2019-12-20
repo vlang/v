@@ -46,7 +46,16 @@ pub fn main() {
 
 	println('Testing...')
 	ts.test()
-	println('----------------------------------------------------------------------------')
+
+	// Print separator with dynamic width
+	mut cols := 76
+	if tput := os.exec("tput cols; echo") {
+		if tput.exit_code == 0 {
+			cols = tput.output.int()
+		}
+	}
+	println("-".repeat(cols))
+
 	println( ts.benchmark.total_message('running V _test.v files') )
 	if ts.failed {
 		exit(1)
