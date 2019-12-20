@@ -1019,18 +1019,18 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			// if f.args[0].typ.ends_with('*') {
 			// p.gen('&/*119*/')
 			// }
-			/*
-			pos := p.cgen.cur_line.index('/* ? */')
-			if pos > -1 {
-				expr := p.cgen.cur_line[pos..]
-				// TODO hack
-				// If current expression is a func call, generate the array hack
-				if expr.contains('(') {
-					p.cgen.set_placeholder(pos, '(${arg.typ[..arg.typ.len-1]}[]){')
-					p.gen('}[0] ')
-				}
-			}
-			*/
+
+			//pos := p.cgen.cur_line.index('/* ? */')
+			//if pos > -1 {
+			//	expr := p.cgen.cur_line[pos..]
+			//	// TODO hack
+			//	// If current expression is a func call, generate the array hack
+			//	if expr.contains('(') {
+			//		p.cgen.set_placeholder(pos, '(${arg.typ[..arg.typ.len-1]}[]){')
+			//		p.gen('}[0] ')
+			//	}
+			//}
+			
 
 			continue
 		}
@@ -1082,8 +1082,9 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 			if t.cat == .interface_ {
 				// perform((Speaker) { ._object = &dog,
 				// _interface_idx = _Speaker_Dog_index })
+				concrete_type_name := typ.replace('*', '_ptr')
 				p.cgen.set_placeholder(ph, '($arg.typ) { ._object = &')
-				p.gen(', ._interface_idx = _${arg.typ}_${typ}_index} /* i. arg*/')
+				p.gen(', ._interface_idx = _${arg.typ}_${concrete_type_name}_index} /* i. arg*/')
 				p.table.add_gen_type(arg.typ, typ)
 			}
 		}
