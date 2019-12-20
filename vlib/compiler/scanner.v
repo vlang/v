@@ -719,7 +719,7 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if is_name_char(c) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
@@ -851,7 +851,7 @@ fn (s Scanner) line(n int) string {
 }
 
 fn is_name_char(c byte) bool {
-	return c.is_letter() || c == `_`
+	return c == `_` || c.is_letter()
 }
 
 [inline]
@@ -889,4 +889,3 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
 	}
 }
-
