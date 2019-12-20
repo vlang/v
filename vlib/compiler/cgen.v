@@ -470,7 +470,7 @@ fn (v &V) interface_table() string {
 			methods += '{\n'
 			for j, method in t.methods {
 				// Cat_speak
-				methods += '    ${gen_concrete_type_name}_${method.name}'
+				methods += ' (void*)    ${gen_concrete_type_name}_${method.name}'
 				if j < t.methods.len - 1 {
 					methods += ', \n'
 				}
