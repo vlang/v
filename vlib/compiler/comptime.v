@@ -321,7 +321,7 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		is_public: true
 		receiver_typ: typ.name
 	})
-	elm_type := typ.name[6..]
+	elm_type := parse_pointer(typ.name[6..])
 	elm_type2 := p.table.find_type(elm_type)
 	is_array := elm_type.starts_with('array_')
 	if is_array {
@@ -416,7 +416,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 		}
 		array_int b = tmp2;
 	*/
-	val_type := str_typ[6..]
+	val_type := parse_pointer(str_typ[6..])
 	p.open_scope()
 	p.register_var(Var{
 		name: 'it'
@@ -456,7 +456,7 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 		}
 		array_int b = tmp2;
 	*/
-	val_type := str_typ[6..]
+	val_type := parse_pointer(str_typ[6..])
 	p.open_scope()
 	p.register_var(Var{
 		name: 'it'
@@ -477,7 +477,7 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 	p.gen(tmp) // TODO why does this `gen()` work?
 	p.check(.rpar)
 	p.close_scope()
-	return 'array_' + map_type
+	return 'array_' + stringify_pointer(map_type)
 }
 
 fn (p mut Parser) comptime_if_block(name string) {

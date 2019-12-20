@@ -348,7 +348,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			// init map fields
 			if field_typ.starts_with('map_') {
 				p.gen_struct_field_init(sanitized_name)
-				p.gen_empty_map(field_typ[4..])
+				p.gen_empty_map(parse_pointer(field_typ[4..]))
 				inited_fields << sanitized_name
 				if i != t.fields.len - 1 {
 					p.gen(',')

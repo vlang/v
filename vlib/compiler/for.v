@@ -92,12 +92,12 @@ fn (p mut Parser) for_st() {
 			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		else if is_arr {
-			typ = typ[6..].replace('_ptr', '*')
+			typ = parse_pointer(typ[6..])
 			p.gen_for_header(i, tmp, typ, val)
 		}
 		else if is_map {
 			i_var_type = 'string'
-			typ = typ[4..]
+			typ = parse_pointer(typ[4..])
 			p.gen_for_map_header(i, tmp, typ, val, typ)
 		}
 		else if is_str {
@@ -178,7 +178,7 @@ fn (p mut Parser) for_st() {
 			p.gen_for_range_header(i, range_end, tmp, typ, val)
 		}
 		else if is_arr {
-			typ = typ[6..].replace('_ptr', '*') // all after `array_`
+			typ = parse_pointer(typ[6..]) // all after `array_`
 			p.gen_for_header(i, tmp, typ, val)
 		}
 		else if is_str {

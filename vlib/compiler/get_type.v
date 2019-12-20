@@ -102,7 +102,7 @@ fn (p mut Parser) get_type2() Type {
 			p.error('maps only support string keys for now')
 		}
 		p.check(.rsbr)
-		val_type := p.get_type() // p.check_name()
+		val_type := stringify_pointer(p.get_type()) // p.check_name()
 		typ = 'map_$val_type'
 		p.register_map(typ)
 		return Type{
@@ -190,6 +190,7 @@ fn (p mut Parser) get_type2() Type {
 	if arr_level > 0 {
 		// p.log('ARR TYPE="$typ" run=$p.pass')
 		// We come across "[]User" etc ?
+		typ = stringify_pointer(typ)
 		for i := 0; i < arr_level; i++ {
 			typ = 'array_$typ'
 		}
@@ -197,6 +198,7 @@ fn (p mut Parser) get_type2() Type {
 	}
 	p.next()
 	if is_question {
+		typ = stringify_pointer(typ)
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
 	}
@@ -223,3 +225,21 @@ fn (p mut Parser) get_type2() Type {
 	}
 }
 
+fn parse_pointer(_typ string) string {
+	if !_typ.starts_with('ptr_') {
+		return _typ
+	}
+	mut typ := _typ.clone()
+	for typ.starts_with('ptr_') {
+		typ = typ[4..] + '*'
+	}
+	return typ
+}
+
+fn stringify_pointer(typ string) string {
+	if !typ.ends_with('*') {
+		return typ
+	}
+	count := typ.count('*')
+	return 'ptr_'.repeat(count) + typ.trim_right('*')
+}
