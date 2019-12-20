@@ -52,7 +52,8 @@ fn new_map(cap, elm_size int) map {
 fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
 	mut res := map {
 		element_size: elm_size
-		root: 0
+		root: new_node()
+		size: 0
 	}
 	for i in 0 .. cap {
 		res.set(keys[i], vals + i * elm_size)
