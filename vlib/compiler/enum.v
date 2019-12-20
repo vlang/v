@@ -8,6 +8,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
+		p.fspace()
 	}
 	p.check(.key_enum)
 	p.fspace()

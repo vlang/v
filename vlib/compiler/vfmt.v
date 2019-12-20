@@ -250,11 +250,13 @@ fn (p &Parser) gen_fmt() {
 	if s == '' {
 		return
 	}
-	if !p.file_path.contains('fn.v') {return}
+	//files := ['get_type.v']
+	if !p.file_path.contains('vlib/builtin') {return}
+	//if !(p.file_name in files) { return }
 	path := os.tmpdir() + '/' + p.file_name
 	println('generating ${path}')
 	mut out := os.create(path) or {
-		verror('failed to create fmt.v')
+		verror('failed to create os_nix.v')
 		return
 	}
 	println('replacing ${p.file_path}...\n')
