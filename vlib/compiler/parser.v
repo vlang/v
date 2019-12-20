@@ -2723,7 +2723,7 @@ fn (p mut Parser) return_st() {
 		// Automatically wrap an object inside an option if the function
 		// returns an option:
 		// `return val` => `return opt_ok(val)`
-		if p.cur_fn.typ.ends_with(expr_type) && !is_none && p.cur_fn.typ.starts_with('Option_') {
+		if p.cur_fn.typ.ends_with(stringify_pointer(expr_type)) && !is_none && p.cur_fn.typ.starts_with('Option_') {
 			tmp := p.get_tmp()
 			ret := p.cgen.cur_line[ph..]
 			typ := parse_pointer(expr_type.replace('Option_', ''))
