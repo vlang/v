@@ -401,3 +401,5 @@ fn C.WaitForSingleObject(voidptr, int) int
 
 fn C.ReleaseMutex(voidptr) bool
 
+// <stddef.h>
+fn C.offsetof() int

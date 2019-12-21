@@ -32,7 +32,6 @@ const (
 #include <signal.h>
 #include <stdarg.h> // for va_list
 #include <string.h> // memcpy
-#include <stddef.h> // for offsetof
 
 #if INTPTR_MAX == INT32_MAX
     #define TARGET_IS_32BIT 1
