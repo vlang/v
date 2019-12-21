@@ -32,6 +32,8 @@ vjs
 *.exp
 *.ilk
 *.pdb
+*.dll
+*.lib
 
 #
 # macOS.gitignore
