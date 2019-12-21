@@ -174,22 +174,41 @@ var map_int = function() {}
 
 //================================== TYPEDEFS ================================*/
 
-typedef int64_t i64;
-typedef int16_t i16;
-typedef int8_t i8;
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint16_t u16;
+// integer
+typedef int8_t        i8;
+typedef uint8_t       u8; 
+typedef int16_t       i16;
+typedef uint16_t      u16;
+typedef int32_t       i32
+typedef uint32_t      u32;
+typedef uint64_t      u64;
+typedef int64_t       i64;
+// TODO, g++ needed.
+typedef _int128       i128;
+	
 typedef uint8_t byte;
 typedef uint32_t rune;
-typedef float f32;
-typedef double f64;
+	
+// float
+typedef float         f32;
+typedef double        f64;
+// TODO, g++ needed.
+typedef _float128     f128;
+
+// complex
+typedef struct { 
+	float real; 
+	float image; 
+} complex;
+	
+// pointer
 typedef unsigned char* byteptr;
 typedef int* intptr;
 typedef void* voidptr;
 typedef char* charptr;
+	
+// array
 typedef struct array array;
-typedef struct map map;
 typedef array array_string;
 typedef array array_int;
 typedef array array_byte;
@@ -198,8 +217,15 @@ typedef array array_f64;
 typedef array array_u16;
 typedef array array_u32;
 typedef array array_u64;
+// TODO
+typedef array array_i128;
+typedef array array_f128;
+	
+// map
+typedef struct map map;
 typedef map map_int;
 typedef map map_string;
+	
 #ifndef bool
 	typedef int bool;
 	#define true 1
