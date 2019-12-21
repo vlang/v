@@ -35,7 +35,7 @@ jobs:
         brew install freetype glfw openssl postgres sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make && ./v -o v v.v
+      run:  make -j4 && ./v -o v v.v
     - name: Build V using V
       run:  ./v -o v2 v.v && ./v2 -o v3 v.v
     - name: Test symlink
@@ -72,7 +72,7 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
-      run: make && ./v -cc gcc -o v v.v
+      run: make -j4 && ./v -cc gcc -o v v.v
     - name: Test V
       run: ./v test-compiler
     - name: Test v binaries
@@ -131,7 +131,7 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
-      run: echo $VFLAGS && make && ./v -o v v.v
+      run: echo $VFLAGS && make -j4 && ./v -o v v.v
     - name: Test v->c
       run: |
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
@@ -153,7 +153,7 @@ jobs:
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
-      run: echo $VFLAGS && make && ./v -o v v.v
+      run: echo $VFLAGS && make -j4 && ./v -o v v.v
     - name: Test v binaries
       run: ./v build-vbinaries
 #    - name: Test v->js
