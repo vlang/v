@@ -400,4 +400,3 @@ fn C.WaitForSingleObject(voidptr, int) int
 
 
 fn C.ReleaseMutex(voidptr) bool
-
