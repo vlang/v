@@ -18,6 +18,12 @@ fn main() {
 }
 
 fn v_test_compiler(vargs string){
+	v_test_compiler2(vargs)
+	//make_sure_vfmt_was_run()
+}
+
+fn v_test_compiler2(vargs string){
+
 	vexe := testing.vexe_path()
 	parent_dir := os.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
@@ -74,6 +80,8 @@ fn v_test_compiler(vargs string){
 	vmark.stop()
 	eprintln( 'Installing a v module took: ' + vmark.total_duration().str() + 'ms')
 
+	make_sure_vfmt_was_run()
+
 	if building_tools_failed ||
      compiler_test_session.failed ||
      building_examples_failed ||
@@ -81,4 +89,14 @@ fn v_test_compiler(vargs string){
 		exit(1)
 	}
 
+}
+
+fn make_sure_vfmt_was_run() {
+	files := os.walk_ext('.', '_test.v')
+	for file in files {
+		println(file)
+		os.exec('./vfmt $file') or {
+			println('$file failed')
+		}
+	}
 }

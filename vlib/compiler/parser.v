@@ -2513,7 +2513,7 @@ fn (p mut Parser) array_init() string {
 		const_name := p.prepend_mod(p.lit)
 		if p.table.known_const(const_name) {
 			c := p.table.find_const(const_name) or {
-				// p.error('unknown const `$p.lit`')
+				p.error('unknown const `$const_name`')
 				exit(1)
 			}
 			if c.typ == 'int' && p.peek() == .rsbr {
@@ -2582,8 +2582,9 @@ fn (p mut Parser) array_init() string {
 		}
 		if p.tok != .rsbr && p.tok != .semicolon {
 			p.gen(', ')
+			line_nr := p.tok
 			p.check(.comma)
-			p.fspace()
+			p.fspace_or_newline()
 		}
 		i++
 		// Repeat (a = [0;5] )

@@ -52,6 +52,19 @@ fn (p mut Parser) fspace() {
 	p.fgen(' ')
 }
 
+[if vfmt]
+fn (p mut Parser) fspace_or_newline() {
+	if p.first_pass() {
+		return
+	}
+	if p.token_idx >= 2 && p.tokens[p.token_idx-1].line_nr !=
+		p.tokens[p.token_idx-2].line_nr {
+		p.fgen_nl()
+	} else {
+		p.fgen(' ')
+	}
+}
+
 
 [if vfmt]
 fn (p mut Parser) fgenln(s string) {
