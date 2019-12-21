@@ -181,9 +181,10 @@ fn (p mut Parser) fnext() {
 			comment := comment_token.lit
 			// Newline before the comment, but not between two // comments,
 			// and not right after `{`, there's already a newline there
-			if i > 0 && p.tokens[i-1].tok != .line_comment &&
+			if i > 0 && ((p.tokens[i-1].tok != .line_comment &&
 				p.tokens[i-1].tok != .lcbr &&
-				comment_token.line_nr > p.tokens[i-1].line_nr {
+				comment_token.line_nr > p.tokens[i-1].line_nr) ||
+				p.tokens[i-1].tok == .hash) { // TODO not sure why this is needed, newline wasn't added after a hash
 				p.fgen_nl()
 			}
 			if i > 0 && p.tokens[i-1].tok == .rcbr && p.scanner.fmt_indent == 0 {

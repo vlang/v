@@ -1,12 +1,9 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module http
 
-type downloadfn fn (written int)
-type download_finished_fn fn ()
-
+type downloadfn fn(written int)type download_finished_fn fn()
 /*
 struct DownloadStruct {
 mut:
@@ -15,9 +12,8 @@ mut:
 	cb      downloadfn
 }
 */
-
-fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr)  {
-/*
+fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr) {
+	/*
 	mut data := &DownloadStruct(userp)
 	written := C.fwrite(ptr, size, nmemb, data.stream)
 	data.written += written
@@ -28,7 +24,7 @@ fn download_cb(ptr voidptr, size, nmemb size_t, userp voidptr)  {
 }
 
 pub fn download_file_with_progress(url, out string, cb downloadfn, cb_finished fn()) {
-/*
+	/*
 	curl := C.curl_easy_init()
 	if isnil(curl) {
 		return
@@ -52,6 +48,5 @@ pub fn download_file_with_progress(url, out string, cb downloadfn, cb_finished f
 }
 
 fn empty() {
-
 }
 
