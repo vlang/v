@@ -1,7 +1,7 @@
 CC ?= cc
-TMPVC ?= /tmp/vc
 
 VCFILE := v.c
+TMPVC  := /tmp/vc
 TMPTCC := /var/tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
@@ -55,15 +55,17 @@ endif
 	V_V=`git rev-parse --short HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
 		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		make selfcompile; \
+		$(MAKE) selfcompile; \
 	fi)
 ifndef ANDROID
-	make modules
+	$(MAKE) modules
 endif  
 endif
 	@echo "V has been successfully built"
 
 clean:
+	rm -rf $(TMPTCC)/
+	rm -rf $(TMPVC)/
 	git clean -xf
 
 latest_tcc: $(TMPTCC)/.git/config
@@ -81,15 +83,18 @@ fresh_tcc:
 	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)  
 
 $(TMPTCC)/.git/config:
-	make fresh_tcc
+	$(MAKE) fresh_tcc
 
 $(TMPVC)/.git/config:
-	make fresh_vc
+	$(MAKE) fresh_vc
 
 selfcompile:
 	./v -o v v.v
 
-modules:
+modules: module_builtin module_strings module_strconv
+module_builtin:
 	./v build module vlib/builtin > /dev/null
+module_strings:  
 	./v build module vlib/strings > /dev/null
+module_strconv:  
 	./v build module vlib/strconv > /dev/null
