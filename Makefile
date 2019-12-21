@@ -1,5 +1,14 @@
 CC ?= cc
+TMPVC ?= /tmp/vc
 
+VCFILE := v.c
+TMPTCC := /var/tmp/tcc
+VCREPO := https://github.com/vlang/vc
+TCCREPO := https://github.com/vlang/tccbin
+GITCLEANPULL := git clean -xf && git pull --quiet
+GITFASTCLONE := git clone --depth 1 --quiet
+
+#### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
 _SYS := $(patsubst MSYS%,MSYS,$(_SYS))
 _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
@@ -20,15 +29,25 @@ ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
 endif
+#####
 
-all: fresh_vc latest_tcc
+ALL_TARGETS = latest_vc
+ifndef ANDROID
+ALL_TARGETS += latest_tcc
+endif
 
 ifdef WIN32
-	$(CC) -std=c99 -w -o v0.exe vc/v_win.c $(LDFLAGS)
+TCCREPO := https://github.com/vlang/tccbin_win
+VCFILE := v_win.c
+endif
+
+all: $(ALL_TARGETS)
+ifdef WIN32
+	$(CC) -std=c99 -w -o v0.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v0.exe -o v.exe v.v
 	rm -f v0.exe
 else
-	$(CC) -std=gnu11 -w -o v vc/v.c $(LDFLAGS) -lm
+	$(CC) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
 ifdef ANDROID
 	chmod 755 v
 endif  
@@ -36,40 +55,41 @@ endif
 	V_V=`git rev-parse --short HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
 		echo "Self rebuild ($$VC_V => $$V_V)"; \
-		./v -o v v.v; \
+		make selfcompile; \
 	fi)
 ifndef ANDROID
-	./v build module vlib/builtin > /dev/null
-	./v build module vlib/strings > /dev/null
-	./v build module vlib/strconv > /dev/null
+	make modules
 endif  
 endif
-	rm -rf vc/
 	@echo "V has been successfully built"
 
+clean:
+	git clean -xf
+
+latest_tcc: $(TMPTCC)/.git/config
+	cd $(TMPTCC) && $(GITCLEANPULL)
+
+latest_vc: $(TMPVC)/.git/config
+	cd $(TMPVC) && $(GITCLEANPULL)
 
 fresh_vc:
-	rm -rf vc/
-	git clone --depth 1 --quiet https://github.com/vlang/vc
-	#cp fns.h vc/fns.h
-
-
-latest_tcc:
-ifeq (,$(wildcard /var/tmp/tcc/.git/config))
-	make fresh_tcc
-else
-	cd /var/tmp/tcc && git clean -xf && git pull --quiet
-endif
+	rm -rf $(TMPVC)
+	$(GITFASTCLONE) $(VCREPO) $(TMPVC)
 
 fresh_tcc:
-ifdef WIN32
-	rm -rf /var/tmp/tcc/
-	git clone --depth 1 --quiet https://github.com/vlang/tccbin_win /var/tmp/tcc
-endif
-ifdef LINUX
-	rm -rf /var/tmp/tcc/
-	git clone --depth 1 --quiet https://github.com/vlang/tccbin /var/tmp/tcc
-endif
+	rm -rf $(TMPTCC)/  
+	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)  
+
+$(TMPTCC)/.git/config:
+	make fresh_tcc
+
+$(TMPVC)/.git/config:
+	make fresh_vc
 
 selfcompile:
 	./v -o v v.v
+
+modules:
+	./v build module vlib/builtin > /dev/null
+	./v build module vlib/strings > /dev/null
+	./v build module vlib/strconv > /dev/null
