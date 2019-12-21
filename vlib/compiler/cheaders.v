@@ -21,7 +21,7 @@ const (
 #endif
 
 // for __offset_of
-#define __offsetof(s,memb) \
+#define __offsetof(s,memb) \\
     ((size_t)((char *)&((s *)0)->memb - (char *)0))
 
 #define OPTION_CAST(x) (x)
