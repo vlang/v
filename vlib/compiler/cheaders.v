@@ -175,16 +175,17 @@ var map_int = function() {}
 //================================== TYPEDEFS ================================*/
 
 // integer
-typedef int8_t        i8;
-typedef uint8_t       u8; 
-typedef int16_t       i16;
-typedef uint16_t      u16;
-typedef int32_t       i32
-typedef uint32_t      u32;
-typedef uint64_t      u64;
-typedef int64_t       i64;
+typedef int8_t              i8;
+typedef uint8_t             u8; 
+typedef int16_t             i16;
+typedef uint16_t            u16;
+typedef int32_t             i32
+typedef uint32_t            u32;
+typedef uint64_t            u64;
+typedef int64_t             i64;
 // TODO, g++ needed.
-typedef _int128       i128;
+typedef __int128            i128;
+typedef unsigned __int128   u128;
 	
 typedef uint8_t byte;
 typedef uint32_t rune;
