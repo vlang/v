@@ -1090,21 +1090,18 @@ fn (p mut Parser) get_type() string {
 			p.error('type `$t.name` is private')
 		}
 	}
-	// generic struct
+	// generic struct init
 	if p.peek() == .lt {
 		p.next()
 		p.check(.lt)
 		typ = '${typ}_T'
-		mut type_params := []string
-		for p.tok != .gt {
+		for {
 			type_param := p.check_name()
-			type_params << type_param
-			if p.generic_dispatch.inst.size > 0 {
-				if type_param in p.generic_dispatch.inst {
-					typ = '${typ}_' + p.generic_dispatch.inst[type_param]
-				}
+			if type_param in p.generic_dispatch.inst {
+				typ = '${typ}_' + p.generic_dispatch.inst[type_param]
 			}
-			if p.tok == .comma { p.check(.comma)  }
+			if p.tok != .comma { break }
+			p.check(.comma)
 		}
 		p.check(.gt)
 		return typ
@@ -3006,6 +3003,23 @@ fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {
 		is_fn_call = p.tokens[i].tok == .lpar
 	}
 	return is_fn_call,expr
+}
+
+[inline]
+// skip any block of code in curley braces `{}`
+fn (p mut Parser) skip_block(inside_first_lcbr bool) {
+	mut cbr_depth := if inside_first_lcbr { 1 } else { 0 }
+	for {
+		if p.tok == .lcbr {
+			cbr_depth++
+		}
+		if p.tok == .rcbr {
+			cbr_depth--
+			if cbr_depth == 0 { break }
+		}
+		p.next()
+	}
+	p.check(.rcbr)
 }
 
 fn todo_remove() {

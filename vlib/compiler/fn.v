@@ -474,8 +474,7 @@ fn (p mut Parser) fn_decl() {
 				}
 			}
 			p.set_current_fn( EmptyFn )
-			//p.skip_fn_body()
-			p.skip_block(true)
+			p.skip_fn_body()
 			return
 		}
 		else {
@@ -601,22 +600,6 @@ fn (p mut Parser) fn_decl() {
 	}
 	p.set_current_fn(EmptyFn)
 	p.returns = false
-}
-
-[inline]
-fn (p mut Parser) skip_block(inside_lcbr bool) {
-	mut cbr_depth := if inside_lcbr { 1 } else { 0 }
-	for {
-		if p.tok == .lcbr {
-			cbr_depth++
-		}
-		if p.tok == .rcbr {
-			cbr_depth--
-			if cbr_depth == 0 { break }
-		}
-		p.next()
-	}
-	p.check(.rcbr)
 }
 
 [inline]
@@ -788,20 +771,11 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	mut generic_param_types := []string
 	if p.tok == .lt {
 		p.check(.lt)
-		mut i := 0
 		for {
 			param_type := p.check_name()
 			generic_param_types << param_type
 			if p.tok != .comma { break }
 			p.check(.comma)
-			if p.tokens[i].tok == .gt {
-				p.error('explicit type arguments are not allowed; remove `<...>`')
-			}
-			else if p.tokens[i].tok == .lpar {
-				// probably a typo, do not concern the user with the above error message
-				break
-			}
-			i++
 		}
 		p.check(.gt)
 		// mut i := p.token_idx

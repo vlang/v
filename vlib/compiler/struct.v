@@ -105,10 +105,10 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 		kind := if is_union { 'union' } else { 'struct' }
 		p.gen_typedef('typedef $kind $name $name;')
 	}
+	// TODO: handle error
 	parser_idx := p.v.get_file_parser_index(p.file_path) or { 0 }
 	//if !p.scanner.is_vh {
 	//	parser_idx = p.v.get_file_parser_index(p.file_path) or { panic('cant find parser idx for $p.file_path') }
-	//	println('HERE: $parser_idx')
 	//}
 	// Register the type
 	mut is_ph := false
@@ -145,17 +145,20 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 		p.table.register_type(typ)
 		return
 	}
-	// generic template
-	if is_generic && !is_generic_instance {
-		p.table.register_type(typ)
-		p.table.generic_struct_params[typ.name] = generic_types.keys()
-	//}
-		// TODO: re are skipping genrcic struct in gen (cgen.v) we can go as normal and remove this
-		p.skip_block(false)
-		return
-	}
-	if is_generic_instance {
-		typ.rename_generic_struct(generic_types)
+	// generic struct
+	if is_generic {
+		// template
+		if !is_generic_instance {
+			p.table.register_type(typ)
+			p.table.generic_struct_params[typ.name] = generic_types.keys()
+			// NOTE: remove to store fields in generic struct template
+			p.skip_block(false)
+			return
+		}
+		// instance
+		else {
+			typ.rename_generic_struct(generic_types)
+		}
 	}
 	p.fspace()
 	p.check(.lcbr)
