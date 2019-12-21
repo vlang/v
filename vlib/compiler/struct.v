@@ -44,20 +44,15 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 	mut is_generic := false
 	if p.tok == .lt {
 		p.check(.lt)
-		mut i := 0
-		for {
-			if generic_param_types.len > 0 && i != generic_param_types.len-1 {
+		for i := 0; ; i++ {
+			if generic_param_types.len > 0 && i > generic_param_types.len-1 {
 				p.error('mismatched generic type params')
 			}
 			type_param := p.check_name()
-			if generic_param_types.len > 0 {
-				generic_types[type_param] = generic_param_types[i]
-			} else {
-				generic_types[type_param] = ''
-			}
+			generic_types[type_param] = if generic_param_types.len > 0 { 
+				generic_param_types[i] } else { '' }
 			if p.tok != .comma { break }
 			p.check(.comma)
-			i++
 		}
 		p.check(.gt)
 		is_generic = true
