@@ -14,8 +14,7 @@ mut:
 }
 
 fn main() {
-	app := App{}
-	vweb.run(mut app, 8080)
+	vweb.run<App>(8080)
 }
 
 fn (app mut App) index_text() {

@@ -128,8 +128,7 @@ fn main() {
 
 	// webhook server mode
 	if flag_options.serve {
-		app := WebhookServer{ gen_vc: new_gen_vc(flag_options) }
-		vweb.run(mut app, flag_options.port)
+		vweb.run<WebhookServer>(flag_options.port)
 	}
 	// cmd mode
 	else {
@@ -154,10 +153,12 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
 
 // WebhookServer init
 pub fn (ws mut WebhookServer) init() {
+
 	mut fp := flag.new_flag_parser(os.args.clone())
 	flag_options := parse_flags(mut fp)
 	ws.gen_vc = new_gen_vc(flag_options)
 	ws.gen_vc.init()
+	//ws.gen_vc = new_gen_vc(flag_options)
 }
 
 // gen webhook
@@ -170,6 +171,10 @@ pub fn (ws mut WebhookServer) genhook() {
 	}
 	ws.vweb.json('{status: "ok"}')
 }
+
+pub fn (ws &WebhookServer) reset() {
+}
+
 
 // parse flags to FlagOptions struct
 fn parse_flags(fp mut flag.FlagParser) FlagOptions {
