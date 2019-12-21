@@ -31,17 +31,12 @@ undefine LINUX
 endif
 #####
 
-ALL_TARGETS = latest_vc
-ifndef ANDROID
-ALL_TARGETS += latest_tcc
-endif
-
 ifdef WIN32
 TCCREPO := https://github.com/vlang/tccbin_win
 VCFILE := v_win.c
 endif
 
-all: $(ALL_TARGETS)
+all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v0.exe -o v.exe v.v
@@ -64,12 +59,9 @@ endif
 	@echo "V has been successfully built"
 
 clean:
-	rm -rf $(TMPTCC)/
-	rm -rf $(TMPVC)/
+	rm -rf $(TMPTCC)
+	rm -rf $(TMPVC)
 	git clean -xf
-
-latest_tcc: $(TMPTCC)/.git/config
-	cd $(TMPTCC) && $(GITCLEANPULL)
 
 latest_vc: $(TMPVC)/.git/config
 	cd $(TMPVC) && $(GITCLEANPULL)
@@ -78,9 +70,16 @@ fresh_vc:
 	rm -rf $(TMPVC)
 	$(GITFASTCLONE) $(VCREPO) $(TMPVC)
 
+latest_tcc: $(TMPTCC)/.git/config
+ifndef ANDROID
+	cd $(TMPTCC) && $(GITCLEANPULL)
+endif
+
 fresh_tcc:
-	rm -rf $(TMPTCC)/  
+ifndef ANDROID
+	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)  
+endif
 
 $(TMPTCC)/.git/config:
 	$(MAKE) fresh_tcc
