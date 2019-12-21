@@ -2,6 +2,25 @@ name: CI
 on: [push, pull_request]
 jobs:
 
+  ubuntu-tcc:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc tcc
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build v
+      run: echo $VFLAGS && make -j4 && ./v -o v v.v
+    - name: Test v->c
+      run: |
+        sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
+        tcc -version
+        ./v -o v2 v.v # Make sure vtcc can build itself
+        ./v test-compiler
+    - name: Test v binaries
+      run: ./v build-vbinaries
+
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
@@ -120,26 +139,6 @@ jobs:
       run: echo "test" #wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip && unzip v_windows.zip && ./v.exe --version
     - name: Test V
       run: echo "test" #./v.exe examples/hello_world.v && examples/hello_world.exe
-
-
-  ubuntu-tcc:
-    runs-on: ubuntu-18.04
-    env:
-      VFLAGS: -cc tcc
-    steps:
-    - uses: actions/checkout@v1
-    - name: Install dependencies
-      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build v
-      run: echo $VFLAGS && make -j4 && ./v -o v v.v
-    - name: Test v->c
-      run: |
-        sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
-        tcc -version
-        ./v -o v2 v.v # Make sure vtcc can build itself
-        ./v test-compiler
-    - name: Test v binaries
-      run: ./v build-vbinaries
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
