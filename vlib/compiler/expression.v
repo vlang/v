@@ -729,7 +729,7 @@ fn (p mut Parser) factor() string {
 			member := p.check_name()
 			p.check(.rpar)
 
-			p.gen('offsetof($offsetof_typ, $member)')
+			p.gen('__offsetof($offsetof_typ, $member)')
 			
 			return 'int'
 		}
