@@ -21,7 +21,8 @@ ANDROID := 1
 undefine LINUX
 endif
 
-all: fresh_vc fresh_tcc
+all: fresh_vc latest_tcc
+
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe vc/v_win.c $(LDFLAGS)
 	./v0.exe -o v.exe v.v
@@ -51,6 +52,14 @@ fresh_vc:
 	rm -rf vc/
 	git clone --depth 1 --quiet https://github.com/vlang/vc
 	#cp fns.h vc/fns.h
+
+
+latest_tcc:
+ifeq (,$(wildcard /var/tmp/tcc/.git/config))
+	make fresh_tcc
+else
+	cd /var/tmp/tcc && git clean -xf && git pull --quiet
+endif
 
 fresh_tcc:
 ifdef WIN32
