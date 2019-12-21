@@ -33,7 +33,17 @@ const (
 	max_cap = 2<<20
 )
 
-fn new_hashmap(planned_nr_items int) hashmap {
+const(
+	fnv64_prime        = 1099511628211
+	fnv64_offset_basis = 14695981039346656037
+)
+
+const(
+    fnv32_offset_basis = u32(2166136261)
+    fnv32_prime        = u32(16777619)
+)
+
+pub fn new_hashmap(planned_nr_items int) hashmap {
 	mut cap := planned_nr_items * 5
 	if cap < min_cap {
 		cap = min_cap
@@ -48,9 +58,10 @@ fn new_hashmap(planned_nr_items int) hashmap {
 	}
 }
 
-fn (m mut hashmap) set(key string, val int) {
-	mut hash := int(b_fabs(key.hash()))
-	idx := hash % m.cap
+pub fn (m mut hashmap) set(key string, val int) {
+	// mut hash := int(b_fabs(key.hash()))
+	// idx := hash % m.cap
+	idx := int(fnv1a32(key) % m.cap)
 	if m.table[idx].key.len != 0 {
 		// println('\nset() idx=$idx key="$key" hash="$hash" val=$val')
 		m.nr_collisions++
@@ -68,9 +79,10 @@ fn (m mut hashmap) set(key string, val int) {
 	}
 }
 
-fn (m mut hashmap) get(key string) int {
-	hash := int(b_fabs(key.hash()))
-	idx := hash % m.cap
+pub fn (m mut hashmap) get(key string) int {
+	// mut hash := int(b_fabs(key.hash()))
+	// idx := hash % m.cap
+	idx := int(fnv1a32(key) % m.cap)
 	mut e := &m.table[idx]
 	for e.next != 0 {
 		// todo unsafe {
@@ -87,3 +99,22 @@ fn b_fabs(v int) f64 {
 	return if v < 0 { -v } else { v }
 }
 
+// inline functions here for speed
+// rather than full impl in vlib
+[inline]
+fn fnv1a32(data string) u32 {
+    mut hash := fnv32_offset_basis
+    for i := 0; i < data.len; i++ {
+        hash = (hash ^ u32(data[i])) * fnv32_prime
+    }
+    return hash
+}
+
+[inline]
+fn fnv1a64(data string) u64 {
+    mut hash := fnv64_offset_basis
+    for i := 0; i < data.len; i++ {
+        hash = (hash ^ u64(data[i])) * fnv64_prime
+    }
+    return hash
+}
