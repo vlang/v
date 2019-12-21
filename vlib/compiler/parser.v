@@ -980,7 +980,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-
+			
 			mod: p.mod
 			func: f
 		}
@@ -1100,7 +1100,9 @@ fn (p mut Parser) get_type() string {
 			if type_param in p.generic_dispatch.inst {
 				typ = '${typ}_' + p.generic_dispatch.inst[type_param]
 			}
-			if p.tok != .comma { break }
+			if p.tok != .comma {
+				break
+			}
 			p.check(.comma)
 		}
 		p.check(.gt)
@@ -3020,7 +3022,9 @@ fn (p mut Parser) skip_block(inside_first_lcbr bool) {
 		}
 		if p.tok == .rcbr {
 			cbr_depth--
-			if cbr_depth == 0 { break }
+			if cbr_depth == 0 {
+				break
+			}
 		}
 		p.next()
 	}

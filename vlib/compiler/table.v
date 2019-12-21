@@ -7,19 +7,19 @@ import strings
 
 struct Table {
 pub mut:
-	typesmap      map[string]Type
-	consts        []Var
-	fns           map[string]Fn
-	obf_ids       map[string]int // obf_ids['myfunction'] == 23
-	modules       []string // List of all modules registered by the application
-	imports       []string // List of all imports
-	cflags        []CFlag // ['-framework Cocoa', '-lglfw3']
-	fn_cnt        int // atomic
-	obfuscate     bool
-	varg_access   []VargAccess
+	typesmap              map[string]Type
+	consts                []Var
+	fns                   map[string]Fn
+	obf_ids               map[string]int // obf_ids['myfunction'] == 23
+	modules               []string // List of all modules registered by the application
+	imports               []string // List of all imports
+	cflags                []CFlag // ['-framework Cocoa', '-lglfw3']
+	fn_cnt                int // atomic
+	obfuscate             bool
+	varg_access           []VargAccess
 	// enum_vals map[string][]string
 	// names        []Name
-	max_field_len map[string]int // for vfmt: max_field_len['Parser'] == 12
+	max_field_len         map[string]int // for vfmt: max_field_len['Parser'] == 12
 	generic_struct_params map[string][]string
 }
 

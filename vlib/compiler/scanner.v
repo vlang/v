@@ -889,3 +889,4 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
 	}
 }
+

@@ -156,15 +156,13 @@ pub fn (v &V) finalize_compilation() {
 pub fn (v mut V) add_parser(parser Parser) int {
 	pidx := v.parsers.len
 	v.parsers << parser
-	file_path := if filepath.is_abs(parser.file_path) {
-		parser.file_path } else { os.realpath(parser.file_path) }
+	file_path := if filepath.is_abs(parser.file_path) { parser.file_path } else { os.realpath(parser.file_path) }
 	v.file_parser_idx[file_path] = pidx
 	return pidx
 }
 
 pub fn (v &V) get_file_parser_index(file string) ?int {
-	file_path := if filepath.is_abs(file) {
-		file } else { os.realpath(file) }
+	file_path := if filepath.is_abs(file) { file } else { os.realpath(file) }
 	if file_path in v.file_parser_idx {
 		return v.file_parser_idx[file_path]
 	}
@@ -1058,7 +1056,7 @@ pub fn new_v(args []string) &V {
 		is_live: '-live' in args
 		sanitize: '-sanitize' in args
 		// nofmt: '-nofmt' in args
-
+		
 		show_c_cmd: '-show_c_cmd' in args
 		translated: 'translated' in args
 		is_run: 'run' in args
@@ -1077,7 +1075,7 @@ pub fn new_v(args []string) &V {
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || dir.contains('vlib'))
 		comptime_define: comptime_define
 		// is_fmt: comptime_define == 'vfmt'
-
+		
 		user_mod_path: user_mod_path
 		vlib_path: vlib_path
 		vpath: vpath

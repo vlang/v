@@ -70,19 +70,19 @@ fresh_vc:
 	rm -rf $(TMPVC)
 	$(GITFASTCLONE) $(VCREPO) $(TMPVC)
 
-#latest_tcc: $(TMPTCC)/.git/config
-#ifndef ANDROID
-	#cd $(TMPTCC) && $(GITCLEANPULL)
-#endif
+latest_tcc: $(TMPTCC)/.git/config
+ifndef ANDROID
+	cd $(TMPTCC) && $(GITCLEANPULL)
+endif
 
-#fresh_tcc:
-#ifndef ANDROID
-	#rm -rf $(TMPTCC)
-	#$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
-#endif
+fresh_tcc:
+ifndef ANDROID
+	rm -rf $(TMPTCC)
+	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
+endif
 
-#$(TMPTCC)/.git/config:
-	#$(MAKE) fresh_tcc
+$(TMPTCC)/.git/config:
+	$(MAKE) fresh_tcc
 
 $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc

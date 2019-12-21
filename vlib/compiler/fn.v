@@ -473,7 +473,7 @@ fn (p mut Parser) fn_decl() {
 					p.table.register_fn(f)
 				}
 			}
-			p.set_current_fn( EmptyFn )
+			p.set_current_fn(EmptyFn)
 			p.skip_fn_body()
 			return
 		}
@@ -767,26 +767,28 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	}
 	f.is_used = true
 	cgen_name := p.table.fn_gen_name(f)
-	p.next()		// fn name
+	p.next() // fn name
 	mut generic_param_types := []string
 	if p.tok == .lt {
 		p.check(.lt)
 		for {
 			param_type := p.check_name()
 			generic_param_types << param_type
-			if p.tok != .comma { break }
+			if p.tok != .comma {
+				break
+			}
 			p.check(.comma)
 		}
 		p.check(.gt)
 		// mut i := p.token_idx
 		// for {
-		// 	if p.tokens[i].tok == .gt {
-		// 		//p.error('explicit type arguments are not allowed; remove `<...>`')
-		// 	} else if p.tokens[i].tok == .lpar {
-		// 		// probably a typo, do not concern the user with the above error message
-		// 		break
-		// 	}
-		// 	i++
+		// if p.tokens[i].tok == .gt {
+		// //p.error('explicit type arguments are not allowed; remove `<...>`')
+		// } else if p.tokens[i].tok == .lpar {
+		// // probably a typo, do not concern the user with the above error message
+		// break
+		// }
+		// i++
 		// }
 	}
 	// if p.pref.is_prof {
@@ -1013,7 +1015,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 		file_path := cescaped_path(p.file_path)
 		p.cgen.resetln(p.cgen.cur_line.replace('v_panic (', 'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '))
 	}
-	//mut saved_args := []string
+	// mut saved_args := []string
 	mut saved_args := generic_param_types
 	for i, arg in f.args {
 		// Receiver is the first arg
@@ -1026,19 +1028,16 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 			// if f.args[0].typ.ends_with('*') {
 			// p.gen('&/*119*/')
 			// }
-
-			//pos := p.cgen.cur_line.index('/* ? */')
-			//if pos > -1 {
-			//	expr := p.cgen.cur_line[pos..]
-			//	// TODO hack
-			//	// If current expression is a func call, generate the array hack
-			//	if expr.contains('(') {
-			//		p.cgen.set_placeholder(pos, '(${arg.typ[..arg.typ.len-1]}[]){')
-			//		p.gen('}[0] ')
-			//	}
-			//}
-			
-
+			// pos := p.cgen.cur_line.index('/* ? */')
+			// if pos > -1 {
+			// expr := p.cgen.cur_line[pos..]
+			// // TODO hack
+			// // If current expression is a func call, generate the array hack
+			// if expr.contains('(') {
+			// p.cgen.set_placeholder(pos, '(${arg.typ[..arg.typ.len-1]}[]){')
+			// p.gen('}[0] ')
+			// }
+			// }
 			continue
 		}
 		// Reached the final vararg? Quit
@@ -1520,7 +1519,9 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	f.type_inst << *ti
 	p.table.register_fn(f)
-	if f.is_method { f.name = f.receiver_typ + '_' + f.name }
+	if f.is_method {
+		f.name = f.receiver_typ + '_' + f.name
+	}
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
 	// TODO: Handle case where type not defined yet, see above
@@ -1543,7 +1544,8 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	gp.generic_dispatch = *ti
 	gp.next()
 	gp.fn_decl()
-	gp.generic_dispatch = TypeInst{}
+	gp.generic_dispatch = TypeInst{
+	}
 	p.cgen.lines_extra << p.cgen.lines
 	p.restore_state(saved_state, false, true)
 	p.cgen.fns << '${p.fn_signature(f)};'
