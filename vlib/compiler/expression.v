@@ -227,6 +227,7 @@ fn (p mut Parser) name_expr() string {
 		p.string_expr()
 		return 'charptr'
 	}
+
 	// known_type := p.table.known_type(name)
 	orig_name := name
 	is_c := name == 'C' && p.peek() == .dot
@@ -718,6 +719,21 @@ fn (p mut Parser) factor() string {
 			// p.fgen('$sizeof_typ)')
 			return 'int'
 		}
+		.key_offsetof {
+			p.next()
+			p.check(.lpar)
+
+			offsetof_typ := p.get_type()
+			p.check(.comma)
+
+			member := p.check_name()
+			p.check(.rpar)
+
+			p.gen('offsetof($offsetof_typ, $member)')
+			
+			return 'int'
+		}
+
 		.amp, .dot, .mul {
 			// (dot is for enum vals: `.green`)
 			return p.name_expr()
