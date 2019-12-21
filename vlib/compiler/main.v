@@ -1056,7 +1056,7 @@ pub fn new_v(args []string) &V {
 		is_live: '-live' in args
 		sanitize: '-sanitize' in args
 		// nofmt: '-nofmt' in args
-
+		
 		show_c_cmd: '-show_c_cmd' in args
 		translated: 'translated' in args
 		is_run: 'run' in args
@@ -1075,7 +1075,7 @@ pub fn new_v(args []string) &V {
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || dir.contains('vlib'))
 		comptime_define: comptime_define
 		// is_fmt: comptime_define == 'vfmt'
-
+		
 		user_mod_path: user_mod_path
 		vlib_path: vlib_path
 		vpath: vpath

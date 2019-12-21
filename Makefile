@@ -36,7 +36,7 @@ TCCREPO := https://github.com/vlang/tccbin_win
 VCFILE := v_win.c
 endif
 
-all: latest_vc
+all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v0.exe -o v.exe v.v

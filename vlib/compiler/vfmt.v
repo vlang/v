@@ -81,6 +81,7 @@ fn (p mut Parser) fgen_nl() {
 	// Previous token is a comment, and NL has already been generated?
 	// Don't generate a second NL.
 	if p.scanner.fmt_lines.len > 0 && p.scanner.fmt_lines.last() == '\n' &&
+		p.token_idx > 2 &&
 		p.tokens[p.token_idx-2].tok == .line_comment
 	{
 		//if p.fileis('parser.v') {
@@ -231,21 +232,26 @@ fn (p &Parser) gen_fmt() {
 	if p.pass != .main {
 		return
 	}
+	//println('gen fmt name=$p.file_name path=$p.file_path')
 	if p.file_name == '' {
 		return
 	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
-	s := p.scanner.fmt_lines.join('')/*.replace_each([
+	s := p.scanner.fmt_lines.join('')
+/*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
 		') or{', ') or {',
 	])
 	*/
 		//.replace('\n\n\n\n', '\n\n')
-		.replace(' \n', '\n')
-		.replace(') or{', ') or {')
+		.replace_each([
+			' \n', '\n',
+			') or{', ') or {',
+			')or{', ') or {',
+		] )
 
 	if s == '' {
 		return

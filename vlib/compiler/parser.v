@@ -586,6 +586,7 @@ fn (p mut Parser) parse(pass Pass) {
 					for i := start; i < end; i++ {
 						p.cgen.lines[i] = ''
 					}
+					p.fgen_nl()
 				}
 				else {
 					p.error('unexpected token `${p.strtok()}`')
@@ -793,6 +794,9 @@ fn (p mut Parser) type_decl() {
 		cat: .alias
 		is_public: is_pub
 	})
+	if p.tok != .key_type {
+		p.fspace()
+	}
 }
 
 // current token is `(`
@@ -980,7 +984,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 		}
