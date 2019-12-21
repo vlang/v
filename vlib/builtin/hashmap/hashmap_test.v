@@ -1,3 +1,5 @@
+module hashmap
+
 import rand
 
 fn test_random_strings() {
@@ -15,7 +17,7 @@ fn test_random_strings() {
 	m.set('foo', 12)
 	val := m.get('foo')
 	assert val == 12
-}	
+}
 
 fn test_large_hashmap() {
 	N := 300 * 1000
@@ -29,4 +31,4 @@ fn test_large_hashmap() {
 		key := i.str()
 		assert nums.get(key) == i
 	}
-}	
+}

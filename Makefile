@@ -36,7 +36,7 @@ TCCREPO := https://github.com/vlang/tccbin_win
 VCFILE := v_win.c
 endif
 
-all: latest_vc latest_tcc
+all: latest_vc
 ifdef WIN32
 	$(CC) -std=c99 -w -o v0.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v0.exe -o v.exe v.v
@@ -45,7 +45,7 @@ else
 	$(CC) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
 ifdef ANDROID
 	chmod 755 v
-endif  
+endif
 	@(VC_V=`./v version | cut -f 3 -d " "`; \
 	V_V=`git rev-parse --short HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
@@ -54,7 +54,7 @@ endif
 	fi)
 ifndef ANDROID
 	$(MAKE) modules
-endif  
+endif
 endif
 	@echo "V has been successfully built"
 
@@ -70,19 +70,19 @@ fresh_vc:
 	rm -rf $(TMPVC)
 	$(GITFASTCLONE) $(VCREPO) $(TMPVC)
 
-latest_tcc: $(TMPTCC)/.git/config
-ifndef ANDROID
-	cd $(TMPTCC) && $(GITCLEANPULL)
-endif
+#latest_tcc: $(TMPTCC)/.git/config
+#ifndef ANDROID
+	#cd $(TMPTCC) && $(GITCLEANPULL)
+#endif
 
-fresh_tcc:
-ifndef ANDROID
-	rm -rf $(TMPTCC)
-	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)  
-endif
+#fresh_tcc:
+#ifndef ANDROID
+	#rm -rf $(TMPTCC)
+	#$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
+#endif
 
-$(TMPTCC)/.git/config:
-	$(MAKE) fresh_tcc
+#$(TMPTCC)/.git/config:
+	#$(MAKE) fresh_tcc
 
 $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
@@ -93,7 +93,7 @@ selfcompile:
 modules: module_builtin module_strings module_strconv
 module_builtin:
 	./v build module vlib/builtin > /dev/null
-module_strings:  
+module_strings:
 	./v build module vlib/strings > /dev/null
-module_strconv:  
+module_strconv:
 	./v build module vlib/strconv > /dev/null

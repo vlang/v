@@ -1,31 +1,32 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module builtin
+module hashmap
 /*
 	This is work in progress.
-	A very early test version of the hashmap with a fixed size.
+	A very early test version of the Hashmap with a fixed size.
 	Only works with string keys and int values for now.
-	
+
 	I added this to improve performance of the V compiler,
 	which uses lots of O(log n) map get's. Turned out with N < 10 000
 	the performance gains are basically non-existent.
 */
 
 
-struct hashmap {
+struct Hashmap {
 	cap           int
 	keys          []string
-	table         []hashmapentry
+	table         []Hashmapentry
 	elm_size      int
-pub:
+pub mut:
 	nr_collisions int
 }
 
-struct hashmapentry {
+struct Hashmapentry {
+mut:
 	key  string
 	val  int
-	next &hashmapentry // linked list for collisions
+	next &Hashmapentry // linked list for collisions
 }
 
 const (
@@ -35,7 +36,7 @@ const (
 
 const(
 	fnv64_prime        = 1099511628211
-	fnv64_offset_basis = 14695981039346656037
+	fnv64_offset_basis = u64(14695981039346656037)
 )
 
 const(
@@ -43,7 +44,7 @@ const(
     fnv32_prime        = u32(16777619)
 )
 
-pub fn new_hashmap(planned_nr_items int) hashmap {
+pub fn new_hashmap(planned_nr_items int) Hashmap {
 	mut cap := planned_nr_items * 5
 	if cap < min_cap {
 		cap = min_cap
@@ -51,14 +52,14 @@ pub fn new_hashmap(planned_nr_items int) hashmap {
 	if cap > max_cap {
 		cap = max_cap
 	}
-	return hashmap{
+	return Hashmap{
 		cap: cap
 		elm_size: 4
-		table: make(cap, cap, sizeof(hashmapentry))
+		table: make(cap, cap, sizeof(Hashmapentry))
 	}
 }
 
-pub fn (m mut hashmap) set(key string, val int) {
+pub fn (m mut Hashmap) set(key string, val int) {
 	// mut hash := int(b_fabs(key.hash()))
 	// idx := hash % m.cap
 	idx := int(fnv1a32(key) % m.cap)
@@ -70,16 +71,16 @@ pub fn (m mut hashmap) set(key string, val int) {
 		for e.next != 0 {
 			e = e.next
 		}
-		e.next = &hashmapentry{
+		e.next = &Hashmapentry{
 			key,val,0}
 	}
 	else {
-		m.table[idx] = hashmapentry{
+		m.table[idx] = Hashmapentry{
 			key,val,0}
 	}
 }
 
-pub fn (m mut hashmap) get(key string) int {
+pub fn (m &Hashmap) get(key string) int {
 	// mut hash := int(b_fabs(key.hash()))
 	// idx := hash % m.cap
 	idx := int(fnv1a32(key) % m.cap)
