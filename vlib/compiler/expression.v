@@ -214,8 +214,8 @@ fn (p mut Parser) name_expr() string {
 		p.error('cannot use `_` as value')
 	}
 	// generic type check
-	if name in p.cur_fn.dispatch_of.inst.keys() {
-		name = p.cur_fn.dispatch_of.inst[name]
+	if name in p.generic_dispatch.inst.keys() {
+		name = p.generic_dispatch.inst[name]
 	}
 	// Raw string (`s := r'hello \n ')
 	if name == 'r' && p.peek() == .str && p.prev_tok != .str_dollar {
@@ -349,7 +349,7 @@ fn (p mut Parser) name_expr() string {
 			return enum_type.name
 		}
 		// normal struct init (non-C)
-		else if p.peek() == .lcbr {
+		else if p.peek() == .lcbr || p.peek() == .lt {
 			return p.get_struct_type(name, false, ptr)
 		}
 	}

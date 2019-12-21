@@ -38,7 +38,6 @@ mut:
 	defer_text        []string
 	type_pars         []string
 	type_inst         []TypeInst
-	dispatch_of       TypeInst // current type inst of this generic instance
 	generic_fn_idx    int
 	parser_idx        int
 	fn_name_token_idx int // used by error reporting
@@ -349,8 +348,7 @@ fn (p mut Parser) fn_decl() {
 	if p.tok == .lt {
 		// instance (dispatch)
 		if p.generic_dispatch.inst.size > 0 {
-			f.dispatch_of = p.generic_dispatch
-			rename_generic_fn_instance(mut f, f.dispatch_of)
+			rename_generic_fn_instance(mut f, &p.generic_dispatch)
 		}
 		else {
 			f.is_generic = true
@@ -475,8 +473,9 @@ fn (p mut Parser) fn_decl() {
 					p.table.register_fn(f)
 				}
 			}
-			p.set_current_fn(EmptyFn)
-			p.skip_fn_body()
+			p.set_current_fn( EmptyFn )
+			//p.skip_fn_body()
+			p.skip_block(true)
 			return
 		}
 		else {
@@ -602,6 +601,22 @@ fn (p mut Parser) fn_decl() {
 	}
 	p.set_current_fn(EmptyFn)
 	p.returns = false
+}
+
+[inline]
+fn (p mut Parser) skip_block(inside_lcbr bool) {
+	mut cbr_depth := if inside_lcbr { 1 } else { 0 }
+	for {
+		if p.tok == .lcbr {
+			cbr_depth++
+		}
+		if p.tok == .rcbr {
+			cbr_depth--
+			if cbr_depth == 0 { break }
+		}
+		p.next()
+	}
+	p.check(.rcbr)
 }
 
 [inline]
@@ -769,10 +784,16 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	}
 	f.is_used = true
 	cgen_name := p.table.fn_gen_name(f)
-	p.next() // fn name
+	p.next()		// fn name
+	mut generic_param_types := []string
 	if p.tok == .lt {
-		mut i := p.token_idx
+		p.check(.lt)
+		mut i := 0
 		for {
+			param_type := p.check_name()
+			generic_param_types << param_type
+			if p.tok != .comma { break }
+			p.check(.comma)
 			if p.tokens[i].tok == .gt {
 				p.error('explicit type arguments are not allowed; remove `<...>`')
 			}
@@ -782,6 +803,17 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 			}
 			i++
 		}
+		p.check(.gt)
+		// mut i := p.token_idx
+		// for {
+		// 	if p.tokens[i].tok == .gt {
+		// 		//p.error('explicit type arguments are not allowed; remove `<...>`')
+		// 	} else if p.tokens[i].tok == .lpar {
+		// 		// probably a typo, do not concern the user with the above error message
+		// 		break
+		// 	}
+		// 	i++
+		// }
 	}
 	// if p.pref.is_prof {
 	// p.cur_fn.called_fns << cgen_name
@@ -838,7 +870,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	// if f is generic, the name is changed to a suitable instance in dispatch_generic_fn_instance()
 	// we then replace `cgen_name` with the instance's name
 	generic := f.is_generic
-	p.fn_call_args(mut f)
+	p.fn_call_args(mut f, generic_param_types)
 	if generic {
 		line := if p.cgen.is_tmp { p.cgen.tmp_line } else { p.cgen.cur_line }
 		p.cgen.resetln(line.replace('$cgen_name (', '$f.name ('))
@@ -975,7 +1007,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 }
 
 // foo *(1, 2, 3, mut bar)*
-fn (p mut Parser) fn_call_args(f mut Fn) {
+fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 	// println('fn_call_args() name=$f.name args.len=$f.args.len')
 	// C func. # of args is not known
 	p.check(.lpar)
@@ -1007,7 +1039,8 @@ fn (p mut Parser) fn_call_args(f mut Fn) {
 		file_path := cescaped_path(p.file_path)
 		p.cgen.resetln(p.cgen.cur_line.replace('v_panic (', 'panic_debug ($p.scanner.line_nr, tos3("$file_path"), tos3("$mod_name"), tos2((byte *)"$fn_name"), '))
 	}
-	mut saved_args := []string
+	//mut saved_args := []string
+	mut saved_args := generic_param_types
 	for i, arg in f.args {
 		// Receiver is the first arg
 		// Skip the receiver, because it was already generated in the expression
@@ -1382,6 +1415,10 @@ fn replace_generic_type_params(f mut Fn, ti &TypeInst) {
 	}
 	f.args = args
 	f.typ = replace_generic_type(f.typ, ti)
+	if f.typ.ends_with('_T') {
+		par := ti.inst.keys()[0]
+		f.typ = f.typ + '_' + ti.inst[par]
+	}
 }
 
 fn (p mut Parser) register_vargs_stuct(typ string, len int) string {
@@ -1483,9 +1520,6 @@ fn (p mut Parser) register_multi_return_stuct(types []string) string {
 }
 
 fn rename_generic_fn_instance(f mut Fn, ti &TypeInst) {
-	if f.is_method && f.dispatch_of.inst.size == 0 {
-		f.name = f.receiver_typ + '_' + f.name
-	}
 	f.name = f.name + '_T'
 	for k in ti.inst.keys() {
 		f.name = f.name + '_' + type_to_safe_str(ti.inst[k])
@@ -1512,9 +1546,9 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	f.type_inst << *ti
 	p.table.register_fn(f)
+	if f.is_method { f.name = f.receiver_typ + '_' + f.name }
 	rename_generic_fn_instance(mut f, ti)
 	replace_generic_type_params(mut f, ti)
-	f.dispatch_of = *ti
 	// TODO: Handle case where type not defined yet, see above
 	// if f.typ in f.type_pars { f.typ = '_ANYTYPE_' }
 	// if f.typ in ti.inst {
@@ -1529,12 +1563,13 @@ fn (p mut Parser) dispatch_generic_fn_instance(f mut Fn, ti &TypeInst) {
 	}
 	mut gp := p.v.parsers[f.parser_idx]
 	gp.is_vgen = true
-	gp.generic_dispatch = *ti
 	saved_state := p.save_state()
 	p.clear_state(false, true)
 	gp.token_idx = f.generic_fn_idx
+	gp.generic_dispatch = *ti
 	gp.next()
 	gp.fn_decl()
+	gp.generic_dispatch = TypeInst{}
 	p.cgen.lines_extra << p.cgen.lines
 	p.restore_state(saved_state, false, true)
 	p.cgen.fns << '${p.fn_signature(f)};'

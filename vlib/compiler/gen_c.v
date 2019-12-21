@@ -472,7 +472,7 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool, fn_ph, assign_p
 }
 
 // returns true in case of an early return
-fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
+fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	// TODO hack. If it's a C type, we may need to add "struct" before declaration:
 	// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
 	if p.is_c_struct_init {

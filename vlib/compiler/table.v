@@ -20,6 +20,7 @@ pub mut:
 	// enum_vals map[string][]string
 	// names        []Name
 	max_field_len map[string]int // for vfmt: max_field_len['Parser'] == 12
+	generic_struct_params map[string][]string
 }
 
 struct VargAccess {
@@ -114,6 +115,8 @@ pub mut:
 	enum_vals      []string
 	gen_types      []string
 	default_vals   []string // `struct Foo { bar int = 2 }`
+	parser_idx     int
+	decl_tok_idx   int
 	// `is_placeholder` is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -121,6 +124,7 @@ pub mut:
 	gen_str        bool // needs `.str()` method generation
 	is_flag        bool // enum bitfield flag
 	// max_field_len  int
+	is_generic     bool
 }
 
 struct TypeNode {

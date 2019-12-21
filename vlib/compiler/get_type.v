@@ -125,7 +125,7 @@ fn (p mut Parser) get_type2() Type {
 		p.check(.amp)
 	}
 	// generic type check
-	ti := p.cur_fn.dispatch_of.inst
+	ti := p.generic_dispatch.inst
 	if p.lit in ti.keys() {
 		typ += ti[p.lit]
 	}

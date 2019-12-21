@@ -473,7 +473,7 @@ fn (p mut Parser) parse(pass Pass) {
 						p.const_decl()
 					}
 					.key_struct, .key_union, .key_interface {
-						p.struct_decl()
+						p.struct_decl([])
 					}
 					.key_enum {
 						p.enum_decl(false)
@@ -497,7 +497,7 @@ fn (p mut Parser) parse(pass Pass) {
 				p.attribute()
 			}
 			.key_struct, .key_interface, .key_union, .lsbr {
-				p.struct_decl()
+				p.struct_decl([])
 			}
 			.key_const {
 				p.const_decl()
@@ -1035,7 +1035,7 @@ fn (p mut Parser) get_type() string {
 		p.check(.amp)
 	}
 	// generic type check
-	ti := p.cur_fn.dispatch_of.inst
+	ti := p.generic_dispatch.inst
 	if p.lit in ti.keys() {
 		typ += ti[p.lit]
 	}
@@ -1089,6 +1089,25 @@ fn (p mut Parser) get_type() string {
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
 			p.error('type `$t.name` is private')
 		}
+	}
+	// generic struct
+	if p.peek() == .lt {
+		p.next()
+		p.check(.lt)
+		typ = '${typ}_T'
+		mut type_params := []string
+		for p.tok != .gt {
+			type_param := p.check_name()
+			type_params << type_param
+			if p.generic_dispatch.inst.size > 0 {
+				if type_param in p.generic_dispatch.inst {
+					typ = '${typ}_' + p.generic_dispatch.inst[type_param]
+				}
+			}
+			if p.tok == .comma { p.check(.comma)  }
+		}
+		p.check(.gt)
+		return typ
 	}
 	if typ == 'void' {
 		p.error('unknown type `$typ`')
@@ -1829,7 +1848,7 @@ fn (p mut Parser) var_expr(v Var) string {
 	if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
 		T := p.table.find_type(p.base_type(typ))
 		p.gen('(')
-		p.fn_call_args(mut T.func)
+		p.fn_call_args(mut T.func, [])
 		p.gen(')')
 		typ = T.func.typ
 	}
@@ -1839,7 +1858,7 @@ fn (p mut Parser) var_expr(v Var) string {
 		if p.base_type(typ).starts_with('fn ') && p.tok == .lpar {
 			T := p.table.find_type(p.base_type(typ))
 			p.gen('(')
-			p.fn_call_args(mut T.func)
+			p.fn_call_args(mut T.func, [])
 			p.gen(')')
 			typ = T.func.typ
 		}
@@ -2014,7 +2033,7 @@ pub:
 			p.gen('$dot$field.name')
 			p.gen('(')
 			p.check(.name)
-			p.fn_call_args(mut f)
+			p.fn_call_args(mut f, [])
 			p.gen(')')
 			return f.typ
 		}
@@ -2915,7 +2934,7 @@ fn (p mut Parser) attribute() {
 		return
 	}
 	else if p.tok == .key_struct {
-		p.struct_decl()
+		p.struct_decl([])
 		p.attr = ''
 		return
 	}
