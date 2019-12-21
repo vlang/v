@@ -413,7 +413,7 @@ fn (p mut Parser) name_expr() string {
 		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
 	}
 	else if !p.is_var_decl && !is_or_else && !p.inside_return_expr && f.typ.starts_with('Option_') {
-		opt_type := f.typ[7..]
+		opt_type := f.typ[7..].replace('ptr_', '&')
 		p.error('unhandled option type: `?$opt_type`')
 	}
 	// dot after a function call: `get_user().age`
@@ -450,7 +450,7 @@ fn (p mut Parser) expression() string {
 			// a << 7 => int tmp = 7; array_push(&a, &tmp);
 			// _PUSH(&a, expression(), tmp, string)
 			tmp := p.get_tmp()
-			tmp_typ := typ[6..].replace('_ptr', '*') // skip "array_"
+			tmp_typ := parse_pointer(typ[6..]) // skip "array_"
 			p.check_space(.left_shift)
 			// Get the value we are pushing
 			p.gen(', (')

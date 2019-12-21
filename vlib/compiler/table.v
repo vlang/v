@@ -679,7 +679,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Expected type "Option_os__File", got "os__File"
-	if expected.starts_with('Option_') && expected.ends_with(got) {
+	if expected.starts_with('Option_') && expected.ends_with(stringify_pointer(got)) {
 		return true
 	}
 	// NsColor* return 0
