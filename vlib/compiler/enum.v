@@ -39,10 +39,18 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		if p.tok == .assign {
 			p.fspace()
 			mut enum_assign_tidx := p.cur_tok_index()
-			if p.peek() == .number {
+			next := p.peek()
+			if next in [.number, .minus] {
 				p.next()
 				p.fspace()
+				is_neg := p.tok == .minus
+				if is_neg {
+					p.next()
+				}
 				val = p.lit.int()
+				if is_neg {
+					val = -val
+				}
 				p.next()
 			}
 			else {

@@ -980,7 +980,7 @@ fn (p mut Parser) get_type() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 		}
@@ -2534,6 +2534,11 @@ fn (p mut Parser) array_init() string {
 				// if p.cur_tok().col + p.peek_token().lit.len == p.peek_token().col {
 				if p.cur_tok().pos + p.peek_token().lit.len == p.peek_token().pos {
 					p.check(.rsbr)
+					// `[10]C.kevent` needs `struct `
+					is_c := p.tok == .name && p.lit == 'C'
+					if is_c {
+						p.cgen.insert_before('struct ')
+					}
 					array_elem_typ := p.get_type()
 					if !p.table.known_type(array_elem_typ) {
 						p.error('bad type `$array_elem_typ`')

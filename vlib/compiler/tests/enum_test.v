@@ -39,3 +39,18 @@ fn test_match() {
 	println(color)
 	assert num == 3
 }
+
+enum Foo {
+	a = 1
+	b = 2
+	c = 3
+	d = -10
+}
+
+fn test_nums() {
+	foo := Foo.a
+	assert foo == 1
+	assert Foo.c == 3
+	d := Foo.d
+	assert d == -10
+}
