@@ -279,19 +279,18 @@ fn (p &Parser) gen_fmt() {
 	//if !(p.file_name in files) { return }
 	if is_all {
 		if p.file_path.len > 0 {
-			path := write_formatted_content_to_file( p.file_name, s )
-			os.cp( path, p.file_path ) or { verror(err) }
+			path := write_formatted_source( p.file_name, s )
+			os.cp( path, p.file_path ) or { panic(err) }
 			eprintln('Written fmt file to: $p.file_path')
 		}
 	}
 	if p.file_path == p.v.dir {
-		res_path := write_formatted_content_to_file( p.file_name, s )
+		res_path := write_formatted_source( p.file_name, s )
 		os.setenv('VFMT_FILE_RESULT', res_path, true )
 	}
 }
 
-[if vfmt]
-fn write_formatted_content_to_file(file_name string, s string) string {
+fn write_formatted_source(file_name string, s string) string {
 	path := os.tmpdir() + '/' + file_name
 	mut out := os.create(path) or {
 		verror('failed to create file $path')
@@ -299,7 +298,6 @@ fn write_formatted_content_to_file(file_name string, s string) string {
 	}
 	//eprintln('replacing ${p.file_path} ...\n')
 	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
-	out.writeln('')
 	out.close()
 	return path
 }	
