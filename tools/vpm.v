@@ -23,14 +23,14 @@ fn main() {
 	ensure_vmodules_dir_exist()
 	change_to_vmodules_dir()
 	// This tool is intended to be launched by the v frontend,
-	// so its first argument is the path to the v frontend executable.
-	args := os.args // args are: vpm vexepath SUBCOMMAND module names
-	if args.len < 3 {
+	// which provides the path to V inside os.getenv('VEXE')
+	args := os.args // args are: vpm SUBCOMMAND module names
+	if args.len < 2 {
 		vpm_help([])
 		exit(5)
 	}
-	vpm_command := args[2]
-	module_names := args[3..]
+	vpm_command := args[1]
+	module_names := args[2..]
 	//println('module names: ') println(module_names)
 	match vpm_command {
 		'help'    { vpm_help(module_names) }
