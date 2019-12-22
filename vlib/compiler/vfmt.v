@@ -240,7 +240,6 @@ fn (p mut Parser) fremove_last() {
 
 }
 
-
 [if vfmt]
 fn (p &Parser) gen_fmt() {
 	if p.pass != .main {
@@ -250,11 +249,11 @@ fn (p &Parser) gen_fmt() {
 	if p.file_name == '' {
 		return
 	}
-  is_all := os.getenv('VFMT_OPTION_ALL') == 'yes'
-  if p.file_path != p.v.dir && !is_all {
-    // skip everything except the last file (given by the CLI argument)
-    return
-  }
+	is_all := os.getenv('VFMT_OPTION_ALL') == 'yes'
+	if p.file_path != p.v.dir && !is_all {
+		// skip everything except the last file (given by the CLI argument)
+		return
+	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
@@ -265,32 +264,42 @@ fn (p &Parser) gen_fmt() {
 		') or{', ') or {',
 	])
 	*/
-		//.replace('\n\n\n\n', '\n\n')
-		.replace_each([
-			' \n', '\n',
-			') or{', ') or {',
-			')or{', ') or {',
-		] )
-
+	//.replace('\n\n\n\n', '\n\n')
+	.replace_each([
+		' \n', '\n',
+		') or{', ') or {',
+		')or{', ') or {',
+	])
+	
 	if s == '' {
 		return
 	}
 	//files := ['get_type.v']
 	if p.file_path.contains('compiler/vfmt.v') {return}
 	//if !(p.file_name in files) { return }
-	path := os.tmpdir() + '/' + p.file_name
+	if is_all {
+		if p.file_path.len > 0 {
+			path := write_formatted_content_to_file( p.file_name, s )
+			os.cp( path, p.file_path ) or { verror(err) }
+			eprintln('Written fmt file to: $p.file_path')
+		}
+	}
+	if p.file_path == p.v.dir {
+		res_path := write_formatted_content_to_file( p.file_name, s )
+		os.setenv('VFMT_FILE_RESULT', res_path, true )
+	}
+}
+
+[if vfmt]
+fn write_formatted_content_to_file(file_name string, s string) string {
+	path := os.tmpdir() + '/' + file_name
 	mut out := os.create(path) or {
-		verror('failed to create os_nix.v')
-		return
+		verror('failed to create file $path')
+		return ''
 	}
 	//eprintln('replacing ${p.file_path} ...\n')
 	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
 	out.writeln('')
 	out.close()
-	if is_all {
-		eprintln('Written fmt file to: $path .')
-	}
-	if p.file_path.len > 0 && path.len > 0 && p.file_path == p.v.dir {
-		os.setenv('VFMT_FILE_RESULT', path, true )
-	}
-}
+	return path
+}	
