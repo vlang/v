@@ -110,7 +110,7 @@ fn (m mut map) set(key string, value voidptr) {
 			return
 		}
 		parent = node
-		child_index = i + 1
+		child_index = i
 		node = &mapnode(node.children[child_index])
 	}
 }
