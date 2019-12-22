@@ -173,10 +173,10 @@ fn user_asks_for_help(module_names []string) bool {
 
 fn vpm_help(module_names []string){
 	println('Usage:')
-	println('  b) v search keyword1 [keyword2] [...]')
-	println('  c) v install module [module] [module] [...]')
-	println('  d) v update [module] [...]')
-	println('  e) v remove [module] [...]')
+	println('  a) v install module [module] [module] [...]')
+	println('  b) v update [module] [...]')
+	println('  c) v remove [module] [...]')
+	println('  d) v search keyword1 [keyword2] [...]')
 	println('')
 	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
 }
