@@ -88,7 +88,7 @@ $(TMPVC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -o v v.v
+	./v -cg -o v v.v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:
