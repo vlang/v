@@ -47,15 +47,6 @@ pub fn main() {
 	println('Testing...')
 	ts.test()
 
-	// Print separator with dynamic width
-	mut cols := 76
-	if tput := os.exec('stty size') {
-		if tput.exit_code == 0 {
-			cols = tput.output.split(' ')[1].int()
-		}
-	}
-	println("-".repeat(cols))
-
 	println( ts.benchmark.total_message('running V _test.v files') )
 	if ts.failed {
 		exit(1)

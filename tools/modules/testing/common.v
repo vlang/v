@@ -94,6 +94,7 @@ pub fn (ts mut TestSession) test() {
 		os.rm( tmpc_filepath )
 	}
 	ts.benchmark.stop()
+	eprintln(term.h_divider())
 }
 
 pub fn vlib_should_be_present( parent_dir string ) {
@@ -177,6 +178,7 @@ pub fn building_any_v_binaries_failed() bool {
 		eprintln(bmark.step_message('$cmd => ${bok}'))
 	}
 	bmark.stop()
+	eprintln(term.h_divider())  
 	eprintln( bmark.total_message( 'building v binaries' ) )
 
 	return failed
