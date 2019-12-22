@@ -3,6 +3,7 @@ module compiler
 import os
 
 pub fn launch_tool(tname string) {
+  is_verbose := '--verbose' in os.args || '-verbose' in os.args
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder( vroot )
@@ -10,11 +11,11 @@ pub fn launch_tool(tname string) {
 	tool_exe := os.realpath('$vroot/tools/$tname')
 	tool_source := os.realpath('$vroot/tools/${tname}.v')
 	tool_command := '"$tool_exe" $tool_args'
-	if v.pref.is_verbose { 
-		v.log('launch_tool vexe        : $vroot')
-		v.log('launch_tool vroot       : $vroot')
-		v.log('launch_tool tool_args   : $tool_args')
-		v.log('launch_tool tool_command: $tool_command')
+	if is_verbose { 
+		eprintln('launch_tool vexe        : $vroot')
+		eprintln('launch_tool vroot       : $vroot')
+		eprintln('launch_tool tool_args   : $tool_args')
+		eprintln('launch_tool tool_command: $tool_command')
 	}	
 	mut tool_should_be_recompiled := false
 	if !os.exists(tool_exe) {
@@ -32,24 +33,24 @@ pub fn launch_tool(tname string) {
 		}
 	}
 	
-	if v.pref.is_verbose { 
-		v.log('launch_tool tool_should_be_recompiled: $tool_should_be_recompiled')
+	if is_verbose {
+		eprintln('launch_tool tool_should_be_recompiled: $tool_should_be_recompiled')
 	}
 	
 	if tool_should_be_recompiled {
 		mut compilation_options := ''
 		if tname == 'vfmt' {  compilation_options = '-d vfmt' }
 		compilation_command := '"$vexe" $compilation_options "$tool_source"'
-		if v.pref.is_verbose { 
-			v.log('Compiling $tname with: "$compilation_command"') 
+		if is_verbose {
+			eprintln('Compiling $tname with: "$compilation_command"') 
 		}
 		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
 			panic('V tool "$tool_source" could not be compiled\n' + tool_compilation.output)
 		}
 	}
-	if v.pref.is_verbose { 
-		v.log('launch_tool running tool command: $tool_command ...')
+	if is_verbose {
+		eprintln('launch_tool running tool command: $tool_command ...')
 	}
 	
 	exit( os.system(tool_command) )
