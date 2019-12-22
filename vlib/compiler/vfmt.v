@@ -250,7 +250,8 @@ fn (p &Parser) gen_fmt() {
 	if p.file_name == '' {
 		return
 	}
-  if p.file_path != p.v.dir {
+  is_all := os.getenv('VFMT_OPTION_ALL') == 'yes'
+  if p.file_path != p.v.dir && !is_all {
     // skip everything except the last file (given by the CLI argument)
     return
   }
@@ -275,7 +276,7 @@ fn (p &Parser) gen_fmt() {
 		return
 	}
 	//files := ['get_type.v']
-	if p.file_path.contains('vfmt') {return}
+	if p.file_path.contains('compiler/vfmt.v') {return}
 	//if !(p.file_name in files) { return }
 	path := os.tmpdir() + '/' + p.file_name
 	mut out := os.create(path) or {
@@ -286,5 +287,10 @@ fn (p &Parser) gen_fmt() {
 	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
 	out.writeln('')
 	out.close()
-  os.setenv('VFMT_FILE_RESULT', path, true )
+	if is_all {
+		eprintln('Written fmt file to: $path .')
+	}
+	if p.file_path.len > 0 && path.len > 0 && p.file_path == p.v.dir {
+		os.setenv('VFMT_FILE_RESULT', path, true )
+	}
 }
