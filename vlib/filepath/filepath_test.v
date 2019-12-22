@@ -7,8 +7,11 @@ fn test_ext() {
 
 fn test_is_abs() {
 	assert filepath.is_abs('/home/user') == true
-	assert filepath.is_abs('C:\\Windows\\') == true
 	assert filepath.is_abs('v/vlib') == false
+
+	$if windows {
+		assert filepath.is_abs('C:\\Windows\\') == true
+	}
 }
 
 fn test_join() {
