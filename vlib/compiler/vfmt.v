@@ -250,6 +250,10 @@ fn (p &Parser) gen_fmt() {
 	if p.file_name == '' {
 		return
 	}
+  if p.file_path != p.v.dir {
+    // skip everything except the last file (given by the CLI argument)
+    return
+  }
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
@@ -274,15 +278,13 @@ fn (p &Parser) gen_fmt() {
 	if p.file_path.contains('vfmt') {return}
 	//if !(p.file_name in files) { return }
 	path := os.tmpdir() + '/' + p.file_name
-	println('generating ${path}')
 	mut out := os.create(path) or {
 		verror('failed to create os_nix.v')
 		return
 	}
-	println('replacing ${p.file_path}...\n')
+	//eprintln('replacing ${p.file_path} ...\n')
 	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
 	out.writeln('')
 	out.close()
-	os.mv(path, p.file_path)
+  os.setenv('VFMT_FILE_RESULT', path, true )
 }
-

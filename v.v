@@ -13,16 +13,20 @@ import (
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
+	simple_tools = ['fmt', 'up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
+  is_verbose := '-verbose' in os.args || '--verbose' in os.args
 	// t := time.ticks()
 	// defer { println(time.ticks() - t) }
 	args := compiler.env_vflags_and_os_args()
 	options, command := compiler.get_v_options_and_main_command( args )
-	println('options: $options')
-	println('command: $command')
+  if is_verbose {
+	  eprintln('v    args: $args')
+	  eprintln('v command: $command')
+	  eprintln('v options: $options')
+  }    
 	
 	// external tool
 	if command in simple_tools {
@@ -91,7 +95,7 @@ fn v_command(command string, args []string) {
 		'translate' {
 			println('Translating C to V will be available in V 0.3 (January)')
 		}
-		'search', 'install', 'update' {
+		'search', 'install', 'update', 'remove' {
 			compiler.launch_tool('vpm')
 		}
 		'get' {
@@ -99,9 +103,6 @@ fn v_command(command string, args []string) {
 		}
 		'symlink' {
 			compiler.create_symlink()
-		}
-		'fmt' {
-			compiler.launch_tool('vfmt')
 		}
 		'runrepl' {
 			compiler.launch_tool('vrepl')

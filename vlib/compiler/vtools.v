@@ -3,10 +3,10 @@ module compiler
 import os
 
 pub fn launch_tool(tname string) {
-  is_verbose := '--verbose' in os.args || '-verbose' in os.args
+  is_verbose := '-verbose' in os.args || '--verbose' in os.args
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
-	set_vroot_folder( vroot )
+	set_vroot_folder( vroot ) // needed by tools to find back v
 	tool_args := os.args[1..].join(' ')
 	tool_exe := os.realpath('$vroot/tools/$tname')
 	tool_source := os.realpath('$vroot/tools/${tname}.v')
