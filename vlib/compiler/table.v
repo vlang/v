@@ -21,6 +21,7 @@ pub mut:
 	// names        []Name
 	max_field_len         map[string]int // for vfmt: max_field_len['Parser'] == 12
 	generic_struct_params map[string][]string
+	tuple_variants map[string][]string
 }
 
 struct VargAccess {
@@ -218,7 +219,7 @@ fn new_table(obfuscate bool) &Table {
 	mut t := &Table{
 		obfuscate: obfuscate
 		// enum_vals: map[string][]string
-		
+
 	}
 	t.register_builtin('int')
 	t.register_builtin('size_t')
@@ -411,7 +412,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 		parent: parent
 		is_public: true
 		// mod: mod
-		
+
 	}
 }
 
@@ -441,7 +442,7 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 		is_mut: is_mut
 		attr: attr
 		parent_fn: type_name // Name of the parent type
-		
+
 		access_mod: access_mod
 	}
 	table.typesmap[type_name] = t
