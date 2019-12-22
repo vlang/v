@@ -49,9 +49,9 @@ pub fn main() {
 
 	// Print separator with dynamic width
 	mut cols := 76
-	if tput := os.exec("tput cols; echo") {
+	if tput := os.exec('stty size') {
 		if tput.exit_code == 0 {
-			cols = tput.output.int()
+			cols = tput.output.split(' ')[1].int()
 		}
 	}
 	println("-".repeat(cols))
