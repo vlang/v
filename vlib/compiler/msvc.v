@@ -1,6 +1,9 @@
 module compiler
 
-import os
+import (
+	os
+	filepath
+)
 
 #flag windows -l shell32
 #flag windows -l dbghelp
@@ -311,7 +314,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	parent := os.dir(obj_path)
+	parent := filepath.dir(obj_path)
 	files := os.ls(parent)or{
 		panic(err)
 	}

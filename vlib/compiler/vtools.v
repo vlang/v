@@ -1,10 +1,13 @@
 module compiler
 
-import os
+import (
+	os
+	filepath
+)
 
 pub fn launch_tool(tname string) {
 	vexe := vexe_path()
-	vroot := os.dir(vexe)
+	vroot := filepath.dir(vexe)
 	mut oargs := os.args
 	oargs[0] = '"$vexe"' // make it more explicit
 	tool_exe := os.realpath('$vroot/tools/$tname')

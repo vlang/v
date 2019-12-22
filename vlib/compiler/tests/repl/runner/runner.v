@@ -1,6 +1,9 @@
 module runner
 
-import os
+import (
+	os
+	filepath
+)
 
 struct RunnerOptions {
 pub:
@@ -17,7 +20,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	mut path := os.executable()
 	for i := 0; i < dirs_in; i++ {
-		path = os.dir(path)
+		path = filepath.dir(path)
 	}
 	vexec := path + os.path_separator + vname
 	/*

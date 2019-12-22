@@ -6,6 +6,7 @@ module compiler
 import (
 	os
 	strings
+	filepath
 	compiler.x64
 	// time
 )
@@ -2317,7 +2318,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return os.filename(p.scanner.file_path).contains(s)
+	return filepath.filename(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`

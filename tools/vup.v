@@ -1,8 +1,11 @@
-import os
+import (
+	os
+	filepath
+)
 
 fn main() {
 	println('Updating V...')
-	vroot := os.dir(os.args[1])
+	vroot := filepath.dir(os.args[1])
 	os.chdir(vroot)
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or { panic(err) }
 	println(s.output)

@@ -28,7 +28,7 @@ mut:
 fn generate_vh(mod string) {
 	println('\n\n\n\nGenerating a V header file for module `$mod`')
 	vexe := vexe_path()
-	full_mod_path := filepath.join(os.dir(vexe),mod)
+	full_mod_path := filepath.join(filepath.dir(vexe),mod)
 	dir := if mod.starts_with('vlib') { '$compiler.v_modules_path${os.path_separator}$mod' } else { mod }
 	path := dir + '.vh'
 	pdir := dir.all_before_last(os.path_separator)

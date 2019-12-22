@@ -777,7 +777,7 @@ pub fn (v &V) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = os.basedir(single_test_v_file)
+		dir = filepath.basedir(single_test_v_file)
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
@@ -898,7 +898,7 @@ pub fn new_v(args []string) &V {
 	// optional, custom modules search path
 	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
 	// Location of all vlib files
-	vroot := os.dir(vexe_path())
+	vroot := filepath.dir(vexe_path())
 	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot,'vlib'))
 	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
 	mut vgen_buf := strings.new_builder(1000)
@@ -1033,7 +1033,7 @@ pub fn new_v(args []string) &V {
 	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
 	cflags := get_cmdline_cflags(args)
 	rdir := os.realpath(dir)
-	rdir_name := os.filename(rdir)
+	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
 		verror('use -freestanding instead of -bare')
 	}
@@ -1095,7 +1095,7 @@ pub fn new_v(args []string) &V {
 		os: _os
 		out_name: out_name
 		dir: dir
-		compiled_dir: if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
+		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 		lang_dir: vroot
 		table: new_table(obfuscate)
 		out_name_c: out_name_c
@@ -1144,7 +1144,7 @@ pub fn vfmt(args []string) {
 	}
 	vexe := vexe_path()
 	// launch_tool('vfmt', '-d vfmt')
-	vroot := os.dir(vexe)
+	vroot := filepath.dir(vexe)
 	os.chdir(vroot)
 	println('building vfmt... (it will be cached soon)')
 	ret := os.system('$vexe -o $vroot/tools/vfmt -d vfmt v.v')
