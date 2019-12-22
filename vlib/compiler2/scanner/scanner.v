@@ -1,10 +1,11 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module compiler
+module scanner
 
 import (
 	os
+	compiler2.token
 	// strings
 )
 
@@ -27,22 +28,15 @@ mut:
 	inter_end                bool
 	debug                    bool
 	line_comment             string
+	//prev_tok                 TokenKind
 	started                  bool
-	// vfmt fields TODO move to a separate struct
-	// fmt_out        strings.Builder
-	fmt_lines                []string
-	// fmt_line   string
-	fmt_indent               int
-	fmt_line_empty           bool
-	// fmt_needs_nl bool
-	prev_tok                 TokenKind
 	fn_name                  string // needed for @FN
 	print_line_on_error      bool
 	print_colored_error      bool
 	print_rel_paths_on_error bool
 	quote                    byte // which quote is used to denote current string: ' or "
 	line_ends                []int // the positions of source lines ends   (i.e. \n signs)
-	nlines                   int // total number of lines in the source file that were scanned
+	nr_lines                   int // total number of lines in the source file that were scanned
 	is_vh                    bool // Keep newlines
 	is_fmt                   bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
@@ -66,13 +60,13 @@ fn new_scanner_file(file_path string) &Scanner {
 		}
 	}
 	mut s := new_scanner(raw_text)
-	s.init_fmt()
+	//s.init_fmt()
 	s.file_path = file_path
 	return s
 }
 
 // new scanner from string.
-fn new_scanner(text string) &Scanner {
+pub fn new_scanner(text string) &Scanner {
 	return &Scanner{
 		text: text
 		print_line_on_error: true
@@ -82,12 +76,13 @@ fn new_scanner(text string) &Scanner {
 }
 
 // TODO remove once multiple return values are implemented
-struct ScanRes {
-	tok TokenKind
+pub struct ScanRes {
+pub:
+	tok token.Token
 	lit string
 }
 
-fn scan_res(tok TokenKind, lit string) ScanRes {
+fn scan_res(tok token.Token, lit string) ScanRes {
 	return ScanRes{
 		tok,lit}
 }
@@ -231,7 +226,7 @@ fn (s mut Scanner) end_of_file() ScanRes {
 	return scan_res(.eof, '')
 }
 
-fn (s mut Scanner) scan() ScanRes {
+pub fn (s mut Scanner) scan() ScanRes {
 	// if s.line_comment != '' {
 	// s.fgenln('// LC "$s.line_comment"')
 	// s.line_comment = ''
@@ -272,8 +267,8 @@ fn (s mut Scanner) scan() ScanRes {
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
-		if is_key(name) {
-			return scan_res(key_to_token(name), '')
+		if token.is_key(name) {
+			return scan_res(token.key_to_token(name), '')
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
@@ -460,7 +455,7 @@ fn (s mut Scanner) scan() ScanRes {
 			if name == 'VHASH' {
 				return scan_res(.str, vhash())
 			}
-			if !is_key(name) {
+			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
 			}
 			return scan_res(.name, name)
@@ -833,8 +828,8 @@ fn (s mut Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends << s.pos
-	if s.line_nr > s.nlines {
-		s.nlines = s.line_nr
+	if s.line_nr > s.nr_lines {
+		s.nr_lines = s.line_nr
 	}
 }
 
@@ -889,4 +884,28 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
 	}
 }
+
+pub fn (s &Scanner) error(msg string) {
+	println('$s.line_nr : $msg')
+	exit(1)
+}
+
+pub fn verror(s string) {
+	println('V error: $s')
+	os.flush_stdout()
+	exit(1)
+}
+
+pub fn vhash() string {
+	mut buf := [50]byte
+	buf[0] = 0
+	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+	return tos_clone(buf)
+}
+
+pub fn cescaped_path(s string) string {
+	return s.replace('\\', '\\\\')
+}
+
+
 

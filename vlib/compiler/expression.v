@@ -47,8 +47,12 @@ fn (p mut Parser) bool_expression() string {
 		p.error('expr() returns empty type')
 	}
 	if expected != typ && expected in p.table.sum_types { // TODO perf
-		p.cgen.set_placeholder(start_ph, '/*KUK*/($expected) { .obj = ($typ[]) { ')
-		p.gen('}, .typ = 1}')//${val}_type }')
+		p.cgen.set_placeholder(start_ph,
+			//'/*SUM TYPE CAST*/($expected) { .obj = &($typ[]) { ')
+			'/*SUM TYPE CAST*/($expected) { .obj = memdup(& ')
+		tt := typ.all_after('_') // TODO
+		//p.gen('}, .typ = SumType_${tt} }')//${val}_type }')
+		p.gen(', sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
 
 	}
 	return typ
@@ -369,7 +373,7 @@ fn (p mut Parser) name_expr() string {
 				//println(q)
 				//println(q[idx])
 				arg_type := q[idx]
-	p.gen('($enum_type.name) { .obj = ($arg_type[]) { ')
+				p.gen('($enum_type.name) { .obj = ($arg_type[]) { ')
 				p.bool_expression()
 				p.check(.rpar)
 				p.gen('}, .typ = ${val}_type }')

@@ -16,6 +16,9 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	if typ.starts_with('array_') {
 		p.error('arrays cannot be compared')
 	}
+	is_sum_type := typ in p.table.sum_types
+	mut sum_child_type := ''
+
 	// is it safe to use p.cgen.insert_before ???
 	tmp_var := p.get_tmp()
 	p.cgen.insert_before('$typ $tmp_var = $expr;')
@@ -111,6 +114,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 		}
 		ph := p.cgen.add_placeholder()
 		// Multiple checks separated by comma
+		p.open_scope()
 		mut got_comma := false
 		for {
 			if got_comma {
@@ -121,11 +125,26 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				got_string = true
 				p.gen('string_eq($tmp_var, ')
 			}
+			else if is_sum_type {
+				p.gen('${tmp_var}.typ == ')
+			}
 			else {
 				p.gen('$tmp_var == ')
 			}
 			p.expected_type = typ
-			p.check_types(p.bool_expression(), typ)
+			// `match node { ast.BoolExpr { it := node as BoolExpr ... } }`
+			if is_sum_type {
+				sum_child_type = p.get_type2().name
+				tt := sum_child_type.all_after('_')
+				p.gen('SumType_$tt')
+				//println('got child $sum_child_type')
+				p.register_var(Var{
+					name: 'it'
+					typ: sum_child_type
+				})
+			} else {
+				p.check_types(p.bool_expression(), typ)
+			}
 			p.expected_type = ''
 			if got_string {
 				p.gen(')')
@@ -169,12 +188,16 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.fspace()
 			p.check(.lcbr)
 			p.genln('{ ')
+			if is_sum_type {
+				p.genln(' $sum_child_type it = *($sum_child_type*)$tmp_var .obj ;')
+			}
 			p.statements()
 			all_cases_return = all_cases_return && p.returns
 			// p.gen(')')
 		}
 		i++
 		p.fgen_nl()
+		p.close_scope()
 	}
 	p.error('match must be exhaustive')
 	// p.returns = false // only get here when no default, so return is not guaranteed
@@ -229,12 +252,12 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			name: var_name
 			typ: typ
 			is_mut: false // TODO
-			
+
 			is_used: true // TODO
 			// is_alloc: p.is_alloc || typ.starts_with('array_')
 			// line_nr: p.tokens[ var_token_idx ].line_nr
 			// token_idx: var_token_idx
-			
+
 		})
 		p.statements()
 		p.close_scope()

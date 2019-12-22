@@ -594,9 +594,9 @@ fn (t &Table) find_type(name_ string) Type {
 }
 
 fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
-	if p.fileis('type_test') {
-		println('got=$got_ exp=$expected_')
-	}
+	//if p.fileis('type_test') {
+		//println('got=$got_ exp=$expected_')
+	//}
 	mut got := got_
 	mut expected := expected_
 	// p.log('check types got="$got" exp="$expected"  ')
@@ -724,18 +724,17 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	got = got.replace('*', '').replace('ptr', '')
 	if got != expected {
 		// Interface check
-		if expected.ends_with('er') {
+		if expected.ends_with('er') || expected[0] == `I` {
 			if p.satisfies_interface(expected, got, throw) {
 				return true
 			}
 		}
 		// Sum type
-		println(expected)
 		if expected in p.table.sum_types {
-			println('checking sum')
+			//println('checking sum')
 			child := p.table.find_type(got)
 			if child.parent == expected {
-				println('yep $expected')
+				//println('yep $expected')
 				return true
 			}
 		}

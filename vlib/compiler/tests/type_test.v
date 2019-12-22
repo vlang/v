@@ -20,9 +20,7 @@ fn test_person_str() {
 
 struct Foo {}
 
-struct WTF {
-	wtf int
-}
+type Expr = Foo | BoolExpr |  BinExpr | UnaryExpr
 
 struct BoolExpr {
 	foo int
@@ -37,7 +35,6 @@ struct UnaryExpr {
 
 }
 
-type Expr = Foo | BoolExpr |  BinExpr | UnaryExpr
 
 fn handle_expr(e Expr) {
 
@@ -47,7 +44,7 @@ fn parse_bool() BoolExpr {
 	return BoolExpr{}
 }
 
-fn test_sum() {
+fn test_sum_types() {
 	b := parse_bool()
 	handle_expr(b)
 }

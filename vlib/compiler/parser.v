@@ -787,7 +787,7 @@ fn (p mut Parser) type_decl() {
 	}
 	p.check(.key_type)
 	p.fspace()
-	name := p.check_name()
+	mut name := p.check_name()
 	p.fspace()
 	// V used to have 'type Foo struct', many Go users might use this syntax
 	if p.tok == .key_struct {
@@ -801,6 +801,9 @@ fn (p mut Parser) type_decl() {
 	// Sum type
 	is_sum := p.tok == .pipe
 	if is_sum {
+		if !p.builtin_mod && p.mod != 'main' {
+			name = p.prepend_mod(name)
+		}
 		// Register the first child  (name we already parsed)
 		/*
 		p.table.register_type(Type{
@@ -811,26 +814,21 @@ fn (p mut Parser) type_decl() {
 		})
 		*/
 		// Register the rest of them
+		mut idx := 0
 		for p.tok == .pipe {
+			idx++
 			p.next()
-			child := p.check_name()
+			child_type_name := p.check_name()
 			if p.pass == .main {
 				// Update the type's parent
-				println('child=$child parent=$name')
-				mut t := p.table.find_type(child)
+				//println('child=$child_type_name parent=$name')
+				mut t := p.find_type(child_type_name)
 				if t.name == '' {
-					p.error('unknown type `$child`')
+					p.error('qunknown type `$child_type_name`')
 				}
 				t.parent = name
 				p.table.rewrite_type(t)
-				/*
-				p.table.register_type(Type{
-					parent: name
-					name: child
-					mod: p.mod
-					is_public: is_pub
-				})
-				*/
+				p.cgen.consts << '#define SumType_$child_type_name $idx // DEF2'
 			}
 		}
 		if p.pass == .decl {
@@ -838,7 +836,7 @@ fn (p mut Parser) type_decl() {
 			println(p.table.sum_types)
 		}
 		// Register the actual sum type
-		println('reging sum $name')
+		//println('registering sum $name')
 		p.table.register_type(Type{
 			name: name
 			mod: p.mod
