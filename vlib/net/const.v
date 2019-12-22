@@ -1,5 +1,7 @@
 // define default socket port
 
+module net
+
 pub const (
 	http_port = 80
 	https_port = 443
