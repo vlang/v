@@ -147,7 +147,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 			eprintln('No working "diff" CLI command found.')
 			return
 		}
-		os.system('$diff_cmd "$formatted_file_path" "$file" ')
+		os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$file" "$formatted_file_path" ')
 		return
 	}
 	if foptions.is_w {
