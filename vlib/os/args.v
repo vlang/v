@@ -52,3 +52,11 @@ pub fn get_args_after(args []string, what []string) []string {
 	}
 	return args_after
 }
+
+pub fn get_non_options(args []string) []string {
+	return args.filter(!it.starts_with('-'))
+}
+
+pub fn get_options(args []string) []string {
+	return args.filter(it.starts_with('-'))
+}

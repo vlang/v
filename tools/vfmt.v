@@ -26,8 +26,7 @@ fn main() {
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
 	}	
-	args_after := os.get_args_after(args, ['fmt'])
-	possible_files := args_after.filter(!it.starts_with('-'))
+	possible_files := os.get_non_options( os.get_args_after(args, ['fmt']) )
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())

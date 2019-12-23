@@ -580,7 +580,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe', '') + '"'
-	args_after_no_options := non_option( os.get_args_after(args,['run','test']) )
+	args_after_no_options := os.get_non_options( os.get_args_after(args,['run','test']) )
 	if args_after_no_options.len > 1 {
 		cmd += ' ' + args_after_no_options[1..].join(' ')
 	}
@@ -896,8 +896,8 @@ pub fn new_v(args []string) &V {
 	mut out_name := os.get_cmdline_option(args, '-o', 'a.out')
 	mut dir := args.last()
 	if 'run' in args {
-		args_after_run_no_options := non_option( os.get_args_after(args,['run']) )
-		dir = if args_after_run_no_options.len>0 { args_after_run_no_options[0] } else { '' }
+		args_after_run := os.get_non_options( os.get_args_after(args,['run']) )
+		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }
 	}
 	if dir.ends_with(os.path_separator) {
 		dir = dir.all_before_last(os.path_separator)
@@ -1100,10 +1100,6 @@ pub fn new_v(args []string) &V {
 		compile_defines: compile_defines
 		compile_defines_all: compile_defines_all
 	}
-}
-
-fn non_option(a []string) []string {
-	return a.filter(!it.starts_with('-'))
 }
 
 fn non_empty(a []string) []string {
