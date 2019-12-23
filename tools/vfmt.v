@@ -5,6 +5,7 @@ module main
 
 import (
 	os
+	filepath
 	compiler
 )
 
@@ -23,7 +24,7 @@ fn main() {
 		is_all: '-all' in os.args || '--all' in os.args
 	}
 	toolexe := os.executable()
-	compiler.set_vroot_folder(os.dir(os.dir(toolexe)))
+	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
 	args := compiler.env_vflags_and_os_args()
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
@@ -98,4 +99,3 @@ Options:
   -w    write result to (source) file(s) instead of to stdout.
 ')
 }
-
