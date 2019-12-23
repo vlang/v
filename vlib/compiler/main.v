@@ -806,7 +806,7 @@ pub fn (v &V) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = os.basedir(single_test_v_file)
+		dir = filepath.basedir(single_test_v_file)
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
@@ -927,7 +927,7 @@ pub fn new_v(args []string) &V {
 	// optional, custom modules search path
 	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
 	// Location of all vlib files
-	vroot := os.dir(vexe_path())
+	vroot := filepath.dir(vexe_path())
 	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot,'vlib'))
 	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
 	mut vgen_buf := strings.new_builder(1000)
@@ -1064,7 +1064,7 @@ pub fn new_v(args []string) &V {
 	compile_defines, compile_defines_all := parse_defines( defines )
 	
 	rdir := os.realpath(dir)
-	rdir_name := os.filename(rdir)
+	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
 		verror('use -freestanding instead of -bare')
 	}
@@ -1125,7 +1125,7 @@ pub fn new_v(args []string) &V {
 		os: _os
 		out_name: out_name
 		dir: dir
-		compiled_dir: if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
+		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 		lang_dir: vroot
 		table: new_table(obfuscate)
 		out_name_c: out_name_c
@@ -1163,7 +1163,6 @@ pub fn env_vflags_and_os_args() []string {
 	}
 	return non_empty(args)
 }
-
 
 pub fn create_symlink() {
 	$if windows {

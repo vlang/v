@@ -108,7 +108,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := vexe_path()
-	parent_dir := os.dir(vexe)
+	parent_dir := filepath.dir(vexe)
 	vlib_should_be_present( parent_dir )
 	vargs := zargs.replace(vexe, '')
 
@@ -148,7 +148,7 @@ pub fn building_any_v_binaries_failed() bool {
 	eprintln('Building V binaries...')
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := testing.vexe_path()
-	parent_dir := os.dir(vexe)
+	parent_dir := filepath.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
 	os.chdir( parent_dir )
 

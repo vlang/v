@@ -109,7 +109,7 @@ fn v_command(command string, args []string) {
 		}
 		'doc' {
 			vexe := os.executable()
-			vdir := os.dir(os.executable())
+			vdir := filepath.dir(os.executable())
 			os.chdir(vdir)
 			mod := args.last()
 			os.system('$vexe build module vlib$os.path_separator' + args.last())

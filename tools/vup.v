@@ -1,4 +1,7 @@
-import os
+import (
+	os
+	filepath
+)
 
 fn main() {
 	println('Updating V...')
