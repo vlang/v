@@ -19,7 +19,7 @@ import sdl.ttf as ttf
 
 const (
 	Title = 'tVintris'
-	BASE = os.dir( os.realpath( os.executable() ) )
+	BASE = filepath.dir( os.realpath( os.executable() ) )
 	FontName = BASE + '/fonts/RobotoMono-Regular.ttf'
 	MusicName = BASE + '/sounds/TwintrisThosenine.mod'
 	SndBlockName = BASE + '/sounds/block.wav'

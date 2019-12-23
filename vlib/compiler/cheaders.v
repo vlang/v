@@ -20,6 +20,12 @@ const (
 #define TCCSKIP(x)
 #endif
 
+// for __offset_of
+#ifndef __offsetof
+#define __offsetof(s,memb) \\
+    ((size_t)((char *)&((s *)0)->memb - (char *)0))
+#endif
+
 #define OPTION_CAST(x) (x)
 '
 	c_headers = '

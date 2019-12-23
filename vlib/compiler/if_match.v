@@ -215,7 +215,7 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			p.error('`if x := opt() {` syntax requires a function that returns an optional value')
 		}
 		p.is_var_decl = false
-		typ := option_type[7..]
+		typ := parse_pointer(option_type[7..])
 		// Option_User tmp = get_user(1);
 		// if (tmp.ok) {
 		// User user = *(User*)tmp.data;

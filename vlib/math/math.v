@@ -1,46 +1,97 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module math
 
 #include <math.h>
-
 fn C.acos(x f64) f64
+
+
 fn C.asin(x f64) f64
+
+
 fn C.atan(x f64) f64
+
+
 fn C.atan2(y f64, x f64) f64
+
+
 fn C.cbrt(x f64) f64
+
+
 fn C.ceil(x f64) f64
+
+
 fn C.cos(x f64) f64
+
+
 fn C.cosh(x f64) f64
+
+
 fn C.erf(x f64) f64
+
+
 fn C.erfc(x f64) f64
+
+
 fn C.exp(x f64) f64
+
+
 fn C.exp2(x f64) f64
+
+
 fn C.fabs(x f64) f64
+
+
 fn C.floor(x f64) f64
+
+
 fn C.fmod(x f64, y f64) f64
+
+
 fn C.hypot(x f64, y f64) f64
+
+
 fn C.log(x f64) f64
+
+
 fn C.log2(x f64) f64
+
+
 fn C.log10(x f64) f64
+
+
 fn C.lgamma(x f64) f64
+
+
 fn C.pow(x f64, y f64) f64
+
+
 fn C.round(x f64) f64
+
+
 fn C.sin(x f64) f64
+
+
 fn C.sinh(x f64) f64
+
+
 fn C.sqrt(x f64) f64
+
+
 fn C.tgamma(x f64) f64
+
+
 fn C.tan(x f64) f64
+
+
 fn C.tanh(x f64) f64
+
+
 fn C.trunc(x f64) f64
-
-
 // NOTE
 // When adding a new function, please make sure it's in the right place.
 // All functions are sorted alphabetically.
-
 // Returns the absolute value.
 pub fn abs(a f64) f64 {
 	return C.fabs(a)
@@ -133,16 +184,13 @@ pub fn exp2(a f64) f64 {
 // factorial calculates the factorial of the provided value.
 pub fn factorial(n f64) f64 {
 	// For a large postive argument (n >= factorials.len) return max_f64
-
 	if n >= factorials.len {
-			return max_f64
+		return max_f64
 	}
-
 	// Otherwise return n!.
 	if n == f64(i64(n)) && n >= 0.0 {
 		return factorials[i64(n)]
 	}
-
 	return gamma(n + 1.0)
 }
 
@@ -268,6 +316,7 @@ pub fn sinh(a f64) f64 {
 pub fn sqrt(a f64) f64 {
 	return C.sqrt(a)
 }
+
 // tan calculates tangent.
 pub fn tan(a f64) f64 {
 	return C.tan(a)
@@ -283,3 +332,4 @@ pub fn tanh(a f64) f64 {
 pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
+

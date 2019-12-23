@@ -21,34 +21,51 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	if !p.builtin_mod && p.mod != 'main' {
 		enum_name = p.prepend_mod(enum_name)
 	}
-	// Skip empty enums
-	if !no_name && !p.first_pass() {
-		p.cgen.typedefs << 'typedef int $enum_name;'
-	}
 	p.fspace()
 	p.check(.lcbr)
 	mut val := 0
 	mut fields := []string
+	mut tuple_variants := []string
 	for p.tok == .name {
 		field := p.check_name()
-		if contains_capital(field) {
-			p.warn('enum values cannot contain uppercase letters, use snake_case instead')
+		if p.pass == .decl && p.tok != .lpar && contains_capital(field) {
+			p.warn('enum values cannot contain uppercase letters, use snake_case instead (`$field`)')
 		}
 		fields << field
 		name := '${mod_gen_name(p.mod)}__${enum_name}_$field'
 		if p.tok == .assign {
 			p.fspace()
 			mut enum_assign_tidx := p.cur_tok_index()
-			if p.peek() == .number {
+			next := p.peek()
+			if next in [.number, .minus] {
 				p.next()
 				p.fspace()
+				is_neg := p.tok == .minus
+				if is_neg {
+					p.next()
+				}
 				val = p.lit.int()
+				if is_neg {
+					val = -val
+				}
 				p.next()
 			}
 			else {
 				p.next()
 				enum_assign_tidx = p.cur_tok_index()
 				p.error_with_token_index('only numbers are allowed in enum initializations', enum_assign_tidx)
+			}
+		}
+		// `BoolExpr(bool)`
+		else if p.tok == .lpar {
+			if !field[0].is_capital() {
+				p.error('sum types must be capitalized')
+			}
+			p.check(.lpar)
+			tuple_variants << p.get_type()
+			p.check(.rpar)
+			if p.pass == .main {
+				p.cgen.consts << '#define ${field}_type $val // LOL'
 			}
 		}
 		if p.pass == .main {
@@ -73,10 +90,25 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		is_public: is_pub
 		is_flag: is_flag
 	}
+	p.table.tuple_variants[enum_name] = tuple_variants
 	if is_flag && !p.first_pass() {
 		p.gen_enum_flag_methods(mut T)
 	}
-	p.table.register_type(T)
+	if p.pass == .decl || is_flag {
+		p.table.register_type(T)
+	}
+	// Register `Expression` enum
+	if tuple_variants.len > 0 && p.pass == .main {
+		p.cgen.typedefs << 'typedef struct {
+void* obj;
+int typ;
+} $enum_name;
+'
+	}
+	// Skip empty enums
+	else if !no_name && !p.first_pass() {
+		p.cgen.typedefs << 'typedef int $enum_name;'
+	}
 	p.check(.rcbr)
 	p.fgen_nl()
 	p.fgen_nl()
@@ -97,4 +129,24 @@ fn (p mut Parser) check_enum_member_access() {
 		p.error('`$T.name` is not an enum')
 	}
 }
+
+/*
+
+enum Expression {
+Boolean(bool),
+Integer(i32),
+}
+
+fn main() {
+    let expr = Expression::Integer(10);
+    let mut val = Expression::Boolean(true);
+    val = expr;
+    match val {
+        Expression::Integer(n) => println!("INT {}", n),
+        Expression::Boolean(b) => println!("BOOL {}", b),
+    }
+
+    //println!("HELLO {}", val);
+}
+*/
 

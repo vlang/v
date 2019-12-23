@@ -489,15 +489,15 @@ fn converter(pn mut PrepNumber) u64 {
 		}
 		s1 = s1 & check_round_mask
 		s0 = u32(0)
-	}
-	// recheck normalization
-	if s2 & (mask28<<u32(1)) != 0 {
-		// C.printf("Renormalize!!")
-		q2,q1,q0 = lsr96(s2, s1, s0)
-		binexp--
-		s2 = q2
-		s1 = q1
-		s0 = q0
+		// recheck normalization
+		if s2 & (mask28<<u32(1)) != 0 {
+			// C.printf("Renormalize!!")
+			q2,q1,q0 = lsr96(s2, s1, s0)
+			binexp--
+			s2 = q2
+			s1 = q1
+			s0 = q0
+		}
 	}
 	// tmp := ( u64(s2 & ~mask28) << 24) | ((u64(s1) + u64(128)) >> 8)
 	// C.printf("mantissa after rounding : %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
@@ -516,6 +516,9 @@ fn converter(pn mut PrepNumber) u64 {
 	else if binexp < 1 {
 		if pn.negative {
 			result = DOUBLE_MINUS_ZERO
+		}
+		else {
+			result = DOUBLE_PLUS_ZERO
 		}
 	}
 	else if s2 != 0 {

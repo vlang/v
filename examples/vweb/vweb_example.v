@@ -13,10 +13,8 @@ pub mut:
 }
 
 fn main() {
-	mut app := App{}
-	app.vweb = vweb.Context{}
-	vweb.run(mut app, port)
-	//vweb.run<App>(Port)
+	println('noice')
+	vweb.run<App>(port)
 }
 
 pub fn (app mut App) init() {
@@ -30,6 +28,9 @@ pub fn (app mut App) json_endpoint() {
 pub fn (app mut App) index() {
 	app.cnt++
 	$vweb.html()
+}
+
+pub fn (app mut App) reset() {
 }
 
 pub fn (app mut App) text() {

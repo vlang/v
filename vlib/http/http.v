@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module http
 
 import net.urllib
@@ -13,19 +12,19 @@ const (
 
 pub struct Request {
 pub:
-	headers  map[string]string
-	method   string
+	headers    map[string]string
+	method     string
 	// cookies map[string]string
-	h        string
-	cmd      string
-	typ      string // GET POST
-	data     string
-	url      string
-	verbose  bool
+	h          string
+	cmd        string
+	typ        string // GET POST
+	data       string
+	url        string
+	verbose    bool
 	user_agent string
 mut:
-	user_ptr voidptr
-	ws_func  voidptr
+	user_ptr   voidptr
+	ws_func    voidptr
 }
 
 pub struct Response {
@@ -67,7 +66,7 @@ pub fn new_request(typ, _url, _data string) ?Request {
 		url = '$url?$data'
 		data = ''
 	}
-	return Request {
+	return Request{
 		typ: typ
 		url: url
 		data: data
@@ -79,7 +78,9 @@ pub fn new_request(typ, _url, _data string) ?Request {
 }
 
 pub fn get_text(url string) string {
-	resp := get(url) or { return  '' }
+	resp := get(url) or {
+		return ''
+	}
 	return resp.text
 }
 
@@ -116,18 +117,29 @@ pub fn (req &Request) do() ?Response {
 	if req.typ == 'POST' {
 		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
 	}
-	url := urllib.parse(req.url) or { return error('http.request.do: invalid URL "$req.url"') }
+	url := urllib.parse(req.url) or {
+		return error('http.request.do: invalid URL "$req.url"')
+	}
 	mut rurl := url
-	mut resp := Response{}
+	mut resp := Response{
+	}
 	mut no_redirects := 0
 	for {
-		if no_redirects == max_redirects { return error('http.request.do: maximum number of redirects reached ($max_redirects)') }
-		qresp := req.method_and_url_to_response( req.typ, rurl ) or {	return error(err) }
+		if no_redirects == max_redirects {
+			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
+		}
+		qresp := req.method_and_url_to_response(req.typ, rurl) or {
+			return error(err)
+		}
 		resp = qresp
-		if ! (resp.status_code in [301, 302, 303, 307, 308]) { break }
+		if !(resp.status_code in [301, 302, 303, 307, 308]) {
+			break
+		}
 		// follow any redirects
 		redirect_url := resp.headers['Location']
-		qrurl := urllib.parse( redirect_url ) or { return error('http.request.do: invalid URL in redirect "$redirect_url"') }
+		qrurl := urllib.parse(redirect_url) or {
+			return error('http.request.do: invalid URL in redirect "$redirect_url"')
+		}
 		rurl = qrurl
 		no_redirects++
 	}
@@ -141,19 +153,24 @@ fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.U
 	path := if url.query().size > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut nport := url.port().int()
 	if nport == 0 {
-		if scheme == 'http'  { nport = 80  }
-		if scheme == 'https' { nport = 443 }
+		if scheme == 'http' {
+			nport = 80
+		}
+		if scheme == 'https' {
+			nport = 443
+		}
 	}
-	//println('fetch $method, $scheme, $host_name, $nport, $path ')
+	// println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
-		//println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do( nport, method, host_name, path ) or {
+		// println('ssl_do( $nport, $method, $host_name, $path )')
+		res := req.ssl_do(nport, method, host_name, path) or {
 			return error(err)
 		}
 		return res
-	} else if scheme == 'http' {
-		//println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do(nport, method, host_name, path ) or {
+	}
+	else if scheme == 'http' {
+		// println('http_do( $nport, $method, $host_name, $path )')
+		res := req.http_do(nport, method, host_name, path) or {
 			return error(err)
 		}
 		return res
@@ -175,7 +192,7 @@ fn parse_response(resp string) Response {
 	mut i := 1
 	for {
 		old_pos := nl_pos
-		nl_pos = resp.index_after('\n', nl_pos+1)
+		nl_pos = resp.index_after('\n', nl_pos + 1)
 		if nl_pos == -1 {
 			break
 		}
@@ -189,19 +206,17 @@ fn parse_response(resp string) Response {
 		pos := h.index(':') or {
 			continue
 		}
-		//if h.contains('Content-Type') {
-			//continue
-		//}
+		// if h.contains('Content-Type') {
+		// continue
+		// }
 		key := h[..pos]
-		val := h[pos+2..]
+		val := h[pos + 2..]
 		headers[key] = val.trim_space()
 	}
-
 	if headers['Transfer-Encoding'] == 'chunked' {
-		text = chunked.decode( text )
+		text = chunked.decode(text)
 	}
-
-	return Response {
+	return Response{
 		status_code: status_code
 		headers: headers
 		text: text
@@ -217,12 +232,7 @@ fn (req &Request) build_request_headers(method, host_name, path string) string {
 	if req.data.len > 0 {
 		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
-	return '$method $path HTTP/1.1\r\n' +
-		'Host: $host_name\r\n' +
-		'User-Agent: $ua\r\n' +
-		uheaders.join('') +
-		'Connection: close\r\n\r\n' +
-		req.data
+	return '$method $path HTTP/1.1\r\n' + 'Host: $host_name\r\n' + 'User-Agent: $ua\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
 }
 
 pub fn unescape_url(s string) string {
@@ -241,4 +251,5 @@ pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
 
-type wsfn fn (s string, ptr voidptr)
+type wsfn fn(s string, ptr voidptr)
+

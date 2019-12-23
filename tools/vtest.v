@@ -46,7 +46,7 @@ pub fn main() {
 
 	println('Testing...')
 	ts.test()
-	println('----------------------------------------------------------------------------')
+
 	println( ts.benchmark.total_message('running V _test.v files') )
 	if ts.failed {
 		exit(1)

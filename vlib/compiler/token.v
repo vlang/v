@@ -108,6 +108,7 @@ enum TokenKind {
 	key_return
 	key_select
 	key_sizeof
+	key_offsetof
 	key_struct
 	key_switch
 	key_true
@@ -237,11 +238,12 @@ fn build_token_str() []string {
 	s[TokenKind.key_match] = 'match'
 	s[TokenKind.key_select] = 'select'
 	s[TokenKind.key_none] = 'none'
+	s[TokenKind.key_offsetof] = '__offsetof'
 	return s
 }
 
 const (
-	NrTokens = 140
+	NrTokens = 141
 	TokenStr = build_token_str()
 	KEYWORDS = build_keys()
 )

@@ -19,8 +19,16 @@ pub fn (c &CFlag) str() string {
 // get flags for current os
 fn (v &V) get_os_cflags() []CFlag {
 	mut flags := []CFlag
+	mut ctimedefines := []string
+	if v.compile_defines.len > 0 {
+		ctimedefines << v.compile_defines
+	}
+	
 	for flag in v.table.cflags {
 		if flag.os == '' || (flag.os == 'linux' && v.os == .linux) || (flag.os == 'darwin' && v.os == .mac) || (flag.os == 'freebsd' && v.os == .freebsd) || (flag.os == 'windows' && v.os == .windows) {
+			flags << flag
+		}
+		if flag.os in ctimedefines {
 			flags << flag
 		}
 	}
@@ -66,7 +74,7 @@ fn (table &Table) has_cflag(cflag CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
+fn (table mut Table) parse_cflag(cflag string, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L', ]
 	flag_orig := cflag.trim_space()
 	mut flag := flag_orig
@@ -74,7 +82,10 @@ fn (table mut Table) parse_cflag(cflag string, mod string) ?bool {
 		return true
 	}
 	mut fos := ''
-	if flag.starts_with('linux') || flag.starts_with('darwin') || flag.starts_with('freebsd') || flag.starts_with('windows') {
+	mut allowed_os_overrides := ['linux','darwin','freebsd','windows']
+	allowed_os_overrides << ctimedefines
+	for os_override in allowed_os_overrides {
+		if !flag.starts_with( os_override ) { continue }
 		pos := flag.index(' ') or {
 			return none
 		}

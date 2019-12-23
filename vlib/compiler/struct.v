@@ -9,7 +9,8 @@ import (
 // also unions and interfaces
 
 
-fn (p mut Parser) struct_decl() {
+fn (p mut Parser) struct_decl(generic_param_types []string) {
+	decl_tok_idx := p.cur_tok_index()
 	is_pub := p.tok == .key_pub
 	if is_pub {
 		p.next()
@@ -40,6 +41,25 @@ fn (p mut Parser) struct_decl() {
 	if is_interface && !name.ends_with('er') {
 		p.error('interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)')
 	}
+	mut generic_types := map[string]string
+	mut is_generic := false
+	if p.tok == .lt {
+		p.check(.lt)
+		for i := 0; ; i++ {
+			if generic_param_types.len > 0 && i > generic_param_types.len - 1 {
+				p.error('mismatched generic type params')
+			}
+			type_param := p.check_name()
+			generic_types[type_param] = if generic_param_types.len > 0 { generic_param_types[i] } else { '' }
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+		}
+		p.check(.gt)
+		is_generic = true
+	}
+	is_generic_instance := is_generic && generic_param_types.len > 0
 	is_c := name == 'C' && p.tok == .dot
 	if is_c {
 		/*
@@ -81,6 +101,13 @@ fn (p mut Parser) struct_decl() {
 		kind := if is_union { 'union' } else { 'struct' }
 		p.gen_typedef('typedef $kind $name $name;')
 	}
+	// TODO: handle error
+	parser_idx := p.v.get_file_parser_index(p.file_path) or {
+		0
+	}
+	// if !p.scanner.is_vh {
+	// parser_idx = p.v.get_file_parser_index(p.file_path) or { panic('cant find parser idx for $p.file_path') }
+	// }
 	// Register the type
 	mut is_ph := false
 	if typ.is_placeholder {
@@ -93,6 +120,9 @@ fn (p mut Parser) struct_decl() {
 		typ.cat = cat
 		typ.parent = objc_parent
 		typ.is_public = is_pub || p.is_vh
+		typ.is_generic = is_generic && !is_generic_instance
+		typ.decl_tok_idx = decl_tok_idx
+		typ.parser_idx = parser_idx
 		p.table.rewrite_type(typ)
 	}
 	else {
@@ -103,12 +133,30 @@ fn (p mut Parser) struct_decl() {
 			cat: cat
 			parent: objc_parent
 			is_public: is_pub || p.is_vh
+			is_generic: is_generic && !is_generic_instance
+			decl_tok_idx: decl_tok_idx
+			parser_idx: parser_idx
 		}
 	}
 	// Struct `C.Foo` declaration, no body
 	if is_c && is_struct && p.tok != .lcbr {
 		p.table.register_type(typ)
 		return
+	}
+	// generic struct
+	if is_generic {
+		// template
+		if !is_generic_instance {
+			p.table.register_type(typ)
+			p.table.generic_struct_params[typ.name] = generic_types.keys()
+			// NOTE: remove to store fields in generic struct template
+			p.skip_block(false)
+			return
+		}
+		// instance
+		else {
+			typ.rename_generic_struct(generic_types)
+		}
 	}
 	p.fspace()
 	p.check(.lcbr)
@@ -119,7 +167,7 @@ fn (p mut Parser) struct_decl() {
 	mut names := []string // to avoid dup names TODO alloc perf
 	mut fmt_max_len := p.table.max_field_len[name]
 	// println('fmt max len = $max_len nrfields=$typ.fields.len pass=$p.pass')
-	if !is_ph && p.first_pass() {
+	if (!is_ph && p.first_pass()) || is_generic {
 		p.table.register_type(typ)
 		// println('registering 1 nrfields=$typ.fields.len')
 	}
@@ -206,6 +254,17 @@ fn (p mut Parser) struct_decl() {
 		// `pub` access mod
 		// access_mod := if is_pub_field { AccessMod.public } else { AccessMod.private}
 		p.fspace()
+		defer {
+			if is_generic_instance {
+				p.generic_dispatch = TypeInst{
+				}
+			}
+		}
+		if is_generic_instance {
+			p.generic_dispatch = TypeInst{
+				inst: generic_types
+			}
+		}
 		tt := p.get_type2()
 		field_type := tt.name
 		if field_type == name {
@@ -260,7 +319,7 @@ fn (p mut Parser) struct_decl() {
 		}
 		did_gen_something = true
 		is_mut := access_mod in [.private_mut, .public_mut, .global]
-		if p.first_pass() {
+		if p.first_pass() || is_generic {
 			p.table.add_field(typ.name, field_name, field_type, is_mut, attr, access_mod)
 		}
 		p.fgen_nl() // newline between struct fields
@@ -278,13 +337,34 @@ fn (p mut Parser) struct_decl() {
 	// p.fgenln('//kek')
 }
 // `User{ foo: bar }`
-fn (p mut Parser) struct_init(typ string) string {
+fn (p mut Parser) struct_init(typ_ string) string {
 	p.is_struct_init = true
-	t := p.table.find_type(typ)
+	mut typ := typ_
+	mut t := p.table.find_type(typ)
 	if !t.is_public && t.mod != p.mod {
 		p.warn('type `$t.name` is private')
 	}
-	if p.gen_struct_init(typ, t) {
+	// generic struct init
+	if p.peek() == .lt {
+		p.next()
+		p.check(.lt)
+		mut type_params := []string
+		for {
+			mut type_param := p.check_name()
+			if type_param in p.generic_dispatch.inst {
+				type_param = p.generic_dispatch.inst[type_param]
+			}
+			type_params << type_param
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+		}
+		p.dispatch_generic_struct(mut t, type_params)
+		t = p.table.find_type(t.name)
+		typ = t.name
+	}
+	if p.gen_struct_init(typ, &t) {
 		return typ
 	}
 	ptr := typ.contains('*')
@@ -348,7 +428,7 @@ fn (p mut Parser) struct_init(typ string) string {
 			// init map fields
 			if field_typ.starts_with('map_') {
 				p.gen_struct_field_init(sanitized_name)
-				p.gen_empty_map(field_typ[4..])
+				p.gen_empty_map(parse_pointer(field_typ[4..]))
 				inited_fields << sanitized_name
 				if i != t.fields.len - 1 {
 					p.gen(',')
@@ -414,5 +494,42 @@ fn (p mut Parser) struct_init(typ string) string {
 	p.is_struct_init = false
 	p.is_c_struct_init = false
 	return typ
+}
+
+fn (t mut Type) rename_generic_struct(generic_types map[string]string) {
+	t.name = t.name + '_T'
+	for _, v in generic_types {
+		t.name = t.name + '_' + type_to_safe_str(v)
+	}
+}
+
+fn (p mut Parser) dispatch_generic_struct(t mut Type, type_params []string) {
+	mut generic_types := map[string]string
+	if t.name in p.table.generic_struct_params {
+		mut i := 0
+		for _, v in p.table.generic_struct_params[t.name] {
+			generic_types[v] = type_params[i]
+			i++
+		}
+		t.rename_generic_struct(generic_types)
+		if p.table.known_type(t.name) {
+			return
+		}
+		p.cgen.typedefs << 'typedef struct $t.name $t.name;\n'
+	}
+	mut gp := p.v.parsers[t.parser_idx]
+	gp.is_vgen = true
+	saved_state := p.save_state()
+	p.clear_state(false, true)
+	gp.token_idx = t.decl_tok_idx
+	// FIXME: TODO: why are tokens cleared?
+	if gp.tokens.len == 0 {
+		gp.scanner.pos = 0
+		gp.scan_tokens()
+	}
+	gp.next()
+	gp.struct_decl(type_params)
+	p.cgen.lines_extra << p.cgen.lines
+	p.restore_state(saved_state, false, true)
 }
 

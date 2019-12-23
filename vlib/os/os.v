@@ -169,7 +169,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,os.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,filepath.filename(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -178,7 +178,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 				return error('Destination file path already exist')
 			}
 		}
-		os.cp(source_path, adjasted_path)or{
+		os.cp(source_path, adjasted_path) or {
 			return error(err)
 		}
 		return true
@@ -186,18 +186,18 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 	if !os.is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
-	files := os.ls(source_path)or{
+	files := os.ls(source_path) or {
 		return error(err)
 	}
 	for file in files {
 		sp := filepath.join(source_path,file)
 		dp := filepath.join(dest_path,file)
 		if os.is_dir(sp) {
-			os.mkdir(dp)or{
+			os.mkdir(dp) or {
 				panic(err)
 			}
 		}
-		cp_r(sp, dp, overwrite)or{
+		cp_r(sp, dp, overwrite) or {
 			os.rmdir(dp)
 			panic(err)
 		}
@@ -208,7 +208,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // mv_by_cp may be used when you are not sure that the source and target are on the same mount/partition.
 pub fn mv_by_cp(source string, target string) ?bool {
-	os.cp(source, target)or{
+	os.cp(source, target) or {
 		return error(err)
 	}
 	os.rm(source)
@@ -259,7 +259,7 @@ pub fn read_lines(path string) ?[]string {
 }
 
 fn read_ulines(path string) ?[]ustring {
-	lines := read_lines(path)or{
+	lines := read_lines(path) or {
 		return err
 	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
@@ -611,40 +611,28 @@ fn print_c_errno() {
 	// C.printf('errno=%d err="%s"\n', C.errno, C.strerror(C.errno))
 }
 
+[deprecated]
 pub fn ext(path string) string {
-	pos := path.last_index('.') or {
-		return ''
-	}
-	return path[pos..]
+	println('Use filepath.ext')
+	return filepath.ext(path)
 }
 
-// dir returns all but the last element of path, typically the path's directory.
+[deprecated]
 pub fn dir(path string) string {
-	if path == '.' {
-		return getwd()
-	}
-	pos := path.last_index(path_separator) or {
-		return '.'
-	}
-	return path[..pos]
+	println('Use filepath.dir')
+	return filepath.ext(path)
 }
 
-fn path_sans_ext(path string) string {
-	pos := path.last_index('.') or {
-		return path
-	}
-	return path[..pos]
-}
-
+[deprecated]
 pub fn basedir(path string) string {
-	pos := path.last_index(path_separator) or {
-		return path
-	}
-	return path[..pos] // NB: *without* terminating /
+	println('Use filepath.basedir')
+	return filepath.basedir(path)
 }
 
+[deprecated]
 pub fn filename(path string) string {
-	return path.all_after(path_separator)
+	println('Use filepath.filename')
+	return filepath.filename(path)
 }
 
 // get_line returns a one-line string from stdin
@@ -768,7 +756,7 @@ pub fn home_dir() string {
 
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path, text string) {
-	mut f := os.create(path)or{
+	mut f := os.create(path) or {
 		return
 	}
 	f.write(text)
@@ -966,7 +954,7 @@ pub fn walk_ext(path, ext string) []string {
 	if !os.is_dir(path) {
 		return []
 	}
-	mut files := os.ls(path)or{
+	mut files := os.ls(path) or {
 		panic(err)
 	}
 	mut res := []string
@@ -992,7 +980,7 @@ pub fn walk(path string, fnc fn(path string)) {
 	if !os.is_dir(path) {
 		return
 	}
-	mut files := os.ls(path)or{
+	mut files := os.ls(path) or {
 		panic(err)
 	}
 	for file in files {
@@ -1072,7 +1060,7 @@ pub fn mkdir_all(path string) {
 	for subdir in path.split(os.path_separator) {
 		p += subdir + os.path_separator
 		if !os.is_dir(p) {
-			os.mkdir(p)or{
+			os.mkdir(p) or {
 				panic(err)
 			}
 		}

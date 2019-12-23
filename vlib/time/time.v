@@ -306,7 +306,7 @@ pub fn parse(s string) Time {
 	}
 	shms := s[pos..]
 	hms := shms.split(':')
-	hour := hms[0]
+	hour := hms[0][1..]
 	minute := hms[1]
 	second := hms[2]
 	// //////////

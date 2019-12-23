@@ -1,9 +1,12 @@
 module main
 
-import os
-import flag
-import compiler
-import strings
+import (
+	os
+	flag
+	strings
+	filepath
+	compiler
+)
 
 const (
 	tool_version = '0.0.1'
@@ -48,10 +51,10 @@ fn analyze_v_file(file string) {
 
 fn main(){
 	toolexe := os.executable()
-	compiler.set_vroot_folder( os.dir(os.dir(toolexe)) )
-	
+	compiler.set_vroot_folder( filepath.dir(filepath.dir(toolexe)) )
+
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(toolexe))
+	fp.application(filepath.filename(toolexe))
 	fp.version( tool_version )
 	fp.description( tool_description )
 	fp.arguments_description('FILE.v/FOLDER [FILE.v/FOLDER]...')

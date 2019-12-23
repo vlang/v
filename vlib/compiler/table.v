@@ -7,19 +7,21 @@ import strings
 
 struct Table {
 pub mut:
-	typesmap      map[string]Type
-	consts        []Var
-	fns           map[string]Fn
-	obf_ids       map[string]int // obf_ids['myfunction'] == 23
-	modules       []string // List of all modules registered by the application
-	imports       []string // List of all imports
-	cflags        []CFlag // ['-framework Cocoa', '-lglfw3']
-	fn_cnt        int // atomic
-	obfuscate     bool
-	varg_access   []VargAccess
+	typesmap              map[string]Type
+	consts                []Var
+	fns                   map[string]Fn
+	obf_ids               map[string]int // obf_ids['myfunction'] == 23
+	modules               []string // List of all modules registered by the application
+	imports               []string // List of all imports
+	cflags                []CFlag // ['-framework Cocoa', '-lglfw3']
+	fn_cnt                int // atomic
+	obfuscate             bool
+	varg_access           []VargAccess
 	// enum_vals map[string][]string
 	// names        []Name
-	max_field_len map[string]int // for vfmt: max_field_len['Parser'] == 12
+	max_field_len         map[string]int // for vfmt: max_field_len['Parser'] == 12
+	generic_struct_params map[string][]string
+	tuple_variants map[string][]string
 }
 
 struct VargAccess {
@@ -114,6 +116,8 @@ pub mut:
 	enum_vals      []string
 	gen_types      []string
 	default_vals   []string // `struct Foo { bar int = 2 }`
+	parser_idx     int
+	decl_tok_idx   int
 	// `is_placeholder` is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
@@ -121,6 +125,7 @@ pub mut:
 	gen_str        bool // needs `.str()` method generation
 	is_flag        bool // enum bitfield flag
 	// max_field_len  int
+	is_generic     bool
 }
 
 struct TypeNode {
@@ -214,7 +219,7 @@ fn new_table(obfuscate bool) &Table {
 	mut t := &Table{
 		obfuscate: obfuscate
 		// enum_vals: map[string][]string
-		
+
 	}
 	t.register_builtin('int')
 	t.register_builtin('size_t')
@@ -407,7 +412,7 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 		parent: parent
 		is_public: true
 		// mod: mod
-		
+
 	}
 }
 
@@ -437,7 +442,7 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 		is_mut: is_mut
 		attr: attr
 		parent_fn: type_name // Name of the parent type
-		
+
 		access_mod: access_mod
 	}
 	table.typesmap[type_name] = t
@@ -675,7 +680,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Expected type "Option_os__File", got "os__File"
-	if expected.starts_with('Option_') && expected.ends_with(got) {
+	if expected.starts_with('Option_') && expected.ends_with(stringify_pointer(got)) {
 		return true
 	}
 	// NsColor* return 0

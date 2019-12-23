@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module urllib
 
 struct Value {
@@ -86,3 +85,4 @@ pub fn (v mut Values) del(key string) {
 	v.data.delete(key)
 	v.size = v.data.size
 }
+
