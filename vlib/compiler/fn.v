@@ -749,7 +749,7 @@ fn (p mut Parser) verify_fn_before_call(f &Fn) {
 // p.tok == fn_name
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
 	p.verify_fn_before_call(f)
-	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
+	is_comptime_define := f.comptime_define != '' && !(f.comptime_define in p.v.compile_defines )
 	if is_comptime_define {
 		p.cgen.nogen = true
 	}

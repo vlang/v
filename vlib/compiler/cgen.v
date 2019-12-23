@@ -351,7 +351,11 @@ fn os_name_to_ifdef(name string) string {
 	return ''
 }
 
-fn platform_postfix_to_ifdefguard(name string) string {
+fn (v &V) platform_postfix_to_ifdefguard(name string) string {
+	if name.starts_with('custom '){
+		cdefine := name.replace('custom ','')
+		return '#ifdef CUSTOM_DEFINE_${cdefine}'
+	}
 	s := match name {
 		'.v'{
 			''
