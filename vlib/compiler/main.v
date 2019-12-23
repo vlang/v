@@ -76,6 +76,10 @@ pub mut:
 	gen_parser_idx      map[string]int
 	cached_mods         []string
 	module_lookup_paths []string
+	
+	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
+	compile_defines     []string // just ['vfmt']
+	compile_defines_all []string // contains both: ['vfmt','another']
 }
 
 struct Preferences {
@@ -117,7 +121,6 @@ pub mut:
 	// This is on by default, since a vast majority of users do not
 	// work on the builtin module itself.
 	// generating_vh bool
-	comptime_define string // -D vfmt for `if $vfmt {`
 	fast            bool // use tcc/x64 codegen
 	enable_globals  bool // allow __global for low level code
 	// is_fmt bool
@@ -251,7 +254,20 @@ pub fn (v mut V) compile() {
 		else {
 			cgen.genln('#include <stdint.h>')
 		}
+
+		if v.compile_defines_all.len > 0 {
+			cgen.genln('')
+			cgen.genln('// All custom defines      : ' + v.compile_defines_all.join(','))
+			cgen.genln('// Turned ON custom defines: ' + v.compile_defines.join(','))
+			for cdefine in v.compile_defines {
+				cgen.genln('#define CUSTOM_DEFINE_${cdefine}')
+			}
+			cgen.genln('//')
+			cgen.genln('')
+		}
+		
 		cgen.genln(c_builtin_types)
+		
 		if !v.pref.is_bare {
 			cgen.genln(c_headers)
 		}
@@ -638,6 +654,19 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_c.v') && v.os == .js {
 			continue
 		}
+		if v.compile_defines_all.len > 0 && file.contains('_d_') {
+			mut allowed := false
+			for cdefine in v.compile_defines {
+				file_postfix := '_d_${cdefine}.v'
+				if file.ends_with(file_postfix) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
 		res << filepath.join(dir,file)
 	}
 	return res
@@ -777,7 +806,7 @@ pub fn (v &V) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = os.basedir(single_test_v_file)
+		dir = filepath.basedir(single_test_v_file)
 	}
 	if dir.ends_with('.v') || dir.ends_with('.vsh') {
 		single_v_file := dir
@@ -898,15 +927,13 @@ pub fn new_v(args []string) &V {
 	// optional, custom modules search path
 	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
 	// Location of all vlib files
-	vroot := os.dir(vexe_path())
+	vroot := filepath.dir(vexe_path())
 	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot,'vlib'))
 	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
 	joined_args := args.join(' ')
 	target_os := get_arg(joined_args, 'os', '')
-	comptime_define := get_arg(joined_args, 'd', '')
-	// println('comptimedefine=$comptime_define')
 	mut out_name := get_arg(joined_args, 'o', 'a.out')
 	mut dir := args.last()
 	if 'run' in args {
@@ -1031,9 +1058,13 @@ pub fn new_v(args []string) &V {
 		exit(1)
 	}
 	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
-	cflags := get_cmdline_cflags(args)
+	cflags := get_cmdline_multiple_values(args, '-cflags').join(' ')
+  
+	defines := get_cmdline_multiple_values(args, '-d')
+	compile_defines, compile_defines_all := parse_defines( defines )
+	
 	rdir := os.realpath(dir)
-	rdir_name := os.filename(rdir)
+	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
 		verror('use -freestanding instead of -bare')
 	}
@@ -1073,7 +1104,6 @@ pub fn new_v(args []string) &V {
 		cflags: cflags
 		ccompiler: find_c_compiler()
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || dir.contains('vlib'))
-		comptime_define: comptime_define
 		// is_fmt: comptime_define == 'vfmt'
 		
 		user_mod_path: user_mod_path
@@ -1095,7 +1125,7 @@ pub fn new_v(args []string) &V {
 		os: _os
 		out_name: out_name
 		dir: dir
-		compiled_dir: if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
+		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
 		lang_dir: vroot
 		table: new_table(obfuscate)
 		out_name_c: out_name_c
@@ -1104,7 +1134,9 @@ pub fn new_v(args []string) &V {
 		vroot: vroot
 		pref: pref
 		mod: mod
-		vgen_buf: vgen_buf
+		vgen_buf: vgen_buf		
+		compile_defines: compile_defines
+		compile_defines_all: compile_defines_all
 	}
 }
 
@@ -1130,33 +1162,6 @@ pub fn env_vflags_and_os_args() []string {
 		args << os.args
 	}
 	return non_empty(args)
-}
-
-pub fn vfmt(args []string) {
-	file := args.last()
-	if !os.exists(file) {
-		println('"$file" does not exist')
-		exit(1)
-	}
-	if !file.ends_with('.v') {
-		println('v fmt can only be used on .v files')
-		exit(1)
-	}
-	vexe := vexe_path()
-	// launch_tool('vfmt', '-d vfmt')
-	vroot := os.dir(vexe)
-	os.chdir(vroot)
-	println('building vfmt... (it will be cached soon)')
-	ret := os.system('$vexe -o $vroot/tools/vfmt -d vfmt v.v')
-	if ret != 0 {
-		println('err')
-		return
-	}
-	println('running vfmt...')
-	os.exec('$vroot/tools/vfmt $file')or{
-		panic(err)
-	}
-	// if !os.exists('
 }
 
 pub fn create_symlink() {

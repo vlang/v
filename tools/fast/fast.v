@@ -2,13 +2,16 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-import os
-import time
+import (
+	os
+	time
+	filepath
+)
 
 fn main() {
 	exe := os.executable()
-	dir := os.dir(exe)
-	vdir := os.dir(os.dir(dir))
+	dir := filepath.dir(exe)
+	vdir := filepath.dir(filepath.dir(dir))
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/tools/fast/`')
 	}

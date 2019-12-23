@@ -25,7 +25,7 @@ fn v_test_compiler(vargs string){
 fn v_test_compiler2(vargs string){
 
 	vexe := testing.vexe_path()
-	parent_dir := os.dir(vexe)
+	parent_dir := filepath.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
 
 	// Changing the current directory is needed for some of the compiler tests,

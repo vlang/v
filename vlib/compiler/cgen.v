@@ -3,8 +3,11 @@
 // that can be found in the LICENSE file.
 module compiler
 
-import os
-import strings
+import (
+	os
+	strings
+	filepath
+)
 
 struct CGen {
 	out             os.File
@@ -275,7 +278,7 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 		return
 	}
 	println('$obj_path not found, building it...')
-	parent := os.dir(obj_path)
+	parent := filepath.dir(obj_path)
 	files := os.ls(parent)or{
 		panic(err)
 	}
@@ -351,7 +354,11 @@ fn os_name_to_ifdef(name string) string {
 	return ''
 }
 
-fn platform_postfix_to_ifdefguard(name string) string {
+fn (v &V) platform_postfix_to_ifdefguard(name string) string {
+	if name.starts_with('custom '){
+		cdefine := name.replace('custom ','')
+		return '#ifdef CUSTOM_DEFINE_${cdefine}'
+	}
 	s := match name {
 		'.v'{
 			''

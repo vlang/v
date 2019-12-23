@@ -6,6 +6,7 @@ module compiler
 import (
 	os
 	strings
+	filepath
 	compiler.x64
 	// time
 )
@@ -155,10 +156,22 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 				println('warning: use "$p" file name instead of "$path"')
 			}
 			path_platform = path_ending
-			path_pcguard = platform_postfix_to_ifdefguard(path_ending)
+			path_pcguard = v.platform_postfix_to_ifdefguard(path_ending)
 			break
 		}
 	}
+	
+	if v.compile_defines.len > 0 {
+		for cdefine in v.compile_defines {
+			custom_path_ending := '_d_${cdefine}.v'
+			if path.ends_with(custom_path_ending){
+				path_platform = custom_path_ending
+				path_pcguard = v.platform_postfix_to_ifdefguard('custom $cdefine')
+				break
+			}
+		}
+	}
+	
 	mut p := v.new_parser(new_scanner_file(path))
 	p = {
 		p |
@@ -2317,7 +2330,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return os.filename(p.scanner.file_path).contains(s)
+	return filepath.filename(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`
