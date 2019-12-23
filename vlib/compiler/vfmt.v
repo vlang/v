@@ -250,8 +250,9 @@ fn (p &Parser) gen_fmt() {
 	if p.file_name == '' {
 		return
 	}
-	is_all := os.getenv('VFMT_OPTION_ALL') == 'yes'
-	if p.file_path != p.v.dir && !is_all {
+	is_all := p.v.v_fmt_all
+	vfmt_file := p.v.v_fmt_file
+	if p.file_path != vfmt_file && !is_all {
 		// skip everything except the last file (given by the CLI argument)
 		return
 	}
@@ -285,9 +286,10 @@ fn (p &Parser) gen_fmt() {
 			eprintln('Written fmt file to: $p.file_path')
 		}
 	}
-	if p.file_path == p.v.dir {
+	if p.file_path == vfmt_file {
 		res_path := write_formatted_source( p.file_name, s )
-		os.setenv('VFMT_FILE_RESULT', res_path, true )
+		mut vv := p.v
+		vv.v_fmt_file_result = res_path
 	}
 }
 
