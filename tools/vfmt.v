@@ -26,8 +26,8 @@ fn main() {
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
-	}	
-	possible_files := cmdline.only_non_options( cmdline.after(args, ['fmt']) )
+	}
+	possible_files := cmdline.only_non_options(cmdline.after(args, ['fmt']))
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())
@@ -55,30 +55,32 @@ fn main() {
 
 fn format_file(file string, foptions FormatOptions) {
 	mut cfile := file
-	fcontent := os.read_file( file ) or { return }
+	fcontent := os.read_file(file) or {
+		return
+	}
 	is_test_file := file.ends_with('_test.v')
 	is_module_file := fcontent.contains('module ') && !fcontent.contains('module main')
 	should_use_hack := is_module_file && !is_test_file
-	mod_folder := filepath.basedir( file )
+	mod_folder := filepath.basedir(file)
 	mut mod_name := 'main'
 	if is_module_file {
-		mod_name = filepath.filename( mod_folder )
+		mod_name = filepath.filename(mod_folder)
 	}
-	
 	if should_use_hack {
 		// TODO: remove the need for this. NB: HUGE HACK!
 		internal_module_test_content := 'module ${mod_name} fn test_vfmt(){ assert true }'
-		internal_module_test_file := filepath.join(mod_folder, '__hacky_vfmt_inner_test.v')
-		if os.exists( internal_module_test_file ) { os.rm(internal_module_test_file) }
-		os.write_file( internal_module_test_file, internal_module_test_content )
+		internal_module_test_file := filepath.join(mod_folder,'__hacky_vfmt_inner_test.v')
+		if os.exists(internal_module_test_file) {
+			os.rm(internal_module_test_file)
+		}
+		os.write_file(internal_module_test_file, internal_module_test_content)
 		cfile = internal_module_test_file
 	}
-
 	mut v := compiler.new_v_compiler_with_args([cfile])
 	v.v_fmt_file = file
 	if foptions.is_all {
 		v.v_fmt_all = true
-	}	
+	}
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')
@@ -95,7 +97,6 @@ fn format_file(file string, foptions FormatOptions) {
 	if should_use_hack {
 		os.rm(cfile)
 	}
-		
 	// eprintln('File: $file .')
 	// eprintln('Formatted file is: $formatted_file_path .')
 	if foptions.is_diff {
@@ -129,11 +130,14 @@ Options:
 ')
 }
 
-
 fn find_working_diff_command() ?string {
 	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
-		p := os.exec('$diffcmd --version') or { continue }
-		if p.exit_code == 0 { return diffcmd }
+		p := os.exec('$diffcmd --version') or {
+			continue
+		}
+		if p.exit_code == 0 {
+			return diffcmd
+		}
 	}
 	return error('no working diff command found')
 }
