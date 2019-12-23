@@ -5,6 +5,7 @@ module compiler
 
 import (
 	os
+	os.cmdline
 	strings
 	filepath
 	compiler.x64
@@ -580,7 +581,7 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe', '') + '"'
-	args_after_no_options := os.get_non_options( os.get_args_after(args,['run','test']) )
+	args_after_no_options := cmdline.only_non_options( cmdline.after(args,['run','test']) )
 	if args_after_no_options.len > 1 {
 		cmd += ' ' + args_after_no_options[1..].join(' ')
 	}
@@ -885,18 +886,18 @@ pub fn new_v(args []string) &V {
 		}
 	}
 	// optional, custom modules search path
-	user_mod_path := os.get_cmdline_option(args, '-user_mod_path', '')
+	user_mod_path := cmdline.option(args, '-user_mod_path', '')
 	// Location of all vlib files
 	vroot := filepath.dir(vexe_path())
-	vlib_path := os.get_cmdline_option(args, '-vlib-path', filepath.join(vroot,'vlib'))
-	vpath := os.get_cmdline_option(args, '-vpath', v_modules_path)
+	vlib_path := cmdline.option(args, '-vlib-path', filepath.join(vroot,'vlib'))
+	vpath := cmdline.option(args, '-vpath', v_modules_path)
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
-	target_os := os.get_cmdline_option(args, '-os', '')
-	mut out_name := os.get_cmdline_option(args, '-o', 'a.out')
+	target_os := cmdline.option(args, '-os', '')
+	mut out_name := cmdline.option(args, '-o', 'a.out')
 	mut dir := args.last()
 	if 'run' in args {
-		args_after_run := os.get_non_options( os.get_args_after(args,['run']) )
+		args_after_run := cmdline.only_non_options( cmdline.after(args,['run']) )
 		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }
 	}
 	if dir.ends_with(os.path_separator) {
@@ -1020,9 +1021,9 @@ pub fn new_v(args []string) &V {
 		exit(1)
 	}
 	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
-	cflags := os.get_cmdline_multiple_values(args, '-cflags').join(' ')
+	cflags := cmdline.many_values(args, '-cflags').join(' ')
   
-	defines := os.get_cmdline_multiple_values(args, '-d')
+	defines := cmdline.many_values(args, '-d')
 	compile_defines, compile_defines_all := parse_defines( defines )
 	
 	rdir := os.realpath(dir)

@@ -1,6 +1,6 @@
-module os
+module cmdline
 
-pub fn get_cmdline_multiple_values(args []string, optname string) []string {
+pub fn many_values(args []string, optname string) []string {
 	mut flags := []string
 	for ci, cv in args {
 		if cv == optname {
@@ -12,7 +12,7 @@ pub fn get_cmdline_multiple_values(args []string, optname string) []string {
 	return flags
 }
 
-pub fn get_cmdline_option(args []string, param string, def string) string {
+pub fn option(args []string, param string, def string) string {
 	mut found := false
 	for arg in args {
 		if found {
@@ -25,10 +25,10 @@ pub fn get_cmdline_option(args []string, param string, def string) string {
 	return def
 }
 
-pub fn get_args_before(args []string, what []string) []string {
+pub fn before(args []string, what []string) []string {
 	mut found := false
 	mut args_before := []string
-	for i, a in args {
+	for a in args {
 		if a in what {
 			found = true
 			break
@@ -38,10 +38,10 @@ pub fn get_args_before(args []string, what []string) []string {
 	return args_before
 }
 
-pub fn get_args_after(args []string, what []string) []string {
+pub fn after(args []string, what []string) []string {
 	mut found := false
 	mut args_after := []string
-	for i, a in args {
+	for a in args {
 		if a in what {
 			found = true
 			continue
@@ -53,10 +53,10 @@ pub fn get_args_after(args []string, what []string) []string {
 	return args_after
 }
 
-pub fn get_non_options(args []string) []string {
+pub fn only_non_options(args []string) []string {
 	return args.filter(!it.starts_with('-'))
 }
 
-pub fn get_options(args []string) []string {
+pub fn only_options(args []string) []string {
 	return args.filter(it.starts_with('-'))
 }

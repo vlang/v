@@ -2,6 +2,7 @@ module main
 
 import (
 	os
+	os.cmdline
 	testing
 )
 
@@ -21,8 +22,8 @@ pub fn main() {
 	}
 
 	args_to_executable := args[1..]
-	args_before := os.get_args_before(args_to_executable, ['test'])
-	args_after := os.get_args_after(args_to_executable, ['test'])
+	args_before := cmdline.before(args_to_executable, ['test'])
+	args_after := cmdline.after(args_to_executable, ['test'])
 
 	if args_after.join(' ') == 'v' {
 		eprintln('`v test v` has been deprecated.')

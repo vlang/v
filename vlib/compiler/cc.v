@@ -5,6 +5,7 @@ module compiler
 
 import (
 	os
+	os.cmdline
 	time
 	filepath
 )
@@ -469,7 +470,7 @@ fn (c &V) build_thirdparty_obj_files() {
 fn find_c_compiler() string {
 	args := env_vflags_and_os_args()
 	defaultcc := find_c_compiler_default()
-	return os.get_cmdline_option(args, '-cc', defaultcc)
+	return cmdline.option(args, '-cc', defaultcc)
 }
 
 fn find_c_compiler_default() string {
@@ -486,7 +487,7 @@ fn find_c_compiler_default() string {
 
 fn find_c_compiler_thirdparty_options() string {
 	fullargs := env_vflags_and_os_args()
-	mut cflags := os.get_cmdline_multiple_values(fullargs,'-cflags')
+	mut cflags := cmdline.many_values(fullargs,'-cflags')
 	$if !windows {
 		cflags << '-fPIC'
 	}

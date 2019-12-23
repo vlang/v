@@ -5,6 +5,7 @@ module main
 
 import (
 	os
+	os.cmdline
 	filepath
 	compiler
 )
@@ -26,7 +27,7 @@ fn main() {
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
 	}	
-	possible_files := os.get_non_options( os.get_args_after(args, ['fmt']) )
+	possible_files := cmdline.only_non_options( cmdline.after(args, ['fmt']) )
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())
