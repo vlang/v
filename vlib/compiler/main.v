@@ -1132,32 +1132,6 @@ pub fn env_vflags_and_os_args() []string {
 	return non_empty(args)
 }
 
-pub fn vfmt(args []string) {
-	file := args.last()
-	if !os.exists(file) {
-		println('"$file" does not exist')
-		exit(1)
-	}
-	if !file.ends_with('.v') {
-		println('v fmt can only be used on .v files')
-		exit(1)
-	}
-	vexe := vexe_path()
-	// launch_tool('vfmt', '-d vfmt')
-	vroot := os.dir(vexe)
-	os.chdir(vroot)
-	println('building vfmt... (it will be cached soon)')
-	ret := os.system('$vexe -o $vroot/tools/vfmt -d vfmt v.v')
-	if ret != 0 {
-		println('err')
-		return
-	}
-	println('running vfmt...')
-	os.exec('$vroot/tools/vfmt $file')or{
-		panic(err)
-	}
-	// if !os.exists('
-}
 
 pub fn create_symlink() {
 	$if windows {

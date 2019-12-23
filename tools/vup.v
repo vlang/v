@@ -2,7 +2,7 @@ import os
 
 fn main() {
 	println('Updating V...')
-	vroot := os.dir(os.args[1])
+	vroot := os.getenv('VEXE')
 	os.chdir(vroot)
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or { panic(err) }
 	println(s.output)
