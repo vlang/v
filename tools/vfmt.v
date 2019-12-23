@@ -35,10 +35,9 @@ fn main() {
 		// the v compiler can do an early exit if it detects
 		// a syntax error, but we want to process ALL passed
 		// files if possible.
-		foptions.format_file( cmdline.option( args, '-worker', '' ) )
+		foptions.format_file(cmdline.option(args, '-worker', ''))
 		exit(0)
 	}
-	
 	// we are NOT a worker at this stage, i.e. we are a parent vfmt process
 	possible_files := cmdline.only_non_options(cmdline.after(args, ['fmt']))
 	if foptions.is_verbose {
@@ -62,16 +61,14 @@ fn main() {
 		usage()
 		exit(0)
 	}
-
 	mut cli_args_no_files := []string
 	for a in os.args {
 		if !a in files {
 			cli_args_no_files << a
 		}
 	}
-
 	mut errors := 0
-	for file in files {		
+	for file in files {
 		fpath := os.realpath(file)
 		mut worker_command_array := cli_args_no_files.clone()
 		worker_command_array << ['-worker', fpath]
@@ -79,7 +76,7 @@ fn main() {
 		if foptions.is_verbose {
 			eprintln('vfmt worker_cmd: $worker_cmd')
 		}
-		cmdcode := os.system( worker_cmd )
+		cmdcode := os.system(worker_cmd)
 		if cmdcode != 0 {
 			eprintln('vfmt error while formatting file: $file .')
 			errors++
@@ -94,16 +91,14 @@ fn main() {
 fn (foptions &FormatOptions) format_file(file string) {
 	tmpfolder := os.tmpdir()
 	mut compiler_params := []string
-	
-	mut cfile := file	
+	mut cfile := file
 	mut mod_folder_parent := tmpfolder
 	fcontent := os.read_file(file) or {
 		return
 	}
 	is_test_file := file.ends_with('_test.v')
 	is_module_file := fcontent.contains('module ') && !fcontent.contains('module main\n')
-	use_tmp_main_program := is_module_file && !is_test_file 
-	
+	use_tmp_main_program := is_module_file && !is_test_file
 	mod_folder := filepath.basedir(file)
 	mut mod_name := 'main'
 	if is_module_file {
@@ -114,13 +109,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 		// This makes a small program that imports the module,
 		// so that the module files will get processed by the
 		// vfmt implementation.
-		mod_folder_parent = filepath.basedir( mod_folder )
+		mod_folder_parent = filepath.basedir(mod_folder)
 		mut main_program_content := 'import ${mod_name} \n fn main(){}'
 		if fcontent.contains('module builtin\n') {
 			main_program_content = 'fn main(){}'
 		}
-		main_program_file := filepath.join( tmpfolder,'vfmt_tmp_${mod_name}_program.v')
-		if os.exists(main_program_file){
+		main_program_file := filepath.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
+		if os.exists(main_program_file) {
 			os.rm(main_program_file)
 		}
 		os.write_file(main_program_file, main_program_content)
@@ -128,7 +123,6 @@ fn (foptions &FormatOptions) format_file(file string) {
 		compiler_params << ['-user_mod_path', mod_folder_parent]
 	}
 	compiler_params << cfile
-
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')
@@ -141,15 +135,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('vfmt format_file: compiler_params: $compiler_params')
 		eprintln('-------------------------------------------')
 	}
-	
-	formatted_file_path := foptions.compile_file(file, compiler_params )
-	
+	formatted_file_path := foptions.compile_file(file, compiler_params)
 	if use_tmp_main_program {
 		os.rm(cfile)
 	}
-
-	if formatted_file_path.len == 0 { return }
-	
+	if formatted_file_path.len == 0 {
+		return
+	}
 	if foptions.is_diff {
 		diff_cmd := find_working_diff_command() or {
 			eprintln('No working "diff" CLI command found.')
@@ -193,7 +185,6 @@ fn find_working_diff_command() ?string {
 	return error('no working diff command found')
 }
 
-
 fn (foptions &FormatOptions) compile_file(file string, compiler_params []string) string {
 	mut v := compiler.new_v_compiler_with_args(compiler_params)
 	v.v_fmt_file = file
@@ -203,13 +194,7 @@ fn (foptions &FormatOptions) compile_file(file string, compiler_params []string)
 	v.compile()
 	return v.v_fmt_file_result
 }
-	
+
 pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ '+
-		' is_w: $f.is_w'+
-		' is_diff: $f.is_diff' +
-		' is_verbose: $f.is_verbose' +
-		' is_all: $f.is_all' +
-		' is_worker: $f.is_worker' +
-	' }'
+	return 'FormatOptions{ ' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' }'
 }
