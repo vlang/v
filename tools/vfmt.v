@@ -15,6 +15,7 @@ struct FormatOptions {
 	is_diff    bool
 	is_verbose bool
 	is_all     bool
+	is_worker  bool
 }
 
 fn main() {
@@ -26,13 +27,26 @@ fn main() {
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
+		is_worker: '-worker' in args
 	}
+	if foptions.is_worker {
+		// -worker should be added by a parent vfmt process.
+		// We launch a sub process for each file because
+		// the v compiler can do an early exit if it detects
+		// a syntax error, but we want to process ALL passed
+		// files if possible.
+		foptions.format_file( cmdline.option( args, '-worker', '' ) )
+		exit(0)
+	}
+	
+	// we are NOT a worker at this stage, i.e. we are a parent vfmt process
 	possible_files := cmdline.only_non_options(cmdline.after(args, ['fmt']))
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
+		eprintln('vfmt foptions: $foptions')
 	}
 	mut files := []string
 	for file in possible_files {
@@ -48,8 +62,32 @@ fn main() {
 		usage()
 		exit(0)
 	}
-	for file in files {
-		foptions.format_file(os.realpath(file))
+
+	mut cli_args_no_files := []string
+	for a in os.args {
+		if !a in files {
+			cli_args_no_files << a
+		}
+	}
+
+	mut errors := 0
+	for file in files {		
+		fpath := os.realpath(file)
+		mut worker_command_array := cli_args_no_files.clone()
+		worker_command_array << ['-worker', fpath]
+		worker_cmd := worker_command_array.join(' ')
+		if foptions.is_verbose {
+			eprintln('vfmt worker_cmd: $worker_cmd')
+		}
+		cmdcode := os.system( worker_cmd )
+		if cmdcode != 0 {
+			eprintln('vfmt error while formatting file: $file .')
+			errors++
+		}
+	}
+	if errors > 0 {
+		eprintln('Encountered a total of: ${errors} errors.')
+		exit(1)
 	}
 }
 
@@ -63,8 +101,8 @@ fn (foptions &FormatOptions) format_file(file string) {
 		return
 	}
 	is_test_file := file.ends_with('_test.v')
-	is_module_file := fcontent.contains('module ') && !fcontent.contains('module main')
-	use_tmp_main_program := is_module_file && !is_test_file
+	is_module_file := fcontent.contains('module ') && !fcontent.contains('module main\n')
+	use_tmp_main_program := is_module_file && !is_test_file 
 	
 	mod_folder := filepath.basedir(file)
 	mut mod_name := 'main'
@@ -77,7 +115,10 @@ fn (foptions &FormatOptions) format_file(file string) {
 		// so that the module files will get processed by the
 		// vfmt implementation.
 		mod_folder_parent = filepath.basedir( mod_folder )
-		main_program_content := 'import ${mod_name} \n fn main(){} \n'
+		mut main_program_content := 'import ${mod_name} \n fn main(){}'
+		if fcontent.contains('module builtin\n') {
+			main_program_content = 'fn main(){}'
+		}
 		main_program_file := filepath.join( tmpfolder,'vfmt_tmp_${mod_name}_program.v')
 		if os.exists(main_program_file){
 			os.rm(main_program_file)
@@ -163,3 +204,12 @@ fn (foptions &FormatOptions) compile_file(file string, compiler_params []string)
 	return v.v_fmt_file_result
 }
 	
+pub fn (f FormatOptions) str() string {
+	return 'FormatOptions{ '+
+		' is_w: $f.is_w'+
+		' is_diff: $f.is_diff' +
+		' is_verbose: $f.is_verbose' +
+		' is_all: $f.is_all' +
+		' is_worker: $f.is_worker' +
+	' }'
+}
