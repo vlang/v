@@ -236,8 +236,9 @@ fn (p mut Parser) fnext() {
 
 [if vfmt]
 fn (p mut Parser) fremove_last() {
-	p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
-
+	if p.scanner.fmt_lines.len > 0 {
+		p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
+	}
 }
 
 [if vfmt]

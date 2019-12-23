@@ -17,36 +17,32 @@ struct FormatOptions {
 }
 
 fn main() {
-	foptions := FormatOptions{
-		is_w: '-w' in os.args
-		is_diff: '-diff' in os.args
-		is_verbose: '-verbose' in os.args || '--verbose' in os.args
-		is_all: '-all' in os.args || '--all' in os.args
-	}
 	toolexe := os.executable()
 	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
 	args := compiler.env_vflags_and_os_args()
+	foptions := FormatOptions{
+		is_w: '-w' in args
+		is_diff: '-diff' in args
+		is_verbose: '-verbose' in args || '--verbose' in args
+		is_all: '-all' in args || '--all' in args
+	}	
+	args_after := os.get_args_after(args, ['fmt'])
+	possible_files := args_after.filter(!it.starts_with('-'))
 	if foptions.is_verbose {
 		eprintln('vfmt toolexe: $toolexe')
 		eprintln('vfmt args: ' + os.args.str())
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
+		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
 	mut files := []string
-	for i := 1; i < args.len; i++ {
-		a := args[i]
-		if a == 'fmt' {
-			continue
+	for file in possible_files {
+		if !os.exists(file) {
+			compiler.verror('"$file" does not exist.')
 		}
-		if !a.starts_with('-') {
-			file := a
-			if !os.exists(file) {
-				compiler.verror('"$file" does not exist.')
-			}
-			if !file.ends_with('.v') {
-				compiler.verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
-			}
-			files << a
+		if !file.ends_with('.v') {
+			compiler.verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
 		}
+		files << file
 	}
 	if files.len == 0 {
 		usage()

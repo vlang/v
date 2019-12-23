@@ -467,9 +467,9 @@ fn (c &V) build_thirdparty_obj_files() {
 }
 
 fn find_c_compiler() string {
-	args := env_vflags_and_os_args().join(' ')
+	args := env_vflags_and_os_args()
 	defaultcc := find_c_compiler_default()
-	return get_arg(args, 'cc', defaultcc)
+	return os.get_cmdline_option(args, '-cc', defaultcc)
 }
 
 fn find_c_compiler_default() string {
@@ -486,7 +486,7 @@ fn find_c_compiler_default() string {
 
 fn find_c_compiler_thirdparty_options() string {
 	fullargs := env_vflags_and_os_args()
-	mut cflags := get_cmdline_multiple_values(fullargs,'-cflags')
+	mut cflags := os.get_cmdline_multiple_values(fullargs,'-cflags')
 	$if !windows {
 		cflags << '-fPIC'
 	}
@@ -494,16 +494,6 @@ fn find_c_compiler_thirdparty_options() string {
 		cflags << '-m32'
 	}
 	return cflags.join(' ')
-}
-
-fn get_cmdline_multiple_values(args []string, optname string) []string {
-	mut flags := []string
-	for ci, cv in args {
-		if cv == optname {
-			flags << args[ci + 1]
-		}
-	}
-	return flags
 }
 
 fn parse_defines(defines []string) ([]string,[]string) {

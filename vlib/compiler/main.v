@@ -580,20 +580,10 @@ pub fn (v V) run_compiled_executable_and_exit() {
 		println('============ running $v.out_name ============')
 	}
 	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe', '') + '"'
-	mut args_after := ' '
-	for i, a in args {
-		if i == 0 {
-			continue
-		}
-		if a.starts_with('-') {
-			continue
-		}
-		if a in ['run', 'test'] {
-			args_after += args[i + 2..].join(' ')
-			break
-		}
+	args_after_no_options := non_option( os.get_args_after(args,['run','test']) )
+	if args_after_no_options.len > 1 {
+		cmd += ' ' + args_after_no_options[1..].join(' ')
 	}
-	cmd += args_after
 	if v.pref.is_test {
 		ret := os.system(cmd)
 		if ret != 0 {
@@ -876,36 +866,6 @@ pub fn (v mut V) parse_lib_imports() {
 	}
 }
 
-pub fn get_arg(joined_args, arg, def string) string {
-	return get_param_after(joined_args, '-$arg', def)
-}
-
-pub fn get_param_after(joined_args, arg, def string) string {
-	key := '$arg '
-	mut pos := joined_args.index(key) or {
-		return def
-	}
-	pos += key.len
-	mut space := joined_args.index_after(' ', pos)
-	if space == -1 {
-		space = joined_args.len
-	}
-	res := joined_args[pos..space]
-	return res
-}
-
-pub fn get_cmdline_option(args []string, param string, def string) string {
-	mut found := false
-	for arg in args {
-		if found {
-			return arg
-		}
-		else if param == arg {
-			found = true
-		}
-	}
-	return def
-}
 
 pub fn (v &V) log(s string) {
 	if !v.pref.is_verbose {
@@ -925,19 +885,19 @@ pub fn new_v(args []string) &V {
 		}
 	}
 	// optional, custom modules search path
-	user_mod_path := get_cmdline_option(args, '-user_mod_path', '')
+	user_mod_path := os.get_cmdline_option(args, '-user_mod_path', '')
 	// Location of all vlib files
 	vroot := filepath.dir(vexe_path())
-	vlib_path := get_cmdline_option(args, '-vlib-path', filepath.join(vroot,'vlib'))
-	vpath := get_cmdline_option(args, '-vpath', v_modules_path)
+	vlib_path := os.get_cmdline_option(args, '-vlib-path', filepath.join(vroot,'vlib'))
+	vpath := os.get_cmdline_option(args, '-vpath', v_modules_path)
 	mut vgen_buf := strings.new_builder(1000)
 	vgen_buf.writeln('module vgen\nimport strings')
-	joined_args := args.join(' ')
-	target_os := get_arg(joined_args, 'os', '')
-	mut out_name := get_arg(joined_args, 'o', 'a.out')
+	target_os := os.get_cmdline_option(args, '-os', '')
+	mut out_name := os.get_cmdline_option(args, '-o', 'a.out')
 	mut dir := args.last()
 	if 'run' in args {
-		dir = get_param_after(joined_args, 'run', '')
+		args_after_run_no_options := non_option( os.get_args_after(args,['run']) )
+		dir = if args_after_run_no_options.len>0 { args_after_run_no_options[0] } else { '' }
 	}
 	if dir.ends_with(os.path_separator) {
 		dir = dir.all_before_last(os.path_separator)
@@ -948,9 +908,11 @@ pub fn new_v(args []string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
+	
 	// build mode
 	mut build_mode := BuildMode.default_mode
-	mut mod := ''
+	mut mod := ''	
+	joined_args := args.join(' ')
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
 		os.chdir(vroot)
@@ -1058,9 +1020,9 @@ pub fn new_v(args []string) &V {
 		exit(1)
 	}
 	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
-	cflags := get_cmdline_multiple_values(args, '-cflags').join(' ')
+	cflags := os.get_cmdline_multiple_values(args, '-cflags').join(' ')
   
-	defines := get_cmdline_multiple_values(args, '-d')
+	defines := os.get_cmdline_multiple_values(args, '-d')
 	compile_defines, compile_defines_all := parse_defines( defines )
 	
 	rdir := os.realpath(dir)
@@ -1138,6 +1100,10 @@ pub fn new_v(args []string) &V {
 		compile_defines: compile_defines
 		compile_defines_all: compile_defines_all
 	}
+}
+
+fn non_option(a []string) []string {
+	return a.filter(!it.starts_with('-'))
 }
 
 fn non_empty(a []string) []string {
