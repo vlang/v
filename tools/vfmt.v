@@ -49,56 +49,66 @@ fn main() {
 		exit(0)
 	}
 	for file in files {
-		format_file(os.realpath(file), foptions)
+		foptions.format_file(os.realpath(file))
 	}
 }
 
-fn format_file(file string, foptions FormatOptions) {
-	mut cfile := file
+fn (foptions &FormatOptions) format_file(file string) {
+	tmpfolder := os.tmpdir()
+	mut compiler_params := []string
+	
+	mut cfile := file	
+	mut mod_folder_parent := tmpfolder
 	fcontent := os.read_file(file) or {
 		return
 	}
 	is_test_file := file.ends_with('_test.v')
 	is_module_file := fcontent.contains('module ') && !fcontent.contains('module main')
-	should_use_hack := is_module_file && !is_test_file
+	use_tmp_main_program := is_module_file && !is_test_file
+	
 	mod_folder := filepath.basedir(file)
 	mut mod_name := 'main'
 	if is_module_file {
 		mod_name = filepath.filename(mod_folder)
 	}
-	if should_use_hack {
-		// TODO: remove the need for this. NB: HUGE HACK!
-		internal_module_test_content := 'module ${mod_name} fn test_vfmt(){ assert true }'
-		internal_module_test_file := filepath.join(mod_folder,'__hacky_vfmt_inner_test.v')
-		if os.exists(internal_module_test_file) {
-			os.rm(internal_module_test_file)
+	if use_tmp_main_program {
+		// TODO: remove the need for this
+		// This makes a small program that imports the module,
+		// so that the module files will get processed by the
+		// vfmt implementation.
+		mod_folder_parent = filepath.basedir( mod_folder )
+		main_program_content := 'import ${mod_name} \n fn main(){} \n'
+		main_program_file := filepath.join( tmpfolder,'vfmt_tmp_${mod_name}_program.v')
+		if os.exists(main_program_file){
+			os.rm(main_program_file)
 		}
-		os.write_file(internal_module_test_file, internal_module_test_content)
-		cfile = internal_module_test_file
+		os.write_file(main_program_file, main_program_content)
+		cfile = main_program_file
+		compiler_params << ['-user_mod_path', mod_folder_parent]
 	}
-	mut v := compiler.new_v_compiler_with_args([cfile])
-	v.v_fmt_file = file
-	if foptions.is_all {
-		v.v_fmt_all = true
-	}
+	compiler_params << cfile
+
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')
-		eprintln('vfmt format_file: v.dir: $v.dir')
 		eprintln('vfmt format_file: is_test_file: $is_test_file')
 		eprintln('vfmt format_file: is_module_file: $is_module_file')
 		eprintln('vfmt format_file: mod_name: $mod_name')
 		eprintln('vfmt format_file: mod_folder: $mod_folder')
-		eprintln('vfmt format_file: should_use_hack: $should_use_hack')
+		eprintln('vfmt format_file: mod_folder_parent: $mod_folder_parent')
+		eprintln('vfmt format_file: use_tmp_main_program: $use_tmp_main_program')
+		eprintln('vfmt format_file: compiler_params: $compiler_params')
 		eprintln('-------------------------------------------')
 	}
-	v.compile()
-	formatted_file_path := v.v_fmt_file_result
-	if should_use_hack {
+	
+	formatted_file_path := foptions.compile_file(file, compiler_params )
+	
+	if use_tmp_main_program {
 		os.rm(cfile)
 	}
-	// eprintln('File: $file .')
-	// eprintln('Formatted file is: $formatted_file_path .')
+
+	if formatted_file_path.len == 0 { return }
+	
 	if foptions.is_diff {
 		diff_cmd := find_working_diff_command() or {
 			eprintln('No working "diff" CLI command found.')
@@ -141,3 +151,15 @@ fn find_working_diff_command() ?string {
 	}
 	return error('no working diff command found')
 }
+
+
+fn (foptions &FormatOptions) compile_file(file string, compiler_params []string) string {
+	mut v := compiler.new_v_compiler_with_args(compiler_params)
+	v.v_fmt_file = file
+	if foptions.is_all {
+		v.v_fmt_all = true
+	}
+	v.compile()
+	return v.v_fmt_file_result
+}
+	
