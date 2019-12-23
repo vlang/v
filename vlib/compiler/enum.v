@@ -94,7 +94,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 	if is_flag && !p.first_pass() {
 		p.gen_enum_flag_methods(mut T)
 	}
-	if p.pass == .decl {
+	if p.pass == .decl || is_flag {
 		p.table.register_type(T)
 	}
 	// Register `Expression` enum
