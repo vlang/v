@@ -12,8 +12,9 @@ import (
 	strings
 )
 
-const (
+pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
+	method_all = ['GET','POST','PUT','PATCH','DELETE']
 	HEADER_SERVER = 'Server: VWeb\r\n'
 	HEADER_CONNECTION_CLOSE = 'Connection: close\r\n'
 	HEADERS_CLOSE = '${HEADER_SERVER}${HEADER_CONNECTION_CLOSE}\r\n'
@@ -33,6 +34,7 @@ const (
 		'.xml': 'text/xml; charset=utf-8'
 	}
 	MAX_HTTP_POST_SIZE = 1024 * 1024
+	Default_Port = 8080
 )
 
 pub struct Context {
@@ -112,13 +114,13 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	return error('Cookie not found')
 }
 
-fn (ctx mut Context) add_header(key, val string) {
+pub fn (ctx mut Context) add_header(key, val string) {
 	//println('add_header($key, $val)')
 	ctx.headers = ctx.headers + '\r\n$key: $val'
 	//println(ctx.headers)
 }
 
-fn (ctx &Context) get_header(key string) string {
+pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.headers[key]
 }
 
