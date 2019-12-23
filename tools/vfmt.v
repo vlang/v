@@ -173,7 +173,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 }
 
 fn usage() {
-	print('Usage: tools/vfmt [flags] path_to_source.v [path_to_other_source.v]
+	print('Usage: tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
 Formats the given V source files, and prints their formatted source to stdout.
 Options:
   -diff display only diffs between the formatted source and the original source.
