@@ -343,6 +343,31 @@ fn (p mut Parser) name_expr() string {
 				// no need in `if color == Color.red`
 				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
 			}
+			// `expr := Expr.BoolExpr(true)` =>
+			// `Expr expr = { .obj = true, .typ = BoolExpr_type };`
+			if val[0].is_capital() {
+				p.next()
+				p.check(.lpar)
+				//println('sum type $val name=$val')
+				// Find a corresponding tuple variant
+				// TODO slow, but this will be re-written anyway
+				mut idx := 0
+				for i, val_ in enum_type.enum_vals {
+					//println('f $field.name')
+					if val_ == val {
+						idx = i
+					}
+				}
+				q := p.table.tuple_variants[enum_type.name]
+				//println(q)
+				//println(q[idx])
+				arg_type := q[idx]
+				p.gen('($enum_type.name) { .obj = ($arg_type[]) { ')
+				p.bool_expression()
+				p.check(.rpar)
+				p.gen('}, .typ = ${val}_type }')
+				return enum_type.name
+			}
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val) // `color = main__Color_green`
 			p.next()
@@ -377,7 +402,7 @@ fn (p mut Parser) name_expr() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 		}

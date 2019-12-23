@@ -27,11 +27,11 @@ pub fn new_test_session(vargs string) TestSession {
 }
 
 pub fn vexe_path() string {
-	// NB: tools extracted from v require that the first
-	// argument to them to be the v executable location.
+	// NB: tools extracted from v require that the VEXE 
+	// environment variable contains the path to the v executable location.
 	// They are usually launched by vlib/compiler/vtools.v,
 	// launch_tool/1 , which provides it.
-	return os.args[1]
+	return os.getenv('VEXE')
 }
 
 
