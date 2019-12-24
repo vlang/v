@@ -5,13 +5,20 @@ jobs:
   v-fmt:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Build v (there is no need for dependencies for fmt)
       run: make -j4
     - name: Build a production tools/vfmt 
       run: ./v -prod -d vfmt tools/vfmt.v
+    - name: gitting around github
+      run: |
+          git reflog
+          git branch 
+          git branch -r
+          git status
+          git diff --name-only origin/master HEAD -- '*.v'
     - name: fmt only the changed files (from master)
-      run: git diff --name-only origin/master '*.v' | xargs ./v fmt -diff
+      run: git diff --name-only origin/master HEAD -- '*.v' | xargs ./v fmt -diff
     - name: Run v test-fmt
       run: ./v test-fmt
 
