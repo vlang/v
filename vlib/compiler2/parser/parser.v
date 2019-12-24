@@ -12,8 +12,8 @@ import (
 struct Parser {
 	scanner &scanner.Scanner
 mut:
-	tok token.Token
-	lit string
+	tok     token.Token
+	lit     string
 }
 
 pub fn parse_expr(text string) ast.Expr {
@@ -28,10 +28,21 @@ pub fn parse_expr(text string) ast.Expr {
 	return p.expr(token.lowest_prec)
 }
 
+pub fn parse_stmt(text string) ast.Stmt {
+	mut s := scanner.new_scanner(text)
+	res := s.scan()
+	mut p := Parser{
+		scanner: s
+		tok: res.tok
+		lit: res.lit
+	}
+	return p.stmt()
+}
+
 fn (p mut Parser) next() {
 	res := p.scanner.scan()
 	p.tok = res.tok
-	//println(p.tok.str())
+	// println(p.tok.str())
 	p.lit = res.lit
 }
 
@@ -41,37 +52,76 @@ pub fn (p mut Parser) expr(rbp int) ast.Expr {
 	tok := p.tok
 	lit := p.lit
 	p.next()
-	mut left := ast.Expr{}
+	mut node := ast.Expr{
+	}
 	match tok {
 		.lpar {
-			left = p.expr(0)
+			node = p.expr(0)
 			if p.tok != .rpar {
-				panic("Parse Error: expected )")
+				panic('Parse Error: expected )')
 			}
 			p.next()
 		}
 		else {
 			// TODO: fix bug. note odd conditon instead of else if (same below)
 			if tok.is_scalar() {
-				left = ast.ScalarExpr{val: lit, typ: tok}
+				node = ast.ScalarExpr{
+					val: lit
+					typ: tok
+				}
 			}
 			if !tok.is_scalar() && tok.is_unary() {
-				left = ast.UnaryExpr{left: p.expr(token.highest_prec), op: tok}
+				node = ast.UnaryExpr{
+					left: p.expr(token.highest_prec)
+					op: tok
+				}
 			}
-		}
-	}
-
+		}}
 	// left binding power
 	for rbp < p.tok.precedence() {
 		tok2 := p.tok
 		p.next()
 		// left denotation (infix)
 		if tok2.is_right_assoc() {
-			left = ast.BinaryExpr{left: left, op: tok2, right: p.expr(tok2.precedence() - 1)}
+			node = ast.BinaryExpr{
+				left: node
+				op: tok2
+				right: p.expr(tok2.precedence() - 1)
+			}
 		}
 		if !tok2.is_right_assoc() && tok2.is_left_assoc() {
-			left = ast.BinaryExpr{left: left, op: tok2, right: p.expr(tok2.precedence())}
+			node = ast.BinaryExpr{
+				left: node
+				op: tok2
+				right: p.expr(tok2.precedence())
+			}
 		}
 	}
-	return left
+	return node
+}
+
+fn (p mut Parser) stmt() ast.Stmt {
+	if p.tok == .name {
+		name := p.lit
+		p.next()
+		if p.tok == .decl_assign {
+			p.next()
+			return ast.VarDecl{
+				name: name
+				expr: p.expr(token.lowest_prec)
+			}
+		}
+	}
+	/*
+	match node {
+		Ident {
+
+
+		}
+
+	}
+	*/
+
+	return ast.VarDecl{
+	}
 }

@@ -29,6 +29,9 @@ pub fn (b mut Builder) write_b(data byte) {
 }
 
 pub fn (b mut Builder) write(s string) {
+	if s == '' {
+		return
+	}
 	b.buf.push_many(s.str, s.len)
 	// for c in s {
 	// b.buf << c

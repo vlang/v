@@ -980,6 +980,9 @@ fn (p mut Parser) fn_args(f mut Fn) {
 			p.next()
 		}
 	}
+	//if types_only && p.peek() == .lcbr {
+		//println('wtf')
+	//}
 }
 
 // foo *(1, 2, 3, mut bar)*

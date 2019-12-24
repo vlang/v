@@ -10,15 +10,19 @@ import (
 
 struct Foo {}
 
-// pub type Expr = Foo | IfExpr | BinaryExpr | IntegerExpr
-pub type Expr = Foo | IfExpr | BinaryExpr | ScalarExpr | UnaryExpr
+pub type Expr = Foo | IfExpr | BinaryExpr | ScalarExpr | UnaryExpr |
+	StringLiteral  | IntegerExpr
+pub type Stmt = Foo | VarDecl
 
-/*
 pub struct IntegerExpr {
 pub:
 	val int
 }
-*/
+
+pub struct StringLiteral {
+pub:
+	val string
+}
 
 /*
 pub enum Expr {
@@ -28,9 +32,23 @@ pub enum Expr {
 }
 */
 
+/*
 pub struct Stmt {
 	pos int
 	//end int
+}
+*/
+
+pub struct VarDecl {
+pub:
+	name string
+	expr Expr
+
+}
+
+pub struct Program {
+pub:
+	exprs []Expr
 }
 
 // A single identifier

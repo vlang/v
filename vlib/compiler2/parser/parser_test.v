@@ -1,6 +1,9 @@
 module parser
 
-import compiler2.ast
+import (
+	compiler2.ast
+	compiler2.cgen
+)
 
 fn test_parser() {
 	//expr := ast.IntegerExpr {val:10}
@@ -10,7 +13,7 @@ fn test_parser() {
 	expr := parse_expr('3 + 7')
 	walk(expr)
 	println('\n')
-	
+
 	text_expr := [
 		'1 += 2',
 		'1.2 + 3.4',
@@ -62,4 +65,17 @@ fn walk(node ast.Expr) {
 		}
 		else { }
 	}
+/*
+	//expr := parse_expr('3 + 7 * 2')
+	expr := parse_stmt('a := 3 + "f"')
+	program := ast.Program{
+		exprs: [
+			expr,
+			//parse_expr('2 * 2'),
+		]
+	}
+	cgen.gen(program)
+	//cgen.save()
+	*/
 }
+
