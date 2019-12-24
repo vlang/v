@@ -92,12 +92,12 @@ fn v_test_compiler2(vargs string){
 }
 
 fn make_sure_vfmt_was_run() {
-	vexe := testing.vexe_path()
-	files := os.walk_ext('.', '_test.v')
-	for file in files {
-		println(file)
-		os.exec('$vexe fmt $file') or {
-			panic('$file failed')
-		}
+	eprintln('Run "v fmt" over all _test.v files')
+	mut vfmt_test_session := testing.new_test_session('fmt')
+	vfmt_test_session.files << os.walk_ext('.', '_test.v')
+	vfmt_test_session.test()
+	eprintln(vfmt_test_session.benchmark.total_message('running vfmt over V test files'))
+	if vfmt_test_session.benchmark.nfail > 0 {
+		eprintln('\nWARNING: v fmt failed ${vfmt_test_session.benchmark.nfail} times.\n')
 	}
 }
