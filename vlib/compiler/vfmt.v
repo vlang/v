@@ -236,8 +236,9 @@ fn (p mut Parser) fnext() {
 
 [if vfmt]
 fn (p mut Parser) fremove_last() {
-	p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
-
+	if p.scanner.fmt_lines.len > 0 {
+		p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
+	}
 }
 
 [if vfmt]
@@ -249,15 +250,16 @@ fn (p &Parser) gen_fmt() {
 	if p.file_name == '' {
 		return
 	}
-	is_all := os.getenv('VFMT_OPTION_ALL') == 'yes'
-	if p.file_path != p.v.dir && !is_all {
+	is_all := p.v.v_fmt_all
+	vfmt_file := p.v.v_fmt_file
+	if p.file_path != vfmt_file && !is_all {
 		// skip everything except the last file (given by the CLI argument)
 		return
 	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
-	s := p.scanner.fmt_lines.join('')
+	s1 := p.scanner.fmt_lines.join('')
 /*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
@@ -265,12 +267,14 @@ fn (p &Parser) gen_fmt() {
 	])
 	*/
 	//.replace('\n\n\n\n', '\n\n')
-	.replace_each([
-		' \n', '\n',
-		') or{', ') or {',
-		')or{', ') or {',
-	])
-	
+  
+	s2 := s1.replace(' \n', '\n')
+	s3 := s2.replace(') or{', ') or {')
+	s4 := s3.replace(')or{', ') or {')
+	s5 := s4.replace('or{', 'or {')
+
+	s := s5
+
 	if s == '' {
 		return
 	}
@@ -284,9 +288,10 @@ fn (p &Parser) gen_fmt() {
 			eprintln('Written fmt file to: $p.file_path')
 		}
 	}
-	if p.file_path == p.v.dir {
+	if p.file_path == vfmt_file {
 		res_path := write_formatted_source( p.file_name, s )
-		os.setenv('VFMT_FILE_RESULT', res_path, true )
+		mut vv := p.v
+		vv.v_fmt_file_result = res_path
 	}
 }
 
