@@ -102,14 +102,12 @@ fn make_sure_vfmt_was_run() {
 
 	mut files_able_to_be_formatted := []string
 	all_test_files := os.walk_ext('.', '_test.v')
-	eprintln('all_test_files: $all_test_files')
 	known_failing_exceptions := [
 		'./vlib/arrays/arrays_test.v',
 		'./vlib/compiler/tests/fn_variadic_test.v',
 		'./vlib/compiler/tests/generic_test.v',
 		'./vlib/eventbus/eventbus_test.v',
 	]
-	eprintln('known_failing_exceptions: $known_failing_exceptions')
 	for tfile in all_test_files {
 		if tfile in known_failing_exceptions { continue }
 		files_able_to_be_formatted << tfile
