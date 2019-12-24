@@ -18,8 +18,8 @@ fn v_test_formatting(vargs string) {
 	// Removing the binaries below is needed, since the building tools step
 	// rebuilds all the tools without the special option needed by vfmt
 	// by simply compiling each of them with `v tools/{toolname}.v`
-	os.rm('tools/vfmt')
-	os.rm('tools/vfmt.exe')	
+	//	os.rm('tools/vfmt')
+	//	os.rm('tools/vfmt.exe')	
 
 	mut files_able_to_be_formatted := []string
 	all_test_files := os.walk_ext('.', '.v')
