@@ -9,7 +9,7 @@ jobs:
     - name: Build v
       run: make -j4
     - name: Build a production tools/vfmt by running it over hello_world.v
-      run: (clang --version) ; cc --version && ./v -prod fmt examples/hello_world.v
+      run: (gcc --version; clang --version; cc --version;) && ./v -cc clang -prod fmt examples/hello_world.v
     - name: Run v test-fmt
       run: ./v test-fmt
 
