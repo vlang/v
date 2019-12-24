@@ -6,19 +6,16 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@v2
+    - name: getting all branch metainfo from github
+      run: |
+          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+          git diff --name-only origin/master HEAD -- '*.v'
     - name: Build v (there is no need for dependencies for fmt)
       run: make -j4
     - name: Build a production tools/vfmt 
       run: ./v -prod -d vfmt tools/vfmt.v
-    - name: gitting around github
-      run: |
-          git reflog
-          git branch 
-          git branch -r
-          git status
-          git diff --name-only origin/master HEAD -- '*.v'
     - name: fmt only the changed files (from master)
-      run: git diff --name-only origin/master HEAD -- '*.v' | xargs ./v fmt -diff
+      run: git diff --name-only master HEAD -- '*.v' | xargs ./v fmt -diff
     - name: Run v test-fmt
       run: ./v test-fmt
 
