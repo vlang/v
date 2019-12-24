@@ -92,11 +92,12 @@ fn v_test_compiler2(vargs string){
 }
 
 fn make_sure_vfmt_was_run() {
+	vexe := testing.vexe_path()
 	files := os.walk_ext('.', '_test.v')
 	for file in files {
 		println(file)
-		os.exec('./vfmt $file') or {
-			println('$file failed')
+		os.exec('$vexe fmt $file') or {
+			panic('$file failed')
 		}
 	}
 }
