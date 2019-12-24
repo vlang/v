@@ -46,8 +46,6 @@ fn v_test_formatting(vargs string) {
 		'./vlib/eventbus/eventbus_test.v',
     './vlib/flag/flag.v',
     './vlib/os/bare/bare_example_linux.v',
-    './vlib/sdl/examples/tvintris/tvintris.v',
-    './vlib/sdl/ttf/ttf.v',
     './vlib/szip/szip.v',
     './vlib/ui/examples/users_gui/users.v',
     './vlib/vweb/assets/assets.v',
