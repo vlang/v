@@ -98,6 +98,6 @@ fn make_sure_vfmt_was_run() {
 	vfmt_test_session.test()
 	eprintln(vfmt_test_session.benchmark.total_message('running vfmt over V test files'))
 	if vfmt_test_session.benchmark.nfail > 0 {
-		eprintln('\nWARNING: v fmt failed ${vfmt_test_session.benchmark.nfail} times.\n')
+		panic('\nWARNING: v fmt failed ${vfmt_test_session.benchmark.nfail} times.\n')
 	}
 }
