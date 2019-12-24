@@ -92,6 +92,11 @@ fn v_test_compiler2(vargs string){
 }
 
 fn make_sure_vfmt_was_run() {
+	// NB: vfmt have to be build with '-d vfmt' .
+	// Removing the binaries below is needed, since the building tools step
+	// rebuilds the all the tools without the special option needed by vfmt.
+	os.rm('tools/vfmt')
+	os.rm('tools/vfmt.exe')	
 	eprintln('Run "v fmt" over all _test.v files')
 	mut vfmt_test_session := testing.new_test_session('fmt')
 	vfmt_test_session.files << os.walk_ext('.', '_test.v')
