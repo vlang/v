@@ -160,7 +160,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 			break
 		}
 	}
-	
+
 	if v.compile_defines.len > 0 {
 		for cdefine in v.compile_defines {
 			custom_path_ending := '_d_${cdefine}.v'
@@ -171,7 +171,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 			}
 		}
 	}
-	
+
 	mut p := v.new_parser(new_scanner_file(path))
 	p = {
 		p |
@@ -793,20 +793,79 @@ fn (p mut Parser) type_decl() {
 	if p.tok == .key_struct {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
+	if p.tok == .assign {
+		p.next()
+
+	}
 	parent := p.get_type2()
+	// Sum type
+	is_sum := p.tok == .pipe
+	if is_sum {
+		// Register the first child  (name we already parsed)
+		/*
+		p.table.register_type(Type{
+			parent: name
+			name: parent.name // yeah it's not a parent here
+			mod: p.mod
+			is_public: is_pub
+		})
+		*/
+		// Register the rest of them
+		for p.tok == .pipe {
+			p.next()
+			child := p.check_name()
+			if p.pass == .main {
+				// Update the type's parent
+				println('child=$child parent=$name')
+				mut t := p.table.find_type(child)
+				if t.name == '' {
+					p.error('unknown type `$child`')
+				}
+				t.parent = name
+				p.table.rewrite_type(t)
+				/*
+				p.table.register_type(Type{
+					parent: name
+					name: child
+					mod: p.mod
+					is_public: is_pub
+				})
+				*/
+			}
+		}
+		if p.pass == .decl {
+			p.table.sum_types << name
+			println(p.table.sum_types)
+		}
+		// Register the actual sum type
+		println('reging sum $name')
+		p.table.register_type(Type{
+			name: name
+			mod: p.mod
+			cat: .alias
+			is_public: is_pub
+		})
+		p.gen_typedef('typedef struct {
+void* obj;
+int typ;
+} $name;
+')
+	}
 	nt_pair := p.table.cgen_name_type_pair(name, parent.name)
 	// TODO dirty C typedef hacks for DOOM
 	// Unknown type probably means it's a struct, and it's used before the struct is defined,
 	// so specify "struct"
 	_struct := if parent.cat != .array && parent.cat != .func && !p.table.known_type(parent.name) { 'struct' } else { '' }
-	p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
-	p.table.register_type(Type{
-		name: name
-		parent: parent.name
-		mod: p.mod
-		cat: .alias
-		is_public: is_pub
-	})
+	if !is_sum {
+		p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
+		p.table.register_type(Type{
+			name: name
+			parent: parent.name
+			mod: p.mod
+			cat: .alias
+			is_public: is_pub
+		})
+	}
 	if p.tok != .key_type {
 		p.fspace()
 	}

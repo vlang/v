@@ -4,6 +4,8 @@
 module compiler
 
 fn (p mut Parser) bool_expression() string {
+	start_ph := p.cgen.add_placeholder()
+	expected := p.expected_type
 	tok := p.tok
 	typ := p.bterm()
 	mut got_and := false // to catch `a && b || c` in one expression without ()
@@ -43,6 +45,11 @@ fn (p mut Parser) bool_expression() string {
 		println(p.cgen.cur_line)
 		println(tok.str())
 		p.error('expr() returns empty type')
+	}
+	if expected != typ && expected in p.table.sum_types { // TODO perf
+		p.cgen.set_placeholder(start_ph, '/*KUK*/($expected) { .obj = ($typ[]) { ')
+		p.gen('}, .typ = 1}')//${val}_type }')
+
 	}
 	return typ
 }
@@ -362,7 +369,7 @@ fn (p mut Parser) name_expr() string {
 				//println(q)
 				//println(q[idx])
 				arg_type := q[idx]
-				p.gen('($enum_type.name) { .obj = ($arg_type[]) { ')
+	p.gen('($enum_type.name) { .obj = ($arg_type[]) { ')
 				p.bool_expression()
 				p.check(.rpar)
 				p.gen('}, .typ = ${val}_type }')

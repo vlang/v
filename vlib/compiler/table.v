@@ -21,7 +21,8 @@ pub mut:
 	// names        []Name
 	max_field_len         map[string]int // for vfmt: max_field_len['Parser'] == 12
 	generic_struct_params map[string][]string
-	tuple_variants map[string][]string
+	tuple_variants map[string][]string // enum( Bool(BoolExpr) )
+	sum_types []string
 }
 
 struct VargAccess {
@@ -593,6 +594,9 @@ fn (t &Table) find_type(name_ string) Type {
 }
 
 fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
+	if p.fileis('type_test') {
+		println('got=$got_ exp=$expected_')
+	}
 	mut got := got_
 	mut expected := expected_
 	// p.log('check types got="$got" exp="$expected"  ')
@@ -722,6 +726,16 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		// Interface check
 		if expected.ends_with('er') {
 			if p.satisfies_interface(expected, got, throw) {
+				return true
+			}
+		}
+		// Sum type
+		println(expected)
+		if expected in p.table.sum_types {
+			println('checking sum')
+			child := p.table.find_type(got)
+			if child.parent == expected {
+				println('yep $expected')
 				return true
 			}
 		}
