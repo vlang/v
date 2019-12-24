@@ -18,11 +18,6 @@ fn main() {
 }
 
 fn v_test_compiler(vargs string){
-	v_test_compiler2(vargs)
-	//make_sure_vfmt_was_run()
-}
-
-fn v_test_compiler2(vargs string){
 
 	vexe := testing.vexe_path()
 	parent_dir := filepath.dir(vexe)
@@ -80,8 +75,6 @@ fn v_test_compiler2(vargs string){
 	vmark.stop()
 	eprintln( 'Installing a v module took: ' + vmark.total_duration().str() + 'ms')
 
-	make_sure_vfmt_was_run()
-
 	if building_tools_failed ||
      compiler_test_session.failed ||
      building_examples_failed ||
@@ -89,36 +82,4 @@ fn v_test_compiler2(vargs string){
 		exit(1)
 	}
 
-}
-
-fn make_sure_vfmt_was_run() {
-	// NB: vfmt have to be build with '-d vfmt' . V itself knows about this,
-	// and v will rebuild tools/vfmt, if it is missing.
-	// Removing the binaries below is needed, since the building tools step
-	// rebuilds all the tools without the special option needed by vfmt
-	// by simply compiling each of them with `v tools/{toolname}.v`
-	os.rm('tools/vfmt')
-	os.rm('tools/vfmt.exe')	
-
-	mut files_able_to_be_formatted := []string
-	all_test_files := os.walk_ext('.', '_test.v')
-	known_failing_exceptions := [
-		'./vlib/arrays/arrays_test.v',
-		'./vlib/compiler/tests/fn_variadic_test.v',
-		'./vlib/compiler/tests/generic_test.v',
-		'./vlib/eventbus/eventbus_test.v',
-	]
-	for tfile in all_test_files {
-		if tfile in known_failing_exceptions { continue }
-		files_able_to_be_formatted << tfile
-	}
-	
-	eprintln('Run "v fmt" over all _test.v files')
-	mut vfmt_test_session := testing.new_test_session('fmt')
-	vfmt_test_session.files << files_able_to_be_formatted
-	vfmt_test_session.test()
-	eprintln(vfmt_test_session.benchmark.total_message('running vfmt over V test files'))
-	if vfmt_test_session.benchmark.nfail > 0 {
-		panic('\nWARNING: v fmt failed ${vfmt_test_session.benchmark.nfail} times.\n')
-	}
 }
