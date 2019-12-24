@@ -28,14 +28,18 @@ if not exist "%gccpath%" (
     goto:msvcstrap
 )
 
-gcc -std=c99 -w -o v2.exe vc\v_win.c
+gcc -std=c99 -DV_BOOTSTRAP -w -o v2.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 (
     echo gcc failed to compile - Create an issue at 'https://github.com/vlang'
     exit /b 1
 )
 
 echo Now using V to build V...
-v2.exe -o v3.exe v.v
+rem TODO: remove when v.c is updated
+set VFLAGS=-cflags -DV_BOOTSTRAP -o v3.c v.v
+v2.exe
+gcc -std=c99 -DV_BOOTSTRAP -w -o v3.exe vc\v_win.c
+set VFLAGS=
 v3.exe -o v.exe -prod v.v
 if %ERRORLEVEL% NEQ 0 (
     echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
@@ -70,17 +74,21 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 
 set ObjFile=.v.c.obj
 
-cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
 if %ERRORLEVEL% NEQ 0 (
     echo cl.exe failed to build V
     goto :compileerror
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -cc msvc -o v3.exe v.v
-v3.exe -cc msvc -o v.exe -prod v.v
+rem TODO: remove when v.c is updated
+set VFLAGS=-cc msvc -cflags /DV_BOOTSTRAP -o v3.c v.v
+v2.exe
+cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP v3.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v3.exe /INCREMENTAL:NO
+set VFLAGS=
+v3.exe -cc msvc -o v -prod v.v
 if %ERRORLEVEL% NEQ 0 (
-    echo V failed to build itself
+    echo V failed to build itself with error %ERRORLEVEL%
     goto :compileerror
 )
 

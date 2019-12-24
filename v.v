@@ -119,8 +119,7 @@ fn v_command(command string, args []string) {
 			// v.gen_doc_html_for_module(args.last())
 		}
 		else {
-			println('v $command: unknown command')
-			println('Run "v help" for usage.')
+			panic('v $command: unknown command\nRun "v help" for usage.')
 		}
 	}
 	exit(0)
