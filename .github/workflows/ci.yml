@@ -8,8 +8,8 @@ jobs:
     - uses: actions/checkout@v1
     - name: Build v (there is no need for dependencies for fmt)
       run: make -j4
-    - name: Build a production tools/vfmt by running it over hello_world.v
-      run: ./v -prod fmt examples/hello_world.v
+    - name: Build a production tools/vfmt 
+      run: ./v -prod -d vfmt tools/vfmt.v
     - name: Run v test-fmt
       run: ./v test-fmt
 
