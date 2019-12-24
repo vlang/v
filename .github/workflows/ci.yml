@@ -10,6 +10,8 @@ jobs:
       run: make -j4
     - name: Build a production tools/vfmt 
       run: ./v -prod -d vfmt tools/vfmt.v
+    - name: fmt only the changed files (from master)
+      run: (git branch -r --list) && git diff --name-only master '*.v' | xargs ./v fmt -diff
     - name: Run v test-fmt
       run: ./v test-fmt
 
