@@ -92,9 +92,11 @@ fn v_test_compiler2(vargs string){
 }
 
 fn make_sure_vfmt_was_run() {
-	// NB: vfmt have to be build with '-d vfmt' .
+	// NB: vfmt have to be build with '-d vfmt' . V itself knows about this,
+	// and v will rebuild tools/vfmt, if it is missing.
 	// Removing the binaries below is needed, since the building tools step
-	// rebuilds the all the tools without the special option needed by vfmt.
+	// rebuilds all the tools without the special option needed by vfmt
+	// by simply compiling each of them with `v tools/{toolname}.v`
 	os.rm('tools/vfmt')
 	os.rm('tools/vfmt.exe')	
 
