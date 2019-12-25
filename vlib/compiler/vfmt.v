@@ -236,10 +236,10 @@ fn (p mut Parser) fnext() {
 
 [if vfmt]
 fn (p mut Parser) fremove_last() {
-	p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
-
+	if p.scanner.fmt_lines.len > 0 {
+		p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
+	}
 }
-
 
 [if vfmt]
 fn (p &Parser) gen_fmt() {
@@ -250,39 +250,59 @@ fn (p &Parser) gen_fmt() {
 	if p.file_name == '' {
 		return
 	}
+	is_all := p.v.v_fmt_all
+	vfmt_file := p.v.v_fmt_file
+	if p.file_path != vfmt_file && !is_all {
+		// skip everything except the last file (given by the CLI argument)
+		return
+	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
-	s := p.scanner.fmt_lines.join('')
+	s1 := p.scanner.fmt_lines.join('')
 /*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
 		') or{', ') or {',
 	])
 	*/
-		//.replace('\n\n\n\n', '\n\n')
-		.replace_each([
-			' \n', '\n',
-			') or{', ') or {',
-			')or{', ') or {',
-		] )
+	//.replace('\n\n\n\n', '\n\n')
+  
+	s2 := s1.replace(' \n', '\n')
+	s3 := s2.replace(') or{', ') or {')
+	s4 := s3.replace(')or{', ') or {')
+	s5 := s4.replace('or{', 'or {')
+
+	s := s5
 
 	if s == '' {
 		return
 	}
 	//files := ['get_type.v']
-	if p.file_path.contains('vfmt') {return}
+	if p.file_path.contains('compiler/vfmt.v') {return}
 	//if !(p.file_name in files) { return }
-	path := os.tmpdir() + '/' + p.file_name
-	println('generating ${path}')
-	mut out := os.create(path) or {
-		verror('failed to create os_nix.v')
-		return
+	if is_all {
+		if p.file_path.len > 0 {
+			path := write_formatted_source( p.file_name, s )
+			os.cp( path, p.file_path ) or { panic(err) }
+			eprintln('Written fmt file to: $p.file_path')
+		}
 	}
-	println('replacing ${p.file_path}...\n')
-	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
-	out.writeln('')
-	out.close()
-	os.mv(path, p.file_path)
+	if p.file_path == vfmt_file {
+		res_path := write_formatted_source( p.file_name, s )
+		mut vv := p.v
+		vv.v_fmt_file_result = res_path
+	}
 }
 
+fn write_formatted_source(file_name string, s string) string {
+	path := os.tmpdir() + '/' + file_name
+	mut out := os.create(path) or {
+		verror('failed to create file $path')
+		return ''
+	}
+	//eprintln('replacing ${p.file_path} ...\n')
+	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
+	out.close()
+	return path
+}	

@@ -121,8 +121,7 @@ pub fn (req &Request) do() ?Response {
 		return error('http.request.do: invalid URL "$req.url"')
 	}
 	mut rurl := url
-	mut resp := Response{
-	}
+	mut resp := Response{}
 	mut no_redirects := 0
 	for {
 		if no_redirects == max_redirects {
@@ -252,4 +251,3 @@ pub fn escape(s string) string {
 }
 
 type wsfn fn(s string, ptr voidptr)
-

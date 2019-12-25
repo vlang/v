@@ -47,12 +47,16 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	p.sql_types = []
 	mut q := 'select '
 	p.check(.key_select)
+	p.fspace()
 	n := p.check_name()
+	p.fspace()
 	if n == 'count' {
 		q += 'count(*) from '
 		p.check_name()
+		p.fspace()
 	}
 	table_name := p.check_name()
+	p.fspace()
 	// Register this type's fields as variables so they can be used in `where`
 	// expressions
 	typ := p.table.find_type(table_name)
@@ -105,6 +109,7 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	// `where` statement
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
+		p.fspace()
 		p.is_sql = true
 		_,expr := p.tmp_expr()
 		p.is_sql = false
@@ -113,9 +118,12 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	// limit?
 	mut query_one := false
 	if p.tok == .name && p.lit == 'limit' {
+		p.fspace()
 		p.next()
+		p.fspace()
 		p.is_sql = true
 		_,limit := p.tmp_expr()
+		p.fspace()
 		p.is_sql = false
 		q += ' limit ' + limit
 		// `limit 1` means we are getting `?User`, not `[]User`
@@ -264,12 +272,15 @@ fn (p mut Parser) insert_query(fn_ph int) {
 fn (p mut Parser) update_query(fn_ph int) {
 	println('update query')
 	p.check_name()
+	p.fspace()
 	table_name := p.check_name()
+	p.fspace()
 	typ := p.table.find_type(table_name)
 	if typ.name == '' {
 		p.error('unknown type `$table_name`')
 	}
 	set := p.check_name()
+	p.fspace()
 	if set != 'set' {
 		p.error('expected `set`')
 	}
@@ -280,7 +291,9 @@ fn (p mut Parser) update_query(fn_ph int) {
 		p.error('V orm: `id int` must be the first field in `$typ.name`')
 	}
 	field := p.check_name()
+	p.fspace()
 	p.check(.assign)
+  p.fspace()
 	for f in typ.fields {
 		if !(f.typ in ['string', 'int', 'bool']) {
 			println('orm: skipping $f.name')
@@ -312,6 +325,7 @@ fn (p mut Parser) update_query(fn_ph int) {
 	// where
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
+		p.fspace()
 		p.is_sql = true
 		_,wexpr := p.tmp_expr()
 		p.is_sql = false

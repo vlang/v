@@ -306,7 +306,7 @@ pub fn parse(s string) Time {
 	}
 	shms := s[pos..]
 	hms := shms.split(':')
-	hour := hms[0]
+	hour := hms[0][1..]
 	minute := hms[1]
 	second := hms[2]
 	// //////////
@@ -318,6 +318,22 @@ pub fn parse(s string) Time {
 		minute: minute.int()
 		second: second.int()
 	})
+}
+
+// `parse_iso` parses time in the following format: "Thu, 12 Dec 2019 06:07:45 GMT"
+pub fn parse_iso(s string) Time {
+	fields := s.split(' ')
+	if fields.len < 5 {
+		return Time{}
+	}
+
+	pos := months_string.index(fields[2]) or { return Time{} }
+	mm := pos/3 + 1
+
+	tmstr := malloc(s.len*2)
+	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str,
+		fields[3].str, mm, fields[1].str, fields[4].str))
+	return parse(tos(tmstr, count))
 }
 
 pub fn new_time(t Time) Time {

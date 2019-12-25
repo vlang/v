@@ -5,6 +5,7 @@ module compiler
 
 import (
 	os
+	os.cmdline
 	time
 	filepath
 )
@@ -30,7 +31,7 @@ fn (v mut V) cc() {
 	}
 	v.build_thirdparty_obj_files()
 	vexe := vexe_path()
-	vdir := os.dir(vexe)
+	vdir := filepath.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
 	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
@@ -467,9 +468,9 @@ fn (c &V) build_thirdparty_obj_files() {
 }
 
 fn find_c_compiler() string {
-	args := env_vflags_and_os_args().join(' ')
+	args := env_vflags_and_os_args()
 	defaultcc := find_c_compiler_default()
-	return get_arg(args, 'cc', defaultcc)
+	return cmdline.option(args, '-cc', defaultcc)
 }
 
 fn find_c_compiler_default() string {
@@ -486,24 +487,37 @@ fn find_c_compiler_default() string {
 
 fn find_c_compiler_thirdparty_options() string {
 	fullargs := env_vflags_and_os_args()
-	mut cflags := get_cmdline_cflags(fullargs)
+	mut cflags := cmdline.many_values(fullargs,'-cflags')
 	$if !windows {
-		cflags += ' -fPIC'
+		cflags << '-fPIC'
 	}
 	if '-m32' in fullargs {
-		cflags += ' -m32'
+		cflags << '-m32'
 	}
-	return cflags
+	return cflags.join(' ')
 }
 
-fn get_cmdline_cflags(args []string) string {
-	mut cflags := ''
-	for ci, cv in args {
-		if cv == '-cflags' {
-			cflags += args[ci + 1] + ' '
+fn parse_defines(defines []string) ([]string,[]string) {
+	// '-d abc -d xyz=1 -d qwe=0' should produce:
+	// compile_defines:      ['abc','xyz']
+	// compile_defines_all   ['abc','xyz','qwe']
+	mut compile_defines := []string
+	mut compile_defines_all := []string
+	for dfn in defines {
+		dfn_parts := dfn.split('=')
+		if dfn_parts.len == 1 {
+			compile_defines << dfn
+			compile_defines_all << dfn
+			continue
+		}
+		if dfn_parts.len == 2 {
+			compile_defines_all << dfn_parts[0]
+			if dfn_parts[1] == '1' {
+				compile_defines << dfn_parts[0]
+			}
 		}
 	}
-	return cflags
+	return compile_defines, compile_defines_all
 }
 
 fn missing_compiler_info() string {

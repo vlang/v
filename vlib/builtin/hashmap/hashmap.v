@@ -36,7 +36,7 @@ const (
 
 const(
 	fnv64_prime        = 1099511628211
-	fnv64_offset_basis = u64(14695981039346656037)
+	fnv64_offset_basis = 14695981039346656037
 )
 
 const(

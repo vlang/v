@@ -1,7 +1,10 @@
 module compiler
 
-import os
-import time
+import (
+	os
+	time
+	filepath
+)
 
 fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 	mut a := []string
@@ -52,7 +55,7 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 	// We are in live code reload mode, so start the .so loader in the background
 	mut cgen := v.cgen
 	cgen.genln('')
-	file_base := os.filename(v.dir).replace('.v', '')
+	file_base := filepath.filename(v.dir).replace('.v', '')
 	if v.os != .windows {
 		// unix:
 		so_name := file_base + '.so'
@@ -77,7 +80,7 @@ fn (v &V) generate_hot_reload_code() {
 	// Hot code reloading
 	if v.pref.is_live {
 		mut file := os.realpath(v.dir)
-		file_base := os.filename(file).replace('.v', '')
+		file_base := filepath.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.

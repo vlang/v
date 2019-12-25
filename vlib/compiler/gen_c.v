@@ -99,8 +99,11 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	typ = parse_pointer(typ[7..])
 	p.genln(';')
 	or_tok_idx := p.token_idx
+	p.fspace()
 	p.check(.key_orelse)
+	p.fspace()
 	p.check(.lcbr)
+	p.fspace()
 	p.register_var(Var{
 		name: 'err'
 		typ: 'string'

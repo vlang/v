@@ -95,4 +95,3 @@ pub fn show_cursor() {
 pub fn hide_cursor() {
 	print('\x1b[?25l')
 }
-

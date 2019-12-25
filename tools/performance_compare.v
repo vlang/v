@@ -1,6 +1,8 @@
-import os
-
-import flag
+import (
+	os
+	flag
+	filepath
+)
 
 const (
 	tool_version = '0.0.4'
@@ -212,7 +214,7 @@ fn main(){
 	used_tools_must_exist(['cp','rm','strip','make','git','upx','cc','wc','tail','hyperfine'])
 	mut context := new_context()
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(os.executable()))
+	fp.application(filepath.filename(os.executable()))
 	fp.version( tool_version )
 	fp.description( tool_description )
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')

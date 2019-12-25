@@ -6,6 +6,7 @@ module compiler
 import (
 	os
 	strings
+	filepath
 	compiler.x64
 	// time
 )
@@ -155,10 +156,22 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 				println('warning: use "$p" file name instead of "$path"')
 			}
 			path_platform = path_ending
-			path_pcguard = platform_postfix_to_ifdefguard(path_ending)
+			path_pcguard = v.platform_postfix_to_ifdefguard(path_ending)
 			break
 		}
 	}
+
+	if v.compile_defines.len > 0 {
+		for cdefine in v.compile_defines {
+			custom_path_ending := '_d_${cdefine}.v'
+			if path.ends_with(custom_path_ending){
+				path_platform = custom_path_ending
+				path_pcguard = v.platform_postfix_to_ifdefguard('custom $cdefine')
+				break
+			}
+		}
+	}
+
 	mut p := v.new_parser(new_scanner_file(path))
 	p = {
 		p |
@@ -774,26 +787,83 @@ fn (p mut Parser) type_decl() {
 	}
 	p.check(.key_type)
 	p.fspace()
-	name := p.check_name()
+	mut name := p.check_name()
 	p.fspace()
 	// V used to have 'type Foo struct', many Go users might use this syntax
 	if p.tok == .key_struct {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
+	if p.tok == .assign {
+		p.next()
+
+	}
 	parent := p.get_type2()
+	// Sum type
+	is_sum := p.tok == .pipe
+	if is_sum {
+		if !p.builtin_mod && p.mod != 'main' {
+			name = p.prepend_mod(name)
+		}
+		// Register the first child  (name we already parsed)
+		/*
+		p.table.register_type(Type{
+			parent: name
+			name: parent.name // yeah it's not a parent here
+			mod: p.mod
+			is_public: is_pub
+		})
+		*/
+		// Register the rest of them
+		mut idx := 0
+		for p.tok == .pipe {
+			idx++
+			p.next()
+			child_type_name := p.check_name()
+			if p.pass == .main {
+				// Update the type's parent
+				//println('child=$child_type_name parent=$name')
+				mut t := p.find_type(child_type_name)
+				if t.name == '' {
+					p.error('qunknown type `$child_type_name`')
+				}
+				t.parent = name
+				p.table.rewrite_type(t)
+				p.cgen.consts << '#define SumType_$child_type_name $idx // DEF2'
+			}
+		}
+		if p.pass == .decl {
+			p.table.sum_types << name
+			println(p.table.sum_types)
+		}
+		// Register the actual sum type
+		//println('registering sum $name')
+		p.table.register_type(Type{
+			name: name
+			mod: p.mod
+			cat: .alias
+			is_public: is_pub
+		})
+		p.gen_typedef('typedef struct {
+void* obj;
+int typ;
+} $name;
+')
+	}
 	nt_pair := p.table.cgen_name_type_pair(name, parent.name)
 	// TODO dirty C typedef hacks for DOOM
 	// Unknown type probably means it's a struct, and it's used before the struct is defined,
 	// so specify "struct"
 	_struct := if parent.cat != .array && parent.cat != .func && !p.table.known_type(parent.name) { 'struct' } else { '' }
-	p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
-	p.table.register_type(Type{
-		name: name
-		parent: parent.name
-		mod: p.mod
-		cat: .alias
-		is_public: is_pub
-	})
+	if !is_sum {
+		p.gen_typedef('typedef $_struct $nt_pair; //type alias name="$name" parent=`$parent.name`')
+		p.table.register_type(Type{
+			name: name
+			parent: parent.name
+			mod: p.mod
+			cat: .alias
+			is_public: is_pub
+		})
+	}
 	if p.tok != .key_type {
 		p.fspace()
 	}
@@ -2317,7 +2387,7 @@ struct IndexConfig {
 
 // for debugging only
 fn (p &Parser) fileis(s string) bool {
-	return os.filename(p.scanner.file_path).contains(s)
+	return filepath.filename(p.scanner.file_path).contains(s)
 }
 
 // in and dot have higher priority than `!`

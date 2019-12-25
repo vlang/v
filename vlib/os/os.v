@@ -169,7 +169,7 @@ pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
 	}
 	// single file copy
 	if !os.is_dir(source_path) {
-		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,os.filename(source_path)) } else { dest_path }
+		adjasted_path := if os.is_dir(dest_path) { filepath.join(dest_path,filepath.filename(source_path)) } else { dest_path }
 		if os.exists(adjasted_path) {
 			if overwrite {
 				os.rm(adjasted_path)
@@ -611,40 +611,28 @@ fn print_c_errno() {
 	// C.printf('errno=%d err="%s"\n', C.errno, C.strerror(C.errno))
 }
 
+[deprecated]
 pub fn ext(path string) string {
-	pos := path.last_index('.') or {
-		return ''
-	}
-	return path[pos..]
+	println('Use filepath.ext')
+	return filepath.ext(path)
 }
 
-// dir returns all but the last element of path, typically the path's directory.
+[deprecated]
 pub fn dir(path string) string {
-	if path == '.' {
-		return getwd()
-	}
-	pos := path.last_index(path_separator) or {
-		return '.'
-	}
-	return path[..pos]
+	println('Use filepath.dir')
+	return filepath.ext(path)
 }
 
-fn path_sans_ext(path string) string {
-	pos := path.last_index('.') or {
-		return path
-	}
-	return path[..pos]
-}
-
+[deprecated]
 pub fn basedir(path string) string {
-	pos := path.last_index(path_separator) or {
-		return path
-	}
-	return path[..pos] // NB: *without* terminating /
+	println('Use filepath.basedir')
+	return filepath.basedir(path)
 }
 
+[deprecated]
 pub fn filename(path string) string {
-	return path.all_after(path_separator)
+	println('Use filepath.filename')
+	return filepath.filename(path)
 }
 
 // get_line returns a one-line string from stdin

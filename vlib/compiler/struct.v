@@ -38,7 +38,7 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 	if !p.builtin_mod && !name[0].is_capital() {
 		p.error('mod=$p.mod struct names must be capitalized: use `struct ${name.capitalize()}`')
 	}
-	if is_interface && !name.ends_with('er') {
+	if is_interface && !name.ends_with('er') && name[0] != `I` {
 		p.error('interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)')
 	}
 	mut generic_types := map[string]string

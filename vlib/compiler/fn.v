@@ -220,7 +220,7 @@ fn (p mut Parser) fn_decl() {
 	mut f := Fn{
 		mod: p.mod
 		is_public: is_pub || p.is_vh // functions defined in .vh are always public
-		
+
 		is_unsafe: p.attr == 'unsafe_fn'
 		is_deprecated: p.attr == 'deprecated'
 		comptime_define: if p.attr.starts_with('if ') { p.attr[3..] } else { '' }
@@ -749,7 +749,7 @@ fn (p mut Parser) verify_fn_before_call(f &Fn) {
 // p.tok == fn_name
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
 	p.verify_fn_before_call(f)
-	is_comptime_define := f.comptime_define != '' && f.comptime_define != p.pref.comptime_define
+	is_comptime_define := f.comptime_define != '' && !(f.comptime_define in p.v.compile_defines )
 	if is_comptime_define {
 		p.cgen.nogen = true
 	}
@@ -799,7 +799,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 	if f.is_method {
 		receiver := f.args.first()
 		mut receiver_is_interface := false
-		if receiver.typ.ends_with('er') {
+		if receiver.typ.ends_with('er') || receiver.typ[0] == `I` {
 			// I absolutely love this syntax
 			// `s.speak()` =>
 			// `((void (*)())(Speaker_name_table[s._interface_idx][1]))(s._object);
@@ -893,7 +893,7 @@ fn (p mut Parser) fn_args(f mut Fn) {
 				typ: typ
 				is_arg: true
 				// is_mut: is_mut
-				
+
 				line_nr: p.scanner.line_nr
 				token_idx: p.cur_tok_index()
 			}
@@ -1083,7 +1083,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 		// fn run(r Animal) { ... }
 		// `run(dog)` adds `Dog` to the `Animal` interface.
 		// This is needed to generate an interface table.
-		if arg.typ.ends_with('er') {
+		if arg.typ.ends_with('er') || arg.typ[0] == `I` {
 			t := p.table.find_type(arg.typ)
 			if t.cat == .interface_ {
 				// perform((Speaker) { ._object = &dog,

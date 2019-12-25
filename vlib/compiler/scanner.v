@@ -15,7 +15,7 @@ const (
 	error_context_after = 2 // ^^^ same, but after
 )
 
-struct Scanner {
+pub struct Scanner {
 mut:
 	file_path                string
 	text                     string
