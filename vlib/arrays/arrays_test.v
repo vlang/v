@@ -16,7 +16,7 @@ fn test_range() {
 		assert c == f32(i + start_pos)
 	}
 
-	arr3 := arrays.range<int>(start_pos, 0)
+	arr3 := arrays.range<int>(start_pos, start_pos - 1)
 	assert arr3.len == 0
 
 	arr4 := arrays.range<int>(start_pos, start_pos)
