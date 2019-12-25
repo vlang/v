@@ -5,21 +5,22 @@ import compiler2.ast
 fn test_parser() {
 	//expr := ast.IntegerExpr {val:10}
 	//expr := ast.BinaryExpr{}
+
+	// print using walk
+	expr := parse_expr('3 + 7')
+	walk(expr)
+	println('\n')
+	
 	text_expr := [
 		'4 + 4',
 		'1 + 2 * 5',
 		'(2 * 3) / 2',
 		'3 + (7 * 6)'
 	]
-	for expr in text_expr {
-		// print using walk
-		// expr := parse_expr('3 + 7')
-		// walk(expr)
-		// println('')
-		
-		// print using str methods
-		x := parse_expr(expr)
-		println('source: $expr')
+	for s in text_expr {
+		// print using str method
+		x := parse_expr(s)
+		println('source: $s')
 		println('parsed: $x')
 		println('===================')
 	}
