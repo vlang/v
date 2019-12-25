@@ -54,7 +54,6 @@ fn test_all() {
 			}
 
 			println('downloaded $blob.len bytes')
-			os.write_file('/tmp/downloaded', blob)		
 		}
 
 		ftp.close()
