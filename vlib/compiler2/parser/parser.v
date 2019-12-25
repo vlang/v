@@ -51,6 +51,7 @@ pub fn (p mut Parser) expr(rbp int) ast.Expr {
 			p.next()
 		}
 		else {
+			// TODO: fix bug. note odd conditon instead of else if (same below)
 			if tok.is_scalar() {
 				left = ast.ScalarExpr{val: lit, typ: tok}
 			}
