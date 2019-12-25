@@ -1,7 +1,8 @@
 CC ?= cc
+TMPDIR ?= /tmp
 
 VCFILE := v.c
-TMPVC  := /tmp/vc
+TMPVC  := $(TMPDIR)/vc
 TMPTCC := /var/tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
