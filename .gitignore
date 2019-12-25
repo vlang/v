@@ -12,6 +12,7 @@ fns.txt
 /tools/vrepl
 /tools/vtest
 /tools/vtest-compiler
+/tools/vtest-fmt
 /tools/vfmt
 /tools/vup
 /tools/vpm
@@ -26,6 +27,7 @@ fns.txt
 /v_prod_g
 *.exe
 *.o
+*.so
 .*.c
 *.tmp.c
 vjs

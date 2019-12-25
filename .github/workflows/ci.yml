@@ -2,6 +2,23 @@ name: CI
 on: [push, pull_request]
 jobs:
 
+  v-fmt:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: getting all branch metainfo from github
+      run: |
+          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+          echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
+    - name: Build v (there is no need for dependencies for fmt)
+      run: make -j4
+    - name: Build a production tools/vfmt 
+      run: ./v -prod -d vfmt tools/vfmt.v
+    - name: fmt only the changed files (from master)
+      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|cut -f2- | xargs ./v fmt -diff
+    - name: Run v test-fmt
+      run: ./v test-fmt
+
   ubuntu-tcc:
     runs-on: ubuntu-18.04
     env:

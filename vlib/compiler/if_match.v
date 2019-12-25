@@ -231,7 +231,9 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 		}
 		p.open_scope()
 		p.next()
+		p.fspace()
 		p.check(.decl_assign)
+		p.fspace()
 		p.is_var_decl = true
 		option_type,expr := p.tmp_expr() // := p.bool_expression()
 		if !option_type.starts_with('Option_') {
@@ -245,6 +247,7 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 		// [statements]
 		// }
 		p.cgen.insert_before('$option_type $option_tmp = $expr; ')
+		p.fspace()
 		p.check(.lcbr)
 		p.genln(option_tmp + '.ok) {')
 		p.genln('$typ $var_name = *($typ*) $option_tmp . data;')
