@@ -303,3 +303,53 @@ pub fn (t Token) str() string {
 	return token_str[int(t)]
 }
 
+
+// Representation of highest and lowest precedence
+const (
+	lowest_prec  = 0
+	highest_prec = 7
+)
+
+// // Precedence returns a tokens precedence if defined, otherwise LowestPrec
+pub fn (tok Token) precedence() int {
+	match tok {
+		.plus, .minus { return 4 }
+		.mul, .div { return 4 }
+		.xor { return 6 }
+		.mod {return 7 }
+		else { return lowest_prec }
+	}
+}
+
+// is_scalar returns true if the token is a scalar
+pub fn (tok Token) is_scalar() bool {
+	match tok {
+		.number { return true }
+		else { return false }
+	}
+}
+
+// is_unary returns true if the token can be in a unary expression
+pub fn (tok Token) is_unary() bool {
+	match tok {
+		.plus, .minus { return true }
+		else { return false }
+	}
+}
+
+// is_left_assoc returns true if the token is left associative
+pub fn (tok Token) is_left_assoc() bool {
+	match tok {
+		.number, .plus, .minus, .mul, .div, .mod { return true }
+		else { return false }
+	}
+}
+
+// is_right_assoc returns true if the token is right associative
+pub fn (tok Token) is_right_assoc() bool {
+	match tok {
+		.xor { return true }
+		else { return false }
+	}
+}
+
