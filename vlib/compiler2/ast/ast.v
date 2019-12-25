@@ -10,12 +10,13 @@ import (
 
 struct Foo {}
 
-pub type Expr = Foo | IfExpr | BinaryExpr | IntegerExpr
+// pub type Expr = Foo | IfExpr | BinaryExpr | IntegerExpr
+pub type Expr = Foo | IfExpr | BinaryExpr | ScalarExpr | UnaryExpr
 
-pub struct IntegerExpr {
-pub:
-	val int
-}
+// pub struct IntegerExpr {
+// pub:
+// 	val int
+// }
 
 /*
 pub enum Expr {
@@ -45,6 +46,24 @@ pub:
 	right Expr
 }
 
+pub struct ScalarExpr {
+pub:
+	token token.Token
+	// op    BinaryOp
+	// op    token.Token
+	typ   token.Token
+	val   string
+	left  Expr
+}
+
+pub struct UnaryExpr {
+pub:
+	// token token.Token
+	//op    BinaryOp
+	op    token.Token
+	left  Expr
+}
+
 struct IfExpr {
 	token token.Token
 	cond  Expr
@@ -57,29 +76,44 @@ struct ReturnStmt {
 	results []Expr
 }
 
-enum BinaryOp {
-	sum
-	difference
-	product
-	quotient
-	remainder
-	bitwise_and
-	bitwise_or
-	bitwise_xor
-	left_shift
-	right_shift
-
-	equality
-	inequality
-	less_than
-	less_than_or_equal
-	more_than
-	more_than_or_equal
-
-	in_check
-
-	//These are suffixed with `bool` to prevent conflict with the keyword `or`
-	and_bool
-	or_bool
+// string representaiton of expr
+pub fn (x Expr) str() string {
+	match x {
+		BinaryExpr {
+			return '(${it.left.str()}$it.op.str()${it.right.str()})'
+		}
+		ScalarExpr {
+			return '${it.left.str()}$it.val'
+		}
+		UnaryExpr {
+			return '${it.left.str()}$it.op.str()'
+		}
+		else { return '' }
+	}
 }
 
+// enum BinaryOp {
+// 	sum
+// 	difference
+// 	product
+// 	quotient
+// 	remainder
+// 	bitwise_and
+// 	bitwise_or
+// 	bitwise_xor
+// 	left_shift
+// 	right_shift
+
+// 	equality
+// 	inequality
+// 	less_than
+// 	less_than_or_equal
+// 	more_than
+// 	more_than_or_equal
+
+// 	in_check
+
+// 	//These are suffixed with `bool` to prevent conflict with the keyword `or`
+// 	and_bool
+// 	or_bool
+// }

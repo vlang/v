@@ -24,7 +24,8 @@ pub fn parse_expr(text string) ast.Expr {
 		tok: res.tok
 		lit: res.lit
 	}
-	return p.expr()
+	// return p.expr()
+	return p.expr(token.lowest_prec)
 }
 
 fn (p mut Parser) next() {
@@ -34,48 +35,43 @@ fn (p mut Parser) next() {
 	p.lit = res.lit
 }
 
-fn (p mut Parser) expr() ast.Expr {
-	//println('\n\nexpr()')
-	mut node := p.term()
-	for p.tok == .plus || p.tok == .minus {
-		op := p.tok
-		p.next()
-		node = ast.BinaryExpr {
-			left: node
-			op: op
-			right: p.term()
+// Implementation of Pratt Precedence
+pub fn (p mut Parser) expr(rbp int) ast.Expr {
+	// null denotation (prefix)
+	tok := p.tok
+	lit := p.lit
+	p.next()
+	mut left := ast.Expr{}
+	match tok {
+		.lpar {
+			left = p.expr(0)
+			if p.tok != .rpar {
+				panic("Parse Error: expected )")
+			}
+			p.next()
+		}
+		else {
+			// TODO: fix bug. note odd conditon instead of else if (same below)
+			if tok.is_scalar() {
+				left = ast.ScalarExpr{val: lit, typ: tok}
+			}
+			if !tok.is_scalar() && tok.is_unary() {
+				left = ast.UnaryExpr{left: p.expr(token.highest_prec), op: tok}
+			}
 		}
 	}
-	return node
-}
 
-fn (p mut Parser) term() ast.Expr {
-	mut node := p.factor()
-	for p.tok == .mul || p.tok == .div || p.tok == .mod {
-		op := p.tok
+	// left binding power
+	for rbp < p.tok.precedence() {
+		tok2 := p.tok
 		p.next()
-		node = ast.BinaryExpr {
-			left: node
-			op: op
-			right: p.factor()
+		// left denotation (infix)
+		if tok2.is_right_assoc() {
+			left = ast.BinaryExpr{left: left, op: tok2, right: p.expr(tok2.precedence() - 1)}
+		}
+		if !tok2.is_right_assoc() && tok2.is_left_assoc() {
+			left = ast.BinaryExpr{left: left, op: tok2, right: p.expr(tok2.precedence())}
 		}
 	}
-	return node
-	//return ast.BinaryExpr{}
-	//return ast.Expr.Binary(ast.BinaryExpr{})
+	return left
 }
-
-fn (p mut Parser) factor() ast.Expr {
-	if p.tok == .number {
-		val := p.lit.int()
-		p.next()
-		return ast.IntegerExpr { val: val }
-	} else {
-		println('bad factor token')
-		println(p.tok)
-		exit(1)
-	}
-}
-
-
-
