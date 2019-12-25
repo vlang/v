@@ -359,8 +359,9 @@ pub fn (tok Token) is_left_assoc() bool {
 pub fn (tok Token) is_right_assoc() bool {
 	match tok {
 		.plus, .minus, .not,
-		.plus_assign, .minus_assign, .mult_assign, .div_assign,
-		.xor_assign, .mod_assign, .or_assign, .and_assign { return true }
+		.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
+		.xor_assign, .mod_assign, .or_assign, .and_assign,
+		.left_shift_assign, .righ_shift_assign { return true }
 		else { return false }
 	}
 }
