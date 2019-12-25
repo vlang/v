@@ -47,7 +47,6 @@ fn test_all() {
 			println('$dir_list')
 			dtp2.close()
 
- 
 			blob := ftp.get('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm') or {
 				println("couldn't download it")
 				return

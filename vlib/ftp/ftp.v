@@ -21,17 +21,17 @@ module ftp
 import net
 
 const (
-	CONNECTED = 220
-	SPECIFY_PASSWORD = 331
-	LOGGED_IN = 230
-	LOGIN_FIRST = 503
-	ANONYMOUS = 530
-	OPEN_DATA_CONNECTION = 150
-	CLOSING_DATA_CONNECTION = 226
-	COMMAND_OK = 200
-	DENIED = 550
-	PASSIVE_MODE = 227
-	COMPLETE = 226
+	Connected = 220
+	SpecifyPassword = 331
+	LoggedIn = 230
+	LoginFirst = 503
+	Anonymous = 530
+	OpenDataConnection = 150
+	CloseDataConnection = 226
+	CommandOk = 200
+	Denied = 550
+	PassiveMode = 227
+	Complete = 226
 )
 
 
@@ -131,7 +131,7 @@ fn (ftp mut FTP) connect(ip string) bool {
 	ftp.sock = sock
 
 	code,_ := ftp.read()
-	if code == CONNECTED {
+	if code == Connected {
 		return true
 	}
 
@@ -149,11 +149,11 @@ fn (ftp FTP) login(user, passwd string) bool {
 	mut code := 0
 
 	code,data = ftp.read()
-	if code == LOGGED_IN {
+	if code == LoggedIn {
 		return true
 	}
 
-	if code != SPECIFY_PASSWORD {
+	if code != SpecifyPassword {
 		return false
 	}
 
@@ -164,7 +164,7 @@ fn (ftp FTP) login(user, passwd string) bool {
 
 	code,data = ftp.read()
 
-	if code == LOGGED_IN {
+	if code == LoggedIn {
 		return true
 	}
 
@@ -188,10 +188,10 @@ fn (ftp FTP) pwd() string {
 fn (ftp FTP) cd(dir string) {
 	ftp.write('CWD '+dir) or { return }
 	mut code, mut data := ftp.read()
-	if code == DENIED {
+	if code == Denied {
 		println("CD $dir denied!")
 	}
-	if code == COMPLETE {
+	if code == Complete {
 		code,data = ftp.read()
 	}
 	println('cd $data')
@@ -222,7 +222,7 @@ fn (ftp FTP) pasv() ?DTP {
 	code,data := ftp.read()
 	println("pass: $data")
 
-	if code != PASSIVE_MODE {
+	if code != PassiveMode {
 		return error('pasive mode not allowed')
 	}
 
@@ -234,10 +234,10 @@ fn (ftp FTP) pasv() ?DTP {
 fn (ftp FTP) dir() string {
 	ftp.write('LIST') or {}
 	code,data := ftp.read()
-	if code == DENIED {
+	if code == Denied {
 		println("LIST denied!")
 	}
-	if code == OPEN_DATA_CONNECTION {
+	if code == OpenDataConnection {
 		println('receiving directory list, open data channel')
 	}
 	return data
@@ -251,26 +251,16 @@ fn (ftp FTP)  get(file string) ?string {
 	ftp.write('RETR $file') or {}
 	code,data := ftp.read()
 
-	if code == DENIED {
-		println('denied')
+	if code == Denied {
 		return error('permission denied')
 	}
 
-	if code != OPEN_DATA_CONNECTION {
-		println('not open data connection')
+	if code != OpenDataConnection {
 		return error('data connection not ready')
 	}
 
-	mut blob := ''
-	mut buff := ' '
-	for buff.len > 0 {
-		buff = dtp.read()
-		blob += buff
-	}
-
+	blob := dtp.read()
 	dtp.close()
-
-	println('$blob.len bytes read')
 
 	return blob
 }
