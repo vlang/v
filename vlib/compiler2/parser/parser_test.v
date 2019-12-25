@@ -12,6 +12,7 @@ fn test_parser() {
 	println('\n')
 	
 	text_expr := [
+		'1.2 + 3.4',
 		'4 + 4',
 		'1 + 2 * 5',
 		'(2 * 3) / 2',
