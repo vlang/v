@@ -2,9 +2,9 @@ module main
 
 
 import ftp
+import os
 
-
-fn main() {
+fn test_all() {
 	mut ftp := ftp.new()
 	ftp.debug()
 
@@ -42,17 +42,19 @@ fn main() {
 			}
 
 			ftp.dir()
-			data2 := dtp.read()
-			println('$data2')
-                              
+			dir_list := dtp2.read()
+			ftp.read()
+			println('$dir_list')
+			dtp2.close()
+
+ 
 			blob := ftp.get('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm') or {
 				println("couldn't download it")
 				return
 			}
 
-			println('$blob')
-			
-			dtp.close()
+			println('downloaded $blob.len bytes')
+			os.write_file('/tmp/downloaded', blob)		
 		}
 
 		ftp.close()

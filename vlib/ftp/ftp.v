@@ -19,7 +19,6 @@
 module ftp
 
 import net
-import time
 
 const (
 	CONNECTED = 220
@@ -27,12 +26,12 @@ const (
 	LOGGED_IN = 230
 	LOGIN_FIRST = 503
 	ANONYMOUS = 530
-	FILE_OK = 150
+	OPEN_DATA_CONNECTION = 150
 	CLOSING_DATA_CONNECTION = 226
 	COMMAND_OK = 200
 	DENIED = 550
 	PASSIVE_MODE = 227
-	CD_OK = 226
+	COMPLETE = 226
 )
 
 
@@ -43,12 +42,26 @@ mut:
 	port int
 }
 
-fn (DTP DTP) read() string {
-	return DTP.sock.read_all()
+fn (dtp DTP) read() string {
+	mut data := ''
+	mut buf := ''
+	for {
+		ptr,len := dtp.sock.recv(1024)
+		if len == 0 { break }
+
+		buf = string{
+			str: ptr
+			len: len
+		}
+
+		data += buf
+	}
+
+	return data
 }
 
-fn (DTP DTP) close() {
-	DTP.sock.close() or {}
+fn (dtp DTP) close() {
+	dtp.sock.close() or {}
 }
 
 pub struct FTP {
@@ -117,7 +130,7 @@ fn (ftp mut FTP) connect(ip string) bool {
 	}
 	ftp.sock = sock
 
-	code,data := ftp.read()
+	code,_ := ftp.read()
 	if code == CONNECTED {
 		return true
 	}
@@ -168,7 +181,7 @@ fn (ftp FTP) pwd() string {
 	ftp.write('PWD') or {
 		return ''
 	}
-	code,data := ftp.read()
+	_,data := ftp.read()
 	return data
 }
 
@@ -178,7 +191,7 @@ fn (ftp FTP) cd(dir string) {
 	if code == DENIED {
 		println("CD $dir denied!")
 	}
-	if code == CD_OK {
+	if code == COMPLETE {
 		code,data = ftp.read()
 	}
 	println('cd $data')
@@ -224,27 +237,40 @@ fn (ftp FTP) dir() string {
 	if code == DENIED {
 		println("LIST denied!")
 	}
+	if code == OPEN_DATA_CONNECTION {
+		println('receiving directory list, open data channel')
+	}
 	return data
 }
 
 fn (ftp FTP)  get(file string) ?string {
-	ftp.write('GET $file') or {}
+	dtp := ftp.pasv() or {
+		return error('cant stablish data connection')
+	}
+
+	ftp.write('RETR $file') or {}
 	code,data := ftp.read()
 
 	if code == DENIED {
+		println('denied')
 		return error('permission denied')
 	}
 
-	if code != PASSIVE_MODE {
-		return error('non passive transfer')
+	if code != OPEN_DATA_CONNECTION {
+		println('not open data connection')
+		return error('data connection not ready')
 	}
 
-
-	dtp := new_dtp(data) or {
-		return error('cant establish data channel')
+	mut blob := ''
+	mut buff := ' '
+	for buff.len > 0 {
+		buff = dtp.read()
+		blob += buff
 	}
-	blob := dtp.read()
+
 	dtp.close()
+
+	println('$blob.len bytes read')
 
 	return blob
 }
