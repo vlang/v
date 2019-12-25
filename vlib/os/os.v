@@ -1072,16 +1072,9 @@ pub fn join(base string, dirs ...string) string {
 	return filepath.join(base,dirs)
 }
 
-fn C.NSTemporaryDirectory() byteptr
-
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
 pub fn tmpdir() string {
 	mut path := os.getenv('TMPDIR')
-	$if macos {
-		if path == '' {
-			path = C.NSTemporaryDirectory()
-		}
-	}
 	$if windows {
 		if path == '' {
 			// TODO see Qt's implementation?
@@ -1090,6 +1083,9 @@ pub fn tmpdir() string {
 			path = os.getenv('TEMP')
 			if path == '' {
 				path = os.getenv('TMP')
+			}
+			if path == '' {
+				path = 'C:/tmp'
 			}
 		}
 	}
