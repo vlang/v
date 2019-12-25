@@ -33,6 +33,8 @@ fn test_all() {
 				println('cannot list folder')
 				return
 			}
+			
+			assert dir_list.len == 8
 			println('$dir_list.len files:')
 			for file in dir_list {
 				println('$file')
@@ -42,6 +44,8 @@ fn test_all() {
 				println("couldn't download it")
 				return
 			}
+
+			assert blob.len == 55670
 
 			println('downloaded $blob.len bytes')
 		}
