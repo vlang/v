@@ -13,7 +13,7 @@ import (
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['fmt', 'up', 'create', 'test', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
+	simple_tools = ['fmt', 'up', 'create', 'test', 'test-fmt', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
