@@ -34,7 +34,6 @@ const (
 	Complete = 226
 )
 
-
 pub struct DTP {
 mut:
 	sock net.Socket
@@ -192,7 +191,7 @@ pub fn (ftp FTP) pwd() string {
 }
 
 pub fn (ftp FTP) cd(dir string) {
-	ftp.write('CWD '+dir) or { return }
+	ftp.write('CWD $dir') or { return }
 	mut code, mut data := ftp.read()
 	if code == Denied {
 		println("CD $dir denied!")
@@ -237,7 +236,7 @@ pub fn (ftp FTP) pasv() ?DTP {
 	return dtp
 }
 
-pub fn (ftp FTP) dir() ?string {
+pub fn (ftp FTP) dir() ?[]string {
 	dtp := ftp.pasv() or {
 		return error('cannot establish data connection')
 	}
@@ -258,7 +257,15 @@ pub fn (ftp FTP) dir() ?string {
 	}
 	dtp.close()
 
-	return bytearray2string(list_dir)
+	mut dir := []string
+	for lfile in bytearray2string(list_dir).split('\n') {
+		if lfile.len >1 {
+			spl := lfile.split(' ')
+			dir << spl[spl.len-1]
+		}
+	}
+
+	return dir
 }
 
 pub fn (ftp FTP) get(file string) ?[]byte {

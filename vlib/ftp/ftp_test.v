@@ -19,11 +19,13 @@ fn test_all() {
 
 			ftp.cd('/')
 
-			data := ftp.dir() or {
+			folder := ftp.dir() or {
 				println('cannot list folder')
 				return
 			}	
-			println('$data')
+			for file in folder {
+				println(file)
+			}
 
 			ftp.cd('/suse/linux/enterprise/11Server/en/SAT-TOOLS/SRPMS/')
 				
@@ -31,7 +33,10 @@ fn test_all() {
 				println('cannot list folder')
 				return
 			}
-			println('$dir_list')
+			println('$dir_list.len files:')
+			for file in dir_list {
+				println('$file')
+			}
 
 			blob := ftp.get('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm') or {
 				println("couldn't download it")
