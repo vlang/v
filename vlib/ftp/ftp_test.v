@@ -2,7 +2,6 @@ module main
 
 
 import ftp
-import os
 
 fn test_all() {
 	mut ftp := ftp.new()
@@ -20,32 +19,19 @@ fn test_all() {
 
 			ftp.cd('/')
 
-			dtp := ftp.pasv() or {
-				println("data channel not established")
-				ftp.close()
-				exit
-			}
-
-			println('DTP on host $dtp.ip port $dtp.port')
-
-			ftp.dir()
-			data := dtp.read()
+			data := ftp.dir() or {
+				println('cannot list folder')
+				return
+			}	
 			println('$data')
 
 			ftp.cd('/suse/linux/enterprise/11Server/en/SAT-TOOLS/SRPMS/')
-			dtp.close()
-
-			dtp2 := ftp.pasv() or {
-				println("data channel not established")
-				ftp.close()
-				exit
+				
+			dir_list := ftp.dir() or {
+				println('cannot list folder')
+				return
 			}
-
-			ftp.dir()
-			dir_list := dtp2.read()
-			ftp.read()
 			println('$dir_list')
-			dtp2.close()
 
 			blob := ftp.get('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm') or {
 				println("couldn't download it")

@@ -231,16 +231,28 @@ fn (ftp FTP) pasv() ?DTP {
 	return dtp
 }
 
-fn (ftp FTP) dir() string {
+fn (ftp FTP) dir() ?string {
+	dtp := ftp.pasv() or {
+		return error('cannot establish data connection')
+	}
+
 	ftp.write('LIST') or {}
-	code,data := ftp.read()
+	code,_ := ftp.read()
 	if code == Denied {
-		println("LIST denied!")
+		return error('list denied')
 	}
-	if code == OpenDataConnection {
-		println('receiving directory list, open data channel')
+	if code != OpenDataConnection {
+		return error('data channel empty')
 	}
-	return data
+
+	list_dir := dtp.read()
+	result,_ := ftp.read()
+	if result != CloseDataConnection {
+		println('LIST not ok')
+	}
+	dtp.close()
+
+	return list_dir
 }
 
 fn (ftp FTP)  get(file string) ?string {
@@ -249,7 +261,7 @@ fn (ftp FTP)  get(file string) ?string {
 	}
 
 	ftp.write('RETR $file') or {}
-	code,data := ftp.read()
+	code,_ := ftp.read()
 
 	if code == Denied {
 		return error('permission denied')
