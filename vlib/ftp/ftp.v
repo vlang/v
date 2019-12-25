@@ -42,19 +42,15 @@ mut:
 	port int
 }
 
-fn (dtp DTP) read() string {
-	mut data := ''
-	mut buf := ''
+fn (dtp DTP) read() []byte {
+	mut data := []byte
 	for {
-		ptr,len := dtp.sock.recv(1024)
+		buf,len := dtp.sock.recv(1024)
 		if len == 0 { break }
 
-		buf = string{
-			str: ptr
-			len: len
+		for i:=0;i<len;i++ {
+			data << buf[i]
 		}
-
-		data += buf
 	}
 
 	return data
@@ -77,8 +73,18 @@ fn new() FTP {
 	return f
 }
 
-fn (ftp mut FTP) debug() {
+pub fn (ftp mut FTP) debug() {
 	ftp.dbg = !ftp.dbg
+}
+
+fn bytearray2string(a []byte) string {
+	mut c := a 
+	c << 0x00
+	b := string{
+		str: c.data
+		len: c.len
+	}
+	return b
 }
 
 fn (ftp FTP) write(data string) ?int {
@@ -124,7 +130,7 @@ fn (ftp FTP) read() (int,string) {
 	return code,data
 }
 
-fn (ftp mut FTP) connect(ip string) bool {
+pub fn (ftp mut FTP) connect(ip string) bool {
 	sock := net.dial(ip, 21) or {
 		return false
 	}
@@ -138,7 +144,7 @@ fn (ftp mut FTP) connect(ip string) bool {
 	return false
 }
 
-fn (ftp FTP) login(user, passwd string) bool {
+pub fn (ftp FTP) login(user, passwd string) bool {
 
 	ftp.write('USER '+user) or {
 		println('ERROR sending user')
@@ -171,13 +177,13 @@ fn (ftp FTP) login(user, passwd string) bool {
 	return false
 }
 
-fn (ftp FTP) close() {
+pub fn (ftp FTP) close() {
 	send_quit := 'QUIT\r\n'
 	ftp.sock.send_string(send_quit) or {}
 	ftp.sock.close() or {}
 }
 
-fn (ftp FTP) pwd() string {
+pub fn (ftp FTP) pwd() string {
 	ftp.write('PWD') or {
 		return ''
 	}
@@ -185,7 +191,7 @@ fn (ftp FTP) pwd() string {
 	return data
 }
 
-fn (ftp FTP) cd(dir string) {
+pub fn (ftp FTP) cd(dir string) {
 	ftp.write('CWD '+dir) or { return }
 	mut code, mut data := ftp.read()
 	if code == Denied {
@@ -197,7 +203,7 @@ fn (ftp FTP) cd(dir string) {
 	println('cd $data')
 }
 
-fn new_dtp(msg string) ?DTP {
+pub fn new_dtp(msg string) ?DTP {
 	// it receives a control message 227 like: 
 	// '227 Entering Passive Mode (209,132,183,61,48,218)'
 
@@ -217,7 +223,7 @@ fn new_dtp(msg string) ?DTP {
 	return dtp
 }
 
-fn (ftp FTP) pasv() ?DTP {
+pub fn (ftp FTP) pasv() ?DTP {
 	ftp.write('PASV') or {}
 	code,data := ftp.read()
 	println("pass: $data")
@@ -231,7 +237,7 @@ fn (ftp FTP) pasv() ?DTP {
 	return dtp
 }
 
-fn (ftp FTP) dir() ?string {
+pub fn (ftp FTP) dir() ?string {
 	dtp := ftp.pasv() or {
 		return error('cannot establish data connection')
 	}
@@ -252,10 +258,10 @@ fn (ftp FTP) dir() ?string {
 	}
 	dtp.close()
 
-	return list_dir
+	return bytearray2string(list_dir)
 }
 
-fn (ftp FTP)  get(file string) ?string {
+pub fn (ftp FTP) get(file string) ?[]byte {
 	dtp := ftp.pasv() or {
 		return error('cant stablish data connection')
 	}
