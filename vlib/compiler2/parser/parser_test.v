@@ -19,7 +19,7 @@ fn test_parser() {
 		
 		// print using str methods
 		x := parse_expr(expr)
-		println('  orig: $expr')
+		println('source: $expr')
 		println('parsed: $x')
 		println('===================')
 	}

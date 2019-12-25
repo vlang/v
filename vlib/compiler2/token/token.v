@@ -310,7 +310,7 @@ const (
 	highest_prec = 7
 )
 
-// // Precedence returns a tokens precedence if defined, otherwise LowestPrec
+// Precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok {
 		.plus, .minus { return 4 }
@@ -352,4 +352,3 @@ pub fn (tok Token) is_right_assoc() bool {
 		else { return false }
 	}
 }
-

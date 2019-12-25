@@ -76,6 +76,7 @@ struct ReturnStmt {
 	results []Expr
 }
 
+// string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
 		BinaryExpr {
@@ -89,11 +90,6 @@ pub fn (x Expr) str() string {
 		}
 		else { return '' }
 	}
-}
-
-// String representation of Scalar Expression
-pub fn (s ScalarExpr) str() string {
-	return s.val
 }
 
 // enum BinaryOp {
