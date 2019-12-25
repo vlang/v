@@ -134,5 +134,5 @@ fn C.TTF_CloseFont(font &TTF_Font)
 
 pub const (
   version = '0.0.1'
-  sdl_verison = sdl.version // TODO: remove this hack to mark sdl as used; avoids warning
+  sdl_version = sdl.version // TODO: remove this hack to mark sdl as used; avoids warning
 )
