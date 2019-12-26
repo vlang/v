@@ -40,7 +40,7 @@ fn test_parser() {
 fn test_cgen() {
 	//expr := parse_expr('3 + 7 * 2')
 	//expr2 := parse_stmt('a := 3 + "f"')
-	expr2 := parse_expr('2 +3 ')//"helo"')
+	expr2 := parse_expr('2 + "helo"')
 	program := ast.Program{
 		exprs: [
 			expr2,

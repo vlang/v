@@ -10,11 +10,11 @@ import (
 
 struct Foo {}
 
-pub type Expr = Foo | IfExpr | BinaryExpr | ScalarExpr | UnaryExpr |
-	StringLiteral  | IntegerExpr
+pub type Expr = Foo | IfExpr | BinaryExpr | UnaryExpr |
+	StringLiteral  | IntegerLiteral
 pub type Stmt = Foo | VarDecl
 
-pub struct IntegerExpr {
+pub struct IntegerLiteral {
 pub:
 	val int
 }
@@ -66,16 +66,6 @@ pub:
 	right Expr
 }
 
-pub struct ScalarExpr {
-pub:
-	token token.Token
-	// op    BinaryOp
-	// op    token.Token
-	typ   token.Token
-	val   string
-	left  Expr
-}
-
 pub struct UnaryExpr {
 pub:
 	// token token.Token
@@ -102,9 +92,9 @@ pub fn (x Expr) str() string {
 		BinaryExpr {
 			return '(${it.left.str()}$it.op.str()${it.right.str()})'
 		}
-		ScalarExpr {
-			return '${it.left.str()}$it.val'
-		}
+		//ScalarExpr {
+			//return '${it.left.str()}$it.val'
+		//}
 		UnaryExpr {
 			return '${it.left.str()}$it.op.str()'
 		}

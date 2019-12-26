@@ -44,14 +44,9 @@ const (
 fn (g mut Gen) expr(node ast.Expr) Type {
 	//println('cgen expr()')
 	match node {
-		ast.IntegerExpr {
+		ast.IntegerLiteral {
 			g.write(it.val.str())
 			return int_type
-		}
-		ast.ScalarExpr {
-			g.expr(it.left)
-			g.write(' $it.val ')
-
 		}
 		ast.UnaryExpr {
 			g.expr(it.left)

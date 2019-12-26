@@ -64,10 +64,18 @@ pub fn (p mut Parser) expr(rbp int) ast.Expr {
 		else {
 			// TODO: fix bug. note odd conditon instead of else if (same below)
 			if tok.is_scalar() {
-				node = ast.ScalarExpr{
-					val: lit
-					typ: tok
+				if tok == .str {
+					node = ast.StringLiteral {
+						val: lit
+					}
+				}	if tok == .number {
+					node = ast.IntegerLiteral {
+						val: lit.int()
+					}
 				}
+				//else {
+					//verror('bad scalar token')
+				//}
 			}
 			if !tok.is_scalar() && tok.is_unary() {
 				node = ast.UnaryExpr{
@@ -122,4 +130,9 @@ fn (p mut Parser) stmt() ast.Stmt {
 	*/
 
 	return ast.VarDecl{}
+}
+
+fn verror(s string) {
+	println(s)
+	exit(1)
 }
