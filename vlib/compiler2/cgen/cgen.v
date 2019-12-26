@@ -41,12 +41,11 @@ const (
 	void_type = Type{'void'}
 )
 
-fn (g mut Gen) expr(node ast.Expr) Type {
+fn (g mut Gen) expr(node ast.Expr) {
 	//println('cgen expr()')
 	match node {
 		ast.IntegerLiteral {
 			g.write(it.val.str())
-			return int_type
 		}
 		ast.UnaryExpr {
 			g.expr(it.left)
@@ -54,10 +53,9 @@ fn (g mut Gen) expr(node ast.Expr) Type {
 		}
 		ast.StringLiteral {
 			g.write('"$it.val"')
-			return string_type
 		}
 		ast.BinaryExpr {
-			typ := g.expr(it.left)
+			g.expr(it.left)
 			match it.op {
 				.plus {	g.write(' + ')	}
 				.minus {	g.write(' - ')	}
@@ -65,22 +63,24 @@ fn (g mut Gen) expr(node ast.Expr) Type {
 				.div {	g.write(' / ')	}
 				else {}
 			}
-			typ2 := g.expr(it.right)
-			if typ.name != typ2.name {
-				println('bad types $typ.name $typ2.name')
-			}
-			return typ
+			g.expr(it.right)
+		//	if typ.name != typ2.name {
+				//verror('bad types $typ.name $typ2.name')
+			//}
 		}
 		ast.VarDecl {
-			g.write('var $it.name = ')
+			g.write('$it.typ.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
-			return void_type
 		}
 		else {
 			println('bad node')
 		}
 	}
-	return void_type
+}
+
+fn verror(s string) {
+	println(s)
+	exit(1)
 }
 

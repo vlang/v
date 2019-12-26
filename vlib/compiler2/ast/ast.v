@@ -11,8 +11,9 @@ import (
 struct Foo {}
 
 pub type Expr = Foo | IfExpr | BinaryExpr | UnaryExpr |
-	StringLiteral  | IntegerLiteral
-pub type Stmt = Foo | VarDecl
+	StringLiteral  | IntegerLiteral | VarDecl
+
+pub type Stmt = Foo | Foo //VarDecl
 
 pub struct IntegerLiteral {
 pub:
@@ -43,6 +44,7 @@ pub struct VarDecl {
 pub:
 	name string
 	expr Expr
+	typ Type
 
 }
 
@@ -50,6 +52,18 @@ pub struct Program {
 pub:
 	exprs []Expr
 }
+
+pub struct Type {
+pub:
+	name string
+}
+
+pub const (
+	string_type = Type{'string'}
+	int_type = Type{'int'}
+	void_type = Type{'void'}
+)
+
 
 // A single identifier
 struct Ident {
@@ -63,7 +77,9 @@ pub:
 	//op    BinaryOp
 	op    token.Token
 	left  Expr
+	left_type Type
 	right Expr
+	right_type Type
 }
 
 pub struct UnaryExpr {
@@ -90,13 +106,16 @@ struct ReturnStmt {
 pub fn (x Expr) str() string {
 	match x {
 		BinaryExpr {
-			return '(${it.left.str()}$it.op.str()${it.right.str()})'
+			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
 		}
-		//ScalarExpr {
-			//return '${it.left.str()}$it.val'
-		//}
 		UnaryExpr {
-			return '${it.left.str()}$it.op.str()'
+			return it.left.str() + it.op.str()
+		}
+		IntegerLiteral {
+			return it.val.str()
+		}
+		IntegerLiteral {
+			return '"$it.val"'
 		}
 		else { return '' }
 	}

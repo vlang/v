@@ -272,8 +272,9 @@ fn (p &Parser) gen_fmt() {
 	s3 := s2.replace(') or{', ') or {')
 	s4 := s3.replace(')or{', ') or {')
 	s5 := s4.replace('or{', 'or {')
+	s6 := s5.replace('}}\n', '}\n\t}\n')
 
-	s := s5
+	s := s6
 
 	if s == '' {
 		return

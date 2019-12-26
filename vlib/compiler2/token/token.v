@@ -289,7 +289,7 @@ fn (t []Token) contains(val Token) bool {
 pub fn (t Token) str() string {
 	lit := 't.lit'
 	if t == .number {
-		return lit
+		return 'number'
 	}
 	if t == .chartoken {
 		return '`lit`'

@@ -4,8 +4,9 @@
 module compiler
 
 fn (p mut Parser) bool_expression() string {
+	is_ret := p.prev_tok == .key_return
 	start_ph := p.cgen.add_placeholder()
-	expected := p.expected_type
+	mut expected := p.expected_type
 	tok := p.tok
 	typ := p.bterm()
 	mut got_and := false // to catch `a && b || c` in one expression without ()
@@ -46,7 +47,11 @@ fn (p mut Parser) bool_expression() string {
 		println(tok.str())
 		p.error('expr() returns empty type')
 	}
+	if p.inside_return_expr { //is_ret { // return a,b hack TODO
+		expected = p.expected_type
+	}
 	if expected != typ && expected in p.table.sum_types { // TODO perf
+	//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		p.cgen.set_placeholder(start_ph,
 			//'/*SUM TYPE CAST*/($expected) { .obj = &($typ[]) { ')
 			'/*SUM TYPE CAST*/($expected) { .obj = memdup(& ')

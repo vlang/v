@@ -7,6 +7,7 @@ import (
 	compiler2.scanner
 	compiler2.ast
 	compiler2.token
+	compiler2.table
 )
 
 struct Parser {
@@ -14,20 +15,49 @@ struct Parser {
 mut:
 	tok     token.Token
 	lit     string
+	//vars []string
+	table &table.Table
 }
 
-pub fn parse_expr(text string) ast.Expr {
+pub fn parse_expr(text string, table &table.Table) ast.Expr {
 	mut s := scanner.new_scanner(text)
 	res := s.scan()
 	mut p := Parser{
 		scanner: s
 		tok: res.tok
 		lit: res.lit
+		table: table
 	}
-	// return p.expr()
-	return p.expr(token.lowest_prec)
+	expr,_ := p.expr(token.lowest_prec)
+	return expr
 }
 
+pub fn parse_file(text string, table &table.Table) ast.Program {
+	s := scanner.new_scanner(text)
+	mut exprs := []ast.Expr
+	mut p := Parser{
+		scanner: s
+		//tok: res.tok
+		//lit: res.lit
+		table: table
+	}
+	p.next()
+	for {
+		//res := s.scan()
+		if p.tok == .eof {
+			break
+		}
+		println('expr at ' + p.tok.str())
+		expr,_ := p.expr(token.lowest_prec)
+		exprs << expr
+		p.next()
+	}
+	println('nr exprs = $exprs.len')
+	println(exprs[0])
+	return ast.Program{exprs}
+}
+
+/*
 pub fn parse_stmt(text string) ast.Stmt {
 	mut s := scanner.new_scanner(text)
 	res := s.scan()
@@ -38,6 +68,8 @@ pub fn parse_stmt(text string) ast.Stmt {
 	}
 	return p.stmt()
 }
+*/
+
 
 fn (p mut Parser) next() {
 	res := p.scanner.scan()
@@ -47,15 +79,40 @@ fn (p mut Parser) next() {
 }
 
 // Implementation of Pratt Precedence
-pub fn (p mut Parser) expr(rbp int) ast.Expr {
+pub fn (p mut Parser) expr(rbp int) (ast.Expr,ast.Type) {
 	// null denotation (prefix)
 	tok := p.tok
 	lit := p.lit
-	p.next()
+
+	if p.tok == .name {
+		name := p.lit
+		p.next()
+		if p.tok == .decl_assign {
+			p.next()
+			mut node := ast.Expr{}
+			expr,t :=p.expr(token.lowest_prec)
+			if name in p.table.names {
+				verror('redefinition of `$name`')
+			}
+			p.table.names << name
+			println(p.table.names)
+			println('added $name')
+			// TODO can't return VarDecl{}
+			node = ast.VarDecl{
+				name: name
+				expr: expr//p.expr(token.lowest_prec)
+				typ: t
+			}//, ast.void_type
+			return node, ast.void_type
+		}
+	} else {
+		p.next()
+	}
 	mut node := ast.Expr{}
+	mut typ := ast.void_type
 	match tok {
 		.lpar {
-			node = p.expr(0)
+			node,typ = p.expr(0)
 			if p.tok != .rpar {
 				panic('Parse Error: expected )')
 			}
@@ -65,48 +122,70 @@ pub fn (p mut Parser) expr(rbp int) ast.Expr {
 			// TODO: fix bug. note odd conditon instead of else if (same below)
 			if tok.is_scalar() {
 				if tok == .str {
-					node = ast.StringLiteral {
+					node = ast.StringLiteral{
 						val: lit
 					}
-				}	if tok == .number {
-					node = ast.IntegerLiteral {
+					typ = ast.string_type
+				}
+				if tok == .number {
+					node = ast.IntegerLiteral{
 						val: lit.int()
 					}
+					typ = ast.int_type
 				}
-				//else {
-					//verror('bad scalar token')
-				//}
+				// else {
+				// verror('bad scalar token')
+				// }
 			}
 			if !tok.is_scalar() && tok.is_unary() {
+				expr,_ := p.expr(token.highest_prec)
 				node = ast.UnaryExpr{
-					left: p.expr(token.highest_prec)
+					// left: p.expr(token.highest_prec)
+					left: expr
 					op: tok
 				}
 			}
-		}}
+		}
+	}
 	// left binding power
 	for rbp < p.tok.precedence() {
 		tok2 := p.tok
 		p.next()
+		//mut t1 := ast.Type{}
+		mut t2 := ast.Type{}
+		//mut q := false
 		// left denotation (infix)
 		if tok2.is_right_assoc() {
+			//q = true
+			mut expr := ast.Expr{}
+			expr,t2 = p.expr(tok2.precedence() - 1)
 			node = ast.BinaryExpr{
 				left: node
+				//left_type: t1
 				op: tok2
-				right: p.expr(tok2.precedence() - 1)
+				// right: p.expr(tok2.precedence() - 1)
+
+				right: expr
+
+			}
+			if typ.name != t2.name {
+				println('bad types $typ.name $t2.name')
 			}
 		}
 		if !tok2.is_right_assoc() && tok2.is_left_assoc() {
+			mut expr := ast.Expr{}
+			expr,t2 = p.expr(tok2.precedence())
 			node = ast.BinaryExpr{
 				left: node
 				op: tok2
-				right: p.expr(tok2.precedence())
+				right: expr
 			}
 		}
 	}
-	return node
+	return node,typ
 }
 
+/*
 fn (p mut Parser) stmt() ast.Stmt {
 	if p.tok == .name {
 		name := p.lit
@@ -131,6 +210,8 @@ fn (p mut Parser) stmt() ast.Stmt {
 
 	return ast.VarDecl{}
 }
+*/
+
 
 fn verror(s string) {
 	println(s)
