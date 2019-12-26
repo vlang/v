@@ -76,16 +76,6 @@ pub fn (ftp mut FTP) debug() {
 	ftp.dbg = !ftp.dbg
 }
 
-fn bytearray2string(a []byte) string {
-	mut c := a 
-	c << 0x00
-	b := string{
-		str: c.data
-		len: c.len
-	}
-	return b
-}
-
 fn (ftp FTP) write(data string) ?int {
 	if ftp.dbg {
 		println('FTP.v >>> $data')
@@ -258,7 +248,7 @@ pub fn (ftp FTP) dir() ?[]string {
 	dtp.close()
 
 	mut dir := []string
-	for lfile in bytearray2string(list_dir).split('\n') {
+	for lfile in string(byteptr(list_dir.data)).split('\n') {
 		if lfile.len >1 {
 			spl := lfile.split(' ')
 			dir << spl[spl.len-1]
