@@ -34,7 +34,7 @@ fn test_all() {
 				return
 			}
 			
-			assert dir_list.len == 8
+			assert dir_list.len > 5
 			println('$dir_list.len files:')
 			for file in dir_list {
 				println('$file')
@@ -45,7 +45,7 @@ fn test_all() {
 				return
 			}
 
-			assert blob.len == 55670
+			assert blob.len > 1024
 
 			println('downloaded $blob.len bytes')
 		}

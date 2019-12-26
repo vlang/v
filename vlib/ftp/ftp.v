@@ -34,7 +34,7 @@ const (
 	Complete = 226
 )
 
-pub struct DTP {
+struct DTP {
 mut:
 	sock net.Socket
 	ip string
@@ -59,14 +59,14 @@ fn (dtp DTP) close() {
 	dtp.sock.close() or {}
 }
 
-pub struct FTP {
+struct FTP {
 mut:
 	sock net.Socket
 	buffer_size int
 	dbg bool
 }
 
-fn new() FTP {
+pub fn new() FTP {
 	mut f := FTP{}
 	f.buffer_size = 1024
 	return f
