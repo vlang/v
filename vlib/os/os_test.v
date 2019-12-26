@@ -88,15 +88,6 @@ fn test_create_and_delete_folder() {
   assert folder_exists == false
 }
 
-fn test_dir() {
-	$if windows {
-		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
-
-	} $else {
-		assert os.dir('/var/tmp/foo') == '/var/tmp'
-	}
-}
-
 fn walk_callback(file string) {
     if file == '.' || file == '..' {
         return

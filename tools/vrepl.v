@@ -86,7 +86,7 @@ pub fn run_repl() []string {
 	}
 	mut r := Repl{}
 	mut readline := readline.Readline{}
-	vexe := os.args[1]
+	vexe := os.getenv('VEXE')
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -200,9 +200,9 @@ fn print_output(s os.Result) {
 }
 
 fn main() {
-	if os.args.len < 2 || !os.exists(os.args[1]) {
+	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
-		println('  vrepl vexepath\n')
+		println('  VEXE=vexepath vrepl\n')
 		println('  ... where vexepath is the full path to the v executable file')
 		return
 	}
@@ -216,7 +216,7 @@ pub fn rerror(s string) {
 }
 
 fn v_version() string {
-	vexe := os.args[1]
+	vexe := os.getenv('VEXE')
 	vversion_res := os.exec('$vexe --version') or { panic('"$vexe --version" is not working') }
 	return vversion_res.output
 }

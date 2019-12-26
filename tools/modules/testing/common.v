@@ -27,11 +27,11 @@ pub fn new_test_session(vargs string) TestSession {
 }
 
 pub fn vexe_path() string {
-	// NB: tools extracted from v require that the first
-	// argument to them to be the v executable location.
+	// NB: tools extracted from v require that the VEXE 
+	// environment variable contains the path to the v executable location.
 	// They are usually launched by vlib/compiler/vtools.v,
 	// launch_tool/1 , which provides it.
-	return os.args[1]
+	return os.getenv('VEXE')
 }
 
 
@@ -94,6 +94,7 @@ pub fn (ts mut TestSession) test() {
 		os.rm( tmpc_filepath )
 	}
 	ts.benchmark.stop()
+	eprintln(term.h_divider())
 }
 
 pub fn vlib_should_be_present( parent_dir string ) {
@@ -108,7 +109,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
 	vexe := vexe_path()
-	parent_dir := os.dir(vexe)
+	parent_dir := filepath.dir(vexe)
 	vlib_should_be_present( parent_dir )
 	vargs := zargs.replace(vexe, '')
 
@@ -148,7 +149,7 @@ pub fn building_any_v_binaries_failed() bool {
 	eprintln('Building V binaries...')
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := testing.vexe_path()
-	parent_dir := os.dir(vexe)
+	parent_dir := filepath.dir(vexe)
 	testing.vlib_should_be_present( parent_dir )
 	os.chdir( parent_dir )
 
@@ -177,6 +178,7 @@ pub fn building_any_v_binaries_failed() bool {
 		eprintln(bmark.step_message('$cmd => ${bok}'))
 	}
 	bmark.stop()
+	eprintln(term.h_divider())  
 	eprintln( bmark.total_message( 'building v binaries' ) )
 
 	return failed

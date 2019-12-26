@@ -68,7 +68,9 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
     goto :nocompiler
 )
 
-cl.exe /nologo /w /volatile:ms /Fo.v.c.obj /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
+set ObjFile=.v.c.obj
+
+cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v2.exe /INCREMENTAL:NO
 if %ERRORLEVEL% NEQ 0 (
     echo cl.exe failed to build V
     goto :compileerror
@@ -89,6 +91,7 @@ del v.pdb
 del v3.ilk
 del v3.pdb
 del vc140.pdb
+del %ObjFile%
 
 goto :success
 

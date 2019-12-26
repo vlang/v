@@ -9,9 +9,12 @@ module main
 /// code, instead of in embedded C ...
 ///////////////////////////////////////////////////////////////////////
 
-import os
-import benchmark
-import term
+import (
+	os
+	term
+	filepath
+	benchmark
+)
 
 struct BenchedTests {
 mut:
@@ -75,7 +78,7 @@ fn (b &BenchedTests) fn_name() string {
 // Called at the end of the test program produced by `v -stats file_test.v`
 fn (b mut BenchedTests) end_testing() {
 	b.bench.stop()
-	println( '     ' + b.bench.total_message('running V tests in "' + os.filename(b.test_suit_file) + '"' ) )
+	println( '     ' + b.bench.total_message('running V tests in "' + filepath.filename(b.test_suit_file) + '"' ) )
 }
 
 /////////////////////////////////////////////////////////////////////

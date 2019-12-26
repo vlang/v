@@ -17,15 +17,13 @@ fn main() {
 	v_test_compiler(args_string.all_before('test-compiler'))
 }
 
-fn v_test_compiler(vargs string){
+fn v_test_compiler(vargs string) {
 	vexe := testing.vexe_path()
-	parent_dir := os.dir(vexe)
-	testing.vlib_should_be_present( parent_dir )
-
+	parent_dir := filepath.dir(vexe)
+	testing.vlib_should_be_present(parent_dir)
 	// Changing the current directory is needed for some of the compiler tests,
 	// compiler/tests/local_test.v and compiler/tests/repl/repl_test.v
-	os.chdir( parent_dir )
-
+	os.chdir(parent_dir)
 	/*
 	if !os.exists(parent_dir + '/v.v') {
 		eprintln('v.v is missing, it must be next to the V executable')
@@ -44,22 +42,16 @@ fn v_test_compiler(vargs string){
 			eprintln('v.c can be compiled without warnings. This is good :)')
 		}
 	}
-
 	building_tools_failed := testing.v_build_failing(vargs, 'tools')
-
 	eprintln('\nTesting all _test.v files...')
-	mut compiler_test_session := testing.new_test_session( vargs )
+	mut compiler_test_session := testing.new_test_session(vargs)
 	compiler_test_session.files << os.walk_ext(parent_dir, '_test.v')
 	compiler_test_session.test()
-	eprintln( compiler_test_session.benchmark.total_message('running V tests') )
-
+	eprintln(compiler_test_session.benchmark.total_message('running V tests'))
 	eprintln('')
 	building_examples_failed := testing.v_build_failing(vargs, 'examples')
-
 	eprintln('')
-	building_live_failed := testing.v_build_failing(vargs + '-live',
-                                    filepath.join( 'examples', 'hot_reload'))
-
+	building_live_failed := testing.v_build_failing(vargs + '-live', filepath.join('examples','hot_reload'))
 	eprintln('')
 	v_module_install_cmd := '$vexe install nedpals.args'
 	eprintln('\nInstalling a v module with: $v_module_install_cmd ')
@@ -72,13 +64,8 @@ fn v_test_compiler(vargs string){
 		eprintln('v failed to install a test module')
 	}
 	vmark.stop()
-	eprintln( 'Installing a v module took: ' + vmark.total_duration().str() + 'ms')
-
-	if building_tools_failed ||
-     compiler_test_session.failed ||
-     building_examples_failed ||
-     building_live_failed {
+	eprintln('Installing a v module took: ' + vmark.total_duration().str() + 'ms')
+	if building_tools_failed || compiler_test_session.failed || building_examples_failed || building_live_failed {
 		exit(1)
 	}
-
 }

@@ -1,11 +1,10 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module builtin
 
 pub fn ptr_str(ptr voidptr) string {
-	buf := malloc(sizeof(double) * 5 + 1)// TODO
+	buf := malloc(sizeof(double) * 5 + 1) // TODO
 	C.sprintf(charptr(buf), '%p', ptr)
 	return tos(buf, vstrlen(buf))
 }
@@ -19,7 +18,7 @@ pub fn (nn int) str() string {
 		return '0'
 	}
 	max := 16
-	mut buf := calloc(max+1)
+	mut buf := calloc(max + 1)
 	mut len := 0
 	mut is_neg := false
 	if n < 0 {
@@ -42,12 +41,20 @@ pub fn (nn int) str() string {
 	return tos(buf + max - len, len)
 }
 
-pub fn (n i8) str() string  {	return int(n).str() }
-pub fn (n i16) str() string {	return int(n).str() }
-pub fn (n u16) str() string {	return int(n).str() }
+pub fn (n i8) str() string {
+	return int(n).str()
+}
+
+pub fn (n i16) str() string {
+	return int(n).str()
+}
+
+pub fn (n u16) str() string {
+	return int(n).str()
+}
 
 pub fn (nn u32) str() string {
-	 mut n := nn
+	mut n := nn
 	if n == u32(0) {
 		return '0'
 	}
@@ -84,6 +91,7 @@ pub fn (nn byte) str() string {
 }
 */
 
+
 pub fn (nn i64) str() string {
 	mut n := nn
 	if n == i64(0) {
@@ -113,7 +121,7 @@ pub fn (nn i64) str() string {
 }
 
 pub fn (nn u64) str() string {
-	 mut n := nn
+	mut n := nn
 	if n == u64(0) {
 		return '0'
 	}
@@ -138,24 +146,16 @@ pub fn (b bool) str() string {
 }
 
 pub fn (n int) hex() string {
-	len := if n >= 0 {
-		n.str().len + 3
-	} else {
-		11
-	}
+	len := if n >= 0 { n.str().len + 3 } else { 11 }
 	hex := malloc(len) // 0x + \n
 	count := int(C.sprintf(charptr(hex), '0x%x', n))
 	return tos(hex, count)
 }
 
 pub fn (n i64) hex() string {
-	len := if n >= i64(0) {
-		n.str().len + 3
-	} else {
-		19
-	}
+	len := if n >= i64(0) { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
-	count := int(C.sprintf(charptr(hex), '0x%' C.PRIx64, n))
+	count := int(C.sprintf(charptr(hex), '0x%'C.PRIx64, n))
 	return tos(hex, count)
 }
 
@@ -169,21 +169,21 @@ pub fn (a []byte) contains(val byte) bool {
 }
 
 pub fn (c rune) str() string {
-	fst_byte := int(c) >> 8 * 3 & 0xff
+	fst_byte := int(c)>>8 * 3 & 0xff
 	len := utf8_char_len(fst_byte)
-	mut str := string {
+	mut str := string{
 		len: len
 		str: malloc(len + 1)
 	}
 	for i := 0; i < len; i++ {
-		str.str[i] = int(c) >> 8 * (3 - i) & 0xff
+		str.str[i] = int(c)>>8 * (3 - i) & 0xff
 	}
 	str[len] = `\0`
 	return str
 }
 
 pub fn (c byte) str() string {
-	mut str := string {
+	mut str := string{
 		len: 1
 		str: malloc(2)
 	}

@@ -1,5 +1,7 @@
 module ttf
 
+import sdl
+
 #include <SDL_ttf.h>
 
 [typedef]
@@ -132,4 +134,5 @@ fn C.TTF_CloseFont(font &TTF_Font)
 
 pub const (
   version = '0.0.1'
+  sdl_version = sdl.version // TODO: remove this hack to mark sdl as used; avoids warning
 )

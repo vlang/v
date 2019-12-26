@@ -3,6 +3,23 @@ const (
 	A = 8
 )
 
+fn test_pointer() {
+	mut arr := []&int
+	a := 1
+	b := 2
+	c := 3
+	arr << &a
+	arr << &b
+	arr << &c
+	assert *arr[0] == 1
+	arr[1] = &c
+	assert *arr[1] == 3
+	mut d_arr := [arr] // [][]&int
+	d_arr << arr
+	assert *d_arr[0][1] == 3
+	assert *d_arr[1][0] == 1
+}
+
 fn test_ints() {
 	mut a := [1, 5, 2, 3]
 	assert a.len == 4

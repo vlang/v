@@ -1,8 +1,13 @@
-import os
+module main
+
+import (
+	os
+	filepath
+)
 
 fn main() {
 	println('Updating V...')
-	vroot := os.dir(os.args[1])
+	vroot := filepath.dir(os.getenv('VEXE'))
 	os.chdir(vroot)
 	s := os.exec('git -C "$vroot" pull --rebase origin master') or { panic(err) }
 	println(s.output)
@@ -11,7 +16,7 @@ fn main() {
 		if os.exists( v_backup_file ) {
 			os.rm( v_backup_file )
 		}
-		os.mv_by_cp('$vroot/v.exe', v_backup_file) or { panic(err) }
+		os.mv('$vroot/v.exe', v_backup_file)
 		s2 := os.exec('"$vroot/make.bat"') or { panic(err) }
 		println(s2.output)
 	} $else {

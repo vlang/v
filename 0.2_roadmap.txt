@@ -24,7 +24,7 @@
 - wrap up memory management
 - remove all compiler memory leaks
 + fix child <T> function calls
-- enable vfmt
++ enable vfmt
 + bring back vdoc and regenerate all module docs
 + optimize the parser
 - chat.vlang.io
@@ -36,7 +36,8 @@
 - ui/orm demo: a simple gui client for postgres/mysql/sqlite
 - ui demo: calculator
 - declarative ui with hot reload (similar to swiftui)
-- "building a simple blog with vweb" tutorial + youtube video
++ "building a simple blog with vweb" tutorial +
+- youtube video
 + fix interfaces
 + fast.vlang.io
 + bare metal support

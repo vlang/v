@@ -163,7 +163,7 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool,fn_ph, assign_po
 }
 
 // returns true in case of an early return
-fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
+fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	p.next()
 	p.check(.lcbr)
 	ptr := typ.contains('*')

@@ -1,22 +1,21 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 import (
 	strings
 )
 
-fn (p mut Parser) get_type2() Type{
+fn (p mut Parser) get_type2() Type {
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
 	cat := TypeCategory.struct_
 	// multiple returns
 	if p.tok == .lpar {
-		//p.warn('`()` are no longer necessary in multiple returns' +
-		//'\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
+		// p.warn('`()` are no longer necessary in multiple returns' +
+		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
 		// if p.inside_tuple {p.error('unexpected (')}
 		// p.inside_tuple = true
 		p.check(.lpar)
@@ -27,11 +26,12 @@ fn (p mut Parser) get_type2() Type{
 				break
 			}
 			p.check(.comma)
+			p.fspace()
 		}
 		p.check(.rpar)
 		// p.inside_tuple = false
 		typ = p.register_multi_return_stuct(types)
-		return Type {
+		return Type{
 			name: typ
 			mod: p.mod
 			cat: cat
@@ -39,7 +39,10 @@ fn (p mut Parser) get_type2() Type{
 	}
 	// fn type
 	if p.tok == .key_fn {
-		mut f := Fn{name: '_', mod: p.mod}
+		mut f := Fn{
+			name: '_'
+			mod: p.mod
+		}
 		p.next()
 		line_nr := p.scanner.line_nr
 		p.fn_args(mut f)
@@ -57,8 +60,9 @@ fn (p mut Parser) get_type2() Type{
 			f.typ = 'void'
 		}
 		// Register anon fn type
-		fn_typ := Type {
-			name: f.typ_str()// 'fn (int, int) string'
+		fn_typ := Type{
+			name: f.typ_str() // 'fn (int, int) string'
+			
 			mod: p.mod
 			func: f
 			cat: .func
@@ -78,8 +82,8 @@ fn (p mut Parser) get_type2() Type{
 		if p.tok == .number || (p.tok == .name && !p.inside_const) {
 			if p.tok == .name {
 				typ += '[${p.mod}__$p.lit]'
-
-			} else {
+			}
+			else {
 				typ += '[$p.lit]'
 			}
 			p.next()
@@ -98,10 +102,12 @@ fn (p mut Parser) get_type2() Type{
 			p.error('maps only support string keys for now')
 		}
 		p.check(.rsbr)
-		val_type := p.get_type()// p.check_name()
+		val_type := stringify_pointer(p.get_type()) // p.check_name()
 		typ = 'map_$val_type'
 		p.register_map(typ)
-		return Type{name: typ}
+		return Type{
+			name: typ
+		}
 	}
 	// ptr/ref
 	mut warn := false
@@ -119,10 +125,11 @@ fn (p mut Parser) get_type2() Type{
 		p.check(.amp)
 	}
 	// generic type check
-	ti := p.cur_fn.dispatch_of.inst
+	ti := p.generic_dispatch.inst
 	if p.lit in ti.keys() {
 		typ += ti[p.lit]
-	} else {
+	}
+	else {
 		typ += p.lit
 	}
 	// C.Struct import
@@ -152,8 +159,7 @@ fn (p mut Parser) get_type2() Type{
 		// "typ" not found? try "mod__typ"
 		if t.name == '' && !p.builtin_mod {
 			// && !p.first_pass() {
-			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') &&
-				!typ.starts_with('[') {
+			if !typ.contains('array_') && p.mod != 'main' && !typ.contains('__') && !typ.starts_with('[') {
 				typ = p.prepend_mod(typ)
 			}
 			t = p.table.find_type(typ)
@@ -163,7 +169,7 @@ fn (p mut Parser) get_type2() Type{
 				// for q in p.table.types {
 				// println(q.name)
 				// }
-				mut t_suggest, tc_suggest := p.table.find_misspelled_type(typ, p, 0.50)
+				mut t_suggest,tc_suggest := p.table.find_misspelled_type(typ, p, 0.50)
 				if t_suggest.len > 0 {
 					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
 				}
@@ -184,6 +190,7 @@ fn (p mut Parser) get_type2() Type{
 	if arr_level > 0 {
 		// p.log('ARR TYPE="$typ" run=$p.pass')
 		// We come across "[]User" etc ?
+		typ = stringify_pointer(typ)
 		for i := 0; i < arr_level; i++ {
 			typ = 'array_$typ'
 		}
@@ -191,18 +198,18 @@ fn (p mut Parser) get_type2() Type{
 	}
 	p.next()
 	if is_question {
+		typ = stringify_pointer(typ)
 		typ = 'Option_$typ'
 		p.table.register_type_with_parent(typ, 'Option')
 	}
-
 	// Because the code uses * to see if it's a pointer
 	if typ == 'byteptr' {
 		typ = 'byte*'
 	}
 	if typ == 'voidptr' {
-		//if !p.builtin_mod && p.mod != 'os' && p.mod != 'gx' && p.mod != 'gg' && !p.pref.translated {
-			//p.error('voidptr can only be used in unsafe code')
-		//}
+		// if !p.builtin_mod && p.mod != 'os' && p.mod != 'gx' && p.mod != 'gg' && !p.pref.translated {
+		// p.error('voidptr can only be used in unsafe code')
+		// }
 		typ = 'void*'
 	}
 	/*
@@ -211,6 +218,28 @@ fn (p mut Parser) get_type2() Type{
 		p.error('2 __ in gettype(): typ="$typ"')
 	}
 	*/
-	return Type{name: typ, cat: cat}
+
+	return Type{
+		name: typ
+		cat: cat
+	}
 }
 
+fn parse_pointer(_typ string) string {
+	if !_typ.starts_with('ptr_') {
+		return _typ
+	}
+	mut typ := _typ.clone()
+	for typ.starts_with('ptr_') {
+		typ = typ[4..] + '*'
+	}
+	return typ
+}
+
+fn stringify_pointer(typ string) string {
+	if !typ.ends_with('*') {
+		return typ
+	}
+	count := typ.count('*')
+	return 'ptr_'.repeat(count) + typ.trim_right('*')
+}

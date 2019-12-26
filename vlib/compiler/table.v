@@ -1,25 +1,28 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 import strings
 
 struct Table {
 pub mut:
-	typesmap     map[string]Type
-	consts       []Var
-	fns          map[string]Fn
-	obf_ids      map[string]int // obf_ids['myfunction'] == 23
-	modules      []string // List of all modules registered by the application
-	imports      []string // List of all imports
-	cflags       []CFlag  // ['-framework Cocoa', '-lglfw3']
-	fn_cnt       int //atomic
-	obfuscate    bool
-	varg_access  []VargAccess
-	//enum_vals map[string][]string
-	//names        []Name
+	typesmap              map[string]Type
+	consts                []Var
+	fns                   map[string]Fn
+	obf_ids               map[string]int // obf_ids['myfunction'] == 23
+	modules               []string // List of all modules registered by the application
+	imports               []string // List of all imports
+	cflags                []CFlag // ['-framework Cocoa', '-lglfw3']
+	fn_cnt                int // atomic
+	obfuscate             bool
+	varg_access           []VargAccess
+	// enum_vals map[string][]string
+	// names        []Name
+	max_field_len         map[string]int // for vfmt: max_field_len['Parser'] == 12
+	generic_struct_params map[string][]string
+	tuple_variants map[string][]string // enum( Bool(BoolExpr) )
+	sum_types []string
 }
 
 struct VargAccess {
@@ -41,11 +44,11 @@ struct Name {
 }
 
 enum AccessMod {
-	private        // private immutable
-	private_mut    // private mutable
-	public         // public immutable (readonly)
-	public_mut     // public, but mutable only in this module
-	global         // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
+	private // private immutable
+	private_mut // private mutable
+	public // public immutable (readonly)
+	public_mut // public, but mutable only in this module
+	global // public and mutable both inside and outside (not recommended to use, that's why it's so verbose)
 }
 
 fn (a []AccessMod) contains(b AccessMod) bool {
@@ -73,31 +76,31 @@ enum TypeCategory {
 
 struct Var {
 pub mut:
-	typ             string
-	name            string
-	idx             int // index in the local_vars array
-	is_arg          bool
-	is_const        bool
-	args            []Var // function args
-	attr            string //  [json] etc
-	is_mut          bool
-	is_alloc        bool
-	is_returned     bool
-	ptr             bool
-	ref             bool
-	parent_fn       string // Variables can only be defined in functions
-	mod             string // module where this var is stored
-	access_mod      AccessMod
-	is_global       bool // __global (translated from C only)
-	is_used         bool
-	is_changed      bool
-	scope_level     int
-	is_c            bool // todo remove once `typ` is `Type`, not string
-	is_moved        bool
-	line_nr         int
-	token_idx       int // this is a token index, which will be used by error reporting
-	is_for_var      bool
-	is_public       bool // for consts
+	typ         string
+	name        string
+	idx         int // index in the local_vars array
+	is_arg      bool
+	is_const    bool
+	args        []Var // function args
+	attr        string // [json] etc
+	is_mut      bool
+	is_alloc    bool
+	is_returned bool
+	ptr         bool
+	ref         bool
+	parent_fn   string // Variables can only be defined in functions
+	mod         string // module where this var is stored
+	access_mod  AccessMod
+	is_global   bool // __global (translated from C only)
+	is_used     bool
+	is_changed  bool
+	scope_level int
+	is_c        bool // todo remove once `typ` is `Type`, not string
+	is_moved    bool
+	line_nr     int
+	token_idx   int // this is a token index, which will be used by error reporting
+	is_for_var  bool
+	is_public   bool // for consts
 }
 
 struct Type {
@@ -111,21 +114,25 @@ pub mut:
 	parent         string
 	func           Fn // For cat == FN (type myfn fn())
 	is_c           bool // `C.FILE`
-	enum_vals []string
-	gen_types []string
-	default_vals []string // `struct Foo { bar int = 2 }`
+	enum_vals      []string
+	gen_types      []string
+	default_vals   []string // `struct Foo { bar int = 2 }`
+	parser_idx     int
+	decl_tok_idx   int
 	// `is_placeholder` is used for types that are not defined yet but are known to exist.
 	// It allows having things like `fn (f Foo) bar()` before `Foo` is defined.
 	// This information is needed in the first pass.
 	is_placeholder bool
-	gen_str	       bool  // needs `.str()` method generation
-	is_flag        bool  // enum bitfield flag
+	gen_str        bool // needs `.str()` method generation
+	is_flag        bool // enum bitfield flag
+	// max_field_len  int
+	is_generic     bool
 }
 
 struct TypeNode {
-	mut:
+mut:
 	next &TypeNode
-	typ Type
+	typ  Type
 }
 
 /*
@@ -151,50 +158,19 @@ pub fn (t Type) str() string {
 }
 */
 
+
 const (
-	c_reserved = [
-		'delete',
-		'exit',
-		'unix',
-		//'print',
-		// 'ok',
-		'error',
-		'malloc',
-		'calloc',
-		'free',
-		'panic',
-
-		// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
-		'auto',
-		'char',
-		'default',
-		'do',
-		'double',
-		'extern',
-		'float',
-		'inline',
-		'int',
-		'long',
-		'register',
-		'restrict',
-		'short',
-		'signed',
-		'sizeof',
-		'static',
-		'switch',
-		'typedef',
-		'union',
-		'unsigned',
-		'void',
-		'volatile',
-		'while',
-	]
-
+	c_reserved = ['delete', 'exit', 'unix',
+	// 'print',
+	// 'ok',
+	'error', 'malloc', 'calloc', 'free', 'panic',
+	// Full list of C reserved words, from: https://en.cppreference.com/w/c/keyword
+	'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', ]
 )
-
 // This is used for debugging only
 pub fn (f Fn) str() string {
-	t := Table{}
+	t := Table{
+	}
 	str_args := f.str_args(t)
 	return '${f.name}($str_args) $f.typ'
 }
@@ -211,7 +187,7 @@ pub fn (t &Table) debug_fns() string {
 // }
 const (
 	integer_types = ['int', 'i8', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
-	float_types   = ['f32', 'f64']
+	float_types = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
 
@@ -239,10 +215,12 @@ fn (t mut Table) register_enum_val(typ, val string) {
 }
 */
 
+
 fn new_table(obfuscate bool) &Table {
-	mut t := &Table {
+	mut t := &Table{
 		obfuscate: obfuscate
-		//enum_vals: map[string][]string
+		// enum_vals: map[string][]string
+
 	}
 	t.register_builtin('int')
 	t.register_builtin('size_t')
@@ -332,7 +310,7 @@ fn (t mut Table) register_const(name, typ, mod string, is_pub bool) {
 
 // Only for translated code
 fn (p mut Parser) register_global(name, typ string) {
-	p.table.consts << Var {
+	p.table.consts << Var{
 		name: name
 		typ: typ
 		is_const: true
@@ -365,7 +343,8 @@ fn (table &Table) known_type_fast(t &Type) bool {
 
 fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
-	if f.name.str != 0 { // TODO
+	if f.name.str != 0 {
+		// TODO
 		return f
 	}
 	return none
@@ -373,7 +352,8 @@ fn (t &Table) find_fn(name string) ?Fn {
 
 fn (t &Table) find_fn_is_script(name string, is_script bool) ?Fn {
 	mut f := t.fns[name]
-	if f.name.str != 0 { // TODO
+	if f.name.str != 0 {
+		// TODO
 		return f
 	}
 	// V script? Try os module.
@@ -388,12 +368,16 @@ fn (t &Table) find_fn_is_script(name string, is_script bool) ?Fn {
 }
 
 fn (t &Table) known_fn(name string) bool {
-	_ = t.find_fn(name) or { return false }
+	_ = t.find_fn(name) or {
+		return false
+	}
 	return true
 }
 
 fn (t &Table) known_const(name string) bool {
-	_ = t.find_const(name) or { return false }
+	_ = t.find_const(name) or {
+		return false
+	}
 	return true
 }
 
@@ -404,11 +388,14 @@ fn (t mut Table) register_builtin(typ string) {
 	if typ in t.typesmap {
 		return
 	}
-	t.typesmap[typ] = Type{name:typ, is_public:true}
+	t.typesmap[typ] = Type{
+		name: typ
+		is_public: true
+	}
 }
 
 fn (p mut Parser) register_type_with_parent(strtyp, parent string) {
-	typ := Type {
+	typ := Type{
 		name: strtyp
 		parent: parent
 		mod: p.mod
@@ -421,11 +408,12 @@ fn (t mut Table) register_type_with_parent(typ, parent string) {
 	if typ.len == 0 {
 		return
 	}
-	t.typesmap[typ] = Type {
+	t.typesmap[typ] = Type{
 		name: typ
 		parent: parent
 		is_public: true
-		//mod: mod
+		// mod: mod
+
 	}
 }
 
@@ -440,7 +428,7 @@ fn (t mut Table) rewrite_type(typ Type) {
 	if typ.name.len == 0 {
 		return
 	}
-	t.typesmap[typ.name]  = typ
+	t.typesmap[typ.name] = typ
 }
 
 fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut bool, attr string, access_mod AccessMod) {
@@ -449,12 +437,13 @@ fn (table mut Table) add_field(type_name, field_name, field_type string, is_mut 
 		verror('add_field: empty type')
 	}
 	mut t := table.typesmap[type_name]
-	t.fields << Var {
+	t.fields << Var{
 		name: field_name
 		typ: field_type
 		is_mut: is_mut
 		attr: attr
-		parent_fn: type_name   // Name of the parent type
+		parent_fn: type_name // Name of the parent type
+
 		access_mod: access_mod
 	}
 	table.typesmap[type_name] = t
@@ -470,7 +459,9 @@ fn (table mut Table) add_default_val(idx int, type_name, val_expr string) {
 }
 
 fn (t &Type) has_field(name string) bool {
-	_ = t.find_field(name) or { return false }
+	_ = t.find_field(name) or {
+		return false
+	}
 	return true
 }
 
@@ -488,7 +479,9 @@ fn (t &Type) find_field(name string) ?Var {
 }
 
 fn (table &Table) type_has_field(typ &Type, name string) bool {
-	_ = table.find_field(typ, name) or { return false }
+	_ = table.find_field(typ, name) or {
+		return false
+	}
 	return true
 }
 
@@ -527,12 +520,16 @@ fn (p mut Parser) add_method(type_name string, f Fn) {
 }
 
 fn (t &Type) has_method(name string) bool {
-	_ = t.find_method(name) or { return false }
+	_ = t.find_method(name) or {
+		return false
+	}
 	return true
 }
 
 fn (table &Table) type_has_method(typ &Type, name string) bool {
-	_ = table.find_method(typ, name) or { return false }
+	_ = table.find_method(typ, name) or {
+		return false
+	}
 	return true
 }
 
@@ -589,23 +586,26 @@ fn (t &Table) find_type(name_ string) Type {
 		name = name.replace('*', '')
 	}
 	if !(name in t.typesmap) {
-		//println('ret Type')
-		return Type{}
+		// println('ret Type')
+		return Type{
+		}
 	}
 	return t.typesmap[name]
 }
 
 fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
+	//if p.fileis('type_test') {
+		//println('got=$got_ exp=$expected_')
+	//}
 	mut got := got_
 	mut expected := expected_
-	//p.log('check types got="$got" exp="$expected"  ')
+	// p.log('check types got="$got" exp="$expected"  ')
 	if p.pref.translated {
 		return true
 	}
 	if got == expected {
 		return true
 	}
-
 	// generic return type
 	if expected == '_ANYTYPE_' {
 		p.cur_fn.typ = got
@@ -635,7 +635,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Allow ints to be used as longs
-	if got=='int' && expected=='i64' {
+	if got == 'int' && expected == 'i64' {
 		return true
 	}
 	if got == 'void*' && expected.starts_with('fn ') {
@@ -645,34 +645,35 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Todo void* allows everything right now
-	if got=='void*' || expected=='void*' {// || got == 'cvoid' || expected == 'cvoid' {
+	if got == 'void*' || expected == 'void*' {
+		// || got == 'cvoid' || expected == 'cvoid' {
 		return true
 	}
 	// TODO only allow numeric consts to be assigned to bytes, and
 	// throw an error if they are bigger than 255
-	if got=='int' && expected=='byte' {
+	if got == 'int' && expected == 'byte' {
 		return true
 	}
-	if got=='byteptr' && expected=='byte*' {
+	if got == 'byteptr' && expected == 'byte*' {
 		return true
 	}
-	if got=='byte*' && expected=='byteptr' {
+	if got == 'byte*' && expected == 'byteptr' {
 		return true
 	}
-	if got=='charptr' && expected=='char*' {
+	if got == 'charptr' && expected == 'char*' {
 		return true
 	}
-	if got=='char*' && expected=='charptr' {
+	if got == 'char*' && expected == 'charptr' {
 		return true
 	}
-	if got=='int' && expected=='byte*' {
+	if got == 'int' && expected == 'byte*' {
 		return true
 	}
-	//if got=='int' && expected=='voidptr*' {
-		//return true
-	//}
+	// if got=='int' && expected=='voidptr*' {
+	// return true
+	// }
 	// byteptr += int
-	if got=='int' && expected in ['byteptr', 'charptr'] {
+	if got == 'int' && expected in ['byteptr', 'charptr'] {
 		return true
 	}
 	if got == 'Option' && expected.starts_with('Option_') {
@@ -683,7 +684,7 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 		return true
 	}
 	// Expected type "Option_os__File", got "os__File"
-	if expected.starts_with('Option_') && expected.ends_with(got) {
+	if expected.starts_with('Option_') && expected.ends_with(stringify_pointer(got)) {
 		return true
 	}
 	// NsColor* return 0
@@ -697,36 +698,43 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	// return true
 	// }
 	// TODO fn hack
-	if got.starts_with('fn ') && (expected.ends_with('fn') ||
-	expected.ends_with('Fn')) {
+	if got.starts_with('fn ') && (expected.ends_with('fn') || expected.ends_with('Fn')) {
 		return true
 	}
 	// Allow pointer arithmetic
-	if expected=='void*' && got=='int' {
+	if expected == 'void*' && got == 'int' {
 		return true
 	}
-	//if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
-		//p.warn('got=$got exp=$expected $p.is_const_literal')
-	//}
+	// if p.fileis('_test') && is_number_type(got) && is_number_type(expected)  {
+	// p.warn('got=$got exp=$expected $p.is_const_literal')
+	// }
 	// Allow `myu64 == 1`, `myfloat == 2` etc
 	if is_integer_type(got) && is_number_type(expected) && p.is_const_literal {
 		return true
 	}
-
 	if expected == 'integer' {
 		if is_integer_type(got) {
 			return true
-		} else {
+		}
+		else {
 			p.error('expected type `$expected`, but got `$got`')
 		}
 	}
-
 	expected = expected.replace('*', '')
-	got = got.replace('*', '').replace('ptr','')
+	got = got.replace('*', '').replace('ptr', '')
 	if got != expected {
 		// Interface check
-		if expected.ends_with('er') {
+		if expected.ends_with('er') || expected[0] == `I` {
 			if p.satisfies_interface(expected, got, throw) {
+				return true
+			}
+		}
+		// Sum type
+		if expected in p.table.sum_types {
+			//println('checking sum')
+			child := p.table.find_type(got)
+			if child.parent == expected {
+				//println('yep $expected')
 				return true
 			}
 		}
@@ -740,17 +748,19 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	return true
 }
 
-	fn (p mut Parser) base_type(name string) string {
-	    typ := p.find_type(name)
-	    if typ.parent != '' {
-	        return p.base_type(typ.parent)
-	    }
-	    return name
+fn (p mut Parser) base_type(name string) string {
+	typ := p.find_type(name)
+	if typ.parent != '' {
+		return p.base_type(typ.parent)
 	}
+	return name
+}
 
 // throw by default
 fn (p mut Parser) check_types(got, expected string) bool {
-	if p.first_pass() { return true }
+	if p.first_pass() {
+		return true
+	}
 	return p.check_types2(got, expected, true)
 }
 
@@ -770,15 +780,13 @@ fn (p mut Parser) satisfies_interface(interface_name, _typ string, throw bool) b
 	for method in int_typ.methods {
 		if !typ.has_method(method.name) {
 			// if throw {
-			p.error('type `$_typ` doesn\'t satisfy interface ' +
-				'`$interface_name` (method `$method.name` is not implemented)')
+			p.error("type `$_typ` doesn\'t satisfy interface " + '`$interface_name` (method `$method.name` is not implemented)')
 			// }
 			return false
 		}
 	}
 	return true
 }
-
 
 fn (table &Table) is_interface(name string) bool {
 	if !(name in table.typesmap) {
@@ -809,7 +817,7 @@ fn (t &Table) all_test_function_names() []string {
 }
 
 fn (t &Table) find_const(name string) ?Var {
-	//println('find const l=$t.consts.len')
+	// println('find const l=$t.consts.len')
 	for c in t.consts {
 		if c.name == name {
 			return c
@@ -848,21 +856,28 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
 	return match typ {
-	 'byte' { 0 <= x && x <= 255 }
-	 'u16' { 0 <= x && x <= 65535 }
-	//case 'u32': return 0 <= x && x <= math.MaxU32
-	//case 'u64': return 0 <= x && x <= math.MaxU64
-	//////////////
-	 'i8' { -128 <= x && x <= 127 }
-	/*
+		'byte'{
+			0 <= x && x <= 255
+		}
+		'u16'{
+			0 <= x && x <= 65535
+		}
+		// case 'u32': return 0 <= x && x <= math.MaxU32
+		// case 'u64': return 0 <= x && x <= math.MaxU64
+		// ////////////
+		'i8'{
+			-128 <= x && x <= 127
+		}
+		/*
 	case 'i16': return math.min_i16 <= x && x <= math.max_i16
 	case 'int': return math.min_i32 <= x && x <= math.max_i32
 	*/
-	//case 'i64':
-		//x64 := val.i64()
-		//return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
-		else { true }
-	}
+
+		// case 'i64':
+		// x64 := val.i64()
+		// return i64(-(1<<63)) <= x64 && x64 <= i64((1<<63)-1)
+		else {
+			true}}
 }
 
 fn (p mut Parser) typ_to_fmt(typ string, level int) string {
@@ -871,32 +886,49 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 		return '%d'
 	}
 	match typ {
-		'string' { return '%.*s'}
-		//case 'bool': return '%.*s'
-		'ustring' { return '%.*s'}
-		'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8' { return '%d'}
-		'u16', 'u32' { return '%u'}
-		'f64', 'f32' { return '%f'}
-		'i64' { return '%lld'}
-		'u64' { return '%llu'}
-		'byte*', 'byteptr' { return '%s'}
-			// case 'array_string': return '%s'
-			// case 'array_int': return '%s'
-		'void' { p.error('cannot interpolate this value')}
+		'string' {
+			return '%.*s'
+		}
+		// case 'bool': return '%.*s'
+		'ustring' {
+			return '%.*s'
+		}
+		'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8' {
+			return '%d'
+		}
+		'u16', 'u32' {
+			return '%u'
+		}
+		'f64', 'f32' {
+			return '%f'
+		}
+		'i64' {
+			return '%lld'
+		}
+		'u64' {
+			return '%llu'
+		}
+		'byte*', 'byteptr' {
+			return '%s'
+		}
+		// case 'array_string': return '%s'
+		// case 'array_int': return '%s'
+		'void' {
+			p.error('cannot interpolate this value')
+		}
 		else {
 			if typ.ends_with('*') {
 				return '%p'
 			}
-		}
-	}
+		}}
 	if t.parent != '' && level == 0 {
-		return p.typ_to_fmt(t.parent, level+1)
+		return p.typ_to_fmt(t.parent, level + 1)
 	}
 	return ''
 }
 
 fn type_to_safe_str(typ string) string {
-	r := typ.replace(' ','').replace('(','_').replace(')','_')
+	r := typ.replace(' ', '').replace('(', '_').replace(')', '_')
 	return r
 }
 
@@ -905,11 +937,11 @@ fn is_compile_time_const(s_ string) bool {
 	if s == '' {
 		return false
 	}
-	if s.contains('\'') {
+	if s.contains("\'") {
 		return true
 	}
 	for c in s {
-		if ! ((c >= `0` && c <= `9`) || c == `.`) {
+		if !((c >= `0` && c <= `9`) || c == `.`) {
 			return false
 		}
 	}
@@ -931,7 +963,9 @@ fn (t &Type) contains_field_type(typ string) bool {
 // check for a function / variable / module typo in `name`
 fn (p &Parser) identify_typo(name string) string {
 	// dont check if so short
-	if name.len < 2 { return '' }
+	if name.len < 2 {
+		return ''
+	}
 	name_dotted := mod_gen_name_rev(name.replace('__', '.'))
 	min_match := 0.50 // for dice coefficient between 0.0 - 1.0
 	mut output := ''
@@ -946,7 +980,7 @@ fn (p &Parser) identify_typo(name string) string {
 		output += '\n  * const: `$n`'
 	}
 	// check types
-	typ, type_cat := p.table.find_misspelled_type(name, p, min_match)
+	typ,type_cat := p.table.find_misspelled_type(name, p, min_match)
 	if typ.len > 0 {
 		output += '\n  * $type_cat: `$typ`'
 	}
@@ -965,13 +999,21 @@ fn (p &Parser) identify_typo(name string) string {
 
 // compare just name part, some items are mod prefied
 fn typo_compare_name_mod(a, b, b_mod string) f32 {
-	if a.len - b.len > 2 || b.len - a.len > 2 { return 0 }
-	auidx := a.index('__') or { return 0 } // TODO or {-1} once cgen lines bug is fixed //-1 }
-	buidx := b.index('__') or { return 0 } //-1 }
+	if a.len - b.len > 2 || b.len - a.len > 2 {
+		return 0
+	}
+	auidx := a.index('__') or {
+		return 0
+	} // TODO or {-1} once cgen lines bug is fixed //-1 }
+	buidx := b.index('__') or {
+		return 0
+	} // -1 }
 	a_mod := if auidx != -1 { mod_gen_name_rev(a[..auidx]) } else { '' }
-	a_name := if auidx != -1 { a[auidx+2..] } else { a }
-	b_name := if buidx != -1 { b[buidx+2..] } else { b }
-	if a_mod.len > 0 && b_mod.len > 0 && a_mod != b_mod { return 0 }
+	a_name := if auidx != -1 { a[auidx + 2..] } else { a }
+	b_name := if buidx != -1 { b[buidx + 2..] } else { b }
+	if a_mod.len > 0 && b_mod.len > 0 && a_mod != b_mod {
+		return 0
+	}
 	return strings.dice_coefficient(a_name, b_name)
 }
 
@@ -980,7 +1022,9 @@ fn (table &Table) find_misspelled_fn(name string, p &Parser, min_match f32) stri
 	mut closest := f32(0)
 	mut closest_fn := ''
 	for _, f in table.fns {
-		if f.name.contains('__') && !p.is_mod_in_scope(f.mod) { continue }
+		if f.name.contains('__') && !p.is_mod_in_scope(f.mod) {
+			continue
+		}
 		c := typo_compare_name_mod(name, f.name, f.mod)
 		if c > closest {
 			closest = c
@@ -1010,7 +1054,9 @@ fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) s
 	mut closest := f32(0)
 	mut closest_const := ''
 	for cnst in table.consts {
-		if cnst.name.contains('__') && !p.is_mod_in_scope(cnst.mod) { continue }
+		if cnst.name.contains('__') && !p.is_mod_in_scope(cnst.mod) {
+			continue
+		}
 		c := typo_compare_name_mod(name, cnst.name, cnst.mod)
 		if c > closest {
 			closest = c
@@ -1021,12 +1067,14 @@ fn (table &Table) find_misspelled_const(name string, p &Parser, min_match f32) s
 }
 
 // find type with closest name to `name`
-fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (string, string) {
+fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (string,string) {
 	mut closest := f32(0)
 	mut closest_type := ''
 	mut type_cat := ''
 	for _, typ in table.typesmap {
-		if typ.name.contains('__') && !p.is_mod_in_scope(typ.mod) { continue }
+		if typ.name.contains('__') && !p.is_mod_in_scope(typ.mod) {
+			continue
+		}
 		c := typo_compare_name_mod(name, typ.name, typ.mod)
 		if c > closest {
 			closest = c
@@ -1035,25 +1083,48 @@ fn (table &Table) find_misspelled_type(name string, p &Parser, min_match f32) (s
 		}
 	}
 	if closest >= min_match {
-		return closest_type, type_cat
+		return closest_type,type_cat
 	}
-	return '', ''
+	return '',''
 }
 
 fn type_cat_str(tc TypeCategory) string {
 	tc_str := match tc {
-		.builtin    { 'builtin' }
-		.struct_    { 'struct' }
-		.func       { 'function' }
-		.interface_ { 'interface' }
-		.enum_      { 'enum' }
-		.union_     { 'union' }
-		.c_struct   { 'C struct' }
-		.c_typedef  { 'C typedef' }
-		.objc_interface { 'obj C interface' }
-		.array      { 'array' }
-		.alias      { 'type alias' }
-		else        { 'unknown' }
-	}
+		.builtin{
+			'builtin'
+		}
+		.struct_{
+			'struct'
+		}
+		.func{
+			'function'
+		}
+		.interface_{
+			'interface'
+		}
+		.enum_{
+			'enum'
+		}
+		.union_{
+			'union'
+		}
+		.c_struct{
+			'C struct'
+		}
+		.c_typedef{
+			'C typedef'
+		}
+		.objc_interface{
+			'obj C interface'
+		}
+		.array{
+			'array'
+		}
+		.alias{
+			'type alias'
+		}
+		else {
+			'unknown'}}
 	return tc_str
 }
+
