@@ -62,13 +62,13 @@ fn (dtp DTP) close() {
 pub struct FTP {
 mut:
 	sock net.Socket
-	buff_sz int
+	buffer_size int
 	dbg bool
 }
 
 fn new() FTP {
 	mut f := FTP{}
-	f.buff_sz = 1024
+	f.buffer_size = 1024
 	return f
 }
 
@@ -97,7 +97,7 @@ fn (ftp FTP) write(data string) ?int {
 }
 
 fn (ftp FTP) read2() string {
-	ptr,len := ftp.sock.recv(ftp.buff_sz)
+	ptr,len := ftp.sock.recv(ftp.buffer_size)
 	mut data := ''
 	data = string{
 		str: ptr
