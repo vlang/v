@@ -8,10 +8,14 @@ fn test_all() {
 	ftp.debug()
 
 	// ftp.rediris.org
-	if ftp.connect('ftp.redhat.com') { 
+	connected := ftp.connect('ftp.redhat.com')
+	assert connected
+	if connected { 
 		println("connected")
 
-		if ftp.login('ftp','ftp') {
+		loggedin :=  ftp.login('ftp','ftp') 
+		assert loggedin
+		if loggedin {
 			println('logged-in')
 
 			pwd := ftp.pwd()
@@ -48,8 +52,7 @@ fn test_all() {
 			assert blob.len > 1024
 
 			println('downloaded $blob.len bytes')
-		}
-
+		} 
 		ftp.close()
 	}
 }
