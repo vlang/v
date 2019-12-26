@@ -177,6 +177,10 @@ pub fn (ftp FTP) pwd() string {
 		return ''
 	}
 	_,data := ftp.read()
+	spl := data.split('"')
+	if spl.len >= 2 {
+		return spl[1]
+	}
 	return data
 }
 
