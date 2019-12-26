@@ -313,15 +313,16 @@ const (
 // Precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok {
+		// `*` |  `/` | `%` | `<<` | `>>` | `&`
 		.mul, .div, .left_shift, .righ_shift, .amp { return 7 }
+		// `+` |  `-` |  `|` | `^`
 		.plus, .minus, .pipe, .xor { return 6 }
+		// `==` | `!=` | `<` | `<=` | `>` | `>=`
 		.eq, .ne, .lt, .le, .gt, .ge { return 5 }
+		// `&&`
 		.and { return 4 }
+		// `||`
 		.logical_or { return 3 }
-		// .plus, .minus { return 4 }
-		// .mul, .div { return 4 }
-		// .xor { return 6 }
-		// .mod {return 7 }
 		else { return lowest_prec }
 	}
 }
@@ -337,9 +338,8 @@ pub fn (tok Token) is_scalar() bool {
 // is_unary returns true if the token can be in a unary expression
 pub fn (tok Token) is_unary() bool {
 	match tok {
-		.plus, .minus,
-		.not, .bit_not,
-		.inc, .dec { return true }
+		//  `+` | `-` | `!` | `~` | `*` | `&`
+		.plus, .minus, .not, .bit_not, .mul, .amp { return true }
 		else { return false }
 	}
 }
@@ -351,8 +351,11 @@ pub fn (tok Token) is_unary() bool {
 pub fn (tok Token) is_left_assoc() bool {
 	match tok {
 		// .number,
+		// `*` | `/` | `%`
 		.mul, .div, .mod,
+		// `^` | `||` | `&`
 		.xor, .logical_or, .and,
+		// `,`
 		.comma { return true }
 		else { return false }
 	}
@@ -361,10 +364,14 @@ pub fn (tok Token) is_left_assoc() bool {
 // is_right_assoc returns true if the token is right associative
 pub fn (tok Token) is_right_assoc() bool {
 	match tok {
-		.plus, .minus, .not,
+		// `+` | `-` | `!` | `++` | `--`
+		.plus, .minus, .not, .inc, .dec,
+		// `=` | `+=` | `-=` | `*=` | `/=` 
 		.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-		.xor_assign, .mod_assign, .or_assign, .and_assign,
-		.left_shift_assign, .righ_shift_assign { return true }
+		// `%=` | `>>=` | `<<=`
+		.mod_assign, .righ_shift_assign, .left_shift_assign,
+		// `&=` | `^=` | `|=`
+		.and_assign, .xor_assign, .or_assign { return true }
 		else { return false }
 	}
 }
