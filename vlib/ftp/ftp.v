@@ -183,12 +183,16 @@ pub fn (ftp FTP) pwd() string {
 pub fn (ftp FTP) cd(dir string) {
 	ftp.write('CWD $dir') or { return }
 	mut code, mut data := ftp.read()
-	if code == Denied {
-		println("CD $dir denied!")
+	match code {
+		Denied {
+			println("CD $dir denied!")
+		}
+		Complete {
+			code,data = ftp.read()
+		}
+		else {}
 	}
-	if code == Complete {
-		code,data = ftp.read()
-	}
+
 	println('cd $data')
 }
 
