@@ -196,6 +196,10 @@ pub fn new_dtp(msg string) ?DTP {
 	// it receives a control message 227 like: 
 	// '227 Entering Passive Mode (209,132,183,61,48,218)'
 
+	if !msg.contains('(') || !msg.contains(')') || !msg.contains(',') {
+		return error('bad message')
+	}
+	
 	t := msg.split('(')[1].split(')')[0].split(',')
 	ip := t[0]+'.'+t[1]+'.'+t[2]+'.'+t[3]
 	port := t[4].int()*256+t[5].int()
