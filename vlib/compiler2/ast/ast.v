@@ -13,10 +13,12 @@ struct Foo {}
 // pub type Expr = Foo | IfExpr | BinaryExpr | IntegerExpr
 pub type Expr = Foo | IfExpr | BinaryExpr | ScalarExpr | UnaryExpr
 
-// pub struct IntegerExpr {
-// pub:
-// 	val int
-// }
+/*
+pub struct IntegerExpr {
+pub:
+	val int
+}
+*/
 
 /*
 pub enum Expr {
@@ -92,28 +94,30 @@ pub fn (x Expr) str() string {
 	}
 }
 
-// enum BinaryOp {
-// 	sum
-// 	difference
-// 	product
-// 	quotient
-// 	remainder
-// 	bitwise_and
-// 	bitwise_or
-// 	bitwise_xor
-// 	left_shift
-// 	right_shift
+/*
+enum BinaryOp {
+	sum
+	difference
+	product
+	quotient
+	remainder
+	bitwise_and
+	bitwise_or
+	bitwise_xor
+	left_shift
+	right_shift
 
-// 	equality
-// 	inequality
-// 	less_than
-// 	less_than_or_equal
-// 	more_than
-// 	more_than_or_equal
+	equality
+	inequality
+	less_than
+	less_than_or_equal
+	more_than
+	more_than_or_equal
 
-// 	in_check
+	in_check
 
-// 	//These are suffixed with `bool` to prevent conflict with the keyword `or`
-// 	and_bool
-// 	or_bool
-// }
+	//These are suffixed with `bool` to prevent conflict with the keyword `or`
+	and_bool
+	or_bool
+}
+*/
