@@ -542,3 +542,17 @@ fn test_for_last() {
 	assert s == '[1, 2, 3, 4]'
 }
 */
+
+struct Foo {
+	mut:
+	bar []int
+}
+
+fn test_in_struct() {
+	mut baz := Foo{
+		bar: [0, 0, 0]
+	}
+	baz.bar[0] += 2
+	baz.bar[0]++
+	assert baz.bar[0] == 3
+}
