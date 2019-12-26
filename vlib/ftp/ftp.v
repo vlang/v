@@ -252,7 +252,8 @@ pub fn (ftp FTP) dir() ?[]string {
 	dtp.close()
 
 	mut dir := []string
-	for lfile in string(byteptr(list_dir.data)).split('\n') {
+	sdir := string(byteptr(list_dir.data))
+	for lfile in sdir.split('\n') {
 		if lfile.len >1 {
 			spl := lfile.split(' ')
 			dir << spl[spl.len-1]
