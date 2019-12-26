@@ -344,6 +344,9 @@ pub fn (tok Token) is_unary() bool {
 	}
 }
 
+// NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc), 
+// or only ones with the same precedence? 
+
 // is_left_assoc returns true if the token is left associative
 pub fn (tok Token) is_left_assoc() bool {
 	match tok {
