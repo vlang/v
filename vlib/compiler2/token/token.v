@@ -329,10 +329,7 @@ pub fn (tok Token) precedence() int {
 
 // is_scalar returns true if the token is a scalar
 pub fn (tok Token) is_scalar() bool {
-	match tok {
-		.number { return true }
-		else { return false }
-	}
+	return tok in [.number, .str]
 }
 
 // is_unary returns true if the token can be in a unary expression
@@ -344,8 +341,8 @@ pub fn (tok Token) is_unary() bool {
 	}
 }
 
-// NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc), 
-// or only ones with the same precedence? 
+// NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
+// or only ones with the same precedence?
 
 // is_left_assoc returns true if the token is left associative
 pub fn (tok Token) is_left_assoc() bool {
@@ -366,7 +363,7 @@ pub fn (tok Token) is_right_assoc() bool {
 	match tok {
 		// `+` | `-` | `!` | `++` | `--`
 		.plus, .minus, .not, .inc, .dec,
-		// `=` | `+=` | `-=` | `*=` | `/=` 
+		// `=` | `+=` | `-=` | `*=` | `/=`
 		.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
 		// `%=` | `>>=` | `<<=`
 		.mod_assign, .righ_shift_assign, .left_shift_assign,

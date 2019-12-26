@@ -52,8 +52,7 @@ pub fn (p mut Parser) expr(rbp int) ast.Expr {
 	tok := p.tok
 	lit := p.lit
 	p.next()
-	mut node := ast.Expr{
-	}
+	mut node := ast.Expr{}
 	match tok {
 		.lpar {
 			node = p.expr(0)
@@ -122,6 +121,5 @@ fn (p mut Parser) stmt() ast.Stmt {
 	}
 	*/
 
-	return ast.VarDecl{
-	}
+	return ast.VarDecl{}
 }

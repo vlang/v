@@ -48,6 +48,15 @@ fn (g mut Gen) expr(node ast.Expr) Type {
 			g.write(it.val.str())
 			return int_type
 		}
+		ast.ScalarExpr {
+			g.expr(it.left)
+			g.write(' $it.val ')
+
+		}
+		ast.UnaryExpr {
+			g.expr(it.left)
+			g.write(' $it.op ')
+		}
 		ast.StringLiteral {
 			g.write('"$it.val"')
 			return string_type

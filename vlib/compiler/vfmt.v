@@ -158,7 +158,7 @@ fn (p mut Parser) fnext() {
 		//println('eof ret')
 		//return
 	//}
-	if p.tok == .rcbr && !p.inside_if_expr { //&& p.prev_tok != .lcbr {
+	if p.tok == .rcbr && !p.inside_if_expr && p.prev_tok != .lcbr {
 		p.fmt_dec()
 	}
 	s := p.strtok()
@@ -167,7 +167,7 @@ fn (p mut Parser) fnext() {
 	}
 	// vfmt: increase indentation on `{` unless it's `{}`
 	inc_indent := false
-	if p.tok == .lcbr && !p.inside_if_expr {// && p.peek() != .rcbr {
+	if p.tok == .lcbr && !p.inside_if_expr  && p.peek() != .rcbr {
 		p.fgen_nl()
 		p.fmt_inc()
 	}
@@ -267,7 +267,7 @@ fn (p &Parser) gen_fmt() {
 	])
 	*/
 	//.replace('\n\n\n\n', '\n\n')
-  
+
 	s2 := s1.replace(' \n', '\n')
 	s3 := s2.replace(') or{', ') or {')
 	s4 := s3.replace(')or{', ') or {')
@@ -305,4 +305,4 @@ fn write_formatted_source(file_name string, s string) string {
 	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
 	out.close()
 	return path
-}	
+}
