@@ -216,7 +216,7 @@ fn new_dtp(msg string) ?DTP {
 	return dtp
 }
 
-pub fn (ftp FTP) pasv() ?DTP {
+fn (ftp FTP) pasv() ?DTP {
 	ftp.write('PASV') or {}
 	code,data := ftp.read()
 	println("pass: $data")
