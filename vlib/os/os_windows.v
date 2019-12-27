@@ -290,7 +290,7 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
-fn C.CreateSymbolicLinkW(&u16, &u16, u32) bool
+fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 pub fn symlink(origin, target string) ?bool {
 	flags := if os.is_dir(origin) { 1 } else { 0 }
