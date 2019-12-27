@@ -102,6 +102,6 @@ pub fn exec(cmd string) ?Result {
 
 pub fn symlink(origin, target string) ?bool {
 	res := C.symlink(origin.str, target.str)
-	if res != -1 { return true }
+	if res == 0 { return true }
 	return error(get_error_msg(C.errno))
 }
