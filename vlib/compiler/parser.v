@@ -1964,7 +1964,7 @@ fn (p mut Parser) var_expr(v Var) string {
 		// p.print_tok()
 		// dc++
 		if p.tok == .lsbr {
-			// typ = p.index_expr(typ, fn_ph, v)
+			typ = p.index_expr(typ, fn_ph)
 		}
 	}
 	// `a++` and `a--`
