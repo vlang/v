@@ -4,7 +4,7 @@
 module scanner
 
 import (
-	compiler2.token
+	v.token
 )
 
 fn test_scan() {

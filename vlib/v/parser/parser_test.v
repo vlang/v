@@ -1,9 +1,9 @@
 module parser
 
 import (
-	compiler2.ast
-	compiler2.cgen
-	compiler2.table
+	v.ast
+	v.cgen
+	v.table
 
 )
 
@@ -55,25 +55,45 @@ fn test_cgen2() {
 
 fn test_cgen() {
 	//if true { return }
-	s := [
+	input := [
+		'2 + 3',
+		'2+2*4',
+		//'(2+2)*4',
 		'x := 10',
-		//'x := 10'
+		'a := 12',
+	]
+	output := [
+		'2 + 3',
+		'2 + 2 * 4',
+		//'(2 + 2) * 4',
+		'int x = 10;',
+		'int a = 12;',
 	]
 	//expr := parse_expr('3 + 7 * 2')
 	//expr2 := parse_stmt('a := 3 + "f"')
 	mut e := []ast.Expr
 	table := &table.Table{}
-	for ss in s {
-	//expr2 := parse_expr('x := 10')
-	//program := ast.Program{
-		e << parse_expr(ss, table)
-		//exprs: [
-			//expr2,
-			//parse_expr('2 * 2'),
-		//]
+	for s in input {
+		e << parse_expr(s, table)
 	}
 	program := ast.Program{exprs:e}
-	cgen.gen(program)
+	res := cgen.gen(program)
+	println('========')
+	println(res)
+	println('========')
+	lines := res.split_into_lines()
+	mut i := 0
+	for line in lines {
+		if line == '' {
+			continue
+		}
+		println('"$line" "${output[i]}"')
+		assert line == output[i]
+		i++
+		if i >= output.len {
+			break
+		}
+	}
 	//cgen.save()
 }
 

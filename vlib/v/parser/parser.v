@@ -4,10 +4,10 @@
 module parser
 
 import (
-	compiler2.scanner
-	compiler2.ast
-	compiler2.token
-	compiler2.table
+	v.scanner
+	v.ast
+	v.token
+	v.table
 )
 
 struct Parser {

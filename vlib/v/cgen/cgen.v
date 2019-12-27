@@ -2,7 +2,7 @@ module cgen
 
 import (
 	strings
-	compiler2.ast
+	v.ast
 )
 
 struct Gen {
@@ -10,13 +10,13 @@ struct Gen {
 
 }
 
-pub fn gen(program ast.Program) {
+pub fn gen(program ast.Program) string {
 	mut g := Gen{out:strings.new_builder(100)}
 	for expr in program.exprs {
 		g.expr(expr)
 		g.writeln('')
 	}
-	println(g.out.str())
+	return (g.out.str())
 }
 
 pub fn (g &Gen) save() {

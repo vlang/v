@@ -5,7 +5,7 @@ module scanner
 
 import (
 	os
-	compiler2.token
+	v.token
 	// strings
 )
 

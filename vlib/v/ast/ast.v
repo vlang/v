@@ -4,7 +4,7 @@
 module ast
 
 import (
-	compiler2.token
+	v.token
 )
 
 
