@@ -42,7 +42,6 @@ fn v_test_formatting(vargs string) {
 	'./vlib/crypto/aes/cypher_generic.v',
 	'./vlib/crypto/rc4/rc4.v',
 	'./vlib/eventbus/eventbus_test.v',
-	'./vlib/flag/flag.v',
 	'./vlib/os/bare/bare_example_linux.v',
 	'./vlib/szip/szip.v',
 	'./vlib/ui/examples/users_gui/users.v',

@@ -114,26 +114,21 @@ fn (foptions &FormatOptions) format_file(file string) {
 	}
 	mut cfile := file
 	mut mod_folder_parent := tmpfolder
-	fcontent := os.read_file(file) or {
-		return
-	}
 	is_test_file := file.ends_with('_test.v')
-	is_module_file := fcontent.contains('module ') && !fcontent.contains('module main\n')
+	mod_name, is_module_file := file_to_mod_name_and_is_module_file( file )
 	use_tmp_main_program := is_module_file && !is_test_file
 	mod_folder := filepath.basedir(file)
-	mut mod_name := 'main'
-	if is_module_file {
-		mod_name = filepath.filename(mod_folder)
-	}
 	if use_tmp_main_program {
 		// TODO: remove the need for this
 		// This makes a small program that imports the module,
 		// so that the module files will get processed by the
 		// vfmt implementation.
 		mod_folder_parent = filepath.basedir(mod_folder)
-		mut main_program_content := 'import ${mod_name} \n fn main(){}'
-		if fcontent.contains('module builtin\n') {
-			main_program_content = 'fn main(){}'
+		mut main_program_content := if mod_name == 'builtin' || mod_name == 'main' {
+			'fn main(){}\n'
+		}else{
+			'import ${mod_name}\n'+
+			'fn main(){}\n'
 		}
 		main_program_file := filepath.join(tmpfolder,'vfmt_tmp_${mod_name}_program.v')
 		if os.exists(main_program_file) {
@@ -206,6 +201,7 @@ fn usage() {
 Formats the given V source files, and prints their formatted source to stdout.
 Options:
   -diff display only diffs between the formatted source and the original source.
+  -l    list files whose formatting differs from vfmt.
   -w    write result to (source) file(s) instead of to stdout.
 ')
 }
@@ -248,4 +244,25 @@ fn file_to_target_os(file string) string {
 		}
 	}
 	return ''
+}
+
+fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
+	mut mod_name := 'main'
+	mut is_module_file := false
+	raw_fcontent := os.read_file(file) or {
+		return mod_name, is_module_file
+	}
+	fcontent := raw_fcontent.replace('\r\n', '\n')
+	flines := fcontent.split('\n')
+	for fline in flines {
+		line := fline.trim_space()
+		if line.starts_with('module ') {
+			if !line.starts_with('module main'){
+				is_module_file = true
+				mod_name = line.replace('module ', ' ').trim_space()
+			}
+			break
+		}
+	}
+	return mod_name, is_module_file
 }
