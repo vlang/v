@@ -148,7 +148,7 @@ fn C.toupper() int
 fn C.getchar() int
 
 
-fn C.strerror() charptr
+fn C.strerror(int) charptr
 
 
 fn C.snprintf() int
@@ -397,4 +397,3 @@ fn C.WaitForSingleObject(voidptr, int) int
 
 
 fn C.ReleaseMutex(voidptr) bool
-

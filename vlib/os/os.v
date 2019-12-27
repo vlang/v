@@ -46,8 +46,7 @@ struct C.stat {
 	st_mtime int
 }
 
-struct C.DIR {
-}
+struct C.DIR {}
 
 // struct C.dirent {
 // d_name byteptr
@@ -123,8 +122,7 @@ pub fn read_file(path string) ?string {
 
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
-	mut s := C.stat{
-	}
+	mut s := C.stat{}
 	$if windows {
 		C._wstat(path.to_wide(), voidptr(&s))
 	} $else {
@@ -272,8 +270,7 @@ fn read_ulines(path string) ?[]ustring {
 }
 
 pub fn open(path string) ?File {
-	mut file := File{
-	}
+	mut file := File{}
 	$if windows {
 		wpath := path.to_wide()
 		mode := 'rb'
@@ -295,8 +292,7 @@ pub fn open(path string) ?File {
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	mut file := File{
-	}
+	mut file := File{}
 	$if windows {
 		wpath := path.replace('/', '\\').to_wide()
 		mode := 'wb'
@@ -317,8 +313,7 @@ pub fn create(path string) ?File {
 }
 
 pub fn open_append(path string) ?File {
-	mut file := File{
-	}
+	mut file := File{}
 	$if windows {
 		wpath := path.replace('/', '\\').to_wide()
 		mode := 'ab'
@@ -493,8 +488,8 @@ pub fn sigint_to_signal_name(si int) string {
 		15 {
 			return 'SIGTERM'
 		}
-		else {
-		}}
+		else {}
+	}
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
@@ -529,8 +524,8 @@ pub fn sigint_to_signal_name(si int) string {
 			7 {
 				return 'SIGBUS'
 			}
-			else {
-			}}
+			else {}
+	}
 	}
 	return 'unknown'
 }
@@ -608,7 +603,9 @@ pub fn rmdir(path string) {
 }
 
 fn print_c_errno() {
-	// C.printf('errno=%d err="%s"\n', C.errno, C.strerror(C.errno))
+	e := C.errno
+	se := tos_clone(byteptr(C.strerror(C.errno)))
+	println('errno=$e err=$se')
 }
 
 [deprecated]
@@ -776,8 +773,7 @@ pub fn on_segfault(f voidptr) {
 		return
 	}
 	$if macos {
-		mut sa := C.sigaction{
-		}
+		mut sa := C.sigaction{}
 		C.memset(&sa, 0, sizeof(sigaction))
 		C.sigemptyset(&sa.sa_mask)
 		sa.sa_sigaction = f
@@ -833,10 +829,8 @@ pub fn executable() string {
 		// lol
 		return os.args[0]
 	}
-	$if solaris {
-	}
-	$if haiku {
-	}
+	$if solaris {}
+	$if haiku {}
 	$if netbsd {
 		mut result := calloc(MAX_PATH)
 		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH))
@@ -876,8 +870,7 @@ pub fn is_dir(path string) bool {
 		}
 		return false
 	} $else {
-		statbuf := C.stat{
-		}
+		statbuf := C.stat{}
 		if C.stat(path.str, &statbuf) != 0 {
 			return false
 		}
@@ -891,8 +884,7 @@ pub fn is_link(path string) bool {
 	$if windows {
 		return false // TODO
 	} $else {
-		statbuf := C.stat{
-		}
+		statbuf := C.stat{}
 		if C.lstat(path.str, &statbuf) != 0 {
 			return false
 		}
@@ -1028,8 +1020,7 @@ pub fn wait() int {
 }
 
 pub fn file_last_mod_unix(path string) int {
-	attr := C.stat{
-	}
+	attr := C.stat{}
 	// # struct stat attr;
 	C.stat(path.str, &attr)
 	// # stat(path.str, &attr);
@@ -1043,16 +1034,6 @@ pub fn log(s string) {
 
 pub fn flush_stdout() {
 	C.fflush(stdout)
-}
-
-pub fn print_backtrace() {
-	/*
-	# void *buffer[100];
-	nptrs := 0
-	# nptrs = backtrace(buffer, 100);
-	# printf("%d!!\n", nptrs);
-	# backtrace_symbols_fd(buffer, nptrs, STDOUT_FILENO) ;
-*/
 }
 
 pub fn mkdir_all(path string) {
@@ -1120,4 +1101,3 @@ pub fn chmod(path string, mode int) {
 pub const (
 	wd_at_startup = getwd()
 )
-
