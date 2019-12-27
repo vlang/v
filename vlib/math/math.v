@@ -181,19 +181,6 @@ pub fn exp2(a f64) f64 {
 	return C.exp2(a)
 }
 
-// factorial calculates the factorial of the provided value.
-pub fn factorial(n f64) f64 {
-	// For a large postive argument (n >= factorials.len) return max_f64
-	if n >= factorials.len {
-		return max_f64
-	}
-	// Otherwise return n!.
-	if n == f64(i64(n)) && n >= 0.0 {
-		return factorials[i64(n)]
-	}
-	return gamma(n + 1.0)
-}
-
 // floor returns the nearest f64 lower or equal of the provided value.
 pub fn floor(a f64) f64 {
 	return C.floor(a)
