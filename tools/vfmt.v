@@ -11,6 +11,7 @@ import (
 )
 
 struct FormatOptions {
+	is_l       bool
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -35,6 +36,7 @@ fn main() {
 	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
 	args := compiler.env_vflags_and_os_args()
 	foptions := FormatOptions{
+		is_l: '-l' in args
 		is_w: '-w' in args
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
@@ -171,6 +173,20 @@ fn (foptions &FormatOptions) format_file(file string) {
 		os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$file" "$formatted_file_path" ')
 		return
 	}
+	if foptions.is_l {
+		fc := os.read_file( file ) or {
+			eprintln('File $file could not be read')
+			return
+		}
+		formatted_fc := os.read_file( formatted_file_path ) or {
+			eprintln('File $formatted_file_path could not be read')
+			return
+		}
+		if fc != formatted_fc {
+			println( file )
+		}
+		return
+	}
 	if foptions.is_w {
 		os.mv_by_cp(formatted_file_path, file) or {
 			panic(err)
@@ -220,7 +236,7 @@ fn (foptions &FormatOptions) compile_file(file string, compiler_params []string)
 }
 
 pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ ' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' +' }'
+	return 'FormatOptions{ ' + ' is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' +' }'
 }
 
 fn file_to_target_os(file string) string {
