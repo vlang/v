@@ -175,6 +175,13 @@ jobs:
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
 
+  ubuntu-llvm-mingw:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Cross-compile V
+      run: docker build . -f Dockerfile.cross
+
   windows-gcc:
     runs-on: windows-2019
     env:
