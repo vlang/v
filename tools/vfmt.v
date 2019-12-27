@@ -162,31 +162,35 @@ fn (foptions &FormatOptions) format_file(file string) {
 		os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$file" "$formatted_file_path" ')
 		return
 	}
+	fc := os.read_file(file) or {
+		eprintln('File $file could not be read')
+		return
+	}
+	formatted_fc := os.read_file(formatted_file_path) or {
+		eprintln('File $formatted_file_path could not be read')
+		return
+	}
+	is_formatted_different := fc != formatted_fc
 	if foptions.is_l {
-		fc := os.read_file(file) or {
-			eprintln('File $file could not be read')
-			return
-		}
-		formatted_fc := os.read_file(formatted_file_path) or {
-			eprintln('File $formatted_file_path could not be read')
-			return
-		}
-		if fc != formatted_fc {
-			println(file)
+		if is_formatted_different {
+			eprintln('File needs formatting: $file')
 		}
 		return
 	}
 	if foptions.is_w {
-		os.mv_by_cp(formatted_file_path, file) or {
-			panic(err)
+		if is_formatted_different {
+			os.mv_by_cp(formatted_file_path, file) or {
+				panic(err)
+			}
+			eprintln('Reformatted file: $file')
 		}
-		eprintln('Reformatted file in place: $file .')
+		else {
+			eprintln('Already formatted file: $file')
+		}
+		return
 	}
 	else {
-		content := os.read_file(formatted_file_path) or {
-			panic(err)
-		}
-		print(content)
+		print(formatted_fc)
 	}
 }
 
