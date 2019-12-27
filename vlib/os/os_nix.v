@@ -99,3 +99,11 @@ pub fn exec(cmd string) ?Result {
 		exit_code: exit_code
 	}
 }
+
+pub fn symlink(origin, target string) ?bool {
+	res := C.symlink(origin.str, target.str)
+	if res == -1 {
+		return error(get_error_msg(C.errno))
+	}
+	return true
+}

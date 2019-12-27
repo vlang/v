@@ -1116,19 +1116,6 @@ pub fn chmod(path string, mode int) {
 	C.chmod(path.str, mode)
 }
 
-pub fn symlink(origin, target string) ?bool {
-	mut res := -1
-	$if windows {
-		// TODO
-	} $else {
-		res = C.symlink(origin.str, target.str)
-		if res == -1 {
-			return error(get_error_msg(C.errno))
-		}
-	}
-	return true
-}
-
 pub const (
 	wd_at_startup = getwd()
 )
