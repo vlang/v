@@ -306,7 +306,7 @@ pub fn (t Token) str() string {
 
 
 // Representation of highest and lowest precedence
-const (
+pub const (
 	lowest_prec  = 0
 	highest_prec = 7
 )

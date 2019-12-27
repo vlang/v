@@ -8,7 +8,7 @@ import (
 
 fn test_parse_file() {
 	s := '
-fn foo() string {
+fn foo() int {
 	f := 23
 	return 10+4
 }
