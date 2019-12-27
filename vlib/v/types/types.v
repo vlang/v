@@ -16,7 +16,7 @@ pub const (
 )
 
 
-fn check(got, expected &Type) bool {
+pub fn check(got, expected &Type) bool {
 	if got.idx != expected.idx {
 		return false
 	}
