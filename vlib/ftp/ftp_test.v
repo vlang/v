@@ -5,7 +5,6 @@ import ftp
 
 fn test_all() {
 	mut ftp := ftp.new()
-	ftp.debug()
 
 	// ftp.rediris.org
 	connected := ftp.connect('ftp.redhat.com')

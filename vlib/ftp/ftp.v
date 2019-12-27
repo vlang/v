@@ -63,7 +63,6 @@ struct FTP {
 mut:
 	sock net.Socket
 	buffer_size int
-	dbg bool
 }
 
 pub fn new() FTP {
@@ -72,12 +71,8 @@ pub fn new() FTP {
 	return f
 }
 
-pub fn (ftp mut FTP) debug() {
-	ftp.dbg = !ftp.dbg
-}
-
 fn (ftp FTP) write(data string) ?int {
-	if ftp.dbg {
+	$if debug {
 		println('FTP.v >>> $data')
 	}
 	n := ftp.sock.send_string(data + '\n') or {
@@ -86,19 +81,9 @@ fn (ftp FTP) write(data string) ?int {
 	return n
 }
 
-fn (ftp FTP) read2() string {
-	ptr,len := ftp.sock.recv(ftp.buffer_size)
-	mut data := ''
-	data = string{
-		str: ptr
-		len: len
-	}
-	return data
-}
-
 fn (ftp FTP) read() (int,string) {
 	mut data := ftp.sock.read_line()
-	if ftp.dbg {
+	$if debug {
 		println('FTP.v <<< $data')
 	}
 
