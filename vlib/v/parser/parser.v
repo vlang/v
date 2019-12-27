@@ -8,6 +8,7 @@ import (
 	v.ast
 	v.token
 	v.table
+	v.types
 )
 
 struct Parser {
@@ -79,11 +80,10 @@ fn (p mut Parser) next() {
 }
 
 // Implementation of Pratt Precedence
-pub fn (p mut Parser) expr(rbp int) (ast.Expr,ast.Type) {
+pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	// null denotation (prefix)
 	tok := p.tok
 	lit := p.lit
-
 	if p.tok == .name {
 		name := p.lit
 		p.next()
@@ -103,13 +103,13 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,ast.Type) {
 				expr: expr//p.expr(token.lowest_prec)
 				typ: t
 			}//, ast.void_type
-			return node, ast.void_type
+			return node, types.void_type
 		}
 	} else {
 		p.next()
 	}
 	mut node := ast.Expr{}
-	mut typ := ast.void_type
+	mut typ := types.void_type
 	match tok {
 		.lpar {
 			node,typ = p.expr(0)
@@ -125,13 +125,13 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,ast.Type) {
 					node = ast.StringLiteral{
 						val: lit
 					}
-					typ = ast.string_type
+					typ = types.string_type
 				}
 				if tok == .number {
 					node = ast.IntegerLiteral{
 						val: lit.int()
 					}
-					typ = ast.int_type
+					typ = types.int_type
 				}
 				// else {
 				// verror('bad scalar token')
@@ -151,12 +151,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,ast.Type) {
 	for rbp < p.tok.precedence() {
 		tok2 := p.tok
 		p.next()
-		//mut t1 := ast.Type{}
-		mut t2 := ast.Type{}
-		//mut q := false
+		mut t2 := types.Type{}
 		// left denotation (infix)
 		if tok2.is_right_assoc() {
-			//q = true
 			mut expr := ast.Expr{}
 			expr,t2 = p.expr(tok2.precedence() - 1)
 			node = ast.BinaryExpr{
@@ -164,12 +161,10 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,ast.Type) {
 				//left_type: t1
 				op: tok2
 				// right: p.expr(tok2.precedence() - 1)
-
 				right: expr
-
 			}
-			if typ.name != t2.name {
-				println('bad types $typ.name $t2.name')
+			if !types.check(&typ, &t2) {
+				verror('cannot convert `$t2.name` to `$typ.name`')
 			}
 		}
 		if !tok2.is_right_assoc() && tok2.is_left_assoc() {

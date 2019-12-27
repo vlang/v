@@ -5,6 +5,7 @@ module ast
 
 import (
 	v.token
+	v.types
 )
 
 
@@ -44,7 +45,7 @@ pub struct VarDecl {
 pub:
 	name string
 	expr Expr
-	typ Type
+	typ types.Type
 
 }
 
@@ -52,17 +53,6 @@ pub struct Program {
 pub:
 	exprs []Expr
 }
-
-pub struct Type {
-pub:
-	name string
-}
-
-pub const (
-	string_type = Type{'string'}
-	int_type = Type{'int'}
-	void_type = Type{'void'}
-)
 
 
 // A single identifier
@@ -77,9 +67,9 @@ pub:
 	//op    BinaryOp
 	op    token.Token
 	left  Expr
-	left_type Type
+	//left_type Type
 	right Expr
-	right_type Type
+	//right_type Type
 }
 
 pub struct UnaryExpr {

@@ -4,11 +4,10 @@ import (
 	v.ast
 	v.cgen
 	v.table
-
 )
 
 fn test_parser() {
-	//if true { return }
+	if true { return }
 	//expr := ast.IntegerExpr {val:10}
 	//expr := ast.BinaryExpr{}
 
@@ -27,7 +26,7 @@ fn test_parser() {
 		'20 + (10 * 15) / 5', // 50
 		'(2) + (17*2-30) * (5)+2 - (8/2)*4', // 8
 		'2 + "hi"',
-		'x := 10'
+		'x := 10',
 	]
 
 	table := &table.Table{}
@@ -61,6 +60,8 @@ fn test_cgen() {
 		//'(2+2)*4',
 		'x := 10',
 		'a := 12',
+		'ab := 10 + 3 * 9',
+		's := "hi"'
 	]
 	output := [
 		'2 + 3',
@@ -68,6 +69,8 @@ fn test_cgen() {
 		//'(2 + 2) * 4',
 		'int x = 10;',
 		'int a = 12;',
+		'int ab = 10 + 3 * 9;',
+		'string s = tos3("hi");',
 	]
 	//expr := parse_expr('3 + 7 * 2')
 	//expr2 := parse_stmt('a := 3 + "f"')

@@ -52,7 +52,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(' $it.op ')
 		}
 		ast.StringLiteral {
-			g.write('"$it.val"')
+			g.write('tos3("$it.val")')
 		}
 		ast.BinaryExpr {
 			g.expr(it.left)
