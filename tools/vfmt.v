@@ -218,7 +218,8 @@ fn find_working_diff_command() ?string {
 
 fn (foptions &FormatOptions) compile_file(file string, compiler_params []string) string {
 	if foptions.is_verbose {
-		eprintln('> new_v_compiler_with_args: ' + compiler_params.join(' ') + ' $file')
+		eprintln('> new_v_compiler_with_args            file: ' + file)
+		eprintln('> new_v_compiler_with_args compiler_params: ' + compiler_params.join(' '))
 	}
 	mut v := compiler.new_v_compiler_with_args(compiler_params)
 	v.v_fmt_file = file
