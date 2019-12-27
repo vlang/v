@@ -423,3 +423,7 @@ fn new_display() &Display {
 	return XOpenDisplay(C.NULL)
 }
 
+// create a new PRIMARY clipboard (only supported on Linux)
+pub fn new_primary() &Clipboard {
+	return new_x11_clipboard(.primary)
+}

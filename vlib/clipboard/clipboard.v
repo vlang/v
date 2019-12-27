@@ -34,12 +34,3 @@ pub fn (cb Clipboard) check_ownership() bool {
 pub fn (cb &Clipboard) is_available() bool {
 	return cb.check_availability()
 }
-
-// create a new PRIMARY clipboard (only supported on Linux)
-pub fn new_primary() &Clipboard {
-	$if linux {
-		return new_x11_clipboard(.primary)
-	} $else {
-		panic("Primary clipboard is not supported on non-Linux systems.")
-	}
-}
