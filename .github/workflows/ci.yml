@@ -15,7 +15,7 @@ jobs:
     - name: Build a production tools/vfmt 
       run: ./v -prod -d vfmt tools/vfmt.v
     - name: fmt only the changed files (from master)
-      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|cut -f2- | xargs ./v fmt -diff
+      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -diff
     - name: Run v test-fmt
       run: ./v test-fmt
 
@@ -24,7 +24,7 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Install dependencies
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
@@ -44,7 +44,7 @@ jobs:
     steps:
 
     - name: Checkout
-      uses: actions/checkout@v1
+      uses: actions/checkout@v2
 
     - name: Build V
       uses: spytheman/docker_alpine_v@v6.0
@@ -62,7 +62,7 @@ jobs:
       matrix:
         os: [macOS-10.14, macOS-latest]
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
@@ -101,7 +101,7 @@ jobs:
   ubuntu:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
@@ -162,7 +162,7 @@ jobs:
     env:
       VFLAGS: -cc musl-gcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
       with:
         node-version: 12.x
@@ -187,7 +187,7 @@ jobs:
     env:
         VFLAGS: -cc gcc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
@@ -210,7 +210,7 @@ jobs:
     env:
         VFLAGS: -cc msvc
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x

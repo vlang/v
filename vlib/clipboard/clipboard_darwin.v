@@ -72,3 +72,7 @@ fn (cb mut Clipboard) get_text() string {
 	#utf8_clip = [ns_clip UTF8String];
 	return string(utf8_clip)
 }
+
+pub fn new_primary() &Clipboard {
+	panic('Primary clipboard is not supported on non-Linux systems.')
+}
