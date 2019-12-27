@@ -48,10 +48,9 @@ pub fn parse_file(text string, table &table.Table) ast.Program {
 		if p.tok == .eof {
 			break
 		}
-		println('expr at ' + p.tok.str())
+		//println('expr at ' + p.tok.str())
 		expr,_ := p.expr(token.lowest_prec)
 		exprs << expr
-		p.next()
 	}
 	println('nr exprs = $exprs.len')
 	println(exprs[0])

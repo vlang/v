@@ -61,6 +61,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				.minus {	g.write(' - ')	}
 				.mul {	g.write(' * ')	}
 				.div {	g.write(' / ')	}
+				.plus_assign { g.write(' += ') }
 				else {}
 			}
 			g.expr(it.right)

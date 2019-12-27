@@ -317,8 +317,8 @@ pub fn (tok Token) precedence() int {
 		.mul, .div, .left_shift, .righ_shift, .amp { return 7 }
 		// `+` |  `-` |  `|` | `^`
 		.plus, .minus, .pipe, .xor { return 6 }
-		// `==` | `!=` | `<` | `<=` | `>` | `>=`
-		.eq, .ne, .lt, .le, .gt, .ge { return 5 }
+		// `==` | `!=` | `<` | `<=` | `>` | `>=` | +=
+		.eq, .ne, .lt, .le, .gt, .ge, .plus_assign { return 5 }
 		// `&&`
 		.and { return 4 }
 		// `||`
@@ -334,11 +334,10 @@ pub fn (tok Token) is_scalar() bool {
 
 // is_unary returns true if the token can be in a unary expression
 pub fn (tok Token) is_unary() bool {
-	match tok {
+	return tok in [
 		//  `+` | `-` | `!` | `~` | `*` | `&`
-		.plus, .minus, .not, .bit_not, .mul, .amp { return true }
-		else { return false }
-	}
+		.plus, .minus, .not, .bit_not, .mul, .amp
+	]
 }
 
 // NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
@@ -346,21 +345,21 @@ pub fn (tok Token) is_unary() bool {
 
 // is_left_assoc returns true if the token is left associative
 pub fn (tok Token) is_left_assoc() bool {
-	match tok {
+	return tok in [
+
 		// .number,
 		// `*` | `/` | `%`
 		.mul, .div, .mod,
 		// `^` | `||` | `&`
 		.xor, .logical_or, .and,
 		// `,`
-		.comma { return true }
-		else { return false }
-	}
+		.comma
+	]
 }
 
 // is_right_assoc returns true if the token is right associative
 pub fn (tok Token) is_right_assoc() bool {
-	match tok {
+	return tok in [
 		// `+` | `-` | `!` | `++` | `--`
 		.plus, .minus, .not, .inc, .dec,
 		// `=` | `+=` | `-=` | `*=` | `/=`
@@ -368,7 +367,6 @@ pub fn (tok Token) is_right_assoc() bool {
 		// `%=` | `>>=` | `<<=`
 		.mod_assign, .righ_shift_assign, .left_shift_assign,
 		// `&=` | `^=` | `|=`
-		.and_assign, .xor_assign, .or_assign { return true }
-		else { return false }
-	}
+		.and_assign, .xor_assign, .or_assign
+	]
 }

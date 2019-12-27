@@ -6,15 +6,9 @@ import (
 	v.table
 )
 
+/*
 fn test_parser() {
 	if true { return }
-	//expr := ast.IntegerExpr {val:10}
-	//expr := ast.BinaryExpr{}
-
-	// print using walk
-	//expr := parse_expr('3 + 7')
-	//println('\n')
-
 	text_expr := [
 		'1 += 2',
 		'1.2 + 3.4',
@@ -38,22 +32,23 @@ fn test_parser() {
 		println('===================')
 	}
 }
-/*
-fn test_cgen2() {
-	s := '2 + 3
+
+*/
+fn test_parse_file() {
+	s := '12 + 3
+	x := 10
 	5+7
-//x := 100
+	8+4
 '
 	table := &table.Table{}
 	prog := parse_file(s, table)
-	cgen.gen(prog)
+	res := cgen.gen(prog)
+	println(res)
 	println('done')
 }
-*/
 
 
-fn test_cgen() {
-	//if true { return }
+fn test_parse_expr() {
 	input := [
 		'2 + 3',
 		'2+2*4',
@@ -61,9 +56,23 @@ fn test_cgen() {
 		'x := 10',
 		'a := 12',
 		'ab := 10 + 3 * 9',
-		's := "hi"'
+		's := "hi"',
+
+		'1 += 2',
+		//'1.2 + 3.4',
+		/*
+		'4 + 4',
+		'1 + 2 * 5',
+		'(2 * 3) / 2',
+		'3 + (7 * 6)',
+		'2 ^ 8 * (7 * 6)',
+		'20 + (10 * 15) / 5', // 50
+		'(2) + (17*2-30) * (5)+2 - (8/2)*4', // 8
+		'2 + "hi"',
+		'x := 10',
+		*/
 	]
-	output := [
+	expecting := [
 		'2 + 3',
 		'2 + 2 * 4',
 		//'(2 + 2) * 4',
@@ -71,6 +80,8 @@ fn test_cgen() {
 		'int a = 12;',
 		'int ab = 10 + 3 * 9;',
 		'string s = tos3("hi");',
+		'1 += 2',
+		//'1.2 + 3.4',
 	]
 	//expr := parse_expr('3 + 7 * 2')
 	//expr2 := parse_stmt('a := 3 + "f"')
@@ -84,16 +95,16 @@ fn test_cgen() {
 	println('========')
 	println(res)
 	println('========')
-	lines := res.split_into_lines()
+	lines := res.trim_space().split_into_lines()
 	mut i := 0
 	for line in lines {
 		if line == '' {
 			continue
 		}
-		println('"$line" "${output[i]}"')
-		assert line == output[i]
+		println('V:"$line" expecting:"${expecting[i]}"')
+		assert line == expecting[i]
 		i++
-		if i >= output.len {
+		if i >= expecting.len {
 			break
 		}
 	}
