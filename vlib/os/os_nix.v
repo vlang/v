@@ -6,6 +6,8 @@ pub const (
 	path_separator = '/'
 )
 
+fn C.symlink(charptr, charptr) int
+
 pub fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
@@ -98,3 +100,8 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
+pub fn symlink(origin, target string) ?bool {
+	res := C.symlink(origin.str, target.str)
+	if res == 0 { return true }
+	return error(get_error_msg(C.errno))
+}
