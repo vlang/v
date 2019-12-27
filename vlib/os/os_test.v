@@ -239,6 +239,7 @@ fn cleanup_leftovers(){
 }
 
 fn test_symlink() {
+  $if windows { return }
   os.mkdir('symlink') or { panic(err) }
   os.symlink('symlink', 'symlink2') or { panic(err) }
   assert os.exists('symlink2')
