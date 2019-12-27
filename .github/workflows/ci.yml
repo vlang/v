@@ -15,7 +15,7 @@ jobs:
     - name: Build a production tools/vfmt 
       run: ./v -prod -d vfmt tools/vfmt.v
     - name: fmt only the changed files (from master)
-      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|cut -f2- | xargs ./v fmt -diff
+      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -diff
     - name: Run v test-fmt
       run: ./v test-fmt
 
