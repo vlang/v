@@ -119,7 +119,6 @@ pub fn (ftp mut FTP) connect(ip string) bool {
 }
 
 pub fn (ftp FTP) login(user, passwd string) bool {
-
 	ftp.write('USER $user') or {
 		$if debug {
 			println('ERROR sending user')
@@ -194,16 +193,11 @@ pub fn (ftp FTP) cd(dir string) {
 }
 
 fn new_dtp(msg string) ?DTP {
-	// it receives a control message 227 like:
-	// '227 Entering Passive Mode (209, 132, 183, 61, 48, 218)'
-
-	if !msg.contains('(') || !msg.contains(')') || !msg.contains(',') {
-		return error('bad message')
+	if !is_dtp_message_valid(msg) {
+		return error('Bad message')
 	}
 
-	t := msg.split('(')[1].split(')')[0].split(',')
-	ip := t[0] + '.' + t[1] + '.' + t[2] + '.' + t[3]
-	port := t[4].int() * 256 + t[5].int()
+	ip, port := get_host_ip_from_dtp_message(msg)
 
 	sock := net.dial(ip, port) or {
 		return error('Cannot connect to the data channel')
@@ -286,4 +280,29 @@ pub fn (ftp FTP) get(file string) ?[]byte {
 	dtp.close()
 
 	return blob
+}
+
+fn is_dtp_message_valid(msg string) bool {
+	// An example of message:
+	// '227 Entering Passive Mode (209,132,183,61,48,218)'
+	return msg.contains('(') && msg.contains(')') && msg.contains(',')
+}
+
+fn get_host_ip_from_dtp_message(msg string) (string, int) {
+	mut par_start_idx := -1
+	mut par_end_idx := -1
+
+	for i, c in msg {
+		if c == `(` {
+			par_start_idx = i + 1
+		} else if c == `)` {
+			par_end_idx = i
+		}
+	}
+	data := msg[par_start_idx..par_end_idx].split(',')
+
+	ip := data[0..4].join('.')
+	port := data[4].int() * 256 + data[5].int()
+
+	return ip, port
 }
