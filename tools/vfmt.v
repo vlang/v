@@ -12,6 +12,7 @@ import (
 
 struct FormatOptions {
 	is_l       bool
+	is_c       bool
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -35,6 +36,7 @@ fn main() {
 	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
 	args := compiler.env_vflags_and_os_args()
 	foptions := FormatOptions{
+		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
 		is_diff: '-diff' in args
@@ -94,7 +96,9 @@ fn main() {
 		}
 		cmdcode := os.system(worker_cmd)
 		if cmdcode != 0 {
-			eprintln('vfmt error while formatting file: $file .')
+			if cmdcode == 1 {
+				eprintln('vfmt error while formatting file: $file .')
+			}
 			errors++
 		}
 	}
@@ -171,6 +175,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 		return
 	}
 	is_formatted_different := fc != formatted_fc
+	if foptions.is_c {
+		if is_formatted_different {
+			eprintln('File is not formatted: $file')
+			exit(2)
+		}
+		return
+	}
 	if foptions.is_l {
 		if is_formatted_different {
 			eprintln('File needs formatting: $file')
@@ -198,6 +209,8 @@ fn usage() {
 	print('Usage: tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
 Formats the given V source files, and prints their formatted source to stdout.
 Options:
+  -c    check if file is already formatted.
+        If it is not, print filepath, and exit with code 2.
   -diff display only diffs between the formatted source and the original source.
   -l    list files whose formatting differs from vfmt.
   -w    write result to (source) file(s) instead of to stdout.
