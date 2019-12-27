@@ -7,10 +7,16 @@ import (
 )
 
 fn test_parse_file() {
-	s := '12 + 3
-	x := 10
-	5+7
-	8+4
+	s := '
+fn foo() string {
+	f := 23
+	return 10+4
+}
+
+12 + 3
+x := 10
+5+7
+8+4
 '
 	table := &table.Table{}
 	prog := parse_file(s, table)
@@ -20,6 +26,7 @@ fn test_parse_file() {
 
 
 fn test_parse_expr() {
+	//if true { return }
 	input := [
 		'2 + 3',
 		'2+2*4',

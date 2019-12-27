@@ -11,10 +11,12 @@ import (
 
 struct Foo {}
 
-pub type Expr = Foo | IfExpr | BinaryExpr | UnaryExpr |
-	StringLiteral  | IntegerLiteral | FloatLiteral  | VarDecl
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr |
+	StringLiteral  | IntegerLiteral | FloatLiteral  | VarDecl |
+	FnDecl | Return
 
-pub type Stmt = Foo | Foo //VarDecl
+pub type Stmt = Foo//VarDecl
+
 
 pub struct IntegerLiteral {
 pub:
@@ -30,6 +32,20 @@ pub:
 pub struct StringLiteral {
 pub:
 	val string
+}
+
+pub struct FnDecl {
+pub:
+	name  string
+	//stmts []Stmt
+	exprs []Expr
+	typ types.Type
+
+}
+
+pub struct Return {
+pub:
+	expr Expr
 }
 
 /*

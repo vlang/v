@@ -287,19 +287,20 @@ fn (t []Token) contains(val Token) bool {
 }
 
 pub fn (t Token) str() string {
-	lit := 't.lit'
 	if t == .number {
 		return 'number'
 	}
 	if t == .chartoken {
-		return '`lit`'
+		return 'char'//'`lit`'
 	}
 	if t == .str {
-		return "'lit'"
+		return 'str' //"'lit'"
 	}
+	/*
 	if t < .plus {
 		return lit // string, number etc
 	}
+	*/
 	return token_str[int(t)]
 }
 

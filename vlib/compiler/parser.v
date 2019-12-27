@@ -793,13 +793,13 @@ fn (p mut Parser) type_decl() {
 	if p.tok == .key_struct {
 		p.error('use `struct $name {` instead of `type $name struct {`')
 	}
-	if p.tok == .assign {
+	is_sum := p.tok == .assign
+	if is_sum {
 		p.next()
-
 	}
-	parent := p.get_type2()
+	mut parent := Type{}
 	// Sum type
-	is_sum := p.tok == .pipe
+	//is_sum := p.tok == .pipe
 	if is_sum {
 		if !p.builtin_mod && p.mod != 'main' {
 			name = p.prepend_mod(name)
@@ -815,10 +815,15 @@ fn (p mut Parser) type_decl() {
 		*/
 		// Register the rest of them
 		mut idx := 0
-		for p.tok == .pipe {
+		mut done := false
+		for  {//p.tok == .pipe {
 			idx++
-			p.next()
+			//p.next()
 			child_type_name := p.check_name()
+			//println('$idx $child_type_name')
+			if p.tok != .pipe {
+				done = true
+			}
 			if p.pass == .main {
 				// Update the type's parent
 				//println('child=$child_type_name parent=$name')
@@ -830,13 +835,17 @@ fn (p mut Parser) type_decl() {
 				p.table.rewrite_type(t)
 				p.cgen.consts << '#define SumType_$child_type_name $idx // DEF2'
 			}
+			if done {
+				break
+			}
+			p.check(.pipe)
 		}
 		if p.pass == .decl {
 			p.table.sum_types << name
 			println(p.table.sum_types)
 		}
 		// Register the actual sum type
-		//println('registering sum $name')
+		println('registering sum $name')
 		p.table.register_type(Type{
 			name: name
 			mod: p.mod
@@ -848,6 +857,10 @@ void* obj;
 int typ;
 } $name;
 ')
+	}
+	else {
+
+		parent = p.get_type2()
 	}
 	nt_pair := p.table.cgen_name_type_pair(name, parent.name)
 	// TODO dirty C typedef hacks for DOOM

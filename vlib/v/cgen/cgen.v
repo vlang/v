@@ -31,16 +31,6 @@ pub fn (g mut Gen) writeln(s string) {
 	g.out.writeln(s)
 }
 
-struct Type {
-	name string
-}
-
-const (
-	string_type = Type{'string'}
-	int_type = Type{'int'}
-	void_type = Type{'void'}
-)
-
 fn (g mut Gen) expr(node ast.Expr) {
 	//println('cgen expr()')
 	match node {
@@ -56,6 +46,18 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
+		}
+		ast.FnDecl {
+			g.writeln('$it.typ.name $it.name () { ')
+			for expr in it.exprs {
+				g.expr(expr)
+			}
+			g.writeln('}')
+		}
+		ast.Return {
+			g.write('return ')
+			g.expr(it.expr)
+			g.writeln(';')
 		}
 		ast.BinaryExpr {
 			g.expr(it.left)

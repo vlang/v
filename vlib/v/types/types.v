@@ -13,6 +13,7 @@ pub const (
 	void_type = Type{'void', 0}
 	int_type = Type{'int', 1}
 	string_type = Type{'string', 2}
+	f64_type = Type{'f64', 3}
 )
 
 

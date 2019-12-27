@@ -18,6 +18,7 @@ mut:
 	lit     string
 	//vars []string
 	table &table.Table
+	return_type types.Type
 }
 
 pub fn parse_expr(text string, table &table.Table) ast.Expr {
@@ -31,6 +32,20 @@ pub fn parse_expr(text string, table &table.Table) ast.Expr {
 	}
 	expr,_ := p.expr(token.lowest_prec)
 	return expr
+}
+
+pub fn (p mut Parser) get_type() types.Type {
+	defer {
+	p.next()
+	}
+	if p.lit == 'int' { return types.int_type }
+	else if p.lit == 'string' { return types.string_type }
+	else if p.lit == 'f64' { return types.f64_type }
+	else {
+		verror('bad type lit')
+		exit(1)
+	}
+
 }
 
 pub fn parse_file(text string, table &table.Table) ast.Program {
@@ -57,6 +72,24 @@ pub fn parse_file(text string, table &table.Table) ast.Program {
 	return ast.Program{exprs}
 }
 
+pub fn (p mut Parser)  parse_block() []ast.Expr {
+	mut exprs := []ast.Expr
+
+	for {
+		//res := s.scan()
+		if p.tok == .eof || p.tok == .rcbr {
+			break
+		}
+		//println('expr at ' + p.tok.str())
+		expr,_ := p.expr(token.lowest_prec)
+		exprs << expr
+	}
+	p.next()
+	println('nr exprs in block = $exprs.len')
+	return exprs
+
+}
+
 /*
 pub fn parse_stmt(text string) ast.Stmt {
 	mut s := scanner.new_scanner(text)
@@ -78,12 +111,59 @@ fn (p mut Parser) next() {
 	p.lit = res.lit
 }
 
+fn (p mut Parser) check(expected token.Token) {
+	if p.tok != expected {
+		s := 'syntax error: unexpected `${p.tok.str()}`, expecting `${expected.str()}`'
+		verror(s)
+	}
+	p.next()
+}
+
+fn (p mut Parser) check_name() string {
+	name := p.lit
+	p.check(.name)
+	return name
+}
+
 // Implementation of Pratt Precedence
 pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	// null denotation (prefix)
 	tok := p.tok
 	lit := p.lit
-	if p.tok == .name {
+	if p.tok == .key_fn {
+		p.next()
+		name := p.lit
+		println('fn decl $name')
+		p.check(.name)
+		p.check(.lpar)
+		p.check(.rpar)
+		// Return type
+		mut typ := types.void_type
+		if p.tok == .name {
+			typ = p.get_type()
+			p.return_type = typ
+
+		}
+		p.check(.lcbr)
+		//p.check(.rcbr)
+		println('OK!')
+		exprs := p.parse_block()
+
+		mut node := ast.Expr{}
+		node = ast.FnDecl{name: name, exprs: exprs, typ: typ}
+		return node, types.void_type
+	}
+	else if p.tok == .key_return {
+		p.next()
+		mut node := ast.Expr{}
+		expr, typ := p.expr(0)
+		if !types.check(p.return_type, typ) {
+			verror('bad ret type')
+		}
+		node = ast.Return{expr: expr}
+		return node, types.void_type
+	}
+	else if p.tok == .name {
 		name := p.lit
 		p.next()
 		if p.tok == .decl_assign {
@@ -117,34 +197,30 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			}
 			p.next()
 		}
+		.str {
+			node = ast.StringLiteral{
+				val: lit
+			}
+			typ = types.string_type
+
+		}
+		.number {
+			if lit.contains('.') {
+				node = ast.FloatLiteral{
+					//val: lit.f64()
+					val: lit
+				}
+				typ = types.int_type
+			} else {
+				node = ast.IntegerLiteral{
+					val: lit.int()
+				}
+				typ = types.int_type
+			}
+		}
 		else {
 			// TODO: fix bug. note odd conditon instead of else if (same below)
-			if tok.is_scalar() {
-				if tok == .str {
-					node = ast.StringLiteral{
-						val: lit
-					}
-					typ = types.string_type
-				}
-				if tok == .number {
-					if lit.contains('.') {
-						node = ast.FloatLiteral{
-							//val: lit.f64()
-							val: lit
-						}
-						typ = types.int_type
-					} else {
-						node = ast.IntegerLiteral{
-							val: lit.int()
-						}
-						typ = types.int_type
-					}
-				}
-				// else {
-				// verror('bad scalar token')
-				// }
-			}
-			if !tok.is_scalar() && tok.is_unary() {
+			if tok.is_unary() {
 				expr,_ := p.expr(token.highest_prec)
 				node = ast.UnaryExpr{
 					// left: p.expr(token.highest_prec)
