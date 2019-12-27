@@ -6,6 +6,8 @@ pub const (
 	path_separator = '/'
 )
 
+fn C.symlink(charptr, charptr) int
+
 pub fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
@@ -97,4 +99,3 @@ pub fn exec(cmd string) ?Result {
 		exit_code: exit_code
 	}
 }
-
