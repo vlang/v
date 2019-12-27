@@ -7,7 +7,7 @@ import (
 	json
 )
 
-struct App {
+pub struct App {
 mut:
 	vweb vweb.Context
 	db pg.DB
@@ -33,6 +33,13 @@ fn (app &App) index() {
 	$vweb.html()
 }
 
+// app.reset is called by vweb after the client connection is closed
+pub fn (app mut App) reset() {
+}
+
+// app.init is called by vweb at the start of the program,
+// right after your app has been initialized by vweb, and it
+// has a valid app.vweb context.
 pub fn (app mut App) init() {
 	db := pg.connect(pg.Config{
 		host:   '127.0.0.1'
