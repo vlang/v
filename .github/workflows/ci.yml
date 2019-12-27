@@ -12,7 +12,7 @@ jobs:
           echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
     - name: Build v (there is no need for dependencies for fmt)
       run: make -j4
-    - name: Build a production tools/vfmt 
+    - name: Build a production tools/vfmt
       run: ./v -prod -d vfmt tools/vfmt.v
     - name: fmt only the changed files (from master)
       run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -diff
@@ -60,7 +60,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macOS-10.14, macOS-latest]
+        os: [macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
