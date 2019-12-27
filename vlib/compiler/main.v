@@ -1102,7 +1102,7 @@ pub fn new_v(args []string) &V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: find_c_compiler()
-		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || dir.contains('vlib'))
+		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || rdir_name == 'vfmt.v' || dir.contains('vlib'))
 		// is_fmt: comptime_define == 'vfmt'
 
 		user_mod_path: user_mod_path
