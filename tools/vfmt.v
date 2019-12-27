@@ -16,7 +16,19 @@ struct FormatOptions {
 	is_verbose bool
 	is_all     bool
 	is_worker  bool
+	is_debug   bool
 }
+
+const (
+	platform_and_file_extensions = [
+			['windows', '_win.v', '_windows.v'],
+			['linux',   '_lin.v', '_linux.v', '_nix.v'],
+			['macos',   '_mac.v', '_darwin.v'],
+			['freebsd', '_bsd.v', '_freebsd.v'],
+			['solaris', '_solaris.v'],
+			['haiku',   '_haiku.v'],
+			]
+)
 
 fn main() {
 	toolexe := os.executable()
@@ -28,6 +40,10 @@ fn main() {
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
 		is_worker: '-worker' in args
+		is_debug: '-debug' in args
+	}
+	if foptions.is_verbose {
+		eprintln('vfmt foptions: $foptions')
 	}
 	if foptions.is_worker {
 		// -worker should be added by a parent vfmt process.
@@ -45,7 +61,6 @@ fn main() {
 		eprintln('vfmt args: ' + os.args.str())
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
-		eprintln('vfmt foptions: $foptions')
 	}
 	mut files := []string
 	for file in possible_files {
@@ -91,6 +106,10 @@ fn main() {
 fn (foptions &FormatOptions) format_file(file string) {
 	tmpfolder := os.tmpdir()
 	mut compiler_params := []string
+	target_os := file_to_target_os(file)
+	if target_os != '' {
+		compiler_params << ['-os', target_os]
+	}
 	mut cfile := file
 	mut mod_folder_parent := tmpfolder
 	fcontent := os.read_file(file) or {
@@ -137,7 +156,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 	}
 	formatted_file_path := foptions.compile_file(file, compiler_params)
 	if use_tmp_main_program {
-		os.rm(cfile)
+		if !foptions.is_debug {
+			os.rm(cfile)
+		}
 	}
 	if formatted_file_path.len == 0 {
 		return
@@ -186,6 +207,9 @@ fn find_working_diff_command() ?string {
 }
 
 fn (foptions &FormatOptions) compile_file(file string, compiler_params []string) string {
+	if foptions.is_verbose {
+		eprintln('> new_v_compiler_with_args: ' + compiler_params.join(' ') + ' $file')
+	}
 	mut v := compiler.new_v_compiler_with_args(compiler_params)
 	v.v_fmt_file = file
 	if foptions.is_all {
@@ -196,5 +220,16 @@ fn (foptions &FormatOptions) compile_file(file string, compiler_params []string)
 }
 
 pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ ' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' }'
+	return 'FormatOptions{ ' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' +' }'
+}
+
+fn file_to_target_os(file string) string {
+	for extensions in platform_and_file_extensions {
+		for ext in extensions {
+			if file.ends_with(ext){
+				return extensions[0]
+			}
+		}
+	}
+	return ''
 }
