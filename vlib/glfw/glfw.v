@@ -21,7 +21,7 @@ import gl
 #flag freebsd -I/usr/local/include
 #flag freebsd -Wl,-L/usr/local/lib,-lglfw
 #flag linux -lglfw
-#flag windows -lglfw3
+#flag windows -lgdi32 -lshell32 -lglfw3
 #include <GLFW/glfw3.h>
 // #flag darwin -framework Carbon
 // #flag darwin -framework Cocoa

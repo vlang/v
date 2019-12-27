@@ -263,6 +263,9 @@ fn (v mut V) cc() {
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
+	if v.os == .windows {
+		a << '-municode'
+	}
 	cflags := v.get_os_cflags()
 	// add .o files
 	a << cflags.c_options_only_object_files()
