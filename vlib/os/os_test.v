@@ -237,3 +237,13 @@ fn cleanup_leftovers(){
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
 }
+
+fn test_symlink() {
+  os.mkdir('symlink') or { panic(err) }
+  os.symlink('symlink', 'symlink2') or { panic(err) }
+  assert os.exists('symlink2')
+
+  // cleanup
+  os.rm('symlink')
+  os.rm('symlink2')
+}
