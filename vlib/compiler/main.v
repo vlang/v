@@ -77,7 +77,7 @@ pub mut:
 	gen_parser_idx      map[string]int
 	cached_mods         []string
 	module_lookup_paths []string
-	
+
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
@@ -270,9 +270,9 @@ pub fn (v mut V) compile() {
 			cgen.genln('//')
 			cgen.genln('')
 		}
-		
+
 		cgen.genln(c_builtin_types)
-		
+
 		if !v.pref.is_bare {
 			cgen.genln(c_headers)
 		}
@@ -557,7 +557,7 @@ pub fn (v mut V) generate_main() {
 }
 
 pub fn (v mut V) gen_main_start(add_os_args bool) {
-	if (v.os == .windows) {
+	if v.os == .windows {
 		if 'glfw' in v.table.imports {
 			v.cgen.genln('#ifdef V_BOOTSTRAP')
 			v.cgen.genln('int main(int argc, char** argv) { ')
@@ -569,14 +569,14 @@ pub fn (v mut V) gen_main_start(add_os_args bool) {
 			v.cgen.genln('    cmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			v.cgen.genln('    int argc;')
 			v.cgen.genln('    wchar_t** argv = CommandLineToArgvW(cmd_line, &argc);')
-			v.cgen.genln('    os__args = os__init_os_args_wide(argc, argv);')			
+			v.cgen.genln('    os__args = os__init_os_args_wide(argc, argv);')
 			v.cgen.genln('#endif')
 		} else {
 			v.cgen.genln('#ifdef V_BOOTSTRAP')
 			v.cgen.genln('int main(int argc, char** argv) { ')
-			v.cgen.genln('#else')			
+			v.cgen.genln('#else')
 			// Console application
-			v.cgen.genln('int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) { ')			
+			v.cgen.genln('int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) { ')
 			v.cgen.genln('#endif')
 		}
 	} else {
@@ -945,10 +945,10 @@ pub fn new_v(args []string) &V {
 	if args.len < 2 {
 		dir = ''
 	}
-	
+
 	// build mode
 	mut build_mode := BuildMode.default_mode
-	mut mod := ''	
+	mut mod := ''
 	joined_args := args.join(' ')
 	if joined_args.contains('build module ') {
 		build_mode = .build_module
@@ -1058,10 +1058,10 @@ pub fn new_v(args []string) &V {
 	}
 	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
 	cflags := cmdline.many_values(args, '-cflags').join(' ')
-  
+
 	defines := cmdline.many_values(args, '-d')
 	compile_defines, compile_defines_all := parse_defines( defines )
-	
+
 	rdir := os.realpath(dir)
 	rdir_name := filepath.filename(rdir)
 	if '-bare' in args {
@@ -1086,7 +1086,7 @@ pub fn new_v(args []string) &V {
 		is_live: '-live' in args
 		sanitize: '-sanitize' in args
 		// nofmt: '-nofmt' in args
-		
+
 		show_c_cmd: '-show_c_cmd' in args
 		translated: 'translated' in args
 		is_run: 'run' in args
@@ -1104,7 +1104,7 @@ pub fn new_v(args []string) &V {
 		ccompiler: find_c_compiler()
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || dir.contains('vlib'))
 		// is_fmt: comptime_define == 'vfmt'
-		
+
 		user_mod_path: user_mod_path
 		vlib_path: vlib_path
 		vpath: vpath
@@ -1133,7 +1133,7 @@ pub fn new_v(args []string) &V {
 		vroot: vroot
 		pref: pref
 		mod: mod
-		vgen_buf: vgen_buf		
+		vgen_buf: vgen_buf
 		compile_defines: compile_defines
 		compile_defines_all: compile_defines_all
 	}
