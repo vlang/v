@@ -74,15 +74,7 @@ mut:
 	bInheritHandle bool
 }
 
-fn init_os_args(argc int, argv &byteptr) []string {	
-	mut args := []string
-	for i := 0; i < argc; i++ {
-		args << string(argv[i])
-	}
-	return args
-}
-
-fn init_os_args_wide(argc int, argv &byteptr) []string {	
+fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i := 0; i < argc; i++ {
 		args << string_from_wide(&u16(argv[i]))

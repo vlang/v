@@ -559,9 +559,6 @@ pub fn (v mut V) generate_main() {
 pub fn (v mut V) gen_main_start(add_os_args bool) {
 	if v.os == .windows {
 		if 'glfw' in v.table.imports {
-			v.cgen.genln('#ifdef V_BOOTSTRAP')
-			v.cgen.genln('int main(int argc, char** argv) { ')
-			v.cgen.genln('#else')
 			// GUI application
 			v.cgen.genln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd) { ')
 			v.cgen.genln('    typedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
@@ -569,15 +566,9 @@ pub fn (v mut V) gen_main_start(add_os_args bool) {
 			v.cgen.genln('    cmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			v.cgen.genln('    int argc;')
 			v.cgen.genln('    wchar_t** argv = CommandLineToArgvW(cmd_line, &argc);')
-			v.cgen.genln('    os__args = os__init_os_args_wide(argc, argv);')
-			v.cgen.genln('#endif')
 		} else {
-			v.cgen.genln('#ifdef V_BOOTSTRAP')
-			v.cgen.genln('int main(int argc, char** argv) { ')
-			v.cgen.genln('#else')
 			// Console application
 			v.cgen.genln('int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) { ')
-			v.cgen.genln('#endif')
 		}
 	} else {
 		v.cgen.genln('int main(int argc, char** argv) { ')
@@ -585,11 +576,7 @@ pub fn (v mut V) gen_main_start(add_os_args bool) {
 	v.cgen.genln('  init();')
 	if add_os_args && 'os' in v.table.imports {
 		if v.os == .windows {
-			v.cgen.genln('#ifdef V_BOOTSTRAP')
-			v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
-			v.cgen.genln('#else')
 			v.cgen.genln('  os__args = os__init_os_args_wide(argc, argv);')
-			v.cgen.genln('#endif')
 		} else {
 			v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
 		}
