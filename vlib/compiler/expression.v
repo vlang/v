@@ -4,7 +4,7 @@
 module compiler
 
 fn (p mut Parser) bool_expression() string {
-	is_ret := p.prev_tok == .key_return
+	//is_ret := p.prev_tok == .key_return
 	start_ph := p.cgen.add_placeholder()
 	mut expected := p.expected_type
 	tok := p.tok
