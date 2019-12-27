@@ -127,10 +127,18 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 					typ = types.string_type
 				}
 				if tok == .number {
-					node = ast.IntegerLiteral{
-						val: lit.int()
+					if lit.contains('.') {
+						node = ast.FloatLiteral{
+							//val: lit.f64()
+							val: lit
+						}
+						typ = types.int_type
+					} else {
+						node = ast.IntegerLiteral{
+							val: lit.int()
+						}
+						typ = types.int_type
 					}
-					typ = types.int_type
 				}
 				// else {
 				// verror('bad scalar token')

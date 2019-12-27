@@ -47,6 +47,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.write(it.val.str())
 		}
+		ast.FloatLiteral {
+			g.write(it.val)
+		}
 		ast.UnaryExpr {
 			g.expr(it.left)
 			g.write(' $it.op ')

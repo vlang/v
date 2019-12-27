@@ -6,34 +6,6 @@ import (
 	v.table
 )
 
-/*
-fn test_parser() {
-	if true { return }
-	text_expr := [
-		'1 += 2',
-		'1.2 + 3.4',
-		'4 + 4',
-		'1 + 2 * 5',
-		'(2 * 3) / 2',
-		'3 + (7 * 6)',
-		'2 ^ 8 * (7 * 6)',
-		'20 + (10 * 15) / 5', // 50
-		'(2) + (17*2-30) * (5)+2 - (8/2)*4', // 8
-		'2 + "hi"',
-		'x := 10',
-	]
-
-	table := &table.Table{}
-	for s in text_expr {
-		// print using str method
-		x := parse_expr(s, table)
-		println('source: $s')
-		println('parsed: $x')
-		println('===================')
-	}
-}
-
-*/
 fn test_parse_file() {
 	s := '12 + 3
 	x := 10
@@ -44,7 +16,6 @@ fn test_parse_file() {
 	prog := parse_file(s, table)
 	res := cgen.gen(prog)
 	println(res)
-	println('done')
 }
 
 
@@ -59,17 +30,16 @@ fn test_parse_expr() {
 		's := "hi"',
 
 		'1 += 2',
-		//'1.2 + 3.4',
-		/*
+		'1.2 + 3.4',
 		'4 + 4',
 		'1 + 2 * 5',
+		/*
 		'(2 * 3) / 2',
 		'3 + (7 * 6)',
 		'2 ^ 8 * (7 * 6)',
 		'20 + (10 * 15) / 5', // 50
 		'(2) + (17*2-30) * (5)+2 - (8/2)*4', // 8
-		'2 + "hi"',
-		'x := 10',
+		//'2 + "hi"',
 		*/
 	]
 	expecting := [
@@ -81,10 +51,10 @@ fn test_parse_expr() {
 		'int ab = 10 + 3 * 9;',
 		'string s = tos3("hi");',
 		'1 += 2',
-		//'1.2 + 3.4',
+		'1.2 + 3.4',
+		'4 + 4',
+		'1 + 2 * 5',
 	]
-	//expr := parse_expr('3 + 7 * 2')
-	//expr2 := parse_stmt('a := 3 + "f"')
 	mut e := []ast.Expr
 	table := &table.Table{}
 	for s in input {
@@ -108,6 +78,15 @@ fn test_parse_expr() {
 			break
 		}
 	}
-	//cgen.save()
 }
+
+/*
+	table := &table.Table{}
+	for s in text_expr {
+		// print using str method
+		x := parse_expr(s, table)
+		println('source: $s')
+		println('parsed: $x')
+		println('===================')
+*/
 

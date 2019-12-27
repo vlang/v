@@ -12,13 +12,19 @@ import (
 struct Foo {}
 
 pub type Expr = Foo | IfExpr | BinaryExpr | UnaryExpr |
-	StringLiteral  | IntegerLiteral | VarDecl
+	StringLiteral  | IntegerLiteral | FloatLiteral  | VarDecl
 
 pub type Stmt = Foo | Foo //VarDecl
 
 pub struct IntegerLiteral {
 pub:
 	val int
+}
+
+pub struct FloatLiteral {
+pub:
+	//val f64
+	val string
 }
 
 pub struct StringLiteral {
