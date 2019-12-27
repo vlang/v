@@ -138,14 +138,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
 	mains := files.filter(!it.contains('modules'))
-	mut rebuildable_mains := mains
-	if os.user_os() == 'windows' {
-		// on windows, an executable can not be rebuilt, while it is running
-		myself := os.executable().replace('.exe', '') + '.v'
-		mains_without_myself := mains.filter(!it.contains(myself))
-		rebuildable_mains = mains_without_myself // workaround a bug in it.contains generation
-	}
-	session.files << rebuildable_mains
+	session.files << mains
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	return session.failed
