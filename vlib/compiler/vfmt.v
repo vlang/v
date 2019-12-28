@@ -259,7 +259,7 @@ fn (p &Parser) gen_fmt() {
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
-	s1 := p.scanner.fmt_lines.join('')
+	mut s := p.scanner.fmt_lines.join('')
 /*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
@@ -268,13 +268,12 @@ fn (p &Parser) gen_fmt() {
 	*/
 	//.replace('\n\n\n\n', '\n\n')
 
-	s2 := s1.replace(' \n', '\n')
-	s3 := s2.replace(') or{', ') or {')
-	s4 := s3.replace(')or{', ') or {')
-	s5 := s4.replace('or{', 'or {')
-	s6 := s5.replace('}}\n', '}\n\t}\n')
-
-	s := s6
+	s = s.replace(' \n', '\n')
+	s = s.replace(')  or {', ') or {')
+	s = s.replace(') or{', ') or {')
+	s = s.replace(')or{', ') or {')
+	s = s.replace('or{', 'or {')
+	s = s.replace('}}\n', '}\n\t}\n')
 
 	if s == '' {
 		return

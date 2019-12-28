@@ -13,17 +13,14 @@ const (
 
 fn test_c_files() {
 	println('Running V => C tests')
-	dir := filepath.dir(os.executable())
+	vexe := os.getenv('VEXE')
+	vroot := filepath.dir(vexe)
 	for i in 1 .. nr_tests + 1 {
-		text := os.read_file('$dir/tests/${i}.v') or {
-			exit(0)
-			// panic(err)
-			// exit(1)
+		text := os.read_file('$vroot/vlib/v/cgen/tests/${i}.v') or {
+			panic(err)
 		}
-		ctext := os.read_file('$dir/tests/${i}.c') or {
-			exit(0)
-			// exit(1)
-			// panic(err)
+		ctext := os.read_file('$vroot/vlib/v/cgen/tests/${i}.c') or {
+			panic(err)
 		}
 		table := &table.Table{}
 		program := parser.parse_file(text, table)

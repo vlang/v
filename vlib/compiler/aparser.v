@@ -3019,6 +3019,7 @@ fn (p mut Parser) attribute() {
 	if p.tok == .key_if {
 		// [if vfmt]
 		p.next()
+		p.fspace()
 		p.attr = 'if ' + p.check_name()
 	}
 	else {

@@ -59,6 +59,9 @@ fn v_files() []string {
 		if tfile in known_failing_exceptions {
 			continue
 		}
+		if tfile.starts_with('./vlib/v/cgen/tests') {
+			continue
+		}
 		files_that_can_be_formatted << tfile
 	}
 	return files_that_can_be_formatted
