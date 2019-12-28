@@ -313,13 +313,13 @@ fn (p &Parser) peek_token() Token {
 }
 
 fn (p &Parser) log(s string) {
+}
 	/*
 	if !p.pref.is_verbose {
 		return
 	}
 	println(s)
 */
-}
 
 pub fn (p &Parser) save_state() ParserState {
 	return ParserState{
@@ -796,6 +796,7 @@ fn (p mut Parser) type_decl() {
 	is_sum := p.tok == .assign
 	if is_sum {
 		p.next()
+		p.fspace()
 	}
 	mut parent := Type{}
 	// Sum type
@@ -838,7 +839,13 @@ fn (p mut Parser) type_decl() {
 			if done {
 				break
 			}
+			p.fspace()
 			p.check(.pipe)
+			p.fspace()
+			if p.tokens[p.token_idx - 2].line_nr <  p.tokens[p.token_idx - 1].line_nr {
+				p.fgenln('\t')
+				//p.fgen_nl()
+			}
 		}
 		if p.pass == .decl {
 			p.table.sum_types << name
@@ -877,9 +884,10 @@ int typ;
 			is_public: is_pub
 		})
 	}
-	if p.tok != .key_type {
-		p.fspace()
-	}
+	//if p.tok != .key_type {
+		p.fgen_nl()
+		p.fgen_nl()
+	//}
 }
 
 // current token is `(`
@@ -1262,9 +1270,9 @@ fn (p mut Parser) statements() string {
 
 fn (p mut Parser) statements_no_rcbr() string {
 	p.open_scope()
-	if !p.inside_if_expr {
+	//if !p.inside_if_expr {
 		// p.genln('')
-	}
+	//}
 	mut i := 0
 	mut last_st_typ := ''
 	for p.tok != .rcbr && p.tok != .eof {

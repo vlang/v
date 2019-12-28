@@ -28,7 +28,7 @@ mut:
 	inter_end                bool
 	debug                    bool
 	line_comment             string
-	//prev_tok                 TokenKind
+	// prev_tok                 TokenKind
 	started                  bool
 	fn_name                  string // needed for @FN
 	print_line_on_error      bool
@@ -36,7 +36,7 @@ mut:
 	print_rel_paths_on_error bool
 	quote                    byte // which quote is used to denote current string: ' or "
 	line_ends                []int // the positions of source lines ends   (i.e. \n signs)
-	nr_lines                   int // total number of lines in the source file that were scanned
+	nr_lines                 int // total number of lines in the source file that were scanned
 	is_vh                    bool // Keep newlines
 	is_fmt                   bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
@@ -46,7 +46,7 @@ fn new_scanner_file(file_path string) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
-	mut raw_text := os.read_file(file_path)or{
+	mut raw_text := os.read_file(file_path) or {
 		verror('scanner: failed to open $file_path')
 		return 0
 	}
@@ -60,7 +60,7 @@ fn new_scanner_file(file_path string) &Scanner {
 		}
 	}
 	mut s := new_scanner(raw_text)
-	//s.init_fmt()
+	// s.init_fmt()
 	s.file_path = file_path
 	return s
 }
@@ -632,8 +632,8 @@ pub fn (s mut Scanner) scan() token.Token {
 			}
 			return scan_res(.div, '')
 		}
-		else {
-		}}
+		else {}
+	}
 	$if windows {
 		if c == `\0` {
 			return s.end_of_file()
@@ -689,8 +689,7 @@ fn (s mut Scanner) ident_string() string {
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
-			if s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit() {
-			}
+			if s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit() {}
 			else {
 				s.error('0 character in a string literal')
 			}
@@ -722,8 +721,7 @@ fn (s mut Scanner) ident_string() string {
 	if s.inside_string {
 		end++
 	}
-	if start > s.pos {
-	}
+	if start > s.pos {}
 	else {
 		lit = s.text[start..end]
 	}
@@ -899,6 +897,3 @@ pub fn vhash() string {
 pub fn cescaped_path(s string) string {
 	return s.replace('\\', '\\\\')
 }
-
-
-

@@ -8,16 +8,12 @@ import (
 	v.types
 )
 
-
 struct Foo {}
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr |
-	StringLiteral  | IntegerLiteral | FloatLiteral  | VarDecl |
-	FnDecl | Return
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | FloatLiteral | 	
+VarDecl | FnDecl | Return
 
-pub type Stmt = Foo//VarDecl
-
-
+pub type Stmt = Foo // VarDecl
 pub struct IntegerLiteral {
 pub:
 	val int
@@ -25,7 +21,7 @@ pub:
 
 pub struct FloatLiteral {
 pub:
-	//val f64
+// val f64
 	val string
 }
 
@@ -37,26 +33,25 @@ pub:
 // module decleration
 pub struct Module {
 pub:
-	name  string
-	path  string
-	expr  Expr
+	name string
+	path string
+	expr Expr
 }
 
 // import statement
 pub struct Import {
 pub:
-	name  string
-	expr  Expr
+	name string
+	expr Expr
 	// imports map[string]string
 }
 
 pub struct FnDecl {
 pub:
 	name  string
-	//stmts []Stmt
+	// stmts []Stmt
 	exprs []Expr
-	typ types.Type
-
+	typ   types.Type
 }
 
 pub struct Return {
@@ -79,56 +74,54 @@ pub struct Stmt {
 }
 */
 
+
 pub struct VarDecl {
 pub:
 	name string
 	expr Expr
-	typ types.Type
-
+	typ  types.Type
 }
 
 pub struct Program {
 pub:
 	exprs []Expr
-	//stmts []Stmt
+	// stmts []Stmt
 }
-
-
 // A single identifier
 struct Ident {
 	tok_kind token.TokenKind
-	value string
+	value    string
 }
 
 pub struct BinaryExpr {
 pub:
 	tok_kind token.TokenKind
-	//op    BinaryOp
-	op    token.TokenKind
-	left  Expr
-	//left_type Type
-	right Expr
-	//right_type Type
+	// op    BinaryOp
+	op       token.TokenKind
+	left     Expr
+	// left_type Type
+	right    Expr
+	// right_type Type
 }
 
 pub struct UnaryExpr {
 pub:
-	// tok_kind token.TokenKind
-	//op    BinaryOp
-	op    token.TokenKind
-	left  Expr
+// tok_kind token.TokenKind
+// op    BinaryOp
+	op   token.TokenKind
+	left Expr
 }
 
 struct IfExpr {
 	tok_kind token.TokenKind
-	cond  Expr
-	body  []Stmt
-	else_ []Stmt
+	cond     Expr
+	body     []Stmt
+	else_    []Stmt
 }
 
 struct ReturnStmt {
-	tok_kind   token.TokenKind // or pos
-	results []Expr
+	tok_kind token.TokenKind // or pos
+	results  []Expr
 }
 
 // string representaiton of expr
@@ -146,7 +139,9 @@ pub fn (x Expr) str() string {
 		IntegerLiteral {
 			return '"$it.val"'
 		}
-		else { return '' }
+		else {
+			return ''
+		}
 	}
 }
 
