@@ -249,11 +249,13 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.Type) {
 }
 
 fn (p mut Parser) module_decl() (ast.Expr,types.Type) {
+	// p.check(.key_module)
 	p.next()
 	return ast.Expr{}, types.void_type
 }	
 
 fn (p mut Parser) import_stmt() (ast.Expr,types.Type) {
+	// p.check(.key_import)
 	p.next()
 	return ast.Expr{}, types.void_type
 }

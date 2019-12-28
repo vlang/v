@@ -34,6 +34,22 @@ pub:
 	val string
 }
 
+// module decleration
+pub struct Module {
+pub:
+	name  string
+	path  string
+	expr  Expr
+}
+
+// import statement
+pub struct Import {
+pub:
+	name  string
+	expr  Expr
+	// imports map[string]string
+}
+
 pub struct FnDecl {
 pub:
 	name  string
