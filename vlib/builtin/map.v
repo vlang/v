@@ -34,8 +34,8 @@ pub mut:
 
 struct mapnode {
 mut:
-  	keys     [max_length]string
-	values   [max_length]voidptr
+  	keys     [11]string
+	values   [11]voidptr
 	children &voidptr
 	size     int
 }
