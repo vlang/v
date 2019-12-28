@@ -32,6 +32,12 @@ pub fn (g mut Gen) writeln(s string) {
 
 fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
+		ast.AssignStmt {
+			g.expr(it.left)
+			g.write(' $it.op.str() ')
+			g.expr(it.right)
+			g.writeln(';')
+		}
 		ast.FnDecl {
 			g.writeln('$it.typ.name ${it.name}() { ')
 			for stmt in it.stmts {

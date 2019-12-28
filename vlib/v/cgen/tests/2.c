@@ -9,5 +9,5 @@ void function2() {
 	f64 f = 10.1;
 	string s = tos3("hi");
 	int m = 10;
-	m += 10;
+	x += 10;
 }

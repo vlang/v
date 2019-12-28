@@ -6,10 +6,10 @@ fn function1() int {
 
 // comment
 fn function2() {
-	x := 0
+	mut x := 0
 	f := 10.1
 	s := 'hi'
 	m := 10
-	m += 10
+	x += 10
 	//c := 0
 }

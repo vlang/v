@@ -11,7 +11,7 @@ import (
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | FloatLiteral | 	
 Ident
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
@@ -101,12 +101,12 @@ pub:
 
 pub struct BinaryExpr {
 pub:
-	tok_kind token.TokenKind
-	// op    BinaryOp
-	op       token.TokenKind
-	left     Expr
+// tok_kind token.TokenKind
+// op    BinaryOp
+	op    token.TokenKind
+	left  Expr
 	// left_type Type
-	right    Expr
+	right Expr
 	// right_type Type
 }
 
@@ -118,16 +118,23 @@ pub:
 	left Expr
 }
 
-struct IfExpr {
+pub struct IfExpr {
 	tok_kind token.TokenKind
 	cond     Expr
 	body     []Stmt
 	else_    []Stmt
 }
 
-struct ReturnStmt {
+pub struct ReturnStmt {
 	tok_kind token.TokenKind // or pos
 	results  []Expr
+}
+
+pub struct AssignStmt {
+pub:
+	left  Expr
+	right Expr
+	op    token.TokenKind
 }
 
 // string representaiton of expr

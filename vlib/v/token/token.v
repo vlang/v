@@ -267,8 +267,8 @@ pub fn is_decl(t TokenKind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
 }
 
-fn (t TokenKind) is_assign() bool {
-	return t in assign_tokens
+pub fn (t Token) is_assign() bool {
+	return t.kind in assign_tokens
 }
 
 fn (t []TokenKind) contains(val TokenKind) bool {
@@ -331,9 +331,9 @@ pub fn (tok Token) precedence() int {
 		.logical_or {
 			return 3
 		}
-		.plus_assign {
-			return 2
-		}
+		// /.plus_assign {
+		// /return 2
+		// /}
 		else {
 			return lowest_prec
 		}

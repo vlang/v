@@ -133,9 +133,15 @@ fn (p mut Parser) check_name() string {
 }
 
 pub fn (p mut Parser) stmt() ast.Stmt {
+	// println('stmt at ' + p.tok.str())
 	// `x := ...`
-	if p.tok.kind == .name && p.peek_tok.kind == .decl_assign {
-		return p.var_decl()
+	if p.tok.kind == .name {
+		if p.peek_tok.kind == .decl_assign {
+			return p.var_decl()
+		}
+		else if p.peek_tok.is_assign() {
+			return p.assign_stmt()
+		}
 	}
 	match p.tok.kind {
 		.key_module {
@@ -162,18 +168,27 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 	}
 }
 
+pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
+	left_expr,left_type := p.expr(0)
+	op := p.tok.kind
+	println('assignn_stmt() ' + op.str())
+	p.next()
+	right_expr,right_type := p.expr(0)
+	return ast.AssignStmt{
+		left: left_expr
+		right: right_expr
+		op: op
+	}
+}
+
 // Implementation of Pratt Precedence
 pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
-	println('expr at ' + p.tok.str())
+	// println('expr at ' + p.tok.str())
 	// null denotation (prefix)
 	mut node := ast.Expr{}
 	mut typ := types.void_type
 	match p.tok.kind {
 		.name {
-			// `x := ...`
-			// if p.peek_tok.kind == .decl_assign {
-			// return p.var_decl()
-			// }
 			// name expr
 			node = ast.Ident{
 				name: p.tok.lit
@@ -215,6 +230,16 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		if prev_tok.is_right_assoc() {
 			mut expr := ast.Expr{}
 			expr,t2 = p.expr(prev_tok.precedence() - 1)
+			/*
+			if prev_tok.is_assign() {
+				return ast.AssignStmt {
+					left: node
+					op: prev_tok.kind
+					right: expr
+				}, types.void_type
+			}
+			*/
+
 			node = ast.BinaryExpr{
 				left: node
 				// left_type: t1
