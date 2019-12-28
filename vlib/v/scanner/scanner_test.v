@@ -10,21 +10,21 @@ import (
 fn test_scan() {
 	text := 'println(2 + 3)'
 	mut scanner := new_scanner(text)
-	mut tokens := []token.Token
+	mut token_kinds := []token.TokenKind
 	for {
-		res := scanner.scan()
-		if res.tok == .eof {
+		tok := scanner.scan()
+		if tok.kind == .eof {
 			break
 		}
-		tokens << res.tok
+		token_kinds << tok.kind
 	}
-	assert tokens.len == 6
-	assert tokens[0] == .name
-	assert tokens[1] == .lpar
-	assert tokens[2] == .number
-	assert tokens[3] == .plus
-	assert tokens[4] == .number
-	assert tokens[5] == .rpar
+	assert token_kinds.len == 6
+	assert token_kinds[0] == .name
+	assert token_kinds[1] == .lpar
+	assert token_kinds[2] == .number
+	assert token_kinds[3] == .plus
+	assert token_kinds[4] == .number
+	assert token_kinds[5] == .rpar
 
 }
 
