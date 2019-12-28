@@ -2,7 +2,12 @@ module main
 
 import net.ftp
 
-fn test_all() {
+fn test_client(){
+  make_client_connection()
+}
+
+[if network]
+fn make_client_connection() {
 	mut ftp := ftp.new()
 	defer {
 		ftp.close()
@@ -12,6 +17,7 @@ fn test_all() {
 	assert ftp.login('ftp','ftp')
 
 	pwd := ftp.pwd()
+  assert pwd.len > 0
 
 	ftp.cd('/')
 	dir_list1 := ftp.dir() or {
