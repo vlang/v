@@ -13,7 +13,10 @@ const (
 
 fn test_c_files() {
 	println('Running V => C tests')
+	eprintln('executable: ' + os.executable())
+	eprintln('  work dir: ' + os.getwd())
 	dir := filepath.dir(os.executable())
+	eprintln('parent dir: ' + dir)
 	for i in 1 .. nr_tests + 1 {
 		text := os.read_file('$dir/tests/${i}.v') or {
 			panic(err)
