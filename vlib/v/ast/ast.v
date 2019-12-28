@@ -30,7 +30,7 @@ pub:
 	val string
 }
 
-// module decleration
+// module declaration
 pub struct Module {
 pub:
 	name string

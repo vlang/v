@@ -72,7 +72,7 @@ pub fn parse_file(text string, table &table.Table) ast.Program {
 		expr,_ := p.expr(token.lowest_prec)
 		exprs << expr
 	}
-	println('nr exprs = $exprs.len')
+	// println('nr exprs = $exprs.len')
 	println(exprs[0])
 	return ast.Program{
 		exprs}
@@ -90,7 +90,7 @@ pub fn (p mut Parser) parse_block() []ast.Expr {
 		exprs << expr
 	}
 	p.next()
-	println('nr exprs in block = $exprs.len')
+	// println('nr exprs in block = $exprs.len')
 	return exprs
 }
 
@@ -146,6 +146,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		.key_return {
 			return p.return_stmt()
 		}
+		.key_mut {
+			return p.var_decl()
+		}
 		.name {
 			if p.peek_tok.kind == .decl_assign {
 				return p.var_decl()
@@ -159,9 +162,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		}
 		.lpar {
 			node,typ = p.expr(0)
-			if p.tok.kind != .rpar {
-				panic('Parse Error: expected )')
-			}
+			p.check(.rpar)
 		}
 		else {
 			p.next()
@@ -172,6 +173,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 					left: expr
 					op: p.tok.kind
 				}
+			}
+			else {
+				verror('!unknown token ' + p.tok.str())
 			}
 		}
 	}
@@ -256,7 +260,7 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.Type) {
 			// val: lit.f64()
 			val: lit
 		}
-		typ = types.int_type
+		typ = types.f64_type
 	}
 	else {
 		node = ast.IntegerLiteral{
@@ -283,7 +287,7 @@ fn (p mut Parser) import_stmt() (ast.Expr,types.Type) {
 fn (p mut Parser) fn_decl() (ast.Expr,types.Type) {
 	p.check(.key_fn)
 	name := p.tok.lit
-	println('fn decl $name')
+	// println('fn decl $name')
 	p.check(.name)
 	p.check(.lpar)
 	p.check(.rpar)
@@ -295,7 +299,6 @@ fn (p mut Parser) fn_decl() (ast.Expr,types.Type) {
 	}
 	p.check(.lcbr)
 	// p.check(.rcbr)
-	println('OK!')
 	exprs := p.parse_block()
 	mut node := ast.Expr{}
 	node = ast.FnDecl{
@@ -307,7 +310,7 @@ fn (p mut Parser) fn_decl() (ast.Expr,types.Type) {
 }
 
 fn (p mut Parser) return_stmt() (ast.Expr,types.Type) {
-	println('return st')
+	// println('return st')
 	p.next()
 	expr,t := p.expr(0)
 	if !types.check(p.return_type, t) {
@@ -321,6 +324,16 @@ fn (p mut Parser) return_stmt() (ast.Expr,types.Type) {
 }
 
 fn (p mut Parser) var_decl() (ast.Expr,types.Type) {
+	is_mut := p.tok.kind == .key_mut // || p.prev_tok == .key_for
+	is_static := p.tok.kind == .key_static
+	if p.tok.kind == .key_mut {
+		p.check(.key_mut)
+		// p.fspace()
+	}
+	if p.tok.kind == .key_static {
+		p.check(.key_static)
+		// p.fspace()
+	}
 	name := p.tok.lit
 	p.next()
 	p.next()
@@ -329,8 +342,8 @@ fn (p mut Parser) var_decl() (ast.Expr,types.Type) {
 		verror('redefinition of `$name`')
 	}
 	p.table.names << name
-	println(p.table.names)
-	println('added $name')
+	// println(p.table.names)
+	// println('added $name')
 	mut node := ast.Expr{}
 	// TODO can't return VarDecl{}
 	node = ast.VarDecl{

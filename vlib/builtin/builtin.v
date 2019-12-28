@@ -96,6 +96,20 @@ pub fn eprintln(s string) {
 	println(s)
 }
 
+pub fn eprint(s string) {
+	if isnil(s.str) {
+		panic('eprint(NIL)')
+	}
+	$if !windows {
+		C.fflush(stdout)
+		C.fflush(stderr)
+		C.fprintf(stderr, '%.*s', s.len, s.str)
+		C.fflush(stderr)
+		return
+	}
+	print(s)
+}
+
 pub fn print(s string) {
 	$if windows {
 		C.wprintf(s.to_wide())

@@ -7,11 +7,12 @@ import (
 
 struct Gen {
 	out strings.Builder
-
 }
 
 pub fn gen(program ast.Program) string {
-	mut g := Gen{out:strings.new_builder(100)}
+	mut g := Gen{
+		out: strings.new_builder(100)
+	}
 	for expr in program.exprs {
 		g.expr(expr)
 		g.writeln('')
@@ -19,9 +20,7 @@ pub fn gen(program ast.Program) string {
 	return (g.out.str())
 }
 
-pub fn (g &Gen) save() {
-
-}
+pub fn (g &Gen) save() {}
 
 pub fn (g mut Gen) write(s string) {
 	g.out.write(s)
@@ -32,7 +31,7 @@ pub fn (g mut Gen) writeln(s string) {
 }
 
 fn (g mut Gen) expr(node ast.Expr) {
-	//println('cgen expr()')
+	// println('cgen expr()')
 	match node {
 		ast.IntegerLiteral {
 			g.write(it.val.str())
@@ -48,7 +47,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('tos3("$it.val")')
 		}
 		ast.FnDecl {
-			g.writeln('$it.typ.name $it.name () { ')
+			g.writeln('$it.typ.name ${it.name}() { ')
 			for expr in it.exprs {
 				g.expr(expr)
 			}
@@ -62,17 +61,27 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.BinaryExpr {
 			g.expr(it.left)
 			match it.op {
-				.plus {	g.write(' + ')	}
-				.minus {	g.write(' - ')	}
-				.mul {	g.write(' * ')	}
-				.div {	g.write(' / ')	}
-				.plus_assign { g.write(' += ') }
+				.plus {
+					g.write(' + ')
+				}
+				.minus {
+					g.write(' - ')
+				}
+				.mul {
+					g.write(' * ')
+				}
+				.div {
+					g.write(' / ')
+				}
+				.plus_assign {
+					g.write(' += ')
+				}
 				else {}
-			}
+	}
 			g.expr(it.right)
-		//	if typ.name != typ2.name {
-				//verror('bad types $typ.name $typ2.name')
-			//}
+			// if typ.name != typ2.name {
+			// verror('bad types $typ.name $typ2.name')
+			// }
 		}
 		ast.VarDecl {
 			g.write('$it.typ.name $it.name = ')
@@ -89,4 +98,3 @@ fn verror(s string) {
 	println(s)
 	exit(1)
 }
-
