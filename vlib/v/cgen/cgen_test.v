@@ -1,5 +1,6 @@
 import (
 	os
+	filepath
 	v.parser
 	v.ast
 	v.cgen
@@ -12,11 +13,12 @@ const (
 
 fn test_c_files() {
 	println('Running V => C tests')
+	dir := filepath.dir(os.executable())
 	for i in 1 .. nr_tests + 1 {
-		text := os.read_file('tests/${i}.v') or {
+		text := os.read_file('$dir/tests/${i}.v') or {
 			panic(err)
 		}
-		ctext := os.read_file('tests/${i}.c') or {
+		ctext := os.read_file('$dir/tests/${i}.c') or {
 			panic(err)
 		}
 		table := &table.Table{}

@@ -9,4 +9,6 @@ fn function2() {
 	f := 10.1
 	s := 'hi'
 	mut m := 10
+	//m += 10
+	//c := 0
 }
