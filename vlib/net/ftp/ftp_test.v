@@ -3,9 +3,14 @@ module main
 import net.ftp
 
 fn test_client(){
-  make_client_connection()
+	make_client_connection()
+	assert true
 }
 
+
+// NB: this function makes network calls to external servers,
+// that is why it is not a very good idea to run it in CI.
+// If you want to run it manually, use `v -d network vlib/net/ftp/ftp_test.v`
 [if network]
 fn make_client_connection() {
 	mut ftp := ftp.new()
