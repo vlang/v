@@ -148,7 +148,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		}
 		else {
 			p.next()
-			if p.tok.kind.is_unary() {
+			if p.tok.is_unary() {
 				expr,_ := p.expr(token.highest_prec)
 				node = ast.UnaryExpr{
 					// left: p.expr(token.highest_prec)
@@ -160,14 +160,14 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	}
 
 	// left binding power
-	for rbp < p.tok.kind.precedence() {
+	for rbp < p.tok.precedence() {
 		prev_tok := p.tok
 		p.next()
 		mut t2 := types.Type{}
 		// left denotation (infix)
-		if prev_tok.kind.is_right_assoc() {
+		if prev_tok.is_right_assoc() {
 			mut expr := ast.Expr{}
-			expr,t2 = p.expr(prev_tok.kind.precedence() - 1)
+			expr,t2 = p.expr(prev_tok.precedence() - 1)
 			node = ast.BinaryExpr{
 				left: node
 				//left_type: t1
@@ -179,9 +179,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				verror('cannot convert `$t2.name` to `$typ.name`')
 			}
 		}
-		else if prev_tok.kind.is_left_assoc() {
+		else if prev_tok.is_left_assoc() {
 			mut expr := ast.Expr{}
-			expr,t2 = p.expr(prev_tok.kind.precedence())
+			expr,t2 = p.expr(prev_tok.precedence())
 			node = ast.BinaryExpr{
 				left: node
 				op: prev_tok.kind

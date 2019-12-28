@@ -315,8 +315,8 @@ pub const (
 )
 
 // Precedence returns a tokens precedence if defined, otherwise lowest_prec
-pub fn (tok TokenKind) precedence() int {
-	match tok {
+pub fn (tok Token) precedence() int {
+	match tok.kind {
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
 		.mul, .div, .left_shift, .righ_shift, .amp { return 7 }
 		// `+` |  `-` |  `|` | `^`
@@ -332,13 +332,13 @@ pub fn (tok TokenKind) precedence() int {
 }
 
 // is_scalar returns true if the token is a scalar
-pub fn (tok TokenKind) is_scalar() bool {
-	return tok in [.number, .str]
+pub fn (tok Token) is_scalar() bool {
+	return tok.kind in [.number, .str]
 }
 
 // is_unary returns true if the token can be in a unary expression
-pub fn (tok TokenKind) is_unary() bool {
-	return tok in [
+pub fn (tok Token) is_unary() bool {
+	return tok.kind in [
 		//  `+` | `-` | `!` | `~` | `*` | `&`
 		.plus, .minus, .not, .bit_not, .mul, .amp
 	]
@@ -348,9 +348,8 @@ pub fn (tok TokenKind) is_unary() bool {
 // or only ones with the same precedence?
 
 // is_left_assoc returns true if the token is left associative
-pub fn (tok TokenKind) is_left_assoc() bool {
-	return tok in [
-
+pub fn (tok Token) is_left_assoc() bool {
+	return tok.kind in [
 		// .number,
 		// `*` | `/` | `%`
 		.mul, .div, .mod,
@@ -362,8 +361,8 @@ pub fn (tok TokenKind) is_left_assoc() bool {
 }
 
 // is_right_assoc returns true if the token is right associative
-pub fn (tok TokenKind) is_right_assoc() bool {
-	return tok in [
+pub fn (tok Token) is_right_assoc() bool {
+	return tok.kind in [
 		// `+` | `-` | `!` | `++` | `--`
 		.plus, .minus, .not, .inc, .dec,
 		// `=` | `+=` | `-=` | `*=` | `/=`
