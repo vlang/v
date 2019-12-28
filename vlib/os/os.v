@@ -616,7 +616,7 @@ pub fn ext(path string) string {
 [deprecated]
 pub fn dir(path string) string {
 	println('Use filepath.dir')
-	return filepath.ext(path)
+	return filepath.dir(path)
 }
 
 [deprecated]
