@@ -51,14 +51,16 @@ fn (p mut Parser) bool_expression() string {
 		expected = p.expected_type
 	}
 	if expected != typ && expected in p.table.sum_types { // TODO perf
-	//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
-		p.cgen.set_placeholder(start_ph,
-			//'/*SUM TYPE CAST*/($expected) { .obj = &($typ[]) { ')
-			'/*SUM TYPE CAST*/($expected) { .obj = memdup(& ')
-		tt := typ.all_after('_') // TODO
-		//p.gen('}, .typ = SumType_${tt} }')//${val}_type }')
-		p.gen(', sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
-
+		T := p.table.find_type(typ)
+		if T.parent == expected {
+			//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
+			p.cgen.set_placeholder(start_ph,
+				//'/*SUM TYPE CAST*/($expected) { .obj = &($typ[]) { ')
+				'/*SUM TYPE CAST*/($expected) { .obj = memdup(& ')
+			tt := typ.all_after('_') // TODO
+			//p.gen('}, .typ = SumType_${tt} }')//${val}_type }')
+			p.gen(', sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+		}
 	}
 	return typ
 }
