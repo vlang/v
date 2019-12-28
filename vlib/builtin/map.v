@@ -354,34 +354,40 @@ pub fn (m mut map) delete(key string) {
 	}
 }
 
-fn (n mapnode) preoder_keys(ref mut ArrayReference) []string {
-	mut i := 0
-	if n.children == 0 {
-		i = 0
-		for i < n.size {
-			ref.array << n.keys[i]
-			i++
+// Insert all keys of the subtree into array `keys`
+// starting at `at`. Keys are inserted in order. 
+fn subkeys(n mapnode, keys mut []string, at int) int {
+	mut position := at
+	if (n.children != 0) {
+		// Traverse children and insert
+		// keys inbetween children
+		for i in 0..n.size {
+			child := &mapnode(n.children[i])
+			position += subkeys(child, mut keys, position)
+			keys[position] = n.keys[i]
+			position++
 		}
+		// Insert the keys of the last child
+		child := &mapnode(n.children[n.size])
+		position += subkeys(child, mut keys, position)
 	} else {
-		i = 0
-		for i < n.size {
-			&mapnode(n.children[i]).preoder_keys(mut ref)
-			ref.array << n.keys[i]
-			i++
+		// If leaf, insert keys
+		for i in 0..n.size {
+			keys[position + i] = n.keys[i]
 		}
-		&mapnode(n.children[i]).preoder_keys(mut ref)
-	} 
-	return ref.array
-}
-
-struct ArrayReference {
-mut:
-	array []string
+		position += n.size
+	}
+	// Return # of added keys
+	return position - at
 }
 
 pub fn (m &map) keys() []string {
-	mut keys := ArrayReference{}
-	return m.root.preoder_keys(mut keys)
+	mut keys := [''].repeat(m.size)
+	if isnil(m.root) || m.root.size == 0 {
+		return keys
+	}
+	subkeys(m.root, mut keys, 0)
+	return keys
 }
 
 fn (n mut mapnode) free() {
