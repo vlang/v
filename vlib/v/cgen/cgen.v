@@ -13,8 +13,8 @@ pub fn gen(program ast.Program) string {
 	mut g := Gen{
 		out: strings.new_builder(100)
 	}
-	for expr in program.exprs {
-		g.expr(expr)
+	for stmt in program.stmts {
+		g.stmt(stmt)
 		g.writeln('')
 	}
 	return (g.out.str())
@@ -28,6 +28,35 @@ pub fn (g mut Gen) write(s string) {
 
 pub fn (g mut Gen) writeln(s string) {
 	g.out.writeln(s)
+}
+
+fn (g mut Gen) stmt(node ast.Stmt) {
+	match node {
+		ast.FnDecl {
+			g.writeln('$it.typ.name ${it.name}() { ')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
+		ast.Return {
+			g.write('return ')
+			g.expr(it.expr)
+			g.writeln(';')
+		}
+		ast.VarDecl {
+			g.write('$it.typ.name $it.name = ')
+			g.expr(it.expr)
+			g.writeln(';')
+		}
+		ast.ExprStmt {
+			g.expr(it.expr)
+			g.writeln(';')
+		}
+		else {
+			verror('stmt bad node')
+		}
+	}
 }
 
 fn (g mut Gen) expr(node ast.Expr) {
@@ -45,18 +74,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
-		}
-		ast.FnDecl {
-			g.writeln('$it.typ.name ${it.name}() { ')
-			for expr in it.exprs {
-				g.expr(expr)
-			}
-			g.writeln('}')
-		}
-		ast.Return {
-			g.write('return ')
-			g.expr(it.expr)
-			g.writeln(';')
 		}
 		ast.BinaryExpr {
 			g.expr(it.left)
@@ -79,17 +96,18 @@ fn (g mut Gen) expr(node ast.Expr) {
 				else {}
 	}
 			g.expr(it.right)
+			// if it.op in [.plus_assign] {
+			// g.writeln(';')
+			// }
 			// if typ.name != typ2.name {
 			// verror('bad types $typ.name $typ2.name')
 			// }
 		}
-		ast.VarDecl {
-			g.write('$it.typ.name $it.name = ')
-			g.expr(it.expr)
-			g.writeln(';')
+		ast.Ident {
+			g.write('$it.name')
 		}
 		else {
-			println('bad node')
+			println('cgen.expr(): bad node')
 		}
 	}
 }

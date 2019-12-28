@@ -1,5 +1,6 @@
 fn function1() int {
 	a := 10 + 1
+	b := a + 1
 	return 0
 }
 
@@ -8,7 +9,7 @@ fn function2() {
 	x := 0
 	f := 10.1
 	s := 'hi'
-	mut m := 10
-	//m += 10
+	m := 10
+	m += 10
 	//c := 0
 }

@@ -5,8 +5,8 @@ module token
 
 pub struct Token {
 pub:
-	kind     TokenKind // the token number/enum; for quick comparisons
-	lit      string // literal representation of the token
+	kind TokenKind // the token number/enum; for quick comparisons
+	lit  string // literal representation of the token
 	// line_nr  int // the line number in the source where the token occured
 	// name_idx int // name table index for O(1) lookup
 	// pos      int // the position of the token in scanner text
@@ -125,13 +125,10 @@ pub enum TokenKind {
 
 const (
 	assign_tokens = [TokenKind.assign, .plus_assign, .minus_assign, .mult_assign,
-		.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
-		.righ_shift_assign, .left_shift_assign]
-
+	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
+	.righ_shift_assign, .left_shift_assign]
 	nr_tokens = 141
 )
-
-
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
 fn build_keys() map[string]int {
@@ -267,9 +264,7 @@ pub fn is_key(key string) bool {
 }
 
 pub fn is_decl(t TokenKind) bool {
-	return t in [.key_enum,
-.key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const,
-.key_pub, .eof]
+	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
 }
 
 fn (t TokenKind) is_assign() bool {
@@ -290,16 +285,17 @@ pub fn (t TokenKind) str() string {
 		return 'number'
 	}
 	if t == .chartoken {
-		return 'char'//'`lit`'
+		return 'char' // '`lit`'
 	}
 	if t == .str {
-		return 'str' //"'lit'"
+		return 'str' // "'lit'"
 	}
 	/*
 	if t < .plus {
 		return lit // string, number etc
 	}
 	*/
+
 	return token_str[int(t)]
 }
 
@@ -307,27 +303,40 @@ pub fn (t Token) str() string {
 	return '$t.kind.str() "$t.lit"'
 }
 
-
 // Representation of highest and lowest precedence
 pub const (
-	lowest_prec  = 0
+	lowest_prec = 0
 	highest_prec = 7
 )
-
 // Precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok.kind {
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
-		.mul, .div, .left_shift, .righ_shift, .amp { return 7 }
+		.mul, .div, .left_shift, .righ_shift, .amp {
+			return 7
+		}
 		// `+` |  `-` |  `|` | `^`
-		.plus, .minus, .pipe, .xor { return 6 }
-		// `==` | `!=` | `<` | `<=` | `>` | `>=` | +=
-		.eq, .ne, .lt, .le, .gt, .ge, .plus_assign { return 5 }
+		.plus, .minus, .pipe, .xor {
+			return 6
+		}
+		// `==` | `!=` | `<` | `<=` | `>` | `>=`
+		.eq, .ne, .lt, .le, .gt, .ge {
+			return 5
+		}
 		// `&&`
-		.and { return 4 }
+		.and {
+			return 4
+		}
 		// `||`
-		.logical_or { return 3 }
-		else { return lowest_prec }
+		.logical_or {
+			return 3
+		}
+		.plus_assign {
+			return 2
+		}
+		else {
+			return lowest_prec
+		}
 	}
 }
 
@@ -339,37 +348,33 @@ pub fn (tok Token) is_scalar() bool {
 // is_unary returns true if the token can be in a unary expression
 pub fn (tok Token) is_unary() bool {
 	return tok.kind in [
-		//  `+` | `-` | `!` | `~` | `*` | `&`
-		.plus, .minus, .not, .bit_not, .mul, .amp
-	]
+	// `+` | `-` | `!` | `~` | `*` | `&`
+	.plus, .minus, .not, .bit_not, .mul, .amp]
 }
 
 // NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
 // or only ones with the same precedence?
-
 // is_left_assoc returns true if the token is left associative
 pub fn (tok Token) is_left_assoc() bool {
 	return tok.kind in [
-		// .number,
-		// `*` | `/` | `%`
-		.mul, .div, .mod,
-		// `^` | `||` | `&`
-		.xor, .logical_or, .and,
-		// `,`
-		.comma
-	]
+	// .number,
+	// `*` | `/` | `%`
+	.mul, .div, .mod,
+	// `^` | `||` | `&`
+	.xor, .logical_or, .and,
+	// `,`
+	.comma]
 }
 
 // is_right_assoc returns true if the token is right associative
 pub fn (tok Token) is_right_assoc() bool {
 	return tok.kind in [
-		// `+` | `-` | `!` | `++` | `--`
-		.plus, .minus, .not, .inc, .dec,
-		// `=` | `+=` | `-=` | `*=` | `/=`
-		.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-		// `%=` | `>>=` | `<<=`
-		.mod_assign, .righ_shift_assign, .left_shift_assign,
-		// `&=` | `^=` | `|=`
-		.and_assign, .xor_assign, .or_assign
-	]
+	// `+` | `-` | `!` | `++` | `--`
+	.plus, .minus, .not, .inc, .dec,
+	// `=` | `+=` | `-=` | `*=` | `/=`
+	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
+	// `%=` | `>>=` | `<<=`
+	.mod_assign, .righ_shift_assign, .left_shift_assign,
+	// `&=` | `^=` | `|=`
+	.and_assign, .xor_assign, .or_assign]
 }

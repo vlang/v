@@ -31,6 +31,17 @@ struct BinExpr {
 
 }
 
+fn expr1() Expr {
+	mut e := Expr{}
+	e = BinExpr{}
+	return e
+	//return BinExpr{}
+}
+
+fn expr2() Expr {
+	return BinExpr{}
+}
+
 struct UnaryExpr {
 
 }

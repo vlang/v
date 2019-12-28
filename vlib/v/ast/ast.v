@@ -8,12 +8,16 @@ import (
 	v.types
 )
 
-struct Foo {}
-
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | FloatLiteral | 	
-VarDecl | FnDecl | Return
+Ident
 
-pub type Stmt = Foo // VarDecl
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt
+// Stand-alone expression in a statement list.
+pub struct ExprStmt {
+pub:
+	expr Expr
+}
+
 pub struct IntegerLiteral {
 pub:
 	val int
@@ -49,8 +53,8 @@ pub:
 pub struct FnDecl {
 pub:
 	name  string
-	// stmts []Stmt
-	exprs []Expr
+	stmts []Stmt
+	// exprs []Expr
 	typ   types.Type
 }
 
@@ -84,11 +88,13 @@ pub:
 
 pub struct Program {
 pub:
-	exprs []Expr
-	// stmts []Stmt
+	stmts []Stmt
 }
+
 // A single identifier
-struct Ident {
+pub struct Ident {
+pub:
+	name     string
 	tok_kind token.TokenKind
 	value    string
 }
@@ -141,6 +147,23 @@ pub fn (x Expr) str() string {
 		}
 		else {
 			return ''
+		}
+	}
+}
+
+pub fn (node Stmt) str() string {
+	match node {
+		VarDecl {
+			return it.name + ' = ' + it.expr.str()
+		}
+		ExprStmt {
+			return it.expr.str()
+		}
+		FnDecl {
+			return 'fn ${it.name}() { $it.stmts.len stmts }'
+		}
+		else {
+			return '[unhandled stmt str]'
 		}
 	}
 }

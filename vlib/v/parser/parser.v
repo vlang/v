@@ -21,7 +21,7 @@ mut:
 	return_type types.Type
 }
 
-pub fn parse_expr(text string, table &table.Table) ast.Expr {
+pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	s := scanner.new_scanner(text)
 	mut p := Parser{
 		scanner: s
@@ -29,8 +29,7 @@ pub fn parse_expr(text string, table &table.Table) ast.Expr {
 	}
 	p.next()
 	p.next()
-	expr,_ := p.expr(token.lowest_prec)
-	return expr
+	return p.stmt()
 }
 
 pub fn (p mut Parser) get_type() types.Type {
@@ -55,43 +54,48 @@ pub fn (p mut Parser) get_type() types.Type {
 }
 
 pub fn parse_file(text string, table &table.Table) ast.Program {
-	s := scanner.new_scanner(text)
-	mut exprs := []ast.Expr
+	mut stmts := []ast.Stmt
 	mut p := Parser{
-		scanner: s
+		scanner: scanner.new_scanner(text)
 		table: table
 	}
-	p.next()
-	p.next()
+	p.read_first_token()
 	for {
 		// res := s.scan()
 		if p.tok.kind == .eof {
 			break
 		}
 		// println('expr at ' + p.tok.str())
-		expr,_ := p.expr(token.lowest_prec)
-		exprs << expr
+		s := p.stmt()
+		println(s)
+		stmts << s // p.stmt()
 	}
-	// println('nr exprs = $exprs.len')
-	println(exprs[0])
+	println('nr stmts = $stmts.len')
+	// println(stmts[0])
 	return ast.Program{
-		exprs}
+		stmts: stmts
+	}
 }
 
-pub fn (p mut Parser) parse_block() []ast.Expr {
-	mut exprs := []ast.Expr
+pub fn (p mut Parser) read_first_token() {
+	// need to call next() twice to get peek token and current token
+	p.next()
+	p.next()
+}
+
+pub fn (p mut Parser) parse_block() []ast.Stmt {
+	mut stmts := []ast.Stmt
 	for {
 		// res := s.scan()
 		if p.tok.kind in [.eof, .rcbr] {
 			break
 		}
 		// println('expr at ' + p.tok.str())
-		expr,_ := p.expr(token.lowest_prec)
-		exprs << expr
+		stmts << p.stmt()
 	}
 	p.next()
 	// println('nr exprs in block = $exprs.len')
-	return exprs
+	return stmts
 }
 
 /*
@@ -128,11 +132,11 @@ fn (p mut Parser) check_name() string {
 	return name
 }
 
-// Implementation of Pratt Precedence
-pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
-	// null denotation (prefix)
-	mut node := ast.Expr{}
-	mut typ := types.void_type
+pub fn (p mut Parser) stmt() ast.Stmt {
+	// `x := ...`
+	if p.tok.kind == .name && p.peek_tok.kind == .decl_assign {
+		return p.var_decl()
+	}
 	match p.tok.kind {
 		.key_module {
 			return p.module_decl()
@@ -149,10 +153,33 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		.key_mut {
 			return p.var_decl()
 		}
-		.name {
-			if p.peek_tok.kind == .decl_assign {
-				return p.var_decl()
+		else {
+			expr,_ := p.expr(0)
+			return ast.ExprStmt{
+				expr: expr
 			}
+		}
+	}
+}
+
+// Implementation of Pratt Precedence
+pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
+	println('expr at ' + p.tok.str())
+	// null denotation (prefix)
+	mut node := ast.Expr{}
+	mut typ := types.void_type
+	match p.tok.kind {
+		.name {
+			// `x := ...`
+			// if p.peek_tok.kind == .decl_assign {
+			// return p.var_decl()
+			// }
+			// name expr
+			node = ast.Ident{
+				name: p.tok.lit
+			}
+			typ = types.int_type
+			p.next()
 		}
 		.str {
 			node,typ = p.parse_string_literal()
@@ -272,19 +299,19 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.Type) {
 	return node,typ
 }
 
-fn (p mut Parser) module_decl() (ast.Expr,types.Type) {
+fn (p mut Parser) module_decl() ast.Stmt {
 	// p.check(.key_module)
 	p.next()
-	return ast.Expr{},types.void_type
+	return ast.Module{}
 }
 
-fn (p mut Parser) import_stmt() (ast.Expr,types.Type) {
+fn (p mut Parser) import_stmt() ast.Import {
 	// p.check(.key_import)
 	p.next()
-	return ast.Expr{},types.void_type
+	return ast.Import{}
 }
 
-fn (p mut Parser) fn_decl() (ast.Expr,types.Type) {
+fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	name := p.tok.lit
 	// println('fn decl $name')
@@ -299,31 +326,27 @@ fn (p mut Parser) fn_decl() (ast.Expr,types.Type) {
 	}
 	p.check(.lcbr)
 	// p.check(.rcbr)
-	exprs := p.parse_block()
-	mut node := ast.Expr{}
-	node = ast.FnDecl{
+	stmts := p.parse_block()
+	return ast.FnDecl{
 		name: name
-		exprs: exprs
+		stmts: stmts
 		typ: typ
 	}
-	return node,types.void_type
 }
 
-fn (p mut Parser) return_stmt() (ast.Expr,types.Type) {
+fn (p mut Parser) return_stmt() ast.Return {
 	// println('return st')
 	p.next()
 	expr,t := p.expr(0)
 	if !types.check(p.return_type, t) {
 		verror('bad ret type')
 	}
-	mut node := ast.Expr{}
-	node = ast.Return{
+	return ast.Return{
 		expr: expr
 	}
-	return node,types.void_type
 }
 
-fn (p mut Parser) var_decl() (ast.Expr,types.Type) {
+fn (p mut Parser) var_decl() ast.VarDecl {
 	is_mut := p.tok.kind == .key_mut // || p.prev_tok == .key_for
 	is_static := p.tok.kind == .key_static
 	if p.tok.kind == .key_mut {
@@ -335,8 +358,7 @@ fn (p mut Parser) var_decl() (ast.Expr,types.Type) {
 		// p.fspace()
 	}
 	name := p.tok.lit
-	p.next()
-	p.next()
+	p.read_first_token()
 	expr,t := p.expr(token.lowest_prec)
 	if name in p.table.names {
 		verror('redefinition of `$name`')
@@ -344,15 +366,12 @@ fn (p mut Parser) var_decl() (ast.Expr,types.Type) {
 	p.table.names << name
 	// println(p.table.names)
 	// println('added $name')
-	mut node := ast.Expr{}
-	// TODO can't return VarDecl{}
-	node = ast.VarDecl{
+	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
 		
 		typ: t
-	} // , ast.void_type
-	return node,types.void_type
+	}
 }
 
 fn verror(s string) {

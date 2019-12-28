@@ -47,19 +47,17 @@ fn (p mut Parser) bool_expression() string {
 		println(tok.str())
 		p.error('expr() returns empty type')
 	}
-	if p.inside_return_expr { //is_ret { // return a,b hack TODO
+	if p.inside_return_expr && p.expected_type.contains('_MulRet_') { //is_ret { // return a,b hack TODO
 		expected = p.expected_type
 	}
 	if expected != typ && expected in p.table.sum_types { // TODO perf
+		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		T := p.table.find_type(typ)
 		if T.parent == expected {
-			//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 			p.cgen.set_placeholder(start_ph,
-				//'/*SUM TYPE CAST*/($expected) { .obj = &($typ[]) { ')
-				'/*SUM TYPE CAST*/($expected) { .obj = memdup(& ')
+				'/*SUM TYPE CAST2*/($expected) { .obj = memdup( &($typ[]) { ')
 			tt := typ.all_after('_') // TODO
-			//p.gen('}, .typ = SumType_${tt} }')//${val}_type }')
-			p.gen(', sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
 		}
 	}
 	return typ
