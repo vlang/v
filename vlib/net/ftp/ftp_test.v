@@ -12,35 +12,24 @@ fn test_all() {
 	assert ftp.login('ftp','ftp')
 
 	pwd := ftp.pwd()
-	println('pwd: $pwd')
 
 	ftp.cd('/')
-	folder := ftp.dir() or {
+	dir_list1 := ftp.dir() or {
 		assert false
 		return
 	}
-	for file in folder {
-		println(file)
-	}
+	assert dir_list1.len > 0
 
 	ftp.cd('/suse/linux/enterprise/11Server/en/SAT-TOOLS/SRPMS/')
-
-	dir_list := ftp.dir() or {
+	dir_list2 := ftp.dir() or {
 		assert false
 		return
 	}
-
-	assert dir_list.len > 5
-	println('$dir_list.len files')
-	for file in dir_list {
-		println('$file')
-	}
+	assert dir_list2.len > 0
 
 	blob := ftp.get('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm') or {
 		assert false
 		return
 	}
-
-	assert blob.len > 1024
-	println('downloaded $blob.len bytes')
+	assert blob.len > 0
 }
