@@ -75,15 +75,8 @@ pub fn new_scanner(text string) &Scanner {
 	}
 }
 
-// TODO remove once multiple return values are implemented
-pub struct ScanRes {
-pub:
-	tok token.Token
-	lit string
-}
-
-fn scan_res(tok token.Token, lit string) ScanRes {
-	return ScanRes{
+fn scan_res(tok token.TokenKind, lit string) token.Token {
+	return token.Token{
 		tok,lit}
 }
 
@@ -220,13 +213,13 @@ fn (s mut Scanner) skip_whitespace() {
 	}
 }
 
-fn (s mut Scanner) end_of_file() ScanRes {
+fn (s mut Scanner) end_of_file() token.Token {
 	s.pos = s.text.len
 	s.inc_line_number()
 	return scan_res(.eof, '')
 }
 
-pub fn (s mut Scanner) scan() ScanRes {
+pub fn (s mut Scanner) scan() token.Token {
 	// if s.line_comment != '' {
 	// s.fgenln('// LC "$s.line_comment"')
 	// s.line_comment = ''
@@ -796,17 +789,17 @@ fn (s mut Scanner) debug_tokens() {
 	fname := s.file_path.all_after(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
-		res := s.scan()
-		tok := res.tok
-		lit := res.lit
-		print(tok.str())
+		tok := s.scan()
+		tok_kind := tok.kind
+		lit := tok.lit
+		print(tok_kind.str())
 		if lit != '' {
 			println(' `$lit`')
 		}
 		else {
 			println('')
 		}
-		if tok == .eof {
+		if tok_kind == .eof {
 			println('============ END OF DEBUG TOKENS ==================')
 			break
 		}

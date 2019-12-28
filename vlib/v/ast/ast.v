@@ -80,15 +80,15 @@ pub:
 
 // A single identifier
 struct Ident {
-	token token.Token
+	tok_kind token.TokenKind
 	value string
 }
 
 pub struct BinaryExpr {
 pub:
-	token token.Token
+	tok_kind token.TokenKind
 	//op    BinaryOp
-	op    token.Token
+	op    token.TokenKind
 	left  Expr
 	//left_type Type
 	right Expr
@@ -97,21 +97,21 @@ pub:
 
 pub struct UnaryExpr {
 pub:
-	// token token.Token
+	// tok_kind token.TokenKind
 	//op    BinaryOp
-	op    token.Token
+	op    token.TokenKind
 	left  Expr
 }
 
 struct IfExpr {
-	token token.Token
+	tok_kind token.TokenKind
 	cond  Expr
 	body  []Stmt
 	else_ []Stmt
 }
 
 struct ReturnStmt {
-	token   token.Token // or pos
+	tok_kind   token.TokenKind // or pos
 	results []Expr
 }
 

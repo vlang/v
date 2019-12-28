@@ -14,22 +14,21 @@ import (
 struct Parser {
 	scanner &scanner.Scanner
 mut:
-	tok     token.Token
-	lit     string
+	tok      token.Token
+	peek_tok token.Token
 	//vars []string
 	table &table.Table
 	return_type types.Type
 }
 
 pub fn parse_expr(text string, table &table.Table) ast.Expr {
-	mut s := scanner.new_scanner(text)
-	res := s.scan()
+	s := scanner.new_scanner(text)
 	mut p := Parser{
 		scanner: s
-		tok: res.tok
-		lit: res.lit
 		table: table
 	}
+	p.next()
+	p.next()
 	expr,_ := p.expr(token.lowest_prec)
 	return expr
 }
@@ -38,14 +37,15 @@ pub fn (p mut Parser) get_type() types.Type {
 	defer {
 	p.next()
 	}
-	if p.lit == 'int' { return types.int_type }
-	else if p.lit == 'string' { return types.string_type }
-	else if p.lit == 'f64' { return types.f64_type }
-	else {
-		verror('bad type lit')
-		exit(1)
+	match p.tok.lit {
+		'int'    { return types.int_type }
+		'f64'    { return types.f64_type }
+		'string' { return types.string_type }
+		else {
+			verror('bad type lit')
+			exit(1)
+		}
 	}
-
 }
 
 pub fn parse_file(text string, table &table.Table) ast.Program {
@@ -53,14 +53,13 @@ pub fn parse_file(text string, table &table.Table) ast.Program {
 	mut exprs := []ast.Expr
 	mut p := Parser{
 		scanner: s
-		//tok: res.tok
-		//lit: res.lit
 		table: table
 	}
 	p.next()
+	p.next()
 	for {
 		//res := s.scan()
-		if p.tok == .eof {
+		if p.tok.kind == .eof {
 			break
 		}
 		//println('expr at ' + p.tok.str())
@@ -77,7 +76,7 @@ pub fn (p mut Parser)  parse_block() []ast.Expr {
 
 	for {
 		//res := s.scan()
-		if p.tok == .eof || p.tok == .rcbr {
+		if p.tok.kind in [.eof, .rcbr] {
 			break
 		}
 		//println('expr at ' + p.tok.str())
@@ -105,22 +104,21 @@ pub fn parse_stmt(text string) ast.Stmt {
 
 
 fn (p mut Parser) next() {
-	res := p.scanner.scan()
-	p.tok = res.tok
+	p.tok = p.peek_tok
+	p.peek_tok = p.scanner.scan()
 	// println(p.tok.str())
-	p.lit = res.lit
 }
 
-fn (p mut Parser) check(expected token.Token) {
-	if p.tok != expected {
-		s := 'syntax error: unexpected `${p.tok.str()}`, expecting `${expected.str()}`'
+fn (p mut Parser) check(expected token.TokenKind) {
+	if p.tok.kind != expected {
+		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
 		verror(s)
 	}
 	p.next()
 }
 
 fn (p mut Parser) check_name() string {
-	name := p.lit
+	name := p.tok.lit
 	p.check(.name)
 	return name
 }
@@ -128,139 +126,70 @@ fn (p mut Parser) check_name() string {
 // Implementation of Pratt Precedence
 pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	// null denotation (prefix)
-	tok := p.tok
-	lit := p.lit
-	if p.tok == .key_fn {
-		p.next()
-		name := p.lit
-		println('fn decl $name')
-		p.check(.name)
-		p.check(.lpar)
-		p.check(.rpar)
-		// Return type
-		mut typ := types.void_type
-		if p.tok == .name {
-			typ = p.get_type()
-			p.return_type = typ
-
-		}
-		p.check(.lcbr)
-		//p.check(.rcbr)
-		println('OK!')
-		exprs := p.parse_block()
-
-		mut node := ast.Expr{}
-		node = ast.FnDecl{name: name, exprs: exprs, typ: typ}
-		return node, types.void_type
-	}
-	else if p.tok == .key_return {
-		p.next()
-		mut node := ast.Expr{}
-		expr, typ := p.expr(0)
-		if !types.check(p.return_type, typ) {
-			verror('bad ret type')
-		}
-		node = ast.Return{expr: expr}
-		return node, types.void_type
-	}
-	else if p.tok == .name {
-		name := p.lit
-		p.next()
-		if p.tok == .decl_assign {
-			p.next()
-			mut node := ast.Expr{}
-			expr,t :=p.expr(token.lowest_prec)
-			if name in p.table.names {
-				verror('redefinition of `$name`')
-			}
-			p.table.names << name
-			println(p.table.names)
-			println('added $name')
-			// TODO can't return VarDecl{}
-			node = ast.VarDecl{
-				name: name
-				expr: expr//p.expr(token.lowest_prec)
-				typ: t
-			}//, ast.void_type
-			return node, types.void_type
-		}
-	} else {
-		p.next()
-	}
 	mut node := ast.Expr{}
 	mut typ := types.void_type
-	match tok {
+	match p.tok.kind {
+		.key_module { return p.module_decl() }
+		.key_import { return p.import_stmt() }
+		.key_fn     { return p.fn_decl() }
+		.key_return { return p.return_stmt() }
+		.name {
+			if p.peek_tok.kind == .decl_assign { 
+				return p.var_decl()
+			}
+		}
+		.str    { node, typ = p.parse_string_literal() }
+		.number { node, typ = p.parse_number_literal() }
 		.lpar {
 			node,typ = p.expr(0)
-			if p.tok != .rpar {
+			if p.tok.kind != .rpar {
 				panic('Parse Error: expected )')
-			}
-			p.next()
-		}
-		.str {
-			node = ast.StringLiteral{
-				val: lit
-			}
-			typ = types.string_type
-
-		}
-		.number {
-			if lit.contains('.') {
-				node = ast.FloatLiteral{
-					//val: lit.f64()
-					val: lit
-				}
-				typ = types.int_type
-			} else {
-				node = ast.IntegerLiteral{
-					val: lit.int()
-				}
-				typ = types.int_type
 			}
 		}
 		else {
-			// TODO: fix bug. note odd conditon instead of else if (same below)
-			if tok.is_unary() {
+			p.next()
+			if p.tok.kind.is_unary() {
 				expr,_ := p.expr(token.highest_prec)
 				node = ast.UnaryExpr{
 					// left: p.expr(token.highest_prec)
 					left: expr
-					op: tok
+					op: p.tok.kind
 				}
 			}
 		}
 	}
+
 	// left binding power
-	for rbp < p.tok.precedence() {
-		tok2 := p.tok
+	for rbp < p.tok.kind.precedence() {
+		prev_tok := p.tok
 		p.next()
 		mut t2 := types.Type{}
 		// left denotation (infix)
-		if tok2.is_right_assoc() {
+		if prev_tok.kind.is_right_assoc() {
 			mut expr := ast.Expr{}
-			expr,t2 = p.expr(tok2.precedence() - 1)
+			expr,t2 = p.expr(prev_tok.kind.precedence() - 1)
 			node = ast.BinaryExpr{
 				left: node
 				//left_type: t1
-				op: tok2
-				// right: p.expr(tok2.precedence() - 1)
+				op: prev_tok.kind
+				// right: p.expr(prev_tok.precedence() - 1)
 				right: expr
 			}
 			if !types.check(&typ, &t2) {
 				verror('cannot convert `$t2.name` to `$typ.name`')
 			}
 		}
-		if !tok2.is_right_assoc() && tok2.is_left_assoc() {
+		else if prev_tok.kind.is_left_assoc() {
 			mut expr := ast.Expr{}
-			expr,t2 = p.expr(tok2.precedence())
+			expr,t2 = p.expr(prev_tok.kind.precedence())
 			node = ast.BinaryExpr{
 				left: node
-				op: tok2
+				op: prev_tok.kind
 				right: expr
 			}
 		}
 	}
-	return node,typ
+	return node, typ
 }
 
 /*
@@ -290,6 +219,101 @@ fn (p mut Parser) stmt() ast.Stmt {
 }
 */
 
+fn (p mut Parser) parse_string_literal() (ast.Expr,types.Type) {
+	mut node := ast.Expr{}
+	node = ast.StringLiteral{
+		val: p.tok.lit
+	}
+	p.next()
+	return node, types.string_type
+}
+
+fn (p mut Parser) parse_number_literal() (ast.Expr,types.Type) {
+	lit := p.tok.lit
+	mut node := ast.Expr{}
+	mut typ := types.int_type
+	if lit.contains('.') {
+		node = ast.FloatLiteral{
+			//val: lit.f64()
+			val: lit
+		}
+		typ = types.int_type
+	} else {
+		node = ast.IntegerLiteral{
+			val: lit.int()
+		}
+		typ = types.int_type
+	}
+	p.next()
+	return node, typ
+}
+
+fn (p mut Parser) module_decl() (ast.Expr,types.Type) {
+	p.next()
+	return ast.Expr{}, types.void_type
+}	
+
+fn (p mut Parser) import_stmt() (ast.Expr,types.Type) {
+	p.next()
+	return ast.Expr{}, types.void_type
+}
+
+fn (p mut Parser) fn_decl() (ast.Expr,types.Type) {
+	p.check(.key_fn)
+	name := p.tok.lit
+	println('fn decl $name')
+	p.check(.name)
+	p.check(.lpar)
+	p.check(.rpar)
+	// Return type
+	mut typ := types.void_type
+	if p.tok.kind == .name {
+		typ = p.get_type()
+		p.return_type = typ
+
+	}
+	p.check(.lcbr)
+	//p.check(.rcbr)
+	println('OK!')
+	exprs := p.parse_block()
+
+	mut node := ast.Expr{}
+	node = ast.FnDecl{name: name, exprs: exprs, typ: typ}
+	return node, types.void_type
+}
+
+fn (p mut Parser) return_stmt() (ast.Expr,types.Type) {
+	println('return st')
+	p.next()
+	expr, t := p.expr(0)
+	if !types.check(p.return_type, t) {
+		verror('bad ret type')
+	}
+	mut node := ast.Expr{}
+	node = ast.Return{expr: expr}
+	return node, types.void_type
+}
+
+fn (p mut Parser) var_decl() (ast.Expr,types.Type) {
+	name := p.tok.lit
+	p.next()
+	p.next()
+	expr,t :=p.expr(token.lowest_prec)
+	if name in p.table.names {
+		verror('redefinition of `$name`')
+	}
+	p.table.names << name
+	println(p.table.names)
+	println('added $name')
+	mut node := ast.Expr{}
+	// TODO can't return VarDecl{}
+	node = ast.VarDecl{
+		name: name
+		expr: expr//p.expr(token.lowest_prec)
+		typ: t
+	}//, ast.void_type
+	return node, types.void_type
+}
 
 fn verror(s string) {
 	println(s)
