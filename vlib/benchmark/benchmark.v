@@ -36,6 +36,8 @@ pub mut:
 	nok              int
 	nfail            int
 	verbose          bool
+	nexpected_steps  int
+	cstep            int
 }
 
 pub fn new_benchmark() Benchmark {
@@ -45,12 +47,17 @@ pub fn new_benchmark() Benchmark {
 	}
 }
 
+pub fn (b mut Benchmark) set_total_expected_steps(n int) {
+	b.nexpected_steps = n
+}
+
 pub fn (b mut Benchmark) stop() {
 	b.bench_end_time = benchmark.now()
 }
 
 pub fn (b mut Benchmark) step() {
 	b.step_start_time = benchmark.now()
+	b.cstep++
 }
 
 pub fn (b mut Benchmark) fail() {
@@ -82,6 +89,19 @@ pub fn (b mut Benchmark) neither_fail_nor_ok() {
 }
 
 pub fn (b &Benchmark) step_message(msg string) string {
+	if b.nexpected_steps > 0 {
+		mut sprogress := ''
+		if b.nexpected_steps < 10 {
+			sprogress = '${b.cstep:1d}/${b.nexpected_steps:1d}'
+		}
+		if b.nexpected_steps >= 10 && b.nexpected_steps < 100 {
+			sprogress = '${b.cstep:2d}/${b.nexpected_steps:2d}'
+		}
+		if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
+			sprogress = '${b.cstep:3d}/${b.nexpected_steps:3d}'
+		}    
+		return b.tdiff_in_ms('[${sprogress}] $msg', b.step_start_time, b.step_end_time)
+	}
 	return b.tdiff_in_ms(msg, b.step_start_time, b.step_end_time)
 }
 

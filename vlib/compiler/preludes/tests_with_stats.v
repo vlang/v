@@ -10,7 +10,6 @@ module main
 ///////////////////////////////////////////////////////////////////////
 
 import (
-	os
 	term
 	filepath
 	benchmark
@@ -28,9 +27,10 @@ mut:
 /////////////////////////////////////////////////////////////////////
 
 // Called at the start of the test program produced by `v -stats file_test.v`
-fn start_testing() BenchedTests {	
+fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 	mut b := BenchedTests{ bench: benchmark.new_benchmark() }
-	b.test_suit_file = os.executable() + '.v'
+	b.bench.set_total_expected_steps( total_number_of_tests )
+	b.test_suit_file = vfilename
 	println('running tests in: $b.test_suit_file')
 	return b
 }
@@ -62,11 +62,11 @@ fn (b mut BenchedTests) testing_step_end() {
 	}
 	//////////////////////////////////////////////////////////////////	
 	if ok_diff   > 0 && fail_diff == 0 {
-		println(ok_text('OK') + b.bench.step_message(nasserts(ok_diff)) + b.fn_name() )
+		println(b.bench.step_message( ok_text('OK') + nasserts(ok_diff) ) + b.fn_name() )
 		return
 	}
 	if fail_diff > 0 {	
-		println(fail_text('FAIL') + b.bench.step_message(nasserts(fail_diff)) + b.fn_name()  )
+		println(b.bench.step_message( fail_text('FAIL') + nasserts(fail_diff)) + b.fn_name()  )
 		return
 	}
 }
@@ -84,16 +84,18 @@ fn (b mut BenchedTests) end_testing() {
 /////////////////////////////////////////////////////////////////////
 
 fn nasserts(n int) string {
-	if n==0 { return '${n:2d} asserts | ' }
-	if n==1 { return '${n:2d} assert  | ' }
-	return '${n:2d} asserts | '
+	if n==0    { return '${n:2d} asserts | ' }
+	if n==1    { return '${n:2d} assert  | ' }
+	if n < 10  { return '${n:2d} asserts | ' }
+	if n < 100 { return '${n:3d} asserts | ' }
+	if n < 1000{ return '${n:4d} asserts | ' }
+	return '${n:5d} asserts | '
 }
 
 fn ok_text(s string) string {
-	return term.ok_message('${s:5s}')
+	return term.ok_message(s)
 }
 
 fn fail_text(s string) string {
-	return term.fail_message('${s:5s}')
+	return term.fail_message(s)
 }
-

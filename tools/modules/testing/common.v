@@ -43,6 +43,7 @@ pub fn (ts mut TestSession) test() {
 	tmpd := os.tmpdir()
 	ts.init()
 	show_stats := '-stats' in ts.vargs.split(' ')
+	ts.benchmark.set_total_expected_steps( ts.files.len )
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
@@ -97,17 +98,17 @@ pub fn (ts mut TestSession) test() {
 			r := os.exec(cmd) or {
 				ts.benchmark.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message('$relative_file ${ts.fail}'))
+				eprintln(ts.benchmark.step_message('${ts.fail} $relative_file'))
 				continue
 			}
 			if r.exit_code != 0 {
 				ts.benchmark.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message('$relative_file ${ts.fail}\n`$file`\n (\n$r.output\n)'))
+				eprintln(ts.benchmark.step_message('${ts.fail} $relative_file\n`$file`\n (\n$r.output\n)'))
 			}
 			else {
 				ts.benchmark.ok()
-				eprintln(ts.benchmark.step_message('$relative_file ${ts.ok}'))
+				eprintln(ts.benchmark.step_message('${ts.ok} $relative_file'))
 			}
 		}
 		if os.exists(generated_binary_fpath) {
