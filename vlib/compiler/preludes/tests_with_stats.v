@@ -95,10 +95,3 @@ fn nasserts(n int) string {
 	return '${n:5d} asserts | '
 }
 
-fn ok_text(s string) string {
-	return term.ok_message(s)
-}
-
-fn fail_text(s string) string {
-	return term.fail_message(s)
-}
