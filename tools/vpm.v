@@ -21,6 +21,7 @@ struct Mod {
 }
 
 struct Vmod {
+mut:
 	name    string
 	version string
 	deps    []string
@@ -149,7 +150,7 @@ fn vpm_install(module_names []string) {
 		}
 		final_module_path := get_vmodules_dir_path() + '/' + mod.name.replace('.', '/')
 		if os.exists(final_module_path) {
-			vpm_update(module_names)
+			println('Skipping module "$name", since it already exists. Use "v update $name" to update it.')
 			continue
 		}
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
@@ -159,7 +160,7 @@ fn vpm_install(module_names []string) {
 			println('Error details: $err')
 			continue
 		}
-		resolve_dependencies(name, final_module_path)
+		resolve_dependencies(name, final_module_path, module_names)
 	}
 	if errors > 0 {
 		exit(1)
@@ -194,7 +195,7 @@ fn vpm_update(module_names []string) {
 			println('Error details: $err')
 			continue
 		}
-		resolve_dependencies(name, final_module_path)
+		resolve_dependencies(name, final_module_path, module_names)
 	}
 	if errors > 0 {
 		exit(1)
@@ -309,7 +310,7 @@ fn get_all_modules() []string {
 	return modules
 }
 
-fn resolve_dependencies(name, module_path string) {
+fn resolve_dependencies(name, module_path string, module_names []string) {
 	vmod_path := filepath.join(module_path,'v.mod')
 	if !os.exists(vmod_path) {
 		return
@@ -318,20 +319,38 @@ fn resolve_dependencies(name, module_path string) {
 		return
 	}
 	vmod := parse_vmod(data)
-	if vmod.deps.len > 0 {
-		println('Resolving dependencies for module "$name"...')
-		vpm_install(vmod.deps)
+	mut deps := []string
+	// filter out dependencies that were already specified by the user
+	for d in vmod.deps {
+		if !(d in module_names) {
+			deps << d
+		}
+	}
+	if deps.len > 0 {
+		println('Resolving ${deps.len} dependencies for module "$name"...')
+		vpm_install(deps)
 	}
 }
 
 fn parse_vmod(data string) Vmod {
-	name_index := data.index_old('name:') + 5
-	name := data[name_index..data.index_after('\n', name_index)].trim_space().replace("'", '')
-	version_index := data.index_old('version:') + 8
-	version := data[version_index..data.index_after('\n', version_index)].trim_space().replace("'", '')
-	deps_index := data.index_old('deps:') + 5
-	deps_str := data[deps_index..data.index_after('\n', deps_index)].trim_space().replace("'", '').replace('[', '').replace(']', '')
-	deps := deps_str.split(',')
-	return Vmod{
-		name,version,deps}
+	keys := ['name', 'version', 'deps']
+	mut m := map[string]string{}
+	for key in keys {
+		mut key_index := data.index('$key:') or {
+			continue
+		}
+		key_index += key.len + 1
+		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'", '').replace('[', '').replace(']', '')
+	}
+	mut vmod := Vmod{}
+	if 'name' in m {
+		vmod.name = m['name']
+	}
+	if 'version' in m {
+		vmod.version = m['version']
+	}
+	if 'deps' in m && m['deps'].len > 0 {
+		vmod.deps = m['deps'].split(',')
+	}
+	return vmod
 }
