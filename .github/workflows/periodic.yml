@@ -1,10 +1,12 @@
-name: Periodic tests of network modules
+name: Periodic
+
 on:
   schedule:
-    - cron:  '10 * * * *'
+    - cron:  '31 1,12 * * *'
+
 jobs:       
   network-tests-ubuntu-tcc:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     env:
       VFLAGS: -cc tcc
     steps:
