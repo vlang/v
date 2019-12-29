@@ -170,7 +170,29 @@ fn vpm_remove(module_names []string) {
 		println('    ^^^^^^^^^^^^ will remove ALL installed modules')
 		exit(0)
 	}
-	todo('remove')
+	if module_names.len == 0 {
+		println('  v update requires *at least one* module name')
+		exit(2)
+	}
+	mut errors := 0
+	for name in module_names {
+		final_module_path := get_vmodules_dir_path() + '/' + name.replace('.', '/')
+		if !os.exists(final_module_path) {
+			println('No module with name "$name" exists at $final_module_path')
+			continue
+		}
+		println('Removing module "$name"...')
+		// TODO os.rmdir for some reason doesn't work
+		os.exec('rm -rf $final_module_path') or {
+			errors++
+			println('Could not remove module "$name".')
+			println('Error details: $err')
+			continue
+		}
+	}
+	if errors > 0 {
+		exit(1)
+	}
 }
 
 fn get_vmodules_dir_path() string {
