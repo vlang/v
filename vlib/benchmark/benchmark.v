@@ -25,6 +25,7 @@ println( bmark.total_message('remarks about the benchmark') )
 ```
 */
 
+
 const (
 	BOK = term.ok_message('OK')
 	BFAIL = term.fail_message('FAIL')
@@ -42,8 +43,8 @@ pub mut:
 	verbose          bool
 	nexpected_steps  int
 	cstep            int
-	bok    string
-	bfail  string
+	bok              string
+	bfail            string
 }
 
 pub fn new_benchmark() Benchmark {
@@ -106,25 +107,29 @@ pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
 		}
 		if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
 			sprogress = '${b.cstep:3d}/${b.nexpected_steps:3d}'
-		}    
+		}
 		timed_line = b.tdiff_in_ms('[${sprogress}] $msg', b.step_start_time, b.step_end_time)
-	}else{		
+	}
+	else {
 		timed_line = b.tdiff_in_ms(msg, b.step_start_time, b.step_end_time)
 	}
 	return '${label:-5s}${timed_line}'
 }
+
 pub fn (b &Benchmark) step_message(msg string) string {
 	return b.step_message_with_label('', msg)
 }
+
 pub fn (b &Benchmark) step_message_ok(msg string) string {
 	return b.step_message_with_label(BOK, msg)
 }
+
 pub fn (b &Benchmark) step_message_fail(msg string) string {
 	return b.step_message_with_label(BFAIL, msg)
 }
 
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '${msg}\n ok, fail, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + '${b.ntotal:5d}'
+	mut tmsg := '${msg}\n                 ok, fail, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + '${b.ntotal:5d}'
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
@@ -147,4 +152,3 @@ fn (b &Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {
 fn now() i64 {
 	return time.ticks()
 }
-

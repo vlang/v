@@ -15,9 +15,9 @@ fn cb_assertion_failed(filename string, line int, sourceline string, funcname st
 	use_relative_paths := match os.getenv('VERROR_PATHS') {
 		'absolute'{
 			false
-		}
-		else {
-			true}
+		} else {
+			true
+    }
 	}
 	final_filename := if use_relative_paths { filename } else { os.realpath(filename) }
 	final_funcname := funcname.replace('main__', '').replace('__', '.')
