@@ -150,7 +150,7 @@ fn vpm_install(module_names []string) {
 		}
 		final_module_path := get_vmodules_dir_path() + '/' + mod.name.replace('.', '/')
 		if os.exists(final_module_path) {
-			println('Skipping module "$name", since it already exists. Use "v update $name" to update it.')
+			vpm_update([name])
 			continue
 		}
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
@@ -167,7 +167,8 @@ fn vpm_install(module_names []string) {
 	}
 }
 
-fn vpm_update(module_names []string) {
+fn vpm_update(m []string) {
+	mut module_names := m
 	if user_asks_for_help(module_names) {
 		println('Usage: ')
 		println(' a) v update module [module] [module] [...]')
@@ -177,8 +178,7 @@ fn vpm_update(module_names []string) {
 		exit(0)
 	}
 	if module_names.len == 0 {
-		println('  v update requires *at least one* module name')
-		exit(2)
+		module_names = get_installed_modules()
 	}
 	mut errors := 0
 	for name in module_names {
@@ -254,11 +254,6 @@ fn change_to_vmodules_dir() {
 	os.chdir(get_vmodules_dir_path())
 }
 
-fn todo(vpm_command string) {
-	println('TODO: v $vpm_command')
-	exit(4)
-}
-
 fn user_asks_for_help(module_names []string) bool {
 	return ('-h' in module_names) || ('--help' in module_names) || ('help' in module_names)
 }
@@ -271,6 +266,26 @@ fn vpm_help(module_names []string) {
 	println('  d) v search keyword1 [keyword2] [...]')
 	println('')
 	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
+}
+
+fn get_installed_modules() []string {
+	dirs := os.ls(get_vmodules_dir_path()) or {
+		return []
+	}
+	mut modules := []string
+	for dir in dirs {
+		if dir in ['cache', 'vlib'] || !os.is_dir(dir) {
+			continue
+		}
+		author := dir
+		mods := os.ls('${filepath.join(get_vmodules_dir_path(), dir)}') or {
+			continue
+		}
+		for m in mods {
+			modules << '${author}.$m'
+		}
+	}
+	return modules
 }
 
 fn get_all_modules() []string {
