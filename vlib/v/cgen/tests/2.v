@@ -20,5 +20,11 @@ fn function2() {
 	function1()
 	//a += 1
 	//c := 0
+	if true {
+		foo(10)
+		x += 8
+	}
+	j := 0
 }
+
 

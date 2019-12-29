@@ -3,6 +3,7 @@ module cgen
 import (
 	strings
 	v.ast
+	term
 )
 
 struct Gen {
@@ -61,7 +62,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
-			g.writeln(';')
+			match it.expr {
+				// no ; after an if expression
+				ast.IfExpr {}
+				else {
+					g.writeln(';')
+				}
+	}
 		}
 		else {
 			verror('stmt bad node')
@@ -114,13 +121,37 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// }
 		}
 		ast.CallExpr {
-			g.write('${it.name}()')
+			g.write('${it.name}(')
+			for i, expr in it.args {
+				g.expr(expr)
+				if i != it.args.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write(')')
 		}
 		ast.Ident {
 			g.write('$it.name')
 		}
+		ast.BoolLiteral {
+			if it.val == true {
+				g.write('true')
+			}
+			else {
+				g.write('false')
+			}
+		}
+		ast.IfExpr {
+			g.write('if (')
+			g.expr(it.cond)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
 		else {
-			println('cgen.expr(): bad node')
+			println(term.red('cgen.expr(): bad node'))
 		}
 	}
 }

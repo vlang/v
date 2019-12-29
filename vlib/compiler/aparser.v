@@ -3094,7 +3094,8 @@ fn (p mut Parser) check_unused_imports() {
 		return
 	}
 	// the imports are usually at the start of the file
-	p.production_error_with_token_index('the following imports were never used: $output', 0)
+	//p.production_error_with_token_index('the following imports were never used: $output', 0)
+	p.warn('the following imports were never used: $output')
 }
 
 fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {

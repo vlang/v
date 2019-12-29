@@ -48,8 +48,8 @@ pub fn (p mut Parser) get_type() types.Type {
 			return types.string_type
 		}
 		else {
-			verror('bad type lit')
-			exit(1)
+			p.error('bad type lit')
+			exit(0)
 		}
 	}
 }
@@ -68,10 +68,10 @@ pub fn parse_file(text string, table &table.Table) ast.Program {
 		}
 		// println('expr at ' + p.tok.str())
 		s := p.stmt()
-		println(s)
+		// println(s)
 		stmts << s // p.stmt()
 	}
-	println('nr stmts = $stmts.len')
+	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.Program{
 		stmts: stmts
@@ -184,6 +184,9 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	// println('assignn_stmt() ' + op.str())
 	p.next()
 	right_expr,right_type := p.expr(0)
+	if !types.check(left_type, right_type) {
+		p.error('oops')
+	}
 	return ast.AssignStmt{
 		left: left_expr
 		right: right_expr
@@ -194,6 +197,37 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 pub fn (p &Parser) error(s string) {
 	println(term.bold(term.red('x.v:$p.tok.line_nr: $s')))
 	exit(1)
+}
+
+pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
+	// println('got fn call')
+	fn_name := p.tok.lit
+	f := p.table.find_fn(fn_name) or {
+		p.error('unknown function `$p.tok.lit`')
+		exit(0)
+	}
+	p.check(.name)
+	p.check(.lpar)
+	mut args := []ast.Expr
+	for i, arg in f.args {
+		e,typ := p.expr(0)
+		if !types.check(arg.typ, typ) {
+			p.error('cannot used type `$typ.name` as type `$arg.typ.name` in argument to `$fn_name`')
+		}
+		args << e
+		if i < f.args.len - 1 {
+			p.check(.comma)
+		}
+	}
+	if p.tok.kind == .comma {
+		p.error('too many arguments in call to `$fn_name`')
+	}
+	p.check(.rpar)
+	node := ast.CallExpr{
+		name: fn_name
+		args: args
+	}
+	return node,types.int_type
 }
 
 // Implementation of Pratt Precedence
@@ -213,26 +247,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 
 			// fn call
 			if p.peek_tok.kind == .lpar {
-				println('got fn call')
-				fn_name := p.tok.lit
-				f := p.table.find_fn(fn_name) or {
-					p.error('unknown fucntion `$p.tok.lit`')
-					exit(0)
-				}
-				p.check(.name)
-				p.check(.lpar)
-				mut args := []ast.Expr
-				for _ in 0 .. f.args.len {
-					e,_ := p.expr(0)
-					args << e
-					p.check(.comma)
-				}
-				p.check(.rpar)
-				node = ast.CallExpr{
-					name: fn_name
-					args: args
-				}
-				typ = types.int_type
+				x,typ2 := p.call_expr() // TODO `node,typ :=` should work
+				node = x
+				typ = typ2
 			}
 			else {
 				// name expr
@@ -243,11 +260,21 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				p.next()
 			}
 		}
+		.key_true {
+			node = ast.BoolLiteral{
+				val: true
+			}
+			typ = types.bool_type
+			p.next()
+		}
 		.str {
 			node,typ = p.parse_string_literal()
 		}
 		.number {
 			node,typ = p.parse_number_literal()
+		}
+		.key_if {
+			node,typ = p.if_expr()
 		}
 		.lpar {
 			node,typ = p.expr(0)
@@ -297,6 +324,22 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		}
 	}
 	return node,typ
+}
+
+fn (p mut Parser) if_expr() (ast.Expr,types.Type) {
+	mut node := ast.Expr{}
+	p.check(.key_if)
+	cond,typ := p.expr(0)
+	if !types.check(types.bool_type, typ) {
+		p.error('non-bool used as if condition')
+	}
+	p.check(.lcbr)
+	stmts := p.parse_block()
+	node = ast.IfExpr{
+		cond: cond
+		stmts: stmts
+	}
+	return node,types.void_type
 }
 
 fn (p mut Parser) parse_string_literal() (ast.Expr,types.Type) {
@@ -399,7 +442,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 
 fn (p mut Parser) var_decl() ast.VarDecl {
 	is_mut := p.tok.kind == .key_mut // || p.prev_tok == .key_for
-	is_static := p.tok.kind == .key_static
+	// is_static := p.tok.kind == .key_static
 	if p.tok.kind == .key_mut {
 		p.check(.key_mut)
 		// p.fspace()
@@ -412,7 +455,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	p.read_first_token()
 	expr,t := p.expr(token.lowest_prec)
 	if _ := p.table.find_var(name) {
-		verror('redefinition of `$name`')
+		p.error('redefinition of `$name`')
 	}
 	p.table.register_var(table.Var{
 		name: name

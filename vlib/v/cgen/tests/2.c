@@ -16,5 +16,10 @@ void function2() {
 	x += 1;
 	m += 2;
 	function1();
+	if (true) {
+		foo(10);
+		x += 8;
+	}
+	int j = 0;
 }
 

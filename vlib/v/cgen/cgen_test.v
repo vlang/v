@@ -27,7 +27,7 @@ fn test_c_files() {
 		program := parser.parse_file(text, table)
 		res := cgen.gen(program)
 		if compare_texts(res, ctext) {
-			eprintln('${i}... OK')
+			eprintln('${i}... ' + term.green('OK'))
 		}
 		else {
 			eprintln('${i}... ' + term.red('FAIL'))

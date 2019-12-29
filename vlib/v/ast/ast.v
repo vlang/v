@@ -9,7 +9,7 @@ import (
 )
 
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr
+FloatLiteral | Ident | CallExpr | BoolLiteral
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt
 // Stand-alone expression in a statement list.
@@ -32,6 +32,11 @@ pub:
 pub struct StringLiteral {
 pub:
 	val string
+}
+
+pub struct BoolLiteral {
+pub:
+	val bool
 }
 
 // module declaration
@@ -131,9 +136,10 @@ pub:
 }
 
 pub struct IfExpr {
+pub:
 	tok_kind token.TokenKind
 	cond     Expr
-	body     []Stmt
+	stmts    []Stmt
 	else_    []Stmt
 }
 
