@@ -34,8 +34,8 @@ fn test_map() {
 	// Test `.keys()`
 	keys := m.keys()
 	assert keys.len == 2
-	assert keys[0] == 'hi'
-	assert keys[1] == 'hello'
+	assert 'hi' in keys
+	assert 'hello' in keys
 	m.delete('hi')
 	assert m.size == 1
 	m.delete('aloha')
