@@ -510,10 +510,10 @@ pub fn (v mut V) generate_main() {
 				cgen.genln('$cgen.fn_main;')
 				v.gen_main_end('return 0')
 			}
-			else if !v.pref.is_repl {
+			else if v.v_fmt_file=='' && !v.pref.is_repl {
 				verror('function `main` is not declared in the main module')
 			}
-		}
+		}    
 		else if v.pref.is_test {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
