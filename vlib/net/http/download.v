@@ -5,11 +5,10 @@ module http
 
 import (
 	os
-	net.http
 )
 
 pub fn download_file(url, out string) bool {
-	s := http.get(url) or {
+	s := get(url) or {
 		return false
 	}
 	os.write_file(out, s.text)
