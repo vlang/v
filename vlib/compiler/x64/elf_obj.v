@@ -1,9 +1,7 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module x64
-
 /*
 This file is unused right now, since binaries without sections
 are generated.
@@ -11,26 +9,27 @@ are generated.
 But it will be necessary once we have dynamic linking.
 */
 
+
 enum SectionType {
 	null = 0
 	progbits = 1
 	symtab = 2
 	strtab = 3
 	rela = 4
-}	
+}
 
 struct SectionConfig {
-	name string
-	typ SectionType
-	flags i64
-	data voidptr
-	is_saa bool
+	name    string
+	typ     SectionType
+	flags   i64
+	data    voidptr
+	is_saa  bool
 	datalen i64
-	link int
-	info int
-	align i64
+	link    int
+	info    int
+	align   i64
 	entsize i64
-}	
+}
 
 fn (g mut Gen) section_header(c SectionConfig) {
 	g.write32(g.sect_header_name_pos)
@@ -38,15 +37,14 @@ fn (g mut Gen) section_header(c SectionConfig) {
 	g.write32(int(c.typ))
 	g.write64(c.flags)
 	g.write64(0) // sh_addr
-	g.write64(g.offset)// offset
-	g.offset += c.datalen+1
+	g.write64(g.offset) // offset
+	g.offset += c.datalen + 1
 	g.write64(c.datalen)
 	g.write32(c.link)
 	g.write32(c.info)
 	g.write64(c.align)
 	g.write64(c.entsize)
-}	
-
+}
 
 fn genobj() {
 	/*
@@ -64,7 +62,7 @@ fn genobj() {
 		align:0
 		entsize: 0
 	})
-	
+
 		/*
 	for sect in sections {
 		g.section_header(SectionConfig{
@@ -79,10 +77,10 @@ fn genobj() {
 			align: sect.align
 			entsize: sect.entsize
 		})
-		
-	}	
+
+	}
 	*/
-	
+
 	g.section_header(SectionConfig{
 		name: '.DATA'
 		typ: .progbits
@@ -95,7 +93,7 @@ fn genobj() {
 		align: 1
 		entsize: 0
 	})
-	
+
 	g.section_header(SectionConfig{
 		name: '.TEXT'
 		typ: .progbits
@@ -158,4 +156,4 @@ fn genobj() {
 	})
 	*/
 }
-	
+

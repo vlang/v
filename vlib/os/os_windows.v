@@ -74,15 +74,11 @@ mut:
 	bInheritHandle bool
 }
 
-fn init_os_args(argc int, argv &byteptr) []string {
+fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string
-	mut args_list := &voidptr(0)
-	mut args_count := 0
-	args_list = C.CommandLineToArgvW(C.GetCommandLine(), &args_count)
-	for i := 0; i < args_count; i++ {
-		args << string_from_wide(&u16(args_list[i]))
+	for i := 0; i < argc; i++ {
+		args << string_from_wide(&u16(argv[i]))
 	}
-	C.LocalFree(args_list)
 	return args
 }
 
@@ -288,4 +284,14 @@ pub fn exec(cmd string) ?Result {
 		output: read_data
 		exit_code: int(exit_code)
 	}
+}
+
+fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
+
+pub fn symlink(origin, target string) ?bool {
+	flags := if os.is_dir(origin) { 1 } else { 0 }
+	if C.CreateSymbolicLinkW(origin.to_wide(), target.to_wide(), u32(flags)) != 0 {
+		return true
+	}
+	return error(get_error_msg(int(C.GetLastError())))
 }

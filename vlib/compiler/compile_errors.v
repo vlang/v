@@ -4,49 +4,50 @@ import (
 	os
 	term
 )
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////////////////
 // NB: The code in this file is organized in layers (between the ///// lines).
 // This allows for easier keeping in sync of error/warn functions.
 // The functions in each of the layers, call the functions from the layers *below*.
 // The functions in each of the layers, also have more details about the warn/error situation,
 // so they can display more informative message, so please call the lowest level variant you can.
-//////////////////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////////////////
 // TLDR: If you have a token index, call:
-//     p.error_with_token_index(msg, token_index)
+// p.error_with_token_index(msg, token_index)
 // ... not just :
-//     p.error(msg)
-//////////////////////////////////////////////////////////////////////////////////////////////////
+// p.error(msg)
+// ////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 fn (p mut Parser) error(s string) {
 	// no positioning info, so just assume that the last token was the culprit:
-	p.error_with_token_index(s, p.token_idx-1 )
+	p.error_with_token_index(s, p.token_idx - 1)
 }
 
 fn (p mut Parser) warn(s string) {
-	p.warn_with_token_index(s, p.token_idx-1 )
+	p.warn_with_token_index(s, p.token_idx - 1)
 }
 
 fn (p mut Parser) production_error_with_token_index(e string, tokenindex int) {
 	if p.pref.is_prod {
-		p.error_with_token_index( e, tokenindex )
-	}else {
-		p.warn_with_token_index( e, tokenindex )
+		p.error_with_token_index(e, tokenindex)
+	}
+	else {
+		p.warn_with_token_index(e, tokenindex)
 	}
 }
 
 fn (p mut Parser) error_with_token_index(s string, tokenindex int) {
-	p.error_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
+	p.error_with_position(s, p.scanner.get_scanner_pos_of_token(p.tokens[tokenindex]))
 }
 
 fn (p mut Parser) warn_with_token_index(s string, tokenindex int) {
-	p.warn_with_position(s, p.scanner.get_scanner_pos_of_token( p.tokens[ tokenindex ] ) )
+	p.warn_with_position(s, p.scanner.get_scanner_pos_of_token(p.tokens[tokenindex]))
 }
 
 fn (p mut Parser) error_with_position(s string, sp ScannerPos) {
 	p.print_error_context()
-	e := normalized_error( s )
-	p.scanner.goto_scanner_position( sp )
+	e := normalized_error(s)
+	p.scanner.goto_scanner_position(sp)
 	p.scanner.error_with_col(e, sp.pos - sp.last_nl_pos)
 }
 
@@ -56,10 +57,10 @@ fn (p mut Parser) warn_with_position(s string, sp ScannerPos) {
 	}
 	// on a warning, restore the scanner state after printing the warning:
 	cpos := p.scanner.get_scanner_pos()
-	e := normalized_error( s )
-	p.scanner.goto_scanner_position( sp )
+	e := normalized_error(s)
+	p.scanner.goto_scanner_position(sp)
 	p.scanner.warn_with_col(e, sp.pos - sp.last_nl_pos)
-	p.scanner.goto_scanner_position( cpos )
+	p.scanner.goto_scanner_position(cpos)
 }
 
 fn (s &Scanner) error(msg string) {
@@ -73,14 +74,14 @@ fn (s &Scanner) warn(msg string) {
 fn (s &Scanner) warn_with_col(msg string, col int) {
 	fullpath := s.get_error_filepath()
 	color_on := s.is_color_output_on()
-	final_message := if color_on { term.bold(term.bright_blue( msg )) } else { msg }
+	final_message := if color_on { term.bold(term.bright_blue(msg)) } else { msg }
 	eprintln('warning: ${fullpath}:${s.line_nr+1}:${col}: $final_message')
 }
 
 fn (s &Scanner) error_with_col(msg string, col int) {
 	fullpath := s.get_error_filepath()
 	color_on := s.is_color_output_on()
-	final_message := if color_on { term.red( term.bold( msg ) ) } else { msg }
+	final_message := if color_on { term.red(term.bold(msg)) } else { msg }
 	// The filepath:line:col: format is the default C compiler
 	// error output format. It allows editors and IDE's like
 	// emacs to quickly find the errors in the output
@@ -88,65 +89,79 @@ fn (s &Scanner) error_with_col(msg string, col int) {
 	// NB: using only the filename may lead to inability of IDE/editors
 	// to find the source file, when the IDE has a different working folder than v itself.
 	eprintln('${fullpath}:${s.line_nr + 1}:${col}: $final_message')
-
 	if s.print_line_on_error && s.nlines > 0 {
-		context_start_line := imax(0,        (s.line_nr - error_context_before    ))
-		context_end_line   := imin(s.nlines-1, (s.line_nr + error_context_after + 1 ))
+		context_start_line := imax(0, (s.line_nr - error_context_before))
+		context_end_line := imin(s.nlines - 1, (s.line_nr + error_context_after + 1))
 		for cline := context_start_line; cline < context_end_line; cline++ {
-			line := '${(cline+1):5d}| ' + s.line( cline )
+			line := '${(cline+1):5d}| ' + s.line(cline)
 			coloredline := if cline == s.line_nr && color_on { term.red(line) } else { line }
-			eprintln( coloredline )
-			if cline != s.line_nr { continue }
+			eprintln(coloredline)
+			if cline != s.line_nr {
+				continue
+			}
 			// The pointerline should have the same spaces/tabs as the offending
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
 			mut pointerline := []string
-			for i , c in line {
+			for i, c in line {
 				if i < col {
 					x := if c.is_space() { c } else { ` ` }
 					pointerline << x.str()
 					continue
 				}
-				pointerline << if color_on { term.bold( term.blue('^') ) } else { '^' }
+				pointerline << if color_on { term.bold(term.blue('^')) } else { '^' }
 				break
 			}
-			eprintln( '      ' + pointerline.join('') )
+			eprintln('      ' + pointerline.join(''))
 		}
 	}
 	exit(1)
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////////////////
+// / Misc error helper functions, can be called by any of the functions above
+[inline]
+fn (p &Parser) cur_tok_index() int {
+	return p.token_idx - 1
+}
 
-/// Misc error helper functions, can be called by any of the functions above
+[inline]
+fn imax(a, b int) int {
+	return if a > b { a } else { b }
+}
 
-[inline] fn (p &Parser) cur_tok_index() int { return p.token_idx - 1 }
-[inline] fn imax(a,b int) int { 	return if a > b { a } else { b } }
-[inline] fn imin(a,b int) int { 	return if a < b { a } else { b } }
+[inline]
+fn imin(a, b int) int {
+	return if a < b { a } else { b }
+}
 
 fn (s &Scanner) get_error_filepath() string {
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	use_relative_paths := match verror_paths_override {
-		'relative' { true }
-		'absolute' { false }
-		else { s.print_rel_paths_on_error }
-	}
+		'relative'{
+			true
+		}
+		'absolute'{
+			false
+		}
+		else {
+			s.print_rel_paths_on_error}}
 	if use_relative_paths {
 		workdir := os.getwd() + os.path_separator
 		if s.file_path.starts_with(workdir) {
-			return s.file_path.replace( workdir, '')
+			return s.file_path.replace(workdir, '')
 		}
 		return s.file_path
 	}
-	return os.realpath( s.file_path )
+	return os.realpath(s.file_path)
 }
 
 fn (s &Scanner) is_color_output_on() bool {
 	return s.print_colored_error && term.can_show_color_on_stderr()
 }
 
-fn (p mut Parser) print_error_context(){
+fn (p mut Parser) print_error_context() {
 	// Dump all vars and types for debugging
 	if p.pref.is_debug {
 		// os.write_to_file('/var/tmp/lang.types', '')//pes(p.table.types))
@@ -158,14 +173,14 @@ fn (p mut Parser) print_error_context(){
 	p.cgen.save()
 	// V up hint
 	cur_path := os.getwd()
-	if !p.pref.is_repl && !p.pref.is_test && ( p.file_path.contains('v/compiler') || cur_path.contains('v/compiler') ){
+	if !p.pref.is_repl && !p.pref.is_test && (p.file_path.contains('v/compiler') || cur_path.contains('v/compiler')) {
 		println('\n=========================')
 		println('It looks like you are building V. It is being frequently updated every day.')
-		println('If you didn\'t modify V\'s code, most likely there was a change that ')
+		println("If you didn\'t modify V\'s code, most likely there was a change that ")
 		println('lead to this error.')
 		println('\nRun `v up`, that will most likely fix it.')
-		//println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
-		println('\nIf this doesn\'t help, please create a GitHub issue.')
+		// println('\nIf this doesn\'t help, re-install V from source or download a precompiled' + ' binary from\nhttps://vlang.io.')
+		println("\nIf this doesn\'t help, please create a GitHub issue.")
 		println('=========================\n')
 	}
 	if p.pref.is_debug {
@@ -176,30 +191,27 @@ fn (p mut Parser) print_error_context(){
 
 fn normalized_error(s string) string {
 	// Print `[]int` instead of `array_int` in errors
-	mut res := s.replace('array_', '[]')
-	.replace('__', '.')
-	.replace('Option_', '?')
-	.replace('main.', '')
+	mut res := s.replace('array_', '[]').replace('__', '.')
+		.replace('Option_', '?').replace('main.', '').replace('ptr_', '&')
+		.replace('_dot_', '.')
 	if res.contains('_V_MulRet_') {
 		res = res.replace('_V_MulRet_', '(').replace('_V_', ', ')
-		res = res[..res.len-1] + ')"'
+		res = res[..res.len - 1] + ')"'
 	}
 	return res
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
+// ////////////////////////////////////////////////////////////////////////////////////////////////
 // The goal of ScannerPos is to track the current scanning position,
 // so that if there is an error found later, v could show a more accurate
 // position about where the error initially was.
 // NB: The fields of ScannerPos *should be kept synchronized* with the
 // corresponding fields in Scanner.
-
 struct ScannerPos {
 mut:
-   pos int
-   line_nr int
-   last_nl_pos int
+	pos         int
+	line_nr     int
+	last_nl_pos int
 }
 
 pub fn (s ScannerPos) str() string {
@@ -207,7 +219,11 @@ pub fn (s ScannerPos) str() string {
 }
 
 fn (s &Scanner) get_scanner_pos() ScannerPos {
-	return ScannerPos{ pos: s.pos line_nr: s.line_nr last_nl_pos: s.last_nl_pos }
+	return ScannerPos{
+		pos: s.pos
+		line_nr: s.line_nr
+		last_nl_pos: s.last_nl_pos
+	}
 }
 
 fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
@@ -217,7 +233,7 @@ fn (s mut Scanner) goto_scanner_position(scp ScannerPos) {
 }
 
 fn (s &Scanner) get_last_nl_from_pos(_pos int) int {
-	pos := if _pos >= s.text.len { s.text.len-1 } else { _pos }
+	pos := if _pos >= s.text.len { s.text.len - 1 } else { _pos }
 	for i := pos; i >= 0; i-- {
 		if s.text[i] == `\n` {
 			return i
@@ -234,33 +250,27 @@ fn (s &Scanner) get_scanner_pos_of_token(tok &Token) ScannerPos {
 	}
 }
 
-///////////////////////////////
-
+// /////////////////////////////
 fn (p mut Parser) mutable_arg_error(i int, arg Var, f Fn) {
-	mut dots_example :=  'mut $p.lit'
+	mut dots_example := 'mut $p.lit'
 	if i > 0 {
 		dots_example = '.., ' + dots_example
 	}
 	if i < f.args.len - 1 {
 		dots_example = dots_example + ',..'
 	}
-	p.error('`$arg.name` is a mutable argument, you need to provide `mut`: ' +
-			'`$f.name ($dots_example)`')
+	p.error('`$arg.name` is a mutable argument, you need to provide `mut`: ' + '`$f.name ($dots_example)`')
 }
 
 const (
-	warn_match_arrow = '=> is no longer needed in match statements, use\n' +
-'match foo {
+	warn_match_arrow = '=> is no longer needed in match statements, use\n' + 'match foo {
 	1 { bar }
 	2 { baz }
 	else { ... }
 }'
-	//make_receiver_mutable =
-
+	// make_receiver_mutable =
 	err_used_as_value = 'used as value'
-
-	and_or_error = 'use `()` to make the boolean expression clear\n' +
-'for example: `(a && b) || c` instead of `a && b || c`'
-
-err_modify_bitfield = 'to modify a bitfield flag use the methods: set, clear, toggle. and to check for flag use: has'
+	and_or_error = 'use `()` to make the boolean expression clear\n' + 'for example: `(a && b) || c` instead of `a && b || c`'
+	err_modify_bitfield = 'to modify a bitfield flag use the methods: set, clear, toggle. and to check for flag use: has'
 )
+

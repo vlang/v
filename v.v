@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module main
 
 import (
@@ -9,20 +8,26 @@ import (
 	benchmark
 	os
 	filepath
-	//time
+	// time
 )
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['up', 'create', 'test', 'test-compiler', 'build-tools',
-		 'build-examples', 'build-vbinaries']
+	simple_tools = ['fmt', 'up', 'create', 'test', 'test-fmt', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
-	//t := time.ticks()
-	//defer { println(time.ticks() - t) }
+  is_verbose := '-verbose' in os.args || '--verbose' in os.args
+	// t := time.ticks()
+	// defer { println(time.ticks() - t) }
 	args := compiler.env_vflags_and_os_args()
 	options, command := compiler.get_v_options_and_main_command( args )
+  if is_verbose {
+	  eprintln('v    args: $args')
+	  eprintln('v command: $command')
+	  eprintln('v options: $options')
+  }    
+	
 	// external tool
 	if command in simple_tools {
 		compiler.launch_tool('v' + command)
@@ -61,7 +66,8 @@ fn main() {
 	mut tmark := benchmark.new_benchmark()
 	if v.pref.x64 {
 		v.compile_x64()
-	}	else {
+	}
+	else {
 		v.compile()
 	}
 	if v.pref.is_stats {
@@ -76,7 +82,8 @@ fn main() {
 
 fn v_command(command string, args []string) {
 	match command {
-		'', '.', 'run', 'build' { // handled later in vlib/compiler/main.v
+		'', '.', 'run', 'build' {
+			// handled later in vlib/compiler/main.v
 			return
 		}
 		'version' {
@@ -88,7 +95,7 @@ fn v_command(command string, args []string) {
 		'translate' {
 			println('Translating C to V will be available in V 0.3 (January)')
 		}
-		'search', 'install', 'update' {
+		'search', 'install', 'update', 'remove' {
 			compiler.launch_tool('vpm')
 		}
 		'get' {
@@ -97,29 +104,23 @@ fn v_command(command string, args []string) {
 		'symlink' {
 			compiler.create_symlink()
 		}
-		'fmt' {
-			compiler.vfmt(args)
-		}
 		'runrepl' {
 			compiler.launch_tool('vrepl')
 		}
 		'doc' {
 			vexe := os.executable()
-			vdir := os.dir(os.executable())
+			vdir := filepath.dir(os.executable())
 			os.chdir(vdir)
 			mod := args.last()
 			os.system('$vexe build module vlib$os.path_separator' + args.last())
-			txt := os.read_file(filepath.join(compiler.v_modules_path, 'vlib', '${mod}.vh')) or {
-				panic(err)
-			}
+			vhfile := filepath.join(compiler.v_modules_path,'vlib','${mod}.vh')
+			txt := os.read_file(vhfile) or { panic(err) }
 			println(txt)
 			// v.gen_doc_html_for_module(args.last())
 		}
 		else {
-			println('v $command: unknown command')
-			println('Run "v help" for usage.')
+			panic('v $command: unknown command\nRun "v help" for usage.')
 		}
 	}
 	exit(0)
 }
-

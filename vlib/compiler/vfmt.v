@@ -52,6 +52,19 @@ fn (p mut Parser) fspace() {
 	p.fgen(' ')
 }
 
+[if vfmt]
+fn (p mut Parser) fspace_or_newline() {
+	if p.first_pass() {
+		return
+	}
+	if p.token_idx >= 2 && p.tokens[p.token_idx-1].line_nr !=
+		p.tokens[p.token_idx-2].line_nr {
+		p.fgen_nl()
+	} else {
+		p.fgen(' ')
+	}
+}
+
 
 [if vfmt]
 fn (p mut Parser) fgenln(s string) {
@@ -81,6 +94,7 @@ fn (p mut Parser) fgen_nl() {
 	// Previous token is a comment, and NL has already been generated?
 	// Don't generate a second NL.
 	if p.scanner.fmt_lines.len > 0 && p.scanner.fmt_lines.last() == '\n' &&
+		p.token_idx > 2 &&
 		p.tokens[p.token_idx-2].tok == .line_comment
 	{
 		//if p.fileis('parser.v') {
@@ -144,7 +158,7 @@ fn (p mut Parser) fnext() {
 		//println('eof ret')
 		//return
 	//}
-	if p.tok == .rcbr && !p.inside_if_expr { //&& p.prev_tok != .lcbr {
+	if p.tok == .rcbr && !p.inside_if_expr && p.prev_tok != .lcbr {
 		p.fmt_dec()
 	}
 	s := p.strtok()
@@ -153,7 +167,7 @@ fn (p mut Parser) fnext() {
 	}
 	// vfmt: increase indentation on `{` unless it's `{}`
 	inc_indent := false
-	if p.tok == .lcbr && !p.inside_if_expr {// && p.peek() != .rcbr {
+	if p.tok == .lcbr && !p.inside_if_expr  && p.peek() != .rcbr {
 		p.fgen_nl()
 		p.fmt_inc()
 	}
@@ -180,9 +194,10 @@ fn (p mut Parser) fnext() {
 			comment := comment_token.lit
 			// Newline before the comment, but not between two // comments,
 			// and not right after `{`, there's already a newline there
-			if i > 0 && p.tokens[i-1].tok != .line_comment &&
+			if i > 0 && ((p.tokens[i-1].tok != .line_comment &&
 				p.tokens[i-1].tok != .lcbr &&
-				comment_token.line_nr > p.tokens[i-1].line_nr {
+				comment_token.line_nr > p.tokens[i-1].line_nr) ||
+				p.tokens[i-1].tok == .hash) { // TODO not sure why this is needed, newline wasn't added after a hash
 				p.fgen_nl()
 			}
 			if i > 0 && p.tokens[i-1].tok == .rcbr && p.scanner.fmt_indent == 0 {
@@ -221,48 +236,73 @@ fn (p mut Parser) fnext() {
 
 [if vfmt]
 fn (p mut Parser) fremove_last() {
-	p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
-
+	if p.scanner.fmt_lines.len > 0 {
+		p.scanner.fmt_lines[p.scanner.fmt_lines.len-1] = ''
+	}
 }
-
 
 [if vfmt]
 fn (p &Parser) gen_fmt() {
 	if p.pass != .main {
 		return
 	}
+	//println('gen fmt name=$p.file_name path=$p.file_path')
 	if p.file_name == '' {
+		return
+	}
+	is_all := p.v.v_fmt_all
+	vfmt_file := p.v.v_fmt_file
+	if p.file_path != vfmt_file && !is_all {
+		// skip everything except the last file (given by the CLI argument)
 		return
 	}
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
-	s := p.scanner.fmt_lines.join('')/*.replace_each([
+	mut s := p.scanner.fmt_lines.join('')
+/*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
 		') or{', ') or {',
 	])
 	*/
-		//.replace('\n\n\n\n', '\n\n')
-		.replace(' \n', '\n')
-		.replace(') or{', ') or {')
+	//.replace('\n\n\n\n', '\n\n')
+
+	s = s.replace(' \n', '\n')
+	s = s.replace(')  or {', ') or {')
+	s = s.replace(') or{', ') or {')
+	s = s.replace(')or{', ') or {')
+	s = s.replace('or{', 'or {')
+	s = s.replace('}}\n', '}\n\t}\n')
 
 	if s == '' {
 		return
 	}
 	//files := ['get_type.v']
-	if !p.file_path.contains('vlib/builtin') {return}
+	if p.file_path.contains('compiler/vfmt.v') {return}
 	//if !(p.file_name in files) { return }
-	path := os.tmpdir() + '/' + p.file_name
-	println('generating ${path}')
-	mut out := os.create(path) or {
-		verror('failed to create os_nix.v')
-		return
+	if is_all {
+		if p.file_path.len > 0 {
+			path := write_formatted_source( p.file_name, s )
+			os.cp( path, p.file_path ) or { panic(err) }
+			eprintln('Written fmt file to: $p.file_path')
+		}
 	}
-	println('replacing ${p.file_path}...\n')
-	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
-	out.writeln('')
-	out.close()
-	os.mv(path, p.file_path)
+	if p.file_path == vfmt_file {
+		res_path := write_formatted_source( p.file_name, s )
+		mut vv := p.v
+		vv.v_fmt_file_result = res_path
+	}
 }
 
+fn write_formatted_source(file_name string, s string) string {
+	path := os.tmpdir() + '/' + file_name
+	mut out := os.create(path) or {
+		verror('failed to create file $path')
+		return ''
+	}
+	//eprintln('replacing ${p.file_path} ...\n')
+	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
+	out.close()
+	return path
+}

@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 pub fn get_v_options_and_main_command(args []string) ([]string,string) {
@@ -12,12 +11,16 @@ pub fn get_v_options_and_main_command(args []string) ([]string,string) {
 		if !a.starts_with('-') {
 			potential_commands << a
 			continue
-		}else{
+		}
+		else {
 			options << a
-			if a in ['-o', '-os', '-cc', '-cflags', '-d'] { i++ }
+			if a in ['-o', '-os', '-cc', '-cflags', '-d'] {
+				i++
+			}
 		}
 	}
 	// potential_commands[0] is always the executable itself, so ignore it
 	command := if potential_commands.len > 1 { potential_commands[1] } else { '' }
-	return options, command
+	return options,command
 }
+

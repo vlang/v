@@ -12,8 +12,9 @@ import (
 	strings
 )
 
-const (
+pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
+	method_all = ['GET','POST','PUT','PATCH','DELETE']
 	HEADER_SERVER = 'Server: VWeb\r\n'
 	HEADER_CONNECTION_CLOSE = 'Connection: close\r\n'
 	HEADERS_CLOSE = '${HEADER_SERVER}${HEADER_CONNECTION_CLOSE}\r\n'
@@ -33,6 +34,7 @@ const (
 		'.xml': 'text/xml; charset=utf-8'
 	}
 	MAX_HTTP_POST_SIZE = 1024 * 1024
+	Default_Port = 8080
 )
 
 pub struct Context {
@@ -112,24 +114,36 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	return error('Cookie not found')
 }
 
-fn (ctx mut Context) add_header(key, val string) {
+pub fn (ctx mut Context) add_header(key, val string) {
 	//println('add_header($key, $val)')
 	ctx.headers = ctx.headers + '\r\n$key: $val'
 	//println(ctx.headers)
 }
 
-fn (ctx &Context) get_header(key string) string {
+pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.headers[key]
 }
 
-//pub fn run<T>(port int) {
-pub fn run<T>(app mut T, port int) {
+//fn handle_conn(conn net.Socket) {
+	//println('handle')
+
+//}
+
+pub fn foo<T>() {
+
+}
+
+pub fn run<T>(port int) {
+//pub fn run<T>(app mut T, port int) {
 	println('Running a Vweb app on http://localhost:$port ...')
 	l := net.listen(port) or { panic('failed to listen') }
-	//mut app := T{}
+	mut app := T{}
+	app.vweb = Context{}
 	app.init()
+	//app.reset()
 	for {
 		conn := l.accept() or { panic('accept() failed') }
+		handle_conn(conn, mut app)
 		//foobar<T>()
 		// TODO move this to handle_conn<T>(conn, app)
 		//message := readall(conn)
@@ -153,119 +167,122 @@ pub fn run<T>(app mut T, port int) {
 			continue
 		}
 		*/
+	}
+}
 
-		//first_line := strip(lines[0])
-		first_line := conn.read_line()
-		println('firstline="$first_line"')
-		$if debug { println(first_line) }
-		// Parse the first line
-		// "GET / HTTP/1.1"
-		//first_line := s.all_before('\n')
-		vals := first_line.split(' ')
-		if vals.len < 2 {
-			println('no vals for http')
-			conn.send_string(HTTP_500) or {}
-			conn.close() or {}
-			continue
-		}
-		mut headers := []string
-		mut body := ''
-		mut in_headers := true
-		mut len := 0
-		mut body_len := 0
-		//for line in lines[1..] {
-		for j := 0; j < 100; j++ {
-			//println(j)
-			line := conn.read_line()
-			sline := strip(line)
-			if sline == '' {
-				//if in_headers {
-					// End of headers, no body => exit
-					if len == 0 {
-						break
-					}
-				//} //else {
-					// End of body
-					//break
-				//}
-				//println('HHH')
-				in_headers = false
-			}
-			if in_headers {
-				//println(sline)
-				headers << sline
-				if sline.starts_with('Content-Length') {
-					len = sline.all_after(': ').int()
-					//println('GOT CL=$len')
-				}
-			} else {
-				body += sline + '\r\n'
-				body_len += body.len
-				if body_len >= len {
+fn handle_conn<T>(conn net.Socket, app mut T) {
+	//first_line := strip(lines[0])
+	first_line := conn.read_line()
+	println('firstline="$first_line"')
+	$if debug { println(first_line) }
+	// Parse the first line
+	// "GET / HTTP/1.1"
+	//first_line := s.all_before('\n')
+	vals := first_line.split(' ')
+	if vals.len < 2 {
+		println('no vals for http')
+		conn.send_string(HTTP_500) or {}
+		conn.close() or {}
+		return
+		//continue
+	}
+	mut headers := []string
+	mut body := ''
+	mut in_headers := true
+	mut len := 0
+	mut body_len := 0
+	//for line in lines[1..] {
+	for j := 0; j < 100; j++ {
+		//println(j)
+		line := conn.read_line()
+		sline := strip(line)
+		if sline == '' {
+			//if in_headers {
+				// End of headers, no body => exit
+				if len == 0 {
 					break
 				}
-				//println('body:$body')
+			//} //else {
+				// End of body
+				//break
+			//}
+			//println('HHH')
+			in_headers = false
+		}
+		if in_headers {
+			//println(sline)
+			headers << sline
+			if sline.starts_with('Content-Length') {
+				len = sline.all_after(': ').int()
+				//println('GOT CL=$len')
 			}
-		}
-
-		mut action := vals[1][1..].all_before('/')
-		if action.contains('?') {
-			action = action.all_before('?')
-		}
-		if action == '' {
-			action = 'index'
-		}
-		req := http.Request{
-			headers: http.parse_headers(headers) //s.split_into_lines())
-			ws_func: 0
-			user_ptr: 0
-			method: vals[0]
-			url: vals[1]
-		}
-		$if debug {
-			println('req.headers = ')
-			println(req.headers)
-			println('vweb action = "$action"')
-		}
-		//mut app := T{
-		app.vweb = Context{
-			req: req
-			conn: conn
-			form: map[string]string
-			static_files: map[string]string
-			static_mime_types: map[string]string
-		}
-		//}
-		if req.method in methods_with_form {
-			body = strip(body)
-			println('body="$body"' )
-			app.vweb.parse_form(body)
-		}
-		if vals.len < 2 {
-			$if debug {
-				println('no vals for http')
+		} else {
+			body += sline + '\r\n'
+			body_len += body.len
+			if body_len >= len {
+				break
 			}
-			conn.close() or {}
-			continue
+			//println('body:$body')
 		}
+	}
 
-		// Serve a static file if it's one
-		// if app.vweb.handle_static() {
-		// 	conn.close()
-		// 	continue
-		// }
-
-		// Call the right action
+	mut action := vals[1][1..].all_before('/')
+	if action.contains('?') {
+		action = action.all_before('?')
+	}
+	if action == '' {
+		action = 'index'
+	}
+	req := http.Request{
+		headers: http.parse_headers(headers) //s.split_into_lines())
+		ws_func: 0
+		user_ptr: 0
+		method: vals[0]
+		url: vals[1]
+	}
+	$if debug {
+		println('req.headers = ')
+		println(req.headers)
+		println('vweb action = "$action"')
+	}
+	//mut app := T{
+	app.vweb = Context{
+		req: req
+		conn: conn
+		form: map[string]string
+		static_files: map[string]string
+		static_mime_types: map[string]string
+	}
+	//}
+	if req.method in methods_with_form {
+		body = strip(body)
+		println('body="$body"' )
+		app.vweb.parse_form(body)
+	}
+	if vals.len < 2 {
 		$if debug {
-			println('action=$action')
-		}
-		app.$action() or {
-			conn.send_string(HTTP_404) or {}
+			println('no vals for http')
 		}
 		conn.close() or {}
-		reset := 'reset'
-		app.$reset()
+		return
+		//continue
 	}
+
+	// Serve a static file if it's one
+	// if app.vweb.handle_static() {
+	// 	conn.close()
+	// 	continue
+	// }
+
+	// Call the right action
+	$if debug {
+		println('action=$action')
+	}
+	app.$action() or {
+		conn.send_string(HTTP_404) or {}
+	}
+	conn.close() or {}
+	app.reset()
 }
 
 fn (ctx mut Context) parse_form(s string) {

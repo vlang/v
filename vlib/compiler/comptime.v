@@ -7,6 +7,7 @@ import (
 	vweb.tmpl // for `$vweb_html()`
 	os
 	strings
+	filepath
 )
 
 fn (p mut Parser) comp_time() {
@@ -20,6 +21,7 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
+
 		if name in supported_platforms {
 			ifdef_name := os_name_to_ifdef(name)
 			if name == 'mac' {
@@ -99,6 +101,9 @@ fn (p mut Parser) comp_time() {
 		else if name == 'clang' {
 			p.comptime_if_block('__clang__')
 		}
+		else if p.v.compile_defines_all.len > 0 && name in p.v.compile_defines_all {
+			p.comptime_if_block('CUSTOM_DEFINE_${name}')
+		}
 		else {
 			println('Supported platforms:')
 			println(supported_platforms)
@@ -160,7 +165,7 @@ fn (p mut Parser) comp_time() {
 			// Can't find the template file in current directory,
 			// try looking next to the vweb program, in case it's run with
 			// v path/to/vweb_app.v
-			path = os.dir(p.scanner.file_path) + '/' + path
+			path = filepath.dir(p.scanner.file_path) + '/' + path
 			if !os.exists(path) {
 				p.error('vweb HTML template "$path" not found')
 			}
@@ -209,7 +214,7 @@ fn (p mut Parser) chash() {
 			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)
 			flag = flag.replace('@VMOD', v_modules_path)
 			// p.log('adding flag "$flag"')
-			_ = p.table.parse_cflag(flag, p.mod) or {
+			_ = p.table.parse_cflag(flag, p.mod, p.v.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)
 				return
 			}
@@ -321,7 +326,7 @@ fn (p mut Parser) gen_array_str(typ Type) {
 		is_public: true
 		receiver_typ: typ.name
 	})
-	elm_type := typ.name[6..]
+	elm_type := parse_pointer(typ.name[6..])
 	elm_type2 := p.table.find_type(elm_type)
 	is_array := elm_type.starts_with('array_')
 	if is_array {
@@ -416,7 +421,7 @@ fn (p mut Parser) gen_array_filter(str_typ string, method_ph int) {
 		}
 		array_int b = tmp2;
 	*/
-	val_type := str_typ[6..]
+	val_type := parse_pointer(str_typ[6..])
 	p.open_scope()
 	p.register_var(Var{
 		name: 'it'
@@ -456,7 +461,7 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 		}
 		array_int b = tmp2;
 	*/
-	val_type := str_typ[6..]
+	val_type := parse_pointer(str_typ[6..])
 	p.open_scope()
 	p.register_var(Var{
 		name: 'it'
@@ -477,7 +482,7 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 	p.gen(tmp) // TODO why does this `gen()` work?
 	p.check(.rpar)
 	p.close_scope()
-	return 'array_' + map_type
+	return 'array_' + stringify_pointer(map_type)
 }
 
 fn (p mut Parser) comptime_if_block(name string) {

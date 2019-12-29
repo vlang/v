@@ -38,6 +38,7 @@ Options/commands:
   -o <file>.js      Produce JavaScript source.
   -prod             Build an optimized executable.
   -v, version       Display compiler version and git hash of the compiler source.
+  -verbose          Produce a verbose log about what the compiler is doing, where it seeks for files and so on.
   -live             Enable hot code reloading (required by functions marked with [live]).
   -os <OS>          Produce an executable for the selected OS.
                     OS can be linux, mac, windows, msvc.
@@ -56,8 +57,8 @@ Options for debugging/troubleshooting v programs:
   -g                Generate debugging information in the backtraces. Add *V* line numbers to the generated executable.
   -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
   -keep_c           Do NOT remove the generated .tmp.c files after compilation.
-                    It is useful when using debuggers like gdb/visual studio, when given after -g / -cg .
-  -show_c_cmd       Print the full C compilation command and how much time it took.
+                    It is useful when using debuggers like gdb/visual studio, when given after `-g` / `-cg`.
+  -show_c_cmd       Print the full C compilation command and how much time it took. See also `-verbose`.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
                     The C backend compiler should be able to handle C99 compatible C code.
                     Common C compilers are gcc, clang, tcc, icc, cl...
@@ -84,9 +85,8 @@ V package management commands:
   remove  [module]  Removes an installed module, or ALL installed modules at once, when no module name is given.
 '
 )
-
-
 /*
 - To disable automatic formatting:
 v -nofmt file.v
 */
+

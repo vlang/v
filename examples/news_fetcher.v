@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 import http
 import json
 import sync
@@ -12,15 +11,15 @@ const (
 
 struct Story {
 	title string
-	url string
+	url   string
 }
 
 struct Fetcher {
 mut:
-	mu      &sync.Mutex
-	ids     []int
-	cursor  int
-	wg      &sync.WaitGroup
+	mu     &sync.Mutex
+	ids    []int
+	cursor int
+	wg     &sync.WaitGroup
 }
 
 fn (f mut Fetcher) fetch() {
@@ -37,7 +36,7 @@ fn (f mut Fetcher) fetch() {
 			println('failed to fetch data from /v0/item/${id}.json')
 			exit(1)
 		}
-		story := json.decode(Story, resp.text) or {
+		story := json.decode(Story,resp.text) or {
 			println('failed to decode a story')
 			exit(1)
 		}
@@ -52,22 +51,25 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	mut ids := json.decode([]int, resp.text) or {
+	mut ids := json.decode([]int,resp.text) or {
 		println('failed to decode topstories.json')
 		return
 	}
 	if ids.len > 10 {
 		// ids = ids[:10]
 		mut tmp := [0].repeat(10)
-		for i := 0 ; i < 10 ; i++ {
+		for i := 0; i < 10; i++ {
 			tmp[i] = ids[i]
 		}
 		ids = tmp
 	}
-	
 	wg := sync.new_waitgroup()
 	mtx := sync.new_mutex()
-	mut fetcher := &Fetcher{ids: ids mu: 0 wg: 0}
+	mut fetcher := &Fetcher{
+		ids: ids
+		mu: 0
+		wg: 0
+	}
 	fetcher.mu = &mtx
 	fetcher.wg = &wg
 	fetcher.wg.add(ids.len)

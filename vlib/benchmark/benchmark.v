@@ -2,7 +2,6 @@ module benchmark
 
 import time
 import term
-
 /*
 Example usage of this module:
 ```
@@ -26,19 +25,20 @@ println( bmark.total_message('remarks about the benchmark') )
 ```
 */
 
-pub struct Benchmark{
+
+pub struct Benchmark {
 pub mut:
 	bench_start_time i64
-	bench_end_time i64
-	step_start_time i64
-	step_end_time i64
-	ntotal int
-	nok    int
-	nfail  int
-	verbose bool
+	bench_end_time   i64
+	step_start_time  i64
+	step_end_time    i64
+	ntotal           int
+	nok              int
+	nfail            int
+	verbose          bool
 }
 
-pub fn new_benchmark() Benchmark{
+pub fn new_benchmark() Benchmark {
 	return Benchmark{
 		bench_start_time: benchmark.now()
 		verbose: true
@@ -67,14 +67,14 @@ pub fn (b mut Benchmark) ok() {
 
 pub fn (b mut Benchmark) fail_many(n int) {
 	b.step_end_time = benchmark.now()
-	b.ntotal+=n
-	b.nfail+=n
+	b.ntotal += n
+	b.nfail += n
 }
 
 pub fn (b mut Benchmark) ok_many(n int) {
 	b.step_end_time = benchmark.now()
-	b.ntotal+=n
-	b.nok+=n
+	b.ntotal += n
+	b.nok += n
 }
 
 pub fn (b mut Benchmark) neither_fail_nor_ok() {
@@ -86,10 +86,7 @@ pub fn (b &Benchmark) step_message(msg string) string {
 }
 
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '$msg \n ok, fail, total = ' +
-		term.ok_message('${b.nok:5d}') + ', ' +
-		if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' +
-		'${b.ntotal:5d}'
+	mut tmsg := '$msg \n ok, fail, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.fail_message('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + '${b.ntotal:5d}'
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
@@ -99,8 +96,8 @@ pub fn (b &Benchmark) total_message(msg string) string {
 pub fn (b &Benchmark) total_duration() i64 {
 	return (b.bench_end_time - b.bench_start_time)
 }
-////////////////////////////////////////////////////////////////////
 
+// //////////////////////////////////////////////////////////////////
 fn (b &Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {
 	if b.verbose {
 		tdiff := (eticks - sticks)
@@ -112,3 +109,4 @@ fn (b &Benchmark) tdiff_in_ms(s string, sticks i64, eticks i64) string {
 fn now() i64 {
 	return time.ticks()
 }
+

@@ -6,6 +6,6 @@ pub fn repeat(c byte, n int) string {
 	}
 	mut arr := [c].repeat(n + 1)
 	arr[n] = `\0`
-	return string(arr, n)
+	return string(arr,n)
 }
 

@@ -96,11 +96,14 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 	is_assign := name.len > 0
 	tmp := p.get_tmp()
 	p.cgen.set_placeholder(fn_call_ph, '$typ $tmp = ')
-	typ = typ[7..]
+	typ = parse_pointer(typ[7..])
 	p.genln(';')
 	or_tok_idx := p.token_idx
+	p.fspace()
 	p.check(.key_orelse)
+	p.fspace()
 	p.check(.lcbr)
+	p.fspace()
 	p.register_var(Var{
 		name: 'err'
 		typ: 'string'
@@ -324,7 +327,7 @@ fn (p mut Parser) gen_method_call(receiver &Var, receiver_type string, cgen_name
 	if ftyp == 'void*' {
 		if receiver_type.starts_with('array_') {
 			// array_int => int
-			cast = receiver_type.all_after('array_')
+			cast = parse_pointer(receiver_type.all_after('array_'))
 			cast = '*($cast*) '
 		}
 		else {
@@ -472,7 +475,7 @@ fn (p mut Parser) gen_array_set(typ string, is_ptr, is_map bool, fn_ph, assign_p
 }
 
 // returns true in case of an early return
-fn (p mut Parser) gen_struct_init(typ string, t Type) bool {
+fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	// TODO hack. If it's a C type, we may need to add "struct" before declaration:
 	// a := &C.A{}  ==>  struct A* a = malloc(sizeof(struct A));
 	if p.is_c_struct_init {
@@ -611,7 +614,7 @@ fn (p mut Parser) cast(typ string) {
 
 fn type_default(typ string) string {
 	if typ.starts_with('array_') {
-		return 'new_array(0, 1, sizeof( ${typ[6..]} ))'
+		return 'new_array(0, 1, sizeof( ${parse_pointer(typ[6..])} ))'
 	}
 	// Always set pointers to 0
 	if typ.ends_with('*') {

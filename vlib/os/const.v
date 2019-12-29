@@ -1,10 +1,6 @@
 module os
 // (Must be realized in Syscall) (Must be specified)
 // File modes.
-
-
-
-
 const (
 	O_RDONLY = 1 // open the file read-only.
 	O_WRONLY = 2 // open the file write-only.

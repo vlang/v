@@ -88,15 +88,6 @@ fn test_create_and_delete_folder() {
   assert folder_exists == false
 }
 
-fn test_dir() {
-	$if windows {
-		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
-
-	} $else {
-		assert os.dir('/var/tmp/foo') == '/var/tmp'
-	}
-}
-
 fn walk_callback(file string) {
     if file == '.' || file == '..' {
         return
@@ -245,4 +236,15 @@ fn cleanup_leftovers(){
 	os.rmdir('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
+}
+
+fn test_symlink() {
+  $if windows { return }
+  os.mkdir('symlink') or { panic(err) }
+  os.symlink('symlink', 'symlink2') or { panic(err) }
+  assert os.exists('symlink2')
+
+  // cleanup
+  os.rm('symlink')
+  os.rm('symlink2')
 }

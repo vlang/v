@@ -18,20 +18,26 @@ fn supports_escape_sequences(fd int) bool {
 	}
 }
 
-//////////////////////////////////////////////
-
+// ////////////////////////////////////////////
 pub fn ok_message(s string) string {
-	return if can_show_color_on_stdout() {
-		green( s )
-	}else{
-		s
-	}
+	return if can_show_color_on_stdout() { green(s) } else { s }
 }
 
 pub fn fail_message(s string) string {
-	return if can_show_color_on_stdout() {
-		red( s )
-	}else{
-		s
-	}
+	return if can_show_color_on_stdout() { red(s) } else { s }
 }
+
+// h_divider will return a horizontal divider line with a dynamic width,
+// that depends on the current terminal settings
+pub fn h_divider() string {
+	mut cols := 76
+	if term_size := os.exec('stty size') {
+		if term_size.exit_code == 0 {
+			term_cols := term_size.output.split(' ')[1].int()
+			if term_cols > 0 {
+				cols = term_cols
+      }
+		}
+	}
+	return '-'.repeat(cols)
+}  

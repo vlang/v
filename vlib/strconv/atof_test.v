@@ -3,7 +3,11 @@
 * String to float Test
 *
 **********************************************************************/
-import strconv
+
+import (
+	strconv
+	strconv.atofq
+)
 
 fn test_atof() {
 	//
@@ -12,11 +16,11 @@ fn test_atof() {
 
 	// float64
 	src_num := [
-		f64(0.3), 
-		-0.3, 
-		0.004, 
-		-0.004, 
-		0.0, 
+		f64(0.3),
+		-0.3,
+		0.004,
+		-0.004,
+		0.0,
 		-0.0,
 		31234567890123
 	]
@@ -36,9 +40,9 @@ fn test_atof() {
 	for c,x in src_num {
 		// slow atof
 		assert strconv.atof64(src_num_str[c]).strlong() == x.strlong()
-		
+
 		// quick atof
-		mut s1 := (strconv.atof_quick(src_num_str[c]).str())
+		mut s1 := (atofq.atof_quick(src_num_str[c]).str())
 		s1 = s1[..src_num_str[c].len]
 		mut s2 := (x.str())
 		s2 = s2[..src_num_str[c].len]
@@ -67,5 +71,4 @@ fn test_atof() {
 	// DOUBLE_MINUS_ZERO
 	f1=-0.0
 	assert *ptr == u64(0x8000000000000000)
-	
 }

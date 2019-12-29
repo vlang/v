@@ -152,7 +152,7 @@ pub fn (s string) replace(rep, with string) string {
 			break
 		}
 		idxs << idx
-		idx++
+		idx += rep.len
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {

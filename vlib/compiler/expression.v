@@ -4,6 +4,9 @@
 module compiler
 
 fn (p mut Parser) bool_expression() string {
+	//is_ret := p.prev_tok == .key_return
+	start_ph := p.cgen.add_placeholder()
+	mut expected := p.expected_type
 	tok := p.tok
 	typ := p.bterm()
 	mut got_and := false // to catch `a && b || c` in one expression without ()
@@ -43,6 +46,19 @@ fn (p mut Parser) bool_expression() string {
 		println(p.cgen.cur_line)
 		println(tok.str())
 		p.error('expr() returns empty type')
+	}
+	if p.inside_return_expr && p.expected_type.contains('_MulRet_') { //is_ret { // return a,b hack TODO
+		expected = p.expected_type
+	}
+	if expected != typ && expected in p.table.sum_types { // TODO perf
+		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
+		T := p.table.find_type(typ)
+		if T.parent == expected {
+			p.cgen.set_placeholder(start_ph,
+				'/*SUM TYPE CAST2*/($expected) { .obj = memdup( &($typ[]) { ')
+			tt := typ.all_after('_') // TODO
+			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+		}
 	}
 	return typ
 }
@@ -214,8 +230,8 @@ fn (p mut Parser) name_expr() string {
 		p.error('cannot use `_` as value')
 	}
 	// generic type check
-	if name in p.cur_fn.dispatch_of.inst.keys() {
-		name = p.cur_fn.dispatch_of.inst[name]
+	if name in p.generic_dispatch.inst.keys() {
+		name = p.generic_dispatch.inst[name]
 	}
 	// Raw string (`s := r'hello \n ')
 	if name == 'r' && p.peek() == .str && p.prev_tok != .str_dollar {
@@ -343,13 +359,38 @@ fn (p mut Parser) name_expr() string {
 				// no need in `if color == Color.red`
 				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
 			}
+			// `expr := Expr.BoolExpr(true)` =>
+			// `Expr expr = { .obj = true, .typ = BoolExpr_type };`
+			if val[0].is_capital() {
+				p.next()
+				p.check(.lpar)
+				//println('sum type $val name=$val')
+				// Find a corresponding tuple variant
+				// TODO slow, but this will be re-written anyway
+				mut idx := 0
+				for i, val_ in enum_type.enum_vals {
+					//println('f $field.name')
+					if val_ == val {
+						idx = i
+					}
+				}
+				q := p.table.tuple_variants[enum_type.name]
+				//println(q)
+				//println(q[idx])
+				arg_type := q[idx]
+				p.gen('($enum_type.name) { .obj = ($arg_type[]) { ')
+				p.bool_expression()
+				p.check(.rpar)
+				p.gen('}, .typ = ${val}_type }')
+				return enum_type.name
+			}
 			// println('enum val $val')
 			p.gen(mod_gen_name(enum_type.mod) + '__' + enum_type.name + '_' + val) // `color = main__Color_green`
 			p.next()
 			return enum_type.name
 		}
 		// normal struct init (non-C)
-		else if p.peek() == .lcbr {
+		else if p.peek() == .lcbr || p.peek() == .lt {
 			return p.get_struct_type(name, false, ptr)
 		}
 	}
@@ -377,7 +418,7 @@ fn (p mut Parser) name_expr() string {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 		}
@@ -413,7 +454,7 @@ fn (p mut Parser) name_expr() string {
 		f.typ = p.gen_handle_option_or_else(f.typ, '', fn_call_ph)
 	}
 	else if !p.is_var_decl && !is_or_else && !p.inside_return_expr && f.typ.starts_with('Option_') {
-		opt_type := f.typ[7..]
+		opt_type := f.typ[7..].replace('ptr_', '&')
 		p.error('unhandled option type: `?$opt_type`')
 	}
 	// dot after a function call: `get_user().age`
@@ -450,7 +491,7 @@ fn (p mut Parser) expression() string {
 			// a << 7 => int tmp = 7; array_push(&a, &tmp);
 			// _PUSH(&a, expression(), tmp, string)
 			tmp := p.get_tmp()
-			tmp_typ := typ[6..].replace('_ptr', '*') // skip "array_"
+			tmp_typ := parse_pointer(typ[6..]) // skip "array_"
 			p.check_space(.left_shift)
 			// Get the value we are pushing
 			p.gen(', (')
@@ -718,7 +759,17 @@ fn (p mut Parser) factor() string {
 			// p.fgen('$sizeof_typ)')
 			return 'int'
 		}
-		.amp,.dot,.mul {
+		.key_offsetof {
+			p.next()
+			p.check(.lpar)
+			offsetof_typ := p.get_type()
+			p.check(.comma)
+			member := p.check_name()
+			p.check(.rpar)
+			p.gen('__offsetof($offsetof_typ, $member)')
+			return 'int'
+		}
+		.amp, .dot, .mul {
 			// (dot is for enum vals: `.green`)
 			return p.name_expr()
 		}
@@ -822,3 +873,4 @@ fn (p mut Parser) factor() string {
 }
 
 // { user | name: 'new name' }
+

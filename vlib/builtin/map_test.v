@@ -129,13 +129,13 @@ fn test_various_map_value() {
 	m13['test'] = rune(0)
 	assert m13['test'] == rune(0)
 
-	//mut m14 := map[string]voidptr
-	//m14['test'] = voidptr(0)
-	//assert m14['test'] == voidptr(0)
+	mut m14 := map[string]voidptr
+	m14['test'] = voidptr(0)
+	assert m14['test'] == voidptr(0)
 
-	//mut m15 := map[string]byteptr
-	//m15['test'] = byteptr(0)
-	//assert m15['test'] == byteptr(0)
+	mut m15 := map[string]byteptr
+	m15['test'] = byteptr(0)
+	assert m15['test'] == byteptr(0)
 
 	mut m16 := map[string]i64
 	m16['test'] = i64(0)
@@ -144,6 +144,10 @@ fn test_various_map_value() {
 	mut m17 := map[string]u64
 	m17['test'] = u64(0)
 	assert m17['test'] == u64(0)
+
+	mut m18 := map[string]&int
+	m18['test'] = &int(0)
+	assert m18['test'] == &int(0)
 }
 
 

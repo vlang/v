@@ -96,6 +96,20 @@ pub fn eprintln(s string) {
 	println(s)
 }
 
+pub fn eprint(s string) {
+	if isnil(s.str) {
+		panic('eprint(NIL)')
+	}
+	$if !windows {
+		C.fflush(stdout)
+		C.fflush(stderr)
+		C.fprintf(stderr, '%.*s', s.len, s.str)
+		C.fflush(stderr)
+		return
+	}
+	print(s)
+}
+
 pub fn print(s string) {
 	$if windows {
 		C.wprintf(s.to_wide())
@@ -171,4 +185,28 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
+
+/*
+fn C.va_start()
+fn C.va_end()
+fn C.vsnprintf() int
+fn C.vsprintf() int
+
+pub fn str2_(fmt charptr, ...) string {
+       argptr := C.va_list{}
+        C.va_start(argptr, fmt)
+        len := C.vsnprintf(0, 0, fmt, argptr) + 1
+C.va_end(argptr)
+        buf := malloc(len)
+        C.va_start(argptr, fmt)
+        C.vsprintf(charptr(buf), fmt, argptr)
+        C.va_end(argptr)
+//#ifdef DEBUG_ALLOC
+//        puts("_STR:");
+//        puts(buf);
+//#endif
+        return tos2(buf)
+}
+*/
+
 

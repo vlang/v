@@ -15,7 +15,7 @@ const (
 	error_context_after = 2 // ^^^ same, but after
 )
 
-struct Scanner {
+pub struct Scanner {
 mut:
 	file_path                string
 	text                     string
@@ -87,7 +87,7 @@ struct ScanRes {
 	lit string
 }
 
-fn scan_res(tok TokenKind,lit string) ScanRes {
+fn scan_res(tok TokenKind, lit string) ScanRes {
 	return ScanRes{
 		tok,lit}
 }
@@ -271,7 +271,7 @@ fn (s mut Scanner) scan() ScanRes {
 		name := s.ident_name()
 		// tmp hack to detect . in ${}
 		// Check if not .eof to prevent panic
-		next_char := if s.pos + 1 < s.text.len {s.text[s.pos + 1]}else {`\0`}
+		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if is_key(name) {
 			return scan_res(key_to_token(name), '')
 		}
@@ -306,7 +306,7 @@ fn (s mut Scanner) scan() ScanRes {
 	if c == `)` && s.inter_start {
 		s.inter_end = true
 		s.inter_start = false
-		next_char := if s.pos + 1 < s.text.len {s.text[s.pos + 1]}else {`\0`}
+		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if next_char == s.quote {
 			s.inside_string = false
 		}
@@ -360,7 +360,7 @@ fn (s mut Scanner) scan() ScanRes {
 		`?` {
 			return scan_res(.question, '')
 		}
-		single_quote,double_quote {
+		single_quote, double_quote {
 			return scan_res(.str, s.ident_string())
 		}
 		`\`` {
@@ -659,7 +659,7 @@ fn (s &Scanner) current_column() int {
 	return s.pos - s.last_nl_pos
 }
 
-fn (s Scanner) count_symbol_before(p int,sym byte) int {
+fn (s Scanner) count_symbol_before(p int, sym byte) int {
 	mut count := 0
 	for i := p; i >= 0; i-- {
 		if s.text[i] != sym {
@@ -719,7 +719,7 @@ fn (s mut Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if (c.is_letter() || c == `_`) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if is_name_char(c) && prevc == `$` && !s.is_fmt && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.inside_string = true
 			s.inter_start = true
 			s.pos -= 2
@@ -775,10 +775,10 @@ fn (s mut Scanner) ident_char() string {
 		return '`'
 	}
 	// Escapes a `'` character
-	return if c == "\'" {'\\' + c}else {c}
+	return if c == "\'" { '\\' + c } else { c }
 }
 
-fn (s &Scanner) expect(want string,start_pos int) bool {
+fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
 		return false
@@ -841,7 +841,7 @@ fn (s mut Scanner) inc_line_number() {
 fn (s Scanner) line(n int) string {
 	mut res := ''
 	if n >= 0 && n < s.line_ends.len {
-		nline_start := if n == 0 {0}else {s.line_ends[n - 1]}
+		nline_start := if n == 0 { 0 } else { s.line_ends[n - 1] }
 		nline_end := s.line_ends[n]
 		if nline_start <= nline_end {
 			res = s.text[nline_start..nline_end]
@@ -851,7 +851,7 @@ fn (s Scanner) line(n int) string {
 }
 
 fn is_name_char(c byte) bool {
-	return c.is_letter() || c == `_`
+	return c == `_` || c.is_letter()
 }
 
 [inline]
@@ -889,3 +889,4 @@ fn (s &Scanner) validate_var_name(name string) {
 		s.error('bad variable name `$name`\n' + 'looks like you have a multi-word name without separating them with `_`' + '\nfor example, use `registration_date` instead of `registrationdate` ')
 	}
 }
+

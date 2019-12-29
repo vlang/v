@@ -2,6 +2,7 @@ module main
 
 import (
 	os
+	os.cmdline
 	testing
 )
 
@@ -20,18 +21,18 @@ pub fn main() {
 		return
 	}
 
-	args_string := args[1..].join(' ')
-	args_before := args_string.all_before('test ')
-	args_after  := args_string.all_after('test ')
+	args_to_executable := args[1..]
+	args_before := cmdline.before(args_to_executable, ['test'])
+	args_after := cmdline.after(args_to_executable, ['test'])
 
-	if args_after == 'v' {
+	if args_after.join(' ') == 'v' {
 		eprintln('`v test v` has been deprecated.')
 		eprintln('Use `v test-compiler` instead.')
 		exit(1)
 	}
 
-	mut ts := testing.new_test_session(args_before)
-	for targ in args_after.split(' ') {
+	mut ts := testing.new_test_session(args_before.join(' '))
+	for targ in args_after {
 		if os.exists(targ) && targ.ends_with('_test.v') {
 			ts.files << targ
 			continue
@@ -46,7 +47,7 @@ pub fn main() {
 
 	println('Testing...')
 	ts.test()
-	println('----------------------------------------------------------------------------')
+
 	println( ts.benchmark.total_message('running V _test.v files') )
 	if ts.failed {
 		exit(1)

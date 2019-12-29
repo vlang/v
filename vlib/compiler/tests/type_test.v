@@ -17,3 +17,56 @@ fn test_person_str() {
 	println(p)
 	assert p.str() == 'Person: Bilbo'
 }
+
+struct Foo {}
+
+type Expr = Foo | BoolExpr |  BinExpr | UnaryExpr
+
+struct BoolExpr {
+	foo int
+
+}
+
+struct BinExpr {
+
+}
+
+fn expr1() Expr {
+	mut e := Expr{}
+	e = BinExpr{}
+	return e
+	//return BinExpr{}
+}
+
+fn expr2() Expr {
+	return BinExpr{}
+}
+
+struct UnaryExpr {
+
+}
+
+
+fn handle_expr(e Expr) {
+
+}
+
+fn parse_bool() BoolExpr {
+	return BoolExpr{}
+}
+
+fn test_sum_types() {
+	b := parse_bool()
+	handle_expr(b)
+}
+
+/*
+#define ExprType_BoolExpr 0
+#define ExprType_BinExpr 1
+#define ExprType_UnaryExpr 2
+
+struct Expr {
+	int   typ;
+	void* obj;
+}
+*/

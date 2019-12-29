@@ -124,3 +124,23 @@ fn test_opt_field() {
 	val := t.opt or { return }
 	assert val == 5
 }
+
+fn opt_ptr(a &int) ?&int {
+	if isnil(a) {
+		return none
+	}
+	return a
+}
+
+fn test_opt_ptr() {
+	a := 3
+	r1 := opt_ptr(&a) or {
+		&int(0)
+	}
+	assert r1 == &a
+	r2 := opt_ptr(&int(0)) or {
+		return
+	}
+	println('`$r2` should be none')
+	assert false
+}

@@ -27,12 +27,6 @@ fn test_digits() {
 	assert negative_digits[2] == -1
 }
 
-fn test_factorial() {
-	assert factorial(12) == 479001600
-	assert factorial(5) == 120
-	assert factorial(0) == 1
-}
-
 fn test_erf() {
 	assert erf(0) == 0
 	assert erf(1.5) + erf(-1.5) == 0
