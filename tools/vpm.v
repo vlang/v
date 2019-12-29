@@ -349,7 +349,11 @@ fn resolve_dependencies(name, module_path string, module_names []string) {
 
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
-	mut m := map[string]string{}
+	mut m := {
+		'name': '',
+		'version': '',
+		'deps': ''
+	}
 	for key in keys {
 		mut key_index := data.index('$key:') or {
 			continue
@@ -358,13 +362,9 @@ fn parse_vmod(data string) Vmod {
 		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'", '').replace('[', '').replace(']', '')
 	}
 	mut vmod := Vmod{}
-	if 'name' in m {
-		vmod.name = m['name']
-	}
-	if 'version' in m {
-		vmod.version = m['version']
-	}
-	if 'deps' in m && m['deps'].len > 0 {
+	vmod.name = m['name']
+	vmod.version = m['version']
+	if m['deps'].len > 0 {
 		vmod.deps = m['deps'].split(',')
 	}
 	return vmod
