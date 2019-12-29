@@ -184,7 +184,7 @@ fn (n mapnode) find_key(k string) int {
 	return idx
 }
 
-fn (n mut mapnode) remove_key(k string) {
+fn (n mut mapnode) remove_key(k string) bool {
 	idx := n.find_key(k)
 	if idx < n.size && n.keys[idx] == k {
 		if isnil(n.children) {
@@ -192,9 +192,10 @@ fn (n mut mapnode) remove_key(k string) {
 		} else {
 			n.remove_from_non_leaf(idx)
 		}
+		return true
 	} else {
 		if isnil(n.children) {
-			return
+			return false
 		}
 		flag := if idx == n.size {true} else {false}
 		if (&mapnode(n.children[idx])).size < degree {
@@ -202,9 +203,9 @@ fn (n mut mapnode) remove_key(k string) {
 		}
 
 		if flag && idx > n.size {
-			(&mapnode(n.children[idx - 1])).remove_key(k)
+			return (&mapnode(n.children[idx - 1])).remove_key(k)
 		} else {
-			(&mapnode(n.children[idx])).remove_key(k)
+			return (&mapnode(n.children[idx])).remove_key(k)
 		}
 	}
 }
@@ -331,15 +332,11 @@ pub fn (m mut map) delete(key string) {
 	if m.root.size == 0 {
 		return
 	}
-	
-	// This is slow
-	if m.exists(key) {
-		m.size--
-	} else {
-		return
-	}
 
-	m.root.remove_key(key)
+	removed := m.root.remove_key(key)
+	if removed {
+		m.size--
+	}
 	
 	if m.root.size == 0 {
 		// tmp := t.root
