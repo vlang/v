@@ -39,7 +39,8 @@ pub fn (ts mut TestSession) test() {
 	tmpd := os.tmpdir()
 	ts.init()
 	show_stats := '-stats' in ts.vargs.split(' ')
-	ts.benchmark.set_total_expected_steps( ts.files.len )
+	
+	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
@@ -63,6 +64,13 @@ pub fn (ts mut TestSession) test() {
 				continue
 			}
 		}
+		remaining_files << dot_relative_file
+	}
+  
+	ts.benchmark.set_total_expected_steps( remaining_files.len )  
+	for dot_relative_file in remaining_files {
+		relative_file := dot_relative_file.replace('./', '')
+		file := os.realpath(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
 		// Remove them after a test passes/fails.
 		fname := filepath.filename(file)
