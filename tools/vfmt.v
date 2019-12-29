@@ -19,6 +19,7 @@ struct FormatOptions {
 	is_all     bool
 	is_worker  bool
 	is_debug   bool
+	is_noerror bool
 }
 
 const (
@@ -44,6 +45,7 @@ fn main() {
 		is_all: '-all' in args || '--all' in args
 		is_worker: '-worker' in args
 		is_debug: '-debug' in args
+		is_noerror: '-noerror' in args
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
@@ -104,6 +106,9 @@ fn main() {
 	}
 	if errors > 0 {
 		eprintln('Encountered a total of: ${errors} errors.')
+		if foptions.is_noerror {
+			exit(0)
+		}
 		exit(1)
 	}
 }
