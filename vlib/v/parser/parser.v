@@ -9,6 +9,7 @@ import (
 	v.token
 	v.table
 	v.types
+	term
 )
 
 struct Parser {
@@ -169,9 +170,18 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 }
 
 pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
+	name := p.tok.lit
+	//println('looking for $name')
+	var := p.table.find_var(name) or {
+		p.error('unknown variable `$name`')
+		exit(1)
+	}
+	if !var.is_mut {
+		p.error('`$var.name` is immutable, declare it with `mut $var.name := ...`')
+	}
 	left_expr,left_type := p.expr(0)
 	op := p.tok.kind
-	println('assignn_stmt() ' + op.str())
+	//println('assignn_stmt() ' + op.str())
 	p.next()
 	right_expr,right_type := p.expr(0)
 	return ast.AssignStmt{
@@ -179,6 +189,11 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 		right: right_expr
 		op: op
 	}
+}
+
+pub fn (p &Parser) error(s string) {
+	println(term.bold(term.red('x.v:$p.tok.line_nr: $s')))
+	exit(1)
 }
 
 // Implementation of Pratt Precedence
@@ -295,6 +310,7 @@ fn (p mut Parser) import_stmt() ast.Import {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
+	p.table.clear_vars()
 	p.check(.key_fn)
 	name := p.tok.lit
 	// println('fn decl $name')
@@ -343,16 +359,19 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	name := p.tok.lit
 	p.read_first_token()
 	expr,t := p.expr(token.lowest_prec)
-	if name in p.table.names {
+	if _ := p.table.find_var(name) {
 		verror('redefinition of `$name`')
 	}
-	p.table.names << name
+	p.table.register_var(table.Var{
+		name: name
+		is_mut: is_mut
+	})
 	// println(p.table.names)
 	// println('added $name')
 	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		typ: t
 	}
 }

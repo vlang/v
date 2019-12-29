@@ -93,8 +93,8 @@ selfcompile:
 
 modules: module_builtin module_strings module_strconv
 module_builtin:
-	./v build module vlib/builtin > /dev/null
+	#./v build module vlib/builtin > /dev/null
 module_strings:
-	./v build module vlib/strings > /dev/null
+	#./v build module vlib/strings > /dev/null
 module_strconv:
-	./v build module vlib/strconv > /dev/null
+	#./v build module vlib/strconv > /dev/null

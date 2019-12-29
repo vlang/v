@@ -75,9 +75,9 @@ pub fn new_scanner(text string) &Scanner {
 	}
 }
 
-fn scan_res(tok token.TokenKind, lit string) token.Token {
+fn (s &Scanner) scan_res(tok token.TokenKind, lit string) token.Token {
 	return token.Token{
-		tok,lit}
+		tok,lit,s.line_nr + 1}
 }
 
 fn (s mut Scanner) ident_name() string {
@@ -216,7 +216,7 @@ fn (s mut Scanner) skip_whitespace() {
 fn (s mut Scanner) end_of_file() token.Token {
 	s.pos = s.text.len
 	s.inc_line_number()
-	return scan_res(.eof, '')
+	return s.scan_res(.eof, '')
 }
 
 pub fn (s mut Scanner) scan() token.Token {
@@ -238,10 +238,10 @@ pub fn (s mut Scanner) scan() token.Token {
 	if s.inter_end {
 		if s.text[s.pos] == s.quote {
 			s.inter_end = false
-			return scan_res(.str, '')
+			return s.scan_res(.str, '')
 		}
 		s.inter_end = false
-		return scan_res(.str, s.ident_string())
+		return s.scan_res(.str, s.ident_string())
 	}
 	s.skip_whitespace()
 	// end of file
@@ -261,7 +261,7 @@ pub fn (s mut Scanner) scan() token.Token {
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if token.is_key(name) {
-			return scan_res(token.key_to_token(name), '')
+			return s.scan_res(token.key_to_token(name), '')
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
@@ -283,12 +283,12 @@ pub fn (s mut Scanner) scan() token.Token {
 			// Otherwise the scanner would be stuck at s.pos = 0
 			s.pos++
 		}
-		return scan_res(.name, name)
+		return s.scan_res(.name, name)
 	}
 	// `123`, `.123`
 	else if c.is_digit() || (c == `.` && nextc.is_digit()) {
 		num := s.ident_number()
-		return scan_res(.number, num)
+		return s.scan_res(.number, num)
 	}
 	// Handle `'$fn()'`
 	if c == `)` && s.inter_start {
@@ -298,88 +298,88 @@ pub fn (s mut Scanner) scan() token.Token {
 		if next_char == s.quote {
 			s.inside_string = false
 		}
-		return scan_res(.rpar, '')
+		return s.scan_res(.rpar, '')
 	}
 	// all other tokens
 	match c {
 		`+` {
 			if nextc == `+` {
 				s.pos++
-				return scan_res(.inc, '')
+				return s.scan_res(.inc, '')
 			}
 			else if nextc == `=` {
 				s.pos++
-				return scan_res(.plus_assign, '')
+				return s.scan_res(.plus_assign, '')
 			}
-			return scan_res(.plus, '')
+			return s.scan_res(.plus, '')
 		}
 		`-` {
 			if nextc == `-` {
 				s.pos++
-				return scan_res(.dec, '')
+				return s.scan_res(.dec, '')
 			}
 			else if nextc == `=` {
 				s.pos++
-				return scan_res(.minus_assign, '')
+				return s.scan_res(.minus_assign, '')
 			}
-			return scan_res(.minus, '')
+			return s.scan_res(.minus, '')
 		}
 		`*` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.mult_assign, '')
+				return s.scan_res(.mult_assign, '')
 			}
-			return scan_res(.mul, '')
+			return s.scan_res(.mul, '')
 		}
 		`^` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.xor_assign, '')
+				return s.scan_res(.xor_assign, '')
 			}
-			return scan_res(.xor, '')
+			return s.scan_res(.xor, '')
 		}
 		`%` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.mod_assign, '')
+				return s.scan_res(.mod_assign, '')
 			}
-			return scan_res(.mod, '')
+			return s.scan_res(.mod, '')
 		}
 		`?` {
-			return scan_res(.question, '')
+			return s.scan_res(.question, '')
 		}
 		single_quote, double_quote {
-			return scan_res(.str, s.ident_string())
+			return s.scan_res(.str, s.ident_string())
 		}
 		`\`` {
 			// ` // apostrophe balance comment. do not remove
-			return scan_res(.chartoken, s.ident_char())
+			return s.scan_res(.chartoken, s.ident_char())
 		}
 		`(` {
-			return scan_res(.lpar, '')
+			return s.scan_res(.lpar, '')
 		}
 		`)` {
-			return scan_res(.rpar, '')
+			return s.scan_res(.rpar, '')
 		}
 		`[` {
-			return scan_res(.lsbr, '')
+			return s.scan_res(.lsbr, '')
 		}
 		`]` {
-			return scan_res(.rsbr, '')
+			return s.scan_res(.rsbr, '')
 		}
 		`{` {
 			// Skip { in `${` in strings
 			if s.inside_string {
 				return s.scan()
 			}
-			return scan_res(.lcbr, '')
+			return s.scan_res(.lcbr, '')
 		}
 		`$` {
 			if s.inside_string {
-				return scan_res(.str_dollar, '')
+				return s.scan_res(.str_dollar, '')
 			}
 			else {
-				return scan_res(.dollar, '')
+				return s.scan_res(.dollar, '')
 			}
 		}
 		`}` {
@@ -389,38 +389,38 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.text[s.pos] == s.quote {
 					s.inside_string = false
-					return scan_res(.str, '')
+					return s.scan_res(.str, '')
 				}
-				return scan_res(.str, s.ident_string())
+				return s.scan_res(.str, s.ident_string())
 			}
 			else {
-				return scan_res(.rcbr, '')
+				return s.scan_res(.rcbr, '')
 			}
 		}
 		`&` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.and_assign, '')
+				return s.scan_res(.and_assign, '')
 			}
 			if nextc == `&` {
 				s.pos++
-				return scan_res(.and, '')
+				return s.scan_res(.and, '')
 			}
-			return scan_res(.amp, '')
+			return s.scan_res(.amp, '')
 		}
 		`|` {
 			if nextc == `|` {
 				s.pos++
-				return scan_res(.logical_or, '')
+				return s.scan_res(.logical_or, '')
 			}
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.or_assign, '')
+				return s.scan_res(.or_assign, '')
 			}
-			return scan_res(.pipe, '')
+			return s.scan_res(.pipe, '')
 		}
 		`,` {
-			return scan_res(.comma, '')
+			return s.scan_res(.comma, '')
 		}
 		`@` {
 			s.pos++
@@ -434,36 +434,36 @@ pub fn (s mut Scanner) scan() token.Token {
 			// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @FN)
 			// ... which is useful while debugging/tracing
 			if name == 'FN' {
-				return scan_res(.str, s.fn_name)
+				return s.scan_res(.str, s.fn_name)
 			}
 			if name == 'FILE' {
-				return scan_res(.str, cescaped_path(os.realpath(s.file_path)))
+				return s.scan_res(.str, cescaped_path(os.realpath(s.file_path)))
 			}
 			if name == 'LINE' {
-				return scan_res(.str, (s.line_nr + 1).str())
+				return s.scan_res(.str, (s.line_nr + 1).str())
 			}
 			if name == 'COLUMN' {
-				return scan_res(.str, (s.current_column()).str())
+				return s.scan_res(.str, (s.current_column()).str())
 			}
 			if name == 'VHASH' {
-				return scan_res(.str, vhash())
+				return s.scan_res(.str, vhash())
 			}
 			if !token.is_key(name) {
 				s.error('@ must be used before keywords (e.g. `@type string`)')
 			}
-			return scan_res(.name, name)
+			return s.scan_res(.name, name)
 		}
 		/*
 	case `\r`:
 		if nextc == `\n` {
 			s.pos++
 			s.last_nl_pos = s.pos
-			return scan_res(.nl, '')
+			return s.scan_res(.nl, '')
 		}
 	 }
 	case `\n`:
 		s.last_nl_pos = s.pos
-		return scan_res(.nl, '')
+		return s.scan_res(.nl, '')
 	 }
 	*/
 
@@ -472,11 +472,11 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.text[s.pos + 1] == `.` {
 					s.pos++
-					return scan_res(.ellipsis, '')
+					return s.scan_res(.ellipsis, '')
 				}
-				return scan_res(.dotdot, '')
+				return s.scan_res(.dotdot, '')
 			}
-			return scan_res(.dot, '')
+			return s.scan_res(.dot, '')
 		}
 		`#` {
 			start := s.pos + 1
@@ -488,100 +488,100 @@ pub fn (s mut Scanner) scan() token.Token {
 				return s.scan()
 			}
 			hash := s.text[start..s.pos]
-			return scan_res(.hash, hash.trim_space())
+			return s.scan_res(.hash, hash.trim_space())
 		}
 		`>` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.ge, '')
+				return s.scan_res(.ge, '')
 			}
 			else if nextc == `>` {
 				if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 					s.pos += 2
-					return scan_res(.righ_shift_assign, '')
+					return s.scan_res(.righ_shift_assign, '')
 				}
 				s.pos++
-				return scan_res(.righ_shift, '')
+				return s.scan_res(.righ_shift, '')
 			}
 			else {
-				return scan_res(.gt, '')
+				return s.scan_res(.gt, '')
 			}
 		}
 		0xE2 {
 			// case `≠`:
 			if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
 				s.pos += 2
-				return scan_res(.ne, '')
+				return s.scan_res(.ne, '')
 			}
 			// ⩽
 			else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
 				s.pos += 2
-				return scan_res(.le, '')
+				return s.scan_res(.le, '')
 			}
 			// ⩾
 			else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
 				s.pos += 2
-				return scan_res(.ge, '')
+				return s.scan_res(.ge, '')
 			}
 		}
 		`<` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.le, '')
+				return s.scan_res(.le, '')
 			}
 			else if nextc == `<` {
 				if s.pos + 2 < s.text.len && s.text[s.pos + 2] == `=` {
 					s.pos += 2
-					return scan_res(.left_shift_assign, '')
+					return s.scan_res(.left_shift_assign, '')
 				}
 				s.pos++
-				return scan_res(.left_shift, '')
+				return s.scan_res(.left_shift, '')
 			}
 			else {
-				return scan_res(.lt, '')
+				return s.scan_res(.lt, '')
 			}
 		}
 		`=` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.eq, '')
+				return s.scan_res(.eq, '')
 			}
 			else if nextc == `>` {
 				s.pos++
-				return scan_res(.arrow, '')
+				return s.scan_res(.arrow, '')
 			}
 			else {
-				return scan_res(.assign, '')
+				return s.scan_res(.assign, '')
 			}
 		}
 		`:` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.decl_assign, '')
+				return s.scan_res(.decl_assign, '')
 			}
 			else {
-				return scan_res(.colon, '')
+				return s.scan_res(.colon, '')
 			}
 		}
 		`;` {
-			return scan_res(.semicolon, '')
+			return s.scan_res(.semicolon, '')
 		}
 		`!` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.ne, '')
+				return s.scan_res(.ne, '')
 			}
 			else {
-				return scan_res(.not, '')
+				return s.scan_res(.not, '')
 			}
 		}
 		`~` {
-			return scan_res(.bit_not, '')
+			return s.scan_res(.bit_not, '')
 		}
 		`/` {
 			if nextc == `=` {
 				s.pos++
-				return scan_res(.div_assign, '')
+				return s.scan_res(.div_assign, '')
 			}
 			if nextc == `/` {
 				start := s.pos + 1
@@ -591,7 +591,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				if s.is_fmt {
 					s.pos-- // fix line_nr, \n was read, and the comment is marked on the next line
 					s.line_nr--
-					return scan_res(.line_comment, s.line_comment)
+					return s.scan_res(.line_comment, s.line_comment)
 				}
 				// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 				// Skip the comment (return the next token)
@@ -625,12 +625,12 @@ pub fn (s mut Scanner) scan() token.Token {
 				comment := s.text[start..end]
 				if s.is_fmt {
 					s.line_comment = comment
-					return scan_res(.mline_comment, s.line_comment)
+					return s.scan_res(.mline_comment, s.line_comment)
 				}
 				// Skip if not in fmt mode
 				return s.scan()
 			}
-			return scan_res(.div, '')
+			return s.scan_res(.div, '')
 		}
 		else {}
 	}

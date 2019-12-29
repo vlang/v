@@ -10,4 +10,6 @@ void function2() {
 	string s = tos3("hi");
 	int m = 10;
 	x += 10;
+	x += 1;
+	m += 2;
 }

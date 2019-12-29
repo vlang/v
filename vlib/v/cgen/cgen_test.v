@@ -5,6 +5,7 @@ import (
 	v.ast
 	v.cgen
 	v.table
+	term
 )
 
 const (
@@ -29,7 +30,7 @@ fn test_c_files() {
 			eprintln('${i}... OK')
 		}
 		else {
-			eprintln('${i}... FAIL')
+			eprintln('${i}... ' + term.red('FAIL'))
 			eprintln('expected:\n$ctext\ngot:\n$res')
 		}
 	}
