@@ -148,13 +148,13 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it is missing name or url information.')
 			continue
 		}
-		final_module_path := get_vmodules_dir_path() + '/' + mod.name.replace('.', '/')
+		final_module_path := os.realpath(filepath.join(get_vmodules_dir_path(),mod.name.replace('.', os.path_separator)))
 		if os.exists(final_module_path) {
 			vpm_update([name])
 			continue
 		}
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
-		os.exec('git clone --depth=1 $mod.url $final_module_path') or {
+		os.exec('git clone --depth=1 "$mod.url" "$final_module_path"') or {
 			errors++
 			println('Could not install module "$name" to "$final_module_path" .')
 			println('Error details: $err')
@@ -182,7 +182,7 @@ fn vpm_update(m []string) {
 	}
 	mut errors := 0
 	for name in module_names {
-		final_module_path := get_vmodules_dir_path() + '/' + name.replace('.', '/')
+		final_module_path := os.realpath(filepath.join(get_vmodules_dir_path(),name.replace('.', os.path_separator)))
 		if !os.exists(final_module_path) {
 			println('No module with name "$name" exists at $final_module_path')
 			continue
@@ -215,25 +215,22 @@ fn vpm_remove(module_names []string) {
 		println('  v update requires *at least one* module name')
 		exit(2)
 	}
-	mut errors := 0
 	for name in module_names {
-		final_module_path := get_vmodules_dir_path() + '/' + name.replace('.', '/')
+		final_module_path := os.realpath(filepath.join(get_vmodules_dir_path(),name.replace('.', os.path_separator)))
 		if !os.exists(final_module_path) {
 			println('No module with name "$name" exists at $final_module_path')
 			continue
 		}
 		println('Removing module "$name"...')
-		// TODO os.rmdir for some reason doesn't work
-		os.exec('rm -rf $final_module_path') or {
-			errors++
-			println('Could not remove module "$name".')
-			println('Error details: $err')
-			continue
+		os.rmdir_recursive(final_module_path)
+		//delete author directory if it is empty
+		author := name.split('.')[0]
+		author_dir := os.realpath(filepath.join(get_vmodules_dir_path(), author))
+		if os.is_dir_empty(author_dir) {
+			os.rmdir(author_dir)
 		}
 	}
-	if errors > 0 {
-		exit(1)
-	}
+
 }
 
 fn get_vmodules_dir_path() string {
