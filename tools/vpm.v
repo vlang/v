@@ -55,7 +55,8 @@ fn main() {
 				println('    v $validcmd')
 			}
 			exit(3)
-		}}
+		}
+	}
 }
 
 fn vpm_search(module_names []string) {
@@ -135,7 +136,29 @@ fn vpm_update(module_names []string) {
 		println('    ^^^^^^^^^^^^ will update ALL installed modules to their latest versions')
 		exit(0)
 	}
-	todo('update')
+	if module_names.len == 0 {
+		println('  v update requires *at least one* module name')
+		exit(2)
+	}
+	mut errors := 0
+	for name in module_names {
+		final_module_path := get_vmodules_dir_path() + '/' + name.replace('.', '/')
+		if !os.exists(final_module_path) {
+			println('No module with name "$name" exists at $final_module_path')
+			continue
+		}
+		os.chdir(final_module_path)
+		println('Updating module "$name"...')
+		os.exec('git pull --depth=1') or {
+			errors++
+			println('Could not update module "$name".')
+			println('Error details: $err')
+			continue
+		}
+	}
+	if errors > 0 {
+		exit(1)
+	}
 }
 
 fn vpm_remove(module_names []string) {
@@ -186,4 +209,3 @@ fn vpm_help(module_names []string) {
 	println('')
 	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
 }
-
