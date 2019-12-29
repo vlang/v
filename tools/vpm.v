@@ -59,19 +59,45 @@ fn main() {
 	}
 }
 
-fn vpm_search(module_names []string) {
-	if user_asks_for_help(module_names) {
+fn vpm_search(keywords []string) {
+	if user_asks_for_help(keywords) {
 		println('Usage:')
 		println('  v search keyword1 [keyword2] [...]')
 		println('  ^^^^^^^^^^^^^^^^^ will search https://vpm.vlang.io/ for matching modules,')
 		println('                    and will show details about them')
 		exit(0)
 	}
-	if module_names.len == 0 {
+	if keywords.len == 0 {
 		println('  v search requires *at least one* keyword')
 		exit(2)
 	}
-	todo('search')
+	modules := get_all_modules()
+	joined := keywords.join(', ')
+	mut index := 0
+	for mod in modules {
+		// TODO for some reason .filter results in substr error, so do it manually
+		for k in keywords {
+			if !mod.contains(k) {
+				continue
+			}
+			if index == 0 {
+				println('Search results for "$joined":\n')
+			}
+			index++
+			mut parts := mod.split('.')
+			// in case the author isn't present
+			if parts.len == 1 {
+				parts << parts[0]
+				parts[0] = ''
+			}
+			println('${index}. ${parts[1]} by ${parts[0]} [$mod]')
+			break
+		}
+	}
+	println('\nUse "v install author.module_name" to install the module')
+	if index == 0 {
+		println('No module(s) found for "$joined"')
+	}
 }
 
 fn vpm_install(module_names []string) {
@@ -230,4 +256,41 @@ fn vpm_help(module_names []string) {
 	println('  d) v search keyword1 [keyword2] [...]')
 	println('')
 	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
+}
+
+fn get_all_modules() []string {
+	r := http.get(url) or {
+		panic(err)
+	}
+	if r.status_code != 200 {
+		println('Failed to search vpm.best. Status code: $r.status_code')
+		exit(1)
+	}
+	s := r.text
+	mut read_len := 0
+	mut modules := []string
+	for read_len < s.len {
+		mut start_token := '<a href="/mod'
+		end_token := '</a>'
+		// get the start index of the module entry
+		mut start_index := s.index_after(start_token, read_len)
+		if start_index == -1 {
+			break
+		}
+		// get the index of the end of anchor (a) opening tag
+		// we use the previous start_index to make sure we are getting a module and not just a random 'a' tag
+		start_token = '">'
+		start_index = s.index_after(start_token, start_index) + start_token.len
+		// get the index of the end of module entry
+		end_index := s.index_after(end_token, start_index)
+		if end_index == -1 {
+			break
+		}
+		modules << s[start_index..end_index]
+		read_len = end_index
+		if read_len >= s.len {
+			break
+		}
+	}
+	return modules
 }
