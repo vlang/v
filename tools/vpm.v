@@ -4,6 +4,7 @@ import (
 	http
 	os
 	json
+	filepath
 )
 
 const (
@@ -17,6 +18,12 @@ struct Mod {
 	name         string
 	url          string
 	nr_downloads int
+}
+
+struct Vmod {
+	name    string
+	version string
+	deps    []string
 }
 
 fn main() {
@@ -112,7 +119,8 @@ fn vpm_install(module_names []string) {
 		exit(2)
 	}
 	mut errors := 0
-	for name in module_names {
+	for n in module_names {
+		name := n.trim_space()
 		modurl := url + '/jsmod/$name'
 		r := http.get(modurl) or {
 			panic(err)
@@ -140,13 +148,18 @@ fn vpm_install(module_names []string) {
 			continue
 		}
 		final_module_path := get_vmodules_dir_path() + '/' + mod.name.replace('.', '/')
+		if os.exists(final_module_path) {
+			vpm_update(module_names)
+			continue
+		}
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
-		_ = os.exec('git clone --depth=1 $mod.url $final_module_path') or {
+		os.exec('git clone --depth=1 $mod.url $final_module_path') or {
 			errors++
 			println('Could not install module "$name" to "$final_module_path" .')
 			println('Error details: $err')
 			continue
 		}
+		resolve_dependencies(name, final_module_path)
 	}
 	if errors > 0 {
 		exit(1)
@@ -181,6 +194,7 @@ fn vpm_update(module_names []string) {
 			println('Error details: $err')
 			continue
 		}
+		resolve_dependencies(name, final_module_path)
 	}
 	if errors > 0 {
 		exit(1)
@@ -293,4 +307,31 @@ fn get_all_modules() []string {
 		}
 	}
 	return modules
+}
+
+fn resolve_dependencies(name, module_path string) {
+	vmod_path := filepath.join(module_path,'v.mod')
+	if !os.exists(vmod_path) {
+		return
+	}
+	data := os.read_file(vmod_path) or {
+		return
+	}
+	vmod := parse_vmod(data)
+	if vmod.deps.len > 0 {
+		println('Resolving dependencies for module "$name"...')
+		vpm_install(vmod.deps)
+	}
+}
+
+fn parse_vmod(data string) Vmod {
+	name_index := data.index_old('name:') + 5
+	name := data[name_index..data.index_after('\n', name_index)].trim_space().replace("'", '')
+	version_index := data.index_old('version:') + 8
+	version := data[version_index..data.index_after('\n', version_index)].trim_space().replace("'", '')
+	deps_index := data.index_old('deps:') + 5
+	deps_str := data[deps_index..data.index_after('\n', deps_index)].trim_space().replace("'", '').replace('[', '').replace(']', '')
+	deps := deps_str.split(',')
+	return Vmod{
+		name,version,deps}
 }
