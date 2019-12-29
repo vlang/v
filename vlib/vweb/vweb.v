@@ -7,7 +7,7 @@ module vweb
 import (
 	os
 	net
-	http
+	net.http
 	net.urllib
 	strings
 )

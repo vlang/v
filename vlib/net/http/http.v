@@ -4,7 +4,7 @@
 module http
 
 import net.urllib
-import http.chunked
+import net.http.chunked
 
 const (
 	max_redirects = 4

@@ -1,7 +1,7 @@
 module main
 
 import (
-	http
+	net.http
 	os
 	json
 )
