@@ -3,7 +3,10 @@
 // that can be found in the LICENSE file.
 module http
 
-import os
+import (
+	os
+	net.http
+)
 
 pub fn download_file(url, out string) bool {
 	s := http.get(url) or {
