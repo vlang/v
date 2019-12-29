@@ -6,26 +6,24 @@ module builtin
 
 import strings
 
-// B-trees are balanced search trees with all leaves
-// at the same level. B-trees are generally faster than 
+// B-trees are balanced search trees with all leaves at 
+// the same level. B-trees are generally faster than 
 // binary search trees due to the better locality of 
 // reference, since multiple keys are stored in one node.
 
-// The number for `degree` has been picked
-// through vigorous benchmarking, but can be changed
-// to any number > 1. `degree` determines the size
-// of each node.
+// The number for `degree` has been picked through vigor-
+// ous benchmarking but can be changed to any number > 1. 
+// `degree` determines the size of each node.
 
 const (
 	degree = 6
 	mid_index = degree - 1
-	max_length = 11// should be 2 * degree - 1
-	min_length = degree - 1
-	children_size = sizeof(voidptr) * (max_length + 1)
+	max_size = 2 * degree - 1
+	children_bytes = sizeof(voidptr) * (max_size + 1)
 )
 
 pub struct map {
-	element_size int
+	value_bytes int
 mut:
 	root &mapnode
 pub mut:
@@ -34,33 +32,31 @@ pub mut:
 
 struct mapnode {
 mut:
-  	keys     [11]string
-	values   [11]voidptr
+  	keys     [11]string  // TODO: Should use `max_size`
+	values   [11]voidptr // TODO: Should use `max_size`
 	children &voidptr
 	size     int
 }
 
-fn new_map(cap, elm_size int) map {
+fn new_map(n, value_bytes int) map { // TODO: Remove `n`
 	return map {
-		element_size: elm_size
+		value_bytes: value_bytes
 		root: new_node()
 		size: 0
 	}
 }
 
-// `m := { 'one': 1, 'two': 2 }`
-fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
-	mut res := map {
-		element_size: elm_size
-		root: new_node()
-		size: 0
+fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
+	mut out := new_map(n, value_bytes)
+	for i in 0 .. n {
+		out.set(keys[i], values + i * value_bytes)
 	}
-	for i in 0 .. cap {
-		res.set(keys[i], vals + i * elm_size)
-	}
-	return res
+	return out
 }
 
+// The tree is initialized with an empty node as root to
+// avoid having to check whether the root is null for
+// each insertion.
 fn new_node() &mapnode {
 	return &mapnode {
 		children: 0
@@ -68,19 +64,21 @@ fn new_node() &mapnode {
 	}
 }
 
+// This implementation does proactive insertion, meaning
+// that splits are done top-down and not bottom-up. 
 fn (m mut map) set(key string, value voidptr) {
 	mut node := m.root
 	mut child_index := 0
 	mut parent := &mapnode(0)
 	for {
-		if node.size == max_length {
+		if node.size == max_size {
 			if parent == 0 {
 				parent = new_node()
 				m.root = parent
 			}
 			parent.split_child(child_index, mut node)
 			if key == parent.keys[child_index] {
-				C.memcpy(parent.values[child_index], value, m.element_size)
+				C.memcpy(parent.values[child_index], value, m.value_bytes)
 				return
 			}
 			node = if key < parent.keys[child_index] {
@@ -92,7 +90,7 @@ fn (m mut map) set(key string, value voidptr) {
 		mut i := 0
 		for i < node.size && key > node.keys[i] { i++ }
 		if i != node.size && key == node.keys[i] {
-			C.memcpy(node.values[i], value, m.element_size)
+			C.memcpy(node.values[i], value, m.value_bytes)
 			return
 		}
 		if node.children == 0 {
@@ -103,8 +101,8 @@ fn (m mut map) set(key string, value voidptr) {
 				j--
 			}
 			node.keys[j + 1] = key
-			node.values[j + 1] = malloc(m.element_size)
-			C.memcpy(node.values[j + 1], value, m.element_size)
+			node.values[j + 1] = malloc(m.value_bytes)
+			C.memcpy(node.values[j + 1], value, m.value_bytes)
 			node.size++
 			m.size++
 			return
@@ -124,13 +122,13 @@ fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
 		z.values[j] = y.values[j + degree]
 	}
 	if y.children != 0 {
-		z.children = &voidptr(malloc(children_size))
+		z.children = &voidptr(malloc(children_bytes))
 		for j := degree - 1; j >= 0; j-- {
 			z.children[j] = y.children[j + degree]
 		}
 	}
 	if n.children == 0 {
-		n.children = &voidptr(malloc(children_size))
+		n.children = &voidptr(malloc(children_bytes))
 	}
 	n.children[n.size + 1] = n.children[n.size]
 	for j := n.size; j > child_index; j-- {
@@ -151,7 +149,7 @@ fn (m map) get(key string, out voidptr) bool {
 		mut i := node.size - 1
 		for i >= 0 && key < node.keys[i] { i-- }
 		if i != -1 && key == node.keys[i] {
-			C.memcpy(out, node.values[i], m.element_size)
+			C.memcpy(out, node.values[i], m.value_bytes)
 			return true
 		}
 		if node.children == 0 {
@@ -306,8 +304,8 @@ fn (n mut mapnode) borrow_from_next(idx int) {
 fn (n mut mapnode) merge(idx int) {
 	mut child := &mapnode(n.children[idx])
 	sibling := &mapnode(n.children[idx + 1])
-	child.keys[min_length] = n.keys[idx]
-	child.values[min_length] = n.values[idx]
+	child.keys[mid_index] = n.keys[idx]
+	child.values[mid_index] = n.values[idx]
 	for i := 0; i < sibling.size; i++ {
 		child.keys[i + degree] = sibling.keys[i]
 		child.values[i + degree] = sibling.values[i]
@@ -356,20 +354,20 @@ pub fn (m mut map) delete(key string) {
 
 // Insert all keys of the subtree into array `keys`
 // starting at `at`. Keys are inserted in order. 
-fn subkeys(n mapnode, keys mut []string, at int) int {
+fn (n mapnode) subkeys(keys mut []string, at int) int {
 	mut position := at
 	if (n.children != 0) {
 		// Traverse children and insert
 		// keys inbetween children
 		for i in 0..n.size {
 			child := &mapnode(n.children[i])
-			position += subkeys(child, mut keys, position)
+			position += child.subkeys(mut keys, position)
 			keys[position] = n.keys[i]
 			position++
 		}
 		// Insert the keys of the last child
 		child := &mapnode(n.children[n.size])
-		position += subkeys(child, mut keys, position)
+		position += child.subkeys(mut keys, position)
 	} else {
 		// If leaf, insert keys
 		for i in 0..n.size {
@@ -386,7 +384,7 @@ pub fn (m &map) keys() []string {
 	if isnil(m.root) || m.root.size == 0 {
 		return keys
 	}
-	subkeys(m.root, mut keys, 0)
+	m.root.subkeys(mut keys, 0)
 	return keys
 }
 
@@ -422,7 +420,7 @@ pub fn (m map) print() {
 		// println('$entry.key => $entry.val')
 	//}
 	/*
-	for i := 0; i < m.cap * m.element_size; i++ {
+	for i := 0; i < m.cap * m.value_bytes; i++ {
 		b := m.table[i]
 		print('$i: ')
 		C.printf('%02x', b)
