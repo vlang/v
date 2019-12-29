@@ -230,23 +230,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		if prev_tok.is_right_assoc() {
 			mut expr := ast.Expr{}
 			expr,t2 = p.expr(prev_tok.precedence() - 1)
-			/*
-			if prev_tok.is_assign() {
-				return ast.AssignStmt {
-					left: node
-					op: prev_tok.kind
-					right: expr
-				}, types.void_type
-			}
-			*/
-
 			node = ast.BinaryExpr{
 				left: node
-				// left_type: t1
-				
 				op: prev_tok.kind
-				// right: p.expr(prev_tok.precedence() - 1)
-				
 				right: expr
 			}
 			if !types.check(&typ, &t2) {
@@ -265,34 +251,6 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	}
 	return node,typ
 }
-
-/*
-fn (p mut Parser) stmt() ast.Stmt {
-	if p.tok == .name {
-		name := p.lit
-		p.next()
-		if p.tok == .decl_assign {
-			p.next()
-			return ast.VarDecl{
-				name: name
-				expr: p.expr(token.lowest_prec)
-			}
-		}
-	}
-	/*
-	match node {
-		Ident {
-
-
-		}
-
-	}
-	*/
-
-	return ast.VarDecl{}
-}
-*/
-
 
 fn (p mut Parser) parse_string_literal() (ast.Expr,types.Type) {
 	mut node := ast.Expr{}
