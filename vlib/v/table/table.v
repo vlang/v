@@ -1,14 +1,27 @@
 module table
 
+import (
+	v.types
+)
+
 pub struct Table {
 pub mut:
 	local_vars []Var
+	// fns Hashmap
+	fns        map[string]Fn
 }
 
 pub struct Var {
 pub:
 	name   string
+	typ    types.Type
 	is_mut bool
+}
+
+pub struct Fn {
+pub:
+	name string
+	args []Var
 }
 
 pub fn (t &Table) find_var(name string) ?Var {
@@ -40,7 +53,7 @@ pub fn (t mut Table) clear_vars() {
 	}
 }
 
-fn (t mut Table) register_var(v Var) {
+pub fn (t mut Table) register_var(v Var) {
 	t.local_vars << v
 	/*
 	mut new_var := {
@@ -62,4 +75,18 @@ fn (t mut Table) register_var(v Var) {
 	p.var_idx++
 	*/
 
+}
+
+pub fn (t &Table) find_fn(name string) ?Fn {
+	f := t.fns[name]
+	if f.name.str != 0 {
+		// TODO
+		return f
+	}
+	return none
+}
+
+pub fn (t mut Table) register_fn(new_fn Fn) {
+	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
+	t.fns[new_fn.name] = new_fn
 }

@@ -122,7 +122,7 @@ fn (p mut Parser) next() {
 fn (p mut Parser) check(expected token.TokenKind) {
 	if p.tok.kind != expected {
 		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
-		verror(s)
+		p.error(s)
 	}
 	p.next()
 }
@@ -171,7 +171,7 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 
 pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	name := p.tok.lit
-	//println('looking for $name')
+	// println('looking for $name')
 	var := p.table.find_var(name) or {
 		p.error('unknown variable `$name`')
 		exit(1)
@@ -181,7 +181,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	}
 	left_expr,left_type := p.expr(0)
 	op := p.tok.kind
-	//println('assignn_stmt() ' + op.str())
+	// println('assignn_stmt() ' + op.str())
 	p.next()
 	right_expr,right_type := p.expr(0)
 	return ast.AssignStmt{
@@ -204,12 +204,44 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	mut typ := types.void_type
 	match p.tok.kind {
 		.name {
-			// name expr
-			node = ast.Ident{
-				name: p.tok.lit
+			/*
+			sym := p.table.find_symbol(p.tok.lit)
+			if sym.cat == .function {
+				return
 			}
-			typ = types.int_type
-			p.next()
+			*/
+
+			// fn call
+			if p.peek_tok.kind == .lpar {
+				println('got fn call')
+				fn_name := p.tok.lit
+				f := p.table.find_fn(fn_name) or {
+					p.error('unknown fucntion `$p.tok.lit`')
+					exit(0)
+				}
+				p.check(.name)
+				p.check(.lpar)
+				mut args := []ast.Expr
+				for _ in 0 .. f.args.len {
+					e,_ := p.expr(0)
+					args << e
+					p.check(.comma)
+				}
+				p.check(.rpar)
+				node = ast.CallExpr{
+					name: fn_name
+					args: args
+				}
+				typ = types.int_type
+			}
+			else {
+				// name expr
+				node = ast.Ident{
+					name: p.tok.lit
+				}
+				typ = types.int_type
+				p.next()
+			}
 		}
 		.str {
 			node,typ = p.parse_string_literal()
@@ -251,7 +283,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				right: expr
 			}
 			if !types.check(&typ, &t2) {
-				verror('cannot convert `$t2.name` to `$typ.name`')
+				p.error('cannot convert `$t2.name` to `$typ.name`')
 			}
 		}
 		else if prev_tok.is_left_assoc() {
@@ -316,6 +348,21 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// println('fn decl $name')
 	p.check(.name)
 	p.check(.lpar)
+	// Args
+	mut args := []table.Var
+	mut ast_args := []ast.Arg
+	for p.tok.kind != .rpar {
+		arg_name := p.check_name()
+		typ := p.get_type()
+		args << table.Var{
+			name: arg_name
+			typ: typ
+		}
+		ast_args << ast.Arg{
+			typ: typ
+			name: arg_name
+		}
+	}
 	p.check(.rpar)
 	// Return type
 	mut typ := types.void_type
@@ -324,12 +371,17 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.return_type = typ
 	}
 	p.check(.lcbr)
+	p.table.register_fn(table.Fn{
+		name: name
+		args: args
+	})
 	// p.check(.rcbr)
 	stmts := p.parse_block()
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
 		typ: typ
+		args: ast_args
 	}
 }
 
@@ -338,7 +390,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	p.next()
 	expr,t := p.expr(0)
 	if !types.check(p.return_type, t) {
-		verror('bad ret type')
+		p.error('bad ret type')
 	}
 	return ast.Return{
 		expr: expr
@@ -371,7 +423,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		typ: t
 	}
 }

@@ -4,6 +4,10 @@ fn function1() int {
 	return 0
 }
 
+fn foo(a int) {
+
+}
+
 // comment
 fn function2() {
 	mut x := 0
@@ -13,6 +17,8 @@ fn function2() {
 	x += 10
 	x += 1
 	m += 2
+	function1()
 	//a += 1
 	//c := 0
 }
+

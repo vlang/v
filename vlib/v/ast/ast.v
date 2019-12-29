@@ -8,8 +8,8 @@ import (
 	v.types
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | FloatLiteral | 	
-Ident
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
+FloatLiteral | Ident | CallExpr
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt
 // Stand-alone expression in a statement list.
@@ -50,12 +50,24 @@ pub:
 	// imports map[string]string
 }
 
+pub struct Arg {
+pub:
+	typ  types.Type
+	name string
+}
+
 pub struct FnDecl {
 pub:
 	name  string
 	stmts []Stmt
-	// exprs []Expr
 	typ   types.Type
+	args  []Arg
+}
+
+pub struct CallExpr {
+pub:
+	name string
+	args []Expr
 }
 
 pub struct Return {

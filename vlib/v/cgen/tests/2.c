@@ -4,6 +4,9 @@ int function1() {
 	return 0;
 }
 
+void foo(int a) {
+}
+
 void function2() {
 	int x = 0;
 	f64 f = 10.1;
@@ -12,4 +15,6 @@ void function2() {
 	x += 10;
 	x += 1;
 	m += 2;
+	function1();
 }
+

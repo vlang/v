@@ -39,7 +39,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			g.writeln('$it.typ.name ${it.name}() { ')
+			g.write('$it.typ.name ${it.name}(')
+			for arg in it.args {
+				g.write(arg.typ.name + ' ' + arg.name)
+			}
+			g.writeln(') { ')
 			for stmt in it.stmts {
 				g.stmt(stmt)
 			}
@@ -108,6 +112,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// if typ.name != typ2.name {
 			// verror('bad types $typ.name $typ2.name')
 			// }
+		}
+		ast.CallExpr {
+			g.write('${it.name}()')
 		}
 		ast.Ident {
 			g.write('$it.name')
