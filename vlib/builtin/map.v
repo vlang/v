@@ -161,6 +161,9 @@ fn (m map) get(key string, out voidptr) bool {
 }
 
 fn (m map) exists(key string) bool {
+	if isnil(m.root) { // TODO: find out why root can be nil
+		return false
+	}
 	mut node := m.root
 	for {
 		mut i := node.size - 1
