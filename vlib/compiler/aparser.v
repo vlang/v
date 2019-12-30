@@ -849,10 +849,10 @@ fn (p mut Parser) type_decl() {
 		}
 		if p.pass == .decl {
 			p.table.sum_types << name
-			println(p.table.sum_types)
+			// println(p.table.sum_types)
 		}
 		// Register the actual sum type
-		println('registering sum $name')
+		// println('registering sum $name')
 		p.table.register_type(Type{
 			name: name
 			mod: p.mod
