@@ -179,6 +179,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.stmt(stmt)
 			}
 			g.writeln('}')
+			if it.else_stmts.len > 0 {
+				g.writeln('else { ')
+				for stmt in it.else_stmts {
+					g.stmt(stmt)
+				}
+				g.writeln('}')
+			}
 		}
 		else {
 			println(term.red('cgen.expr(): bad node'))

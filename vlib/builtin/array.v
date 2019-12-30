@@ -16,7 +16,7 @@ pub:
 }
 
 // Private function, used by V (`nums := []int`)
-fn new_array(mylen, cap, elm_size int) array {
+fn new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen

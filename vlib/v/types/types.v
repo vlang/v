@@ -20,6 +20,8 @@ pub const (
 		'f64',3}
 	bool_type = Type{
 		'bool',4}
+	voidptr_type = Type{
+		'voidptr',5}
 )
 
 pub fn check(got, expected &Type) bool {

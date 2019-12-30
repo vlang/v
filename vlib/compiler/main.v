@@ -8,11 +8,12 @@ import (
 	os.cmdline
 	strings
 	filepath
-	compiler.x64
-	//v.table
-	//v.parser
-	//v.gen
+	//compiler.x64
+	v.gen.x64
 	//v.types
+	v.table
+	v.parser
+	v.gen
 )
 
 pub const (
@@ -70,7 +71,7 @@ pub mut:
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	table               &Table // table with types, vars, functions etc
 	cgen                &CGen // C code generator
-	x64                 &x64.Gen
+	//x64                 &x64.Gen
 	pref                &Preferences // all the preferences and settings extracted to a struct for reusability
 	lang_dir            string // "~/code/v"
 	out_name            string // "program.exe"
@@ -141,6 +142,7 @@ pub mut:
 	x64             bool
 	output_cross_c  bool
 	prealloc        bool
+	v2              bool
 }
 
 // Should be called by main at the end of the compilation process, to cleanup
@@ -378,7 +380,6 @@ pub fn (v mut V) compile() {
 	v.cc()
 }
 
-/*
 pub fn (v mut V) compile2() {
 	if os.user_os() != 'windows' && v.pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
@@ -413,7 +414,6 @@ pub fn (v mut V) compile2() {
 	v.cc()
 
 }
-*/
 
 pub fn (v mut V) compile_x64() {
 	$if !linux {
@@ -422,14 +422,18 @@ pub fn (v mut V) compile_x64() {
 	}
 	v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.dir
-	v.x64.generate_elf_header()
+
+	table := &table.Table{}
+	files := parser.parse_files(v.files, table)
+	x64.gen(files, v.out_name)
+	/*
 	for f in v.files {
 		v.parse(f, .decl)
 	}
 	for f in v.files {
 		v.parse(f, .main)
 	}
-	v.x64.generate_elf_footer()
+	*/
 }
 
 fn (v mut V) generate_init() {
@@ -1137,6 +1141,7 @@ pub fn new_v(args []string) &V {
 		user_mod_path: user_mod_path
 		vlib_path: vlib_path
 		vpath: vpath
+		v2: '-v2' in args
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
@@ -1158,7 +1163,7 @@ pub fn new_v(args []string) &V {
 		table: new_table(obfuscate)
 		out_name_c: out_name_c
 		cgen: new_cgen(out_name_c)
-		x64: x64.new_gen(out_name)
+		//x64: x64.new_gen(out_name)
 		vroot: vroot
 		pref: pref
 		mod: mod

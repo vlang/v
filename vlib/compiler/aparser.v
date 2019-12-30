@@ -7,7 +7,7 @@ import (
 	os
 	strings
 	filepath
-	compiler.x64
+	//compiler.x64
 	// time
 )
 
@@ -30,7 +30,7 @@ mut:
 	prev_tok2              TokenKind // TODO remove these once the tokens are cached
 	lit                    string
 	cgen                   &CGen
-	x64                    &x64.Gen
+	//x64                    &x64.Gen
 	table                  &Table
 	import_table           ImportTable // Holds imports for just the file being parsed
 	pass                   Pass
@@ -207,7 +207,7 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		table: v.table
 		cur_fn: EmptyFn
 		cgen: v.cgen
-		x64: v.x64
+		//x64: v.x64
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
@@ -3095,7 +3095,9 @@ fn (p mut Parser) check_unused_imports() {
 	}
 	// the imports are usually at the start of the file
 	//p.production_error_with_token_index('the following imports were never used: $output', 0)
+	if !p.file_path.contains ('vlib/v/') {
 	p.warn('the following imports were never used: $output')
+	}
 }
 
 fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {
@@ -3132,6 +3134,6 @@ fn (p mut Parser) skip_block(inside_first_lcbr bool) {
 }
 
 fn todo_remove() {
-	x64.new_gen('f')
+	//x64.new_gen('f')
 }
 
