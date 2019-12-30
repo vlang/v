@@ -13,21 +13,21 @@ import (
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['fmt', 'up', 'create', 'test', 'test-fmt', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
+	simple_tools = ['fmt', 'up', 'create', 'test', 'test-fmt', 'test-compiler', 'build-tools',
+	'build-examples', 'build-vbinaries']
 )
 
 fn main() {
-  is_verbose := '-verbose' in os.args || '--verbose' in os.args
+	is_verbose := '-verbose' in os.args || '--verbose' in os.args
 	// t := time.ticks()
 	// defer { println(time.ticks() - t) }
 	args := compiler.env_vflags_and_os_args()
-	options, command := compiler.get_v_options_and_main_command( args )
-  if is_verbose {
-	  eprintln('v    args: $args')
-	  eprintln('v command: $command')
-	  eprintln('v options: $options')
-  }    
-	
+	options,command := compiler.get_v_options_and_main_command(args)
+	if is_verbose {
+		eprintln('v    args: $args')
+		eprintln('v command: $command')
+		eprintln('v options: $options')
+	}
 	// external tool
 	if command in simple_tools {
 		compiler.launch_tool('v' + command)
@@ -114,7 +114,9 @@ fn v_command(command string, args []string) {
 			mod := args.last()
 			os.system('$vexe build module vlib$os.path_separator' + args.last())
 			vhfile := filepath.join(compiler.v_modules_path,'vlib','${mod}.vh')
-			txt := os.read_file(vhfile) or { panic(err) }
+			txt := os.read_file(vhfile) or {
+				panic(err)
+			}
 			println(txt)
 			// v.gen_doc_html_for_module(args.last())
 		}

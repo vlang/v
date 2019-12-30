@@ -1,4 +1,3 @@
-fn main() int {
+fn main() {
 	a := 10
-	return 0
 }

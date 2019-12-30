@@ -40,13 +40,21 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			g.write('$it.typ.name ${it.name}(')
+			if it.name == 'main' {
+				g.write('int ${it.name}(')
+			}
+			else {
+				g.write('$it.typ.name ${it.name}(')
+			}
 			for arg in it.args {
 				g.write(arg.typ.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
 				g.stmt(stmt)
+			}
+			if it.name == 'main' {
+				g.writeln('return 0;')
 			}
 			g.writeln('}')
 		}

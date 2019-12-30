@@ -48,8 +48,7 @@ fn init_user() {
 	}
 }
 
-fn main() int {
-	return 0
+fn main() {
 }
 
 
