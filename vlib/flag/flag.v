@@ -416,8 +416,10 @@ pub fn (fs FlagParser) usage() string {
 	if no_arguments { adesc = '' }
 
 	mut use := ''
-	use += '$fs.application_name $fs.application_version\n'
-	use += '$UNDERLINE\n'
+	if fs.application_version != '' {
+		use += '$fs.application_name $fs.application_version\n'
+		use += '$UNDERLINE\n'
+	}
 	use += 'Usage: ${fs.application_name} [options] $adesc\n'
 	use += '\n'
 	if fs.application_description != '' {
@@ -446,13 +448,22 @@ pub fn (fs FlagParser) usage() string {
 	if fs.flags.len > 0 {
 		use += 'Options:\n'
 		for f in fs.flags {
-			flag_desc := '  --$f.name $f.val_desc'
+			longstr := if f.val_desc.contains('bool') {
+				', --$f.name'
+			} else {
+				', --$f.name $f.val_desc'
+			}
+			flag_desc := if f.name.len == 0 {
+				', $f.val_desc'
+			} else {
+				longstr
+			}
 			space := if flag_desc.len > SPACE.len-2 {
 				'\n$SPACE'
 			} else {
 				SPACE[flag_desc.len..]
 			}
-			abbr_desc := if f.abbr == `\0` { '' } else { '  -${tos(f.abbr, 1)}\n' }
+			abbr_desc := if f.abbr == `\0` { '' } else { '  -${tos(f.abbr, 1)}' }
 			use += '${abbr_desc}${flag_desc}${space}${f.usage}\n'
 		}
 	}
