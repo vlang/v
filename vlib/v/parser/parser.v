@@ -235,8 +235,6 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	// null denotation (prefix)
 	mut node := ast.Expr{}
 	mut typ := types.void_type
-	
-	ptok := p.tok
 	match p.tok.kind {
 		.name {
 			/*
@@ -313,7 +311,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			}
 			else {
 				verror('!unknown token ' + p.tok.str())
-			}	
+			}
 		}
 	}
 	// left binding power
@@ -362,8 +360,6 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			}
 		}
 	}
-
-	// println('TOK: $p.tok')
 	return node,typ
 }
 
