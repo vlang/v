@@ -245,6 +245,9 @@ fn test_allow_abreviations() {
 
 	u := fp.usage()
 	assert u.contains(' -v') && u.contains(' -o') && u.contains(' -i') && u.contains(' -f')
+	assert u.contains('  -o, --output <string>')
+	assert u.contains('  -i, --count <int>')
+	assert u.contains('  -f, --value <float>')
 }
 
 fn test_allow_kebab_options() {

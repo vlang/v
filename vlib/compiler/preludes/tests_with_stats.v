@@ -8,7 +8,6 @@ module main
 // / code, instead of in embedded C ...
 // /////////////////////////////////////////////////////////////////////
 import (
-	term
 	filepath
 	benchmark
 )
