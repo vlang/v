@@ -41,6 +41,12 @@ void init_user() {
 	};
 }
 
+void init_array() {
+	int nums = new_array_from_c_array(3, 3, sizeof(int), {
+		1, 2, 3,
+	});
+}
+
 int main() {
 	return 0;
 }

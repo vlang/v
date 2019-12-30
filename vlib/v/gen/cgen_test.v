@@ -17,7 +17,7 @@ fn test_c_files() {
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
 	for i in 1 .. nr_tests + 1 {
-		text := os.read_file('$vroot/vlib/v/gen/tests/${i}.v') or {
+		text := os.read_file('$vroot/vlib/v/gen/tests/${i}.vv') or {
 			panic(err)
 		}
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {

@@ -9,7 +9,7 @@ import (
 )
 
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
 ForStmt | StructDecl
@@ -179,6 +179,12 @@ pub:
 	left  Expr
 	right Expr
 	op    token.TokenKind
+}
+
+pub struct ArrayInit {
+pub:
+	exprs []Expr
+	typ   types.Type
 }
 
 // string representaiton of expr

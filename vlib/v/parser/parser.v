@@ -195,6 +195,10 @@ pub fn (p &Parser) error(s string) {
 	exit(1)
 }
 
+pub fn (p &Parser) warn(s string) {
+	println(term.blue('x.v:$p.tok.line_nr: $s'))
+}
+
 pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 	// println('got fn call')
 	fn_name := p.tok.lit
@@ -275,6 +279,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				typ = types.int_type
 				p.next()
 			}
+		}
+		.lsbr {
+			node,typ = p.array_init()
 		}
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
@@ -388,6 +395,35 @@ fn (p mut Parser) parse_string_literal() (ast.Expr,types.Type) {
 	}
 	p.next()
 	return node,types.string_type
+}
+
+fn (p mut Parser) array_init() (ast.Expr,types.Type) {
+	p.check(.lsbr)
+	mut val_type := types.void_type
+	mut exprs := []ast.Expr
+	mut i := 0
+	for p.tok.kind != .rsbr {
+		expr,typ := p.expr(0)
+		// The first element's type
+		if i == 0 {
+			val_type = typ
+		}
+		else if !types.check(val_type, typ) {
+			p.error('expected array element with type `$val_type.name`')
+		}
+		exprs << expr
+		i++
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
+	}
+	mut node := ast.Expr{}
+	node = ast.ArrayInit{
+		typ: val_type
+		exprs: exprs
+	}
+	p.check(.rsbr)
+	return node,val_type
 }
 
 fn (p mut Parser) parse_number_literal() (ast.Expr,types.Type) {

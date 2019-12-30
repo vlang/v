@@ -4,9 +4,7 @@ fn function1() int {
 	return 0
 }
 
-fn foo(a int) {
-
-}
+fn foo(a int) {}
 
 struct User {
 	name string
@@ -22,8 +20,8 @@ fn function2() {
 	x += 1
 	m += 2
 	function1()
-	//a += 1
-	//c := 0
+	// a += 1
+	// c := 0
 	if true {
 		foo(10)
 		x += 8
@@ -36,9 +34,7 @@ fn function2() {
 	}
 	e := 1 + 2 > 0
 	e2 := 1 + 2 < 0
-
-		////x += 1
-	//}
+	// x += 1
 	j := 0
 }
 
@@ -48,7 +44,10 @@ fn init_user() {
 	}
 }
 
-fn main() {
+fn init_array() {
+	nums := [1,2,3]
+
 }
 
-
+fn main() {
+	}

@@ -144,6 +144,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			g.write(')')
 		}
+		ast.ArrayInit {
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.name), {\t')
+			for expr in it.exprs {
+				g.expr(expr)
+				g.write(', ')
+			}
+			g.write('\n})')
+		}
 		ast.Ident {
 			g.write('$it.name')
 		}
