@@ -60,6 +60,18 @@ fn (p mut Parser) bool_expression() string {
 			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
 		}
 	}
+	// `as` cast
+	// TODO remove copypasta
+	if p.tok == .key_as {
+		p.next()
+		cast_typ := p.get_type()
+		if typ == cast_typ {
+			p.warn('casting `$typ` to `$cast_typ` is not needed')
+		}
+		p.cgen.set_placeholder(start_ph, '($cast_typ)(')
+		p.gen(')')
+		return cast_typ
+	}
 	return typ
 }
 

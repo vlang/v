@@ -9,6 +9,7 @@ pub mut:
 	local_vars []Var
 	// fns Hashmap
 	fns        map[string]Fn
+	types      map[string]types.Type
 }
 
 pub struct Var {
@@ -89,4 +90,8 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 pub fn (t mut Table) register_fn(new_fn Fn) {
 	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
 	t.fns[new_fn.name] = new_fn
+}
+
+pub fn (t mut Table) register_type(typ types.Type) {
+	t.types[typ.name] = typ
 }

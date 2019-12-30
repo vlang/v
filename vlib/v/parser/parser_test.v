@@ -2,7 +2,7 @@ module parser
 
 import (
 	v.ast
-	v.cgen
+	v.gen
 	v.table
 )
 
@@ -23,7 +23,7 @@ x := 10
 '
 	table := &table.Table{}
 	prog := parse_file(s, table)
-	res := cgen.gen(prog)
+	res := gen.cgen(prog)
 	println(res)
 }
 
@@ -79,7 +79,7 @@ fn test_parse_expr() {
 	program := ast.Program{
 		stmts: e
 	}
-	res := cgen.gen(program)
+	res := gen.cgen(program)
 	println('========')
 	println(res)
 	println('========')

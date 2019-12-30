@@ -3,7 +3,7 @@ import (
 	filepath
 	v.parser
 	v.ast
-	v.cgen
+	v.gen
 	v.table
 	term
 )
@@ -17,15 +17,15 @@ fn test_c_files() {
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
 	for i in 1 .. nr_tests + 1 {
-		text := os.read_file('$vroot/vlib/v/cgen/tests/${i}.v') or {
+		text := os.read_file('$vroot/vlib/v/gen/tests/${i}.vv') or {
 			panic(err)
 		}
-		ctext := os.read_file('$vroot/vlib/v/cgen/tests/${i}.c') or {
+		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
 		table := &table.Table{}
 		program := parser.parse_file(text, table)
-		res := cgen.gen(program)
+		res := gen.cgen(program)
 		if compare_texts(res, ctext) {
 			eprintln('${i}... ' + term.green('OK'))
 		}
