@@ -360,8 +360,8 @@ pub fn (tok Token) is_left_assoc() bool {
 	// .number,
 	// `*` | `/` | `%`
 	.mul, .div, .mod,
-	// `^` | `||` | `&`
-	.xor, .logical_or, .and,
+	// `^` | `||` | `&` < > <= >=
+	.xor, .logical_or, .and, .gt, .lt, .le, .ge,
 	// `,`
 	.comma]
 }

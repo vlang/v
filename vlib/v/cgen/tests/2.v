@@ -8,6 +8,10 @@ fn foo(a int) {
 
 }
 
+struct User {
+	name string
+}
+
 // comment
 fn function2() {
 	mut x := 0
@@ -24,7 +28,28 @@ fn function2() {
 		foo(10)
 		x += 8
 	}
+	if false {
+		foo(1)
+	}
+	for true {
+		foo(0)
+	}
+	e := 1 + 2 > 0
+	e2 := 1 + 2 < 0
+
+		////x += 1
+	//}
 	j := 0
+}
+
+fn init_user() {
+	user := User{
+		name: 'Bob'
+	}
+}
+
+fn main() int {
+	return 0
 }
 
 

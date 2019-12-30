@@ -60,6 +60,22 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.expr(it.expr)
 			g.writeln(';')
 		}
+		ast.ForStmt {
+			g.write('while (')
+			g.expr(it.cond)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
+		ast.StructDecl {
+			g.writeln('typedef struct {')
+			for field in it.fields {
+				g.writeln('\t$field.typ.name $field.name;')
+			}
+			g.writeln('} $it.name;')
+		}
 		ast.ExprStmt {
 			g.expr(it.expr)
 			match it.expr {
@@ -71,7 +87,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 		}
 		else {
-			verror('stmt bad node')
+			verror('cgen.stmt(): bad node')
 		}
 	}
 }
@@ -94,31 +110,21 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.BinaryExpr {
 			g.expr(it.left)
-			match it.op {
-				.plus {
-					g.write(' + ')
-				}
-				.minus {
-					g.write(' - ')
-				}
-				.mul {
-					g.write(' * ')
-				}
-				.div {
-					g.write(' / ')
-				}
-				.plus_assign {
-					g.write(' += ')
-				}
-				else {}
-	}
+			g.write(' $it.op.str() ')
 			g.expr(it.right)
-			// if it.op in [.plus_assign] {
-			// g.writeln(';')
-			// }
 			// if typ.name != typ2.name {
 			// verror('bad types $typ.name $typ2.name')
 			// }
+		}
+		// `user := User{name: 'Bob'}`
+		ast.StructInit {
+			g.writeln('($it.typ.name){')
+			for i, field in it.fields {
+				g.write('\t.$field = ')
+				g.expr(it.exprs[i])
+				g.writeln(', ')
+			}
+			g.write('}')
 		}
 		ast.CallExpr {
 			g.write('${it.name}(')

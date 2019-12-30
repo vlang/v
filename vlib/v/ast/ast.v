@@ -9,9 +9,10 @@ import (
 )
 
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
+ForStmt | StructDecl
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
@@ -45,6 +46,25 @@ pub:
 	name string
 	path string
 	expr Expr
+}
+
+pub struct Field {
+pub:
+	name string
+	typ  types.Type
+}
+
+pub struct StructDecl {
+pub:
+	name   string
+	fields []Field
+}
+
+pub struct StructInit {
+pub:
+	typ    types.Type
+	fields []string
+	exprs  []Expr
 }
 
 // import statement
@@ -141,6 +161,12 @@ pub:
 	cond     Expr
 	stmts    []Stmt
 	else_    []Stmt
+}
+
+pub struct ForStmt {
+pub:
+	cond  Expr
+	stmts []Stmt
 }
 
 pub struct ReturnStmt {
