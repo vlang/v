@@ -4,6 +4,7 @@ import (
 	http
 	os
 	json
+	filepath
 )
 
 const (
@@ -17,6 +18,13 @@ struct Mod {
 	name         string
 	url          string
 	nr_downloads int
+}
+
+struct Vmod {
+mut:
+	name    string
+	version string
+	deps    []string
 }
 
 fn main() {
@@ -55,22 +63,49 @@ fn main() {
 				println('    v $validcmd')
 			}
 			exit(3)
-		}}
+		}
+	}
 }
 
-fn vpm_search(module_names []string) {
-	if user_asks_for_help(module_names) {
+fn vpm_search(keywords []string) {
+	if user_asks_for_help(keywords) {
 		println('Usage:')
 		println('  v search keyword1 [keyword2] [...]')
 		println('  ^^^^^^^^^^^^^^^^^ will search https://vpm.vlang.io/ for matching modules,')
 		println('                    and will show details about them')
 		exit(0)
 	}
-	if module_names.len == 0 {
+	if keywords.len == 0 {
 		println('  v search requires *at least one* keyword')
 		exit(2)
 	}
-	todo('search')
+	modules := get_all_modules()
+	joined := keywords.join(', ')
+	mut index := 0
+	for mod in modules {
+		// TODO for some reason .filter results in substr error, so do it manually
+		for k in keywords {
+			if !mod.contains(k) {
+				continue
+			}
+			if index == 0 {
+				println('Search results for "$joined":\n')
+			}
+			index++
+			mut parts := mod.split('.')
+			// in case the author isn't present
+			if parts.len == 1 {
+				parts << parts[0]
+				parts[0] = ''
+			}
+			println('${index}. ${parts[1]} by ${parts[0]} [$mod]')
+			break
+		}
+	}
+	println('\nUse "v install author.module_name" to install the module')
+	if index == 0 {
+		println('No module(s) found for "$joined"')
+	}
 }
 
 fn vpm_install(module_names []string) {
@@ -85,7 +120,8 @@ fn vpm_install(module_names []string) {
 		exit(2)
 	}
 	mut errors := 0
-	for name in module_names {
+	for n in module_names {
+		name := n.trim_space()
 		modurl := url + '/jsmod/$name'
 		r := http.get(modurl) or {
 			panic(err)
@@ -112,21 +148,27 @@ fn vpm_install(module_names []string) {
 			println('Skipping module "$name", since it is missing name or url information.')
 			continue
 		}
-		final_module_path := get_vmodules_dir_path() + '/' + mod.name.replace('.', '/')
+		final_module_path := os.realpath(filepath.join(get_vmodules_dir_path(),mod.name.replace('.', os.path_separator)))
+		if os.exists(final_module_path) {
+			vpm_update([name])
+			continue
+		}
 		println('Installing module "$name" from $mod.url to $final_module_path ...')
-		_ = os.exec('git clone --depth=1 $mod.url $final_module_path') or {
+		os.exec('git clone --depth=1 "$mod.url" "$final_module_path"') or {
 			errors++
 			println('Could not install module "$name" to "$final_module_path" .')
 			println('Error details: $err')
 			continue
 		}
+		resolve_dependencies(name, final_module_path, module_names)
 	}
 	if errors > 0 {
 		exit(1)
 	}
 }
 
-fn vpm_update(module_names []string) {
+fn vpm_update(m []string) {
+	mut module_names := m
 	if user_asks_for_help(module_names) {
 		println('Usage: ')
 		println(' a) v update module [module] [module] [...]')
@@ -135,7 +177,29 @@ fn vpm_update(module_names []string) {
 		println('    ^^^^^^^^^^^^ will update ALL installed modules to their latest versions')
 		exit(0)
 	}
-	todo('update')
+	if module_names.len == 0 {
+		module_names = get_installed_modules()
+	}
+	mut errors := 0
+	for name in module_names {
+		final_module_path := os.realpath(filepath.join(get_vmodules_dir_path(),name.replace('.', os.path_separator)))
+		if !os.exists(final_module_path) {
+			println('No module with name "$name" exists at $final_module_path')
+			continue
+		}
+		os.chdir(final_module_path)
+		println('Updating module "$name"...')
+		os.exec('git pull --depth=1') or {
+			errors++
+			println('Could not update module "$name".')
+			println('Error details: $err')
+			continue
+		}
+		resolve_dependencies(name, final_module_path, module_names)
+	}
+	if errors > 0 {
+		exit(1)
+	}
 }
 
 fn vpm_remove(module_names []string) {
@@ -147,7 +211,26 @@ fn vpm_remove(module_names []string) {
 		println('    ^^^^^^^^^^^^ will remove ALL installed modules')
 		exit(0)
 	}
-	todo('remove')
+	if module_names.len == 0 {
+		println('  v update requires *at least one* module name')
+		exit(2)
+	}
+	for name in module_names {
+		final_module_path := os.realpath(filepath.join(get_vmodules_dir_path(),name.replace('.', os.path_separator)))
+		if !os.exists(final_module_path) {
+			println('No module with name "$name" exists at $final_module_path')
+			continue
+		}
+		println('Removing module "$name"...')
+		os.rmdir_recursive(final_module_path)
+		//delete author directory if it is empty
+		author := name.split('.')[0]
+		author_dir := os.realpath(filepath.join(get_vmodules_dir_path(), author))
+		if os.is_dir_empty(author_dir) {
+			os.rmdir(author_dir)
+		}
+	}
+
 }
 
 fn get_vmodules_dir_path() string {
@@ -168,11 +251,6 @@ fn change_to_vmodules_dir() {
 	os.chdir(get_vmodules_dir_path())
 }
 
-fn todo(vpm_command string) {
-	println('TODO: v $vpm_command')
-	exit(4)
-}
-
 fn user_asks_for_help(module_names []string) bool {
 	return ('-h' in module_names) || ('--help' in module_names) || ('help' in module_names)
 }
@@ -187,3 +265,104 @@ fn vpm_help(module_names []string) {
 	println('  You can also pass -h or --help after each vpm command from the above, to see more details about it.')
 }
 
+fn get_installed_modules() []string {
+	dirs := os.ls(get_vmodules_dir_path()) or {
+		return []
+	}
+	mut modules := []string
+	for dir in dirs {
+		if dir in ['cache', 'vlib'] || !os.is_dir(dir) {
+			continue
+		}
+		author := dir
+		mods := os.ls('${filepath.join(get_vmodules_dir_path(), dir)}') or {
+			continue
+		}
+		for m in mods {
+			modules << '${author}.$m'
+		}
+	}
+	return modules
+}
+
+fn get_all_modules() []string {
+	r := http.get(url) or {
+		panic(err)
+	}
+	if r.status_code != 200 {
+		println('Failed to search vpm.best. Status code: $r.status_code')
+		exit(1)
+	}
+	s := r.text
+	mut read_len := 0
+	mut modules := []string
+	for read_len < s.len {
+		mut start_token := '<a href="/mod'
+		end_token := '</a>'
+		// get the start index of the module entry
+		mut start_index := s.index_after(start_token, read_len)
+		if start_index == -1 {
+			break
+		}
+		// get the index of the end of anchor (a) opening tag
+		// we use the previous start_index to make sure we are getting a module and not just a random 'a' tag
+		start_token = '">'
+		start_index = s.index_after(start_token, start_index) + start_token.len
+		// get the index of the end of module entry
+		end_index := s.index_after(end_token, start_index)
+		if end_index == -1 {
+			break
+		}
+		modules << s[start_index..end_index]
+		read_len = end_index
+		if read_len >= s.len {
+			break
+		}
+	}
+	return modules
+}
+
+fn resolve_dependencies(name, module_path string, module_names []string) {
+	vmod_path := filepath.join(module_path,'v.mod')
+	if !os.exists(vmod_path) {
+		return
+	}
+	data := os.read_file(vmod_path) or {
+		return
+	}
+	vmod := parse_vmod(data)
+	mut deps := []string
+	// filter out dependencies that were already specified by the user
+	for d in vmod.deps {
+		if !(d in module_names) {
+			deps << d
+		}
+	}
+	if deps.len > 0 {
+		println('Resolving ${deps.len} dependencies for module "$name"...')
+		vpm_install(deps)
+	}
+}
+
+fn parse_vmod(data string) Vmod {
+	keys := ['name', 'version', 'deps']
+	mut m := {
+		'name': '',
+		'version': '',
+		'deps': ''
+	}
+	for key in keys {
+		mut key_index := data.index('$key:') or {
+			continue
+		}
+		key_index += key.len + 1
+		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'", '').replace('[', '').replace(']', '')
+	}
+	mut vmod := Vmod{}
+	vmod.name = m['name']
+	vmod.version = m['version']
+	if m['deps'].len > 0 {
+		vmod.deps = m['deps'].split(',')
+	}
+	return vmod
+}

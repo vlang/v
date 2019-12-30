@@ -592,6 +592,7 @@ pub fn rm(path string) {
 	}
 	// C.unlink(path.cstr())
 }
+
 // rmdir removes a specified directory.
 pub fn rmdir(path string) {
 	$if !windows {
@@ -599,6 +600,22 @@ pub fn rmdir(path string) {
 	} $else {
 		C.RemoveDirectory(path.to_wide())
 	}
+}
+
+pub fn rmdir_recursive(path string) {
+	items := os.ls(path) or { panic(err)}
+	for item in items {
+		if os.is_dir(filepath.join(path, item)) {
+			rmdir_recursive(filepath.join(path, item))
+		}
+		os.rm(filepath.join(path, item))
+	}
+	os.rmdir(path)
+}
+
+pub fn is_dir_empty(path string) bool {
+	items := os.ls(path) or { panic(err)}
+	return items.len == 0
 }
 
 fn print_c_errno() {
