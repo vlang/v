@@ -347,8 +347,12 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				mut expr := ast.Expr{}
 				expr,t2 = p.expr(prev_tok.precedence())
 				op := prev_tok.kind
-				typ = prev_tok.is_relational() {
-					types.bool_type } else { typ }
+				if prev_tok.is_relational() {
+					typ = types.bool_type
+				}
+				else {
+					typ = t2 
+				}
 				// println(t2.name + '222')
 				node = ast.BinaryExpr{
 					left: node

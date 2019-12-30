@@ -386,3 +386,9 @@ pub fn (tok Token) is_right_assoc() bool {
 	// `&=` | `^=` | `|=`
 	.and_assign, .xor_assign, .or_assign]
 }
+
+pub fn (tok Token) is_relational() bool {
+	return tok.kind in [
+	// `<` | `<=` | `>` | `>=`
+	.lt, .le, .gt, .ge]
+}
