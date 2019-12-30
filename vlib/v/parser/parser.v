@@ -333,6 +333,13 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		else if prev_tok.is_left_assoc() {
 			mut expr := ast.Expr{}
 			expr,t2 = p.expr(prev_tok.precedence())
+			op := prev_tok.kind
+			if op in [.gt, .lt, .ge, .le] {
+				typ = types.bool_type
+			}
+			else {
+				typ = t2
+			}
 			// println(t2.name + '222')
 			node = ast.BinaryExpr{
 				left: node

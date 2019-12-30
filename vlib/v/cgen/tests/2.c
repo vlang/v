@@ -30,8 +30,8 @@ void function2() {
 	while (true) {
 		foo(0);
 	}
-	int e = 1 + 2 > 0;
-	int e2 = 1 + 2 < 0;
+	bool e = 1 + 2 > 0;
+	bool e2 = 1 + 2 < 0;
 	int j = 0;
 }
 
