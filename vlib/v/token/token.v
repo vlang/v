@@ -306,30 +306,34 @@ pub fn (t Token) str() string {
 // Representation of highest and lowest precedence
 pub const (
 	lowest_prec = 0
-	highest_prec = 7
+	highest_prec = 8
 )
 // Precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok.kind {
+		// `++` | `--`
+		.inc, .dec {
+			return 7
+		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
 		.mul, .div, .left_shift, .righ_shift, .amp {
-			return 7
+			return 6
 		}
 		// `+` |  `-` |  `|` | `^`
 		.plus, .minus, .pipe, .xor {
-			return 6
+			return 5
 		}
 		// `==` | `!=` | `<` | `<=` | `>` | `>=`
 		.eq, .ne, .lt, .le, .gt, .ge {
-			return 5
+			return 4
 		}
 		// `&&`
 		.and {
-			return 4
+			return 3
 		}
 		// `||`
 		.logical_or {
-			return 3
+			return 2
 		}
 		// /.plus_assign {
 		// /return 2
@@ -358,10 +362,14 @@ pub fn (tok Token) is_unary() bool {
 pub fn (tok Token) is_left_assoc() bool {
 	return tok.kind in [
 	// .number,
+	//  `++` | `--`
+	.inc, .dec,
 	// `*` | `/` | `%`
 	.mul, .div, .mod,
 	// `^` | `||` | `&`
 	.xor, .logical_or, .and,
+	// `<` | `<=` | `>` | `>=`
+	.lt, .le, .gt, .ge,
 	// `,`
 	.comma]
 }
@@ -369,8 +377,8 @@ pub fn (tok Token) is_left_assoc() bool {
 // is_right_assoc returns true if the token is right associative
 pub fn (tok Token) is_right_assoc() bool {
 	return tok.kind in [
-	// `+` | `-` | `!` | `++` | `--`
-	.plus, .minus, .not, .inc, .dec,
+	// `+` | `-` | `!`
+	.plus, .minus, .not,
 	// `=` | `+=` | `-=` | `*=` | `/=`
 	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
 	// `%=` | `>>=` | `<<=`

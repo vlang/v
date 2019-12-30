@@ -28,8 +28,7 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 		scanner: s
 		table: table
 	}
-	p.next()
-	p.next()
+	p.read_first_token()
 	return p.stmt()
 }
 
@@ -236,6 +235,8 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	// null denotation (prefix)
 	mut node := ast.Expr{}
 	mut typ := types.void_type
+	
+	ptok := p.tok
 	match p.tok.kind {
 		.name {
 			/*
@@ -281,18 +282,15 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			p.check(.rpar)
 		}
 		else {
-			p.next()
 			if p.tok.is_unary() {
 				expr,_ := p.expr(token.highest_prec)
 				node = ast.UnaryExpr{
-					// left: p.expr(token.highest_prec)
 					left: expr
-					op: p.tok.kind
 				}
 			}
 			else {
 				verror('!unknown token ' + p.tok.str())
-			}
+			}	
 		}
 	}
 	// left binding power
@@ -300,7 +298,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		prev_tok := p.tok
 		p.next()
 		mut t2 := types.Type{}
-		// left denotation (infix)
+		// left denotation (infix / postfix)
 		if prev_tok.is_right_assoc() {
 			mut expr := ast.Expr{}
 			expr,t2 = p.expr(prev_tok.precedence() - 1)
@@ -310,19 +308,30 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				right: expr
 			}
 			if !types.check(&typ, &t2) {
+				println('tok: $prev_tok.str()')
 				p.error('cannot convert `$t2.name` to `$typ.name`')
 			}
 		}
 		else if prev_tok.is_left_assoc() {
-			mut expr := ast.Expr{}
-			expr,t2 = p.expr(prev_tok.precedence())
-			node = ast.BinaryExpr{
-				left: node
-				op: prev_tok.kind
-				right: expr
+			// postfix (`++` | `--`)
+			if prev_tok.kind in [.inc, .dec] {
+				node = ast.UnaryExpr{
+					left: node
+					op: prev_tok.kind
+				}
+			} else {
+				mut expr := ast.Expr{}
+				expr,t2 = p.expr(prev_tok.precedence())
+				node = ast.BinaryExpr{
+					left: node
+					op: prev_tok.kind
+					right: expr
+				}	
 			}
 		}
 	}
+
+	// println('TOK: $p.tok')
 	return node,typ
 }
 

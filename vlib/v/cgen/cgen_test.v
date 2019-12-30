@@ -45,6 +45,7 @@ fn compare_texts(a, b string) bool {
 	}
 	for i, line_a in lines_a {
 		line_b := lines_b[i]
+		println('$line_a - $line_b')
 		if line_a.trim_space() != line_b.trim_space() {
 			println('!' + line_a)
 			return false

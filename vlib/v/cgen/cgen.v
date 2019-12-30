@@ -87,7 +87,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.UnaryExpr {
 			g.expr(it.left)
-			g.write(' $it.op ')
+			g.write(it.op.str())
 		}
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
@@ -110,7 +110,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 				.plus_assign {
 					g.write(' += ')
 				}
-				else {}
+				else { g.write(it.op.str()) }
 	}
 			g.expr(it.right)
 			// if it.op in [.plus_assign] {
