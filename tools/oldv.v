@@ -109,18 +109,19 @@ fn main(){
 	scripting.used_tools_must_exist(['git','cc'])
 	mut context := Context{}
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application(os.filename(os.executable()))
+	fp.application(filepath.filename(os.executable()))
 	fp.version( tool_version )
 	fp.description( tool_description )
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
 	
-	show_help:=fp.bool('help', false, 'Show this help screen\n')
-	context.cmd_to_run = fp.string('command', '', 'Command to run in the old V repo.\n')
-	context.cleanup    = fp.bool('clean', true, 'Clean before running (slower).\n')
-	context.verbose    = fp.bool('verbose', false, 'Be more verbose.\n')
+	show_help:=fp.bool_('help', `h`, false, 'Show this help screen.')
+	context.verbose    = fp.bool_('verbose', `v`, false, 'Be more verbose.\n')
 	
-	context.workdir = os.realpath( fp.string('work-dir', os.tmpdir(), 'A writable folder, where the comparison will be done.\n') )
+	context.cleanup    = fp.bool('clean', true, 'Clean before running (slower).')
+	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.')
+	
+	context.workdir = os.realpath( fp.string_('work-dir', `w`, os.tmpdir(), 'A writable folder, where the comparison will be done.\n') )
 	
 	context.repo_url_v = fp.string('v-repo', remote_repo_url_v, 'The url of the V repository. You can clone it locally too.\n')
 	
@@ -129,7 +130,7 @@ fn main(){
 		flag.SPACE+'beforehand, and then just give the local folder \n'+
 		flag.SPACE+'path here. That will eliminate the network ops  \n'+
 		flag.SPACE+'done by this tool, which is useful, if you want \n'+
-		flag.SPACE+'to script it/run it in a restrictive vps/docker.\n')
+		flag.SPACE+'to script it/run it in a restrictive vps/docker.')
 	
 	if( show_help ){
 		println( fp.usage() )
