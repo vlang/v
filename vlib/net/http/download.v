@@ -6,7 +6,7 @@ module http
 import os
 
 pub fn download_file(url, out string) bool {
-	s := http.get(url) or {
+	s := get(url) or {
 		return false
 	}
 	os.write_file(out, s.text)
