@@ -17,7 +17,8 @@ fn cb_assertion_failed(filename string, line int, sourceline string, funcname st
 			false
 		}
 		else {
-			true}}
+			true}
+	}
 	final_filename := if use_relative_paths { filename } else { os.realpath(filename) }
 	final_funcname := funcname.replace('main__', '').replace('__', '.')
 	mut fail_message := 'FAILED assertion'
@@ -32,5 +33,4 @@ fn cb_assertion_failed(filename string, line int, sourceline string, funcname st
 fn cb_assertion_ok(filename string, line int, sourceline string, funcname string) {
 	// do nothing for now on an OK assertion
 	// println('OK ${line:5d}|$sourceline ')
-}
-
+	}

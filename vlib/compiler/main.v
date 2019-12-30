@@ -510,10 +510,10 @@ pub fn (v mut V) generate_main() {
 				cgen.genln('$cgen.fn_main;')
 				v.gen_main_end('return 0')
 			}
-			else if !v.pref.is_repl {
+			else if v.v_fmt_file=='' && !v.pref.is_repl {
 				verror('function `main` is not declared in the main module')
 			}
-		}
+		}    
 		else if v.pref.is_test {
 			if v.table.main_exists() {
 				verror('test files cannot have function `main`')
@@ -525,13 +525,13 @@ pub fn (v mut V) generate_main() {
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 			if v.pref.is_stats {
-				cgen.genln('BenchedTests bt = main__start_testing();')
+				cgen.genln('BenchedTests bt = main__start_testing(${test_fn_names.len},tos3("$v.dir"));')
 			}
 			for tfname in test_fn_names {
 				if v.pref.is_stats {
 					cgen.genln('BenchedTests_testing_step_start(&bt, tos3("$tfname"));')
 				}
-				cgen.genln('$tfname ();')
+				cgen.genln('${tfname}();')
 				if v.pref.is_stats {
 					cgen.genln('BenchedTests_testing_step_end(&bt);')
 				}

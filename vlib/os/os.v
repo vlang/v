@@ -23,6 +23,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) C.dirent
 
+
 pub const (
 	args = []string
 	MAX_PATH = 4096
@@ -972,7 +973,7 @@ pub fn walk_ext(path, ext string) []string {
 			continue
 		}
 		p := path + separator + file
-		if os.is_dir(p) {
+		if os.is_dir(p) && !os.is_link(p) {
 			res << walk_ext(p, ext)
 		}
 		else if file.ends_with(ext) {
@@ -993,7 +994,7 @@ pub fn walk(path string, fnc fn(path string)) {
 	}
 	for file in files {
 		p := path + os.path_separator + file
-		if os.is_dir(p) {
+		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, fnc)
 		}
 		else if os.exists(p) {

@@ -14,8 +14,6 @@ pub mut:
 	vargs     string
 	failed    bool
 	benchmark benchmark.Benchmark
-	ok        string
-	fail      string
 }
 
 pub fn new_test_session(vargs string) TestSession {
@@ -34,8 +32,6 @@ pub fn vexe_path() string {
 }
 
 pub fn (ts mut TestSession) init() {
-	ts.ok = term.ok_message('OK')
-	ts.fail = term.fail_message('FAIL')
 	ts.benchmark = benchmark.new_benchmark()
 }
 
@@ -43,6 +39,7 @@ pub fn (ts mut TestSession) test() {
 	tmpd := os.tmpdir()
 	ts.init()
 	show_stats := '-stats' in ts.vargs.split(' ')
+	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
@@ -66,6 +63,12 @@ pub fn (ts mut TestSession) test() {
 				continue
 			}
 		}
+		remaining_files << dot_relative_file
+	}
+	ts.benchmark.set_total_expected_steps(remaining_files.len)
+	for dot_relative_file in remaining_files {
+		relative_file := dot_relative_file.replace('./', '')
+		file := os.realpath(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
 		// Remove them after a test passes/fails.
 		fname := filepath.filename(file)
@@ -97,17 +100,17 @@ pub fn (ts mut TestSession) test() {
 			r := os.exec(cmd) or {
 				ts.benchmark.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message('$relative_file ${ts.fail}'))
+				eprintln(ts.benchmark.step_message_fail(relative_file))
 				continue
 			}
 			if r.exit_code != 0 {
 				ts.benchmark.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message('$relative_file ${ts.fail}\n`$file`\n (\n$r.output\n)'))
+				eprintln(ts.benchmark.step_message_fail('${relative_file}\n`$file`\n (\n$r.output\n)'))
 			}
 			else {
 				ts.benchmark.ok()
-				eprintln(ts.benchmark.step_message('$relative_file ${ts.ok}'))
+				eprintln(ts.benchmark.step_message_ok(relative_file))
 			}
 		}
 		if os.exists(generated_binary_fpath) {
@@ -171,19 +174,17 @@ pub fn building_any_v_binaries_failed() bool {
 	'$vexe -o v_prod    -prod     v.v',
 	]
 	mut bmark := benchmark.new_benchmark()
-	bok := term.ok_message('OK')
-	bfail := term.fail_message('FAIL')
 	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
 			failed = true
-			eprintln(bmark.step_message('$cmd => ${bfail} . See details above ^^^^^^^'))
+			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
 			eprintln('')
 			continue
 		}
 		bmark.ok()
-		eprintln(bmark.step_message('$cmd => ${bok}'))
+		eprintln(bmark.step_message_ok('command: ${cmd}'))
 	}
 	bmark.stop()
 	eprintln(term.h_divider())
