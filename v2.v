@@ -23,7 +23,7 @@ fn main() {
 	text := os.read_file(path)?
 	table := &table.Table{}
 	program := parser.parse_file(text, table)
-	res := gen.cgen(program)
+	res := gen.cgen([program])
 	mut out := os.create('out.c')?
 	out.writeln(cdefs)
 	out.writeln(res)
