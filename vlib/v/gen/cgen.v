@@ -111,7 +111,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.UnaryExpr {
 			g.expr(it.left)
-			g.write(' $it.op ')
+			g.write(it.op.str())
 		}
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
