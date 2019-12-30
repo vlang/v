@@ -1,4 +1,4 @@
-module cgen
+module gen
 
 import (
 	strings
@@ -6,12 +6,12 @@ import (
 	term
 )
 
-struct Gen {
+struct JsGen {
 	out strings.Builder
 }
 
-pub fn gen(program ast.Program) string {
-	mut g := Gen{
+pub fn jsgen(program ast.Program) string {
+	mut g := JsGen{
 		out: strings.new_builder(100)
 	}
 	for stmt in program.stmts {
@@ -21,17 +21,17 @@ pub fn gen(program ast.Program) string {
 	return (g.out.str())
 }
 
-pub fn (g &Gen) save() {}
+pub fn (g &JsGen) save() {}
 
-pub fn (g mut Gen) write(s string) {
+pub fn (g mut JsGen) write(s string) {
 	g.out.write(s)
 }
 
-pub fn (g mut Gen) writeln(s string) {
+pub fn (g mut JsGen) writeln(s string) {
 	g.out.writeln(s)
 }
 
-fn (g mut Gen) stmt(node ast.Stmt) {
+fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
 			g.expr(it.left)
@@ -40,9 +40,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			g.write('$it.typ.name ${it.name}(')
+			g.write('/** @return { $it.typ.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				g.write(arg.typ.name + ' ' + arg.name)
+				g.write(' /** @type { arg.typ.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
@@ -56,7 +56,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('$it.typ.name $it.name = ')
+			g.write('var /* $it.typ.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -70,11 +70,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.StructDecl {
-			g.writeln('typedef struct {')
-			for field in it.fields {
-				g.writeln('\t$field.typ.name $field.name;')
-			}
-			g.writeln('} $it.name;')
+			// g.writeln('typedef struct {')
+			// for field in it.fields {
+			// g.writeln('\t$field.typ.name $field.name;')
+			// }
+			g.writeln('var $it.name = function() {};')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
@@ -87,12 +87,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	}
 		}
 		else {
-			verror('cgen.stmt(): bad node')
+			verror('jsgen.stmt(): bad node')
 		}
 	}
 }
 
-fn (g mut Gen) expr(node ast.Expr) {
+fn (g mut JsGen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
 		ast.IntegerLiteral {
@@ -112,15 +112,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
-			// if typ.name != typ2.name {
-			// verror('bad types $typ.name $typ2.name')
-			// }
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('($it.typ.name){')
+			g.writeln('/*$it.typ.name*/{')
 			for i, field in it.fields {
-				g.write('\t.$field = ')
+				g.write('\t$field : ')
 				g.expr(it.exprs[i])
 				g.writeln(', ')
 			}
@@ -157,12 +154,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln('}')
 		}
 		else {
-			println(term.red('cgen.expr(): bad node'))
+			println(term.red('jsgen.expr(): bad node'))
 		}
 	}
-}
-
-fn verror(s string) {
-	println(s)
-	exit(1)
 }

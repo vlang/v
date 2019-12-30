@@ -3,7 +3,7 @@ module main
 import (
 	v.parser
 	v.table
-	v.cgen
+	v.gen
 	os
 )
 
@@ -11,6 +11,7 @@ const (
 cdefs = '
 #define true 1
 #define false 0
+typedef int bool;
 typedef struct { char* str; } string;
 typedef double f64;
 string tos3(char* s) { return (string){ .str = s }; }
@@ -22,7 +23,7 @@ fn main() {
 	text := os.read_file(path)?
 	table := &table.Table{}
 	program := parser.parse_file(text, table)
-	res := cgen.gen(program)
+	res := gen.cgen(program)
 	mut out := os.create('out.c')?
 	out.writeln(cdefs)
 	out.writeln(res)
