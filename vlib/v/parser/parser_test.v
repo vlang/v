@@ -76,7 +76,7 @@ fn test_parse_expr() {
 	for s in input {
 		e << parse_stmt(s, table)
 	}
-	program := ast.Program{
+	program := ast.File{
 		stmts: e
 	}
 	res := gen.cgen(program)

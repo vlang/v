@@ -8,10 +8,10 @@ import (
 	v.types
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral |
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt |
 ForStmt | StructDecl
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -123,7 +123,7 @@ pub:
 	typ  types.Type
 }
 
-pub struct Program {
+pub struct File {
 pub:
 	stmts []Stmt
 }

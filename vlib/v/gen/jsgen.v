@@ -10,7 +10,7 @@ struct JsGen {
 	out strings.Builder
 }
 
-pub fn jsgen(program ast.Program) string {
+pub fn jsgen(program ast.File) string {
 	mut g := JsGen{
 		out: strings.new_builder(100)
 	}

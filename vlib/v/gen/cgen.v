@@ -10,15 +10,17 @@ struct Gen {
 	out strings.Builder
 }
 
-pub fn cgen(program ast.Program) string {
+pub fn cgen(files []ast.File) string {
 	mut g := Gen{
 		out: strings.new_builder(100)
 	}
-	for stmt in program.stmts {
-		g.stmt(stmt)
-		g.writeln('')
+	for file in files {
+		for stmt in file.stmts {
+			g.stmt(stmt)
+			g.writeln('')
+		}
 	}
-	return (g.out.str())
+	return g.out.str()
 }
 
 pub fn (g &Gen) save() {}

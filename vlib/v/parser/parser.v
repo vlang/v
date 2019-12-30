@@ -10,6 +10,7 @@ import (
 	v.table
 	v.types
 	term
+	os
 )
 
 struct Parser {
@@ -57,7 +58,7 @@ pub fn (p mut Parser) get_type() types.Type {
 	}
 }
 
-pub fn parse_file(text string, table &table.Table) ast.Program {
+pub fn parse_file(text string, table &table.Table) ast.File {
 	mut stmts := []ast.Stmt
 	mut p := Parser{
 		scanner: scanner.new_scanner(text)
@@ -76,9 +77,38 @@ pub fn parse_file(text string, table &table.Table) ast.Program {
 	}
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
-	return ast.Program{
+	return ast.File{
 		stmts: stmts
 	}
+}
+
+pub fn parse_files(paths []string, table &table.Table) []ast.File {
+	mut files := []ast.File
+	for path in paths {
+		mut stmts := []ast.Stmt
+		text := os.read_file(path) or { panic(err) }
+		mut p := Parser{
+			scanner: scanner.new_scanner(text)
+			table: table
+		}
+		p.read_first_token()
+		for {
+			// res := s.scan()
+			if p.tok.kind == .eof {
+				break
+			}
+			// println('expr at ' + p.tok.str())
+			s := p.stmt()
+			// println(s)
+			stmts << s // p.stmt()
+		}
+		// println('nr stmts = $stmts.len')
+		// println(stmts[0])
+		files << ast.File{
+			stmts: stmts
+		}
+	}
+	return files
 }
 
 pub fn (p mut Parser) read_first_token() {
@@ -452,8 +482,8 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.Type) {
 	return node,typ
 }
 
-fn (p mut Parser) module_decl() ast.Stmt {
-	// p.check(.key_module)
+fn (p mut Parser) module_decl() ast.Module {
+	p.check(.key_module)
 	p.next()
 	return ast.Module{}
 }
@@ -520,7 +550,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		name: name
 		args: args
 	})
-	// p.check(.rcbr)
 	stmts := p.parse_block()
 	return ast.FnDecl{
 		name: name
@@ -531,7 +560,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 }
 
 fn (p mut Parser) return_stmt() ast.Return {
-	// println('return st')
 	p.next()
 	expr,t := p.expr(0)
 	if !types.check(p.return_type, t) {
@@ -568,7 +596,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		typ: t
 	}
 }
