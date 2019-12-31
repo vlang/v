@@ -58,7 +58,6 @@ pub struct StructDecl {
 pub:
 	name   string
 	fields []Field
-	is_pub bool
 }
 
 pub struct StructInit {
@@ -71,8 +70,8 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	mods []string
-	// expr Expr
+	name string
+	expr Expr
 	// imports map[string]string
 }
 
@@ -161,7 +160,7 @@ pub:
 	tok_kind token.Kind
 	cond     Expr
 	stmts    []Stmt
-	else_stmts []Stmt
+	else_    []Stmt
 }
 
 pub struct ForStmt {

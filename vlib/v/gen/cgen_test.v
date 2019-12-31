@@ -40,13 +40,13 @@ fn compare_texts(a, b string) bool {
 	lines_a := a.trim_space().split_into_lines()
 	lines_b := b.trim_space().split_into_lines()
 	if lines_a.len != lines_b.len {
-		println(term.red('different len'))
-		// return false
+		println('different len')
+		return false
 	}
 	for i, line_a in lines_a {
 		line_b := lines_b[i]
 		if line_a.trim_space() != line_b.trim_space() {
-			println(term.red('!' + line_a))
+			println('!' + line_a)
 			return false
 		}
 	}

@@ -362,7 +362,7 @@ pub fn (tok Token) is_unary() bool {
 pub fn (tok Token) is_left_assoc() bool {
 	return tok.kind in [
 	// .number,
-	// `++` | `--`
+	//  `++` | `--`
 	.inc, .dec,
 	// `*` | `/` | `%`
 	.mul, .div, .mod,
@@ -371,7 +371,7 @@ pub fn (tok Token) is_left_assoc() bool {
 	// `==` | `!=`
 	.eq, .ne,
 	// `<` | `<=` | `>` | `>=`
-	.lt, .le, .gt, .ge, .ne, .eq,
+	.lt, .le, .gt, .ge,
 	// `,`
 	.comma]
 }
@@ -392,5 +392,5 @@ pub fn (tok Token) is_right_assoc() bool {
 pub fn (tok Token) is_relational() bool {
 	return tok.kind in [
 	// `<` | `<=` | `>` | `>=`
-	.lt, .le, .gt, .ge, .eq, .ne]
+	.lt, .le, .gt, .ge]
 }

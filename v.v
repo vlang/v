@@ -68,9 +68,6 @@ fn main() {
 	if v.pref.x64 {
 		v.compile_x64()
 	}
-	else if v.pref.v2 {
-		v.compile2()
-	}
 	else {
 		v.compile()
 	}

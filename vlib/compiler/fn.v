@@ -434,7 +434,7 @@ fn (p mut Parser) fn_decl() {
 	// Special case for main() args
 	if f.name == 'main__main' && !has_receiver {
 		if p.pref.x64 && !p.first_pass() {
-			//p.x64.save_main_fn_addr()
+			p.x64.save_main_fn_addr()
 		}
 		if str_args != '' || typ != 'void' {
 			p.error_with_token_index('fn main must have no arguments and no return values', f.fn_name_token_idx)
@@ -554,7 +554,7 @@ fn (p mut Parser) fn_decl() {
 		}
 	}
 	if p.pref.x64 {
-		//p.x64.register_function_address(f.name)
+		p.x64.register_function_address(f.name)
 	}
 	p.statements_no_rcbr()
 	// p.cgen.nogen = false
@@ -574,10 +574,10 @@ fn (p mut Parser) fn_decl() {
 		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
 	}
 	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
-		//p.x64.gen_exit()
+		p.x64.gen_exit()
 	}
 	if p.pref.x64 && !p.first_pass() {
-		//p.x64.ret()
+		p.x64.ret()
 	}
 	// {} closed correctly? scope_level should be 0
 	if p.mod == 'main' {
@@ -640,8 +640,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 		if var.name == '' {
 			break
 		}
-		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated &&
-			var.name != 'tmpl_res' && p.mod != 'vweb' && var.name != 'it' {
+		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated && var.name != 'tmpl_res' && p.mod != 'vweb' {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx)
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated && var.typ != 'T*' && p.mod != 'ui' && var.typ != 'App*' {
@@ -755,7 +754,7 @@ fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type s
 		p.cgen.nogen = true
 	}
 	if p.pref.x64 && !p.first_pass() {
-		//p.x64.call_fn(f.name)
+		p.x64.call_fn(f.name)
 	}
 	p.calling_c = f.is_c
 	if f.is_c && !p.builtin_mod {
@@ -1080,7 +1079,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 		}
 		// x64 println gen
 		if p.pref.x64 && i == 0 && f.name == 'println' && p.tok == .str && p.peek() == .rpar {
-			//p.x64.gen_print(p.lit)
+			p.x64.gen_print(p.lit)
 		}
 		mut typ := p.bool_expression()
 		// Register an interface type usage:
