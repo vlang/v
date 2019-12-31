@@ -658,7 +658,9 @@ fn (p mut Parser) import_statement() {
 	}
 	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
+		p.fspace()
 		p.check(.key_as)
+		p.fspace()
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
@@ -1169,7 +1171,7 @@ fn (p mut Parser) get_type() string {
 			}
 			t = p.table.find_type(typ)
 			if t.name == '' && !p.pref.translated && !p.first_pass() && !typ.starts_with('[') {
-				println('get_type() bad type')
+				// println('get_type() bad type')
 				// println('all registered types:')
 				// for q in p.table.types {
 				// println(q.name)
@@ -1178,7 +1180,8 @@ fn (p mut Parser) get_type() string {
 				if t_suggest.len > 0 {
 					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
 				}
-				p.error('unknown type `$typ`$t_suggest')
+				econtext := if p.pref.is_debug { '('+@FILE+':'+@LINE+')' } else {''}
+				p.error('unknown type `$typ`$t_suggest $econtext')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
