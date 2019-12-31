@@ -1,7 +1,8 @@
 import os
 
 fn test_aaa_setup(){
-	cleanup_leftovers() assert true
+	cleanup_leftovers()
+	assert true
 }
 
 fn test_setenv() {
@@ -39,6 +40,7 @@ fn test_write_and_read_string_to_file() {
 
 // test_write_and_read_bytes checks for regressions made in the functions
 // read_bytes, read_bytes_at and write_bytes.
+/*
 fn test_write_and_read_bytes() {
         file_name :=  './byte_reader_writer.tst'
         payload   :=  [`I`, `D`, `D`, `Q`, `D`]
@@ -72,6 +74,7 @@ fn test_write_and_read_bytes() {
         // We finally delete the test file.
         os.rm(file_name)
 }
+*/
 
 fn test_create_and_delete_folder() {
   folder := './test1'
@@ -219,6 +222,18 @@ fn test_zzz_cleanup(){
 	cleanup_leftovers() assert true
 }
 
+
+fn test_symlink() {
+  $if windows { return }
+  os.mkdir('symlink') or { panic(err) }
+  os.symlink('symlink', 'symlink2') or { panic(err) }
+  assert os.exists('symlink2')
+
+  // cleanup
+  os.rm('symlink')
+  os.rm('symlink2')
+}
+
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover
 // files so that they can be run several times in a row.
@@ -236,15 +251,4 @@ fn cleanup_leftovers(){
 	os.rmdir('ex2')
 	os.rm('ex1.txt')
 	os.rm('ex2.txt')
-}
-
-fn test_symlink() {
-  $if windows { return }
-  os.mkdir('symlink') or { panic(err) }
-  os.symlink('symlink', 'symlink2') or { panic(err) }
-  assert os.exists('symlink2')
-
-  // cleanup
-  os.rm('symlink')
-  os.rm('symlink2')
 }

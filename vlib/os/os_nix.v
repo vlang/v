@@ -124,6 +124,11 @@ pub fn create(path string) ?File {
 	return file
 }
 
+/*
+pub fn (f mut File) fseek(pos, mode int) {
+}
+*/
+
 pub fn (f mut File) write(s string) {
 	if !f.opened {
 		return

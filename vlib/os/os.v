@@ -75,6 +75,7 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
+/*
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f mut File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -88,6 +89,7 @@ pub fn (f mut File) read_bytes_at(size, pos int) []byte {
 	C.fseek(f.cfile, 0, C.SEEK_SET)
 	return arr[0..nreadbytes]
 }
+*/
 
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')
@@ -295,14 +297,24 @@ pub fn open_append(path string) ?File {
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
 pub fn (f mut File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
+	$if linux {
+		C.syscall(sys_write, f.fd,  data, 1)
+	} $else {
+		C.fwrite(data, 1, size, f.cfile)
+	}
 }
 
+/*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
+	$if linux {
+	}
+	$else {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
+	}
 }
+*/
 
 
 pub fn (f mut File) flush() {
