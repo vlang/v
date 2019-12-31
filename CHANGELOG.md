@@ -31,7 +31,7 @@ The last release before 0.2.
 - `math.factorial`.
 - `ftp` module.
 - New syntax for casting: `val as Type`.
-- Fewer libc functions used (soon V will be have no dependency on libc).
+- Fewer libc functions used (soon V will have no dependency on libc).
 
 
 ## V 0.1.23
