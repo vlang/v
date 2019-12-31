@@ -3,8 +3,34 @@
 // that can be found in the LICENSE file.
 module builtin
 
+
+//pub fn vsyscall(id int
+//
+
+/*
+pub const (
+	sys_write = 1
+	sys_mkdir = 83
+)
+const (
+	stdin_value = 0
+	stdout_value = 1
+	stderr_value  = 2
+)
+
+fn C.puts(charptr)
+*/
+
 pub fn println(s string) {
-	C.printf('%.*s\n', s.len, s.str)
+	/*
+	$if linux {
+		snl := s + '\n'
+		C.syscall(sys_write, stdout_value, snl.str, s.len+1)
+	} 
+	$else {
+		*/
+		C.printf('%.*s\n', s.len, s.str)
+	//}
 }
 
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
@@ -96,8 +122,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			// C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true
 		} $else {
-			C.printf('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
-			C.printf('Some libc implementations like musl simply do not provide it.\n')
+			println('backtrace_symbols_fd is missing, so printing backtraces is not available.\n')
+			println('Some libc implementations like musl simply do not provide it.')
 		}
 	}
 	return false

@@ -6,6 +6,20 @@ pub const (
 	path_separator = '/'
 )
 
+pub const (
+	sys_write = 1
+	sys_open = 2
+	sys_close = 3
+	sys_mkdir = 83
+	sys_creat = 85
+)
+
+const (
+	stdin_value = 0
+	stdout_value = 1
+	stderr_value  = 2
+)
+
 fn C.symlink(charptr, charptr) int
 
 pub fn init_os_args(argc int, argv &byteptr) []string {
@@ -61,12 +75,101 @@ pub fn is_dir(path string) bool {
 }
 */
 
+pub fn open(path string) ?File {
+	$if linux {
+		fd := C.syscall(sys_open, path.str, 511)
+		if fd == -1 {
+			return error('failed to open file "$path"')
+		}
+		return File{
+			fd: fd
+			opened: true
+		}
+	}
+	$else {
+		cpath := path.str
+		file := File{
+			cfile: C.fopen(charptr(cpath), 'rb')
+			opened: true
+		}
+		if isnil(file.cfile) {
+			return error('failed to open file "$path"')
+		}
+		return file
+	}
+}
+
+
+// create creates a file at a specified location and returns a writable `File` object.
+pub fn create(path string) ?File {
+	$if linux {
+		fd := C.syscall(sys_creat, path.str, 511)
+		//////println('Fd=$fd')
+		if fd == -1 {
+			return error('failed to create file "$path"')
+		}
+		return File{
+			fd: fd
+			opened: true
+		}
+
+	}
+	mut file := File{
+		cfile: C.fopen(charptr(path.str), 'wb')
+		opened: true
+	}
+	if isnil(file.cfile) {
+		return error('failed to create file "$path"')
+	}
+	return file
+}
+
+pub fn (f mut File) write(s string) {
+	if !f.opened {
+		return
+	}
+	$if linux {
+		C.syscall(sys_write, f.fd, s.str, s.len)
+		return
+	}
+
+	C.fputs(s.str, f.cfile)
+	// C.fwrite(s.str, 1, s.len, f.cfile)
+}
+
+pub fn (f mut File) writeln(s string) {
+	if !f.opened {
+		return
+	}
+	$if linux {
+		snl := s + '\n'
+		C.syscall(sys_write, f.fd, snl.str, snl.len)
+		return
+	}
+
+
+	// C.fwrite(s.str, 1, s.len, f.cfile)
+	// ss := s.clone()
+	// TODO perf
+	C.fputs(s.str, f.cfile)
+	// ss.free()
+	C.fputs('\n', f.cfile)
+}
+
+
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
 	if path == '.' {
 		return true
 	}
 	apath := os.realpath(path)
+	$if linux {
+		ret := C.syscall(sys_mkdir, apath.str, 511)
+		if ret == -1 {
+			return error(get_error_msg(C.errno))
+		}
+		return true
+	}
 	r := C.mkdir(apath.str, 511)
 	if r == -1 {
 		return error(get_error_msg(C.errno))

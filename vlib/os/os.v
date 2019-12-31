@@ -31,6 +31,7 @@ pub const (
 
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
+	fd     int
 mut:
 	opened bool
 }
@@ -269,49 +270,6 @@ fn read_ulines(path string) ?[]ustring {
 	return ulines
 }
 
-pub fn open(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.to_wide()
-		mode := 'rb'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'rb')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
-	}
-	file.opened = true
-	return file
-}
-
-// create creates a file at a specified location and returns a writable `File` object.
-pub fn create(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'wb'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'wb')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	file.opened = true
-	return file
-}
-
 pub fn open_append(path string) ?File {
 	mut file := File{}
 	$if windows {
@@ -333,10 +291,6 @@ pub fn open_append(path string) ?File {
 	return file
 }
 
-pub fn (f mut File) write(s string) {
-	C.fputs(s.str, f.cfile)
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-}
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
@@ -350,17 +304,6 @@ pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
 	C.fseek(f.cfile, 0, C.SEEK_END)
 }
 
-pub fn (f mut File) writeln(s string) {
-	if !f.opened {
-		return
-	}
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-	// ss := s.clone()
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	// ss.free()
-	C.fputs('\n', f.cfile)
-}
 
 pub fn (f mut File) flush() {
 	if !f.opened {
@@ -374,6 +317,10 @@ pub fn (f mut File) close() {
 		return
 	}
 	f.opened = false
+	$if linux {
+		C.syscall(sys_close, f.fd)
+		return
+	}
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }

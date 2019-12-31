@@ -128,6 +128,51 @@ pub fn is_dir(path string) bool {
 }
 */
 
+pub fn open(path string) ?File {
+	mut file := File{}
+	wpath := path.to_wide()
+	mode := 'rb'
+	file = File{
+		cfile: C._wfopen(wpath, mode.to_wide())
+	}
+	if isnil(file.cfile) {
+		return error('failed to open file "$path"')
+	}
+	file.opened = true
+	return file
+}
+
+
+
+// create creates a file at a specified location and returns a writable `File` object.
+pub fn create(path string) ?File {
+	wpath := path.replace('/', '\\').to_wide()
+	mode := 'wb'
+	file := File{
+		cfile: C._wfopen(wpath, mode.to_wide())
+		opened: true
+	}
+	if isnil(file.cfile) {
+		return error('failed to create file "$path"')
+	}
+	return file
+}
+
+pub fn (f mut File) write(s string) {
+	if !f.opened {
+		return
+	}
+	C.fputs(s.str, f.cfile)
+}
+
+pub fn (f mut File) writeln(s string) {
+	if !f.opened {
+		return
+	}
+	// TODO perf
+	C.fputs(s.str, f.cfile)
+	C.fputs('\n', f.cfile)
+}
 
 
 // mkdir creates a new directory with the specified path.
