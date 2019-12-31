@@ -15,6 +15,7 @@ import (
 
 struct Parser {
 	scanner     &scanner.Scanner
+	file_name   string
 mut:
 	tok         token.Token
 	peek_tok    token.Token
@@ -46,6 +47,9 @@ pub fn (p mut Parser) get_type() types.Type {
 		}
 		'string' {
 			return types.string_type
+		}
+		'voidptr' {
+			return types.voidptr_type
 		}
 		else {
 			typ := p.table.types[p.tok.lit]
@@ -86,10 +90,13 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
 		mut stmts := []ast.Stmt
-		text := os.read_file(path) or { panic(err) }
+		text := os.read_file(path) or {
+			panic(err)
+		}
 		mut p := Parser{
 			scanner: scanner.new_scanner(text)
 			table: table
+			file_name: path
 		}
 		p.read_first_token()
 		for {
@@ -118,6 +125,7 @@ pub fn (p mut Parser) read_first_token() {
 }
 
 pub fn (p mut Parser) parse_block() []ast.Stmt {
+	p.check(.lcbr)
 	mut stmts := []ast.Stmt
 	for {
 		// res := s.scan()
@@ -127,7 +135,7 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 		// println('expr at ' + p.tok.str())
 		stmts << p.stmt()
 	}
-	p.next()
+	p.check(.rcbr)
 	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
@@ -169,6 +177,29 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		.key_import {
 			return p.import_stmt()
+		}
+		.key_pub {
+			match p.peek_tok.kind {
+				.key_fn {
+					return p.fn_decl()
+				}
+				.key_struct, .key_union, .key_interface {
+					return p.struct_decl()
+				}
+				else {
+					p.error('wrong pub keyword usage')
+					return ast.Stmt{}
+				}
+	}
+			// .key_const {
+			// return p.const_decl()
+			// }
+			// .key_enum {
+			// return p.enum_decl()
+			// }
+			// .key_type {
+			// return p.type_decl()
+			// }
 		}
 		.key_fn {
 			return p.fn_decl()
@@ -220,7 +251,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 }
 
 pub fn (p &Parser) error(s string) {
-	println(term.bold(term.red('x.v:$p.tok.line_nr: $s')))
+	println(term.bold(term.red('$p.file_name:$p.tok.line_nr: $s')))
 	exit(1)
 }
 
@@ -292,6 +323,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 					p.check(.colon)
 					// expr,field_type := p.expr(0)
 					expr,_ := p.expr(0)
+					// if !types.check(   ,field_type
 					exprs << expr
 				}
 				node = ast.StructInit{
@@ -337,17 +369,17 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		}
 		else {
 			if p.tok.is_unary() {
-					pt := p.tok
-					p.next()
-					expr,t2 := p.expr(token.lowest_prec)
-					node = ast.UnaryExpr{
-						left: expr
-						op: pt.kind
-					}
-					typ = t2
+				pt := p.tok
+				p.next()
+				expr,t2 := p.expr(token.lowest_prec)
+				node = ast.UnaryExpr{
+					left: expr
+					op: pt.kind
+				}
+				typ = t2
 			}
 			else {
-				verror('!unknown token ' + p.tok.str())
+				p.error('!unknown token ' + p.tok.str())
 			}
 		}
 	}
@@ -378,21 +410,22 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 					left: node
 					op: prev_tok.kind
 				}
-			} else {
+			}
+			else {
 				mut expr := ast.Expr{}
 				expr,t2 = p.expr(prev_tok.precedence() - 1)
 				if prev_tok.is_relational() {
 					typ = types.bool_type
 				}
 				else {
-					typ = t2 
+					typ = t2
 				}
 				// println(t2.name + '222')
 				node = ast.BinaryExpr{
 					left: node
 					op: prev_tok.kind
 					right: expr
-				}	
+				}
 			}
 		}
 	}
@@ -405,7 +438,6 @@ fn (p mut Parser) for_statement() ast.ForStmt {
 	if !types.check(types.bool_type, typ) {
 		p.error('non-bool used as for condition')
 	}
-	p.check(.lcbr)
 	stmts := p.parse_block()
 	return ast.ForStmt{
 		cond: cond
@@ -420,11 +452,17 @@ fn (p mut Parser) if_expr() (ast.Expr,types.Type) {
 	if !types.check(types.bool_type, typ) {
 		p.error('non-bool used as if condition')
 	}
-	p.check(.lcbr)
 	stmts := p.parse_block()
+	mut else_stmts := []ast.Stmt
+	if p.tok.kind == .key_else {
+		println('GOT ELSE')
+		p.check(.key_else)
+		else_stmts = p.parse_block()
+	}
 	node = ast.IfExpr{
 		cond: cond
 		stmts: stmts
+		else_stmts: else_stmts
 	}
 	return node,types.void_type
 }
@@ -495,17 +533,27 @@ fn (p mut Parser) module_decl() ast.Module {
 }
 
 fn (p mut Parser) import_stmt() ast.Import {
-	// p.check(.key_import)
-	p.next()
-	return ast.Import{}
+	p.check(.key_import)
+	name := p.check_name()
+	return ast.Import{
+		mods: [name]
+	}
 }
 
 fn (p mut Parser) struct_decl() ast.StructDecl {
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
 	p.check(.key_struct)
 	name := p.check_name()
 	p.check(.lcbr)
 	mut fields := []ast.Field
 	for p.tok.kind != .rcbr {
+		if p.tok.kind == .key_pub {
+			p.check(.key_pub)
+			p.check(.colon)
+		}
 		field_name := p.check_name()
 		typ := p.get_type()
 		fields << ast.Field{
@@ -519,6 +567,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	})
 	return ast.StructDecl{
 		name: name
+		is_pub: is_pub
 		fields: fields
 	}
 }
@@ -543,6 +592,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			typ: typ
 			name: arg_name
 		}
+		if p.tok.kind != .rpar {
+			p.check(.comma)
+		}
 	}
 	p.check(.rpar)
 	// Return type
@@ -551,7 +603,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		typ = p.get_type()
 		p.return_type = typ
 	}
-	p.check(.lcbr)
 	p.table.register_fn(table.Fn{
 		name: name
 		args: args
@@ -602,7 +653,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		typ: t
 	}
 }

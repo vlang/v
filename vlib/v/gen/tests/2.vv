@@ -10,9 +10,18 @@ struct User {
 	name string
 }
 
+fn init_user() {
+	user := User{
+		name: 'Bob'
+	}
+}
+
+fn puts(s string) {}
+
 // comment
 fn function2() {
 	mut x := 0
+	//mut negative := -1
 	f := 10.1
 	s := 'hi'
 	mut m := 10
@@ -29,8 +38,12 @@ fn function2() {
 	if false {
 		foo(1)
 	}
+	else {
+		puts('else')
+		foo(100)
+	}
 	for true {
-		foo(0)
+		init_user()
 	}
 	e := 1 + 2 > 0
 	e2 := 1 + 2 < 0
@@ -38,11 +51,6 @@ fn function2() {
 	j := 0
 }
 
-fn init_user() {
-	user := User{
-		name: 'Bob'
-	}
-}
 
 fn init_array() {
 	nums := [1,2,3]

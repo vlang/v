@@ -11,6 +11,15 @@ typedef struct {
 	string name;
 } User;
 
+void init_user() {
+	User user = (User){
+		.name = tos3("Bob"),
+	};
+}
+
+void puts(string s) {
+}
+
 void function2() {
 	int x = 0;
 	f64 f = 10.1;
@@ -27,18 +36,16 @@ void function2() {
 	if (false) {
 		foo(1);
 	}
+	else {
+		puts(tos3("else"));
+		foo(100);
+	}
 	while (true) {
-		foo(0);
+		init_user();
 	}
 	bool e = 1 + 2 > 0;
 	bool e2 = 1 + 2 < 0;
 	int j = 0;
-}
-
-void init_user() {
-	User user = (User){
-		.name = tos3("Bob"),
-	};
 }
 
 void init_array() {

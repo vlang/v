@@ -356,6 +356,7 @@ fn (p mut Parser) name_expr() string {
 		}
 		// Color.green
 		else if p.peek() == .dot {
+			is_arr_start := p.prev_tok == .lsbr
 			enum_type := p.table.find_type(name)
 			if enum_type.cat != .enum_ {
 				p.error('`$name` is not an enum')
@@ -366,7 +367,7 @@ fn (p mut Parser) name_expr() string {
 			if !enum_type.has_enum_val(val) {
 				p.error('enum `$enum_type.name` does not have value `$val`')
 			}
-			if p.expected_type == enum_type.name {
+			if p.expected_type == enum_type.name && !is_arr_start {
 				// `if color == .red` is enough
 				// no need in `if color == Color.red`
 				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
