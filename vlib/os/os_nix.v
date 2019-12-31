@@ -6,14 +6,6 @@ pub const (
 	path_separator = '/'
 )
 
-pub const (
-	sys_write = 1
-	sys_open = 2
-	sys_close = 3
-	sys_mkdir = 83
-	sys_creat = 85
-)
-
 const (
 	stdin_value = 0
 	stdout_value = 1
@@ -77,6 +69,7 @@ pub fn is_dir(path string) bool {
 
 pub fn open(path string) ?File {
 	$if linux {
+	//$if linux_or_macos {
 		fd := C.syscall(sys_open, path.str, 511)
 		if fd == -1 {
 			return error('failed to open file "$path"')
@@ -103,8 +96,16 @@ pub fn open(path string) ?File {
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
 	$if linux {
-		fd := C.syscall(sys_creat, path.str, 511)
-		//////println('Fd=$fd')
+	//$if linux_or_macos {
+		mut fd := 0
+		println('creat SYS')
+		$if macos {
+			fd = C.syscall(sys_open_nocancel, path.str, 0x601, 0x1b6)
+		}
+		$else {
+			fd = C.syscall(sys_creat, path.str, 511)
+		}
+		println('fd=$fd')
 		if fd == -1 {
 			return error('failed to create file "$path"')
 		}
@@ -134,6 +135,7 @@ pub fn (f mut File) write(s string) {
 		return
 	}
 	$if linux {
+	//$if linux_or_macos {
 		C.syscall(sys_write, f.fd, s.str, s.len)
 		return
 	}
@@ -146,6 +148,7 @@ pub fn (f mut File) writeln(s string) {
 	if !f.opened {
 		return
 	}
+	//$if linux_or_macos {
 	$if linux {
 		snl := s + '\n'
 		C.syscall(sys_write, f.fd, snl.str, snl.len)

@@ -79,6 +79,7 @@ struct C.tm {
 	tm_hour int
 	tm_min  int
 	tm_sec  int
+	tm_gmtoff int // seconds
 }
 
 fn C.time(int) C.time_t
@@ -106,7 +107,7 @@ pub fn convert_ctime(t tm) Time {
 		minute: t.tm_min
 		second: t.tm_sec
 		unix: C.mktime(&t)
-	}
+	}.add_seconds(t.tm_gmtoff)
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM:SS in

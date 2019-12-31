@@ -330,6 +330,7 @@ pub fn (f mut File) close() {
 	}
 	f.opened = false
 	$if linux {
+	//$if linux_or_macos {
 		C.syscall(sys_close, f.fd)
 		return
 	}

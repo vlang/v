@@ -22,14 +22,12 @@ fn test_is_leap_year() {
 }
 
 fn test_now_format() {
-	/*
 	t := time.now()
-	u:=t.uni
+	u:=t.unix
 	println(u)
 	println(t.format())
 	println(time.unix(u).format())
 	assert t.format() == time.unix(u).format()
-	*/
 }
 
 fn check_days_in_month(month, year, expected int) bool {
@@ -97,18 +95,6 @@ fn test_unix() {
 	assert t6.hour == 6
 	assert t6.minute == 9
 	assert t6.second == 29
-}
-
-fn test_unix2() {
-	/*
-	println(t.year)
-	assert t.year == 2019
-	assert t.month == 12
-	assert t.day == 31
-	assert t.hour == 8
-	assert t.minute == 9
-	assert t.second == 53
-	*/
 }
 
 fn test_format_ss() {

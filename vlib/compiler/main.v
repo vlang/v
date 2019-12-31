@@ -31,7 +31,7 @@ enum BuildMode {
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'js', 'solaris', 'haiku']
+		'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
 enum OS {
@@ -1280,6 +1280,9 @@ pub fn os_from_string(os string) OS {
 		}
 		'haiku' {
 			return .haiku
+		}
+		'linux_or_macos' {
+			return .linux
 		}
 		else {
 			panic('bad os $os')

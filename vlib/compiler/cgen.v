@@ -54,7 +54,7 @@ fn new_cgen(out_name_c string) &CGen {
 		out_path: path
 		out: out
 		// buf: strings.new_builder(10000)
-		
+
 		lines: make(0, 1000, sizeof(string))
 	}
 	return gen
@@ -346,6 +346,9 @@ fn os_name_to_ifdef(name string) string {
 		}
 		'haiku' {
 			return '__haiku__'
+		}
+		'linux_or_macos' {
+			return ''
 		}
 		else {
 			verror('bad os ifdef name "$name"')

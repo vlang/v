@@ -27,15 +27,21 @@ fn (p mut Parser) comp_time() {
 			if name == 'mac' {
 				p.warn('use `macos` instead of `mac`')
 			}
+
 			if not {
 				p.genln('#ifndef $ifdef_name')
 			}
 			else {
-				p.genln('#ifdef $ifdef_name')
+				if name == 'linux_or_macos' {
+					p.genln('#if defined(__linux) || defined(__APPLE__)')
+				} else {
+					p.genln('#ifdef $ifdef_name')
+				}
 			}
 			p.check(.lcbr)
 			os := os_from_string(name)
-			if ((!not && os != p.os) || (not && os == p.os)) && !p.scanner.is_fmt && !p.pref.output_cross_c {
+			if ((!not && os != p.os) || (not && os == p.os)) && !name.contains('_or_') &&
+				 !p.scanner.is_fmt && !p.pref.output_cross_c {
 				// `$if os {` for a different target, skip everything inside
 				// to avoid compilation errors (like including <windows.h>
 				// on non-Windows systems)
