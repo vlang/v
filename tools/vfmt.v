@@ -30,6 +30,7 @@ const (
 	['solaris', '_solaris.v'],
 	['haiku', '_haiku.v'],
 	]
+	FORMATTED_FILE_TOKEN = '\@\@\@' + 'FORMATTED_FILE: '
 )
 
 fn main() {
@@ -96,13 +97,31 @@ fn main() {
 		if foptions.is_verbose {
 			eprintln('vfmt worker_cmd: $worker_cmd')
 		}
-		cmdcode := os.system(worker_cmd)
-		if cmdcode != 0 {
-			if cmdcode == 1 {
+		worker_result := os.exec(worker_cmd) or {
+			errors++
+			continue
+		}
+		if worker_result.exit_code != 0 {
+			eprintln(worker_result.output)
+			if worker_result.exit_code == 1 {
 				eprintln('vfmt error while formatting file: $file .')
 			}
 			errors++
+			continue
 		}
+		if worker_result.output.len > 0 {
+			if worker_result.output.contains(FORMATTED_FILE_TOKEN) {
+				wresult := worker_result.output.split(FORMATTED_FILE_TOKEN)
+				formatted_warn_errs := wresult[0]
+				formatted_file_path := wresult[1]
+				foptions.post_process_file(fpath, formatted_file_path)
+				if formatted_warn_errs.len > 0 {
+					eprintln(formatted_warn_errs)
+				}
+				continue
+			}
+		}
+		errors++
 	}
 	if errors > 0 {
 		eprintln('Encountered a total of: ${errors} errors.')
@@ -160,6 +179,10 @@ fn (foptions &FormatOptions) format_file(file string) {
 			os.rm(cfile)
 		}
 	}
+	eprintln('${FORMATTED_FILE_TOKEN}${formatted_file_path}')
+}
+
+fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
 	if formatted_file_path.len == 0 {
 		return
 	}
@@ -205,9 +228,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		}
 		return
 	}
-	else {
-		print(formatted_fc)
-	}
+	print(formatted_fc)
 }
 
 fn usage() {
