@@ -32,7 +32,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	uni    int // TODO it's safe to use "unix" now
+	unix   int
 }
 
 pub enum FormatTime {
@@ -92,90 +92,9 @@ pub fn now() Time {
 }
 
 pub fn random() Time {
-	now_unix := now().uni
+	now_unix := now().unix
 	rand_unix := rand.next(now_unix)
 	return time.unix(rand_unix)
-}
-
-// Based on Go's time package.
-// Copyright 2009 The Go Authors.
-pub fn unix(abs int) Time {
-	// Split into time and day.
-	mut d := abs / seconds_per_day
-	// Account for 400 year cycles.
-	mut n := d / days_per_400_years
-	mut y := 400 * n
-	d -= days_per_400_years * n
-	// Cut off 100-year cycles.
-	// The last cycle has one extra leap year, so on the last day
-	// of that year, day / days_per_100_years will be 4 instead of 3.
-	// Cut it back down to 3 by subtracting n>>2.
-	n = d / days_per_100_years
-	n -= n>>2
-	y += 100 * n
-	d -= days_per_100_years * n
-	// Cut off 4-year cycles.
-	// The last cycle has a missing leap year, which does not
-	// affect the computation.
-	n = d / days_per_4_years
-	y += 4 * n
-	d -= days_per_4_years * n
-	// Cut off years within a 4-year cycle.
-	// The last year is a leap year, so on the last day of that year,
-	// day / 365 will be 4 instead of 3. Cut it back down to 3
-	// by subtracting n>>2.
-	n = d / 365
-	n -= n>>2
-	y += n
-	d -= 365 * n
-	yday := d
-	mut day := yday
-	year := abs / int(3.154e+7) + 1970 // int(i64(y) + absolute_zero_year)
-	hour := (abs % seconds_per_day) / seconds_per_hour
-	minute := (abs % seconds_per_hour) / seconds_per_minute
-	second := (abs % seconds_per_minute)
-	if is_leap_year(year) {
-		// Leap year
-		if day > 31 + 29 - 1 {
-			// After leap day; pretend it wasn't there.
-			day--
-		}
-		else if day == 31 + 29 - 1 {
-			// Leap day.
-			day = 29
-			return Time{
-				year: year
-				month: 2
-				day: day
-				hour: hour
-				minute: minute
-				second: second
-			}
-		}
-	}
-	// Estimate month on assumption that every month has 31 days.
-	// The estimate may be too low by at most one month, so adjust.
-	mut month := day / 31
-	mut begin := 0
-	end := (days_before[month + 1])
-	if day >= end {
-		month++
-		begin = end
-	}
-	else {
-		begin = (days_before[month])
-	}
-	month++ // because January is 1
-	day = day - begin + 1
-	return Time{
-		year: year
-		month: month
-		day: day
-		hour: hour
-		minute: minute
-		second: second
-		uni: abs
-	}
 }
 
 pub fn convert_ctime(t tm) Time {
@@ -186,7 +105,7 @@ pub fn convert_ctime(t tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		uni: C.mktime(&t)
+		unix: C.mktime(&t)
 	}
 }
 
@@ -337,15 +256,28 @@ pub fn parse_iso(s string) Time {
 }
 
 pub fn new_time(t Time) Time {
+	return Time{
+		year: t.year,
+		month: t.month,
+		day: t.day,
+		hour: t.hour,
+		minute: t.minute,
+		second: t.second,
+		unix: t.calc_unix()
+	}
+
+	//TODO: Use the syntax below when it works with reserved keywords like `unix`
+	/*
 	return {
 		t |
-		uni:t.calc_unix()
+		unix:t.calc_unix()
 	}
+	*/
 }
 
 pub fn (t &Time) calc_unix() int {
-	if t.uni != 0 {
-		return t.uni
+	if t.unix != 0 {
+		return t.unix
 	}
 	tt := C.tm{
 		tm_sec: t.second
@@ -360,11 +292,11 @@ pub fn (t &Time) calc_unix() int {
 
 // TODO add(d time.Duration)
 pub fn (t Time) add_seconds(seconds int) Time {
-	return unix(t.uni + seconds)
+	return unix(t.unix + seconds)
 }
 
 pub fn (t Time) add_days(days int) Time {
-	return unix(t.uni + days * 3600 * 24)
+	return unix(t.unix + days * 3600 * 24)
 }
 
 // TODO use time.Duration instead of seconds
@@ -374,7 +306,7 @@ fn since(t Time) int {
 
 pub fn (t Time) relative() string {
 	now := time.now()
-	secs := now.uni - t.uni
+	secs := now.unix - t.unix
 	if secs <= 30 {
 		// right now or in the future
 		// TODO handle time in the future
