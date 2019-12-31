@@ -75,9 +75,9 @@ pub fn new_scanner(text string) &Scanner {
 	}
 }
 
-fn (s &Scanner) scan_res(tok token.TokenKind, lit string) token.Token {
+fn (s &Scanner) scan_res(tok_kind token.Kind, lit string) token.Token {
 	return token.Token{
-		tok,lit,s.line_nr + 1}
+		tok_kind,lit,s.line_nr + 1}
 }
 
 fn (s mut Scanner) ident_name() string {

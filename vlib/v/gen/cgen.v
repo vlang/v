@@ -112,8 +112,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.val)
 		}
 		ast.UnaryExpr {
-			g.expr(it.left)
-			g.write(it.op.str())
+			// probably not :D
+			if it.op in [.inc, .dec] {
+				g.expr(it.left)
+				g.write(it.op.str())
+			} else {
+				g.write(it.op.str())
+				g.expr(it.left)
+			}
 		}
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')

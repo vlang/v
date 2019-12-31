@@ -138,7 +138,7 @@ fn (p mut Parser) next() {
 	// println(p.tok.str())
 }
 
-fn (p mut Parser) check(expected token.TokenKind) {
+fn (p mut Parser) check(expected token.Kind) {
 	if p.tok.kind != expected {
 		s := 'syntax error: unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`'
 		p.error(s)
@@ -290,7 +290,8 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 					field_name := p.check_name()
 					field_names << field_name
 					p.check(.colon)
-					expr,field_type := p.expr(0)
+					// expr,field_type := p.expr(0)
+					expr,_ := p.expr(0)
 					exprs << expr
 				}
 				node = ast.StructInit{
@@ -329,15 +330,21 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			node,typ = p.if_expr()
 		}
 		.lpar {
-			node,typ = p.expr(0)
+			p.check(.lpar)
+			p.next()
+			node,typ = p.expr(token.lowest_prec)
 			p.check(.rpar)
 		}
 		else {
 			if p.tok.is_unary() {
-				expr,_ := p.expr(token.highest_prec)
-				node = ast.UnaryExpr{
-					left: expr
-				}
+					pt := p.tok
+					p.next()
+					expr,t2 := p.expr(token.lowest_prec)
+					node = ast.UnaryExpr{
+						left: expr
+						op: pt.kind
+					}
+					typ = t2
 			}
 			else {
 				verror('!unknown token ' + p.tok.str())
@@ -373,8 +380,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				}
 			} else {
 				mut expr := ast.Expr{}
-				expr,t2 = p.expr(prev_tok.precedence())
-				op := prev_tok.kind
+				expr,t2 = p.expr(prev_tok.precedence() - 1)
 				if prev_tok.is_relational() {
 					typ = types.bool_type
 				}
