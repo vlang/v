@@ -10,7 +10,7 @@ import (
 fn test_scan() {
 	text := 'println(2 + 3)'
 	mut scanner := new_scanner(text)
-	mut token_kinds := []token.TokenKind
+	mut token_kinds := []token.Kind
 	for {
 		tok := scanner.scan()
 		if tok.kind == .eof {
