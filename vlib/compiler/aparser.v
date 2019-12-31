@@ -658,7 +658,9 @@ fn (p mut Parser) import_statement() {
 	}
 	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
+		p.fspace()
 		p.check(.key_as)
+		p.fspace()
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
