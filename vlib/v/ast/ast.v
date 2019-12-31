@@ -132,15 +132,15 @@ pub:
 pub struct Ident {
 pub:
 	name     string
-	tok_kind token.TokenKind
+	tok_kind token.Kind
 	value    string
 }
 
 pub struct BinaryExpr {
 pub:
-// tok_kind token.TokenKind
+// tok_kind token.Kind
 // op    BinaryOp
-	op    token.TokenKind
+	op    token.Kind
 	left  Expr
 	// left_type Type
 	right Expr
@@ -149,15 +149,15 @@ pub:
 
 pub struct UnaryExpr {
 pub:
-// tok_kind token.TokenKind
+// tok_kind token.Kind
 // op    BinaryOp
-	op   token.TokenKind
+	op   token.Kind
 	left Expr
 }
 
 pub struct IfExpr {
 pub:
-	tok_kind token.TokenKind
+	tok_kind token.Kind
 	cond     Expr
 	stmts    []Stmt
 	else_    []Stmt
@@ -170,7 +170,7 @@ pub:
 }
 
 pub struct ReturnStmt {
-	tok_kind token.TokenKind // or pos
+	tok_kind token.Kind // or pos
 	results  []Expr
 }
 
@@ -178,7 +178,7 @@ pub struct AssignStmt {
 pub:
 	left  Expr
 	right Expr
-	op    token.TokenKind
+	op    token.Kind
 }
 
 pub struct ArrayInit {
