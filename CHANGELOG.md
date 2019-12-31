@@ -8,14 +8,14 @@ The last release before 0.2.
 - Sum types (`type Expr = IfExpr | MatchExpr | IntegerLiteral`).
 - B-tree map (sped up the V compiler by ~10%).
 - `v fmt -w`.
-- The entire code base was formatted with vfmt.
+- The entire code base has been formatted with vfmt.
 - Generic structs.
 - SDL module.
 - Arrays of pointers.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: building a simple web application with vweb.
+- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md).
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.
