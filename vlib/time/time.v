@@ -32,7 +32,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	uni    int // TODO it's safe to use "unix" now
+	unix   int
 }
 
 pub enum FormatTime {
@@ -92,7 +92,7 @@ pub fn now() Time {
 }
 
 pub fn random() Time {
-	now_unix := now().uni
+	now_unix := now().unix
 	rand_unix := rand.next(now_unix)
 	return time.unix(rand_unix)
 }
@@ -174,7 +174,7 @@ pub fn unix(abs int) Time {
 		hour: hour
 		minute: minute
 		second: second
-		uni: abs
+		unix: abs
 	}
 }
 
@@ -186,7 +186,7 @@ pub fn convert_ctime(t tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		uni: C.mktime(&t)
+		unix: C.mktime(&t)
 	}
 }
 
@@ -337,15 +337,28 @@ pub fn parse_iso(s string) Time {
 }
 
 pub fn new_time(t Time) Time {
+	return Time{
+		year: t.year,
+		month: t.month,
+		day: t.day,
+		hour: t.hour,
+		minute: t.minute,
+		second: t.second,
+		unix: t.calc_unix()
+	}
+
+	//TODO: Use the syntax below when it works with reserved keywords like `unix`
+	/*
 	return {
 		t |
-		uni:t.calc_unix()
+		unix:t.calc_unix()
 	}
+	*/
 }
 
 pub fn (t &Time) calc_unix() int {
-	if t.uni != 0 {
-		return t.uni
+	if t.unix != 0 {
+		return t.unix
 	}
 	tt := C.tm{
 		tm_sec: t.second
@@ -360,11 +373,11 @@ pub fn (t &Time) calc_unix() int {
 
 // TODO add(d time.Duration)
 pub fn (t Time) add_seconds(seconds int) Time {
-	return unix(t.uni + seconds)
+	return unix(t.unix + seconds)
 }
 
 pub fn (t Time) add_days(days int) Time {
-	return unix(t.uni + days * 3600 * 24)
+	return unix(t.unix + days * 3600 * 24)
 }
 
 // TODO use time.Duration instead of seconds
@@ -374,7 +387,7 @@ fn since(t Time) int {
 
 pub fn (t Time) relative() string {
 	now := time.now()
-	secs := now.uni - t.uni
+	secs := now.unix - t.unix
 	if secs <= 30 {
 		// right now or in the future
 		// TODO handle time in the future

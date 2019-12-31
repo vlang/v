@@ -63,7 +63,7 @@ fn test_smonth() {
 
 		t := time.Time {
 			year: 1980, month: month_num, day: 1,
-			hour: 0, minute: 0, second: 0, uni: 0
+			hour: 0, minute: 0, second: 0, unix: 0
 		}
 
 		assert t.smonth() == name
@@ -105,7 +105,7 @@ fn test_day_of_week() {
 		// 2 Dec 2019 is Monday
 		t := time.Time {
 			year: 2019, month: 12, day: 2 + i,
-			hour: 0, minute: 0, second: 0, uni: 0
+			hour: 0, minute: 0, second: 0, unix: 0
 		}
 
 		assert day_of_week == t.day_of_week()
@@ -119,7 +119,7 @@ fn test_weekday_str() {
 		// 2 Dec 2019 is Monday
 		t := time.Time {
 			year: 2019, month: 12, day: 2 + i,
-			hour: 0, minute: 0, second: 0, uni: 0
+			hour: 0, minute: 0, second: 0, unix: 0
 		}
 
 		assert t.weekday_str() == name
