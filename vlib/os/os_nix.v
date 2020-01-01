@@ -68,8 +68,8 @@ pub fn is_dir(path string) bool {
 */
 
 pub fn open(path string) ?File {
-	//$if linux {
-	$if linux_or_macos {
+	$if linux {
+	//$if linux_or_macos {
 		fd := C.syscall(sys_open, path.str, 511)
 		if fd == -1 {
 			return error('failed to open file "$path"')
@@ -95,8 +95,8 @@ pub fn open(path string) ?File {
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	//$if linux {
-	$if linux_or_macos {
+	$if linux {
+	//$if linux_or_macos {
 		mut fd := 0
 		//println('creat SYS')
 		$if macos {
@@ -134,8 +134,8 @@ pub fn (f mut File) write(s string) {
 	if !f.opened {
 		return
 	}
-	//$if linux {
-	$if linux_or_macos {
+	$if linux {
+	//$if linux_or_macos {
 		C.syscall(sys_write, f.fd, s.str, s.len)
 		return
 	}
@@ -148,8 +148,8 @@ pub fn (f mut File) writeln(s string) {
 	if !f.opened {
 		return
 	}
-	$if linux_or_macos {
-	//$if linux {
+	//$if linux_or_macos {
+	$if linux {
 		snl := s + '\n'
 		C.syscall(sys_write, f.fd, snl.str, snl.len)
 		return
