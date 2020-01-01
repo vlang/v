@@ -5,7 +5,7 @@ fn function1() int {
 }
 
 fn foo(a int) {
-	end()
+	//end()
 }
 
 struct User {
