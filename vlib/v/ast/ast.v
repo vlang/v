@@ -8,10 +8,10 @@ import (
 	v.types
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral |
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt |
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
 ForStmt | StructDecl
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -158,9 +158,9 @@ pub:
 
 pub struct IfExpr {
 pub:
-	tok_kind token.Kind
-	cond     Expr
-	stmts    []Stmt
+	tok_kind   token.Kind
+	cond       Expr
+	stmts      []Stmt
 	else_stmts []Stmt
 }
 
@@ -168,6 +168,7 @@ pub struct ForStmt {
 pub:
 	cond  Expr
 	stmts []Stmt
+	is_in bool
 }
 
 pub struct ReturnStmt {

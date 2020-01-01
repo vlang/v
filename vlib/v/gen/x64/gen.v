@@ -43,7 +43,6 @@ enum Size {
 
 pub fn gen(files []ast.File, out_name string) {
 	mut g := Gen{
-		// out: strings.new_builder(100)
 		sect_header_name_pos: 0
 		buf: []
 		out_name: out_name
@@ -58,6 +57,7 @@ pub fn gen(files []ast.File, out_name string) {
 	g.generate_elf_footer()
 }
 
+/*
 pub fn new_gen(out_name string) &Gen {
 	return &Gen{
 		sect_header_name_pos: 0
@@ -65,6 +65,8 @@ pub fn new_gen(out_name string) &Gen {
 		out_name: out_name
 	}
 }
+*/
+
 
 pub fn (g &Gen) pos() i64 {
 	return g.buf.len
@@ -233,6 +235,15 @@ pub fn (g mut Gen) save_main_fn_addr() {
 	g.main_fn_addr = g.buf.len
 }
 
+pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr) {
+	match expr {
+		ast.StringLiteral {
+			g.gen_print(it.val)
+		}
+		else {}
+	}
+}
+
 pub fn (g mut Gen) gen_print(s string) {
 	g.strings << s + '\n'
 	// g.string_addr[s] = str_pos
@@ -306,23 +317,19 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			if it.name == 'main' {
-				g.write('int ${it.name}(')
+			is_main := it.name == 'main'
+			if is_main {
+				g.save_main_fn_addr()
 			}
-			else {
-				g.write('$it.typ.name ${it.name}(')
-			}
-			for arg in it.args {
-				g.write(arg.typ.name + ' ' + arg.name)
-			}
-			g.writeln(') { ')
+			for arg in it.args {}
 			for stmt in it.stmts {
 				g.stmt(stmt)
 			}
-			if it.name == 'main' {
-				g.writeln('return 0;')
+			if is_main {
+				println('end of main: gen exit')
+				g.gen_exit()
 			}
-			g.writeln('}')
+			g.ret()
 		}
 		ast.Return {
 			g.write('return ')
@@ -335,6 +342,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.ForStmt {
+			if it.is_in {}
 			g.write('while (')
 			g.expr(it.cond)
 			g.writeln(') {')
@@ -401,6 +409,11 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('}')
 		}
 		ast.CallExpr {
+			if it.name == 'println' || it.name == 'print' {
+				expr := it.args[0]
+				g.gen_print_from_expr(expr)
+			}
+			/*
 			g.write('${it.name}(')
 			for i, expr in it.args {
 				g.expr(expr)
@@ -409,6 +422,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				}
 			}
 			g.write(')')
+			*/
+
 		}
 		ast.ArrayInit {
 			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.name), {\t')

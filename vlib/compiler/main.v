@@ -420,7 +420,7 @@ pub fn (v mut V) compile_x64() {
 		println('v -x64 can only generate Linux binaries for now')
 		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
 	}
-	v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
+	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.dir
 
 	table := &table.Table{}

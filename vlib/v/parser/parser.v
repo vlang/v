@@ -93,6 +93,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
+		println('parse file "$path"')
 		mut stmts := []ast.Stmt
 		text := os.read_file(path) or {
 			panic(err)
@@ -437,6 +438,24 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 
 fn (p mut Parser) for_statement() ast.ForStmt {
 	p.check(.key_for)
+	// `for i in start .. end`
+	if p.peek_tok.kind == .key_in {
+		var := p.check_name()
+		p.check(.key_in)
+		start := p.tok.lit.int()
+		p.check(.number)
+		p.check(.dotdot)
+		end := p.tok.lit.int()
+		// println('for start=$start $end')
+		p.check(.number)
+		stmts := p.parse_block()
+		// println('nr stmts=$stmts.len')
+		return ast.ForStmt{
+			stmts: stmts
+			is_in: true
+		}
+	}
+	// `for cond {`
 	cond,typ := p.expr(0)
 	if !types.check(types.bool_type, typ) {
 		p.error('non-bool used as for condition')

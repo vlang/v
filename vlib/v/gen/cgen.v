@@ -72,7 +72,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForStmt {
 			g.write('while (')
-			g.expr(it.cond)
+			if !it.is_in {
+				// `for in` loops don't have a condition
+				println('it cond')
+				g.expr(it.cond)
+			}
 			g.writeln(') {')
 			for stmt in it.stmts {
 				g.stmt(stmt)
@@ -116,7 +120,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.op in [.inc, .dec] {
 				g.expr(it.left)
 				g.write(it.op.str())
-			} else {
+			}
+			else {
 				g.write(it.op.str())
 				g.expr(it.left)
 			}
