@@ -72,16 +72,6 @@ fn remove_me_when_c_bug_is_fixed() {
 pub struct C.time_t {
 }
 
-struct C.tm {
-	tm_year int
-	tm_mon  int
-	tm_mday int
-	tm_hour int
-	tm_min  int
-	tm_sec  int
-	tm_gmtoff int // seconds
-}
-
 fn C.time(int) C.time_t
 
 
@@ -96,18 +86,6 @@ pub fn random() Time {
 	now_unix := now().unix
 	rand_unix := rand.next(now_unix)
 	return time.unix(rand_unix)
-}
-
-pub fn convert_ctime(t tm) Time {
-	return Time{
-		year: t.tm_year + 1900
-		month: t.tm_mon + 1
-		day: t.tm_mday
-		hour: t.tm_hour
-		minute: t.tm_min
-		second: t.tm_sec
-		unix: C.mktime(&t)
-	}.add_seconds(t.tm_gmtoff)
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM:SS in
