@@ -62,11 +62,15 @@ pub fn (p mut Parser) get_type() types.Type {
 	}
 }
 
-pub fn parse_file(text string, table &table.Table) ast.File {
+pub fn parse_file(path string, table &table.Table) ast.File {
+	text := os.read_file(path) or {
+		panic(err)
+	}
 	mut stmts := []ast.Stmt
 	mut p := Parser{
 		scanner: scanner.new_scanner(text)
 		table: table
+		file_name: path
 	}
 	p.read_first_token()
 	for {

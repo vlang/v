@@ -4,7 +4,9 @@ fn function1() int {
 	return 0
 }
 
-fn foo(a int) {}
+fn foo(a int) {
+	end()
+}
 
 struct User {
 	name string
@@ -54,6 +56,10 @@ fn function2() {
 
 fn init_array() {
 	nums := [1,2,3]
+
+}
+
+fn end() {
 
 }
 

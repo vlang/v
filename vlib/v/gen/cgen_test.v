@@ -17,14 +17,12 @@ fn test_c_files() {
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
 	for i in 1 .. nr_tests + 1 {
-		text := os.read_file('$vroot/vlib/v/gen/tests/${i}.vv') or {
-			panic(err)
-		}
+		path := '$vroot/vlib/v/gen/tests/${i}.vv'
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
 		table := &table.Table{}
-		program := parser.parse_file(text, table)
+		program := parser.parse_file(path, table)
 		res := gen.cgen([program])
 		if compare_texts(res, ctext) {
 			eprintln('${i}... ' + term.green('OK'))
