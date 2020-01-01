@@ -99,12 +99,14 @@ pub fn create(path string) ?File {
 	//$if linux_or_macos {
 		mut fd := 0
 		//println('creat SYS')
+		/*
 		$if macos {
 			fd = C.syscall(sys_open_nocancel, path.str, 0x601, 0x1b6)
 		}
 		$else {
-			fd = C.syscall(sys_creat, path.str, 511)
-		}
+			*/
+		fd = C.syscall(sys_creat, path.str, 511)
+		//}
 		//println('fd=$fd')
 		if fd == -1 {
 			return error('failed to create file "$path"')
