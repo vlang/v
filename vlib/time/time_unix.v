@@ -88,6 +88,9 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 		estimated_month++
 	}
 	for day_offset <= days_before[estimated_month] {
+		if estimated_month == 0 {
+			break
+		}
 		estimated_month--
 	}
 
