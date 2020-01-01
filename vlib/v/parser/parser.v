@@ -265,27 +265,28 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 	// println('got fn call')
-	fn_name := p.tok.lit
-	f := p.table.find_fn(fn_name) or {
-		p.error('unknown function `$p.tok.lit`')
-		exit(0)
-	}
-	p.check(.name)
+	fn_name := p.check_name()
 	p.check(.lpar)
 	mut args := []ast.Expr
-	for i, arg in f.args {
-		e,typ := p.expr(0)
-		if !types.check(arg.typ, typ) {
-			p.error('cannot used type `$typ.name` as type `$arg.typ.name` in argument to `$fn_name`')
+	if f := p.table.find_fn(fn_name) {
+		for i, arg in f.args {
+			e,typ := p.expr(0)
+			if !types.check(arg.typ, typ) {
+				p.error('cannot use type `$typ.name` as type `$arg.typ.name` in argument to `$fn_name`')
+			}
+			args << e
+			if i < f.args.len - 1 {
+				p.check(.comma)
+			}
 		}
-		args << e
-		if i < f.args.len - 1 {
-			p.check(.comma)
+		if p.tok.kind == .comma {
+			p.error('too many arguments in call to `$fn_name`')
 		}
 	}
-	if p.tok.kind == .comma {
-		p.error('too many arguments in call to `$fn_name`')
-	}
+	// else{
+	// p.error('unknown function `$fn_name`')
+	// }
+	// exit(0)
 	p.check(.rpar)
 	node := ast.CallExpr{
 		name: fn_name

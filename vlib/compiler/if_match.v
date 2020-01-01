@@ -265,6 +265,12 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 		p.statements()
 		p.close_scope()
 		p.returns = false
+		if p.tok == .key_else {
+			p.next()
+			p.genln('else {')
+			p.check(.lcbr)
+			p.statements()
+		}
 		return 'void'
 	}
 	else {
