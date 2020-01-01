@@ -120,7 +120,7 @@ jobs:
     - name: Freestanding
       run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: x64 machine code generation
-      run: cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
+      run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
 
 
   ubuntu-prebuilt:
