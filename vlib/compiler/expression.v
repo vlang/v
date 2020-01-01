@@ -63,7 +63,9 @@ fn (p mut Parser) bool_expression() string {
 	// `as` cast
 	// TODO remove copypasta
 	if p.tok == .key_as {
+		p.fspace()
 		p.next()
+		p.fspace()
 		cast_typ := p.get_type()
 		if typ == cast_typ {
 			p.warn('casting `$typ` to `$cast_typ` is not needed')

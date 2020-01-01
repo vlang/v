@@ -34,34 +34,6 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn (p mut Parser) get_type() types.Type {
-	defer {
-		p.next()
-	}
-	match p.tok.lit {
-		'int' {
-			return types.int_type
-		}
-		'f64' {
-			return types.f64_type
-		}
-		'string' {
-			return types.string_type
-		}
-		'voidptr' {
-			return types.voidptr_type
-		}
-		else {
-			typ := p.table.types[p.tok.lit]
-			if isnil(typ.name.str) || typ.name == '' {
-				p.error('undefined type `$p.tok.lit`')
-			}
-			println('RET Typ $typ.name')
-			return typ
-		}
-	}
-}
-
 pub fn parse_file(path string, table &table.Table) ast.File {
 	text := os.read_file(path) or {
 		panic(err)
@@ -121,6 +93,33 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 		}
 	}
 	return files
+}
+
+pub fn (p mut Parser) parse_type() types.Type {
+	defer {
+		p.next()
+	}
+	match p.tok.lit {
+		'int' {
+			return types.int_type
+		}
+		'f64' {
+			return types.f64_type
+		}
+		'string' {
+			return types.string_type
+		}
+		'voidptr' {
+			return types.voidptr_type
+		}
+		else {
+			typ := p.table.types[p.tok.lit]
+			if isnil(typ.name.str) || typ.name == '' {
+				p.error('undefined type `$p.tok.lit`')
+			}
+			return typ
+		}
+	}
 }
 
 pub fn (p mut Parser) read_first_token() {
@@ -268,6 +267,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 	// println('got fn call')
 	fn_name := p.check_name()
 	p.check(.lpar)
+	mut is_unknown := false
 	mut args := []ast.Expr
 	if f := p.table.find_fn(fn_name) {
 		for i, arg in f.args {
@@ -284,12 +284,23 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 			p.error('too many arguments in call to `$fn_name`')
 		}
 	}else{
-		p.error('unknown function `$fn_name`')
+		is_unknown = true
+		p.warn('unknown function `$fn_name`')
+		for p.tok.kind != .rpar {
+			p.expr(0)
+			if p.tok.kind != .rpar {
+				p.check(.comma)
+			}
+		}
 	}
 	p.check(.rpar)
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
+		is_unknown: is_unknown
+	}
+	if is_unknown {
+		p.table.unknown_calls << node
 	}
 	return node,types.int_type
 }
@@ -317,7 +328,8 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			}
 			// struct init
 			else if p.peek_tok.kind == .lcbr {
-				typ = p.get_type()
+				typ = p.parse_type()
+				// println('sturct init typ=$typ.name')
 				p.check(.lcbr)
 				mut field_names := []string
 				mut exprs := []ast.Expr
@@ -342,7 +354,12 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				node = ast.Ident{
 					name: p.tok.lit
 				}
-				typ = types.int_type
+				var := p.table.find_var(p.tok.lit) or {
+					p.error('unknown variable `$p.tok.lit`')
+					exit(0)
+				}
+				typ = var.typ
+				// ///typ = types.int_type
 				p.next()
 			}
 		}
@@ -577,7 +594,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			p.check(.colon)
 		}
 		field_name := p.check_name()
-		typ := p.get_type()
+		typ := p.parse_type()
 		fields << ast.Field{
 			name: field_name
 			typ: typ
@@ -605,7 +622,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut ast_args := []ast.Arg
 	for p.tok.kind != .rpar {
 		arg_name := p.check_name()
-		typ := p.get_type()
+		typ := p.parse_type()
 		args << table.Var{
 			name: arg_name
 			typ: typ
@@ -622,7 +639,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// Return type
 	mut typ := types.void_type
 	if p.tok.kind == .name {
-		typ = p.get_type()
+		typ = p.parse_type()
 		p.return_type = typ
 	}
 	p.table.register_fn(table.Fn{
@@ -642,7 +659,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	p.next()
 	expr,t := p.expr(0)
 	if !types.check(p.return_type, t) {
-		p.error('bad ret type')
+		p.error('cannot use `$t.name` as type `$p.return_type.name` in return argument')
 	}
 	return ast.Return{
 		expr: expr
@@ -668,6 +685,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	}
 	p.table.register_var(table.Var{
 		name: name
+		typ: t
 		is_mut: is_mut
 	})
 	// println(p.table.names)

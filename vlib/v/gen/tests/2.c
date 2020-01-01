@@ -17,6 +17,12 @@ void init_user() {
 	};
 }
 
+User get_user() {
+	User user = (User){
+	};
+	return user;
+}
+
 void puts(string s) {
 }
 

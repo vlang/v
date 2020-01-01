@@ -2,14 +2,17 @@ module table
 
 import (
 	v.types
+	v.ast
 )
 
 pub struct Table {
 pub mut:
-	local_vars []Var
+	local_vars    []Var
 	// fns Hashmap
-	fns        map[string]Fn
-	types      map[string]types.Type
+	fns           map[string]Fn
+	types         map[string]types.Type
+	//
+	unknown_calls []ast.CallExpr
 }
 
 pub struct Var {

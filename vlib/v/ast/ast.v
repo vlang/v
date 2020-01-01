@@ -92,8 +92,9 @@ pub:
 
 pub struct CallExpr {
 pub:
-	name string
-	args []Expr
+	name       string
+	args       []Expr
+	is_unknown bool
 }
 
 pub struct Return {

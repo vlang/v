@@ -1,6 +1,7 @@
 fn function1() int {
 	a := 10 + 1
 	b := a + 1
+	//return a
 	return 0
 }
 
@@ -17,6 +18,12 @@ fn init_user() {
 		name: 'Bob'
 	}
 }
+
+fn get_user() User {
+	user := User{}
+	return user
+}
+
 
 fn puts(s string) {}
 
