@@ -282,8 +282,9 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 		if p.tok.kind == .comma {
 			p.error('too many arguments in call to `$fn_name`')
 		}
-		// }else{
-		// p.error('unknown function `$fn_name`')
+		else {
+			p.error('unknown function `$fn_name`')
+		}
 	}
 	p.check(.rpar)
 	node := ast.CallExpr{
