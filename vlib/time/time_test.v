@@ -89,6 +89,14 @@ fn test_unix() {
 	assert t5.hour == 5
 	assert t5.minute == 6
 	assert t5.second == 7
+	
+	t6 := time.unix(1577858969)
+	assert t6.year == 2020
+	assert t6.month == 1
+	assert t6.day == 1
+	assert t6.hour == 6
+	assert t6.minute == 9
+	assert t6.second == 29
 }
 
 fn test_unix2() {
