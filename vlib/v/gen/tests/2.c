@@ -54,6 +54,11 @@ void init_array() {
 	});
 }
 
+void end() {
+
+}
+
+
 int main() {
 	return 0;
 }

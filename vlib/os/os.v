@@ -293,16 +293,6 @@ pub fn open_append(path string) ?File {
 	return file
 }
 
-// convert any value to []byte (LittleEndian) and write it
-// for example if we have write(7, 4), "07 00 00 00" gets written
-// write(0x1234, 2) => "34 12"
-pub fn (f mut File) write_bytes(data voidptr, size int) {
-	$if linux {
-		C.syscall(sys_write, f.fd,  data, 1)
-	} $else {
-		C.fwrite(data, 1, size, f.cfile)
-	}
-}
 
 /*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
@@ -322,20 +312,6 @@ pub fn (f mut File) flush() {
 		return
 	}
 	C.fflush(f.cfile)
-}
-
-pub fn (f mut File) close() {
-	if !f.opened {
-		return
-	}
-	f.opened = false
-	$if linux {
-	//$if linux_or_macos {
-		C.syscall(sys_close, f.fd)
-		return
-	}
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.

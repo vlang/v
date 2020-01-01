@@ -340,3 +340,16 @@ pub fn symlink(origin, target string) ?bool {
 	}
 	return error(get_error_msg(int(C.GetLastError())))
 }
+
+pub fn (f mut File) write_bytes(data voidptr, size int) {
+	C.fwrite(data, 1, size, f.cfile)
+}
+
+pub fn (f mut File) close() {
+	if !f.opened {
+		return
+	}
+	f.opened = false
+	C.fflush(f.cfile)
+	C.fclose(f.cfile)
+}
