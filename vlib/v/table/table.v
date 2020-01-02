@@ -28,6 +28,17 @@ pub:
 	args []Var
 }
 
+pub fn new_table() &Table {
+	mut t := &Table{}
+	t.register_type(types.void_type)
+	t.register_type(types.int_type)
+	t.register_type(types.string_type)
+	t.register_type(types.f64_type)
+	t.register_type(types.bool_type)
+	t.register_type(types.voidptr_type)
+	return t
+}
+
 pub fn (t &Table) find_var(name string) ?Var {
 	/*
 	for i in 0 .. p.var_idx {

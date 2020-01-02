@@ -55,6 +55,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		// println(s)
 		stmts << s // p.stmt()
 	}
+	p.check_fn_calls()
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
@@ -86,6 +87,7 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 			// println(s)
 			stmts << s // p.stmt()
 		}
+		p.check_fn_calls()
 		// println('nr stmts = $stmts.len')
 		// println(stmts[0])
 		files << ast.File{
@@ -95,31 +97,14 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	return files
 }
 
+// former get_type()
 pub fn (p mut Parser) parse_type() types.Type {
-	defer {
-		p.next()
+	typ := p.table.types[p.tok.lit]
+	if isnil(typ.name.str) || typ.name == '' {
+		p.error('undefined type `$p.tok.lit`')
 	}
-	match p.tok.lit {
-		'int' {
-			return types.int_type
-		}
-		'f64' {
-			return types.f64_type
-		}
-		'string' {
-			return types.string_type
-		}
-		'voidptr' {
-			return types.voidptr_type
-		}
-		else {
-			typ := p.table.types[p.tok.lit]
-			if isnil(typ.name.str) || typ.name == '' {
-				p.error('undefined type `$p.tok.lit`')
-			}
-			return typ
-		}
-	}
+	p.next()
+	return typ
 }
 
 pub fn (p mut Parser) read_first_token() {
@@ -259,50 +244,13 @@ pub fn (p &Parser) error(s string) {
 	exit(1)
 }
 
-pub fn (p &Parser) warn(s string) {
-	println(term.blue('x.v:$p.tok.line_nr: $s'))
+pub fn (p &Parser) error_at_line(s string, line_nr int) {
+	println(term.bold(term.red('$p.file_name:$line_nr: $s')))
+	exit(1)
 }
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
-	// println('got fn call')
-	fn_name := p.check_name()
-	p.check(.lpar)
-	mut is_unknown := false
-	mut args := []ast.Expr
-	if f := p.table.find_fn(fn_name) {
-		for i, arg in f.args {
-			e,typ := p.expr(0)
-			if !types.check(arg.typ, typ) {
-				p.error('cannot use type `$typ.name` as type `$arg.typ.name` in argument to `$fn_name`')
-			}
-			args << e
-			if i < f.args.len - 1 {
-				p.check(.comma)
-			}
-		}
-		if p.tok.kind == .comma {
-			p.error('too many arguments in call to `$fn_name`')
-		}
-	}else{
-		is_unknown = true
-		p.warn('unknown function `$fn_name`')
-		for p.tok.kind != .rpar {
-			p.expr(0)
-			if p.tok.kind != .rpar {
-				p.check(.comma)
-			}
-		}
-	}
-	p.check(.rpar)
-	node := ast.CallExpr{
-		name: fn_name
-		args: args
-		is_unknown: is_unknown
-	}
-	if is_unknown {
-		p.table.unknown_calls << node
-	}
-	return node,types.int_type
+pub fn (p &Parser) warn(s string) {
+	println(term.blue('x.v:$p.tok.line_nr: $s'))
 }
 
 // Implementation of Pratt Precedence
@@ -608,50 +556,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		name: name
 		is_pub: is_pub
 		fields: fields
-	}
-}
-
-fn (p mut Parser) fn_decl() ast.FnDecl {
-	p.table.clear_vars()
-	p.check(.key_fn)
-	name := p.check_name()
-	// println('fn decl $name')
-	p.check(.lpar)
-	// Args
-	mut args := []table.Var
-	mut ast_args := []ast.Arg
-	for p.tok.kind != .rpar {
-		arg_name := p.check_name()
-		typ := p.parse_type()
-		args << table.Var{
-			name: arg_name
-			typ: typ
-		}
-		ast_args << ast.Arg{
-			typ: typ
-			name: arg_name
-		}
-		if p.tok.kind != .rpar {
-			p.check(.comma)
-		}
-	}
-	p.check(.rpar)
-	// Return type
-	mut typ := types.void_type
-	if p.tok.kind == .name {
-		typ = p.parse_type()
-		p.return_type = typ
-	}
-	p.table.register_fn(table.Fn{
-		name: name
-		args: args
-	})
-	stmts := p.parse_block()
-	return ast.FnDecl{
-		name: name
-		stmts: stmts
-		typ: typ
-		args: ast_args
 	}
 }
 

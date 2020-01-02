@@ -395,7 +395,7 @@ pub fn (v mut V) compile2() {
 		println('all .v files:')
 		println(v.files)
 	}
-	table := &table.Table{}
+	table := table.new_table()
 	files := parser.parse_files(v.files, table)
 	c := gen.cgen(files)
 	println('out: $v.out_name_c')

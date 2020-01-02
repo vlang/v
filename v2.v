@@ -20,9 +20,8 @@ string tos3(char* s) { return (string){ .str = s }; }
 fn main() {
 	path := os.args[1]
 	println('V2 $path')
-	text := os.read_file(path)?
-	table := &table.Table{}
-	program := parser.parse_file(text, table)
+	table := table.new_table()
+	program := parser.parse_file(path, table)
 	res := gen.cgen([program])
 	mut out := os.create('out.c')?
 	out.writeln(cdefs)

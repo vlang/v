@@ -7,12 +7,14 @@ import (
 )
 
 struct Gen {
-	out strings.Builder
+	out         strings.Builder
+	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 }
 
 pub fn cgen(files []ast.File) string {
 	mut g := Gen{
 		out: strings.new_builder(100)
+		definitions: strings.new_builder(100)
 	}
 	for file in files {
 		for stmt in file.stmts {
@@ -20,7 +22,7 @@ pub fn cgen(files []ast.File) string {
 			g.writeln('')
 		}
 	}
-	return g.out.str()
+	return g.definitions.str() + g.out.str()
 }
 
 pub fn (g &Gen) save() {}
@@ -42,20 +44,26 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			if it.name == 'main' {
+			is_main := it.name == 'main'
+			if is_main {
 				g.write('int ${it.name}(')
 			}
 			else {
 				g.write('$it.typ.name ${it.name}(')
+				g.definitions.write('$it.typ.name ${it.name}(')
 			}
 			for arg in it.args {
 				g.write(arg.typ.name + ' ' + arg.name)
+				g.definitions.write(arg.typ.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
+			if !is_main {
+				g.definitions.writeln(');')
+			}
 			for stmt in it.stmts {
 				g.stmt(stmt)
 			}
-			if it.name == 'main' {
+			if is_main {
 				g.writeln('return 0;')
 			}
 			g.writeln('}')

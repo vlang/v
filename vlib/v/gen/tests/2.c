@@ -1,3 +1,13 @@
+int function1();
+void foo(int a);
+void init_user();
+User get_user();
+void puts(string s);
+void function2();
+void init_array();
+void end();
+
+
 int function1() {
 	int a = 10 + 1;
 	int b = a + 1;

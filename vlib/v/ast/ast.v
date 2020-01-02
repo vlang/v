@@ -95,6 +95,7 @@ pub:
 	name       string
 	args       []Expr
 	is_unknown bool
+	tok        token.Token
 }
 
 pub struct Return {

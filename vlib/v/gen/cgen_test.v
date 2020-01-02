@@ -21,7 +21,7 @@ fn test_c_files() {
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
-		table := &table.Table{}
+		table := &table.new_table()
 		program := parser.parse_file(path, table)
 		res := gen.cgen([program])
 		if compare_texts(res, ctext) {
@@ -46,7 +46,7 @@ fn compare_texts(a, b string) bool {
 	for i, line_a in lines_a {
 		line_b := lines_b[i]
 		if line_a.trim_space() != line_b.trim_space() {
-			println(term.red('i=$i a="$line_a" b="$line_b"'))
+			println(term.red('i=$i V="$line_a" C="$line_b"'))
 			// exit(1)
 			return false
 		}
