@@ -35,6 +35,7 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 }
 
 pub fn parse_file(path string, table &table.Table) ast.File {
+	println('parse file "$path"')
 	text := os.read_file(path) or {
 		panic(err)
 	}
@@ -66,33 +67,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
-		println('parse file "$path"')
-		mut stmts := []ast.Stmt
-		text := os.read_file(path) or {
-			panic(err)
-		}
-		mut p := Parser{
-			scanner: scanner.new_scanner(text)
-			table: table
-			file_name: path
-		}
-		p.read_first_token()
-		for {
-			// res := s.scan()
-			if p.tok.kind == .eof {
-				break
-			}
-			// println('expr at ' + p.tok.str())
-			s := p.stmt()
-			// println(s)
-			stmts << s // p.stmt()
-		}
-		p.check_fn_calls()
-		// println('nr stmts = $stmts.len')
-		// println(stmts[0])
-		files << ast.File{
-			stmts: stmts
-		}
+		files << parse_file(path, table)
 	}
 	return files
 }

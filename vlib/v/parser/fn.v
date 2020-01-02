@@ -70,10 +70,12 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	for p.tok.kind != .rpar {
 		arg_name := p.check_name()
 		typ := p.parse_type()
-		args << table.Var{
+		arg := table.Var{
 			name: arg_name
 			typ: typ
 		}
+		args << arg
+		p.table.register_var(arg)
 		ast_args << ast.Arg{
 			typ: typ
 			name: arg_name
@@ -103,12 +105,12 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 }
 
 pub fn (p &Parser) check_fn_calls() {
-	println('CHEKC FN CALLS')
+	println('check fn calls')
 	for call in p.table.unknown_calls {
 		f := p.table.find_fn(call.name) or {
 			p.error_at_line('unknown function `$call.name`', call.tok.line_nr)
 			return
 		}
-		println(call.name)
+		println(f.name)
 	}
 }

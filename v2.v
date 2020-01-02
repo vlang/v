@@ -14,7 +14,7 @@ cdefs = '
 typedef int bool;
 typedef struct { char* str; } string;
 typedef double f64;
-string tos3(char* s) { return (string){ .str = s }; }
+string tos3(char* s) { return (string){ .str = s, len = strlen(s) }; }
 ')
 
 fn main() {
