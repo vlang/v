@@ -22,7 +22,7 @@ fn main() {
 	println('V2 $path')
 	table := table.new_table()
 	program := parser.parse_file(path, table)
-	res := gen.cgen([program])
+	res := gen.cgen([program], table)
 	mut out := os.create('out.c')?
 	out.writeln(cdefs)
 	out.writeln(res)

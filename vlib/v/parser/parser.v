@@ -22,6 +22,7 @@ mut:
 	// vars []string
 	table       &table.Table
 	return_type types.Type
+	is_c        bool
 }
 
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
@@ -74,9 +75,11 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 
 // former get_type()
 pub fn (p mut Parser) parse_type() types.Type {
-	typ := p.table.types[p.tok.lit]
-	if isnil(typ.name.str) || typ.name == '' {
+	typ := p.table.find_type(p.tok.lit) or {
+		// typ := p.table.types[p.tok.lit]
+		// if isnil(typ.name.str) || typ.name == '' {
 		p.error('undefined type `$p.tok.lit`')
+		exit(0)
 	}
 	p.next()
 	return typ
@@ -181,9 +184,10 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			return p.for_statement()
 		}
 		else {
-			expr,_ := p.expr(0)
+			expr,typ := p.expr(0)
 			return ast.ExprStmt{
 				expr: expr
+				typ: typ
 			}
 		}
 	}
@@ -242,7 +246,12 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				return
 			}
 			*/
-
+			if p.tok.lit == 'C' {
+				p.is_c = true
+				println('is c')
+				p.next()
+				p.check(.dot)
+			}
 			// fn call
 			if p.peek_tok.kind == .lpar {
 				x,typ2 := p.call_expr() // TODO `node,typ :=` should work
@@ -330,6 +339,25 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 	// left binding power
 	for rbp < p.tok.precedence() {
 		prev_tok := p.tok
+		if prev_tok.kind == .dot {
+			p.warn('dot prev_tok = $prev_tok.str() typ=$typ.name')
+			p.next()
+			field := p.check_name()
+			mut ok := false
+			for f in typ.fields {
+				if f.name == field {
+					ok = true
+				}
+			}
+			if !ok {
+				p.error('unknown field `${typ.name}.$field`')
+			}
+			node = ast.SelectorExpr{
+				expr: node
+				field: field
+			}
+			return node,typ
+		}
 		p.next()
 		mut t2 := types.Type{}
 		// left denotation (infix / postfix)
@@ -410,23 +438,36 @@ fn (p mut Parser) for_statement() ast.ForStmt {
 fn (p mut Parser) if_expr() (ast.Expr,types.Type) {
 	mut node := ast.Expr{}
 	p.check(.key_if)
-	cond,typ := p.expr(0)
-	if !types.check(types.bool_type, typ) {
+	cond,cond_type := p.expr(0)
+	if !types.check(types.bool_type, cond_type) {
 		p.error('non-bool used as if condition')
 	}
 	stmts := p.parse_block()
 	mut else_stmts := []ast.Stmt
 	if p.tok.kind == .key_else {
-		println('GOT ELSE')
+		// println('GOT ELSE')
 		p.check(.key_else)
 		else_stmts = p.parse_block()
+	}
+	mut typ := types.void_type
+	// mut left := ast.Expr{}
+	match stmts[stmts.len - 1] {
+		ast.ExprStmt {
+			typ = it.typ
+			// return node,it.typ
+			// left =
+		}
+		else {}
 	}
 	node = ast.IfExpr{
 		cond: cond
 		stmts: stmts
 		else_stmts: else_stmts
+		typ: typ
+		// left: left
+		
 	}
-	return node,types.void_type
+	return node,typ
 }
 
 fn (p mut Parser) parse_string_literal() (ast.Expr,types.Type) {
@@ -510,7 +551,8 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	p.check(.key_struct)
 	name := p.check_name()
 	p.check(.lcbr)
-	mut fields := []ast.Field
+	mut ast_fields := []ast.Field
+	mut fields := []types.Field
 	for p.tok.kind != .rcbr {
 		if p.tok.kind == .key_pub {
 			p.check(.key_pub)
@@ -518,19 +560,24 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		field_name := p.check_name()
 		typ := p.parse_type()
-		fields << ast.Field{
+		ast_fields << ast.Field{
 			name: field_name
 			typ: typ
+		}
+		fields << types.Field{
+			name: field_name
+			type_idx: typ.idx
 		}
 	}
 	p.check(.rcbr)
 	p.table.register_type(types.Type{
 		name: name
+		fields: fields
 	})
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
-		fields: fields
+		fields: ast_fields
 	}
 }
 

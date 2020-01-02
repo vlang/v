@@ -311,6 +311,9 @@ pub const (
 // Precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok.kind {
+		.dot {
+			return 8
+		}
 		// `++` | `--`
 		.inc, .dec {
 			return 7

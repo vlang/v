@@ -3,25 +3,51 @@
 // that can be found in the LICENSE file.
 module types
 
+pub enum Kind {
+	struct_
+	builtin
+	enum_
+}
+
 pub struct Type {
 pub:
-	name string
-	idx  int
+	name   string
+	idx    int
+	// kind Kind
+	fields []Field
+}
+
+pub struct Field {
+pub:
+	name     string
+	type_idx int
 }
 
 pub const (
 	void_type = Type{
-		'void',0}
+		name: 'void'
+		idx: 0
+	}
 	int_type = Type{
-		'int',1}
+		name: 'int'
+		idx: 1
+	}
 	string_type = Type{
-		'string',2}
+		name: 'string'
+		idx: 2
+	}
 	f64_type = Type{
-		'f64',3}
+		name: 'f64'
+		idx: 3
+	}
 	bool_type = Type{
-		'bool',4}
+		name: 'bool'
+		idx: 4
+	}
 	voidptr_type = Type{
-		'voidptr',5}
+		name: 'voidptr'
+		idx: 5
+	}
 )
 
 pub fn check(got, expected &Type) bool {

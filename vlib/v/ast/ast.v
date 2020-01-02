@@ -8,15 +8,16 @@ import (
 	v.types
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt |
 ForStmt | StructDecl
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
 	expr Expr
+	typ  types.Type
 }
 
 pub struct IntegerLiteral {
@@ -38,6 +39,13 @@ pub:
 pub struct BoolLiteral {
 pub:
 	val bool
+}
+
+// `foo.bar`
+pub struct SelectorExpr {
+pub:
+	expr  Expr
+	field string
 }
 
 // module declaration
@@ -84,10 +92,12 @@ pub:
 
 pub struct FnDecl {
 pub:
-	name  string
-	stmts []Stmt
-	typ   types.Type
-	args  []Arg
+	name   string
+	stmts  []Stmt
+	typ    types.Type
+	args   []Arg
+	is_pub bool
+	receiver Field
 }
 
 pub struct CallExpr {
@@ -164,6 +174,8 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
+	typ        types.Type
+	left       Expr // `a` in `a := if ...`
 }
 
 pub struct ForStmt {

@@ -14,6 +14,7 @@ import (
 	v.table
 	v.parser
 	v.gen
+	time
 )
 
 pub const (
@@ -397,7 +398,7 @@ pub fn (v mut V) compile2() {
 	}
 	table := table.new_table()
 	files := parser.parse_files(v.files, table)
-	c := gen.cgen(files)
+	c := gen.cgen(files, table)
 	println('out: $v.out_name_c')
 	os.write_file(v.out_name_c, c)
 	/*
@@ -423,9 +424,12 @@ pub fn (v mut V) compile_x64() {
 	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.dir
 
-	table := &table.Table{}
+	table := &table.new_table()
+	ticks := time.ticks()
 	files := parser.parse_files(v.files, table)
+	println('PARSE: ${time.ticks() - ticks}ms')
 	x64.gen(files, v.out_name)
+	println('x64 GEN: ${time.ticks() - ticks}ms')
 	/*
 	for f in v.files {
 		v.parse(f, .decl)

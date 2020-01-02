@@ -23,13 +23,14 @@ fn test_c_files() {
 		}
 		table := &table.new_table()
 		program := parser.parse_file(path, table)
-		res := gen.cgen([program])
+		res := gen.cgen([program], table)
 		if compare_texts(res, ctext) {
 			eprintln('${i}... ' + term.green('OK'))
 		}
 		else {
 			eprintln('${i}... ' + term.red('FAIL'))
-			eprintln('expected:\n$ctext\ngot:\n$res')
+			eprintln(path)
+			eprintln('got:\n$res')
 		}
 	}
 }
