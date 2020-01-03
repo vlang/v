@@ -332,36 +332,20 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				typ = t2
 			}
 			else {
-				p.error('!unknown token ' + p.tok.str())
+				// p.error('!unknown token ' + p.tok.str())
 			}
 		}
 	}
 	// left binding power
 	for rbp < p.tok.precedence() {
 		prev_tok := p.tok
-		if prev_tok.kind == .dot {
-			p.warn('dot prev_tok = $prev_tok.str() typ=$typ.name')
-			p.next()
-			field := p.check_name()
-			mut ok := false
-			for f in typ.fields {
-				if f.name == field {
-					ok = true
-				}
-			}
-			if !ok {
-				p.error('unknown field `${typ.name}.$field`')
-			}
-			node = ast.SelectorExpr{
-				expr: node
-				field: field
-			}
-			return node,typ
-		}
 		p.next()
 		mut t2 := types.Type{}
 		// left denotation (infix / postfix)
-		if prev_tok.is_right_assoc() {
+		if prev_tok.is_right_assoc() &&
+			!p.tok.kind in [.plus, .minus] &&      // think of better way to handle this
+			!p.peek_tok.kind in [.number, .name] { // supposed to be only unary, additive handled in left asssoc
+
 			mut expr := ast.Expr{}
 			expr,t2 = p.expr(prev_tok.precedence() - 1)
 			node = ast.BinaryExpr{
@@ -376,8 +360,28 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 			}
 		}
 		else if prev_tok.is_left_assoc() {
+			// postfix `.`
+			if prev_tok.kind == .dot {
+				p.warn('dot prev_tok = $prev_tok.str() typ=$typ.name')
+				// p.next()
+				field := p.check_name()
+				mut ok := false
+				for f in typ.fields {
+					if f.name == field {
+						ok = true
+					}
+				}
+				if !ok {
+					p.error('unknown field `${typ.name}.$field`')
+				}
+				node = ast.SelectorExpr{
+					expr: node
+					field: field
+				}
+				// return node,typ
+			}
 			// postfix (`++` | `--`)
-			if prev_tok.kind in [.inc, .dec] {
+			else if prev_tok.kind in [.inc, .dec] {
 				node = ast.UnaryExpr{
 					left: node
 					op: prev_tok.kind
@@ -402,6 +406,11 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		}
 	}
 	return node,typ
+}
+
+[inline]
+fn (p &Parser) is_addative() bool {
+	return p.tok.kind in [.plus, .minus] && p.peek_tok.kind in [.number, .name]
 }
 
 fn (p mut Parser) for_statement() ast.ForStmt {

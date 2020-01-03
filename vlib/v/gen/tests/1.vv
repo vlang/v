@@ -25,7 +25,9 @@ fn get_int2() int {
 
 fn myuser() {
 	user := User{age:10}
-	age := user.age
+	age := user.age + 1
+	boo := 2
+	boo2 := boo+1
 	b := age > 0
 	//b2 := user.age > 0
 }

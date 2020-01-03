@@ -364,6 +364,10 @@ pub fn (tok Token) is_unary() bool {
 // is_left_assoc returns true if the token is left associative
 pub fn (tok Token) is_left_assoc() bool {
 	return tok.kind in [
+	// `.`
+	.dot,
+	// `+` | `-` 
+	.plus, .minus, // additive
 	// .number,
 	// `++` | `--`
 	.inc, .dec,
@@ -383,7 +387,7 @@ pub fn (tok Token) is_left_assoc() bool {
 pub fn (tok Token) is_right_assoc() bool {
 	return tok.kind in [
 	// `+` | `-` | `!`
-	.plus, .minus, .not,
+	.plus, .minus, .not, // unary
 	// `=` | `+=` | `-=` | `*=` | `/=`
 	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
 	// `%=` | `>>=` | `<<=`
