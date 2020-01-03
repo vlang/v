@@ -71,6 +71,10 @@ fn (p mut Parser) bool_expression() string {
 			p.warn('casting `$typ` to `$cast_typ` is not needed')
 		}
 		if typ in p.table.sum_types {
+			T := p.table.find_type(cast_typ)
+			if T.parent != typ {
+				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
+			}
 			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
 			p.gen('.obj')
 		} else {
