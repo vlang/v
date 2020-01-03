@@ -42,9 +42,7 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 		data: calloc(cap_ * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	C.memcpy(
-arr.data,
-c_array, len * elm_size)
+	C.memcpy(arr.data, c_array, len * elm_size)
 	return arr
 }
 
@@ -63,7 +61,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 fn (a mut array) ensure_cap(required int) {
 	if required > a.cap {
 		mut cap := if a.cap == 0 { 2 } else { a.cap * 2 }
-		for required > cap {
+		for required > cap && true {
 			cap *= 2
 		}
 		if a.cap == 0 {
@@ -74,23 +72,6 @@ fn (a mut array) ensure_cap(required int) {
 		}
 		a.cap = cap
 	}
-}
-
-// Private function, used by V  (`[0; 100]`)
-fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
-	if nr_repeats < 0 {
-		panic('[0; len]: `len` is negative (len == $nr_repeats)')
-	}
-	arr := array{
-		len: nr_repeats
-		cap: nr_repeats
-		element_size: elm_size
-		data: calloc(nr_repeats * elm_size)
-	}
-	for i := 0; i < nr_repeats; i++ {
-		C.memcpy(arr.data + i * elm_size, val, elm_size)
-	}
-	return arr
 }
 
 // array.repeat returns new array with the given array elements

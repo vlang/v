@@ -236,24 +236,6 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	return ctx
 }
 
-/*
-// A dirty hack to implement rendering of cyrillic letters.
-// All UTF-8 must be supported. update: no longer needed
-fn (ctx mut FreeType) init_utf8_runes() {
-	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
-	print('init utf8 runes: ')
-	//println(s)
-	us := s.ustring()
-	for i := 0; i < us.len; i++ {
-		_rune := us.at(i)
-		ch := ft_load_char(ctx.face, _rune.utf32_code())
-		// ctx.utf_rune_map.set(rune, ch)
-		ctx.utf_runes << _rune
-		ctx.utf_chars << ch
-	}
-}
-*/
-
 pub fn (ctx mut FreeType) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	//utext := text.ustring_tmp()
 	utext := text.ustring()

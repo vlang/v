@@ -20,7 +20,12 @@ fn (p mut Parser) string_expr() {
 		*/
 
 		if (p.calling_c && p.peek() != .dot) || is_cstr || (p.pref.translated && p.mod == 'main') {
-			p.gen('"$f"')
+			if p.os == .windows {
+				p.gen('L"$f"')
+			}
+			else {
+				p.gen('"$f"')
+			}
 		}
 		else if p.is_sql {
 			p.gen("'$str'")

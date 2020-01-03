@@ -441,7 +441,7 @@ fn (c mut V) cc_windows_cross() {
 	mut cmd := ''
 	cmd = ''
 	$if macos {
-		cmd = 'x86_64-w64-mingw32-gcc $args -municode'
+		cmd = 'x86_64-w64-mingw32-gcc -std=gnu11 $args -municode'
 	}
 	$else {
 		panic('your platform is not supported yet')
