@@ -1018,14 +1018,16 @@ pub fn cachedir() string {
 	// $XDG_CACHE_HOME defines the base directory relative to which user specific
 	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
 	// or empty, a default equal to $HOME/.cache should be used.
-	cdir := os.home_dir() + '.cache'
-	if !os.is_dir(cdir) && !os.is_link(cdir) {
-		if _ := os.mkdir(cdir) {}
-	}
 	$if !windows {
 		xdg_cache_home := os.getenv('XDG_CACHE_HOME')
 		if xdg_cache_home != '' {
 			return xdg_cache_home
+		}
+	}
+	cdir := os.home_dir() + '.cache'
+	if !os.is_dir(cdir) && !os.is_link(cdir) {
+		os.mkdir(cdir) or {
+			panic(err)
 		}
 	}
 	return cdir
