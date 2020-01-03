@@ -51,7 +51,8 @@ pub:
 pub struct Field {
 pub:
 	name string
-	typ  types.Type
+	ti   types.TypeIdent
+	// typ  types.Type
 }
 
 pub struct StructDecl {
@@ -62,7 +63,8 @@ pub:
 
 pub struct StructInit {
 pub:
-	typ    types.Type
+	ti   types.TypeIdent
+	// typ    types.Type
 	fields []string
 	exprs  []Expr
 }
@@ -77,7 +79,8 @@ pub:
 
 pub struct Arg {
 pub:
-	typ  types.Type
+	ti   types.TypeIdent
+	// typ  types.Type
 	name string
 }
 
@@ -85,7 +88,8 @@ pub struct FnDecl {
 pub:
 	name  string
 	stmts []Stmt
-	typ   types.Type
+	ti   types.TypeIdent
+	// typ   types.Type
 	args  []Arg
 }
 
@@ -120,7 +124,8 @@ pub struct VarDecl {
 pub:
 	name string
 	expr Expr
-	typ  types.Type
+	ti   types.TypeIdent
+	// typ  types.Type
 }
 
 pub struct File {
@@ -184,7 +189,8 @@ pub:
 pub struct ArrayInit {
 pub:
 	exprs []Expr
-	typ   types.Type
+	ti    types.TypeIdent
+	// typ   types.Type
 }
 
 // string representaiton of expr

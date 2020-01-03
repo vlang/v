@@ -9,7 +9,9 @@ pub mut:
 	local_vars []Var
 	// fns Hashmap
 	fns        map[string]Fn
-	types      map[string]types.Type
+	types      []types.Type
+	type_idxs  map[string]int
+	// types      map[string]types.Type
 }
 
 pub struct Var {
@@ -92,6 +94,58 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (t mut Table) register_type(typ types.Type) {
-	t.types[typ.name] = typ
+
+// pub fn (t mut Table) register_type(typ types.Type) {
+// 	t.types[typ.str()] = typ
+// 	// known := typ.name in t.type_idxs
+// 	// idx := if known { t.type_idxs[typ.name] } 
+// 	// 	else { t.types.len }
+// 	// if !known {
+// 	// 	t.types << typ
+// 	// } else {
+// 	// 	t.types[idx] = typ
+// 	// }
+// 	// t.type_idxs[typ.name] = idx
+// 	// return idx
+// }
+
+
+// pub fn (t mut Table) register_type(typ types.Type) int {
+// 	idx := t.types.len
+// 	t2 := {typ| idx: idx}
+// 	t.type_idxs[name] = idx
+// 	t.types << t2
+// 	return idx
+// }
+
+pub fn (t mut Table) find_or_register_map(typ types.Map) int {
+	name := typ.str()
+	// existing
+	if name in t.type_idxs {
+		return t.type_idxs[name]
+	}
+	// register
+	idx := t.types.len
+	t2 := {typ| idx: idx}
+	t.type_idxs[name] = idx
+	t.types << t2
+	return idx
+}
+
+pub fn (t &Table) find_type_idx(name string) int {
+	if name in t.type_idxs {
+		return t.type_idxs[name]
+	}
+	return -1
+}
+
+pub fn (t mut Table) add_placeholder_type(name string) int {
+	idx := t.types.len
+	t.type_idxs[name] = t.types.len
+	pt := types.Placeholder{
+		idx: idx
+		name: name
+	}
+	t.types << pt
+	return idx
 }

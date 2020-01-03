@@ -33,30 +33,159 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn (p mut Parser) get_type() types.Type {
+pub fn (p mut Parser) get_ti() types.TypeIdent {
 	defer {
 		p.next()
 	}
+	mut nr_muls := 0
+	if p.tok.kind == .amp {
+		p.check(.amp)
+		nr_muls = 1
+	}
 	match p.tok.lit {
+		'voidptr' {
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._voidptr,
+				nr_muls: nr_muls
+			}
+		}
+		'byteptr' {
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._byteptr,
+				nr_muls: nr_muls
+			}
+		}
+		'charptr' {
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._charptr,
+				nr_muls: nr_muls
+			}
+		}
 		'int' {
-			return types.int_type
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._int,
+				nr_muls: nr_muls
+			}
+		}
+		'i64' {
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._i64,
+				nr_muls: nr_muls
+			}
+		}
+		'f32' {
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._f32,
+				nr_muls: nr_muls
+			}
 		}
 		'f64' {
-			return types.f64_type
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._f64,
+				nr_muls: nr_muls
+			}
 		}
 		'string' {
-			return types.string_type
+			return types.TypeIdent{
+				type_idx: -1
+				type_kind: ._string,
+				nr_muls: nr_muls
+			}
 		}
 		else {
-			typ := p.table.types[p.tok.lit]
-			if isnil(typ.name.str) || typ.name == '' {
-				p.error('undefined type `$p.tok.lit`')
+			// array
+			if p.tok.kind == .lsbr {
+				p.check(.lsbr)
+				if p.tok.kind == .number {
+					// fixed array
+				}
+				p.check(.rsbr)
 			}
-			println('RET Typ $typ.name')
-			return typ
+			// map
+			else if p.tok.lit == 'map' {
+				p.next()
+				p.check(.lsbr)
+				key_ti := p.get_ti()
+				p.check(.rsbr)
+				value_ti := p.get_ti()
+				idx := p.table.find_or_register_map(types.Map{
+					key_type_idx: key_ti.type_idx,
+					value_type_idx: value_ti.type_idx
+				})
+				return types.TypeIdent{
+					type_idx: idx
+					type_kind: types.Kind._map
+					nr_muls: nr_muls
+				}
+			} else {
+				mut idx := p.table.find_type_idx(p.tok.lit)
+				if idx == -1 {
+					idx = p.table.add_placeholder_type(p.tok.lit)
+				}
+				return types.TypeIdent{
+					type_idx: idx
+					nr_muls: nr_muls
+				}
+			}
+
+			// typ := p.table.types[p.tok.lit]
+			// if isnil(typ.name.str) || typ.name == '' {
+			// 	p.error('undefined type `$p.tok.lit`')
+			// }
+			// println('RET Typ $typ.name')
+			// typ
 		}
 	}
+	// return t
+	return types.TypeIdent{}
 }
+
+// pub fn (p mut Parser) get_type_idx(name string) int {
+// 	name := p.tok.lit
+// 	idx := p.table.type_idxs[name]
+// 	if idx == -1 {
+// 		// add placeholder
+// 		t := types.Placeholder{
+// 			idx:  p.table.types.len
+// 			name: name
+// 		}
+// 		p.table.types[t.idx] = t
+// 		p.table.type_idxs[name] = idx
+// 		return t.idx
+// 	}
+// }
+
+// pub fn (p mut Parser) get_type() types.Type {
+// 	defer {
+// 		p.next()
+// 	}
+// 	match p.tok.lit {
+// 		'int' {
+// 			return types.int_type
+// 		}
+// 		'f64' {
+// 			return types.f64_type
+// 		}
+// 		'string' {
+// 			return types.string_type
+// 		}
+// 		else {
+// 			typ := p.table.types[p.tok.lit]
+// 			if isnil(typ.name.str) || typ.name == '' {
+// 				p.error('undefined type `$p.tok.lit`')
+// 			}
+// 			println('RET Typ $typ.name')
+// 			return typ
+// 		}
+// 	}
+// }
 
 pub fn parse_file(text string, table &table.Table) ast.File {
 	mut stmts := []ast.Stmt
@@ -331,7 +460,6 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 		}
 		.lpar {
 			p.check(.lpar)
-			p.next()
 			node,typ = p.expr(token.lowest_prec)
 			p.check(.rpar)
 		}
