@@ -1,3 +1,13 @@
+int function1();
+void foo(int a);
+void init_user();
+User get_user();
+void puts(string s);
+void function2();
+void init_array();
+void end();
+
+
 int function1() {
 	int a = 10 + 1;
 	int b = a + 1;
@@ -10,6 +20,21 @@ void foo(int a) {
 typedef struct {
 	string name;
 } User;
+
+void init_user() {
+	User user = (User){
+		.name = tos3("Bob"),
+	};
+}
+
+User get_user() {
+	User user = (User){
+	};
+	return user;
+}
+
+void puts(string s) {
+}
 
 void function2() {
 	int x = 0;
@@ -27,18 +52,16 @@ void function2() {
 	if (false) {
 		foo(1);
 	}
+	else {
+		puts(tos3("else"));
+		foo(100);
+	}
 	while (true) {
-		foo(0);
+		init_user();
 	}
 	bool e = 1 + 2 > 0;
 	bool e2 = 1 + 2 < 0;
 	int j = 0;
-}
-
-void init_user() {
-	User user = (User){
-		.name = tos3("Bob"),
-	};
 }
 
 void init_array() {
@@ -46,6 +69,11 @@ void init_array() {
 		1, 2, 3,
 	});
 }
+
+void end() {
+
+}
+
 
 int main() {
 	return 0;

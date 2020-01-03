@@ -3,16 +3,22 @@ module gen
 import (
 	strings
 	v.ast
+	v.table
+	v.types
 	term
 )
 
 struct Gen {
-	out strings.Builder
+	out         strings.Builder
+	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	table       &table.Table
 }
 
-pub fn cgen(files []ast.File) string {
+pub fn cgen(files []ast.File, table &table.Table) string {
 	mut g := Gen{
 		out: strings.new_builder(100)
+		definitions: strings.new_builder(100)
+		table: table
 	}
 	for file in files {
 		for stmt in file.stmts {
@@ -20,7 +26,7 @@ pub fn cgen(files []ast.File) string {
 			g.writeln('')
 		}
 	}
-	return g.out.str()
+	return g.definitions.str() + g.out.str()
 }
 
 pub fn (g &Gen) save() {}
@@ -42,20 +48,26 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			if it.name == 'main' {
+			is_main := it.name == 'main'
+			if is_main {
 				g.write('int ${it.name}(')
 			}
 			else {
 				g.write('$it.typ.name ${it.name}(')
+				g.definitions.write('$it.typ.name ${it.name}(')
 			}
 			for arg in it.args {
 				g.write(arg.typ.name + ' ' + arg.name)
+				g.definitions.write(arg.typ.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
+			if !is_main {
+				g.definitions.writeln(');')
+			}
 			for stmt in it.stmts {
 				g.stmt(stmt)
 			}
-			if it.name == 'main' {
+			if is_main {
 				g.writeln('return 0;')
 			}
 			g.writeln('}')
@@ -72,7 +84,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForStmt {
 			g.write('while (')
-			g.expr(it.cond)
+			if !it.is_in {
+				// `for in` loops don't have a condition
+				println('it cond')
+				g.expr(it.cond)
+			}
 			g.writeln(') {')
 			for stmt in it.stmts {
 				g.stmt(stmt)
@@ -116,7 +132,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			if it.op in [.inc, .dec] {
 				g.expr(it.left)
 				g.write(it.op.str())
-			} else {
+			}
+			else {
 				g.write(it.op.str())
 				g.expr(it.left)
 			}
@@ -126,6 +143,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.BinaryExpr {
 			g.expr(it.left)
+			if it.op == .dot {
+				println('!! dot')
+			}
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
 			// if typ.name != typ2.name {
@@ -171,14 +191,38 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.write('false')
 			}
 		}
+		ast.SelectorExpr {
+			g.expr(it.expr)
+			g.write('.')
+			g.write(it.field)
+		}
 		ast.IfExpr {
+			// If expression? Assign the value to a temp var.
+			// Previously ?: was used, but it's too unreliable.
+			mut tmp := ''
+			if it.typ.idx != types.void_type.idx {
+				tmp = g.table.new_tmp_var()
+				// g.writeln('$it.typ.name $tmp;')
+			}
 			g.write('if (')
 			g.expr(it.cond)
 			g.writeln(') {')
-			for stmt in it.stmts {
+			for i, stmt in it.stmts {
+				// Assign ret value
+				if i == it.stmts.len - 1 && it.typ.idx != types.void_type.idx {
+					// g.writeln('$tmp =')
+					println(1)
+				}
 				g.stmt(stmt)
 			}
 			g.writeln('}')
+			if it.else_stmts.len > 0 {
+				g.writeln('else { ')
+				for stmt in it.else_stmts {
+					g.stmt(stmt)
+				}
+				g.writeln('}')
+			}
 		}
 		else {
 			println(term.red('cgen.expr(): bad node'))

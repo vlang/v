@@ -173,7 +173,7 @@ fn main() {
 
 fn (g mut Game) init_game() {
 	g.parse_tetros()
-	rand.seed(time.now().uni)
+	rand.seed(time.now().unix)
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge

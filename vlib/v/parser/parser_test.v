@@ -23,7 +23,7 @@ x := 10
 '
 	table := &table.Table{}
 	prog := parse_file(s, table)
-	res := gen.cgen([prog])
+	res := gen.cgen([prog], table)
 	println(res)
 }
 
@@ -79,7 +79,7 @@ fn test_parse_expr() {
 	program := ast.File{
 		stmts: e
 	}
-	res := gen.cgen([program])
+	res := gen.cgen([program], table)
 	println('========')
 	println(res)
 	println('========')

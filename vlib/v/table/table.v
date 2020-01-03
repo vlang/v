@@ -2,16 +2,21 @@ module table
 
 import (
 	v.types
+	v.ast
 )
 
 pub struct Table {
+	// struct_fields map[string][]string
 pub mut:
-	local_vars []Var
-	// fns Hashmap
-	fns        map[string]Fn
+	// types         map[string]types.Type
 	types      []types.Type
 	type_idxs  map[string]int
-	// types      map[string]types.Type
+	local_vars    []Var
+	// fns Hashmap
+	fns           map[string]Fn
+	//
+	unknown_calls []ast.CallExpr
+	tmp_cnt       int
 }
 
 pub struct Var {
@@ -23,8 +28,20 @@ pub:
 
 pub struct Fn {
 pub:
-	name string
-	args []Var
+	name        string
+	args        []Var
+	return_type types.Type
+}
+
+pub fn new_table() &Table {
+	mut t := &Table{}
+	t.register_type(types.void_type)
+	t.register_type(types.int_type)
+	t.register_type(types.string_type)
+	t.register_type(types.f64_type)
+	t.register_type(types.bool_type)
+	t.register_type(types.voidptr_type)
+	return t
 }
 
 pub fn (t &Table) find_var(name string) ?Var {
@@ -148,4 +165,17 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 	}
 	t.types << pt
 	return idx
+}
+
+pub fn (t &Table) find_type(name string) ?types.Type {
+	typ := t.types[name]
+	if isnil(typ.name.str) || typ.name == '' {
+		return none
+	}
+	return typ
+}
+
+pub fn (t mut Table) new_tmp_var() string {
+	t.tmp_cnt++
+	return 'tmp$t.tmp_cnt'
 }

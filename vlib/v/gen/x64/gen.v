@@ -3,6 +3,11 @@
 // that can be found in the LICENSE file.
 module x64
 
+import (
+	v.ast
+	term
+)
+
 pub struct Gen {
 	out_name             string
 mut:
@@ -36,6 +41,23 @@ enum Size {
 	_64
 }
 
+pub fn gen(files []ast.File, out_name string) {
+	mut g := Gen{
+		sect_header_name_pos: 0
+		buf: []
+		out_name: out_name
+	}
+	g.generate_elf_header()
+	for file in files {
+		for stmt in file.stmts {
+			g.stmt(stmt)
+			g.writeln('')
+		}
+	}
+	g.generate_elf_footer()
+}
+
+/*
 pub fn new_gen(out_name string) &Gen {
 	return &Gen{
 		sect_header_name_pos: 0
@@ -43,6 +65,8 @@ pub fn new_gen(out_name string) &Gen {
 		out_name: out_name
 	}
 }
+*/
+
 
 pub fn (g &Gen) pos() i64 {
 	return g.buf.len
@@ -105,7 +129,8 @@ fn (g mut Gen) inc(reg Register) {
 		}
 		else {
 			panic('unhandled inc $reg')
-		}}
+		}
+	}
 }
 
 fn (g mut Gen) cmp(reg Register, size Size, val i64) {
@@ -120,7 +145,8 @@ fn (g mut Gen) cmp(reg Register, size Size, val i64) {
 		}
 		else {
 			panic('unhandled cmp')
-		}}
+		}
+	}
 	// Third byte depends on the register being compared to
 	match reg {
 		.r12 {
@@ -128,7 +154,8 @@ fn (g mut Gen) cmp(reg Register, size Size, val i64) {
 		}
 		else {
 			panic('unhandled cmp')
-		}}
+		}
+	}
 	g.write8(int(val))
 }
 
@@ -168,7 +195,8 @@ fn (g mut Gen) mov64(reg Register, val i64) {
 		}
 		else {
 			println('unhandled mov $reg')
-		}}
+		}
+	}
 	g.write64(val)
 }
 
@@ -205,6 +233,15 @@ pub fn (g mut Gen) gen_loop_end(to int, label int) {
 
 pub fn (g mut Gen) save_main_fn_addr() {
 	g.main_fn_addr = g.buf.len
+}
+
+pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr) {
+	match expr {
+		ast.StringLiteral {
+			g.gen_print(it.val)
+		}
+		else {}
+	}
 }
 
 pub fn (g mut Gen) gen_print(s string) {
@@ -247,15 +284,20 @@ fn (g mut Gen) mov(reg Register, val int) {
 		}
 		else {
 			panic('unhandled mov $reg')
-		}}
+		}
+	}
 	g.write32(val)
 }
 
 pub fn (g mut Gen) register_function_address(name string) {
 	addr := g.pos()
-	//println('reg fn addr $name $addr')
+	// println('reg fn addr $name $addr')
 	g.fn_addr[name] = addr
 }
+
+pub fn (g &Gen) write(s string) {}
+
+pub fn (g &Gen) writeln(s string) {}
 
 pub fn (g mut Gen) call_fn(name string) {
 	if !name.contains('__') {
@@ -266,3 +308,165 @@ pub fn (g mut Gen) call_fn(name string) {
 	println('call $name $addr')
 }
 
+fn (g mut Gen) stmt(node ast.Stmt) {
+	match node {
+		ast.AssignStmt {
+			g.expr(it.left)
+			g.write(' $it.op.str() ')
+			g.expr(it.right)
+			g.writeln(';')
+		}
+		ast.FnDecl {
+			is_main := it.name == 'main'
+			if is_main {
+				g.save_main_fn_addr()
+			}
+			for arg in it.args {}
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			if is_main {
+				println('end of main: gen exit')
+				g.gen_exit()
+			}
+			g.ret()
+		}
+		ast.Return {
+			g.write('return ')
+			g.expr(it.expr)
+			g.writeln(';')
+		}
+		ast.VarDecl {
+			g.write('$it.typ.name $it.name = ')
+			g.expr(it.expr)
+			g.writeln(';')
+		}
+		ast.ForStmt {
+			if it.is_in {}
+			g.write('while (')
+			g.expr(it.cond)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+		}
+		ast.StructDecl {
+			g.writeln('typedef struct {')
+			for field in it.fields {
+				g.writeln('\t$field.typ.name $field.name;')
+			}
+			g.writeln('} $it.name;')
+		}
+		ast.ExprStmt {
+			g.expr(it.expr)
+			match it.expr {
+				// no ; after an if expression
+				ast.IfExpr {}
+				else {
+					g.writeln(';')
+				}
+	}
+		}
+		else {
+			verror('cgen.stmt(): bad node')
+		}
+	}
+}
+
+fn (g mut Gen) expr(node ast.Expr) {
+	// println('cgen expr()')
+	match node {
+		ast.IntegerLiteral {
+			g.write(it.val.str())
+		}
+		ast.FloatLiteral {
+			g.write(it.val)
+		}
+		ast.UnaryExpr {
+			g.expr(it.left)
+			g.write(it.op.str())
+		}
+		ast.StringLiteral {
+			g.write('tos3("$it.val")')
+		}
+		ast.BinaryExpr {
+			g.expr(it.left)
+			g.write(' $it.op.str() ')
+			g.expr(it.right)
+			// if typ.name != typ2.name {
+			// verror('bad types $typ.name $typ2.name')
+			// }
+		}
+		// `user := User{name: 'Bob'}`
+		ast.StructInit {
+			g.writeln('($it.typ.name){')
+			for i, field in it.fields {
+				g.write('\t.$field = ')
+				g.expr(it.exprs[i])
+				g.writeln(', ')
+			}
+			g.write('}')
+		}
+		ast.CallExpr {
+			if it.name == 'println' || it.name == 'print' {
+				expr := it.args[0]
+				g.gen_print_from_expr(expr)
+			}
+			/*
+			g.write('${it.name}(')
+			for i, expr in it.args {
+				g.expr(expr)
+				if i != it.args.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write(')')
+			*/
+
+		}
+		ast.ArrayInit {
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.name), {\t')
+			for expr in it.exprs {
+				g.expr(expr)
+				g.write(', ')
+			}
+			g.write('\n})')
+		}
+		ast.Ident {
+			g.write('$it.name')
+		}
+		ast.BoolLiteral {
+			if it.val == true {
+				g.write('true')
+			}
+			else {
+				g.write('false')
+			}
+		}
+		ast.IfExpr {
+			g.write('if (')
+			g.expr(it.cond)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
+			}
+			g.writeln('}')
+			if it.else_stmts.len > 0 {
+				g.writeln('else { ')
+				for stmt in it.else_stmts {
+					g.stmt(stmt)
+				}
+				g.writeln('}')
+			}
+		}
+		else {
+			println(term.red('cgen.expr(): bad node'))
+		}
+	}
+}
+
+fn verror(s string) {
+	println(s)
+	exit(1)
+}

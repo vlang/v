@@ -7,7 +7,7 @@ import (
 	os
 	strings
 	filepath
-	compiler.x64
+	//compiler.x64
 	// time
 )
 
@@ -30,7 +30,7 @@ mut:
 	prev_tok2              TokenKind // TODO remove these once the tokens are cached
 	lit                    string
 	cgen                   &CGen
-	x64                    &x64.Gen
+	//x64                    &x64.Gen
 	table                  &Table
 	import_table           ImportTable // Holds imports for just the file being parsed
 	pass                   Pass
@@ -207,7 +207,7 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		table: v.table
 		cur_fn: EmptyFn
 		cgen: v.cgen
-		x64: v.x64
+		//x64: v.x64
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
@@ -439,7 +439,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['ui', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
@@ -525,7 +525,9 @@ fn (p mut Parser) parse(pass Pass) {
 				p.comp_time()
 			}
 			.key_global {
-				if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod != 'ui' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+				if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v &&
+					p.mod != 'ui' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
+					!p.pref.enable_globals {
 					p.error('use `v --enable-globals ...` to enable globals')
 					// p.error('__global is only allowed in translated code')
 				}
@@ -658,7 +660,9 @@ fn (p mut Parser) import_statement() {
 	}
 	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
+		p.fspace()
 		p.check(.key_as)
+		p.fspace()
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
@@ -1169,7 +1173,7 @@ fn (p mut Parser) get_type() string {
 			}
 			t = p.table.find_type(typ)
 			if t.name == '' && !p.pref.translated && !p.first_pass() && !typ.starts_with('[') {
-				println('get_type() bad type')
+				// println('get_type() bad type')
 				// println('all registered types:')
 				// for q in p.table.types {
 				// println(q.name)
@@ -1178,7 +1182,8 @@ fn (p mut Parser) get_type() string {
 				if t_suggest.len > 0 {
 					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
 				}
-				p.error('unknown type `$typ`$t_suggest')
+				econtext := if p.pref.is_debug { '('+@FILE+':'+@LINE+')' } else {''}
+				p.error('unknown type `$typ`$t_suggest $econtext')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
@@ -3095,7 +3100,9 @@ fn (p mut Parser) check_unused_imports() {
 	}
 	// the imports are usually at the start of the file
 	//p.production_error_with_token_index('the following imports were never used: $output', 0)
+	if !p.file_path.contains ('vlib/v/') {
 	p.warn('the following imports were never used: $output')
+	}
 }
 
 fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {
@@ -3132,6 +3139,6 @@ fn (p mut Parser) skip_block(inside_first_lcbr bool) {
 }
 
 fn todo_remove() {
-	x64.new_gen('f')
+	//x64.new_gen('f')
 }
 

@@ -15,8 +15,8 @@ pub:
 	element_size int
 }
 
-// Private function, used by V (`nums := []int`)
-fn new_array(mylen, cap, elm_size int) array {
+// Internal function, used by V (`nums := []int`)
+fn new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen
@@ -28,7 +28,7 @@ fn new_array(mylen, cap, elm_size int) array {
 }
 
 // TODO
-pub fn make(len, cap, elm_size int) array {
+pub fn make(len int, cap int, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
@@ -42,7 +42,9 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 		data: calloc(cap_ * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	C.memcpy(arr.data, c_array, len * elm_size)
+	C.memcpy(
+arr.data,
+c_array, len * elm_size)
 	return arr
 }
 

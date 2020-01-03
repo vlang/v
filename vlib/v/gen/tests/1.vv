@@ -1,6 +1,31 @@
+struct User {
+	age int
+}
+
 fn main() {
 	a := 10
 	a++
 	c := -a
 	a == 1
+	foo(3)
+}
+
+fn foo(a int) {
+	n := get_int2()
+}
+
+fn get_int(a string) int {
+	return 10
+}
+
+fn get_int2() int {
+	a := 'hello'
+	return get_int(a)
+}
+
+fn myuser() {
+	user := User{age:10}
+	age := user.age
+	b := age > 0
+	//b2 := user.age > 0
 }

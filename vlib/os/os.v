@@ -31,6 +31,7 @@ pub const (
 
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
+	fd     int
 mut:
 	opened bool
 }
@@ -74,6 +75,7 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
+/*
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f mut File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -87,6 +89,7 @@ pub fn (f mut File) read_bytes_at(size, pos int) []byte {
 	C.fseek(f.cfile, 0, C.SEEK_SET)
 	return arr[0..nreadbytes]
 }
+*/
 
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')
@@ -269,49 +272,6 @@ fn read_ulines(path string) ?[]ustring {
 	return ulines
 }
 
-pub fn open(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.to_wide()
-		mode := 'rb'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'rb')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
-	}
-	file.opened = true
-	return file
-}
-
-// create creates a file at a specified location and returns a writable `File` object.
-pub fn create(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'wb'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'wb')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	file.opened = true
-	return file
-}
-
 pub fn open_append(path string) ?File {
 	mut file := File{}
 	$if windows {
@@ -333,49 +293,25 @@ pub fn open_append(path string) ?File {
 	return file
 }
 
-pub fn (f mut File) write(s string) {
-	C.fputs(s.str, f.cfile)
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-}
-// convert any value to []byte (LittleEndian) and write it
-// for example if we have write(7, 4), "07 00 00 00" gets written
-// write(0x1234, 2) => "34 12"
-pub fn (f mut File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
-}
 
+/*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
+	$if linux {
+	}
+	$else {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
-}
-
-pub fn (f mut File) writeln(s string) {
-	if !f.opened {
-		return
 	}
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-	// ss := s.clone()
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	// ss.free()
-	C.fputs('\n', f.cfile)
 }
+*/
+
 
 pub fn (f mut File) flush() {
 	if !f.opened {
 		return
 	}
 	C.fflush(f.cfile)
-}
-
-pub fn (f mut File) close() {
-	if !f.opened {
-		return
-	}
-	f.opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.

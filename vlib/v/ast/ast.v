@@ -9,7 +9,7 @@ import (
 )
 
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt |
 ForStmt | StructDecl
@@ -17,6 +17,7 @@ ForStmt | StructDecl
 pub struct ExprStmt {
 pub:
 	expr Expr
+	typ  types.Type
 }
 
 pub struct IntegerLiteral {
@@ -40,6 +41,13 @@ pub:
 	val bool
 }
 
+// `foo.bar`
+pub struct SelectorExpr {
+pub:
+	expr  Expr
+	field string
+}
+
 // module declaration
 pub struct Module {
 pub:
@@ -59,6 +67,7 @@ pub struct StructDecl {
 pub:
 	name   string
 	fields []Field
+	is_pub bool
 }
 
 pub struct StructInit {
@@ -72,8 +81,8 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	name string
-	expr Expr
+	mods []string
+	// expr Expr
 	// imports map[string]string
 }
 
@@ -86,17 +95,21 @@ pub:
 
 pub struct FnDecl {
 pub:
-	name  string
-	stmts []Stmt
+	name   string
+	stmts  []Stmt
 	ti   types.TypeIdent
 	// typ   types.Type
-	args  []Arg
+	args   []Arg
+	is_pub bool
+	receiver Field
 }
 
 pub struct CallExpr {
 pub:
-	name string
-	args []Expr
+	name       string
+	args       []Expr
+	is_unknown bool
+	tok        token.Token
 }
 
 pub struct Return {
@@ -162,16 +175,20 @@ pub:
 
 pub struct IfExpr {
 pub:
-	tok_kind token.Kind
-	cond     Expr
-	stmts    []Stmt
-	else_    []Stmt
+	tok_kind   token.Kind
+	cond       Expr
+	stmts      []Stmt
+	else_stmts []Stmt
+	ti         types.TypeIdent
+	// typ  types.Type
+	left       Expr // `a` in `a := if ...`
 }
 
 pub struct ForStmt {
 pub:
 	cond  Expr
 	stmts []Stmt
+	is_in bool
 }
 
 pub struct ReturnStmt {
