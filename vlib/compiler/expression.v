@@ -70,8 +70,17 @@ fn (p mut Parser) bool_expression() string {
 		if typ == cast_typ {
 			p.warn('casting `$typ` to `$cast_typ` is not needed')
 		}
-		p.cgen.set_placeholder(start_ph, '($cast_typ)(')
-		p.gen(')')
+		if typ in p.table.sum_types {
+			T := p.table.find_type(cast_typ)
+			if T.parent != typ {
+				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
+			}
+			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
+			p.gen('.obj')
+		} else {
+			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
+			p.gen(')')
+		}
 		return cast_typ
 	}
 	return typ
