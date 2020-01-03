@@ -11,6 +11,7 @@ import (
 const (
 	default_vpm_server_urls = ['https://vpm.best', 'https://vpm.vlang.io']
 	valid_vpm_commands = ['help', 'search', 'install', 'update', 'remove']
+	excluded_dirs = ['cache', 'vlib']
 	supported_vcs_systems = ['git', 'hg']
 	supported_vcs_folders = ['.git', '.hg']
 	supported_vcs_update_cmds = {
@@ -173,7 +174,6 @@ fn vpm_install(module_names []string) {
 		}
 		if !vcs in supported_vcs_systems {
 			errors++
-			// a possible 404 error, which means a missing module?
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
@@ -344,7 +344,7 @@ fn get_installed_modules() []string {
 	mut modules := []string
 	for dir in dirs {
 		adir := filepath.join(settings.vmodules_path,dir)
-		if dir in ['cache', 'vlib'] || !os.is_dir(adir) {
+		if dir in excluded_dirs || !os.is_dir(adir) {
 			continue
 		}
 		author := dir
@@ -449,7 +449,7 @@ fn get_working_server_url() string {
 	server_urls := if settings.server_urls.len > 0 { settings.server_urls } else { default_vpm_server_urls }
 	for url in server_urls {
 		verbose_println('Trying server url: $url')
-		http.get(url) or {
+		http.head(url) or {
 			verbose_println('                   $url failed.')
 			continue
 		}

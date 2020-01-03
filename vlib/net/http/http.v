@@ -54,6 +54,16 @@ pub fn post(url, data string) ?Response {
 	return res
 }
 
+pub fn head(url string) ?Response {
+	req := new_request('HEAD', url, '') or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+	return res
+}
+
 // new_request creates a new HTTP request
 pub fn new_request(typ, _url, _data string) ?Request {
 	if _url == '' {
