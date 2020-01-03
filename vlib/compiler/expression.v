@@ -70,8 +70,13 @@ fn (p mut Parser) bool_expression() string {
 		if typ == cast_typ {
 			p.warn('casting `$typ` to `$cast_typ` is not needed')
 		}
-		p.cgen.set_placeholder(start_ph, '($cast_typ)(')
-		p.gen(')')
+		if typ in p.table.sum_types {
+			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
+			p.gen('.obj')
+		} else {
+			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
+			p.gen(')')
+		}
 		return cast_typ
 	}
 	return typ

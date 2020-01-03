@@ -28,12 +28,12 @@ struct BoolExpr {
 }
 
 struct BinExpr {
-
+	name string
 }
 
 fn expr1() Expr {
 	mut e := Expr{}
-	e = BinExpr{}
+	e = BinExpr{'binexpr'}
 	return e
 	//return BinExpr{}
 }
@@ -53,6 +53,12 @@ fn handle_expr(e Expr) {
 
 fn parse_bool() BoolExpr {
 	return BoolExpr{}
+}
+
+fn test_sum_type_cast() {
+	a := expr1()
+	b := a as BinExpr
+	assert b.name == 'binexpr'
 }
 
 fn test_sum_types() {
