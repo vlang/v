@@ -79,7 +79,7 @@ pub const (
 // create a new flag set for parsing command line arguments
 // TODO use INT_MAX some how
 pub fn new_flag_parser(args []string) &FlagParser {
-	return &FlagParser{args:args, max_free_args: MAX_ARGS_NUMBER}
+	return &FlagParser{args: args.clone(), max_free_args: MAX_ARGS_NUMBER}
 }
 
 // change the application name to be used in 'usage' output
