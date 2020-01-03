@@ -20,7 +20,7 @@ fn (p mut Parser) string_expr() {
 		*/
 
 		if (p.calling_c && p.peek() != .dot) || is_cstr || (p.pref.translated && p.mod == 'main') {
-			if p.os == .windows {
+			if p.os == .windows && p.mod == 'ui' {
 				p.gen('L"$f"')
 			}
 			else {
