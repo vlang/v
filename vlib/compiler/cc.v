@@ -439,6 +439,7 @@ fn (c mut V) cc_windows_cross() {
 	include := '-I $winroot/include '
 	*/
 	mut cmd := ''
+	cmd = ''
 	$if macos {
 		cmd = 'x86_64-w64-mingw32-gcc $args -municode'
 	}
@@ -446,7 +447,7 @@ fn (c mut V) cc_windows_cross() {
 		panic('your platform is not supported yet')
 	}
 
-println(cmd)
+	println(cmd)
 	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
 	if c.pref.show_c_cmd {
 		println(cmd)
