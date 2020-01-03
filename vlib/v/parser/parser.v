@@ -484,7 +484,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.TypeIdent) {
 				if ti.type_kind != ._struct {
 					p.error('cannot access field, `$ti.type_name` is not a struct')
 				}
-				// typ := ti.types[ti]
+				typ := p.table.types[ti.type_idx] as types.Struct
 				mut ok := false
 				for f in typ.fields {
 					if f.name == field {
@@ -554,8 +554,9 @@ fn (p mut Parser) for_statement() ast.ForStmt {
 		}
 	}
 	// `for cond {`
-	cond,typ := p.expr(0)
-	if !types.check(types.bool_type, typ) {
+	cond,ti := p.expr(0)
+	// if !types.check(types.bool_type, ti) {
+	if ti.type_kind != ._bool {
 		p.error('non-bool used as for condition')
 	}
 	stmts := p.parse_block()
@@ -569,7 +570,8 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
 	p.check(.key_if)
 	cond,cond_type := p.expr(0)
-	if !types.check(types.bool_type, cond_type) {
+	// if !types.check(types.bool_type, cond_type) {
+	if cond_type.type_kind != ._bool {
 		p.error('non-bool used as if condition')
 	}
 	stmts := p.parse_block()
@@ -580,11 +582,11 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 		else_stmts = p.parse_block()
 	}
 	// mut typ := types.void_type
-	mut ti := types.new_base_ti()
+	mut ti := types.new_base_ti(._void, 0)
 	// mut left := ast.Expr{}
 	match stmts[stmts.len - 1] {
 		ast.ExprStmt {
-			typ = it.typ
+			ti = it.ti
 			// return node,it.typ
 			// left =
 		}
@@ -594,7 +596,6 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 		cond: cond
 		stmts: stmts
 		else_stmts: else_stmts
-		// typ: typ
 		ti: ti
 		// left: left
 		
@@ -704,7 +705,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 	}
 	p.check(.rcbr)
-	p.table.register_type(types.Type{
+	p.table.register_struct(types.Struct{
 		name: name
 		fields: fields
 	})
@@ -718,8 +719,8 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 fn (p mut Parser) return_stmt() ast.Return {
 	p.next()
 	expr,t := p.expr(0)
-	if !types.check(p.return_type, t) {
-		p.error('cannot use `$t.name` as type `$p.return_type.name` in return argument')
+	if !types.check(p.return_ti, t) {
+		p.error('cannot use `$t.type_name` as type `$p.return_ti.type_name` in return argument')
 	}
 	return ast.Return{
 		expr: expr

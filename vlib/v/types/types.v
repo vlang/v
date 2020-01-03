@@ -178,16 +178,19 @@ pub struct Charptr {}
 pub struct Byteptr {}
 
 pub struct Const {
-	// idx  int
+pub:
+	idx  int
 	name string
 }
 
 pub struct Enum {
-	// idx  int
+pub:
+	idx  int
 	name string
 }
 
 pub struct Struct {
+pub:
 	idx    int
 	name   string
 	fields []Field
@@ -200,6 +203,7 @@ pub:
 }
 
 pub struct Int {
+pub:
 	bit_size    u32
 	is_unsigned bool
 }
@@ -235,6 +239,7 @@ pub struct Byte {}
 pub struct Bool {}
 
 pub struct Array {
+pub:
 	idx int
 	elem_type_kind Kind
 	elem_type_idx  int
@@ -242,12 +247,14 @@ pub struct Array {
 }
 
 pub struct FixedArray {
+pub:
 	elem_type_kind Kind
 	elem_type_idx  int
 	size           int
 }
 
 pub struct Map {
+pub:
 	idx int
 	key_type_kind   Kind
 	key_type_idx    int 
@@ -258,11 +265,13 @@ pub struct Map {
 }
 
 pub struct MultiReturn {
+pub:
 	elem_type_kinds []Kind
 	elem_type_idxs  []int
 }
 
 pub struct Variadic {
+pub:
 	elem_type_kind Kind
 	elem_type_idx  int
 }

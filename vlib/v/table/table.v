@@ -138,6 +138,15 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 // 	return idx
 // }
 
+pub fn (t mut Table) register_struct(typ types.Struct) int {
+	idx := t.types.len
+	mut t2 := types.Type{}
+	t2 = {typ| idx: idx}
+	t.type_idxs[typ.name] = idx
+	t.types << t2
+	return idx
+}
+
 pub fn (t mut Table) find_or_register_map(typ types.Map) int {
 	name := typ.str()
 	// existing
@@ -146,7 +155,8 @@ pub fn (t mut Table) find_or_register_map(typ types.Map) int {
 	}
 	// register
 	idx := t.types.len
-	t2 := {typ| idx: idx}
+	mut t2 := types.Type{}
+	t2 = {typ| idx: idx}
 	t.type_idxs[name] = idx
 	t.types << t2
 	return idx
@@ -162,7 +172,8 @@ pub fn (t &Table) find_type_idx(name string) int {
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	idx := t.types.len
 	t.type_idxs[name] = t.types.len
-	pt := types.Placeholder{
+	mut pt := types.Type{}
+	pt = types.Placeholder{
 		idx: idx
 		name: name
 	}
