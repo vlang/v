@@ -201,6 +201,7 @@ pub fn (v mut V) parse(file string, pass Pass) int {
 }
 
 pub fn (v mut V) compile() {
+	//println('compile()')
 	// Emily: Stop people on linux from being able to build with msvc
 	if os.user_os() != 'windows' && v.pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
