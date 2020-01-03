@@ -1020,7 +1020,9 @@ pub fn cachedir() string {
 	// or empty, a default equal to $HOME/.cache should be used.
 	xdg_cache_home := os.getenv('XDG_CACHE_HOME')
 	if xdg_cache_home == '' {
-		return os.home_dir() + '.cache'
+		cdir := os.home_dir() + '.cache'
+		if _ := os.mkdir(cdir) {}
+		return cdir
 	}
 	return xdg_cache_home
 }
