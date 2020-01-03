@@ -22,7 +22,8 @@ pub mut:
 pub struct Var {
 pub:
 	name   string
-	typ    types.Type
+	// typ    types.Type
+	ti     types.TypeIdent
 	is_mut bool
 }
 
@@ -30,17 +31,19 @@ pub struct Fn {
 pub:
 	name        string
 	args        []Var
-	return_type types.Type
+	// return_type types.Type
+	return_ti types.TypeIdent
 }
 
 pub fn new_table() &Table {
-	mut t := &Table{}
-	t.register_type(types.void_type)
-	t.register_type(types.int_type)
-	t.register_type(types.string_type)
-	t.register_type(types.f64_type)
-	t.register_type(types.bool_type)
-	t.register_type(types.voidptr_type)
+	// mut t := &Table{}
+	// t.register_type(types.void_type)
+	// t.register_type(types.int_type)
+	// t.register_type(types.string_type)
+	// t.register_type(types.f64_type)
+	// t.register_type(types.bool_type)
+	// t.register_type(types.voidptr_type)
+	t := &Table{}
 	return t
 }
 
@@ -168,11 +171,15 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 }
 
 pub fn (t &Table) find_type(name string) ?types.Type {
-	typ := t.types[name]
-	if isnil(typ.name.str) || typ.name == '' {
-		return none
+	// typ := t.types[name]
+	// if isnil(typ.name.str) || typ.name == '' {
+	// 	return none
+	// }
+	// return typ
+	if name in t.type_idxs {
+		return t.types[t.type_idxs[name]]
 	}
-	return typ
+	return none
 }
 
 pub fn (t mut Table) new_tmp_var() string {

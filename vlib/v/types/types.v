@@ -3,29 +3,13 @@
 // that can be found in the LICENSE file.
 module types
 
-import(
-	v.table
-)
 
-// pub struct Type {
-// pub:
-// 	name string
-// 	idx  int
-// }
-
-pub fn check(got, expected &Type) bool {
-	// if got.idx != expected.idx {
-	// 	return false
-	// }
+pub fn check(got, expected &TypeIdent) bool {
+	if got.type_idx != expected.type_idx {
+		return false
+	}
 	return true
 }
-
-// pub fn check(got, expected &TypeIdent) bool {
-// 	if got.type_idx != expected.type_idx {
-// 		return false
-// 	}
-// 	return true
-// }
 
 
 pub struct TypeIdent {
@@ -36,11 +20,20 @@ pub:
 	nr_muls   int
 }
 
-// pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
-pub fn new_ti(kind Kind, idx int, nr_muls int) TypeIdent {
+pub fn new_ti(type_kind Kind, type_name string, type_idx int, nr_muls int) TypeIdent {
     return TypeIdent{
-		type_idx: idx
-		type_kind: kind
+		type_idx: type_idx
+		type_kind: type_kind
+		type_name: type_name
+		nr_muls: nr_muls
+	}
+}
+
+pub fn new_base_ti(type_kind Kind, nr_muls int) TypeIdent {
+    return TypeIdent{
+		type_idx: -1
+		type_kind: type_kind
+		type_name: type_kind.str()
 		nr_muls: nr_muls
 	}
 }
@@ -50,47 +43,11 @@ pub fn (ti &TypeIdent) is_ptr() bool {
     return ti.nr_muls > 0
 }
 
-pub fn (ti &TypeIdent) get_struct(table &table.Table) Struct {
-	t1 := table.types[ti.idx] as Struct else {
-		panic('ti.get_struct: error casting type')
-	}
-	return t1
-}
-
-// pub fn (t TypeIdent) get_type(name string) &Type {
-// 	match t.kind {
-// 		._voidptr {
-// 			types.voidptr_type
-// 		}
-// 		._byteptr {
-// 			types.byteptr_type
-// 		}
-// 		._charptr {
-// 			types.charptr_type
-// 		}
-// 		._int {
-// 			types.int_type
-// 		}
-// 		._i64 {
-// 			types.i64_type
-// 		}
-// 		._f32 {
-// 			types.f32_type
-// 		}
-// 		._f64 {
-// 			types.f64_type
-// 		}
-// 		._string {
-// 			types.string_type
-// 		}
-// 		else {
-// 			typ := p.table.types[p.tok.lit]
-// 			if isnil(typ.name.str) || typ.name == '' {
-// 				p.error('undefined type `$p.tok.lit`')
-// 			}
-// 			println('RET Typ $typ.name')
-// 			typ
-// 		}
+// pub fn (ti &TypeIdent) get_struct(table &table.Table) Struct {
+// 	t1 := table.types[ti.idx] as Struct else {
+// 		panic('ti.get_struct: error casting type')
+// 	}
+// 	return t1
 // }
 
 
@@ -117,8 +74,89 @@ pub enum Kind {
 	_array,
 	_fixed_array,
 	_map,
-	_multiReturn,
+	_multi_return,
 	_variadic
+}
+
+pub fn (t Kind) str() string {
+	t_str := match t {
+		._placeholder {
+			'placeholder'
+		}
+		._void  {
+			'void'
+		} 
+		._voidptr  {
+			'voidptr'
+		}
+		._charptr  {
+			'charptr'
+		}
+		._byteptr  {
+			'byteptr'
+		}
+		._const  {
+			'const'
+		}
+		._enum  {
+			'enum'
+		}
+		._struct  {
+			'struct'
+		}
+		._int  {
+			'int'
+		}
+		._i8  {
+			'i8'
+		}
+		._ii6  {
+			'i16'
+		}
+		._i64  {
+			'i64'
+		}
+		._u16  {
+			'u18'
+		}
+		._f32  {
+			'f32'
+		}
+		._f64  {
+			'f64'
+		}
+		._string  {
+			'string'
+		}
+		._char  {
+			'char'
+		}
+		._byte  {
+			'byte'
+		}
+		._bool  {
+			'bool'
+		}
+		._array  {
+			'array'
+		}
+		._fixed_array  {
+			'fixed_array'
+		}
+		._map  {
+			'map'
+		}
+		._multi_return  {
+			'multi_return'
+		}
+		._variadic {
+			'variadic'
+		}
+		else {
+			'unknown'
+		}
+	}
+	return t_str
 }
 
 pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct |
@@ -150,8 +188,15 @@ pub struct Enum {
 }
 
 pub struct Struct {
-	idx  int
-	name string
+	idx    int
+	name   string
+	fields []Field
+}
+
+pub struct Field {
+pub:
+	name     string
+	type_idx int
 }
 
 pub struct Int {
@@ -159,8 +204,26 @@ pub struct Int {
 	is_unsigned bool
 }
 
+pub struct I64 {
+}
+
+pub struct U16 {
+}
+
+pub struct U32 {
+}
+
+pub struct U64 {
+}
+
 pub struct Float {
 	bit_size u32
+}
+
+pub struct F32 {
+}
+
+pub struct F64 {
 }
 
 pub struct String {}

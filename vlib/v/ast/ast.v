@@ -17,7 +17,8 @@ ForStmt | StructDecl
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ  types.Type
+	// typ  types.Type
+	ti   types.TypeIdent
 }
 
 pub struct IntegerLiteral {

@@ -53,12 +53,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('int ${it.name}(')
 			}
 			else {
-				g.write('$it.typ.name ${it.name}(')
-				g.definitions.write('$it.typ.name ${it.name}(')
+				g.write('$it.ti.type_name ${it.name}(')
+				g.definitions.write('$it.ti.type_name ${it.name}(')
 			}
 			for arg in it.args {
-				g.write(arg.typ.name + ' ' + arg.name)
-				g.definitions.write(arg.typ.name + ' ' + arg.name)
+				g.write(arg.ti.type_name + ' ' + arg.name)
+				g.definitions.write(arg.ti.type_name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
 			if !is_main {
@@ -78,7 +78,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('$it.typ.name $it.name = ')
+			g.write('$it.ti.type_name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -98,7 +98,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				g.writeln('\t$field.typ.name $field.name;')
+				g.writeln('\t$field.ti.type_name $field.name;')
 			}
 			g.writeln('} $it.name;')
 		}
@@ -154,7 +154,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('($it.typ.name){')
+			g.writeln('($it.ti.type_name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
@@ -173,7 +173,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.ArrayInit {
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.name), {\t')
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.type_name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
@@ -200,7 +200,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
 			mut tmp := ''
-			if it.typ.idx != types.void_type.idx {
+			if it.ti.type_kind != ._void {
 				tmp = g.table.new_tmp_var()
 				// g.writeln('$it.typ.name $tmp;')
 			}
@@ -209,7 +209,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && it.typ.idx != types.void_type.idx {
+				if i == it.stmts.len - 1 && it.ti.type_kind != ._void {
 					// g.writeln('$tmp =')
 					println(1)
 				}
