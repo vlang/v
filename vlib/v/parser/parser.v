@@ -332,7 +332,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.Type) {
 				typ = t2
 			}
 			else {
-				// p.error('!unknown token ' + p.tok.str())
+				p.error('!unknown token ' + p.tok.str())
 			}
 		}
 	}
