@@ -1018,13 +1018,17 @@ pub fn cachedir() string {
 	// $XDG_CACHE_HOME defines the base directory relative to which user specific
 	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
 	// or empty, a default equal to $HOME/.cache should be used.
-	xdg_cache_home := os.getenv('XDG_CACHE_HOME')
-	if xdg_cache_home == '' {
-		cdir := os.home_dir() + '.cache'
+	cdir := os.home_dir() + '.cache'
+	if !os.is_dir(cdir) && !os.is_link(cdir) {
 		if _ := os.mkdir(cdir) {}
-		return cdir
 	}
-	return xdg_cache_home
+	$if !windows {
+		xdg_cache_home := os.getenv('XDG_CACHE_HOME')
+		if xdg_cache_home != '' {
+			return xdg_cache_home
+		}
+	}
+	return cdir
 }
 
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
