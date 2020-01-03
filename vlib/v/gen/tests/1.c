@@ -33,6 +33,8 @@ void myuser() {
 	User user = (User){
 		.age = 10,
 	};
-	User age = user.age;
+	int age = user.age + 1;
+	int boo = 2;
+	int boo2 = boo + 1;
 	bool b = age > 0;
 }
