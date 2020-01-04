@@ -807,7 +807,6 @@ pub fn (v mut V) add_v_files_to_compile() {
 		// standard module
 		vfiles := v.get_imported_module_files(mod)
 		for file in vfiles {
-			println('file: $file')
 			v.files << file
 		}
 	}
