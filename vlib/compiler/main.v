@@ -485,7 +485,6 @@ fn (v mut V) generate_init() {
 		if !v.pref.is_bare {
 			// vlib can't have `init_consts()`
 			v.cgen.genln('void init() {
-g_str_buf=malloc(1000);
 #if VPREALLOC
 g_m2_buf = malloc(50 * 1000 * 1000);
 g_m2_ptr = g_m2_buf;
@@ -596,7 +595,6 @@ pub fn (v mut V) generate_main() {
 			v.gen_main_start(true)
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
-				cgen.genln('free(g_str_buf);')
 				cgen.genln('#if VPREALLOC')
 				cgen.genln('free(g_m2_buf);')
 				cgen.genln('puts("freed mem buf");')
