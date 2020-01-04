@@ -45,6 +45,9 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 		nr_muls = 1
 	}
 	name := p.tok.lit
+	if nr_muls > 0 {
+		println('## POINTER: $name')
+	}
 	match name {
 		'voidptr' {
 			return types.new_base_ti(._voidptr, nr_muls)
