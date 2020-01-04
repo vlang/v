@@ -8,6 +8,14 @@ fn main() {
 	c := -a
 	a == 1
 	foo(3)
+	/*
+	user := User{}
+	user.age = 10
+	mut x := if user.age == 10 { 20 } else { user.age * 2 }
+	for x > 3 {
+
+	}
+	*/
 }
 
 fn foo(a int) {

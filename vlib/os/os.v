@@ -91,6 +91,7 @@ pub fn (f mut File) read_bytes_at(size, pos int) []byte {
 }
 */
 
+
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')
 	if isnil(fp) {
@@ -292,7 +293,6 @@ pub fn open_append(path string) ?File {
 	file.opened = true
 	return file
 }
-
 
 /*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
@@ -529,7 +529,6 @@ pub fn rm(path string) {
 	}
 	// C.unlink(path.cstr())
 }
-
 // rmdir removes a specified directory.
 pub fn rmdir(path string) {
 	$if !windows {
@@ -540,18 +539,22 @@ pub fn rmdir(path string) {
 }
 
 pub fn rmdir_recursive(path string) {
-	items := os.ls(path) or { panic(err)}
+	items := os.ls(path) or {
+		panic(err)
+	}
 	for item in items {
-		if os.is_dir(filepath.join(path, item)) {
-			rmdir_recursive(filepath.join(path, item))
+		if os.is_dir(filepath.join(path,item)) {
+			rmdir_recursive(filepath.join(path,item))
 		}
-		os.rm(filepath.join(path, item))
+		os.rm(filepath.join(path,item))
 	}
 	os.rmdir(path)
 }
 
 pub fn is_dir_empty(path string) bool {
-	items := os.ls(path) or { panic(err)}
+	items := os.ls(path) or {
+		panic(err)
+	}
 	return items.len == 0
 }
 
@@ -1006,6 +1009,30 @@ pub fn join(base string, dirs ...string) string {
 	return filepath.join(base,dirs)
 }
 
+// cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
+pub fn cachedir() string {
+	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+	// There is a single base directory relative to which user-specific non-essential
+	// (cached) data should be written. This directory is defined by the environment
+	// variable $XDG_CACHE_HOME.
+	// $XDG_CACHE_HOME defines the base directory relative to which user specific
+	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
+	// or empty, a default equal to $HOME/.cache should be used.
+	$if !windows {
+		xdg_cache_home := os.getenv('XDG_CACHE_HOME')
+		if xdg_cache_home != '' {
+			return xdg_cache_home
+		}
+	}
+	cdir := os.home_dir() + '.cache'
+	if !os.is_dir(cdir) && !os.is_link(cdir) {
+		os.mkdir(cdir) or {
+			panic(err)
+		}
+	}
+	return cdir
+}
+
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
 pub fn tmpdir() string {
 	mut path := os.getenv('TMPDIR')
@@ -1022,6 +1049,9 @@ pub fn tmpdir() string {
 				path = 'C:/tmp'
 			}
 		}
+	}
+	if path == '' {
+		path = os.cachedir()
 	}
 	if path == '' {
 		path = '/tmp'

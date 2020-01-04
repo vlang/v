@@ -343,7 +343,7 @@ pub fn (p &Parser) error_at_line(s string, line_nr int) {
 }
 
 pub fn (p &Parser) warn(s string) {
-	println(term.blue('x.v:$p.tok.line_nr: $s'))
+	println(term.blue('$p.file_name:$p.tok.line_nr: $s'))
 }
 
 // Implementation of Pratt Precedence
@@ -447,7 +447,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.TypeIdent) {
 				ti = ti2
 			}
 			else {
-				p.error('!unknown token ' + p.tok.str())
+				p.error('expr(): unknown token ' + p.tok.str() + ' kind=$p.tok.kind')
 			}
 		}
 	}
@@ -458,10 +458,9 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.TypeIdent) {
 		// mut t2 := types.Type{}
 		mut ti2 := types.new_base_ti(._void, 0)
 		// left denotation (infix / postfix)
-		if prev_tok.is_right_assoc() &&
-			!p.tok.kind in [.plus, .minus] &&      // think of better way to handle this
-			!p.peek_tok.kind in [.number, .name] { // supposed to be only unary, additive handled in left asssoc
-
+		if prev_tok.is_right_assoc() && !p.tok.kind in [.plus, .minus] && // think of better way to handle this
+		!p.peek_tok.kind in [.number, .name] {
+			// supposed to be only unary, additive handled in left asssoc
 			mut expr := ast.Expr{}
 			expr,ti2 = p.expr(prev_tok.precedence() - 1)
 			node = ast.BinaryExpr{
@@ -584,8 +583,10 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	// mut typ := types.void_type
 	mut ti := types.new_base_ti(._void, 0)
 	// mut left := ast.Expr{}
+	// If the last statement is an expression, return its type
 	match stmts[stmts.len - 1] {
 		ast.ExprStmt {
+			p.warn('if expr ret $it.type_name')
 			ti = it.ti
 			// return node,it.typ
 			// left =
