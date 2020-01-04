@@ -9,8 +9,8 @@ pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
 	// types         map[string]types.Type
-	types      []types.Type
-	type_idxs  map[string]int
+	types         []types.Type
+	type_idxs     map[string]int
 	local_vars    []Var
 	// fns Hashmap
 	fns           map[string]Fn
@@ -22,7 +22,6 @@ pub mut:
 pub struct Var {
 pub:
 	name   string
-	// typ    types.Type
 	ti     types.TypeIdent
 	is_mut bool
 }
@@ -31,7 +30,6 @@ pub struct Fn {
 pub:
 	name        string
 	args        []Var
-	// return_type types.Type
 	return_ti types.TypeIdent
 }
 
@@ -139,15 +137,60 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 // }
 
 pub fn (t mut Table) register_struct(typ types.Struct) int {
-	idx := t.types.len
 	mut t2 := types.Type{}
-	t2 = {typ| idx: idx}
+	if typ.name in t.type_idxs {
+		ex_idx := t.type_idxs[typ.name]
+		ex_type := t.types[ex_idx]
+		match ex_type {
+			types.Placeholder {
+				println('placeholder exists: $it.name overidding')
+				t2 = {typ| idx: ex_idx}
+				t.types[ex_idx] = t2
+				return ex_idx
+			}
+			else {}
+		}
+	}
+	println('registering: $typ.name')
+	idx := t.types.len
 	t.type_idxs[typ.name] = idx
+	t2 = {typ| idx: idx}
 	t.types << t2
+
 	return idx
 }
 
 pub fn (t mut Table) find_or_register_map(typ types.Map) int {
+	name := typ.str()
+	// existing
+	if name in t.type_idxs {
+		return t.type_idxs[name]
+	}
+	// register
+	idx := t.types.len
+	mut t2 := types.Type{}
+	t2 = {typ| idx: idx}
+	t.type_idxs[name] = idx
+	t.types << t2
+	return idx
+}
+
+pub fn (t mut Table) find_or_register_array(typ types.Array) int {
+	name := typ.str()
+	// existing
+	if name in t.type_idxs {
+		return t.type_idxs[name]
+	}
+	// register
+	idx := t.types.len
+	mut t2 := types.Type{}
+	t2 = {typ| idx: idx}
+	t.type_idxs[name] = idx
+	t.types << t2
+	return idx
+}
+
+pub fn (t mut Table) find_or_register_array_fixed(typ types.ArrayFixed) int {
 	name := typ.str()
 	// existing
 	if name in t.type_idxs {
@@ -177,6 +220,7 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 		idx: idx
 		name: name
 	}
+	println('added placeholder: $name - $idx ')
 	t.types << pt
 	return idx
 }
@@ -197,3 +241,4 @@ pub fn (t mut Table) new_tmp_var() string {
 	t.tmp_cnt++
 	return 'tmp$t.tmp_cnt'
 }
+

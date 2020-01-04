@@ -17,7 +17,6 @@ ForStmt | StructDecl
 pub struct ExprStmt {
 pub:
 	expr Expr
-	// typ  types.Type
 	ti   types.TypeIdent
 }
 
@@ -61,7 +60,6 @@ pub struct Field {
 pub:
 	name string
 	ti   types.TypeIdent
-	// typ  types.Type
 }
 
 pub struct StructDecl {

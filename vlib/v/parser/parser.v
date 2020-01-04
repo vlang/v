@@ -44,97 +44,102 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 		p.check(.amp)
 		nr_muls = 1
 	}
-	match p.tok.lit {
+	name := p.tok.lit
+	match name {
 		'voidptr' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._voidptr,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._voidptr, nr_muls)
 		}
 		'byteptr' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._byteptr,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._byteptr, nr_muls)
 		}
 		'charptr' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._charptr,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._charptr, nr_muls)
+		}
+		'164' {
+			return types.new_base_ti(._i16, nr_muls)
 		}
 		'int' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._int,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._int, nr_muls)
 		}
 		'i64' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._i64,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._i64, nr_muls)
+		}
+		'byte' {
+			return types.new_base_ti(._byte, nr_muls)
+		}
+		'u16' {
+			return types.new_base_ti(._u16, nr_muls)
+		}
+		'u32' {
+			return types.new_base_ti(._u32, nr_muls)
+		}
+		'u64' {
+			return types.new_base_ti(._u64, nr_muls)
 		}
 		'f32' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._f32,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._f32, nr_muls)
 		}
 		'f64' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._f64,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._f64, nr_muls)
 		}
 		'string' {
-			return types.TypeIdent{
-				type_idx: -1
-				type_kind: ._string,
-				nr_muls: nr_muls
-			}
+			return types.new_base_ti(._string, nr_muls)
+		}
+		'char' {
+			return types.new_base_ti(._char, nr_muls)
+		}
+		'bool' {
+			return types.new_base_ti(._bool, nr_muls)
 		}
 		else {
 			// array
 			if p.tok.kind == .lsbr {
 				p.check(.lsbr)
+				// fixed array
 				if p.tok.kind == .number {
-					// fixed array
+					fixed_size := p.tok.lit.int()
+					p.check(.rsbr)
+					elem_ti := p.parse_ti()
+					array_fixed_type := types.ArrayFixed{
+						name: 'array_fixed_$elem_ti.type_name'
+						size: fixed_size
+						elem_type_idx: elem_ti.type_idx
+					}
+					idx := p.table.find_or_register_array_fixed(array_fixed_type)
+					return types.new_ti(._array_fixed, array_fixed_type.name, idx, nr_muls)
 				}
 				p.check(.rsbr)
+				// array
+				elem_ti := p.parse_ti()
+				array_type := types.Array{
+					name: 'array_$elem_ti.type_name'
+					elem_type_idx: elem_ti.type_idx
+				}
+				idx := p.table.find_or_register_array(array_type)
+				return types.new_ti(._array, array_type.name, idx, nr_muls)
 			}
 			// map
-			else if p.tok.lit == 'map' {
+			else if name == 'map' {
 				p.next()
 				p.check(.lsbr)
 				key_ti := p.parse_ti()
 				p.check(.rsbr)
 				value_ti := p.parse_ti()
-				idx := p.table.find_or_register_map(types.Map{
+				map_type := types.Map{
+					name: 'map_${key_ti.type_name}_${value_ti.type_name}'
 					key_type_idx: key_ti.type_idx,
 					value_type_idx: value_ti.type_idx
-				})
-				return types.TypeIdent{
-					type_idx: idx
-					type_kind: ._map
-					nr_muls: nr_muls
 				}
+				idx := p.table.find_or_register_map(map_type)
+				return types.new_ti(._map, map_type.name, idx, nr_muls)
 			} else {
-				mut idx := p.table.find_type_idx(p.tok.lit)
+				// struct / enum
+				mut idx := p.table.find_type_idx(name)
+				// add placeholder
 				if idx == -1 {
-					idx = p.table.add_placeholder_type(p.tok.lit)
+					idx = p.table.add_placeholder_type(name)
 				}
-				return types.TypeIdent{
-					type_idx: idx
-					nr_muls: nr_muls
-				}
+				return  types.new_ti(._placeholder, name, idx, nr_muls)
 			}
 
 			// typ := p.table.types[p.tok.lit]
@@ -145,8 +150,6 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 			// typ
 		}
 	}
-	// return t
-	return types.TypeIdent{}
 }
 
 pub fn parse_file(path string, table &table.Table) ast.File {
@@ -480,7 +483,8 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.TypeIdent) {
 				p.warn('dot prev_tok = $prev_tok.str() typ=$ti.type_name')
 				// p.next()
 				field := p.check_name()
-				if ti.type_kind != ._struct {
+				if !ti.type_kind in  [._placeholder, ._struct] {
+					println('kind: $ti.str()')
 					p.error('cannot access field, `$ti.type_name` is not a struct')
 				}
 				typ := p.table.types[ti.type_idx] as types.Struct
@@ -586,7 +590,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	// If the last statement is an expression, return its type
 	match stmts[stmts.len - 1] {
 		ast.ExprStmt {
-			p.warn('if expr ret $it.type_name')
+			p.warn('if expr ret $it.ti.type_name')
 			ti = it.ti
 			// return node,it.typ
 			// left =
@@ -706,6 +710,10 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 	}
 	p.check(.rcbr)
+	if name in p.table.type_idxs {
+		println('placeholder exists: $name')
+	}
+	println('about to register: $name')
 	p.table.register_struct(types.Struct{
 		name: name
 		fields: fields
