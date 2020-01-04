@@ -239,6 +239,7 @@ pub:
 	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
+	elem_is_ptr    bool
 	nr_dims        int
 }
 
@@ -248,6 +249,7 @@ pub:
 	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
+	elem_is_ptr    bool
 	size           int
 }
 
@@ -276,7 +278,7 @@ pub:
 pub fn (t Void) str() string { return 'void' }
 pub fn (t Voidptr) str() string { return 'voidptr' }
 pub fn (t Charptr) str() string { return 'charptr' }
-pub fn (t Byteptr) str() string { return 'Byteptr' }
+pub fn (t Byteptr) str() string { return 'byteptr' }
 pub fn (t Const) str() string { return t.name }
 pub fn (t Enum) str() string { return t.name }
 pub fn (t Struct) str() string { return t.name }
@@ -296,9 +298,12 @@ pub const (
 	voidptr_type = Voidptr{}
 	charptr_type = Charptr{}
 	byteptr_type = Byteptr{}
+	i8_type      = Int{8, false}
+	i16_type     = Int{16, false}
 	int_type     = Int{32, false}
 	i64_type     = Int{64, false}
 	byte_type    = Int{8, true}
+	u16_type     = Int{16, true}
 	u32_type     = Int{32, true}
 	u64_type     = Int{64, true}
 	f32_type     = Float{32}

@@ -107,6 +107,7 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 						name: 'array_fixed_$elem_ti.type_name'
 						size: fixed_size
 						elem_type_idx: elem_ti.type_idx
+						elem_is_ptr: elem_ti.is_ptr()
 					}
 					idx := p.table.find_or_register_array_fixed(array_fixed_type)
 					return types.new_ti(._array_fixed, array_fixed_type.name, idx, nr_muls)
@@ -117,6 +118,7 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 				array_type := types.Array{
 					name: 'array_$elem_ti.type_name'
 					elem_type_idx: elem_ti.type_idx
+					elem_is_ptr: elem_ti.is_ptr()
 				}
 				idx := p.table.find_or_register_array(array_type)
 				return types.new_ti(._array, array_type.name, idx, nr_muls)
@@ -145,12 +147,13 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 				return types.new_ti(._placeholder, name, idx, nr_muls)
 			}
 
-			// typ := p.table.types[p.tok.lit]
-			// if isnil(typ.name.str) || typ.name == '' {
-			// 	p.error('undefined type `$p.tok.lit`')
-			// }
-			// println('RET Typ $typ.name')
-			// typ
+			// 	typ := p.table.find_type(p.tok.lit) or {
+			// 		// typ := p.table.types[p.tok.lit]
+			// 		// if isnil(typ.name.str) || typ.name == '' {
+			// 		p.error('undefined type `$p.tok.lit`')
+			// 		exit(0)
+			// 	}
+			// 	println('RET Typ $typ.name')
 		}
 	}
 }
@@ -192,18 +195,6 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	}
 	return files
 }
-
-// former get_type()
-// pub fn (p mut Parser) parse_ti() types.Type {
-// 	typ := p.table.find_type(p.tok.lit) or {
-// 		// typ := p.table.types[p.tok.lit]
-// 		// if isnil(typ.name.str) || typ.name == '' {
-// 		p.error('undefined type `$p.tok.lit`')
-// 		exit(0)
-// 	}
-// 	p.next()
-// 	return typ
-// }
 
 pub fn (p mut Parser) read_first_token() {
 	// need to call next() twice to get peek token and current token
