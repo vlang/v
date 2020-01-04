@@ -337,7 +337,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('$it.typ.name $it.name = ')
+			g.write('$it.ti.type_name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -354,7 +354,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				g.writeln('\t$field.typ.name $field.name;')
+				g.writeln('\t$field.ti.type_name $field.name;')
 			}
 			g.writeln('} $it.name;')
 		}
@@ -394,13 +394,13 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
-			// if typ.name != typ2.name {
-			// verror('bad types $typ.name $typ2.name')
+			// if ti.type_name != typ2.name {
+			// verror('bad types $ti.type_name $typ2.name')
 			// }
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('($it.typ.name){')
+			g.writeln('($it.ti.type_name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
@@ -426,7 +426,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 
 		}
 		ast.ArrayInit {
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.name), {\t')
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.type_name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
