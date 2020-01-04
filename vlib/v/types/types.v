@@ -3,14 +3,34 @@
 // that can be found in the LICENSE file.
 module types
 
-
-pub fn check(got, expected &TypeIdent) bool {
-	if got.type_idx != expected.type_idx {
-		return false
-	}
-	return true
+pub enum Kind {
+	_placeholder,
+	_void,
+	_voidptr,
+	_charptr,
+	_byteptr,
+	_const,
+	_enum,
+	_struct,
+	_int,
+	_i8,
+	_i16,
+	_i64,
+	_byte,
+	_u16,
+	_u32,
+	_u64,
+	_f32,
+	_f64,
+	_string,
+	_char,
+	_bool,
+	_array,
+	_array_fixed,
+	_map,
+	_multi_return,
+	_variadic
 }
-
 
 pub struct TypeIdent {
 pub:
@@ -33,7 +53,6 @@ pub fn new_ti(type_kind Kind, type_name string, type_idx int, nr_muls int) TypeI
 [inline]
 pub fn new_base_ti(type_kind Kind, nr_muls int) TypeIdent {
     return TypeIdent{
-		type_idx: -1
 		type_kind: type_kind
 		type_name: type_kind.str()
 		nr_muls: nr_muls
@@ -64,41 +83,11 @@ pub fn (ti &TypeIdent) str() string {
 	return '$ti.type_kind.str() $ti.type_idx: $ti.type_name ($ti.nr_muls)'
 }
 
-// pub fn (ti &TypeIdent) get_struct(table &table.Table) Struct {
-// 	t1 := table.types[ti.idx] as Struct else {
-// 		panic('ti.get_struct: error casting type')
-// 	}
-// 	return t1
-// }
-
-
-pub enum Kind {
-	_placeholder,
-	_void,
-	_voidptr,
-	_charptr,
-	_byteptr,
-	_const,
-	_enum,
-	_struct,
-	_int,
-	_i8,
-	_i16,
-	_i64,
-	_byte,
-	_u16,
-	_u32,
-	_u64,
-	_f32,
-	_f64,
-	_string,
-	_char,
-	_bool,
-	_array,
-	_array_fixed,
-	_map,
-	_multi_return,
-	_variadic
+pub fn check(got, expected &TypeIdent) bool {
+	if got.type_idx != expected.type_idx {
+		return false
+	}
+	return true
 }
 
 pub fn (t Kind) str() string {
@@ -303,16 +292,6 @@ pub fn (t MultiReturn) str() string { return 'multi_return_$t.elem_type_kinds.st
 pub fn (t Variadic) str() string { return 'variadic_$t.elem_type_kind.str()' }
 
 pub const (
-	// void_type = Type{
-	// 	'void',0}
-	// int_type = Type{
-	// 	'int',1}
-	// string_type = Type{
-	// 	'string',2}
-	// f64_type = Type{
-	// 	'f64',3}
-	// bool_type = Type{
-	// 	'bool',4}
 	void_type    = Void{}
 	voidptr_type = Voidptr{}
 	charptr_type = Charptr{}
@@ -328,40 +307,3 @@ pub const (
 	char_type    = Char{}
 	bool_type    = Bool{}
 )
-
-
-// pub type TypeIdent int
-
-// [inline]
-// pub fn new_ti(idx int, kind Kind, nr_muls int) TypeIdent {
-// 	t := (idx << 16) | (int(kind) << 6) | nr_muls
-// 	return t
-// }
-
-// [inline]
-// pub fn (t TypeIdent) is_ptr() bool {
-//     return (int(t) & (1 << 6) - 1) > 0
-// }
-
-// [inline]
-// pub fn (t TypeIdent) nr_muls() int {
-//     return int(t) & (1 << 6) - 1
-// }
-
-// [inline]
-// pub fn (t TypeIdent) kind() int {
-// 	return (int(t) >> 6) & (1 << 6) - 1
-// }
-
-// [inline]
-// pub fn (t TypeIdent) idx() int {
-// 	return int(t) >> 16
-// }
-
-// pub fn (got TypeIdent) check(expected TypeIdent) bool {
-// 	if got.kind() != expected.kind() {
-// 		return false
-// 	}
-// 	return true
-// }
-
