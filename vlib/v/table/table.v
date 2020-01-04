@@ -147,7 +147,7 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 pub fn (t mut Table) find_or_register_map(typ types.Map) int {
 	// existing
 	existing_idx := t.type_idxs[typ.name]
-	if existing_idx < 0 {
+	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
@@ -162,7 +162,7 @@ pub fn (t mut Table) find_or_register_map(typ types.Map) int {
 pub fn (t mut Table) find_or_register_array(typ types.Array) int {
 	// existing
 	existing_idx := t.type_idxs[typ.name]
-	if existing_idx < 0 {
+	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
@@ -177,7 +177,7 @@ pub fn (t mut Table) find_or_register_array(typ types.Array) int {
 pub fn (t mut Table) find_or_register_array_fixed(typ types.ArrayFixed) int {
 	// existing
 	existing_idx := t.type_idxs[typ.name]
-	if existing_idx < 0 {
+	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
