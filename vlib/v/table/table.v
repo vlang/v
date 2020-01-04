@@ -117,30 +117,6 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-
-// pub fn (t mut Table) register_type(typ types.Type) {
-// 	t.types[typ.str()] = typ
-// 	// known := typ.name in t.type_idxs
-// 	// idx := if known { t.type_idxs[typ.name] } 
-// 	// 	else { t.types.len }
-// 	// if !known {
-// 	// 	t.types << typ
-// 	// } else {
-// 	// 	t.types[idx] = typ
-// 	// }
-// 	// t.type_idxs[typ.name] = idx
-// 	// return idx
-// }
-
-
-// pub fn (t mut Table) register_type(typ types.Type) int {
-// 	idx := t.types.len
-// 	t2 := {typ| idx: idx}
-// 	t.type_idxs[name] = idx
-// 	t.types << t2
-// 	return idx
-// }
-
 pub fn (t mut Table) register_struct(typ types.Struct) int {
 	mut t2 := types.Type{}
 	// existing
@@ -171,7 +147,9 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 pub fn (t mut Table) find_or_register_map(typ types.Map) int {
 	// existing
 	existing_idx := t.type_idxs[typ.name]
-	if existing_idx < 0 { return existing_idx }
+	if existing_idx < 0 {
+		return existing_idx
+	}
 	// register
 	idx := t.types.len
 	mut t2 := types.Type{}
@@ -184,7 +162,9 @@ pub fn (t mut Table) find_or_register_map(typ types.Map) int {
 pub fn (t mut Table) find_or_register_array(typ types.Array) int {
 	// existing
 	existing_idx := t.type_idxs[typ.name]
-	if existing_idx < 0 { return existing_idx }
+	if existing_idx < 0 {
+		return existing_idx
+	}
 	// register
 	idx := t.types.len
 	mut t2 := types.Type{}
@@ -197,7 +177,9 @@ pub fn (t mut Table) find_or_register_array(typ types.Array) int {
 pub fn (t mut Table) find_or_register_array_fixed(typ types.ArrayFixed) int {
 	// existing
 	existing_idx := t.type_idxs[typ.name]
-	if existing_idx < 0 { return existing_idx }
+	if existing_idx < 0 {
+		return existing_idx
+	}
 	// register
 	idx := t.types.len
 	mut t2 := types.Type{}
