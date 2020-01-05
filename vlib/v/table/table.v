@@ -126,12 +126,17 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 		match ex_type {
 			types.Placeholder {
 				// override placeholder
-				println('placeholder exists: $it.name overidding')
+				println('overriding type placeholder `$it.name` with struct')
 				t2 = {typ| idx: existing_idx}
 				t.types[existing_idx] = t2
 				return existing_idx
 			}
-			else {}
+			types.Struct {
+				return existing_idx
+			}
+			else {
+				panic('cannot register type `$typ.name`, another type with this name exists')
+			}
 		}
 	}
 	// register
@@ -219,4 +224,3 @@ pub fn (t mut Table) new_tmp_var() string {
 	t.tmp_cnt++
 	return 'tmp$t.tmp_cnt'
 }
-
