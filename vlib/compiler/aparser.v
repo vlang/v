@@ -103,6 +103,7 @@ const (
 )
 
 struct ParserState {
+	scanner_file_path string
 	scanner_line_nr   int
 	scanner_text      string
 	scanner_pos       int
@@ -323,6 +324,7 @@ fn (p &Parser) log(s string) {
 
 pub fn (p &Parser) save_state() ParserState {
 	return ParserState{
+		scanner_file_path: p.scanner.file_path
 		scanner_line_nr: p.scanner.line_nr
 		scanner_text: p.scanner.text
 		scanner_pos: p.scanner.pos
@@ -343,6 +345,7 @@ pub fn (p &Parser) save_state() ParserState {
 
 pub fn (p mut Parser) restore_state(state ParserState, scanner bool, cgen bool) {
 	if scanner {
+		p.scanner.file_path = state.scanner_file_path
 		p.scanner.line_nr = state.scanner_line_nr
 		p.scanner.text = state.scanner_text
 		p.scanner.pos = state.scanner_pos
@@ -390,9 +393,12 @@ pub fn (p mut Parser) add_text(text string) {
 	p.scan_tokens()
 }
 
-fn (p mut Parser) statements_from_text(text string, rcbr bool) {
+fn (p mut Parser) statements_from_text(text string, rcbr bool, fpath string) {
 	saved_state := p.save_state()
 	p.clear_state(true, false)
+	if fpath != '' {
+		p.scanner.file_path = fpath
+	}
 	p.add_text(text)
 	p.next()
 	if rcbr {
