@@ -9,10 +9,11 @@ pub const (
 const (
 	stdin_value = 0
 	stdout_value = 1
-	stderr_value  = 2
+	stderr_value = 2
 )
 
 fn C.symlink(charptr, charptr) int
+
 
 pub fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
@@ -67,57 +68,58 @@ pub fn is_dir(path string) bool {
 }
 */
 
-pub fn open(path string) ?File {
-	$if linux {
-	//$if linux_or_macos {
-		fd := C.syscall(sys_open, path.str, 511)
-		if fd == -1 {
-			return error('failed to open file "$path"')
-		}
-		return File{
-			fd: fd
-			opened: true
-		}
-	}
-	$else {
-		cpath := path.str
-		file := File{
-			cfile: C.fopen(charptr(cpath), 'rb')
-			opened: true
-		}
-		if isnil(file.cfile) {
-			return error('failed to open file "$path"')
-		}
-		return file
-	}
-}
 
+pub fn open(path string) ?File {
+	mut file := File{}
+	$if linux_or_macos {
+		$if !android {
+			fd := C.syscall(sys_open, path.str, 511)
+			if fd == -1 {
+				return error('failed to open file "$path"')
+			}
+			return File{
+				fd: fd
+				opened: true
+			}
+		}
+	}
+	cpath := path.str
+	file = File{
+		cfile: C.fopen(charptr(cpath), 'rb')
+		opened: true
+	}
+	if isnil(file.cfile) {
+		return error('failed to open file "$path"')
+	}
+	return file
+}
 
 // create creates a file at a specified location and returns a writable `File` object.
 pub fn create(path string) ?File {
-	$if linux {
-	//$if linux_or_macos {
-		mut fd := 0
-		//println('creat SYS')
-		/*
-		$if macos {
-			fd = C.syscall(sys_open_nocancel, path.str, 0x601, 0x1b6)
+	mut fd := 0
+	mut file := File{}
+	// NB: android/termux/bionic is also a kind of linux,
+	// but linux syscalls there sometimes fail,
+	// while the libc version should work.
+	$if linux_or_macos {
+		$if !android {
+			$if macos {
+				fd = C.syscall(398, path.str, 0x601, 0x1b6)
+			}
+			$if linux {
+				fd = C.syscall(sys_creat, path.str, 511)
+			}
+			if fd == -1 {
+				return error('failed to create file "$path"')
+			}
+			file = File{
+				fd: fd
+				opened: true
+			}
+			return file
 		}
-		$else {
-			*/
-		fd = C.syscall(sys_creat, path.str, 511)
-		//}
-		//println('fd=$fd')
-		if fd == -1 {
-			return error('failed to create file "$path"')
-		}
-		return File{
-			fd: fd
-			opened: true
-		}
-
 	}
-	mut file := File{
+	file = File{
 		cfile: C.fopen(charptr(path.str), 'wb')
 		opened: true
 	}
@@ -132,16 +134,17 @@ pub fn (f mut File) fseek(pos, mode int) {
 }
 */
 
+
 pub fn (f mut File) write(s string) {
 	if !f.opened {
 		return
 	}
-	$if linux {
-	//$if linux_or_macos {
-		C.syscall(sys_write, f.fd, s.str, s.len)
-		return
+	$if linux_or_macos {
+		$if !android {
+			C.syscall(sys_write, f.fd, s.str, s.len)
+			return
+		}
 	}
-
 	C.fputs(s.str, f.cfile)
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
@@ -150,14 +153,13 @@ pub fn (f mut File) writeln(s string) {
 	if !f.opened {
 		return
 	}
-	//$if linux_or_macos {
-	$if linux {
-		snl := s + '\n'
-		C.syscall(sys_write, f.fd, snl.str, snl.len)
-		return
+	$if linux_or_macos {
+		$if !android {
+			snl := s + '\n'
+			C.syscall(sys_write, f.fd, snl.str, snl.len)
+			return
+		}
 	}
-
-
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
@@ -166,19 +168,20 @@ pub fn (f mut File) writeln(s string) {
 	C.fputs('\n', f.cfile)
 }
 
-
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
 	if path == '.' {
 		return true
 	}
 	apath := os.realpath(path)
-	$if linux {
-		ret := C.syscall(sys_mkdir, apath.str, 511)
-		if ret == -1 {
-			return error(get_error_msg(C.errno))
+	$if linux_or_macos {
+		$if !android {
+			ret := C.syscall(sys_mkdir, apath.str, 511)
+			if ret == -1 {
+				return error(get_error_msg(C.errno))
+			}
+			return true
 		}
-		return true
 	}
 	r := C.mkdir(apath.str, 511)
 	if r == -1 {
@@ -215,7 +218,9 @@ pub fn exec(cmd string) ?Result {
 
 pub fn symlink(origin, target string) ?bool {
 	res := C.symlink(origin.str, target.str)
-	if res == 0 { return true }
+	if res == 0 {
+		return true
+	}
 	return error(get_error_msg(C.errno))
 }
 
@@ -223,11 +228,13 @@ pub fn symlink(origin, target string) ?bool {
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
 pub fn (f mut File) write_bytes(data voidptr, size int) {
-	$if linux {
-		C.syscall(sys_write, f.fd,  data, 1)
-	} $else {
-		C.fwrite(data, 1, size, f.cfile)
+	$if linux_or_macos {
+		$if !android {
+			C.syscall(sys_write, f.fd, data, 1)
+			return
+		}
 	}
+	C.fwrite(data, 1, size, f.cfile)
 }
 
 pub fn (f mut File) close() {
@@ -235,12 +242,12 @@ pub fn (f mut File) close() {
 		return
 	}
 	f.opened = false
-	$if linux {
-	//$if linux_or_macos {
-		C.syscall(sys_close, f.fd)
-		return
+	$if linux_or_macos {
+		$if !android {
+			C.syscall(sys_close, f.fd)
+			return
+		}
 	}
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
-

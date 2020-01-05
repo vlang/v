@@ -21,16 +21,15 @@ const (
 fn C.puts(charptr)
 */
 
-pub fn println(s string) {
-	/*
+pub fn println(s string) {	
 	$if linux {
-		snl := s + '\n'
-		C.syscall(sys_write, stdout_value, snl.str, s.len+1)
+		$if !android {
+			snl := s + '\n'
+			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
+			return
+		}
 	} 
-	$else {
-		*/
-		C.printf('%.*s\n', s.len, s.str)
-	//}
+	C.printf('%.*s\n', s.len, s.str)
 }
 
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {

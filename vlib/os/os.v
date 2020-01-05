@@ -789,7 +789,7 @@ pub fn executable() string {
 	$if haiku {}
 	$if netbsd {
 		mut result := calloc(MAX_PATH)
-		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH))
+		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return os.args[0]
@@ -798,7 +798,7 @@ pub fn executable() string {
 	}
 	$if dragonfly {
 		mut result := calloc(MAX_PATH)
-		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH))
+		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return os.args[0]

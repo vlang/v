@@ -29,11 +29,15 @@ fn (p mut Parser) comp_time() {
 			}
 
 			if not {
-				p.genln('#ifndef $ifdef_name')
+				if name == 'linux_or_macos' {
+					p.genln('#if !defined(__linux__) && !defined(__APPLE__)')
+				} else {
+					p.genln('#ifndef $ifdef_name')
+				}
 			}
 			else {
 				if name == 'linux_or_macos' {
-					p.genln('#if defined(__linux) || defined(__APPLE__)')
+					p.genln('#if defined(__linux__) || defined(__APPLE__)')
 				} else {
 					p.genln('#ifdef $ifdef_name')
 				}
