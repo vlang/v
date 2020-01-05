@@ -159,13 +159,13 @@ fn (p mut Parser) comp_time() {
 		p.check(.rcbr)
 		// }
 	}
-	// $vweb.html()
-	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
-	// that returns an html string
 	else if p.tok == .name && p.lit == 'vweb' {
+		// $vweb.html()
+		// Compile vweb html template to V code, parse that V code and embed the resulting V functions
+		// that returns an html string
 		mut path := p.cur_fn.name + '.html'
 		if p.pref.is_debug {
-			println('compiling tmpl $path')
+			println('>>> compiling vweb HTML template "$path"')
 		}
 		if !os.exists(path) {
 			// Can't find the template file in current directory,
@@ -183,8 +183,11 @@ fn (p mut Parser) comp_time() {
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
 		if p.pref.is_verbose {
-			println('vweb template:')
+			println('\n\n')
+			println('>>> vweb template for ${path}:')
 			println(v_code)
+			println('>>> vweb template END')
+			println('\n\n')
 		}
 		is_strings_imorted := p.import_table.known_import('strings')
 		if !is_strings_imorted {
@@ -201,7 +204,7 @@ fn (p mut Parser) comp_time() {
 		p.genln('vweb__Context_html( & $receiver.name /*!*/$dot vweb, tmpl_res)')
 	}
 	else {
-		p.error('bad comptime expr')
+		p.error('bad comp_time expression')
 	}
 }
 
