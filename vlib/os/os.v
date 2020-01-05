@@ -505,13 +505,20 @@ pub fn unsetenv(name string) int {
 	}
 }
 
+const (
+	F_OK = 0
+	X_OK = 1
+	W_OK = 2
+	R_OK = 4
+)
+
 // exists returns true if `path` exists.
 pub fn exists(path string) bool {
 	$if windows {
 		path = path.replace('/', '\\')
-		return C._waccess(path.to_wide(), 0) != -1
+		return C._waccess(path.to_wide(), F_OK) != -1
 	} $else {
-		return C.access(path.str, 0) != -1
+		return C.access(path.str, F_OK) != -1
 	}
 }
 
@@ -519,9 +526,9 @@ pub fn exists(path string) bool {
 pub fn is_executable(path string) bool {
   $if windows {
     path = path.replace('/', '\\')
-    return C._waccess(path.to_wide(), 1) != -1
+    return C._waccess(path.to_wide(), X_OK) != -1
   } $else {
-    return C.access(path.str, 1) != -1
+    return C.access(path.str, X_OK) != -1
   }
 }
 
@@ -529,9 +536,9 @@ pub fn is_executable(path string) bool {
 pub fn is_writable(path string) bool {
   $if windows {
     path = path.replace('/', '\\')
-    return C._waccess(path.to_wide(), 2) != -1
+    return C._waccess(path.to_wide(), W_OK) != -1
   } $else {
-    return C.access(path.str, 2) != -1
+    return C.access(path.str, W_OK) != -1
   }
 }
 
@@ -539,9 +546,9 @@ pub fn is_writable(path string) bool {
 pub fn is_readable(path string) bool {
   $if windows {
     path = path.replace('/', '\\')
-    return C._waccess(path.to_wide(), 4) != -1
+    return C._waccess(path.to_wide(), R_OK) != -1
   } $else {
-    return C.access(path.str, 4) != -1
+    return C.access(path.str, R_OK) != -1
   }
 }
 
