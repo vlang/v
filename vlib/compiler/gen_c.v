@@ -116,7 +116,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		is_mut: false
 		is_used: true
 	})
-	if is_assign && !name.contains('.') {
+	if is_assign && !name.contains('.') && !p.is_var_decl {
 		// don't initialize struct fields
 		p.genln('$typ $name;')
 	}
@@ -717,4 +717,3 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
 		p.gen('), $tmp, $elm_type)')
 	}
 }
-
