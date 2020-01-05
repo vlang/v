@@ -82,14 +82,15 @@ pub fn open(path string) ?File {
 				opened: true
 			}
 		}
-	}
-	cpath := path.str
-	file = File{
-		cfile: C.fopen(charptr(cpath), 'rb')
-		opened: true
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
+	} $else {
+		cpath := path.str
+		file = File{
+			cfile: C.fopen(charptr(cpath), 'rb')
+			opened: true
+		}
+		if isnil(file.cfile) {
+			return error('failed to open file "$path"')
+		}
 	}
 	return file
 }
@@ -118,13 +119,14 @@ pub fn create(path string) ?File {
 			}
 			return file
 		}
-	}
-	file = File{
-		cfile: C.fopen(charptr(path.str), 'wb')
-		opened: true
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
+	} $else {
+		file = File{
+			cfile: C.fopen(charptr(path.str), 'wb')
+			opened: true
+		}
+		if isnil(file.cfile) {
+			return error('failed to create file "$path"')
+		}
 	}
 	return file
 }
@@ -144,9 +146,10 @@ pub fn (f mut File) write(s string) {
 			C.syscall(sys_write, f.fd, s.str, s.len)
 			return
 		}
+	} $else {
+		C.fputs(s.str, f.cfile)
+		// C.fwrite(s.str, 1, s.len, f.cfile)
 	}
-	C.fputs(s.str, f.cfile)
-	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
 
 pub fn (f mut File) writeln(s string) {
@@ -159,13 +162,14 @@ pub fn (f mut File) writeln(s string) {
 			C.syscall(sys_write, f.fd, snl.str, snl.len)
 			return
 		}
+	} $else {
+		// C.fwrite(s.str, 1, s.len, f.cfile)
+		// ss := s.clone()
+		// TODO perf
+		C.fputs(s.str, f.cfile)
+		// ss.free()
+		C.fputs('\n', f.cfile)
 	}
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-	// ss := s.clone()
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	// ss.free()
-	C.fputs('\n', f.cfile)
 }
 
 // mkdir creates a new directory with the specified path.
@@ -182,10 +186,11 @@ pub fn mkdir(path string) ?bool {
 			}
 			return true
 		}
-	}
-	r := C.mkdir(apath.str, 511)
-	if r == -1 {
-		return error(get_error_msg(C.errno))
+	} $else {
+		r := C.mkdir(apath.str, 511)
+		if r == -1 {
+			return error(get_error_msg(C.errno))
+		}
 	}
 	return true
 }
@@ -233,8 +238,9 @@ pub fn (f mut File) write_bytes(data voidptr, size int) {
 			C.syscall(sys_write, f.fd, data, 1)
 			return
 		}
+	} $else {
+		C.fwrite(data, 1, size, f.cfile)
 	}
-	C.fwrite(data, 1, size, f.cfile)
 }
 
 pub fn (f mut File) close() {
@@ -247,7 +253,8 @@ pub fn (f mut File) close() {
 			C.syscall(sys_close, f.fd)
 			return
 		}
+	} $else {
+		C.fflush(f.cfile)
+		C.fclose(f.cfile)
 	}
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
 }
