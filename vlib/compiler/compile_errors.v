@@ -23,6 +23,14 @@ fn (p mut Parser) error(s string) {
 	p.error_with_token_index(s, p.token_idx - 1)
 }
 
+fn (p mut Parser) warn_or_error(s string) {
+	if p.pref.is_prod {
+		p.error(s)
+	} else {
+		p.warn(s)
+	}
+}
+
 fn (p mut Parser) warn(s string) {
 	p.warn_with_token_index(s, p.token_idx - 1)
 }
