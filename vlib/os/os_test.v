@@ -234,16 +234,20 @@ fn test_symlink() {
   os.rm('symlink2')
 }
 
-fn test_is_writable() {
-  assert os.is_writable('os_test.v')
-}
+fn test_is_executable_writable_readable() {
+  file_name := './file.tst'
 
-fn test_is_readable() {
-  assert os.is_readable('os_test.v')
-}
+  os.create(file_name) or {
+    eprintln('failed to create file $file_name')
+    return
+  }
 
-fn test_is_executable() {
-  assert os.is_executable('os_test.v')
+  assert os.is_writable(file_name)
+  assert os.is_readable(file_name)
+  assert os.is_executable(file_name)
+
+  // We finally delete the test file.
+  os.rm(file_name)
 }
 
 // this function is called by both test_aaa_setup & test_zzz_cleanup
