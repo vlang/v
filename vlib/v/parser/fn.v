@@ -4,13 +4,9 @@
 module parser
 
 import (
-	v.scanner
 	v.ast
-	v.token
 	v.table
 	v.types
-	term
-	os
 )
 
 pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
