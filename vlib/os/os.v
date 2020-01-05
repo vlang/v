@@ -508,11 +508,41 @@ pub fn unsetenv(name string) int {
 // exists returns true if `path` exists.
 pub fn exists(path string) bool {
 	$if windows {
-		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), 0) != -1
+		path = path.replace('/', '\\')
+		return C._waccess(path.to_wide(), 0) != -1
 	} $else {
 		return C.access(path.str, 0) != -1
 	}
+}
+
+// `is_executable` returns `true` if `path` is executable.
+pub fn is_executable(path string) bool {
+  $if windows {
+    path = path.replace('/', '\\')
+    return C._waccess(path.to_wide(), 1) != -1
+  } $else {
+    return C.access(path.str, 1) != -1
+  }
+}
+
+// `is_writable` returns `true` if `path` is writable.
+pub fn is_writable(path string) bool {
+  $if windows {
+    path = path.replace('/', '\\')
+    return C._waccess(path.to_wide(), 2) != -1
+  } $else {
+    return C.access(path.str, 2) != -1
+  }
+}
+
+// `is_readable` returns `true` if `path` is readable.
+pub fn is_readable(path string) bool {
+  $if windows {
+    path = path.replace('/', '\\')
+    return C._waccess(path.to_wide(), 4) != -1
+  } $else {
+    return C.access(path.str, 4) != -1
+  }
 }
 
 [deprecated]
