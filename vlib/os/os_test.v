@@ -107,7 +107,7 @@ fn test_walk() {
     os.write_file(file1,'test-1')
 
     os.walk(folder, walk_callback)
-	
+
 	os.rm(file1)
 	os.rmdir(folder)
 }
@@ -150,17 +150,17 @@ fn test_tmpdir(){
 	t := os.tmpdir()
 	assert t.len > 0
 	assert os.is_dir(t)
-	
+
 	tfile := t + os.path_separator + 'tmpfile.txt'
-	
+
 	os.rm(tfile) // just in case
-	
+
 	tfile_content := 'this is a temporary file'
 	os.write_file(tfile, tfile_content)
-	
+
 	tfile_content_read := os.read_file(tfile) or { panic(err) }
 	assert tfile_content_read == tfile_content
-	
+
 	os.rm(tfile)
 }
 
@@ -175,7 +175,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
    folder  := 'tfolder'
    symlink := 'tsymlink'
 
-   os.rm(symlink) 
+   os.rm(symlink)
    os.rm(folder)
 
    os.mkdir(folder) or { panic(err) }
@@ -185,12 +185,12 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
    os.system('ln -s $folder $symlink')
    assert os.is_link(symlink) == true
 
-   os.rm(symlink) 
+   os.rm(symlink)
    os.rm(folder)
-   
+
    folder_exists := os.is_dir(folder)
    assert folder_exists == false
-   
+
    symlink_exists := os.is_link(symlink)
    assert symlink_exists == false
 }
@@ -234,6 +234,18 @@ fn test_symlink() {
   os.rm('symlink2')
 }
 
+fn test_is_writable() {
+  assert os.is_writable('os_test.v')
+}
+
+fn test_is_readable() {
+  assert os.is_readable('os_test.v')
+}
+
+fn test_is_executable() {
+  assert os.is_executable('os_test.v')
+}
+
 // this function is called by both test_aaa_setup & test_zzz_cleanup
 // it ensures that os tests do not polute the filesystem with leftover
 // files so that they can be run several times in a row.
@@ -241,7 +253,7 @@ fn cleanup_leftovers(){
 	// possible leftovers from test_cp
 	os.rm('cp_example.txt')
 	os.rm('cp_new_example.txt')
-	
+
 	// possible leftovers from test_cp_r
 	os.rm('ex/ex2/ex2.txt')
 	os.rmdir('ex/ex2')
