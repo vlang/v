@@ -515,8 +515,8 @@ const (
 // exists returns true if `path` exists.
 pub fn exists(path string) bool {
 	$if windows {
-		path = path.replace('/', '\\')
-		return C._waccess(path.to_wide(), F_OK) != -1
+		p := path.replace('/', '\\')
+		return C._waccess(p.to_wide(), F_OK) != -1
 	} $else {
 		return C.access(path.str, F_OK) != -1
 	}
@@ -525,8 +525,8 @@ pub fn exists(path string) bool {
 // `is_executable` returns `true` if `path` is executable.
 pub fn is_executable(path string) bool {
   $if windows {
-    path = path.replace('/', '\\')
-    return C._waccess(path.to_wide(), X_OK) != -1
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), X_OK) != -1
   } $else {
     return C.access(path.str, X_OK) != -1
   }
@@ -535,8 +535,8 @@ pub fn is_executable(path string) bool {
 // `is_writable` returns `true` if `path` is writable.
 pub fn is_writable(path string) bool {
   $if windows {
-    path = path.replace('/', '\\')
-    return C._waccess(path.to_wide(), W_OK) != -1
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), W_OK) != -1
   } $else {
     return C.access(path.str, W_OK) != -1
   }
@@ -545,8 +545,8 @@ pub fn is_writable(path string) bool {
 // `is_readable` returns `true` if `path` is readable.
 pub fn is_readable(path string) bool {
   $if windows {
-    path = path.replace('/', '\\')
-    return C._waccess(path.to_wide(), R_OK) != -1
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), R_OK) != -1
   } $else {
     return C.access(path.str, R_OK) != -1
   }
