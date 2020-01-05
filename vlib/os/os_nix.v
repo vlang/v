@@ -71,7 +71,7 @@ pub fn is_dir(path string) bool {
 
 pub fn open(path string) ?File {
 	mut file := File{}
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
 			fd := C.syscall(sys_open, path.str, 511)
 			if fd == -1 {
@@ -101,14 +101,14 @@ pub fn create(path string) ?File {
 	// NB: android/termux/bionic is also a kind of linux,
 	// but linux syscalls there sometimes fail,
 	// while the libc version should work.
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
-			$if macos {
-				fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			}
-			$if linux {
-				fd = C.syscall(sys_creat, path.str, 511)
-			}
+			//$if macos {
+			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
+			//}
+			//$if linux {
+			fd = C.syscall(sys_creat, path.str, 511)
+			//}
 			if fd == -1 {
 				return error('failed to create file "$path"')
 			}
@@ -139,7 +139,7 @@ pub fn (f mut File) write(s string) {
 	if !f.opened {
 		return
 	}
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
 			C.syscall(sys_write, f.fd, s.str, s.len)
 			return
@@ -153,7 +153,7 @@ pub fn (f mut File) writeln(s string) {
 	if !f.opened {
 		return
 	}
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
 			snl := s + '\n'
 			C.syscall(sys_write, f.fd, snl.str, snl.len)
@@ -174,7 +174,7 @@ pub fn mkdir(path string) ?bool {
 		return true
 	}
 	apath := os.realpath(path)
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
 			ret := C.syscall(sys_mkdir, apath.str, 511)
 			if ret == -1 {
@@ -228,7 +228,7 @@ pub fn symlink(origin, target string) ?bool {
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
 pub fn (f mut File) write_bytes(data voidptr, size int) {
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
 			C.syscall(sys_write, f.fd, data, 1)
 			return
@@ -242,7 +242,7 @@ pub fn (f mut File) close() {
 		return
 	}
 	f.opened = false
-	$if linux_or_macos {
+	$if linux {
 		$if !android {
 			C.syscall(sys_close, f.fd)
 			return
