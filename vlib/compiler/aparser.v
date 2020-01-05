@@ -3077,7 +3077,10 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 	us_idx := typ_name.index('__') or {
 		return
 	}
-	arg_mod := typ_name[..us_idx]
+	mut arg_mod := typ_name[..us_idx]
+	if arg_mod.contains('_dot_') {
+		arg_mod = arg_mod.all_after('_dot_')
+	}
 	if p.import_table.known_alias(arg_mod) {
 		p.import_table.register_used_import(arg_mod)
 	}
@@ -3098,11 +3101,13 @@ fn (p mut Parser) check_unused_imports() {
 	if output == '' {
 		return
 	}
+	
 	// the imports are usually at the start of the file
 	//p.production_error_with_token_index('the following imports were never used: $output', 0)
-	if !p.file_path.contains ('vlib/v/') {
-	p.warn('the following imports were never used: $output')
+	if p.pref.is_verbose {
+		eprintln('Used imports table: ${p.import_table.used_imports.str()}')
 	}
+	p.warn('the following imports were never used: $output')		
 }
 
 fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {
