@@ -82,8 +82,7 @@ pub fn open(path string) ?File {
 				opened: true
 			}
 		}
-	}
-	$if !linux {
+	} $else {
 		cpath := path.str
 		file = File{
 			cfile: C.fopen(charptr(cpath), 'rb')
@@ -105,12 +104,12 @@ pub fn create(path string) ?File {
 	// while the libc version should work.
 	$if linux {
 		$if !android {
-			// $if macos {
-			// fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			// }
-			// $if linux {
+			//$if macos {
+			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
+			//}
+			//$if linux {
 			fd = C.syscall(sys_creat, path.str, 511)
-			// }
+			//}
 			if fd == -1 {
 				return error('failed to create file "$path"')
 			}
@@ -120,8 +119,7 @@ pub fn create(path string) ?File {
 			}
 			return file
 		}
-	}
-	$if !linux {
+	} $else {
 		file = File{
 			cfile: C.fopen(charptr(path.str), 'wb')
 			opened: true
@@ -148,8 +146,7 @@ pub fn (f mut File) write(s string) {
 			C.syscall(sys_write, f.fd, s.str, s.len)
 			return
 		}
-	}
-	$if !linux {
+	} $else {
 		C.fputs(s.str, f.cfile)
 		// C.fwrite(s.str, 1, s.len, f.cfile)
 	}
@@ -165,8 +162,7 @@ pub fn (f mut File) writeln(s string) {
 			C.syscall(sys_write, f.fd, snl.str, snl.len)
 			return
 		}
-	}
-	$if !linux {
+	} $else {
 		// C.fwrite(s.str, 1, s.len, f.cfile)
 		// ss := s.clone()
 		// TODO perf
@@ -190,8 +186,7 @@ pub fn mkdir(path string) ?bool {
 			}
 			return true
 		}
-	}
-	$if !linux {
+	} $else {
 		r := C.mkdir(apath.str, 511)
 		if r == -1 {
 			return error(get_error_msg(C.errno))
@@ -243,8 +238,7 @@ pub fn (f mut File) write_bytes(data voidptr, size int) {
 			C.syscall(sys_write, f.fd, data, 1)
 			return
 		}
-	}
-	$if !linux {
+	} $else {
 		C.fwrite(data, 1, size, f.cfile)
 	}
 }
@@ -259,8 +253,7 @@ pub fn (f mut File) close() {
 			C.syscall(sys_close, f.fd)
 			return
 		}
-	}
-	$if !linux {
+	} $else {
 		C.fflush(f.cfile)
 		C.fclose(f.cfile)
 	}
