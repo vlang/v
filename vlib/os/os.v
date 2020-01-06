@@ -525,8 +525,14 @@ pub fn exists(path string) bool {
 // `is_executable` returns `true` if `path` is executable.
 pub fn is_executable(path string) bool {
   $if windows {
-    p := path.replace('/', '\\')
-    return C._waccess(p.to_wide(), X_OK) != -1
+    // NB: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
+    // i.e. there is no X bit there, the modes can be:
+    // 00 Existence only
+    // 02 Write-only
+    // 04 Read-only
+    // 06 Read and write
+    p := os.realpath( path )
+    return ( os.exists( p ) && p.ends_with('.exe') )
   } $else {
     return C.access(path.str, X_OK) != -1
   }

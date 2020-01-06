@@ -235,16 +235,26 @@ fn test_symlink() {
 }
 
 fn test_is_executable_writable_readable() {
-  file_name := './file.tst'
+  file_name := os.tmpdir() + os.path_separator + 'rwxfile.exe'
 
-  os.create(file_name) or {
+  mut f := os.create(file_name) or {
     eprintln('failed to create file $file_name')
     return
   }
-
-  assert os.is_writable(file_name)
-  assert os.is_readable(file_name)
-  assert os.is_executable(file_name)
+  f.close()
+  
+  $if !windows {
+    os.chmod(file_name, 0600) // mark as readable && writable, but NOT executable  
+    assert os.is_writable(file_name)
+    assert os.is_readable(file_name)
+    assert !os.is_executable(file_name)  
+    os.chmod(file_name, 0700) // mark as executable too
+    assert os.is_executable(file_name)
+  } $else {
+    assert os.is_writable(file_name)
+    assert os.is_readable(file_name)
+    assert os.is_executable(file_name)    
+  }
 
   // We finally delete the test file.
   os.rm(file_name)
