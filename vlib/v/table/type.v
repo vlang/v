@@ -1,3 +1,6 @@
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module table
 
 import v.types
@@ -26,7 +29,10 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 			types.Placeholder {
 				// override placeholder
 				println('overriding type placeholder `$it.name` with struct')
-				struct_type = {typ| idx: existing_idx}
+				struct_type = {
+					typ |
+					idx:existing_idx
+				}
 				t.types[existing_idx] = struct_type
 				return existing_idx
 			}
@@ -42,38 +48,40 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 	println('registering: $typ.name')
 	idx := t.types.len
 	t.type_idxs[typ.name] = idx
-	struct_type = {typ| idx: idx}
+	struct_type = {
+		typ |
+		idx:idx
+	}
 	t.types << struct_type
-
 	return idx
 }
 
-pub fn (t mut Table) find_or_register_map(key_ti &types.TypeIdent, value_ti &types.TypeIdent) (int, string) {
+pub fn (t mut Table) find_or_register_map(key_ti &types.TypeIdent, value_ti &types.TypeIdent) (int,string) {
 	name := 'map_${key_ti.type_name}_${value_ti.type_name}'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx, name
+		return existing_idx,name
 	}
 	// register
 	idx := t.types.len
 	mut map_type := types.Type{}
 	map_type = types.Map{
 		name: name
-		key_type_idx: key_ti.type_idx,
+		key_type_idx: key_ti.type_idx
 		value_type_idx: value_ti.type_idx
 	}
 	t.type_idxs[name] = idx
 	t.types << map_type
-	return idx, name
+	return idx,name
 }
 
-pub fn (t mut Table) find_or_register_array(elem_ti &types.TypeIdent, nr_dims int) (int, string) {
+pub fn (t mut Table) find_or_register_array(elem_ti &types.TypeIdent, nr_dims int) (int,string) {
 	name := 'array_${elem_ti.type_name}_${nr_dims}d'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx, name
+		return existing_idx,name
 	}
 	// register
 	idx := t.types.len
@@ -87,15 +95,15 @@ pub fn (t mut Table) find_or_register_array(elem_ti &types.TypeIdent, nr_dims in
 	}
 	t.type_idxs[name] = idx
 	t.types << array_type
-	return idx, name
+	return idx,name
 }
 
-pub fn (t mut Table) find_or_register_array_fixed(elem_ti &types.TypeIdent, size int, nr_dims int) (int, string) {
+pub fn (t mut Table) find_or_register_array_fixed(elem_ti &types.TypeIdent, size int, nr_dims int) (int,string) {
 	name := 'array_fixed_${elem_ti.type_name}_${size}_${nr_dims}d'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx, name
+		return existing_idx,name
 	}
 	// register
 	idx := t.types.len
@@ -110,10 +118,10 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_ti &types.TypeIdent, size
 	}
 	t.type_idxs[name] = idx
 	t.types << array_fixed_type
-	return idx, name
+	return idx,name
 }
 
-pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (int, string) {
+pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (int,string) {
 	mut name := 'multi_return'
 	mut mr_type_kinds := []types.Kind
 	mut mr_type_idxs := []int
@@ -125,7 +133,7 @@ pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (i
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx, name
+		return existing_idx,name
 	}
 	// register
 	idx := t.types.len
@@ -138,15 +146,15 @@ pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (i
 	}
 	t.type_idxs[name] = idx
 	t.types << mr_type
-	return idx, name
+	return idx,name
 }
 
-pub fn (t mut Table) find_or_register_variadic(variadic_ti &types.TypeIdent) (int, string) {
+pub fn (t mut Table) find_or_register_variadic(variadic_ti &types.TypeIdent) (int,string) {
 	name := 'variadic_$variadic_ti.type_name'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx, name
+		return existing_idx,name
 	}
 	// register
 	idx := t.types.len
@@ -158,7 +166,7 @@ pub fn (t mut Table) find_or_register_variadic(variadic_ti &types.TypeIdent) (in
 	}
 	t.type_idxs[name] = idx
 	t.types << variadic_type
-	return idx, name
+	return idx,name
 }
 
 pub fn (t mut Table) add_placeholder_type(name string) int {

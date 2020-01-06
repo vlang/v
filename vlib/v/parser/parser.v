@@ -14,15 +14,15 @@ import (
 )
 
 struct Parser {
-	scanner     &scanner.Scanner
-	file_name   string
+	scanner   &scanner.Scanner
+	file_name string
 mut:
-	tok         token.Token
-	peek_tok    token.Token
+	tok       token.Token
+	peek_tok  token.Token
 	// vars []string
-	table       &table.Table
-	return_ti   types.TypeIdent
-	is_c        bool
+	table     &table.Table
+	return_ti types.TypeIdent
+	is_c      bool
 }
 
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
@@ -145,15 +145,15 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-			}
+		}
 			// .key_const {
-			// return p.const_decl()
+				// return p.const_decl()
 			// }
 			// .key_enum {
-			// return p.enum_decl()
+				// return p.enum_decl()
 			// }
 			// .key_type {
-			// return p.type_decl()
+				// return p.type_decl()
 			// }
 		}
 		.key_fn {
@@ -354,7 +354,7 @@ pub fn (p mut Parser) expr(rbp int) (ast.Expr,types.TypeIdent) {
 				p.warn('dot prev_tok = $prev_tok.str() typ=$ti.type_name')
 				// p.next()
 				field := p.check_name()
-				if !ti.type_kind in  [._placeholder, ._struct] {
+				if !ti.type_kind in [._placeholder, ._struct] {
 					println('kind: $ti.str()')
 					p.error('cannot access field, `$ti.type_name` is not a struct')
 				}
@@ -486,7 +486,7 @@ fn (p mut Parser) parse_string_literal() (ast.Expr,types.TypeIdent) {
 	}
 	p.next()
 	// return node,types.string_type
-	return node, types.new_base_ti(._string, 0)
+	return node,types.new_base_ti(._string, 0)
 }
 
 fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {

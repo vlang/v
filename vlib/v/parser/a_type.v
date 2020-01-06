@@ -1,5 +1,8 @@
 module parser
 
+// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 import v.types
 
 pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
@@ -9,7 +12,7 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		size := p.tok.lit.int()
 		p.check(.rsbr)
 		elem_ti := p.parse_ti()
-		idx, name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
+		idx,name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
 		return types.new_ti(._array_fixed, name, idx, nr_muls)
 	}
 	// array
@@ -21,7 +24,7 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		nr_dims++
 	}
 	p.check(.rsbr)
-	idx, name := p.table.find_or_register_array(&elem_ti, nr_dims)
+	idx,name := p.table.find_or_register_array(&elem_ti, nr_dims)
 	return types.new_ti(._array, name, idx, nr_muls)
 }
 
@@ -31,7 +34,7 @@ pub fn (p mut Parser) parse_map_ti(nr_muls int) types.TypeIdent {
 	key_ti := p.parse_ti()
 	p.check(.rsbr)
 	value_ti := p.parse_ti()
-	idx, name := p.table.find_or_register_map(&key_ti, &value_ti)
+	idx,name := p.table.find_or_register_map(&key_ti, &value_ti)
 	return types.new_ti(._map, name, idx, nr_muls)
 }
 
@@ -43,19 +46,20 @@ pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
 		mr_tis << &mr_ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
-		} else {
+		}
+		else {
 			break
 		}
 	}
 	p.check(.rpar)
-	idx, name := p.table.find_or_register_multi_return(mr_tis)
+	idx,name := p.table.find_or_register_multi_return(mr_tis)
 	return types.new_ti(._multi_return, name, idx, 0)
 }
 
 pub fn (p mut Parser) parse_variadic_ti() types.TypeIdent {
 	p.check(.ellipsis)
 	variadic_ti := p.parse_ti()
-	idx, name := p.table.find_or_register_variadic(&variadic_ti)
+	idx,name := p.table.find_or_register_variadic(&variadic_ti)
 	return types.new_ti(._variadic, name, idx, 0)
 }
 
@@ -86,7 +90,9 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 			return p.parse_variadic_ti()
 		}
 		else {
-			defer { p.next() }
+			defer {
+				p.next()
+			}
 			match name {
 				// map
 				'map' {
