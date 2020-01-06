@@ -310,12 +310,6 @@ pub fn (g mut Gen) call_fn(name string) {
 
 fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
-		ast.AssignStmt {
-			g.expr(it.left)
-			g.write(' $it.op.str() ')
-			g.expr(it.right)
-			g.writeln(';')
-		}
 		ast.FnDecl {
 			is_main := it.name == 'main'
 			if is_main {
@@ -332,44 +326,19 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.Return {
-			g.write('return ')
-			g.expr(it.expr)
-			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('$it.ti.name $it.name = ')
-			g.expr(it.expr)
-			g.writeln(';')
 		}
 		ast.ForStmt {
 			if it.is_in {}
-			g.write('while (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			g.writeln('}')
 		}
 		ast.StructDecl {
-			g.writeln('typedef struct {')
-			for field in it.fields {
-				g.writeln('\t$field.ti.name $field.name;')
-			}
-			g.writeln('} $it.name;')
 		}
 		ast.ExprStmt {
 			g.expr(it.expr)
-			match it.expr {
-				// no ; after an if expression
-				ast.IfExpr {}
-				else {
-					g.writeln(';')
-				}
-	}
 		}
 		else {
-			verror('cgen.stmt(): bad node')
+			verror('x64.stmt(): bad node')
 		}
 	}
 }
@@ -377,37 +346,16 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 fn (g mut Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
-		ast.IntegerLiteral {
-			g.write(it.val.str())
-		}
-		ast.FloatLiteral {
-			g.write(it.val)
-		}
+		ast.AssignExpr {}
+		ast.IntegerLiteral {}
+		ast.FloatLiteral {}
 		ast.UnaryExpr {
 			g.expr(it.left)
-			g.write(it.op.str())
 		}
-		ast.StringLiteral {
-			g.write('tos3("$it.val")')
-		}
-		ast.BinaryExpr {
-			g.expr(it.left)
-			g.write(' $it.op.str() ')
-			g.expr(it.right)
-			// if ti.type_name != typ2.name {
-			// verror('bad types $ti.type_name $typ2.name')
-			// }
-		}
+		ast.StringLiteral {}
+		ast.BinaryExpr {}
 		// `user := User{name: 'Bob'}`
-		ast.StructInit {
-			g.writeln('($it.ti.name){')
-			for i, field in it.fields {
-				g.write('\t.$field = ')
-				g.expr(it.exprs[i])
-				g.writeln(', ')
-			}
-			g.write('}')
-		}
+		ast.StructInit {}
 		ast.CallExpr {
 			if it.name == 'println' || it.name == 'print' {
 				expr := it.args[0]
@@ -425,43 +373,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			*/
 
 		}
-		ast.ArrayInit {
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.name), {\t')
-			for expr in it.exprs {
-				g.expr(expr)
-				g.write(', ')
-			}
-			g.write('\n})')
-		}
-		ast.Ident {
-			g.write('$it.name')
-		}
-		ast.BoolLiteral {
-			if it.val == true {
-				g.write('true')
-			}
-			else {
-				g.write('false')
-			}
-		}
-		ast.IfExpr {
-			g.write('if (')
-			g.expr(it.cond)
-			g.writeln(') {')
-			for stmt in it.stmts {
-				g.stmt(stmt)
-			}
-			g.writeln('}')
-			if it.else_stmts.len > 0 {
-				g.writeln('else { ')
-				for stmt in it.else_stmts {
-					g.stmt(stmt)
-				}
-				g.writeln('}')
-			}
-		}
+		ast.ArrayInit {}
+		ast.Ident {}
+		ast.BoolLiteral {}
+		ast.IfExpr {}
 		else {
-			println(term.red('cgen.expr(): bad node'))
+			//println(term.red('x64.expr(): bad node'))
 		}
 	}
 }

@@ -43,17 +43,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
-		ast.Import {
-			
-		}
-		/*
-		ast.AssignStmt {
-			g.expr(it.left)
-			g.write(' $it.op.str() ')
-			g.expr(it.right)
-			g.writeln(';')
-		}
-		*/
+		ast.Import {}
 		ast.FnDecl {
 			is_main := it.name == 'main'
 			if is_main {

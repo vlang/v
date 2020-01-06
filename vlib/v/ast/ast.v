@@ -11,7 +11,7 @@ import (
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
@@ -72,7 +72,7 @@ pub:
 
 pub struct StructInit {
 pub:
-	// typ    types.TypeIdent
+// typ    types.TypeIdent
 	ti     types.TypeIdent
 	fields []string
 	exprs  []Expr
@@ -203,12 +203,15 @@ pub struct ReturnStmt {
 	results  []Expr
 }
 
+/*
 pub struct AssignStmt {
 pub:
 	left  Expr
 	right Expr
 	op    token.Kind
 }
+*/
+
 
 pub struct AssignExpr {
 pub:

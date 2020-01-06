@@ -840,7 +840,7 @@ fn (p mut Parser) type_decl() {
 				//println('child=$child_type_name parent=$name')
 				mut t := p.find_type(child_type_name)
 				if t.name == '' {
-					p.error('qunknown type `$child_type_name`')
+					p.error('unknown type `$child_type_name`')
 				}
 				t.parent = name
 				p.table.rewrite_type(t)
@@ -3107,13 +3107,13 @@ fn (p mut Parser) check_unused_imports() {
 	if output == '' {
 		return
 	}
-	
+
 	// the imports are usually at the start of the file
 	//p.production_error_with_token_index('the following imports were never used: $output', 0)
 	if p.pref.is_verbose {
 		eprintln('Used imports table: ${p.import_table.used_imports.str()}')
 	}
-	p.warn('the following imports were never used: $output')		
+	p.warn('the following imports were never used: $output')
 }
 
 fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {

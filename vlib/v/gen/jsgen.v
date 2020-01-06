@@ -33,12 +33,6 @@ pub fn (g mut JsGen) writeln(s string) {
 
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
-		ast.AssignStmt {
-			g.expr(it.left)
-			g.write(' $it.op.str() ')
-			g.expr(it.right)
-			g.writeln(';')
-		}
 		ast.FnDecl {
 			g.write('/** @return { $it.ti.name } **/\nfunction ${it.name}(')
 			for arg in it.args {

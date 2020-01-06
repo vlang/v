@@ -4,7 +4,7 @@
 module types
 
 pub enum Kind {
-	_placeholder,
+	_placeholder
 	_void,
 	_voidptr,
 	_charptr,
@@ -32,17 +32,20 @@ pub enum Kind {
 	_variadic
 }
 
+pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct | 	
+Int | Float | String | Char | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+
 pub struct TypeIdent {
 pub:
-	idx  int
-	kind Kind
-	name string
-	nr_muls   int
+	idx     int
+	kind    Kind
+	name    string
+	nr_muls int
 }
 
 [inline]
 pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
-    return TypeIdent{
+	return TypeIdent{
 		idx: idx
 		kind: kind
 		name: name
@@ -52,7 +55,7 @@ pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
 
 [inline]
 pub fn new_base_ti(kind Kind, nr_muls int) TypeIdent {
-    return TypeIdent{
+	return TypeIdent{
 		kind: kind
 		name: kind.str()
 		nr_muls: nr_muls
@@ -61,22 +64,22 @@ pub fn new_base_ti(kind Kind, nr_muls int) TypeIdent {
 
 [inline]
 pub fn (ti &TypeIdent) is_ptr() bool {
-    return ti.nr_muls > 0
+	return ti.nr_muls > 0
 }
 
 [inline]
 pub fn (ti &TypeIdent) is_int() bool {
-    return ti.kind in [._i8, ._i16, ._int, ._i64, ._byte, ._u16, ._u32, ._u64]
+	return ti.kind in [._i8, ._i16, ._int, ._i64, ._byte, ._u16, ._u32, ._u64]
 }
 
 [inline]
 pub fn (ti &TypeIdent) is_float() bool {
-    return ti.kind in [._f32, ._f64]
+	return ti.kind in [._f32, ._f64]
 }
 
 [inline]
 pub fn (ti &TypeIdent) is_number() bool {
-    return ti.is_int() || ti.is_float()
+	return ti.is_int() || ti.is_float()
 }
 
 pub fn (ti &TypeIdent) str() string {
@@ -92,81 +95,80 @@ pub fn check(got, expected &TypeIdent) bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
-		._placeholder {
+		._placeholder{
 			'placeholder'
 		}
-		._void  {
+		._void{
 			'void'
-		} 
-		._voidptr  {
+		}
+		._voidptr{
 			'voidptr'
 		}
-		._charptr  {
+		._charptr{
 			'charptr'
 		}
-		._byteptr  {
+		._byteptr{
 			'byteptr'
 		}
-		._const  {
+		._const{
 			'const'
 		}
-		._enum  {
+		._enum{
 			'enum'
 		}
-		._struct  {
+		._struct{
 			'struct'
 		}
-		._int  {
+		._int{
 			'int'
 		}
-		._i8  {
+		._i8{
 			'i8'
 		}
-		._i16  {
+		._i16{
 			'i16'
 		}
-		._i64  {
+		._i64{
 			'i64'
 		}
-		._byte  {
+		._byte{
 			'byte'
 		}
-		._u16  {
+		._u16{
 			'u18'
 		}
-		._f32  {
+		._f32{
 			'f32'
 		}
-		._f64  {
+		._f64{
 			'f64'
 		}
-		._string  {
+		._string{
 			'string'
 		}
-		._char  {
+		._char{
 			'char'
 		}
-		._bool  {
+		._bool{
 			'bool'
 		}
-		._array  {
+		._array{
 			'array'
 		}
-		._array_fixed  {
+		._array_fixed{
 			'array_fixed'
 		}
-		._map  {
+		._map{
 			'map'
 		}
-		._multi_return  {
+		._multi_return{
 			'multi_return'
 		}
-		._variadic {
+		._variadic{
 			'variadic'
 		}
 		else {
-			'unknown'
-		}
+			'unknown'}
 	}
 	return k_str
 }
@@ -175,16 +177,12 @@ pub fn (kinds []Kind) str() string {
 	mut kinds_str := ''
 	for i, k in kinds {
 		kinds_str += k.str()
-		if i < kinds.len-1 {
+		if i < kinds.len - 1 {
 			kinds_str += '_'
 		}
 	}
 	return kinds_str
 }
-
-pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct |
-	Int | Float | String | Char | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
-
 
 pub struct Placeholder {
 pub:
@@ -270,7 +268,7 @@ pub:
 	idx             int
 	name            string
 	key_type_kind   Kind
-	key_type_idx    int 
+	key_type_idx    int
 	value_type_kind Kind
 	value_type_idx  int
 }
@@ -290,47 +288,107 @@ pub:
 	type_idx  int
 }
 
-pub fn (t Void) str() string { return 'void' }
-pub fn (t Voidptr) str() string { return 'voidptr' }
-pub fn (t Charptr) str() string { return 'charptr' }
-pub fn (t Byteptr) str() string { return 'byteptr' }
-pub fn (t Const) str() string { return t.name }
-pub fn (t Enum) str() string { return t.name }
-pub fn (t Struct) str() string { return t.name }
-pub fn (t Int) str() string { return if t.is_unsigned {'u$t.bit_size' } else { 'i$t.bit_size' } }
-pub fn (t Float) str() string { return 'f$t.bit_size' }
-pub fn (t String) str() string { return 'string' }
-pub fn (t Char) str() string { return 'char' }
-pub fn (t Byte) str() string { return 'byte' }
-pub fn (t Array) str() string { return t.name }
-pub fn (t ArrayFixed) str() string { return t.name }
-pub fn (t Map) str() string { return t.name }
-pub fn (t MultiReturn) str() string { return t.name }
-pub fn (t Variadic) str() string { return 'variadic_$t.type_kind.str()' }
+pub fn (t Void) str() string {
+	return 'void'
+}
+
+pub fn (t Voidptr) str() string {
+	return 'voidptr'
+}
+
+pub fn (t Charptr) str() string {
+	return 'charptr'
+}
+
+pub fn (t Byteptr) str() string {
+	return 'byteptr'
+}
+
+pub fn (t Const) str() string {
+	return t.name
+}
+
+pub fn (t Enum) str() string {
+	return t.name
+}
+
+pub fn (t Struct) str() string {
+	return t.name
+}
+
+pub fn (t Int) str() string {
+	return if t.is_unsigned { 'u$t.bit_size' } else { 'i$t.bit_size' }
+}
+
+pub fn (t Float) str() string {
+	return 'f$t.bit_size'
+}
+
+pub fn (t String) str() string {
+	return 'string'
+}
+
+pub fn (t Char) str() string {
+	return 'char'
+}
+
+pub fn (t Byte) str() string {
+	return 'byte'
+}
+
+pub fn (t Array) str() string {
+	return t.name
+}
+
+pub fn (t ArrayFixed) str() string {
+	return t.name
+}
+
+pub fn (t Map) str() string {
+	return t.name
+}
+
+pub fn (t MultiReturn) str() string {
+	return t.name
+}
+
+pub fn (t Variadic) str() string {
+	return 'variadic_$t.type_kind.str()'
+}
 
 pub const (
-	void_type    = Void{}
+	void_type = Void{}
 	voidptr_type = Voidptr{}
 	charptr_type = Charptr{}
 	byteptr_type = Byteptr{}
-	i8_type      = Int{8, false}
-	i16_type     = Int{16, false}
-	int_type     = Int{32, false}
-	i64_type     = Int{64, false}
-	byte_type    = Int{8, true}
-	u16_type     = Int{16, true}
-	u32_type     = Int{32, true}
-	u64_type     = Int{64, true}
-	f32_type     = Float{32}
-	f64_type     = Float{64}
-	string_type  = String{}
-	char_type    = Char{}
-	bool_type    = Bool{}
+	i8_type = Int{
+		8,false}
+	i16_type = Int{
+		16,false}
+	int_type = Int{
+		32,false}
+	i64_type = Int{
+		64,false}
+	byte_type = Int{
+		8,true}
+	u16_type = Int{
+		16,true}
+	u32_type = Int{
+		32,true}
+	u64_type = Int{
+		64,true}
+	f32_type = Float{
+		32}
+	f64_type = Float{
+		64}
+	string_type = String{}
+	char_type = Char{}
+	bool_type = Bool{}
 )
 
 pub const (
-	void_ti   = new_base_ti(._void, 0)
-	int_ti    = new_base_ti(._int, 0)
+	void_ti = new_base_ti(._void, 0)
+	int_ti = new_base_ti(._int, 0)
 	string_ti = new_base_ti(._string, 0)
-	bool_ti   = new_base_ti(._bool, 0)
+	bool_ti = new_base_ti(._bool, 0)
 )
