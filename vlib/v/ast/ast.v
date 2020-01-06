@@ -18,7 +18,7 @@ ForStmt | StructDecl
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ  types.Type
+	ti   types.TypeIdent
 }
 
 pub struct IntegerLiteral {
@@ -60,7 +60,7 @@ pub:
 pub struct Field {
 pub:
 	name string
-	typ  types.Type
+	ti   types.TypeIdent
 }
 
 pub struct StructDecl {
@@ -72,7 +72,8 @@ pub:
 
 pub struct StructInit {
 pub:
-	typ    types.Type
+	// typ    types.TypeIdent
+	ti     types.TypeIdent
 	fields []string
 	exprs  []Expr
 }
@@ -80,14 +81,13 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	mods []string
+	mods map[string]string // alias -> module
 	// expr Expr
-	// imports map[string]string
 }
 
 pub struct Arg {
 pub:
-	typ  types.Type
+	ti   types.TypeIdent
 	name string
 }
 
@@ -95,7 +95,7 @@ pub struct FnDecl {
 pub:
 	name     string
 	stmts    []Stmt
-	typ      types.Type
+	ti       types.TypeIdent
 	args     []Arg
 	is_pub   bool
 	receiver Field
@@ -134,7 +134,7 @@ pub struct VarDecl {
 pub:
 	name string
 	expr Expr
-	typ  types.Type
+	ti   types.TypeIdent
 }
 
 pub struct File {
@@ -156,9 +156,9 @@ pub:
 // op    BinaryOp
 	op    token.Kind
 	left  Expr
-	// left_type Type
+	// left_ti types.TypeIdent
 	right Expr
-	// right_type Type
+	// right_ti types.TypeIdent
 }
 
 pub struct UnaryExpr {
@@ -187,7 +187,7 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
-	typ        types.Type
+	ti         types.TypeIdent
 	left       Expr // `a` in `a := if ...`
 }
 
@@ -220,7 +220,7 @@ pub:
 pub struct ArrayInit {
 pub:
 	exprs []Expr
-	typ   types.Type
+	ti    types.TypeIdent
 }
 
 // string representaiton of expr

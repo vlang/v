@@ -8,7 +8,9 @@ import (
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
-	types         map[string]types.Type
+	types         []types.Type
+	// type_idxs Hashmap
+	type_idxs     map[string]int
 	local_vars    []Var
 	// fns Hashmap
 	fns           map[string]Fn
@@ -20,7 +22,7 @@ pub mut:
 pub struct Var {
 pub:
 	name   string
-	typ    types.Type
+	ti     types.TypeIdent
 	is_mut bool
 }
 
@@ -28,17 +30,15 @@ pub struct Fn {
 pub:
 	name        string
 	args        []Var
-	return_type types.Type
+	return_ti   types.TypeIdent
 }
 
 pub fn new_table() &Table {
 	mut t := &Table{}
-	t.register_type(types.void_type)
-	t.register_type(types.int_type)
-	t.register_type(types.string_type)
-	t.register_type(types.f64_type)
-	t.register_type(types.bool_type)
-	t.register_type(types.voidptr_type)
+	// add dummy type at 0 so nothing can go there
+	// save index check, 0 will mean not found
+	t.types << types.Type{}
+	t.type_idxs['dymmy_type_at_idx_0'] = 0
 	return t
 }
 
@@ -109,17 +109,6 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (t mut Table) register_type(typ types.Type) {
-	t.types[typ.name] = typ
-}
-
-pub fn (t &Table) find_type(name string) ?types.Type {
-	typ := t.types[name]
-	if isnil(typ.name.str) || typ.name == '' {
-		return none
-	}
-	return typ
-}
 
 pub fn (t mut Table) new_tmp_var() string {
 	t.tmp_cnt++

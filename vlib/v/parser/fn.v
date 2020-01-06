@@ -13,7 +13,7 @@ import (
 	os
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
+pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	// println('got fn call')
 	tok := p.tok
 	fn_name := p.check_name()
@@ -21,13 +21,13 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 	mut is_unknown := false
 	is_unknown = false
 	mut args := []ast.Expr
-	mut return_type := types.void_type
+	mut return_ti := types.void_ti
 	if f := p.table.find_fn(fn_name) {
-		return_type = f.return_type
+		return_ti = f.return_ti
 		for i, arg in f.args {
-			e,typ := p.expr(0)
-			if !types.check(arg.typ, typ) {
-				p.error('cannot use type `$typ.name` as type `$arg.typ.name` in argument to `$fn_name`')
+			e,ti := p.expr(0)
+			if !types.check(&arg.ti, &ti) {
+				p.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
 			}
 			args << e
 			if i < f.args.len - 1 {
@@ -54,13 +54,13 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 		args: args
 		is_unknown: is_unknown
 		tok: tok
-		// typ: return_type
+		// typ: return_ti
 		
 	}
 	if is_unknown {
 		p.table.unknown_calls << node
 	}
-	return node,return_type
+	return node,return_ti
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
@@ -72,17 +72,17 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	// Receiver?
 	mut rec_name := ''
-	mut rec_type := types.void_type
+	mut rec_ti := types.void_ti
 	if p.tok.kind == .lpar {
 		p.next()
 		rec_name = p.check_name()
 		if p.tok.kind == .key_mut {
 			p.next()
 		}
-		rec_type = p.parse_type()
+		rec_ti = p.parse_ti()
 		p.table.register_var(table.Var{
 			name: rec_name
-			typ: rec_type
+			ti: rec_ti
 		})
 		p.check(.rpar)
 	}
@@ -99,16 +99,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			p.check(.comma)
 			arg_names << p.check_name()
 		}
-		typ := p.parse_type()
+		ti := p.parse_ti()
 		for arg_name in arg_names {
 			arg := table.Var{
 				name: arg_name
-				typ: typ
+				ti: ti
 			}
 			args << arg
 			p.table.register_var(arg)
 			ast_args << ast.Arg{
-				typ: typ
+				ti: ti
 				name: arg_name
 			}
 		}
@@ -118,26 +118,26 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	p.check(.rpar)
 	// Return type
-	mut typ := types.void_type
+	mut ti := types.void_ti
 	if p.tok.kind == .name {
-		typ = p.parse_type()
-		p.return_type = typ
+		ti = p.parse_ti()
+		p.return_ti = ti
 	}
 	p.table.register_fn(table.Fn{
 		name: name
 		args: args
-		return_type: typ
+		return_ti: ti
 	})
 	stmts := p.parse_block()
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
-		typ: typ
+		ti: ti
 		args: ast_args
 		is_pub: is_pub
 		receiver: ast.Field{
 			name: rec_name
-			typ: rec_type
+			ti: rec_ti
 		}
 	}
 }
@@ -150,7 +150,7 @@ pub fn (p &Parser) check_fn_calls() {
 			return
 		}
 		println(f.name)
-		// println(f.return_type.name)
+		// println(f.return_ti.name)
 		// println('IN AST typ=' + call.typ.name)
 	}
 }
