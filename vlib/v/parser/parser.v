@@ -149,7 +149,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
+			}
 			// .key_const {
 			// return p.const_decl()
 			// }
@@ -386,6 +386,11 @@ fn (p mut Parser) dot_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	/*
 				// p.next()
 				field := p.check_name()
+				if !ti.type_kind in  [._placeholder, ._struct] {
+					println('kind: $ti.str()')
+					p.error('cannot access field, `$ti.type_name` is not a struct')
+				}
+				typ := p.table.types[ti.type_idx] as types.Struct
 				mut ok := false
 				for f in typ.fields {
 					if f.name == field {

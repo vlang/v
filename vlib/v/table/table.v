@@ -34,6 +34,13 @@ pub:
 }
 
 pub fn new_table() &Table {
+	// mut t := &Table{}
+	// t.register_type(types.void_type)
+	// t.register_type(types.int_type)
+	// t.register_type(types.string_type)
+	// t.register_type(types.f64_type)
+	// t.register_type(types.bool_type)
+	// t.register_type(types.voidptr_type)
 	mut t := &Table{}
 	// add dummy type at 0 so nothing can go there
 	// save index check, 0 will mean not found
@@ -114,3 +121,4 @@ pub fn (t mut Table) new_tmp_var() string {
 	t.tmp_cnt++
 	return 'tmp$t.tmp_cnt'
 }
+

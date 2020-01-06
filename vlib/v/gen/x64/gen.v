@@ -394,8 +394,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
-			// if typ.name != typ2.name {
-			// verror('bad types $typ.name $typ2.name')
+			// if ti.type_name != typ2.name {
+			// verror('bad types $ti.type_name $typ2.name')
 			// }
 		}
 		// `user := User{name: 'Bob'}`
