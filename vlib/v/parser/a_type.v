@@ -21,7 +21,6 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		nr_dims++
 	}
 	p.check(.rsbr)
-	// TODO multi dim
 	idx, name := p.table.find_or_register_array(&elem_ti, nr_dims)
 	return types.new_ti(._array, name, idx, nr_muls)
 }
