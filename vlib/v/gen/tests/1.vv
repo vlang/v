@@ -2,12 +2,15 @@ struct User {
 	age int
 }
 
+// lol
 fn main() {
 	a := 10
 	a++
-	c := -a
+	negative := -a
 	a == 1
 	foo(3)
+	ak := 10
+}
 	/*
 	user := User{}
 	user.age = 10
@@ -16,7 +19,6 @@ fn main() {
 
 	}
 	*/
-}
 
 fn foo(a int) {
 	n := get_int2()
@@ -37,5 +39,7 @@ fn myuser() {
 	boo := 2
 	boo2 := boo+1
 	b := age > 0
-	//b2 := user.age > 0
+	b2 := user.age > 0
 }
+
+

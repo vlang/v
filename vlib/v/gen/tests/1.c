@@ -10,9 +10,10 @@ typedef struct {
 int main() {
 int a = 10;
 a++;
-int c = -a;
+int negative = -a;
 a == 1;
 foo(3);
+int ak = 10;
 return 0;
 }
 
@@ -37,4 +38,5 @@ void myuser() {
 	int boo = 2;
 	int boo2 = boo + 1;
 	bool b = age > 0;
+	bool b2 = user.age > 0;
 }

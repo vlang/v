@@ -15,6 +15,7 @@ struct Gen {
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
+	println('start cgen')
 	mut g := Gen{
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
@@ -40,13 +41,17 @@ pub fn (g mut Gen) writeln(s string) {
 }
 
 fn (g mut Gen) stmt(node ast.Stmt) {
+	// println('cgen.stmt()')
+	// g.writeln('//// stmt start')
 	match node {
+		/*
 		ast.AssignStmt {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
 			g.writeln(';')
 		}
+		*/
 		ast.FnDecl {
 			is_main := it.name == 'main'
 			if is_main {
@@ -121,11 +126,20 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 fn (g mut Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
+		ast.AssignExpr {
+			g.expr(it.left)
+			g.write(' $it.op.str() ')
+			g.expr(it.val)
+		}
 		ast.IntegerLiteral {
 			g.write(it.val.str())
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
+		}
+		ast.PostfixExpr {
+			g.expr(it.expr)
+			g.write(it.op.str())
 		}
 		ast.UnaryExpr {
 			// probably not :D
@@ -140,6 +154,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
+		}
+		ast.PrefixExpr {
+			g.write(it.op.str())
+			g.expr(it.right)
 		}
 		ast.BinaryExpr {
 			g.expr(it.left)

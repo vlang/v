@@ -19,6 +19,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.Type) {
 	fn_name := p.check_name()
 	p.check(.lpar)
 	mut is_unknown := false
+	is_unknown = false
 	mut args := []ast.Expr
 	mut return_type := types.void_type
 	if f := p.table.find_fn(fn_name) {

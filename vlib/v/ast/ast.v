@@ -8,11 +8,12 @@ import (
 	v.types
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt |
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
 ForStmt | StructDecl
+// | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
@@ -92,11 +93,11 @@ pub:
 
 pub struct FnDecl {
 pub:
-	name   string
-	stmts  []Stmt
-	typ    types.Type
-	args   []Arg
-	is_pub bool
+	name     string
+	stmts    []Stmt
+	typ      types.Type
+	args     []Arg
+	is_pub   bool
 	receiver Field
 }
 
@@ -168,6 +169,18 @@ pub:
 	left Expr
 }
 
+pub struct PostfixExpr {
+pub:
+	op   token.Kind
+	expr Expr
+}
+
+pub struct PrefixExpr {
+pub:
+	op    token.Kind
+	right Expr
+}
+
 pub struct IfExpr {
 pub:
 	tok_kind   token.Kind
@@ -195,6 +208,13 @@ pub:
 	left  Expr
 	right Expr
 	op    token.Kind
+}
+
+pub struct AssignExpr {
+pub:
+	left Expr
+	val  Expr
+	op   token.Kind
 }
 
 pub struct ArrayInit {
