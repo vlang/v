@@ -505,14 +505,57 @@ pub fn unsetenv(name string) int {
 	}
 }
 
+const (
+	F_OK = 0
+	X_OK = 1
+	W_OK = 2
+	R_OK = 4
+)
+
 // exists returns true if `path` exists.
 pub fn exists(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), 0) != -1
+		return C._waccess(p.to_wide(), F_OK) != -1
 	} $else {
-		return C.access(path.str, 0) != -1
+		return C.access(path.str, F_OK) != -1
 	}
+}
+
+// `is_executable` returns `true` if `path` is executable.
+pub fn is_executable(path string) bool {
+  $if windows {
+    // NB: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
+    // i.e. there is no X bit there, the modes can be:
+    // 00 Existence only
+    // 02 Write-only
+    // 04 Read-only
+    // 06 Read and write
+    p := os.realpath( path )
+    return ( os.exists( p ) && p.ends_with('.exe') )
+  } $else {
+    return C.access(path.str, X_OK) != -1
+  }
+}
+
+// `is_writable` returns `true` if `path` is writable.
+pub fn is_writable(path string) bool {
+  $if windows {
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), W_OK) != -1
+  } $else {
+    return C.access(path.str, W_OK) != -1
+  }
+}
+
+// `is_readable` returns `true` if `path` is readable.
+pub fn is_readable(path string) bool {
+  $if windows {
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), R_OK) != -1
+  } $else {
+    return C.access(path.str, R_OK) != -1
+  }
 }
 
 [deprecated]
