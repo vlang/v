@@ -100,71 +100,70 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 			return p.parse_variadic_ti(nr_muls)
 		}
 		else {
-			defer { p.next() }
-			match name {
-				// map
-				'map' {
-					return p.parse_map_ti(nr_muls)
-				}
-				'voidptr' {
-					return types.new_base_ti(._voidptr, nr_muls)
-				}
-				'byteptr' {
-					return types.new_base_ti(._byteptr, nr_muls)
-				}
-				'charptr' {
-					return types.new_base_ti(._charptr, nr_muls)
-				}
-				'i8' {
-					return types.new_base_ti(._i8, nr_muls)
-				}
-				'i16' {
-					return types.new_base_ti(._i16, nr_muls)
-				}
-				'int' {
-					return types.new_base_ti(._int, nr_muls)
-				}
-				'i64' {
-					return types.new_base_ti(._i64, nr_muls)
-				}
-				'byte' {
-					return types.new_base_ti(._byte, nr_muls)
-				}
-				'u16' {
-					return types.new_base_ti(._u16, nr_muls)
-				}
-				'u32' {
-					return types.new_base_ti(._u32, nr_muls)
-				}
-				'u64' {
-					return types.new_base_ti(._u64, nr_muls)
-				}
-				'f32' {
-					return types.new_base_ti(._f32, nr_muls)
-				}
-				'f64' {
-					return types.new_base_ti(._f64, nr_muls)
-				}
-				'string' {
-					return types.new_base_ti(._string, nr_muls)
-				}
-				'char' {
-					return types.new_base_ti(._char, nr_muls)
-				}
-				'bool' {
-					return types.new_base_ti(._bool, nr_muls)
-				}
-				// struct / enum / placeholder
-				else {
-					// struct / enum
-					mut idx := p.table.find_type_idx(name)
-					// add placeholder
-					if idx == 0 {
-						idx = p.table.add_placeholder_type(name)
-					}
-					return types.new_ti(._placeholder, name, idx, nr_muls)
-				}
+		defer { p.next() }
+		match name {
+			// map
+			'map' {
+				return p.parse_map_ti(nr_muls)
 			}
-		}
+			'voidptr' {
+				return types.new_base_ti(._voidptr, nr_muls)
+			}
+			'byteptr' {
+				return types.new_base_ti(._byteptr, nr_muls)
+			}
+			'charptr' {
+				return types.new_base_ti(._charptr, nr_muls)
+			}
+			'i8' {
+				return types.new_base_ti(._i8, nr_muls)
+			}
+			'i16' {
+				return types.new_base_ti(._i16, nr_muls)
+			}
+			'int' {
+				return types.new_base_ti(._int, nr_muls)
+			}
+			'i64' {
+				return types.new_base_ti(._i64, nr_muls)
+			}
+			'byte' {
+				return types.new_base_ti(._byte, nr_muls)
+			}
+			'u16' {
+				return types.new_base_ti(._u16, nr_muls)
+			}
+			'u32' {
+				return types.new_base_ti(._u32, nr_muls)
+			}
+			'u64' {
+				return types.new_base_ti(._u64, nr_muls)
+			}
+			'f32' {
+				return types.new_base_ti(._f32, nr_muls)
+			}
+			'f64' {
+				return types.new_base_ti(._f64, nr_muls)
+			}
+			'string' {
+				return types.new_base_ti(._string, nr_muls)
+			}
+			'char' {
+				return types.new_base_ti(._char, nr_muls)
+			}
+			'bool' {
+				return types.new_base_ti(._bool, nr_muls)
+			}
+			// struct / enum / placeholder
+			else {
+				// struct / enum
+				mut idx := p.table.find_type_idx(name)
+				// add placeholder
+				if idx == 0 {
+					idx = p.table.add_placeholder_type(name)
+				}
+				return types.new_ti(._placeholder, name, idx, nr_muls)
+			}
+		}}
 	}
 }
