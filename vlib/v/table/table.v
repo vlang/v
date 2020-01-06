@@ -170,7 +170,7 @@ pub fn (t mut Table) find_or_register_map(key_ti &types.TypeIdent, value_ti &typ
 }
 
 pub fn (t mut Table) find_or_register_array(elem_ti &types.TypeIdent, nr_dims int) (int, string) {
-	name := 'array_$elem_ti.type_name'
+	name := 'array_${elem_ti.type_name}_${nr_dims}d'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -192,7 +192,7 @@ pub fn (t mut Table) find_or_register_array(elem_ti &types.TypeIdent, nr_dims in
 }
 
 pub fn (t mut Table) find_or_register_array_fixed(elem_ti &types.TypeIdent, size int, nr_dims int) (int, string) {
-	name := 'array_fixed_$elem_ti.type_name'
+	name := 'array_fixed_${elem_ti.type_name}_${size}_${nr_dims}d'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
