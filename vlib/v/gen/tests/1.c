@@ -40,3 +40,6 @@ void myuser() {
 	bool b = age > 0;
 	bool b2 = user.age > 0;
 }
+
+void variadic(variadic_int a) {
+}

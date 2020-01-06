@@ -44,6 +44,9 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.Import {
+			
+		}
 		/*
 		ast.AssignStmt {
 			g.expr(it.left)

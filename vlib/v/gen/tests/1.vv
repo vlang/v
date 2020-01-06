@@ -1,3 +1,6 @@
+import moda
+import modb as mb
+
 struct User {
 	age int
 }
@@ -42,4 +45,5 @@ fn myuser() {
 	b2 := user.age > 0
 }
 
-
+fn variadic(a ...int) {	
+}
