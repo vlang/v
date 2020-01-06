@@ -81,11 +81,20 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.ForStmt {
 			g.write('while (')
-			if !it.is_in {
-				// `for in` loops don't have a condition
-				println('it cond')
-				g.expr(it.cond)
+			g.expr(it.cond)
+			g.writeln(') {')
+			for stmt in it.stmts {
+				g.stmt(stmt)
 			}
+			g.writeln('}')
+		}
+		ast.ForCStmt {
+			g.write('for (')
+			g.stmt(it.init)
+			// g.write('; ')
+			g.expr(it.cond)
+			g.write('; ')
+			g.stmt(it.inc)
 			g.writeln(') {')
 			for stmt in it.stmts {
 				g.stmt(stmt)

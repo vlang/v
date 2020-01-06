@@ -78,7 +78,7 @@ fn (a mut array) ensure_cap(required int) {
 // repeated `nr_repeat` times
 pub fn (a array) repeat(nr_repeats int) array {
 	if nr_repeats < 0 {
-		panic('array.repeat: count is negative (count == $nr_repeats)')
+		panic('array.repeat: count is negative (count == nr_repeats)')
 	}
 	mut size := nr_repeats * a.len * a.element_size
 	if size == 0 {

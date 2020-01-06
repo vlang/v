@@ -149,7 +149,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-			}
+	}
 			// .key_const {
 			// return p.const_decl()
 			// }
@@ -256,6 +256,10 @@ pub fn (p &Parser) warn(s string) {
 pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
 	mut ti := types.void_ti
+	if p.tok.lit == 'C' {
+		p.next()
+		p.check(.dot)
+	}
 	// fn call
 	if p.peek_tok.kind == .lpar {
 		x,ti2 := p.call_expr() // TODO `node,typ :=` should work
@@ -435,10 +439,59 @@ fn (p &Parser) is_addative() bool {
 	return p.tok.kind in [.plus, .minus] && p.peek_tok.kind in [.number, .name]
 }
 
-fn (p mut Parser) for_statement() ast.ForStmt {
+fn (p mut Parser) for_statement() ast.Stmt {
 	p.check(.key_for)
+	// Infinite loop
+	if p.tok.kind == .lcbr {
+		stmts := p.parse_block()
+		return ast.ForStmt{
+			stmts: stmts
+		}
+	}
+	else if p.tok.kind == .key_mut {
+		p.error('`mut` is not required in for loops')
+	}
+	// for i := 0; i < 10; i++ {
+	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] {
+		mut init := ast.Stmt{}
+		mut cond := ast.Expr{}
+		mut inc := ast.Stmt{}
+		if p.peek_tok.kind == .decl_assign {
+			init = p.var_decl()
+		}
+		else if p.tok.kind != .semicolon {
+			// allow `for ;; i++ {`
+			// Allow `for i = 0; i < ...`
+			/*
+			cond, typ = p.expr(0)
+			if typ.kind != _bool {
+				p.error('non-bool used as for condition')
+			}
+			*/
+			println(1)
+		}
+		p.check(.semicolon)
+		if p.tok.kind != .semicolon {
+			mut typ := types.TypeIdent{}
+			cond,typ = p.expr(0)
+			if typ.kind != ._bool {
+				p.error('non-bool used as for condition')
+			}
+		}
+		p.check(.semicolon)
+		if p.tok.kind != .lcbr {
+			inc = p.stmt()
+		}
+		stmts := p.parse_block()
+		return ast.ForCStmt{
+			stmts: stmts
+			init: init
+			cond: cond
+			inc: inc
+		}
+	}
 	// `for i in start .. end`
-	if p.peek_tok.kind == .key_in {
+	else if p.peek_tok.kind == .key_in {
 		var := p.check_name()
 		p.check(.key_in)
 		start := p.tok.lit.int()
@@ -451,7 +504,6 @@ fn (p mut Parser) for_statement() ast.ForStmt {
 		// println('nr stmts=$stmts.len')
 		return ast.ForStmt{
 			stmts: stmts
-			is_in: true
 		}
 	}
 	// `for cond {`

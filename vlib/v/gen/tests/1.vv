@@ -24,6 +24,12 @@ fn main() {
 	*/
 
 fn foo(a int) {
+	for true {
+
+	}
+	for i := 0; i < 10; i++ {
+
+	}
 	n := get_int2()
 }
 
@@ -45,5 +51,5 @@ fn myuser() {
 	b2 := user.age > 0
 }
 
-fn variadic(a ...int) {	
+fn variadic(a ...int) {
 }

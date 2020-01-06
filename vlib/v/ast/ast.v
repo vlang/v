@@ -12,7 +12,7 @@ pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl
+ForStmt | StructDecl | ForCStmt | ForInStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -195,7 +195,21 @@ pub struct ForStmt {
 pub:
 	cond  Expr
 	stmts []Stmt
-	is_in bool
+}
+
+pub struct ForInStmt {
+pub:
+	var   string
+	cond  Expr
+	stmts []Stmt
+}
+
+pub struct ForCStmt {
+pub:
+	init  Stmt // i := 0;
+	cond  Expr // i < 10;
+	inc   Stmt // i++;
+	stmts []Stmt
 }
 
 pub struct ReturnStmt {

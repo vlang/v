@@ -5,7 +5,7 @@ module x64
 
 import (
 	v.ast
-	term
+	// term
 )
 
 pub struct Gen {
@@ -325,15 +325,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.ret()
 		}
-		ast.Return {
-		}
-		ast.VarDecl {
-		}
-		ast.ForStmt {
-			if it.is_in {}
-		}
-		ast.StructDecl {
-		}
+		ast.Return {}
+		ast.VarDecl {}
+		ast.ForStmt {}
+		ast.StructDecl {}
 		ast.ExprStmt {
 			g.expr(it.expr)
 		}
@@ -378,12 +373,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.BoolLiteral {}
 		ast.IfExpr {}
 		else {
-			//println(term.red('x64.expr(): bad node'))
-		}
+			// println(term.red('x64.expr(): bad node'))
+			}
 	}
-}
+	}
 
-fn verror(s string) {
-	println(s)
-	exit(1)
-}
+	fn verror(s string) {
+		println(s)
+		exit(1)
+	}

@@ -2,6 +2,7 @@ void foo(int a);
 int get_int(string a);
 int get_int2();
 void myuser();
+void variadic(variadic_int a);
 
 typedef struct {
 	int age;
@@ -18,6 +19,13 @@ return 0;
 }
 
 void foo(int a) {
+	while (true) {
+
+	}
+	for (int i = 0;
+i < 10; i++;
+) {
+	}
 	void n = get_int2();
 }
 

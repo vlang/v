@@ -31,6 +31,7 @@ fn test_c_files() {
 			eprintln('${i}... ' + term.red('FAIL'))
 			eprintln(path)
 			eprintln('got:\n$res')
+			assert false
 		}
 	}
 }
