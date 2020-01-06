@@ -34,27 +34,27 @@ pub enum Kind {
 
 pub struct TypeIdent {
 pub:
-	type_idx  int
-	type_kind Kind
-	type_name string
+	idx  int
+	kind Kind
+	name string
 	nr_muls   int
 }
 
 [inline]
-pub fn new_ti(type_kind Kind, type_name string, type_idx int, nr_muls int) TypeIdent {
+pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
     return TypeIdent{
-		type_idx: type_idx
-		type_kind: type_kind
-		type_name: type_name
+		idx: idx
+		kind: kind
+		name: name
 		nr_muls: nr_muls
 	}
 }
 
 [inline]
-pub fn new_base_ti(type_kind Kind, nr_muls int) TypeIdent {
+pub fn new_base_ti(kind Kind, nr_muls int) TypeIdent {
     return TypeIdent{
-		type_kind: type_kind
-		type_name: type_kind.str()
+		kind: kind
+		name: kind.str()
 		nr_muls: nr_muls
 	}
 }
@@ -66,12 +66,12 @@ pub fn (ti &TypeIdent) is_ptr() bool {
 
 [inline]
 pub fn (ti &TypeIdent) is_int() bool {
-    return ti.type_kind in [._i8, ._i16, ._int, ._i64, ._byte, ._u16, ._u32, ._u64]
+    return ti.kind in [._i8, ._i16, ._int, ._i64, ._byte, ._u16, ._u32, ._u64]
 }
 
 [inline]
 pub fn (ti &TypeIdent) is_float() bool {
-    return ti.type_kind in [._f32, ._f64]
+    return ti.kind in [._f32, ._f64]
 }
 
 [inline]
@@ -80,18 +80,18 @@ pub fn (ti &TypeIdent) is_number() bool {
 }
 
 pub fn (ti &TypeIdent) str() string {
-	return '$ti.type_kind.str() $ti.type_idx: $ti.type_name ($ti.nr_muls)'
+	return '$ti.kind.str() $ti.idx: $ti.name ($ti.nr_muls)'
 }
 
 pub fn check(got, expected &TypeIdent) bool {
-	if got.type_idx != expected.type_idx {
+	if got.idx != expected.idx {
 		return false
 	}
 	return true
 }
 
-pub fn (t Kind) str() string {
-	t_str := match t {
+pub fn (k Kind) str() string {
+	k_str := match k {
 		._placeholder {
 			'placeholder'
 		}
@@ -168,7 +168,18 @@ pub fn (t Kind) str() string {
 			'unknown'
 		}
 	}
-	return t_str
+	return k_str
+}
+
+pub fn (kinds []Kind) str() string {
+	mut kinds_str := ''
+	for i, k in kinds {
+		kinds_str += k.str()
+		if i < kinds.len-1 {
+			kinds_str += '_'
+		}
+	}
+	return kinds_str
 }
 
 pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct |
@@ -179,7 +190,7 @@ pub struct Placeholder {
 pub:
 	idx  int
 	name string
-	kind Kind
+	// kind Kind
 }
 
 pub struct Void {}
@@ -250,6 +261,7 @@ pub:
 	elem_type_kind Kind
 	elem_type_idx  int
 	elem_is_ptr    bool
+	nr_dims        int
 	size           int
 }
 
@@ -265,14 +277,17 @@ pub:
 
 pub struct MultiReturn {
 pub:
-	elem_type_kinds []Kind
-	elem_type_idxs  []int
+	idx        int
+	name       string
+	type_kinds []Kind
+	type_idxs  []int
 }
 
 pub struct Variadic {
 pub:
-	elem_type_kind Kind
-	elem_type_idx  int
+	idx       int
+	type_kind Kind
+	type_idx  int
 }
 
 pub fn (t Void) str() string { return 'void' }
@@ -290,8 +305,8 @@ pub fn (t Byte) str() string { return 'byte' }
 pub fn (t Array) str() string { return t.name }
 pub fn (t ArrayFixed) str() string { return t.name }
 pub fn (t Map) str() string { return t.name }
-pub fn (t MultiReturn) str() string { return 'multi_return_$t.elem_type_kinds.str()' }
-pub fn (t Variadic) str() string { return 'variadic_$t.elem_type_kind.str()' }
+pub fn (t MultiReturn) str() string { return t.name }
+pub fn (t Variadic) str() string { return 'variadic_$t.type_kind.str()' }
 
 pub const (
 	void_type    = Void{}
@@ -311,4 +326,11 @@ pub const (
 	string_type  = String{}
 	char_type    = Char{}
 	bool_type    = Bool{}
+)
+
+pub const (
+	void_ti   = new_base_ti(._void, 0)
+	int_ti    = new_base_ti(._int, 0)
+	string_ti = new_base_ti(._string, 0)
+	bool_ti   = new_base_ti(._bool, 0)
 )

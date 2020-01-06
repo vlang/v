@@ -40,9 +40,9 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.FnDecl {
-			g.write('/** @return { $it.ti.type_name } **/\nfunction ${it.name}(')
+			g.write('/** @return { $it.ti.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				g.write(' /** @type { arg.ti.type_name } **/ $arg.name')
+				g.write(' /** @type { arg.ti.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
@@ -56,7 +56,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('var /* $it.ti.type_name */ $it.name = ')
+			g.write('var /* $it.ti.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -72,7 +72,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
-			// g.writeln('\t$field.ti.type_name $field.name;')
+			// g.writeln('\t$field.ti.name $field.name;')
 			// }
 			g.writeln('var $it.name = function() {};')
 		}
@@ -115,7 +115,7 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('/*$it.ti.type_name*/{')
+			g.writeln('/*$it.ti.name*/{')
 			for i, field in it.fields {
 				g.write('\t$field : ')
 				g.expr(it.exprs[i])

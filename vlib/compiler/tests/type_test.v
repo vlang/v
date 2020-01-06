@@ -38,7 +38,7 @@ fn expr1() Expr {
 	//return BinExpr{}
 }
 
-fn expr2() Expr {
+fn expr() Expr {
 	return BinExpr{}
 }
 

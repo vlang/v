@@ -8,11 +8,12 @@ import (
 	v.types
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr
+pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt |
+pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | AssignStmt | 	
 ForStmt | StructDecl
+// | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
@@ -71,8 +72,8 @@ pub:
 
 pub struct StructInit {
 pub:
-	ti   types.TypeIdent
-	// typ    types.Type
+	// typ    types.TypeIdent
+	ti     types.TypeIdent
 	fields []string
 	exprs  []Expr
 }
@@ -80,26 +81,23 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	mods []string
+	mods map[string]string // alias -> module
 	// expr Expr
-	// imports map[string]string
 }
 
 pub struct Arg {
 pub:
 	ti   types.TypeIdent
-	// typ  types.Type
 	name string
 }
 
 pub struct FnDecl {
 pub:
-	name   string
-	stmts  []Stmt
-	ti   types.TypeIdent
-	// typ   types.Type
-	args   []Arg
-	is_pub bool
+	name     string
+	stmts    []Stmt
+	ti       types.TypeIdent
+	args     []Arg
+	is_pub   bool
 	receiver Field
 }
 
@@ -137,7 +135,6 @@ pub:
 	name string
 	expr Expr
 	ti   types.TypeIdent
-	// typ  types.Type
 }
 
 pub struct File {
@@ -159,9 +156,9 @@ pub:
 // op    BinaryOp
 	op    token.Kind
 	left  Expr
-	// left_type Type
+	// left_ti types.TypeIdent
 	right Expr
-	// right_type Type
+	// right_ti types.TypeIdent
 }
 
 pub struct UnaryExpr {
@@ -172,6 +169,18 @@ pub:
 	left Expr
 }
 
+pub struct PostfixExpr {
+pub:
+	op   token.Kind
+	expr Expr
+}
+
+pub struct PrefixExpr {
+pub:
+	op    token.Kind
+	right Expr
+}
+
 pub struct IfExpr {
 pub:
 	tok_kind   token.Kind
@@ -179,7 +188,6 @@ pub:
 	stmts      []Stmt
 	else_stmts []Stmt
 	ti         types.TypeIdent
-	// typ  types.Type
 	left       Expr // `a` in `a := if ...`
 }
 
@@ -202,11 +210,17 @@ pub:
 	op    token.Kind
 }
 
+pub struct AssignExpr {
+pub:
+	left Expr
+	val  Expr
+	op   token.Kind
+}
+
 pub struct ArrayInit {
 pub:
 	exprs []Expr
 	ti    types.TypeIdent
-	// typ   types.Type
 }
 
 // string representaiton of expr

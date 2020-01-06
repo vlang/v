@@ -14,6 +14,7 @@ struct Gen {
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
+	println('start cgen')
 	mut g := Gen{
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
@@ -39,25 +40,32 @@ pub fn (g mut Gen) writeln(s string) {
 }
 
 fn (g mut Gen) stmt(node ast.Stmt) {
+	// println('cgen.stmt()')
+	// g.writeln('//// stmt start')
 	match node {
+		ast.Import {
+			
+		}
+		/*
 		ast.AssignStmt {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
 			g.writeln(';')
 		}
+		*/
 		ast.FnDecl {
 			is_main := it.name == 'main'
 			if is_main {
 				g.write('int ${it.name}(')
 			}
 			else {
-				g.write('$it.ti.type_name ${it.name}(')
-				g.definitions.write('$it.ti.type_name ${it.name}(')
+				g.write('$it.ti.name ${it.name}(')
+				g.definitions.write('$it.ti.name ${it.name}(')
 			}
 			for arg in it.args {
-				g.write(arg.ti.type_name + ' ' + arg.name)
-				g.definitions.write(arg.ti.type_name + ' ' + arg.name)
+				g.write(arg.ti.name + ' ' + arg.name)
+				g.definitions.write(arg.ti.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
 			if !is_main {
@@ -77,7 +85,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('$it.ti.type_name $it.name = ')
+			g.write('$it.ti.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -97,7 +105,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				g.writeln('\t$field.ti.type_name $field.name;')
+				g.writeln('\t$field.ti.name $field.name;')
 			}
 			g.writeln('} $it.name;')
 		}
@@ -120,11 +128,20 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 fn (g mut Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
 	match node {
+		ast.AssignExpr {
+			g.expr(it.left)
+			g.write(' $it.op.str() ')
+			g.expr(it.val)
+		}
 		ast.IntegerLiteral {
 			g.write(it.val.str())
 		}
 		ast.FloatLiteral {
 			g.write(it.val)
+		}
+		ast.PostfixExpr {
+			g.expr(it.expr)
+			g.write(it.op.str())
 		}
 		ast.UnaryExpr {
 			// probably not :D
@@ -140,6 +157,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
 		}
+		ast.PrefixExpr {
+			g.write(it.op.str())
+			g.expr(it.right)
+		}
 		ast.BinaryExpr {
 			g.expr(it.left)
 			if it.op == .dot {
@@ -153,7 +174,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('($it.ti.type_name){')
+			g.writeln('($it.ti.name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
@@ -172,7 +193,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.ArrayInit {
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.type_name), {\t')
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
@@ -199,16 +220,16 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
 			mut tmp := ''
-			if it.ti.type_kind != ._void {
+			if it.ti.kind != ._void {
 				tmp = g.table.new_tmp_var()
-				// g.writeln('$it.typ.name $tmp;')
+				// g.writeln('$it.ti.name $tmp;')
 			}
 			g.write('if (')
 			g.expr(it.cond)
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && it.ti.type_kind != ._void {
+				if i == it.stmts.len - 1 && it.ti.kind != ._void {
 					// g.writeln('$tmp =')
 					println(1)
 				}

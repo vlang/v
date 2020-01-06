@@ -267,8 +267,8 @@ pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
 }
 
-pub fn (t Token) is_assign() bool {
-	return t.kind in assign_tokens
+pub fn (t Kind) is_assign() bool {
+	return t in assign_tokens
 }
 
 fn (t []Kind) contains(val Kind) bool {
@@ -308,7 +308,54 @@ pub const (
 	lowest_prec = 0
 	highest_prec = 8
 )
-// Precedence returns a tokens precedence if defined, otherwise lowest_prec
+
+pub enum Precedence {
+	lowest
+	cond // OR or AND
+	assign // =
+	eq // == or !=
+	less_greater // > or <
+	sum // + or -
+	product // * or /
+	mod // %
+	prefix // -X or !X
+	call // func(X) or foo.method(X)
+	index // array[index], map[key]
+}
+
+pub fn build_precedences() []Precedence {
+	mut p := []Precedence
+	p = make(100, 100, sizeof(Precedence))
+	p[Kind.assign] = .assign
+	p[Kind.eq] = .eq
+	p[Kind.ne] = .eq
+	p[Kind.lt] = .less_greater
+	p[Kind.gt] = .less_greater
+	p[Kind.le] = .less_greater
+	p[Kind.ge] = .less_greater
+	p[Kind.plus] = .sum
+	p[Kind.plus_assign] = .sum
+	p[Kind.minus] = .sum
+	p[Kind.minus_assign] = .sum
+	p[Kind.div] = .product
+	p[Kind.div_assign] = .product
+	p[Kind.mul] = .product
+	p[Kind.mult_assign] = .product
+	p[Kind.mod] = .mod
+	p[Kind.and] = .cond
+	p[Kind.logical_or] = .cond
+	p[Kind.lpar] = .call
+	p[Kind.dot] = .call
+	p[Kind.lsbr] = .index
+	return p
+}
+
+const (
+	precedences = build_precedences()
+	// int(Kind.assign): Precedence.assign
+	// }
+)
+// precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok.kind {
 		.dot {
@@ -316,6 +363,7 @@ pub fn (tok Token) precedence() int {
 		}
 		// `++` | `--`
 		.inc, .dec {
+			// return 0
 			return 7
 		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
@@ -335,7 +383,7 @@ pub fn (tok Token) precedence() int {
 			return 3
 		}
 		// `||`
-		.logical_or {
+		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mult_assign {
 			return 2
 		}
 		// /.plus_assign {
@@ -366,7 +414,7 @@ pub fn (tok Token) is_left_assoc() bool {
 	return tok.kind in [
 	// `.`
 	.dot,
-	// `+` | `-` 
+	// `+` | `-`
 	.plus, .minus, // additive
 	// .number,
 	// `++` | `--`
@@ -396,8 +444,12 @@ pub fn (tok Token) is_right_assoc() bool {
 	.and_assign, .xor_assign, .or_assign]
 }
 
-pub fn (tok Token) is_relational() bool {
-	return tok.kind in [
+pub fn (tok Kind) is_relational() bool {
+	return tok in [
 	// `<` | `<=` | `>` | `>=`
 	.lt, .le, .gt, .ge, .eq, .ne]
+}
+
+pub fn (kind Kind) is_infix() bool {
+	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .ge, .le, .logical_or, .and, .dot]
 }

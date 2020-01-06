@@ -15,14 +15,15 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	fn_name := p.check_name()
 	p.check(.lpar)
 	mut is_unknown := false
+	is_unknown = false
 	mut args := []ast.Expr
-	mut return_ti := types.new_base_ti(._void, 0)
+	mut return_ti := types.void_ti
 	if f := p.table.find_fn(fn_name) {
 		return_ti = f.return_ti
 		for i, arg in f.args {
 			e,ti := p.expr(0)
-			if !types.check(arg.ti, ti) {
-				p.error('cannot use type `$ti.type_name` as type `$arg.ti.type_name` in argument to `$fn_name`')
+			if !types.check(&arg.ti, &ti) {
+				p.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
 			}
 			args << e
 			if i < f.args.len - 1 {
@@ -49,7 +50,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 		args: args
 		is_unknown: is_unknown
 		tok: tok
-		// typ: return_type
+		// typ: return_ti
 		
 	}
 	if is_unknown {
@@ -67,7 +68,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	// Receiver?
 	mut rec_name := ''
-	mut rec_ti := types.new_base_ti(._void, 0)
+	mut rec_ti := types.void_ti
 	if p.tok.kind == .lpar {
 		p.next()
 		rec_name = p.check_name()
@@ -113,8 +114,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	p.check(.rpar)
 	// Return type
-	mut ti := types.new_base_ti(._void, 0)
-	if p.tok.kind in [.amp, .name] {
+	mut ti := types.void_ti
+	if p.tok.kind == .name {
 		ti = p.parse_ti()
 		p.return_ti = ti
 	}
@@ -145,7 +146,7 @@ pub fn (p &Parser) check_fn_calls() {
 			return
 		}
 		println(f.name)
-		// println(f.return_type.name)
+		// println(f.return_ti.name)
 		// println('IN AST typ=' + call.typ.name)
 	}
 }
