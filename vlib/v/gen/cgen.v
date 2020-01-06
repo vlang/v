@@ -40,6 +40,9 @@ pub fn (g mut Gen) writeln(s string) {
 
 fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
+		ast.Import {
+			
+		}
 		ast.AssignStmt {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')

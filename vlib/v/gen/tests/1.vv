@@ -1,3 +1,6 @@
+import moda
+import modb as mb
+
 struct User {
 	age int
 }
@@ -16,6 +19,16 @@ fn main() {
 
 	}
 	*/
+}
+
+/*
+fn multi_ret(a int) (int, string, User) {
+	return 1, 'hello', User{}
+}
+*/
+
+fn variadic(a ...int) {
+	
 }
 
 fn foo(a int) {

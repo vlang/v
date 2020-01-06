@@ -35,129 +35,6 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	return p.stmt()
 }
 
-pub fn (p mut Parser) parse_ti() types.TypeIdent {
-	defer {
-		p.next()
-	}
-	mut nr_muls := 0
-	if p.tok.kind == .amp {
-		p.check(.amp)
-		nr_muls = 1
-	}
-	name := p.tok.lit
-	if nr_muls > 0 {
-		println('## POINTER: $name')
-	}
-	match name {
-		'voidptr' {
-			return types.new_base_ti(._voidptr, nr_muls)
-		}
-		'byteptr' {
-			return types.new_base_ti(._byteptr, nr_muls)
-		}
-		'charptr' {
-			return types.new_base_ti(._charptr, nr_muls)
-		}
-		'164' {
-			return types.new_base_ti(._i16, nr_muls)
-		}
-		'int' {
-			return types.new_base_ti(._int, nr_muls)
-		}
-		'i64' {
-			return types.new_base_ti(._i64, nr_muls)
-		}
-		'byte' {
-			return types.new_base_ti(._byte, nr_muls)
-		}
-		'u16' {
-			return types.new_base_ti(._u16, nr_muls)
-		}
-		'u32' {
-			return types.new_base_ti(._u32, nr_muls)
-		}
-		'u64' {
-			return types.new_base_ti(._u64, nr_muls)
-		}
-		'f32' {
-			return types.new_base_ti(._f32, nr_muls)
-		}
-		'f64' {
-			return types.new_base_ti(._f64, nr_muls)
-		}
-		'string' {
-			return types.new_base_ti(._string, nr_muls)
-		}
-		'char' {
-			return types.new_base_ti(._char, nr_muls)
-		}
-		'bool' {
-			return types.new_base_ti(._bool, nr_muls)
-		}
-		else {
-			// array
-			if p.tok.kind == .lsbr {
-				p.check(.lsbr)
-				// fixed array
-				if p.tok.kind == .number {
-					fixed_size := p.tok.lit.int()
-					p.check(.rsbr)
-					elem_ti := p.parse_ti()
-					array_fixed_type := types.ArrayFixed{
-						name: 'array_fixed_$elem_ti.type_name'
-						size: fixed_size
-						elem_type_idx: elem_ti.type_idx
-						elem_is_ptr: elem_ti.is_ptr()
-					}
-					idx := p.table.find_or_register_array_fixed(array_fixed_type)
-					return types.new_ti(._array_fixed, array_fixed_type.name, idx, nr_muls)
-				}
-				p.check(.rsbr)
-				// array
-				elem_ti := p.parse_ti()
-				array_type := types.Array{
-					name: 'array_$elem_ti.type_name'
-					elem_type_idx: elem_ti.type_idx
-					elem_is_ptr: elem_ti.is_ptr()
-				}
-				idx := p.table.find_or_register_array(array_type)
-				return types.new_ti(._array, array_type.name, idx, nr_muls)
-			}
-			// map
-			else if name == 'map' {
-				p.next()
-				p.check(.lsbr)
-				key_ti := p.parse_ti()
-				p.check(.rsbr)
-				value_ti := p.parse_ti()
-				map_type := types.Map{
-					name: 'map_${key_ti.type_name}_${value_ti.type_name}'
-					key_type_idx: key_ti.type_idx,
-					value_type_idx: value_ti.type_idx
-				}
-				idx := p.table.find_or_register_map(map_type)
-				return types.new_ti(._map, map_type.name, idx, nr_muls)
-			} else {
-				// struct / enum
-				mut idx := p.table.find_type_idx(name)
-				// add placeholder
-				if idx == 0 {
-					idx = p.table.add_placeholder_type(name)
-				}
-				return types.new_ti(._placeholder, name, idx, nr_muls)
-			}
-
-			// 	typ := p.table.find_type(p.tok.lit) or {
-			// 		// typ := p.table.types[p.tok.lit]
-			// 		// if isnil(typ.name.str) || typ.name == '' {
-			// 		p.error('undefined type `$p.tok.lit`')
-			// 		exit(0)
-			// 	}
-			// 	println('RET Typ $typ.name')
-		}
-	}
-}
-
 pub fn parse_file(path string, table &table.Table) ast.File {
 	println('parse file "$path"')
 	text := os.read_file(path) or {
@@ -672,8 +549,15 @@ fn (p mut Parser) module_decl() ast.Module {
 fn (p mut Parser) import_stmt() ast.Import {
 	p.check(.key_import)
 	name := p.check_name()
+	mut alias := name
+	if p.tok.kind == .key_as {
+		p.check(.key_as)
+		alias = p.check_name()
+	}
+	mut mods := map[string]string
+	mods[alias] = name
 	return ast.Import{
-		mods: [name]
+		mods: mods
 	}
 }
 
@@ -704,10 +588,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 	}
 	p.check(.rcbr)
-	if name in p.table.type_idxs {
-		println('placeholder exists: $name')
-	}
-	println('about to register: $name')
 	p.table.register_struct(types.Struct{
 		name: name
 		fields: fields

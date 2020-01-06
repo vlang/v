@@ -114,7 +114,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.rpar)
 	// Return type
 	mut ti := types.new_base_ti(._void, 0)
-	if p.tok.kind in [.amp, .name] {
+	if p.tok.kind in [.amp, .lpar, .name] {
 		ti = p.parse_ti()
 		p.return_ti = ti
 	}

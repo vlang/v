@@ -80,15 +80,13 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	mods []string
+	mods map[string]string // alias -> mod
 	// expr Expr
-	// imports map[string]string
 }
 
 pub struct Arg {
 pub:
 	ti   types.TypeIdent
-	// typ  types.Type
 	name string
 }
 
@@ -96,8 +94,7 @@ pub struct FnDecl {
 pub:
 	name   string
 	stmts  []Stmt
-	ti   types.TypeIdent
-	// typ   types.Type
+	ti     types.TypeIdent
 	args   []Arg
 	is_pub bool
 	receiver Field
@@ -137,7 +134,6 @@ pub:
 	name string
 	expr Expr
 	ti   types.TypeIdent
-	// typ  types.Type
 }
 
 pub struct File {

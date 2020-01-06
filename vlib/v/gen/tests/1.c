@@ -16,6 +16,9 @@ foo(3);
 return 0;
 }
 
+void variadic(variadic_int a) {
+}
+
 void foo(int a) {
 	void n = get_int2();
 }

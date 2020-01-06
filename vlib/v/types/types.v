@@ -90,8 +90,8 @@ pub fn check(got, expected &TypeIdent) bool {
 	return true
 }
 
-pub fn (t Kind) str() string {
-	t_str := match t {
+pub fn (k Kind) str() string {
+	k_str := match k {
 		._placeholder {
 			'placeholder'
 		}
@@ -168,7 +168,18 @@ pub fn (t Kind) str() string {
 			'unknown'
 		}
 	}
-	return t_str
+	return k_str
+}
+
+pub fn (kinds []Kind) str() string {
+	mut kinds_str := ''
+	for i, k in kinds {
+		kinds_str += k.str()
+		if i < kinds.len-1 {
+			kinds_str += '_'
+		}
+	}
+	return kinds_str
 }
 
 pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct |
@@ -265,14 +276,16 @@ pub:
 
 pub struct MultiReturn {
 pub:
-	elem_type_kinds []Kind
-	elem_type_idxs  []int
+	idx        int
+	name       string
+	type_kinds []Kind
+	type_idxs  []int
 }
 
 pub struct Variadic {
 pub:
-	elem_type_kind Kind
-	elem_type_idx  int
+	type_kind Kind
+	type_idx  int
 }
 
 pub fn (t Void) str() string { return 'void' }
@@ -290,8 +303,8 @@ pub fn (t Byte) str() string { return 'byte' }
 pub fn (t Array) str() string { return t.name }
 pub fn (t ArrayFixed) str() string { return t.name }
 pub fn (t Map) str() string { return t.name }
-pub fn (t MultiReturn) str() string { return 'multi_return_$t.elem_type_kinds.str()' }
-pub fn (t Variadic) str() string { return 'variadic_$t.elem_type_kind.str()' }
+pub fn (t MultiReturn) str() string { return t.name }
+pub fn (t Variadic) str() string { return 'variadic_$t.type_kind.str()' }
 
 pub const (
 	void_type    = Void{}

@@ -194,6 +194,22 @@ pub fn (t mut Table) find_or_register_array_fixed(typ types.ArrayFixed) int {
 	return idx
 }
 
+pub fn (t mut Table) find_or_register_multi_return(typ types.MultiReturn) int {
+	name := typ.str()
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 {
+		return existing_idx
+	}
+	// register
+	idx := t.types.len
+	mut t2 := types.Type{}
+	t2 = {typ| idx: idx}
+	t.type_idxs[name] = idx
+	t.types << t2
+	return idx
+}
+
 [inline]
 pub fn (t &Table) find_type_idx(name string) int {
 	return t.type_idxs[name]
