@@ -4,7 +4,6 @@ import (
 	strings
 	v.ast
 	v.table
-	v.types
 	term
 )
 

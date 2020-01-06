@@ -121,4 +121,3 @@ pub fn (t mut Table) new_tmp_var() string {
 	t.tmp_cnt++
 	return 'tmp$t.tmp_cnt'
 }
-
