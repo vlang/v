@@ -261,6 +261,7 @@ pub:
 	elem_type_kind Kind
 	elem_type_idx  int
 	elem_is_ptr    bool
+	nr_dims        int
 	size           int
 }
 

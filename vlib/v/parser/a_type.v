@@ -6,28 +6,18 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
-		fixed_size := p.tok.lit.int()
+		size := p.tok.lit.int()
 		p.check(.rsbr)
 		elem_ti := p.parse_ti()
-		array_fixed_type := types.ArrayFixed{
-			name: 'array_fixed_$elem_ti.type_name'
-			size: fixed_size
-			elem_type_idx: elem_ti.type_idx
-			elem_is_ptr: elem_ti.is_ptr()
-		}
-		idx := p.table.find_or_register_array_fixed(array_fixed_type)
-		return types.new_ti(._array_fixed, array_fixed_type.name, idx, nr_muls)
+		idx, name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
+		return types.new_ti(._array_fixed, name, idx, nr_muls)
 	}
 	p.check(.rsbr)
 	// array
 	elem_ti := p.parse_ti()
-	array_type := types.Array{
-		name: 'array_$elem_ti.type_name'
-		elem_type_idx: elem_ti.type_idx
-		elem_is_ptr: elem_ti.is_ptr()
-	}
-	idx := p.table.find_or_register_array(array_type)
-	return types.new_ti(._array, array_type.name, idx, nr_muls)
+	// TODO multi dim
+	idx, name := p.table.find_or_register_array(&elem_ti, 1)
+	return types.new_ti(._array, name, idx, nr_muls)
 }
 
 pub fn (p mut Parser) parse_map_ti(nr_muls int) types.TypeIdent {
@@ -36,25 +26,16 @@ pub fn (p mut Parser) parse_map_ti(nr_muls int) types.TypeIdent {
 	key_ti := p.parse_ti()
 	p.check(.rsbr)
 	value_ti := p.parse_ti()
-	map_type := types.Map{
-		name: 'map_${key_ti.type_name}_${value_ti.type_name}'
-		key_type_idx: key_ti.type_idx,
-		value_type_idx: value_ti.type_idx
-	}
-	idx := p.table.find_or_register_map(map_type)
-	return types.new_ti(._map, map_type.name, idx, nr_muls)
+	idx, name := p.table.find_or_register_map(&key_ti, &value_ti)
+	return types.new_ti(._map, name, idx, nr_muls)
 }
 
 pub fn (p mut Parser) parse_multi_return_ti(nr_muls int) types.TypeIdent {
 	p.check(.lpar)
-	mut mr_type_kinds := []types.Kind
-	mut mr_type_idxs := []int
-	mut name := 'multi_return'
+	mut mr_tis := []&types.TypeIdent
 	for {
 		mr_ti := p.parse_ti()
-		mr_type_kinds << mr_ti.type_kind
-		mr_type_idxs << mr_ti.type_idx
-		name += '_$mr_ti.type_name'
+		mr_tis << &mr_ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		} else {
@@ -62,12 +43,7 @@ pub fn (p mut Parser) parse_multi_return_ti(nr_muls int) types.TypeIdent {
 		}
 	}
 	p.check(.rpar)
-	mr_type := types.MultiReturn{
-		name: name
-		type_kinds: mr_type_kinds
-		type_idxs: mr_type_idxs
-	}
-	idx := p.table.find_or_register_multi_return(mr_type)
+	idx, name := p.table.find_or_register_multi_return(mr_tis)
 	return types.new_ti(._multi_return, name, idx, nr_muls)
 }
 
