@@ -12,11 +12,17 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		idx, name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
 		return types.new_ti(._array_fixed, name, idx, nr_muls)
 	}
-	p.check(.rsbr)
 	// array
 	elem_ti := p.parse_ti()
+	mut nr_dims := 1
+	for p.tok.kind == .lsbr {
+		p.check(.lsbr)
+		p.next()
+		nr_dims++
+	}
+	p.check(.rsbr)
 	// TODO multi dim
-	idx, name := p.table.find_or_register_array(&elem_ti, 1)
+	idx, name := p.table.find_or_register_array(&elem_ti, nr_dims)
 	return types.new_ti(._array, name, idx, nr_muls)
 }
 
