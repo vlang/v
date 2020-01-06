@@ -35,7 +35,7 @@ pub fn (p mut Parser) parse_map_ti(nr_muls int) types.TypeIdent {
 	return types.new_ti(._map, name, idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_multi_return_ti(nr_muls int) types.TypeIdent {
+pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
 	p.check(.lpar)
 	mut mr_tis := []&types.TypeIdent
 	for {
@@ -49,15 +49,14 @@ pub fn (p mut Parser) parse_multi_return_ti(nr_muls int) types.TypeIdent {
 	}
 	p.check(.rpar)
 	idx, name := p.table.find_or_register_multi_return(mr_tis)
-	return types.new_ti(._multi_return, name, idx, nr_muls)
+	return types.new_ti(._multi_return, name, idx, 0)
 }
 
-pub fn (p mut Parser) parse_variadic_ti(nr_muls int) types.TypeIdent {
+pub fn (p mut Parser) parse_variadic_ti() types.TypeIdent {
 	p.check(.ellipsis)
 	variadic_ti := p.parse_ti()
-	return types.new_ti(
-		._variadic, 'variadic_$variadic_ti.type_name',
-		variadic_ti.type_idx, nr_muls)
+	idx, name := p.table.find_or_register_variadic(&variadic_ti)
+	return types.new_ti(._variadic, name, idx, 0)
 }
 
 pub fn (p mut Parser) parse_ti() types.TypeIdent {
@@ -74,11 +73,17 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 		}
 		// multiple return
 		.lpar {
-			return p.parse_multi_return_ti(nr_muls)
+			if nr_muls > 0 {
+				p.error('parse_ti: unexpected `&` before multiple returns')
+			}
+			return p.parse_multi_return_ti()
 		}
 		// variadic
 		.ellipsis {
-			return p.parse_variadic_ti(nr_muls)
+			if nr_muls > 0 {
+				p.error('parse_ti: unexpected `&` before variadic')
+			}
+			return p.parse_variadic_ti()
 		}
 		else {
 			defer { p.next() }

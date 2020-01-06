@@ -17,7 +17,7 @@ pub fn (t &Table) find_type(name string) ?types.Type {
 }
 
 pub fn (t mut Table) register_struct(typ types.Struct) int {
-	mut t2 := types.Type{}
+	mut struct_type := types.Type{}
 	// existing
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
@@ -26,8 +26,8 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 			types.Placeholder {
 				// override placeholder
 				println('overriding type placeholder `$it.name` with struct')
-				t2 = {typ| idx: existing_idx}
-				t.types[existing_idx] = t2
+				struct_type = {typ| idx: existing_idx}
+				t.types[existing_idx] = struct_type
 				return existing_idx
 			}
 			types.Struct {
@@ -42,8 +42,8 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 	println('registering: $typ.name')
 	idx := t.types.len
 	t.type_idxs[typ.name] = idx
-	t2 = {typ| idx: idx}
-	t.types << t2
+	struct_type = {typ| idx: idx}
+	t.types << struct_type
 
 	return idx
 }
@@ -138,6 +138,26 @@ pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (i
 	}
 	t.type_idxs[name] = idx
 	t.types << mr_type
+	return idx, name
+}
+
+pub fn (t mut Table) find_or_register_variadic(variadic_ti &types.TypeIdent) (int, string) {
+	name := 'variadic_$variadic_ti.type_name'
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 {
+		return existing_idx, name
+	}
+	// register
+	idx := t.types.len
+	mut variadic_type := types.Type{}
+	variadic_type = types.Variadic{
+		idx: idx
+		type_kind: variadic_ti.type_kind
+		type_idx: variadic_ti.type_idx
+	}
+	t.type_idxs[name] = idx
+	t.types << variadic_type
 	return idx, name
 }
 

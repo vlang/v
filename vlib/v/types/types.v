@@ -285,6 +285,7 @@ pub:
 
 pub struct Variadic {
 pub:
+	idx       int
 	type_kind Kind
 	type_idx  int
 }
