@@ -46,7 +46,12 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write('return ')
-			g.expr(it.expr)
+			if it.exprs.len > 0 {
+
+			}
+			else {
+				g.expr(it.exprs[0])
+			}
 			g.writeln(';')
 		}
 		ast.VarDecl {

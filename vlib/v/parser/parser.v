@@ -630,19 +630,19 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	mut ti := types.new_base_ti(._int, 0)
+	mut ti := types.int_ti
 	if lit.contains('.') {
 		node = ast.FloatLiteral{
 			// val: lit.f64()
 			val: lit
 		}
-		ti = types.new_base_ti(._f64, 0)
+		ti = types.new_builtin_ti(._f64, 0)
 	}
 	else {
 		node = ast.IntegerLiteral{
 			val: lit.int()
 		}
-		// ti = types.new_base_ti(._int, 0)
+		// ti = types.int_ti
 	}
 	p.next()
 	return node,ti
@@ -709,12 +709,37 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 
 fn (p mut Parser) return_stmt() ast.Return {
 	p.next()
-	expr,t := p.expr(0)
-	if !types.check(p.return_ti, t) {
-		p.warn('cannot use `$t.name` as type `$p.return_ti.name` in return argument')
+	// return expressions
+	mut exprs := []ast.Expr
+	// return type idents
+	mut got_tis := []types.TypeIdent
+	for {
+		expr,ti := p.expr(0)
+		exprs << expr
+		got_tis << ti
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
+		else {
+			break
+		}
+	}
+	mut expected_tis := [p.return_ti]
+	if p.return_ti.kind == ._multi_return {
+		mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
+		expected_tis = mr_type.tis
+	}
+	if expected_tis.len != got_tis.len {
+		p.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
+	}
+	for i, exp_ti in expected_tis {
+		got_ti := got_tis[i]
+		if !types.check(exp_ti, got_ti) {
+			p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
+		}
 	}
 	return ast.Return{
-		expr: expr
+		exprs: exprs
 	}
 }
 

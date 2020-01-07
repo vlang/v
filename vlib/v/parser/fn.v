@@ -120,6 +120,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 				ti: ti
 				name: arg_name
 			}
+			if ti.kind == ._variadic && p.tok.kind == .comma {
+				p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+			}
 		}
 		if p.tok.kind != .rpar {
 			p.check(.comma)
@@ -128,7 +131,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.rpar)
 	// Return type
 	mut ti := types.void_ti
-	if p.tok.kind == .name {
+	if p.tok.kind in [.name, .lpar] {
 		ti = p.parse_ti()
 		p.return_ti = ti
 	}

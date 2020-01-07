@@ -51,5 +51,10 @@ fn myuser() {
 	b2 := user.age > 0
 }
 
+fn multi_return() (int,string) {
+	return 4, 'four'
+}
+
 fn variadic(a ...int) {
 }
+
