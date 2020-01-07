@@ -712,11 +712,11 @@ fn (p mut Parser) return_stmt() ast.Return {
 	// return expressions
 	mut exprs := []ast.Expr
 	// return type idents
-	mut tis := []types.TypeIdent
+	mut got_tis := []types.TypeIdent
 	for {
-		expr,t := p.expr(0)
+		expr,ti := p.expr(0)
 		exprs << expr
-		tis << t
+		got_tis << ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
@@ -724,22 +724,18 @@ fn (p mut Parser) return_stmt() ast.Return {
 			break
 		}
 	}
+	mut expected_tis := [p.return_ti]
 	if p.return_ti.kind == ._multi_return {
 		mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
-		if mr_type.tis.len != tis.len {
-			p.error('wrong number of return arguments:\n\texpected: $mr_type.tis.str()\n\tgot: $tis.str()')
-		}
-		for i, exp_ti in mr_type.tis {
-			got_ti := tis[i]
-			if !types.check(exp_ti, got_ti) {
-				p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
-			}
-		}
+		expected_tis = mr_type.tis
 	}
-	else {
-		t := tis[0]
-		if !types.check(p.return_ti, t) {
-			p.warn('cannot use `$t.name` as type `$p.return_ti.name` in return argument')
+	if expected_tis.len != got_tis.len {
+		p.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
+	}
+	for i, exp_ti in expected_tis {
+		got_ti := got_tis[i]
+		if !types.check(exp_ti, got_ti) {
+			p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
 		}
 	}
 	return ast.Return{
