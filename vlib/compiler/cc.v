@@ -118,6 +118,15 @@ fn (v mut V) cc() {
 			verror('-fast is only supported on Linux right now')
 		}
 	}
+
+	if !v.pref.is_so
+		&& v.pref.build_mode != .build_module 
+		&& os.user_os() == 'windows'
+		&& !v.out_name.ends_with('.exe')
+	{
+		v.out_name += '.exe'
+	}
+	
 	// linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	if v.pref.is_so {
