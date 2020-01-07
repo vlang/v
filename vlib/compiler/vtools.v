@@ -5,17 +5,17 @@ import (
 	filepath
 )
 
-pub fn launch_tool(tname string) {
+pub fn launch_tool(tname string, cmdname string) {
   is_verbose := '-verbose' in os.args || '--verbose' in os.args
 	vexe := vexe_path()
 	vroot := filepath.dir(vexe)
 	set_vroot_folder( vroot ) // needed by tools to find back v
-	mut tname_index := os.args.index(tname[1..])
+	mut tname_index := os.args.index(cmdname)
 	if tname_index == -1 {
 		tname_index = os.args.len
 	}
 	mut compilation_options := os.args[1..tname_index].clone()
-	tool_args := os.args[tname_index..].join(' ')
+	tool_args := os.args[1..].join(' ')
 	tool_exe := os.realpath('$vroot/tools/$tname')
 	tool_source := os.realpath('$vroot/tools/${tname}.v')
 	tool_command := '"$tool_exe" $tool_args'
