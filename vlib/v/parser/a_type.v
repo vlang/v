@@ -51,7 +51,7 @@ pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
 		}
 	}
 	p.check(.rpar)
-	idx,name := p.table.find_or_register_multi_return(&mr_tis)
+	idx,name := p.table.find_or_register_multi_return(mr_tis)
 	return types.new_ti(._multi_return, name, idx, 0)
 }
 
