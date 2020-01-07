@@ -120,10 +120,11 @@ fn (v mut V) cc() {
 	}
 
 	if !v.pref.is_so
-	   && ( v.pref.build_mode != .build_module )
-	   && ( os.user_os() == 'windows' )
-	   && ( !v.out_name.ends_with('.exe') ) {
-		v.out_name = v.out_name + '.exe'
+		&& v.pref.build_mode != .build_module 
+		&& os.user_os() == 'windows'
+		&& !v.out_name.ends_with('.exe')
+	{
+		v.out_name += '.exe'
 	}
 	
 	// linux_host := os.user_os() == 'linux'
