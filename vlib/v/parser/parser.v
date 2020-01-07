@@ -731,7 +731,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 		}
 		for i, exp_ti in mr_type.tis {
 			got_ti := tis[i]
-			if exp_ti.kind != got_ti.kind {
+			if !types.check(exp_ti, got_ti) {
 				p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
 			}
 		}
