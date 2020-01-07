@@ -122,7 +122,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 				ti: ti
 				name: arg_name
 			}
-			if ti.kind == ._variadic && p.tok.kind == .comma {
+			if ti.kind == .variadic && p.tok.kind == .comma {
 				p.error('cannot use ...(variadic) with non-final parameter $arg_name')
 			}
 		}

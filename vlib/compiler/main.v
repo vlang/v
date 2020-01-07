@@ -9,11 +9,11 @@ import (
 	strings
 	filepath
 	//compiler.x64
-	v.gen.x64
+	// v.gen.x64
 	//v.types
-	v.table
-	v.parser
-	v.gen
+	// v.table
+	// v.parser
+	// v.gen
 	time
 )
 
@@ -382,6 +382,8 @@ pub fn (v mut V) compile() {
 	v.cc()
 }
 
+pub fn (v &V) compile2() {}
+/*
 pub fn (v mut V) compile2() {
 	if os.user_os() != 'windows' && v.pref.ccompiler == 'msvc' {
 		verror('Cannot build with msvc on ${os.user_os()}')
@@ -416,7 +418,10 @@ pub fn (v mut V) compile2() {
 	v.cc()
 
 }
+*/
 
+pub fn (v &V) compile_x64() {}
+/*
 pub fn (v mut V) compile_x64() {
 	$if !linux {
 		println('v -x64 can only generate Linux binaries for now')
@@ -440,6 +445,7 @@ pub fn (v mut V) compile_x64() {
 	}
 	*/
 }
+*/
 
 fn (v mut V) generate_init() {
 	$if js {

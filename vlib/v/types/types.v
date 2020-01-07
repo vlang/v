@@ -4,32 +4,32 @@
 module types
 
 pub enum Kind {
-	_placeholder
-	_void,
-	_voidptr,
-	_charptr,
-	_byteptr,
-	_const,
-	_enum,
-	_struct,
-	_int,
-	_i8,
-	_i16,
-	_i64,
-	_byte,
-	_u16,
-	_u32,
-	_u64,
-	_f32,
+	placeholder
+	void,
+	voidptr,
+	charptr,
+	byteptr,
+	const_,
+	enum_,
+	struct_,
+	int,
+	i8,
+	i16,
+	i64,
+	byte,
+	u16,
+	u32,
+	u64,
+	f32,
 	f64,
-	_string,
-	_char,
-	_bool,
-	_array,
-	_array_fixed,
-	_map,
-	_multi_return,
-	_variadic
+	string,
+	char,
+	bool,
+	array,
+	array_fixed,
+	map,
+	multi_return,
+	variadic
 }
 
 pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct | 	
@@ -56,7 +56,7 @@ pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
 [inline]
 pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 	return TypeIdent{
-		idx: -int(kind)
+		idx: -int(kind)-1
 		kind: kind
 		name: kind.str()
 		nr_muls: nr_muls
@@ -70,12 +70,12 @@ pub fn (ti &TypeIdent) is_ptr() bool {
 
 [inline]
 pub fn (ti &TypeIdent) is_int() bool {
-	return ti.kind in [._i8, ._i16, ._int, ._i64, ._byte, ._u16, ._u32, ._u64]
+	return ti.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
 }
 
 [inline]
 pub fn (ti &TypeIdent) is_float() bool {
-	return ti.kind in [._f32, .f64]
+	return ti.kind in [.f32, .f64]
 }
 
 [inline]
@@ -92,7 +92,7 @@ pub fn (ti &TypeIdent) str() string {
 }
 
 pub fn check(got, expected &TypeIdent) bool {
-	if expected.kind == ._voidptr {
+	if expected.kind == .voidptr {
 		return true
 	}
 	if expected.name == 'array' {
@@ -106,76 +106,76 @@ pub fn check(got, expected &TypeIdent) bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
-		._placeholder{
+		.placeholder{
 			'placeholder'
 		}
-		._void{
+		.void{
 			'void'
 		}
-		._voidptr{
+		.voidptr{
 			'voidptr'
 		}
-		._charptr{
+		.charptr{
 			'charptr'
 		}
-		._byteptr{
+		.byteptr{
 			'byteptr'
 		}
-		._const{
+		.const_{
 			'const'
 		}
-		._enum{
+		.enum_{
 			'enum'
 		}
-		._struct{
+		.struct_{
 			'struct'
 		}
-		._int{
+		.int{
 			'int'
 		}
-		._i8{
+		.i8{
 			'i8'
 		}
-		._i16{
+		.i16{
 			'i16'
 		}
-		._i64{
+		.i64{
 			'i64'
 		}
-		._byte{
+		.byte{
 			'byte'
 		}
-		._u16{
+		.u16{
 			'u18'
 		}
-		._f32{
+		.f32{
 			'f32'
 		}
 		.f64{
 			'f64'
 		}
-		._string{
+		.string{
 			'string'
 		}
-		._char{
+		.char{
 			'char'
 		}
-		._bool{
+		.bool{
 			'bool'
 		}
-		._array{
+		.array{
 			'array'
 		}
-		._array_fixed{
+		.array_fixed{
 			'array_fixed'
 		}
-		._map{
+		.map{
 			'map'
 		}
-		._multi_return{
+		.multi_return{
 			'multi_return'
 		}
-		._variadic{
+		.variadic{
 			'variadic'
 		}
 		else {
@@ -396,8 +396,8 @@ pub const (
 )
 
 pub const (
-	void_ti = new_builtin_ti(._void, 0)
-	int_ti = new_builtin_ti(._int, 0)
-	string_ti = new_builtin_ti(._string, 0)
-	bool_ti = new_builtin_ti(._bool, 0)
+	void_ti = new_builtin_ti(.void, 0)
+	int_ti = new_builtin_ti(.int, 0)
+	string_ti = new_builtin_ti(.string, 0)
+	bool_ti = new_builtin_ti(.bool, 0)
 )

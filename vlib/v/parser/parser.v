@@ -435,7 +435,7 @@ fn (p mut Parser) dot_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	/*
 				// p.next()
 				field := p.check_name()
-				if !ti.type_kind in  [._placeholder, ._struct] {
+				if !ti.type_kind in  [.placeholder, .struct_] {
 					println('kind: $ti.str()')
 					p.error('cannot access field, `$ti.type_name` is not a struct')
 				}
@@ -519,7 +519,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		if p.tok.kind != .semicolon {
 			mut typ := types.TypeIdent{}
 			cond,typ = p.expr(0)
-			if typ.kind != ._bool {
+			if typ.kind != .bool {
 				p.error('non-bool used as for condition')
 			}
 		}
@@ -571,7 +571,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	p.check(.key_if)
 	cond,cond_ti := p.expr(0)
 	// if !types.check(types.bool_ti, cond_ti) {
-	if cond_ti.kind != ._bool {
+	if cond_ti.kind != .bool {
 		p.error('non-bool used as if condition')
 	}
 	stmts := p.parse_block()
@@ -645,13 +645,15 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 			p.check(.comma)
 		}
 	}
+	type_idx, type_name := p.table.find_or_register_array(val_ti, 1)
+	array_ti := types.new_ti(.array, type_name, type_idx, 0)
 	mut node := ast.Expr{}
 	node = ast.ArrayInit{
-		ti: val_ti
+		ti: array_ti
 		exprs: exprs
 	}
 	p.check(.rsbr)
-	return node,val_ti
+	return node,array_ti
 }
 
 fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
@@ -752,7 +754,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 		}
 	}
 	mut expected_tis := [p.return_ti]
-	if p.return_ti.kind == ._multi_return {
+	if p.return_ti.kind == .multi_return {
 		mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
 		expected_tis = mr_type.tis
 	}

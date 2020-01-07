@@ -249,7 +249,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
 			mut tmp := ''
-			if it.ti.kind != ._void {
+			if it.ti.kind != .void {
 				tmp = g.table.new_tmp_var()
 				// g.writeln('$it.ti.name $tmp;')
 			}
@@ -258,7 +258,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && it.ti.kind != ._void {
+				if i == it.stmts.len - 1 && it.ti.kind != .void {
 					// g.writeln('$tmp =')
 					println(1)
 				}
