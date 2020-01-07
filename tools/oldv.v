@@ -6,7 +6,7 @@ import (
 )  
 
 const (
-	tool_version = '0.0.2'
+	tool_version = '0.0.3'
 	tool_description = 'Checkout an old V and compile it. Useful when you want to discover when something broke.'
 	remote_repo_url_v  = 'https://github.com/vlang/v'
 	remote_repo_url_vc = 'https://github.com/vlang/vc'
@@ -26,6 +26,7 @@ mut:
 	cc            string = 'cc'     // the C compiler to use for bootstrapping.
 	cleanup       bool              // should the tool run a cleanup first
 	verbose       bool              // should the tool be much more verbose
+	show_help     bool              // whether to show the usage screen
 }
 
 fn (c mut Context) compile_oldv_if_needed() {  
@@ -115,7 +116,7 @@ fn main(){
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
 	
-	show_help:=fp.bool_('help', `h`, false, 'Show this help screen.')
+	context.show_help  = fp.bool_('help', `h`, false, 'Show this help screen.')
 	context.verbose    = fp.bool_('verbose', `v`, false, 'Be more verbose.\n')
 	
 	context.cleanup    = fp.bool('clean', true, 'Clean before running (slower).')
@@ -132,7 +133,7 @@ fn main(){
 		flag.SPACE+'done by this tool, which is useful, if you want \n'+
 		flag.SPACE+'to script it/run it in a restrictive vps/docker.')
 	
-	if( show_help ){
+	if( context.show_help ){
 		println( fp.usage() )
 		exit(0)
 	}
