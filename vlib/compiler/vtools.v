@@ -10,7 +10,12 @@ pub fn launch_tool(tname string) {
 	vexe := vexe_path()
 	vroot := filepath.dir(vexe)
 	set_vroot_folder( vroot ) // needed by tools to find back v
-	tool_args := os.args[1..].join(' ')
+	mut tname_index := os.args.index(tname[1..])
+	if tname_index == -1 {
+		tname_index = os.args.len
+	}
+	mut compilation_options := os.args[1..tname_index].clone()
+	tool_args := os.args[tname_index..].join(' ')
 	tool_exe := os.realpath('$vroot/tools/$tname')
 	tool_source := os.realpath('$vroot/tools/${tname}.v')
 	tool_command := '"$tool_exe" $tool_args'
@@ -41,9 +46,9 @@ pub fn launch_tool(tname string) {
 	}
 	
 	if tool_should_be_recompiled {
-		mut compilation_options := ''
-		if tname == 'vfmt' {  compilation_options = '-d vfmt' }
-		compilation_command := '"$vexe" $compilation_options "$tool_source"'
+		if tname == 'vfmt' {  compilation_options << ['-d', 'vfmt'] }
+		compilation_args := compilation_options.join(' ')
+		compilation_command := '"$vexe" $compilation_args "$tool_source"'
 		if is_verbose {
 			eprintln('Compiling $tname with: "$compilation_command"') 
 		}
