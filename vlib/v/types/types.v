@@ -32,7 +32,7 @@ pub enum Kind {
 	_variadic
 }
 
-pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct |
+pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct | 	
 Int | Float | String | Char | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 
 pub struct TypeIdent {
@@ -92,6 +92,12 @@ pub fn (ti &TypeIdent) str() string {
 }
 
 pub fn check(got, expected &TypeIdent) bool {
+	if expected.kind == ._voidptr {
+		return true
+	}
+	if expected.name == 'array' {
+		return true
+	}
 	if got.idx != expected.idx {
 		return false
 	}
