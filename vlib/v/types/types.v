@@ -92,7 +92,7 @@ pub fn (ti &TypeIdent) str() string {
 }
 
 pub fn check(got, expected &TypeIdent) bool {
-	if expected.kind == ._voidptr {
+	if expected.kind == .voidptr {
 		return true
 	}
 	if expected.name == 'array' {
