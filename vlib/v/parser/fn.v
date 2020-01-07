@@ -59,6 +59,19 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	return node,return_ti
 }
 
+pub fn (p mut Parser) call_args() []ast.Expr {
+	mut args := []ast.Expr
+	for p.tok.kind != .rpar {
+		e,_ := p.expr(0)
+		args << e
+		if p.tok.kind != .rpar {
+			p.check(.comma)
+		}
+	}
+	p.check(.rpar)
+	return args // ,types.void_ti
+}
+
 fn (p mut Parser) fn_decl() ast.FnDecl {
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {

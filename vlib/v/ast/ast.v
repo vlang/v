@@ -9,7 +9,7 @@ import (
 )
 
 pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr | MethodCallExpr
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt
@@ -103,6 +103,16 @@ pub:
 
 pub struct CallExpr {
 pub:
+// func       Expr
+	name       string
+	args       []Expr
+	is_unknown bool
+	tok        token.Token
+}
+
+pub struct MethodCallExpr {
+pub:
+	expr       Expr
 	name       string
 	args       []Expr
 	is_unknown bool

@@ -314,7 +314,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 			node,ti = p.name_expr()
 		}
 		.str {
-			node,ti = p.parse_string_literal()
+			node,ti = p.string_expr()
 		}
 		// -1, -a etc
 		.minus {
@@ -332,7 +332,6 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 		}
 		.lpar {
 			p.check(.lpar)
-			p.next()
 			node,ti = p.expr(0)
 			p.check(.rpar)
 		}
@@ -387,6 +386,19 @@ fn (p mut Parser) prefix_expr() (ast.Expr,types.TypeIdent) {
 fn (p mut Parser) dot_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
+	// Method call
+	if p.tok.kind == .lpar {
+		p.next()
+		args := p.call_args()
+		println('method call $field_name')
+		mut node := ast.Expr{}
+		node = ast.MethodCallExpr{
+			expr: left
+			name: field_name
+			args: args
+		}
+		return node,types.int_ti
+	}
 	/*
 				// p.next()
 				field := p.check_name()
@@ -555,12 +567,24 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	return node,ti
 }
 
-fn (p mut Parser) parse_string_literal() (ast.Expr,types.TypeIdent) {
+fn (p mut Parser) string_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
 	node = ast.StringLiteral{
 		val: p.tok.lit
 	}
-	p.next()
+	if p.peek_tok.kind != .str_dollar {
+		p.next()
+		return node,types.string_ti
+	}
+	// Handle $ interpolation
+	for p.tok.kind == .str {
+		p.next()
+		if p.tok.kind != .str_dollar {
+			continue
+		}
+		p.check(.str_dollar)
+		p.expr(0)
+	}
 	return node,types.string_ti
 }
 
@@ -677,7 +701,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	p.next()
 	expr,t := p.expr(0)
 	if !types.check(p.return_ti, t) {
-		p.error('cannot use `$t.name` as type `$p.return_ti.name` in return argument')
+		p.warn('cannot use `$t.name` as type `$p.return_ti.name` in return argument')
 	}
 	return ast.Return{
 		expr: expr

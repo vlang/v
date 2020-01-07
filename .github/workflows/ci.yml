@@ -129,7 +129,7 @@ jobs:
         ../vprod -x64 -o 1m 1m.v
         echo "Running it..."
         ls
-        ./1m
+#        ./1m
       #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
 
 
