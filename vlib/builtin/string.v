@@ -317,7 +317,7 @@ pub fn (s string) u64() u64 {
 }
 
 // ==
-fn (s string) eq(a string) bool {
+pub fn (s string) eq(a string) bool {
 	if isnil(s.str) {
 		// should never happen
 		panic('string.eq(): nil string')
@@ -334,12 +334,12 @@ fn (s string) eq(a string) bool {
 }
 
 // !=
-fn (s string) ne(a string) bool {
+pub fn (s string) ne(a string) bool {
 	return !s.eq(a)
 }
 
 // s < a
-fn (s string) lt(a string) bool {
+pub fn (s string) lt(a string) bool {
 	for i := 0; i < s.len; i++ {
 		if i >= a.len || s[i] > a[i] {
 			return false
@@ -355,17 +355,17 @@ fn (s string) lt(a string) bool {
 }
 
 // s <= a
-fn (s string) le(a string) bool {
+pub fn (s string) le(a string) bool {
 	return s.lt(a) || s.eq(a)
 }
 
 // s > a
-fn (s string) gt(a string) bool {
+pub fn (s string) gt(a string) bool {
 	return !s.le(a)
 }
 
 // s >= a
-fn (s string) ge(a string) bool {
+pub fn (s string) ge(a string) bool {
 	return !s.lt(a)
 }
 
@@ -458,7 +458,7 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // 'hello'.left(2) => 'he'
-fn (s string) left(n int) string {
+pub fn (s string) left(n int) string {
 	if n >= s.len {
 		return s
 	}
@@ -466,7 +466,7 @@ fn (s string) left(n int) string {
 }
 
 // 'hello'.right(2) => 'llo'
-fn (s string) right(n int) string {
+pub fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
 	}
@@ -479,7 +479,7 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 	return s.substr(start, end)
 }
 
-fn (s string) substr(start, end int) string {
+pub fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
 	}
@@ -906,34 +906,34 @@ pub fn (s string) ustring_tmp() ustring {
 	return res
 }
 
-fn (u ustring) eq(a ustring) bool {
+pub fn (u ustring) eq(a ustring) bool {
 	if u.len != a.len || u.s != a.s {
 		return false
 	}
 	return true
 }
 
-fn (u ustring) ne(a ustring) bool {
+pub fn (u ustring) ne(a ustring) bool {
 	return !u.eq(a)
 }
 
-fn (u ustring) lt(a ustring) bool {
+pub fn (u ustring) lt(a ustring) bool {
 	return u.s < a.s
 }
 
-fn (u ustring) le(a ustring) bool {
+pub fn (u ustring) le(a ustring) bool {
 	return u.lt(a) || u.eq(a)
 }
 
-fn (u ustring) gt(a ustring) bool {
+pub fn (u ustring) gt(a ustring) bool {
 	return !u.le(a)
 }
 
-fn (u ustring) ge(a ustring) bool {
+pub fn (u ustring) ge(a ustring) bool {
 	return !u.lt(a)
 }
 
-fn (u ustring) add(a ustring) ustring {
+pub fn (u ustring) add(a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
 		runes: new_array(0, u.s.len + a.s.len, sizeof(int))
@@ -1026,7 +1026,7 @@ pub fn (u ustring) right(pos int) string {
 	return u.substr(pos, u.len)
 }
 
-fn (s string) at(idx int) byte {
+pub fn (s string) at(idx int) byte {
 	if idx < 0 || idx >= s.len {
 		panic('string index out of range: $idx / $s.len')
 	}
