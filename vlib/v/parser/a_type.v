@@ -1,5 +1,4 @@
 module parser
-
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
@@ -40,10 +39,10 @@ pub fn (p mut Parser) parse_map_ti(nr_muls int) types.TypeIdent {
 
 pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
 	p.check(.lpar)
-	mut mr_tis := []&types.TypeIdent
+	mut mr_tis := []types.TypeIdent
 	for {
 		mr_ti := p.parse_ti()
-		mr_tis << &mr_ti
+		mr_tis << mr_ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
@@ -52,7 +51,7 @@ pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
 		}
 	}
 	p.check(.rpar)
-	idx,name := p.table.find_or_register_multi_return(mr_tis)
+	idx,name := p.table.find_or_register_multi_return(&mr_tis)
 	return types.new_ti(._multi_return, name, idx, 0)
 }
 
@@ -99,52 +98,52 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 					return p.parse_map_ti(nr_muls)
 				}
 				'voidptr' {
-					return types.new_base_ti(._voidptr, nr_muls)
+					return types.new_builtin_ti(._voidptr, nr_muls)
 				}
 				'byteptr' {
-					return types.new_base_ti(._byteptr, nr_muls)
+					return types.new_builtin_ti(._byteptr, nr_muls)
 				}
 				'charptr' {
-					return types.new_base_ti(._charptr, nr_muls)
+					return types.new_builtin_ti(._charptr, nr_muls)
 				}
 				'i8' {
-					return types.new_base_ti(._i8, nr_muls)
+					return types.new_builtin_ti(._i8, nr_muls)
 				}
 				'i16' {
-					return types.new_base_ti(._i16, nr_muls)
+					return types.new_builtin_ti(._i16, nr_muls)
 				}
 				'int' {
-					return types.new_base_ti(._int, nr_muls)
+					return types.new_builtin_ti(._int, nr_muls)
 				}
 				'i64' {
-					return types.new_base_ti(._i64, nr_muls)
+					return types.new_builtin_ti(._i64, nr_muls)
 				}
 				'byte' {
-					return types.new_base_ti(._byte, nr_muls)
+					return types.new_builtin_ti(._byte, nr_muls)
 				}
 				'u16' {
-					return types.new_base_ti(._u16, nr_muls)
+					return types.new_builtin_ti(._u16, nr_muls)
 				}
 				'u32' {
-					return types.new_base_ti(._u32, nr_muls)
+					return types.new_builtin_ti(._u32, nr_muls)
 				}
 				'u64' {
-					return types.new_base_ti(._u64, nr_muls)
+					return types.new_builtin_ti(._u64, nr_muls)
 				}
 				'f32' {
-					return types.new_base_ti(._f32, nr_muls)
+					return types.new_builtin_ti(._f32, nr_muls)
 				}
 				'f64' {
-					return types.new_base_ti(._f64, nr_muls)
+					return types.new_builtin_ti(._f64, nr_muls)
 				}
 				'string' {
-					return types.new_base_ti(._string, nr_muls)
+					return types.new_builtin_ti(._string, nr_muls)
 				}
 				'char' {
-					return types.new_base_ti(._char, nr_muls)
+					return types.new_builtin_ti(._char, nr_muls)
 				}
 				'bool' {
-					return types.new_base_ti(._bool, nr_muls)
+					return types.new_builtin_ti(._bool, nr_muls)
 				}
 				// struct / enum / placeholder
 				else {
@@ -156,7 +155,7 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 					}
 					return types.new_ti(._placeholder, name, idx, nr_muls)
 				}
-			}
+	}
 		}
 	}
 }

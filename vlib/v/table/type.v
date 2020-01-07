@@ -20,7 +20,6 @@ pub fn (t &Table) find_type(name string) ?types.Type {
 }
 
 pub fn (t mut Table) register_struct(typ types.Struct) int {
-	mut struct_type := types.Type{}
 	// existing
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
@@ -29,6 +28,7 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 			types.Placeholder {
 				// override placeholder
 				println('overriding type placeholder `$it.name` with struct')
+				mut struct_type := types.Type{}
 				struct_type = {
 					typ |
 					idx:existing_idx
@@ -42,12 +42,13 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 			else {
 				panic('cannot register type `$typ.name`, another type with this name exists')
 			}
-		}
+	}
 	}
 	// register
 	println('registering: $typ.name')
 	idx := t.types.len
 	t.type_idxs[typ.name] = idx
+	mut struct_type := types.Type{}
 	struct_type = {
 		typ |
 		idx:idx
@@ -121,14 +122,10 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_ti &types.TypeIdent, size
 	return idx,name
 }
 
-pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (int,string) {
+pub fn (t mut Table) find_or_register_multi_return(mr_tis []types.TypeIdent) (int,string) {
 	mut name := 'multi_return'
-	mut mr_type_kinds := []types.Kind
-	mut mr_type_idxs := []int
 	for mr_ti in mr_tis {
 		name += '_$mr_ti.name'
-		mr_type_kinds << mr_ti.kind
-		mr_type_idxs << mr_ti.idx
 	}
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -141,8 +138,7 @@ pub fn (t mut Table) find_or_register_multi_return(mr_tis []&types.TypeIdent) (i
 	mr_type = types.MultiReturn{
 		idx: idx
 		name: name
-		type_kinds: mr_type_kinds
-		type_idxs: mr_type_idxs
+		tis: mr_tis
 	}
 	t.type_idxs[name] = idx
 	t.types << mr_type
@@ -161,8 +157,7 @@ pub fn (t mut Table) find_or_register_variadic(variadic_ti &types.TypeIdent) (in
 	mut variadic_type := types.Type{}
 	variadic_type = types.Variadic{
 		idx: idx
-		type_kind: variadic_ti.kind
-		type_idx: variadic_ti.idx
+		ti: variadic_ti
 	}
 	t.type_idxs[name] = idx
 	t.types << variadic_type

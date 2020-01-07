@@ -121,7 +121,7 @@ pub:
 
 pub struct Return {
 pub:
-	expr Expr
+	exprs []Expr
 }
 
 /*

@@ -54,8 +54,9 @@ pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
 }
 
 [inline]
-pub fn new_base_ti(kind Kind, nr_muls int) TypeIdent {
+pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 	return TypeIdent{
+		idx: -int(kind)
 		kind: kind
 		name: kind.str()
 		nr_muls: nr_muls
@@ -83,7 +84,11 @@ pub fn (ti &TypeIdent) is_number() bool {
 }
 
 pub fn (ti &TypeIdent) str() string {
-	return '$ti.kind.str() $ti.idx: $ti.name ($ti.nr_muls)'
+	mut muls := ''
+	for _ in 0 .. ti.nr_muls {
+		muls += '&'
+	}
+	return '$muls$ti.name'
 }
 
 pub fn check(got, expected &TypeIdent) bool {
@@ -275,17 +280,15 @@ pub:
 
 pub struct MultiReturn {
 pub:
-	idx        int
-	name       string
-	type_kinds []Kind
-	type_idxs  []int
+	idx  int
+	name string
+	tis  []TypeIdent
 }
 
 pub struct Variadic {
 pub:
-	idx       int
-	type_kind Kind
-	type_idx  int
+	idx int
+	ti  TypeIdent
 }
 
 pub fn (t Void) str() string {
@@ -353,7 +356,7 @@ pub fn (t MultiReturn) str() string {
 }
 
 pub fn (t Variadic) str() string {
-	return 'variadic_$t.type_kind.str()'
+	return 'variadic_$t.ti.kind.str()'
 }
 
 pub const (
@@ -387,8 +390,8 @@ pub const (
 )
 
 pub const (
-	void_ti = new_base_ti(._void, 0)
-	int_ti = new_base_ti(._int, 0)
-	string_ti = new_base_ti(._string, 0)
-	bool_ti = new_base_ti(._bool, 0)
+	void_ti = new_builtin_ti(._void, 0)
+	int_ti = new_builtin_ti(._int, 0)
+	string_ti = new_builtin_ti(._string, 0)
+	bool_ti = new_builtin_ti(._bool, 0)
 )

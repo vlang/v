@@ -2,6 +2,7 @@ void foo(int a);
 int get_int(string a);
 int get_int2();
 void myuser();
+multi_return_int_string multi_return();
 void variadic(variadic_int a);
 
 typedef struct {
@@ -48,6 +49,10 @@ void myuser() {
 	bool b = age > 0;
 	bool b2 = user.age > 0;
 }
+
+multi_return_int_string multi_return() {
+return (multi_return_int_string){.arg0=4,.arg1=tos3("four")};
+} 
 
 void variadic(variadic_int a) {
 }
