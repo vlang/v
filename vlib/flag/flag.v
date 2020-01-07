@@ -54,6 +54,23 @@ pub struct Flag {
 	// and also the default value, when the flag is not given
 }
 
+pub fn (f Flag) str() string {
+	return ''
+	+'    flag:\n'
+	+'            name: $f.name\n'
+	+'            abbr: $f.abbr\n'
+	+'            usag: $f.usage\n'
+	+'            desc: $f.val_desc'
+}
+pub fn (af []Flag) str() string {
+	mut res := []string
+	res << '\n  []Flag = ['
+	for f in af {
+		res << f.str()
+	}
+	res << '  ]'
+	return res.join('\n')
+}
 //
 pub struct FlagParser {
 	pub mut:
@@ -135,7 +152,10 @@ fn (fs mut FlagParser) parse_value(longhand string, shorthand byte) []string {
 			//End of input. We're done here.
 			break
 		}
-		if arg == full || (arg[0] == `-` && arg[1] == shorthand && arg.len == 2) {
+		if arg[0] != `-` {
+			continue
+		}
+		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand ) || arg == full {
 			if i+1 > fs.args.len {
 				panic("Missing argument for '$longhand'")
 			}
@@ -177,7 +197,13 @@ fn (fs mut FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 			//End of input. We're done.
 			break
 		}
-		if arg == full || (arg[0] == `-` && arg[1] == shorthand && arg.len == 2) {
+		if arg.len == 0 {
+			continue
+		}
+		if arg[0] != `-` {
+			continue
+		}
+		if ( arg.len == 2 && arg[0] == `-` && arg[1] == shorthand ) || arg == full {
 			if fs.args.len > i+1 && (fs.args[i+1] in ['true', 'false'])  {
 				val := fs.args[i+1]
 				fs.args.delete(i+1)
@@ -194,7 +220,7 @@ fn (fs mut FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 			fs.args.delete(i)
 			return val
 		}
-		if arg[0] == `-` && arg.index_byte(shorthand) != -1 {
+		if arg[0] == `-` && arg[1] != `-` && arg.index_byte(shorthand) != -1 {
 			// -abc is equivalent to -a -b -c
 			return 'true'
 		}
