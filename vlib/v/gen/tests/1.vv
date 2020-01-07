@@ -30,6 +30,8 @@ fn foo(a int) {
 	for i := 0; i < 10; i++ {
 
 	}
+	nums := [1,2,3]
+	number := nums[0]
 	n := get_int2()
 }
 

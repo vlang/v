@@ -269,7 +269,8 @@ pub fn (a array) reverse() array {
 		data: calloc(a.cap * a.element_size)
 	}
 	for i := 0; i < a.len; i++ {
-		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
+		C.memcpy(arr.data + i * arr.element_size,
+			&a[a.len - 1 - i], arr.element_size)
 	}
 	return arr
 }

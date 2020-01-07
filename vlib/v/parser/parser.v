@@ -320,12 +320,12 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 			node,ti = p.string_expr()
 		}
 		// -1, -a etc
-		.minus {
+		.minus, .amp {
 			node,ti = p.prefix_expr()
 		}
-		.amp {
-			p.next()
-		}
+		// .amp {
+		// p.next()
+		// }
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
@@ -359,9 +359,13 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 		else if p.tok.kind == .dot {
 			node,ti = p.dot_expr(node)
 		}
+		else if p.tok.kind == .lsbr {
+			node,ti = p.index_expr(node)
+		}
 		else if p.tok.kind.is_infix() {
 			node,ti = p.infix_expr(node)
 		}
+		// Postfix
 		else if p.tok.kind in [.inc, .dec] {
 			node = ast.PostfixExpr{
 				op: p.tok.kind
@@ -387,6 +391,23 @@ fn (p mut Parser) prefix_expr() (ast.Expr,types.TypeIdent) {
 		right: right
 	}
 	return expr,ti
+}
+
+fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
+	// println('index expr$p.tok.str() line=$p.tok.line_nr')
+	p.next()
+	println('start expr')
+	index,_ := p.expr(0)
+	println('end expr')
+	p.check(.rsbr)
+	println('got ]')
+	ti := types.int_ti
+	mut node := ast.Expr{}
+	node = ast.IndexExpr{
+		left: left
+		index: index
+	}
+	return node,ti
 }
 
 fn (p mut Parser) dot_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
@@ -571,7 +592,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 		else_stmts: else_stmts
 		ti: ti
 		// left: left
-		
+
 	}
 	p.inside_if = false
 	return node,ti
@@ -636,7 +657,7 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 			// val: lit.f64()
 			val: lit
 		}
-		ti = types.new_builtin_ti(._f64, 0)
+		ti = types.new_builtin_ti(.f64, 0)
 	}
 	else {
 		node = ast.IntegerLiteral{
@@ -770,7 +791,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+
 		ti: ti
 	}
 }

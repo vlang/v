@@ -134,7 +134,7 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 					return types.new_builtin_ti(._f32, nr_muls)
 				}
 				'f64' {
-					return types.new_builtin_ti(._f64, nr_muls)
+					return types.new_builtin_ti(.f64, nr_muls)
 				}
 				'string' {
 					return types.new_builtin_ti(._string, nr_muls)

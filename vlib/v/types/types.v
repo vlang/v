@@ -21,7 +21,7 @@ pub enum Kind {
 	_u32,
 	_u64,
 	_f32,
-	_f64,
+	f64,
 	_string,
 	_char,
 	_bool,
@@ -32,7 +32,7 @@ pub enum Kind {
 	_variadic
 }
 
-pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct | 	
+pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct |
 Int | Float | String | Char | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 
 pub struct TypeIdent {
@@ -75,7 +75,7 @@ pub fn (ti &TypeIdent) is_int() bool {
 
 [inline]
 pub fn (ti &TypeIdent) is_float() bool {
-	return ti.kind in [._f32, ._f64]
+	return ti.kind in [._f32, .f64]
 }
 
 [inline]
@@ -145,7 +145,7 @@ pub fn (k Kind) str() string {
 		._f32{
 			'f32'
 		}
-		._f64{
+		.f64{
 			'f64'
 		}
 		._string{

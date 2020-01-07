@@ -239,6 +239,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write('.')
 			g.write(it.field)
 		}
+		ast.IndexExpr {
+			g.expr(it.left)
+			g.write('[')
+			g.expr(it.index)
+			g.write(']')
+		}
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
