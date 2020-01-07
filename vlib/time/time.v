@@ -341,26 +341,26 @@ pub fn ticks() i64 {
 pub fn sleep(seconds int) {
 	$if windows {
 		C.Sleep(seconds * 1000)
-		return
+	} $else {
+		C.sleep(seconds)
 	}
-	C.sleep(seconds)
 }
 
 pub fn sleep_ms(milliseconds int) {
 	$if windows {
 		C.Sleep(milliseconds)
-		return
+	} $else {
+		C.usleep(milliseconds * 1000)
 	}
-	C.usleep(milliseconds * 1000)
 }
 
 pub fn usleep(microseconds int) {
 	$if windows {
 		milliseconds := microseconds / 1000
 		C.Sleep(milliseconds)
-		return
+	} $else {
+		C.usleep(microseconds)
 	}
-	C.usleep(microseconds)
 }
 
 // Determine whether a year is a leap year.
