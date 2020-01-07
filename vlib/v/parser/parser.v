@@ -20,17 +20,18 @@ type InfixParseFn fn(e ast.Expr)ast.Expr
 type PostfixParseFn fn()ast.Expr
 
 struct Parser {
-	scanner          &scanner.Scanner
-	file_name        string
+	scanner   &scanner.Scanner
+	file_name string
 mut:
-	tok              token.Token
-	peek_tok         token.Token
+	tok       token.Token
+	peek_tok  token.Token
 	// vars []string
-	table            &table.Table
-	return_ti        types.TypeIdent
-	is_c             bool
+	table     &table.Table
+	return_ti types.TypeIdent
+	is_c      bool
 	//
-	prefix_parse_fns []PrefixParseFn
+	// prefix_parse_fns []PrefixParseFn
+	inside_if bool
 }
 
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
@@ -81,9 +82,10 @@ pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	return files
 }
 
-pub fn (p mut Parser) init_parse_fns() {
-	p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
+pub fn (p &Parser) init_parse_fns() {
+	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
+	println('')
 }
 
 pub fn (p mut Parser) read_first_token() {
@@ -240,6 +242,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 
 
 pub fn (p &Parser) error(s string) {
+	print_backtrace()
 	println(term.bold(term.red('$p.file_name:$p.tok.line_nr: $s')))
 	exit(1)
 }
@@ -267,7 +270,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 		ti = ti2
 	}
 	// struct init
-	else if p.peek_tok.kind == .lcbr {
+	else if p.peek_tok.kind == .lcbr && !p.inside_if {
 		ti = p.parse_ti()
 		// println('sturct init ti=$ti.name')
 		p.check(.lcbr)
@@ -319,6 +322,9 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 		// -1, -a etc
 		.minus {
 			node,ti = p.prefix_expr()
+		}
+		.amp {
+			p.next()
 		}
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
@@ -531,6 +537,9 @@ fn (p mut Parser) for_statement() ast.Stmt {
 }
 
 fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
+	p.inside_if = true
+	// defer {
+	// }
 	mut node := ast.Expr{}
 	p.check(.key_if)
 	cond,cond_ti := p.expr(0)
@@ -564,6 +573,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 		// left: left
 		
 	}
+	p.inside_if = false
 	return node,ti
 }
 
