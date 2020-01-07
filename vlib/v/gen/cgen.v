@@ -12,6 +12,8 @@ struct Gen {
 	out         strings.Builder
 	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	table       &table.Table
+mut:
+	return_ti   &types.TypeIdent
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -41,15 +43,12 @@ pub fn (g mut Gen) writeln(s string) {
 }
 
 fn (g mut Gen) stmt(node ast.Stmt) {
-	g.stmt_context_ti(node, types.void_ti)
-}
-
-fn (g mut Gen) stmt_context_ti(node ast.Stmt, context_ti &types.TypeIdent) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
 		ast.Import {}
 		ast.FnDecl {
+			g.return_ti = &it.ti
 			is_main := it.name == 'main'
 			if is_main {
 				g.write('int ${it.name}(')
@@ -70,7 +69,7 @@ fn (g mut Gen) stmt_context_ti(node ast.Stmt, context_ti &types.TypeIdent) {
 				g.definitions.writeln(');')
 			}
 			for stmt in it.stmts {
-				g.stmt_context_ti(stmt, &it.ti)
+				g.stmt(stmt)
 			}
 			if is_main {
 				g.writeln('return 0;')
@@ -80,7 +79,7 @@ fn (g mut Gen) stmt_context_ti(node ast.Stmt, context_ti &types.TypeIdent) {
 		ast.Return {
 			g.write('return ')
 			if it.exprs.len > 1 {
-				g.write('($context_ti.name){')
+				g.write('($g.return_ti.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
