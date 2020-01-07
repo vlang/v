@@ -227,6 +227,7 @@ pub:
 	idx    int
 	name   string
 	fields []Field
+	// methods
 }
 
 pub struct Field {
@@ -364,6 +365,13 @@ pub fn (t MultiReturn) str() string {
 pub fn (t Variadic) str() string {
 	return 'variadic_$t.ti.kind.str()'
 }
+
+/*
+pub fn (s &Struct) has_field(name string) bool {
+
+}
+*/
+
 
 pub const (
 	void_type = Void{}

@@ -269,6 +269,10 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 		p.next()
 		p.check(.dot)
 	}
+	else if p.tok.lit in ['strings'] {
+		p.next()
+		p.check(.dot)
+	}
 	// fn call
 	if p.peek_tok.kind == .lpar {
 		x,ti2 := p.call_expr() // TODO `node,typ :=` should work
@@ -363,7 +367,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 			node = p.assign_expr(node)
 		}
 		else if p.tok.kind == .dot {
-			node,ti = p.dot_expr(node)
+			node,ti = p.dot_expr(node, ti)
 		}
 		else if p.tok.kind == .lsbr {
 			node,ti = p.index_expr(node)
@@ -416,9 +420,20 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	return node,ti
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
+fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
+	typ := p.table.types[ti.idx] as types.Struct
+	mut ok := false
+	for field in typ.fields {
+		if field.name == field_name {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		p.error('type `$typ.name` has no field or method `$field_name`')
+	}
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
