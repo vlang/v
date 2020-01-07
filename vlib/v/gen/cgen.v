@@ -13,7 +13,7 @@ struct Gen {
 	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	table       &table.Table
 mut:
-	fn_decl     &ast.FnDecl // pointer to FnDecl we are inside or null
+	fn_decl     &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
