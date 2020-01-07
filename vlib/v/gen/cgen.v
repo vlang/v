@@ -13,7 +13,7 @@ struct Gen {
 	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	table       &table.Table
 mut:
-	return_ti   &types.TypeIdent
+	fn_decl     &ast.FnDecl // pointer to FnDecl we are inside or null
 }
 
 pub fn cgen(files []ast.File, table &table.Table) string {
@@ -22,6 +22,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		table: table
+		fn_decl: 0
 	}
 	for file in files {
 		for stmt in file.stmts {
@@ -48,7 +49,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.Import {}
 		ast.FnDecl {
-			g.return_ti = &it.ti
+			g.fn_decl = &it
 			is_main := it.name == 'main'
 			if is_main {
 				g.write('int ${it.name}(')
@@ -75,11 +76,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.writeln('return 0;')
 			}
 			g.writeln('}')
+			g.fn_decl = 0
 		}
 		ast.Return {
 			g.write('return ')
+			// multiple returns
 			if it.exprs.len > 1 {
-				g.write('($g.return_ti.name){')
+				g.write('($g.fn_decl.ti.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
@@ -89,6 +92,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				}
 				g.write('}')
 			}
+			// normal return
 			else {
 				g.expr(it.exprs[0])
 			}
