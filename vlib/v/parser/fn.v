@@ -10,7 +10,6 @@ import (
 )
 
 pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
-	// println('got fn call')
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
@@ -19,6 +18,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	mut args := []ast.Expr
 	mut return_ti := types.void_ti
 	if f := p.table.find_fn(fn_name) {
+		// println('found fn $fn_name')
 		return_ti = f.return_ti
 		for i, arg in f.args {
 			e,ti := p.expr(0)
@@ -81,8 +81,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	// Receiver?
 	mut rec_name := ''
+	mut is_method := false
 	mut rec_ti := types.void_ti
 	if p.tok.kind == .lpar {
+		is_method = true
 		p.next()
 		rec_name = p.check_name()
 		if p.tok.kind == .key_mut {
@@ -135,11 +137,13 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		ti = p.parse_ti()
 		p.return_ti = ti
 	}
-	p.table.register_fn(table.Fn{
-		name: name
-		args: args
-		return_ti: ti
-	})
+	if !is_method {
+		p.table.register_fn(table.Fn{
+			name: name
+			args: args
+			return_ti: ti
+		})
+	}
 	stmts := p.parse_block()
 	return ast.FnDecl{
 		name: name

@@ -15,14 +15,14 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		return types.new_ti(.array_fixed, name, idx, nr_muls)
 	}
 	// array
+	p.check(.rsbr)
 	elem_ti := p.parse_ti()
 	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
 		p.check(.lsbr)
-		p.next()
+		p.check(.rsbr)
 		nr_dims++
 	}
-	p.check(.rsbr)
 	idx,name := p.table.find_or_register_array(&elem_ti, nr_dims)
 	return types.new_ti(.array, name, idx, nr_muls)
 }

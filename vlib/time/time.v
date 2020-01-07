@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module time
 
-import rand
-
 const (
 	days_string = 'MonTueWedThuFriSatSun'
 	month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -32,7 +30,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	unix   int
+	unix int
 }
 
 pub enum FormatTime {
@@ -65,12 +63,7 @@ pub enum FormatDelimiter {
 fn C.localtime(int) &C.tm
 
 
-fn remove_me_when_c_bug_is_fixed() {
-	// TODO
-}
-
-pub struct C.time_t {
-}
+pub struct C.time_t {}
 
 fn C.time(int) C.time_t
 
@@ -80,12 +73,6 @@ pub fn now() Time {
 	mut now := &C.tm(0)
 	now = C.localtime(&t)
 	return convert_ctime(now)
-}
-
-pub fn random() Time {
-	now_unix := now().unix
-	rand_unix := rand.next(now_unix)
-	return time.unix(rand_unix)
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM:SS in
@@ -224,34 +211,33 @@ pub fn parse_iso(s string) Time {
 	if fields.len < 5 {
 		return Time{}
 	}
-
-	pos := months_string.index(fields[2]) or { return Time{} }
-	mm := pos/3 + 1
-
-	tmstr := malloc(s.len*2)
-	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str,
-		fields[3].str, mm, fields[1].str, fields[4].str))
+	pos := months_string.index(fields[2]) or {
+		return Time{}
+	}
+	mm := pos / 3 + 1
+	tmstr := malloc(s.len * 2)
+	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm, fields[1].str, fields[4].str))
 	return parse(tos(tmstr, count))
 }
 
 pub fn new_time(t Time) Time {
 	return Time{
-		year: t.year,
-		month: t.month,
-		day: t.day,
-		hour: t.hour,
-		minute: t.minute,
-		second: t.second,
+		year: t.year
+		month: t.month
+		day: t.day
+		hour: t.hour
+		minute: t.minute
+		second: t.second
 		unix: t.calc_unix()
 	}
-
-	//TODO: Use the syntax below when it works with reserved keywords like `unix`
+	// TODO: Use the syntax below when it works with reserved keywords like `unix`
 	/*
 	return {
 		t |
 		unix:t.calc_unix()
 	}
 	*/
+
 }
 
 pub fn (t &Time) calc_unix() int {
@@ -340,8 +326,7 @@ pub fn ticks() i64 {
 	$if windows {
 		return C.GetTickCount()
 	} $else {
-		ts := C.timeval{
-		}
+		ts := C.timeval{}
 		C.gettimeofday(&ts, 0)
 		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
 	}
@@ -361,19 +346,20 @@ pub fn sleep(seconds int) {
 	}
 }
 
-pub fn usleep(n int) {
+pub fn sleep_ms(milliseconds int) {
 	$if windows {
-		// C._usleep(n)
+		C.Sleep(milliseconds)
 	} $else {
-		C.usleep(n)
+		C.usleep(milliseconds * 1000)
 	}
 }
 
-pub fn sleep_ms(n int) {
+pub fn usleep(microseconds int) {
 	$if windows {
-		C.Sleep(n)
+		milliseconds := microseconds / 1000
+		C.Sleep(milliseconds)
 	} $else {
-		C.usleep(n * 1000)
+		C.usleep(microseconds)
 	}
 }
 
@@ -416,7 +402,8 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 		}
 		else {
-			'unknown enumeration $fmt_time'}}
+			'unknown enumeration $fmt_time'}
+	}
 }
 
 // get_fmt_date_str   returns a string for t in a given date format
@@ -496,4 +483,3 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		}
 	}
 }
-

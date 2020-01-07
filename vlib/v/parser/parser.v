@@ -168,6 +168,12 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.key_struct {
 			return p.struct_decl()
 		}
+		.lsbr {
+			p.next()
+			p.check(.name)
+			p.check(.rsbr)
+			return ast.Module{}
+		}
 		else {
 			p.error('bad top level statement')
 			return ast.Module{} // silence C warning
@@ -592,7 +598,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 		else_stmts: else_stmts
 		ti: ti
 		// left: left
-
+		
 	}
 	p.inside_if = false
 	return node,ti
@@ -755,7 +761,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	}
 	for i, exp_ti in expected_tis {
 		got_ti := got_tis[i]
-		if !types.check(exp_ti, got_ti) {
+		if !types.check(got_ti, exp_ti) {
 			p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
 		}
 	}
@@ -791,7 +797,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	return ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		ti: ti
 	}
 }
