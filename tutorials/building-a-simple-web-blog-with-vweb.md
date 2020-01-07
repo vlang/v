@@ -1,12 +1,12 @@
-## Building a 150 KB web blog in V with 0 dependencies
+# Building a 150 KB web blog in V with 0 dependencies
 
 Hello,
 
 In this guide we'll build a simple web blog in V.
 
 The benefits of using V for web:
-- A safe, fast, language with the development speed of Python and
-the performance of C.
+
+- A safe, fast, language with the development speed of Python and the performance of C.
 - Zero dependencies: everything you need for web development comes with the language
 in a 1 MB package.
 - Very small resulting binaries: the blog we'll create in this tutorial is about 150 KB.
@@ -17,12 +17,11 @@ is enough.
 
 *Please note that V and Vweb are at a very early stage and are changing rapidly.*
 
-The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/code/blog'>here</a>.
+The code is available [here](https://github.com/vlang/v/tree/master/tutorials/code/blog)
 
+## Installing V
 
-### Installing V
-
-```
+```bash
 wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
 unzip v_linux.zip
 cd v
@@ -34,10 +33,9 @@ Now V should be globally available on your system.
 > On macOS use `v_macos.zip`, on Windows - `v_windows.zip`.
 If you use a BSD system, Solaris, Android, or simply want to install V
 from source, follow the simple instructions here:
-https://github.com/vlang/v#installing-v-from-source
+<https://github.com/vlang/v#installing-v-from-source>
 
-
-### Creating a new Vweb project
+## Creating a new Vweb project
 
 V projects can be created anywhere and don't need to have a certain structure:
 
@@ -54,20 +52,20 @@ First let's create a simple hello world website:
 module main
 
 import (
-	vweb
+    vweb
 )
 
 struct App {
 mut:
-	vweb vweb.Context
+    vweb vweb.Context
 }
 
 fn main() {
-	vweb.run<App>(8080)
+    vweb.run<App>(8080)
 }
 
 fn (app mut App) index() {
-	app.vweb.text('Hello, world from vweb!')
+    app.vweb.text('Hello, world from vweb!')
 }
 
 pub fn (app &App) init() {}
@@ -80,7 +78,7 @@ Run it with
 v run blog.v
 ```
 
-```
+```bash
 Running a Vweb app on http://localhost:8080 ...
 ```
 
@@ -98,10 +96,9 @@ no routing rules either:
 
 ```v
 fn (app mut App) time() {
-	app.vweb.text(time.now().format())
+    app.vweb.text(time.now().format())
 }
 ```
-
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/time.png?raw=true">
 
@@ -112,21 +109,19 @@ while it's running.
 The `.text(string)` method obviously returns a plain text document with the provided
 text, which isn't frequently used in websites.
 
-
 ### HTML View
-
 
 Let's return an HTML view instead. Create `index.html` in the same directory:
 
 ```html
 <html>
 <header>
-	<title>V Blog</title>
+    <title>V Blog</title>
 </header>
 <body>
-	<b>@message</b>
-	<br>
-	<img src='https://vlang.io/img/v-logo.png' width=100>
+    <b>@message</b>
+    <br>
+    <img src='https://vlang.io/img/v-logo.png' width=100>
 </body>
 </html>
 ```
@@ -135,8 +130,8 @@ and update our `index()` action so that it returns the HTML view we just created
 
 ```v
 fn (app mut App) index() {
-	message := 'Hello, world from Vweb!'
-	$vweb.html()
+    message := 'Hello, world from Vweb!'
+    $vweb.html()
 }
 ```
 
@@ -178,6 +173,7 @@ We'll be using V's builtin ORM and a Postgres database. (V ORM will also
 support MySQL, SQLite, and SQL Server in the near future.)
 
 Create a SQL file with the schema:
+
 ```sql
 create database blog;
 
@@ -186,47 +182,44 @@ create database blog;
 drop table articles;
 
 create table articles (
-	id serial primary key,
-	title text default '',
-	text text default ''
+    id serial primary key,
+    title text default '',
+    text text default ''
 );
 
 insert into articles (title, text) values (
-	'Hello, world!',
-	'V is great.'
+    'Hello, world!',
+    'V is great.'
 );
 
 insert into articles (title, text) values (
-	'Second post.',
-	'Hm... what should I write about?'
+    'Second post.',
+    'Hm... what should I write about?'
 );
 ```
 
 Run the file with `psql -f blog.sql`.
-
 
 Add a Postgres DB handle to `App`:
 
 ```v
 struct App {
 mut:
-	vweb vweb.Context
-	db   pg.DB
+    vweb vweb.Context
+    db   pg.DB
 }
 ```
-
-
 
 Modify the `init()` method we created earlier to connect to a database:
 
 ```v
 pub fn (app mut App) init() {
-	db := pg.connect(pg.Config{
-		host:   '127.0.0.1'
-		dbname: 'blog'
-		user:   'blog'
-	}) or { panic(err) }
-	app.db = db
+    db := pg.connect(pg.Config{
+        host:   '127.0.0.1'
+        dbname: 'blog'
+        user:   'blog'
+    }) or { panic(err) }
+    app.db = db
 }
 ```
 
@@ -235,21 +228,20 @@ to have one DB connection for all requests.
 
 Create a new file `article.v`:
 
-
 ```v
 
 module main
 
 struct Article {
-	id    int
-	title string
-	text  string
+    id    int
+    title string
+    text  string
 }
 
 pub fn (app &App) find_all_articles() []Article {
-	db := app.db
-	articles := db.select from Article
-	return articles
+    db := app.db
+    articles := db.select from Article
+    return articles
 }
 ```
 
@@ -257,22 +249,21 @@ Let's fetch the articles in the `index()` action:
 
 ```v
 fn (app &App) index() {
-	articles := app.find_all_articles()
-	$vweb.html()
+    articles := app.find_all_articles()
+    $vweb.html()
 }
 ```
-
 
 Finally, let's update our view:
 
 ```html
 <body>
-	@for article in articles
-		<div>
-			<b>@article.title</b> <br>
-			@article.text
-		</div>
-	@end
+    @for article in articles
+        <div>
+            <b>@article.title</b> <br>
+            @article.text
+        </div>
+    @end
 </body>
 ```
 
@@ -287,7 +278,7 @@ That was very simple, wasn't it?
 The built-in V ORM uses a syntax very similar to SQL. The queries are built with V.
 For example, if we only wanted to find articles with ids between 100 and 200, we'd do:
 
-```
+```v
 articles := db.select from Article where id >= 100 && id <= 200
 ```
 
@@ -296,9 +287,9 @@ Retrieving a single article is very simple:
 ```v
 
 pub fn (app &App) retrieve_article() ?Article {
-	db := app.db
-	article := db.select from Article limit 1
-	return article
+    db := app.db
+    article := db.select from Article limit 1
+    return article
 }
 ```
 
@@ -307,15 +298,13 @@ bad queries will always be handled by the developer:
 
 ```v
 article := app.retrieve_article(10) or {
-	app.vweb.text('Article not found')
-	return
+    app.vweb.text('Article not found')
+    return
 }
 ```
 
-
 > `db := app.db` is a temporary limitation in the
 V ORM, soon this will not be needed.
-
 
 ### Adding new articles
 
@@ -324,33 +313,33 @@ Create `new.html`:
 ```html
 <html>
 <header>
-	<title>V Blog</title>
+    <title>V Blog</title>
 </header>
 <body>
-	<form action='/new_article' method='post'>
-		<input type='text' placeholder='Title' name='title'> <br>
-		<textarea placeholder='Text' name='text'></textarea>
-		<input type='submit'>
-	</form>
+    <form action='/new_article' method='post'>
+        <input type='text' placeholder='Title' name='title'> <br>
+        <textarea placeholder='Text' name='text'></textarea>
+        <input type='submit'>
+    </form>
 </body>
 </html>
 ```
 
 ```v
 pub fn (app mut App) new_article() {
-	title := app.vweb.form['title']
-	text := app.vweb.form['text']
-	if title == '' || text == ''  {
-		app.vweb.text('Empty text/title')
-		return
-	}
-	article := Article{
-		title: title
-		text: text
-	}
-	db := app.db
-	db.insert(article)
-	app.vweb.redirect('/article/')
+    title := app.vweb.form['title']
+    text := app.vweb.form['text']
+    if title == '' || text == ''  {
+        app.vweb.text('Empty text/title')
+        return
+    }
+    article := Article{
+        title: title
+        text: text
+    }
+    db := app.db
+    db.insert(article)
+    app.vweb.redirect('/article/')
 }
 ```
 
@@ -363,8 +352,6 @@ We need to update `index.html` to add a link to the "new article" page:
 <a href='/new'>New article</a>
 ```
 
-
-
 ### JSON endpoints
 
 This tutorial used the traditional server side rendering. If you prefer
@@ -373,19 +360,13 @@ in V is very simple:
 
 ```v
 pub fn (app mut App) articles() {
-	articles := app.find_all_articles()
-	app.vweb.json(json.encode(articles))
+    articles := app.find_all_articles()
+    app.vweb.json(json.encode(articles))
 }
 ```
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/articles_json.png?raw=true">
 
-
-
 To be continued...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
-
-
-
-
