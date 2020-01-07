@@ -44,7 +44,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	g.stmt_context_ti(node, types.void_ti)
 }
 
-
 fn (g mut Gen) stmt_context_ti(node ast.Stmt, context_ti &types.TypeIdent) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
