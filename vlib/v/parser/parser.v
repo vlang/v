@@ -645,13 +645,15 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 			p.check(.comma)
 		}
 	}
+	type_idx, type_name := p.table.find_or_register_array(val_ti, 1)
+	array_ti := types.new_ti(.array, type_name, type_idx, 0)
 	mut node := ast.Expr{}
 	node = ast.ArrayInit{
-		ti: val_ti
+		ti: array_ti
 		exprs: exprs
 	}
 	p.check(.rsbr)
-	return node,val_ti
+	return node,array_ti
 }
 
 fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
