@@ -67,8 +67,8 @@ pub fn clone_or_pull( remote_git_url string, local_worktree_path string ) {
 	// NB: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir( local_worktree_path ) && os.is_dir(filepath.join(local_worktree_path,'.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
-		scripting.run('git --quiet -C "$local_worktree_path"  checkout master')
-		scripting.run('git --quiet -C "$local_worktree_path"  pull')
+		scripting.run('git -C "$local_worktree_path"  checkout --quiet master')
+		scripting.run('git -C "$local_worktree_path"  pull     --quiet ')
 	} else {
 		// Clone a fresh
 		scripting.run('git clone --quiet "$remote_git_url"  "$local_worktree_path" ')

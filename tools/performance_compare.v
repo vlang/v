@@ -52,21 +52,35 @@ fn (c Context) compare_versions() {
 	scripting.chdir(c.workdir)
 	// The first is the baseline, against which all the others will be compared.
 	// It is the fastest, since hello_world.v has only a single println in it,
-	c.compare_v_performance([
+	mut perf_files := []string
+	perf_files << c.compare_v_performance('source_hello', [
 		'vprod @DEBUG@ -o source.c examples/hello_world.v',
 		'vprod         -o source.c examples/hello_world.v',
-		'vprod @DEBUG@ -o source.c @COMPILER@',
-		'vprod         -o source.c @COMPILER@',
-		'vprod         -o hello    examples/hello_world.v',
-		'vprod         -o binary   @COMPILER@',
-		//
 		'v     @DEBUG@ -o source.c examples/hello_world.v',
 		'v             -o source.c examples/hello_world.v',
+	])
+			
+	perf_files << c.compare_v_performance('source_v', [
+		'vprod @DEBUG@ -o source.c @COMPILER@',
+		'vprod         -o source.c @COMPILER@',
 		'v     @DEBUG@ -o source.c @COMPILER@',
 		'v             -o source.c @COMPILER@',
+	])
+
+	perf_files << c.compare_v_performance('binary_hello', [
+		'vprod         -o hello    examples/hello_world.v',
 		'v             -o hello    examples/hello_world.v',
+	])
+	
+	perf_files << c.compare_v_performance('binary_v', [
+		'vprod         -o binary   @COMPILER@',
 		'v             -o binary   @COMPILER@',
 	])
+
+	println('All performance files:')
+	for f in perf_files {
+		println('   $f')
+	}
 }
 
 fn (c &Context) prepare_v(cdir string, commit string) {
@@ -111,9 +125,9 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	}
 }
 
-fn (c Context) compare_v_performance(commands []string) {
+fn (c Context) compare_v_performance(label string, commands []string) string {
 	println('---------------------------------------------------------------------------------')
-	println('Compare v performance when doing the following commands:')
+	println('Compare v performance when doing the following commands ($label):')
 	source_location_a := if os.exists('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	source_location_b := if os.exists('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	timestamp_a,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.a/ ; git rev-list -n1 --timestamp HEAD'))
@@ -131,7 +145,7 @@ fn (c Context) compare_v_performance(commands []string) {
 		hyperfine_commands_arguments << " \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each(['@COMPILER@', source_location_a, '@DEBUG@', debug_option_a])
 	}
 	// /////////////////////////////////////////////////////////////////////////////
-	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats.json'].join(os.path_separator))
+	cmd_stats_file := os.realpath([c.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
 	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json ${cmd_stats_file} ' + '--time-unit millisecond ' + '--style full --warmup $c.warmups ' + hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.verbose {
@@ -140,6 +154,7 @@ fn (c Context) compare_v_performance(commands []string) {
 	os.system(comparison_cmd)
 	println('The detailed performance comparison report was saved to: $cmd_stats_file .')
 	println('')
+	return cmd_stats_file
 }
 
 fn main() {
