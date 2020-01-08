@@ -56,7 +56,7 @@ pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
 [inline]
 pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 	return TypeIdent{
-		idx: -int(kind)-1
+		idx: -int(kind) - 1
 		kind: kind
 		name: kind.str()
 		nr_muls: nr_muls
@@ -224,10 +224,12 @@ pub:
 
 pub struct Struct {
 pub:
-	idx    int
-	name   string
-	fields []Field
-	// methods
+	idx        int
+	parent_idx int
+	name       string
+pub mut:
+	fields     []Field
+	methods    []Field // TODO Method
 }
 
 pub struct Field {

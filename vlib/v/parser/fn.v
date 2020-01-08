@@ -137,7 +137,17 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		ti = p.parse_ti()
 		p.return_ti = ti
 	}
-	if !is_method {
+	if is_method {
+		ok := p.table.register_method(rec_ti, table.Fn{
+			name: name
+			args: args
+			return_ti: ti
+		})
+		if !ok {
+			p.error('expected Struct')
+		}
+	}
+	else {
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args

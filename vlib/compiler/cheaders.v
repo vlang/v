@@ -149,6 +149,7 @@ $c_common_macros
 byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
+
 '
 	js_headers = '
 
