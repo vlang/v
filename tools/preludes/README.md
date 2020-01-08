@@ -2,7 +2,8 @@
 
 The tools/preludes/ contains small v code snippets, that V uses when 
 compiling certain v programs. V adds the files below automatically itself.
-Each file is used in different situations (see below). 
+Each file is used in different situations (see below).
+
 NB: preludes are *NOT* intended to be used by user programs/modules.
 The folder tools/preludes/ is *NOT* a v module.
 
@@ -19,9 +20,9 @@ Used when compiling live programs, for the shared library portion of the live
 programs, that is reloaded each time the code is changed.
 
 ### tools/preludes/tests_assertions.v  
-Used when compiling _test.v programs. 
+Used when compiling `_test.v` programs. 
 It specifies how failed assertions will look.
 
 ### tools/preludes/tests_with_stats.v
-Used when compiling _test.v programs with -stats option. 
+Used when compiling `_test.v` programs with -stats option. 
 It specifies how the result will appear ('assert' vs 'asserts' and so on).
