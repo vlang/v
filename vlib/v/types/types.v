@@ -3,6 +3,26 @@
 // that can be found in the LICENSE file.
 module types
 
+pub const (
+	void_type_idx = 1
+	voidptr_type_idx = 2
+	charptr_type_idx = 3
+	byteptr_type_idx = 4
+	i8_type_idx = 5
+	i16_type_idx = 6
+	int_type_idx = 7
+	i64_type_idx = 8
+	u16_type_idx = 9
+	u32_type_idx = 10
+	u64_type_idx = 11
+	f32_type_idx = 12
+	f64_type_idx = 13
+	string_type_idx = 14
+	char_type_idx = 15
+	byte_type_idx = 16
+	bool_type_idx = 17
+)
+
 pub enum Kind {
 	placeholder
 	void,
@@ -62,6 +82,13 @@ pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 		nr_muls: nr_muls
 	}
 }
+
+pub const (
+	void_ti = new_ti(.void, 'void', void_type_idx, 0)
+	int_ti = new_ti(.int, 'int', int_type_idx, 0)
+	string_ti = new_ti(.string, 'string', string_type_idx, 0)
+	bool_ti = new_ti(.bool, 'bool', bool_type_idx, 0)
+)
 
 [inline]
 pub fn (ti &TypeIdent) is_ptr() bool {
@@ -382,40 +409,3 @@ pub fn (s &Struct) has_field(name string) bool {
 
 }
 */
-
-
-pub const (
-	void_type = Primitive{idx: 1, kind: .void}
-	voidptr_type = Primitive{idx:2, kind: .voidptr}
-	charptr_type = Primitive{idx:3, kind: .charptr}
-	byteptr_type = Primitive{idx:4, kind: .byteptr}
-	i8_type = Int{
-		5, 8,false}
-	i16_type = Int{
-		6, 16,false}
-	int_type = Int{
-		7, 32,false}
-	i64_type = Int{
-		8, 64,false}
-	u16_type = Int{
-		9, 16,true}
-	u32_type = Int{
-		10, 32,true}
-	u64_type = Int{
-		11, 64,true}
-	f32_type = Float{
-		12, 32}
-	f64_type = Float{
-		13, 64}
-	string_type = String{14}
-	char_type = Primitive{idx: 15, kind: .char}
-	byte_type = Primitive{idx: 16, kind: .byte}
-	bool_type = Bool{17}
-)
-
-pub const (
-	void_ti = new_ti(.void, 'void', void_type.idx, 0)
-	int_ti = new_ti(.int, 'int', int_type.idx, 0)
-	string_ti = new_ti(.string, 'string', string_type.idx, 0)
-	bool_ti = new_ti(.bool, 'bool', bool_type.idx, 0)
-)

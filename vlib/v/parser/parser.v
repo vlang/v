@@ -682,7 +682,7 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 			val: lit
 		}
 		// ti = types.new_builtin_ti(.f64, 0)
-		ti = types.new_ti(.f64, 'f64', types.f64_type.idx, 0)
+		ti = types.new_ti(.f64, 'f64', types.f64_type_idx, 0)
 	}
 	else {
 		node = ast.IntegerLiteral{

@@ -44,23 +44,52 @@ pub fn (t mut Table) register_builtin_types() {
 	// add dummy type at 0 so nothing can go there
 	// save index check, 0 will mean not found
 	t.register_type(types.Type{}, 'dymmy_type_at_idx_0', 0)
-	t.register_type(types.void_type, 'void', types.void_type.idx)
-	t.register_type(types.voidptr_type, 'voidptr', types.voidptr_type.idx)
-	t.register_type(types.charptr_type, 'charptr', types.charptr_type.idx)
-	t.register_type(types.byteptr_type, 'byteptr', types.byteptr_type.idx)
-	t.register_type(types.i8_type, 'i8', types.i8_type.idx)
-	t.register_type(types.i16_type, 'i16', types.i16_type.idx)
-	t.register_type(types.int_type, 'int', types.int_type.idx)
-	t.register_type(types.i64_type, 'i64', types.i64_type.idx)
-	t.register_type(types.u16_type, 'u16', types.u16_type.idx)
-	t.register_type(types.u32_type, 'u32', types.u32_type.idx)
-	t.register_type(types.u64_type, 'u64', types.u64_type.idx)
-	t.register_type(types.f32_type, 'f32', types.f32_type.idx)
-	t.register_type(types.f64_type, 'f64', types.f64_type.idx)
-	t.register_type(types.string_type, 'string', types.string_type.idx)
-	t.register_type(types.char_type, 'char', types.char_type.idx)
-	t.register_type(types.byte_type, 'byte', types.byte_type.idx)
-	t.register_type(types.bool_type, 'bool', types.bool_type.idx)
+	t.register_type(types.Primitive{
+		idx: types.void_type_idx
+		kind: .void
+	}, 'void', types.void_type_idx)
+	t.register_type(types.Primitive{
+		idx: types.voidptr_type_idx
+		kind: .voidptr
+	}, 'voidptr', types.voidptr_type_idx)
+	t.register_type(types.Primitive{
+		idx: types.charptr_type_idx
+		kind: .charptr
+	}, 'charptr', types.charptr_type_idx)
+	t.register_type(types.Primitive{
+		idx: types.byteptr_type_idx
+		kind: .byteptr
+	}, 'byteptr', types.byteptr_type_idx)
+	t.register_type(types.Int{
+		types.i8_type_idx,8,false}, 'i8', types.i8_type_idx)
+	t.register_type(types.Int{
+		types.i16_type_idx,16,false}, 'i16', types.i16_type_idx)
+	t.register_type(types.Int{
+		types.i64_type_idx,32,false}, 'int', types.int_type_idx)
+	t.register_type(types.Int{
+		types.i64_type_idx,64,false}, 'i64', types.i64_type_idx)
+	t.register_type(types.Int{
+		types.u16_type_idx,16,true}, 'u16', types.u16_type_idx)
+	t.register_type(types.Int{
+		types.u32_type_idx,32,true}, 'u32', types.u32_type_idx)
+	t.register_type(types.Int{
+		types.u64_type_idx,64,true}, 'u64', types.u64_type_idx)
+	t.register_type(types.Float{
+		types.f64_type_idx,32}, 'f32', types.f32_type_idx)
+	t.register_type(types.Float{
+		types.f64_type_idx,64}, 'f64', types.f64_type_idx)
+	t.register_type(types.String{
+		types.string_type_idx}, 'string', types.string_type_idx)
+	t.register_type(types.Primitive{
+		idx: types.char_type_idx
+		kind: .char
+	}, 'char', types.char_type_idx)
+	t.register_type(types.Primitive{
+		idx: types.byte_type_idx
+		kind: .byte
+	}, 'byte', types.byte_type_idx)
+	t.register_type(types.Bool{
+		types.bool_type_idx}, 'bool', types.bool_type_idx)
 }
 
 pub fn (t &Table) find_var(name string) ?Var {
@@ -132,24 +161,25 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 
 pub fn (t mut Table) register_method(ti types.TypeIdent, new_fn Fn) bool {
 	println('register method `$new_fn.name` tiname=$ti.name ')
-	// match t.types[ti.idx] {
-	// 	types.Struct {
-	// 		println('got struct')
-	// 	}
-	// 	else {
-	// 		return false
-	// 	}
-	// }
-	// mut struc := t.types[ti.idx] as types.Struct
-	// if struc.methods.len == 0 {
-	// 	struc.methods = make(0, 0, sizeof(types.Field))
-	// }
-	// println('register method `$new_fn.name` struct=$struc.name ')
-	// struc.methods << types.Field{
-	// 	name: new_fn.name
-	// }
-	// t.types[ti.idx] = struc
-
+	/*
+	match t.types[ti.idx] {
+		types.Struct {
+			println('got struct')
+		}
+		else {
+			return false
+		}
+	}
+	mut struc := t.types[ti.idx] as types.Struct
+	if struc.methods.len == 0 {
+		struc.methods = make(0, 0, sizeof(types.Field))
+	}
+	println('register method `$new_fn.name` struct=$struc.name ')
+	struc.methods << types.Field{
+		name: new_fn.name
+	}
+	t.types[ti.idx] = struc
+	*/
 	println('register method `$new_fn.name` struct=$ti.name ')
 
 	println('##### $ti.idx - $t.methods.len')
