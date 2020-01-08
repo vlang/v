@@ -33,7 +33,7 @@ pub enum Kind {
 }
 
 pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 
-	String | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+	String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 
 pub struct TypeIdent {
 pub:
@@ -255,11 +255,6 @@ pub:
 	idx int
 }
 
-pub struct Byte {
-pub:
-	idx int
-}
-
 pub struct Bool {
 pub:
 	idx int
@@ -328,6 +323,9 @@ pub fn (t Primitive) str() string {
 		.char {
 			'char'
 		}
+		.byte {
+			'byte'
+		}
 		else {
 			'unknown'
 		}
@@ -357,10 +355,6 @@ pub fn (t Float) str() string {
 
 pub fn (t String) str() string {
 	return 'string'
-}
-
-pub fn (t Byte) str() string {
-	return 'byte'
 }
 
 pub fn (t Array) str() string {
@@ -403,20 +397,19 @@ pub const (
 		7, 32,false}
 	i64_type = Int{
 		8, 64,false}
-	byte_type = Int{
-		9, 8,true}
 	u16_type = Int{
-		10, 16,true}
+		9, 16,true}
 	u32_type = Int{
-		11, 32,true}
+		10, 32,true}
 	u64_type = Int{
-		12, 64,true}
+		11, 64,true}
 	f32_type = Float{
-		13, 32}
+		12, 32}
 	f64_type = Float{
-		14, 64}
-	string_type = String{15}
-	char_type = Primitive{idx: 16, kind: .char}
+		13, 64}
+	string_type = String{14}
+	char_type = Primitive{idx: 15, kind: .char}
+	byte_type = Primitive{idx: 16, kind: .byte}
 	bool_type = Bool{17}
 )
 

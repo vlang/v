@@ -52,7 +52,6 @@ pub fn (t mut Table) register_builtin_types() {
 	t.register_type(types.i16_type, 'i16', types.i16_type.idx)
 	t.register_type(types.int_type, 'int', types.int_type.idx)
 	t.register_type(types.i64_type, 'i64', types.i64_type.idx)
-	t.register_type(types.byte_type, 'byte', types.byte_type.idx)
 	t.register_type(types.u16_type, 'u16', types.u16_type.idx)
 	t.register_type(types.u32_type, 'u32', types.u32_type.idx)
 	t.register_type(types.u64_type, 'u64', types.u64_type.idx)
@@ -60,6 +59,7 @@ pub fn (t mut Table) register_builtin_types() {
 	t.register_type(types.f64_type, 'f64', types.f64_type.idx)
 	t.register_type(types.string_type, 'string', types.string_type.idx)
 	t.register_type(types.char_type, 'char', types.char_type.idx)
+	t.register_type(types.byte_type, 'byte', types.byte_type.idx)
 	t.register_type(types.bool_type, 'bool', types.bool_type.idx)
 }
 
