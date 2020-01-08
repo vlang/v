@@ -423,6 +423,10 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
+	println('# $ti.name $ti.idx - $field_name')
+	if ti.kind != .void {
+		println('#### void type in dot_expr - field: $field_name')
+	}
 	struc := p.table.types[ti.idx] as types.Struct
 	// Method call
 	if p.tok.kind == .lpar {
@@ -440,7 +444,8 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 		}
 		return node,types.int_ti
 	}
-	if !p.table.struct_has_field(struc, field_name) {
+	if ti.kind != .void && !p.table.struct_has_field(struc, field_name) {
+		// t := 
 		p.error('type `$struc.name` has no field  `$field_name`')
 	}
 	/*
@@ -676,7 +681,8 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 			// val: lit.f64()
 			val: lit
 		}
-		ti = types.new_builtin_ti(.f64, 0)
+		// ti = types.new_builtin_ti(.f64, 0)
+		ti = types.new_ti(.f64, 'f64', types.f64_type.idx, 0)
 	}
 	else {
 		node = ast.IntegerLiteral{

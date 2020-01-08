@@ -32,8 +32,8 @@ pub enum Kind {
 	variadic
 }
 
-pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct | 	
-Int | Float | String | Char | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 
+	String | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 
 pub struct TypeIdent {
 pub:
@@ -202,13 +202,12 @@ pub:
 	// kind Kind
 }
 
-pub struct Void {}
-
-pub struct Voidptr {}
-
-pub struct Charptr {}
-
-pub struct Byteptr {}
+// Void | Voidptr | Charptr | Byteptr
+pub struct Primitive {
+pub:
+	idx  int
+	kind Kind
+}
 
 pub struct Const {
 pub:
@@ -240,25 +239,36 @@ pub:
 
 pub struct Int {
 pub:
+	idx			int
 	bit_size    u32
 	is_unsigned bool
 }
 
 pub struct Float {
+pub:
+	idx      int
 	bit_size u32
 }
 
-pub struct String {}
+pub struct String {
+pub:
+	idx int
+}
 
-pub struct Char {}
+pub struct Byte {
+pub:
+	idx int
+}
 
-pub struct Byte {}
-
-pub struct Bool {}
+pub struct Bool {
+pub:
+	idx int
+}
 
 pub struct Array {
 pub:
 	idx            int
+	parent_idx     int
 	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
@@ -269,6 +279,7 @@ pub:
 pub struct ArrayFixed {
 pub:
 	idx            int
+	parent_idx     int
 	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
@@ -300,20 +311,28 @@ pub:
 	ti  TypeIdent
 }
 
-pub fn (t Void) str() string {
-	return 'void'
-}
-
-pub fn (t Voidptr) str() string {
-	return 'voidptr'
-}
-
-pub fn (t Charptr) str() string {
-	return 'charptr'
-}
-
-pub fn (t Byteptr) str() string {
-	return 'byteptr'
+pub fn (t Primitive) str() string {
+	s := match t.kind {
+		.void {
+			'void'
+		}
+		.voidptr {
+			'voidptr'
+		}
+		.charptr {
+			'charptr'
+		}
+		.byteptr {
+			'byteptr'
+		}
+		.char {
+			'char'
+		}
+		else {
+			'unknown'
+		}
+	}
+	return s
 }
 
 pub fn (t Const) str() string {
@@ -338,10 +357,6 @@ pub fn (t Float) str() string {
 
 pub fn (t String) str() string {
 	return 'string'
-}
-
-pub fn (t Char) str() string {
-	return 'char'
 }
 
 pub fn (t Byte) str() string {
@@ -376,38 +391,38 @@ pub fn (s &Struct) has_field(name string) bool {
 
 
 pub const (
-	void_type = Void{}
-	voidptr_type = Voidptr{}
-	charptr_type = Charptr{}
-	byteptr_type = Byteptr{}
+	void_type = Primitive{idx: 1, kind: .void}
+	voidptr_type = Primitive{idx:2, kind: .voidptr}
+	charptr_type = Primitive{idx:3, kind: .charptr}
+	byteptr_type = Primitive{idx:4, kind: .byteptr}
 	i8_type = Int{
-		8,false}
+		5, 8,false}
 	i16_type = Int{
-		16,false}
+		6, 16,false}
 	int_type = Int{
-		32,false}
+		7, 32,false}
 	i64_type = Int{
-		64,false}
+		8, 64,false}
 	byte_type = Int{
-		8,true}
+		9, 8,true}
 	u16_type = Int{
-		16,true}
+		10, 16,true}
 	u32_type = Int{
-		32,true}
+		11, 32,true}
 	u64_type = Int{
-		64,true}
+		12, 64,true}
 	f32_type = Float{
-		32}
+		13, 32}
 	f64_type = Float{
-		64}
-	string_type = String{}
-	char_type = Char{}
-	bool_type = Bool{}
+		14, 64}
+	string_type = String{15}
+	char_type = Primitive{idx: 16, kind: .char}
+	bool_type = Bool{17}
 )
 
 pub const (
-	void_ti = new_builtin_ti(.void, 0)
-	int_ti = new_builtin_ti(.int, 0)
-	string_ti = new_builtin_ti(.string, 0)
-	bool_ti = new_builtin_ti(.bool, 0)
+	void_ti = new_ti(.void, 'void', void_type.idx, 0)
+	int_ti = new_ti(.int, 'int', int_type.idx, 0)
+	string_ti = new_ti(.string, 'string', string_type.idx, 0)
+	bool_ti = new_ti(.bool, 'bool', bool_type.idx, 0)
 )
