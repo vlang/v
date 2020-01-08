@@ -154,20 +154,21 @@ fn main() {
 	fp.limit_free_args(1, 2)
 	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose\n')
-	
-	context.workdir = os.realpath(fp.string_('workdir', `w`, os.tmpdir(), 'A writable base folder.'))
+
+	tdir := os.tmpdir()
+	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.v_repo_url = fp.string('vrepo', 'https://github.com/vlang/v', 'The url of the v repository. See also vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', 'https://github.com/vlang/vc',
 		'The url of the vc repository. You can clone it
-$flag.SPACE beforehand, and then just give the local folder
-$flag.SPACE path here. That will eliminate the network ops
-$flag.SPACE done by this tool, which is useful, if you want
-$flag.SPACE to script it/run it in a restrictive vps/docker.
+${flag.SPACE}beforehand, and then just give the local folder
+${flag.SPACE}path here. That will eliminate the network ops
+${flag.SPACE}done by this tool, which is useful, if you want
+${flag.SPACE}to script it/run it in a restrictive vps/docker.
 ')
 	context.hyperfineopts = fp.string('hyperfine_options', '',
 		'Additional options passed to hyperfine.
-$flag.SPACE For example on linux, you may want to pass:
-$flag.SPACE --hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'" 
+${flag.SPACE}For example on linux, you may want to pass:
+${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'" 
 ')
 	if (context.show_help) {
 		println(fp.usage())

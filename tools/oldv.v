@@ -79,15 +79,16 @@ fn main() {
 	fp.limit_free_args(1, 1)
 	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose.\n')
-	
+
+	tdir := os.tmpdir()
 	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.')
-	context.workdir = os.realpath(fp.string_('workdir', `w`, os.tmpdir(), 'A writable base folder.'))
+	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
 	context.repo_url_v = fp.string('vrepo', remote_repo_url_v, 'The url of the V repository. You can clone it locally too. See also vcrepo below.')
 	context.repo_url_vc = fp.string('vcrepo', remote_repo_url_vc, 'The url of the vc repository. You can clone it
-$flag.SPACE beforehand, and then just give the local folder 
-$flag.SPACE path here. That will eliminate the network ops 
-$flag.SPACE done by this tool, which is useful, if you want
-$flag.SPACE to script it/run it in a restrictive vps/docker.')
+${flag.SPACE}beforehand, and then just give the local folder 
+${flag.SPACE}path here. That will eliminate the network ops 
+${flag.SPACE}done by this tool, which is useful, if you want
+${flag.SPACE}to script it/run it in a restrictive vps/docker.')
 	
 	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
 	if (context.show_help) {
