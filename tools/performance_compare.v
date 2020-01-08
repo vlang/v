@@ -29,6 +29,7 @@ mut:
 	verbose       bool // whether to print even more stuff
 	show_help     bool // whether to show the usage screen
 	hyperfineopts string // use for additional CLI options that will be given to the hyperfine command
+	vflags        string // other v options to pass to compared v commands
 }
 
 fn new_context() Context {
@@ -50,6 +51,11 @@ fn (c Context) compare_versions() {
 	c.prepare_v(c.b, c.commit_before)
 	c.prepare_v(c.a, c.commit_after)
 	scripting.chdir(c.workdir)
+
+	if c.vflags.len > 0 {
+		os.setenv('VFLAGS', c.vflags, true)
+	}
+	
 	// The first is the baseline, against which all the others will be compared.
 	// It is the fastest, since hello_world.v has only a single println in it,
 	mut perf_files := []string
@@ -99,8 +105,10 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	}
 	vgit_context.compile_oldv_if_needed()
 	scripting.chdir(cdir)
+	println('Making a v compiler in $cdir')
+	scripting.run('./v -cc ${cc}       -o v     $vgit_context.vvlocation')
 	println('Making a vprod compiler in $cdir')
-	scripting.run('./cv -prod -o vprod $vgit_context.vvlocation')
+	scripting.run('./v -cc ${cc} -prod -o vprod $vgit_context.vvlocation')
 	println('Stripping and compressing cv v and vprod binaries in $cdir')
 	scripting.run('cp    cv     cv_stripped')
 	scripting.run('cp     v      v_stripped')
@@ -167,7 +175,8 @@ fn main() {
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
 	fp.limit_free_args(1, 2)
-		
+
+	context.vflags = fp.string('vflags', '', 'Additional options to pass to the v commands, for example "-cc tcc"')
 	context.hyperfineopts = fp.string('hyperfine_options', '',
 		'Additional options passed to hyperfine.
 ${flag.SPACE}For example on linux, you may want to pass:
