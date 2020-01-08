@@ -444,7 +444,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 		}
 		return node,types.int_ti
 	}
-	if ti.kind != .void && !p.table.struct_has_field(struc, field_name) {
+	if !p.table.struct_has_field(struc, field_name) {
 		// t := 
 		p.error('type `$struc.name` has no field  `$field_name`')
 	}
