@@ -162,8 +162,8 @@ jobs:
   windows-prebuilt:
     runs-on: windows-2019
     steps:
-      shell: bash
     - name: Download V
+      shell: bash
       run: |
         echo "Downloading v.exe..."
         wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip
