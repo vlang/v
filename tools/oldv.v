@@ -8,7 +8,7 @@ import (
 
 const (
 	tool_version = '0.0.3'
-	tool_description = 'Checkout an old V and compile it as it was on specific commit.
+	tool_description = '  Checkout an old V and compile it as it was on specific commit.
      This tool is useful, when you want to discover when something broke.
      It is also useful, when you just want to experiment with an older historic V.
 

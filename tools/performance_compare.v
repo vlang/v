@@ -7,8 +7,11 @@ import (
 )
 
 const (
-	tool_version = '0.0.4'
-	tool_description = '' + '  Compares V executable size and performance,\n' + "  between 2 commits from V\'s local git history.\n" + '  When only one commit is given, it is compared to master.'
+	tool_version = '0.0.5'
+	tool_description = '  Compares V executable size and performance,
+  between 2 commits from V\'s local git history.
+  When only one commit is given, it is compared to master.
+  '
 )
 
 struct Context {
