@@ -3,6 +3,26 @@
 // that can be found in the LICENSE file.
 module types
 
+pub const (
+	void_type_idx = 1
+	voidptr_type_idx = 2
+	charptr_type_idx = 3
+	byteptr_type_idx = 4
+	i8_type_idx = 5
+	i16_type_idx = 6
+	int_type_idx = 7
+	i64_type_idx = 8
+	u16_type_idx = 9
+	u32_type_idx = 10
+	u64_type_idx = 11
+	f32_type_idx = 12
+	f64_type_idx = 13
+	string_type_idx = 14
+	char_type_idx = 15
+	byte_type_idx = 16
+	bool_type_idx = 17
+)
+
 pub enum Kind {
 	placeholder
 	void,
@@ -32,8 +52,8 @@ pub enum Kind {
 	variadic
 }
 
-pub type Type = Placeholder | Void | Voidptr | Charptr | Byteptr | Const | Enum | Struct | 	
-Int | Float | String | Char | Byte | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 
+	String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 
 pub struct TypeIdent {
 pub:
@@ -62,6 +82,13 @@ pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 		nr_muls: nr_muls
 	}
 }
+
+pub const (
+	void_ti = new_ti(.void, 'void', void_type_idx, 0)
+	int_ti = new_ti(.int, 'int', int_type_idx, 0)
+	string_ti = new_ti(.string, 'string', string_type_idx, 0)
+	bool_ti = new_ti(.bool, 'bool', bool_type_idx, 0)
+)
 
 [inline]
 pub fn (ti &TypeIdent) is_ptr() bool {
@@ -202,13 +229,12 @@ pub:
 	// kind Kind
 }
 
-pub struct Void {}
-
-pub struct Voidptr {}
-
-pub struct Charptr {}
-
-pub struct Byteptr {}
+// Void | Voidptr | Charptr | Byteptr
+pub struct Primitive {
+pub:
+	idx  int
+	kind Kind
+}
 
 pub struct Const {
 pub:
@@ -240,25 +266,31 @@ pub:
 
 pub struct Int {
 pub:
+	idx			int
 	bit_size    u32
 	is_unsigned bool
 }
 
 pub struct Float {
+pub:
+	idx      int
 	bit_size u32
 }
 
-pub struct String {}
+pub struct String {
+pub:
+	idx int
+}
 
-pub struct Char {}
-
-pub struct Byte {}
-
-pub struct Bool {}
+pub struct Bool {
+pub:
+	idx int
+}
 
 pub struct Array {
 pub:
 	idx            int
+	parent_idx     int
 	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
@@ -269,6 +301,7 @@ pub:
 pub struct ArrayFixed {
 pub:
 	idx            int
+	parent_idx     int
 	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
@@ -300,20 +333,31 @@ pub:
 	ti  TypeIdent
 }
 
-pub fn (t Void) str() string {
-	return 'void'
-}
-
-pub fn (t Voidptr) str() string {
-	return 'voidptr'
-}
-
-pub fn (t Charptr) str() string {
-	return 'charptr'
-}
-
-pub fn (t Byteptr) str() string {
-	return 'byteptr'
+pub fn (t Primitive) str() string {
+	s := match t.kind {
+		.void {
+			'void'
+		}
+		.voidptr {
+			'voidptr'
+		}
+		.charptr {
+			'charptr'
+		}
+		.byteptr {
+			'byteptr'
+		}
+		.char {
+			'char'
+		}
+		.byte {
+			'byte'
+		}
+		else {
+			'unknown'
+		}
+	}
+	return s
 }
 
 pub fn (t Const) str() string {
@@ -338,14 +382,6 @@ pub fn (t Float) str() string {
 
 pub fn (t String) str() string {
 	return 'string'
-}
-
-pub fn (t Char) str() string {
-	return 'char'
-}
-
-pub fn (t Byte) str() string {
-	return 'byte'
 }
 
 pub fn (t Array) str() string {
@@ -373,41 +409,3 @@ pub fn (s &Struct) has_field(name string) bool {
 
 }
 */
-
-
-pub const (
-	void_type = Void{}
-	voidptr_type = Voidptr{}
-	charptr_type = Charptr{}
-	byteptr_type = Byteptr{}
-	i8_type = Int{
-		8,false}
-	i16_type = Int{
-		16,false}
-	int_type = Int{
-		32,false}
-	i64_type = Int{
-		64,false}
-	byte_type = Int{
-		8,true}
-	u16_type = Int{
-		16,true}
-	u32_type = Int{
-		32,true}
-	u64_type = Int{
-		64,true}
-	f32_type = Float{
-		32}
-	f64_type = Float{
-		64}
-	string_type = String{}
-	char_type = Char{}
-	bool_type = Bool{}
-)
-
-pub const (
-	void_ti = new_builtin_ti(.void, 0)
-	int_ti = new_builtin_ti(.int, 0)
-	string_ti = new_builtin_ti(.string, 0)
-	bool_ti = new_builtin_ti(.bool, 0)
-)
