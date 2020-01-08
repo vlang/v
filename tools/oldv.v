@@ -99,8 +99,8 @@ fn main() {
 		context.cc = ecc
 	}
 	if context.cleanup {
-		scripting.run('rm -rf $context.path_v')
-		scripting.run('rm -rf $context.path_vc')
+		os.rmdir_recursive(context.path_v)
+		os.rmdir_recursive(context.path_vc)
 	}
 	
 	context.compile_oldv_if_needed()
