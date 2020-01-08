@@ -31,7 +31,7 @@ fn main() {
 	}
 	// external tool
 	if command in simple_tools {
-		compiler.launch_tool('v' + command)
+		compiler.launch_tool('v' + command, command)
 		return
 	}
 	// v run, v doc, etc
@@ -50,7 +50,7 @@ fn main() {
 	}
 	// No args? REPL
 	else if command == '' || (args.len == 2 && args[1] == '-') {
-		compiler.launch_tool('vrepl')
+		compiler.launch_tool('vrepl', '')
 		return
 	}
 	// Construct the V object from command line arguments
@@ -100,7 +100,7 @@ fn v_command(command string, args []string) {
 			println('Translating C to V will be available in V 0.3 (January)')
 		}
 		'search', 'install', 'update', 'remove' {
-			compiler.launch_tool('vpm')
+			compiler.launch_tool('vpm', command)
 		}
 		'get' {
 			println('use `v install` to install modules from vpm.vlang.io ')
@@ -109,7 +109,7 @@ fn v_command(command string, args []string) {
 			compiler.create_symlink()
 		}
 		'runrepl' {
-			compiler.launch_tool('vrepl')
+			compiler.launch_tool('vrepl', 'runrepl')
 		}
 		'doc' {
 			vexe := os.executable()
