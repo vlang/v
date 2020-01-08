@@ -13,7 +13,7 @@ const (
      It is also useful, when you just want to experiment with an older historic V.
 
      The VCOMMIT argument can be a git commitish like HEAD or master and so on.
-     When oldv is used with git bisect, you probably want to use HEAD. For example:
+     When oldv is used with git bisect, you probably want to give HEAD. For example:
           git bisect start
           git bisect bad
           git checkout known_good_commit
@@ -27,8 +27,7 @@ const (
               ## Now you just repeat the above steps, each time running oldv with the same command, then mark the result as good or bad,
               ## until you find the commit, where the problem first occured.
               ## When you finish, do not forget to do:
-          git bisect reset
-'
+          git bisect reset'
 	remote_repo_url_v = 'https://github.com/vlang/v'
 	remote_repo_url_vc = 'https://github.com/vlang/vc'
 )
@@ -50,37 +49,18 @@ mut:
 	show_help     bool // whether to show the usage screen
 }
 
-fn (c mut Context) compile_oldv_if_needed() {
-	vexename := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vexepath := filepath.join(c.path_v,vexename)
-	mut command_for_building_v_from_c_source := ''
-	mut command_for_selfbuilding := ''
-	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '$c.cc -std=c99 -municode -w -o cv.exe  "$c.path_vc/v_win.c" '
-		command_for_selfbuilding = './cv.exe -o $vexename {SOURCE}'
+fn (c Context) compile_oldv_if_needed() {
+	mut vgit_context := vgit.VGitContext{
+		cc:          c.cc
+		workdir:     c.workdir
+		commit_v:    c.commit_v
+		path_v:      c.path_v
+		path_vc:     c.path_vc
+		repo_url_v:  c.repo_url_v
+		repo_url_vc: c.repo_url_vc
 	}
-	else {
-		command_for_building_v_from_c_source = '$c.cc -std=gnu11 -w -o cv "$c.path_vc/v.c"  -lm'
-		command_for_selfbuilding = './cv -o $vexename {SOURCE}'
-	}
-	scripting.chdir(c.workdir)
-	scripting.run('git clone --quiet "$c.repo_url_v"   "$c.path_v" ')
-	scripting.run('git clone --quiet "$c.repo_url_vc"  "$c.path_vc" ')
-	scripting.chdir(c.path_v)
-	scripting.run('git checkout $c.commit_v')
-	v_commithash,vccommit_before := vgit.prepare_vc_source(c.path_vc, c.path_v, c.commit_v)
-	c.commit_v_hash = v_commithash
-	c.commit_vc = vccommit_before
-	if os.is_dir(c.path_v) && os.exists(vexepath) {
-		// already compiled, so no need to compile v again
-		return
-	}
-	scripting.run('git clean -xf')
-	scripting.run(command_for_building_v_from_c_source)
-	source_location := if os.exists('v.v') { 'v.v' } else { 'compiler' }
-	build_cmd := command_for_selfbuilding.replace('{SOURCE}', source_location)
-	scripting.run(build_cmd)
-	if !os.exists(vexepath) && c.cmd_to_run.len > 0 {
+	vgit_context.compile_oldv_if_needed()
+	if !os.exists(vgit_context.vexepath) && c.cmd_to_run.len > 0 {
 		// NB: 125 is a special code, that git bisect understands as 'skip this commit'.
 		// it is used to inform git bisect that the current commit leads to a build failure.
 		exit(125)
@@ -99,11 +79,17 @@ fn main() {
 	fp.limit_free_args(1, 1)
 	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose.\n')
-	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
+	
 	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.')
-	context.workdir = os.realpath(fp.string_('work-dir', `w`, os.tmpdir(), 'A writable folder, where the comparison will be done.\n'))
-	context.repo_url_v = fp.string('v-repo', remote_repo_url_v, 'The url of the V repository. You can clone it locally too.\n')
-	context.repo_url_vc = fp.string('vc-repo', remote_repo_url_vc, '' + 'The url of the vc repository. You can clone it \n' + flag.SPACE + 'beforehand, and then just give the local folder \n' + flag.SPACE + 'path here. That will eliminate the network ops  \n' + flag.SPACE + 'done by this tool, which is useful, if you want \n' + flag.SPACE + 'to script it/run it in a restrictive vps/docker.')
+	context.workdir = os.realpath(fp.string_('workdir', `w`, os.tmpdir(), 'A writable base folder.'))
+	context.repo_url_v = fp.string('vrepo', remote_repo_url_v, 'The url of the V repository. You can clone it locally too. See also vcrepo below.')
+	context.repo_url_vc = fp.string('vcrepo', remote_repo_url_vc, 'The url of the vc repository. You can clone it
+$flag.SPACE beforehand, and then just give the local folder 
+$flag.SPACE path here. That will eliminate the network ops 
+$flag.SPACE done by this tool, which is useful, if you want
+$flag.SPACE to script it/run it in a restrictive vps/docker.')
+	
+	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
 	if (context.show_help) {
 		println(fp.usage())
 		exit(0)

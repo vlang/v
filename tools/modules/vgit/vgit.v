@@ -1,6 +1,7 @@
 module vgit
 
 import os
+import filepath
 import scripting
 
 pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp int) {
@@ -51,4 +52,73 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string,strin
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
 	return v_commithash,vccommit_before
+}
+
+pub fn clone_or_pull( remote_git_url string, local_worktree_path string ) {
+	// NB: after clone_or_pull, the current repo branch is === HEAD === master
+	if os.is_dir( local_worktree_path ) && os.is_dir(filepath.join(local_worktree_path,'.git')) {
+		// Already existing ... Just pulling in this case is faster usually.
+		scripting.run('git --quiet -C "$local_worktree_path"  checkout master')
+		scripting.run('git --quiet -C "$local_worktree_path"  pull')
+	} else {
+		// Clone a fresh
+		scripting.run('git clone --quiet "$remote_git_url"  "$local_worktree_path" ')
+	}
+}	
+
+//
+
+pub struct VGitContext {
+pub:
+	cc          string = 'cc'     // what compiler to use
+	workdir     string = '/tmp'   // the base working folder
+	commit_v    string = 'master' // the commit-ish that needs to be prepared
+	path_v      string // where is the local working copy v repo
+	path_vc     string // where is the local working copy vc repo
+	repo_url_v  string // the remote v repo URL
+	repo_url_vc string // the remote vc repo URL
+pub mut:
+	// these will be filled by vgitcontext.compile_oldv_if_needed()
+	commit_v__hash string // the git commit of the v repo that should be prepared
+	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
+	vexename string // v or v.exe
+	vexepath string // the full absolute path to the prepared v/v.exe
+	vvlocation string // v.v or compiler/ , depending on v version
+}
+
+pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
+	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	vgit_context.vexepath = os.realpath( filepath.join(vgit_context.path_v, vgit_context.vexename) )
+	mut command_for_building_v_from_c_source := ''
+	mut command_for_selfbuilding := ''
+	if 'windows' == os.user_os() {
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
+		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
+	}
+	else {
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm'
+		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
+	}
+	scripting.chdir(vgit_context.workdir)
+	clone_or_pull( vgit_context.repo_url_v,  vgit_context.path_v )
+	clone_or_pull( vgit_context.repo_url_vc, vgit_context.path_vc )
+	
+	scripting.chdir(vgit_context.path_v)
+	scripting.run('git checkout $vgit_context.commit_v')
+	v_commithash,vccommit_before := vgit.prepare_vc_source(vgit_context.path_vc, vgit_context.path_v, vgit_context.commit_v)
+	vgit_context.commit_v__hash = v_commithash
+	vgit_context.commit_vc_hash = vccommit_before
+	vgit_context.vvlocation = if os.exists('v.v') { 'v.v' } else { 'compiler' }
+	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
+		// already compiled, so no need to compile v again
+		return
+	}
+	// Recompilation is needed. Just to be sure, clean up everything first.
+	scripting.run('git clean -xf')
+	scripting.run(command_for_building_v_from_c_source)
+	build_cmd := command_for_selfbuilding.replace('{SOURCE}', vgit_context.vvlocation)
+	scripting.run(build_cmd)
+	
+	// At this point, there exists a file vgit_context.vexepath
+	// which should be a valid working V executable.
 }
