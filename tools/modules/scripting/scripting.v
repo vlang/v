@@ -22,8 +22,7 @@ pub fn verbose_trace(label string, message string) {
 
 pub fn verbose_trace_exec_result(x os.Result) {
 	if os.getenv('VERBOSE').len > 0 {
-		println('#   cmd.exit_code : ${x.exit_code.str()}')
-		println('#   cmd.output    :')
+		println('#   cmd.exit_code : ${x.exit_code.str():-4s} | cmd.output:')
 		println('# ----------------------------------- #')
 		mut lnum := 1
 		lines := x.output.split_into_lines()

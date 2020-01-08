@@ -28,14 +28,12 @@ const (
               ## until you find the commit, where the problem first occured.
               ## When you finish, do not forget to do:
           git bisect reset'
-	remote_repo_url_v = 'https://github.com/vlang/v'
-	remote_repo_url_vc = 'https://github.com/vlang/vc'
 )
 
 struct Context {
 mut:
-	repo_url_v    string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
-	repo_url_vc   string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
+	v_repo_url    string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
+	vc_repo_url   string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
 	workdir       string // the working folder (typically /tmp), where the tool will write
 	commit_v      string='master' // the commit from which you want to produce a working v compiler (this may be a commit-ish too)
 	commit_vc     string='master' // this will be derived from commit_v
@@ -49,17 +47,18 @@ mut:
 	show_help     bool // whether to show the usage screen
 }
 
-fn (c Context) compile_oldv_if_needed() {
+fn (c mut Context) compile_oldv_if_needed() {
 	mut vgit_context := vgit.VGitContext{
 		cc:          c.cc
 		workdir:     c.workdir
 		commit_v:    c.commit_v
 		path_v:      c.path_v
 		path_vc:     c.path_vc
-		repo_url_v:  c.repo_url_v
-		repo_url_vc: c.repo_url_vc
+		v_repo_url:  c.v_repo_url
+		vc_repo_url: c.vc_repo_url
 	}
 	vgit_context.compile_oldv_if_needed()
+	c.commit_v_hash = vgit_context.commit_v__hash
 	if !os.exists(vgit_context.vexepath) && c.cmd_to_run.len > 0 {
 		// NB: 125 is a special code, that git bisect understands as 'skip this commit'.
 		// it is used to inform git bisect that the current commit leads to a build failure.
@@ -77,36 +76,14 @@ fn main() {
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
 	fp.limit_free_args(1, 1)
-	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
-	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose.\n')
-
-	tdir := os.tmpdir()
-	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.')
-	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
-	context.repo_url_v = fp.string('vrepo', remote_repo_url_v, 'The url of the V repository. You can clone it locally too. See also vcrepo below.')
-	context.repo_url_vc = fp.string('vcrepo', remote_repo_url_vc, 'The url of the vc repository. You can clone it
-${flag.SPACE}beforehand, and then just give the local folder 
-${flag.SPACE}path here. That will eliminate the network ops 
-${flag.SPACE}done by this tool, which is useful, if you want
-${flag.SPACE}to script it/run it in a restrictive vps/docker.')
 	
 	context.cleanup = fp.bool('clean', true, 'Clean before running (slower).')
-	if (context.show_help) {
-		println(fp.usage())
-		exit(0)
-	}
-	if context.verbose {
-		scripting.set_verbose(true)
-	}
-	commits := fp.finalize() or {
-		eprintln('Error: ' + err)
-		exit(1)
-	}
+	context.cmd_to_run = fp.string_('command', `c`, '', 'Command to run in the old V repo.\n')
+	
+	commits := vgit.add_common_tool_options(mut context, mut fp)
 	if commits.len > 0 {
 		context.commit_v = commits[0]
-		vgit.validate_commit_exists(context.commit_v)
-	}
-	else {
+	} else {
 		context.commit_v = scripting.run('git rev-list -n1 HEAD')
 	}
 	println('#################  context.commit_v: $context.commit_v #####################')
@@ -125,7 +102,9 @@ ${flag.SPACE}to script it/run it in a restrictive vps/docker.')
 		scripting.run('rm -rf $context.path_v')
 		scripting.run('rm -rf $context.path_vc')
 	}
+	
 	context.compile_oldv_if_needed()
+	
 	scripting.chdir(context.path_v)
 	println('#     v commit hash: $context.commit_v_hash')
 	println('#   checkout folder: $context.path_v')
@@ -133,10 +112,9 @@ ${flag.SPACE}to script it/run it in a restrictive vps/docker.')
 		cmdres := os.exec(context.cmd_to_run) or {
 			panic(err)
 		}
-		println('#           command: $context.cmd_to_run')
-		println('# command exit code: $cmdres.exit_code')
-		println('# command result   :')
+		println('#           command: ${context.cmd_to_run:-34s} exit code: ${cmdres.exit_code:-4d}  result:')
 		println(cmdres.output)
 		exit(cmdres.exit_code)
 	}
+	
 }

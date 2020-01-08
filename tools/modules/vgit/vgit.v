@@ -1,8 +1,14 @@
 module vgit
 
 import os
+import flag
 import filepath
 import scripting
+
+const (
+	remote_v_repo_url = 'https://github.com/vlang/v'
+	remote_vc_repo_url = 'https://github.com/vlang/vc'
+)
 
 pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp int) {
 	if v_timestamp >= 1561805697 {
@@ -19,6 +25,9 @@ pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp int) {
 }
 
 pub fn validate_commit_exists(commit string) {
+	if commit.len == 0 {
+		return
+	}
 	cmd := "git cat-file -t \'$commit\' "
 	if !scripting.exit_0_status(cmd) {
 		eprintln('Commit: "$commit" does not exist in the current repository.')
@@ -75,8 +84,8 @@ pub:
 	commit_v    string = 'master' // the commit-ish that needs to be prepared
 	path_v      string // where is the local working copy v repo
 	path_vc     string // where is the local working copy vc repo
-	repo_url_v  string // the remote v repo URL
-	repo_url_vc string // the remote vc repo URL
+	v_repo_url  string // the remote v repo URL
+	vc_repo_url string // the remote vc repo URL
 pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
@@ -100,8 +109,8 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
 	}
 	scripting.chdir(vgit_context.workdir)
-	clone_or_pull( vgit_context.repo_url_v,  vgit_context.path_v )
-	clone_or_pull( vgit_context.repo_url_vc, vgit_context.path_vc )
+	clone_or_pull( vgit_context.v_repo_url,  vgit_context.path_v )
+	clone_or_pull( vgit_context.vc_repo_url, vgit_context.path_vc )
 	
 	scripting.chdir(vgit_context.path_v)
 	scripting.run('git checkout $vgit_context.commit_v')
@@ -121,4 +130,45 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	
 	// At this point, there exists a file vgit_context.vexepath
 	// which should be a valid working V executable.
+}
+
+pub fn add_common_tool_options<T>(context mut T, fp mut flag.FlagParser) []string {
+	tdir := os.tmpdir()
+	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
+	context.v_repo_url = fp.string('vrepo', vgit.remote_v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
+	context.vc_repo_url = fp.string('vcrepo', vgit.remote_vc_repo_url, 'The url of the vc repository. You can clone it
+${flag.SPACE}beforehand, and then just give the local folder 
+${flag.SPACE}path here. That will eliminate the network ops 
+${flag.SPACE}done by this tool, which is useful, if you want
+${flag.SPACE}to script it/run it in a restrictive vps/docker.
+')
+	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
+	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose.')
+
+	if (context.show_help) {
+		println(fp.usage())
+		exit(0)
+	}
+
+	if context.verbose {
+		scripting.set_verbose(true)
+	}
+	
+	if os.is_dir(context.v_repo_url) {
+		context.v_repo_url = os.realpath( context.v_repo_url )
+	}
+	
+	if os.is_dir(context.vc_repo_url) {
+		context.vc_repo_url = os.realpath( context.vc_repo_url )
+	}
+
+	commits := fp.finalize() or {
+		eprintln('Error: ' + err)
+		exit(1)
+	}
+	for commit in commits {
+		vgit.validate_commit_exists(commit)
+	}
+	
+	return commits
 }

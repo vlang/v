@@ -80,8 +80,8 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 		commit_v:    commit
 		path_v:      cdir
 		path_vc:     c.vc
-		repo_url_v:  c.v_repo_url
-		repo_url_vc: c.vc_repo_url
+		v_repo_url:  c.v_repo_url
+		vc_repo_url: c.vc_repo_url
 	}
 	vgit_context.compile_oldv_if_needed()
 	scripting.chdir(cdir)
@@ -152,41 +152,17 @@ fn main() {
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
 	fp.limit_free_args(1, 2)
-	context.show_help = fp.bool_('help', `h`, false, 'Show this help screen.')
-	context.verbose = fp.bool_('verbose', `v`, false, 'Be more verbose\n')
-
-	tdir := os.tmpdir()
-	context.workdir = os.realpath(fp.string_('workdir', `w`, tdir, 'A writable base folder. Default: $tdir'))
-	context.v_repo_url = fp.string('vrepo', 'https://github.com/vlang/v', 'The url of the v repository. See also vcrepo below.')
-	context.vc_repo_url = fp.string('vcrepo', 'https://github.com/vlang/vc',
-		'The url of the vc repository. You can clone it
-${flag.SPACE}beforehand, and then just give the local folder
-${flag.SPACE}path here. That will eliminate the network ops
-${flag.SPACE}done by this tool, which is useful, if you want
-${flag.SPACE}to script it/run it in a restrictive vps/docker.
-')
+		
 	context.hyperfineopts = fp.string('hyperfine_options', '',
 		'Additional options passed to hyperfine.
 ${flag.SPACE}For example on linux, you may want to pass:
-${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'" 
+${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'"
 ')
-	if (context.show_help) {
-		println(fp.usage())
-		exit(0)
-	}
-	commits := fp.finalize() or {
-		eprintln('Error: ' + err)
-		exit(1)
-	}
-	if context.verbose {
-		scripting.set_verbose(true)
-	}
+	commits := vgit.add_common_tool_options(mut context, mut fp)
 	context.commit_before = commits[0]
 	if commits.len > 1 {
 		context.commit_after = commits[1]
 	}
-	vgit.validate_commit_exists(context.commit_before)
-	vgit.validate_commit_exists(context.commit_after)
 	context.b = vgit.normalized_workpath_for_commit(context.workdir, context.commit_before)
 	context.a = vgit.normalized_workpath_for_commit(context.workdir, context.commit_after)
 	context.vc = vgit.normalized_workpath_for_commit(context.workdir, 'vc')
@@ -195,5 +171,6 @@ ${flag.SPACE}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/
 		eprintln(msg)
 		exit(2)
 	}
+	
 	context.compare_versions()
 }
