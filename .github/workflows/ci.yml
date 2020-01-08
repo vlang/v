@@ -173,7 +173,10 @@ jobs:
         ./v.exe --version
         echo "Done"
     - name: Test V
-      run: ./v.exe examples/hello_world.v && examples/hello_world.exe && ./v.exe build-examples
+      run: |
+        ./v.exe examples/hello_world.v
+        examples/hello_world.exe
+        ./v.exe build-examples
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
