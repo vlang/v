@@ -166,7 +166,7 @@ jobs:
       shell: bash
       run: |
         echo "Downloading v.exe..."
-        wget https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip
+        curl https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip -o v_windows.zip -s
         unzip v_windows.zip
         ./v.exe --version
         echo "Done"
