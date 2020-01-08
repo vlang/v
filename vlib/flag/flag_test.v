@@ -320,3 +320,24 @@ fn test_multiple_arguments() {
 	assert b[0] == 'a' && b[1] == 'c' && b[2] == 'b'
 	assert c[0] == 1.23 && c[1] == 2.34 && c[2] == 3.45
 }
+
+fn test_long_options_that_start_with_the_same_letter_as_another_short_option() {
+	mut fp := flag.new_flag_parser([
+		'--vabc', '/abc',
+	])	
+	verbose := fp.bool_('verbose', `v`, false, 'Be more verbose.')
+	vabc    := fp.string_('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	assert verbose == false
+	assert vabc == '/abc'
+}
+
+fn test_long_options_that_start_with_the_same_letter_as_another_short_option_both_set() {
+	mut fp := flag.new_flag_parser([
+		'-v',
+		'--vabc', '/abc',
+	])	
+	verbose := fp.bool_('verbose', `v`, false, 'Be more verbose.')
+	vabc    := fp.string_('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	assert verbose == true
+	assert vabc == '/abc'
+}
