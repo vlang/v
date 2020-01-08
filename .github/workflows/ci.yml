@@ -167,15 +167,16 @@ jobs:
       run: |
         echo "Downloading v.exe..."
         curl -L https://github.com/vbinaries/vbinaries/releases/download/latest/v_windows.zip -o v_windows.zip
-        ls
         echo "Unzipping..."
         unzip v_windows.zip
         ./v.exe --version
         echo "Done"
+        ls
     - name: Test V
       run: |
-        ./v.exe examples/hello_world.v
-        examples/hello_world.exe
+        ./v.exe -o hi.exe examples/hello_world.v
+        ls
+        ./hi.exe
         ./v.exe build-examples
 
   ubuntu-musl:
