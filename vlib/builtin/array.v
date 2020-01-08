@@ -480,19 +480,6 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 
-/// compare_i64 for []i64 sort_with_compare()
-fn compare_i64(a, b &i64) int {
-	if *a < *b {
-	  return -1
-	}
-	if *a > *b {
-	  return 1
-	} 
-	return 0
-}
-
-
-
 /// compare_i64 for []f64 sort_with_compare()
 /// sort []i64 with quicksort
 /// usage :
