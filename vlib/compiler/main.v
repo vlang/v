@@ -828,7 +828,10 @@ pub fn (v &V) get_user_files() []string {
 	// Need to store user files separately, because they have to be added after
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string
-	preludes_path := filepath.join(v.pref.vlib_path,'compiler','preludes')
+    
+    // See tools/preludes/README.md for more info about what preludes are
+	vroot := filepath.dir(vexe_path())    
+	preludes_path := filepath.join(vroot,'tools','preludes')
 	if v.pref.is_live {
 		user_files << filepath.join(preludes_path,'live_main.v')
 	}
@@ -841,6 +844,7 @@ pub fn (v &V) get_user_files() []string {
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << filepath.join(preludes_path,'tests_with_stats.v')
 	}
+    
 	is_test := dir.ends_with('_test.v')
 	mut is_internal_module_test := false
 	if is_test {

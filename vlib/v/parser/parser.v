@@ -423,19 +423,16 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
-	typ := p.table.types[ti.idx] as types.Struct
-	mut ok := false
-	for field in typ.fields {
-		if field.name == field_name {
-			ok = true
-			break
-		}
+	println('# $ti.name $ti.idx - $field_name')
+	if ti.kind != .void {
+		println('#### void type in dot_expr - field: $field_name')
 	}
-	if !ok {
-		p.error('type `$typ.name` has no field or method `$field_name`')
-	}
+	struc := p.table.types[ti.idx] as types.Struct
 	// Method call
 	if p.tok.kind == .lpar {
+		if !p.table.struct_has_method(struc, field_name) {
+			p.error('type `$struc.name` has no method `$field_name`')
+		}
 		p.next()
 		args := p.call_args()
 		println('method call $field_name')
@@ -446,6 +443,10 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 			args: args
 		}
 		return node,types.int_ti
+	}
+	if !p.table.struct_has_field(struc, field_name) {
+		// t := 
+		p.error('type `$struc.name` has no field  `$field_name`')
 	}
 	/*
 				// p.next()
@@ -660,7 +661,7 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 			p.check(.comma)
 		}
 	}
-	type_idx, type_name := p.table.find_or_register_array(val_ti, 1)
+	type_idx,type_name := p.table.find_or_register_array(val_ti, 1)
 	array_ti := types.new_ti(.array, type_name, type_idx, 0)
 	mut node := ast.Expr{}
 	node = ast.ArrayInit{
@@ -680,7 +681,8 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 			// val: lit.f64()
 			val: lit
 		}
-		ti = types.new_builtin_ti(.f64, 0)
+		// ti = types.new_builtin_ti(.f64, 0)
+		ti = types.new_ti(.f64, 'f64', types.f64_type_idx, 0)
 	}
 	else {
 		node = ast.IntegerLiteral{

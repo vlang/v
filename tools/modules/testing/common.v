@@ -140,7 +140,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	eprintln('   v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
-	mains := files.filter(!it.contains('modules'))
+	mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
 	session.files << mains
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))

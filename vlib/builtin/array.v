@@ -166,6 +166,7 @@ pub fn (a array) last() voidptr {
 	return a.data + (a.len - 1) * a.element_size
 }
 
+/*
 // array.left returns a new array using the same buffer as the given array
 // with the first `n` elements of the given array.
 fn (a array) left(n int) array {
@@ -191,12 +192,7 @@ fn (a array) right(n int) array {
 	}
 	return a.slice(n, a.len)
 }
-
-// used internally for [2..4]
-fn (a array) slice2(start, _end int, end_max bool) array {
-	end := if end_max { a.len } else { _end }
-	return a.slice(start, end)
-}
+*/
 
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
@@ -222,6 +218,29 @@ fn (a array) slice(start, _end int) array {
 	}
 	return res
 }
+
+// used internally for [2..4]
+fn (a array) slice2(start, _end int, end_max bool) array {
+	end := if end_max { a.len } else { _end }
+	return a.slice(start, end)
+}
+
+// array.clone returns an independent copy of a given array
+pub fn (a array) clone() array {
+	mut size := a.cap * a.element_size
+	if size == 0 {
+		size++
+	}
+	arr := array{
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: calloc(size)
+	}
+	C.memcpy(arr.data, a.data, a.cap * a.element_size)
+	return arr
+}
+
 
 fn (a array) slice_clone(start, _end int) array {
 	mut end := _end
@@ -282,21 +301,6 @@ pub fn (a array) reverse() array {
 	return arr
 }
 
-// array.clone returns an independent copy of a given array
-pub fn (a array) clone() array {
-	mut size := a.cap * a.element_size
-	if size == 0 {
-		size++
-	}
-	arr := array{
-		len: a.len
-		cap: a.cap
-		element_size: a.element_size
-		data: calloc(size)
-	}
-	C.memcpy(arr.data, a.data, a.cap * a.element_size)
-	return arr
-}
 
 // pub fn (a []int) free() {
 [unsafe_fn]
@@ -364,7 +368,7 @@ pub fn (b []byte) hex() string {
 pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		min := if dst.len < src.len { dst.len } else { src.len }
-		C.memcpy(dst.data, src.left(min).data, dst.element_size * min)
+		C.memcpy(dst.data, src[..min].data, dst.element_size * min)
 		return min
 	}
 	return 0

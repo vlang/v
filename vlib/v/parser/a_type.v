@@ -98,52 +98,52 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 					return p.parse_map_ti(nr_muls)
 				}
 				'voidptr' {
-					return types.new_builtin_ti(.voidptr, nr_muls)
+					return types.new_ti(.voidptr, 'voidptr', types.voidptr_type_idx, nr_muls)
 				}
 				'byteptr' {
-					return types.new_builtin_ti(.byteptr, nr_muls)
+					return types.new_ti(.byteptr, 'byteptr', types.byteptr_type_idx, nr_muls)
 				}
 				'charptr' {
-					return types.new_builtin_ti(.charptr, nr_muls)
+					return types.new_ti(.charptr, 'charptr', types.charptr_type_idx, nr_muls)
 				}
 				'i8' {
-					return types.new_builtin_ti(.i8, nr_muls)
+					return types.new_ti(.i8, 'i8', types.i8_type_idx, nr_muls)
 				}
 				'i16' {
-					return types.new_builtin_ti(.i16, nr_muls)
+					return types.new_ti(.i16, 'i16', types.i16_type_idx, nr_muls)
 				}
 				'int' {
-					return types.new_builtin_ti(.int, nr_muls)
+					return types.new_ti(.int, 'int', types.int_type_idx, nr_muls)
 				}
 				'i64' {
-					return types.new_builtin_ti(.i64, nr_muls)
+					return types.new_ti(.i64, 'i64', types.i64_type_idx, nr_muls)
 				}
 				'byte' {
-					return types.new_builtin_ti(.byte, nr_muls)
+					return types.new_ti(.byte, 'byte', types.byte_type_idx, nr_muls)
 				}
 				'u16' {
-					return types.new_builtin_ti(.u16, nr_muls)
+					return types.new_ti(.u16, 'u16', types.u16_type_idx, nr_muls)
 				}
 				'u32' {
-					return types.new_builtin_ti(.u32, nr_muls)
+					return types.new_ti(.u32, 'u32', types.u32_type_idx, nr_muls)
 				}
 				'u64' {
-					return types.new_builtin_ti(.u64, nr_muls)
+					return types.new_ti(.u64, 'u64', types.u64_type_idx, nr_muls)
 				}
 				'f32' {
-					return types.new_builtin_ti(.f32, nr_muls)
+					return types.new_ti(.f32, 'f32', types.f32_type_idx, nr_muls)
 				}
 				'f64' {
-					return types.new_builtin_ti(.f64, nr_muls)
+					return types.new_ti(.f64, 'f64', types.f64_type_idx, nr_muls)
 				}
 				'string' {
-					return types.new_builtin_ti(.string, nr_muls)
+					return types.new_ti(.string, 'string', types.string_type_idx, nr_muls)
 				}
 				'char' {
-					return types.new_builtin_ti(.char, nr_muls)
+					return types.new_ti(.char, 'char', types.charptr_type_idx, nr_muls)
 				}
 				'bool' {
-					return types.new_builtin_ti(.bool, nr_muls)
+					return types.new_ti(.bool, 'bool', types.bool_type_idx, nr_muls)
 				}
 				// struct / enum / placeholder
 				else {

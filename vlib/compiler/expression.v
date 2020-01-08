@@ -77,6 +77,18 @@ fn (p mut Parser) bool_expression() string {
 			}
 			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
 			p.gen('.obj')
+			// Make sure the sum type can be cast, otherwise throw a runtime error
+			/*
+			sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
+
+			n := cast_typ.all_after('__')
+			p.cgen.insert_before('if (($sum_type != SumType_$n) {
+puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
+exit(1);
+}
+')
+*/
+
 		} else {
 			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
 			p.gen(')')
