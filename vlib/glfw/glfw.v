@@ -220,6 +220,13 @@ pub fn (w &Window) set_clipboard_text(s string) {
 	C.glfwSetClipboardString(w.data, s.str)
 }
 
+pub fn get_cursor_pos(glfw_window voidptr) (f64, f64) {
+	x := f64(0)
+	y := f64(0)
+	C.glfwGetCursorPos(glfw_window, &x, &y)
+	return x,y
+}
+
 pub fn (w &Window) get_cursor_pos() Pos {
 	x := f64(0)
 	y := f64(0)
@@ -228,6 +235,21 @@ pub fn (w &Window) get_cursor_pos() Pos {
 		x: int(x)
 		y: int(y)
 	}
+}
+
+enum Cursor {
+	arrow
+	ibeam
+	hand
+}
+
+pub fn set_cursor(c Cursor) {
+	C.glfwSetCursor(0, C.GLFW_IBEAM_CURSOR)
+}
+
+pub fn (w &Window) set_cursor(c Cursor) {
+	C.glfwSetCursor(w.data, C.GLFW_IBEAM_CURSOR)
+
 }
 
 pub fn (w &Window) user_ptr() voidptr {

@@ -2639,6 +2639,9 @@ fn (p mut Parser) array_init() string {
 	new_arr_ph := p.cgen.add_placeholder()
 	mut i := 0
 	for p.tok != .rsbr {
+		if expected_array_type.starts_with('array_') {
+		p.expected_type = expected_array_type[6..]
+		}
 		val_typ := p.bool_expression()
 		// Get the type of the first expression
 		if i == 0 {

@@ -75,21 +75,19 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
-/*
 // read_bytes reads an amount of bytes from the beginning of the file
-pub fn (f mut File) read_bytes(size int) []byte {
+pub fn (f &File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads an amount of bytes at the given position in the file
-pub fn (f mut File) read_bytes_at(size, pos int) []byte {
+pub fn (f &File) read_bytes_at(size, pos int) []byte {
 	mut arr := [`0`].repeat(size)
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_SET)
 	return arr[0..nreadbytes]
 }
-*/
 
 
 pub fn read_bytes(path string) ?[]byte {

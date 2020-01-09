@@ -36,7 +36,7 @@ fn C.SetLastError(error i64)
 fn C.OpenClipboard(hwnd HWND) int
 fn C.DestroyWindow(hwnd HWND)
 
-struct Clipboard {
+pub struct Clipboard {
     max_retries int
     retry_delay int
     mut:

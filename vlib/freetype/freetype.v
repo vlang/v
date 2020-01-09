@@ -11,6 +11,7 @@ import (
 	glm
 	gl
 	filepath
+	time
 )
 
 #flag windows -I @VROOT/thirdparty/freetype/include
@@ -352,3 +353,44 @@ pub fn (ctx mut FreeType) draw_text_def(x, y int, text string) {
 	}
 	ctx.draw_text(x, y, text, cfg)
 }
+
+pub fn (ctx mut FreeType) text_width(s string) int {
+	//t := time.ticks()
+	utext := s.ustring()
+	mut x := f64(0)
+	for i := 0; i < utext.len; i++ {
+		_rune := utext.at(i)
+		mut ch := Character{}
+		mut found := false
+		if _rune.len == 1 {
+			idx := _rune[0]
+			if idx < 0 || idx >= ctx.chars.len {
+				println('BADE RUNE $_rune')
+				continue
+			}
+			found = true
+			ch = ctx.chars[_rune[0]]
+		}
+		else if _rune.len > 1 {
+			// TODO O(1) use map
+			for j := 0; j < ctx.utf_runes.len; j++ {
+				rune_j := ctx.utf_runes[j]
+				if rune_j==_rune {
+					ch = ctx.utf_chars[j]
+					found = true
+					break
+				}
+			}
+		}
+		if !found && _rune.len > 0 && _rune[0] > 32 {
+			ch = ft_load_char(ctx.face, _rune.utf32_code())
+			ctx.utf_runes << _rune
+			ctx.utf_chars << ch
+		}
+		x += ch.advance >> u32(6)
+	}
+	//println('text width "$s" = ${time.ticks() - t} ms')
+	return  int(x) / ctx.scale
+}
+
+

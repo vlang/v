@@ -97,7 +97,7 @@ enum atom_type {
 	text_html = 9
 }
 
-struct Clipboard {
+pub struct Clipboard {
 	display &Display
 	mut:
 	selection Atom //the selection atom
