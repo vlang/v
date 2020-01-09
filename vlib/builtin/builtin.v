@@ -112,7 +112,15 @@ pub fn eprint(s string) {
 
 pub fn print(s string) {
 	$if windows {
-		C.wprintf(s.to_wide())
+		output_handle := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
+		mut bytes_written := 0
+		if is_atty(1) > 0 {
+			wide_str := s.to_wide()
+			wide_len := C.wcslen(wide_str)
+			C.WriteConsole(output_handle, wide_str, wide_len, &bytes_written, 0)
+		} else {
+			C.WriteFile(output_handle, s.str, s.len, &bytes_written, 0)
+		}
 	} $else {
 		C.printf('%.*s', s.len, s.str)
 	}
