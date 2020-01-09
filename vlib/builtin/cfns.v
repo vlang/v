@@ -303,7 +303,13 @@ fn C._waccess() int
 fn C._wremove()
 
 
-fn C.ReadConsole()
+fn C.ReadConsole() voidptr
+
+
+fn C.WriteConsole() voidptr
+
+
+fn C.WriteFile() voidptr
 
 
 fn C.fgetws() voidptr
