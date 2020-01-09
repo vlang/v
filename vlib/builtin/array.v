@@ -488,7 +488,7 @@ pub fn (a []f32) eq(a2 []f32) bool {
 ///     println(x)     // Sorted i64 Array 
 /// output:
 ///     [10, 28, 70, 92, 100]
-fn compare_i64(a, b &f64) int {
+pub fn compare_i64(a, b &f64) int {
 	if *a < *b {
 	  return -1
 	}
@@ -500,7 +500,7 @@ fn compare_i64(a, b &f64) int {
 
 /// compare_f64 for []f64 sort_with_compare()
 /// ref. compare_i64(...)
-fn compare_f64(a, b &f64) int {
+pub fn compare_f64(a, b &f64) int {
 	if *a < *b {
 	  return -1
 	}
@@ -512,7 +512,7 @@ fn compare_f64(a, b &f64) int {
 
 /// compare_f32 for []f32 sort_with_compare()
 /// ref. compare_i64(...)
-fn compare_f32(a, b &f32) int {
+pub fn compare_f32(a, b &f32) int {
 	if *a < *b {
 	  return -1
 	}
