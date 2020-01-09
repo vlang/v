@@ -2112,6 +2112,9 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec || (field.typ.starts_with('array_') && next == .left_shift)
+		if modifying {
+			p.expected_type = field.typ
+		}
 		if !p.builtin_mod && !p.pref.translated && modifying && p.has_immutable_field {
 			f := p.first_immutable_field
 			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' + 'declare the field with `mut:`
@@ -2705,7 +2708,7 @@ fn (p mut Parser) array_init() string {
 		// vals.len == 0 {
 		if exp_array {
 			type_expected := p.expected_type[6..].replace('ptr_', '&')
-			p.error('no need to specify the full array type here, use `[]` instead of `[]$type_expected`')
+			p.warn('no need to specify the full array type here, use `[]` instead of `[]$type_expected`')
 		}
 		typ = p.get_type()
 	}

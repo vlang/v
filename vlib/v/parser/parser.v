@@ -425,7 +425,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 	field_name := p.check_name()
 	println('# $ti.name $ti.idx - $field_name')
 	if ti.kind != .void {
-		println('#### void type in dot_expr - field: $field_name')
+		p.warn('#### void type in dot_expr - field: $field_name')
 	}
 	struc := p.table.types[ti.idx] as types.Struct
 	// Method call
@@ -445,7 +445,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 		return node,types.int_ti
 	}
 	if !p.table.struct_has_field(struc, field_name) {
-		// t := 
+		// t :=
 		p.error('type `$struc.name` has no field  `$field_name`')
 	}
 	/*

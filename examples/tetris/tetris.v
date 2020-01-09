@@ -143,23 +143,21 @@ fn main() {
 			window_title: 'V Tetris'
 			window_user_ptr: game
 		})
-		ft: 0
+		ft: freetype.new_context(gg.Cfg{
+			width: WinWidth
+			height: WinHeight
+			use_ortho: true
+			font_size: 18
+			scale: 2
+			window_user_ptr: 0
+		})
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
 	gg.clear(BackgroundColor)
-	// Try to load font
-	game.ft = freetype.new_context(gg.Cfg{
-		width: WinWidth
-		height: WinHeight
-		use_ortho: true
-		font_size: 18
-		scale: 2
-		window_user_ptr: 0
-	})
-	game.font_loaded = (game.ft != 0 )
+	game.font_loaded = game.ft != 0
 	for {
 		gg.clear(BackgroundColor)
 		game.draw_scene()
