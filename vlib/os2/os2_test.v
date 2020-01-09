@@ -2,7 +2,7 @@
 
 fn test_open() {
 	/*
-	$if mac {
+	$if macos {
 		f := os2.create('os2.test')
 		f.writeln('hello world!')
 		f.close()
