@@ -245,7 +245,8 @@ pub fn (t mut Table) register_type(typ types.Type, name string, idx int) {
 	}
 	t.type_idxs[name] = idx
 	t.types << typ
-	t.methods << []Fn // TODO [] breaks V
+	efn := []Fn
+	t.methods << efn // TODO [] breaks V
 }
 
 pub fn (t mut Table) register_struct(typ types.Struct) int {
