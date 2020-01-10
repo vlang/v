@@ -40,8 +40,8 @@ fn (p mut Parser) string_expr() {
 		if p.scanner.is_fmt && p.tok == .not {
 			// handle '$age'!
 			// TODO remove this hack, do this automatically
+			p.fgen(' ')
 			p.check(.not)
-			p.fgen('!')       
 		}
 		return
 	}
@@ -137,18 +137,6 @@ fn (p mut Parser) string_expr() {
 	if complex_inter {
 		p.fgen('}')
 	}
-	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
-	// won't be used	again)
-	// TODO remove this hack, do this automatically
-	if p.tok == .not {
-		p.check(.not)
-		p.fgen('!')
-		p.gen('_STR_TMP($format$args)')
-	}
-	else {
-		// Otherwise do len counting + allocation + sprintf
-		p.gen('_STR($format$args)')
-	}
   
 	// p.fgen('\'')
 	// println("hello %d", num) optimization.
@@ -163,6 +151,18 @@ fn (p mut Parser) string_expr() {
 			p.gen('$format\\n$args')
 			return
 		}
+	}
+	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
+	// won't be used	again)
+	// TODO remove this hack, do this automatically
+	if p.tok == .not {
+		p.fgen(' ')
+		p.check(.not)
+		p.gen('_STR_TMP($format$args)')
+	}
+	else {
+		// Otherwise do len counting + allocation + sprintf
+		p.gen('_STR($format$args)')
 	}
 }
 
