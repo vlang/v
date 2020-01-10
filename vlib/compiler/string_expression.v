@@ -37,6 +37,12 @@ fn (p mut Parser) string_expr() {
 			p.gen('tos3("$f")')
 		}
 		p.next()
+		if p.scanner.is_fmt && p.tok == .not {
+			// handle '$age'!
+			// TODO remove this hack, do this automatically
+			p.check(.not)
+			p.fgen('!')       
+		}
 		return
 	}
 	$if js {
@@ -131,12 +137,12 @@ fn (p mut Parser) string_expr() {
 	if complex_inter {
 		p.fgen('}')
 	}
-  
 	// '$age'! means the user wants this to be a tmp string (uses global buffer, no allocation,
 	// won't be used	again)
 	// TODO remove this hack, do this automatically
 	if p.tok == .not {
 		p.check(.not)
+		p.fgen('!')
 		p.gen('_STR_TMP($format$args)')
 	}
 	else {
