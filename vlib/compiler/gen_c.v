@@ -589,12 +589,7 @@ fn (p mut Parser) cast(typ string) {
 	}
 	else if casting_voidptr_to_value {
 		p.cgen.set_placeholder(pos, '($typ)(')
-	}
-	else if expr_typ == 'string' {
-		if typ in ['u32', 'u64'] || typ in float_types || typ == 'int' || typ == 'i64' {
-			p.error('cannot cast `$expr_typ` to  `$typ, use `${expr_typ}.${typ}`()  instead')
-		}
-	}
+	}	
 	else {
 		// Nothing can be cast to bool
 		if typ == 'bool' {
@@ -605,6 +600,9 @@ fn (p mut Parser) cast(typ string) {
 		}
 		// Strings can't be cast
 		if expr_typ == 'string' {
+			if is_number_type(typ) || is_float_type(typ) {
+				p.error('cannot cast `string` to `$typ`, use `${expr_typ}.${typ}()` instead')
+			}
 			p.error('cannot cast `$expr_typ` to `$typ`')
 		}
 		// Nothing can be cast to bool
