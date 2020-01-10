@@ -488,7 +488,7 @@ pub fn (a []f32) eq(a2 []f32) bool {
 ///     println(x)     // Sorted i64 Array 
 /// output:
 ///     [10, 28, 70, 92, 100]
-pub fn compare_i64(a, b &f64) int {
+pub fn compare_i64(a, b &i64) int {
 	if *a < *b {
 	  return -1
 	}

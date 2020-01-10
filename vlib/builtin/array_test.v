@@ -182,15 +182,21 @@ fn test_repeat() {
 	{
 		a := [1.1].repeat(10)
 		// FIXME: assert aa[0] == 1.1 will fail, need fix
-		assert a[0] == f32(1.1)
-		assert a[5] == f32(1.1)
-		assert a[9] == f32(1.1)
+		assert a[0] == 1.1
+		assert a[5] == 1.1
+		assert a[9] == 1.1
 	}
 	{
-		a := [f32(1.1)].repeat(10)
-		assert a[0] == f32(1.1)
-		assert a[5] == f32(1.1)
-		assert a[9] == f32(1.1)
+		a := [i64(-123)].repeat(10)
+		assert a[0] == -123
+		assert a[5] == -123
+		assert a[9] == -123
+	}
+	{
+		a := [u64(123)].repeat(10)
+		assert a[0] == 123
+		assert a[5] == 123
+		assert a[9] == 123
 	}
 	{
 		a := [f64(1.1)].repeat(10)
@@ -498,6 +504,14 @@ fn test_sort() {
 	assert nums[4] == 108
 }
 
+fn test_f32_sort() {
+	mut f := [50.0, 15, 1, 79, 38, 0, 27]
+	f.sort_with_compare(compare_f32)
+	assert f[0] == 0.0
+	assert f[1] == 1.0
+	assert f[6] == 79.0
+}
+
 fn test_f64_sort() {
 	mut f := [f64(50.0), 15, 1, 79, 38, 0, 27]
 	f.sort_with_compare(compare_f64)
@@ -506,18 +520,9 @@ fn test_f64_sort() {
 	assert f[6] == 79.0
 }
 
-fn test_f32_sort() {
-	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f64)
-	assert f[0] == 0.0
-	assert f[1] == 1.0
-	assert f[6] == 79.0
-}
-
-
 fn test_i64_sort() {
 	mut f := [i64(50), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f64)
+	f.sort_with_compare(compare_i64)
 	assert f[0] == 0
 	assert f[1] == 1
 	assert f[6] == 79
