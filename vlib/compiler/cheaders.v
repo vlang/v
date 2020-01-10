@@ -60,13 +60,6 @@ const (
 #include <locale.h> // tolower
 #include <sys/time.h>
 #include <unistd.h> // sleep
-#else
-#if defined(_MSC_VER)
-#pragma comment(lib, "Dbghelp.lib")
-#endif
-#if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
-#error Please upgrade your MinGW distribution to use msvcr90.dll or later.
-#endif
 #endif
 
 #if defined(__CYGWIN__) && !defined(_WIN32)
@@ -108,13 +101,7 @@ $c_common_macros
 #define UNICODE
 #include <windows.h>
 
-// must be included after <windows.h>
-#ifndef __TINYC__
-#include <shellapi.h>
-#endif
-
 #include <io.h> // _waccess
-#include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
 //#include <WinSock2.h>
 #ifdef _MSC_VER
@@ -127,6 +114,10 @@ $c_common_macros
 
 #define EMPTY_STRUCT_DECLARATION int ____dummy_variable
 #define OPTION_CAST(x)
+
+#include <dbghelp.h>
+#pragma comment(lib, "Dbghelp.lib")
+
 #endif
 
 #else
