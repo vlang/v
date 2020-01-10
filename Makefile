@@ -1,7 +1,10 @@
 CC ?= cc
+CFLAGS ?=
+LDFLAGS ?=
+TMPDIR ?= /tmp
 
 VCFILE := v.c
-TMPVC  := /tmp/vc
+TMPVC  := $(TMPDIR)/vc
 TMPTCC := /var/tmp/tcc
 VCREPO := https://github.com/vlang/vc
 TCCREPO := https://github.com/vlang/tccbin
@@ -38,16 +41,17 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) -std=c99 -w -o v0.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
-	./v0.exe -o v.exe v.v
-	rm -f v0.exe
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v2.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
+	./v2.exe -o v3.exe v.v
+	./v3.exe -o v.exe -prod v.v
+	rm -f v2.exe v3.exe
 else
-	$(CC) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
+	$(CC) $(CFLAGS) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
 ifdef ANDROID
 	chmod 755 v
 endif
 	@(VC_V=`./v version | cut -f 3 -d " "`; \
-	V_V=`git rev-parse --short HEAD`; \
+	V_V=`git rev-parse --short=7 HEAD`; \
 	if [ $$VC_V != $$V_V ]; then \
 		echo "Self rebuild ($$VC_V => $$V_V)"; \
 		$(MAKE) selfcompile; \
@@ -92,8 +96,8 @@ selfcompile:
 
 modules: module_builtin module_strings module_strconv
 module_builtin:
-	./v build module vlib/builtin > /dev/null
+	#./v build module vlib/builtin > /dev/null
 module_strings:
-	./v build module vlib/strings > /dev/null
+	#./v build module vlib/strings > /dev/null
 module_strconv:
-	./v build module vlib/strconv > /dev/null
+	#./v build module vlib/strconv > /dev/null

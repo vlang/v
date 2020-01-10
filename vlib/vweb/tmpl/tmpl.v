@@ -19,7 +19,7 @@ pub fn compile_template(path string) string {
 	mut header := ''
 	if os.exists('header.html') {
 		h := os.read_file('header.html')or{
-			panic('html failed')
+			panic('reading file header.html failed')
 		}
 		header = h.replace("\'", '"')
 		html = header + html

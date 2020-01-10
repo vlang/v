@@ -164,7 +164,7 @@ fn (p mut Parser) get_type2() Type {
 			}
 			t = p.table.find_type(typ)
 			if t.name == '' && !p.pref.translated && !p.first_pass() && !typ.starts_with('[') {
-				println('get_type() bad type')
+				//println('get_type() bad type')
 				// println('all registered types:')
 				// for q in p.table.types {
 				// println(q.name)
@@ -173,7 +173,8 @@ fn (p mut Parser) get_type2() Type {
 				if t_suggest.len > 0 {
 					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
 				}
-				p.error('unknown type `$typ`$t_suggest')
+				econtext := if p.pref.is_debug { '('+@FILE+':'+@LINE+')' } else {''}
+				p.error('unknown type `$typ`$t_suggest $econtext')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {

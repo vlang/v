@@ -23,6 +23,14 @@ fn (p mut Parser) error(s string) {
 	p.error_with_token_index(s, p.token_idx - 1)
 }
 
+fn (p mut Parser) warn_or_error(s string) {
+	if p.pref.is_prod {
+		p.error(s)
+	} else {
+		p.warn(s)
+	}
+}
+
 fn (p mut Parser) warn(s string) {
 	p.warn_with_token_index(s, p.token_idx - 1)
 }
@@ -190,11 +198,20 @@ fn (p mut Parser) print_error_context() {
 }
 
 fn normalized_error(s string) string {
-	// Print `[]int` instead of `array_int` in errors
-	mut res := s.replace('array_', '[]').replace('__', '.').replace('Option_', '?').replace('main.', '').replace('ptr_', '&')
+	mut res := s
+	if !res.contains('__') {
+		// `[]int` instead of `array_int`
+		res = res.replace('array_', '[]')
+	}
+	res = res.replace('__', '.')
+	res = res.replace('Option_', '?')
+	res = res.replace('main.', '')
+	res = res.replace('ptr_', '&')
+	res = res.replace('_dot_', '.')
 	if res.contains('_V_MulRet_') {
-		res = res.replace('_V_MulRet_', '(').replace('_V_', ', ')
-		res = res[..res.len - 1] + ')"'
+		res = res.replace('_V_MulRet_', '(')
+		res = res.replace('_V_', ', ')
+		res = res[..res.len - 1] + ')"' //"// quote balance comment. do not remove
 	}
 	return res
 }

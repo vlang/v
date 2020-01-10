@@ -1,12 +1,12 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-import http
+import net.http
 import json
 import sync
 
 const (
-	NR_THREADS = 4
+	nr_threads = 4
 )
 
 struct Story {
@@ -73,7 +73,7 @@ fn main() {
 	fetcher.mu = &mtx
 	fetcher.wg = &wg
 	fetcher.wg.add(ids.len)
-	for i := 0; i < NR_THREADS; i++ {
+	for i := 0; i < nr_threads; i++ {
 		go fetcher.fetch()
 	}
 	fetcher.wg.wait()

@@ -1,21 +1,18 @@
-/*
-// TODO: Fix this.
-import time
-
+import time.misc as tmisc
 // using a manual temporary intermediate variable should always work:
-fn test_call_fn_that_requires_reference_with_function_that_returns_a_struct_manual(){
-	t1 := time.random()
+fn test_call_fn_that_requires_reference_with_function_that_returns_a_struct_manual() {
+	t1 := tmisc.random()
 	t2 := t1.calc_unix()
-	println('tmp: $t2')
+	println('res: $t2')
 	assert true
 }
 
+/*
+// TODO: Fix this.
 // v should produce temporary intermediate variables in chained calls:
 fn test_call_fn_that_requires_reference_with_function_that_returns_a_struct_chained(){
-	res := (time.random().calc_unix())
+	res := (tmisc.random().calc_unix())
 	println('res: $res')
 	assert true
 }
 */
-
-fn test_dummy(){}

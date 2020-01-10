@@ -1,0 +1,62 @@
+import moda
+import modb as mb
+
+struct User {
+	age int
+}
+
+// lol
+fn main() {
+	a := 10
+	a++
+	negative := -a
+	a == 1
+	foo(3)
+	ak := 10
+}
+	/*
+	user := User{}
+	user.age = 10
+	mut x := if user.age == 10 { 20 } else { user.age * 2 }
+	for x > 3 {
+
+	}
+	*/
+
+fn foo(a int) {
+	for true {
+
+	}
+	for i := 0; i < 10; i++ {
+
+	}
+	nums := [1,2,3]
+	number := nums[0]
+	n := get_int2()
+}
+
+fn get_int(a string) int {
+	return 10
+}
+
+fn get_int2() int {
+	a := 'hello'
+	return get_int(a)
+}
+
+fn myuser() {
+	user := User{age:10}
+	age := user.age + 1
+	boo := 2
+	boo2 := boo+1
+	b := age > 0
+	b2 := user.age > 0
+}
+
+fn multi_return() (int,string) {
+	return 4, 'four'
+}
+
+fn variadic(a ...int) {
+}
+

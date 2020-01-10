@@ -220,6 +220,9 @@ fn test_replace() {
 	assert b.replace('charptr', 'byteptr') == '*byteptr'
 	c :='abc'
 	assert c.replace('','-') == c
+	v :='a   b c d'
+	assert v.replace('  ',' ') == 'a  b c d'
+
 }
 
 fn test_replace_each() {

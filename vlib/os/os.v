@@ -31,6 +31,7 @@ pub const (
 
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
+	fd     int
 mut:
 	opened bool
 }
@@ -46,8 +47,7 @@ struct C.stat {
 	st_mtime int
 }
 
-struct C.DIR {
-}
+struct C.DIR {}
 
 // struct C.dirent {
 // d_name byteptr
@@ -75,6 +75,7 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
+/*
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f mut File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -88,6 +89,8 @@ pub fn (f mut File) read_bytes_at(size, pos int) []byte {
 	C.fseek(f.cfile, 0, C.SEEK_SET)
 	return arr[0..nreadbytes]
 }
+*/
+
 
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')
@@ -123,8 +126,7 @@ pub fn read_file(path string) ?string {
 
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
-	mut s := C.stat{
-	}
+	mut s := C.stat{}
 	$if windows {
 		C._wstat(path.to_wide(), voidptr(&s))
 	} $else {
@@ -271,54 +273,8 @@ fn read_ulines(path string) ?[]ustring {
 	return ulines
 }
 
-pub fn open(path string) ?File {
-	mut file := File{
-	}
-	$if windows {
-		wpath := path.to_wide()
-		mode := 'rb'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'rb')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to open file "$path"')
-	}
-	file.opened = true
-	return file
-}
-
-// create creates a file at a specified location and returns a writable `File` object.
-pub fn create(path string) ?File {
-	mut file := File{
-	}
-	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'wb'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'wb')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to create file "$path"')
-	}
-	file.opened = true
-	return file
-}
-
 pub fn open_append(path string) ?File {
-	mut file := File{
-	}
+	mut file := File{}
 	$if windows {
 		wpath := path.replace('/', '\\').to_wide()
 		mode := 'ab'
@@ -338,49 +294,24 @@ pub fn open_append(path string) ?File {
 	return file
 }
 
-pub fn (f mut File) write(s string) {
-	C.fputs(s.str, f.cfile)
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-}
-// convert any value to []byte (LittleEndian) and write it
-// for example if we have write(7, 4), "07 00 00 00" gets written
-// write(0x1234, 2) => "34 12"
-pub fn (f mut File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
-}
-
+/*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
+	$if linux {
+	}
+	$else {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
-}
-
-pub fn (f mut File) writeln(s string) {
-	if !f.opened {
-		return
 	}
-	// C.fwrite(s.str, 1, s.len, f.cfile)
-	// ss := s.clone()
-	// TODO perf
-	C.fputs(s.str, f.cfile)
-	// ss.free()
-	C.fputs('\n', f.cfile)
 }
+*/
+
 
 pub fn (f mut File) flush() {
 	if !f.opened {
 		return
 	}
 	C.fflush(f.cfile)
-}
-
-pub fn (f mut File) close() {
-	if !f.opened {
-		return
-	}
-	f.opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
 }
 
 // system starts the specified command, waits for it to complete, and returns its code.
@@ -493,8 +424,8 @@ pub fn sigint_to_signal_name(si int) string {
 		15 {
 			return 'SIGTERM'
 		}
-		else {
-		}}
+		else {}
+	}
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
@@ -529,8 +460,8 @@ pub fn sigint_to_signal_name(si int) string {
 			7 {
 				return 'SIGBUS'
 			}
-			else {
-			}}
+			else {}
+	}
 	}
 	return 'unknown'
 }
@@ -574,14 +505,57 @@ pub fn unsetenv(name string) int {
 	}
 }
 
+const (
+	F_OK = 0
+	X_OK = 1
+	W_OK = 2
+	R_OK = 4
+)
+
 // exists returns true if `path` exists.
 pub fn exists(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), 0) != -1
+		return C._waccess(p.to_wide(), F_OK) != -1
 	} $else {
-		return C.access(path.str, 0) != -1
+		return C.access(path.str, F_OK) != -1
 	}
+}
+
+// `is_executable` returns `true` if `path` is executable.
+pub fn is_executable(path string) bool {
+  $if windows {
+    // NB: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
+    // i.e. there is no X bit there, the modes can be:
+    // 00 Existence only
+    // 02 Write-only
+    // 04 Read-only
+    // 06 Read and write
+    p := os.realpath( path )
+    return ( os.exists( p ) && p.ends_with('.exe') )
+  } $else {
+    return C.access(path.str, X_OK) != -1
+  }
+}
+
+// `is_writable` returns `true` if `path` is writable.
+pub fn is_writable(path string) bool {
+  $if windows {
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), W_OK) != -1
+  } $else {
+    return C.access(path.str, W_OK) != -1
+  }
+}
+
+// `is_readable` returns `true` if `path` is readable.
+pub fn is_readable(path string) bool {
+  $if windows {
+    p := path.replace('/', '\\')
+    return C._waccess(p.to_wide(), R_OK) != -1
+  } $else {
+    return C.access(path.str, R_OK) != -1
+  }
 }
 
 [deprecated]
@@ -607,8 +581,30 @@ pub fn rmdir(path string) {
 	}
 }
 
+pub fn rmdir_recursive(path string) {
+	items := os.ls(path) or {
+		panic(err)
+	}
+	for item in items {
+		if os.is_dir(filepath.join(path,item)) {
+			rmdir_recursive(filepath.join(path,item))
+		}
+		os.rm(filepath.join(path,item))
+	}
+	os.rmdir(path)
+}
+
+pub fn is_dir_empty(path string) bool {
+	items := os.ls(path) or {
+		panic(err)
+	}
+	return items.len == 0
+}
+
 fn print_c_errno() {
-	// C.printf('errno=%d err="%s"\n', C.errno, C.strerror(C.errno))
+	e := C.errno
+	se := tos_clone(byteptr(C.strerror(C.errno)))
+	println('errno=$e err=$se')
 }
 
 [deprecated]
@@ -620,7 +616,7 @@ pub fn ext(path string) string {
 [deprecated]
 pub fn dir(path string) string {
 	println('Use filepath.dir')
-	return filepath.ext(path)
+	return filepath.dir(path)
 }
 
 [deprecated]
@@ -776,8 +772,7 @@ pub fn on_segfault(f voidptr) {
 		return
 	}
 	$if macos {
-		mut sa := C.sigaction{
-		}
+		mut sa := C.sigaction{}
 		C.memset(&sa, 0, sizeof(sigaction))
 		C.sigemptyset(&sa.sa_mask)
 		sa.sa_sigaction = f
@@ -833,13 +828,11 @@ pub fn executable() string {
 		// lol
 		return os.args[0]
 	}
-	$if solaris {
-	}
-	$if haiku {
-	}
+	$if solaris {}
+	$if haiku {}
 	$if netbsd {
 		mut result := calloc(MAX_PATH)
-		count := int(C.readlink('/proc/curproc/exe', result, MAX_PATH))
+		count := C.readlink('/proc/curproc/exe', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return os.args[0]
@@ -848,7 +841,7 @@ pub fn executable() string {
 	}
 	$if dragonfly {
 		mut result := calloc(MAX_PATH)
-		count := int(C.readlink('/proc/curproc/file', result, MAX_PATH))
+		count := C.readlink('/proc/curproc/file', result, MAX_PATH)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return os.args[0]
@@ -876,8 +869,7 @@ pub fn is_dir(path string) bool {
 		}
 		return false
 	} $else {
-		statbuf := C.stat{
-		}
+		statbuf := C.stat{}
 		if C.stat(path.str, &statbuf) != 0 {
 			return false
 		}
@@ -891,8 +883,7 @@ pub fn is_link(path string) bool {
 	$if windows {
 		return false // TODO
 	} $else {
-		statbuf := C.stat{
-		}
+		statbuf := C.stat{}
 		if C.lstat(path.str, &statbuf) != 0 {
 			return false
 		}
@@ -964,7 +955,7 @@ pub fn walk_ext(path, ext string) []string {
 			continue
 		}
 		p := path + separator + file
-		if os.is_dir(p) {
+		if os.is_dir(p) && !os.is_link(p) {
 			res << walk_ext(p, ext)
 		}
 		else if file.ends_with(ext) {
@@ -985,7 +976,7 @@ pub fn walk(path string, fnc fn(path string)) {
 	}
 	for file in files {
 		p := path + os.path_separator + file
-		if os.is_dir(p) {
+		if os.is_dir(p) && !os.is_link(p) {
 			walk(p, fnc)
 		}
 		else if os.exists(p) {
@@ -1028,8 +1019,7 @@ pub fn wait() int {
 }
 
 pub fn file_last_mod_unix(path string) int {
-	attr := C.stat{
-	}
+	attr := C.stat{}
 	// # struct stat attr;
 	C.stat(path.str, &attr)
 	// # stat(path.str, &attr);
@@ -1043,16 +1033,6 @@ pub fn log(s string) {
 
 pub fn flush_stdout() {
 	C.fflush(stdout)
-}
-
-pub fn print_backtrace() {
-	/*
-	# void *buffer[100];
-	nptrs := 0
-	# nptrs = backtrace(buffer, 100);
-	# printf("%d!!\n", nptrs);
-	# backtrace_symbols_fd(buffer, nptrs, STDOUT_FILENO) ;
-*/
 }
 
 pub fn mkdir_all(path string) {
@@ -1072,30 +1052,33 @@ pub fn join(base string, dirs ...string) string {
 	return filepath.join(base,dirs)
 }
 
+// cachedir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
+pub fn cachedir() string {
+	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+	// There is a single base directory relative to which user-specific non-essential
+	// (cached) data should be written. This directory is defined by the environment
+	// variable $XDG_CACHE_HOME.
+	// $XDG_CACHE_HOME defines the base directory relative to which user specific
+	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
+	// or empty, a default equal to $HOME/.cache should be used.
+	$if !windows {
+		xdg_cache_home := os.getenv('XDG_CACHE_HOME')
+		if xdg_cache_home != '' {
+			return xdg_cache_home
+		}
+	}
+	cdir := os.home_dir() + '.cache'
+	if !os.is_dir(cdir) && !os.is_link(cdir) {
+		os.mkdir(cdir) or {
+			panic(err)
+		}
+	}
+	return cdir
+}
+
 // tmpdir returns the path to a folder, that is suitable for storing temporary files
 pub fn tmpdir() string {
 	mut path := os.getenv('TMPDIR')
-	$if linux {
-		if path == '' {
-			path = '/tmp'
-		}
-	}
-	$if freebsd {
-		if path == '' {
-			path = '/tmp'
-		}
-	}
-	$if macos {
-		/*
-		if path == '' {
-			// TODO untested
-			path = C.NSTemporaryDirectory()
-		}
-        */
-		if path == '' {
-			path = '/tmp'
-		}
-	}
 	$if windows {
 		if path == '' {
 			// TODO see Qt's implementation?
@@ -1110,6 +1093,12 @@ pub fn tmpdir() string {
 			}
 		}
 	}
+	if path == '' {
+		path = os.cachedir()
+	}
+	if path == '' {
+		path = '/tmp'
+	}
 	return path
 }
 
@@ -1120,4 +1109,3 @@ pub fn chmod(path string, mode int) {
 pub const (
 	wd_at_startup = getwd()
 )
-

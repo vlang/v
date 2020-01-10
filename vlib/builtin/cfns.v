@@ -148,7 +148,7 @@ fn C.toupper() int
 fn C.getchar() int
 
 
-fn C.strerror() charptr
+fn C.strerror(int) charptr
 
 
 fn C.snprintf() int
@@ -303,7 +303,13 @@ fn C._waccess() int
 fn C._wremove()
 
 
-fn C.ReadConsole()
+fn C.ReadConsole() voidptr
+
+
+fn C.WriteConsole() voidptr
+
+
+fn C.WriteFile() voidptr
 
 
 fn C.fgetws() voidptr
@@ -322,9 +328,6 @@ fn C._fullpath() int
 
 
 fn C.GetCommandLine() voidptr
-
-
-fn C.CommandLineToArgvW() &voidptr
 
 
 fn C.LocalFree()
@@ -400,4 +403,3 @@ fn C.WaitForSingleObject(voidptr, int) int
 
 
 fn C.ReleaseMutex(voidptr) bool
-

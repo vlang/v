@@ -4,8 +4,9 @@
 module compiler
 
 fn (p mut Parser) bool_expression() string {
+	//is_ret := p.prev_tok == .key_return
 	start_ph := p.cgen.add_placeholder()
-	expected := p.expected_type
+	mut expected := p.expected_type
 	tok := p.tok
 	typ := p.bterm()
 	mut got_and := false // to catch `a && b || c` in one expression without ()
@@ -46,14 +47,62 @@ fn (p mut Parser) bool_expression() string {
 		println(tok.str())
 		p.error('expr() returns empty type')
 	}
-	if expected != typ && expected in p.table.sum_types { // TODO perf
+	if p.inside_return_expr && p.expected_type.contains('_MulRet_') { //is_ret { // return a,b hack TODO
+		expected = p.expected_type
+	}
+	// `window.widget = button`, widget is an interface
+	if expected != typ && expected.ends_with('er') && expected.contains('I') {
+		tt := typ.replace('*', '_ptr')
 		p.cgen.set_placeholder(start_ph,
-			//'/*SUM TYPE CAST*/($expected) { .obj = &($typ[]) { ')
-			'/*SUM TYPE CAST*/($expected) { .obj = memdup(& ')
-		tt := typ.all_after('_') // TODO
-		//p.gen('}, .typ = SumType_${tt} }')//${val}_type }')
-		p.gen(', sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+		'($expected) { ._interface_idx = _${expected}_${tt}_index, ._object = ' )
+		p.gen('}')
+		//p.satisfies_interface(expected, typ, true)
+	}
+	// e.g. `return BinaryExpr{}` in a function expecting `Expr`
+	if expected != typ && expected in p.table.sum_types { // TODO perf
+		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
+		T := p.table.find_type(typ)
+		if T.parent == expected {
+			p.cgen.set_placeholder(start_ph,
+				'/*SUM TYPE CAST2*/($expected) { .obj = memdup( &($typ[]) { ')
+			tt := typ.all_after('_') // TODO
+			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
+		}
+	}
+	// `as` cast
+	// TODO remove copypasta
+	if p.tok == .key_as {
+		p.fspace()
+		p.next()
+		p.fspace()
+		cast_typ := p.get_type()
+		if typ == cast_typ {
+			p.warn('casting `$typ` to `$cast_typ` is not needed')
+		}
+		if typ in p.table.sum_types {
+			T := p.table.find_type(cast_typ)
+			if T.parent != typ {
+				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
+			}
+			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
+			p.gen('.obj')
+			// Make sure the sum type can be cast, otherwise throw a runtime error
+			/*
+			sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
 
+			n := cast_typ.all_after('__')
+			p.cgen.insert_before('if (($sum_type != SumType_$n) {
+puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
+exit(1);
+}
+')
+*/
+
+		} else {
+			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
+			p.gen(')')
+		}
+		return cast_typ
 	}
 	return typ
 }
@@ -339,6 +388,7 @@ fn (p mut Parser) name_expr() string {
 		}
 		// Color.green
 		else if p.peek() == .dot {
+			is_arr_start := p.prev_tok == .lsbr
 			enum_type := p.table.find_type(name)
 			if enum_type.cat != .enum_ {
 				p.error('`$name` is not an enum')
@@ -349,7 +399,7 @@ fn (p mut Parser) name_expr() string {
 			if !enum_type.has_enum_val(val) {
 				p.error('enum `$enum_type.name` does not have value `$val`')
 			}
-			if p.expected_type == enum_type.name {
+			if p.expected_type == enum_type.name && !is_arr_start {
 				// `if color == .red` is enough
 				// no need in `if color == Color.red`
 				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')

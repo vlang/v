@@ -118,6 +118,15 @@ fn (v mut V) cc() {
 			verror('-fast is only supported on Linux right now')
 		}
 	}
+
+	if !v.pref.is_so
+		&& v.pref.build_mode != .build_module 
+		&& os.user_os() == 'windows'
+		&& !v.out_name.ends_with('.exe')
+	{
+		v.out_name += '.exe'
+	}
+	
 	// linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	if v.pref.is_so {
@@ -263,6 +272,9 @@ fn (v mut V) cc() {
 	if v.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
+	if v.os == .windows {
+		a << '-municode'
+	}
 	cflags := v.get_os_cflags()
 	// add .o files
 	a << cflags.c_options_only_object_files()
@@ -397,6 +409,7 @@ start:
 }
 
 fn (c mut V) cc_windows_cross() {
+	println('Cross compiling for Windows...')
 	if !c.out_name.ends_with('.exe') {
 		c.out_name = c.out_name + '.exe'
 	}
@@ -405,7 +418,7 @@ fn (c mut V) cc_windows_cross() {
 	// -I flags
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
 	mut libs := ''
-	if c.pref.build_mode == .default_mode {
+	if false && c.pref.build_mode == .default_mode {
 		libs = '"$v_modules_path/vlib/builtin.o"'
 		if !os.exists(libs) {
 			println('`$libs` not found')
@@ -416,8 +429,10 @@ fn (c mut V) cc_windows_cross() {
 		}
 	}
 	args += ' $c.out_name_c '
+
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
-	println('Cross compiling for Windows...')
+
+	/*
 	winroot := '$v_modules_path/winroot'
 	if !os.is_dir(winroot) {
 		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
@@ -431,7 +446,18 @@ fn (c mut V) cc_windows_cross() {
 	obj_name = obj_name.replace('.exe', '')
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
-	cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
+	*/
+	mut cmd := ''
+	cmd = ''
+	$if macos {
+		cmd = 'x86_64-w64-mingw32-gcc -std=gnu11 $args -municode'
+	}
+	$else {
+		panic('your platform is not supported yet')
+	}
+
+	println(cmd)
+	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 $v_modules_path/$c.out_name_c'
 	if c.pref.show_c_cmd {
 		println(cmd)
 	}
@@ -439,6 +465,7 @@ fn (c mut V) cc_windows_cross() {
 		println('Cross compilation for Windows failed. Make sure you have clang installed.')
 		exit(1)
 	}
+	/*
 	if c.pref.build_mode != .build_module {
 		link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' + '$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' + '$winroot/lib/uuid.lib'
 		if c.pref.show_c_cmd {
@@ -450,6 +477,7 @@ fn (c mut V) cc_windows_cross() {
 		}
 		// os.rm(obj_name)
 	}
+	*/
 	println('Done!')
 }
 

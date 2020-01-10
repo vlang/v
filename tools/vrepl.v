@@ -151,7 +151,14 @@ pub fn run_repl() []string {
 			mut temp_line := r.line
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
-			if !(r.line.contains(' ') || r.line.contains(':') || r.line.contains('=') || r.line.contains(',') || r.line == '') && !func_call {
+			if !(
+				r.line.contains(' ') || 
+				r.line.contains(':') || 
+				r.line.contains('=') || 
+				r.line.contains(',') || 
+				r.line.ends_with('++') || 
+				r.line.ends_with('--') || 
+				r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}

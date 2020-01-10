@@ -253,7 +253,7 @@ fn (g mut Gen) mov(reg Register, val int) {
 
 pub fn (g mut Gen) register_function_address(name string) {
 	addr := g.pos()
-	println('reg fn addr $name $addr')
+	//println('reg fn addr $name $addr')
 	g.fn_addr[name] = addr
 }
 

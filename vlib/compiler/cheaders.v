@@ -146,9 +146,10 @@ $c_common_macros
 #define DEFAULT_GT(a, b) (a > b)
 #define DEFAULT_GE(a, b) (a >= b)
 //================================== GLOBALS =================================*/
-byteptr g_str_buf;
+byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
+
 '
 	js_headers = '
 

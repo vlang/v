@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module time
 
-import rand
-
 const (
 	days_string = 'MonTueWedThuFriSatSun'
 	month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -32,7 +30,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	uni    int // TODO it's safe to use "unix" now
+	unix int
 }
 
 pub enum FormatTime {
@@ -65,21 +63,7 @@ pub enum FormatDelimiter {
 fn C.localtime(int) &C.tm
 
 
-fn remove_me_when_c_bug_is_fixed() {
-	// TODO
-}
-
-pub struct C.time_t {
-}
-
-struct C.tm {
-	tm_year int
-	tm_mon  int
-	tm_mday int
-	tm_hour int
-	tm_min  int
-	tm_sec  int
-}
+pub struct C.time_t {}
 
 fn C.time(int) C.time_t
 
@@ -89,105 +73,6 @@ pub fn now() Time {
 	mut now := &C.tm(0)
 	now = C.localtime(&t)
 	return convert_ctime(now)
-}
-
-pub fn random() Time {
-	now_unix := now().uni
-	rand_unix := rand.next(now_unix)
-	return time.unix(rand_unix)
-}
-
-// Based on Go's time package.
-// Copyright 2009 The Go Authors.
-pub fn unix(abs int) Time {
-	// Split into time and day.
-	mut d := abs / seconds_per_day
-	// Account for 400 year cycles.
-	mut n := d / days_per_400_years
-	mut y := 400 * n
-	d -= days_per_400_years * n
-	// Cut off 100-year cycles.
-	// The last cycle has one extra leap year, so on the last day
-	// of that year, day / days_per_100_years will be 4 instead of 3.
-	// Cut it back down to 3 by subtracting n>>2.
-	n = d / days_per_100_years
-	n -= n>>2
-	y += 100 * n
-	d -= days_per_100_years * n
-	// Cut off 4-year cycles.
-	// The last cycle has a missing leap year, which does not
-	// affect the computation.
-	n = d / days_per_4_years
-	y += 4 * n
-	d -= days_per_4_years * n
-	// Cut off years within a 4-year cycle.
-	// The last year is a leap year, so on the last day of that year,
-	// day / 365 will be 4 instead of 3. Cut it back down to 3
-	// by subtracting n>>2.
-	n = d / 365
-	n -= n>>2
-	y += n
-	d -= 365 * n
-	yday := d
-	mut day := yday
-	year := abs / int(3.154e+7) + 1970 // int(i64(y) + absolute_zero_year)
-	hour := (abs % seconds_per_day) / seconds_per_hour
-	minute := (abs % seconds_per_hour) / seconds_per_minute
-	second := (abs % seconds_per_minute)
-	if is_leap_year(year) {
-		// Leap year
-		if day > 31 + 29 - 1 {
-			// After leap day; pretend it wasn't there.
-			day--
-		}
-		else if day == 31 + 29 - 1 {
-			// Leap day.
-			day = 29
-			return Time{
-				year: year
-				month: 2
-				day: day
-				hour: hour
-				minute: minute
-				second: second
-			}
-		}
-	}
-	// Estimate month on assumption that every month has 31 days.
-	// The estimate may be too low by at most one month, so adjust.
-	mut month := day / 31
-	mut begin := 0
-	end := (days_before[month + 1])
-	if day >= end {
-		month++
-		begin = end
-	}
-	else {
-		begin = (days_before[month])
-	}
-	month++ // because January is 1
-	day = day - begin + 1
-	return Time{
-		year: year
-		month: month
-		day: day
-		hour: hour
-		minute: minute
-		second: second
-		uni: abs
-	}
-}
-
-pub fn convert_ctime(t tm) Time {
-	return Time{
-		year: t.tm_year + 1900
-		month: t.tm_mon + 1
-		day: t.tm_mday
-		hour: t.tm_hour
-		minute: t.tm_min
-		second: t.tm_sec
-		uni: C.mktime(&t)
-	}
 }
 
 // format_ss  returns a string for t in a given format YYYY-MM-DD HH:MM:SS in
@@ -326,26 +211,38 @@ pub fn parse_iso(s string) Time {
 	if fields.len < 5 {
 		return Time{}
 	}
-
-	pos := months_string.index(fields[2]) or { return Time{} }
-	mm := pos/3 + 1
-
-	tmstr := malloc(s.len*2)
-	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str,
-		fields[3].str, mm, fields[1].str, fields[4].str))
+	pos := months_string.index(fields[2]) or {
+		return Time{}
+	}
+	mm := pos / 3 + 1
+	tmstr := malloc(s.len * 2)
+	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm, fields[1].str, fields[4].str))
 	return parse(tos(tmstr, count))
 }
 
 pub fn new_time(t Time) Time {
+	return Time{
+		year: t.year
+		month: t.month
+		day: t.day
+		hour: t.hour
+		minute: t.minute
+		second: t.second
+		unix: t.calc_unix()
+	}
+	// TODO: Use the syntax below when it works with reserved keywords like `unix`
+	/*
 	return {
 		t |
-		uni:t.calc_unix()
+		unix:t.calc_unix()
 	}
+	*/
+
 }
 
 pub fn (t &Time) calc_unix() int {
-	if t.uni != 0 {
-		return t.uni
+	if t.unix != 0 {
+		return t.unix
 	}
 	tt := C.tm{
 		tm_sec: t.second
@@ -360,11 +257,11 @@ pub fn (t &Time) calc_unix() int {
 
 // TODO add(d time.Duration)
 pub fn (t Time) add_seconds(seconds int) Time {
-	return unix(t.uni + seconds)
+	return unix(t.unix + seconds)
 }
 
 pub fn (t Time) add_days(days int) Time {
-	return unix(t.uni + days * 3600 * 24)
+	return unix(t.unix + days * 3600 * 24)
 }
 
 // TODO use time.Duration instead of seconds
@@ -374,7 +271,7 @@ fn since(t Time) int {
 
 pub fn (t Time) relative() string {
 	now := time.now()
-	secs := now.uni - t.uni
+	secs := now.unix - t.unix
 	if secs <= 30 {
 		// right now or in the future
 		// TODO handle time in the future
@@ -429,8 +326,7 @@ pub fn ticks() i64 {
 	$if windows {
 		return C.GetTickCount()
 	} $else {
-		ts := C.timeval{
-		}
+		ts := C.timeval{}
 		C.gettimeofday(&ts, 0)
 		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
 	}
@@ -450,19 +346,20 @@ pub fn sleep(seconds int) {
 	}
 }
 
-pub fn usleep(n int) {
+pub fn sleep_ms(milliseconds int) {
 	$if windows {
-		// C._usleep(n)
+		C.Sleep(milliseconds)
 	} $else {
-		C.usleep(n)
+		C.usleep(milliseconds * 1000)
 	}
 }
 
-pub fn sleep_ms(n int) {
+pub fn usleep(microseconds int) {
 	$if windows {
-		C.Sleep(n)
+		milliseconds := microseconds / 1000
+		C.Sleep(milliseconds)
 	} $else {
-		C.usleep(n * 1000)
+		C.usleep(microseconds)
 	}
 }
 
@@ -505,7 +402,8 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 		}
 		else {
-			'unknown enumeration $fmt_time'}}
+			'unknown enumeration $fmt_time'}
+	}
 }
 
 // get_fmt_date_str   returns a string for t in a given date format
@@ -585,4 +483,3 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		}
 	}
 }
-

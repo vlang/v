@@ -55,23 +55,21 @@ pub fn (c1 Complex) - (c2 Complex) Complex {
 }
 
 // Complex Multiplication c1 * c2
-// Currently Not Supported
-// pub fn (c1 Complex) * (c2 Complex) Complex {
-// 	return Complex{
-// 		(c1.re * c2.re) + ((c1.im * c2.im) * -1),
-// 		(c1.re * c2.im) + (c1.im * c2.re)
-// 	}
-// }
+pub fn (c1 Complex) * (c2 Complex) Complex {
+	return Complex{
+		(c1.re * c2.re) + ((c1.im * c2.im) * -1),
+		(c1.re * c2.im) + (c1.im * c2.re)
+	}
+}
 
 // Complex Division c1 / c2
-// Currently Not Supported
-// pub fn (c1 Complex) / (c2 Complex) Complex {
-// 	denom := (c2.re * c2.re) + (c2.im * c2.im)
-// 	return Complex {
-// 		((c1.re * c2.re) + ((c1.im * -c2.im) * -1))/denom,
-// 		((c1.re * -c2.im) + (c1.im * c2.re))/denom
-// 	}
-// }
+pub fn (c1 Complex) / (c2 Complex) Complex {
+	denom := (c2.re * c2.re) + (c2.im * c2.im)
+	return Complex {
+		((c1.re * c2.re) + ((c1.im * -c2.im) * -1))/denom,
+		((c1.re * -c2.im) + (c1.im * c2.re))/denom
+	}
+}
 
 // Complex Addition c1.add(c2)
 pub fn (c1 Complex) add(c2 Complex) Complex {

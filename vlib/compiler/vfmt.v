@@ -158,7 +158,7 @@ fn (p mut Parser) fnext() {
 		//println('eof ret')
 		//return
 	//}
-	if p.tok == .rcbr && !p.inside_if_expr { //&& p.prev_tok != .lcbr {
+	if p.tok == .rcbr && !p.inside_if_expr && p.prev_tok != .lcbr {
 		p.fmt_dec()
 	}
 	s := p.strtok()
@@ -167,11 +167,13 @@ fn (p mut Parser) fnext() {
 	}
 	// vfmt: increase indentation on `{` unless it's `{}`
 	inc_indent := false
-	if p.tok == .lcbr && !p.inside_if_expr {// && p.peek() != .rcbr {
+	if p.tok == .lcbr && !p.inside_if_expr  && p.peek() != .rcbr {
 		p.fgen_nl()
 		p.fmt_inc()
 	}
-
+	if p.token_idx >= p.tokens.len { 
+		return 
+	}
 	// Skip comments and add them to vfmt output
 	if p.tokens[p.token_idx].tok in [.line_comment, .mline_comment] {
 		// Newline before the comment and after consts and closing }
@@ -259,7 +261,7 @@ fn (p &Parser) gen_fmt() {
 	//s := p.scanner.fmt_out.str().replace('\n\n\n', '\n').trim_space()
 	//s := p.scanner.fmt_out.str().trim_space()
 	//p.scanner.fgenln('// nice')
-	s1 := p.scanner.fmt_lines.join('')
+	mut s := p.scanner.fmt_lines.join('')
 /*.replace_each([
 		'\n\n\n\n', '\n\n',
 		' \n', '\n',
@@ -267,13 +269,13 @@ fn (p &Parser) gen_fmt() {
 	])
 	*/
 	//.replace('\n\n\n\n', '\n\n')
-  
-	s2 := s1.replace(' \n', '\n')
-	s3 := s2.replace(') or{', ') or {')
-	s4 := s3.replace(')or{', ') or {')
-	s5 := s4.replace('or{', 'or {')
 
-	s := s5
+	s = s.replace(' \n', '\n')
+	s = s.replace(')  or {', ') or {')
+	s = s.replace(') or{', ') or {')
+	s = s.replace(')or{', ') or {')
+	s = s.replace('or{', 'or {')
+	s = s.replace('}}\n', '}\n\t}\n')
 
 	if s == '' {
 		return
@@ -305,4 +307,4 @@ fn write_formatted_source(file_name string, s string) string {
 	out.writeln(s.trim_space())//p.scanner.fmt_out.str().trim_space())
 	out.close()
 	return path
-}	
+}

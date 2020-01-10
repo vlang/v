@@ -27,15 +27,25 @@ fn (p mut Parser) comp_time() {
 			if name == 'mac' {
 				p.warn('use `macos` instead of `mac`')
 			}
+
 			if not {
-				p.genln('#ifndef $ifdef_name')
+				if name == 'linux_or_macos' {
+					p.genln('#if !defined(__linux__) && !defined(__APPLE__)')
+				} else {
+					p.genln('#ifndef $ifdef_name')
+				}
 			}
 			else {
-				p.genln('#ifdef $ifdef_name')
+				if name == 'linux_or_macos' {
+					p.genln('#if defined(__linux__) || defined(__APPLE__)')
+				} else {
+					p.genln('#ifdef $ifdef_name')
+				}
 			}
 			p.check(.lcbr)
 			os := os_from_string(name)
-			if ((!not && os != p.os) || (not && os == p.os)) && !p.scanner.is_fmt && !p.pref.output_cross_c {
+			if ((!not && os != p.os) || (not && os == p.os)) && !name.contains('_or_') &&
+				 !p.scanner.is_fmt && !p.pref.output_cross_c {
 				// `$if os {` for a different target, skip everything inside
 				// to avoid compilation errors (like including <windows.h>
 				// on non-Windows systems)
@@ -153,13 +163,13 @@ fn (p mut Parser) comp_time() {
 		p.check(.rcbr)
 		// }
 	}
-	// $vweb.html()
-	// Compile vweb html template to V code, parse that V code and embed the resulting V functions
-	// that returns an html string
 	else if p.tok == .name && p.lit == 'vweb' {
+		// $vweb.html()
+		// Compile vweb html template to V code, parse that V code and embed the resulting V functions
+		// that returns an html string
 		mut path := p.cur_fn.name + '.html'
 		if p.pref.is_debug {
-			println('compiling tmpl $path')
+			println('>>> compiling vweb HTML template "$path"')
 		}
 		if !os.exists(path) {
 			// Can't find the template file in current directory,
@@ -177,8 +187,11 @@ fn (p mut Parser) comp_time() {
 		p.check(.rpar)
 		v_code := tmpl.compile_template(path)
 		if p.pref.is_verbose {
-			println('vweb template:')
+			println('\n\n')
+			println('>>> vweb template for ${path}:')
 			println(v_code)
+			println('>>> vweb template END')
+			println('\n\n')
 		}
 		is_strings_imorted := p.import_table.known_import('strings')
 		if !is_strings_imorted {
@@ -186,16 +199,14 @@ fn (p mut Parser) comp_time() {
 		}
 		p.import_table.register_used_import('strings')
 		p.genln('/////////////////// tmpl start')
-		p.scanner.file_path = path
-		p.scanner.line_nr = 0
-		p.statements_from_text(v_code, false)
+		p.statements_from_text(v_code, false, path)
 		p.genln('/////////////////// tmpl end')
 		receiver := p.cur_fn.args[0]
 		dot := if receiver.is_mut || receiver.ptr || receiver.typ.ends_with('*') { '->' } else { '.' }
 		p.genln('vweb__Context_html( & $receiver.name /*!*/$dot vweb, tmpl_res)')
 	}
 	else {
-		p.error('bad comptime expr')
+		p.error('bad comp_time expression')
 	}
 }
 
