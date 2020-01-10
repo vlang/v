@@ -22,6 +22,6 @@ pub fn convert_ctime(t tm) Time {
 		minute: t.tm_min
 		second: t.tm_sec
 		unix: C.mktime(&t)
-	}//.add_seconds(t.tm_gmtoff)
+	}.add_seconds(-C._timezone)
 }
 
