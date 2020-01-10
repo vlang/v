@@ -51,6 +51,12 @@ match_test_suite = [
 	TestItem{"this cpapaz adce aabe",r"(c(pa)+z)(\s[\a]+){2}",5,21},
 	TestItem{"1234this cpapaz adce aabe",r"(c(pa)+z)(\s[\a]+){2}$",9,25},
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}",5,21},
+	TestItem{"cpapaz ole. pippo, 852",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,18},
+	TestItem{"cpapaz ole. pippo,",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,18},
+	TestItem{"cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,17},
+	TestItem{"123cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,20},
+	TestItem{"...cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,20},
+	TestItem{"123cpapaz ole. pippo",r"(c(pa)+z)(\s+\a+[\.,]?)+",3,20},
 
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},
@@ -61,8 +67,8 @@ match_test_suite = [
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 
 	// check unicode
-	//TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
-	//TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
+	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
+	TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
 ]
 )
 
@@ -71,7 +77,7 @@ fn test_regex(){
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.s")
 
-		// test the find
+		// test find
 		if to.s > 0 {
 			mut re, re_err, err_pos := regex.regex(to.q)
 			if re_err == regex.COMPILE_OK {
@@ -100,7 +106,7 @@ fn test_regex(){
 			continue
 		}
 		
-		// test the match
+		// test match
 		mut re := regex.new_regex()
 		//re.debug = true
 		
@@ -135,7 +141,7 @@ fn test_regex(){
 		} else {
 			println("query: $to.q")
 			lc := "-".repeat(err_pos-1)
-			println("err  : $lc^")
+			println("err  : $lc")
 			err_str := re.get_parse_error_string(re_err)
 			println("ERROR: $err_str")
 			assert false

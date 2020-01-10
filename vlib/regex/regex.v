@@ -209,7 +209,7 @@ mut:
 	cc_index        int = -1
 
 	// counters for quantifier check (repetitions)
-	rep int = 0	
+	rep int = 0
 
 	// validator function pointer and control char
 	validator fn (byte) bool
@@ -236,7 +236,7 @@ fn (tok mut Token) reset() {
 pub const (
 	//F_FND = 0x00000001  // check until the end of the input string, it act like a "find first match", not efficient!!
 	//F_NL  = 0x00000002  // end the match when find a new line symbol
-	//F_PM  = 0x00000004  // partial match: if the source text finish and the match is positive until then return true 
+	//F_PM  = 0x00000004  // partial match: if the source text finish and the match is positive until then return true
 
 	F_MS  = 0x00000008  // match true only if the match is at the start of the string
 	F_ME  = 0x00000010  // match true only if the match is at the end of the string 
@@ -245,7 +245,7 @@ pub const (
 pub
 struct RE {
 pub mut:
-	prog []Token 
+	prog []Token
 
 	// char classes storage
 	cc []CharClass           // char class list
@@ -255,7 +255,6 @@ pub mut:
 	state_stack_index int= -1
 	state_stack []int
 	state_stack_pc []int
-	
 
 	// groups
 	group_count int      = 0 // number of groups in this regex struct
@@ -702,7 +701,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 
 		char_tmp,char_len = get_char(in_txt,i)
 
-
 		//
 		// check special cases: $ ^
 		//
@@ -716,7 +714,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 			i = i + char_len
 			continue
 		}
-
 
 		// IST_GROUP_START
 		if char_len == 1 && pc >= 0 && byte(char_tmp) == `(` {
@@ -776,10 +773,12 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		// IST_DOT_CHAR match any char except the following token
 		if char_len==1 && pc >= 0 && byte(char_tmp) == `.` {
 
+			/*
 			// two consecutive IST_DOT_CHAR are an error
 			if pc > 0 && re.prog[pc-1].ist == IST_DOT_CHAR {
 				return ERR_SYNTAX_ERROR,i
 			}
+			*/
 
 			re.prog[pc].ist = u32(0) | IST_DOT_CHAR
 			re.prog[pc].rep_min = 1
@@ -1073,8 +1072,8 @@ pub fn (re RE) get_code() string {
 	
 }
 
-// get_query_string return a string with a reconstruction of the query starting from the regex program code
-pub fn (re RE) get_query_string() string {
+// get_query return a string with a reconstruction of the query starting from the regex program code
+pub fn (re RE) get_query() string {
 	// use the best buffer possible
 	mut tmp_len := 256
 	if tmp_len < re.cc.len { 
@@ -1288,7 +1287,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	mut step_count := 0              // stats for debug
 	mut dbg_line   := 0              // count debug line printed
 	
-	re.reset()	
+	re.reset()
 
 	for m_state != .end {
 		
@@ -1393,20 +1392,42 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			dbg_line++
 		}
 		//******************************************
-		
 
 		// we're out of text, manage it
 		if i >= in_txt_len {
-			//if (re.flag & F_PM) > 0 {
-				//C.printf("Partial match enabled\n")
-				// if we are in a match, exit well
-				if group_index >= 0 && state.match_index >= 0 {
-					group_index = -1
+			
+			if group_index >= 0 && state.match_index >= 0 {
+				//C.printf("End text with open groups!\n")
+				// close the groups
+				for group_index >= 0 {
+					tmp_pc := group_data[group_index]
+					re.prog[tmp_pc].group_rep++
+					/*
+					C.printf("Closing group %d {%d,%d}:%d\n",
+						group_index,
+						re.prog[tmp_pc].rep_min,
+						re.prog[tmp_pc].rep_max,
+						re.prog[tmp_pc].group_rep
+					)
+					*/
+					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min{
+						start_i   := group_stack[group_index]
+	 					group_stack[group_index]=-1
+
+	 					re.groups << re.prog[tmp_pc].group_id
+	 					if start_i >= 0 {
+	 						re.groups << start_i
+	 					} else {
+	 						re.groups << 0
+	 					}
+	 					re.groups << i
+ 					}
+
+					group_index--
 				}
-				m_state == .end
-				break
-			//}
-			//C.printf("NO Partial match enabled\n")
+			}
+			m_state == .end
+			break
 			return NO_MATCH_FOUND,0
 		}
 
@@ -1520,7 +1541,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				m_state = .ist_quant_ng
 				continue			
 			}
-
 
 			// check OR
 			else if ist == IST_OR_BRANCH {
@@ -1958,4 +1978,3 @@ pub fn (re mut RE) find(in_txt string) (int,int) {
 	}
 	return NO_MATCH_FOUND, 0
 }
-
