@@ -277,8 +277,8 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 				`%` {
 					name = name.replace('%', 'op_mod')
 				}
-				else {
-				}}
+				else {}
+	}
 		}
 	}
 	if f.is_interface {
@@ -592,7 +592,7 @@ fn (p mut Parser) cast(typ string) {
 	}
 	else if expr_typ == 'string' {
 		if typ in ['u32', 'u64'] || typ in float_types || typ == 'int' || typ == 'i64' {
-           p.error('cannot cast `$expr_typ` to  `$typ, use `${expr_typ}.${typ}`()  instead')
+			p.error('cannot cast `$expr_typ` to  `$typ, use `${expr_typ}.${typ}`()  instead')
 		}
 	}
 	else {
@@ -676,8 +676,8 @@ fn type_default(typ string) string {
 		'voidptr' {
 			return '0'
 		}
-		else {
-		}}
+		else {}
+	}
 	return '{0}'
 	// TODO this results in
 	// error: expected a field designator, such as '.field = 4'
