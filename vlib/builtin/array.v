@@ -480,11 +480,11 @@ pub fn (a []f32) eq(a2 []f32) bool {
 // compare_i64 for []f64 sort_with_compare()
 // sort []i64 with quicksort
 // usage :
-//     mut x := [i64(100),10,70,28,92]
-//     x.sort_with_compare(compare_i64)
-//     println(x)     // Sorted i64 Array
+// mut x := [i64(100),10,70,28,92]
+// x.sort_with_compare(compare_i64)
+// println(x)     // Sorted i64 Array
 // output:
-//     [10, 28, 70, 92, 100]
+// [10, 28, 70, 92, 100]
 pub fn compare_i64(a, b &i64) int {
 	if *a < *b {
 		return -1
