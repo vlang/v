@@ -589,7 +589,7 @@ fn (p mut Parser) cast(typ string) {
 	}
 	else if casting_voidptr_to_value {
 		p.cgen.set_placeholder(pos, '($typ)(')
-	}	
+	}
 	else {
 		// Nothing can be cast to bool
 		if typ == 'bool' {
