@@ -24,6 +24,19 @@ fn test_unsetenv() {
   assert os.getenv('foo') == ''
 }
 
+fn test_environ() {
+	envs := os.environ()
+	assert envs.len > 0
+
+	mut haspath := false
+	for s in envs {
+		if s.to_upper().starts_with('PATH=') {
+			haspath = true
+		}
+	}
+	assert haspath == true
+}
+
 fn test_write_and_read_string_to_file() {
   filename := './test1.txt'
   hello := 'hello world!'

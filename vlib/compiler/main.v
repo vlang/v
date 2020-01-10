@@ -563,7 +563,7 @@ pub fn (v mut V) generate_main() {
 				verror('test files need to have at least one test function')
 			}
 			// Generate a C `main`, which calls every single test function
-			v.gen_main_start(false)
+			v.gen_main_start(true)
 			if v.pref.is_stats {
 				cgen.genln('BenchedTests bt = main__start_testing(${test_fn_names.len},tos3("$v.dir"));')
 			}
@@ -605,6 +605,7 @@ pub fn (v mut V) gen_main_start(add_os_args bool) {
 			v.cgen.genln('    cmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			v.cgen.genln('    int argc;')
 			v.cgen.genln('    wchar_t** argv = CommandLineToArgvW(cmd_line, &argc);')
+			v.cgen.genln('    wchar_t** envp = _wenviron;')
 		} else {
 			// Console application
 			v.cgen.genln('int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) { ')
@@ -616,8 +617,10 @@ pub fn (v mut V) gen_main_start(add_os_args bool) {
 	if add_os_args && 'os' in v.table.imports {
 		if v.os == .windows {
 			v.cgen.genln('  os__args = os__init_os_args_wide(argc, argv);')
+			v.cgen.genln('  os__envs = os__init_os_envs_wide(argc, argv, envp);')
 		} else {
 			v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
+			v.cgen.genln('  os__envs = os__init_os_envs(argc, (byteptr*)argv);')
 		}
 	}
 	v.generate_hotcode_reloading_main_caller()

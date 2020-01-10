@@ -82,6 +82,24 @@ fn init_os_args_wide(argc int, argv &byteptr) []string {
 	return args
 }
 
+fn init_os_envs_wide(argc int, argv &byteptr, envp &byteptr) []string {
+	mut envs := []string
+	if envp == 0 {
+		return envs
+	}
+
+	for i := 0; ; i ++ {
+		cstr := envp[i]
+		if cstr == 0 {
+			break
+		}
+		s := string_from_wide(&u16(cstr))
+		envs << s
+	}
+
+	return envs
+}
+
 pub fn ls(path string) ?[]string {
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string

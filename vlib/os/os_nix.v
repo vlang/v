@@ -22,6 +22,21 @@ pub fn init_os_args(argc int, argv &byteptr) []string {
 	}
 	return args
 }
+pub fn init_os_envs(argc int, argv &byteptr) []string {
+	mut envs := []string
+	envp := argv + argc + 1
+	if envp == 0 {
+		return envs
+	}
+	for i := 0; ; i++ {
+		line := envp[i]
+		if line == 0 {
+			break
+		}
+		envs << string(line)
+	}
+	return envs
+}
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {

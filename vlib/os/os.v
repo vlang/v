@@ -26,6 +26,7 @@ fn C.readdir(voidptr) C.dirent
 
 pub const (
 	args = []string
+	envs = []string
 	MAX_PATH = 4096
 )
 
@@ -503,6 +504,11 @@ pub fn unsetenv(name string) int {
 	} $else {
 		return C.unsetenv(name.str)
 	}
+}
+
+// environ get environment variables
+pub fn environ() []string {
+	return envs
 }
 
 const (
