@@ -8,15 +8,10 @@ __global g_m2_ptr byteptr
 
 fn init() {
 	$if windows {
-		if is_atty(0) > 0 {
-			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
+		if is_atty(1) > 0 {
+			C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+			C.setbuf(C.stdout, 0)
 		}
-		else {
-			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)
-		}
-		C._setmode(C._fileno(C.stdout), C._O_U8TEXT)
-		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
-		C.setbuf(C.stdout, 0)
 	}
 }
 
