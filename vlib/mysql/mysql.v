@@ -73,7 +73,7 @@ pub fn (db DB) select_db(dbname string) ?bool {
 	if ret != 0 {
 		return error_with_code(get_error_msg(db.conn), get_errno(db.conn))
 	}
-	return ret == 0
+	return true
 }
 
 pub fn (db DB) close() {
