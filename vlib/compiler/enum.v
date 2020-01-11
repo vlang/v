@@ -73,6 +73,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		}
 		if p.tok == .comma {
 			p.next()
+			p.fremove_last()
 		}
 		p.fgen_nl()
 		val++

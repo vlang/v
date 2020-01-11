@@ -25,35 +25,35 @@ pub const (
 
 pub enum Kind {
 	placeholder
-	void,
-	voidptr,
-	charptr,
-	byteptr,
-	const_,
-	enum_,
-	struct_,
-	int,
-	i8,
-	i16,
-	i64,
-	byte,
-	u16,
-	u32,
-	u64,
-	f32,
-	f64,
-	string,
-	char,
-	bool,
-	array,
-	array_fixed,
-	map,
-	multi_return,
+	void
+	voidptr
+	charptr
+	byteptr
+	const_
+	enum_
+	struct_
+	int
+	i8
+	i16
+	i64
+	byte
+	u16
+	u32
+	u64
+	f32
+	f64
+	string
+	char
+	bool
+	array
+	array_fixed
+	map
+	multi_return
 	variadic
 }
 
-pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 
-	String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 	
+String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 
 pub struct TypeIdent {
 pub:
@@ -228,7 +228,6 @@ pub:
 	name string
 	// kind Kind
 }
-
 // Void | Voidptr | Charptr | Byteptr
 pub struct Primitive {
 pub:
@@ -266,7 +265,7 @@ pub:
 
 pub struct Int {
 pub:
-	idx			int
+	idx         int
 	bit_size    u32
 	is_unsigned bool
 }
@@ -335,27 +334,26 @@ pub:
 
 pub fn (t Primitive) str() string {
 	s := match t.kind {
-		.void {
+		.void{
 			'void'
 		}
-		.voidptr {
+		.voidptr{
 			'voidptr'
 		}
-		.charptr {
+		.charptr{
 			'charptr'
 		}
-		.byteptr {
+		.byteptr{
 			'byteptr'
 		}
-		.char {
+		.char{
 			'char'
 		}
-		.byte {
+		.byte{
 			'byte'
 		}
 		else {
-			'unknown'
-		}
+			'unknown'}
 	}
 	return s
 }

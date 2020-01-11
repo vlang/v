@@ -12,6 +12,9 @@ import (
 	term
 	os
 )
+const (
+	colored_output = term.can_show_color_on_stderr()
+)
 
 type PrefixParseFn fn()ast.Expr
 
@@ -249,17 +252,32 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 
 pub fn (p &Parser) error(s string) {
 	print_backtrace()
-	println(term.bold(term.red('$p.file_name:$p.tok.line_nr: $s')))
+	final_msg_line := '$p.file_name:$p.tok.line_nr: error: $s'
+	if colored_output {
+		eprintln(term.bold(term.red(final_msg_line)))
+	}else{
+		eprintln(final_msg_line)
+	}
 	exit(1)
 }
 
 pub fn (p &Parser) error_at_line(s string, line_nr int) {
-	println(term.bold(term.red('$p.file_name:$line_nr: $s')))
+	final_msg_line := '$p.file_name:$line_nr: error: $s'
+	if colored_output {
+		eprintln(term.bold(term.red(final_msg_line)))
+	}else{
+		eprintln(final_msg_line)
+	}
 	exit(1)
 }
 
 pub fn (p &Parser) warn(s string) {
-	println(term.blue('$p.file_name:$p.tok.line_nr: $s'))
+	final_msg_line := '$p.file_name:$p.tok.line_nr: warning: $s'
+	if colored_output {
+		eprintln(term.bold(term.blue(final_msg_line)))
+	}else{
+		eprintln(final_msg_line)
+	}
 }
 
 pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
@@ -425,7 +443,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 	field_name := p.check_name()
 	println('# $ti.name $ti.idx - $field_name')
 	if ti.kind != .void {
-		println('#### void type in dot_expr - field: $field_name')
+		p.warn('#### void type in dot_expr - field: $field_name')
 	}
 	struc := p.table.types[ti.idx] as types.Struct
 	// Method call
@@ -445,7 +463,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.Ty
 		return node,types.int_ti
 	}
 	if !p.table.struct_has_field(struc, field_name) {
-		// t := 
+		// t :=
 		p.error('type `$struc.name` has no field  `$field_name`')
 	}
 	/*

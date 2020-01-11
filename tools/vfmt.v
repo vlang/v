@@ -160,6 +160,12 @@ fn (foptions &FormatOptions) format_file(file string) {
 		cfile = main_program_file
 		compiler_params << ['-user_mod_path', mod_folder_parent]
 	}
+	if !is_test_file && mod_name == 'main' {
+		// NB: here, file is guaranted to be a main. We do not know however
+		// whether it is a standalone v program, or is it a part of a bigger
+		// project, like vorum or vid.
+		cfile = get_compile_name_of_potential_v_project(cfile)
+	}
 	compiler_params << cfile
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
@@ -287,11 +293,9 @@ fn file_to_target_os(file string) string {
 fn file_to_mod_name_and_is_module_file(file string) (string,bool) {
 	mut mod_name := 'main'
 	mut is_module_file := false
-	raw_fcontent := os.read_file(file) or {
+	flines := read_source_lines(file) or {
 		return mod_name,is_module_file
 	}
-	fcontent := raw_fcontent.replace('\r\n', '\n')
-	flines := fcontent.split('\n')
 	for fline in flines {
 		line := fline.trim_space()
 		if line.starts_with('module ') {
@@ -303,4 +307,56 @@ fn file_to_mod_name_and_is_module_file(file string) (string,bool) {
 		}
 	}
 	return mod_name,is_module_file
+}
+
+fn read_source_lines(file string) ?[]string {
+	raw_fcontent := os.read_file(file) or {
+		return error('can not read $file')
+	}
+	fcontent := raw_fcontent.replace('\r\n', '\n')
+	return fcontent.split('\n')
+}
+
+fn get_compile_name_of_potential_v_project(file string) string {
+	// This function get_compile_name_of_potential_v_project returns:
+	// a) the file's folder, if file is part of a v project
+	// b) the file itself, if the file is a standalone v program
+	pfolder := os.realpath(filepath.dir(file))
+	// a .v project has many 'module main' files in one folder
+	// if there is only one .v file, then it must be a standalone
+	all_files_in_pfolder := os.ls(pfolder) or {
+		panic(err)
+	}
+	mut vfiles := []string
+	for f in all_files_in_pfolder {
+		vf := filepath.join(pfolder,f)
+		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
+			continue
+		}
+		vfiles << vf
+	}
+	if vfiles.len == 1 {
+		return file
+	}
+	// /////////////////////////////////////////////////////////////
+	// At this point, we know there are many .v files in the folder
+	// We will have to read them all, and if there are more than one
+	// containing `fn main` then the folder contains multiple standalone
+	// v programs. If only one contains `fn main` then the folder is
+	// a project folder, that should be compiled with `v pfolder`.
+	mut main_fns := 0
+	for f in vfiles {
+		slines := read_source_lines(f) or {
+			panic(err)
+		}
+		for line in slines {
+			if line.contains('fn main()') {
+				main_fns++
+				if main_fns > 1 {
+					return file
+				}
+			}
+		}
+	}
+	return pfolder
 }

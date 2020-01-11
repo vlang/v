@@ -646,18 +646,26 @@ pub fn get_raw_line() string {
 	$if windows {
 		max_line_chars := 256
 		buf := malloc(max_line_chars * 2)
+		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+		mut bytes_read := 0
 		if is_atty(0) > 0 {
-			h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-			mut nr_chars := u32(0)
-			C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&nr_chars), 0)
-			return string_from_wide2(&u16(buf), int(nr_chars))
+			C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+			return string_from_wide2(&u16(buf), bytes_read)
 		}
-		res := C.fgetws(&u16(buf), max_line_chars, C.stdin)
-		len := C.wcslen(&u16(buf))
-		if !isnil(res) {
-			return string_from_wide2(&u16(buf), len)
+		mut offset := 0
+		for {
+			pos := buf + offset
+			res := C.ReadFile(h_input, pos, 1, &bytes_read, 0)
+			if !res || bytes_read == 0 {
+           			break
+			}
+			if *pos == `\n` || *pos == `\r` {
+				offset++
+				break
+			}
+			offset++
 		}
-		return ''
+		return string(buf, offset)
 	} $else {
 		max := size_t(256)
 		buf := charptr(malloc(int(max)))

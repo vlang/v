@@ -180,10 +180,9 @@ pub fn (t mut Table) register_method(ti types.TypeIdent, new_fn Fn) bool {
 	}
 	t.types[ti.idx] = struc
 	*/
+
 	println('register method `$new_fn.name` struct=$ti.name ')
-
 	println('##### $ti.idx - $t.methods.len')
-
 	t.methods[ti.idx] << new_fn
 	return true
 }
@@ -246,7 +245,8 @@ pub fn (t mut Table) register_type(typ types.Type, name string, idx int) {
 	}
 	t.type_idxs[name] = idx
 	t.types << typ
-	t.methods << []Fn
+	efn := []Fn
+	t.methods << efn // TODO [] breaks V
 }
 
 pub fn (t mut Table) register_struct(typ types.Struct) int {

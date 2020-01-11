@@ -19,6 +19,8 @@ fn test_c_files() {
 	println('Running V => C tests')
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
+	term_ok := term.ok_message('OK')
+	term_fail := term.fail_message('FAIL')
 	for i in 1 .. nr_tests + 1 {
 		path := '$vroot/vlib/v/gen/tests/${i}.vv'
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
@@ -28,12 +30,11 @@ fn test_c_files() {
 		program := parser.parse_file(path, table)
 		res := gen.cgen([program], table)
 		if compare_texts(res, ctext) {
-			eprintln('${i}... ' + term.green('OK'))
+			eprintln('${term_ok} ${i}')
 		}
 		else {
-			eprintln('${i}... ' + term.red('FAIL'))
-			eprintln(path)
-			eprintln('got:\n$res')
+			eprintln('${term_fail} ${i}')
+			eprintln('${path}: got\n{$res}')
 			assert false
 		}
 	}

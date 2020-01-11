@@ -135,6 +135,6 @@ fn print_backtrace_skipping_top_frames_nix(skipframes int) bool {
 }
 
 pub fn println(s string) {
-	C._putws(s.to_wide())
+	print('$s\n')
 }
 

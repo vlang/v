@@ -50,6 +50,15 @@ fn (p mut Parser) bool_expression() string {
 	if p.inside_return_expr && p.expected_type.contains('_MulRet_') { //is_ret { // return a,b hack TODO
 		expected = p.expected_type
 	}
+	// `window.widget = button`, widget is an interface
+	if expected != typ && expected.ends_with('er') && expected.contains('I') {
+		tt := typ.replace('*', '_ptr')
+		p.cgen.set_placeholder(start_ph,
+		'($expected) { ._interface_idx = _${expected}_${tt}_index, ._object = ' )
+		p.gen('}')
+		//p.satisfies_interface(expected, typ, true)
+	}
+	// e.g. `return BinaryExpr{}` in a function expecting `Expr`
 	if expected != typ && expected in p.table.sum_types { // TODO perf
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		T := p.table.find_type(typ)
