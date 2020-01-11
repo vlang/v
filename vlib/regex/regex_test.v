@@ -59,6 +59,7 @@ match_test_suite = [
 	TestItem{"123cpapaz ole. pippo",r"(c(pa)+z)(\s+\a+[\.,]?)+",3,20},
 	TestItem{"cpapaz ole. pippo,",r".*c.+ole.*pi",0,14},
 	TestItem{"cpapaz ole. pipipo,",r".*c.+ole.*p([ip])+o",0,18},
+	TestItem{"cpapaz ole. pipipo",r"^.*c.+ol?e.*p([ip])+o$",0,18},
 
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},
@@ -67,6 +68,7 @@ match_test_suite = [
 	TestItem{"this cpapaz adce",r"(c(pa)+z)(\s[\a]+){2}",-1,0},
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
+	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
 	
 
 	// check unicode

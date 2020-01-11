@@ -1,21 +1,4 @@
 module regex
-/*
-TODO:
-- investigate ? beahvour 
-- adapt the .* check
-* implement the find function
-
-* ^$ for positional match manage
-- flags (match all, ignore case?)
-- id for groups storing
-* linear scan instead fixed scan
-* groups
-* verify OR
-- flag enable capture
-- add no capturing group
-- add id to capture groups
-*/
-
 pub const(
 	V_REGEX_VERSION = "0.9a"      // regex module version
 
@@ -25,7 +8,7 @@ pub const(
 	// spaces chars (here only westerns!!) TODO: manage all the spaces from unicode
 	SPACES = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
 	// new line chars for now only '\n'
-	NEW_LINE_LIST = [`\n`]
+	NEW_LINE_LIST = [`\n`,`\r`]
 
 	// Results
 	NO_MATCH_FOUND          = -1
@@ -172,7 +155,7 @@ fn is_upper(in_char byte) bool {
 
 pub fn (re RE) get_parse_error_string(err int) string {
 	match err {
-		0                      { return "COMPILE_OK" }
+		COMPILE_OK             { return "COMPILE_OK" }
 		NO_MATCH_FOUND         { return "NO_MATCH_FOUND" }
 		ERR_CHAR_UNKNOWN       { return "ERR_CHAR_UNKNOWN" }      
 		ERR_UNDEFINED          { return "ERR_UNDEFINED" } 
@@ -213,7 +196,7 @@ mut:
 
 	// validator function pointer and control char
 	validator fn (byte) bool
-	v_ch u32 = u32(0)
+	v_ch u32               = u32(0) // debug, helper for recreate the query string
 
 	// groups variables
 	group_rep          int = 0    // repetition of the group
@@ -244,11 +227,10 @@ pub const (
 
 struct StateDotObj{
 mut:
-	i  int                = 0
-	pc int                = 0
-	mi int                = 0
-	rep int               = 0
-	group_stack_index int = -1
+	i  int                = 0   // char index in the input buffer
+	pc int                = 0   // program counter saved
+	mi int                = 0   // match_index saved
+	group_stack_index int = -1  // group index stack pointer saved
 }
 
 pub
@@ -273,7 +255,6 @@ pub mut:
 
 	// flags
 	flag int             = 0 // flag for optional parameters
-	pos_flag int         = 0 // positional flag used by $ ^ metachar
 
 	// Debug/log
 	debug int            = 0 // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
@@ -714,12 +695,14 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		// check special cases: $ ^
 		//
 		if char_len == 1 && i == 0 && byte(char_tmp) == `^` {
-			re.pos_flag = F_MS
+			//C.printf("special: $\n")
+			re.flag = F_MS
 			i = i + char_len
 			continue
 		}
 		if char_len == 1 && i == (in_txt.len-1) && byte(char_tmp) == `$` {
-			re.pos_flag = F_ME
+			//C.printf("special: $\n")
+			re.flag = F_ME
 			i = i + char_len
 			continue
 		}
@@ -781,14 +764,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 
 		// IST_DOT_CHAR match any char except the following token
 		if char_len==1 && pc >= 0 && byte(char_tmp) == `.` {
-
-			/*
-			// two consecutive IST_DOT_CHAR are an error
-			if pc > 0 && re.prog[pc-1].ist == IST_DOT_CHAR {
-				return ERR_SYNTAX_ERROR,i
-			}
-			*/
-
 			re.prog[pc].ist = u32(0) | IST_DOT_CHAR
 			re.prog[pc].rep_min = 1
 			re.prog[pc].rep_max = 1
@@ -1091,6 +1066,11 @@ pub fn (re RE) get_query() string {
 	buf := [byte(0)].repeat(tmp_len) 
 	mut buf_ptr := byteptr(&buf)
 
+	if (re.flag & F_MS) != 0 {
+		C.sprintf(buf_ptr, "^")
+		buf_ptr += vstrlen(buf_ptr)
+	}
+
 	mut i := 0
 	for i < re.prog.len && re.prog[i].ist != IST_PROG_END && re.prog[i].ist != 0{
 		ch := re.prog[i].ist
@@ -1185,6 +1165,11 @@ pub fn (re RE) get_query() string {
 
 		i++
 	}
+	if (re.flag & F_ME) != 0 {
+		C.sprintf(buf_ptr, "$")
+		buf_ptr += vstrlen(buf_ptr)
+	}
+
 	C.sprintf(buf_ptr, "\n")
 	buf_ptr += vstrlen(buf_ptr)
 	return tos_clone(byteptr(&buf))
@@ -1195,49 +1180,6 @@ pub fn (re RE) get_query() string {
 * Matching
 *
 ******************************************************************************/
-// check_match_token return true if the next token match with the input char
-fn (re RE) check_match_token(pc int, ch u32) bool {
-	// load the instruction
-	ist := re.prog[pc].ist
-
-	// if the IST_DOT_CHAR is the last istruction then capture greedy
-	if ist == IST_PROG_END {
-		return true
-	}
-
-	if ist == IST_CHAR_CLASS_POS || ist == IST_CHAR_CLASS_NEG {
-		mut cc_neg := false
-			
-		if ist == IST_CHAR_CLASS_NEG {
-			cc_neg = true
-		}
-
-		mut cc_res := re.check_char_class(pc,ch)
-		
-		if cc_neg {
-			cc_res = !cc_res
-		}
-
-		return cc_res
-	}
-
-	if ist == IST_BSLS_CHAR {
-		return re.prog[pc].validator(byte(ch))
-	}
-
-	if ist & IST_SIMPLE_CHAR != 0 {
-		is_4_byte := (ist & 0x4000000) != 0
-		if is_4_byte && (ist | SIMPLE_CHAR_MASK) == ch  {
-			return true
-		} else {
-			if ist == ch {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 enum match_state{
 	start = 0,
 	stop,
@@ -1461,7 +1403,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			continue
 		}
 
-		// ist_next
+		// ist_next, next istruction reseting its state
 		if m_state == .ist_next {
 			pc = pc + 1
 			re.prog[pc].reset()
@@ -1469,21 +1411,19 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			if pc < 0 || pc > re.prog.len {
 				C.printf("ERROR!! PC overflow!!\n")
 				return ERR_INTERNAL_ERROR, i
-			}
-			
+			}			
 			m_state = .ist_load
 			continue
 		}
 
-		// ist_next_ks
+		// ist_next_ks, next istruction keeping its state
 		if m_state == .ist_next_ks {
 			pc = pc + 1
 			// check if we are in the program bounds
 			if pc < 0 || pc > re.prog.len {
 				C.printf("ERROR!! PC overflow!!\n")
 				return ERR_INTERNAL_ERROR, i
-			}
-			
+			}		
 			m_state = .ist_load
 			continue
 		}
@@ -1493,16 +1433,12 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 		// check if stop 
 		if m_state == .stop {
-			//C.printf("Stop!\n")
-			//C.printf("State index: %d\n",re.state_stack_index)
-			// we are in restore state ,do it and restart
+			// if we are in restore state ,do it and restart
 			if re.state_stack_index >= 0 {	
 				i = re.state_stack[re.state_stack_index].i
 				pc = re.state_stack[re.state_stack_index].pc
-				//re.prog[pc].rep = re.state_stack[re.state_stack_index].rep
 				state.match_index =	re.state_stack[re.state_stack_index].mi
 				group_index = re.state_stack[re.state_stack_index].group_stack_index
-				//re.state_stack_index--
 				
 				m_state = .ist_load
 				continue
@@ -1599,7 +1535,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				re.prog[pc].rep++	
 
 				if re.prog[pc].rep == 1 {
-					//C.printf("IST_DOT_CHAR save the state %d\n",re.prog[pc].rep)
 					// save the state
 					re.state_stack_index++
 					re.state_stack[re.state_stack_index].pc = pc
@@ -1609,7 +1544,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 				if re.prog[pc].rep >= 1 && re.state_stack_index >= 0 {
 					re.state_stack[re.state_stack_index].i  = i + char_len
-					//re.state_stack[re.state_stack_index].rep = re.prog[pc].rep
 				} 
 
 				// manage * and {0,} quantifier
@@ -1974,6 +1908,15 @@ pub fn new_regex_by_size(mult int) RE {
 
 pub fn (re mut RE) match_string(in_txt string) (int,int) {
 	start, end := re.match_base(in_txt.str,in_txt.len)
+	if start >= 0 && end > start {		
+		if (re.flag & F_MS) != 0 && start > 0 {
+			return NO_MATCH_FOUND, 0
+		}
+		if (re.flag & F_ME) != 0 && end < in_txt.len {
+			return NO_MATCH_FOUND, 0
+		}
+		return start, end
+	}
 	return start, end
 }
 
@@ -1987,20 +1930,20 @@ pub fn (re mut RE) find(in_txt string) (int,int) {
 	for i < in_txt.len {
 		tmp_txt := in_txt[i..]
 		//C.printf("txt:[%s] %d\n",tmp_txt ,i)
-		//C.printf("pos_flag: %08x\n", re.pos_flag)
+		//C.printf("flag: %08x\n", re.flag)
 		start, end := re.match_base(tmp_txt.str, tmp_txt.len)
 		if start >= 0 && end > start {
-			if re.pos_flag == F_MS && (i+start) > 0 {
+			if (re.flag & F_MS) != 0 && (i+start) > 0 {
 				return NO_MATCH_FOUND, 0
 			}
-			if re.pos_flag == F_ME && (i+end) < (in_txt.len-1) {
+			if (re.flag & F_ME) != 0 && (i+end) < in_txt.len {
 				return NO_MATCH_FOUND, 0
 			}
 
 			return i+start, i+end
 		}
 		i++
-		if re.pos_flag == F_MS && i>0 {
+		if re.flag == F_MS && i>0 {
 			return NO_MATCH_FOUND, 0
 		}
 	}
