@@ -221,6 +221,15 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 	}
 	p.next()
 	p.fspace()
+
+	if p.tok == .name && p.peek() == .assign {
+		p.error('cannot assign on if-else statement')
+	}
+
+	if p.tok == .name && (p.peek() == .inc || p.peek() == .dec) {
+		p.error('`${p.peek().str()}` is a statement')
+	}
+
 	// `if a := opt() { }` syntax
 	if p.tok == .name && p.peek() == .decl_assign {
 		p.check_not_reserved()
