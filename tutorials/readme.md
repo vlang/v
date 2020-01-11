@@ -60,17 +60,20 @@ import (
 struct App {
 mut:
 	vweb vweb.Context
+	port int
 }
 
 fn main() {
-	vweb.run<App>(8080)
+	vweb.run<App>(app.port)
 }
 
 fn (app mut App) index() {
 	app.vweb.text('Hello, world from vweb!')
 }
 
-pub fn (app &App) init() {}
+pub fn (app &App) init() {
+  app.port=8080
+}
 
 ```
 
