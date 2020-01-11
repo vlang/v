@@ -242,6 +242,15 @@ pub const (
 	F_ME  = 0x00000010  // match true only if the match is at the end of the string 
 )
 
+struct StateDotObj{
+mut:
+	i  int                = 0
+	pc int                = 0
+	mi int                = 0
+	rep int               = 0
+	group_stack_index int = -1
+}
+
 pub
 struct RE {
 pub mut:
@@ -253,8 +262,8 @@ pub mut:
 
 	// state index
 	state_stack_index int= -1
-	state_stack []int
-	state_stack_pc []int
+	state_stack []StateDotObj
+	
 
 	// groups
 	group_count int      = 0 // number of groups in this regex struct
@@ -942,8 +951,8 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		pc1++
 	}
 	// init the dot_char stack
-	re.state_stack = [-1].repeat(tmp_count+1)
-	re.state_stack_pc = [-1].repeat(tmp_count+1)
+	re.state_stack = [StateDotObj{}].repeat(tmp_count+1)
+	
 	
 	// OR branch
 	// a|b|cd
@@ -1236,6 +1245,7 @@ enum match_state{
 	
 	ist_load,     // load and execute istruction
 	ist_next,     // go to next istruction
+	ist_next_ks,  // go to next istruction without clenaning the state
 	ist_quant_p,  // match positive ,quantifier check 
 	ist_quant_n,  // match negative, quantifier check 
 	ist_quant_pg, // match positive ,group quantifier check
@@ -1248,12 +1258,13 @@ fn state_str(s match_state) string {
 		.stop         { return "stop" }
 		.end          { return "end" }
 
-		.ist_load     { return "ist_load"}
-		.ist_next     { return "ist_next"}
-		.ist_quant_p  { return "ist_quant_p"}
-		.ist_quant_n  { return "ist_quant_n"}
-		.ist_quant_pg { return "ist_quant_pg"}
-		.ist_quant_ng { return "ist_quant_ng"}
+		.ist_load     { return "ist_load" }
+		.ist_next     { return "ist_next" }
+		.ist_next_ks  { return "ist_next_ks" }
+		.ist_quant_p  { return "ist_quant_p" }
+		.ist_quant_n  { return "ist_quant_n" }
+		.ist_quant_pg { return "ist_quant_pg" }
+		.ist_quant_ng { return "ist_quant_ng" }
 		else { return "UNKN" }
 	} 
 }
@@ -1396,6 +1407,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		// we're out of text, manage it
 		if i >= in_txt_len {
 			
+			// manage groups
 			if group_index >= 0 && state.match_index >= 0 {
 				//C.printf("End text with open groups!\n")
 				// close the groups
@@ -1426,6 +1438,16 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					group_index--
 				}
 			}
+
+			// manage IST_DOT_CHAR
+			if re.state_stack_index >= 0 {
+				//C.printf("DOT CHAR text end management!\n")
+				// if DOT CHAR is not the last istruction and we are still going, then no match!!
+				if pc < re.prog.len && re.prog[pc+1].ist != IST_PROG_END {
+					return NO_MATCH_FOUND,0
+				}
+			}
+
 			m_state == .end
 			break
 			return NO_MATCH_FOUND,0
@@ -1453,30 +1475,40 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			continue
 		}
 
+		// ist_next_ks
+		if m_state == .ist_next_ks {
+			pc = pc + 1
+			// check if we are in the program bounds
+			if pc < 0 || pc > re.prog.len {
+				C.printf("ERROR!! PC overflow!!\n")
+				return ERR_INTERNAL_ERROR, i
+			}
+			
+			m_state = .ist_load
+			continue
+		}
+
 		// load the char
 		ch, char_len = get_charb(in_txt,i)
 
 		// check if stop 
 		if m_state == .stop {
 			//C.printf("Stop!\n")
-
+			//C.printf("State index: %d\n",re.state_stack_index)
 			// we are in restore state ,do it and restart
-			if re.state_stack_index >= 0 {
-				C.printf("State index: %d\n",re.state_stack_index)
-				//i = re.state_stack[re.state_stack_index] + 1
-				pc = re.state_stack_pc[re.state_stack_index]
-				re.state_stack_index--
-
-				first_match = -1
-				state.match_index = -1
+			if re.state_stack_index >= 0 {	
+				i = re.state_stack[re.state_stack_index].i
+				pc = re.state_stack[re.state_stack_index].pc
+				//re.prog[pc].rep = re.state_stack[re.state_stack_index].rep
+				state.match_index =	re.state_stack[re.state_stack_index].mi
+				group_index = re.state_stack[re.state_stack_index].group_stack_index
+				//re.state_stack_index--
 				
-				re.reset()
-				m_state = .ist_next
+				m_state = .ist_load
 				continue
 			}
 
 			if ist == IST_PROG_END { 
-			//if first_match>= 0 && state.match_index >= 0 {
 				return first_match,i
 			}
 			
@@ -1493,6 +1525,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				if group_index >= 0 && state.match_index >= 0 {
 					group_index = -1
 				}
+								
 				m_state = .stop
 				continue
 			}
@@ -1530,9 +1563,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					}
 					
 					re.prog[pc].group_rep++ // increase repetitions
-									
 					//C.printf("GROUP %d END %d\n", group_index, re.prog[pc].group_rep) 
-					
 					m_state = .ist_quant_pg
 					continue
 					
@@ -1558,55 +1589,46 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// check IST_DOT_CHAR
 			else if ist == IST_DOT_CHAR {
-				state.match_flag = false
+				//C.printf("IST_DOT_CHAR rep: %d\n", re.prog[pc].rep)
+				state.match_flag = true
 
-				// skip groups tokens
-				mut tmp_pc := pc + 1
-				for tmp_pc < re.prog.len && (
-					re.prog[tmp_pc].ist == IST_GROUP_START ||
-					re.prog[tmp_pc].ist == IST_GROUP_END ||
-					re.prog[tmp_pc].ist == IST_OR_BRANCH
-				)		
-				{
-					//C.printf("IST_DOT_CHAR skiping pc: %d ist: %08x\n", tmp_pc, re.prog[tmp_pc].ist)
-					tmp_pc++
+				if first_match < 0 {
+					first_match = i
+				}
+				state.match_index = i
+				re.prog[pc].rep++	
+
+				if re.prog[pc].rep == 1 {
+					//C.printf("IST_DOT_CHAR save the state %d\n",re.prog[pc].rep)
+					// save the state
+					re.state_stack_index++
+					re.state_stack[re.state_stack_index].pc = pc
+					re.state_stack[re.state_stack_index].mi = state.match_index
+					re.state_stack[re.state_stack_index].group_stack_index = group_index
 				}
 
-				// this is the last instruction, match until the end
-				if re.prog[tmp_pc].ist == IST_PROG_END {
-					//C.printf("IST_DOT_CHAR until the end!\n")
-					re.prog[pc].rep++
+				if re.prog[pc].rep >= 1 && re.state_stack_index >= 0 {
+					re.state_stack[re.state_stack_index].i  = i + char_len
+					//re.state_stack[re.state_stack_index].rep = re.prog[pc].rep
+				} 
+
+				// manage * and {0,} quantifier
+				if re.prog[pc].rep_min > 0 {
 					i += char_len // next char
-					m_state = .ist_quant_p
-					continue
 				}
 				
-				// ok check if it is our "any char"
-				else if !re.check_match_token(tmp_pc,ch) {
-					//C.printf("IST_DOT_CHAR MATCH!\n")
-					state.match_flag = true
-					
-					if first_match < 0 {
-						first_match = i
-					}
-					state.match_index = i
-/*
-					// save the state
-					if re.prog[pc].rep == 0 {
-						re.state_stack_index++
-						re.state_stack[re.state_stack_index]=i
-						re.state_stack_pc[re.state_stack_index]=pc
-					}
-*/					
-					re.prog[pc].rep++
-					i += char_len // next char
-					m_state = .ist_quant_p
+				if re.prog[pc+1].ist !=  IST_GROUP_END {
+					m_state = .ist_next
+					continue
+				} 
+				// IST_DOT_CHAR is the last istruction, get all
+				else {
+					//C.printf("We are the last one!\n")
+					pc-- 
+					m_state = .ist_next_ks
 					continue
 				}
 
-				// match failed
-				m_state = .ist_quant_n
-				continue
 			}
 
 			// char class IST
@@ -1863,6 +1885,12 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		else if m_state == .ist_quant_p {
 			rep := re.prog[pc].rep
 			
+			// clear the actual dot char capture state
+			if re.state_stack_index >= 0 {
+				//C.printf("Drop the DOT_CHAR state!\n")
+				re.state_stack_index--
+			}
+
 			// under range
 			if rep > 0 && rep < re.prog[pc].rep_min {
 				//C.printf("ist_quant_p UNDER RANGE\n")
