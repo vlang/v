@@ -52,20 +52,20 @@ First let's create a simple hello world website:
 module main
 
 import (
-    vweb
+	vweb
 )
 
 struct App {
 mut:
-    vweb vweb.Context
+	vweb vweb.Context
 }
 
 fn main() {
-    vweb.run<App>(8080)
+	vweb.run<App>(8080)
 }
 
 fn (app mut App) index() {
-    app.vweb.text('Hello, world from vweb!')
+	app.vweb.text('Hello, world from vweb!')
 }
 
 pub fn (app &App) init() {}
@@ -96,7 +96,7 @@ no routing rules either:
 
 ```v
 fn (app mut App) time() {
-    app.vweb.text(time.now().format())
+	app.vweb.text(time.now().format())
 }
 ```
 
@@ -116,12 +116,12 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 ```html
 <html>
 <header>
-    <title>V Blog</title>
+	<title>V Blog</title>
 </header>
 <body>
-    <b>@message</b>
-    <br>
-    <img src='https://vlang.io/img/v-logo.png' width=100>
+	<b>@message</b>
+	<br>
+	<img src='https://vlang.io/img/v-logo.png' width=100>
 </body>
 </html>
 ```
@@ -130,8 +130,8 @@ and update our `index()` action so that it returns the HTML view we just created
 
 ```v
 fn (app mut App) index() {
-    message := 'Hello, world from Vweb!'
-    $vweb.html()
+	message := 'Hello, world from Vweb!'
+	$vweb.html()
 }
 ```
 
@@ -182,19 +182,19 @@ create database blog;
 drop table articles;
 
 create table articles (
-    id serial primary key,
-    title text default '',
-    text text default ''
+	id serial primary key,
+	title text default '',
+	text text default ''
 );
 
 insert into articles (title, text) values (
-    'Hello, world!',
-    'V is great.'
+	'Hello, world!',
+	'V is great.'
 );
 
 insert into articles (title, text) values (
-    'Second post.',
-    'Hm... what should I write about?'
+	'Second post.',
+	'Hm... what should I write about?'
 );
 ```
 
@@ -205,8 +205,8 @@ Add a Postgres DB handle to `App`:
 ```v
 struct App {
 mut:
-    vweb vweb.Context
-    db   pg.DB
+	vweb vweb.Context
+	db   pg.DB
 }
 ```
 
@@ -214,12 +214,12 @@ Modify the `init()` method we created earlier to connect to a database:
 
 ```v
 pub fn (app mut App) init() {
-    db := pg.connect(pg.Config{
-        host:   '127.0.0.1'
-        dbname: 'blog'
-        user:   'blog'
-    }) or { panic(err) }
-    app.db = db
+	db := pg.connect(pg.Config{
+		host:   '127.0.0.1'
+		dbname: 'blog'
+		user:   'blog'
+	}) or { panic(err) }
+	app.db = db
 }
 ```
 
@@ -233,15 +233,15 @@ Create a new file `article.v`:
 module main
 
 struct Article {
-    id    int
-    title string
-    text  string
+	id    int
+	title string
+	text  string
 }
 
 pub fn (app &App) find_all_articles() []Article {
-    db := app.db
-    articles := db.select from Article
-    return articles
+	db := app.db
+	articles := db.select from Article
+	return articles
 }
 ```
 
@@ -249,8 +249,8 @@ Let's fetch the articles in the `index()` action:
 
 ```v
 fn (app &App) index() {
-    articles := app.find_all_articles()
-    $vweb.html()
+	articles := app.find_all_articles()
+	$vweb.html()
 }
 ```
 
@@ -258,12 +258,12 @@ Finally, let's update our view:
 
 ```html
 <body>
-    @for article in articles
-        <div>
-            <b>@article.title</b> <br>
-            @article.text
-        </div>
-    @end
+	@for article in articles
+		<div>
+			<b>@article.title</b> <br>
+			@article.text
+		</div>
+	@end
 </body>
 ```
 
@@ -287,9 +287,9 @@ Retrieving a single article is very simple:
 ```v
 
 pub fn (app &App) retrieve_article() ?Article {
-    db := app.db
-    article := db.select from Article limit 1
-    return article
+	db := app.db
+	article := db.select from Article limit 1
+	return article
 }
 ```
 
@@ -298,8 +298,8 @@ bad queries will always be handled by the developer:
 
 ```v
 article := app.retrieve_article(10) or {
-    app.vweb.text('Article not found')
-    return
+	app.vweb.text('Article not found')
+	return
 }
 ```
 
@@ -313,33 +313,33 @@ Create `new.html`:
 ```html
 <html>
 <header>
-    <title>V Blog</title>
+	<title>V Blog</title>
 </header>
 <body>
-    <form action='/new_article' method='post'>
-        <input type='text' placeholder='Title' name='title'> <br>
-        <textarea placeholder='Text' name='text'></textarea>
-        <input type='submit'>
-    </form>
+	<form action='/new_article' method='post'>
+		<input type='text' placeholder='Title' name='title'> <br>
+		<textarea placeholder='Text' name='text'></textarea>
+		<input type='submit'>
+	</form>
 </body>
 </html>
 ```
 
 ```v
 pub fn (app mut App) new_article() {
-    title := app.vweb.form['title']
-    text := app.vweb.form['text']
-    if title == '' || text == ''  {
-        app.vweb.text('Empty text/title')
-        return
-    }
-    article := Article{
-        title: title
-        text: text
-    }
-    db := app.db
-    db.insert(article)
-    app.vweb.redirect('/article/')
+	title := app.vweb.form['title']
+	text := app.vweb.form['text']
+	if title == '' || text == ''  {
+		app.vweb.text('Empty text/title')
+		return
+	}
+	article := Article{
+		title: title
+		text: text
+	}
+	db := app.db
+	db.insert(article)
+	app.vweb.redirect('/article/')
 }
 ```
 
@@ -360,8 +360,8 @@ in V is very simple:
 
 ```v
 pub fn (app mut App) articles() {
-    articles := app.find_all_articles()
-    app.vweb.json(json.encode(articles))
+	articles := app.find_all_articles()
+	app.vweb.json(json.encode(articles))
 }
 ```
 
@@ -369,4 +369,4 @@ pub fn (app mut App) articles() {
 
 To be continued...
 
-For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
+For an example of a more sophisticated web app written in V, check out Vorum: <https://github.com/vlang/vorum>
