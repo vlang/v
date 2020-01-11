@@ -185,11 +185,11 @@ mut:
 	ist u32 = u32(0)
 
 	// Quantifiers / branch
-	rep_min         int = 0		  // used also for jump next in the OR branch [no match] pc jump
-	rep_max         int = 0		  // used also for jump next in the OR branch [   match] pc jump
+	rep_min         int    = 0    // used also for jump next in the OR branch [no match] pc jump
+	rep_max         int    = 0    // used also for jump next in the OR branch [   match] pc jump
 
 	// Char class
-	cc_index        int = -1
+	cc_index        int    = -1
 
 	// counters for quantifier check (repetitions)
 	rep int = 0
@@ -263,7 +263,7 @@ pub mut:
 
 // Reset RE object 
 fn (re mut RE) reset(){
-	re.group_count      = 0
+	//re.group_count      = 0
 	re.cc_index         = 0
 	
 	mut i := 0
@@ -272,7 +272,7 @@ fn (re mut RE) reset(){
 		re.prog[i].rep                = 0 // clear repetition of the token
 		i++
 	}
-	re.groups = []
+	re.groups = [-1].repeat(re.group_count*2)
 
 	re.state_stack_index = -1
 }
@@ -339,9 +339,7 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int,int){
 
 		// no BSLS validator, manage as normal escape char char
 		if status == .normal_char {
-			//C.printf("BSLS test escape char\n")
 			if ch in BSLS_ESCAPE_LIST {
-				//C.printf("BSLS [%c] is an escape char\n",ch)
 				return NO_MATCH_FOUND,i-in_i+1
 			}
 			return ERR_SYNTAX_ERROR,i-in_i+1
@@ -351,7 +349,7 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int,int){
 		break
 
 	}
-	// not our bslss return KO
+	// not our bsls return KO
 	return ERR_SYNTAX_ERROR, i
 }
 
@@ -438,17 +436,14 @@ fn (re RE) check_char_class(pc int, ch u32) bool {
 	for cc_i >= 0 && cc_i < re.cc.len && re.cc[cc_i].cc_type != CC_END {
 		if re.cc[cc_i].cc_type == CC_BSLS {
 			if re.cc[cc_i].validator(byte(ch)) {
-				//C.printf("CC OK!\n")
 				return true
 			}
 		}
 		else if ch >= re.cc[cc_i].ch0 && ch <= re.cc[cc_i].ch1 {
-			//C.printf("CC OK!\n")
 			return true
 		}
 		cc_i++
 	}
-	//C.printf("CC KO!\n")
 	return false
 }
 
@@ -672,8 +667,8 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int) {
 //
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
 pub fn (re mut RE) compile(in_txt string) (int,int) {
-	mut i        := 0
-	mut pc       := 0 // program counter
+	mut i        := 0      // input string index
+	mut pc       := 0      // program counter
 	mut tmp_code := u32(0)
 
 	// group management variables
@@ -695,13 +690,11 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		// check special cases: $ ^
 		//
 		if char_len == 1 && i == 0 && byte(char_tmp) == `^` {
-			//C.printf("special: $\n")
 			re.flag = F_MS
 			i = i + char_len
 			continue
 		}
 		if char_len == 1 && i == (in_txt.len-1) && byte(char_tmp) == `$` {
-			//C.printf("special: $\n")
 			re.flag = F_ME
 			i = i + char_len
 			continue
@@ -759,7 +752,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 			pc = pc + 1
 			i = i + char_len
 			continue
-
 		}
 
 		// IST_DOT_CHAR match any char except the following token
@@ -912,11 +904,14 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		return ERR_SYNTAX_ERROR,in_txt.len
 	}
 	
+	// store the number of groups in the query
+	re.group_count = group_count+1
+
 	//******************************************
 	// Post processing
 	//******************************************
 
-	// count IST_DOT_CHAR
+	// count IST_DOT_CHAR to set the size of the state stack
 	mut pc1 := 0
 	mut tmp_count := 0
 	for pc1 < pc {
@@ -925,7 +920,7 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		}
 		pc1++
 	}
-	// init the dot_char stack
+	// init the state stack
 	re.state_stack = [StateDotObj{}].repeat(tmp_count+1)
 	
 	
@@ -933,6 +928,7 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 	// a|b|cd
 	// d exit point
 	// a,b,c branches
+	// set the jump in the right places
 	pc1 = 0
 	for pc1 < pc-2 {
 		// two consecutive OR are a syntax error
@@ -954,12 +950,10 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 			for pc2 < pc-1 {
 				ist := re.prog[pc2].ist
 				if  ist == IST_GROUP_START {
-					//C.printf("Found end group!\n")
 					re.prog[pc1+1].rep_max = re.prog[pc2].goto_pc + 1
 					break
 				}
 				if ist != IST_OR_BRANCH {
-					//C.printf("Found end group!\n")
 					re.prog[pc1+1].rep_max = pc2 + 1
 					break
 				}
@@ -975,7 +969,7 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 
 	
 	//******************************************
-	// DEBUG PRINT REGEX CODE
+	// DEBUG PRINT REGEX GENERATED CODE
 	//******************************************
 	if re.debug > 0 {
 		re.log_func(re.get_code())
@@ -985,16 +979,17 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 	return COMPILE_OK, 0
 }
 
+// get_code return the compiled code as regex string, note: may be different from the source!
 pub fn (re RE) get_code() string {
 		mut result := ""
 	
 		// use the best buffer possible
-		mut tmp_len := 256
-		if tmp_len < re.cc.len { 
-			tmp_len = re.cc.len
+		mut tmp_len := 256*128
+		if tmp_len < re.cc.len*128 { 
+			tmp_len = re.cc.len*128
 		}
 		
-		buf := [byte(0)].repeat(tmp_len) 
+		buf := [byte(0)].repeat(tmp_len) 	
 		mut buf_ptr := byteptr(&buf)
 		mut pc1 := 0
 		C.sprintf(buf_ptr, "========================================\nv RegEx compiler v%s output:\n", V_REGEX_VERSION)
@@ -1050,6 +1045,7 @@ pub fn (re RE) get_code() string {
 
 		buf_ptr = byteptr(&buf)
 		C.sprintf(buf_ptr, "========================================\n")
+		
 		result += tos_clone(byteptr(&buf))
 
 		return result
@@ -1059,11 +1055,14 @@ pub fn (re RE) get_code() string {
 // get_query return a string with a reconstruction of the query starting from the regex program code
 pub fn (re RE) get_query() string {
 	// use the best buffer possible
-	mut tmp_len := 256
+/*
+	mut tmp_len := 1
+	
 	if tmp_len < re.cc.len { 
 		tmp_len = re.cc.len
 	}
-	buf := [byte(0)].repeat(tmp_len) 
+*/
+	buf := [byte(0)].repeat(re.cc.len*4) 
 	mut buf_ptr := byteptr(&buf)
 
 	if (re.flag & F_MS) != 0 {
@@ -1170,8 +1169,6 @@ pub fn (re RE) get_query() string {
 		buf_ptr += vstrlen(buf_ptr)
 	}
 
-	C.sprintf(buf_ptr, "\n")
-	buf_ptr += vstrlen(buf_ptr)
 	return tos_clone(byteptr(&buf))
 }
 
@@ -1368,13 +1365,14 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						start_i   := group_stack[group_index]
 	 					group_stack[group_index]=-1
 
-	 					re.groups << re.prog[tmp_pc].group_id
-	 					if start_i >= 0 {
-	 						re.groups << start_i
-	 					} else {
-	 						re.groups << 0
-	 					}
-	 					re.groups << i
+	 					// save group results
+						g_index := re.prog[tmp_pc].group_id*2
+						if start_i >= 0 {
+							re.groups[g_index] = start_i
+						} else {
+							re.groups[g_index] = 0
+						}
+						re.groups[g_index+1] = i
  					}
 
 					group_index--
@@ -1488,14 +1486,14 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	 					start_i   := group_stack[group_index]
 	 					group_stack[group_index]=-1
 
-	 					re.groups << re.prog[pc].group_id
-	 					if start_i >= 0 {
-	 						re.groups << start_i
-	 					} else {
-	 						re.groups << 0
-	 					}
-	 					re.groups << i
-						
+	 					// save group results
+						g_index := re.prog[pc].group_id*2
+						if start_i >= 0 {
+							re.groups[g_index] = start_i
+						} else {
+							re.groups[g_index] = 0
+						}
+						re.groups[g_index+1] = i
 					}
 					
 					re.prog[pc].group_rep++ // increase repetitions

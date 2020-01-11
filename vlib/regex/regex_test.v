@@ -82,11 +82,11 @@ fn test_regex(){
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.s")
 
-		// test find
+		// test the find
 		if to.s > 0 {
 			mut re, re_err, err_pos := regex.regex(to.q)
 			if re_err == regex.COMPILE_OK {
-				//q_str := re.get_query_string()
+				//q_str := re.get_query()
 				//println("Query: $q_str")
 				start,end := re.find(to.src)
 
@@ -111,7 +111,7 @@ fn test_regex(){
 			continue
 		}
 		
-		// test match
+		// test the match
 		mut re := regex.new_regex()
 		//re.debug = true
 		
@@ -126,11 +126,13 @@ fn test_regex(){
 			}
 			
 			if start != to.s || end != to.e {
-				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")	
 				println("ERROR!")
 				C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 				assert false
 				break
+			} else {
+				assert true
 			}
 
 			// rerun to test consistency
@@ -141,7 +143,6 @@ fn test_regex(){
 				assert false
 				break
 			}
-
 
 		} else {
 			println("query: $to.q")
