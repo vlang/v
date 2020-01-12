@@ -1,4 +1,21 @@
+/**********************************************************************
+*
+* regex 0.9a
+*
+* Copyright (c) 2019 Dario Deledda. All rights reserved.
+* Use of this source code is governed by an MIT license
+* that can be found in the LICENSE file.
+*
+* This file contains regex module
+*
+* Know limitation:
+* - max 8 stacked groups
+* - find is implemented in a trivial way
+*
+*
+**********************************************************************/
 module regex
+
 pub const(
 	V_REGEX_VERSION = "0.9a"      // regex module version
 
@@ -26,9 +43,9 @@ pub const(
 )
 
 const(
-	//-------------------------------------
+	//*************************************
 	// regex program instructions
-	//-------------------------------------
+	//*************************************
 	SIMPLE_CHAR_MASK = u32(0x80000000)   // single char mask
 	IST_SIMPLE_CHAR  = u32(0x7FFFFFFF)   // single char instruction, 31 bit available to char
 
@@ -54,7 +71,7 @@ const(
 
 	// control instructions
 	IST_PROG_END         = u32(0x88000000)      //10 0010 xx xxxxxxxx 
-	//-------------------------------------
+	//*************************************
 )
 
 /******************************************************************************
@@ -71,6 +88,11 @@ fn utf8util_char_len(b byte) int {
 // get_char get a char from position i and return an u32 with the unicode code
 [inline]
 fn get_char(in_txt string, i int) (u32,int) {
+	// ascii 8 bit
+	if in_txt.str[i] & 0x80 == 0 {
+		return u32(in_txt.str[i]), 1 
+	}
+	// unicode char
 	char_len := utf8util_char_len(in_txt.str[i])
 	mut tmp := 0
 	mut ch := u32(0)
@@ -84,6 +106,11 @@ fn get_char(in_txt string, i int) (u32,int) {
 // get_charb get a char from position i and return an u32 with the unicode code
 [inline]
 fn get_charb(in_txt byteptr, i int) (u32,int) {
+	// ascii 8 bit 
+	if in_txt[i] & 0x80 == 0 {
+		return u32(in_txt[i]), 1 
+	}
+	// unicode char
 	char_len := utf8util_char_len(in_txt[i])
 	mut tmp := 0
 	mut ch := u32(0)
@@ -1645,11 +1672,11 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				}
 				m_state = .ist_quant_n
 				continue
-			}
-
+			} 
 			/* UNREACHABLE */
 			//C.printf("PANIC2!! state: %d\n", m_state)
 			return ERR_INTERNAL_ERROR, i
+		
 		}
 
 		/***********************************
