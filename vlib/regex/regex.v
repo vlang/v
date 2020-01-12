@@ -984,21 +984,23 @@ pub fn (re RE) get_code() string {
 		mut result := ""
 	
 		// use the best buffer possible
-		mut tmp_len := 256*128
-		if tmp_len < re.cc.len*128 { 
-			tmp_len = re.cc.len*128
+		mut tmp_len := 256+128
+		if tmp_len < re.cc.len+128 { 
+			tmp_len = re.cc.len+128
 		}
-		
-		buf := [byte(0)].repeat(tmp_len) 	
-		mut buf_ptr := byteptr(&buf)
+		// some memory buffer
+		buf1 := [byte(0)].repeat(tmp_len)
+		buf := &buf1[0]
+
+		mut buf_ptr := buf
 		mut pc1 := 0
 		C.sprintf(buf_ptr, "========================================\nv RegEx compiler v%s output:\n", V_REGEX_VERSION)
-		result += tos_clone(byteptr(&buf))
+		result += tos_clone(buf)
 		
 		mut stop_flag := false
 
 		for pc1 <= re.prog.len {
-			buf_ptr = byteptr(&buf)
+			buf_ptr = buf
 			C.sprintf(buf_ptr, "PC:%3d ist:%08x ",pc1, re.prog[pc1].ist)
 			buf_ptr += vstrlen(buf_ptr)
 			ist :=re.prog[pc1].ist
@@ -1036,34 +1038,27 @@ pub fn (re RE) get_code() string {
 			buf_ptr += vstrlen(buf_ptr)
 			C.sprintf(buf_ptr, "\n")
 			buf_ptr += vstrlen(buf_ptr)
-			result += tos_clone(byteptr(&buf))
+			result += tos_clone(buf)
 			if stop_flag {
 				break
 			}
 			pc1++
 		}
 
-		buf_ptr = byteptr(&buf)
+		buf_ptr = buf
 		C.sprintf(buf_ptr, "========================================\n")
 		
-		result += tos_clone(byteptr(&buf))
-
+		result += tos_clone(buf)
 		return result
-	
 }
 
 // get_query return a string with a reconstruction of the query starting from the regex program code
+
 pub fn (re RE) get_query() string {
 	// use the best buffer possible
-/*
-	mut tmp_len := 1
-	
-	if tmp_len < re.cc.len { 
-		tmp_len = re.cc.len
-	}
-*/
-	buf := [byte(0)].repeat(re.cc.len*4) 
-	mut buf_ptr := byteptr(&buf)
+	buf1 := [byte(0)].repeat(re.cc.len*2)
+	buf := &buf1[0]
+	mut buf_ptr := buf
 
 	if (re.flag & F_MS) != 0 {
 		C.sprintf(buf_ptr, "^")
@@ -1168,8 +1163,9 @@ pub fn (re RE) get_query() string {
 		C.sprintf(buf_ptr, "$")
 		buf_ptr += vstrlen(buf_ptr)
 	}
+	res := tos_clone(buf)
 
-	return tos_clone(byteptr(&buf))
+	return res
 }
 
 /******************************************************************************
@@ -1239,6 +1235,13 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	
 	re.reset()
 
+	if re.debug>0 {
+		// print header
+		h_buf :=  [byte(0)].repeat(64)
+		C.sprintf(&h_buf[0], "flags: %08x\n",re.flag)
+		re.log_func(tos_clone(&h_buf[0]))
+	}
+
 	for m_state != .end {
 		
 		if pc >= 0 && pc < re.prog.len {
@@ -1254,26 +1257,22 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		if re.debug>0 {
 			// use the best buffer possible
 			mut tmp_len := 256
-			if tmp_len < re.cc.len { 
-				tmp_len = re.cc.len
+			if tmp_len < re.cc.len+128 { 
+				tmp_len = re.cc.len+128
 			}
+
+			// some memory buffer
+			buf1 := [byte(0)].repeat(tmp_len)
+			buf := &buf1[0]
 
 			// print all the instructions
-			buf := [byte(0)].repeat(tmp_len) 
-			mut buf_ptr := byteptr(&buf)
-
-			// print header
-			if dbg_line == 0 {
-				C.sprintf(buf_ptr, "flags: %08x\n",re.flag)
-				buf_ptr += vstrlen(buf_ptr)
-				re.log_func(tos_clone(byteptr(&buf)))
-				buf_ptr = byteptr(&buf)
-			}
+			//buf := malloc(tmp_len) 
+			mut buf_ptr := buf
 
 			// end of the input text
 			if i >= in_txt_len {
 				C.sprintf(buf_ptr, "# %3d END OF INPUT TEXT\n",step_count)
-				re.log_func(tos_clone(byteptr(&buf)))
+				re.log_func(tos_clone(buf))
 			}else{
 
 				// print only the exe istruction
@@ -1286,7 +1285,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						buf_ptr += vstrlen(buf_ptr)
 					}
 					else if ist == 0 || m_state in [.start,.ist_next,.stop] {
-						C.sprintf(buf_ptr, "# %3d s: %12s PC: NA\n",step_count, state_str(m_state))
+						C.sprintf(buf_ptr, "# %3d s: %12s PC: NA\n",step_count, state_str(m_state).str)
 						buf_ptr += vstrlen(buf_ptr)
 					}else{
 						ch, char_len = get_charb(in_txt,i)
@@ -1332,13 +1331,14 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						}
 						buf_ptr += vstrlen(buf_ptr)
 						C.sprintf(buf_ptr, " (#%d)\n",group_index)
-						buf_ptr += vstrlen(buf_ptr)
+						
 					}
 				
-					re.log_func(tos_clone(byteptr(&buf)))
-					step_count++
+					re.log_func(tos_clone(buf))
+					
 				}
 			}
+			step_count++
 			dbg_line++
 		}
 		//******************************************
