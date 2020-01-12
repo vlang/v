@@ -273,6 +273,23 @@ pub fn get_monitor_size() Size {
 	return Size{mode.width, mode.height}
 }
 
+fn C.glfwGetWindowSize(window &glfw.Window, width &int, height &int) // screen coordinates
+fn C.glfwGetFramebufferSize(window &glfw.Window, width &int, height &int) // pixels
+
+// get_window_size in screen coordinates
+pub fn (w &glfw.Window) get_window_size() Size {
+	res := Size{ 0, 0 }
+	C.glfwGetWindowSize( w.data, &res.width, &res.height )
+	return res
+}
+
+// get_framebuffer_size in pixels
+pub fn (w &glfw.Window) get_framebuffer_size() Size {
+	res := Size{ 0, 0 }
+	C.glfwGetFramebufferSize( w.data, &res.width, &res.height )
+	return res
+}
+
 pub fn (size Size) str() string {
 	return '{$size.width, $size.height}'
 }
