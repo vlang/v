@@ -1115,3 +1115,17 @@ pub fn chmod(path string, mode int) {
 pub const (
 	wd_at_startup = getwd()
 )
+
+// resource_abs_path returns an absolute path, for the given `path` 
+// (the path is expected to be relative to the executable program)
+// See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
+// It gives a convenient way to access program resources like images, fonts, sounds and so on,
+// *no matter* how the program was started, and what is the current working directory.
+pub fn resource_abs_path(path string) string {
+	mut base_path := os.realpath(filepath.dir(os.executable()))
+	vresource := os.getenv('V_RESOURCE_PATH')
+	if vresource.len != 0 {
+		base_path = vresource
+	}
+	return os.realpath( filepath.join( base_path, path ) )
+}
