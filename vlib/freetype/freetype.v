@@ -213,7 +213,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	//ch := Character{}
 	// Configure VAO
 	vao := gl.gen_vertex_array()
-	println('new gg text context vao=$vao')
+	//println('new gg text context vao=$vao')
 	vbo := gl.gen_buffer()
 	gl.bind_vao(vao)
 	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)

@@ -358,7 +358,7 @@ fn (c GG) text_align(a int) {
 }
 
 pub fn create_image(file string) u32 {
-	println('gg create image "$file"')
+	//println('gg create image "$file"')
 	if file.contains('twitch') {
 		return u32(0)// TODO
 	}
