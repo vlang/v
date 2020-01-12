@@ -11,7 +11,6 @@ import (
 	glm
 	gl
 	filepath
-	time
 )
 
 #flag windows -I @VROOT/thirdparty/freetype/include
@@ -42,8 +41,8 @@ fn C.FT_Set_Pixel_Sizes()
 
 
 
-const (
-	DEFAULT_FONT_SIZE = 12
+pub const (
+	default_font_size = 12
 )
 
 struct Character {
@@ -347,9 +346,9 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 
 pub fn (ctx mut FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
-		color: gx.Black,
-		size: DEFAULT_FONT_SIZE,
-		align: gx.ALIGN_LEFT,
+		color: gx.Black
+		size: default_font_size
+		align: gx.ALIGN_LEFT
 	}
 	ctx.draw_text(x, y, text, cfg)
 }
