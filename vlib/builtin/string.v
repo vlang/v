@@ -869,7 +869,7 @@ pub fn (s string) ustring() ustring {
 		s: s
 		// runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
-		
+
 		runes: new_array(0, s.len, sizeof(int))
 	}
 	for i := 0; i < s.len; i++ {
