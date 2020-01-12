@@ -223,6 +223,8 @@ pub const (
 
 	F_MS  = 0x00000008  // match true only if the match is at the start of the string
 	F_ME  = 0x00000010  // match true only if the match is at the end of the string 
+
+	F_EFM = 0x01000000  // exit on first token matched, used by search
 )
 
 struct StateDotObj{
@@ -239,8 +241,8 @@ pub mut:
 	prog []Token
 
 	// char classes storage
-	cc []CharClass           // char class list
-	cc_index int         = 0 // index
+	cc []CharClass             // char class list
+	cc_index int         = 0   // index
 
 	// state index
 	state_stack_index int= -1
@@ -248,17 +250,18 @@ pub mut:
 	
 
 	// groups
-	group_count int      = 0 // number of groups in this regex struct
-	groups []int             // groups index results
-	group_max_nested int = 3 // max nested group
-	group_max int        = 8 // max allowed number of different groups
+	group_count int      = 0   // number of groups in this regex struct
+	groups []int               // groups index results
+	group_max_nested int = 3   // max nested group
+	group_max int        = 8   // max allowed number of different groups
 
 	// flags
-	flag int             = 0 // flag for optional parameters
+	flag int             = 0   // flag for optional parameters
 
 	// Debug/log
-	debug int            = 0 // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
+	debug int            = 0   // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
 	log_func fn (string) = simple_log  // log function, can be customized by the user
+	query string         = ""  // query string
 }
 
 // Reset RE object 
@@ -676,6 +679,8 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 	mut group_stack           := [0 ].repeat(re.group_max_nested)
 	mut group_stack_txt_index := [-1].repeat(re.group_max_nested)
 	mut group_stack_index     := -1
+
+	re.query = in_txt      // save the query string
 
 	i = 0
 	for i < in_txt.len {
@@ -1263,10 +1268,9 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// some memory buffer
 			buf1 := [byte(0)].repeat(tmp_len)
-			buf := &buf1[0]
+			buf  := &buf1[0]
 
 			// print all the instructions
-			//buf := malloc(tmp_len) 
 			mut buf_ptr := buf
 
 			// end of the input text
@@ -1815,6 +1819,11 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 		// ist_quant_p
 		else if m_state == .ist_quant_p {
+			// exit on first match
+			if (re.flag & F_EFM) != 0 {
+				return i,i+1
+			}
+
 			rep := re.prog[pc].rep
 			
 			// clear the actual dot char capture state
@@ -1924,22 +1933,38 @@ pub fn (re mut RE) match_string(in_txt string) (int,int) {
 
 // find try to find the first match in the input string
 pub fn (re mut RE) find(in_txt string) (int,int) {
-	mut i := 0
-	for i < in_txt.len {
-		tmp_txt := in_txt[i..]
-		//C.printf("txt:[%s] %d\n",tmp_txt ,i)
-		//C.printf("flag: %08x\n", re.flag)
-		start, end := re.match_base(tmp_txt.str, tmp_txt.len)
-		if start >= 0 && end > start {
-			if (re.flag & F_MS) != 0 && (i+start) > 0 {
-				return NO_MATCH_FOUND, 0
-			}
-			if (re.flag & F_ME) != 0 && (i+end) < in_txt.len {
-				return NO_MATCH_FOUND, 0
-			}
+	mut i     := 0
+	mut start := -1 
+	mut end   := -1
+	old_flag := re.flag
 
-			return i+start, i+end
+	for i < in_txt.len {
+		
+		// test only the first part of the query string
+		re.flag &= F_EFM // set to exit on the first token match
+		mut tmp_end := i+re.query.len
+		if tmp_end > in_txt.len { tmp_end = in_txt.len }
+		tmp_txt := string{ str: in_txt.str+i, len: tmp_end-i }
+		start, end = re.match_base(tmp_txt.str, tmp_txt.len)
+		
+		if start >= 0 && end > start {
+			// test a complete match
+			re.flag = old_flag
+			tmp_txt1 := string{ str: in_txt.str+i , len: in_txt.len-i }
+			start, end = re.match_base(tmp_txt1.str, tmp_txt1.len)
+
+			if start >= 0 && end > start {
+				if (re.flag & F_MS) != 0 && (i+start) > 0 {
+					return NO_MATCH_FOUND, 0
+				}
+				if (re.flag & F_ME) != 0 && (i+end) < in_txt.len {
+					return NO_MATCH_FOUND, 0
+				}
+
+				return i+start, i+end
+			}	
 		}
+		
 		i++
 		if re.flag == F_MS && i>0 {
 			return NO_MATCH_FOUND, 0
