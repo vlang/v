@@ -28,11 +28,8 @@
 + bring back vdoc and regenerate all module docs
 + optimize the parser
 - chat.vlang.io
-- rewrite objective c code in v (ui_mac.m)
-+ v ui for macos
-- v ui for windows
-- v ui for linux
 - doom.v
++ v ui
 - ui/orm demo: a simple gui client for postgres/mysql/sqlite
 - ui demo: calculator
 - declarative ui with hot reload (similar to swiftui)
@@ -45,6 +42,7 @@
 + x64 machine code generation (ELF)
 + require explicit C.fn definitions, add all missing definitions
 + string.index() ?int
+- new AST based parser
 
 
 
