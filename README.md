@@ -29,7 +29,8 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
-- Powerful UI and graphics libraries
+- [Cross-platform UI library](https://github.com/vlang/ui)
+- Built-in graphics library
 - Easy cross compilation
 - REPL
 - Built-in ORM
@@ -77,6 +78,8 @@ sudo ./v symlink
 
 ### Docker
 
+<details><summary>Expand Docker instructions</summary>
+
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -93,6 +96,8 @@ docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
 /usr/local/v/v
 ```
+</details>
+
 
 ### Testing and running the examples
 
@@ -147,6 +152,14 @@ git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [pat
 ```
 
 glfw dependency will be removed soon.
+
+## V UI
+
+<a href="https://github.com/vlang/ui">
+<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/users/screenshot.png' width=712>
+</a>
+
+https://github.com/vlang/ui
 
 <!---
 ## JavaScript backend
