@@ -65,10 +65,11 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	is_indexer := p.peek() == .lsbr
 	is_fn_call,next_expr := p.is_expr_fn_call(p.token_idx)
 	pos := p.cgen.add_placeholder()
+	expr_tok := p.cur_tok_index()
 	p.is_var_decl = true
 	typ := p.bool_expression()
 	if typ == 'void' {
-		p.error_with_token_index('${next_expr}() $err_used_as_value', p.token_idx - 2)
+		p.error_with_token_index('${next_expr}() $err_used_as_value', expr_tok)
 	}
 	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
