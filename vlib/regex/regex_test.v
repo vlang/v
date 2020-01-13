@@ -1,5 +1,10 @@
 import regex
 
+/******************************************************************************
+*
+* Test section
+*
+******************************************************************************/
 struct TestItem {
 	src string
 	q string
@@ -77,7 +82,113 @@ match_test_suite = [
 ]
 )
 
+struct TestItemFa {
+	src string
+	q string
+	r []int
+}
+
+const (
+match_test_suite_fa = [
+
+	// find_all tests
+
+	TestItemFa{
+		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
+		r"p[iplut]+o",
+		[5, 10, 31, 36, 51, 56]
+	},
+	TestItemFa{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		[5, 10, 31, 39, 54, 65]
+	},
+
+]
+)
+
+struct TestItemRe {
+	src string
+	q string
+	rep string
+	r string
+}
+
+const (
+match_test_suite_re = [
+
+	// replace tests
+
+	TestItemRe{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		"CIAO",
+		"oggi CIAO è andato a casa di CIAO ed ha trovato CIAO"
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"[Tt]o\w+",
+		"CIAO",
+		"CIAO is a good day and CIAO will be for sure."
+	}
+]
+)
+
 fn test_regex(){
+	// check find_all
+	for c,to in match_test_suite_fa{
+		// debug print
+		//println("#$c [$to.src] q[$to.q] $to.r")
+
+		mut re, re_err, err_pos := regex.regex(to.q)
+		if re_err == regex.COMPILE_OK {
+			res := re.find_all(to.src)
+			if res.len != to.r.len {
+				println("ERROR: find_all, array of different size.")
+				assert false
+			}
+
+			for c1,i in res {
+				if i != to.r[c1] {
+					println("ERROR: find_all, different indexes.")
+					assert false
+				}
+			}
+
+		} else {
+			println("query: $to.q")
+			lc := "-".repeat(err_pos-1)
+			println("err  : $lc^")
+			err_str := re.get_parse_error_string(re_err)
+			println("ERROR: $err_str")
+			assert false
+		}
+	}
+
+	// check replace
+	for c,to in match_test_suite_re{
+		// debug print
+		//println("#$c [$to.src] q[$to.q] $to.r")
+
+		mut re, re_err, err_pos := regex.regex(to.q)
+		if re_err == regex.COMPILE_OK {
+			res := re.replace(to.src,to.rep)
+			if res != to.r {
+				println("ERROR: replace.")
+				assert false
+			}
+
+		} else {
+			println("query: $to.q")
+			lc := "-".repeat(err_pos-1)
+			println("err  : $lc^")
+			err_str := re.get_parse_error_string(re_err)
+			println("ERROR: $err_str")
+			assert false
+		}
+	}
+	
+	// check match and find
 	for c,to in match_test_suite {
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.s")
@@ -128,11 +239,9 @@ fn test_regex(){
 			if start != to.s || end != to.e {
 				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")	
 				println("ERROR!")
-				C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+				//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 				assert false
 				break
-			} else {
-				assert true
 			}
 
 			// rerun to test consistency
@@ -147,7 +256,7 @@ fn test_regex(){
 		} else {
 			println("query: $to.q")
 			lc := "-".repeat(err_pos-1)
-			println("err  : $lc")
+			println("err  : $lc^")
 			err_str := re.get_parse_error_string(re_err)
 			println("ERROR: $err_str")
 			assert false
@@ -155,3 +264,4 @@ fn test_regex(){
 		}
 	}
 }
+
