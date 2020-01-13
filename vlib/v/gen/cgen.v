@@ -215,6 +215,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 			g.write(')')
 		}
+		ast.MethodCallExpr {}
 		ast.ArrayInit {
 			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.name), {\t')
 			for expr in it.exprs {

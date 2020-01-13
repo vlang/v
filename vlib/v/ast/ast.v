@@ -47,8 +47,6 @@ pub struct SelectorExpr {
 pub:
 	expr  Expr
 	field string
-	ti   types.TypeIdent
-	// type_idx int
 }
 
 // module declaration
@@ -118,7 +116,6 @@ pub:
 	name       string
 	args       []Expr
 	tok        token.Token
-	ti   	   types.TypeIdent
 }
 
 pub struct Return {

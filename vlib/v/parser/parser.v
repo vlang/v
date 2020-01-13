@@ -41,8 +41,6 @@ mut:
 struct TypeCheck{
 	expr ast.Expr
 	stmt ast.Stmt
-	got  types.TypeIdent
-	expected types.TypeIdent
 }
 
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
@@ -220,20 +218,15 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 	}
 }
 
-pub fn (p mut Parser) assign_expr(left ast.Expr, left_ti &types.TypeIdent) ast.AssignExpr {
+pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
-	val,ti := p.expr(0)
-	// if !p.table.check(ti, left_ti) {
-	// 	p.error('cannot assign $ti.name to $left_ti.name')
-	// }
+	val,_ := p.expr(0)
 	node := ast.AssignExpr{
 		left: left
 		op: op
 		val: val
 	}
-	// println('assign $ti.name to $left_ti.name')
-	// p.add_check_expr(&node, left_ti, ti)
 	p.add_check_expr(node)
 	return node
 }
@@ -417,10 +410,10 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 	// Infix
 	for precedence < p.tok.precedence() {
 		if p.tok.kind.is_assign() {
-			node = p.assign_expr(node, ti)
+			node = p.assign_expr(node)
 		}
 		else if p.tok.kind == .dot {
-			node,ti = p.dot_expr(node, ti)
+			node = p.dot_expr(node)
 		}
 		else if p.tok.kind == .lsbr {
 			node,ti = p.index_expr(node)
@@ -473,44 +466,31 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	return node,ti
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr, ti &types.TypeIdent) (ast.Expr,types.TypeIdent) {
+fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	field_name := p.check_name()
-	println('# $ti.name $ti.idx - $field_name')
-	if ti.kind == .void {
-		p.warn('#### void type in dot_expr - field: $field_name')
-	}
-	struc := p.table.types[ti.idx] as types.Struct
 	// Method call
-	if ti.kind != .void && p.tok.kind == .lpar {
-		// if !p.table.has_method(ti.idx, field_name) {
-		// 	p.error('type `$struc.name` has no method `$field_name`')
-		// }
+	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
-		println('method call $field_name')
 		mut node := ast.Expr{}
 		node = ast.MethodCallExpr{
 			expr: left
 			name: field_name
 			args: args
-			ti: *ti
 		}
-		return node,types.int_ti
+		p.add_check_expr(node)
+		return node
 	}
 
 	mut node := ast.Expr{}
 	se := ast.SelectorExpr{
 		expr: left
 		field: field_name
-		ti: *ti
 	}
 	p.add_check_expr(se)
 	node = se
-	// if ti.kind ==.placeholder {
-	// 	return node, types.new_ti(.placeholder, 'test_placeholder', 0, 0)
-	// }
-	return node,types.int_ti
+	return node
 }
 
 fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
@@ -884,13 +864,11 @@ pub fn (p &Parser) check_get_type(expr ast.Expr) types.TypeIdent {
 			return types.int_ti
 		}
 		ast.SelectorExpr {
-			if !(it.ti.kind in [.placeholder, .struct_]) {
-				println('$it.ti.name is not a struct')
+			ti := p.check_get_type(it.expr)
+			if !(ti.kind in [.placeholder, .struct_]) {
+				println('$ti.name is not a struct')
 			}
-			struct_ := p.table.types[it.ti.idx] as types.Struct
-			// if !p.table.struct_has_field(struct_, selector_expr.field) {
-			// 	p.error('unknown field `${it.ti.name}.$it.field`')
-			// }
+			struct_ := p.table.types[ti.idx] as types.Struct
 			for field in struct_.fields {
 				if field.name == it.field {
 					return field.ti
@@ -904,7 +882,7 @@ pub fn (p &Parser) check_get_type(expr ast.Expr) types.TypeIdent {
 					}
 				}
 			}
-			p.error('unknown field `${it.ti.name}.$it.field`')
+			p.error('unknown field `${ti.name}.$it.field`')
 		}
 		else {
 			types.void_ti
@@ -968,44 +946,28 @@ pub fn (p &Parser) check_struct_init(struct_init ast.StructInit) {
 }
 
 pub fn (p &Parser) check_method_call(method_call ast.MethodCallExpr) {
-	if !p.table.has_method(method_call.ti.idx, method_call.name) {
-		p.error('type `$method_call.ti.name` has no method `$method_call.name`')
+	ti := p.check_get_type(method_call.expr)
+	println('## check_method_call: $ti.name')
+	if !p.table.has_method(ti.idx, method_call.name) {
+		p.error('type `$ti.name` has no method `$method_call.name`')
 	}
 }
 
 pub fn (p &Parser) check_selector_expr(selector_expr ast.SelectorExpr) {
-	println('check_selector_expr $selector_expr.ti.name - $selector_expr.ti.str()')
-	if !selector_expr.ti.kind in [.placeholder, .struct_] {
-		println(selector_expr.ti.kind.str())
-		p.error('$selector_expr.ti.name is not a struct')
+	ti := p.check_get_type(selector_expr.expr)
+	println('#### selector expr: $ti.name')
+
+	if !ti.kind in [.placeholder, .struct_] {
+		p.error('$ti.name is not a struct')
 	}
-	struct_ := p.table.types[selector_expr.ti.idx] as types.Struct
+	struct_ := p.table.types[ti.idx] as types.Struct
 	if !p.table.struct_has_field(struct_, selector_expr.field) {
-		p.error('unknown field `${selector_expr.ti.name}.$selector_expr.field`')
+		p.error('unknown field `${ti.name}.$selector_expr.field`')
 	}
-	// field := p.check_name()
-	// if !ti.type_kind in  [.placeholder, .struct_] {
-	// 	println('kind: $ti.str()')
-	// 	p.error('cannot access field, `$ti.type_name` is not a struct')
-	// }
-	// typ := p.table.types[ti.type_idx] as types.Struct
-	// mut ok := false
-	// for f in typ.fields {
-	// 	if f.name == field {
-	// 		ok = true
-	// 	}
-	// }
-	// if !ok {
-	// 	p.error('unknown field `${typ.name}.$field`')
-	// }
 }
 
 pub fn (p &Parser) check_types() {
 	for ctx in p.type_checks {
-		mut got := ctx.got
-		mut expected := ctx.expected
-		println('#### $got.name')
-		println('#### $expected.name')
 		// expr := *ctx.expr
 		match ctx.expr {
 			ast.AssignExpr {
@@ -1026,7 +988,7 @@ pub fn (p &Parser) check_types() {
 				p.check_method_call(it)
 			}
 			ast.SelectorExpr {
-				println('SELECTOR EXPR - $it.ti.name')
+				println('SELECTOR EXPR')
 				p.check_selector_expr(it)
 			}
 			else { println('ELSE') }

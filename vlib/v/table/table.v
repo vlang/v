@@ -194,17 +194,6 @@ pub fn (t &Table) has_method(type_idx int, name string) bool {
 	return false
 }
 
-/*
-pub fn (t &Table) struct_has_method(s &types.Struct, name string) bool {
-	for field in t.methods[s.idx] {
-		if field.name == name {
-			return true
-		}
-	}
-	return false
-}
-*/
-
 [inline]
 pub fn (t &Table) find_type_idx(name string) int {
 	return t.type_idxs[name]
