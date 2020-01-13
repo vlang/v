@@ -483,3 +483,8 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		}
 	}
 }
+
+// to_iso_string returns a string in simplified extended ISO format (ISO 8601)
+pub fn (t Time) to_iso_string() string {
+	return t.ymmdd() + 'T' + t.hhmmss() + 'Z'
+}
