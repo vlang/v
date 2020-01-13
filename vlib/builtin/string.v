@@ -308,12 +308,12 @@ pub fn (s string) f64() f64 {
 	return strconv.atof64(s)
 }
 
-pub fn (s string) u16() u16 {
-	return u16(strconv.common_parse_uint(s, 0, 16, false, false))
+pub fn (s string) u32() u32 {
+	return u32(strconv.common_parse_uint(s, 0, 16, false, false))
 }
 
-pub fn (s string) u32() u32 {
-	return u32(strconv.common_parse_uint(s, 0, 32, false, false))
+pub fn (s string) u64() u64 {
+	return strconv.common_parse_uint(s, 0, 32, false, false)
 }
 
 // ==
