@@ -62,7 +62,7 @@ fn (p mut Parser) get_type2() Type {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 			cat: .func

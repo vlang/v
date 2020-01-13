@@ -263,8 +263,8 @@ pub fn (t mut Table) register_type(typ types.Type, kind types.Kind, name string)
 	t.type_idxs[name] = idx
 	t.type_kinds << kind
 	t.types << typ
-	t.methods << []Fn // TODO [] breaks V
-	return idx
+	e := []Fn
+	t.methods << e // TODO [] breaks V
 }
 
 /*

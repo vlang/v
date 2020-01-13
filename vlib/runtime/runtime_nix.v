@@ -4,7 +4,7 @@ fn nr_cpus_nix() int {
 	$if linux {
 		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
 	}
-	$if mac {
+	$if macos {
 		return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
 	}
 	return 1

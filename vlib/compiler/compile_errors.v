@@ -197,6 +197,33 @@ fn (p mut Parser) print_error_context() {
 	// p.scanner.debug_tokens()
 }
 
+fn ienv_default(ename string, idefault int) int {
+	es := os.getenv(ename)
+	if es.len == 0 { return idefault }
+	return es.int()
+}
+
+// print_current_tokens/1 pretty prints the current token context, like this:
+// // Your label: tokens[  32] = Token{ .line:   8, .pos:   93, .tok:  85 } = mut
+// // Your label: tokens[> 33] = Token{ .line:   8, .pos:   95, .tok:   1 } = b
+// // Your label: tokens[  34] = Token{ .line:   8, .pos:   98, .tok:  31 } = :=
+// It is useful while debugging the v compiler itself. > marks p.token_idx
+fn (p &Parser) print_current_tokens(label string){
+	btokens := ienv_default('V_BTOKENS', 5)
+	atokens := ienv_default('V_ATOKENS', 5)
+	ctoken_idx := p.token_idx
+	stoken_idx := imax(0, ctoken_idx - btokens)
+	etoken_idx := imin( ctoken_idx + atokens + 1, p.tokens.len)
+	for i := stoken_idx; i < etoken_idx; i++ {
+		idx := if i == ctoken_idx {
+			'>${i:3d}'
+		} else {
+			' ${i:3d}'
+		}
+		eprintln('$label: tokens[$idx] = ' + p.tokens[ i ].detailed_str())
+	}
+}
+
 fn normalized_error(s string) string {
 	mut res := s
 	if !res.contains('__') {

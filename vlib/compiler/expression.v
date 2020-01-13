@@ -53,8 +53,13 @@ fn (p mut Parser) bool_expression() string {
 	// `window.widget = button`, widget is an interface
 	if expected != typ && expected.ends_with('er') && expected.contains('I') {
 		tt := typ.replace('*', '_ptr')
+		/*
+		if p.fileis('button') || p.fileis('textbox') {
+			p.warn('exp="$expected" typ="$typ" tt="$tt"')
+		}
+		*/
 		p.cgen.set_placeholder(start_ph,
-		'($expected) { ._interface_idx = _${expected}_${tt}_index, ._object = ' )
+		'($expected) { ._interface_idx = /* :) */ _${expected}_${tt}_index, ._object = ' )
 		p.gen('}')
 		//p.satisfies_interface(expected, typ, true)
 	}
@@ -537,6 +542,9 @@ fn (p mut Parser) expression() string {
 			// _PUSH(&a, expression(), tmp, string)
 			tmp := p.get_tmp()
 			tmp_typ := parse_pointer(typ[6..]) // skip "array_"
+			//p.warn('arr typ $tmp_typ')
+			p.expected_type = tmp_typ
+			//println('set expr to $tmp_typ')
 			p.check_space(.left_shift)
 			// Get the value we are pushing
 			p.gen(', (')
@@ -552,7 +560,7 @@ fn (p mut Parser) expression() string {
 			}
 			p.gen('/*typ = $typ   tmp_typ=$tmp_typ*/')
 			ph_clone := p.cgen.add_placeholder()
-			expr_type := p.expression()
+			expr_type := p.bool_expression()
 			// Need to clone the string when appending it to an array?
 			if p.pref.autofree && typ == 'array_string' && expr_type == 'string' {
 				p.cgen.set_placeholder(ph_clone, 'string_clone(')

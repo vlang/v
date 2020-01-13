@@ -37,6 +37,12 @@ fn (p mut Parser) string_expr() {
 			p.gen('tos3("$f")')
 		}
 		p.next()
+		if p.scanner.is_fmt && p.tok == .not {
+			// handle '$age'!
+			// TODO remove this hack, do this automatically
+			p.fgen(' ')
+			p.check(.not)
+		}
 		return
 	}
 	$if js {
@@ -131,6 +137,7 @@ fn (p mut Parser) string_expr() {
 	if complex_inter {
 		p.fgen('}')
 	}
+  
 	// p.fgen('\'')
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {
@@ -149,6 +156,7 @@ fn (p mut Parser) string_expr() {
 	// won't be used	again)
 	// TODO remove this hack, do this automatically
 	if p.tok == .not {
+		p.fgen(' ')
 		p.check(.not)
 		p.gen('_STR_TMP($format$args)')
 	}

@@ -65,10 +65,11 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	is_indexer := p.peek() == .lsbr
 	is_fn_call,next_expr := p.is_expr_fn_call(p.token_idx)
 	pos := p.cgen.add_placeholder()
+	expr_tok := p.cur_tok_index()
 	p.is_var_decl = true
 	typ := p.bool_expression()
 	if typ == 'void' {
-		p.error_with_token_index('${next_expr}() $err_used_as_value', p.token_idx - 2)
+		p.error_with_token_index('${next_expr}() $err_used_as_value', expr_tok)
 	}
 	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
@@ -277,8 +278,8 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 				`%` {
 					name = name.replace('%', 'op_mod')
 				}
-				else {
-				}}
+				else {}
+	}
 		}
 	}
 	if f.is_interface {
@@ -600,6 +601,9 @@ fn (p mut Parser) cast(typ string) {
 		}
 		// Strings can't be cast
 		if expr_typ == 'string' {
+			if is_number_type(typ) || is_float_type(typ) {
+				p.error('cannot cast `string` to `$typ`, use `${expr_typ}.${typ}()` instead')
+			}
 			p.error('cannot cast `$expr_typ` to `$typ`')
 		}
 		// Nothing can be cast to bool
@@ -671,8 +675,8 @@ fn type_default(typ string) string {
 		'voidptr' {
 			return '0'
 		}
-		else {
-		}}
+		else {}
+	}
 	return '{0}'
 	// TODO this results in
 	// error: expected a field designator, such as '.field = 4'

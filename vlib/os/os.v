@@ -75,21 +75,19 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
-/*
 // read_bytes reads an amount of bytes from the beginning of the file
-pub fn (f mut File) read_bytes(size int) []byte {
+pub fn (f &File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads an amount of bytes at the given position in the file
-pub fn (f mut File) read_bytes_at(size, pos int) []byte {
+pub fn (f &File) read_bytes_at(size, pos int) []byte {
 	mut arr := [`0`].repeat(size)
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_SET)
 	return arr[0..nreadbytes]
 }
-*/
 
 
 pub fn read_bytes(path string) ?[]byte {
@@ -646,18 +644,26 @@ pub fn get_raw_line() string {
 	$if windows {
 		max_line_chars := 256
 		buf := malloc(max_line_chars * 2)
+		h_input := C.GetStdHandle(STD_INPUT_HANDLE)
+		mut bytes_read := 0
 		if is_atty(0) > 0 {
-			h_input := C.GetStdHandle(STD_INPUT_HANDLE)
-			mut nr_chars := u32(0)
-			C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&nr_chars), 0)
-			return string_from_wide2(&u16(buf), int(nr_chars))
+			C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+			return string_from_wide2(&u16(buf), bytes_read)
 		}
-		res := C.fgetws(&u16(buf), max_line_chars, C.stdin)
-		len := C.wcslen(&u16(buf))
-		if !isnil(res) {
-			return string_from_wide2(&u16(buf), len)
+		mut offset := 0
+		for {
+			pos := buf + offset
+			res := C.ReadFile(h_input, pos, 1, &bytes_read, 0)
+			if !res || bytes_read == 0 {
+           			break
+			}
+			if *pos == `\n` || *pos == `\r` {
+				offset++
+				break
+			}
+			offset++
 		}
-		return ''
+		return string(buf, offset)
 	} $else {
 		max := size_t(256)
 		buf := charptr(malloc(int(max)))
@@ -1109,3 +1115,17 @@ pub fn chmod(path string, mode int) {
 pub const (
 	wd_at_startup = getwd()
 )
+
+// resource_abs_path returns an absolute path, for the given `path` 
+// (the path is expected to be relative to the executable program)
+// See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
+// It gives a convenient way to access program resources like images, fonts, sounds and so on,
+// *no matter* how the program was started, and what is the current working directory.
+pub fn resource_abs_path(path string) string {
+	mut base_path := os.realpath(filepath.dir(os.executable()))
+	vresource := os.getenv('V_RESOURCE_PATH')
+	if vresource.len != 0 {
+		base_path = vresource
+	}
+	return os.realpath( filepath.join( base_path, path ) )
+}

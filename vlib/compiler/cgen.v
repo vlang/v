@@ -336,7 +336,7 @@ fn os_name_to_ifdef(name string) string {
 			return '_MSC_VER'
 		}
 		'android' {
-			return '__BIONIC__'
+			return '__ANDROID__'
 		}
 		'js' {
 			return '_VJS'

@@ -1094,7 +1094,7 @@ fn (p mut Parser) fn_call_args(f mut Fn, generic_param_types []string) {
 				// _interface_idx = _Speaker_Dog_index })
 				concrete_type_name := typ.replace('*', '_ptr')
 				p.cgen.set_placeholder(ph, '($arg.typ) { ._object = &')
-				p.gen(', ._interface_idx = _${arg.typ}_${concrete_type_name}_index} /* i. arg*/')
+				p.gen(', /*OLD*/ ._interface_idx = _${arg.typ}_${concrete_type_name}_index} /* i. arg*/')
 				p.table.add_gen_type(arg.typ, typ)
 			}
 		}
