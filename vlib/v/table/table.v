@@ -2,7 +2,6 @@ module table
 
 import (
 	v.types
-	v.ast
 )
 
 pub struct Table {

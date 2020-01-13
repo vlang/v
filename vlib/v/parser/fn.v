@@ -9,12 +9,12 @@ import (
 	v.types
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
+pub fn (p mut Parser) call_expr() ast.CallExpr {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
 	mut args := []ast.Expr
-	mut return_ti := types.void_ti
+	// mut return_ti := types.void_ti
 	for p.tok.kind != .rpar {
 		e,_ := p.expr(0)
 		args << e
@@ -33,7 +33,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	println('adding call_expr check $fn_name')
 	p.add_check_expr(node)
 
-	return node,return_ti
+	return node
 }
 
 pub fn (p mut Parser) call_args() []ast.Expr {
