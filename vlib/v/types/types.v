@@ -223,18 +223,6 @@ pub fn (kinds []Kind) str() string {
 	return kinds_str
 }
 
-pub struct FunctionPlaceholder {
-pub:
-	name string
-	// kind Kind
-}
-
-pub struct StructFieldPlaceholder {
-pub:
-	name string
-	// kind Kind
-}
-
 pub struct Placeholder {
 pub:
 	name string
@@ -262,13 +250,7 @@ pub:
 	name       string
 pub mut:
 	fields     []Field
-	methods    []Field // TODO Method
-}
-
-pub struct FieldPlaceholder {
-pub:
-	name     string
-	type_idx int
+	// methods    []Field // TODO Method
 }
 
 pub struct Field {
