@@ -309,11 +309,11 @@ pub fn (s string) f64() f64 {
 }
 
 pub fn (s string) u32() u32 {
-	return u32(strconv.common_parse_uint(s, 0, 16, false, false))
+	return u32(strconv.common_parse_uint(s, 0, 32, false, false))
 }
 
 pub fn (s string) u64() u64 {
-	return strconv.common_parse_uint(s, 0, 32, false, false)
+	return strconv.common_parse_uint(s, 0, 64, false, false)
 }
 
 // ==
