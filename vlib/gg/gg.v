@@ -414,7 +414,10 @@ pub fn (c &GG) draw_vertical(x, y, height int) {
 
 // fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
 pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
-
+    
+	// NB: HACK to ensure same state ... TODO: remove next line
+	ctx.draw_empty_rect(0,0,0,0, gx.white)
+    
 	last_array_buffer := 0
 	last_texture := 0
 	C.glGetIntegerv(C.GL_ARRAY_BUFFER_BINDING, &last_array_buffer)
