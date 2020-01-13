@@ -298,14 +298,6 @@ pub fn (s string) i64() i64 {
 	return strconv.common_parse_int(s, 0, 64, false, false)
 }
 
-pub fn (s string) i8() i8 {
-	return i8(strconv.common_parse_int(s, 0, 8, false, false))
-}
-
-pub fn (s string) i16() i16 {
-	return i16(strconv.common_parse_int(s, 0, 16, false, false))
-}
-
 pub fn (s string) f32() f32 {
 	// return C.atof(charptr(s.str))
 	return f32(strconv.atof64(s))
@@ -322,10 +314,6 @@ pub fn (s string) u16() u16 {
 
 pub fn (s string) u32() u32 {
 	return u32(strconv.common_parse_uint(s, 0, 32, false, false))
-}
-
-pub fn (s string) u64() u64 {
-	return strconv.common_parse_uint(s, 0, 64, false, false)
 }
 
 // ==
