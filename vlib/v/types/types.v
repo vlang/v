@@ -24,6 +24,7 @@ pub const (
 )
 
 pub enum Kind {
+	unresolved_ident
 	placeholder
 	void
 	voidptr
@@ -58,7 +59,7 @@ String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
 pub struct TypeIdent {
 pub:
 	idx     int
-	kind    Kind
+	mut: kind    Kind
 	name    string
 	nr_muls int
 }
@@ -222,39 +223,52 @@ pub fn (kinds []Kind) str() string {
 	return kinds_str
 }
 
+pub struct FunctionPlaceholder {
+pub:
+	name string
+	// kind Kind
+}
+
+pub struct StructFieldPlaceholder {
+pub:
+	name string
+	// kind Kind
+}
+
 pub struct Placeholder {
 pub:
-	idx  int
 	name string
 	// kind Kind
 }
 // Void | Voidptr | Charptr | Byteptr
 pub struct Primitive {
 pub:
-	idx  int
 	kind Kind
 }
 
 pub struct Const {
 pub:
-	idx  int
 	name string
 }
 
 pub struct Enum {
 pub:
-	idx  int
 	name string
 }
 
 pub struct Struct {
 pub:
-	idx        int
 	parent_idx int
 	name       string
 pub mut:
 	fields     []Field
 	methods    []Field // TODO Method
+}
+
+pub struct FieldPlaceholder {
+pub:
+	name     string
+	type_idx int
 }
 
 pub struct Field {
@@ -265,30 +279,21 @@ pub:
 
 pub struct Int {
 pub:
-	idx         int
 	bit_size    u32
 	is_unsigned bool
 }
 
 pub struct Float {
 pub:
-	idx      int
 	bit_size u32
 }
 
-pub struct String {
-pub:
-	idx int
-}
+pub struct String {}
 
-pub struct Bool {
-pub:
-	idx int
-}
+pub struct Bool {}
 
 pub struct Array {
 pub:
-	idx            int
 	parent_idx     int
 	name           string
 	elem_type_kind Kind
@@ -299,7 +304,6 @@ pub:
 
 pub struct ArrayFixed {
 pub:
-	idx            int
 	parent_idx     int
 	name           string
 	elem_type_kind Kind
@@ -311,7 +315,6 @@ pub:
 
 pub struct Map {
 pub:
-	idx             int
 	name            string
 	key_type_kind   Kind
 	key_type_idx    int
@@ -321,14 +324,12 @@ pub:
 
 pub struct MultiReturn {
 pub:
-	idx  int
 	name string
 	tis  []TypeIdent
 }
 
 pub struct Variadic {
 pub:
-	idx int
 	ti  TypeIdent
 }
 

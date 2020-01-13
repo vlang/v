@@ -102,7 +102,7 @@ pub:
 }
 
 pub struct CallExpr {
-pub:
+pub mut:
 // func       Expr
 	name       string
 	args       []Expr
@@ -152,12 +152,22 @@ pub:
 	stmts []Stmt
 }
 
+enum IdentInfoKind {
+	type_
+	function
+}
+ 
+struct IdentInfo {
+	kind IdentInfoKind
+}
+
 // A single identifier
 pub struct Ident {
 pub:
 	name     string
 	tok_kind token.Kind
 	value    string
+	info     IdentInfo
 }
 
 pub struct BinaryExpr {

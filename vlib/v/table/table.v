@@ -11,6 +11,7 @@ pub mut:
 	types         []types.Type
 	// type_idxs Hashmap
 	type_idxs     map[string]int
+	type_kinds    []types.Kind
 	local_vars    []Var
 	// fns Hashmap
 	fns           map[string]Fn
@@ -18,6 +19,9 @@ pub mut:
 	//
 	unknown_calls []ast.CallExpr
 	tmp_cnt       int
+	deferred_type_checks  []DeferredTypeCheck
+	deferred_field_checks []DeferredFieldCheck
+	deferred_call_expr    []DeferredCallExpr
 }
 
 pub struct Var {
@@ -34,6 +38,29 @@ pub:
 	return_ti types.TypeIdent
 }
 
+// type Deferred = DeferredCallExpr | DeferredFieldCheck | DeferredTypeCheck
+
+pub struct DeferredCallExpr {
+pub:
+	fn_name string
+mut:
+	node    &ast.CallExpr
+}
+
+pub struct DeferredFieldCheck{
+pub:
+	type_idx   int
+	field_name string
+}
+
+pub struct DeferredTypeCheck {
+pub:
+	//tok      token.Token
+	// tok_pos  int
+	got      types.TypeIdent
+	expected types.TypeIdent
+}
+
 pub fn new_table() &Table {
 	mut t := &Table{}
 	t.register_builtin_types()
@@ -43,53 +70,24 @@ pub fn new_table() &Table {
 pub fn (t mut Table) register_builtin_types() {
 	// add dummy type at 0 so nothing can go there
 	// save index check, 0 will mean not found
-	t.register_type(types.Type{}, 'dymmy_type_at_idx_0', 0)
-	t.register_type(types.Primitive{
-		idx: types.void_type_idx
-		kind: .void
-	}, 'void', types.void_type_idx)
-	t.register_type(types.Primitive{
-		idx: types.voidptr_type_idx
-		kind: .voidptr
-	}, 'voidptr', types.voidptr_type_idx)
-	t.register_type(types.Primitive{
-		idx: types.charptr_type_idx
-		kind: .charptr
-	}, 'charptr', types.charptr_type_idx)
-	t.register_type(types.Primitive{
-		idx: types.byteptr_type_idx
-		kind: .byteptr
-	}, 'byteptr', types.byteptr_type_idx)
-	t.register_type(types.Int{
-		types.i8_type_idx,8,false}, 'i8', types.i8_type_idx)
-	t.register_type(types.Int{
-		types.i16_type_idx,16,false}, 'i16', types.i16_type_idx)
-	t.register_type(types.Int{
-		types.i64_type_idx,32,false}, 'int', types.int_type_idx)
-	t.register_type(types.Int{
-		types.i64_type_idx,64,false}, 'i64', types.i64_type_idx)
-	t.register_type(types.Int{
-		types.u16_type_idx,16,true}, 'u16', types.u16_type_idx)
-	t.register_type(types.Int{
-		types.u32_type_idx,32,true}, 'u32', types.u32_type_idx)
-	t.register_type(types.Int{
-		types.u64_type_idx,64,true}, 'u64', types.u64_type_idx)
-	t.register_type(types.Float{
-		types.f64_type_idx,32}, 'f32', types.f32_type_idx)
-	t.register_type(types.Float{
-		types.f64_type_idx,64}, 'f64', types.f64_type_idx)
-	t.register_type(types.String{
-		types.string_type_idx}, 'string', types.string_type_idx)
-	t.register_type(types.Primitive{
-		idx: types.char_type_idx
-		kind: .char
-	}, 'char', types.char_type_idx)
-	t.register_type(types.Primitive{
-		idx: types.byte_type_idx
-		kind: .byte
-	}, 'byte', types.byte_type_idx)
-	t.register_type(types.Bool{
-		types.bool_type_idx}, 'bool', types.bool_type_idx)
+	t.register_type(types.Type{}, .placeholder, 'dymmy_type_at_idx_0')
+	t.register_type(types.Primitive{kind: .void}, .void, 'void')
+	t.register_type(types.Primitive{kind: .voidptr}, .voidptr, 'voidptr')
+	t.register_type(types.Primitive{kind: .charptr}, .charptr, 'charptr')
+	t.register_type(types.Primitive{kind: .byteptr}, .byteptr, 'byteptr')
+	t.register_type(types.Int{8,false}, .i8, 'i8')
+	t.register_type(types.Int{16,false}, .i16, 'i16')
+	t.register_type(types.Int{32,false}, .int, 'int')
+	t.register_type(types.Int{64,false}, .i64,  'i64')
+	t.register_type(types.Int{16,true}, .u16, 'u16')
+	t.register_type(types.Int{32,true}, .u32, 'u32')
+	t.register_type(types.Int{64, true}, .u64, 'u64')
+	t.register_type(types.Float{32}, .f32, 'f32')
+	t.register_type(types.Float{64}, .f64, 'f64')
+	t.register_type(types.String{}, .string, 'string')
+	t.register_type(types.Primitive{kind: .char}, .char, 'char')
+	t.register_type(types.Primitive{kind: .byte}, .byte, 'byte')
+	t.register_type(types.Bool{}, .bool, 'bool')
 }
 
 pub fn (t &Table) find_var(name string) ?Var {
@@ -192,6 +190,16 @@ pub fn (t mut Table) new_tmp_var() string {
 	return 'tmp$t.tmp_cnt'
 }
 
+pub fn (t &Table) struct_has_field2(ti &types.TypeIdent, name string) bool {
+	if ti.kind == .placeholder {
+		println('checking field for placeholder $ti.name: $name')
+		return true
+	}
+
+	return true
+}
+
+/*
 pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
 	println('struct_has_field($s.name, $name) s.idx=$s.idx types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	// for typ in t.types {
@@ -213,7 +221,18 @@ pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
 	}
 	return false
 }
+*/
 
+pub fn (t &Table) has_method(type_idx int, name string) bool {
+	for field in t.methods[type_idx] {
+		if field.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+/*
 pub fn (t &Table) struct_has_method(s &types.Struct, name string) bool {
 	for field in t.methods[s.idx] {
 		if field.name == name {
@@ -222,6 +241,7 @@ pub fn (t &Table) struct_has_method(s &types.Struct, name string) bool {
 	}
 	return false
 }
+*/
 
 [inline]
 pub fn (t &Table) find_type_idx(name string) int {
@@ -238,15 +258,30 @@ pub fn (t &Table) find_type(name string) ?types.Type {
 }
 
 [inline]
-pub fn (t mut Table) register_type(typ types.Type, name string, idx int) {
-	// sanity check
-	if idx != t.types.len {
-		panic('error registering type $name, type.idx must = table.types.len (got `$idx` expected `$t.types.len`')
-	}
+pub fn (t mut Table) register_type(typ types.Type, kind types.Kind, name string) int {
+	idx := t.types.len
 	t.type_idxs[name] = idx
+	t.type_kinds << kind
 	t.types << typ
 	t.methods << []Fn // TODO [] breaks V
+	return idx
 }
+
+/*
+pub fn (t mut Table) update_placeholder(typ types.Type, kind, idx) {
+	ex_idx := t.type_idxs[name]
+	ex_kind := t.type_kinds[ex_id]
+	// other type with same name exists
+	if ex_idx > 0 && !(ex_kind in [.placeholder, kind]) {
+		panic('cannot register type `$typ.name`, another type with this name exists')
+	}
+	// type was declared and placeholder existed, update placehlder to actual type
+	if ex_idx > 0 && ex_kind == .placeholder {
+		t.types[idx] = typ
+		t.type_kinds[idx] = .kind
+	}
+}
+*/
 
 pub fn (t mut Table) register_struct(typ types.Struct) int {
 	println('register_struct($typ.name)')
@@ -258,12 +293,8 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 			types.Placeholder {
 				// override placeholder
 				println('overriding type placeholder `$it.name` with struct')
-				mut struct_type := types.Type{}
-				struct_type = {
-					typ |
-					idx:existing_idx
-				}
-				t.types[existing_idx] = struct_type
+				t.types[existing_idx] = typ
+				t.type_kinds[existing_idx] = .struct_
 				return existing_idx
 			}
 			types.Struct {
@@ -276,13 +307,11 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 	}
 	// register
 	println('registering: $typ.name')
-	idx := t.types.len
 	struct_type := {
 		typ |
-		idx:idx,
 		parent_idx:0,
 	}
-	t.register_type(struct_type, typ.name, idx)
+	idx := t.register_type(struct_type, .struct_, typ.name)
 	return idx
 }
 
@@ -294,13 +323,12 @@ pub fn (t mut Table) find_or_register_map(key_ti &types.TypeIdent, value_ti &typ
 		return existing_idx,name
 	}
 	// register
-	idx := t.types.len
 	map_type := types.Map{
 		name: name
 		key_type_idx: key_ti.idx
 		value_type_idx: value_ti.idx
 	}
-	t.register_type(map_type, name, idx)
+	idx := t.register_type(map_type, .map, name)
 	return idx,name
 }
 
@@ -313,16 +341,14 @@ pub fn (t mut Table) find_or_register_array(elem_ti &types.TypeIdent, nr_dims in
 	}
 	// register
 	parent_idx := t.type_idxs['array']
-	idx := t.types.len
 	array_type := types.Array{
-		idx: idx
 		parent_idx: parent_idx
 		name: name
 		elem_type_idx: elem_ti.idx
 		elem_is_ptr: elem_ti.is_ptr()
 		nr_dims: nr_dims
 	}
-	t.register_type(array_type, name, idx)
+	idx := t.register_type(array_type, .array, name)
 	return idx,name
 }
 
@@ -334,16 +360,14 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_ti &types.TypeIdent, size
 		return existing_idx,name
 	}
 	// register
-	idx := t.types.len
 	array_fixed_type := types.ArrayFixed{
-		idx: idx
 		name: name
 		elem_type_idx: elem_ti.idx
 		elem_is_ptr: elem_ti.is_ptr()
 		size: size
 		nr_dims: nr_dims
 	}
-	t.register_type(array_fixed_type, name, idx)
+	idx := t.register_type(array_fixed_type, .array_fixed, name)
 	return idx,name
 }
 
@@ -358,13 +382,11 @@ pub fn (t mut Table) find_or_register_multi_return(mr_tis []types.TypeIdent) (in
 		return existing_idx,name
 	}
 	// register
-	idx := t.types.len
 	mr_type := types.MultiReturn{
-		idx: idx
 		name: name
 		tis: mr_tis
 	}
-	t.register_type(mr_type, name, idx)
+	idx := t.register_type(mr_type, .multi_return, name)
 	return idx,name
 }
 
@@ -376,22 +398,110 @@ pub fn (t mut Table) find_or_register_variadic(variadic_ti &types.TypeIdent) (in
 		return existing_idx,name
 	}
 	// register
-	idx := t.types.len
 	variadic_type := types.Variadic{
-		idx: idx
 		ti: variadic_ti
 	}
-	t.register_type(variadic_type, name, idx)
+	idx := t.register_type(variadic_type, .variadic, name)
 	return idx,name
 }
 
 pub fn (t mut Table) add_placeholder_type(name string) int {
-	idx := t.types.len
 	ph_type := types.Placeholder{
-		idx: idx
 		name: name
 	}
-	println('added placeholder: $name - $idx ')
-	t.register_type(ph_type, name, idx)
+	idx := t.register_type(ph_type, .placeholder, name)
+	println('added placeholder: $name - $idx')
 	return idx
+}
+
+//pub fn (t mut Table) check(tok &token.Token, got, expected &types.TypeIdent) bool {
+pub fn (t mut Table) check(got, expected &types.TypeIdent) bool {
+	println('check: $got.name, $expected.name')
+	// if got.kind == .unresolved_ident {
+	// 	uid := t.unresolved[got.idx]
+	// 	t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
+	// }
+	
+	// if got.kind == .placeholder || expected.kind == .placeholder {
+	// 	got_kind := t.type_kinds[got.idx]
+	// 	expected_kind := t.type_kinds[expected.idx]
+	// 	if got_kind == .placeholder  || expected_kind == .placeholder {
+	// 		//t.deferred_type_checks << types.DeferredTypeCheck{*tok, got, expected}
+	// 		t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
+	// 		return true
+	// 	} else {
+	// 		//got2 := {got| kind: got_kind}
+	// 		mut got2 := *got
+	// 		got2.kind = got_kind
+	// 		//expected2 := {expected| kind: expected_kind}
+	// 		mut expected2 := *expected
+	// 		expected2.kind = expected_kind
+	// 		//return t.check(tok, &got2, &expected2}
+	// 		return t.check(&got2, &expected2)
+	// 	}
+	// 	/*
+	// 	match got_type {
+	// 		types.Placeholder {
+	// 			t.deferred_type_checks << DeferredTypeCheck{*tok, got, expected}
+	// 		}
+	// 		else {}
+	// 	}
+	// 	*/
+	// }
+	if expected.kind == .voidptr {
+		return true
+	}
+	//if expected.name == 'array' {
+	//	return true
+	//}
+	if got.idx != expected.idx {
+		return false
+	}
+	return true
+}
+
+//pub fn (t mut Table) check(tok &token.Token, got, expected &types.TypeIdent) bool {
+pub fn (t mut Table) check2(node ast.Stmt, got, expected &types.TypeIdent) bool {
+	println('check: $got.name, $expected.name')
+	// if got.kind == .unresolved_ident {
+	// 	uid := t.unresolved[got.idx]
+	// 	t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
+	// }
+	
+	// if got.kind == .placeholder || expected.kind == .placeholder {
+	// 	got_kind := t.type_kinds[got.idx]
+	// 	expected_kind := t.type_kinds[expected.idx]
+	// 	if got_kind == .placeholder  || expected_kind == .placeholder {
+	// 		//t.deferred_type_checks << types.DeferredTypeCheck{*tok, got, expected}
+	// 		t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
+	// 		return true
+	// 	} else {
+	// 		//got2 := {got| kind: got_kind}
+	// 		mut got2 := *got
+	// 		got2.kind = got_kind
+	// 		//expected2 := {expected| kind: expected_kind}
+	// 		mut expected2 := *expected
+	// 		expected2.kind = expected_kind
+	// 		//return t.check(tok, &got2, &expected2}
+	// 		return t.check(&got2, &expected2)
+	// 	}
+	// 	/*
+	// 	match got_type {
+	// 		types.Placeholder {
+	// 			t.deferred_type_checks << DeferredTypeCheck{*tok, got, expected}
+	// 		}
+	// 		else {}
+	// 	}
+	// 	*/
+	// }
+	if expected.kind == .voidptr {
+		return true
+	}
+	//if expected.name == 'array' {
+	//	return true
+	//}
+	if got.idx != expected.idx {
+		return false
+	}
+	return true
 }

@@ -18,7 +18,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	mut args := []ast.Expr
 	mut return_ti := types.void_ti
 	if f := p.table.find_fn(fn_name) {
-		// println('found fn $fn_name')
+		println('found fn $fn_name')
 		return_ti = f.return_ti
 		for i, arg in f.args {
 			e,ti := p.expr(0)
@@ -49,12 +49,20 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 		name: fn_name
 		args: args
 		is_unknown: is_unknown
+		// deferred: is_unknown
 		tok: tok
 		// typ: return_ti
 		
 	}
 	if is_unknown {
 		p.table.unknown_calls << node
+		// p.table.deferred << table.DeferredCallExpr{
+		// 	name: fn_name
+		// }
+		// ti := types.new_ti(.unresolved_ident, '', 0, 0)
+		// p.table.deferred_call_expr << table.DeferredCallExpr{
+		// 	node: &node
+		// }
 	}
 	return node,return_ti
 }
@@ -170,6 +178,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 
 pub fn (p &Parser) check_fn_calls() {
 	println('check fn calls2')
+	/*
 	for call in p.table.unknown_calls {
 		f := p.table.find_fn(call.name) or {
 			p.error_at_line('unknown function `$call.name`', call.tok.line_nr)
@@ -179,4 +188,5 @@ pub fn (p &Parser) check_fn_calls() {
 		// println(f.return_ti.name)
 		// println('IN AST typ=' + call.typ.name)
 	}
+	*/
 }
