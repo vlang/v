@@ -14,6 +14,7 @@ fns.txt
 /tools/vtest-compiler
 /tools/vtest-fmt
 /tools/vfmt
+/tools/vbin2v
 /tools/vup
 /tools/vpm
 /tools/vcreate
