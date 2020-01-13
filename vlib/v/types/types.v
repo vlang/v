@@ -274,7 +274,8 @@ pub:
 pub struct Field {
 pub:
 	name     string
-	type_idx int
+	ti       TypeIdent
+	// type_idx int
 }
 
 pub struct Int {

@@ -47,6 +47,8 @@ pub struct SelectorExpr {
 pub:
 	expr  Expr
 	field string
+	ti   types.TypeIdent
+	// type_idx int
 }
 
 // module declaration
@@ -60,6 +62,7 @@ pub:
 pub struct Field {
 pub:
 	name string
+	// type_idx int
 	ti   types.TypeIdent
 }
 
@@ -106,7 +109,6 @@ pub mut:
 // func       Expr
 	name       string
 	args       []Expr
-	is_unknown bool
 	tok        token.Token
 }
 
@@ -115,8 +117,8 @@ pub:
 	expr       Expr
 	name       string
 	args       []Expr
-	is_unknown bool
 	tok        token.Token
+	ti   	   types.TypeIdent
 }
 
 pub struct Return {
@@ -152,6 +154,13 @@ pub:
 	stmts []Stmt
 }
 
+enum IdentKind {
+	blank_ident
+	variable
+	// type_
+	// function
+}
+
 enum IdentInfoKind {
 	type_
 	function
@@ -167,7 +176,10 @@ pub:
 	name     string
 	tok_kind token.Kind
 	value    string
-	info     IdentInfo
+mut:
+	kind     IdentKind
+	ti       types.TypeIdent
+	// info     IdentInfo
 }
 
 pub struct BinaryExpr {

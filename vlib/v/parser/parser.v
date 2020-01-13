@@ -40,6 +40,7 @@ mut:
 
 struct TypeCheck{
 	expr ast.Expr
+	stmt ast.Stmt
 	got  types.TypeIdent
 	expected types.TypeIdent
 }
@@ -231,8 +232,9 @@ pub fn (p mut Parser) assign_expr(left ast.Expr, left_ti &types.TypeIdent) ast.A
 		op: op
 		val: val
 	}
-	println('assign $ti.name to $left_ti.name')
-	p.add_check(node, left_ti, ti)
+	// println('assign $ti.name to $left_ti.name')
+	// p.add_check_expr(&node, left_ti, ti)
+	p.add_check_expr(node)
 	return node
 }
 
@@ -333,12 +335,13 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			exprs: exprs
 			fields: field_names
 		}
+		p.add_check_expr(node)
 		p.check(.rcbr)
 	}
 	else {
 		// p.warn('name ')
 		// left := p.parse_ident()
-		node = ast.Ident{
+		mut ident := ast.Ident{
 			name: p.tok.lit
 		}
 		var := p.table.find_var(p.tok.lit) or {
@@ -346,6 +349,9 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			exit(0)
 		}
 		ti = var.ti
+		ident.kind = .variable
+		ident.ti = ti
+		node = ident
 		p.next()
 	}
 	// if ti.kind == .void {
@@ -477,9 +483,9 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti &types.TypeIdent) (ast.Expr,types.T
 	struc := p.table.types[ti.idx] as types.Struct
 	// Method call
 	if ti.kind != .void && p.tok.kind == .lpar {
-		if !p.table.has_method(ti.idx, field_name) {
-			p.error('type `$struc.name` has no method `$field_name`')
-		}
+		// if !p.table.has_method(ti.idx, field_name) {
+		// 	p.error('type `$struc.name` has no method `$field_name`')
+		// }
 		p.next()
 		args := p.call_args()
 		println('method call $field_name')
@@ -488,38 +494,19 @@ fn (p mut Parser) dot_expr(left ast.Expr, ti &types.TypeIdent) (ast.Expr,types.T
 			expr: left
 			name: field_name
 			args: args
+			ti: *ti
 		}
 		return node,types.int_ti
 	}
-	//if ti.kind != .void && !p.table.struct_has_field(struc, field_name) {
-	if ti.kind != .void && !p.table.struct_has_field2(ti, field_name) {
-		// t :=
-		p.error('type `$struc.name` has no field  `$field_name`')
-	}
-	/*
-				// p.next()
-				field := p.check_name()
-				if !ti.type_kind in  [.placeholder, .struct_] {
-					println('kind: $ti.str()')
-					p.error('cannot access field, `$ti.type_name` is not a struct')
-				}
-				typ := p.table.types[ti.type_idx] as types.Struct
-				mut ok := false
-				for f in typ.fields {
-					if f.name == field {
-						ok = true
-					}
-				}
-				if !ok {
-					p.error('unknown field `${typ.name}.$field`')
-				}
-				*/
 
 	mut node := ast.Expr{}
-	node = ast.SelectorExpr{
+	se := ast.SelectorExpr{
 		expr: left
 		field: field_name
+		ti: *ti
 	}
+	p.add_check_expr(se)
+	node = se
 	// if ti.kind ==.placeholder {
 	// 	return node, types.new_ti(.placeholder, 'test_placeholder', 0, 0)
 	// }
@@ -789,7 +776,8 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		fields << types.Field{
 			name: field_name
-			type_idx: ti.idx
+			// type_idx: ti.idx
+			ti: ti
 		}
 	}
 	p.check(.rcbr)
@@ -836,9 +824,11 @@ fn (p mut Parser) return_stmt() ast.Return {
 			p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
 		}
 	}
-	return ast.Return{
+	stmt := ast.Return{
 		exprs: exprs
 	}
+	p.add_check_stmt(stmt)
+	return stmt
 }
 
 fn (p mut Parser) var_decl() ast.VarDecl {
@@ -873,146 +863,201 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	}
 }
 
-// pub fn (p mut Parser) process_deferred() {
-// 	for deferred in p.table.deferred {
-// 		match deferred {
-// 			DeferredCallExpr {
-
-// 			}
-// 			DeferredFieldCheck {
-
-// 			}
-// 			DeferredTypeCheck {
-// 				p.deferred_type_check(it)
-// 			}
-// 		}
-// 	}
-// }
-
-pub fn (p mut Parser) deferred_call_expr() {
-	for idx, _ in p.table.deferred_call_expr {
-		mut dce := p.table.deferred_call_expr[idx]
-		fn_name := dce.fn_name
-		mut args := []ast.Expr
-		if f := p.table.find_fn(fn_name) {
-			// println('found fn $fn_name')
-			// return_ti = f.return_ti
-			for i, arg in f.args {
-				e,ti := p.expr(0)
-				if !types.check(&arg.ti, &ti) {
-					p.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
-				}
-				args << e
-				if i < f.args.len - 1 {
-					p.check(.comma)
-				}
+pub fn (p &Parser) check_get_type(expr ast.Expr) types.TypeIdent {
+	match expr {
+		ast.CallExpr {
+			func := p.table.find_fn(it.name) or {
+				panic('unknown fn $it.name')
 			}
-			if p.tok.kind == .comma {
-				p.error('too many arguments in call to `$fn_name`')
-			}
-		} else {
-			p.error('unknown function `$fn_name`')
+			return func.return_ti
 		}
-		dce.node.args = args
+		ast.Ident {
+			return it.ti
+		}
+		ast.StringLiteral {
+			return types.string_ti
+		}
+		ast.IntegerLiteral {
+			// if it.val.contains('.') {
+			// 	return types.i64_ti
+			// }
+			return types.int_ti
+		}
+		ast.SelectorExpr {
+			if !(it.ti.kind in [.placeholder, .struct_]) {
+				println('$it.ti.name is not a struct')
+			}
+			struct_ := p.table.types[it.ti.idx] as types.Struct
+			// if !p.table.struct_has_field(struct_, selector_expr.field) {
+			// 	p.error('unknown field `${it.ti.name}.$it.field`')
+			// }
+			for field in struct_.fields {
+				if field.name == it.field {
+					return field.ti
+				}
+			}
+			if struct_.parent_idx != 0 {
+				parent := p.table.types[struct_.parent_idx] as types.Struct
+				for field in parent.fields {
+					if field.name == it.field {
+						return field.ti
+					}
+				}
+			}
+			p.error('unknown field `${it.ti.name}.$it.field`')
+		}
+		else {
+			types.void_ti
+		}
+	}
+	return types.void_ti
+}
+
+pub fn (p &Parser) check_call_expr(call_expr ast.CallExpr) {
+	fn_name := call_expr.name
+	if f := p.table.find_fn(fn_name) {
+		return_ti := f.return_ti
+		for i, arg in f.args {
+			arg_expr := call_expr.args[i]
+			ti := p.check_get_type(arg_expr)
+			if !p.table.check(&ti, &arg.ti) {
+				p.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
+			}
+		}
+		if call_expr.args.len < f.args.len {
+			p.error('too few arguments in call to `$fn_name`')
+		} else if call_expr.args.len > f.args.len {
+			p.error('too many arguments in call to `$fn_name`')
+		}
+	} else {
+		// p.error('unhknown fn: $fn_name')
+		p.warn('unknown function `$fn_name`')
 	}
 }
 
-pub fn (p mut Parser) deferred_type_check() {
-	// println('deferred_type_check:')
-	// for idx, dtc in p.table.deferred_type_checks {
-	// 	println('GOT NAME: $dtc.got.idx')
-	// 	println('GOT IDX: $dtc.got.idx EXPECTED IDX: $dtc.expected.idx')
-	// 	got := dtc.got
-	// 	expected := dtc.expected
-	// 	got_kind := p.table.type_kinds[dtc.got.idx]
-	// 	expected_kind := p.table.type_kinds[dtc.expected.idx]
-	// 	if got_kind == .placeholder {
-	// 		p.error('unknown type $dtc.got.name')
+pub fn (p &Parser) check_assign_expr(assign_expr ast.AssignExpr) {
+	left_ti := p.check_get_type(assign_expr.left)
+	val_ti := p.check_get_type(assign_expr.val)
+	println('CHECK assign $val_ti.name to $left_ti.name')
+	if !p.table.check(val_ti, left_ti) {
+		p.error('cannot assign $val_ti.name to $left_ti.name')
+	}
+}
+
+pub fn (p &Parser) check_struct_init(struct_init ast.StructInit) {
+	println('## check_struct_init $struct_init.ti.name')
+	typ := p.table.find_type(struct_init.ti.name) or {
+		p.error('unknown struct: $struct_init.ti.name')
+		panic('')
+	}
+	match typ {
+		types.Placeholder {
+			p.error('unknown struct: $struct_init.ti.name')
+		}
+		types.Struct {
+			for i, field in it.fields {
+				expr := struct_init.exprs[i]
+				expr_ti := p.check_get_type(expr)
+				if !p.table.check(expr_ti, field.ti) {
+					p.error('cannot assign $expr_ti.name as $field.ti.name for field $field.name')
+				}
+			}
+		}
+		else {}
+	}
+}
+
+pub fn (p &Parser) check_method_call(method_call ast.MethodCallExpr) {
+	if !p.table.has_method(method_call.ti.idx, method_call.name) {
+		p.error('type `$method_call.ti.name` has no method `$method_call.name`')
+	}
+}
+
+pub fn (p &Parser) check_selector_expr(selector_expr ast.SelectorExpr) {
+	println('check_selector_expr $selector_expr.ti.name - $selector_expr.ti.str()')
+	if !selector_expr.ti.kind in [.placeholder, .struct_] {
+		println(selector_expr.ti.kind.str())
+		p.error('$selector_expr.ti.name is not a struct')
+	}
+	struct_ := p.table.types[selector_expr.ti.idx] as types.Struct
+	if !p.table.struct_has_field(struct_, selector_expr.field) {
+		p.error('unknown field `${selector_expr.ti.name}.$selector_expr.field`')
+	}
+	// field := p.check_name()
+	// if !ti.type_kind in  [.placeholder, .struct_] {
+	// 	println('kind: $ti.str()')
+	// 	p.error('cannot access field, `$ti.type_name` is not a struct')
+	// }
+	// typ := p.table.types[ti.type_idx] as types.Struct
+	// mut ok := false
+	// for f in typ.fields {
+	// 	if f.name == field {
+	// 		ok = true
 	// 	}
-	// 	if expected_kind == .placeholder {
-	// 		p.error('unknown type $dtc.expected.name')
-	// 	}
-	// 	got2 := {got| kind: got_kind}
-	// 	expected2 := {expected| kind: expected_kind}
-	// 	if !p.table.check(&got2, &expected2) {
-	// 		// p.error('cannot use $got.name as $expected')
-	// 	}
-	// 	p.table.deferred_type_checks.delete(idx)
+	// }
+	// if !ok {
+	// 	p.error('unknown field `${typ.name}.$field`')
 	// }
 }
 
-pub fn (p mut Parser) check_types() {
+pub fn (p &Parser) check_types() {
 	for ctx in p.type_checks {
 		mut got := ctx.got
 		mut expected := ctx.expected
+		println('#### $got.name')
+		println('#### $expected.name')
+		// expr := *ctx.expr
 		match ctx.expr {
 			ast.AssignExpr {
+				println('ASSIGN EXPR')
+				p.check_assign_expr(it)
 				// p.table.check()
-				match it.left {
-					ast.CallExpr {
-						println('left is ast.CallExpr')
-						// if it.info.kind == .function {
-						// 	fun
-						// }
-					}
-					ast.Ident {
-						// x := it.left as ast.Ident
-						// println('left is ast.Ident: $x.value')
-					}
-					else { println('left is else') }
-				}
-				match it.val {
-					ast.CallExpr {
-						println('val is ast.CallExpr')
-					}
-					ast.Ident {
-						println('val is ast.Ident')
-					}
-					else {}
-				}
 			}
 			ast.CallExpr {
 				println('CALL EXPR')
-				// if f := p.table.find_fn(fn_name) {
-				// 	// check args
-				// 	for i, arg in f.args {
-
-						
-				// 		// e,ti := p.expr(0)
-				// 		// if !types.check(&arg.ti, &ti) {
-				// 		// 	p.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
-				// 		// }
-				// 		// args << e
-				// 		// if i < f.args.len - 1 {
-				// 		// 	p.check(.comma)
-				// 		// }
-				// 	}
-				// } else {
-				// 	p.error('cannot call $fn_name, unknown function')
-				// }
+				p.check_call_expr(it)
+			}
+			ast.StructInit {
+				println('STRUCT INIT')
+				p.check_struct_init(it)
+			}
+			ast.MethodCallExpr {
+				println('METHOD CALL EXPR')
+				p.check_method_call(it)
+			}
+			ast.SelectorExpr {
+				println('SELECTOR EXPR - $it.ti.name')
+				p.check_selector_expr(it)
 			}
 			else { println('ELSE') }
+		}
+		match ctx.stmt {
+			ast.Return {
+				println('RETURN STMT')
+				// p.check_struct_init(it)
+			}
+			else {}
 		}
 	}
 }
 
-pub fn (p mut Parser) check_type(expr ast.Expr) {
-
-}
-
-pub fn (p mut Parser) add_check(node ast.Expr, got, expected types.TypeIdent) {
+// pub fn (p mut Parser) add_check_expr(node &ast.Expr, got, expected types.TypeIdent) {
+pub fn (p mut Parser) add_check_expr(expr ast.Expr) {
 	p.type_checks << TypeCheck{
-		expr: node
-		got: got
-		expected: expected
+		expr: expr
+		// got: got
+		// expected: expected
 	}
 }
 
-// pub fn (p mut Node) check_types() {
-
-// }
-
-
+pub fn (p mut Parser) add_check_stmt(stmt ast.Stmt) {
+	p.type_checks << TypeCheck{
+		// expr: node
+		stmt: stmt
+		// got: got
+		// expected: expected
+	}
+}
 
 fn verror(s string) {
 	println(s)

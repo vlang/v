@@ -16,12 +16,7 @@ pub mut:
 	// fns Hashmap
 	fns           map[string]Fn
 	methods       [][]Fn
-	//
-	unknown_calls []ast.CallExpr
 	tmp_cnt       int
-	deferred_type_checks  []DeferredTypeCheck
-	deferred_field_checks []DeferredFieldCheck
-	deferred_call_expr    []DeferredCallExpr
 }
 
 pub struct Var {
@@ -36,29 +31,6 @@ pub:
 	name      string
 	args      []Var
 	return_ti types.TypeIdent
-}
-
-// type Deferred = DeferredCallExpr | DeferredFieldCheck | DeferredTypeCheck
-
-pub struct DeferredCallExpr {
-pub:
-	fn_name string
-mut:
-	node    &ast.CallExpr
-}
-
-pub struct DeferredFieldCheck{
-pub:
-	type_idx   int
-	field_name string
-}
-
-pub struct DeferredTypeCheck {
-pub:
-	//tok      token.Token
-	// tok_pos  int
-	got      types.TypeIdent
-	expected types.TypeIdent
 }
 
 pub fn new_table() &Table {
@@ -190,18 +162,9 @@ pub fn (t mut Table) new_tmp_var() string {
 	return 'tmp$t.tmp_cnt'
 }
 
-pub fn (t &Table) struct_has_field2(ti &types.TypeIdent, name string) bool {
-	if ti.kind == .placeholder {
-		println('checking field for placeholder $ti.name: $name')
-		return true
-	}
-
-	return true
-}
-
-/*
 pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
-	println('struct_has_field($s.name, $name) s.idx=$s.idx types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	// println('struct_has_field($s.name, $name) s.idx=$s.idx types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	// for typ in t.types {
 	// println('$typ.idx $typ.name')
 	// }
@@ -221,7 +184,6 @@ pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
 	}
 	return false
 }
-*/
 
 pub fn (t &Table) has_method(type_idx int, name string) bool {
 	for field in t.methods[type_idx] {
@@ -265,6 +227,7 @@ pub fn (t mut Table) register_type(typ types.Type, kind types.Kind, name string)
 	t.types << typ
 	e := []Fn
 	t.methods << e // TODO [] breaks V
+	return idx
 }
 
 /*
@@ -415,85 +378,8 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 }
 
 //pub fn (t mut Table) check(tok &token.Token, got, expected &types.TypeIdent) bool {
-pub fn (t mut Table) check(got, expected &types.TypeIdent) bool {
+pub fn (t &Table) check(got, expected &types.TypeIdent) bool {
 	println('check: $got.name, $expected.name')
-	// if got.kind == .unresolved_ident {
-	// 	uid := t.unresolved[got.idx]
-	// 	t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
-	// }
-	
-	// if got.kind == .placeholder || expected.kind == .placeholder {
-	// 	got_kind := t.type_kinds[got.idx]
-	// 	expected_kind := t.type_kinds[expected.idx]
-	// 	if got_kind == .placeholder  || expected_kind == .placeholder {
-	// 		//t.deferred_type_checks << types.DeferredTypeCheck{*tok, got, expected}
-	// 		t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
-	// 		return true
-	// 	} else {
-	// 		//got2 := {got| kind: got_kind}
-	// 		mut got2 := *got
-	// 		got2.kind = got_kind
-	// 		//expected2 := {expected| kind: expected_kind}
-	// 		mut expected2 := *expected
-	// 		expected2.kind = expected_kind
-	// 		//return t.check(tok, &got2, &expected2}
-	// 		return t.check(&got2, &expected2)
-	// 	}
-	// 	/*
-	// 	match got_type {
-	// 		types.Placeholder {
-	// 			t.deferred_type_checks << DeferredTypeCheck{*tok, got, expected}
-	// 		}
-	// 		else {}
-	// 	}
-	// 	*/
-	// }
-	if expected.kind == .voidptr {
-		return true
-	}
-	//if expected.name == 'array' {
-	//	return true
-	//}
-	if got.idx != expected.idx {
-		return false
-	}
-	return true
-}
-
-//pub fn (t mut Table) check(tok &token.Token, got, expected &types.TypeIdent) bool {
-pub fn (t mut Table) check2(node ast.Stmt, got, expected &types.TypeIdent) bool {
-	println('check: $got.name, $expected.name')
-	// if got.kind == .unresolved_ident {
-	// 	uid := t.unresolved[got.idx]
-	// 	t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
-	// }
-	
-	// if got.kind == .placeholder || expected.kind == .placeholder {
-	// 	got_kind := t.type_kinds[got.idx]
-	// 	expected_kind := t.type_kinds[expected.idx]
-	// 	if got_kind == .placeholder  || expected_kind == .placeholder {
-	// 		//t.deferred_type_checks << types.DeferredTypeCheck{*tok, got, expected}
-	// 		t.deferred_type_checks << DeferredTypeCheck{*got, *expected}
-	// 		return true
-	// 	} else {
-	// 		//got2 := {got| kind: got_kind}
-	// 		mut got2 := *got
-	// 		got2.kind = got_kind
-	// 		//expected2 := {expected| kind: expected_kind}
-	// 		mut expected2 := *expected
-	// 		expected2.kind = expected_kind
-	// 		//return t.check(tok, &got2, &expected2}
-	// 		return t.check(&got2, &expected2)
-	// 	}
-	// 	/*
-	// 	match got_type {
-	// 		types.Placeholder {
-	// 			t.deferred_type_checks << DeferredTypeCheck{*tok, got, expected}
-	// 		}
-	// 		else {}
-	// 	}
-	// 	*/
-	// }
 	if expected.kind == .voidptr {
 		return true
 	}
