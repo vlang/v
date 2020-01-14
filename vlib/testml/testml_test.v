@@ -1,5 +1,9 @@
 import testml
 
+fn hash_lookup {
+
+}
+
 fn add(x int,y int) TestML{
 	return x + y
 } 
@@ -15,8 +19,10 @@ fn cat(x string, y string) TestML{
 struct Mine { }
 
 fn mine() Mine {
-	return Mine
+	return Mine{}
 }
+
+
 
 fn test_000(){
 

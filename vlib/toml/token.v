@@ -40,7 +40,7 @@ enum TokenKind{
 	coron
 	b_header		// 0b
 	h_header		// 0x
-	o_header		// 0o
+	o_header		// 0o 
 	bool_true		// true
 	bool_false		// false
 	table

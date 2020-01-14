@@ -1,5 +1,10 @@
 module testml
 
+import (
+	yaml
+	json
+)
+
 struct TestML {
 	var []TestML
 }

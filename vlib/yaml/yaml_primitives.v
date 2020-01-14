@@ -1,5 +1,9 @@
 module yaml
 
+import (
+	time
+)
+
 struct YAML {
 	squences 		&[]Squenece
 	maps			&[]Mapping
@@ -15,4 +19,8 @@ struct Sqeuenece{
 
 struct Mapping{
 
+}
+
+struct TimeStamp{
+	
 }

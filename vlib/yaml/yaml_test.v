@@ -4,6 +4,12 @@ import (
 	testml
 )
 
+fn load_yaml(){
+	mut temp // yaml temp data.
+	temp = temp.replace('<SPC>',' ')
+	temp = temp.replace('<TAB>','\t')
+}
+
 fn test_229Q(){
 	test_data := http.get('https://github.com/yaml/yaml-test-suite/blob/master/test/229Q.tml')or{
 		println('failed fetch to data from /test/229Q.tml')

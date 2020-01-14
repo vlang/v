@@ -9,14 +9,15 @@ import (
 	time
 )
 
-struct TOML{
+pub struct TOML{
 	pub mut:
 		tbl 	&[]Table
 		arr		&[]Array
 }
 
-fn toml_parse(s string){
-	new_scanner(s)
+fn toml_parse(s string) TOML {
+	mut p := new_parser(s)
+	return p.data()
 }
 
 struct KeyVal{
@@ -128,6 +129,12 @@ struct TimeStamp{
 	minute		int
 	second		int
 	millsecond  int
+	timezone	TimeZone
+}
+
+struct TimeZone {
+	hour	int
+	minute	int
 }
 
 fn (t TimeStamp) val() Time {

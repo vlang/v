@@ -2,8 +2,9 @@ module sion
 
 import (
 	encode/base64
+	time
 )
 
-pub fn sion_parse(s string){
+fn sion_parse(s string){
 	new_scanner(s)
 }
