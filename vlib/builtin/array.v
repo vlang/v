@@ -5,7 +5,7 @@ module builtin
 
 import strings
 
-struct array {
+pub struct array {
 pub:
 // Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.

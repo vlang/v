@@ -621,6 +621,10 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('varg_') {
 		got = got[5..]
 	}
+	// fn == 0 temporary
+	if got == 'int' && expected.ends_with('Fn') {
+		return true
+	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
 		return true

@@ -1,5 +1,6 @@
 import (
 	os
+	os.cmdline
 	flag
 	filepath
 	scripting

@@ -90,7 +90,7 @@ mut:
 }
 
 // webhook server
-struct WebhookServer {
+pub struct WebhookServer {
 pub mut:
 	vweb   vweb.Context
 	gen_vc &GenVC

@@ -71,6 +71,7 @@ pub fn is_dir(path string) bool {
 
 pub fn open(path string) ?File {
 	mut file := File{}
+  /*
 	$if linux {
 		$if !android {
 			fd := C.syscall(sys_open, path.str, 511)
@@ -83,6 +84,7 @@ pub fn open(path string) ?File {
 			}
 		}
 	}
+  */
 	cpath := path.str
 	file = File{
 		cfile: C.fopen(charptr(cpath), 'rb')
@@ -98,6 +100,7 @@ pub fn open(path string) ?File {
 pub fn create(path string) ?File {
 	mut fd := 0
 	mut file := File{}
+  /*
 	// NB: android/termux/bionic is also a kind of linux,
 	// but linux syscalls there sometimes fail,
 	// while the libc version should work.
@@ -119,6 +122,7 @@ pub fn create(path string) ?File {
 			return file
 		}
 	}
+  */
 	file = File{
 		cfile: C.fopen(charptr(path.str), 'wb')
 		opened: true
@@ -139,12 +143,14 @@ pub fn (f mut File) write(s string) {
 	if !f.opened {
 		return
 	}
+  /*
 	$if linux {
 		$if !android {
 			C.syscall(sys_write, f.fd, s.str, s.len)
 			return
 		}
 	}
+  */
 	C.fputs(s.str, f.cfile)
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 }
@@ -153,6 +159,7 @@ pub fn (f mut File) writeln(s string) {
 	if !f.opened {
 		return
 	}
+  /*
 	$if linux {
 		$if !android {
 			snl := s + '\n'
@@ -160,6 +167,7 @@ pub fn (f mut File) writeln(s string) {
 			return
 		}
 	}
+  */
 	// C.fwrite(s.str, 1, s.len, f.cfile)
 	// ss := s.clone()
 	// TODO perf
@@ -174,6 +182,7 @@ pub fn mkdir(path string) ?bool {
 		return true
 	}
 	apath := os.realpath(path)
+  /*
 	$if linux {
 		$if !android {
 			ret := C.syscall(sys_mkdir, apath.str, 511)
@@ -183,6 +192,7 @@ pub fn mkdir(path string) ?bool {
 			return true
 		}
 	}
+  */
 	r := C.mkdir(apath.str, 511)
 	if r == -1 {
 		return error(get_error_msg(C.errno))
@@ -228,12 +238,14 @@ pub fn symlink(origin, target string) ?bool {
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
 pub fn (f mut File) write_bytes(data voidptr, size int) {
+/*
 	$if linux {
 		$if !android {
 			C.syscall(sys_write, f.fd, data, 1)
 			return
 		}
 	}
+*/  
 	C.fwrite(data, 1, size, f.cfile)
 }
 
@@ -242,12 +254,14 @@ pub fn (f mut File) close() {
 		return
 	}
 	f.opened = false
+  /*
 	$if linux {
 		$if !android {
 			C.syscall(sys_close, f.fd)
 			return
 		}
 	}
+  */
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }

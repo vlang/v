@@ -1597,11 +1597,13 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 		}
 		else {
 			p.gen(' ' + p.tok.str() + ' ')
-		}}
+		}
+	}
 	p.fspace()
 	p.next()
 	p.fspace()
 	pos := p.cgen.cur_line.len
+	expr_tok := p.cur_tok_index()
 	p.is_var_decl = true
 	expr_type := p.bool_expression()
 	p.is_var_decl = false
@@ -1609,8 +1611,8 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 	// p.warn('expecting array got $expr_type')
 	// }
 	if expr_type == 'void' {
-		_,fn_name := p.is_expr_fn_call(p.token_idx - 3)
-		p.error_with_token_index('${fn_name}() $err_used_as_value', p.token_idx - 2)
+		_,fn_name := p.is_expr_fn_call(expr_tok+1)
+		p.error_with_token_index('${fn_name}() $err_used_as_value', expr_tok)
 	}
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') && expr_type == parse_pointer(p.assigned_type['Option_'.len..]) {
@@ -1714,6 +1716,7 @@ fn (p mut Parser) var_decl() {
 	else {
 		p.error('expected `=` or `:=`')
 	}
+	expr_tok := p.cur_tok_index()
 	// all vars on left of `:=` already defined (or `_`)
 	if is_decl_assign && var_names.len == 1 && var_names[0] == '_' {
 		p.error_with_token_index('use `=` instead of `:=`', var_token_idxs.last())
@@ -1721,8 +1724,8 @@ fn (p mut Parser) var_decl() {
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_${p.token_idx}_' + var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
 	if t == 'void' {
-		_,fn_name := p.is_expr_fn_call(p.token_idx - 3)
-		p.error_with_token_index('${fn_name}() $err_used_as_value', p.token_idx - 2)
+		_,fn_name := p.is_expr_fn_call(expr_tok+1)
+		p.error_with_token_index('${fn_name}() $err_used_as_value', expr_tok)
 	}
 	mut var_types := [t]
 	// multiple returns types
@@ -2636,6 +2639,9 @@ fn (p mut Parser) array_init() string {
 	new_arr_ph := p.cgen.add_placeholder()
 	mut i := 0
 	for p.tok != .rsbr {
+		if expected_array_type.starts_with('array_') {
+		p.expected_type = expected_array_type[6..]
+		}
 		val_typ := p.bool_expression()
 		// Get the type of the first expression
 		if i == 0 {

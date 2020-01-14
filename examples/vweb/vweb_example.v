@@ -6,7 +6,7 @@ const (
 	port = 8082
 )
 
-struct App {
+pub struct App {
 pub mut:
 	vweb vweb.Context // TODO embed
 	cnt int

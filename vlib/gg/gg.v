@@ -358,7 +358,7 @@ fn (c GG) text_align(a int) {
 }
 
 pub fn create_image(file string) u32 {
-	println('gg create image "$file"')
+	//println('gg create image "$file"')
 	if file.contains('twitch') {
 		return u32(0)// TODO
 	}
@@ -372,11 +372,22 @@ pub fn create_image(file string) u32 {
 	img.tex_image_2d()
 	gl.generate_mipmap(C.GL_TEXTURE_2D)
 	img.free()
-	// println('gg end')
+	return texture
+}
+
+pub fn create_image_from_memory(buf byteptr) u32 {
+	texture := gl.gen_texture()
+	img := stbi.load_from_memory(buf)
+	// TODO copy pasta
+	gl.bind_2d_texture(texture)
+	img.tex_image_2d()
+	gl.generate_mipmap(C.GL_TEXTURE_2D)
+	img.free()
 	return texture
 }
 
 pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
+	ctx.shader.set_int('has_texture', 0)
 	C.glDeleteBuffers(1, &ctx.vao)
 	C.glDeleteBuffers(1, &ctx.vbo)
 	ctx.shader.use()
@@ -403,6 +414,15 @@ pub fn (c &GG) draw_vertical(x, y, height int) {
 
 // fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
 pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
+    
+	// NB: HACK to ensure same state ... TODO: remove next line
+	ctx.draw_empty_rect(0,0,0,0, gx.white)
+    
+	last_array_buffer := 0
+	last_texture := 0
+	C.glGetIntegerv(C.GL_ARRAY_BUFFER_BINDING, &last_array_buffer)
+	C.glGetIntegerv(C.GL_TEXTURE_BINDING_2D, &last_texture)
+
 	// println('DRAW IMAGE $x $y $w $h $tex_id')
 	ctx.shader.use()
 	// ctx.shader.set_color('color', c)
@@ -422,6 +442,7 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	] !
 	// VAO := gl.gen_vertex_array()
 	// VBO := gl.gen_buffer()
+	C.glEnable(C.GL_TEXTURE_2D)
 	gl.bind_vao(ctx.vao)
 	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
 	ebo := gl.gen_buffer()
@@ -435,9 +456,13 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 	gl.bind_2d_texture(tex_id)
 	gl.bind_vao(ctx.vao)
 	gl.draw_elements(C.GL_TRIANGLES, 6, C.GL_UNSIGNED_INT, 0)
+	C.glDisable(C.GL_TEXTURE_2D)
+	// restore state
+	C.glBindBuffer(C.GL_ARRAY_BUFFER, last_array_buffer)
+	C.    glBindTexture(C.GL_TEXTURE_2D, last_texture)
 }
 
-pub fn (c &GG) draw_empty_rect(x, y, w, h int, color gx.Color) {
+pub fn (c &GG) draw_empty_rect(x, y, w, h f32, color gx.Color) {
 	c.draw_line_c(x, y, x + w, y, color)
 	c.draw_line_c(x, y, x, y + h, color)
 	c.draw_line_c(x, y + h, x + w, y + h, color)

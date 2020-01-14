@@ -18,7 +18,6 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 	}
 	is_sum_type := typ in p.table.sum_types
 	mut sum_child_type := ''
-
 	// is it safe to use p.cgen.insert_before ???
 	tmp_var := p.get_tmp()
 	p.cgen.insert_before('$typ $tmp_var = $expr;')
@@ -137,12 +136,13 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				sum_child_type = p.get_type2().name
 				tt := sum_child_type.all_after('_')
 				p.gen('SumType_$tt')
-				//println('got child $sum_child_type')
+				// println('got child $sum_child_type')
 				p.register_var(Var{
 					name: 'it'
 					typ: sum_child_type
 				})
-			} else {
+			}
+			else {
 				p.check_types(p.bool_expression(), typ)
 			}
 			p.expected_type = ''
@@ -221,6 +221,12 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 	}
 	p.next()
 	p.fspace()
+	if p.tok == .name && p.peek() == .assign {
+		p.error('cannot assign on if-else statement')
+	}
+	if p.tok == .name && (p.peek() == .inc || p.peek() == .dec) {
+		p.error('`${p.peek().str()}` is a statement')
+	}
 	// `if a := opt() { }` syntax
 	if p.tok == .name && p.peek() == .decl_assign {
 		p.check_not_reserved()
@@ -255,12 +261,12 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			name: var_name
 			typ: typ
 			is_mut: false // TODO
-
+			
 			is_used: true // TODO
 			// is_alloc: p.is_alloc || typ.starts_with('array_')
 			// line_nr: p.tokens[ var_token_idx ].line_nr
 			// token_idx: var_token_idx
-
+			
 		})
 		p.statements()
 		p.close_scope()
@@ -352,4 +358,3 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 	}
 	return typ
 }
-
