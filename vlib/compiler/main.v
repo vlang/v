@@ -472,7 +472,7 @@ fn (v mut V) generate_init() {
           }
       ')
 		}
-		if !v.pref.is_bare {
+		if !v.pref.is_bare && !v.pref.is_so {
 			// vlib can't have `init_consts()`
 			v.cgen.genln('void init() {
 #if VPREALLOC
@@ -581,7 +581,7 @@ pub fn (v mut V) generate_main() {
 			}
 			v.gen_main_end('return g_test_fails > 0')
 		}
-		else if v.table.main_exists() {
+		else if v.table.main_exists() && !v.pref.is_so {
 			v.gen_main_start(true)
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
