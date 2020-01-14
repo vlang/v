@@ -488,7 +488,9 @@ fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	if typ == 'tm' {
 		p.cgen.lines[p.cgen.lines.len - 1] = ''
 	}
-	p.next()
+	if p.tok != .lcbr {
+		p.next()
+	}
 	p.check(.lcbr)
 	ptr := typ.contains('*')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
