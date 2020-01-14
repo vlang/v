@@ -22,6 +22,7 @@ mut:
 }
 
 fn C.stbi_load() voidptr
+fn C.stbi_load_from_memory() voidptr
 fn C.stbi_image_free()
 fn C.stbi_set_flip_vertically_on_load()
 
@@ -40,6 +41,22 @@ pub fn load(path string) Image {
 	}
 	return res
 }
+
+//pub fn load_from_memory(buf []byte) Image {
+pub fn load_from_memory(buf byteptr) Image {
+	mut res := Image {
+		ok: true
+		data: 0
+	}
+	flag := C.STBI_rgb_alpha
+	res.data = C.stbi_load_from_memory(buf, 3812, &res.width, &res.height,	&res.nr_channels, flag)
+	if isnil(res.data) {
+		println('stbi image failed to load from memory')
+		exit(1)
+	}
+	return res
+}
+
 
 pub fn (img Image) free() {
 	C.stbi_image_free(img.data)

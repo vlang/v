@@ -63,8 +63,7 @@ mut:
 }
 
 fn main() {
-	app := App{}
-	vweb.run(mut app, 8080)
+	vweb.run<App>(8080)
 }
 
 fn (app mut App) index() {
@@ -383,7 +382,7 @@ pub fn (app mut App) articles() {
 
 
 
-To be continued on Dec 14...
+To be continued...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
 

@@ -1,0 +1,5 @@
+fn foo() {
+	a := if true { 1 } else { 2 }
+
+
+}

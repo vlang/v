@@ -1,46 +1,52 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module builtin
 
 import strings
 
-struct array {
+pub struct array {
 pub:
-	// Using a void pointer allows to implement arrays without generics and without generating
-	// extra code for every type.
+// Using a void pointer allows to implement arrays without generics and without generating
+// extra code for every type.
 	data         voidptr
 	len          int
 	cap          int
 	element_size int
 }
 
-// Private function, used by V (`nums := []int`)
-fn new_array(mylen, cap, elm_size int) array {
-	arr := array {
+/*
+struct Foo {
+	a []string
+	b [][]string
+}
+*/
+
+// Internal function, used by V (`nums := []int`)
+fn new_array(mylen int, cap int, elm_size int) array {
+	cap_ := if cap == 0 { 1 } else { cap }
+	arr := array{
 		len: mylen
-		cap: cap
+		cap: cap_
 		element_size: elm_size
-		data: calloc(cap * elm_size)
+		data: calloc(cap_ * elm_size)
 	}
 	return arr
 }
 
-
 // TODO
-pub fn make(len, cap, elm_size int) array {
+pub fn make(len int, cap int, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
-
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
-	arr := array {
+	cap_ := if cap == 0 { 1 } else { cap }
+	arr := array{
 		len: len
 		cap: cap
 		element_size: elm_size
-		data: calloc(cap * elm_size)
+		data: calloc(cap_ * elm_size)
 	}
 	// TODO Write all memory functions (like memcpy) in V
 	C.memcpy(arr.data, c_array, len * elm_size)
@@ -49,7 +55,7 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 
 // Private function, used by V (`nums := [1, 2, 3] !`)
 fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) array {
-	arr := array {
+	arr := array{
 		len: len
 		cap: cap
 		element_size: elm_size
@@ -62,7 +68,9 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 fn (a mut array) ensure_cap(required int) {
 	if required > a.cap {
 		mut cap := if a.cap == 0 { 2 } else { a.cap * 2 }
-		for required > cap { cap *= 2 }
+		for required > cap && true {
+			cap *= 2
+		}
 		if a.cap == 0 {
 			a.data = calloc(cap * a.element_size)
 		}
@@ -73,34 +81,21 @@ fn (a mut array) ensure_cap(required int) {
 	}
 }
 
-// Private function, used by V  (`[0; 100]`)
-fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
-	if nr_repeats < 0 {
-		panic('[0; len]: `len` is negative (len == $nr_repeats)')
-	}
-	arr := array {
-		len: nr_repeats
-		cap: nr_repeats
-		element_size: elm_size
-		data: calloc(nr_repeats * elm_size)
-	}
-	for i := 0; i < nr_repeats; i++ {
-		C.memcpy(arr.data + i * elm_size, val, elm_size)
-	}
-	return arr
-}
-
 // array.repeat returns new array with the given array elements
 // repeated `nr_repeat` times
 pub fn (a array) repeat(nr_repeats int) array {
 	if nr_repeats < 0 {
-		panic('array.repeat: count is negative (count == $nr_repeats)')
+		panic('array.repeat: count is negative (count == nr_repeats)')
 	}
-	arr := array {
+	mut size := nr_repeats * a.len * a.element_size
+	if size == 0 {
+		size = a.element_size
+	}
+	arr := array{
 		len: nr_repeats * a.len
 		cap: nr_repeats * a.len
 		element_size: a.element_size
-		data: calloc(nr_repeats * a.len * a.element_size)
+		data: calloc(size)
 	}
 	for i := 0; i < nr_repeats; i++ {
 		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
@@ -116,8 +111,8 @@ pub fn (a mut array) sort_with_compare(compare voidptr) {
 // TODO array.insert is broken
 // Cannot pass literal or primitive type as it cannot be cast to voidptr.
 // In the current state only that would work:
-//   i := 3
-//	 a.insert(0, &i)
+// i := 3
+// a.insert(0, &i)
 // ----------------------------
 pub fn (a mut array) insert(i int, val voidptr) {
 	if i < 0 || i > a.len {
@@ -171,6 +166,7 @@ pub fn (a array) last() voidptr {
 	return a.data + (a.len - 1) * a.element_size
 }
 
+/*
 // array.left returns a new array using the same buffer as the given array
 // with the first `n` elements of the given array.
 fn (a array) left(n int) array {
@@ -196,12 +192,7 @@ fn (a array) right(n int) array {
 	}
 	return a.slice(n, a.len)
 }
-
-// used internally for [2..4]
-fn (a array) slice2(start, _end int, end_max bool) array {
-	end := if end_max { a.len } else { _end }
-	return a.slice(start, end)
-}
+*/
 
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
@@ -219,13 +210,57 @@ fn (a array) slice(start, _end int) array {
 		panic('array.slice: slice bounds out of range ($start < 0)')
 	}
 	l := end - start
-	res := array {
+	res := array{
 		element_size: a.element_size
 		data: a.data + start * a.element_size
 		len: l
 		cap: l
 	}
 	return res
+}
+
+// used internally for [2..4]
+fn (a array) slice2(start, _end int, end_max bool) array {
+	end := if end_max { a.len } else { _end }
+	return a.slice(start, end)
+}
+
+// array.clone returns an independent copy of a given array
+pub fn (a array) clone() array {
+	mut size := a.cap * a.element_size
+	if size == 0 {
+		size++
+	}
+	arr := array{
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: calloc(size)
+	}
+	C.memcpy(arr.data, a.data, a.cap * a.element_size)
+	return arr
+}
+
+
+fn (a array) slice_clone(start, _end int) array {
+	mut end := _end
+	if start > end {
+		panic('array.slice: invalid slice index ($start > $end)')
+	}
+	if end > a.len {
+		panic('array.slice: slice bounds out of range ($end >= $a.len)')
+	}
+	if start < 0 {
+		panic('array.slice: slice bounds out of range ($start < 0)')
+	}
+	l := end - start
+	res := array{
+		element_size: a.element_size
+		data: a.data + start * a.element_size
+		len: l
+		cap: l
+	}
+	return res.clone()
 }
 
 // Private function. Used to implement assigment to the array element.
@@ -253,36 +288,26 @@ pub fn (a mut array) push_many(val voidptr, size int) {
 // array.reverse returns a new array with the elements of
 // the original array in reverse order.
 pub fn (a array) reverse() array {
-	arr := array {
+	arr := array{
 		len: a.len
 		cap: a.cap
 		element_size: a.element_size
 		data: calloc(a.cap * a.element_size)
 	}
 	for i := 0; i < a.len; i++ {
-		C.memcpy(arr.data + i * arr.element_size, &a[a.len-1-i], arr.element_size)
+		C.memcpy(arr.data + i * arr.element_size,
+			&a[a.len - 1 - i], arr.element_size)
 	}
 	return arr
 }
 
-// array.clone returns an independent copy of a given array
-pub fn (a array) clone() array {
-	arr := array {
-		len: a.len
-		cap: a.cap
-		element_size: a.element_size
-		data: calloc(a.cap * a.element_size)
-	}
-	C.memcpy(arr.data, a.data, a.cap * a.element_size)
-	return arr
-}
 
-//pub fn (a []int) free() {
+// pub fn (a []int) free() {
 [unsafe_fn]
 pub fn (a array) free() {
-	//if a.is_slice {
-		//return
-	//}
+	// if a.is_slice {
+	// return
+	// }
 	C.free(a.data)
 }
 
@@ -313,7 +338,8 @@ pub fn (a []bool) str() string {
 		val := a[i]
 		if val {
 			sb.write('true')
-		} else {
+		}
+		else {
 			sb.write('false')
 		}
 		if i < a.len - 1 {
@@ -327,9 +353,9 @@ pub fn (a []bool) str() string {
 // []byte.hex returns a string with the hexadecimal representation
 // of the byte elements of the array
 pub fn (b []byte) hex() string {
-	mut hex := malloc(b.len*2+1)
+	mut hex := malloc(b.len * 2 + 1)
 	mut ptr := &hex[0]
-	for i := 0; i < b.len ; i++ {
+	for i := 0; i < b.len; i++ {
 		ptr += C.sprintf(charptr(ptr), '%02x', b[i])
 	}
 	return string(hex)
@@ -342,7 +368,7 @@ pub fn (b []byte) hex() string {
 pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		min := if dst.len < src.len { dst.len } else { src.len }
-		C.memcpy(dst.data, src.left(min).data, dst.element_size*min)
+		C.memcpy(dst.data, src[..min].data, dst.element_size * min)
 		return min
 	}
 	return 0
@@ -411,11 +437,11 @@ pub fn (a []char) index(v char) int {
 
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
-pub fn (a []int) reduce(iter fn (accum, curr int) int, accum_start int) int {
+pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
 	mut _accum := 0
 	_accum = accum_start
 	for i := 0; i < a.len; i++ {
-			_accum = iter(_accum, a[i])
+		_accum = iter(_accum, a[i])
 	}
 	return _accum
 }
@@ -453,3 +479,4 @@ pub fn (a []byte) eq(a2 []byte) bool {
 pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
+

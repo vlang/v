@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 import strings
@@ -10,53 +9,61 @@ fn sql_params2params_gen(sql_params []string, sql_types []string, qprefix string
 	mut params_gen := ''
 	for i, mparam in sql_params {
 		param := mparam.trim_space()
-		paramtype := sql_types[ i ]
+		paramtype := sql_types[i]
 		if param[0].is_digit() {
 			params_gen += '${qprefix}params[$i] = int_str($param).str;\n'
-		}else if param[0] == `\'` {
-			sparam := param.trim('\'')
+		}
+		else if param[0] == `\'` {
+			sparam := param.trim("\'")
 			params_gen += '${qprefix}params[$i] = "$sparam";\n'
-		} else {
+		}
+		else {
 			// A variable like q.nr_orders
 			if paramtype == 'int' {
 				params_gen += '${qprefix}params[$i] = int_str( $param ).str;\n'
-			}else if paramtype == 'string' {
+			}
+			else if paramtype == 'string' {
 				params_gen += '${qprefix}params[$i] = ${param}.str;\n'
-			}else{
+			}
+			else {
 				verror('orm: only int and string variable types are supported in queries')
 			}
 		}
 	}
-	//println('>>>>>>>> params_gen')
-	//println( params_gen )
+	// println('>>>>>>>> params_gen')
+	// println( params_gen )
 	return params_gen
 }
-
 
 // `db.select from User where id == 1 && nr_bookings > 0`
 fn (p mut Parser) select_query(fn_ph int) string {
 	// NB: qprefix and { p.sql_i, p.sql_params, p.sql_types } SHOULD be reset for each query,
 	// because we can have many queries in the _same_ scope.
-	qprefix := p.get_tmp().replace('tmp','sql') + '_'
+	qprefix := p.get_tmp().replace('tmp', 'sql') + '_'
 	p.sql_i = 0
 	p.sql_params = []
-	if false {}
+	if false {
+	}
 	p.sql_types = []
 	mut q := 'select '
 	p.check(.key_select)
+	p.fspace()
 	n := p.check_name()
+	p.fspace()
 	if n == 'count' {
 		q += 'count(*) from '
 		p.check_name()
+		p.fspace()
 	}
 	table_name := p.check_name()
+	p.fspace()
 	// Register this type's fields as variables so they can be used in `where`
 	// expressions
 	typ := p.table.find_type(table_name)
 	if typ.name == '' {
 		p.error('unknown type `$table_name`')
 	}
-	//fields := typ.fields.filter(typ == 'string' || typ == 'int')
+	// fields := typ.fields.filter(typ == 'string' || typ == 'int')
 	// get only string and int fields
 	mut fields := []Var
 	for i, field in typ.fields {
@@ -86,29 +93,37 @@ fn (p mut Parser) select_query(fn_ph int) string {
 		q += ' from '
 	}
 	for field in fields {
-		//println('registering sql field var $field.name')
+		// println('registering sql field var $field.name')
 		if !(field.typ in ['string', 'int', 'bool']) {
 			println('orm: skipping $field.name')
 			continue
 		}
-
-		p.register_var({ field | is_mut: true, is_used:true, is_changed:true })
+		p.register_var({
+			field |
+			is_mut:true,
+			is_used:true,
+			is_changed:true
+		})
 	}
 	q += table_name + 's'
 	// `where` statement
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
+		p.fspace()
 		p.is_sql = true
-		_, expr := p.tmp_expr()
+		_,expr := p.tmp_expr()
 		p.is_sql = false
 		q += ' where ' + expr
 	}
 	// limit?
 	mut query_one := false
 	if p.tok == .name && p.lit == 'limit' {
+		p.fspace()
 		p.next()
+		p.fspace()
 		p.is_sql = true
-		_, limit := p.tmp_expr()
+		_,limit := p.tmp_expr()
+		p.fspace()
 		p.is_sql = false
 		q += ' limit ' + limit
 		// `limit 1` means we are getting `?User`, not `[]User`
@@ -118,11 +133,11 @@ fn (p mut Parser) select_query(fn_ph int) string {
 	}
 	println('sql query="$q"')
 	p.cgen.insert_before('// DEBUG_SQL prefix: $qprefix | fn_ph: $fn_ph | query: "$q" ')
-
 	if n == 'count' {
 		p.cgen.set_placeholder(fn_ph, 'pg__DB_q_int(')
 		p.gen(', tos2("$q"))')
-	} else {
+	}
+	else {
 		// Build an object, assign each field.
 		tmp := p.get_tmp()
 		mut obj_gen := strings.new_builder(300)
@@ -134,12 +149,11 @@ fn (p mut Parser) select_query(fn_ph int) string {
 			else if field.typ == 'bool' {
 				cast = 'string_bool'
 			}
-			obj_gen.writeln('${qprefix}${tmp}.$field.name = ' +
-				'${cast}(*(string*)array_get(${qprefix}row.vals, $i));')
+			obj_gen.writeln('${qprefix}${tmp}.$field.name = ' + '${cast}(*(string*)array_get(${qprefix}row.vals, $i));')
 		}
 		// One object
 		if query_one {
-			mut params_gen := sql_params2params_gen( p.sql_params, p.sql_types, qprefix )
+			mut params_gen := sql_params2params_gen(p.sql_params, p.sql_types, qprefix)
 			p.cgen.insert_before('
 
 char* ${qprefix}params[$p.sql_i];
@@ -164,7 +178,7 @@ ${obj_gen.str()}
 		// Array
 		else {
 			q += ' order by id'
-			params_gen := sql_params2params_gen( p.sql_params, p.sql_types, qprefix )
+			params_gen := sql_params2params_gen(p.sql_params, p.sql_types, qprefix)
 			p.cgen.insert_before('char* ${qprefix}params[$p.sql_i];
 $params_gen
 
@@ -181,17 +195,18 @@ for (int i = 0; i < ${qprefix}rows.len; i++) {
 }
 ')
 			p.cgen.resetln('${qprefix}arr_$tmp')
-}
-
+		}
 	}
 	if n == 'count' {
 		return 'int'
-	}	else if query_one {
+	}
+	else if query_one {
 		opt_type := 'Option_$table_name'
 		p.cgen.typedefs << 'typedef Option $opt_type;'
-		p.table.register_builtin( opt_type )
+		p.table.register_builtin(opt_type)
 		return opt_type
-	}  else {
+	}
+	else {
 		p.register_array('array_$table_name')
 		return 'array_$table_name'
 	}
@@ -203,7 +218,9 @@ fn (p mut Parser) insert_query(fn_ph int) {
 	p.check(.lpar)
 	var_name := p.check_name()
 	p.check(.rpar)
-	var := p.find_var(var_name)  or { return }
+	var := p.find_var(var_name) or {
+		return
+	}
 	typ := p.table.find_type(var.typ)
 	mut fields := []Var
 	for i, field in typ.fields {
@@ -219,9 +236,9 @@ fn (p mut Parser) insert_query(fn_ph int) {
 		p.error('V orm: `id int` must be the first field in `$var.typ`')
 	}
 	table_name := var.typ
-	mut sfields := ''  // 'name, city, country'
+	mut sfields := '' // 'name, city, country'
 	mut params := '' // params[0] = 'bob'; params[1] = 'Vienna';
-	mut vals := ''  // $1, $2, $3...
+	mut vals := '' // $1, $2, $3...
 	mut nr_vals := 0
 	for i, field in fields {
 		if field.name == 'id' {
@@ -233,9 +250,11 @@ fn (p mut Parser) insert_query(fn_ph int) {
 		params += 'params[${i-1}] = '
 		if field.typ == 'string' {
 			params += '$var_name . $field.name .str;\n'
-		}  else if field.typ == 'int' {
+		}
+		else if field.typ == 'int' {
 			params += 'int_str($var_name . $field.name).str;\n'
-		} else {
+		}
+		else {
 			p.error('V ORM: unsupported type `$field.typ`')
 		}
 		if i < fields.len - 1 {
@@ -253,12 +272,15 @@ fn (p mut Parser) insert_query(fn_ph int) {
 fn (p mut Parser) update_query(fn_ph int) {
 	println('update query')
 	p.check_name()
+	p.fspace()
 	table_name := p.check_name()
+	p.fspace()
 	typ := p.table.find_type(table_name)
 	if typ.name == '' {
 		p.error('unknown type `$table_name`')
 	}
 	set := p.check_name()
+	p.fspace()
 	if set != 'set' {
 		p.error('expected `set`')
 	}
@@ -269,17 +291,24 @@ fn (p mut Parser) update_query(fn_ph int) {
 		p.error('V orm: `id int` must be the first field in `$typ.name`')
 	}
 	field := p.check_name()
+	p.fspace()
 	p.check(.assign)
+  p.fspace()
 	for f in typ.fields {
 		if !(f.typ in ['string', 'int', 'bool']) {
 			println('orm: skipping $f.name')
 			continue
 		}
-		p.register_var({ f | is_mut: true, is_used:true, is_changed:true })
+		p.register_var({
+			f |
+			is_mut:true,
+			is_used:true,
+			is_changed:true
+		})
 	}
 	mut q := 'update ${typ.name}s set $field='
 	p.is_sql = true
-	set_typ, expr := p.tmp_expr()
+	set_typ,expr := p.tmp_expr()
 	p.is_sql = false
 	// TODO this hack should not be necessary
 	if set_typ == 'bool' {
@@ -289,21 +318,21 @@ fn (p mut Parser) update_query(fn_ph int) {
 		else {
 			q += 'false'
 		}
-	} else {
+	}
+	else {
 		q += expr
 	}
 	// where
 	if p.tok == .name && p.lit == 'where' {
 		p.next()
+		p.fspace()
 		p.is_sql = true
-		_, wexpr := p.tmp_expr()
+		_,wexpr := p.tmp_expr()
 		p.is_sql = false
 		q += ' where ' + wexpr
 	}
-
-
 	nr_vals := 0
-	p.cgen.insert_before('char* params[$nr_vals];')// + params)
+	p.cgen.insert_before('char* params[$nr_vals];') // + params)
 	p.cgen.set_placeholder(fn_ph, 'PQexecParams( ')
 	println('update q="$q"')
 	p.genln('.conn, "$q", $nr_vals, 0, params, 0, 0, 0)')

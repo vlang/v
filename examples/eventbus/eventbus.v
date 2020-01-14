@@ -11,6 +11,8 @@ fn main(){
 	some_module.do_work()
 }
 
-fn on_error(p eventbus.Params) {
+fn on_error(sender voidptr, p eventbus.Params) {
+	work := *(*some_module.Work(sender))
+	println(work.hours)
 	println(p.get_string("error"))
 }

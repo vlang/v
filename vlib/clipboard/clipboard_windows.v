@@ -4,6 +4,8 @@ import time
 
 #include <windows.h>
 
+type HANDLE voidptr
+
 struct C.HWND
 struct C.WPARAM
 struct C.LPARAM
@@ -34,7 +36,7 @@ fn C.SetLastError(error i64)
 fn C.OpenClipboard(hwnd HWND) int
 fn C.DestroyWindow(hwnd HWND)
 
-struct Clipboard {
+pub struct Clipboard {
     max_retries int
     retry_delay int
     mut:
@@ -152,4 +154,8 @@ fn (cb mut Clipboard) get_text() string {
     str := string_from_wide(&u16(GlobalLock(h_data)))
     GlobalUnlock(h_data)
     return str
+}
+
+pub fn new_primary() &Clipboard {
+	panic('Primary clipboard is not supported on non-Linux systems.')
 }

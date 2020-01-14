@@ -2,6 +2,7 @@ fns.txt
 *.dSYM
 *_test
 /v
+/v2
 /vprod
 /v.c
 /v.*.c
@@ -11,6 +12,9 @@ fns.txt
 /tools/vrepl
 /tools/vtest
 /tools/vtest-compiler
+/tools/vtest-fmt
+/tools/vfmt
+/tools/vbin2v
 /tools/vup
 /tools/vpm
 /tools/vcreate
@@ -24,6 +28,7 @@ fns.txt
 /v_prod_g
 *.exe
 *.o
+*.so
 .*.c
 *.tmp.c
 vjs
@@ -31,6 +36,8 @@ vjs
 *.exp
 *.ilk
 *.pdb
+*.dll
+*.lib
 
 #
 # macOS.gitignore
@@ -45,3 +52,7 @@ a.out
 vlib/os/bare/bare_example_linux
 
 info.log
+.vscode/**
+
+# vim/emacs editor backup files
+*~

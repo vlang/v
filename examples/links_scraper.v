@@ -1,4 +1,4 @@
-import http
+import net.http
 
 fn main() {
 	html := http.get_text('https://news.ycombinator.com')  

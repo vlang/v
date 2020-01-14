@@ -7,10 +7,19 @@ module os
 const (
 	PROT_READ = 1
 	PROT_WRITE = 2
-	
+
 	MAP_PRIVATE = 0x02
 	MAP_ANONYMOUS = 0x20
 )
+
+pub const (
+	sys_write = 1
+	sys_open = 2
+	sys_close = 3
+	sys_mkdir = 83
+	sys_creat = 85
+)
+
 
 
 /*
@@ -32,7 +41,7 @@ pub fn println(s string) {
 
 fn mmap(start voidptr, len, prot, flags, fd, off int) byteptr {
 	return syscall6(9, start, len, prot, flags, fd, off) // sys_mmap
-}	
+}
 
 pub fn malloc(n int) byteptr {
 	println('malloc($n)')
@@ -41,7 +50,7 @@ pub fn malloc(n int) byteptr {
 }
 
 pub fn free(b byteptr) {
-	
+
 }
 */
 

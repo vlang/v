@@ -1,1 +1,5 @@
 checks
+linuxsys/linuxsys
+string/string
+consts/consts
+structs/structs

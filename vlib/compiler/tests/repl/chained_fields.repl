@@ -35,44 +35,44 @@
 cannot modify immutable field `len` (type `string`)
 declare the field with `mut:`
 struct string {
-  mut:
+mut:
 	len int
 }
 cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
 struct B {
-  mut:
+mut:
 	a A
 }
 cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
 struct B {
-  mut:
+mut:
 	a A
 }
 cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
 struct B {
-  mut:
+mut:
 	a A
 }
 cannot modify immutable field `a` (type `B`)
 declare the field with `mut:`
 struct B {
-  mut:
+mut:
 	a A
 }
 `c2` is immutable
 cannot modify immutable field `e` (type `F`)
 declare the field with `mut:`
 struct F {
-  mut:
+mut:
 	e []E
 }
 cannot modify immutable field `e` (type `F`)
 declare the field with `mut:`
 struct F {
-  mut:
+mut:
 	e []E
 }
 `e` is immutable (can't <<)

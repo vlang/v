@@ -1,7 +1,6 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module term
 
 pub fn format(msg, open, close string) string {
@@ -21,19 +20,11 @@ pub fn bg_rgb(r, g, b int, msg string) string {
 }
 
 pub fn hex(hex int, msg string) string {
-	return format_rgb(
-		hex >> 16,
-		hex >> 8 & 0xFF,
-		hex & 0xFF,
-		msg, '38', '39')
+	return format_rgb(hex>>16, hex>>8 & 0xFF, hex & 0xFF, msg, '38', '39')
 }
 
 pub fn bg_hex(hex int, msg string) string {
-	return format_rgb(
-		hex >> 16,
-		hex >> 8 & 0xFF,
-		hex & 0xFF,
-		msg, '48', '49')
+	return format_rgb(hex>>16, hex>>8 & 0xFF, hex & 0xFF, msg, '48', '49')
 }
 
 pub fn bg_black(msg string) string {
@@ -199,3 +190,4 @@ pub fn yellow(msg string) string {
 pub fn bright_yellow(msg string) string {
 	return format(msg, '93', '39')
 }
+

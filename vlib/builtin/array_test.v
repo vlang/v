@@ -3,6 +3,23 @@ const (
 	A = 8
 )
 
+fn test_pointer() {
+	mut arr := []&int
+	a := 1
+	b := 2
+	c := 3
+	arr << &a
+	arr << &b
+	arr << &c
+	assert *arr[0] == 1
+	arr[1] = &c
+	assert *arr[1] == 3
+	mut d_arr := [arr] // [][]&int
+	d_arr << arr
+	assert *d_arr[0][1] == 3
+	assert *d_arr[1][0] == 1
+}
+
 fn test_ints() {
 	mut a := [1, 5, 2, 3]
 	assert a.len == 4
@@ -205,49 +222,22 @@ fn test_repeat() {
 
 fn test_right() {
 	a := [1, 2, 3, 4]
-	b := a.right(1)
 	c := a[1..a.len]
 	d := a[1..]
-	assert b[0] == 2
-	assert b[1] == 3
 	assert c[0] == 2
 	assert c[1] == 3
 	assert d[0] == 2
 	assert d[1] == 3
 }
 
-fn test_right_with_n_bigger_than_array_size() {
-	a := [1, 2, 3, 4]
-	// NOTE: slice syntax wont return empty array
-	// instead will give index out of bounds
-	// mut b := a[10..]
-	mut b := a.right(10)
-	assert b.len == 0
-
-	// also check that the result of a.right
-	// is an array of the same type/element size as a:
-	b << 5
-	b << 6
-	assert b.len == 2
-	assert b[0] == 5
-	assert b[1] == 6
-}
-
 fn test_left() {
 	a := [1, 2, 3]
-	b := a.left(2)
 	c := a[0..2]
 	d := a[..2]
-    e := a.left(4)
-	assert b[0] == 1
-	assert b[1] == 2
 	assert c[0] == 1
 	assert c[1] == 2
 	assert d[0] == 1
 	assert d[1] == 2
-    assert e[0] == 1
-    assert e[2] == 3
-    assert e.len == 3
 }
 
 fn test_slice() {
@@ -525,3 +515,24 @@ fn test_for_last() {
 	assert s == '[1, 2, 3, 4]'
 }
 */
+
+struct Foo {
+	mut:
+	bar []int
+}
+
+fn test_in_struct() {
+	mut baz := Foo{
+		bar: [0, 0, 0]
+	}
+	baz.bar[0] += 2
+	baz.bar[0]++
+	assert baz.bar[0] == 3
+}
+
+fn test_bools() {
+	println('test b')
+	mut a := [true, false]
+	a << true
+	println(a)
+}

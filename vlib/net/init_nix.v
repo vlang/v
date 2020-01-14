@@ -5,11 +5,11 @@ module net
 #include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
-
 fn error_code() int {
-    return C.errno
+	return C.errno
 }
 
 pub const (
 	MSG_NOSIGNAL = 0x4000
 )
+

@@ -5,7 +5,7 @@ module clipboard
 
 #flag -framework Cocoa
 
-struct Clipboard {
+pub struct Clipboard {
     pb voidptr
     last_cb_serial i64
 mut:
@@ -71,4 +71,8 @@ fn (cb mut Clipboard) get_text() string {
 
 	#utf8_clip = [ns_clip UTF8String];
 	return string(utf8_clip)
+}
+
+pub fn new_primary() &Clipboard {
+	panic('Primary clipboard is not supported on non-Linux systems.')
 }

@@ -1278,7 +1278,7 @@ $if windows {
 $if linux {
     println('Linux')
 }
-$if mac {
+$if macos {
     println('macOS')
 }
 

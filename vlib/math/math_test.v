@@ -1,55 +1,48 @@
-import math
+module math
 
 fn test_gcd() {
-	assert math.gcd(6, 9) == 3
-	assert math.gcd(6, -9) == 3
-	assert math.gcd(-6, -9) == 3
-	assert math.gcd(0, 0) == 0
+	assert gcd(6, 9) == 3
+	assert gcd(6, -9) == 3
+	assert gcd(-6, -9) == 3
+	assert gcd(0, 0) == 0
 }
 
 fn test_lcm() {
-	assert math.lcm(2, 3) == 6
-	assert math.lcm(-2, 3) == 6
-	assert math.lcm(-2, -3) == 6
-	assert math.lcm(0, 0) == 0
+	assert lcm(2, 3) == 6
+	assert lcm(-2, 3) == 6
+	assert lcm(-2, -3) == 6
+	assert lcm(0, 0) == 0
 }
 
 fn test_digits() {
-	digits_in_10th_base := math.digits(125, 10)
+	digits_in_10th_base := digits(125, 10)
 	assert digits_in_10th_base[0] == 5
 	assert digits_in_10th_base[1] == 2
 	assert digits_in_10th_base[2] == 1
 
-	digits_in_16th_base := math.digits(15, 16)
+	digits_in_16th_base := digits(15, 16)
 	assert digits_in_16th_base[0] == 15
 
-	negative_digits := math.digits(-4, 2)
+	negative_digits := digits(-4, 2)
 	assert negative_digits[2] == -1
 }
 
-fn test_factorial() {
-	assert math.factorial(12) == 479001600
-	assert math.factorial(5) == 120
-	assert math.factorial(0) == 1
-}
-
 fn test_erf() {
-	assert math.erf(0) == 0
-	assert math.erf(1.5) + math.erf(-1.5) == 0
-	assert math.erfc(0) == 1
-	assert math.erf(2.5) + math.erfc(2.5) == 1
-	assert math.erfc(3.6) + math.erfc(-3.6) == 2
+	assert erf(0) == 0
+	assert erf(1.5) + erf(-1.5) == 0
+	assert erfc(0) == 1
+	assert erf(2.5) + erfc(2.5) == 1
+	assert erfc(3.6) + erfc(-3.6) == 2
 }
 
 fn test_gamma() {
-	assert math.gamma(1) == 1
-	assert math.gamma(5) == 24
-
+	assert gamma(1) == 1
+	assert gamma(5) == 24
 	sval := '2.453737'
-	assert math.log_gamma(4.5).str() == sval
-	assert math.log(math.gamma(4.5)).str() == sval
-	assert math.abs( math.log_gamma(4.5) - math.log(math.gamma(4.5)) ) < 0.000001
-	// assert math.log_gamma(4.5) == math.log(math.gamma(4.5)) /* <-- fails on alpine/musl
+	assert log_gamma(4.5).str() == sval
+	assert log(gamma(4.5)).str() == sval
+	assert abs( log_gamma(4.5) - log(gamma(4.5)) ) < 0.000001
+	// assert log_gamma(4.5) == log(gamma(4.5)) /* <-- fails on alpine/musl
 }
 
 fn test_mod() {
@@ -59,4 +52,4 @@ fn test_mod() {
 	mut a := 10
 	a %= 2
 	assert a == 0
-}	
+}

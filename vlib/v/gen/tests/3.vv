@@ -1,0 +1,11 @@
+struct User {
+	age int
+	name string
+}
+
+fn main() {
+	user := User{}
+	user.age = 10
+	user.age++
+	user.name = 'bob'
+}

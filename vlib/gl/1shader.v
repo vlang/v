@@ -76,6 +76,23 @@ void main()     {
 //    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
 //    FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);
 if (has_texture) {
+	/*
+	vec3 chromaKeyColor = texture(ourTexture,TexCoord.xy).xyz;
+
+float alpha;
+bool is_cyan = ((chromaKeyColor.x == 0)); // && chromaKeyColor.x <= 1) && (chromaKeyColor.y <= 255) &&
+bool is_pink= ((chromaKeyColor.y == 0));
+//bool is_pink= ((chromaKeyColor.x <= 255) && (chromaKeyColor.y == 0) &&(chromaKeyColor.z <= 255));
+if (is_cyan || is_pink) {
+    alpha = 0.;
+}
+else
+{
+    alpha = 1.0;
+}
+FragColor= vec4(texture(ourTexture,TexCoord.xy).xyz,alpha);
+*/
+
     FragColor = texture(ourTexture, TexCoord);
 
 }  else {

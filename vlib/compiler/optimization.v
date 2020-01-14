@@ -1,5 +1,4 @@
 module compiler
-
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 // avoid allocation
 // `typ` is the type of `a`
@@ -13,12 +12,13 @@ fn (p mut Parser) in_optimization(typ string, ph int) {
 	// Get `a` expr value (can be a string literal, not a variable)
 	expr := p.cgen.cur_line[ph..]
 	is_str := typ == 'string'
-	//println('!! $p.expr_var.name => $name ($typ)')
+	// println('!! $p.expr_var.name => $name ($typ)')
 	for p.tok != .rsbr && p.tok != .eof {
 		if i > 0 {
 			if is_str {
 				p.gen(' || string_eq($expr, ')
-			}	else {
+			}
+			else {
 				p.gen(' || $expr == ')
 			}
 		}
@@ -26,7 +26,8 @@ fn (p mut Parser) in_optimization(typ string, ph int) {
 			if is_str {
 				p.cgen.set_placeholder(ph, ' (string_eq(')
 				p.gen(', ')
-			} else {
+			}
+			else {
 				p.cgen.set_placeholder(ph, ' (')
 				p.gen(' ==')
 			}
@@ -37,9 +38,11 @@ fn (p mut Parser) in_optimization(typ string, ph int) {
 		}
 		if p.tok != .rsbr {
 			p.check(.comma)
+			p.fspace()
 		}
 		i++
 	}
 	p.gen(')')
 	p.check(.rsbr)
 }
+
