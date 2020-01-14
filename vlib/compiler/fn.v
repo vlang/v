@@ -227,9 +227,6 @@ fn (p mut Parser) fn_decl() {
 	}
 	is_live   := p.pref.is_live  && p.attr == 'live'
 	is_solive := p.pref.is_solive && p.attr == 'live'
-	if p.first_pass() && p.attr == 'live' && !is_live {
-		println('INFO: run `v -live program.v` if you want to use [live] functions')
-	}
 	if is_pub {
 		p.next()
 		p.fspace()
@@ -511,6 +508,11 @@ fn (p mut Parser) fn_decl() {
 		// '$p.file_name')
 		p.table.register_fn(f)
 	}
+
+	if p.first_pass() && p.attr == 'live' && !(is_live || is_solive) {
+		println('INFO: run `v -live $p.v.dir `, if you want to use [live] function $f.name .')
+	}
+	
 	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now
 		// Look for generic calls.
