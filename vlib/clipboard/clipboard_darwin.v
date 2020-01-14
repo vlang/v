@@ -5,7 +5,7 @@ module clipboard
 
 #flag -framework Cocoa
 
-struct Clipboard {
+pub struct Clipboard {
     pb voidptr
     last_cb_serial i64
 mut:

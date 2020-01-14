@@ -97,7 +97,7 @@ enum atom_type {
 	text_html = 9
 }
 
-struct Clipboard {
+pub struct Clipboard {
 	display &Display
 	mut:
 	selection Atom //the selection atom
@@ -137,7 +137,7 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 
 	if display == C.NULL {
 		println("ERROR: No X Server running. Clipboard cannot be used.")
-		return &Clipboard{}
+		return &Clipboard{ display: 0 }
 	}
 
 	mut cb := &Clipboard{
@@ -257,7 +257,7 @@ fn (cb mut Clipboard) start_listener(){
 			}
 			C.SelectionRequest {
 				if event.xselectionrequest.selection == cb.selection {
-					mut xsre := &XSelectionRequestEvent{}
+					mut xsre := &XSelectionRequestEvent{ display: 0 }
 					xsre = &event.xselectionrequest
 
 					mut xse := XSelectionEvent{
@@ -360,8 +360,6 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 
 		//This is higher than the maximum priority.
 		mut priority := math.max_i32
-
-		supported_targets := cb.get_supported_targets()
 
 		for i := 0; i < prop.nitems; i++ {
 			//See if this data type is allowed and of higher priority (closer to zero)

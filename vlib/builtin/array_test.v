@@ -529,3 +529,10 @@ fn test_in_struct() {
 	baz.bar[0]++
 	assert baz.bar[0] == 3
 }
+
+fn test_bools() {
+	println('test b')
+	mut a := [true, false]
+	a << true
+	println(a)
+}

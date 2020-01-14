@@ -28,6 +28,7 @@ struct C.MYSQL_RES
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 fn C.mysql_real_connect(mysql &C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &C.MYSQL
 fn C.mysql_query(mysql &C.MYSQL, q byteptr) int
+fn C.mysql_select_db(mysql &C.MYSQL, db byteptr) int
 fn C.mysql_error(mysql &C.MYSQL) byteptr
 fn C.mysql_errno(mysql &C.MYSQL) int
 fn C.mysql_num_fields(res &C.MYSQL_RES) int
@@ -65,6 +66,14 @@ pub fn (db DB) escape_string(s string) string {
 
     C.mysql_real_escape_string_quote(db.conn, to, s.str, len, quote)
     return string(to)
+}
+
+pub fn (db DB) select_db(dbname string) ?bool {
+	ret := mysql_select_db(db.conn, dbname.str)
+	if ret != 0 {
+		return error_with_code(get_error_msg(db.conn), get_errno(db.conn))
+	}
+	return true
 }
 
 pub fn (db DB) close() {
@@ -107,4 +116,3 @@ fn get_error_msg(conn &C.MYSQL) string {
 fn get_errno(conn &C.MYSQL) int {
 	return C.mysql_errno(conn)
 }
-

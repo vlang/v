@@ -342,7 +342,7 @@ fn (p mut Parser) struct_init(typ_ string) string {
 	mut typ := typ_
 	mut t := p.table.find_type(typ)
 	if !t.is_public && t.mod != p.mod {
-		p.warn('type `$t.name` is private')
+		p.error('struct `$t.name` is private')
 	}
 	// generic struct init
 	if p.peek() == .lt {
@@ -421,8 +421,8 @@ fn (p mut Parser) struct_init(typ_ string) string {
 				continue
 			}
 			field_typ := field.typ
-			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' {
-				// &&
+			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' &&
+				p.mod != 'ui' {
 				p.warn('reference field `${typ}.${field.name}` must be initialized')
 			}
 			// init map fields

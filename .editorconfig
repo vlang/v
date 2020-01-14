@@ -10,6 +10,7 @@ insert_final_newline = true
 # Matches multiple files with brace expansion notation
 [*.v]
 indent_style = tab
+indent_size = 4
 
 [Makefile]
 indent_style = tab
