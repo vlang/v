@@ -41,6 +41,7 @@ pub fn delete(url string) ?Response {
 	res := req.do() or {
 		return error(err)
 	}
+	return res
 }
 
 pub fn put(url string) ?Response {
@@ -50,6 +51,7 @@ pub fn put(url string) ?Response {
 	res := req.do() or {
 		return error(err)
 	}
+	return res
 }
 
 pub fn patch(url string) ?Response {
@@ -59,6 +61,7 @@ pub fn patch(url string) ?Response {
 	res := req.do() or {
 		return error(err)
 	}
+	return res
 }
 
 pub fn get(url string) ?Response {
