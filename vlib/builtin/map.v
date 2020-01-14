@@ -1,28 +1,27 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module builtin
 
 import strings
 
 pub struct map {
 	element_size int
-	root      &mapnode
+	root         &mapnode
 pub:
-	size int
+	size         int
 }
 
 struct mapnode {
-	left &mapnode
-	right &mapnode
+	left     &mapnode
+	right    &mapnode
 	is_empty bool // set by delete()
-	key string
-	val voidptr
+	key      string
+	val      voidptr
 }
 
 fn new_map(cap, elm_size int) map {
-	res := map {
+	res := map{
 		element_size: elm_size
 		root: 0
 	}
@@ -31,7 +30,7 @@ fn new_map(cap, elm_size int) map {
 
 // `m := { 'one': 1, 'two': 2 }`
 fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
-	mut res := map {
+	mut res := map{
 		element_size: elm_size
 		root: 0
 	}
@@ -42,7 +41,7 @@ fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
 }
 
 fn new_node(key string, val voidptr, element_size int) &mapnode {
-	new_e := &mapnode {
+	new_e := &mapnode{
 		key: key
 		val: malloc(element_size)
 		left: 0
@@ -55,13 +54,18 @@ fn new_node(key string, val voidptr, element_size int) &mapnode {
 fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
 	if n.key == key {
 		C.memcpy(n.val, val, m.element_size)
+		if n.is_empty {
+			m.size++
+			n.is_empty = false
+		}
 		return
 	}
 	if n.key > key {
 		if n.left == 0 {
 			n.left = new_node(key, val, m.element_size)
 			m.size++
-		}  else {
+		}
+		else {
 			m.insert(mut n.left, key, val)
 		}
 		return
@@ -69,12 +73,13 @@ fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
 	if n.right == 0 {
 		n.right = new_node(key, val, m.element_size)
 		m.size++
-	}  else {
+	}
+	else {
 		m.insert(mut n.right, key, val)
 	}
 }
 
-fn (n & mapnode) find(key string, out voidptr, element_size int) bool{
+fn (n &mapnode) find(key string, out voidptr, element_size int) bool {
 	if n.key == key {
 		C.memcpy(out, n.val, element_size)
 		return true
@@ -82,35 +87,39 @@ fn (n & mapnode) find(key string, out voidptr, element_size int) bool{
 	else if n.key > key {
 		if n.left == 0 {
 			return false
-		}  else {
+		}
+		else {
 			return n.left.find(key, out, element_size)
 		}
 	}
 	else {
 		if n.right == 0 {
 			return false
-		}  else {
+		}
+		else {
 			return n.right.find(key, out, element_size)
 		}
 	}
 }
 
 // same as `find`, but doesn't return a value. Used by `exists`
-fn (n & mapnode) find2(key string, element_size int) bool{
+fn (n &mapnode) find2(key string, element_size int) bool {
 	if n.key == key && !n.is_empty {
 		return true
 	}
 	else if n.key > key {
 		if isnil(n.left) {
 			return false
-		}  else {
+		}
+		else {
 			return n.left.find2(key, element_size)
 		}
 	}
 	else {
 		if isnil(n.right) {
 			return false
-		}  else {
+		}
+		else {
 			return n.right.find2(key, element_size)
 		}
 	}
@@ -152,6 +161,7 @@ fn (m map) bs(query string, start, end int, out voidptr) {
 }
 */
 
+
 fn preorder_keys(node &mapnode, keys mut []string, key_i int) int {
 	mut i := key_i
 	if !node.is_empty {
@@ -177,7 +187,7 @@ pub fn (m &map) keys() []string {
 }
 
 fn (m map) get(key string, out voidptr) bool {
-	//println('g')
+	// println('g')
 	if m.root == 0 {
 		return false
 	}
@@ -193,14 +203,16 @@ pub fn (n mut mapnode) delete(key string, element_size int) {
 	else if n.key > key {
 		if isnil(n.left) {
 			return
-		}  else {
+		}
+		else {
 			n.left.delete(key, element_size)
 		}
 	}
 	else {
 		if isnil(n.right) {
 			return
-		}  else {
+		}
+		else {
 			n.right.delete(key, element_size)
 		}
 	}
@@ -219,10 +231,10 @@ fn (m map) exists(key string) bool {
 
 pub fn (m map) print() {
 	println('<<<<<<<<')
-	//for i := 0; i < m.entries.len; i++ {
-		// entry := m.entries[i]
-		// println('$entry.key => $entry.val')
-	//}
+	// for i := 0; i < m.entries.len; i++ {
+	// entry := m.entries[i]
+	// println('$entry.key => $entry.val')
+	// }
 	/*
 	for i := 0; i < m.cap * m.element_size; i++ {
 		b := m.table[i]
@@ -231,26 +243,27 @@ pub fn (m map) print() {
 		println('')
 	}
 */
+
 	println('>>>>>>>>>>')
 }
 
 fn (n mut mapnode) free() {
 	if n.val != 0 {
 		free(n.val)
-	}	
+	}
 	if n.left != 0 {
 		n.left.free()
-	}	
+	}
 	if n.right != 0 {
 		n.right.free()
-	}	
+	}
 	free(n)
 }
 
 pub fn (m mut map) free() {
 	if m.root == 0 {
 		return
-	}	
+	}
 	m.root.free()
 	// C.free(m.table)
 	// C.free(m.keys_table)
@@ -262,9 +275,10 @@ pub fn (m map_string) str() string {
 	}
 	mut sb := strings.new_builder(50)
 	sb.writeln('{')
-	for key, val  in m {
+	for key, val in m {
 		sb.writeln('  "$key" => "$val"')
 	}
 	sb.writeln('}')
 	return sb.str()
 }
+

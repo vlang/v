@@ -1,8 +1,34 @@
 module compiler
 
 const (
+	c_common_macros = '
 
-c_headers = '
+#define EMPTY_STRUCT_DECLARATION
+#define EMPTY_STRUCT_INITIALIZATION 0
+// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
+#define TCCSKIP(x) x
+
+#ifdef __TINYC__
+#undef EMPTY_STRUCT_DECLARATION
+#undef EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_DECLARATION char _dummy
+#define EMPTY_STRUCT_INITIALIZATION 0
+#undef EMPTY_ARRAY_OF_ELEMS
+#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
+#undef TCCSKIP
+#define TCCSKIP(x)
+#endif
+
+// for __offset_of
+#ifndef __offsetof
+#define __offsetof(s,memb) \\
+    ((size_t)((char *)&((s *)0)->memb - (char *)0))
+#endif
+
+#define OPTION_CAST(x) (x)
+'
+	c_headers = '
 
 //#include <inttypes.h>  // int64_t etc
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
@@ -34,13 +60,6 @@ c_headers = '
 #include <locale.h> // tolower
 #include <sys/time.h>
 #include <unistd.h> // sleep
-#else
-#if defined(_MSC_VER)
-#pragma comment(lib, "Dbghelp.lib")
-#endif
-#if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
-#error Please upgrade your MinGW distribution to use msvcr90.dll or later.
-#endif
 #endif
 
 #if defined(__CYGWIN__) && !defined(_WIN32)
@@ -69,24 +88,7 @@ c_headers = '
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
-#define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION 0
-// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
-#define TCCSKIP(x) x
-
-#ifdef __TINYC__
-#undef EMPTY_STRUCT_DECLARATION
-#undef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_DECLARATION char _dummy
-#define EMPTY_STRUCT_INITIALIZATION 0
-#undef EMPTY_ARRAY_OF_ELEMS
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
-#undef TCCSKIP
-#define TCCSKIP(x)
-#endif
-
-#define OPTION_CAST(x) (x)
+$c_common_macros
 
 #ifdef _WIN32
 #define WINVER 0x0600
@@ -99,13 +101,7 @@ c_headers = '
 #define UNICODE
 #include <windows.h>
 
-// must be included after <windows.h>
-#ifndef __TINYC__
-#include <shellapi.h>
-#endif
-
 #include <io.h> // _waccess
-#include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
 //#include <WinSock2.h>
 #ifdef _MSC_VER
@@ -118,6 +114,10 @@ c_headers = '
 
 #define EMPTY_STRUCT_DECLARATION int ____dummy_variable
 #define OPTION_CAST(x)
+
+#include <dbghelp.h>
+#pragma comment(lib, "Dbghelp.lib")
+
 #endif
 
 #else
@@ -137,12 +137,12 @@ c_headers = '
 #define DEFAULT_GT(a, b) (a > b)
 #define DEFAULT_GE(a, b) (a >= b)
 //================================== GLOBALS =================================*/
-byteptr g_str_buf;
+byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
-'
 
-js_headers = '
+'
+	js_headers = '
 
 var array_string = function() {}
 var array_byte = function() {}
@@ -165,9 +165,7 @@ var map_string = function() {}
 var map_int = function() {}
 
 '
-
-
-c_builtin_types = '
+	c_builtin_types = '
 
 //#include <inttypes.h>  // int64_t etc
 //#include <stdint.h>  // int64_t etc
@@ -206,22 +204,9 @@ typedef map map_string;
 	#define false 0
 #endif
 '
+	bare_c_headers = '
 
-bare_c_headers = '
-
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
-#define TCCSKIP(x) x
-
-#ifdef __TINYC__
-#undef EMPTY_ARRAY_OF_ELEMS
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
-#undef TCCSKIP
-#define TCCSKIP(x)
-#endif
-
-#ifndef EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_INITIALIZATION 0
-#endif
+$c_common_macros
 
 #ifndef exit
 #define exit(rc) sys_exit(rc)
@@ -229,3 +214,4 @@ void sys_exit (int);
 #endif
 '
 )
+

@@ -48,19 +48,19 @@ fn test_complex_multiplication() {
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(1,2)
 	mut c2 := cmplx.complex(1,-4)
-	mut result := c1.multiply(c2)
+	mut result := c1 * c2
 	assert result.equals(cmplx.complex(9,-2))
 	c1 = cmplx.complex(-4,-4)
 	c2 = cmplx.complex(-5,-3)
-	result = c1.multiply(c2)
+	result = c1 * c2
 	assert result.equals(cmplx.complex(8,32))
 	c1 = cmplx.complex(4,4)
 	c2 = cmplx.complex(-2,-5)
-	result = c1.multiply(c2)
+	result = c1 * c2
 	assert result.equals(cmplx.complex(12,-28))
 	c1 = cmplx.complex(2,-2)
 	c2 = cmplx.complex(4,-4)
-	result = c1.multiply(c2)
+	result = c1 * c2
 	assert result.equals(cmplx.complex(0,-16))
 }
 
@@ -69,19 +69,19 @@ fn test_complex_division() {
 	// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers
 	mut c1 := cmplx.complex(-9,-6)
 	mut c2 := cmplx.complex(-3,-2)
-	mut result := c1.divide(c2)
+	mut result := c1 / c2
 	assert result.equals(cmplx.complex(3,0))
 	c1 = cmplx.complex(-23,11)
 	c2 = cmplx.complex(5,1)
-	result = c1.divide(c2)
+	result = c1 / c2
 	assert result.equals(cmplx.complex(-4,3))
 	c1 = cmplx.complex(8,-2)
 	c2 = cmplx.complex(-4,1)
-	result = c1.divide(c2)
+	result = c1 / c2
 	assert result.equals(cmplx.complex(-2,0))
 	c1 = cmplx.complex(11,24)
 	c2 = cmplx.complex(-4,-1)
-	result = c1.divide(c2)
+	result = c1 / c2
 	assert result.equals(cmplx.complex(-4,-5))
 }
 

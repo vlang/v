@@ -143,5 +143,24 @@ fn test_assert_in_bool_fn() {
 	assert_in_bool_fn(2)
 }
 
+type MyFn fn (int) int
+fn test(n int) int {
+    return n + 1000
+}
+struct MySt {
+    f MyFn
+}
+fn test_fn_type_call() {
+    mut arr := []MyFn
+    arr << MyFn(test)
+    assert arr[0](10) == 1010
+
+    st := MySt{f:test}
+    assert st.f(10) == 1010
+
+	st1 := &MySt{f:test}
+    assert st1.f(10) == 1010
+}
+
 
 

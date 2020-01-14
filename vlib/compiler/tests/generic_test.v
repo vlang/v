@@ -80,3 +80,52 @@ fn test_generic_method() {
     p.translate(2, 1.0)
     assert p.x == 2.0 && p.y == 1.0
 }
+
+fn get_values<T>(i T) []T {
+    return [i]
+}
+
+fn test_generic_fn_in_for_in_expression() {
+    for value in get_values(1) {
+        assert value == 1
+    }
+
+    for i, val in get_values(0) {
+        assert i == val
+    }
+
+    for value in get_values('a') {
+        assert value == 'a'
+    }
+}
+
+// test generic struct
+struct DB {
+    driver string
+}
+
+struct User {
+	db DB
+mut:
+	name string
+}
+
+struct Repo<T> {
+	db DB
+mut:
+	model  T
+}
+
+fn new_repo<U>(db DB) Repo<U> {
+	return Repo<U>{db: db}
+}
+
+fn test_generic_struct() {
+	mut a :=  new_repo<User>(DB{})
+	a.model.name = 'joe'
+	mut b := Repo<User>{db: DB{}}
+	b.model.name = 'joe'
+	assert a.model.name == 'joe'
+	assert b.model.name == 'joe'
+}
+

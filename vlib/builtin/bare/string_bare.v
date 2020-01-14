@@ -22,6 +22,22 @@ pub fn tos(s byteptr, len int) string {
 	}
 }
 
+fn (s string) add(a string) string {
+	new_len := a.len + s.len
+	mut res := string {
+		len: new_len
+		str: malloc(new_len + 1)
+	}
+	for j := 0; j < s.len; j++ {
+		res[j] = s[j]
+	}
+	for j := 0; j < a.len; j++ {
+		res[s.len + j] = a[j]
+	}
+	res[new_len] = `\0`// V strings are not null terminated, but just in case
+	return res
+}
+
 /*
 pub fn tos_clone(s byteptr) string {
 	if s == 0 {
@@ -100,6 +116,13 @@ pub fn i64_str(n0 i64, base int) string {
 	return i64_tos(buf, 79, n0, base)
 }
 
+pub fn ptr_str(ptr voidptr) string {
+  buf := [16]byte
+  hex := i64_tos(buf, 15, i64(ptr), 16)
+  res := '0x' + hex
+  return res
+}
+
 pub fn (a string) clone() string {
 	mut b := string {
 		len: a.len
@@ -109,3 +132,4 @@ pub fn (a string) clone() string {
 	b[a.len] = `\0`
 	return b
 }
+

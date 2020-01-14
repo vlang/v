@@ -26,6 +26,7 @@ fn main() {
 	vcheck("linuxsys")
 	vcheck("string")
 	vcheck("consts")
+	vcheck("structs")
 	exit(0)
 }
 

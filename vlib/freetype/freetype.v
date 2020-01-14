@@ -10,6 +10,7 @@ import (
 	gg
 	glm
 	gl
+	filepath
 )
 
 #flag windows -I @VROOT/thirdparty/freetype/include
@@ -40,8 +41,8 @@ fn C.FT_Set_Pixel_Sizes()
 
 
 
-const (
-	DEFAULT_FONT_SIZE = 12
+pub const (
+	default_font_size = 12
 )
 
 struct Character {
@@ -175,7 +176,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	}
 	if !os.exists(font_path) {
 		exe_path := os.executable()
-		exe_dir := os.basedir(exe_path)
+		exe_dir := filepath.basedir(exe_path)
 		font_path = '$exe_dir/$font_path'
 	}
 	if !os.exists(font_path) {
@@ -211,7 +212,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	//ch := Character{}
 	// Configure VAO
 	vao := gl.gen_vertex_array()
-	println('new gg text context vao=$vao')
+	//println('new gg text context vao=$vao')
 	vbo := gl.gen_buffer()
 	gl.bind_vao(vao)
 	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
@@ -234,24 +235,6 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	//ctx.init_utf8_runes()
 	return ctx
 }
-
-/*
-// A dirty hack to implement rendering of cyrillic letters.
-// All UTF-8 must be supported. update: no longer needed
-fn (ctx mut FreeType) init_utf8_runes() {
-	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
-	print('init utf8 runes: ')
-	//println(s)
-	us := s.ustring()
-	for i := 0; i < us.len; i++ {
-		_rune := us.at(i)
-		ch := ft_load_char(ctx.face, _rune.utf32_code())
-		// ctx.utf_rune_map.set(rune, ch)
-		ctx.utf_runes << _rune
-		ctx.utf_chars << ch
-	}
-}
-*/
 
 pub fn (ctx mut FreeType) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	//utext := text.ustring_tmp()
@@ -363,9 +346,50 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 
 pub fn (ctx mut FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
-		color: gx.Black,
-		size: DEFAULT_FONT_SIZE,
-		align: gx.ALIGN_LEFT,
+		color: gx.Black
+		size: default_font_size
+		align: gx.ALIGN_LEFT
 	}
 	ctx.draw_text(x, y, text, cfg)
 }
+
+pub fn (ctx mut FreeType) text_width(s string) int {
+	//t := time.ticks()
+	utext := s.ustring()
+	mut x := f64(0)
+	for i := 0; i < utext.len; i++ {
+		_rune := utext.at(i)
+		mut ch := Character{}
+		mut found := false
+		if _rune.len == 1 {
+			idx := _rune[0]
+			if idx < 0 || idx >= ctx.chars.len {
+				println('BADE RUNE $_rune')
+				continue
+			}
+			found = true
+			ch = ctx.chars[_rune[0]]
+		}
+		else if _rune.len > 1 {
+			// TODO O(1) use map
+			for j := 0; j < ctx.utf_runes.len; j++ {
+				rune_j := ctx.utf_runes[j]
+				if rune_j==_rune {
+					ch = ctx.utf_chars[j]
+					found = true
+					break
+				}
+			}
+		}
+		if !found && _rune.len > 0 && _rune[0] > 32 {
+			ch = ft_load_char(ctx.face, _rune.utf32_code())
+			ctx.utf_runes << _rune
+			ctx.utf_chars << ch
+		}
+		x += ch.advance >> u32(6)
+	}
+	//println('text width "$s" = ${time.ticks() - t} ms')
+	return  int(x) / ctx.scale
+}
+
+

@@ -24,7 +24,11 @@ const (
  * NB: if you need to decode many strings repeatedly, take a look at decode_in_buffer too.
  */
 pub fn decode(data string) string {
-	buffer := malloc( data.len * 3 / 4 )
+	size := data.len * 3 / 4
+	if size <= 0 {
+		return ''
+	}
+	buffer := malloc(size)
 	return tos(buffer, decode_in_buffer(data, buffer) )
 }
 
@@ -36,7 +40,11 @@ pub fn decode(data string) string {
  * NB: if you need to encode many strings repeatedly, take a look at encode_in_buffer too.
  */
 pub fn encode(data string) string {
-	buffer := malloc( 4 * ((data.len + 2) / 3) )
+	size := 4 * ((data.len + 2) / 3)
+	if size <= 0 {
+		return ''
+	}
+	buffer := malloc(size)
 	return tos(buffer, encode_in_buffer(data, buffer))
 }
 
@@ -120,9 +128,9 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 	mut b	   := &byte(0)
 	mut etable := &byte(0)
 	unsafe{
-		d = &byte(data.str)
-		b = &byte(buffer)
-		etable = &byte(EncodingTable.str)
+		d = data.str
+		b = buffer
+		etable = EncodingTable.str
 	}
 
 	for i < input_length {
@@ -143,7 +151,7 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 			i++
 		}
 
-		triple := ((int(octet_a) << 0x10) + (int(octet_b) << 0x08) + int(octet_c))
+		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
 
 		b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
 		b[j+1] = etable[ (triple >> 2 * 6) & 63 ]

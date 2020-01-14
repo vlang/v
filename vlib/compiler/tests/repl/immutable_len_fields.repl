@@ -12,19 +12,19 @@ println('BYE')
 cannot modify immutable field `len` (type `string`)
 declare the field with `mut:`
 struct string {
-  mut:
+mut:
 	len int
 }
 cannot modify immutable field `len` (type `array`)
 declare the field with `mut:`
 struct array {
-  mut:
+mut:
 	len int
 }
 cannot modify immutable field `len` (type `array`)
 declare the field with `mut:`
 struct array {
-  mut:
+mut:
 	len int
 }
 BYE
