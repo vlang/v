@@ -10,7 +10,6 @@ struct C.cJSON {
 	valueint    int
 	valuedouble f32
 	valuestring byteptr
-	name		byteptr
 }
 
 fn jsdecode_int(root &C.cJSON) int {
