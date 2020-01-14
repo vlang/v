@@ -22,7 +22,7 @@ fn test_common_atoi() {
 
 	for n in -10000 .. 100000 {
 		s := n.str()+"z"
-		assert s.int() == 0
+		assert s.int() == n
 	}
 }
 
@@ -64,9 +64,9 @@ fn test_unsigned_cast() {
 	assert '-0x00_0_f_ff'.u32() == 0
 	assert '10_000_000'.u32() == 10000000
 
-	for n in -10000 .. 100000 {
+	for n in 0 .. 100 {
 		s := n.str()+"z"
-		assert s.u32() == 0
+		assert s.u32() == n
 	}
 
 	// tests for u64
@@ -92,9 +92,9 @@ fn test_unsigned_cast() {
 	assert '-0x00_0_f_ff'.u64() == 0
 	assert '10_000_000'.u64() == 10000000
 
-	for n in -10000 .. 100000 {
+	for n in 0 .. 10000 {
 		s := n.str()+"z"
-		assert s.u64() == 0
+		assert s.u64() == n
 	}
 
 }
