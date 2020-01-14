@@ -63,8 +63,8 @@ pub fn put(url string) ?Response {
 	return method('PUT', url, '')
 }
 
-pub fn patch(url, content_type, data string) ?Response {
-	req := new_request('PATCH', url, content_type, data) or {
+pub fn post(url, data string) ?Response {
+	req := new_request('POST', url, data) or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -72,17 +72,6 @@ pub fn patch(url, content_type, data string) ?Response {
 	}
 	return res
 }
-
-pub fn delete(url string) ?Response {
-	req := new_request('DELETE', url, '', '') or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
-}
-
 
 pub fn method(mname string, url string, data string) ?Response {
 	req := new_request(mname, url, data) or { return error(err) }
