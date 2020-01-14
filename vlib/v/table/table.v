@@ -10,7 +10,6 @@ pub mut:
 	types         []types.Type
 	// type_idxs Hashmap
 	type_idxs     map[string]int
-	type_kinds    []types.Kind
 	local_vars    []Var
 	// fns Hashmap
 	fns           map[string]Fn
@@ -212,7 +211,6 @@ pub fn (t &Table) find_type(name string) ?types.Type {
 pub fn (t mut Table) register_type(typ types.Type, kind types.Kind, name string) int {
 	idx := t.types.len
 	t.type_idxs[name] = idx
-	t.type_kinds << kind
 	t.types << typ
 	e := []Fn
 	t.methods << e // TODO [] breaks V
@@ -246,7 +244,7 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 				// override placeholder
 				println('overriding type placeholder `$it.name` with struct')
 				t.types[existing_idx] = typ
-				t.type_kinds[existing_idx] = .struct_
+				// t.type_kinds[existing_idx] = .struct_
 				return existing_idx
 			}
 			types.Struct {
