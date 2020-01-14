@@ -42,34 +42,25 @@ pub:
 	status_code int
 }
 
-pub fn get(url string) ?Response {
-	req := new_request('GET', url, '', '') or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
+
+pub fn get(url string) ?Response { 
+	return method('GET', url, '') 
 }
 
-pub fn post(url, content_type, data string) ?Response {
-	req := new_request('POST', url, content_type, data) or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
+pub fn head(url string) ?Response {
+	return method('HEAD', url, '')
 }
 
-pub fn put(url, content_type, data string) ?Response {
-	req := new_request('PUT', url, content_type, data) or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
+pub fn delete(url string) ?Response {
+	return method('DELETE', url, '')
+}
+
+pub fn patch(url string) ?Response {
+	return method('PATCH', url, '')
+}
+
+pub fn put(url string) ?Response {
+	return method('PUT', url, '')
 }
 
 pub fn patch(url, content_type, data string) ?Response {
@@ -92,13 +83,10 @@ pub fn delete(url string) ?Response {
 	return res
 }
 
-pub fn head(url string) ?Response {
-	req := new_request('HEAD', url, '', '') or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
+
+pub fn method(mname string, url string, data string) ?Response {
+	req := new_request(mname, url, data) or { return error(err) }
+	res := req.do() or { return error(err)}
 	return res
 }
 
