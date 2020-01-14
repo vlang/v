@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* regex 0.9a
+* regex 0.9b
 *
 * Copyright (c) 2019 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -15,9 +15,10 @@
 *
 **********************************************************************/
 module regex
+import strings
 
 pub const(
-	V_REGEX_VERSION = "0.9a"      // regex module version
+	V_REGEX_VERSION = "0.9b"      // regex module version
 
 	MAX_CODE_LEN     = 256        // default small base code len for the regex programs
 	MAX_QUANTIFIER   = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
@@ -194,6 +195,22 @@ pub fn (re RE) get_parse_error_string(err int) string {
 		ERR_GROUP_NOT_BALANCED { return "ERR_GROUP_NOT_BALANCED"}
 		else { return "ERR_UNKNOWN" }
 	}
+}
+
+
+// utf8_str convert and utf8 sequence to a printable string
+[inline]
+fn utf8_str(ch u32) string {
+	mut i := 4
+	mut res := ""
+	for i > 0 {
+		v := byte((ch >> ((i-1)*8)) & 0xFF)
+		if v != 0{
+			res += "${v:1c}"
+		}
+		i--
+	}
+	return res
 }
 
 // simple_log default log function
@@ -1013,191 +1030,152 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 
 // get_code return the compiled code as regex string, note: may be different from the source!
 pub fn (re RE) get_code() string {
-		mut result := ""
-	
-		// use the best buffer possible
-		mut tmp_len := 256+128
-		if tmp_len < re.cc.len+128 { 
-			tmp_len = re.cc.len+128
-		}
-		// some memory buffer
-		buf1 := [byte(0)].repeat(tmp_len)
-		buf := &buf1[0]
-
-		mut buf_ptr := buf
 		mut pc1 := 0
-		C.sprintf(buf_ptr, "========================================\nv RegEx compiler v%s output:\n", V_REGEX_VERSION)
-		result += tos_clone(buf)
+		mut res := strings.new_builder(re.cc.len*2*re.prog.len)
+		res.write("========================================\nv RegEx compiler v $V_REGEX_VERSION output:\n")
 		
 		mut stop_flag := false
 
 		for pc1 <= re.prog.len {
-			buf_ptr = buf
-			C.sprintf(buf_ptr, "PC:%3d ist:%08x ",pc1, re.prog[pc1].ist)
-			buf_ptr += vstrlen(buf_ptr)
+			res.write("PC:${pc1:3d}")
+			
+		    res.write(" ist: ")
+		    res.write("${re.prog[pc1].ist:8x}".replace(" ","0") )
+		    res.write(" ")
 			ist :=re.prog[pc1].ist
 			if ist == IST_BSLS_CHAR {
-				C.sprintf(buf_ptr, "[\\%c]     BSLS", re.prog[pc1].v_ch)	
+				res.write("[\\${re.prog[pc1].v_ch:1c}]     BSLS")
 			} else if ist == IST_PROG_END {
-				C.sprintf(buf_ptr, "PROG_END")
+				res.write("PROG_END")
 				stop_flag = true
 			} else if ist == IST_OR_BRANCH {
-				C.sprintf(buf_ptr, "OR      ")
+				res.write("OR      ")
 			} else if ist == IST_CHAR_CLASS_POS {
-				C.sprintf(buf_ptr, "[%s]     CHAR_CLASS_POS", re.get_char_class(pc1))
+				res.write("[${re.get_char_class(pc1)}]     CHAR_CLASS_POS")
 			} else if ist == IST_CHAR_CLASS_NEG {
-				C.sprintf(buf_ptr, "[^]      CHAR_CLASS_NEG[%s]", re.get_char_class(pc1))
+				res.write("[^${re.get_char_class(pc1)}]    CHAR_CLASS_NEG")
 			} else if ist == IST_DOT_CHAR {
-				C.sprintf(buf_ptr, ".        DOT_CHAR")
+				res.write(".        DOT_CHAR")
 			} else if ist == IST_GROUP_START {
-				C.sprintf(buf_ptr, "(        GROUP_START #:%d", re.prog[pc1].group_id) 
+				res.write("(        GROUP_START #:${re.prog[pc1].group_id}")
 			} else if ist == IST_GROUP_END {
-				C.sprintf(buf_ptr, ")        GROUP_END   #:%d", re.prog[pc1].group_id)
+				res.write(")        GROUP_END   #:${re.prog[pc1].group_id}")
 			} else if ist & SIMPLE_CHAR_MASK == 0 {
-				C.sprintf(buf_ptr, "[%c]      query_ch", ist & IST_SIMPLE_CHAR)	
+				res.write("[${ist & IST_SIMPLE_CHAR:1c}]      query_ch")
 			}
-			buf_ptr += vstrlen(buf_ptr)
 
 			if re.prog[pc1].rep_max == MAX_QUANTIFIER {
-				C.sprintf(buf_ptr, " {%3d,MAX}",re.prog[pc1].rep_min)
+				res.write(" {${re.prog[pc1].rep_min:3d},MAX}")
 			}else{
 				if ist == IST_OR_BRANCH {
-					C.sprintf(buf_ptr, " if false go: %3d if true go: %3d", re.prog[pc1].rep_min, re.prog[pc1].rep_max)
+					res.write(" if false go: ${re.prog[pc1].rep_min:3d} if true go: ${re.prog[pc1].rep_max:3d}")
 				} else {
-					C.sprintf(buf_ptr, " {%3d,%3d}", re.prog[pc1].rep_min, re.prog[pc1].rep_max)
+					res.write(" {${re.prog[pc1].rep_min:3d},${re.prog[pc1].rep_max:3d}}")
 				}
 			}
-			buf_ptr += vstrlen(buf_ptr)
-			C.sprintf(buf_ptr, "\n")
-			buf_ptr += vstrlen(buf_ptr)
-			result += tos_clone(buf)
+			res.write("\n")
 			if stop_flag {
 				break
 			}
 			pc1++
 		}
 
-		buf_ptr = buf
-		C.sprintf(buf_ptr, "========================================\n")
-		
-		result += tos_clone(buf)
-		return result
+		res.write("========================================\n")
+		return res.str()
+
 }
 
 // get_query return a string with a reconstruction of the query starting from the regex program code
 
 pub fn (re RE) get_query() string {
-	// use the best buffer possible
-	buf1 := [byte(0)].repeat(re.cc.len*2)
-	buf := &buf1[0]
-	mut buf_ptr := buf
+	mut res := strings.new_builder(re.query.len*2)
 
 	if (re.flag & F_MS) != 0 {
-		C.sprintf(buf_ptr, "^")
-		buf_ptr += vstrlen(buf_ptr)
+		res.write("^")
 	}
 
 	mut i := 0
 	for i < re.prog.len && re.prog[i].ist != IST_PROG_END && re.prog[i].ist != 0{
 		ch := re.prog[i].ist
-
-		//C.printf("ty: %08x\n", ch)
 		
 		// GROUP start
 		if ch == IST_GROUP_START {
 			if re.debug == 0 {
-				C.sprintf(buf_ptr, "(")
+				res.write("(")
 			} else {
-				C.sprintf(buf_ptr, "#%d(", re.prog[i].group_id)
+				res.write("#${re.prog[i].group_id}(")
 			}
-			buf_ptr += vstrlen(buf_ptr)
 			i++
 			continue
 		}
 
 		// GROUP end
 		if ch == IST_GROUP_END {
-			C.sprintf(buf_ptr, ")")
-			buf_ptr += vstrlen(buf_ptr)
+			res.write(")")
 		}
 
 		// OR branch
 		if ch == IST_OR_BRANCH {
-			C.sprintf(buf_ptr, "|")
+			res.write("|")
 			if re.debug > 0 {
-				C.sprintf(buf_ptr, "{%d,%d}", re.prog[i].rep_min, re.prog[i].rep_max)
+				res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
 			}
-			buf_ptr += vstrlen(buf_ptr)
 			i++
 			continue
 		}
 
 		// char class
 		if ch == IST_CHAR_CLASS_NEG || ch == IST_CHAR_CLASS_POS {
-			C.sprintf(buf_ptr, "[")
-			buf_ptr += vstrlen(buf_ptr)
-
+			res.write("[")
 			if ch == IST_CHAR_CLASS_NEG {
-				C.sprintf(buf_ptr, "^")
-				buf_ptr += vstrlen(buf_ptr)
+				res.write("^")
 			}
-
-			C.sprintf(buf_ptr,"%s", re.get_char_class(i))
-			buf_ptr += vstrlen(buf_ptr)
-
-			C.sprintf(buf_ptr, "]")
-			buf_ptr += vstrlen(buf_ptr)
+			res.write("${re.get_char_class(i)}")
+			res.write("]")
 		}
 
 		// bsls char
 		if ch == IST_BSLS_CHAR {
-			C.sprintf(buf_ptr, "\\%c", re.prog[i].v_ch)
-			buf_ptr += vstrlen(buf_ptr)
+			res.write("\\${re.prog[i].v_ch:1c}")
 		}
 
 		// IST_DOT_CHAR
 		if ch == IST_DOT_CHAR {
-			C.sprintf(buf_ptr, ".")
-			buf_ptr += vstrlen(buf_ptr)
+			res.write(".")
 		}
 
 		// char alone
 		if ch & SIMPLE_CHAR_MASK == 0 {
 			if byte(ch) in BSLS_ESCAPE_LIST {
-				C.sprintf(buf_ptr, "\\")
-				buf_ptr += vstrlen(buf_ptr)
+				res.write("\\")
 			}
-			C.sprintf(buf_ptr, "%c", re.prog[i].ist)
-			buf_ptr += vstrlen(buf_ptr)
+			res.write("${re.prog[i].ist:c}")
 		}
 
 		// quantifier
 		if !(re.prog[i].rep_min == 1 && re.prog[i].rep_max == 1) {
 			if re.prog[i].rep_min == 0 && re.prog[i].rep_max == 1 {
-				C.sprintf(buf_ptr, "?")
+				res.write("?")
 			} else if re.prog[i].rep_min == 1 && re.prog[i].rep_max == MAX_QUANTIFIER {
-				C.sprintf(buf_ptr, "+")
+				res.write("+")
 			} else if re.prog[i].rep_min == 0 && re.prog[i].rep_max == MAX_QUANTIFIER {
-				C.sprintf(buf_ptr, "*")
+				res.write("*")
 			} else {
 				if re.prog[i].rep_max == MAX_QUANTIFIER {
-					C.sprintf(buf_ptr, "{%d,MAX}", re.prog[i].rep_min)
+					res.write("{${re.prog[i].rep_min},MAX}")
 				} else {
-					C.sprintf(buf_ptr, "{%d,%d}", re.prog[i].rep_min, re.prog[i].rep_max)
+					res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
 				}
 			}
-			buf_ptr += vstrlen(buf_ptr)
 		}
 
 		i++
 	}
 	if (re.flag & F_ME) != 0 {
-		C.sprintf(buf_ptr, "$")
-		buf_ptr += vstrlen(buf_ptr)
+		res.write("$")
 	}
-	res := tos_clone(buf)
 
-	return res
+	return res.str()
 }
 
 /******************************************************************************
@@ -1269,9 +1247,11 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 	if re.debug>0 {
 		// print header
-		h_buf :=  [byte(0)].repeat(64)
-		C.sprintf(&h_buf[0], "flags: %08x\n",re.flag)
-		re.log_func(tos_clone(&h_buf[0]))
+		mut h_buf := strings.new_builder(32)
+		h_buf.write("flags: ")
+		h_buf.write("${re.flag:8x}".replace(" ","0"))
+		h_buf.write("\n")
+		re.log_func(h_buf.str())
 	}
 
 	for m_state != .end {
@@ -1279,7 +1259,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		if pc >= 0 && pc < re.prog.len {
 			ist = re.prog[pc].ist
 		}else if pc >= re.prog.len {
-			C.printf("ERROR!! PC overflow!!\n")
+			//C.printf("ERROR!! PC overflow!!\n")
 			return ERR_INTERNAL_ERROR, i
 		}
 
@@ -1287,86 +1267,69 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		// DEBUG LOG
 		//******************************************
 		if re.debug>0 {
-			// use the best buffer possible
-			mut tmp_len := 256
-			if tmp_len < re.cc.len+128 { 
-				tmp_len = re.cc.len+128
-			}
+			mut buf2 := strings.new_builder(re.cc.len+128)
 
-			// some memory buffer
-			buf1 := [byte(0)].repeat(tmp_len)
-			buf  := &buf1[0]
-
-			// print all the instructions
-			mut buf_ptr := buf
+			// print all the instructions	
 
 			// end of the input text
 			if i >= in_txt_len {
-				C.sprintf(buf_ptr, "# %3d END OF INPUT TEXT\n",step_count)
-				re.log_func(tos_clone(buf))
+				buf2.write("# ${step_count:3d} END OF INPUT TEXT\n")
+				re.log_func(buf2.str())
 			}else{
 
 				// print only the exe istruction
 				if (re.debug == 1 && m_state == .ist_load) ||
 					re.debug == 2
-				{
-								
+				{		
 					if ist == IST_PROG_END {
-						C.sprintf(buf_ptr, "# %3d PROG_END\n",step_count)
-						buf_ptr += vstrlen(buf_ptr)
+						buf2.write("# ${step_count:3d} PROG_END\n")
 					}
 					else if ist == 0 || m_state in [.start,.ist_next,.stop] {
-						C.sprintf(buf_ptr, "# %3d s: %12s PC: NA\n",step_count, state_str(m_state).str)
-						buf_ptr += vstrlen(buf_ptr)
+						buf2.write("# ${step_count:3d} s: ${state_str(m_state):12s} PC: NA\n")
 					}else{
 						ch, char_len = get_charb(in_txt,i)
 						
-						tmp_bl:=[byte(ch >> 24), byte((ch >> 16) & 0xFF), byte((ch >> 8) & 0xFF), byte(ch & 0xFF), 0]
-						tmp_un_ch := byteptr(&tmp_bl[4-char_len])
-
-						C.sprintf(buf_ptr, "# %3d s: %12s PC: %3d=>%08x i,ch,len:[%3d,'%s',%d] f.m:[%3d,%3d] ",
-							step_count, state_str(m_state).str , pc, ist, i, tmp_un_ch, char_len, first_match,state.match_index)
-						buf_ptr += vstrlen(buf_ptr)
+						buf2.write("# ${step_count:3d} s: ${state_str(m_state):12s} PC: ${pc:3d}=>")
+						buf2.write("${ist:8x}".replace(" ","0"))
+						buf2.write(" i,ch,len:[${i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${first_match:3d},${state.match_index:3d}] ")
 
 						if ist & SIMPLE_CHAR_MASK == 0 {
 							if char_len < 4 {
-								C.sprintf(buf_ptr, "query_ch: [%c]", ist & IST_SIMPLE_CHAR)
+								tmp_c := ist & IST_SIMPLE_CHAR
+								buf2.write("query_ch: [${tmp_c:1c}]")
 							} else {
-								C.sprintf(buf_ptr, "query_ch: [%c]", ist | SIMPLE_CHAR_MASK)
+								tmp_c := ist | IST_SIMPLE_CHAR
+								buf2.write("query_ch: [${tmp_c:1c}]")
 							}
-							buf_ptr += vstrlen(buf_ptr)
 						} else {
 							if ist == IST_BSLS_CHAR {
-								C.sprintf(buf_ptr, "BSLS [\\%c]",re.prog[pc].v_ch)	
+								buf2.write("BSLS [\\${re.prog[pc].v_ch:1c}]")
 							} else if ist == IST_PROG_END {
-								C.sprintf(buf_ptr, "PROG_END")
+								buf2.write("PROG_END")
 							} else if ist == IST_OR_BRANCH {
-								C.sprintf(buf_ptr, "OR")
+								buf2.write("OR")
 							} else if ist == IST_CHAR_CLASS_POS {
-								C.sprintf(buf_ptr, "CHAR_CLASS_POS[%s]",re.get_char_class(pc))
+								buf2.write("CHAR_CLASS_POS[${re.get_char_class(pc)}]")
 							} else if ist == IST_CHAR_CLASS_NEG {
-								C.sprintf(buf_ptr, "CHAR_CLASS_NEG[%s]",re.get_char_class(pc))
+								buf2.write("CHAR_CLASS_NEG[${re.get_char_class(pc)}]")
 							} else if ist == IST_DOT_CHAR {
-								C.sprintf(buf_ptr, "DOT_CHAR")
+								buf2.write("DOT_CHAR")
 							} else if ist == IST_GROUP_START {
-								C.sprintf(buf_ptr, "GROUP_START #:%d rep:%d ",re.prog[pc].group_id, re.prog[re.prog[pc].goto_pc].group_rep) 
+								tmp_gi :=re.prog[pc].group_id
+								tmp_gr := re.prog[re.prog[pc].goto_pc].group_rep
+								buf2.write("GROUP_START #:${tmp_gi} rep:${tmp_gr} ")
 							} else if ist == IST_GROUP_END {
-								C.sprintf(buf_ptr, "GROUP_END   #:%d deep:%d ",re.prog[pc].group_id, group_index)
+								buf2.write("GROUP_END   #:${re.prog[pc].group_id} deep:${group_index} ")
 							}
-							buf_ptr += vstrlen(buf_ptr)
 						}
 						if re.prog[pc].rep_max == MAX_QUANTIFIER {
-							C.sprintf(buf_ptr, "{%d,MAX}:%d",re.prog[pc].rep_min,re.prog[pc].rep)
+							buf2.write("{${re.prog[pc].rep_min},MAX}:${re.prog[pc].rep}")
 						} else {
-							C.sprintf(buf_ptr, "{%d,%d}:%d",re.prog[pc].rep_min,re.prog[pc].rep_max,re.prog[pc].rep)
+							buf2.write("{${re.prog[pc].rep_min},${re.prog[pc].rep_max}}:${re.prog[pc].rep}")
 						}
-						buf_ptr += vstrlen(buf_ptr)
-						C.sprintf(buf_ptr, " (#%d)\n",group_index)
-						
+						buf2.write(" (#${group_index})\n")
 					}
-				
-					re.log_func(tos_clone(buf))
-					
+					re.log_func(buf2.str())
 				}
 			}
 			step_count++
@@ -1438,7 +1401,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			re.prog[pc].reset()
 			// check if we are in the program bounds
 			if pc < 0 || pc > re.prog.len {
-				C.printf("ERROR!! PC overflow!!\n")
+				//C.printf("ERROR!! PC overflow!!\n")
 				return ERR_INTERNAL_ERROR, i
 			}			
 			m_state = .ist_load
@@ -1450,7 +1413,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			pc = pc + 1
 			// check if we are in the program bounds
 			if pc < 0 || pc > re.prog.len {
-				C.printf("ERROR!! PC overflow!!\n")
+				//C.printf("ERROR!! PC overflow!!\n")
 				return ERR_INTERNAL_ERROR, i
 			}		
 			m_state = .ist_load
@@ -1998,4 +1961,49 @@ pub fn (re mut RE) find(in_txt string) (int,int) {
 		}
 	}
 	return NO_MATCH_FOUND, 0
+}
+
+// find all the non overlapping occurrences of the match pattern
+pub fn (re mut RE) find_all(in_txt string) []int {
+	mut i := 0
+	mut res := []int
+	mut ls := -1
+	for i < in_txt.len {
+		s,e := re.find(in_txt[i..])
+		if s >= 0 && e > s && i+s > ls {
+			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
+			res << i+s
+			res << i+e
+			ls = i+s
+			i = i+e
+			continue
+		} else {
+			i++
+		}
+		
+	}
+	return res
+}
+
+// replace return a string where the matches are replaced with the replace string
+pub fn (re mut RE) replace(in_txt string, repl string) string {
+	pos := re.find_all(in_txt)
+	if pos.len > 0 {
+		mut res := ""
+		mut i := 0
+
+		mut s1 := 0
+		mut e1 := in_txt.len
+		
+		for i < pos.len {
+			e1 = pos[i]
+			res += in_txt[s1..e1] + repl
+			s1 = pos[i+1]
+			i += 2
+		}
+
+		res += in_txt[s1..]
+		return res
+	}
+	return in_txt
 }
