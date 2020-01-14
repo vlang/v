@@ -7,9 +7,9 @@ import regex
 ******************************************************************************/
 struct TestItem {
 	src string
-	q string
-	s int = 0
-	e int = 0
+	q   string
+	s   int = 0
+	e   int = 0
 }
 
 const(
@@ -84,8 +84,8 @@ match_test_suite = [
 
 struct TestItemFa {
 	src string
-	q string
-	r []int
+	q   string
+	r   []int
 }
 
 const (
@@ -109,9 +109,9 @@ match_test_suite_fa = [
 
 struct TestItemRe {
 	src string
-	q string
+	q   string
 	rep string
-	r string
+	r   string
 }
 
 const (

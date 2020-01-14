@@ -15,6 +15,7 @@
 *
 **********************************************************************/
 module regex
+import strings
 
 pub const(
 	V_REGEX_VERSION = "0.9b"      // regex module version
@@ -1030,65 +1031,67 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 // get_code return the compiled code as regex string, note: may be different from the source!
 pub fn (re RE) get_code() string {
 		mut pc1 := 0
-		mut res := "========================================\nv RegEx compiler v $V_REGEX_VERSION output:\n"
+		mut res := strings.new_builder(re.cc.len*2*re.prog.len)
+		res.write("========================================\nv RegEx compiler v $V_REGEX_VERSION output:\n")
 		
 		mut stop_flag := false
 
 		for pc1 <= re.prog.len {
-			res += "PC:${pc1:3d}"
-		    res += " ist: "
-		    res += "${re.prog[pc1].ist:8x}".replace(" ","0")
-		    res += " "
+			res.write("PC:${pc1:3d}")
+			
+		    res.write(" ist: ")
+		    res.write("${re.prog[pc1].ist:8x}".replace(" ","0") )
+		    res.write(" ")
 			ist :=re.prog[pc1].ist
 			if ist == IST_BSLS_CHAR {
-				res += "[\\${re.prog[pc1].v_ch:1c}]     BSLS"
+				res.write("[\\${re.prog[pc1].v_ch:1c}]     BSLS")
 			} else if ist == IST_PROG_END {
-				res += "PROG_END"
+				res.write("PROG_END")
 				stop_flag = true
 			} else if ist == IST_OR_BRANCH {
-				res += "OR      "
+				res.write("OR      ")
 			} else if ist == IST_CHAR_CLASS_POS {
-				res += "[${re.get_char_class(pc1):s}]     CHAR_CLASS_POS"
+				res.write("[${re.get_char_class(pc1)}]     CHAR_CLASS_POS")
 			} else if ist == IST_CHAR_CLASS_NEG {
-				res += "[^${re.get_char_class(pc1):s}]    CHAR_CLASS_NEG"
+				res.write("[^${re.get_char_class(pc1)}]    CHAR_CLASS_NEG")
 			} else if ist == IST_DOT_CHAR {
-				res += ".        DOT_CHAR"
+				res.write(".        DOT_CHAR")
 			} else if ist == IST_GROUP_START {
-				res += "(        GROUP_START #:${re.prog[pc1].group_id:d}"
+				res.write("(        GROUP_START #:${re.prog[pc1].group_id}")
 			} else if ist == IST_GROUP_END {
-				res += ")        GROUP_END   #:${re.prog[pc1].group_id:d}"
+				res.write(")        GROUP_END   #:${re.prog[pc1].group_id}")
 			} else if ist & SIMPLE_CHAR_MASK == 0 {
-				res += "[${ist & IST_SIMPLE_CHAR:1c}]      query_ch"
+				res.write("[${ist & IST_SIMPLE_CHAR:1c}]      query_ch")
 			}
 
 			if re.prog[pc1].rep_max == MAX_QUANTIFIER {
-				res += " {${re.prog[pc1].rep_min:3d},MAX}"
+				res.write(" {${re.prog[pc1].rep_min:3d},MAX}")
 			}else{
 				if ist == IST_OR_BRANCH {
-					res += " if false go: ${re.prog[pc1].rep_min:3d} if true go: ${re.prog[pc1].rep_max:3d}"
+					res.write(" if false go: ${re.prog[pc1].rep_min:3d} if true go: ${re.prog[pc1].rep_max:3d}")
 				} else {
-					res += " {${re.prog[pc1].rep_min:3d},${re.prog[pc1].rep_max:3d}}"
+					res.write(" {${re.prog[pc1].rep_min:3d},${re.prog[pc1].rep_max:3d}}")
 				}
 			}
-			res += "\n"
+			res.write("\n")
 			if stop_flag {
 				break
 			}
 			pc1++
 		}
 
-		res += "========================================\n"
-		return res
+		res.write("========================================\n")
+		return res.str()
 
 }
 
 // get_query return a string with a reconstruction of the query starting from the regex program code
 
 pub fn (re RE) get_query() string {
-	mut res := ""
+	mut res := strings.new_builder(re.query.len*2)
 
 	if (re.flag & F_MS) != 0 {
-		res += "^"
+		res.write("^")
 	}
 
 	mut i := 0
@@ -1098,9 +1101,9 @@ pub fn (re RE) get_query() string {
 		// GROUP start
 		if ch == IST_GROUP_START {
 			if re.debug == 0 {
-				res += "("
+				res.write("(")
 			} else {
-				res += "#${re.prog[i].group_id}("
+				res.write("#${re.prog[i].group_id}(")
 			}
 			i++
 			continue
@@ -1108,14 +1111,14 @@ pub fn (re RE) get_query() string {
 
 		// GROUP end
 		if ch == IST_GROUP_END {
-			res += ")"
+			res.write(")")
 		}
 
 		// OR branch
 		if ch == IST_OR_BRANCH {
-			res += "|"
+			res.write("|")
 			if re.debug > 0 {
-				res += "{${re.prog[i].rep_min},${re.prog[i].rep_max}}"
+				res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
 			}
 			i++
 			continue
@@ -1123,45 +1126,45 @@ pub fn (re RE) get_query() string {
 
 		// char class
 		if ch == IST_CHAR_CLASS_NEG || ch == IST_CHAR_CLASS_POS {
-			res += "["
+			res.write("[")
 			if ch == IST_CHAR_CLASS_NEG {
-				res += "^"
+				res.write("^")
 			}
-			res += "${re.get_char_class(i)}"
-			res += "]"
+			res.write("${re.get_char_class(i)}")
+			res.write("]")
 		}
 
 		// bsls char
 		if ch == IST_BSLS_CHAR {
-			res += "\\${re.prog[i].v_ch:1c}"
+			res.write("\\${re.prog[i].v_ch:1c}")
 		}
 
 		// IST_DOT_CHAR
 		if ch == IST_DOT_CHAR {
-			res += "."
+			res.write(".")
 		}
 
 		// char alone
 		if ch & SIMPLE_CHAR_MASK == 0 {
 			if byte(ch) in BSLS_ESCAPE_LIST {
-				res += "\\"
+				res.write("\\")
 			}
-			res += "${re.prog[i].ist:c}"
+			res.write("${re.prog[i].ist:c}")
 		}
 
 		// quantifier
 		if !(re.prog[i].rep_min == 1 && re.prog[i].rep_max == 1) {
 			if re.prog[i].rep_min == 0 && re.prog[i].rep_max == 1 {
-				res += "?"
+				res.write("?")
 			} else if re.prog[i].rep_min == 1 && re.prog[i].rep_max == MAX_QUANTIFIER {
-				res += "+"
+				res.write("+")
 			} else if re.prog[i].rep_min == 0 && re.prog[i].rep_max == MAX_QUANTIFIER {
-				res += "*"
+				res.write("*")
 			} else {
 				if re.prog[i].rep_max == MAX_QUANTIFIER {
-					res += "{${re.prog[i].rep_min},MAX}"
+					res.write("{${re.prog[i].rep_min},MAX}")
 				} else {
-					res += "{${re.prog[i].rep_min},${re.prog[i].rep_max}}"
+					res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
 				}
 			}
 		}
@@ -1169,10 +1172,10 @@ pub fn (re RE) get_query() string {
 		i++
 	}
 	if (re.flag & F_ME) != 0 {
-		res += "$"
+		res.write("$")
 	}
 
-	return res
+	return res.str()
 }
 
 /******************************************************************************
@@ -1244,10 +1247,11 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 	if re.debug>0 {
 		// print header
-		mut h_buf := "flags: "
-		h_buf += "${re.flag:8x}".replace(" ","0")
-		h_buf += "\n"
-		re.log_func(h_buf)
+		mut h_buf := strings.new_builder(32)
+		h_buf.write("flags: ")
+		h_buf.write("${re.flag:8x}".replace(" ","0"))
+		h_buf.write("\n")
+		re.log_func(h_buf.str())
 	}
 
 	for m_state != .end {
@@ -1263,73 +1267,69 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		// DEBUG LOG
 		//******************************************
 		if re.debug>0 {
-			mut buf2 := ""
+			mut buf2 := strings.new_builder(re.cc.len+128)
 
 			// print all the instructions	
 
 			// end of the input text
 			if i >= in_txt_len {
-				buf2 = "# ${step_count:3d} END OF INPUT TEXT\n"
-				re.log_func(buf2)
+				buf2.write("# ${step_count:3d} END OF INPUT TEXT\n")
+				re.log_func(buf2.str())
 			}else{
 
 				// print only the exe istruction
 				if (re.debug == 1 && m_state == .ist_load) ||
 					re.debug == 2
-				{
-								
+				{		
 					if ist == IST_PROG_END {
-						buf2 += "# ${step_count:3d} PROG_END\n"
+						buf2.write("# ${step_count:3d} PROG_END\n")
 					}
 					else if ist == 0 || m_state in [.start,.ist_next,.stop] {
-						buf2 += "# ${step_count:3d} s: ${state_str(m_state):12s} PC: NA\n"
+						buf2.write("# ${step_count:3d} s: ${state_str(m_state):12s} PC: NA\n")
 					}else{
 						ch, char_len = get_charb(in_txt,i)
 						
-						buf2 += "# ${step_count:3d} s: ${state_str(m_state):12s} PC: ${pc:3d}=>"
-						buf2 +="${ist:8x}".replace(" ","0")
-						buf2 +=" i,ch,len:[${i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${first_match:3d},${state.match_index:3d}] "
+						buf2.write("# ${step_count:3d} s: ${state_str(m_state):12s} PC: ${pc:3d}=>")
+						buf2.write("${ist:8x}".replace(" ","0"))
+						buf2.write(" i,ch,len:[${i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${first_match:3d},${state.match_index:3d}] ")
 
 						if ist & SIMPLE_CHAR_MASK == 0 {
 							if char_len < 4 {
 								tmp_c := ist & IST_SIMPLE_CHAR
-								buf2 += "query_ch: [${tmp_c:1c}]"
+								buf2.write("query_ch: [${tmp_c:1c}]")
 							} else {
 								tmp_c := ist | IST_SIMPLE_CHAR
-								buf2 += "query_ch: [${tmp_c:1c}]"
+								buf2.write("query_ch: [${tmp_c:1c}]")
 							}
-							//buf_ptr += vstrlen(buf_ptr)
 						} else {
 							if ist == IST_BSLS_CHAR {
-								buf2 += "BSLS [\\${re.prog[pc].v_ch:1c}]"
+								buf2.write("BSLS [\\${re.prog[pc].v_ch:1c}]")
 							} else if ist == IST_PROG_END {
-								buf2 += "PROG_END"
+								buf2.write("PROG_END")
 							} else if ist == IST_OR_BRANCH {
-								buf2 += "OR"
+								buf2.write("OR")
 							} else if ist == IST_CHAR_CLASS_POS {
-								buf2 += "CHAR_CLASS_POS[${re.get_char_class(pc)}]"
+								buf2.write("CHAR_CLASS_POS[${re.get_char_class(pc)}]")
 							} else if ist == IST_CHAR_CLASS_NEG {
-								buf2 += "CHAR_CLASS_NEG[${re.get_char_class(pc)}]"
+								buf2.write("CHAR_CLASS_NEG[${re.get_char_class(pc)}]")
 							} else if ist == IST_DOT_CHAR {
-								buf2 += "DOT_CHAR"
+								buf2.write("DOT_CHAR")
 							} else if ist == IST_GROUP_START {
 								tmp_gi :=re.prog[pc].group_id
 								tmp_gr := re.prog[re.prog[pc].goto_pc].group_rep
-								buf2 += "GROUP_START #:${tmp_gi} rep:${tmp_gr} "
+								buf2.write("GROUP_START #:${tmp_gi} rep:${tmp_gr} ")
 							} else if ist == IST_GROUP_END {
-								buf2 += "GROUP_END   #:${re.prog[pc].group_id} deep:${group_index} "
+								buf2.write("GROUP_END   #:${re.prog[pc].group_id} deep:${group_index} ")
 							}
-							//buf_ptr += vstrlen(buf_ptr)
 						}
 						if re.prog[pc].rep_max == MAX_QUANTIFIER {
-							buf2 += "{${re.prog[pc].rep_min},MAX}:${re.prog[pc].rep}"
+							buf2.write("{${re.prog[pc].rep_min},MAX}:${re.prog[pc].rep}")
 						} else {
-							buf2 += "{${re.prog[pc].rep_min},${re.prog[pc].rep_max}}:${re.prog[pc].rep}"
+							buf2.write("{${re.prog[pc].rep_min},${re.prog[pc].rep_max}}:${re.prog[pc].rep}")
 						}
-						//buf_ptr += vstrlen(buf_ptr)
-						buf2 += " (#${group_index})\n"
+						buf2.write(" (#${group_index})\n")
 					}
-					re.log_func(buf2)
+					re.log_func(buf2.str())
 				}
 			}
 			step_count++
