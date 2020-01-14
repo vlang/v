@@ -1200,14 +1200,14 @@ pub fn create_symlink() {
 	}
 	vexe := vexe_path()
 	mut link_path := '/usr/local/bin/v'
-	mut ret := os.system('ln -sf $vexe $link_path')
+	mut ret := os.system('ln -sf $vexe $link_path 2> /dev/null')
 	if ret == 0 {
 		println('Symlink "$link_path" has been created')
 	}
-	else if os.system('uname -o | grep [A/a]ndroid') == 0 {
+	else if os.system('uname -o | grep -q \'[A/a]ndroid\'') == 0 {
 		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
 		link_path = '/data/data/com.termux/files/usr/bin/v'
-		ret = os.system('ln -sf $vexe $link_path')
+		ret = os.system('ln -sf $vexe $link_path 2> /dev/null')
 		if ret == 0 {
 			println('Symlink "$link_path" has been created')
 		} else {
