@@ -91,6 +91,7 @@ pub fn (t mut Table) clear_vars() {
 }
 
 pub fn (t mut Table) register_var(v Var) {
+	println('register_var: $v.name - $v.ti.name')
 	t.local_vars << v
 	/*
 	mut new_var := {

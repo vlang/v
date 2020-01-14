@@ -143,6 +143,7 @@ pub struct VarDecl {
 pub:
 	name string
 	expr Expr
+	is_mut bool
 	ti   types.TypeIdent
 }
 
@@ -154,17 +155,6 @@ pub:
 enum IdentKind {
 	blank_ident
 	variable
-	// type_
-	// function
-}
-
-enum IdentInfoKind {
-	type_
-	function
-}
- 
-struct IdentInfo {
-	kind IdentInfoKind
 }
 
 // A single identifier

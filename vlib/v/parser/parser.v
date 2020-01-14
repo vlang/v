@@ -75,8 +75,6 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		// println('stmt at ' + p.tok.str())
 		stmts << p.top_stmt()
 	}
-	// p.deferred_type_check()
-	// p.check_fn_calls()
 	p.check_types()
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
@@ -335,13 +333,13 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 		mut ident := ast.Ident{
 			name: p.tok.lit
 		}
-		var := p.table.find_var(p.tok.lit) or {
-			p.error('name expr unknown variable `$p.tok.lit`')
-			exit(0)
-		}
-		ti = var.ti
+		// var := p.table.find_var(p.tok.lit) or {
+		// 	p.error('name expr unknown variable `$p.tok.lit`')
+		// 	exit(0)
+		// }
+		// ti = var.ti
 		ident.kind = .variable
-		ident.ti = ti
+		// ident.ti = ti
 		node = ident
 		p.next()
 	}
@@ -355,9 +353,6 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 	match p.tok.kind {
 		.name {
 			node,ti = p.name_expr()
-			if ti.kind == .void {
-				println('## VOIDi 111')
-			}
 		}
 		.str {
 			node,ti = p.string_expr()
@@ -812,23 +807,26 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	}
 	name := p.tok.lit
 	p.read_first_token()
-	expr,ti := p.expr(token.lowest_prec)
-	if _ := p.table.find_var(name) {
-		p.error('redefinition of `$name`')
-	}
-	p.table.register_var(table.Var{
-		name: name
-		ti: ti
-		is_mut: is_mut
-	})
+	expr, ti := p.expr(token.lowest_prec)
+	// if _ := p.table.find_var(name) {
+	// 	p.error('redefinition of `$name`')
+	// }
+	// p.table.register_var(table.Var{
+	// 	name: name
+	// 	ti: ti
+	// 	is_mut: is_mut
+	// })
 	// println(p.table.names)
 	// println('added var `$name` with type $t.name')
-	return ast.VarDecl{
+	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+		is_mut: is_mut
 		ti: ti
 	}
+	// p.var_decl << node
+	p.add_check_stmt(node)
+	return node
 }
 
 

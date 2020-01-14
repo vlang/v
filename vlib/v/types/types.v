@@ -24,7 +24,7 @@ pub const (
 )
 
 pub enum Kind {
-	unresolved_ident
+	unresolved
 	placeholder
 	void
 	voidptr
@@ -134,6 +134,9 @@ pub fn check(got, expected &TypeIdent) bool {
 
 pub fn (k Kind) str() string {
 	k_str := match k {
+		.unresolved{
+			'unresolved'
+		}
 		.placeholder{
 			'placeholder'
 		}
