@@ -628,6 +628,9 @@ fn type_default(typ string) string {
 	if typ.contains('__') {
 		return '{0}'
 	}
+	if typ.ends_with('Fn') { // TODO
+		return '0'
+	}
 	// Default values for other types are not needed because of mandatory initialization
 	match typ {
 		'bool' {
