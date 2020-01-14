@@ -9,7 +9,8 @@ Tetris has a temporary dependency on GLFW.
 `sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev`
 
 ## Arch (and Manjaro)
-`sudo pacman -S glfw-x11` 
+`sudo pacman -S glfw-x11 freetype2` 
 
 ## Windows 
-Copy `thirdparty/glfw/glfw3.dll` to this directory. 
+- Copy `thirdparty/glfw/glfw3.dll` to `Windows\system32` or this directory.
+- Copy `thirdpart/freetype/win64/freetype.dll` to `Windows\system32` or this directory.
