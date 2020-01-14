@@ -30,7 +30,10 @@ fn main() {
 		})
 	} 
 	go update() // update the scene in the background in case the window isn't focused 
-	for { 
+	for {
+		if ctx.gg.window.should_close() {
+			break
+		}
 		gg.clear(gx.White) 
 		ctx.draw()
 		ctx.gg.render() 
