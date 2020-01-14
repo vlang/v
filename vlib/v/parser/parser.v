@@ -496,6 +496,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 		left: left
 		right: right
 	}
+	p.add_check_expr(expr)
 	return expr,ti
 }
 

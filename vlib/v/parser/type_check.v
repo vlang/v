@@ -46,6 +46,11 @@ pub fn (p &Parser) check_get_type(expr ast.Expr) types.TypeIdent {
 			}
 			p.error('unknown field `${ti.name}.$it.field`')
 		}
+		ast.BinaryExpr {
+			println('CHECK TYPE BINARYEXPR')
+			ti := p.check_get_type(it.left)
+			return ti
+		}
 		else {
 			types.void_ti
 		}
@@ -56,18 +61,18 @@ pub fn (p &Parser) check_get_type(expr ast.Expr) types.TypeIdent {
 pub fn (p &Parser) check_call_expr(call_expr ast.CallExpr) {
 	fn_name := call_expr.name
 	if f := p.table.find_fn(fn_name) {
-		return_ti := f.return_ti
+		// return_ti := f.return_ti
+		if call_expr.args.len < f.args.len {
+			p.error('too few arguments in call to `$fn_name`')
+		} else if call_expr.args.len > f.args.len {
+			p.error('too many arguments in call to `$fn_name`')
+		}
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
 			ti := p.check_get_type(arg_expr)
 			if !p.table.check(&ti, &arg.ti) {
 				p.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
 			}
-		}
-		if call_expr.args.len < f.args.len {
-			p.error('too few arguments in call to `$fn_name`')
-		} else if call_expr.args.len > f.args.len {
-			p.error('too many arguments in call to `$fn_name`')
 		}
 	} else {
 		// p.error('unhknown fn: $fn_name')
@@ -128,6 +133,14 @@ pub fn (p &Parser) check_selector_expr(selector_expr ast.SelectorExpr) {
 	}
 }
 
+pub fn (p &Parser) check_binary_expr(binary_expr ast.BinaryExpr) {
+	left_ti := p.check_get_type(binary_expr.left)
+	right_ti := p.check_get_type(binary_expr.right)
+	if !p.table.check(&right_ti, &left_ti) {
+		p.error('binary expr: cannot use $right_ti.name as $left_ti.name')
+	}
+}
+
 pub fn (p &Parser) check_types() {
 	for ctx in p.type_checks {
 		// expr := *ctx.expr
@@ -152,6 +165,10 @@ pub fn (p &Parser) check_types() {
 			ast.SelectorExpr {
 				println('SELECTOR EXPR')
 				p.check_selector_expr(it)
+			}
+			ast.BinaryExpr {
+				println('BINARYEXPR')
+				p.check_binary_expr(it)
 			}
 			else { println('ELSE') }
 		}
