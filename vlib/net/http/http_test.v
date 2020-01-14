@@ -1,5 +1,16 @@
 // import net.urllib
 import net.http
+import json
+
+struct PostmanEchoResponseBody {
+	args map[string]string
+	data string
+	files map[string]string
+	form map[string]string
+	headers map[string]string
+	json ?map[string]string
+	url string
+}
 
 fn test_escape_unescape() {
 /*
@@ -43,4 +54,37 @@ fn test_public_servers() {
 		assert 200 == res.status_code
 		assert res.text.len > 0
 	}
+}
+
+fn test_http_post() {
+	url := 'https://postman-echo.com/post'
+	data := 'hello world'
+	res := http.post(url, http.ContentTypeText, data) or { panic(err) }
+	body := json.decode(PostmanEchoResponseBody, res.text) or { panic(err) }
+	assert 200 == res.status_code
+	assert body.data == 'hello world'
+}
+
+fn test_http_put() {
+	url := 'https://postman-echo.com/put'
+	data := 'hello world'
+	res := http.put(url, http.ContentTypeText, data) or { panic(err) }
+	body := json.decode(PostmanEchoResponseBody, res.text) or { panic(err) }
+	assert 200 == res.status_code
+	assert body.data == 'hello world'
+}
+
+fn test_http_patch() {
+	url := 'https://postman-echo.com/patch'
+	data := 'hello world'
+	res := http.patch(url, http.ContentTypeText, data) or { panic(err) }
+	body := json.decode(PostmanEchoResponseBody, res.text) or { panic(err) }
+	assert 200 == res.status_code
+	assert body.data == 'hello world'
+}
+
+fn test_http_delete() {
+	url := 'https://postman-echo.com/delete'
+	res := http.delete(url) or { panic(err) }
+	assert 200 == res.status_code
 }

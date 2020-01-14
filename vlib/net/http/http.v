@@ -10,6 +10,14 @@ const (
 	max_redirects = 4
 )
 
+pub const (
+	ContentTypeBinary = "application/octet-stream"
+    ContentTypeForm = "application/x-www-form-urlencoded"
+    ContentTypeJSON = "application/json"
+    ContentTypeHTML = "text/html; charset=utf-8"
+    ContentTypeText = "text/plain; charset=utf-8"
+)
+
 pub struct Request {
 pub:
 	headers    map[string]string
@@ -35,7 +43,7 @@ pub:
 }
 
 pub fn get(url string) ?Response {
-	req := new_request('GET', url, '') or {
+	mut req := new_request('GET', url, '', '') or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -44,8 +52,38 @@ pub fn get(url string) ?Response {
 	return res
 }
 
-pub fn post(url, data string) ?Response {
-	req := new_request('POST', url, data) or {
+pub fn post(url, content_type, data string) ?Response {
+	mut req := new_request('POST', url, content_type, data) or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn put(url, content_type, data string) ?Response {
+	mut req := new_request('PUT', url, content_type, data) or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn patch(url, content_type, data string) ?Response {
+	mut req := new_request('PATCH', url, content_type, data) or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn delete(url string) ?Response {
+	mut req := new_request('DELETE', url, '', '') or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -55,7 +93,7 @@ pub fn post(url, data string) ?Response {
 }
 
 pub fn head(url string) ?Response {
-	req := new_request('HEAD', url, '') or {
+	mut req := new_request('HEAD', url, '', '') or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -65,13 +103,17 @@ pub fn head(url string) ?Response {
 }
 
 // new_request creates a new HTTP request
-pub fn new_request(typ, _url, _data string) ?Request {
+pub fn new_request(typ, _url, _content_type, _data string) ?Request {
 	if _url == '' {
 		return error('http.new_request: empty url')
 	}
+	if _data != '' && _content_type == '' {
+		return error('http.new_request: empty content type')
+	}
 	mut url := _url
 	mut data := _data
-	// req.headers['User-Agent'] = 'V $VERSION'
+	mut headers := map[string]string
+	headers['Content-Type'] = _content_type
 	if typ == 'GET' && !url.contains('?') && data != '' {
 		url = '$url?$data'
 		data = ''
@@ -82,7 +124,7 @@ pub fn new_request(typ, _url, _data string) ?Request {
 		data: data
 		ws_func: 0
 		user_ptr: 0
-		headers: map[string]string
+		headers: headers
 		user_agent: 'v'
 	}
 }
@@ -124,9 +166,6 @@ pub fn parse_headers(lines []string) map[string]string {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
-	if req.typ == 'POST' {
-		// req.headers << 'Content-Type: application/x-www-form-urlencoded'
-	}
 	url := urllib.parse(req.url) or {
 		return error('http.request.do: invalid URL "$req.url"')
 	}
