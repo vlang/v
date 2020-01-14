@@ -38,10 +38,6 @@ pub fn get(url string) ?Response {
 	return method('GET', url, '') 
 }
 
-pub fn post(url string) ?Response {
-	return method('POST', url, '')
-}
-
 pub fn head(url string) ?Response {
 	return method('HEAD', url, '')
 }
@@ -56,6 +52,16 @@ pub fn patch(url string) ?Response {
 
 pub fn put(url string) ?Response {
 	return method('PUT', url, '')
+}
+
+pub fn post(url, data string) ?Response {
+	req := new_request('POST', url, data) or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+	return res
 }
 
 pub fn method(mname string, url string, data string) ?Response {
