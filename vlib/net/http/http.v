@@ -43,7 +43,7 @@ pub:
 }
 
 pub fn get(url string) ?Response {
-	mut req := new_request('GET', url, '', '') or {
+	req := new_request('GET', url, '', '') or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -53,7 +53,7 @@ pub fn get(url string) ?Response {
 }
 
 pub fn post(url, content_type, data string) ?Response {
-	mut req := new_request('POST', url, content_type, data) or {
+	req := new_request('POST', url, content_type, data) or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -63,7 +63,7 @@ pub fn post(url, content_type, data string) ?Response {
 }
 
 pub fn put(url, content_type, data string) ?Response {
-	mut req := new_request('PUT', url, content_type, data) or {
+	req := new_request('PUT', url, content_type, data) or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -73,7 +73,7 @@ pub fn put(url, content_type, data string) ?Response {
 }
 
 pub fn patch(url, content_type, data string) ?Response {
-	mut req := new_request('PATCH', url, content_type, data) or {
+	req := new_request('PATCH', url, content_type, data) or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -83,7 +83,7 @@ pub fn patch(url, content_type, data string) ?Response {
 }
 
 pub fn delete(url string) ?Response {
-	mut req := new_request('DELETE', url, '', '') or {
+	req := new_request('DELETE', url, '', '') or {
 		return error(err)
 	}
 	res := req.do() or {
@@ -93,7 +93,7 @@ pub fn delete(url string) ?Response {
 }
 
 pub fn head(url string) ?Response {
-	mut req := new_request('HEAD', url, '', '') or {
+	req := new_request('HEAD', url, '', '') or {
 		return error(err)
 	}
 	res := req.do() or {
