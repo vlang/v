@@ -34,6 +34,33 @@ pub:
 	status_code int
 }
 
+pub fn delete(url string) ?Response {
+	req := new_request('DELETE', url, '') or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+}
+
+pub fn put(url string) ?Response {
+	req := new_request('PUT', url, '') or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+}
+
+pub fn patch(url string) ?Response {
+	req := new_request('PATCH', url, '') or {
+		return error(err)
+	}
+	res := req.do() or {
+		return error(err)
+	}
+}
+
 pub fn get(url string) ?Response {
 	req := new_request('GET', url, '') or {
 		return error(err)
