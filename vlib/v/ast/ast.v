@@ -120,6 +120,7 @@ pub:
 
 pub struct Return {
 pub:
+	expected_ti types.TypeIdent // TODO: remove once checker updated
 	exprs []Expr
 }
 

@@ -38,6 +38,13 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 			}
 			return func.return_ti
 		}
+		ast.MethodCallExpr {
+			ti := c.get_expr_ti(it.expr)
+			func := c.table.find_method(ti.idx, it.name) or {
+				panic('unknown method ${ti.name}.$it.name')
+			}
+			return func.return_ti
+		}
 		ast.Ident {
 			if it.kind == .variable {
 				info := it.info as ast.IdentVar
@@ -91,10 +98,10 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 			return ti
 		}
 		else {
-			types.void_ti
+			return types.unresolved_ti
 		}
 	}
-	return types.void_ti
+	return types.unresolved_ti
 }
 
 pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
@@ -127,6 +134,33 @@ pub fn (c &Checker) check_binary_expr(binary_expr ast.BinaryExpr) {
 	}
 }
 
+// TODO: non deferred
+pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
+	mut got_tis := []types.TypeIdent
+	for expr in return_stmt.exprs {
+		// expr,ti := p.expr(0)
+		// exprs << expr
+		ti := c.get_expr_ti(expr)
+		got_tis << ti
+	}
+	expected_ti := return_stmt.expected_ti
+	mut expected_tis := [expected_ti]
+	if expected_ti.kind == .multi_return {
+		mr_type := c.table.types[expected_ti.idx] as types.MultiReturn
+		expected_tis = mr_type.tis
+	}
+	if expected_tis.len != got_tis.len {
+		c.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
+	}
+	for i, exp_ti in expected_tis {
+		got_ti := got_tis[i]
+		println('checking return $got_ti.name, $exp_ti.name')
+		if !c.check(got_ti, exp_ti) {
+			c.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
+		}
+	}
+}
+
 pub fn (c mut Checker) check_deferred() {
 	for ctx in c.checks {
 		match ctx.expr {
@@ -140,7 +174,7 @@ pub fn (c mut Checker) check_deferred() {
 				c.check_struct_init(it)
 			}
 			ast.MethodCallExpr {
-				c.check_method_call(it)
+				c.check_method_call_expr(it)
 			}
 			ast.SelectorExpr {
 				c.check_selector_expr(it)
@@ -148,14 +182,13 @@ pub fn (c mut Checker) check_deferred() {
 			ast.BinaryExpr {
 				c.check_binary_expr(it)
 			}
-			else { println('UNKNOWN CHECK') }
+			else { println('UNKNOWN EXPR CHECK') }
 		}
 		match ctx.stmt {
 			ast.Return {
-				println('RETURN STMT')
-				// c.check_struct_init(it)
+				c.check_return_stmt(it)
 			}
-			else {}
+			else { println('UNKNOWN STMT CHECK') }
 		}
 	}
 }

@@ -457,22 +457,23 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,ty
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
-		mut node := ast.Expr{}
-		node = ast.MethodCallExpr{
+		mcall_expr := ast.MethodCallExpr{
 			expr: left
 			name: field_name
 			args: args
 		}
-		p.checker.add_check_expr(node)
-		return node, types.unresolved_ti
+		ti := p.checker.check_method_call(mcall_expr, left_ti)
+		mut node := ast.Expr{}
+		node = mcall_expr
+		return node, ti
 	}
 
-	mut node := ast.Expr{}
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
 	}
 	ti := p.checker.check_selector(sel_expr, left_ti)
+	mut node := ast.Expr{}
 	node = sel_expr
 	return node, ti
 }
@@ -762,7 +763,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	// return expressions
 	mut exprs := []ast.Expr
 	// return type idents
-	mut got_tis := []types.TypeIdent
+	// mut got_tis := []types.TypeIdent
 	for {
 		expr,ti := p.expr(0)
 		exprs << expr
@@ -774,22 +775,24 @@ fn (p mut Parser) return_stmt() ast.Return {
 			break
 		}
 	}
-	mut expected_tis := [p.return_ti]
-	if p.return_ti.kind == .multi_return {
-		mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
-		expected_tis = mr_type.tis
-	}
-	if expected_tis.len != got_tis.len {
-		p.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
-	}
-	for i, exp_ti in expected_tis {
-		got_ti := got_tis[i]
-		println('checking return $got_ti.name, $exp_ti.name')
-		if !p.checker.check(got_ti, exp_ti) {
-			p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
-		}
-	}
+	// TODO: non deferred
+	// mut expected_tis := [p.return_ti]
+	// if p.return_ti.kind == .multi_return {
+	// 	mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
+	// 	expected_tis = mr_type.tis
+	// }
+	// if expected_tis.len != got_tis.len {
+	// 	p.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
+	// }
+	// for i, exp_ti in expected_tis {
+	// 	got_ti := got_tis[i]
+	// 	println('checking return $got_ti.name, $exp_ti.name')
+	// 	if !p.checker.check(got_ti, exp_ti) {
+	// 		p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
+	// 	}
+	// }
 	stmt := ast.Return{
+		expected_ti: p.return_ti
 		exprs: exprs
 	}
 	p.checker.add_check_stmt(stmt)

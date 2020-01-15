@@ -206,12 +206,19 @@ pub fn (t &Table) struct_find_field(s &types.Struct, name string) ?types.Field {
 }
 
 pub fn (t &Table) has_method(type_idx int, name string) bool {
-	for field in t.methods[type_idx] {
-		if field.name == name {
-			return true
+	t.find_method(type_idx, name) or {
+		return false
+	}
+	return true
+}
+
+pub fn (t &Table) find_method(type_idx int, name string) ?Fn {
+	for method in t.methods[type_idx] {
+		if method.name == name {
+			return method
 		}
 	}
-	return false
+	return none
 }
 
 [inline]
