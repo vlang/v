@@ -85,6 +85,7 @@ pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 }
 
 pub const (
+	unresolved_ti = new_ti(.unresolved, 'unresolved', 0, 0)
 	void_ti = new_ti(.void, 'void', void_type_idx, 0)
 	int_ti = new_ti(.int, 'int', int_type_idx, 0)
 	string_ti = new_ti(.string, 'string', string_type_idx, 0)

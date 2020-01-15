@@ -152,7 +152,15 @@ pub:
 	stmts []Stmt
 }
 
-enum IdentKind {
+pub struct IdentVar {
+pub:
+	expr Expr
+	ti   types.TypeIdent
+}
+
+type IdentInfo = IdentVar
+
+pub enum IdentKind {
 	blank_ident
 	variable
 }
@@ -165,8 +173,7 @@ pub:
 	value    string
 mut:
 	kind     IdentKind
-	ti       types.TypeIdent
-	// info     IdentInfo
+	info     IdentInfo
 }
 
 pub struct BinaryExpr {

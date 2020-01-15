@@ -9,6 +9,7 @@ import (
 	v.token
 	v.table
 	v.types
+	v.checker
 	term
 	os
 )
@@ -30,17 +31,12 @@ mut:
 	peek_tok  token.Token
 	// vars []string
 	table     &table.Table
+	checker   checker.Checker
 	return_ti types.TypeIdent
 	is_c      bool
 	//
 	// prefix_parse_fns []PrefixParseFn
-	type_checks []TypeCheck
 	inside_if bool
-}
-
-struct TypeCheck{
-	expr ast.Expr
-	stmt ast.Stmt
 }
 
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
@@ -64,6 +60,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		scanner: scanner.new_scanner(text)
 		table: table
 		file_name: path
+		checker: checker.new_checker(table)
 	}
 	p.read_first_token()
 	for {
@@ -75,7 +72,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		// println('stmt at ' + p.tok.str())
 		stmts << p.top_stmt()
 	}
-	p.check_types()
+	p.checker.check_types()
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
@@ -216,16 +213,16 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 	}
 }
 
-pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
+pub fn (p mut Parser) assign_expr(left ast.Expr, left_ti &types.TypeIdent) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
-	val,_ := p.expr(0)
+	val, val_ti := p.expr(0)
 	node := ast.AssignExpr{
 		left: left
 		op: op
 		val: val
 	}
-	p.add_check_expr(node)
+	p.checker.check_assign(node, left_ti, val_ti)
 	return node
 }
 
@@ -289,7 +286,8 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
-	mut ti := types.void_ti
+	// mut ti := types.void_ti
+	mut ti := types.unresolved_ti
 	if p.tok.lit == 'C' {
 		p.next()
 		p.check(.dot)
@@ -301,9 +299,9 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 	// fn call
 	if p.peek_tok.kind == .lpar {
 		println('calling $p.tok.lit')
-		x := p.call_expr() // TODO `node,typ :=` should work
+		x, ti2 := p.call_expr() // TODO `node,typ :=` should work
 		node = x
-		// ti = ti2
+		ti = ti2
 	}
 	// struct init
 	else if p.peek_tok.kind == .lcbr && !p.inside_if {
@@ -324,7 +322,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			exprs: exprs
 			fields: field_names
 		}
-		p.add_check_expr(node)
+		p.checker.add_check_expr(node)
 		p.check(.rcbr)
 	}
 	else {
@@ -333,12 +331,16 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 		mut ident := ast.Ident{
 			name: p.tok.lit
 		}
-		// var := p.table.find_var(p.tok.lit) or {
-		// 	p.error('name expr unknown variable `$p.tok.lit`')
-		// 	exit(0)
-		// }
-		// ti = var.ti
+		var := p.table.find_var(p.tok.lit) or {
+			p.error('name expr unknown variable `$p.tok.lit`')
+			exit(0)
+		}
+		ti = var.ti
 		ident.kind = .variable
+		ident.info = ast.IdentVar {
+			ti: ti
+			expr: var.expr
+		}
 		// ident.ti = ti
 		node = ident
 		p.next()
@@ -392,10 +394,10 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 	// Infix
 	for precedence < p.tok.precedence() {
 		if p.tok.kind.is_assign() {
-			node = p.assign_expr(node)
+			node = p.assign_expr(node, ti)
 		}
 		else if p.tok.kind == .dot {
-			node = p.dot_expr(node)
+			node,ti = p.dot_expr(node, ti)
 		}
 		else if p.tok.kind == .lsbr {
 			node,ti = p.index_expr(node)
@@ -448,7 +450,7 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	return node,ti
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
+fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
 	// Method call
@@ -461,18 +463,18 @@ fn (p mut Parser) dot_expr(left ast.Expr) ast.Expr {
 			name: field_name
 			args: args
 		}
-		p.add_check_expr(node)
-		return node
+		p.checker.add_check_expr(node)
+		return node, types.unresolved_ti
 	}
 
 	mut node := ast.Expr{}
-	se := ast.SelectorExpr{
+	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
 	}
-	p.add_check_expr(se)
-	node = se
-	return node
+	ti := p.checker.check_selector(sel_expr, left_ti)
+	node = sel_expr
+	return node, ti
 }
 
 fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
@@ -491,7 +493,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 		left: left
 		right: right
 	}
-	p.add_check_expr(expr)
+	p.checker.add_check_expr(expr)
 	return expr,ti
 }
 
@@ -790,7 +792,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	stmt := ast.Return{
 		exprs: exprs
 	}
-	p.add_check_stmt(stmt)
+	p.checker.add_check_stmt(stmt)
 	return stmt
 }
 
@@ -808,24 +810,23 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	name := p.tok.lit
 	p.read_first_token()
 	expr, ti := p.expr(token.lowest_prec)
-	// if _ := p.table.find_var(name) {
-	// 	p.error('redefinition of `$name`')
-	// }
-	// p.table.register_var(table.Var{
-	// 	name: name
-	// 	ti: ti
-	// 	is_mut: is_mut
-	// })
+	if _ := p.table.find_var(name) {
+		p.error('redefinition of `$name`')
+	}
+	p.table.register_var(table.Var{
+		name: name
+		is_mut: is_mut
+		expr: expr
+		ti: ti
+	})
 	// println(p.table.names)
-	// println('added var `$name` with type $t.name')
+	println('added var `$name` with type $ti.name')
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
 		is_mut: is_mut
 		ti: ti
 	}
-	// p.var_decl << node
-	p.add_check_stmt(node)
 	return node
 }
 

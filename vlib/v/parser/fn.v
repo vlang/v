@@ -9,7 +9,7 @@ import (
 	v.types
 )
 
-pub fn (p mut Parser) call_expr() ast.CallExpr {
+pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
@@ -30,10 +30,15 @@ pub fn (p mut Parser) call_expr() ast.CallExpr {
 		// typ: return_ti
 		
 	}
+	// TODO: opt+checker
+	mut ti := types.unresolved_ti
+	if f := p.table.find_fn(fn_name) {
+		ti = f.return_ti
+	}
 	println('adding call_expr check $fn_name')
-	p.add_check_expr(node)
+	p.checker.add_check_expr(node)
 
-	return node
+	return node, ti
 }
 
 pub fn (p mut Parser) call_args() []ast.Expr {

@@ -1,6 +1,7 @@
 module table
 
 import (
+	v.ast
 	v.types
 )
 
@@ -10,6 +11,7 @@ pub mut:
 	types         []types.Type
 	// type_idxs Hashmap
 	type_idxs     map[string]int
+	type_kinds    []types.Kind
 	local_vars    []Var
 	// fns Hashmap
 	fns           map[string]Fn
@@ -20,8 +22,10 @@ pub mut:
 pub struct Var {
 pub:
 	name   string
-	ti     types.TypeIdent
 	is_mut bool
+	expr   ast.Expr
+mut:
+	ti     types.TypeIdent
 }
 
 pub struct Fn {
@@ -58,6 +62,15 @@ pub fn (t mut Table) register_builtin_types() {
 	t.register_type(types.Primitive{kind: .char}, .char, 'char')
 	t.register_type(types.Primitive{kind: .byte}, .byte, 'byte')
 	t.register_type(types.Bool{}, .bool, 'bool')
+}
+
+pub fn (t &Table) find_var_idx(name string) int {
+	for i,var in t.local_vars {
+		if var.name == name {
+			return i
+		}
+	}
+	return -1
 }
 
 pub fn (t &Table) find_var(name string) ?Var {
@@ -167,9 +180,17 @@ pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
 	// for typ in t.types {
 	// println('$typ.idx $typ.name')
 	// }
+	if _ := t.struct_find_field(s, name) {
+		return true
+	}
+	return false
+}
+
+pub fn (t &Table) struct_find_field(s &types.Struct, name string) ?types.Field {
+	println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	for field in s.fields {
 		if field.name == name {
-			return true
+			return field
 		}
 	}
 	if s.parent_idx != 0 {
@@ -177,11 +198,11 @@ pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
 		println('got parent $parent.name')
 		for field in parent.fields {
 			if field.name == name {
-				return true
+				return field
 			}
 		}
 	}
-	return false
+	return none
 }
 
 pub fn (t &Table) has_method(type_idx int, name string) bool {
@@ -210,8 +231,9 @@ pub fn (t &Table) find_type(name string) ?types.Type {
 [inline]
 pub fn (t mut Table) register_type(typ types.Type, kind types.Kind, name string) int {
 	idx := t.types.len
-	t.type_idxs[name] = idx
 	t.types << typ
+	t.type_idxs[name] = idx
+	t.type_kinds << kind
 	e := []Fn
 	t.methods << e // TODO [] breaks V
 	return idx
