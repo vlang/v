@@ -20,7 +20,7 @@ pub fn (c mut Checker) check_selector(selector_expr ast.SelectorExpr, ti &types.
 }
 
 pub fn (c &Checker) check_selector_expr(selector_expr ast.SelectorExpr) {
-	ti := c.check_get_type(selector_expr.expr)
+	ti := c.get_expr_ti(selector_expr.expr)
 	c.has_field(ti.idx, selector_expr.field)
 }
 

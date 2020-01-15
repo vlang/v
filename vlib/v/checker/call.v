@@ -18,7 +18,7 @@ pub fn (c &Checker) check_call_expr(call_expr ast.CallExpr) {
 		}
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
-			ti := c.check_get_type(arg_expr)
+			ti := c.get_expr_ti(arg_expr)
 			if !c.check(&ti, &arg.ti) {
 				c.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
 			}
@@ -30,7 +30,7 @@ pub fn (c &Checker) check_call_expr(call_expr ast.CallExpr) {
 }
 
 pub fn (c &Checker) check_method_call(method_call ast.MethodCallExpr) {
-	ti := c.check_get_type(method_call.expr)
+	ti := c.get_expr_ti(method_call.expr)
 	if !c.table.has_method(ti.idx, method_call.name) {
 		c.error('type `$ti.name` has no method `$method_call.name`')
 	}

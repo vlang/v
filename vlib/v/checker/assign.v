@@ -14,7 +14,7 @@ pub fn (c mut Checker) check_assign(assign_expr ast.AssignExpr, left_ti, right_t
 		println('### Check assign deferred: $left_ti.str() - $right_ti.str()')
 		c.add_check_expr(assign_expr)
 	} else {
-		left_ti2 := c.check_get_type(assign_expr.left)
+		left_ti2 := c.get_expr_ti(assign_expr.left)
 		println('### Checked assign on fly : $left_ti.name - $left_ti2.name')
 		c.check_assign_ti(left_ti, right_ti)
 	}
@@ -27,7 +27,7 @@ fn (c &Checker) check_assign_ti(left_ti, right_ti &types.TypeIdent) {
 }
 
 fn (c &Checker) check_assign_expr(assign_expr ast.AssignExpr) {
-	left_ti := c.check_get_type(assign_expr.left)
-	right_ti := c.check_get_type(assign_expr.val)
+	left_ti := c.get_expr_ti(assign_expr.left)
+	right_ti := c.get_expr_ti(assign_expr.val)
 	c.check_assign_ti(&left_ti, &right_ti)
 }
