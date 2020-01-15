@@ -32,10 +32,10 @@ fn (c &Checker) has_field(ti &types.TypeIdent, field string) types.TypeIdent {
 			// 	c.error('AAA unknown field `${it.name}.$field`')
 			// }
 			if f := c.table.struct_find_field(it, field) {
-				println('FOUDN FIELD: $f.name - $f.ti.name')
+				println('FOUND FIELD: $f.name - $f.ti.name')
 				return f.ti
 			}
-			c.error('AAA unknown field `${it.name}.$field`')
+			c.error('unknown field `${it.name}.$field`')
 		}
 		else {
 			c.error('$ti.name is not a struct')

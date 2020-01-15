@@ -120,19 +120,6 @@ pub fn (ti &TypeIdent) str() string {
 	return '$muls$ti.name'
 }
 
-pub fn check(got, expected &TypeIdent) bool {
-	if expected.kind == .voidptr {
-		return true
-	}
-	if expected.name == 'array' {
-		return true
-	}
-	if got.idx != expected.idx {
-		return false
-	}
-	return true
-}
-
 pub fn (k Kind) str() string {
 	k_str := match k {
 		.unresolved{

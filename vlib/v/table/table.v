@@ -386,17 +386,3 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 	return idx
 }
 
-//pub fn (t mut Table) check(tok &token.Token, got, expected &types.TypeIdent) bool {
-pub fn (t &Table) check(got, expected &types.TypeIdent) bool {
-	println('check: $got.name, $expected.name')
-	if expected.kind == .voidptr {
-		return true
-	}
-	//if expected.name == 'array' {
-	//	return true
-	//}
-	if got.idx != expected.idx {
-		return false
-	}
-	return true
-}

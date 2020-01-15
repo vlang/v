@@ -19,7 +19,7 @@ pub fn (c &Checker) check_call_expr(call_expr ast.CallExpr) {
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
 			ti := c.check_get_type(arg_expr)
-			if !c.table.check(&ti, &arg.ti) {
+			if !c.check(&ti, &arg.ti) {
 				c.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`')
 			}
 		}

@@ -21,7 +21,7 @@ pub fn (c mut Checker) check_assign(assign_expr ast.AssignExpr, left_ti, right_t
 }
 
 fn (c &Checker) check_assign_ti(left_ti, right_ti &types.TypeIdent) {
-	if !c.table.check(right_ti, left_ti) {
+	if !c.check(right_ti, left_ti) {
 		c.error('cannot assign $right_ti.name to $left_ti.name')
 	}
 }
