@@ -9,17 +9,17 @@ import (
 	v.types
 )
 
-enum CheckKind {
-	assign
-}
+// enum CheckKind {
+// 	assign
+// }
 
 pub struct Checker {
 	table  &table.Table
 mut:
-	checks []TypeCheck
+	checks []Check
 }
 
-struct TypeCheck{
+struct Check{
 	expr ast.Expr
 	stmt ast.Stmt
 }
@@ -30,7 +30,7 @@ pub fn new_checker(table &table.Table) Checker {
 	}
 }
 
-pub fn (c &Checker) check_get_type(expr ast.Expr) types.TypeIdent {
+pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 	match expr {
 		ast.CallExpr {
 			func := c.table.find_fn(it.name) or {
@@ -45,7 +45,7 @@ pub fn (c &Checker) check_get_type(expr ast.Expr) types.TypeIdent {
 					println(' ~~~~~~~~~~ A $info.ti.name')
 					return info.ti
 				}
-				ti := c.check_get_type(info.expr)
+				ti := c.get_expr_ti(info.expr)
 				println(' ~~~~~~~~~~ B $ti.name')
 				return ti
 			}
@@ -65,7 +65,7 @@ pub fn (c &Checker) check_get_type(expr ast.Expr) types.TypeIdent {
 			return types.int_ti
 		}
 		ast.SelectorExpr {
-			ti := c.check_get_type(it.expr)
+			ti := c.get_expr_ti(it.expr)
 			if !(ti.kind in [.placeholder, .struct_]) {
 				println('$ti.name is not a struct')
 			}
@@ -87,7 +87,7 @@ pub fn (c &Checker) check_get_type(expr ast.Expr) types.TypeIdent {
 		}
 		ast.BinaryExpr {
 			println('CHECK TYPE BINARYEXPR')
-			ti := c.check_get_type(it.left)
+			ti := c.get_expr_ti(it.left)
 			return ti
 		}
 		else {
@@ -109,7 +109,7 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
 		types.Struct {
 			for i, expr in struct_init.exprs {
 				field := it.fields[i]
-				expr_ti := c.check_get_type(expr)
+				expr_ti := c.get_expr_ti(expr)
 				if !c.check(expr_ti, field.ti) {
 					c.error('cannot assign $expr_ti.name as $field.ti.name for field $field.name')
 				}
@@ -120,8 +120,8 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
 }
 
 pub fn (c &Checker) check_binary_expr(binary_expr ast.BinaryExpr) {
-	left_ti := c.check_get_type(binary_expr.left)
-	right_ti := c.check_get_type(binary_expr.right)
+	left_ti := c.get_expr_ti(binary_expr.left)
+	right_ti := c.get_expr_ti(binary_expr.right)
 	if !c.check(&right_ti, &left_ti) {
 		c.error('binary expr: cannot use $right_ti.name as $left_ti.name')
 	}
@@ -161,13 +161,13 @@ pub fn (c mut Checker) check_deferred() {
 }
 
 pub fn (c mut Checker) add_check_expr(expr ast.Expr) {
-	c.checks << TypeCheck{
+	c.checks << Check{
 		expr: expr
 	}
 }
 
 pub fn (c mut Checker) add_check_stmt(stmt ast.Stmt) {
-	c.checks << TypeCheck{
+	c.checks << Check{
 		stmt: stmt
 	}
 }
