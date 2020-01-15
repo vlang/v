@@ -4,6 +4,8 @@
 
 [![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
+[![Twitter handle][]][Twitter badge]
+
 
 https://vlang.io
 
@@ -194,3 +196,6 @@ Code structure:
 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
+
+[Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
+[Twitter badge]: https://twitter.com/intent/follow?screen_name=v_language
