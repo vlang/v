@@ -11,28 +11,38 @@ const (
 )
 
 pub const (
-	ContentTypeBinary = "application/octet-stream"
-    ContentTypeForm = "application/x-www-form-urlencoded"
-    ContentTypeJSON = "application/json"
-    ContentTypeHTML = "text/html; charset=utf-8"
-    ContentTypeText = "text/plain; charset=utf-8"
+	ContentTypeBinary = 'application/octet-stream'
+	ContentTypeForm = 'application/x-www-form-urlencoded'
+	ContentTypeJSON = 'application/json'
+	ContentTypeHTML = 'text/html; charset=utf-8'
+	ContentTypeText = 'text/plain; charset=utf-8'
 )
 
 pub struct Request {
 pub:
-	headers    map[string]string
 	method     string
-	// cookies map[string]string
-	h          string
-	cmd        string
-	typ        string // GET POST
+	headers    map[string]string
+	cookies    map[string]string
 	data       string
 	url        string
-	verbose    bool
 	user_agent string
+	verbose    bool
+	// h          string
+	// cmd        string
 mut:
 	user_ptr   voidptr
 	ws_func    voidptr
+}
+
+pub struct RequestConfig {
+pub mut:
+	method     string
+	url        string
+	data       string=''
+	user_agent string='v'
+	headers    map[string]string=map[string]string
+	cookies    map[string]string=map[string]string
+	verbose    bool=false
 }
 
 pub struct Response {
@@ -43,90 +53,102 @@ pub:
 }
 
 pub fn get(url string) ?Response {
-	req := new_request('GET', url, '', '') or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
-}
-
-pub fn post(url, content_type, data string) ?Response {
-	req := new_request('POST', url, content_type, data) or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
-}
-
-pub fn put(url, content_type, data string) ?Response {
-	req := new_request('PUT', url, content_type, data) or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
-}
-
-pub fn patch(url, content_type, data string) ?Response {
-	req := new_request('PATCH', url, content_type, data) or {
-		return error(err)
-	}
-	res := req.do() or {
-		return error(err)
-	}
-	return res
-}
-
-pub fn delete(url string) ?Response {
-	req := new_request('DELETE', url, '', '') or {
-		return error(err)
-	}
-	res := req.do() or {
+	res := new_request({
+		method: 'GET'
+		url: url
+	}) or {
 		return error(err)
 	}
 	return res
 }
 
 pub fn head(url string) ?Response {
-	req := new_request('HEAD', url, '', '') or {
-		return error(err)
-	}
-	res := req.do() or {
+	res := new_request({
+		method: 'HEAD'
+		url: url
+	}) or {
 		return error(err)
 	}
 	return res
 }
 
-// new_request creates a new HTTP request
-pub fn new_request(typ, _url, _content_type, _data string) ?Request {
-	if _url == '' {
+pub fn delete(url string) ?Response {
+	res := new_request({
+		method: 'DELETE'
+		url: url
+	}) or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn patch(url, data string) ?Response {
+	res := new_request({
+		method: 'PATCH'
+		url: url
+		data: data
+		headers: {
+			'Content-Type': ContentTypeBinary
+		}
+	}) or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn put(url, data string) ?Response {
+	res := new_request({
+		method: 'PUT'
+		url: url
+		data: data
+		headers: {
+			'Content-Type': ContentTypeBinary
+		}
+	}) or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn post(url, data string) ?Response {
+	res := new_request({
+		method: 'POST'
+		url: url
+		data: data
+		headers: {
+			'Content-Type': ContentTypeBinary
+		}
+	}) or {
+		return error(err)
+	}
+	return res
+}
+
+pub fn new_request(config RequestConfig) ?Response {
+	if config.url == '' {
 		return error('http.new_request: empty url')
 	}
-	if _data != '' && _content_type == '' {
-		return error('http.new_request: empty content type')
-	}
-	mut url := _url
-	mut data := _data
-	mut headers := map[string]string
-	headers['Content-Type'] = _content_type
-	if typ == 'GET' && !url.contains('?') && data != '' {
+	mut url := config.url
+	mut data := config.data
+	if config.method == 'GET' && !url.contains('?') && data != '' {
 		url = '$url?$data'
 		data = ''
 	}
-	return Request{
-		typ: typ
+	req := Request{
+		method: config.method
 		url: url
 		data: data
+		headers: config.headers
+		cookies: config.cookies
+		user_agent: 'v'
 		ws_func: 0
 		user_ptr: 0
-		headers: headers
-		user_agent: 'v'
+		verbose: config.verbose
 	}
+	res := req.do() or {
+		return error(err)
+	}
+	return res
 }
 
 pub fn get_text(url string) string {
@@ -176,7 +198,7 @@ pub fn (req &Request) do() ?Response {
 		if no_redirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
 		}
-		qresp := req.method_and_url_to_response(req.typ, rurl) or {
+		qresp := req.method_and_url_to_response(req.method, rurl) or {
 			return error(err)
 		}
 		resp = qresp
