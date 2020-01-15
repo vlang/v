@@ -18,33 +18,33 @@ struct Context {
 
 fn main() {
 	glfw.init_glfw()
-	ctx:= &Context{ 
+	ctx:= &Context{
 		gg: gg.new_context(gg.Cfg {
-			width: Size 
-			height: Size 
-			use_ortho: true 
-			create_window: true 
-			window_title: 'Graph builder' 
-			window_user_ptr: ctx 
+			width: Size
+			height: Size
+			use_ortho: true
+			create_window: true
+			window_title: 'Graph builder'
+			window_user_ptr: ctx
 			always_on_top: true
 		})
-	} 
-	go update() // update the scene in the background in case the window isn't focused 
+	}
+	go update() // update the scene in the background in case the window isn't focused
 	for {
 		if ctx.gg.window.should_close() {
 			break
 		}
-		gg.clear(gx.White) 
+		gg.clear(gx.White)
 		ctx.draw()
-		ctx.gg.render() 
+		ctx.gg.render()
 	}
 }
 
-[live] 
+[live]
 fn (ctx &Context) draw() {
 	center := f64(Size / 2)
-	ctx.gg.draw_line(0, center, Size, center) // x axis 
-	ctx.gg.draw_line(center, 0, center, Size) // y axis 
+	ctx.gg.draw_line(0, center, Size, center, gx.gray) // x axis
+	ctx.gg.draw_line(center, 0, center, Size, gx.gray) // y axis
 	atime := f64( time.ticks() / 10 )
 	stime := math.sin( 2.0 * pi * f64( time.ticks() % 6000 ) / 6000 )
 	mut y := 0.0
@@ -60,13 +60,13 @@ fn (ctx &Context) draw() {
 		//y = math.sqrt(30.0 - x * x) * stime
 		//y -= (stime-0.5) + stime
 		ctx.gg.draw_rect(center + x * Scale, center - y * Scale, 1, 1, gx.Blue)
-		ctx.gg.draw_rect(center + x * Scale, center + y * Scale, 1, 1, gx.Red) 
+		ctx.gg.draw_rect(center + x * Scale, center + y * Scale, 1, 1, gx.Red)
 	}
 }
 
 fn update() {
-	for { 
-		gg.post_empty_event() 
+	for {
+		gg.post_empty_event()
 		time.sleep_ms(16) // 60 fps
-	} 
-} 
+	}
+}
