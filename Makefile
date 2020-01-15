@@ -94,6 +94,9 @@ $(TMPVC)/.git/config:
 selfcompile:
 	./v -cg -o v v.v
 
+selfcompile-static:
+	./v -cg -cflags '--static' -o v-static v.v
+
 modules: module_builtin module_strings module_strconv
 module_builtin:
 	#./v build module vlib/builtin > /dev/null

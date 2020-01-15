@@ -473,7 +473,7 @@ fn (v mut V) generate_init() {
           }
       ')
 		}
-		if !v.pref.is_bare {
+		if !v.pref.is_bare && !v.pref.is_so {
 			// vlib can't have `init_consts()`
 			v.cgen.genln('void init() {
 #if VPREALLOC
@@ -582,7 +582,7 @@ pub fn (v mut V) generate_main() {
 			}
 			v.gen_main_end('return g_test_fails > 0')
 		}
-		else if v.table.main_exists() {
+		else if v.table.main_exists() && !v.pref.is_so {
 			v.gen_main_start(true)
 			cgen.genln('  main__main();')
 			if !v.pref.is_bare {
@@ -1200,13 +1200,22 @@ pub fn create_symlink() {
 		return
 	}
 	vexe := vexe_path()
-	link_path := '/usr/local/bin/v'
-	ret := os.system('ln -sf $vexe $link_path')
+	mut link_path := '/usr/local/bin/v'
+	mut ret := os.system('ln -sf $vexe $link_path')
 	if ret == 0 {
 		println('Symlink "$link_path" has been created')
 	}
-	else {
-		println('Failed to create symlink "$link_path". Try again with sudo.')
+	else if os.system('uname -o | grep [A/a]ndroid') == 0 {
+		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
+		link_path = '/data/data/com.termux/files/usr/bin/v'
+		ret = os.system('ln -sf $vexe $link_path')
+		if ret == 0 {
+			println('Symlink "$link_path" has been created')
+		} else {
+			println('Failed to create symlink "$link_path". Try again with sudo.')
+		}
+	} else {
+			println('Failed to create symlink "$link_path". Try again with sudo.')
 	}
 }
 

@@ -100,9 +100,11 @@ fn (v &V) generate_hot_reload_code() {
 		}
 		ticks := time.ticks()
 		os.system(cmd_compile_shared_library)
-		diff := time.ticks() - ticks
-		println('compiling shared library took $diff ms')
-		println('=========\n')
+		if v.pref.is_verbose {
+			diff := time.ticks() - ticks
+			println('compiling shared library took $diff ms')
+			println('=========\n')
+		}
 		cgen.genln('
 
 void lfnmutex_print(char *s){

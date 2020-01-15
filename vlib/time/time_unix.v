@@ -84,10 +84,10 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 	}
 
 	mut estimated_month := day_offset / 31
-	for day_offset > days_before[estimated_month+1] {
+	for day_offset >= days_before[estimated_month+1] {
 		estimated_month++
 	}
-	for day_offset <= days_before[estimated_month] {
+	for day_offset < days_before[estimated_month] {
 		if estimated_month == 0 {
 			break
 		}

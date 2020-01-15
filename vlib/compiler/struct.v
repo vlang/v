@@ -337,6 +337,7 @@ fn (p mut Parser) struct_decl(generic_param_types []string) {
 	// p.fgenln('//kek')
 }
 // `User{ foo: bar }`
+// tok == struct name
 fn (p mut Parser) struct_init(typ_ string) string {
 	p.is_struct_init = true
 	mut typ := typ_

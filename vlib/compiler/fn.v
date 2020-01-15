@@ -225,10 +225,8 @@ fn (p mut Parser) fn_decl() {
 		is_deprecated: p.attr == 'deprecated'
 		comptime_define: if p.attr.starts_with('if ') { p.attr[3..] } else { '' }
 	}
-	is_live := p.attr == 'live' && !p.pref.is_so && p.pref.is_live
-	if p.attr == 'live' && p.first_pass() && !p.pref.is_live && !p.pref.is_so {
-		println('INFO: run `v -live program.v` if you want to use [live] functions')
-	}
+	is_live   := p.pref.is_live  && p.attr == 'live'
+	is_solive := p.pref.is_solive && p.attr == 'live'
 	if is_pub {
 		p.next()
 		p.fspace()
@@ -488,6 +486,7 @@ fn (p mut Parser) fn_decl() {
 	if is_c {
 		p.fgen_nl()
 	}
+	
 	// Register the method
 	if receiver_typ != '' {
 		mut receiver_t := p.table.find_type(receiver_typ)
@@ -509,6 +508,11 @@ fn (p mut Parser) fn_decl() {
 		// '$p.file_name')
 		p.table.register_fn(f)
 	}
+
+	if p.first_pass() && p.attr == 'live' && !(is_live || is_solive) {
+		println('INFO: run `v -live $p.v.dir `, if you want to use [live] function $f.name .')
+	}
+	
 	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now
 		// Look for generic calls.
@@ -532,10 +536,34 @@ fn (p mut Parser) fn_decl() {
 		}
 		return
 	}
-	if p.attr == 'live' && p.pref.is_so {
-		// p.genln('// live_function body start')
-		p.genln('pthread_mutex_lock(&live_fn_mutex);')
+	
+	if is_solive {
+		// Live functions are protected by a mutex, because otherwise they
+		// can be changed by the live reload thread, *while* they are
+		// running, with unpredictable results (usually just crashing).
+		// For this purpose, the actual body of the live function,
+		// is put under a non publicly accessible function, that is prefixed
+		// with 'impl_live_' .
+		// The live function just calls its implementation dual, while ensuring
+		// that the call is wrapped by the mutex lock & unlock calls.
+		// Adding the mutex lock/unlock inside the body of the implementation
+		// function is not reliable, because the implementation function can do
+		// an early exit, which will leave the mutex locked.
+		function_args := f.str_args_without_types(p.table)
+		mut live_fncall := 'impl_live_${fn_name_cgen}(${function_args});'
+		mut live_fnreturn := ''
+		if typ != 'void' {
+			live_fncall = '$typ res = $live_fncall'
+			live_fnreturn = 'return res;'
+		}
+		p.genln('  pthread_mutex_lock(&live_fn_mutex);')
+		p.genln('  $live_fncall')
+		p.genln('  pthread_mutex_unlock(&live_fn_mutex);')
+		p.genln('  $live_fnreturn')
+		p.genln('}')		
+		p.genln('$typ impl_live_${fn_name_cgen} ($str_args){')
 	}
+	
 	if f.name in ['main__main', 'main', 'WinMain'] {
 		if p.pref.is_test {
 			p.error_with_token_index('tests cannot have function `main`', f.fn_name_token_idx)
@@ -568,10 +596,6 @@ fn (p mut Parser) fn_decl() {
 	}
 	if typ != 'void' && !p.returns {
 		p.error_with_token_index('$f.name must return "$typ"', f.fn_name_token_idx)
-	}
-	if p.attr == 'live' && p.pref.is_so {
-		// p.genln('// live_function body end')
-		p.genln('pthread_mutex_unlock(&live_fn_mutex);')
 	}
 	if p.pref.x64 && f.name == 'main__main' && !p.first_pass() {
 		//p.x64.gen_exit()
@@ -1609,6 +1633,16 @@ fn (f &Fn) str_args(table &Table) string {
 		}
 	}
 	return s
+}
+
+
+// f.args => "a, b, c"
+fn (f &Fn) str_args_without_types(table &Table) string {
+	mut res := []string
+	for arg in f.args {
+		res << arg.name
+	}
+	return res.join(', ')
 }
 
 // find local function variable with closest name to `name`
