@@ -88,7 +88,7 @@ pub fn patch(url, data string) ?Response {
 		url: url
 		data: data
 		headers: {
-			'Content-Type': ContentTypeBinary
+			'Content-Type': ContentTypeText
 		}
 	}) or {
 		return error(err)
@@ -102,7 +102,7 @@ pub fn put(url, data string) ?Response {
 		url: url
 		data: data
 		headers: {
-			'Content-Type': ContentTypeBinary
+			'Content-Type': ContentTypeText
 		}
 	}) or {
 		return error(err)
@@ -116,7 +116,7 @@ pub fn post(url, data string) ?Response {
 		url: url
 		data: data
 		headers: {
-			'Content-Type': ContentTypeBinary
+			'Content-Type': ContentTypeText
 		}
 	}) or {
 		return error(err)
