@@ -1201,6 +1201,7 @@ pub fn create_symlink() {
 	vexe := vexe_path()
 	mut link_path := '/usr/local/bin/v'
 	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
 	} else if os.system('uname -o | grep -q \'[A/a]ndroid\'') == 0 {
