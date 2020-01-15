@@ -390,14 +390,13 @@ pub fn (v mut V) compile2() {
 		println('all .v files before:')
 		println(v.files)
 	}
-	// v.add_v_files_to_compile()
+	v.add_v_files_to_compile()
 	if v.pref.is_verbose {
 		println('all .v files:')
 		println(v.files)
 	}
 	table := table.new_table()
-	// files := parser.parse_files(v.files, table)
-	files := parser.parse_files(v.get_user_files(), table)
+	files := parser.parse_files(v.files, table)
 	c := gen.cgen(files, table)
 	println('out: $v.out_name_c')
 	os.write_file(v.out_name_c, c)
