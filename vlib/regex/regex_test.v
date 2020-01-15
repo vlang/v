@@ -65,6 +65,7 @@ match_test_suite = [
 	TestItem{"cpapaz ole. pippo,",r".*c.+ole.*pi",0,14},
 	TestItem{"cpapaz ole. pipipo,",r".*c.+ole.*p([ip])+o",0,18},
 	TestItem{"cpapaz ole. pipipo",r"^.*c.+ol?e.*p([ip])+o$",0,18},
+	TestItem{"abbb",r"ab{2,3}?",0,3},
 
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},

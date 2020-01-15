@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* regex 0.9b
+* regex 0.9c
 *
 * Copyright (c) 2019 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -18,7 +18,7 @@ module regex
 import strings
 
 pub const(
-	V_REGEX_VERSION = "0.9b"      // regex module version
+	V_REGEX_VERSION = "0.9c"      // regex module version
 
 	MAX_CODE_LEN     = 256        // default small base code len for the regex programs
 	MAX_QUANTIFIER   = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
@@ -47,7 +47,6 @@ const(
 	//*************************************
 	// regex program instructions
 	//*************************************
-	SIMPLE_CHAR_MASK = u32(0x80000000)   // single char mask
 	IST_SIMPLE_CHAR  = u32(0x7FFFFFFF)   // single char instruction, 31 bit available to char
 
 	// char class 11 0100 AA xxxxxxxx
@@ -88,9 +87,11 @@ fn utf8util_char_len(b byte) int {
 
 // get_char get a char from position i and return an u32 with the unicode code
 [inline]
-fn get_char(in_txt string, i int) (u32,int) {
+fn (re RE) get_char(in_txt string, i int) (u32,int) {
 	// ascii 8 bit
-	if in_txt.str[i] & 0x80 == 0 {
+	if (re.flag & F_BIN) !=0 ||
+		in_txt.str[i] & 0x80 == 0 
+	{
 		return u32(in_txt.str[i]), 1 
 	}
 	// unicode char
@@ -106,9 +107,11 @@ fn get_char(in_txt string, i int) (u32,int) {
 
 // get_charb get a char from position i and return an u32 with the unicode code
 [inline]
-fn get_charb(in_txt byteptr, i int) (u32,int) {
+fn (re RE) get_charb(in_txt byteptr, i int) (u32,int) {
 	// ascii 8 bit 
-	if in_txt[i] & 0x80 == 0 {
+	if (re.flag & F_BIN) !=0 ||
+		in_txt[i] & 0x80 == 0
+	{
 		return u32(in_txt[i]), 1 
 	}
 	// unicode char
@@ -215,8 +218,7 @@ fn utf8_str(ch u32) string {
 
 // simple_log default log function
 fn simple_log(txt string) {
-	C.fprintf(C.stdout, "%s",txt.str)
-	C.fflush(stdout)
+	print(txt)
 }
 
 /******************************************************************************
@@ -228,9 +230,14 @@ struct Token{
 mut:
 	ist u32 = u32(0)
 
+	// char
+	ch u32                 = u32(0)// char of the token if any
+	ch_len byte            = byte(0) // char len
+
 	// Quantifiers / branch
-	rep_min         int    = 0    // used also for jump next in the OR branch [no match] pc jump
-	rep_max         int    = 0    // used also for jump next in the OR branch [   match] pc jump
+	rep_min         int    = 0     // used also for jump next in the OR branch [no match] pc jump
+	rep_max         int    = 0     // used also for jump next in the OR branch [   match] pc jump
+	greedy          bool   = false // greedy quantifier flag
 
 	// Char class
 	cc_index        int    = -1
@@ -240,15 +247,14 @@ mut:
 
 	// validator function pointer and control char
 	validator fn (byte) bool
-	v_ch u32               = u32(0) // debug, helper for recreate the query string
 
 	// groups variables
-	group_rep          int = 0    // repetition of the group
-	group_id           int = -1   // id of the group
-	goto_pc            int = -1   // jump to this PC if is needed
+	group_rep          int = 0     // repetition of the group
+	group_id           int = -1    // id of the group
+	goto_pc            int = -1    // jump to this PC if is needed
 
 	// OR flag for the token 
-	next_is_or bool = false       // true if the next token is an OR
+	next_is_or bool = false        // true if the next token is an OR
 }
 
 fn (tok mut Token) reset() {
@@ -262,13 +268,14 @@ fn (tok mut Token) reset() {
 ******************************************************************************/
 pub const (
 	//F_FND = 0x00000001  // check until the end of the input string, it act like a "find first match", not efficient!!
-	//F_NL  = 0x00000002  // end the match when find a new line symbol
 	//F_PM  = 0x00000004  // partial match: if the source text finish and the match is positive until then return true
 
+	F_NL  = 0x00000002  // end the match when find a new line symbol
 	F_MS  = 0x00000008  // match true only if the match is at the start of the string
 	F_ME  = 0x00000010  // match true only if the match is at the end of the string 
 
 	F_EFM = 0x01000000  // exit on first token matched, used by search
+	F_BIN = 0x02000000  // work only on bytes, ignore utf-8
 )
 
 struct StateDotObj{
@@ -364,7 +371,7 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int,int){
 
 	for i < in_txt.len {
 		// get our char
-		char_tmp,char_len := get_char(in_txt,i)
+		char_tmp,char_len := re.get_char(in_txt,i)
 		ch := byte(char_tmp)
 
 		if status == .start && ch == `\\` {
@@ -512,7 +519,7 @@ fn (re mut RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 		}
 
 		// get our char
-		char_tmp,char_len := get_char(in_txt,i)
+		char_tmp,char_len := re.get_char(in_txt,i)
 		ch := byte(char_tmp)
 
 		//C.printf("CC #%3d ch: %c\n",i,ch)
@@ -614,11 +621,13 @@ enum Quant_parse_state {
 	min_parse,
 	comma_checked,
 	max_parse,
+	greedy,
+	gredy_parse,
 	finish
 }
 
-// parse_quantifier return (min, max, str_len) of a {min,max} quantifier starting after the { char
-fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int) {
+// parse_quantifier return (min, max, str_len) of a {min,max}? quantifier starting after the { char
+fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut status := Quant_parse_state.start
 	mut i := in_i
 
@@ -634,7 +643,7 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int) {
 
 		// exit on no compatible char with {} quantifier
 		if utf8util_char_len(ch) != 1 {
-			return ERR_SYNTAX_ERROR,i,0
+			return ERR_SYNTAX_ERROR,i,0,false
 		}
 
 		// min parsing skip if comma present
@@ -670,13 +679,17 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int) {
 		// single value {4}
 		if status == .min_parse && ch == `}` {
 			q_max = q_min
-			return q_min, q_max, i-in_i+2
+
+			status = .greedy
+			continue
 		}
 
 		// end without max
 		if status == .comma_checked && ch == `}` {
 			q_max = MAX_QUANTIFIER
-			return q_min, q_max, i-in_i+2
+
+			status = .greedy
+			continue
 		}
 
 		// start max parsing
@@ -696,17 +709,40 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int) {
 			continue
 		}
 
-		// end the parsing
+		// finished the quantifier
 		if status == .max_parse && ch == `}` {
-			return q_min, q_max, i-in_i+2
+			status = .greedy
+			continue
 		}
-		
+
+		// check if greedy flag char ? is present
+		if status == .greedy {
+			if i+1 < in_txt.len {
+				i++
+				status = .gredy_parse
+				continue
+			}
+			return q_min, q_max, i-in_i+2, false
+		}
+
+		// check the greedy flag
+		if status == .gredy_parse {
+			if ch == `?` {
+				return q_min, q_max, i-in_i+2, true
+			} else {
+				i--
+				return q_min, q_max, i-in_i+2, false
+			}
+		}
+
+
+
 		// not  a {} quantifier, exit
-		return ERR_SYNTAX_ERROR,i,0
+		return ERR_SYNTAX_ERROR, i, 0, false
 	}
 
 	// not a conform {} quantifier
-	return ERR_SYNTAX_ERROR,i,0
+	return ERR_SYNTAX_ERROR, i, 0, false
 }
 
 //
@@ -733,7 +769,7 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		mut char_len := 0
 		//C.printf("i: %3d ch: %c\n", i, in_txt.str[i])
 
-		char_tmp,char_len = get_char(in_txt,i)
+		char_tmp,char_len = re.get_char(in_txt,i)
 
 		//
 		// check special cases: $ ^
@@ -848,13 +884,14 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 				}
 
 				`{` {
-					min,max,tmp := re.parse_quantifier(in_txt, i+1)
+					min, max, tmp, greedy := re.parse_quantifier(in_txt, i+1)
 					// it is a quantifier
 					if min >= 0 {
-						//C.printf("{%d,%d}\n str:[%s]\n",min,max,in_txt[i..i+tmp])
+						//C.printf("{%d,%d}\n str:[%s] greedy: %d\n", min, max, in_txt[i..i+tmp], greedy)
 						i = i + tmp
 						re.prog[pc-1].rep_min = min
 						re.prog[pc-1].rep_max = max
+						re.prog[pc-1].greedy  = greedy
 						continue
 					}
 					else {
@@ -879,7 +916,7 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 			}
 		}
 
-		// IST_CHAR_CLASS
+		// IST_CHAR_CLASS_*
 		if char_len==1 && pc >= 0{
 			if byte(char_tmp) == `[` {
 				cc_index,tmp,cc_type := re.parse_char_class(in_txt, i+1)
@@ -912,14 +949,14 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 					re.prog[pc].rep_min   = 1
 					re.prog[pc].rep_max   = 1
 					re.prog[pc].validator = BSLS_VALIDATOR_ARRAY[bsls_index].validator
-					re.prog[pc].v_ch      = BSLS_VALIDATOR_ARRAY[bsls_index].ch
+					re.prog[pc].ch      = BSLS_VALIDATOR_ARRAY[bsls_index].ch
 					pc = pc + 1
 					continue
 				} 
 				// this is an escape char, skip the bsls and continue as a normal char
 				else if bsls_index == NO_MATCH_FOUND {
 					i += char_len
-					char_tmp,char_len = get_char(in_txt,i)
+					char_tmp,char_len = re.get_char(in_txt,i)
 					// continue as simple char
 				}
 				// if not an escape or a bsls char then it is an error (at least for now!)
@@ -930,8 +967,9 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		}
 
 		// IST_SIMPLE_CHAR
-		tmp_code            = (tmp_code | char_tmp) & IST_SIMPLE_CHAR
-		re.prog[pc].ist     = tmp_code
+		re.prog[pc].ist     = IST_SIMPLE_CHAR
+		re.prog[pc].ch      = char_tmp
+		re.prog[pc].ch_len  = char_len
 		re.prog[pc].rep_min = 1
 		re.prog[pc].rep_max = 1
 		//C.printf("char: %c\n",char_tmp)
@@ -1044,7 +1082,7 @@ pub fn (re RE) get_code() string {
 		    res.write(" ")
 			ist :=re.prog[pc1].ist
 			if ist == IST_BSLS_CHAR {
-				res.write("[\\${re.prog[pc1].v_ch:1c}]     BSLS")
+				res.write("[\\${re.prog[pc1].ch:1c}]     BSLS")
 			} else if ist == IST_PROG_END {
 				res.write("PROG_END")
 				stop_flag = true
@@ -1060,8 +1098,8 @@ pub fn (re RE) get_code() string {
 				res.write("(        GROUP_START #:${re.prog[pc1].group_id}")
 			} else if ist == IST_GROUP_END {
 				res.write(")        GROUP_END   #:${re.prog[pc1].group_id}")
-			} else if ist & SIMPLE_CHAR_MASK == 0 {
-				res.write("[${ist & IST_SIMPLE_CHAR:1c}]      query_ch")
+			} else if ist == IST_SIMPLE_CHAR {
+				res.write("[${re.prog[pc1].ch:1c}]      query_ch")
 			}
 
 			if re.prog[pc1].rep_max == MAX_QUANTIFIER {
@@ -1071,6 +1109,9 @@ pub fn (re RE) get_code() string {
 					res.write(" if false go: ${re.prog[pc1].rep_min:3d} if true go: ${re.prog[pc1].rep_max:3d}")
 				} else {
 					res.write(" {${re.prog[pc1].rep_min:3d},${re.prog[pc1].rep_max:3d}}")
+				}
+				if re.prog[pc1].greedy == true {
+					res.write("?")
 				}
 			}
 			res.write("\n")
@@ -1136,7 +1177,7 @@ pub fn (re RE) get_query() string {
 
 		// bsls char
 		if ch == IST_BSLS_CHAR {
-			res.write("\\${re.prog[i].v_ch:1c}")
+			res.write("\\${re.prog[i].ch:1c}")
 		}
 
 		// IST_DOT_CHAR
@@ -1145,11 +1186,11 @@ pub fn (re RE) get_query() string {
 		}
 
 		// char alone
-		if ch & SIMPLE_CHAR_MASK == 0 {
+		if ch == IST_SIMPLE_CHAR {
 			if byte(ch) in BSLS_ESCAPE_LIST {
 				res.write("\\")
 			}
-			res.write("${re.prog[i].ist:c}")
+			res.write("${re.prog[i].ch:c}")
 		}
 
 		// quantifier
@@ -1165,6 +1206,9 @@ pub fn (re RE) get_query() string {
 					res.write("{${re.prog[i].rep_min},MAX}")
 				} else {
 					res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
+				}
+				if re.prog[i].greedy == true {
+					res.write("?")
 				}
 			}
 		}
@@ -1187,10 +1231,11 @@ enum match_state{
 	start = 0,
 	stop,
 	end,
+	new_line,
 	
-	ist_load,     // load and execute istruction
-	ist_next,     // go to next istruction
-	ist_next_ks,  // go to next istruction without clenaning the state
+	ist_load,     // load and execute instruction
+	ist_next,     // go to next instruction
+	ist_next_ks,  // go to next instruction without clenaning the state
 	ist_quant_p,  // match positive ,quantifier check 
 	ist_quant_n,  // match negative, quantifier check 
 	ist_quant_pg, // match positive ,group quantifier check
@@ -1202,6 +1247,7 @@ fn state_str(s match_state) string {
 		.start        { return "start" }
 		.stop         { return "stop" }
 		.end          { return "end" }
+		.new_line     { return "new line" }
 
 		.ist_load     { return "ist_load" }
 		.ist_next     { return "ist_next" }
@@ -1277,7 +1323,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				re.log_func(buf2.str())
 			}else{
 
-				// print only the exe istruction
+				// print only the exe instruction
 				if (re.debug == 1 && m_state == .ist_load) ||
 					re.debug == 2
 				{		
@@ -1287,23 +1333,17 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					else if ist == 0 || m_state in [.start,.ist_next,.stop] {
 						buf2.write("# ${step_count:3d} s: ${state_str(m_state):12s} PC: NA\n")
 					}else{
-						ch, char_len = get_charb(in_txt,i)
+						ch, char_len = re.get_charb(in_txt,i)
 						
 						buf2.write("# ${step_count:3d} s: ${state_str(m_state):12s} PC: ${pc:3d}=>")
 						buf2.write("${ist:8x}".replace(" ","0"))
 						buf2.write(" i,ch,len:[${i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${first_match:3d},${state.match_index:3d}] ")
 
-						if ist & SIMPLE_CHAR_MASK == 0 {
-							if char_len < 4 {
-								tmp_c := ist & IST_SIMPLE_CHAR
-								buf2.write("query_ch: [${tmp_c:1c}]")
-							} else {
-								tmp_c := ist | IST_SIMPLE_CHAR
-								buf2.write("query_ch: [${tmp_c:1c}]")
-							}
+						if ist == IST_SIMPLE_CHAR {
+							buf2.write("query_ch: [${re.prog[pc].ch:1c}]")
 						} else {
 							if ist == IST_BSLS_CHAR {
-								buf2.write("BSLS [\\${re.prog[pc].v_ch:1c}]")
+								buf2.write("BSLS [\\${re.prog[pc].ch:1c}]")
 							} else if ist == IST_PROG_END {
 								buf2.write("PROG_END")
 							} else if ist == IST_OR_BRANCH {
@@ -1327,6 +1367,9 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						} else {
 							buf2.write("{${re.prog[pc].rep_min},${re.prog[pc].rep_max}}:${re.prog[pc].rep}")
 						}
+						if re.prog[pc].greedy == true {
+							buf2.write("?")
+						}
 						buf2.write(" (#${group_index})\n")
 					}
 					re.log_func(buf2.str())
@@ -1338,7 +1381,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		//******************************************
 
 		// we're out of text, manage it
-		if i >= in_txt_len {
+		if i >= in_txt_len || m_state == .new_line {
 			
 			// manage groups
 			if group_index >= 0 && state.match_index >= 0 {
@@ -1376,7 +1419,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			// manage IST_DOT_CHAR
 			if re.state_stack_index >= 0 {
 				//C.printf("DOT CHAR text end management!\n")
-				// if DOT CHAR is not the last istruction and we are still going, then no match!!
+				// if DOT CHAR is not the last instruction and we are still going, then no match!!
 				if pc < re.prog.len && re.prog[pc+1].ist != IST_PROG_END {
 					return NO_MATCH_FOUND,0
 				}
@@ -1395,7 +1438,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			continue
 		}
 
-		// ist_next, next istruction reseting its state
+		// ist_next, next instruction reseting its state
 		if m_state == .ist_next {
 			pc = pc + 1
 			re.prog[pc].reset()
@@ -1408,7 +1451,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			continue
 		}
 
-		// ist_next_ks, next istruction keeping its state
+		// ist_next_ks, next instruction keeping its state
 		if m_state == .ist_next_ks {
 			pc = pc + 1
 			// check if we are in the program bounds
@@ -1421,7 +1464,13 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		}
 
 		// load the char
-		ch, char_len = get_charb(in_txt,i)
+		ch, char_len = re.get_charb(in_txt,i)
+
+		// check new line if flag F_NL enabled
+		if (re.flag & F_NL) != 0 && char_len == 1 && byte(ch) in NEW_LINE_LIST {
+			m_state = .new_line
+			continue
+		}
 
 		// check if stop 
 		if m_state == .stop {
@@ -1547,7 +1596,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					m_state = .ist_next
 					continue
 				} 
-				// IST_DOT_CHAR is the last istruction, get all
+				// IST_DOT_CHAR is the last instruction, get all
 				else {
 					//C.printf("We are the last one!\n")
 					pc-- 
@@ -1613,12 +1662,11 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			}
 
 			// simple char IST
-			else if ist & IST_SIMPLE_CHAR != 0 {
+			else if ist == IST_SIMPLE_CHAR {
 				//C.printf("IST_SIMPLE_CHAR\n")
 				state.match_flag = false
 
-				if (char_len<4 && ist == ch) || 
-					(char_len == 4 && (ist | SIMPLE_CHAR_MASK) == ch ) 
+				if re.prog[pc].ch == ch
 				{
 					state.match_flag = true
 					
@@ -1749,6 +1797,15 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			}
 			else if rep >= re.prog[tmp_pc].rep_min {
 				//C.printf("ist_quant_pg IN RANGE group_index:%d\n", group_index)
+
+				// check greedy flag, if true exit on minimum
+				if re.prog[tmp_pc].greedy == true {
+					re.prog[tmp_pc].group_rep = 0 // clear the repetitions
+					group_index--
+					m_state = .ist_next
+					continue
+				}
+
 				pc = re.prog[tmp_pc].goto_pc - 1
 				group_index--
 				m_state = .ist_next
@@ -1832,6 +1889,13 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			// range ok, continue loop
 			else if rep >= re.prog[pc].rep_min && rep < re.prog[pc].rep_max {
 				//C.printf("ist_quant_p IN RANGE\n")
+				
+				// check greedy flag, if true exit on minimum
+				if re.prog[pc].greedy == true {
+					m_state = .ist_next
+					continue
+				}
+				
 				m_state = .ist_load
 				continue
 			}
