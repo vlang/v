@@ -22,86 +22,84 @@ struct HttpbinResponseBody {
 // unescaped := urllib.query_unescape(escaped) or { assert false return }
 // assert unescaped == original
 // }
-fn test_http_get() {
-	assert http.get_text('https://vlang.io/version') == '0.1.5'
-	println('http ok')
+fn http_fetch_mock(_methods []string, _config http.RequestConfig) ?[]http.Response {
+	url := 'https://httpbin.org/'
+	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
+	mut config := _config
+	mut result := []http.Response
+	// Note: httpbin doesn't support head
+	for method in methods {
+		lmethod := method.to_lower()
+		config.method = method
+		res := http.fetch(url + lmethod, config) or {
+			return error(err)
+		}
+		body := json.decode(HttpbinResponseBody,res.text) or {
+			return error(err)
+		}
+		print(res.text)
+		result << res
+	}
+	return result
 }
 
-fn test_http_get_from_vlang_utc_now() {
-	urls := ['http://vlang.io/utc_now', 'https://vlang.io/utc_now']
-	for url in urls {
-		println('Test getting current time from $url by http.get')
-		res := http.get(url) or {
+fn test_http_fetch_bare() {
+	responses := http_fetch_mock([], http.RequestConfig{}) or {
+		panic(err)
+	}
+	for response in responses {
+		assert response.status_code == 200
+	}
+}
+
+fn test_http_fetch_with_data() {
+	responses := http_fetch_mock(['POST', 'PUT', 'PATCH', 'DELETE'], {
+		data: 'hello world'
+	}) or {
+		panic(err)
+	}
+	for response in responses {
+		payload := json.decode(HttpbinResponseBody,response.text) or {
 			panic(err)
 		}
-		assert 200 == res.status_code
-		assert res.text.len > 0
-		assert res.text.int() > 1566403696
-		println('Current time is: ${res.text.int()}')
+		assert payload.data == 'hello world'
 	}
 }
 
-fn test_public_servers() {
-	urls := ['http://github.com/robots.txt',
-	'http://google.com/robots.txt',
-	'http://yahoo.com/robots.txt',
-	'https://github.com/robots.txt',
-	'https://google.com/robots.txt',
-	'https://yahoo.com/robots.txt',
-	]
-	for url in urls {
-		println('Testing http.get on public url: $url ')
-		res := http.get(url) or {
-			panic(err)
+fn test_http_fetch_with_params() {
+	responses := http_fetch_mock([], {
+		params: {
+			'a': 'b',
+			'c': 'd'
 		}
-		assert 200 == res.status_code
-		assert res.text.len > 0
+	}) or {
+		panic(err)
+	}
+	for response in responses {
+		// payload := json.decode(HttpbinResponseBody,response.text) or {
+		// panic(err)
+		// }
+		assert response.status_code == 200
+		// TODO
+		// assert payload.args['a'] == 'b'
+		// assert payload.args['c'] == 'd'
 	}
 }
 
-fn test_http_post() {
-	url := 'https://httpbin.org/post'
-	data := 'hello world'
-	res := http.post(url, data) or {
+fn test_http_fetch_with_headers() {
+	responses := http_fetch_mock([], {
+		headers: {
+			'Test-Header': 'hello world'
+		}
+	}) or {
 		panic(err)
 	}
-	body := json.decode(HttpbinResponseBody,res.text) or {
-		panic(err)
+	for response in responses {
+		// payload := json.decode(HttpbinResponseBody,response.text) or {
+		// panic(err)
+		// }
+		assert response.status_code == 200
+		// TODO
+		// assert payload.headers['Test-Header'] == 'hello world'
 	}
-	assert 200 == res.status_code
-	assert body.data == 'hello world'
-}
-
-fn test_http_put() {
-	url := 'https://httpbin.org/put'
-	data := 'hello world'
-	res := http.put(url, data) or {
-		panic(err)
-	}
-	body := json.decode(HttpbinResponseBody,res.text) or {
-		panic(err)
-	}
-	assert 200 == res.status_code
-	assert body.data == 'hello world'
-}
-
-fn test_http_patch() {
-	url := 'https://httpbin.org/patch'
-	data := 'hello world'
-	res := http.patch(url, data) or {
-		panic(err)
-	}
-	body := json.decode(HttpbinResponseBody,res.text) or {
-		panic(err)
-	}
-	assert 200 == res.status_code
-	assert body.data == 'hello world'
-}
-
-fn test_http_delete() {
-	url := 'https://httpbin.org/delete'
-	res := http.delete(url) or {
-		panic(err)
-	}
-	assert 200 == res.status_code
 }

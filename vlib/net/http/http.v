@@ -24,7 +24,7 @@ pub:
 	headers    map[string]string
 	cookies    map[string]string
 	data       string
-	url        string
+	url        urllib.URL
 	user_agent string
 	verbose    bool
 	// h          string
@@ -37,11 +37,11 @@ mut:
 pub struct RequestConfig {
 pub mut:
 	method     string
-	url        string
 	data       string=''
-	user_agent string='v'
+	params     map[string]string=map[string]string
 	headers    map[string]string=map[string]string
 	cookies    map[string]string=map[string]string
+	user_agent string='v'
 	verbose    bool=false
 }
 
@@ -52,90 +52,41 @@ pub:
 	status_code int
 }
 
-pub fn get(url string) ?Response {
-	res := new_request({
-		method: 'GET'
-		url: url
-	}) or {
-		return error(err)
-	}
-	return res
+pub fn get(url string, config RequestConfig) ?Response {
+	return fetch_with_method('GET', url, config)
 }
 
-pub fn head(url string) ?Response {
-	res := new_request({
-		method: 'HEAD'
-		url: url
-	}) or {
-		return error(err)
-	}
-	return res
+pub fn post(url string, config RequestConfig) ?Response {
+	return fetch_with_method('POST', url, config)
 }
 
-pub fn delete(url string) ?Response {
-	res := new_request({
-		method: 'DELETE'
-		url: url
-	}) or {
-		return error(err)
-	}
-	return res
+pub fn put(url string, config RequestConfig) ?Response {
+	return fetch_with_method('PUT', url, config)
 }
 
-pub fn patch(url, data string) ?Response {
-	res := new_request({
-		method: 'PATCH'
-		url: url
-		data: data
-		headers: {
-			'Content-Type': ContentTypeText
-		}
-	}) or {
-		return error(err)
-	}
-	return res
+pub fn patch(url string, config RequestConfig) ?Response {
+	return fetch_with_method('PATCH', url, config)
 }
 
-pub fn put(url, data string) ?Response {
-	res := new_request({
-		method: 'PUT'
-		url: url
-		data: data
-		headers: {
-			'Content-Type': ContentTypeText
-		}
-	}) or {
-		return error(err)
-	}
-	return res
+pub fn delete(url string, config RequestConfig) ?Response {
+	return fetch_with_method('DELETE', url, config)
 }
 
-pub fn post(url, data string) ?Response {
-	res := new_request({
-		method: 'POST'
-		url: url
-		data: data
-		headers: {
-			'Content-Type': ContentTypeText
-		}
-	}) or {
-		return error(err)
-	}
-	return res
+pub fn head(url string, config RequestConfig) ?Response {
+	return fetch_with_method('HEAD', url, config)
 }
 
-pub fn new_request(config RequestConfig) ?Response {
-	if config.url == '' {
-		return error('http.new_request: empty url')
+pub fn fetch(_url string, config RequestConfig) ?Response {
+	if _url == '' {
+		return error('http.fetch: empty url')
 	}
-	mut url := config.url
-	mut data := config.data
-	if config.method == 'GET' && !url.contains('?') && data != '' {
-		url = '$url?$data'
-		data = ''
+	url := build_url_from_fetch(_url, config) or {
+		return error('http.fetch: invalid url ${_url}')
 	}
+	data := config.data
+	method := config.method.to_upper()
 	req := Request{
-		method: config.method
+		method: method
 		url: url
 		data: data
 		headers: config.headers
@@ -152,10 +103,38 @@ pub fn new_request(config RequestConfig) ?Response {
 }
 
 pub fn get_text(url string) string {
-	resp := get(url) or {
+	resp := fetch(url, {
+		method: 'GET'
+	}) or {
 		return ''
 	}
 	return resp.text
+}
+
+fn fetch_with_method(method string, url string, _config RequestConfig) ?Response {
+	mut config := _config
+	config.method = method
+	return fetch(url, config)
+}
+
+fn build_url_from_fetch(_url string, config RequestConfig) ?urllib.URL {
+	mut url := urllib.parse(_url) or {
+		return error(err)
+	}
+	params := config.params
+	if params.keys().len == 0 {
+		return url
+	}
+	mut pieces := []string
+	for key in params.keys() {
+		pieces << '${key}=${params[key]}'
+	}
+	mut query := pieces.join('&')
+	if url.raw_query.len > 1 {
+		query = url.raw_query + '&' + query
+	}
+	url.raw_query = query
+	return url
 }
 
 fn (req mut Request) free() {
@@ -188,10 +167,7 @@ pub fn parse_headers(lines []string) map[string]string {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
-	url := urllib.parse(req.url) or {
-		return error('http.request.do: invalid URL "$req.url"')
-	}
-	mut rurl := url
+	mut rurl := req.url
 	mut resp := Response{}
 	mut no_redirects := 0
 	for {
