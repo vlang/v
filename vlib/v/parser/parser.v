@@ -767,7 +767,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	for {
 		expr,ti := p.expr(0)
 		exprs << expr
-		got_tis << ti
+		// got_tis << ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
