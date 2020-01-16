@@ -336,8 +336,7 @@ fn (req &Request) build_request_cookies_header() string {
 	if 'Cookie' in req.headers && req.headers['Cookie'] != '' {
 		cookie << req.headers['Cookie']
 	}
-	mut cookie_str := cookie.join('; ')
-	return 'Cookie: ' + cookie_str + '\r\n'
+	return 'Cookie: ' + cookie.join('; ') + '\r\n'
 }
 
 pub fn unescape_url(s string) string {
