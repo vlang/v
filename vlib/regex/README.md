@@ -10,8 +10,8 @@ Write here the introduction
 
 In this release, during the writing of the code some assumption are made and are valid for all the features.
 
-1. The matching stop at the end of the string not at the newline chars
-2. The basic element of this regex engine are the tokens, in aquery string a simple char is a token. The token is the atomic unit of this regex engine. 
+1. The matching stops at the end of the string not at the newline chars.
+2. The basic element of this regex engine are the tokens, in query string a simple char is a token. The token is the atomic unit of this regex engine.
 
 ## Match positional limiter
 
@@ -19,15 +19,13 @@ The module supports the following features:
 
 - `$` `^` delimiter
 
+`^` (Caret.) Matches at the start of the string
 
-
-`^` (Caret.) Matches the start of the string
-
-`?` Matches the end of the string
+`?` Matches at the end of the string
 
 ## Tokens
 
-The token are the atomic unit used by this regex engine and can be one of the following:
+The tokens are the atomic unit used by this regex engine and can be ones of the following:
 
 ### Simple char
 
@@ -35,25 +33,25 @@ this token is a simple single character like `a`.
 
 ### Char class (cc)
 
-The cc match all the char specified in its inside, it is delimited by square brackets `[ ]`
+The cc match all the chars specified in its inside, it is delimited by square brackets `[ ]`
 
 the sequence of chars in the class is evaluated with an OR operation.
 
-For example the following cc `[abc]` match any char that is or `a` or `b` or `c` but doesn't match `C` or `z`.
+For example the following cc `[abc]` match any char that is `a` or `b` or `c` but doesn't match `C` or `z`.
 
 Inside a cc is possible to specify a "range" of chars, for example `[ad-f]` is equivalent to write `[adef]`. 
 
-A cc can have different ranges in the same like `[a-zA-z0-9]` that match all the lowercase,uppercase and numeric chars.
+A cc can have different ranges at the same time like `[a-zA-z0-9]` that match all the lowercase,uppercase and numeric chars.
 
-It is possible negate the cc using the caret char at the start of the cc like: `[^abc]` that match every char that is not `a` or `b` or `c`.
+It is possible negate the cc using the caret char at the start of the cc like: `[^abc]` that matches every char that is not `a` or `b` or `c`.
 
-A cc can contain meta-chars like: `[a-z\d]` that match all the lowercase latin chars `a-z` and all the digits `\d`.
+A cc can contain meta-chars like: `[a-z\d]` that matches all the lowercase latin chars `a-z` and all the digits `\d`.
 
 It is possible to mix all the properties of the char class together.
 
 ### Meta-chars
 
-A meta-char is specified by a back slash before a char like `\w` in this case the meta-char is `w`.
+A meta-char is specified by a backslash before a char like `\w` in this case the meta-char is `w`.
 
 A meta-char can match different type of chars.
 
@@ -73,23 +71,23 @@ Each token can have a quantifier that specify how many times the char can or mus
 **Short quantifier**
 
 - `?` match 0 or 1 time, `a?b` match both `ab` or `b`
-- `+` match at minimum  1 time, `a+` match both `aaa` or `a`
+- `+` match at minimum 1 time, `a+` match both `aaa` or `a`
 - `*` match 0 or more time, `a*b` match both `aaab` or `ab` or `b`
 
 **Long quantifier**
 
 - `{x}` match exactly x time, `a{2}` match `aa` but doesn't match `aaa` or `a`
-- `{min,}` match at minimum min time, `a{2,}` match `aaa` or `aa` bit doesn't march `a`
-- `{,max}` match at least 1 and maximum max time, `a{,2}` match `a` and `aa` but doesn't match `aaa`
+- `{min,}` match at minimum min time, `a{2,}` match `aaa` or `aa` but doesn't match `a`
+- `{,max}` match at least 1 time and maximum max time, `a{,2}` match `a` and `aa` but doesn't match `aaa`
 - `{min,max}` match from min times to max times, `a{2,3}` match `aa` and `aaa` but doesn't match `a` or `aaaa`
 
-a long quantifier may have a `greedy` flag that is the `?` char after the brackets, `{2,4}?` means to match at the minimum possible tokens thus 2.
+a long quantifier may have a `greedy off` flag that is the `?` char after the brackets, `{2,4}?` means to match the minimum number possible tokens in this case 2.
 
 ### dot char
 
 the dot is a particular meta char that match  "any char", is more simple explain it with an example:
 
-supposed to have `abccc ddeef` as string to parse with regex, the following table show the query strings and the result of parsing source string.
+suppose to have `abccc ddeef` as source string to parse with regex, the following table show the query strings and the result of parsing source string.
 
 | query string | result |
 | ------------ | ------ |
@@ -102,39 +100,35 @@ the dot char match any char until the next token match is satisfied.
 
 ### OR token
 
-the token `|` is an logic OR operation between two consecutive tokens, `a|b` match a char that is `a` or `b`.
+the token `|` is a logic OR operation between two consecutive tokens, `a|b` match a char that is `a` or `b`.
 
 The or token can work in a "chained way": `a|(b)|cd ` test first `a` if the char is not `a` the test the group `(b)` and if the group doesn't match test the token `c`.
 
 **note: The OR work at token level! It doesn't work at concatenation level!**
 
-A query string like `abc|bde` is not equal to `(abc)|(bde)`!! 
-
-The OR work only on `c|b` not at char concatenation level.
-
-
+A query string like `abc|bde` is not equal to `(abc)|(bde)`!!  The OR work only on `c|b` not at char concatenation level.
 
 ### Groups
 
-Groups are a method to create complex patterns with repetition of blocks of token.
+Groups are a method to create complex patterns with repetition of blocks of tokens.
 
-The groups a delimited by round brackets `( )`, groups can be nested and can have a quantifier as all the tokens.
+The groups are delimited by round brackets `( )`, groups can be nested and can have a quantifier as all the tokens.
 
 `c(pa)+z` match `cpapaz` or `cpaz` or `cpapapaz` .
 
 `(c(pa)+z ?)+` match `cpaz cpapaz cpapapaz` or `cpapaz` 
 
-let analyze this last case, first we have the group 0 that are the most outer round brackets `(...)+`, this group has a quantifier that say to match its content at least one time `+`. 
+let analyze this last case, first we have the group `#0` that are the most outer round brackets `(...)+`, this group has a quantifier that say to match its content at least one time `+`. 
 
-After we have a simple char token `c` and a second group that is the number 1 `(pa)+`, this group try to match the sequence `pa` at least one time as specified by the `+` quantifier.
+After we have a simple char token `c` and a second group that is the number `#1` :`(pa)+`, this group try to match the sequence `pa` at least one time as specified by the `+` quantifier.
 
-After we have another simple token `z` and another simple token ` ?` that is the space char (ascii code 32) with the `?` quantifier that say to capture this char or 0 or 1 time 
+After, we have another simple token `z` and another simple token ` ?` that is the space char (ascii code 32) followed by the `?` quantifier that say to capture the space char 0 or 1 time.
 
 This explain because the `(c(pa)+z ?)+` query string can match `cpaz cpapaz cpapapaz` .
 
-In this implementation the groups are capturing groups that means that the last result for each group can be retrieved from the `RE` struct.
+In this implementation the groups are "capture groups", it means that the last temporal result for each group can be retrieved from the `RE` struct.
 
-The captured groups are store as couple of index in the field `groups` that is an `[]int` each captured group 
+The "capture groups" are store as couple of index in the field `groups` that is an `[]int` inside the `RE` struct. 
 
 **example:**
 
@@ -167,7 +161,7 @@ for gi < re.groups.len {
 
 ## Flags
 
-It is possible to set some flag in the regex parser that change the behavior of the parser itself.
+It is possible to set some flags in the regex parser that change the behavior of the parser itself.
 
 ```v
 // example of flag settings
@@ -178,16 +172,16 @@ re.flag = regex.F_BIN
 
 - `F_BIN`: parse a string as bytes, utf-8 management disabled.
 
-- `F_EFM`: exit on the first char match in the query, used by the find function
-- `F_MS`: match only if the index of the start match is 0, same as `^` at the start of query string
-- `F_ME`: match only if the end index of the match is the last char of the input string, same as `$` end of query string
+- `F_EFM`: exit on the first char match in the query, used by the find function.
+- `F_MS`: match only if the index of the start match is 0, same as `^` at the start of the query string.
+- `F_ME`: match only if the end index of the match is the last char of the input string, same as `$` end of query string.
 - `F_NL`: stop the matching if found a new line char `\n` or `\r`
 
 ## Functions
 
 ### Initializer
 
-These function are helper that create the `RE` struct, the struct can be manually create if you need it 
+These function are helper that create the `RE` struct, a `RE` struct can be created manually if you needed.
 
 **Simplified initializer**
 
@@ -205,7 +199,7 @@ pub fn new_regex() RE
 // new_regex_by_size create a REgex of large size, mult specify the scale factor of the memory that will be allocated
 pub fn new_regex_by_size(mult int) RE
 ```
-After the base initializer use the regex expression must be compiled with:
+After the base initializer use, the regex expression must be compiled with:
 ```v
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
 pub fn (re mut RE) compile(in_txt string) (int,int)
@@ -222,10 +216,10 @@ pub fn (re mut RE) match_string(in_txt string) (int,int)
 // find try to find the first match in the input string, return start and end index if found else start is -1
 pub fn (re mut RE) find(in_txt string) (int,int)
 
-// find all the non overlapping occurrences of the match pattern, return a list of start end indexes
+// find_all find all the "non overlapping" occurrences of the matching pattern, return a list of start end indexes
 pub fn (re mut RE) find_all(in_txt string) []int
 
-// replace return a string where the matches are replaced with the replace string, only non overlapped match are used
+// replace return a string where the matches are replaced with the replace string, only non overlapped matches are used
 pub fn (re mut RE) replace(in_txt string, repl string) string
 ```
 
@@ -235,10 +229,10 @@ This module has few small utilities to help the writing of regex expressions.
 
 **Syntax errors highlight**
 
-the following example code show how to visualize the syntax errors in the compiling pahse:
+the following example code show how to visualize the syntax errors in the compilation phase:
 
 ```v
-query:= r"ciao da ab[ab-]"  // there is an error, a range not closed
+query:= r"ciao da ab[ab-]"  // there is an error, a range not closed!!
 mut re := new_regex()
 
 // re_err ==> is the return value, if < 0 it is an error
@@ -264,7 +258,7 @@ if re_err != COMPILE_OK {
 
 **Compiled code**
 
-It is possible view the compiled code calling the function `get_query()` the result will something like this:
+It is possible view the compiled code calling the function `get_query()` the result will be something like this:
 
 ```
 ========================================
@@ -275,15 +269,15 @@ PC:  2 ist: 88000000 PROG_END {  0,  0}
 ========================================
 ```
 
-`PC`:`int` is the program counter or step of execution, each single step is a token
+`PC`:`int` is the program counter or step of execution, each single step is a token.
 
-`ist`:`hex` is the token instruction id
+`ist`:`hex` is the token instruction id.
 
-`[a]` is the char used by the token
+`[a]` is the char used by the token.
 
-`query_ch` is the type of token
+`query_ch` is the type of token.
 
-`{m,n}` are the quantifier, the greedy flag  `?`  will be showed if present in the token
+`{m,n}` is the quantifier, the greedy off flag  `?`  will be showed if present in the token
 
 **Log debug**
 
@@ -295,7 +289,7 @@ here an example:
 
 *normal*
 
-list only the token instruction with the values
+list only the token instruction with their values
 
 ```
 // re.flag = 1 // log level normal
@@ -308,7 +302,7 @@ flags: 00000000
 
 *verbose*
 
-list all the instruction and states of the parser
+list all the instructions and states of the parser
 
 ```
 flags: 00000000
@@ -326,7 +320,7 @@ flags: 00000000
 #  11 PROG_END
 ```
 
-the column have the following meaning:
+the columns have the following meaning:
 
 `#   2` number of actual steps from the start of parsing
 
@@ -342,7 +336,7 @@ the column have the following meaning:
 
 `query_ch: [b]` token in use and its char
 
-`{2,3}:1?` quantifier `{min,max}`, `:1` is the actual counter of repetition, `?` is the greedy flag if present
+`{2,3}:1?` quantifier `{min,max}`, `:1` is the actual counter of repetition, `?` is the greedy off flag if present
 
 ## Example code
 
