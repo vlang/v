@@ -65,8 +65,30 @@ pub fn post_form(url string, data map[string]string) ?Response {
 	})
 }
 
+pub fn put(url, content_type, data string) ?Response {
+	return fetch_with_method('PUT', url, {
+		data: data
+		headers: {
+			'Content-Type': content_type
+		}
+	})
+}
+
+pub fn patch(url, content_type, data string) ?Response {
+	return fetch_with_method('PATCH', url, {
+		data: data
+		headers: {
+			'Content-Type': content_type
+		}
+	})
+}
+
 pub fn head(url string) ?Response {
-	return fetch_with_method('GET', url, FetchConfig{})
+	return fetch_with_method('HEAD', url, FetchConfig{})
+}
+
+pub fn delete(url string) ?Response {
+	return fetch_with_method('DELETE', url, FetchConfig{})
 }
 
 pub fn fetch(_url string, config FetchConfig) ?Response {
