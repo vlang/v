@@ -233,15 +233,12 @@ fn handle_conn<T>(conn net.Socket, app mut T) {
 	if action == '' {
 		action = 'index'
 	}
-	url := urllib.parse(vals[1]) or {
-		panic('vweb: invalid url')
-	}
 	req := http.Request{
 		headers: http.parse_headers(headers) //s.split_into_lines())
 		ws_func: 0
 		user_ptr: 0
 		method: vals[0]
-		url: url
+		url: vals[1]
 	}
 	$if debug {
 		println('req.headers = ')
@@ -350,8 +347,8 @@ pub fn (ctx mut Context) handle_static(directory_path string) bool {
 	if ctx.done { return false }
 	ctx.scan_static_directory(directory_path, '')
 
-	static_file := ctx.static_files[ctx.req.url.str()]
-	mime_type := ctx.static_mime_types[ctx.req.url.str()]
+	static_file := ctx.static_files[ctx.req.url]
+	mime_type := ctx.static_mime_types[ctx.req.url]
 
 	if static_file != '' {
 		data := os.read_file(static_file) or { return false }

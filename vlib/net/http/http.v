@@ -17,7 +17,7 @@ pub:
 	headers    map[string]string
 	cookies    map[string]string
 	data       string
-	url        urllib.URL
+	url        string
 	user_agent string
 	verbose    bool
 mut:
@@ -143,13 +143,13 @@ fn fetch_with_method(method string, url string, _config FetchConfig) ?Response {
 	return fetch(url, config)
 }
 
-fn build_url_from_fetch(_url string, config FetchConfig) ?urllib.URL {
+fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	mut url := urllib.parse(_url) or {
 		return error(err)
 	}
 	params := config.params
 	if params.keys().len == 0 {
-		return url
+		return url.str()
 	}
 	mut pieces := []string
 	for key in params.keys() {
@@ -160,7 +160,7 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?urllib.URL {
 		query = url.raw_query + '&' + query
 	}
 	url.raw_query = query
-	return url
+	return url.str()
 }
 
 fn (req mut Request) free() {
@@ -193,7 +193,10 @@ pub fn parse_headers(lines []string) map[string]string {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
-	mut rurl := req.url
+	url := urllib.parse(req.url) or {
+		return error('http.Request.do: invalid url ${req.url}')
+	}
+	mut rurl := url
 	mut resp := Response{}
 	mut no_redirects := 0
 	for {
