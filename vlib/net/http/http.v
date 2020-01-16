@@ -8,6 +8,7 @@ import net.http.chunked
 
 const (
 	max_redirects = 4
+	content_type_default = 'text/plain'
 )
 
 pub struct Request {
@@ -47,11 +48,11 @@ pub fn get(url string) ?Response {
 	return fetch_with_method('GET', url, FetchConfig{})
 }
 
-pub fn post(url, content_type, data string) ?Response {
+pub fn post(url, data string) ?Response {
 	return fetch_with_method('POST', url, {
 		data: data
 		headers: {
-			'Content-Type': content_type
+			'Content-Type': content_type_default
 		}
 	})
 }
@@ -65,20 +66,20 @@ pub fn post_form(url string, data map[string]string) ?Response {
 	})
 }
 
-pub fn put(url, content_type, data string) ?Response {
+pub fn put(url, data string) ?Response {
 	return fetch_with_method('PUT', url, {
 		data: data
 		headers: {
-			'Content-Type': content_type
+			'Content-Type': content_type_default
 		}
 	})
 }
 
-pub fn patch(url, content_type, data string) ?Response {
+pub fn patch(url, data string) ?Response {
 	return fetch_with_method('PATCH', url, {
 		data: data
 		headers: {
-			'Content-Type': content_type
+			'Content-Type': content_type_default
 		}
 	})
 }
