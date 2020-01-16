@@ -34,7 +34,7 @@ fn (c &Checker) has_field(ti &types.TypeIdent, field_name string) types.TypeIden
 			// TODO: fix bug
 			if field := c.table.struct_find_field(it, field_name) {
 				println('FOUND FIELD: $field.name - $field.ti.name')
-				return f.ti
+				return field.ti
 			}
 			c.error('unknown field `${it.name}.$field_name`')
 		}
