@@ -262,7 +262,8 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	mut y := f32(_y)
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
-		width := utext.len * 7
+		//width := utext.len * 7
+		width := ctx.text_width(utext.s)
 		x -= width + 10
 	}
 	x *= ctx.scale// f32(2)
