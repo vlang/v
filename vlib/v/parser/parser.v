@@ -44,9 +44,11 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	mut p := Parser{
 		scanner: s
 		table: table
+		checker: checker.new_checker('', table)
 	}
 	p.init_parse_fns()
 	p.read_first_token()
+	p.checker.check_deferred()
 	return p.stmt()
 }
 
@@ -511,6 +513,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	expr = ast.BinaryExpr{
 		left: left
 		right: right
+		op: op
 		pos: p.tok.position()
 	}
 	p.checker.add_check_expr(expr)
@@ -861,7 +864,6 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		ti: ti
 	})
 	// println(p.table.names)
-	println('added var `$name` with type $ti.name')
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)

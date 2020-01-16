@@ -191,7 +191,6 @@ mut:
 
 pub struct BinaryExpr {
 pub:
-// tok_kind token.Kind
 // op    BinaryOp
 	op    token.Kind
 	pos   token.Position
