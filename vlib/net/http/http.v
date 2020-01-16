@@ -19,14 +19,12 @@ pub:
 	url        urllib.URL
 	user_agent string
 	verbose    bool
-	// h          string
-	// cmd        string
 mut:
 	user_ptr   voidptr
 	ws_func    voidptr
 }
 
-pub struct RequestConfig {
+pub struct FetchConfig {
 pub mut:
 	method     string
 	data       string=''
@@ -41,34 +39,37 @@ pub struct Response {
 pub:
 	text        string
 	headers     map[string]string
+	cookies     map[string]string
 	status_code int
 }
 
-pub fn get(url string, config RequestConfig) ?Response {
-	return fetch_with_method('GET', url, config)
+pub fn get(url string) ?Response {
+	return fetch_with_method('GET', url, FetchConfig{})
 }
 
-pub fn post(url string, config RequestConfig) ?Response {
-	return fetch_with_method('POST', url, config)
+pub fn post(url, content_type, data string) ?Response {
+	return fetch_with_method('POST', url, {
+		data: data
+		headers: {
+			'Content-Type': content_type
+		}
+	})
 }
 
-pub fn put(url string, config RequestConfig) ?Response {
-	return fetch_with_method('PUT', url, config)
+pub fn post_form(url string, data map[string]string) ?Response {
+	return fetch_with_method('POST', url, {
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded'
+		}
+		data: url_encode_form_data(data)
+	})
 }
 
-pub fn patch(url string, config RequestConfig) ?Response {
-	return fetch_with_method('PATCH', url, config)
+pub fn head(url string) ?Response {
+	return fetch_with_method('GET', url, FetchConfig{})
 }
 
-pub fn delete(url string, config RequestConfig) ?Response {
-	return fetch_with_method('DELETE', url, config)
-}
-
-pub fn head(url string, config RequestConfig) ?Response {
-	return fetch_with_method('HEAD', url, config)
-}
-
-pub fn fetch(_url string, config RequestConfig) ?Response {
+pub fn fetch(_url string, config FetchConfig) ?Response {
 	if _url == '' {
 		return error('http.fetch: empty url')
 	}
@@ -103,13 +104,23 @@ pub fn get_text(url string) string {
 	return resp.text
 }
 
-fn fetch_with_method(method string, url string, _config RequestConfig) ?Response {
+pub fn url_encode_form_data(data map[string]string) string {
+	mut pieces := []string
+	for _key, _value in data {
+		key := urllib.query_escape(_key)
+		value := urllib.query_escape(_value)
+		pieces << '$key=$value'
+	}
+	return pieces.join('&')
+}
+
+fn fetch_with_method(method string, url string, _config FetchConfig) ?Response {
 	mut config := _config
 	config.method = method
 	return fetch(url, config)
 }
 
-fn build_url_from_fetch(_url string, config RequestConfig) ?urllib.URL {
+fn build_url_from_fetch(_url string, config FetchConfig) ?urllib.URL {
 	mut url := urllib.parse(_url) or {
 		return error(err)
 	}
@@ -217,7 +228,10 @@ fn (req &Request) method_and_url_to_response(method string, url net_dot_urllib.U
 }
 
 fn parse_response(resp string) Response {
+	// TODO: Header data type
 	mut headers := map[string]string
+	// TODO: Cookie data type
+	mut cookies := map[string]string
 	first_header := resp.all_before('\n')
 	mut status_code := 0
 	if first_header.contains('HTTP/') {
@@ -249,6 +263,10 @@ fn parse_response(resp string) Response {
 		// }
 		key := h[..pos]
 		val := h[pos + 2..]
+		if key == 'Set-Cookie' {
+			parts := val.trim_space().split('=')
+			cookies[parts[0]] = parts[1]
+		}
 		headers[key] = val.trim_space()
 	}
 	if headers['Transfer-Encoding'] == 'chunked' {
@@ -257,6 +275,7 @@ fn parse_response(resp string) Response {
 	return Response{
 		status_code: status_code
 		headers: headers
+		cookies: cookies
 		text: text
 	}
 }
@@ -264,13 +283,38 @@ fn parse_response(resp string) Response {
 fn (req &Request) build_request_headers(method, host_name, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string
-	for key, val in req.headers {
-		uheaders << '${key}: ${val}\r\n'
+	if !('Host' in req.headers) {
+		uheaders << 'Host: $host_name\r\n'
 	}
-	if req.data.len > 0 {
+	if !('User-Agent' in req.headers) {
+		uheaders << 'User-Agent: $ua\r\n'
+	}
+	if req.data.len > 0 && !('Content-Length' in req.headers) {
 		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
-	return '$method $path HTTP/1.1\r\n' + 'Host: $host_name\r\n' + 'User-Agent: $ua\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
+	for key, val in req.headers {
+		if key == 'Cookie' {
+			continue
+		}
+		uheaders << '${key}: ${val}\r\n'
+	}
+	uheaders << req.build_request_cookies_header()
+	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
+}
+
+fn (req &Request) build_request_cookies_header() string {
+	if req.cookies.keys().len < 1 {
+		return ''
+	}
+	mut cookie := []string
+	for key, val in req.cookies {
+		cookie << '$key: $val'
+	}
+	if 'Cookie' in req.headers && req.headers['Cookie'] != '' {
+		cookie << req.headers['Cookie']
+	}
+	mut cookie_str := cookie.join('; ')
+	return 'Cookie: ' + cookie_str + '\r\n'
 }
 
 pub fn unescape_url(s string) string {

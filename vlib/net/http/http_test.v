@@ -22,7 +22,7 @@ struct HttpbinResponseBody {
 // unescaped := urllib.query_unescape(escaped) or { assert false return }
 // assert unescaped == original
 // }
-fn http_fetch_mock(_methods []string, _config http.RequestConfig) ?[]http.Response {
+fn http_fetch_mock(_methods []string, _config http.FetchConfig) ?[]http.Response {
 	url := 'https://httpbin.org/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
 	mut config := _config
@@ -34,17 +34,17 @@ fn http_fetch_mock(_methods []string, _config http.RequestConfig) ?[]http.Respon
 		res := http.fetch(url + lmethod, config) or {
 			return error(err)
 		}
-		body := json.decode(HttpbinResponseBody,res.text) or {
-			return error(err)
-		}
-		print(res.text)
+		// TODO
+		// body := json.decode(HttpbinResponseBody,res.text) or {
+		// return error(err)
+		// }
 		result << res
 	}
 	return result
 }
 
 fn test_http_fetch_bare() {
-	responses := http_fetch_mock([], http.RequestConfig{}) or {
+	responses := http_fetch_mock([], http.FetchConfig{}) or {
 		panic(err)
 	}
 	for response in responses {
