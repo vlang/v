@@ -17,6 +17,7 @@ pub mut:
 	fns           map[string]Fn
 	methods       [][]Fn
 	tmp_cnt       int
+	imports       []string
 }
 
 pub struct Var {
@@ -44,6 +45,7 @@ pub fn new_table() &Table {
 pub fn (t mut Table) register_builtin_types() {
 	// add dummy type at 0 so nothing can go there
 	// save index check, 0 will mean not found
+	/*
 	t.register_type(types.Type{}, .placeholder, 'dymmy_type_at_idx_0')
 	t.register_type(types.Primitive{kind: .void}, .void, 'void')
 	t.register_type(types.Primitive{kind: .voidptr}, .voidptr, 'voidptr')
@@ -62,6 +64,11 @@ pub fn (t mut Table) register_builtin_types() {
 	t.register_type(types.Primitive{kind: .char}, .char, 'char')
 	t.register_type(types.Primitive{kind: .byte}, .byte, 'byte')
 	t.register_type(types.Bool{}, .bool, 'bool')
+	*/
+	for i in 0..18 {
+		println(' * $i')
+		t.register_type(types.Type{}, .placeholder, 'dymmy_type_at_idx_$i')
+	}
 }
 
 pub fn (t &Table) find_var_idx(name string) int {

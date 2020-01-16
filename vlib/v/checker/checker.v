@@ -7,6 +7,7 @@ import (
 	v.ast
 	v.table
 	v.types
+	v.token
 )
 
 // enum CheckKind {
@@ -14,9 +15,11 @@ import (
 // }
 
 pub struct Checker {
-	table  &table.Table
+	file_name string
+	table     &table.Table
 mut:
-	checks []Check
+	checks    []Check
+	position  token.Position
 }
 
 struct Check{
@@ -24,8 +27,9 @@ struct Check{
 	stmt ast.Stmt
 }
 
-pub fn new_checker(table &table.Table) Checker {
+pub fn new_checker(file_name string, table &table.Table) Checker {
 	return Checker{
+		file_name: file_name
 		table: table
 	}
 }
@@ -34,14 +38,16 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 	match expr {
 		ast.CallExpr {
 			func := c.table.find_fn(it.name) or {
-				panic('unknown fn $it.name')
+				c.error('unknown fn $it.name')
+				panic('')
 			}
 			return func.return_ti
 		}
 		ast.MethodCallExpr {
 			ti := c.get_expr_ti(it.expr)
 			func := c.table.find_method(ti.idx, it.name) or {
-				panic('unknown method ${ti.name}.$it.name')
+				c.error('unknown method ${ti.name}.$it.name')
+				panic('')
 			}
 			return func.return_ti
 		}
@@ -73,8 +79,11 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 		}
 		ast.SelectorExpr {
 			ti := c.get_expr_ti(it.expr)
+			if ti.kind == .placeholder {
+				println(' ##### WHY PH $ti.name')
+			}
 			if !(ti.kind in [.placeholder, .struct_]) {
-				println('$ti.name is not a struct')
+				c.error('unknown struct: $ti.name')
 			}
 			struct_ := c.table.types[ti.idx] as types.Struct
 			for field in struct_.fields {
@@ -93,7 +102,6 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 			c.error('unknown field `${ti.name}.$it.field`')
 		}
 		ast.BinaryExpr {
-			println('CHECK TYPE BINARYEXPR')
 			ti := c.get_expr_ti(it.left)
 			return ti
 		}
@@ -165,30 +173,37 @@ pub fn (c mut Checker) check_deferred() {
 	for ctx in c.checks {
 		match ctx.expr {
 			ast.AssignExpr {
+				c.position = it.pos
 				c.check_assign_expr(it)
 			}
 			ast.CallExpr {
+				c.position = it.pos
 				c.check_call_expr(it)
 			}
 			ast.StructInit {
+				c.position = it.pos
 				c.check_struct_init(it)
 			}
 			ast.MethodCallExpr {
+				c.position = it.pos
 				c.check_method_call_expr(it)
 			}
 			ast.SelectorExpr {
+				c.position = it.pos
 				c.check_selector_expr(it)
 			}
 			ast.BinaryExpr {
+				c.position = it.pos
 				c.check_binary_expr(it)
 			}
-			else { println('UNKNOWN EXPR CHECK') }
+			else {}
 		}
 		match ctx.stmt {
 			ast.Return {
+				c.position = it.pos
 				c.check_return_stmt(it)
 			}
-			else { println('UNKNOWN STMT CHECK') }
+			else {}
 		}
 	}
 }
@@ -221,6 +236,15 @@ pub fn (c &Checker) check(got, expected &types.TypeIdent) bool {
 
 pub fn (c &Checker) error(s string) {
 	print_backtrace()
-	eprintln('checker: error: $s')
+	final_msg_line := '$c.file_name:$c.position.line_nr: error: $s'
+	eprintln(final_msg_line)
+	/*
+	if colored_output {
+		eprintln(term.bold(term.red(final_msg_line)))
+	}else{
+		eprintln(final_msg_line)
+	}
+	*/
 	exit(1)
 }
+

@@ -26,8 +26,8 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
-		tok: tok
-		// typ: return_ti
+		// tok: tok
+		pos: tok.position()
 		
 	}
 	// TODO: opt+checker

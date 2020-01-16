@@ -45,6 +45,7 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
+	pos   token.Position
 	expr  Expr
 	field string
 }
@@ -66,6 +67,7 @@ pub:
 
 pub struct StructDecl {
 pub:
+	pos    token.Position
 	name   string
 	fields []Field
 	is_pub bool
@@ -73,7 +75,7 @@ pub:
 
 pub struct StructInit {
 pub:
-// typ    types.TypeIdent
+	pos    token.Position
 	ti     types.TypeIdent
 	fields []string
 	exprs  []Expr
@@ -103,23 +105,27 @@ pub:
 }
 
 pub struct CallExpr {
-pub mut:
-// func       Expr
+pub:
+	// tok        token.Token
+	pos        token.Position
+mut:
+	// func       Expr
 	name       string
 	args       []Expr
-	tok        token.Token
 }
 
 pub struct MethodCallExpr {
 pub:
+	// tok        token.Token
+	pos        token.Position
 	expr       Expr
 	name       string
 	args       []Expr
-	tok        token.Token
 }
 
 pub struct Return {
 pub:
+	pos   token.Position
 	expected_ti types.TypeIdent // TODO: remove once checker updated
 	exprs []Expr
 }
@@ -146,6 +152,7 @@ pub:
 	expr Expr
 	is_mut bool
 	ti   types.TypeIdent
+	pos  token.Position
 }
 
 pub struct File {
@@ -171,6 +178,7 @@ pub struct Ident {
 pub:
 	name     string
 	tok_kind token.Kind
+	pos      token.Position
 	value    string
 mut:
 	kind     IdentKind
@@ -182,6 +190,7 @@ pub:
 // tok_kind token.Kind
 // op    BinaryOp
 	op    token.Kind
+	pos   token.Position
 	left  Expr
 	// left_ti types.TypeIdent
 	right Expr
@@ -248,6 +257,7 @@ pub:
 
 pub struct ReturnStmt {
 	tok_kind token.Kind // or pos
+	pos		 token.Position
 	results  []Expr
 }
 
@@ -263,9 +273,10 @@ pub:
 
 pub struct AssignExpr {
 pub:
+	op   token.Kind
+	pos  token.Position
 	left Expr
 	val  Expr
-	op   token.Kind
 }
 
 pub struct ArrayInit {

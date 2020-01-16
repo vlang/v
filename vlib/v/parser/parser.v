@@ -60,7 +60,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		scanner: scanner.new_scanner(text)
 		table: table
 		file_name: path
-		checker: checker.new_checker(table)
+		checker: checker.new_checker(path, table)
 	}
 	p.read_first_token()
 	for {
@@ -147,6 +147,9 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		}
 		.key_pub {
 			match p.peek_tok.kind {
+				.key_const {
+					return p.const_decl()
+				}
 				.key_fn {
 					return p.fn_decl()
 				}
@@ -157,16 +160,16 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
-			// .key_const {
-			// return p.const_decl()
-			// }
 			// .key_enum {
 			// return p.enum_decl()
 			// }
 			// .key_type {
 			// return p.type_decl()
 			// }
+			}
+		}
+		.key_const {
+			return p.const_decl()
 		}
 		.key_fn {
 			return p.fn_decl()
@@ -219,8 +222,9 @@ pub fn (p mut Parser) assign_expr(left ast.Expr, left_ti &types.TypeIdent) ast.A
 	val, val_ti := p.expr(0)
 	node := ast.AssignExpr{
 		left: left
-		op: op
 		val: val
+		op: op
+		pos: p.tok.position()
 	}
 	p.checker.check_assign(node, left_ti, val_ti)
 	return node
@@ -461,6 +465,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,ty
 			expr: left
 			name: field_name
 			args: args
+			pos: p.tok.position()
 		}
 		ti := p.checker.check_method_call(mcall_expr, left_ti)
 		mut node := ast.Expr{}
@@ -471,6 +476,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,ty
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
+		pos: p.tok.position()
 	}
 	ti := p.checker.check_selector(sel_expr, left_ti)
 	mut node := ast.Expr{}
@@ -490,9 +496,9 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	}
 	mut expr := ast.Expr{}
 	expr = ast.BinaryExpr{
-		op: op
 		left: left
 		right: right
+		pos: p.tok.position()
 	}
 	p.checker.add_check_expr(expr)
 	return expr,ti
@@ -714,9 +720,32 @@ fn (p mut Parser) import_stmt() ast.Import {
 	}
 	mut mods := map[string]string
 	mods[alias] = name
+
+	if !(name in p.table.imports) {
+		println('adding import: $name')
+		file := 'vlib/time/time.v'
+		parse_file(file, p.table)
+		p.table.imports << name
+	}
+
 	return ast.Import{
 		mods: mods
 	}
+}
+
+// TODO
+//fn (p mut Parser) const_decl() ast.StructDecl {
+fn (p mut Parser) const_decl() ast.Stmt {
+	p.check(.key_const)
+	p.check(.lpar)
+	for p.tok.kind != .rpar {
+		name := p.check_name()
+		println('const: $name')
+		p.check(.assign)
+		expr, ti := p.expr(0)
+	}
+	p.check(.rpar)
+	return ast.Stmt{}
 }
 
 fn (p mut Parser) struct_decl() ast.StructDecl {
@@ -755,6 +784,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
+		pos: p.tok.position()
 	}
 }
 
@@ -794,6 +824,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	stmt := ast.Return{
 		expected_ti: p.return_ti
 		exprs: exprs
+		pos: p.tok.position()
 	}
 	p.checker.add_check_stmt(stmt)
 	return stmt
@@ -829,6 +860,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		expr: expr // p.expr(token.lowest_prec)
 		is_mut: is_mut
 		ti: ti
+		pos: p.tok.position()
 	}
 	return node
 }
