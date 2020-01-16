@@ -217,7 +217,7 @@ fn utf8_str(ch u32) string {
 }
 
 // simple_log default log function
-fn simple_log(txt string) {
+pub fn simple_log(txt string) {
 	print(txt)
 }
 
@@ -231,7 +231,7 @@ mut:
 	ist u32 = u32(0)
 
 	// char
-	ch u32                 = u32(0)// char of the token if any
+	ch u32                 = u32(0)  // char of the token if any
 	ch_len byte            = byte(0) // char len
 
 	// Quantifiers / branch
@@ -515,7 +515,7 @@ fn (re mut RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 
 		// check if we are out of memory for char classes
 		if tmp_index >= re.cc.len {
-			return ERR_CC_ALLOC_OVERFLOW,0,u32(0) 
+			return ERR_CC_ALLOC_OVERFLOW,i,u32(0) 
 		}
 
 		// get our char
@@ -605,7 +605,7 @@ fn (re mut RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 
 		i++
 	}
-	return ERR_SYNTAX_ERROR,0,u32(0)
+	return ERR_SYNTAX_ERROR,i,u32(0)
 }
 
 /******************************************************************************
@@ -931,9 +931,9 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 					continue
 				}
 
-				// cc_class vector memory full
+				// cc_class Error
 				else if cc_index < 0 {
-					return cc_index, i
+					return cc_index, tmp
 				}
 			}
 		}

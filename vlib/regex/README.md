@@ -21,7 +21,7 @@ The module supports the following features:
 
 `^` (Caret.) Matches at the start of the string
 
-`?` Matches at the end of the string
+`$` Matches at the end of the string
 
 ## Tokens
 
@@ -337,6 +337,25 @@ the columns have the following meaning:
 `query_ch: [b]` token in use and its char
 
 `{2,3}:1?` quantifier `{min,max}`, `:1` is the actual counter of repetition, `?` is the greedy off flag if present
+
+**Custom Logger output**
+
+The debug functions output uses the `stdout` as default, it is possible to  provide an alternative output setting a custom output function:
+
+```v
+// custom print function, the input will be the regex debug string
+fn custom_print(txt string) {
+	println("my log: $txt")
+}
+
+mut re := new_regex()
+re.log_func = custom_print  // every debug output from now will call this function
+
+```
+
+
+
+
 
 ## Example code
 
