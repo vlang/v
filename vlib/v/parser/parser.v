@@ -325,6 +325,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			ti: ti
 			exprs: exprs
 			fields: field_names
+			pos: p.tok.position()
 		}
 		p.checker.add_check_expr(node)
 		p.check(.rcbr)

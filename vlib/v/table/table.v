@@ -149,31 +149,25 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 }
 
 pub fn (t mut Table) register_method(ti types.TypeIdent, new_fn Fn) bool {
-	println('register method `$new_fn.name` tiname=$ti.name ')
-	/*
-	match t.types[ti.idx] {
-		types.Struct {
-			println('got struct')
-		}
-		else {
-			return false
-		}
-	}
-	mut struc := t.types[ti.idx] as types.Struct
-	if struc.methods.len == 0 {
-		struc.methods = make(0, 0, sizeof(types.Field))
-	}
-	println('register method `$new_fn.name` struct=$struc.name ')
-	struc.methods << types.Field{
-		name: new_fn.name
-	}
-	t.types[ti.idx] = struc
-	*/
-
-	println('register method `$new_fn.name` struct=$ti.name ')
-	println('##### $ti.idx - $t.methods.len')
+	println('register method `$new_fn.name` type=$ti.name idx=$ti.idx')
 	t.methods[ti.idx] << new_fn
 	return true
+}
+
+pub fn (t &Table) has_method(type_idx int, name string) bool {
+	t.find_method(type_idx, name) or {
+		return false
+	}
+	return true
+}
+
+pub fn (t &Table) find_method(type_idx int, name string) ?Fn {
+	for method in t.methods[type_idx] {
+		if method.name == name {
+			return method
+		}
+	}
+	return none
 }
 
 pub fn (t mut Table) new_tmp_var() string {
@@ -182,7 +176,6 @@ pub fn (t mut Table) new_tmp_var() string {
 }
 
 pub fn (t &Table) struct_has_field(s &types.Struct, name string) bool {
-	// println('struct_has_field($s.name, $name) s.idx=$s.idx types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	// for typ in t.types {
 	// println('$typ.idx $typ.name')
@@ -207,22 +200,6 @@ pub fn (t &Table) struct_find_field(s &types.Struct, name string) ?types.Field {
 			if field.name == name {
 				return field
 			}
-		}
-	}
-	return none
-}
-
-pub fn (t &Table) has_method(type_idx int, name string) bool {
-	t.find_method(type_idx, name) or {
-		return false
-	}
-	return true
-}
-
-pub fn (t &Table) find_method(type_idx int, name string) ?Fn {
-	for method in t.methods[type_idx] {
-		if method.name == name {
-			return method
 		}
 	}
 	return none
@@ -280,7 +257,7 @@ pub fn (t mut Table) register_struct(typ types.Struct) int {
 				// override placeholder
 				println('overriding type placeholder `$it.name` with struct')
 				t.types[existing_idx] = typ
-				// t.type_kinds[existing_idx] = .struct_
+				t.type_kinds[existing_idx] = .struct_
 				return existing_idx
 			}
 			types.Struct {

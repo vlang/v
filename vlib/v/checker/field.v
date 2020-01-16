@@ -24,7 +24,7 @@ pub fn (c &Checker) check_selector_expr(selector_expr ast.SelectorExpr) {
 	c.has_field(ti.idx, selector_expr.field)
 }
 
-fn (c &Checker) has_field(ti &types.TypeIdent, field string) types.TypeIdent {
+fn (c &Checker) has_field(ti &types.TypeIdent, field_name string) types.TypeIdent {
 	// struct_ := c.table.types[ti.idx] as types.Struct
 	match c.table.types[ti.idx] {
 		types.Struct {
@@ -32,11 +32,11 @@ fn (c &Checker) has_field(ti &types.TypeIdent, field string) types.TypeIdent {
 			// 	c.error('AAA unknown field `${it.name}.$field`')
 			// }
 			// TODO: fix bug
-			if f := c.table.struct_find_field(it, field) {
-				println('FOUND FIELD: $f.name - $f.ti.name')
+			if field := c.table.struct_find_field(it, field_name) {
+				println('FOUND FIELD: $field.name - $field.ti.name')
 				return f.ti
 			}
-			c.error('unknown field `${it.name}.$field`')
+			c.error('unknown field `${it.name}.$field_name`')
 		}
 		else {
 			c.error('$ti.name is not a struct')

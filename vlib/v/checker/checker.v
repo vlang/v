@@ -79,10 +79,11 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 		}
 		ast.SelectorExpr {
 			ti := c.get_expr_ti(it.expr)
+			kind := c.table.type_kinds[ti.idx]
 			if ti.kind == .placeholder {
-				println(' ##### WHY PH $ti.name')
+				println(' ##### PH $ti.name')
 			}
-			if !(ti.kind in [.placeholder, .struct_]) {
+			if !(kind in [.placeholder, .struct_]) {
 				c.error('unknown struct: $ti.name')
 			}
 			struct_ := c.table.types[ti.idx] as types.Struct

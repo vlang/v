@@ -1,65 +1,63 @@
-struct Foo{
-        a string
-        b Bar
-}
 
-fn test_checker() {
-        //mut x = 'hello'
-        bb := Bar{a: 122}
+fn main() {
+        b := Bar{a: 122}
         mut a := Foo{
                 a: 'hello'
-                // b: bb
+                b: b
         }
         // a.c = 'sa'
         a.a = 'da'
         a.b.a = 111
+        
+        a1 := a.a
+        a2 := b.testa()
+        
+        mut c := testa()
+        c = 1
+        mut d := testb(1)
+        d = 'hello'
+
+        mut e = 'hello'
+        e = testb(111)
+        e = 'world'
 
 
-        r1 := bb.testa()
-
-        // xx := a.a
-        // c := 1 + 'strring'
-        // mut x := testb()
-        mut x = 'hello'
-        // mut x = 'hello'
-        x = 'foo'
-        x = testb(111)
-
-        mut bbb := testa()
-        bbb = 1
-
-        mut z := 1
-        z = 2
+        // c := 1 + 'string'
+        // zz := hi + 1
 }
-
-// fn main() {
-//         //println('test')
-//         //a := 1 + 'boop'
-//         testa()
-// }
 
 
 fn testa() int {
-        return 1
+        return testc(1)
 }
-
-// fn testb(a int) int {
-//         return 1
-// }
 
 fn testb(a int) string {
         return 'hello'
 }
 
-
-struct Bar {
-        a int
+fn testc(a int) int {
+        return a
 }
 
 fn (f &Foo) testa() int {
+        mut a := f.testb()
+        a = 1
+        return 4
+}
+
+fn (f &Foo) testb() int {
         return 4
 }
 
 fn (b &Bar) testa() int {
         return 4
+}
+
+struct Bar {
+        a int
+}
+
+struct Foo{
+        a string
+        b Bar
 }
