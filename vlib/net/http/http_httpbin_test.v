@@ -36,7 +36,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 }
 
 fn test_http_fetch_bare() {
-	$if !network ? { return }
+//	$if !network ? { return }
 	responses := http_fetch_mock([], FetchConfig{}) or {
 		panic(err)
 	}
@@ -46,7 +46,7 @@ fn test_http_fetch_bare() {
 }
 
 fn test_http_fetch_with_data() {
-	$if !network ? { return }
+//	$if !network ? { return }
 	responses := http_fetch_mock(['POST', 'PUT', 'PATCH', 'DELETE'], {
 		data: 'hello world'
 	}) or {
@@ -61,7 +61,7 @@ fn test_http_fetch_with_data() {
 }
 
 fn test_http_fetch_with_params() {
-	$if !network ? { return }
+//	$if !network ? { return }
 	responses := http_fetch_mock([], {
 		params: {
 			'a': 'b',
@@ -82,7 +82,7 @@ fn test_http_fetch_with_params() {
 }
 
 fn test_http_fetch_with_headers() {
-	$if !network ? { return }
+//	$if !network ? { return }
 	responses := http_fetch_mock([], {
 		headers: {
 			'Test-Header': 'hello world'

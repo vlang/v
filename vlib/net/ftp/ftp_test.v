@@ -6,7 +6,7 @@ import net.ftp
 // that is why it is not a very good idea to run it in CI.
 // If you want to run it manually, use `v -d network vlib/net/ftp/ftp_test.v`
 fn test_ftp_client() {
-	$if !network ? { return }
+//	$if !network ? { return }
 	mut ftp := ftp.new()
 	defer {
 		ftp.close()
