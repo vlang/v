@@ -212,6 +212,9 @@ pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	ctx.draw_rect2(x, y, w, h, c)
 }
 
+pub fn (ctx &GG) draw_circle(x, y, radius int, c gx.Color) {
+}
+
 /*
 fn (ctx mut GG) init_rect_vao() {
 
@@ -357,6 +360,10 @@ fn (c GG) font_size(size int) {
 fn (c GG) text_align(a int) {
 }
 
+pub fn (ctx &GG) create_image(file string) u32 {
+	return create_image(file)
+}
+
 pub fn create_image(file string) u32 {
 	//println('gg create image "$file"')
 	if file.contains('twitch') {
@@ -386,7 +393,7 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 	return texture
 }
 
-pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
+pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
 	ctx.shader.set_int('has_texture', 0)
 	C.glDeleteBuffers(1, &ctx.vao)
 	C.glDeleteBuffers(1, &ctx.vbo)
@@ -401,23 +408,25 @@ pub fn (ctx &GG) draw_line_c(x, y, x2, y2 f32, color gx.Color) {
 	gl.draw_arrays(C.GL_LINES, 0, 2)
 }
 
-pub fn (c &GG) draw_line(x, y, x2, y2 f32) {
-	c.draw_line_c(x, y, x2, y2, gx.Gray)
+/*
+pub fn (c &GG) draw_gray_line(x, y, x2, y2 f32) {
+	c.draw_line(x, y, x2, y2, gx.Gray)
 }
 
 pub fn (c &GG) draw_vertical(x, y, height int) {
 	c.draw_line(x, y, x, y + height)
 }
+*/
 
 
 //ctx.gg.draw_line(center + prev_x, center+prev_y, center + x*10.0, center+y)
 
 // fn (ctx &GG) draw_image(x, y, w, h f32, img stbi.Image) {
 pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
-    
+
 	// NB: HACK to ensure same state ... TODO: remove next line
 	ctx.draw_empty_rect(0,0,0,0, gx.white)
-    
+
 	last_array_buffer := 0
 	last_texture := 0
 	C.glGetIntegerv(C.GL_ARRAY_BUFFER_BINDING, &last_array_buffer)
@@ -463,8 +472,8 @@ pub fn (ctx &GG) draw_image(x, y, w, h f32, tex_id u32) {
 }
 
 pub fn (c &GG) draw_empty_rect(x, y, w, h f32, color gx.Color) {
-	c.draw_line_c(x, y, x + w, y, color)
-	c.draw_line_c(x, y, x, y + h, color)
-	c.draw_line_c(x, y + h, x + w, y + h, color)
-	c.draw_line_c(x + w, y, x + w, y + h, color)
+	c.draw_line(x, y, x + w, y, color)
+	c.draw_line(x, y, x, y + h, color)
+	c.draw_line(x, y + h, x + w, y + h, color)
+	c.draw_line(x + w, y, x + w, y + h, color)
 }

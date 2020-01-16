@@ -470,7 +470,7 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // 'hello'.left(2) => 'he'
-fn (s string) left(n int) string {
+pub fn (s string) left(n int) string {
 	if n >= s.len {
 		return s
 	}
@@ -478,7 +478,7 @@ fn (s string) left(n int) string {
 }
 
 // 'hello'.right(2) => 'llo'
-fn (s string) right(n int) string {
+pub fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
 	}
@@ -491,7 +491,7 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 	return s.substr(start, end)
 }
 
-fn (s string) substr(start, end int) string {
+pub fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
 	}

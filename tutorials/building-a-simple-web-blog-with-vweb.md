@@ -57,7 +57,7 @@ import (
 	vweb
 )
 
-struct App {
+pub struct App {
 mut:
 	vweb vweb.Context
 }
@@ -71,6 +71,7 @@ fn (app mut App) index() {
 }
 
 pub fn (app &App) init() {}
+pub fn (app &App) reset() {}
 
 ```
 
