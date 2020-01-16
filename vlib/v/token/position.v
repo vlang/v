@@ -9,10 +9,10 @@ pub:
 	// pos      int // the position of the token in scanner text
 }
 
+[inline]
 pub fn (tok &Token) position() Position {
 	return Position{
 		line_nr: tok.line_nr
 		// pos: tok.pos
 	}
 }
-
