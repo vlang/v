@@ -1,13 +1,13 @@
 import net.http
 
 fn test_http_get() {
-//	$if !network ? { return }
+	$if !network ? { return }
 	assert http.get_text('https://vlang.io/version') == '0.1.5'
 	println('http ok')
 }
 
 fn test_http_get_from_vlang_utc_now() {
-//	$if !network ? { return }
+	$if !network ? { return }
 	urls := ['http://vlang.io/utc_now', 'https://vlang.io/utc_now']
 	for url in urls {
 		println('Test getting current time from $url by http.get')
@@ -20,7 +20,7 @@ fn test_http_get_from_vlang_utc_now() {
 }
 
 fn test_public_servers() {
-//	$if !network ? { return }
+	$if !network ? { return }
 	urls := [
 		'http://github.com/robots.txt',
 		'http://google.com/robots.txt',
