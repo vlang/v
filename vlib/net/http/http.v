@@ -118,15 +118,6 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 	return res
 }
 
-pub fn get_text(url string) string {
-	resp := fetch(url, {
-		method: 'GET'
-	}) or {
-		return ''
-	}
-	return resp.text
-}
-
 pub fn url_encode_form_data(data map[string]string) string {
 	mut pieces := []string
 	for _key, _value in data {

@@ -1,6 +1,3 @@
-// import net.urllib
-
-
 import net.http
 import json
 
@@ -15,13 +12,6 @@ struct HttpbinResponseBody {
 	url     string
 }
 
-// fn test_escape_unescape() {
-// original := 'те ст: т\\%'
-// escaped := urllib.query_escape(original) or { assert false return}
-// assert escaped == '%D1%82%D0%B5%20%D1%81%D1%82%3A%20%D1%82%5C%25'
-// unescaped := urllib.query_unescape(escaped) or { assert false return }
-// assert unescaped == original
-// }
 fn http_fetch_mock(_methods []string, _config http.FetchConfig) ?[]http.Response {
 	url := 'https://httpbin.org/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }

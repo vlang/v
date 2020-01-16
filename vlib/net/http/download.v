@@ -6,11 +6,10 @@ module http
 import os
 
 pub fn download_file(url, out string) bool {
-	s := fetch(url, {method: 'GET'}) or {
+	s := get(url) or {
 		return false
 	}
 	os.write_file(out, s.text)
 	return true
 	// download_file_with_progress(url, out, empty, empty)
 }
-
