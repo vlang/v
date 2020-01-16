@@ -63,6 +63,22 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		checker: checker.new_checker(path, table)
 	}
 	p.read_first_token()
+
+	// module decl
+	module_decl := if p.tok.kind == .key_module {
+		p.module_decl()
+	} else {
+		ast.Module{
+			name: 'main'
+		}
+	}
+	// imports
+	mut imports := []ast.Import
+	for p.tok.kind == .key_import {
+		imports << p.import_stmt()
+	}
+	// TODO: import only mode
+
 	for {
 		// res := s.scan()
 		if p.tok.kind == .eof {
@@ -76,7 +92,9 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
-		stmts: stmts
+		mod:     module_decl
+		imports: imports
+		stmts:   stmts
 	}
 }
 
@@ -139,12 +157,6 @@ fn (p mut Parser) check_name() string {
 
 pub fn (p mut Parser) top_stmt() ast.Stmt {
 	match p.tok.kind {
-		.key_module {
-			return p.module_decl()
-		}
-		.key_import {
-			return p.import_stmt()
-		}
 		.key_pub {
 			match p.peek_tok.kind {
 				.key_const {
@@ -707,35 +719,43 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 
 fn (p mut Parser) module_decl() ast.Module {
 	p.check(.key_module)
-	p.next()
-	return ast.Module{}
+	name := p.check_name()
+	return ast.Module{
+		name: name
+	}
 }
 
-fn (p mut Parser) import_stmt() ast.Import {
-	p.check(.key_import)
-	name := p.check_name()
-	mut alias := name
+fn (p mut Parser) parse_import() ast.Import {
+	mod_name := p.check_name()
+	mut mod_alias := mod_name
 	if p.tok.kind == .key_as {
 		p.check(.key_as)
-		alias = p.check_name()
+		mod_alias = p.check_name()
 	}
-	mut mods := map[string]string
-	mods[alias] = name
-
-	if !(name in p.table.imports) {
-		println('adding import: $name')
-		file := 'vlib/time/time.v'
-		parse_file(file, p.table)
-		p.table.imports << name
-	}
-
 	return ast.Import{
-		mods: mods
+		mod: mod_name
+		alias: mod_alias
+		pos: p.tok.position()
 	}
+}
+
+fn (p mut Parser) import_stmt() []ast.Import {
+	p.check(.key_import)
+	mut imports := []ast.Import
+	if p.tok.kind == .lpar {
+		p.check(.lpar)
+		for p.tok.kind != .rpar {
+			imports << p.parse_import()
+		}
+		p.check(.rpar)
+	} else {
+		imports << p.parse_import()
+	}
+	return imports
 }
 
 // TODO
-//fn (p mut Parser) const_decl() ast.StructDecl {
+//fn (p mut Parser) const_decl() ast... {
 fn (p mut Parser) const_decl() ast.Stmt {
 	p.check(.key_const)
 	p.check(.lpar)
@@ -796,7 +816,8 @@ fn (p mut Parser) return_stmt() ast.Return {
 	// return type idents
 	// mut got_tis := []types.TypeIdent
 	for {
-		expr,ti := p.expr(0)
+		// expr,ti := p.expr(0)
+		expr, _ := p.expr(0)
 		exprs << expr
 		// got_tis << ti
 		if p.tok.kind == .comma {
@@ -806,22 +827,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 			break
 		}
 	}
-	// TODO: non deferred
-	// mut expected_tis := [p.return_ti]
-	// if p.return_ti.kind == .multi_return {
-	// 	mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
-	// 	expected_tis = mr_type.tis
-	// }
-	// if expected_tis.len != got_tis.len {
-	// 	p.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
-	// }
-	// for i, exp_ti in expected_tis {
-	// 	got_ti := got_tis[i]
-	// 	println('checking return $got_ti.name, $exp_ti.name')
-	// 	if !p.checker.check(got_ti, exp_ti) {
-	// 		p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
-	// 	}
-	// }
+	// TODO: consider non deferred
 	stmt := ast.Return{
 		expected_ti: p.return_ti
 		exprs: exprs

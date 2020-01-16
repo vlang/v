@@ -262,9 +262,13 @@ pub:
 	bit_size u32
 }
 
-pub struct String {}
+pub struct String {
+	dummy int
+}
 
-pub struct Bool {}
+pub struct Bool {
+	dummy int
+}
 
 pub struct Array {
 pub:

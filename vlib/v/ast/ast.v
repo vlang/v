@@ -84,7 +84,9 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	mods map[string]string // alias -> module
+	pos   token.Position
+	mod   string
+	alias string
 	// expr Expr
 }
 
@@ -157,7 +159,9 @@ pub:
 
 pub struct File {
 pub:
-	stmts []Stmt
+	mod     Module
+	imports []Import
+	stmts   []Stmt
 }
 
 pub struct IdentVar {

@@ -55,11 +55,11 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 			if it.kind == .variable {
 				info := it.info as ast.IdentVar
 				if info.ti.kind != .unresolved {
-					println(' ~~~~~~~~~~ A $info.ti.name')
+					// println(' ~~~~~~~~~~ A $info.ti.name')
 					return info.ti
 				}
 				ti := c.get_expr_ti(info.expr)
-				println(' ~~~~~~~~~~ B $ti.name')
+				// println(' ~~~~~~~~~~ B $ti.name')
 				return ti
 			}
 			// return it.ti
@@ -81,7 +81,7 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 			ti := c.get_expr_ti(it.expr)
 			kind := c.table.type_kinds[ti.idx]
 			if ti.kind == .placeholder {
-				println(' ##### PH $ti.name')
+				// println(' ##### PH $ti.name')
 			}
 			if !(kind in [.placeholder, .struct_]) {
 				c.error('unknown struct: $ti.name')
