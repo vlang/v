@@ -15,7 +15,7 @@ fn main() {
 	state := &AppState{
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
 	}
-	title := 'Sokal Drawing Template'
+	title := 'Sokol Drawing Template'
 	desc := sapp_desc{
 		user_data: state
 		init_userdata_cb: init
