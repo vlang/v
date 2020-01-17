@@ -36,6 +36,12 @@ pub fn new_checker(file_name string, table &table.Table) Checker {
 
 pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 	match expr {
+		ast.ArrayInit{
+			return it.ti
+		}
+		ast.IndexExpr{
+			return c.get_expr_ti(it.left)
+		}
 		ast.CallExpr {
 			func := c.table.find_fn(it.name) or {
 				c.error('unknown fn $it.name')
@@ -55,11 +61,12 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 			if it.kind == .variable {
 				info := it.info as ast.IdentVar
 				if info.ti.kind != .unresolved {
-					// println(' ~~~~~~~~~~ A $info.ti.name')
+					println(' ~~~~~~~~~~ A $info.ti.name')
 					return info.ti
 				}
 				ti := c.get_expr_ti(info.expr)
-				// println(' ~~~~~~~~~~ B $ti.name')
+				// c.table.vars
+				println(' ~~~~~~~~~~ B $ti.name')
 				return ti
 			}
 			// return it.ti
@@ -79,22 +86,24 @@ pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
 		}
 		ast.SelectorExpr {
 			ti := c.get_expr_ti(it.expr)
-			kind := c.table.type_kinds[ti.idx]
+			kind := c.table.types[ti.idx].kind
 			if ti.kind == .placeholder {
 				// println(' ##### PH $ti.name')
 			}
 			if !(kind in [.placeholder, .struct_]) {
 				c.error('unknown struct: $ti.name')
 			}
-			struct_ := c.table.types[ti.idx] as types.Struct
-			for field in struct_.fields {
+			struct_ := c.table.types[ti.idx]
+			struct_info := struct_.info as types.Struct
+			for field in struct_info.fields {
 				if field.name == it.field {
 					return field.ti
 				}
 			}
 			if struct_.parent_idx != 0 {
-				parent := c.table.types[struct_.parent_idx] as types.Struct
-				for field in parent.fields {
+				parent := c.table.types[struct_.parent_idx]
+				parent_info := parent.info as types.Struct
+				for field in parent_info.fields {
 					if field.name == it.field {
 						return field.ti
 					}
@@ -118,13 +127,14 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
 		c.error('unknown struct: $struct_init.ti.name')
 		panic('')
 	}
-	match typ {
-		types.Placeholder {
+	match typ.kind {
+		.placeholder {
 			c.error('unknown struct: $struct_init.ti.name')
 		}
-		types.Struct {
+		.struct_ {
+			info := typ.info as types.Struct
 			for i, expr in struct_init.exprs {
-				field := it.fields[i]
+				field := info.fields[i]
 				expr_ti := c.get_expr_ti(expr)
 				if !c.check(expr_ti, field.ti) {
 					c.error('cannot assign $expr_ti.name as $field.ti.name for field $field.name')
@@ -155,8 +165,9 @@ pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
 	expected_ti := return_stmt.expected_ti
 	mut expected_tis := [expected_ti]
 	if expected_ti.kind == .multi_return {
-		mr_type := c.table.types[expected_ti.idx] as types.MultiReturn
-		expected_tis = mr_type.tis
+		mr_type := c.table.types[expected_ti.idx]
+		mr_info := mr_type.info as types.MultiReturn
+		expected_tis = mr_info.tis
 	}
 	if expected_tis.len != got_tis.len {
 		c.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')

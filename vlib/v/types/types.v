@@ -24,20 +24,15 @@ pub const (
 )
 
 pub enum Kind {
-	unresolved
 	placeholder
 	void
 	voidptr
 	charptr
 	byteptr
-	const_
-	enum_
-	struct_
-	int
 	i8
 	i16
+	int
 	i64
-	byte
 	u16
 	u32
 	u64
@@ -45,21 +40,26 @@ pub enum Kind {
 	f64
 	string
 	char
+	byte
 	bool
+	const_
+	enum_
+	struct_
 	array
 	array_fixed
 	map
 	multi_return
 	variadic
+	unresolved	
 }
 
-pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 	
-String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
 
 pub struct TypeIdent {
 pub:
 	idx     int
-	mut: kind    Kind
+mut:
+	kind    Kind
 	name    string
 	nr_muls int
 }
@@ -84,6 +84,35 @@ pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
 	}
 }
 
+
+// [inline]
+// pub fn new_ti(idx int, nr_muls int) TypeIdent {
+// 	return TypeIdent{
+// 		idx: idx
+// 		// kind: kind
+// 		// name: name
+// 		nr_muls: nr_muls
+// 		// table: table
+// 	}
+// }
+
+// [inline]
+// pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
+// 	return TypeIdent{
+// 		idx: -int(kind) - 1
+// 		kind: kind
+// 		name: kind.str()
+// 		nr_muls: nr_muls
+// 	}
+// }[inline]
+
+// pub const (
+// 	unresolved_ti = new_ti(-1, 0)
+// 	void_ti = new_ti(void_type_idx, 0)
+// 	int_ti = new_ti(int_type_idx, 0)
+// 	string_ti = new_ti(string_type_idx, 0)
+// 	bool_ti = new_ti(bool_type_idx, 0)
+// )
 pub const (
 	unresolved_ti = new_ti(.unresolved, 'unresolved', 0, 0)
 	void_ti = new_ti(.void, 'void', void_type_idx, 0)
@@ -92,6 +121,13 @@ pub const (
 	bool_ti = new_ti(.bool, 'bool', bool_type_idx, 0)
 )
 
+// [inline]
+// pub fn (ti &TypeIdent) kind() Kind {
+// 	if ti.idx >= void_type_idx && ti.idx <= bool_type_idx {
+// 		return Kind(ti.idx)
+// 	}
+// }
+
 [inline]
 pub fn (ti &TypeIdent) is_ptr() bool {
 	return ti.nr_muls > 0
@@ -99,12 +135,14 @@ pub fn (ti &TypeIdent) is_ptr() bool {
 
 [inline]
 pub fn (ti &TypeIdent) is_int() bool {
-	return ti.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
+	// return ti.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
+	return ti.idx >= i8_type_idx && ti.idx <= u64_type_idx
 }
 
 [inline]
 pub fn (ti &TypeIdent) is_float() bool {
-	return ti.kind in [.f32, .f64]
+	// return ti.kind in [.f32, .f64]
+	return ti.idx in [f32_type_idx, f64_type_idx]
 }
 
 [inline]
@@ -117,7 +155,8 @@ pub fn (ti &TypeIdent) str() string {
 	for _ in 0 .. ti.nr_muls {
 		muls += '&'
 	}
-	return '$muls$ti.name'
+	// return '$muls$ti.name'
+	return '$muls$ti.idx'
 }
 
 pub fn (k Kind) str() string {
@@ -225,6 +264,12 @@ pub:
 	kind Kind
 }
 
+// pub struct Pointer {
+// pub:
+// 	idx int
+// 	nr_muls
+// }
+
 pub struct Const {
 pub:
 	name string
@@ -251,29 +296,22 @@ pub:
 	// type_idx int
 }
 
-pub struct Int {
-pub:
-	bit_size    u32
-	is_unsigned bool
-}
+// pub struct Int {
+// pub:
+// 	bit_size    u32
+// 	is_unsigned bool
+// }
 
-pub struct Float {
-pub:
-	bit_size u32
-}
+// pub struct Float {
+// pub:
+// 	bit_size u32
+// }
 
-pub struct String {
-	dummy int
-}
-
-pub struct Bool {
-	dummy int
-}
 
 pub struct Array {
 pub:
-	parent_idx     int
-	name           string
+	// parent_idx     int
+	// name           string
 	elem_type_kind Kind
 	elem_type_idx  int
 	elem_is_ptr    bool
@@ -283,7 +321,7 @@ pub:
 pub struct ArrayFixed {
 pub:
 	parent_idx     int
-	name           string
+	// name           string
 	elem_type_kind Kind
 	elem_type_idx  int
 	elem_is_ptr    bool
@@ -293,7 +331,7 @@ pub:
 
 pub struct Map {
 pub:
-	name            string
+	// name            string
 	key_type_kind   Kind
 	key_type_idx    int
 	value_type_kind Kind
@@ -337,49 +375,50 @@ pub fn (t Primitive) str() string {
 	return s
 }
 
-pub fn (t Const) str() string {
-	return t.name
-}
+// pub fn (t Const) str() string {
+// 	return t.name
+// }
 
-pub fn (t Enum) str() string {
-	return t.name
-}
+// pub fn (t Enum) str() string {
+// 	return t.name
+// }
 
-pub fn (t Struct) str() string {
-	return t.name
-}
+// pub fn (t Struct) str() string {
+// 	return t.name
+// }
 
-pub fn (t Int) str() string {
-	return if t.is_unsigned { 'u$t.bit_size' } else { 'i$t.bit_size' }
-}
+// pub fn (t Int) str() string {
+// 	return if t.is_unsigned { 'u$t.bit_size' } else { 'i$t.bit_size' }
+// }
 
-pub fn (t Float) str() string {
-	return 'f$t.bit_size'
-}
+// pub fn (t Float) str() string {
+// 	return 'f$t.bit_size'
+// }
 
-pub fn (t String) str() string {
-	return 'string'
-}
+// pub fn (t String) str() string {
+// 	return 'string'
+// }
 
-pub fn (t Array) str() string {
-	return t.name
-}
+// pub fn (t Array) str() string {
+// 	return t.name
+// }
 
-pub fn (t ArrayFixed) str() string {
-	return t.name
-}
+// pub fn (t ArrayFixed) str() string {
+// 	return t.name
+// }
 
-pub fn (t Map) str() string {
-	return t.name
-}
+// pub fn (t Map) str() string {
+// 	return t.name
+// }
 
-pub fn (t MultiReturn) str() string {
-	return t.name
-}
+// pub fn (t MultiReturn) str() string {
+// 	return t.name
+// }
 
-pub fn (t Variadic) str() string {
-	return 'variadic_$t.ti.kind.str()'
-}
+// pub fn (t Variadic) str() string {
+// 	// return 'variadic_$t.ti.kind.str()'
+// 	return 'variadic_$t.ti.idx'
+// }
 
 /*
 pub fn (s &Struct) has_field(name string) bool {

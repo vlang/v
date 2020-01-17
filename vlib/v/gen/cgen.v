@@ -55,15 +55,17 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('int ${it.name}(')
 			}
 			else {
-				g.write('$it.ti.name ${it.name}(')
-				g.definitions.write('$it.ti.name ${it.name}(')
+				t := g.table.get_type(it.ti.idx)
+				g.write('$t.name ${it.name}(')
+				g.definitions.write('$t.name ${it.name}(')
 			}
 			for i, arg in it.args {
-				g.write(arg.ti.name + ' ' + arg.name)
+				t := g.table.get_type(arg.ti.idx)
+				g.write(t.name + ' ' + arg.name)
 				if i < it.args.len - 1 {
 					g.write(', ')
 				}
-				g.definitions.write(arg.ti.name + ' ' + arg.name)
+				g.definitions.write(t.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
 			if !is_main {
@@ -82,7 +84,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return ')
 			// multiple returns
 			if it.exprs.len > 1 {
-				g.write('($g.fn_decl.ti.name){')
+				t := g.table.get_type(g.fn_decl.ti.idx)
+				g.write('($t.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
@@ -99,7 +102,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('$it.ti.name $it.name = ')
+			t := g.table.get_type(it.ti.idx)
+			g.write('$t.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -128,7 +132,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				g.writeln('\t$field.ti.name $field.name;')
+				t := g.table.get_type(field.ti.idx)
+				g.writeln('\t$t.name $field.name;')
 			}
 			g.writeln('} $it.name;')
 		}
@@ -197,7 +202,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('($it.ti.name){')
+			t := g.table.get_type(it.ti.idx)
+			g.writeln('($t.name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
@@ -217,7 +223,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.MethodCallExpr {}
 		ast.ArrayInit {
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.ti.name), {\t')
+			t := g.table.get_type(it.ti.idx)
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($t.name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
@@ -249,8 +256,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
+			t := g.table.get_type(it.ti.idx)
 			mut tmp := ''
-			if it.ti.kind != .void {
+			if t.kind != .void {
 				tmp = g.table.new_tmp_var()
 				// g.writeln('$it.ti.name $tmp;')
 			}
@@ -259,7 +267,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && it.ti.kind != .void {
+				if i == it.stmts.len - 1 && t.kind != .void {
 					// g.writeln('$tmp =')
 					println(1)
 				}

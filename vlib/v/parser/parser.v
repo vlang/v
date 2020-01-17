@@ -694,6 +694,7 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 		ti: array_ti
 		exprs: exprs
 	}
+	println('========================================== $array_ti.name ================================')
 	p.check(.rsbr)
 	return node,array_ti
 }
@@ -800,9 +801,12 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 	}
 	p.check(.rcbr)
-	p.table.register_struct(types.Struct{
+	p.table.register_struct(table.Type{
+		kind: .struct_
 		name: name
-		fields: fields
+		info: types.Struct{
+			fields: fields
+		}
 	})
 	return ast.StructDecl{
 		name: name

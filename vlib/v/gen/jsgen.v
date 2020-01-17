@@ -3,16 +3,19 @@ module gen
 import (
 	strings
 	v.ast
+	v.table
 	term
 )
 
 struct JsGen {
 	out strings.Builder
+	table &table.Table
 }
 
-pub fn jsgen(program ast.File) string {
+pub fn jsgen(program ast.File, table &table.Table) string {
 	mut g := JsGen{
 		out: strings.new_builder(100)
+		table: table
 	}
 	for stmt in program.stmts {
 		g.stmt(stmt)
@@ -34,9 +37,11 @@ pub fn (g mut JsGen) writeln(s string) {
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
-			g.write('/** @return { $it.ti.name } **/\nfunction ${it.name}(')
+			t := g.table.get_type(it.ti.idx)
+			g.write('/** @return { $t.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				g.write(' /** @type { arg.ti.name } **/ $arg.name')
+				arg_t := g.table.get_type(arg.ti.idx)
+				g.write(' /** @type { arg_t.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
@@ -55,7 +60,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			g.write('var /* $it.ti.name */ $it.name = ')
+			t := g.table.get_type(it.ti.idx)
+			g.write('var /* $t.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -114,7 +120,8 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('/*$it.ti.name*/{')
+			t := g.table.get_type(it.ti.idx)
+			g.writeln('/*$t.name*/{')
 			for i, field in it.fields {
 				g.write('\t$field : ')
 				g.expr(it.exprs[i])
