@@ -51,7 +51,7 @@ Options/commands:
 
   -obf              Obfuscate the resulting binary.
   -compress         Compress the resulting binary.
-  -                 Shorthand for `v runrepl`.
+  -                 Shorthand for `v repl`.
 
 Options for debugging/troubleshooting v programs:
   -g                Generate debugging information in the backtraces. Add *V* line numbers to the generated executable.
@@ -69,7 +69,7 @@ Commands:
   up                Update V. Run `v up` at least once per day, since V development is rapid and features/bugfixes are added constantly.
   run <file.v>      Build and execute the V program in file.v. You can add arguments for the V program *after* the file name.
   build <module>    Compile a module into an object file.
-  runrepl           Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
+  repl              Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
   symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
   test v            Run all V test files, and compile all V examples.
   test folder/      Run all V test files located in the folder and its subfolders. You can also pass individual _test.v files too.
