@@ -4,7 +4,7 @@ import sokol.gfx
 import sokol.sgl
 
 struct AppState {
-	pass_action sg_pass_action  
+	pass_action sg_pass_action
 }
 
 const (
