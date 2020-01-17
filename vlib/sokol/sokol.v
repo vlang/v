@@ -32,6 +32,7 @@ module sokol
 #define SOKOL_GL_IMPL
 #include "util/sokol_gl.h"
 
+#define FONS_USE_FREETYPE
 #define FONTSTASH_IMPLEMENTATION
 #include "fontstash.h"
 #define SOKOL_FONTSTASH_IMPL
