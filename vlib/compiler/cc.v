@@ -340,14 +340,13 @@ start:
 		}
 		else {
 			if res.output.len < 30 {
-				println(res.output.len)
+				println(res.output)
 			} else {
 				max := 50
-				n := if res.output.len > 50 { 50 } else { res.output.len }
-
+				n := if res.output.len > max { max } else { res.output.len }
 				partial_output := res.output[res.output.len-n..].trim_right('\r\n')
 				print(partial_output)
-				if n < 50 {
+				if n < max {
 					println('...\n(Use `v -cg` to print the entire error message)\n')
 				}
 			}
