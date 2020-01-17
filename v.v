@@ -8,15 +8,19 @@ import (
 	benchmark
 	os
 	filepath
-	//v.types
+	// v.types
 	// time
 )
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['fmt', 'up', 'create', 'test', 'test-fmt', 'test-compiler', 'build-tools',
-  'bin2v',
-	'build-examples', 'build-vbinaries']
+	simple_tools = ['fmt',
+	'up',
+	'create',
+	'test', 'test-fmt', 'test-compiler',
+	'bin2v',
+	'repl',
+	'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
@@ -110,6 +114,8 @@ fn v_command(command string, args []string) {
 			compiler.create_symlink()
 		}
 		'runrepl' {
+			//TODO: remove this after 2020/02/01
+			eprintln('`v runrepl` has been deprecated. Please use `v repl` instead.')
 			compiler.launch_tool('vrepl', 'runrepl')
 		}
 		'doc' {
