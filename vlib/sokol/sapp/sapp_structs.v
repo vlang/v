@@ -27,7 +27,7 @@ pub:
     enable_clipboard bool              /* enable clipboard access, default is false */
     clipboard_size int                 /* max size of clipboard content in bytes */
 
-    html5_canvas_name byteptr		   /* the name (id) of the HTML5 canvas element, default is "canvas" */
+    html5_canvas_name byteptr          /* the name (id) of the HTML5 canvas element, default is "canvas" */
     html5_canvas_resize bool           /* if true, the HTML5 canvas size is set to sapp_desc.width/height, otherwise canvas size is tracked */
     html5_preserve_drawing_buffer bool /* HTML5 only: whether to preserve default framebuffer content between frames */
     html5_premultiplied_alpha bool     /* HTML5 only: whether the rendered pixels use premultiplied alpha convention */

@@ -2,6 +2,13 @@ module fontstash
 
 #flag -I @VROOT/thirdparty/fontstash
 
+#define FONTSTASH_IMPLEMENTATION
+#include "fontstash.h"
+
+pub const (
+	// TODO: fontstash.used_import is used to keep v from warning about unused imports
+	used_import = 1
+)
 
 // Contructor and destructor.
 [inline]

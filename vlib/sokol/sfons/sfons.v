@@ -1,7 +1,11 @@
 module sfons
+
 import fontstash
 
-#flag -I fontstash/thirdparty
+const (
+	// keep v from warning about unused imports
+	used_import = fontstash.used_import + 1
+)
 
 [inline]
 pub fn sfons_create(width int, height int, flags int) &C.FONScontext {
