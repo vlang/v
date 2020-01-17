@@ -3,10 +3,8 @@ import sokol.sapp
 import sokol.gfx
 import sokol.sgl
 import sokol.sfons
-import fontstash
 import os
-import time
-import filepath
+//import time
 
 #define FONS_USE_FREETYPE 1
 
@@ -34,11 +32,13 @@ fn main() {
 		fons: &C.FONScontext(0)
 	}
 
+	title := 'V Metal/GL Text Rendering'
 	desc := sapp_desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
-		window_title: 'V Metal/GL Text Rendering'.str
+		window_title: title.str
+		html5_canvas_name: title.str
 	}
 	sapp.run(&desc)
 }
@@ -61,15 +61,9 @@ fn init(user_data voidptr) {
 	C.sgl_setup(s)
 
     state.fons = C.sfons_create(512, 512, 1)
-
-	//mut font_path := cfg.font_path
-	//if font_path == '' {
-		mut font_path := 'RobotoMono-Regular.ttf'
-	//}
+	mut font_path := os.resource_abs_path('assets/DroidSerif-Regular.ttf')
 	if !os.exists(font_path) {
-		exe_path := os.executable()
-		exe_dir := filepath.basedir(exe_path)
-		font_path = filepath.basedir(exe_dir) + '/tetris/$font_path'
+		font_path = os.resource_abs_path('../tetris/RobotoMono-Regular.ttf')
 		println(font_path)
 	}
 	if !os.exists(font_path) {
@@ -84,7 +78,7 @@ fn init(user_data voidptr) {
 }
 
 fn frame(user_data voidptr) {
-	t:=time.ticks()
+	//t:=time.ticks()
 	mut state := &AppState(user_data)
 
 	state.render_font()
@@ -96,7 +90,7 @@ fn frame(user_data voidptr) {
 	//println(time.ticks()-t)
 }
 
-fn (state &AppState) render_font() {
+fn (state mut AppState) render_font() {
 	mut sx := 0.0
 	mut sy := 0.0
 	mut dx := 0.0

@@ -3,7 +3,6 @@ import sokol.sapp
 import sokol.gfx
 import sokol.sgl
 import sokol.sfons
-import fontstash
 import os
 import time
 
@@ -31,11 +30,13 @@ fn main() {
 		fons: &C.FONScontext(0)
 	}
 
+	title := 'V Metal/GL Text Rendering'
 	desc := sapp_desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
-		window_title: 'V Metal/GL Text Rendering'.str
+		window_title: title.str
+		html5_canvas_name: title.str
 	}
 	sapp.run(&desc)
 }
@@ -60,7 +61,7 @@ fn init(user_data voidptr) {
     state.fons = C.sfons_create(512, 512, 1)
 
 	// or use DroidSerif-Regular.ttf
-	if bytes := os.read_bytes('assets/ProggyTiny.ttf') {
+	if bytes := os.read_bytes(os.resource_abs_path('assets/ProggyTiny.ttf')) {
 		println('loaded font: $bytes.len')
 		state.font_normal = C.fonsAddFontMem(state.fons, "sans", bytes.data, bytes.len, false)
 	}

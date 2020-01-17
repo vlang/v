@@ -2,22 +2,27 @@ import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
-import fontstash
 
 struct AppState {
-	pass_action sg_pass_action
+	pass_action sg_pass_action  
 }
+
+const (
+	used_import = sokol.used_import
+)
 
 fn main() {
 	state := &AppState{
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
 	}
 
+	title := 'Sokal Drawing Template'
 	desc := sapp_desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
-		window_title: 'Sokal Drawing Template'.str
+		window_title: title.str
+    html5_canvas_name: title.str
 	}
 	sapp.run(&desc)
 }
