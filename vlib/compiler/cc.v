@@ -339,13 +339,17 @@ start:
 			println(res.output)
 		}
 		else {
-			partial_output := res.output[res.output.len-200..res.output.len].trim_right('\r\n')
-			print(partial_output)
-			if res.output.len > partial_output.len {
-				println('...\n(Use `v -g` to print the entire error message)\n')
-			}
-			else {
-				println('')
+			if res.output.len < 30 {
+				println(res.output.len)
+			} else {
+				max := 50
+				n := if res.output.len > 50 { 50 } else { res.output.len }
+
+				partial_output := res.output[res.output.len-n..].trim_right('\r\n')
+				print(partial_output)
+				if n < 50 {
+					println('...\n(Use `v -cg` to print the entire error message)\n')
+				}
 			}
 		}
 		verror('C error. This should never happen. ' + '\nPlease create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
