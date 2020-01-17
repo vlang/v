@@ -339,7 +339,7 @@ start:
 			println(res.output)
 		}
 		else {
-			partial_output := res.output.limit(200).trim_right('\r\n')
+			partial_output := res.output[res.output.len-200..res.output.len].trim_right('\r\n')
 			print(partial_output)
 			if res.output.len > partial_output.len {
 				println('...\n(Use `v -g` to print the entire error message)\n')
