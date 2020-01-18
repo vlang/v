@@ -224,10 +224,10 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 	}
 }
 
-pub fn (p mut Parser) assign_expr(left ast.Expr, left_ti &types.TypeIdent) ast.AssignExpr {
+pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
-	val, val_ti := p.expr(0)
+	val, _ := p.expr(0)
 	node := ast.AssignExpr{
 		left: left
 		val: val
@@ -405,7 +405,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,types.TypeIdent) {
 	// Infix
 	for precedence < p.tok.precedence() {
 		if p.tok.kind.is_assign() {
-			node = p.assign_expr(node, ti)
+			node = p.assign_expr(node)
 		}
 		else if p.tok.kind == .dot {
 			node,ti = p.dot_expr(node, ti)
@@ -754,9 +754,10 @@ fn (p mut Parser) const_decl() ast.Stmt {
 	p.check(.lpar)
 	for p.tok.kind != .rpar {
 		name := p.check_name()
-		println('const: $name')
+		// println('const: $name')
 		p.check(.assign)
-		expr, ti := p.expr(0)
+		// expr, ti := p.expr(0)
+		// TODO
 	}
 	p.check(.rpar)
 	return ast.Stmt{}
