@@ -200,7 +200,6 @@ pub fn (re RE) get_parse_error_string(err int) string {
 	}
 }
 
-
 // utf8_str convert and utf8 sequence to a printable string
 [inline]
 fn utf8_str(ch u32) string {
@@ -231,7 +230,7 @@ mut:
 	ist u32 = u32(0)
 
 	// char
-	ch u32                 = u32(0)// char of the token if any
+	ch u32                 = u32(0)  // char of the token if any
 	ch_len byte            = byte(0) // char len
 
 	// Quantifiers / branch
@@ -245,7 +244,7 @@ mut:
 	// counters for quantifier check (repetitions)
 	rep int = 0
 
-	// validator function pointer and control char
+	// validator function pointer
 	validator fn (byte) bool
 
 	// groups variables
@@ -280,9 +279,9 @@ pub const (
 
 struct StateDotObj{
 mut:
-	i  int                = 0   // char index in the input buffer
-	pc int                = 0   // program counter saved
-	mi int                = 0   // match_index saved
+	i  int                = -1  // char index in the input buffer
+	pc int                = -1   // program counter saved
+	mi int                = -1   // match_index saved
 	group_stack_index int = -1  // group index stack pointer saved
 }
 
@@ -648,7 +647,7 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 
 		// min parsing skip if comma present
 		if status == .start && ch == `,` {
-			q_min = 1 // default min in a {} quantifier is 1
+			q_min = 0 // default min in a {} quantifier is 0
 			status = .comma_checked
 			i++
 			continue
@@ -998,6 +997,7 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 	// Post processing
 	//******************************************
 
+
 	// count IST_DOT_CHAR to set the size of the state stack
 	mut pc1 := 0
 	mut tmp_count := 0
@@ -1007,9 +1007,9 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		}
 		pc1++
 	}
+
 	// init the state stack
-	re.state_stack = [StateDotObj{}].repeat(tmp_count+1)
-	
+	re.state_stack = [StateDotObj{}].repeat(tmp_count+1)	
 	
 	// OR branch
 	// a|b|cd
@@ -1279,7 +1279,8 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 	mut pc := -1                     // program counter
 	mut state := StateObj{}          // actual state
-	mut ist := u32(0)                // Program Counter
+	mut ist := u32(0)                // actual instruction
+	mut l_ist := u32(0)              // last matched instruction
 
 	mut group_stack      := [-1].repeat(re.group_max)
 	mut group_data       := [-1].repeat(re.group_max)
@@ -1359,7 +1360,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 								tmp_gr := re.prog[re.prog[pc].goto_pc].group_rep
 								buf2.write("GROUP_START #:${tmp_gi} rep:${tmp_gr} ")
 							} else if ist == IST_GROUP_END {
-								buf2.write("GROUP_END   #:${re.prog[pc].group_id} deep:${group_index} ")
+								buf2.write("GROUP_END   #:${re.prog[pc].group_id} deep:${group_index}")
 							}
 						}
 						if re.prog[pc].rep_max == MAX_QUANTIFIER {
@@ -1417,17 +1418,10 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			}
 
 			// manage IST_DOT_CHAR
-			if re.state_stack_index >= 0 {
-				//C.printf("DOT CHAR text end management!\n")
-				// if DOT CHAR is not the last instruction and we are still going, then no match!!
-				if pc < re.prog.len && re.prog[pc+1].ist != IST_PROG_END {
-					return NO_MATCH_FOUND,0
-				}
-			}
 
 			m_state == .end
 			break
-			return NO_MATCH_FOUND,0
+			//return NO_MATCH_FOUND,0
 		}
 
 		// starting and init
@@ -1475,12 +1469,13 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		// check if stop 
 		if m_state == .stop {
 			// if we are in restore state ,do it and restart
-			if re.state_stack_index >= 0 {	
+			//C.printf("re.state_stack_index %d\n",re.state_stack_index )
+			if re.state_stack_index >=0 && re.state_stack[re.state_stack_index].pc >= 0 {
 				i = re.state_stack[re.state_stack_index].i
 				pc = re.state_stack[re.state_stack_index].pc
 				state.match_index =	re.state_stack[re.state_stack_index].mi
 				group_index = re.state_stack[re.state_stack_index].group_stack_index
-				
+
 				m_state = .ist_load
 				continue
 			}
@@ -1499,12 +1494,22 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			// program end
 			if ist == IST_PROG_END {
 				// if we are in match exit well
+				
 				if group_index >= 0 && state.match_index >= 0 {
 					group_index = -1
 				}
-								
+
+				// we have a DOT MATCH on going
+				//C.printf("IST_PROG_END l_ist: %08x\n", l_ist)
+				if re.state_stack_index>=0 && l_ist == IST_DOT_CHAR {
+					m_state = .stop
+					continue
+				}
+
+				re.state_stack_index = -1
 				m_state = .stop
 				continue
+				
 			}
 
 			// check GROUP start, no quantifier is checkd for this token!!
@@ -1527,7 +1532,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					//C.printf("g.id: %d group_index: %d\n", re.prog[pc].group_id, group_index)
 					if group_index >= 0 {
 	 					start_i   := group_stack[group_index]
-	 					group_stack[group_index]=-1
+	 					//group_stack[group_index]=-1
 
 	 					// save group results
 						g_index := re.prog[pc].group_id*2
@@ -1537,6 +1542,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 							re.groups[g_index] = 0
 						}
 						re.groups[g_index+1] = i
+						//C.printf("GROUP %d END [%d, %d]\n", re.prog[pc].group_id, re.groups[g_index], re.groups[g_index+1])
 					}
 					
 					re.prog[pc].group_rep++ // increase repetitions
@@ -1568,6 +1574,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			else if ist == IST_DOT_CHAR {
 				//C.printf("IST_DOT_CHAR rep: %d\n", re.prog[pc].rep)
 				state.match_flag = true
+				l_ist = u32(IST_DOT_CHAR)
 
 				if first_match < 0 {
 					first_match = i
@@ -1575,12 +1582,23 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				state.match_index = i
 				re.prog[pc].rep++	
 
-				if re.prog[pc].rep == 1 {
+				//if re.prog[pc].rep >= re.prog[pc].rep_min && re.prog[pc].rep <= re.prog[pc].rep_max {
+				if re.prog[pc].rep >= 0 && re.prog[pc].rep <= re.prog[pc].rep_max {
+					//C.printf("DOT CHAR save state : %d\n", re.state_stack_index)
 					// save the state
-					re.state_stack_index++
+					
+					// manage first dot char
+					if re.state_stack_index < 0 {
+						re.state_stack_index++
+					}
+
 					re.state_stack[re.state_stack_index].pc = pc
 					re.state_stack[re.state_stack_index].mi = state.match_index
 					re.state_stack[re.state_stack_index].group_stack_index = group_index
+				} else {
+					re.state_stack[re.state_stack_index].pc = -1
+					re.state_stack[re.state_stack_index].mi = -1
+					re.state_stack[re.state_stack_index].group_stack_index = -1
 				}
 
 				if re.prog[pc].rep >= 1 && re.state_stack_index >= 0 {
@@ -1590,19 +1608,11 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// manage * and {0,} quantifier
 				if re.prog[pc].rep_min > 0 {
 					i += char_len // next char
+					l_ist = u32(IST_DOT_CHAR)
 				}
-				
-				if re.prog[pc+1].ist !=  IST_GROUP_END {
-					m_state = .ist_next
-					continue
-				} 
-				// IST_DOT_CHAR is the last instruction, get all
-				else {
-					//C.printf("We are the last one!\n")
-					pc-- 
-					m_state = .ist_next_ks
-					continue
-				}
+
+				m_state = .ist_next
+				continue
 
 			}
 
@@ -1622,6 +1632,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 				if cc_res {
 					state.match_flag = true
+					l_ist = u32(IST_CHAR_CLASS_POS)
 					
 					if first_match < 0 {
 						first_match = i
@@ -1645,6 +1656,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				//C.printf("BSLS in_ch: %c res: %d\n", ch, tmp_res)
 				if tmp_res {
 					state.match_flag = true
+					l_ist = u32(IST_BSLS_CHAR)
 					
 					if first_match < 0 {
 						first_match = i
@@ -1669,6 +1681,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				if re.prog[pc].ch == ch
 				{
 					state.match_flag = true
+					l_ist = u32(IST_SIMPLE_CHAR)
 					
 					if first_match < 0 {
 						first_match = i
@@ -1857,7 +1870,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			}
 
 			// no other options
-			//C.printf("NO_MATCH_FOUND\n")
+			//C.printf("ist_quant_n NO_MATCH_FOUND\n")
 			result = NO_MATCH_FOUND
 			m_state = .stop
 			continue
@@ -1873,12 +1886,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			rep := re.prog[pc].rep
 			
-			// clear the actual dot char capture state
-			if re.state_stack_index >= 0 {
-				//C.printf("Drop the DOT_CHAR state!\n")
-				re.state_stack_index--
-			}
-
 			// under range
 			if rep > 0 && rep < re.prog[pc].rep_min {
 				//C.printf("ist_quant_p UNDER RANGE\n")

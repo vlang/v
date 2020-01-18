@@ -4,14 +4,14 @@
 
 ## introduction
 
-Write here the introduction
+Write here the introduction... not today!! -_-
 
 ## Basic assumption
 
-In this release, during the writing of the code some assumption are made and are valid for all the features.
+In this release, during the writing of the code some assumptions are made and are valid for all the features.
 
 1. The matching stops at the end of the string not at the newline chars.
-2. The basic element of this regex engine are the tokens, in query string a simple char is a token. The token is the atomic unit of this regex engine.
+2. The basic elements of this regex engine are the tokens, in a query string a simple char is a token. The token is the atomic unit of this regex engine.
 
 ## Match positional limiter
 
@@ -21,11 +21,11 @@ The module supports the following features:
 
 `^` (Caret.) Matches at the start of the string
 
-`?` Matches at the end of the string
+`$` Matches at the end of the string
 
 ## Tokens
 
-The tokens are the atomic unit used by this regex engine and can be ones of the following:
+The tokens are the atomic units used by this regex engine and can be ones of the following:
 
 ### Simple char
 
@@ -33,11 +33,11 @@ this token is a simple single character like `a`.
 
 ### Char class (cc)
 
-The cc match all the chars specified in its inside, it is delimited by square brackets `[ ]`
+The cc match all the chars specified inside, it is delimited by square brackets `[ ]`
 
 the sequence of chars in the class is evaluated with an OR operation.
 
-For example the following cc `[abc]` match any char that is `a` or `b` or `c` but doesn't match `C` or `z`.
+For example, the following cc `[abc]` match any char that is `a` or `b` or `c` but doesn't match `C` or `z`.
 
 Inside a cc is possible to specify a "range" of chars, for example `[ad-f]` is equivalent to write `[adef]`. 
 
@@ -68,17 +68,17 @@ A meta-char can match different type of chars.
 
 Each token can have a quantifier that specify how many times the char can or must be matched.
 
-**Short quantifier**
+#### **Short quantifier**
 
 - `?` match 0 or 1 time, `a?b` match both `ab` or `b`
 - `+` match at minimum 1 time, `a+` match both `aaa` or `a`
 - `*` match 0 or more time, `a*b` match both `aaab` or `ab` or `b`
 
-**Long quantifier**
+#### **Long quantifier**
 
 - `{x}` match exactly x time, `a{2}` match `aa` but doesn't match `aaa` or `a`
 - `{min,}` match at minimum min time, `a{2,}` match `aaa` or `aa` but doesn't match `a`
-- `{,max}` match at least 1 time and maximum max time, `a{,2}` match `a` and `aa` but doesn't match `aaa`
+- `{,max}` match at least 0 time and maximum max time, `a{,2}` match `a` and `aa` but doesn't match `aaa`
 - `{min,max}` match from min times to max times, `a{2,3}` match `aa` and `aaa` but doesn't match `a` or `aaaa`
 
 a long quantifier may have a `greedy off` flag that is the `?` char after the brackets, `{2,4}?` means to match the minimum number possible tokens in this case 2.
@@ -102,7 +102,7 @@ the dot char match any char until the next token match is satisfied.
 
 the token `|` is a logic OR operation between two consecutive tokens, `a|b` match a char that is `a` or `b`.
 
-The or token can work in a "chained way": `a|(b)|cd ` test first `a` if the char is not `a` the test the group `(b)` and if the group doesn't match test the token `c`.
+The OR token can work in a "chained way": `a|(b)|cd ` test first `a` if the char is not `a` then test the group `(b)` and if the group doesn't match test the token `c`.
 
 **note: The OR work at token level! It doesn't work at concatenation level!**
 
@@ -181,16 +181,16 @@ re.flag = regex.F_BIN
 
 ### Initializer
 
-These function are helper that create the `RE` struct, a `RE` struct can be created manually if you needed.
+These functions are helper that create the `RE` struct, a `RE` struct can be created manually if you needed.
 
-**Simplified initializer**
+#### **Simplified initializer**
 
 ```v
 // regex create a regex object from the query string and compile it
 pub fn regex(in_query string) (RE,int,int)
 ```
 
-**Base initializer**
+#### **Base initializer**
 
 ```v
 // new_regex create a REgex of small size, usually sufficient for ordinary use
@@ -199,13 +199,13 @@ pub fn new_regex() RE
 // new_regex_by_size create a REgex of large size, mult specify the scale factor of the memory that will be allocated
 pub fn new_regex_by_size(mult int) RE
 ```
-After the base initializer use, the regex expression must be compiled with:
+After a base initializer is used, the regex expression must be compiled with:
 ```v
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
 pub fn (re mut RE) compile(in_txt string) (int,int)
 ```
 
-### Functions
+### Operative Functions
 
 These are the operative functions
 
@@ -227,7 +227,7 @@ pub fn (re mut RE) replace(in_txt string, repl string) string
 
 This module has few small utilities to help the writing of regex expressions.
 
-**Syntax errors highlight**
+### **Syntax errors highlight**
 
 the following example code show how to visualize the syntax errors in the compilation phase:
 
@@ -256,7 +256,7 @@ if re_err != COMPILE_OK {
 
 ```
 
-**Compiled code**
+### **Compiled code**
 
 It is possible view the compiled code calling the function `get_query()` the result will be something like this:
 
@@ -279,7 +279,7 @@ PC:  2 ist: 88000000 PROG_END {  0,  0}
 
 `{m,n}` is the quantifier, the greedy off flag  `?`  will be showed if present in the token
 
-**Log debug**
+### **Log debug**
 
 The log debugger allow to print the status of the regex parser when the parser is running.
 
@@ -337,6 +337,21 @@ the columns have the following meaning:
 `query_ch: [b]` token in use and its char
 
 `{2,3}:1?` quantifier `{min,max}`, `:1` is the actual counter of repetition, `?` is the greedy off flag if present
+
+### **Custom Logger output**
+
+The debug functions output uses the `stdout` as default, it is possible to  provide an alternative output setting a custom output function:
+
+```v
+// custom print function, the input will be the regex debug string
+fn custom_print(txt string) {
+	println("my log: $txt")
+}
+
+mut re := new_regex()
+re.log_func = custom_print  // every debug output from now will call this function
+
+```
 
 ## Example code
 
