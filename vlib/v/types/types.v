@@ -29,14 +29,10 @@ pub enum Kind {
 	voidptr
 	charptr
 	byteptr
-	const_
-	enum_
-	struct_
-	int
 	i8
 	i16
+	int
 	i64
-	byte
 	u16
 	u32
 	u64
@@ -44,20 +40,25 @@ pub enum Kind {
 	f64
 	string
 	char
+	byte
 	bool
+	const_
+	enum_
+	struct_
 	array
 	array_fixed
 	map
 	multi_return
 	variadic
+	unresolved	
 }
 
-pub type Type = Placeholder | Primitive | Const | Enum | Struct | Int | Float | 	
-String | Bool | Array | ArrayFixed | Map | MultiReturn | Variadic
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
 
 pub struct TypeIdent {
 pub:
 	idx     int
+mut:
 	kind    Kind
 	name    string
 	nr_muls int
@@ -73,17 +74,18 @@ pub fn new_ti(kind Kind, name string, idx int, nr_muls int) TypeIdent {
 	}
 }
 
-[inline]
-pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
-	return TypeIdent{
-		idx: -int(kind) - 1
-		kind: kind
-		name: kind.str()
-		nr_muls: nr_muls
-	}
-}
+// [inline]
+// pub fn new_builtin_ti(kind Kind, nr_muls int) TypeIdent {
+// 	return TypeIdent{
+// 		idx: -int(kind) - 1
+// 		kind: kind
+// 		name: kind.str()
+// 		nr_muls: nr_muls
+// 	}
+// }
 
 pub const (
+	unresolved_ti = new_ti(.unresolved, 'unresolved', 0, 0)
 	void_ti = new_ti(.void, 'void', void_type_idx, 0)
 	int_ti = new_ti(.int, 'int', int_type_idx, 0)
 	string_ti = new_ti(.string, 'string', string_type_idx, 0)
@@ -115,24 +117,15 @@ pub fn (ti &TypeIdent) str() string {
 	for _ in 0 .. ti.nr_muls {
 		muls += '&'
 	}
-	return '$muls$ti.name'
-}
-
-pub fn check(got, expected &TypeIdent) bool {
-	if expected.kind == .voidptr {
-		return true
-	}
-	if expected.name == 'array' {
-		return true
-	}
-	if got.idx != expected.idx {
-		return false
-	}
-	return true
+	// return '$muls$ti.name'
+	return '$muls$ti.idx'
 }
 
 pub fn (k Kind) str() string {
 	k_str := match k {
+		.unresolved{
+			'unresolved'
+		}
 		.placeholder{
 			'placeholder'
 		}
@@ -148,12 +141,12 @@ pub fn (k Kind) str() string {
 		.byteptr{
 			'byteptr'
 		}
-		.const_{
-			'const'
-		}
-		.enum_{
-			'enum'
-		}
+		// .const_{
+		// 	'const'
+		// }
+		// .enum_{
+		// 	'enum'
+		// }
 		.struct_{
 			'struct'
 		}
@@ -222,75 +215,42 @@ pub fn (kinds []Kind) str() string {
 	return kinds_str
 }
 
-pub struct Placeholder {
-pub:
-	idx  int
-	name string
-	// kind Kind
-}
-// Void | Voidptr | Charptr | Byteptr
-pub struct Primitive {
-pub:
-	idx  int
-	kind Kind
-}
+// pub struct Const {
+// pub:
+// 	name string
+// }
 
-pub struct Const {
-pub:
-	idx  int
-	name string
-}
-
-pub struct Enum {
-pub:
-	idx  int
-	name string
-}
+// pub struct Enum {
+// pub:
+// 	name string
+// }
 
 pub struct Struct {
-pub:
-	idx        int
-	parent_idx int
-	name       string
 pub mut:
 	fields     []Field
-	methods    []Field // TODO Method
 }
 
 pub struct Field {
 pub:
 	name     string
-	type_idx int
+	ti       TypeIdent
+	// type_idx int
 }
 
-pub struct Int {
-pub:
-	idx         int
-	bit_size    u32
-	is_unsigned bool
-}
+// pub struct Int {
+// pub:
+// 	bit_size    u32
+// 	is_unsigned bool
+// }
 
-pub struct Float {
-pub:
-	idx      int
-	bit_size u32
-}
+// pub struct Float {
+// pub:
+// 	bit_size u32
+// }
 
-pub struct String {
-pub:
-	idx int
-}
-
-pub struct Bool {
-pub:
-	idx int
-}
 
 pub struct Array {
 pub:
-	idx            int
-	parent_idx     int
-	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
 	elem_is_ptr    bool
@@ -299,9 +259,6 @@ pub:
 
 pub struct ArrayFixed {
 pub:
-	idx            int
-	parent_idx     int
-	name           string
 	elem_type_kind Kind
 	elem_type_idx  int
 	elem_is_ptr    bool
@@ -311,8 +268,6 @@ pub:
 
 pub struct Map {
 pub:
-	idx             int
-	name            string
 	key_type_kind   Kind
 	key_type_idx    int
 	value_type_kind Kind
@@ -321,89 +276,11 @@ pub:
 
 pub struct MultiReturn {
 pub:
-	idx  int
 	name string
 	tis  []TypeIdent
 }
 
 pub struct Variadic {
 pub:
-	idx int
 	ti  TypeIdent
 }
-
-pub fn (t Primitive) str() string {
-	s := match t.kind {
-		.void{
-			'void'
-		}
-		.voidptr{
-			'voidptr'
-		}
-		.charptr{
-			'charptr'
-		}
-		.byteptr{
-			'byteptr'
-		}
-		.char{
-			'char'
-		}
-		.byte{
-			'byte'
-		}
-		else {
-			'unknown'}
-	}
-	return s
-}
-
-pub fn (t Const) str() string {
-	return t.name
-}
-
-pub fn (t Enum) str() string {
-	return t.name
-}
-
-pub fn (t Struct) str() string {
-	return t.name
-}
-
-pub fn (t Int) str() string {
-	return if t.is_unsigned { 'u$t.bit_size' } else { 'i$t.bit_size' }
-}
-
-pub fn (t Float) str() string {
-	return 'f$t.bit_size'
-}
-
-pub fn (t String) str() string {
-	return 'string'
-}
-
-pub fn (t Array) str() string {
-	return t.name
-}
-
-pub fn (t ArrayFixed) str() string {
-	return t.name
-}
-
-pub fn (t Map) str() string {
-	return t.name
-}
-
-pub fn (t MultiReturn) str() string {
-	return t.name
-}
-
-pub fn (t Variadic) str() string {
-	return 'variadic_$t.ti.kind.str()'
-}
-
-/*
-pub fn (s &Struct) has_field(name string) bool {
-
-}
-*/

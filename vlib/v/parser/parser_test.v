@@ -4,6 +4,7 @@ import (
 	v.ast
 	v.gen
 	v.table
+	v.checker
 	term
 )
 
@@ -37,7 +38,7 @@ fn test_one() {
 	//
 	]
 	expected := 'int a = 10;int b = -a;int c = 20;'
-	table := &table.Table{}
+	table := table.new_table()
 	mut e := []ast.Stmt
 	for line in input {
 		e << parse_stmt(line, table)
@@ -118,7 +119,8 @@ fn test_parse_expr() {
 	'-a;',
 	]
 	mut e := []ast.Stmt
-	table := &table.Table{}
+	table := table.new_table()
+	mut checker := checker.new_checker(table)
 	for s in input {
 		// println('\n\nst="$s"')
 		e << parse_stmt(s, table)
@@ -126,6 +128,7 @@ fn test_parse_expr() {
 	program := ast.File{
 		stmts: e
 	}
+	checker.check(program)
 	res := gen.cgen([program], table)
 	println('========')
 	println(res)

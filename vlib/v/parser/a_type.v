@@ -149,10 +149,11 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 				else {
 					// struct / enum
 					mut idx := p.table.find_type_idx(name)
-					// add placeholder
-					if idx == 0 {
-						idx = p.table.add_placeholder_type(name)
+					if idx > 0 {
+						return types.new_ti(p.table.types[idx].kind, name, idx, nr_muls)
 					}
+					// not found - add placeholder
+					idx = p.table.add_placeholder_type(name)
 					return types.new_ti(.placeholder, name, idx, nr_muls)
 				}
 	}

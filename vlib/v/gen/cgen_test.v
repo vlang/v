@@ -1,10 +1,7 @@
 import (
 	os
 	filepath
-	v.parser
-	v.ast
-	v.gen
-	v.table
+	v.builder
 	term
 )
 
@@ -26,9 +23,8 @@ fn test_c_files() {
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
-		table := &table.new_table()
-		program := parser.parse_file(path, table)
-		res := gen.cgen([program], table)
+		mut b := builder.new_builder()
+		res := b.gen_c([path])
 		if compare_texts(res, ctext) {
 			eprintln('${term_ok} ${i}')
 		}

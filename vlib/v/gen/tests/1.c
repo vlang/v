@@ -31,7 +31,7 @@ i < 10; i++;
 		1, 2, 3,
 	});
 	int number = nums[0];
-	void n = get_int2();
+	int n = get_int2();
 }
 
 int get_int(string a) {
