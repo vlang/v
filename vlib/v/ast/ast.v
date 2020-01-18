@@ -153,6 +153,7 @@ pub:
 	name string
 	expr Expr
 	is_mut bool
+	mut:
 	ti   types.TypeIdent
 	pos  token.Position
 }

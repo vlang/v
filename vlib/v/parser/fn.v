@@ -30,13 +30,11 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,types.TypeIdent) {
 		pos: tok.position()
 		
 	}
-	// TODO: opt+checker
 	mut ti := types.unresolved_ti
 	if f := p.table.find_fn(fn_name) {
 		ti = f.return_ti
 	}
 	println('adding call_expr check $fn_name')
-	p.checker.add_check_expr(node)
 
 	return node, ti
 }

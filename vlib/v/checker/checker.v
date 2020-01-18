@@ -10,21 +10,12 @@ import (
 	v.token
 )
 
-// enum CheckKind {
-// 	assign
-// }
-
 pub struct Checker {
-	file_name string
-	table     &table.Table
+	file_name  string
+	table      &table.Table
 mut:
-	checks    []Check
-	position  token.Position
-}
-
-struct Check{
-	expr ast.Expr
-	stmt ast.Stmt
+	// TODO: resolved
+	position   token.Position
 }
 
 pub fn new_checker(file_name string, table &table.Table) Checker {
@@ -34,110 +25,34 @@ pub fn new_checker(file_name string, table &table.Table) Checker {
 	}
 }
 
-pub fn (c &Checker) get_expr_ti(expr ast.Expr) types.TypeIdent {
-	match expr {
-		ast.ArrayInit{
-			return it.ti
-		}
-		ast.IndexExpr{
-			return c.get_expr_ti(it.left)
-		}
-		ast.CallExpr {
-			func := c.table.find_fn(it.name) or {
-				c.error('unknown fn $it.name')
-				panic('')
-			}
-			return func.return_ti
-		}
-		ast.MethodCallExpr {
-			ti := c.get_expr_ti(it.expr)
-			func := c.table.find_method(ti.idx, it.name) or {
-				c.error('unknown method ${ti.name}.$it.name')
-				panic('')
-			}
-			return func.return_ti
-		}
-		ast.Ident {
-			if it.kind == .variable {
-				info := it.info as ast.IdentVar
-				if info.ti.kind != .unresolved {
-					println(' ~~~~~~~~~~ A $info.ti.name')
-					return info.ti
-				}
-				ti := c.get_expr_ti(info.expr)
-				// c.table.vars
-				println(' ~~~~~~~~~~ B $ti.name')
-				return ti
-			}
-			// return it.ti
-			return types.void_ti
-		}
-		ast.StructInit {
-			return it.ti
-		}
-		ast.StringLiteral {
-			return types.string_ti
-		}
-		ast.IntegerLiteral {
-			// if it.val.contains('.') {
-			// 	return types.i64_ti
-			// }
-			return types.int_ti
-		}
-		ast.SelectorExpr {
-			ti := c.get_expr_ti(it.expr)
-			kind := c.table.types[ti.idx].kind
-			if ti.kind == .placeholder {
-				// println(' ##### PH $ti.name')
-			}
-			if !(kind in [.placeholder, .struct_]) {
-				c.error('unknown struct: $ti.name')
-			}
-			struct_ := c.table.types[ti.idx]
-			struct_info := struct_.info as types.Struct
-			for field in struct_info.fields {
-				if field.name == it.field {
-					return field.ti
-				}
-			}
-			if struct_.parent_idx != 0 {
-				parent := c.table.types[struct_.parent_idx]
-				parent_info := parent.info as types.Struct
-				for field in parent_info.fields {
-					if field.name == it.field {
-						return field.ti
-					}
-				}
-			}
-			c.error('unknown field `${ti.name}.$it.field`')
-		}
-		ast.BinaryExpr {
-			ti := c.get_expr_ti(it.left)
-			return ti
-		}
-		else {
-			return types.unresolved_ti
-		}
+pub fn (c &Checker) check(file ast.File) {
+	for stmt in file.stmts {
+		c.stmt(stmt)
 	}
-	return types.unresolved_ti
+}
+
+pub fn (c &Checker) check_files(files []ast.File) {
+	for file in files {
+		c.check(file)
+	}
 }
 
 pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
 	typ := c.table.find_type(struct_init.ti.name) or {
-		c.error('unknown struct: $struct_init.ti.name')
+		c.error('unknown struct: $struct_init.ti.name', struct_init.pos)
 		panic('')
 	}
 	match typ.kind {
 		.placeholder {
-			c.error('unknown struct: $struct_init.ti.name')
+			c.error('unknown struct: $struct_init.ti.name', struct_init.pos)
 		}
 		.struct_ {
 			info := typ.info as types.Struct
 			for i, expr in struct_init.exprs {
 				field := info.fields[i]
-				expr_ti := c.get_expr_ti(expr)
-				if !c.check(expr_ti, field.ti) {
-					c.error('cannot assign $expr_ti.name as $field.ti.name for field $field.name')
+				expr_ti := c.table.get_expr_ti(expr)
+				if !c.table.check(expr_ti, field.ti) {
+					c.error('cannot assign $expr_ti.name as $field.ti.name for field $field.name', struct_init.pos)
 				}
 			}
 		}
@@ -146,10 +61,68 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
 }
 
 pub fn (c &Checker) check_binary_expr(binary_expr ast.BinaryExpr) {
-	left_ti := c.get_expr_ti(binary_expr.left)
-	right_ti := c.get_expr_ti(binary_expr.right)
-	if !c.check(&right_ti, &left_ti) {
-		c.error('binary expr: cannot use $right_ti.name as $left_ti.name')
+	left_ti := c.table.get_expr_ti(binary_expr.left)
+	right_ti := c.table.get_expr_ti(binary_expr.right)
+	if !c.table.check(&right_ti, &left_ti) {
+		c.error('binary expr: cannot use $right_ti.name as $left_ti.name', binary_expr.pos)
+	}
+}
+
+fn (c &Checker) check_assign_expr(assign_expr ast.AssignExpr) {
+	left_ti := c.table.get_expr_ti(assign_expr.left)
+	right_ti := c.table.get_expr_ti(assign_expr.val)
+	if !c.table.check(right_ti, left_ti) {
+		c.error('cannot assign $right_ti.name to $left_ti.name', assign_expr.pos)
+	}
+}
+
+pub fn (c &Checker) check_call_expr(call_expr ast.CallExpr) {
+	fn_name := call_expr.name
+	if f := c.table.find_fn(fn_name) {
+		// return_ti := f.return_ti
+		if call_expr.args.len < f.args.len {
+			c.error('too few arguments in call to `$fn_name`', call_expr.pos)
+		} else if call_expr.args.len > f.args.len {
+			c.error('too many arguments in call to `$fn_name`', call_expr.pos)
+		}
+		for i, arg in f.args {
+			arg_expr := call_expr.args[i]
+			ti := c.table.get_expr_ti(arg_expr)
+			if !c.table.check(&ti, &arg.ti) {
+				c.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`', call_expr.pos)
+			}
+		}
+	} else {
+		c.error('unknown fn: $fn_name', call_expr.pos)
+		// c.warn('unknown function `$fn_name`')
+	}
+}
+
+pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) {
+	ti := c.table.get_expr_ti(method_call_expr.expr)
+	if !c.table.has_method(ti.idx, method_call_expr.name) {
+		c.error('type `$ti.name` has no method `$method_call_expr.name`', method_call_expr.pos)
+	}
+}
+
+pub fn (c &Checker) check_selector_expr(selector_expr ast.SelectorExpr) {
+	ti := c.table.get_expr_ti(selector_expr.expr)
+	field_name := selector_expr.field
+	// struct_ := c.table.types[ti.idx] as types.Struct
+	typ := c.table.types[ti.idx]
+	match typ.kind {
+		.struct_ {
+			// if !c.table.struct_has_field(it, field) {
+			// 	c.error('AAA unknown field `${it.name}.$field`')
+			// }
+			// TODO: fix bug
+			c.table.struct_find_field(typ, field_name) or {
+				c.error('unknown field `${typ.name}.$field_name`', selector_expr.pos)
+			}
+		}
+		else {
+			c.error('$ti.name is not a struct', selector_expr.pos)
+		}
 	}
 }
 
@@ -157,9 +130,7 @@ pub fn (c &Checker) check_binary_expr(binary_expr ast.BinaryExpr) {
 pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
 	mut got_tis := []types.TypeIdent
 	for expr in return_stmt.exprs {
-		// expr,ti := p.expr(0)
-		// exprs << expr
-		ti := c.get_expr_ti(expr)
+		ti := c.table.get_expr_ti(expr)
 		got_tis << ti
 	}
 	expected_ti := return_stmt.expected_ti
@@ -170,85 +141,112 @@ pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
 		expected_tis = mr_info.tis
 	}
 	if expected_tis.len != got_tis.len {
-		c.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
+		c.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()', return_stmt.pos)
 	}
 	for i, exp_ti in expected_tis {
 		got_ti := got_tis[i]
-		println('checking return $got_ti.name, $exp_ti.name')
-		if !c.check(got_ti, exp_ti) {
-			c.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
+		if !c.table.check(got_ti, exp_ti) {
+			c.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument', return_stmt.pos)
 		}
 	}
 }
 
-pub fn (c mut Checker) check_deferred() {
-	for ctx in c.checks {
-		match ctx.expr {
-			ast.AssignExpr {
-				c.position = it.pos
-				c.check_assign_expr(it)
+fn (c &Checker) stmt(node ast.Stmt) {
+	match node {
+		ast.FnDecl {
+			for stmt in it.stmts {
+				c.stmt(stmt)
 			}
-			ast.CallExpr {
-				c.position = it.pos
-				c.check_call_expr(it)
-			}
-			ast.StructInit {
-				c.position = it.pos
-				c.check_struct_init(it)
-			}
-			ast.MethodCallExpr {
-				c.position = it.pos
-				c.check_method_call_expr(it)
-			}
-			ast.SelectorExpr {
-				c.position = it.pos
-				c.check_selector_expr(it)
-			}
-			ast.BinaryExpr {
-				c.position = it.pos
-				c.check_binary_expr(it)
-			}
-			else {}
 		}
-		match ctx.stmt {
-			ast.Return {
-				c.position = it.pos
-				c.check_return_stmt(it)
-			}
-			else {}
+		ast.Return {
+			c.check_return_stmt(it)
 		}
+		ast.VarDecl {
+			c.expr(it.expr)
+		}
+		ast.ForStmt {
+			c.expr(it.cond)
+			for stmt in it.stmts {
+				c.stmt(stmt)
+			}
+		}
+		ast.ForCStmt {
+			c.stmt(it.init)
+			c.expr(it.cond)
+			c.stmt(it.inc)
+			for stmt in it.stmts {
+				c.stmt(stmt)
+			}
+		}
+		// ast.StructDecl {}
+		ast.ExprStmt {
+			c.expr(it.expr)
+		}
+		else {}
 	}
 }
 
-pub fn (c mut Checker) add_check_expr(expr ast.Expr) {
-	c.checks << Check{
-		expr: expr
+fn (c &Checker) expr(node ast.Expr) {
+	match node {
+		ast.AssignExpr {
+			c.check_assign_expr(it)
+		}
+		// ast.IntegerLiteral {}
+		// ast.FloatLiteral {}
+		ast.PostfixExpr {
+			c.expr(it.expr)
+		}
+		ast.UnaryExpr {
+			c.expr(it.left)
+		}
+		// ast.StringLiteral {}
+		ast.PrefixExpr {
+			c.expr(it.right)
+		}
+		ast.BinaryExpr {
+			c.check_binary_expr(it)
+		}
+		ast.StructInit {
+			c.check_struct_init(it)
+		}
+		ast.CallExpr {
+			c.check_call_expr(it)
+		}
+		ast.MethodCallExpr {
+			c.check_method_call_expr(it)
+		}
+		ast.ArrayInit {
+			for expr in it.exprs {
+				c.expr(expr)
+			}
+		}
+		// ast.Ident {}
+		// ast.BoolLiteral {}
+		ast.SelectorExpr {
+			c.check_selector_expr(it)
+		}
+		ast.IndexExpr {
+			c.expr(it.left)
+			c.expr(it.index)
+		}
+		ast.IfExpr {
+			c.expr(it.cond)
+			for i, stmt in it.stmts {
+				c.stmt(stmt)
+			}
+			if it.else_stmts.len > 0 {
+				for stmt in it.else_stmts {
+					c.stmt(stmt)
+				}
+			}
+		}
+		else {}
 	}
 }
 
-pub fn (c mut Checker) add_check_stmt(stmt ast.Stmt) {
-	c.checks << Check{
-		stmt: stmt
-	}
-}
-
-pub fn (c &Checker) check(got, expected &types.TypeIdent) bool {
-	println('check: $got.name, $expected.name')
-	if expected.kind == .voidptr {
-		return true
-	}
-	//if expected.name == 'array' {
-	//	return true
-	//}
-	if got.idx != expected.idx {
-		return false
-	}
-	return true
-}
-
-pub fn (c &Checker) error(s string) {
+pub fn (c &Checker) error(s string, pos token.Position) {
 	print_backtrace()
-	final_msg_line := '$c.file_name:$c.position.line_nr: error: $s'
+	final_msg_line := '$c.file_name:$pos.line_nr: error: $s'
 	eprintln(final_msg_line)
 	/*
 	if colored_output {
@@ -259,4 +257,3 @@ pub fn (c &Checker) error(s string) {
 	*/
 	exit(1)
 }
-

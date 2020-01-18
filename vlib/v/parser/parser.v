@@ -9,7 +9,6 @@ import (
 	v.token
 	v.table
 	v.types
-	v.checker
 	term
 	os
 )
@@ -31,7 +30,6 @@ mut:
 	peek_tok  token.Token
 	// vars []string
 	table     &table.Table
-	checker   checker.Checker
 	return_ti types.TypeIdent
 	is_c      bool
 	//
@@ -44,11 +42,9 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	mut p := Parser{
 		scanner: s
 		table: table
-		checker: checker.new_checker('', table)
 	}
 	p.init_parse_fns()
 	p.read_first_token()
-	p.checker.check_deferred()
 	return p.stmt()
 }
 
@@ -62,7 +58,6 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		scanner: scanner.new_scanner(text)
 		table: table
 		file_name: path
-		checker: checker.new_checker(path, table)
 	}
 	p.read_first_token()
 
@@ -90,7 +85,6 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		// println('stmt at ' + p.tok.str())
 		stmts << p.top_stmt()
 	}
-	p.checker.check_deferred()
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
@@ -240,7 +234,6 @@ pub fn (p mut Parser) assign_expr(left ast.Expr, left_ti &types.TypeIdent) ast.A
 		op: op
 		pos: p.tok.position()
 	}
-	p.checker.check_assign(node, left_ti, val_ti)
 	return node
 }
 
@@ -260,7 +253,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	// println('assignn_stmt() ' + op.str())
 	p.next()
 	right_expr,right_type := p.expr(0)
-	if !p.checker.check(left_type, right_type) {
+	if !p.table.check(left_type, right_type) {
 		p.error('oops')
 	}
 	return ast.AssignStmt{
@@ -341,7 +334,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			fields: field_names
 			pos: p.tok.position()
 		}
-		p.checker.add_check_expr(node)
 		p.check(.rcbr)
 	}
 	else {
@@ -472,6 +464,7 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
+	ti := types.unresolved_ti
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -482,7 +475,6 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,ty
 			args: args
 			pos: p.tok.position()
 		}
-		ti := p.checker.check_method_call(mcall_expr, left_ti)
 		mut node := ast.Expr{}
 		node = mcall_expr
 		return node, ti
@@ -493,7 +485,6 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,ty
 		field: field_name
 		pos: p.tok.position()
 	}
-	ti := p.checker.check_selector(sel_expr, left_ti)
 	mut node := ast.Expr{}
 	node = sel_expr
 	return node, ti
@@ -516,7 +507,6 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 		op: op
 		pos: p.tok.position()
 	}
-	p.checker.add_check_expr(expr)
 	return expr,ti
 }
 
@@ -595,7 +585,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 	// `for cond {`
 	cond,ti := p.expr(0)
-	if !p.checker.check(types.bool_ti, ti) {
+	if !p.table.check(types.bool_ti, ti) {
 		p.error('non-bool used as for condition')
 	}
 	stmts := p.parse_block()
@@ -612,7 +602,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
 	p.check(.key_if)
 	cond,cond_ti := p.expr(0)
-	// if !p.checker.check(types.bool_ti, cond_ti) {
+	// if !p.table.check(types.bool_ti, cond_ti) {
 	if cond_ti.kind != .bool {
 		p.error('non-bool used as if condition')
 	}
@@ -678,7 +668,7 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 		if i == 0 {
 			val_ti = ti
 		}
-		else if !p.checker.check(val_ti, ti) {
+		else if !p.table.check(val_ti, ti) {
 			p.error('expected array element with type `$val_ti.name`')
 		}
 		exprs << expr
@@ -694,7 +684,6 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 		ti: array_ti
 		exprs: exprs
 	}
-	println('========================================== $array_ti.name ================================')
 	p.check(.rsbr)
 	return node,array_ti
 }
@@ -801,7 +790,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 	}
 	p.check(.rcbr)
-	p.table.register_struct(table.Type{
+	p.table.register_type(table.Type{
 		kind: .struct_
 		name: name
 		info: types.Struct{
@@ -840,7 +829,6 @@ fn (p mut Parser) return_stmt() ast.Return {
 		exprs: exprs
 		pos: p.tok.position()
 	}
-	p.checker.add_check_stmt(stmt)
 	return stmt
 }
 

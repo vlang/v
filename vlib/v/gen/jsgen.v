@@ -37,11 +37,11 @@ pub fn (g mut JsGen) writeln(s string) {
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
-			t := g.table.get_type(it.ti.idx)
-			g.write('/** @return { $t.name } **/\nfunction ${it.name}(')
+			ti := g.table.refresh_ti(it.ti)
+			g.write('/** @return { $ti.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				arg_t := g.table.get_type(arg.ti.idx)
-				g.write(' /** @type { arg_t.name } **/ $arg.name')
+				arg_ti := g.table.refresh_ti(arg.ti)
+				g.write(' /** @type { $arg_ti.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
@@ -60,8 +60,8 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			t := g.table.get_type(it.ti.idx)
-			g.write('var /* $t.name */ $it.name = ')
+			ti := g.table.refresh_ti(it.ti)
+			g.write('var /* $ti.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -120,8 +120,8 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			t := g.table.get_type(it.ti.idx)
-			g.writeln('/*$t.name*/{')
+			ti := g.table.refresh_ti(it.ti)
+			g.writeln('/*$ti.name*/{')
 			for i, field in it.fields {
 				g.write('\t$field : ')
 				g.expr(it.exprs[i])
