@@ -23,7 +23,7 @@ fn test_c_files() {
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
-		b := builder.new()
+		mut b := builder.new_builder()
 		res := b.gen_c([path])
 		if compare_texts(res, ctext) {
 			eprintln('${term_ok} ${i}')

@@ -392,10 +392,9 @@ pub fn (v mut V) compile2() {
 		println('all .v files:')
 		println(v.files)
 	}
-	b := builder.new()
+	mut b := builder.new_builder()
 	b.build_c(v.files, v.out_name)
 	v.cc()
-
 }
 
 pub fn (v mut V) compile_x64() {
@@ -406,7 +405,7 @@ pub fn (v mut V) compile_x64() {
 	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.dir
 
-	b := builder.new()
+	mut b := builder.new_builder()
 	b.build_x64(v.files, v.out_name)
 }
 

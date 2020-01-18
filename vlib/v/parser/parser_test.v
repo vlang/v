@@ -4,6 +4,7 @@ import (
 	v.ast
 	v.gen
 	v.table
+	v.checker
 	term
 )
 
@@ -119,6 +120,7 @@ fn test_parse_expr() {
 	]
 	mut e := []ast.Stmt
 	table := table.new_table()
+	mut checker := checker.new_checker(table)
 	for s in input {
 		// println('\n\nst="$s"')
 		e << parse_stmt(s, table)
@@ -126,6 +128,7 @@ fn test_parse_expr() {
 	program := ast.File{
 		stmts: e
 	}
+	checker.check(program)
 	res := gen.cgen([program], table)
 	println('========')
 	println(res)

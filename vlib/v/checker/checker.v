@@ -11,28 +11,27 @@ import (
 )
 
 pub struct Checker {
-	file_name  string
 	table      &table.Table
 mut:
+	file_name  string
 	// TODO: resolved
-	position   token.Position
 }
 
-pub fn new_checker(file_name string, table &table.Table) Checker {
+pub fn new_checker(table &table.Table) Checker {
 	return Checker{
-		file_name: file_name
 		table: table
 	}
 }
 
-pub fn (c &Checker) check(file ast.File) {
-	for stmt in file.stmts {
+pub fn (c &Checker) check(ast_file ast.File) {
+	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
 }
 
-pub fn (c &Checker) check_files(files []ast.File) {
-	for file in files {
+pub fn (c mut Checker) check_files(v_files []string, ast_files []ast.File) {
+	for i, file in ast_files {
+		c.file_name = v_files[i]
 		c.check(file)
 	}
 }
