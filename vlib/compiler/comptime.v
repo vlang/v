@@ -21,8 +21,9 @@ fn (p mut Parser) comp_time() {
 		}
 		name := p.check_name()
 		p.fspace()
-
+    
 		if name in supported_platforms {
+			os := os_from_string(name)
 			ifdef_name := os_name_to_ifdef(name)
 			if name == 'mac' {
 				p.warn('use `macos` instead of `mac`')
@@ -42,8 +43,8 @@ fn (p mut Parser) comp_time() {
 					p.genln('#ifdef $ifdef_name')
 				}
 			}
+
 			p.check(.lcbr)
-			os := os_from_string(name)
 			if ((!not && os != p.os) || (not && os == p.os)) && !name.contains('_or_') &&
 				 !p.scanner.is_fmt && !p.pref.output_cross_c {
 				// `$if os {` for a different target, skip everything inside
@@ -79,45 +80,67 @@ fn (p mut Parser) comp_time() {
 			}
 		}
 		else if name == 'x64' {
-			p.comptime_if_block('TARGET_IS_64BIT')
+			p.comptime_if_block('TARGET_IS_64BIT', not)
 		}
 		else if name == 'x32' {
-			p.comptime_if_block('TARGET_IS_32BIT')
+			p.comptime_if_block('TARGET_IS_32BIT', not)
 		}
 		else if name == 'big_endian' {
-			p.comptime_if_block('TARGET_ORDER_IS_BIG')
+			p.comptime_if_block('TARGET_ORDER_IS_BIG', not)
 		}
 		else if name == 'little_endian' {
-			p.comptime_if_block('TARGET_ORDER_IS_LITTLE')
+			p.comptime_if_block('TARGET_ORDER_IS_LITTLE', not)
 		}
 		else if name == 'debug' {
-			p.comptime_if_block('VDEBUG')
+			p.comptime_if_block('VDEBUG', not)
 		}
 		else if name == 'prealloc' {
-			p.comptime_if_block('VPREALLOC')
+			p.comptime_if_block('VPREALLOC', not)
 		}
 		else if name == 'tinyc' {
-			p.comptime_if_block('__TINYC__')
+			p.comptime_if_block('__TINYC__', not)
 		}
 		else if name == 'glibc' {
-			p.comptime_if_block('__GLIBC__')
+			p.comptime_if_block('__GLIBC__', not)
 		}
 		else if name == 'mingw' {
-			p.comptime_if_block('__MINGW32__')
+			p.comptime_if_block('__MINGW32__', not)
 		}
 		else if name == 'msvc' {
-			p.comptime_if_block('_MSC_VER')
+			p.comptime_if_block('_MSC_VER', not)
 		}
 		else if name == 'clang' {
-			p.comptime_if_block('__clang__')
+			p.comptime_if_block('__clang__', not)
 		}
 		else if p.v.compile_defines_all.len > 0 && name in p.v.compile_defines_all {
-			p.comptime_if_block('CUSTOM_DEFINE_${name}')
-		}
-		else {
-			println('Supported platforms:')
-			println(supported_platforms)
-			p.error('unknown platform `$name`')
+			// Support for *optional* custom compile defines, i.e.:
+			//
+			// `[if custom]` => custom should be defined
+			// `$if custom { // stuff }` => custom should be defined
+			// `$if custom ? { // stuff }` => custom may not be defined
+			//
+			// Custom compile defines are given on the CLI, like this:
+			// `v -d custom=0` => means that the custom will be defined,
+			// but that it will be considered false.
+			// `v -d custom=1`, which is equivalent to `v -d custom`,
+			// means that the custom will be defined, and considered true.
+			//
+			// The ? sign, means that `custom` is optional, and when
+			// it is not present at all at the command line, then the
+			// block will just be ignored, instead of erroring.			
+			if p.tok == .question {
+				p.next()
+			}
+			p.comptime_if_block('CUSTOM_DEFINE_${name}', not)
+		} else {			
+			if p.tok == .question {				
+				p.next()
+				p.comptime_if_block('CUSTOM_DEFINE_${name}', not)
+			}else{
+				println('Supported platforms:')
+				println(supported_platforms)
+				p.error('unknown platform `$name`')
+			}
 		}
 		if_returns := p.returns
 		p.returns = false
@@ -496,8 +519,12 @@ fn (p mut Parser) gen_array_map(str_typ string, method_ph int) string {
 	return 'array_' + stringify_pointer(map_type)
 }
 
-fn (p mut Parser) comptime_if_block(name string) {
-	p.genln('#ifdef $name')
+fn (p mut Parser) comptime_if_block(name string, not bool) {
+	if not {
+		p.genln('#ifndef $name')
+	}else{
+		p.genln('#ifdef $name')
+	}
 	p.check(.lcbr)
 	p.statements_no_rcbr()
 	if !(p.tok == .dollar && p.peek() == .key_else) {

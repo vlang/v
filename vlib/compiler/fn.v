@@ -486,7 +486,7 @@ fn (p mut Parser) fn_decl() {
 	if is_c {
 		p.fgen_nl()
 	}
-	
+
 	// Register the method
 	if receiver_typ != '' {
 		mut receiver_t := p.table.find_type(receiver_typ)
@@ -512,7 +512,7 @@ fn (p mut Parser) fn_decl() {
 	if p.first_pass() && p.attr == 'live' && !(is_live || is_solive) {
 		println('INFO: run `v -live $p.v.dir `, if you want to use [live] function $f.name .')
 	}
-	
+
 	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
 		// First pass? Skip the body for now
 		// Look for generic calls.
@@ -536,7 +536,7 @@ fn (p mut Parser) fn_decl() {
 		}
 		return
 	}
-	
+
 	if is_solive {
 		// Live functions are protected by a mutex, because otherwise they
 		// can be changed by the live reload thread, *while* they are
@@ -560,10 +560,10 @@ fn (p mut Parser) fn_decl() {
 		p.genln('  $live_fncall')
 		p.genln('  pthread_mutex_unlock(&live_fn_mutex);')
 		p.genln('  $live_fnreturn')
-		p.genln('}')		
+		p.genln('}')
 		p.genln('$typ impl_live_${fn_name_cgen} ($str_args){')
 	}
-	
+
 	if f.name in ['main__main', 'main', 'WinMain'] {
 		if p.pref.is_test {
 			p.error_with_token_index('tests cannot have function `main`', f.fn_name_token_idx)
@@ -665,7 +665,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 			break
 		}
 		if !var.is_used && !p.pref.is_repl && !var.is_arg && !p.pref.translated &&
-			var.name != 'tmpl_res' && p.mod != 'vweb' && var.name != 'it' {
+			var.name != 'tmpl_res' && p.mod != 'vweb' && var.name != 'it' && !p.cur_fn.is_unsafe {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx)
 		}
 		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated && var.typ != 'T*' && p.mod != 'ui' && var.typ != 'App*' {

@@ -316,7 +316,7 @@ m.delete('two')
 
 numbers := {
     'one': 1,
-    'two': 2,
+    'two': 2
 }
 ```
 
@@ -461,13 +461,11 @@ match os {
     else     { println(os) }
 }
 
+number := 2
 s := match number {
     1    { 'one' }
     2    { 'two' }
-    else {
-        println('this works too')
-        'many'
-    }
+    else { 'many'}
 }
 ```
 
@@ -484,9 +482,9 @@ enum Color {
 
 fn is_red_or_blue(c Color) bool {
     return match c {
-        .red { true }
-        .blue { true }
-        else { false }
+        .red  { true  }
+        .blue { true  }
+        else  { false }
     }
 }
 ```
@@ -506,6 +504,7 @@ p := Point{
     x: 10
     y: 20
 }
+
 println(p.x) // Struct fields are accessed using a dot
 ```
 
@@ -1142,11 +1141,11 @@ V has a built-in ORM that supports Postgres, and will soon support MySQL and SQL
 
 The benefits of V ORM:
 
--   One syntax for all SQL dialects. Migrating to a different database becomes much easier.
--   Queries are constructed with V syntax. There's no need to learn another syntax.
--   Safety. It's impossible to construct a SQL query with an injection.
--   Compile time checks. No more typos that can only be caught at runtime.
--   Readability and simplicity. You don't need to manually parse the results and construct objects.
+- One syntax for all SQL dialects. Migrating to a different database becomes much easier.
+- Queries are constructed with V syntax. There's no need to learn another syntax.
+- Safety. It's impossible to construct a SQL query with an injection.
+- Compile time checks. No more typos that can only be caught at runtime.
+- Readability and simplicity. You don't need to manually parse the results and construct objects.
 
 ```v
 struct Customer { // struct name has to be the same as the table name for now
@@ -1423,11 +1422,11 @@ If you have well-written, well-tested C code, then of course you can always simp
 
 Translating it to V gives you several advantages:
 
--   If you plan to develop that code base, you now have everything in one language, which is much safer and easier to develop in than C.
+- If you plan to develop that code base, you now have everything in one language, which is much safer and easier to develop in than C.
 
--   Cross-compilation becomes a lot easier. You don't have to worry about it at all.
+- Cross-compilation becomes a lot easier. You don't have to worry about it at all.
 
--   No more build flags and include files either.
+- No more build flags and include files either.
 
 ## Hot code reloading
 

@@ -44,7 +44,7 @@ pub fn (ts mut TestSession) test() {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
 		$if windows {
-			if file.contains('sqlite') {
+			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
 			}
 		}
