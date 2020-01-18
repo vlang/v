@@ -10,6 +10,8 @@ pub const (
 #flag darwin -fobjc-arc
 #flag linux -lX11 -lGL
 
+#flag windows -lgdi32
+
 // METAL
 // #flag -DSOKOL_METAL
 // #flag darwin -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
