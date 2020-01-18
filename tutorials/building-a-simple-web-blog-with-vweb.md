@@ -2,7 +2,7 @@
 
 Hello,
 
-In this guide we'll build a simple web blog in V.
+In this guide, we'll build a simple web blog in V.
 
 The benefits of using V for web:
 - A safe, fast, language with the development speed of Python and
@@ -47,7 +47,7 @@ cd blog
 touch blog.v
 ```
 
-First let's create a simple hello world website:
+First, let's create a simple hello world website:
 
 ```v
 // blog.v
@@ -94,7 +94,7 @@ with an MVC web framework, you can think of it as a controller. (Vweb is
 not an MVC framework however.)
 
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
-Vweb often uses convention over configuration, and adding a new action requires
+Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v
@@ -107,10 +107,10 @@ fn (app mut App) time() {
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/time.png?raw=true">
 
 >You have to rebuild and restart the website every time you change the code.
-In the future Vweb will detect changes and recompile the website in the background
+In the future, Vweb will detect changes and recompile the website in the background
 while it's running.
 
-The `.text(string)` method obviously returns a plain text document with the provided
+The `.text(string)` method returns a plain text document with the provided
 text, which isn't frequently used in websites.
 
 
@@ -155,7 +155,7 @@ It's another feature of Vweb to reduce the boilerplate in your web apps.
 No need to create view models just to pass data, or use an unsafe and untyped
 alternative, like C#'s `ViewBag["message"]`.
 
-Making all action's variables available in the view may seem crazy,
+Making all action variables available in the view may seem crazy,
 but V is a language with pure functions by default, and you won't be able
 to modify any data from a view. `<b>@foo.bar()</b>` will only work if the `bar()` method
 doesn't modify `foo`.
@@ -176,7 +176,7 @@ into a single binary file together with the web application itself.
 Now let's display some articles!
 
 We'll be using V's builtin ORM and a Postgres database. (V ORM will also
-support MySQL, SQLite, and SQL Server in the near future.)
+support MySQL, SQLite, and SQL Server soon.)
 
 Create a SQL file with the schema:
 ```sql
@@ -368,7 +368,7 @@ We need to update `index.html` to add a link to the "new article" page:
 
 ### JSON endpoints
 
-This tutorial used the traditional server side rendering. If you prefer
+This tutorial used the traditional server-side rendering. If you prefer
 to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
