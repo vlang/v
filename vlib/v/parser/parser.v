@@ -754,10 +754,10 @@ fn (p mut Parser) const_decl() ast.Stmt {
 	p.check(.lpar)
 	for p.tok.kind != .rpar {
 		name := p.check_name()
-		// println('const: $name')
+		println('const: $name')
 		p.check(.assign)
+		_, _ := p.expr(0)
 		// expr, ti := p.expr(0)
-		// TODO
 	}
 	p.check(.rpar)
 	return ast.Stmt{}
