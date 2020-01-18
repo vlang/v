@@ -165,9 +165,7 @@ fn jsencode_bool(val bool) &C.cJSON {
 }
 
 fn jsencode_string(val string) &C.cJSON {
-	clone := val.clone()
-	return C.cJSON_CreateString(clone.str)
-	// return C.cJSON_CreateString2(val.str, val.len)
+	return C.cJSON_CreateString(val.str)
 }
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))
