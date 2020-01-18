@@ -17,6 +17,10 @@ pub:
 	y int
 }
 
+pub fn (v Vec2) str() string {
+	return 'Vec2{ x: $v.x y: $v.y }'
+}
+
 pub fn vec2(x, y int) Vec2 {
 	res := Vec2 {
 		x: x
