@@ -78,6 +78,7 @@ pub fn (ts mut TestSession) test() {
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 
 	ncpus := runtime.nr_cpus()
+	eprintln('N Cpus: $ncpus')
 	ts.waitgroup.add( ncpus )
 	for i:=0; i < ncpus; i++ {
 		go process_in_thread(ts)
