@@ -5,6 +5,8 @@ import (
 	term
 	benchmark
 	filepath
+	runtime
+	time
 )
 
 pub struct TestSession {
@@ -13,7 +15,8 @@ pub mut:
 	vexe      string
 	vargs     string
 	failed    bool
-	benchmark benchmark.Benchmark
+	current   int
+	benchmark benchmark.ConcurrentBenchmark
 }
 
 pub fn new_test_session(vargs string) TestSession {
@@ -32,7 +35,7 @@ pub fn vexe_path() string {
 }
 
 pub fn (ts mut TestSession) init() {
-	ts.benchmark = benchmark.new_benchmark()
+	ts.benchmark = benchmark.new_concurrent_benchmark()
 }
 
 pub fn (ts mut TestSession) test() {
@@ -66,8 +69,25 @@ pub fn (ts mut TestSession) test() {
 		remaining_files << dot_relative_file
 	}
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	for dot_relative_file in remaining_files {
-		relative_file := dot_relative_file.replace('./', '')
+	ts.files = remaining_files
+	for i in 1..runtime.nr_cpus() {
+		go ts.build_instance(tmpd, show_stats)
+	}
+	ts.build_instance(tmpd, show_stats)
+	for ts.benchmark.ntotal < remaining_files.len {
+		time.sleep_ms(500)
+	}
+	ts.benchmark.stop()
+	eprintln(term.h_divider())
+}
+
+fn (ts mut TestSession) build_instance(tmpd string, show_stats bool) {
+	for ts.current < ts.files.len {
+		//TODO Currently has race condition. Add lock when that's available
+		self := ts.current
+		ts.current++
+
+		relative_file := ts.files[self].replace('./', '')
 		file := os.realpath(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
 		// Remove them after a test passes/fails.
@@ -83,42 +103,40 @@ pub fn (ts mut TestSession) test() {
 		}
 		cmd := '"${ts.vexe}" ' + cmd_options.join(' ') + ' "${file}"'
 		// eprintln('>>> v cmd: $cmd')
-		ts.benchmark.step()
+		mut step := ts.benchmark.step()
 		if show_stats {
 			eprintln('-------------------------------------------------')
 			status := os.system(cmd)
 			if status == 0 {
-				ts.benchmark.ok()
+				step.ok()
 			}
 			else {
-				ts.benchmark.fail()
+				step.fail()
 				ts.failed = true
 				continue
 			}
 		}
 		else {
 			r := os.exec(cmd) or {
-				ts.benchmark.fail()
+				step.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message_fail(relative_file))
+				eprintln(step.step_message_fail(relative_file))
 				continue
 			}
 			if r.exit_code != 0 {
-				ts.benchmark.fail()
+				step.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message_fail('${relative_file}\n`$file`\n (\n$r.output\n)'))
+				eprintln(step.step_message_fail('${relative_file}\n`$file`\n (\n$r.output\n)'))
 			}
 			else {
-				ts.benchmark.ok()
-				eprintln(ts.benchmark.step_message_ok(relative_file))
+				step.ok()
+				eprintln(step.step_message_ok(relative_file))
 			}
 		}
 		if os.exists(generated_binary_fpath) {
 			os.rm(generated_binary_fpath)
 		}
 	}
-	ts.benchmark.stop()
-	eprintln(term.h_divider())
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
