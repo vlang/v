@@ -111,7 +111,7 @@ fn (ts mut TestSession) process_files() {
 
 		ts.ntask_mtx.lock()
 		ts.ntask++
-		mut idx := ts.ntask-1
+		idx := ts.ntask-1
 		ts.ntask_mtx.unlock()
 		
 		if idx >= ts.files.len { break }
