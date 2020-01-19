@@ -150,6 +150,22 @@ pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
 	}
 }
 
+pub fn (c &Checker) check_array_init(array_init ast.ArrayInit) {
+	mut val_ti := types.void_ti
+	for i, expr in array_init.exprs {
+		c.expr(expr)
+		ti := c.table.get_expr_ti(expr)
+		// The first element's type
+		if i == 0 {
+			val_ti = ti
+			continue
+		}
+		if !c.table.check(val_ti, ti) {
+			c.error('expected array element with type `$val_ti.name`', array_init.pos)
+		}
+	}
+}
+
 fn (c &Checker) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
@@ -215,9 +231,7 @@ fn (c &Checker) expr(node ast.Expr) {
 			c.check_method_call_expr(it)
 		}
 		ast.ArrayInit {
-			for expr in it.exprs {
-				c.expr(expr)
-			}
+			c.check_array_init(it)
 		}
 		// ast.Ident {}
 		// ast.BoolLiteral {}
