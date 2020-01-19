@@ -84,7 +84,7 @@ pub fn (ts mut TestSession) test() {
 		// be locked, but that makes writing slower...
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		// Instead, just run tests on 1 core for now.
-		//ncpus := 1
+		ncpus := 1
 	}	
 	ts.waitgroup.add( ncpus )
 	for i:=0; i < ncpus; i++ {
