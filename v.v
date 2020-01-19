@@ -114,7 +114,7 @@ fn v_command(command string, args []string) {
 			compiler.create_symlink()
 		}
 		'runrepl' {
-			//TODO: remove this after 2020/02/01
+			// TODO: remove this after 2020/02/01
 			eprintln('`v runrepl` has been deprecated. Please use `v repl` instead.')
 			compiler.launch_tool('vrepl', 'runrepl')
 		}
@@ -132,7 +132,7 @@ fn v_command(command string, args []string) {
 			// v.gen_doc_html_for_module(args.last())
 		}
 		else {
-			panic('v $command: unknown command\nRun "v help" for usage.')
+			eprintln('v $command: unknown command\nRun "v help" for usage.')
 		}
 	}
 	exit(0)
