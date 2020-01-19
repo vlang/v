@@ -1,4 +1,4 @@
-FROM alpine:3.10
+FROM alpine:3.11
 
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 
@@ -14,5 +14,7 @@ RUN apk --no-cache add \
   musl-dev \
   openssl-dev sqlite-dev \
   libx11-dev glfw-dev freetype-dev
+
+RUN apk --no-cache add --virtual sdl2deps sdl2-dev sdl2_ttf-dev sdl2_mixer-dev sdl2_image-dev
 
 RUN git clone https://github.com/vlang/v /opt/vlang && make && v --version

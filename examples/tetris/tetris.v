@@ -77,13 +77,13 @@ const (
 	// Each tetro has its unique color
 	Colors = [
 		gx.rgb(0, 0, 0),        // unused ?
-		gx.rgb(253, 32, 47),    // lightred quad
-		gx.rgb(0, 110, 194),    // lightblue triple
-		gx.rgb(170, 170, 0),    // darkyellow short topright
-		gx.rgb(170, 0, 170),    // purple short topleft
-		gx.rgb(50, 90, 110),    // darkgrey long topleft
-		gx.rgb(0, 170, 0),      // lightgreen long topright
-		gx.rgb(170, 85, 0),     // brown longest
+		gx.rgb(255, 242, 0),    // yellow quad
+		gx.rgb(174, 0, 255),    // purple triple
+		gx.rgb(60, 255, 0),     // green short topright
+		gx.rgb(255, 0, 0),      // red short topleft
+		gx.rgb(255, 180, 31),   // orange long topleft
+		gx.rgb(33, 66, 255),    // blue long topright
+		gx.rgb(74, 198, 255),   // lightblue longest
 		gx.rgb(0, 170, 170),    // unused ?
 	]
 
@@ -143,22 +143,21 @@ fn main() {
 			window_title: 'V Tetris'
 			window_user_ptr: game
 		})
-		ft: 0
+		ft: freetype.new_context(gg.Cfg{
+			width: WinWidth
+			height: WinHeight
+			use_ortho: true
+			font_size: 18
+			scale: 2
+			window_user_ptr: 0
+		})
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
 	gg.clear(BackgroundColor)
-	// Try to load font
-	game.ft = freetype.new_context(gg.Cfg{
-			width: WinWidth
-			height: WinHeight
-			use_ortho: true
-			font_size: 18
-			scale: 2
-	})
-	game.font_loaded = (game.ft != 0 )
+	game.font_loaded = game.ft != 0
 	for {
 		gg.clear(BackgroundColor)
 		game.draw_scene()
@@ -172,7 +171,7 @@ fn main() {
 
 fn (g mut Game) init_game() {
 	g.parse_tetros()
-	rand.seed(time.now().uni)
+	rand.seed(time.now().unix)
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge
@@ -361,7 +360,7 @@ fn parse_binary_tetro(t_ int) []Block {
 	for i := 0; i <= 3; i++ {
 		// Get ith digit of t
 		p := int(math.pow(10, 3 - i))
-		mut digit := int(t / p)
+		mut digit := t / p
 		t %= p
 		// Convert the digit to binary
 		for j := 3; j >= 0; j-- {
@@ -402,6 +401,7 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 				game.state = .running
 			}
 		}
+		else {}
 	}
 
 	if game.state != .running {
@@ -434,5 +434,6 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	glfw.KeyDown {
 		game.move_tetro() // drop faster when the player presses <down>
 	}
+	else { }
 	}
 }

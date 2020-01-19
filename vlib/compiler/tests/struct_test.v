@@ -154,3 +154,39 @@ fn test_assoc_with_constants() {
 	assert again.b == 22
 }
 
+struct AttrTest{
+	a int     // private immutable (default)
+mut:
+	b int     // private mutable
+	c int     // (you can list multiple fields with the same access modifier)
+pub:
+	d int     // public immmutable (readonly)
+pub mut:
+	e int     // public, but mutable only in parent module
+__global:
+	f int 	  // public and mutable both inside and outside parent module
+}
+
+/*
+[typedef]
+struct C.fixed {
+	points [10]C.point
+}
+
+[typedef]
+struct C.point {
+	x int
+	y int
+}
+
+fn test_fixed_field() {
+	f := &C.fixed{}
+	p := f.points[0]
+	//f.nums[0] = 10
+	//println(f.nums[0])
+	println(p.x)
+		//nums: [10]int
+	//}
+}
+*/
+

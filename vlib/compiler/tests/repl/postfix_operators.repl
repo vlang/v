@@ -1,0 +1,11 @@
+mut a := 2
+a++
+a
+println(a)
+println(a++)
+a
+===output===
+3
+3
+3
+3

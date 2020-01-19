@@ -1,19 +1,17 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module builtin
 
+__global g_m2_buf byteptr
+__global g_m2_ptr byteptr
+
 fn init() {
-	$if windows {	
-		if is_atty(0) > 0 {
-			C._setmode(C._fileno(C.stdin), C._O_U16TEXT)
-		} else {
-			C._setmode(C._fileno(C.stdin), C._O_U8TEXT)		
+	$if windows {
+		if is_atty(1) > 0 {
+			C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+			C.setbuf(C.stdout, 0)
 		}
-		C._setmode(C._fileno(C.stdout), C._O_U8TEXT)
-		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
-		C.setbuf(C.stdout,0)
 	}
 }
 
@@ -26,26 +24,31 @@ pub fn isnil(v voidptr) bool {
 	return v == 0
 }
 
-fn on_panic(f fn (int) int) {
+fn on_panic(f fn(int)int) {
 	// TODO
 }
 
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if windows {
 		$if msvc {
-			if print_backtrace_skipping_top_frames_msvc(skipframes) { return }
+			if print_backtrace_skipping_top_frames_msvc(skipframes) {
+				return
+			}
 		}
 		$if mingw {
-			if print_backtrace_skipping_top_frames_mingw(skipframes) { return }
+			if print_backtrace_skipping_top_frames_mingw(skipframes) {
+				return
+			}
 		}
-	}$else{
-		if print_backtrace_skipping_top_frames_nix(skipframes) { return }
+	} $else {
+		if print_backtrace_skipping_top_frames_nix(skipframes) {
+			return
+		}
 	}
 	println('print_backtrace_skipping_top_frames is not implemented on this platform for now...\n')
 }
 
-
-pub fn print_backtrace(){
+pub fn print_backtrace() {
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// 1 frame for print_backtrace_skipping_top_frames
 	// 1 frame for print_backtrace itself
@@ -55,7 +58,7 @@ pub fn print_backtrace(){
 }
 
 // replaces panic when -debug arg is passed
-fn panic_debug(line_no int, file,  mod, fn_name, s string) {
+fn panic_debug(line_no int, file, mod, fn_name, s string) {
 	println('================ V panic ================')
 	println('   module: $mod')
 	println(' function: ${fn_name}()')
@@ -73,18 +76,6 @@ pub fn panic(s string) {
 	C.exit(1)
 }
 
-pub fn println(s string) {
-	// Should never happen
-	if isnil(s.str) {
-		panic('println(NIL)')
-	}
-	$if windows {
-		C._putws(s.to_wide())
-	} $else {
-		C.printf('%.*s\n', s.len, s.str)
-	}
-}
-
 pub fn eprintln(s string) {
 	if isnil(s.str) {
 		panic('eprintln(NIL)')
@@ -100,23 +91,57 @@ pub fn eprintln(s string) {
 	println(s)
 }
 
+pub fn eprint(s string) {
+	if isnil(s.str) {
+		panic('eprint(NIL)')
+	}
+	$if !windows {
+		C.fflush(stdout)
+		C.fflush(stderr)
+		C.fprintf(stderr, '%.*s', s.len, s.str)
+		C.fflush(stderr)
+		return
+	}
+	print(s)
+}
+
 pub fn print(s string) {
 	$if windows {
-		C.wprintf(s.to_wide())
+		output_handle := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
+		mut bytes_written := 0
+		if is_atty(1) > 0 {
+			wide_str := s.to_wide()
+			wide_len := C.wcslen(wide_str)
+			C.WriteConsole(output_handle, wide_str, wide_len, &bytes_written, 0)
+		} else {
+			C.WriteFile(output_handle, s.str, s.len, &bytes_written, 0)
+		}
 	} $else {
 		C.printf('%.*s', s.len, s.str)
 	}
 }
 
-__global total_m i64 = 0
-//__global nr_mallocs int = 0
+__global total_m i64=0
+__global nr_mallocs int=0
+
 [unsafe_fn]
 pub fn malloc(n int) byteptr {
-	if n < 0 {
-		panic('malloc(<0)')
+	if n <= 0 {
+		panic('malloc(<=0)')
 	}
-	//nr_mallocs++
-/*
+	$if prealloc {
+		res := g_m2_ptr
+		g_m2_ptr += n
+		nr_mallocs++
+		return res
+	} $else {
+		ptr := C.malloc(n)
+		if ptr == 0 {
+			panic('malloc($n) failed')
+		}
+		return ptr
+	}
+	/*
 TODO
 #ifdef VPLAY
 	if n > 10000 {
@@ -129,17 +154,12 @@ TODO
 	print_backtrace()
 #endif
 */
-free(C.malloc(n))
-	ptr := C.malloc(n)
-	if isnil(ptr) {
-		panic('malloc($n) failed')
-	}
-	return ptr
+
 }
 
 pub fn calloc(n int) byteptr {
-	if n < 0 {
-		panic('calloc(<0)')
+	if n <= 0 {
+		panic('calloc(<=0)')
 	}
 	return C.calloc(n, 1)
 }
@@ -168,3 +188,28 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
+
+/*
+fn C.va_start()
+fn C.va_end()
+fn C.vsnprintf() int
+fn C.vsprintf() int
+
+pub fn str2_(fmt charptr, ...) string {
+       argptr := C.va_list{}
+        C.va_start(argptr, fmt)
+        len := C.vsnprintf(0, 0, fmt, argptr) + 1
+C.va_end(argptr)
+        buf := malloc(len)
+        C.va_start(argptr, fmt)
+        C.vsprintf(charptr(buf), fmt, argptr)
+        C.va_end(argptr)
+//#ifdef DEBUG_ALLOC
+//        puts("_STR:");
+//        puts(buf);
+//#endif
+        return tos2(buf)
+}
+*/
+
+

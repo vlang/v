@@ -21,7 +21,7 @@ fn test_match_integers() {
         2 { 3 }
         else { 5 }
     } == 3
-    
+
     assert match 0 {
         1 { 2 }
         2 { 3 }
@@ -31,7 +31,7 @@ fn test_match_integers() {
     assert match 1 {
         else { 5 }
     } == 5
-    
+
     a = 0
     match 2 {
         0 { a = 1 }
@@ -42,7 +42,7 @@ fn test_match_integers() {
         }
     }
     assert a == 3
-    
+
     a = 0
     match 1 {
         0 { a = 1 }
@@ -51,6 +51,7 @@ fn test_match_integers() {
             a = a + 2
             a = a + 2
         }
+       else {}
     }
     assert a == 6
 
@@ -61,7 +62,7 @@ fn test_match_integers() {
         }
     }
     assert a == -2
-} 
+}
 
 fn test_match_enums(){
     mut b := Color.red

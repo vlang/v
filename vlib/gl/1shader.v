@@ -13,6 +13,9 @@ import glm
 pub struct Shader {
 	program_id int
 }
+pub fn (s Shader) str() string {
+	return 'Shader{ program_id: s.program_id }'
+}
 
 pub const (
 	TEXT_VERT   = '#version 330 core
@@ -76,6 +79,23 @@ void main()     {
 //    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
 //    FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);
 if (has_texture) {
+	/*
+	vec3 chromaKeyColor = texture(ourTexture,TexCoord.xy).xyz;
+
+float alpha;
+bool is_cyan = ((chromaKeyColor.x == 0)); // && chromaKeyColor.x <= 1) && (chromaKeyColor.y <= 255) &&
+bool is_pink= ((chromaKeyColor.y == 0));
+//bool is_pink= ((chromaKeyColor.x <= 255) && (chromaKeyColor.y == 0) &&(chromaKeyColor.z <= 255));
+if (is_cyan || is_pink) {
+    alpha = 0.;
+}
+else
+{
+    alpha = 1.0;
+}
+FragColor= vec4(texture(ourTexture,TexCoord.xy).xyz,alpha);
+*/
+
     FragColor = texture(ourTexture, TexCoord);
 
 }  else {
@@ -92,8 +112,8 @@ pub fn new_shader(name string) Shader {
 	if name.starts_with('/') {
 		dir = ''
 	}
-	vertex_path := '${dir}${name}.vert'
-	fragment_path := '${dir}${name}.frag'
+	//vertex_path := '${dir}${name}.vert'
+	//fragment_path := '${dir}${name}.frag'
 	//println('shader path=$vertex_path,\n fpath="$fragment_path"')
 	// vertex_src := os.read_file(vertex_path.trim_space())
 	mut vertex_src := ''

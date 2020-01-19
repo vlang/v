@@ -8,9 +8,9 @@ pub:
 
 pub fn strlen(s byteptr) int {
 	mut i := 0
-	for ; s[i] != 0; i++ {}	
+	for ; s[i] != 0; i++ {}
 	return i
-}	
+}
 
 pub fn tos(s byteptr, len int) string {
 	if s == 0 {
@@ -20,6 +20,22 @@ pub fn tos(s byteptr, len int) string {
 		str: s
 		len: len
 	}
+}
+
+fn (s string) add(a string) string {
+	new_len := a.len + s.len
+	mut res := string {
+		len: new_len
+		str: malloc(new_len + 1)
+	}
+	for j := 0; j < s.len; j++ {
+		res[j] = s[j]
+	}
+	for j := 0; j < a.len; j++ {
+		res[s.len + j] = a[j]
+	}
+	res[new_len] = `\0`// V strings are not null terminated, but just in case
+	return res
 }
 
 /*
@@ -95,18 +111,25 @@ pub fn i64_tos(buf byteptr, len int, n0 i64, base int) string {
 	return b
 }
 
+pub fn i64_str(n0 i64, base int) string {
+	buf := malloc(80)
+	return i64_tos(buf, 79, n0, base)
+}
 
+pub fn ptr_str(ptr voidptr) string {
+  buf := [16]byte
+  hex := i64_tos(buf, 15, i64(ptr), 16)
+  res := '0x' + hex
+  return res
+}
 
-/*
 pub fn (a string) clone() string {
 	mut b := string {
 		len: a.len
 		str: malloc(a.len + 1)
 	}
-	for i := 0; i < a.len; i++ {
-		b[i] = a[i]
-	}
+	mem_copy(b.str, a.str, a.len)
 	b[a.len] = `\0`
 	return b
 }
-*/
+

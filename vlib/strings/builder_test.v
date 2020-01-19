@@ -25,7 +25,7 @@ fn test_big_sb() {
 	for i in 0..n {
 		sb.writeln(i.str())
 		sb2.write('+')
-	}	
+	}
 	s := sb.str()
 	lines := s.split_into_lines()
 	assert lines.len == n
@@ -35,6 +35,17 @@ fn test_big_sb() {
 	assert lines[98765] == '98765'
 	println(sb2.len)
 	assert sb2.len == n
-	
-}	
 
+}
+
+fn test_byte_write() {
+	mut sb := strings.new_builder(100)
+	temp_str := "byte testing"
+	mut count := 0
+	for word in temp_str {
+		sb.write_b(word)
+		count++
+		assert count == sb.len
+	}
+	assert sb.str() == temp_str
+}

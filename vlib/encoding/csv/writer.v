@@ -8,8 +8,7 @@ import strings
 
 struct Writer {
 	sb strings.Builder
-pub:
-mut:
+pub mut:
 	use_crlf bool
 	delimiter byte
 }
@@ -39,7 +38,7 @@ pub fn (w mut Writer) write(record []string) ?bool {
 		}
 
 		w.sb.write('"')
-		
+
 		for field.len > 0 {
 			mut i := field.index_any('"\r\n')
 			if i < 0 {
@@ -52,12 +51,13 @@ pub fn (w mut Writer) write(record []string) ?bool {
 			if field.len > 0 {
 				z := field[0]
 				match z {
-				`"` {
-					w.sb.write('""')
-				}
-				`\r`, `\n` {
-					w.sb.write(le)
-				}
+					`"` {
+						w.sb.write('""')
+					}
+					`\r`, `\n` {
+						w.sb.write(le)
+					}
+					else {}
 				}
 				field = field[1..]
 			}

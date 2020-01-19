@@ -1,16 +1,19 @@
 module compiler
 
-import os
-import time
+import (
+	os
+	time
+	filepath
+)
 
 fn (v &V) generate_hotcode_reloading_compiler_flags() []string {
 	mut a := []string
 	if v.pref.is_live || v.pref.is_so {
 		// See 'man dlopen', and test running a GUI program compiled with -live
-		if (v.os == .linux || os.user_os() == 'linux'){
+		if (v.os == .linux || os.user_os() == 'linux') {
 			a << '-rdynamic'
 		}
-		if (v.os == .mac || os.user_os() == 'mac'){
+		if (v.os == .mac || os.user_os() == 'mac') {
 			a << '-flat_namespace'
 		}
 	}
@@ -26,7 +29,8 @@ fn (v &V) generate_hotcode_reloading_declarations() {
 		if v.pref.is_live {
 			cgen.genln('pthread_mutex_t live_fn_mutex = PTHREAD_MUTEX_INITIALIZER;')
 		}
-	} else {
+	}
+	else {
 		if v.pref.is_so {
 			cgen.genln('HANDLE live_fn_mutex;')
 			cgen.genln('
@@ -45,11 +49,13 @@ void pthread_mutex_unlock(HANDLE *m) {
 }
 
 fn (v &V) generate_hotcode_reloading_main_caller() {
-	if !v.pref.is_live { return }
+	if !v.pref.is_live {
+		return
+	}
 	// We are in live code reload mode, so start the .so loader in the background
 	mut cgen := v.cgen
 	cgen.genln('')
-	file_base := os.filename(v.dir).replace('.v', '')
+	file_base := filepath.filename(v.dir).replace('.v', '')
 	if v.os != .windows {
 		// unix:
 		so_name := file_base + '.so'
@@ -57,9 +63,10 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 		cgen.genln('  load_so(live_library_name);')
 		cgen.genln('  pthread_t _thread_so;')
 		cgen.genln('  pthread_create(&_thread_so , NULL, (void *)&reload_so, live_library_name);')
-	} else {
+	}
+	else {
 		// windows:
-		so_name := file_base + if v.pref.ccompiler == 'msvc' {'.dll'} else {'.so'}
+		so_name := file_base + if v.pref.ccompiler == 'msvc' { '.dll' } else { '.so' }
 		cgen.genln('  char *live_library_name = "$so_name";')
 		cgen.genln('  live_fn_mutex = CreateMutexA(0, 0, 0);')
 		cgen.genln('  load_so(live_library_name);')
@@ -70,37 +77,34 @@ fn (v &V) generate_hotcode_reloading_main_caller() {
 
 fn (v &V) generate_hot_reload_code() {
 	mut cgen := v.cgen
-	
 	// Hot code reloading
 	if v.pref.is_live {
 		mut file := os.realpath(v.dir)
-		file_base := os.filename(file).replace('.v', '')
+		file_base := filepath.filename(file).replace('.v', '')
 		so_name := file_base + '.so'
 		// Need to build .so file before building the live application
 		// The live app needs to load this .so file on initialization.
 		mut vexe := os.args[0]
-		
 		if os.user_os() == 'windows' {
 			vexe = cescaped_path(vexe)
 			file = cescaped_path(file)
 		}
-		
 		mut msvc := ''
 		if v.pref.ccompiler == 'msvc' {
 			msvc = '-cc msvc'
 		}
-		
-		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }		
-		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -shared $file'
+		so_debug_flag := if v.pref.is_debug { '-g' } else { '' }
+		cmd_compile_shared_library := '$vexe $msvc $so_debug_flag -o $file_base -solive -shared $file'
 		if v.pref.show_c_cmd {
 			println(cmd_compile_shared_library)
 		}
 		ticks := time.ticks()
 		os.system(cmd_compile_shared_library)
-		diff := time.ticks() - ticks
-		println('compiling shared library took $diff ms')
-		println('=========\n')
-		
+		if v.pref.is_verbose {
+			diff := time.ticks() - ticks
+			println('compiling shared library took $diff ms')
+			println('=========\n')
+		}
 		cgen.genln('
 
 void lfnmutex_print(char *s){
@@ -111,10 +115,8 @@ void lfnmutex_print(char *s){
 	}
 }
 ')
-
 		if v.os != .windows {
 			cgen.genln('
-#include <dlfcn.h>
 void* live_lib=0;
 int load_so(byteptr path) {
 	char cpath[1024];
@@ -154,12 +156,10 @@ int load_so(byteptr path) {
 		return 0;
 	}
 ')
-
 			for so_fn in cgen.so_fns {
 				cgen.genln('$so_fn = (void *)GetProcAddress(live_lib, "$so_fn");  ')
 			}
 		}
-		
 		cgen.genln('return 1;
 }
 
@@ -188,10 +188,10 @@ void reload_so() {
 			#else
 			sprintf(new_so_name, "%s.so", new_so_base);
 			#endif
-			sprintf(compile_cmd, "$vexe $msvc -o %s -shared $file", new_so_base);
+			sprintf(compile_cmd, "$vexe $msvc -o %s -solive -shared $file", new_so_base);
 			os__system(tos2(compile_cmd));
 
-			if( !os__file_exists(tos2(new_so_name)) ) {
+			if( !os__exists(tos2(new_so_name)) ) {
 				fprintf(stderr, "Errors while compiling $file\\n");
 				continue;
 			}
@@ -219,10 +219,10 @@ void reload_so() {
 		time__sleep_ms(100);
 	}
 }
-' )
+')
 	}
-
 	if v.pref.is_so {
 		cgen.genln(' int load_so(byteptr path) { return 0; }')
 	}
 }
+

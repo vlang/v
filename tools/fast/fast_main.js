@@ -44,9 +44,6 @@
     function int(src) {
         return src - 0;
     }
-    function str(src) {
-        return src + "";
-    }
     function getClassName(x) {
         if (x == 0)
             return "equal";

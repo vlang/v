@@ -13,7 +13,7 @@ const (
 )
 
 pub fn read(bytes_needed int) ?[]byte {	
-	mut buffer := malloc(bytes_needed)
+	buffer := malloc(bytes_needed)
 	mut bytes_read := 0
 	// getrandom syscall wont block if requesting <= 256 bytes
 	if bytes_needed > read_batch_size {

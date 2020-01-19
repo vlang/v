@@ -1,10 +1,9 @@
 module arrays
 
-fn range<T>(start, end T) []T {
-	mut res := [start]
-	for i := start + 1; i < end; i++ {
+pub fn range<T>(start, end T) []T {
+	mut res := []T
+	for i := start; i < end; i++ {
 		res << i
-	}	
+	}
 	return res
-}	
-
+}

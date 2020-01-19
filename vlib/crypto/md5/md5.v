@@ -14,7 +14,7 @@ module md5
 
 import encoding.binary
 
-const (
+pub const (
 	// The size of an MD5 checksum in bytes.
 	size = 16
 	// The blocksize of MD5 in bytes.

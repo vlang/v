@@ -1,6 +1,9 @@
 module runner
 
-import os
+import (
+	os
+	filepath
+)
 
 struct RunnerOptions {
 pub:
@@ -17,7 +20,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	mut path := os.executable()
 	for i := 0; i < dirs_in; i++ {
-		path = os.dir(path)
+		path = filepath.dir(path)
 	}
 	vexec := path + os.path_separator + vname
 	/*
@@ -55,10 +58,10 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	
 	input_temporary_filename := 'input_temporary_filename.txt'
 	os.write_file(input_temporary_filename, input)
-
-	r := os.exec('"$vexec" runrepl < $input_temporary_filename') or {
+	rcmd := '"$vexec" repl < $input_temporary_filename'
+	r := os.exec(rcmd) or {
 		os.rm(input_temporary_filename)
-		return error('Could not execute "$vexec runrepl < $input_temporary_filename" ')
+		return error('Could not execute: $rcmd')
 	}
 	os.rm(input_temporary_filename)
 

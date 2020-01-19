@@ -14,6 +14,9 @@ fn test_add() {
 	assert a.ends_with('bbbbb')
 	a += '123'
 	assert a.ends_with('3')
+	mut foo := Foo{0, 'hi'}
+	foo.str += '!'
+	assert foo.str == 'hi!'
 }
 
 fn test_ends_with() {
@@ -217,6 +220,30 @@ fn test_replace() {
 	assert b.replace('charptr', 'byteptr') == '*byteptr'
 	c :='abc'
 	assert c.replace('','-') == c
+	v :='a   b c d'
+	assert v.replace('  ',' ') == 'a  b c d'
+
+}
+
+fn test_replace_each() {
+	s := 'hello man man :)'
+	q := s.replace_each([
+		'man', 'dude',
+		'hello', 'hey'
+	])
+	assert q == 'hey dude dude :)'
+	bb := '[b]bold[/b] [code]code[/code]'
+	assert bb.replace_each([
+		'[b]', '<b>',
+		'[/b]', '</b>',
+		'[code]', '<code>',
+		'[/code]', '</code>'
+	]) == '<b>bold</b> <code>code</code>'
+	bb2 := '[b]cool[/b]'
+	assert bb2.replace_each([
+		'[b]', '<b>',
+		'[/b]', '</b>',
+	]) == '<b>cool</b>'
 }
 
 fn test_itoa() {
@@ -397,6 +424,8 @@ fn test_reverse() {
 
 struct Foo {
 	bar int
+mut:
+	str string
 }
 
 fn (f Foo) baz() string {
@@ -563,5 +592,14 @@ fn test_inter_before_comp_if() {
 	$if linux {
 		println(s)
 	}
+	assert s == '123'
+}
+
+fn test_double_quote_inter() {
+	a := 1
+	b := 2
+	println("${a} ${b}")
+	assert "${a} ${b}" == "1 2"
+	assert '${a} ${b}' == "1 2"
 }
 

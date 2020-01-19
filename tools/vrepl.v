@@ -86,7 +86,7 @@ pub fn run_repl() []string {
 	}
 	mut r := Repl{}
 	mut readline := readline.Readline{}
-	vexe := os.args[1]
+	vexe := os.getenv('VEXE')
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -122,12 +122,12 @@ pub fn run_repl() []string {
 		}
 		was_func := r.in_func
 		if r.checks() {
-			for line in r.line.split('\n') {
+			for rline in r.line.split('\n') {
 				if r.in_func || was_func {
-					r.functions << line
+					r.functions << rline
 				}
 				else {
-					r.temp_lines << line
+					r.temp_lines << rline
 				}
 			}
 			if r.indent > 0 {
@@ -151,7 +151,14 @@ pub fn run_repl() []string {
 			mut temp_line := r.line
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
-			if !(r.line.contains(' ') || r.line.contains(':') || r.line.contains('=') || r.line.contains(',') || r.line == '') && !func_call {
+			if !(
+				r.line.contains(' ') || 
+				r.line.contains(':') || 
+				r.line.contains('=') || 
+				r.line.contains(',') || 
+				r.line.ends_with('++') || 
+				r.line.ends_with('--') || 
+				r.line == '') && !func_call {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
@@ -200,9 +207,9 @@ fn print_output(s os.Result) {
 }
 
 fn main() {
-	if os.args.len < 2 || !os.file_exists(os.args[1]) {
+	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
-		println('  vrepl vexepath\n')
+		println('  VEXE=vexepath vrepl\n')
 		println('  ... where vexepath is the full path to the v executable file')
 		return
 	}
@@ -216,7 +223,7 @@ pub fn rerror(s string) {
 }
 
 fn v_version() string {
-	vexe := os.args[1]
+	vexe := os.getenv('VEXE')
 	vversion_res := os.exec('$vexe --version') or { panic('"$vexe --version" is not working') }
 	return vversion_res.output
 }

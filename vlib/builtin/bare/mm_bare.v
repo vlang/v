@@ -3,10 +3,11 @@ module builtin
 const (
 	mem_prot = mm_prot(int(mm_prot.prot_read) | int(mm_prot.prot_write))
 	mem_flags = map_flags(int(map_flags.map_private) | int(map_flags.map_anonymous))
+	page_size = u64(linux_mem.page_size)
 )
 
 pub fn mm_pages(size u64) u32 {
-	pages := (u64(size+u64(4))+u64(linux_mem.page_size))/u64(linux_mem.page_size)
+	pages := (size+u64(4)+page_size)/page_size
 	return u32(pages)
 }
 
@@ -37,4 +38,21 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
 		dest[i] = src[i]
 	}
 	return dest0
+}
+
+[unsafe_fn]
+pub fn malloc(n int) byteptr {
+	if n < 0 {
+		panic('malloc(<0)')
+	}
+
+	ptr, e := mm_alloc(u64(n))
+	assert e == .enoerror
+	assert !isnil(ptr)
+	return ptr
+}
+
+[unsafe_fn]
+pub fn free(ptr voidptr) {
+	assert mm_free(ptr) == .enoerror
 }

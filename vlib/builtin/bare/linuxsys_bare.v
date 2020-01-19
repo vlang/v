@@ -70,6 +70,7 @@ pub enum sig_index {
 	si_pid = 0x04
 	si_uid = 0x05
 	si_status = 0x06
+	si_size = 0x80
 }
 
 pub enum signo {
@@ -89,7 +90,6 @@ pub enum signo {
 
 	sigttin = 21	// Background read from control terminal.
 	sigttou = 22	// Background write to control terminal.
-	sigpoll = 23	// Pollable event occurred (System V).
 	sigxcpu = 24	// CPU time limit exceeded.
 	sigxfsz = 25	// File size limit exceeded.
 	sigvtalrm = 26	// Virtual timer expired.
@@ -427,7 +427,7 @@ https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
 
 >0 sys_read unsigned int fd char *buf size_t count
 >1 sys_write unsigned int fd const char *buf size_t count
-2 sys_open  const char *filename  int flags int mode
+>2 sys_open  const char *filename  int flags int mode
 >3 sys_close unsigned int fd
 4 sys_stat  const char *filename  struct stat *statbuf
 5 sys_fstat unsigned int fd struct stat *statbuf
@@ -527,7 +527,7 @@ https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
 99  sys_sysinfo struct sysinfo *info
 100 sys_times struct sysinfo *info
 101 sys_ptrace  long request  long pid  unsigned long addr  unsigned long data
-102 sys_getuid
+>102 sys_getuid
 103 sys_syslog  int type  char *buf int len
 104 sys_getgid
 105 sys_setuid  uid_t uid

@@ -48,7 +48,7 @@ pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
 
 pub fn (x &AesCbc) block_size() int { return x.block_size }
 
-pub fn (x mut AesCbc) encrypt_blocks(dst mut []byte, src_ []byte) {
+pub fn (x &AesCbc) encrypt_blocks(dst mut []byte, src_ []byte) {
 	mut src := src_
 	if src.len%x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
@@ -124,7 +124,7 @@ pub fn (x mut AesCbc) decrypt_blocks(dst mut []byte, src []byte) {
 	x.tmp = x.iv
 }
 
-fn (x mut AesCbc) set_iv(iv []byte) {
+fn (x &AesCbc) set_iv(iv []byte) {
 	if iv.len != x.iv.len {
 		panic('cipher: incorrect length IV')
 	}

@@ -4,6 +4,8 @@ import time
 
 #include <windows.h>
 
+type HANDLE voidptr
+
 struct C.HWND
 struct C.WPARAM
 struct C.LPARAM
@@ -34,11 +36,12 @@ fn C.SetLastError(error i64)
 fn C.OpenClipboard(hwnd HWND) int
 fn C.DestroyWindow(hwnd HWND)
 
-struct Clipboard {
+pub struct Clipboard {
     max_retries int
     retry_delay int
     mut:
     hwnd HWND
+    foo int // TODO remove
 }
 
 fn (cb &Clipboard) get_clipboard_lock() bool {
@@ -92,14 +95,16 @@ fn (cb &Clipboard) has_ownership() bool {
     return GetClipboardOwner() == cb.hwnd
 }
 
-fn (cb &Clipboard) clear() {
+fn (cb mut Clipboard) clear() {
     if !cb.get_clipboard_lock() {return}
     EmptyClipboard()
     CloseClipboard()
+	cb.foo = 0
 }
 
-fn (cb &Clipboard) free(){
+fn (cb mut Clipboard) free(){
     DestroyWindow(cb.hwnd)
+	cb.foo = 0
 }
 
 // the string.to_wide doesn't work with SetClipboardData, don't know why
@@ -115,7 +120,8 @@ fn to_wide(text string) &HGLOBAL {
     return buf
 }
 
-fn (cb &Clipboard) set_text(text string) bool {
+fn (cb mut Clipboard) set_text(text string) bool {
+	cb.foo = 0
     buf := to_wide(text)
     if !cb.get_clipboard_lock() {
         GlobalFree(buf)
@@ -135,7 +141,8 @@ fn (cb &Clipboard) set_text(text string) bool {
     return true
 }
 
-fn (cb &Clipboard) get_text() string {
+fn (cb mut Clipboard) get_text() string {
+	cb.foo = 0
     if !cb.get_clipboard_lock() {
         return ""
     }
@@ -147,4 +154,8 @@ fn (cb &Clipboard) get_text() string {
     str := string_from_wide(&u16(GlobalLock(h_data)))
     GlobalUnlock(h_data)
     return str
+}
+
+pub fn new_primary() &Clipboard {
+	panic('Primary clipboard is not supported on non-Linux systems.')
 }

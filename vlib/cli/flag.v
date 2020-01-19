@@ -59,7 +59,7 @@ fn (flag mut Flag) parse(args []string) ?[]string {
 }
 
 // check if first arg matches flag
-fn (flag mut Flag) matches(args []string) bool {
+fn (flag &Flag) matches(args []string) bool {
 	return
 		(flag.name != '' && args[0].starts_with('--${flag.name}')) ||
 		(flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}'))
@@ -67,7 +67,6 @@ fn (flag mut Flag) matches(args []string) bool {
 
 fn (flag mut Flag) parse_raw(args []string) ?[]string {
 	if args[0].len > flag.name.len && args[0].contains('=') {
-		println('1')
 		flag.value = args[0].split('=')[1]
 		return args[1..]
 	} else if args.len >= 2 {

@@ -2,18 +2,18 @@ module sqlite
 
 #flag -lsqlite3
 #flag freebsd -I/usr/local/include
-#flag freebsd -Wl,-L/usr/local/lib,-lsqlite3
+#flag freebsd -Wl -L/usr/local/lib -lsqlite3
 #include "sqlite3.h"
 
 struct C.sqlite3
 struct C.sqlite3_stmt
 
-struct DB {
+pub struct DB {
 mut:
 	conn &C.sqlite3
 }
 
-struct Row {
+pub struct Row {
 pub mut:
 	vals []string
 }
@@ -39,18 +39,17 @@ fn C.sqlite3_open()
 fn C.sqlite3_step() int
 fn C.sqlite3_prepare_v2()
 fn C.sqlite3_finalize()
+fn C.sqlite3_column_count(voidptr) int
 
 pub fn (db DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, query.str, - 1, &stmt, 0)
 	C.sqlite3_step(stmt)
-	f := C.sqlite3_column_text(stmt, 0)
 	res := tos_clone(C.sqlite3_column_text(stmt, 0))
 	C.sqlite3_finalize(stmt)
 	return res
 }
 
-fn C.sqlite3_column_count(voidptr) int
 
 pub fn (db DB) exec(query string) []Row {
 	stmt := &C.sqlite3_stmt(0)

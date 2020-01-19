@@ -1,7 +1,7 @@
-import http
+import net.http
 
 fn main() {
-	html := http.get_text('https://news.ycombinator.com')  
+	html := http.get_text('https://news.ycombinator.com')
 	mut pos := 0
 	for {
 		pos = html.index_after('https://', pos + 1)
@@ -12,4 +12,3 @@ fn main() {
 		println(html[pos..end])
 	}
 }
-

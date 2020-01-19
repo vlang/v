@@ -1,7 +1,41 @@
-## V 0.1.23
-*30 Nov 2019*
+## V 0.1.24
+*31 Dec 2019*
 
 The last release before 0.2.
+
+- A new parser/generator built on top of an AST that simplifies code greatly and allows to implement new
+  backends much faster.
+- Sum types (`type Expr = IfExpr | MatchExpr | IntegerLiteral`).
+- B-tree map (sped up the V compiler by ~10%).
+- `v fmt -w`.
+- The entire code base has been formatted with vfmt.
+- Generic structs.
+- SDL module.
+- Arrays of pointers.
+- os: `is_link()`, `is_dir()`, `exists()`.
+- Ranging through fixed size arrays.
+- Lots of fixes in ORM and vweb.
+- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md).
+- Match expressions now must be exhaustive.
+- freestanding: `malloc()`/`free()`.
+- `++` is now required instead of `+= 1` for consistency.
+- Interpolated strings now allow function calls: `println('val = $get_val()')`.
+- `string.replace_each([])` for an efficient replacement of multiple values.
+- More utf8 helper functions.
+- `-prealloc` option for block allocations.
+- `type` aliases.
+- Running `v` with an unknown command will result in an error.
+- `atof` implementation in pure V.
+- Enums can now have negative values.
+- New `filepath` module.
+- `math.factorial`.
+- `ftp` module.
+- New syntax for casting: `val as Type`.
+- Fewer libc functions used (soon V will have no dependency on libc).
+
+
+## V 0.1.23
+*30 Nov 2019*
 
 - [Direct x64 machine code generation](https://github.com/vlang/v/issues/2849). Hello world being built in 3 milliseconds.
 - Bare metal support via the `-freestanding` flag, allowing to build programs without linking to libc.

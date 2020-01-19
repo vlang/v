@@ -1,17 +1,18 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module compiler
 
 fn (p mut Parser) for_st() {
 	p.check(.key_for)
-	p.fspace()
 	p.for_expr_cnt++
 	next_tok := p.peek()
-	//debug := p.scanner.file_path.contains('r_draw')
+	if p.tok != .lcbr {
+		p.fspace()
+	}
+	// debug := p.scanner.file_path.contains('r_draw')
 	p.open_scope()
-	mut label := 0
+	//mut label := 0
 	mut to := 0
 	if p.tok == .lcbr {
 		// Infinite loop
@@ -59,6 +60,7 @@ fn (p mut Parser) for_st() {
 		*/
 		i := p.check_name()
 		p.check(.comma)
+		p.fspace()
 		val := p.check_name()
 		if i == '_' && val == '_' {
 			p.error('no new variables on the left side of `in`')
@@ -67,18 +69,19 @@ fn (p mut Parser) for_st() {
 		p.check(.key_in)
 		p.fspace()
 		tmp := p.get_tmp()
-		mut typ, expr := p.tmp_expr()
+		mut typ,expr := p.tmp_expr()
 		is_arr := typ.starts_with('array_')
 		is_map := typ.starts_with('map_')
 		is_str := typ == 'string'
-		is_variadic_arg :=  typ.starts_with('varg_')
+		is_variadic_arg := typ.starts_with('varg_')
 		if !is_arr && !is_str && !is_map && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
 		if !is_variadic_arg {
 			if p.is_js {
 				p.genln('var $tmp = $expr;')
-			} else {
+			}
+			else {
 				p.genln('$typ $tmp = $expr;')
 			}
 		}
@@ -89,12 +92,12 @@ fn (p mut Parser) for_st() {
 			p.gen_for_varg_header(i, expr, typ, val)
 		}
 		else if is_arr {
-			typ = typ[6..]
+			typ = parse_pointer(typ[6..])
 			p.gen_for_header(i, tmp, typ, val)
 		}
 		else if is_map {
 			i_var_type = 'string'
-			typ = typ[4..]
+			typ = parse_pointer(typ[4..])
 			p.gen_for_map_header(i, tmp, typ, val, typ)
 		}
 		else if is_str {
@@ -103,7 +106,10 @@ fn (p mut Parser) for_st() {
 		}
 		// Register temp vars
 		if i != '_' {
-			p.register_var(Var {
+			if p.known_var(i) {
+				p.error('redefinition of `$i`')
+			}
+			p.register_var(Var{
 				name: i
 				typ: i_var_type
 				is_mut: true
@@ -111,7 +117,10 @@ fn (p mut Parser) for_st() {
 			})
 		}
 		if val != '_' {
-			p.register_var(Var {
+			if p.known_var(val) {
+				p.error('redefinition of `$val`')
+			}
+			p.register_var(Var{
 				name: val
 				typ: typ
 				ptr: typ.contains('*')
@@ -125,9 +134,9 @@ fn (p mut Parser) for_st() {
 		p.check(.key_in)
 		p.fspace()
 		tmp := p.get_tmp()
-		mut typ, expr := p.tmp_expr()
+		mut typ,expr := p.tmp_expr()
 		is_range := p.tok == .dotdot
-		is_variadic_arg :=  typ.starts_with('varg_')
+		is_variadic_arg := typ.starts_with('varg_')
 		mut range_end := ''
 		if is_range {
 			p.check_types(typ, 'int')
@@ -135,24 +144,26 @@ fn (p mut Parser) for_st() {
 			if p.pref.x64 {
 				to = p.lit.int()
 			}
-			range_typ, range_expr := p.tmp_expr()
+			range_typ,range_expr := p.tmp_expr()
 			p.check_types(range_typ, 'int')
 			range_end = range_expr
 			if p.pref.x64 {
-				label = p.x64.gen_loop_start(expr.int())
-				//to  = range_expr.int() // TODO why empty?
-			}	
-			
+				//label = p.x64.gen_loop_start(expr.int())
+				// to  = range_expr.int() // TODO why empty?
+			}
 		}
 		is_arr := typ.contains('array')
+		is_fixed := typ.starts_with('[')
 		is_str := typ == 'string'
-		if !is_arr && !is_str && !is_range && !is_variadic_arg {
+		if !is_arr && !is_str && !is_range && !is_fixed && !is_variadic_arg {
 			p.error('cannot range over type `$typ`')
 		}
 		if !is_variadic_arg {
 			if p.is_js {
 				p.genln('var $tmp = $expr;')
-			} else {
+			}
+			else if !is_fixed {
+				// Don't copy if it's a fixed array
 				p.genln('$typ $tmp = $expr;')
 			}
 		}
@@ -167,17 +178,24 @@ fn (p mut Parser) for_st() {
 			p.gen_for_range_header(i, range_end, tmp, typ, val)
 		}
 		else if is_arr {
-			typ = typ[6..]// all after `array_`
+			typ = parse_pointer(typ[6..]) // all after `array_`
 			p.gen_for_header(i, tmp, typ, val)
 		}
 		else if is_str {
 			typ = 'byte'
 			p.gen_for_str_header(i, tmp, typ, val)
 		}
+		else if is_fixed {
+			typ = typ.all_after(']')
+			p.gen_for_fixed_header(i, expr, typ, val)
+		}
 		// println('for typ=$typ vartyp=$var_typ')
 		// Register temp var
 		if val != '_' {
-			p.register_var(Var {
+			if p.known_var(val) {
+				p.error('redefinition of `$val`')
+			}
+			p.register_var(Var{
 				name: val
 				typ: typ
 				ptr: typ.contains('*')
@@ -186,7 +204,8 @@ fn (p mut Parser) for_st() {
 				is_for_var: true
 			})
 		}
-	} else {
+	}
+	else {
 		// `for a < b {`
 		p.gen('while (')
 		p.check_types(p.bool_expression(), 'bool')
@@ -199,8 +218,8 @@ fn (p mut Parser) for_st() {
 	p.close_scope()
 	p.for_expr_cnt--
 	p.returns = false // TODO handle loops that are guaranteed to return
-	if label > 0 {
-		p.x64.gen_loop_end(to, label)
-	}	
+	//if label > 0 {
+		//p.x64.gen_loop_end(to, label)
+	//}
 }
 

@@ -5,7 +5,7 @@
 module base64
 
 const (
-	Index = [int(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	Index = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0,
 	0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
@@ -24,31 +24,39 @@ const (
  * NB: if you need to decode many strings repeatedly, take a look at decode_in_buffer too.
  */
 pub fn decode(data string) string {
-	buffer := malloc( data.len * 3 / 4 )
-	return tos(buffer, decode_in_buffer(data, mut buffer) )
+	size := data.len * 3 / 4
+	if size <= 0 {
+		return ''
+	}
+	buffer := malloc(size)
+	return tos(buffer, decode_in_buffer(data, buffer) )
 }
 
 /**
  * decode - expects a string. Returns its base64 encoded version.
  * @param data - the input string.
- * @return the base64 encoded version of the input string. 
+ * @return the base64 encoded version of the input string.
  * NB: base64 encoding returns a string that is ~ 4/3 larger than the input.
  * NB: if you need to encode many strings repeatedly, take a look at encode_in_buffer too.
  */
 pub fn encode(data string) string {
-	buffer := malloc( 4 * ((data.len + 2) / 3) )
-	return tos(buffer, encode_in_buffer(data, mut buffer))
+	size := 4 * ((data.len + 2) / 3)
+	if size <= 0 {
+		return ''
+	}
+	buffer := malloc(size)
+	return tos(buffer, encode_in_buffer(data, buffer))
 }
 
 /**
  * decode_in_buffer - expects a string reference, and a buffer in which to store its decoded version.
  * @param data - a reference/pointer to the input string that will be decoded.
- * @param buffer - a reference/pointer to the buffer that will hold the result. 
+ * @param buffer - a reference/pointer to the buffer that will hold the result.
  * The buffer should be large enough (i.e. 3/4 of the data.len, or larger) to hold the decoded data.
  * @return the actual size of the decoded data in the buffer.
  * NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
  */
-pub fn decode_in_buffer(data &string, buffer mut byteptr) int {
+pub fn decode_in_buffer(data &string, buffer byteptr) int {
 	mut padding := 0
 	if data.ends_with('=') {
 		if data.ends_with('==') {
@@ -104,12 +112,12 @@ pub fn decode_in_buffer(data &string, buffer mut byteptr) int {
 /**
  * encode_in_buffer - expects a string reference, and a buffer in which to store its base64 encoded version.
  * @param data - a reference/pointer to the input string.
- * @param buffer - a reference/pointer to the buffer that will hold the result. 
+ * @param buffer - a reference/pointer to the buffer that will hold the result.
  * The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
  * @return the actual size of the encoded data in the buffer.
  * NB: this function does NOT allocate new memory, and is suitable for handling very large strings.
  */
-pub fn encode_in_buffer(data &string, buffer mut byteptr) int {
+pub fn encode_in_buffer(data &string, buffer byteptr) int {
 	input_length := data.len
 	output_length := 4 * ((input_length + 2) / 3)
 
@@ -120,9 +128,9 @@ pub fn encode_in_buffer(data &string, buffer mut byteptr) int {
 	mut b	   := &byte(0)
 	mut etable := &byte(0)
 	unsafe{
-		d = &byte(data.str)
-		b = &byte(buffer)
-		etable = &byte(EncodingTable.str)
+		d = data.str
+		b = buffer
+		etable = EncodingTable.str
 	}
 
 	for i < input_length {
@@ -143,7 +151,7 @@ pub fn encode_in_buffer(data &string, buffer mut byteptr) int {
 			i++
 		}
 
-		triple := ((int(octet_a) << 0x10) + (int(octet_b) << 0x08) + int(octet_c))
+		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
 
 		b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
 		b[j+1] = etable[ (triple >> 2 * 6) & 63 ]

@@ -9,7 +9,7 @@ pub:
 }
 
 // for now off the stack
-fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
+fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
 	arr := array {
 		len: len
 		cap: cap
@@ -33,4 +33,22 @@ fn (a mut array) set(i int, val voidptr) {
 		panic('array.set: index out of range') //FIXME: (i == $i, a.len == $a.len)')
 	}
 	mem_copy(a.data + a.element_size * i, val, a.element_size)
+}
+
+
+// array.repeat returns new array with the given array elements
+// repeated `nr_repeat` times
+pub fn (a array) repeat(nr_repeats int) array {
+	assert nr_repeats >= 0
+
+	arr := array {
+		len: nr_repeats * a.len
+		cap: nr_repeats * a.len
+		element_size: a.element_size
+		data: malloc(nr_repeats * a.len * a.element_size)
+	}
+	for i := 0; i < nr_repeats; i++ {
+		mem_copy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
+	}
+	return arr
 }
