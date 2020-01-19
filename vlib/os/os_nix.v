@@ -2,6 +2,8 @@ module os
 
 #include <dirent.h>
 #include <unistd.h>
+#include <fcntl.h>
+
 pub const (
 	path_separator = '/'
 )

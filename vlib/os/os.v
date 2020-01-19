@@ -7,6 +7,7 @@ import filepath
 
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
+
 /*
 struct dirent {
      d_ino int
@@ -306,7 +307,7 @@ pub fn open_file(path string, mode string, perm int) ?File {
 		match m {
 			`r` { flags |= O_RDONLY }
 			`w` { flags |= O_CREATE | O_TRUNC }
-			`a` { flags |= O_CREATE | O_TRUNC | O_APPEND }
+			`a` { flags |= O_CREATE | O_APPEND }
 			`s` { flags |= O_SYNC }
 			`+`	{ flags |= O_RDWR }
 			else {}
