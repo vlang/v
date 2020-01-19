@@ -287,17 +287,16 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 */
 	mut x := f32(_x)
 	mut y := f32(_y)
+	wx, wy := ctx.text_size(utext.s)
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		//width := utext.len * 7
-		width := ctx.text_width(utext.s)
+		width := wx
 		x -= width + 10
 	}
-	x *= ctx.scale// f32(2)
-	// println('y=$_y height=$ctx.height')
-	// _y = _y * int(ctx.scale) //+ 26
-	y = y * ctx.scale + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y = f32(ctx.height) - y
+	x *= ctx.scale
+	y *= ctx.scale
+	y = f32(ctx.height) - y //invert y direction
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()
@@ -344,7 +343,8 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 			// continue
 		}
 		xpos := x + f32(ch.horizontal_bearing_px.x) * 1
-		ypos := y - f32(ch.size.y - ch.horizontal_bearing_px.y) * 1
+		ypos := y - f32(ch.size.y + wy - ch.horizontal_bearing_px.y) * 1
+		//ypos := y - wy
 		w := f32(ch.size.x) * 1
 		h := f32(ch.size.y) * 1
 		// Update VBO for each character
@@ -431,8 +431,8 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 		}
 	}
 	//println('text width "$s" = ${time.ticks() - t} ms')
-	scaled_x := int(f64(x) / ctx.scale)
-	scaled_y := int(f64(maxy) / ctx.scale)
+	scaled_x := int(f64(x))
+	scaled_y := int(f64(maxy))
 	//println('text_size of "${s}" | x,y: $x,$maxy | scaled_x: ${scaled_x:3d} | scaled_y: ${scaled_y:3d} ')
 	return scaled_x, scaled_y
 }
