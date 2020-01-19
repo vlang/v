@@ -26,35 +26,35 @@ pub fn (b mut Benchmark) step() {
 	b.instance = b.concurrent.step()
 }
 
-pub fn (b mut Benchmark) fail() {
+pub fn (b &Benchmark) fail() {
 	mut instance := b.instance or {
 		panic("could not fail when there's no step")
 	}
 	instance.fail()
 }
 
-pub fn (b mut Benchmark) ok() {
+pub fn (b &Benchmark) ok() {
 	mut instance := b.instance or {
 		panic("could not ok when there's no step")
 	}
 	instance.ok()
 }
 
-pub fn (b mut Benchmark) fail_many(n int) {
+pub fn (b &Benchmark) fail_many(n int) {
 	mut instance := b.instance or {
 		panic("could not fail when there's no step")
 	}
 	instance.fail_many(n)
 }
 
-pub fn (b mut Benchmark) ok_many(n int) {
+pub fn (b &Benchmark) ok_many(n int) {
 	mut instance := b.instance or {
 		panic("could not ok when there's no step")
 	}
 	instance.ok_many(n)
 }
 
-pub fn (b mut Benchmark) neither_fail_nor_ok() {
+pub fn (b &Benchmark) neither_fail_nor_ok() {
 	mut instance := b.instance or {
 		panic("could not set status when there's no step")
 	}
@@ -62,28 +62,28 @@ pub fn (b mut Benchmark) neither_fail_nor_ok() {
 }
 
 pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
-	mut instance := b.instance or {
+	instance := b.instance or {
 		panic("could not print step message when there's no step")
 	}
 	return instance.step_message_with_label(label, msg)
 }
 
 pub fn (b &Benchmark) step_message(msg string) string {
-	mut instance := b.instance or {
+	instance := b.instance or {
 		panic("could not print step message when there's no step")
 	}
 	return instance.step_message(msg)
 }
 
 pub fn (b &Benchmark) step_message_ok(msg string) string {
-	mut instance := b.instance or {
+	instance := b.instance or {
 		panic("could not print step message when there's no step")
 	}
 	return instance.step_message_ok(msg)
 }
 
 pub fn (b &Benchmark) step_message_fail(msg string) string {
-	mut instance := b.instance or {
+	instance := b.instance or {
 		panic("could not print step message when there's no step")
 	}
 	return instance.step_message_fail(msg)
