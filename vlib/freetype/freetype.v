@@ -288,6 +288,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	mut x := f32(_x)
 	mut y := f32(_y)
 	wx, wy := ctx.text_size(utext.s)
+	yoffset := if ctx.scale > 1 { 5 /* highdpi */ } else { -1 /* lowdpi */ }
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
 		//width := utext.len * 7
@@ -296,6 +297,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 	}
 	x *= ctx.scale
 	y *= ctx.scale
+	y += yoffset
 	y = f32(ctx.height) - y //invert y direction
 	color := cfg.color
 	// Activate corresponding render state
@@ -431,8 +433,10 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 		}
 	}
 	//println('text width "$s" = ${time.ticks() - t} ms')
-	scaled_x := int(f64(x))
-	scaled_y := int(f64(maxy))
+	//scaled_x := x
+	//scaled_y := maxy
+	scaled_x := int(f64(x)/ctx.scale)
+	scaled_y := int(f64(maxy)/ctx.scale)	
 	//println('text_size of "${s}" | x,y: $x,$maxy | scaled_x: ${scaled_x:3d} | scaled_y: ${scaled_y:3d} ')
 	return scaled_x, scaled_y
 }
