@@ -659,15 +659,19 @@ fn (p mut Parser) string_expr() (ast.Expr,types.TypeIdent) {
 
 fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 	p.check(.lsbr)
+	mut val_ti := types.void_ti
 	mut exprs := []ast.Expr
-	for p.tok.kind != .rsbr {
-		expr,_ := p.expr(0)
+	for i:=0; p.tok.kind != .rsbr; i++ {
+		expr,ti := p.expr(0)
 		exprs << expr
+		if i == 0 {
+			val_ti = ti
+		}
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
 	}
-	type_idx,type_name := p.table.find_or_register_array(p.table.get_expr_ti(exprs[0]), 1)
+	type_idx,type_name := p.table.find_or_register_array(val_ti, 1)
 	array_ti := types.new_ti(.array, type_name, type_idx, 0)
 	mut node := ast.Expr{}
 	node = ast.ArrayInit{
