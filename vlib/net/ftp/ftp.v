@@ -75,7 +75,7 @@ fn (ftp FTP) write(data string) ?int {
 	$if debug {
 		println('FTP.v >>> $data')
 	}
-	n := ftp.sock.send_string('$data\n') or {
+	n := ftp.sock.send_string('$data\r\n') or {
 		return error('Cannot send data')
 	}
 	return n
@@ -91,11 +91,11 @@ fn (ftp FTP) read() (int, string) {
 		return 0, ''
 	}
 
-	code := data[0..3].int()
-	if data[4] == `-` {
+	code := data[..3].int()
+	if data[3] == `-` {
 		for {
 			data = ftp.sock.read_line()
-			if data[0..3].int() == code {
+			if data[..3].int() == code && data[3] != `-` {
 				break
 			}
 		}
