@@ -138,8 +138,11 @@ pub fn (a mut array) delete(i int) {
 	if i < 0 || i >= a.len {
 		panic('array.delete: index out of range (i == $i, a.len == $a.len)')
 	}
-	size := a.element_size
-	C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i) * size)
+
+    if i < a.len - 1 {
+	    size := a.element_size
+	    C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i - 1) * size)
+    }
 	a.len--
 }
 
