@@ -431,8 +431,8 @@ pub fn (ctx mut FreeType) text_size(s string) (int, int) {
 		}
 	}
 	//println('text width "$s" = ${time.ticks() - t} ms')
-	scaled_x := int(f64(x) / ctx.scale)
-	scaled_y := int(f64(maxy) / ctx.scale)
+	scaled_x := int(f64(x))
+	scaled_y := int(f64(maxy))
 	//println('text_size of "${s}" | x,y: $x,$maxy | scaled_x: ${scaled_x:3d} | scaled_y: ${scaled_y:3d} ')
 	return scaled_x, scaled_y
 }
