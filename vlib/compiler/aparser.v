@@ -653,23 +653,16 @@ fn (p mut Parser) import_statement() {
 	mut mod := p.check_name().trim_space()
 	mut mod_alias := mod
 	// submodule support
-	//mut depth := 1
+	mut depth := 1
 	for p.tok == .dot {
 		p.check(.dot)
 		submodule := p.check_name()
 		mod_alias = submodule
 		mod += '.' + submodule
-<<<<<<< HEAD:vlib/compiler/parser.v
-		//depth++
-		//if depth > MaxModuleDepth {
-		//	p.error('module depth of $MaxModuleDepth exceeded: $mod')
-		//}
-=======
 		depth++
 		if depth > max_module_depth {
 			p.error('module depth of $max_module_depth exceeded: $mod')
 		}
->>>>>>> upstream/master:vlib/compiler/aparser.v
 	}
 	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
