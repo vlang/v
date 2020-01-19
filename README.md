@@ -158,7 +158,7 @@ glfw dependency will be removed soon.
 ## V UI
 
 <a href="https://github.com/vlang/ui">
-<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/users/screenshot.png' width=712>
+<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/screenshot.png' width=712>
 </a>
 
 https://github.com/vlang/ui
