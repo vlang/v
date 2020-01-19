@@ -70,7 +70,12 @@ pub fn (ts mut TestSession) test() {
 	}
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 	ts.files = remaining_files
-	for i in 1..runtime.nr_cpus() {
+	mut ncpus := runtime.nr_cpus
+	$if msvc {
+		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
+		ncpus = 1
+	}
+	for i in 1..ncpus {
 		go ts.build_instance(tmpd, show_stats)
 	}
 	ts.build_instance(tmpd, show_stats)
