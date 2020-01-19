@@ -285,6 +285,7 @@ pub:
 
 pub struct ArrayInit {
 pub:
+	pos   token.Position
 	exprs []Expr
 	ti    types.TypeIdent
 }

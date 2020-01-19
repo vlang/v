@@ -107,9 +107,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			mut ti := it.ti
 			if ti.kind == .unresolved {
 				ti = g.table.get_expr_ti(it.expr)
-				// println('A $it.ti.name')
-				// println('B $ti.name')
-				// panic("############# UNRESOLVED")
 			}
 			g.write('$ti.name $it.name = ')
 			g.expr(it.expr)
