@@ -8,7 +8,6 @@ pub struct Builder {
 mut:
 	buf []byte
 pub mut:
-	len int
 	initial_size int = 1
 }
 
@@ -21,31 +20,32 @@ pub fn new_builder(initial_size int) Builder {
 
 pub fn (b mut Builder) write_b(data byte) {
 	b.buf << data
-	b.len++
 }
 
 pub fn (b mut Builder) write(s string) {
 	b.buf.push_many(s.str, s.len)
 	//b.buf << []byte(s)  // TODO
-	b.len += s.len
 }
 
 pub fn (b mut Builder) writeln(s string) {
 	b.buf.push_many(s.str, s.len)
 	//b.buf << []byte(s)  // TODO
 	b.buf << `\n`
-	b.len += s.len + 1
 }
 
 pub fn (b Builder) str() string {
-	return string(b.buf, b.len)
+	return string(b.buf, b.buf.len)
 }
 
 pub fn (b mut Builder) cut(n int) {
-	b.len -= n
+    b.buf.cut(n)
 }
+
+pub fn (b mut Builder) clear() {
+    b.buf.clear()
+}
+
 
 pub fn (b mut Builder) free() {
 	b.buf = make(0, b.initial_size, 1)
-	b.len = 0
 }

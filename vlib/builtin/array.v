@@ -146,6 +146,23 @@ pub fn (a mut array) delete(i int) {
 	a.len--
 }
 
+pub fn (a mut array) delete_tail() {
+    if a.len > 0 {
+        a.delete(a.len - 1)
+    }
+}
+
+pub fn (a mut array) cut(n int) {
+    if n > 0 && a.len >= n {
+        a.len -= n
+    }
+}
+
+pub fn (a mut array) clear() {
+    a.len = 0
+}
+
+
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
 	if i < 0 || i >= a.len {
