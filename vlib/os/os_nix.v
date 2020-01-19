@@ -14,22 +14,12 @@ const (
 
 fn C.symlink(charptr, charptr) int
 
-
 pub fn init_os_args(argc int, argv &byteptr) []string {
 	mut args := []string
 	for i in 0 .. argc {
 		args << string(argv[i])
 	}
 	return args
-}
-
-// get_error_msg return error code representation in string.
-pub fn get_error_msg(code int) string {
-	ptr_text := C.strerror(code) // voidptr?
-	if ptr_text == 0 {
-		return ''
-	}
-	return tos3(ptr_text)
 }
 
 pub fn ls(path string) ?[]string {
@@ -68,9 +58,8 @@ pub fn is_dir(path string) bool {
 }
 */
 
-
+// open opens a file at the specified and returns back a read-only `File` object
 pub fn open(path string) ?File {
-	mut file := File{}
   /*
 	$if linux {
 		$if !android {
@@ -85,9 +74,8 @@ pub fn open(path string) ?File {
 		}
 	}
   */
-	cpath := path.str
-	file = File{
-		cfile: C.fopen(charptr(cpath), 'rb')
+	file := File{
+		cfile: C.fopen(charptr(path.str), 'rb')
 		opened: true
 	}
 	if isnil(file.cfile) {
@@ -96,10 +84,8 @@ pub fn open(path string) ?File {
 	return file
 }
 
-// create creates a file at a specified location and returns a writable `File` object.
+// create creates or opens a file at a specified location and returns a write-only `File` object
 pub fn create(path string) ?File {
-	mut fd := 0
-	mut file := File{}
   /*
 	// NB: android/termux/bionic is also a kind of linux,
 	// but linux syscalls there sometimes fail,
@@ -123,7 +109,7 @@ pub fn create(path string) ?File {
 		}
 	}
   */
-	file = File{
+	file := File{
 		cfile: C.fopen(charptr(path.str), 'wb')
 		opened: true
 	}
@@ -187,7 +173,7 @@ pub fn mkdir(path string) ?bool {
 		$if !android {
 			ret := C.syscall(sys_mkdir, apath.str, 511)
 			if ret == -1 {
-				return error(get_error_msg(C.errno))
+				return error(posix_get_error_msg(C.errno))
 			}
 			return true
 		}
@@ -195,7 +181,7 @@ pub fn mkdir(path string) ?bool {
   */
 	r := C.mkdir(apath.str, 511)
 	if r == -1 {
-		return error(get_error_msg(C.errno))
+		return error(posix_get_error_msg(C.errno))
 	}
 	return true
 }
@@ -231,7 +217,7 @@ pub fn symlink(origin, target string) ?bool {
 	if res == 0 {
 		return true
 	}
-	return error(get_error_msg(C.errno))
+	return error(posix_get_error_msg(C.errno))
 }
 
 // convert any value to []byte (LittleEndian) and write it
