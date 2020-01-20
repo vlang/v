@@ -133,6 +133,7 @@ fn v_command(command string, args []string) {
 		}
 		else {
 			eprintln('v $command: unknown command\nRun "v help" for usage.')
+			exit(1)
 		}
 	}
 	exit(0)
