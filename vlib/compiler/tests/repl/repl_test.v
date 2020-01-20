@@ -51,7 +51,7 @@ fn test_all_v_repl_files() {
 
 	session.bmark.set_total_expected_steps( session.options.files.len )
 	mut ncpus := runtime.nr_cpus()
-	$if msvc {
+	$if windows {
 	// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		ncpus = 1
 	}
