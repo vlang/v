@@ -124,7 +124,8 @@ jobs:
         ./v -o vprod -prod v.v
         cd tools
         echo "Generating a 1m line V file..."
-        ../vprod run gen1m.v > 1m.v
+        ../vprod gen1m.v
+        ./gen1m > 1m.v
         echo "Building it..."
         ../vprod -x64 -o 1m 1m.v
         echo "Running it..."
