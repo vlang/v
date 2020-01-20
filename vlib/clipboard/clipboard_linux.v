@@ -103,7 +103,7 @@ pub struct Clipboard {
 	selection Atom //the selection atom
 	window Window
 	atoms []Atom
-	mutex sync.Mutex
+	mutex &sync.Mutex
 	text string // text data sent or received
 	got_text bool // used to confirm that we have got the text
 	is_owner bool // to save selection owner state
@@ -137,7 +137,7 @@ fn new_x11_clipboard(selection atom_type) &Clipboard {
 
 	if display == C.NULL {
 		println("ERROR: No X Server running. Clipboard cannot be used.")
-		return &Clipboard{ display: 0 }
+		return &Clipboard{ display: 0 mutex: sync.new_mutex() }
 	}
 
 	mut cb := &Clipboard{

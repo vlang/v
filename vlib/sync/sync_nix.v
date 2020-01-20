@@ -16,9 +16,8 @@ pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
-pub fn new_mutex() Mutex {
-	m := Mutex{
-	}
+pub fn new_mutex() &Mutex {
+	m := &Mutex{}
 	C.pthread_mutex_init(&m.mutex, C.NULL)
 	return m
 }

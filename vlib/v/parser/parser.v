@@ -60,6 +60,22 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		file_name: path
 	}
 	p.read_first_token()
+
+	// module decl
+	module_decl := if p.tok.kind == .key_module {
+		p.module_decl()
+	} else {
+		ast.Module{
+			name: 'main'
+		}
+	}
+	// imports
+	mut imports := []ast.Import
+	for p.tok.kind == .key_import {
+		imports << p.import_stmt()
+	}
+	// TODO: import only mode
+
 	for {
 		// res := s.scan()
 		if p.tok.kind == .eof {
@@ -69,11 +85,12 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		// println('stmt at ' + p.tok.str())
 		stmts << p.top_stmt()
 	}
-	p.check_fn_calls()
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
-		stmts: stmts
+		mod:     module_decl
+		imports: imports
+		stmts:   stmts
 	}
 }
 
@@ -136,14 +153,11 @@ fn (p mut Parser) check_name() string {
 
 pub fn (p mut Parser) top_stmt() ast.Stmt {
 	match p.tok.kind {
-		.key_module {
-			return p.module_decl()
-		}
-		.key_import {
-			return p.import_stmt()
-		}
 		.key_pub {
 			match p.peek_tok.kind {
+				.key_const {
+					return p.const_decl()
+				}
 				.key_fn {
 					return p.fn_decl()
 				}
@@ -154,16 +168,16 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 					p.error('wrong pub keyword usage')
 					return ast.Stmt{}
 				}
-	}
-			// .key_const {
-			// return p.const_decl()
-			// }
 			// .key_enum {
 			// return p.enum_decl()
 			// }
 			// .key_type {
 			// return p.type_decl()
 			// }
+			}
+		}
+		.key_const {
+			return p.const_decl()
 		}
 		.key_fn {
 			return p.fn_decl()
@@ -213,11 +227,12 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
 	p.next()
-	val,_ := p.expr(0)
+	val, _ := p.expr(0)
 	node := ast.AssignExpr{
 		left: left
-		op: op
 		val: val
+		op: op
+		pos: p.tok.position()
 	}
 	return node
 }
@@ -238,7 +253,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	// println('assignn_stmt() ' + op.str())
 	p.next()
 	right_expr,right_type := p.expr(0)
-	if !types.check(left_type, right_type) {
+	if !p.table.check(left_type, right_type) {
 		p.error('oops')
 	}
 	return ast.AssignStmt{
@@ -282,7 +297,8 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
-	mut ti := types.void_ti
+	// mut ti := types.void_ti
+	mut ti := types.unresolved_ti
 	if p.tok.lit == 'C' {
 		p.next()
 		p.check(.dot)
@@ -293,7 +309,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 	}
 	// fn call
 	if p.peek_tok.kind == .lpar {
-		x,ti2 := p.call_expr() // TODO `node,typ :=` should work
+		println('calling $p.tok.lit')
+		x, ti2 := p.call_expr() // TODO `node,typ :=` should work
 		node = x
 		ti = ti2
 	}
@@ -308,22 +325,21 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			field_name := p.check_name()
 			field_names << field_name
 			p.check(.colon)
-			// expr,field_type := p.expr(0)
 			expr,_ := p.expr(0)
-			// if !types.check(   ,field_type
 			exprs << expr
 		}
 		node = ast.StructInit{
 			ti: ti
 			exprs: exprs
 			fields: field_names
+			pos: p.tok.position()
 		}
 		p.check(.rcbr)
 	}
 	else {
 		// p.warn('name ')
 		// left := p.parse_ident()
-		node = ast.Ident{
+		mut ident := ast.Ident{
 			name: p.tok.lit
 		}
 		var := p.table.find_var(p.tok.lit) or {
@@ -331,6 +347,13 @@ pub fn (p mut Parser) name_expr() (ast.Expr,types.TypeIdent) {
 			exit(0)
 		}
 		ti = var.ti
+		ident.kind = .variable
+		ident.info = ast.IdentVar {
+			ti: ti
+			expr: var.expr
+		}
+		// ident.ti = ti
+		node = ident
 		p.next()
 	}
 	return node,ti
@@ -438,59 +461,33 @@ fn (p mut Parser) index_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	return node,ti
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr, ti types.TypeIdent) (ast.Expr,types.TypeIdent) {
+fn (p mut Parser) dot_expr(left ast.Expr, left_ti &types.TypeIdent) (ast.Expr,types.TypeIdent) {
 	p.next()
 	field_name := p.check_name()
-	println('# $ti.name $ti.idx - $field_name')
-	if ti.kind != .void {
-		p.warn('#### void type in dot_expr - field: $field_name')
-	}
-	struc := p.table.types[ti.idx] as types.Struct
+	ti := types.unresolved_ti
 	// Method call
 	if p.tok.kind == .lpar {
-		if !p.table.struct_has_method(struc, field_name) {
-			p.error('type `$struc.name` has no method `$field_name`')
-		}
 		p.next()
 		args := p.call_args()
-		println('method call $field_name')
-		mut node := ast.Expr{}
-		node = ast.MethodCallExpr{
+		mcall_expr := ast.MethodCallExpr{
 			expr: left
 			name: field_name
 			args: args
+			pos: p.tok.position()
 		}
-		return node,types.int_ti
+		mut node := ast.Expr{}
+		node = mcall_expr
+		return node, ti
 	}
-	if !p.table.struct_has_field(struc, field_name) {
-		// t :=
-		p.error('type `$struc.name` has no field  `$field_name`')
-	}
-	/*
-				// p.next()
-				field := p.check_name()
-				if !ti.type_kind in  [.placeholder, .struct_] {
-					println('kind: $ti.str()')
-					p.error('cannot access field, `$ti.type_name` is not a struct')
-				}
-				typ := p.table.types[ti.type_idx] as types.Struct
-				mut ok := false
-				for f in typ.fields {
-					if f.name == field {
-						ok = true
-					}
-				}
-				if !ok {
-					p.error('unknown field `${typ.name}.$field`')
-				}
-				*/
 
-	mut node := ast.Expr{}
-	node = ast.SelectorExpr{
+	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
+		pos: p.tok.position()
 	}
-	return node,types.int_ti
+	mut node := ast.Expr{}
+	node = sel_expr
+	return node, ti
 }
 
 fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
@@ -505,9 +502,10 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,types.TypeIdent) {
 	}
 	mut expr := ast.Expr{}
 	expr = ast.BinaryExpr{
-		op: op
 		left: left
 		right: right
+		op: op
+		pos: p.tok.position()
 	}
 	return expr,ti
 }
@@ -587,7 +585,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 	// `for cond {`
 	cond,ti := p.expr(0)
-	if !types.check(types.bool_ti, ti) {
+	if !p.table.check(types.bool_ti, ti) {
 		p.error('non-bool used as for condition')
 	}
 	stmts := p.parse_block()
@@ -604,7 +602,7 @@ fn (p mut Parser) if_expr() (ast.Expr,types.TypeIdent) {
 	mut node := ast.Expr{}
 	p.check(.key_if)
 	cond,cond_ti := p.expr(0)
-	// if !types.check(types.bool_ti, cond_ti) {
+	// if !p.table.check(types.bool_ti, cond_ti) {
 	if cond_ti.kind != .bool {
 		p.error('non-bool used as if condition')
 	}
@@ -663,18 +661,12 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 	p.check(.lsbr)
 	mut val_ti := types.void_ti
 	mut exprs := []ast.Expr
-	mut i := 0
-	for p.tok.kind != .rsbr {
+	for i:=0; p.tok.kind != .rsbr; i++ {
 		expr,ti := p.expr(0)
-		// The first element's type
+		exprs << expr
 		if i == 0 {
 			val_ti = ti
 		}
-		else if !types.check(val_ti, ti) {
-			p.error('expected array element with type `$val_ti.name`')
-		}
-		exprs << expr
-		i++
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
@@ -685,6 +677,7 @@ fn (p mut Parser) array_init() (ast.Expr,types.TypeIdent) {
 	node = ast.ArrayInit{
 		ti: array_ti
 		exprs: exprs
+		pos: p.tok.position()
 	}
 	p.check(.rsbr)
 	return node,array_ti
@@ -714,23 +707,55 @@ fn (p mut Parser) parse_number_literal() (ast.Expr,types.TypeIdent) {
 
 fn (p mut Parser) module_decl() ast.Module {
 	p.check(.key_module)
-	p.next()
-	return ast.Module{}
+	name := p.check_name()
+	return ast.Module{
+		name: name
+	}
 }
 
-fn (p mut Parser) import_stmt() ast.Import {
-	p.check(.key_import)
-	name := p.check_name()
-	mut alias := name
+fn (p mut Parser) parse_import() ast.Import {
+	mod_name := p.check_name()
+	mut mod_alias := mod_name
 	if p.tok.kind == .key_as {
 		p.check(.key_as)
-		alias = p.check_name()
+		mod_alias = p.check_name()
 	}
-	mut mods := map[string]string
-	mods[alias] = name
 	return ast.Import{
-		mods: mods
+		mod: mod_name
+		alias: mod_alias
+		pos: p.tok.position()
 	}
+}
+
+fn (p mut Parser) import_stmt() []ast.Import {
+	p.check(.key_import)
+	mut imports := []ast.Import
+	if p.tok.kind == .lpar {
+		p.check(.lpar)
+		for p.tok.kind != .rpar {
+			imports << p.parse_import()
+		}
+		p.check(.rpar)
+	} else {
+		imports << p.parse_import()
+	}
+	return imports
+}
+
+// TODO
+//fn (p mut Parser) const_decl() ast... {
+fn (p mut Parser) const_decl() ast.Stmt {
+	p.check(.key_const)
+	p.check(.lpar)
+	for p.tok.kind != .rpar {
+		name := p.check_name()
+		println('const: $name')
+		p.check(.assign)
+		_, _ := p.expr(0)
+		// expr, ti := p.expr(0)
+	}
+	p.check(.rpar)
+	return ast.Stmt{}
 }
 
 fn (p mut Parser) struct_decl() ast.StructDecl {
@@ -756,18 +781,23 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		fields << types.Field{
 			name: field_name
-			type_idx: ti.idx
+			// type_idx: ti.idx
+			ti: ti
 		}
 	}
 	p.check(.rcbr)
-	p.table.register_struct(types.Struct{
+	p.table.register_type(table.Type{
+		kind: .struct_
 		name: name
-		fields: fields
+		info: types.Struct{
+			fields: fields
+		}
 	})
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
+		pos: p.tok.position()
 	}
 }
 
@@ -776,11 +806,12 @@ fn (p mut Parser) return_stmt() ast.Return {
 	// return expressions
 	mut exprs := []ast.Expr
 	// return type idents
-	mut got_tis := []types.TypeIdent
+	// mut got_tis := []types.TypeIdent
 	for {
-		expr,ti := p.expr(0)
+		// expr,ti := p.expr(0)
+		expr, _ := p.expr(0)
 		exprs << expr
-		got_tis << ti
+		// got_tis << ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
@@ -788,23 +819,13 @@ fn (p mut Parser) return_stmt() ast.Return {
 			break
 		}
 	}
-	mut expected_tis := [p.return_ti]
-	if p.return_ti.kind == .multi_return {
-		mr_type := p.table.types[p.return_ti.idx] as types.MultiReturn
-		expected_tis = mr_type.tis
-	}
-	if expected_tis.len != got_tis.len {
-		p.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()')
-	}
-	for i, exp_ti in expected_tis {
-		got_ti := got_tis[i]
-		if !types.check(got_ti, exp_ti) {
-			p.error('cannot use `$got_ti.name` as type `$exp_ti.name` in return argument')
-		}
-	}
-	return ast.Return{
+	// TODO: consider non deferred
+	stmt := ast.Return{
+		expected_ti: p.return_ti
 		exprs: exprs
+		pos: p.tok.position()
 	}
+	return stmt
 }
 
 fn (p mut Parser) var_decl() ast.VarDecl {
@@ -820,24 +841,28 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	}
 	name := p.tok.lit
 	p.read_first_token()
-	expr,ti := p.expr(token.lowest_prec)
+	expr, ti := p.expr(token.lowest_prec)
 	if _ := p.table.find_var(name) {
 		p.error('redefinition of `$name`')
 	}
 	p.table.register_var(table.Var{
 		name: name
-		ti: ti
 		is_mut: is_mut
+		expr: expr
+		ti: ti
 	})
 	// println(p.table.names)
-	// println('added var `$name` with type $t.name')
-	return ast.VarDecl{
+	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-		
+		is_mut: is_mut
 		ti: ti
+		pos: p.tok.position()
 	}
+	return node
 }
+
+
 
 fn verror(s string) {
 	println(s)

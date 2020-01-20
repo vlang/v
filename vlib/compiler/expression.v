@@ -902,6 +902,13 @@ fn (p mut Parser) factor() string {
 			if p.peek() == .str {
 				return p.map_init()
 			}
+			peek2 := p.tokens[p.token_idx + 1]
+			if p.peek() == .name && peek2.tok == .colon {
+				if !p.expected_type.ends_with('Config') {
+					p.error('short struct initialization syntax only works with structs that end with `Config`')
+				}
+				return p.struct_init(p.expected_type)
+			}
 			// { user | name :'new name' }
 			return p.assoc()
 		}

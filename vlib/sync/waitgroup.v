@@ -5,15 +5,12 @@ module sync
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
 pub struct WaitGroup {
 mut:
-	mu     Mutex
+	mu     &Mutex = &Mutex(0)
 	active int
 }
 
-pub fn new_waitgroup() WaitGroup {
-	mut w := WaitGroup{
-	}
-	w.mu = sync.new_mutex()
-	return w
+pub fn new_waitgroup() &WaitGroup {
+	return &WaitGroup{mu: sync.new_mutex() }
 }
 
 pub fn (wg mut WaitGroup) add(delta int) {

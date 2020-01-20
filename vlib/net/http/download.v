@@ -13,4 +13,3 @@ pub fn download_file(url, out string) bool {
 	return true
 	// download_file_with_progress(url, out, empty, empty)
 }
-

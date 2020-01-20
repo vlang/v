@@ -13,6 +13,9 @@ import glm
 pub struct Shader {
 	program_id int
 }
+pub fn (s Shader) str() string {
+	return 'Shader{ program_id: s.program_id }'
+}
 
 pub const (
 	TEXT_VERT   = '#version 330 core

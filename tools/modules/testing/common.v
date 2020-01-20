@@ -5,6 +5,8 @@ import (
 	term
 	benchmark
 	filepath
+	runtime
+	sync
 )
 
 pub struct TestSession {
@@ -14,12 +16,20 @@ pub mut:
 	vargs     string
 	failed    bool
 	benchmark benchmark.Benchmark
+	
+	ntask     int // writing to this should be locked by mu.
+	ntask_mtx &sync.Mutex
+	waitgroup &sync.WaitGroup
 }
 
 pub fn new_test_session(vargs string) TestSession {
 	return TestSession{
 		vexe: vexe_path()
 		vargs: vargs
+		
+		ntask: 0
+		ntask_mtx: sync.new_mutex()
+		waitgroup: sync.new_waitgroup()
 	}
 }
 
@@ -36,15 +46,13 @@ pub fn (ts mut TestSession) init() {
 }
 
 pub fn (ts mut TestSession) test() {
-	tmpd := os.tmpdir()
 	ts.init()
-	show_stats := '-stats' in ts.vargs.split(' ')
 	mut remaining_files := []string
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
 		$if windows {
-			if file.contains('sqlite') {
+			if file.contains('sqlite') || file.contains('httpbin') {
 				continue
 			}
 		}
@@ -65,8 +73,51 @@ pub fn (ts mut TestSession) test() {
 		}
 		remaining_files << dot_relative_file
 	}
+	
+	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	for dot_relative_file in remaining_files {
+
+	mut ncpus := runtime.nr_cpus()
+	$if msvc {
+		// NB: MSVC can not be launched in parallel, without giving it
+		// the option /FS because it uses a shared PDB file, which should
+		// be locked, but that makes writing slower...
+		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
+		// Instead, just run tests on 1 core for now.
+		ncpus = 1
+	}	
+	ts.waitgroup.add( ncpus )
+	for i:=0; i < ncpus; i++ {
+		go process_in_thread(ts)
+	}
+	ts.waitgroup.wait()
+	ts.benchmark.stop()
+	eprintln(term.h_divider())
+}
+
+
+fn process_in_thread(ts mut TestSession){
+	ts.process_files()
+	ts.waitgroup.done()
+}
+
+fn (ts mut TestSession) process_files() {
+	tmpd := os.tmpdir()
+	show_stats := '-stats' in ts.vargs.split(' ')
+	
+	mut tls_bench := benchmark.new_benchmark() // tls_bench is used to format the step messages/timings
+	tls_bench.set_total_expected_steps( ts.benchmark.nexpected_steps )
+	for {
+
+		ts.ntask_mtx.lock()
+		ts.ntask++
+		idx := ts.ntask-1
+		ts.ntask_mtx.unlock()
+		
+		if idx >= ts.files.len { break }
+		tls_bench.cstep = idx
+		
+		dot_relative_file := ts.files[ idx ]			
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.realpath(relative_file)
 		// Ensure that the generated binaries will be stored in the temporary folder.
@@ -84,41 +135,45 @@ pub fn (ts mut TestSession) test() {
 		cmd := '"${ts.vexe}" ' + cmd_options.join(' ') + ' "${file}"'
 		// eprintln('>>> v cmd: $cmd')
 		ts.benchmark.step()
+		tls_bench.step()
 		if show_stats {
 			eprintln('-------------------------------------------------')
 			status := os.system(cmd)
 			if status == 0 {
 				ts.benchmark.ok()
+				tls_bench.ok()
 			}
 			else {
-				ts.benchmark.fail()
 				ts.failed = true
+				ts.benchmark.fail()
+				tls_bench.fail()
 				continue
 			}
 		}
 		else {
 			r := os.exec(cmd) or {
-				ts.benchmark.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message_fail(relative_file))
+				ts.benchmark.fail()
+				tls_bench.fail()
+				eprintln(tls_bench.step_message_fail(relative_file))
 				continue
 			}
 			if r.exit_code != 0 {
-				ts.benchmark.fail()
 				ts.failed = true
-				eprintln(ts.benchmark.step_message_fail('${relative_file}\n`$file`\n (\n$r.output\n)'))
+				ts.benchmark.fail()
+				tls_bench.fail()
+				eprintln(tls_bench.step_message_fail('${relative_file}\n`$file`\n (\n$r.output\n)'))
 			}
 			else {
 				ts.benchmark.ok()
-				eprintln(ts.benchmark.step_message_ok(relative_file))
+				tls_bench.ok()
+				eprintln(tls_bench.step_message_ok(relative_file))
 			}
 		}
 		if os.exists(generated_binary_fpath) {
 			os.rm(generated_binary_fpath)
 		}
 	}
-	ts.benchmark.stop()
-	eprintln(term.h_divider())
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
