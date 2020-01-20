@@ -1,8 +1,4 @@
-mut a := 2
-a++
-a
-a--
+mut a := 10 a++ a++ a++ a--
 a
 ===output===
-3
-2
+12
