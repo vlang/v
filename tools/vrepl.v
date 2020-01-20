@@ -8,6 +8,8 @@ import (
 	os
 	term
 	readline
+	os.cmdline
+	filepath
 )
 
 struct Repl {
@@ -71,13 +73,14 @@ pub fn repl_help() {
 ')
 }
 
-pub fn run_repl() []string {
+pub fn run_repl(workdir string, vrepl_prefix string) []string {
 	version := v_version()
 	println(version)
 	println('Use Ctrl-C or `exit` to exit')
-	file := '.vrepl.v'
-	temp_file := '.vrepl_temp.v'
-	mut prompt := '>>> '
+	
+	file := filepath.join( workdir, '.${vrepl_prefix}vrepl.v' )
+	temp_file := filepath.join( workdir, '.${vrepl_prefix}vrepl_temp.v')	
+	mut prompt := '>>> '	
 	defer {
 		os.rm(file)
 		os.rm(temp_file)
@@ -192,14 +195,20 @@ pub fn run_repl() []string {
 fn print_output(s os.Result) {
 	lines := s.output.split('\n')
 	for line in lines {
-		if line.starts_with('.vrepl_temp.v') {
+		if line.contains('.vrepl_temp.v:') {
 			// Hide the temporary file name
-			idx := line.index(' ') or {
-				println(line)
+			sline := line.all_after('.vrepl_temp.v:')
+			idx := sline.index(' ') or {
+				println(sline)
 				return
 			}
-			println(line[idx+1..])
-		}	 else {
+			println(sline[idx+1..])
+		} else if line.contains('.vrepl.v:') {
+			// Ensure that .vrepl.v: is at the start, ignore the path
+			// This is needed to have stable .repl tests.
+			idx := line.index('.vrepl.v:') or { return }
+			println(line[idx..])
+		} else {
 			println(line)
 		}
 	}
@@ -207,13 +216,20 @@ fn print_output(s os.Result) {
 }
 
 fn main() {
+	// Support for the parameters replfolder and replprefix is needed
+	// so that the repl can be launched in parallel by several different
+	// threads by the REPL test runner.
+	args := cmdline.after(os.args, ['repl'])
+	replfolder := os.realpath( cmdline.option(args, '-replfolder', '.') )
+	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
+	os.chdir( replfolder )
 	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
 		println('  VEXE=vexepath vrepl\n')
 		println('  ... where vexepath is the full path to the v executable file')
 		return
 	}
-	run_repl()
+	run_repl( replfolder, replprefix )
 }
 
 pub fn rerror(s string) {
