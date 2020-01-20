@@ -367,6 +367,12 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		// Render quad
 		gl.draw_arrays(C.GL_TRIANGLES, 0, 6)
 		x += f32(ch.horizontal_advance_px)
+		// Stop drawing if the limit is reached
+		if cfg.max_width > 0  {
+			if x >= cfg.max_width {
+				break
+			}
+		}
 	}
 	gl.bind_vao(u32(0))
 	C.glBindTexture(C.GL_TEXTURE_2D, 0)
