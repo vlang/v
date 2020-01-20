@@ -5,7 +5,7 @@ import (
 	filepath
 )
 
-struct RunnerOptions {
+pub struct RunnerOptions {
 pub:
 	wd string
 	vexec string
@@ -22,12 +22,12 @@ pub fn full_path_to_v(dirs_in int) string {
 	for i := 0; i < dirs_in; i++ {
 		path = filepath.dir(path)
 	}
-	vexec := path + os.path_separator + vname
+	vexec := filepath.join( path, vname )
 	/*
 	args := os.args
 	vreal  := os.realpath('v')
 	myself := os.realpath( os.executable() )
-	wd := os.getwd() + os.path_separator
+	wd := os.getwd()
 	println('args are: $args')
 	println('vreal   : $vreal')
 	println('myself  : $myself')
@@ -55,17 +55,24 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	content := fcontent.replace('\r', '')		
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n')
-	
-	input_temporary_filename := 'input_temporary_filename.txt'
+
+	fname := filepath.filename( file )
+	input_temporary_filename := os.realpath(filepath.join( wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input)
-	rcmd := '"$vexec" repl < $input_temporary_filename'
+	os.write_file(  os.realpath(filepath.join( wd, 'original.txt' ) ), fcontent )
+	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
 	r := os.exec(rcmd) or {
 		os.rm(input_temporary_filename)
 		return error('Could not execute: $rcmd')
 	}
 	os.rm(input_temporary_filename)
-
-	result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
+	
+	result := r.output.replace('\r','')
+	.replace('>>> ', '')
+	.replace('>>>', '')
+	.replace('... ', '')
+	.all_after('Use Ctrl-C or `exit` to exit\n')
+	.replace(wd  + os.path_separator, '' )
 
 	if result != output {
 		file_result   := '${file}.result.txt'
@@ -120,7 +127,7 @@ $diff
 }
 
 pub fn new_options() RunnerOptions {
-	wd := os.getwd() + os.path_separator
+	wd := os.getwd()
 	vexec := full_path_to_v(5)
 	mut files := []string
 	if os.args.len > 1 {
@@ -136,7 +143,7 @@ pub fn new_options() RunnerOptions {
 }
 
 pub fn new_prod_options() RunnerOptions {
-	wd := os.getwd() + os.path_separator
+	wd := os.getwd()
 	vexec := full_path_to_v(4)
 	mut files := []string
 	if os.args.len > 1 {
