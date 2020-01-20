@@ -222,6 +222,11 @@ pub fn symlink(origin, target string) ?bool {
 	return error(posix_get_error_msg(C.errno))
 }
 
+// get_error_msg return error code representation in string.
+pub fn get_error_msg(code int) string {
+	return posix_get_error_msg(code)
+}
+
 // convert any value to []byte (LittleEndian) and write it
 // for example if we have write(7, 4), "07 00 00 00" gets written
 // write(0x1234, 2) => "34 12"
