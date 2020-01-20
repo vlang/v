@@ -22,8 +22,6 @@ fn mine() Mine {
 	return Mine{}
 }
 
-
-
 fn test_000(){
 
 }

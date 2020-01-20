@@ -1,7 +1,7 @@
 module yaml
 
 struct Scanner{
-	text string
+	text 			string
 	pos				int
 	last_nl_pos		int
 	nlines 			int
