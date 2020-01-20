@@ -8,7 +8,7 @@ import sync
 import filepath
 
 fn test_the_v_compiler_can_be_invoked() {
-	vexec := runner.full_path_to_v(5)
+	vexec := runner.full_path_to_v(5)	
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" --version'
@@ -43,28 +43,28 @@ fn test_all_v_repl_files() {
 		ntask_mtx: sync.new_mutex()
 		waitgroup: sync.new_waitgroup()
 	}
-
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
 	runner.run_repl_file(os.cachedir(), session.options.vexec, 'vlib/compiler/tests/repl/nothing.repl') or {
 		panic(err)
 	}
 
 	session.bmark.set_total_expected_steps( session.options.files.len )
-	mut ncpus := runtime.nr_cpus()
+	mut ncpus := 0
+	ncpus = runtime.nr_cpus()
 	$if windows {
 	// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		ncpus = 1
 	}
 	session.waitgroup.add( ncpus )
 	for i:=0; i < ncpus; i++ {
-		go process_in_thread(session)
+		go process_in_thread(session,i)
 	}
 	session.waitgroup.wait()
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
 
-fn process_in_thread( session mut Session ){
+fn process_in_thread( session mut Session, thread_id int ){
 	cdir := os.cachedir()
 	mut tls_bench := benchmark.new_benchmark()
 	tls_bench.set_total_expected_steps( session.bmark.nexpected_steps )
@@ -83,7 +83,7 @@ fn process_in_thread( session mut Session ){
 		}
 		os.mkdir( tfolder ) or { panic(err) }
 		
-		file := os.realpath( filepath.join( session.options.wd, session.options.files[ idx ] ) )
+		file := session.options.files[ idx ] 
 		session.bmark.step()
 		tls_bench.step()
 		fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
