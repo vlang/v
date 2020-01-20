@@ -483,3 +483,9 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		}
 	}
 }
+
+// `str` returns time in the same format as `parse` expects: "2018-01-27 12:48:34"
+// TODO define common default format for `str` and `parse` and use it in both ways
+pub fn (t Time) str() string {
+	return t.format_ss()
+}
