@@ -301,7 +301,7 @@ pub fn open_append(path string) ?File {
 }
 
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object
-pub fn open_file(path string, mode string, perm int) ?File {
+pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
 	for m in mode {
 		match m {
@@ -309,15 +309,20 @@ pub fn open_file(path string, mode string, perm int) ?File {
 			`w` { flags |= O_CREATE | O_TRUNC }
 			`a` { flags |= O_CREATE | O_APPEND }
 			`s` { flags |= O_SYNC }
+			`n` { flags |= O_NONBLOCK }
+			`c` { flags |= O_NOCTTY }
 			`+`	{ flags |= O_RDWR }
 			else {}
 		}
 	}
 
-	mut permission := perm
+	mut permission := 0666
+	if options.len > 0 {
+		permission = options[0]
+	}
 
 	$if windows {
-		if perm < 0600 {
+		if permission < 0600 {
 			permission = 0x0100
 		}
 		else {
@@ -325,7 +330,12 @@ pub fn open_file(path string, mode string, perm int) ?File {
 		}
 	}
 
-	fd := C.open(charptr(path.replace('/', '\\').str), flags, permission)
+	mut p := path
+	$if windows {
+		p = path.replace('/', '\\')
+	}
+
+	fd := C.open(charptr(p.str), flags, permission)
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
