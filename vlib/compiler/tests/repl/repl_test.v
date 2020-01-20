@@ -43,6 +43,12 @@ fn test_all_v_repl_files() {
 		ntask_mtx: sync.new_mutex()
 		waitgroup: sync.new_waitgroup()
 	}
+
+	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
+	runner.run_repl_file(os.cachedir(), session.options.vexec, 'vlib/compiler/tests/repl/nothing.repl') or {
+		panic(err)
+	}
+
 	session.bmark.set_total_expected_steps( session.options.files.len )
 	mut ncpus := runtime.nr_cpus()
 	$if msvc {
