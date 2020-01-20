@@ -1,5 +1,0 @@
-a := 'Hello'
-b := 'World'
-println('$a $b')
-===output===
-Hello World
