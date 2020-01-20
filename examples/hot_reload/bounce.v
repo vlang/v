@@ -56,6 +56,9 @@ fn main() {
 	println('Starting the game loop...')
 	go game.run()
 	for {
+		if window.should_close() {
+			break
+		}
 		gl.clear()
 		gl.clear_color(255, 255, 255, 255)
 		game.draw()
@@ -101,5 +104,3 @@ fn (game mut Game) run() {
 		time.sleep_ms(17)
 	}
 }
-
-

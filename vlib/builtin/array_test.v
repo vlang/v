@@ -536,3 +536,13 @@ fn test_bools() {
 	a << true
 	println(a)
 }
+
+fn test_push_many_self() {
+    mut actual_arr := [1, 2, 3, 4]
+    actual_arr << actual_arr
+    expected_arr := [1, 2, 3, 4, 1, 2, 3, 4]
+    assert actual_arr.len == expected_arr.len
+    for i := 0; i < actual_arr.len; i++ {
+        assert actual_arr[i] == expected_arr[i]
+    }
+}

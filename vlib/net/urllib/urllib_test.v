@@ -28,3 +28,11 @@ fn test_str() {
 	}
 	assert url.str() == 'https://en.wikipedia.org/wiki/Brazil_(1985_film)'
 }	
+
+fn test_escape_unescape() {
+	original := 'те ст: т\\%'
+	escaped := urllib.query_escape(original) 
+	assert escaped == '%D1%82%D0%B5+%D1%81%D1%82%3A+%D1%82%5C%25'
+	unescaped := urllib.query_unescape(escaped) or { assert false return }
+	assert unescaped == original
+}

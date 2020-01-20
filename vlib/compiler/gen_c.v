@@ -54,6 +54,11 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so { '__declspec(dllexport) ' } else if p.attr == 'inline' { 'static inline ' } else { '' }
 	fn_name_cgen := p.table.fn_gen_name(f)
 	// str_args := f.str_args(p.table)
+	
+	if p.attr == 'live' && p.pref.is_so {
+		// See fn.v for details about impl_live_ functions
+		p.genln('$typ impl_live_${fn_name_cgen} ($str_args);')
+	}
 	p.genln('$dll_export_linkage$typ $fn_name_cgen ($str_args) {')
 }
 
@@ -488,7 +493,9 @@ fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	if typ == 'tm' {
 		p.cgen.lines[p.cgen.lines.len - 1] = ''
 	}
-	p.next()
+	if p.tok != .lcbr {
+		p.next()
+	}
 	p.check(.lcbr)
 	ptr := typ.contains('*')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
@@ -627,6 +634,9 @@ fn type_default(typ string) string {
 	// User struct defined in another module.
 	if typ.contains('__') {
 		return '{0}'
+	}
+	if typ.ends_with('Fn') { // TODO
+		return '0'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	match typ {

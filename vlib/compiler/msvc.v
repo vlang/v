@@ -310,7 +310,7 @@ fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []CFlag) {
 	mut obj_path := '${path}bj'
 	obj_path = os.realpath(obj_path)
 	if os.exists(obj_path) {
-		println('$obj_path already build.')
+		println('$obj_path already built.')
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')

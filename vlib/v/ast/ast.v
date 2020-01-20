@@ -45,6 +45,7 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
+	pos   token.Position
 	expr  Expr
 	field string
 }
@@ -60,11 +61,13 @@ pub:
 pub struct Field {
 pub:
 	name string
+	// type_idx int
 	ti   types.TypeIdent
 }
 
 pub struct StructDecl {
 pub:
+	pos    token.Position
 	name   string
 	fields []Field
 	is_pub bool
@@ -72,7 +75,7 @@ pub:
 
 pub struct StructInit {
 pub:
-// typ    types.TypeIdent
+	pos    token.Position
 	ti     types.TypeIdent
 	fields []string
 	exprs  []Expr
@@ -81,7 +84,9 @@ pub:
 // import statement
 pub struct Import {
 pub:
-	mods map[string]string // alias -> module
+	pos   token.Position
+	mod   string
+	alias string
 	// expr Expr
 }
 
@@ -103,24 +108,27 @@ pub:
 
 pub struct CallExpr {
 pub:
-// func       Expr
+	// tok        token.Token
+	pos        token.Position
+mut:
+	// func       Expr
 	name       string
 	args       []Expr
-	is_unknown bool
-	tok        token.Token
 }
 
 pub struct MethodCallExpr {
 pub:
+	// tok        token.Token
+	pos        token.Position
 	expr       Expr
 	name       string
 	args       []Expr
-	is_unknown bool
-	tok        token.Token
 }
 
 pub struct Return {
 pub:
+	pos   token.Position
+	expected_ti types.TypeIdent // TODO: remove once checker updated
 	exprs []Expr
 }
 
@@ -144,12 +152,30 @@ pub struct VarDecl {
 pub:
 	name string
 	expr Expr
+	is_mut bool
+	mut:
 	ti   types.TypeIdent
+	pos  token.Position
 }
 
 pub struct File {
 pub:
-	stmts []Stmt
+	mod     Module
+	imports []Import
+	stmts   []Stmt
+}
+
+pub struct IdentVar {
+pub:
+	expr Expr
+	ti   types.TypeIdent
+}
+
+type IdentInfo = IdentVar
+
+pub enum IdentKind {
+	blank_ident
+	variable
 }
 
 // A single identifier
@@ -157,14 +183,18 @@ pub struct Ident {
 pub:
 	name     string
 	tok_kind token.Kind
+	pos      token.Position
 	value    string
+mut:
+	kind     IdentKind
+	info     IdentInfo
 }
 
 pub struct BinaryExpr {
 pub:
-// tok_kind token.Kind
 // op    BinaryOp
 	op    token.Kind
+	pos   token.Position
 	left  Expr
 	// left_ti types.TypeIdent
 	right Expr
@@ -231,6 +261,7 @@ pub:
 
 pub struct ReturnStmt {
 	tok_kind token.Kind // or pos
+	pos		 token.Position
 	results  []Expr
 }
 
@@ -246,13 +277,15 @@ pub:
 
 pub struct AssignExpr {
 pub:
+	op   token.Kind
+	pos  token.Position
 	left Expr
 	val  Expr
-	op   token.Kind
 }
 
 pub struct ArrayInit {
 pub:
+	pos   token.Position
 	exprs []Expr
 	ti    types.TypeIdent
 }
