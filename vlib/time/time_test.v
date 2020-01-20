@@ -250,3 +250,7 @@ fn test_parse_iso() {
 	assert t3.year == 0 && t3.month == 0 && t3.day == 0
 	    && t3.hour == 0 && t3.minute == 0 && t3.second == 0
 }
+
+fn test_str() {
+  assert '1980-07-11 21:23:42' == time_to_test.str()
+}
