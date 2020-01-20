@@ -1,5 +1,0 @@
-module protobuf
-
-struct protobuf{
-	
-}

@@ -4,9 +4,12 @@ import (
 	time
 )
 
-struct YAML {
-	squences 		&[]Squenece
-	maps			&[]Mapping
+const (
+	NULL = 0
+)
+struct Yaml{
+	squences 	&[]Squenece
+	maps		&[]Mapping
 }
 
 struct YAMLVal{

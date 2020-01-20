@@ -9,6 +9,10 @@ import (
 	time
 )
 
+const (
+	NULL = 0
+)
+
 pub struct TOML{
 	pub mut:
 		tbl 	&[]Table
