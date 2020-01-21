@@ -462,8 +462,21 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		return
 	}
+	compile_cycles_stuck_mask := u64( 0x1FFFFFFF ) // 2^29-1 cycles
+	mut c := u64(1)
+	mut old_token_index := p.token_idx
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
+		c++
+		if compile_cycles_stuck_mask == (c & compile_cycles_stuck_mask) {
+			if old_token_index == p.token_idx {
+				// many many cycles have passed with no progress :-( ...
+				eprintln('V compilation has probably stucked :-|')
+				eprintln('  parsing file: ${p.file_path} | pass: ${p.pass} | mod: ${p.mod} | fn: ${p.cur_fn.name}')
+				p.print_current_tokens('  cycle: $c')
+			}
+			old_token_index = p.token_idx
+		}
 		match p.tok {
 			.key_import {
 				p.imports()
@@ -480,7 +493,7 @@ fn (p mut Parser) parse(pass Pass) {
 					// (for example, by DOOM). such fields are
 					// basically int consts
 					p.enum_decl(true)
-				}
+				}				
 			}
 			.key_pub {
 				next := p.peek()
