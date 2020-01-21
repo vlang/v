@@ -465,15 +465,15 @@ fn (p mut Parser) parse(pass Pass) {
 	
 	parsing_start_ticks := time.ticks()
 	compile_cycles_stuck_mask := u64( 0x1FFFFFFF ) // 2^29-1 cycles
-	mut c := u64(1)
+	mut parsing_cycle := u64(1)
 	mut old_token_index := p.token_idx
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
-		c++
-		if compile_cycles_stuck_mask == (c & compile_cycles_stuck_mask) {
+		parsing_cycle++
+		if compile_cycles_stuck_mask == (parsing_cycle & compile_cycles_stuck_mask) {
 			if old_token_index == p.token_idx {
 				// many many cycles have passed with no progress :-( ...
-				eprintln('Parsing is [probably] stuck. Cycle: ${c:12ld} .')
+				eprintln('Parsing is [probably] stuck. Cycle: ${parsing_cycle:12ld} .')
 				eprintln('  parsing file: ${p.file_path} | pass: ${p.pass} | mod: ${p.mod} | fn: ${p.cur_fn.name}')
 				p.print_current_tokens('  source')
 				if time.ticks() > parsing_start_ticks + 10*1000{
