@@ -471,7 +471,7 @@ fn (p mut Parser) parse(pass Pass) {
 		if compile_cycles_stuck_mask == (c & compile_cycles_stuck_mask) {
 			if old_token_index == p.token_idx {
 				// many many cycles have passed with no progress :-( ...
-				eprintln('V compilation has probably stucked :-|')
+				eprintln('V compilation is [probably] stuck.')
 				eprintln('  parsing file: ${p.file_path} | pass: ${p.pass} | mod: ${p.mod} | fn: ${p.cur_fn.name}')
 				p.print_current_tokens('  cycle: $c')
 			}
