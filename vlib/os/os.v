@@ -7,6 +7,7 @@ import filepath
 
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
+
 /*
 struct dirent {
      d_ino int
@@ -31,6 +32,7 @@ pub const (
 
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
+pub:
 	fd     int
 mut:
 	opened bool
@@ -69,6 +71,12 @@ fn C.getenv(byteptr) &char
 
 
 fn C.sigaction(int, voidptr, int)
+
+
+fn C.open(charptr, int, int) int
+
+
+fn C.fdopen(int, string) voidptr
 
 
 pub fn (f File) is_opened() bool {
@@ -292,6 +300,58 @@ pub fn open_append(path string) ?File {
 	return file
 }
 
+// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object
+pub fn open_file(path string, mode string, options ...int) ?File {
+	mut flags := 0
+	for m in mode {
+		match m {
+			`r` { flags |= O_RDONLY }
+			`w` { flags |= O_CREATE | O_TRUNC }
+			`a` { flags |= O_CREATE | O_APPEND }
+			`s` { flags |= O_SYNC }
+			`n` { flags |= O_NONBLOCK }
+			`c` { flags |= O_NOCTTY }
+			`+`	{ flags |= O_RDWR }
+			else {}
+		}
+	}
+
+	mut permission := 0666
+	if options.len > 0 {
+		permission = options[0]
+	}
+
+	$if windows {
+		if permission < 0600 {
+			permission = 0x0100
+		}
+		else {
+			permission = 0x0100 | 0x0080
+		}
+	}
+
+	mut p := path
+	$if windows {
+		p = path.replace('/', '\\')
+	}
+
+	fd := C.open(charptr(p.str), flags, permission)
+	if fd == -1 {
+		return error(posix_get_error_msg(C.errno))
+	}
+
+	cfile := C.fdopen(fd, charptr(mode.str))
+	if isnil(cfile) {
+		return error('Failed to open or create file "$path"')
+	}
+
+	return File{
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
+}
+
 /*
 pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
 	$if linux {
@@ -342,6 +402,15 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 		}
 		return ret,is_signaled
 	}
+}
+
+// posix_get_error_msg return error code representation in string.
+pub fn posix_get_error_msg(code int) string {
+	ptr_text := C.strerror(code) // voidptr?
+	if ptr_text == 0 {
+		return ''
+	}
+	return tos3(ptr_text)
 }
 
 fn vpclose(f voidptr) int {
@@ -459,7 +528,7 @@ pub fn sigint_to_signal_name(si int) string {
 				return 'SIGBUS'
 			}
 			else {}
-	}
+		}
 	}
 	return 'unknown'
 }
