@@ -242,7 +242,6 @@ pub fn (a array) clone() array {
 	return arr
 }
 
-
 fn (a array) slice_clone(start, _end int) array {
 	mut end := _end
 	if start > end {
@@ -304,12 +303,10 @@ pub fn (a array) reverse() array {
 		data: calloc(a.cap * a.element_size)
 	}
 	for i := 0; i < a.len; i++ {
-		C.memcpy(arr.data + i * arr.element_size,
-			&a[a.len - 1 - i], arr.element_size)
+		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
 	}
 	return arr
 }
-
 
 // pub fn (a []int) free() {
 [unsafe_fn]
@@ -489,3 +486,44 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 
+// compare_i64 for []f64 sort_with_compare()
+// sort []i64 with quicksort
+// usage :
+// mut x := [i64(100),10,70,28,92]
+// x.sort_with_compare(compare_i64)
+// println(x)     // Sorted i64 Array
+// output:
+// [10, 28, 70, 92, 100]
+pub fn compare_i64(a, b &i64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_f64 for []f64 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_f64(a, b &f64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_f32 for []f32 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_f32(a, b &f32) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}

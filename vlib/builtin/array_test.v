@@ -30,7 +30,6 @@ fn test_ints() {
 	assert a.len == 5
 	assert a[4] == 4
 	assert a.last() == 4
-
 	s := a.str()
 	assert s == '[1, 5, 2, 3, 4]'
 	assert a[1] == 5
@@ -41,16 +40,13 @@ fn test_deleting() {
 	mut a := [1, 5, 2, 3, 4]
 	assert a.len == 5
 	assert a.str() == '[1, 5, 2, 3, 4]'
-
 	a.delete(0)
 	assert a.str() == '[5, 2, 3, 4]'
 	assert a.len == 4
-
 	a.delete(1)
 	assert a.str() == '[5, 3, 4]'
 	assert a.len == 3
-
-    a.delete(a.len - 1)
+	a.delete(a.len - 1)
 	assert a.str() == '[5, 3]'
 	assert a.len == 2
 }
@@ -104,63 +100,58 @@ fn test_push() {
 // TODO array.insert is broken
 // Cannot pass literal or primitive type as it cannot be cast to voidptr.
 // In the current state only that would work:
-//   i := 3
-//	 a.insert(0, &i)
+// i := 3
+// a.insert(0, &i)
 // ----------------------------
+/*
 fn test_insert() {
-//     mut a := [1, 2]
-//     a.insert(0, 3)
-//    println(a)
-	}
+	mut a := [1, 2]
+	a.insert(0, 3)
+	println(a)
+}
+*/
 // fn test_insert() {
-//     mut a := [1, 2]
-
-//     a.insert(0, 3)
-//     assert a[0] == 3
-//     assert a[2] == 2
-//     assert a.len == 3
-
-//     a.insert(1, 4)
-//     assert a[1] == 4
-//     assert a[2] == 1
-//     assert a.len == 4
-
-//     a.insert(4, 5)
-//     assert a[4] == 5
-//     assert a[3] == 2
-//     assert a.len == 5
-
-//     mut b := []f64
-//     assert b.len == 0
-//     b.insert(0, f64(1.1))
-//     assert b.len == 1
-//     assert b[0] == f64(1.1)
+// mut a := [1, 2]
+// a.insert(0, 3)
+// assert a[0] == 3
+// assert a[2] == 2
+// assert a.len == 3
+// a.insert(1, 4)
+// assert a[1] == 4
+// assert a[2] == 1
+// assert a.len == 4
+// a.insert(4, 5)
+// assert a[4] == 5
+// assert a[3] == 2
+// assert a.len == 5
+// mut b := []f64
+// assert b.len == 0
+// b.insert(0, f64(1.1))
+// assert b.len == 1
+// assert b[0] == f64(1.1)
 // }
-
 // TODO array.prepend is broken
 // It depends on array.insert
 // -----------------------------
 // fn test_prepend() {
-//     mut a := []int
-//     assert a.len == 0
-//     a.prepend(1)
-//     assert a.len == 1
-//     assert a[0] == 1
-
-//     mut b := []f64
-//     assert b.len == 0
-//     b.prepend(f64(1.1))
-//     assert b.len == 1
-//     assert b[0] == f64(1.1)
+// mut a := []int
+// assert a.len == 0
+// a.prepend(1)
+// assert a.len == 1
+// assert a[0] == 1
+// mut b := []f64
+// assert b.len == 0
+// b.prepend(f64(1.1))
+// assert b.len == 1
+// assert b[0] == f64(1.1)
 // }
-
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == '["a", "b", "c"]'
 }
 
+/*
 fn test_compare_ints() {
-	/*
     assert compare_ints(1, 2) == -1
     assert compare_ints(2, 1) == 1
     assert compare_ints(0, 0) == 0
@@ -170,8 +161,9 @@ fn test_compare_ints() {
     assert compare_ints(a, b) == -1
     assert compare_ints(b, a) == 1
     assert compare_ints(a, a) == 0
-   */
 }
+*/
+
 
 fn test_repeat() {
 	{
@@ -181,16 +173,21 @@ fn test_repeat() {
 	}
 	{
 		a := [1.1].repeat(10)
-		// FIXME: assert aa[0] == 1.1 will fail, need fix
-		assert a[0] == f32(1.1)
-		assert a[5] == f32(1.1)
-		assert a[9] == f32(1.1)
+		assert a[0] == 1.1
+		assert a[5] == 1.1
+		assert a[9] == 1.1
 	}
 	{
-		a := [f32(1.1)].repeat(10)
-		assert a[0] == f32(1.1)
-		assert a[5] == f32(1.1)
-		assert a[9] == f32(1.1)
+		a := [i64(-123)].repeat(10)
+		assert a[0] == -123
+		assert a[5] == -123
+		assert a[9] == -123
+	}
+	{
+		a := [u64(123)].repeat(10)
+		assert a[0] == 123
+		assert a[5] == 123
+		assert a[9] == 123
 	}
 	{
 		a := [f64(1.1)].repeat(10)
@@ -263,11 +260,11 @@ fn test_reverse() {
 	b := ['test', 'array', 'reverse']
 	c := a.reverse()
 	d := b.reverse()
-	for i, _  in c {
-		assert c[i] == a[a.len-i-1]
+	for i, _ in c {
+		assert c[i] == a[a.len - i - 1]
 	}
 	for i, _ in d {
-		assert d[i] == b[b.len-i-1]
+		assert d[i] == b[b.len - i - 1]
 	}
 }
 
@@ -291,12 +288,12 @@ fn test_fixed() {
 	assert nums2[N - 1] == 0
 }
 
-fn modify (numbers mut []int) {
-        numbers[0] = 777
+fn modify(numbers mut []int) {
+	numbers[0] = 777
 }
 
 fn test_mut_slice() {
-	mut n := [1,2,3]
+	mut n := [1, 2, 3]
 	modify(mut n[..2])
 	assert n[0] == 777
 	modify(mut n[2..])
@@ -335,17 +332,17 @@ pub fn (t Test2) str() string {
 	return '{$t.one $t.two}'
 }
 
-pub  fn (t Test) str() string {
+pub fn (t Test) str() string {
 	return '{$t.a $t.b}'
 }
 
 fn test_struct_print() {
-	mut a := Test {
-		a: 'Test',
+	mut a := Test{
+		a: 'Test'
 		b: []
 	}
-	b := Test2 {
-		one: 1,
+	b := Test2{
+		one: 1
 		two: 2
 	}
 	a.b << b
@@ -369,20 +366,17 @@ fn test_find_index() {
 	a := ['v', 'is', 'great']
 	assert a.index('v') == 0
 	assert a.index('is') == 1
-	assert a.index('gre')  == -1
-
+	assert a.index('gre') == -1
 	// int
 	b := [1, 2, 3, 4]
 	assert b.index(1) == 0
 	assert b.index(4) == 3
 	assert b.index(5) == -1
-
 	// byte
 	c := [0x22, 0x33, 0x55]
 	assert c.index(0x22) == 0
 	assert c.index(0x55) == 2
 	assert c.index(0x99) == -1
-
 	// char
 	d := [`a`, `b`, `c`]
 	assert d.index(`b`) == 1
@@ -391,19 +385,19 @@ fn test_find_index() {
 }
 
 fn test_multi() {
-	a := [[1,2,3],[4,5,6]]
+	a := [[1, 2, 3], [4, 5, 6]]
 	assert a.len == 2
 	assert a[0].len == 3
 	assert a[0][0] == 1
 	assert a[0][2] == 3
 	assert a[1][2] == 6
 	// TODO
-	//b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
-	//assert b[0][0][0] == 1
+	// b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
+	// assert b[0][0][0] == 1
 }
 
 fn test_in() {
-	a := [1,2,3]
+	a := [1, 2, 3]
 	assert 1 in a
 	assert 2 in a
 	assert 3 in a
@@ -427,7 +421,6 @@ fn test_reduce() {
 	assert b == 15
 	assert c == 20
 	assert d == 14
-
 	e := [1, 2, 3]
 	f := e.reduce(sub, 0)
 	g := e.reduce(sub, -1)
@@ -465,7 +458,6 @@ fn test_map() {
 	assert bools[0] == true
 	assert bools[1] == false
 	assert bools[2] == false
-
 }
 
 fn test_array_str() {
@@ -477,8 +469,8 @@ fn test_array_str() {
 }
 
 fn test_eq() {
-	assert [5,6,7].eq([6,7]) == false
-	assert [`a`,`b`].eq([`a`,`b`]) == true
+	assert [5, 6, 7].eq([6, 7]) == false
+	assert [`a`, `b`].eq([`a`, `b`]) == true
 }
 
 fn test_sort() {
@@ -498,7 +490,29 @@ fn test_sort() {
 	assert nums[4] == 108
 }
 
+fn test_f32_sort() {
+	mut f := [50.0, 15, 1, 79, 38, 0, 27]
+	f.sort_with_compare(compare_f32)
+	assert f[0] == 0.0
+	assert f[1] == 1.0
+	assert f[6] == 79.0
+}
 
+fn test_f64_sort() {
+	mut f := [f64(50.0), 15, 1, 79, 38, 0, 27]
+	f.sort_with_compare(compare_f64)
+	assert f[0] == 0.0
+	assert f[1] == 1.0
+	assert f[6] == 79.0
+}
+
+fn test_i64_sort() {
+	mut f := [i64(50), 15, 1, 79, 38, 0, 27]
+	f.sort_with_compare(compare_i64)
+	assert f[0] == 0
+	assert f[1] == 1
+	assert f[6] == 79
+}
 
 /*
 fn test_for_last() {
@@ -516,8 +530,9 @@ fn test_for_last() {
 }
 */
 
+
 struct Foo {
-	mut:
+mut:
 	bar []int
 }
 
