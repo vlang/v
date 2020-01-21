@@ -12,34 +12,46 @@ mut:
 }
 
 struct DepGraph {
-	// pub:
-mut:
+pub mut:
 	acyclic bool
 	nodes   []DepGraphNode
 }
 
-struct DepSet {
+struct OrderedDepMap {
 mut:
-	items []string
+	keys []string
+	data map[string][]string
 }
 
-pub fn (dset mut DepSet) add(item string) {
-	dset.items << item
-}
-
-pub fn (dset &DepSet) diff(otherset DepSet) DepSet {
-	mut diff := DepSet{
+pub fn (o mut OrderedDepMap) set(name string, deps []string) {
+	if !(name in o.data) {
+		o.keys << name
 	}
-	for item in dset.items {
-		if !item in otherset.items {
-			diff.items << item
+	o.data[name] = deps
+}
+
+pub fn (o &OrderedDepMap) get(name string) []string {
+	if !(name in o.data) {
+		return []
+	}
+	return o.data[name]
+}
+
+pub fn (o mut OrderedDepMap) delete(name string) {
+	if !(name in o.data) {
+		panic('delete: no such key: $name')
+	}
+	for i, _ in o.keys {
+		if o.keys[i] == name {
+			o.keys.delete(i)
+			break
 		}
 	}
-	return diff
+	o.data.delete(name)
 }
 
-pub fn (dset &DepSet) size() int {
-	return dset.items.len
+pub fn (o &OrderedDepMap) size() int {
+	return o.data.size
 }
 
 pub fn new_dep_graph() &DepGraph {
@@ -56,40 +68,40 @@ pub fn (graph mut DepGraph) add(mod string, deps []string) {
 }
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
-	mut node_names := map[string]DepGraphNode
-	mut node_deps := map[string]DepSet
+	mut node_names := OrderedDepMap{}
 	for _, node in graph.nodes {
-		node_names[node.name] = node
-		mut dep_set := DepSet{
-		}
-		for _, dep in node.deps {
-			dep_set.add(dep)
-		}
-		node_deps[node.name] = dep_set
+		node_names.set(node.name, node.deps)
 	}
+	mut node_deps := node_names
 	mut resolved := new_dep_graph()
-	for node_deps.size != 0 {
-		mut ready_set := DepSet{
-		}
-		for name, deps in node_deps {
-			if deps.size() == 0 {
-				ready_set.add(name)
+	for node_deps.size() != 0 {
+		mut ready_set := []string
+		for name in node_deps.keys {
+			deps := node_deps.data[name]
+			if deps.len == 0 {
+				ready_set << name
 			}
 		}
-		if ready_set.size() == 0 {
+		if ready_set.len == 0 {
 			mut g := new_dep_graph()
 			g.acyclic = false
-			for name, _ in node_deps {
-				g.nodes << node_names[name]
+			for name in node_deps.keys {
+				g.add(name, node_names.get(name))
 			}
 			return g
 		}
-		for name in ready_set.items {
+		for name in ready_set {
 			node_deps.delete(name)
-			resolved.nodes << node_names[name]
+			resolved.add(name, node_names.get(name))
 		}
-		for name, deps in node_deps {
-			node_deps[name] = deps.diff(ready_set)
+		for name in node_deps.keys {
+			mut diff := []string
+			for dep in node_deps.data[name] {
+				if !(dep in ready_set) {
+					diff << dep
+				}
+			}
+			node_deps.set(name, diff)
 		}
 	}
 	return resolved
