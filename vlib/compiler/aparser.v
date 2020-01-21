@@ -504,6 +504,8 @@ Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose .
 					// (for example, by DOOM). such fields are
 					// basically int consts
 					p.enum_decl(true)
+				} else {
+					p.error('Nameless enums are not allowed.')
 				}
 			}
 			.key_pub {
