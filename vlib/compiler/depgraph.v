@@ -30,10 +30,17 @@ pub fn (o mut OrderedDepMap) set(name string, deps []string) {
 	o.data[name] = deps
 }
 
-pub fn (o &OrderedDepMap) get(name string) []string {
-	if !(name in o.data) {
-		return []
+pub fn (o mut OrderedDepMap) add(name string, deps []string) {
+	mut d := o.data[name]
+	for dep in deps {
+		if !(dep in d) {
+			d << dep
+		}
 	}
+	o.set(name, d)
+}
+
+pub fn (o &OrderedDepMap) get(name string) []string {
 	return o.data[name]
 }
 
@@ -69,8 +76,8 @@ pub fn (graph mut DepGraph) add(mod string, deps []string) {
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
 	mut node_names := OrderedDepMap{}
-	for _, node in graph.nodes {
-		node_names.set(node.name, node.deps)
+	for node in graph.nodes {
+		node_names.add(node.name, node.deps)
 	}
 	mut node_deps := node_names
 	mut resolved := new_dep_graph()
