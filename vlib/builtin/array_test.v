@@ -561,3 +561,12 @@ fn test_push_many_self() {
         assert actual_arr[i] == expected_arr[i]
     }
 }
+
+fn test_for() {
+	nums := [1,2,3]
+	mut sum := 0
+	for num <- nums {
+		sum += num
+	}
+	assert sum == 6
+}

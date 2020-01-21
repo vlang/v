@@ -549,6 +549,11 @@ fn (s mut Scanner) scan() ScanRes {
 				s.pos++
 				return scan_res(.left_shift, '')
 			}
+			else if nextc == `-` {
+				s.pos++
+				println("GOT ARR")
+				return scan_res(.left_arrow, '')
+			}
 			else {
 				return scan_res(.lt, '')
 			}

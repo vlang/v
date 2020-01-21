@@ -128,10 +128,11 @@ fn (p mut Parser) for_st() {
 		}
 	}
 	// `for val in vals`
-	else if p.peek() == .key_in {
+	else if p.peek() == .key_in || p.peek() == .left_arrow {
 		val := p.check_name()
 		p.fspace()
-		p.check(.key_in)
+		//p.check(.key_in)
+		p.next()
 		p.fspace()
 		tmp := p.get_tmp()
 		mut typ,expr := p.tmp_expr()

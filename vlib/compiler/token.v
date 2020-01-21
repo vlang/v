@@ -36,6 +36,7 @@ enum TokenKind {
 	semicolon
 	colon
 	arrow // =>
+	left_arrow // <-
 	amp
 	hash
 	dollar

@@ -446,7 +446,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
@@ -544,10 +544,9 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			.key_global {
 				if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v &&
-					p.mod != 'ui' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
+					p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
 					!p.pref.enable_globals {
 					p.error('use `v --enable-globals ...` to enable globals')
-					// p.error('__global is only allowed in translated code')
 				}
 				p.next()
 				p.fspace()
