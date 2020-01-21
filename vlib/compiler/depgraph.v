@@ -57,6 +57,16 @@ pub fn (o mut OrderedDepMap) delete(name string) {
 	o.data.delete(name)
 }
 
+pub fn (o mut OrderedDepMap) apply_diff(name string, deps []string) {
+	mut diff := []string
+	for dep in o.data[name] {
+		if !(dep in deps) {
+			diff << dep
+		}
+	}
+	o.set(name, diff)
+}
+
 pub fn (o &OrderedDepMap) size() int {
 	return o.data.size
 }
@@ -102,13 +112,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			resolved.add(name, node_names.data[name])
 		}
 		for name in node_deps.keys {
-			mut diff := []string
-			for dep in node_deps.data[name] {
-				if !(dep in ready_set) {
-					diff << dep
-				}
-			}
-			node_deps.set(name, diff)
+			node_deps.apply_diff(name, ready_set)
 		}
 	}
 	return resolved
@@ -147,4 +151,3 @@ pub fn (graph &DepGraph) display_cycles() string {
 	}
 	return out
 }
-
