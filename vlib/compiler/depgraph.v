@@ -86,7 +86,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			mut g := new_dep_graph()
 			g.acyclic = false
 			for name in node_deps.keys {
-				g.add(name, node_names.get(name))
+				g.add(name, node_names.data[name])
 			}
 			return g
 		}
