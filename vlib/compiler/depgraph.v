@@ -92,7 +92,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 		}
 		for name in ready_set {
 			node_deps.delete(name)
-			resolved.add(name, node_names.get(name))
+			resolved.add(name, node_names.data[name])
 		}
 		for name in node_deps.keys {
 			mut diff := []string
