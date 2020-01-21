@@ -8,7 +8,7 @@ import (
 	strings
 	filepath
 	//compiler.x64
-	// time
+	time
 )
 
 struct Parser {
@@ -25,6 +25,7 @@ mut:
 	scanner                &Scanner
 	tokens                 []Token
 	token_idx              int
+	prev_stuck_token_idx   int
 	tok                    TokenKind
 	prev_tok               TokenKind
 	prev_tok2              TokenKind // TODO remove these once the tokens are cached
@@ -462,8 +463,17 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		return
 	}
+	
+	parsing_start_ticks := time.ticks()
+	compile_cycles_stuck_mask := u64( 0x1FFFFFFF ) // 2^29-1 cycles
+	mut parsing_cycle := u64(1)
+	p.prev_stuck_token_idx = p.token_idx
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
+		parsing_cycle++
+		if compile_cycles_stuck_mask == (parsing_cycle & compile_cycles_stuck_mask) {
+			p.check_if_parser_is_stuck(parsing_cycle, parsing_start_ticks)
+		}
 		match p.tok {
 			.key_import {
 				p.imports()
@@ -480,6 +490,8 @@ fn (p mut Parser) parse(pass Pass) {
 					// (for example, by DOOM). such fields are
 					// basically int consts
 					p.enum_decl(true)
+				} else {
+					p.error('Nameless enums are not allowed.')
 				}
 			}
 			.key_pub {
@@ -3162,3 +3174,22 @@ fn todo_remove() {
 	//x64.new_gen('f')
 }
 
+
+fn (p mut Parser) check_if_parser_is_stuck(parsing_cycle u64, parsing_start_ticks i64){
+	if p.prev_stuck_token_idx == p.token_idx {
+		// many many cycles have passed with no progress :-( ...
+		eprintln('Parsing is [probably] stuck. Cycle: ${parsing_cycle:12ld} .')
+		eprintln('  parsing file: ${p.file_path} | pass: ${p.pass} | mod: ${p.mod} | fn: ${p.cur_fn.name}')
+		p.print_current_tokens('  source')
+		if time.ticks() > parsing_start_ticks + 10*1000{
+			p.warn('V compiling is too slow.')
+		}
+		if time.ticks() > parsing_start_ticks + 30*1000{
+			p.error('
+V took more than 30 seconds to compile this file.
+Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose .
+')
+		}
+	}
+	p.prev_stuck_token_idx = p.token_idx
+}
