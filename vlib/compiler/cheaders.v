@@ -88,6 +88,10 @@ const (
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __NetBSD__
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 $c_common_macros
 
 #ifdef _WIN32
