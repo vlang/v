@@ -12,7 +12,7 @@ const char* get_date() {
 
 	time(&t);
 	#ifdef __WINDOWS__
-		gmtime(&t, &tm);
+		gmtime_s(&t, &tm);
 	#else
 		gmtime_r(&t, &tm);
 	#endif
