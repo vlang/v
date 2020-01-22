@@ -30,7 +30,7 @@ fn test_scan() {
 	mut c := 0xa_0
 	assert c == 0xa0
 	c = 0b10_01
-	assert c = 9
+	assert c == 9
 	c = 1_000_000
 	assert c == 1000000
 	d := f64(23_000_000e-3)
