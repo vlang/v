@@ -1,5 +1,9 @@
 #include "src/picohttpparser.c"
 
+#if !defined(__WINDOWS__) && (defined(WIN32) || defined(WIN64) || defined(_MSC_VER) || defined(_WIN32))
+#define __WINDOWS__
+#endif
+
 // date
 #include <time.h>
 
