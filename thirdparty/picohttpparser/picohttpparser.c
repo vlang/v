@@ -8,7 +8,7 @@ const char* get_date() {
 	struct tm tm;
 	static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 	static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-	static __thread char date[30] = "Thu, 01 Jan 1970 00:00:00 GMT";
+	static char date[30] = "Thu, 01 Jan 1970 00:00:00 GMT";
 
 	time(&t);
 	gmtime_r(&t, &tm);
