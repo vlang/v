@@ -395,7 +395,7 @@ start:
 			println('strip failed')
 			return
 		}
-		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		ret2 := os.system('upx -qqq $v.out_name')
 		if ret2 != 0 {
 			println('upx failed')
 			$if macos {
