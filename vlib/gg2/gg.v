@@ -200,6 +200,8 @@ pub fn (gg &GG) end() {
 
 pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {}
 
+fn C.WaitMessage()
+
 pub fn wait_events() {
 	unsafe {
 		$if macos  {
