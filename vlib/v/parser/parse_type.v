@@ -2,9 +2,12 @@ module parser
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-import v.types
 
-pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
+import (
+	v.table
+)
+
+pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -12,7 +15,7 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		p.check(.rsbr)
 		elem_ti := p.parse_ti()
 		idx,name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
-		return types.new_ti(.array_fixed, name, idx, nr_muls)
+		return table.new_type(.array_fixed, name, idx, nr_muls)
 	}
 	// array
 	p.check(.rsbr)
@@ -24,22 +27,22 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) types.TypeIdent {
 		nr_dims++
 	}
 	idx,name := p.table.find_or_register_array(&elem_ti, nr_dims)
-	return types.new_ti(.array, name, idx, nr_muls)
+	return table.new_type(.array, name, idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_map_ti(nr_muls int) types.TypeIdent {
+pub fn (p mut Parser) parse_map_ti(nr_muls int) table.Type {
 	p.next()
 	p.check(.lsbr)
 	key_ti := p.parse_ti()
 	p.check(.rsbr)
 	value_ti := p.parse_ti()
 	idx,name := p.table.find_or_register_map(&key_ti, &value_ti)
-	return types.new_ti(.map, name, idx, nr_muls)
+	return table.new_type(.map, name, idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
+pub fn (p mut Parser) parse_multi_return_ti() table.Type {
 	p.check(.lpar)
-	mut mr_tis := []types.TypeIdent
+	mut mr_tis := []table.Type
 	for {
 		mr_ti := p.parse_ti()
 		mr_tis << mr_ti
@@ -52,17 +55,17 @@ pub fn (p mut Parser) parse_multi_return_ti() types.TypeIdent {
 	}
 	p.check(.rpar)
 	idx,name := p.table.find_or_register_multi_return(mr_tis)
-	return types.new_ti(.multi_return, name, idx, 0)
+	return table.new_type(.multi_return, name, idx, 0)
 }
 
-pub fn (p mut Parser) parse_variadic_ti() types.TypeIdent {
+pub fn (p mut Parser) parse_variadic_ti() table.Type {
 	p.check(.ellipsis)
 	variadic_ti := p.parse_ti()
 	idx,name := p.table.find_or_register_variadic(&variadic_ti)
-	return types.new_ti(.variadic, name, idx, 0)
+	return table.new_type(.variadic, name, idx, 0)
 }
 
-pub fn (p mut Parser) parse_ti() types.TypeIdent {
+pub fn (p mut Parser) parse_ti() table.Type {
 	mut nr_muls := 0
 	for p.tok.kind == .amp {
 		p.check(.amp)
@@ -98,65 +101,66 @@ pub fn (p mut Parser) parse_ti() types.TypeIdent {
 					return p.parse_map_ti(nr_muls)
 				}
 				'voidptr' {
-					return types.new_ti(.voidptr, 'voidptr', types.voidptr_type_idx, nr_muls)
+					return table.new_type(.voidptr, 'voidptr', table.voidptr_type_idx, nr_muls)
 				}
 				'byteptr' {
-					return types.new_ti(.byteptr, 'byteptr', types.byteptr_type_idx, nr_muls)
+					return table.new_type(.byteptr, 'byteptr', table.byteptr_type_idx, nr_muls)
 				}
 				'charptr' {
-					return types.new_ti(.charptr, 'charptr', types.charptr_type_idx, nr_muls)
+					return table.new_type(.charptr, 'charptr', table.charptr_type_idx, nr_muls)
 				}
 				'i8' {
-					return types.new_ti(.i8, 'i8', types.i8_type_idx, nr_muls)
+					return table.new_type(.i8, 'i8', table.i8_type_idx, nr_muls)
 				}
 				'i16' {
-					return types.new_ti(.i16, 'i16', types.i16_type_idx, nr_muls)
+					return table.new_type(.i16, 'i16', table.i16_type_idx, nr_muls)
 				}
 				'int' {
-					return types.new_ti(.int, 'int', types.int_type_idx, nr_muls)
+					return table.new_type(.int, 'int', table.int_type_idx, nr_muls)
 				}
 				'i64' {
-					return types.new_ti(.i64, 'i64', types.i64_type_idx, nr_muls)
+					return table.new_type(.i64, 'i64', table.i64_type_idx, nr_muls)
 				}
 				'byte' {
-					return types.new_ti(.byte, 'byte', types.byte_type_idx, nr_muls)
+					return table.new_type(.byte, 'byte', table.byte_type_idx, nr_muls)
 				}
 				'u16' {
-					return types.new_ti(.u16, 'u16', types.u16_type_idx, nr_muls)
+					return table.new_type(.u16, 'u16', table.u16_type_idx, nr_muls)
 				}
 				'u32' {
-					return types.new_ti(.u32, 'u32', types.u32_type_idx, nr_muls)
+					return table.new_type(.u32, 'u32', table.u32_type_idx, nr_muls)
 				}
 				'u64' {
-					return types.new_ti(.u64, 'u64', types.u64_type_idx, nr_muls)
+					return table.new_type(.u64, 'u64', table.u64_type_idx, nr_muls)
 				}
 				'f32' {
-					return types.new_ti(.f32, 'f32', types.f32_type_idx, nr_muls)
+					return table.new_type(.f32, 'f32', table.f32_type_idx, nr_muls)
 				}
 				'f64' {
-					return types.new_ti(.f64, 'f64', types.f64_type_idx, nr_muls)
+					return table.new_type(.f64, 'f64', table.f64_type_idx, nr_muls)
 				}
 				'string' {
-					return types.new_ti(.string, 'string', types.string_type_idx, nr_muls)
+					return table.new_type(.string, 'string', table.string_type_idx, nr_muls)
 				}
 				'char' {
-					return types.new_ti(.char, 'char', types.charptr_type_idx, nr_muls)
+					return table.new_type(.char, 'char', table.charptr_type_idx, nr_muls)
 				}
 				'bool' {
-					return types.new_ti(.bool, 'bool', types.bool_type_idx, nr_muls)
+					return table.new_type(.bool, 'bool', table.bool_type_idx, nr_muls)
 				}
 				// struct / enum / placeholder
 				else {
 					// struct / enum
 					mut idx := p.table.find_type_idx(name)
 					if idx > 0 {
-						return types.new_ti(p.table.types[idx].kind, name, idx, nr_muls)
+						return table.new_type(p.table.types[idx].kind, name, idx, nr_muls)
 					}
 					// not found - add placeholder
 					idx = p.table.add_placeholder_type(name)
-					return types.new_ti(.placeholder, name, idx, nr_muls)
+					return table.new_type(.placeholder, name, idx, nr_muls)
 				}
 	}
 		}
 	}
 }
+

@@ -4,19 +4,22 @@ int get_int2();
 void myuser();
 multi_return_int_string multi_return();
 void variadic(variadic_int a);
+void ensure_cap(int required, int cap);
 
 typedef struct {
 	int age;
 } User;
 
 int main() {
-int a = 10;
-a++;
-int negative = -a;
-a == 1;
-foo(3);
-int ak = 10;
-return 0;
+	int a = 10;
+	a++;
+	int negative = -a;
+	2 < 3;
+	a == 1;
+	a++;
+	foo(3);
+	int ak = 10;
+	return 0;
 }
 
 void foo(int a) {
@@ -31,7 +34,19 @@ i < 10; i++;
 		1, 2, 3,
 	});
 	int number = nums[0];
+	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), {
+		true, false,
+	});
+	bool b = bools[0];
+	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), {
+		tos3("a"), tos3("b"),
+	});
+	string s = mystrings[0];
+	int x = 0;
+	x = get_int2();
 	int n = get_int2();
+	bool q = true || false;
+	bool b2 = bools[0] || true;
 }
 
 int get_int(string a) {
@@ -55,8 +70,14 @@ void myuser() {
 }
 
 multi_return_int_string multi_return() {
-return (multi_return_int_string){.arg0=4,.arg1=tos3("four")};
-} 
+	return (multi_return_int_string){.arg0=4,.arg1=tos3("four")};
+}
 
 void variadic(variadic_int a) {
+}
+
+void ensure_cap(int required, int cap) {
+	if (required < cap) {
+		return;
+	}
 }

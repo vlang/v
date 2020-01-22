@@ -405,7 +405,6 @@ pub fn (v mut V) compile_x64() {
 	}
 	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.dir
-
 	mut b := builder.new_builder()
 	b.build_x64(v.files, v.out_name)
 }

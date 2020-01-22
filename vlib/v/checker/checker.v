@@ -6,14 +6,13 @@ module checker
 import (
 	v.ast
 	v.table
-	v.types
 	v.token
 )
 
 pub struct Checker {
-	table      &table.Table
+	table     &table.Table
 mut:
-	file_name  string
+	file_name string
 	// TODO: resolved
 }
 
@@ -36,7 +35,7 @@ pub fn (c mut Checker) check_files(v_files []string, ast_files []ast.File) {
 	}
 }
 
-pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
+pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.Type {
 	typ := c.table.find_type(struct_init.ti.name) or {
 		c.error('unknown struct: $struct_init.ti.name', struct_init.pos)
 		panic('')
@@ -46,100 +45,116 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) {
 			c.error('unknown struct: $struct_init.ti.name', struct_init.pos)
 		}
 		.struct_ {
-			info := typ.info as types.Struct
+			info := typ.info as table.Struct
 			for i, expr in struct_init.exprs {
 				field := info.fields[i]
-				expr_ti := c.table.get_expr_ti(expr)
-				if !c.table.check(expr_ti, field.ti) {
-					c.error('cannot assign $expr_ti.name as $field.ti.name for field $field.name', struct_init.pos)
+				// expr_ti := c.expr(expr)
+				field_type := c.expr(expr)
+				if !c.table.check(field_type, field.ti) {
+					c.error('cannot assign $field_type.name as $field.ti.name for field $field.name', struct_init.pos)
 				}
 			}
 		}
 		else {}
 	}
+	return struct_init.ti
 }
 
-pub fn (c &Checker) check_binary_expr(binary_expr ast.BinaryExpr) {
-	left_ti := c.table.get_expr_ti(binary_expr.left)
-	right_ti := c.table.get_expr_ti(binary_expr.right)
+pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
+	left_ti := c.expr(infix_expr.left)
+	right_ti := c.expr(infix_expr.right)
 	if !c.table.check(&right_ti, &left_ti) {
-		c.error('binary expr: cannot use $right_ti.name as $left_ti.name', binary_expr.pos)
+		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
+		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
+		c.error('infix expr: cannot use `$left_ti.name` as `$right_ti.name`', infix_expr.pos)
 	}
+	return left_ti
 }
 
 fn (c &Checker) check_assign_expr(assign_expr ast.AssignExpr) {
-	left_ti := c.table.get_expr_ti(assign_expr.left)
-	right_ti := c.table.get_expr_ti(assign_expr.val)
+	left_ti := c.expr(assign_expr.left)
+	right_ti := c.expr(assign_expr.val)
 	if !c.table.check(right_ti, left_ti) {
 		c.error('cannot assign $right_ti.name to $left_ti.name', assign_expr.pos)
 	}
 }
 
-pub fn (c &Checker) check_call_expr(call_expr ast.CallExpr) {
+pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
 		if call_expr.args.len < f.args.len {
 			c.error('too few arguments in call to `$fn_name`', call_expr.pos)
-		} else if call_expr.args.len > f.args.len {
+		}
+		else if call_expr.args.len > f.args.len {
 			c.error('too many arguments in call to `$fn_name`', call_expr.pos)
 		}
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
-			ti := c.table.get_expr_ti(arg_expr)
-			if !c.table.check(&ti, &arg.ti) {
-				c.error('cannot use type `$ti.name` as type `$arg.ti.name` in argument to `$fn_name`', call_expr.pos)
+			ti := c.expr(arg_expr)
+			if !c.table.check(&ti, &arg.typ) {
+				c.error('!cannot use type `$ti.name` as type `$arg.typ.name` in argument to `$fn_name`', call_expr.pos)
 			}
 		}
-	} else {
+		return f.return_type
+	}else{
 		c.error('unknown fn: $fn_name', call_expr.pos)
+		exit(0)
 		// c.warn('unknown function `$fn_name`')
 	}
 }
 
-pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) {
-	ti := c.table.get_expr_ti(method_call_expr.expr)
+pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type {
+	ti := c.expr(method_call_expr.expr)
 	if !c.table.has_method(ti.idx, method_call_expr.name) {
 		c.error('type `$ti.name` has no method `$method_call_expr.name`', method_call_expr.pos)
 	}
+	return ti
 }
 
-pub fn (c &Checker) check_selector_expr(selector_expr ast.SelectorExpr) {
-	ti := c.table.get_expr_ti(selector_expr.expr)
+pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
+	ti := c.expr(selector_expr.expr)
 	field_name := selector_expr.field
-	// struct_ := c.table.types[ti.idx] as types.Struct
+	struct_ := c.table.types[ti.idx]
+	// struct_info := struct_.info as table.Struct
 	typ := c.table.types[ti.idx]
 	match typ.kind {
 		.struct_ {
 			// if !c.table.struct_has_field(it, field) {
-			// 	c.error('AAA unknown field `${it.name}.$field`')
+			// c.error('AAA unknown field `${it.name}.$field`')
 			// }
 			// TODO: fix bug
-			c.table.struct_find_field(typ, field_name) or {
+			field := c.table.struct_find_field(typ, field_name) or {
 				c.error('unknown field `${typ.name}.$field_name`', selector_expr.pos)
+				exit(0)
 			}
+			return field.ti
 		}
 		else {
 			c.error('$ti.name is not a struct', selector_expr.pos)
 		}
 	}
+	return table.void_type
 }
 
 // TODO: non deferred
-pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
-	mut got_tis := []types.TypeIdent
+pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
+	mut got_tis := []table.Type
+	if return_stmt.exprs.len == 0 {
+		return
+	}
 	for expr in return_stmt.exprs {
-		ti := c.table.get_expr_ti(expr)
+		ti := c.expr(expr)
 		got_tis << ti
 	}
 	expected_ti := return_stmt.expected_ti
 	mut expected_tis := [expected_ti]
 	if expected_ti.kind == .multi_return {
 		mr_type := c.table.types[expected_ti.idx]
-		mr_info := mr_type.info as types.MultiReturn
+		mr_info := mr_type.info as table.MultiReturn
 		expected_tis = mr_info.tis
 	}
-	if expected_tis.len != got_tis.len {
+	if expected_tis.len > 0 && expected_tis.len != got_tis.len {
 		c.error('wrong number of return arguments:\n\texpected: $expected_tis.str()\n\tgot: $got_tis.str()', return_stmt.pos)
 	}
 	for i, exp_ti in expected_tis {
@@ -150,11 +165,11 @@ pub fn (c &Checker) check_return_stmt(return_stmt ast.Return) {
 	}
 }
 
-pub fn (c &Checker) check_array_init(array_init ast.ArrayInit) {
-	mut val_ti := types.void_ti
+pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.Type {
+	mut val_ti := table.void_type
 	for i, expr in array_init.exprs {
 		c.expr(expr)
-		ti := c.table.get_expr_ti(expr)
+		ti := c.expr(expr)
 		// The first element's type
 		if i == 0 {
 			val_ti = ti
@@ -164,6 +179,7 @@ pub fn (c &Checker) check_array_init(array_init ast.ArrayInit) {
 			c.error('expected array element with type `$val_ti.name`', array_init.pos)
 		}
 	}
+	return array_init.ti
 }
 
 fn (c &Checker) stmt(node ast.Stmt) {
@@ -174,10 +190,15 @@ fn (c &Checker) stmt(node ast.Stmt) {
 			}
 		}
 		ast.Return {
-			c.check_return_stmt(it)
+			c.return_stmt(it)
 		}
 		ast.VarDecl {
-			c.expr(it.expr)
+			typ := c.expr(it.expr)
+			println('1111var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
+			if it.typ.kind == .unresolved {
+				// it.ti = typ
+				println('VAR DECL UN!!!')
+			}
 		}
 		ast.ForStmt {
 			c.expr(it.cond)
@@ -201,42 +222,58 @@ fn (c &Checker) stmt(node ast.Stmt) {
 	}
 }
 
-fn (c &Checker) expr(node ast.Expr) {
+pub fn (c &Checker) expr(node ast.Expr) table.Type {
 	match node {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
 		}
-		// ast.IntegerLiteral {}
+		ast.IntegerLiteral {
+			return table.int_type
+		}
 		// ast.FloatLiteral {}
 		ast.PostfixExpr {
-			c.expr(it.expr)
+			return c.expr(it.expr)
 		}
+		/*
 		ast.UnaryExpr {
 			c.expr(it.left)
 		}
-		// ast.StringLiteral {}
-		ast.PrefixExpr {
-			c.expr(it.right)
+		*/
+
+		ast.StringLiteral {
+			return table.string_type
 		}
-		ast.BinaryExpr {
-			c.check_binary_expr(it)
+		ast.PrefixExpr {
+			return c.expr(it.right)
+		}
+		ast.InfixExpr {
+			return c.infix_expr(it)
 		}
 		ast.StructInit {
-			c.check_struct_init(it)
+			return c.check_struct_init(it)
 		}
 		ast.CallExpr {
-			c.check_call_expr(it)
+			return c.call_expr(it)
 		}
 		ast.MethodCallExpr {
-			c.check_method_call_expr(it)
+			return c.check_method_call_expr(it)
 		}
 		ast.ArrayInit {
-			c.check_array_init(it)
+			return c.array_init(it)
 		}
-		// ast.Ident {}
+		ast.Ident {
+			if it.kind == .variable {
+				info := it.info as ast.IdentVar
+				if info.typ.kind != .unresolved {
+					return info.typ
+				}
+				return c.expr(info.expr)
+			}
+			return table.void_type
+		}
 		// ast.BoolLiteral {}
 		ast.SelectorExpr {
-			c.check_selector_expr(it)
+			return c.selector_expr(it)
 		}
 		ast.IndexExpr {
 			c.expr(it.left)
@@ -255,6 +292,7 @@ fn (c &Checker) expr(node ast.Expr) {
 		}
 		else {}
 	}
+	return table.void_type
 }
 
 pub fn (c &Checker) error(s string, pos token.Position) {
@@ -268,5 +306,6 @@ pub fn (c &Checker) error(s string, pos token.Position) {
 		eprintln(final_msg_line)
 	}
 	*/
+
 	exit(1)
 }

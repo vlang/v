@@ -12,7 +12,8 @@ pub:
 [inline]
 pub fn (tok &Token) position() Position {
 	return Position{
-		line_nr: tok.line_nr
+		line_nr: tok.line_nr - 1
 		// pos: tok.pos
+		
 	}
 }

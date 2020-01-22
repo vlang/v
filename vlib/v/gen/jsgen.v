@@ -8,7 +8,7 @@ import (
 )
 
 struct JsGen {
-	out strings.Builder
+	out   strings.Builder
 	table &table.Table
 }
 
@@ -51,17 +51,15 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write('return ')
-			if it.exprs.len > 0 {
-
-			}
+			if it.exprs.len > 0 {}
 			else {
 				g.expr(it.exprs[0])
 			}
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			ti := g.table.refresh_ti(it.ti)
-			g.write('var /* $ti.name */ $it.name = ')
+			typ := g.table.refresh_ti(it.typ)
+			g.write('var /* $typ.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -106,14 +104,17 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			g.write(it.val)
 		}
+		/*
 		ast.UnaryExpr {
 			g.expr(it.left)
 			g.write(' $it.op ')
 		}
+		*/
+
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
 		}
-		ast.BinaryExpr {
+		ast.InfixExpr {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)

@@ -63,7 +63,7 @@ fn (p mut Parser) bool_expression() string {
 		p.gen('}')
 		//p.satisfies_interface(expected, typ, true)
 	}
-	// e.g. `return BinaryExpr{}` in a function expecting `Expr`
+	// e.g. `return InfixExpr{}` in a function expecting `Expr`
 	if expected != typ && expected in p.table.sum_types { // TODO perf
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		T := p.table.find_type(typ)
@@ -87,7 +87,8 @@ fn (p mut Parser) bool_expression() string {
 		if typ in p.table.sum_types {
 			T := p.table.find_type(cast_typ)
 			if T.parent != typ {
-				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
+				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
+				'parent=$T.parent')
 			}
 			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
 			p.gen('.obj')

@@ -344,11 +344,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.AssignExpr {}
 		ast.IntegerLiteral {}
 		ast.FloatLiteral {}
+		/*
 		ast.UnaryExpr {
 			g.expr(it.left)
 		}
+		*/
+
 		ast.StringLiteral {}
-		ast.BinaryExpr {}
+		ast.InfixExpr {}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {}
 		ast.CallExpr {

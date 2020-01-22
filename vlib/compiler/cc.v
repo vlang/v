@@ -134,13 +134,13 @@ fn (v mut V) cc() {
 	}
 
 	if !v.pref.is_so
-		&& v.pref.build_mode != .build_module 
+		&& v.pref.build_mode != .build_module
 		&& os.user_os() == 'windows'
 		&& !v.out_name.ends_with('.exe')
 	{
 		v.out_name += '.exe'
 	}
-	
+
 	// linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	if v.pref.is_so {
@@ -356,13 +356,11 @@ start:
 			if res.output.len < 30 {
 				println(res.output)
 			} else {
-				max := 50
-				n := if res.output.len > max { max } else { res.output.len }
-				partial_output := res.output[res.output.len-n..].trim_right('\r\n')
-				print(partial_output)
-				if n < max {
-					println('...\n(Use `v -cg` to print the entire error message)\n')
-				}
+				q := res.output.all_after('error: ').limit(150)
+				println('==================')
+				println(q)
+				println('==================')
+				println('...\n(Use `v -cg` to print the entire error message)\n')
 			}
 		}
 		verror('C error. This should never happen. ' + '\nPlease create a GitHub issue: https://github.com/vlang/v/issues/new/choose')

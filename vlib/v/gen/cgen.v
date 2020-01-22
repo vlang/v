@@ -4,6 +4,7 @@ import (
 	strings
 	v.ast
 	v.table
+	v.checker
 	// v.types
 	term
 )
@@ -12,6 +13,7 @@ struct Gen {
 	out         strings.Builder
 	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	table       &table.Table
+	checker     checker.Checker
 mut:
 	fn_decl     &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 }
@@ -22,6 +24,8 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		table: table
+		checker: checker.new_checker(table) // checker
+
 		fn_decl: 0
 	}
 	for file in files {
@@ -63,10 +67,11 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				// t := g.table.get_type(arg.ti.idx)
 				ti := g.table.refresh_ti(arg.ti)
 				g.write(ti.name + ' ' + arg.name)
+				g.definitions.write(ti.name + ' ' + arg.name)
 				if i < it.args.len - 1 {
 					g.write(', ')
+					g.definitions.write(', ')
 				}
-				g.definitions.write(ti.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
 			if !is_main {
@@ -82,12 +87,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.fn_decl = 0
 		}
 		ast.Return {
-			g.write('return ')
+			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
 				// t := g.table.get_type(g.fn_decl.ti.idx)
 				ti := g.table.refresh_ti(g.fn_decl.ti)
-				g.write('($ti.name){')
+				g.write(' ($ti.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
@@ -98,17 +103,20 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('}')
 			}
 			// normal return
-			else {
+			else if it.exprs.len == 1 {
+				g.write(' ')
 				g.expr(it.exprs[0])
 			}
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			mut ti := it.ti
-			if ti.kind == .unresolved {
-				ti = g.table.get_expr_ti(it.expr)
+			mut typ := it.typ
+			if typ.kind == .unresolved {
+				// g.write('/*unresolved*/')
+				// ti = table.void_type // g.table.get_expr_ti(it.expr)
+				typ = g.checker.expr(it.expr)
 			}
-			g.write('$ti.name $it.name = ')
+			g.write('$typ.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -177,6 +185,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.expr(it.expr)
 			g.write(it.op.str())
 		}
+		/*
 		ast.UnaryExpr {
 			// probably not :D
 			if it.op in [.inc, .dec] {
@@ -188,6 +197,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.expr(it.left)
 			}
 		}
+		*/
+
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
 		}
@@ -195,7 +206,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.op.str())
 			g.expr(it.right)
 		}
-		ast.BinaryExpr {
+		ast.InfixExpr {
 			g.expr(it.left)
 			if it.op == .dot {
 				println('!! dot')
