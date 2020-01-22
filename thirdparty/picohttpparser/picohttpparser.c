@@ -11,7 +11,11 @@ const char* get_date() {
 	static char date[30] = "Thu, 01 Jan 1970 00:00:00 GMT";
 
 	time(&t);
-	gmtime_r(&t, &tm);
+	#ifdef __WINDOWS__
+		gmtime(&t, &tm);
+	#else
+		gmtime_r(&t, &tm);
+	#endif
 	strftime(date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
 	memcpy(date, days[tm.tm_wday], 3);
 	memcpy(date + 8, months[tm.tm_mon], 3);

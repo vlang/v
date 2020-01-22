@@ -1,6 +1,10 @@
 
 typedef struct phr_header phr_header_t;
 
+#if !defined(__WINDOWS__) && (defined(WIN32) || defined(WIN64) || defined(_MSC_VER) || defined(_WIN32))
+#define __WINDOWS__
+#endif
+
 #include "src/picohttpparser.h"
 #include <stdint.h>
 
