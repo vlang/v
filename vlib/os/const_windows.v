@@ -89,3 +89,16 @@ const (
     ENABLE_LVB_GRID_WORLDWIDE          = 0x0010
 )
 
+// File modes
+const (
+	O_RDONLY	= 0			// open the file read-only.
+	O_WRONLY	= 1			// open the file write-only.
+	O_RDWR		= 2			// open the file read-write.
+	O_APPEND	= 0x0008	// append data to the file when writing.
+	O_CREATE	= 0x0100	// create a new file if none exists.
+	O_TRUNC		= 0x0200	// truncate regular writable file when opened.
+	O_EXCL		= 0x0400	// used with O_CREATE, file must not exist.
+	O_SYNC		= 0			// open for synchronous I/O (ignored on Windows)
+	O_NOCTTY	= 0			// make file non-controlling tty (ignored on Windows)
+	O_NONBLOCK	= 0			// don't block on opening file (ignored on Windows)
+)

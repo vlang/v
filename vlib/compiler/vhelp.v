@@ -71,7 +71,7 @@ Commands:
   build <module>    Compile a module into an object file.
   repl              Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
   symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
-  test v            Run all V test files, and compile all V examples.
+  test-compiler     Run all V test files, and compile all V examples.
   test folder/      Run all V test files located in the folder and its subfolders. You can also pass individual _test.v files too.
   fmt               Run vfmt to format the source code. [wip]
   doc               Run vdoc over the source code and produce documentation.

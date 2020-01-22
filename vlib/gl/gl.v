@@ -9,7 +9,7 @@ module gl
 #flag @VROOT/thirdparty/glad/glad.o
 
 // joe-c: fix & remove
-pub enum TmpGlImportHack{}
+pub enum TmpGlImportHack{ non_empty }
 
 pub fn init_glad() {
 	ok := C.gladLoadGL()
