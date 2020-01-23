@@ -177,7 +177,7 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 	// scan integer part
-	for s.pos < s.text.len && (s.text[s.pos].is_digit() || s.text[s.pos] != num_sep) {
+	for s.pos < s.text.len && (s.text[s.pos].is_digit() || s.text[s.pos] == num_sep) {
 		s.pos++
 	}
 	// e.g. 1..9
