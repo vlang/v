@@ -395,7 +395,12 @@ start:
 			println('strip failed')
 			return
 		}
-		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		// NB: upx --lzma can sometimes fail with NotCompressibleException
+		// See https://github.com/vlang/v/pull/3528
+		mut ret2 := os.system('upx --lzma -qqq $v.out_name')
+		if ret2 != 0 {
+			ret2 = os.system('upx -qqq $v.out_name')
+		}
 		if ret2 != 0 {
 			println('upx failed')
 			$if macos {
