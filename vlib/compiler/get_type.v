@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -147,8 +147,10 @@ fn (p mut Parser) get_type2() Type {
 			// try resolve full submodule
 			if !p.builtin_mod && p.import_table.known_alias(typ) {
 				mod := p.import_table.resolve_alias(typ)
-				if mod.contains('.') {
-					typ = mod_gen_name(mod)
+				typ = if mod.contains('.') {
+					mod_gen_name(mod)
+				} else {
+					mod
 				}
 			}
 			p.next()

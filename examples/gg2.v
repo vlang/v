@@ -1,6 +1,6 @@
 module main
 
-import gg2 // as gg
+import gg2 as gg
 import gx
 
 const (
@@ -10,12 +10,12 @@ const (
 
 struct App {
 mut:
-	gg &gg2.GG
+	gg &gg.GG
 }
 
 fn main() {
 	mut app := &App{}
-	app.gg = gg2.new_context({
+	app.gg = gg.new_context({
 		bg_color: gx.white
 		width: win_width
 		height: win_height

@@ -195,7 +195,18 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	eprintln('   v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
-	mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
+	mut mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
+	$if windows {
+		// skip pico example on windows
+		// there was a bug using filter here
+		mut mains_filtered := []string
+		for file in mains {
+			if !file.ends_with('examples\\pico\\pico.v') {
+				mains_filtered << file
+			}
+		}
+		mains = mains_filtered
+	}
 	session.files << mains
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
