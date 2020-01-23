@@ -1606,6 +1606,13 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 				p.gen(' += ')
 			}
 		}
+		.minus_assign {
+				next := p.peek_token()
+				if next.tok == .number && next.lit == '1' {
+					p.error('use `--` instead of `-= 1`')
+				}
+				p.gen(' -= ')
+		}
 		else {
 			p.gen(' ' + p.tok.str() + ' ')
 		}
