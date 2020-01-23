@@ -1068,6 +1068,10 @@ pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
+pub fn (c byte) is_bin_digit() bool {
+	return c == `0` || c == `1`
+}
+
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
