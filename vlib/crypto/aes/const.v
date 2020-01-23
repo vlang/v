@@ -23,7 +23,7 @@ module aes
 // Reducing mod poly corresponds to binary xor with poly every
 // time a 0x100 bit appears.
 const (
-	poly = int(1<<8) | int(1<<4) | int(1<<3) | int(1<<1) | int(1<<0) // x⁸ + x⁴ + x³ + x + 1
+	poly = (1<<8) | (1<<4) | (1<<3) | (1<<1) | (1<<0) // x⁸ + x⁴ + x³ + x + 1
 )
 
 // Powers of x mod poly in GF(2).
