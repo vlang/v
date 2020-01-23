@@ -198,7 +198,14 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	mut mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
 	$if windows {
 		// skip pico example on windows
-		mains = mains.filter(!it.ends_with('examples\\pico\\pico.v'))
+		// there was a bug using filter here
+		mut mains_filtered := []string
+		for file in mains {
+			if !file.ends_with('examples\\pico\\pico.v') {
+				mains_filtered << file
+			}
+		}
+		mains = mains_filtered
 	}
 	session.files << mains
 	session.test()
