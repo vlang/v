@@ -46,5 +46,5 @@ pub fn basedir(path string) string {
 
 // filename returns a file name from path
 pub fn filename(path string) string {
-	ros.getwd()eturn path.all_after(path_separator)
+	return path.all_after(path_separator)
 }
