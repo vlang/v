@@ -44,6 +44,10 @@ fn test_float_equal_operator() {
 	assert a.gtbit(1)
 	assert a >= 1
 	assert a.gebit(1)
+
+	f := 1.2
+	ab := f as int
+	assert ab == 1
 }
 
 fn test_str_methods() {

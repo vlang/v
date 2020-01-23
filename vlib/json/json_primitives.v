@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json
@@ -165,9 +165,7 @@ fn jsencode_bool(val bool) &C.cJSON {
 }
 
 fn jsencode_string(val string) &C.cJSON {
-	clone := val.clone()
-	return C.cJSON_CreateString(clone.str)
-	// return C.cJSON_CreateString2(val.str, val.len)
+	return C.cJSON_CreateString(val.str)
 }
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))

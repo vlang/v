@@ -14,6 +14,7 @@ fns.txt
 /tools/vtest-compiler
 /tools/vtest-fmt
 /tools/vfmt
+/tools/vbin2v
 /tools/vup
 /tools/vpm
 /tools/vcreate
@@ -52,3 +53,6 @@ vlib/os/bare/bare_example_linux
 
 info.log
 .vscode/**
+
+# vim/emacs editor backup files
+*~

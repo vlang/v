@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -128,9 +128,9 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 	mut b	   := &byte(0)
 	mut etable := &byte(0)
 	unsafe{
-		d = &byte(data.str)
-		b = &byte(buffer)
-		etable = &byte(EncodingTable.str)
+		d = data.str
+		b = buffer
+		etable = EncodingTable.str
 	}
 
 	for i < input_length {
@@ -151,7 +151,7 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 			i++
 		}
 
-		triple := ((int(octet_a) << 0x10) + (int(octet_b) << 0x08) + int(octet_c))
+		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
 
 		b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
 		b[j+1] = etable[ (triple >> 2 * 6) & 63 ]

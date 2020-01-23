@@ -1,4 +1,6 @@
 CC ?= cc
+CFLAGS ?=
+LDFLAGS ?=
 TMPDIR ?= /tmp
 
 VCFILE := v.c
@@ -39,11 +41,12 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) -std=c99 -w -o v0.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
-	./v0.exe -o v.exe v.v
-	rm -f v0.exe
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v2.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
+	./v2.exe -o v3.exe v.v
+	./v3.exe -o v.exe -prod v.v
+	rm -f v2.exe v3.exe
 else
-	$(CC) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
+	$(CC) $(CFLAGS) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
 ifdef ANDROID
 	chmod 755 v
 endif
@@ -90,6 +93,9 @@ $(TMPVC)/.git/config:
 
 selfcompile:
 	./v -cg -o v v.v
+
+selfcompile-static:
+	./v -cg -cflags '--static' -o v-static v.v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:

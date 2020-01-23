@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -135,6 +135,6 @@ fn print_backtrace_skipping_top_frames_nix(skipframes int) bool {
 }
 
 pub fn println(s string) {
-	C._putws(s.to_wide())
+	print('$s\n')
 }
 

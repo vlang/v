@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -298,6 +298,14 @@ pub fn (s string) i64() i64 {
 	return strconv.common_parse_int(s, 0, 64, false, false)
 }
 
+pub fn (s string) i8() i8 {
+	return i8(strconv.common_parse_int(s, 0, 8, false, false))
+}
+
+pub fn (s string) i16() i16 {
+	return i16(strconv.common_parse_int(s, 0, 16, false, false))
+}
+
 pub fn (s string) f32() f32 {
 	// return C.atof(charptr(s.str))
 	return f32(strconv.atof64(s))
@@ -306,6 +314,10 @@ pub fn (s string) f32() f32 {
 pub fn (s string) f64() f64 {
 	// return C.atof(charptr(s.str))
 	return strconv.atof64(s)
+}
+
+pub fn (s string) u16() u16 {
+	return u16(strconv.common_parse_uint(s, 0, 16, false, false))
 }
 
 pub fn (s string) u32() u32 {
@@ -479,7 +491,7 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 	return s.substr(start, end)
 }
 
-fn (s string) substr(start, end int) string {
+pub fn (s string) substr(start, end int) string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		panic('substr($start, $end) out of bounds (len=$s.len)')
 	}
@@ -869,7 +881,7 @@ pub fn (s string) ustring() ustring {
 		s: s
 		// runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
-		
+
 		runes: new_array(0, s.len, sizeof(int))
 	}
 	for i := 0; i < s.len; i++ {
@@ -1056,6 +1068,10 @@ pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
+pub fn (c byte) is_bin_digit() bool {
+	return c == `0` || c == `1`
+}
+
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
@@ -1201,4 +1217,3 @@ pub fn (s string) repeat(count int) string {
 	ret[s.len * count] = 0
 	return string(ret)
 }
-

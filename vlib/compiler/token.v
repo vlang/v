@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -36,6 +36,7 @@ enum TokenKind {
 	semicolon
 	colon
 	arrow // =>
+	left_arrow // <-
 	amp
 	hash
 	dollar
@@ -292,9 +293,16 @@ pub fn (t Token) str() string {
 	if t.tok == .str {
 		return "'$t.lit'"
 	}
+	if t.tok == .eof {
+		return '.EOF'
+	}
 	if t.tok < .plus {
 		return t.lit // string, number etc
 	}
 	return t.tok.str()
+}
+
+pub fn (t Token) detailed_str() string {
+	return 'Token{ .line:${t.line_nr:4d}, .pos:${t.pos:5d}, .tok: ${t.tok:3d} } = $t '
 }
 

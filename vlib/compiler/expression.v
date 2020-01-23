@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -50,6 +50,20 @@ fn (p mut Parser) bool_expression() string {
 	if p.inside_return_expr && p.expected_type.contains('_MulRet_') { //is_ret { // return a,b hack TODO
 		expected = p.expected_type
 	}
+	// `window.widget = button`, widget is an interface
+	if expected != typ && expected.ends_with('er') && expected.contains('I') {
+		tt := typ.replace('*', '_ptr')
+		/*
+		if p.fileis('button') || p.fileis('textbox') {
+			p.warn('exp="$expected" typ="$typ" tt="$tt"')
+		}
+		*/
+		p.cgen.set_placeholder(start_ph,
+		'($expected) { ._interface_idx = /* :) */ _${expected}_${tt}_index, ._object = ' )
+		p.gen('}')
+		//p.satisfies_interface(expected, typ, true)
+	}
+	// e.g. `return BinaryExpr{}` in a function expecting `Expr`
 	if expected != typ && expected in p.table.sum_types { // TODO perf
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		T := p.table.find_type(typ)
@@ -59,6 +73,41 @@ fn (p mut Parser) bool_expression() string {
 			tt := typ.all_after('_') // TODO
 			p.gen('}, sizeof($typ) ), .typ = SumType_${tt} }')//${val}_type }')
 		}
+	}
+	// `as` cast
+	// TODO remove copypasta
+	if p.tok == .key_as {
+		p.fspace()
+		p.next()
+		p.fspace()
+		cast_typ := p.get_type()
+		if typ == cast_typ {
+			p.warn('casting `$typ` to `$cast_typ` is not needed')
+		}
+		if typ in p.table.sum_types {
+			T := p.table.find_type(cast_typ)
+			if T.parent != typ {
+				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
+			}
+			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
+			p.gen('.obj')
+			// Make sure the sum type can be cast, otherwise throw a runtime error
+			/*
+			sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
+
+			n := cast_typ.all_after('__')
+			p.cgen.insert_before('if (($sum_type != SumType_$n) {
+puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
+exit(1);
+}
+')
+*/
+
+		} else {
+			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
+			p.gen(')')
+		}
+		return cast_typ
 	}
 	return typ
 }
@@ -344,6 +393,7 @@ fn (p mut Parser) name_expr() string {
 		}
 		// Color.green
 		else if p.peek() == .dot {
+			is_arr_start := p.prev_tok == .lsbr
 			enum_type := p.table.find_type(name)
 			if enum_type.cat != .enum_ {
 				p.error('`$name` is not an enum')
@@ -354,7 +404,7 @@ fn (p mut Parser) name_expr() string {
 			if !enum_type.has_enum_val(val) {
 				p.error('enum `$enum_type.name` does not have value `$val`')
 			}
-			if p.expected_type == enum_type.name {
+			if p.expected_type == enum_type.name && !is_arr_start {
 				// `if color == .red` is enough
 				// no need in `if color == Color.red`
 				p.warn('`${enum_type.name}.$val` is unnecessary, use `.$val`')
@@ -492,6 +542,9 @@ fn (p mut Parser) expression() string {
 			// _PUSH(&a, expression(), tmp, string)
 			tmp := p.get_tmp()
 			tmp_typ := parse_pointer(typ[6..]) // skip "array_"
+			//p.warn('arr typ $tmp_typ')
+			p.expected_type = tmp_typ
+			//println('set expr to $tmp_typ')
 			p.check_space(.left_shift)
 			// Get the value we are pushing
 			p.gen(', (')
@@ -507,7 +560,7 @@ fn (p mut Parser) expression() string {
 			}
 			p.gen('/*typ = $typ   tmp_typ=$tmp_typ*/')
 			ph_clone := p.cgen.add_placeholder()
-			expr_type := p.expression()
+			expr_type := p.bool_expression()
 			// Need to clone the string when appending it to an array?
 			if p.pref.autofree && typ == 'array_string' && expr_type == 'string' {
 				p.cgen.set_placeholder(ph_clone, 'string_clone(')
@@ -848,6 +901,13 @@ fn (p mut Parser) factor() string {
 			// `m := { 'one': 1 }`
 			if p.peek() == .str {
 				return p.map_init()
+			}
+			peek2 := p.tokens[p.token_idx + 1]
+			if p.peek() == .name && peek2.tok == .colon {
+				if !p.expected_type.ends_with('Config') {
+					p.error('short struct initialization syntax only works with structs that end with `Config`')
+				}
+				return p.struct_init(p.expected_type)
 			}
 			// { user | name :'new name' }
 			return p.assoc()

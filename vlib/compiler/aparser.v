@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -7,8 +7,8 @@ import (
 	os
 	strings
 	filepath
-	compiler.x64
-	// time
+	//compiler.x64
+	time
 )
 
 struct Parser {
@@ -25,12 +25,13 @@ mut:
 	scanner                &Scanner
 	tokens                 []Token
 	token_idx              int
+	prev_stuck_token_idx   int
 	tok                    TokenKind
 	prev_tok               TokenKind
 	prev_tok2              TokenKind // TODO remove these once the tokens are cached
 	lit                    string
 	cgen                   &CGen
-	x64                    &x64.Gen
+	//x64                    &x64.Gen
 	table                  &Table
 	import_table           ImportTable // Holds imports for just the file being parsed
 	pass                   Pass
@@ -103,6 +104,7 @@ const (
 )
 
 struct ParserState {
+	scanner_file_path string
 	scanner_line_nr   int
 	scanner_text      string
 	scanner_pos       int
@@ -207,7 +209,7 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		table: v.table
 		cur_fn: EmptyFn
 		cgen: v.cgen
-		x64: v.x64
+		//x64: v.x64
 		pref: v.pref
 		os: v.os
 		vroot: v.vroot
@@ -323,6 +325,7 @@ fn (p &Parser) log(s string) {
 
 pub fn (p &Parser) save_state() ParserState {
 	return ParserState{
+		scanner_file_path: p.scanner.file_path
 		scanner_line_nr: p.scanner.line_nr
 		scanner_text: p.scanner.text
 		scanner_pos: p.scanner.pos
@@ -343,6 +346,7 @@ pub fn (p &Parser) save_state() ParserState {
 
 pub fn (p mut Parser) restore_state(state ParserState, scanner bool, cgen bool) {
 	if scanner {
+		p.scanner.file_path = state.scanner_file_path
 		p.scanner.line_nr = state.scanner_line_nr
 		p.scanner.text = state.scanner_text
 		p.scanner.pos = state.scanner_pos
@@ -390,9 +394,12 @@ pub fn (p mut Parser) add_text(text string) {
 	p.scan_tokens()
 }
 
-fn (p mut Parser) statements_from_text(text string, rcbr bool) {
+fn (p mut Parser) statements_from_text(text string, rcbr bool, fpath string) {
 	saved_state := p.save_state()
 	p.clear_state(true, false)
+	if fpath != '' {
+		p.scanner.file_path = fpath
+	}
 	p.add_text(text)
 	p.next()
 	if rcbr {
@@ -439,7 +446,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['ui', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
@@ -456,8 +463,17 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		return
 	}
+	
+	parsing_start_ticks := time.ticks()
+	compile_cycles_stuck_mask := u64( 0x1FFFFFFF ) // 2^29-1 cycles
+	mut parsing_cycle := u64(1)
+	p.prev_stuck_token_idx = p.token_idx
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
+		parsing_cycle++
+		if compile_cycles_stuck_mask == (parsing_cycle & compile_cycles_stuck_mask) {
+			p.check_if_parser_is_stuck(parsing_cycle, parsing_start_ticks)
+		}
 		match p.tok {
 			.key_import {
 				p.imports()
@@ -474,6 +490,8 @@ fn (p mut Parser) parse(pass Pass) {
 					// (for example, by DOOM). such fields are
 					// basically int consts
 					p.enum_decl(true)
+				} else {
+					p.error('Nameless enums are not allowed.')
 				}
 			}
 			.key_pub {
@@ -525,9 +543,10 @@ fn (p mut Parser) parse(pass Pass) {
 				p.comp_time()
 			}
 			.key_global {
-				if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v && p.mod != 'ui' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+				if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v &&
+					p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
+					!p.pref.enable_globals {
 					p.error('use `v --enable-globals ...` to enable globals')
-					// p.error('__global is only allowed in translated code')
 				}
 				p.next()
 				p.fspace()
@@ -658,7 +677,9 @@ fn (p mut Parser) import_statement() {
 	}
 	// aliasing (import encoding.base64 as b64)
 	if p.tok == .key_as && p.peek() == .name {
+		p.fspace()
 		p.check(.key_as)
+		p.fspace()
 		mod_alias = p.check_name()
 	}
 	// add import to file scope import table
@@ -830,7 +851,7 @@ fn (p mut Parser) type_decl() {
 				//println('child=$child_type_name parent=$name')
 				mut t := p.find_type(child_type_name)
 				if t.name == '' {
-					p.error('qunknown type `$child_type_name`')
+					p.error('unknown type `$child_type_name`')
 				}
 				t.parent = name
 				p.table.rewrite_type(t)
@@ -849,10 +870,10 @@ fn (p mut Parser) type_decl() {
 		}
 		if p.pass == .decl {
 			p.table.sum_types << name
-			println(p.table.sum_types)
+			// println(p.table.sum_types)
 		}
 		// Register the actual sum type
-		println('registering sum $name')
+		// println('registering sum $name')
 		p.table.register_type(Type{
 			name: name
 			mod: p.mod
@@ -1169,7 +1190,7 @@ fn (p mut Parser) get_type() string {
 			}
 			t = p.table.find_type(typ)
 			if t.name == '' && !p.pref.translated && !p.first_pass() && !typ.starts_with('[') {
-				println('get_type() bad type')
+				// println('get_type() bad type')
 				// println('all registered types:')
 				// for q in p.table.types {
 				// println(q.name)
@@ -1178,7 +1199,8 @@ fn (p mut Parser) get_type() string {
 				if t_suggest.len > 0 {
 					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
 				}
-				p.error('unknown type `$typ`$t_suggest')
+				econtext := if p.pref.is_debug { '('+@FILE+':'+@LINE+')' } else {''}
+				p.error('unknown type `$typ`$t_suggest $econtext')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {
@@ -1584,13 +1606,22 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 				p.gen(' += ')
 			}
 		}
+		.minus_assign {
+				next := p.peek_token()
+				if next.tok == .number && next.lit == '1' {
+					p.error('use `--` instead of `-= 1`')
+				}
+				p.gen(' -= ')
+		}
 		else {
 			p.gen(' ' + p.tok.str() + ' ')
-		}}
+		}
+	}
 	p.fspace()
 	p.next()
 	p.fspace()
 	pos := p.cgen.cur_line.len
+	expr_tok := p.cur_tok_index()
 	p.is_var_decl = true
 	expr_type := p.bool_expression()
 	p.is_var_decl = false
@@ -1598,8 +1629,8 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 	// p.warn('expecting array got $expr_type')
 	// }
 	if expr_type == 'void' {
-		_,fn_name := p.is_expr_fn_call(p.token_idx - 3)
-		p.error_with_token_index('${fn_name}() $err_used_as_value', p.token_idx - 2)
+		_,fn_name := p.is_expr_fn_call(expr_tok+1)
+		p.error_with_token_index('${fn_name}() $err_used_as_value', expr_tok)
 	}
 	// Allow `num = 4` where `num` is an `?int`
 	if p.assigned_type.starts_with('Option_') && expr_type == parse_pointer(p.assigned_type['Option_'.len..]) {
@@ -1703,6 +1734,7 @@ fn (p mut Parser) var_decl() {
 	else {
 		p.error('expected `=` or `:=`')
 	}
+	expr_tok := p.cur_tok_index()
 	// all vars on left of `:=` already defined (or `_`)
 	if is_decl_assign && var_names.len == 1 && var_names[0] == '_' {
 		p.error_with_token_index('use `=` instead of `:=`', var_token_idxs.last())
@@ -1710,8 +1742,8 @@ fn (p mut Parser) var_decl() {
 	p.var_decl_name = if var_names.len > 1 { '_V_mret_${p.token_idx}_' + var_names.join('_') } else { var_names[0] }
 	t := p.gen_var_decl(p.var_decl_name, is_static)
 	if t == 'void' {
-		_,fn_name := p.is_expr_fn_call(p.token_idx - 3)
-		p.error_with_token_index('${fn_name}() $err_used_as_value', p.token_idx - 2)
+		_,fn_name := p.is_expr_fn_call(expr_tok+1)
+		p.error_with_token_index('${fn_name}() $err_used_as_value', expr_tok)
 	}
 	mut var_types := [t]
 	// multiple returns types
@@ -2101,6 +2133,9 @@ fn (p mut Parser) dot(str_typ_ string, method_ph int) string {
 		// Is the next token `=`, `+=` etc?  (Are we modifying the field?)
 		next := p.peek()
 		modifying := next.is_assign() || next == .inc || next == .dec || (field.typ.starts_with('array_') && next == .left_shift)
+		if modifying {
+			p.expected_type = field.typ
+		}
 		if !p.builtin_mod && !p.pref.translated && modifying && p.has_immutable_field {
 			f := p.first_immutable_field
 			p.error_with_token_index('cannot modify immutable field `$f.name` (type `$f.parent_fn`)\n' + 'declare the field with `mut:`
@@ -2622,6 +2657,9 @@ fn (p mut Parser) array_init() string {
 	new_arr_ph := p.cgen.add_placeholder()
 	mut i := 0
 	for p.tok != .rsbr {
+		if expected_array_type.starts_with('array_') {
+		p.expected_type = expected_array_type[6..]
+		}
 		val_typ := p.bool_expression()
 		// Get the type of the first expression
 		if i == 0 {
@@ -2694,7 +2732,7 @@ fn (p mut Parser) array_init() string {
 		// vals.len == 0 {
 		if exp_array {
 			type_expected := p.expected_type[6..].replace('ptr_', '&')
-			p.error('no need to specify the full array type here, use `[]` instead of `[]$type_expected`')
+			p.warn('no need to specify the full array type here, use `[]` instead of `[]$type_expected`')
 		}
 		typ = p.get_type()
 	}
@@ -3072,7 +3110,10 @@ fn (p mut Parser) check_and_register_used_imported_type(typ_name string) {
 	us_idx := typ_name.index('__') or {
 		return
 	}
-	arg_mod := typ_name[..us_idx]
+	mut arg_mod := typ_name[..us_idx]
+	if arg_mod.contains('_dot_') {
+		arg_mod = arg_mod.all_after('_dot_')
+	}
 	if p.import_table.known_alias(arg_mod) {
 		p.import_table.register_used_import(arg_mod)
 	}
@@ -3093,8 +3134,13 @@ fn (p mut Parser) check_unused_imports() {
 	if output == '' {
 		return
 	}
+
 	// the imports are usually at the start of the file
-	p.production_error_with_token_index('the following imports were never used: $output', 0)
+	//p.production_error_with_token_index('the following imports were never used: $output', 0)
+	if p.pref.is_verbose {
+		eprintln('Used imports table: ${p.import_table.used_imports.str()}')
+	}
+	p.warn('the following imports were never used: $output')
 }
 
 fn (p &Parser) is_expr_fn_call(start_tok_idx int) (bool,string) {
@@ -3131,6 +3177,25 @@ fn (p mut Parser) skip_block(inside_first_lcbr bool) {
 }
 
 fn todo_remove() {
-	x64.new_gen('f')
+	//x64.new_gen('f')
 }
 
+
+fn (p mut Parser) check_if_parser_is_stuck(parsing_cycle u64, parsing_start_ticks i64){
+	if p.prev_stuck_token_idx == p.token_idx {
+		// many many cycles have passed with no progress :-( ...
+		eprintln('Parsing is [probably] stuck. Cycle: ${parsing_cycle:12ld} .')
+		eprintln('  parsing file: ${p.file_path} | pass: ${p.pass} | mod: ${p.mod} | fn: ${p.cur_fn.name}')
+		p.print_current_tokens('  source')
+		if time.ticks() > parsing_start_ticks + 10*1000{
+			p.warn('V compiling is too slow.')
+		}
+		if time.ticks() > parsing_start_ticks + 30*1000{
+			p.error('
+V took more than 30 seconds to compile this file.
+Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose .
+')
+		}
+	}
+	p.prev_stuck_token_idx = p.token_idx
+}

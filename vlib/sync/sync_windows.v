@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -39,8 +39,8 @@ const (
 	WAIT_FAILED        = 0xFFFFFFFF
 )
 
-pub fn new_mutex() Mutex {
-	sm := Mutex{}
+pub fn new_mutex() &Mutex {
+	sm := &Mutex{}
 	unsafe {
 		mut m := sm		
 		m.mx = C.CreateMutex(0, false, 0)
@@ -48,8 +48,8 @@ pub fn new_mutex() Mutex {
 			m.state = .broken // handle broken and mutex state are broken
 			return sm
 		}		
-		return sm
 	}
+	return sm
 }
 
 pub fn (m mut Mutex) lock() {

@@ -1,11 +1,11 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
 
 import strings
 
-struct array {
+pub struct array {
 pub:
 // Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
@@ -15,8 +15,15 @@ pub:
 	element_size int
 }
 
-// Private function, used by V (`nums := []int`)
-fn new_array(mylen, cap, elm_size int) array {
+/*
+struct Foo {
+	a []string
+	b [][]string
+}
+*/
+
+// Internal function, used by V (`nums := []int`)
+fn new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap == 0 { 1 } else { cap }
 	arr := array{
 		len: mylen
@@ -28,7 +35,7 @@ fn new_array(mylen, cap, elm_size int) array {
 }
 
 // TODO
-pub fn make(len, cap, elm_size int) array {
+pub fn make(len int, cap int, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
@@ -59,43 +66,27 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 
 // Private function. Doubles array capacity if needed
 fn (a mut array) ensure_cap(required int) {
-	if required > a.cap {
-		mut cap := if a.cap == 0 { 2 } else { a.cap * 2 }
-		for required > cap {
-			cap *= 2
-		}
-		if a.cap == 0 {
-			a.data = calloc(cap * a.element_size)
-		}
-		else {
-			a.data = C.realloc(a.data, cap * a.element_size)
-		}
-		a.cap = cap
+	if required <= a.cap {
+		return
 	}
-}
-
-// Private function, used by V  (`[0; 100]`)
-fn array_repeat_old(val voidptr, nr_repeats, elm_size int) array {
-	if nr_repeats < 0 {
-		panic('[0; len]: `len` is negative (len == $nr_repeats)')
+	mut cap := if a.cap == 0 { 2 } else { a.cap * 2 }
+	for required > cap {
+		cap *= 2
 	}
-	arr := array{
-		len: nr_repeats
-		cap: nr_repeats
-		element_size: elm_size
-		data: calloc(nr_repeats * elm_size)
+	if a.cap == 0 {
+		a.data = calloc(cap * a.element_size)
 	}
-	for i := 0; i < nr_repeats; i++ {
-		C.memcpy(arr.data + i * elm_size, val, elm_size)
+	else {
+		a.data = C.realloc(a.data, cap * a.element_size)
 	}
-	return arr
+	a.cap = cap
 }
 
 // array.repeat returns new array with the given array elements
 // repeated `nr_repeat` times
 pub fn (a array) repeat(nr_repeats int) array {
 	if nr_repeats < 0 {
-		panic('array.repeat: count is negative (count == $nr_repeats)')
+		panic('array.repeat: count is negative (count == nr_repeats)')
 	}
 	mut size := nr_repeats * a.len * a.element_size
 	if size == 0 {
@@ -176,6 +167,7 @@ pub fn (a array) last() voidptr {
 	return a.data + (a.len - 1) * a.element_size
 }
 
+/*
 // array.left returns a new array using the same buffer as the given array
 // with the first `n` elements of the given array.
 fn (a array) left(n int) array {
@@ -201,12 +193,7 @@ fn (a array) right(n int) array {
 	}
 	return a.slice(n, a.len)
 }
-
-// used internally for [2..4]
-fn (a array) slice2(start, _end int, end_max bool) array {
-	end := if end_max { a.len } else { _end }
-	return a.slice(start, end)
-}
+*/
 
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
@@ -231,6 +218,28 @@ fn (a array) slice(start, _end int) array {
 		cap: l
 	}
 	return res
+}
+
+// used internally for [2..4]
+fn (a array) slice2(start, _end int, end_max bool) array {
+	end := if end_max { a.len } else { _end }
+	return a.slice(start, end)
+}
+
+// array.clone returns an independent copy of a given array
+pub fn (a array) clone() array {
+	mut size := a.cap * a.element_size
+	if size == 0 {
+		size++
+	}
+	arr := array{
+		len: a.len
+		cap: a.cap
+		element_size: a.element_size
+		data: calloc(size)
+	}
+	C.memcpy(arr.data, a.data, a.cap * a.element_size)
+	return arr
 }
 
 fn (a array) slice_clone(start, _end int) array {
@@ -271,8 +280,16 @@ fn (a mut array) push(val voidptr) {
 // `val` is array.data
 // TODO make private, right now it's used by strings.Builder
 pub fn (a mut array) push_many(val voidptr, size int) {
-	a.ensure_cap(a.len + size)
-	C.memcpy(a.data + a.element_size * a.len, val, a.element_size * size)
+	// handle `arr << arr`
+	if a.data == val {
+		copy := a.clone()
+		a.ensure_cap(a.len + size)
+		//C.memcpy(a.data, copy.data, copy.element_size * copy.len)
+		C.memcpy(a.data + a.element_size * a.len, copy.data, a.element_size * size)
+	} else {
+		a.ensure_cap(a.len + size)
+		C.memcpy(a.data + a.element_size * a.len, val, a.element_size * size)
+	}
 	a.len += size
 }
 
@@ -288,22 +305,6 @@ pub fn (a array) reverse() array {
 	for i := 0; i < a.len; i++ {
 		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
 	}
-	return arr
-}
-
-// array.clone returns an independent copy of a given array
-pub fn (a array) clone() array {
-	mut size := a.cap * a.element_size
-	if size == 0 {
-		size++
-	}
-	arr := array{
-		len: a.len
-		cap: a.cap
-		element_size: a.element_size
-		data: calloc(size)
-	}
-	C.memcpy(arr.data, a.data, a.cap * a.element_size)
 	return arr
 }
 
@@ -373,7 +374,7 @@ pub fn (b []byte) hex() string {
 pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		min := if dst.len < src.len { dst.len } else { src.len }
-		C.memcpy(dst.data, src.left(min).data, dst.element_size * min)
+		C.memcpy(dst.data, src[..min].data, dst.element_size * min)
 		return min
 	}
 	return 0
@@ -485,3 +486,44 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 
+// compare_i64 for []f64 sort_with_compare()
+// sort []i64 with quicksort
+// usage :
+// mut x := [i64(100),10,70,28,92]
+// x.sort_with_compare(compare_i64)
+// println(x)     // Sorted i64 Array
+// output:
+// [10, 28, 70, 92, 100]
+pub fn compare_i64(a, b &i64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_f64 for []f64 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_f64(a, b &f64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_f32 for []f32 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_f32(a, b &f32) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}

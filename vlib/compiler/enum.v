@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -73,6 +73,7 @@ fn (p mut Parser) enum_decl(no_name bool) {
 		}
 		if p.tok == .comma {
 			p.next()
+			p.fremove_last()
 		}
 		p.fgen_nl()
 		val++
@@ -105,13 +106,16 @@ int typ;
 } $enum_name;
 '
 	}
-	// Skip empty enums
+	// Skip nameless enums
 	else if !no_name && !p.first_pass() {
 		p.cgen.typedefs << 'typedef int $enum_name;'
-	}
+	}	
 	p.check(.rcbr)
 	p.fgen_nl()
 	p.fgen_nl()
+	if !no_name && fields.len == 0 {
+		p.error('Empty enums are not allowed.')
+	}
 }
 
 fn (p mut Parser) check_enum_member_access() {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -621,6 +621,10 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('varg_') {
 		got = got[5..]
 	}
+	// fn == 0 temporary
+	if got == 'int' && expected.ends_with('Fn') {
+		return true
+	}
 	// Allow ints to be used as floats
 	if got == 'int' && expected == 'f32' {
 		return true
@@ -699,6 +703,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	// }
 	// TODO fn hack
 	if got.starts_with('fn ') && (expected.ends_with('fn') || expected.ends_with('Fn')) {
+		return true
+	}
+	if got.starts_with('fn ') && expected.starts_with('fn ') && p.mod == 'gg2' {
 		return true
 	}
 	// Allow pointer arithmetic

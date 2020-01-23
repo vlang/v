@@ -5,7 +5,7 @@ import (
 	filepath
 )
 
-struct RunnerOptions {
+pub struct RunnerOptions {
 pub:
 	wd string
 	vexec string
@@ -22,12 +22,12 @@ pub fn full_path_to_v(dirs_in int) string {
 	for i := 0; i < dirs_in; i++ {
 		path = filepath.dir(path)
 	}
-	vexec := path + os.path_separator + vname
+	vexec := filepath.join( path, vname )
 	/*
 	args := os.args
 	vreal  := os.realpath('v')
 	myself := os.realpath( os.executable() )
-	wd := os.getwd() + os.path_separator
+	wd := os.getwd()
 	println('args are: $args')
 	println('vreal   : $vreal')
 	println('myself  : $myself')
@@ -46,26 +46,34 @@ fn find_working_diff_command() ?string {
 
 fn diff_files( file_result, file_expected string ) string {
 	diffcmd := find_working_diff_command() or { return err }
-	diff := os.exec('$diffcmd   --minimal  --text   --unified=2  $file_result  $file_expected') or { return 'found diff command "$diffcmd" does not work' }
+	diff := os.exec('$diffcmd   --minimal  --text   --unified=2  ${file_result}  ${file_expected}') or { return 'found diff command "$diffcmd" does not work' }
 	return diff.output
 }
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {
-	fcontent := os.read_file(file) or {	return error('Could not read file $file') }
+	fcontent := os.read_file(file) or {	return error('Could not read file ${file}') }
 	content := fcontent.replace('\r', '')		
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n')
-	
-	input_temporary_filename := 'input_temporary_filename.txt'
-	os.write_file(input_temporary_filename, input)
 
-	r := os.exec('"$vexec" runrepl < $input_temporary_filename') or {
+	fname := filepath.filename( file )
+
+	input_temporary_filename := os.realpath(filepath.join( wd, 'input_temporary_filename.txt'))
+	os.write_file(input_temporary_filename, input)
+	os.write_file(  os.realpath(filepath.join( wd, 'original.txt' ) ), fcontent )
+	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
+	r := os.exec(rcmd) or {
 		os.rm(input_temporary_filename)
-		return error('Could not execute "$vexec runrepl < $input_temporary_filename" ')
+		return error('Could not execute: $rcmd')
 	}
 	os.rm(input_temporary_filename)
-
-	result := r.output.replace('\r','').replace('>>> ', '').replace('>>>', '').replace('... ', '').all_after('Use Ctrl-C or `exit` to exit\n').replace(wd, '' )
+	
+	result := r.output.replace('\r','')
+	.replace('>>> ', '')
+	.replace('>>>', '')
+	.replace('... ', '')
+	.all_after('Use Ctrl-C or `exit` to exit\n')
+	.replace(wd  + os.path_separator, '' )
 
 	if result != output {
 		file_result   := '${file}.result.txt'
@@ -73,7 +81,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 		os.write_file( file_result, result )
 		os.write_file( file_expected, output )
 		diff := diff_files( file_result, file_expected )
-		return error('Difference found in REPL file: $file
+		return error('Difference found in REPL file: ${file}
 ====> Got      :
 |$result|
 ====> Expected :
@@ -82,16 +90,16 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 $diff
 		')
 	} else {
-		return 'Repl file $file is OK'
+		return 'Repl file ${file} is OK'
 	}
 }
 
 pub fn run_prod_file(wd string, vexec string, file string) ?string {
 	file_expected := '${file}.expected.txt'
-	f_expected_content := os.read_file(file_expected) or { return error('Could not read file $file') }
+	f_expected_content := os.read_file(file_expected) or { return error('Could not read file ${file}') }
 	expected_content := f_expected_content.replace('\r', '')		
 
-	cmd := '"$vexec" -prod run "$file"'
+	cmd := '"$vexec" -prod run "${file}"'
 	r := os.exec(cmd) or {
 		return error('Could not execute: $cmd')
 	}
@@ -106,7 +114,7 @@ pub fn run_prod_file(wd string, vexec string, file string) ?string {
 		file_result   := '${file}.result.txt'
 		os.write_file( file_result, result )
 		diff := diff_files( file_result, file_expected )
-		return error('Difference found in test: $file
+		return error('Difference found in test: ${file}
 ====> Got      :
 |$result|
 ====> Expected :
@@ -115,17 +123,19 @@ pub fn run_prod_file(wd string, vexec string, file string) ?string {
 $diff
 		')
 	} else {
-		return 'Prod file $file is OK'
+		return 'Prod file ${file} is OK'
 	}
 }
 
 pub fn new_options() RunnerOptions {
-	wd := os.getwd() + os.path_separator
 	vexec := full_path_to_v(5)
+	mut wd := os.getwd()
 	mut files := []string
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
+		os.chdir( filepath.dir(vexec) )
+		wd = os.getwd()
 		files = os.walk_ext('.', '.repl')
 	}
 	return RunnerOptions {
@@ -136,7 +146,7 @@ pub fn new_options() RunnerOptions {
 }
 
 pub fn new_prod_options() RunnerOptions {
-	wd := os.getwd() + os.path_separator
+	wd := os.getwd()
 	vexec := full_path_to_v(4)
 	mut files := []string
 	if os.args.len > 1 {

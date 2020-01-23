@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -143,23 +143,21 @@ fn main() {
 			window_title: 'V Tetris'
 			window_user_ptr: game
 		})
-		ft: 0
+		ft: freetype.new_context(gg.Cfg{
+			width: WinWidth
+			height: WinHeight
+			use_ortho: true
+			font_size: 18
+			scale: 2
+			window_user_ptr: 0
+		})
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
 	game.gg.window.onkeydown(key_down)
 	go game.run() // Run the game loop in a new thread
 	gg.clear(BackgroundColor)
-	// Try to load font
-	game.ft = freetype.new_context(gg.Cfg{
-		width: WinWidth
-		height: WinHeight
-		use_ortho: true
-		font_size: 18
-		scale: 2
-		window_user_ptr: 0
-	})
-	game.font_loaded = (game.ft != 0 )
+	game.font_loaded = game.ft != 0
 	for {
 		gg.clear(BackgroundColor)
 		game.draw_scene()
@@ -173,7 +171,7 @@ fn main() {
 
 fn (g mut Game) init_game() {
 	g.parse_tetros()
-	rand.seed(time.now().uni)
+	rand.seed(time.now().unix)
 	g.generate_tetro()
 	g.field = [] // TODO: g.field = [][]int
 	// Generate the field, fill it with 0's, add -1's on each edge

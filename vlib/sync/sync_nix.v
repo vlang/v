@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
@@ -16,9 +16,8 @@ pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
-pub fn new_mutex() Mutex {
-	m := Mutex{
-	}
+pub fn new_mutex() &Mutex {
+	m := &Mutex{}
 	C.pthread_mutex_init(&m.mutex, C.NULL)
 	return m
 }

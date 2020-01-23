@@ -9,7 +9,7 @@ pub:
 }
 
 // for now off the stack
-fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
+fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
 	arr := array {
 		len: len
 		cap: cap

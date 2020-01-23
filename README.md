@@ -4,6 +4,8 @@
 
 [![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
 <a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
+[![Twitter handle][]][Twitter badge]
+
 
 https://vlang.io
 
@@ -29,13 +31,14 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
-- Powerful UI and graphics libraries
+- [Cross-platform UI library](https://github.com/vlang/ui)
+- Built-in graphics library
 - Easy cross compilation
 - REPL
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for early December 2019. Right now V is in an alpha stage.
+A stable 0.2 release is planned for January 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -77,6 +80,8 @@ sudo ./v symlink
 
 ### Docker
 
+<details><summary>Expand Docker instructions</summary>
+
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -93,6 +98,8 @@ docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
 /usr/local/v/v
 ```
+</details>
+
 
 ### Testing and running the examples
 
@@ -148,6 +155,14 @@ git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries [pat
 
 glfw dependency will be removed soon.
 
+## V UI
+
+<a href="https://github.com/vlang/ui">
+<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/screenshot.png' width=712>
+</a>
+
+https://github.com/vlang/ui
+
 <!---
 ## JavaScript backend
 
@@ -181,3 +196,6 @@ Code structure:
 https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
+
+[Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
+[Twitter badge]: https://twitter.com/intent/follow?screen_name=v_language

@@ -8,6 +8,13 @@ import (
 const (
 	known_failing_exceptions = ['./examples/vweb/vweb_example.v',
 	'./tools/gen_vc.v',
+  './tools/modules/vgit/vgit.v', // generics
+	'./tools/preludes/live_main.v',
+	'./tools/preludes/live_shared.v',
+	'./tools/preludes/tests_assertions.v',
+	'./tools/preludes/tests_with_stats.v',
+  './tools/performance_compare.v', // generics
+  './tools/oldv.v', // generics
 	'./tutorials/code/blog/article.v',
 	'./tutorials/code/blog/blog.v',
 	'./vlib/arrays/arrays.v',
@@ -15,10 +22,6 @@ const (
 	'./vlib/builtin/js/hashmap.v',
 	'./vlib/compiler/tests/fn_variadic_test.v',
 	'./vlib/compiler/tests/generic_test.v',
-	'./vlib/compiler/preludes/live_main.v',
-	'./vlib/compiler/preludes/live_shared.v',
-	'./vlib/compiler/preludes/tests_assertions.v',
-	'./vlib/compiler/preludes/tests_with_stats.v',
 	'./vlib/crypto/aes/aes.v',
 	'./vlib/crypto/aes/aes_cbc.v',
 	'./vlib/crypto/aes/block_generic.v',
@@ -28,7 +31,7 @@ const (
 	'./vlib/eventbus/eventbus_test.v',
 	'./vlib/os/bare/bare_example_linux.v',
 	'./vlib/szip/szip.v',
-	'./vlib/ui/examples/users_gui/users.v',
+	'./vlib/uiold/examples/users_gui/users.v',
 	'./vlib/vweb/assets/assets.v',
 	'./vlib/vweb/vweb.v',
 	]

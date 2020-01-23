@@ -167,6 +167,10 @@ __global:
 	f int 	  // public and mutable both inside and outside parent module
 }
 
+fn fooo(){
+	a:=AttrTest{1,2,3,4,5,6}
+}
+
 /*
 [typedef]
 struct C.fixed {

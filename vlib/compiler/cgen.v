@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -54,7 +54,7 @@ fn new_cgen(out_name_c string) &CGen {
 		out_path: path
 		out: out
 		// buf: strings.new_builder(10000)
-		
+
 		lines: make(0, 1000, sizeof(string))
 	}
 	return gen
@@ -336,7 +336,7 @@ fn os_name_to_ifdef(name string) string {
 			return '_MSC_VER'
 		}
 		'android' {
-			return '__BIONIC__'
+			return '__ANDROID__'
 		}
 		'js' {
 			return '_VJS'
@@ -346,6 +346,9 @@ fn os_name_to_ifdef(name string) string {
 		}
 		'haiku' {
 			return '__haiku__'
+		}
+		'linux_or_macos' {
+			return ''
 		}
 		else {
 			verror('bad os ifdef name "$name"')

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -20,7 +20,12 @@ fn (p mut Parser) string_expr() {
 		*/
 
 		if (p.calling_c && p.peek() != .dot) || is_cstr || (p.pref.translated && p.mod == 'main') {
-			p.gen('"$f"')
+			if p.os == .windows && p.mod == 'ui' {
+				p.gen('L"$f"')
+			}
+			else {
+				p.gen('"$f"')
+			}
 		}
 		else if p.is_sql {
 			p.gen("'$str'")
@@ -32,6 +37,12 @@ fn (p mut Parser) string_expr() {
 			p.gen('tos3("$f")')
 		}
 		p.next()
+		if p.scanner.is_fmt && p.tok == .not {
+			// handle '$age'!
+			// TODO remove this hack, do this automatically
+			p.fgen(' ')
+			p.check(.not)
+		}
 		return
 	}
 	$if js {
@@ -126,6 +137,7 @@ fn (p mut Parser) string_expr() {
 	if complex_inter {
 		p.fgen('}')
 	}
+  
 	// p.fgen('\'')
 	// println("hello %d", num) optimization.
 	if p.cgen.nogen {
@@ -144,6 +156,7 @@ fn (p mut Parser) string_expr() {
 	// won't be used	again)
 	// TODO remove this hack, do this automatically
 	if p.tok == .not {
+		p.fgen(' ')
 		p.check(.not)
 		p.gen('_STR_TMP($format$args)')
 	}

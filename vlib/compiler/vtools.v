@@ -5,11 +5,16 @@ import (
 	filepath
 )
 
-pub fn launch_tool(tname string) {
+pub fn launch_tool(tname string, cmdname string) {
   is_verbose := '-verbose' in os.args || '--verbose' in os.args
 	vexe := vexe_path()
 	vroot := filepath.dir(vexe)
 	set_vroot_folder( vroot ) // needed by tools to find back v
+	mut tname_index := os.args.index(cmdname)
+	if tname_index == -1 {
+		tname_index = os.args.len
+	}
+	mut compilation_options := os.args[1..tname_index].clone()
 	tool_args := os.args[1..].join(' ')
 	tool_exe := os.realpath('$vroot/tools/$tname')
 	tool_source := os.realpath('$vroot/tools/${tname}.v')
@@ -41,9 +46,9 @@ pub fn launch_tool(tname string) {
 	}
 	
 	if tool_should_be_recompiled {
-		mut compilation_options := ''
-		if tname == 'vfmt' {  compilation_options = '-d vfmt' }
-		compilation_command := '"$vexe" $compilation_options "$tool_source"'
+		if tname == 'vfmt' {  compilation_options << ['-d', 'vfmt'] }
+		compilation_args := compilation_options.join(' ')
+		compilation_command := '"$vexe" $compilation_args "$tool_source"'
 		if is_verbose {
 			eprintln('Compiling $tname with: "$compilation_command"') 
 		}

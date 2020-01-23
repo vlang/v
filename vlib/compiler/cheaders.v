@@ -60,13 +60,6 @@ const (
 #include <locale.h> // tolower
 #include <sys/time.h>
 #include <unistd.h> // sleep
-#else
-#if defined(_MSC_VER)
-#pragma comment(lib, "Dbghelp.lib")
-#endif
-#if defined(__MSVCRT_VERSION__) && __MSVCRT_VERSION__ < __MSVCR90_DLL
-#error Please upgrade your MinGW distribution to use msvcr90.dll or later.
-#endif
 #endif
 
 #if defined(__CYGWIN__) && !defined(_WIN32)
@@ -95,6 +88,10 @@ const (
 #include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __NetBSD__
+#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
 $c_common_macros
 
 #ifdef _WIN32
@@ -108,13 +105,7 @@ $c_common_macros
 #define UNICODE
 #include <windows.h>
 
-// must be included after <windows.h>
-#ifndef __TINYC__
-#include <shellapi.h>
-#endif
-
 #include <io.h> // _waccess
-#include <fcntl.h> // _O_U8TEXT
 #include <direct.h> // _wgetcwd
 //#include <WinSock2.h>
 #ifdef _MSC_VER
@@ -127,6 +118,10 @@ $c_common_macros
 
 #define EMPTY_STRUCT_DECLARATION int ____dummy_variable
 #define OPTION_CAST(x)
+
+#include <dbghelp.h>
+#pragma comment(lib, "Dbghelp.lib")
+
 #endif
 
 #else
@@ -146,9 +141,10 @@ $c_common_macros
 #define DEFAULT_GT(a, b) (a > b)
 #define DEFAULT_GE(a, b) (a >= b)
 //================================== GLOBALS =================================*/
-byteptr g_str_buf;
+byte g_str_buf[1024];
 int load_so(byteptr);
 void reload_so();
+
 '
 	js_headers = '
 

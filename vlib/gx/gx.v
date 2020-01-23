@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -15,6 +15,7 @@ pub const (
 	Blue   = Color { r: 0, g: 0, b: 255 }
 	blue   = Color { r: 0, g: 0, b: 255 }
 	Red    = Color { r: 255, g: 0, b: 0 }
+	red    = Color { r: 255, g: 0, b: 0 }
 	Green  = Color { r: 0, g: 255, b: 0 }
 	green  = Color { r: 0, g: 255, b: 0 }
 	Yellow = Color { r: 255, g: 255, b: 0 }

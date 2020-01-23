@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -41,15 +41,21 @@ fn C.FT_Set_Pixel_Sizes()
 
 
 
-const (
-	DEFAULT_FONT_SIZE = 12
+pub const (
+	default_font_size = 12
 )
 
 struct Character {
+	code i64
+	
 	texture_id u32
 	size       gg.Vec2
-	bearing    gg.Vec2
-	advance    u32
+	
+	horizontal_bearing_px gg.Vec2
+	horizontal_advance_px u32
+	
+	vertical_bearing_px   gg.Vec2
+	vertical_advance_px   u32
 }
 
 [typedef]
@@ -84,6 +90,19 @@ struct C.Bitmap {
 
 struct C.Advance {
 	x int
+	y int
+}
+
+[typedef]
+struct C.FT_Glyph_Metrics {
+	width        int
+	height       int
+	horiBearingX int
+	horiBearingY int
+	horiAdvance  int
+	vertBearingX int
+	vertBearingY int
+	vertAdvance  int
 }
 
 struct C.Glyph {
@@ -91,11 +110,14 @@ struct C.Glyph {
 	bitmap_left int
 	bitmap_top int
 	advance Advance
+	metrics FT_Glyph_Metrics 
 }
 
 [typedef]
 struct C.FT_Face {
 	glyph &Glyph
+	family_name charptr
+	style_name charptr
 }
 
 fn C.FT_Load_Char(voidptr, i64, int) int
@@ -104,12 +126,12 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 	//println('\nftload_char( code=$code)')
 	//C.printf('face=%p\n', face)
 	//C.printf('cobj=%p\n', _face.cobj)
-	ret := C.FT_Load_Char(face, code, C.FT_LOAD_RENDER)
+	ret := C.FT_Load_Char(face, code, C.FT_LOAD_RENDER|C.FT_LOAD_FORCE_AUTOHINT)
 	//println('ret=$ret')
 	if ret != 0 {
 		println('freetype: failed to load glyph (utf32 code=$code, ' +
 			'error code=$ret)')
-		return Character{}
+		return Character{code: code}
 	}
 	// Generate texture
 	mut texture := 0
@@ -124,14 +146,19 @@ fn ft_load_char(face C.FT_Face, code i64) Character {
 	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
 	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
 	C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MAG_FILTER, C.GL_LINEAR)
-	fgleft := face.glyph.bitmap_left
-	fgtop := face.glyph.bitmap_top
 	// Create the character
 	return Character {
+		code: code
 		texture_id: u32(texture)
-		size:    gg.vec2(int(u32(fgwidth)), int(u32(fgrows)))
-		bearing: gg.vec2(int(u32(fgleft)), int(u32(fgtop)))
-		advance: (u32(face.glyph.advance.x))
+		size:    gg.vec2(fgwidth, fgrows)
+
+		// Note: advance is number of 1/64 pixels
+		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))		
+		horizontal_bearing_px:  gg.vec2(face.glyph.metrics.horiBearingX >> 6, face.glyph.metrics.horiBearingY >> 6)
+		vertical_bearing_px:    gg.vec2(face.glyph.metrics.vertBearingX >> 6, face.glyph.metrics.vertBearingY >> 6) // not used for now
+		
+		horizontal_advance_px:  face.glyph.metrics.horiAdvance >> 6
+		vertical_advance_px:    face.glyph.metrics.vertAdvance >> 6
 	}
 }
 
@@ -212,7 +239,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	//ch := Character{}
 	// Configure VAO
 	vao := gl.gen_vertex_array()
-	println('new gg text context vao=$vao')
+	//println('new gg text context vao=$vao')
 	vbo := gl.gen_buffer()
 	gl.bind_vao(vao)
 	gl.bind_buffer(C.GL_ARRAY_BUFFER, vbo)
@@ -235,24 +262,6 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	//ctx.init_utf8_runes()
 	return ctx
 }
-
-/*
-// A dirty hack to implement rendering of cyrillic letters.
-// All UTF-8 must be supported. update: no longer needed
-fn (ctx mut FreeType) init_utf8_runes() {
-	s := '≈≠⩽⩾йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ'
-	print('init utf8 runes: ')
-	//println(s)
-	us := s.ustring()
-	for i := 0; i < us.len; i++ {
-		_rune := us.at(i)
-		ch := ft_load_char(ctx.face, _rune.utf32_code())
-		// ctx.utf_rune_map.set(rune, ch)
-		ctx.utf_runes << _rune
-		ctx.utf_chars << ch
-	}
-}
-*/
 
 pub fn (ctx mut FreeType) draw_text(_x, _y int, text string, cfg gx.TextCfg) {
 	//utext := text.ustring_tmp()
@@ -278,16 +287,18 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 */
 	mut x := f32(_x)
 	mut y := f32(_y)
+	wx, wy := ctx.text_size(utext.s)
+	yoffset := if ctx.scale > 1 { 5 /* highdpi */ } else { -1 /* lowdpi */ }
 	// println('scale=$ctx.scale size=$cfg.size')
 	if cfg.align == gx.ALIGN_RIGHT {
-		width := utext.len * 7
+		//width := utext.len * 7
+		width := wx
 		x -= width + 10
 	}
-	x *= ctx.scale// f32(2)
-	// println('y=$_y height=$ctx.height')
-	// _y = _y * int(ctx.scale) //+ 26
-	y = y * ctx.scale + ((cfg.size * ctx.scale) / 2) + 5 * ctx.scale
-	y = f32(ctx.height) - y
+	x *= ctx.scale
+	y *= ctx.scale
+	y += yoffset
+	y = f32(ctx.height) - y //invert y direction
 	color := cfg.color
 	// Activate corresponding render state
 	ctx.shader.use()
@@ -333,8 +344,9 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 			//exit(1)
 			// continue
 		}
-		xpos := x + f32(ch.bearing.x) * 1
-		ypos := y - f32(ch.size.y - ch.bearing.y) * 1
+		xpos := x + f32(ch.horizontal_bearing_px.x) * 1
+		ypos := y - f32(ch.size.y + wy - ch.horizontal_bearing_px.y) * 1
+		//ypos := y - wy
 		w := f32(ch.size.x) * 1
 		h := f32(ch.size.y) * 1
 		// Update VBO for each character
@@ -354,9 +366,13 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		C.glBufferData(C.GL_ARRAY_BUFFER, 96, vertices.data, C.GL_DYNAMIC_DRAW)
 		// Render quad
 		gl.draw_arrays(C.GL_TRIANGLES, 0, 6)
-		// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-		// Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
-		x += ch.advance >> u32(6)
+		x += f32(ch.horizontal_advance_px)
+		// Stop drawing if the limit is reached
+		if cfg.max_width > 0  {
+			if x >= cfg.max_width {
+				break
+			}
+		}
 	}
 	gl.bind_vao(u32(0))
 	C.glBindTexture(C.GL_TEXTURE_2D, 0)
@@ -364,9 +380,80 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 
 pub fn (ctx mut FreeType) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
-		color: gx.Black,
-		size: DEFAULT_FONT_SIZE,
-		align: gx.ALIGN_LEFT,
+		color: gx.Black
+		size: default_font_size
+		align: gx.ALIGN_LEFT
 	}
 	ctx.draw_text(x, y, text, cfg)
+}
+
+pub fn (ctx mut FreeType) text_width(s string) int {
+	x, _ := ctx.text_size(s)
+	return x
+}
+
+pub fn (ctx mut FreeType) text_height(s string) int {
+	_, y := ctx.text_size(s)
+	return y
+}
+
+pub fn (ctx mut FreeType) text_size(s string) (int, int) {
+	//t := time.ticks()
+	utext := s.ustring()
+	mut x := u32(0)
+	mut maxy := u32(0)
+	mut _rune := ''
+	mut ch := Character{}
+	for i := 0; i < utext.len; i++ {
+		_rune = utext.at(i)
+		ch = Character{}		
+		mut found := false
+		if _rune.len == 1 {
+			idx := _rune[0]
+			if idx < 0 || idx >= ctx.chars.len {
+				println('BADE RUNE $_rune')
+				continue
+			}
+			found = true
+			ch = ctx.chars[_rune[0]]
+		}
+		else if _rune.len > 1 {
+			// TODO O(1) use map
+			for j := 0; j < ctx.utf_runes.len; j++ {
+				rune_j := ctx.utf_runes[j]
+				if rune_j==_rune {
+					ch = ctx.utf_chars[j]
+					found = true
+					break
+				}
+			}
+		}
+		if !found && _rune.len > 0 && _rune[0] > 32 {
+			ch = ft_load_char(ctx.face, _rune.utf32_code())
+			ctx.utf_runes << _rune
+			ctx.utf_chars << ch
+		}
+		x += ch.horizontal_advance_px
+		if maxy < ch.vertical_advance_px {
+			maxy = ch.vertical_advance_px
+		}
+	}
+	//println('text width "$s" = ${time.ticks() - t} ms')
+	//scaled_x := x
+	//scaled_y := maxy
+	scaled_x := int(f64(x)/ctx.scale)
+	scaled_y := int(f64(maxy)/ctx.scale)	
+	//println('text_size of "${s}" | x,y: $x,$maxy | scaled_x: ${scaled_x:3d} | scaled_y: ${scaled_y:3d} ')
+	return scaled_x, scaled_y
+}
+
+pub fn (f FT_Face) str() string {
+	return 'FT_Face{ style_name: ${ptr_str(f.style_name)} family_name: ${ptr_str(f.family_name)} }'
+}
+pub fn (ac []Character) str() string {
+	mut res := []string
+	for c in ac {
+		res << '  Character{ code: $c.code , texture_id: $c.texture_id }'
+	}
+	return '[\n' + res.join(',\n') + ']'
 }

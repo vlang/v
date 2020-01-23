@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -62,7 +62,7 @@ fn (p mut Parser) get_type2() Type {
 		// Register anon fn type
 		fn_typ := Type{
 			name: f.typ_str() // 'fn (int, int) string'
-			
+
 			mod: p.mod
 			func: f
 			cat: .func
@@ -147,8 +147,10 @@ fn (p mut Parser) get_type2() Type {
 			// try resolve full submodule
 			if !p.builtin_mod && p.import_table.known_alias(typ) {
 				mod := p.import_table.resolve_alias(typ)
-				if mod.contains('.') {
-					typ = mod_gen_name(mod)
+				typ = if mod.contains('.') {
+					mod_gen_name(mod)
+				} else {
+					mod
 				}
 			}
 			p.next()
@@ -164,7 +166,7 @@ fn (p mut Parser) get_type2() Type {
 			}
 			t = p.table.find_type(typ)
 			if t.name == '' && !p.pref.translated && !p.first_pass() && !typ.starts_with('[') {
-				println('get_type() bad type')
+				//println('get_type() bad type')
 				// println('all registered types:')
 				// for q in p.table.types {
 				// println(q.name)
@@ -173,7 +175,8 @@ fn (p mut Parser) get_type2() Type {
 				if t_suggest.len > 0 {
 					t_suggest = '. did you mean: ($tc_suggest) `$t_suggest`'
 				}
-				p.error('unknown type `$typ`$t_suggest')
+				econtext := if p.pref.is_debug { '('+@FILE+':'+@LINE+')' } else {''}
+				p.error('unknown type `$typ`$t_suggest $econtext')
 			}
 		}
 		else if !t.is_public && t.mod != p.mod && !p.is_vgen && t.name != '' && !p.first_pass() {

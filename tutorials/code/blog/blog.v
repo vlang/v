@@ -7,7 +7,7 @@ import (
 	json
 )
 
-struct App {
+pub struct App {
 mut:
 	vweb vweb.Context
 	db pg.DB
@@ -44,6 +44,9 @@ pub fn (app mut App) init() {
 
 pub fn (app mut App) new() {
 	$vweb.html()
+}
+
+pub fn (app mut App) reset() {
 }
 
 pub fn (app mut App) new_article() {

@@ -1,18 +1,18 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module token
 
 pub struct Token {
 pub:
-	kind    TokenKind // the token number/enum; for quick comparisons
+	kind    Kind // the token number/enum; for quick comparisons
 	lit     string // literal representation of the token
 	line_nr int // the line number in the source where the token occured
 	// name_idx int // name table index for O(1) lookup
 	// pos      int // the position of the token in scanner text
 }
 
-pub enum TokenKind {
+pub enum Kind {
 	eof
 	name // user
 	number // 123
@@ -124,7 +124,7 @@ pub enum TokenKind {
 }
 
 const (
-	assign_tokens = [TokenKind.assign, .plus_assign, .minus_assign, .mult_assign,
+	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign,
 	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
 	.righ_shift_assign, .left_shift_assign]
 	nr_tokens = 141
@@ -133,119 +133,119 @@ const (
 // Keywords['return'] == .key_return
 fn build_keys() map[string]int {
 	mut res := map[string]int
-	for t := int(TokenKind.keyword_beg) + 1; t < int(TokenKind.keyword_end); t++ {
+	for t := int(Kind.keyword_beg) + 1; t < int(Kind.keyword_end); t++ {
 		key := token_str[t]
 		res[key] = t
 	}
 	return res
 }
 
-// TODO remove once we have `enum TokenKind { name('name') if('if') ... }`
+// TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
 	mut s := [''].repeat(nr_tokens)
-	s[TokenKind.keyword_beg] = ''
-	s[TokenKind.keyword_end] = ''
-	s[TokenKind.eof] = 'eof'
-	s[TokenKind.name] = 'name'
-	s[TokenKind.number] = 'number'
-	s[TokenKind.str] = 'STR'
-	s[TokenKind.chartoken] = 'char'
-	s[TokenKind.plus] = '+'
-	s[TokenKind.minus] = '-'
-	s[TokenKind.mul] = '*'
-	s[TokenKind.div] = '/'
-	s[TokenKind.mod] = '%'
-	s[TokenKind.xor] = '^'
-	s[TokenKind.bit_not] = '~'
-	s[TokenKind.pipe] = '|'
-	s[TokenKind.hash] = '#'
-	s[TokenKind.amp] = '&'
-	s[TokenKind.inc] = '++'
-	s[TokenKind.dec] = '--'
-	s[TokenKind.and] = '&&'
-	s[TokenKind.logical_or] = '||'
-	s[TokenKind.not] = '!'
-	s[TokenKind.dot] = '.'
-	s[TokenKind.dotdot] = '..'
-	s[TokenKind.ellipsis] = '...'
-	s[TokenKind.comma] = ','
-	// s[TokenKind.at] = '@'
-	s[TokenKind.semicolon] = ';'
-	s[TokenKind.colon] = ':'
-	s[TokenKind.arrow] = '=>'
-	s[TokenKind.assign] = '='
-	s[TokenKind.decl_assign] = ':='
-	s[TokenKind.plus_assign] = '+='
-	s[TokenKind.minus_assign] = '-='
-	s[TokenKind.mult_assign] = '*='
-	s[TokenKind.div_assign] = '/='
-	s[TokenKind.xor_assign] = '^='
-	s[TokenKind.mod_assign] = '%='
-	s[TokenKind.or_assign] = '|='
-	s[TokenKind.and_assign] = '&='
-	s[TokenKind.righ_shift_assign] = '>>='
-	s[TokenKind.left_shift_assign] = '<<='
-	s[TokenKind.lcbr] = '{'
-	s[TokenKind.rcbr] = '}'
-	s[TokenKind.lpar] = '('
-	s[TokenKind.rpar] = ')'
-	s[TokenKind.lsbr] = '['
-	s[TokenKind.rsbr] = ']'
-	s[TokenKind.eq] = '=='
-	s[TokenKind.ne] = '!='
-	s[TokenKind.gt] = '>'
-	s[TokenKind.lt] = '<'
-	s[TokenKind.ge] = '>='
-	s[TokenKind.le] = '<='
-	s[TokenKind.question] = '?'
-	s[TokenKind.left_shift] = '<<'
-	s[TokenKind.righ_shift] = '>>'
-	s[TokenKind.line_comment] = '// line comment'
-	s[TokenKind.mline_comment] = '/* mline comment */'
-	s[TokenKind.nl] = 'NLL'
-	s[TokenKind.dollar] = '$'
-	s[TokenKind.str_dollar] = '$2'
-	s[TokenKind.key_assert] = 'assert'
-	s[TokenKind.key_struct] = 'struct'
-	s[TokenKind.key_if] = 'if'
-	// s[TokenKind.key_it] = 'it'
-	s[TokenKind.key_else] = 'else'
-	s[TokenKind.key_asm] = 'asm'
-	s[TokenKind.key_return] = 'return'
-	s[TokenKind.key_module] = 'module'
-	s[TokenKind.key_sizeof] = 'sizeof'
-	s[TokenKind.key_go] = 'go'
-	s[TokenKind.key_goto] = 'goto'
-	s[TokenKind.key_const] = 'const'
-	s[TokenKind.key_mut] = 'mut'
-	s[TokenKind.key_type] = 'type'
-	s[TokenKind.key_for] = 'for'
-	s[TokenKind.key_switch] = 'switch'
-	s[TokenKind.key_fn] = 'fn'
-	s[TokenKind.key_true] = 'true'
-	s[TokenKind.key_false] = 'false'
-	s[TokenKind.key_continue] = 'continue'
-	s[TokenKind.key_break] = 'break'
-	s[TokenKind.key_import] = 'import'
-	s[TokenKind.key_embed] = 'embed'
-	s[TokenKind.key_unsafe] = 'unsafe'
-	// TokenKinds[key_typeof] = 'typeof'
-	s[TokenKind.key_enum] = 'enum'
-	s[TokenKind.key_interface] = 'interface'
-	s[TokenKind.key_pub] = 'pub'
-	s[TokenKind.key_import_const] = 'import_const'
-	s[TokenKind.key_in] = 'in'
-	s[TokenKind.key_atomic] = 'atomic'
-	s[TokenKind.key_orelse] = 'or'
-	s[TokenKind.key_global] = '__global'
-	s[TokenKind.key_union] = 'union'
-	s[TokenKind.key_static] = 'static'
-	s[TokenKind.key_as] = 'as'
-	s[TokenKind.key_defer] = 'defer'
-	s[TokenKind.key_match] = 'match'
-	s[TokenKind.key_select] = 'select'
-	s[TokenKind.key_none] = 'none'
-	s[TokenKind.key_offsetof] = '__offsetof'
+	s[Kind.keyword_beg] = ''
+	s[Kind.keyword_end] = ''
+	s[Kind.eof] = 'eof'
+	s[Kind.name] = 'name'
+	s[Kind.number] = 'number'
+	s[Kind.str] = 'STR'
+	s[Kind.chartoken] = 'char'
+	s[Kind.plus] = '+'
+	s[Kind.minus] = '-'
+	s[Kind.mul] = '*'
+	s[Kind.div] = '/'
+	s[Kind.mod] = '%'
+	s[Kind.xor] = '^'
+	s[Kind.bit_not] = '~'
+	s[Kind.pipe] = '|'
+	s[Kind.hash] = '#'
+	s[Kind.amp] = '&'
+	s[Kind.inc] = '++'
+	s[Kind.dec] = '--'
+	s[Kind.and] = '&&'
+	s[Kind.logical_or] = '||'
+	s[Kind.not] = '!'
+	s[Kind.dot] = '.'
+	s[Kind.dotdot] = '..'
+	s[Kind.ellipsis] = '...'
+	s[Kind.comma] = ','
+	// s[Kind.at] = '@'
+	s[Kind.semicolon] = ';'
+	s[Kind.colon] = ':'
+	s[Kind.arrow] = '=>'
+	s[Kind.assign] = '='
+	s[Kind.decl_assign] = ':='
+	s[Kind.plus_assign] = '+='
+	s[Kind.minus_assign] = '-='
+	s[Kind.mult_assign] = '*='
+	s[Kind.div_assign] = '/='
+	s[Kind.xor_assign] = '^='
+	s[Kind.mod_assign] = '%='
+	s[Kind.or_assign] = '|='
+	s[Kind.and_assign] = '&='
+	s[Kind.righ_shift_assign] = '>>='
+	s[Kind.left_shift_assign] = '<<='
+	s[Kind.lcbr] = '{'
+	s[Kind.rcbr] = '}'
+	s[Kind.lpar] = '('
+	s[Kind.rpar] = ')'
+	s[Kind.lsbr] = '['
+	s[Kind.rsbr] = ']'
+	s[Kind.eq] = '=='
+	s[Kind.ne] = '!='
+	s[Kind.gt] = '>'
+	s[Kind.lt] = '<'
+	s[Kind.ge] = '>='
+	s[Kind.le] = '<='
+	s[Kind.question] = '?'
+	s[Kind.left_shift] = '<<'
+	s[Kind.righ_shift] = '>>'
+	s[Kind.line_comment] = '// line comment'
+	s[Kind.mline_comment] = '/* mline comment */'
+	s[Kind.nl] = 'NLL'
+	s[Kind.dollar] = '$'
+	s[Kind.str_dollar] = '$2'
+	s[Kind.key_assert] = 'assert'
+	s[Kind.key_struct] = 'struct'
+	s[Kind.key_if] = 'if'
+	// s[Kind.key_it] = 'it'
+	s[Kind.key_else] = 'else'
+	s[Kind.key_asm] = 'asm'
+	s[Kind.key_return] = 'return'
+	s[Kind.key_module] = 'module'
+	s[Kind.key_sizeof] = 'sizeof'
+	s[Kind.key_go] = 'go'
+	s[Kind.key_goto] = 'goto'
+	s[Kind.key_const] = 'const'
+	s[Kind.key_mut] = 'mut'
+	s[Kind.key_type] = 'type'
+	s[Kind.key_for] = 'for'
+	s[Kind.key_switch] = 'switch'
+	s[Kind.key_fn] = 'fn'
+	s[Kind.key_true] = 'true'
+	s[Kind.key_false] = 'false'
+	s[Kind.key_continue] = 'continue'
+	s[Kind.key_break] = 'break'
+	s[Kind.key_import] = 'import'
+	s[Kind.key_embed] = 'embed'
+	s[Kind.key_unsafe] = 'unsafe'
+	// Kinds[key_typeof] = 'typeof'
+	s[Kind.key_enum] = 'enum'
+	s[Kind.key_interface] = 'interface'
+	s[Kind.key_pub] = 'pub'
+	s[Kind.key_import_const] = 'import_const'
+	s[Kind.key_in] = 'in'
+	s[Kind.key_atomic] = 'atomic'
+	s[Kind.key_orelse] = 'or'
+	s[Kind.key_global] = '__global'
+	s[Kind.key_union] = 'union'
+	s[Kind.key_static] = 'static'
+	s[Kind.key_as] = 'as'
+	s[Kind.key_defer] = 'defer'
+	s[Kind.key_match] = 'match'
+	s[Kind.key_select] = 'select'
+	s[Kind.key_none] = 'none'
+	s[Kind.key_offsetof] = '__offsetof'
 	return s
 }
 
@@ -254,8 +254,8 @@ const (
 	keywords = build_keys()
 )
 
-pub fn key_to_token(key string) TokenKind {
-	a := TokenKind(keywords[key])
+pub fn key_to_token(key string) Kind {
+	a := Kind(keywords[key])
 	return a
 }
 
@@ -263,15 +263,15 @@ pub fn is_key(key string) bool {
 	return int(key_to_token(key)) > 0
 }
 
-pub fn is_decl(t TokenKind) bool {
+pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
 }
 
-pub fn (t Token) is_assign() bool {
-	return t.kind in assign_tokens
+pub fn (t Kind) is_assign() bool {
+	return t in assign_tokens
 }
 
-fn (t []TokenKind) contains(val TokenKind) bool {
+fn (t []Kind) contains(val Kind) bool {
 	for tt in t {
 		if tt == val {
 			return true
@@ -280,7 +280,7 @@ fn (t []TokenKind) contains(val TokenKind) bool {
 	return false
 }
 
-pub fn (t TokenKind) str() string {
+pub fn (t Kind) str() string {
 	if t == .number {
 		return 'number'
 	}
@@ -306,30 +306,88 @@ pub fn (t Token) str() string {
 // Representation of highest and lowest precedence
 pub const (
 	lowest_prec = 0
-	highest_prec = 7
+	highest_prec = 8
 )
-// Precedence returns a tokens precedence if defined, otherwise lowest_prec
+
+pub enum Precedence {
+	lowest
+	cond // OR or AND
+	assign // =
+	eq // == or !=
+	less_greater // > or <
+	sum // + or -
+	product // * or /
+	mod // %
+	prefix // -X or !X
+	call // func(X) or foo.method(X)
+	index // array[index], map[key]
+}
+
+pub fn build_precedences() []Precedence {
+	mut p := []Precedence
+	p = make(100, 100, sizeof(Precedence))
+	p[Kind.assign] = .assign
+	p[Kind.eq] = .eq
+	p[Kind.ne] = .eq
+	p[Kind.lt] = .less_greater
+	p[Kind.gt] = .less_greater
+	p[Kind.le] = .less_greater
+	p[Kind.ge] = .less_greater
+	p[Kind.plus] = .sum
+	p[Kind.plus_assign] = .sum
+	p[Kind.minus] = .sum
+	p[Kind.minus_assign] = .sum
+	p[Kind.div] = .product
+	p[Kind.div_assign] = .product
+	p[Kind.mul] = .product
+	p[Kind.mult_assign] = .product
+	p[Kind.mod] = .mod
+	p[Kind.and] = .cond
+	p[Kind.logical_or] = .cond
+	p[Kind.lpar] = .call
+	p[Kind.dot] = .call
+	p[Kind.lsbr] = .index
+	return p
+}
+
+const (
+	precedences = build_precedences()
+	// int(Kind.assign): Precedence.assign
+	// }
+)
+// precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
 	match tok.kind {
+		.lsbr {
+			return 9
+		}
+		.dot {
+			return 8
+		}
+		// `++` | `--`
+		.inc, .dec {
+			// return 0
+			return 7
+		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
 		.mul, .div, .left_shift, .righ_shift, .amp {
-			return 7
+			return 6
 		}
 		// `+` |  `-` |  `|` | `^`
 		.plus, .minus, .pipe, .xor {
-			return 6
+			return 5
 		}
 		// `==` | `!=` | `<` | `<=` | `>` | `>=`
 		.eq, .ne, .lt, .le, .gt, .ge {
-			return 5
+			return 4
 		}
 		// `&&`
 		.and {
-			return 4
+			return 3
 		}
 		// `||`
-		.logical_or {
-			return 3
+		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mult_assign {
+			return 2
 		}
 		// /.plus_assign {
 		// /return 2
@@ -357,11 +415,21 @@ pub fn (tok Token) is_unary() bool {
 // is_left_assoc returns true if the token is left associative
 pub fn (tok Token) is_left_assoc() bool {
 	return tok.kind in [
+	// `.`
+	.dot,
+	// `+` | `-`
+	.plus, .minus, // additive
 	// .number,
+	// `++` | `--`
+	.inc, .dec,
 	// `*` | `/` | `%`
 	.mul, .div, .mod,
 	// `^` | `||` | `&`
 	.xor, .logical_or, .and,
+	// `==` | `!=`
+	.eq, .ne,
+	// `<` | `<=` | `>` | `>=`
+	.lt, .le, .gt, .ge, .ne, .eq,
 	// `,`
 	.comma]
 }
@@ -369,12 +437,22 @@ pub fn (tok Token) is_left_assoc() bool {
 // is_right_assoc returns true if the token is right associative
 pub fn (tok Token) is_right_assoc() bool {
 	return tok.kind in [
-	// `+` | `-` | `!` | `++` | `--`
-	.plus, .minus, .not, .inc, .dec,
+	// `+` | `-` | `!`
+	.plus, .minus, .not, // unary
 	// `=` | `+=` | `-=` | `*=` | `/=`
 	.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
 	// `%=` | `>>=` | `<<=`
 	.mod_assign, .righ_shift_assign, .left_shift_assign,
 	// `&=` | `^=` | `|=`
 	.and_assign, .xor_assign, .or_assign]
+}
+
+pub fn (tok Kind) is_relational() bool {
+	return tok in [
+	// `<` | `<=` | `>` | `>=`
+	.lt, .le, .gt, .ge, .eq, .ne]
+}
+
+pub fn (kind Kind) is_infix() bool {
+	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .ge, .le, .logical_or, .and, .dot]
 }

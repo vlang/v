@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -12,7 +12,7 @@ fn (p mut Parser) for_st() {
 	}
 	// debug := p.scanner.file_path.contains('r_draw')
 	p.open_scope()
-	mut label := 0
+	//mut label := 0
 	mut to := 0
 	if p.tok == .lcbr {
 		// Infinite loop
@@ -128,10 +128,12 @@ fn (p mut Parser) for_st() {
 		}
 	}
 	// `for val in vals`
-	else if p.peek() == .key_in {
+	else if p.peek() == .key_in || p.peek() == .left_arrow {
+		p.check_not_reserved()
 		val := p.check_name()
 		p.fspace()
-		p.check(.key_in)
+		//p.check(.key_in)
+		p.next()
 		p.fspace()
 		tmp := p.get_tmp()
 		mut typ,expr := p.tmp_expr()
@@ -148,7 +150,7 @@ fn (p mut Parser) for_st() {
 			p.check_types(range_typ, 'int')
 			range_end = range_expr
 			if p.pref.x64 {
-				label = p.x64.gen_loop_start(expr.int())
+				//label = p.x64.gen_loop_start(expr.int())
 				// to  = range_expr.int() // TODO why empty?
 			}
 		}
@@ -218,8 +220,8 @@ fn (p mut Parser) for_st() {
 	p.close_scope()
 	p.for_expr_cnt--
 	p.returns = false // TODO handle loops that are guaranteed to return
-	if label > 0 {
-		p.x64.gen_loop_end(to, label)
-	}
+	//if label > 0 {
+		//p.x64.gen_loop_end(to, label)
+	//}
 }
 

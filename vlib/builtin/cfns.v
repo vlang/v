@@ -197,8 +197,6 @@ fn C.syscall() int
 
 
 fn C.sysctl() int
-// Windows
-fn C._setmode(int, int) int
 
 
 fn C._fileno(int) int
@@ -252,9 +250,6 @@ fn C.SetConsoleMode()
 fn C.GetConsoleMode() int
 
 
-fn C._putws()
-
-
 fn C.wprintf()
 
 
@@ -303,10 +298,13 @@ fn C._waccess() int
 fn C._wremove()
 
 
-fn C.ReadConsole()
+fn C.ReadConsole() voidptr
 
 
-fn C.fgetws() voidptr
+fn C.WriteConsole() voidptr
+
+
+fn C.WriteFile() voidptr
 
 
 fn C.GetModuleFileName() int

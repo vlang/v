@@ -23,6 +23,14 @@ fn (p mut Parser) error(s string) {
 	p.error_with_token_index(s, p.token_idx - 1)
 }
 
+fn (p mut Parser) warn_or_error(s string) {
+	if p.pref.is_prod {
+		p.error(s)
+	} else {
+		p.warn(s)
+	}
+}
+
 fn (p mut Parser) warn(s string) {
 	p.warn_with_token_index(s, p.token_idx - 1)
 }
@@ -189,14 +197,48 @@ fn (p mut Parser) print_error_context() {
 	// p.scanner.debug_tokens()
 }
 
+fn ienv_default(ename string, idefault int) int {
+	es := os.getenv(ename)
+	if es.len == 0 { return idefault }
+	return es.int()
+}
+
+// print_current_tokens/1 pretty prints the current token context, like this:
+// // Your label: tokens[  32] = Token{ .line:   8, .pos:   93, .tok:  85 } = mut
+// // Your label: tokens[> 33] = Token{ .line:   8, .pos:   95, .tok:   1 } = b
+// // Your label: tokens[  34] = Token{ .line:   8, .pos:   98, .tok:  31 } = :=
+// It is useful while debugging the v compiler itself. > marks p.token_idx
+fn (p &Parser) print_current_tokens(label string){
+	btokens := ienv_default('V_BTOKENS', 5)
+	atokens := ienv_default('V_ATOKENS', 5)
+	ctoken_idx := p.token_idx
+	stoken_idx := imax(0, ctoken_idx - btokens)
+	etoken_idx := imin( ctoken_idx + atokens + 1, p.tokens.len)
+	for i := stoken_idx; i < etoken_idx; i++ {
+		idx := if i == ctoken_idx {
+			'>${i:3d}'
+		} else {
+			' ${i:3d}'
+		}
+		eprintln('$label: tokens[$idx] = ' + p.tokens[ i ].detailed_str())
+	}
+}
+
 fn normalized_error(s string) string {
-	// Print `[]int` instead of `array_int` in errors
-	mut res := s.replace('array_', '[]').replace('__', '.')
-		.replace('Option_', '?').replace('main.', '').replace('ptr_', '&')
-		.replace('_dot_', '.')
+	mut res := s
+	if !res.contains('__') {
+		// `[]int` instead of `array_int`
+		res = res.replace('array_', '[]')
+	}
+	res = res.replace('__', '.')
+	res = res.replace('Option_', '?')
+	res = res.replace('main.', '')
+	res = res.replace('ptr_', '&')
+	res = res.replace('_dot_', '.')
 	if res.contains('_V_MulRet_') {
-		res = res.replace('_V_MulRet_', '(').replace('_V_', ', ')
-		res = res[..res.len - 1] + ')"'
+		res = res.replace('_V_MulRet_', '(')
+		res = res.replace('_V_', ', ')
+		res = res[..res.len - 1] + ')"' //"// quote balance comment. do not remove
 	}
 	return res
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -54,6 +54,11 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so { '__declspec(dllexport) ' } else if p.attr == 'inline' { 'static inline ' } else { '' }
 	fn_name_cgen := p.table.fn_gen_name(f)
 	// str_args := f.str_args(p.table)
+	
+	if p.attr == 'live' && p.pref.is_so {
+		// See fn.v for details about impl_live_ functions
+		p.genln('$typ impl_live_${fn_name_cgen} ($str_args);')
+	}
 	p.genln('$dll_export_linkage$typ $fn_name_cgen ($str_args) {')
 }
 
@@ -65,10 +70,11 @@ fn (p mut Parser) gen_blank_identifier_assign() {
 	is_indexer := p.peek() == .lsbr
 	is_fn_call,next_expr := p.is_expr_fn_call(p.token_idx)
 	pos := p.cgen.add_placeholder()
+	expr_tok := p.cur_tok_index()
 	p.is_var_decl = true
 	typ := p.bool_expression()
 	if typ == 'void' {
-		p.error_with_token_index('${next_expr}() $err_used_as_value', p.token_idx - 2)
+		p.error_with_token_index('${next_expr}() $err_used_as_value', expr_tok)
 	}
 	p.is_var_decl = false
 	if !is_indexer && !is_fn_call {
@@ -116,7 +122,7 @@ fn (p mut Parser) gen_handle_option_or_else(_typ, name string, fn_call_ph int) s
 		is_mut: false
 		is_used: true
 	})
-	if is_assign && !name.contains('.') {
+	if is_assign && !name.contains('.') && !p.is_var_decl {
 		// don't initialize struct fields
 		p.genln('$typ $name;')
 	}
@@ -277,8 +283,8 @@ fn (table mut Table) fn_gen_name(f &Fn) string {
 				`%` {
 					name = name.replace('%', 'op_mod')
 				}
-				else {
-				}}
+				else {}
+	}
 		}
 	}
 	if f.is_interface {
@@ -487,7 +493,9 @@ fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	if typ == 'tm' {
 		p.cgen.lines[p.cgen.lines.len - 1] = ''
 	}
-	p.next()
+	if p.tok != .lcbr {
+		p.next()
+	}
 	p.check(.lcbr)
 	ptr := typ.contains('*')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
@@ -600,6 +608,9 @@ fn (p mut Parser) cast(typ string) {
 		}
 		// Strings can't be cast
 		if expr_typ == 'string' {
+			if is_number_type(typ) || is_float_type(typ) {
+				p.error('cannot cast `string` to `$typ`, use `${expr_typ}.${typ}()` instead')
+			}
 			p.error('cannot cast `$expr_typ` to `$typ`')
 		}
 		// Nothing can be cast to bool
@@ -623,6 +634,9 @@ fn type_default(typ string) string {
 	// User struct defined in another module.
 	if typ.contains('__') {
 		return '{0}'
+	}
+	if typ.ends_with('Fn') { // TODO
+		return '0'
 	}
 	// Default values for other types are not needed because of mandatory initialization
 	match typ {
@@ -671,8 +685,8 @@ fn type_default(typ string) string {
 		'voidptr' {
 			return '0'
 		}
-		else {
-		}}
+		else {}
+	}
 	return '{0}'
 	// TODO this results in
 	// error: expected a field designator, such as '.field = 4'
@@ -717,4 +731,3 @@ fn (p mut Parser) gen_array_push(ph int, typ, expr_type, tmp, elm_type string) {
 		p.gen('), $tmp, $elm_type)')
 	}
 }
-

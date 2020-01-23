@@ -1,0 +1,7 @@
+if false {
+  println('foo')
+} else {
+  println('bar')
+}
+===output===
+bar

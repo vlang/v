@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -8,29 +8,35 @@ import (
 	benchmark
 	os
 	filepath
+	// v.types
 	// time
 )
 
 const (
 	known_commands = ['run', 'build', 'version', 'doc']
-	simple_tools = ['fmt', 'up', 'create', 'test', 'test-fmt', 'test-compiler', 'build-tools', 'build-examples', 'build-vbinaries']
+	simple_tools = ['fmt',
+	'up',
+	'create',
+	'test', 'test-fmt', 'test-compiler',
+	'bin2v',
+	'repl',
+	'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
-  is_verbose := '-verbose' in os.args || '--verbose' in os.args
+	is_verbose := '-verbose' in os.args || '--verbose' in os.args
 	// t := time.ticks()
 	// defer { println(time.ticks() - t) }
 	args := compiler.env_vflags_and_os_args()
-	options, command := compiler.get_v_options_and_main_command( args )
-  if is_verbose {
-	  eprintln('v    args: $args')
-	  eprintln('v command: $command')
-	  eprintln('v options: $options')
-  }    
-	
+	options,command := compiler.get_v_options_and_main_command(args)
+	if is_verbose {
+		eprintln('v    args: $args')
+		eprintln('v command: $command')
+		eprintln('v options: $options')
+	}
 	// external tool
 	if command in simple_tools {
-		compiler.launch_tool('v' + command)
+		compiler.launch_tool('v' + command, command)
 		return
 	}
 	// v run, v doc, etc
@@ -49,7 +55,7 @@ fn main() {
 	}
 	// No args? REPL
 	else if command == '' || (args.len == 2 && args[1] == '-') {
-		compiler.launch_tool('vrepl')
+		compiler.launch_tool('vrepl', '')
 		return
 	}
 	// Construct the V object from command line arguments
@@ -66,6 +72,9 @@ fn main() {
 	mut tmark := benchmark.new_benchmark()
 	if v.pref.x64 {
 		v.compile_x64()
+	}
+	else if v.pref.v2 {
+		v.compile2()
 	}
 	else {
 		v.compile()
@@ -96,7 +105,7 @@ fn v_command(command string, args []string) {
 			println('Translating C to V will be available in V 0.3 (January)')
 		}
 		'search', 'install', 'update', 'remove' {
-			compiler.launch_tool('vpm')
+			compiler.launch_tool('vpm', command)
 		}
 		'get' {
 			println('use `v install` to install modules from vpm.vlang.io ')
@@ -105,7 +114,9 @@ fn v_command(command string, args []string) {
 			compiler.create_symlink()
 		}
 		'runrepl' {
-			compiler.launch_tool('vrepl')
+			// TODO: remove this after 2020/02/01
+			eprintln('`v runrepl` has been deprecated. Please use `v repl` instead.')
+			compiler.launch_tool('vrepl', 'runrepl')
 		}
 		'doc' {
 			vexe := os.executable()
@@ -114,12 +125,15 @@ fn v_command(command string, args []string) {
 			mod := args.last()
 			os.system('$vexe build module vlib$os.path_separator' + args.last())
 			vhfile := filepath.join(compiler.v_modules_path,'vlib','${mod}.vh')
-			txt := os.read_file(vhfile) or { panic(err) }
+			txt := os.read_file(vhfile) or {
+				panic(err)
+			}
 			println(txt)
 			// v.gen_doc_html_for_module(args.last())
 		}
 		else {
-			panic('v $command: unknown command\nRun "v help" for usage.')
+			eprintln('v $command: unknown command\nRun "v help" for usage.')
+			exit(1)
 		}
 	}
 	exit(0)
