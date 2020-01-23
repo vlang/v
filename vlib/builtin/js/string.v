@@ -220,6 +220,7 @@ fn (s string) at(idx int) byte {
 	}
 	return s.str[idx]
 }
+
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
@@ -230,6 +231,10 @@ pub fn (c byte) is_hex_digit() bool {
 
 pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
+}
+
+pub fn (c byte) is_bin_digit() bool {
+	return c == `0` || c == `1`
 }
 
 pub fn (c byte) is_letter() bool {

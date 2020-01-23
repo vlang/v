@@ -26,5 +26,14 @@ fn test_scan() {
 	assert token_kinds[4] == .number
 	assert token_kinds[5] == .rpar
 
+	// test number costants input format
+	mut c := 0xa_0
+	assert c == 0xa0
+	c = 0b10_01
+	assert c == 9
+	c = 1_000_000
+	assert c == 1000000
+	d := f64(23_000_000e-3)
+	assert int(d) == 23000 
 }
 
