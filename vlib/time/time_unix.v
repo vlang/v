@@ -8,7 +8,7 @@ pub fn unix(abs int) Time {
 	mut day_offset := abs / seconds_per_day
 	if abs % seconds_per_day < 0 {
 		// Compensate for round towards zero on integers as we want floored instead
-		day_offset -= 1
+		day_offset --
 	}
 	year, month, day := calculate_date_from_offset(day_offset)
 	hr, min, sec := calculate_time_from_offset(abs % seconds_per_day)
@@ -65,7 +65,7 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 	}
 
 	if day_offset < 0 {
-		year -= 1
+		year--
 		if is_leap_year(year) {
 			day_offset += 366
 		} else {
