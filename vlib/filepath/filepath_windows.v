@@ -1,6 +1,6 @@
 module filepath
 
 const (
-	path_separator = '\'
+	path_separator = '\\'
 )
 
