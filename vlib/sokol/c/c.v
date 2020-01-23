@@ -18,6 +18,7 @@ pub const (
 
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
+#flag windows -DSOKOL_GLCORE33
 //#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 
 
