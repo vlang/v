@@ -52,7 +52,7 @@ fn init(user_data voidptr) {
 	})
 	s := &C.sgl_desc_t{}
 	C.sgl_setup(s)
-	state.fons = C.sfons_create(512, 512, 1)
+	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path('assets/ProggyTiny.ttf')) {
 		println('loaded font: $bytes.len')

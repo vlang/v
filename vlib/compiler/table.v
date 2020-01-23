@@ -705,6 +705,9 @@ fn (p mut Parser) check_types2(got_, expected_ string, throw bool) bool {
 	if got.starts_with('fn ') && (expected.ends_with('fn') || expected.ends_with('Fn')) {
 		return true
 	}
+	if got.starts_with('fn ') && expected.starts_with('fn ') && p.mod == 'gg2' {
+		return true
+	}
 	// Allow pointer arithmetic
 	if expected == 'void*' && got == 'int' {
 		return true

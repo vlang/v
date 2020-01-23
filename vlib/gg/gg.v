@@ -4,12 +4,14 @@
 
 module gg
 
-import stbi
-import glm
-import gl
-import gx
-import os
-import glfw
+import (
+	stbi
+	glm
+	gl
+	gx
+	os
+	glfw
+)
 
 pub struct Vec2 {
 pub:

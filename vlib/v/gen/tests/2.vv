@@ -69,5 +69,15 @@ fn end() {
 
 }
 
+/*
+fn bool_array() {
+       a := [true, false]
+       b := a[0]
+       if b {
+               println('ok')
+       }
+}
+*/
+
 fn main() {
 	}

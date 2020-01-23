@@ -109,6 +109,43 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
+const(
+	num_sep = `_`	// char used as number separator
+)
+
+fn filter_num_sep(txt byteptr, start int, end int) string {
+	mut b := malloc(end-start + 1) // add a byte for the endstring 0
+	mut i := start
+	mut i1 := 0
+	for i < end {
+		if txt[i] != num_sep {
+			b[i1]=txt[i]
+			i1++
+		}
+		i++
+	}
+	b[i1]=0 // C string compatibility
+	return string{b,i1}
+}
+
+fn (s mut Scanner) ident_bin_number() string {
+	start_pos := s.pos
+	s.pos += 2 // skip '0b'
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+		c := s.text[s.pos]
+		if !c.is_bin_digit() && c != num_sep {
+			break
+		}
+		s.pos++
+	}
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	s.pos--
+	return number
+}
+
 fn (s mut Scanner) ident_hex_number() string {
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
@@ -117,12 +154,12 @@ fn (s mut Scanner) ident_hex_number() string {
 			break
 		}
 		c := s.text[s.pos]
-		if !c.is_hex_digit() {
+		if !c.is_hex_digit() && c != num_sep {
 			break
 		}
 		s.pos++
 	}
-	number := s.text[start_pos..s.pos]
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
 }
@@ -135,7 +172,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		}
 		c := s.text[s.pos]
 		if c.is_digit() {
-			if !c.is_oct_digit() {
+			if !c.is_oct_digit() && c != num_sep {
 				s.error('malformed octal constant')
 			}
 		}
@@ -144,7 +181,7 @@ fn (s mut Scanner) ident_oct_number() string {
 		}
 		s.pos++
 	}
-	number := s.text[start_pos..s.pos]
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
 }
@@ -152,13 +189,13 @@ fn (s mut Scanner) ident_oct_number() string {
 fn (s mut Scanner) ident_dec_number() string {
 	start_pos := s.pos
 	// scan integer part
-	for s.pos < s.text.len && s.text[s.pos].is_digit() {
+	for s.pos < s.text.len && (s.text[s.pos].is_digit() || s.text[s.pos] == num_sep) {
 		s.pos++
 	}
 	// e.g. 1..9
 	// we just return '1' and don't scan '..9'
 	if s.expect('..', s.pos) {
-		number := s.text[start_pos..s.pos]
+		number := filter_num_sep(s.text.str, start_pos, s.pos)
 		s.pos--
 		return number
 	}
@@ -193,12 +230,15 @@ fn (s mut Scanner) ident_dec_number() string {
 			s.error('too many decimal points in number')
 		}
 	}
-	number := s.text[start_pos..s.pos]
+	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
 	return number
 }
 
 fn (s mut Scanner) ident_number() string {
+	if s.expect('0b', s.pos) {
+		return s.ident_bin_number()
+	}
 	if s.expect('0x', s.pos) {
 		return s.ident_hex_number()
 	}
@@ -548,6 +588,11 @@ fn (s mut Scanner) scan() ScanRes {
 				}
 				s.pos++
 				return scan_res(.left_shift, '')
+			}
+			else if nextc == `-` {
+				s.pos++
+				println("GOT ARR")
+				return scan_res(.left_arrow, '')
 			}
 			else {
 				return scan_res(.lt, '')

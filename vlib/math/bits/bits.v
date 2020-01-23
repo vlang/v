@@ -9,7 +9,7 @@ const (
 	de_bruijn32tab = [byte(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
 	31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9,
 	]
-	de_bruijn64 = u64(0x03f79d71b4ca8b09)
+	de_bruijn64 = (0x03f79d71b4ca8b09)
 	de_bruijn64tab = [byte(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4,
 	62, 47, 59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5,
 	63, 55, 48, 27, 60, 41, 37, 16, 46, 35, 44, 21, 52, 32, 23, 11,
@@ -126,9 +126,9 @@ pub fn ones_count64(x u64) int {
 	// more, but it saves at best one instruction, so we leave
 	// it alone for clarity.
 	m := u64(1<<64) - 1
-	mut y := u64(x>>u64(1) & (m0 & m)) + u64(x & (m0 & m))
-	y = u64(y>>u64(2) & (m1 & m)) + u64(y & (m1 & m))
-	y = u64(u64(y>>4) + y) & (m2 & m)
+	mut y := (x>>u64(1) & (m0 & m)) + (x & (m0 & m))
+	y = (y>>u64(2) & (m1 & m)) + (y & (m1 & m))
+	y = ((y>>4) + y) & (m2 & m)
 	y += y>>8
 	y += y>>16
 	y += y>>32
@@ -143,8 +143,8 @@ pub fn ones_count64(x u64) int {
 [inline]
 pub fn rotate_left_8(x byte, k int) byte {
 	n := byte(8)
-	s := byte(k) & byte(n - byte(1))
-	return byte((x<<s) | (x>>(n - s)))
+	s := byte(k) & (n - byte(1))
+	return ((x<<s) | (x>>(n - s)))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -155,7 +155,7 @@ pub fn rotate_left_8(x byte, k int) byte {
 pub fn rotate_left_16(x u16, k int) u16 {
 	n := u16(16)
 	s := u16(k) & (n - u16(1))
-	return u16((x<<s) | (x>>(n - s)))
+	return ((x<<s) | (x>>(n - s)))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -166,7 +166,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 pub fn rotate_left_32(x u32, k int) u32 {
 	n := u32(32)
 	s := u32(k) & (n - u32(1))
-	return u32(u32(x<<s) | u32(x>>(n - s)))
+	return ((x<<s) | (x>>(n - s)))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -177,7 +177,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 pub fn rotate_left_64(x u64, k int) u64 {
 	n := u64(64)
 	s := u64(k) & (n - u64(1))
-	return u64(u64(x<<s) | u64(x>>(n - s)))
+	return ((x<<s) | (x>>(n - s)))
 }
 
 // --- Reverse ---
@@ -190,16 +190,16 @@ pub fn reverse8(x byte) byte {
 // reverse16 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse16(x u16) u16 {
-	return u16(rev8_tab[x>>8]) | u16(u16(rev8_tab[x & u16(0xff)])<<8)
+	return u16(rev8_tab[x>>8]) | (u16(rev8_tab[x & u16(0xff)])<<8)
 }
 
 // reverse32 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse32(x u32) u32 {
 	m := u64(1<<32) - 1
-	mut y := u32(x>>u32(1) & u32(m0 & m) | u32(u32(x & u32(m0 & m))<<1))
-	y = u32(y>>u32(2) & u32(m1 & m) | u32(u32(y & u32(m1 & m))<<u32(2)))
-	y = u32(y>>u32(4) & u32(m2 & m) | u32(u32(y & u32(m2 & m))<<u32(4)))
+	mut y := (x>>u32(1) & (m0 & m) | ((x & (m0 & m))<<1))
+	y = (y>>u32(2) & (m1 & m) | ((y & (m1 & m))<<u32(2)))
+	y = (y>>u32(4) & (m2 & m) | ((y & (m2 & m))<<u32(4)))
 	return reverse_bytes32(y)
 }
 
@@ -207,9 +207,9 @@ pub fn reverse32(x u32) u32 {
 [inline]
 pub fn reverse64(x u64) u64 {
 	m := u64(1<<64) - 1
-	mut y := u64(x>>u64(1) & (m0 & m) | u64(u64(x & (m0 & m))<<1))
-	y = u64(y>>u64(2) & (m1 & m) | u64(u64(y & (m1 & m))<<2))
-	y = u64(y>>u64(4) & (m2 & m) | u64(u64(y & (m2 & m))<<4))
+	mut y := (x>>u64(1) & (m0 & m) | ((x & (m0 & m))<<1))
+	y = (y>>u64(2) & (m1 & m) | ((y & (m1 & m))<<2))
+	y = (y>>u64(4) & (m2 & m) | ((y & (m2 & m))<<4))
 	return reverse_bytes64(y)
 }
 
@@ -219,7 +219,7 @@ pub fn reverse64(x u64) u64 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn reverse_bytes16(x u16) u16 {
-	return u16(x>>8) | u16(x<<8)
+	return (x>>8) | (x<<8)
 }
 
 // reverse_bytes32 returns the value of x with its bytes in reversed order.
@@ -228,8 +228,8 @@ pub fn reverse_bytes16(x u16) u16 {
 [inline]
 pub fn reverse_bytes32(x u32) u32 {
 	m := u64(1<<32) - 1
-	y := u32(x>>u32(8) & u32(m3 & m) | u32(u32(x & u32(m3 & m))<<u32(8)))
-	return u32(y>>16) | u32(y<<16)
+	y := (x>>u32(8) & (m3 & m) | ((x & (m3 & m))<<u32(8)))
+	return (y>>16) | (y<<16)
 }
 
 // reverse_bytes64 returns the value of x with its bytes in reversed order.
@@ -238,9 +238,9 @@ pub fn reverse_bytes32(x u32) u32 {
 [inline]
 pub fn reverse_bytes64(x u64) u64 {
 	m := u64(1<<64) - 1
-	mut y := u64(x>>u64(8) & (m3 & m) | u64(u64(x & (m3 & m))<<u64(8)))
-	y = u64(y>>u64(16) & (m4 & m) | u64(u64(y & (m4 & m))<<u64(16)))
-	return u64(y>>32) | u64(y<<32)
+	mut y := (x>>u64(8) & (m3 & m) | ((x & (m3 & m))<<u64(8)))
+	y = (y>>u64(16) & (m4 & m) | ((y & (m4 & m))<<u64(16)))
+	return (y>>32) | (y<<32)
 }
 
 // --- Len ---
