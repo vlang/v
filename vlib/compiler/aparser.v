@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -1605,6 +1605,13 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 				}
 				p.gen(' += ')
 			}
+		}
+		.minus_assign {
+				next := p.peek_token()
+				if next.tok == .number && next.lit == '1' {
+					p.error('use `--` instead of `-= 1`')
+				}
+				p.gen(' -= ')
 		}
 		else {
 			p.gen(' ' + p.tok.str() + ' ')

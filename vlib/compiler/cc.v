@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -395,7 +395,12 @@ start:
 			println('strip failed')
 			return
 		}
-		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		// NB: upx --lzma can sometimes fail with NotCompressibleException
+		// See https://github.com/vlang/v/pull/3528
+		mut ret2 := os.system('upx --lzma -qqq $v.out_name')
+		if ret2 != 0 {
+			ret2 = os.system('upx -qqq $v.out_name')
+		}
 		if ret2 != 0 {
 			println('upx failed')
 			$if macos {

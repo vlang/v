@@ -154,7 +154,7 @@ fn subw(w u32) u32 {
 }
 
 // Rotate
-fn rotw(w u32) u32 { return u32(w<<8) | u32(w>>24) }
+fn rotw(w u32) u32 { return (w<<8) | (w>>24) }
 
 // Key expansion algorithm. See FIPS-197, Figure 11.
 // Their rcon[i] is our powx[i-1] << 24.

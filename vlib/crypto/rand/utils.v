@@ -49,7 +49,7 @@ fn bytes_to_u64(b []byte) []u64 {
 	if i > 0 {
 		mut d := u64(0)
 		for s := u64(0); i > 0; s += u64(8) {
-			d |= u64(u64(b[i-1]) << s)
+			d |= u64(b[i-1]) << s
 			i--
 		}
 		z[z.len-1] = d

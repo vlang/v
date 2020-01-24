@@ -37,7 +37,7 @@ pub fn new_cipher(key []byte) ?Cipher {
 	}
 	mut j := byte(0)
 	for i := 0; i < 256; i++ {
-		j += byte(c.s[i]) + byte(key[i%key.len])
+		j += byte(c.s[i]) + key[i%key.len]
 		tmp := c.s[i]
 		c.s[i] = c.s[j]
 		c.s[j] = tmp
