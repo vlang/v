@@ -6,42 +6,42 @@ module builtin
 
 import strings
 
-// B-trees are balanced search trees with all leaves at 
-// the same level. B-trees are generally faster than 
-// binary search trees due to the better locality of 
-// reference, since multiple keys are stored in one node.
-
-// The number for `degree` has been picked through vigor-
-// ous benchmarking but can be changed to any number > 1. 
-// `degree` determines the size of each node.
-
 const (
-	degree = 6
-	mid_index = degree - 1
-	max_size = 2 * degree - 1
-	children_bytes = sizeof(voidptr) * (max_size + 1)
+	initial_size       = 2 << 15
+	initial_cap        = initial_size - 1
+	load_factor        = 0.5
+	probe_offset       = u16(256)
+	fnv64_prime        = 1099511628211
+	fnv64_offset_basis = 14695981039346656037
+   fnv32_prime        = u32(16777619)
+	fnv32_offset_basis = u32(2166136261)
 )
 
+[inline]
+fn fnv1a64(data string) u64 {
+    mut hash := fnv64_offset_basis
+    for i := 0; i < data.len; i++ {
+        hash = (hash ^ u64(data[i])) * fnv64_prime
+    }
+    return hash
+}
+
 pub struct map {
-	value_bytes int
+	value_bytes	int
 mut:
-	root &mapnode
+	info &u16
+	key_values &KeyValue
+	cap        int
 pub mut:
-	size int
+	size   int
 }
 
-struct mapnode {
-mut:
-  	keys     [11]string  // TODO: Should use `max_size`
-	values   [11]voidptr // TODO: Should use `max_size`
-	children &voidptr
-	size     int
-}
-
-fn new_map(n, value_bytes int) map { // TODO: Remove `n`
+fn new_map(cap, value_bytes int) map {
 	return map {
 		value_bytes: value_bytes
-		root: new_node()
+		info: &u16(calloc(sizeof(u16) * initial_size))
+		key_values: &KeyValue(calloc(sizeof(KeyValue) * initial_size))
+		cap: initial_cap
 		size: 0
 	}
 }
@@ -54,380 +54,262 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 	return out
 }
 
-// The tree is initialized with an empty node as root to
-// avoid having to check whether the root is null for
-// each insertion.
-fn new_node() &mapnode {
-	return &mapnode {
-		children: 0
-		size: 0
-	}
+struct KeyValue {
+	key   string
+mut:
+	value voidptr
 }
 
-// This implementation does proactive insertion, meaning
-// that splits are done top-down and not bottom-up. 
+fn new_key_value(key string, value voidptr, value_bytes int) KeyValue {
+	mut new_e := KeyValue {
+		key: key
+		value: malloc(value_bytes)
+	}
+	C.memcpy(new_e.value, value, value_bytes)
+	return new_e
+} 
+
 fn (m mut map) set(key string, value voidptr) {
-	mut node := m.root
-	mut child_index := 0
-	mut parent := &mapnode(0)
-	for {
-		if node.size == max_size {
-			if isnil(parent) {
-				parent = new_node()
-				m.root = parent
-			}
-			parent.split_child(child_index, mut node)
-			if key == parent.keys[child_index] {
-				C.memcpy(parent.values[child_index], value, m.value_bytes)
-				return
-			}
-			node = if key < parent.keys[child_index] {
-				&mapnode(parent.children[child_index])
-			} else {
-				&mapnode(parent.children[child_index + 1])
-			}
-		}
-		mut i := 0
-		for i < node.size && key > node.keys[i] { i++ }
-		if i != node.size && key == node.keys[i] {
-			C.memcpy(node.values[i], value, m.value_bytes)
+	// The load factor is 0.5.
+	// It will be adjustable  in the future and with 
+	// a higher default settings to lower memory usage.
+	if (m.size << 1) == (m.cap - 1) { 
+		m.rehash()
+	}
+
+	// Hash-function will be swapped for wyhash
+	hash := fnv1a64(key)
+	mut info := u16((hash >> 56) | probe_offset)
+	mut index := hash & m.cap
+
+	// While probe count is less
+	for info < m.info[index] {
+		index = (index + 1) & m.cap
+		info += probe_offset
+	}
+
+	// While we might have a match
+	for info == m.info[index] {
+		if key == m.key_values[index].key {
+			C.memcpy(m.key_values[index].value, value, m.value_bytes)
 			return
 		}
-		if isnil(node.children) {
-			mut j := node.size - 1
-			for j >= 0 && key < node.keys[j] {
-				node.keys[j + 1] = node.keys[j]
-				node.values[j + 1] = node.values[j]
-				j--
-			}
-			node.keys[j + 1] = key
-			node.values[j + 1] = malloc(m.value_bytes)
-			C.memcpy(node.values[j + 1], value, m.value_bytes)
-			node.size++
-			m.size++
-			return
-		}
-		parent = node
-		child_index = i
-		node = &mapnode(node.children[child_index])
+		index = (index + 1) & m.cap
+		info += probe_offset
 	}
-}
 
-fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
-	mut z := new_node()
-	z.size = mid_index
-	y.size = mid_index
-	for j := mid_index - 1; j >= 0; j-- {
-		z.keys[j] = y.keys[j + degree]
-		z.values[j] = y.values[j + degree]
-	}
-	if !isnil(y.children) {
-		z.children = &voidptr(malloc(children_bytes))
-		for j := degree - 1; j >= 0; j-- {
-			z.children[j] = y.children[j + degree]
+	// Match is not possible anymore.
+	// Probe until an empty index is found.
+	// Swap when probe count is higher/richer (Robin Hood).
+	mut current_key := key
+	mut current_value := value
+	for m.info[index] != 0 {
+		if info > m.info[index] {
+			tmp_kv := m.key_values[index] 
+			tmp_info := m.info[index]
+			m.key_values[index] = new_key_value(current_key, current_value, m.value_bytes)
+			m.info[index] = info
+			current_key = tmp_kv.key
+			current_value = tmp_kv.value
+			info = tmp_info
 		}
+		index = (index + 1) & m.cap
+		info += probe_offset
 	}
-	if isnil(n.children) {
-		n.children = &voidptr(malloc(children_bytes))
-	}
-	n.children[n.size + 1] = n.children[n.size]
-	for j := n.size; j > child_index; j-- {
-		n.keys[j] = n.keys[j - 1]
-		n.values[j] = n.values[j - 1]
-		n.children[j] = n.children[j - 1]
-	}
-	n.keys[child_index] = y.keys[mid_index]
-	n.values[child_index] = y.values[mid_index]
-	n.children[child_index] = voidptr(y)
-	n.children[child_index + 1] = voidptr(z)
-	n.size++
-}
 
-fn (m map) get(key string, out voidptr) bool {
-	mut node := m.root
-	for {
-		mut i := node.size - 1
-		for i >= 0 && key < node.keys[i] { i-- }
-		if i != -1 && key == node.keys[i] {
-			C.memcpy(out, node.values[i], m.value_bytes)
-			return true
-		}
-		if isnil(node.children) {
-			break
-		}
-		node = &mapnode(node.children[i + 1])
-	}
-	return false
-}
-
-fn (m map) exists(key string) bool {
-	if isnil(m.root) { // TODO: find out why root can be nil
-		return false
-	}
-	mut node := m.root
-	for {
-		mut i := node.size - 1
-		for i >= 0 && key < node.keys[i] { i-- }
-		if i != -1 && key == node.keys[i] {
-			return true
-		}
-		if isnil(node.children) {
-			break
-		}
-		node = &mapnode(node.children[i + 1])
-	}
-	return false
-}
-
-fn (n mapnode) find_key(k string) int { 
-	mut idx := 0
-	for idx < n.size && n.keys[idx] < k {
-		idx++
-	}
-	return idx
-}
-
-fn (n mut mapnode) remove_key(k string) bool {
-	idx := n.find_key(k)
-	if idx < n.size && n.keys[idx] == k {
-		if isnil(n.children) {
-			n.remove_from_leaf(idx)
-		} else {
-			n.remove_from_non_leaf(idx)
-		}
-		return true
-	} else {
-		if isnil(n.children) {
-			return false
-		}
-		flag := if idx == n.size {true} else {false}
-		if (&mapnode(n.children[idx])).size < degree {
-			n.fill(idx)
-		}
-
-		if flag && idx > n.size {
-			return (&mapnode(n.children[idx - 1])).remove_key(k)
-		} else {
-			return (&mapnode(n.children[idx])).remove_key(k)
-		}
-	}
-}
-
-fn (n mut mapnode) remove_from_leaf(idx int) {
-	for i := idx + 1; i < n.size; i++ {
-		n.keys[i - 1] = n.keys[i]
-		n.values[i - 1] = n.values[i]
-	}
-	n.size--
-}
-
-fn (n mut mapnode) remove_from_non_leaf(idx int) {
-	k := n.keys[idx]
-	if &mapnode(n.children[idx]).size >= degree {
-		mut current := &mapnode(n.children[idx])
-		for !isnil(current.children) {
-			current = &mapnode(current.children[current.size])
-		}
-		predecessor := current.keys[current.size - 1]
-		n.keys[idx] = predecessor
-		n.values[idx] = current.values[current.size - 1]
-		(&mapnode(n.children[idx])).remove_key(predecessor)
-	} else if &mapnode(n.children[idx + 1]).size >= degree {
-		mut current := &mapnode(n.children[idx + 1])
-		for !isnil(current.children) {
-			current = &mapnode(current.children[0])
-		}
-		successor := current.keys[0]
-		n.keys[idx] = successor
-		n.values[idx] = current.values[0]
-		(&mapnode(n.children[idx + 1])).remove_key(successor)
-	} else {
-		n.merge(idx)
-		(&mapnode(n.children[idx])).remove_key(k)
-	}
-}
-
-fn (n mut mapnode) fill(idx int) {
-	if idx != 0 && &mapnode(n.children[idx - 1]).size >= degree {
-		n.borrow_from_prev(idx)
-	} else if idx != n.size && &mapnode(n.children[idx + 1]).size >= degree {
-		n.borrow_from_next(idx)
-	} else if idx != n.size {
-		n.merge(idx)
-	} else {
-		n.merge(idx - 1)
-	}
-}
-
-fn (n mut mapnode) borrow_from_prev(idx int) {
-	mut child := &mapnode(n.children[idx])
-	mut sibling := &mapnode(n.children[idx - 1])
-	for i := child.size - 1; i >= 0; i-- {
-		child.keys[i + 1] = child.keys[i] 
-		child.values[i + 1] = child.values[i] 
-	}
-	if !isnil(child.children) { 
-		for i := child.size; i >= 0; i-- {
-			child.children[i + 1] = child.children[i] 
-		}
-	}
-	child.keys[0] = n.keys[idx - 1] 
-	child.values[0] = n.values[idx - 1] 
-	if !isnil(child.children) {
-		child.children[0] = sibling.children[sibling.size]
-	}
-	n.keys[idx - 1] = sibling.keys[sibling.size - 1]
-	n.values[idx - 1] = sibling.values[sibling.size - 1]
-	child.size++ 
-	sibling.size-- 
-}
-
-fn (n mut mapnode) borrow_from_next(idx int) {
-	mut child := &mapnode(n.children[idx])
-	mut sibling := &mapnode(n.children[idx + 1])
-	child.keys[child.size] = n.keys[idx]
-	child.values[child.size] = n.values[idx]
-	if !isnil(child.children) {
-		child.children[child.size + 1] = sibling.children[0]
-	}
-	n.keys[idx] = sibling.keys[0]
-	n.values[idx] = sibling.values[0]
-	for i := 1; i < sibling.size; i++ {
-		sibling.keys[i - 1] = sibling.keys[i]
-		sibling.values[i - 1] = sibling.values[i]
-	}
-	if !isnil(sibling.children) {
-		for i := 1; i <= sibling.size; i++ {
-			sibling.children[i - 1] = sibling.children[i]
-		}
-	}
-	child.size++
-	sibling.size--
-}
-
-fn (n mut mapnode) merge(idx int) {
-	mut child := &mapnode(n.children[idx])
-	sibling := &mapnode(n.children[idx + 1])
-	child.keys[mid_index] = n.keys[idx]
-	child.values[mid_index] = n.values[idx]
-	for i := 0; i < sibling.size; i++ {
-		child.keys[i + degree] = sibling.keys[i]
-		child.values[i + degree] = sibling.values[i]
-	}
-	if !isnil(child.children) {
-		for i := 0; i <= sibling.size; i++ {
-			child.children[i + degree] = sibling.children[i]
-		}
-	}
-	for i := idx + 1; i < n.size; i++ {
-		n.keys[i - 1] = n.keys[i]
-		n.values[i - 1] = n.values[i]
-	}
-	for i := idx + 2; i <= n.size; i++ {
-		n.children[i - 1] = n.children[i]
-	}
-	child.size += sibling.size + 1
-	n.size--
-	// free(sibling)
-}
-
-pub fn (m mut map) delete(key string) {
-	if m.root.size == 0 {
+	// Should almost never happen
+	if (info & 0xFF00) == 0xFF00 {
+		m.rehash()
+		m.set(current_key, current_value)
 		return
 	}
 
-	removed := m.root.remove_key(key)
-	if removed {
-		m.size--
-	}
-	
-	if m.root.size == 0 {
-		// tmp := t.root
-		if isnil(m.root.children) {
-			return
-		} else {
-			m.root = &mapnode(m.root.children[0])
-		}
-		// free(tmp)
-	}
+	m.info[index] = info
+	m.key_values[index] = new_key_value(current_key, current_value, m.value_bytes)
+	m.size++
 }
 
-// Insert all keys of the subtree into array `keys`
-// starting at `at`. Keys are inserted in order. 
-fn (n mapnode) subkeys(keys mut []string, at int) int {
-	mut position := at
-	if !isnil(n.children) {
-		// Traverse children and insert
-		// keys inbetween children
-		for i in 0..n.size {
-			child := &mapnode(n.children[i])
-			position += child.subkeys(mut keys, position)
-			keys[position] = n.keys[i]
-			position++
+fn (m mut map) rehash() {
+	old_cap := m.cap
+	m.cap = ((m.cap + 1) << 1) - 1
+	mut new_key_values :=  &KeyValue(calloc(sizeof(KeyValue) * (m.cap + 1)))
+	mut new_info := &u16(calloc(sizeof(u16) * (m.cap + 1)))
+	for i in 0..(old_cap + 1) {
+		if m.info[i] != 0 {
+			key := m.key_values[i].key
+			value := m.key_values[i].value
+			hash := fnv1a64(key)
+			mut info := u16((hash >> 56) | probe_offset)
+			mut index := hash & m.cap
+			// While probe count is less
+			for info < new_info[index] {
+				index = (index + 1) & m.cap
+				info += probe_offset
+			}
+
+			// While we might have a match
+			for info == new_info[index] {
+				if key == new_key_values[index].key {
+					new_key_values[index].value = value
+					return
+				}
+				index = (index + 1) & m.cap
+				info += probe_offset
+			}
+
+			// Match is not possible anymore.
+			// Probe until an empty index is found.
+			// Swap when probe count is higher/richer (Robin Hood).
+			mut current_key := key
+			mut current_value := value
+			for new_info[index] != 0 {
+				if info > new_info[index] {
+					tmp_kv := new_key_values[index] 
+					tmp_info := new_info[index]
+					new_key_values[index] = new_key_value(current_key, current_value, m.value_bytes)
+					new_info[index] = info
+					current_key = tmp_kv.key
+					current_value = tmp_kv.value
+					info = tmp_info
+				}
+				index = (index + 1) & m.cap
+				info += probe_offset
+			}
+
+			// Should almost never happen
+			if (info & 0xFF00) == 0xFF00 {
+				m.rehash()
+				m.set(current_key, current_value)
+				return
+			}
+
+			new_info[index] = info
+			new_key_values[index] = new_key_value(current_key, current_value, m.value_bytes)
+
 		}
-		// Insert the keys of the last child
-		child := &mapnode(n.children[n.size])
-		position += child.subkeys(mut keys, position)
-	} else {
-		// If leaf, insert keys
-		for i in 0..n.size {
-			keys[position + i] = n.keys[i]
-		}
-		position += n.size
 	}
-	// Return # of added keys
-	return position - at
+	m.key_values = new_key_values
+	m.info = new_info
 }
 
 pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.size)
-	if isnil(m.root) || m.root.size == 0 {
+	if m.value_bytes == 0 {
 		return keys
 	}
-	m.root.subkeys(mut keys, 0)
+	mut j := 0
+	for i in 0..(m.cap + 1) {
+		if m.info[i] != 0 {
+			keys[j] = m.key_values[i].key
+			j++
+		}
+	}
 	return keys
 }
 
-fn (n mut mapnode) free() {
-	mut i := 0
-	if isnil(n.children) {
-		i = 0
-		for i < n.size {
-			i++
-		}
-	} else {
-		i = 0
-		for i < n.size {
-			&mapnode(n.children[i]).free()
-			i++
-		}
-		&mapnode(n.children[i]).free()
+fn (m map) get(key string, out voidptr) bool {
+	hash := fnv1a64(key)
+	mut index := hash & m.cap
+	mut info := u16((hash >> 56) | probe_offset)
+
+	for info < m.info[index] {
+		index = (index + 1) & m.cap
+		info += probe_offset
 	}
-	// free(n)
+
+	for info == m.info[index] {
+		if key == m.key_values[index].key {
+			C.memcpy(out, m.key_values[index].value, m.value_bytes)
+			return true
+		}
+		index = (index + 1) & m.cap
+		info += probe_offset
+	}
+	return false
 }
 
-pub fn (m mut map) free() {
-	if isnil(m.root) {
-		return
+
+pub fn (m mut map) delete(key string) {
+	hash := fnv1a64(key)
+	mut index := hash & m.cap
+	mut info := u16((hash >> 56) | probe_offset)
+
+	for info < m.info[index] {
+		index = (index + 1) & m.cap
+		info += probe_offset
 	}
-	m.root.free()
+
+	// Perform backwards shifting
+	for info == m.info[index] {
+		if key == m.key_values[index].key {
+			mut old_index := index
+			index = (index + 1) & m.cap
+			mut current_info := m.info[index]
+			for (current_info >> 8) > 1 {
+				m.info[old_index] = current_info - probe_offset
+				m.key_values[old_index] = m.key_values[index]
+				old_index = index
+				index = (index + 1) & m.cap
+				current_info = m.info[index]
+			}
+			m.info[old_index] = 0
+			m.size--
+			return
+		}
+		index = (index + 1) & m.cap
+		info += probe_offset
+	}
+}
+
+fn (m map) exists(key string) bool {
+	if m.value_bytes == 0 {
+		return false
+	}
+
+	hash := fnv1a64(key)
+	mut index := hash & m.cap
+	mut info := u16((hash >> 56) | probe_offset)
+
+	for info < m.info[index] {
+		index = (index + 1) & m.cap
+		info += probe_offset
+	}
+
+	for info == m.info[index] {
+		if key == m.key_values[index].key {
+			return true
+		}
+		index = (index + 1) & m.cap
+		info += probe_offset
+	}
+	return false
 }
 
 pub fn (m map) print() {
 	println('<<<<<<<<')
-	//for i := 0; i < m.entries.len; i++ {
-		// entry := m.entries[i]
-		// println('$entry.key => $entry.val')
-	//}
+	// for i := 0; i < m.entries.len; i++ {
+	// entry := m.entries[i]
+	// println('$entry.key => $entry.val')
+	// }
 	/*
-	for i := 0; i < m.cap * m.value_bytes; i++ {
+	for i := 0; i < m.cap * m.element_size; i++ {
 		b := m.table[i]
 		print('$i: ')
 		C.printf('%02x', b)
 		println('')
 	}
 */
+
 	println('>>>>>>>>>>')
+}
+
+pub fn (m mut map) free() {
+	// if m.root == 0 {
+	// 	return
+	// }
+	// m.root.free()
+	// C.free(m.table)
+	// C.free(m.keys_table)
 }
 
 pub fn (m map_string) str() string {
@@ -436,7 +318,7 @@ pub fn (m map_string) str() string {
 	}
 	mut sb := strings.new_builder(50)
 	sb.writeln('{')
-	for key, val  in m {
+	for key, val in m {
 		sb.writeln('  "$key" => "$val"')
 	}
 	sb.writeln('}')
