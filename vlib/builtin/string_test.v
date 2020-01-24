@@ -121,6 +121,32 @@ fn test_split_nth() {
 	assert (e.split_nth(',', 3).len == 3)
 }
 
+fn test_split_nth_values() {
+	line := 'CMD=eprintln(phase=1)'
+	
+	a0 := line.split_nth('=', 0)
+	assert a0.len == 3
+	assert a0[0] == 'CMD'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == '1)'
+
+	a1 := line.split_nth('=', 1)
+	assert a1.len == 1
+	assert a1[0] == 'CMD=eprintln(phase=1)'
+
+	a2 := line.split_nth('=', 2)
+	assert a2.len == 2
+	assert a2[0] == 'CMD'
+	assert a2[1] == 'eprintln(phase=1)'
+
+	a3 := line.split_nth('=', 3)
+	assert a3.len == 3
+	assert a3[0] == 'CMD'
+	assert a3[1] == 'eprintln(phase'
+	assert a3[2] == '1)'
+	
+}
+
 fn test_split() {
 	mut s := 'volt/twitch.v:34'
 	mut vals := s.split(':')
