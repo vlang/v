@@ -34,9 +34,9 @@ jobs:
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
         tcc -version
         ./v -o v2 v.v # Make sure vtcc can build itself
-        ./v test-compiler
+        ./v -silent test-compiler
     - name: Test v binaries
-      run: ./v build-vbinaries
+      run: ./v -silent build-vbinaries
 
   alpine-docker-musl-gcc:
     name: alpine-musl
@@ -84,9 +84,9 @@ jobs:
         psql -d postgres -c 'create database customerdb;'
         psql -d customerdb -f examples/database/pg/mydb.sql
     - name: Test v->c
-      run: ./v test-compiler
+      run: ./v -silent test-compiler
     - name: Test v binaries
-      run: ./v build-vbinaries
+      run: ./v -silent build-vbinaries
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Test symlink
@@ -110,9 +110,9 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc gcc -o v v.v
     - name: Test V
-      run: ./v test-compiler
+      run: ./v -silent test-compiler
     - name: Test v binaries
-      run: ./v build-vbinaries
+      run: ./v -silent build-vbinaries
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Build Vorum
@@ -142,7 +142,7 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v --version
     - name: Test V
-      run: echo "TODO" # ./v examples/hello_world.v && examples/hello_world && ./v build-examples
+      run: echo "TODO" # ./v examples/hello_world.v && examples/hello_world && ./v -silent build-examples
 
 
   macos-prebuilt:
@@ -155,7 +155,7 @@ jobs:
     - name: Download V
       run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v --version
     - name: Test V
-      run: echo "TODO" #./v examples/hello_world.v && examples/hello_world && ./v build-examples
+      run: echo "TODO" #./v examples/hello_world.v && examples/hello_world && ./v -silent build-examples
 
   windows-prebuilt:
     runs-on: windows-2019
@@ -176,7 +176,7 @@ jobs:
         ./v.exe -o hi.exe examples/hello_world.v
         ls
         ./hi.exe
-        ./v.exe build-examples
+        ./v.exe -silent build-examples
 
   ubuntu-musl:
     runs-on: ubuntu-18.04
@@ -192,7 +192,7 @@ jobs:
     - name: Build v
       run: echo $VFLAGS && make -j4 && ./v -cg -o v v.v
     - name: Test v binaries
-      run: ./v build-vbinaries
+      run: ./v -silent build-vbinaries
 #    - name: Test v->js
 #      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
 
@@ -219,12 +219,12 @@ jobs:
         .\make.bat -gcc
     - name: Test
       run: |
-        .\v.exe test-compiler
+        .\v.exe -silent test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
     - name: Test v binaries
-      run: ./v build-vbinaries
+      run: ./v -silent build-vbinaries
 
   windows-msvc:
     runs-on: windows-2019
@@ -243,10 +243,9 @@ jobs:
         .\make.bat -msvc
     - name: Test
       run: |
-        .\v.exe test-compiler
+        .\v.exe -silent test-compiler
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
     - name: Test v binaries
-      run: ./v build-vbinaries
-
+      run: ./v -silent build-vbinaries
