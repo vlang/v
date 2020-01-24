@@ -20,6 +20,7 @@ pub mut:
 	ntask     int // writing to this should be locked by mu.
 	ntask_mtx &sync.Mutex
 	waitgroup &sync.WaitGroup
+	show_ok_tests bool
 }
 
 pub fn new_test_session(vargs string) TestSession {
@@ -30,6 +31,8 @@ pub fn new_test_session(vargs string) TestSession {
 		ntask: 0
 		ntask_mtx: sync.new_mutex()
 		waitgroup: sync.new_waitgroup()
+		
+		show_ok_tests: !vargs.contains('-silent')
 	}
 }
 
@@ -167,7 +170,9 @@ fn (ts mut TestSession) process_files() {
 			else {
 				ts.benchmark.ok()
 				tls_bench.ok()
-				eprintln(tls_bench.step_message_ok(relative_file))
+				if ts.show_ok_tests {
+					eprintln(tls_bench.step_message_ok(relative_file))
+				}
 			}
 		}
 		if os.exists(generated_binary_fpath) {
