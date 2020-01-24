@@ -402,6 +402,12 @@ pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
 }
 
+/*
+split_nth - splits the string based on the passed `delim` substring. 
+It returns the first Nth-1 parts. When N=0, return all the splits. 
+The last returned element has the remainder of the string, even if
+the remainder contains more `delim` substrings.
+*/
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string
 	mut i := 0
