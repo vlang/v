@@ -301,7 +301,9 @@ pub fn len64(x u64) int {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn mul64(x, y u64) (u64,u64) {
-	mask32 := u32(1<<32) - 1
+	// TODO: fix overflow bug (ULL) osx/linuc tcc. joe-c
+	// mask32 := u32(1<<32)-1
+	mask32 := u32(4294967295)
 	x0 := x & mask32
 	x1 := x>>32
 	y0 := y & mask32

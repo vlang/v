@@ -68,6 +68,7 @@ fn wyhash64(key []byte, len, seed_ u64) u64 {
 [inline]
 fn wymum(a, b u64) u64 {
 	hi,lo := bits.mul64(a, b)
+	println('hi: $hi - lo: $lo')
 	return hi ^ lo
 }
 
