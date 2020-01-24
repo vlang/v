@@ -404,7 +404,7 @@ pub fn (s string) split(delim string) []string {
 
 /*
 split_nth - splits the string based on the passed `delim` substring. 
-It returns the first Nth-1 parts. When N=0, return all the splits. 
+It returns the first Nth parts. When N=0, return all the splits. 
 The last returned element has the remainder of the string, even if
 the remainder contains more `delim` substrings.
 */
