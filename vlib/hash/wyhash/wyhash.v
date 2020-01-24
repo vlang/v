@@ -19,7 +19,7 @@ const (
 	wyp4 = 0x1d8e4e27c47d124f
 )
 
-pub fn sum64(seed u64, key []byte) u64 {
+pub fn sum64(key []byte seed u64, ) u64 {
 	return wyhash64(key, u64(key.len), seed)
 }
 
@@ -68,7 +68,6 @@ fn wyhash64(key []byte, len, seed_ u64) u64 {
 [inline]
 fn wymum(a, b u64) u64 {
 	hi,lo := bits.mul64(a, b)
-	println('hi: $hi - lo: $lo')
 	return hi ^ lo
 }
 

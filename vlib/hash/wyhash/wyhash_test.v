@@ -21,7 +21,7 @@ fn test_wyhash() {
 		'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',5,0xe062dfda99413626},
 	]
 	for test in tests {
-		got := wyhash.sum64(test.seed, test.s.bytes())
+		got := wyhash.sum64(test.s.bytes(), test.seed)
 		// println(' #      GOT: $got | $got.hex()')
 		// println(' # EXPECTED: $test.expected | $test.expected.hex()')
 		assert got == test.expected
