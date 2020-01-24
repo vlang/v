@@ -1,272 +1,433 @@
 // Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
 module builtin
 
 import strings
 
+// B-trees are balanced search trees with all leaves at 
+// the same level. B-trees are generally faster than 
+// binary search trees due to the better locality of 
+// reference, since multiple keys are stored in one node.
+
+// The number for `degree` has been picked through vigor-
+// ous benchmarking but can be changed to any number > 1. 
+// `degree` determines the size of each node.
+
+const (
+	degree = 6
+	mid_index = degree - 1
+	max_size = 2 * degree - 1
+	children_bytes = sizeof(voidptr) * (max_size + 1)
+)
+
 pub struct map {
-	element_size int
-	root         &mapnode
-pub:
-	size         int
+	value_bytes int
+mut:
+	root &mapnode
+pub mut:
+	size int
 }
 
 struct mapnode {
-	left     &mapnode
-	right    &mapnode
-	is_empty bool // set by delete()
-	key      string
-	val      voidptr
+mut:
+  	keys     [11]string  // TODO: Should use `max_size`
+	values   [11]voidptr // TODO: Should use `max_size`
+	children &voidptr
+	size     int
 }
 
-fn new_map(cap, elm_size int) map {
-	res := map{
-		element_size: elm_size
-		root: 0
+fn new_map(n, value_bytes int) map { // TODO: Remove `n`
+	return map {
+		value_bytes: value_bytes
+		root: new_node()
+		size: 0
 	}
-	return res
 }
 
-// `m := { 'one': 1, 'two': 2 }`
-fn new_map_init(cap, elm_size int, keys &string, vals voidptr) map {
-	mut res := map{
-		element_size: elm_size
-		root: 0
+fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
+	mut out := new_map(n, value_bytes)
+	for i in 0 .. n {
+		out.set(keys[i], values + i * value_bytes)
 	}
-	for i in 0 .. cap {
-		res.set(keys[i], vals + i * elm_size)
-	}
-	return res
+	return out
 }
 
-fn new_node(key string, val voidptr, element_size int) &mapnode {
-	new_e := &mapnode{
-		key: key
-		val: malloc(element_size)
-		left: 0
-		right: 0
+// The tree is initialized with an empty node as root to
+// avoid having to check whether the root is null for
+// each insertion.
+fn new_node() &mapnode {
+	return &mapnode {
+		children: 0
+		size: 0
 	}
-	C.memcpy(new_e.val, val, element_size)
-	return new_e
 }
 
-fn (m mut map) insert(n mut mapnode, key string, val voidptr) {
-	if n.key == key {
-		C.memcpy(n.val, val, m.element_size)
-		if n.is_empty {
+// This implementation does proactive insertion, meaning
+// that splits are done top-down and not bottom-up. 
+fn (m mut map) set(key string, value voidptr) {
+	mut node := m.root
+	mut child_index := 0
+	mut parent := &mapnode(0)
+	for {
+		if node.size == max_size {
+			if isnil(parent) {
+				parent = new_node()
+				m.root = parent
+			}
+			parent.split_child(child_index, mut node)
+			if key == parent.keys[child_index] {
+				C.memcpy(parent.values[child_index], value, m.value_bytes)
+				return
+			}
+			node = if key < parent.keys[child_index] {
+				&mapnode(parent.children[child_index])
+			} else {
+				&mapnode(parent.children[child_index + 1])
+			}
+		}
+		mut i := 0
+		for i < node.size && key > node.keys[i] { i++ }
+		if i != node.size && key == node.keys[i] {
+			C.memcpy(node.values[i], value, m.value_bytes)
+			return
+		}
+		if isnil(node.children) {
+			mut j := node.size - 1
+			for j >= 0 && key < node.keys[j] {
+				node.keys[j + 1] = node.keys[j]
+				node.values[j + 1] = node.values[j]
+				j--
+			}
+			node.keys[j + 1] = key
+			node.values[j + 1] = malloc(m.value_bytes)
+			C.memcpy(node.values[j + 1], value, m.value_bytes)
+			node.size++
 			m.size++
-			n.is_empty = false
+			return
 		}
-		return
-	}
-	if n.key > key {
-		if n.left == 0 {
-			n.left = new_node(key, val, m.element_size)
-			m.size++
-		}
-		else {
-			m.insert(mut n.left, key, val)
-		}
-		return
-	}
-	if n.right == 0 {
-		n.right = new_node(key, val, m.element_size)
-		m.size++
-	}
-	else {
-		m.insert(mut n.right, key, val)
+		parent = node
+		child_index = i
+		node = &mapnode(node.children[child_index])
 	}
 }
 
-fn (n &mapnode) find(key string, out voidptr, element_size int) bool {
-	if n.key == key {
-		C.memcpy(out, n.val, element_size)
+fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
+	mut z := new_node()
+	z.size = mid_index
+	y.size = mid_index
+	for j := mid_index - 1; j >= 0; j-- {
+		z.keys[j] = y.keys[j + degree]
+		z.values[j] = y.values[j + degree]
+	}
+	if !isnil(y.children) {
+		z.children = &voidptr(malloc(children_bytes))
+		for j := degree - 1; j >= 0; j-- {
+			z.children[j] = y.children[j + degree]
+		}
+	}
+	if isnil(n.children) {
+		n.children = &voidptr(malloc(children_bytes))
+	}
+	n.children[n.size + 1] = n.children[n.size]
+	for j := n.size; j > child_index; j-- {
+		n.keys[j] = n.keys[j - 1]
+		n.values[j] = n.values[j - 1]
+		n.children[j] = n.children[j - 1]
+	}
+	n.keys[child_index] = y.keys[mid_index]
+	n.values[child_index] = y.values[mid_index]
+	n.children[child_index] = voidptr(y)
+	n.children[child_index + 1] = voidptr(z)
+	n.size++
+}
+
+fn (m map) get(key string, out voidptr) bool {
+	mut node := m.root
+	for {
+		mut i := node.size - 1
+		for i >= 0 && key < node.keys[i] { i-- }
+		if i != -1 && key == node.keys[i] {
+			C.memcpy(out, node.values[i], m.value_bytes)
+			return true
+		}
+		if isnil(node.children) {
+			break
+		}
+		node = &mapnode(node.children[i + 1])
+	}
+	return false
+}
+
+fn (m map) exists(key string) bool {
+	if isnil(m.root) { // TODO: find out why root can be nil
+		return false
+	}
+	mut node := m.root
+	for {
+		mut i := node.size - 1
+		for i >= 0 && key < node.keys[i] { i-- }
+		if i != -1 && key == node.keys[i] {
+			return true
+		}
+		if isnil(node.children) {
+			break
+		}
+		node = &mapnode(node.children[i + 1])
+	}
+	return false
+}
+
+fn (n mapnode) find_key(k string) int { 
+	mut idx := 0
+	for idx < n.size && n.keys[idx] < k {
+		idx++
+	}
+	return idx
+}
+
+fn (n mut mapnode) remove_key(k string) bool {
+	idx := n.find_key(k)
+	if idx < n.size && n.keys[idx] == k {
+		if isnil(n.children) {
+			n.remove_from_leaf(idx)
+		} else {
+			n.remove_from_non_leaf(idx)
+		}
 		return true
-	}
-	else if n.key > key {
-		if n.left == 0 {
+	} else {
+		if isnil(n.children) {
 			return false
 		}
-		else {
-			return n.left.find(key, out, element_size)
+		flag := if idx == n.size {true} else {false}
+		if (&mapnode(n.children[idx])).size < degree {
+			n.fill(idx)
 		}
-	}
-	else {
-		if n.right == 0 {
-			return false
-		}
-		else {
-			return n.right.find(key, out, element_size)
+
+		if flag && idx > n.size {
+			return (&mapnode(n.children[idx - 1])).remove_key(k)
+		} else {
+			return (&mapnode(n.children[idx])).remove_key(k)
 		}
 	}
 }
 
-// same as `find`, but doesn't return a value. Used by `exists`
-fn (n &mapnode) find2(key string, element_size int) bool {
-	if n.key == key && !n.is_empty {
-		return true
+fn (n mut mapnode) remove_from_leaf(idx int) {
+	for i := idx + 1; i < n.size; i++ {
+		n.keys[i - 1] = n.keys[i]
+		n.values[i - 1] = n.values[i]
 	}
-	else if n.key > key {
-		if isnil(n.left) {
-			return false
+	n.size--
+}
+
+fn (n mut mapnode) remove_from_non_leaf(idx int) {
+	k := n.keys[idx]
+	if &mapnode(n.children[idx]).size >= degree {
+		mut current := &mapnode(n.children[idx])
+		for !isnil(current.children) {
+			current = &mapnode(current.children[current.size])
 		}
-		else {
-			return n.left.find2(key, element_size)
+		predecessor := current.keys[current.size - 1]
+		n.keys[idx] = predecessor
+		n.values[idx] = current.values[current.size - 1]
+		(&mapnode(n.children[idx])).remove_key(predecessor)
+	} else if &mapnode(n.children[idx + 1]).size >= degree {
+		mut current := &mapnode(n.children[idx + 1])
+		for !isnil(current.children) {
+			current = &mapnode(current.children[0])
 		}
-	}
-	else {
-		if isnil(n.right) {
-			return false
-		}
-		else {
-			return n.right.find2(key, element_size)
-		}
+		successor := current.keys[0]
+		n.keys[idx] = successor
+		n.values[idx] = current.values[0]
+		(&mapnode(n.children[idx + 1])).remove_key(successor)
+	} else {
+		n.merge(idx)
+		(&mapnode(n.children[idx])).remove_key(k)
 	}
 }
 
-fn (m mut map) set(key string, val voidptr) {
-	if isnil(m.root) {
-		m.root = new_node(key, val, m.element_size)
-		m.size++
-		return
+fn (n mut mapnode) fill(idx int) {
+	if idx != 0 && &mapnode(n.children[idx - 1]).size >= degree {
+		n.borrow_from_prev(idx)
+	} else if idx != n.size && &mapnode(n.children[idx + 1]).size >= degree {
+		n.borrow_from_next(idx)
+	} else if idx != n.size {
+		n.merge(idx)
+	} else {
+		n.merge(idx - 1)
 	}
-	m.insert(mut m.root, key, val)
 }
 
-/*
-fn (m map) bs(query string, start, end int, out voidptr) {
-	// println('bs "$query" $start -> $end')
-	mid := start + ((end - start) / 2)
-	if end - start == 0 {
-		last := m.entries[end]
-		C.memcpy(out, last.val, m.element_size)
-		return
+fn (n mut mapnode) borrow_from_prev(idx int) {
+	mut child := &mapnode(n.children[idx])
+	mut sibling := &mapnode(n.children[idx - 1])
+	for i := child.size - 1; i >= 0; i-- {
+		child.keys[i + 1] = child.keys[i] 
+		child.values[i + 1] = child.values[i] 
 	}
-	if end - start == 1 {
-		first := m.entries[start]
-		C.memcpy(out, first.val, m.element_size)
-		return
+	if !isnil(child.children) { 
+		for i := child.size; i >= 0; i-- {
+			child.children[i + 1] = child.children[i] 
+		}
 	}
-	if mid >= m.entries.len {
-		return
+	child.keys[0] = n.keys[idx - 1] 
+	child.values[0] = n.values[idx - 1] 
+	if !isnil(child.children) {
+		child.children[0] = sibling.children[sibling.size]
 	}
-	mid_msg := m.entries[mid]
-	// println('mid.key=$mid_msg.key')
-	if query < mid_msg.key {
-		m.bs(query, start, mid, out)
-		return
-	}
-	m.bs(query, mid, end, out)
+	n.keys[idx - 1] = sibling.keys[sibling.size - 1]
+	n.values[idx - 1] = sibling.values[sibling.size - 1]
+	child.size++ 
+	sibling.size-- 
 }
-*/
 
+fn (n mut mapnode) borrow_from_next(idx int) {
+	mut child := &mapnode(n.children[idx])
+	mut sibling := &mapnode(n.children[idx + 1])
+	child.keys[child.size] = n.keys[idx]
+	child.values[child.size] = n.values[idx]
+	if !isnil(child.children) {
+		child.children[child.size + 1] = sibling.children[0]
+	}
+	n.keys[idx] = sibling.keys[0]
+	n.values[idx] = sibling.values[0]
+	for i := 1; i < sibling.size; i++ {
+		sibling.keys[i - 1] = sibling.keys[i]
+		sibling.values[i - 1] = sibling.values[i]
+	}
+	if !isnil(sibling.children) {
+		for i := 1; i <= sibling.size; i++ {
+			sibling.children[i - 1] = sibling.children[i]
+		}
+	}
+	child.size++
+	sibling.size--
+}
 
-fn preorder_keys(node &mapnode, keys mut []string, key_i int) int {
-	mut i := key_i
-	if !node.is_empty {
-		keys[i] = node.key
-		i++
+fn (n mut mapnode) merge(idx int) {
+	mut child := &mapnode(n.children[idx])
+	sibling := &mapnode(n.children[idx + 1])
+	child.keys[mid_index] = n.keys[idx]
+	child.values[mid_index] = n.values[idx]
+	for i := 0; i < sibling.size; i++ {
+		child.keys[i + degree] = sibling.keys[i]
+		child.values[i + degree] = sibling.values[i]
 	}
-	if !isnil(node.left) {
-		i = preorder_keys(node.left, mut keys, i)
+	if !isnil(child.children) {
+		for i := 0; i <= sibling.size; i++ {
+			child.children[i + degree] = sibling.children[i]
+		}
 	}
-	if !isnil(node.right) {
-		i = preorder_keys(node.right, mut keys, i)
+	for i := idx + 1; i < n.size; i++ {
+		n.keys[i - 1] = n.keys[i]
+		n.values[i - 1] = n.values[i]
 	}
-	return i
+	for i := idx + 2; i <= n.size; i++ {
+		n.children[i - 1] = n.children[i]
+	}
+	child.size += sibling.size + 1
+	n.size--
+	// free(sibling)
+}
+
+pub fn (m mut map) delete(key string) {
+	if m.root.size == 0 {
+		return
+	}
+
+	removed := m.root.remove_key(key)
+	if removed {
+		m.size--
+	}
+	
+	if m.root.size == 0 {
+		// tmp := t.root
+		if isnil(m.root.children) {
+			return
+		} else {
+			m.root = &mapnode(m.root.children[0])
+		}
+		// free(tmp)
+	}
+}
+
+// Insert all keys of the subtree into array `keys`
+// starting at `at`. Keys are inserted in order. 
+fn (n mapnode) subkeys(keys mut []string, at int) int {
+	mut position := at
+	if !isnil(n.children) {
+		// Traverse children and insert
+		// keys inbetween children
+		for i in 0..n.size {
+			child := &mapnode(n.children[i])
+			position += child.subkeys(mut keys, position)
+			keys[position] = n.keys[i]
+			position++
+		}
+		// Insert the keys of the last child
+		child := &mapnode(n.children[n.size])
+		position += child.subkeys(mut keys, position)
+	} else {
+		// If leaf, insert keys
+		for i in 0..n.size {
+			keys[position + i] = n.keys[i]
+		}
+		position += n.size
+	}
+	// Return # of added keys
+	return position - at
 }
 
 pub fn (m &map) keys() []string {
 	mut keys := [''].repeat(m.size)
-	if isnil(m.root) {
+	if isnil(m.root) || m.root.size == 0 {
 		return keys
 	}
-	preorder_keys(m.root, mut keys, 0)
+	m.root.subkeys(mut keys, 0)
 	return keys
 }
 
-fn (m map) get(key string, out voidptr) bool {
-	// println('g')
-	if m.root == 0 {
-		return false
+fn (n mut mapnode) free() {
+	mut i := 0
+	if isnil(n.children) {
+		i = 0
+		for i < n.size {
+			i++
+		}
+	} else {
+		i = 0
+		for i < n.size {
+			&mapnode(n.children[i]).free()
+			i++
+		}
+		&mapnode(n.children[i]).free()
 	}
-	return m.root.find(key, out, m.element_size)
+	// free(n)
 }
 
-pub fn (n mut mapnode) delete(key string, element_size int) {
-	if n.key == key {
-		C.memset(n.val, 0, element_size)
-		n.is_empty = true
+pub fn (m mut map) free() {
+	if isnil(m.root) {
 		return
 	}
-	else if n.key > key {
-		if isnil(n.left) {
-			return
-		}
-		else {
-			n.left.delete(key, element_size)
-		}
-	}
-	else {
-		if isnil(n.right) {
-			return
-		}
-		else {
-			n.right.delete(key, element_size)
-		}
-	}
-}
-
-pub fn (m mut map) delete(key string) {
-	if m.exists(key) {
-		m.root.delete(key, m.element_size)
-		m.size--
-	}
-}
-
-fn (m map) exists(key string) bool {
-	return !isnil(m.root) && m.root.find2(key, m.element_size)
+	m.root.free()
 }
 
 pub fn (m map) print() {
 	println('<<<<<<<<')
-	// for i := 0; i < m.entries.len; i++ {
-	// entry := m.entries[i]
-	// println('$entry.key => $entry.val')
-	// }
+	//for i := 0; i < m.entries.len; i++ {
+		// entry := m.entries[i]
+		// println('$entry.key => $entry.val')
+	//}
 	/*
-	for i := 0; i < m.cap * m.element_size; i++ {
+	for i := 0; i < m.cap * m.value_bytes; i++ {
 		b := m.table[i]
 		print('$i: ')
 		C.printf('%02x', b)
 		println('')
 	}
 */
-
 	println('>>>>>>>>>>')
-}
-
-fn (n mut mapnode) free() {
-	if n.val != 0 {
-		free(n.val)
-	}
-	if n.left != 0 {
-		n.left.free()
-	}
-	if n.right != 0 {
-		n.right.free()
-	}
-	free(n)
-}
-
-pub fn (m mut map) free() {
-	if m.root == 0 {
-		return
-	}
-	m.root.free()
-	// C.free(m.table)
-	// C.free(m.keys_table)
 }
 
 pub fn (m map_string) str() string {
@@ -275,10 +436,9 @@ pub fn (m map_string) str() string {
 	}
 	mut sb := strings.new_builder(50)
 	sb.writeln('{')
-	for key, val in m {
+	for key, val  in m {
 		sb.writeln('  "$key" => "$val"')
 	}
 	sb.writeln('}')
 	return sb.str()
 }
-

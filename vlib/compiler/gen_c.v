@@ -493,10 +493,19 @@ fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	if typ == 'tm' {
 		p.cgen.lines[p.cgen.lines.len - 1] = ''
 	}
+	mut is_config := false
 	if p.tok != .lcbr {
 		p.next()
+	} else {
+		is_config = true
 	}
 	p.check(.lcbr)
+	// Handle empty config ({})
+	if is_config && p.tok == .rcbr {
+		p.check(.rcbr)
+		p.gen('($typ) {}')
+		return true
+	}
 	ptr := typ.contains('*')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
 	if !ptr {

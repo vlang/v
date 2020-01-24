@@ -194,3 +194,18 @@ fn test_fixed_field() {
 }
 */
 
+
+struct Config {
+	n int
+	def int = 10
+}
+
+fn foo_config(c Config) {
+}
+
+fn test_config() {
+	foo_config({n: 10, def: 20})
+	foo_config({})
+}
+
+
