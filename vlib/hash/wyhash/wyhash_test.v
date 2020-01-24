@@ -22,7 +22,8 @@ fn test_wyhash() {
 	]
 	for test in tests {
 		got := wyhash.sum64(test.seed, test.s.bytes())
-		// println('$got.hex()|$test.expected.hex()')
+		println(' #      GOT: $got.hex()')
+		println(' # EXPECTED: $test.expected.hex()')
 		assert got == test.expected
 	}
 }
