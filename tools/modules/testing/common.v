@@ -133,7 +133,7 @@ fn (ts mut TestSession) process_files() {
 		}
 		mut cmd_options := [ts.vargs]
 		if !ts.vargs.contains('fmt') {
-			cmd_options << ' -cg -o "$generated_binary_fpath"'
+			cmd_options << ' -o "$generated_binary_fpath"'
 		}
 		cmd := '"${ts.vexe}" ' + cmd_options.join(' ') + ' "${file}"'
 		// eprintln('>>> v cmd: $cmd')
