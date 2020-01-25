@@ -4,7 +4,7 @@
 module hashmap
 
 const (
-	initial_size = 2<<4
+	initial_size = 2 << 4
 	initial_cap = initial_size - 1
 	load_factor = 0.5
 	probe_offset = u16(256)
@@ -51,12 +51,12 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	// The load factor is 0.5.
 	// It will be adjustable  in the future and with
 	// a higher default settings to lower memory usage.
-	if (h.size<<1) == (h.cap - 1) {
+	if (h.size << 1) == (h.cap - 1) {
 		h.rehash()
 	}
 	// Hash-function will be swapped for wyhash
 	hash := fnv1a64(key)
-	mut info := u16((hash>>56) | probe_offset)
+	mut info := u16((hash >> 56) | probe_offset)
 	mut index := hash & h.cap
 	// While probe count is less
 	for info < h.info[index] {
@@ -78,11 +78,14 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	mut current_kv := KeyValue{key, value}
 	for h.info[index] != 0 {
 		if info > h.info[index] {
+			// Swap KeyValue
 			tmp_kv := h.key_values[index] 
-			tmp_info := h.info[index]
-			h.key_values[index] = current_kv
-			h.info[index] = info
 			current_kv = tmp_kv
+			h.key_values[index] = current_kv
+
+			// Swap info word
+			tmp_info := h.info[index]
+			h.info[index] = info
 			info = tmp_info
 		}
 		index = (index + 1) & h.cap
@@ -101,7 +104,7 @@ pub fn (h mut Hashmap) set(key string, value int) {
 
 fn (h mut Hashmap) rehash() {
 	old_cap := h.cap
-	h.cap = ((h.cap + 1)<<1) - 1
+	h.cap = ((h.cap + 1) << 1) - 1
 	mut new_key_values := &KeyValue(calloc(sizeof(KeyValue) * (h.cap + 1)))
 	mut new_info := &u16(calloc(sizeof(u16) * (h.cap + 1)))
 	for i in 0 .. (old_cap + 1) {
@@ -109,7 +112,7 @@ fn (h mut Hashmap) rehash() {
 			key := h.key_values[i].key
 			value := h.key_values[i].value
 			hash := fnv1a64(key)
-			mut info := u16((hash>>56) | probe_offset)
+			mut info := u16((hash >> 56) | probe_offset)
 			mut index := hash & h.cap
 			// While probe count is less
 			for info < new_info[index] {
@@ -121,11 +124,14 @@ fn (h mut Hashmap) rehash() {
 			mut current_kv := KeyValue{key, value}
 			for new_info[index] != 0 {
 				if info > new_info[index] {
+					// Swap KeyValue
 					tmp_kv := new_key_values[index] 
-					tmp_info := new_info[index]
-					new_key_values[index] = current_kv
-					new_info[index] = info
 					current_kv = tmp_kv
+					new_key_values[index] = current_kv
+
+					// Swap info word
+					tmp_info := new_info[index]
+					new_info[index] = info
 					info = tmp_info
 				}
 				index = (index + 1) & h.cap
@@ -148,18 +154,18 @@ fn (h mut Hashmap) rehash() {
 pub fn (h mut Hashmap) delete(key string) {
 	hash := fnv1a64(key)
 	mut index := hash & h.cap
-	mut info := u16((hash>>56) | probe_offset)
+	mut info := u16((hash >> 56) | probe_offset)
 	for info < h.info[index] {
 		index = (index + 1) & h.cap
 		info += probe_offset
 	}
-	// Perform backwards shifting
 	for info == h.info[index] {
 		if key == h.key_values[index].key {
+			// Perform backwards shifting
 			mut old_index := index
 			index = (index + 1) & h.cap
 			mut current_info := h.info[index]
-			for (current_info>>8) > 1 {
+			for (current_info >> 8) > 1 {
 				h.info[old_index] = current_info - probe_offset
 				h.key_values[old_index] = h.key_values[index]
 				old_index = index
@@ -178,7 +184,7 @@ pub fn (h mut Hashmap) delete(key string) {
 pub fn (h Hashmap) get(key string) int {
 	hash := fnv1a64(key)
 	mut index := hash & h.cap
-	mut info := u16((hash>>56) | probe_offset)
+	mut info := u16((hash >> 56) | probe_offset)
 	for info < h.info[index] {
 		index = (index + 1) & h.cap
 		info += probe_offset
@@ -196,7 +202,7 @@ pub fn (h Hashmap) get(key string) int {
 pub fn (h Hashmap) exists(key string) bool {
 	hash := fnv1a64(key)
 	mut index := hash & h.cap
-	mut info := u16((hash>>56) | probe_offset)
+	mut info := u16((hash >> 56) | probe_offset)
 	for info < h.info[index] {
 		index = (index + 1) & h.cap
 		info += probe_offset
@@ -212,8 +218,7 @@ pub fn (h Hashmap) exists(key string) bool {
 }
 
 pub fn (h Hashmap) keys() []string {
-	size := h.size
-	mut keys := [''].repeat(size)
+	mut keys := [''].repeat(h.size)
 	mut j := 0
 	for i in 0 .. (h.cap + 1) {
 		if h.info[i] != 0 {
