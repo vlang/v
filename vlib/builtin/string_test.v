@@ -123,7 +123,7 @@ fn test_split_nth() {
 
 fn test_split_nth_values() {
 	line := 'CMD=eprintln(phase=1)'
-	
+
 	a0 := line.split_nth('=', 0)
 	assert a0.len == 3
 	assert a0[0] == 'CMD'
@@ -144,7 +144,12 @@ fn test_split_nth_values() {
 	assert a3[0] == 'CMD'
 	assert a3[1] == 'eprintln(phase'
 	assert a3[2] == '1)'
-	
+
+	a4 := line.split_nth('=', 4)
+	assert a4.len == 3
+	assert a4[0] == 'CMD'
+	assert a4[1] == 'eprintln(phase'
+	assert a4[2] == '1)'
 }
 
 fn test_split() {
