@@ -75,17 +75,14 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	// Match is not possible anymore.
 	// Probe until an empty index is found.
 	// Swap when probe count is higher/richer (Robin Hood).
-	mut current_key := key
-	mut current_value := value
+	mut current_kv := KeyValue{key, value}
 	for h.info[index] != 0 {
 		if info > h.info[index] {
-			tmp_kv := h.key_values[index]
+			tmp_kv := h.key_values[index] 
 			tmp_info := h.info[index]
-			h.key_values[index] = KeyValue{
-				current_key,current_value}
+			h.key_values[index] = current_kv
 			h.info[index] = info
-			current_key = tmp_kv.key
-			current_value = tmp_kv.value
+			current_kv = tmp_kv
 			info = tmp_info
 		}
 		index = (index + 1) & h.cap
@@ -94,12 +91,11 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	// Should almost never happen
 	if (info & 0xFF00) == 0xFF00 {
 		h.rehash()
-		h.set(current_key, current_value)
+		h.set(current_kv.key, current_kv.value)
 		return
 	}
 	h.info[index] = info
-	h.key_values[index] = KeyValue{
-		current_key,current_value}
+	h.key_values[index] = current_kv
 	h.size++
 }
 
@@ -122,17 +118,14 @@ fn (h mut Hashmap) rehash() {
 			}
 			// Probe until an empty index is found.
 			// Swap when probe count is higher/richer (Robin Hood).
-			mut current_key := key
-			mut current_value := value
+			mut current_kv := KeyValue{key, value}
 			for new_info[index] != 0 {
 				if info > new_info[index] {
-					tmp_kv := new_key_values[index]
+					tmp_kv := new_key_values[index] 
 					tmp_info := new_info[index]
-					new_key_values[index] = KeyValue{
-						current_key,current_value}
+					new_key_values[index] = current_kv
 					new_info[index] = info
-					current_key = tmp_kv.key
-					current_value = tmp_kv.value
+					current_kv = tmp_kv
 					info = tmp_info
 				}
 				index = (index + 1) & h.cap
@@ -141,12 +134,11 @@ fn (h mut Hashmap) rehash() {
 			// Should almost never happen
 			if (info & 0xFF00) == 0xFF00 {
 				h.rehash()
-				h.set(current_key, current_value)
+				h.set(current_kv.key, current_kv.value)
 				return
 			}
 			new_info[index] = info
-			new_key_values[index] = KeyValue{
-				current_key,current_value}
+			new_key_values[index] = current_kv
 		}
 	}
 	h.key_values = new_key_values
