@@ -187,7 +187,7 @@ fn example2() {
 
 	mut re := regex.new_regex()
 	//re.debug = 2
-	re.group_csave = [-1].repeat(3*20+1)
+	re.group_csave = [-1].repeat(3*20+1)  // we expect max 20 records
 
 	re_err, err_pos := re.compile(query)
 	if re_err == regex.COMPILE_OK {
@@ -201,7 +201,7 @@ fn example2() {
 			println("found in [$start, $end] => [${text[start..end]}]")
 		}
 
-		// groups
+		// groups capture
 		mut gi := 0
 		for gi < re.groups.len {
 			if re.groups[gi] >= 0 {
@@ -209,7 +209,8 @@ fn example2() {
 			}
 			gi += 2
 		}
-		// continuos saving
+
+		// continuous saving
 		gi = 0
 		println("num: ${re.group_csave[0]}")
 		for gi < re.group_csave[0] {
@@ -240,12 +241,8 @@ cg id: 0 [4, 8] => [ 01,]
 cg id: 0 [8, 11] => [23,]
 cg id: 0 [11, 15] => [45 ,]
 cg id: 0 [15, 19] => [56, ]
-cg id: 0 [19, 21] => [78]
+cg id: 0 [19, 21] => [78] 
 ```
-
-
-
- 
 
 ## Flags
 
