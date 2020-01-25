@@ -266,23 +266,20 @@ fn (tok mut Token) reset() {
 *
 ******************************************************************************/
 pub const (
-	//F_FND = 0x00000001  // check until the end of the input string, it act like a "find first match", not efficient!!
-	//F_PM  = 0x00000004  // partial match: if the source text finish and the match is positive until then return true
+	F_NL  = 0x00000001  // end the match when find a new line symbol
+	F_MS  = 0x00000002  // match true only if the match is at the start of the string
+	F_ME  = 0x00000004  // match true only if the match is at the end of the string 
 
-	F_NL  = 0x00000002  // end the match when find a new line symbol
-	F_MS  = 0x00000008  // match true only if the match is at the start of the string
-	F_ME  = 0x00000010  // match true only if the match is at the end of the string 
-
-	F_EFM = 0x01000000  // exit on first token matched, used by search
-	F_BIN = 0x02000000  // work only on bytes, ignore utf-8
+	F_EFM = 0x00000100  // exit on first token matched, used by search
+	F_BIN = 0x00000200  // work only on bytes, ignore utf-8
 )
 
 struct StateDotObj{
 mut:
 	i  int                = -1  // char index in the input buffer
-	pc int                = -1   // program counter saved
-	mi int                = -1   // match_index saved
-	group_stack_index int = -1  // group index stack pointer saved
+	pc int                = -1  // program counter saved
+	mi int                = -1  // match_index saved
+	group_stack_index int = -1  // continuous save on capturing groups
 }
 
 pub
@@ -304,6 +301,9 @@ pub mut:
 	groups []int               // groups index results
 	group_max_nested int = 3   // max nested group
 	group_max int        = 8   // max allowed number of different groups
+
+	group_csave []int    = []int  // groups continuous save array
+	group_csave_index int= -1     // groups continuous save index
 
 	// flags
 	flag int             = 0   // flag for optional parameters
@@ -328,6 +328,12 @@ fn (re mut RE) reset(){
 	re.groups = [-1].repeat(re.group_count*2)
 
 	re.state_stack_index = -1
+
+	// reset group_csave
+	if re.group_csave.len > 0 {
+		re.group_csave_index = 1
+		re.group_csave[0] = 0     // reset the capture count
+	}
 }
 
 /******************************************************************************
@@ -734,8 +740,6 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 			}
 		}
 
-
-
 		// not  a {} quantifier, exit
 		return ERR_SYNTAX_ERROR, i, 0, false
 	}
@@ -997,7 +1001,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 	// Post processing
 	//******************************************
 
-
 	// count IST_DOT_CHAR to set the size of the state stack
 	mut pc1 := 0
 	mut tmp_count := 0
@@ -1054,7 +1057,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 		pc1++
 	}
 
-	
 	//******************************************
 	// DEBUG PRINT REGEX GENERATED CODE
 	//******************************************
@@ -1075,14 +1077,15 @@ pub fn (re RE) get_code() string {
 		mut stop_flag := false
 
 		for pc1 <= re.prog.len {
+			tk := re.prog[pc1]
 			res.write("PC:${pc1:3d}")
 			
 		    res.write(" ist: ")
-		    res.write("${re.prog[pc1].ist:8x}".replace(" ","0") )
+		    res.write("${tk.ist:8x}".replace(" ","0") )
 		    res.write(" ")
-			ist :=re.prog[pc1].ist
+			ist :=tk.ist
 			if ist == IST_BSLS_CHAR {
-				res.write("[\\${re.prog[pc1].ch:1c}]     BSLS")
+				res.write("[\\${tk.ch:1c}]     BSLS")
 			} else if ist == IST_PROG_END {
 				res.write("PROG_END")
 				stop_flag = true
@@ -1095,22 +1098,22 @@ pub fn (re RE) get_code() string {
 			} else if ist == IST_DOT_CHAR {
 				res.write(".        DOT_CHAR")
 			} else if ist == IST_GROUP_START {
-				res.write("(        GROUP_START #:${re.prog[pc1].group_id}")
+				res.write("(        GROUP_START #:${tk.group_id}")
 			} else if ist == IST_GROUP_END {
-				res.write(")        GROUP_END   #:${re.prog[pc1].group_id}")
+				res.write(")        GROUP_END   #:${tk.group_id}")
 			} else if ist == IST_SIMPLE_CHAR {
-				res.write("[${re.prog[pc1].ch:1c}]      query_ch")
+				res.write("[${tk.ch:1c}]      query_ch")
 			}
 
-			if re.prog[pc1].rep_max == MAX_QUANTIFIER {
-				res.write(" {${re.prog[pc1].rep_min:3d},MAX}")
+			if tk.rep_max == MAX_QUANTIFIER {
+				res.write(" {${tk.rep_min:3d},MAX}")
 			}else{
 				if ist == IST_OR_BRANCH {
-					res.write(" if false go: ${re.prog[pc1].rep_min:3d} if true go: ${re.prog[pc1].rep_max:3d}")
+					res.write(" if false go: ${tk.rep_min:3d} if true go: ${tk.rep_max:3d}")
 				} else {
-					res.write(" {${re.prog[pc1].rep_min:3d},${re.prog[pc1].rep_max:3d}}")
+					res.write(" {${tk.rep_min:3d},${tk.rep_max:3d}}")
 				}
-				if re.prog[pc1].greedy == true {
+				if tk.greedy == true {
 					res.write("?")
 				}
 			}
@@ -1123,11 +1126,9 @@ pub fn (re RE) get_code() string {
 
 		res.write("========================================\n")
 		return res.str()
-
 }
 
 // get_query return a string with a reconstruction of the query starting from the regex program code
-
 pub fn (re RE) get_query() string {
 	mut res := strings.new_builder(re.query.len*2)
 
@@ -1137,14 +1138,15 @@ pub fn (re RE) get_query() string {
 
 	mut i := 0
 	for i < re.prog.len && re.prog[i].ist != IST_PROG_END && re.prog[i].ist != 0{
-		ch := re.prog[i].ist
+		tk := &re.prog[i]
+		ch := tk.ist
 		
 		// GROUP start
 		if ch == IST_GROUP_START {
 			if re.debug == 0 {
 				res.write("(")
 			} else {
-				res.write("#${re.prog[i].group_id}(")
+				res.write("#${tk.group_id}(")
 			}
 			i++
 			continue
@@ -1159,7 +1161,7 @@ pub fn (re RE) get_query() string {
 		if ch == IST_OR_BRANCH {
 			res.write("|")
 			if re.debug > 0 {
-				res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
+				res.write("{${tk.rep_min},${tk.rep_max}}")
 			}
 			i++
 			continue
@@ -1177,7 +1179,7 @@ pub fn (re RE) get_query() string {
 
 		// bsls char
 		if ch == IST_BSLS_CHAR {
-			res.write("\\${re.prog[i].ch:1c}")
+			res.write("\\${tk.ch:1c}")
 		}
 
 		// IST_DOT_CHAR
@@ -1190,29 +1192,28 @@ pub fn (re RE) get_query() string {
 			if byte(ch) in BSLS_ESCAPE_LIST {
 				res.write("\\")
 			}
-			res.write("${re.prog[i].ch:c}")
+			res.write("${tk.ch:c}")
 		}
 
 		// quantifier
-		if !(re.prog[i].rep_min == 1 && re.prog[i].rep_max == 1) {
-			if re.prog[i].rep_min == 0 && re.prog[i].rep_max == 1 {
+		if !(tk.rep_min == 1 && tk.rep_max == 1) {
+			if tk.rep_min == 0 && tk.rep_max == 1 {
 				res.write("?")
-			} else if re.prog[i].rep_min == 1 && re.prog[i].rep_max == MAX_QUANTIFIER {
+			} else if tk.rep_min == 1 && tk.rep_max == MAX_QUANTIFIER {
 				res.write("+")
-			} else if re.prog[i].rep_min == 0 && re.prog[i].rep_max == MAX_QUANTIFIER {
+			} else if tk.rep_min == 0 && tk.rep_max == MAX_QUANTIFIER {
 				res.write("*")
 			} else {
-				if re.prog[i].rep_max == MAX_QUANTIFIER {
-					res.write("{${re.prog[i].rep_min},MAX}")
+				if tk.rep_max == MAX_QUANTIFIER {
+					res.write("{${tk.rep_min},MAX}")
 				} else {
-					res.write("{${re.prog[i].rep_min},${re.prog[i].rep_max}}")
+					res.write("{${tk.rep_min},${tk.rep_max}}")
 				}
-				if re.prog[i].greedy == true {
+				if tk.greedy == true {
 					res.write("?")
 				}
 			}
 		}
-
 		i++
 	}
 	if (re.flag & F_ME) != 0 {
@@ -1411,6 +1412,20 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 							re.groups[g_index] = 0
 						}
 						re.groups[g_index+1] = i
+
+						// continuous save, save until we have space
+						if re.group_csave_index > 0 {
+							// check if we have space to save the record
+							if (re.group_csave_index + 3) < re.group_csave.len {
+								// incrment counter
+								re.group_csave[0]++
+								// save the record  
+								re.group_csave[re.group_csave_index++] = g_index               // group id
+								re.group_csave[re.group_csave_index++] = re.groups[g_index]    // start
+								re.group_csave[re.group_csave_index++] = re.groups[g_index+1]  // end
+							}
+						}
+
  					}
 
 					group_index--
@@ -1543,6 +1558,19 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						}
 						re.groups[g_index+1] = i
 						//C.printf("GROUP %d END [%d, %d]\n", re.prog[pc].group_id, re.groups[g_index], re.groups[g_index+1])
+
+						// continuous save, save until we have space
+						if re.group_csave_index > 0 {
+							// check if we have space to save the record
+							if (re.group_csave_index + 3) < re.group_csave.len {
+								// incrment counter
+								re.group_csave[0]++
+								// save the record  
+								re.group_csave[re.group_csave_index++] = g_index               // group id
+								re.group_csave[re.group_csave_index++] = re.groups[g_index]    // start
+								re.group_csave[re.group_csave_index++] = re.groups[g_index+1]  // end
+							}
+						}
 					}
 					
 					re.prog[pc].group_rep++ // increase repetitions
@@ -1796,8 +1824,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			if rep < re.prog[tmp_pc].rep_min {
 				//C.printf("ist_quant_pg UNDER RANGE\n")
 				pc = re.prog[tmp_pc].goto_pc 
-				//group_index--
-				
 				m_state = .ist_next
 				continue
 			}
@@ -1840,12 +1866,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				//C.printf("ist_quant_n ZERO RANGE MIN\n")
 				m_state = .ist_next // go to next ist
 				continue
-			}
-
-			// match failed
-			else if rep == 0 && re.prog[pc].rep_min > 0 {
-				//C.printf("ist_quant_n NO MATCH\n")
-				// dummy
 			}
 			// match + or *
 			else if rep >= re.prog[pc].rep_min {
@@ -1902,7 +1922,6 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					m_state = .ist_next
 					continue
 				}
-				
 				m_state = .ist_load
 				continue
 			}
@@ -1981,6 +2000,9 @@ pub fn (re mut RE) match_string(in_txt string) (int,int) {
 			return NO_MATCH_FOUND, 0
 		}
 		if (re.flag & F_ME) != 0 && end < in_txt.len {
+			if in_txt[end] in NEW_LINE_LIST {
+				return start, end
+			}
 			return NO_MATCH_FOUND, 0
 		}
 		return start, end
@@ -2002,7 +2024,7 @@ pub fn (re mut RE) find(in_txt string) (int,int) {
 	for i < in_txt.len {
 		
 		// test only the first part of the query string
-		re.flag &= F_EFM // set to exit on the first token match
+		re.flag |= F_EFM // set to exit on the first token match
 		mut tmp_end := i+re.query.len
 		if tmp_end > in_txt.len { tmp_end = in_txt.len }
 		tmp_txt := string{ str: in_txt.str+i, len: tmp_end-i }
