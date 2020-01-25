@@ -120,16 +120,6 @@ fn (h mut Hashmap) rehash() {
 				index = (index + 1) & h.cap
 				info += probe_offset
 			}
-			// While we might have a match
-			for info == new_info[index] {
-				if key == new_key_values[index].key {
-					new_key_values[index].value = value
-					return
-				}
-				index = (index + 1) & h.cap
-				info += probe_offset
-			}
-			// Match is not possible anymore.
 			// Probe until an empty index is found.
 			// Swap when probe count is higher/richer (Robin Hood).
 			mut current_key := key
