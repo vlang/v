@@ -78,15 +78,14 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	mut current_kv := KeyValue{key, value}
 	for h.info[index] != 0 {
 		if info > h.info[index] {
-			// Swap KeyValue
-			tmp_kv := h.key_values[index] 
-			current_kv = tmp_kv
-			h.key_values[index] = current_kv
-
 			// Swap info word
 			tmp_info := h.info[index]
 			h.info[index] = info
 			info = tmp_info
+			// Swap KeyValue
+			tmp_kv := h.key_values[index] 
+			h.key_values[index] = current_kv
+			current_kv = tmp_kv
 		}
 		index = (index + 1) & h.cap
 		info += probe_offset
@@ -109,9 +108,8 @@ fn (h mut Hashmap) rehash() {
 	mut new_info := &u16(calloc(sizeof(u16) * (h.cap + 1)))
 	for i in 0 .. (old_cap + 1) {
 		if h.info[i] != 0 {
-			key := h.key_values[i].key
-			value := h.key_values[i].value
-			hash := fnv1a64(key)
+			mut kv := h.key_values[i]
+			hash := fnv1a64(kv.key)
 			mut info := u16((hash >> 56) | probe_offset)
 			mut index := hash & h.cap
 			// While probe count is less
@@ -121,18 +119,16 @@ fn (h mut Hashmap) rehash() {
 			}
 			// Probe until an empty index is found.
 			// Swap when probe count is higher/richer (Robin Hood).
-			mut current_kv := KeyValue{key, value}
 			for new_info[index] != 0 {
 				if info > new_info[index] {
-					// Swap KeyValue
-					tmp_kv := new_key_values[index] 
-					current_kv = tmp_kv
-					new_key_values[index] = current_kv
-
 					// Swap info word
 					tmp_info := new_info[index]
 					new_info[index] = info
 					info = tmp_info
+					// Swap KeyValue
+					tmp_kv := new_key_values[index] 
+					new_key_values[index] = kv
+					kv = tmp_kv
 				}
 				index = (index + 1) & h.cap
 				info += probe_offset
@@ -140,11 +136,11 @@ fn (h mut Hashmap) rehash() {
 			// Should almost never happen
 			if (info & 0xFF00) == 0xFF00 {
 				h.rehash()
-				h.set(current_kv.key, current_kv.value)
+				h.set(kv.key, kv.value)
 				return
 			}
 			new_info[index] = info
-			new_key_values[index] = current_kv
+			new_key_values[index] = kv
 		}
 	}
 	h.key_values = new_key_values
@@ -159,9 +155,9 @@ pub fn (h mut Hashmap) delete(key string) {
 		index = (index + 1) & h.cap
 		info += probe_offset
 	}
+	// Perform backwards shifting
 	for info == h.info[index] {
 		if key == h.key_values[index].key {
-			// Perform backwards shifting
 			mut old_index := index
 			index = (index + 1) & h.cap
 			mut current_info := h.info[index]
