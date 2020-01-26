@@ -164,6 +164,10 @@ pub fn set_should_close(w voidptr, close bool) {
 	C.glfwSetWindowShouldClose(w, close)
 }
 
+pub fn (w &glfw.Window) set_should_close(close bool) {
+	C.glfwSetWindowShouldClose(w.data, close)
+}
+
 pub fn (w &glfw.Window) should_close() bool {
 	return C.glfwWindowShouldClose(w.data)
 }
