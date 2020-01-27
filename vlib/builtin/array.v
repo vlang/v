@@ -143,6 +143,11 @@ pub fn (a mut array) delete(i int) {
 	a.len--
 }
 
+// clears the array without deallocating the allocated data
+pub fn (a mut array) clear() {
+	a.len = 0
+}
+
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
 	if i < 0 || i >= a.len {
