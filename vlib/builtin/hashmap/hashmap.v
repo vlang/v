@@ -6,13 +6,18 @@ module hashmap
 const (
 	initial_size = 2 << 4
 	initial_cap = initial_size - 1
-	load_factor = 0.5
 	probe_offset = u16(256)
+	load_factor = 0.8
+)
+
+// hash-function should not be in this file
+const (
 	fnv64_prime = 1099511628211
 	fnv64_offset_basis = 14695981039346656037
 	fnv32_offset_basis = u32(2166136261)
 	fnv32_prime = u32(16777619)
 )
+
 
 pub struct Hashmap {
 mut:
@@ -38,7 +43,7 @@ fn fnv1a64(data string) u64 {
 	return hash
 }
 
-pub fn new_hashmap() Hashmap {
+pub fn new_hmap() Hashmap {
 	return Hashmap{
 		info: &u16(calloc(sizeof(u16) * initial_size))
 		key_values: &KeyValue(calloc(sizeof(KeyValue) * initial_size))
@@ -51,7 +56,7 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	// The load factor is 0.5.
 	// It will be adjustable  in the future and with
 	// a higher default settings to lower memory usage.
-	if (h.size << 1) == (h.cap - 1) {
+	if (f32(h.size) / f32(h.cap)) > load_factor {
 		h.rehash()
 	}
 	// Hash-function will be swapped for wyhash
