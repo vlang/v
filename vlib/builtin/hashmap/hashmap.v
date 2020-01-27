@@ -18,6 +18,14 @@ const (
 	fnv32_prime = u32(16777619)
 )
 
+[inline]
+fn fnv1a64(data string) u64 {
+	mut hash := fnv64_offset_basis
+	for i := 0; i < data.len; i++ {
+		hash = (hash ^ u64(data[i])) * fnv64_prime
+	}
+	return hash
+}
 
 pub struct Hashmap {
 mut:
@@ -33,15 +41,6 @@ struct KeyValue {
 	key   string
 mut:
 	value int
-}
-
-[inline]
-fn fnv1a64(data string) u64 {
-	mut hash := fnv64_offset_basis
-	for i := 0; i < data.len; i++ {
-		hash = (hash ^ u64(data[i])) * fnv64_prime
-	}
-	return hash
 }
 
 pub fn new_hashmap() Hashmap {
@@ -61,10 +60,6 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	if (f32(h.size) / f32(h.cap)) > h.load_factor {
 		h.rehash()
 	}
-	// if (h.size << 1) == (h.cap - 1) {
-	// 	h.rehash()
-	// }
-
 	// Hash-function will be swapped for wyhash
 	hash := fnv1a64(key)
 	mut info := u16((hash >> 56) | probe_offset)
