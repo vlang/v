@@ -7,7 +7,6 @@ const (
 	initial_size = 2 << 4
 	initial_cap = initial_size - 1
 	probe_offset = u16(256)
-	load_factor = 0.8
 )
 
 // hash-function should not be in this file
@@ -21,11 +20,12 @@ const (
 
 pub struct Hashmap {
 mut:
-	info       &u16
-	key_values &KeyValue
-	cap        int
+	info        &u16
+	key_values  &KeyValue
+	cap         int
 pub mut:
-	size       int
+	size        int
+	load_factor f32
 }
 
 struct KeyValue {
@@ -48,6 +48,7 @@ pub fn new_hashmap() Hashmap {
 		info: &u16(calloc(sizeof(u16) * initial_size))
 		key_values: &KeyValue(calloc(sizeof(KeyValue) * initial_size))
 		cap: initial_cap
+		load_factor: 0.8
 		size: 0
 	}
 }
@@ -56,7 +57,7 @@ pub fn (h mut Hashmap) set(key string, value int) {
 	// The load factor is 0.5.
 	// It will be adjustable  in the future and with
 	// a higher default settings to lower memory usage.
-	if (f32(h.size) / f32(h.cap)) > load_factor {
+	if (f32(h.size) / f32(h.cap)) > h.load_factor {
 		h.rehash()
 	}
 	// Hash-function will be swapped for wyhash
