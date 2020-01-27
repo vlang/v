@@ -43,7 +43,7 @@ fn fnv1a64(data string) u64 {
 	return hash
 }
 
-pub fn new_hmap() Hashmap {
+pub fn new_hashmap() Hashmap {
 	return Hashmap{
 		info: &u16(calloc(sizeof(u16) * initial_size))
 		key_values: &KeyValue(calloc(sizeof(KeyValue) * initial_size))
