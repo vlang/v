@@ -421,7 +421,7 @@ pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, col
 	C.glDeleteBuffers(1, &ctx.vbo)
 	ctx.shader.use()
 	ctx.shader.set_color('color', color)
-	start_rads := start_angle * 0.0174533
+	start_rads := start_angle * 0.0174533 // deg -> rad approx
 	end_rads := end_angle * 0.0174533
 	rad_increment := end_rads / segments
 	mut vertices := []f32
