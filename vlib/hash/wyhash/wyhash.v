@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// This is an implementation of wyhash v4
+// this is an implementation of wyhash v4
 // from https://github.com/wangyi-fudan/wyhash
 //
 // TODO: use u128 once implemented
@@ -11,7 +11,7 @@
 // branch prediction hints. the C version will be
 // removed once the perfomance is matched.
 // you can test performance by running:
-// v tools/wyhash_benchmark.v
+// v run tools/wyhash_benchmark.v
 // try running with and without the -prod flag
 module wyhash
 
