@@ -55,7 +55,7 @@ A meta-char is specified by a backslash before a char like `\w` in this case the
 
 A meta-char can match different type of chars.
 
-* `\w` match an alphanumeric char `[a-zA-Z0-9]`
+* `\w` match an alphanumeric char `[a-zA-Z0-9_]`
 * `\W` match a non alphanumeric char
 * `\d` match a digit `[0-9]`
 * `\D` match a non digit
