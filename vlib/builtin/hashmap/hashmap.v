@@ -3,29 +3,14 @@
 // that can be found in the LICENSE file.
 module hashmap
 
+import hash.wyhash
+
 const (
 	initial_size = 2 << 4
 	initial_cap = initial_size - 1
 	probe_offset = u16(256)
 	load_factor = 0.8
 )
-
-// hash-function should not be in this file
-const (
-	fnv64_prime = 1099511628211
-	fnv64_offset_basis = 14695981039346656037
-	fnv32_offset_basis = u32(2166136261)
-	fnv32_prime = u32(16777619)
-)
-
-[inline]
-fn fnv1a64(data string) u64 {
-	mut hash := fnv64_offset_basis
-	for i := 0; i < data.len; i++ {
-		hash = (hash ^ u64(data[i])) * fnv64_prime
-	}
-	return hash
-}
 
 pub struct Hashmap {
 mut:
@@ -54,14 +39,11 @@ pub fn new_hashmap() Hashmap {
 }
 
 pub fn (h mut Hashmap) set(key string, value int) {
-	// The load factor is 0.5.
-	// It will be adjustable  in the future and with
-	// a higher default settings to lower memory usage.
+	// load_factor can be adjusted.
 	if (f32(h.size) / f32(h.cap)) > h.load_factor {
 		h.rehash()
 	}
-	// Hash-function will be swapped for wyhash
-	hash := fnv1a64(key)
+	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut info := u16((hash >> 56) | probe_offset)
 	mut index := hash & h.cap
 	// While probe count is less
@@ -115,7 +97,7 @@ fn (h mut Hashmap) rehash() {
 	for i in 0 .. (old_cap + 1) {
 		if h.info[i] != 0 {
 			mut kv := h.key_values[i]
-			hash := fnv1a64(kv.key)
+			hash := wyhash.wyhash_c(kv.key.str, u64(kv.key.len), 0)
 			mut info := u16((hash >> 56) | probe_offset)
 			mut index := hash & h.cap
 			// While probe count is less
@@ -154,7 +136,7 @@ fn (h mut Hashmap) rehash() {
 }
 
 pub fn (h mut Hashmap) delete(key string) {
-	hash := fnv1a64(key)
+	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & h.cap
 	mut info := u16((hash >> 56) | probe_offset)
 	for info < h.info[index] {
@@ -184,7 +166,7 @@ pub fn (h mut Hashmap) delete(key string) {
 }
 
 pub fn (h Hashmap) get(key string) int {
-	hash := fnv1a64(key)
+	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & h.cap
 	mut info := u16((hash >> 56) | probe_offset)
 	for info < h.info[index] {
@@ -202,7 +184,7 @@ pub fn (h Hashmap) get(key string) int {
 }
 
 pub fn (h Hashmap) exists(key string) bool {
-	hash := fnv1a64(key)
+	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & h.cap
 	mut info := u16((hash >> 56) | probe_offset)
 	for info < h.info[index] {
