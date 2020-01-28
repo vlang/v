@@ -293,3 +293,4 @@ pub fn len64(x u64) int {
 	}
 	return n + int(len8_tab[y])
 }
+
