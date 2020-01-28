@@ -95,7 +95,7 @@ pub fn (ts mut TestSession) test() {
 	}
 	ts.waitgroup.wait()
 	ts.benchmark.stop()
-	eprintln(term.h_divider())
+	eprintln(term.h_divider('-'))
 }
 
 
@@ -258,7 +258,7 @@ pub fn building_any_v_binaries_failed() bool {
 		eprintln(bmark.step_message_ok('command: ${cmd}'))
 	}
 	bmark.stop()
-	eprintln(term.h_divider())
+	eprintln(term.h_divider('-'))
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
 }
