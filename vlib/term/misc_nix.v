@@ -10,7 +10,7 @@ pub:
   ws_ypixel u16
 }
 
-fn C.ioctl() int
+fn C.ioctl(fd int, request u64, arg voidptr) int
 
 pub fn get_terminal_size() (int, int) {
 	w := C.winsize{}
