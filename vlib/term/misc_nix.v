@@ -10,7 +10,7 @@ struct C.winsize{
 
 fn C.ioctl() int
 
-pub fn get_term_size() (int, int) {
+pub fn get_terminal_size() (int, int) {
 	// TODO: check for resize events
 
 	mut w := C.winsize{}
