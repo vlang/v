@@ -7,9 +7,9 @@ import regex
 ******************************************************************************/
 struct TestItem {
 	src string
-	q   string
-	s   int = 0
-	e   int = 0
+	q string
+	s int = 0
+	e int = 0
 }
 
 const(
@@ -72,6 +72,7 @@ match_test_suite = [
 	TestItem{" pippo pera",r"\s(.*)pe(.*)",0,11},
 	TestItem{" abb",r"\s(.*)",0,4},
 
+
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},
 	TestItem{"this is a good.",r"thes",-1,0},
@@ -81,7 +82,6 @@ match_test_suite = [
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
 	
-
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
 	TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
@@ -90,15 +90,14 @@ match_test_suite = [
 
 struct TestItemFa {
 	src string
-	q   string
-	r   []int
+	q string
+	r []int
 }
+
 
 const (
 match_test_suite_fa = [
-
 	// find_all tests
-
 	TestItemFa{
 		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
 		r"p[iplut]+o",
@@ -115,16 +114,13 @@ match_test_suite_fa = [
 
 struct TestItemRe {
 	src string
-	q   string
+	q string
 	rep string
-	r   string
+	r string
 }
-
 const (
 match_test_suite_re = [
-
 	// replace tests
-
 	TestItemRe{
 		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
 		r"(pi?(ba)+o)",
@@ -140,7 +136,88 @@ match_test_suite_re = [
 ]
 )
 
+struct TestItemCGroup {
+	src string
+	q string
+	s int = 0
+	e int = 0
+	cg []int
+	cgn map[string]int
+}
+const (
+cgroups_test_suite = [
+	TestItemCGroup{
+		"http://www.ciao.mondo/hello/pippo12_/pera.html",
+		r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+",0,46,
+		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
+		{'format':0,'token':1}
+	},
+	TestItemCGroup{
+		"http://www.ciao.mondo/hello/pippo12_/pera.html",
+		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
+		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
+		{'format':0,'token':1}
+	},
+	TestItemCGroup{
+		"http://www.ciao.mondo/hello/pippo12_/pera.html",
+		r"(?P<format>https?)|(?P<format>ftps?)://([\w_]+.)+",0,46,
+		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
+		{'format':0}
+	},
+]
+)
+
 fn test_regex(){
+	// check capturing groups
+	for c,to in cgroups_test_suite {
+		// debug print
+		//println("#$c [$to.src] q[$to.q] ($to.s, $to.e)")
+
+		mut re, re_err, err_pos := regex.regex(to.q)
+		re.group_csave = [-1].repeat(3*20+1)
+
+		if re_err == regex.COMPILE_OK {
+			start, end := re.match_string(to.src)
+
+			mut tmp_str := ""
+			if start >= 0 && end  > start{
+				tmp_str = to.src[start..end]
+			}
+			
+			if start != to.s || end != to.e {
+				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")	
+				println("ERROR!")
+				//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+				assert false
+				break
+			}
+
+			// check cgroups
+			if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
+				println("Capturing group len error!")
+				assert false
+			}
+
+			// check captured groups
+			mut ln := re.group_csave[0]*3
+			for ln > 0 {
+				if re.group_csave[ln] != to.cg[ln] {
+					assert false
+				}
+				ln--
+			}
+
+			// check named captured groups
+			for k in to.cgn.keys() {
+				if to.cgn[k] != (re.group_map[k]-1) { // we have -1 because the map not found is 0, in groups we start from 0 and we store using +1
+					println("Named capturing group error! [$k]")
+					assert false
+				}
+			}
+
+		}
+	}
+
 	// check find_all
 	for c,to in match_test_suite_fa{
 		// debug print

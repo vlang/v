@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* regex 0.9c
+* regex 0.9d
 *
 * Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -9,8 +9,9 @@
 * This file contains regex module
 *
 * Know limitation:
-* - max 8 stacked groups
 * - find is implemented in a trivial way
+* - not full compliant PCRE
+* - not compliant POSIX ERE
 *
 *
 **********************************************************************/
@@ -18,7 +19,7 @@ module regex
 import strings
 
 pub const(
-	V_REGEX_VERSION = "0.9c"      // regex module version
+	V_REGEX_VERSION = "0.9d"      // regex module version
 
 	MAX_CODE_LEN     = 256        // default small base code len for the regex programs
 	MAX_QUANTIFIER   = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
@@ -41,6 +42,7 @@ pub const(
 	ERR_GROUPS_OVERFLOW     = -7   // max number of groups reached
 	ERR_GROUPS_MAX_NESTED   = -8   // max number of nested group reached
 	ERR_GROUP_NOT_BALANCED  = -9   // group not balanced
+	ERR_GROUP_QM_NOTATION   = -10  // group invalid notation
 )
 
 const(
@@ -133,6 +135,7 @@ fn is_alnum(in_char byte) bool {
 	if tmp >= 0x00 && tmp <= 25 { return true }
 	tmp = in_char - `0`
 	if tmp >= 0x00 && tmp <= 9  { return true }
+	if tmp == `_` { return true }
 	return false
 }
 
@@ -193,9 +196,10 @@ pub fn (re RE) get_parse_error_string(err int) string {
 		ERR_INTERNAL_ERROR     { return "ERR_INTERNAL_ERROR" }
 		ERR_CC_ALLOC_OVERFLOW  { return "ERR_CC_ALLOC_OVERFLOW" }
 		ERR_SYNTAX_ERROR       { return "ERR_SYNTAX_ERROR" }
-		ERR_GROUPS_OVERFLOW    { return "ERR_GROUPS_OVERFLOW"}
-		ERR_GROUPS_MAX_NESTED  { return "ERR_GROUPS_MAX_NESTED"}
-		ERR_GROUP_NOT_BALANCED { return "ERR_GROUP_NOT_BALANCED"}
+		ERR_GROUPS_OVERFLOW    { return "ERR_GROUPS_OVERFLOW" }
+		ERR_GROUPS_MAX_NESTED  { return "ERR_GROUPS_MAX_NESTED" }
+		ERR_GROUP_NOT_BALANCED { return "ERR_GROUP_NOT_BALANCED" }
+		ERR_GROUP_QM_NOTATION  { return "ERR_GROUP_QM_NOTATION" }
 		else { return "ERR_UNKNOWN" }
 	}
 }
@@ -272,6 +276,9 @@ pub const (
 
 	F_EFM = 0x00000100  // exit on first token matched, used by search
 	F_BIN = 0x00000200  // work only on bytes, ignore utf-8
+
+	// behaviour modifier flags
+	//F_OR  = 0x00010000  // the OR work with concatenation like PCRE
 )
 
 struct StateDotObj{
@@ -305,6 +312,8 @@ pub mut:
 	group_csave []int    = []int  // groups continuous save array
 	group_csave_index int= -1     // groups continuous save index
 
+	group_map map[string]int      // groups names map
+
 	// flags
 	flag int             = 0   // flag for optional parameters
 
@@ -334,6 +343,16 @@ fn (re mut RE) reset(){
 		re.group_csave_index = 1
 		re.group_csave[0] = 0     // reset the capture count
 	}
+}
+
+pub fn (re RE) get_group(group_name string) (int, int) {
+	if group_name in re.group_map {
+		tmp_index := re.group_map[group_name]-1
+		start := re.groups[tmp_index*2]
+		end := re.groups[tmp_index*2+1]
+		return start,end
+	}
+	return -1, -1
 }
 
 /******************************************************************************
@@ -631,7 +650,7 @@ enum Quant_parse_state {
 	finish
 }
 
-// parse_quantifier return (min, max, str_len) of a {min,max}? quantifier starting after the { char
+// parse_quantifier return (min, max, str_len, greedy_flag) of a {min,max}? quantifier starting after the { char
 fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut status := Quant_parse_state.start
 	mut i := in_i
@@ -749,6 +768,104 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 }
 
 //
+// Groups
+//
+enum Group_parse_state {
+	start,
+	q_mark,      // (?
+	q_mark1,     // (?:|P  checking
+	p_status,    // (?P
+	p_start,     // (?P<
+	p_end,       // (?P<...>
+	p_in_name,   // (?P<...	
+	finish
+}
+
+// parse_groups parse a group for ? (question mark) syntax, if found, return (error, capture_flag, name_of_the_group, next_index)
+fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
+	mut status := Group_parse_state.start
+	mut i := in_i
+	mut name := ''
+
+	for i < in_txt.len && status != .finish {
+
+		// get our char
+		char_tmp,char_len := re.get_char(in_txt,i)
+		ch := byte(char_tmp)
+
+		// start
+		if status == .start && ch == `(` {
+			status = .q_mark
+			i += char_len
+			continue
+		}
+
+		// check for question marks
+		if status == .q_mark && ch == `?` {
+			status = .q_mark1
+			i += char_len
+			continue
+		}
+
+		// non capturing group
+		if status == .q_mark1 && ch == `:` {
+			i += char_len
+			return 0, false, name, i
+		}
+
+		// enter in P section
+		if status == .q_mark1 && ch == `P` {
+			status = .p_status
+			i += char_len
+			continue
+		}
+
+		// not a valid q mark found
+		if status == .q_mark1 {
+			//println("NO VALID Q MARK")
+			return -2 , true, name, i
+		}
+
+		if status == .p_status && ch == `<` {
+			status = .p_start
+			i += char_len
+			continue
+		}
+
+		if status == .p_start && ch != `>` {
+			status = .p_in_name
+			name += "${ch:1c}" // TODO: manage utf8 chars
+			i += char_len
+			continue
+		}
+
+		// colect name
+		if status == .p_in_name && ch != `>` && is_alnum(ch) {
+			name += "${ch:1c}" // TODO: manage utf8 chars
+			i += char_len
+			continue
+		}
+
+		// end name
+		if status == .p_in_name && ch == `>` {
+			i += char_len
+			return 0, true, name, i
+		}
+
+		// error on name group
+		if status == .p_in_name {
+			return -2 , true, name, i
+		}
+
+		// normal group, nothig to do, exit
+		return  0 , true, name, i
+	}
+	/* UNREACHABLE */
+	//println("ERROR!! NOT MEANT TO BE HERE!!1")
+	return -2 , true, name, i
+}
+
+//
 // main compiler
 //
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
@@ -795,7 +912,6 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 			if group_count > re.group_max {
 				return ERR_GROUPS_OVERFLOW,i+1
 			}
-			
 			group_stack_index++
 
 			// check max nested groups allowed
@@ -803,17 +919,50 @@ pub fn (re mut RE) compile(in_txt string) (int,int) {
 				return ERR_GROUPS_MAX_NESTED,i+1
 			}
 
-			group_count++
+			tmp_res, cgroup_flag, cgroup_name, next_i := re.parse_groups(in_txt,i)
+			
+			// manage question mark format error
+			if tmp_res < -1 {
+				return ERR_GROUP_QM_NOTATION,next_i
+			}
+
+			//println("Parse group: [$tmp_res, $cgroup_flag, ($i,$next_i), '${in_txt[i..next_i]}' ]")
+			i = next_i
+
+			if cgroup_flag == true {
+				group_count++
+			}
+
+			// calculate the group id
+			// if it is a named group, recycle the group id
+			// NOTE: **** the group index is +1 because map return 0 when not found!! ****
+			mut group_id := group_count
+			if cgroup_name.len > 0 {
+				//println("GROUP NAME: ${cgroup_name}")
+				if cgroup_name in re.group_map{
+					group_id = re.group_map[cgroup_name]-1
+					group_count--
+				} else {
+					re.group_map[cgroup_name] = group_id+1
+				}
+			}
 
 			group_stack_txt_index[group_stack_index] = i
 			group_stack[group_stack_index] = pc
 
 			re.prog[pc].ist = u32(0) | IST_GROUP_START
-			re.prog[pc].group_id = group_count
 			re.prog[pc].rep_min = 1
 			re.prog[pc].rep_max = 1
+			
+			// set the group id
+			if cgroup_flag == false {
+				//println("NO CAPTURE GROUP")
+				re.prog[pc].group_id = -1 
+			} else {
+				re.prog[pc].group_id = group_id
+			}
+
 			pc = pc + 1
-			i = i + char_len
 			continue
 
 		}
@@ -1099,6 +1248,16 @@ pub fn (re RE) get_code() string {
 				res.write(".        DOT_CHAR")
 			} else if ist == IST_GROUP_START {
 				res.write("(        GROUP_START #:${tk.group_id}")
+				if tk.group_id == -1 {
+					res.write(" ?:")
+				} else {
+					for x in re.group_map.keys() {
+						if re.group_map[x] == (tk.group_id+1) {
+							res.write(" ?P<${x}>")
+							break
+						}
+					}
+				}
 			} else if ist == IST_GROUP_END {
 				res.write(")        GROUP_END   #:${tk.group_id}")
 			} else if ist == IST_SIMPLE_CHAR {
@@ -1146,8 +1305,20 @@ pub fn (re RE) get_query() string {
 			if re.debug == 0 {
 				res.write("(")
 			} else {
-				res.write("#${tk.group_id}(")
+				if tk.group_id == -1 {
+					res.write("(?:")   // non capturing group
+				} else {
+					res.write("#${tk.group_id}(")
+				}
 			}
+			
+			for x in re.group_map.keys() {
+				if re.group_map[x] == (tk.group_id+1) {
+					res.write("?P<${x}>")
+					break
+				}
+			}
+
 			i++
 			continue
 		}
@@ -1400,7 +1571,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						re.prog[tmp_pc].group_rep
 					)
 					*/
-					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min{
+					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min && re.prog[tmp_pc].group_id >= 0{
 						start_i   := group_stack[group_index]
 	 					group_stack[group_index]=-1
 
@@ -1420,7 +1591,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 								// incrment counter
 								re.group_csave[0]++
 								// save the record  
-								re.group_csave[re.group_csave_index++] = g_index               // group id
+								re.group_csave[re.group_csave_index++] = g_index >> 1          // group id
 								re.group_csave[re.group_csave_index++] = re.groups[g_index]    // start
 								re.group_csave[re.group_csave_index++] = re.groups[g_index+1]  // end
 							}
@@ -1545,7 +1716,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					// restore txt index stack and save the group data
 					
 					//C.printf("g.id: %d group_index: %d\n", re.prog[pc].group_id, group_index)
-					if group_index >= 0 {
+					if group_index >= 0 && re.prog[pc].group_id >= 0 {
 	 					start_i   := group_stack[group_index]
 	 					//group_stack[group_index]=-1
 
@@ -1566,7 +1737,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 								// incrment counter
 								re.group_csave[0]++
 								// save the record  
-								re.group_csave[re.group_csave_index++] = g_index               // group id
+								re.group_csave[re.group_csave_index++] = g_index >> 1          // group id
 								re.group_csave[re.group_csave_index++] = re.groups[g_index]    // start
 								re.group_csave[re.group_csave_index++] = re.groups[g_index+1]  // end
 							}
@@ -1709,7 +1880,7 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				if re.prog[pc].ch == ch
 				{
 					state.match_flag = true
-					l_ist = u32(IST_SIMPLE_CHAR)
+					l_ist = IST_SIMPLE_CHAR
 					
 					if first_match < 0 {
 						first_match = i
