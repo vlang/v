@@ -8,7 +8,7 @@ struct C.winsize{
 	ws_col int
 }
 
-fn C.ioctl()
+fn C.ioctl() int
 
 pub fn get_term_size() (int, int) {
 	// TODO: check for resize events
