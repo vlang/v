@@ -21,13 +21,15 @@ fn C.GetConsoleScreenBufferInfo(handle C.HANDLE, info &CONSOLE_SCREEN_BUFFER_INF
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
-	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
-		return 80, 25
+	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
+		info := CONSOLE_SCREEN_BUFFER_INFO{}
+
+		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
+			columns := (info.srWindow.Right - info.srWindow.Left + 1) as int
+			rows := (info.srWindow.Bottom - info.srWindow.Top + 1) as int
+			return columns, rows
+		}
 	}
 
-	info := CONSOLE_SCREEN_BUFFER_INFO{}
-	C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info)
-	columns := (info.srWindow.Right - info.srWindow.Left + 1) as int
-	rows := (info.srWindow.Bottom - info.srWindow.Top + 1) as int
-	return columns, rows
+	return 80, 25
 }
