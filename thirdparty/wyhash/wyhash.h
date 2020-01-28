@@ -32,7 +32,7 @@ static	inline	uint64_t	_wymum(uint64_t	A,	uint64_t	B) {
 		#define WYHASH_LITTLE_ENDIAN 0
 	#endif
 #endif
-#if(WYHASH_LITTLE_ENDIAN)	
+#if(WYHASH_LITTLE_ENDIAN) || defined(__TINYC__)	
 static	inline	uint64_t	_wyr8(const	uint8_t	*p)	{	uint64_t	v;	memcpy(&v,  p,  8);	return  v;	}	
 static	inline	uint64_t	_wyr4(const	uint8_t	*p)	{	unsigned	v;	memcpy(&v,  p,  4);	return  v;	}	
 #else
