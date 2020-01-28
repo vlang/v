@@ -186,7 +186,7 @@ pub fn (t &Table) debug_fns() string {
 // fn (types array_Type) print_to_file(f string)  {
 // }
 const (
-	integer_types = ['int', 'i8', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
+	integer_types = ['int', 'i8', 'char', 'byte', 'i16', 'u16', 'u32', 'i64', 'u64']
 	float_types = ['f32', 'f64']
 	reserved_type_param_names = ['R', 'S', 'T', 'U', 'W']
 )
@@ -233,6 +233,7 @@ fn new_table(obfuscate bool) &Table {
 	t.register_type_with_parent('i64', 'int')
 	t.register_type_with_parent('u64', 'u32')
 	t.register_builtin('byteptr')
+	t.register_builtin('charptr')
 	t.register_builtin('intptr')
 	t.register_builtin('f32')
 	t.register_builtin('f64')
@@ -240,7 +241,6 @@ fn new_table(obfuscate bool) &Table {
 	t.register_builtin('bool')
 	t.register_builtin('void')
 	t.register_builtin('voidptr')
-	t.register_builtin('charptr')
 	t.register_builtin('va_list')
 	for c in reserved_type_param_names {
 		t.register_builtin(c)
@@ -863,6 +863,9 @@ fn (table &Table) cgen_name_type_pair(name, typ string) string {
 fn is_valid_int_const(val, typ string) bool {
 	x := val.int()
 	return match typ {
+		'char'{
+			0 <= x && x <= 255
+		}
 		'byte'{
 			0 <= x && x <= 255
 		}
@@ -900,7 +903,7 @@ fn (p mut Parser) typ_to_fmt(typ string, level int) string {
 		'ustring' {
 			return '%.*s'
 		}
-		'byte', 'bool', 'int', 'char', 'byte', 'i16', 'i8' {
+		'byte', 'bool', 'int', 'char', 'i16', 'i8' {
 			return '%d'
 		}
 		'u16', 'u32' {

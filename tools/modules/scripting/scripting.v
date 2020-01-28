@@ -39,6 +39,17 @@ pub fn chdir(path string) {
 	os.chdir(path)
 }
 
+pub fn rmrf(path string) {
+	verbose_trace(@FN, 'rm -rf $path')
+	if os.exists(path) {
+		if os.is_dir(path) {
+			os.rmdir_recursive(path)
+		}else{
+			os.rm(path)
+		}
+	}
+}
+
 pub fn run(cmd string) string {
 	verbose_trace(@FN, cmd)
 	x := os.exec(cmd) or {

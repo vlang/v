@@ -570,3 +570,23 @@ fn test_for() {
 	}
 	assert sum == 6
 }
+
+fn test_clear() {
+	mut arr := [1,2,3]
+	assert arr.len == 3
+	arr.clear()
+	assert arr.len == 0
+	
+	arr << 3
+	arr << 2
+	arr << 1
+	arr << 0
+	assert arr.len == 4
+	assert arr[0] == 3
+	assert arr[1] == 2
+	assert arr[2] == 1
+	assert arr[3] == 0
+	
+	arr.clear()
+	assert arr.len == 0
+}

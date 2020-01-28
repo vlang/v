@@ -91,6 +91,7 @@ const (
 		'i64': true,
 		'i128': true,
 		'byte': true,
+		'char': true,
 		'u16': true,
 		'u32': true,
 		'u64': true,

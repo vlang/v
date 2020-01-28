@@ -159,6 +159,91 @@ for gi < re.groups.len {
 
 **note:** *to show the `group id number` in the result of the `get_query()` the flag `debug` of the RE object must be `1` or `2`*
 
+### Groups Continuous saving
+
+In particular situations it is useful have a continuous save of the groups, this is possible initializing the saving array field in `RE` struct: `group_csave`.
+
+This feature allow to collect data in a  continuous way.
+
+In the example we pass a text followed by a integer list that we want collect. 
+To achieve this task we can use the continuous saving of the group that save each captured group in a array that we set with: `re.group_csave = [-1].repeat(3*20+1)`.
+
+The array will be filled with the following logic:
+
+`re.group_csave[0]` number of total saved records
+
+`re.group_csave[1+n*3]` id of the saved group
+`re.group_csave[1+n*3]` start index in the source string of the saved group
+`re.group_csave[1+n*3]` end index in the source string of the saved group
+
+The regex save until finish or found that the array have no space. If the space ends no error is raised, further records will not be saved.
+
+```v
+fn example2() {
+	test_regex()
+
+	text := "tst: 01,23,45 ,56, 78"
+	query:= r".*:(\s*\d+[\s,]*)+"
+
+	mut re := regex.new_regex()
+	//re.debug = 2
+	re.group_csave = [-1].repeat(3*20+1)  // we expect max 20 records
+
+	re_err, err_pos := re.compile(query)
+	if re_err == regex.COMPILE_OK {
+		q_str := re.get_query()
+		println("Query: $q_str")
+	
+		start, end := re.match_string(text)
+		if start < 0 {
+			println("ERROR : ${re.get_parse_error_string(start)}, $start")
+		} else {
+			println("found in [$start, $end] => [${text[start..end]}]")
+		}
+
+		// groups capture
+		mut gi := 0
+		for gi < re.groups.len {
+			if re.groups[gi] >= 0 {
+				println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
+			}
+			gi += 2
+		}
+
+		// continuous saving
+		gi = 0
+		println("num: ${re.group_csave[0]}")
+		for gi < re.group_csave[0] {
+			id := re.group_csave[1+gi*3]
+			st := re.group_csave[1+gi*3+1]
+			en := re.group_csave[1+gi*3+2]
+			println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
+			gi++
+		}
+	} else {
+		println("query: $query")
+		lc := "-".repeat(err_pos)
+		println("err  : $lc^")
+		err_str := re.get_parse_error_string(re_err)
+		println("ERROR: $err_str")	
+	}
+}
+```
+
+The output will be:
+
+```
+Query: .*:(\s*\d+[\s,]*)+
+found in [0, 21] => [tst: 01,23,45 ,56, 78]
+0 19,21 :[78]
+num: 5
+cg id: 0 [4, 8] => [ 01,]
+cg id: 0 [8, 11] => [23,]
+cg id: 0 [11, 15] => [45 ,]
+cg id: 0 [15, 19] => [56, ]
+cg id: 0 [19, 21] => [78] 
+```
+
 ## Flags
 
 It is possible to set some flags in the regex parser that change the behavior of the parser itself.

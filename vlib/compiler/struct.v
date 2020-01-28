@@ -422,7 +422,7 @@ fn (p mut Parser) struct_init(typ_ string) string {
 				continue
 			}
 			field_typ := field.typ
-			if !p.builtin_mod && field_typ.ends_with('*') && p.mod != 'os' &&
+			if !p.builtin_mod && field_typ.ends_with('*') && !p.is_c_struct_init && p.mod != 'os' &&
 				p.mod != 'ui' {
 				p.warn('reference field `${typ}.${field.name}` must be initialized')
 			}

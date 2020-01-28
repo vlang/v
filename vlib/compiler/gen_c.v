@@ -503,7 +503,7 @@ fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	// Handle empty config ({})
 	if is_config && p.tok == .rcbr {
 		p.check(.rcbr)
-		p.gen('($typ) {}')
+		p.gen('($typ) {EMPTY_STRUCT_INITIALIZATION}')
 		return true
 	}
 	ptr := typ.contains('*')

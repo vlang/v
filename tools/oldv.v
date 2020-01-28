@@ -1,6 +1,5 @@
 import (
 	os
-	os.cmdline
 	flag
 	filepath
 	scripting
@@ -100,8 +99,8 @@ fn main() {
 		context.cc = ecc
 	}
 	if context.cleanup {
-		os.rmdir_recursive(context.path_v)
-		os.rmdir_recursive(context.path_vc)
+		scripting.rmrf(context.path_v)
+		scripting.rmrf(context.path_vc)
 	}
 	
 	context.compile_oldv_if_needed()
