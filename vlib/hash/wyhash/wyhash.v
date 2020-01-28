@@ -4,12 +4,12 @@
 //
 // This is an implementation of wyhash v4
 // from https://github.com/wangyi-fudan/wyhash
-// TODO: try pointers instead of slices
 module wyhash
 
-import (
-	math.bits
-)
+#flag -I @VROOT/thirdparty/wyhash
+#include "wyhash.h"
+
+fn C.wyhash(byteptr, u64, u64) u64
 
 const (
 	wyp0 = 0xa0761d6478bd642f
@@ -20,18 +20,29 @@ const (
 )
 
 [inline]
-pub fn sum64(key []byte seed u64, ) u64 {
-	return wyhash64(key, u64(key.len), seed)
+pub fn wyhash_c(key byteptr, len, seed u64) u64 {
+	return C.wyhash(key, len, seed)
 }
 
 [inline]
-fn wyhash64(key []byte, len, seed_ u64) u64 {
+pub fn sum64_string(key string, seed u64) u64 {
+	return wyhash64(key.str, u64(key.len), seed)
+}
+
+[inline]
+pub fn sum64(key []byte, seed u64) u64 {
+	return wyhash64(key.data, u64(key.len), seed)
+}
+
+[inline]
+fn wyhash64(key byteptr, len, seed_ u64) u64 {
 	if len == 0 {
 		return 0
 	}
-	mut p := &key.data[0]
+	mut p := &key[0]
 	mut seed := seed_
 	mut i := len & 63
+
 	if i < 4 {
 		seed = wymum(wyr3(p, i) ^ seed ^ wyp0, seed ^ wyp1)
 	}
@@ -56,7 +67,7 @@ fn wyhash64(key []byte, len, seed_ u64) u64 {
 	mut see1 := seed
 	mut see2 := seed
 	mut see3 := seed
-	p = p+=i
+	p = p+i
 	for i = len - i; i >= 64; i -= 64 {
 		seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p+8) ^ seed ^ wyp1)
 		see1 = wymum(wyr8(p+16) ^ see1 ^ wyp2, wyr8(p+24) ^ see1 ^ wyp3)
@@ -68,9 +79,30 @@ fn wyhash64(key []byte, len, seed_ u64) u64 {
 }
 
 [inline]
+fn wyrotr(v u64, k u32) u64 {
+	return (v>>k)|(v<<(64-k))
+}
+
+[inline]
 fn wymum(a, b u64) u64 {
-	hi,lo := bits.mul64(a, b)
-	return hi ^ lo
+	/*
+	mut r := u128(a)
+	r = r*b
+	return (r>>64)^r
+	*/
+	mask32 := u32(4294967295)
+	x0 := a & mask32
+	x1 := a>>32
+	y0 := b & mask32
+	y1 := b>>32
+	w0 := x0 * y0
+	t := x1 * y0 + (w0>>32)
+	mut w1 := t & mask32
+	w2 := t>>32
+	w1 += x0 * y1
+	hi := x1 * y1 + w2 + (w1>>32)
+	lo := a * b
+	return hi^lo
 }
 
 [inline]
@@ -80,16 +112,10 @@ fn wyr3(p byteptr, k u64) u64 {
 
 [inline]
 fn wyr4(p byteptr) u64 {
-	//mut v := u64(0)
-	//memcpy(&v,  p,  4)
-	//return v
 	return u32(p[0]) | (u32(p[1])<<u32(8)) | (u32(p[2])<<u32(16)) | (u32(p[3])<<u32(24))
 }
 
 [inline]
 fn wyr8(p byteptr) u64 {
-	//mut v := u64(0)
-	//memcpy(&v,  p,  8)
-	//return v
-	return u64(p[0]) | (u64(p[1])<<u64(8)) | (u64(p[2])<<u64(16)) | (u64(p[3])<<u64(24)) | (u64(p[4])<<u64(32)) | (u64(p[5])<<u64(40)) | (u64(p[6])<<u64(48)) | (u64(p[7])<<u64(56))
+	return u64(p[0]) | (u64(p[1])<<8) | (u64(p[2])<<16) | (u64(p[3])<<24) | (u64(p[4])<<32) | (u64(p[5])<<40) | (u64(p[6])<<48) | (u64(p[7])<<56)
 }
