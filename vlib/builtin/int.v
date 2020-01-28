@@ -159,6 +159,13 @@ pub fn (n i64) hex() string {
 	return tos(hex, count)
 }
 
+pub fn (n u64) hex() string {
+	len := if n >= u64(0) { n.str().len + 3 } else { 19 }
+	hex := malloc(len)
+	count := int(C.sprintf(charptr(hex), '0x%'C.PRIx64, n))
+	return tos(hex, count)
+}
+
 pub fn (a []byte) contains(val byte) bool {
 	for aa in a {
 		if aa == val {
