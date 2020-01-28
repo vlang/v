@@ -26,7 +26,7 @@ fn test_benchmark() {
 	max_word_len := 40
 	mut bytepile := []byte
 	for _ in 0..sample_size {
-        for _ in 0..40 {
+        for _ in 0..max_word_len {
             bytepile << byte(40+rand.next(125-40))
         }
     }
