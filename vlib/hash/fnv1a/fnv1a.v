@@ -9,20 +9,20 @@ const (
 
 [inline]
 pub fn sum32_string(data string) u32 {
-    mut hash := fnv32_offset_basis
-    for i := 0; i < data.len; i++ {
-        hash = (hash ^ u32(data[i])) * fnv32_prime
-    }
-    return hash
+	mut hash := fnv32_offset_basis
+	for i := 0; i < data.len; i++ {
+		hash = (hash ^ u32(data[i])) * fnv32_prime
+	}
+	return hash
 }
 
 [inline]
 pub fn sum32(data []byte) u32 {
-    mut hash := fnv32_offset_basis
-    for i := 0; i < data.len; i++ {
-        hash = (hash ^ u32(data[i])) * fnv32_prime
-    }
-    return hash
+	mut hash := fnv32_offset_basis
+	for i := 0; i < data.len; i++ {
+		hash = (hash ^ u32(data[i])) * fnv32_prime
+	}
+	return hash
 }
 
 [inline]
