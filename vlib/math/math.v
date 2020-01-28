@@ -320,3 +320,15 @@ pub fn trunc(a f64) f64 {
 	return C.trunc(a)
 }
 
+// Faster approximate sin() and cos() implemented from lolremez
+pub fn aprox_sin(a f64) f64 {
+	a0 := 1.91059300966915117e-31
+	a1 := 1.00086760103908896
+	a2 := -1.21276126894734565e-2
+	a3 := -1.38078780785773762e-1
+	a4 := -2.67353392911981221e-2
+	a5 := 2.08026600266304389e-2
+	a6 := -3.03996055049204407e-3
+	a7 := 1.38235642404333740e-4
+	return a0 + a * (a1 + a * (a2 + a * (a3 + a * (a4 + a * (a5 + a * (a6 + a * a7))))))
+}
