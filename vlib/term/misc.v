@@ -1,7 +1,5 @@
 module term
 
-import os
-
 // h_divider will return a horizontal divider line with a dynamic width,
 // that depends on the current terminal settings
 pub fn h_divider(divider string) string {
@@ -10,13 +8,6 @@ pub fn h_divider(divider string) string {
   eprintln('h_divider term_cols: $term_cols')
   eprintln('h_divider term_rows: $term_rows')
   
-  if term_size := os.exec('stty size') {
-     if term_size.exit_code == 0 {
-        eprintln('stty size: $term_size.output')
-     }
-  }
- 
-
 	if term_cols > 0 {
 		cols = term_cols
 	}
