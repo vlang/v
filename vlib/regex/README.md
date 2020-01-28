@@ -55,7 +55,7 @@ A meta-char is specified by a backslash before a char like `\w` in this case the
 
 A meta-char can match different type of chars.
 
-* `\w` match an alphanumeric char `[a-zA-Z0-9]`
+* `\w` match an alphanumeric char `[a-zA-Z0-9_]`
 * `\W` match a non alphanumeric char
 * `\d` match a digit `[0-9]`
 * `\D` match a non digit
@@ -242,6 +242,114 @@ cg id: 0 [8, 11] => [23,]
 cg id: 0 [11, 15] => [45 ,]
 cg id: 0 [15, 19] => [56, ]
 cg id: 0 [19, 21] => [78] 
+```
+
+### Named capturing groups
+
+This regex module support partially the question mark `?` PCRE syntax for groups.
+
+`(?:abcd)` **non capturing group**:  the content of the group will not be saved
+
+`(?P<mygroup>abcdef)` **named group:** the group content is saved and labeled as `mygroup`
+
+The label of the groups is saved in the `group_map` of the `RE` struct, this is a map from `string` to `int` where the value is the index in `group_csave` list of index.
+
+Have a look at the example for the use of them.
+
+example:
+
+```v
+fn main() {
+	test_regex()
+
+	text := "http://www.ciao.mondo/hello/pippo12_/pera.html"
+	query:= r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+"
+
+	mut re := new_regex()
+	re.debug = 2
+
+	// must provide an array of the right size if want the continuos saving of the groups
+	re.group_csave = [-1].repeat(3*20+1)
+
+	re_err, err_pos := re.compile(query)
+	if re_err == COMPILE_OK {
+		q_str := re.get_query()
+		println("O.Query: $query")
+		println("Query  : $q_str")
+		
+		re.debug = 0	
+		start, end := re.match_string(text)
+		if start < 0 {
+			err_str := re.get_parse_error_string(start)
+			println("ERROR : $err_str, $start")
+		} else {
+			text1 := text[start..end]
+			println("found in [$start, $end] => [$text1]")
+		}
+
+		// groups
+		mut gi := 0
+		for gi < re.groups.len {
+			if re.groups[gi] >= 0 {
+				println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
+			}
+			gi += 2
+		}
+		// continuous saving
+		gi = 0
+		println("num of group item saved: ${re.group_csave[0]}")
+		for gi < re.group_csave[0] {
+			id := re.group_csave[1+gi*3]
+			st := re.group_csave[1+gi*3+1]
+			en := re.group_csave[1+gi*3+2]
+			println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
+			gi++
+		}
+		println("raw array: ${re.group_csave[0..gi*3+2-1]}")
+
+		// named capturing groups
+		println("named capturing groups:")
+		for g_name in re.group_map.keys() {
+			s,e := re.get_group(g_name)
+			if s >= 0 && e > s {
+				println("'${g_name}':[$s, $e] => '${text[s..e]}'")
+			} else {
+				println("Group [${g_name}] doesn't exist.")
+			}
+		}
+		
+	} else {
+		println("query: $query")
+		lc := "-".repeat(err_pos)
+		println("err  : $lc^")
+		err_str := re.get_parse_error_string(re_err)
+		println("ERROR: $err_str")	
+	}
+
+}
+```
+
+Output:
+
+```
+O.Query: (?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+
+Query  : #0(?P<format>https?)|{8,14}(?:ftps?)://#1(?P<token>[\w_]+.)+
+found in [0, 46] => [http://www.ciao.mondo/hello/pippo12_/pera.html]
+0 0,4 :[http]
+1 42,46 :[html]
+num of group item saved: 8
+cg id: 0 [0, 4] => [http]
+cg id: 1 [7, 11] => [www.]
+cg id: 1 [11, 16] => [ciao.]
+cg id: 1 [16, 22] => [mondo/]
+cg id: 1 [22, 28] => [hello/]
+cg id: 1 [28, 37] => [pippo12_/]
+cg id: 1 [37, 42] => [pera.]
+cg id: 1 [42, 46] => [html]
+raw array: [8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46] 
+named capturing groups:
+'format':[0, 4] => 'http'
+'token':[42, 46] => 'html'
 ```
 
 ## Flags
