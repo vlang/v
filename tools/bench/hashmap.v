@@ -83,6 +83,7 @@ fn benchmark_many_keys() {
 fn benchmark_few_keys() {
 	key_len := 30
 	repeat := 10000
+	println("Benchmarks are repeated $repeat times")
 	for i := 16; i <= 2048; i = i * 2 {
 		mut arr := []string
 		for _ in 0..i {
