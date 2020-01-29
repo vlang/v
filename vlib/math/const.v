@@ -27,6 +27,11 @@ pub const (
 	max_f64 = 1.797693134862315708145274237317043567981e+308 // 2**1023 * (2**53 - 1) / 2**52
 	smallest_non_zero_f64 = 4.940656458412465441765687928682213723651e-324 // 1 / 2**(1023 - 1 + 52)
 )
+// Function accuracy ranges
+pub const (
+	aprox_sin_and_cos_lower = -pi*2
+	aprox_sin_and_cos_upper = pi*2
+)
 // Integer limit values
 pub const (
 	max_i8 = 127
