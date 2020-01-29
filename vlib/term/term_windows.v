@@ -31,5 +31,5 @@ pub fn get_terminal_size() (int, int) {
 		}
 	}
 
-	return 80, 25
+	return default_columns_size, default_rows_size
 }
