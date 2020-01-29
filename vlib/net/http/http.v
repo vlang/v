@@ -107,7 +107,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		data: data
 		headers: config.headers
 		cookies: config.cookies
-		user_agent: 'v'
+		user_agent: config.user_agent
 		ws_func: 0
 		user_ptr: 0
 		verbose: config.verbose
