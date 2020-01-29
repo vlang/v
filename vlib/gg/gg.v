@@ -428,10 +428,10 @@ pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, col
 	mut i := 0
 	for i < segments {
 		theta := f32(i) * rad_increment - start_rads 
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r]
+		vertices << [x + f32(math.fast_cos(theta)) * r, y + f32(math.fast_sin(theta)) * r]
 		i++
 	}
-	// Add the last vertex at the final arc angle.
+	// Add the last vertex at the final arc angle with normal cos and sin for accuracy.
 	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r]
 	gl.bind_vao(ctx.vao)
 	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
