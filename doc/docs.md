@@ -379,7 +379,7 @@ V optimizes such expressions, so both `if` statements above produce the same mac
 
 ## For loop
 
-V has only one looping construct: `for`.
+V has two looping constructs: `for` and `while`.
 
 ```v
 numbers := [1, 2, 3, 4, 5]
@@ -405,17 +405,17 @@ for i, num in numbers {
 }
 ```
 
+V also has support for ordinary while loops.
+
 ```v
 mut sum := 0
 mut i := 0
-for i <= 100 {
+while i <= 100 {
     sum += i
     i++
 }
 println(sum) // "5050"
 ```
-
-This form of the loop is similar to `while` loops in other languages.
 
 The loop will stop iterating once the boolean condition evaluates to false.
 
@@ -423,7 +423,7 @@ Again, there are no parentheses surrounding the condition, and the braces are al
 
 ```v
 mut num := 0
-for {
+while {
     num++
     if num >= 10 {
         break
