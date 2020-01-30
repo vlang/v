@@ -417,28 +417,40 @@ pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
 
 pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
 	ctx.use_color_shader(color)
-	start_rads := start_angle * 0.0174533 // deg -> rad approx
-	end_rads := end_angle * 0.0174533
-	rad_increment := end_rads / segments
-	mut vertices := arc_vertices(x, y, r, start_rads, end_rads, rad_increment, segments)
+	mut vertices := arc_vertices(x, y, r, start_angle, end_angle, segments)
 	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments + 1)
 }
 
 pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
 	ctx.use_color_shader(color)
-	start_rads := start_angle * 0.0174533 // deg -> rad approx
-	end_rads := end_angle * 0.0174533
-	rad_increment := end_rads / segments
 	mut vertices := []f32
 	vertices << [x, y]
-	vertices << arc_vertices(x, y, r, start_rads, end_rads, rad_increment, segments)
+	vertices << arc_vertices(x, y, r, start_angle, end_angle, segments)
 	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments + 2)
 }
 
 pub fn (ctx &GG) draw_circle(x, y, r f32, color gx.Color) {
-	ctx.draw_filled_arc(x, y, r, 0, 360, 32 + int(r / 2), color)
+	ctx.draw_filled_arc(x, y, r, 0, 360, 24 + int(r / 2), color)
+}
+
+pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+	ctx.use_color_shader(color)
+	mut vertices := []f32
+	segments := 6 + int(r / 8)
+
+	// Create a rounded rectangle using a triangle fan mesh.
+	vertices << [x + (w/2.0), y + (h/2.0)]
+	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
+	vertices << arc_vertices(x + r, y + h - r, r, 90, 180, segments)
+	vertices << arc_vertices(x + r, y + r, r, 180, 270, segments)
+	vertices << arc_vertices(x + w - r, y + r, r, 270, 360, segments)
+	// Finish the loop by going back to the first vertex
+	vertices << [vertices[2], vertices[3]]
+
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments * 4 + 6)
 }
 
 /*
