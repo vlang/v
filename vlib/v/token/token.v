@@ -120,6 +120,7 @@ pub enum Kind {
 	key_pub
 	key_static
 	key_unsafe
+	key_while
 	keyword_end
 }
 
@@ -220,6 +221,7 @@ fn build_token_str() []string {
 	s[Kind.key_mut] = 'mut'
 	s[Kind.key_type] = 'type'
 	s[Kind.key_for] = 'for'
+	s[Kind.key_while] = 'while'
 	s[Kind.key_switch] = 'switch'
 	s[Kind.key_fn] = 'fn'
 	s[Kind.key_true] = 'true'

@@ -207,6 +207,9 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.key_for {
 			return p.for_statement()
 		}
+		.key_while {
+			return p.while_statement()
+		}
 		.key_return {
 			return p.return_stmt()
 		}
@@ -584,9 +587,31 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 	}
 	// `for cond {`
+	p.warn('use of `for condition` will be removed in future, use `while condition {` instead')
 	cond,ti := p.expr(0)
 	if !p.table.check(types.bool_ti, ti) {
 		p.error('non-bool used as for condition')
+	}
+	stmts := p.parse_block()
+	return ast.ForStmt{
+		cond: cond
+		stmts: stmts
+	}
+}
+
+fn (p mut Parser) while_statement() ast.Stmt {
+	p.check(.key_while)
+	// Infinite loop
+	if p.tok.kind == .lcbr {
+		stmts := p.parse_block()
+		return ast.ForStmt{
+			stmts: stmts
+		}
+	}
+	// `while cond {`
+	cond,ti := p.expr(0)
+	if !p.table.check(types.bool_ti, ti) {
+		p.error('non-bool used as while condition')
 	}
 	stmts := p.parse_block()
 	return ast.ForStmt{

@@ -51,7 +51,7 @@ mut:
 	is_struct_init         bool
 	is_var_decl            bool
 	if_expr_cnt            int
-	for_expr_cnt           int // to detect whether `continue` can be used
+	loop_expr_cnt           int // to detect whether `continue` or `break` can be used
 	ptr_cast               bool
 	calling_c              bool
 	cur_fn                 Fn
@@ -1492,6 +1492,9 @@ fn (p mut Parser) statement(add_semi bool) string {
 		.key_for {
 			p.for_st()
 		}
+		.key_while {
+			p.while_st()
+		}
 		.key_switch {
 			p.switch_statement()
 		}
@@ -1521,15 +1524,15 @@ fn (p mut Parser) statement(add_semi bool) string {
 			return ''
 		}
 		.key_continue {
-			if p.for_expr_cnt == 0 {
-				p.error('`continue` statement outside `for`')
+			if p.loop_expr_cnt == 0 {
+				p.error('`continue` statement outside `for` or `while`')
 			}
 			p.genln('continue')
 			p.check(.key_continue)
 		}
 		.key_break {
-			if p.for_expr_cnt == 0 {
-				p.error('`break` statement outside `for`')
+			if p.loop_expr_cnt == 0 {
+				p.error('`break` statement outside `for` or `while`')
 			}
 			p.genln('break')
 			p.check(.key_break)

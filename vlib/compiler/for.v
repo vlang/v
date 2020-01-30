@@ -5,7 +5,7 @@ module compiler
 
 fn (p mut Parser) for_st() {
 	p.check(.key_for)
-	p.for_expr_cnt++
+	p.loop_expr_cnt++
 	next_tok := p.peek()
 	if p.tok != .lcbr {
 		p.fspace()
@@ -218,7 +218,7 @@ fn (p mut Parser) for_st() {
 	p.genln('') // TODO why is this needed?
 	p.statements()
 	p.close_scope()
-	p.for_expr_cnt--
+	p.loop_expr_cnt--
 	p.returns = false // TODO handle loops that are guaranteed to return
 	//if label > 0 {
 		//p.x64.gen_loop_end(to, label)

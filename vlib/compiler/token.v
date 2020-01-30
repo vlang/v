@@ -120,6 +120,7 @@ enum TokenKind {
 	key_pub
 	key_static
 	key_unsafe
+	key_while
 	keyword_end
 }
 
@@ -214,6 +215,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_mut] = 'mut'
 	s[TokenKind.key_type] = 'type'
 	s[TokenKind.key_for] = 'for'
+	s[TokenKind.key_while] = 'while'
 	s[TokenKind.key_switch] = 'switch'
 	s[TokenKind.key_fn] = 'fn'
 	s[TokenKind.key_true] = 'true'
