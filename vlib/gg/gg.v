@@ -409,71 +409,31 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 }
 
 pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
+	ctx.use_color_shader(color)
 	vertices := [x, y, x2, y2] !
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINES, 0, 2)
 }
 
 pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
+	ctx.use_color_shader(color)
 	start_rads := start_angle * 0.0174533 // deg -> rad approx
 	end_rads := end_angle * 0.0174533
 	rad_increment := end_rads / segments
-	mut vertices := []f32
-	mut i := 0
-	for i < segments {
-		theta := f32(i) * rad_increment - start_rads 
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r]
-		i++
-	}
-	// Add the last vertex at the final arc angle.
-	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r]
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	mut vertices := arc_vertices(x, y, r, start_rads, end_rads, rad_increment, segments)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments + 1)
 }
 
 pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
+	ctx.use_color_shader(color)
 	start_rads := start_angle * 0.0174533 // deg -> rad approx
 	end_rads := end_angle * 0.0174533
 	rad_increment := end_rads / segments
 	mut vertices := []f32
-	mut i := 1
 	vertices << [x, y]
-	vertices << [x + f32(math.cos(start_angle)) * r, y + f32(math.sin(start_angle)) * r]
-	for i < segments {
-		theta := f32(i) * rad_increment
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r]
-		i++
-	}
-	// Add the last vertex at the final arc angle.
-	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r]
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	vertices << arc_vertices(x, y, r, start_rads, end_rads, rad_increment, segments)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments + 2)
 }
 
