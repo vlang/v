@@ -3071,17 +3071,19 @@ fn (p mut Parser) attribute() {
 	}
 	p.check(.rsbr)
 	p.fgen_nl()
-	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
+	is_pub := p.tok == .key_pub
+	peek := p.peek()
+	if p.tok == .key_fn || (is_pub && peek == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
 		return
 	}
-	else if p.tok == .key_struct {
+	else if p.tok == .key_struct || (is_pub && peek == .key_struct) {
 		p.struct_decl([])
 		p.attr = ''
 		return
 	}
-	else if p.tok == .key_enum {
+	else if p.tok == .key_enum || (is_pub && peek == .key_enum) {
 		p.enum_decl(false)
 		p.attr = ''
 		return
