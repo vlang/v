@@ -246,7 +246,7 @@ mut:
 	cc_index        int    = -1
 
 	// counters for quantifier check (repetitions)
-	rep int = 0
+	rep             int    = 0
 
 	// validator function pointer
 	validator fn (byte) bool
@@ -257,9 +257,10 @@ mut:
 	goto_pc            int = -1    // jump to this PC if is needed
 
 	// OR flag for the token 
-	next_is_or bool = false        // true if the next token is an OR
+	next_is_or bool        = false // true if the next token is an OR
 }
 
+[inline]
 fn (tok mut Token) reset() {
 	tok.rep = 0
 }
@@ -279,6 +280,7 @@ pub const (
 
 	// behaviour modifier flags
 	//F_OR  = 0x00010000  // the OR work with concatenation like PCRE
+	F_SRC = 0x00020000  // search mode enabled
 )
 
 struct StateDotObj{
@@ -323,9 +325,9 @@ pub mut:
 	query string         = ""  // query string
 }
 
-// Reset RE object 
+// Reset RE object
+//[inline] 
 fn (re mut RE) reset(){
-	//re.group_count      = 0
 	re.cc_index         = 0
 	
 	mut i := 0
@@ -343,6 +345,18 @@ fn (re mut RE) reset(){
 		re.group_csave_index = 1
 		re.group_csave[0] = 0     // reset the capture count
 	}
+}
+
+// reset for search mode fail
+// gcc bug, dont use [inline] or go 5 time slower
+fn (re mut RE) reset_src(){
+	mut i := 0
+	for i < re.prog.len {
+		re.prog[i].group_rep          = 0 // clear repetition of the group
+		re.prog[i].rep                = 0 // clear repetition of the token
+		i++
+	}
+	re.state_stack_index = -1
 }
 
 pub fn (re RE) get_group(group_name string) (int, int) {
@@ -1654,6 +1668,18 @@ pub fn (re mut RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 		// check if stop 
 		if m_state == .stop {
+			
+			// we are in search mode, don't exit until the end
+			if re.flag & F_SRC != 0 && ist != IST_PROG_END {
+				pc = -1
+				i += char_len
+				m_state = .ist_next
+				re.reset_src()
+				state.match_index = -1
+				first_match = -1
+				continue
+			}
+
 			// if we are in restore state ,do it and restart
 			//C.printf("re.state_stack_index %d\n",re.state_stack_index )
 			if re.state_stack_index >=0 && re.state_stack[re.state_stack_index].pc >= 0 {
@@ -2187,42 +2213,12 @@ pub fn (re mut RE) match_string(in_txt string) (int,int) {
 
 // find try to find the first match in the input string
 pub fn (re mut RE) find(in_txt string) (int,int) {
-	mut i     := 0
-	mut start := -1 
-	mut end   := -1
 	old_flag := re.flag
-
-	for i < in_txt.len {
-		
-		// test only the first part of the query string
-		re.flag |= F_EFM // set to exit on the first token match
-		mut tmp_end := i+re.query.len
-		if tmp_end > in_txt.len { tmp_end = in_txt.len }
-		tmp_txt := string{ str: in_txt.str+i, len: tmp_end-i }
-		start, end = re.match_base(tmp_txt.str, tmp_txt.len)
-		
-		if start >= 0 && end > start {
-			// test a complete match
-			re.flag = old_flag
-			tmp_txt1 := string{ str: in_txt.str+i , len: in_txt.len-i }
-			start, end = re.match_base(tmp_txt1.str, tmp_txt1.len)
-
-			if start >= 0 && end > start {
-				if (re.flag & F_MS) != 0 && (i+start) > 0 {
-					return NO_MATCH_FOUND, 0
-				}
-				if (re.flag & F_ME) != 0 && (i+end) < in_txt.len {
-					return NO_MATCH_FOUND, 0
-				}
-
-				return i+start, i+end
-			}	
-		}
-		
-		i++
-		if re.flag == F_MS && i>0 {
-			return NO_MATCH_FOUND, 0
-		}
+	re.flag |= F_SRC  // enable search mode
+	start, end := re.match_base(in_txt.str, in_txt.len)
+	re.flag = old_flag
+	if start >= 0 && end > start {
+		return start,end
 	}
 	return NO_MATCH_FOUND, 0
 }
