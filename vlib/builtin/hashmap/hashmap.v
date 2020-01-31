@@ -158,6 +158,8 @@ fn (h mut Hashmap) rehash() {
 	if h.window == 0 {
 		h.window = window_size
 	}
+	free(h.key_values)
+	free(h.info)
 	h.key_values = new_key_values
 	h.info = new_info
 }
