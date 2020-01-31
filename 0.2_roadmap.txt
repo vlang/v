@@ -31,7 +31,7 @@
 - doom.v
 + v ui
 - ui/orm demo: a simple gui client for postgres/mysql/sqlite
-- ui demo: calculator
++ ui demo: calculator
 - declarative ui with hot reload (similar to swiftui)
 + "building a simple blog with vweb" tutorial +
 - youtube video
