@@ -11,7 +11,6 @@ import (
 	gx
 	os
 	glfw
-	math
 )
 
 pub struct Vec2 {
@@ -111,6 +110,7 @@ pub fn new_context(cfg Cfg) &GG {
 	if cfg.retina {
 		scale = 2
 	}
+	gl.enable(C.GL_SCISSOR_TEST)
 	//gl.enable(GL_BLEND)
 	//# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	//println('new gg text context VAO=$VAO')
@@ -521,4 +521,8 @@ pub fn (c &GG) draw_empty_rect(x, y, w, h f32, color gx.Color) {
 	c.draw_line(x, y, x, y + h, color)
 	c.draw_line(x, y + h, x + w, y + h, color)
 	c.draw_line(x + w, y, x + w, y + h, color)
+}
+
+pub fn scissor(x, y, w, h f32) {
+	C.glScissor(x, y, w, h)
 }
