@@ -8,15 +8,6 @@ module sqlite
 struct C.sqlite3 {}
 struct C.sqlite3_stmt {}
 
-fn C.sqlite3_column_text(voidptr, int) byteptr
-fn C.sqlite3_column_int(voidptr, int) int
-fn C.sqlite3_open()
-fn C.sqlite3_step() int
-fn C.sqlite3_prepare_v2()
-fn C.sqlite3_finalize()
-fn C.sqlite3_column_count(voidptr) int
-
-
 pub struct DB {
 mut:
 	conn &C.sqlite3
@@ -26,6 +17,14 @@ pub struct Row {
 pub mut:
 	vals []string
 }
+
+fn C.sqlite3_column_text(voidptr, int) byteptr
+fn C.sqlite3_column_int(voidptr, int) int
+fn C.sqlite3_open()
+fn C.sqlite3_step() int
+fn C.sqlite3_prepare_v2()
+fn C.sqlite3_finalize()
+fn C.sqlite3_column_count(voidptr) int
 
 // Opens the connection with a database.
 pub fn connect(path string) DB {
