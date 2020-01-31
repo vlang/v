@@ -409,76 +409,48 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 }
 
 pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
+	ctx.use_color_shader(color)
 	vertices := [x, y, x2, y2] !
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINES, 0, 2)
 }
 
 pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
-	start_rads := start_angle * 0.0174533 // deg -> rad approx
-	end_rads := end_angle * 0.0174533
-	rad_increment := end_rads / segments
-	mut vertices := []f32
-	mut i := 0
-	for i < segments {
-		theta := f32(i) * rad_increment - start_rads 
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r]
-		i++
-	}
-	// Add the last vertex at the final arc angle.
-	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r]
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	ctx.use_color_shader(color)
+	mut vertices := arc_vertices(x, y, r, start_angle, end_angle, segments)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments + 1)
 }
 
 pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
-	start_rads := start_angle * 0.0174533 // deg -> rad approx
-	end_rads := end_angle * 0.0174533
-	rad_increment := end_rads / segments
+	ctx.use_color_shader(color)
 	mut vertices := []f32
-	mut i := 1
 	vertices << [x, y]
-	vertices << [x + f32(math.cos(start_angle)) * r, y + f32(math.sin(start_angle)) * r]
-	for i < segments {
-		theta := f32(i) * rad_increment
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r]
-		i++
-	}
-	// Add the last vertex at the final arc angle.
-	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r]
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	vertices << arc_vertices(x, y, r, start_angle, end_angle, segments)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments + 2)
 }
 
 pub fn (ctx &GG) draw_circle(x, y, r f32, color gx.Color) {
-	ctx.draw_filled_arc(x, y, r, 0, 360, 32 + int(r / 2), color)
+	ctx.draw_filled_arc(x, y, r, 0, 360, 24 + int(r / 2), color)
+}
+
+pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+	ctx.use_color_shader(color)
+	mut vertices := []f32
+	segments := 6 + int(r / 8)
+
+	// Create a rounded rectangle using a triangle fan mesh.
+	vertices << [x + (w/2.0), y + (h/2.0)]
+	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
+	vertices << arc_vertices(x + r, y + h - r, r, 90, 180, segments)
+	vertices << arc_vertices(x + r, y + r, r, 180, 270, segments)
+	vertices << arc_vertices(x + w - r, y + r, r, 270, 360, segments)
+	// Finish the loop by going back to the first vertex
+	vertices << [vertices[2], vertices[3]]
+
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments * 4 + 6)
 }
 
 /*
