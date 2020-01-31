@@ -22,8 +22,8 @@ fn test_sqlite() {
 	code = db.exec_none('vacuum')
 	assert code == 101
 
-	sam := db.exec_one('select * from users where id = 3') or {
+	user := db.exec_one('select * from users where id = 3') or {
 		panic(err)
 	}
-	assert sam.vals.len == 2
+	assert user.vals.len == 2
 }
