@@ -6,17 +6,24 @@ module hashmap
 import hash.wyhash
 
 const (
-	initial_size = 2 << 4
+	log_size = 5
+	n_hashbits = 24
+	window_size = 16
+	initial_size = 1 << log_size
 	initial_cap = initial_size - 1
-	probe_offset = u16(256)
-	load_factor = 0.8
+	default_load_factor = 0.8
+	hashbit_mask = u32(0xFFFFFF)
+	probe_offset = u32(0x1000000)
+	max_probe = u32(0xFF000000)
 )
 
 pub struct Hashmap {
 mut:
-	info        &u16
+	cap         u32
+	shift       byte
+	window      byte
+	info        &u32
 	key_values  &KeyValue
-	cap         int
 pub mut:
 	load_factor f32
 	size        int
@@ -30,10 +37,12 @@ mut:
 
 pub fn new_hashmap() Hashmap {
 	return Hashmap{
-		info: &u16(calloc(sizeof(u16) * initial_size))
-		key_values: &KeyValue(calloc(sizeof(KeyValue) * initial_size))
 		cap: initial_cap
-		load_factor: 0.8
+		shift: log_size
+		window: window_size
+		info: &u32(calloc(sizeof(u32) * initial_size))
+		key_values: &KeyValue(calloc(sizeof(KeyValue) * initial_size))
+		load_factor: default_load_factor
 		size: 0
 	}
 }
@@ -44,7 +53,7 @@ pub fn (h mut Hashmap) set(key string, value int) {
 		h.rehash()
 	}
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
-	mut info := u16((hash >> 56) | probe_offset)
+	mut info := u32(((hash >> h.shift) & hashbit_mask) | probe_offset)
 	mut index := hash & h.cap
 	// While probe count is less
 	for info < h.info[index] {
@@ -71,7 +80,7 @@ pub fn (h mut Hashmap) set(key string, value int) {
 			h.info[index] = info
 			info = tmp_info
 			// Swap KeyValue
-			tmp_kv := h.key_values[index] 
+			tmp_kv := h.key_values[index]
 			h.key_values[index] = current_kv
 			current_kv = tmp_kv
 		}
@@ -79,7 +88,7 @@ pub fn (h mut Hashmap) set(key string, value int) {
 		info += probe_offset
 	}
 	// Should almost never happen
-	if (info & 0xFF00) == 0xFF00 {
+	if (info & max_probe) == max_probe {
 		h.rehash()
 		h.set(current_kv.key, current_kv.value)
 		return
@@ -91,14 +100,29 @@ pub fn (h mut Hashmap) set(key string, value int) {
 
 fn (h mut Hashmap) rehash() {
 	old_cap := h.cap
+	h.window--
+	// check if any hashbits are left
+	if h.window == 0 {
+		h.shift += window_size
+	}
+	// double the size of the hashmap
 	h.cap = ((h.cap + 1) << 1) - 1
 	mut new_key_values := &KeyValue(calloc(sizeof(KeyValue) * (h.cap + 1)))
-	mut new_info := &u16(calloc(sizeof(u16) * (h.cap + 1)))
+	mut new_info := &u32(calloc(sizeof(u32) * (h.cap + 1)))
 	for i in 0 .. (old_cap + 1) {
 		if h.info[i] != 0 {
 			mut kv := h.key_values[i]
-			hash := wyhash.wyhash_c(kv.key.str, u64(kv.key.len), 0)
-			mut info := u16((hash >> 56) | probe_offset)
+			mut hash := u64(0)
+			mut info := u32(0)
+			if h.window == 0 {
+				hash = wyhash.wyhash_c(kv.key.str, u64(kv.key.len), 0)
+				info = u32(((hash >> h.shift) & hashbit_mask) | probe_offset)
+			}
+			else {
+				original := u64(i - ((h.info[i] >> n_hashbits) - 1)) & (h.cap >> 1)
+				hash = original | (h.info[i] << h.shift)
+				info = (h.info[i] & hashbit_mask) | probe_offset
+			}
 			mut index := hash & h.cap
 			// While probe count is less
 			for info < new_info[index] {
@@ -114,7 +138,7 @@ fn (h mut Hashmap) rehash() {
 					new_info[index] = info
 					info = tmp_info
 					// Swap KeyValue
-					tmp_kv := new_key_values[index] 
+					tmp_kv := new_key_values[index]
 					new_key_values[index] = kv
 					kv = tmp_kv
 				}
@@ -122,7 +146,7 @@ fn (h mut Hashmap) rehash() {
 				info += probe_offset
 			}
 			// Should almost never happen
-			if (info & 0xFF00) == 0xFF00 {
+			if (info & max_probe) == max_probe {
 				h.rehash()
 				h.set(kv.key, kv.value)
 				return
@@ -131,6 +155,11 @@ fn (h mut Hashmap) rehash() {
 			new_key_values[index] = kv
 		}
 	}
+	if h.window == 0 {
+		h.window = window_size
+	}
+	free(h.key_values)
+	free(h.info)
 	h.key_values = new_key_values
 	h.info = new_info
 }
@@ -138,7 +167,7 @@ fn (h mut Hashmap) rehash() {
 pub fn (h mut Hashmap) delete(key string) {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & h.cap
-	mut info := u16((hash >> 56) | probe_offset)
+	mut info := u32(((hash >> h.shift) & hashbit_mask) | probe_offset)
 	for info < h.info[index] {
 		index = (index + 1) & h.cap
 		info += probe_offset
@@ -149,7 +178,7 @@ pub fn (h mut Hashmap) delete(key string) {
 			mut old_index := index
 			index = (index + 1) & h.cap
 			mut current_info := h.info[index]
-			for (current_info >> 8) > 1 {
+			for (current_info >> n_hashbits) > 1 {
 				h.info[old_index] = current_info - probe_offset
 				h.key_values[old_index] = h.key_values[index]
 				old_index = index
@@ -168,7 +197,7 @@ pub fn (h mut Hashmap) delete(key string) {
 pub fn (h Hashmap) get(key string) int {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & h.cap
-	mut info := u16((hash >> 56) | probe_offset)
+	mut info := u32(((hash >> h.shift) & hashbit_mask) | probe_offset)
 	for info < h.info[index] {
 		index = (index + 1) & h.cap
 		info += probe_offset
@@ -186,7 +215,7 @@ pub fn (h Hashmap) get(key string) int {
 pub fn (h Hashmap) exists(key string) bool {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	mut index := hash & h.cap
-	mut info := u16((hash >> 56) | probe_offset)
+	mut info := u32(((hash >> h.shift) & hashbit_mask) | probe_offset)
 	for info < h.info[index] {
 		index = (index + 1) & h.cap
 		info += probe_offset
