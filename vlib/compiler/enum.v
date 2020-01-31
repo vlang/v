@@ -119,6 +119,9 @@ int typ;
 }
 
 fn (p mut Parser) check_enum_member_access() {
+	if p.expected_type.starts_with('Option_') {
+		p.expected_type = p.expected_type[7..]
+	}
 	T := p.find_type(p.expected_type)
 	if T.cat == .enum_ {
 		p.check(.dot)

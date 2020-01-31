@@ -4,6 +4,21 @@ enum Color {
 	green
 }
 
+fn enum_optional_helper(b bool) ?Color {
+	if b {
+		return .red
+	}
+	return error('failed')
+}
+
+fn test_enum_optional() {
+	a := enum_optional_helper(true) or {
+		assert false
+		return
+	}
+	assert a == .red
+}
+
 fn test_enum() {
 	assert Color.red == .red
 	assert Color.blue == .blue
