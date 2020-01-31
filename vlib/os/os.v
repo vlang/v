@@ -233,37 +233,10 @@ fn vfopen(path, mode string) *C.FILE {
 
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
-	mut res := []string
-	mut buf_len := 1024
-	mut buf := malloc(buf_len)
-	mode := 'rb'
-	mut fp := vfopen(path, mode)
-	if isnil(fp) {
-		return error('read_lines() failed to open file "$path"')
+	buf := read_file(path) or {
+		return err
 	}
-	mut buf_index := 0
-	for C.fgets(buf + buf_index, buf_len - buf_index, fp) != 0 {
-		len := vstrlen(buf)
-		if len == buf_len - 1 && buf[len - 1] != 10 {
-			buf_len *= 2
-			buf = C.realloc(buf, buf_len)
-			if isnil(buf) {
-				return error('could not reallocate the read buffer')
-			}
-			buf_index = len
-			continue
-		}
-		if buf[len - 1] == 10 || buf[len - 1] == 13 {
-			buf[len - 1] = `\0`
-		}
-		if len > 1 && buf[len - 2] == 13 {
-			buf[len - 2] = `\0`
-		}
-		res << tos_clone(buf)
-		buf_index = 0
-	}
-	C.fclose(fp)
-	return res
+	return buf.split_into_lines()
 }
 
 fn read_ulines(path string) ?[]ustring {
@@ -311,7 +284,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 			`s` { flags |= O_SYNC }
 			`n` { flags |= O_NONBLOCK }
 			`c` { flags |= O_NOCTTY }
-			`+`	{ flags |= O_RDWR }
+			`+` { flags |= O_RDWR }
 			else {}
 		}
 	}
