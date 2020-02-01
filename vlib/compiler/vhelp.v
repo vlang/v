@@ -58,6 +58,7 @@ Options for debugging/troubleshooting v programs:
   -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
   -keep_c           Do NOT remove the generated .tmp.c files after compilation.
                     It is useful when using debuggers like gdb/visual studio, when given after `-g` / `-cg`.
+  -pretty_c         Run clang-format over the generated C file, so that it looks nicer. Requires you to have clang-format.
   -show_c_cmd       Print the full C compilation command and how much time it took. See also `-verbose`.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
                     The C backend compiler should be able to handle C99 compatible C code.
