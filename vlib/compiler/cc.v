@@ -38,7 +38,14 @@ fn (v mut V) cc() {
 	ends_with_js := v.out_name.ends_with('.js')
 
 	if v.pref.is_pretty_c && !ends_with_js {
-		os.exec('clang-format -i "$v.out_name_c"') or { os.Result{exit_code:-1} }
+		format_result := os.exec('clang-format -i "$v.out_name_c"') or {
+			eprintln('clang-format not found')
+			os.Result{exit_code:-1}
+		}
+		if format_result.exit_code > 0 {
+			eprintln('clang-format failed to format $v.out_name_c')
+			eprintln(format_result.output)
+		}
 	}
 	
 	if ends_with_c || ends_with_js {
