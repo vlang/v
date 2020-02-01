@@ -23,11 +23,11 @@ pub enum PubEnumAttrTest {
 }
 
 [testing]
-fn test_fn_attribte() {
+fn test_fn_attribute() {
 	assert true
 }
 
 [testing]
-pub fn test_pub_fn_attribte() {
+pub fn test_pub_fn_attribute() {
 	assert true
 }
