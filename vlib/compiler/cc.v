@@ -34,12 +34,19 @@ fn (v mut V) cc() {
 	vdir := filepath.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
-	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
+	ends_with_c := v.out_name.ends_with('.c')
+	ends_with_js := v.out_name.ends_with('.js')
+
+	if v.pref.is_pretty_c && !ends_with_js {
+		os.exec('clang-format -i "$v.out_name_c"') or { os.Result{exit_code:-1} }
+	}
+	
+	if ends_with_c || ends_with_js {
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,
 		// to avoid constant is_js checks.
 		$if !js {
-			if v.out_name.ends_with('.js') {
+			if ends_with_js {
 				vjs_path := vexe + 'js'
 				if !os.exists(vjs_path) {
 					println('V.js compiler not found, building...')

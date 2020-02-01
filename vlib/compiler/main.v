@@ -111,6 +111,7 @@ pub mut:
 	is_keep_c       bool // -keep_c , tell v to leave the generated .tmp.c alone (since by default v will delete them after c backend finishes)
 	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
+	is_pretty_c     bool // -pretty_c , tell v to run clang-format -i over the produced C file, before it is compiled. Use with -keep_c or with -o x.c .
 	is_cache        bool // turns on v usage of the module cache to speed up compilation.
 	is_stats        bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free    bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
@@ -1087,6 +1088,7 @@ pub fn new_v(args []string) &V {
 		is_debug: '-g' in args || '-cg' in args
 		is_vlines: '-g' in args && !('-cg' in args)
 		is_keep_c: '-keep_c' in args
+		is_pretty_c: '-pretty_c' in args
 		is_cache: '-cache' in args
 		is_stats: '-stats' in args
 		obfuscate: obfuscate
