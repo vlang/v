@@ -2875,7 +2875,7 @@ fn (p mut Parser) return_st() {
 		mut cur_fn_typ_chk := p.cur_fn.typ
 		// multiple returns
 		if types.len > 1 {
-			mr_type := if p.cur_fn.typ[0..7] == 'Option_' {
+			mr_type := if p.cur_fn.typ.starts_with('Option_') {
 				p.cur_fn.typ[7..]
 			} else {
 				p.cur_fn.typ
