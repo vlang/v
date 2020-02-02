@@ -115,7 +115,7 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
 	ti := c.expr(selector_expr.expr)
 	field_name := selector_expr.field
-	struct_ := c.table.types[ti.idx]
+	// struct_ := c.table.types[ti.idx]
 	// struct_info := struct_.info as table.Struct
 	typ := c.table.types[ti.idx]
 	match typ.kind {

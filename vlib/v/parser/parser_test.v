@@ -45,7 +45,7 @@ fn test_eval() {
 	println('eval done')
 	println(s)
 	assert s == expected.join('\n')
-	exit(0)
+	// exit(0)
 }
 
 fn test_parse_file() {
