@@ -1,5 +1,4 @@
 import hash.wyhash
-import rand
 
 struct WyHashTest {
 	s        string
@@ -30,9 +29,9 @@ fn test_wyhash() {
 }
 
 fn test_rand_u64() {
-	mut seed := u64(111)
+	seed := u64(111)
 	mut rand_nos := []u64
-	for i in 0..40 {
+	for _ in 0..40 {
 		rand_no := wyhash.rand_u64(&seed)
 		for r in rand_nos {
 			assert rand_no != r
