@@ -35,38 +35,38 @@ pub enum FieldType {
 }
 
 pub fn (f FieldType) str() string {
-	match f {
-		0    { return 'decimal'     }
-		1    { return 'tiny'        }
-		2    { return 'short'       }
-		3    { return 'long'        }
-		4    { return 'float'       }
-		5    { return 'double'      }
-		6    { return 'null'        }
-		7    { return 'timestamp'   }
-		8    { return 'longlong'    }
-		9    { return 'int24'       }
-		10   { return 'date'        }
-		11   { return 'time'        }
-		12   { return 'datetime'    }
-		13   { return 'year'        }
-		14   { return 'newdate'     }
-		15   { return 'varchar'     }
-		16   { return 'bit'         }
-		17   { return 'timestamp2'  }
-		18   { return 'datetime2'   }
-		19   { return 'time2'       }
-		245  { return 'json'        }
-		246  { return 'newdecimal'  }
-		247  { return 'enum'        }
-		248  { return 'set'         }
-		249  { return 'tiny_blob'   }
-		250  { return 'medium_blob' }
-		251  { return 'long_blob'   }
-		252  { return 'blob'        }
-		253  { return 'var_string'  }
-		254  { return 'string'      }
-		255  { return 'geometry'    }
-		else { return 'unknown'     }
+	return match f {
+		0    { 'decimal'     }
+		1    { 'tiny'        }
+		2    { 'short'       }
+		3    { 'long'        }
+		4    { 'float'       }
+		5    { 'double'      }
+		6    { 'null'        }
+		7    { 'timestamp'   }
+		8    { 'longlong'    }
+		9    { 'int24'       }
+		10   { 'date'        }
+		11   { 'time'        }
+		12   { 'datetime'    }
+		13   { 'year'        }
+		14   { 'newdate'     }
+		15   { 'varchar'     }
+		16   { 'bit'         }
+		17   { 'timestamp2'  }
+		18   { 'datetime2'   }
+		19   { 'time2'       }
+		245  { 'json'        }
+		246  { 'newdecimal'  }
+		247  { 'enum'        }
+		248  { 'set'         }
+		249  { 'tiny_blob'   }
+		250  { 'medium_blob' }
+		251  { 'long_blob'   }
+		252  { 'blob'        }
+		253  { 'var_string'  }
+		254  { 'string'      }
+		255  { 'geometry'    }
+		else { 'unknown'     }
 	}
 }
