@@ -43,7 +43,7 @@ fn bytes_to_u64(b []byte) []u64 {
 	mut z := [u64(0)].repeat((b.len + ws - 1) / ws)
 	mut i := b.len
 	for k := 0; i >= ws; k++ {
-		z[k] = binary.big_endian_u64(b.slice(i-ws, i))
+		z[k] = binary.big_endian_u64(b[i-ws..i])
 		i -= ws
 	}
 	if i > 0 {
