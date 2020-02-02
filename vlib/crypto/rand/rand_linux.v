@@ -34,7 +34,7 @@ pub fn read(bytes_needed int) ?[]byte {
 
 fn getrandom(bytes_needed int, buffer voidptr) int {
 	if bytes_needed > read_batch_size {
-		panic('getrandom() dont request more thane $read_batch_size bytes at once.')
+		panic('getrandom() dont request more than $read_batch_size bytes at once.')
 	}
 	return C.syscall(C.SYS_getrandom, buffer, bytes_needed, 0)
 }
