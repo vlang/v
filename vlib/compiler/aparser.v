@@ -1052,26 +1052,6 @@ fn (p mut Parser) get_type() string {
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
-	// multiple returns
-	if p.tok == .lpar {
-		// p.warn('`()` are no longer necessary in multiple returns' +
-		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
-		// if p.inside_tuple {p.error('unexpected (')}
-		// p.inside_tuple = true
-		p.check(.lpar)
-		mut types := []string
-		for {
-			types << p.get_type()
-			if p.tok != .comma {
-				break
-			}
-			p.check(.comma)
-		}
-		p.check(.rpar)
-		// p.inside_tuple = false
-		typ = p.register_multi_return_stuct(types)
-		return typ
-	}
 	// fn type
 	if p.tok == .key_fn {
 		mut f := Fn{
@@ -1104,12 +1084,39 @@ fn (p mut Parser) get_type() string {
 		p.table.register_type(fn_typ)
 		return f.typ_str()
 	}
-	// arrays ([]int)
-	mut arr_level := 0
 	is_question := p.tok == .question
 	if is_question {
 		p.check(.question)
 	}
+
+	// multiple returns
+	if p.tok == .lpar {
+		// p.warn('`()` are no longer necessary in multiple returns' +
+		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
+		// if p.inside_tuple {p.error('unexpected (')}
+		// p.inside_tuple = true
+		p.check(.lpar)
+		mut types := []string
+		for {
+			types << p.get_type()
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+		}
+		p.check(.rpar)
+		// p.inside_tuple = false
+		typ = p.register_multi_return_stuct(types)
+		if is_question {
+			typ = stringify_pointer(typ)
+			typ = 'Option_$typ'
+			p.table.register_type_with_parent(typ, 'Option')
+		}
+		return typ
+	}
+
+	// arrays ([]int)
+	mut arr_level := 0
 	for p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
@@ -2854,6 +2861,7 @@ fn (p mut Parser) return_st() {
 		is_none := p.tok == .key_none
 		p.expected_type = p.cur_fn.typ
 		mut expr_type := p.bool_expression()
+		mut expr_type_chk := expr_type
 		// println('$p.cur_fn.name returns type $expr_type, should be $p.cur_fn.typ')
 		mut types := []string
 		mut mr_values := [p.cgen.cur_line[ph..].trim_space()]
@@ -2867,7 +2875,13 @@ fn (p mut Parser) return_st() {
 		mut cur_fn_typ_chk := p.cur_fn.typ
 		// multiple returns
 		if types.len > 1 {
-			expr_type = types.join(',')
+			mr_type := if p.cur_fn.typ.starts_with('Option_') {
+				p.cur_fn.typ[7..]
+			} else {
+				p.cur_fn.typ
+			}
+			expr_type = mr_type
+			expr_type_chk = types.join(',')
 			cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
 			mut ret_fields := ''
 			for ret_val_idx, ret_val in mr_values {
@@ -2876,7 +2890,7 @@ fn (p mut Parser) return_st() {
 				}
 				ret_fields += '.var_$ret_val_idx=${ret_val}'
 			}
-			p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
+			p.cgen.resetln('($mr_type){$ret_fields}')
 		}
 		p.inside_return_expr = false
 		// Automatically wrap an object inside an option if the function
@@ -2908,7 +2922,7 @@ fn (p mut Parser) return_st() {
 				p.genln('return $tmp;')
 			}
 		}
-		p.check_types(expr_type, cur_fn_typ_chk)
+		p.check_types(expr_type_chk, cur_fn_typ_chk)
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
