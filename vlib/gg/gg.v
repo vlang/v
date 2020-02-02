@@ -453,6 +453,20 @@ pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments * 4 + 6)
 }
 
+pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+	ctx.use_color_shader(color)
+	mut vertices := []f32
+	segments := 6 + int(r / 8)
+
+	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
+	vertices << arc_vertices(x + r, y + h - r, r, 90, 180, segments)
+	vertices << arc_vertices(x + r, y + r, r, 180, 270, segments)
+	vertices << arc_vertices(x + w - r, y + r, r, 270, 360, segments)
+
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments * 4 + 1)
+}
+
 /*
 pub fn (c &GG) draw_gray_line(x, y, x2, y2 f32) {
 	c.draw_line(x, y, x2, y2, gx.Gray)
