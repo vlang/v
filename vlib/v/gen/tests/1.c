@@ -33,6 +33,7 @@ i < 10; i++;
 	array_int nums = new_array_from_c_array(3, 3, sizeof(array_int), {
 		1, 2, 3,
 	});
+	array_int nums2 = array_slice(nums, 0, 2);
 	int number = nums[0];
 	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), {
 		true, false,

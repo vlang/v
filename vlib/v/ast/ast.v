@@ -10,7 +10,7 @@ import (
 
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr
 
 pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt
@@ -294,6 +294,13 @@ pub:
 	pos   token.Position
 	exprs []Expr
 	ti    table.Type
+}
+
+// s[10..20]
+pub struct RangeExpr {
+pub:
+	low  Expr
+	high Expr
 }
 
 // string representaiton of expr

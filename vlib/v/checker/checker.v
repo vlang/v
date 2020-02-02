@@ -194,112 +194,112 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		}
 		ast.VarDecl {
 			typ := c.expr(it.expr)
-			println('1111var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
+			// println('var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
 			if it.typ.kind == .unresolved {
 				// it.ti = typ
-				println('VAR DECL UN!!!')
+				// println('unresolved var')
+				}
 			}
-		}
-		ast.ForStmt {
-			c.expr(it.cond)
-			for stmt in it.stmts {
-				c.stmt(stmt)
+			ast.ForStmt {
+				c.expr(it.cond)
+				for stmt in it.stmts {
+					c.stmt(stmt)
+				}
 			}
-		}
-		ast.ForCStmt {
-			c.stmt(it.init)
-			c.expr(it.cond)
-			c.stmt(it.inc)
-			for stmt in it.stmts {
-				c.stmt(stmt)
+			ast.ForCStmt {
+				c.stmt(it.init)
+				c.expr(it.cond)
+				c.stmt(it.inc)
+				for stmt in it.stmts {
+					c.stmt(stmt)
+				}
 			}
-		}
-		// ast.StructDecl {}
-		ast.ExprStmt {
-			c.expr(it.expr)
-		}
-		else {}
+			// ast.StructDecl {}
+			ast.ExprStmt {
+				c.expr(it.expr)
+			}
+			else {}
 	}
-}
+	}
 
-pub fn (c &Checker) expr(node ast.Expr) table.Type {
-	match node {
-		ast.AssignExpr {
-			c.check_assign_expr(it)
-		}
-		ast.IntegerLiteral {
-			return table.int_type
-		}
-		// ast.FloatLiteral {}
-		ast.PostfixExpr {
-			return c.expr(it.expr)
-		}
-		/*
+	pub fn (c &Checker) expr(node ast.Expr) table.Type {
+		match node {
+			ast.AssignExpr {
+				c.check_assign_expr(it)
+			}
+			ast.IntegerLiteral {
+				return table.int_type
+			}
+			// ast.FloatLiteral {}
+			ast.PostfixExpr {
+				return c.expr(it.expr)
+			}
+			/*
 		ast.UnaryExpr {
 			c.expr(it.left)
 		}
 		*/
 
-		ast.StringLiteral {
-			return table.string_type
-		}
-		ast.PrefixExpr {
-			return c.expr(it.right)
-		}
-		ast.InfixExpr {
-			return c.infix_expr(it)
-		}
-		ast.StructInit {
-			return c.check_struct_init(it)
-		}
-		ast.CallExpr {
-			return c.call_expr(it)
-		}
-		ast.MethodCallExpr {
-			return c.check_method_call_expr(it)
-		}
-		ast.ArrayInit {
-			return c.array_init(it)
-		}
-		ast.Ident {
-			if it.kind == .variable {
-				info := it.info as ast.IdentVar
-				if info.typ.kind != .unresolved {
-					return info.typ
+			ast.StringLiteral {
+				return table.string_type
+			}
+			ast.PrefixExpr {
+				return c.expr(it.right)
+			}
+			ast.InfixExpr {
+				return c.infix_expr(it)
+			}
+			ast.StructInit {
+				return c.check_struct_init(it)
+			}
+			ast.CallExpr {
+				return c.call_expr(it)
+			}
+			ast.MethodCallExpr {
+				return c.check_method_call_expr(it)
+			}
+			ast.ArrayInit {
+				return c.array_init(it)
+			}
+			ast.Ident {
+				if it.kind == .variable {
+					info := it.info as ast.IdentVar
+					if info.typ.kind != .unresolved {
+						return info.typ
+					}
+					return c.expr(info.expr)
 				}
-				return c.expr(info.expr)
+				return table.void_type
 			}
-			return table.void_type
-		}
-		// ast.BoolLiteral {}
-		ast.SelectorExpr {
-			return c.selector_expr(it)
-		}
-		ast.IndexExpr {
-			c.expr(it.left)
-			c.expr(it.index)
-		}
-		ast.IfExpr {
-			c.expr(it.cond)
-			for i, stmt in it.stmts {
-				c.stmt(stmt)
+			// ast.BoolLiteral {}
+			ast.SelectorExpr {
+				return c.selector_expr(it)
 			}
-			if it.else_stmts.len > 0 {
-				for stmt in it.else_stmts {
+			ast.IndexExpr {
+				c.expr(it.left)
+				c.expr(it.index)
+			}
+			ast.IfExpr {
+				c.expr(it.cond)
+				for i, stmt in it.stmts {
 					c.stmt(stmt)
 				}
+				if it.else_stmts.len > 0 {
+					for stmt in it.else_stmts {
+						c.stmt(stmt)
+					}
+				}
 			}
-		}
-		else {}
+			else {}
 	}
-	return table.void_type
-}
+		return table.void_type
+	}
 
-pub fn (c &Checker) error(s string, pos token.Position) {
-	print_backtrace()
-	final_msg_line := '$c.file_name:$pos.line_nr: error: $s'
-	eprintln(final_msg_line)
-	/*
+	pub fn (c &Checker) error(s string, pos token.Position) {
+		print_backtrace()
+		final_msg_line := '$c.file_name:$pos.line_nr: error: $s'
+		eprintln(final_msg_line)
+		/*
 	if colored_output {
 		eprintln(term.bold(term.red(final_msg_line)))
 	}else{
@@ -307,5 +307,5 @@ pub fn (c &Checker) error(s string, pos token.Position) {
 	}
 	*/
 
-	exit(1)
-}
+		exit(1)
+	}

@@ -33,6 +33,7 @@ fn foo(a int) {
 
 	}
 	nums := [1,2,3]
+	nums2 := nums[..2]
 	number := nums[0]
 	bools := [true, false]
 	b := bools[0]

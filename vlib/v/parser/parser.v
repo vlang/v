@@ -231,6 +231,20 @@ pub fn (p mut Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	return node
 }
 
+fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
+	// ,table.Type) {
+	p.next()
+	high,typ := p.expr(0)
+	if typ.kind != .int {
+		p.error('non-integer index `$typ.name`')
+	}
+	node := ast.RangeExpr{
+		low: low
+		high: high
+	}
+	return node
+}
+
 /*
 pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	name := p.tok.lit
@@ -340,21 +354,26 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		mut ident := ast.Ident{
 			name: p.tok.lit
 		}
-		var := p.table.find_var(p.tok.lit) or {
-			p.error('name expr unknown variable `$p.tok.lit`')
-			exit(0)
+		if var := p.table.find_var(p.tok.lit) {
+			typ = var.typ
+			ident.kind = .variable
+			ident.info = ast.IdentVar{
+				typ: typ
+				name: ident.name
+				// expr: p.expr(0)// var.expr
+				
+			}
+			// ident.ti = ti
+			node = ident
+			p.next()
+		}else{
+			// Function object (not a call), e.g. `onclick(my_click)`
+			p.table.find_fn(p.tok.lit) or {
+				p.error('name expr unknown variable `$p.tok.lit`')
+				exit(0)
+			}
+			p.next()
 		}
-		typ = var.typ
-		ident.kind = .variable
-		ident.info = ast.IdentVar{
-			typ: typ
-			name: ident.name
-			// expr: p.expr(0)// var.expr
-			
-		}
-		// ident.ti = ti
-		node = ident
-		p.next()
 	}
 	return node,typ
 }
@@ -372,7 +391,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.string_expr()
 		}
 		// -1, -a etc
-		.minus, .amp {
+		.minus, .amp, .mul {
 			node,typ = p.prefix_expr()
 		}
 		// .amp {
@@ -412,21 +431,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.dot_expr(node, typ)
 		}
 		else if p.tok.kind == .lsbr {
-			// TODO
-			// info := ti.info as table.Array
-			// ti = p.table.types[info.elem_type_idx]
-			if typ.name.starts_with('array_') {
-				elm_typ := typ.name[6..]
-				x := p.table.find_type(elm_typ) or {
-					p.error(elm_typ)
-					exit(0)
-				}
-				typ = x
-			}
-			else {
-				typ = table.int_type
-			}
-			node = p.index_expr(node)
+			node,typ = p.index_expr(node, typ)
 		}
 		else if p.tok.kind.is_infix() {
 			node,typ = p.infix_expr(node)
@@ -459,23 +464,50 @@ fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
 	return expr,ti
 }
 
-fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
-	// ,table.Type) {
+fn (p mut Parser) index_expr(left ast.Expr, typ_ table.Type) (ast.Expr,table.Type) {
+	mut typ := typ_
+	// TODO
+	// info := ti.info as table.Array
+	// ti = p.table.types[info.elem_type_idx]
+	if typ.name.starts_with('array_') {
+		elm_typ := typ.name[6..]
+		// TODO `typ = ... or ...`
+		x := p.table.find_type(elm_typ) or {
+			p.error(elm_typ)
+			exit(0)
+		}
+		typ = x
+	}
+	else {
+		typ = table.int_type
+	}
 	// println('index expr$p.tok.str() line=$p.tok.line_nr')
-	p.next()
-	println('start index expr')
-	index,typ := p.expr(0)
-	println('end expr typ=$typ.name')
+	p.next() // [
+	// `numbers[..end]`
+	mut index_expr := ast.Expr{}
+	if p.tok.kind == .dotdot {
+		index_expr = p.range_expr(left)
+		typ = typ_ // set the type back to array
+	}
+	else {
+		// println('start index expr')
+		mut index_type := table.Type{}
+		index_expr,index_type = p.expr(0)
+		if index_type.kind != .int {
+			p.error('non-integer index (type `$typ.name`)')
+		}
+	}
+	// println('end expr typ=$typ.name')
 	p.check(.rsbr)
-	println('got ]')
+	// println('got ]')
 	// /ti := table.int_type
 	mut node := ast.Expr{}
 	node = ast.IndexExpr{
 		left: left
-		index: index
+		index: index_expr
 	}
-	return node
-	// /return node,ti
+	// return node
+	return node,typ
 }
 
 fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.Type) {

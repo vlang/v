@@ -5,7 +5,6 @@ import (
 	v.ast
 	v.table
 	v.checker
-	// v.types
 	term
 )
 
@@ -25,7 +24,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		definitions: strings.new_builder(100)
 		table: table
 		checker: checker.new_checker(table) // checker
-
+		
 		fn_decl: 0
 	}
 	for file in files {
@@ -267,10 +266,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.field)
 		}
 		ast.IndexExpr {
-			g.expr(it.left)
-			g.write('[')
-			g.expr(it.index)
-			g.write(']')
+			g.index_expr(it)
 		}
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
@@ -304,6 +300,31 @@ fn (g mut Gen) expr(node ast.Expr) {
 		else {
 			println(term.red('cgen.expr(): bad node'))
 		}
+	}
+}
+
+fn (g mut Gen) index_expr(node ast.IndexExpr) {
+	// TODO else doesn't work with sum types
+	mut is_range := false
+	match node.index {
+		ast.RangeExpr {
+			is_range = true
+			g.write('array_slice(')
+			g.expr(node.left)
+			g.write(', ')
+			// g.expr(it.low)
+			g.write('0')
+			g.write(', ')
+			g.expr(it.high)
+			g.write(')')
+		}
+		else {}
+	}
+	if !is_range {
+		g.expr(node.left)
+		g.write('[')
+		g.expr(node.index)
+		g.write(']')
 	}
 }
 
