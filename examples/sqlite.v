@@ -14,7 +14,8 @@ fn main() {
 	name := db.q_string('select name from users where id = 1')
 	assert name == 'Sam'
 	
-	users := db.exec('select * from users')
+	users, code := db.exec('select * from users')
+	println("SQL Result code: $code")
 	for row in users {
 		println(row.vals)
 	}	

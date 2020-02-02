@@ -10,14 +10,20 @@ fn test_sqlite() {
 	db.exec("insert into users (name) values ('Kate')")
 	
 	nr_users := db.q_int('select count(*) from users')
-	println('nr users = $nr_users')
+	assert nr_users == 3
 	
 	name := db.q_string('select name from users where id = 1')
 	assert name == 'Sam'
 	
-	users := db.exec('select * from users')
+	users, mut code := db.exec('select * from users')
 	assert users.len == 3
-	for row in users {
-		println(row.vals)
-	}	
-}	
+	assert code == 101
+
+	code = db.exec_none('vacuum')
+	assert code == 101
+
+	user := db.exec_one('select * from users where id = 3') or {
+		panic(err)
+	}
+	assert user.vals.len == 2
+}
