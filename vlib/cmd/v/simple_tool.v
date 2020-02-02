@@ -1,15 +1,17 @@
-module compiler
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module main
 
 import (
-	os
 	filepath
+	os
 )
 
-pub fn launch_tool(tname string, cmdname string) {
-  is_verbose := '-verbose' in os.args || '--verbose' in os.args
+fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	vexe := vexe_path()
 	vroot := filepath.dir(vexe)
-	set_vroot_folder( vroot ) // needed by tools to find back v
+
 	mut tname_index := os.args.index(cmdname)
 	if tname_index == -1 {
 		tname_index = os.args.len
@@ -19,34 +21,35 @@ pub fn launch_tool(tname string, cmdname string) {
 	tool_exe := os.realpath('$vroot/tools/$tname')
 	tool_source := os.realpath('$vroot/tools/${tname}.v')
 	tool_command := '"$tool_exe" $tool_args'
-	if is_verbose { 
+	if is_verbose {
 		eprintln('launch_tool vexe        : $vroot')
 		eprintln('launch_tool vroot       : $vroot')
 		eprintln('launch_tool tool_args   : $tool_args')
 		eprintln('launch_tool tool_command: $tool_command')
-	}	
-	mut tool_should_be_recompiled := false
+	}
+
+	mut should_compile := false
 	if !os.exists(tool_exe) {
-		// fresh checkout
-		tool_should_be_recompiled = true
+		should_compile = true
 	} else {
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
-			tool_should_be_recompiled = true
+			should_compile = true
 		}
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(tool_source) {
 			// the user changed the source code of the tool
-			tool_should_be_recompiled = true
+			should_compile = true
 		}
 	}
-	
 	if is_verbose {
-		eprintln('launch_tool tool_should_be_recompiled: $tool_should_be_recompiled')
+		eprintln('launch_tool should_compile: $should_compile')
 	}
-	
-	if tool_should_be_recompiled {
-		if tname == 'vfmt' {  compilation_options << ['-d', 'vfmt'] }
+
+	if should_compile {
+		if tname == 'vfmt' {
+			compilation_options << ['-d', 'vfmt']
+		}
 		compilation_args := compilation_options.join(' ')
 		compilation_command := '"$vexe" $compilation_args "$tool_source"'
 		if is_verbose {
@@ -61,5 +64,5 @@ pub fn launch_tool(tname string, cmdname string) {
 		eprintln('launch_tool running tool command: $tool_command ...')
 	}
 	
-	exit( os.system(tool_command) )
+	exit(os.system(tool_command))
 }

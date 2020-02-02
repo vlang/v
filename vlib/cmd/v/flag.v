@@ -66,3 +66,13 @@ fn resolve_flags_and_argument() []string {
 
 	return non_empty(os.args)
 }
+
+fn vexe_path() string {
+	vexe := os.getenv('VEXE')
+	if vexe != '' {
+		return vexe
+	}
+	real_vexe_path := os.realpath(os.executable())
+	os.setenv('VEXE', real_vexe_path, true)
+	return real_vexe_path
+}

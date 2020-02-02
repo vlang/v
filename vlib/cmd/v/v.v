@@ -44,7 +44,7 @@ fn main() {
 
 	if command in simple_cmd {
 		//External tools
-		compiler.launch_tool('v' + command, command)
+		launch_tool(is_verbose, 'v' + command, command)
 		return
 	}
 
@@ -55,13 +55,13 @@ fn main() {
 
 	match command {
 		'', '-' {
-			compiler.launch_tool('vrepl', '')
+			launch_tool(is_verbose, 'vrepl', '')
 		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3 (January)')
 		}
 		'search', 'install', 'update', 'remove' {
-			compiler.launch_tool('vpm', command)
+			launch_tool(is_verbose, 'vpm', command)
 		}
 		'get' {
 			println('Use `v install` to install modules from vpm.vlang.io.')
