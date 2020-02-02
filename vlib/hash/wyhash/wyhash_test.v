@@ -1,4 +1,5 @@
 import hash.wyhash
+import rand
 
 struct WyHashTest {
 	s        string
@@ -25,5 +26,17 @@ fn test_wyhash() {
 		// println(' #      GOT: $got | $got.hex()')
 		// println(' # EXPECTED: $test.expected | $test.expected.hex()')
 		assert got == test.expected
+	}
+}
+
+fn test_rand_u64() {
+	mut seed := u64(111)
+	mut rand_nos := []u64
+	for i in 0..40 {
+		rand_no := wyhash.rand_u64(&seed)
+		for r in rand_nos {
+			assert rand_no != r
+		}
+		rand_nos << rand_no
 	}
 }
