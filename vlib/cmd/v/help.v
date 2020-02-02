@@ -1,6 +1,6 @@
-module compiler
+module main
 
-pub const (
+const (
 	help_text = 'Usage: v [options/commands] [file.v | directory]
 
    When V is run without any arguments, it is run in REPL mode.

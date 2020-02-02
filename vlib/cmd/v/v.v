@@ -38,7 +38,7 @@ fn main() {
 		return
 	}
 	if '-h' in option || '--help' in option || command == 'help' {
-		println(compiler.help_text)
+		println(help_text)
 		return
 	}
 
