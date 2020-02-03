@@ -11,9 +11,9 @@ const (
 )
 
 fn test_c_files() {
-	// $if windows {
-	// 	return
-	// }
+	$if windows {
+		return
+	}
 	println('Running V => C tests')
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
