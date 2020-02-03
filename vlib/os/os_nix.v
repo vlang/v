@@ -1,5 +1,7 @@
 module os
 
+import strings
+
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -198,18 +200,19 @@ pub fn exec(cmd string) ?Result {
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
-	buf := [1000]byte
-	mut res := ''
-	for C.fgets(charptr(buf), 1000, f) != 0 {
-		res += tos(buf, vstrlen(buf))
+	buf := [4096]byte
+	mut res := strings.new_builder(1024)
+	for C.fgets(charptr(buf), 4096, f) != 0 {
+		res.write_bytes( buf, vstrlen(buf) )
 	}
-	res = res.trim_space()
+	soutput := res.str().trim_space()
+	res.free()
 	exit_code := vpclose(f)
 	// if exit_code != 0 {
 	// return error(res)
 	// }
 	return Result{
-		output: res
+		output: soutput
 		exit_code: exit_code
 	}
 }

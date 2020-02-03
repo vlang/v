@@ -1,5 +1,7 @@
 module os
 
+import strings
+
 #flag -lws2_32
 #include <winsock2.h>
 
@@ -309,24 +311,25 @@ pub fn exec(cmd string) ?Result {
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
-	buf := [1000]byte
+	buf := [4096]byte
 	mut bytes_read := u32(0)
-	mut read_data := ''
+	mut read_data := strings.new_builder(1024)
 	for {
 		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read), 0)
-		read_data += tos(buf, int(bytes_read))
+		read_data.write_bytes(buf, int(bytes_read))
 		if readfile_result == false || int(bytes_read) == 0 {
 			break
 		}
 	}
-	read_data = read_data.trim_space()
+	soutput := read_data.str().trim_space()
+	read_data.free()
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.hProcess, C.INFINITE)
 	C.GetExitCodeProcess(proc_info.hProcess, voidptr(&exit_code))
 	C.CloseHandle(proc_info.hProcess)
 	C.CloseHandle(proc_info.hThread)
 	return Result {
-		output: read_data
+		output: soutput
 		exit_code: int(exit_code)
 	}
 }

@@ -11,14 +11,14 @@ fn arc_vertices(x, y, r, start_angle, end_angle f32, segments int) []f32 {
 	start_rads := start_angle * 0.0174533 // deg -> rad approx
 	end_rads := end_angle * 0.0174533
 	increment := (end_rads - start_rads) / segments
-	vertices << [x + f32(math.cos(start_rads)) * r, y + f32(math.sin(start_rads)) * r]
+	vertices << [x + f32(math.cos(start_rads)) * r, y + f32(math.sin(start_rads)) * r] !
 	mut i := 1
 	for i < segments {
 		theta := f32(i) * increment + start_rads
-		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r]
+		vertices << [x + f32(math.cos(theta)) * r, y + f32(math.sin(theta)) * r] !
 		i++
 	}
-	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r]
+	vertices << [x + f32(math.cos(end_rads)) * r, y + f32(math.sin(end_rads)) * r] !
 	return vertices
 }
 
