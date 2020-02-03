@@ -1,6 +1,7 @@
 import (
 	os
 	filepath
+	v.pref
 	v.builder
 	term
 )
@@ -10,9 +11,9 @@ const (
 )
 
 fn test_c_files() {
-	$if windows {
-		return
-	}
+	// $if windows {
+	// 	return
+	// }
 	println('Running V => C tests')
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
@@ -23,7 +24,7 @@ fn test_c_files() {
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
-		mut b := builder.new_builder(builder.Preferences{})
+		mut b := builder.new_builder(pref.Preferences{})
 		res := b.gen_c([path])
 		if compare_texts(res, ctext) {
 			eprintln('${term_ok} ${i}')

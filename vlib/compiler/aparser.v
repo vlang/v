@@ -7,7 +7,7 @@ import (
 	os
 	strings
 	filepath
-	v.builder
+	v.pref
 	//compiler.x64
 	time
 )
@@ -21,7 +21,7 @@ struct Parser {
 	// the #include directives in the parsed .v file
 	file_pcguard           string
 	v                      &V
-	pref                   &Preferences // Preferences shared from V struct
+	pref                   &pref.Preferences // Preferences shared from V struct
 mut:
 	scanner                &Scanner
 	tokens                 []Token
@@ -36,7 +36,7 @@ mut:
 	table                  &Table
 	import_table           ImportTable // Holds imports for just the file being parsed
 	pass                   Pass
-	os                     builder.OS
+	os                     pref.OS
 	inside_const           bool
 	expr_var               Var
 	has_immutable_field    bool
