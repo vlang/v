@@ -100,6 +100,20 @@ fn private_function() {
 }
 ```
 
+Function names in V language should be snake_case style:
+
+```v
+// valid
+fn my_func() int {
+    return 42
+}
+
+// invalid
+fn MyFunc() int {
+    return 42
+} //=> function names cannot contain uppercase letters, use snake_case instead
+```
+
 ## Variables
 
 ```v
@@ -135,7 +149,7 @@ immutable by default. To be able to change the value of the variable, you have t
 
 Try compiling the program above after removing `mut` from the first line.
 
-Please note the difference between `:=` and `=`  
+Please note the difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
 ```v
@@ -167,6 +181,16 @@ fn main() {
 
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name that is already used in a parent scope will result in a compilation error.
 
+Variable names in V language should be snake_case style:
+
+```v
+// valid
+mut upper_age := 50
+
+// invalid
+mut UpperAge := 20 // => variable names cannot contain uppercase letters, use snake_case instead
+```
+
 ## Basic types
 
 ```v
@@ -186,6 +210,16 @@ voidptr
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
+
+TBD: Type names in V language permits snake_case/PascalCase/ALLCAP/SCREAMING_SNAKE_CASE styles, and distinguish them:
+
+```v
+// valid
+type ActiveMember bool
+type active_member bool
+type ACTIVE bool
+type ACTIVE_MEMBER bool
+```
 
 ## Strings
 
@@ -537,6 +571,32 @@ button.set_pos(x, y)
 button.widget.set_pos(x,y)
 ```
 
+Struct names in V language should be PascalCase style:
+
+```v
+// valid
+struct PointCursor {
+    x int
+    y int
+}
+
+// invalid
+struct point_cursor {
+    x int
+    y int
+} //=> type names cannot contain `_`
+
+struct pointCursor {
+    x int
+    y int
+} //=> mod=main struct names must be capitalized: use `struct Pointcursor`
+
+struct POINT {
+    x int
+    y int
+} //=> bad struct name, e.g. use `HttpRequest` instead of `HTTPRequest`
+```
+
 ## Access modifiers
 
 Struct fields are private and immutable by default (making structs immutable as well).
@@ -608,6 +668,20 @@ The receiver appears in its own argument list between the `fn` keyword and the m
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
+
+Method names in V language should be snake_case style:
+
+```v
+// valid
+fn (u User)my_func() int {
+    return u.age
+}
+
+// invalid
+fn (u User)MyFunc() int {
+    return u.age
+} //=> function names cannot contain uppercase letters, use snake_case instead
+```
 
 ## Pure functions by default
 
@@ -894,6 +968,39 @@ println(perform(cat)) // "meow"
 
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
+
+Interface names in V language should be PascaleCase and should end with "er":
+
+```v
+// valid
+interface HumanSpeaker {
+    speak() string
+}
+
+// invalid
+interface HumanSpeaking {
+    speak() string
+} //=> interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)
+
+interface human_speaker {
+    speak() string
+} //=> type names cannot contain `_`
+
+interface speaker {
+    speak() string
+} //=> mod=main struct names must be capitalized: use `struct Speaker`
+
+interface humanSpeaker {
+    speak() string
+} //=> mod=main struct names must be capitalized: use `struct Humanspeaker`
+```
+
+Empty interface `interface{}` cannot be used in V language:
+
+```v
+// invalid
+type Foo interface{}   //=> unknown type ``
+```
 
 ## Enums
 
@@ -1619,3 +1726,5 @@ Assignment Operators
 &=   |=   ^=
 >>=  <<=
 ```
+
+V language does not use `;` for separators except in `for` syntax.
