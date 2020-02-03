@@ -904,6 +904,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 			
 			ti: ti
 		}
+		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
 	p.table.register_type(table.Type{

@@ -11,6 +11,17 @@ struct User {
 	age int
 }
 
+/*
+struct One {
+	two Two
+}
+
+struct Two {
+
+}
+*/
+
+
 fn main() {
 	a := 10
 	//bb := 2 + 'hi'

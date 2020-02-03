@@ -197,7 +197,12 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		}
 		ast.VarDecl {
 			typ := c.expr(it.expr)
-			// println('var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
+			// println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
+			/*
+			if typ.kind != .void {
+				it.typ = typ
+			}
+			*/
 			// if it.typ.kind == .unresolved {
 			// it.ti = typ
 			// println('unresolved var')
@@ -284,22 +289,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 			return c.selector_expr(it)
 		}
 		ast.IndexExpr {
-			mut typ := c.expr(it.left)
-			if typ.name.starts_with('array_') {
-				elm_typ := typ.name[6..]
-				// TODO `typ = ... or ...`
-				x := c.table.find_type(elm_typ) or {
-					c.error(elm_typ, it.pos)
-					exit(0)
-				}
-				typ = x
-			}
-			else {
-				typ = table.int_type
-			}
-			return typ
-			// c.expr(it.index)
-			//return it.typ
+			return c.index_expr(it)
 		}
 		ast.IfExpr {
 			typ := c.expr(it.cond)
@@ -318,6 +308,25 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 		else {}
 	}
 	return table.void_type
+}
+
+pub fn (c &Checker) index_expr(node ast.IndexExpr) table.Type {
+	mut typ := c.expr(node.left)
+	if typ.name.starts_with('array_') {
+		elm_typ := typ.name[6..]
+		// TODO `typ = ... or ...`
+		x := c.table.find_type(elm_typ) or {
+			c.error(elm_typ, node.pos)
+			exit(0)
+		}
+		typ = x
+	}
+	else {
+		typ = table.int_type
+	}
+	return typ
+	// c.expr(it.index)
+	// return it.typ
 }
 
 pub fn (c &Checker) error(s string, pos token.Position) {

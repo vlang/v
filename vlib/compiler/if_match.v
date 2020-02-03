@@ -139,7 +139,9 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				// println('got child $sum_child_type')
 				p.register_var(Var{
 					name: 'it'
-					typ: sum_child_type
+					typ: sum_child_type+'*'
+					is_mut: true
+					ptr: true
 				})
 			}
 			else {
@@ -189,7 +191,8 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 			p.check(.lcbr)
 			p.genln('{ ')
 			if is_sum_type {
-				p.genln(' $sum_child_type it = *($sum_child_type*)$tmp_var .obj ;')
+				//p.genln(' $sum_child_type it = *($sum_child_type*)$tmp_var .obj ;')
+				p.genln(' $sum_child_type* it = ($sum_child_type*)${tmp_var}.obj ;')
 			}
 			p.statements()
 			all_cases_return = all_cases_return && p.returns
@@ -261,12 +264,12 @@ fn (p mut Parser) if_statement(is_expr bool, elif_depth int) string {
 			name: var_name
 			typ: typ
 			is_mut: false // TODO
-			
+
 			is_used: true // TODO
 			// is_alloc: p.is_alloc || typ.starts_with('array_')
 			// line_nr: p.tokens[ var_token_idx ].line_nr
 			// token_idx: var_token_idx
-			
+
 		})
 		p.statements()
 		p.close_scope()
