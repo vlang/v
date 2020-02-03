@@ -186,7 +186,7 @@ pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.Type {
 }
 
 fn (c &Checker) stmt(node ast.Stmt) {
-	match node {
+	match mut node {
 		ast.FnDecl {
 			for stmt in it.stmts {
 				c.stmt(stmt)
