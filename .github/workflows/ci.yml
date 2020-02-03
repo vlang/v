@@ -20,10 +20,9 @@ jobs:
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Set up pg database
       run: |
-        initdb /usr/local/var/postgres
-        brew services -v start postgresql
-        brew services list | grep postgres
+        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
         sleep 3
+        cat /usr/local/var/postgres/server.log
         psql -d postgres -c 'select rolname from pg_roles'
         psql -d postgres -c 'create database customerdb;'
         psql -d customerdb -f examples/database/pg/mydb.sql
