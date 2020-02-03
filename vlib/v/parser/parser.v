@@ -92,14 +92,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
-		file := parse_file(path, table)
-		files << file
-		/*
-		println('parsed: $path')
-		for mod in file.imports {
-			println(' * importing: $mod.mod -> $mod.alias')
-		}
-		*/
+		files << parse_file(path, table)
 	}
 	return files
 }
