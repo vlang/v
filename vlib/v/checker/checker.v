@@ -68,6 +68,9 @@ pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
 		c.error('infix expr: cannot use `$left_ti.name` as `$right_ti.name`', infix_expr.pos)
 	}
+	if infix_expr.op.is_relational() {
+		return table.bool_type
+	}
 	return left_ti
 }
 
@@ -195,111 +198,120 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		ast.VarDecl {
 			typ := c.expr(it.expr)
 			// println('var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
-			if it.typ.kind == .unresolved {
-				// it.ti = typ
-				// println('unresolved var')
-				}
+			// if it.typ.kind == .unresolved {
+			// it.ti = typ
+			// println('unresolved var')
+			// }
+		}
+		ast.ForStmt {
+			typ := c.expr(it.cond)
+			if typ.kind != .bool {
+				c.error('non-bool used as for condition', it.pos)
 			}
-			ast.ForStmt {
-				c.expr(it.cond)
-				for stmt in it.stmts {
-					c.stmt(stmt)
-				}
+			for stmt in it.stmts {
+				c.stmt(stmt)
 			}
-			ast.ForCStmt {
-				c.stmt(it.init)
-				c.expr(it.cond)
-				c.stmt(it.inc)
-				for stmt in it.stmts {
-					c.stmt(stmt)
-				}
+		}
+		ast.ForCStmt {
+			c.stmt(it.init)
+			c.expr(it.cond)
+			c.stmt(it.inc)
+			for stmt in it.stmts {
+				c.stmt(stmt)
 			}
-			// ast.StructDecl {}
-			ast.ExprStmt {
-				c.expr(it.expr)
-			}
-			else {}
+		}
+		// ast.StructDecl {}
+		ast.ExprStmt {
+			c.expr(it.expr)
+		}
+		else {}
 	}
-	}
+}
 
-	pub fn (c &Checker) expr(node ast.Expr) table.Type {
-		match node {
-			ast.AssignExpr {
-				c.check_assign_expr(it)
-			}
-			ast.IntegerLiteral {
-				return table.int_type
-			}
-			// ast.FloatLiteral {}
-			ast.PostfixExpr {
-				return c.expr(it.expr)
-			}
-			/*
+pub fn (c &Checker) expr(node ast.Expr) table.Type {
+	match node {
+		ast.AssignExpr {
+			c.check_assign_expr(it)
+		}
+		ast.IntegerLiteral {
+			return table.int_type
+		}
+		// ast.FloatLiteral {}
+		ast.PostfixExpr {
+			return c.expr(it.expr)
+		}
+		/*
 		ast.UnaryExpr {
 			c.expr(it.left)
 		}
 		*/
 
-			ast.StringLiteral {
-				return table.string_type
-			}
-			ast.PrefixExpr {
-				return c.expr(it.right)
-			}
-			ast.InfixExpr {
-				return c.infix_expr(it)
-			}
-			ast.StructInit {
-				return c.check_struct_init(it)
-			}
-			ast.CallExpr {
-				return c.call_expr(it)
-			}
-			ast.MethodCallExpr {
-				return c.check_method_call_expr(it)
-			}
-			ast.ArrayInit {
-				return c.array_init(it)
-			}
-			ast.Ident {
-				if it.kind == .variable {
-					info := it.info as ast.IdentVar
-					if info.typ.kind != .unresolved {
-						return info.typ
-					}
-					return c.expr(info.expr)
+		ast.StringLiteral {
+			return table.string_type
+		}
+		ast.PrefixExpr {
+			return c.expr(it.right)
+		}
+		ast.InfixExpr {
+			return c.infix_expr(it)
+		}
+		ast.StructInit {
+			return c.check_struct_init(it)
+		}
+		ast.CallExpr {
+			return c.call_expr(it)
+		}
+		ast.MethodCallExpr {
+			return c.check_method_call_expr(it)
+		}
+		ast.ArrayInit {
+			return c.array_init(it)
+		}
+		ast.Ident {
+			if it.kind == .variable {
+				info := it.info as ast.IdentVar
+				if info.typ.kind != .unresolved {
+					return info.typ
 				}
-				return table.void_type
+				return c.expr(info.expr)
 			}
-			// ast.BoolLiteral {}
-			ast.SelectorExpr {
-				return c.selector_expr(it)
+			return table.void_type
+		}
+		ast.BoolLiteral {
+			return table.bool_type
+		}
+		ast.SelectorExpr {
+			return c.selector_expr(it)
+		}
+		ast.IndexExpr {
+			// c.expr(it.left)
+			// c.expr(it.index)
+			return it.typ
+		}
+		ast.IfExpr {
+			typ := c.expr(it.cond)
+			if typ.kind != .bool {
+				c.error('non-bool (`$typ.name`) used as if condition', it.pos)
 			}
-			ast.IndexExpr {
-				c.expr(it.left)
-				c.expr(it.index)
+			for i, stmt in it.stmts {
+				c.stmt(stmt)
 			}
-			ast.IfExpr {
-				c.expr(it.cond)
-				for i, stmt in it.stmts {
+			if it.else_stmts.len > 0 {
+				for stmt in it.else_stmts {
 					c.stmt(stmt)
 				}
-				if it.else_stmts.len > 0 {
-					for stmt in it.else_stmts {
-						c.stmt(stmt)
-					}
-				}
 			}
-			else {}
+		}
+		else {}
 	}
-		return table.void_type
-	}
+	return table.void_type
+}
 
-	pub fn (c &Checker) error(s string, pos token.Position) {
-		print_backtrace()
-		final_msg_line := '$c.file_name:$pos.line_nr: error: $s'
-		eprintln(final_msg_line)
-		/*
+pub fn (c &Checker) error(s string, pos token.Position) {
+	print_backtrace()
+	final_msg_line := '$c.file_name:$pos.line_nr: error: $s'
+	eprintln(final_msg_line)
+	/*
 	if colored_output {
 		eprintln(term.bold(term.red(final_msg_line)))
 	}else{
@@ -307,5 +319,5 @@ fn (c &Checker) stmt(node ast.Stmt) {
 	}
 	*/
 
-		exit(1)
-	}
+	exit(1)
+}

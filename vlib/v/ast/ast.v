@@ -8,12 +8,12 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -63,7 +63,13 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
-	ti   table.Type
+	typ  table.Type
+}
+
+pub struct ConstDecl {
+pub:
+	fields []Field
+	exprs  []Expr
 }
 
 pub struct StructDecl {
@@ -159,6 +165,14 @@ mut:
 	pos    token.Position
 }
 
+pub struct GlobalDecl {
+pub:
+	name string
+	expr Expr
+mut:
+	typ  table.Type
+}
+
 pub struct File {
 pub:
 	mod     Module
@@ -178,6 +192,7 @@ type IdentInfo = IdentVar
 pub enum IdentKind {
 	blank_ident
 	variable
+	constant
 }
 
 // A single identifier
@@ -232,6 +247,7 @@ pub:
 // op   token.Kind
 	left  Expr
 	index Expr // [0], [start..end] etc
+	typ table.Type
 }
 
 pub struct IfExpr {
@@ -242,12 +258,21 @@ pub:
 	else_stmts []Stmt
 	ti         table.Type
 	left       Expr // `a` in `a := if ...`
+	pos        token.Position
+}
+
+pub struct CompIf {
+pub:
+	cond       Expr
+	stmts      []Stmt
+	else_stmts []Stmt
 }
 
 pub struct ForStmt {
 pub:
 	cond  Expr
 	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct ForInStmt {
@@ -280,6 +305,11 @@ pub:
 }
 */
 
+// e.g. `[unsafe_fn]`
+pub struct Attr {
+pub:
+	name string
+}
 
 pub struct AssignExpr {
 pub:

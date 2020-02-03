@@ -14,6 +14,7 @@ pub mut:
 	local_vars []Var
 	// fns Hashmap
 	fns        map[string]Fn
+	consts     map[string]Var
 	tmp_cnt    int
 	imports    []string
 }
@@ -27,11 +28,13 @@ pub:
 
 pub struct Var {
 pub:
-	name   string
-	is_mut bool
+	name      string
+	is_mut    bool
+	is_const  bool
+	is_global bool
 	// expr   ast.Expr
 mut:
-	typ    Type
+	typ       Type
 }
 
 pub fn new_table() &Table {
@@ -78,6 +81,23 @@ pub fn (t mut Table) clear_vars() {
 	}
 }
 
+pub fn (t mut Table) register_const(v Var) {
+	t.consts[v.name] = v
+}
+
+pub fn (t mut Table) register_global(name string, typ Type) {
+	t.consts[name] = Var{
+		name: name
+		typ: typ
+		is_const: true
+		is_global: true
+		// mod: p.mod
+		// is_mut: true
+		// idx: -1
+		
+	}
+}
+
 pub fn (t mut Table) register_var(v Var) {
 	println('register_var: $v.name - $v.typ.name')
 	t.local_vars << v
@@ -105,6 +125,15 @@ pub fn (t mut Table) register_var(v Var) {
 
 pub fn (t &Table) find_fn(name string) ?Fn {
 	f := t.fns[name]
+	if f.name.str != 0 {
+		// TODO
+		return f
+	}
+	return none
+}
+
+pub fn (t &Table) find_const(name string) ?Var {
+	f := t.consts[name]
 	if f.name.str != 0 {
 		// TODO
 		return f
@@ -351,7 +380,7 @@ pub fn (t &Table) check(got, expected &Type) bool {
 	// if expected.name == 'array' {
 	// return true
 	// }
-	if got.idx != expected.idx {
+	if got.idx != expected.idx && got.name != expected.name {
 		return false
 	}
 	return true

@@ -51,6 +51,13 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// g.writeln('//// stmt start')
 	match node {
 		ast.Import {}
+		ast.ConstDecl {
+			for i, field in it.fields {
+				g.write('$field.typ.name $field.name = ')
+				g.expr(it.exprs[i])
+				g.writeln(';')
+			}
+		}
 		ast.FnDecl {
 			g.fn_decl = &it
 			is_main := it.name == 'main'
@@ -145,7 +152,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln('typedef struct {')
 			for field in it.fields {
 				// t := g.table.get_type(field.ti.idx)
-				ti := g.table.refresh_ti(field.ti)
+				ti := g.table.refresh_ti(field.typ)
 				g.writeln('\t$ti.name $field.name;')
 			}
 			g.writeln('} $it.name;')

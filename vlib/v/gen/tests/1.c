@@ -6,6 +6,8 @@ multi_return_int_string multi_return();
 void variadic(variadic_int a);
 void ensure_cap(int required, int cap);
 
+int pi = 3;
+
 typedef struct {
 	int age;
 } User;
@@ -19,6 +21,7 @@ int main() {
 	a++;
 	foo(3);
 	int ak = 10;
+	int mypi = pi;
 	return 0;
 }
 

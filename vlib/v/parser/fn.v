@@ -50,7 +50,7 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 	return args // ,table.void_ti
 }
 
-fn (p mut Parser) fn_decl() ast.FnDecl {
+fn (p mut Parser) fn_decl(/*high bool*/) ast.FnDecl {
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -68,14 +68,18 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		if p.tok.kind == .key_mut {
 			p.next()
 		}
-		rec_ti = p.parse_ti()
+		rec_ti = p.parse_type()
 		p.table.register_var(table.Var{
 			name: rec_name
 			typ: rec_ti
 		})
 		p.check(.rpar)
 	}
-	name := p.check_name()
+	mut name := ''
+	if p.tok.kind == .name {
+		// TODO
+		name = p.check_name()
+	}
 	// println('fn decl $name')
 	p.check(.lpar)
 	// Args
@@ -88,7 +92,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			p.check(.comma)
 			arg_names << p.check_name()
 		}
-		ti := p.parse_ti()
+		ti := p.parse_type()
 		for arg_name in arg_names {
 			arg := table.Var{
 				name: arg_name
@@ -112,7 +116,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// Return type
 	mut typ := table.void_type
 	if p.tok.kind in [.name, .lpar] {
-		typ = p.parse_ti()
+		typ = p.parse_type()
 		p.return_type = typ
 	}
 	else {
@@ -144,7 +148,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		is_pub: is_pub
 		receiver: ast.Field{
 			name: rec_name
-			ti: rec_ti
+			typ: rec_ti
 		}
 	}
 }

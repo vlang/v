@@ -13,13 +13,13 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type {
 	if p.tok.kind == .number {
 		size := p.tok.lit.int()
 		p.check(.rsbr)
-		elem_ti := p.parse_ti()
+		elem_ti := p.parse_type()
 		idx,name := p.table.find_or_register_array_fixed(&elem_ti, size, 1)
 		return table.new_type(.array_fixed, name, idx, nr_muls)
 	}
 	// array
 	p.check(.rsbr)
-	elem_ti := p.parse_ti()
+	elem_ti := p.parse_type()
 	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
 		p.check(.lsbr)
@@ -33,9 +33,9 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type {
 pub fn (p mut Parser) parse_map_ti(nr_muls int) table.Type {
 	p.next()
 	p.check(.lsbr)
-	key_ti := p.parse_ti()
+	key_ti := p.parse_type()
 	p.check(.rsbr)
-	value_ti := p.parse_ti()
+	value_ti := p.parse_type()
 	idx,name := p.table.find_or_register_map(&key_ti, &value_ti)
 	return table.new_type(.map, name, idx, nr_muls)
 }
@@ -44,7 +44,7 @@ pub fn (p mut Parser) parse_multi_return_ti() table.Type {
 	p.check(.lpar)
 	mut mr_tis := []table.Type
 	for {
-		mr_ti := p.parse_ti()
+		mr_ti := p.parse_type()
 		mr_tis << mr_ti
 		if p.tok.kind == .comma {
 			p.check(.comma)
@@ -60,12 +60,18 @@ pub fn (p mut Parser) parse_multi_return_ti() table.Type {
 
 pub fn (p mut Parser) parse_variadic_ti() table.Type {
 	p.check(.ellipsis)
-	variadic_ti := p.parse_ti()
+	variadic_ti := p.parse_type()
 	idx,name := p.table.find_or_register_variadic(&variadic_ti)
 	return table.new_type(.variadic, name, idx, 0)
 }
 
-pub fn (p mut Parser) parse_ti() table.Type {
+pub fn (p mut Parser) parse_fn_type() table.Type {
+	//p.check(.key_fn)
+	p.fn_decl()
+	return table.int_type
+}
+
+pub fn (p mut Parser) parse_type() table.Type {
 	mut nr_muls := 0
 	for p.tok.kind == .amp {
 		p.check(.amp)
@@ -73,6 +79,10 @@ pub fn (p mut Parser) parse_ti() table.Type {
 	}
 	name := p.tok.lit
 	match p.tok.kind {
+		// func
+		.key_fn {
+			return p.parse_fn_type()
+		}
 		// array
 		.lsbr {
 			return p.parse_array_ti(nr_muls)

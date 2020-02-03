@@ -1,6 +1,12 @@
 import moda
 import modb as mb
 
+const (
+	pi = 3
+	//s = 'hi'
+
+)
+
 struct User {
 	age int
 }
@@ -15,6 +21,7 @@ fn main() {
 	a++
 	foo(3)
 	ak := 10
+	mypi := pi
 }
 	/*
 	user := User{}
