@@ -161,6 +161,7 @@ mut:
 
 pub struct File {
 pub:
+	path    string
 	mod     Module
 	imports []Import
 	stmts   []Stmt

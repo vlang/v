@@ -29,6 +29,7 @@ const (
 		'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
+/*
 enum OS {
 	mac
 	linux
@@ -42,6 +43,7 @@ enum OS {
 	solaris
 	haiku
 }
+*/
 
 enum Pass {
 	// A very short pass that only looks at imports in the beginning of
@@ -59,7 +61,7 @@ enum Pass {
 
 struct V {
 pub mut:
-	os                  OS // the OS to build for
+	os                  builder.OS // the OS to build for
 	out_name_c          string // name of the temporary C file
 	files               []string // all V files that need to be parsed and compiled
 	dir                 string // directory (or file) being compiled (TODO rename to path?)
@@ -393,7 +395,7 @@ pub fn (v mut V) compile2() {
 		println('all .v files:')
 		println(v.files)
 	}
-	mut b := builder.new_builder()
+	mut b := builder.new_builder(v.v2_prefs())
 	b.build_c(v.files, v.out_name)
 	v.cc()
 }
@@ -405,8 +407,22 @@ pub fn (v mut V) compile_x64() {
 	}
 	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
 	v.files << v.dir
-	mut b := builder.new_builder()
+	mut b := builder.new_builder(v.v2_prefs())
+	// move all this logic to v2
 	b.build_x64(v.files, v.out_name)
+}
+
+fn (v &V) v2_prefs() builder.Preferences {
+	return builder.Preferences{
+		os: v.os
+		vpath: v.pref.vpath
+		vlib_path: v.pref.vlib_path
+		mod_path: v_modules_path
+		compile_dir: v.compiled_dir
+		user_mod_path: v.pref.user_mod_path
+		is_test: v.pref.is_test
+		is_verbose: v.pref.is_verbose,
+	}
 }
 
 fn (v mut V) generate_init() {
@@ -1013,7 +1029,7 @@ pub fn new_v(args []string) &V {
 			}
 		}
 	}
-	mut _os := OS.mac
+	mut _os := builder.OS.mac
 	// No OS specifed? Use current system
 	if target_os == '' {
 		$if linux {
@@ -1224,7 +1240,7 @@ pub fn cescaped_path(s string) string {
 	return s.replace('\\', '\\\\')
 }
 
-pub fn os_from_string(os string) OS {
+pub fn os_from_string(os string) builder.OS {
 	match os {
 		'linux' {
 			return .linux

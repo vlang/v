@@ -82,6 +82,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
+		path: path
 		mod: module_decl
 		imports: imports
 		stmts: stmts
@@ -91,7 +92,14 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 pub fn parse_files(paths []string, table &table.Table) []ast.File {
 	mut files := []ast.File
 	for path in paths {
-		files << parse_file(path, table)
+		file := parse_file(path, table)
+		files << file
+		/*
+		println('parsed: $path')
+		for mod in file.imports {
+			println(' * importing: $mod.mod -> $mod.alias')
+		}
+		*/
 	}
 	return files
 }

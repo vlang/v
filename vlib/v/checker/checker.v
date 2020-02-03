@@ -28,9 +28,9 @@ pub fn (c &Checker) check(ast_file ast.File) {
 	}
 }
 
-pub fn (c mut Checker) check_files(v_files []string, ast_files []ast.File) {
-	for i, file in ast_files {
-		c.file_name = v_files[i]
+pub fn (c mut Checker) check_files(ast_files []ast.File) {
+	for file in ast_files {
+		c.file_name = file.path
 		c.check(file)
 	}
 }
