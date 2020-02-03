@@ -96,7 +96,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				// t := g.table.get_type(g.fn_decl.ti.idx)
+				println('MULT RET')
+				println(g.fn_decl.ti.idx)
+				println(g.fn_decl.ti.name)
+				// ttln( := g.table.get_type(g.fn_decl.ti.idx)
 				ti := g.table.refresh_ti(g.fn_decl.ti)
 				g.write(' ($ti.name){')
 				for i, expr in it.exprs {
