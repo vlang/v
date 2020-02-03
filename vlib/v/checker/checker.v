@@ -134,7 +134,7 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
 			return field.ti
 		}
 		else {
-			c.error('$ti.name is not a struct', selector_expr.pos)
+			c.error('`$typ.name` is not a struct', selector_expr.pos)
 		}
 	}
 	return table.void_type
