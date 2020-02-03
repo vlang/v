@@ -12,6 +12,11 @@ import (
 fn (p mut Parser) match_statement(is_expr bool) string {
 	p.check(.key_match)
 	p.fspace()
+	is_mut := p.tok == .key_mut
+	if is_mut {
+		p.next()
+		p.fspace()
+	}
 	typ,expr := p.tmp_expr()
 	if typ.starts_with('array_') {
 		p.error('arrays cannot be compared')
@@ -140,7 +145,7 @@ fn (p mut Parser) match_statement(is_expr bool) string {
 				p.register_var(Var{
 					name: 'it'
 					typ: sum_child_type+'*'
-					is_mut: true
+					is_mut: is_mut
 					ptr: true
 				})
 			}

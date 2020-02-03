@@ -197,6 +197,7 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		}
 		ast.VarDecl {
 			typ := c.expr(it.expr)
+			// it.typ = typ
 			// println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
 			/*
 			if typ.kind != .void {
