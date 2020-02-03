@@ -7,6 +7,7 @@ import (
 	os
 	strings
 	filepath
+	v.builder
 	//compiler.x64
 	time
 )
@@ -35,7 +36,7 @@ mut:
 	table                  &Table
 	import_table           ImportTable // Holds imports for just the file being parsed
 	pass                   Pass
-	os                     OS
+	os                     builder.OS
 	inside_const           bool
 	expr_var               Var
 	has_immutable_field    bool

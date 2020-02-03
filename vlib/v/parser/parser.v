@@ -88,6 +88,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
 	return ast.File{
+		path: path
 		mod: module_decl
 		imports: imports
 		stmts: stmts
