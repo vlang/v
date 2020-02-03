@@ -307,7 +307,7 @@ fn (gen_vc mut GenVC) generate() {
 		gen_vc.gen_error = true
 	}
 	// commit changes to local vc repo
-	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc commit -m "[v:master] commit $last_commit_hash_v_short - $last_commit_subject"')
+	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc commit -m "[v:master] $last_commit_hash_v_short - $last_commit_subject"')
 	// push changes to remote vc repo
 	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc push https://${urllib.query_escape(git_username)}:${urllib.query_escape(git_password)}@$git_repo_vc master')
 }
