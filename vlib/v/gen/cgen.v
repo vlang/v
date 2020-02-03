@@ -24,7 +24,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		definitions: strings.new_builder(100)
 		table: table
 		checker: checker.new_checker(table) // checker
-
+		
 		fn_decl: 0
 	}
 	for file in files {
@@ -96,9 +96,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				println('MULT RET')
-				println(g.fn_decl.ti.idx)
-				println(g.fn_decl.ti.name)
 				// ttln( := g.table.get_type(g.fn_decl.ti.idx)
 				ti := g.table.refresh_ti(g.fn_decl.ti)
 				g.write(' ($ti.name){')
