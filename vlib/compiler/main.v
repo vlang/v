@@ -29,22 +29,6 @@ const (
 		'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
-/*
-enum OS {
-	mac
-	linux
-	windows
-	freebsd
-	openbsd
-	netbsd
-	dragonfly
-	js // TODO
-	android
-	solaris
-	haiku
-}
-*/
-
 enum Pass {
 	// A very short pass that only looks at imports in the beginning of
 	// each file
@@ -412,6 +396,7 @@ pub fn (v mut V) compile_x64() {
 	b.build_x64(v.files, v.out_name)
 }
 
+// make v2 prefs from v1
 fn (v &V) v2_prefs() builder.Preferences {
 	return builder.Preferences{
 		os: v.os
