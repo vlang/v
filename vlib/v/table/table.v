@@ -171,6 +171,22 @@ pub fn (t &Table) find_method(type_idx int, name string) ?Fn {
 	return none
 }
 
+pub fn (t &Type) has_method(name string) bool {
+	t.find_method(name) or {
+		return false
+	}
+	return true
+}
+
+pub fn (t &Type) find_method(name string) ?Fn {
+	for method in t.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	return none
+}
+
 pub fn (t mut Table) new_tmp_var() string {
 	t.tmp_cnt++
 	return 'tmp$t.tmp_cnt'
@@ -384,6 +400,26 @@ pub fn (t &Table) check(got, expected &Type) bool {
 		return false
 	}
 	return true
+}
+
+
+pub fn (t &Table) resolve_type(utype &Type) ?Type {
+	uinfo := utype.info as Unresolved
+	if uinfo.kind == .fn_call {
+		if func := t.find_fn(uinfo.name) {
+			return func.return_type
+		}		
+	}
+	else if uinfo.kind == .method_call {
+		typ := t.types[uinfo.typ.idx]
+		if typ.kind == .unresolved {
+			return error('type was used but never defined: $typ.name')
+		}
+		if method := typ.find_method(uinfo.name) {
+			return method.return_type
+		}
+	}
+	return error('cannot resolve type: name: $utype.name, kind: $utype.kind.str(), idx: $utype.idx')
 }
 
 /*

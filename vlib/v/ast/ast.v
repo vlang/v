@@ -183,9 +183,10 @@ pub:
 
 pub struct IdentVar {
 pub:
-	expr Expr
-	typ  table.Type
+	// expr Expr
 	name string
+mut:
+	typ  table.Type
 }
 
 type IdentInfo = IdentVar

@@ -398,8 +398,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			ident.info = ast.IdentVar{
 				typ: typ
 				name: ident.name
-				// expr: p.expr(0)// var.expr
-				
+				// expr: node
 			}
 			// ident.ti = ti
 			node = ident
@@ -555,10 +554,10 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 	// return node,typ
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.Type) {
+fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.Type) (ast.Expr,table.Type) {
 	p.next()
 	field_name := p.check_name()
-	ti := table.unresolved_type
+	mut ti := table.unresolved_type
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -571,6 +570,11 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.T
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
+		ti.info = table.Unresolved{
+			kind: .method_call
+			typ: *left_type
+			name: field_name
+		}
 		return node,ti
 	}
 	sel_expr := ast.SelectorExpr{

@@ -196,16 +196,11 @@ fn (c &Checker) stmt(node ast.Stmt) {
 			c.return_stmt(it)
 		}
 		ast.VarDecl {
-			typ := c.expr(it.expr)
-			// it.typ = typ
-			// println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
-			if typ.kind != .void {
+			if it.typ.kind == .unresolved {
+				typ := c.expr(it.expr)
+				println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
 				it.typ = typ
 			}
-			// if it.typ.kind == .unresolved {
-			// it.ti = typ
-			// println('unresolved var')
-			// }
 		}
 		ast.ForStmt {
 			typ := c.expr(it.cond)
@@ -233,7 +228,7 @@ fn (c &Checker) stmt(node ast.Stmt) {
 }
 
 pub fn (c &Checker) expr(node ast.Expr) table.Type {
-	match node {
+	match mut node {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
 		}
@@ -273,11 +268,18 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.Ident {
 			if it.kind == .variable {
-				info := it.info as ast.IdentVar
-				if info.typ.kind != .unresolved {
-					return info.typ
+				mut info := it.info as ast.IdentVar
+				// If we store expr we can do same as VarDecl
+				// see notes in v/table/atypes.v near `struct Unresolved`
+				if info.typ.kind == .unresolved {
+					// typ := c.expr(info.expr)
+					typ := c.table.resolve_type(info.typ) or {
+						panic('error resolveing type: $err')
+					}
+					info.typ = typ
+					it.info = info
 				}
-				return c.expr(info.expr)
+				return info.typ
 			}
 			return table.void_type
 		}

@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module table
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic | Unresolved
 
 pub struct Type {
 pub:
@@ -317,6 +317,24 @@ pub fn (kinds []Kind) str() string {
 // pub:
 // name string
 // }
+
+enum UnresolvedKind {
+	fn_call
+	method_call
+}
+
+// NOTE: joe-c
+// we store this info to lookup types of unresolved
+// function/method calls. the alternative is to save the
+// expr which has that intf in Var & IdentInfo and use that.
+// currently that would cause a cycle
+pub struct Unresolved {
+pub:
+	kind UnresolvedKind
+	typ  Type
+	name string
+}
+
 pub struct Struct {
 pub mut:
 	fields []Field
