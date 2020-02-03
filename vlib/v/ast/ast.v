@@ -8,11 +8,11 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral |
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
@@ -246,9 +246,10 @@ pub:
 pub struct IndexExpr {
 pub:
 // op   token.Kind
+	pos   token.Position
 	left  Expr
 	index Expr // [0], [start..end] etc
-	typ table.Type
+	typ   table.Type
 }
 
 pub struct IfExpr {

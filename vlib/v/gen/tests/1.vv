@@ -52,10 +52,15 @@ fn foo(a int) {
 	n := get_int2()
 	q := true || false
 	b2 := bools[0] || true
+	b3 := get_bool() || true
 }
 
 fn get_int(a string) int {
 	return 10
+}
+
+fn get_bool() bool {
+	return true
 }
 
 fn get_int2() int {

@@ -399,7 +399,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				typ: typ
 				name: ident.name
 				// expr: p.expr(0)// var.expr
-
+				
 			}
 			// ident.ti = ti
 			node = ident
@@ -738,7 +738,7 @@ fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 		ti: ti
 		pos: p.tok.position()
 		// left: left
-
+		
 	}
 	return node,ti
 }
@@ -901,7 +901,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		fields << table.Field{
 			name: field_name
 			// type_idx: ti.idx
-
+			
 			ti: ti
 		}
 	}
@@ -974,7 +974,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		name: name
 		is_mut: is_mut
 		// expr: expr
-
+		
 		typ: typ
 	})
 	p.warn('var decl name=$name typ=$typ.name')
@@ -982,7 +982,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	node := ast.VarDecl{
 		name: name
 		expr: expr // p.expr(token.lowest_prec)
-
+		
 		is_mut: is_mut
 		typ: typ
 		pos: p.tok.position()

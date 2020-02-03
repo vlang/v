@@ -1,5 +1,6 @@
 void foo(int a);
 int get_int(string a);
+bool get_bool();
 int get_int2();
 void myuser();
 multi_return_int_string multi_return();
@@ -51,10 +52,15 @@ i < 10; i++;
 	int n = get_int2();
 	bool q = true || false;
 	bool b2 = bools[0] || true;
+	bool b3 = get_bool() || true;
 }
 
 int get_int(string a) {
 	return 10;
+}
+
+bool get_bool() {
+	return true;
 }
 
 int get_int2() {

@@ -77,8 +77,14 @@ fn (p mut Parser) fn_decl(/*high bool*/) ast.FnDecl {
 	}
 	mut name := ''
 	if p.tok.kind == .name {
-		// TODO
+		// TODO high
 		name = p.check_name()
+	}
+	// <T>
+	if p.tok.kind == .lt {
+		p.next()
+		p.next()
+		p.check(.gt)
 	}
 	// println('fn decl $name')
 	p.check(.lpar)

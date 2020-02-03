@@ -284,9 +284,22 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 			return c.selector_expr(it)
 		}
 		ast.IndexExpr {
-			// c.expr(it.left)
+			mut typ := c.expr(it.left)
+			if typ.name.starts_with('array_') {
+				elm_typ := typ.name[6..]
+				// TODO `typ = ... or ...`
+				x := c.table.find_type(elm_typ) or {
+					c.error(elm_typ, it.pos)
+					exit(0)
+				}
+				typ = x
+			}
+			else {
+				typ = table.int_type
+			}
+			return typ
 			// c.expr(it.index)
-			return it.typ
+			//return it.typ
 		}
 		ast.IfExpr {
 			typ := c.expr(it.cond)
