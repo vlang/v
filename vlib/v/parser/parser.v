@@ -491,7 +491,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.dot_expr(node, typ)
 		}
 		else if p.tok.kind == .lsbr {
-			node,typ = p.index_expr(node, typ)
+			node = p.index_expr(node) // , typ)
 		}
 		else if p.tok.kind.is_infix() {
 			node,typ = p.infix_expr(node)
@@ -524,38 +524,20 @@ fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
 	return expr,ti
 }
 
-fn (p mut Parser) index_expr(left ast.Expr, typ_ table.Type) (ast.Expr,table.Type) {
-	mut typ := typ_
-	// TODO
-	// info := ti.info as table.Array
-	// ti = p.table.types[info.elem_type_idx]
-	if typ.name.starts_with('array_') {
-		elm_typ := typ.name[6..]
-		// TODO `typ = ... or ...`
-		x := p.table.find_type(elm_typ) or {
-			p.error(elm_typ)
-			exit(0)
-		}
-		typ = x
-	}
-	else {
-		typ = table.int_type
-	}
+// fn (p mut Parser) index_expr(left ast.Expr, typ_ table.Type) (ast.Expr,table.Type) {
+fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
+	// mut typ := typ_
 	// println('index expr$p.tok.str() line=$p.tok.line_nr')
 	p.next() // [
-	// `numbers[..end]`
 	mut index_expr := ast.Expr{}
 	if p.tok.kind == .dotdot {
+		// `numbers[..end]`
 		index_expr = p.range_expr(left)
-		typ = typ_ // set the type back to array
+		// typ = typ_ // set the type back to array
 	}
 	else {
 		// println('start index expr')
-		mut index_type := table.Type{}
-		index_expr,index_type = p.expr(0)
-		if index_type.kind != .int {
-			p.error('non-integer index (type `$typ.name`)')
-		}
+		index_expr,_ = p.expr(0)
 	}
 	// println('end expr typ=$typ.name')
 	p.check(.rsbr)
@@ -565,10 +547,12 @@ fn (p mut Parser) index_expr(left ast.Expr, typ_ table.Type) (ast.Expr,table.Typ
 	node = ast.IndexExpr{
 		left: left
 		index: index_expr
-		typ: typ
+		pos: p.tok.position()
+		// typ: typ
+		
 	}
-	// return node
-	return node,typ
+	return node
+	// return node,typ
 }
 
 fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.Type) {
