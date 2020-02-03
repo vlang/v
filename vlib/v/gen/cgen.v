@@ -24,7 +24,7 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		definitions: strings.new_builder(100)
 		table: table
 		checker: checker.new_checker(table) // checker
-		
+
 		fn_decl: 0
 	}
 	for file in files {
@@ -59,7 +59,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			g.fn_decl = &it
+			g.fn_decl = it // &it
 			is_main := it.name == 'main'
 			if is_main {
 				g.write('int ${it.name}(')
