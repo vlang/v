@@ -4,7 +4,6 @@ import (
 	strings
 	v.ast
 	v.table
-	v.checker
 	term
 )
 
@@ -12,7 +11,6 @@ struct Gen {
 	out         strings.Builder
 	definitions strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	table       &table.Table
-	checker     checker.Checker
 mut:
 	fn_decl     &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 }
@@ -23,8 +21,6 @@ pub fn cgen(files []ast.File, table &table.Table) string {
 		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		table: table
-		checker: checker.new_checker(table) // checker
-		
 		fn_decl: 0
 	}
 	for file in files {
@@ -116,7 +112,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			mut typ := it.typ
 			g.write('$it.typ.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
