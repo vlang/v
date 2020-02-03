@@ -196,10 +196,10 @@ fn (c &Checker) stmt(node ast.Stmt) {
 			c.return_stmt(it)
 		}
 		ast.VarDecl {
-			if it.typ.kind == .unresolved {
-				typ := c.expr(it.expr)
-				println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
-				it.typ = typ
+			// println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
+			// if it.typ.kind == .unresolved {
+			if it.typ.kind != .void {
+				it.typ = c.expr(it.expr)
 			}
 		}
 		ast.ForStmt {
