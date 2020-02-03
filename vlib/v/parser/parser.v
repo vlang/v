@@ -678,9 +678,6 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 	// `for cond {`
 	cond,ti := p.expr(0)
-	if !p.table.check(table.bool_type, ti) {
-		p.error('non-bool used as for condition')
-	}
 	stmts := p.parse_block()
 	return ast.ForStmt{
 		cond: cond
