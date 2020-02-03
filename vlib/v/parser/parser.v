@@ -666,7 +666,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		start := p.tok.lit.int()
 		p.check(.number)
 		p.check(.dotdot)
-		end := p.tok.lit.int()
+		// end := p.tok.lit.int()
 		// println('for start=$start $end')
 		p.check(.number)
 		stmts := p.parse_block()
@@ -677,7 +677,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 	}
 	// `for cond {`
-	cond,ti := p.expr(0)
+	cond,_ := p.expr(0)
 	stmts := p.parse_block()
 	return ast.ForStmt{
 		cond: cond
