@@ -249,7 +249,7 @@ pub:
 	pos   token.Position
 	left  Expr
 	index Expr // [0], [start..end] etc
-	typ   table.Type
+	// typ   table.Type
 }
 
 pub struct IfExpr {
