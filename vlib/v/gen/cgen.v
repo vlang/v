@@ -59,7 +59,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			g.fn_decl = &it
+			g.fn_decl = it // &it
 			is_main := it.name == 'main'
 			if is_main {
 				g.write('int ${it.name}(')
@@ -96,7 +96,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				// t := g.table.get_type(g.fn_decl.ti.idx)
+				// ttln( := g.table.get_type(g.fn_decl.ti.idx)
 				ti := g.table.refresh_ti(g.fn_decl.ti)
 				g.write(' ($ti.name){')
 				for i, expr in it.exprs {

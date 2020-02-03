@@ -668,7 +668,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 			var.name != 'tmpl_res' && p.mod != 'vweb' && var.name != 'it' && !p.cur_fn.is_unsafe {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx)
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated && var.typ != 'T*' && p.mod != 'ui' && var.typ != 'App*' {
+		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated && var.name != 'it' && var.typ != 'T*' && p.mod != 'ui' && var.typ != 'App*' {
 			p.warn_or_error('`$var.name` is declared as mutable, but it was never changed')
 		}
 	}
