@@ -240,8 +240,8 @@ fn (gen_vc mut GenVC) generate() {
 	gen_vc.cmd_exec('git clone --depth 1 https://$git_repo_vc $git_repo_dir_vc')
 
 	// get output of git log -1 (last commit)
-	git_log_v := gen_vc.cmd_exec('git -C $git_repo_dir_v log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct"')
-	git_log_vc := gen_vc.cmd_exec('git -C $git_repo_dir_vc log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct"')
+	git_log_v := gen_vc.cmd_exec('git -C $git_repo_dir_v log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
+	git_log_vc := gen_vc.cmd_exec('git -C $git_repo_dir_vc log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
 
 	// date of last commit in each repo
 	ts_v := git_log_v.find_between('Date:', '\n').trim_space()
@@ -260,10 +260,14 @@ fn (gen_vc mut GenVC) generate() {
 	last_commit_hash_v := git_log_v.find_between('commit', '\n').trim_space()
 	last_commit_hash_v_short := last_commit_hash_v[..7]
 
+	// subject
+	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space()
+
 	// log some info
 	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format_ss())
 	gen_vc.logger.debug('last commit time ($git_repo_vc): ' + last_commit_time_vc.format_ss())
 	gen_vc.logger.debug('last commit hash ($git_repo_v): $last_commit_hash_v')
+	gen_vc.logger.debug('last commit subject ($git_repo_v): $last_commit_subject')
 
 	// if vc repo already has a newer commit than the v repo, assume it's up to date
 	if t_unix_vc >= t_unix_v {
@@ -303,7 +307,7 @@ fn (gen_vc mut GenVC) generate() {
 		gen_vc.gen_error = true
 	}
 	// commit changes to local vc repo
-	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc commit -m "update from master - $last_commit_hash_v_short"')
+	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc commit -m "[v:master] $last_commit_hash_v_short - $last_commit_subject"')
 	// push changes to remote vc repo
 	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc push https://${urllib.query_escape(git_username)}:${urllib.query_escape(git_password)}@$git_repo_vc master')
 }
