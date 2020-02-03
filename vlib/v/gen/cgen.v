@@ -117,12 +117,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		}
 		ast.VarDecl {
 			mut typ := it.typ
-			if typ.kind == .unresolved {
-				// g.write('/*unresolved*/')
-				// ti = table.void_type // g.table.get_expr_ti(it.expr)
-				typ = g.checker.expr(it.expr)
-			}
-			g.write('$typ.name $it.name = ')
+			g.write('$it.typ.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
