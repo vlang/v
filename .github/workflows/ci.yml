@@ -18,12 +18,6 @@ jobs:
         brew update
         brew install freetype glfw openssl postgres sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-    - name: Build V
-      run:  make -j4 && ./v -cg -o v v.v
-    - name: Build V using V
-      run:  ./v -o v2 v.v && ./v2 -o v3 v.v
-    - name: Test symlink
-      run:  sudo ./v symlink
     - name: Set up pg database
       run: |
         brew services list | grep postgres
@@ -31,17 +25,3 @@ jobs:
         psql -d postgres -c 'select rolname from pg_roles'
         psql -d postgres -c 'create database customerdb;'
         psql -d customerdb -f examples/database/pg/mydb.sql
-    - name: Test v->c
-      run: ./v -silent test-compiler
-    - name: Test v binaries
-      run: ./v -silent build-vbinaries
-#    - name: Test v->js
-#      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: Test symlink
-      run:  ./v symlink && v -o v2 v.v
-    - name: Test vsh
-      run:  ./v examples/v_script.vsh
-    - name: Test vid
-      run: |
-        git clone --depth 1 https://github.com/vlang/vid.git
-        cd vid && ../v -o vid .
