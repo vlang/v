@@ -12,6 +12,19 @@ pub enum BuildMode {
 	build_module
 }
 
+pub enum OS {
+	mac
+	linux
+	windows
+	freebsd
+	openbsd
+	netbsd
+	dragonfly
+	js // TODO
+	android
+	solaris
+	haiku
+}
 
 pub struct Preferences {
 pub mut:
@@ -65,4 +78,3 @@ pub mut:
 	prealloc        bool
 	v2              bool
 }
-

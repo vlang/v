@@ -6,6 +6,7 @@ import (
 	filepath
 	v.ast
 	v.table
+	v.pref
 	v.checker
 	v.parser
 	v.gen
@@ -14,22 +15,24 @@ import (
 
 pub struct Builder {
 pub:
-	table   &table.Table
-	checker checker.Checker
+	pref                &pref.Preferences
+	table   			&table.Table
+	checker 			checker.Checker
+	os				    pref.OS // the OS to build for
+	compiled_dir 		string  // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	module_path 	    string
+	module_search_paths []string
 mut:
-	prefs   Preferences
-	parsed_files []ast.File
+	parsed_files        []ast.File
 }
 
-pub fn new_builder(prefs Preferences) Builder {
+pub fn new_builder(pref &pref.Preferences) Builder {
 	table := table.new_table()
-	mut b:= Builder{
-		prefs: prefs
+	return Builder{
+		pref: pref
 		table: table
 		checker: checker.new_checker(table)
 	}
-	b.set_module_search_paths()
-	return b
 }
 
 pub fn (b mut Builder) gen_c(v_files []string) string {
@@ -52,11 +55,6 @@ pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
 	println('CHECK: ${time.ticks() - ticks}ms')
 	x64.gen(b.parsed_files, out_file)
 	println('x64 GEN: ${time.ticks() - ticks}ms')
-}
-
-
-fn (b &Builder) parse_module_files() {
-
 }
 
 // parse all deps from already parsed files
@@ -108,7 +106,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	mut files := os.ls(dir)or{
 		panic(err)
 	}
-	if b.prefs.is_verbose {
+	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
 	files.sort()
@@ -119,22 +117,22 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.prefs.os != .windows {
+		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && b.os != .windows {
 			continue
 		}
-		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.prefs.os != .linux {
+		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && b.os != .linux {
 			continue
 		}
-		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.prefs.os != .mac {
+		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && b.os != .mac {
 			continue
 		}
-		if file.ends_with('_nix.v') && b.prefs.os == .windows {
+		if file.ends_with('_nix.v') && b.os == .windows {
 			continue
 		}
-		if file.ends_with('_js.v') && b.prefs.os != .js {
+		if file.ends_with('_js.v') && b.os != .js {
 			continue
 		}
-		if file.ends_with('_c.v') && b.prefs.os == .js {
+		if file.ends_with('_c.v') && b.os == .js {
 			continue
 		}
 		/*
@@ -162,7 +160,7 @@ fn verror(err string) {
 }
 
 pub fn (b &Builder) log(s string) {
-	if b.prefs.is_verbose {
+	if b.pref.is_verbose {
 		println(s)
 	}
 }

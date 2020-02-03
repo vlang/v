@@ -1,6 +1,7 @@
 import (
 	os
 	filepath
+	v.pref
 	v.builder
 	term
 )
@@ -23,7 +24,7 @@ fn test_c_files() {
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
-		mut b := builder.new_builder(builder.Preferences{})
+		mut b := builder.new_builder(pref.Preferences{})
 		res := b.gen_c([path])
 		if compare_texts(res, ctext) {
 			eprintln('${term_ok} ${i}')
