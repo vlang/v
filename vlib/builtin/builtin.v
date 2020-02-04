@@ -24,9 +24,11 @@ pub fn isnil(v voidptr) bool {
 	return v == 0
 }
 
+/*
 fn on_panic(f fn(int)int) {
 	// TODO
 }
+*/
 
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if windows {

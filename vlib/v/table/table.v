@@ -250,6 +250,13 @@ pub fn (t mut Table) register_type(typ Type) int {
 	return idx
 }
 
+pub fn (t &Table) known_type(name string) bool {
+	_ = t.find_type(name) or {
+		return false
+	}
+	return true
+}
+
 pub fn (t mut Table) find_or_register_map(key_typ &Type, value_typ &Type) (int,string) {
 	name := 'map_${key_typ.name}_${value_typ.name}'
 	// existing

@@ -372,7 +372,7 @@ pub fn (tok Token) precedence() int {
 			return 7
 		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
-		.mul, .div, .left_shift, .righ_shift, .amp {
+		.mul, .div, .mod, .left_shift, .righ_shift, .amp {
 			return 6
 		}
 		// `+` |  `-` |  `|` | `^`
@@ -390,6 +390,9 @@ pub fn (tok Token) precedence() int {
 		// `||`
 		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mult_assign {
 			return 2
+		}
+		.key_in {
+			return 1
 		}
 		// /.plus_assign {
 		// /return 2
@@ -456,5 +459,5 @@ pub fn (tok Kind) is_relational() bool {
 }
 
 pub fn (kind Kind) is_infix() bool {
-	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .ge, .le, .logical_or, .and, .dot]
+	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .ge, .le, .logical_or, .and, .dot, .pipe, .left_shift]
 }

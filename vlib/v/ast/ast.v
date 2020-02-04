@@ -8,12 +8,13 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | 	
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
 AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -34,6 +35,11 @@ pub:
 }
 
 pub struct StringLiteral {
+pub:
+	val string
+}
+
+pub struct CharLiteral {
 pub:
 	val string
 }
@@ -111,6 +117,11 @@ pub:
 	args     []Arg
 	is_pub   bool
 	receiver Field
+}
+
+pub struct BranchStmt {
+pub:
+	tok token.Token
 }
 
 pub struct CallExpr {
@@ -235,6 +246,7 @@ pub struct PostfixExpr {
 pub:
 	op   token.Kind
 	expr Expr
+	pos  token.Position
 }
 
 pub struct PrefixExpr {
@@ -296,6 +308,12 @@ pub struct ReturnStmt {
 	tok_kind token.Kind // or pos
 	pos      token.Position
 	results  []Expr
+}
+
+// #include etc
+pub struct HashStmt {
+pub:
+	name string
 }
 
 /*

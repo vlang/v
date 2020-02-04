@@ -54,6 +54,7 @@ fn foo(a int) {
 	nums2 := nums[..2]
 	number := nums[0]
 	bools := [true, false]
+	users := [User{}]
 	b := bools[0]
 	mystrings := ['a', 'b']
 	s := mystrings[0]
@@ -81,6 +82,8 @@ fn get_int2() int {
 }
 
 fn myuser() {
+	x := 1
+	q := x | 0x1004
 	user := User{age:10}
 	age := user.age + 1
 	boo := 2

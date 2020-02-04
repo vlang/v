@@ -30,7 +30,7 @@ pub fn println(s string) {
 	//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
 	//			return
 	//		}
-	//	} 
+	//	}
 	C.printf('%.*s\n', s.len, s.str)
 }
 
@@ -118,7 +118,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				if output in ['??:0:', '??:?:'] {
 					output = ''
 				}
-				println('${output:-46s} | ${addr:14s} | $beforeaddr')
+				//println('${output:-46s} | ${addr:14s} | $beforeaddr') // QTODO
 			}
 			// C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_actual_frames, 1)
 			return true

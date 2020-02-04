@@ -184,6 +184,10 @@ pub fn (w mut glfw.Window) set_mouse_button_callback(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
 }
 
+pub fn (w mut glfw.Window) on_resize(cb voidptr) {
+	C.glfwSetWindowSizeCallback(w.data, cb)
+}
+
 pub fn (w mut glfw.Window) on_click(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
 }

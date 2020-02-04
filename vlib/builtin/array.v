@@ -447,6 +447,7 @@ pub fn (a []char) index(v char) int {
 	return -1
 }
 
+/*
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
@@ -491,6 +492,7 @@ pub fn (a []byte) eq(a2 []byte) bool {
 pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
+*/
 
 // compare_i64 for []f64 sort_with_compare()
 // sort []i64 with quicksort
