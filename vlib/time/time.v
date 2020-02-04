@@ -177,24 +177,21 @@ pub fn (t Time) clean12() string {
 	// return fmt.Sprintf("%4d/%02d/%02d", t.Year(), t.Month(), t.Day()) + " " + hm
 }
 // `parse` parses time in the following format: "2018-01-27 12:48:34"
-pub fn parse(s string) Time {
-	// println('parse="$s"')
+pub fn parse(s string) ?Time {
 	pos := s.index(' ') or {
-		println('bad time format')
-		return now()
+		return error('Invalid time format: $s')
 	}
 	symd := s[..pos]
 	ymd := symd.split('-')
 	if ymd.len != 3 {
-		println('bad time format')
-		return now()
+		return error('Invalid time format: $s')
 	}
 	shms := s[pos..]
 	hms := shms.split(':')
 	hour := hms[0][1..]
 	minute := hms[1]
 	second := hms[2]
-	// //////////
+
 	return new_time(Time{
 		year: ymd[0].int()
 		month: ymd[1].int()
@@ -206,19 +203,25 @@ pub fn parse(s string) Time {
 }
 
 // `parse_iso` parses time in the following format: "Thu, 12 Dec 2019 06:07:45 GMT"
-pub fn parse_iso(s string) Time {
+pub fn parse_iso(s string) ?Time {
 	fields := s.split(' ')
 	if fields.len < 5 {
-		return Time{}
+		return error('Invalid time format: $s')
 	}
 	pos := months_string.index(fields[2]) or {
-		return Time{}
+		return error('Invalid time format: $s')
 	}
 	mm := pos / 3 + 1
 	tmstr := malloc(s.len * 2)
 	count := C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm,
 		fields[1].str, fields[4].str)
-	return parse(tos(tmstr, count))
+
+	t := parse(tos(tmstr, count)) or {
+		// FIXME Remove this when optional forwarding is fixed.
+		return error('Invalid time format: $s')
+	}
+
+	return t
 }
 
 pub fn new_time(t Time) Time {
