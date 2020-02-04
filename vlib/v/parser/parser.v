@@ -358,8 +358,8 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
-	// mut typ := table.void_ti
-	mut typ := table.unresolved_type
+	mut typ := table.void_type
+	//mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
 		p.next()
@@ -599,8 +599,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.T
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		ti = { ti | idx: p.unresolved.len }
-		p.unresolved << node
+		ti = p.add_unresolved(mcall_expr)
 		return node,ti
 	}
 	sel_expr := ast.SelectorExpr{
@@ -1000,7 +999,6 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	if _ := p.table.find_var(name) {
 		p.error('redefinition of `$name`')
 	}
-	println('REG VAR: $typ.name - $typ.idx')
 	p.table.register_var(table.Var{
 		name: name
 		is_mut: is_mut
@@ -1060,6 +1058,16 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	return ast.GlobalDecl{
 		name: name
 	}
+}
+
+fn (p mut Parser) add_unresolved(expr ast.Expr) table.Type {
+	t := table.Type{
+		idx: p.unresolved.len
+		kind: .unresolved
+		name: 'unresolved'
+	}
+	p.unresolved << expr
+	return t
 }
 
 fn verror(s string) {

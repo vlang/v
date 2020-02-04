@@ -26,19 +26,13 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
 	}
-	mut ti := table.unresolved_type
 	if f := p.table.find_fn(fn_name) {
-		ti = f.return_type
-	} else {
-		println('ADDING UNRESOLVEED: $ti.idx')
-		ti = { ti |	idx: p.unresolved.len}
-		p.unresolved << node
+		return node, f.return_type
 	}
-	println('adding call_expr check $fn_name')
-	return node,ti
+	typ := p.add_unresolved(node)
+	return node,typ
 }
 
 pub fn (p mut Parser) call_args() []ast.Expr {
