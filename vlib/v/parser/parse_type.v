@@ -2,7 +2,6 @@ module parser
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 import (
 	v.table
 )
@@ -66,7 +65,7 @@ pub fn (p mut Parser) parse_variadic_ti() table.Type {
 }
 
 pub fn (p mut Parser) parse_fn_type() table.Type {
-	//p.check(.key_fn)
+	// p.check(.key_fn)
 	p.fn_decl()
 	return table.int_type
 }
@@ -76,6 +75,10 @@ pub fn (p mut Parser) parse_type() table.Type {
 	for p.tok.kind == .amp {
 		p.check(.amp)
 		nr_muls++
+	}
+	if p.tok.lit == 'C' {
+		p.next()
+		p.check(.dot)
 	}
 	name := p.tok.lit
 	match p.tok.kind {
@@ -173,4 +176,3 @@ pub fn (p mut Parser) parse_type() table.Type {
 		}
 	}
 }
-

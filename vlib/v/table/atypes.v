@@ -92,6 +92,11 @@ pub const (
 		name: 'bool'
 		idx: bool_type_idx
 	}
+	byte_type = Type{
+		kind: .byte
+		name: 'byte'
+		idx: byte_type_idx
+	}
 )
 /*
 pub fn (t Type) str() string {

@@ -195,8 +195,11 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 		.dollar {
 			return p.comp_if()
 		}
+		.hash {
+			return p.hash()
+		}
 		else {
-			p.error('bad top level statement')
+			p.error('parser: bad top level statement')
 			return ast.Stmt{}
 		}
 	}
@@ -457,8 +460,15 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		.str {
 			node,typ = p.string_expr()
 		}
-		// -1, -a etc
-		.minus, .amp, .mul {
+		.chartoken {
+			typ = table.byte_type
+			node = ast.CharLiteral{
+				val: p.tok.lit
+			}
+			p.next()
+		}
+		// -1, -a, !x, &x etc
+		.minus, .amp, .mul, .not {
 			node,typ = p.prefix_expr()
 		}
 		// .amp {
@@ -484,6 +494,13 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		}
 		.lsbr {
 			node,typ = p.array_init()
+		}
+		.key_sizeof {
+			p.next()
+			p.check(.lpar)
+			p.next()
+			p.check(.rpar)
+			typ = table.int_type
 		}
 		else {
 			p.error('pexpr(): bad token `$p.tok.str()`')
@@ -755,6 +772,9 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 		}
 		p.check(.str_dollar)
 		p.expr(0)
+		if p.tok.kind == .semicolon {
+			p.next()
+		}
 	}
 	return node,table.string_type
 }
@@ -992,6 +1012,13 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		pos: p.tok.position()
 	}
 	return node
+}
+
+fn (p mut Parser) hash() ast.HashStmt {
+	p.next()
+	return ast.HashStmt{
+		name: p.tok.lit
+	}
 }
 
 fn (p mut Parser) global_decl() ast.GlobalDecl {

@@ -50,13 +50,19 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 	return args // ,table.void_ti
 }
 
-fn (p mut Parser) fn_decl(/*high bool*/) ast.FnDecl {
+fn (p mut Parser) fn_decl() ast.FnDecl {
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
 	p.table.clear_vars()
 	p.check(.key_fn)
+	// C.
+	is_c := p.tok.kind == .name && p.tok.lit == 'C'
+	if is_c {
+		p.next()
+		p.check(.dot)
+	}
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
@@ -91,37 +97,50 @@ fn (p mut Parser) fn_decl(/*high bool*/) ast.FnDecl {
 	// Args
 	mut args := []table.Var
 	mut ast_args := []ast.Arg
-	for p.tok.kind != .rpar {
-		mut arg_names := [p.check_name()]
-		// `a, b, c int`
-		for p.tok.kind == .comma {
-			p.check(.comma)
-			arg_names << p.check_name()
-		}
-		ti := p.parse_type()
-		for arg_name in arg_names {
-			arg := table.Var{
-				name: arg_name
-				typ: ti
-			}
-			args << arg
-			p.table.register_var(arg)
-			ast_args << ast.Arg{
-				ti: ti
-				name: arg_name
-			}
-			if ti.kind == .variadic && p.tok.kind == .comma {
-				p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+	// `int, int, string` (no names, just types)
+	types_only := p.tok.kind == .amp || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
+	if types_only {
+		p.warn('types only')
+		for p.tok.kind != .rpar {
+			p.parse_type()
+			if p.tok.kind == .comma {
+				p.next()
 			}
 		}
-		if p.tok.kind != .rpar {
-			p.check(.comma)
+	}
+	else {
+		for p.tok.kind != .rpar {
+			mut arg_names := [p.check_name()]
+			// `a, b, c int`
+			for p.tok.kind == .comma {
+				p.check(.comma)
+				arg_names << p.check_name()
+			}
+			ti := p.parse_type()
+			for arg_name in arg_names {
+				arg := table.Var{
+					name: arg_name
+					typ: ti
+				}
+				args << arg
+				p.table.register_var(arg)
+				ast_args << ast.Arg{
+					ti: ti
+					name: arg_name
+				}
+				if ti.kind == .variadic && p.tok.kind == .comma {
+					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+				}
+			}
+			if p.tok.kind != .rpar {
+				p.check(.comma)
+			}
 		}
 	}
 	p.check(.rpar)
 	// Return type
 	mut typ := table.void_type
-	if p.tok.kind in [.name, .lpar] {
+	if p.tok.kind in [.name, .lpar, .amp] {
 		typ = p.parse_type()
 		p.return_type = typ
 	}
@@ -145,7 +164,10 @@ fn (p mut Parser) fn_decl(/*high bool*/) ast.FnDecl {
 			return_type: typ
 		})
 	}
-	stmts := p.parse_block()
+	mut stmts := []ast.Stmt
+	if p.tok.kind == .lcbr {
+		stmts = p.parse_block()
+	}
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
