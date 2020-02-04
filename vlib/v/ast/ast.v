@@ -235,6 +235,7 @@ pub struct PostfixExpr {
 pub:
 	op   token.Kind
 	expr Expr
+	pos  token.Position
 }
 
 pub struct PrefixExpr {

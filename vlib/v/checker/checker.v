@@ -242,7 +242,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 		}
 		// ast.FloatLiteral {}
 		ast.PostfixExpr {
-			return c.expr(it.expr)
+			return c.postfix_expr(it)
 		}
 		/*
 		ast.UnaryExpr {
@@ -307,6 +307,22 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 		else {}
 	}
 	return table.void_type
+}
+
+pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.Type {
+	/*
+	match node.expr {
+		ast.IdentVar {
+			println('postfix identvar')
+		}
+		else {}
+	}
+	*/
+	typ := c.expr(node.expr)
+	if typ.kind != .int {
+		c.error('invalid operation: $node.op.str() (non-numeric type `$typ.name`)', node.pos)
+	}
+	return typ
 }
 
 pub fn (c &Checker) index_expr(node ast.IndexExpr) table.Type {
