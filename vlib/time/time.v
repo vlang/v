@@ -216,7 +216,8 @@ pub fn parse_iso(s string) Time {
 	}
 	mm := pos / 3 + 1
 	tmstr := malloc(s.len * 2)
-	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm, fields[1].str, fields[4].str))
+	count := C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm,
+		fields[1].str, fields[4].str)
 	return parse(tos(tmstr, count))
 }
 

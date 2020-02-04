@@ -32,6 +32,8 @@ mut:
 	// vars []string
 	table       &table.Table
 	return_type table.Type // current function's return type
+	// scope_level int
+	// var_idx     int
 	is_c        bool
 	//
 	// prefix_parse_fns []PrefixParseFn
@@ -118,6 +120,7 @@ pub fn (p mut Parser) read_first_token() {
 }
 
 pub fn (p mut Parser) parse_block() []ast.Stmt {
+	p.table.open_scope()
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt
 	if p.tok.kind != .rcbr {
@@ -130,6 +133,7 @@ pub fn (p mut Parser) parse_block() []ast.Stmt {
 		}
 	}
 	p.check(.rcbr)
+	p.table.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
@@ -405,7 +409,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		}
 		// variable
 		if var := p.table.find_var(p.tok.lit) {
-			println('#### IDENT: $var.name: $var.typ.name - $var.typ.idx')
+			// println('#### IDENT: $var.name: $var.typ.name - $var.typ.idx')
 			typ = var.typ
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
@@ -592,6 +596,10 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.T
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
+		if p.tok.kind == .key_orelse {
+			p.next()
+			p.parse_block()
+		}
 		mcall_expr := ast.MethodCallExpr{
 			expr: left
 			name: field_name
@@ -645,9 +653,12 @@ fn (p &Parser) is_addative() bool {
 
 fn (p mut Parser) for_statement() ast.Stmt {
 	p.check(.key_for)
+	p.table.open_scope()
+	// defer { p.table.close_scope() }
 	// Infinite loop
 	if p.tok.kind == .lcbr {
 		stmts := p.parse_block()
+		p.table.close_scope()
 		return ast.ForStmt{
 			stmts: stmts
 			pos: p.tok.position()
@@ -685,6 +696,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			inc = p.stmt()
 		}
 		stmts := p.parse_block()
+		p.table.close_scope()
 		return ast.ForCStmt{
 			stmts: stmts
 			init: init
@@ -693,8 +705,16 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 	}
 	// `for i in vals`, `for i in start .. end`
-	else if p.peek_tok.kind == .key_in {
+	else if p.peek_tok.kind == .key_in || p.peek_tok.kind == .comma {
 		var_name := p.check_name()
+		if p.tok.kind == .comma {
+			p.check(.comma)
+			val_name := p.check_name()
+			p.table.register_var(table.Var{
+				name: val_name
+				typ: table.int_type
+			})
+		}
 		p.check(.key_in)
 		start := p.tok.lit.int()
 		p.expr(0)
@@ -708,6 +728,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
+		p.table.close_scope()
 		return ast.ForStmt{
 			stmts: stmts
 			pos: p.tok.position()
@@ -716,6 +737,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	// `for cond {`
 	cond,_ := p.expr(0)
 	stmts := p.parse_block()
+	p.table.close_scope()
 	return ast.ForStmt{
 		cond: cond
 		stmts: stmts
@@ -735,7 +757,12 @@ fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 	mut else_stmts := []ast.Stmt
 	if p.tok.kind == .key_else {
 		p.check(.key_else)
-		else_stmts = p.parse_block()
+		if p.tok.kind == .key_if {
+			p.if_expr()
+		}
+		else {
+			else_stmts = p.parse_block()
+		}
 	}
 	mut ti := table.void_type
 	// mut left := ast.Expr{}
@@ -944,13 +971,18 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
-	p.table.register_type(table.Type{
-		kind: .struct_
-		name: name
-		info: table.Struct{
-			fields: fields
+	if name != 'string' {
+		ret := p.table.register_type(table.Type{
+			kind: .struct_
+			name: name
+			info: table.Struct{
+				fields: fields
+			}
+		})
+		if ret == -1 {
+			p.error('cannot register type `$name`, another type with this name exists')
 		}
-	})
+	}
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
