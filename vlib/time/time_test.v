@@ -179,6 +179,7 @@ fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
 	assert t.day == time_to_test.day + num_of_days
+	assert t.unix == time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_get_fmt_time_str() {

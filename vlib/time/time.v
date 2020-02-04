@@ -252,7 +252,7 @@ pub fn (t &Time) calc_unix() int {
 		tm_mon: t.month - 1
 		tm_year: t.year - 1900
 	}
-	return C.mktime(&tt)
+	return make_unix_time(tt)
 }
 
 // TODO add(d time.Duration)
