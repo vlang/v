@@ -144,7 +144,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.rpar)
 	// Return type
 	mut typ := table.void_type
-	if p.tok.kind in [.name, .lpar, .amp, .lsbr] {
+	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
 		typ = p.parse_type()
 		p.return_type = typ
 	}

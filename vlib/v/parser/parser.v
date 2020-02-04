@@ -368,7 +368,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		p.next()
 		p.check(.dot)
 	}
-	else if p.tok.lit in ['strings'] {
+	else if p.tok.lit in ['strings', 'strconv'] {
 		p.next()
 		p.check(.dot)
 	}

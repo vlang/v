@@ -84,6 +84,9 @@ pub fn (p mut Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
+	if p.tok.kind == .question {
+		p.next()
+	}
 	name := p.tok.lit
 	match p.tok.kind {
 		// func
