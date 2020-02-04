@@ -24,6 +24,7 @@ pub fn convert_ctime(t tm) Time {
 	}
 }
 
+[inline]
 fn make_unix_time(t tm) int {
 	return C.mktime(&t) - C._timezone
 }
