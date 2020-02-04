@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	nr_tests = 3
+	nr_tests = 4
 )
 
 fn test_c_files() {

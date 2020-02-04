@@ -32,6 +32,10 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 	mut ti := table.unresolved_type
 	if f := p.table.find_fn(fn_name) {
 		ti = f.return_type
+	} else {
+		println('ADDING UNRESOLVEED: $ti.idx')
+		ti = { ti |	idx: p.unresolved.len}
+		p.unresolved << node
 	}
 	println('adding call_expr check $fn_name')
 	return node,ti

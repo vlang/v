@@ -39,7 +39,9 @@ mut:
 	pref        &pref.Preferences // Preferences shared from V struct
 	builtin_mod bool
 	mod         string
+	unresolved  []ast.Expr
 }
+
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
@@ -92,6 +94,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		mod: module_decl
 		imports: imports
 		stmts: stmts
+		unresolved: p.unresolved
 	}
 }
 
@@ -393,11 +396,12 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		}
 		// variable
 		if var := p.table.find_var(p.tok.lit) {
+			println('#### IDENT: $var.name: $var.typ.name - $var.typ.idx')
 			typ = var.typ
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
-				name: ident.name
+				//name: ident.name
 				// expr: p.expr(0)// var.expr
 				
 			}
@@ -409,7 +413,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				typ = table.int_type
 				ident.info = ast.IdentVar{
 					typ: typ
-					name: ident.name
+					//name: ident.name
 				}
 				node = ident
 				p.next()
@@ -421,7 +425,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				ident.kind = .constant
 				ident.info = ast.IdentVar{
 					typ: typ
-					name: ident.name
+					//name: ident.name
 				}
 				node = ident
 				p.next()
@@ -558,7 +562,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.Type) {
 	p.next()
 	field_name := p.check_name()
-	ti := table.unresolved_type
+	mut ti := table.unresolved_type
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -571,6 +575,8 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.T
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
+		ti = { ti | idx: p.unresolved.len }
+		p.unresolved << node
 		return node,ti
 	}
 	sel_expr := ast.SelectorExpr{
@@ -952,6 +958,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	if _ := p.table.find_var(name) {
 		p.error('redefinition of `$name`')
 	}
+	println('REG VAR: $typ.name - $typ.idx')
 	p.table.register_var(table.Var{
 		name: name
 		is_mut: is_mut

@@ -179,13 +179,13 @@ pub:
 	mod     Module
 	imports []Import
 	stmts   []Stmt
+	unresolved []Expr
 }
 
 pub struct IdentVar {
 pub:
-	expr Expr
 	typ  table.Type
-	name string
+	//name string
 }
 
 type IdentInfo = IdentVar
