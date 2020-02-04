@@ -110,6 +110,7 @@ enum TokenKind {
 	key_select
 	key_sizeof
 	key_offsetof
+	key_nameof
 	key_struct
 	key_switch
 	key_true
@@ -240,6 +241,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_select] = 'select'
 	s[TokenKind.key_none] = 'none'
 	s[TokenKind.key_offsetof] = '__offsetof'
+	s[TokenKind.key_nameof] = 'nameof'
 	return s
 }
 
