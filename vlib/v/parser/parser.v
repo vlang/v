@@ -39,6 +39,7 @@ mut:
 	pref        &pref.Preferences // Preferences shared from V struct
 	builtin_mod bool
 	mod         string
+	unresolved  []ast.Expr
 }
 
 // for tests
@@ -92,6 +93,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		mod: module_decl
 		imports: imports
 		stmts: stmts
+		unresolved: p.unresolved
 	}
 }
 
@@ -355,8 +357,8 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
-	// mut typ := table.void_ti
-	mut typ := table.unresolved_type
+	mut typ := table.void_type
+	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
 		p.next()
@@ -403,11 +405,12 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		}
 		// variable
 		if var := p.table.find_var(p.tok.lit) {
+			println('#### IDENT: $var.name: $var.typ.name - $var.typ.idx')
 			typ = var.typ
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
-				name: ident.name
+				// name: ident.name
 				// expr: p.expr(0)// var.expr
 				
 			}
@@ -419,7 +422,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				typ = table.int_type
 				ident.info = ast.IdentVar{
 					typ: typ
-					name: ident.name
+					// name: ident.name
+					
 				}
 				node = ident
 				p.next()
@@ -431,7 +435,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				ident.kind = .constant
 				ident.info = ast.IdentVar{
 					typ: typ
-					name: ident.name
+					// name: ident.name
+					
 				}
 				node = ident
 				p.next()
@@ -582,7 +587,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.Type) {
 	p.next()
 	field_name := p.check_name()
-	ti := table.unresolved_type
+	mut ti := table.unresolved_type
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -595,6 +600,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.T
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
+		ti = p.add_unresolved(mcall_expr)
 		return node,ti
 	}
 	sel_expr := ast.SelectorExpr{
@@ -1053,6 +1059,16 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	return ast.GlobalDecl{
 		name: name
 	}
+}
+
+fn (p mut Parser) add_unresolved(expr ast.Expr) table.Type {
+	t := table.Type{
+		idx: p.unresolved.len
+		kind: .unresolved
+		name: 'unresolved'
+	}
+	p.unresolved << expr
+	return t
 }
 
 fn verror(s string) {

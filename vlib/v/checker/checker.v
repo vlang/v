@@ -10,10 +10,11 @@ import (
 )
 
 pub struct Checker {
-	table     &table.Table
+	table      &table.Table
 mut:
-	file_name string
-	// TODO: resolved
+	file_name  string
+	unresolved []ast.Expr
+	resolved   []table.Type
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -22,7 +23,10 @@ pub fn new_checker(table &table.Table) Checker {
 	}
 }
 
-pub fn (c &Checker) check(ast_file ast.File) {
+pub fn (c mut Checker) check(ast_file ast.File) {
+	c.file_name = ast_file.path
+	c.unresolved = ast_file.unresolved
+	c.resolve_types()
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
@@ -30,8 +34,13 @@ pub fn (c &Checker) check(ast_file ast.File) {
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	for file in ast_files {
-		c.file_name = file.path
 		c.check(file)
+	}
+}
+
+fn (c mut Checker) resolve_types() {
+	for x in c.unresolved {
+		c.resolved << c.expr(x)
 	}
 }
 
@@ -100,19 +109,18 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type {
 			}
 		}
 		return f.return_type
-	}else{
-		c.error('unknown fn: $fn_name', call_expr.pos)
-		exit(0)
-		// c.warn('unknown function `$fn_name`')
 	}
+	c.error('unknown fn: $fn_name', call_expr.pos)
+	exit(1)
 }
 
 pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type {
 	ti := c.expr(method_call_expr.expr)
-	if !c.table.has_method(ti.idx, method_call_expr.name) {
-		c.error('type `$ti.name` has no method `$method_call_expr.name`', method_call_expr.pos)
+	if method := c.table.find_method(ti.idx, method_call_expr.name) {
+		return method.return_type
 	}
-	return ti
+	c.error('type `$ti.name` has no method `$method_call_expr.name`', method_call_expr.pos)
+	exit(1)
 }
 
 pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
@@ -274,10 +282,10 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 		ast.Ident {
 			if it.kind == .variable {
 				info := it.info as ast.IdentVar
-				if info.typ.kind != .unresolved {
-					return info.typ
+				if info.typ.kind == .unresolved {
+					return c.resolved[info.typ.idx]
 				}
-				return c.expr(info.expr)
+				return info.typ
 			}
 			return table.void_type
 		}

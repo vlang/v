@@ -32,7 +32,6 @@ pub:
 	is_mut    bool
 	is_const  bool
 	is_global bool
-	// expr   ast.Expr
 mut:
 	typ       Type
 }

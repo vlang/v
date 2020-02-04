@@ -148,7 +148,7 @@ pub fn (b bool) str() string {
 pub fn (n int) hex() string {
 	len := if n >= 0 { n.str().len + 3 } else { 11 }
 	hex := malloc(len) // 0x + \n
-	count := int(C.sprintf(charptr(hex), '0x%x', n))
+	count := C.sprintf(charptr(hex), '0x%x', n)
 	return tos(hex, count)
 }
 
