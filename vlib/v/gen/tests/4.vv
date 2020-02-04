@@ -13,7 +13,6 @@ fn main() {
 			a: 'hello'
 			b: b
 	}
-	// a.c = 'sa'
 	a.a = 'da'
 	a.b.a = 111
 
@@ -29,10 +28,7 @@ fn main() {
 	e = testb(111)
 	e = 'world'
 
-	//mut f := [testa(),2,3,4]
-	// f = testa()
-	// c := 1 + 'string'
-	// zz := hi + 1
+	mut f := [testa(),2,3,4]
 }
 
 
