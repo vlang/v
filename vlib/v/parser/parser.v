@@ -42,7 +42,6 @@ mut:
 	unresolved  []ast.Expr
 }
 
-
 // for tests
 pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	s := scanner.new_scanner(text)
@@ -359,7 +358,7 @@ pub fn (p &Parser) warn(s string) {
 pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	mut typ := table.void_type
-	//mut typ := table.unresolved_type
+	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
 		p.next()
@@ -411,7 +410,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
-				//name: ident.name
+				// name: ident.name
 				// expr: p.expr(0)// var.expr
 				
 			}
@@ -423,7 +422,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				typ = table.int_type
 				ident.info = ast.IdentVar{
 					typ: typ
-					//name: ident.name
+					// name: ident.name
+					
 				}
 				node = ident
 				p.next()
@@ -435,7 +435,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				ident.kind = .constant
 				ident.info = ast.IdentVar{
 					typ: typ
-					//name: ident.name
+					// name: ident.name
+					
 				}
 				node = ident
 				p.next()

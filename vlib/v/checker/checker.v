@@ -10,11 +10,11 @@ import (
 )
 
 pub struct Checker {
-	table     &table.Table
+	table      &table.Table
 mut:
-	file_name string
+	file_name  string
 	unresolved []ast.Expr
-	resolved []table.Type
+	resolved   []table.Type
 }
 
 pub fn new_checker(table &table.Table) Checker {
