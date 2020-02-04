@@ -42,6 +42,10 @@ i < 10; i++;
 	array_bool bools = new_array_from_c_array(2, 2, sizeof(array_bool), {
 		true, false,
 	});
+	array_User users = new_array_from_c_array(1, 1, sizeof(array_User), {
+		(User){
+			},
+	});
 	bool b = bools[0];
 	array_string mystrings = new_array_from_c_array(2, 2, sizeof(array_string), {
 		tos3("a"), tos3("b"),
@@ -69,6 +73,8 @@ int get_int2() {
 }
 
 void myuser() {
+	int x = 1;
+	int q = x | 4100;
 	User user = (User){
 		.age = 10,
 	};

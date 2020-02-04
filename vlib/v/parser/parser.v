@@ -216,6 +216,13 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		.dollar {
 			return p.comp_if()
 		}
+		.key_continue, .key_break {
+			tok := p.tok
+			p.next()
+			return ast.BranchStmt{
+				tok: p.tok
+			}
+		}
 		else {
 			// `x := ...`
 			if p.tok.kind == .name && p.peek_tok.kind == .decl_assign {
@@ -479,7 +486,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.array_init()
 		}
 		else {
-			p.error('expr(): bad token `$p.tok.str()`')
+			p.error('pexpr(): bad token `$p.tok.str()`')
 		}
 	}
 	// Infix
@@ -605,10 +612,13 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.Type) {
 }
 
 // Implementation of Pratt Precedence
+/*
 [inline]
 fn (p &Parser) is_addative() bool {
 	return p.tok.kind in [.plus, .minus] && p.peek_tok.kind in [.number, .name]
 }
+*/
+
 
 fn (p mut Parser) for_statement() ast.Stmt {
 	p.check(.key_for)
@@ -659,16 +669,20 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			inc: inc
 		}
 	}
-	// `for i in start .. end`
+	// `for i in vals`, `for i in start .. end`
 	else if p.peek_tok.kind == .key_in {
-		var := p.check_name()
+		var_name := p.check_name()
 		p.check(.key_in)
 		start := p.tok.lit.int()
-		p.check(.number)
-		p.check(.dotdot)
-		// end := p.tok.lit.int()
-		// println('for start=$start $end')
-		p.check(.number)
+		p.expr(0)
+		if p.tok.kind == .dotdot {
+			p.check(.dotdot)
+			p.expr(0)
+		}
+		p.table.register_var(table.Var{
+			name: var_name
+			typ: table.int_type
+		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
 		return ast.ForStmt{
@@ -746,6 +760,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 }
 
 fn (p mut Parser) array_init() (ast.Expr,table.Type) {
+	mut node := ast.Expr{}
 	p.check(.lsbr)
 	mut val_type := table.void_type
 	mut exprs := []ast.Expr
@@ -759,15 +774,22 @@ fn (p mut Parser) array_init() (ast.Expr,table.Type) {
 			p.check(.comma)
 		}
 	}
+	line_nr := p.tok.line_nr
+	p.check(.rsbr)
+	// Fixed size array? (`[100]byte`)
+	if exprs.len <= 1 && p.tok.kind == .name && p.tok.line_nr == line_nr {
+		p.check_name()
+		p.warn('fixed size array')
+		// type_idx,type_name := p.table.find_or_register_array_fixed(val_type, 1)
+		// node =
+	}
 	type_idx,type_name := p.table.find_or_register_array(val_type, 1)
 	array_ti := table.new_type(.array, type_name, type_idx, 0)
-	mut node := ast.Expr{}
 	node = ast.ArrayInit{
 		ti: array_ti
 		exprs: exprs
 		pos: p.tok.position()
 	}
-	p.check(.rsbr)
 	return node,array_ti
 }
 
