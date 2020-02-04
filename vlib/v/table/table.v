@@ -92,7 +92,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 
 pub fn (t mut Table) register_var(v Var) {
 	println('register_var: $v.name - $v.typ.name')
-	mut new_var := {
+	new_var := {
 		v |
 		idx:t.var_idx,
 		scope_level:t.scope_level
