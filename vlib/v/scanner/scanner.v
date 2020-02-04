@@ -541,7 +541,7 @@ pub fn (s mut Scanner) scan() token.Token {
 					return s.scan_res(.righ_shift_assign, '')
 				}
 				s.pos++
-				return s.scan_res(.righ_shift, '')
+				return s.scan_res(.right_shift, '')
 			}
 			else {
 				return s.scan_res(.gt, '')

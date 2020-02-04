@@ -6,13 +6,13 @@ module builtin
 
 import strings
 
-// B-trees are balanced search trees with all leaves at 
-// the same level. B-trees are generally faster than 
-// binary search trees due to the better locality of 
+// B-trees are balanced search trees with all leaves at
+// the same level. B-trees are generally faster than
+// binary search trees due to the better locality of
 // reference, since multiple keys are stored in one node.
 
 // The number for `degree` has been picked through vigor-
-// ous benchmarking but can be changed to any number > 1. 
+// ous benchmarking but can be changed to any number > 1.
 // `degree` determines the size of each node.
 
 const (
@@ -32,7 +32,7 @@ pub mut:
 
 struct mapnode {
 mut:
-  	keys     [11]string  // TODO: Should use `max_size`
+	keys     [11]string  // TODO: Should use `max_size`
 	values   [11]voidptr // TODO: Should use `max_size`
 	children &voidptr
 	size     int
@@ -65,7 +65,7 @@ fn new_node() &mapnode {
 }
 
 // This implementation does proactive insertion, meaning
-// that splits are done top-down and not bottom-up. 
+// that splits are done top-down and not bottom-up.
 fn (m mut map) set(key string, value voidptr) {
 	mut node := m.root
 	mut child_index := 0
@@ -179,7 +179,7 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
-fn (n mapnode) find_key(k string) int { 
+fn (n mapnode) find_key(k string) int {
 	mut idx := 0
 	for idx < n.size && n.keys[idx] < k {
 		idx++
@@ -263,23 +263,23 @@ fn (n mut mapnode) borrow_from_prev(idx int) {
 	mut child := &mapnode(n.children[idx])
 	mut sibling := &mapnode(n.children[idx - 1])
 	for i := child.size - 1; i >= 0; i-- {
-		child.keys[i + 1] = child.keys[i] 
-		child.values[i + 1] = child.values[i] 
+		child.keys[i + 1] = child.keys[i]
+		child.values[i + 1] = child.values[i]
 	}
-	if !isnil(child.children) { 
+	if !isnil(child.children) {
 		for i := child.size; i >= 0; i-- {
-			child.children[i + 1] = child.children[i] 
+			child.children[i + 1] = child.children[i]
 		}
 	}
-	child.keys[0] = n.keys[idx - 1] 
-	child.values[0] = n.values[idx - 1] 
+	child.keys[0] = n.keys[idx - 1]
+	child.values[0] = n.values[idx - 1]
 	if !isnil(child.children) {
 		child.children[0] = sibling.children[sibling.size]
 	}
 	n.keys[idx - 1] = sibling.keys[sibling.size - 1]
 	n.values[idx - 1] = sibling.values[sibling.size - 1]
-	child.size++ 
-	sibling.size-- 
+	child.size++
+	sibling.size--
 }
 
 fn (n mut mapnode) borrow_from_next(idx int) {
@@ -340,7 +340,7 @@ pub fn (m mut map) delete(key string) {
 	if removed {
 		m.size--
 	}
-	
+
 	if m.root.size == 0 {
 		// tmp := t.root
 		if isnil(m.root.children) {
@@ -353,7 +353,7 @@ pub fn (m mut map) delete(key string) {
 }
 
 // Insert all keys of the subtree into array `keys`
-// starting at `at`. Keys are inserted in order. 
+// starting at `at`. Keys are inserted in order.
 fn (n mapnode) subkeys(keys mut []string, at int) int {
 	mut position := at
 	if !isnil(n.children) {

@@ -376,7 +376,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		typ = ti2
 	}
 	// struct init
-	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || p.tok.lit in ['array', 'string']) {
+	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || p.tok.lit in ['array', 'string', 'mapnode', 'map']) {
 		typ = p.parse_type()
 		// p.warn('struct init typ=$typ.name')
 		p.check(.lcbr)
@@ -919,9 +919,17 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	for p.tok.kind != .rcbr {
 		if p.tok.kind == .key_pub {
 			p.check(.key_pub)
+			if p.tok.kind == .key_mut {
+				p.check(.key_mut)
+			}
+			p.check(.colon)
+		}
+		else if p.tok.kind == .key_mut {
+			p.check(.key_mut)
 			p.check(.colon)
 		}
 		field_name := p.check_name()
+		// p.warn('field $field_name')
 		ti := p.parse_type()
 		ast_fields << ast.Field{
 			name: field_name

@@ -42,7 +42,7 @@ pub enum Kind {
 	dollar
 	str_dollar
 	left_shift
-	righ_shift
+	right_shift
 	// at // @
 	assign // =
 	decl_assign // :=
@@ -199,7 +199,7 @@ fn build_token_str() []string {
 	s[Kind.le] = '<='
 	s[Kind.question] = '?'
 	s[Kind.left_shift] = '<<'
-	s[Kind.righ_shift] = '>>'
+	s[Kind.right_shift] = '>>'
 	s[Kind.line_comment] = '// line comment'
 	s[Kind.mline_comment] = '/* mline comment */'
 	s[Kind.nl] = 'NLL'
@@ -372,7 +372,7 @@ pub fn (tok Token) precedence() int {
 			return 7
 		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
-		.mul, .div, .mod, .left_shift, .righ_shift, .amp {
+		.mul, .div, .mod, .left_shift, .right_shift, .amp {
 			return 6
 		}
 		// `+` |  `-` |  `|` | `^`
@@ -459,5 +459,7 @@ pub fn (tok Kind) is_relational() bool {
 }
 
 pub fn (kind Kind) is_infix() bool {
-	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .ge, .le, .logical_or, .and, .dot, .pipe, .left_shift]
+	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .ge, .le, .logical_or,
+	//
+.and, .dot, .pipe, .left_shift, .right_shift]
 }
