@@ -469,7 +469,7 @@ pub fn (s string) split_into_lines() []string {
 	mut start := 0
 	for i := 0; i < s.len; i++ {
 		last := i == s.len - 1
-		if int(s[i]) == 10 || last {
+		if s[i] == 10 || last {
 			if last {
 				i++
 			}
