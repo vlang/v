@@ -119,13 +119,14 @@ pub fn read_file(path string) ?string {
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
+	defer { C.fclose(fp) }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
-	mut str := malloc(fsize + 1)
+	mut str := &byte(0)
+	unsafe { str = malloc(fsize + 1) }
 	C.fread(str, fsize, 1, fp)
-	C.fclose(fp)
 	str[fsize] = 0
 	return string(str,fsize)
 }
@@ -707,13 +708,15 @@ pub fn get_raw_line() string {
 		}
 		return string(buf, offset)
 	} $else {
-		max := size_t(256)
-		buf := charptr(malloc(int(max)))
+		max := size_t(0)
+		mut buf := byteptr(0)
 		nr_chars := C.getline(&buf, &max, stdin)
-		if nr_chars == 0 {
+		defer { unsafe{ free(buf) } }
+		if nr_chars == 0 || nr_chars == -1 {
 			return ''
 		}
-		return string(byteptr(buf),nr_chars)
+		res := tos_clone( buf )
+		return res
 	}
 }
 
