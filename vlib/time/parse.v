@@ -39,7 +39,8 @@ pub fn parse_iso(s string) ?Time {
 		return error('Invalid time format: $s')
 	}
 	mm := pos / 3 + 1
-	tmstr := malloc(s.len * 2)
+	mut tmstr := byteptr(0)
+	unsafe { tmstr = malloc(s.len * 2) }
 	count := C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm,
 		fields[1].str, fields[4].str)
 
