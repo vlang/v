@@ -12,19 +12,8 @@ struct C.tm {
 	tm_sec  int
 }
 
-pub fn convert_ctime(t tm) Time {
-	return Time{
-		year: t.tm_year + 1900
-		month: t.tm_mon + 1
-		day: t.tm_mday
-		hour: t.tm_hour
-		minute: t.tm_min
-		second: t.tm_sec
-		unix: make_unix_time(t)
-	}
-}
+fn C._mkgmtime(&tm) time_t
 
-[inline]
 fn make_unix_time(t tm) int {
-	return C.mktime(&t) - C._timezone
+	return C._mkgmtime(&t) as int
 }

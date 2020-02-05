@@ -490,3 +490,15 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 pub fn (t Time) str() string {
 	return t.format_ss()
 }
+
+fn convert_ctime(t C.tm) Time {
+	return Time{
+		year: t.tm_year + 1900
+		month: t.tm_mon + 1
+		day: t.tm_mday
+		hour: t.tm_hour
+		minute: t.tm_min
+		second: t.tm_sec
+		unix: make_unix_time(t)
+	}
+}
