@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
+// unix returns a time struct from Unix time.
 pub fn unix(abs int) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
