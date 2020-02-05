@@ -969,7 +969,7 @@ println(perform(cat)) // "meow"
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
 
-Interface names in V language should be PascaleCase and should end with "er":
+Interface names in V language should be PascalCase and should end with "er":
 
 ```v
 // valid
