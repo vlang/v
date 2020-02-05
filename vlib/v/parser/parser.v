@@ -16,12 +16,14 @@ import (
 const (
 	colored_output = term.can_show_color_on_stderr()
 )
-
+/*
 type PrefixParseFn fn()ast.Expr
 
 type InfixParseFn fn(e ast.Expr)ast.Expr
 
 type PostfixParseFn fn()ast.Expr
+*/
+
 
 struct Parser {
 	scanner     &scanner.Scanner
@@ -232,9 +234,14 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 				tok: p.tok
 			}
 		}
+		.key_unsafe {
+			p.next()
+			p.parse_block()
+			return ast.Stmt{}
+		}
 		else {
 			// `x := ...`
-			if p.tok.kind == .name && p.peek_tok.kind == .decl_assign {
+			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 				return p.var_decl()
 			}
 			expr,ti := p.expr(0)
@@ -286,7 +293,10 @@ fn (p mut Parser) attr() ast.Attr {
 
 fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	// ,table.Type) {
-	p.next()
+	if p.tok.kind != .dotdot {
+		p.next()
+	}
+	p.check(.dotdot)
 	high,typ := p.expr(0)
 	if typ.kind != .int {
 		p.error('non-integer index `$typ.name`')
@@ -372,6 +382,17 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		p.next()
 		p.check(.dot)
 	}
+	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+		p.next()
+		p.check(.lsbr)
+		key_type := p.check_name()
+		if key_type != 'string' {
+			p.error('maps can only have string keys for now')
+		}
+		p.check(.rsbr)
+		p.check_name()
+		return node,typ
+	}
 	// fn call
 	if p.peek_tok.kind == .lpar {
 		println('calling $p.tok.lit')
@@ -380,7 +401,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		typ = ti2
 	}
 	// struct init
-	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || p.tok.lit in ['array', 'string', 'mapnode', 'map']) {
+	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
+		// || p.table.known_type(p.tok.lit)) {
 		typ = p.parse_type()
 		// p.warn('struct init typ=$typ.name')
 		p.check(.lcbr)
@@ -476,8 +498,8 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			}
 			p.next()
 		}
-		// -1, -a, !x, &x etc
-		.minus, .amp, .mul, .not {
+		// -1, -a, !x, &x, ~x
+		.minus, .amp, .mul, .not, .bit_not {
 			node,typ = p.prefix_expr()
 		}
 		// .amp {
@@ -489,6 +511,9 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			}
 			typ = table.bool_type
 			p.next()
+		}
+		.key_match {
+			return p.match_expr()
 		}
 		.number {
 			node,typ = p.parse_number_literal()
@@ -503,6 +528,9 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 		}
 		.lsbr {
 			node,typ = p.array_init()
+		}
+		.key_none {
+			p.next()
 		}
 		.key_sizeof {
 			p.next()
@@ -563,7 +591,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 	// println('index expr$p.tok.str() line=$p.tok.line_nr')
 	p.next() // [
 	mut index_expr := ast.Expr{}
-	if p.tok.kind == .dotdot {
+	if p.tok.kind == .dotdot || p.peek_tok.kind == .dotdot {
 		// `numbers[..end]`
 		index_expr = p.range_expr(left)
 		// typ = typ_ // set the type back to array
@@ -767,14 +795,16 @@ fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 	mut ti := table.void_type
 	// mut left := ast.Expr{}
 	// If the last statement is an expression, return its type
-	match stmts[stmts.len - 1] {
-		ast.ExprStmt {
-			p.warn('if expr ret $it.ti.name')
-			ti = it.ti
-			// return node,it.ti
-			// left =
-		}
-		else {}
+	if stmts.len > 0 {
+		match stmts[stmts.len - 1] {
+			ast.ExprStmt {
+				p.warn('if expr ret $it.ti.name')
+				ti = it.ti
+				// return node,it.ti
+				// left =
+			}
+			else {}
+	}
 	}
 	node = ast.IfExpr{
 		cond: cond
@@ -958,6 +988,11 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		field_name := p.check_name()
 		// p.warn('field $field_name')
 		ti := p.parse_type()
+		// Default value
+		if p.tok.kind == .assign {
+			p.next()
+			p.expr(0)
+		}
 		ast_fields << ast.Field{
 			name: field_name
 			typ: ti
@@ -1034,9 +1069,9 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		p.check(.key_static)
 		// p.fspace()
 	}
-	name := p.tok.lit
-	p.read_first_token()
-	expr,typ := p.expr(token.lowest_prec)
+	name := p.check_name()
+	p.next()
+	expr,typ := p.expr(0)
 	if _ := p.table.find_var(name) {
 		p.error('redefinition of `$name`')
 	}
@@ -1099,6 +1134,29 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	return ast.GlobalDecl{
 		name: name
 	}
+}
+
+fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
+	p.check(.key_match)
+	p.expr(0)
+	p.check(.lcbr)
+	for {
+		// p.tok.kind != .rcbr {
+		p.expr(0)
+		p.warn('match block')
+		p.parse_block()
+		if p.tok.kind == .key_else {
+			p.next()
+			p.parse_block()
+		}
+		if p.tok.kind == .rcbr {
+			break
+		}
+	}
+	p.check(.rcbr)
+	mut node := ast.Expr{}
+	node = ast.MatchExpr{}
+	return node,table.void_type
 }
 
 fn (p mut Parser) add_unresolved(expr ast.Expr) table.Type {

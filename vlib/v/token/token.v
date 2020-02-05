@@ -388,7 +388,9 @@ pub fn (tok Token) precedence() int {
 			return 3
 		}
 		// `||`
-		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mult_assign {
+		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .or_assign,
+		//
+		.left_shift_assign, .righ_shift_assign, .mult_assign {
 			return 2
 		}
 		.key_in {
@@ -415,6 +417,7 @@ pub fn (tok Token) is_unary() bool {
 	.plus, .minus, .not, .bit_not, .mul, .amp]
 }
 
+/*
 // NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
 // or only ones with the same precedence?
 // is_left_assoc returns true if the token is left associative
@@ -451,6 +454,8 @@ pub fn (tok Token) is_right_assoc() bool {
 	// `&=` | `^=` | `|=`
 	.and_assign, .xor_assign, .or_assign]
 }
+*/
+
 
 pub fn (tok Kind) is_relational() bool {
 	return tok in [
@@ -461,5 +466,5 @@ pub fn (tok Kind) is_relational() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .ge, .le, .logical_or,
 	//
-.and, .dot, .pipe, .left_shift, .right_shift]
+	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }

@@ -10,7 +10,7 @@ import (
 
 pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
 FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
@@ -186,17 +186,17 @@ mut:
 
 pub struct File {
 pub:
-	path    string
-	mod     Module
-	imports []Import
-	stmts   []Stmt
+	path       string
+	mod        Module
+	imports    []Import
+	stmts      []Stmt
 	unresolved []Expr
 }
 
 pub struct IdentVar {
 pub:
-	typ  table.Type
-	//name string
+	typ table.Type
+	// name string
 }
 
 type IdentInfo = IdentVar
@@ -265,6 +265,17 @@ pub:
 }
 
 pub struct IfExpr {
+pub:
+	tok_kind   token.Kind
+	cond       Expr
+	stmts      []Stmt
+	else_stmts []Stmt
+	ti         table.Type
+	left       Expr // `a` in `a := if ...`
+	pos        token.Position
+}
+
+pub struct MatchExpr {
 pub:
 	tok_kind   token.Kind
 	cond       Expr

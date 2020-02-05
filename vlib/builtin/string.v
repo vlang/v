@@ -688,7 +688,7 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) contains(p string) bool {
-	_ = s.index(p) or {
+	s.index(p) or {
 		return false
 	}
 	return true
