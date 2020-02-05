@@ -249,10 +249,10 @@ fn (gen_vc mut GenVC) generate() {
 
 	// parse time as string to time.Time
 	last_commit_time_v  := time.parse(ts_v) or {
-		panic('Invalid date format: $ts_v')
+		panic(err)
 	}
 	last_commit_time_vc := time.parse(ts_vc) or {
-		panic('Invalid date format: $ts_vc')
+		panic(err)
 	}
 
 	// git dates are in users local timezone and v time.parse does not parse
