@@ -238,16 +238,16 @@ fn test_parse_invalid() {
 	assert false
 }
 
-fn test_parse_iso() {
+fn test_parse_rfc2822() {
 	s1 := 'Thu, 12 Dec 2019 06:07:45 GMT'
-	t1 := time.parse_iso(s1) or {
+	t1 := time.parse_rfc2822(s1) or {
 		assert false
 		return
 	}
 	assert t1.year == 2019 && t1.month == 12 && t1.day == 12 && t1.hour == 6 && t1.minute == 7 && t1.second == 45
 	assert t1.unix == 1576130865
 	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
-	t2 := time.parse_iso(s2) or {
+	t2 := time.parse_rfc2822(s2) or {
 		assert false
 		return
 	}
@@ -255,9 +255,9 @@ fn test_parse_iso() {
 	assert t2.unix == 1576130865
 }
 
-fn test_parse_iso_invalid() {
+fn test_parse_rfc2822_invalid() {
 	s3 := 'Thu 12 Foo 2019 06:07:45 +0800'
-	t3 := time.parse_iso(s3) or {
+	t3 := time.parse_rfc2822(s3) or {
 		assert true
 		return
 	}

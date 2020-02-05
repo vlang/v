@@ -29,8 +29,8 @@ pub fn parse(s string) ?Time {
 	})
 }
 
-// parse_iso returns time from a date string in RFC 2822 datetime format.
-pub fn parse_iso(s string) ?Time {
+// parse_rfc2822 returns time from a date string in RFC 2822 datetime format.
+pub fn parse_rfc2822(s string) ?Time {
 	fields := s.split(' ')
 	if fields.len < 5 {
 		return error('Invalid time format: $s')
