@@ -813,6 +813,15 @@ fn (p mut Parser) factor() string {
 			// p.fgen('$sizeof_typ)')
 			return 'int'
 		}
+		.key_nameof {
+			p.next()
+			p.check(.lpar)
+			mut nameof_typ := p.get_type()
+			p.check(.rpar)
+			p.gen('tos3("$nameof_typ")')
+//			return 'byteptr'
+			return 'string'
+		}
 		.key_offsetof {
 			p.next()
 			p.check(.lpar)
