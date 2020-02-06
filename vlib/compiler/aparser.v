@@ -14,6 +14,7 @@ import (
 
 struct Parser {
 	file_path              string // "/home/user/hello.v"
+	file_path_dir          string // "/home/user"
 	file_name              string // "hello.v"
 	file_platform          string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
@@ -180,6 +181,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	p = {
 		p |
 		file_path:path,
+		file_path_dir:filepath.dir( path ),
 		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
