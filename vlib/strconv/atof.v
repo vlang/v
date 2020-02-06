@@ -215,6 +215,7 @@ fn parser(s string) (int,PrepNumber) {
 				state = FSM_C
 				if c == PLUS {
 					c = s[i++]
+					//i++
 				}
 				else if c == MINUS {
 					pn.negative = true

@@ -179,6 +179,7 @@ fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
 	assert t.day == time_to_test.day + num_of_days
+	assert t.unix == time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_get_fmt_time_str() {
@@ -220,20 +221,47 @@ fn test_get_fmt_str() {
 
 fn test_parse() {
 	s := '2018-01-27 12:48:34'
-	t := time.parse(s)
+	t := time.parse(s) or {
+		assert false
+		return
+	}
 	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48 && t.second == 34
+	assert t.unix == 1517057314
+}
+
+fn test_parse_invalid() {
+	s := 'Invalid time string'
+	t := time.parse(s) or {
+		assert true
+		return
+	}
+	assert false
 }
 
 fn test_parse_iso() {
 	s1 := 'Thu, 12 Dec 2019 06:07:45 GMT'
-	t1 := time.parse_iso(s1)
+	t1 := time.parse_iso(s1) or {
+		assert false
+		return
+	}
 	assert t1.year == 2019 && t1.month == 12 && t1.day == 12 && t1.hour == 6 && t1.minute == 7 && t1.second == 45
+	assert t1.unix == 1576130865
 	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
-	t2 := time.parse_iso(s2)
+	t2 := time.parse_iso(s2) or {
+		assert false
+		return
+	}
 	assert t2.year == 2019 && t2.month == 12 && t2.day == 12 && t2.hour == 6 && t2.minute == 7 && t2.second == 45
+	assert t2.unix == 1576130865
+}
+
+fn test_parse_iso_invalid() {
 	s3 := 'Thu 12 Foo 2019 06:07:45 +0800'
-	t3 := time.parse_iso(s3)
-	assert t3.year == 0 && t3.month == 0 && t3.day == 0 && t3.hour == 0 && t3.minute == 0 && t3.second == 0
+	t3 := time.parse_iso(s3) or {
+		assert true
+		return
+	}
+	assert false
 }
 
 fn test_str() {

@@ -12,16 +12,8 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
-	mut args := []ast.Expr
 	// mut return_ti := types.void_ti
-	for p.tok.kind != .rpar {
-		e,_ := p.expr(0)
-		args << e
-		if p.tok.kind != .rpar {
-			p.check(.comma)
-		}
-	}
-	p.check(.rpar)
+	args := p.call_args()
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
@@ -29,17 +21,23 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 		
 		pos: tok.position()
 	}
-	mut ti := table.unresolved_type
-	if f := p.table.find_fn(fn_name) {
-		ti = f.return_type
+	if p.tok.kind == .key_orelse {
+		p.next()
+		p.parse_block()
 	}
-	println('adding call_expr check $fn_name')
-	return node,ti
+	if f := p.table.find_fn(fn_name) {
+		return node,f.return_type
+	}
+	typ := p.add_unresolved(node)
+	return node,typ
 }
 
 pub fn (p mut Parser) call_args() []ast.Expr {
 	mut args := []ast.Expr
 	for p.tok.kind != .rpar {
+		if p.tok.kind == .key_mut {
+			p.check(.key_mut)
+		}
 		e,_ := p.expr(0)
 		args << e
 		if p.tok.kind != .rpar {
@@ -51,6 +49,7 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
+	p.table.clear_vars()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -98,7 +97,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	mut args := []table.Var
 	mut ast_args := []ast.Arg
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind == .amp || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	//
+	p.peek_tok.kind == .rpar
 	if types_only {
 		p.warn('types only')
 		for p.tok.kind != .rpar {
@@ -115,6 +116,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			for p.tok.kind == .comma {
 				p.check(.comma)
 				arg_names << p.check_name()
+			}
+			if p.tok.kind == .key_mut {
+				p.check(.key_mut)
 			}
 			ti := p.parse_type()
 			for arg_name in arg_names {
@@ -140,7 +144,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.check(.rpar)
 	// Return type
 	mut typ := table.void_type
-	if p.tok.kind in [.name, .lpar, .amp] {
+	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
 		typ = p.parse_type()
 		p.return_type = typ
 	}
