@@ -42,6 +42,19 @@ fn (c mut Checker) resolve_types() {
 	for x in c.unresolved {
 		c.resolved << c.expr(x)
 	}
+
+	for idx, t in c.table.types {
+		if t.kind == .array {
+			mut info := t.info as table.Array
+			if info.elem_type.typ.kind == .unresolved {
+				rt := c.resolved[info.elem_type.idx]
+				println('\n\n #### REPLACING RESOLVED $info.elem_type.idx: $t.name - $info.elem_type.typ.name - $rt.typ.name\n\n')
+				info.elem_type = c.resolved[info.elem_type.idx]
+				c.table.types[idx].name = 'array_$rt.typ.name'
+				c.table.types[idx].info = info
+			}
+		}
+	}
 }
 
 pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.TypeRef {

@@ -29,7 +29,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
 	if f := p.table.find_fn(fn_name) {
 		return node,f.return_type
 	}
-	typ := p.add_unresolved(node)
+	typ := p.add_unresolved('${fn_name}()', node)
 	return node,typ
 }
 

@@ -44,6 +44,7 @@ mut:
 	builtin_mod bool
 	mod         string
 	unresolved  []ast.Expr
+	unresolved_idxs  map[string]int
 }
 
 // for tests
@@ -644,7 +645,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,ta
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		typ = p.add_unresolved(mcall_expr)
+		typ = p.add_unresolved('${left_type.typ.name}.${field_name}()', mcall_expr)
 		return node,typ
 	}
 	sel_expr := ast.SelectorExpr{
@@ -652,6 +653,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,ta
 		field: field_name
 		pos: p.tok.position()
 	}
+	typ = p.add_unresolved('${left_type.typ.name}.$field_name', sel_expr)
 	mut node := ast.Expr{}
 	node = sel_expr
 	return node,typ
@@ -1177,9 +1179,16 @@ fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 	return node,p.table.new_type_ref(table.void_type_idx, 0)
 }
 
-fn (p mut Parser) add_unresolved(expr ast.Expr) table.TypeRef {
+fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
+	mut idx := p.unresolved.len
+	if key in p.unresolved_idxs {
+		idx = p.unresolved_idxs[key]
+	}
+	else {
+		p.unresolved << expr
+	}
 	t := table.TypeRef{
-		idx: p.unresolved.len
+		idx: idx
 		// typ: &p.table.types[table.void_type_idx]
 		typ: &table.Type{
 			kind: .unresolved
@@ -1187,7 +1196,6 @@ fn (p mut Parser) add_unresolved(expr ast.Expr) table.TypeRef {
 		}
 		// typ: 0
 	}
-	p.unresolved << expr
 	return t
 }
 
