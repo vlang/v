@@ -411,6 +411,32 @@ if parser.token in [.plus, .minus, .div, .mult] {
 
 V optimizes such expressions, so both `if` statements above produce the same machine code, no arrays are created.
 
+Unlike Go language, semicolon `;` cannot be used for delimiting `if` conditions:
+
+```v
+// invalid
+fn foo() ?int {
+	if 1 > 2 {
+	   return error('error')
+	}
+	return 4
+}
+
+fn main() {
+	if a := foo(); a == 4 { // ';' is invalid
+		println("true")
+	}
+} //=> syntax error: unexpected `;`, expecting `{`
+
+// invalid
+  if a := 1; a > 2 {
+    println("true")
+  }
+//=>  `if x := opt() {` syntax requires a function that returns an optional value
+```
+
+This also means that `if`-scope local variables are unavailable.
+
 ## For loop
 
 V has only one looping construct: `for`.
