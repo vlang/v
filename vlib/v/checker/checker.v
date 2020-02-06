@@ -93,8 +93,7 @@ pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.TypeRef {
 		c.error('infix expr: cannot use `$left_type.typ.name` as `$right_type.typ.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
-		// return table.bool_type
-		return c.table.type_ref_ptr(table.bool_type_idx, 0)
+		return c.table.type_ref(table.bool_type_idx)
 	}
 	return left_type
 }
@@ -142,30 +141,19 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef {
 	typ := c.expr(selector_expr.expr)
 	field_name := selector_expr.field
-	// struct_ := c.table.types[ti.idx]
-	// struct_info := struct_.info as table.Struct
-	// typ := c.table.types[ti.idx]
-	println('SELECTOR EXPR')
 	match typ.typ.kind {
 		.struct_ {
-			// if !c.table.struct_has_field(it, field) {
-			// c.error('AAA unknown field `${it.name}.$field`')
-			// }
-			// TODO: fix bug
 			field := c.table.struct_find_field(typ.typ, field_name) or {
 				c.error('unknown field `${typ.typ.name}.$field_name`', selector_expr.pos)
 				exit(0)
 			}
-			println('END SELECTOR EXPR')
 			return field.typ
 		}
 		else {
 			c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
 		}
 	}
-	println('END SELECTOR EXPR')
-	// return table.void_type
-	return c.table.type_ref_ptr(table.void_type_idx, 0)
+	return c.table.type_ref(table.void_type_idx)
 }
 
 // TODO: non deferred
@@ -181,8 +169,6 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 	expected_type := return_stmt.expected_type
 	mut expected_types := [expected_type]
 	if expected_type.typ.kind == .multi_return {
-		// mr_type := c.table.types[expected_type.idx]
-		// mr_info := mr_type.info as table.MultiReturn
 		mr_info := expected_type.typ.info as table.MultiReturn
 		expected_types = mr_info.types
 	}
@@ -198,8 +184,7 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 }
 
 pub fn (c &Checker) array_init(array_init mut ast.ArrayInit) table.TypeRef {
-	// mut elem_type := table.void_type
-	mut elem_type := c.table.type_ref_ptr(table.void_type_idx, 0)
+	mut elem_type := c.table.type_ref(table.void_type_idx)
 	for i, expr in array_init.exprs {
 		c.expr(expr)
 		typ := c.expr(expr)
@@ -213,16 +198,6 @@ pub fn (c &Checker) array_init(array_init mut ast.ArrayInit) table.TypeRef {
 			c.error('expected array element with type `$elem_type.typ.name`', array_init.pos)
 		}
 	}
-	
-	// mut info := array_init.typ.info as table.Array
-	// info.elem_type = elem_type
-	// array_init.typ.info = info
-	// println('######## $info.elem_type.idx')
-	// if array_init.typ.kind == .unresolved {
-	// 	mut ti1 := array_init.typ
-	// 	ti1.name = 'array_$elem_type.name'
-	// 	array_init.typ = ti1
-	// }
 	return array_init.typ
 }
 
@@ -386,10 +361,6 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
 		}
 		else {}
 	}
-	// TODO
-	// info := ti.info as table.Array
-	// ti = p.table.types[info.elem_type_idx]
-	
 	// if typ.name.starts_with('array_') {
 	if typ.typ.kind == .array {
 		// info := typ.typ.info as table.Array
@@ -406,17 +377,10 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
 				}
 				else {}
 			}
-			// elm_typ := typ.name[6..]
-			// elm_typ := info.elem_type_idx
 			// TODO `typ = ... or ...`
 			// x := c.table.find_type_idx(elm_typ) or {
 			// 	c.error('cannot find array elem type: $elm_typ', node.pos)
 			// 	exit(0)
-			// }
-			// typ = x
-			// typ = c.table.types[info.elem_type.idx]
-			// if info.elem_type.idx <=0 {
-			// 	println('OOOOOOOOOOOOOOOOOOOOPPPS: $typ.idx')
 			// }
 			// Check index type
 			index_type := c.expr(node.index)
