@@ -31,9 +31,9 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) table.TypeRef {
 }
 
 pub fn (p mut Parser) parse_map_type(nr_muls int) table.TypeRef {
-	// if p.tok.kind != .lsbr {
-	// 	return table.map_type
-	// }
+	if p.tok.kind != .lsbr {
+		return p.table.type_ref(p.table.type_idxs['map'])
+	}
 	p.next()
 	p.check(.lsbr)
 	key_ti := p.parse_type()
