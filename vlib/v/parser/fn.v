@@ -64,8 +64,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
-	// mut rec_ti := table.void_type
-	mut rec_type := p.table.new_type_ref(table.void_type_idx, 0)
+	mut rec_type := p.table.type_ref(table.void_type_idx)
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
@@ -143,8 +142,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	p.check(.rpar)
 	// Return type
-	// mut typ := table.void_type
-	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
+	mut typ := p.table.type_ref(table.void_type_idx)
 	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
 		typ = p.parse_type()
 		p.return_type = typ

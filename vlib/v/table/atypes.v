@@ -7,15 +7,12 @@ pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
 
 pub struct Type {
 pub:
-	// idx        int
-	// parent_idx int
 	parent     &Type
 mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
 	methods    []Fn
-	nr_muls    int
 }
 
 pub struct TypeRef {
@@ -83,15 +80,6 @@ pub fn (t Type) str() string {
 }
 */
 
-// pub fn (t &Type) str() string {
-// 	mut muls := ''
-// 	for _ in 0 .. t.nr_muls {
-// 		muls += '&'
-// 	}
-// 	// return '$muls$ti.name'
-// 	return '$muls$t.idx'
-// }
-
 pub fn (t &TypeRef) str() string {
 	mut muls := ''
 	for _ in 0 .. t.nr_muls {
@@ -100,19 +88,16 @@ pub fn (t &TypeRef) str() string {
 	return '$muls$t.typ.name'
 }
 
-/*
-pub fn new_type(kind Kind, name string, idx int, nr_muls int) Type {
-	return Type{
-		// idx: idx
-		kind: kind
-		name: name
-		nr_muls: nr_muls
+[inline]
+pub fn (t &Table) type_ref(idx int) TypeRef {
+	return TypeRef{
+		idx: idx
+		typ: &t.types[idx]
 	}
 }
-*/
 
 [inline]
-pub fn (t &Table) new_type_ref(idx int, nr_muls int) TypeRef {
+pub fn (t &Table) type_ref_ptr(idx int, nr_muls int) TypeRef {
 	return TypeRef{
 		idx: idx
 		nr_muls: nr_muls
@@ -221,23 +206,23 @@ pub fn (t mut Table) register_builtin_types() {
 }
 
 [inline]
-pub fn (ti &Type) is_ptr() bool {
-	return ti.nr_muls > 0
+pub fn (t &TypeRef) is_ptr() bool {
+	return t.nr_muls > 0
 }
 
 [inline]
-pub fn (ti &Type) is_int() bool {
-	return ti.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
+pub fn (t &Type) is_int() bool {
+	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
 }
 
 [inline]
-pub fn (ti &Type) is_float() bool {
-	return ti.kind in [.f32, .f64]
+pub fn (t &Type) is_float() bool {
+	return t.kind in [.f32, .f64]
 }
 
 [inline]
-pub fn (ti &Type) is_number() bool {
-	return ti.is_int() || ti.is_float()
+pub fn (t &Type) is_number() bool {
+	return t.is_int() || t.is_float()
 }
 
 pub fn (k Kind) str() string {

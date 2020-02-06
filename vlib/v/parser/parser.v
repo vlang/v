@@ -372,7 +372,7 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
-	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
+	mut typ := p.table.type_ref(table.void_type_idx)
 	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
@@ -445,8 +445,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 			p.next()
 		}else{
 			if is_c {
-				// typ = table.int_type
-				typ = p.table.new_type_ref(table.int_type_idx, 0)
+				typ = p.table.type_ref(table.int_type_idx)
 				ident.info = ast.IdentVar{
 					typ: typ
 					// name: ident.name
@@ -480,8 +479,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 
 pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 	// println('\n\nparser.expr()')
-	// mut typ := table.void_type
-	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
+	mut typ := p.table.type_ref(table.void_type_idx)
 	mut node := ast.Expr{}
 	// Prefix
 	match p.tok.kind {
@@ -492,8 +490,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 			node,typ = p.string_expr()
 		}
 		.chartoken {
-			// typ = table.byte_type
-			typ = p.table.new_type_ref(table.byte_type_idx, 0)
+			typ = p.table.type_ref(table.byte_type_idx)
 			node = ast.CharLiteral{
 				val: p.tok.lit
 			}
@@ -510,8 +507,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
 			}
-			// typ = table.bool_type
-			typ = p.table.new_type_ref(table.bool_type_idx, 0)
+			typ = p.table.type_ref(table.bool_type_idx)
 			p.next()
 		}
 		.key_match {
@@ -539,8 +535,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 			p.check(.lpar)
 			p.next()
 			p.check(.rpar)
-			// typ = table.int_type
-			typ = p.table.new_type_ref(table.int_type_idx, 0)
+			typ = p.table.type_ref(table.int_type_idx)
 		}
 		else {
 			p.error('pexpr(): bad token `$p.tok.str()`')
@@ -624,7 +619,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,ta
 	p.next()
 	field_name := p.check_name()
 	// mut ti := table.unresolved_type
-	mut typ := p.table.new_type_ref(table.unresolved_type_idx, 0)
+	mut typ := p.table.type_ref(table.unresolved_type_idx)
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -663,8 +658,7 @@ fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.TypeRef) {
 	p.next()
 	right,mut typ := p.expr(precedence)
 	if op.is_relational() {
-		// ti = table.bool_type
-		typ = p.table.new_type_ref(table.bool_type_idx, 0)
+		typ = p.table.type_ref(table.bool_type_idx)
 	}
 	mut expr := ast.Expr{}
 	expr = ast.InfixExpr{
@@ -747,8 +741,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			val_name := p.check_name()
 			p.table.register_var(table.Var{
 				name: val_name
-				// typ: table.int_type
-				typ: p.table.new_type_ref(table.int_type_idx, 0)
+				typ: p.table.type_ref(table.int_type_idx)
 			})
 		}
 		p.check(.key_in)
@@ -760,8 +753,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.table.register_var(table.Var{
 			name: var_name
-			// typ: table.int_type
-			typ: p.table.new_type_ref(table.int_type_idx, 0)
+			typ: p.table.type_ref(table.int_type_idx)
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -801,8 +793,7 @@ fn (p mut Parser) if_expr() (ast.Expr,table.TypeRef) {
 			else_stmts = p.parse_block()
 		}
 	}
-	// mut ti := table.void_type
-	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
+	mut typ := p.table.type_ref(table.void_type_idx)
 	// mut left := ast.Expr{}
 	// If the last statement is an expression, return its type
 	if stmts.len > 0 {
@@ -835,8 +826,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		// return node,table.string_type
-		return node, p.table.new_type_ref(table.string_type_idx, 0)
+		return node, p.table.type_ref(table.string_type_idx)
 	}
 	// Handle $ interpolation
 	for p.tok.kind == .str {
@@ -850,15 +840,13 @@ fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
 			p.next()
 		}
 	}
-	// return node,table.string_type
-	return node, p.table.new_type_ref(table.string_type_idx, 0)
+	return node, p.table.type_ref(table.string_type_idx)
 }
 
 fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
 	p.check(.lsbr)
-	// mut val_type := table.void_type
-	mut val_type := p.table.new_type_ref(table.void_type_idx, 0)
+	mut val_type := p.table.type_ref(table.void_type_idx)
 	mut exprs := []ast.Expr
 	for i := 0; p.tok.kind != .rsbr; i++ {
 		expr,typ := p.expr(0)
@@ -881,7 +869,7 @@ fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
 	}
 	// array_type := table.new_type(.array, type_name, type_idx, 0)
 	idx := p.table.find_or_register_array(val_type, 1)
-	array_type := p.table.new_type_ref(idx, 0)
+	array_type := p.table.type_ref_ptr(idx, 0)
 	node = ast.ArrayInit{
 		typ: array_type
 		exprs: exprs
@@ -893,16 +881,13 @@ fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
 fn (p mut Parser) parse_number_literal() (ast.Expr,table.TypeRef) {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	// mut ti := table.int_type
-	mut ti := p.table.new_type_ref(table.int_type_idx, 0)
+	mut ti := p.table.type_ref(table.int_type_idx)
 	if lit.contains('.') {
 		node = ast.FloatLiteral{
 			// val: lit.f64()
 			val: lit
 		}
-		// ti = table.new_builtin_ti(.f64, 0)
-		// ti = table.new_type(.f64, 'f64', table.f64_type_idx, 0)
-		ti = p.table.new_type_ref(table.f64_type_idx, 0)
+		ti = p.table.type_ref(table.f64_type_idx)
 	}
 	else {
 		node = ast.IntegerLiteral{
@@ -1172,8 +1157,7 @@ fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 	p.check(.rcbr)
 	mut node := ast.Expr{}
 	node = ast.MatchExpr{}
-	// return node,table.void_type
-	return node,p.table.new_type_ref(table.void_type_idx, 0)
+	return node,p.table.type_ref(table.void_type_idx)
 }
 
 fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {

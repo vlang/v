@@ -94,7 +94,7 @@ pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.TypeRef {
 	}
 	if infix_expr.op.is_relational() {
 		// return table.bool_type
-		return c.table.new_type_ref(table.bool_type_idx, 0)
+		return c.table.type_ref_ptr(table.bool_type_idx, 0)
 	}
 	return left_type
 }
@@ -165,7 +165,7 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef 
 	}
 	println('END SELECTOR EXPR')
 	// return table.void_type
-	return c.table.new_type_ref(table.void_type_idx, 0)
+	return c.table.type_ref_ptr(table.void_type_idx, 0)
 }
 
 // TODO: non deferred
@@ -199,7 +199,7 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 
 pub fn (c &Checker) array_init(array_init mut ast.ArrayInit) table.TypeRef {
 	// mut elem_type := table.void_type
-	mut elem_type := c.table.new_type_ref(table.void_type_idx, 0)
+	mut elem_type := c.table.type_ref_ptr(table.void_type_idx, 0)
 	for i, expr in array_init.exprs {
 		c.expr(expr)
 		typ := c.expr(expr)
@@ -280,7 +280,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		}
 		ast.IntegerLiteral {
 			// return table.int_type
-			return c.table.new_type_ref(table.int_type_idx, 0)
+			return c.table.type_ref_ptr(table.int_type_idx, 0)
 		}
 		// ast.FloatLiteral {}
 		ast.PostfixExpr {
@@ -294,7 +294,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 
 		ast.StringLiteral {
 			// return table.string_type
-			return c.table.new_type_ref(table.string_type_idx, 0)
+			return c.table.type_ref_ptr(table.string_type_idx, 0)
 		}
 		ast.PrefixExpr {
 			return c.expr(it.right)
@@ -329,11 +329,11 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 				return info.typ
 			}
 			// return table.void_type
-			return c.table.new_type_ref(table.void_type_idx, 0)
+			return c.table.type_ref_ptr(table.void_type_idx, 0)
 		}
 		ast.BoolLiteral {
 			// return table.bool_type
-			return c.table.new_type_ref(table.bool_type_idx, 0)
+			return c.table.type_ref_ptr(table.bool_type_idx, 0)
 		}
 		ast.SelectorExpr {
 			return c.selector_expr(it)
@@ -358,7 +358,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		else {}
 	}
 	// return table.void_type
-	return c.table.new_type_ref(table.void_type_idx, 0)
+	return c.table.type_ref_ptr(table.void_type_idx, 0)
 }
 
 pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.TypeRef {
@@ -427,7 +427,7 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
 	}
 	else {
 		// typ = table.int_type
-		typ = c.table.new_type_ref(table.int_type_idx, 0)
+		typ = c.table.type_ref_ptr(table.int_type_idx, 0)
 	}
 	return typ
 	// c.expr(it.index)

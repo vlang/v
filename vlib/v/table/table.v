@@ -42,7 +42,7 @@ mut:
 
 pub fn new_table() &Table {
 	mut t := &Table{
-		types: make(0, 1000, sizeof(Type))
+		types: make(0, 400, sizeof(Type))
 	}
 	t.register_builtin_types()
 	return t
@@ -88,7 +88,6 @@ pub fn (t mut Table) register_global(name string, typ TypeRef) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
-		
 	}
 }
 
@@ -342,8 +341,6 @@ pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) 
 		kind: .map
 		name: name
 		info: Map{
-			// key_type_idx: key_type.idx
-			// value_type_idx: valuee_typ.idx
 			key_type: key_type
 			value_type: value_type
 		}
@@ -366,8 +363,6 @@ pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int 
 		kind: .array
 		name: name
 		info: Array{
-			// elem_type_idx: elem_typ.idx
-			// elem_is_ptr: elem_typ.is_ptr()
 			elem_type: elem_type
 			nr_dims: nr_dims
 		}
