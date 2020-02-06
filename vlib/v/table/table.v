@@ -394,7 +394,7 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 	return t.register_type(mr_type)
 }
 
-pub fn (t mut Table) find_or_register_variadic(variadic_typ &TypeRef) int {
+pub fn (t mut Table) find_or_register_variadic(variadic_typ TypeRef) int {
 	name := 'variadic_$variadic_typ.typ.name'
 	// existing
 	existing_idx := t.type_idxs[name]
