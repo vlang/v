@@ -39,18 +39,35 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 }
 
 fn (c mut Checker) resolve_types() {
+	// resolve type of unresolved expressions
 	for x in c.unresolved {
 		c.resolved << c.expr(x)
 	}
-
+	// update any types with unresolved sub types
 	for idx, t in c.table.types {
 		if t.kind == .array {
 			mut info := t.info as table.Array
 			if info.elem_type.typ.kind == .unresolved {
-				rt := c.resolved[info.elem_type.idx]
 				info.elem_type = c.resolved[info.elem_type.idx]
 				mut t1 := &c.table.types[idx]
-				t1.name = 'array_$rt.typ.name' // TODO name fn
+				t1.name = table.array_name(&info.elem_type, info.nr_dims)
+				t1.info = info
+			}
+		}
+		else if t.kind == .map {
+			mut info := t.info as table.Map
+			mut updated := false
+			if info.key_type.typ.kind == .unresolved {
+				info.key_type = c.resolved[info.key_type.idx]
+				updated = true
+			}
+			if info.value_type.typ.kind == .unresolved {
+				info.value_type = c.resolved[info.value_type.idx]
+				updated = true
+			}
+			if updated {
+				mut t1 := &c.table.types[idx]
+				t1.name = table.map_name(&info.key_type, &info.value_type)
 				t1.info = info
 			}
 		}

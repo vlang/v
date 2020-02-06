@@ -312,7 +312,7 @@ pub fn (t &Table) known_type(name string) bool {
 }
 
 pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) int {
-	name := 'map_${key_type.typ.name}_${value_type.typ.name}'
+	name := map_name(&key_type, &value_type) 
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -332,7 +332,7 @@ pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) 
 }
 
 pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int {
-	name := 'array_${elem_type.typ.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+	name := array_name(&elem_type, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -352,7 +352,7 @@ pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int 
 }
 
 pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, nr_dims int) int {
-	name := 'array_fixed_${elem_type.typ.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+	name := array_fixed_name(&elem_type, size, nr_dims) 
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {

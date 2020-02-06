@@ -105,6 +105,21 @@ pub fn (t &Table) type_ref_ptr(idx int, nr_muls int) TypeRef {
 	}
 }
 
+[inline]
+pub fn array_name(elem_type &TypeRef, nr_dims int) string {
+	return 'array_${elem_type.typ.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn array_fixed_name(elem_type &TypeRef, size int, nr_dims int) string {
+	return 'array_fixed_${elem_type.typ.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn map_name(key_type &TypeRef, value_type &TypeRef) string {
+	return 'map_${key_type.typ.name}_${value_type.typ.name}'
+}
+
 pub fn (t mut Table) register_builtin_types() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
@@ -369,7 +384,7 @@ mut:
 }
 
 pub struct Map {
-pub:
+pub mut:
 	key_type   TypeRef
 	value_type TypeRef
 }
