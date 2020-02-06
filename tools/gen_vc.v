@@ -248,8 +248,12 @@ fn (gen_vc mut GenVC) generate() {
 	ts_vc := git_log_vc.find_between('Date:', '\n').trim_space()
 
 	// parse time as string to time.Time
-	last_commit_time_v  := time.parse(ts_v)
-	last_commit_time_vc := time.parse(ts_vc)
+	last_commit_time_v  := time.parse(ts_v) or {
+		panic(err)
+	}
+	last_commit_time_vc := time.parse(ts_vc) or {
+		panic(err)
+	}
 
 	// git dates are in users local timezone and v time.parse does not parse
 	// timezones at the moment, so for now get unix timestamp from output also
