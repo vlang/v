@@ -609,7 +609,6 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 		index: index_expr
 		pos: p.tok.position()
 		// typ: typ
-		
 	}
 	return node
 	// return node,typ
@@ -618,8 +617,6 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,table.TypeRef) {
 	p.next()
 	field_name := p.check_name()
-	// mut ti := table.unresolved_type
-	mut typ := p.table.type_ref(table.unresolved_type_idx)
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -636,7 +633,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,ta
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		typ = p.add_unresolved('${left_type.typ.name}.${field_name}()', mcall_expr)
+		typ := p.add_unresolved('${left_type.typ.name}.${field_name}()', mcall_expr)
 		return node,typ
 	}
 	sel_expr := ast.SelectorExpr{
@@ -644,7 +641,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,ta
 		field: field_name
 		pos: p.tok.position()
 	}
-	typ = p.add_unresolved('${left_type.typ.name}.$field_name', sel_expr)
+	typ := p.add_unresolved('${left_type.typ.name}.$field_name', sel_expr)
 	mut node := ast.Expr{}
 	node = sel_expr
 	return node,typ
