@@ -7,14 +7,22 @@ pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
 
 pub struct Type {
 pub:
-	idx        int
-	parent_idx int
+	// idx        int
+	// parent_idx int
+	parent     &Type
 mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
 	methods    []Fn
 	nr_muls    int
+}
+
+pub struct TypeRef {
+pub:
+	idx     int
+	typ     &Type
+	nr_muls int
 }
 
 pub const (
@@ -35,7 +43,8 @@ pub const (
 	char_type_idx = 15
 	byte_type_idx = 16
 	bool_type_idx = 17
-	map_type_idx = 18
+	// map_type_idx = 18
+	unresolved_type_idx = 18
 )
 
 pub enum Kind {
@@ -70,39 +79,46 @@ pub enum Kind {
 
 pub const (
 	unresolved_type = Type{
+		parent: 0
 		kind: .unresolved
 		name: 'unresolved'
 	}
 	void_type = Type{
+		parent: 0
 		kind: .void
 		name: 'void'
-		idx: void_type_idx
+		// idx: void_type_idx
 	}
 	int_type = Type{
+		parent: 0
 		kind: .int
 		name: 'int'
-		idx: int_type_idx
+		// idx: int_type_idx
 	}
 	string_type = Type{
+		parent: 0
 		kind: .string
 		name: 'string'
-		idx: string_type_idx
+		// idx: string_type_idx
 	}
 	bool_type = Type{
+		parent: 0
 		kind: .bool
 		name: 'bool'
-		idx: bool_type_idx
+		// idx: bool_type_idx
 	}
 	byte_type = Type{
+		parent: 0
 		kind: .byte
 		name: 'byte'
-		idx: byte_type_idx
+		// idx: byte_type_idx
 	}
-	map_type = Type{
-		kind: .map
-		name: 'map'
-		idx: map_type_idx
-	}
+	// map_type = Type{
+	// 	parent: 0
+	// 	kind: .map
+	// 	name: 'map'
+	// 	idx: map_type_idx
+	// }
 )
 /*
 pub fn (t Type) str() string {
@@ -111,21 +127,38 @@ pub fn (t Type) str() string {
 */
 
 
-pub fn (t &Type) str() string {
+// pub fn (t &Type) str() string {
+// 	mut muls := ''
+// 	for _ in 0 .. t.nr_muls {
+// 		muls += '&'
+// 	}
+// 	// return '$muls$ti.name'
+// 	return '$muls$t.idx'
+// }
+
+pub fn (t &TypeRef) str() string {
 	mut muls := ''
 	for _ in 0 .. t.nr_muls {
 		muls += '&'
 	}
-	// return '$muls$ti.name'
-	return '$muls$t.idx'
+	return '$muls$t.typ.name'
 }
 
 pub fn new_type(kind Kind, name string, idx int, nr_muls int) Type {
 	return Type{
-		idx: idx
+		// idx: idx
 		kind: kind
 		name: name
 		nr_muls: nr_muls
+	}
+}
+
+[inline]
+pub fn (t &Table) new_type_ref(idx int, nr_muls int) TypeRef {
+	return TypeRef{
+		idx: idx
+		nr_muls: nr_muls
+		typ: &t.types[idx]
 	}
 }
 
@@ -204,6 +237,10 @@ pub fn (t mut Table) register_builtin_types() {
 		kind: .bool
 		name: 'bool'
 	})
+	t.register_type(Type{
+		kind: .unresolved
+		name: 'unresolved'
+	})
 }
 
 [inline]
@@ -271,7 +308,13 @@ pub fn (k Kind) str() string {
 			'byte'
 		}
 		.u16{
-			'u18'
+			'u16'
+		}
+		.u32{
+			'u32'
+		}
+		.u64{
+			'u64'
 		}
 		.f32{
 			'f32'
@@ -336,7 +379,7 @@ pub mut:
 pub struct Field {
 pub:
 	name string
-	ti   Type
+	typ  TypeRef
 	// type_idx int
 }
 // pub struct Int {
@@ -350,52 +393,58 @@ pub:
 // }
 pub struct Array {
 pub:
-	elem_type_kind Kind
-	elem_type_idx  int
-	elem_is_ptr    bool
-	nr_dims        int
+	// elem_type_kind Kind
+	// elem_type_idx  int
+	// elem_is_ptr    bool
+	nr_dims    int
+mut:
+	elem_type TypeRef
 }
 
 pub struct ArrayFixed {
 pub:
-	elem_type_kind Kind
-	elem_type_idx  int
-	elem_is_ptr    bool
-	nr_dims        int
-	size           int
+	// elem_type_kind Kind
+	// elem_type_idx  int
+	// elem_is_ptr    bool
+	nr_dims   int
+	size      int
+mut:
+	elem_type TypeRef
 }
 
 pub struct Map {
 pub:
-	key_type_kind   Kind
-	key_type_idx    int
-	value_type_kind Kind
-	value_type_idx  int
+	// key_type_kind   Kind
+	// key_type_idx    int
+	// value_type_kind Kind
+	// value_type_idx  int
+	key_type   TypeRef
+	value_type TypeRef
 }
 
 pub struct MultiReturn {
 pub:
-	name string
-	tis  []Type
+	name  string
+	types []TypeRef
 }
 
 pub struct Variadic {
 pub:
-	ti Type
+	typ TypeRef
 }
 
 pub fn (t &Table) refresh_ti(ti Type) Type {
-	if ti.idx == 0 {
-		return ti
-	}
-	if ti.kind in [.placeholder, .unresolved] {
-		typ := t.types[ti.idx]
-		return {
-			ti |
-			kind:typ.kind,
-			name:typ.name
-		}
-	}
+	// if ti.idx == 0 {
+	// 	return ti
+	// }
+	// if ti.kind in [.placeholder, .unresolved] {
+	// 	typ := t.types[ti.idx]
+	// 	return {
+	// 		ti |
+	// 		kind:typ.kind,
+	// 		name:typ.name
+	// 	}
+	// }
 	return ti
 }
 

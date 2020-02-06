@@ -29,6 +29,7 @@ fn main() {
 	e = 'world'
 
 	mut f := [testa(),2,3,4]
+	mut g := [testb(1),'hello']
 }
 
 

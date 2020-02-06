@@ -25,8 +25,14 @@ fn test_c_files() {
 		$if windows {
 			ctext = ctext.replace('\r', '')
 		}
+		if i == 4 {
+			println(ctext)
+		}
 		mut b := builder.new_builder(pref.Preferences{})
 		res := b.gen_c([path])
+		println('============================')
+		println(res)
+		println('============================')
 		if compare_texts(res, ctext) {
 			eprintln('${term_ok} ${i}')
 		}

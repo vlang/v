@@ -8,7 +8,8 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
+pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
+	println('CALL EXPR')
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
@@ -60,7 +61,8 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
-	mut rec_ti := table.void_type
+	// mut rec_ti := table.void_type
+	mut rec_type := p.table.new_type_ref(table.void_type_idx, 0)
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
@@ -68,10 +70,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		if p.tok.kind == .key_mut {
 			p.next()
 		}
-		rec_ti = p.parse_type()
+		rec_type = p.parse_type()
 		p.table.register_var(table.Var{
 			name: rec_name
-			typ: rec_ti
+			typ: rec_type
 		})
 		p.check(.rpar)
 	}
@@ -115,19 +117,19 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			if p.tok.kind == .key_mut {
 				p.check(.key_mut)
 			}
-			ti := p.parse_type()
+			typ := p.parse_type()
 			for arg_name in arg_names {
 				arg := table.Var{
 					name: arg_name
-					typ: ti
+					typ: typ
 				}
 				args << arg
 				p.table.register_var(arg)
 				ast_args << ast.Arg{
-					ti: ti
+					typ: typ
 					name: arg_name
 				}
-				if ti.kind == .variadic && p.tok.kind == .comma {
+				if typ.typ.kind == .variadic && p.tok.kind == .comma {
 					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
 				}
 			}
@@ -138,16 +140,17 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	p.check(.rpar)
 	// Return type
-	mut typ := table.void_type
+	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
 	if p.tok.kind in [.name, .lpar, .amp, .lsbr] {
 		typ = p.parse_type()
 		p.return_type = typ
 	}
 	else {
-		p.return_type = table.void_type
+		// p.return_type = table.void_type
+		p.return_type = typ
 	}
 	if is_method {
-		ok := p.table.register_method(rec_ti, table.Fn{
+		ok := p.table.register_method(rec_type.typ, table.Fn{
 			name: name
 			args: args
 			return_type: typ
@@ -167,15 +170,16 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
+	println('FN DECL: $rec_type.typ.name')
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
-		ti: typ
+		typ: typ
 		args: ast_args
 		is_pub: is_pub
 		receiver: ast.Field{
 			name: rec_name
-			typ: rec_ti
+			typ: rec_type
 		}
 	}
 }

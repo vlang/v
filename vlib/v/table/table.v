@@ -23,7 +23,7 @@ pub struct Fn {
 pub:
 	name        string
 	args        []Var
-	return_type Type
+	return_type TypeRef
 }
 
 pub struct Var {
@@ -33,11 +33,13 @@ pub:
 	is_const  bool
 	is_global bool
 mut:
-	typ       Type
+	typ       TypeRef
 }
 
 pub fn new_table() &Table {
-	mut t := &Table{}
+	mut t := &Table{
+		types: make(0, 1000, sizeof(Type))
+	}
 	t.register_builtin_types()
 	return t
 }
@@ -84,7 +86,7 @@ pub fn (t mut Table) register_const(v Var) {
 	t.consts[v.name] = v
 }
 
-pub fn (t mut Table) register_global(name string, typ Type) {
+pub fn (t mut Table) register_global(name string, typ TypeRef) {
 	t.consts[name] = Var{
 		name: name
 		typ: typ
@@ -98,7 +100,7 @@ pub fn (t mut Table) register_global(name string, typ Type) {
 }
 
 pub fn (t mut Table) register_var(v Var) {
-	println('register_var: $v.name - $v.typ.name')
+	println('register_var: $v.name - $v.typ.typ.name')
 	t.local_vars << v
 	/*
 	mut new_var := {
@@ -145,24 +147,30 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (t mut Table) register_method(typ &Type, new_fn Fn) bool {
-	idx := typ.idx
-	println('register method `$new_fn.name` type=$typ.name idx=$typ.idx')
-	mut methods := t.types[idx].methods
+pub fn (t &Table) register_method(typ &Type, new_fn Fn) bool {
+	// idx := typ.idx
+	// println('register method `$new_fn.name` type=$typ.name idx=$typ.idx')
+	println('register method `$new_fn.name` type=$typ.name')
+	// mut methods := t.types[idx].methods
+	// methods << new_fn
+	// t.types[idx].methods = methods
+	// mut t1 := &t.types[typ.idx]
+	mut t1 := typ
+	mut methods := typ.methods
 	methods << new_fn
-	t.types[idx].methods = methods
+	t1.methods = methods
 	return true
 }
 
-pub fn (t &Table) has_method(type_idx int, name string) bool {
-	t.find_method(type_idx, name) or {
+pub fn (t &Type) has_method(name string) bool {
+	t.find_method(name) or {
 		return false
 	}
 	return true
 }
 
-pub fn (t &Table) find_method(type_idx int, name string) ?Fn {
-	for method in t.types[type_idx].methods {
+pub fn (t &Type) find_method(name string) ?Fn {
+	for method in t.methods {
 		if method.name == name {
 			return method
 		}
@@ -176,7 +184,8 @@ pub fn (t mut Table) new_tmp_var() string {
 }
 
 pub fn (t &Table) struct_has_field(s &Type, name string) bool {
-	println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	// println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
 	// for typ in t.types {
 	// println('$typ.idx $typ.name')
 	// }
@@ -187,20 +196,24 @@ pub fn (t &Table) struct_has_field(s &Type, name string) bool {
 }
 
 pub fn (t &Table) struct_find_field(s &Type, name string) ?Field {
-	println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+	println('struct_find_field($s.name, $name) types.len=$t.types.len')
 	info := s.info as Struct
 	for field in info.fields {
 		if field.name == name {
 			return field
 		}
 	}
-	if s.parent_idx != 0 {
-		parent := t.types[s.parent_idx]
-		parent_info := s.info as Struct
-		println('got parent $parent.name')
-		for field in parent_info.fields {
-			if field.name == name {
-				return field
+	// if s.parent_idx != 0 {
+	if s.parent != 0 {
+		// parent := t.types[s.parent_idx]
+		if s.parent.kind == .struct_ {
+			parent_info := s.parent.info as Struct
+			println('got parent $s.parent.name')
+			for field in parent_info.fields {
+				if field.name == name {
+					return field
+				}
 			}
 		}
 	}
@@ -222,9 +235,15 @@ pub fn (t &Table) find_type(name string) ?Type {
 }
 
 [inline]
+pub fn (t &Table) next_type_idx() int {
+	return t.types.len
+}
+
+[inline]
 pub fn (t mut Table) register_type(typ Type) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
+		println('EXISTING: $typ.name - $existing_idx')
 		ex_type := t.types[existing_idx]
 		match ex_type.kind {
 			.placeholder {
@@ -232,22 +251,30 @@ pub fn (t mut Table) register_type(typ Type) int {
 				println('overriding type placeholder `$typ.name`')
 				t.types[existing_idx] = {
 					typ |
+					// idx: typ.idx,
 					methods:ex_type.methods
 				}
 				return existing_idx
+				// return t.types[existing_idx]
 			}
 			else {
 				if ex_type.kind == typ.kind {
 					return existing_idx
 				}
+				println('$ex_type.kind.str() - $typ.kind.str()')
 				panic('cannot register type `$typ.name`, another type with this name exists')
 			}
+		}
 	}
+	typ_idx := t.types.len
+	// typ_idx := t.next_type_idx()
+	println(' ## REGISTERING: $typ.name - $typ_idx - $typ.kind.str()')
+	t.types << {
+		typ |
+		// idx: typ_idx
 	}
-	idx := t.types.len
-	t.types << typ
-	t.type_idxs[typ.name] = idx
-	return idx
+	t.type_idxs[typ.name] = typ_idx
+	return typ_idx
 }
 
 pub fn (t &Table) known_type(name string) bool {
@@ -257,136 +284,137 @@ pub fn (t &Table) known_type(name string) bool {
 	return true
 }
 
-pub fn (t mut Table) find_or_register_map(key_typ &Type, value_typ &Type) (int,string) {
-	name := 'map_${key_typ.name}_${value_typ.name}'
+pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) int {
+	name := 'map_${key_type.typ.name}_${value_type.typ.name}'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx,name
+		return existing_idx
 	}
 	// register
 	map_type := Type{
+		// idx: t.next_type_idx()
+		// parent_idx: t.type_idxs['map']
+		parent: &t.types[t.type_idxs['map']]
 		kind: .map
 		name: name
 		info: Map{
-			key_type_idx: key_typ.idx
-			value_type_idx: value_typ.idx
+			// key_type_idx: key_type.idx
+			// value_type_idx: valuee_typ.idx
+			key_type: key_type
+			value_type: value_type
 		}
 	}
-	idx := t.register_type(map_type)
-	return idx,name
+	return t.register_type(map_type)
 }
 
-pub fn (t mut Table) find_or_register_array(elem_typ &Type, nr_dims int) (int,string) {
-	name := 'array_${elem_typ.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int {
+	name := 'array_${elem_type.typ.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx,name
+		return existing_idx
 	}
 	// register
-	parent_idx := t.type_idxs['array']
 	array_type := Type{
-		parent_idx: parent_idx
+		// idx: t.next_type_idx()
+		// parent_idx: t.type_idxs['array']
+		parent: &t.types[t.type_idxs['array']]
 		kind: .array
 		name: name
 		info: Array{
-			elem_type_idx: elem_typ.idx
-			elem_is_ptr: elem_typ.is_ptr()
+			// elem_type_idx: elem_typ.idx
+			// elem_is_ptr: elem_typ.is_ptr()
+			elem_type: elem_type
 			nr_dims: nr_dims
 		}
 	}
-	idx := t.register_type(array_type)
-	return idx,name
+	return t.register_type(array_type)
 }
 
-pub fn (t mut Table) find_or_register_array_fixed(elem_typ &Type, size int, nr_dims int) (int,string) {
-	name := 'array_fixed_${elem_typ.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, nr_dims int) int {
+	name := 'array_fixed_${elem_type.typ.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx,name
+		return existing_idx
 	}
 	// register
 	array_fixed_type := Type{
+		// idx: t.next_type_idx()
 		kind: .array_fixed
 		name: name
 		info: ArrayFixed{
-			elem_type_idx: elem_typ.idx
-			elem_is_ptr: elem_typ.is_ptr()
+			// elem_type_idx: elem_type.idx
+			// elem_is_ptr: elem_typ.is_ptr()
+			elem_type: elem_type
 			size: size
 			nr_dims: nr_dims
 		}
 	}
-	idx := t.register_type(array_fixed_type)
-	return idx,name
+	return t.register_type(array_fixed_type)
 }
 
-pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) (int,string) {
+pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 	mut name := 'multi_return'
 	for mr_typ in mr_typs {
-		name += '_$mr_typ.name'
+		name += '_$mr_typ.typ.name'
 	}
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx,name
+		return existing_idx
 	}
 	// register
 	mr_type := Type{
+		// idx: t.next_type_idx()
 		kind: .multi_return
 		name: name
 		info: MultiReturn{
-			tis: mr_typs
+			types: mr_typs
 		}
 	}
-	idx := t.register_type(mr_type)
-	return idx,name
+	return t.register_type(mr_type)
 }
 
-pub fn (t mut Table) find_or_register_variadic(variadic_typ &Type) (int,string) {
-	name := 'variadic_$variadic_typ.name'
+pub fn (t mut Table) find_or_register_variadic(variadic_typ &TypeRef) int {
+	name := 'variadic_$variadic_typ.typ.name'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
-		return existing_idx,name
+		return existing_idx
 	}
 	// register
 	variadic_type := Type{
+		// idx: t.next_type_idx()
 		kind: .variadic
 		name: name
 		info: Variadic{
-			ti: variadic_typ
+			typ: variadic_typ
 		}
 	}
-	idx := t.register_type(variadic_type)
-	return idx,name
+	return t.register_type(variadic_type)
 }
 
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	ph_type := Type{
+		// idx: t.next_type_idx()
 		kind: .placeholder
 		name: name
 	}
-	idx := t.register_type(ph_type)
-	println('added placeholder: $name - $idx')
-	return idx
+	// println('added placeholder: $name - $ph_type.idx')
+	return t.register_type(ph_type)
 }
 
-// [inline]
-// pub fn (t &Table) update_typ(ti &types.Type) types.Type {
-// if typ.kind == .unresolved {
-// }
-// }
-pub fn (t &Table) check(got, expected &Type) bool {
-	println('check: $got.name, $expected.name')
-	if expected.kind == .voidptr {
+pub fn (t &Table) check(got, expected &TypeRef) bool {
+	println('check: $got.typ.name, $expected.typ.name')
+	if expected.typ.kind == .voidptr {
 		return true
 	}
 	// if expected.name == 'array' {
 	// return true
 	// }
-	if got.idx != expected.idx && got.name != expected.name {
+	if got.idx != expected.idx && got.typ.name != expected.typ.name {
 		return false
 	}
 	return true

@@ -85,7 +85,7 @@ fn myuser() {
 	x := 1
 	q := x | 0x1004
 	user := User{age:10}
-	age := user.age + 1
+	age := user.age + 1 // crash here
 	boo := 2
 	boo2 := boo+1
 	b := age > 0
