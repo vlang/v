@@ -242,12 +242,12 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		else {
 			// `x := ...`
-			if p.tok.kind == .name && p.peek_tok.kind in [.comma] {
-				return p.assign_stmt()
-			}
 			// if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign] {
 				return p.var_decl()
+			}
+			if p.tok.kind == .name && p.peek_tok.kind in [.comma] {
+				return p.assign_stmt()
 			}
 			expr,typ := p.expr(0)
 			return ast.ExprStmt{
@@ -375,32 +375,25 @@ pub fn (p &Parser) warn(s string) {
 }
 
 pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
-	mut is_mut := false
-	if p.tok.kind == .key_mut {
-		p.check(.key_mut)
-		is_mut = true
-	}
-	if p.tok.kind == .key_static {
-		p.check(.key_static)
-	}
-	name := p.check_name()
+	mut node := ast.Ident{}
+	mut typ := p.table.type_ref(table.void_type_idx)
 	// p.warn('name ')
+	// left := p.parse_ident()
+	name := p.check_name()
 	mut ident := ast.Ident{
 		name: name
 	}
-	// variable
-	mut typ := p.table.type_ref(table.void_type_idx)
 	mut known_var := false
 	if var := p.table.find_var(name) {
-		typ = var.typ
 		known_var = true
-	}
-	if known_var || is_mut || p.tok.kind in [.comma, .assign, .decl_assign] {
-		// typ = var.typ
+		typ = var.typ
+	} 
+	// variable
+	if known_var || p.tok.kind in [.comma, .decl_assign, .assign] {
+		// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
 		ident.kind = .variable
 		ident.info = ast.IdentVar{
 			typ: typ
-			// is_mut: is_mut
 			// name: ident.name
 			// expr: p.expr(0)// var.expr
 		}
@@ -410,8 +403,8 @@ pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
 			typ = p.table.type_ref(table.int_type_idx)
 			ident.info = ast.IdentVar{
 				typ: typ
+				// name: ident.name
 			}
-			p.next()
 			return ident,typ
 		}
 		// const
@@ -422,19 +415,17 @@ pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
 				typ: typ
 				// name: ident.name
 			}
-			return ident,typ
+			node = ident
 		}else{
 			// Function object (not a call), e.g. `onclick(my_click)`
-			if func := p.table.find_fn(name) {
-				return ast.Ident{
-					name: name
-					kind: .func
-				}, func.return_type
+			p.table.find_fn(name) or {
+				p.error('parse_ident: unknown identifier `$name`')
+				exit(0)
 			}
-			p.error('name expr unknown identifier `$name`')
-			exit(0)
+			// p.next()
 		}
 	}
+	return node, typ
 }
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
@@ -492,9 +483,9 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 		p.check(.rcbr)
 	}
 	else {
-		mut id := ast.Ident{}
-		id, typ = p.parse_ident(is_c)
-		node = id
+		mut ident := ast.Ident{}
+		ident, typ = p.parse_ident(is_c)
+		node = ident
 	}
 	return node,typ
 }
@@ -1078,36 +1069,22 @@ fn (p mut Parser) return_stmt() ast.Return {
 }
 
 pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
-	mut left := []ast.Expr
+	// TODO: multiple return & multiple assign
 	mut idents := []ast.Ident
 	for {
+		ident, _ := p.parse_ident(false)
+		idents << ident
 		if p.tok.kind == .comma {
 			p.check(.comma)
-		}
-		mx, _ := p.parse_ident(false)
-		idents << mx
-		mut l := ast.Expr{}
-		l = mx
-		left << l
-		if p.tok.kind != .comma {
+		} else {
 			break
 		}
-		p.check(.comma)
 	}
-	is_decl_assign := p.tok.kind == .decl_assign
-	is_assign := p.tok.kind == .assign
-	if !is_decl_assign && !is_assign {
-		p.error('expected: `=` or `:=`')
-	}
-	p.next()
-	// todo multiple: `a,b,c := d,e,f`
+	p.next() // :=, =
 	expr, _ := p.expr(0)
-	mut exprs := []ast.Expr
-	exprs << expr
 	return ast.AssignStmt{
 		left: idents
-		right: exprs
-		// pos: p.tok.position()
+		right: [expr]
 	}
 }
 
