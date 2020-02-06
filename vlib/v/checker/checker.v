@@ -183,7 +183,7 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 	}
 }
 
-pub fn (c &Checker) array_init(array_init mut ast.ArrayInit) table.TypeRef {
+pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.TypeRef {
 	mut elem_type := c.table.type_ref(table.void_type_idx)
 	for i, expr in array_init.exprs {
 		c.expr(expr)
@@ -287,7 +287,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 			return c.check_method_call_expr(it)
 		}
 		ast.ArrayInit {
-			return c.array_init(mut it)
+			return c.array_init(it)
 		}
 		ast.Ident {
 			if it.kind == .variable {
