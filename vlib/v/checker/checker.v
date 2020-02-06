@@ -46,7 +46,7 @@ fn (c mut Checker) resolve_types() {
 	// update any types with unresolved sub types
 	for idx, t in c.table.types {
 		if t.kind == .array {
-			mut info := t.info as table.Array
+			mut info := t.array_info()
 			if info.elem_type.typ.kind == .unresolved {
 				info.elem_type = c.resolved[info.elem_type.idx]
 				mut t1 := &c.table.types[idx]
@@ -55,7 +55,7 @@ fn (c mut Checker) resolve_types() {
 			}
 		}
 		else if t.kind == .map {
-			mut info := t.info as table.Map
+			mut info := t.map_info()
 			mut updated := false
 			if info.key_type.typ.kind == .unresolved {
 				info.key_type = c.resolved[info.key_type.idx]
@@ -68,6 +68,22 @@ fn (c mut Checker) resolve_types() {
 			if updated {
 				mut t1 := &c.table.types[idx]
 				t1.name = table.map_name(&info.key_type, &info.value_type)
+				t1.info = info
+			}
+		}
+		else if t.kind == .multi_return {
+			mut info := t.mr_info()
+			mut types := info.types
+			mut updated := false
+			for i, ut in types {
+				if ut.typ.kind == .unresolved {
+					types[i] = c.resolved[ut.idx]
+					updated = true
+				}
+			}
+			if updated {
+				mut t1 := &c.table.types[idx]
+				info.types = types
 				t1.info = info
 			}
 		}
@@ -197,6 +213,8 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 	}
 }
 
+pub fn (c &Checker) assign_stmt(assign_stmt ast.AssignStmt) {}
+
 pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.TypeRef {
 	mut elem_type := c.table.type_ref(table.void_type_idx)
 	for i, expr in array_init.exprs {
@@ -223,6 +241,9 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			c.return_stmt(it)
+		}
+		ast.AssignStmt {
+			c.assign_stmt(it)
 		}
 		ast.VarDecl {
 			typ := c.expr(it.expr)

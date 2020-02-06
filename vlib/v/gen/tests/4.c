@@ -1,9 +1,11 @@
+multi_return_int_string mr_test();
 int testa();
 string testb(int a);
 int testc(int a);
 int testa();
 int testb();
 int testa();
+
 int main() {
     Bar b = (Bar){
         .a = 122,
@@ -29,7 +31,11 @@ int main() {
     array_string g = new_array_from_c_array(2, 2, sizeof(array_string), {
         testb(1), tos3("hello"),
     });
-	return 0;
+    return 0;
+}
+
+multi_return_int_string mr_test() {
+    return (multi_return_int_string){.arg0=1,.arg1=tos3("v")};
 }
 
 int testa() {

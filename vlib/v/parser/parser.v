@@ -242,7 +242,11 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 		}
 		else {
 			// `x := ...`
-			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
+			if p.tok.kind == .name && p.peek_tok.kind in [.comma] {
+				return p.assign_stmt()
+			}
+			// if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
+			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign] {
 				return p.var_decl()
 			}
 			expr,typ := p.expr(0)
@@ -370,6 +374,72 @@ pub fn (p &Parser) warn(s string) {
 	}
 }
 
+pub fn(p mut Parser) parse_ident() (ast.Ident, table.TypeRef) {
+	mut is_mut := false
+	if p.tok.kind == .key_mut {
+		p.check(.key_mut)
+		is_mut = true
+	}
+	if p.tok.kind == .key_static {
+		p.check(.key_static)
+	}
+	name := p.check_name()
+	// p.warn('name ')
+	// left := p.parse_ident()
+	mut ident := ast.Ident{
+		name: name
+	}
+	// variable
+	mut typ := p.table.type_ref(table.void_type_idx)
+	mut known_var := false
+	if var := p.table.find_var(name) {
+		typ = var.typ
+		known_var = true
+	}
+	println(' ## TOK: $p.tok.lit - $p.tok.kind.str()')
+	if known_var || is_mut || p.tok.kind in [.comma, .assign, .decl_assign] {
+		// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
+		// typ = var.typ
+		ident.kind = .variable
+		ident.info = ast.IdentVar{
+			typ: typ
+			// is_mut: is_mut
+			// name: ident.name
+			// expr: p.expr(0)// var.expr
+		}
+		return ident, typ
+	}else{
+		// if is_c {
+		// 	typ = p.table.type_ref(table.int_type_idx)
+		// 	ident.info = ast.IdentVar{
+		// 		typ: typ
+		// 		// name: ident.name
+		// 	}
+		// 	p.next()
+		// 	return ident,typ
+		// }
+		// const
+		if c := p.table.find_const(name) {
+			typ = c.typ
+			ident.kind = .constant
+			ident.info = ast.IdentVar{
+				typ: typ
+				// name: ident.name
+			}
+			return ident,typ
+		}else{
+			// Function object (not a call), e.g. `onclick(my_click)`
+			p.table.find_fn(name) or {
+				p.error('name expr unknown identifier `$name`')
+				exit(0)
+			}
+			p.error('not implemented yet')
+			exit(0)
+			// ident.info = ast.IdentFnObj {}
+		}
+	}
+}
+
 pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
 	mut typ := p.table.type_ref(table.void_type_idx)
@@ -425,54 +495,9 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 		p.check(.rcbr)
 	}
 	else {
-		// p.warn('name ')
-		// left := p.parse_ident()
-		mut ident := ast.Ident{
-			name: p.tok.lit
-		}
-		// variable
-		if var := p.table.find_var(p.tok.lit) {
-			// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
-			typ = var.typ
-			ident.kind = .variable
-			ident.info = ast.IdentVar{
-				typ: typ
-				// name: ident.name
-				// expr: p.expr(0)// var.expr
-			}
-			// ident.ti = ti
-			node = ident
-			p.next()
-		}else{
-			if is_c {
-				typ = p.table.type_ref(table.int_type_idx)
-				ident.info = ast.IdentVar{
-					typ: typ
-					// name: ident.name
-				}
-				node = ident
-				p.next()
-				return node,typ
-			}
-			// const
-			if c := p.table.find_const(p.tok.lit) {
-				typ = c.typ
-				ident.kind = .constant
-				ident.info = ast.IdentVar{
-					typ: typ
-					// name: ident.name
-				}
-				node = ident
-				p.next()
-			}else{
-				// Function object (not a call), e.g. `onclick(my_click)`
-				p.table.find_fn(p.tok.lit) or {
-					p.error('name expr unknown identifier `$p.tok.lit`')
-					exit(0)
-				}
-				p.next()
-			}
-		}
+		mut id := ast.Ident{}
+		id, typ = p.parse_ident()
+		node = id
 	}
 	return node,typ
 }
@@ -1047,13 +1072,46 @@ fn (p mut Parser) return_stmt() ast.Return {
 			break
 		}
 	}
-	// TODO: consider non deferred
 	stmt := ast.Return{
 		expected_type: p.return_type
 		exprs: exprs
 		pos: p.tok.position()
 	}
 	return stmt
+}
+
+pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
+	mut left := []ast.Expr
+	mut idents := []ast.Ident
+	for {
+		if p.tok.kind == .comma {
+			p.check(.comma)
+		}
+		mx, _ := p.parse_ident()
+		idents << mx
+		mut l := ast.Expr{}
+		l = mx
+		left << l
+		if p.tok.kind != .comma {
+			break
+		}
+		p.check(.comma)
+	}
+	is_decl_assign := p.tok.kind == .decl_assign
+	is_assign := p.tok.kind == .assign
+	if !is_decl_assign && !is_assign {
+		p.error('expected: `=` or `:=`')
+	}
+	p.next()
+	// todo multiple: `a,b,c := d,e,f`
+	expr, _ := p.expr(0)
+	mut exprs := []ast.Expr
+	exprs << expr
+	return ast.AssignStmt{
+		left: idents
+		right: exprs
+		// pos: p.tok.position()
+	}
 }
 
 fn (p mut Parser) var_decl() ast.VarDecl {
@@ -1076,8 +1134,6 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 	p.table.register_var(table.Var{
 		name: name
 		is_mut: is_mut
-		// expr: expr
-		
 		typ: typ
 	})
 	p.warn('var decl name=$name typ=$typ.typ.name')
@@ -1170,7 +1226,7 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
 		typ: &table.Type{
 			parent: 0
 			kind: .unresolved
-			name: 'unresolved $p.unresolved.len'
+			name: 'unresolved $idx'
 		}
 	}
 	return t
