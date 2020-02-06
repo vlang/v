@@ -195,6 +195,17 @@ struct RepIndex {
 	val_idx int
 }
 
+fn compare_rep_index(a, b &RepIndex) int {
+	if a.idx < b.idx {
+		return -1
+	}
+	if a.idx > b.idx {
+		return 1
+	}
+	return 0
+}
+
+
 fn (a mut []RepIndex) sort() {
 	a.sort_with_compare(compare_rep_index)
 }
@@ -206,16 +217,6 @@ fn (a RepIndex) < (b RepIndex) bool {
 }
 */
 
-
-fn compare_rep_index(a, b &RepIndex) int {
-	if a.idx < b.idx {
-		return -1
-	}
-	if a.idx > b.idx {
-		return 1
-	}
-	return 0
-}
 
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
@@ -244,7 +245,8 @@ pub fn (s string) replace_each(vals []string) string {
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
 			idxs << RepIndex{
-				idx,rep_i}
+				idx:idx
+val_idx:rep_i}
 			idx++
 			new_len += with.len - rep.len
 		}
@@ -403,8 +405,8 @@ pub fn (s string) split(delim string) []string {
 }
 
 /*
-split_nth - splits the string based on the passed `delim` substring. 
-It returns the first Nth parts. When N=0, return all the splits. 
+split_nth - splits the string based on the passed `delim` substring.
+It returns the first Nth parts. When N=0, return all the splits.
 The last returned element has the remainder of the string, even if
 the remainder contains more `delim` substrings.
 */
@@ -447,7 +449,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 				res << s.right(start)
 				break
 			}
-			
+
 			res << val
 			start = i + delim.len
 		}
@@ -467,7 +469,7 @@ pub fn (s string) split_into_lines() []string {
 	mut start := 0
 	for i := 0; i < s.len; i++ {
 		last := i == s.len - 1
-		if int(s[i]) == 10 || last {
+		if s[i] == 10 || last {
 			if last {
 				i++
 			}
@@ -686,7 +688,7 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) contains(p string) bool {
-	_ = s.index(p) or {
+	s.index(p) or {
 		return false
 	}
 	return true

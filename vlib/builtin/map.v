@@ -123,8 +123,8 @@ fn (n mut mapnode) split_child(child_index int, y mut mapnode) {
 	}
 	if !isnil(y.children) {
 		z.children = &voidptr(malloc(children_bytes))
-		for j := degree - 1; j >= 0; j-- {
-			z.children[j] = y.children[j + degree]
+		for jj := degree - 1; jj >= 0; jj-- {
+			z.children[jj] = y.children[jj + degree]
 		}
 	}
 	if isnil(n.children) {

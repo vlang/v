@@ -8,15 +8,17 @@ module table
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
-	types      []Type
+	types       []Type
 	// type_idxs Hashmap
-	type_idxs  map[string]int
-	local_vars []Var
+	type_idxs   map[string]int
+	local_vars  []Var
+	scope_level int
+	var_idx     int
 	// fns Hashmap
-	fns        map[string]Fn
-	consts     map[string]Var
-	tmp_cnt    int
-	imports    []string
+	fns         map[string]Fn
+	consts      map[string]Var
+	tmp_cnt     int
+	imports     []string
 }
 
 pub struct Fn {
@@ -28,10 +30,12 @@ pub:
 
 pub struct Var {
 pub:
-	name      string
-	is_mut    bool
-	is_const  bool
-	is_global bool
+	name        string
+	idx         int
+	is_mut      bool
+	is_const    bool
+	is_global   bool
+	scope_level int
 mut:
 	typ       TypeRef
 }
@@ -54,32 +58,21 @@ pub fn (t &Table) find_var_idx(name string) int {
 }
 
 pub fn (t &Table) find_var(name string) ?Var {
-	/*
-	for i in 0 .. p.var_idx {
-		if p.local_vars[i].name == name {
-			return p.local_vars[i]
+	for i in 0 .. t.var_idx {
+		if t.local_vars[i].name == name {
+			return t.local_vars[i]
 		}
 	}
-	*/
-
+	/*
 	// println(t.names)
 	for var in t.local_vars {
 		if var.name == name {
 			return var
 		}
 	}
-	return none
-}
+	*/
 
-pub fn (t mut Table) clear_vars() {
-	// shared a := [1, 2, 3]
-	// p.var_idx = 0
-	if t.local_vars.len > 0 {
-		// if p.pref.autofree {
-		// p.local_vars.free()
-		// }
-		t.local_vars = []
-	}
+	return none
 }
 
 pub fn (t mut Table) register_const(v Var) {
@@ -101,27 +94,76 @@ pub fn (t mut Table) register_global(name string, typ TypeRef) {
 
 pub fn (t mut Table) register_var(v Var) {
 	println('register_var: $v.name - $v.typ.typ.name')
-	t.local_vars << v
-	/*
-	mut new_var := {
+	new_var := {
 		v |
-		idx:p.var_idx,
-		scope_level:p.cur_fn.scope_level
+		idx:t.var_idx,
+		scope_level:t.scope_level
 	}
+	// t.local_vars << v
+	/*
 	if v.line_nr == 0 {
 		new_var.token_idx = p.cur_tok_index()
 		new_var.line_nr = p.cur_tok().line_nr
 	}
+	*/
 	// Expand the array
-	if p.var_idx >= p.local_vars.len {
-		p.local_vars << new_var
+	if t.var_idx >= t.local_vars.len {
+		t.local_vars << new_var
 	}
 	else {
-		p.local_vars[p.var_idx] = new_var
+		t.local_vars[t.var_idx] = new_var
 	}
-	p.var_idx++
+	t.var_idx++
+}
+
+pub fn (t mut Table) open_scope() {
+	t.scope_level++
+}
+
+pub fn (t mut Table) close_scope() {
+	// println('close_scope level=$f.scope_level var_idx=$f.var_idx')
+	// Move back `var_idx` (pointer to the end of the array) till we reach
+	// the previous scope level.  This effectivly deletes (closes) current
+	// scope.
+	mut i := t.var_idx - 1
+	for ; i >= 0; i-- {
+		var := t.local_vars[i]
+		/*
+		if p.pref.autofree && (v.is_alloc || (v.is_arg && v.typ == 'string')) {
+			// && !p.pref.is_test {
+			p.free_var(v)
+		}
+		*/
+
+		// if p.fileis('mem.v') {
+		// println(v.name + ' $v.is_arg scope=$v.scope_level cur=$p.cur_fn.scope_level')}
+		if var.scope_level != t.scope_level {
+			// && !v.is_arg {
+			break
+		}
+	}
+	/*
+	if p.cur_fn.defer_text.last() != '' {
+		p.genln(p.cur_fn.defer_text.last())
+		// p.cur_fn.defer_text[f] = ''
+	}
 	*/
 
+	t.scope_level--
+	// p.cur_fn.defer_text = p.cur_fn.defer_text[..p.cur_fn.scope_level + 1]
+	t.var_idx = i + 1
+	// println('close_scope new var_idx=$f.var_idx\n')
+}
+
+pub fn (p mut Table) clear_vars() {
+	// shared a := [1, 2, 3]
+	p.var_idx = 0
+	if p.local_vars.len > 0 {
+		// ///if p.pref.autofree {
+		// p.local_vars.free()
+		// ///}
+		p.local_vars = []
+	}
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
@@ -261,8 +303,9 @@ pub fn (t mut Table) register_type(typ Type) int {
 				if ex_type.kind == typ.kind {
 					return existing_idx
 				}
-				println('$ex_type.kind.str() - $typ.kind.str()')
+				// println('$ex_type.kind.str() - $typ.kind.str()')
 				panic('cannot register type `$typ.name`, another type with this name exists')
+				// return -1
 			}
 		}
 	}

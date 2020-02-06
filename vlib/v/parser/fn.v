@@ -22,6 +22,10 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
 		
 		pos: tok.position()
 	}
+	if p.tok.kind == .key_orelse {
+		p.next()
+		p.parse_block()
+	}
 	if f := p.table.find_fn(fn_name) {
 		return node,f.return_type
 	}
@@ -46,6 +50,7 @@ pub fn (p mut Parser) call_args() []ast.Expr {
 }
 
 fn (p mut Parser) fn_decl() ast.FnDecl {
+	p.table.clear_vars()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -140,8 +145,9 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	p.check(.rpar)
 	// Return type
+	// mut typ := table.void_type
 	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
-	if p.tok.kind in [.name, .lpar, .amp, .lsbr] {
+	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
 		typ = p.parse_type()
 		p.return_type = typ
 	}

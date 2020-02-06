@@ -63,8 +63,8 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]byteptr
-		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
-		C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs - skipframes, 1)
+		nr_ptrs := C.backtrace(buffer, 100)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
 	}
 	return true
 }
@@ -72,8 +72,8 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]byteptr
-		nr_ptrs := C.backtrace(*voidptr(buffer), 100)
-		C.backtrace_symbols_fd(*voidptr(&buffer[skipframes]), nr_ptrs - skipframes, 1)
+		nr_ptrs := C.backtrace(buffer, 100)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
 	}
 	return true
 }
@@ -87,10 +87,11 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		// backtrace is not available on Android.
 		$if glibc {
 			buffer := [100]byteptr
-			nr_ptrs := C.backtrace(*voidptr(buffer), 100)
+			nr_ptrs := C.backtrace(buffer, 100)
 			nr_actual_frames := nr_ptrs - skipframes
 			mut sframes := []string
-			csymbols := C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
+			//////csymbols := C.backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
+			csymbols := C.backtrace_symbols(&buffer[skipframes], nr_actual_frames)
 			for i in 0 .. nr_actual_frames {
 				sframes << tos2(csymbols[i])
 			}
@@ -107,11 +108,11 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				}
 				buf := [1000]byte
 				mut output := ''
-				for C.fgets(voidptr(buf), 1000, f) != 0 {
+				for C.fgets(buf, 1000, f) != 0 {
 					output += tos(buf, vstrlen(buf))
 				}
 				output = output.trim_space() + ':'
-				if 0 != C.pclose(f) {
+				if C.pclose(f) != 0 {
 					println(sframe)
 					continue
 				}

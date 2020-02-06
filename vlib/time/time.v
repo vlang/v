@@ -216,7 +216,8 @@ pub fn parse_iso(s string) Time {
 	}
 	mm := pos / 3 + 1
 	tmstr := malloc(s.len * 2)
-	count := int(C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm, fields[1].str, fields[4].str))
+	count := C.sprintf(charptr(tmstr), '%s-%02d-%s %s'.str, fields[3].str, mm,
+		fields[1].str, fields[4].str)
 	return parse(tos(tmstr, count))
 }
 
@@ -488,4 +489,16 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 // TODO define common default format for `str` and `parse` and use it in both ways
 pub fn (t Time) str() string {
 	return t.format_ss()
+}
+
+fn convert_ctime(t C.tm) Time {
+	return Time{
+		year: t.tm_year + 1900
+		month: t.tm_mon + 1
+		day: t.tm_mday
+		hour: t.tm_hour
+		minute: t.tm_min
+		second: t.tm_sec
+		unix: make_unix_time(t)
+	}
 }
