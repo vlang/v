@@ -76,20 +76,17 @@ fn (c mut Checker) resolve_types() {
 
 pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.TypeRef {
 	typ := c.table.find_type(struct_init.typ.typ.name) or {
-		println('# A')
 		c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 		panic('')
 	}
 	match typ.kind {
 		.placeholder {
-			println('# B')
 			c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 		}
 		.struct_ {
 			info := typ.info as table.Struct
 			for i, expr in struct_init.exprs {
 				field := info.fields[i]
-				// expr_ti := c.expr(expr)
 				field_type := c.expr(expr)
 				if !c.table.check(field_type, field.typ) {
 					c.error('cannot assign $field_type.typ.name as $field.typ.typ.name for field $field.name', struct_init.pos)
@@ -205,7 +202,6 @@ pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.TypeRef {
 	for i, expr in array_init.exprs {
 		c.expr(expr)
 		typ := c.expr(expr)
-		println('# ARR TYP: $typ.typ.name')
 		// The first element's type
 		if i == 0 {
 			elem_type = typ
@@ -230,15 +226,10 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		}
 		ast.VarDecl {
 			typ := c.expr(it.expr)
-			// it.typ = typ
 			// println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
 			if typ.typ.kind != .void {
 				it.typ = typ
 			}
-			// if it.typ.kind == .unresolved {
-			// it.ti = typ
-			// println('unresolved var')
-			// }
 		}
 		ast.ForStmt {
 			typ := c.expr(it.cond)
