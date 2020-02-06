@@ -372,7 +372,6 @@ pub fn (p &Parser) warn(s string) {
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
-	// mut typ := table.void_type
 	mut typ := p.table.new_type_ref(table.void_type_idx, 0)
 	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
@@ -433,14 +432,13 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 		}
 		// variable
 		if var := p.table.find_var(p.tok.lit) {
-			println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
+			// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
 			typ = var.typ
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
 				// name: ident.name
 				// expr: p.expr(0)// var.expr
-				
 			}
 			// ident.ti = ti
 			node = ident
@@ -452,7 +450,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 				ident.info = ast.IdentVar{
 					typ: typ
 					// name: ident.name
-					
 				}
 				node = ident
 				p.next()
@@ -465,7 +462,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 				ident.info = ast.IdentVar{
 					typ: typ
 					// name: ident.name
-					
 				}
 				node = ident
 				p.next()
@@ -727,7 +723,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
-			mut typ := table.TypeRef{}
+			mut typ := table.TypeRef{typ:0}
 			cond,typ = p.expr(0)
 		}
 		p.check(.semicolon)
@@ -1027,6 +1023,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	p.check(.rcbr)
 	if name != 'string' {
 		ret := p.table.register_type(table.Type{
+			parent: 0
 			kind: .struct_
 			name: name
 			info: table.Struct{
@@ -1189,12 +1186,11 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
 	}
 	t := table.TypeRef{
 		idx: idx
-		// typ: &p.table.types[table.void_type_idx]
 		typ: &table.Type{
+			parent: 0
 			kind: .unresolved
 			name: 'unresolved $p.unresolved.len'
 		}
-		// typ: 0
 	}
 	return t
 }

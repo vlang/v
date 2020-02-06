@@ -384,12 +384,11 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, n
 	}
 	// register
 	array_fixed_type := Type{
+		parent: 0
 		// idx: t.next_type_idx()
 		kind: .array_fixed
 		name: name
 		info: ArrayFixed{
-			// elem_type_idx: elem_type.idx
-			// elem_is_ptr: elem_typ.is_ptr()
 			elem_type: elem_type
 			size: size
 			nr_dims: nr_dims
@@ -410,6 +409,7 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 	}
 	// register
 	mr_type := Type{
+		parent: 0
 		// idx: t.next_type_idx()
 		kind: .multi_return
 		name: name
@@ -429,6 +429,7 @@ pub fn (t mut Table) find_or_register_variadic(variadic_typ &TypeRef) int {
 	}
 	// register
 	variadic_type := Type{
+		parent: 0
 		// idx: t.next_type_idx()
 		kind: .variadic
 		name: name
@@ -441,6 +442,7 @@ pub fn (t mut Table) find_or_register_variadic(variadic_typ &TypeRef) int {
 
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	ph_type := Type{
+		parent: 0
 		// idx: t.next_type_idx()
 		kind: .placeholder
 		name: name

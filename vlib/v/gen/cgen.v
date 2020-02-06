@@ -61,13 +61,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('int ${it.name}(')
 			}
 			else {
-				// typ := g.table.refresh_ti(it.typ)
 				g.write('$it.typ.typ.name ${it.name}(')
 				g.definitions.write('$it.typ.typ.name ${it.name}(')
 			}
 			for i, arg in it.args {
-				// t := g.table.get_type(arg.ti.idx)
-				// typ := g.table.refresh_ti(arg.typ)
 				g.write(arg.typ.typ.name + ' ' + arg.name)
 				g.definitions.write(arg.typ.typ.name + ' ' + arg.name)
 				if i < it.args.len - 1 {
@@ -92,8 +89,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				// ttln( := g.table.get_type(g.fn_decl.ti.idx)
-				// ti := g.table.refresh_ti(g.fn_decl.ti)
 				g.write(' ($g.fn_decl.typ.typ.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
@@ -141,8 +136,6 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				// t := g.table.get_type(field.ti.idx)
-				// ti := g.table.refresh_ti(field.typ)
 				g.writeln('\t$field.typ.typ.name $field.name;')
 			}
 			g.writeln('} $it.name;')
@@ -215,8 +208,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			// t := g.table.get_type(it.ti.idx)
-			// ti := g.table.refresh_ti(it.ti)
 			g.writeln('($it.typ.typ.name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
@@ -237,8 +228,6 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.MethodCallExpr {}
 		ast.ArrayInit {
-			// t := g.table.get_type(it.ti.idx)
-			// typ := g.table.refresh_ti(it.typ)
 			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.typ.name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)

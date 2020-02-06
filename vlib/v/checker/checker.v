@@ -315,15 +315,12 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 			return c.array_init(mut it)
 		}
 		ast.Ident {
-			println('# IDENT START: $it.name')
 			if it.kind == .variable {
 				mut info := it.info as ast.IdentVar
-				if info.typ.typ == 0 {
-					panic('EMPTY TYPE')
-				}
+				//if info.typ.typ == 0 {
+				//	panic('EMPTY TYPE')
+				//}
 				if info.typ.typ.kind == .unresolved {
-					// println('TYPE IDX: $info.typ.typ.idx')
-					println('REPLACING UNRESOLVED: $info.typ.typ.name - $info.typ.idx')
 					typ := c.resolved[info.typ.idx]
 					info.typ = typ
 					it.info = info
@@ -331,7 +328,6 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 				}
 				return info.typ
 			}
-			println('# IDENT END')
 			// return table.void_type
 			return c.table.new_type_ref(table.void_type_idx, 0)
 		}

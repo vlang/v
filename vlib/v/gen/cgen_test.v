@@ -21,9 +21,10 @@ fn test_c_files() {
 		mut ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
 		}
+		ctext = ctext // unused warn
 		// normalise line endings on win
 		$if windows {
-			ctext = ctext.replace('\r', '')
+			ctext := ctext.replace('\r', '')
 		}
 		if i == 4 {
 			println(ctext)

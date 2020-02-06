@@ -37,10 +37,8 @@ pub fn (g mut JsGen) writeln(s string) {
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
-			// ti := g.table.refresh_ti(it.ti)
 			g.write('/** @return { $it.typ.typ.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				// arg_ti := g.table.refresh_ti(arg.ti)
 				g.write(' /** @type { $arg.typ.typ.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
@@ -58,7 +56,6 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			g.writeln(';')
 		}
 		ast.VarDecl {
-			// typ := g.table.refresh_ti(it.typ)
 			g.write('var /* $it.typ.typ.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
@@ -121,7 +118,6 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			// ti := g.table.refresh_ti(it.ti)
 			g.writeln('/*$it.typ.typ.name*/{')
 			for i, field in it.fields {
 				g.write('\t$field : ')
