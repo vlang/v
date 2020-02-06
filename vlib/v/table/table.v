@@ -225,8 +225,11 @@ pub fn (t mut Table) new_tmp_var() string {
 }
 
 pub fn (t &Table) struct_has_field(s &Type, name string) bool {
-	// println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
+	if !isnil(s.parent) {
+		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
+	} else {
+		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=none')
+	}
 	// for typ in t.types {
 	// println('$typ.idx $typ.name')
 	// }
@@ -237,17 +240,18 @@ pub fn (t &Table) struct_has_field(s &Type, name string) bool {
 }
 
 pub fn (t &Table) struct_find_field(s &Type, name string) ?Field {
-	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	println('struct_find_field($s.name, $name) types.len=$t.types.len')
+	if !isnil(s.parent) {
+		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
+	} else {
+		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=none')
+	}
 	info := s.info as Struct
 	for field in info.fields {
 		if field.name == name {
 			return field
 		}
 	}
-	// if s.parent_idx != 0 {
-	if s.parent != 0 {
-		// parent := t.types[s.parent_idx]
+	if !isnil(s.parent) {
 		if s.parent.kind == .struct_ {
 			parent_info := s.parent.info as Struct
 			println('got parent $s.parent.name')
@@ -276,15 +280,9 @@ pub fn (t &Table) find_type(name string) ?Type {
 }
 
 [inline]
-pub fn (t &Table) next_type_idx() int {
-	return t.types.len
-}
-
-[inline]
 pub fn (t mut Table) register_type(typ Type) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
-		println('EXISTING: $typ.name - $existing_idx')
 		ex_type := t.types[existing_idx]
 		match ex_type.kind {
 			.placeholder {
@@ -292,29 +290,21 @@ pub fn (t mut Table) register_type(typ Type) int {
 				println('overriding type placeholder `$typ.name`')
 				t.types[existing_idx] = {
 					typ |
-					// idx: typ.idx,
 					methods:ex_type.methods
 				}
 				return existing_idx
-				// return t.types[existing_idx]
 			}
 			else {
 				if ex_type.kind == typ.kind {
 					return existing_idx
 				}
-				// println('$ex_type.kind.str() - $typ.kind.str()')
-				panic('cannot register type `$typ.name`, another type with this name exists')
-				// return -1
+				// panic('cannot register type `$typ.name`, another type with this name exists')
+				return -1
 			}
 		}
 	}
 	typ_idx := t.types.len
-	// typ_idx := t.next_type_idx()
-	println(' ## REGISTERING: $typ.name - $typ_idx - $typ.kind.str()')
-	t.types << {
-		typ |
-		// idx: typ_idx
-	}
+	t.types << typ
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
 }
@@ -335,8 +325,6 @@ pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) 
 	}
 	// register
 	map_type := Type{
-		// idx: t.next_type_idx()
-		// parent_idx: t.type_idxs['map']
 		parent: &t.types[t.type_idxs['map']]
 		kind: .map
 		name: name
@@ -357,8 +345,6 @@ pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int 
 	}
 	// register
 	array_type := Type{
-		// idx: t.next_type_idx()
-		// parent_idx: t.type_idxs['array']
 		parent: &t.types[t.type_idxs['array']]
 		kind: .array
 		name: name
@@ -380,7 +366,6 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, n
 	// register
 	array_fixed_type := Type{
 		parent: 0
-		// idx: t.next_type_idx()
 		kind: .array_fixed
 		name: name
 		info: ArrayFixed{
@@ -405,7 +390,6 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 	// register
 	mr_type := Type{
 		parent: 0
-		// idx: t.next_type_idx()
 		kind: .multi_return
 		name: name
 		info: MultiReturn{
@@ -425,7 +409,6 @@ pub fn (t mut Table) find_or_register_variadic(variadic_typ &TypeRef) int {
 	// register
 	variadic_type := Type{
 		parent: 0
-		// idx: t.next_type_idx()
 		kind: .variadic
 		name: name
 		info: Variadic{
@@ -438,7 +421,6 @@ pub fn (t mut Table) find_or_register_variadic(variadic_typ &TypeRef) int {
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	ph_type := Type{
 		parent: 0
-		// idx: t.next_type_idx()
 		kind: .placeholder
 		name: name
 	}
