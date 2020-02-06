@@ -1,0 +1,10 @@
+Implement error for the following special functions:
+
+- bessel_*
+- gamma
+- log_gamma
+- cgamma
+- clog_gamma
+- psi
+- erf
+- erfc
