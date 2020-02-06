@@ -42,6 +42,8 @@ pub const (
 	bool_type_idx = 17
 	// currently map is parsed from builtin as a normal struct named `map`
 	// any maps after that are of type map with parent being the struct named `map`
+	// same goes for array. this works since builtin is parsed first.
+	// will probably go back to registering these types manually and add idx here
 	// map_type_idx = 18
 )
 
