@@ -254,8 +254,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 			c.check_assign_expr(it)
 		}
 		ast.IntegerLiteral {
-			// return table.int_type
-			return c.table.type_ref_ptr(table.int_type_idx, 0)
+			return c.table.type_ref(table.int_type_idx)
 		}
 		// ast.FloatLiteral {}
 		ast.PostfixExpr {
@@ -268,8 +267,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		*/
 
 		ast.StringLiteral {
-			// return table.string_type
-			return c.table.type_ref_ptr(table.string_type_idx, 0)
+			return c.table.type_ref(table.string_type_idx)
 		}
 		ast.PrefixExpr {
 			return c.expr(it.right)
@@ -292,9 +290,6 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		ast.Ident {
 			if it.kind == .variable {
 				mut info := it.info as ast.IdentVar
-				//if info.typ.typ == 0 {
-				//	panic('EMPTY TYPE')
-				//}
 				if info.typ.typ.kind == .unresolved {
 					typ := c.resolved[info.typ.idx]
 					info.typ = typ
@@ -303,12 +298,10 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 				}
 				return info.typ
 			}
-			// return table.void_type
-			return c.table.type_ref_ptr(table.void_type_idx, 0)
+			return c.table.type_ref(table.void_type_idx)
 		}
 		ast.BoolLiteral {
-			// return table.bool_type
-			return c.table.type_ref_ptr(table.bool_type_idx, 0)
+			return c.table.type_ref(table.bool_type_idx)
 		}
 		ast.SelectorExpr {
 			return c.selector_expr(it)
@@ -332,8 +325,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		}
 		else {}
 	}
-	// return table.void_type
-	return c.table.type_ref_ptr(table.void_type_idx, 0)
+	return c.table.type_ref(table.void_type_idx)
 }
 
 pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.TypeRef {
@@ -361,37 +353,20 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
 		}
 		else {}
 	}
-	// if typ.name.starts_with('array_') {
 	if typ.typ.kind == .array {
-		// info := typ.typ.info as table.Array
 		if is_range {} // `x[start..end]` has the same type as `x`
 		else {
-			// println('@@@@@@@ A: $typ.typ.name')
-			match typ.typ.info {
-				table.Array {
-					// if it.elem_type.typ != 0 {
-					// 	return it.elem_type
-					// }
-					// println('@@@@@@@ B: $it.elem_type.typ.name')
-					return it.elem_type
-				}
-				else {}
-			}
-			// TODO `typ = ... or ...`
-			// x := c.table.find_type_idx(elm_typ) or {
-			// 	c.error('cannot find array elem type: $elm_typ', node.pos)
-			// 	exit(0)
-			// }
 			// Check index type
 			index_type := c.expr(node.index)
 			if index_type.typ.kind != .int {
 				c.error('non-integer index (type `$index_type.typ.name`)', node.pos)
 			}
+			info := typ.typ.info as table.Array
+			return info.elem_type
 		}
 	}
 	else {
-		// typ = table.int_type
-		typ = c.table.type_ref_ptr(table.int_type_idx, 0)
+		typ = c.table.type_ref(table.int_type_idx)
 	}
 	return typ
 	// c.expr(it.index)
