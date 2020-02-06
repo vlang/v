@@ -48,10 +48,10 @@ fn (c mut Checker) resolve_types() {
 			mut info := t.info as table.Array
 			if info.elem_type.typ.kind == .unresolved {
 				rt := c.resolved[info.elem_type.idx]
-				println('\n\n #### REPLACING RESOLVED $info.elem_type.idx: $t.name - $info.elem_type.typ.name - $rt.typ.name\n\n')
 				info.elem_type = c.resolved[info.elem_type.idx]
-				c.table.types[idx].name = 'array_$rt.typ.name'
-				c.table.types[idx].info = info
+				mut t1 := &c.table.types[idx]
+				t1.name = 'array_$rt.typ.name' // TODO name fn
+				t1.info = info
 			}
 		}
 	}

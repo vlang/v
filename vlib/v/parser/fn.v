@@ -9,7 +9,6 @@ import (
 )
 
 pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
-	println('CALL EXPR')
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
@@ -19,7 +18,6 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
 	}
 	if p.tok.kind == .key_orelse {
@@ -176,7 +174,6 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block()
 	}
-	println('FN DECL: $rec_type.typ.name')
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
@@ -190,18 +187,3 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 }
 
-pub fn (p &Parser) check_fn_calls() {
-	println('check fn calls2')
-	/*
-	for call in p.table.unknown_calls {
-		f := p.table.find_fn(call.name) or {
-			p.error_at_line('unknown function `$call.name`', call.tok.line_nr)
-			return
-		}
-		println(f.name)
-		// println(f.return_ti.name)
-		// println('IN AST typ=' + call.typ.name)
-	}
-	*/
-
-}
