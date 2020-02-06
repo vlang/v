@@ -11,9 +11,6 @@ const (
 )
 
 fn test_c_files() {
-	$if windows {
-		return
-	}
 	println('Running V => C tests')
 	vexe := os.getenv('VEXE')
 	vroot := filepath.dir(vexe)
@@ -21,8 +18,13 @@ fn test_c_files() {
 	term_fail := term.fail_message('FAIL')
 	for i in 1 .. nr_tests + 1 {
 		path := '$vroot/vlib/v/gen/tests/${i}.vv'
-		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
+		mut ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or {
 			panic(err)
+		}
+		ctext = ctext // unused warn
+		// normalise line endings on win
+		$if windows {
+			ctext = ctext.replace('\r', '')
 		}
 		mut b := builder.new_builder(pref.Preferences{})
 		res := b.gen_c([path])

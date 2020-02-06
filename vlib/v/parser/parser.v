@@ -33,7 +33,7 @@ mut:
 	peek_tok    token.Token
 	// vars []string
 	table       &table.Table
-	return_type table.Type // current function's return type
+	return_type table.TypeRef // current function's return type
 	// scope_level int
 	// var_idx     int
 	is_c        bool
@@ -44,6 +44,7 @@ mut:
 	builtin_mod bool
 	mod         string
 	unresolved  []ast.Expr
+	unresolved_idxs  map[string]int
 }
 
 // for tests
@@ -244,10 +245,10 @@ pub fn (p mut Parser) stmt() ast.Stmt {
 			if p.tok.kind == .name && p.peek_tok.kind in [.decl_assign, .comma] {
 				return p.var_decl()
 			}
-			expr,ti := p.expr(0)
+			expr,typ := p.expr(0)
 			return ast.ExprStmt{
 				expr: expr
-				ti: ti
+				typ: typ
 			}
 		}
 	}
@@ -298,8 +299,8 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 	}
 	p.check(.dotdot)
 	high,typ := p.expr(0)
-	if typ.kind != .int {
-		p.error('non-integer index `$typ.name`')
+	if typ.typ.kind != .int {
+		p.error('non-integer index `$typ.typ.name`')
 	}
 	node := ast.RangeExpr{
 		low: low
@@ -369,9 +370,9 @@ pub fn (p &Parser) warn(s string) {
 	}
 }
 
-pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
+pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
-	mut typ := table.void_type
+	mut typ := p.table.type_ref(table.void_type_idx)
 	// mut typ := table.unresolved_type
 	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
 	if is_c {
@@ -416,7 +417,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 			exprs << expr
 		}
 		node = ast.StructInit{
-			ti: typ
+			typ: typ
 			exprs: exprs
 			fields: field_names
 			pos: p.tok.position()
@@ -431,25 +432,23 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 		}
 		// variable
 		if var := p.table.find_var(p.tok.lit) {
-			// println('#### IDENT: $var.name: $var.typ.name - $var.typ.idx')
+			// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
 			typ = var.typ
 			ident.kind = .variable
 			ident.info = ast.IdentVar{
 				typ: typ
 				// name: ident.name
 				// expr: p.expr(0)// var.expr
-				
 			}
 			// ident.ti = ti
 			node = ident
 			p.next()
 		}else{
 			if is_c {
-				typ = table.int_type
+				typ = p.table.type_ref(table.int_type_idx)
 				ident.info = ast.IdentVar{
 					typ: typ
 					// name: ident.name
-					
 				}
 				node = ident
 				p.next()
@@ -462,7 +461,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 				ident.info = ast.IdentVar{
 					typ: typ
 					// name: ident.name
-					
 				}
 				node = ident
 				p.next()
@@ -479,9 +477,9 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	return node,typ
 }
 
-pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
+pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 	// println('\n\nparser.expr()')
-	mut typ := table.void_type
+	mut typ := p.table.type_ref(table.void_type_idx)
 	mut node := ast.Expr{}
 	// Prefix
 	match p.tok.kind {
@@ -492,7 +490,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node,typ = p.string_expr()
 		}
 		.chartoken {
-			typ = table.byte_type
+			typ = p.table.type_ref(table.byte_type_idx)
 			node = ast.CharLiteral{
 				val: p.tok.lit
 			}
@@ -509,7 +507,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
 			}
-			typ = table.bool_type
+			typ = p.table.type_ref(table.bool_type_idx)
 			p.next()
 		}
 		.key_match {
@@ -537,7 +535,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			p.check(.lpar)
 			p.next()
 			p.check(.rpar)
-			typ = table.int_type
+			typ = p.table.type_ref(table.int_type_idx)
 		}
 		else {
 			p.error('pexpr(): bad token `$p.tok.str()`')
@@ -573,16 +571,16 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	return node,typ
 }
 
-fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
+fn (p mut Parser) prefix_expr() (ast.Expr,table.TypeRef) {
 	op := p.tok.kind
 	p.next()
-	right,ti := p.expr(1)
+	right,typ := p.expr(1)
 	mut expr := ast.Expr{}
 	expr = ast.PrefixExpr{
 		op: op
 		right: right
 	}
-	return expr,ti
+	return expr,typ
 }
 
 // fn (p mut Parser) index_expr(left ast.Expr, typ_ table.Type) (ast.Expr,table.Type) {
@@ -605,21 +603,20 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 	// println('got ]')
 	// /ti := table.int_type
 	mut node := ast.Expr{}
+	// println('index expr: $typ.typ.name')
 	node = ast.IndexExpr{
 		left: left
 		index: index_expr
 		pos: p.tok.position()
 		// typ: typ
-		
 	}
 	return node
 	// return node,typ
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.Type) {
+fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,table.TypeRef) {
 	p.next()
 	field_name := p.check_name()
-	mut ti := table.unresolved_type
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -636,38 +633,39 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_ti &table.Type) (ast.Expr,table.T
 		}
 		mut node := ast.Expr{}
 		node = mcall_expr
-		ti = p.add_unresolved(mcall_expr)
-		return node,ti
+		typ := p.add_unresolved('${left_type.typ.name}.${field_name}()', mcall_expr)
+		return node,typ
 	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field: field_name
 		pos: p.tok.position()
 	}
+	typ := p.add_unresolved('${left_type.typ.name}.$field_name', sel_expr)
 	mut node := ast.Expr{}
 	node = sel_expr
-	return node,ti
+	return node,typ
 }
 
-fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.Type) {
+fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.TypeRef) {
 	op := p.tok.kind
 	// mut typ := p.
 	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
 	p.next()
-	right,mut ti := p.expr(precedence)
+	right,mut typ := p.expr(precedence)
 	if op.is_relational() {
-		ti = table.bool_type
+		typ = p.table.type_ref(table.bool_type_idx)
 	}
 	mut expr := ast.Expr{}
 	expr = ast.InfixExpr{
 		left: left
 		right: right
-		right_type: ti
+		right_type: typ
 		op: op
 		pos: p.tok.position()
 	}
-	return expr,ti
+	return expr,typ
 }
 
 // Implementation of Pratt Precedence
@@ -716,7 +714,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
-			mut typ := table.Type{}
+			mut typ := table.TypeRef{typ:0}
 			cond,typ = p.expr(0)
 		}
 		p.check(.semicolon)
@@ -740,7 +738,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			val_name := p.check_name()
 			p.table.register_var(table.Var{
 				name: val_name
-				typ: table.int_type
+				typ: p.table.type_ref(table.int_type_idx)
 			})
 		}
 		p.check(.key_in)
@@ -752,7 +750,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.table.register_var(table.Var{
 			name: var_name
-			typ: table.int_type
+			typ: p.table.type_ref(table.int_type_idx)
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -773,7 +771,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 }
 
-fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
+fn (p mut Parser) if_expr() (ast.Expr,table.TypeRef) {
 	p.inside_if = true
 	// defer {
 	// }
@@ -792,14 +790,14 @@ fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 			else_stmts = p.parse_block()
 		}
 	}
-	mut ti := table.void_type
+	mut typ := p.table.type_ref(table.void_type_idx)
 	// mut left := ast.Expr{}
 	// If the last statement is an expression, return its type
 	if stmts.len > 0 {
 		match stmts[stmts.len - 1] {
 			ast.ExprStmt {
-				p.warn('if expr ret $it.ti.name')
-				ti = it.ti
+				p.warn('if expr ret $it.typ.typ.name')
+				typ = it.typ
 				// return node,it.ti
 				// left =
 			}
@@ -810,22 +808,22 @@ fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 		cond: cond
 		stmts: stmts
 		else_stmts: else_stmts
-		ti: ti
+		typ: typ
 		pos: p.tok.position()
 		// left: left
 		
 	}
-	return node,ti
+	return node,typ
 }
 
-fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
+fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
 	node = ast.StringLiteral{
 		val: p.tok.lit
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		return node,table.string_type
+		return node, p.table.type_ref(table.string_type_idx)
 	}
 	// Handle $ interpolation
 	for p.tok.kind == .str {
@@ -839,13 +837,13 @@ fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 			p.next()
 		}
 	}
-	return node,table.string_type
+	return node, p.table.type_ref(table.string_type_idx)
 }
 
-fn (p mut Parser) array_init() (ast.Expr,table.Type) {
+fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
 	mut node := ast.Expr{}
 	p.check(.lsbr)
-	mut val_type := table.void_type
+	mut val_type := p.table.type_ref(table.void_type_idx)
 	mut exprs := []ast.Expr
 	for i := 0; p.tok.kind != .rsbr; i++ {
 		expr,typ := p.expr(0)
@@ -866,27 +864,27 @@ fn (p mut Parser) array_init() (ast.Expr,table.Type) {
 		// type_idx,type_name := p.table.find_or_register_array_fixed(val_type, 1)
 		// node =
 	}
-	type_idx,type_name := p.table.find_or_register_array(val_type, 1)
-	array_ti := table.new_type(.array, type_name, type_idx, 0)
+	// array_type := table.new_type(.array, type_name, type_idx, 0)
+	idx := p.table.find_or_register_array(val_type, 1)
+	array_type := p.table.type_ref_ptr(idx, 0)
 	node = ast.ArrayInit{
-		ti: array_ti
+		typ: array_type
 		exprs: exprs
 		pos: p.tok.position()
 	}
-	return node,array_ti
+	return node,array_type
 }
 
-fn (p mut Parser) parse_number_literal() (ast.Expr,table.Type) {
+fn (p mut Parser) parse_number_literal() (ast.Expr,table.TypeRef) {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
-	mut ti := table.int_type
+	mut ti := p.table.type_ref(table.int_type_idx)
 	if lit.contains('.') {
 		node = ast.FloatLiteral{
 			// val: lit.f64()
 			val: lit
 		}
-		// ti = table.new_builtin_ti(.f64, 0)
-		ti = table.new_type(.f64, 'f64', table.f64_type_idx, 0)
+		ti = p.table.type_ref(table.f64_type_idx)
 	}
 	else {
 		node = ast.IntegerLiteral{
@@ -987,7 +985,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		field_name := p.check_name()
 		// p.warn('field $field_name')
-		ti := p.parse_type()
+		typ := p.parse_type()
 		// Default value
 		if p.tok.kind == .assign {
 			p.next()
@@ -995,19 +993,19 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		ast_fields << ast.Field{
 			name: field_name
-			typ: ti
+			typ: typ
 		}
 		fields << table.Field{
 			name: field_name
 			// type_idx: ti.idx
-			
-			ti: ti
+			typ: typ
 		}
 		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
 	if name != 'string' {
 		ret := p.table.register_type(table.Type{
+			parent: 0
 			kind: .struct_
 			name: name
 			info: table.Struct{
@@ -1051,7 +1049,7 @@ fn (p mut Parser) return_stmt() ast.Return {
 	}
 	// TODO: consider non deferred
 	stmt := ast.Return{
-		expected_ti: p.return_type
+		expected_type: p.return_type
 		exprs: exprs
 		pos: p.tok.position()
 	}
@@ -1082,7 +1080,7 @@ fn (p mut Parser) var_decl() ast.VarDecl {
 		
 		typ: typ
 	})
-	p.warn('var decl name=$name typ=$typ.name')
+	p.warn('var decl name=$name typ=$typ.typ.name')
 	// println(p.table.names)
 	node := ast.VarDecl{
 		name: name
@@ -1136,7 +1134,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	}
 }
 
-fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
+fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 	p.check(.key_match)
 	p.expr(0)
 	p.check(.lcbr)
@@ -1156,16 +1154,25 @@ fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 	p.check(.rcbr)
 	mut node := ast.Expr{}
 	node = ast.MatchExpr{}
-	return node,table.void_type
+	return node,p.table.type_ref(table.void_type_idx)
 }
 
-fn (p mut Parser) add_unresolved(expr ast.Expr) table.Type {
-	t := table.Type{
-		idx: p.unresolved.len
-		kind: .unresolved
-		name: 'unresolved'
+fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
+	mut idx := p.unresolved.len
+	if key in p.unresolved_idxs {
+		idx = p.unresolved_idxs[key]
 	}
-	p.unresolved << expr
+	else {
+		p.unresolved << expr
+	}
+	t := table.TypeRef{
+		idx: idx
+		typ: &table.Type{
+			parent: 0
+			kind: .unresolved
+			name: 'unresolved $p.unresolved.len'
+		}
+	}
 	return t
 }
 

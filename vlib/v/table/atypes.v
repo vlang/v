@@ -7,14 +7,19 @@ pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
 
 pub struct Type {
 pub:
-	idx        int
-	parent_idx int
+	parent     &Type
 mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
 	methods    []Fn
-	nr_muls    int
+}
+
+pub struct TypeRef {
+pub:
+	idx     int
+	typ     &Type
+	nr_muls int
 }
 
 pub const (
@@ -35,7 +40,11 @@ pub const (
 	char_type_idx = 15
 	byte_type_idx = 16
 	bool_type_idx = 17
-	map_type_idx = 18
+	// currently map is parsed from builtin as a normal struct named `map`
+	// any maps after that are of type map with parent being the struct named `map`
+	// same goes for array. this works since builtin is parsed first.
+	// will probably go back to registering these types manually and add idx here
+	// map_type_idx = 18
 )
 
 pub enum Kind {
@@ -68,162 +77,170 @@ pub enum Kind {
 	unresolved
 }
 
-pub const (
-	unresolved_type = Type{
-		kind: .unresolved
-		name: 'unresolved'
-	}
-	void_type = Type{
-		kind: .void
-		name: 'void'
-		idx: void_type_idx
-	}
-	int_type = Type{
-		kind: .int
-		name: 'int'
-		idx: int_type_idx
-	}
-	string_type = Type{
-		kind: .string
-		name: 'string'
-		idx: string_type_idx
-	}
-	bool_type = Type{
-		kind: .bool
-		name: 'bool'
-		idx: bool_type_idx
-	}
-	byte_type = Type{
-		kind: .byte
-		name: 'byte'
-		idx: byte_type_idx
-	}
-	map_type = Type{
-		kind: .map
-		name: 'map'
-		idx: map_type_idx
-	}
-)
 /*
 pub fn (t Type) str() string {
 	return t.name
 }
 */
 
-
-pub fn (t &Type) str() string {
+pub fn (t &TypeRef) str() string {
 	mut muls := ''
 	for _ in 0 .. t.nr_muls {
 		muls += '&'
 	}
-	// return '$muls$ti.name'
-	return '$muls$t.idx'
+	return '$muls$t.typ.name'
 }
 
-pub fn new_type(kind Kind, name string, idx int, nr_muls int) Type {
-	return Type{
+[inline]
+pub fn (t &Table) type_ref(idx int) TypeRef {
+	return TypeRef{
 		idx: idx
-		kind: kind
-		name: name
-		nr_muls: nr_muls
+		typ: &t.types[idx]
 	}
+}
+
+[inline]
+pub fn (t &Table) type_ref_ptr(idx int, nr_muls int) TypeRef {
+	return TypeRef{
+		idx: idx
+		nr_muls: nr_muls
+		typ: &t.types[idx]
+	}
+}
+
+[inline]
+pub fn array_name(elem_type &TypeRef, nr_dims int) string {
+	return 'array_${elem_type.typ.name}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn array_fixed_name(elem_type &TypeRef, size int, nr_dims int) string {
+	return 'array_fixed_${elem_type.typ.name}_${size}' + if nr_dims > 1 { '_${nr_dims}d' } else { '' }
+}
+
+[inline]
+pub fn map_name(key_type &TypeRef, value_type &TypeRef) string {
+	return 'map_${key_type.typ.name}_${value_type.typ.name}'
 }
 
 pub fn (t mut Table) register_builtin_types() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
 	t.register_type(Type{
+		parent: 0
 		kind: .placeholder
 		name: 'reserved_0'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .void
 		name: 'void'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .voidptr
 		name: 'voidptr'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .charptr
 		name: 'charptr'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .byteptr
 		name: 'byteptr'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .i8
 		name: 'i8'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .i16
 		name: 'i16'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .int
 		name: 'int'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .i64
 		name: 'i64'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .u16
 		name: 'u16'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .u32
 		name: 'u32'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .u64
 		name: 'u64'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .f32
 		name: 'f32'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .f64
 		name: 'f64'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .string
 		name: 'string'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .char
 		name: 'char'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .byte
 		name: 'byte'
 	})
 	t.register_type(Type{
+		parent: 0
 		kind: .bool
 		name: 'bool'
+	})
+	t.register_type(Type{
+		parent: 0
+		kind: .unresolved
+		name: 'unresolved'
 	})
 }
 
 [inline]
-pub fn (ti &Type) is_ptr() bool {
-	return ti.nr_muls > 0
+pub fn (t &TypeRef) is_ptr() bool {
+	return t.nr_muls > 0
 }
 
 [inline]
-pub fn (ti &Type) is_int() bool {
-	return ti.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
+pub fn (t &Type) is_int() bool {
+	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64]
 }
 
 [inline]
-pub fn (ti &Type) is_float() bool {
-	return ti.kind in [.f32, .f64]
+pub fn (t &Type) is_float() bool {
+	return t.kind in [.f32, .f64]
 }
 
 [inline]
-pub fn (ti &Type) is_number() bool {
-	return ti.is_int() || ti.is_float()
+pub fn (t &Type) is_number() bool {
+	return t.is_int() || t.is_float()
 }
 
 pub fn (k Kind) str() string {
@@ -271,7 +288,13 @@ pub fn (k Kind) str() string {
 			'byte'
 		}
 		.u16{
-			'u18'
+			'u16'
+		}
+		.u32{
+			'u32'
+		}
+		.u64{
+			'u64'
 		}
 		.f32{
 			'f32'
@@ -336,7 +359,7 @@ pub mut:
 pub struct Field {
 pub:
 	name string
-	ti   Type
+	typ  TypeRef
 	// type_idx int
 }
 // pub struct Int {
@@ -350,58 +373,40 @@ pub:
 // }
 pub struct Array {
 pub:
-	elem_type_kind Kind
-	elem_type_idx  int
-	elem_is_ptr    bool
-	nr_dims        int
+	nr_dims    int
+mut:
+	elem_type TypeRef
 }
 
 pub struct ArrayFixed {
 pub:
-	elem_type_kind Kind
-	elem_type_idx  int
-	elem_is_ptr    bool
-	nr_dims        int
-	size           int
+	nr_dims   int
+	size      int
+mut:
+	elem_type TypeRef
 }
 
 pub struct Map {
-pub:
-	key_type_kind   Kind
-	key_type_idx    int
-	value_type_kind Kind
-	value_type_idx  int
+pub mut:
+	key_type   TypeRef
+	value_type TypeRef
 }
 
 pub struct MultiReturn {
 pub:
-	name string
-	tis  []Type
+	name  string
+	types []TypeRef
 }
 
 pub struct Variadic {
 pub:
-	ti Type
+	typ TypeRef
 }
 
-pub fn (t &Table) refresh_ti(ti Type) Type {
-	if ti.idx == 0 {
-		return ti
-	}
-	if ti.kind in [.placeholder, .unresolved] {
-		typ := t.types[ti.idx]
-		return {
-			ti |
-			kind:typ.kind,
-			name:typ.name
-		}
-	}
-	return ti
-}
-
-pub fn (t &Table) get_type(idx int) Type {
+[inline]
+pub fn (t &Table) get_type(idx int) &Type {
 	if idx == 0 {
 		panic('get_type: idx 0')
 	}
-	return t.types[idx]
+	return &t.types[idx]
 }

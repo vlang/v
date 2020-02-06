@@ -20,7 +20,7 @@ HashStmt
 pub struct ExprStmt {
 pub:
 	expr Expr
-	ti   table.Type
+	typ   table.TypeRef
 }
 
 pub struct IntegerLiteral {
@@ -69,7 +69,7 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
-	typ  table.Type
+	typ  table.TypeRef
 }
 
 pub struct ConstDecl {
@@ -89,7 +89,7 @@ pub:
 pub struct StructInit {
 pub:
 	pos    token.Position
-	ti     table.Type
+	typ    table.TypeRef
 	fields []string
 	exprs  []Expr
 }
@@ -105,7 +105,7 @@ pub:
 
 pub struct Arg {
 pub:
-	ti   table.Type
+	typ  table.TypeRef
 	name string
 }
 
@@ -113,7 +113,7 @@ pub struct FnDecl {
 pub:
 	name     string
 	stmts    []Stmt
-	ti       table.Type
+	typ      table.TypeRef
 	args     []Arg
 	is_pub   bool
 	receiver Field
@@ -145,9 +145,9 @@ pub:
 
 pub struct Return {
 pub:
-	pos         token.Position
-	expected_ti table.Type // TODO: remove once checker updated
-	exprs       []Expr
+	pos           token.Position
+	expected_type table.TypeRef // TODO: remove once checker updated
+	exprs         []Expr
 }
 
 /*
@@ -172,7 +172,7 @@ pub:
 	expr   Expr
 	is_mut bool
 mut:
-	typ    table.Type
+	typ    table.TypeRef
 	pos    token.Position
 }
 
@@ -181,7 +181,7 @@ pub:
 	name string
 	expr Expr
 mut:
-	typ  table.Type
+	typ  table.TypeRef
 }
 
 pub struct File {
@@ -194,9 +194,9 @@ pub:
 }
 
 pub struct IdentVar {
-pub:
-	typ table.Type
-	// name string
+pub mut:
+	typ  table.TypeRef
+	//name string
 }
 
 type IdentInfo = IdentVar
@@ -225,9 +225,9 @@ pub:
 	op         token.Kind
 	pos        token.Position
 	left       Expr
-	left_type  table.Type
+	left_type  table.TypeRef
 	right      Expr
-	right_type table.Type
+	right_type table.TypeRef
 }
 
 /*
@@ -240,7 +240,6 @@ pub:
 	left Expr
 }
 */
-
 
 pub struct PostfixExpr {
 pub:
@@ -270,7 +269,7 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
-	ti         table.Type
+	typ        table.TypeRef
 	left       Expr // `a` in `a := if ...`
 	pos        token.Position
 }
@@ -354,7 +353,8 @@ pub struct ArrayInit {
 pub:
 	pos   token.Position
 	exprs []Expr
-	ti    table.Type
+mut:
+	typ    table.TypeRef
 }
 
 // s[10..20]

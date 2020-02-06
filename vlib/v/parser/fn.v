@@ -8,7 +8,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
+pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
@@ -18,7 +18,6 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
 	}
 	if p.tok.kind == .key_orelse {
@@ -28,7 +27,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 	if f := p.table.find_fn(fn_name) {
 		return node,f.return_type
 	}
-	typ := p.add_unresolved(node)
+	typ := p.add_unresolved('${fn_name}()', node)
 	return node,typ
 }
 
@@ -65,7 +64,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
-	mut rec_ti := table.void_type
+	mut rec_type := p.table.type_ref(table.void_type_idx)
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.next()
@@ -73,10 +72,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		if p.tok.kind == .key_mut {
 			p.next()
 		}
-		rec_ti = p.parse_type()
+		rec_type = p.parse_type()
 		p.table.register_var(table.Var{
 			name: rec_name
-			typ: rec_ti
+			typ: rec_type
 		})
 		p.check(.rpar)
 	}
@@ -120,19 +119,19 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			if p.tok.kind == .key_mut {
 				p.check(.key_mut)
 			}
-			ti := p.parse_type()
+			typ := p.parse_type()
 			for arg_name in arg_names {
 				arg := table.Var{
 					name: arg_name
-					typ: ti
+					typ: typ
 				}
 				args << arg
 				p.table.register_var(arg)
 				ast_args << ast.Arg{
-					ti: ti
+					typ: typ
 					name: arg_name
 				}
-				if ti.kind == .variadic && p.tok.kind == .comma {
+				if typ.typ.kind == .variadic && p.tok.kind == .comma {
 					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
 				}
 			}
@@ -143,16 +142,17 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	p.check(.rpar)
 	// Return type
-	mut typ := table.void_type
+	mut typ := p.table.type_ref(table.void_type_idx)
 	if p.tok.kind in [.name, .lpar, .amp, .lsbr, .question] {
 		typ = p.parse_type()
 		p.return_type = typ
 	}
 	else {
-		p.return_type = table.void_type
+		// p.return_type = table.void_type
+		p.return_type = typ
 	}
 	if is_method {
-		ok := p.table.register_method(rec_ti, table.Fn{
+		ok := p.table.register_method(rec_type.typ, table.Fn{
 			name: name
 			args: args
 			return_type: typ
@@ -175,28 +175,13 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
-		ti: typ
+		typ: typ
 		args: ast_args
 		is_pub: is_pub
 		receiver: ast.Field{
 			name: rec_name
-			typ: rec_ti
+			typ: rec_type
 		}
 	}
 }
 
-pub fn (p &Parser) check_fn_calls() {
-	println('check fn calls2')
-	/*
-	for call in p.table.unknown_calls {
-		f := p.table.find_fn(call.name) or {
-			p.error_at_line('unknown function `$call.name`', call.tok.line_nr)
-			return
-		}
-		println(f.name)
-		// println(f.return_ti.name)
-		// println('IN AST typ=' + call.typ.name)
-	}
-	*/
-
-}
