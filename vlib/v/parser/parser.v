@@ -374,7 +374,7 @@ pub fn (p &Parser) warn(s string) {
 	}
 }
 
-pub fn(p mut Parser) parse_ident() (ast.Ident, table.TypeRef) {
+pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
 	mut is_mut := false
 	if p.tok.kind == .key_mut {
 		p.check(.key_mut)
@@ -385,7 +385,6 @@ pub fn(p mut Parser) parse_ident() (ast.Ident, table.TypeRef) {
 	}
 	name := p.check_name()
 	// p.warn('name ')
-	// left := p.parse_ident()
 	mut ident := ast.Ident{
 		name: name
 	}
@@ -396,9 +395,7 @@ pub fn(p mut Parser) parse_ident() (ast.Ident, table.TypeRef) {
 		typ = var.typ
 		known_var = true
 	}
-	println(' ## TOK: $p.tok.lit - $p.tok.kind.str()')
 	if known_var || is_mut || p.tok.kind in [.comma, .assign, .decl_assign] {
-		// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
 		// typ = var.typ
 		ident.kind = .variable
 		ident.info = ast.IdentVar{
@@ -409,15 +406,14 @@ pub fn(p mut Parser) parse_ident() (ast.Ident, table.TypeRef) {
 		}
 		return ident, typ
 	}else{
-		// if is_c {
-		// 	typ = p.table.type_ref(table.int_type_idx)
-		// 	ident.info = ast.IdentVar{
-		// 		typ: typ
-		// 		// name: ident.name
-		// 	}
-		// 	p.next()
-		// 	return ident,typ
-		// }
+		if is_c {
+			typ = p.table.type_ref(table.int_type_idx)
+			ident.info = ast.IdentVar{
+				typ: typ
+			}
+			p.next()
+			return ident,typ
+		}
 		// const
 		if c := p.table.find_const(name) {
 			typ = c.typ
@@ -429,13 +425,14 @@ pub fn(p mut Parser) parse_ident() (ast.Ident, table.TypeRef) {
 			return ident,typ
 		}else{
 			// Function object (not a call), e.g. `onclick(my_click)`
-			p.table.find_fn(name) or {
-				p.error('name expr unknown identifier `$name`')
-				exit(0)
+			if func := p.table.find_fn(name) {
+				return ast.Ident{
+					name: name
+					kind: .func
+				}, func.return_type
 			}
-			p.error('not implemented yet')
+			p.error('name expr unknown identifier `$name`')
 			exit(0)
-			// ident.info = ast.IdentFnObj {}
 		}
 	}
 }
@@ -496,7 +493,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	}
 	else {
 		mut id := ast.Ident{}
-		id, typ = p.parse_ident()
+		id, typ = p.parse_ident(is_c)
 		node = id
 	}
 	return node,typ
@@ -1087,7 +1084,7 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 		if p.tok.kind == .comma {
 			p.check(.comma)
 		}
-		mx, _ := p.parse_ident()
+		mx, _ := p.parse_ident(false)
 		idents << mx
 		mut l := ast.Expr{}
 		l = mx

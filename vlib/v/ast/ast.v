@@ -206,6 +206,7 @@ pub enum IdentKind {
 	blank_ident
 	variable
 	constant
+	func
 }
 
 // A single identifier
