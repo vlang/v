@@ -326,6 +326,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.Return {}
+		ast.AssignStmt {}
 		ast.VarDecl {}
 		ast.ForStmt {}
 		ast.StructDecl {}

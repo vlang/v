@@ -106,6 +106,23 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			}
 			g.writeln(';')
 		}
+		ast.AssignStmt {
+			// ident0 := it.left[0]
+			// info0 := ident0.var_info()
+			// for i, ident in it.left {
+			// 	info := ident.var_info()
+			// 	if info0.typ.typ.kind == .multi_return {
+			// 		if i == 0 {
+			// 			g.write('$info.typ.typ.name $ident.name = ')
+			// 			g.expr(it.right[0])
+			// 		} else {
+			// 			arg_no := i-1
+			// 			g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
+			// 		}
+			// 	}
+			// 	g.writeln(';')
+			// }
+		}
 		ast.VarDecl {
 			g.write('$it.typ.typ.name $it.name = ')
 			g.expr(it.expr)

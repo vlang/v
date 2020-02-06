@@ -14,7 +14,7 @@ AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr
 
 pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
-HashStmt
+HashStmt | AssignStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
@@ -195,7 +195,8 @@ pub:
 
 pub struct IdentVar {
 pub mut:
-	typ  table.TypeRef
+	typ    table.TypeRef
+	is_mut bool
 	//name string
 }
 
@@ -205,6 +206,7 @@ pub enum IdentKind {
 	blank_ident
 	variable
 	constant
+	func
 }
 
 // A single identifier
@@ -217,6 +219,18 @@ pub:
 mut:
 	kind     IdentKind
 	info     IdentInfo
+}
+
+pub fn(i &Ident) var_info() IdentVar {
+	match i.info {
+		IdentVar {
+			return it
+		}
+		else {
+			// return IdentVar{}
+			panic('Ident.var_info(): info is not IdentVar variant')
+		}
+	}
 }
 
 pub struct InfixExpr {
@@ -326,14 +340,14 @@ pub:
 	name string
 }
 
-/*
+
 pub struct AssignStmt {
 pub:
-	left  Expr
-	right Expr
+	left  []Ident
+	right []Expr
 	op    token.Kind
 }
-*/
+
 
 // e.g. `[unsafe_fn]`
 pub struct Attr {

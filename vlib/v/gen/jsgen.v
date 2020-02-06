@@ -55,6 +55,7 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 			}
 			g.writeln(';')
 		}
+		ast.AssignStmt {}
 		ast.VarDecl {
 			g.write('var /* $it.typ.typ.name */ $it.name = ')
 			g.expr(it.expr)

@@ -77,6 +77,54 @@ pub enum Kind {
 	unresolved
 }
 
+[inline]
+pub fn(t &Type) mr_info() MultiReturn {
+	match t.info {
+		MultiReturn {
+			return it
+		}
+		else {
+			panic('Type.mr_info(): no multi return info')
+		}
+	}
+}
+
+[inline]
+pub fn(t &Type) array_info() Array {
+	match t.info {
+		Array {
+			return it
+		}
+		else {
+			panic('Type.mr_info(): no array info')
+		}
+	}
+}
+
+[inline]
+pub fn(t &Type) array_fixed_info() ArrayFixed {
+	match t.info {
+		ArrayFixed {
+			return it
+		}
+		else {
+			panic('Type.mr_info(): no array fixed info')
+		}
+	}
+}
+
+[inline]
+pub fn(t &Type) map_info() Map {
+	match t.info {
+		Map {
+			return it
+		}
+		else {
+			panic('Type.mr_info(): no map info')
+		}
+	}
+}
+
 /*
 pub fn (t Type) str() string {
 	return t.name
@@ -395,6 +443,7 @@ pub mut:
 pub struct MultiReturn {
 pub:
 	name  string
+mut:
 	types []TypeRef
 }
 
