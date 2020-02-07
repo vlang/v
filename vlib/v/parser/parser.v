@@ -53,6 +53,7 @@ pub fn parse_stmt(text string, table &table.Table) ast.Stmt {
 	mut p := Parser{
 		scanner: s
 		table: table
+		pref: &pref.Preferences{}
 	}
 	p.init_parse_fns()
 	p.read_first_token()

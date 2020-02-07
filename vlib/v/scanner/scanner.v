@@ -97,23 +97,26 @@ fn (s mut Scanner) ident_name() string {
 	return name
 }
 
-const(
-	num_sep = `_`	// char used as number separator
+const (
+	num_sep = `_` // char used as number separator
 )
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
-	mut b := malloc(end-start + 1) // add a byte for the endstring 0
-	mut i := start
-	mut i1 := 0
-	for i < end {
-		if txt[i] != num_sep {
-			b[i1]=txt[i]
-			i1++
+	unsafe{
+		mut b := malloc(end - start + 1) // add a byte for the endstring 0
+		mut i := start
+		mut i1 := 0
+		for i < end {
+			if txt[i] != num_sep {
+				b[i1] = txt[i]
+				i1++
+			}
+			i++
 		}
-		i++
+		b[i1] = 0 // C string compatibility
+		return string{
+			b,i1}
 	}
-	b[i1]=0 // C string compatibility
-	return string{b,i1}
 }
 
 fn (s mut Scanner) ident_bin_number() string {

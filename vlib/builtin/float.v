@@ -6,7 +6,7 @@ module builtin
 #include <float.h>
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf(buf as charptr, '%f', d)
+	C.sprintf(charptr(buf), '%f', d)
 	return tos(buf, vstrlen(buf))
 }
 

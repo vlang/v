@@ -114,6 +114,7 @@ const(
 )
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
+	unsafe {
 	mut b := malloc(end-start + 1) // add a byte for the endstring 0
 	mut i := start
 	mut i1 := 0
@@ -126,6 +127,7 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 	}
 	b[i1]=0 // C string compatibility
 	return string{b,i1}
+	}
 }
 
 fn (s mut Scanner) ident_bin_number() string {

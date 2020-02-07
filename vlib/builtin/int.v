@@ -28,7 +28,7 @@ pub fn (nn int) str() string {
 	// Fill the string from the end
 	for n > 0 {
 		d := n % 10
-		buf[max - len - 1] = d + (`0` as int)
+		buf[max - len - 1] = d + int(`0`)
 		len++
 		n = n / 10
 	}
@@ -42,31 +42,31 @@ pub fn (nn int) str() string {
 }
 
 pub fn (n i8) str() string {
-	return (n as int).str()
+	return int(n).str()
 }
 
 pub fn (n i16) str() string {
-	return (n as int).str()
+	return int(n).str()
 }
 
 pub fn (n u16) str() string {
-	return (n as int).str()
+	return int(n).str()
 }
 
 pub fn (nn u32) str() string {
 	mut n := nn
-	if n == (0 as u32) {
+	if n == 0 {
 		return '0'
 	}
 	max := 16
 	mut buf := malloc(max)
 	mut len := 0
 	// Fill the string from the end
-	for n > (0 as u32) {
-		d := n % (10 as u32)
-		buf[max - len - 1] = d + (`0` as u32)
+	for n > 0 {
+		d := n % 10
+		buf[max - len - 1] = d + u32(`0`)
 		len++
-		n = n / (10 as u32)
+		n = n / 10
 	}
 	return tos(buf + max - len, len)
 }
@@ -94,14 +94,14 @@ pub fn (nn byte) str() string {
 
 pub fn (nn i64) str() string {
 	mut n := nn
-	if n == (0 as i64) {
+	if n == 0 {
 		return '0'
 	}
 	max := 32
 	mut buf := malloc(max)
 	mut len := 0
 	mut is_neg := false
-	if n < 0 { //(0 as i64) {
+	if n < 0 {
 		n = -n
 		is_neg = true
 	}
@@ -109,7 +109,7 @@ pub fn (nn i64) str() string {
 	for n > 0 {
 		//d := int(n % (10 as i64))
 		d := n % 10
-		buf[max - len - 1] = d + `0` as int
+		buf[max - len - 1] = d + int(`0`)
 		len++
 		n /= 10
 	}
@@ -132,7 +132,7 @@ pub fn (nn u64) str() string {
 	// Fill the string from the end
 	for n > 0 {
 		d := n % 10
-		buf[max - len - 1] = d + (`0` as u64)
+		buf[max - len - 1] = d + u64(`0`)
 		len++
 		n = n / (10)
 	}
@@ -180,14 +180,14 @@ pub fn (a []byte) contains(val byte) bool {
 }
 
 pub fn (c rune) str() string {
-	fst_byte := (c as int)>>8 * 3 & 0xff
+	fst_byte := int(c)>>8 * 3 & 0xff
 	len := utf8_char_len(fst_byte)
 	mut str := string{
 		len: len
 		str: malloc(len + 1)
 	}
 	for i := 0; i < len; i++ {
-		str.str[i] = (c as int)>>8 * (3 - i) & 0xff
+		str.str[i] = int(c)>>8 * (3 - i) & 0xff
 	}
 	str[len] = `\0`
 	return str
@@ -208,7 +208,7 @@ pub fn (c byte) is_capital() bool {
 }
 
 pub fn (b []byte) clone() []byte {
-	mut res := [(0 as byte)].repeat(b.len)
+	mut res := [byte(0)].repeat(b.len)
 	for i := 0; i < b.len; i++ {
 		res[i] = b[i]
 	}

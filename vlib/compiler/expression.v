@@ -83,62 +83,37 @@ fn (p mut Parser) bool_expression() string {
 }
 
 fn (p mut Parser) key_as(typ string, start_ph int) string {
-		p.fspace()
-		p.next()
-		p.fspace()
-		cast_typ := p.get_type()
-		if typ == cast_typ {
-			p.warn('casting `$typ` to `$cast_typ` is not needed')
+	p.fspace()
+	p.next()
+	p.fspace()
+	cast_typ := p.get_type()
+	if typ == cast_typ {
+		p.error('casting `$typ` to `$cast_typ` is not needed')
+	}
+	if typ in p.table.sum_types {
+		T := p.table.find_type(cast_typ)
+		if T.parent != typ {
+			p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
+			'parent=$T.parent')
 		}
-		is_byteptr := typ == 'byte*' || typ == 'byteptr'
-		is_bytearr := typ == 'array_byte'
-		if typ in p.table.sum_types {
-			T := p.table.find_type(cast_typ)
-			if T.parent != typ {
-				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
-				'parent=$T.parent')
-			}
-			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
-			p.gen('.obj')
-			// Make sure the sum type can be cast, otherwise throw a runtime error
-			/*
-			sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
+		p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
+		p.gen('.obj')
+		// Make sure the sum type can be cast, otherwise throw a runtime error
+		/*
+		sum_type:= p.cgen.cur_line.all_after('*) (').replace('.obj', '.typ')
 
-			n := cast_typ.all_after('__')
-			p.cgen.insert_before('if (($sum_type != SumType_$n) {
+		n := cast_typ.all_after('__')
+		p.cgen.insert_before('if (($sum_type != SumType_$n) {
 puts("runtime error: $p.file_name:$p.scanner.line_nr cannot cast sum type `$typ` to `$n`");
 exit(1);
 }
 ')
 */
-
-		} else if cast_typ == 'string' {
-			if is_byteptr || is_bytearr {
-					if p.tok == .comma {
-						p.check(.comma)
-						p.cgen.set_placeholder(start_ph, 'tos((byte *)')
-						if is_bytearr {
-							p.gen('.data')
-						}
-						p.gen(', ')
-						p.check_types(p.expression(), 'int')
-					}
-					else {
-						if is_bytearr {
-							p.gen('.data')
-						}
-						p.cgen.set_placeholder(start_ph, '/*!!!*/tos2((byte *)')
-						p.gen(')')
-					}
-				}
-			}
-		else {
-
-			p.cgen.set_placeholder(start_ph, '($cast_typ)(')
-			p.gen(')')
-		}
-		return cast_typ
-		}
+	} else {
+		p.error('`as` casts have been removed, use the old syntax: `Type(val)`')
+	}
+	return cast_typ
+}
 
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
