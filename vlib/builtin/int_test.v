@@ -46,7 +46,7 @@ fn test_float_equal_operator() {
 	assert a.gebit(1)
 
 	f := 1.2
-	ab := f as int
+	ab := int(f)
 	assert ab == 1
 }
 
