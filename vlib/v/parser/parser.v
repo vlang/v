@@ -579,6 +579,10 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 		else if p.tok.kind == .lsbr {
 			node = p.index_expr(node) // , typ)
 		}
+		else if p.tok.kind == .key_as {
+			p.next()
+			typ = p.parse_type()
+		}
 		else if p.tok.kind.is_infix() {
 			node,typ = p.infix_expr(node)
 		}

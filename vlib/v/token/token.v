@@ -393,7 +393,7 @@ pub fn (tok Token) precedence() int {
 		.left_shift_assign, .righ_shift_assign, .mult_assign {
 			return 2
 		}
-		.key_in {
+		.key_in, .key_as {
 			return 1
 		}
 		// /.plus_assign {
@@ -464,7 +464,9 @@ pub fn (tok Kind) is_relational() bool {
 }
 
 pub fn (kind Kind) is_infix() bool {
-	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .ge, .le, .logical_or,
+	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
+	//
+	.key_as, .ge, .le, .logical_or,
 	//
 	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }

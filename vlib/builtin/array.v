@@ -367,9 +367,11 @@ pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
 	mut ptr := &hex[0]
 	for i := 0; i < b.len; i++ {
+		// QTODO
 		ptr += C.sprintf(ptr as charptr, '%02x', b[i])
 	}
-	return string(hex)
+	return hex as string
+	//return string(hex)
 }
 
 // copy copies the `src` byte array elements to the `dst` byte array.

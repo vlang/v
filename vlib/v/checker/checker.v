@@ -46,6 +46,7 @@ fn (c mut Checker) resolve_types() {
 	}
 	// update any types with unresolved sub types
 	for idx, t in c.table.types {
+		println('Resolve type: $t.name')
 		if t.kind == .array {
 			mut info := t.array_info()
 			if info.elem_type.typ.kind == .unresolved {
@@ -166,6 +167,14 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 	typ := c.expr(method_call_expr.expr)
 	if method := typ.typ.find_method(method_call_expr.name) {
 		return method.return_type
+	}
+	if typ.typ.kind == .array {
+		a := c.table.find_type('array') or {
+			exit(1)
+		}
+		if method := a.find_method(method_call_expr.name) {
+			return method.return_type
+		}
 	}
 	c.error('type `$typ.typ.name` has no method `$method_call_expr.name`', method_call_expr.pos)
 	exit(1)
