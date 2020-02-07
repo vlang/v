@@ -54,7 +54,7 @@ fn (c mut Checker) resolve_expr_types(f ast.File) {
 }
 
 // update any types chich contain unresolved sub types
-fn (c mut Checker) complete_types(f ast.File) {
+fn (c &Checker) complete_types(f ast.File) {
 	for idx, t in c.table.types {
 		// println('Resolve type: $t.name')
 		if t.kind == .array {
