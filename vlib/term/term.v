@@ -44,9 +44,25 @@ pub fn h_divider(divider string) string {
 // e.g: term.header(" TEXT ", "=") 
 // =============== TEXT ===============
 pub fn header(text, divider string) string {
-    term_width := h_divider(divider).len - text.len
-    ln := divider.repeat(term_width / 2)
-    return ln + text + ln + (if (term_width % 2 != 0){divider} else {""})
+	cols, _ := get_terminal_size()
+	text_limit := if cols > text.len + 2 + 2*divider.len {
+		text.len
+	} else {
+		cols-3-2*divider.len
+	}
+	text_limit_alligned := if (text_limit % 2) != (cols % 2 ) {
+		text_limit + 1
+	} else {
+		text_limit
+	}
+	text_start := (cols - text_limit_alligned)/2
+	filler_line := divider.repeat( 1 + cols / divider.len )[0..cols]
+	result := if text.len == 0 {
+		filler_line
+	} else {
+		filler_line[0..text_start] + ' ' + text[0..text_limit] + ' ' + filler_line[text_start+text_limit+2..cols]
+	}
+	return result
 }
 
 fn supports_escape_sequences(fd int) bool {
