@@ -11,11 +11,10 @@ import (
 )
 
 pub struct Checker {
-	table      &table.Table
+	table     &table.Table
 mut:
-	file_name  string
-	unresolved []ast.Expr
-	resolved   []table.TypeRef
+	file_name string
+	resolved  []table.TypeRef
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -26,27 +25,38 @@ pub fn new_checker(table &table.Table) Checker {
 
 pub fn (c mut Checker) check(ast_file ast.File) {
 	c.file_name = ast_file.path
-	c.unresolved = ast_file.unresolved
-	c.resolve_types()
+	// if ast_file.unresolved.len != c.resolved.len {
+	// c.resolve_exprs(file)
+	// }
+	c.complete_types(ast_file)
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
 }
 
 pub fn (c mut Checker) check_files(ast_files []ast.File) {
+	// this cant be moved to check() for multiple
+	// files this muse be done first. TODO: optimize
+	for file in ast_files {
+		c.file_name = file.path
+		c.resolve_expr_types(file)
+	}
 	for file in ast_files {
 		c.check(file)
 	}
 }
 
-fn (c mut Checker) resolve_types() {
-	// resolve type of unresolved expressions
-	for x in c.unresolved {
+// resolve type of unresolved expressions
+fn (c mut Checker) resolve_expr_types(f ast.File) {
+	for x in f.unresolved {
 		c.resolved << c.expr(x)
 	}
-	// update any types with unresolved sub types
+}
+
+// update any types chich contain unresolved sub types
+fn (c &Checker) complete_types(f ast.File) {
 	for idx, t in c.table.types {
-		println('Resolve type: $t.name')
+		// println('Resolve type: $t.name')
 		if t.kind == .array {
 			mut info := t.array_info()
 			if info.elem_type.typ.kind == .unresolved {
