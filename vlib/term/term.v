@@ -39,6 +39,16 @@ pub fn h_divider(divider string) string {
 	return result[0..cols]
 }
 
+// header returns a horizontal divider line with text on the 
+// center of the line. 
+// e.g: term.header(" TEXT ", "=") 
+// =============== TEXT ===============
+pub fn header(text, divider string) string {
+    term_width := h_divider(divider).len - text.len
+    ln := divider.repeat(term_width / 2)
+    return ln + text + ln + (if (term_width % 2 != 0){divider} else {""})
+}
+
 fn supports_escape_sequences(fd int) bool {
 	$if windows {
 		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // ENABLE_VIRTUAL_TERMINAL_PROCESSING
