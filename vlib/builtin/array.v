@@ -370,8 +370,8 @@ pub fn (b []byte) hex() string {
 		// QTODO
 		ptr += C.sprintf(ptr as charptr, '%02x', b[i])
 	}
-	return hex as string
-	//return string(hex)
+	//return hex as string
+	return string(hex)
 }
 
 // copy copies the `src` byte array elements to the `dst` byte array.
