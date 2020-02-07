@@ -10,11 +10,15 @@ fn test_h_divider(){
 	assert divider.len > 0
 	assert divider[0] == `-`
 	assert divider[divider.len-1] == `-`
-	
-	xdivider := term.h_divider('x')
+}
+
+fn test_h_divider_multiple_characters(){
+	xdivider := term.h_divider('abc')
 	assert xdivider.len > 0
-	assert xdivider[0] == `x`
-	assert xdivider[xdivider.len-1] == `x`
+	assert xdivider[0] == `a`
+	assert xdivider[1] == `b`
+	assert xdivider[2] == `c`
+	assert xdivider[xdivider.len-10..xdivider.len-1].contains('abc')
 }	
 
 fn test_header(){
