@@ -3,7 +3,7 @@ import (
 	toml
 	yaml
 	json
-	http
+	net.http
 )
 
 fn test_BurntSushi_arrayempty_toml(){
@@ -27,7 +27,9 @@ fn test_BurntSushi_array_string_quote_comma_toml(){
 	assert toml_parse(arr_str_quote_comma_data)?
 }
 
-fn test_BurntSushi
+fn test_BurntSushi_array_string_quote_comma2_toml(){
+	pub arr_str_quote_comma2_data :=
+}
 
 
 fn test_BurntSushi_arrayempty_json(){

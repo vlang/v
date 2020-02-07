@@ -8,15 +8,23 @@ const (
 	NULL = 0
 )
 struct Yaml{
-	squences 	&[]Squenece
+	squences 	&[]Squence
 	maps		&[]Mapping
 }
 
 struct YAMLVal{
+	mut:
+	integer YAMLInt
+	str string
+	boolean bool
+	squence Squence
+}
+
+struct YAMLInt{
 
 }
 
-struct Sqeuenece{
+struct Squence{
 
 }
 

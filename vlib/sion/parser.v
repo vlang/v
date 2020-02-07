@@ -1,6 +1,6 @@
-module parser
+module sion
 
 struct Parser{
-	tokens 	[]Tokens
-	data 	SION
+	token 	[]Token
+	data 	Sion
 }

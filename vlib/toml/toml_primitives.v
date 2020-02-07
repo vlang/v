@@ -13,13 +13,13 @@ const (
 	NULL = 0
 )
 
-pub struct TOML{
+pub struct Toml{
 	pub mut:
 		tbl 	&[]Table
 		arr		&[]Array
 }
 
-fn toml_parse(s string) TOML {
+fn toml_parse(s string) Toml {
 	mut p := new_parser(s)
 	return p.data()
 }
@@ -107,7 +107,6 @@ struct TOMLVal{
 		time_stamp	TimeStamp
 		arr			Array
 }
-]
 
 fn (t TOMLInt) val() i64 {
 	return t.val

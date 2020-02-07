@@ -1,10 +1,18 @@
 module sion
 
 import (
-	encode/base64
+	encoding.base64
 	time
 )
 
+const (
+	nil = 0
+)
+
+struct Sion {
+
+}
+
 fn sion_parse(s string){
-	new_scanner(s)
+	
 }
