@@ -38,8 +38,6 @@ pub fn (app mut App) text() {
 }
 
 pub fn (app mut App) cookie() {
-	app.vweb.text('Headers:')
 	app.vweb.set_cookie('cookie', 'test')
-	app.vweb.text(app.vweb.headers)
-	app.vweb.text('Text: hello world')
+	app.vweb.text('Headers: $app.vweb.headers')
 }

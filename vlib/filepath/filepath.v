@@ -1,9 +1,5 @@
 module filepath
 
-import (
-	os
-)
-
 // ext returns the extension in the file `path`.
 pub fn ext(path string) string {
 	pos := path.last_index('.') or {
@@ -28,15 +24,12 @@ pub fn join(base string, dirs ...string) string {
 	for d in dirs {
 		result << d
 	}
-	return result.join(os.path_separator)
+	return result.join(path_separator)
 }
 
 // dir returns all but the last element of path, typically the path's directory.
 pub fn dir(path string) string {
-	if path == '.' {
-		return os.getwd()
-	}
-	pos := path.last_index(os.path_separator) or {
+	pos := path.last_index(path_separator) or {
 		return '.'
 	}
 	return path[..pos]
@@ -44,7 +37,7 @@ pub fn dir(path string) string {
 
 // basedir returns a directory name from path
 pub fn basedir(path string) string {
-	pos := path.last_index(os.path_separator) or {
+	pos := path.last_index(path_separator) or {
 		return path
 	}
 	// NB: *without* terminating /
@@ -53,5 +46,5 @@ pub fn basedir(path string) string {
 
 // filename returns a file name from path
 pub fn filename(path string) string {
-	return path.all_after(os.path_separator)
+	return path.all_after(path_separator)
 }

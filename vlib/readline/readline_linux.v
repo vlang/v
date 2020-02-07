@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -36,7 +36,7 @@ enum Action {
 
 fn C.tcgetattr() int
 fn C.tcsetattr() int
-fn C.ioctl() int
+//fn C.ioctl() int
 fn C.raise()
 
 // Toggle raw mode of the terminal by changing its attributes

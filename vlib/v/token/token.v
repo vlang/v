@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module token
@@ -42,7 +42,7 @@ pub enum Kind {
 	dollar
 	str_dollar
 	left_shift
-	righ_shift
+	right_shift
 	// at // @
 	assign // =
 	decl_assign // :=
@@ -199,7 +199,7 @@ fn build_token_str() []string {
 	s[Kind.le] = '<='
 	s[Kind.question] = '?'
 	s[Kind.left_shift] = '<<'
-	s[Kind.righ_shift] = '>>'
+	s[Kind.right_shift] = '>>'
 	s[Kind.line_comment] = '// line comment'
 	s[Kind.mline_comment] = '/* mline comment */'
 	s[Kind.nl] = 'NLL'
@@ -357,6 +357,8 @@ const (
 )
 // precedence returns a tokens precedence if defined, otherwise lowest_prec
 pub fn (tok Token) precedence() int {
+	// TODO
+	// return int(precedences[int(tok)])
 	match tok.kind {
 		.lsbr {
 			return 9
@@ -370,7 +372,7 @@ pub fn (tok Token) precedence() int {
 			return 7
 		}
 		// `*` |  `/` | `%` | `<<` | `>>` | `&`
-		.mul, .div, .left_shift, .righ_shift, .amp {
+		.mul, .div, .mod, .left_shift, .right_shift, .amp {
 			return 6
 		}
 		// `+` |  `-` |  `|` | `^`
@@ -386,8 +388,13 @@ pub fn (tok Token) precedence() int {
 			return 3
 		}
 		// `||`
-		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .mult_assign {
+		.logical_or, .assign, .plus_assign, .minus_assign, .div_assign, .or_assign,
+		//
+		.left_shift_assign, .righ_shift_assign, .mult_assign {
 			return 2
+		}
+		.key_in {
+			return 1
 		}
 		// /.plus_assign {
 		// /return 2
@@ -410,6 +417,7 @@ pub fn (tok Token) is_unary() bool {
 	.plus, .minus, .not, .bit_not, .mul, .amp]
 }
 
+/*
 // NOTE: do we need this for all tokens (is_left_assoc / is_right_assoc),
 // or only ones with the same precedence?
 // is_left_assoc returns true if the token is left associative
@@ -446,6 +454,8 @@ pub fn (tok Token) is_right_assoc() bool {
 	// `&=` | `^=` | `|=`
 	.and_assign, .xor_assign, .or_assign]
 }
+*/
+
 
 pub fn (tok Kind) is_relational() bool {
 	return tok in [
@@ -454,5 +464,7 @@ pub fn (tok Kind) is_relational() bool {
 }
 
 pub fn (kind Kind) is_infix() bool {
-	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .ge, .le, .logical_or, .and, .dot]
+	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .ge, .le, .logical_or,
+	//
+	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module tmpl
@@ -17,7 +17,7 @@ pub fn compile_template(path string) string {
 		panic('html failed')
 	}
 	mut header := ''
-	if os.exists('header.html') {
+	if os.exists('header.html') && html.contains('@header') {
 		h := os.read_file('header.html')or{
 			panic('reading file header.html failed')
 		}

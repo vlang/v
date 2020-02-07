@@ -1,4 +1,11 @@
 
+fn test_simple_string_interpolation(){
+	a := 'Hello'
+	b := 'World'
+	res := '$a $b'
+	assert res == 'Hello World'
+}
+
 fn test_excape_dollar_in_string() {
   i := 42
 

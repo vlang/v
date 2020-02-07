@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module x64
@@ -326,6 +326,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.Return {}
+		ast.AssignStmt {}
 		ast.VarDecl {}
 		ast.ForStmt {}
 		ast.StructDecl {}
@@ -344,11 +345,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.AssignExpr {}
 		ast.IntegerLiteral {}
 		ast.FloatLiteral {}
+		/*
 		ast.UnaryExpr {
 			g.expr(it.left)
 		}
+		*/
+
 		ast.StringLiteral {}
-		ast.BinaryExpr {}
+		ast.InfixExpr {}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {}
 		ast.CallExpr {

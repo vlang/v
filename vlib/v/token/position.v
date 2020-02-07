@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module token
@@ -12,7 +12,8 @@ pub:
 [inline]
 pub fn (tok &Token) position() Position {
 	return Position{
-		line_nr: tok.line_nr
+		line_nr: tok.line_nr - 1
 		// pos: tok.pos
+		
 	}
 }

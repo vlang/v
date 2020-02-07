@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -12,31 +12,6 @@ fn (p mut Parser) get_type2() Type {
 	mut nr_muls := 0
 	mut typ := ''
 	cat := TypeCategory.struct_
-	// multiple returns
-	if p.tok == .lpar {
-		// p.warn('`()` are no longer necessary in multiple returns' +
-		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
-		// if p.inside_tuple {p.error('unexpected (')}
-		// p.inside_tuple = true
-		p.check(.lpar)
-		mut types := []string
-		for {
-			types << p.get_type()
-			if p.tok != .comma {
-				break
-			}
-			p.check(.comma)
-			p.fspace()
-		}
-		p.check(.rpar)
-		// p.inside_tuple = false
-		typ = p.register_multi_return_stuct(types)
-		return Type{
-			name: typ
-			mod: p.mod
-			cat: cat
-		}
-	}
 	// fn type
 	if p.tok == .key_fn {
 		mut f := Fn{
@@ -70,12 +45,44 @@ fn (p mut Parser) get_type2() Type {
 		p.table.register_type(fn_typ)
 		return fn_typ
 	}
-	// arrays ([]int)
-	mut arr_level := 0
 	is_question := p.tok == .question
 	if is_question {
 		p.check(.question)
 	}
+
+	// multiple returns
+	if p.tok == .lpar {
+		// p.warn('`()` are no longer necessary in multiple returns' +
+		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
+		// if p.inside_tuple {p.error('unexpected (')}
+		// p.inside_tuple = true
+		p.check(.lpar)
+		mut types := []string
+		for {
+			types << p.get_type()
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+			p.fspace()
+		}
+		p.check(.rpar)
+		// p.inside_tuple = false
+		typ = p.register_multi_return_stuct(types)
+		if is_question {
+			typ = stringify_pointer(typ)
+			typ = 'Option_$typ'
+			p.table.register_type_with_parent(typ, 'Option')
+		}
+		return Type{
+			name: typ
+			mod: p.mod
+			cat: cat
+		}
+	}
+
+	// arrays ([]int)
+	mut arr_level := 0
 	for p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
@@ -147,8 +154,10 @@ fn (p mut Parser) get_type2() Type {
 			// try resolve full submodule
 			if !p.builtin_mod && p.import_table.known_alias(typ) {
 				mod := p.import_table.resolve_alias(typ)
-				if mod.contains('.') {
-					typ = mod_gen_name(mod)
+				typ = if mod.contains('.') {
+					mod_gen_name(mod)
+				} else {
+					mod
 				}
 			}
 			p.next()

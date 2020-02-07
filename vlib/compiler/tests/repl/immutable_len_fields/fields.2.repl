@@ -1,0 +1,11 @@
+mut a := []string
+a.len = 0   // Error (field len immutable)
+'BYE'
+===output===
+cannot modify immutable field `len` (type `array`)
+declare the field with `mut:`
+struct array {
+mut:
+	len int
+}
+BYE

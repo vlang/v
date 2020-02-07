@@ -108,3 +108,8 @@ fn test_int_alias() {
 	assert i + 10 == 12
 	*/
 }
+
+fn test_hex() {
+	x := u64(10)
+	assert x.hex() == '0xa'
+}

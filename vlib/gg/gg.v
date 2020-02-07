@@ -1,15 +1,17 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
 module gg
 
-import stbi
-import glm
-import gl
-import gx
-import os
-import glfw
+import (
+	stbi
+	glm
+	gl
+	gx
+	os
+	glfw
+)
 
 pub struct Vec2 {
 pub:
@@ -108,6 +110,7 @@ pub fn new_context(cfg Cfg) &GG {
 	if cfg.retina {
 		scale = 2
 	}
+	gl.enable(C.GL_SCISSOR_TEST)
 	//gl.enable(GL_BLEND)
 	//# glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	//println('new gg text context VAO=$VAO')
@@ -216,7 +219,15 @@ pub fn (ctx &GG) draw_rect(x, y, w, h f32, c gx.Color) {
 	ctx.draw_rect2(x, y, w, h, c)
 }
 
-pub fn (ctx &GG) draw_circle(x, y, radius int, c gx.Color) {
+// Useful for debugging meshes.
+pub fn set_mode_wireframe() {
+	C.glPolygonMode(C.GL_FRONT_AND_BACK, C.GL_LINE)
+}
+pub fn set_mode_point() {
+	C.glPolygonMode(C.GL_FRONT_AND_BACK, C.GL_POINT)
+}
+pub fn set_mode_fill() {
+	C.glPolygonMode(C.GL_FRONT_AND_BACK, C.GL_FILL)
 }
 
 /*
@@ -398,18 +409,68 @@ pub fn create_image_from_memory(buf byteptr) u32 {
 }
 
 pub fn (ctx &GG) draw_line(x, y, x2, y2 f32, color gx.Color) {
-	ctx.shader.set_int('has_texture', 0)
-	C.glDeleteBuffers(1, &ctx.vao)
-	C.glDeleteBuffers(1, &ctx.vbo)
-	ctx.shader.use()
-	ctx.shader.set_color('color', color)
+	ctx.use_color_shader(color)
 	vertices := [x, y, x2, y2] !
-	gl.bind_vao(ctx.vao)
-	gl.set_vbo(ctx.vbo, vertices, C.GL_STATIC_DRAW)
-	gl.vertex_attrib_pointer(0, 2, C.GL_FLOAT, false, 2, 0)
-	gl.enable_vertex_attrib_array(0)
-	gl.bind_vao(ctx.vao)
+	ctx.bind_vertices(vertices)
 	gl.draw_arrays(C.GL_LINES, 0, 2)
+}
+
+pub fn (ctx &GG) draw_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
+	ctx.use_color_shader(color)	
+	vertices := arc_vertices(x, y, r, start_angle, end_angle, segments)
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments + 1)
+	unsafe { vertices.free() }
+}
+
+pub fn (ctx &GG) draw_filled_arc(x, y, r, start_angle, end_angle f32, segments int, color gx.Color) {
+	ctx.use_color_shader(color)
+
+	
+	mut vertices := []f32
+	vertices << [x, y] !
+	vertices << arc_vertices(x, y, r, start_angle, end_angle, segments)
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments + 2)
+	unsafe { vertices.free() }
+}
+
+pub fn (ctx &GG) draw_circle(x, y, r f32, color gx.Color) {
+	ctx.draw_filled_arc(x, y, r, 0, 360, 24 + int(r / 2), color)
+}
+
+pub fn (ctx &GG) draw_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+	ctx.use_color_shader(color)
+	mut vertices := []f32
+	segments := 6 + int(r / 8)
+
+	// Create a rounded rectangle using a triangle fan mesh.
+	vertices << [x + (w/2.0), y + (h/2.0)] !
+	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
+	vertices << arc_vertices(x + r, y + h - r, r, 90, 180, segments)
+	vertices << arc_vertices(x + r, y + r, r, 180, 270, segments)
+	vertices << arc_vertices(x + w - r, y + r, r, 270, 360, segments)
+	// Finish the loop by going back to the first vertex
+	vertices << [vertices[2], vertices[3]] !
+
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_TRIANGLE_FAN, 0, segments * 4 + 6)
+	unsafe { vertices.free() }
+}
+
+pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
+	ctx.use_color_shader(color)
+	mut vertices := []f32
+	segments := 6 + int(r / 8)
+
+	vertices << arc_vertices(x + w - r, y + h - r, r, 0, 90, segments)
+	vertices << arc_vertices(x + r, y + h - r, r, 90, 180, segments)
+	vertices << arc_vertices(x + r, y + r, r, 180, 270, segments)
+	vertices << arc_vertices(x + w - r, y + r, r, 270, 360, segments)
+
+	ctx.bind_vertices(vertices)
+	gl.draw_arrays(C.GL_LINE_STRIP, 0, segments * 4 + 1)
+	unsafe { vertices.free() }
 }
 
 /*
@@ -480,4 +541,8 @@ pub fn (c &GG) draw_empty_rect(x, y, w, h f32, color gx.Color) {
 	c.draw_line(x, y, x, y + h, color)
 	c.draw_line(x, y + h, x + w, y + h, color)
 	c.draw_line(x + w, y, x + w, y + h, color)
+}
+
+pub fn scissor(x, y, w, h f32) {
+	C.glScissor(x, y, w, h)
 }

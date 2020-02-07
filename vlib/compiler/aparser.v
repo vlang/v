@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -7,12 +7,14 @@ import (
 	os
 	strings
 	filepath
+	v.pref
 	//compiler.x64
-	// time
+	time
 )
 
 struct Parser {
 	file_path              string // "/home/user/hello.v"
+	file_path_dir          string // "/home/user"
 	file_name              string // "hello.v"
 	file_platform          string // ".v", "_windows.v", "_nix.v", "_darwin.v", "_linux.v" ...
 	// When p.file_pcguard != '', it contains a
@@ -20,11 +22,12 @@ struct Parser {
 	// the #include directives in the parsed .v file
 	file_pcguard           string
 	v                      &V
-	pref                   &Preferences // Preferences shared from V struct
+	pref                   &pref.Preferences // Preferences shared from V struct
 mut:
 	scanner                &Scanner
 	tokens                 []Token
 	token_idx              int
+	prev_stuck_token_idx   int
 	tok                    TokenKind
 	prev_tok               TokenKind
 	prev_tok2              TokenKind // TODO remove these once the tokens are cached
@@ -34,7 +37,7 @@ mut:
 	table                  &Table
 	import_table           ImportTable // Holds imports for just the file being parsed
 	pass                   Pass
-	os                     OS
+	os                     pref.OS
 	inside_const           bool
 	expr_var               Var
 	has_immutable_field    bool
@@ -90,6 +93,7 @@ const (
 		'i64': true,
 		'i128': true,
 		'byte': true,
+		'char': true,
 		'u16': true,
 		'u32': true,
 		'u64': true,
@@ -177,6 +181,7 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 	p = {
 		p |
 		file_path:path,
+		file_path_dir:filepath.dir( path ),
 		file_name:path.all_after(os.path_separator),
 		file_platform:path_platform,
 		file_pcguard:path_pcguard,
@@ -445,7 +450,7 @@ fn (p mut Parser) parse(pass Pass) {
 	}
 	p.fgen_nl()
 	p.builtin_mod = p.mod == 'builtin'
-	p.can_chash = p.mod in ['ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
+	p.can_chash = p.mod in ['gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
 	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
@@ -462,8 +467,17 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		return
 	}
+	
+	parsing_start_ticks := time.ticks()
+	compile_cycles_stuck_mask := u64( 0x1FFFFFFF ) // 2^29-1 cycles
+	mut parsing_cycle := u64(1)
+	p.prev_stuck_token_idx = p.token_idx
 	// Go through every top level token or throw a compilation error if a non-top level token is met
 	for {
+		parsing_cycle++
+		if compile_cycles_stuck_mask == (parsing_cycle & compile_cycles_stuck_mask) {
+			p.check_if_parser_is_stuck(parsing_cycle, parsing_start_ticks)
+		}
 		match p.tok {
 			.key_import {
 				p.imports()
@@ -480,6 +494,8 @@ fn (p mut Parser) parse(pass Pass) {
 					// (for example, by DOOM). such fields are
 					// basically int consts
 					p.enum_decl(true)
+				} else {
+					p.error('Nameless enums are not allowed.')
 				}
 			}
 			.key_pub {
@@ -532,10 +548,9 @@ fn (p mut Parser) parse(pass Pass) {
 			}
 			.key_global {
 				if !p.pref.translated && !p.pref.is_live && !p.builtin_mod && !p.pref.building_v &&
-					p.mod != 'ui' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
+					p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') &&
 					!p.pref.enable_globals {
 					p.error('use `v --enable-globals ...` to enable globals')
-					// p.error('__global is only allowed in translated code')
 				}
 				p.next()
 				p.fspace()
@@ -1040,26 +1055,6 @@ fn (p mut Parser) get_type() string {
 	mut mul := false
 	mut nr_muls := 0
 	mut typ := ''
-	// multiple returns
-	if p.tok == .lpar {
-		// p.warn('`()` are no longer necessary in multiple returns' +
-		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
-		// if p.inside_tuple {p.error('unexpected (')}
-		// p.inside_tuple = true
-		p.check(.lpar)
-		mut types := []string
-		for {
-			types << p.get_type()
-			if p.tok != .comma {
-				break
-			}
-			p.check(.comma)
-		}
-		p.check(.rpar)
-		// p.inside_tuple = false
-		typ = p.register_multi_return_stuct(types)
-		return typ
-	}
 	// fn type
 	if p.tok == .key_fn {
 		mut f := Fn{
@@ -1092,12 +1087,39 @@ fn (p mut Parser) get_type() string {
 		p.table.register_type(fn_typ)
 		return f.typ_str()
 	}
-	// arrays ([]int)
-	mut arr_level := 0
 	is_question := p.tok == .question
 	if is_question {
 		p.check(.question)
 	}
+
+	// multiple returns
+	if p.tok == .lpar {
+		// p.warn('`()` are no longer necessary in multiple returns' +
+		// '\nuse `fn foo() int, int {` instead of `fn foo() (int, int) {`')
+		// if p.inside_tuple {p.error('unexpected (')}
+		// p.inside_tuple = true
+		p.check(.lpar)
+		mut types := []string
+		for {
+			types << p.get_type()
+			if p.tok != .comma {
+				break
+			}
+			p.check(.comma)
+		}
+		p.check(.rpar)
+		// p.inside_tuple = false
+		typ = p.register_multi_return_stuct(types)
+		if is_question {
+			typ = stringify_pointer(typ)
+			typ = 'Option_$typ'
+			p.table.register_type_with_parent(typ, 'Option')
+		}
+		return typ
+	}
+
+	// arrays ([]int)
+	mut arr_level := 0
 	for p.tok == .lsbr {
 		p.check(.lsbr)
 		// [10]int
@@ -1594,6 +1616,13 @@ fn ($v.name mut $v.typ) ${p.cur_fn.name}(...) {
 				}
 				p.gen(' += ')
 			}
+		}
+		.minus_assign {
+				next := p.peek_token()
+				if next.tok == .number && next.lit == '1' {
+					p.error('use `--` instead of `-= 1`')
+				}
+				p.gen(' -= ')
 		}
 		else {
 			p.gen(' ' + p.tok.str() + ' ')
@@ -2835,6 +2864,7 @@ fn (p mut Parser) return_st() {
 		is_none := p.tok == .key_none
 		p.expected_type = p.cur_fn.typ
 		mut expr_type := p.bool_expression()
+		mut expr_type_chk := expr_type
 		// println('$p.cur_fn.name returns type $expr_type, should be $p.cur_fn.typ')
 		mut types := []string
 		mut mr_values := [p.cgen.cur_line[ph..].trim_space()]
@@ -2848,7 +2878,13 @@ fn (p mut Parser) return_st() {
 		mut cur_fn_typ_chk := p.cur_fn.typ
 		// multiple returns
 		if types.len > 1 {
-			expr_type = types.join(',')
+			mr_type := if p.cur_fn.typ.starts_with('Option_') {
+				p.cur_fn.typ[7..]
+			} else {
+				p.cur_fn.typ
+			}
+			expr_type = mr_type
+			expr_type_chk = types.join(',')
 			cur_fn_typ_chk = cur_fn_typ_chk.replace('_V_MulRet_', '').replace('_PTR_', '*').replace('_V_', ',')
 			mut ret_fields := ''
 			for ret_val_idx, ret_val in mr_values {
@@ -2857,7 +2893,7 @@ fn (p mut Parser) return_st() {
 				}
 				ret_fields += '.var_$ret_val_idx=${ret_val}'
 			}
-			p.cgen.resetln('($p.cur_fn.typ){$ret_fields}')
+			p.cgen.resetln('($mr_type){$ret_fields}')
 		}
 		p.inside_return_expr = false
 		// Automatically wrap an object inside an option if the function
@@ -2889,7 +2925,7 @@ fn (p mut Parser) return_st() {
 				p.genln('return $tmp;')
 			}
 		}
-		p.check_types(expr_type, cur_fn_typ_chk)
+		p.check_types(expr_type_chk, cur_fn_typ_chk)
 	}
 	else {
 		// Don't allow `return val` in functions that don't return anything
@@ -3052,17 +3088,19 @@ fn (p mut Parser) attribute() {
 	}
 	p.check(.rsbr)
 	p.fgen_nl()
-	if p.tok == .key_fn || (p.tok == .key_pub && p.peek() == .key_fn) {
+	is_pub := p.tok == .key_pub
+	peek := p.peek()
+	if p.tok == .key_fn || (is_pub && peek == .key_fn) {
 		p.fn_decl()
 		p.attr = ''
 		return
 	}
-	else if p.tok == .key_struct {
+	else if p.tok == .key_struct || (is_pub && peek == .key_struct) {
 		p.struct_decl([])
 		p.attr = ''
 		return
 	}
-	else if p.tok == .key_enum {
+	else if p.tok == .key_enum || (is_pub && peek == .key_enum) {
 		p.enum_decl(false)
 		p.attr = ''
 		return
@@ -3162,3 +3200,22 @@ fn todo_remove() {
 	//x64.new_gen('f')
 }
 
+
+fn (p mut Parser) check_if_parser_is_stuck(parsing_cycle u64, parsing_start_ticks i64){
+	if p.prev_stuck_token_idx == p.token_idx {
+		// many many cycles have passed with no progress :-( ...
+		eprintln('Parsing is [probably] stuck. Cycle: ${parsing_cycle:12ld} .')
+		eprintln('  parsing file: ${p.file_path} | pass: ${p.pass} | mod: ${p.mod} | fn: ${p.cur_fn.name}')
+		p.print_current_tokens('  source')
+		if time.ticks() > parsing_start_ticks + 10*1000{
+			p.warn('V compiling is too slow.')
+		}
+		if time.ticks() > parsing_start_ticks + 30*1000{
+			p.error('
+V took more than 30 seconds to compile this file.
+Please create a GitHub issue: https://github.com/vlang/v/issues/new/choose .
+')
+		}
+	}
+	p.prev_stuck_token_idx = p.token_idx
+}

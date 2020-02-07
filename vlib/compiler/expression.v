@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -63,7 +63,7 @@ fn (p mut Parser) bool_expression() string {
 		p.gen('}')
 		//p.satisfies_interface(expected, typ, true)
 	}
-	// e.g. `return BinaryExpr{}` in a function expecting `Expr`
+	// e.g. `return InfixExpr{}` in a function expecting `Expr`
 	if expected != typ && expected in p.table.sum_types { // TODO perf
 		//p.warn('SUM CAST exp=$expected typ=$typ p.exp=$p.expected_type')
 		T := p.table.find_type(typ)
@@ -87,7 +87,8 @@ fn (p mut Parser) bool_expression() string {
 		if typ in p.table.sum_types {
 			T := p.table.find_type(cast_typ)
 			if T.parent != typ {
-				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`')
+				p.error('cannot cast `$typ` to `$cast_typ`. `$cast_typ` is not a variant of `$typ`' +
+				'parent=$T.parent')
 			}
 			p.cgen.set_placeholder(start_ph, '*($cast_typ*)')
 			p.gen('.obj')
@@ -812,6 +813,15 @@ fn (p mut Parser) factor() string {
 			// p.fgen('$sizeof_typ)')
 			return 'int'
 		}
+		.key_nameof {
+			p.next()
+			p.check(.lpar)
+			mut nameof_typ := p.get_type()
+			p.check(.rpar)
+			p.gen('tos3("$nameof_typ")')
+//			return 'byteptr'
+			return 'string'
+		}
 		.key_offsetof {
 			p.next()
 			p.check(.lpar)
@@ -903,7 +913,7 @@ fn (p mut Parser) factor() string {
 				return p.map_init()
 			}
 			peek2 := p.tokens[p.token_idx + 1]
-			if p.peek() == .name && peek2.tok == .colon {
+			if p.peek() == .rcbr || (p.peek() == .name && peek2.tok == .colon) {
 				if !p.expected_type.ends_with('Config') {
 					p.error('short struct initialization syntax only works with structs that end with `Config`')
 				}

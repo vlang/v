@@ -24,6 +24,27 @@ fn test_unsetenv() {
   assert os.getenv('foo') == ''
 }
 
+fn test_open_file() {
+  filename := './test1.txt'
+  hello := 'hello world!'
+  os.open_file(filename, "r+", 0666) or {
+    assert err == "No such file or directory"
+  }
+
+  mut file := os.open_file(filename, "w+", 0666) or { panic(err) }
+  file.write(hello)
+  file.close()
+  
+  assert hello.len == os.file_size(filename)
+
+  read_hello := os.read_file(filename) or {
+    panic('error reading file $filename')
+  }
+  assert hello == read_hello
+
+  os.rm(filename)
+}
+
 fn test_write_and_read_string_to_file() {
   filename := './test1.txt'
   hello := 'hello world!'

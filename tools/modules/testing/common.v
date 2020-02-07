@@ -20,6 +20,7 @@ pub mut:
 	ntask     int // writing to this should be locked by mu.
 	ntask_mtx &sync.Mutex
 	waitgroup &sync.WaitGroup
+	show_ok_tests bool
 }
 
 pub fn new_test_session(vargs string) TestSession {
@@ -30,6 +31,8 @@ pub fn new_test_session(vargs string) TestSession {
 		ntask: 0
 		ntask_mtx: sync.new_mutex()
 		waitgroup: sync.new_waitgroup()
+		
+		show_ok_tests: !vargs.contains('-silent')
 	}
 }
 
@@ -92,7 +95,7 @@ pub fn (ts mut TestSession) test() {
 	}
 	ts.waitgroup.wait()
 	ts.benchmark.stop()
-	eprintln(term.h_divider())
+	eprintln(term.h_divider('-'))
 }
 
 
@@ -167,7 +170,9 @@ fn (ts mut TestSession) process_files() {
 			else {
 				ts.benchmark.ok()
 				tls_bench.ok()
-				eprintln(tls_bench.step_message_ok(relative_file))
+				if ts.show_ok_tests {
+					eprintln(tls_bench.step_message_ok(relative_file))
+				}
 			}
 		}
 		if os.exists(generated_binary_fpath) {
@@ -195,7 +200,18 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	eprintln('   v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
-	mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
+	mut mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
+	$if windows {
+		// skip pico example on windows
+		// there was a bug using filter here
+		mut mains_filtered := []string
+		for file in mains {
+			if !file.ends_with('examples\\pico\\pico.v') {
+				mains_filtered << file
+			}
+		}
+		mains = mains_filtered
+	}
 	session.files << mains
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
@@ -242,7 +258,7 @@ pub fn building_any_v_binaries_failed() bool {
 		eprintln(bmark.step_message_ok('command: ${cmd}'))
 	}
 	bmark.stop()
-	eprintln(term.h_divider())
+	eprintln(term.h_divider('-'))
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
 }

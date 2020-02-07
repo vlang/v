@@ -13,12 +13,13 @@ pub const (
 #flag windows -lgdi32
 
 // METAL
-// #flag -DSOKOL_METAL
-// #flag darwin -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+#flag darwin -DSOKOL_METAL
+#flag darwin -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
 
 // OPENGL
-#flag -DSOKOL_GLCORE33
-#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
+#flag linux -DSOKOL_GLCORE33
+#flag windows -DSOKOL_GLCORE33
+//#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 
 
 // for simplicity, all header includes are here because import order matters and we dont have any way

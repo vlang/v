@@ -4,7 +4,6 @@ import (
 	strings
 	v.ast
 	v.table
-	// v.types
 	term
 )
 
@@ -48,25 +47,30 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 	// g.writeln('//// stmt start')
 	match node {
 		ast.Import {}
+		ast.ConstDecl {
+			for i, field in it.fields {
+				g.write('$field.typ.typ.name $field.name = ')
+				g.expr(it.exprs[i])
+				g.writeln(';')
+			}
+		}
 		ast.FnDecl {
-			g.fn_decl = &it
+			g.fn_decl = it // &it
 			is_main := it.name == 'main'
 			if is_main {
 				g.write('int ${it.name}(')
 			}
 			else {
-				ti := g.table.refresh_ti(it.ti)
-				g.write('$ti.name ${it.name}(')
-				g.definitions.write('$ti.name ${it.name}(')
+				g.write('$it.typ.typ.name ${it.name}(')
+				g.definitions.write('$it.typ.typ.name ${it.name}(')
 			}
 			for i, arg in it.args {
-				// t := g.table.get_type(arg.ti.idx)
-				ti := g.table.refresh_ti(arg.ti)
-				g.write(ti.name + ' ' + arg.name)
+				g.write(arg.typ.typ.name + ' ' + arg.name)
+				g.definitions.write(arg.typ.typ.name + ' ' + arg.name)
 				if i < it.args.len - 1 {
 					g.write(', ')
+					g.definitions.write(', ')
 				}
-				g.definitions.write(ti.name + ' ' + arg.name)
 			}
 			g.writeln(') { ')
 			if !is_main {
@@ -82,12 +86,10 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.fn_decl = 0
 		}
 		ast.Return {
-			g.write('return ')
+			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				// t := g.table.get_type(g.fn_decl.ti.idx)
-				ti := g.table.refresh_ti(g.fn_decl.ti)
-				g.write('($ti.name){')
+				g.write(' ($g.fn_decl.typ.typ.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
@@ -98,17 +100,31 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('}')
 			}
 			// normal return
-			else {
+			else if it.exprs.len == 1 {
+				g.write(' ')
 				g.expr(it.exprs[0])
 			}
 			g.writeln(';')
 		}
+		ast.AssignStmt {
+			// ident0 := it.left[0]
+			// info0 := ident0.var_info()
+			// for i, ident in it.left {
+			// 	info := ident.var_info()
+			// 	if info0.typ.typ.kind == .multi_return {
+			// 		if i == 0 {
+			// 			g.write('$info.typ.typ.name $ident.name = ')
+			// 			g.expr(it.right[0])
+			// 		} else {
+			// 			arg_no := i-1
+			// 			g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
+			// 		}
+			// 	}
+			// 	g.writeln(';')
+			// }
+		}
 		ast.VarDecl {
-			mut ti := it.ti
-			if ti.kind == .unresolved {
-				ti = g.table.get_expr_ti(it.expr)
-			}
-			g.write('$ti.name $it.name = ')
+			g.write('$it.typ.typ.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -137,9 +153,7 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				// t := g.table.get_type(field.ti.idx)
-				ti := g.table.refresh_ti(field.ti)
-				g.writeln('\t$ti.name $field.name;')
+				g.writeln('\t$field.typ.typ.name $field.name;')
 			}
 			g.writeln('} $it.name;')
 		}
@@ -177,6 +191,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.expr(it.expr)
 			g.write(it.op.str())
 		}
+		/*
 		ast.UnaryExpr {
 			// probably not :D
 			if it.op in [.inc, .dec] {
@@ -188,6 +203,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 				g.expr(it.left)
 			}
 		}
+		*/
+
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
 		}
@@ -195,7 +212,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.op.str())
 			g.expr(it.right)
 		}
-		ast.BinaryExpr {
+		ast.InfixExpr {
 			g.expr(it.left)
 			if it.op == .dot {
 				println('!! dot')
@@ -208,9 +225,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			// t := g.table.get_type(it.ti.idx)
-			ti := g.table.refresh_ti(it.ti)
-			g.writeln('($ti.name){')
+			g.writeln('($it.typ.typ.name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
@@ -230,9 +245,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.MethodCallExpr {}
 		ast.ArrayInit {
-			// t := g.table.get_type(it.ti.idx)
-			ti := g.table.refresh_ti(it.ti)
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($ti.name), {\t')
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.typ.name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
@@ -256,17 +269,14 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.write(it.field)
 		}
 		ast.IndexExpr {
-			g.expr(it.left)
-			g.write('[')
-			g.expr(it.index)
-			g.write(']')
+			g.index_expr(it)
 		}
 		ast.IfExpr {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
-			ti := g.table.refresh_ti(it.ti)
+			// ti := g.table.refresh_ti(it.ti)
 			mut tmp := ''
-			if ti.kind != .void {
+			if it.typ.typ.kind != .void {
 				tmp = g.table.new_tmp_var()
 				// g.writeln('$ti.name $tmp;')
 			}
@@ -275,7 +285,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && ti.kind != .void {
+				if i == it.stmts.len - 1 && it.typ.typ.kind != .void {
 					// g.writeln('$tmp =')
 					println(1)
 				}
@@ -293,6 +303,31 @@ fn (g mut Gen) expr(node ast.Expr) {
 		else {
 			println(term.red('cgen.expr(): bad node'))
 		}
+	}
+}
+
+fn (g mut Gen) index_expr(node ast.IndexExpr) {
+	// TODO else doesn't work with sum types
+	mut is_range := false
+	match node.index {
+		ast.RangeExpr {
+			is_range = true
+			g.write('array_slice(')
+			g.expr(node.left)
+			g.write(', ')
+			// g.expr(it.low)
+			g.write('0')
+			g.write(', ')
+			g.expr(it.high)
+			g.write(')')
+		}
+		else {}
+	}
+	if !is_range {
+		g.expr(node.left)
+		g.write('[')
+		g.expr(node.index)
+		g.write(']')
 	}
 }
 

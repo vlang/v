@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -107,7 +107,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		data: data
 		headers: config.headers
 		cookies: config.cookies
-		user_agent: 'v'
+		user_agent: config.user_agent
 		ws_func: 0
 		user_ptr: 0
 		verbose: config.verbose

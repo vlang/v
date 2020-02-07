@@ -5,8 +5,48 @@ import (
 	v.gen
 	v.table
 	v.checker
+	v.eval
 	term
 )
+
+fn test_eval() {
+	inputs := [
+	//
+	'2+3',
+	'4',
+	'x := 10',
+	'x',
+	'x + 1',
+	'y := 2',
+	'x * y', // 20
+	//
+	]
+	expected := [
+	//
+	'5',
+	'4',
+	'>>',
+	'10',
+	'11',
+	'>>',
+	'20',
+	//
+	]
+	table := table.new_table()
+	mut stmts := []ast.Stmt
+	for input in inputs {
+		stmts << parse_stmt(input, table)
+	}
+	file := ast.File{
+		stmts: stmts
+	}
+	mut ev := eval.Eval{}
+	s := ev.eval(file, table)
+	println('eval done')
+	println(s)
+	assert s == expected.join('\n')
+	// exit(0)
+}
 
 fn test_parse_file() {
 	if true {
@@ -55,7 +95,9 @@ fn test_one() {
 }
 
 fn test_parse_expr() {
+	println('SDFSDFSDF')
 	input := ['1 == 1',
+	'234234',
 	'2 * 8 + 3',
 	'a := 3',
 	'a++',
@@ -79,7 +121,8 @@ fn test_parse_expr() {
 	'1.2 + 3.4',
 	'4 + 4',
 	'1 + 2 * 5',
-	'-a',
+	'-a+1',
+	'2+2',
 	/*
 	/*
 		'(2 * 3) / 2',
@@ -93,6 +136,7 @@ fn test_parse_expr() {
 
 	]
 	expecting := ['1 == 1;',
+	'234234;',
 	'2 * 8 + 3;',
 	'int a = 3;',
 	'a++;',
@@ -116,13 +160,14 @@ fn test_parse_expr() {
 	'1.2 + 3.4;',
 	'4 + 4;',
 	'1 + 2 * 5;',
-	'-a;',
+	'-a + 1;',
+	'2 + 2;',
 	]
 	mut e := []ast.Stmt
 	table := table.new_table()
 	mut checker := checker.new_checker(table)
 	for s in input {
-		// println('\n\nst="$s"')
+		println('\n\nst="$s"')
 		e << parse_stmt(s, table)
 	}
 	program := ast.File{

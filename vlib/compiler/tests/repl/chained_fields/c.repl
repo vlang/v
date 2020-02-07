@@ -1,0 +1,17 @@
+struct A { mut: v int }  struct B { a A }  struct C { mut: b B } struct D { mut: c C } 
+mut c := C{} c.b = B{}
+c.b.a = A{} // Error (field a immutable)
+c.b.a.v = 1 // Error (field a immutable)
+===output===
+cannot modify immutable field `a` (type `B`)
+declare the field with `mut:`
+struct B {
+mut:
+	a A
+}
+cannot modify immutable field `a` (type `B`)
+declare the field with `mut:`
+struct B {
+mut:
+	a A
+}

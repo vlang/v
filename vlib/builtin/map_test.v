@@ -23,19 +23,16 @@ fn test_map() {
 	assert m.size == 2
 	assert 'hi' in m
 	mut sum := 0
-	mut key_sum := ''
 	// Test `for in`
 	for key, val in m {
 		sum += val
-		key_sum += key
 	}
 	assert sum == 80 + 101
-	assert key_sum == 'hihello'
 	// Test `.keys()`
 	keys := m.keys()
 	assert keys.len == 2
-	assert keys[0] == 'hi'
-	assert keys[1] == 'hello'
+	assert 'hi' in keys
+	assert 'hello' in keys
 	m.delete('hi')
 	assert m.size == 1
 	m.delete('aloha')

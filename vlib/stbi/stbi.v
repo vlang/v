@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -7,10 +7,10 @@ module stbi
 // note we might need special case for this
 // import gl
 
-#flag   -I @VROOT/thirdparty/stb_image
-
-#define STB_IMAGE_IMPLEMENTATION
+#flag -I @VROOT/thirdparty/stb_image
 #include "stb_image.h"
+#flag @VROOT/thirdparty/stb_image/stbi.o
+
 pub struct Image {
 mut:
 	width       int

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -24,9 +24,11 @@ pub fn isnil(v voidptr) bool {
 	return v == 0
 }
 
+/*
 fn on_panic(f fn(int)int) {
 	// TODO
 }
+*/
 
 pub fn print_backtrace_skipping_top_frames(skipframes int) {
 	$if windows {
@@ -81,10 +83,10 @@ pub fn eprintln(s string) {
 		panic('eprintln(NIL)')
 	}
 	$if !windows {
-		C.fflush(stdout)
-		C.fflush(stderr)
-		C.fprintf(stderr, '%.*s\n', s.len, s.str)
-		C.fflush(stderr)
+		C.fflush(C.stdout)
+		C.fflush(C.stderr)
+		C.fprintf(C.stderr, '%.*s\n', s.len, s.str)
+		C.fflush(C.stderr)
 		return
 	}
 	// TODO issues with stderr and cross compiling for Linux
@@ -96,10 +98,10 @@ pub fn eprint(s string) {
 		panic('eprint(NIL)')
 	}
 	$if !windows {
-		C.fflush(stdout)
-		C.fflush(stderr)
-		C.fprintf(stderr, '%.*s', s.len, s.str)
-		C.fflush(stderr)
+		C.fflush(C.stdout)
+		C.fflush(C.stderr)
+		C.fprintf(C.stderr, '%.*s', s.len, s.str)
+		C.fflush(C.stderr)
 		return
 	}
 	print(s)
@@ -123,6 +125,8 @@ pub fn print(s string) {
 
 __global total_m i64=0
 __global nr_mallocs int=0
+
+fn looo(){} // TODO remove, [ pratt
 
 [unsafe_fn]
 pub fn malloc(n int) byteptr {
