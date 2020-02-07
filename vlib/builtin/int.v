@@ -5,7 +5,7 @@ module builtin
 
 pub fn ptr_str(ptr voidptr) string {
 	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf(charptr(buf), '%p', ptr)
+	C.sprintf((buf), '%p', ptr)
 	return tos(buf, vstrlen(buf))
 }
 
@@ -28,7 +28,7 @@ pub fn (nn int) str() string {
 	// Fill the string from the end
 	for n > 0 {
 		d := n % 10
-		buf[max - len - 1] = d + int(`0`)
+		buf[max - len - 1] = d + (`0` as int)
 		len++
 		n = n / 10
 	}
@@ -42,31 +42,31 @@ pub fn (nn int) str() string {
 }
 
 pub fn (n i8) str() string {
-	return int(n).str()
+	return (n as int).str()
 }
 
 pub fn (n i16) str() string {
-	return int(n).str()
+	return (n as int).str()
 }
 
 pub fn (n u16) str() string {
-	return int(n).str()
+	return (n as int).str()
 }
 
 pub fn (nn u32) str() string {
 	mut n := nn
-	if n == u32(0) {
+	if n == (0 as u32) {
 		return '0'
 	}
 	max := 16
 	mut buf := malloc(max)
 	mut len := 0
 	// Fill the string from the end
-	for n > u32(0) {
-		d := n % u32(10)
-		buf[max - len - 1] = d + u32(`0`)
+	for n > (0 as u32) {
+		d := n % (10 as u32)
+		buf[max - len - 1] = d + (`0` as u32)
 		len++
-		n = n / u32(10)
+		n = n / (10 as u32)
 	}
 	return tos(buf + max - len, len)
 }
@@ -94,23 +94,24 @@ pub fn (nn byte) str() string {
 
 pub fn (nn i64) str() string {
 	mut n := nn
-	if n == i64(0) {
+	if n == (0 as i64) {
 		return '0'
 	}
 	max := 32
 	mut buf := malloc(max)
 	mut len := 0
 	mut is_neg := false
-	if n < i64(0) {
+	if n < 0 { //(0 as i64) {
 		n = -n
 		is_neg = true
 	}
 	// Fill the string from the end
-	for n > i64(0) {
-		d := int(n % i64(10))
-		buf[max - len - 1] = d + int(`0`)
+	for n > 0 {
+		//d := int(n % (10 as i64))
+		d := n % 10
+		buf[max - len - 1] = d + `0` as int
 		len++
-		n = n / i64(10)
+		n /= 10
 	}
 	// Prepend - if it's negative
 	if is_neg {
@@ -122,18 +123,18 @@ pub fn (nn i64) str() string {
 
 pub fn (nn u64) str() string {
 	mut n := nn
-	if n == u64(0) {
+	if n == 0 {
 		return '0'
 	}
 	max := 32
 	mut buf := malloc(max)
 	mut len := 0
 	// Fill the string from the end
-	for n > u64(0) {
-		d := n % u64(10)
-		buf[max - len - 1] = d + u64(`0`)
+	for n > 0 {
+		d := n % 10
+		buf[max - len - 1] = d + (`0` as u64)
 		len++
-		n = n / u64(10)
+		n = n / (10)
 	}
 	return tos(buf + max - len, len)
 }
@@ -148,24 +149,24 @@ pub fn (b bool) str() string {
 pub fn (n int) hex() string {
 	len := if n >= 0 { n.str().len + 3 } else { 11 }
 	hex := malloc(len) // 0x + \n
-	count := C.sprintf(charptr(hex), '0x%x', n)
+	count := C.sprintf((hex), '0x%x', n)
 	return tos(hex, count)
 }
 
 pub fn (n i64) hex() string {
-	len := if n >= i64(0) { n.str().len + 3 } else { 19 }
+	len := if n >= 0 { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
 	// QTODO
 	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
-	count := C.sprintf(charptr(hex), '0x%x', n)
+	count := C.sprintf(hex, '0x%x', n)
 	return tos(hex, count)
 }
 
 pub fn (n u64) hex() string {
-	len := if n >= u64(0) { n.str().len + 3 } else { 19 }
+	len := if n >= 0 { n.str().len + 3 } else { 19 }
 	hex := malloc(len)
 	//count := C.sprintf(charptr(hex), '0x%'C.PRIx64, n)
-	count := C.sprintf(charptr(hex), '0x%lx', n)
+	count := C.sprintf((hex), '0x%lx', n)
 	return tos(hex, count)
 }
 
@@ -179,14 +180,14 @@ pub fn (a []byte) contains(val byte) bool {
 }
 
 pub fn (c rune) str() string {
-	fst_byte := int(c)>>8 * 3 & 0xff
+	fst_byte := (c as int)>>8 * 3 & 0xff
 	len := utf8_char_len(fst_byte)
 	mut str := string{
 		len: len
 		str: malloc(len + 1)
 	}
 	for i := 0; i < len; i++ {
-		str.str[i] = int(c)>>8 * (3 - i) & 0xff
+		str.str[i] = (c as int)>>8 * (3 - i) & 0xff
 	}
 	str[len] = `\0`
 	return str
@@ -207,7 +208,7 @@ pub fn (c byte) is_capital() bool {
 }
 
 pub fn (b []byte) clone() []byte {
-	mut res := [byte(0)].repeat(b.len)
+	mut res := [(0 as byte)].repeat(b.len)
 	for i := 0; i < b.len; i++ {
 		res[i] = b[i]
 	}

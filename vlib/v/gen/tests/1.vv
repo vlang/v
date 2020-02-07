@@ -106,6 +106,20 @@ fn ensure_cap(required int, cap int) {
 	}
 }
 
+fn println(s string){}
+
+fn matches() {
+	a := 100
+	match a {
+		10 {
+			println('10')
+		}
+		20 {
+			k := a + 1
+		}
+	}
+}
+
 /*
 const (
 	path_sep = 10

@@ -77,6 +77,12 @@ fn (p mut Parser) bool_expression() string {
 	// `as` cast
 	// TODO remove copypasta
 	if p.tok == .key_as {
+		return p.key_as(typ, start_ph)
+	}
+	return typ
+}
+
+fn (p mut Parser) key_as(typ string, start_ph int) string {
 		p.fspace()
 		p.next()
 		p.fspace()
@@ -132,9 +138,7 @@ exit(1);
 			p.gen(')')
 		}
 		return cast_typ
-	}
-	return typ
-}
+		}
 
 fn (p mut Parser) bterm() string {
 	ph := p.cgen.add_placeholder()
@@ -687,6 +691,11 @@ fn (p mut Parser) expression() string {
 				p.handle_operator('-', typ, 'op_minus', ph, T)
 			}
 		}
+	}
+	// `as` cast
+	// TODO remove copypasta
+	if p.tok == .key_as {
+		return p.key_as(typ, ph)
 	}
 	return typ
 }

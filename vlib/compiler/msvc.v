@@ -25,7 +25,7 @@ struct MsvcResult {
 type RegKey voidptr
 // Taken from the windows SDK
 const (
-	HKEY_LOCAL_MACHINE = RegKey(0x80000002)
+	HKEY_LOCAL_MACHINE = RegKey(0x80000002)// as RegKey
 	KEY_QUERY_VALUE = (0x0001)
 	KEY_WOW64_32KEY = (0x0200)
 	KEY_ENUMERATE_SUB_KEYS = (0x0008)

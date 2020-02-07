@@ -6,13 +6,13 @@ module builtin
 #include <float.h>
 pub fn (d f64) str() string {
 	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf(charptr(buf), '%f', d)
+	C.sprintf(buf as charptr, '%f', d)
 	return tos(buf, vstrlen(buf))
 }
 
 pub fn (d f32) str() string {
 	buf := malloc(sizeof(double) * 5 + 1) // TODO
-	C.sprintf(charptr(buf), '%f', d)
+	C.sprintf((buf), '%f', d)
 	return tos(buf, vstrlen(buf))
 }
 
@@ -20,7 +20,7 @@ pub fn (d f32) str() string {
 pub fn (x f64) strsci(digit_num int) string {
 	buf := malloc(digit_num * 2 + 2) // TODO
 	conf_str := '%0.' + digit_num.str() + 'e'
-	C.sprintf(charptr(buf), charptr(conf_str.str), x)
+	C.sprintf((buf), (conf_str.str), x)
 	tmpstr := tos(buf, vstrlen(buf))
 	return tmpstr
 }
@@ -28,7 +28,7 @@ pub fn (x f64) strsci(digit_num int) string {
 // return a long string of the input f64, max
 pub fn (x f64) strlong() string {
 	buf := malloc(18 + 32) // TODO
-	C.sprintf(charptr(buf), '%0.30lf', x)
+	C.sprintf((buf), '%0.30lf', x)
 	tmpstr := tos(buf, vstrlen(buf))
 	return tmpstr
 }
