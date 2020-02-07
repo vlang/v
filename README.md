@@ -38,7 +38,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for January 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for February 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -198,4 +198,4 @@ https://github.com/vlang/v/blob/master/CONTRIBUTING.md
 If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
 
 [Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
-[Twitter badge]: https://twitter.com/intent/follow?screen_name=v_language
+[Twitter badge]: https://twitter.com/v_language
