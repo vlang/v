@@ -5,7 +5,6 @@ module compiler
 
 import (
 	os
-	os.cmdline
 	strings
 	filepath
 	v.pref
@@ -35,7 +34,7 @@ enum Pass {
 	main
 }
 
-struct V {
+pub struct V {
 pub mut:
 	os                  pref.OS // the OS to build for
 	out_name_c          string // name of the temporary C file
@@ -44,6 +43,8 @@ pub mut:
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	table               &Table // table with types, vars, functions etc
 	cgen                &CGen // C code generator
+	c_compiler          string
+	c_thirdparty_option string
 	//x64                 &x64.Gen
 	pref                &pref.Preferences // all the preferences and settings extracted to a struct for reusability
 	lang_dir            string // "~/code/v"
@@ -261,7 +262,8 @@ pub fn (v mut V) compile() {
 	vgen_parser.parse(.main)
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
-		generate_vh(v.dir)
+		//TODO Fix functionality from cmd/v
+		//generate_vh(v.dir)
 	}
 	// All definitions
 	mut def := strings.new_builder(10000) // Avoid unnecessary allocations
@@ -547,39 +549,6 @@ pub fn (v mut V) gen_main_end(return_statement string) {
 	v.cgen.genln('}')
 }
 
-pub fn final_target_out_name(out_name string) string {
-	$if windows {
-		return out_name.replace('/', '\\') + '.exe'
-	}
-	return if out_name.starts_with('/') { out_name } else { './' + out_name }
-}
-
-pub fn (v V) run_compiled_executable_and_exit() {
-	args := env_vflags_and_os_args()
-	if v.pref.is_verbose {
-		println('============ running $v.out_name ============')
-	}
-	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe', '') + '"'
-	args_after_no_options := cmdline.only_non_options( cmdline.after(args,['run','test']) )
-	if args_after_no_options.len > 1 {
-		cmd += ' ' + args_after_no_options[1..].join(' ')
-	}
-	if v.pref.is_test {
-		ret := os.system(cmd)
-		if ret != 0 {
-			exit(1)
-		}
-	}
-	if v.pref.is_run {
-		ret := os.system(cmd)
-		// TODO: make the runner wrapping as transparent as possible
-		// (i.e. use execve when implemented). For now though, the runner
-		// just returns the same exit code as the child process.
-		exit(ret)
-	}
-	exit(0)
-}
-
 pub fn (v &V) v_files_from_dir(dir string) []string {
 	mut res := []string
 	if !os.exists(dir) {
@@ -858,284 +827,6 @@ pub fn (v &V) log(s string) {
 	println(s)
 }
 
-pub fn new_v(args []string) &V {
-	// Create modules dirs if they are missing
-	if !os.is_dir(v_modules_path) {
-		os.mkdir(v_modules_path)or{
-			panic(err)
-		}
-		os.mkdir('$v_modules_path${os.path_separator}cache')or{
-			panic(err)
-		}
-	}
-	// optional, custom modules search path
-	user_mod_path := cmdline.option(args, '-user_mod_path', '')
-	// Location of all vlib files
-	vroot := filepath.dir(vexe_path())
-	vlib_path := cmdline.option(args, '-vlib-path', filepath.join(vroot,'vlib'))
-	vpath := cmdline.option(args, '-vpath', v_modules_path)
-	mut vgen_buf := strings.new_builder(1000)
-	vgen_buf.writeln('module vgen\nimport strings')
-	target_os := cmdline.option(args, '-os', '')
-	mut out_name := cmdline.option(args, '-o', 'a.out')
-	mut dir := args.last()
-	if 'run' in args {
-		args_after_run := cmdline.only_non_options( cmdline.after(args,['run']) )
-		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }
-	}
-	if dir.ends_with(os.path_separator) {
-		dir = dir.all_before_last(os.path_separator)
-	}
-	if dir.starts_with('.$os.path_separator') {
-		dir = dir[2..]
-	}
-	if args.len < 2 {
-		dir = ''
-	}
-
-	// build mode
-	mut build_mode := pref.BuildMode.default_mode
-	mut mod := ''
-	joined_args := args.join(' ')
-	if joined_args.contains('build module ') {
-		build_mode = .build_module
-		os.chdir(vroot)
-		// v build module ~/v/os => os.o
-		mod_path := if dir.contains('vlib') { dir.all_after('vlib' + os.path_separator) } else if dir.starts_with('.\\') || dir.starts_with('./') { dir[2..] } else if dir.starts_with(os.path_separator) { dir.all_after(os.path_separator) } else { dir }
-		mod = mod_path.replace(os.path_separator, '.')
-		println('Building module "${mod}" (dir="$dir")...')
-		// out_name = '$TmpPath/vlib/${base}.o'
-		if !out_name.ends_with('.c') {
-			out_name = mod
-		}
-		// Cross compiling? Use separate dirs for each os
-		/*
-		if target_os != os.user_os() {
-			os.mkdir('$TmpPath/vlib/$target_os') or { panic(err) }
-			out_name = '$TmpPath/vlib/$target_os/${base}.o'
-			println('target_os=$target_os user_os=${os.user_os()}')
-			println('!Cross compiling $out_name')
-		}
-		*/
-
-	}
-	is_test := dir.ends_with('_test.v')
-	is_script := dir.ends_with('.v') || dir.ends_with('.vsh')
-	if is_script && !os.exists(dir) {
-		println('`$dir` does not exist')
-		exit(1)
-	}
-	// No -o provided? foo.v => foo
-	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
-		out_name = dir[..dir.len - 2]
-		// Building V? Use v2, since we can't overwrite a running
-		// executable on Windows + the precompiled V is more
-		// optimized.
-		if out_name == 'v' && os.is_dir('vlib/compiler') {
-			println('Saving the resulting V executable in `./v2`')
-			println('Use `v -o v v.v` if you want to replace current ' + 'V executable.')
-			out_name = 'v2'
-		}
-	}
-	// if we are in `/foo` and run `v .`, the executable should be `foo`
-	if dir == '.' && out_name == 'a.out' {
-		base := os.getwd().all_after(os.path_separator)
-		out_name = base.trim_space()
-	}
-	// `v -o dir/exec`, create "dir/" if it doesn't exist
-	if out_name.contains(os.path_separator) {
-		d := out_name.all_before_last(os.path_separator)
-		if !os.is_dir(d) {
-			println('creating a new directory "$d"')
-			os.mkdir(d)or{
-				panic(err)
-			}
-		}
-	}
-	mut _os := pref.OS.mac
-	// No OS specifed? Use current system
-	if target_os == '' {
-		$if linux {
-			_os = .linux
-		}
-		$if macos {
-			_os = .mac
-		}
-		$if windows {
-			_os = .windows
-		}
-		$if freebsd {
-			_os = .freebsd
-		}
-		$if openbsd {
-			_os = .openbsd
-		}
-		$if netbsd {
-			_os = .netbsd
-		}
-		$if dragonfly {
-			_os = .dragonfly
-		}
-		$if solaris {
-			_os = .solaris
-		}
-		$if haiku {
-			_os = .haiku
-		}
-	}
-	else {
-		_os = os_from_string(target_os)
-	}
-	// println('VROOT=$vroot')
-	// v.exe's parent directory should contain vlib
-	if !os.is_dir(vlib_path) || !os.is_dir(vlib_path + os.path_separator + 'builtin') {
-		// println('vlib not found, downloading it...')
-		/*
-		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
-		if ret != 0 {
-			println('failed to `git clone` vlib')
-			println('make sure you are online and have git installed')
-			exit(1)
-		}
-		*/
-		println('vlib not found. It should be next to the V executable.')
-		println('Go to https://vlang.io to install V.')
-		println('(os.executable=${os.executable()} vlib_path=$vlib_path vexe_path=${vexe_path()}')
-		exit(1)
-	}
-	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
-	cflags := cmdline.many_values(args, '-cflags').join(' ')
-
-	defines := cmdline.many_values(args, '-d')
-	compile_defines, compile_defines_all := parse_defines( defines )
-
-	rdir := os.realpath(dir)
-	rdir_name := filepath.filename(rdir)
-	if '-bare' in args {
-		verror('use -freestanding instead of -bare')
-	}
-	obfuscate := '-obf' in args
-	is_repl := '-repl' in args
-	pref := &pref.Preferences{
-		is_test: is_test
-		is_script: is_script
-		is_so: '-shared' in args
-		is_solive: '-solive' in args
-		is_prod: '-prod' in args
-		is_verbose: '-verbose' in args || '--verbose' in args
-		is_debug: '-g' in args || '-cg' in args
-		is_vlines: '-g' in args && !('-cg' in args)
-		is_keep_c: '-keep_c' in args
-		is_pretty_c: '-pretty_c' in args
-		is_cache: '-cache' in args
-		is_stats: '-stats' in args
-		obfuscate: obfuscate
-		is_prof: '-prof' in args
-		is_live: '-live' in args
-		sanitize: '-sanitize' in args
-		// nofmt: '-nofmt' in args
-
-		show_c_cmd: '-show_c_cmd' in args
-		translated: 'translated' in args
-		is_run: 'run' in args
-		autofree: '-autofree' in args
-		compress: '-compress' in args
-		enable_globals: '--enable-globals' in args
-		fast: '-fast' in args
-		is_bare: '-freestanding' in args
-		x64: '-x64' in args
-		output_cross_c: '-output-cross-platform-c' in args
-		prealloc: '-prealloc' in args
-		is_repl: is_repl
-		build_mode: build_mode
-		cflags: cflags
-		ccompiler: find_c_compiler()
-		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || rdir_name == 'vfmt.v' || dir.contains('vlib'))
-		// is_fmt: comptime_define == 'vfmt'
-
-		user_mod_path: user_mod_path
-		vlib_path: vlib_path
-		vpath: vpath
-		v2: '-v2' in args
-	}
-	if pref.is_verbose || pref.is_debug {
-		println('C compiler=$pref.ccompiler')
-	}
-	if pref.is_so {
-		out_name_c = get_vtmp_filename(out_name, '.tmp.so.c')
-	}
-	$if !linux {
-		if pref.is_bare && !out_name.ends_with('.c') {
-			verror('-freestanding only works on Linux for now')
-		}
-	}
-	return &V{
-		os: _os
-		out_name: out_name
-		dir: dir
-		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
-		lang_dir: vroot
-		table: new_table(obfuscate)
-		out_name_c: out_name_c
-		cgen: new_cgen(out_name_c)
-		//x64: x64.new_gen(out_name)
-		vroot: vroot
-		pref: pref
-		mod: mod
-		vgen_buf: vgen_buf
-		compile_defines: compile_defines
-		compile_defines_all: compile_defines_all
-	}
-}
-
-fn non_empty(a []string) []string {
-	return a.filter(it.len != 0)
-}
-
-pub fn env_vflags_and_os_args() []string {
-	vosargs := os.getenv('VOSARGS')
-	if '' != vosargs {
-		return non_empty(vosargs.split(' '))
-	}
-	mut args := []string
-	vflags := os.getenv('VFLAGS')
-	if '' != vflags {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-	}
-	else {
-		args << os.args
-	}
-	return non_empty(args)
-}
-
-pub fn create_symlink() {
-	$if windows {
-		return
-	}
-	vexe := vexe_path()
-	mut link_path := '/usr/local/bin/v'
-	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
-	if ret.exit_code == 0 {
-		println('Symlink "$link_path" has been created')
-	}
-	else if os.system('uname -o | grep -q \'[A/a]ndroid\'') == 0 {
-		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
-		link_path = '/data/data/com.termux/files/usr/bin/v'
-		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
-		if ret.exit_code == 0 {
-			println('Symlink "$link_path" has been created')
-		} else {
-			println('Failed to create symlink "$link_path". Try again with sudo.')
-		}
-	} else {
-			println('Failed to create symlink "$link_path". Try again with sudo.')
-	}
-}
-
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if '' != vexe {
@@ -1223,12 +914,3 @@ pub fn set_vroot_folder(vroot_path string) {
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.realpath([vroot_path, vname].join(os.path_separator)), true)
 }
-
-pub fn new_v_compiler_with_args(args []string) &V {
-	vexe := vexe_path()
-	mut allargs := [vexe]
-	allargs << args
-	os.setenv('VOSARGS', allargs.join(' '), true)
-	return new_v(allargs)
-}
-

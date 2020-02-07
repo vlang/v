@@ -67,7 +67,7 @@ fn main() {
 			println('Use `v install` to install modules from vpm.vlang.io.')
 		}
 		'symlink' {
-			compiler.create_symlink()
+			create_symlink()
 		}
 		'doc' {
 			println('Currently unimplemented')

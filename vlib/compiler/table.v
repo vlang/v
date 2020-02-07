@@ -216,7 +216,7 @@ fn (t mut Table) register_enum_val(typ, val string) {
 */
 
 
-fn new_table(obfuscate bool) &Table {
+pub fn new_table(obfuscate bool) &Table {
 	mut t := &Table{
 		obfuscate: obfuscate
 		// enum_vals: map[string][]string

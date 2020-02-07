@@ -5,7 +5,6 @@ module compiler
 
 import (
 	os
-	os.cmdline
 	time
 	filepath
 )
@@ -509,43 +508,13 @@ fn (c &V) build_thirdparty_obj_files() {
 				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			}
 			else {
-				build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+				c.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
 		}
 	}
 }
 
-fn find_c_compiler() string {
-	args := env_vflags_and_os_args()
-	defaultcc := find_c_compiler_default()
-	return cmdline.option(args, '-cc', defaultcc)
-}
-
-fn find_c_compiler_default() string {
-	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
-	// if os.exists(fast_clang) {
-	// return fast_clang
-	// }
-	// TODO fix $if after 'string'
-	$if windows {
-		return 'gcc'
-	}
-	return 'cc'
-}
-
-fn find_c_compiler_thirdparty_options() string {
-	fullargs := env_vflags_and_os_args()
-	mut cflags := cmdline.many_values(fullargs,'-cflags')
-	$if !windows {
-		cflags << '-fPIC'
-	}
-	if '-m32' in fullargs {
-		cflags << '-m32'
-	}
-	return cflags.join(' ')
-}
-
-fn parse_defines(defines []string) ([]string,[]string) {
+pub fn parse_defines(defines []string) ([]string,[]string) {
 	// '-d abc -d xyz=1 -d qwe=0' should produce:
 	// compile_defines:      ['abc','xyz']
 	// compile_defines_all   ['abc','xyz','qwe']
