@@ -1,5 +1,10 @@
 import term
 
+fn test_get_terminal_size(){
+	cols, _ := term.get_terminal_size()
+	assert cols > 0
+}
+
 fn test_h_divider(){
 	divider := term.h_divider('-')
 	assert divider.len > 0
