@@ -26,6 +26,7 @@ fn test_header() {
 	short_header := term.header('reasonable header', '-')
 	very_long_header := term.header(['abc'].repeat(500).join(' '), '-')
 	very_long_header_2 := term.header(['abcd'].repeat(500).join(' '), '-')
+	/*
 	eprintln(divider)
 	eprintln(empty_header)
 	eprintln(short_header)
@@ -47,8 +48,10 @@ fn test_header() {
 	eprintln(term.header('123', '_-/\\\/'))
 	eprintln(term.header('1234', '_-/\\/\\'))
 	eprintln(term.header('', '-'))
+    */
 	assert term_width == empty_header.len
 	assert term_width == short_header.len
 	assert term_width == very_long_header.len
+	assert term_width == very_long_header_2.len
 	assert term_width == term.header('1234', '_-/\\/\\').len
 }

@@ -42,12 +42,15 @@ pub fn h_divider(divider string) string {
 // e.g: term.header('TEXT', '=')
 // =============== TEXT ===============
 pub fn header(text, divider string) string {
+	if text.len == 0 {
+		return h_divider(divider)
+	}
 	cols,_ := get_terminal_size()
 	tlimit := if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 - 2 * divider.len }
 	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
 	tstart := (cols - tlimit_alligned) / 2
 	ln := divider.repeat(1 + cols / divider.len)[0..cols]
-	return if text.len == 0 { ln } else { ln[0..tstart] + ' ' + text[0..tlimit] + ' ' + ln[tstart + tlimit + 2..cols] }
+	return ln[0..tstart] + ' ' + text[0..tlimit] + ' ' + ln[tstart + tlimit + 2..cols]
 }
 
 fn supports_escape_sequences(fd int) bool {
