@@ -8,17 +8,18 @@ module table
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
-	types       []Type
+	types           []Type
 	// type_idxs Hashmap
-	type_idxs   map[string]int
-	local_vars  []Var
-	scope_level int
-	var_idx     int
+	type_idxs       map[string]int
+	unresolved_idxs map[string]int
+	local_vars      []Var
+	scope_level     int
+	var_idx         int
 	// fns Hashmap
-	fns         map[string]Fn
-	consts      map[string]Var
-	tmp_cnt     int
-	imports     []string
+	fns             map[string]Fn
+	consts          map[string]Var
+	tmp_cnt         int
+	imports         []string
 }
 
 pub struct Fn {

@@ -26,25 +26,25 @@ type PostfixParseFn fn()ast.Expr
 
 
 struct Parser {
-	scanner         &scanner.Scanner
-	file_name       string
+	scanner           &scanner.Scanner
+	file_name         string
 mut:
-	tok             token.Token
-	peek_tok        token.Token
+	tok               token.Token
+	peek_tok          token.Token
 	// vars []string
-	table           &table.Table
-	return_type     table.TypeRef // current function's return type
+	table             &table.Table
+	return_type       table.TypeRef // current function's return type
 	// scope_level int
 	// var_idx     int
-	is_c            bool
+	is_c              bool
 	//
 	// prefix_parse_fns []PrefixParseFn
-	inside_if       bool
-	pref            &pref.Preferences // Preferences shared from V struct
-	builtin_mod     bool
-	mod             string
-	unresolved      []ast.Expr
-	unresolved_idxs map[string]int
+	inside_if         bool
+	pref              &pref.Preferences // Preferences shared from V struct
+	builtin_mod       bool
+	mod               string
+	unresolved        []ast.Expr
+	unresolved_offset int
 }
 
 // for tests
@@ -1211,9 +1211,9 @@ fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 }
 
 fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
-	mut idx := p.unresolved.len
-	if key in p.unresolved_idxs {
-		idx = p.unresolved_idxs[key]
+	mut idx := p.unresolved_offset + p.unresolved.len
+	if key in p.table.unresolved_idxs {
+		idx = p.table.unresolved_idxs[key]
 	}
 	else {
 		p.unresolved << expr
@@ -1223,7 +1223,7 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
 		typ: &table.Type{
 			parent: 0
 			kind: .unresolved
-			name: 'unresolved $idx'
+			name: 'unresolved-$idx'
 		}
 	}
 	return t

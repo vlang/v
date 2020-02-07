@@ -16,11 +16,11 @@ import (
 pub struct Builder {
 pub:
 	pref                &pref.Preferences
-	table   			&table.Table
-	checker 			checker.Checker
-	os				    pref.OS // the OS to build for
-	compiled_dir 		string  // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
-	module_path 	    string
+	table               &table.Table
+	checker             checker.Checker
+	os                  pref.OS // the OS to build for
+	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	module_path         string
 	module_search_paths []string
 mut:
 	parsed_files        []ast.File
@@ -47,14 +47,20 @@ pub fn (b mut Builder) build_c(v_files []string, out_file string) {
 }
 
 pub fn (b mut Builder) build_x64(v_files []string, out_file string) {
-	ticks := time.ticks()
+	t0 := time.ticks()
 	b.parsed_files = parser.parse_files(v_files, b.table)
 	b.parse_imports()
-	println('PARSE: ${time.ticks() - ticks}ms')
+	t1 := time.ticks()
+	parse_time := t1 - t0
+	println('PARSE: ${parse_time}ms')
 	b.checker.check_files(b.parsed_files)
-	println('CHECK: ${time.ticks() - ticks}ms')
+	t2 := time.ticks()
+	check_time := t2 - t1
+	println('CHECK: ${check_time}ms')
 	x64.gen(b.parsed_files, out_file)
-	println('x64 GEN: ${time.ticks() - ticks}ms')
+	t3 := time.ticks()
+	gen_time := t3 - t2
+	println('x64 GEN: ${gen_time}ms')
 }
 
 // parse all deps from already parsed files
@@ -68,20 +74,20 @@ pub fn (b mut Builder) parse_imports() {
 				continue
 			}
 			import_path := b.find_module_path(mod) or {
-				//v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
-				//break
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// break
 				panic('cannot import module "$mod" (not found)')
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
-				//v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
 				panic('cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table)
 			for file in parsed_files {
 				if file.mod.name != mod {
-					//v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
+					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
 					panic('bad module definition: ${ast_file.path} imports module "$mod" but $file.path is defined as module `$ast_file.mod.name`')
 				}
 			}
@@ -103,7 +109,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	else if !os.is_dir(dir) {
 		verror("$dir isn't a directory")
 	}
-	mut files := os.ls(dir)or{
+	mut files := os.ls(dir) or {
 		panic(err)
 	}
 	if b.pref.is_verbose {
@@ -150,6 +156,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 			}
 		}
 		*/
+
 		res << filepath.join(dir,file)
 	}
 	return res
