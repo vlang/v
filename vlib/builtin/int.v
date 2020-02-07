@@ -28,7 +28,7 @@ pub fn (nn int) str() string {
 	// Fill the string from the end
 	for n > 0 {
 		d := n % 10
-		buf[max - len - 1] = d + `0` as int
+		buf[max - len - 1] = d + (`0` as int)
 		len++
 		n = n / 10
 	}
