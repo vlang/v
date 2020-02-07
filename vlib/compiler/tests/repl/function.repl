@@ -1,11 +1,4 @@
-fn test() {
-  println('foo')
-}
-test()
-fn test2(a int) {
-  println(a)
-}
-test2(42)
+fn test() { println('foo') } test() fn test2(a int) {  println(a) } test2(42)
 ===output===
 foo
 42

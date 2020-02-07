@@ -58,6 +58,7 @@ Options for debugging/troubleshooting v programs:
   -cg               Same as -g, but add *C* line numbers to the generated executable instead of *V* line numbers.
   -keep_c           Do NOT remove the generated .tmp.c files after compilation.
                     It is useful when using debuggers like gdb/visual studio, when given after `-g` / `-cg`.
+  -pretty_c         Run clang-format over the generated C file, so that it looks nicer. Requires you to have clang-format.
   -show_c_cmd       Print the full C compilation command and how much time it took. See also `-verbose`.
   -cc <ccompiler>   Specify which C compiler you want to use as a C backend.
                     The C backend compiler should be able to handle C99 compatible C code.
@@ -71,7 +72,7 @@ Commands:
   build <module>    Compile a module into an object file.
   repl              Run the V REPL. If V is running in a tty terminal, the REPL is interactive, otherwise it just reads from stdin.
   symlink           Useful on Unix systems. Symlinks the current V executable to /usr/local/bin/v, so that V is globally available.
-  test v            Run all V test files, and compile all V examples.
+  test-compiler     Run all V test files, and compile all V examples.
   test folder/      Run all V test files located in the folder and its subfolders. You can also pass individual _test.v files too.
   fmt               Run vfmt to format the source code. [wip]
   doc               Run vdoc over the source code and produce documentation.

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -243,6 +243,7 @@ fn (p mut Parser) chash() {
 		if p.first_pass() {
 			mut flag := hash[5..]
 			// expand `@VROOT` `@VMOD` to absolute path
+			flag = flag.replace('@VMODULE', p.file_path_dir)
 			flag = flag.replace('@VROOT', p.vroot)
 			flag = flag.replace('@VPATH', p.pref.vpath)
 			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)

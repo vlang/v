@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -7,6 +7,7 @@ import filepath
 
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
+
 /*
 struct dirent {
      d_ino int
@@ -31,6 +32,7 @@ pub const (
 
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
+pub:
 	fd     int
 mut:
 	opened bool
@@ -69,6 +71,12 @@ fn C.getenv(byteptr) &char
 
 
 fn C.sigaction(int, voidptr, int)
+
+
+fn C.open(charptr, int, int) int
+
+
+fn C.fdopen(int, string) voidptr
 
 
 pub fn (f File) is_opened() bool {
@@ -111,13 +119,14 @@ pub fn read_file(path string) ?string {
 	if isnil(fp) {
 		return error('failed to open file "$path"')
 	}
+	defer { C.fclose(fp) }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
-	mut str := malloc(fsize + 1)
+	mut str := &byte(0)
+	unsafe { str = malloc(fsize + 1) }
 	C.fread(str, fsize, 1, fp)
-	C.fclose(fp)
 	str[fsize] = 0
 	return string(str,fsize)
 }
@@ -225,37 +234,10 @@ fn vfopen(path, mode string) *C.FILE {
 
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
-	mut res := []string
-	mut buf_len := 1024
-	mut buf := malloc(buf_len)
-	mode := 'rb'
-	mut fp := vfopen(path, mode)
-	if isnil(fp) {
-		return error('read_lines() failed to open file "$path"')
+	buf := read_file(path) or {
+		return err
 	}
-	mut buf_index := 0
-	for C.fgets(buf + buf_index, buf_len - buf_index, fp) != 0 {
-		len := vstrlen(buf)
-		if len == buf_len - 1 && buf[len - 1] != 10 {
-			buf_len *= 2
-			buf = C.realloc(buf, buf_len)
-			if isnil(buf) {
-				return error('could not reallocate the read buffer')
-			}
-			buf_index = len
-			continue
-		}
-		if buf[len - 1] == 10 || buf[len - 1] == 13 {
-			buf[len - 1] = `\0`
-		}
-		if len > 1 && buf[len - 2] == 13 {
-			buf[len - 2] = `\0`
-		}
-		res << tos_clone(buf)
-		buf_index = 0
-	}
-	C.fclose(fp)
-	return res
+	return buf.split_into_lines()
 }
 
 fn read_ulines(path string) ?[]ustring {
@@ -290,6 +272,58 @@ pub fn open_append(path string) ?File {
 	}
 	file.opened = true
 	return file
+}
+
+// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object
+pub fn open_file(path string, mode string, options ...int) ?File {
+	mut flags := 0
+	for m in mode {
+		match m {
+			`r` { flags |= O_RDONLY }
+			`w` { flags |= O_CREATE | O_TRUNC }
+			`a` { flags |= O_CREATE | O_APPEND }
+			`s` { flags |= O_SYNC }
+			`n` { flags |= O_NONBLOCK }
+			`c` { flags |= O_NOCTTY }
+			`+` { flags |= O_RDWR }
+			else {}
+		}
+	}
+
+	mut permission := 0666
+	if options.len > 0 {
+		permission = options[0]
+	}
+
+	$if windows {
+		if permission < 0600 {
+			permission = 0x0100
+		}
+		else {
+			permission = 0x0100 | 0x0080
+		}
+	}
+
+	mut p := path
+	$if windows {
+		p = path.replace('/', '\\')
+	}
+
+	fd := C.open(charptr(p.str), flags, permission)
+	if fd == -1 {
+		return error(posix_get_error_msg(C.errno))
+	}
+
+	cfile := C.fdopen(fd, charptr(mode.str))
+	if isnil(cfile) {
+		return error('Failed to open or create file "$path"')
+	}
+
+	return File{
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
 }
 
 /*
@@ -342,6 +376,15 @@ fn posix_wait4_to_exit_status(waitret int) (int,bool) {
 		}
 		return ret,is_signaled
 	}
+}
+
+// posix_get_error_msg return error code representation in string.
+pub fn posix_get_error_msg(code int) string {
+	ptr_text := C.strerror(code) // voidptr?
+	if ptr_text == 0 {
+		return ''
+	}
+	return tos3(ptr_text)
 }
 
 fn vpclose(f voidptr) int {
@@ -459,7 +502,7 @@ pub fn sigint_to_signal_name(si int) string {
 				return 'SIGBUS'
 			}
 			else {}
-	}
+		}
 	}
 	return 'unknown'
 }
@@ -665,13 +708,15 @@ pub fn get_raw_line() string {
 		}
 		return string(buf, offset)
 	} $else {
-		max := size_t(256)
-		buf := charptr(malloc(int(max)))
+		max := size_t(0)
+		mut buf := byteptr(0)
 		nr_chars := C.getline(&buf, &max, stdin)
-		if nr_chars == 0 {
+		defer { unsafe{ free(buf) } }
+		if nr_chars == 0 || nr_chars == -1 {
 			return ''
 		}
-		return string(byteptr(buf),nr_chars)
+		res := tos_clone( buf )
+		return res
 	}
 }
 

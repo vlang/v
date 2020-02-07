@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -164,6 +164,10 @@ pub fn set_should_close(w voidptr, close bool) {
 	C.glfwSetWindowShouldClose(w, close)
 }
 
+pub fn (w &glfw.Window) set_should_close(close bool) {
+	C.glfwSetWindowShouldClose(w.data, close)
+}
+
 pub fn (w &glfw.Window) should_close() bool {
 	return C.glfwWindowShouldClose(w.data)
 }
@@ -178,6 +182,10 @@ pub fn (w mut glfw.Window) onmousemove(cb voidptr) {
 
 pub fn (w mut glfw.Window) set_mouse_button_callback(cb voidptr) {
 	C.glfwSetMouseButtonCallback(w.data, cb)
+}
+
+pub fn (w mut glfw.Window) on_resize(cb voidptr) {
+	C.glfwSetWindowSizeCallback(w.data, cb)
 }
 
 pub fn (w mut glfw.Window) on_click(cb voidptr) {

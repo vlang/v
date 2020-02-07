@@ -8,7 +8,7 @@ import (
 )
 
 struct JsGen {
-	out strings.Builder
+	out   strings.Builder
 	table &table.Table
 }
 
@@ -37,11 +37,9 @@ pub fn (g mut JsGen) writeln(s string) {
 fn (g mut JsGen) stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
-			ti := g.table.refresh_ti(it.ti)
-			g.write('/** @return { $ti.name } **/\nfunction ${it.name}(')
+			g.write('/** @return { $it.typ.typ.name } **/\nfunction ${it.name}(')
 			for arg in it.args {
-				arg_ti := g.table.refresh_ti(arg.ti)
-				g.write(' /** @type { $arg_ti.name } **/ $arg.name')
+				g.write(' /** @type { $arg.typ.typ.name } **/ $arg.name')
 			}
 			g.writeln(') { ')
 			for stmt in it.stmts {
@@ -51,17 +49,15 @@ fn (g mut JsGen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write('return ')
-			if it.exprs.len > 0 {
-
-			}
+			if it.exprs.len > 0 {}
 			else {
 				g.expr(it.exprs[0])
 			}
 			g.writeln(';')
 		}
+		ast.AssignStmt {}
 		ast.VarDecl {
-			ti := g.table.refresh_ti(it.ti)
-			g.write('var /* $ti.name */ $it.name = ')
+			g.write('var /* $it.typ.typ.name */ $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -106,22 +102,24 @@ fn (g mut JsGen) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			g.write(it.val)
 		}
+		/*
 		ast.UnaryExpr {
 			g.expr(it.left)
 			g.write(' $it.op ')
 		}
+		*/
+
 		ast.StringLiteral {
 			g.write('tos3("$it.val")')
 		}
-		ast.BinaryExpr {
+		ast.InfixExpr {
 			g.expr(it.left)
 			g.write(' $it.op.str() ')
 			g.expr(it.right)
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			ti := g.table.refresh_ti(it.ti)
-			g.writeln('/*$ti.name*/{')
+			g.writeln('/*$it.typ.typ.name*/{')
 			for i, field in it.fields {
 				g.write('\t$field : ')
 				g.expr(it.exprs[i])

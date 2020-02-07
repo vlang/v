@@ -1,11 +1,4 @@
-mut a := 2
-a++
-a
-println(a)
-println(a++)
+mut a := 10 a++ a++ a++ a--
 a
 ===output===
-3
-3
-3
-3
+12

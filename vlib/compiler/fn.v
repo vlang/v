@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -668,7 +668,7 @@ fn (p mut Parser) check_unused_and_mut_vars() {
 			var.name != 'tmpl_res' && p.mod != 'vweb' && var.name != 'it' && !p.cur_fn.is_unsafe {
 			p.production_error_with_token_index('`$var.name` declared and not used', var.token_idx)
 		}
-		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated && var.typ != 'T*' && p.mod != 'ui' && var.typ != 'App*' {
+		if !var.is_changed && var.is_mut && !p.pref.is_repl && !p.pref.translated && var.name != 'it' && var.typ != 'T*' && p.mod != 'ui' && var.typ != 'App*' {
 			p.warn_or_error('`$var.name` is declared as mutable, but it was never changed')
 		}
 	}
@@ -903,7 +903,8 @@ fn (p mut Parser) fn_args(f mut Fn) {
 	}
 	// `(int, string, int)`
 	// Just register fn arg types
-	types_only := p.tok == .mul || p.tok == .amp || (p.peek() == .comma && p.table.known_type(p.lit)) || p.peek() == .rpar // (int, string)
+	types_only := p.tok == .mul || p.tok == .amp || (p.peek() == .comma &&
+p.table.known_type(p.lit)) || p.peek() == .rpar // (int, string)
 	if types_only {
 		for p.tok != .rpar {
 			typ := p.get_type()

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -36,6 +36,7 @@ enum TokenKind {
 	semicolon
 	colon
 	arrow // =>
+	left_arrow // <-
 	amp
 	hash
 	dollar
@@ -109,6 +110,7 @@ enum TokenKind {
 	key_select
 	key_sizeof
 	key_offsetof
+	key_nameof
 	key_struct
 	key_switch
 	key_true
@@ -239,6 +241,7 @@ fn build_token_str() []string {
 	s[TokenKind.key_select] = 'select'
 	s[TokenKind.key_none] = 'none'
 	s[TokenKind.key_offsetof] = '__offsetof'
+	s[TokenKind.key_nameof] = 'nameof'
 	return s
 }
 

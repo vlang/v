@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -493,10 +493,19 @@ fn (p mut Parser) gen_struct_init(typ string, t &Type) bool {
 	if typ == 'tm' {
 		p.cgen.lines[p.cgen.lines.len - 1] = ''
 	}
+	mut is_config := false
 	if p.tok != .lcbr {
 		p.next()
+	} else {
+		is_config = true
 	}
 	p.check(.lcbr)
+	// Handle empty config ({})
+	if is_config && p.tok == .rcbr {
+		p.check(.rcbr)
+		p.gen('($typ) {EMPTY_STRUCT_INITIALIZATION}')
+		return true
+	}
 	ptr := typ.contains('*')
 	// `user := User{foo:bar}` => `User user = (User){ .foo = bar}`
 	if !ptr {

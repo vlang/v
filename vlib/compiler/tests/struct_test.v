@@ -167,6 +167,10 @@ __global:
 	f int 	  // public and mutable both inside and outside parent module
 }
 
+fn fooo(){
+	a:=AttrTest{1,2,3,4,5,6}
+}
+
 /*
 [typedef]
 struct C.fixed {
@@ -189,4 +193,19 @@ fn test_fixed_field() {
 	//}
 }
 */
+
+
+struct Config {
+	n int
+	def int = 10
+}
+
+fn foo_config(c Config) {
+}
+
+fn test_config() {
+	foo_config({n: 10, def: 20})
+	foo_config({})
+}
+
 

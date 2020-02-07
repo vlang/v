@@ -1,24 +1,26 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
 
 import (
 	v.token
-	v.types
+	v.table
 )
 
-pub type Expr = BinaryExpr | UnaryExpr | IfExpr | StringLiteral | IntegerLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr
 
-pub type Stmt = VarDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+HashStmt | AssignStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
 	expr Expr
-	ti   types.TypeIdent
+	typ   table.TypeRef
 }
 
 pub struct IntegerLiteral {
@@ -33,6 +35,11 @@ pub:
 }
 
 pub struct StringLiteral {
+pub:
+	val string
+}
+
+pub struct CharLiteral {
 pub:
 	val string
 }
@@ -62,7 +69,13 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
-	ti   types.TypeIdent
+	typ  table.TypeRef
+}
+
+pub struct ConstDecl {
+pub:
+	fields []Field
+	exprs  []Expr
 }
 
 pub struct StructDecl {
@@ -76,7 +89,7 @@ pub:
 pub struct StructInit {
 pub:
 	pos    token.Position
-	ti     types.TypeIdent
+	typ    table.TypeRef
 	fields []string
 	exprs  []Expr
 }
@@ -92,7 +105,7 @@ pub:
 
 pub struct Arg {
 pub:
-	ti   types.TypeIdent
+	typ  table.TypeRef
 	name string
 }
 
@@ -100,41 +113,46 @@ pub struct FnDecl {
 pub:
 	name     string
 	stmts    []Stmt
-	ti       types.TypeIdent
+	typ      table.TypeRef
 	args     []Arg
 	is_pub   bool
 	receiver Field
 }
 
+pub struct BranchStmt {
+pub:
+	tok token.Token
+}
+
 pub struct CallExpr {
 pub:
-	// tok        token.Token
-	pos        token.Position
+// tok        token.Token
+	pos  token.Position
 mut:
-	// func       Expr
-	name       string
-	args       []Expr
+// func       Expr
+	name string
+	args []Expr
 }
 
 pub struct MethodCallExpr {
 pub:
-	// tok        token.Token
-	pos        token.Position
-	expr       Expr
-	name       string
-	args       []Expr
+// tok        token.Token
+	pos  token.Position
+	expr Expr
+	name string
+	args []Expr
 }
 
 pub struct Return {
 pub:
-	pos   token.Position
-	expected_ti types.TypeIdent // TODO: remove once checker updated
-	exprs []Expr
+	pos           token.Position
+	expected_type table.TypeRef // TODO: remove once checker updated
+	exprs         []Expr
 }
 
 /*
 pub enum Expr {
-	Binary(BinaryExpr)
+	Binary(InfixExpr)
 	If(IfExpr)
 	Integer(IntegerExpr)
 }
@@ -150,25 +168,36 @@ pub struct Stmt {
 
 pub struct VarDecl {
 pub:
+	name   string
+	expr   Expr
+	is_mut bool
+mut:
+	typ    table.TypeRef
+	pos    token.Position
+}
+
+pub struct GlobalDecl {
+pub:
 	name string
 	expr Expr
-	is_mut bool
-	mut:
-	ti   types.TypeIdent
-	pos  token.Position
+mut:
+	typ  table.TypeRef
 }
 
 pub struct File {
 pub:
-	mod     Module
-	imports []Import
-	stmts   []Stmt
+	path       string
+	mod        Module
+	imports    []Import
+	stmts      []Stmt
+	unresolved []Expr
 }
 
 pub struct IdentVar {
-pub:
-	expr Expr
-	ti   types.TypeIdent
+pub mut:
+	typ    table.TypeRef
+	is_mut bool
+	//name string
 }
 
 type IdentInfo = IdentVar
@@ -176,6 +205,8 @@ type IdentInfo = IdentVar
 pub enum IdentKind {
 	blank_ident
 	variable
+	constant
+	func
 }
 
 // A single identifier
@@ -190,17 +221,31 @@ mut:
 	info     IdentInfo
 }
 
-pub struct BinaryExpr {
-pub:
-// op    BinaryOp
-	op    token.Kind
-	pos   token.Position
-	left  Expr
-	// left_ti types.TypeIdent
-	right Expr
-	// right_ti types.TypeIdent
+pub fn(i &Ident) var_info() IdentVar {
+	match i.info {
+		IdentVar {
+			return it
+		}
+		else {
+			// return IdentVar{}
+			panic('Ident.var_info(): info is not IdentVar variant')
+		}
+	}
 }
 
+pub struct InfixExpr {
+pub:
+// op    BinaryOp
+	op         token.Kind
+	pos        token.Position
+	left       Expr
+	left_type  table.TypeRef
+	right      Expr
+	right_type table.TypeRef
+}
+
+/*
+// renamed to PrefixExpr
 pub struct UnaryExpr {
 pub:
 // tok_kind token.Kind
@@ -208,11 +253,13 @@ pub:
 	op   token.Kind
 	left Expr
 }
+*/
 
 pub struct PostfixExpr {
 pub:
 	op   token.Kind
 	expr Expr
+	pos  token.Position
 }
 
 pub struct PrefixExpr {
@@ -224,8 +271,10 @@ pub:
 pub struct IndexExpr {
 pub:
 // op   token.Kind
+	pos   token.Position
 	left  Expr
-	index Expr
+	index Expr // [0], [start..end] etc
+	// typ   table.Type
 }
 
 pub struct IfExpr {
@@ -234,14 +283,34 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
-	ti         types.TypeIdent
+	typ        table.TypeRef
 	left       Expr // `a` in `a := if ...`
+	pos        token.Position
+}
+
+pub struct MatchExpr {
+pub:
+	tok_kind   token.Kind
+	cond       Expr
+	stmts      []Stmt
+	else_stmts []Stmt
+	ti         table.Type
+	left       Expr // `a` in `a := if ...`
+	pos        token.Position
+}
+
+pub struct CompIf {
+pub:
+	cond       Expr
+	stmts      []Stmt
+	else_stmts []Stmt
 }
 
 pub struct ForStmt {
 pub:
 	cond  Expr
 	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct ForInStmt {
@@ -261,19 +330,30 @@ pub:
 
 pub struct ReturnStmt {
 	tok_kind token.Kind // or pos
-	pos		 token.Position
+	pos      token.Position
 	results  []Expr
 }
 
-/*
+// #include etc
+pub struct HashStmt {
+pub:
+	name string
+}
+
+
 pub struct AssignStmt {
 pub:
-	left  Expr
-	right Expr
+	left  []Ident
+	right []Expr
 	op    token.Kind
 }
-*/
 
+
+// e.g. `[unsafe_fn]`
+pub struct Attr {
+pub:
+	name string
+}
 
 pub struct AssignExpr {
 pub:
@@ -287,18 +367,29 @@ pub struct ArrayInit {
 pub:
 	pos   token.Position
 	exprs []Expr
-	ti    types.TypeIdent
+mut:
+	typ    table.TypeRef
+}
+
+// s[10..20]
+pub struct RangeExpr {
+pub:
+	low  Expr
+	high Expr
 }
 
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
-		BinaryExpr {
+		InfixExpr {
 			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
 		}
-		UnaryExpr {
+		/*
+		PrefixExpr {
 			return it.left.str() + it.op.str()
 		}
+		*/
+
 		IntegerLiteral {
 			return it.val.str()
 		}

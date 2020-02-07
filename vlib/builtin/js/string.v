@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -220,6 +220,7 @@ fn (s string) at(idx int) byte {
 	}
 	return s.str[idx]
 }
+
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
@@ -230,6 +231,10 @@ pub fn (c byte) is_hex_digit() bool {
 
 pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
+}
+
+pub fn (c byte) is_bin_digit() bool {
+	return c == `0` || c == `1`
 }
 
 pub fn (c byte) is_letter() bool {

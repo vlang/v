@@ -144,3 +144,21 @@ fn test_opt_ptr() {
 	println('`$r2` should be none')
 	assert false
 }
+
+fn multi_return_opt(err bool) ?(string, string) {
+	if err {
+		return error('oops')
+	}
+	return 'hello', 'v'
+}
+
+fn test_multi_return_opt() {
+	a, b := multi_return_opt(false) or {
+		panic(err)
+	}
+	assert a == 'hello' && b == 'v'
+	_, _ := multi_return_opt(true) or {
+		assert err == 'oops'
+		return
+	}
+}

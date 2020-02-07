@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -143,6 +143,11 @@ pub fn (a mut array) delete(i int) {
 	a.len--
 }
 
+// clears the array without deallocating the allocated data
+pub fn (a mut array) clear() {
+	a.len = 0
+}
+
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
 	if i < 0 || i >= a.len {
@@ -242,7 +247,6 @@ pub fn (a array) clone() array {
 	return arr
 }
 
-
 fn (a array) slice_clone(start, _end int) array {
 	mut end := _end
 	if start > end {
@@ -304,12 +308,10 @@ pub fn (a array) reverse() array {
 		data: calloc(a.cap * a.element_size)
 	}
 	for i := 0; i < a.len; i++ {
-		C.memcpy(arr.data + i * arr.element_size,
-			&a[a.len - 1 - i], arr.element_size)
+		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
 	}
 	return arr
 }
-
 
 // pub fn (a []int) free() {
 [unsafe_fn]
@@ -365,7 +367,7 @@ pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
 	mut ptr := &hex[0]
 	for i := 0; i < b.len; i++ {
-		ptr += C.sprintf(charptr(ptr), '%02x', b[i])
+		ptr += C.sprintf(ptr as charptr, '%02x', b[i])
 	}
 	return string(hex)
 }
@@ -376,7 +378,8 @@ pub fn (b []byte) hex() string {
 // TODO: implement for all types
 pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
-		min := if dst.len < src.len { dst.len } else { src.len }
+		mut min := 0
+		min = if dst.len < src.len { dst.len } else { src.len }
 		C.memcpy(dst.data, src[..min].data, dst.element_size * min)
 		return min
 	}
@@ -444,6 +447,7 @@ pub fn (a []char) index(v char) int {
 	return -1
 }
 
+/*
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
@@ -488,4 +492,46 @@ pub fn (a []byte) eq(a2 []byte) bool {
 pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
+*/
 
+// compare_i64 for []f64 sort_with_compare()
+// sort []i64 with quicksort
+// usage :
+// mut x := [i64(100),10,70,28,92]
+// x.sort_with_compare(compare_i64)
+// println(x)     // Sorted i64 Array
+// output:
+// [10, 28, 70, 92, 100]
+pub fn compare_i64(a, b &i64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_f64 for []f64 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_f64(a, b &f64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_f32 for []f32 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_f32(a, b &f32) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}

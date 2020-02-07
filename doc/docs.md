@@ -758,7 +758,7 @@ struct Color {
         b int
 }
 
-fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
+pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
 
 fn rgb(r, g, b int) Color { return Color{r: r, g: g, b: b} }
 

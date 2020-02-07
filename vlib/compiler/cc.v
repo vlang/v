@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module compiler
@@ -34,12 +34,26 @@ fn (v mut V) cc() {
 	vdir := filepath.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
-	if v.out_name.ends_with('.c') || v.out_name.ends_with('.js') {
+	ends_with_c := v.out_name.ends_with('.c')
+	ends_with_js := v.out_name.ends_with('.js')
+
+	if v.pref.is_pretty_c && !ends_with_js {
+		format_result := os.exec('clang-format -i -style=file "$v.out_name_c"') or {
+			eprintln('clang-format not found')
+			os.Result{exit_code:-1}
+		}
+		if format_result.exit_code > 0 {
+			eprintln('clang-format failed to format $v.out_name_c')
+			eprintln(format_result.output)
+		}
+	}
+	
+	if ends_with_c || ends_with_js {
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,
 		// to avoid constant is_js checks.
 		$if !js {
-			if v.out_name.ends_with('.js') {
+			if ends_with_js {
 				vjs_path := vexe + 'js'
 				if !os.exists(vjs_path) {
 					println('V.js compiler not found, building...')
@@ -120,13 +134,13 @@ fn (v mut V) cc() {
 	}
 
 	if !v.pref.is_so
-		&& v.pref.build_mode != .build_module 
+		&& v.pref.build_mode != .build_module
 		&& os.user_os() == 'windows'
 		&& !v.out_name.ends_with('.exe')
 	{
 		v.out_name += '.exe'
 	}
-	
+
 	// linux_host := os.user_os() == 'linux'
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
 	if v.pref.is_so {
@@ -342,13 +356,11 @@ start:
 			if res.output.len < 30 {
 				println(res.output)
 			} else {
-				max := 50
-				n := if res.output.len > max { max } else { res.output.len }
-				partial_output := res.output[res.output.len-n..].trim_right('\r\n')
-				print(partial_output)
-				if n < max {
-					println('...\n(Use `v -cg` to print the entire error message)\n')
-				}
+				q := res.output.all_after('error: ').limit(150)
+				println('==================')
+				println(q)
+				println('==================')
+				println('...\n(Use `v -cg` to print the entire error message)\n')
 			}
 		}
 		verror('C error. This should never happen. ' + '\nPlease create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
@@ -395,7 +407,12 @@ start:
 			println('strip failed')
 			return
 		}
-		ret2 := os.system('upx --lzma -qqq $v.out_name')
+		// NB: upx --lzma can sometimes fail with NotCompressibleException
+		// See https://github.com/vlang/v/pull/3528
+		mut ret2 := os.system('upx --lzma -qqq $v.out_name')
+		if ret2 != 0 {
+			ret2 = os.system('upx -qqq $v.out_name')
+		}
 		if ret2 != 0 {
 			println('upx failed')
 			$if macos {

@@ -2,7 +2,6 @@ module main
 
 import (
 	some_module
-	eventbus
 )
 
 fn main(){
@@ -11,8 +10,6 @@ fn main(){
 	some_module.do_work()
 }
 
-fn on_error(sender voidptr, p eventbus.Params) {
-	work := *(*some_module.Work(sender))
-	println(work.hours)
-	println(p.get_string("error"))
+fn on_error(sender voidptr, e &some_module.Error) {
+	println(e.message)
 }
