@@ -97,6 +97,7 @@ fn multi_return() (int,string) {
 }
 
 fn variadic(a ...int) {
+	//a := path_sep
 }
 
 fn ensure_cap(required int, cap int) {
@@ -104,5 +105,11 @@ fn ensure_cap(required int, cap int) {
 		return
 	}
 }
+
+/*
+const (
+	path_sep = 10
+)
+*/
 
 

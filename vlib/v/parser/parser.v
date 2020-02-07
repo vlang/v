@@ -26,25 +26,25 @@ type PostfixParseFn fn()ast.Expr
 
 
 struct Parser {
-	scanner     &scanner.Scanner
-	file_name   string
+	scanner         &scanner.Scanner
+	file_name       string
 mut:
-	tok         token.Token
-	peek_tok    token.Token
+	tok             token.Token
+	peek_tok        token.Token
 	// vars []string
-	table       &table.Table
-	return_type table.TypeRef // current function's return type
+	table           &table.Table
+	return_type     table.TypeRef // current function's return type
 	// scope_level int
 	// var_idx     int
-	is_c        bool
+	is_c            bool
 	//
 	// prefix_parse_fns []PrefixParseFn
-	inside_if   bool
-	pref        &pref.Preferences // Preferences shared from V struct
-	builtin_mod bool
-	mod         string
-	unresolved  []ast.Expr
-	unresolved_idxs  map[string]int
+	inside_if       bool
+	pref            &pref.Preferences // Preferences shared from V struct
+	builtin_mod     bool
+	mod             string
+	unresolved      []ast.Expr
+	unresolved_idxs map[string]int
 }
 
 // for tests
@@ -302,9 +302,12 @@ fn (p mut Parser) range_expr(low ast.Expr) ast.Expr {
 		p.next()
 	}
 	p.check(.dotdot)
-	high,typ := p.expr(0)
-	if typ.typ.kind != .int {
-		p.error('non-integer index `$typ.typ.name`')
+	mut high := ast.Expr{}
+	if p.tok.kind != .rsbr {
+		high,_ = p.expr(0)
+		// if typ.typ.kind != .int {
+		// p.error('non-integer index `$typ.typ.name`')
+		// }
 	}
 	node := ast.RangeExpr{
 		low: low
@@ -343,7 +346,13 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 
 pub fn (p &Parser) error(s string) {
 	print_backtrace()
-	final_msg_line := '$p.file_name:$p.tok.line_nr: error: $s'
+	mut path := p.file_name
+	// Get relative path
+	workdir := os.getwd() + os.path_separator
+	if path.starts_with(workdir) {
+		path = path.replace(workdir, '')
+	}
+	final_msg_line := 'xxx$path:$p.tok.line_nr: error: $s'
 	if colored_output {
 		eprintln(term.bold(term.red(final_msg_line)))
 	}
@@ -374,7 +383,7 @@ pub fn (p &Parser) warn(s string) {
 	}
 }
 
-pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
+pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.TypeRef) {
 	mut node := ast.Ident{}
 	mut typ := p.table.type_ref(table.void_type_idx)
 	// p.warn('name ')
@@ -387,7 +396,7 @@ pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
 	if var := p.table.find_var(name) {
 		known_var = true
 		typ = var.typ
-	} 
+	}
 	// variable
 	if known_var || p.tok.kind in [.comma, .decl_assign, .assign] {
 		// println('#### IDENT: $var.name: $var.typ.typ.name - $var.typ.idx')
@@ -396,14 +405,17 @@ pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
 			typ: typ
 			// name: ident.name
 			// expr: p.expr(0)// var.expr
+			
 		}
-		return ident, typ
-	}else{
+		return ident,typ
+	}
+	else {
 		if is_c {
 			typ = p.table.type_ref(table.int_type_idx)
 			ident.info = ast.IdentVar{
 				typ: typ
 				// name: ident.name
+				
 			}
 			return ident,typ
 		}
@@ -414,18 +426,20 @@ pub fn(p mut Parser) parse_ident(is_c bool) (ast.Ident, table.TypeRef) {
 			ident.info = ast.IdentVar{
 				typ: typ
 				// name: ident.name
+				
 			}
 			node = ident
 		}else{
 			// Function object (not a call), e.g. `onclick(my_click)`
 			p.table.find_fn(name) or {
+				// ident.info = ast.IdentVar
 				p.error('parse_ident: unknown identifier `$name`')
 				exit(0)
 			}
 			// p.next()
 		}
 	}
-	return node, typ
+	return node,typ
 }
 
 pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
@@ -484,7 +498,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	}
 	else {
 		mut ident := ast.Ident{}
-		ident, typ = p.parse_ident(is_c)
+		ident,typ = p.parse_ident(is_c)
 		node = ident
 	}
 	return node,typ
@@ -622,6 +636,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 		index: index_expr
 		pos: p.tok.position()
 		// typ: typ
+		
 	}
 	return node
 	// return node,typ
@@ -707,7 +722,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		p.error('`mut` is not required in for loops')
 	}
 	// for i := 0; i < 10; i++ {
-	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] {
+	else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		mut init := ast.Stmt{}
 		mut cond := ast.Expr{}
 		mut inc := ast.Stmt{}
@@ -727,7 +742,9 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
-			mut typ := table.TypeRef{typ:0}
+			mut typ := table.TypeRef{
+				typ: 0
+			}
 			cond,typ = p.expr(0)
 		}
 		p.check(.semicolon)
@@ -836,7 +853,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
 	}
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		return node, p.table.type_ref(table.string_type_idx)
+		return node,p.table.type_ref(table.string_type_idx)
 	}
 	// Handle $ interpolation
 	for p.tok.kind == .str {
@@ -850,7 +867,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
 			p.next()
 		}
 	}
-	return node, p.table.type_ref(table.string_type_idx)
+	return node,p.table.type_ref(table.string_type_idx)
 }
 
 fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
@@ -1011,6 +1028,7 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		fields << table.Field{
 			name: field_name
 			// type_idx: ti.idx
+			
 			typ: typ
 		}
 		// println('struct field $ti.name $field_name')
@@ -1072,16 +1090,17 @@ pub fn (p mut Parser) assign_stmt() ast.AssignStmt {
 	// TODO: multiple return & multiple assign
 	mut idents := []ast.Ident
 	for {
-		ident, _ := p.parse_ident(false)
+		ident,_ := p.parse_ident(false)
 		idents << ident
 		if p.tok.kind == .comma {
 			p.check(.comma)
-		} else {
+		}
+		else {
 			break
 		}
 	}
 	p.next() // :=, =
-	expr, _ := p.expr(0)
+	expr,_ := p.expr(0)
 	return ast.AssignStmt{
 		left: idents
 		right: [expr]

@@ -7,6 +7,7 @@ import (
 	v.ast
 	v.table
 	v.token
+	os
 )
 
 pub struct Checker {
@@ -140,11 +141,13 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
-		if call_expr.args.len < f.args.len {
-			c.error('too few arguments in call to `$fn_name`', call_expr.pos)
-		}
-		else if call_expr.args.len > f.args.len {
-			c.error('too many arguments in call to `$fn_name`', call_expr.pos)
+		if !f.is_c {
+			if call_expr.args.len < f.args.len {
+				c.error('too few arguments in call to `$fn_name`', call_expr.pos)
+			}
+			else if call_expr.args.len > f.args.len {
+				c.error('too many arguments in call to `$fn_name`', call_expr.pos)
+			}
 		}
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
@@ -178,6 +181,11 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef 
 				exit(0)
 			}
 			return field.typ
+		}
+		.array {
+			if field_name == 'len' {
+				return c.table.type_ref(table.int_type_idx)
+			}
 		}
 		else {
 			c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
@@ -404,7 +412,13 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
 
 pub fn (c &Checker) error(s string, pos token.Position) {
 	print_backtrace()
-	final_msg_line := '$c.file_name:$pos.line_nr: error: $s'
+	mut path := c.file_name
+	// Get relative path
+	workdir := os.getwd() + os.path_separator
+	if path.starts_with(workdir) {
+		path = path.replace(workdir, '')
+	}
+	final_msg_line := '$path:$pos.line_nr: checker error: $s'
 	eprintln(final_msg_line)
 	/*
 	if colored_output {

@@ -18,6 +18,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
 		name: fn_name
 		args: args
 		// tok: tok
+		
 		pos: tok.position()
 	}
 	if p.tok.kind == .key_orelse {
@@ -166,6 +167,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: name
 			args: args
 			return_type: typ
+			is_c: is_c
 		})
 	}
 	mut stmts := []ast.Stmt
@@ -184,4 +186,3 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		}
 	}
 }
-

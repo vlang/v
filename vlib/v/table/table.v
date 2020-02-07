@@ -26,6 +26,7 @@ pub:
 	name        string
 	args        []Var
 	return_type TypeRef
+	is_c        bool
 }
 
 pub struct Var {
@@ -37,7 +38,7 @@ pub:
 	is_global   bool
 	scope_level int
 mut:
-	typ       TypeRef
+	typ         TypeRef
 }
 
 pub fn new_table() &Table {
@@ -88,6 +89,7 @@ pub fn (t mut Table) register_global(name string, typ TypeRef) {
 		// mod: p.mod
 		// is_mut: true
 		// idx: -1
+		
 	}
 }
 
@@ -222,7 +224,8 @@ pub fn (t mut Table) new_tmp_var() string {
 pub fn (t &Table) struct_has_field(s &Type, name string) bool {
 	if !isnil(s.parent) {
 		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
-	} else {
+	}
+	else {
 		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=none')
 	}
 	// for typ in t.types {
@@ -237,7 +240,8 @@ pub fn (t &Table) struct_has_field(s &Type, name string) bool {
 pub fn (t &Table) struct_find_field(s &Type, name string) ?Field {
 	if !isnil(s.parent) {
 		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
-	} else {
+	}
+	else {
 		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=none')
 	}
 	info := s.info as Struct
@@ -296,7 +300,7 @@ pub fn (t mut Table) register_type(typ Type) int {
 				// panic('cannot register type `$typ.name`, another type with this name exists')
 				return -1
 			}
-		}
+	}
 	}
 	typ_idx := t.types.len
 	t.types << typ
@@ -312,7 +316,7 @@ pub fn (t &Table) known_type(name string) bool {
 }
 
 pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) int {
-	name := map_name(&key_type, &value_type) 
+	name := map_name(&key_type, &value_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -352,7 +356,7 @@ pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int 
 }
 
 pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, nr_dims int) int {
-	name := array_fixed_name(&elem_type, size, nr_dims) 
+	name := array_fixed_name(&elem_type, size, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -426,6 +430,9 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 pub fn (t &Table) check(got, expected &TypeRef) bool {
 	println('check: $got.typ.name, $expected.typ.name')
 	if expected.typ.kind == .voidptr {
+		return true
+	}
+	if expected.typ.kind == .byteptr && got.typ.kind == .voidptr {
 		return true
 	}
 	// if expected.name == 'array' {
