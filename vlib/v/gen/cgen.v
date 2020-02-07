@@ -42,6 +42,13 @@ pub fn (g mut Gen) writeln(s string) {
 	g.out.writeln(s)
 }
 
+fn (g mut Gen) stmts(stmts []ast.Stmt) {
+	for stmt in stmts {
+		g.stmt(stmt)
+		g.writeln('')
+	}
+}
+
 fn (g mut Gen) stmt(node ast.Stmt) {
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
@@ -110,18 +117,19 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			// ident0 := it.left[0]
 			// info0 := ident0.var_info()
 			// for i, ident in it.left {
-			// 	info := ident.var_info()
-			// 	if info0.typ.typ.kind == .multi_return {
-			// 		if i == 0 {
-			// 			g.write('$info.typ.typ.name $ident.name = ')
-			// 			g.expr(it.right[0])
-			// 		} else {
-			// 			arg_no := i-1
-			// 			g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
-			// 		}
-			// 	}
-			// 	g.writeln(';')
+			// info := ident.var_info()
+			// if info0.typ.typ.kind == .multi_return {
+			// if i == 0 {
+			// g.write('$info.typ.typ.name $ident.name = ')
+			// g.expr(it.right[0])
+			// } else {
+			// arg_no := i-1
+			// g.write('$info.typ.typ.name $ident.name = $ident0.name->arg[$arg_no]')
 			// }
+			// }
+			// g.writeln(';')
+			// }
+			println('assign')
 		}
 		ast.VarDecl {
 			g.write('$it.typ.typ.name $it.name = ')
@@ -297,6 +305,23 @@ fn (g mut Gen) expr(node ast.Expr) {
 				for stmt in it.else_stmts {
 					g.stmt(stmt)
 				}
+				g.writeln('}')
+			}
+		}
+		ast.MatchExpr {
+			mut tmp := ''
+			if it.typ.typ.kind != .void {
+				tmp = g.table.new_tmp_var()
+			}
+			g.write('$it.typ.typ.name $tmp = ')
+			g.expr(it.cond)
+			g.writeln(';') // $it.blocks.len')
+			for i, block in it.blocks {
+				match_expr := it.match_exprs[i]
+				g.write('if $tmp == ')
+				g.expr(match_expr)
+				g.writeln('{')
+				g.stmts(block.stmts)
 				g.writeln('}')
 			}
 		}

@@ -6,6 +6,8 @@ void myuser();
 multi_return_int_string multi_return();
 void variadic(variadic_int a);
 void ensure_cap(int required, int cap);
+void println(string s);
+void matches();
 
 int pi = 3;
 
@@ -97,3 +99,22 @@ void ensure_cap(int required, int cap) {
 		return;
 	}
 }
+
+void println(string s) {
+}
+
+void matches() {
+	int a = 100;
+	int tmp1 = a;
+	if tmp1 == 10{
+		println(tos3("10"));
+
+	}
+	if tmp1 == 20{
+		int k = a + 1;
+
+	}
+	;
+	}
+}
+

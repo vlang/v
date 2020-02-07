@@ -94,7 +94,7 @@ const (
 // f64 constants
 //
 	DIGITS = 18
-	DOUBLE_PLUS_ZERO = u64(0x0000000000000000)
+	DOUBLE_PLUS_ZERO = u64(0x0000000000000000)// as u64
 	DOUBLE_MINUS_ZERO = 0x8000000000000000
 	DOUBLE_PLUS_INFINITY = 0x7FF0000000000000
 	DOUBLE_MINUS_INFINITY = 0xFFF0000000000000
@@ -128,7 +128,7 @@ const (
 	MINUS = `-`
 	ZERO = `0`
 	NINE = `9`
-	TEN = u32(10)
+	TEN = 10// as u32
 )
 /**********************************************************************
 *
@@ -179,7 +179,7 @@ pub struct PrepNumber {
 pub mut:
 	negative bool=false // 0 if positive number, 1 if negative
 	exponent int=0 // power of 10 exponent
-	mantissa u64=u64(0) // integer mantissa
+	mantissa u64=0 as u64 // integer mantissa
 }
 /**********************************************************************
 *

@@ -467,7 +467,7 @@ fn (p mut Parser) parse(pass Pass) {
 		}
 		return
 	}
-	
+
 	parsing_start_ticks := time.ticks()
 	compile_cycles_stuck_mask := u64( 0x1FFFFFFF ) // 2^29-1 cycles
 	mut parsing_cycle := u64(1)

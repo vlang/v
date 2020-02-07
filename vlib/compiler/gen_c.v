@@ -54,7 +54,7 @@ fn (p mut Parser) gen_fn_decl(f Fn, typ, str_args string) {
 	dll_export_linkage := if p.pref.ccompiler == 'msvc' && p.attr == 'live' && p.pref.is_so { '__declspec(dllexport) ' } else if p.attr == 'inline' { 'static inline ' } else { '' }
 	fn_name_cgen := p.table.fn_gen_name(f)
 	// str_args := f.str_args(p.table)
-	
+
 	if p.attr == 'live' && p.pref.is_so {
 		// See fn.v for details about impl_live_ functions
 		p.genln('$typ impl_live_${fn_name_cgen} ($str_args);')
@@ -549,6 +549,7 @@ fn (p mut Parser) gen_empty_map(typ string) {
 }
 
 fn (p mut Parser) cast(typ string) {
+	//p.error('old cast syntax')
 	p.gen('(')
 	defer {
 		p.gen(')')

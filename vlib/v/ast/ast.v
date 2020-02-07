@@ -20,7 +20,7 @@ HashStmt | AssignStmt
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ   table.TypeRef
+	typ  table.TypeRef
 }
 
 pub struct IntegerLiteral {
@@ -184,6 +184,11 @@ mut:
 	typ  table.TypeRef
 }
 
+pub struct StmtBlock {
+pub:
+	stmts []Stmt
+}
+
 pub struct File {
 pub:
 	path       string
@@ -197,7 +202,7 @@ pub struct IdentVar {
 pub mut:
 	typ    table.TypeRef
 	is_mut bool
-	//name string
+	// name string
 }
 
 type IdentInfo = IdentVar
@@ -221,7 +226,7 @@ mut:
 	info     IdentInfo
 }
 
-pub fn(i &Ident) var_info() IdentVar {
+pub fn (i &Ident) var_info() IdentVar {
 	match i.info {
 		IdentVar {
 			return it
@@ -254,6 +259,7 @@ pub:
 	left Expr
 }
 */
+
 
 pub struct PostfixExpr {
 pub:
@@ -290,13 +296,12 @@ pub:
 
 pub struct MatchExpr {
 pub:
-	tok_kind   token.Kind
-	cond       Expr
-	stmts      []Stmt
-	else_stmts []Stmt
-	ti         table.Type
-	left       Expr // `a` in `a := if ...`
-	pos        token.Position
+	tok_kind    token.Kind
+	cond        Expr
+	blocks      []StmtBlock
+	match_exprs []Expr
+	typ         table.TypeRef
+	pos         token.Position
 }
 
 pub struct CompIf {
@@ -340,14 +345,12 @@ pub:
 	name string
 }
 
-
 pub struct AssignStmt {
 pub:
 	left  []Ident
 	right []Expr
 	op    token.Kind
 }
-
 
 // e.g. `[unsafe_fn]`
 pub struct Attr {
@@ -368,7 +371,7 @@ pub:
 	pos   token.Position
 	exprs []Expr
 mut:
-	typ    table.TypeRef
+	typ   table.TypeRef
 }
 
 // s[10..20]

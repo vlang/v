@@ -1189,16 +1189,23 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 
 fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 	p.check(.key_match)
-	p.expr(0)
+	cond,typ := p.expr(0)
 	p.check(.lcbr)
+	mut blocks := []ast.StmtBlock
+	mut match_exprs := []ast.Expr
 	for {
 		// p.tok.kind != .rcbr {
-		p.expr(0)
+		match_expr,_ := p.expr(0)
+		match_exprs << match_expr
 		p.warn('match block')
-		p.parse_block()
+		blocks << ast.StmtBlock{
+			stmts: p.parse_block()
+		}
 		if p.tok.kind == .key_else {
 			p.next()
-			p.parse_block()
+			blocks << ast.StmtBlock{
+				stmts: p.parse_block()
+			}
 		}
 		if p.tok.kind == .rcbr {
 			break
@@ -1206,7 +1213,12 @@ fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 	}
 	p.check(.rcbr)
 	mut node := ast.Expr{}
-	node = ast.MatchExpr{}
+	node = ast.MatchExpr{
+		blocks: blocks
+		match_exprs: match_exprs
+		typ: typ
+		cond: cond
+	}
 	return node,p.table.type_ref(table.void_type_idx)
 }
 
