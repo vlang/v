@@ -157,7 +157,7 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
 				c.error('too few arguments in call to `$fn_name`', call_expr.pos)
 			}
 			else if call_expr.args.len > f.args.len {
-				c.error('too many arguments in call to `$fn_name`', call_expr.pos)
+				c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
 			}
 		}
 		for i, arg in f.args {
@@ -206,6 +206,7 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef 
 				return c.table.type_ref(table.int_type_idx)
 			}
 		}
+		.string {}
 		else {
 			c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
 		}

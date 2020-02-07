@@ -64,7 +64,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]byteptr
 		nr_ptrs := C.backtrace(buffer, 100)
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
+		backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 1)
 	}
 	return true
 }

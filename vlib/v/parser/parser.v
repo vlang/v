@@ -466,12 +466,34 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 		p.check_name()
 		return node,typ
 	}
-	// fn call
+	// fn call or type cast
 	if p.peek_tok.kind == .lpar {
-		println('calling $p.tok.lit')
-		x,ti2 := p.call_expr() // TODO `node,typ :=` should work
-		node = x
-		typ = ti2
+		name := p.tok.lit
+		// type cast. TODO: finish
+		if name in p.table.type_idxs {
+			// ['byte', 'string', 'int']
+			// SKIP FOR NOW
+			mut par_d := 0
+			for {
+				if p.tok.kind == .lpar {
+					par_d++
+				}
+				if p.tok.kind == .rpar {
+					par_d--
+					if par_d == 0 {
+						p.next()
+						break
+					}
+				}
+				p.next()
+			}
+		}
+		else {
+			println('calling $p.tok.lit')
+			x,ti2 := p.call_expr() // TODO `node,typ :=` should work
+			node = x
+			typ = ti2
+		}
 	}
 	// struct init
 	else if p.peek_tok.kind == .lcbr && (p.tok.lit[0].is_capital() || p.tok.lit in ['array', 'string', 'ustring', 'mapnode', 'map']) && !p.tok.lit[p.tok.lit.len - 1].is_capital() {
