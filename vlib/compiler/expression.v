@@ -692,6 +692,11 @@ fn (p mut Parser) expression() string {
 			}
 		}
 	}
+	// `as` cast
+	// TODO remove copypasta
+	if p.tok == .key_as {
+		return p.key_as(typ, ph)
+	}
 	return typ
 }
 
