@@ -25,8 +25,14 @@ pub fn (p mut Preferences) fill_with_defaults() {
 	}
 	if p.out_name == ''{
 		rpath := os.realpath(p.path)
-		base := filepath.filename(rpath)
-		p.out_name = base.trim_space().all_before('.')
+		filename := filepath.filename(rpath).trim_space()
+		mut base := filename.all_before_last('.')
+		if base == '' {
+			// The file name is just `.v` or `.vsh` or `.*`
+			base = filename
+		}
+		target_dir := if os.is_dir(rpath) { rpath } else { filepath.dir(rpath) }
+		p.out_name = filepath.join(target_dir, base)
 
 		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
