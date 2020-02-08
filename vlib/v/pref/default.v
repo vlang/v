@@ -27,6 +27,9 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		if p.path.ends_with('.v') && p.path != '.v' {
 			p.out_name = p.path[..p.path.len - 2]
 		}
+		if p.path.ends_with('.vsh') && p.path != '.vsh' {
+			p.out_name = p.path[..p.path.len - 4]
+		}
 		// if we are in `/foo` and run `v .`, the executable should be `foo`
 		if p.path == '.' && p.out_name == '' {
 			base := os.getwd().all_after(os.path_separator)
