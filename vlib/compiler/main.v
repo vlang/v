@@ -468,7 +468,7 @@ pub fn (v mut V) generate_main() {
 				v.gen_main_end('return 0')
 			}
 			else if v.v_fmt_file=='' && !v.pref.is_repl {
-				verror('function `main` is not declared in the main module')
+				verror('function `main` is not declared in the main module\nPlease add: \nfn main(){\n}\n... to your main program .v file, and try again.')
 			}
 		}
 		else if v.pref.is_test {
