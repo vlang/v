@@ -21,14 +21,13 @@ pub fn new_v(args []string) &compiler.V {
 			panic(err)
 		}
 	}
+	vroot := filepath.dir(vexe_path())
 	// optional, custom modules search path
 	user_mod_path := cmdline.option(args, '-user_mod_path', '')
-	// Location of all vlib files
-	vroot := filepath.dir(vexe_path())
-	vlib_path := cmdline.option(args, '-vlib-path', filepath.join(vroot,'vlib'))
-	vpath := cmdline.option(args, '-vpath', compiler.v_modules_path)
+	vlib_path := cmdline.option(args, '-vlib-path', '')
+	vpath := cmdline.option(args, '-vpath', '')
 	target_os := cmdline.option(args, '-os', '')
-	mut out_name := cmdline.option(args, '-o', 'a.out')
+	mut out_name := cmdline.option(args, '-o', '')
 	mut dir := args.last()
 	if 'run' in args {
 		args_after_run := cmdline.only_non_options( cmdline.after(args,['run']) )
@@ -76,23 +75,6 @@ pub fn new_v(args []string) &compiler.V {
 		println('`$dir` does not exist')
 		exit(1)
 	}
-	// No -o provided? foo.v => foo
-	if out_name == 'a.out' && dir.ends_with('.v') && dir != '.v' {
-		out_name = dir[..dir.len - 2]
-		// Building V? Use v2, since we can't overwrite a running
-		// executable on Windows + the precompiled V is more
-		// optimized.
-		if out_name == 'v' && os.is_dir('vlib/compiler') {
-			println('Saving the resulting V executable in `./v2`')
-			println('Use `v -o v v.v` if you want to replace current ' + 'V executable.')
-			out_name = 'v2'
-		}
-	}
-	// if we are in `/foo` and run `v .`, the executable should be `foo`
-	if dir == '.' && out_name == 'a.out' {
-		base := os.getwd().all_after(os.path_separator)
-		out_name = base.trim_space()
-	}
 	// `v -o dir/exec`, create "dir/" if it doesn't exist
 	if out_name.contains(os.path_separator) {
 		d := out_name.all_before_last(os.path_separator)
@@ -103,57 +85,8 @@ pub fn new_v(args []string) &compiler.V {
 			}
 		}
 	}
-	mut _os := pref.OS.mac
-	// No OS specifed? Use current system
-	if target_os == '' {
-		$if linux {
-			_os = .linux
-		}
-		$if macos {
-			_os = .mac
-		}
-		$if windows {
-			_os = .windows
-		}
-		$if freebsd {
-			_os = .freebsd
-		}
-		$if openbsd {
-			_os = .openbsd
-		}
-		$if netbsd {
-			_os = .netbsd
-		}
-		$if dragonfly {
-			_os = .dragonfly
-		}
-		$if solaris {
-			_os = .solaris
-		}
-		$if haiku {
-			_os = .haiku
-		}
-	}
-	else {
-		_os = os_from_string(target_os)
-	}
+
 	// println('VROOT=$vroot')
-	// v.exe's parent directory should contain vlib
-	if !os.is_dir(vlib_path) || !os.is_dir(vlib_path + os.path_separator + 'builtin') {
-		// println('vlib not found, downloading it...')
-		/*
-		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
-		if ret != 0 {
-			println('failed to `git clone` vlib')
-			println('make sure you are online and have git installed')
-			exit(1)
-		}
-		*/
-		println('vlib not found. It should be next to the V executable.')
-		println('Go to https://vlang.io to install V.')
-		println('(os.executable=${os.executable()} vlib_path=$vlib_path vexe_path=${vexe_path()}')
-		exit(1)
-	}
 	cflags := cmdline.many_values(args, '-cflags').join(' ')
 
 	defines := cmdline.many_values(args, '-d')
@@ -167,8 +100,9 @@ pub fn new_v(args []string) &compiler.V {
 		exit(1)
 	}
 	is_repl := '-repl' in args
-	pref := &pref.Preferences{
-		os: _os
+	ccompiler := cmdline.option(args, '-cc', '')
+	mut pref := &pref.Preferences{
+		os: os_from_string(target_os)
 		is_test: is_test
 		is_script: is_script
 		is_so: '-shared' in args
@@ -201,7 +135,7 @@ pub fn new_v(args []string) &compiler.V {
 		is_repl: is_repl
 		build_mode: build_mode
 		cflags: cflags
-		ccompiler: find_c_compiler(args)
+		ccompiler: ccompiler
 		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || rdir_name == 'vfmt.v' || dir.contains('vlib'))
 		// is_fmt: comptime_define == 'vfmt'
 
@@ -226,24 +160,26 @@ pub fn new_v(args []string) &compiler.V {
 			exit(1)
 		}
 	}
-	return compiler.new_v(pref)
-}
+	pref.fill_with_defaults()
 
-fn find_c_compiler(args []string) string {
-	defaultcc := find_c_compiler_default()
-	return cmdline.option(args, '-cc', defaultcc)
-}
-
-fn find_c_compiler_default() string {
-	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
-	// if os.exists(fast_clang) {
-	// return fast_clang
-	// }
-	// TODO fix $if after 'string'
-	$if windows {
-		return 'gcc'
+	// v.exe's parent directory should contain vlib
+	if !os.is_dir(pref.vlib_path) || !os.is_dir(pref.vlib_path + os.path_separator + 'builtin') {
+		// println('vlib not found, downloading it...')
+		/*
+		ret := os.system('git clone --depth=1 https://github.com/vlang/v .')
+		if ret != 0 {
+			println('failed to `git clone` vlib')
+			println('make sure you are online and have git installed')
+			exit(1)
+		}
+		*/
+		println('vlib not found. It should be next to the V executable.')
+		println('Go to https://vlang.io to install V.')
+		println('(os.executable=${os.executable()} vlib_path=$pref.vlib_path vexe_path=${vexe_path()}')
+		exit(1)
 	}
-	return 'cc'
+
+	return compiler.new_v(pref)
 }
 
 fn find_c_compiler_thirdparty_options(args []string) string {
@@ -310,6 +246,9 @@ fn os_from_string(os_str string) pref.OS {
 		}
 		'linux_or_macos' {
 			return .linux
+		}
+		'' {
+			return ._auto
 		}
 		else {
 			panic('bad os $os_str')

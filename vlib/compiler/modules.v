@@ -3,11 +3,14 @@
 // that can be found in the LICENSE file.
 module compiler
 
-import os
-import filepath
+import (
+	filepath
+	os
+	v.pref
+)
 
 pub const (
-	v_modules_path = os.home_dir() + '.vmodules'
+	v_modules_path = pref.default_module_path
 )
 // Holds import information scoped to the parsed file
 struct ImportTable {

@@ -13,6 +13,7 @@ pub enum BuildMode {
 }
 
 pub enum OS {
+	_auto // Reserved so .mac cannot be misunderstood as auto
 	mac
 	linux
 	windows
