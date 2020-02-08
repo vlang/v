@@ -20,12 +20,12 @@ pub fn (c &CFlag) str() string {
 fn (v &V) get_os_cflags() []CFlag {
 	mut flags := []CFlag
 	mut ctimedefines := []string
-	if v.compile_defines.len > 0 {
-		ctimedefines << v.compile_defines
+	if v.pref.compile_defines.len > 0 {
+		ctimedefines << v.pref.compile_defines
 	}
 	
 	for flag in v.table.cflags {
-		if flag.os == '' || (flag.os == 'linux' && v.os == .linux) || (flag.os == 'darwin' && v.os == .mac) || (flag.os == 'freebsd' && v.os == .freebsd) || (flag.os == 'windows' && v.os == .windows) {
+		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' && v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' && v.pref.os == .windows) {
 			flags << flag
 		}
 		if flag.os in ctimedefines {

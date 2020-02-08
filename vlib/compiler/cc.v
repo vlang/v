@@ -33,8 +33,8 @@ fn (v mut V) cc() {
 	vdir := filepath.dir(vexe)
 	// Just create a C/JavaScript file and exit
 	// for example: `v -o v.c compiler`
-	ends_with_c := v.out_name.ends_with('.c')
-	ends_with_js := v.out_name.ends_with('.js')
+	ends_with_c := v.pref.out_name.ends_with('.c')
+	ends_with_js := v.pref.out_name.ends_with('.js')
 
 	if v.pref.is_pretty_c && !ends_with_js {
 		format_result := os.exec('clang-format -i -style=file "$v.out_name_c"') or {
@@ -67,21 +67,21 @@ fn (v mut V) cc() {
 						exit(1)
 					}
 				}
-				ret := os.system('$vjs_path -o $v.out_name $v.dir')
+				ret := os.system('$vjs_path -o $v.pref.out_name $v.pref.path')
 				if ret == 0 {
-					println('Done. Run it with `node $v.out_name`')
+					println('Done. Run it with `node $v.pref.out_name`')
 					println('JS backend is at a very early stage.')
 				}
 			}
 		}
 		// v.out_name_c may be on a different partition than v.out_name
-		os.mv_by_cp(v.out_name_c, v.out_name)or{
+		os.mv_by_cp(v.out_name_c, v.pref.out_name)or{
 			panic(err)
 		}
 		exit(0)
 	}
 	// Cross compiling for Windows
-	if v.os == .windows {
+	if v.pref.os == .windows {
 		$if !windows {
 			v.cc_windows_cross()
 			return
@@ -135,29 +135,29 @@ fn (v mut V) cc() {
 	if !v.pref.is_so
 		&& v.pref.build_mode != .build_module
 		&& os.user_os() == 'windows'
-		&& !v.out_name.ends_with('.exe')
+		&& !v.pref.out_name.ends_with('.exe')
 	{
-		v.out_name += '.exe'
+		v.pref.out_name += '.exe'
 	}
 
 	// linux_host := os.user_os() == 'linux'
-	v.log('cc() isprod=$v.pref.is_prod outname=$v.out_name')
+	v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
 	if v.pref.is_so {
 		a << '-shared -fPIC ' // -Wl,-z,defs'
-		v.out_name = v.out_name + '.so'
+		v.pref.out_name += '.so'
 	}
 	if v.pref.is_bare {
 		a << '-fno-stack-protector -static -ffreestanding -nostdlib'
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.dir.starts_with('vlib') { '$v_modules_path${os.path_separator}cache${os.path_separator}$v.dir' } else { '$v_modules_path${os.path_separator}$v.dir' }
+		mut out_dir := if v.pref.path.starts_with('vlib') { '$v_modules_path${os.path_separator}cache${os.path_separator}$v.pref.path' } else { '$v_modules_path${os.path_separator}$v.pref.path' }
 		pdir := out_dir.all_before_last(os.path_separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
 		}
-		v.out_name = '${out_dir}.o' // v.out_name
-		println('Building ${v.out_name}...')
+		v.pref.out_name = '${out_dir}.o' // v.out_name
+		println('Building ${v.pref.out_name}...')
 	}
 	debug_mode := v.pref.is_debug
 	mut debug_options := '-g'
@@ -197,7 +197,7 @@ fn (v mut V) cc() {
 	if debug_mode && os.user_os() != 'windows' {
 		a << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
-	if v.pref.ccompiler != 'msvc' && v.os != .freebsd {
+	if v.pref.ccompiler != 'msvc' && v.pref.os != .freebsd {
 		a << '-Werror=implicit-function-declaration'
 	}
 	for f in v.generate_hotcode_reloading_compiler_flags() {
@@ -268,24 +268,24 @@ fn (v mut V) cc() {
 	// Cross compiling windows
 	//
 	// Output executable name
-	a << '-o "$v.out_name"'
-	if os.is_dir(v.out_name) {
-		verror("\'$v.out_name\' is a directory")
+	a << '-o "$v.pref.out_name"'
+	if os.is_dir(v.pref.out_name) {
+		verror("\'$v.pref.out_name\' is a directory")
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.os == .mac {
+	if v.pref.os == .mac {
 		a << '-x objective-c'
 	}
 	// The C file we are compiling
 	a << '"$v.out_name_c"'
-	if v.os == .mac {
+	if v.pref.os == .mac {
 		a << '-x none'
 	}
 	// Min macos version is mandatory I think?
-	if v.os == .mac {
+	if v.pref.os == .mac {
 		a << '-mmacosx-version-min=10.7'
 	}
-	if v.os == .windows {
+	if v.pref.os == .windows {
 		a << '-municode'
 	}
 	cflags := v.get_os_cflags()
@@ -296,18 +296,18 @@ fn (v mut V) cc() {
 	a << libs
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
-	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
+	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
 		a << '-lm -lpthread '
 		// -ldl is a Linux only thing. BSDs have it in libc.
-		if v.os == .linux {
+		if v.pref.os == .linux {
 			a << ' -ldl '
 		}
-		if v.os == .freebsd {
+		if v.pref.os == .freebsd {
 			// FreeBSD: backtrace needs execinfo library while linking
 			a << ' -lexecinfo '
 		}
 	}
-	if !v.pref.is_bare && v.os == .js && os.user_os() == 'linux' {
+	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		a << '-lm'
 	}
 	args := a.join(' ')
@@ -401,16 +401,16 @@ start:
 			println('-compress does not work on Windows for now')
 			return
 		}
-		ret := os.system('strip $v.out_name')
+		ret := os.system('strip $v.pref.out_name')
 		if ret != 0 {
 			println('strip failed')
 			return
 		}
 		// NB: upx --lzma can sometimes fail with NotCompressibleException
 		// See https://github.com/vlang/v/pull/3528
-		mut ret2 := os.system('upx --lzma -qqq $v.out_name')
+		mut ret2 := os.system('upx --lzma -qqq $v.pref.out_name')
 		if ret2 != 0 {
-			ret2 = os.system('upx -qqq $v.out_name')
+			ret2 = os.system('upx -qqq $v.pref.out_name')
 		}
 		if ret2 != 0 {
 			println('upx failed')
@@ -429,10 +429,10 @@ start:
 
 fn (c mut V) cc_windows_cross() {
 	println('Cross compiling for Windows...')
-	if !c.out_name.ends_with('.exe') {
-		c.out_name = c.out_name + '.exe'
+	if !c.pref.out_name.ends_with('.exe') {
+		c.pref.out_name += '.exe'
 	}
-	mut args := '-o $c.out_name -w -L. '
+	mut args := '-o $c.pref.out_name -w -L. '
 	cflags := c.get_os_cflags()
 	// -I flags
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
@@ -512,29 +512,6 @@ fn (c &V) build_thirdparty_obj_files() {
 			}
 		}
 	}
-}
-
-pub fn parse_defines(defines []string) ([]string,[]string) {
-	// '-d abc -d xyz=1 -d qwe=0' should produce:
-	// compile_defines:      ['abc','xyz']
-	// compile_defines_all   ['abc','xyz','qwe']
-	mut compile_defines := []string
-	mut compile_defines_all := []string
-	for dfn in defines {
-		dfn_parts := dfn.split('=')
-		if dfn_parts.len == 1 {
-			compile_defines << dfn
-			compile_defines_all << dfn
-			continue
-		}
-		if dfn_parts.len == 2 {
-			compile_defines_all << dfn_parts[0]
-			if dfn_parts[1] == '1' {
-				compile_defines << dfn_parts[0]
-			}
-		}
-	}
-	return compile_defines, compile_defines_all
 }
 
 fn missing_compiler_info() string {

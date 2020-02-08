@@ -290,7 +290,7 @@ fn (v V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	}
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cmd := '$v.c_compiler $v.c_thirdparty_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	cmd := '$v.pref.ccompiler $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd)or{
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)

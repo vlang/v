@@ -166,8 +166,8 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 
-	if v.compile_defines.len > 0 {
-		for cdefine in v.compile_defines {
+	if v.pref.compile_defines.len > 0 {
+		for cdefine in v.pref.compile_defines {
 			custom_path_ending := '_d_${cdefine}.v'
 			if path.ends_with(custom_path_ending){
 				path_platform = custom_path_ending
@@ -215,8 +215,8 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		cgen: v.cgen
 		//x64: v.x64
 		pref: v.pref
-		os: v.os
-		vroot: v.vroot
+		os: v.pref.os
+		vroot: v.pref.vroot
 		local_vars: [Var{
 		}].repeat(MaxLocalVars)
 		import_table: new_import_table()

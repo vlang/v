@@ -43,9 +43,9 @@ fn compile(command string, args []string) {
 
 pub fn run_compiled_executable_and_exit(v &compiler.V, args []string) {
 	if v.pref.is_verbose {
-		println('============ running $v.out_name ============')
+		println('============ running $v.pref.out_name ============')
 	}
-	mut cmd := '"' + final_target_out_name(v.out_name).replace('.exe', '') + '"'
+	mut cmd := '"' + final_target_out_name(v.pref.out_name).replace('.exe', '') + '"'
 	args_after_no_options := cmdline.only_non_options( cmdline.after(args,['run','test']) )
 	if args_after_no_options.len > 1 {
 		cmd += ' ' + args_after_no_options[1..].join(' ')

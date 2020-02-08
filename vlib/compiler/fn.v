@@ -510,7 +510,7 @@ fn (p mut Parser) fn_decl() {
 	}
 
 	if p.first_pass() && p.attr == 'live' && !(is_live || is_solive) {
-		println('INFO: run `v -live $p.v.dir `, if you want to use [live] function $f.name .')
+		println('INFO: run `v -live $p.v.pref.path `, if you want to use [live] function $f.name .')
 	}
 
 	if p.is_vh || p.first_pass() || is_live || is_fn_header || skip_main_in_test {
@@ -774,7 +774,7 @@ fn (p mut Parser) verify_fn_before_call(f &Fn) {
 // p.tok == fn_name
 fn (p mut Parser) fn_call(f mut Fn, method_ph int, receiver_var, receiver_type string) {
 	p.verify_fn_before_call(f)
-	is_comptime_define := f.comptime_define != '' && !(f.comptime_define in p.v.compile_defines )
+	is_comptime_define := f.comptime_define != '' && !(f.comptime_define in p.v.pref.compile_defines )
 	if is_comptime_define {
 		p.cgen.nogen = true
 	}

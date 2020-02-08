@@ -161,7 +161,7 @@ pub fn new_v(args []string) &compiler.V {
 	cflags := cmdline.many_values(args, '-cflags').join(' ')
 
 	defines := cmdline.many_values(args, '-d')
-	compile_defines, compile_defines_all := compiler.parse_defines( defines )
+	compile_defines, compile_defines_all := parse_defines( defines )
 
 	rdir := os.realpath(dir)
 	rdir_name := filepath.filename(rdir)
@@ -173,6 +173,7 @@ pub fn new_v(args []string) &compiler.V {
 	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
 	pref := &pref.Preferences{
+		os: _os
 		is_test: is_test
 		is_script: is_script
 		is_so: '-shared' in args
@@ -213,6 +214,11 @@ pub fn new_v(args []string) &compiler.V {
 		vlib_path: vlib_path
 		vpath: vpath
 		v2: '-v2' in args
+		vroot: vroot
+		out_name: out_name
+		path: dir
+		compile_defines: compile_defines
+		compile_defines_all: compile_defines_all
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
@@ -228,23 +234,14 @@ pub fn new_v(args []string) &compiler.V {
 		}
 	}
 	return &compiler.V{
-		os: _os
-		out_name: out_name
-		dir: dir
 		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
-		lang_dir: vroot
 		table: compiler.new_table(obfuscate)
 		out_name_c: out_name_c
 		cgen: compiler.new_cgen(out_name_c)
 		//x64: x64.new_gen(out_name)
-		vroot: vroot
 		pref: pref
 		mod: mod
 		vgen_buf: vgen_buf
-		compile_defines: compile_defines
-		compile_defines_all: compile_defines_all
-		c_compiler: find_c_compiler(args)
-		c_thirdparty_option: find_c_compiler_thirdparty_options(args)
 	}
 }
 
@@ -335,3 +332,27 @@ fn os_from_string(os_str string) pref.OS {
 		}
 	}
 }
+
+fn parse_defines(defines []string) ([]string,[]string) {
+	// '-d abc -d xyz=1 -d qwe=0' should produce:
+	// compile_defines:      ['abc','xyz']
+	// compile_defines_all   ['abc','xyz','qwe']
+	mut compile_defines := []string
+	mut compile_defines_all := []string
+	for dfn in defines {
+		dfn_parts := dfn.split('=')
+		if dfn_parts.len == 1 {
+			compile_defines << dfn
+			compile_defines_all << dfn
+			continue
+		}
+		if dfn_parts.len == 2 {
+			compile_defines_all << dfn_parts[0]
+			if dfn_parts[1] == '1' {
+				compile_defines << dfn_parts[0]
+			}
+		}
+	}
+	return compile_defines, compile_defines_all
+}
+

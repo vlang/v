@@ -112,7 +112,7 @@ fn (p mut Parser) comp_time() {
 		else if name == 'clang' {
 			p.comptime_if_block('__clang__', not)
 		}
-		else if p.v.compile_defines_all.len > 0 && name in p.v.compile_defines_all {
+		else if p.v.pref.compile_defines_all.len > 0 && name in p.v.pref.compile_defines_all {
 			// Support for *optional* custom compile defines, i.e.:
 			//
 			// `[if custom]` => custom should be defined
@@ -249,7 +249,7 @@ fn (p mut Parser) chash() {
 			flag = flag.replace('@VLIB_PATH', p.pref.vlib_path)
 			flag = flag.replace('@VMOD', v_modules_path)
 			// p.log('adding flag "$flag"')
-			_ = p.table.parse_cflag(flag, p.mod, p.v.compile_defines_all ) or {
+			_ = p.table.parse_cflag(flag, p.mod, p.v.pref.compile_defines_all ) or {
 				p.error_with_token_index(err, p.cur_tok_index() - 1)
 				return
 			}

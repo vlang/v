@@ -36,20 +36,13 @@ enum Pass {
 
 pub struct V {
 pub mut:
-	os                  pref.OS // the OS to build for
 	out_name_c          string // name of the temporary C file
 	files               []string // all V files that need to be parsed and compiled
-	dir                 string // directory (or file) being compiled (TODO rename to path?)
 	compiled_dir        string // contains os.realpath() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	table               &Table // table with types, vars, functions etc
 	cgen                &CGen // C code generator
-	c_compiler          string
-	c_thirdparty_option string
 	//x64                 &x64.Gen
 	pref                &pref.Preferences // all the preferences and settings extracted to a struct for reusability
-	lang_dir            string // "~/code/v"
-	out_name            string // "program.exe"
-	vroot               string
 	mod                 string // module being built with -lib
 	parsers             []Parser // file parsers
 	vgen_buf            strings.Builder // temporary buffer for generated V code (.str() etc)
@@ -57,10 +50,6 @@ pub mut:
 	gen_parser_idx      map[string]int
 	cached_mods         []string
 	module_lookup_paths []string
-
-	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
-	compile_defines     []string // just ['vfmt']
-	compile_defines_all []string // contains both: ['vfmt','another']
 
 	v_fmt_all           bool   // << input set by tools/vfmt.v
 	v_fmt_file          string // << file given by the user from tools/vfmt.v
@@ -167,7 +156,7 @@ pub fn (v mut V) compile() {
 	if v.pref.prealloc {
 		cgen.genln('#define VPREALLOC (1)')
 	}
-	if v.os == .js {
+	if v.pref.os == .js {
 		cgen.genln('#define _VJS (1) ')
 	}
 	v_hash := vhash()
@@ -190,11 +179,11 @@ pub fn (v mut V) compile() {
 			cgen.genln('#include <stdint.h>')
 		}
 
-		if v.compile_defines_all.len > 0 {
+		if v.pref.compile_defines_all.len > 0 {
 			cgen.genln('')
-			cgen.genln('// All custom defines      : ' + v.compile_defines_all.join(','))
-			cgen.genln('// Turned ON custom defines: ' + v.compile_defines.join(','))
-			for cdefine in v.compile_defines {
+			cgen.genln('// All custom defines      : ' + v.pref.compile_defines_all.join(','))
+			cgen.genln('// Turned ON custom defines: ' + v.pref.compile_defines.join(','))
+			for cdefine in v.pref.compile_defines {
 				cgen.genln('#define CUSTOM_DEFINE_${cdefine}')
 			}
 			cgen.genln('//')
@@ -235,7 +224,7 @@ pub fn (v mut V) compile() {
 	if '-debug_alloc' in os.args {
 		cgen.genln('#define DEBUG_ALLOC 1')
 	}
-	if v.pref.is_live && v.os != .windows {
+	if v.pref.is_live && v.pref.os != .windows {
 		cgen.includes << '#include <dlfcn.h>'
 	}
 	// cgen.genln('/*================================== FNS =================================*/')
@@ -321,7 +310,7 @@ pub fn (v mut V) compile2() {
 		println(v.files)
 	}
 	mut b := v.new_v2()
-	b.build_c(v.files, v.out_name)
+	b.build_c(v.files, v.pref.out_name)
 	v.cc()
 }
 
@@ -331,18 +320,18 @@ pub fn (v mut V) compile_x64() {
 		println('You are not on a Linux system, so you will not ' + 'be able to run the resulting executable')
 	}
 	//v.files << v.v_files_from_dir(filepath.join(v.pref.vlib_path,'builtin','bare'))
-	v.files << v.dir
+	v.files << v.pref.path
 	v.set_module_lookup_paths()
 	mut b := v.new_v2()
 	// move all this logic to v2
-	b.build_x64(v.files, v.out_name)
+	b.build_x64(v.files, v.pref.out_name)
 }
 
 // make v2 from v1
 fn (v &V) new_v2() builder.Builder {
 	mut b := builder.new_builder(v.pref)
 	b = { b|
-		os: v.os,
+		os: v.pref.os,
 		module_path: v_modules_path,
 		compiled_dir: v.compiled_dir,
 		module_search_paths: v.module_lookup_paths
@@ -484,7 +473,7 @@ pub fn (v mut V) generate_main() {
 			// Generate a C `main`, which calls every single test function
 			v.gen_main_start(false)
 			if v.pref.is_stats {
-				cgen.genln('BenchedTests bt = main__start_testing(${test_fn_names.len},tos3("$v.dir"));')
+				cgen.genln('BenchedTests bt = main__start_testing(${test_fn_names.len},tos3("$v.pref.path"));')
 			}
 			for tfname in test_fn_names {
 				if v.pref.is_stats {
@@ -515,7 +504,7 @@ pub fn (v mut V) generate_main() {
 }
 
 pub fn (v mut V) gen_main_start(add_os_args bool) {
-	if v.os == .windows {
+	if v.pref.os == .windows {
 		if 'glfw' in v.table.imports {
 			// GUI application
 			v.cgen.genln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd) { ')
@@ -533,7 +522,7 @@ pub fn (v mut V) gen_main_start(add_os_args bool) {
 	}
 	v.cgen.genln('  init();')
 	if add_os_args && 'os' in v.table.imports {
-		if v.os == .windows {
+		if v.pref.os == .windows {
 			v.cgen.genln('  os__args = os__init_os_args_wide(argc, argv);')
 		} else {
 			v.cgen.genln('  os__args = os__init_os_args(argc, (byteptr*)argv);')
@@ -575,27 +564,27 @@ pub fn (v &V) v_files_from_dir(dir string) []string {
 		if file.ends_with('_test.v') {
 			continue
 		}
-		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && v.os != .windows {
+		if (file.ends_with('_win.v') || file.ends_with('_windows.v')) && v.pref.os != .windows {
 			continue
 		}
-		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && v.os != .linux {
+		if (file.ends_with('_lin.v') || file.ends_with('_linux.v')) && v.pref.os != .linux {
 			continue
 		}
-		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && v.os != .mac {
+		if (file.ends_with('_mac.v') || file.ends_with('_darwin.v')) && v.pref.os != .mac {
 			continue
 		}
-		if file.ends_with('_nix.v') && v.os == .windows {
+		if file.ends_with('_nix.v') && v.pref.os == .windows {
 			continue
 		}
-		if file.ends_with('_js.v') && v.os != .js {
+		if file.ends_with('_js.v') && v.pref.os != .js {
 			continue
 		}
-		if file.ends_with('_c.v') && v.os == .js {
+		if file.ends_with('_c.v') && v.pref.os == .js {
 			continue
 		}
-		if v.compile_defines_all.len > 0 && file.contains('_d_') {
+		if v.pref.compile_defines_all.len > 0 && file.contains('_d_') {
 			mut allowed := false
-			for cdefine in v.compile_defines {
+			for cdefine in v.pref.compile_defines {
 				file_postfix := '_d_${cdefine}.v'
 				if file.ends_with(file_postfix) {
 					allowed = true
@@ -709,7 +698,7 @@ pub fn (v &V) get_builtin_files() []string {
 
 // get user files
 pub fn (v &V) get_user_files() []string {
-	mut dir := v.dir
+	mut dir := v.pref.path
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after
 	// libs, but we dont know	which libs need to be added yet
