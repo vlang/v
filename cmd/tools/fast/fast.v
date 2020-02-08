@@ -11,9 +11,9 @@ import (
 fn main() {
 	exe := os.executable()
 	dir := filepath.dir(exe)
-	vdir := filepath.dir(filepath.dir(dir))
+	vdir := filepath.dir(filepath.dir(filepath.dir(dir)))
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
-		println('fast.html generator needs to be located in `v/tools/fast/`')
+		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
