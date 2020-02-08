@@ -241,7 +241,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn usage() {
-	print('Usage: tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
+	print('Usage: cmd/tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
 Formats the given V source files, and prints their formatted source to stdout.
 Options:
   -c    check if file is already formatted.

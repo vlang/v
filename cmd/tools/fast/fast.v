@@ -40,7 +40,7 @@ fn main() {
 	println('Measuring...')
 	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v')
 	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v')
-	diff3 := measure('$vdir/vprod -x64 $vdir/tools/1mil.v')
+	diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v')
 	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v')
 	//println('Building V took ${diff}ms')
 	commit_date := exec('git log -n1 --pretty="format:%at"')
