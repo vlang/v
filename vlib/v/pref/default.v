@@ -32,14 +32,14 @@ pub fn (p mut Preferences) fill_with_defaults() {
 			base := os.getwd().all_after(os.path_separator)
 			p.out_name = base.trim_space()
 		}
-	}
-	if p.out_name == 'v' && os.is_dir('vlib/compiler') {
-		// Building V? Use v2, since we can't overwrite a running
-		// executable on Windows + the precompiled V is more
-		// optimized.
-		println('Saving the resulting V executable in `./v2`')
-		println('Use `v -o v vlib/cmd/v` if you want to replace current ' + 'V executable.')
-		p.out_name = 'v2'
+		if p.out_name == 'v' && os.is_dir('vlib/compiler') {
+			// Building V? Use v2, since we can't overwrite a running
+			// executable on Windows + the precompiled V is more
+			// optimized.
+			println('Saving the resulting V executable in `./v2`')
+			println('Use `v -o v vlib/cmd/v` if you want to replace current ' + 'V executable.')
+			p.out_name = 'v2'
+		}
 	}
 	if p.os == ._auto {
 		// No OS specifed? Use current system
