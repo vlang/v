@@ -27,6 +27,12 @@ pub fn new_v(args []string) &compiler.V {
 	vlib_path := cmdline.option(args, '-vlib-path', '')
 	vpath := cmdline.option(args, '-vpath', '')
 	target_os := cmdline.option(args, '-os', '')
+	if target_os == 'msvc' {
+		// notice that `-os msvc` became `-cc msvc`
+		println('V error: use the flag `-cc msvc` to build using msvc')
+		os.flush_stdout()
+		exit(1)
+	}
 	mut out_name := cmdline.option(args, '-o', '')
 	mut dir := args.last()
 	if 'run' in args {
@@ -102,7 +108,7 @@ pub fn new_v(args []string) &compiler.V {
 	is_repl := '-repl' in args
 	ccompiler := cmdline.option(args, '-cc', '')
 	mut pref := &pref.Preferences{
-		os: os_from_string(target_os)
+		os: pref.os_from_string(target_os)
 		is_test: is_test
 		is_script: is_script
 		is_so: '-shared' in args
@@ -198,62 +204,6 @@ fn final_target_out_name(out_name string) string {
 		return out_name.replace('/', '\\') + '.exe'
 	}
 	return if out_name.starts_with('/') { out_name } else { './' + out_name }
-}
-
-fn os_from_string(os_str string) pref.OS {
-	match os_str {
-		'linux' {
-			return .linux
-		}
-		'windows' {
-			return .windows
-		}
-		'mac' {
-			return .mac
-		}
-		'macos' {
-			return .mac
-		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
-		'msvc' {
-			// notice that `-os msvc` became `-cc msvc`
-			println('V error: use the flag `-cc msvc` to build using msvc')
-			os.flush_stdout()
-			exit(1)
-		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
-		}
-		'' {
-			return ._auto
-		}
-		else {
-			panic('bad os $os_str')
-		}
-	}
 }
 
 fn parse_defines(defines []string) ([]string,[]string) {

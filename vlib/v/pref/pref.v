@@ -90,3 +90,54 @@ pub mut:
 
 	mod                 string
 }
+
+// Helper function to convert string names to OS enum
+pub fn os_from_string(os_str string) OS {
+	match os_str {
+		'linux' {
+			return .linux
+		}
+		'windows' {
+			return .windows
+		}
+		'mac' {
+			return .mac
+		}
+		'macos' {
+			return .mac
+		}
+		'freebsd' {
+			return .freebsd
+		}
+		'openbsd' {
+			return .openbsd
+		}
+		'netbsd' {
+			return .netbsd
+		}
+		'dragonfly' {
+			return .dragonfly
+		}
+		'js' {
+			return .js
+		}
+		'solaris' {
+			return .solaris
+		}
+		'android' {
+			return .android
+		}
+		'haiku' {
+			return .haiku
+		}
+		'linux_or_macos' {
+			return .linux
+		}
+		'' {
+			return ._auto
+		}
+		else {
+			panic('bad os $os_str')
+		}
+	}
+}

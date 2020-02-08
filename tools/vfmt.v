@@ -8,6 +8,7 @@ import (
 	os.cmdline
 	filepath
 	compiler
+	v.pref
 )
 
 struct FormatOptions {
@@ -36,7 +37,8 @@ const (
 fn main() {
 	toolexe := os.executable()
 	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
-	args := compiler.env_vflags_and_os_args()
+	args := os.args
+	//args := compiler.env_vflags_and_os_args()
 	foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
@@ -134,10 +136,10 @@ fn main() {
 
 fn (foptions &FormatOptions) format_file(file string) {
 	tmpfolder := os.tmpdir()
-	mut compiler_params := []string
+	mut compiler_params := &pref.Preferences{}
 	target_os := file_to_target_os(file)
 	if target_os != '' {
-		compiler_params << ['-os', target_os]
+		compiler_params.os = pref.os_from_string(target_os)
 	}
 	mut cfile := file
 	mut mod_folder_parent := tmpfolder
@@ -158,7 +160,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		}
 		os.write_file(main_program_file, main_program_content)
 		cfile = main_program_file
-		compiler_params << ['-user_mod_path', mod_folder_parent]
+		compiler_params.user_mod_path = mod_folder_parent
 	}
 	if !is_test_file && mod_name == 'main' {
 		// NB: here, file is guaranted to be a main. We do not know however
@@ -166,7 +168,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		// project, like vorum or vid.
 		cfile = get_compile_name_of_potential_v_project(cfile)
 	}
-	compiler_params << cfile
+	compiler_params.path = cfile
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')
@@ -179,6 +181,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('vfmt format_file: compiler_params: $compiler_params')
 		eprintln('-------------------------------------------')
 	}
+	compiler_params.fill_with_defaults()
 	formatted_file_path := foptions.compile_file(file, compiler_params)
 	if use_tmp_main_program {
 		if !foptions.is_debug {
@@ -261,12 +264,12 @@ fn find_working_diff_command() ?string {
 	return error('no working diff command found')
 }
 
-fn (foptions &FormatOptions) compile_file(file string, compiler_params []string) string {
+fn (foptions &FormatOptions) compile_file(file string, compiler_params &pref.Preferences) string {
 	if foptions.is_verbose {
-		eprintln('> new_v_compiler_with_args            file: ' + file)
-		eprintln('> new_v_compiler_with_args compiler_params: ' + compiler_params.join(' '))
+		eprintln('> new_v_compiler_with_args            file: $file')
+		eprintln('> new_v_compiler_with_args compiler_params: $compiler_params')
 	}
-	mut v := compiler.new_v_compiler_with_args(compiler_params)
+	mut v := compiler.new_v(compiler_params)
 	v.v_fmt_file = file
 	if foptions.is_all {
 		v.v_fmt_all = true

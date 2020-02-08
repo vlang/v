@@ -6,6 +6,7 @@ import (
 	strings
 	filepath
 	compiler
+	v.pref
 )
 
 const (
@@ -32,7 +33,11 @@ fn analyze_v_file(file string) {
 	println('$hash  $file  $hash')
 
 	// main work:
-	mut v := compiler.new_v_compiler_with_args([file])
+	mut pref := &pref.Preferences{
+		path: file
+	}
+	pref.fill_with_defaults()
+	mut v := compiler.new_v(pref)
 	v.add_v_files_to_compile()
 	for f in v.files { v.parse(f, .decl) }
 	fi := v.get_file_parser_index( file ) or { panic(err) }
