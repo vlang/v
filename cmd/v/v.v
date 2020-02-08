@@ -25,11 +25,6 @@ fn main() {
 	command, option := get_basic_command_and_option(arg)
 
 	is_verbose := '-verbose' in arg || '--verbose' in arg
-	if is_verbose {
-		eprintln('v    args: $arg')
-		eprintln('v command: $command')
-		eprintln('v options: $option')
-	}
 
 	if '-v' in option || '--version' in option || command == 'version' {
 		// Print the version and exit.
@@ -38,8 +33,18 @@ fn main() {
 		return
 	}
 	if '-h' in option || '--help' in option || command == 'help' {
-		println(help_text)
+		if is_verbose {
+			println(verbose_help_text)
+		} else {
+			println(help_text)
+		}
 		return
+	}
+
+	if is_verbose {
+		eprintln('v    args: $arg')
+		eprintln('v command: $command')
+		eprintln('v options: $option')
 	}
 
 	if command in simple_cmd {
