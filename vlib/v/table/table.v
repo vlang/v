@@ -332,6 +332,7 @@ pub fn (t &Table) known_type(name string) bool {
 
 pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) int {
 	name := map_name(&key_type, &value_type)
+	println('REG MAP: $name')
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -339,7 +340,7 @@ pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) 
 	}
 	// register
 	map_type := Type{
-		parent: &t.types[t.type_idxs['map']]
+		parent: &t.types[map_type_idx]
 		kind: .map
 		name: name
 		info: Map{
@@ -359,7 +360,7 @@ pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int 
 	}
 	// register
 	array_type := Type{
-		parent: &t.types[t.type_idxs['array']]
+		parent: &t.types[array_type_idx]
 		kind: .array
 		name: name
 		info: Array{

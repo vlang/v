@@ -31,11 +31,10 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) table.TypeRef {
 }
 
 pub fn (p mut Parser) parse_map_type(nr_muls int) table.TypeRef {
+	p.next()
 	if p.tok.kind != .lsbr {
-		// check notes in table/atypes.v near map_type_idx
 		return p.table.type_ref(p.table.type_idxs['map'])
 	}
-	p.next()
 	p.check(.lsbr)
 	key_ti := p.parse_type()
 	p.check(.rsbr)
@@ -99,13 +98,14 @@ pub fn (p mut Parser) parse_type() table.TypeRef {
 			return p.parse_multi_return_ti()
 		}
 		else {
+			// no defer
+			if name == 'map' {
+				return p.parse_map_type(nr_muls)
+			}
 			defer {
 				p.next()
 			}
 			match name {
-				'map' {
-					return p.parse_map_type(nr_muls)
-				}
 				'voidptr' {
 					return p.table.type_ref_ptr(table.voidptr_type_idx, nr_muls)
 				}

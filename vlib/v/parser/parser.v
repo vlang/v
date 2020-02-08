@@ -210,6 +210,7 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.hash()
 		}
 		else {
+			println(' ## $p.tok.lit - $p.tok.str()')
 			p.error('parser: bad top level statement')
 			return ast.Stmt{}
 		}
@@ -458,6 +459,8 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 		p.check(.dot)
 	}
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+		map_type := p.parse_map_type(0)
+		/*
 		p.next()
 		p.check(.lsbr)
 		key_type := p.check_name()
@@ -466,6 +469,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 		}
 		p.check(.rsbr)
 		p.check_name()
+		*/
 		return node,typ
 	}
 	// fn call or type cast
