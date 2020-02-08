@@ -56,6 +56,10 @@ fn (c mut Checker) resolve_expr_types(exprs []ast.Expr) {
 // update any types chich contain unresolved sub types
 fn (c &Checker) complete_types() {
 	for idx, t in c.table.types {
+		// skip builtin types
+		if idx < 20 {
+			continue
+		}
 		// println('Resolve type: $t.name')
 		if t.kind == .array {
 			mut info := t.array_info()
