@@ -80,22 +80,17 @@ pub fn (ts mut TestSession) test() {
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 
-	mut ncpus := runtime.nr_cpus()
+	mut njobs := runtime.nr_jobs()
 	$if msvc {
 		// NB: MSVC can not be launched in parallel, without giving it
 		// the option /FS because it uses a shared PDB file, which should
 		// be locked, but that makes writing slower...
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		// Instead, just run tests on 1 core for now.
-		ncpus = 1
+		njobs = 1
 	}
-	// allow for overrides using `VJOBS=32 ./v test .`
-	vjobs := os.getenv('VJOBS').int()
-	if vjobs > 0 {
-		ncpus = vjobs
-	}
-	ts.waitgroup.add( ncpus )
-	for i:=0; i < ncpus; i++ {
+	ts.waitgroup.add( njobs )
+	for i:=0; i < njobs; i++ {
 		go process_in_thread(ts)
 	}
 	ts.waitgroup.wait()
