@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module table
 
-pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn | Variadic
+pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn
 
 pub struct Type {
 pub:
@@ -47,6 +47,13 @@ pub const (
 	// map_type_idx = 18
 )
 
+pub const (
+	builtin_type_names = [
+		'void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64',
+		'f32' ,'f64', 'string', 'char', 'byte' ,'bool', 'struct', 'array', 'array_fixed', 'map'
+	]
+)
+
 pub enum Kind {
 	placeholder
 	void
@@ -66,14 +73,13 @@ pub enum Kind {
 	char
 	byte
 	bool
-	const_
-	enum_
+	//const_
+	//enum_
 	struct_
 	array
 	array_fixed
 	map
 	multi_return
-	variadic
 	unresolved
 }
 
@@ -371,9 +377,6 @@ pub fn (k Kind) str() string {
 		.multi_return{
 			'multi_return'
 		}
-		.variadic{
-			'variadic'
-		}
 		else {
 			'unknown'}
 	}
@@ -407,6 +410,7 @@ pub mut:
 pub struct Field {
 pub:
 	name string
+mut:
 	typ  TypeRef
 	// type_idx int
 }
@@ -445,11 +449,6 @@ pub:
 	name  string
 mut:
 	types []TypeRef
-}
-
-pub struct Variadic {
-pub:
-	typ TypeRef
 }
 
 [inline]

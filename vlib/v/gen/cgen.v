@@ -72,8 +72,12 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.definitions.write('$it.typ.typ.name ${it.name}(')
 			}
 			for i, arg in it.args {
-				g.write(arg.typ.typ.name + ' ' + arg.name)
-				g.definitions.write(arg.typ.typ.name + ' ' + arg.name)
+				mut arg_type := arg.typ.typ.name
+				if i == it.args.len-1 && it.is_variadic {
+					arg_type = 'variadic_$arg.typ.typ.name'
+				}
+				g.write(arg_type + ' ' + arg.name)
+				g.definitions.write(arg_type + ' ' + arg.name)
 				if i < it.args.len - 1 {
 					g.write(', ')
 					g.definitions.write(', ')

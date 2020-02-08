@@ -27,6 +27,7 @@ pub:
 	name        string
 	args        []Var
 	return_type TypeRef
+	is_variadic bool
 	is_c        bool
 }
 
@@ -279,6 +280,19 @@ pub fn (t &Table) find_type(name string) ?Type {
 	return none
 }
 
+// this will override or register builtin type
+// allows prexisitng types added in register_builtins
+// to be overriden with their real type info
+[inline]
+pub fn (t mut Table) register_builtin_type(typ Type) int {
+	existing_idx := t.type_idxs[typ.name]
+	if existing_idx > 0 {
+		t.types[existing_idx] = typ
+		return existing_idx
+	}
+	return t.register_type(typ)
+}
+
 [inline]
 pub fn (t mut Table) register_type(typ Type) int {
 	existing_idx := t.type_idxs[typ.name]
@@ -399,25 +413,6 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 	return t.register_type(mr_type)
 }
 
-pub fn (t mut Table) find_or_register_variadic(variadic_typ TypeRef) int {
-	name := 'variadic_$variadic_typ.typ.name'
-	// existing
-	existing_idx := t.type_idxs[name]
-	if existing_idx > 0 {
-		return existing_idx
-	}
-	// register
-	variadic_type := Type{
-		parent: 0
-		kind: .variadic
-		name: name
-		info: Variadic{
-			typ: variadic_typ
-		}
-	}
-	return t.register_type(variadic_type)
-}
-
 pub fn (t mut Table) add_placeholder_type(name string) int {
 	ph_type := Type{
 		parent: 0
@@ -431,6 +426,9 @@ pub fn (t mut Table) add_placeholder_type(name string) int {
 pub fn (t &Table) check(got, expected &TypeRef) bool {
 	println('check: $got.typ.name, $expected.typ.name')
 	if expected.typ.kind == .voidptr {
+		return true
+	}
+	if expected.typ.kind in [.voidptr, .byteptr, .charptr] && got.typ.kind == .int {
 		return true
 	}
 	if expected.typ.kind == .byteptr && got.typ.kind == .voidptr {

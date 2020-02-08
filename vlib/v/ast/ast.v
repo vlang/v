@@ -111,12 +111,13 @@ pub:
 
 pub struct FnDecl {
 pub:
-	name     string
-	stmts    []Stmt
-	typ      table.TypeRef
-	args     []Arg
-	is_pub   bool
-	receiver Field
+	name        string
+	stmts       []Stmt
+	typ         table.TypeRef
+	args        []Arg
+	is_pub      bool
+	is_variadic bool
+	receiver    Field
 }
 
 pub struct BranchStmt {
