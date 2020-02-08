@@ -195,16 +195,6 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 			return method.return_type
 		}
 	}
-	/*
-	if typ.typ.kind == .array {
-		a := c.table.find_type('array') or {
-			exit(1)
-		}
-		if method := a.find_method(method_call_expr.name) {
-			return method.return_type
-		}
-	}
-	*/
 	c.error('type `$typ.typ.name` has no method `$method_call_expr.name`', method_call_expr.pos)
 	exit(1)
 }
@@ -220,14 +210,6 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef 
 			}
 			return field.typ
 		}
-		/*
-		.array {
-			if field_name == 'len' {
-				return c.table.type_ref(table.int_type_idx)
-			}
-		}
-		.string {}
-		*/
 		else {
 			// types with parent struct (array/maps) handled here
 			if !isnil(typ.typ.parent) && typ.typ.parent.kind == .struct_ {
