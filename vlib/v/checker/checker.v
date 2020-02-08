@@ -57,7 +57,7 @@ fn (c mut Checker) resolve_expr_types(exprs []ast.Expr) {
 fn (c &Checker) complete_types() {
 	for idx, t in c.table.types {
 		// skip builtin types
-		if idx < 20 {
+		if idx <= table.map_type_idx {
 			continue
 		}
 		// println('Resolve type: $t.name')
@@ -206,29 +206,25 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef {
 	typ := c.expr(selector_expr.expr)
 	field_name := selector_expr.field
-	match typ.typ.kind {
-		.struct_ {
-			field := c.table.struct_find_field(typ.typ, field_name) or {
-				c.error('unknown field `${typ.typ.name}.$field_name`', selector_expr.pos)
-				exit(0)
+	if field := typ.typ.find_field(field_name) {
+		return field.typ
+	}
+	// types with parent struct (array/maps) handled here
+	if !isnil(typ.typ.parent) {
+		if field := typ.typ.parent.find_field(field_name) {
+			if field.typ.typ.kind == .unresolved {
+				return c.resolved[field.typ.idx]
 			}
 			return field.typ
 		}
-		else {
-			// types with parent struct (array/maps) handled here
-			if !isnil(typ.typ.parent) && typ.typ.parent.kind == .struct_ {
-				parent := typ.typ.parent
-				if field := c.table.struct_find_field(parent, field_name) {
-					if field.typ.typ.kind == .unresolved {
-						return c.resolved[field.typ.idx]
-					}
-					return field.typ
-				}
-			}
-			c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
-		}
 	}
-	return c.table.type_ref(table.void_type_idx)
+	if typ.typ.kind != .struct_ {
+		c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
+	}
+	else {
+		c.error('unknown field `${typ.typ.name}.$field_name`', selector_expr.pos)
+	}
+	exit(0)
 }
 
 // TODO: non deferred

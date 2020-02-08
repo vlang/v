@@ -37,7 +37,7 @@ pub fn (p mut Parser) parse_map_type(nr_muls int) table.TypeRef {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	if key_type.typ.name != 'string' {
+	if key_type.typ.kind != .string {
 		p.error('maps can only have string keys for now')
 	}
 	p.check(.rsbr)

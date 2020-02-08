@@ -202,6 +202,11 @@ pub fn (t &Table) register_method(typ &Type, new_fn Fn) bool {
 	return true
 }
 
+pub fn (t mut Table) new_tmp_var() string {
+	t.tmp_cnt++
+	return 'tmp$t.tmp_cnt'
+}
+
 pub fn (t &Type) has_method(name string) bool {
 	t.find_method(name) or {
 		return false
@@ -218,9 +223,26 @@ pub fn (t &Type) find_method(name string) ?Fn {
 	return none
 }
 
-pub fn (t mut Table) new_tmp_var() string {
-	t.tmp_cnt++
-	return 'tmp$t.tmp_cnt'
+
+pub fn (s &Type) has_field(name string) bool {
+	s.find_field(name) or {
+		return false
+	}
+	return true
+}
+
+pub fn (s &Type) find_field(name string) ?Field {
+	match s.info {
+		Struct {
+		    for field in it.fields {
+				if field.name == name {
+					return field
+				}
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 pub fn (t &Table) struct_has_field(s &Type, name string) bool {
@@ -230,9 +252,6 @@ pub fn (t &Table) struct_has_field(s &Type, name string) bool {
 	else {
 		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=none')
 	}
-	// for typ in t.types {
-	// println('$typ.idx $typ.name')
-	// }
 	if _ := t.struct_find_field(s, name) {
 		return true
 	}
@@ -246,21 +265,13 @@ pub fn (t &Table) struct_find_field(s &Type, name string) ?Field {
 	else {
 		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=none')
 	}
-	info := s.info as Struct
-	for field in info.fields {
-		if field.name == name {
-			return field
-		}
+	if field := s.find_field(name) {
+		return field
 	}
 	if !isnil(s.parent) {
-		if s.parent.kind == .struct_ {
-			parent_info := s.parent.info as Struct
+		if field := s.parent.find_field(name) {
 			println('got parent $s.parent.name')
-			for field in parent_info.fields {
-				if field.name == name {
-					return field
-				}
-			}
+			return field
 		}
 	}
 	return none
@@ -287,7 +298,10 @@ pub fn (t &Table) find_type(name string) ?Type {
 pub fn (t mut Table) register_builtin_type(typ Type) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
-		t.types[existing_idx] = typ
+		if existing_idx >= string_type_idx {
+			existing_type := t.types[existing_idx]
+			t.types[existing_idx] = { typ | kind: existing_type.kind }
+		}
 		return existing_idx
 	}
 	return t.register_type(typ)

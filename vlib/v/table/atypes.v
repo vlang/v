@@ -23,6 +23,7 @@ pub:
 }
 
 pub const (
+	// primitive types
 	void_type_idx = 1
 	voidptr_type_idx = 2
 	charptr_type_idx = 3
@@ -36,10 +37,11 @@ pub const (
 	u64_type_idx = 11
 	f32_type_idx = 12
 	f64_type_idx = 13
-	string_type_idx = 14
-	char_type_idx = 15
-	byte_type_idx = 16
-	bool_type_idx = 17
+	bool_type_idx = 14
+	// advanced / defined from v structs
+	string_type_idx = 15
+	char_type_idx = 16
+	byte_type_idx = 17
 	array_type_idx = 18
 	map_type_idx = 19
 )
@@ -249,6 +251,11 @@ pub fn (t mut Table) register_builtin_types() {
 	})
 	t.register_type(Type{
 		parent: 0
+		kind: .bool
+		name: 'bool'
+	})
+	t.register_type(Type{
+		parent: 0
 		kind: .string
 		name: 'string'
 	})
@@ -261,11 +268,6 @@ pub fn (t mut Table) register_builtin_types() {
 		parent: 0
 		kind: .byte
 		name: 'byte'
-	})
-	t.register_type(Type{
-		parent: 0
-		kind: .bool
-		name: 'bool'
 	})
 	t.register_type(Type{
 		parent: 0
