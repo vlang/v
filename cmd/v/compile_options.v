@@ -11,6 +11,9 @@ import (
 	v.pref
 )
 
+//TODO Cleanup this file. This file ended up like a dump for functions that do not belong in `compiler`.
+//Maybe restructure the functions below into different V files
+
 pub fn new_v(args []string) &compiler.V {
 	// Create modules dirs if they are missing
 	if !os.is_dir(compiler.v_modules_path) {

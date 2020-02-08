@@ -37,8 +37,7 @@ const (
 fn main() {
 	toolexe := os.executable()
 	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
-	args := os.args
-	//args := compiler.env_vflags_and_os_args()
+	args := resolve_flags_and_argument()
 	foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
@@ -362,4 +361,29 @@ fn get_compile_name_of_potential_v_project(file string) string {
 		}
 	}
 	return pfolder
+}
+
+//TODO Move resolve_flags_and_argument() and non_empty() into `cmd/internal` when v.mod work correctly
+//to prevent code duplication with `cmd/v` (cmd/v/flag.v)
+fn resolve_flags_and_argument() []string {
+	vosargs := os.getenv('VOSARGS')
+	if vosargs != '' {
+		return non_empty(vosargs.split(' '))
+	}
+
+	mut args := []string
+	vflags := os.getenv('VFLAGS')
+	if vflags != '' {
+		args << os.args[0]
+		args << vflags.split(' ')
+		if os.args.len > 1 {
+			args << os.args[1..]
+		}
+		return non_empty(args)
+	}
+
+	return non_empty(os.args)
+}
+fn non_empty(arg []string) []string {
+	return arg.filter(it != '')
 }

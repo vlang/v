@@ -272,7 +272,7 @@ fn (g mut CGen) add_to_main(s string) {
 	g.fn_main = g.fn_main + s
 }
 
-fn (v V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
+fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
 	if os.exists(obj_path) {
 		return

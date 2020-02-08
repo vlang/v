@@ -4,6 +4,7 @@
 module main
 
 import (
+	compiler
 	filepath
 	os
 )
@@ -11,6 +12,7 @@ import (
 fn launch_tool(is_verbose bool, tname string, cmdname string) {
 	vexe := vexe_path()
 	vroot := filepath.dir(vexe)
+	compiler.set_vroot_folder(vroot)
 
 	mut tname_index := os.args.index(cmdname)
 	if tname_index == -1 {
