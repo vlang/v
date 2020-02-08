@@ -23,6 +23,7 @@ pub:
 }
 
 pub const (
+	// primitive types
 	void_type_idx = 1
 	voidptr_type_idx = 2
 	charptr_type_idx = 3
@@ -36,15 +37,13 @@ pub const (
 	u64_type_idx = 11
 	f32_type_idx = 12
 	f64_type_idx = 13
-	string_type_idx = 14
-	char_type_idx = 15
-	byte_type_idx = 16
-	bool_type_idx = 17
-	// currently map is parsed from builtin as a normal struct named `map`
-	// any maps after that are of type map with parent being the struct named `map`
-	// same goes for array. this works since builtin is parsed first.
-	// will probably go back to registering these types manually and add idx here
-	// map_type_idx = 18
+	bool_type_idx = 14
+	// advanced / defined from v structs
+	string_type_idx = 15
+	char_type_idx = 16
+	byte_type_idx = 17
+	array_type_idx = 18
+	map_type_idx = 19
 )
 
 pub const (
@@ -102,7 +101,7 @@ pub fn(t &Type) array_info() Array {
 			return it
 		}
 		else {
-			panic('Type.mr_info(): no array info')
+			panic('Type.array_info(): no array info')
 		}
 	}
 }
@@ -114,7 +113,7 @@ pub fn(t &Type) array_fixed_info() ArrayFixed {
 			return it
 		}
 		else {
-			panic('Type.mr_info(): no array fixed info')
+			panic('Type.array_fixed(): no array fixed info')
 		}
 	}
 }
@@ -126,7 +125,7 @@ pub fn(t &Type) map_info() Map {
 			return it
 		}
 		else {
-			panic('Type.mr_info(): no map info')
+			panic('Type.map_info(): no map info')
 		}
 	}
 }
@@ -252,6 +251,11 @@ pub fn (t mut Table) register_builtin_types() {
 	})
 	t.register_type(Type{
 		parent: 0
+		kind: .bool
+		name: 'bool'
+	})
+	t.register_type(Type{
+		parent: 0
 		kind: .string
 		name: 'string'
 	})
@@ -267,13 +271,13 @@ pub fn (t mut Table) register_builtin_types() {
 	})
 	t.register_type(Type{
 		parent: 0
-		kind: .bool
-		name: 'bool'
+		kind: .array
+		name: 'array'
 	})
 	t.register_type(Type{
 		parent: 0
-		kind: .unresolved
-		name: 'unresolved'
+		kind: .map
+		name: 'map'
 	})
 }
 
