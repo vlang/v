@@ -1239,12 +1239,16 @@ fn main() {
 }
 ```
 
-Add `#flag` directives to the top of your V files to provide C compilation flags like `-l` for
-linking, `-I` for adding include files locations, `-D` for setting compile time variables, etc.
+Add `#flag` directives to the top of your V files to provide C compilation flags like:
++ `-I` for adding C include files search paths
++ `-l` for adding C library names that you want to get linked
++ `-L` for adding C library files search paths
++ `-D` for setting compile time variables
 
-You can use different flags for different targets. Right now, `linux`, `darwin` , and `windows` are supported.
 
-For now you have to use one flag per line:
+You can use different flags for different targets. Right now, `linux`, `darwin` , `freebsd`, and `windows` are supported.
+
+NB: For now you have to use one flag per line:
 
 ```v
 #flag linux -lsdl2
@@ -1254,19 +1258,52 @@ For now you have to use one flag per line:
 #flag linux -DIMGUI_IMPL_API=
 ```
 
-C strings can be converted to V strings with `string(cstring)` or `string(cstring, len)`.
+You can also add C code, in your V module. For example, lets say that your C code is located in a folder named 'c' inside your module folder. Then:
 
-V uses `voidptr` for C's `void*` and `byteptr` for C's `byte*` or `char*`.
+```v
+#flag @VMODULE/c/implementation.o
+```
+... will make V look for an compiled .o file in your module folder/c/implementation.o . 
+If V finds it, the .o file will get linked to the main executable, that used the module.
+If it does not find it, V assumes that there is a `@VMODULE/c/implementation.c` file, 
+and tries to compile it to a .o file, then will use that.
+This allows you to have C code, that is contained in a V module, so that its distribution is easier.
+You can see a complete example here:
+[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)
+
+You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler. 
+For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+Ordinary zero terminated C strings can be converted to V strings with `string(cstring)` or `string(cstring, len)`.
+
+NB: `string/1` and `string/2` do NOT create a copy of the `cstring`, so you should NOT free it after calling `string()`. If you need to make a copy of the C string (some libc APIs like `getenv/1` pretty much require that, since they
+return pointers to internal libc memory), you can use: `cstring_to_vstring(cstring)`
+
+On Windows, C APIs often return so called `wide` strings (utf16 encoding). 
+These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
+
+V has these types for easier interoperability with C:
+
++ `voidptr` for C's `void*`,
++ `byteptr` for C's `byte*` and 
++ `charptr` for C's `char*`.
++ `&charptr` for C's `char**`
 
 To cast `voidptr` to V references use `user := &User(user_void_ptr)`.
 
 `voidptr` can also be dereferenced to V structs by casting: `user := User(user_void_ptr)`.
 
-Check out socket.v for an example of calling C code from V:
-[https://github.com/vlang/v/blob/master/vlib/net/socket.v](https://github.com/vlang/v/blob/master/vlib/net/socket.v)
+Check out [socket.v for an example of calling C code from V](https://github.com/vlang/v/blob/master/vlib/net/socket.v) .
 
-To debug issues with the C code, `v -show_c_cmd .` is useful. It prints the
-C command that is used to build the program.
+To debug issues with the generated C code, you can pass these flags:
++ `-cg` - produces a less optimized executable with more debug information in it.
++ `-keep_c` - keep the generated C file, so your debugger can also use it.
++ `-pretty_c` - run clang-format over the generated C file, so it looks nicer and is easier to read.
++ `-show_c_cmd` - prints the C command that is used to build the program.
+
+For best debugging experience, you can pass all of them at the same time: `v -cg -keep_c -pretty_c -show_c_cmd yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.
+
+If you just want to inspect the generated C code, without compiling it further, you can also use: `-o file.c`. This will make V produce the `file.c` then stop.
 
 ## Compile time if
 
