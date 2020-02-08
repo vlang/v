@@ -197,7 +197,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
-	eheader('v compiler args: "$vargs"')
+	eprintln('v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
 	mut mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
@@ -232,7 +232,7 @@ pub fn build_v_cmd_failed(cmd string) bool {
 
 pub fn building_any_v_binaries_failed() bool {
 	eheader('Building V binaries...')
-	eheader('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
+	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := testing.vexe_path()
 	parent_dir := filepath.dir(vexe)
 	testing.vlib_should_be_present(parent_dir)
