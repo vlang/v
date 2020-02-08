@@ -17,7 +17,7 @@ Speed Test: [fast.vlang.io](https://fast.vlang.io/) (monitors compilation speed 
 
 Twitter: [twitter.com/v_language](https://twitter.com/v_language)
 
-Discord (primary community): [discord.gg/n7c74HM](https://discord.gg/n7c74HM)
+Discord (primary community): [discord.gg/vlang](https://discord.gg/vlang)
 
 Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
 
