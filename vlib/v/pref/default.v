@@ -24,18 +24,11 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		p.vpath = default_module_path
 	}
 	if p.out_name == ''{
-		if p.path.ends_with('.v') && p.path != '.v' {
-			p.out_name = p.path[..p.path.len - 2]
-		}
-		if p.path.ends_with('.vsh') && p.path != '.vsh' {
-			p.out_name = p.path[..p.path.len - 4]
-		}
-		// if we are in `/foo` and run `v .`, the executable should be `foo`
-		if p.path == '.' && p.out_name == '' {
-			base := os.getwd().all_after(os.path_separator)
-			p.out_name = base.trim_space()
-		}
-		if p.out_name == 'v' && os.is_dir('vlib/compiler') {
+		rpath := os.realpath(p.path)
+		base := filepath.filename(rpath)
+		p.out_name = base.trim_space().all_before('.')
+
+		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
 			// executable on Windows + the precompiled V is more
 			// optimized.
