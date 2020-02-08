@@ -204,13 +204,6 @@ fn find_c_compiler_thirdparty_options(args []string) string {
 	return cflags.join(' ')
 }
 
-fn final_target_out_name(out_name string) string {
-	$if windows {
-		return out_name.replace('/', '\\') + '.exe'
-	}
-	return if out_name.starts_with('/') { out_name } else { './' + out_name }
-}
-
 fn parse_defines(defines []string) ([]string,[]string) {
 	// '-d abc -d xyz=1 -d qwe=0' should produce:
 	// compile_defines:      ['abc','xyz']
