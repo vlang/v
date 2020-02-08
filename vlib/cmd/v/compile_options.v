@@ -8,7 +8,6 @@ import (
 	filepath
 	os
 	os.cmdline
-	strings
 	v.pref
 )
 
@@ -28,8 +27,6 @@ pub fn new_v(args []string) &compiler.V {
 	vroot := filepath.dir(vexe_path())
 	vlib_path := cmdline.option(args, '-vlib-path', filepath.join(vroot,'vlib'))
 	vpath := cmdline.option(args, '-vpath', compiler.v_modules_path)
-	mut vgen_buf := strings.new_builder(1000)
-	vgen_buf.writeln('module vgen\nimport strings')
 	target_os := cmdline.option(args, '-os', '')
 	mut out_name := cmdline.option(args, '-o', 'a.out')
 	mut dir := args.last()
@@ -157,7 +154,6 @@ pub fn new_v(args []string) &compiler.V {
 		println('(os.executable=${os.executable()} vlib_path=$vlib_path vexe_path=${vexe_path()}')
 		exit(1)
 	}
-	mut out_name_c := get_vtmp_filename(out_name, '.tmp.c')
 	cflags := cmdline.many_values(args, '-cflags').join(' ')
 
 	defines := cmdline.many_values(args, '-d')
@@ -170,7 +166,6 @@ pub fn new_v(args []string) &compiler.V {
 		os.flush_stdout()
 		exit(1)
 	}
-	obfuscate := '-obf' in args
 	is_repl := '-repl' in args
 	pref := &pref.Preferences{
 		os: _os
@@ -186,7 +181,7 @@ pub fn new_v(args []string) &compiler.V {
 		is_pretty_c: '-pretty_c' in args
 		is_cache: '-cache' in args
 		is_stats: '-stats' in args
-		obfuscate: obfuscate
+		obfuscate: '-obf' in args
 		is_prof: '-prof' in args
 		is_live: '-live' in args
 		sanitize: '-sanitize' in args
@@ -219,12 +214,10 @@ pub fn new_v(args []string) &compiler.V {
 		path: dir
 		compile_defines: compile_defines
 		compile_defines_all: compile_defines_all
+		mod: mod
 	}
 	if pref.is_verbose || pref.is_debug {
 		println('C compiler=$pref.ccompiler')
-	}
-	if pref.is_so {
-		out_name_c = get_vtmp_filename(out_name, '.tmp.so.c')
 	}
 	$if !linux {
 		if pref.is_bare && !out_name.ends_with('.c') {
@@ -233,16 +226,7 @@ pub fn new_v(args []string) &compiler.V {
 			exit(1)
 		}
 	}
-	return &compiler.V{
-		compiled_dir: if os.is_dir(rdir) { rdir } else { filepath.dir(rdir) }
-		table: compiler.new_table(obfuscate)
-		out_name_c: out_name_c
-		cgen: compiler.new_cgen(out_name_c)
-		//x64: x64.new_gen(out_name)
-		pref: pref
-		mod: mod
-		vgen_buf: vgen_buf
-	}
+	return compiler.new_v(pref)
 }
 
 fn find_c_compiler(args []string) string {

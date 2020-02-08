@@ -86,4 +86,6 @@ pub mut:
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
+
+	mod                 string
 }

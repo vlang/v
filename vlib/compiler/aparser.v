@@ -443,7 +443,7 @@ fn (p mut Parser) parse(pass Pass) {
 	//
 	p.fgen_nl()
 	p.cgen.nogen = false
-	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
+	if p.pref.build_mode == .build_module && p.mod != p.v.pref.mod {
 		// println('skipping $p.mod (v.mod = $p.v.mod)')
 		p.cgen.nogen = true
 		// defer { p.cgen.nogen = false }
@@ -453,7 +453,7 @@ fn (p mut Parser) parse(pass Pass) {
 	p.can_chash = p.mod in ['gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
-	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
+	fq_mod := if p.pref.build_mode == .build_module && p.v.pref.mod.ends_with(p.mod) { p.v.pref.mod }
 	// fully qualify the module name, eg base64 to encoding.base64
 	else { p.table.qualify_module(p.mod, p.file_path) }
 	p.table.register_module(fq_mod)
