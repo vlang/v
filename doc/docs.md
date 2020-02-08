@@ -828,8 +828,6 @@ pub fn say_hi() {
 
 You can have as many .v files in `mymodule/` as you want.
 
-Build it with `v build module ~/code/modules/mymodule`.
-
 That's it, you can now use it in your code:
 
 ```v
@@ -1067,12 +1065,17 @@ fn test_hello() {
 }
 ```
 
+`assert` keyword can be used outside of tests as well.
+
 All test functions have to be placed in `*_test.v` files and begin with `test_`.
 
-To run the tests do `v hello_test.v`. To test an entire module, do
-`v test mymodule`.
+To run the tests do `v hello_test.v`. 
 
-`assert` keyword can be used outside of tests as well.
+To test an entire module, do `v test mymodule`. 
+
+You can also do `v test .` to test everything inside your curent folder (and underneath it).
+
+You can pass `-stats` to v test, to see more details about the individual tests in each _test.v file.
 
 ## Memory management
 
