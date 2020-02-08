@@ -126,8 +126,8 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	vversion := scripting.run('$cdir/v --version')
     vcommit := scripting.run('git rev-parse --short  --verify HEAD') 
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
-	if vgit_context.vvlocation == 'vlib/cmd/v' {
-		println('Source lines of the compiler: ' + scripting.run('wc vlib/cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
+	if vgit_context.vvlocation == 'cmd/v' {
+		println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
 	} else if vgit_context.vvlocation == 'v.v' {
 		println('Source lines of the compiler: ' + scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
 	}else{
@@ -140,13 +140,13 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	println('Compare v performance when doing the following commands ($label):')
 	mut source_location_a := ''
 	mut source_location_b := ''
-	if os.exists('$c.a/vlib/cmd/v') {
-		source_location_a = 'vlib/cmd/v'
+	if os.exists('$c.a/cmd/v') {
+		source_location_a = 'cmd/v'
 	} else {
 		source_location_a = if os.exists('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
-	if os.exists('$c.b/vlib/cmd/v') {
-		source_location_b = 'vlib/cmd/v'
+	if os.exists('$c.b/cmd/v') {
+		source_location_b = 'cmd/v'
 	} else {
 		source_location_b = if os.exists('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
