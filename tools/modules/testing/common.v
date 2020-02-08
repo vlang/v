@@ -88,7 +88,12 @@ pub fn (ts mut TestSession) test() {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		// Instead, just run tests on 1 core for now.
 		ncpus = 1
-	}	
+	}
+	// allow for overrides using `VJOBS=32 ./v test .`
+	vjobs := os.getenv('VJOBS').int()
+	if vjobs > 0 {
+		ncpus = vjobs
+	}
 	ts.waitgroup.add( ncpus )
 	for i:=0; i < ncpus; i++ {
 		go process_in_thread(ts)
