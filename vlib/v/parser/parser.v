@@ -1060,7 +1060,6 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
-	println('REG FN: $name - $p.mod')
 	t := table.Type{
 		parent: 0
 		kind: .struct_
