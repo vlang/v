@@ -1247,7 +1247,8 @@ fn main() {
 }
 ```
 
-- Add `#flag` directives to the top of your V files to provide C compilation flags like:
+Add `#flag` directives to the top of your V files to provide C compilation flags like:
+
 - `-I` for adding C include files search paths
 - `-l` for adding C library names that you want to get linked
 - `-L` for adding C library files search paths
@@ -1292,19 +1293,21 @@ return pointers to internal libc memory), you can use: `cstring_to_vstring(cstri
 On Windows, C APIs often return so called `wide` strings (utf16 encoding).
 These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 
-- V has these types for easier interoperability with C:
+V has these types for easier interoperability with C:
+
 - `voidptr` for C's `void*`,
 - `byteptr` for C's `byte*` and
 - `charptr` for C's `char*`.
 - `&charptr` for C's `char**`
 
-To cast `voidptr` to V references use `user := &User(user_void_ptr)`.
+To cast `voidptr` to V references, use `user := &User(user_void_ptr)`.
 
 `voidptr` can also be dereferenced to V structs by casting: `user := User(user_void_ptr)`.
 
 Check out [socket.v for an example of calling C code from V](https://github.com/vlang/v/blob/master/vlib/net/socket.v) .
 
-- To debug issues with the generated C code, you can pass these flags:
+To debug issues with the generated C code, you can pass these flags:
+
 - `-cg` - produces a less optimized executable with more debug information in it.
 - `-keep_c` - keep the generated C file, so your debugger can also use it.
 - `-pretty_c` - run clang-format over the generated C file, so it looks nicer and is easier to read.
@@ -1405,12 +1408,9 @@ in order to improve readability:
 
 To improve safety and maintainability, operator overloading has several limitations:
 
--It's only possible to overload `+, -, *, /` operators.
-
+- It's only possible to overload `+, -, *, /` operators.
 - Calling other functions inside operator functions is not allowed.
-
 - Operator functions can't modify their arguments.
-
 - Both arguments must have the same type (just like with all operators in V).
 
 ## Inline assembly
@@ -1469,9 +1469,7 @@ If you have well-written, well-tested C code, then of course you can always simp
 Translating it to V gives you several advantages:
 
 - If you plan to develop that code base, you now have everything in one language, which is much safer and easier to develop in than C.
-
 - Cross-compilation becomes a lot easier. You don't have to worry about it at all.
-
 - No more build flags and include files either.
 
 ## Hot code reloading
