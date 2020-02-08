@@ -460,16 +460,6 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	}
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type(0)
-		/*
-		p.next()
-		p.check(.lsbr)
-		key_type := p.check_name()
-		if key_type != 'string' {
-			p.error('maps can only have string keys for now')
-		}
-		p.check(.rsbr)
-		p.check_name()
-		*/
 		return node,typ
 	}
 	// fn call or type cast
