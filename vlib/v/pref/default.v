@@ -38,7 +38,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 		// executable on Windows + the precompiled V is more
 		// optimized.
 		println('Saving the resulting V executable in `./v2`')
-		println('Use `v -o v v.v` if you want to replace current ' + 'V executable.')
+		println('Use `v -o v vlib/cmd/v` if you want to replace current ' + 'V executable.')
 		p.out_name = 'v2'
 	}
 	if p.os == ._auto {

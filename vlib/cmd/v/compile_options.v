@@ -39,6 +39,11 @@ pub fn new_v(args []string) &compiler.V {
 		args_after_run := cmdline.only_non_options( cmdline.after(args,['run']) )
 		dir = if args_after_run.len>0 { args_after_run[0] } else { '' }
 	}
+	if dir == 'v.v' {
+		println('looks like you are trying to build V with an old command')
+		println('use `v -o v vlib/cmd/v` instead of `v -o v v.v`')
+		exit(1)
+	}
 	if dir.ends_with(os.path_separator) {
 		dir = dir.all_before_last(os.path_separator)
 	}
@@ -142,7 +147,7 @@ pub fn new_v(args []string) &compiler.V {
 		build_mode: build_mode
 		cflags: cflags
 		ccompiler: ccompiler
-		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || rdir_name == 'vfmt.v' || dir.contains('vlib'))
+		building_v: !is_repl && (rdir_name == 'compiler' || rdir_name == 'v.v' || rdir_name == 'vfmt.v' || rdir_name == 'vlib/cmd/v' || dir.contains('vlib'))
 		// is_fmt: comptime_define == 'vfmt'
 
 		user_mod_path: user_mod_path

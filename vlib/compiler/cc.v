@@ -58,7 +58,7 @@ fn (v mut V) cc() {
 					println('V.js compiler not found, building...')
 					// Build V.js. Specifying `-os js` makes V include
 					// only _js.v files and ignore _c.v files.
-					ret := os.system('$vexe -o $vjs_path -os js $vdir/v.v')
+					ret := os.system('$vexe -o $vjs_path -os js $vdir/vlib/cmd/v')
 					if ret == 0 {
 						println('Done.')
 					}

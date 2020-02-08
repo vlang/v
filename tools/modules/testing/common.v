@@ -238,11 +238,11 @@ pub fn building_any_v_binaries_failed() bool {
 	testing.vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
 	mut failed := false
-	v_build_commands := ['$vexe -o v_g             -g  v.v',
-	'$vexe -o v_prod_g  -prod -g  v.v',
-	'$vexe -o v_cg            -cg v.v',
-	'$vexe -o v_prod_cg -prod -cg v.v',
-	'$vexe -o v_prod    -prod     v.v',
+	v_build_commands := ['$vexe -o v_g             -g  vlib/cmd/v',
+	'$vexe -o v_prod_g  -prod -g  vlib/cmd/v',
+	'$vexe -o v_cg            -cg vlib/cmd/v',
+	'$vexe -o v_prod_cg -prod -cg vlib/cmd/v',
+	'$vexe -o v_prod    -prod     vlib/cmd/v',
 	]
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {

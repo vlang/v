@@ -36,10 +36,10 @@ fn main() {
 	}
 	// Build an optimized V
 	println('Building vprod...')
-	exec('v -o $vdir/vprod -prod $vdir/v.v')
+	exec('v -o $vdir/vprod -prod $vdir/vlib/cmd/v')
 	println('Measuring...')
-	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/v.v')
-	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/v.v')
+	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/vlib/cmd/v')
+	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/vlib/cmd/v')
 	diff3 := measure('$vdir/vprod -x64 $vdir/tools/1mil.v')
 	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v')
 	//println('Building V took ${diff}ms')
