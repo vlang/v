@@ -62,13 +62,6 @@ pub fn (p mut Parser) parse_multi_return_ti() table.TypeRef {
 	return p.table.type_ref(idx)
 }
 
-pub fn (p mut Parser) parse_variadic_ti() table.TypeRef {
-	p.check(.ellipsis)
-	variadic_type := p.parse_type()
-	idx := p.table.find_or_register_variadic(variadic_type)
-	return p.table.type_ref(idx)
-}
-
 pub fn (p mut Parser) parse_fn_type() table.TypeRef {
 	// p.check(.key_fn)
 	p.fn_decl()
@@ -104,13 +97,6 @@ pub fn (p mut Parser) parse_type() table.TypeRef {
 				p.error('parse_ti: unexpected `&` before multiple returns')
 			}
 			return p.parse_multi_return_ti()
-		}
-		// variadic
-		.ellipsis {
-			if nr_muls > 0 {
-				p.error('parse_ti: unexpected `&` before variadic')
-			}
-			return p.parse_variadic_ti()
 		}
 		else {
 			defer {

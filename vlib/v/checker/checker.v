@@ -28,7 +28,7 @@ pub fn (c mut Checker) check(ast_file ast.File) {
 	// if ast_file.unresolved.len != c.resolved.len {
 	// c.resolve_exprs(file)
 	// }
-	c.complete_types(ast_file)
+	c.complete_types()
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
@@ -39,7 +39,7 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 	// files this muse be done first. TODO: optimize
 	for file in ast_files {
 		c.file_name = file.path
-		c.resolve_expr_types(file)
+		c.resolve_expr_types(file.unresolved)
 	}
 	for file in ast_files {
 		c.check(file)
@@ -47,14 +47,14 @@ pub fn (c mut Checker) check_files(ast_files []ast.File) {
 }
 
 // resolve type of unresolved expressions
-fn (c mut Checker) resolve_expr_types(f ast.File) {
-	for x in f.unresolved {
+fn (c mut Checker) resolve_expr_types(exprs []ast.Expr) {
+	for x in exprs {
 		c.resolved << c.expr(x)
 	}
 }
 
 // update any types chich contain unresolved sub types
-fn (c &Checker) complete_types(f ast.File) {
+fn (c &Checker) complete_types() {
 	for idx, t in c.table.types {
 		// println('Resolve type: $t.name')
 		if t.kind == .array {
@@ -160,12 +160,23 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
 				c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
 			}
 		}
+		// for debugging
+		if f.name == 'backtrace_symbols_fd' {
+			println('ARGS FOR: backtrace_symbols_fd:')
+			for i, arg_expr in  call_expr.args {
+				typ := c.expr(arg_expr)
+				println(' -- $i - $typ.typ.name')
+			}
+		}
+		// TODO: variadic
+		if fn_name != 'printf' && f.args.len > 0 {
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
 			typ := c.expr(arg_expr)
 			if !c.table.check(&typ, &arg.typ) {
 				c.error('!cannot use type `$typ.typ.name` as type `$arg.typ.typ.name` in argument to `$fn_name`', call_expr.pos)
 			}
+		}
 		}
 		return f.return_type
 	}
@@ -178,6 +189,13 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 	if method := typ.typ.find_method(method_call_expr.name) {
 		return method.return_type
 	}
+	// check parent
+	if !isnil(typ.typ.parent) {
+		if method := typ.typ.parent.find_method(method_call_expr.name) {
+			return method.return_type
+		}
+	}
+	/*
 	if typ.typ.kind == .array {
 		a := c.table.find_type('array') or {
 			exit(1)
@@ -186,6 +204,7 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 			return method.return_type
 		}
 	}
+	*/
 	c.error('type `$typ.typ.name` has no method `$method_call_expr.name`', method_call_expr.pos)
 	exit(1)
 }
@@ -201,13 +220,25 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef 
 			}
 			return field.typ
 		}
+		/*
 		.array {
 			if field_name == 'len' {
 				return c.table.type_ref(table.int_type_idx)
 			}
 		}
 		.string {}
+		*/
 		else {
+			// types with parent struct (array/maps) handled here
+			if !isnil(typ.typ.parent) && typ.typ.parent.kind == .struct_ {
+				parent := typ.typ.parent
+				if field := c.table.struct_find_field(parent, field_name) {
+					if field.typ.typ.kind == .unresolved {
+						return c.resolved[field.typ.idx]
+					}
+					return field.typ
+				}
+			}
 			c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
 		}
 	}
@@ -439,6 +470,8 @@ pub fn (c &Checker) error(s string, pos token.Position) {
 		path = path.replace(workdir, '')
 	}
 	final_msg_line := '$path:$pos.line_nr: checker error: $s'
+	// sometimes eprintln wasnt working?
+	println(final_msg_line)
 	eprintln(final_msg_line)
 	/*
 	if colored_output {

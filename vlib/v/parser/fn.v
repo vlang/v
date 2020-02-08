@@ -18,7 +18,6 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.TypeRef) {
 		name: fn_name
 		args: args
 		// tok: tok
-		
 		pos: tok.position()
 	}
 	if p.tok.kind == .key_orelse {
@@ -93,6 +92,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	}
 	// println('fn decl $name')
 	p.check(.lpar)
+	mut is_variadic := false
 	// Args
 	mut args := []table.Var
 	mut ast_args := []ast.Arg
@@ -102,12 +102,32 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	p.peek_tok.kind == .rpar
 	if types_only {
 		p.warn('types only')
+		mut arg_no := 1
 		for p.tok.kind != .rpar {
-			p.parse_type()
+			arg_name := 'arg_$arg_no'
+			if p.tok.kind == .ellipsis {
+				p.check(.ellipsis)
+				is_variadic = true
+			}
+			arg_type := p.parse_type()
 			if p.tok.kind == .comma {
+				if is_variadic {
+					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
+				}
 				p.next()
 			}
+			arg := table.Var{
+				name: arg_name
+				typ: arg_type
+			}
+			args << arg
+			//p.table.register_var(arg)
+			ast_args << ast.Arg{
+				name: arg_name
+				typ: arg_type
+			}
 		}
+		arg_no++
 	}
 	else {
 		for p.tok.kind != .rpar {
@@ -120,6 +140,10 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			if p.tok.kind == .key_mut {
 				p.check(.key_mut)
 			}
+			if p.tok.kind == .ellipsis {
+				p.check(.ellipsis)
+				is_variadic = true
+			}
 			typ := p.parse_type()
 			for arg_name in arg_names {
 				arg := table.Var{
@@ -129,10 +153,11 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 				args << arg
 				p.table.register_var(arg)
 				ast_args << ast.Arg{
-					typ: typ
 					name: arg_name
+					typ: typ
 				}
-				if typ.typ.kind == .variadic && p.tok.kind == .comma {
+				//if typ.typ.kind == .variadic && p.tok.kind == .comma {
+				if is_variadic && p.tok.kind == .comma {
 					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
 				}
 			}
@@ -167,6 +192,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: name
 			args: args
 			return_type: typ
+			is_variadic: is_variadic
 			is_c: is_c
 		})
 	}
@@ -180,6 +206,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		typ: typ
 		args: ast_args
 		is_pub: is_pub
+		is_variadic: is_variadic
 		receiver: ast.Field{
 			name: rec_name
 			typ: rec_type
