@@ -8,13 +8,13 @@ import (
 const (
 	known_failing_exceptions = ['./examples/vweb/vweb_example.v',
 	'./tools/gen_vc.v',
-  './tools/modules/vgit/vgit.v', // generics
+	'./tools/modules/vgit/vgit.v', // generics
 	'./tools/preludes/live_main.v',
 	'./tools/preludes/live_shared.v',
 	'./tools/preludes/tests_assertions.v',
 	'./tools/preludes/tests_with_stats.v',
-  './tools/performance_compare.v', // generics
-  './tools/oldv.v', // generics
+	'./tools/performance_compare.v', // generics
+	'./tools/oldv.v', // generics
 	'./tutorials/code/blog/article.v',
 	'./tutorials/code/blog/blog.v',
 	'./vlib/arrays/arrays.v',
@@ -45,7 +45,7 @@ fn main() {
 
 fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
-	eprintln('Run "v fmt" over all .v files')
+	testing.eheader('Run "v fmt" over all .v files')
 	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker')
 	vfmt_test_session.files << all_v_files
 	vfmt_test_session.test()

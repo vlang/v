@@ -45,7 +45,7 @@ pub fn main() {
 		println('Unrecognized test file $targ .')
 	}
 
-	println('Testing...')
+	testing.header('Testing...')
 	ts.test()
 
 	println( ts.benchmark.total_message('running V _test.v files') )
