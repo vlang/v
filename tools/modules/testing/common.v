@@ -140,7 +140,7 @@ fn (ts mut TestSession) process_files() {
 		ts.benchmark.step()
 		tls_bench.step()
 		if show_stats {
-			eprintln('-------------------------------------------------')
+			eprintln(term.h_divider('-'))
 			status := os.system(cmd)
 			if status == 0 {
 				ts.benchmark.ok()
@@ -196,8 +196,8 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	parent_dir := filepath.dir(vexe)
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
-	eprintln(main_label)
-	eprintln('   v compiler args: "$vargs"')
+	eheader(main_label)
+	eheader('v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(filepath.join(parent_dir,folder), '.v')
 	mut mains := files.filter(!it.contains('modules') && !it.contains('preludes'))
@@ -231,8 +231,8 @@ pub fn build_v_cmd_failed(cmd string) bool {
 }
 
 pub fn building_any_v_binaries_failed() bool {
-	eprintln('Building V binaries...')
-	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
+	eheader('Building V binaries...')
+	eheader('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := testing.vexe_path()
 	parent_dir := filepath.dir(vexe)
 	testing.vlib_should_be_present(parent_dir)
@@ -261,4 +261,12 @@ pub fn building_any_v_binaries_failed() bool {
 	eprintln(term.h_divider('-'))
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
+}
+
+pub fn eheader(msg string) {
+	eprintln(term.header(msg,'-'))
+}
+
+pub fn header(msg string) {
+	println(term.header(msg,'-'))
 }

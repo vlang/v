@@ -43,7 +43,8 @@ fn v_test_compiler(vargs string) {
 		}
 	}
 	building_tools_failed := testing.v_build_failing(vargs, 'tools')
-	eprintln('\nTesting all _test.v files...')
+	eprintln('')
+	testing.eheader('Testing all _test.v files...')
 	mut compiler_test_session := testing.new_test_session(vargs)
 	compiler_test_session.files << os.walk_ext(parent_dir, '_test.v')
 	compiler_test_session.test()
@@ -54,7 +55,8 @@ fn v_test_compiler(vargs string) {
 	building_live_failed := testing.v_build_failing(vargs + '-live', filepath.join('examples','hot_reload'))
 	eprintln('')
 	v_module_install_cmd := '$vexe install nedpals.args'
-	eprintln('\nInstalling a v module with: $v_module_install_cmd ')
+	eprintln('')
+	testing.eheader('Installing a v module with: $v_module_install_cmd')
 	mut vmark := benchmark.new_benchmark()
 	ret := os.system(v_module_install_cmd)
 	if ret != 0 {
