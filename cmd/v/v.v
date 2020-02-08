@@ -60,6 +60,9 @@ fn main() {
 
 	match command {
 		'', '-' {
+			if arg.len == 1 {
+				println('Running REPL as no arguments are provided. For usage information, use `v help`.')
+			}
 			launch_tool(is_verbose, 'vrepl', '')
 		}
 		'translate' {
