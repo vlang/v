@@ -123,12 +123,12 @@ jobs:
     - name: x64 machine code generation
       run: |
         ./v -o vprod -prod cmd/v
-        cd tools
+        cd cmd/tools
         echo "Generating a 1m line V file..."
-        ../vprod gen1m.v
+        ../../vprod gen1m.v
         ./gen1m > 1m.v
         echo "Building it..."
-        ../vprod -x64 -o 1m 1m.v
+        ../../vprod -x64 -o 1m 1m.v
         echo "Running it..."
         ls
 #        ./1m
