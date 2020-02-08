@@ -71,12 +71,13 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		table: table
 		file_name: path
 		pref: &pref.Preferences{}
-		builtin_mod: true
 	}
 	p.read_first_token()
 	// module decl
 	module_decl := if p.tok.kind == .key_module { p.module_decl() } else { ast.Module{name: 'main'
 	} }
+	p.mod = module_decl.name
+	p.builtin_mod = p.mod == 'builtin'
 	// imports
 	mut imports := []ast.Import
 	for p.tok.kind == .key_import {
@@ -471,7 +472,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	if p.peek_tok.kind == .lpar {
 		name := p.tok.lit
 		// type cast. TODO: finish
-		if name in p.table.type_idxs {
+		if name in table.builtin_type_names {
 			// ['byte', 'string', 'int']
 			// SKIP FOR NOW
 			mut par_d := 0
@@ -1054,25 +1055,30 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		}
 		fields << table.Field{
 			name: field_name
-			// type_idx: ti.idx
-			
 			typ: typ
 		}
 		// println('struct field $ti.name $field_name')
 	}
 	p.check(.rcbr)
-	if name != 'string' {
-		ret := p.table.register_type(table.Type{
-			parent: 0
-			kind: .struct_
-			name: name
-			info: table.Struct{
-				fields: fields
-			}
-		})
-		if ret == -1 {
-			p.error('cannot register type `$name`, another type with this name exists')
+	println('REG FN: $name - $p.mod')
+	t := table.Type{
+		parent: 0
+		kind: .struct_
+		name: name
+		info: table.Struct{
+			fields: fields
 		}
+	}
+	mut ret := 0
+	if p.builtin_mod && t.name in table.builtin_type_names {
+		// this allows overiding the builtins type
+		// with the real struct type info parsed from builtin
+		ret = p.table.register_builtin_type(t)
+	} else {
+		ret = p.table.register_type(t)
+	}
+	if ret == -1 {
+		p.error('cannot register type `$name`, another type with this name exists')
 	}
 	return ast.StructDecl{
 		name: name
