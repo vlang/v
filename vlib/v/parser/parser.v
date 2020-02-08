@@ -1256,6 +1256,7 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
 		idx = p.table.unresolved_idxs[key]
 	}
 	else {
+		p.table.unresolved_idxs[key] = idx
 		p.unresolved << expr
 	}
 	t := table.TypeRef{
