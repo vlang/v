@@ -36,7 +36,7 @@ const (
 
 fn main() {
 	toolexe := os.executable()
-	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
+	compiler.set_vroot_folder(filepath.dir(filepath.dir(filepath.dir(toolexe))))
 	args := join_flags_and_argument()
 	foptions := FormatOptions{
 		is_c: '-c' in args
@@ -168,6 +168,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 		cfile = get_compile_name_of_potential_v_project(cfile)
 	}
 	compiler_params.path = cfile
+	compiler_params.mod = mod_name
+	compiler_params.is_test = is_test_file
+	compiler_params.is_script = file.ends_with('.v') || file.ends_with('.vsh')  
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')
@@ -177,10 +180,15 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('vfmt format_file: mod_folder: $mod_folder')
 		eprintln('vfmt format_file: mod_folder_parent: $mod_folder_parent')
 		eprintln('vfmt format_file: use_tmp_main_program: $use_tmp_main_program')
-		eprintln('vfmt format_file: compiler_params: $compiler_params')
+		eprintln('vfmt format_file: compiler_params: ')
+		print_compiler_options( compiler_params )
 		eprintln('-------------------------------------------')
 	}
 	compiler_params.fill_with_defaults()
+	if foptions.is_verbose {
+		eprintln('vfmt format_file: compiler_params: AFTER fill_with_defaults() ')
+		print_compiler_options( compiler_params )
+	}
 	formatted_file_path := foptions.compile_file(file, compiler_params)
 	if use_tmp_main_program {
 		if !foptions.is_debug {
@@ -188,6 +196,22 @@ fn (foptions &FormatOptions) format_file(file string) {
 		}
 	}
 	eprintln('${FORMATTED_FILE_TOKEN}${formatted_file_path}')
+}
+
+fn print_compiler_options( compiler_params &pref.Preferences ) {
+	eprintln('        os: ' + compiler_params.os.str() )
+	eprintln(' ccompiler: $compiler_params.ccompiler' )
+	eprintln('		 mod: $compiler_params.mod ')
+	eprintln('		path: $compiler_params.path ')
+	eprintln('	out_name: $compiler_params.out_name ')
+	eprintln('	   vroot: $compiler_params.vroot ')
+	eprintln('	   vpath: $compiler_params.vpath ')
+	eprintln(' vlib_path: $compiler_params.vlib_path ')
+	eprintln('	out_name: $compiler_params.out_name ')
+	eprintln('	  umpath: $compiler_params.user_mod_path ')
+	eprintln('	  cflags: $compiler_params.cflags ')
+	eprintln('	 is_test: $compiler_params.is_test ')
+	eprintln(' is_script: $compiler_params.is_script ')
 }
 
 fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
@@ -266,7 +290,8 @@ fn find_working_diff_command() ?string {
 fn (foptions &FormatOptions) compile_file(file string, compiler_params &pref.Preferences) string {
 	if foptions.is_verbose {
 		eprintln('> new_v_compiler_with_args            file: $file')
-		eprintln('> new_v_compiler_with_args compiler_params: $compiler_params')
+		eprintln('> new_v_compiler_with_args compiler_params:')
+		print_compiler_options( compiler_params )
 	}
 	mut v := compiler.new_v(compiler_params)
 	v.v_fmt_file = file
