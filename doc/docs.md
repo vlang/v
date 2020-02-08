@@ -1069,9 +1069,9 @@ fn test_hello() {
 
 All test functions have to be placed in `*_test.v` files and begin with `test_`.
 
-To run the tests do `v hello_test.v`. 
+To run the tests do `v hello_test.v`.
 
-To test an entire module, do `v test mymodule`. 
+To test an entire module, do `v test mymodule`.
 
 You can also do `v test .` to test everything inside your curent folder (and underneath it).
 
@@ -1226,14 +1226,19 @@ temporarily disabled).
 struct C.sqlite3
 struct C.sqlite3_stmt
 
+fn C.sqlite3_open(charptr, C.sqlite3)
 fn C.sqlite3_column_int(stmt C.sqlite3_stmt, n int) int
+// Or just define the type of parameter & leave C. prefix
+fn C.sqlite3_prepare_v2(sqlite3, charptr, int, sqlite3_stmt, charptr) int
+fn C.sqlite3_step(sqlite3)
+fn C.sqlite3_finalize(sqlite3_stmt)
 
 fn main() {
     path := 'users.db'
-    db := &C.sqlite3{!} // a temporary hack meaning `sqlite3* db = 0`
+    db := &C.sqlite3(0) // a temporary hack meaning `sqlite3* db = 0`
     C.sqlite3_open(path.str, &db)
     query := 'select count(*) from users'
-    stmt := &C.sqlite3_stmt{!}
+    stmt := &C.sqlite3_stmt(0)
     C.sqlite3_prepare_v2(db, query.str, - 1, &stmt, 0)
     C.sqlite3_step(stmt)
     nr_users := C.sqlite3_column_int(stmt, 0)
@@ -1242,12 +1247,11 @@ fn main() {
 }
 ```
 
-* Add `#flag` directives to the top of your V files to provide C compilation flags like:
-+ `-I` for adding C include files search paths
-+ `-l` for adding C library names that you want to get linked
-+ `-L` for adding C library files search paths
-+ `-D` for setting compile time variables
-
+- Add `#flag` directives to the top of your V files to provide C compilation flags like:
+- `-I` for adding C include files search paths
+- `-l` for adding C library names that you want to get linked
+- `-L` for adding C library files search paths
+- `-D` for setting compile time variables
 
 You can use different flags for different targets. Right now, `linux`, `darwin` , `freebsd`, and `windows` are supported.
 
@@ -1268,15 +1272,16 @@ You can also add C code, in your V module. For example, lets say that your C cod
 #flag @VMODULE/c/implementation.o
 #include "header.h"
 ```
-... will make V look for an compiled .o file in your module folder/c/implementation.o . 
+
+... will make V look for an compiled .o file in your module folder/c/implementation.o .
 If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VMODULE/c/implementation.c` file, 
+If it does not find it, V assumes that there is a `@VMODULE/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:
 [minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)
 
-You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler. 
+You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 Ordinary zero terminated C strings can be converted to V strings with `string(cstring)` or `string(cstring, len)`.
@@ -1284,14 +1289,14 @@ Ordinary zero terminated C strings can be converted to V strings with `string(cs
 NB: `string/1` and `string/2` do NOT create a copy of the `cstring`, so you should NOT free it after calling `string()`. If you need to make a copy of the C string (some libc APIs like `getenv/1` pretty much require that, since they
 return pointers to internal libc memory), you can use: `cstring_to_vstring(cstring)`
 
-On Windows, C APIs often return so called `wide` strings (utf16 encoding). 
+On Windows, C APIs often return so called `wide` strings (utf16 encoding).
 These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 
-* V has these types for easier interoperability with C:
-+ `voidptr` for C's `void*`,
-+ `byteptr` for C's `byte*` and 
-+ `charptr` for C's `char*`.
-+ `&charptr` for C's `char**`
+- V has these types for easier interoperability with C:
+- `voidptr` for C's `void*`,
+- `byteptr` for C's `byte*` and
+- `charptr` for C's `char*`.
+- `&charptr` for C's `char**`
 
 To cast `voidptr` to V references use `user := &User(user_void_ptr)`.
 
@@ -1299,11 +1304,11 @@ To cast `voidptr` to V references use `user := &User(user_void_ptr)`.
 
 Check out [socket.v for an example of calling C code from V](https://github.com/vlang/v/blob/master/vlib/net/socket.v) .
 
-* To debug issues with the generated C code, you can pass these flags:
-+ `-cg` - produces a less optimized executable with more debug information in it.
-+ `-keep_c` - keep the generated C file, so your debugger can also use it.
-+ `-pretty_c` - run clang-format over the generated C file, so it looks nicer and is easier to read.
-+ `-show_c_cmd` - prints the C command that is used to build the program.
+- To debug issues with the generated C code, you can pass these flags:
+- `-cg` - produces a less optimized executable with more debug information in it.
+- `-keep_c` - keep the generated C file, so your debugger can also use it.
+- `-pretty_c` - run clang-format over the generated C file, so it looks nicer and is easier to read.
+- `-show_c_cmd` - prints the C command that is used to build the program.
 
 For best debugging experience, you can pass all of them at the same time: `v -cg -keep_c -pretty_c -show_c_cmd yourprogram.v` , then just run your debugger (gdb/lldb) or IDE with the produced executable `yourprogram`.
 
@@ -1402,11 +1407,11 @@ To improve safety and maintainability, operator overloading has several limitati
 
 -It's only possible to overload `+, -, *, /` operators.
 
--   Calling other functions inside operator functions is not allowed.
+- Calling other functions inside operator functions is not allowed.
 
--   Operator functions can't modify their arguments.
+- Operator functions can't modify their arguments.
 
--   Both arguments must have the same type (just like with all operators in V).
+- Both arguments must have the same type (just like with all operators in V).
 
 ## Inline assembly
 
