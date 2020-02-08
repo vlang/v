@@ -210,7 +210,6 @@ pub fn (p mut Parser) top_stmt() ast.Stmt {
 			return p.hash()
 		}
 		else {
-			println(' ## $p.tok.lit - $p.tok.str()')
 			p.error('parser: bad top level statement')
 			return ast.Stmt{}
 		}

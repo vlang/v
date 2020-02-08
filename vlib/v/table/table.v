@@ -332,7 +332,6 @@ pub fn (t &Table) known_type(name string) bool {
 
 pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) int {
 	name := map_name(&key_type, &value_type)
-	println('REG MAP: $name')
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
