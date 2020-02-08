@@ -141,3 +141,49 @@ pub fn os_from_string(os_str string) OS {
 		}
 	}
 }
+
+pub fn (o OS) str() string {
+	match o {
+		._auto {
+			return 'RESERVED: AUTO'
+		}
+		.mac {
+			return 'MacOS'
+		}
+		.linux {
+			return 'Linux'
+		}
+		.windows {
+			return 'Windows'
+		}
+		.freebsd {
+			return 'FreeBSD'
+		}
+		.openbsd {
+			return 'OpenBSD'
+		}
+		.netbsd {
+			return 'NetBSD'
+		}
+		.dragonfly {
+			return 'Dragonfly'
+		}
+		.js {
+			return 'JavaScript'
+		}
+		.android {
+			return 'Android'
+		}
+		.solaris {
+			return 'Solaris'
+		}
+		.haiku {
+			return 'Haiku'
+		}
+		else {
+			//TODO Remove when V is smart enough to know that there's no other possibilities
+			//should never be reached as all enum types have been enumerated
+			panic('unknown OS enum type: $o')
+		}
+	}
+}

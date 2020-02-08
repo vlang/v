@@ -7,6 +7,7 @@ import (
 	os
 	time
 	filepath
+	v.pref
 )
 
 fn todo() {
@@ -350,6 +351,18 @@ start:
 		}
 		if v.pref.is_debug {
 			println(res.output)
+			verror("
+==================
+C error. This should never happen.
+
+V compiler version: V $Version $vhash()
+Host OS: ${pref.get_host_os().str()}
+Target OS: $v.pref.os.str()
+
+If you were not working with C interop and are not sure about what's happening,
+please put the whole output in a pastebin and contact us through the following ways with a link to the pastebin:
+- Raise an issue on GitHub: https://github.com/vlang/v/issues/new/choose
+- Ask a question in #help on Discord: https://discord.gg/vlang")
 		}
 		else {
 			if res.output.len < 30 {
@@ -358,11 +371,19 @@ start:
 				q := res.output.all_after('error: ').limit(150)
 				println('==================')
 				println(q)
+				println('...')
 				println('==================')
-				println('...\n(Use `v -cg` to print the entire error message)\n')
+				println('(Use `v -cg` to print the entire error message)\n')
 			}
+			verror("C error.
+
+Please make sure that:
+- You have all V dependencies installed.
+- You did not declare a C function that was not included. (Try commenting your code that involves C interop)
+- You are running the latest version of V. (Try running `v up` and rerunning your command)
+
+If you're confident that all of the above is true, please try running V with the `-cg` option which enables more debugging capabilities.\n")
 		}
-		verror('C error. This should never happen. ' + '\nPlease create a GitHub issue: https://github.com/vlang/v/issues/new/choose')
 	}
 	diff := time.ticks() - ticks
 	// Print the C command

@@ -46,33 +46,7 @@ pub fn (p mut Preferences) fill_with_defaults() {
 	}
 	if p.os == ._auto {
 		// No OS specifed? Use current system
-		$if linux {
-			p.os = .linux
-		}
-		$if macos {
-			p.os = .mac
-		}
-		$if windows {
-			p.os = .windows
-		}
-		$if freebsd {
-			p.os = .freebsd
-		}
-		$if openbsd {
-			p.os = .openbsd
-		}
-		$if netbsd {
-			p.os = .netbsd
-		}
-		$if dragonfly {
-			p.os = .dragonfly
-		}
-		$if solaris {
-			p.os = .solaris
-		}
-		$if haiku {
-			p.os = .haiku
-		}
+		p.os = get_host_os()
 	}
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
@@ -100,4 +74,35 @@ fn vexe_path() string {
 	real_vexe_path := os.realpath(os.executable())
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
+}
+
+pub fn get_host_os() OS {
+	$if linux {
+		return .linux
+	}
+	$if macos {
+		return .mac
+	}
+	$if windows {
+		return .windows
+	}
+	$if freebsd {
+		return .freebsd
+	}
+	$if openbsd {
+		return .openbsd
+	}
+	$if netbsd {
+		return .netbsd
+	}
+	$if dragonfly {
+		return .dragonfly
+	}
+	$if solaris {
+		return .solaris
+	}
+	$if haiku {
+		return .haiku
+	}
+	panic('unknown host OS')
 }
