@@ -10,7 +10,7 @@ V is a very simple language. Going through this documentation will take you abou
 and by the end of it, you will learn pretty much the entire language.
 
 Despite being simple, it gives a lot of power to the developer. Anything you can do in other languages,
-you can do it in V.
+you can do in V.
 
 ## Hello World
 
@@ -28,7 +28,7 @@ Just like in C and all related languages, `main` is an entry point.
 `println` is one of the few built-in functions. It prints the value
 to standard output.
 
-`fn main()` declaration can be skipped in one file program.
+`fn main()` declaration can be skipped in one file programs.
 This is useful when writing small programs, "scripts", or just learning
 the language. For brevity, `fn main()` will be skipped in this
 tutorial.
@@ -72,7 +72,7 @@ Just like in Go and C, functions cannot be overloaded.
 This simplifies the code and improves maintainability and readability.
 
 Functions can be used before their declaration:
-`add` and `sub` is declared after `main`, but can still be called from `main`.
+`add` and `sub` are declared after `main`, but can still be called from `main`.
 This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
@@ -1489,7 +1489,7 @@ libraries and include files for Windows and Linux. V will provide you with a lin
 
 V can be used as an alternative to Bash to write deployment scripts, build scripts, etc.
 
-The advantage of using V for this is the simplicity and predictability of the language and cross-platform support. 
+The advantage of using V for this is the simplicity and predictability of the language and cross-platform support.
 "V scripts" run on Unix-like systems as well as on Windows.
 
 Use .vsh file extension. It will make all functions in the `os`
