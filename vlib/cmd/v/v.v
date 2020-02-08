@@ -48,7 +48,7 @@ fn main() {
 		return
 	}
 
-	if command == 'run' || command.ends_with('.v') || os.exists(command) {
+	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
 		compile(command, arg)
 		return
 	}

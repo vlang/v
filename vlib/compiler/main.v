@@ -272,8 +272,7 @@ pub fn (v mut V) compile() {
 	vgen_parser.parse(.main)
 	// Generate .vh if we are building a module
 	if v.pref.build_mode == .build_module {
-		//TODO Fix functionality from cmd/v
-		//generate_vh(v.dir)
+		generate_vh(v.pref.path)
 	}
 	// All definitions
 	mut def := strings.new_builder(10000) // Avoid unnecessary allocations

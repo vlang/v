@@ -3,11 +3,11 @@
 // that can be found in the LICENSE file.
 module compiler
 
-/*
 import (
 	strings
 	os
 	filepath
+	v.pref
 )
 /*
 	.vh generation logic.
@@ -53,7 +53,11 @@ fn generate_vh(mod string) {
 	filtered := vfiles.filter(it.ends_with('.v') && !it.ends_with('test.v') && !it.ends_with('_windows.v') && !it.ends_with('_win.v') && !it.ends_with('_lin.v') && !it.contains('${os.path_separator}examples') && !it.contains('_js.v') && !it.contains('_bare.v') && !it.contains('${os.path_separator}js')) // TODO merge once filter allows it
 	// println('f:')
 	// println(filtered)
-	mut v := new_v(['foo.v'])
+	mut pref := &pref.Preferences {
+		path: 'foo.v'
+	}
+	pref.fill_with_defaults()
+	mut v := new_v(pref)
 	// v.pref.generating_vh = true
 	mut g := VhGen{
 		consts: strings.new_builder(1000)
@@ -167,5 +171,3 @@ fn (g mut VhGen) generate_type() {
 	// g.i = old
 	// g.i--
 }
-
-*/
