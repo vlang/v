@@ -3,10 +3,6 @@
 // that can be found in the LICENSE file.
 module table
 
-pub type TypeNew int
-
-pub type Type int
-
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn
 
 pub struct TypeSymbol {
@@ -23,22 +19,22 @@ pub const (
 	// primitive types
 	void_type_idx = 1
 	voidptr_type_idx = 2
-	charptr_type_idx = 3
-	byteptr_type_idx = 4
+	byteptr_type_idx = 3
+	charptr_type_idx = 4
 	i8_type_idx = 5
 	i16_type_idx = 6
 	int_type_idx = 7
 	i64_type_idx = 8
-	u16_type_idx = 9
-	u32_type_idx = 10
-	u64_type_idx = 11
-	f32_type_idx = 12
-	f64_type_idx = 13
-	bool_type_idx = 14
+	byte_type_idx = 9
+	u16_type_idx = 10
+	u32_type_idx = 11
+	u64_type_idx = 12
+	f32_type_idx = 13
+	f64_type_idx = 14
+	char_type_idx = 15
+	bool_type_idx = 16
 	// advanced / defined from v structs
-	string_type_idx = 15
-	char_type_idx = 16
-	byte_type_idx = 17
+	string_type_idx = 17
 	array_type_idx = 18
 	map_type_idx = 19
 )
@@ -54,23 +50,21 @@ pub enum Kind {
 	placeholder
 	void
 	voidptr
-	charptr
 	byteptr
+	charptr
 	i8
 	i16
 	int
 	i64
+	byte
 	u16
 	u32
 	u64
 	f32
 	f64
-	string
 	char
-	byte
 	bool
-	//const_
-	//enum_
+	string
 	struct_
 	array
 	array_fixed
@@ -168,13 +162,13 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	})
 	t.register_type_symbol(TypeSymbol{
 		parent: 0
-		kind: .charptr
-		name: 'charptr'
+		kind: .byteptr
+		name: 'byteptr'
 	})
 	t.register_type_symbol(TypeSymbol{
 		parent: 0
-		kind: .byteptr
-		name: 'byteptr'
+		kind: .charptr
+		name: 'charptr'
 	})
 	t.register_type_symbol(TypeSymbol{
 		parent: 0
@@ -195,6 +189,11 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		parent: 0
 		kind: .i64
 		name: 'i64'
+	})
+	t.register_type_symbol(TypeSymbol{
+		parent: 0
+		kind: .byte
+		name: 'byte'
 	})
 	t.register_type_symbol(TypeSymbol{
 		parent: 0
@@ -223,6 +222,11 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	})
 	t.register_type_symbol(TypeSymbol{
 		parent: 0
+		kind: .char
+		name: 'char'
+	})
+	t.register_type_symbol(TypeSymbol{
+		parent: 0
 		kind: .bool
 		name: 'bool'
 	})
@@ -230,16 +234,6 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 		parent: 0
 		kind: .string
 		name: 'string'
-	})
-	t.register_type_symbol(TypeSymbol{
-		parent: 0
-		kind: .char
-		name: 'char'
-	})
-	t.register_type_symbol(TypeSymbol{
-		parent: 0
-		kind: .byte
-		name: 'byte'
 	})
 	t.register_type_symbol(TypeSymbol{
 		parent: 0
@@ -288,12 +282,6 @@ pub fn (k Kind) str() string {
 		.byteptr{
 			'byteptr'
 		}
-		// .const_{
-		// 'const'
-		// }
-		// .enum_{
-		// 'enum'
-		// }
 		.struct_{
 			'struct'
 		}
@@ -365,14 +353,6 @@ pub fn (kinds []Kind) str() string {
 	return kinds_str
 }
 
-// pub struct Const {
-// pub:
-// name string
-// }
-// pub struct Enum {
-// pub:
-// name string
-// }
 pub struct Struct {
 pub mut:
 	fields []Field
@@ -382,23 +362,14 @@ pub struct Field {
 pub:
 	name string
 mut:
-	typ  Type/*table.Type*/
-	// type_idx int
+	typ  Type
 }
-// pub struct Int {
-// pub:
-// bit_size    u32
-// is_unsigned bool
-// }
-// pub struct Float {
-// pub:
-// bit_size u32
-// }
+
 pub struct Array {
 pub:
 	nr_dims    int
 mut:
-	elem_type Type/*table.Type*/
+	elem_type Type
 }
 
 pub struct ArrayFixed {
@@ -406,26 +377,18 @@ pub:
 	nr_dims   int
 	size      int
 mut:
-	elem_type Type/*table.Type*/
+	elem_type Type
 }
 
 pub struct Map {
 pub mut:
-	key_type   Type/*table.Type*/
-	value_type Type/*table.Type*/
+	key_type   Type
+	value_type Type
 }
 
 pub struct MultiReturn {
 pub:
 	name  string
 mut:
-	types []Type/*table.Type*/
-}
-
-[inline]
-pub fn (t &Table) get_type(idx int) &TypeSymbol {
-	if idx == 0 {
-		panic('get_type: idx 0')
-	}
-	return &t.types[idx]
+	types []Type
 }

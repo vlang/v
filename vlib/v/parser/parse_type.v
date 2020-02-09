@@ -6,7 +6,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type/*table.Type*/ {
+pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -30,14 +30,15 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type/*table.Type*/ {
 	return table.new_type_ptr(idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type/*table.Type*/ {
+pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
 		return table.new_type(table.map_type_idx)
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	// if key_type.typ.kind != .string {
+	// key_type_sym := p.get_type_symbol(key_type)
+	// if key_type_sym.kind != .string {
 	if table.type_idx(key_type) != table.string_type_idx {
 		p.error('maps can only have string keys for now')
 	}
@@ -47,9 +48,9 @@ pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type/*table.Type*/ {
 	return table.new_type_ptr(idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_multi_return_ti() table.Type/*table.Type*/ {
+pub fn (p mut Parser) parse_multi_return_ti() table.Type {
 	p.check(.lpar)
-	mut mr_types := []table.Type/*table.Type*/
+	mut mr_types := []table.Type
 	for {
 		mr_type := p.parse_type()
 		mr_types << mr_type
@@ -65,13 +66,13 @@ pub fn (p mut Parser) parse_multi_return_ti() table.Type/*table.Type*/ {
 	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_fn_type() table.Type/*table.Type*/ {
+pub fn (p mut Parser) parse_fn_type() table.Type {
 	// p.check(.key_fn)
 	p.fn_decl()
 	return table.int_type
 }
 
-pub fn (p mut Parser) parse_type() table.Type/*table.Type*/ {
+pub fn (p mut Parser) parse_type() table.Type {
 	mut nr_muls := 0
 	for p.tok.kind == .amp {
 		p.check(.amp)
@@ -153,7 +154,7 @@ pub fn (p mut Parser) parse_type() table.Type/*table.Type*/ {
 					return table.new_type_ptr(table.string_type_idx, nr_muls)
 				}
 				'char' {
-					return table.new_type_ptr(table.charptr_type_idx, nr_muls)
+					return table.new_type_ptr(table.char_type_idx, nr_muls)
 				}
 				'bool' {
 					return table.new_type_ptr(table.bool_type_idx, nr_muls)

@@ -14,7 +14,7 @@ pub struct Checker {
 	table     &table.Table
 mut:
 	file_name string
-	resolved  []table.Type/*table.Type*/
+	resolved  []table.Type
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -109,15 +109,12 @@ fn (c &Checker) complete_types() {
 	}
 }
 
-pub fn (c &Checker) resolve(unresolved table.Type/*table.Type*/) table.Type/*table.Type*/ {
-    uidx := table.type_idx(unresolved)
-	println('unresolved: $uidx')
-	res := -table.type_idx(unresolved)-1
-	println('res idx: $res')
+// return the resolved Type from unresovled Type
+pub fn (c &Checker) resolve(unresolved table.Type) table.Type {
 	return c.resolved[-table.type_idx(unresolved)-1]
 }
 
-pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.Type/*table.Type*/ {
+pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
 	// 	c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
 	// 	panic('')
@@ -144,7 +141,7 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.Type/*ta
 	return struct_init.typ
 }
 
-pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.Type/*table.Type*/ {
+pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 	left_type := c.expr(infix_expr.left)
 	right_type := c.expr(infix_expr.right)
 	left_type_idx := table.type_idx(left_type)
@@ -173,7 +170,7 @@ fn (c &Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 	}
 }
 
-pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type/*table.Type*/ {
+pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
@@ -212,7 +209,7 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type/*table.Type*/ {
 	exit(1)
 }
 
-pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type/*table.Type*/ {
+pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.Type {
 	typ := c.expr(method_call_expr.expr)
 	typ_sym := c.table.get_type_symbol(typ)
 	if method := typ_sym.find_method(method_call_expr.name) {
@@ -228,7 +225,7 @@ pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) 
 	exit(1)
 }
 
-pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type/*table.Type*/ {
+pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
 	typ := c.expr(selector_expr.expr)
 	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
@@ -255,7 +252,7 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type/*ta
 
 // TODO: non deferred
 pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
-	mut got_types := []table.Type/*table.Type*/
+	mut got_types := []table.Type
 	if return_stmt.exprs.len == 0 {
 		return
 	}
@@ -285,7 +282,7 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 
 pub fn (c &Checker) assign_stmt(assign_stmt ast.AssignStmt) {}
 
-pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.Type/*table.Type*/ {
+pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.Type {
 	mut elem_type := table.void_type
 	for i, expr in array_init.exprs {
 		c.expr(expr)
@@ -351,7 +348,7 @@ fn (c &Checker) stmt(node ast.Stmt) {
 	}
 }
 
-pub fn (c &Checker) expr(node ast.Expr) table.Type/*table.Type*/ {
+pub fn (c &Checker) expr(node ast.Expr) table.Type {
 	match mut node {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
@@ -433,7 +430,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type/*table.Type*/ {
 	return table.void_type
 }
 
-pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.Type/*table.Type*/ {
+pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.Type {
 	/*
 	match node.expr {
 		ast.IdentVar {
@@ -451,7 +448,7 @@ pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.Type/*table.Type*/ 
 	return typ
 }
 
-pub fn (c &Checker) index_expr(node ast.IndexExpr) table.Type/*table.Type*/ {
+pub fn (c &Checker) index_expr(node ast.IndexExpr) table.Type {
 	mut typ := c.expr(node.left)
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
 	match node.index {

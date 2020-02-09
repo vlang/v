@@ -8,7 +8,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type/*table.Type*/) {
+pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 	tok := p.tok
 	fn_name := p.check_name()
 	p.check(.lpar)
