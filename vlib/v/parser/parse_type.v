@@ -6,7 +6,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type {
+pub fn (p mut Parser) parse_array_type(nr_muls int) table.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -48,7 +48,7 @@ pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type {
 	return table.new_type_ptr(idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_multi_return_ti() table.Type {
+pub fn (p mut Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
 	mut mr_types := []table.Type
 	for {
@@ -93,14 +93,14 @@ pub fn (p mut Parser) parse_type() table.Type {
 		}
 		// array
 		.lsbr {
-			return p.parse_array_ti(nr_muls)
+			return p.parse_array_type(nr_muls)
 		}
 		// multiple return
 		.lpar {
 			if nr_muls > 0 {
-				p.error('parse_ti: unexpected `&` before multiple returns')
+				p.error('parse_type: unexpected `&` before multiple returns')
 			}
-			return p.parse_multi_return_ti()
+			return p.parse_multi_return_type()
 		}
 		else {
 			// no defer
