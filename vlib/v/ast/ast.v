@@ -20,7 +20,7 @@ HashStmt | AssignStmt
 pub struct ExprStmt {
 pub:
 	expr Expr
-	typ  TypeNew/*table.Type*/
+	typ  table.Type/*table.Type*/
 }
 
 pub struct IntegerLiteral {
@@ -69,7 +69,7 @@ pub struct Field {
 pub:
 	name string
 	// type_idx int
-	typ  TypeNew/*table.Type*/
+	typ  table.Type/*table.Type*/
 }
 
 pub struct ConstDecl {
@@ -89,7 +89,7 @@ pub:
 pub struct StructInit {
 pub:
 	pos    token.Position
-	typ    TypeNew/*table.Type*/
+	typ    table.Type/*table.Type*/
 	fields []string
 	exprs  []Expr
 }
@@ -105,7 +105,7 @@ pub:
 
 pub struct Arg {
 pub:
-	typ  TypeNew/*table.Type*/
+	typ  table.Type/*table.Type*/
 	name string
 }
 
@@ -113,7 +113,7 @@ pub struct FnDecl {
 pub:
 	name        string
 	stmts       []Stmt
-	typ         TypeNew/*table.Type*/
+	typ         table.Type/*table.Type*/
 	args        []Arg
 	is_pub      bool
 	is_variadic bool
@@ -147,7 +147,7 @@ pub:
 pub struct Return {
 pub:
 	pos           token.Position
-	expected_type TypeNew/*table.Type*/ // TODO: remove once checker updated
+	expected_type table.Type/*table.Type*/ // TODO: remove once checker updated
 	exprs         []Expr
 }
 
@@ -173,7 +173,7 @@ pub:
 	expr   Expr
 	is_mut bool
 mut:
-	typ    TypeNew/*table.Type*/
+	typ    table.Type/*table.Type*/
 	pos    token.Position
 }
 
@@ -182,7 +182,7 @@ pub:
 	name string
 	expr Expr
 mut:
-	typ  TypeNew/*table.Type*/
+	typ  table.Type/*table.Type*/
 }
 
 pub struct StmtBlock {
@@ -201,7 +201,7 @@ pub:
 
 pub struct IdentVar {
 pub mut:
-	typ    TypeNew/*table.Type*/
+	typ    table.Type/*table.Type*/
 	is_mut bool
 	// name string
 }
@@ -245,9 +245,9 @@ pub:
 	op         token.Kind
 	pos        token.Position
 	left       Expr
-	left_type  TypeNew/*table.Type*/
+	left_type  table.Type/*table.Type*/
 	right      Expr
-	right_type TypeNew/*table.Type*/
+	right_type table.Type/*table.Type*/
 }
 
 /*
@@ -281,7 +281,7 @@ pub:
 	pos   token.Position
 	left  Expr
 	index Expr // [0], [start..end] etc
-	// typ   TypeNew/*table.Type*/
+	// typ   table.Type/*table.Type*/
 }
 
 pub struct IfExpr {
@@ -290,7 +290,7 @@ pub:
 	cond       Expr
 	stmts      []Stmt
 	else_stmts []Stmt
-	typ        TypeNew/*table.Type*/
+	typ        table.Type/*table.Type*/
 	left       Expr // `a` in `a := if ...`
 	pos        token.Position
 }
@@ -301,7 +301,7 @@ pub:
 	cond        Expr
 	blocks      []StmtBlock
 	match_exprs []Expr
-	typ         TypeNew/*table.Type*/
+	typ         table.Type/*table.Type*/
 	pos         token.Position
 }
 
@@ -372,7 +372,7 @@ pub:
 	pos   token.Position
 	exprs []Expr
 mut:
-	typ   TypeNew/*table.Type*/
+	typ   table.Type/*table.Type*/
 }
 
 // s[10..20]

@@ -5,6 +5,8 @@ module table
 
 pub type TypeNew int
 
+pub type Type int
+
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn
 
 pub struct TypeSymbol {
@@ -380,7 +382,7 @@ pub struct Field {
 pub:
 	name string
 mut:
-	typ  TypeNew/*table.Type*/
+	typ  Type/*table.Type*/
 	// type_idx int
 }
 // pub struct Int {
@@ -396,7 +398,7 @@ pub struct Array {
 pub:
 	nr_dims    int
 mut:
-	elem_type TypeNew/*table.Type*/
+	elem_type Type/*table.Type*/
 }
 
 pub struct ArrayFixed {
@@ -404,20 +406,20 @@ pub:
 	nr_dims   int
 	size      int
 mut:
-	elem_type TypeNew/*table.Type*/
+	elem_type Type/*table.Type*/
 }
 
 pub struct Map {
 pub mut:
-	key_type   TypeNew/*table.Type*/
-	value_type TypeNew/*table.Type*/
+	key_type   Type/*table.Type*/
+	value_type Type/*table.Type*/
 }
 
 pub struct MultiReturn {
 pub:
 	name  string
 mut:
-	types []TypeNew/*table.Type*/
+	types []Type/*table.Type*/
 }
 
 [inline]

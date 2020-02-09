@@ -6,7 +6,7 @@ import (
 	v.table
 )
 
-pub fn (p mut Parser) parse_array_ti(nr_muls int) TypeNew/*table.Type*/ {
+pub fn (p mut Parser) parse_array_ti(nr_muls int) table.Type/*table.Type*/ {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind == .number {
@@ -30,7 +30,7 @@ pub fn (p mut Parser) parse_array_ti(nr_muls int) TypeNew/*table.Type*/ {
 	return table.new_type_ptr(idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_map_type(nr_muls int) TypeNew/*table.Type*/ {
+pub fn (p mut Parser) parse_map_type(nr_muls int) table.Type/*table.Type*/ {
 	p.next()
 	if p.tok.kind != .lsbr {
 		return table.new_type(table.map_type_idx)
@@ -47,9 +47,9 @@ pub fn (p mut Parser) parse_map_type(nr_muls int) TypeNew/*table.Type*/ {
 	return table.new_type_ptr(idx, nr_muls)
 }
 
-pub fn (p mut Parser) parse_multi_return_ti() TypeNew/*table.Type*/ {
+pub fn (p mut Parser) parse_multi_return_ti() table.Type/*table.Type*/ {
 	p.check(.lpar)
-	mut mr_types := []TypeNew/*table.Type*/
+	mut mr_types := []table.Type/*table.Type*/
 	for {
 		mr_type := p.parse_type()
 		mr_types << mr_type
@@ -65,13 +65,13 @@ pub fn (p mut Parser) parse_multi_return_ti() TypeNew/*table.Type*/ {
 	return table.new_type(idx)
 }
 
-pub fn (p mut Parser) parse_fn_type() TypeNew/*table.Type*/ {
+pub fn (p mut Parser) parse_fn_type() table.Type/*table.Type*/ {
 	// p.check(.key_fn)
 	p.fn_decl()
 	return table.int_type
 }
 
-pub fn (p mut Parser) parse_type() TypeNew/*table.Type*/ {
+pub fn (p mut Parser) parse_type() table.Type/*table.Type*/ {
 	mut nr_muls := 0
 	for p.tok.kind == .amp {
 		p.check(.amp)

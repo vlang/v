@@ -1,27 +1,27 @@
 module table
 
 [inline]
-pub fn type_idx(t TypeNew/*table.Type*/) int {
+pub fn type_idx(t Type/*table.Type*/) int {
     return i16(int(t) >> 16) & 0xffffffff
 }
 
 [inline]
-pub fn type_nr_muls(t TypeNew/*table.Type*/) int {
+pub fn type_nr_muls(t Type/*table.Type*/) int {
     return i16(int(t) & 0xffffffff)
 }
 
 [inline]
-pub fn type_is_ptr(t TypeNew/*table.Type*/) bool {
+pub fn type_is_ptr(t Type/*table.Type*/) bool {
     return type_nr_muls(t) > 0
 }
 
 [inline]
-pub fn type_ptr(t TypeNew/*table.Type*/) TypeNew/*table.Type*/ {
+pub fn type_ptr(t Type/*table.Type*/) Type/*table.Type*/ {
     return type_idx(t) << i16(16) | (type_nr_muls(t)+1)
 }
 
 [inline]
-pub fn type_deref(t TypeNew/*table.Type*/) TypeNew/*table.Type*/ {
+pub fn type_deref(t Type/*table.Type*/) Type/*table.Type*/ {
     idx := type_idx(t)
     nr_muls := type_nr_muls(t)
     if nr_muls == 0 {
@@ -31,7 +31,7 @@ pub fn type_deref(t TypeNew/*table.Type*/) TypeNew/*table.Type*/ {
 }
 
 [inline]
-pub fn new_type(idx int) TypeNew/*table.Type*/ {
+pub fn new_type(idx int) Type/*table.Type*/ {
     if idx > 32767 || idx < -32767 {
         panic('new_type_id: idx must be between -32767 & 32767')
     }
@@ -39,7 +39,7 @@ pub fn new_type(idx int) TypeNew/*table.Type*/ {
 }
 
 [inline]
-pub fn new_type_ptr(idx, nr_muls int) TypeNew/*table.Type*/ {
+pub fn new_type_ptr(idx, nr_muls int) Type/*table.Type*/ {
     if idx > 32767 || idx < -32767 {
         panic('typ_ptr: idx must be between -32767 & 32767')
     }
@@ -50,7 +50,7 @@ pub fn new_type_ptr(idx, nr_muls int) TypeNew/*table.Type*/ {
 }
 
 [inline]
-pub fn type_is_unresolved(t TypeNew/*table.Type*/) bool {
+pub fn type_is_unresolved(t Type/*table.Type*/) bool {
     return type_idx(t) < 0
 }
 
