@@ -468,13 +468,27 @@ pub fn (s string) split_into_lines() []string {
 	}
 	mut start := 0
 	for i := 0; i < s.len; i++ {
-		last := i == s.len - 1
-		if s[i] == 10 || last {
-			if last {
+		is_lf := s[i] == `\n`
+		is_crlf := i != s.len - 1 && s[i] == `\r` && s[i + 1] == `\n`
+		is_eol := is_lf || is_crlf
+		is_last := if is_crlf {
+			i == s.len - 2
+		} else {
+			i == s.len - 1
+		}
+
+		if is_eol || is_last {
+			if is_last && !is_eol {
 				i++
 			}
+
 			line := s.substr(start, i)
 			res << line
+
+			if is_crlf {
+				i++
+			}
+
 			start = i + 1
 		}
 	}
