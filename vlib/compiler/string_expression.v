@@ -12,7 +12,7 @@ fn (p mut Parser) string_expr() {
 	str := p.lit
 	// No ${}, just return a simple string
 	if p.peek() != .str_dollar || is_raw {
-		f := if is_raw { cescaped_path(str) } else { format_str(str) }
+		f := if is_raw { cescaped_path(str).replace('"', '\\"') } else { format_str(str) }
 		// `C.puts('hi')` => `puts("hi");`
 		/*
 		Calling a C function sometimes requires a call to a string method
