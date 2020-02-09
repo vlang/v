@@ -24,53 +24,60 @@ const (
 	m3 = 0x00ff00ff00ff00ff // etc.
 	m4 = 0x0000ffff0000ffff
 )
+
+const (
+	// save importing math mod just for these
+	max_u32 = 4294967295
+	max_u64 = 18446744073709551615
+)
+
 // --- LeadingZeros ---
-// leading_zeros8 returns the number of leading zero bits in x; the result is 8 for x == 0.
-pub fn leading_zeros8(x byte) int {
-	return 8 - len8(x)
+// leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
+pub fn leading_zeros_8(x byte) int {
+	return 8 - len_8(x)
 }
 
-// leading_zeros16 returns the number of leading zero bits in x; the result is 16 for x == 0.
-pub fn leading_zeros16(x u16) int {
-	return 16 - len16(x)
+// leading_zeros_16 returns the number of leading zero bits in x; the result is 16 for x == 0.
+pub fn leading_zeros_16(x u16) int {
+	return 16 - len_16(x)
 }
 
-// leading_zeros32 returns the number of leading zero bits in x; the result is 32 for x == 0.
-pub fn leading_zeros32(x u32) int {
-	return 32 - len32(x)
+// leading_zeros_32 returns the number of leading zero bits in x; the result is 32 for x == 0.
+pub fn leading_zeros_32(x u32) int {
+	return 32 - len_32(x)
 }
 
-// leading_zeros64 returns the number of leading zero bits in x; the result is 64 for x == 0.
-pub fn leading_zeros64(x u64) int {
-	return 64 - len64(x)
+// leading_zeros_64 returns the number of leading zero bits in x; the result is 64 for x == 0.
+pub fn leading_zeros_64(x u64) int {
+	return 64 - len_64(x)
 }
 
 // --- TrailingZeros ---
-// trailing_zeros8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
-pub fn trailing_zeros8(x byte) int {
-	return int(ntz8_tab[x])
+// trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
+pub fn trailing_zeros_8(x byte) int {
+	return int(ntz_8_tab[x])
 }
 
-// trailing_zeros16 returns the number of trailing zero bits in x; the result is 16 for x == 0.
-pub fn trailing_zeros16(x u16) int {
+// trailing_zeros_16 returns the number of trailing zero bits in x; the result is 16 for x == 0.
+pub fn trailing_zeros_16(x u16) int {
 	if x == 0 {
 		return 16
 	}
-	// see comment in trailing_zeros64
+	// see comment in trailing_zeros_64
 	return int(de_bruijn32tab[u32(x & -x) * de_bruijn32>>(32 - 5)])
 }
 
-// trailing_zeros32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
-pub fn trailing_zeros32(x u32) int {
+// trailing_zeros_32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
+pub fn trailing_zeros_32(x u32) int {
 	if x == 0 {
 		return 32
 	}
-	// see comment in trailing_zeros64
+	// see comment in trailing_zeros_64
 	return int(de_bruijn32tab[(x & -x) * de_bruijn32>>(32 - 5)])
 }
 
-// trailing_zeros64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
-pub fn trailing_zeros64(x u64) int {
+// trailing_zeros_64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
+pub fn trailing_zeros_64(x u64) int {
 	if x == 0 {
 		return 64
 	}
@@ -89,23 +96,23 @@ pub fn trailing_zeros64(x u64) int {
 }
 
 // --- OnesCount ---
-// ones_count8 returns the number of one bits ("population count") in x.
-pub fn ones_count8(x byte) int {
-	return int(pop8_tab[x])
+// ones_count_8 returns the number of one bits ("population count") in x.
+pub fn ones_count_8(x byte) int {
+	return int(pop_8_tab[x])
 }
 
-// ones_count16 returns the number of one bits ("population count") in x.
-pub fn ones_count16(x u16) int {
-	return int(pop8_tab[x>>8] + pop8_tab[x & u16(0xff)])
+// ones_count_16 returns the number of one bits ("population count") in x.
+pub fn ones_count_16(x u16) int {
+	return int(pop_8_tab[x>>8] + pop_8_tab[x & u16(0xff)])
 }
 
-// ones_count32 returns the number of one bits ("population count") in x.
-pub fn ones_count32(x u32) int {
-	return int(pop8_tab[x>>24] + pop8_tab[x>>16 & 0xff] + pop8_tab[x>>8 & 0xff] + pop8_tab[x & u32(0xff)])
+// ones_count_32 returns the number of one bits ("population count") in x.
+pub fn ones_count_32(x u32) int {
+	return int(pop_8_tab[x>>24] + pop_8_tab[x>>16 & 0xff] + pop_8_tab[x>>8 & 0xff] + pop_8_tab[x & u32(0xff)])
 }
 
-// ones_count64 returns the number of one bits ("population count") in x.
-pub fn ones_count64(x u64) int {
+// ones_count_64 returns the number of one bits ("population count") in x.
+pub fn ones_count_64(x u64) int {
 	// Implementation: Parallel summing of adjacent bits.
 	// See "Hacker's Delight", Chap. 5: Counting Bits.
 	// The following pattern shows the general approach:
@@ -125,10 +132,9 @@ pub fn ones_count64(x u64) int {
 	// Per "Hacker's Delight", the first line can be simplified
 	// more, but it saves at best one instruction, so we leave
 	// it alone for clarity.
-	m := u64(1<<64) - 1
-	mut y := (x>>u64(1) & (m0 & m)) + (x & (m0 & m))
-	y = (y>>u64(2) & (m1 & m)) + (y & (m1 & m))
-	y = ((y>>4) + y) & (m2 & m)
+	mut y := (x>>u64(1) & (m0 & max_u64)) + (x & (m0 & max_u64))
+	y = (y>>u64(2) & (m1 & max_u64)) + (y & (m1 & max_u64))
+	y = ((y>>4) + y) & (m2 & max_u64)
 	y += y>>8
 	y += y>>16
 	y += y>>32
@@ -181,87 +187,83 @@ pub fn rotate_left_64(x u64, k int) u64 {
 }
 
 // --- Reverse ---
-// reverse8 returns the value of x with its bits in reversed order.
+// reverse_8 returns the value of x with its bits in reversed order.
 [inline]
-pub fn reverse8(x byte) byte {
-	return rev8_tab[x]
+pub fn reverse_8(x byte) byte {
+	return rev_8_tab[x]
 }
 
-// reverse16 returns the value of x with its bits in reversed order.
+// reverse_16 returns the value of x with its bits in reversed order.
 [inline]
-pub fn reverse16(x u16) u16 {
-	return u16(rev8_tab[x>>8]) | (u16(rev8_tab[x & u16(0xff)])<<8)
+pub fn reverse_16(x u16) u16 {
+	return u16(rev_8_tab[x>>8]) | (u16(rev_8_tab[x & u16(0xff)])<<8)
 }
 
-// reverse32 returns the value of x with its bits in reversed order.
+// reverse_32 returns the value of x with its bits in reversed order.
 [inline]
-pub fn reverse32(x u32) u32 {
-	m := u64(1<<32) - 1
-	mut y := (x>>u32(1) & (m0 & m) | ((x & (m0 & m))<<1))
-	y = (y>>u32(2) & (m1 & m) | ((y & (m1 & m))<<u32(2)))
-	y = (y>>u32(4) & (m2 & m) | ((y & (m2 & m))<<u32(4)))
-	return reverse_bytes32(y)
+pub fn reverse_32(x u32) u32 {
+	mut y := (x>>u32(1) & (m0 & max_u32) | ((x & (m0 & max_u32))<<1))
+	y = (y>>u32(2) & (m1 & max_u32) | ((y & (m1 & max_u32))<<u32(2)))
+	y = (y>>u32(4) & (m2 & max_u32) | ((y & (m2 & max_u32))<<u32(4)))
+	return reverse_bytes_32(y)
 }
 
-// reverse64 returns the value of x with its bits in reversed order.
+// reverse_64 returns the value of x with its bits in reversed order.
 [inline]
-pub fn reverse64(x u64) u64 {
-	m := u64(1<<64) - 1
-	mut y := (x>>u64(1) & (m0 & m) | ((x & (m0 & m))<<1))
-	y = (y>>u64(2) & (m1 & m) | ((y & (m1 & m))<<2))
-	y = (y>>u64(4) & (m2 & m) | ((y & (m2 & m))<<4))
-	return reverse_bytes64(y)
+pub fn reverse_64(x u64) u64 {
+	mut y := (x>>u64(1) & (m0 & max_u64) | ((x & (m0 & max_u64))<<1))
+	y = (y>>u64(2) & (m1 & max_u64) | ((y & (m1 & max_u64))<<2))
+	y = (y>>u64(4) & (m2 & max_u64) | ((y & (m2 & max_u64))<<4))
+	return reverse_bytes_64(y)
 }
 
 // --- ReverseBytes ---
-// reverse_bytes16 returns the value of x with its bytes in reversed order.
+// reverse_bytes_16 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
 [inline]
-pub fn reverse_bytes16(x u16) u16 {
+pub fn reverse_bytes_16(x u16) u16 {
 	return (x>>8) | (x<<8)
 }
 
-// reverse_bytes32 returns the value of x with its bytes in reversed order.
+// reverse_bytes_32 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
 [inline]
-pub fn reverse_bytes32(x u32) u32 {
-	m := u64(1<<32) - 1
-	y := (x>>u32(8) & (m3 & m) | ((x & (m3 & m))<<u32(8)))
+pub fn reverse_bytes_32(x u32) u32 {
+	y := (x>>u32(8) & (m3 & max_u32) | ((x & (m3 & max_u32))<<u32(8)))
 	return (y>>16) | (y<<16)
 }
 
-// reverse_bytes64 returns the value of x with its bytes in reversed order.
+// reverse_bytes_64 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
 [inline]
-pub fn reverse_bytes64(x u64) u64 {
-	m := u64(1<<64) - 1
-	mut y := (x>>u64(8) & (m3 & m) | ((x & (m3 & m))<<u64(8)))
-	y = (y>>u64(16) & (m4 & m) | ((y & (m4 & m))<<u64(16)))
+pub fn reverse_bytes_64(x u64) u64 {
+	mut y := (x>>u64(8) & (m3 & max_u64) | ((x & (m3 & max_u64))<<u64(8)))
+	y = (y>>u64(16) & (m4 & max_u64) | ((y & (m4 & max_u64))<<u64(16)))
 	return (y>>32) | (y<<32)
 }
 
 // --- Len ---
-// len8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-pub fn len8(x byte) int {
-	return int(len8_tab[x])
+// len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+pub fn len_8(x byte) int {
+	return int(len_8_tab[x])
 }
 
-// len16 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-pub fn len16(x u16) int {
+// len_16 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+pub fn len_16(x u16) int {
 	mut y := x
 	mut n := 0
 	if y >= 1<<8 {
 		y >>= 8
 		n = 8
 	}
-	return n + int(len8_tab[y])
+	return n + int(len_8_tab[y])
 }
 
-// len32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-pub fn len32(x u32) int {
+// len_32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+pub fn len_32(x u32) int {
 	mut y := x
 	mut n := 0
 	if y >= 1<<16 {
@@ -272,11 +274,11 @@ pub fn len32(x u32) int {
 		y >>= 8
 		n += 8
 	}
-	return n + int(len8_tab[y])
+	return n + int(len_8_tab[y])
 }
 
-// len64 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-pub fn len64(x u64) int {
+// len_64 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+pub fn len_64(x u64) int {
 	mut y := x
 	mut n := 0
 	if y >= u64(1)<<u64(32) {
@@ -291,6 +293,6 @@ pub fn len64(x u64) int {
 		y >>= 8
 		n += 8
 	}
-	return n + int(len8_tab[y])
+	return n + int(len_8_tab[y])
 }
 
