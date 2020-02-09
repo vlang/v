@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module bits
 
-import math
-
 const (
 // See http://supertech.csail.mit.edu/papers/debruijn.pdf
 	de_bruijn32 = u32(0x077CB531)
