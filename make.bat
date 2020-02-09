@@ -35,8 +35,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo Now using V to build V...
-v2.exe -o v3.exe v.v
-v3.exe -o v.exe -prod v.v
+v2.exe -o v3.exe cmd/v
+v3.exe -o v.exe -prod cmd/v
 if %ERRORLEVEL% NEQ 0 (
     echo v.exe failed to compile itself - Create an issue at 'https://github.com/vlang'
     exit /b 1
@@ -77,8 +77,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo rebuild from source (twice, in case of C definitions changes)
-v2.exe -cc msvc -o v3.exe v.v
-v3.exe -cc msvc -o v -prod v.v
+v2.exe -cc msvc -o v3.exe cmd/v
+v3.exe -cc msvc -o v -prod cmd/v
 if %ERRORLEVEL% NEQ 0 (
     echo V failed to build itself with error %ERRORLEVEL%
     goto :compileerror

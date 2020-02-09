@@ -1215,7 +1215,7 @@ An overview of the module must be placed in the first comment right after the mo
 To generate documentation, run `v doc path/to/module` (TODO this is
 temporarily disabled).
 
-## Advanced Topics
+# Advanced Topics
 
 ## Calling C functions from V
 

@@ -166,8 +166,8 @@ fn (v mut V) new_parser_from_file(path string) Parser {
 		}
 	}
 
-	if v.compile_defines.len > 0 {
-		for cdefine in v.compile_defines {
+	if v.pref.compile_defines.len > 0 {
+		for cdefine in v.pref.compile_defines {
 			custom_path_ending := '_d_${cdefine}.v'
 			if path.ends_with(custom_path_ending){
 				path_platform = custom_path_ending
@@ -215,8 +215,8 @@ fn (v mut V) new_parser(scanner &Scanner) Parser {
 		cgen: v.cgen
 		//x64: v.x64
 		pref: v.pref
-		os: v.os
-		vroot: v.vroot
+		os: v.pref.os
+		vroot: v.pref.vroot
 		local_vars: [Var{
 		}].repeat(MaxLocalVars)
 		import_table: new_import_table()
@@ -443,7 +443,7 @@ fn (p mut Parser) parse(pass Pass) {
 	//
 	p.fgen_nl()
 	p.cgen.nogen = false
-	if p.pref.build_mode == .build_module && p.mod != p.v.mod {
+	if p.pref.build_mode == .build_module && p.mod != p.v.pref.mod {
 		// println('skipping $p.mod (v.mod = $p.v.mod)')
 		p.cgen.nogen = true
 		// defer { p.cgen.nogen = false }
@@ -453,7 +453,7 @@ fn (p mut Parser) parse(pass Pass) {
 	p.can_chash = p.mod in ['gg2', 'ui', 'uiold', 'darwin', 'clipboard', 'webview'] // TODO tmp remove
 	// Import pass - the first and the smallest pass that only analyzes imports
 	// if we are a building module get the full module name from v.mod
-	fq_mod := if p.pref.build_mode == .build_module && p.v.mod.ends_with(p.mod) { p.v.mod }
+	fq_mod := if p.pref.build_mode == .build_module && p.v.pref.mod.ends_with(p.mod) { p.v.pref.mod }
 	// fully qualify the module name, eg base64 to encoding.base64
 	else { p.table.qualify_module(p.mod, p.file_path) }
 	p.table.register_module(fq_mod)
@@ -778,7 +778,12 @@ fn (p mut Parser) const_decl() {
 			// Do not do this when building a module, otherwise the consts
 			// will not be accessible.
 			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
-				p.cgen.const_defines << '#define $name $p.cgen.cur_line'
+				mut const_val := p.cgen.cur_line
+				// fix `warning: integer literal is too large to be represented in a signed integer type`
+				if typ == 'u64' {
+					const_val = 'UINT64_C($const_val)'
+				}
+				p.cgen.const_defines << '#define $name $const_val'
 				p.cgen.resetln('')
 				p.fgen_nl()
 				continue

@@ -1,7 +1,15 @@
-module compiler
+module main
 
-pub const (
+const (
 	help_text = 'Usage: v [options/commands] [file.v | directory]
+
+   To run V in REPL mode, run V without any arguments.
+   To compile a directory/file, pass it as the only argument.
+
+   To run a directory/file, use `v run [file.v | directory]`. V will compile and run it for you.
+   
+   This help message is only intended to be a quick start guide. For a comprehensive help message, use `v help --verbose`.'
+	verbose_help_text = 'Usage: v [options/commands] [file.v | directory]
 
    When V is run without any arguments, it is run in REPL mode.
 

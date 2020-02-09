@@ -106,7 +106,7 @@ docker run --rm -it vlang:latest
 Make sure V can compile itself:
 
 ```
-v v.v
+v -o v cmd/v
 ```
 
 ```bash

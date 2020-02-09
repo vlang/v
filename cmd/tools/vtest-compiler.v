@@ -33,8 +33,8 @@ fn v_test_compiler(vargs string) {
 
 	// Make sure v.c can be compiled without warnings
 	$if macos {
-		if os.exists('/v.v') {
-			os.system('$vexe -o v.c v.v')
+		if os.exists('/cmd/v') {
+			os.system('$vexe -o v.c cmd/v')
 			if os.system('cc -Werror v.c') != 0 {
 				eprintln('cc failed to build v.c without warnings')
 				exit(1)
@@ -42,7 +42,7 @@ fn v_test_compiler(vargs string) {
 			eprintln('v.c can be compiled without warnings. This is good :)')
 		}
 	}
-	building_tools_failed := testing.v_build_failing(vargs, 'tools')
+	building_tools_failed := testing.v_build_failing(vargs, 'cmd/tools')
 	eprintln('')
 	testing.eheader('Testing all _test.v files...')
 	mut compiler_test_session := testing.new_test_session(vargs)

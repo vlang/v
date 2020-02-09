@@ -102,7 +102,7 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	if !os.exists(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
-			println('use `v -o v v.v` instead of `v -o v compiler`')
+			println('use `v -o v cmd/v` instead of `v -o v compiler`')
 		}
 		verror("$dir doesn't exist")
 	}

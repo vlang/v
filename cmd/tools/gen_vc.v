@@ -291,7 +291,7 @@ fn (gen_vc mut GenVC) generate() {
 		v_flags := if os_name == 'nix' { '-output-cross-platform-c' } else { '-os $os_name' }
 		c_file := 'v${vc_suffix}.c'
 		// try generate .c file
-		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/v.v')
+		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/cmd/v')
 		// check if the c file seems ok
 		gen_vc.assert_file_exists_and_is_not_too_short(c_file, err_msg_gen_c)
 		// embed the latest v commit hash into the c file
