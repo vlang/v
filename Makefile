@@ -28,6 +28,10 @@ ifeq ($(_SYS),Darwin)
 MAC := 1
 endif
 
+ifeq ($(_SYS),FreeBSD)
+LDFLAGS += -lexecinfo
+endif
+
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
