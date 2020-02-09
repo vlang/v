@@ -17,7 +17,7 @@ struct C.CONSOLE_SCREEN_BUFFER_INFO {
 	dwMaximumWindowSize C.COORD
 }
 
-fn C.GetConsoleScreenBufferInfo(handle C.HANDLE, info &CONSOLE_SCREEN_BUFFER_INFO) bool
+fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &CONSOLE_SCREEN_BUFFER_INFO) bool
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
