@@ -585,6 +585,13 @@ fn test_raw() {
 	println('raw string: "$raw"')
 }
 
+fn test_raw_with_quotes() {
+	raw := r"some'" + r'"thing' // " should be escaped in the generated C code
+	assert raw[0] == `s`
+	assert raw[5] == `"`
+	assert raw[6] == `t`
+}
+
 fn test_escape() {
 	// TODO
 	//a := 10
