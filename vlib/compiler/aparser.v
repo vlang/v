@@ -778,7 +778,12 @@ fn (p mut Parser) const_decl() {
 			// Do not do this when building a module, otherwise the consts
 			// will not be accessible.
 			if p.pref.build_mode != .build_module && is_compile_time_const(p.cgen.cur_line) {
-				p.cgen.const_defines << '#define $name $p.cgen.cur_line'
+				mut const_val := p.cgen.cur_line
+				// fix `warning: integer literal is too large to be represented in a signed integer type`
+				if typ == 'u64' {
+					const_val = 'UINT64_C($const_val)'
+				}
+				p.cgen.const_defines << '#define $name $const_val'
 				p.cgen.resetln('')
 				p.fgen_nl()
 				continue
