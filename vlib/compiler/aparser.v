@@ -829,12 +829,12 @@ fn (p mut Parser) type_decl() {
 		p.fspace()
 	}
 	mut parent := Type{}
+	if !p.builtin_mod && p.mod != 'main' {
+		name = p.prepend_mod(name)
+	}
 	// Sum type
 	//is_sum := p.tok == .pipe
 	if is_sum {
-		if !p.builtin_mod && p.mod != 'main' {
-			name = p.prepend_mod(name)
-		}
 		// Register the first child  (name we already parsed)
 		/*
 		p.table.register_type(Type{
