@@ -634,3 +634,21 @@ fn test_double_quote_inter() {
 	assert '${a} ${b}' == "1 2"
 }
 
+fn test_split_into_lines() {
+	line_content := 'Line'
+	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
+	lines_crlf := text_crlf.split_into_lines()
+
+	assert lines_crlf.len == 3
+	for line in lines_crlf {
+		assert line == line_content
+	}
+
+	text_lf := '${line_content}\n${line_content}\n${line_content}'
+	lines_lf := text_lf.split_into_lines()
+
+	assert lines_lf.len == 3
+	for line in lines_lf {
+		assert line == line_content
+	}
+}
