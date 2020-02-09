@@ -74,34 +74,3 @@ fn vexe_path() string {
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
 }
-
-pub fn get_host_os() OS {
-	$if linux {
-		return .linux
-	}
-	$if macos {
-		return .mac
-	}
-	$if windows {
-		return .windows
-	}
-	$if freebsd {
-		return .freebsd
-	}
-	$if openbsd {
-		return .openbsd
-	}
-	$if netbsd {
-		return .netbsd
-	}
-	$if dragonfly {
-		return .dragonfly
-	}
-	$if solaris {
-		return .solaris
-	}
-	$if haiku {
-		return .haiku
-	}
-	panic('unknown host OS')
-}
