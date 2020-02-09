@@ -8,7 +8,7 @@ module table
 pub struct Table {
 	// struct_fields map[string][]string
 pub mut:
-	types           []Type
+	types           []TypeSymbol
 	// type_idxs Hashmap
 	type_idxs       map[string]int
 	unresolved_idxs map[string]int
@@ -26,7 +26,7 @@ pub struct Fn {
 pub:
 	name        string
 	args        []Var
-	return_type TypeRef
+	return_type Type
 	is_variadic bool
 	is_c        bool
 }
@@ -40,14 +40,14 @@ pub:
 	is_global   bool
 	scope_level int
 mut:
-	typ         TypeRef
+	typ         Type
 }
 
 pub fn new_table() &Table {
 	mut t := &Table{
-		types: make(0, 400, sizeof(Type))
+		types: make(0, 400, sizeof(TypeSymbol))
 	}
-	t.register_builtin_types()
+	t.register_builtin_type_symbols()
 	return t
 }
 
@@ -82,7 +82,7 @@ pub fn (t mut Table) register_const(v Var) {
 	t.consts[v.name] = v
 }
 
-pub fn (t mut Table) register_global(name string, typ TypeRef) {
+pub fn (t mut Table) register_global(name string, typ Type) {
 	t.consts[name] = Var{
 		name: name
 		typ: typ
@@ -96,7 +96,8 @@ pub fn (t mut Table) register_global(name string, typ TypeRef) {
 }
 
 pub fn (t mut Table) register_var(v Var) {
-	println('register_var: $v.name - $v.typ.typ.name')
+	typ_sym := t.get_type_symbol(v.typ)
+	println('register_var: $v.name - $typ_sym.name')
 	new_var := {
 		v |
 		idx:t.var_idx,
@@ -192,7 +193,7 @@ pub fn (t mut Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (t &Table) register_method(typ &Type, new_fn Fn) bool {
+pub fn (t &Table) register_method(typ &TypeSymbol, new_fn Fn) bool {
 	// println('register method `$new_fn.name` type=$typ.name idx=$typ.idx')
 	println('register method `$new_fn.name` type=$typ.name')
 	mut t1 := typ
@@ -207,14 +208,14 @@ pub fn (t mut Table) new_tmp_var() string {
 	return 'tmp$t.tmp_cnt'
 }
 
-pub fn (t &Type) has_method(name string) bool {
+pub fn (t &TypeSymbol) has_method(name string) bool {
 	t.find_method(name) or {
 		return false
 	}
 	return true
 }
 
-pub fn (t &Type) find_method(name string) ?Fn {
+pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	for method in t.methods {
 		if method.name == name {
 			return method
@@ -224,14 +225,14 @@ pub fn (t &Type) find_method(name string) ?Fn {
 }
 
 
-pub fn (s &Type) has_field(name string) bool {
+pub fn (s &TypeSymbol) has_field(name string) bool {
 	s.find_field(name) or {
 		return false
 	}
 	return true
 }
 
-pub fn (s &Type) find_field(name string) ?Field {
+pub fn (s &TypeSymbol) find_field(name string) ?Field {
 	match s.info {
 		Struct {
 		    for field in it.fields {
@@ -245,7 +246,7 @@ pub fn (s &Type) find_field(name string) ?Field {
 	return none
 }
 
-pub fn (t &Table) struct_has_field(s &Type, name string) bool {
+pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 	if !isnil(s.parent) {
 		println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
 	}
@@ -258,7 +259,7 @@ pub fn (t &Table) struct_has_field(s &Type, name string) bool {
 	return false
 }
 
-pub fn (t &Table) struct_find_field(s &Type, name string) ?Field {
+pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	if !isnil(s.parent) {
 		println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent=$s.parent.name')
 	}
@@ -283,7 +284,7 @@ pub fn (t &Table) find_type_idx(name string) int {
 }
 
 [inline]
-pub fn (t &Table) find_type(name string) ?Type {
+pub fn (t &Table) find_type(name string) ?TypeSymbol {
 	idx := t.type_idxs[name]
 	if idx > 0 {
 		return t.types[idx]
@@ -291,11 +292,26 @@ pub fn (t &Table) find_type(name string) ?Type {
 	return none
 }
 
+[inline]
+pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
+	idx := type_idx(typ)
+	if idx < 0 {
+		unresolved_idx := -idx
+		return &TypeSymbol{
+			kind: .unresolved
+			name: 'unresolved-$unresolved_idx'
+		}
+	} else if idx > 0 {
+		return &t.types[idx]
+	}
+	panic('get_type_symbol: invalid type $idx')
+}
+
 // this will override or register builtin type
 // allows prexisitng types added in register_builtins
 // to be overriden with their real type info
 [inline]
-pub fn (t mut Table) register_builtin_type(typ Type) int {
+pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
 		if existing_idx >= string_type_idx {
@@ -304,11 +320,11 @@ pub fn (t mut Table) register_builtin_type(typ Type) int {
 		}
 		return existing_idx
 	}
-	return t.register_type(typ)
+	return t.register_type_symbol(typ)
 }
 
 [inline]
-pub fn (t mut Table) register_type(typ Type) int {
+pub fn (t mut Table) register_type_symbol(typ TypeSymbol) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
 		ex_type := t.types[existing_idx]
@@ -344,15 +360,17 @@ pub fn (t &Table) known_type(name string) bool {
 	return true
 }
 
-pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) int {
-	name := map_name(&key_type, &value_type)
+pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
+	key_type_sym := t.get_type_symbol(key_type)
+	val_type_sym := t.get_type_symbol(value_type)
+	name := map_name(key_type_sym, val_type_sym)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
-	map_type := Type{
+	map_type := TypeSymbol{
 		parent: &t.types[map_type_idx]
 		kind: .map
 		name: name
@@ -361,18 +379,19 @@ pub fn (t mut Table) find_or_register_map(key_type TypeRef, value_type TypeRef) 
 			value_type: value_type
 		}
 	}
-	return t.register_type(map_type)
+	return t.register_type_symbol(map_type)
 }
 
-pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int {
-	name := array_name(&elem_type, nr_dims)
+pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	name := array_name(elem_type_sym, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
-	array_type := Type{
+	array_type := TypeSymbol{
 		parent: &t.types[array_type_idx]
 		kind: .array
 		name: name
@@ -381,18 +400,19 @@ pub fn (t mut Table) find_or_register_array(elem_type TypeRef, nr_dims int) int 
 			nr_dims: nr_dims
 		}
 	}
-	return t.register_type(array_type)
+	return t.register_type_symbol(array_type)
 }
 
-pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, nr_dims int) int {
-	name := array_fixed_name(&elem_type, size, nr_dims)
+pub fn (t mut Table) find_or_register_array_fixed(elem_type Type, size int, nr_dims int) int {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	name := array_fixed_name(elem_type_sym, size, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
-	array_fixed_type := Type{
+	array_fixed_type := TypeSymbol{
 		parent: 0
 		kind: .array_fixed
 		name: name
@@ -402,13 +422,14 @@ pub fn (t mut Table) find_or_register_array_fixed(elem_type TypeRef, size int, n
 			nr_dims: nr_dims
 		}
 	}
-	return t.register_type(array_fixed_type)
+	return t.register_type_symbol(array_fixed_type)
 }
 
-pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
+pub fn (t mut Table) find_or_register_multi_return(mr_typs []Type) int {
 	mut name := 'multi_return'
 	for mr_typ in mr_typs {
-		name += '_$mr_typ.typ.name'
+		mr_type_sym := t.get_type_symbol(mr_typ)
+		name += '_$mr_type_sym.name'
 	}
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -416,7 +437,7 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 		return existing_idx
 	}
 	// register
-	mr_type := Type{
+	mr_type := TypeSymbol{
 		parent: 0
 		kind: .multi_return
 		name: name
@@ -424,34 +445,40 @@ pub fn (t mut Table) find_or_register_multi_return(mr_typs []TypeRef) int {
 			types: mr_typs
 		}
 	}
-	return t.register_type(mr_type)
+	return t.register_type_symbol(mr_type)
 }
 
 pub fn (t mut Table) add_placeholder_type(name string) int {
-	ph_type := Type{
+	ph_type := TypeSymbol{
 		parent: 0
 		kind: .placeholder
 		name: name
 	}
 	// println('added placeholder: $name - $ph_type.idx')
-	return t.register_type(ph_type)
+	return t.register_type_symbol(ph_type)
 }
 
-pub fn (t &Table) check(got, expected &TypeRef) bool {
-	println('check: $got.typ.name, $expected.typ.name')
-	if expected.typ.kind == .voidptr {
+pub fn (t &Table) check(got, expected Type) bool {
+	got_type_sym := t.get_type_symbol(got)
+	exp_type_sym := t.get_type_symbol(expected)
+	got_idx := type_idx(got)
+	exp_idx := type_idx(expected)
+	got_kind := got_type_sym.kind
+	exp_kind := exp_type_sym.kind
+	println('check: $got_type_sym.name, $exp_type_sym.name')
+	if got_kind == .voidptr {
 		return true
 	}
-	if expected.typ.kind in [.voidptr, .byteptr, .charptr] && got.typ.kind == .int {
+	if exp_kind in [.voidptr, .byteptr, .charptr] && got_kind == .int {
 		return true
 	}
-	if expected.typ.kind == .byteptr && got.typ.kind == .voidptr {
+	if exp_kind == .byteptr && got_kind == .voidptr {
 		return true
 	}
 	// if expected.name == 'array' {
 	// return true
 	// }
-	if got.idx != expected.idx && got.typ.name != expected.typ.name {
+	if got_idx != exp_idx /*&& got.typ.name != expected.typ.name*/ {
 		return false
 	}
 	return true
@@ -459,7 +486,7 @@ pub fn (t &Table) check(got, expected &TypeRef) bool {
 
 /*
 [inline]
-pub fn (t &Table) get_expr_typ(expr ast.Expr) Type {
+pub fn (t &Table) get_expr_typ(expr ast.Expr) TypeSymbol {
 	match expr {
 		ast.ArrayInit {
 			return it.typ

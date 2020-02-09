@@ -63,10 +63,11 @@ fn (c &Checker) complete_types() {
 		// println('Resolve type: $t.name')
 		if t.kind == .array {
 			mut info := t.array_info()
-			if info.elem_type.typ.kind == .unresolved {
+			if table.type_is_unresolved(info.elem_type) {
 				info.elem_type = c.resolved[info.elem_type.idx]
+				elem_type_sym := c.table.get_type_symbol(info.elem_type)
 				mut t1 := &c.table.types[idx]
-				t1.name = table.array_name(&info.elem_type, info.nr_dims)
+				t1.name = table.array_name(elem_type_sym, info.nr_dims)
 				t1.info = info
 			}
 		}

@@ -33,7 +33,7 @@ mut:
 	peek_tok          token.Token
 	// vars []string
 	table             &table.Table
-	return_type       table.TypeRef // current function's return type
+	return_type       table.Type // current function's return type
 	// scope_level int
 	// var_idx     int
 	is_c              bool
@@ -385,7 +385,7 @@ pub fn (p &Parser) warn(s string) {
 	}
 }
 
-pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.TypeRef) {
+pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 	mut node := ast.Ident{}
 	mut typ := p.table.type_ref(table.void_type_idx)
 	// p.warn('name ')
@@ -444,7 +444,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.TypeRef) {
 	return node,typ
 }
 
-pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
+pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	mut typ := p.table.type_ref(table.void_type_idx)
 	// mut typ := table.unresolved_type
@@ -521,7 +521,7 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.TypeRef) {
 	return node,typ
 }
 
-pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
+pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 	// println('\n\nparser.expr()')
 	mut typ := p.table.type_ref(table.void_type_idx)
 	mut node := ast.Expr{}
@@ -619,7 +619,7 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.TypeRef) {
 	return node,typ
 }
 
-fn (p mut Parser) prefix_expr() (ast.Expr,table.TypeRef) {
+fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
 	op := p.tok.kind
 	p.next()
 	right,typ := p.expr(1)
@@ -663,7 +663,7 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 	// return node,typ
 }
 
-fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,table.TypeRef) {
+fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) (ast.Expr,table.Type) {
 	p.next()
 	field_name := p.check_name()
 	// Method call
@@ -696,7 +696,7 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type &table.TypeRef) (ast.Expr,ta
 	return node,typ
 }
 
-fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.TypeRef) {
+fn (p mut Parser) infix_expr(left ast.Expr) (ast.Expr,table.Type) {
 	op := p.tok.kind
 	// mut typ := p.
 	// println('infix op=$op.str()')
@@ -763,7 +763,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 		}
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
-			mut typ := table.TypeRef{
+			mut typ := table.Type{
 				typ: 0
 			}
 			cond,typ = p.expr(0)
@@ -822,7 +822,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 	}
 }
 
-fn (p mut Parser) if_expr() (ast.Expr,table.TypeRef) {
+fn (p mut Parser) if_expr() (ast.Expr,table.Type) {
 	p.inside_if = true
 	// defer {
 	// }
@@ -867,7 +867,7 @@ fn (p mut Parser) if_expr() (ast.Expr,table.TypeRef) {
 	return node,typ
 }
 
-fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
+fn (p mut Parser) string_expr() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	node = ast.StringLiteral{
 		val: p.tok.lit
@@ -891,7 +891,7 @@ fn (p mut Parser) string_expr() (ast.Expr,table.TypeRef) {
 	return node,p.table.type_ref(table.string_type_idx)
 }
 
-fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
+fn (p mut Parser) array_init() (ast.Expr,table.Type) {
 	mut node := ast.Expr{}
 	p.check(.lsbr)
 	mut val_type := p.table.type_ref(table.void_type_idx)
@@ -926,7 +926,7 @@ fn (p mut Parser) array_init() (ast.Expr,table.TypeRef) {
 	return node,array_type
 }
 
-fn (p mut Parser) parse_number_literal() (ast.Expr,table.TypeRef) {
+fn (p mut Parser) parse_number_literal() (ast.Expr,table.Type) {
 	lit := p.tok.lit
 	mut node := ast.Expr{}
 	mut ti := p.table.type_ref(table.int_type_idx)
@@ -1065,9 +1065,9 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 	if p.builtin_mod && t.name in table.builtin_type_names {
 		// this allows overiding the builtins type
 		// with the real struct type info parsed from builtin
-		ret = p.table.register_builtin_type(t)
+		ret = p.table.register_builtin_type_symbol(t)
 	} else {
-		ret = p.table.register_type(t)
+		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {
 		p.error('cannot register type `$name`, another type with this name exists')
@@ -1208,7 +1208,7 @@ fn (p mut Parser) global_decl() ast.GlobalDecl {
 	}
 }
 
-fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
+fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 	p.check(.key_match)
 	cond,typ := p.expr(0)
 	p.check(.lcbr)
@@ -1243,7 +1243,7 @@ fn (p mut Parser) match_expr() (ast.Expr,table.TypeRef) {
 	return node,p.table.type_ref(table.void_type_idx)
 }
 
-fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
+fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.Type {
 	mut idx := p.unresolved_offset + p.unresolved.len
 	if key in p.table.unresolved_idxs {
 		idx = p.table.unresolved_idxs[key]
@@ -1252,14 +1252,15 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.TypeRef {
 		p.table.unresolved_idxs[key] = idx
 		p.unresolved << expr
 	}
-	t := table.TypeRef{
-		idx: idx
-		typ: &table.Type{
-			parent: 0
-			kind: .unresolved
-			name: 'unresolved-$idx'
-		}
-	}
+	// t := table.Type{
+	// 	idx: idx
+	// 	typ: table.Type{
+	// 		parent: 0
+	// 		kind: .unresolved
+	// 		name: 'unresolved-$idx'
+	// 	}
+	// }
+	t := table.typ(-idx)
 	return t
 }
 
