@@ -144,12 +144,9 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.Type {
 pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.Type {
 	left_type := c.expr(infix_expr.left)
 	right_type := c.expr(infix_expr.right)
-	left_type_idx := table.type_idx(left_type)
-	right_type_idx := table.type_idx(right_type)
 	if !c.table.check(right_type, left_type) {
 		left_type_sym := c.table.get_type_symbol(left_type)
 		right_type_sym := c.table.get_type_symbol(right_type)
-		println(' ## $left_type_idx - $right_type_idx')
 		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
 		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
 		c.error('infix expr: cannot use `$right_type_sym.name` as `$left_type_sym.name`', infix_expr.pos)
@@ -182,26 +179,17 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type {
 				c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
 			}
 		}
-		// for debugging
-		if f.name == 'backtrace_symbols_fd' {
-			println('ARGS FOR: backtrace_symbols_fd:')
-			for i, arg_expr in  call_expr.args {
-				typ := c.expr(arg_expr)
-				typ_sym := c.table.get_type_symbol(typ)
-				println(' -- $i - $typ_sym.name')
-			}
-		}
 		// TODO: variadic
 		if fn_name != 'printf' && f.args.len > 0 {
-		for i, arg in f.args {
-			arg_expr := call_expr.args[i]
-			typ := c.expr(arg_expr)
-			typ_sym := c.table.get_type_symbol(typ)
-			arg_typ_sym := c.table.get_type_symbol(arg.typ)
-			if !c.table.check(&typ, &arg.typ) {
-				c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument to `$fn_name`', call_expr.pos)
+			for i, arg in f.args {
+				arg_expr := call_expr.args[i]
+				typ := c.expr(arg_expr)
+				typ_sym := c.table.get_type_symbol(typ)
+				arg_typ_sym := c.table.get_type_symbol(arg.typ)
+				if !c.table.check(&typ, &arg.typ) {
+					c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument to `$fn_name`', call_expr.pos)
+				}
 			}
-		}
 		}
 		return f.return_type
 	}
