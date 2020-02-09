@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module bits
 
-import math
-
 const (
 // See http://supertech.csail.mit.edu/papers/debruijn.pdf
 	de_bruijn32 = u32(0x077CB531)
@@ -30,7 +28,8 @@ const (
 const (
 	// save importing math mod just for these
 	max_u32 = 4294967295
-	max_u64 = 18446744073709551615
+	//max_u64 = 18446744073709551615
+	max_u64 = C.UINT64_MAX // OSX test
 )
 
 // --- LeadingZeros ---
