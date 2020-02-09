@@ -21,7 +21,7 @@ const (
 )
 
 fn main() {
-	arg := resolve_flags_and_argument()
+	arg := join_flags_and_argument()
 	command, option := get_basic_command_and_option(arg)
 
 	is_verbose := '-verbose' in arg || '--verbose' in arg

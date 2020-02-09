@@ -47,7 +47,7 @@ fn non_empty(arg []string) []string {
 	return arg.filter(it != '')
 }
 
-fn resolve_flags_and_argument() []string {
+fn join_flags_and_argument() []string {
 	vosargs := os.getenv('VOSARGS')
 	if vosargs != '' {
 		return non_empty(vosargs.split(' '))
