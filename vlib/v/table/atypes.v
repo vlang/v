@@ -3,11 +3,9 @@
 // that can be found in the LICENSE file.
 module table
 
-pub type Type int
+pub type TypeNew int
 
 pub type TypeInfo = Array | ArrayFixed | Map | Struct | MultiReturn
-
-// pub struct Type {}
 
 pub struct TypeSymbol {
 pub:
@@ -382,7 +380,7 @@ pub struct Field {
 pub:
 	name string
 mut:
-	typ  Type
+	typ  TypeNew/*table.Type*/
 	// type_idx int
 }
 // pub struct Int {
@@ -398,7 +396,7 @@ pub struct Array {
 pub:
 	nr_dims    int
 mut:
-	elem_type Type
+	elem_type TypeNew/*table.Type*/
 }
 
 pub struct ArrayFixed {
@@ -406,20 +404,20 @@ pub:
 	nr_dims   int
 	size      int
 mut:
-	elem_type Type
+	elem_type TypeNew/*table.Type*/
 }
 
 pub struct Map {
 pub mut:
-	key_type   Type
-	value_type Type
+	key_type   TypeNew/*table.Type*/
+	value_type TypeNew/*table.Type*/
 }
 
 pub struct MultiReturn {
 pub:
 	name  string
 mut:
-	types []Type
+	types []TypeNew/*table.Type*/
 }
 
 [inline]

@@ -14,7 +14,7 @@ pub struct Checker {
 	table     &table.Table
 mut:
 	file_name string
-	resolved  []table.TypeRef
+	resolved  []TypeNew/*table.Type*/
 }
 
 pub fn new_checker(table &table.Table) Checker {
@@ -64,7 +64,7 @@ fn (c &Checker) complete_types() {
 		if t.kind == .array {
 			mut info := t.array_info()
 			if table.type_is_unresolved(info.elem_type) {
-				info.elem_type = c.resolved[info.elem_type.idx]
+				info.elem_type = c.resolve(info.elem_type)
 				elem_type_sym := c.table.get_type_symbol(info.elem_type)
 				mut t1 := &c.table.types[idx]
 				t1.name = table.array_name(elem_type_sym, info.nr_dims)
@@ -74,17 +74,19 @@ fn (c &Checker) complete_types() {
 		else if t.kind == .map {
 			mut info := t.map_info()
 			mut updated := false
-			if info.key_type.typ.kind == .unresolved {
-				info.key_type = c.resolved[info.key_type.idx]
+			if table.type_is_unresolved(info.key_type) {
+				info.key_type = c.resolve(info.key_type)
 				updated = true
 			}
-			if info.value_type.typ.kind == .unresolved {
-				info.value_type = c.resolved[info.value_type.idx]
+			if  table.type_is_unresolved(info.value_type) {
+				info.value_type = c.resolve(info.value_type)
 				updated = true
 			}
 			if updated {
 				mut t1 := &c.table.types[idx]
-				t1.name = table.map_name(&info.key_type, &info.value_type)
+				key_type_sym := c.table.get_type_symbol(info.key_type)
+				value_type_sym := c.table.get_type_symbol(info.value_type)
+				t1.name = table.map_name(key_type_sym, value_type_sym)
 				t1.info = info
 			}
 		}
@@ -93,8 +95,8 @@ fn (c &Checker) complete_types() {
 			mut types := info.types
 			mut updated := false
 			for i, ut in types {
-				if ut.typ.kind == .unresolved {
-					types[i] = c.resolved[ut.idx]
+				if table.type_is_unresolved(ut) {
+					types[i] = c.resolve(ut)
 					updated = true
 				}
 			}
@@ -107,22 +109,33 @@ fn (c &Checker) complete_types() {
 	}
 }
 
-pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.TypeRef {
-	typ := c.table.find_type(struct_init.typ.typ.name) or {
-		c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
-		panic('')
-	}
+pub fn (c &Checker) resolve(unresolved TypeNew/*table.Type*/) TypeNew/*table.Type*/ {
+    uidx := table.type_idx(unresolved)
+	println('unresolved: $uidx')
+	res := -table.type_idx(unresolved)-1
+	println('res idx: $res')
+	return c.resolved[-table.type_idx(unresolved)-1]
+}
+
+pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) TypeNew/*table.Type*/ {
+	// typ := c.table.find_type(struct_init.typ.typ.name) or {
+	// 	c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
+	// 	panic('')
+	// }
+	typ := c.table.get_type_symbol(struct_init.typ)
 	match typ.kind {
 		.placeholder {
-			c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
+			c.error('unknown struct: $typ.name', struct_init.pos)
 		}
 		.struct_ {
 			info := typ.info as table.Struct
 			for i, expr in struct_init.exprs {
 				field := info.fields[i]
-				field_type := c.expr(expr)
-				if !c.table.check(field_type, field.typ) {
-					c.error('cannot assign $field_type.typ.name as $field.typ.typ.name for field $field.name', struct_init.pos)
+				expr_type := c.expr(expr)
+				expr_type_sym := c.table.get_type_symbol(expr_type)
+				field_type_sym := c.table.get_type_symbol(field.typ)
+				if !c.table.check(expr_type, field.typ) {
+					c.error('cannot assign $expr_type_sym.name as $field_type_sym.name for field $field.name', struct_init.pos)
 				}
 			}
 		}
@@ -131,16 +144,21 @@ pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.TypeRef 
 	return struct_init.typ
 }
 
-pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) table.TypeRef {
+pub fn (c &Checker) infix_expr(infix_expr ast.InfixExpr) TypeNew/*table.Type*/ {
 	left_type := c.expr(infix_expr.left)
 	right_type := c.expr(infix_expr.right)
-	if !c.table.check(&right_type, &left_type) {
+	left_type_idx := table.type_idx(left_type)
+	right_type_idx := table.type_idx(right_type)
+	if !c.table.check(right_type, left_type) {
+		left_type_sym := c.table.get_type_symbol(left_type)
+		right_type_sym := c.table.get_type_symbol(right_type)
+		println(' ## $left_type_idx - $right_type_idx')
 		// if !c.table.check(&infix_expr.right_type, &infix_expr.right_type) {
 		// c.error('infix expr: cannot use `$infix_expr.right_type.name` as `$infix_expr.left_type.name`', infix_expr.pos)
-		c.error('infix expr: cannot use `$left_type.typ.name` as `$right_type.typ.name`', infix_expr.pos)
+		c.error('infix expr: cannot use `$right_type_sym.name` as `$left_type_sym.name`', infix_expr.pos)
 	}
 	if infix_expr.op.is_relational() {
-		return c.table.type_ref(table.bool_type_idx)
+		return table.bool_type
 	}
 	return left_type
 }
@@ -149,11 +167,13 @@ fn (c &Checker) check_assign_expr(assign_expr ast.AssignExpr) {
 	left_type := c.expr(assign_expr.left)
 	right_type := c.expr(assign_expr.val)
 	if !c.table.check(right_type, left_type) {
-		c.error('cannot assign $right_type.typ.name to $left_type.typ.name', assign_expr.pos)
+		left_type_sym := c.table.get_type_symbol(left_type)
+		right_type_sym := c.table.get_type_symbol(right_type)
+		c.error('cannot assign $right_type_sym.name to $left_type_sym.name', assign_expr.pos)
 	}
 }
 
-pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
+pub fn (c &Checker) call_expr(call_expr ast.CallExpr) TypeNew/*table.Type*/ {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
@@ -170,7 +190,8 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
 			println('ARGS FOR: backtrace_symbols_fd:')
 			for i, arg_expr in  call_expr.args {
 				typ := c.expr(arg_expr)
-				println(' -- $i - $typ.typ.name')
+				typ_sym := c.table.get_type_symbol(typ)
+				println(' -- $i - $typ_sym.name')
 			}
 		}
 		// TODO: variadic
@@ -178,8 +199,10 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
 		for i, arg in f.args {
 			arg_expr := call_expr.args[i]
 			typ := c.expr(arg_expr)
+			typ_sym := c.table.get_type_symbol(typ)
+			arg_typ_sym := c.table.get_type_symbol(arg.typ)
 			if !c.table.check(&typ, &arg.typ) {
-				c.error('!cannot use type `$typ.typ.name` as type `$arg.typ.typ.name` in argument to `$fn_name`', call_expr.pos)
+				c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument to `$fn_name`', call_expr.pos)
 			}
 		}
 		}
@@ -189,48 +212,50 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.TypeRef {
 	exit(1)
 }
 
-pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) table.TypeRef {
+pub fn (c &Checker) check_method_call_expr(method_call_expr ast.MethodCallExpr) TypeNew/*table.Type*/ {
 	typ := c.expr(method_call_expr.expr)
-	if method := typ.typ.find_method(method_call_expr.name) {
+	typ_sym := c.table.get_type_symbol(typ)
+	if method := typ_sym.find_method(method_call_expr.name) {
 		return method.return_type
 	}
 	// check parent
-	if !isnil(typ.typ.parent) {
-		if method := typ.typ.parent.find_method(method_call_expr.name) {
+	if !isnil(typ_sym.parent) {
+		if method := typ_sym.parent.find_method(method_call_expr.name) {
 			return method.return_type
 		}
 	}
-	c.error('type `$typ.typ.name` has no method `$method_call_expr.name`', method_call_expr.pos)
+	c.error('type `$typ_sym.name` has no method `$method_call_expr.name`', method_call_expr.pos)
 	exit(1)
 }
 
-pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.TypeRef {
+pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) TypeNew/*table.Type*/ {
 	typ := c.expr(selector_expr.expr)
+	typ_sym := c.table.get_type_symbol(typ)
 	field_name := selector_expr.field
-	if field := typ.typ.find_field(field_name) {
+	if field := typ_sym.find_field(field_name) {
 		return field.typ
 	}
 	// types with parent struct (array/maps) handled here
-	if !isnil(typ.typ.parent) {
-		if field := typ.typ.parent.find_field(field_name) {
-			if field.typ.typ.kind == .unresolved {
-				return c.resolved[field.typ.idx]
+	if !isnil(typ_sym.parent) {
+		if field := typ_sym.parent.find_field(field_name) {
+			if table.type_is_unresolved(field.typ) {
+				return c.resolved[field.typ]
 			}
 			return field.typ
 		}
 	}
-	if typ.typ.kind != .struct_ {
-		c.error('`$typ.typ.name` is not a struct', selector_expr.pos)
+	if typ_sym.kind != .struct_ {
+		c.error('`$typ_sym.name` is not a struct', selector_expr.pos)
 	}
 	else {
-		c.error('unknown field `${typ.typ.name}.$field_name`', selector_expr.pos)
+		c.error('unknown field `${typ_sym.name}.$field_name`', selector_expr.pos)
 	}
 	exit(0)
 }
 
 // TODO: non deferred
 pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
-	mut got_types := []table.TypeRef
+	mut got_types := []TypeNew/*table.Type*/
 	if return_stmt.exprs.len == 0 {
 		return
 	}
@@ -239,9 +264,10 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 		got_types << typ
 	}
 	expected_type := return_stmt.expected_type
+	expected_type_sym := c.table.get_type_symbol(expected_type)
 	mut expected_types := [expected_type]
-	if expected_type.typ.kind == .multi_return {
-		mr_info := expected_type.typ.info as table.MultiReturn
+	if expected_type_sym.kind == .multi_return {
+		mr_info := expected_type_sym.info as table.MultiReturn
 		expected_types = mr_info.types
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -250,15 +276,17 @@ pub fn (c &Checker) return_stmt(return_stmt ast.Return) {
 	for i, exp_typ in expected_types {
 		got_typ := got_types[i]
 		if !c.table.check(got_typ, exp_typ) {
-			c.error('cannot use `$got_typ.typ.name` as type `$exp_typ.typ.name` in return argument', return_stmt.pos)
+			got_typ_sym := c.table.get_type_symbol(got_typ)
+			exp_typ_sym := c.table.get_type_symbol(exp_typ)
+			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument', return_stmt.pos)
 		}
 	}
 }
 
 pub fn (c &Checker) assign_stmt(assign_stmt ast.AssignStmt) {}
 
-pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.TypeRef {
-	mut elem_type := c.table.type_ref(table.void_type_idx)
+pub fn (c &Checker) array_init(array_init ast.ArrayInit) TypeNew/*table.Type*/ {
+	mut elem_type := table.void_type
 	for i, expr in array_init.exprs {
 		c.expr(expr)
 		typ := c.expr(expr)
@@ -268,7 +296,8 @@ pub fn (c &Checker) array_init(array_init ast.ArrayInit) table.TypeRef {
 			continue
 		}
 		if !c.table.check(elem_type, typ) {
-			c.error('expected array element with type `$elem_type.typ.name`', array_init.pos)
+			elem_type_sym := c.table.get_type_symbol(elem_type)
+			c.error('expected array element with type `$elem_type_sym.name`', array_init.pos)
 		}
 	}
 	return array_init.typ
@@ -290,13 +319,16 @@ fn (c &Checker) stmt(node ast.Stmt) {
 		ast.VarDecl {
 			typ := c.expr(it.expr)
 			// println('checker: var decl $typ.name  it.typ=$it.typ.name $it.pos.line_nr')
-			if typ.typ.kind != .void {
+			// if typ.typ.kind != .void {
+			if table.type_idx(typ) != table.void_type_idx {
 				it.typ = typ
 			}
 		}
 		ast.ForStmt {
 			typ := c.expr(it.cond)
-			if typ.typ.kind != .bool {
+			// typ_sym := c.table.get_type_symbol(typ)
+			// if typ_sym.kind != .bool {
+			if table.type_idx(typ) != table.bool_type_idx {
 				c.error('non-bool used as for condition', it.pos)
 			}
 			for stmt in it.stmts {
@@ -319,13 +351,13 @@ fn (c &Checker) stmt(node ast.Stmt) {
 	}
 }
 
-pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
+pub fn (c &Checker) expr(node ast.Expr) TypeNew/*table.Type*/ {
 	match mut node {
 		ast.AssignExpr {
 			c.check_assign_expr(it)
 		}
 		ast.IntegerLiteral {
-			return c.table.type_ref(table.int_type_idx)
+			return table.int_type
 		}
 		// ast.FloatLiteral {}
 		ast.PostfixExpr {
@@ -338,7 +370,7 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		*/
 
 		ast.StringLiteral {
-			return c.table.type_ref(table.string_type_idx)
+			return table.string_type
 		}
 		ast.PrefixExpr {
 			return c.expr(it.right)
@@ -361,18 +393,18 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		ast.Ident {
 			if it.kind == .variable {
 				mut info := it.info as ast.IdentVar
-				if info.typ.typ.kind == .unresolved {
-					typ := c.resolved[info.typ.idx]
+				if table.type_is_unresolved(info.typ) {
+					typ := c.resolve(info.typ)
 					info.typ = typ
 					it.info = info
 					return typ
 				}
 				return info.typ
 			}
-			return c.table.type_ref(table.void_type_idx)
+			return table.void_type
 		}
 		ast.BoolLiteral {
-			return c.table.type_ref(table.bool_type_idx)
+			return table.bool_type
 		}
 		ast.SelectorExpr {
 			return c.selector_expr(it)
@@ -382,8 +414,10 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		}
 		ast.IfExpr {
 			typ := c.expr(it.cond)
-			if typ.typ.kind != .bool {
-				c.error('non-bool (`$typ.typ.name`) used as if condition', it.pos)
+			typ_sym := c.table.get_type_symbol(typ)
+			// if typ_sym.kind != .bool {
+			if table.type_idx(typ) != table.bool_type_idx {
+				c.error('non-bool (`$typ_sym.name`) used as if condition', it.pos)
 			}
 			for i, stmt in it.stmts {
 				c.stmt(stmt)
@@ -396,10 +430,10 @@ pub fn (c &Checker) expr(node ast.Expr) table.TypeRef {
 		}
 		else {}
 	}
-	return c.table.type_ref(table.void_type_idx)
+	return table.void_type
 }
 
-pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.TypeRef {
+pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) TypeNew/*table.Type*/ {
 	/*
 	match node.expr {
 		ast.IdentVar {
@@ -409,13 +443,15 @@ pub fn (c &Checker) postfix_expr(node ast.PostfixExpr) table.TypeRef {
 	}
 	*/
 	typ := c.expr(node.expr)
-	if typ.typ.kind != .int {
-		c.error('invalid operation: $node.op.str() (non-numeric type `$typ.typ.name`)', node.pos)
+	// if typ.typ.kind != .int {
+	if table.type_idx(typ) != table.int_type_idx {
+		typ_sym := c.table.get_type_symbol(typ)
+		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)', node.pos)
 	}
 	return typ
 }
 
-pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
+pub fn (c &Checker) index_expr(node ast.IndexExpr) TypeNew/*table.Type*/ {
 	mut typ := c.expr(node.left)
 	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
 	match node.index {
@@ -424,20 +460,23 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.TypeRef {
 		}
 		else {}
 	}
-	if typ.typ.kind == .array {
+	typ_sym := c.table.get_type_symbol(typ)
+	if typ_sym.kind == .array {
 		if is_range {} // `x[start..end]` has the same type as `x`
 		else {
 			// Check index type
 			index_type := c.expr(node.index)
-			if index_type.typ.kind != .int {
-				c.error('non-integer index (type `$index_type.typ.name`)', node.pos)
+			// if index_type.typ.kind != .int {
+			if table.type_idx(index_type) != table.int_type_idx {
+				index_type_sym := c.table.get_type_symbol(index_type)
+				c.error('non-integer index (type `$index_type_sym.name`)', node.pos)
 			}
-			info := typ.typ.info as table.Array
+			info := typ_sym.info as table.Array
 			return info.elem_type
 		}
 	}
 	else {
-		typ = c.table.type_ref(table.int_type_idx)
+		typ = table.int_type
 	}
 	return typ
 	// c.expr(it.index)

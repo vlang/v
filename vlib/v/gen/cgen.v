@@ -56,7 +56,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.Import {}
 		ast.ConstDecl {
 			for i, field in it.fields {
-				g.write('$field.typ.typ.name $field.name = ')
+				field_type_sym := g.table.get_type_symbol(field.typ)
+				g.write('$field_type_sym.name $field.name = ')
 				g.expr(it.exprs[i])
 				g.writeln(';')
 			}
@@ -68,16 +69,18 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 				g.write('int ${it.name}(')
 			}
 			else {
-				g.write('$it.typ.typ.name ${it.name}(')
-				g.definitions.write('$it.typ.typ.name ${it.name}(')
+				type_sym := g.table.get_type_symbol(it.typ)
+				g.write('$type_sym.name ${it.name}(')
+				g.definitions.write('$type_sym.name ${it.name}(')
 			}
 			for i, arg in it.args {
-				mut arg_type := arg.typ.typ.name
+				arg_type_sym := g.table.get_type_symbol(arg.typ)
+				mut arg_type_name := arg_type_sym.name
 				if i == it.args.len-1 && it.is_variadic {
-					arg_type = 'variadic_$arg.typ.typ.name'
+					arg_type_name = 'variadic_$arg_type_sym.name'
 				}
-				g.write(arg_type + ' ' + arg.name)
-				g.definitions.write(arg_type + ' ' + arg.name)
+				g.write(arg_type_name + ' ' + arg.name)
+				g.definitions.write(arg_type_name + ' ' + arg.name)
 				if i < it.args.len - 1 {
 					g.write(', ')
 					g.definitions.write(', ')
@@ -100,7 +103,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			g.write('return')
 			// multiple returns
 			if it.exprs.len > 1 {
-				g.write(' ($g.fn_decl.typ.typ.name){')
+				type_sym := g.table.get_type_symbol(g.fn_decl.typ)
+				g.write(' ($type_sym.name){')
 				for i, expr in it.exprs {
 					g.write('.arg$i=')
 					g.expr(expr)
@@ -136,7 +140,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 			println('assign')
 		}
 		ast.VarDecl {
-			g.write('$it.typ.typ.name $it.name = ')
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.write('$type_sym.name $it.name = ')
 			g.expr(it.expr)
 			g.writeln(';')
 		}
@@ -165,7 +170,8 @@ fn (g mut Gen) stmt(node ast.Stmt) {
 		ast.StructDecl {
 			g.writeln('typedef struct {')
 			for field in it.fields {
-				g.writeln('\t$field.typ.typ.name $field.name;')
+				field_type_sym := g.table.get_type_symbol(field.typ)
+				g.writeln('\t$field_type_sym.name $field.name;')
 			}
 			g.writeln('} $it.name;')
 		}
@@ -237,7 +243,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {
-			g.writeln('($it.typ.typ.name){')
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.writeln('($type_sym.name){')
 			for i, field in it.fields {
 				g.write('\t.$field = ')
 				g.expr(it.exprs[i])
@@ -257,7 +264,8 @@ fn (g mut Gen) expr(node ast.Expr) {
 		}
 		ast.MethodCallExpr {}
 		ast.ArrayInit {
-			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($it.typ.typ.name), {\t')
+			type_sym := g.table.get_type_symbol(it.typ)
+			g.writeln('new_array_from_c_array($it.exprs.len, $it.exprs.len, sizeof($type_sym.name), {\t')
 			for expr in it.exprs {
 				g.expr(expr)
 				g.write(', ')
@@ -287,8 +295,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 			// If expression? Assign the value to a temp var.
 			// Previously ?: was used, but it's too unreliable.
 			// ti := g.table.refresh_ti(it.ti)
+			type_sym := g.table.get_type_symbol(it.typ)
 			mut tmp := ''
-			if it.typ.typ.kind != .void {
+			if type_sym.kind != .void {
 				tmp = g.table.new_tmp_var()
 				// g.writeln('$ti.name $tmp;')
 			}
@@ -297,7 +306,7 @@ fn (g mut Gen) expr(node ast.Expr) {
 			g.writeln(') {')
 			for i, stmt in it.stmts {
 				// Assign ret value
-				if i == it.stmts.len - 1 && it.typ.typ.kind != .void {
+				if i == it.stmts.len - 1 && type_sym.kind != .void {
 					// g.writeln('$tmp =')
 					println(1)
 				}
@@ -313,11 +322,12 @@ fn (g mut Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.MatchExpr {
+			type_sym := g.table.get_type_symbol(it.typ)
 			mut tmp := ''
-			if it.typ.typ.kind != .void {
+			if type_sym.kind != .void {
 				tmp = g.table.new_tmp_var()
 			}
-			g.write('$it.typ.typ.name $tmp = ')
+			g.write('$type_sym.name $tmp = ')
 			g.expr(it.cond)
 			g.writeln(';') // $it.blocks.len')
 			for i, block in it.blocks {
