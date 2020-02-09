@@ -466,13 +466,8 @@ pub fn (t &Table) check(got, expected Type) bool {
 	got_idx := type_idx(got)
 	exp_idx := type_idx(expected)
 	println('check: $got_type_sym.name, $exp_type_sym.name')
-	if got_type_sym.kind == .voidptr {
-		return true
-	}
-	if exp_type_sym.kind in [.voidptr, .byteptr, .charptr] && got_type_sym.kind == .int {
-		return true
-	}
-	if exp_type_sym.kind == .byteptr && got_type_sym.kind == .voidptr {
+	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] &&
+		exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
 		return true
 	}
 	// if expected.name == 'array' {
