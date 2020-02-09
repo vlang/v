@@ -39,7 +39,7 @@ pub fn new_test_session(vargs string) TestSession {
 pub fn vexe_path() string {
 	// NB: tools extracted from v require that the VEXE
 	// environment variable contains the path to the v executable location.
-	// They are usually launched by vlib/compiler/vtools.v,
+	// They are usually launched by cmd/v/simple_tool.v,
 	// launch_tool/1 , which provides it.
 	return os.getenv('VEXE')
 }
@@ -238,11 +238,11 @@ pub fn building_any_v_binaries_failed() bool {
 	testing.vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
 	mut failed := false
-	v_build_commands := ['$vexe -o v_g             -g  v.v',
-	'$vexe -o v_prod_g  -prod -g  v.v',
-	'$vexe -o v_cg            -cg v.v',
-	'$vexe -o v_prod_cg -prod -cg v.v',
-	'$vexe -o v_prod    -prod     v.v',
+	v_build_commands := ['$vexe -o v_g             -g  cmd/v',
+	'$vexe -o v_prod_g  -prod -g  cmd/v',
+	'$vexe -o v_cg            -cg cmd/v',
+	'$vexe -o v_prod_cg -prod -cg cmd/v',
+	'$vexe -o v_prod    -prod     cmd/v',
 	]
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {

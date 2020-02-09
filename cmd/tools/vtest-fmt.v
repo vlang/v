@@ -7,14 +7,14 @@ import (
 
 const (
 	known_failing_exceptions = ['./examples/vweb/vweb_example.v',
-	'./tools/gen_vc.v',
-	'./tools/modules/vgit/vgit.v', // generics
-	'./tools/preludes/live_main.v',
-	'./tools/preludes/live_shared.v',
-	'./tools/preludes/tests_assertions.v',
-	'./tools/preludes/tests_with_stats.v',
-	'./tools/performance_compare.v', // generics
-	'./tools/oldv.v', // generics
+	'./cmd/tools/gen_vc.v',
+	'./cmd/tools/modules/vgit/vgit.v', // generics
+	'./cmd/tools/preludes/live_main.v',
+	'./cmd/tools/preludes/live_shared.v',
+	'./cmd/tools/preludes/tests_assertions.v',
+	'./cmd/tools/preludes/tests_with_stats.v',
+	'./cmd/tools/performance_compare.v', // generics
+	'./cmd/tools/oldv.v', // generics
 	'./tutorials/code/blog/article.v',
 	'./tutorials/code/blog/blog.v',
 	'./vlib/arrays/arrays.v',

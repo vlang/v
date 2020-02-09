@@ -11,9 +11,9 @@ import (
 fn main() {
 	exe := os.executable()
 	dir := filepath.dir(exe)
-	vdir := filepath.dir(filepath.dir(dir))
+	vdir := filepath.dir(filepath.dir(filepath.dir(dir)))
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
-		println('fast.html generator needs to be located in `v/tools/fast/`')
+		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
@@ -36,11 +36,11 @@ fn main() {
 	}
 	// Build an optimized V
 	println('Building vprod...')
-	exec('v -o $vdir/vprod -prod $vdir/v.v')
+	exec('v -o $vdir/vprod -prod $vdir/cmd/v')
 	println('Measuring...')
-	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/v.v')
-	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/v.v')
-	diff3 := measure('$vdir/vprod -x64 $vdir/tools/1mil.v')
+	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v')
+	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v')
+	diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v')
 	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v')
 	//println('Building V took ${diff}ms')
 	commit_date := exec('git log -n1 --pretty="format:%at"')

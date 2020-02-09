@@ -92,7 +92,7 @@ pub mut:
 	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
 	vexename string // v or v.exe
 	vexepath string // the full absolute path to the prepared v/v.exe
-	vvlocation string // v.v or compiler/ , depending on v version
+	vvlocation string // v.v or compiler/ or cmd/v, depending on v version
 }
 
 pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
@@ -117,7 +117,11 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 	v_commithash,vccommit_before := vgit.prepare_vc_source(vgit_context.path_vc, vgit_context.path_v, vgit_context.commit_v)
 	vgit_context.commit_v__hash = v_commithash
 	vgit_context.commit_vc_hash = vccommit_before
-	vgit_context.vvlocation = if os.exists('v.v') { 'v.v' } else { 'compiler' }
+	if os.exists('cmd/v') {
+		vgit_context.vvlocation = 'cmd/v'
+	} else {
+		vgit_context.vvlocation = if os.exists('v.v') { 'v.v' } else { 'compiler' }
+	}
 	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
 		// already compiled, so no need to compile v again
 		return

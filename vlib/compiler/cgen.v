@@ -43,7 +43,7 @@ mut:
 	cut_pos         int
 }
 
-fn new_cgen(out_name_c string) &CGen {
+pub fn new_cgen(out_name_c string) &CGen {
 	path := out_name_c
 	out := os.create(path)or{
 		println('failed to create $path')
@@ -272,7 +272,7 @@ fn (g mut CGen) add_to_main(s string) {
 	g.fn_main = g.fn_main + s
 }
 
-fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
+fn (v &V) build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 	obj_path := os.realpath(path)
 	if os.exists(obj_path) {
 		return
@@ -288,11 +288,9 @@ fn build_thirdparty_obj_file(path string, moduleflags []CFlag) {
 			cfiles += '"' + os.realpath(parent + os.path_separator + file) + '" '
 		}
 	}
-	cc := find_c_compiler()
-	cc_thirdparty_options := find_c_compiler_thirdparty_options()
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cmd := '$cc $cc_thirdparty_options $btarget -c -o "$obj_path" $cfiles $atarget '
+	cmd := '$v.pref.ccompiler $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd)or{
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)

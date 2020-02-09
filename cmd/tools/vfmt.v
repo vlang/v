@@ -8,6 +8,7 @@ import (
 	os.cmdline
 	filepath
 	compiler
+	v.pref
 )
 
 struct FormatOptions {
@@ -35,8 +36,8 @@ const (
 
 fn main() {
 	toolexe := os.executable()
-	compiler.set_vroot_folder(filepath.dir(filepath.dir(toolexe)))
-	args := compiler.env_vflags_and_os_args()
+	compiler.set_vroot_folder(filepath.dir(filepath.dir(filepath.dir(toolexe))))
+	args := join_flags_and_argument()
 	foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
@@ -134,10 +135,10 @@ fn main() {
 
 fn (foptions &FormatOptions) format_file(file string) {
 	tmpfolder := os.tmpdir()
-	mut compiler_params := []string
+	mut compiler_params := &pref.Preferences{}
 	target_os := file_to_target_os(file)
 	if target_os != '' {
-		compiler_params << ['-os', target_os]
+		compiler_params.os = pref.os_from_string(target_os)
 	}
 	mut cfile := file
 	mut mod_folder_parent := tmpfolder
@@ -158,7 +159,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		}
 		os.write_file(main_program_file, main_program_content)
 		cfile = main_program_file
-		compiler_params << ['-user_mod_path', mod_folder_parent]
+		compiler_params.user_mod_path = mod_folder_parent
 	}
 	if !is_test_file && mod_name == 'main' {
 		// NB: here, file is guaranted to be a main. We do not know however
@@ -166,7 +167,10 @@ fn (foptions &FormatOptions) format_file(file string) {
 		// project, like vorum or vid.
 		cfile = get_compile_name_of_potential_v_project(cfile)
 	}
-	compiler_params << cfile
+	compiler_params.path = cfile
+	compiler_params.mod = mod_name
+	compiler_params.is_test = is_test_file
+	compiler_params.is_script = file.ends_with('.v') || file.ends_with('.vsh')  
 	if foptions.is_verbose {
 		eprintln('vfmt format_file: file: $file')
 		eprintln('vfmt format_file: cfile: $cfile')
@@ -176,8 +180,14 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('vfmt format_file: mod_folder: $mod_folder')
 		eprintln('vfmt format_file: mod_folder_parent: $mod_folder_parent')
 		eprintln('vfmt format_file: use_tmp_main_program: $use_tmp_main_program')
-		eprintln('vfmt format_file: compiler_params: $compiler_params')
+		eprintln('vfmt format_file: compiler_params: ')
+		print_compiler_options( compiler_params )
 		eprintln('-------------------------------------------')
+	}
+	compiler_params.fill_with_defaults()
+	if foptions.is_verbose {
+		eprintln('vfmt format_file: compiler_params: AFTER fill_with_defaults() ')
+		print_compiler_options( compiler_params )
 	}
 	formatted_file_path := foptions.compile_file(file, compiler_params)
 	if use_tmp_main_program {
@@ -186,6 +196,22 @@ fn (foptions &FormatOptions) format_file(file string) {
 		}
 	}
 	eprintln('${FORMATTED_FILE_TOKEN}${formatted_file_path}')
+}
+
+fn print_compiler_options( compiler_params &pref.Preferences ) {
+	eprintln('        os: ' + compiler_params.os.str() )
+	eprintln(' ccompiler: $compiler_params.ccompiler' )
+	eprintln('		 mod: $compiler_params.mod ')
+	eprintln('		path: $compiler_params.path ')
+	eprintln('	out_name: $compiler_params.out_name ')
+	eprintln('	   vroot: $compiler_params.vroot ')
+	eprintln('	   vpath: $compiler_params.vpath ')
+	eprintln(' vlib_path: $compiler_params.vlib_path ')
+	eprintln('	out_name: $compiler_params.out_name ')
+	eprintln('	  umpath: $compiler_params.user_mod_path ')
+	eprintln('	  cflags: $compiler_params.cflags ')
+	eprintln('	 is_test: $compiler_params.is_test ')
+	eprintln(' is_script: $compiler_params.is_script ')
 }
 
 fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
@@ -238,7 +264,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn usage() {
-	print('Usage: tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
+	print('Usage: cmd/tools/vfmt [flags] fmt path_to_source.v [path_to_other_source.v]
 Formats the given V source files, and prints their formatted source to stdout.
 Options:
   -c    check if file is already formatted.
@@ -261,12 +287,13 @@ fn find_working_diff_command() ?string {
 	return error('no working diff command found')
 }
 
-fn (foptions &FormatOptions) compile_file(file string, compiler_params []string) string {
+fn (foptions &FormatOptions) compile_file(file string, compiler_params &pref.Preferences) string {
 	if foptions.is_verbose {
-		eprintln('> new_v_compiler_with_args            file: ' + file)
-		eprintln('> new_v_compiler_with_args compiler_params: ' + compiler_params.join(' '))
+		eprintln('> new_v_compiler_with_args            file: $file')
+		eprintln('> new_v_compiler_with_args compiler_params:')
+		print_compiler_options( compiler_params )
 	}
-	mut v := compiler.new_v_compiler_with_args(compiler_params)
+	mut v := compiler.new_v(compiler_params)
 	v.v_fmt_file = file
 	if foptions.is_all {
 		v.v_fmt_all = true
@@ -359,4 +386,29 @@ fn get_compile_name_of_potential_v_project(file string) string {
 		}
 	}
 	return pfolder
+}
+
+//TODO Move join_flags_and_argument() and non_empty() into `cmd/internal` when v.mod work correctly
+//to prevent code duplication with `cmd/v` (cmd/v/flag.v)
+fn join_flags_and_argument() []string {
+	vosargs := os.getenv('VOSARGS')
+	if vosargs != '' {
+		return non_empty(vosargs.split(' '))
+	}
+
+	mut args := []string
+	vflags := os.getenv('VFLAGS')
+	if vflags != '' {
+		args << os.args[0]
+		args << vflags.split(' ')
+		if os.args.len > 1 {
+			args << os.args[1..]
+		}
+		return non_empty(args)
+	}
+
+	return non_empty(os.args)
+}
+fn non_empty(arg []string) []string {
+	return arg.filter(it != '')
 }

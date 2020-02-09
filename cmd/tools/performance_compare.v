@@ -126,7 +126,9 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	vversion := scripting.run('$cdir/v --version')
     vcommit := scripting.run('git rev-parse --short  --verify HEAD') 
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
-	if vgit_context.vvlocation == 'v.v' {
+	if vgit_context.vvlocation == 'cmd/v' {
+		println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
+	} else if vgit_context.vvlocation == 'v.v' {
 		println('Source lines of the compiler: ' + scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
 	}else{
 		println('Source lines of the compiler: ' + scripting.run('wc compiler/*.v | tail -n -1'))
@@ -136,8 +138,18 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 fn (c Context) compare_v_performance(label string, commands []string) string {
 	println('---------------------------------------------------------------------------------')
 	println('Compare v performance when doing the following commands ($label):')
-	source_location_a := if os.exists('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
-	source_location_b := if os.exists('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
+	mut source_location_a := ''
+	mut source_location_b := ''
+	if os.exists('$c.a/cmd/v') {
+		source_location_a = 'cmd/v'
+	} else {
+		source_location_a = if os.exists('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
+	}
+	if os.exists('$c.b/cmd/v') {
+		source_location_b = 'cmd/v'
+	} else {
+		source_location_b = if os.exists('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
+	}
 	timestamp_a,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.a/ ; git rev-list -n1 --timestamp HEAD'))
 	timestamp_b,_ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.b/ ; git rev-list -n1 --timestamp HEAD'))
 	debug_option_a := if timestamp_a > 1570877641 { '-g     ' } else { '-debug ' }
