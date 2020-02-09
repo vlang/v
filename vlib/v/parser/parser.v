@@ -1254,16 +1254,7 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.Type {
 		p.table.unresolved_idxs[key] = idx
 		p.unresolved << expr
 	}
-	// t := table.TypeRef{
-	// 	idx: idx
-	// 	typ: table.Type{
-	// 		parent: 0
-	// 		kind: .unresolved
-	// 		name: 'unresolved-$idx'
-	// 	}
-	// }
 	t := table.new_type((-idx)-1)
-	println('aded unresovled with idx: $idx - ${table.type_idx(t)}')
 	return t
 }
 
