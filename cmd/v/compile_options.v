@@ -83,12 +83,6 @@ pub fn new_v(args []string) &compiler.V {
 		*/
 
 	}
-	is_test := dir.ends_with('_test.v')
-	is_script := dir.ends_with('.v') || dir.ends_with('.vsh')
-	if is_script && !os.exists(dir) {
-		println('`$dir` does not exist')
-		exit(1)
-	}
 	// `v -o dir/exec`, create "dir/" if it doesn't exist
 	if out_name.contains(os.path_separator) {
 		d := out_name.all_before_last(os.path_separator)
@@ -117,8 +111,6 @@ pub fn new_v(args []string) &compiler.V {
 	ccompiler := cmdline.option(args, '-cc', '')
 	mut pref := &pref.Preferences{
 		os: pref.os_from_string(target_os)
-		is_test: is_test
-		is_script: is_script
 		is_so: '-shared' in args
 		is_solive: '-solive' in args
 		is_prod: '-prod' in args
@@ -190,6 +182,11 @@ pub fn new_v(args []string) &compiler.V {
 		println('vlib not found. It should be next to the V executable.')
 		println('Go to https://vlang.io to install V.')
 		println('(os.executable=${os.executable()} vlib_path=$pref.vlib_path vexe_path=${vexe_path()}')
+		exit(1)
+	}
+
+	if pref.is_script && !os.exists(dir) {
+		println('`$dir` does not exist')
 		exit(1)
 	}
 
