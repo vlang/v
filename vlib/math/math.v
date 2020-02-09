@@ -79,6 +79,9 @@ fn C.sinh(x f64) f64
 fn C.sqrt(x f64) f64
 
 
+fn C.sqrtf(x f32) f32
+
+
 fn C.tgamma(x f64) f64
 
 
@@ -302,6 +305,11 @@ pub fn sinh(a f64) f64 {
 // sqrt calculates square-root of the provided value.
 pub fn sqrt(a f64) f64 {
 	return C.sqrt(a)
+}
+
+// sqrtf calculates square-root of the provided float32 value.
+pub fn sqrtf(a f32) f32 {
+	return C.sqrtf(a)
 }
 
 // tan calculates tangent.
