@@ -33,7 +33,7 @@ fn test_c_files() {
 		}
 		else {
 			eprintln('${term_fail} ${i}')
-			eprintln('${path}: got\n{$res}')
+			eprintln('${path}: got\n$res')
 			assert false
 		}
 	}

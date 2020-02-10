@@ -437,8 +437,12 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 			// Function object (not a call), e.g. `onclick(my_click)`
 			p.table.find_fn(name) or {
 				// ident.info = ast.IdentVar
-				p.error('parse_ident: unknown identifier `$name`')
-				exit(0)
+				node = ast.Ident{
+					kind: .blank_ident
+					name: name
+				}
+				return node,typ
+				// p.error('parse_ident: unknown identifier `$name`')
 			}
 			// p.next()
 		}

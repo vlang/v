@@ -384,6 +384,13 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 				}
 				return info.typ
 			}
+			// Handle indents with unresolved types during the parsing step
+			// (declared after first usage)
+			else if it.kind == .blank_ident {
+				if constant := c.table.find_const(it.name) {
+					return constant.typ
+				}
+			}
 			return table.void_type
 		}
 		ast.BoolLiteral {

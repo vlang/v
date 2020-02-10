@@ -8,7 +8,7 @@ void variadic(variadic_int a);
 void ensure_cap(int required, int cap);
 void println(string s);
 void matches();
-
+void end();
 int pi = 3;
 
 typedef struct {
@@ -30,7 +30,6 @@ int main() {
 
 void foo(int a) {
 	while (true) {
-
 	}
 	for (int i = 0;
 i < 10; i++;
@@ -92,6 +91,7 @@ multi_return_int_string multi_return() {
 }
 
 void variadic(variadic_int a) {
+	int x = path_sep;
 }
 
 void ensure_cap(int required, int cap) {
@@ -115,6 +115,9 @@ void matches() {
 
 	}
 	;
-	}
 }
 
+int path_sep = 10;
+
+void end() {
+}
