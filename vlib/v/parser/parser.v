@@ -71,6 +71,7 @@ pub fn parse_file(path string, table &table.Table) ast.File {
 		table: table
 		file_name: path
 		pref: &pref.Preferences{}
+		unresolved_offset: table.unresolved_idxs.size
 	}
 	p.read_first_token()
 	// module decl
@@ -393,6 +394,7 @@ pub fn (p mut Parser) parse_ident(is_c bool) (ast.Ident,table.Type) {
 	name := p.check_name()
 	mut ident := ast.Ident{
 		name: name
+		is_c: is_c
 	}
 	mut known_var := false
 	if var := p.table.find_var(name) {
@@ -1254,8 +1256,7 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.Type {
 		p.table.unresolved_idxs[key] = idx
 		p.unresolved << expr
 	}
-	t := table.new_type((-idx)-1)
-	return t
+	return table.new_type((-idx)-1)
 }
 
 fn verror(s string) {

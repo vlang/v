@@ -473,6 +473,9 @@ pub fn (t &Table) check(got, expected Type) bool {
 		exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
 		return true
 	}
+	if got_type_sym.is_int() && exp_type_sym.is_int() {
+		return true
+	}
 	// if expected.name == 'array' {
 	// return true
 	// }

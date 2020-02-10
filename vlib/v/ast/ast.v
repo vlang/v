@@ -219,9 +219,10 @@ pub enum IdentKind {
 pub struct Ident {
 pub:
 	name     string
+	value    string
+	is_c     bool
 	tok_kind token.Kind
 	pos      token.Position
-	value    string
 mut:
 	kind     IdentKind
 	info     IdentInfo

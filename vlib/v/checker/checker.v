@@ -171,25 +171,28 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
-		if !f.is_c {
+		if /*TODO:*/!f.is_c {
 			if call_expr.args.len < f.args.len {
 				c.error('too few arguments in call to `$fn_name`', call_expr.pos)
 			}
-			else if call_expr.args.len > f.args.len {
+			else if !f.is_variadic && call_expr.args.len > f.args.len {
 				c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
 			}
 		}
-		// TODO: variadic
-		if fn_name != 'printf' && f.args.len > 0 {
-			for i, arg in f.args {
-				arg_expr := call_expr.args[i]
-				typ := c.expr(arg_expr)
-				typ_sym := c.table.get_type_symbol(typ)
-				arg_typ_sym := c.table.get_type_symbol(arg.typ)
-				if !c.table.check(&typ, &arg.typ) {
-					c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument to `$fn_name`', call_expr.pos)
-				}
+		if /*TODO:*/!f.is_c {
+		for i, arg_expr in call_expr.args {
+			arg := if f.is_variadic && i >= f.args.len-1 {
+				f.args[f.args.len-1]
+			} else {
+				f.args[i]
 			}
+			typ := c.expr(arg_expr)
+			typ_sym := c.table.get_type_symbol(typ)
+			arg_typ_sym := c.table.get_type_symbol(arg.typ)
+			if /*TODO:*/!f.is_c && !c.table.check(typ, arg.typ) {
+				c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
+			}
+		}
 		}
 		return f.return_type
 	}
@@ -220,7 +223,7 @@ pub fn (c &Checker) selector_expr(selector_expr ast.SelectorExpr) table.Type {
 	if field := typ_sym.find_field(field_name) {
 		return field.typ
 	}
-	// types with parent struct (array/maps) handled here
+	// check parent
 	if !isnil(typ_sym.parent) {
 		if field := typ_sym.parent.find_field(field_name) {
 			if table.type_is_unresolved(field.typ) {
@@ -477,8 +480,6 @@ pub fn (c &Checker) error(s string, pos token.Position) {
 		path = path.replace(workdir, '')
 	}
 	final_msg_line := '$path:$pos.line_nr: checker error: $s'
-	// sometimes eprintln wasnt working?
-	println(final_msg_line)
 	eprintln(final_msg_line)
 	/*
 	if colored_output {
