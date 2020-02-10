@@ -416,6 +416,9 @@ pub fn (c &Checker) expr(node ast.Expr) table.Type {
 				}
 			}
 		}
+		ast.CastExpr {
+			return it.typ
+		}
 		else {}
 	}
 	return table.void_type
@@ -467,8 +470,6 @@ pub fn (c &Checker) index_expr(node ast.IndexExpr) table.Type {
 		typ = table.int_type
 	}
 	return typ
-	// c.expr(it.index)
-	// return it.typ
 }
 
 pub fn (c &Checker) error(s string, pos token.Position) {
