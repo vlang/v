@@ -596,6 +596,24 @@ pub fn (p mut Parser) expr(precedence int) (ast.Expr,table.Type) {
 			p.check(.rpar)
 			typ = table.int_type
 		}
+		// Map or `{ x | foo:bar, a:10 }`
+		.lcbr {
+			p.next()
+			p.check_name()
+			p.check(.pipe)
+			for {
+				p.check_name()
+				p.check(.colon)
+				p.expr(0)
+				if p.tok.kind == .comma {
+					p.check(.comma)
+				}
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
+			p.check(.rcbr)
+		}
 		else {
 			p.error('pexpr(): bad token `$p.tok.str()`')
 		}
@@ -1317,13 +1335,15 @@ fn (p mut Parser) match_expr() (ast.Expr,table.Type) {
 	mut match_exprs := []ast.Expr
 	mut return_type := table.void_type
 	for {
-		// p.tok.kind != .rcbr {
 		// Sum type match
-		// if p.tok.kind == .name && p.tok.lit[0].is_capital() {
-		// } else {
-		// Expression match
-		match_expr,_ := p.expr(0)
-		match_exprs << match_expr
+		if p.tok.kind == .name && p.tok.lit[0].is_capital() {
+			p.check_name()
+		}
+		else {
+			// Expression match
+			match_expr,_ := p.expr(0)
+			match_exprs << match_expr
+		}
 		p.warn('match block')
 		stmts := p.parse_block()
 		blocks << ast.StmtBlock{
