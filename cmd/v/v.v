@@ -9,23 +9,19 @@ import (
 )
 
 const (
-	simple_cmd = [
-		'fmt',
-		'up',
-		'create',
-		'test', 'test-fmt', 'test-compiler',
-		'bin2v',
-		'repl',
-		'build-tools', 'build-examples', 'build-vbinaries'
-	]
+	simple_cmd = ['fmt',
+	'up',
+	'create',
+	'test', 'test-fmt', 'test-compiler',
+	'bin2v',
+	'repl',
+	'build-tools', 'build-examples', 'build-vbinaries']
 )
 
 fn main() {
 	arg := join_flags_and_argument()
-	command, option := get_basic_command_and_option(arg)
-
+	command,option := get_basic_command_and_option(arg)
 	is_verbose := '-verbose' in arg || '--verbose' in arg
-
 	if '-v' in option || '--version' in option || command == 'version' {
 		// Print the version and exit.
 		version_hash := compiler.vhash()
@@ -35,29 +31,26 @@ fn main() {
 	if '-h' in option || '--help' in option || command == 'help' {
 		if is_verbose {
 			println(verbose_help_text)
-		} else {
+		}
+		else {
 			println(help_text)
 		}
 		return
 	}
-
 	if is_verbose {
 		eprintln('v    args: $arg')
 		eprintln('v command: $command')
 		eprintln('v options: $option')
 	}
-
 	if command in simple_cmd {
-		//External tools
+		// External tools
 		launch_tool(is_verbose, 'v' + command, command)
 		return
 	}
-
 	if command == 'run' || command == 'build' || command.ends_with('.v') || os.exists(command) {
 		compile(command, arg)
 		return
 	}
-
 	match command {
 		'', '-' {
 			if arg.len == 1 {

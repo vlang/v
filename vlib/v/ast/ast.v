@@ -347,6 +347,12 @@ pub:
 	name string
 }
 
+// filter(), map()
+pub struct Lambda {
+pub:
+	name string
+}
+
 pub struct AssignStmt {
 pub:
 	left  []Ident

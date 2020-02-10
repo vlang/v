@@ -665,9 +665,20 @@ fn (p mut Parser) index_expr(left ast.Expr) ast.Expr {
 	// return node,typ
 }
 
+fn (p mut Parser) filter(typ table.Type) {
+	p.table.register_var(table.Var{
+		name: 'it'
+		typ: typ
+	})
+}
+
 fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) (ast.Expr,table.Type) {
 	p.next()
 	field_name := p.check_name()
+	if field_name == 'filter' {
+		p.table.open_scope()
+		p.filter(left_type)
+	}
 	// Method call
 	if p.tok.kind == .lpar {
 		p.next()
@@ -697,6 +708,9 @@ fn (p mut Parser) dot_expr(left ast.Expr, left_type table.Type) (ast.Expr,table.
 	typ := p.add_unresolved('${table.type_idx(left_type)}.$field_name', sel_expr)
 	mut node := ast.Expr{}
 	node = sel_expr
+	if field_name == 'filter' {
+		p.table.close_scope()
+	}
 	return node,typ
 }
 
@@ -1069,7 +1083,8 @@ fn (p mut Parser) struct_decl() ast.StructDecl {
 		// this allows overiding the builtins type
 		// with the real struct type info parsed from builtin
 		ret = p.table.register_builtin_type_symbol(t)
-	} else {
+	}
+	else {
 		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {
@@ -1256,7 +1271,7 @@ fn (p mut Parser) add_unresolved(key string, expr ast.Expr) table.Type {
 		p.table.unresolved_idxs[key] = idx
 		p.unresolved << expr
 	}
-	return table.new_type((-idx)-1)
+	return table.new_type((-idx) - 1)
 }
 
 fn verror(s string) {
