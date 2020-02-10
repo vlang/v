@@ -240,19 +240,23 @@ fn C.RegQueryValueEx() voidptr
 fn C.RemoveDirectory() int
 
 
-fn C.GetStdHandle() voidptr
+//fn C.GetStdHandle() voidptr
+fn C.GetStdHandle(u32) voidptr
 
 
-fn C.SetConsoleMode()
+//fn C.SetConsoleMode()
+fn C.SetConsoleMode(voidptr, u32)
 
 
-fn C.GetConsoleMode() int
+//fn C.GetConsoleMode() int
+fn C.GetConsoleMode(voidptr, &u32) int
 
 
 fn C.wprintf()
 
 
-fn C.setbuf()
+//fn C.setbuf()
+fn C.setbuf(voidptr, charptr)
 
 
 fn C.SymCleanup()
