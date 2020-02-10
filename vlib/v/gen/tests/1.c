@@ -92,6 +92,13 @@ multi_return_int_string multi_return() {
 
 void variadic(variadic_int a) {
 	int x = path_sep;
+	int y = if (true) {
+1;
+}
+else {
+0;
+}
+;
 }
 
 void ensure_cap(int required, int cap) {
@@ -105,12 +112,12 @@ void println(string s) {
 
 void matches() {
 	int a = 100;
-	int tmp1 = a;
-	if tmp1 == 10{
+	int tmp2 = a;
+	if tmp2 == 10{
 		println(tos3("10"));
 
 	}
-	if tmp1 == 20{
+	if tmp2 == 20{
 		int k = a + 1;
 
 	}

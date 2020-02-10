@@ -98,6 +98,7 @@ fn multi_return() (int,string) {
 
 fn variadic(a ...int) {
 	x := path_sep
+	y := if true { 1 } else { 0 } // TODO cgen
 }
 
 fn ensure_cap(required int, cap int) {
@@ -118,6 +119,13 @@ fn matches() {
 			k := a + 1
 		}
 	}
+	/*
+	n := match a {
+		1 { 10 }
+		2 { 20 }
+		else { 30 }
+	}
+	*/
 }
 
 const (

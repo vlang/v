@@ -8,12 +8,13 @@ import (
 	v.table
 )
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | 	
-FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | 	
-AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr
+pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral |
+FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr |
+AssignExpr | PrefixExpr | MethodCallExpr | IndexExpr | RangeExpr | MatchExpr |
+CastExpr  | EnumVal
 
-pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | 	
-ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | 	
+pub type Stmt = VarDecl | GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
+ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
 HashStmt | AssignStmt
 // | IncDecStmt k
 // Stand-alone expression in a statement list.
@@ -364,6 +365,12 @@ pub:
 pub struct Attr {
 pub:
 	name string
+}
+
+pub struct EnumVal{
+pub:
+	name string
+
 }
 
 pub struct AssignExpr {

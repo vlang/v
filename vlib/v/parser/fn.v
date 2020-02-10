@@ -18,6 +18,7 @@ pub fn (p mut Parser) call_expr() (ast.CallExpr,table.Type) {
 		name: fn_name
 		args: args
 		// tok: tok
+		
 		pos: tok.position()
 	}
 	if p.tok.kind == .key_orelse {
@@ -121,7 +122,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 				typ: arg_type
 			}
 			args << arg
-			//p.table.register_var(arg)
+			// p.table.register_var(arg)
 			ast_args << ast.Arg{
 				name: arg_name
 				typ: arg_type
@@ -156,7 +157,7 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 					name: arg_name
 					typ: typ
 				}
-				//if typ.typ.kind == .variadic && p.tok.kind == .comma {
+				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
 					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
 				}

@@ -168,6 +168,7 @@ pub fn (p mut Table) clear_vars() {
 		// ///}
 		p.local_vars = []
 	}
+	p.tmp_cnt = 0
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
@@ -224,7 +225,6 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
-
 pub fn (s &TypeSymbol) has_field(name string) bool {
 	s.find_field(name) or {
 		return false
@@ -235,7 +235,7 @@ pub fn (s &TypeSymbol) has_field(name string) bool {
 pub fn (s &TypeSymbol) find_field(name string) ?Field {
 	match s.info {
 		Struct {
-		    for field in it.fields {
+			for field in it.fields {
 				if field.name == name {
 					return field
 				}
@@ -302,7 +302,8 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 			kind: .unresolved
 			name: 'unresolved-$unresolved_idx'
 		}
-	} else if idx > 0 {
+	}
+	else if idx > 0 {
 		return &t.types[idx]
 	}
 	// this should never happen
@@ -319,8 +320,12 @@ pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 		if existing_idx >= string_type_idx {
 			if existing_idx == string_type_idx {
 				existing_type := &t.types[existing_idx]
-				t.types[existing_idx] = { typ | kind: existing_type.kind }
-			} else {
+				t.types[existing_idx] = {
+					typ |
+					kind:existing_type.kind
+				}
+			}
+			else {
 				t.types[existing_idx] = typ
 			}
 		}
@@ -473,8 +478,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_type_sym.kind == .voidptr {
 		return true
 	}
-	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] &&
-		exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
+	if got_type_sym.kind in [.voidptr, .byteptr, .charptr, .int] && exp_type_sym.kind in [.voidptr, .byteptr, .charptr] {
 		return true
 	}
 	if got_type_sym.is_int() && exp_type_sym.is_int() {
@@ -489,7 +493,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// if expected.name == 'array' {
 	// return true
 	// }
-	if got_idx != exp_idx /*&& got.typ.name != expected.typ.name*/ {
+	if got_idx != exp_idx/*&& got.typ.name != expected.typ.name*/ {
 		return false
 	}
 	return true
