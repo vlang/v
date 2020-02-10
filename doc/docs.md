@@ -100,7 +100,7 @@ fn private_function() {
 }
 ```
 
-Function names in V language should be snake_case style:
+Function names in V should be written in snake_case style:
 
 ```v
 // valid
@@ -181,7 +181,7 @@ fn main() {
 
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name that is already used in a parent scope will result in a compilation error.
 
-Variable names in V language should be snake_case style:
+Variable names in V should be written in snake_case style:
 
 ```v
 // valid
@@ -211,7 +211,7 @@ voidptr
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
 
-TBD: Type names in V language permits snake_case/PascalCase/ALLCAP/SCREAMING_SNAKE_CASE styles, and distinguish them:
+TBD: Type names in V currently permits snake_case/PascalCase/ALLCAP/SCREAMING_SNAKE_CASE styles, and distinguish them:
 
 ```v
 // valid
@@ -411,7 +411,7 @@ if parser.token in [.plus, .minus, .div, .mult] {
 
 V optimizes such expressions, so both `if` statements above produce the same machine code, no arrays are created.
 
-Unlike Go language, semicolon `;` cannot be used for delimiting `if` conditions:
+Unlike Go, semicolon `;` cannot be used for delimiting `if` conditions:
 
 ```v
 // invalid
@@ -597,7 +597,7 @@ button.set_pos(x, y)
 button.widget.set_pos(x,y)
 ```
 
-Struct names in V language should be PascalCase style:
+Struct names in V should be written in PascalCase style:
 
 ```v
 // valid
@@ -617,6 +617,7 @@ struct pointCursor {
     y int
 } //=> mod=main struct names must be capitalized: use `struct Pointcursor`
 
+// valid but discouraged
 struct POINT {
     x int
     y int
@@ -695,16 +696,16 @@ In this example, the `can_register` method has a receiver of type `User` named `
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
 
-Method names in V language should be snake_case style:
+Method names in V should be written in snake_case style:
 
 ```v
 // valid
-fn (u User)my_func() int {
+fn (u User) my_func() int {
     return u.age
 }
 
 // invalid
-fn (u User)MyFunc() int {
+fn (u User) MyFunc() int {
     return u.age
 } //=> function names cannot contain uppercase letters, use snake_case instead
 ```
@@ -995,7 +996,7 @@ println(perform(cat)) // "meow"
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
 
-Interface names in V language should be PascalCase and should end with "er":
+Interface names in V should be written in PascalCase style.
 
 ```v
 // valid
@@ -1004,10 +1005,6 @@ interface HumanSpeaker {
 }
 
 // invalid
-interface HumanSpeaking {
-    speak() string
-} //=> interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)
-
 interface human_speaker {
     speak() string
 } //=> type names cannot contain `_`
@@ -1021,7 +1018,14 @@ interface humanSpeaker {
 } //=> mod=main struct names must be capitalized: use `struct Humanspeaker`
 ```
 
-Empty interface `interface{}` cannot be used in V language:
+```v
+// TODO: currently interface names require "er" suffix, but it will be changed again.
+interface HumanSpeaking {
+    speak() string
+} //=> interface names temporarily have to end with `er` (e.g. `Speaker`, `Reader`)
+```
+
+Empty interface `interface{}` cannot be used in V:
 
 ```v
 // invalid
