@@ -14,20 +14,19 @@ pub fn type_nr_muls(t Type) int {
     return i16(int(t) & 0xffffffff)
 }
 
-// return true if pointer
+// return true if pointer (nr_muls>0)
 [inline]
 pub fn type_is_ptr(t Type) bool {
     return type_nr_muls(t) > 0
 }
 
-// return pointer, can be called more than once for double pointer etc,
-// adds 1 to nr_muls & returns Type
+// increments nr_nuls on Type and return it
 [inline]
 pub fn type_to_ptr(t Type) Type {
     return type_idx(t) << i16(16) | (type_nr_muls(t)+1)
 }
 
-// deref pointer, decrement nr_muls
+// decrement nr_muls on Type and return it
 [inline]
 pub fn type_deref(t Type) Type {
     idx := type_idx(t)
@@ -38,7 +37,7 @@ pub fn type_deref(t Type) Type {
     return idx << i16(16) | (nr_muls+-1)
 }
 
-// new type with idx of TypeSymbol, not pointer
+// new type with idx of TypeSymbol, not pointer (nr_muls=0)
 [inline]
 pub fn new_type(idx int) Type {
     if idx > 32767 || idx < -32767 {
@@ -47,7 +46,7 @@ pub fn new_type(idx int) Type {
     return idx << i16(16)
 }
 
-// return Type idx of TypeSymbol & no references, pointer/double pointer etc (nr_muls)
+// return Type idx of TypeSymbol & specify if ptr (nr_muls)
 [inline]
 pub fn new_type_ptr(idx, nr_muls int) Type {
     if idx > 32767 || idx < -32767 {
