@@ -181,7 +181,14 @@ fn (v mut V) cc() {
 		if debug_mode {
 			debug_options = '-g -O0 -no-pie'
 		}
-		optimization_options = '-O3 -flto'
+		optimization_options = '-O3'
+		mut have_flto := true
+		$if openbsd {
+			have_flto = false
+		}
+		if have_flto {
+			optimization_options += ' -flto'
+		}
 	}
 	if v.pref.ccompiler.contains('gcc') || guessed_compiler == 'gcc' {
 		if debug_mode {
