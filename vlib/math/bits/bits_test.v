@@ -283,7 +283,7 @@ fn test_bits(){
 		}
 		quo, rem := div_64(hi, lo, y)
 		//C.printf("[%016llx_%016llx] %llu (%llu,%llu)\n", hi, lo, y, quo, rem)
-		assert quo == 1321528398
+		assert quo == u64(1321528398)
 		_, rem1 := div_64(hi%y, lo, y)
 		assert rem == rem1
 		assert rem == rem_64(hi, lo, y)
