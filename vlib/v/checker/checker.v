@@ -78,7 +78,7 @@ fn (c &Checker) complete_types() {
 				info.key_type = c.resolve(info.key_type)
 				updated = true
 			}
-			if  table.type_is_unresolved(info.value_type) {
+			if table.type_is_unresolved(info.value_type) {
 				info.value_type = c.resolve(info.value_type)
 				updated = true
 			}
@@ -111,13 +111,13 @@ fn (c &Checker) complete_types() {
 
 // return the resolved Type from unresovled Type
 pub fn (c &Checker) resolve(unresolved table.Type) table.Type {
-	return c.resolved[-table.type_idx(unresolved)-1]
+	return c.resolved[-table.type_idx(unresolved) - 1]
 }
 
 pub fn (c &Checker) check_struct_init(struct_init ast.StructInit) table.Type {
 	// typ := c.table.find_type(struct_init.typ.typ.name) or {
-	// 	c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
-	// 	panic('')
+	// c.error('unknown struct: $struct_init.typ.typ.name', struct_init.pos)
+	// panic('')
 	// }
 	typ := c.table.get_type_symbol(struct_init.typ)
 	match typ.kind {
@@ -171,28 +171,23 @@ pub fn (c &Checker) call_expr(call_expr ast.CallExpr) table.Type {
 	fn_name := call_expr.name
 	if f := c.table.find_fn(fn_name) {
 		// return_ti := f.return_ti
-		if /*TODO:*/!f.is_c {
-			if call_expr.args.len < f.args.len {
-				c.error('too few arguments in call to `$fn_name`', call_expr.pos)
-			}
-			else if !f.is_variadic && call_expr.args.len > f.args.len {
-				c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
-			}
+		if f.is_c {
+			return f.return_type
 		}
-		if /*TODO:*/!f.is_c {
+		if call_expr.args.len < f.args.len {
+			c.error('too few arguments in call to `$fn_name`', call_expr.pos)
+		}
+		else if !f.is_variadic && call_expr.args.len > f.args.len {
+			c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)', call_expr.pos)
+		}
 		for i, arg_expr in call_expr.args {
-			arg := if f.is_variadic && i >= f.args.len-1 {
-				f.args[f.args.len-1]
-			} else {
-				f.args[i]
-			}
+			arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
 			typ := c.expr(arg_expr)
 			typ_sym := c.table.get_type_symbol(typ)
 			arg_typ_sym := c.table.get_type_symbol(arg.typ)
-			if /*TODO:*/!f.is_c && !c.table.check(typ, arg.typ) {
+			if !c.table.check(typ, arg.typ) {
 				c.error('!cannot use type `$typ_sym.name` as type `$arg_typ_sym.name` in argument ${i+1} to `$fn_name`', call_expr.pos)
 			}
-		}
 		}
 		return f.return_type
 	}
