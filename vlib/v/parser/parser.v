@@ -813,7 +813,7 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			}
 		}
 		// 0 .. 10
-		start := p.tok.lit.int()
+		// start := p.tok.lit.int()
 		if p.tok.kind == .dotdot {
 			p.check(.dotdot)
 			p.expr(0)

@@ -248,7 +248,7 @@ pub fn (t mut Table) register_builtin_type_symbols() {
 	// TODO: remove
 	t.register_type_symbol(TypeSymbol{
 		parent: &t.types[map_type_idx]
-		kind: .map
+		kind: .struct_
 		name: 'map_string'
 	})
 }
