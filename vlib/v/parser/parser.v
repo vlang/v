@@ -649,7 +649,6 @@ fn (p mut Parser) prefix_expr() (ast.Expr,table.Type) {
 fn (p mut Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	p.next() // [
-	mut index_expr := ast.Expr{}
 	if p.tok.kind == .dotdot {
 		// [..end]
 		p.next()
