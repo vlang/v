@@ -467,24 +467,25 @@ pub fn (p mut Parser) name_expr() (ast.Expr,table.Type) {
 	if p.peek_tok.kind == .lpar {
 		name := p.tok.lit
 		// type cast. TODO: finish
-		if name in table.builtin_type_names {
-			// ['byte', 'string', 'int']
-			// SKIP FOR NOW
-			mut par_d := 0
-			for {
-				if p.tok.kind == .lpar {
-					par_d++
-				}
-				if p.tok.kind == .rpar {
-					par_d--
-					if par_d == 0 {
-						p.next()
-						break
-					}
-				}
-				p.next()
+		//if name in table.builtin_type_names {
+		if name in p.table.type_idxs {
+			to_typ := p.parse_type()
+			p.check(.lpar)
+			mut expr := ast.Expr{}
+			expr,_ = p.expr(0) 
+			// TODO, string(b, len) 
+			if table.type_idx(to_typ) == table.string_type_idx && p.tok.kind == .comma {
+				p.check(.comma)
+				p.expr(0) // len
 			}
+			p.check(.rpar)
+			node = ast.CastExpr{
+				typ: to_typ
+				expr: expr
+			}
+			return node, to_typ
 		}
+		// fn call
 		else {
 			println('calling $p.tok.lit')
 			x,ti2 := p.call_expr() // TODO `node,typ :=` should work
@@ -809,15 +810,31 @@ fn (p mut Parser) for_statement() ast.Stmt {
 			})
 		}
 		p.check(.key_in)
-		start := p.tok.lit.int()
-		p.expr(0)
+		mut elem_type := table.void_type
+		/*arr_expr*/_,arr_typ := p.expr(0)
+		// array / map
+		arr_typ_sym := p.table.get_type_symbol(arr_typ)
+		match arr_typ_sym.info {
+			table.Array {
+				elem_type = it.elem_type
+			}
+			table.Map {
+				elem_type = it.value_type
+			}
+			else {
+				//elem_type_sym := p.table.get_type_symbol(elem_type)
+				//p.error('cannot loop over type: $elem_type_sym.name')
+			}
+		}
+		// 0 .. 10
+		// start := p.tok.lit.int()
 		if p.tok.kind == .dotdot {
 			p.check(.dotdot)
 			p.expr(0)
 		}
 		p.table.register_var(table.Var{
 			name: var_name
-			typ: table.int_type
+			typ: elem_type
 		})
 		stmts := p.parse_block()
 		// println('nr stmts=$stmts.len')
@@ -913,27 +930,50 @@ fn (p mut Parser) array_init() (ast.Expr,table.Type) {
 	p.check(.lsbr)
 	mut val_type := table.void_type
 	mut exprs := []ast.Expr
-	for i := 0; p.tok.kind != .rsbr; i++ {
-		expr,typ := p.expr(0)
-		exprs << expr
-		if i == 0 {
-			val_type = typ
+	mut is_fixed := false
+	mut fixed_size := 0
+	if p.tok.kind == .rsbr {
+		p.check(.rsbr)
+		// []string
+		if p.tok.kind == .name {
+			val_type = p.parse_type()
 		}
-		if p.tok.kind == .comma {
-			p.check(.comma)
+		// []
+		else {
+			// TODO ?
 		}
 	}
-	line_nr := p.tok.line_nr
-	p.check(.rsbr)
-	// Fixed size array? (`[100]byte`)
-	if exprs.len <= 1 && p.tok.kind == .name && p.tok.line_nr == line_nr {
-		p.check_name()
-		p.warn('fixed size array')
-		// type_idx,type_name := p.table.find_or_register_array_fixed(val_type, 1)
-		// node =
+	else {
+		// [1,2,3]
+		for i := 0; p.tok.kind != .rsbr; i++ {
+			expr,typ := p.expr(0)
+			exprs << expr
+			if i == 0 {
+				val_type = typ
+			}
+			if p.tok.kind == .comma {
+				p.check(.comma)
+			}
+		}
+		line_nr := p.tok.line_nr
+		p.check(.rsbr)
+		// Fixed size array? (`[100]byte`)
+		if exprs.len == 1 && p.tok.kind == .name && p.tok.line_nr == line_nr {
+			is_fixed = true
+			val_type = p.parse_type()
+			match exprs[0] {
+				ast.IntegerLiteral { fixed_size = it.val }
+				else {}
+			}
+			p.warn('fixed size array')
+		}
 	}
-	// array_type := table.new_type(.array, type_name, type_idx, 0)
-	idx := p.table.find_or_register_array(val_type, 1)
+	idx := if is_fixed {
+		p.table.find_or_register_array_fixed(val_type, fixed_size, 1)
+	}
+	else {
+		p.table.find_or_register_array(val_type, 1)
+	}
 	array_type := table.new_type(idx)
 	node = ast.ArrayInit{
 		typ: array_type

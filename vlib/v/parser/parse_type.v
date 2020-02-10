@@ -11,22 +11,22 @@ pub fn (p mut Parser) parse_array_type(nr_muls int) table.Type {
 	// fixed array
 	if p.tok.kind == .number {
 		size := p.tok.lit.int()
-		elem_ti := p.parse_type()
+		elem_type := p.parse_type()
 		p.check(.rsbr)
 		p.check_name()
-		idx := p.table.find_or_register_array_fixed(elem_ti, size, 1)
+		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
 		return table.new_type_ptr(idx, nr_muls)
 	}
 	// array
 	p.check(.rsbr)
-	elem_ti := p.parse_type()
+	elem_type := p.parse_type()
 	mut nr_dims := 1
 	for p.tok.kind == .lsbr {
 		p.check(.lsbr)
 		p.check(.rsbr)
 		nr_dims++
 	}
-	idx := p.table.find_or_register_array(elem_ti, nr_dims)
+	idx := p.table.find_or_register_array(elem_type, nr_dims)
 	return table.new_type_ptr(idx, nr_muls)
 }
 

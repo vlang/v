@@ -317,8 +317,12 @@ pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
 		if existing_idx >= string_type_idx {
-			existing_type := t.types[existing_idx]
-			t.types[existing_idx] = { typ | kind: existing_type.kind }
+			if existing_idx == string_type_idx {
+				existing_type := &t.types[existing_idx]
+				t.types[existing_idx] = { typ | kind: existing_type.kind }
+			} else {
+				t.types[existing_idx] = typ
+			}
 		}
 		return existing_idx
 	}
@@ -475,6 +479,12 @@ pub fn (t &Table) check(got, expected Type) bool {
 	}
 	if got_type_sym.is_int() && exp_type_sym.is_int() {
 		return true
+	}
+	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
+		info := got_type_sym.info as ArrayFixed
+		if type_idx(info.elem_type) == byte_type_idx {
+			return true
+		}
 	}
 	// if expected.name == 'array' {
 	// return true
