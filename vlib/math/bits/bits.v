@@ -371,7 +371,7 @@ fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 // --- Full-width multiply ---
 
 const (
-	two32  = u32(1)<<32
+	two32  = u64(0x1_0000_0000)
 	mask32 = two32 - 1
 	overflow_error = "Overflow Error"
 	divide_error = "Divide Error"

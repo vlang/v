@@ -265,7 +265,7 @@ fn test_bits(){
 		lo := hi - 1
 		y  := u32(3) << x
 		quo, rem := div_32(hi, lo, y)
-		//C.printf("[%08x_%08x] %d (%d,%d)\n", hi, lo, y, quo, rem)
+		//C.printf("[%08x_%08x] %08x (%08x,%08x)\n", hi, lo, y, quo, rem)
 		tst := ((u64(hi) << 32) | u64(lo))
 		assert quo == (tst / u64(y))
 		assert rem == (tst % u64(y))
@@ -274,13 +274,13 @@ fn test_bits(){
 
 	// 64 bit
 	i = 1
-	for x in 4..31 {
+	for x in 0..62 {
 		hi := u64(i) << x
-		lo := u64(0) //hi - 1
-		y  := hi << 2 //u64(8) << 28
+		lo := u64(2) //hi - 1
+		y  := 0x4000_0000_0000_0000
 		quo, rem := div_64(hi, lo, y)
 		//C.printf("[%016llx_%016llx] %016llx (%016llx,%016llx)\n", hi, lo, y, quo, rem)
-		assert quo == u64(0x0000_0000_ffff_ffff)
+		assert quo == u64(2)<<(x+1)
 		_, rem1 := div_64(hi%y, lo, y)
 		assert rem == rem1
 		assert rem == rem_64(hi, lo, y)
