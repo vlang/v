@@ -274,16 +274,13 @@ fn test_bits(){
 
 	// 64 bit
 	i = 1
-	for x in 3..63 {
+	for x in 4..31 {
 		hi := u64(i) << x
-		lo := hi - 1
-		mut y  := u64(13)
-		if x - 3 > 0 {
-			y <<= (x-3)
-		}
+		lo := u64(0) //hi - 1
+		y  := hi << 2 //u64(8) << 28
 		quo, rem := div_64(hi, lo, y)
-		//C.printf("[%016llx_%016llx] %llu (%llu,%llu)\n", hi, lo, y, quo, rem)
-		assert quo == u64(1321528398)
+		//C.printf("[%016llx_%016llx] %016llx (%016llx,%016llx)\n", hi, lo, y, quo, rem)
+		assert quo == u64(0x0000_0000_ffff_ffff)
 		_, rem1 := div_64(hi%y, lo, y)
 		assert rem == rem1
 		assert rem == rem_64(hi, lo, y)
