@@ -323,7 +323,6 @@ pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 			} else {
 				t.types[existing_idx] = typ
 			}
-			//t.types[existing_idx] = { typ | kind: existing_type.kind }
 		}
 		return existing_idx
 	}
@@ -332,7 +331,6 @@ pub fn (t mut Table) register_builtin_type_symbol(typ TypeSymbol) int {
 
 [inline]
 pub fn (t mut Table) register_type_symbol(typ TypeSymbol) int {
-	println('REG TYPE SYM: $typ.name')
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
 		ex_type := t.types[existing_idx]
@@ -393,7 +391,6 @@ pub fn (t mut Table) find_or_register_map(key_type, value_type Type) int {
 pub fn (t mut Table) find_or_register_array(elem_type Type, nr_dims int) int {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	name := array_name(elem_type_sym, nr_dims)
-	println('REG ARRAY: $$name')
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
