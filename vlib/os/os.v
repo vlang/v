@@ -1063,7 +1063,7 @@ pub fn wait() int {
 	$if !windows {
 		pid = C.wait(0)
 	}
-	$if !windows {
+	$if windows {
 		panic('os.wait not supported in windows') // TODO
 	}
 	return pid
